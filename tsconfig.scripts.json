@@ -1,0 +1,15 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"emitDeclarationOnly": true,
+		"types": ["node"],
+		"module": "preserve",
+		"moduleResolution": "nodenext"
+	},
+	"include": [
+		"**/vite.mts",
+		"**/vitest.mts",
+		"**/scripts/**/*.ts",
+		"*/custom-claims-check.mts"
+	]
+}

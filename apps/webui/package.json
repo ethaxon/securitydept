@@ -1,0 +1,10 @@
+{
+	"name": "securitydept-webui",
+	"version": "0.1.0",
+	"description": "WebUI for SecurityDept",
+	"main": "dist/index.js",
+	"scripts": {
+		"build": "vite build",
+		"dev": "vite dev"
+	}
+}

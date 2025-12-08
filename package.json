@@ -1,0 +1,33 @@
+{
+	"name": "securitydept",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "SecurityDept, a simple, standalone auth service that integrates with external OIDC to manage and provides reusable authentication middleware endpoints for reverse proxies.",
+	"keywords": [
+		"oidc",
+		"auth",
+		"authorization",
+		"authentication",
+		"middleware",
+		"reverse proxy",
+		"traefik",
+		"nginx"
+	],
+	"workspaces": [
+		"apps/webui"
+	],
+	"author": "Zhou Yeheng <root@aitiotekt.com>",
+	"license": "MIT",
+	"packageManager": "pnpm@10.29.3",
+	"scripts": {
+		"prepare": "prek install",
+		"lint": "biome check --write",
+		"lint-fix": "biome check --write"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.3.15",
+		"@j178/prek": "^0.3.2",
+		"typescript": "^5.9.3"
+	}
+}
