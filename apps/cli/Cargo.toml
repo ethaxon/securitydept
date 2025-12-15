@@ -4,4 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-securitydept-core = { path = "../core" }
+securitydept-core = { path = "../../packages/core" }
+clap = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tabled = "0.17"
+serde_json = { workspace = true }
+snafu = { workspace = true }

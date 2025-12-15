@@ -1,5 +1,6 @@
 packages:
-  - "apps/webui"
+  - apps/webui
 
 ignoredBuiltDependencies:
-  - "@j178/prek"
+  - '@j178/prek'
+  - esbuild

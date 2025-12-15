@@ -3,12 +3,12 @@
 	"compilerOptions": {
 		"emitDeclarationOnly": true,
 		"types": ["node"],
-		"module": "preserve",
+		"module": "NodeNext",
 		"moduleResolution": "nodenext"
 	},
 	"include": [
-		"**/vite.mts",
-		"**/vitest.mts",
+		"**/vite*.ts",
+		"**/vite*.mts",
 		"**/scripts/**/*.ts",
 		"*/custom-claims-check.mts"
 	]
