@@ -138,9 +138,7 @@ async fn main() -> Result<(), Whatever> {
         .init();
 
     let cli = Cli::parse();
-    let config = AppConfig::load(&cli.config)
-        .await
-        .whatever_context("Failed to load config")?;
+    let config = AppConfig::load(&cli.config).whatever_context("Failed to load config")?;
     let store = Store::load(&config.data.path)
         .await
         .whatever_context("Failed to load data store")?;
@@ -162,23 +160,30 @@ async fn main() -> Result<(), Whatever> {
                 password,
                 groups,
             } => {
-                let password_hash = auth::hash_password(&password)
-                    .whatever_context("Failed to hash password")?;
+                let password_hash =
+                    auth::hash_password(&password).whatever_context("Failed to hash password")?;
                 let entry = AuthEntry::new_basic(name, username, password_hash, groups);
                 let created = store
                     .create_entry(entry)
                     .await
                     .whatever_context("Failed to create entry")?;
-                println!("Created basic auth entry: {} ({})", created.name, created.id);
+                println!(
+                    "Created basic auth entry: {} ({})",
+                    created.name, created.id
+                );
             }
             EntryAction::CreateToken { name, groups } => {
-                let (token, token_hash) = auth::generate_token();
+                let (token, token_hash) =
+                    auth::generate_token().whatever_context("Failed to generate token")?;
                 let entry = AuthEntry::new_token(name, token_hash, groups);
                 let created = store
                     .create_entry(entry)
                     .await
                     .whatever_context("Failed to create entry")?;
-                println!("Created token auth entry: {} ({})", created.name, created.id);
+                println!(
+                    "Created token auth entry: {} ({})",
+                    created.name, created.id
+                );
                 println!("Token (save this, it won't be shown again): {token}");
             }
             EntryAction::Delete { id } => {

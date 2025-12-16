@@ -6,12 +6,3 @@ config.toml
 !**/.env.j2
 !**/.env.*.j2
 data/
-
-temp
-**/target
-
-# Web Dev
-**/dist
-**/.vite
-**/.vitest
-**/node_modules

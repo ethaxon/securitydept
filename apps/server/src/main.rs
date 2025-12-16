@@ -11,7 +11,7 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use securitydept_core::claims_engine;
-use securitydept_core::config::AppConfig;
+use securitydept_core::config::{AppConfig, ExternalBaseUrl};
 use securitydept_core::oidc::OidcClient;
 use securitydept_core::session::SessionManager;
 use securitydept_core::store::Store;
@@ -22,7 +22,7 @@ use crate::state::AppState;
 #[command(name = "securitydept-server", about = "SecurityDept auth server")]
 struct Cli {
     /// Path to config file
-    #[arg(short, long, default_value = "config.toml")]
+    #[arg(short, long, default_value = "config/config.toml")]
     config: String,
 }
 
@@ -35,28 +35,31 @@ async fn main() -> Result<(), Whatever> {
     let cli = Cli::parse();
 
     info!(config = %cli.config, "Loading configuration");
-    let config = AppConfig::load(&cli.config)
-        .await
-        .whatever_context("Failed to load config")?;
+    let config = AppConfig::load(&cli.config).whatever_context("Failed to load config")?;
 
     let store = Store::load(&config.data.path)
         .await
         .whatever_context("Failed to load data store")?;
 
-    let external_base_url = format!("http://{}:{}", config.server.host, config.server.port);
+    let external_base_url = ExternalBaseUrl::from_config(&config.server.external_base_url);
+    info!(external_base_url = ?external_base_url, "Resolved external base URL config");
 
-    let oidc = OidcClient::new(&config.oidc, &external_base_url)
-        .await
-        .whatever_context("Failed to initialize OIDC client")?;
-
-    // Load claims check script if configured
-    let claims_script = if let Some(ref path) = config.oidc.claims_check_script {
-        let script = claims_engine::load_script(path)
+    let (oidc, claims_script) = if let Some(ref oidc_config) = config.oidc {
+        let oidc = OidcClient::new(oidc_config)
             .await
-            .whatever_context("Failed to load claims check script")?;
-        Some(Arc::new(script))
+            .whatever_context("Failed to initialize OIDC client")?;
+        let claims_script = if let Some(ref path) = oidc_config.claims_check_script {
+            let script = claims_engine::load_script(path)
+                .await
+                .whatever_context("Failed to load claims check script")?;
+            Some(Arc::new(script))
+        } else {
+            None
+        };
+        (Some(Arc::new(oidc)), claims_script)
     } else {
-        None
+        info!("OIDC disabled (no [oidc] section); /auth/login will create a dev session");
+        (None, None)
     };
 
     // 24-hour session TTL
@@ -66,8 +69,9 @@ async fn main() -> Result<(), Whatever> {
         config: Arc::new(config.clone()),
         store: Arc::new(store),
         sessions,
-        oidc: Arc::new(oidc),
+        oidc,
         claims_script,
+        external_base_url,
     };
 
     let app = routes::build_router(state);

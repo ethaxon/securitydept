@@ -20,7 +20,7 @@ impl IntoResponse for AppError {
                 (StatusCode::UNAUTHORIZED, self.0.to_string())
             }
             Error::ClaimsCheckFailed { .. } => (StatusCode::FORBIDDEN, self.0.to_string()),
-            Error::InvalidConfig { .. } | Error::ConfigParse { .. } => {
+            Error::InvalidConfig { .. } | Error::ConfigLoad { .. } => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "Configuration error".to_string())
             }
             _ => (StatusCode::INTERNAL_SERVER_ERROR, self.0.to_string()),

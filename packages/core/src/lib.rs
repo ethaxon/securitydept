@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod base_url;
 pub mod claims_engine;
 pub mod config;
 pub mod error;

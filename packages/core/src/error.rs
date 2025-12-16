@@ -3,14 +3,9 @@ use snafu::Snafu;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
-    #[snafu(display("Failed to read config file: {source}"))]
-    ConfigRead {
-        source: std::io::Error,
-    },
-
-    #[snafu(display("Failed to parse config: {source}"))]
-    ConfigParse {
-        source: toml::de::Error,
+    #[snafu(display("Failed to load config: {message}"))]
+    ConfigLoad {
+        message: String,
     },
 
     #[snafu(display("Failed to read data file: {source}"))]
@@ -80,6 +75,11 @@ pub enum Error {
 
     #[snafu(display("Password hashing error: {message}"))]
     PasswordHash {
+        message: String,
+    },
+
+    #[snafu(display("Failed to generate random bytes: {message}"))]
+    RandomBytes {
         message: String,
     },
 

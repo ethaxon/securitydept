@@ -1,0 +1,9 @@
+services:
+  securitydept-server:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.securitydept-server.rule=Host(`securitydept.example.com`)"
+      - "traefik.http.routers.securitydept-server.service=securitydept-server"
+      - "traefik.http.routers.securitydept-server.tls=true"
+      - "traefik.http.routers.securitydept-server.tls.certresolver=letsencrypt"
+      - "traefik.http.services.securitydept-server.loadbalancer.server.port=8080"

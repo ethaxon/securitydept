@@ -40,7 +40,7 @@ pub async fn create_token(
     Extension(state): Extension<AppState>,
     Json(req): Json<CreateTokenEntryRequest>,
 ) -> Result<Json<CreateTokenEntryResponse>, AppError> {
-    let (token, token_hash) = auth::generate_token();
+    let (token, token_hash) = auth::generate_token()?;
     let entry = AuthEntry::new_token(req.name, token_hash, req.groups);
     let created = state.store.create_entry(entry).await?;
     Ok(Json(CreateTokenEntryResponse {

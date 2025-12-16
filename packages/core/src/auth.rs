@@ -1,8 +1,12 @@
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use argon2::{
+    Argon2,
+    password_hash::{
+        PasswordHash, PasswordHasher, PasswordVerifier,
+        rand_core::{OsRng, RngCore},
+    },
+};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use rand::Rng;
-use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
 
 use crate::error::{Error, Result};
@@ -31,12 +35,16 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
 }
 
 /// Generate a random token and return (plaintext, sha256_hex_hash).
-pub fn generate_token() -> (String, String) {
+pub fn generate_token() -> Result<(String, String)> {
     let mut bytes = [0u8; 32];
-    OsRng.fill(&mut bytes);
+    OsRng
+        .try_fill_bytes(&mut bytes)
+        .map_err(|e| Error::RandomBytes {
+            message: e.to_string(),
+        })?;
     let token = BASE64.encode(bytes);
     let hash = hash_token(&token);
-    (token, hash)
+    Ok((token, hash))
 }
 
 /// Hash a token with SHA-256 and return hex.
@@ -63,9 +71,10 @@ pub fn check_basic_auth(
         }
         if entry.username.as_deref() == Some(username)
             && let Some(ref ph) = entry.password_hash
-                && verify_password(password, ph)? {
-                    return Ok(Some(entry.name.clone()));
-                }
+            && verify_password(password, ph)?
+        {
+            return Ok(Some(entry.name.clone()));
+        }
     }
     Ok(None)
 }
@@ -77,9 +86,10 @@ pub fn check_token_auth(entries: &[AuthEntry], token: &str) -> Option<String> {
             continue;
         }
         if let Some(ref th) = entry.token_hash
-            && verify_token(token, th) {
-                return Some(entry.name.clone());
-            }
+            && verify_token(token, th)
+        {
+            return Some(entry.name.clone());
+        }
     }
     None
 }
@@ -95,7 +105,5 @@ pub fn parse_basic_auth_header(header_value: &str) -> Option<(String, String)> {
 
 /// Parse a bearer token header value ("Bearer <token>").
 pub fn parse_bearer_auth_header(header_value: &str) -> Option<String> {
-    header_value
-        .strip_prefix("Bearer ")
-        .map(|t| t.to_string())
+    header_value.strip_prefix("Bearer ").map(|t| t.to_string())
 }

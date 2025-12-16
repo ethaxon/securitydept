@@ -3,14 +3,27 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::{Extension, Json};
 use serde::Deserialize;
-use tracing::info;
+use tracing::{debug, info};
 
+use securitydept_core::base_url;
 use securitydept_core::claims_engine;
 use securitydept_core::models::UserInfo;
 
 use crate::error::AppError;
 use crate::middleware::{get_session_id, SESSION_COOKIE_NAME};
 use crate::state::AppState;
+
+/// Resolve the external base URL for the current request.
+fn resolve_base_url(state: &AppState, headers: &HeaderMap) -> String {
+    let url = base_url::resolve_base_url(
+        &state.external_base_url,
+        headers,
+        &state.config.server.host,
+        state.config.server.port,
+    );
+    debug!(external_base_url = %url, "Resolved external base URL for request");
+    url
+}
 
 #[derive(Deserialize)]
 pub struct CallbackParams {
@@ -19,21 +32,62 @@ pub struct CallbackParams {
     pub state: Option<String>,
 }
 
-/// GET /auth/login -- redirect to OIDC provider.
-pub async fn login(Extension(state): Extension<AppState>) -> Response {
-    let (url, _csrf, _nonce) = state.oidc.authorize_url();
-    // TODO: persist csrf + nonce in session for validation
-    Redirect::temporary(&url).into_response()
+/// GET /auth/login -- redirect to OIDC provider, or create dev session when OIDC is disabled.
+pub async fn login(
+    Extension(state): Extension<AppState>,
+    headers: HeaderMap,
+) -> Response {
+    if let Some(ref oidc) = state.oidc {
+        let base_url = resolve_base_url(&state, &headers);
+        let (url, _csrf, _nonce) = match oidc.authorize_url(&base_url) {
+            Ok(result) => result,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Failed to build auth URL: {e}") })),
+                )
+                    .into_response();
+            }
+        };
+        // TODO: persist csrf + nonce in session for validation
+        return Redirect::temporary(&url).into_response();
+    }
+
+    // OIDC disabled: create a dev session for local debugging
+    let session_id = state
+        .sessions
+        .create(
+            "dev".to_string(),
+            serde_json::json!({ "oidc_enabled": false }),
+        )
+        .await;
+    let cookie = format!(
+        "{SESSION_COOKIE_NAME}={session_id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400"
+    );
+    let mut headers = HeaderMap::new();
+    headers.insert("Set-Cookie", HeaderValue::from_str(&cookie).unwrap());
+    headers.insert("Location", HeaderValue::from_static("/"));
+    (StatusCode::FOUND, headers).into_response()
 }
 
 /// GET /auth/callback -- handle OIDC code exchange.
 pub async fn callback(
     Extension(state): Extension<AppState>,
+    headers: HeaderMap,
     Query(params): Query<CallbackParams>,
 ) -> Result<Response, AppError> {
+    let oidc = state
+        .oidc
+        .as_ref()
+        .ok_or_else(|| securitydept_core::error::Error::InvalidConfig {
+            message: "OIDC is disabled".to_string(),
+        })?;
+
+    let base_url = resolve_base_url(&state, &headers);
+
     // Exchange the auth code for claims
     let nonce = openidconnect::Nonce::new("placeholder".to_string());
-    let claims = state.oidc.exchange_code(&params.code, &nonce).await?;
+    let claims = oidc.exchange_code(&params.code, &nonce, &base_url).await?;
 
     info!("OIDC callback received claims");
 

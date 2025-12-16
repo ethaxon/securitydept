@@ -1,16 +1,30 @@
 [server]
 host = "0.0.0.0"
 port = 8080
-session_secret = "change-me-to-a-random-secret"
 # webui_dir = "./apps/webui/dist"
+# External base URL for generating absolute URLs (e.g. OIDC redirect_uri).
+# "auto" (default) = infer from request headers at runtime:
+#   Forwarded (RFC 7239) > X-Forwarded-Host/Proto > Host header > http://{host}:{port}
+# Or set a fixed URL, e.g. "https://auth.example.com"
+# external_base_url = "auto"
 
+# Remove the entire [oidc] section (or set OIDC_ENABLED=false) to disable OIDC for local debugging.
+# issuer_url is required. When well_known_url is set, discovery is loaded from it and the
+# endpoint URLs below (if set) override discovered values. When well_known_url is not set,
+# authorization_endpoint, token_endpoint, userinfo_endpoint and jwks_uri must all be set.
 [oidc]
 client_id = "your-client-id"
 # client_secret = "your-client-secret"
 redirect_uri = "/auth/callback"
+issuer_url = "https://your-oidc-provider.com"
 well_known_url = "https://your-oidc-provider.com/.well-known/openid-configuration"
 scopes = ["openid", "profile", "email"]
+# Optional overrides when using well_known_url; required when well_known_url is omitted:
+# authorization_endpoint = "https://your-oidc-provider.com/authorize"
+# token_endpoint = "https://your-oidc-provider.com/token"
+# userinfo_endpoint = "https://your-oidc-provider.com/userinfo"
+# jwks_uri = "https://your-oidc-provider.com/jwks"
 # claims_check_script = "./custom-claims-check.mts"
 
 [data]
-path = "./data.json"
+path = "./data/data.json"
