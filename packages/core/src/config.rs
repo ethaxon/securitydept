@@ -2,8 +2,34 @@ use std::path::Path;
 
 use figment::Figment;
 use figment::providers::{Env, Format, Toml};
-use openidconnect::core::CoreJwsSigningAlgorithm;
+use openidconnect::core::{CoreClientAuthMethod, CoreJwsSigningAlgorithm};
 use serde::Deserialize;
+use serde_with::{DeserializeAs, NoneAsEmptyString, PickFirst, serde_as};
+
+/// Deserializes a string into Vec<T> by splitting on comma and/or whitespace.
+/// Used with PickFirst to accept either a delimited string or a sequence (array).
+pub struct CommaOrSpaceSeparated<T>(std::marker::PhantomData<T>);
+
+impl<'de, T> DeserializeAs<'de, Vec<T>> for CommaOrSpaceSeparated<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    fn deserialize_as<D>(deserializer: D) -> std::result::Result<Vec<T>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.split(|c: char| c == ',' || c.is_whitespace())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|part| {
+                let quoted =
+                    serde_json::to_string(part).map_err(<D::Error as serde::de::Error>::custom)?;
+                serde_json::from_str::<T>(&quoted).map_err(<D::Error as serde::de::Error>::custom)
+            })
+            .collect()
+    }
+}
 
 use crate::error::{self, Result};
 
@@ -62,6 +88,7 @@ impl ExternalBaseUrl {
     }
 }
 
+#[serde_as]
 #[derive(Debug, Clone, Deserialize)]
 pub struct OidcConfig {
     pub client_id: String,
@@ -69,31 +96,45 @@ pub struct OidcConfig {
     pub client_secret: Option<String>,
     #[serde(default = "default_redirect_uri")]
     pub redirect_uri: String,
-    /// OIDC issuer URL (required). When well_known_url is set, discovery is fetched from it
-    /// and optional endpoint URLs below override discovered values.
-    pub issuer_url: String,
-    /// Discovery document URL. If unset, authorization_endpoint, token_endpoint,
-    /// userinfo_endpoint and jwks_uri must all be set.
+    /// When well_known_url is set, discovery is fetched from it
+    /// and optional metadata values below override discovered values.
+    /// Discovery document URL. If unset, metadata values must all be set.
+    #[serde_as(as = "NoneAsEmptyString")]
     #[serde(default)]
     pub well_known_url: Option<String>,
+    #[serde_as(as = "NoneAsEmptyString")]
+    #[serde(default)]
+    pub issuer_url: Option<String>,
+    #[serde_as(as = "NoneAsEmptyString")]
     #[serde(default)]
     pub authorization_endpoint: Option<String>,
+    #[serde_as(as = "NoneAsEmptyString")]
     #[serde(default)]
     pub token_endpoint: Option<String>,
+    #[serde_as(as = "NoneAsEmptyString")]
     #[serde(default)]
     pub userinfo_endpoint: Option<String>,
+    #[serde_as(as = "NoneAsEmptyString")]
     #[serde(default)]
     pub jwks_uri: Option<String>,
+    #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<CoreClientAuthMethod>, _)>>")]
     #[serde(default)]
-    pub token_endpoint_auth_methods_supported: Vec<String>,
+    pub token_endpoint_auth_methods_supported: Option<Vec<CoreClientAuthMethod>>,
+    #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
     #[serde(default = "default_scopes")]
     pub scopes: Vec<String>,
+    #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<CoreJwsSigningAlgorithm>, _)>>")]
     #[serde(default)]
-    pub id_token_signed_response_alg: Option<CoreJwsSigningAlgorithm>,
+    pub id_token_signing_alg_values_supported: Option<Vec<CoreJwsSigningAlgorithm>>,
+    /// Supported userinfo signing algorithms; may include "none" for unsigned response.
+    #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<CoreJwsSigningAlgorithm>, _)>>")]
     #[serde(default)]
-    pub userinfo_signed_response_alg: Option<CoreJwsSigningAlgorithm>,
+    pub userinfo_signing_alg_values_supported: Option<Vec<CoreJwsSigningAlgorithm>>,
     #[serde(default)]
     pub claims_check_script: Option<String>,
+    /// When true, use PKCE (code_challenge / code_verifier) for the authorization code flow.
+    #[serde(default)]
+    pub pkce_enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -138,6 +179,10 @@ fn default_data_path() -> String {
     "./data/data.json".to_string()
 }
 
+pub(crate) fn default_id_token_signing_alg_values_supported() -> Vec<CoreJwsSigningAlgorithm> {
+    vec![CoreJwsSigningAlgorithm::RsaSsaPkcs1V15Sha256]
+}
+
 impl AppConfig {
     /// Load config: TOML file -> env vars (using `__` as nesting separator) -> validate.
     ///
@@ -166,13 +211,9 @@ impl AppConfig {
         let Some(ref oidc) = self.oidc else {
             return Ok(());
         };
-        if oidc.issuer_url.trim().is_empty() {
-            return Err(error::Error::InvalidConfig {
-                message: "oidc.issuer_url is required".to_string(),
-            });
-        }
         if oidc.well_known_url.is_none() {
             let missing: Vec<&str> = [
+                ("issuer_url", oidc.issuer_url.as_deref()),
                 (
                     "authorization_endpoint",
                     oidc.authorization_endpoint.as_deref(),
@@ -191,7 +232,7 @@ impl AppConfig {
             if !missing.is_empty() {
                 return Err(error::Error::InvalidConfig {
                     message: format!(
-                        "When well_known_url is not set, all of authorization_endpoint, token_endpoint, userinfo_endpoint and jwks_uri must be set; missing: {}",
+                        "When well_known_url is not set, all of issuer_url, authorization_endpoint, token_endpoint, userinfo_endpoint and jwks_uri must be set; missing: {}",
                         missing.join(", ")
                     ),
                 });

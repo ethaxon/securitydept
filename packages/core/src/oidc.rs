@@ -1,17 +1,16 @@
 use openidconnect::EmptyAdditionalProviderMetadata;
 use openidconnect::core::{
-    CoreGenderClaim, CoreJwsSigningAlgorithm, CoreProviderMetadata, CoreResponseType,
-    CoreSubjectIdentifierType,
+    CoreGenderClaim, CoreProviderMetadata, CoreResponseType, CoreSubjectIdentifierType,
 };
 use openidconnect::{
     AdditionalClaims, AuthUrl, AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret,
     CsrfToken, EndpointMaybeSet, EndpointSet, IssuerUrl, JsonWebKeySet, JsonWebKeySetUrl, Nonce,
-    OAuth2TokenResponse, RedirectUrl, ResponseTypes, Scope, TokenUrl, UserInfoClaims, UserInfoUrl,
-    reqwest,
+    OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, ResponseTypes, Scope,
+    TokenUrl, UserInfoClaims, UserInfoUrl, reqwest,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::config::OidcConfig;
+use crate::config::{OidcConfig, default_id_token_signing_alg_values_supported};
 use crate::error::{Error, Result};
 
 /// Additional claims we accept from the OIDC provider (open-ended).
@@ -52,6 +51,8 @@ pub struct OidcClient {
     scopes: Vec<String>,
     /// The configured `redirect_uri` value (may be relative like `/auth/callback`).
     redirect_uri_template: String,
+    /// When true, authorize_url and exchange_code use PKCE (code_challenge / code_verifier).
+    pkce_enabled: bool,
 }
 
 impl OidcClient {
@@ -76,16 +77,10 @@ impl OidcClient {
                 message: format!("Failed to build HTTP client: {e}"),
             })?;
 
-        let issuer_url = IssuerUrl::new(config.issuer_url.trim().to_string()).map_err(|e| {
-            Error::OidcDiscovery {
-                message: format!("Invalid issuer_url: {e}"),
-            }
-        })?;
-
         let metadata = if let Some(ref well_known_url) = config.well_known_url {
-            Self::fetch_and_merge_metadata(config, well_known_url, issuer_url, &http_client).await?
+            Self::fetch_and_merge_metadata(config, well_known_url, &http_client).await?
         } else {
-            Self::build_metadata_manual(config, issuer_url).await?
+            Self::build_metadata_manual(config).await?
         };
 
         let jwks = JsonWebKeySet::fetch_async(metadata.jwks_uri(), &http_client)
@@ -106,6 +101,7 @@ impl OidcClient {
             client,
             scopes: config.scopes.clone(),
             redirect_uri_template: config.redirect_uri.clone(),
+            pkce_enabled: config.pkce_enabled,
         })
     }
 
@@ -113,7 +109,6 @@ impl OidcClient {
     async fn fetch_and_merge_metadata(
         config: &OidcConfig,
         well_known_url: &str,
-        issuer_url: IssuerUrl,
         http_client: &reqwest::Client,
     ) -> Result<CoreProviderMetadata> {
         let body = http_client
@@ -129,74 +124,98 @@ impl OidcClient {
                 message: format!("Failed to read discovery response: {e}"),
             })?;
 
-        let metadata: CoreProviderMetadata =
+        let mut metadata: CoreProviderMetadata =
             serde_json::from_slice(&body).map_err(|e| Error::OidcDiscovery {
                 message: format!("Failed to parse discovery document: {e}"),
             })?;
 
-        let metadata = metadata.set_issuer(issuer_url);
+        if let Some(issuer_url) = config.issuer_url.as_ref() {
+            let issuer_url =
+                IssuerUrl::new(issuer_url.clone()).map_err(|e| Error::OidcDiscovery {
+                    message: format!("Invalid issuer_url: {e}"),
+                })?;
+            metadata = metadata.set_issuer(issuer_url);
+        }
 
-        let metadata = match config.authorization_endpoint.as_ref() {
-            Some(u) if !u.trim().is_empty() => {
-                metadata.set_authorization_endpoint(AuthUrl::new(u.clone()).map_err(|e| {
-                    Error::OidcDiscovery {
-                        message: format!("Invalid authorization_endpoint: {e}"),
-                    }
-                })?)
-            }
-            _ => metadata,
-        };
-        let metadata = match config.token_endpoint.as_ref() {
-            Some(u) if !u.trim().is_empty() => {
-                metadata.set_token_endpoint(Some(TokenUrl::new(u.clone()).map_err(|e| {
-                    Error::OidcDiscovery {
-                        message: format!("Invalid token_endpoint: {e}"),
-                    }
-                })?))
-            }
-            _ => metadata,
-        };
-        let metadata =
-            match config.userinfo_endpoint.as_ref() {
-                Some(u) if !u.trim().is_empty() => metadata.set_userinfo_endpoint(Some(
-                    UserInfoUrl::new(u.clone()).map_err(|e| Error::OidcDiscovery {
-                        message: format!("Invalid userinfo_endpoint: {e}"),
-                    })?,
-                )),
-                _ => metadata,
-            };
-        let metadata = match config.jwks_uri.as_ref() {
-            Some(u) if !u.trim().is_empty() => {
-                metadata.set_jwks_uri(JsonWebKeySetUrl::new(u.clone()).map_err(|e| {
-                    Error::OidcDiscovery {
-                        message: format!("Invalid jwks_uri: {e}"),
-                    }
-                })?)
-            }
-            _ => metadata,
-        };
+        if let Some(authorization_endpoint) = config.authorization_endpoint.as_ref() {
+            let authorization_endpoint =
+                AuthUrl::new(authorization_endpoint.clone()).map_err(|e| Error::OidcDiscovery {
+                    message: format!("Invalid authorization_endpoint: {e}"),
+                })?;
+            metadata = metadata.set_authorization_endpoint(authorization_endpoint);
+        }
+
+        if let Some(token_endpoint) = config.token_endpoint.as_ref() {
+            let token_endpoint =
+                TokenUrl::new(token_endpoint.clone()).map_err(|e| Error::OidcDiscovery {
+                    message: format!("Invalid token_endpoint: {e}"),
+                })?;
+            metadata = metadata.set_token_endpoint(Some(token_endpoint));
+        }
+
+        if let Some(userinfo_endpoint) = config.userinfo_endpoint.as_ref() {
+            let userinfo_endpoint =
+                UserInfoUrl::new(userinfo_endpoint.clone()).map_err(|e| Error::OidcDiscovery {
+                    message: format!("Invalid userinfo_endpoint: {e}"),
+                })?;
+            metadata = metadata.set_userinfo_endpoint(Some(userinfo_endpoint));
+        }
+
+        if let Some(jwks_uri) = config.jwks_uri.as_ref() {
+            let jwks_uri =
+                JsonWebKeySetUrl::new(jwks_uri.clone()).map_err(|e| Error::OidcDiscovery {
+                    message: format!("Invalid jwks_uri: {e}"),
+                })?;
+            metadata = metadata.set_jwks_uri(jwks_uri);
+        }
+
+        if let Some(id_token_signing_alg_values_supported) =
+            config.id_token_signing_alg_values_supported.as_ref()
+        {
+            metadata = metadata.set_id_token_signing_alg_values_supported(
+                id_token_signing_alg_values_supported.clone(),
+            );
+        }
+
+        if let Some(userinfo_signing_alg_values_supported) =
+            config.userinfo_signing_alg_values_supported.as_ref()
+        {
+            metadata = metadata.set_userinfo_signing_alg_values_supported(Some(
+                userinfo_signing_alg_values_supported.clone(),
+            ));
+        }
+
+        if let Some(token_endpoint_auth_methods_supported) =
+            config.token_endpoint_auth_methods_supported.as_ref()
+        {
+            metadata = metadata.set_token_endpoint_auth_methods_supported(Some(
+                token_endpoint_auth_methods_supported.clone(),
+            ));
+        }
 
         Ok(metadata)
     }
 
     /// Build provider metadata from required endpoints (no discovery).
-    async fn build_metadata_manual(
-        config: &OidcConfig,
-        issuer_url: IssuerUrl,
-    ) -> Result<CoreProviderMetadata> {
-        let auth_url = AuthUrl::new(
+    async fn build_metadata_manual(config: &OidcConfig) -> Result<CoreProviderMetadata> {
+        let issuer_url = IssuerUrl::new(
+            config.issuer_url.as_deref().unwrap_or_default().to_string(),
+        )
+        .map_err(|e| Error::OidcDiscovery {
+            message: format!("Invalid issuer_url: {e}"),
+        })?;
+        let authorization_endpoint = AuthUrl::new(
             config
                 .authorization_endpoint
                 .as_deref()
-                .unwrap_or("")
-                .trim()
+                .unwrap_or_default()
                 .to_string(),
         )
         .map_err(|e| Error::OidcDiscovery {
             message: format!("Invalid authorization_endpoint: {e}"),
         })?;
         let jwks_uri =
-            JsonWebKeySetUrl::new(config.jwks_uri.as_deref().unwrap_or("").trim().to_string())
+            JsonWebKeySetUrl::new(config.jwks_uri.as_deref().unwrap_or_default().to_string())
                 .map_err(|e| Error::OidcDiscovery {
                     message: format!("Invalid jwks_uri: {e}"),
                 })?;
@@ -205,8 +224,7 @@ impl OidcClient {
             config
                 .token_endpoint
                 .as_deref()
-                .unwrap_or("")
-                .trim()
+                .unwrap_or_default()
                 .to_string(),
         )
         .map_err(|e| Error::OidcDiscovery {
@@ -216,25 +234,35 @@ impl OidcClient {
             config
                 .userinfo_endpoint
                 .as_deref()
-                .unwrap_or("")
-                .trim()
+                .unwrap_or_default()
                 .to_string(),
         )
         .map_err(|e| Error::OidcDiscovery {
             message: format!("Invalid userinfo_endpoint: {e}"),
         })?;
 
+        let id_token_signing_alg_values_supported = config
+            .id_token_signing_alg_values_supported
+            .clone()
+            .unwrap_or_else(default_id_token_signing_alg_values_supported);
+
         let metadata = CoreProviderMetadata::new(
             issuer_url,
-            auth_url,
+            authorization_endpoint,
             jwks_uri,
             vec![ResponseTypes::new(vec![CoreResponseType::Code])],
             vec![CoreSubjectIdentifierType::Public],
-            vec![CoreJwsSigningAlgorithm::RsaSsaPkcs1V15Sha256],
+            id_token_signing_alg_values_supported,
             EmptyAdditionalProviderMetadata::default(),
         )
         .set_token_endpoint(Some(token_url))
-        .set_userinfo_endpoint(Some(userinfo_url));
+        .set_userinfo_endpoint(Some(userinfo_url))
+        .set_userinfo_signing_alg_values_supported(
+            config.userinfo_signing_alg_values_supported.clone(),
+        )
+        .set_token_endpoint_auth_methods_supported(
+            config.token_endpoint_auth_methods_supported.clone(),
+        );
 
         Ok(metadata)
     }
@@ -266,9 +294,12 @@ impl OidcClient {
 
     /// Generate the authorization URL the user should be redirected to.
     ///
-    /// `external_base_url` is the resolved base URL for this request
-    /// (e.g. `"https://auth.example.com"`).
-    pub fn authorize_url(&self, external_base_url: &str) -> Result<(String, CsrfToken, Nonce)> {
+    /// When `pkce_enabled` (config), the fourth element is the PKCE code_verifier secret to store
+    /// and pass to `exchange_code` in the callback.
+    pub fn authorize_url(
+        &self,
+        external_base_url: &str,
+    ) -> Result<(String, CsrfToken, Nonce, Option<String>)> {
         let client = self.client_with_redirect(external_base_url)?;
 
         let mut req = client.authorize_url(
@@ -277,16 +308,25 @@ impl OidcClient {
             Nonce::new_random,
         );
 
+        let pkce_verifier_secret = if self.pkce_enabled {
+            let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+            req = req.set_pkce_challenge(pkce_challenge);
+            Some(pkce_verifier.secret().to_string())
+        } else {
+            None
+        };
+
         for scope in &self.scopes {
             req = req.add_scope(Scope::new(scope.clone()));
         }
 
         let (url, csrf, nonce) = req.url();
-        Ok((url.to_string(), csrf, nonce))
+        Ok((url.to_string(), csrf, nonce, pkce_verifier_secret))
     }
 
     /// Exchange the authorization code for tokens, then fetch user info claims.
     ///
+    /// When PKCE was used at authorize_url, pass the stored code_verifier secret here.
     /// `external_base_url` must match the one used during [`authorize_url`] so
     /// that the redirect URI sent to the token endpoint is identical.
     pub async fn exchange_code(
@@ -294,6 +334,7 @@ impl OidcClient {
         code: &str,
         _nonce: &Nonce,
         external_base_url: &str,
+        pkce_verifier_secret: Option<&str>,
     ) -> Result<serde_json::Value> {
         let client = self.client_with_redirect(external_base_url)?;
 
@@ -304,9 +345,17 @@ impl OidcClient {
                     message: format!("Failed to build HTTP client: {e}"),
                 })?;
 
-        let token_response = client
+        let mut token_request = client
             .exchange_code(AuthorizationCode::new(code.to_string()))
-            .expect("token endpoint must be set via discovery")
+            .map_err(|e| Error::OidcTokenExchange {
+                message: format!("Token endpoint not set or config error: {e}"),
+            })?;
+        if let Some(secret) = pkce_verifier_secret {
+            token_request =
+                token_request.set_pkce_verifier(PkceCodeVerifier::new(secret.to_string()));
+        }
+
+        let token_response = token_request
             .request_async(&http_client)
             .await
             .map_err(|e| Error::OidcTokenExchange {

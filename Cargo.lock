@@ -2492,6 +2492,7 @@ dependencies = [
  "rfc7239",
  "serde",
  "serde_json",
+ "serde_with",
  "sha2",
  "snafu",
  "tokio",

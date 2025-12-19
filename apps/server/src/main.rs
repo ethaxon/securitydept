@@ -72,6 +72,7 @@ async fn main() -> Result<(), Whatever> {
         oidc,
         claims_script,
         external_base_url,
+        pending_oauth: crate::state::PendingOauthStore::new(),
     };
 
     let app = routes::build_router(state);

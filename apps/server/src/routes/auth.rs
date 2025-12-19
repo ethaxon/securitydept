@@ -28,7 +28,7 @@ fn resolve_base_url(state: &AppState, headers: &HeaderMap) -> String {
 #[derive(Deserialize)]
 pub struct CallbackParams {
     pub code: String,
-    #[allow(dead_code)]
+    /// OAuth state (CSRF token); required for callback validation.
     pub state: Option<String>,
 }
 
@@ -39,7 +39,7 @@ pub async fn login(
 ) -> Response {
     if let Some(ref oidc) = state.oidc {
         let base_url = resolve_base_url(&state, &headers);
-        let (url, _csrf, _nonce) = match oidc.authorize_url(&base_url) {
+        let (url, csrf, nonce, pkce_verifier) = match oidc.authorize_url(&base_url) {
             Ok(result) => result,
             Err(e) => {
                 return (
@@ -49,7 +49,14 @@ pub async fn login(
                     .into_response();
             }
         };
-        // TODO: persist csrf + nonce in session for validation
+        state
+            .pending_oauth
+            .insert(
+                csrf.secret().to_string(),
+                nonce.secret().to_string(),
+                pkce_verifier,
+            )
+            .await;
         return Redirect::temporary(&url).into_response();
     }
 
@@ -83,11 +90,28 @@ pub async fn callback(
             message: "OIDC is disabled".to_string(),
         })?;
 
-    let base_url = resolve_base_url(&state, &headers);
+    let state_param = params.state.as_deref().ok_or_else(|| {
+        securitydept_core::error::Error::OidcClaims {
+            message: "Missing state parameter in callback (required for CSRF validation)".to_string(),
+        }
+    })?;
 
-    // Exchange the auth code for claims
-    let nonce = openidconnect::Nonce::new("placeholder".to_string());
-    let claims = oidc.exchange_code(&params.code, &nonce, &base_url).await?;
+    let pending = state.pending_oauth.take(state_param).await.ok_or_else(|| {
+        securitydept_core::error::Error::OidcClaims {
+            message: "Invalid or expired state (reuse or unknown); try logging in again".to_string(),
+        }
+    })?;
+
+    let base_url = resolve_base_url(&state, &headers);
+    let nonce = openidconnect::Nonce::new(pending.nonce);
+    let claims = oidc
+        .exchange_code(
+            &params.code,
+            &nonce,
+            &base_url,
+            pending.code_verifier.as_deref(),
+        )
+        .await?;
 
     info!("OIDC callback received claims");
 

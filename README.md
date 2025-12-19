@@ -26,6 +26,15 @@ Build a standalone auth service (Rust backend + React frontend) that integrates 
 - Use local data files as the database.
 - Persist user hash/password data and group mappings in human-readable, editable formats.
 
+## Documentation
+
+Developer docs live in [docs/](docs/):
+
+- [Overview](docs/00-overview.md) — Design goals, tech stack, doc index
+- [Architecture](docs/architecture.md) — Workspace layout, config and data model, request flow
+- [Features](docs/features.md) — Implemented capabilities and where they live in code
+- [Roadmap](docs/roadmap.md) — Planned and future work
+
 ## License
 
 [MIT](LICENSE.md)
