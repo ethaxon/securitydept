@@ -3,6 +3,33 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<script>
+			(() => {
+				const key = "securitydept-theme";
+				let pref = "system";
+				try {
+					const stored = window.localStorage.getItem(key);
+					if (
+						stored === "system" ||
+						stored === "light" ||
+						stored === "dark"
+					) {
+						pref = stored;
+					}
+				} catch {
+					// Ignore storage access errors and fallback to system.
+				}
+				const systemDark = window.matchMedia(
+					"(prefers-color-scheme: dark)",
+				).matches;
+				const resolved = pref === "system" ? (systemDark ? "dark" : "light") : pref;
+				document.documentElement.classList.toggle("dark", resolved === "dark");
+				document.documentElement.style.colorScheme = resolved;
+			})();
+		</script>
+		<link rel="icon" type="image/x-icon" href="/icon.ico" />
+		<link rel="icon" type="image/png" sizes="128x128" href="/icon-128.png" />
+		<link rel="apple-touch-icon" href="/icon.png" />
 		<title>SecurityDept</title>
 	</head>
 	<body>

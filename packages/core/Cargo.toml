@@ -22,3 +22,15 @@ uuid = { version = "1", features = ["v4", "serde"] }
 base64 = "0.22"
 regex = { workspace = true }
 serde_with = "3.16.1"
+fs2 = "0.4"
+notify = "8.2.0"
+swc_core = { version = "57.0.0", features = [
+  "__parser",
+  "common",
+  "ecma_ast",
+  "ecma_codegen",
+  "ecma_parser_typescript",
+  "ecma_transforms",
+  "ecma_transforms_typescript",
+  "ecma_visit",
+] }

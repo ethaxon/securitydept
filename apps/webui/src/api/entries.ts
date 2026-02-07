@@ -6,7 +6,7 @@ export interface AuthEntry {
 	name: string;
 	kind: "basic" | "token";
 	username?: string;
-	groups: string[];
+	group_ids: string[];
 	created_at: string;
 	updated_at: string;
 }
@@ -23,6 +23,14 @@ export function useEntries() {
 	});
 }
 
+export function useEntry(id: string) {
+	return useQuery<AuthEntry>({
+		queryKey: ["entry", id],
+		queryFn: () => api.get(`/api/entries/${id}`),
+		enabled: Boolean(id),
+	});
+}
+
 export function useCreateBasicEntry() {
 	const qc = useQueryClient();
 	return useMutation({
@@ -30,7 +38,7 @@ export function useCreateBasicEntry() {
 			name: string;
 			username: string;
 			password: string;
-			groups: string[];
+			group_ids: string[];
 		}) => api.post<AuthEntry>("/api/entries/basic", data),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["entries"] }),
 	});
@@ -39,7 +47,7 @@ export function useCreateBasicEntry() {
 export function useCreateTokenEntry() {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (data: { name: string; groups: string[] }) =>
+		mutationFn: (data: { name: string; group_ids: string[] }) =>
 			api.post<CreateTokenResponse>("/api/entries/token", data),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["entries"] }),
 	});
@@ -56,7 +64,7 @@ export function useUpdateEntry() {
 			name?: string;
 			username?: string;
 			password?: string;
-			groups?: string[];
+			group_ids?: string[];
 		}) => api.put<AuthEntry>(`/api/entries/${id}`, data),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["entries"] }),
 	});

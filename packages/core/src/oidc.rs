@@ -49,8 +49,6 @@ type DiscoveredClientWithRedirect = openidconnect::core::CoreClient<
 pub struct OidcClient {
     client: DiscoveredClient,
     scopes: Vec<String>,
-    /// The configured `redirect_uri` value (may be relative like `/auth/callback`).
-    redirect_uri_template: String,
     /// When true, authorize_url and exchange_code use PKCE (code_challenge / code_verifier).
     pkce_enabled: bool,
 }
@@ -100,7 +98,6 @@ impl OidcClient {
         Ok(Self {
             client,
             scopes: config.scopes.clone(),
-            redirect_uri_template: config.redirect_uri.clone(),
             pkce_enabled: config.pkce_enabled,
         })
     }
@@ -267,17 +264,12 @@ impl OidcClient {
         Ok(metadata)
     }
 
-    /// Build the absolute redirect URL from the template and the resolved base URL.
+    /// Build the absolute redirect URL from the resolved base URL.
     fn resolve_redirect_url(&self, external_base_url: &str) -> Result<String> {
-        if self.redirect_uri_template.starts_with("http") {
-            Ok(self.redirect_uri_template.clone())
-        } else {
-            Ok(format!(
-                "{}{}",
-                external_base_url.trim_end_matches('/'),
-                self.redirect_uri_template
-            ))
-        }
+        Ok(format!(
+            "{}/auth/callback",
+            external_base_url.trim_end_matches('/')
+        ))
     }
 
     /// Return a clone of the inner client with the given redirect URI set.

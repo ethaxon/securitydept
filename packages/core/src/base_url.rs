@@ -147,7 +147,7 @@ mod tests {
     use http::HeaderMap;
 
     fn make_fallback() -> (&'static str, u16) {
-        ("0.0.0.0", 8080)
+        ("0.0.0.0", 7021)
     }
 
     #[test]
@@ -260,8 +260,8 @@ mod tests {
         let config = ExternalBaseUrl::Auto;
         let headers = HeaderMap::new();
         assert_eq!(
-            resolve_base_url(&config, &headers, "0.0.0.0", 8080),
-            "http://0.0.0.0:8080"
+            resolve_base_url(&config, &headers, "0.0.0.0", 7021),
+            "http://0.0.0.0:7021"
         );
     }
 

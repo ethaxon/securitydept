@@ -2,11 +2,14 @@ name: securitydept
 
 services:
   securitydept-server:
-    image: ghcr.io/aitiotekt/securitydept:latest
+    build: .
+    # image: ghcr.io/aitiotekt/securitydept:latest
     ports:
-      - 8080:8080
+      - 7021:7021
     environment:
       - SECURITYDEPT_CONFIG=/app/config.toml
     volumes:
-      - config.toml:/app/config.toml
+      - ./config.toml:/app/config.toml
+      - ./custom-claims-check.mts:/app/custom-claims-check.mts
       - ./data:/app/data
+      # - ./webui:/app/webui # for custom webui

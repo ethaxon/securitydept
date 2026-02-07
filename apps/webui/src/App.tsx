@@ -10,6 +10,11 @@ import {
 import { ApiError, api } from "@/api/client";
 import { DashboardPage } from "@/routes/Dashboard";
 import { EntriesPage } from "@/routes/Entries";
+import { EntryCreatePage } from "@/routes/EntryCreate";
+import { EntryEditPage } from "@/routes/EntryEdit";
+import { parseEntrySearch } from "@/routes/entrySearch";
+import { GroupCreatePage } from "@/routes/GroupCreate";
+import { GroupEditPage } from "@/routes/GroupEdit";
 import { GroupsPage } from "@/routes/Groups";
 import { LoginPage } from "@/routes/Login";
 
@@ -58,6 +63,22 @@ const entriesRoute = createRoute({
 	component: EntriesPage,
 });
 
+const entriesCreateRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/entries/new",
+	beforeLoad: requireAuth,
+	validateSearch: parseEntrySearch,
+	component: EntryCreatePage,
+});
+
+const entriesEditRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/entries/$entryId/edit",
+	beforeLoad: requireAuth,
+	validateSearch: parseEntrySearch,
+	component: EntryEditPage,
+});
+
 const groupsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/groups",
@@ -65,11 +86,29 @@ const groupsRoute = createRoute({
 	component: GroupsPage,
 });
 
+const groupsCreateRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/groups/new",
+	beforeLoad: requireAuth,
+	component: GroupCreatePage,
+});
+
+const groupsEditRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/groups/$groupId/edit",
+	beforeLoad: requireAuth,
+	component: GroupEditPage,
+});
+
 const routeTree = rootRoute.addChildren([
 	loginRoute,
 	dashboardRoute,
 	entriesRoute,
+	entriesCreateRoute,
+	entriesEditRoute,
 	groupsRoute,
+	groupsCreateRoute,
+	groupsEditRoute,
 ]);
 
 const router = createRouter({ routeTree });

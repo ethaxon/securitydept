@@ -94,8 +94,6 @@ pub struct OidcConfig {
     pub client_id: String,
     #[serde(default)]
     pub client_secret: Option<String>,
-    #[serde(default = "default_redirect_uri")]
-    pub redirect_uri: String,
     /// When well_known_url is set, discovery is fetched from it
     /// and optional metadata values below override discovered values.
     /// Discovery document URL. If unset, metadata values must all be set.
@@ -156,11 +154,7 @@ fn default_host() -> String {
 }
 
 fn default_port() -> u16 {
-    8080
-}
-
-fn default_redirect_uri() -> String {
-    "/auth/callback".to_string()
+    7021
 }
 
 fn default_scopes() -> Vec<String> {

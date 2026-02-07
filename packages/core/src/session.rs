@@ -27,12 +27,14 @@ impl SessionManager {
     pub async fn create(
         &self,
         display_name: String,
+        picture: Option<String>,
         claims: serde_json::Value,
     ) -> String {
         let session_id = Uuid::new_v4().to_string();
         let session = Session {
             session_id: session_id.clone(),
             display_name,
+            picture,
             claims,
             expires_at: Utc::now() + Duration::seconds(self.ttl_seconds),
         };

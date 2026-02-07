@@ -25,14 +25,20 @@ pub struct AuthEntry {
     /// SHA-256 hash of the token for token auth entries.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token_hash: Option<String>,
-    /// Groups this entry belongs to.
-    pub groups: Vec<String>,
+    /// Group IDs this entry belongs to.
+    #[serde(default)]
+    pub group_ids: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 impl AuthEntry {
-    pub fn new_basic(name: String, username: String, password_hash: String, groups: Vec<String>) -> Self {
+    pub fn new_basic(
+        name: String,
+        username: String,
+        password_hash: String,
+        group_ids: Vec<String>,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4().to_string(),
@@ -41,13 +47,13 @@ impl AuthEntry {
             username: Some(username),
             password_hash: Some(password_hash),
             token_hash: None,
-            groups,
+            group_ids,
             created_at: now,
             updated_at: now,
         }
     }
 
-    pub fn new_token(name: String, token_hash: String, groups: Vec<String>) -> Self {
+    pub fn new_token(name: String, token_hash: String, group_ids: Vec<String>) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4().to_string(),
@@ -56,7 +62,7 @@ impl AuthEntry {
             username: None,
             password_hash: None,
             token_hash: Some(token_hash),
-            groups,
+            group_ids,
             created_at: now,
             updated_at: now,
         }
@@ -91,6 +97,8 @@ pub struct DataFile {
 pub struct Session {
     pub session_id: String,
     pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
     pub claims: serde_json::Value,
     pub expires_at: DateTime<Utc>,
 }
@@ -101,14 +109,16 @@ pub struct CreateBasicEntryRequest {
     pub name: String,
     pub username: String,
     pub password: String,
-    pub groups: Vec<String>,
+    #[serde(default)]
+    pub group_ids: Vec<String>,
 }
 
 /// Request payload for creating a token auth entry.
 #[derive(Debug, Deserialize)]
 pub struct CreateTokenEntryRequest {
     pub name: String,
-    pub groups: Vec<String>,
+    #[serde(default)]
+    pub group_ids: Vec<String>,
 }
 
 /// Response after creating a token auth entry (includes the plaintext token once).
@@ -128,19 +138,23 @@ pub struct UpdateEntryRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub groups: Option<Vec<String>>,
+    pub group_ids: Option<Vec<String>>,
 }
 
 /// Request payload for creating a group.
 #[derive(Debug, Deserialize)]
 pub struct CreateGroupRequest {
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entry_ids: Option<Vec<String>>,
 }
 
 /// Request payload for updating a group.
 #[derive(Debug, Deserialize)]
 pub struct UpdateGroupRequest {
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entry_ids: Option<Vec<String>>,
 }
 
 /// Result of OIDC claims check.
@@ -149,6 +163,8 @@ pub struct ClaimsCheckResult {
     pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -159,5 +175,7 @@ pub struct ClaimsCheckResult {
 #[derive(Debug, Serialize)]
 pub struct UserInfo {
     pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
     pub claims: serde_json::Value,
 }

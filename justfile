@@ -2,7 +2,8 @@ set dotenv-load := true
 set windows-shell := ["pwsh.exe", "-NoLogo", "-ExecutionPolicy", "RemoteSigned", "-Command"]
 
 setup:
-    pnpm install --ignore-scripts
+    pnpm install
+    cargo check --workspace
 
 build-webui:
     cd apps/webui && pnpm build
@@ -13,13 +14,16 @@ build-server:
 build-cli:
     cargo build --manifest-path apps/cli/Cargo.toml --release
 
-build: build-webui build-server build-cli
+build: build-webui
+
+run-server: build
+    cargo run --manifest-path apps/server/Cargo.toml --release
 
 dev-webui:
     cd apps/webui && pnpm dev
 
 dev-server:
-    cargo run --manifest-path apps/server/Cargo.toml
+    watchexec --restart --watch apps/server --watch packages/core --watch config.toml --exts rs,toml -- cargo run --manifest-path apps/server/Cargo.toml
 
 dev: dev-server
 

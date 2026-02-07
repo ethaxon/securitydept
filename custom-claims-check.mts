@@ -7,13 +7,16 @@
 interface Claims {
 	scope: string;
 	preferred_username?: string;
-	username?: string;
+	nickname?: string;
 	sub: string;
+	email?: string;
+	picture?: string;
 }
 
 interface CheckSuccessResult {
 	success: true;
-	displayName: string;
+	display_name: string;
+	picture?: string;
 	claims: Claims;
 }
 
@@ -25,9 +28,11 @@ interface CheckFailureResult {
 
 type CheckResult = CheckSuccessResult | CheckFailureResult;
 
+// use default export function
 export default function claimsCheck(claims: Claims): CheckResult {
 	const displayName =
-		claims?.preferred_username || claims?.username || claims.sub;
+		claims?.preferred_username || claims?.nickname || claims.sub;
+	const picture = claims?.picture;
 	if (!displayName) {
 		return {
 			success: false,
@@ -39,7 +44,8 @@ export default function claimsCheck(claims: Claims): CheckResult {
 	}
 	return {
 		success: true,
-		displayName,
+		display_name: displayName,
+		picture,
 		claims,
 	};
 }

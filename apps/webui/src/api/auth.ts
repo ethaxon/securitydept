@@ -3,6 +3,7 @@ import { api } from "./client";
 
 export interface UserInfo {
 	display_name: string;
+	picture?: string;
 	claims: Record<string, unknown>;
 }
 

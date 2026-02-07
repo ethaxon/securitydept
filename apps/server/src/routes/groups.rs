@@ -26,7 +26,7 @@ pub async fn create(
     Json(req): Json<CreateGroupRequest>,
 ) -> Result<Json<Group>, AppError> {
     let group = Group::new(req.name);
-    let created = state.store.create_group(group).await?;
+    let created = state.store.create_group(group, req.entry_ids).await?;
     Ok(Json(created))
 }
 
@@ -36,7 +36,7 @@ pub async fn update(
     Path(id): Path<String>,
     Json(req): Json<UpdateGroupRequest>,
 ) -> Result<Json<Group>, AppError> {
-    let updated = state.store.update_group(&id, req.name).await?;
+    let updated = state.store.update_group(&id, req.name, req.entry_ids).await?;
     Ok(Json(updated))
 }
 

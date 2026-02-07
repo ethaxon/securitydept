@@ -61,7 +61,11 @@ async fn check_forward_auth(
     group: &str,
     headers: &HeaderMap,
 ) -> Result<String, StatusCode> {
-    let entries = state.store.entries_by_group(group).await;
+    let Some(group_obj) = state.store.find_group_by_name(group).await else {
+        debug!(group = %group, "Group not found");
+        return Err(StatusCode::UNAUTHORIZED);
+    };
+    let entries = state.store.entries_by_group_id(&group_obj.id).await;
     if entries.is_empty() {
         debug!(group = %group, "No entries found for group");
         return Err(StatusCode::UNAUTHORIZED);

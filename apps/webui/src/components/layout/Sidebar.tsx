@@ -2,7 +2,7 @@ import { Link, useMatchRoute } from "@tanstack/react-router";
 import { KeyRound, LayoutDashboard, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const navItems = [
+export const navItems = [
 	{ to: "/", label: "Dashboard", icon: LayoutDashboard },
 	{ to: "/entries", label: "Auth Entries", icon: KeyRound },
 	{ to: "/groups", label: "Groups", icon: Users },
@@ -12,7 +12,7 @@ export function Sidebar() {
 	const matchRoute = useMatchRoute();
 
 	return (
-		<aside className="w-56 shrink-0 border-r border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
+		<aside className="hidden w-56 shrink-0 border-r border-zinc-200 bg-zinc-50 md:block dark:border-zinc-800 dark:bg-zinc-900">
 			<nav className="flex flex-col gap-1 p-3">
 				{navItems.map((item) => {
 					const isActive = matchRoute({ to: item.to, fuzzy: item.to !== "/" });

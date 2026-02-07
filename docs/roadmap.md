@@ -22,13 +22,21 @@ Planned and future work. See [README.md](../README.md) â€œPlanned Capabilitiesâ€
 - **Configuration**: No hot-reload; server must restart for config changes. Optional reload or a small config API could be added later.
 - **Observability**: Tracing is in place; structured logs and optional metrics (e.g. Prometheus) are not yet defined.
 - **Tests**: Core has unit tests (e.g. base_url); integration tests for auth flow and forward-auth are not yet in tree.
-- **Deployment**: No official Dockerfile or dist packaging; justfile and cargo/pnpm builds only.
+- **Release hardening**: Add smoke tests for container startup, OIDC callback, and forward-auth checks in CI before promoting tags.
+- **Distribution options**: GHCR publish is in place; optional Docker Hub mirror and signed images (cosign) are not yet configured.
+
+## Release Baseline (v0.1.0)
+
+- **Container build**: Official multi-stage Dockerfile with Rust server/CLI and bundled Web UI.
+- **Runtime size**: Runtime image optimized to ~64 MB class (Alpine-based runtime, no Node.js runtime dependency).
+- **CI/CD**: GitHub Actions workflow `.github/workflows/docker-build.yml` builds multi-arch (`linux/amd64`, `linux/arm64`) and publishes to GHCR on `v*` tags with SemVer aliases.
 
 ## Suggested Priorities (for developers)
 
-1. **Stability**: Add integration tests for login/callback and forward-auth.
+1. **Stability**: Add integration tests for login/callback and forward-auth, and run them in CI.
 2. **Operations**: Session cleanup job; optional session persistence if needed.
-3. **UX**: Harden Web UI (errors, loading, update flows).
-4. **Extensibility**: Document forward-auth contract so additional proxies can be added easily; consider one more (e.g. Caddy) as reference.
+3. **Release quality**: Add container smoke tests and optionally signed images.
+4. **UX**: Harden Web UI (errors, loading, update flows).
+5. **Extensibility**: Document forward-auth contract so additional proxies can be added easily; consider one more (e.g. Caddy) as reference.
 
 No strict timeline; items can be picked by contribution or internal need.

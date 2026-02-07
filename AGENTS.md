@@ -1,6 +1,6 @@
 # AGENTS.md
 
-*Single source of truth for Agent identity, code standards, and project rules. Referenced by `.cursorrules`, `CLAUDE.md`, and `GEMINI.md`.*
+_Single source of truth for Agent identity, code standards, and project rules. Referenced by `.cursorrules`, `CLAUDE.md`, and `GEMINI.md`._
 
 ## Identity & Communication
 
@@ -12,8 +12,8 @@
 
 ## Code Standards
 
-- **General**: 
-  - Comments explain *why*, not *what*. Update docs when logic changes.
+- **General**:
+  - Comments explain _why_, not _what_. Update docs when logic changes.
   - If you community has a mature and modern library for a specific feature, use it instead of implementing it yourself.
 - **YAML**: 2-space indent, quote only when necessary.
 - **Bash**: `set -e`, `[[ ]]` not `[ ]`, quote variables.
@@ -23,6 +23,8 @@
 ### File Organization
 
 - **Docs**: [`README.md`](README.md) -> [`docs/`](docs/)
+- **Data**: [`data/`](data/)
+- **Temp**: [`temp/`](temp/) if agents need to create temp files, please use temp folder
 
 ### Tools Preferences
 

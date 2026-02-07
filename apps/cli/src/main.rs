@@ -37,6 +37,11 @@ enum Commands {
 enum EntryAction {
     /// List all auth entries
     List,
+    /// Get an auth entry by id
+    Get {
+        #[arg(long)]
+        id: String,
+    },
     /// Create a new basic auth entry
     CreateBasic {
         #[arg(long)]
@@ -45,22 +50,36 @@ enum EntryAction {
         username: String,
         #[arg(long)]
         password: String,
-        /// Comma-separated group names
+        /// Comma-separated group IDs
         #[arg(long, value_delimiter = ',')]
-        groups: Vec<String>,
+        group_ids: Vec<String>,
     },
     /// Create a new token auth entry
     CreateToken {
         #[arg(long)]
         name: String,
-        /// Comma-separated group names
+        /// Comma-separated group IDs
         #[arg(long, value_delimiter = ',')]
-        groups: Vec<String>,
+        group_ids: Vec<String>,
     },
     /// Delete an auth entry
     Delete {
         #[arg(long)]
         id: String,
+    },
+    /// Update an auth entry
+    Update {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        username: Option<String>,
+        #[arg(long)]
+        password: Option<String>,
+        /// Comma-separated group IDs
+        #[arg(long, value_delimiter = ',')]
+        group_ids: Option<Vec<String>>,
     },
 }
 
@@ -68,10 +87,28 @@ enum EntryAction {
 enum GroupAction {
     /// List all groups
     List,
+    /// Get a group by id
+    Get {
+        #[arg(long)]
+        id: String,
+    },
     /// Create a new group
     Create {
         #[arg(long)]
         name: String,
+        /// Comma-separated auth entry IDs to bind with this group
+        #[arg(long, value_delimiter = ',')]
+        entry_ids: Option<Vec<String>>,
+    },
+    /// Update a group
+    Update {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        name: String,
+        /// Comma-separated auth entry IDs to bind with this group
+        #[arg(long, value_delimiter = ',')]
+        entry_ids: Option<Vec<String>>,
     },
     /// Delete a group
     Delete {
@@ -92,8 +129,8 @@ struct EntryRow {
     kind: String,
     #[tabled(rename = "Username")]
     username: String,
-    #[tabled(rename = "Groups")]
-    groups: String,
+    #[tabled(rename = "Group IDs")]
+    group_ids: String,
     #[tabled(rename = "Created")]
     created_at: String,
 }
@@ -108,7 +145,7 @@ impl From<AuthEntry> for EntryRow {
                 AuthEntryKind::Token => "token".to_string(),
             },
             username: e.username.unwrap_or_default(),
-            groups: e.groups.join(", "),
+            group_ids: e.group_ids.join(", "),
             created_at: e.created_at.format("%Y-%m-%d %H:%M").to_string(),
         }
     }
@@ -154,15 +191,23 @@ async fn main() -> Result<(), Whatever> {
                     println!("{}", Table::new(rows));
                 }
             }
+            EntryAction::Get { id } => {
+                let entry = store
+                    .get_entry(&id)
+                    .await
+                    .whatever_context("Failed to get entry")?;
+                let rows = vec![EntryRow::from(entry)];
+                println!("{}", Table::new(rows));
+            }
             EntryAction::CreateBasic {
                 name,
                 username,
                 password,
-                groups,
+                group_ids,
             } => {
                 let password_hash =
                     auth::hash_password(&password).whatever_context("Failed to hash password")?;
-                let entry = AuthEntry::new_basic(name, username, password_hash, groups);
+                let entry = AuthEntry::new_basic(name, username, password_hash, group_ids);
                 let created = store
                     .create_entry(entry)
                     .await
@@ -172,10 +217,10 @@ async fn main() -> Result<(), Whatever> {
                     created.name, created.id
                 );
             }
-            EntryAction::CreateToken { name, groups } => {
+            EntryAction::CreateToken { name, group_ids } => {
                 let (token, token_hash) =
                     auth::generate_token().whatever_context("Failed to generate token")?;
-                let entry = AuthEntry::new_token(name, token_hash, groups);
+                let entry = AuthEntry::new_token(name, token_hash, group_ids);
                 let created = store
                     .create_entry(entry)
                     .await
@@ -193,6 +238,23 @@ async fn main() -> Result<(), Whatever> {
                     .whatever_context("Failed to delete entry")?;
                 println!("Deleted entry: {id}");
             }
+            EntryAction::Update {
+                id,
+                name,
+                username,
+                password,
+                group_ids,
+            } => {
+                let password_hash = match password {
+                    Some(pw) => Some(auth::hash_password(&pw).whatever_context("Failed to hash password")?),
+                    None => None,
+                };
+                let updated = store
+                    .update_entry(&id, name, username, password_hash, group_ids)
+                    .await
+                    .whatever_context("Failed to update entry")?;
+                println!("Updated entry: {} ({})", updated.name, updated.id);
+            }
         },
         Commands::Group { action } => match action {
             GroupAction::List => {
@@ -204,13 +266,32 @@ async fn main() -> Result<(), Whatever> {
                     println!("{}", Table::new(rows));
                 }
             }
-            GroupAction::Create { name } => {
+            GroupAction::Get { id } => {
+                let group = store
+                    .get_group(&id)
+                    .await
+                    .whatever_context("Failed to get group")?;
+                let rows = vec![GroupRow::from(group)];
+                println!("{}", Table::new(rows));
+            }
+            GroupAction::Create { name, entry_ids } => {
                 let group = Group::new(name);
                 let created = store
-                    .create_group(group)
+                    .create_group(group, entry_ids)
                     .await
                     .whatever_context("Failed to create group")?;
                 println!("Created group: {} ({})", created.name, created.id);
+            }
+            GroupAction::Update {
+                id,
+                name,
+                entry_ids,
+            } => {
+                let updated = store
+                    .update_group(&id, name, entry_ids)
+                    .await
+                    .whatever_context("Failed to update group")?;
+                println!("Updated group: {} ({})", updated.name, updated.id);
             }
             GroupAction::Delete { id } => {
                 store

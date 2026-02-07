@@ -1,8 +1,16 @@
-# SecurityDept
+<h1 align="center">
+  <img src="./assets/icons/icon.png" alt="logo" height=180/>
+  <br />
+  <b>SecurityDept</b>
+  <div align="center">
+    <a href="https://github.com/ethaxon/securitydept/actions/workflows/docker-build.yml"><img src="https://github.com/ethaxon/securitydept/actions/workflows/docker-build.yml/badge.svg" alt="docker-build-badge" /></a>
+    <a href="https://github.com/ethaxon/securitydept/tags"><img src="https://img.shields.io/github/v/tag/ethaxon/securitydept?label=version" alt="version-badge" /></a>
+    <img src="https://img.shields.io/badge/status-v0.1.0%20ready-brightgreen" alt="status-badge" /></div>
+</h1>
 
-Standalone auth service: OIDC login + local basic/token entries and groups, with forward-auth endpoints for reverse proxies (Traefik, Nginx). File-based config and data, no database.
+Standalone auth service: OIDC login, manage local basic/token entries and groups, with forward-auth endpoints for reverse proxies (Traefik, Nginx). File-based config and data, no database.
 
-**Status: early development** — Core flows work; API, CLI, and Web UI exist. See [Roadmap](docs/roadmap.md) for gaps and priorities.
+**Status: v0.1.0 release-ready** — Core flows are implemented across API, CLI, and Web UI. Docker image build and GHCR publish workflow are in place. See [Roadmap](docs/roadmap.md) for next milestones.
 
 ## What it does
 
@@ -25,14 +33,20 @@ just dev              # run server (cargo run)
 
 Web UI: `just dev-webui` in another terminal, or set `server.webui_dir` and serve from the server.
 
+## Container image
+
+- Registry: `ghcr.io/<owner>/<repo>` (this repository resolves to `ghcr.io/ethaxon/securitydept`)
+- Release tags follow SemVer aliases on `v*` tags: `1.2.3`, `1.2`, `1`, `latest`
+- Multi-arch: `linux/amd64`, `linux/arm64`
+
 ## Docs
 
-| Doc | Content |
-|-----|--------|
-| [Overview](docs/00-overview.md) | Goals, tech stack, index |
-| [Architecture](docs/architecture.md) | Layout, config/data model, request flow |
-| [Features](docs/features.md) | Implemented capabilities and code locations |
-| [Roadmap](docs/roadmap.md) | Done, gaps, suggested priorities |
+| Doc                                  | Content                                     |
+| ------------------------------------ | ------------------------------------------- |
+| [Overview](docs/00-overview.md)      | Goals, tech stack, index                    |
+| [Architecture](docs/architecture.md) | Layout, config/data model, request flow     |
+| [Features](docs/features.md)         | Implemented capabilities and code locations |
+| [Roadmap](docs/roadmap.md)           | Done, gaps, suggested priorities            |
 
 ## License
 

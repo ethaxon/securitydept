@@ -22,8 +22,19 @@ use crate::state::AppState;
 #[command(name = "securitydept-server", about = "SecurityDept auth server")]
 struct Cli {
     /// Path to config file
-    #[arg(short, long, default_value = "config/config.toml")]
+    #[arg(short, long, default_value = "config.toml")]
     config: String,
+}
+
+fn resolve_config_path(cli_config: &str) -> String {
+    if cli_config != "config.toml" {
+        return cli_config.to_string();
+    }
+
+    match std::env::var("SECURITYDEPT_CONFIG") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => cli_config.to_string(),
+    }
 }
 
 #[tokio::main]
@@ -34,8 +45,9 @@ async fn main() -> Result<(), Whatever> {
 
     let cli = Cli::parse();
 
-    info!(config = %cli.config, "Loading configuration");
-    let config = AppConfig::load(&cli.config).whatever_context("Failed to load config")?;
+    let config_path = resolve_config_path(&cli.config);
+    info!(config = %config_path, "Loading configuration");
+    let config = AppConfig::load(&config_path).whatever_context("Failed to load config")?;
 
     let store = Store::load(&config.data.path)
         .await

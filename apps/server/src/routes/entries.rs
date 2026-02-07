@@ -30,7 +30,7 @@ pub async fn create_basic(
     Json(req): Json<CreateBasicEntryRequest>,
 ) -> Result<Json<AuthEntry>, AppError> {
     let password_hash = auth::hash_password(&req.password)?;
-    let entry = AuthEntry::new_basic(req.name, req.username, password_hash, req.groups);
+    let entry = AuthEntry::new_basic(req.name, req.username, password_hash, req.group_ids);
     let created = state.store.create_entry(entry).await?;
     Ok(Json(created))
 }
@@ -41,7 +41,7 @@ pub async fn create_token(
     Json(req): Json<CreateTokenEntryRequest>,
 ) -> Result<Json<CreateTokenEntryResponse>, AppError> {
     let (token, token_hash) = auth::generate_token()?;
-    let entry = AuthEntry::new_token(req.name, token_hash, req.groups);
+    let entry = AuthEntry::new_token(req.name, token_hash, req.group_ids);
     let created = state.store.create_entry(entry).await?;
     Ok(Json(CreateTokenEntryResponse {
         entry: created,
@@ -63,7 +63,7 @@ pub async fn update(
 
     let updated = state
         .store
-        .update_entry(&id, req.name, req.username, password_hash, req.groups)
+        .update_entry(&id, req.name, req.username, password_hash, req.group_ids)
         .await?;
     Ok(Json(updated))
 }

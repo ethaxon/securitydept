@@ -12,3 +12,6 @@ tracing-subscriber = { workspace = true }
 tabled = "0.17"
 serde_json = { workspace = true }
 snafu = { workspace = true }
+
+[build-dependencies]
+winres = "0.1"

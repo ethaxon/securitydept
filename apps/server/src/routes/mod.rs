@@ -2,10 +2,11 @@ pub mod auth;
 pub mod entries;
 pub mod forward_auth;
 pub mod groups;
+pub mod health;
 
+use axum::Router;
 use axum::middleware;
 use axum::routing::{delete, get, post, put};
-use axum::Router;
 
 use crate::middleware::require_session;
 use crate::state::AppState;
@@ -37,24 +38,19 @@ pub fn build_router(state: AppState) -> Router {
             "/api/forwardauth/traefik/{group}",
             get(forward_auth::traefik),
         )
-        .route(
-            "/api/forwardauth/nginx/{group}",
-            get(forward_auth::nginx),
-        );
+        .route("/api/forwardauth/nginx/{group}", get(forward_auth::nginx));
 
     let app = Router::new()
+        .route("/api/health", get(health::health))
         .merge(auth_routes)
         .merge(api_routes)
         .merge(forward_auth_routes);
 
     // Serve static webui files if configured
     let app = if let Some(ref webui_dir) = state.config.server.webui_dir {
-        app.fallback_service(
-            tower_http::services::ServeDir::new(webui_dir)
-                .fallback(tower_http::services::ServeFile::new(
-                    format!("{webui_dir}/index.html"),
-                )),
-        )
+        app.fallback_service(tower_http::services::ServeDir::new(webui_dir).fallback(
+            tower_http::services::ServeFile::new(format!("{webui_dir}/index.html")),
+        ))
     } else {
         app
     };
