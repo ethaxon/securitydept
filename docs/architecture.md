@@ -20,7 +20,7 @@ securitydept/
 └── .env.example       # Env var template
 ```
 
-- **securitydept-core**: No HTTP; holds config parsing, OIDC client, file-backed store, in-memory sessions, password/token hashing and verification, claims-check script execution (Boa), and base-URL resolution from headers.
+- **securitydept-core**: No HTTP; holds config parsing, OIDC client, file-backed store, in-memory sessions, password/token hashing and verification, claims-check script execution (Boa), TypeScript claims transpile (SWC), and base-URL resolution from headers.
 - **securitydept-server**: Depends on core; runs Axum, serves auth routes, REST API (entries/groups), and forward-auth endpoints; optionally serves webui static files.
 - **securitydept-cli**: Depends on core; reads same config and data file, provides entry/group CRUD for automation or headless use.
 
@@ -47,6 +47,7 @@ Validation: if `well_known_url` is unset, `issuer_url`, `authorization_endpoint`
 2. **Protected API**: Requests to `/api/entries`, `/api/groups` require session cookie; middleware resolves session or returns 401.
 3. **Forward-auth**: `/api/forwardauth/traefik/{group}` and `/api/forwardauth/nginx/{group}` are **not** session-based. Reverse proxy sends `Authorization` (Basic or Bearer); server loads entries for that group and validates credential; 200 or 401. Used as Traefik ForwardAuth or Nginx `auth_request` upstream.
 4. **Base URL**: For OIDC redirect_uri, server uses `external_base_url`: either fixed or inferred from Forwarded / X-Forwarded-* / Host (see `packages/core/src/base_url.rs`).
+5. **Health endpoint**: `/api/health` returns service status; `/api/health?api_details=true` includes route metadata for UI and diagnostics.
 
 ## Security-Relevant Details
 

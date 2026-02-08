@@ -14,7 +14,8 @@ What is built and where to find it in the codebase.
 ## Claims Check Script
 
 - Optional script (e.g. `.mts`) run after OIDC callback. Executed in Boa engine; must export a function that accepts claims and returns `{ success, displayName?, error?, claims? }`.
-- Used to validate or reject login and to set display name. TypeScript/interface lines are stripped for Boa compatibility.
+- Used to validate or reject login and to set display name.
+- `.ts` and `.mts` scripts are transpiled to JavaScript with embedded SWC (`swc_core`) at runtime, removing Node.js runtime dependency for claims transpilation.
 
 **Code**: `packages/core/src/claims_engine.rs`; example script `custom-claims-check.mts`.
 
@@ -40,6 +41,13 @@ What is built and where to find it in the codebase.
 - All require a valid session cookie (middleware).
 
 **Code**: `apps/server/src/routes/mod.rs`, `entries.rs`, `groups.rs`; `apps/server/src/middleware.rs`.
+
+## Health API (Public)
+
+- `GET /api/health` — liveness/status endpoint.
+- `GET /api/health?api_details=true` — includes API route metadata used by diagnostics and Web UI.
+
+**Code**: `apps/server/src/routes/health.rs`.
 
 ## Forward-Auth Endpoints
 

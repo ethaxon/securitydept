@@ -2,8 +2,8 @@ name: securitydept
 
 services:
   securitydept-server:
-    build: .
-    # image: ghcr.io/aitiotekt/securitydept:latest
+    # build: .
+    image: ghcr.io/aitiotekt/securitydept:latest
     ports:
       - 7021:7021
     environment:

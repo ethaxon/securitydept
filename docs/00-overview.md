@@ -19,10 +19,10 @@ Target operators: small teams or self-hosted setups that need a single auth laye
 | Layer        | Choice |
 |-------------|--------|
 | **Server**  | Rust, Axum, OpenID Connect crate, Figment (config), Snafu (errors), Tokio, Tracing |
-| **Core lib**| Shared config, OIDC client, store, session, auth (hashing/verification), claims engine (Boa JS), base URL resolution |
+| **Core lib**| Shared config, OIDC client, store, session, auth (hashing/verification), claims engine (Boa JS + SWC TypeScript transpile), base URL resolution |
 | **Web UI**  | TypeScript, Vite, React, TanStack (e.g. Query/Router), Tailwind CSS, shadcn/ui |
 | **CLI**     | Rust, Clap, Tabled (output) |
-| **Tooling** | mise (tools), pnpm (Node), just (tasks), cargo (Rust) |
+| **Tooling** | mise (tools), pnpm (Node build-time only), just (tasks), cargo (Rust), GitHub Actions (Docker build/publish) |
 
 See [AGENTS.md](../AGENTS.md) for project rules (e.g. Rust + axum + openidconnect for server; TS + Vite + React for webui).
 
