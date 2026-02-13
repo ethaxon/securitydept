@@ -11,7 +11,7 @@
 
 ---
 
-Status: v0.1.0 release-ready — Core flows are implemented across API, CLI, and Web UI. Docker image build and GHCR publish workflow are in place. See [Roadmap](docs/roadmap.md) for next milestones.
+Status: v0.1.1 release-ready — Core flows are implemented across API, CLI, and Web UI. Docker image build and GHCR publish workflow are in place. See [Roadmap](docs/roadmap.md) for next milestones.
 
 ## What it does
 

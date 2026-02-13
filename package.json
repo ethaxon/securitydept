@@ -1,6 +1,6 @@
 {
 	"name": "securitydept",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"private": true,
 	"type": "module",
 	"description": "SecurityDept, a simple, standalone auth service that integrates with external OIDC to manage and provides reusable authentication middleware endpoints for reverse proxies.",

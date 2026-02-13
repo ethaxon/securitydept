@@ -39,8 +39,19 @@ fn resolve_config_path(cli_config: &str) -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), Whatever> {
+    let default_log_level = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "info"
+    };
+
+    let env_filter = match std::env::var("RUST_LOG") {
+        Ok(value) if !value.trim().is_empty() => EnvFilter::from_default_env(),
+        _ => EnvFilter::new(default_log_level),
+    };
+
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse().unwrap()))
+        .with_env_filter(env_filter)
         .init();
 
     let cli = Cli::parse();

@@ -11,6 +11,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Documentation updated to reflect current runtime and release pipeline behavior.
 
+## [0.1.1]
+
+### Fixed
+
+- Fixed redirect handling for docker-registry-proxy after proxy flow refactor.
+
+### Changed
+
+- Simplified forward-auth and auth-route debug logging to keep only high-signal events.
+- Bumped project version from `0.1.0` to `0.1.1` across Rust crates, Node packages, and release docs.
+
 ## [0.1.0]
 
 ### Added

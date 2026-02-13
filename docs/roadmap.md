@@ -26,7 +26,7 @@ Planned and future work. See [README.md](../README.md) â€œPlanned Capabilitiesâ€
 - **Distribution options**: GHCR publish is in place; optional Docker Hub mirror and signed images (cosign) are not yet configured.
 - **Multi-arch images**: `arm64` publishing is temporarily disabled to simplify release flow; re-enable with native ARM runner pipeline.
 
-## Release Baseline (v0.1.0)
+## Release Baseline (v0.1.1)
 
 - **Container build**: Official multi-stage Dockerfile with Rust server/CLI and bundled Web UI.
 - **Runtime size**: Runtime image optimized to ~64 MB class (Alpine-based runtime, no Node.js runtime dependency).

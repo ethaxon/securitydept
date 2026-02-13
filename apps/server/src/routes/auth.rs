@@ -3,7 +3,7 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::{Extension, Json};
 use serde::Deserialize;
-use tracing::{debug, info};
+use tracing::info;
 
 use securitydept_core::base_url;
 use securitydept_core::claims_engine;
@@ -15,14 +15,12 @@ use crate::state::AppState;
 
 /// Resolve the external base URL for the current request.
 fn resolve_base_url(state: &AppState, headers: &HeaderMap) -> String {
-    let url = base_url::resolve_base_url(
+    base_url::resolve_base_url(
         &state.external_base_url,
         headers,
         &state.config.server.host,
         state.config.server.port,
-    );
-    debug!(external_base_url = %url, "Resolved external base URL for request");
-    url
+    )
 }
 
 #[derive(Deserialize)]
