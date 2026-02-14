@@ -116,10 +116,10 @@ async fn check_forward_auth(
     }
 
     // Try bearer token
-    if let Some(token) = parse_bearer_auth_header(auth_header) {
-        if let Some(name) = check_token_auth(&entries, &token) {
-            return Ok(name);
-        }
+    if let Some(token) = parse_bearer_auth_header(auth_header)
+        && let Some(name) = check_token_auth(&entries, &token)
+    {
+        return Ok(name);
     }
 
     warn!(
