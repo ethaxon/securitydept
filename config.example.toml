@@ -28,7 +28,7 @@ well_known_url = "https://your-oidc-provider.com/.well-known/openid-configuratio
 # id_token_signing_alg_values_supported = ["RS256"]
 # userinfo_signing_alg_values_supported = ["none"]
 # pkce_enabled = true
-# claims_check_script = "./custom-claims-check.mts"
+# claims_check_script = "./claims-script-check.mts"
 
 [data]
 path = "./data/data.json"

@@ -157,20 +157,6 @@ pub struct UpdateGroupRequest {
     pub entry_ids: Option<Vec<String>>,
 }
 
-/// Result of OIDC claims check.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClaimsCheckResult {
-    pub success: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub picture: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub claims: Option<serde_json::Value>,
-}
-
 /// Info about the currently logged-in user.
 #[derive(Debug, Serialize)]
 pub struct UserInfo {

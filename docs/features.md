@@ -9,7 +9,7 @@ What is built and where to find it in the codebase.
 - **Discovery**: Optional `well_known_url`; otherwise manual `issuer_url`, endpoints, and `jwks_uri`. Provider metadata can override discovered endpoints and algs.
 - **Config flexibility**: `token_endpoint_auth_methods_supported`, `scopes`, `id_token_signing_alg_values_supported`, `userinfo_signing_alg_values_supported` support comma- or space-separated strings (and arrays) via serde_with; userinfo algs can include `none`.
 
-**Code**: `packages/core/src/oidc.rs`, `packages/core/src/config.rs` (OidcConfig); `apps/server/src/routes/auth.rs` (login, callback), `apps/server/src/state.rs` (PendingOauthStore).
+**Code**: `packages/oidc/src/client.rs`, `packages/core/src/config.rs` (OidcConfig → OidcClientConfig); `apps/server/src/routes/auth.rs` (login, callback), `apps/server/src/state.rs` (PendingOauthStore).
 
 ## Claims Check Script
 
@@ -17,7 +17,7 @@ What is built and where to find it in the codebase.
 - Used to validate or reject login and to set display name.
 - `.ts` and `.mts` scripts are transpiled to JavaScript with embedded SWC (`swc_core`) at runtime, removing Node.js runtime dependency for claims transpilation.
 
-**Code**: `packages/core/src/claims_engine.rs`; example script `custom-claims-check.mts`.
+**Code**: `packages/oidc/src/claims_engine.rs`; example script `claims-script-check.mts`.
 
 ## Session Management
 

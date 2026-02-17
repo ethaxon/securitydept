@@ -1,5 +1,11 @@
 [workspace]
-members = ["packages/core", "apps/server", "apps/cli"]
+members = [
+    "packages/oidc",
+    "packages/utils",
+    "packages/core",
+    "apps/server",
+    "apps/cli",
+]
 resolver = "3"
 
 [workspace.dependencies]
@@ -12,3 +18,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive"] }
 openidconnect = "4"
 regex = "1"
+http = "1"
+url = "2"
+serde_with = "3"

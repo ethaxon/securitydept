@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 securitydept-core = { path = "../../packages/core" }
+securitydept-oidc = { path = "../../packages/oidc" }
 axum = { version = "0.8", features = ["macros"] }
 tower-http = { version = "0.6", features = ["cors", "fs"] }
 tokio = { workspace = true }

@@ -4,6 +4,8 @@ version = "0.1.1"
 edition = "2024"
 
 [dependencies]
+securitydept-oidc = { path = "../oidc" }
+securitydept-utils = { path = "../utils" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
@@ -12,8 +14,6 @@ tracing = { workspace = true }
 figment = { version = "0.10", features = ["toml", "env"] }
 openidconnect = { workspace = true }
 http = "1"
-rfc7239 = "0.1"
-boa_engine = "0.21"
 argon2 = "0.5"
 sha2 = "0.10"
 hex = "0.4"
@@ -21,16 +21,5 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 base64 = "0.22"
 regex = { workspace = true }
-serde_with = "3.16.1"
 fs2 = "0.4"
 notify = "8.2.0"
-swc_core = { version = "57.0.0", features = [
-  "__parser",
-  "common",
-  "ecma_ast",
-  "ecma_codegen",
-  "ecma_parser_typescript",
-  "ecma_transforms",
-  "ecma_transforms_typescript",
-  "ecma_visit",
-] }

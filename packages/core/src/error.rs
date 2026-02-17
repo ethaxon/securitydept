@@ -4,84 +4,43 @@ use snafu::Snafu;
 #[snafu(visibility(pub))]
 pub enum Error {
     #[snafu(display("Failed to load config: {message}"))]
-    ConfigLoad {
-        message: String,
-    },
+    ConfigLoad { message: String },
 
     #[snafu(display("Failed to read data file: {source}"))]
-    DataRead {
-        source: std::io::Error,
-    },
+    DataRead { source: std::io::Error },
 
     #[snafu(display("Failed to write data file: {source}"))]
-    DataWrite {
-        source: std::io::Error,
-    },
+    DataWrite { source: std::io::Error },
 
     #[snafu(display("Failed to parse data: {source}"))]
-    DataParse {
-        source: serde_json::Error,
-    },
+    DataParse { source: serde_json::Error },
 
     #[snafu(display("Failed to serialize data: {source}"))]
-    DataSerialize {
-        source: serde_json::Error,
-    },
+    DataSerialize { source: serde_json::Error },
 
     #[snafu(display("Entry not found: {id}"))]
-    EntryNotFound {
-        id: String,
-    },
+    EntryNotFound { id: String },
 
     #[snafu(display("Group not found: {id}"))]
-    GroupNotFound {
-        id: String,
-    },
+    GroupNotFound { id: String },
 
     #[snafu(display("Duplicate entry name: {name}"))]
-    DuplicateEntryName {
-        name: String,
-    },
+    DuplicateEntryName { name: String },
 
     #[snafu(display("Duplicate group name: {name}"))]
-    DuplicateGroupName {
-        name: String,
-    },
-
-    #[snafu(display("OIDC discovery error: {message}"))]
-    OidcDiscovery {
-        message: String,
-    },
-
-    #[snafu(display("OIDC token exchange error: {message}"))]
-    OidcTokenExchange {
-        message: String,
-    },
-
-    #[snafu(display("OIDC claims error: {message}"))]
-    OidcClaims {
-        message: String,
-    },
+    DuplicateGroupName { name: String },
 
     #[snafu(display("Claims check script error: {message}"))]
-    ClaimsCheck {
-        message: String,
-    },
+    ClaimsCheck { message: String },
 
     #[snafu(display("Claims check script failed: {message}"))]
-    ClaimsCheckFailed {
-        message: String,
-    },
+    ClaimsCheckFailed { message: String },
 
     #[snafu(display("Password hashing error: {message}"))]
-    PasswordHash {
-        message: String,
-    },
+    PasswordHash { message: String },
 
     #[snafu(display("Failed to generate random bytes: {message}"))]
-    RandomBytes {
-        message: String,
-    },
+    RandomBytes { message: String },
 
     #[snafu(display("Authentication failed"))]
     AuthFailed,
@@ -93,8 +52,14 @@ pub enum Error {
     SessionExpired,
 
     #[snafu(display("Invalid configuration: {message}"))]
-    InvalidConfig {
-        message: String,
+    InvalidConfig { message: String },
+
+    #[snafu(display("Auth callback error: {message}"))]
+    AuthCallback { message: String },
+
+    #[snafu(display("OIDC - {source}"), context(false))]
+    Oidc {
+        source: securitydept_oidc::OidcError,
     },
 }
 

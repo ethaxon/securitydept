@@ -1,8 +1,88 @@
-use std::sync::OnceLock;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::{
+    fmt::{self, Display},
+    str::FromStr,
+    sync::OnceLock,
+};
 
 use rfc7239::parse as parse_forwarded;
 
-use crate::config::ExternalBaseUrl;
+/// Parsed representation of the `oidc_redirect_url_base` config value.
+#[derive(Debug, Clone, Default)]
+pub enum ExternalBaseUrl {
+    /// Infer from request headers at runtime.
+    #[default]
+    Auto,
+    /// Use this fixed URL.
+    Fixed(String),
+}
+
+impl FromStr for ExternalBaseUrl {
+    type Err = std::io::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value.trim().eq_ignore_ascii_case("auto") {
+            Ok(Self::Auto)
+        } else {
+            Ok(Self::Fixed(value.trim_end_matches('/').to_string()))
+        }
+    }
+}
+
+impl Display for ExternalBaseUrl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExternalBaseUrl::Auto => write!(f, "auto"),
+            ExternalBaseUrl::Fixed(url) => write!(f, "{}", url),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ExternalBaseUrl {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for ExternalBaseUrl {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl ExternalBaseUrl {
+    /// Resolve the external base URL from config + HTTP request headers.
+    ///
+    /// When config is `Auto`, the priority is:
+    ///   1. `Forwarded` header (RFC 7239) — extract `host` and `proto`
+    ///   2. `X-Forwarded-Host` / `X-Forwarded-Proto` (common non-standard)
+    ///   3. `Host` / `:authority` (standard HTTP header)
+    ///   4. Fallback to `http://{bind_host}:{bind_port}`
+    ///
+    /// When config is `Fixed(url)`, just return that URL.
+    pub fn resolve_url(
+        &self,
+        headers: &http::HeaderMap,
+        fallback_host: &str,
+        fallback_port: u16,
+    ) -> Result<url::Url, url::ParseError> {
+        match self {
+            ExternalBaseUrl::Fixed(url) => url::Url::parse(url),
+            ExternalBaseUrl::Auto => url::Url::parse(&infer_external_base_url_from_headers(
+                headers,
+                fallback_host,
+                fallback_port,
+            )),
+        }
+    }
+}
 
 /// HTTP/2 `:authority` pseudo-header name. Only present when the `http` crate accepts it.
 static AUTHORITY_HEADER_NAME: OnceLock<Option<http::HeaderName>> = OnceLock::new();
@@ -13,16 +93,7 @@ fn authority_header_name() -> Option<&'static http::HeaderName> {
         .as_ref()
 }
 
-/// Resolve the external base URL from config + HTTP request headers.
-///
-/// When config is `Auto`, the priority is:
-///   1. `Forwarded` header (RFC 7239) — extract `host` and `proto`
-///   2. `X-Forwarded-Host` / `X-Forwarded-Proto` (common non-standard)
-///   3. `Host` / `:authority` (standard HTTP header)
-///   4. Fallback to `http://{bind_host}:{bind_port}`
-///
-/// When config is `Fixed(url)`, just return that URL.
-pub fn resolve_base_url(
+pub fn resolve_external_base_url(
     config: &ExternalBaseUrl,
     headers: &http::HeaderMap,
     fallback_host: &str,
@@ -30,7 +101,9 @@ pub fn resolve_base_url(
 ) -> String {
     match config {
         ExternalBaseUrl::Fixed(url) => url.clone(),
-        ExternalBaseUrl::Auto => infer_from_headers(headers, fallback_host, fallback_port),
+        ExternalBaseUrl::Auto => {
+            infer_external_base_url_from_headers(headers, fallback_host, fallback_port)
+        }
     }
 }
 
@@ -39,7 +112,7 @@ pub fn resolve_base_url(
 /// Each source yields (host, protocol) independently; we take the first non-None
 /// host and first non-None protocol by priority, then infer protocol from host if
 /// still missing, then fallback to bind address.
-fn infer_from_headers(
+fn infer_external_base_url_from_headers(
     headers: &http::HeaderMap,
     fallback_host: &str,
     fallback_port: u16,
@@ -156,7 +229,7 @@ mod tests {
         let headers = HeaderMap::new();
         let (host, port) = make_fallback();
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "https://fixed.example.com"
         );
     }
@@ -173,7 +246,7 @@ mod tests {
         );
         let (host, port) = make_fallback();
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "https://example.com"
         );
     }
@@ -188,7 +261,7 @@ mod tests {
         );
         let (host, port) = make_fallback();
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "https://example.com:8443"
         );
     }
@@ -201,7 +274,7 @@ mod tests {
         let (host, port) = make_fallback();
         // Default to https when proto is missing
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "https://example.com"
         );
     }
@@ -214,7 +287,7 @@ mod tests {
         headers.insert("x-forwarded-proto", "https".parse().unwrap());
         let (host, port) = make_fallback();
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "https://proxy.example.com"
         );
     }
@@ -226,7 +299,7 @@ mod tests {
         headers.insert("x-forwarded-host", "proxy.example.com".parse().unwrap());
         let (host, port) = make_fallback();
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "https://proxy.example.com"
         );
     }
@@ -238,7 +311,7 @@ mod tests {
         headers.insert(http::header::HOST, "myhost.example.com".parse().unwrap());
         let (host, port) = make_fallback();
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "https://myhost.example.com"
         );
     }
@@ -250,7 +323,7 @@ mod tests {
         headers.insert(http::header::HOST, "localhost:3000".parse().unwrap());
         let (host, port) = make_fallback();
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "http://localhost:3000"
         );
     }
@@ -260,7 +333,7 @@ mod tests {
         let config = ExternalBaseUrl::Auto;
         let headers = HeaderMap::new();
         assert_eq!(
-            resolve_base_url(&config, &headers, "0.0.0.0", 7021),
+            resolve_external_base_url(&config, &headers, "0.0.0.0", 7021),
             "http://0.0.0.0:7021"
         );
     }
@@ -270,7 +343,7 @@ mod tests {
         let config = ExternalBaseUrl::Auto;
         let headers = HeaderMap::new();
         assert_eq!(
-            resolve_base_url(&config, &headers, "0.0.0.0", 80),
+            resolve_external_base_url(&config, &headers, "0.0.0.0", 80),
             "http://0.0.0.0"
         );
     }
@@ -289,7 +362,7 @@ mod tests {
         );
         let (host, port) = make_fallback();
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "https://rfc.example.com"
         );
     }
@@ -303,7 +376,7 @@ mod tests {
         headers.insert(http::header::HOST, "internal.example.com".parse().unwrap());
         let (host, port) = make_fallback();
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "https://proxy.example.com"
         );
     }
@@ -320,7 +393,7 @@ mod tests {
         );
         let (host, port) = make_fallback();
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "https://quoted.example.com"
         );
     }
@@ -337,7 +410,7 @@ mod tests {
         );
         let (host, port) = make_fallback();
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "https://first.example.com"
         );
     }
@@ -353,7 +426,7 @@ mod tests {
         headers.insert(name, "h2.example.com".parse().unwrap());
         let (host, port) = make_fallback();
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "https://h2.example.com"
         );
     }
@@ -368,7 +441,7 @@ mod tests {
         }
         let (host, port) = make_fallback();
         assert_eq!(
-            resolve_base_url(&config, &headers, host, port),
+            resolve_external_base_url(&config, &headers, host, port),
             "https://host.example.com"
         );
     }

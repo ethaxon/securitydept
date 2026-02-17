@@ -5,23 +5,12 @@ use axum::{Extension, Json};
 use serde::Deserialize;
 use tracing::info;
 
-use securitydept_core::base_url;
-use securitydept_core::claims_engine;
 use securitydept_core::models::UserInfo;
+use securitydept_oidc::claims;
 
 use crate::error::AppError;
 use crate::middleware::{SESSION_COOKIE_NAME, get_session_id};
 use crate::state::AppState;
-
-/// Resolve the external base URL for the current request.
-fn resolve_base_url(state: &AppState, headers: &HeaderMap) -> String {
-    base_url::resolve_base_url(
-        &state.external_base_url,
-        headers,
-        &state.config.server.host,
-        state.config.server.port,
-    )
-}
 
 #[derive(Deserialize)]
 pub struct CallbackParams {
@@ -31,19 +20,22 @@ pub struct CallbackParams {
 }
 
 /// GET /auth/login -- redirect to OIDC provider, or create dev session when OIDC is disabled.
-pub async fn login(Extension(state): Extension<AppState>, headers: HeaderMap) -> Response {
+pub async fn login(
+    Extension(state): Extension<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
     if let Some(ref oidc) = state.oidc {
-        let base_url = resolve_base_url(&state, &headers);
-        let (url, csrf, nonce, pkce_verifier) = match oidc.authorize_url(&base_url) {
-            Ok(result) => result,
-            Err(e) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({ "error": format!("Failed to build auth URL: {e}") })),
-                )
-                    .into_response();
-            }
-        };
+        let base_url = state
+            .config
+            .server
+            .external_base_url
+            .resolve_url(
+                &headers,
+                &state.config.server.host,
+                state.config.server.port,
+            )
+            .map_err(|e| securitydept_oidc::OidcError::RedirectUrl { source: e })?;
+        let (url, csrf, nonce, pkce_verifier) = oidc.authorize_url(&base_url)?;
         state
             .pending_oauth
             .insert(
@@ -52,7 +44,7 @@ pub async fn login(Extension(state): Extension<AppState>, headers: HeaderMap) ->
                 pkce_verifier,
             )
             .await;
-        return Redirect::temporary(&url).into_response();
+        return Ok(Redirect::temporary(&url).into_response());
     }
 
     // OIDC disabled: create a dev session for local debugging
@@ -70,10 +62,11 @@ pub async fn login(Extension(state): Extension<AppState>, headers: HeaderMap) ->
     let mut headers = HeaderMap::new();
     headers.insert("Set-Cookie", HeaderValue::from_str(&cookie).unwrap());
     headers.insert("Location", HeaderValue::from_static("/"));
-    (StatusCode::FOUND, headers).into_response()
+    Ok((StatusCode::FOUND, headers).into_response())
 }
 
-/// GET /auth/callback -- handle OIDC code exchange.
+/// GET /auth/callback
+/// Handle OIDC code exchange.
 pub async fn callback(
     Extension(state): Extension<AppState>,
     headers: HeaderMap,
@@ -91,25 +84,36 @@ pub async fn callback(
         params
             .state
             .as_deref()
-            .ok_or_else(|| securitydept_core::error::Error::OidcClaims {
+            .ok_or_else(|| securitydept_core::error::Error::AuthCallback {
                 message: "Missing state parameter in callback (required for CSRF validation)"
                     .to_string(),
             })?;
 
+    let base_url = state
+        .config
+        .as_ref()
+        .server
+        .external_base_url
+        .resolve_url(
+            &headers,
+            &state.config.server.host,
+            state.config.server.port,
+        )
+        .map_err(|e| securitydept_oidc::OidcError::RedirectUrl { source: e })?;
+
     let pending = state.pending_oauth.take(state_param).await.ok_or_else(|| {
-        securitydept_core::error::Error::OidcClaims {
+        securitydept_core::error::Error::AuthCallback {
             message: "Invalid or expired state (reuse or unknown); try logging in again"
                 .to_string(),
         }
     })?;
 
-    let base_url = resolve_base_url(&state, &headers);
     let nonce = openidconnect::Nonce::new(pending.nonce);
     let claims = oidc
         .exchange_code(
             &params.code,
-            &nonce,
             &base_url,
+            &nonce,
             pending.code_verifier.as_deref(),
         )
         .await?;
@@ -118,7 +122,7 @@ pub async fn callback(
 
     // Run claims check if configured
     let (display_name, picture) = if let Some(ref script) = state.claims_script {
-        let result = claims_engine::run_claims_check(script, &claims)?;
+        let result = claims::check_claims_with_custom_script(script, &claims)?;
         (
             result.display_name.unwrap_or_else(|| "Unknown".to_string()),
             result.picture,

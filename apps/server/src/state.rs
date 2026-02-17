@@ -3,10 +3,10 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use securitydept_core::config::{AppConfig, ExternalBaseUrl};
-use securitydept_core::oidc::OidcClient;
+use securitydept_core::config::AppConfig;
 use securitydept_core::session::SessionManager;
 use securitydept_core::store::Store;
+use securitydept_oidc::OidcClient;
 
 /// Stored values for a pending OAuth flow (nonce + optional PKCE code_verifier).
 #[derive(Clone)]
@@ -53,8 +53,6 @@ pub struct AppState {
     pub oidc: Option<Arc<OidcClient>>,
     /// Optional: loaded claims check script source.
     pub claims_script: Option<Arc<String>>,
-    /// Parsed external base URL config (auto or fixed).
-    pub external_base_url: ExternalBaseUrl,
     /// Pending OAuth flows: state (CSRF) -> nonce, for callback validation.
     pub pending_oauth: PendingOauthStore,
 }

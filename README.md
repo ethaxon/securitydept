@@ -44,7 +44,7 @@ services:
     volumes:
       - ./config.toml:/app/config.toml
       - ./data:/app/data
-      # - ./custom-claims-check.mts:/app/custom-claims-check.mts # for custom claims check
+      # - ./claims-script-check.mts:/app/claims-script-check.mts # for custom claims check
       # - ./webui:/app/webui # for custom webui
 ```
 

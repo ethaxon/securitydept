@@ -2882,7 +2882,6 @@ version = "0.1.1"
 dependencies = [
  "argon2",
  "base64 0.22.1",
- "boa_engine",
  "chrono",
  "figment",
  "fs2",
@@ -2891,16 +2890,32 @@ dependencies = [
  "notify",
  "openidconnect",
  "regex",
- "rfc7239",
+ "securitydept-oidc",
+ "securitydept-utils",
+ "serde",
+ "serde_json",
+ "sha2",
+ "snafu",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "securitydept-oidc"
+version = "0.1.1"
+dependencies = [
+ "boa_engine",
+ "http",
+ "openidconnect",
  "serde",
  "serde_json",
  "serde_with",
- "sha2",
  "snafu",
  "swc_core",
  "tokio",
  "tracing",
- "uuid",
+ "url",
 ]
 
 [[package]]
@@ -2911,6 +2926,7 @@ dependencies = [
  "clap",
  "openidconnect",
  "securitydept-core",
+ "securitydept-oidc",
  "serde",
  "serde_json",
  "snafu",
@@ -2919,6 +2935,16 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "winres",
+]
+
+[[package]]
+name = "securitydept-utils"
+version = "0.1.1"
+dependencies = [
+ "http",
+ "rfc7239",
+ "serde",
+ "url",
 ]
 
 [[package]]
