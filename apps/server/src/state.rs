@@ -51,8 +51,6 @@ pub struct AppState {
     pub sessions: SessionManager,
     /// None when OIDC is disabled (oidc_enabled = false) for local debugging.
     pub oidc: Option<Arc<OidcClient>>,
-    /// Optional: loaded claims check script source.
-    pub claims_script: Option<Arc<String>>,
     /// Pending OAuth flows: state (CSRF) -> nonce, for callback validation.
     pub pending_oauth: PendingOauthStore,
 }

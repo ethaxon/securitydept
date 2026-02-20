@@ -8,7 +8,6 @@ pub use client::OidcClient;
 pub use config::OidcConfig;
 pub use error::{OidcError, OidcResult};
 pub use models::{
-    ClaimsCheckResult, DiscoveredClient, DiscoveredClientWithRedirect,
-    OidcCodeFlowAuthorizationRequest, OidcTokenSet,
+    DiscoveredClient, DiscoveredClientWithRedirect, OidcCodeFlowAuthorizationRequest, OidcTokenSet,
 };
 pub use models::{ExtraClaims, UserInfoClaimsWithExtra};

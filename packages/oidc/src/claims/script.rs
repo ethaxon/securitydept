@@ -1,9 +1,12 @@
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+use serde_constant::ConstBool;
 use tracing::debug;
 
+use crate::UserInfoClaimsWithExtra;
+use crate::claims::check::{ClaimsCheckResult, ClaimsChecker, DefaultClaimsChecker};
 use crate::error::{OidcError, OidcResult};
-use crate::models::ClaimsCheckResult;
 
 use boa_engine::{Context, Source};
 use swc_core::common::{FileName, GLOBALS, Globals, Mark, SourceMap, sync::Lrc};
@@ -13,71 +16,148 @@ use swc_core::ecma::parser::{Parser, StringInput, Syntax, TsSyntax};
 use swc_core::ecma::transforms::base::resolver;
 use swc_core::ecma::transforms::typescript::strip;
 
-/// Execute a JS claims-check script against the given OIDC claims.
-///
-/// This function executes the provided script using the Boa engine and optional TypeScript
-/// transpilation via SWC.
-pub fn check_claims_with_custom_script(
-    script_source: &str,
-    claims: &serde_json::Value,
-) -> OidcResult<ClaimsCheckResult> {
-    let mut context = Context::default();
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScriptClaimsCheckSuccessResult {
+    pub success: ConstBool<true>,
+    pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
+    pub claims: serde_json::Value,
+}
 
-    // Inject the claims as a global JSON string, then parse inside JS
-    let claims_json = serde_json::to_string(claims).map_err(|e| OidcError::ClaimsCheck {
-        message: format!("Failed to serialize claims: {e}"),
-    })?;
+impl From<ScriptClaimsCheckSuccessResult> for ClaimsCheckResult {
+    fn from(result: ScriptClaimsCheckSuccessResult) -> Self {
+        ClaimsCheckResult {
+            display_name: result.display_name,
+            picture: result.picture,
+            claims: result.claims,
+        }
+    }
+}
 
-    // Build a wrapper that:
-    // 1. Captures the module-like default export function
-    // 2. Calls it with the parsed claims
-    // 3. Returns the JSON result
-    let wrapper = format!(
-        r#"
-        var __claims = JSON.parse('{claims_json_escaped}');
-        var __exports = {{}};
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScriptClaimsCheckFailureResult {
+    pub success: Option<ConstBool<false>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    pub claims: serde_json::Value,
+}
 
-        // Shim: capture the default export
-        {script}
+/// Result of OIDC claims check script.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ScriptClaimsCheckResult {
+    Success(ScriptClaimsCheckSuccessResult),
+    Failure(ScriptClaimsCheckFailureResult),
+}
 
-        var __fn = __exports.default;
-        if (typeof __fn !== 'function') {{
-            throw new Error('No default export function found in the script');
-        }}
-        var __result = __fn(__claims);
-        JSON.stringify(__result);
-        "#,
-        claims_json_escaped = claims_json.replace('\\', "\\\\").replace('\'', "\\'"),
-        script = transform_script_to_boa_compat(script_source),
-    );
+pub struct ScriptClaimsChecker {
+    default_checker: DefaultClaimsChecker,
+    boa_compat_source: Option<String>,
+}
 
-    debug!("Running claims check script");
+impl ScriptClaimsChecker {
+    pub async fn from_file(path: Option<&str>) -> OidcResult<Self> {
+        let boa_compat_source = if let Some(path) = path {
+            let mut source =
+                tokio::fs::read_to_string(path)
+                    .await
+                    .map_err(|e| OidcError::ClaimsCheck {
+                        message: format!("Failed to read claims check script '{path}': {e}"),
+                    })?;
 
-    let result =
-        context
-            .eval(Source::from_bytes(&wrapper))
-            .map_err(|e| OidcError::ClaimsCheck {
-                message: format!("Script execution error: {e}"),
+            if is_typescript_script(path) {
+                source = transpile_typescript_to_javascript(path, &source).await?;
+            }
+
+            let boa_compat_source = transform_script_to_boa_compat(&source);
+
+            Some(boa_compat_source)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            default_checker: DefaultClaimsChecker,
+            boa_compat_source,
+        })
+    }
+}
+
+impl ClaimsChecker for ScriptClaimsChecker {
+    /// Execute a JS claims-check script against the given OIDC claims.
+    ///
+    /// This function executes the provided script using the Boa engine
+    async fn check_claims(
+        &self,
+        claims: &UserInfoClaimsWithExtra,
+    ) -> OidcResult<ClaimsCheckResult> {
+        if let Some(boa_compat_source) = &self.boa_compat_source {
+            let mut context = Context::default();
+
+            // Inject the claims as a global JSON string, then parse inside JS
+            let claims_json =
+                serde_json::to_string(&claims).map_err(|e| OidcError::ClaimsCheck {
+                    message: format!("Failed to serialize claims: {e}"),
+                })?;
+
+            // Build a wrapper that:
+            // 1. Captures the module-like default export function
+            // 2. Calls it with the parsed claims
+            // 3. Returns the JSON result
+            let wrapper = format!(
+                r#"
+                var __claims = JSON.parse('{claims_json_escaped}');
+                var __exports = {{}};
+        
+                // Shim: capture the default export
+                {script}
+        
+                var __fn = __exports.default;
+                if (typeof __fn !== 'function') {{
+                    throw new Error('No default export function found in the script');
+                }}
+                var __result = __fn(__claims);
+                JSON.stringify(__result);
+                "#,
+                claims_json_escaped = claims_json.replace('\\', "\\\\").replace('\'', "\\'"),
+                script = boa_compat_source,
+            );
+
+            debug!("Running claims check script");
+
+            let result =
+                context
+                    .eval(Source::from_bytes(&wrapper))
+                    .map_err(|e| OidcError::ClaimsCheck {
+                        message: format!("Script execution error: {e}"),
+                    })?;
+
+            let result_str = result.as_string().ok_or_else(|| OidcError::ClaimsCheck {
+                message: "Script did not return a string".to_string(),
             })?;
 
-    let result_str = result.as_string().ok_or_else(|| OidcError::ClaimsCheck {
-        message: "Script did not return a string".to_string(),
-    })?;
+            let check_result: ScriptClaimsCheckResult =
+                serde_json::from_str(&result_str.to_std_string_escaped()).map_err(|e| {
+                    OidcError::ClaimsCheck {
+                        message: format!("Failed to parse script result: {e}"),
+                    }
+                })?;
 
-    let check_result: ClaimsCheckResult = serde_json::from_str(&result_str.to_std_string_escaped())
-        .map_err(|e| OidcError::ClaimsCheck {
-            message: format!("Failed to parse script result: {e}"),
-        })?;
-
-    if !check_result.success {
-        let err_msg = check_result
-            .error
-            .clone()
-            .unwrap_or_else(|| "Unknown error".to_string());
-        return Err(OidcError::ClaimsCheckFailed { message: err_msg });
+            match check_result {
+                ScriptClaimsCheckResult::Success(success) => Ok(success.into()),
+                ScriptClaimsCheckResult::Failure(failure) => {
+                    let err_msg = failure
+                        .error
+                        .clone()
+                        .unwrap_or_else(|| "Unknown error".to_string());
+                    Err(OidcError::ClaimsCheckFailed { message: err_msg })
+                }
+            }
+        } else {
+            Ok(self.default_checker.check_claims(claims).await?)
+        }
     }
-
-    Ok(check_result)
 }
 
 fn transform_script_to_boa_compat(source: &str) -> String {
@@ -88,20 +168,6 @@ fn transform_script_to_boa_compat(source: &str) -> String {
         )
         .replace("export default function", "__exports.default = function")
         .replace("export default", "__exports.default =")
-}
-
-pub async fn load_script(path: &str) -> OidcResult<String> {
-    let source = tokio::fs::read_to_string(path)
-        .await
-        .map_err(|e| OidcError::ClaimsCheck {
-            message: format!("Failed to read claims check script '{path}': {e}"),
-        })?;
-
-    if is_typescript_script(path) {
-        return transpile_typescript_to_javascript(path, &source).await;
-    }
-
-    Ok(source)
 }
 
 fn is_typescript_script(path: &str) -> bool {

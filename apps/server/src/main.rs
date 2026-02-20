@@ -14,7 +14,6 @@ use securitydept_core::config::AppConfig;
 use securitydept_core::session::SessionManager;
 use securitydept_core::store::Store;
 use securitydept_oidc::OidcClient;
-use securitydept_oidc::claims;
 
 use crate::state::AppState;
 
@@ -64,22 +63,15 @@ async fn main() -> Result<(), Whatever> {
 
     info!(external_base_url = ?config.server.external_base_url, "Resolved external base URL config");
 
-    let (oidc, claims_script) = if let Some(ref oidc_config) = config.oidc {
-        let oidc = OidcClient::from_config(oidc_config.clone())
-            .await
-            .whatever_context("Failed to initialize OIDC client")?;
-        let claims_script = if let Some(ref path) = oidc_config.claims_check_script {
-            let script = claims::load_script(path)
+    let oidc = if let Some(ref oidc_config) = config.oidc {
+        Some(Arc::new(
+            OidcClient::from_config(oidc_config.clone())
                 .await
-                .whatever_context("Failed to load claims check script")?;
-            Some(Arc::new(script))
-        } else {
-            None
-        };
-        (Some(Arc::new(oidc)), claims_script)
+                .whatever_context("Failed to initialize OIDC client")?,
+        ))
     } else {
         info!("OIDC disabled (no [oidc] section); /auth/login will create a dev session");
-        (None, None)
+        None
     };
 
     // 24-hour session TTL
@@ -90,7 +82,6 @@ async fn main() -> Result<(), Whatever> {
         store: Arc::new(store),
         sessions,
         oidc,
-        claims_script,
         pending_oauth: crate::state::PendingOauthStore::new(),
     };
 

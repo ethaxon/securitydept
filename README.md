@@ -3,8 +3,13 @@
   <br />
   <b>SecurityDept</b>
   <div align="center">
-    <a href="https://github.com/ethaxon/securitydept/actions/workflows/docker-build.yml"><img src="https://github.com/ethaxon/securitydept/actions/workflows/docker-build.yml/badge.svg" alt="docker-build-badge" /></a>
-    <a href="https://github.com/ethaxon/securitydept/tags"><img src="https://img.shields.io/github/v/tag/ethaxon/securitydept?label=version&color=brightgreen" alt="version-badge" /></a>
+    <a href="https://github.com/ethaxon/securitydept/actions/workflows/docker-build.yml">
+      <img src="https://github.com/ethaxon/securitydept/actions/workflows/docker-build.yml/badge.svg" alt="docker-build-badge" />
+    </a>
+    <a href="https://github.com/ethaxon/securitydept/tags">
+      <img src="https://img.shields.io/github/v/tag/ethaxon/securitydept?label=version&color=brightgreen" alt="version-badge" />
+    </a>
+  </div>
 </h1>
 
 **Standalone auth service: OIDC login, manage local basic/token entries and groups, with forward-auth endpoints for reverse proxies (Traefik, Nginx). File-based config and data, no database.**

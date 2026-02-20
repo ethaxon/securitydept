@@ -6,7 +6,6 @@ use serde::Deserialize;
 use tracing::info;
 
 use securitydept_core::models::UserInfo;
-use securitydept_oidc::claims;
 
 use crate::error::AppError;
 use crate::middleware::{SESSION_COOKIE_NAME, get_session_id};
@@ -121,35 +120,19 @@ pub async fn callback(
     info!("OIDC callback received claims");
 
     // Run claims check if configured
-    let (display_name, picture) = if let Some(ref script) = state.claims_script {
-        let result = claims::check_claims_with_custom_script(script, &claims)?;
-        (
-            result.display_name.unwrap_or_else(|| "Unknown".to_string()),
-            result.picture,
-        )
-    } else {
-        // Default: extract displayName from common claim fields
-        let name = claims
-            .get("preferred_username")
-            .or_else(|| claims.get("nickname"))
-            .or_else(|| claims.get("sub"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown")
-            .to_string();
-        let picture = claims
-            .get("picture")
-            .and_then(|v| v.as_str())
-            .map(|v| v.to_string());
-        (name, picture)
-    };
+    let claims_check_result = oidc.check_claims(&claims).await?;
 
     // Create session
     let session_id = state
         .sessions
-        .create(display_name.clone(), picture, claims)
+        .create(
+            claims_check_result.display_name.clone(),
+            claims_check_result.picture,
+            claims_check_result.claims,
+        )
         .await;
 
-    info!(display_name = %display_name, "User logged in");
+    info!(display_name = %claims_check_result.display_name, "User logged in");
 
     // Set session cookie and redirect to app root
     let cookie = format!(

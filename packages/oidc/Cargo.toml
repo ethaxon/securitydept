@@ -28,3 +28,4 @@ swc_core = { version = "57", features = [
     "ecma_transforms_typescript",
     "ecma_visit",
 ], optional = true }
+serde-constant = "0.1.0"

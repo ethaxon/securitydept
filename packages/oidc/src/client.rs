@@ -7,6 +7,10 @@ use openidconnect::{
 };
 use url::Url;
 
+use crate::UserInfoClaimsWithExtra;
+#[cfg(feature = "claims-script")]
+use crate::claims::ScriptClaimsChecker;
+use crate::claims::check::{ClaimsCheckResult, ClaimsChecker};
 use crate::config::{OidcConfig, default_id_token_signing_alg_values_supported};
 use crate::error::{OidcError, OidcResult};
 use crate::models::{DiscoveredClient, DiscoveredClientWithRedirect};
@@ -19,7 +23,9 @@ pub struct OidcClient {
     config: OidcConfig,
     client: DiscoveredClient,
     #[cfg(feature = "claims-script")]
-    claims_script_source: Option<String>,
+    claims_checker: ScriptClaimsChecker,
+    #[cfg(not(feature = "claims-script"))]
+    claims_checker: DefaultClaimsChecker,
     scopes: Vec<String>,
     pkce_enabled: bool,
 }
@@ -66,13 +72,18 @@ impl OidcClient {
             client_secret,
         );
 
+        #[cfg(feature = "claims-script")]
+        let claims_checker =
+            ScriptClaimsChecker::from_file(config.claims_check_script.as_deref()).await?;
+        #[cfg(not(feature = "claims-script"))]
+        let claims_checker = DefaultClaimsChecker;
+
         Ok(Self {
             client,
             scopes: config.scopes.clone(),
             pkce_enabled: config.pkce_enabled,
+            claims_checker,
             config,
-            #[cfg(feature = "claims-script")]
-            claims_script_source: None,
         })
     }
 
@@ -237,11 +248,7 @@ impl OidcClient {
     }
 
     fn resolve_redirect_url(&self, external_base_url: &Url) -> OidcResult<Url> {
-        let redirect_url = external_base_url
-            .join(&self.config.redirect_url)
-            .map_err(|e| OidcError::Metadata {
-                message: format!("Invalid redirect URL {e}"),
-            })?;
+        let redirect_url = external_base_url.join(&self.config.redirect_url)?;
         Ok(redirect_url)
     }
 
@@ -298,7 +305,7 @@ impl OidcClient {
         external_base_url: &Url,
         _nonce: &Nonce,
         pkce_verifier_secret: Option<&str>,
-    ) -> OidcResult<serde_json::Value> {
+    ) -> OidcResult<UserInfoClaimsWithExtra> {
         let client = self.client_with_redirect(external_base_url)?;
 
         let http_client =
@@ -336,9 +343,7 @@ impl OidcClient {
         client: &DiscoveredClientWithRedirect,
         http_client: &reqwest::Client,
         access_token: openidconnect::AccessToken,
-    ) -> OidcResult<serde_json::Value> {
-        use crate::models::UserInfoClaimsWithExtra;
-
+    ) -> OidcResult<UserInfoClaimsWithExtra> {
         let userinfo_claims: UserInfoClaimsWithExtra = client
             .user_info(access_token, None)
             .map_err(|e| OidcError::Claims {
@@ -350,8 +355,13 @@ impl OidcClient {
                 message: format!("UserInfo request failed: {e}"),
             })?;
 
-        serde_json::to_value(&userinfo_claims).map_err(|e| OidcError::Claims {
-            message: format!("Failed to serialize claims: {e}"),
-        })
+        Ok(userinfo_claims)
+    }
+
+    pub async fn check_claims(
+        &self,
+        claims: &UserInfoClaimsWithExtra,
+    ) -> OidcResult<ClaimsCheckResult> {
+        self.claims_checker.check_claims(claims).await
     }
 }
