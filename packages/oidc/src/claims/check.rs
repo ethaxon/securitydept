@@ -43,14 +43,14 @@ impl ClaimsChecker for DefaultClaimsChecker {
         let picture = claims
             .picture()
             .and_then(|v| v.get(None).map(|v| v.to_string()));
-        let converted_claims =
+        let transformed_claims =
             serde_json::to_value(claims).map_err(|e| OidcError::ClaimsCheck {
                 message: format!("Failed to convert claims to JSON: {e}"),
             })?;
         Ok(ClaimsCheckResult {
             display_name: name,
             picture,
-            claims: converted_claims,
+            claims: transformed_claims,
         })
     }
 }

@@ -40,7 +40,8 @@ pub struct ScriptClaimsCheckFailureResult {
     pub success: Option<ConstBool<false>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    pub claims: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claims: Option<serde_json::Value>,
 }
 
 /// Result of OIDC claims check script.

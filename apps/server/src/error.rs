@@ -23,7 +23,6 @@ impl IntoResponse for AppError {
                 Error::AuthFailed | Error::SessionNotFound | Error::SessionExpired => {
                     (StatusCode::UNAUTHORIZED, e.to_string())
                 }
-                Error::ClaimsCheckFailed { .. } => (StatusCode::FORBIDDEN, e.to_string()),
                 Error::InvalidConfig { .. } | Error::ConfigLoad { .. } => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Configuration error".to_string(),

@@ -30,12 +30,6 @@ pub enum Error {
     #[snafu(display("Duplicate group name: {name}"))]
     DuplicateGroupName { name: String },
 
-    #[snafu(display("Claims check script error: {message}"))]
-    ClaimsCheck { message: String },
-
-    #[snafu(display("Claims check script failed: {message}"))]
-    ClaimsCheckFailed { message: String },
-
     #[snafu(display("Password hashing error: {message}"))]
     PasswordHash { message: String },
 
@@ -57,7 +51,7 @@ pub enum Error {
     #[snafu(display("Auth callback error: {message}"))]
     AuthCallback { message: String },
 
-    #[snafu(display("OIDC - {source}"), context(false))]
+    #[snafu(display("OIDC {source}"), context(false))]
     Oidc {
         source: securitydept_oidc::OidcError,
     },
