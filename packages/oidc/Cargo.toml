@@ -4,21 +4,23 @@ version = "0.1.1"
 edition = "2024"
 
 [features]
-default = ["claims-script"]
-claims-script = ["boa_engine", "swc_core"]
+default = ["claims-script", "default-pending-store"]
+claims-script = ["dep:boa_engine", "dep:swc_core"]
+default-pending-store = ["moka-pending-store"]
+moka-pending-store = ["dep:moka"]
 
 [dependencies]
+securitydept-utils = { path = "../utils" }
 openidconnect = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync"] }
-http = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 serde_with = { workspace = true }
 boa_engine = { version = "0.21", optional = true }
-swc_core = { version = "57", features = [
+swc_core = { version = "58", features = [
     "__parser",
     "common",
     "ecma_ast",
@@ -28,4 +30,6 @@ swc_core = { version = "57", features = [
     "ecma_transforms_typescript",
     "ecma_visit",
 ], optional = true }
-serde-constant = "0.1.0"
+serde-constant = "0.1"
+moka = { version = "0.12", features = ["future"], optional = true }
+http = { workspace = true }

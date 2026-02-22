@@ -1,6 +1,9 @@
+overrides:
+  vite: 8.0.0-beta.15
+
 packages:
   - apps/webui
 
 onlyBuiltDependencies:
-  - '@j178/prek'
+  - "@j178/prek"
   - esbuild

@@ -2,9 +2,17 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use openidconnect::{
-    AdditionalClaims, EndpointMaybeSet, EndpointSet, UserInfoClaims,
-    core::{CoreClient, CoreGenderClaim},
+    AdditionalClaims, CsrfToken, EmptyAdditionalClaims, IdTokenClaims, Nonce, UserInfoClaims,
+    core::CoreGenderClaim,
 };
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaimsCheckResult {
+    pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
+    pub claims: serde_json::Value,
+}
 
 /// Additional claims we accept from the OIDC provider (open-ended).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,34 +23,43 @@ pub struct ExtraClaims {
 
 impl AdditionalClaims for ExtraClaims {}
 
-/// Type alias for the discovered client *without* a fixed redirect URI.
-pub type DiscoveredClient = CoreClient<
-    EndpointSet,                   // HasAuthUrl
-    openidconnect::EndpointNotSet, // HasDeviceAuthUrl
-    openidconnect::EndpointNotSet, // HasIntrospectionUrl
-    openidconnect::EndpointNotSet, // HasRevocationUrl
-    EndpointMaybeSet,              // HasTokenUrl
-    EndpointMaybeSet,              // HasUserInfoUrl
->;
-
-/// Type alias for the discovered client *with* a fixed redirect URI.
-pub type DiscoveredClientWithRedirect = CoreClient<
-    EndpointSet,                   // HasAuthUrl
-    openidconnect::EndpointNotSet, // HasDeviceAuthUrl
-    openidconnect::EndpointNotSet, // HasIntrospectionUrl
-    openidconnect::EndpointNotSet, // HasRevocationUrl
-    EndpointMaybeSet,              // HasTokenUrl
-    EndpointMaybeSet,              // HasUserInfoUrl
->;
-
 pub type UserInfoClaimsWithExtra = UserInfoClaims<ExtraClaims, CoreGenderClaim>;
+pub type CoreIdTokenClaims = IdTokenClaims<EmptyAdditionalClaims, CoreGenderClaim>;
 
 #[derive(Debug)]
 pub struct OidcCodeFlowAuthorizationRequest {
     pub authorization_url: Url,
-    pub csrf_token: String,
-    pub nonce: String,
+    pub csrf_token: CsrfToken,
+    pub nonce: Nonce,
     pub pkce_verifier_secret: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct OidcCodeCallbackSearchParams {
+    pub code: String,
+    /// OAuth state (CSRF token); required for callback validation.
+    pub state: Option<String>,
+}
+
+pub struct OidcCodeExchangeResult {
+    pub access_token: String,
+    pub id_token: String,
+    pub refresh_token: Option<String>,
+    pub id_token_claims: CoreIdTokenClaims,
+    pub user_info_claims: UserInfoClaimsWithExtra,
+}
+
+pub struct OidcCodeCallbackResult {
+    pub code: String,
+    pub pkce_verifier_secret: Option<String>,
+    pub state: Option<String>,
+    pub nonce: String,
+    pub access_token: String,
+    pub id_token: String,
+    pub refresh_token: Option<String>,
+    pub id_token_claims: CoreIdTokenClaims,
+    pub user_info_claims: UserInfoClaimsWithExtra,
+    pub claims_check_result: ClaimsCheckResult,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

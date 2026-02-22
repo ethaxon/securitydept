@@ -1,11 +1,11 @@
+use axum::Extension;
 use axum::extract::Request;
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::Extension;
 use serde_json::json;
 
-use crate::state::AppState;
+use crate::state::ServerState;
 
 pub const SESSION_COOKIE_NAME: &str = "securitydept_session";
 
@@ -25,7 +25,7 @@ pub fn get_session_id(headers: &HeaderMap) -> Option<String> {
 
 /// Middleware that requires a valid session.
 pub async fn require_session(
-    Extension(state): Extension<AppState>,
+    Extension(state): Extension<ServerState>,
     request: Request,
     next: Next,
 ) -> Response {

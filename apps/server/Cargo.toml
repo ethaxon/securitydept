@@ -4,9 +4,11 @@ version = "0.1.1"
 edition = "2024"
 
 [dependencies]
-securitydept-core = { path = "../../packages/core" }
+securitydept-utils = { path = "../../packages/utils" }
+securitydept-creds-manage = { path = "../../packages/creds-manage" }
+securitydept-creds = { path = "../../packages/creds" }
 securitydept-oidc = { path = "../../packages/oidc" }
-axum = { version = "0.8", features = ["macros"] }
+axum = { workspace = true }
 tower-http = { version = "0.6", features = ["cors", "fs"] }
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -16,6 +18,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 openidconnect = { workspace = true }
+figment = { workspace = true }
 
 [build-dependencies]
 winres = "0.1"

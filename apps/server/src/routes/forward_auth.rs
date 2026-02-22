@@ -4,18 +4,17 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use tracing::{debug, warn};
 
-use securitydept_core::auth::{
-    check_basic_auth, check_token_auth, parse_basic_auth_header, parse_bearer_auth_header,
-};
+use securitydept_creds::{parse_basic_auth_header_opt, parse_bearer_auth_header_opt};
+use securitydept_creds_manage::auth::{check_basic_auth, check_token_auth};
 
-use crate::state::AppState;
+use crate::state::ServerState;
 
 /// GET /api/forwardauth/traefik/:group
 ///
 /// Traefik ForwardAuth: returns 200 if authenticated, 401 otherwise.
 /// Checks the `Authorization` header forwarded by Traefik.
 pub async fn traefik(
-    Extension(state): Extension<AppState>,
+    Extension(state): Extension<ServerState>,
     Path(group): Path<String>,
     headers: HeaderMap,
 ) -> Response {
@@ -38,7 +37,7 @@ pub async fn traefik(
 /// Nginx auth_request: returns 200 if authenticated, 401 otherwise.
 /// Checks the `Authorization` header forwarded by Nginx.
 pub async fn nginx(
-    Extension(state): Extension<AppState>,
+    Extension(state): Extension<ServerState>,
     Path(group): Path<String>,
     headers: HeaderMap,
 ) -> Response {
@@ -70,7 +69,7 @@ fn unauthorized_with_challenge(status: StatusCode) -> Response {
 
 /// Shared logic: extract credentials and validate against group entries.
 async fn check_forward_auth(
-    state: &AppState,
+    state: &ServerState,
     group: &str,
     headers: &HeaderMap,
 ) -> Result<String, StatusCode> {
@@ -100,7 +99,7 @@ async fn check_forward_auth(
     };
 
     // Try basic auth first
-    if let Some((username, password)) = parse_basic_auth_header(auth_header) {
+    if let Some((username, password)) = parse_basic_auth_header_opt(auth_header) {
         match check_basic_auth(&entries, &username, &password) {
             Ok(Some(name)) => return Ok(name),
             Ok(None) => {}
@@ -116,7 +115,7 @@ async fn check_forward_auth(
     }
 
     // Try bearer token
-    if let Some(token) = parse_bearer_auth_header(auth_header)
+    if let Some(token) = parse_bearer_auth_header_opt(auth_header)
         && let Some(name) = check_token_auth(&entries, &token)
     {
         return Ok(name);

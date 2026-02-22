@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 use serde_constant::ConstBool;
 use tracing::debug;
 
+use crate::ClaimsCheckResult;
 use crate::UserInfoClaimsWithExtra;
-use crate::claims::check::{ClaimsCheckResult, ClaimsChecker, DefaultClaimsChecker};
+use crate::claims::{ClaimsChecker, DefaultClaimsChecker};
 use crate::error::{OidcError, OidcResult};
 
 use boa_engine::{Context, Source};
@@ -63,7 +64,7 @@ impl ScriptClaimsChecker {
             let mut source =
                 tokio::fs::read_to_string(path)
                     .await
-                    .map_err(|e| OidcError::ClaimsCheck {
+                    .map_err(|e| OidcError::Claims {
                         message: format!("Failed to read claims check script '{path}': {e}"),
                     })?;
 
@@ -97,10 +98,9 @@ impl ClaimsChecker for ScriptClaimsChecker {
             let mut context = Context::default();
 
             // Inject the claims as a global JSON string, then parse inside JS
-            let claims_json =
-                serde_json::to_string(&claims).map_err(|e| OidcError::ClaimsCheck {
-                    message: format!("Failed to serialize claims: {e}"),
-                })?;
+            let claims_json = serde_json::to_string(&claims).map_err(|e| OidcError::Claims {
+                message: format!("Failed to serialize claims: {e}"),
+            })?;
 
             // Build a wrapper that:
             // 1. Captures the module-like default export function
@@ -130,18 +130,18 @@ impl ClaimsChecker for ScriptClaimsChecker {
             let result =
                 context
                     .eval(Source::from_bytes(&wrapper))
-                    .map_err(|e| OidcError::ClaimsCheck {
-                        message: format!("Script execution error: {e}"),
+                    .map_err(|e| OidcError::Claims {
+                        message: format!("Claims check script execution error: {e}"),
                     })?;
 
-            let result_str = result.as_string().ok_or_else(|| OidcError::ClaimsCheck {
-                message: "Script did not return a string".to_string(),
+            let result_str = result.as_string().ok_or_else(|| OidcError::Claims {
+                message: "Claims check script did not return a string".to_string(),
             })?;
 
             let check_result: ScriptClaimsCheckResult =
                 serde_json::from_str(&result_str.to_std_string_escaped()).map_err(|e| {
-                    OidcError::ClaimsCheck {
-                        message: format!("Failed to parse script result: {e}"),
+                    OidcError::Claims {
+                        message: format!("Failed to parse claims check script result: {e}"),
                     }
                 })?;
 
@@ -151,8 +151,8 @@ impl ClaimsChecker for ScriptClaimsChecker {
                     let err_msg = failure
                         .error
                         .clone()
-                        .unwrap_or_else(|| "Unknown error".to_string());
-                    Err(OidcError::ClaimsCheckFailed { message: err_msg })
+                        .unwrap_or_else(|| "Claims check script unknown error".to_string());
+                    Err(OidcError::ClaimsCheckReject { message: err_msg })
                 }
             }
         } else {
@@ -197,12 +197,15 @@ async fn transpile_typescript_to_javascript(path: &str, source: &str) -> OidcRes
             StringInput::from(&*fm),
             None,
         );
-        let mut module = parser.parse_module().map_err(|e| OidcError::ClaimsCheck {
-            message: format!("TypeScript parse failed for '{path}': {e:?}"),
-        })?;
+        let mut module =
+            parser
+                .parse_module()
+                .map_err(|e| OidcError::ClaimsCheckScriptCompile {
+                    message: format!("TypeScript parse failed for '{path}': {e:?}"),
+                })?;
 
         if let Some(err) = parser.take_errors().into_iter().next() {
-            return Err(OidcError::ClaimsCheck {
+            return Err(OidcError::ClaimsCheckScriptCompile {
                 message: format!("TypeScript parse failed for '{path}': {err:?}"),
             });
         }
@@ -228,12 +231,12 @@ async fn transpile_typescript_to_javascript(path: &str, source: &str) -> OidcRes
 
             emitter
                 .emit_module(&module)
-                .map_err(|e| OidcError::ClaimsCheck {
+                .map_err(|e| OidcError::ClaimsCheckScriptCompile {
                     message: format!("TypeScript emit failed for '{path}': {e}"),
                 })?;
         }
 
-        String::from_utf8(out).map_err(|e| OidcError::ClaimsCheck {
+        String::from_utf8(out).map_err(|e| OidcError::ClaimsCheckScriptCompile {
             message: format!("SWC emitted non-UTF8 output for '{path}': {e}"),
         })
     })

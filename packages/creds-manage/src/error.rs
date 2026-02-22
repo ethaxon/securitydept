@@ -1,8 +1,10 @@
+use http::StatusCode;
+use securitydept_utils::http::ToHttpStatus;
 use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
-pub enum Error {
+pub enum CredsManageError {
     #[snafu(display("Failed to load config: {message}"))]
     ConfigLoad { message: String },
 
@@ -30,31 +32,31 @@ pub enum Error {
     #[snafu(display("Duplicate group name: {name}"))]
     DuplicateGroupName { name: String },
 
-    #[snafu(display("Password hashing error: {message}"))]
-    PasswordHash { message: String },
-
-    #[snafu(display("Failed to generate random bytes: {message}"))]
-    RandomBytes { message: String },
-
-    #[snafu(display("Authentication failed"))]
-    AuthFailed,
-
     #[snafu(display("Session not found"))]
     SessionNotFound,
-
-    #[snafu(display("Session expired"))]
-    SessionExpired,
 
     #[snafu(display("Invalid configuration: {message}"))]
     InvalidConfig { message: String },
 
-    #[snafu(display("Auth callback error: {message}"))]
-    AuthCallback { message: String },
-
-    #[snafu(display("OIDC {source}"), context(false))]
-    Oidc {
-        source: securitydept_oidc::OidcError,
+    #[snafu(transparent)]
+    Creds {
+        source: securitydept_creds::error::CredsError,
     },
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+impl ToHttpStatus for CredsManageError {
+    fn to_http_status(&self) -> StatusCode {
+        match self {
+            creds_error @ CredsManageError::Creds { .. } => creds_error.to_http_status(),
+            CredsManageError::EntryNotFound { .. } | CredsManageError::GroupNotFound { .. } => {
+                StatusCode::NOT_FOUND
+            }
+            CredsManageError::DuplicateEntryName { .. }
+            | CredsManageError::DuplicateGroupName { .. } => StatusCode::CONFLICT,
+            CredsManageError::SessionNotFound => StatusCode::UNAUTHORIZED,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+pub type CredsManageResult<T> = std::result::Result<T, CredsManageError>;

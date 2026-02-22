@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use securitydept_creds::{Argon2BasicAuthCred, Sha256TokenAuthCred};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -12,19 +13,9 @@ pub enum AuthEntryKind {
 
 /// An authentication entry (basic auth or token auth).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthEntry {
+pub struct AuthEntryMeta {
     pub id: String,
     pub name: String,
-    pub kind: AuthEntryKind,
-    /// Username for basic auth entries.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub username: Option<String>,
-    /// Argon2 hash of the password for basic auth entries.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub password_hash: Option<String>,
-    /// SHA-256 hash of the token for token auth entries.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub token_hash: Option<String>,
     /// Group IDs this entry belongs to.
     #[serde(default)]
     pub group_ids: Vec<String>,
@@ -32,36 +23,24 @@ pub struct AuthEntry {
     pub updated_at: DateTime<Utc>,
 }
 
-impl AuthEntry {
-    pub fn new_basic(
-        name: String,
-        username: String,
-        password_hash: String,
-        group_ids: Vec<String>,
-    ) -> Self {
-        let now = Utc::now();
-        Self {
-            id: Uuid::new_v4().to_string(),
-            name,
-            kind: AuthEntryKind::Basic,
-            username: Some(username),
-            password_hash: Some(password_hash),
-            token_hash: None,
-            group_ids,
-            created_at: now,
-            updated_at: now,
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BasicAuthEntry {
+    pub cred: Argon2BasicAuthCred,
+    pub meta: AuthEntryMeta,
+}
 
-    pub fn new_token(name: String, token_hash: String, group_ids: Vec<String>) -> Self {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenAuthEntry {
+    pub cred: Sha256TokenAuthCred,
+    pub meta: AuthEntryMeta,
+}
+
+impl AuthEntryMeta {
+    pub fn new(name: String, group_ids: Vec<String>) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4().to_string(),
-            name,
-            kind: AuthEntryKind::Token,
-            username: None,
-            password_hash: None,
-            token_hash: Some(token_hash),
+            name: name.clone(),
             group_ids,
             created_at: now,
             updated_at: now,
@@ -88,8 +67,10 @@ impl Group {
 /// Top-level data structure persisted to the data file.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DataFile {
-    pub entries: Vec<AuthEntry>,
+    pub entries: Vec<AuthEntryMeta>,
     pub groups: Vec<Group>,
+    pub basic: Vec<AuthEntryMeta>,
+    pub token: Vec<AuthEntryMeta>,
 }
 
 /// Session info stored in memory after OIDC login.
@@ -124,7 +105,7 @@ pub struct CreateTokenEntryRequest {
 /// Response after creating a token auth entry (includes the plaintext token once).
 #[derive(Debug, Serialize)]
 pub struct CreateTokenEntryResponse {
-    pub entry: AuthEntry,
+    pub entry: AuthEntryMeta,
     pub token: String,
 }
 

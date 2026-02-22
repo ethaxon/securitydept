@@ -1,0 +1,17 @@
+[package]
+name = "securitydept-creds"
+version = "0.1.1"
+edition = "2024"
+
+[dependencies]
+securitydept-utils = { path = "../utils" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync"] }
+tracing = { workspace = true }
+base64 = { workspace = true }
+http = { workspace = true }
+argon2 = "0.5"
+sha2 = "0.10"
+hex = "0.4"

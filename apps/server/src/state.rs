@@ -1,56 +1,32 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
-
-use securitydept_core::config::AppConfig;
-use securitydept_core::session::SessionManager;
-use securitydept_core::store::Store;
+use securitydept_creds_manage::session::SessionManager;
+use securitydept_creds_manage::store::CredsManageStore;
 use securitydept_oidc::OidcClient;
 
-/// Stored values for a pending OAuth flow (nonce + optional PKCE code_verifier).
-#[derive(Clone)]
-pub struct PendingOauth {
-    pub nonce: String,
-    pub code_verifier: Option<String>,
-}
+pub use securitydept_oidc::MokaPendingOauthStore;
 
-/// One-time store for OAuth state -> (nonce, code_verifier) during the login redirect round-trip.
-#[derive(Clone, Default)]
-pub struct PendingOauthStore {
-    inner: Arc<RwLock<HashMap<String, PendingOauth>>>,
-}
-
-impl PendingOauthStore {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Store nonce and optional PKCE code_verifier for the given state (CSRF token).
-    pub async fn insert(&self, state: String, nonce: String, code_verifier: Option<String>) {
-        self.inner.write().await.insert(
-            state,
-            PendingOauth {
-                nonce,
-                code_verifier,
-            },
-        );
-    }
-
-    /// Take the pending data for this state (one-time use). Returns None if state unknown or already used.
-    pub async fn take(&self, state: &str) -> Option<PendingOauth> {
-        self.inner.write().await.remove(state)
-    }
-}
+use crate::config::ServerConfig;
+use crate::error::{ServerError, ServerResult};
 
 /// Shared application state available to all handlers.
 #[derive(Clone)]
-pub struct AppState {
-    pub config: Arc<AppConfig>,
-    pub store: Arc<Store>,
+pub struct ServerState {
+    pub config: Arc<ServerConfig>,
+    pub store: Arc<CredsManageStore>,
     pub sessions: SessionManager,
     /// None when OIDC is disabled (oidc_enabled = false) for local debugging.
     pub oidc: Option<Arc<OidcClient>>,
     /// Pending OAuth flows: state (CSRF) -> nonce, for callback validation.
-    pub pending_oauth: PendingOauthStore,
+    pub pending_oauth: MokaPendingOauthStore,
+}
+
+impl ServerState {
+    pub fn oidc_client(&self) -> ServerResult<&OidcClient> {
+        self.oidc
+            .as_deref()
+            .ok_or_else(|| ServerError::InvalidConfig {
+                message: "OIDC is disabled".to_string(),
+            })
+    }
 }

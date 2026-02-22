@@ -1,14 +1,4 @@
-use serde::{Deserialize, Serialize};
-
-use crate::{OidcError, OidcResult, UserInfoClaimsWithExtra};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClaimsCheckResult {
-    pub display_name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub picture: Option<String>,
-    pub claims: serde_json::Value,
-}
+use crate::{ClaimsCheckResult, OidcError, OidcResult, UserInfoClaimsWithExtra};
 
 pub trait ClaimsChecker {
     fn check_claims(
@@ -43,10 +33,9 @@ impl ClaimsChecker for DefaultClaimsChecker {
         let picture = claims
             .picture()
             .and_then(|v| v.get(None).map(|v| v.to_string()));
-        let transformed_claims =
-            serde_json::to_value(claims).map_err(|e| OidcError::ClaimsCheck {
-                message: format!("Failed to convert claims to JSON: {e}"),
-            })?;
+        let transformed_claims = serde_json::to_value(claims).map_err(|e| OidcError::Claims {
+            message: format!("Failed to convert claims to JSON: {e}"),
+        })?;
         Ok(ClaimsCheckResult {
             display_name: name,
             picture,

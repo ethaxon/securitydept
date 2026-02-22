@@ -51,7 +51,8 @@
 			"!pnpm-workspace.yaml",
 			"!.vite",
 			"!.vitest",
-			"!assets"
+			"!assets",
+			"!**/*.local.*"
 		]
 	},
 	"overrides": [

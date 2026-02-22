@@ -9,10 +9,10 @@ use axum::middleware;
 use axum::routing::{delete, get, post, put};
 
 use crate::middleware::require_session;
-use crate::state::AppState;
+use crate::state::ServerState;
 
 /// Build the complete application router.
-pub fn build_router(state: AppState) -> Router {
+pub fn build_router(state: ServerState) -> Router {
     let auth_routes = Router::new()
         .route("/auth/login", get(auth::login))
         .route("/auth/callback", get(auth::callback))

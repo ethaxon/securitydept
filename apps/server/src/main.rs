@@ -1,3 +1,4 @@
+mod config;
 mod error;
 mod middleware;
 mod routes;
@@ -10,12 +11,14 @@ use snafu::{ResultExt, Whatever};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use securitydept_core::config::AppConfig;
-use securitydept_core::session::SessionManager;
-use securitydept_core::store::Store;
+use securitydept_creds_manage::session::SessionManager;
+use securitydept_creds_manage::store::CredsManageStore;
 use securitydept_oidc::OidcClient;
 
-use crate::state::AppState;
+use crate::{
+    config::ServerConfig,
+    state::{MokaPendingOauthStore, ServerState},
+};
 
 #[derive(Parser)]
 #[command(name = "securitydept-server", about = "SecurityDept auth server")]
@@ -55,9 +58,9 @@ async fn main() -> Result<(), Whatever> {
 
     let config_path = resolve_config_path(&cli.config);
     info!(config = %config_path, "Loading configuration");
-    let config = AppConfig::load(&config_path).whatever_context("Failed to load config")?;
+    let config = ServerConfig::load(&config_path).whatever_context("Failed to load config")?;
 
-    let store = Store::load(&config.data.path)
+    let store = CredsManageStore::load(&config.creds_manage.data_path)
         .await
         .whatever_context("Failed to load data store")?;
 
@@ -77,12 +80,16 @@ async fn main() -> Result<(), Whatever> {
     // 24-hour session TTL
     let sessions = SessionManager::new(86400);
 
-    let state = AppState {
+    let pending_oauth = MokaPendingOauthStore::from_config_opt(
+        config.oidc.as_ref().and_then(|o| o.pending_store.as_ref()),
+    );
+
+    let state = ServerState {
         config: Arc::new(config.clone()),
         store: Arc::new(store),
         sessions,
         oidc,
-        pending_oauth: crate::state::PendingOauthStore::new(),
+        pending_oauth,
     };
 
     let app = routes::build_router(state);

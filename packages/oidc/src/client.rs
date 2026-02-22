@@ -5,15 +5,40 @@ use openidconnect::{
     JsonWebKeySet, JsonWebKeySetUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge,
     PkceCodeVerifier, RedirectUrl, ResponseTypes, Scope, TokenUrl, UserInfoUrl, reqwest,
 };
+use openidconnect::{EndpointMaybeSet, EndpointSet, core::CoreClient};
+
 use url::Url;
 
-use crate::UserInfoClaimsWithExtra;
+use crate::claims::ClaimsChecker;
 #[cfg(feature = "claims-script")]
 use crate::claims::ScriptClaimsChecker;
-use crate::claims::check::{ClaimsCheckResult, ClaimsChecker};
 use crate::config::{OidcConfig, default_id_token_signing_alg_values_supported};
 use crate::error::{OidcError, OidcResult};
-use crate::models::{DiscoveredClient, DiscoveredClientWithRedirect};
+use crate::models::OidcCodeCallbackResult;
+use crate::{
+    ClaimsCheckResult, OidcCodeCallbackSearchParams, OidcCodeExchangeResult,
+    OidcCodeFlowAuthorizationRequest, PendingOauthStore, UserInfoClaimsWithExtra,
+};
+
+/// Type alias for the discovered client *without* a fixed redirect URI.
+pub type DiscoveredClient = CoreClient<
+    EndpointSet,                   // HasAuthUrl
+    openidconnect::EndpointNotSet, // HasDeviceAuthUrl
+    openidconnect::EndpointNotSet, // HasIntrospectionUrl
+    openidconnect::EndpointNotSet, // HasRevocationUrl
+    EndpointMaybeSet,              // HasTokenUrl
+    EndpointMaybeSet,              // HasUserInfoUrl
+>;
+
+/// Type alias for the discovered client *with* a fixed redirect URI.
+pub type DiscoveredClientWithRedirect = CoreClient<
+    EndpointSet,                   // HasAuthUrl
+    openidconnect::EndpointNotSet, // HasDeviceAuthUrl
+    openidconnect::EndpointNotSet, // HasIntrospectionUrl
+    openidconnect::EndpointNotSet, // HasRevocationUrl
+    EndpointMaybeSet,              // HasTokenUrl
+    EndpointMaybeSet,              // HasUserInfoUrl
+>;
 
 /// Wraps the OIDC discovered client for login/callback flows.
 ///
@@ -248,7 +273,9 @@ impl OidcClient {
     }
 
     fn resolve_redirect_url(&self, external_base_url: &Url) -> OidcResult<Url> {
-        let redirect_url = external_base_url.join(&self.config.redirect_url)?;
+        let redirect_url = external_base_url
+            .join(&self.config.redirect_url)
+            .map_err(|e| OidcError::RedirectUrl { source: e })?;
         Ok(redirect_url)
     }
 
@@ -270,7 +297,7 @@ impl OidcClient {
     pub fn authorize_url(
         &self,
         external_base_url: &Url,
-    ) -> OidcResult<(String, CsrfToken, Nonce, Option<String>)> {
+    ) -> OidcResult<OidcCodeFlowAuthorizationRequest> {
         let client = self.client_with_redirect(external_base_url)?;
 
         let mut req = client.authorize_url(
@@ -282,7 +309,7 @@ impl OidcClient {
         let pkce_verifier_secret = if self.pkce_enabled {
             let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
             req = req.set_pkce_challenge(pkce_challenge);
-            Some(pkce_verifier.secret().to_string())
+            Some(pkce_verifier.into_secret())
         } else {
             None
         };
@@ -291,8 +318,13 @@ impl OidcClient {
             req = req.add_scope(Scope::new(scope.clone()));
         }
 
-        let (url, csrf, nonce) = req.url();
-        Ok((url.to_string(), csrf, nonce, pkce_verifier_secret))
+        let (authorization_url, csrf_token, nonce) = req.url();
+        Ok(OidcCodeFlowAuthorizationRequest {
+            authorization_url,
+            csrf_token,
+            nonce,
+            pkce_verifier_secret,
+        })
     }
 
     /// Exchange the authorization code for tokens, then fetch user info claims.
@@ -301,11 +333,11 @@ impl OidcClient {
     /// `external_base_url` must match the one used during [`authorize_url`].
     pub async fn exchange_code(
         &self,
-        code: &str,
         external_base_url: &Url,
-        _nonce: &Nonce,
+        code: &str,
+        nonce: &Nonce,
         pkce_verifier_secret: Option<&str>,
-    ) -> OidcResult<UserInfoClaimsWithExtra> {
+    ) -> OidcResult<OidcCodeExchangeResult> {
         let client = self.client_with_redirect(external_base_url)?;
 
         let http_client =
@@ -320,6 +352,7 @@ impl OidcClient {
             .map_err(|e| OidcError::TokenExchange {
                 message: format!("Token endpoint not set or config error: {e}"),
             })?;
+
         if let Some(secret) = pkce_verifier_secret {
             token_request =
                 token_request.set_pkce_verifier(PkceCodeVerifier::new(secret.to_string()));
@@ -329,13 +362,105 @@ impl OidcClient {
             .request_async(&http_client)
             .await
             .map_err(|e| OidcError::TokenExchange {
-                message: format!("Token exchange failed: {e}"),
+                message: format!("Token exchange request failed: {e}"),
             })?;
 
-        let claims_value = self
+        let id_token_verifier = self.client.id_token_verifier();
+
+        let id_token =
+            token_response
+                .extra_fields()
+                .id_token()
+                .ok_or_else(|| OidcError::TokenExchange {
+                    message: "Missing ID token in token response".to_string(),
+                })?;
+
+        let id_token_claims =
+            id_token
+                .claims(&id_token_verifier, nonce)
+                .map_err(|e| OidcError::TokenExchange {
+                    message: format!("Failed to verify ID token: {e}"),
+                })?;
+
+        let id_token = id_token.to_string();
+        let access_token = token_response.access_token().secret().clone();
+        let refresh_token = token_response.refresh_token().map(|v| v.secret().clone());
+
+        let user_info_claims = self
             .request_userinfo(&client, &http_client, token_response.access_token().clone())
             .await?;
-        Ok(claims_value)
+
+        Ok(OidcCodeExchangeResult {
+            id_token,
+            id_token_claims: id_token_claims.to_owned(),
+            refresh_token,
+            access_token,
+            user_info_claims,
+        })
+    }
+
+    pub async fn handle_code_authorize(
+        &self,
+        external_base_url: &Url,
+        pending_oauth_store: &impl PendingOauthStore,
+    ) -> OidcResult<OidcCodeFlowAuthorizationRequest> {
+        let authorization_request = self.authorize_url(external_base_url)?;
+        pending_oauth_store
+            .insert(
+                authorization_request.csrf_token.secret().to_string(),
+                authorization_request.nonce.secret().to_string(),
+                authorization_request.pkce_verifier_secret.clone(),
+            )
+            .await?;
+        Ok(authorization_request)
+    }
+
+    pub async fn handle_code_callback(
+        &self,
+        search_params: OidcCodeCallbackSearchParams,
+        external_base_url: &Url,
+        pending_oauth_store: &impl PendingOauthStore,
+    ) -> OidcResult<OidcCodeCallbackResult> {
+        let code = &search_params.code;
+        let state = search_params
+            .state
+            .as_ref()
+            .ok_or_else(|| OidcError::CSRFValidation {
+                message: "Missing state parameter in callback (required for CSRF validation)"
+                    .to_string(),
+            })?;
+
+        let pending =
+            pending_oauth_store
+                .take(state)
+                .await?
+                .ok_or_else(|| OidcError::PendingOauth {
+                    source: "Invalid or expired state (reuse or unknown); try logging in again"
+                        .to_string()
+                        .into(),
+                })?;
+
+        let nonce = openidconnect::Nonce::new(pending.nonce.clone());
+        let code_verifier = pending.code_verifier;
+
+        let code_exchange = self
+            .exchange_code(external_base_url, code, &nonce, code_verifier.as_deref())
+            .await?;
+
+        let claims_check_result = self.check_claims(&code_exchange.user_info_claims).await?;
+
+        Ok(OidcCodeCallbackResult {
+            code: search_params.code,
+            pkce_verifier_secret: code_verifier,
+            state: search_params.state,
+            nonce: pending.nonce,
+            access_token: code_exchange.access_token,
+            id_token: code_exchange.id_token,
+            refresh_token: code_exchange.refresh_token,
+            id_token_claims: code_exchange.id_token_claims,
+            user_info_claims: code_exchange.user_info_claims,
+            claims_check_result,
+        })
     }
 
     async fn request_userinfo(

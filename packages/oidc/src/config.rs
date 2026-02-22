@@ -4,6 +4,9 @@ use serde_with::{DeserializeAs, NoneAsEmptyString, PickFirst, serde_as};
 
 use crate::{OidcError, OidcResult};
 
+#[cfg(feature = "default-pending-store")]
+use crate::pending_store::MokaPendingOauthStoreConfig;
+
 /// Deserializes a string into Vec<T> by splitting on comma and/or whitespace.
 /// Used with PickFirst to accept either a delimited string or a sequence (array).
 pub struct CommaOrSpaceSeparated<T>(std::marker::PhantomData<T>);
@@ -80,6 +83,10 @@ pub struct OidcConfig {
     pub pkce_enabled: bool,
     #[serde(default = "default_redirect_url")]
     pub redirect_url: String,
+    /// Configuration for the pending OAuth store.
+    #[cfg(feature = "default-pending-store")]
+    #[serde(default)]
+    pub pending_store: Option<MokaPendingOauthStoreConfig>,
 }
 
 impl OidcConfig {

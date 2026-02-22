@@ -1,12 +1,16 @@
+mod config;
+mod error;
+
+use crate::error::CliResult;
 use clap::{Parser, Subcommand};
-use snafu::{ResultExt, Whatever};
 use tabled::{Table, Tabled};
 use tracing_subscriber::EnvFilter;
 
-use securitydept_core::auth;
-use securitydept_core::config::AppConfig;
-use securitydept_core::models::{AuthEntry, AuthEntryKind, Group};
-use securitydept_core::store::Store;
+use securitydept_creds_manage::auth;
+use securitydept_creds_manage::models::{AuthEntryKind, AuthEntryMeta, Group};
+use securitydept_creds_manage::store::CredsManageStore;
+
+use crate::config::CliConfig;
 
 #[derive(Parser)]
 #[command(name = "securitydept-cli", about = "SecurityDept management CLI")]
@@ -135,8 +139,8 @@ struct EntryRow {
     created_at: String,
 }
 
-impl From<AuthEntry> for EntryRow {
-    fn from(e: AuthEntry) -> Self {
+impl From<AuthEntryMeta> for EntryRow {
+    fn from(e: AuthEntryMeta) -> Self {
         Self {
             id: e.id,
             name: e.name,
@@ -169,16 +173,14 @@ impl From<Group> for GroupRow {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Whatever> {
+async fn main() -> CliResult<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("warn".parse().unwrap()))
         .init();
 
     let cli = Cli::parse();
-    let config = AppConfig::load(&cli.config).whatever_context("Failed to load config")?;
-    let store = Store::load(&config.data.path)
-        .await
-        .whatever_context("Failed to load data store")?;
+    let config = CliConfig::load(&cli.config)?;
+    let store = CredsManageStore::load(&config.creds_manage.data_path).await?;
 
     match cli.command {
         Commands::Entry { action } => match action {
@@ -192,10 +194,7 @@ async fn main() -> Result<(), Whatever> {
                 }
             }
             EntryAction::Get { id } => {
-                let entry = store
-                    .get_entry(&id)
-                    .await
-                    .whatever_context("Failed to get entry")?;
+                let entry = store.get_entry(&id).await?;
                 let rows = vec![EntryRow::from(entry)];
                 println!("{}", Table::new(rows));
             }
@@ -205,26 +204,18 @@ async fn main() -> Result<(), Whatever> {
                 password,
                 group_ids,
             } => {
-                let password_hash =
-                    auth::hash_password(&password).whatever_context("Failed to hash password")?;
-                let entry = AuthEntry::new_basic(name, username, password_hash, group_ids);
-                let created = store
-                    .create_entry(entry)
-                    .await
-                    .whatever_context("Failed to create entry")?;
+                let password_hash = auth::hash_password_argon2(&password)?;
+                let entry = AuthEntryMeta::new_basic(name, username, password_hash, group_ids);
+                let created = store.create_entry(entry).await?;
                 println!(
                     "Created basic auth entry: {} ({})",
                     created.name, created.id
                 );
             }
             EntryAction::CreateToken { name, group_ids } => {
-                let (token, token_hash) =
-                    auth::generate_token().whatever_context("Failed to generate token")?;
-                let entry = AuthEntry::new_token(name, token_hash, group_ids);
-                let created = store
-                    .create_entry(entry)
-                    .await
-                    .whatever_context("Failed to create entry")?;
+                let (token, token_hash) = auth::generate_token()?;
+                let entry = AuthEntryMeta::new_token(name, token_hash, group_ids);
+                let created = store.create_entry(entry).await?;
                 println!(
                     "Created token auth entry: {} ({})",
                     created.name, created.id
@@ -232,10 +223,7 @@ async fn main() -> Result<(), Whatever> {
                 println!("Token (save this, it won't be shown again): {token}");
             }
             EntryAction::Delete { id } => {
-                store
-                    .delete_entry(&id)
-                    .await
-                    .whatever_context("Failed to delete entry")?;
+                store.delete_entry(&id).await?;
                 println!("Deleted entry: {id}");
             }
             EntryAction::Update {
@@ -246,13 +234,12 @@ async fn main() -> Result<(), Whatever> {
                 group_ids,
             } => {
                 let password_hash = match password {
-                    Some(pw) => Some(auth::hash_password(&pw).whatever_context("Failed to hash password")?),
+                    Some(pw) => Some(auth::hash_password_argon2(&pw)?),
                     None => None,
                 };
                 let updated = store
                     .update_entry(&id, name, username, password_hash, group_ids)
-                    .await
-                    .whatever_context("Failed to update entry")?;
+                    .await?;
                 println!("Updated entry: {} ({})", updated.name, updated.id);
             }
         },
@@ -267,19 +254,13 @@ async fn main() -> Result<(), Whatever> {
                 }
             }
             GroupAction::Get { id } => {
-                let group = store
-                    .get_group(&id)
-                    .await
-                    .whatever_context("Failed to get group")?;
+                let group = store.get_group(&id).await?;
                 let rows = vec![GroupRow::from(group)];
                 println!("{}", Table::new(rows));
             }
             GroupAction::Create { name, entry_ids } => {
                 let group = Group::new(name);
-                let created = store
-                    .create_group(group, entry_ids)
-                    .await
-                    .whatever_context("Failed to create group")?;
+                let created = store.create_group(group, entry_ids).await?;
                 println!("Created group: {} ({})", created.name, created.id);
             }
             GroupAction::Update {
@@ -287,17 +268,11 @@ async fn main() -> Result<(), Whatever> {
                 name,
                 entry_ids,
             } => {
-                let updated = store
-                    .update_group(&id, name, entry_ids)
-                    .await
-                    .whatever_context("Failed to update group")?;
+                let updated = store.update_group(&id, name, entry_ids).await?;
                 println!("Updated group: {} ({})", updated.name, updated.id);
             }
             GroupAction::Delete { id } => {
-                store
-                    .delete_group(&id)
-                    .await
-                    .whatever_context("Failed to delete group")?;
+                store.delete_group(&id).await?;
                 println!("Deleted group: {id}");
             }
         },

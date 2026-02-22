@@ -1,47 +1,47 @@
 use axum::extract::Path;
 use axum::{Extension, Json};
 
-use securitydept_core::auth;
-use securitydept_core::models::{
-    AuthEntry, CreateBasicEntryRequest, CreateTokenEntryRequest,
-    CreateTokenEntryResponse, UpdateEntryRequest,
+use securitydept_creds_manage::auth;
+use securitydept_creds_manage::models::{
+    AuthEntryMeta, CreateBasicEntryRequest, CreateTokenEntryRequest, CreateTokenEntryResponse,
+    UpdateEntryRequest,
 };
 
-use crate::error::AppError;
-use crate::state::AppState;
+use crate::error::ServerError;
+use crate::state::ServerState;
 
 /// GET /api/entries
-pub async fn list(Extension(state): Extension<AppState>) -> Json<Vec<AuthEntry>> {
+pub async fn list(Extension(state): Extension<ServerState>) -> Json<Vec<AuthEntryMeta>> {
     Json(state.store.list_entries().await)
 }
 
 /// GET /api/entries/:id
 pub async fn get(
-    Extension(state): Extension<AppState>,
+    Extension(state): Extension<ServerState>,
     Path(id): Path<String>,
-) -> Result<Json<AuthEntry>, AppError> {
+) -> Result<Json<AuthEntryMeta>, ServerError> {
     let entry = state.store.get_entry(&id).await?;
     Ok(Json(entry))
 }
 
 /// POST /api/entries/basic
 pub async fn create_basic(
-    Extension(state): Extension<AppState>,
+    Extension(state): Extension<ServerState>,
     Json(req): Json<CreateBasicEntryRequest>,
-) -> Result<Json<AuthEntry>, AppError> {
-    let password_hash = auth::hash_password(&req.password)?;
-    let entry = AuthEntry::new_basic(req.name, req.username, password_hash, req.group_ids);
+) -> Result<Json<AuthEntryMeta>, ServerError> {
+    let password_hash = auth::hash_password_argon2(&req.password)?;
+    let entry = AuthEntryMeta::new_basic(req.name, req.username, password_hash, req.group_ids);
     let created = state.store.create_entry(entry).await?;
     Ok(Json(created))
 }
 
 /// POST /api/entries/token
 pub async fn create_token(
-    Extension(state): Extension<AppState>,
+    Extension(state): Extension<ServerState>,
     Json(req): Json<CreateTokenEntryRequest>,
-) -> Result<Json<CreateTokenEntryResponse>, AppError> {
+) -> Result<Json<CreateTokenEntryResponse>, ServerError> {
     let (token, token_hash) = auth::generate_token()?;
-    let entry = AuthEntry::new_token(req.name, token_hash, req.group_ids);
+    let entry = AuthEntryMeta::new_token(req.name, token_hash, req.group_ids);
     let created = state.store.create_entry(entry).await?;
     Ok(Json(CreateTokenEntryResponse {
         entry: created,
@@ -51,13 +51,13 @@ pub async fn create_token(
 
 /// PUT /api/entries/:id
 pub async fn update(
-    Extension(state): Extension<AppState>,
+    Extension(state): Extension<ServerState>,
     Path(id): Path<String>,
     Json(req): Json<UpdateEntryRequest>,
-) -> Result<Json<AuthEntry>, AppError> {
+) -> Result<Json<AuthEntryMeta>, ServerError> {
     // If a new password was provided, hash it
     let password_hash = match req.password {
-        Some(ref pw) => Some(auth::hash_password(pw)?),
+        Some(ref pw) => Some(auth::hash_password_argon2(pw)?),
         None => None,
     };
 
@@ -70,9 +70,9 @@ pub async fn update(
 
 /// DELETE /api/entries/:id
 pub async fn delete(
-    Extension(state): Extension<AppState>,
+    Extension(state): Extension<ServerState>,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, ServerError> {
     state.store.delete_entry(&id).await?;
     Ok(Json(serde_json::json!({"ok": true})))
 }

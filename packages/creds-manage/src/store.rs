@@ -10,8 +10,8 @@ use snafu::ResultExt;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 
-use crate::error::{self, Result};
-use crate::models::{AuthEntry, DataFile, Group};
+use crate::error::{self, CredsManageResult};
+use crate::models::{AuthEntryMeta, BasicAuthEntry, DataFile, Group, TokenAuthEntry};
 
 /// File-backed store for auth entries and groups.
 ///
@@ -19,7 +19,7 @@ use crate::models::{AuthEntry, DataFile, Group};
 /// - Writes are protected by an OS-level file lock.
 /// - External file changes are ingested via FS events.
 /// - If FS events are unavailable, we fall back to 1s polling.
-pub struct Store {
+pub struct CredsManageStore {
     path: PathBuf,
     data: Arc<RwLock<DataFile>>,
     last_modified: Arc<RwLock<Option<SystemTime>>>,
@@ -27,9 +27,9 @@ pub struct Store {
     sync_task: JoinHandle<()>,
 }
 
-impl Store {
+impl CredsManageStore {
     /// Load (or create) the data file and return a Store.
-    pub async fn load(path: impl AsRef<Path>) -> Result<Self> {
+    pub async fn load(path: impl AsRef<Path>) -> CredsManageResult<Self> {
         let path = path.as_ref().to_path_buf();
         let (initial_data, initial_modified) = read_data_file_with_lock(path.clone()).await?;
 
@@ -83,33 +83,33 @@ impl Store {
 
     // -- Entry operations --
 
-    pub async fn list_entries(&self) -> Vec<AuthEntry> {
+    pub async fn list_entries(&self) -> Vec<AuthEntryMeta> {
         self.data.read().await.entries.clone()
     }
 
-    pub async fn get_entry(&self, id: &str) -> Result<AuthEntry> {
+    pub async fn get_entry(&self, id: &str) -> CredsManageResult<AuthEntryMeta> {
         let data = self.data.read().await;
         data.entries
             .iter()
             .find(|e| e.id == id)
             .cloned()
-            .ok_or_else(|| error::Error::EntryNotFound { id: id.to_string() })
+            .ok_or_else(|| error::CredsManageError::EntryNotFound { id: id.to_string() })
     }
 
-    pub async fn create_entry(&self, entry: AuthEntry) -> Result<AuthEntry> {
+    pub async fn create_entry(&self, entry: AuthEntryMeta) -> CredsManageResult<AuthEntryMeta> {
         let _io_guard = self.io_lock.lock().await;
 
         let entry_for_write = entry.clone();
         let (created, snapshot, modified) =
             mutate_data_file_with_lock(self.path.clone(), move |data| {
                 if data.entries.iter().any(|e| e.name == entry_for_write.name) {
-                    return Err(error::Error::DuplicateEntryName {
+                    return Err(error::CredsManageError::DuplicateEntryName {
                         name: entry_for_write.name.clone(),
                     });
                 }
                 for group_id in &entry_for_write.group_ids {
                     if !data.groups.iter().any(|g| &g.id == group_id) {
-                        return Err(error::Error::GroupNotFound {
+                        return Err(error::CredsManageError::GroupNotFound {
                             id: group_id.clone(),
                         });
                     }
@@ -132,23 +132,26 @@ impl Store {
         username: Option<String>,
         password_hash: Option<String>,
         group_ids: Option<Vec<String>>,
-    ) -> Result<AuthEntry> {
+    ) -> CredsManageResult<AuthEntryMeta> {
         let _io_guard = self.io_lock.lock().await;
         let id = id.to_string();
 
         let (updated, snapshot, modified) =
             mutate_data_file_with_lock(self.path.clone(), move |data| {
                 if let Some(ref new_name) = name
-                    && data.entries.iter().any(|e| e.id != id && e.name == *new_name)
+                    && data
+                        .entries
+                        .iter()
+                        .any(|e| e.id != id && e.name == *new_name)
                 {
-                    return Err(error::Error::DuplicateEntryName {
+                    return Err(error::CredsManageError::DuplicateEntryName {
                         name: new_name.clone(),
                     });
                 }
                 if let Some(ref gids) = group_ids {
                     for group_id in gids {
                         if !data.groups.iter().any(|g| &g.id == group_id) {
-                            return Err(error::Error::GroupNotFound {
+                            return Err(error::CredsManageError::GroupNotFound {
                                 id: group_id.clone(),
                             });
                         }
@@ -159,17 +162,20 @@ impl Store {
                     .entries
                     .iter_mut()
                     .find(|e| e.id == id)
-                    .ok_or_else(|| error::Error::EntryNotFound { id: id.clone() })?;
+                    .ok_or_else(|| error::CredsManageError::EntryNotFound { id: id.clone() })?;
 
                 if let Some(new_name) = name {
                     entry.name = new_name;
                 }
-                if let Some(u) = username {
-                    entry.username = Some(u);
+                if let AuthEntryCred::Basic(ref mut cred) = entry.cred {
+                    if let Some(u) = username {
+                        cred.username = u;
+                    }
+                    if let Some(ph) = password_hash {
+                        cred.update_password(ph)?;
+                    }
                 }
-                if let Some(ph) = password_hash {
-                    entry.password_hash = Some(ph);
-                }
+
                 if let Some(gids) = group_ids {
                     entry.group_ids = gids;
                 }
@@ -184,7 +190,7 @@ impl Store {
         Ok(updated)
     }
 
-    pub async fn delete_entry(&self, id: &str) -> Result<()> {
+    pub async fn delete_entry(&self, id: &str) -> CredsManageResult<()> {
         let _io_guard = self.io_lock.lock().await;
         let id = id.to_string();
 
@@ -192,7 +198,7 @@ impl Store {
             let len_before = data.entries.len();
             data.entries.retain(|e| e.id != id);
             if data.entries.len() == len_before {
-                return Err(error::Error::EntryNotFound { id: id.clone() });
+                return Err(error::CredsManageError::EntryNotFound { id: id.clone() });
             }
             Ok(())
         })
@@ -204,7 +210,7 @@ impl Store {
     }
 
     /// Find all entries that belong to a given group id.
-    pub async fn entries_by_group_id(&self, group_id: &str) -> Vec<AuthEntry> {
+    pub async fn entries_by_group_id(&self, group_id: &str) -> Vec<AuthEntryMeta> {
         let data = self.data.read().await;
         data.entries
             .iter()
@@ -219,30 +225,34 @@ impl Store {
         self.data.read().await.groups.clone()
     }
 
-    pub async fn get_group(&self, id: &str) -> Result<Group> {
+    pub async fn get_group(&self, id: &str) -> CredsManageResult<Group> {
         let data = self.data.read().await;
         data.groups
             .iter()
             .find(|g| g.id == id)
             .cloned()
-            .ok_or_else(|| error::Error::GroupNotFound { id: id.to_string() })
+            .ok_or_else(|| error::CredsManageError::GroupNotFound { id: id.to_string() })
     }
 
-    pub async fn create_group(&self, group: Group, entry_ids: Option<Vec<String>>) -> Result<Group> {
+    pub async fn create_group(
+        &self,
+        group: Group,
+        entry_ids: Option<Vec<String>>,
+    ) -> CredsManageResult<Group> {
         let _io_guard = self.io_lock.lock().await;
         let group_for_write = group.clone();
         let entry_ids = entry_ids.unwrap_or_default();
         let (created, snapshot, modified) =
             mutate_data_file_with_lock(self.path.clone(), move |data| {
                 if data.groups.iter().any(|g| g.name == group_for_write.name) {
-                    return Err(error::Error::DuplicateGroupName {
+                    return Err(error::CredsManageError::DuplicateGroupName {
                         name: group_for_write.name.clone(),
                     });
                 }
 
                 for entry_id in &entry_ids {
                     if !data.entries.iter().any(|e| &e.id == entry_id) {
-                        return Err(error::Error::EntryNotFound {
+                        return Err(error::CredsManageError::EntryNotFound {
                             id: entry_id.clone(),
                         });
                     }
@@ -273,7 +283,7 @@ impl Store {
         id: &str,
         name: String,
         entry_ids: Option<Vec<String>>,
-    ) -> Result<Group> {
+    ) -> CredsManageResult<Group> {
         let _io_guard = self.io_lock.lock().await;
         let id = id.to_string();
         let selected_entry_ids = entry_ids;
@@ -281,13 +291,13 @@ impl Store {
         let (updated, snapshot, modified) =
             mutate_data_file_with_lock(self.path.clone(), move |data| {
                 if data.groups.iter().any(|g| g.id != id && g.name == name) {
-                    return Err(error::Error::DuplicateGroupName { name: name.clone() });
+                    return Err(error::CredsManageError::DuplicateGroupName { name: name.clone() });
                 }
 
                 if let Some(ref entry_ids) = selected_entry_ids {
                     for entry_id in entry_ids {
                         if !data.entries.iter().any(|e| &e.id == entry_id) {
-                            return Err(error::Error::EntryNotFound {
+                            return Err(error::CredsManageError::EntryNotFound {
                                 id: entry_id.clone(),
                             });
                         }
@@ -298,7 +308,7 @@ impl Store {
                     .groups
                     .iter_mut()
                     .find(|g| g.id == id)
-                    .ok_or_else(|| error::Error::GroupNotFound { id: id.clone() })?;
+                    .ok_or_else(|| error::CredsManageError::GroupNotFound { id: id.clone() })?;
 
                 group.name = name;
                 let target_group_id = group.id.clone();
@@ -332,14 +342,14 @@ impl Store {
         Ok(updated)
     }
 
-    pub async fn delete_group(&self, id: &str) -> Result<()> {
+    pub async fn delete_group(&self, id: &str) -> CredsManageResult<()> {
         let _io_guard = self.io_lock.lock().await;
         let id = id.to_string();
 
         let (_, snapshot, modified) = mutate_data_file_with_lock(self.path.clone(), move |data| {
             let removed_group = data.groups.iter().find(|g| g.id == id).cloned();
             let Some(removed_group) = removed_group else {
-                return Err(error::Error::GroupNotFound { id: id.clone() });
+                return Err(error::CredsManageError::GroupNotFound { id: id.clone() });
             };
 
             data.groups.retain(|g| g.id != id);
@@ -366,7 +376,7 @@ impl Store {
     }
 }
 
-impl Drop for Store {
+impl Drop for CredsManageStore {
     fn drop(&mut self) {
         self.sync_task.abort();
     }
@@ -380,11 +390,10 @@ async fn run_notify_loop(
 ) -> std::result::Result<(), String> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<notify::Result<notify::Event>>();
 
-    let mut watcher =
-        notify::recommended_watcher(move |event| {
-            let _ = tx.send(event);
-        })
-        .map_err(|e| e.to_string())?;
+    let mut watcher = notify::recommended_watcher(move |event| {
+        let _ = tx.send(event);
+    })
+    .map_err(|e| e.to_string())?;
 
     watcher
         .watch(&path, RecursiveMode::NonRecursive)
@@ -444,7 +453,7 @@ async fn reload_from_disk_if_changed(
     data: Arc<RwLock<DataFile>>,
     last_modified: Arc<RwLock<Option<SystemTime>>>,
     io_lock: Arc<Mutex<()>>,
-) -> Result<()> {
+) -> CredsManageResult<()> {
     let _io_guard = io_lock.lock().await;
     let (disk_data, disk_modified) = read_data_file_with_lock(path.to_path_buf()).await?;
 
@@ -459,41 +468,44 @@ async fn reload_from_disk_if_changed(
     Ok(())
 }
 
-async fn read_data_file_with_lock(path: PathBuf) -> Result<(DataFile, Option<SystemTime>)> {
-    let (content, modified) = tokio::task::spawn_blocking(move || -> std::io::Result<(String, Option<SystemTime>)> {
-        if let Some(parent) = path.parent()
-            && !parent.as_os_str().is_empty()
-        {
-            std::fs::create_dir_all(parent)?;
-        }
+async fn read_data_file_with_lock(
+    path: PathBuf,
+) -> CredsManageResult<(DataFile, Option<SystemTime>)> {
+    let (content, modified) =
+        tokio::task::spawn_blocking(move || -> std::io::Result<(String, Option<SystemTime>)> {
+            if let Some(parent) = path.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                std::fs::create_dir_all(parent)?;
+            }
 
-        let mut file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&path)?;
+            let mut file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&path)?;
 
-        file.lock_shared()?;
+            file.lock_shared()?;
 
-        let result = (|| {
-            let modified = file.metadata().ok().and_then(|m| m.modified().ok());
-            file.seek(SeekFrom::Start(0))?;
-            let mut content = String::new();
-            file.read_to_string(&mut content)?;
-            Ok((content, modified))
-        })();
+            let result = (|| {
+                let modified = file.metadata().ok().and_then(|m| m.modified().ok());
+                file.seek(SeekFrom::Start(0))?;
+                let mut content = String::new();
+                file.read_to_string(&mut content)?;
+                Ok((content, modified))
+            })();
 
-        let unlock_result = file.unlock();
-        match (result, unlock_result) {
-            (Ok(value), Ok(())) => Ok(value),
-            (Err(err), _) => Err(err),
-            (Ok(_), Err(err)) => Err(err),
-        }
-    })
-    .await
-    .expect("store read task panicked")
-    .context(error::DataReadSnafu)?;
+            let unlock_result = file.unlock();
+            match (result, unlock_result) {
+                (Ok(value), Ok(())) => Ok(value),
+                (Err(err), _) => Err(err),
+                (Ok(_), Err(err)) => Err(err),
+            }
+        })
+        .await
+        .expect("store read task panicked")
+        .context(error::DataReadSnafu)?;
 
     let data = parse_data_file(&content)?;
     Ok((data, modified))
@@ -502,55 +514,61 @@ async fn read_data_file_with_lock(path: PathBuf) -> Result<(DataFile, Option<Sys
 async fn mutate_data_file_with_lock<T, F>(
     path: PathBuf,
     op: F,
-) -> Result<(T, DataFile, Option<SystemTime>)>
+) -> CredsManageResult<(T, DataFile, Option<SystemTime>)>
 where
     T: Send + 'static,
-    F: FnOnce(&mut DataFile) -> Result<T> + Send + 'static,
+    F: FnOnce(&mut DataFile) -> CredsManageResult<T> + Send + 'static,
 {
-    tokio::task::spawn_blocking(move || -> Result<(T, DataFile, Option<SystemTime>)> {
-        if let Some(parent) = path.parent()
-            && !parent.as_os_str().is_empty()
-        {
-            std::fs::create_dir_all(parent).context(error::DataWriteSnafu)?;
-        }
+    tokio::task::spawn_blocking(
+        move || -> CredsManageResult<(T, DataFile, Option<SystemTime>)> {
+            if let Some(parent) = path.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                std::fs::create_dir_all(parent).context(error::DataWriteSnafu)?;
+            }
 
-        let mut file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&path)
-            .context(error::DataWriteSnafu)?;
-
-        file.lock_exclusive().context(error::DataWriteSnafu)?;
-
-        let result = (|| -> Result<(T, DataFile, Option<SystemTime>)> {
-            file.seek(SeekFrom::Start(0)).context(error::DataReadSnafu)?;
-            let mut content = String::new();
-            file.read_to_string(&mut content).context(error::DataReadSnafu)?;
-
-            let mut data = parse_data_file(&content)?;
-            let op_result = op(&mut data)?;
-
-            let serialized = serde_json::to_string_pretty(&data).context(error::DataSerializeSnafu)?;
-            file.set_len(0).context(error::DataWriteSnafu)?;
-            file.seek(SeekFrom::Start(0)).context(error::DataWriteSnafu)?;
-            file.write_all(serialized.as_bytes())
+            let mut file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&path)
                 .context(error::DataWriteSnafu)?;
-            file.sync_all().context(error::DataWriteSnafu)?;
 
-            let modified = file.metadata().ok().and_then(|m| m.modified().ok());
-            Ok((op_result, data, modified))
-        })();
+            file.lock_exclusive().context(error::DataWriteSnafu)?;
 
-        let _ = file.unlock();
-        result
-    })
+            let result = (|| -> CredsManageResult<(T, DataFile, Option<SystemTime>)> {
+                file.seek(SeekFrom::Start(0))
+                    .context(error::DataReadSnafu)?;
+                let mut content = String::new();
+                file.read_to_string(&mut content)
+                    .context(error::DataReadSnafu)?;
+
+                let mut data = parse_data_file(&content)?;
+                let op_result = op(&mut data)?;
+
+                let serialized =
+                    serde_json::to_string_pretty(&data).context(error::DataSerializeSnafu)?;
+                file.set_len(0).context(error::DataWriteSnafu)?;
+                file.seek(SeekFrom::Start(0))
+                    .context(error::DataWriteSnafu)?;
+                file.write_all(serialized.as_bytes())
+                    .context(error::DataWriteSnafu)?;
+                file.sync_all().context(error::DataWriteSnafu)?;
+
+                let modified = file.metadata().ok().and_then(|m| m.modified().ok());
+                Ok((op_result, data, modified))
+            })();
+
+            let _ = file.unlock();
+            result
+        },
+    )
     .await
     .expect("store mutate task panicked")
 }
 
-fn parse_data_file(content: &str) -> Result<DataFile> {
+fn parse_data_file(content: &str) -> CredsManageResult<DataFile> {
     if content.trim().is_empty() {
         return Ok(DataFile::default());
     }

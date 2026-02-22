@@ -2,29 +2,23 @@ use axum::extract::Query;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::{Extension, Json};
-use serde::Deserialize;
+use securitydept_creds_manage::CredsManageError;
+use securitydept_oidc::{OidcCodeCallbackSearchParams, OidcError};
 use tracing::info;
 
-use securitydept_core::models::UserInfo;
+use securitydept_creds_manage::models::UserInfo;
 
-use crate::error::AppError;
+use crate::error::ServerError;
 use crate::middleware::{SESSION_COOKIE_NAME, get_session_id};
-use crate::state::AppState;
-
-#[derive(Deserialize)]
-pub struct CallbackParams {
-    pub code: String,
-    /// OAuth state (CSRF token); required for callback validation.
-    pub state: Option<String>,
-}
+use crate::state::ServerState;
 
 /// GET /auth/login -- redirect to OIDC provider, or create dev session when OIDC is disabled.
 pub async fn login(
-    Extension(state): Extension<AppState>,
+    Extension(state): Extension<ServerState>,
     headers: HeaderMap,
-) -> Result<Response, AppError> {
+) -> Result<Response, ServerError> {
     if let Some(ref oidc) = state.oidc {
-        let base_url = state
+        let external_base_url = state
             .config
             .server
             .external_base_url
@@ -34,16 +28,11 @@ pub async fn login(
                 state.config.server.port,
             )
             .map_err(|e| securitydept_oidc::OidcError::RedirectUrl { source: e })?;
-        let (url, csrf, nonce, pkce_verifier) = oidc.authorize_url(&base_url)?;
-        state
-            .pending_oauth
-            .insert(
-                csrf.secret().to_string(),
-                nonce.secret().to_string(),
-                pkce_verifier,
-            )
-            .await;
-        return Ok(Redirect::temporary(&url).into_response());
+        let authorization_request = oidc
+            .handle_code_authorize(&external_base_url, &state.pending_oauth)
+            .await?;
+        let authorization_url = authorization_request.authorization_url;
+        return Ok(Redirect::temporary(authorization_url.as_str()).into_response());
     }
 
     // OIDC disabled: create a dev session for local debugging
@@ -67,30 +56,14 @@ pub async fn login(
 /// GET /auth/callback
 /// Handle OIDC code exchange.
 pub async fn callback(
-    Extension(state): Extension<AppState>,
+    Extension(state): Extension<ServerState>,
     headers: HeaderMap,
-    Query(params): Query<CallbackParams>,
-) -> Result<Response, AppError> {
-    let oidc =
-        state
-            .oidc
-            .as_ref()
-            .ok_or_else(|| securitydept_core::error::Error::InvalidConfig {
-                message: "OIDC is disabled".to_string(),
-            })?;
+    Query(search_params): Query<OidcCodeCallbackSearchParams>,
+) -> Result<Response, ServerError> {
+    let oidc = state.oidc_client()?;
 
-    let state_param =
-        params
-            .state
-            .as_deref()
-            .ok_or_else(|| securitydept_core::error::Error::AuthCallback {
-                message: "Missing state parameter in callback (required for CSRF validation)"
-                    .to_string(),
-            })?;
-
-    let base_url = state
+    let external_base_url = state
         .config
-        .as_ref()
         .server
         .external_base_url
         .resolve_url(
@@ -98,29 +71,12 @@ pub async fn callback(
             &state.config.server.host,
             state.config.server.port,
         )
-        .map_err(|e| securitydept_oidc::OidcError::RedirectUrl { source: e })?;
+        .map_err(|e| OidcError::RedirectUrl { source: e })?;
 
-    let pending = state.pending_oauth.take(state_param).await.ok_or_else(|| {
-        securitydept_core::error::Error::AuthCallback {
-            message: "Invalid or expired state (reuse or unknown); try logging in again"
-                .to_string(),
-        }
-    })?;
-
-    let nonce = openidconnect::Nonce::new(pending.nonce);
-    let claims = oidc
-        .exchange_code(
-            &params.code,
-            &base_url,
-            &nonce,
-            pending.code_verifier.as_deref(),
-        )
+    let code_callback_result = oidc
+        .handle_code_callback(search_params, &external_base_url, &state.pending_oauth)
         .await?;
-
-    info!("OIDC callback received claims");
-
-    // Run claims check if configured
-    let claims_check_result = oidc.check_claims(&claims).await?;
+    let claims_check_result = code_callback_result.claims_check_result;
 
     // Create session
     let session_id = state
@@ -147,7 +103,7 @@ pub async fn callback(
 }
 
 /// POST /auth/logout -- destroy session.
-pub async fn logout(Extension(state): Extension<AppState>, headers: HeaderMap) -> Response {
+pub async fn logout(Extension(state): Extension<ServerState>, headers: HeaderMap) -> Response {
     if let Some(session_id) = get_session_id(&headers) {
         state.sessions.remove(&session_id).await;
     }
@@ -167,17 +123,16 @@ pub async fn logout(Extension(state): Extension<AppState>, headers: HeaderMap) -
 
 /// GET /auth/me -- return current user info.
 pub async fn me(
-    Extension(state): Extension<AppState>,
+    Extension(state): Extension<ServerState>,
     headers: HeaderMap,
-) -> Result<Json<UserInfo>, AppError> {
-    let session_id =
-        get_session_id(&headers).ok_or(securitydept_core::error::Error::SessionNotFound)?;
+) -> Result<Json<UserInfo>, ServerError> {
+    let session_id = get_session_id(&headers).ok_or(CredsManageError::SessionNotFound)?;
 
     let session = state
         .sessions
         .get(&session_id)
         .await
-        .ok_or(securitydept_core::error::Error::SessionNotFound)?;
+        .ok_or(CredsManageError::SessionNotFound)?;
 
     Ok(Json(UserInfo {
         display_name: session.display_name,
