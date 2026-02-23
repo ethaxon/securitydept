@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use securitydept_creds::{Argon2BasicAuthCred, Sha256TokenAuthCred};
+use securitydept_creds::{Argon2BasicAuthCred, BasicAuthCred, Sha256TokenAuthCred, TokenAuthCred};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -24,15 +24,45 @@ pub struct AuthEntryMeta {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename = "basic")]
 pub struct BasicAuthEntry {
+    #[serde(flatten)]
     pub cred: Argon2BasicAuthCred,
+    #[serde(flatten)]
     pub meta: AuthEntryMeta,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename = "token")]
 pub struct TokenAuthEntry {
+    #[serde(flatten)]
     pub cred: Sha256TokenAuthCred,
+    #[serde(flatten)]
     pub meta: AuthEntryMeta,
+}
+
+impl BasicAuthCred for BasicAuthEntry {
+    fn username(&self) -> &str {
+        self.cred.username()
+    }
+
+    fn display_name(&self) -> &str {
+        &self.meta.name
+    }
+
+    fn verify_password(&self, password: &str) -> securitydept_creds::CredsResult<bool> {
+        self.cred.verify_password(password)
+    }
+}
+
+impl TokenAuthCred for TokenAuthEntry {
+    fn token_hash(&self) -> &str {
+        self.cred.token_hash()
+    }
+
+    fn verify_token(&self, token: &str) -> securitydept_creds::CredsResult<bool> {
+        self.cred.verify_token(token)
+    }
 }
 
 impl AuthEntryMeta {
@@ -67,10 +97,39 @@ impl Group {
 /// Top-level data structure persisted to the data file.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DataFile {
-    pub entries: Vec<AuthEntryMeta>,
     pub groups: Vec<Group>,
-    pub basic: Vec<AuthEntryMeta>,
-    pub token: Vec<AuthEntryMeta>,
+    pub basic_creds: Vec<BasicAuthEntry>,
+    pub token_creds: Vec<TokenAuthEntry>,
+}
+
+/// Unified auth entry view for API/CLI responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthEntry {
+    #[serde(flatten)]
+    pub meta: AuthEntryMeta,
+    pub kind: AuthEntryKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+}
+
+impl From<&BasicAuthEntry> for AuthEntry {
+    fn from(value: &BasicAuthEntry) -> Self {
+        Self {
+            meta: value.meta.clone(),
+            kind: AuthEntryKind::Basic,
+            username: Some(value.cred.username.clone()),
+        }
+    }
+}
+
+impl From<&TokenAuthEntry> for AuthEntry {
+    fn from(value: &TokenAuthEntry) -> Self {
+        Self {
+            meta: value.meta.clone(),
+            kind: AuthEntryKind::Token,
+            username: None,
+        }
+    }
 }
 
 /// Session info stored in memory after OIDC login.
@@ -94,6 +153,13 @@ pub struct CreateBasicEntryRequest {
     pub group_ids: Vec<String>,
 }
 
+/// Response after creating a token auth entry (includes the plaintext token once).
+#[derive(Debug, Serialize)]
+pub struct CreateBasicEntryResponse {
+    #[serde(flatten)]
+    pub entry: AuthEntry,
+}
+
 /// Request payload for creating a token auth entry.
 #[derive(Debug, Deserialize)]
 pub struct CreateTokenEntryRequest {
@@ -105,7 +171,8 @@ pub struct CreateTokenEntryRequest {
 /// Response after creating a token auth entry (includes the plaintext token once).
 #[derive(Debug, Serialize)]
 pub struct CreateTokenEntryResponse {
-    pub entry: AuthEntryMeta,
+    #[serde(flatten)]
+    pub entry: AuthEntry,
     pub token: String,
 }
 

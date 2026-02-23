@@ -12,7 +12,7 @@
   </div>
 </h1>
 
-**Standalone auth service: OIDC login, manage local basic/token entries and groups, with forward-auth endpoints for reverse proxies (Traefik, Nginx). File-based config and data, no database.**
+**Standalone auth service and reusable Rust crates for OIDC + credential auth. Includes OIDC login, local basic/token entries with groups, and forward-auth endpoints for reverse proxies (Traefik, Nginx). File-based config and data, no database.**
 
 ---
 
@@ -24,6 +24,16 @@ Status: v0.1.1 release-ready — Core flows are implemented across API, CLI, and
 - **Entries & groups**: Basic auth and token auth entries, grouped by name; CRUD via REST API and CLI.
 - **Forward-auth**: `GET /api/forwardauth/traefik/:group` and `/api/forwardauth/nginx/:group` — validate `Authorization` against group entries; no session.
 - **Config**: TOML + env (Figment); single JSON data file for entries and groups.
+- **Reusable crates**: `securitydept-oidc` and `securitydept-creds` can be reused by other Rust services.
+
+## Workspace Crates
+
+- **`securitydept-oidc`**: OIDC client, config model, claims check flow, pending OAuth store abstractions.
+- **`securitydept-creds`**: Basic/bearer parsing, Argon2/SHA-256 primitives, credential traits, validator traits/helpers.
+- **`securitydept-creds-manage`**: File-backed store + models for entries/groups, app-level auth helpers, session manager.
+- **`securitydept-utils`**: Shared URL/HTTP utility helpers.
+- **`securitydept-server`**: HTTP server (Axum) wiring all crates into APIs/forward-auth endpoints.
+- **`securitydept-cli`**: Local management CLI using the same store/config model.
 
 ## Quick Start
 

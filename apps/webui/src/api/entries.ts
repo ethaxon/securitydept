@@ -11,10 +11,9 @@ export interface AuthEntry {
 	updated_at: string;
 }
 
-export interface CreateTokenResponse {
-	entry: AuthEntry;
+export type CreateTokenResponse = AuthEntry & {
 	token: string;
-}
+};
 
 export function useEntries() {
 	return useQuery<AuthEntry[]>({

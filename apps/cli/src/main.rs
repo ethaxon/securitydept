@@ -6,8 +6,7 @@ use clap::{Parser, Subcommand};
 use tabled::{Table, Tabled};
 use tracing_subscriber::EnvFilter;
 
-use securitydept_creds_manage::auth;
-use securitydept_creds_manage::models::{AuthEntryKind, AuthEntryMeta, Group};
+use securitydept_creds_manage::models::{AuthEntry, AuthEntryKind, Group};
 use securitydept_creds_manage::store::CredsManageStore;
 
 use crate::config::CliConfig;
@@ -139,18 +138,18 @@ struct EntryRow {
     created_at: String,
 }
 
-impl From<AuthEntryMeta> for EntryRow {
-    fn from(e: AuthEntryMeta) -> Self {
+impl From<AuthEntry> for EntryRow {
+    fn from(e: AuthEntry) -> Self {
         Self {
-            id: e.id,
-            name: e.name,
+            id: e.meta.id,
+            name: e.meta.name,
             kind: match e.kind {
                 AuthEntryKind::Basic => "basic".to_string(),
                 AuthEntryKind::Token => "token".to_string(),
             },
             username: e.username.unwrap_or_default(),
-            group_ids: e.group_ids.join(", "),
-            created_at: e.created_at.format("%Y-%m-%d %H:%M").to_string(),
+            group_ids: e.meta.group_ids.join(", "),
+            created_at: e.meta.created_at.format("%Y-%m-%d %H:%M").to_string(),
         }
     }
 }
@@ -204,21 +203,19 @@ async fn main() -> CliResult<()> {
                 password,
                 group_ids,
             } => {
-                let password_hash = auth::hash_password_argon2(&password)?;
-                let entry = AuthEntryMeta::new_basic(name, username, password_hash, group_ids);
-                let created = store.create_entry(entry).await?;
+                let created = store
+                    .create_basic_entry(name, username, password, group_ids)
+                    .await?;
                 println!(
                     "Created basic auth entry: {} ({})",
-                    created.name, created.id
+                    created.meta.name, created.meta.id
                 );
             }
             EntryAction::CreateToken { name, group_ids } => {
-                let (token, token_hash) = auth::generate_token()?;
-                let entry = AuthEntryMeta::new_token(name, token_hash, group_ids);
-                let created = store.create_entry(entry).await?;
+                let (created, token) = store.create_token_entry(name, group_ids).await?;
                 println!(
                     "Created token auth entry: {} ({})",
-                    created.name, created.id
+                    created.meta.name, created.meta.id
                 );
                 println!("Token (save this, it won't be shown again): {token}");
             }
@@ -233,14 +230,10 @@ async fn main() -> CliResult<()> {
                 password,
                 group_ids,
             } => {
-                let password_hash = match password {
-                    Some(pw) => Some(auth::hash_password_argon2(&pw)?),
-                    None => None,
-                };
                 let updated = store
-                    .update_entry(&id, name, username, password_hash, group_ids)
+                    .update_entry(&id, name, username, password, group_ids)
                     .await?;
-                println!("Updated entry: {} ({})", updated.name, updated.id);
+                println!("Updated entry: {} ({})", updated.meta.name, updated.meta.id);
             }
         },
         Commands::Group { action } => match action {

@@ -38,12 +38,8 @@ async fn store_syncs_external_file_changes() {
     let path = temp_data_file_path("store-sync");
     let store = CredsManageStore::load(&path).await.expect("load store");
 
-    let created = store
-        .create_entry(securitydept_creds_manage::models::AuthEntryMeta::new_token(
-            "entry-a".to_string(),
-            "hash-a".to_string(),
-            vec![],
-        ))
+    let (created, _) = store
+        .create_token_entry("entry-a".to_string(), vec![])
         .await
         .expect("create entry");
 
@@ -53,7 +49,7 @@ async fn store_syncs_external_file_changes() {
             .expect("read data file"),
     )
     .expect("parse data file");
-    disk_data.entries[0].name = "entry-from-external-change".to_string();
+    disk_data.token_creds[0].meta.name = "entry-from-external-change".to_string();
     tokio::fs::write(
         &path,
         serde_json::to_string_pretty(&disk_data).expect("serialize data file"),
@@ -65,8 +61,8 @@ async fn store_syncs_external_file_changes() {
         Duration::from_secs(4),
         Duration::from_millis(100),
         || async {
-            match store.get_entry(&created.id).await {
-                Ok(entry) => entry.name == "entry-from-external-change",
+            match store.get_entry(&created.meta.id).await {
+                Ok(entry) => entry.meta.name == "entry-from-external-change",
                 Err(_) => false,
             }
         },
@@ -87,16 +83,8 @@ async fn concurrent_store_instances_do_not_lose_updates() {
     let store_a = CredsManageStore::load(&path).await.expect("load store a");
     let store_b = CredsManageStore::load(&path).await.expect("load store b");
 
-    let create_a = store_a.create_entry(securitydept_creds_manage::models::AuthEntryMeta::new_token(
-        "entry-a".to_string(),
-        "hash-a".to_string(),
-        vec![],
-    ));
-    let create_b = store_b.create_entry(securitydept_creds_manage::models::AuthEntryMeta::new_token(
-        "entry-b".to_string(),
-        "hash-b".to_string(),
-        vec![],
-    ));
+    let create_a = store_a.create_token_entry("entry-a".to_string(), vec![]);
+    let create_b = store_b.create_token_entry("entry-b".to_string(), vec![]);
 
     let (result_a, result_b) = tokio::join!(create_a, create_b);
     result_a.expect("create entry a");
@@ -114,8 +102,8 @@ async fn concurrent_store_instances_do_not_lose_updates() {
                 Ok(v) => v,
                 Err(_) => return false,
             };
-            let has_a = data.entries.iter().any(|e| e.name == "entry-a");
-            let has_b = data.entries.iter().any(|e| e.name == "entry-b");
+            let has_a = data.token_creds.iter().any(|e| e.meta.name == "entry-a");
+            let has_b = data.token_creds.iter().any(|e| e.meta.name == "entry-b");
             has_a && has_b
         },
     )
@@ -134,28 +122,20 @@ async fn delete_group_removes_group_membership_from_entries() {
     let path = temp_data_file_path("store-delete-group-relations");
     let store = CredsManageStore::load(&path).await.expect("load store");
 
-    let e1 = store
-        .create_entry(securitydept_creds_manage::models::AuthEntryMeta::new_token(
-            "entry-a".to_string(),
-            "hash-a".to_string(),
-            vec![],
-        ))
+    let (e1, _) = store
+        .create_token_entry("entry-a".to_string(), vec![])
         .await
         .expect("create entry a");
 
-    let e2 = store
-        .create_entry(securitydept_creds_manage::models::AuthEntryMeta::new_token(
-            "entry-b".to_string(),
-            "hash-b".to_string(),
-            vec![],
-        ))
+    let (e2, _) = store
+        .create_token_entry("entry-b".to_string(), vec![])
         .await
         .expect("create entry b");
 
     let created_group = store
         .create_group(
             securitydept_creds_manage::models::Group::new("g-delete".to_string()),
-            Some(vec![e1.id.clone(), e2.id.clone()]),
+            Some(vec![e1.meta.id.clone(), e2.meta.id.clone()]),
         )
         .await
         .expect("create group");
@@ -165,10 +145,22 @@ async fn delete_group_removes_group_membership_from_entries() {
         .await
         .expect("delete group");
 
-    let reloaded_e1 = store.get_entry(&e1.id).await.expect("reload entry a");
-    let reloaded_e2 = store.get_entry(&e2.id).await.expect("reload entry b");
-    assert!(!reloaded_e1.group_ids.iter().any(|g| g == &created_group.id));
-    assert!(!reloaded_e2.group_ids.iter().any(|g| g == &created_group.id));
+    let reloaded_e1 = store.get_entry(&e1.meta.id).await.expect("reload entry a");
+    let reloaded_e2 = store.get_entry(&e2.meta.id).await.expect("reload entry b");
+    assert!(
+        !reloaded_e1
+            .meta
+            .group_ids
+            .iter()
+            .any(|g| g == &created_group.id)
+    );
+    assert!(
+        !reloaded_e2
+            .meta
+            .group_ids
+            .iter()
+            .any(|g| g == &created_group.id)
+    );
 
     let _ = tokio::fs::remove_file(&path).await;
 }
@@ -178,28 +170,20 @@ async fn update_group_updates_entry_memberships_and_renames_group() {
     let path = temp_data_file_path("store-update-group-relations");
     let store = CredsManageStore::load(&path).await.expect("load store");
 
-    let e1 = store
-        .create_entry(securitydept_creds_manage::models::AuthEntryMeta::new_token(
-            "entry-a".to_string(),
-            "hash-a".to_string(),
-            vec![],
-        ))
+    let (e1, _) = store
+        .create_token_entry("entry-a".to_string(), vec![])
         .await
         .expect("create entry a");
 
-    let e2 = store
-        .create_entry(securitydept_creds_manage::models::AuthEntryMeta::new_token(
-            "entry-b".to_string(),
-            "hash-b".to_string(),
-            vec![],
-        ))
+    let (e2, _) = store
+        .create_token_entry("entry-b".to_string(), vec![])
         .await
         .expect("create entry b");
 
     let created_group = store
         .create_group(
             securitydept_creds_manage::models::Group::new("old-group".to_string()),
-            Some(vec![e1.id.clone()]),
+            Some(vec![e1.meta.id.clone()]),
         )
         .await
         .expect("create group");
@@ -208,15 +192,27 @@ async fn update_group_updates_entry_memberships_and_renames_group() {
         .update_group(
             &created_group.id,
             "new-group".to_string(),
-            Some(vec![e2.id.clone()]),
+            Some(vec![e2.meta.id.clone()]),
         )
         .await
         .expect("update group");
 
-    let reloaded_e1 = store.get_entry(&e1.id).await.expect("reload entry a");
-    let reloaded_e2 = store.get_entry(&e2.id).await.expect("reload entry b");
-    assert!(!reloaded_e1.group_ids.iter().any(|g| g == &created_group.id));
-    assert!(reloaded_e2.group_ids.iter().any(|g| g == &created_group.id));
+    let reloaded_e1 = store.get_entry(&e1.meta.id).await.expect("reload entry a");
+    let reloaded_e2 = store.get_entry(&e2.meta.id).await.expect("reload entry b");
+    assert!(
+        !reloaded_e1
+            .meta
+            .group_ids
+            .iter()
+            .any(|g| g == &created_group.id)
+    );
+    assert!(
+        reloaded_e2
+            .meta
+            .group_ids
+            .iter()
+            .any(|g| g == &created_group.id)
+    );
 
     let _ = tokio::fs::remove_file(&path).await;
 }

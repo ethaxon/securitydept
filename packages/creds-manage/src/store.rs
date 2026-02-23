@@ -6,12 +6,13 @@ use std::time::{Duration, SystemTime};
 use chrono::Utc;
 use fs2::FileExt;
 use notify::{RecursiveMode, Watcher};
+use securitydept_creds::{Argon2BasicAuthCred, Sha256TokenAuthCred, generate_token};
 use snafu::ResultExt;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 
 use crate::error::{self, CredsManageResult};
-use crate::models::{AuthEntryMeta, BasicAuthEntry, DataFile, Group, TokenAuthEntry};
+use crate::models::{AuthEntry, AuthEntryMeta, BasicAuthEntry, DataFile, Group, TokenAuthEntry};
 
 /// File-backed store for auth entries and groups.
 ///
@@ -83,40 +84,68 @@ impl CredsManageStore {
 
     // -- Entry operations --
 
-    pub async fn list_entries(&self) -> Vec<AuthEntryMeta> {
-        self.data.read().await.entries.clone()
+    pub async fn list_entries(&self) -> Vec<AuthEntry> {
+        let data = self.data.read().await;
+        collect_all_entries(&data)
     }
 
-    pub async fn get_entry(&self, id: &str) -> CredsManageResult<AuthEntryMeta> {
+    pub async fn get_entry(&self, id: &str) -> CredsManageResult<AuthEntry> {
         let data = self.data.read().await;
-        data.entries
-            .iter()
-            .find(|e| e.id == id)
-            .cloned()
+        find_entry_by_id(&data, id)
             .ok_or_else(|| error::CredsManageError::EntryNotFound { id: id.to_string() })
     }
 
-    pub async fn create_entry(&self, entry: AuthEntryMeta) -> CredsManageResult<AuthEntryMeta> {
+    pub async fn create_basic_entry(
+        &self,
+        name: String,
+        username: String,
+        password: String,
+        group_ids: Vec<String>,
+    ) -> CredsManageResult<AuthEntry> {
         let _io_guard = self.io_lock.lock().await;
 
-        let entry_for_write = entry.clone();
         let (created, snapshot, modified) =
             mutate_data_file_with_lock(self.path.clone(), move |data| {
-                if data.entries.iter().any(|e| e.name == entry_for_write.name) {
-                    return Err(error::CredsManageError::DuplicateEntryName {
-                        name: entry_for_write.name.clone(),
-                    });
-                }
-                for group_id in &entry_for_write.group_ids {
-                    if !data.groups.iter().any(|g| &g.id == group_id) {
-                        return Err(error::CredsManageError::GroupNotFound {
-                            id: group_id.clone(),
-                        });
-                    }
-                }
+                ensure_entry_name_is_unique(data, &name, None)?;
+                ensure_groups_exist(data, &group_ids)?;
 
-                data.entries.push(entry_for_write.clone());
-                Ok(entry_for_write)
+                let entry = BasicAuthEntry {
+                    cred: Argon2BasicAuthCred::new(username, password)?,
+                    meta: AuthEntryMeta::new(name, group_ids),
+                };
+
+                let created = AuthEntry::from(&entry);
+                data.basic_creds.push(entry);
+                Ok(created)
+            })
+            .await?;
+
+        *self.data.write().await = snapshot;
+        *self.last_modified.write().await = modified;
+        Ok(created)
+    }
+
+    pub async fn create_token_entry(
+        &self,
+        name: String,
+        group_ids: Vec<String>,
+    ) -> CredsManageResult<(AuthEntry, String)> {
+        let _io_guard = self.io_lock.lock().await;
+
+        let (created, snapshot, modified) =
+            mutate_data_file_with_lock(self.path.clone(), move |data| {
+                ensure_entry_name_is_unique(data, &name, None)?;
+                ensure_groups_exist(data, &group_ids)?;
+
+                let token = generate_token()?;
+                let entry = TokenAuthEntry {
+                    cred: Sha256TokenAuthCred::new(token.clone())?,
+                    meta: AuthEntryMeta::new(name, group_ids),
+                };
+
+                let created = AuthEntry::from(&entry);
+                data.token_creds.push(entry);
+                Ok((created, token))
             })
             .await?;
 
@@ -130,58 +159,50 @@ impl CredsManageStore {
         id: &str,
         name: Option<String>,
         username: Option<String>,
-        password_hash: Option<String>,
+        password: Option<String>,
         group_ids: Option<Vec<String>>,
-    ) -> CredsManageResult<AuthEntryMeta> {
+    ) -> CredsManageResult<AuthEntry> {
         let _io_guard = self.io_lock.lock().await;
         let id = id.to_string();
 
         let (updated, snapshot, modified) =
             mutate_data_file_with_lock(self.path.clone(), move |data| {
-                if let Some(ref new_name) = name
-                    && data
-                        .entries
-                        .iter()
-                        .any(|e| e.id != id && e.name == *new_name)
-                {
-                    return Err(error::CredsManageError::DuplicateEntryName {
-                        name: new_name.clone(),
-                    });
+                if let Some(ref new_name) = name {
+                    ensure_entry_name_is_unique(data, new_name, Some(&id))?;
                 }
                 if let Some(ref gids) = group_ids {
-                    for group_id in gids {
-                        if !data.groups.iter().any(|g| &g.id == group_id) {
-                            return Err(error::CredsManageError::GroupNotFound {
-                                id: group_id.clone(),
-                            });
-                        }
+                    ensure_groups_exist(data, gids)?;
+                }
+
+                if let Some(entry) = data.basic_creds.iter_mut().find(|e| e.meta.id == id) {
+                    if let Some(new_name) = name.clone() {
+                        entry.meta.name = new_name;
                     }
-                }
-
-                let entry = data
-                    .entries
-                    .iter_mut()
-                    .find(|e| e.id == id)
-                    .ok_or_else(|| error::CredsManageError::EntryNotFound { id: id.clone() })?;
-
-                if let Some(new_name) = name {
-                    entry.name = new_name;
-                }
-                if let AuthEntryCred::Basic(ref mut cred) = entry.cred {
-                    if let Some(u) = username {
-                        cred.username = u;
+                    if let Some(new_username) = username {
+                        entry.cred.username = new_username;
                     }
-                    if let Some(ph) = password_hash {
-                        cred.update_password(ph)?;
+                    if let Some(new_password) = password {
+                        entry.cred.update_password(new_password)?;
                     }
+                    if let Some(gids) = group_ids.clone() {
+                        entry.meta.group_ids = gids;
+                    }
+                    entry.meta.updated_at = Utc::now();
+                    return Ok(AuthEntry::from(&*entry));
                 }
 
-                if let Some(gids) = group_ids {
-                    entry.group_ids = gids;
+                if let Some(entry) = data.token_creds.iter_mut().find(|e| e.meta.id == id) {
+                    if let Some(new_name) = name {
+                        entry.meta.name = new_name;
+                    }
+                    if let Some(gids) = group_ids {
+                        entry.meta.group_ids = gids;
+                    }
+                    entry.meta.updated_at = Utc::now();
+                    return Ok(AuthEntry::from(&*entry));
                 }
 
-                entry.updated_at = Utc::now();
-                Ok(entry.clone())
+                Err(error::CredsManageError::EntryNotFound { id })
             })
             .await?;
 
@@ -195,11 +216,18 @@ impl CredsManageStore {
         let id = id.to_string();
 
         let (_, snapshot, modified) = mutate_data_file_with_lock(self.path.clone(), move |data| {
-            let len_before = data.entries.len();
-            data.entries.retain(|e| e.id != id);
-            if data.entries.len() == len_before {
+            let basic_len_before = data.basic_creds.len();
+            data.basic_creds.retain(|e| e.meta.id != id);
+
+            let token_len_before = data.token_creds.len();
+            data.token_creds.retain(|e| e.meta.id != id);
+
+            if data.basic_creds.len() == basic_len_before
+                && data.token_creds.len() == token_len_before
+            {
                 return Err(error::CredsManageError::EntryNotFound { id: id.clone() });
             }
+
             Ok(())
         })
         .await?;
@@ -209,12 +237,42 @@ impl CredsManageStore {
         Ok(())
     }
 
-    /// Find all entries that belong to a given group id.
-    pub async fn entries_by_group_id(&self, group_id: &str) -> Vec<AuthEntryMeta> {
+    /// Find all entry metadata that belong to a given group id.
+    pub async fn entries_by_group_id(&self, group_id: &str) -> Vec<AuthEntry> {
         let data = self.data.read().await;
-        data.entries
+
+        let mut entries = Vec::new();
+        entries.extend(
+            data.basic_creds
+                .iter()
+                .filter(|e| e.meta.group_ids.iter().any(|g| g == group_id))
+                .map(AuthEntry::from),
+        );
+        entries.extend(
+            data.token_creds
+                .iter()
+                .filter(|e| e.meta.group_ids.iter().any(|g| g == group_id))
+                .map(AuthEntry::from),
+        );
+        entries
+    }
+
+    /// Find all basic auth entries that belong to a given group id.
+    pub async fn basic_entries_by_group_id(&self, group_id: &str) -> Vec<BasicAuthEntry> {
+        let data = self.data.read().await;
+        data.basic_creds
             .iter()
-            .filter(|e| e.group_ids.iter().any(|g| g == group_id))
+            .filter(|e| e.meta.group_ids.iter().any(|g| g == group_id))
+            .cloned()
+            .collect()
+    }
+
+    /// Find all token auth entries that belong to a given group id.
+    pub async fn token_entries_by_group_id(&self, group_id: &str) -> Vec<TokenAuthEntry> {
+        let data = self.data.read().await;
+        data.token_creds
+            .iter()
+            .filter(|e| e.meta.group_ids.iter().any(|g| g == group_id))
             .cloned()
             .collect()
     }
@@ -242,6 +300,7 @@ impl CredsManageStore {
         let _io_guard = self.io_lock.lock().await;
         let group_for_write = group.clone();
         let entry_ids = entry_ids.unwrap_or_default();
+
         let (created, snapshot, modified) =
             mutate_data_file_with_lock(self.path.clone(), move |data| {
                 if data.groups.iter().any(|g| g.name == group_for_write.name) {
@@ -251,7 +310,7 @@ impl CredsManageStore {
                 }
 
                 for entry_id in &entry_ids {
-                    if !data.entries.iter().any(|e| &e.id == entry_id) {
+                    if !entry_exists(data, entry_id) {
                         return Err(error::CredsManageError::EntryNotFound {
                             id: entry_id.clone(),
                         });
@@ -260,12 +319,28 @@ impl CredsManageStore {
 
                 data.groups.push(group_for_write.clone());
                 if !entry_ids.is_empty() {
-                    for entry in &mut data.entries {
-                        if entry_ids.iter().any(|id| id == &entry.id)
-                            && !entry.group_ids.iter().any(|gid| gid == &group_for_write.id)
+                    for entry in &mut data.basic_creds {
+                        if entry_ids.iter().any(|id| id == &entry.meta.id)
+                            && !entry
+                                .meta
+                                .group_ids
+                                .iter()
+                                .any(|gid| gid == &group_for_write.id)
                         {
-                            entry.group_ids.push(group_for_write.id.clone());
-                            entry.updated_at = Utc::now();
+                            entry.meta.group_ids.push(group_for_write.id.clone());
+                            entry.meta.updated_at = Utc::now();
+                        }
+                    }
+                    for entry in &mut data.token_creds {
+                        if entry_ids.iter().any(|id| id == &entry.meta.id)
+                            && !entry
+                                .meta
+                                .group_ids
+                                .iter()
+                                .any(|gid| gid == &group_for_write.id)
+                        {
+                            entry.meta.group_ids.push(group_for_write.id.clone());
+                            entry.meta.updated_at = Utc::now();
                         }
                     }
                 }
@@ -296,7 +371,7 @@ impl CredsManageStore {
 
                 if let Some(ref entry_ids) = selected_entry_ids {
                     for entry_id in entry_ids {
-                        if !data.entries.iter().any(|e| &e.id == entry_id) {
+                        if !entry_exists(data, entry_id) {
                             return Err(error::CredsManageError::EntryNotFound {
                                 id: entry_id.clone(),
                             });
@@ -304,36 +379,40 @@ impl CredsManageStore {
                     }
                 }
 
-                let group = data
-                    .groups
-                    .iter_mut()
-                    .find(|g| g.id == id)
-                    .ok_or_else(|| error::CredsManageError::GroupNotFound { id: id.clone() })?;
+                let target_group_id = {
+                    let group =
+                        data.groups.iter_mut().find(|g| g.id == id).ok_or_else(|| {
+                            error::CredsManageError::GroupNotFound { id: id.clone() }
+                        })?;
+                    group.name = name;
+                    group.id.clone()
+                };
 
-                group.name = name;
-                let target_group_id = group.id.clone();
-
-                for entry in &mut data.entries {
-                    let was_member = entry.group_ids.iter().any(|g| g == &target_group_id);
+                for entry in &mut data.basic_creds {
+                    let was_member = entry.meta.group_ids.iter().any(|g| g == &target_group_id);
                     let target_member = if let Some(ref entry_ids) = selected_entry_ids {
-                        entry_ids.iter().any(|entry_id| entry_id == &entry.id)
+                        entry_ids.iter().any(|entry_id| entry_id == &entry.meta.id)
                     } else {
                         was_member
                     };
-
-                    let before = entry.group_ids.clone();
-                    entry.group_ids.retain(|g| g != &target_group_id);
-                    if target_member {
-                        entry.group_ids.push(target_group_id.clone());
-                        entry.group_ids.sort();
-                        entry.group_ids.dedup();
-                    }
-
-                    if entry.group_ids != before {
-                        entry.updated_at = Utc::now();
-                    }
+                    update_group_membership(&mut entry.meta, &target_group_id, target_member);
                 }
-                Ok(group.clone())
+
+                for entry in &mut data.token_creds {
+                    let was_member = entry.meta.group_ids.iter().any(|g| g == &target_group_id);
+                    let target_member = if let Some(ref entry_ids) = selected_entry_ids {
+                        entry_ids.iter().any(|entry_id| entry_id == &entry.meta.id)
+                    } else {
+                        was_member
+                    };
+                    update_group_membership(&mut entry.meta, &target_group_id, target_member);
+                }
+
+                data.groups
+                    .iter()
+                    .find(|g| g.id == id)
+                    .cloned()
+                    .ok_or_else(|| error::CredsManageError::GroupNotFound { id: id.clone() })
             })
             .await?;
 
@@ -353,11 +432,19 @@ impl CredsManageStore {
             };
 
             data.groups.retain(|g| g.id != id);
-            for entry in &mut data.entries {
-                let len_before = entry.group_ids.len();
-                entry.group_ids.retain(|gid| gid != &removed_group.id);
-                if entry.group_ids.len() != len_before {
-                    entry.updated_at = Utc::now();
+
+            for entry in &mut data.basic_creds {
+                let len_before = entry.meta.group_ids.len();
+                entry.meta.group_ids.retain(|gid| gid != &removed_group.id);
+                if entry.meta.group_ids.len() != len_before {
+                    entry.meta.updated_at = Utc::now();
+                }
+            }
+            for entry in &mut data.token_creds {
+                let len_before = entry.meta.group_ids.len();
+                entry.meta.group_ids.retain(|gid| gid != &removed_group.id);
+                if entry.meta.group_ids.len() != len_before {
+                    entry.meta.updated_at = Utc::now();
                 }
             }
             Ok(())
@@ -379,6 +466,79 @@ impl CredsManageStore {
 impl Drop for CredsManageStore {
     fn drop(&mut self) {
         self.sync_task.abort();
+    }
+}
+
+fn collect_all_entries(data: &DataFile) -> Vec<AuthEntry> {
+    let mut entries = Vec::new();
+    entries.extend(data.basic_creds.iter().map(AuthEntry::from));
+    entries.extend(data.token_creds.iter().map(AuthEntry::from));
+    entries.sort_by_key(|e| e.meta.created_at);
+    entries
+}
+
+fn find_entry_by_id(data: &DataFile, id: &str) -> Option<AuthEntry> {
+    if let Some(entry) = data.basic_creds.iter().find(|e| e.meta.id == id) {
+        return Some(AuthEntry::from(entry));
+    }
+    if let Some(entry) = data.token_creds.iter().find(|e| e.meta.id == id) {
+        return Some(AuthEntry::from(entry));
+    }
+    None
+}
+
+fn ensure_entry_name_is_unique(
+    data: &DataFile,
+    candidate_name: &str,
+    current_entry_id: Option<&str>,
+) -> CredsManageResult<()> {
+    let exists_in_basic = data
+        .basic_creds
+        .iter()
+        .any(|e| e.meta.name == candidate_name && current_entry_id != Some(e.meta.id.as_str()));
+
+    let exists_in_token = data
+        .token_creds
+        .iter()
+        .any(|e| e.meta.name == candidate_name && current_entry_id != Some(e.meta.id.as_str()));
+
+    if exists_in_basic || exists_in_token {
+        return Err(error::CredsManageError::DuplicateEntryName {
+            name: candidate_name.to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+fn ensure_groups_exist(data: &DataFile, group_ids: &[String]) -> CredsManageResult<()> {
+    for group_id in group_ids {
+        if !data.groups.iter().any(|g| &g.id == group_id) {
+            return Err(error::CredsManageError::GroupNotFound {
+                id: group_id.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn entry_exists(data: &DataFile, entry_id: &str) -> bool {
+    data.basic_creds.iter().any(|e| e.meta.id == entry_id)
+        || data.token_creds.iter().any(|e| e.meta.id == entry_id)
+}
+
+fn update_group_membership(meta: &mut AuthEntryMeta, target_group_id: &str, target_member: bool) {
+    let before = meta.group_ids.clone();
+    meta.group_ids
+        .retain(|group_id| group_id != target_group_id);
+    if target_member {
+        meta.group_ids.push(target_group_id.to_string());
+        meta.group_ids.sort();
+        meta.group_ids.dedup();
+    }
+
+    if meta.group_ids != before {
+        meta.updated_at = Utc::now();
     }
 }
 

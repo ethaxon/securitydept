@@ -1,57 +1,102 @@
 # Architecture
 
-Workspace layout, configuration and data models, and how components interact.
+Workspace layout, crate responsibilities, and component interaction.
 
 ## Workspace Layout
 
 ```
 securitydept/
 ├── packages/
-│   └── creds/         # Shared library (config, OIDC, store, session, auth, claims engine)
+│   ├── oidc/          # Reusable OIDC client and models
+│   ├── creds/         # Reusable credential primitives and validator traits
+│   ├── creds-manage/  # File-backed creds/group store + sessions + app auth helpers
+│   └── utils/         # Shared base-url/http helpers
 ├── apps/
 │   ├── server/        # HTTP API + forward-auth (Axum)
 │   ├── cli/           # Management CLI (entries, groups)
 │   └── webui/         # React SPA (Vite)
-├── config/            # Example/config location (convention)
-├── docs/              # Developer documentation
-├── Cargo.toml         # Workspace (creds, server, cli)
-├── package.json       # Root + workspaces: apps/webui
-├── justfile           # Tasks: build, dev, check, lint
-└── .env.example       # Env var template
+├── docs/
+├── Cargo.toml         # Rust workspace
+├── package.json       # Node workspace root (webui tooling)
+└── justfile           # Developer tasks
 ```
 
-- **securitydept-creds-manage**: No HTTP; holds config parsing, OIDC client, file-backed store, in-memory sessions, password/token hashing and verification, claims-check script execution (Boa), TypeScript claims transpile (SWC), and base-URL resolution from headers.
-- **securitydept-server**: Depends on core; runs Axum, serves auth routes, REST API (entries/groups), and forward-auth endpoints; optionally serves webui static files.
-- **securitydept-cli**: Depends on core; reads same config and data file, provides entry/group CRUD for automation or headless use.
+## Crate Responsibilities
+
+- **`securitydept-oidc`** (`packages/oidc`)
+  - OIDC config and client (`OidcClient`)
+  - Authorization-code flow helpers (authorize URL, callback exchange)
+  - Claims model and claims-check integration
+  - Pending OAuth store traits and moka implementation
+
+- **`securitydept-creds`** (`packages/creds`)
+  - Basic/Bearer auth header parsing
+  - Argon2 password hashing and verification
+  - Token generation and SHA-256 token hashing
+  - Reusable traits (`BasicAuthCred`, `TokenAuthCred`, validator traits)
+
+- **`securitydept-creds-manage`** (`packages/creds-manage`)
+  - Config model for creds data path
+  - Data models for entries/groups/session
+  - File-backed store with lock + sync loop
+  - App-layer auth checks over stored creds
+  - In-memory session manager
+
+- **`securitydept-utils`** (`packages/utils`)
+  - Base URL resolution and shared HTTP utilities
+
+- **`securitydept-server`** (`apps/server`)
+  - Axum route wiring
+  - Auth/session middleware
+  - REST API for entries/groups
+  - Forward-auth endpoints for reverse proxies
+
+- **`securitydept-cli`** (`apps/cli`)
+  - Entry/group CRUD from terminal using same store and config
+
+## Reuse Model
+
+This repo is now intentionally split so external Rust projects can reuse auth logic without embedding the full server:
+
+- Import **`securitydept-oidc`** when you need OIDC login/callback handling.
+- Import **`securitydept-creds`** when you only need credential hashing/parsing/validation traits.
+- Import **`securitydept-creds-manage`** when you need file-backed credential/group management behavior.
+
+`securitydept-server` is one composition of these crates, not the only possible runtime.
 
 ## Configuration Model
 
-- **Source**: TOML file + environment variables. Figment merges them; env wins. Nesting uses `__` (e.g. `OIDC__CLIENT_ID` → `oidc.client_id`).
-- **Main sections** (see `packages/creds/src/config.rs`):
-  - **server**: `host`, `port`, `webui_dir` (optional static root), `external_base_url` (`"auto"` or fixed URL for OIDC redirects).
-  - **oidc**: Optional. If absent, OIDC is disabled and `/auth/login` creates a dev session. When set: `client_id`, `client_secret` (optional with PKCE), `redirect_uri`, `well_known_url` or manual endpoints, scopes, token/userinfo alg options, `claims_check_script` path, `pkce_enabled`.
-  - **data**: `path` to the JSON data file (entries + groups).
-
-Validation: if `well_known_url` is unset, `issuer_url`, `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`, and `jwks_uri` must all be set.
+- **Source**: TOML file + environment variables (Figment merge; env wins).
+- **Server config**: host/port, optional static webui dir, external base URL strategy.
+- **OIDC config**: provider metadata/discovery, client credentials, PKCE, optional claims check script.
+- **Creds-manage config**: JSON data file path for groups and credentials.
 
 ## Data Model
 
-- **Data file** (JSON): Single file with `entries` (array of auth entries) and `groups` (array of groups). Creds `Store` loads/saves it with RwLock; server and CLI both use it.
-- **Entries**: Each has `id`, `name`, `kind` (basic | token), optional `username`/`password_hash` (basic) or `token_hash` (token), `groups` (list of group names), timestamps.
-- **Groups**: `id`, `name`. Entries reference groups by name; forward-auth resolves by group name.
-- **Sessions**: In-memory only (no persistence). Created after OIDC callback (or dev login); keyed by session ID cookie; TTL configured in server (e.g. 24h). Used to protect `/api/*` (except forward-auth) and optional webui.
+- **Data file**: single JSON file with:
+  - `groups`
+  - `basic_creds`
+  - `token_creds`
+- **Entry metadata**: `id`, `name`, `group_ids`, timestamps.
+- **Basic entry**: `Argon2BasicAuthCred` + metadata.
+- **Token entry**: `Sha256TokenAuthCred` + metadata.
+- **Sessions**: in-memory session map keyed by session cookie ID.
 
 ## Request Flow
 
-1. **OIDC login**: User hits `/auth/login` → redirect to IdP with state/nonce (and PKCE challenge if enabled). Callback `/auth/callback` receives code; state/nonce (and PKCE verifier) are looked up from pending store; code exchange + userinfo; optional claims script; session created; cookie set; redirect to app.
-2. **Protected API**: Requests to `/api/entries`, `/api/groups` require session cookie; middleware resolves session or returns 401.
-3. **Forward-auth**: `/api/forwardauth/traefik/{group}` and `/api/forwardauth/nginx/{group}` are **not** session-based. Reverse proxy sends `Authorization` (Basic or Bearer); server loads entries for that group and validates credential; 200 or 401. Used as Traefik ForwardAuth or Nginx `auth_request` upstream.
-4. **Base URL**: For OIDC redirect_uri, server uses `external_base_url`: either fixed or inferred from Forwarded / X-Forwarded-* / Host (see `packages/creds/src/base_url.rs`).
-5. **Health endpoint**: `/api/health` returns service status; `/api/health?api_details=true` includes route metadata for UI and diagnostics.
+1. **OIDC login** (`/auth/login`)
+   - Server calls `securitydept-oidc` to build authorize request.
+2. **OIDC callback** (`/auth/callback`)
+   - Server uses `securitydept-oidc` for code exchange, claims evaluation, and pending state verification.
+3. **Session-protected APIs** (`/api/entries`, `/api/groups`)
+   - Middleware verifies session; handlers call `securitydept-creds-manage` store.
+4. **Forward-auth endpoints** (`/api/forwardauth/*`)
+   - No session required.
+   - Header parsing/hashing uses `securitydept-creds`; data lookup uses `securitydept-creds-manage`.
 
-## Security-Relevant Details
+## Security-Relevant Notes
 
-- **State/nonce**: Stored in a short-lived in-memory store keyed by OAuth `state`; consumed once at callback (CSRF + nonce binding).
-- **PKCE**: Optional; when `pkce_enabled`, code_verifier is stored with state and sent at token exchange.
-- **Secrets**: Passwords hashed with Argon2; tokens stored as SHA-256 hex; client_secret and PKCE verifier only in memory/config.
-- **Forward-auth**: No session; validates the credential in the request against the group’s entries only.
+- Passwords are stored as Argon2 hashes.
+- Bearer tokens are generated once and persisted only as SHA-256 hash.
+- OIDC state/nonce (and PKCE verifier when enabled) are short-lived and validated at callback.
+- Forward-auth validates only against configured group credentials for the incoming request.

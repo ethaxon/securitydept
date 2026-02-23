@@ -4,6 +4,7 @@ Planned and future work. See [README.md](../README.md) â€œPlanned Capabilitiesâ€
 
 ## Aligned with README (partially or fully done)
 
+- **Multi-crate architecture for reuse**: Done (`securitydept-oidc`, `securitydept-creds`, `securitydept-creds-manage`, `securitydept-utils` + server/cli apps).
 - **External OIDC**: Done (authorization code, optional PKCE, discovery or manual endpoints).
 - **Validate claims with custom rules**: Done via optional claims-check script (Boa).
 - **Basic auth and token auth entries**: Done; CRUD via API and CLI.

@@ -78,9 +78,10 @@ async fn check_forward_auth(
         return Err(StatusCode::UNAUTHORIZED);
     };
 
-    let entries = state.store.entries_by_group_id(&group_obj.id).await;
+    let basic_entries = state.store.basic_entries_by_group_id(&group_obj.id).await;
+    let token_entries = state.store.token_entries_by_group_id(&group_obj.id).await;
 
-    if entries.is_empty() {
+    if basic_entries.is_empty() && token_entries.is_empty() {
         warn!(
             group = %group,
             group_id = %group_obj.id,
@@ -100,7 +101,7 @@ async fn check_forward_auth(
 
     // Try basic auth first
     if let Some((username, password)) = parse_basic_auth_header_opt(auth_header) {
-        match check_basic_auth(&entries, &username, &password) {
+        match check_basic_auth(&basic_entries, &username, &password) {
             Ok(Some(name)) => return Ok(name),
             Ok(None) => {}
             Err(error) => {
@@ -115,10 +116,18 @@ async fn check_forward_auth(
     }
 
     // Try bearer token
-    if let Some(token) = parse_bearer_auth_header_opt(auth_header)
-        && let Some(name) = check_token_auth(&entries, &token)
-    {
-        return Ok(name);
+    if let Some(token) = parse_bearer_auth_header_opt(auth_header) {
+        match check_token_auth(&token_entries, &token) {
+            Ok(Some(name)) => return Ok(name),
+            Ok(None) => {}
+            Err(error) => {
+                warn!(
+                    group = %group,
+                    error = %error,
+                    "Token credential validation failed"
+                );
+            }
+        }
     }
 
     warn!(
