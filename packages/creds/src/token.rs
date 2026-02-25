@@ -1,7 +1,7 @@
 use crate::error::{CredsError, CredsResult};
-use argon2::password_hash::rand_core::{OsRng, RngCore};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use rand::TryRng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt::{Debug, Formatter};
@@ -20,7 +20,7 @@ pub fn parse_bearer_auth_header(header_value: &str) -> Result<String, CredsError
 
 pub fn generate_token() -> CredsResult<String> {
     let mut bytes = [0u8; 32];
-    OsRng
+    rand::rng()
         .try_fill_bytes(&mut bytes)
         .map_err(|e| CredsError::RandomBytes {
             message: e.to_string(),

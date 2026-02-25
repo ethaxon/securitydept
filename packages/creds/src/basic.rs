@@ -2,7 +2,10 @@ use std::fmt::{Debug, Formatter};
 
 use argon2::{
     Argon2,
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, rand_core::OsRng},
+    password_hash::{
+        PasswordHasher, PasswordVerifier,
+        phc::{PasswordHash, SaltString},
+    },
 };
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use serde::{Deserialize, Serialize};
@@ -50,10 +53,10 @@ pub fn parse_basic_auth_header(header_value: &str) -> Result<(String, String), C
 
 /// Hash a plaintext password with argon2.
 pub fn hash_password_argon2(password: &str) -> CredsResult<String> {
-    let salt = argon2::password_hash::SaltString::generate(&mut OsRng);
+    let salt = SaltString::generate();
     let argon2 = Argon2::default();
     let hash = argon2
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password_with_salt(password.as_bytes(), salt.as_bytes())
         .map_err(|e| CredsError::PasswordHash {
             message: e.to_string(),
         })?;

@@ -3,7 +3,7 @@ set windows-shell := ["pwsh.exe", "-NoLogo", "-ExecutionPolicy", "RemoteSigned",
 
 setup:
     pnpm install
-    cargo check --workspace
+    cargo check --workspace --features "securitydept-creds/zone,securitydept-creds/axum"
 
 build-webui:
     cd apps/webui && pnpm build
@@ -27,11 +27,8 @@ dev-server:
 
 dev: dev-server
 
-check:
-    cargo check --workspace
-
 lint-rs:
-    cargo clippy --workspace
+    cargo clippy --workspace -F "securitydept-creds/zone,securitydept-creds/axum"
 
 lint-ts:
     pnpm lint
