@@ -1,6 +1,7 @@
+use std::time::Duration;
+
 use moka::future::Cache;
 use serde::Deserialize;
-use std::time::Duration;
 
 use crate::{
     OidcResult,
@@ -35,7 +36,8 @@ impl Default for MokaPendingOauthStoreConfig {
     }
 }
 
-/// One-time store for OAuth state -> (nonce, code_verifier) during the login redirect round-trip.
+/// One-time store for OAuth state -> (nonce, code_verifier) during the login
+/// redirect round-trip.
 #[derive(Clone)]
 pub struct MokaPendingOauthStore {
     inner: Cache<String, PendingOauth>,

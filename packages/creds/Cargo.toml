@@ -4,8 +4,7 @@ version = "0.1.1"
 edition = "2024"
 
 [features]
-zone = ["dep:typed-builder", "dep:web-route"]
-axum = ["dep:axum"]
+zone = ["dep:typed-builder", "dep:web-route", "dep:axum"]
 
 [dependencies]
 securitydept-utils = { path = "../utils" }
@@ -16,10 +15,11 @@ tokio = { workspace = true, features = ["rt", "sync"] }
 tracing = { workspace = true }
 base64 = { workspace = true }
 http = { workspace = true }
-web-route = { workspace = true, optional = true }
-axum = { workspace = true, optional = true }
-typed-builder = { workspace = true, optional = true }
 argon2 = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
+
+web-route = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+typed-builder = { workspace = true, optional = true }

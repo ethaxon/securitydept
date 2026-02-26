@@ -2,13 +2,13 @@ use openidconnect::core::{CoreClientAuthMethod, CoreJwsSigningAlgorithm};
 use serde::Deserialize;
 use serde_with::{DeserializeAs, NoneAsEmptyString, PickFirst, serde_as};
 
-use crate::{OidcError, OidcResult};
-
 #[cfg(feature = "default-pending-store")]
 use crate::pending_store::MokaPendingOauthStoreConfig;
+use crate::{OidcError, OidcResult};
 
 /// Deserializes a string into Vec<T> by splitting on comma and/or whitespace.
-/// Used with PickFirst to accept either a delimited string or a sequence (array).
+/// Used with PickFirst to accept either a delimited string or a sequence
+/// (array).
 pub struct CommaOrSpaceSeparated<T>(std::marker::PhantomData<T>);
 
 impl<'de, T> DeserializeAs<'de, Vec<T>> for CommaOrSpaceSeparated<T>
@@ -34,8 +34,10 @@ where
 
 /// Input configuration for building the OIDC client.
 ///
-/// When `well_known_url` is set, discovery is fetched from it and optional fields override.
-/// When not set, `issuer_url`, `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`, and `jwks_uri` must be set.
+/// When `well_known_url` is set, discovery is fetched from it and optional
+/// fields override. When not set, `issuer_url`, `authorization_endpoint`,
+/// `token_endpoint`, and `jwks_uri` must be set. `userinfo_endpoint` is
+/// recommended, and userinfo claims are fetched only when it is set.
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]
 pub struct OidcConfig {
@@ -72,13 +74,15 @@ pub struct OidcConfig {
     #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<CoreJwsSigningAlgorithm>, _)>>")]
     #[serde(default)]
     pub id_token_signing_alg_values_supported: Option<Vec<CoreJwsSigningAlgorithm>>,
-    /// Supported userinfo signing algorithms; may include "none" for unsigned response.
+    /// Supported userinfo signing algorithms; may include "none" for unsigned
+    /// response.
     #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<CoreJwsSigningAlgorithm>, _)>>")]
     #[serde(default)]
     pub userinfo_signing_alg_values_supported: Option<Vec<CoreJwsSigningAlgorithm>>,
     #[serde(default)]
     pub claims_check_script: Option<String>,
-    /// When true, use PKCE (code_challenge / code_verifier) for the authorization code flow.
+    /// When true, use PKCE (code_challenge / code_verifier) for the
+    /// authorization code flow.
     #[serde(default)]
     pub pkce_enabled: bool,
     #[serde(default = "default_redirect_url")]
@@ -105,8 +109,8 @@ impl OidcConfig {
                     self.authorization_endpoint.as_deref(),
                 ),
                 ("token_endpoint", self.token_endpoint.as_deref()),
-                ("userinfo_endpoint", self.userinfo_endpoint.as_deref()),
                 ("jwks_uri", self.jwks_uri.as_deref()),
+                ("userinfo_endpoint", self.userinfo_endpoint.as_deref()),
             ]
             .into_iter()
             .filter_map(|(name, v)| match v {
@@ -115,10 +119,13 @@ impl OidcConfig {
                 _ => None,
             })
             .collect();
-            if !missing.is_empty() {
+            if missing.len() > 1 || (missing.len() == 1 && missing[0] != "userinfo_endpoint") {
                 return Err(OidcError::InvalidConfig {
                     message: format!(
-                        "When well_known_url is not set, all of issuer_url, authorization_endpoint, token_endpoint, userinfo_endpoint and jwks_uri must be set; missing: {}",
+                        "When well_known_url is not set, all of issuer_url, \
+                         authorization_endpoint, token_endpoint, and jwks_uri must be set; \
+                         userinfo_endpoint is recommended and only enables user_info_claims \
+                         fetch; missing: {}",
                         missing.join(", ")
                     ),
                 });

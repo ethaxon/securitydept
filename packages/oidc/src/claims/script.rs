@@ -1,21 +1,24 @@
 use std::path::Path;
 
+use boa_engine::{Context, Source};
 use serde::{Deserialize, Serialize};
 use serde_constant::ConstBool;
+use swc_core::{
+    common::{FileName, GLOBALS, Globals, Mark, SourceMap, sync::Lrc},
+    ecma::{
+        ast::Program,
+        codegen::{Config as CodegenConfig, Emitter, text_writer::JsWriter},
+        parser::{Parser, StringInput, Syntax, TsSyntax},
+        transforms::{base::resolver, typescript::strip},
+    },
+};
 use tracing::debug;
 
-use crate::ClaimsCheckResult;
-use crate::UserInfoClaimsWithExtra;
-use crate::claims::{ClaimsChecker, DefaultClaimsChecker};
-use crate::error::{OidcError, OidcResult};
-
-use boa_engine::{Context, Source};
-use swc_core::common::{FileName, GLOBALS, Globals, Mark, SourceMap, sync::Lrc};
-use swc_core::ecma::ast::Program;
-use swc_core::ecma::codegen::{Config as CodegenConfig, Emitter, text_writer::JsWriter};
-use swc_core::ecma::parser::{Parser, StringInput, Syntax, TsSyntax};
-use swc_core::ecma::transforms::base::resolver;
-use swc_core::ecma::transforms::typescript::strip;
+use crate::{
+    ClaimsCheckResult, IdTokenClaimsWithExtra, UserInfoClaimsWithExtra,
+    claims::{ClaimsChecker, DefaultClaimsChecker},
+    error::{OidcError, OidcResult},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScriptClaimsCheckSuccessResult {
@@ -92,15 +95,33 @@ impl ClaimsChecker for ScriptClaimsChecker {
     /// This function executes the provided script using the Boa engine
     async fn check_claims(
         &self,
-        claims: &UserInfoClaimsWithExtra,
+        id_token_claims: &IdTokenClaimsWithExtra,
+        user_info_claims: Option<&UserInfoClaimsWithExtra>,
     ) -> OidcResult<ClaimsCheckResult> {
         if let Some(boa_compat_source) = &self.boa_compat_source {
             let mut context = Context::default();
 
             // Inject the claims as a global JSON string, then parse inside JS
-            let claims_json = serde_json::to_string(&claims).map_err(|e| OidcError::Claims {
-                message: format!("Failed to serialize claims: {e}"),
-            })?;
+            let id_token_claims_json_block = {
+                let id_token_claims_json =
+                    serde_json::to_string(&id_token_claims).map_err(|e| OidcError::Claims {
+                        message: format!("Failed to serialize id_token_claims: {e}"),
+                    })?;
+                format!(r#"JSON.parse('{id_token_claims_json}')"#,)
+                    .replace('\\', "\\\\")
+                    .replace('\'', "\\'")
+            };
+            let user_info_claims_json_block = if let Some(user_info_claims) = user_info_claims {
+                let user_info_claims_json =
+                    serde_json::to_string(&user_info_claims).map_err(|e| OidcError::Claims {
+                        message: format!("Failed to serialize user_info_claims: {e}"),
+                    })?;
+                format!(r#"JSON.parse('{user_info_claims_json}')"#,)
+                    .replace('\\', "\\\\")
+                    .replace('\'', "\\'")
+            } else {
+                "null".to_string()
+            };
 
             // Build a wrapper that:
             // 1. Captures the module-like default export function
@@ -108,7 +129,8 @@ impl ClaimsChecker for ScriptClaimsChecker {
             // 3. Returns the JSON result
             let wrapper = format!(
                 r#"
-                var __claims = JSON.parse('{claims_json_escaped}');
+                var __id_token_claims = {id_token_claims_escaped};
+                var __user_info_claims = {user_info_claims_escaped};
                 var __exports = {{}};
         
                 // Shim: capture the default export
@@ -118,10 +140,11 @@ impl ClaimsChecker for ScriptClaimsChecker {
                 if (typeof __fn !== 'function') {{
                     throw new Error('No default export function found in the script');
                 }}
-                var __result = __fn(__claims);
+                var __result = __fn(__id_token_claims, __user_info_claims);
                 JSON.stringify(__result);
                 "#,
-                claims_json_escaped = claims_json.replace('\\', "\\\\").replace('\'', "\\'"),
+                id_token_claims_escaped = id_token_claims_json_block,
+                user_info_claims_escaped = user_info_claims_json_block,
                 script = boa_compat_source,
             );
 
@@ -156,7 +179,10 @@ impl ClaimsChecker for ScriptClaimsChecker {
                 }
             }
         } else {
-            Ok(self.default_checker.check_claims(claims).await?)
+            Ok(self
+                .default_checker
+                .check_claims(id_token_claims, user_info_claims)
+                .await?)
         }
     }
 }

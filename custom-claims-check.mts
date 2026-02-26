@@ -29,9 +29,16 @@ interface CheckFailureResult {
 type CheckResult = CheckSuccessResult | CheckFailureResult;
 
 // use default export function
-export default function claimsCheck(claims: Claims): CheckResult {
+export default function claimsCheck(
+	idTokenClaims: Claims,
+	userInfoClaims: Claims | null,
+): CheckResult {
+	const claims = {
+		...idTokenClaims,
+		...userInfoClaims,
+	};
 	const displayName =
-		claims?.preferred_username || claims?.nickname || claims.sub;
+		claims?.preferred_username || claims?.nickname || claims?.sub;
 	const picture = claims?.picture;
 	if (!displayName) {
 		return {

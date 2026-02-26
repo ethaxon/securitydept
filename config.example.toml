@@ -11,13 +11,15 @@ webui_dir = "./webui"
 # Remove the entire [oidc] section (or set OIDC_ENABLED=false) to disable OIDC for local debugging.
 # issuer_url is required. When well_known_url is set, discovery is loaded from it and the
 # endpoint URLs below (if set) override discovered values. When well_known_url is not set,
-# authorization_endpoint, token_endpoint, userinfo_endpoint and jwks_uri must all be set.
+# issuer_url, authorization_endpoint, token_endpoint and jwks_uri must be set.
+# userinfo_endpoint is recommended; user_info_claims are fetched only when it is set.
 [oidc]
 client_id = "your-client-id"
 client_secret = "your-client-secret"
 well_known_url = "https://your-oidc-provider.com/.well-known/openid-configuration"
 # scopes = ["openid", "profile", "email"]
-# Optional overrides when using well_known_url; required when well_known_url is omitted:
+# Optional overrides when using well_known_url. When well_known_url is omitted,
+# issuer_url/authorization_endpoint/token_endpoint/jwks_uri are required and userinfo_endpoint is recommended:
 # issuer_url = "https://your-oidc-provider.com"
 # authorization_endpoint = "https://your-oidc-provider.com/authorize"
 # token_endpoint = "https://your-oidc-provider.com/token"

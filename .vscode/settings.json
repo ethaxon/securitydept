@@ -33,12 +33,10 @@
 	"[jsonc]": {
 		"editor.defaultFormatter": "biomejs.biome"
 	},
+	"npm.packageManager": "pnpm",
 	"editor.codeActionsOnSave": {
 		"source.organizeImports.biome": "explicit",
 		"source.fixAll.biome": "explicit"
 	},
-	"rust-analyzer.cargo.features": [
-		"securitydept-creds/zone",
-		"securitydept-creds/axum"
-	]
+	"rust-analyzer.cargo.features": ["securitydept-creds/zone"]
 }

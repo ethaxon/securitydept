@@ -1,52 +1,78 @@
-use openidconnect::EmptyAdditionalProviderMetadata;
-use openidconnect::core::{CoreProviderMetadata, CoreResponseType, CoreSubjectIdentifierType};
 use openidconnect::{
-    AuthUrl, AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl,
+    AuthUrl, AuthenticationFlow, AuthorizationCode, Client, ClientId, ClientSecret, CsrfToken,
+    EmptyAdditionalProviderMetadata, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl,
     JsonWebKeySet, JsonWebKeySetUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, ResponseTypes, Scope, TokenUrl, UserInfoUrl, reqwest,
+    PkceCodeVerifier, RedirectUrl, RefreshToken, ResponseTypes, Scope, StandardErrorResponse,
+    StandardTokenResponse, TokenUrl, UserInfoUrl,
+    core::{
+        CoreAuthDisplay, CoreAuthPrompt, CoreErrorResponseType, CoreGenderClaim, CoreJsonWebKey,
+        CoreJweContentEncryptionAlgorithm, CoreProviderMetadata, CoreResponseType,
+        CoreRevocableToken, CoreRevocationErrorResponse, CoreSubjectIdentifierType,
+        CoreTokenIntrospectionResponse, CoreTokenType,
+    },
+    reqwest,
 };
-use openidconnect::{EndpointMaybeSet, EndpointSet, core::CoreClient};
-
 use url::Url;
 
-use crate::claims::ClaimsChecker;
+#[cfg(not(feature = "claims-script"))]
+use crate::claims::DefaultClaimsChecker;
 #[cfg(feature = "claims-script")]
 use crate::claims::ScriptClaimsChecker;
-use crate::config::{OidcConfig, default_id_token_signing_alg_values_supported};
-use crate::error::{OidcError, OidcResult};
-use crate::models::OidcCodeCallbackResult;
 use crate::{
-    ClaimsCheckResult, OidcCodeCallbackSearchParams, OidcCodeExchangeResult,
-    OidcCodeFlowAuthorizationRequest, PendingOauthStore, UserInfoClaimsWithExtra,
+    ClaimsCheckResult, ExtraClaims, IdTokenClaimsWithExtra, OidcCodeCallbackSearchParams,
+    OidcCodeExchangeResult, OidcCodeFlowAuthorizationRequest, PendingOauthStore,
+    UserInfoClaimsWithExtra,
+    claims::ClaimsChecker,
+    config::{OidcConfig, default_id_token_signing_alg_values_supported},
+    error::{OidcError, OidcResult},
+    models::{IdTokenFieldsWithExtra, OidcCodeCallbackResult, OidcRefreshTokenResult},
 };
+pub type TokenResponseWithExtra = StandardTokenResponse<IdTokenFieldsWithExtra, CoreTokenType>;
 
-/// Type alias for the discovered client *without* a fixed redirect URI.
-pub type DiscoveredClient = CoreClient<
-    EndpointSet,                   // HasAuthUrl
-    openidconnect::EndpointNotSet, // HasDeviceAuthUrl
-    openidconnect::EndpointNotSet, // HasIntrospectionUrl
-    openidconnect::EndpointNotSet, // HasRevocationUrl
-    EndpointMaybeSet,              // HasTokenUrl
-    EndpointMaybeSet,              // HasUserInfoUrl
+pub type ClientWithExtra<
+    HasAuthUrl = EndpointNotSet,
+    HasDeviceAuthUrl = EndpointNotSet,
+    HasIntrospectionUrl = EndpointNotSet,
+    HasRevocationUrl = EndpointNotSet,
+    HasTokenUrl = EndpointNotSet,
+    HasUserInfoUrl = EndpointNotSet,
+> = Client<
+    ExtraClaims,
+    CoreAuthDisplay,
+    CoreGenderClaim,
+    CoreJweContentEncryptionAlgorithm,
+    CoreJsonWebKey,
+    CoreAuthPrompt,
+    StandardErrorResponse<CoreErrorResponseType>,
+    TokenResponseWithExtra,
+    CoreTokenIntrospectionResponse,
+    CoreRevocableToken,
+    CoreRevocationErrorResponse,
+    HasAuthUrl,
+    HasDeviceAuthUrl,
+    HasIntrospectionUrl,
+    HasRevocationUrl,
+    HasTokenUrl,
+    HasUserInfoUrl,
 >;
 
-/// Type alias for the discovered client *with* a fixed redirect URI.
-pub type DiscoveredClientWithRedirect = CoreClient<
-    EndpointSet,                   // HasAuthUrl
-    openidconnect::EndpointNotSet, // HasDeviceAuthUrl
-    openidconnect::EndpointNotSet, // HasIntrospectionUrl
-    openidconnect::EndpointNotSet, // HasRevocationUrl
-    EndpointMaybeSet,              // HasTokenUrl
-    EndpointMaybeSet,              // HasUserInfoUrl
+pub type DiscoveredClientWithExtra = ClientWithExtra<
+    EndpointSet,      // HasAuthUrl
+    EndpointNotSet,   // HasDeviceAuthUrl
+    EndpointNotSet,   // HasIntrospectionUrl
+    EndpointNotSet,   // HasRevocationUrl
+    EndpointMaybeSet, // HasTokenUrl
+    EndpointMaybeSet, // HasUserInfoUrl
 >;
 
 /// Wraps the OIDC discovered client for login/callback flows.
 ///
-/// The redirect URI is resolved dynamically per-request so that `external_base_url = "auto"`
-/// can produce the correct absolute callback URL based on the incoming request headers.
+/// The redirect URI is resolved dynamically per-request so that
+/// `external_base_url = "auto"` can produce the correct absolute callback URL
+/// based on the incoming request headers.
 pub struct OidcClient {
     config: OidcConfig,
-    client: DiscoveredClient,
+    client: DiscoveredClientWithExtra,
     #[cfg(feature = "claims-script")]
     claims_checker: ScriptClaimsChecker,
     #[cfg(not(feature = "claims-script"))]
@@ -58,9 +84,10 @@ pub struct OidcClient {
 impl OidcClient {
     /// Initialize the OIDC client from config.
     ///
-    /// When `well_known_url` is set: fetch discovery from that URL, then override any
-    /// endpoint URLs provided in config. When not set: use `issuer_url` and the four
-    /// required endpoints (authorization, token, userinfo, jwks_uri).
+    /// When `well_known_url` is set: fetch discovery from that URL, then
+    /// override any endpoint URLs provided in config. When not set: use
+    /// `issuer_url` and required endpoints (authorization, token, jwks_uri).
+    /// `userinfo` is recommended and only used when configured.
     ///
     /// The redirect URI is **not** baked in here; call [`authorize_url`] or
     /// [`exchange_code`] with the resolved `external_base_url` at request time.
@@ -91,11 +118,7 @@ impl OidcClient {
 
         let metadata = metadata.set_jwks(jwks);
 
-        let client = openidconnect::core::CoreClient::from_provider_metadata(
-            metadata,
-            client_id,
-            client_secret,
-        );
+        let client = ClientWithExtra::from_provider_metadata(metadata, client_id, client_secret);
 
         #[cfg(feature = "claims-script")]
         let claims_checker =
@@ -235,16 +258,14 @@ impl OidcClient {
         .map_err(|e| OidcError::Metadata {
             message: format!("Invalid token_endpoint: {e}"),
         })?;
-        let userinfo_url = UserInfoUrl::new(
-            config
-                .userinfo_endpoint
-                .as_deref()
-                .unwrap_or_default()
-                .to_string(),
-        )
-        .map_err(|e| OidcError::Metadata {
-            message: format!("Invalid userinfo_endpoint: {e}"),
-        })?;
+        let userinfo_url = config
+            .userinfo_endpoint
+            .as_deref()
+            .map(|s| UserInfoUrl::new(s.to_string()))
+            .transpose()
+            .map_err(|e| OidcError::Metadata {
+                message: format!("Invalid userinfo_endpoint: {e}"),
+            })?;
 
         let id_token_signing_alg_values_supported = config
             .id_token_signing_alg_values_supported
@@ -261,7 +282,7 @@ impl OidcClient {
             EmptyAdditionalProviderMetadata::default(),
         )
         .set_token_endpoint(Some(token_url))
-        .set_userinfo_endpoint(Some(userinfo_url))
+        .set_userinfo_endpoint(userinfo_url)
         .set_userinfo_signing_alg_values_supported(
             config.userinfo_signing_alg_values_supported.clone(),
         )
@@ -282,7 +303,7 @@ impl OidcClient {
     fn client_with_redirect(
         &self,
         external_base_url: &Url,
-    ) -> OidcResult<DiscoveredClientWithRedirect> {
+    ) -> OidcResult<DiscoveredClientWithExtra> {
         let redirect_url = self.resolve_redirect_url(external_base_url)?;
         Ok(self
             .client
@@ -292,8 +313,9 @@ impl OidcClient {
 
     /// Generate the authorization URL the user should be redirected to.
     ///
-    /// When `pkce_enabled` (config), the fourth element is the PKCE code_verifier secret to store
-    /// and pass to `exchange_code` in the callback.
+    /// When `pkce_enabled` (config), the fourth element is the PKCE
+    /// code_verifier secret to store and pass to `exchange_code` in the
+    /// callback.
     pub fn authorize_url(
         &self,
         external_base_url: &Url,
@@ -327,10 +349,12 @@ impl OidcClient {
         })
     }
 
-    /// Exchange the authorization code for tokens, then fetch user info claims.
+    /// Exchange the authorization code for tokens.
+    /// If `userinfo_endpoint` is configured, also fetch user info claims.
     ///
-    /// When PKCE was used at authorize_url, pass the stored code_verifier secret here.
-    /// `external_base_url` must match the one used during [`authorize_url`].
+    /// When PKCE was used at authorize_url, pass the stored code_verifier
+    /// secret here. `external_base_url` must match the one used during
+    /// [`authorize_url`].
     pub async fn exchange_code(
         &self,
         external_base_url: &Url,
@@ -386,9 +410,14 @@ impl OidcClient {
         let access_token = token_response.access_token().secret().clone();
         let refresh_token = token_response.refresh_token().map(|v| v.secret().clone());
 
-        let user_info_claims = self
-            .request_userinfo(&client, &http_client, token_response.access_token().clone())
-            .await?;
+        let user_info_claims = if self.client.user_info_url().is_some() {
+            let user_info_claims = self
+                .request_userinfo(&client, &http_client, token_response.access_token().clone())
+                .await?;
+            Some(user_info_claims)
+        } else {
+            None
+        };
 
         Ok(OidcCodeExchangeResult {
             id_token,
@@ -447,7 +476,12 @@ impl OidcClient {
             .exchange_code(external_base_url, code, &nonce, code_verifier.as_deref())
             .await?;
 
-        let claims_check_result = self.check_claims(&code_exchange.user_info_claims).await?;
+        let claims_check_result = self
+            .check_claims(
+                &code_exchange.id_token_claims,
+                code_exchange.user_info_claims.as_ref(),
+            )
+            .await?;
 
         Ok(OidcCodeCallbackResult {
             code: search_params.code,
@@ -463,9 +497,75 @@ impl OidcClient {
         })
     }
 
+    pub async fn handle_refresh_token(
+        &self,
+        refresh_token: &RefreshToken,
+    ) -> OidcResult<OidcRefreshTokenResult> {
+        let http_client =
+            reqwest::Client::builder()
+                .build()
+                .map_err(|e| OidcError::TokenExchange {
+                    message: format!("Failed to build HTTP client: {e}"),
+                })?;
+
+        let token_response = self
+            .client
+            .exchange_refresh_token(refresh_token)
+            .map_err(|e| OidcError::TokenRefresh {
+                message: format!("Token endpoint not set or config error: {e}"),
+            })?
+            .request_async(&http_client)
+            .await
+            .map_err(|e| OidcError::TokenRefresh {
+                message: format!("Refresh token request failed: {e}"),
+            })?;
+
+        let refresh_token = token_response.refresh_token().map(|v| v.secret().clone());
+        let access_token = token_response.access_token().secret().clone();
+
+        let mut result = OidcRefreshTokenResult {
+            access_token,
+            refresh_token,
+            id_token: None,
+            user_info_claims: None,
+            claims_check_result: None,
+            id_token_claims: None,
+        };
+
+        if let Some(next_id_token) = token_response.extra_fields().id_token() {
+            let id_token_verifier = self.client.id_token_verifier();
+            let id_token_claims = next_id_token
+                .claims(&id_token_verifier, |_nonce: Option<&Nonce>| Ok(()))
+                .map_err(|e| OidcError::TokenExchange {
+                    message: format!("Failed to verify refreshed ID token: {e}"),
+                })?;
+            let user_info_claims = if self.client.user_info_url().is_some() {
+                Some(
+                    self.request_userinfo(
+                        &self.client,
+                        &http_client,
+                        token_response.access_token().clone(),
+                    )
+                    .await?,
+                )
+            } else {
+                None
+            };
+            let claims_check_result = self
+                .check_claims(id_token_claims, user_info_claims.as_ref())
+                .await?;
+            result.id_token = Some(next_id_token.to_string());
+            result.id_token_claims = Some(id_token_claims.clone());
+            result.user_info_claims = user_info_claims;
+            result.claims_check_result = Some(claims_check_result);
+        }
+
+        Ok(result)
+    }
+
     async fn request_userinfo(
         &self,
-        client: &DiscoveredClientWithRedirect,
+        client: &DiscoveredClientWithExtra,
         http_client: &reqwest::Client,
         access_token: openidconnect::AccessToken,
     ) -> OidcResult<UserInfoClaimsWithExtra> {
@@ -483,10 +583,13 @@ impl OidcClient {
         Ok(userinfo_claims)
     }
 
-    pub async fn check_claims(
+    async fn check_claims(
         &self,
-        claims: &UserInfoClaimsWithExtra,
+        id_token_claims: &IdTokenClaimsWithExtra,
+        user_info_claims: Option<&UserInfoClaimsWithExtra>,
     ) -> OidcResult<ClaimsCheckResult> {
-        self.claims_checker.check_claims(claims).await
+        self.claims_checker
+            .check_claims(id_token_claims, user_info_claims)
+            .await
     }
 }

@@ -1,10 +1,10 @@
+use openidconnect::{
+    AdditionalClaims, CsrfToken, EmptyExtraTokenFields, IdTokenClaims, IdTokenFields, Nonce,
+    UserInfoClaims,
+    core::{CoreGenderClaim, CoreJweContentEncryptionAlgorithm, CoreJwsSigningAlgorithm},
+};
 use serde::{Deserialize, Serialize};
 use url::Url;
-
-use openidconnect::{
-    AdditionalClaims, CsrfToken, EmptyAdditionalClaims, IdTokenClaims, Nonce, UserInfoClaims,
-    core::CoreGenderClaim,
-};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaimsCheckResult {
@@ -15,7 +15,7 @@ pub struct ClaimsCheckResult {
 }
 
 /// Additional claims we accept from the OIDC provider (open-ended).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct ExtraClaims {
     #[serde(flatten)]
     pub extra: serde_json::Value,
@@ -24,7 +24,15 @@ pub struct ExtraClaims {
 impl AdditionalClaims for ExtraClaims {}
 
 pub type UserInfoClaimsWithExtra = UserInfoClaims<ExtraClaims, CoreGenderClaim>;
-pub type CoreIdTokenClaims = IdTokenClaims<EmptyAdditionalClaims, CoreGenderClaim>;
+pub type IdTokenClaimsWithExtra = IdTokenClaims<ExtraClaims, CoreGenderClaim>;
+
+pub type IdTokenFieldsWithExtra = IdTokenFields<
+    ExtraClaims,
+    EmptyExtraTokenFields,
+    CoreGenderClaim,
+    CoreJweContentEncryptionAlgorithm,
+    CoreJwsSigningAlgorithm,
+>;
 
 #[derive(Debug)]
 pub struct OidcCodeFlowAuthorizationRequest {
@@ -45,8 +53,8 @@ pub struct OidcCodeExchangeResult {
     pub access_token: String,
     pub id_token: String,
     pub refresh_token: Option<String>,
-    pub id_token_claims: CoreIdTokenClaims,
-    pub user_info_claims: UserInfoClaimsWithExtra,
+    pub id_token_claims: IdTokenClaimsWithExtra,
+    pub user_info_claims: Option<UserInfoClaimsWithExtra>,
 }
 
 pub struct OidcCodeCallbackResult {
@@ -57,9 +65,18 @@ pub struct OidcCodeCallbackResult {
     pub access_token: String,
     pub id_token: String,
     pub refresh_token: Option<String>,
-    pub id_token_claims: CoreIdTokenClaims,
-    pub user_info_claims: UserInfoClaimsWithExtra,
+    pub id_token_claims: IdTokenClaimsWithExtra,
+    pub user_info_claims: Option<UserInfoClaimsWithExtra>,
     pub claims_check_result: ClaimsCheckResult,
+}
+
+pub struct OidcRefreshTokenResult {
+    pub access_token: String,
+    pub id_token: Option<String>,
+    pub refresh_token: Option<String>,
+    pub id_token_claims: Option<IdTokenClaimsWithExtra>,
+    pub user_info_claims: Option<UserInfoClaimsWithExtra>,
+    pub claims_check_result: Option<ClaimsCheckResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

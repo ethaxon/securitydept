@@ -33,6 +33,9 @@ pub enum OidcError {
     PendingOauth {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    #[snafu(display("OIDC token refresh error: {message}"))]
+    TokenRefresh { message: String },
 }
 
 impl ToHttpStatus for OidcError {
@@ -46,6 +49,7 @@ impl ToHttpStatus for OidcError {
             | OidcError::Metadata { .. }
             | OidcError::TokenExchange { .. }
             | OidcError::RedirectUrl { .. }
+            | OidcError::TokenRefresh { .. }
             | OidcError::ClaimsCheckScriptCompile { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
