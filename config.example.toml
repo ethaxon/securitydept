@@ -1,7 +1,8 @@
 [server]
 host = "0.0.0.0"
 port = 7021
-webui_dir = "./webui"
+# Optional path to webui static files.
+# webui_dir = "./webui"
 # External base URL for generating absolute URLs (e.g. OIDC redirect_uri).
 # "auto" (default) = infer from request headers at runtime:
 #   Forwarded (RFC 7239) > X-Forwarded-Host/Proto > Host header > http://{host}:{port}
@@ -32,5 +33,5 @@ well_known_url = "https://your-oidc-provider.com/.well-known/openid-configuratio
 # pkce_enabled = true
 # claims_check_script = "./claims-script-check.mts"
 
-[data]
-path = "./data/data.json"
+[creds_manage]
+data_path = "./data/data.json"

@@ -18,7 +18,7 @@ use crate::error::{ServerError, ServerResult};
 /// Env var mapping uses `__` (double underscore) as the nesting separator:
 ///   SERVER__HOST  -> server.host
 ///   OIDC__CLIENT_ID -> oidc.client_id
-///   CREDS_MANAGE__DATA_PATH -> data.path
+///   CREDS_MANAGE__DATA_PATH -> creds_manage.data_path
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerConfig {
     #[serde(default)]
