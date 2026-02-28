@@ -4,12 +4,12 @@ pub mod forward_auth;
 pub mod groups;
 pub mod health;
 
-use axum::Router;
-use axum::middleware;
-use axum::routing::{delete, get, post, put};
+use axum::{
+    Router, middleware,
+    routing::{delete, get, post, put},
+};
 
-use crate::middleware::require_session;
-use crate::state::ServerState;
+use crate::{middleware::require_session, state::ServerState};
 
 /// Build the complete application router.
 pub fn build_router(state: ServerState) -> Router {

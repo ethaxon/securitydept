@@ -1,6 +1,8 @@
 pub mod auth;
 pub mod config;
 pub mod error;
+#[cfg(feature = "migration")]
+pub mod migrations;
 pub mod models;
 pub mod session;
 pub mod store;

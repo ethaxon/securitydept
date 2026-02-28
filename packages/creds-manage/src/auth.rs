@@ -1,6 +1,3 @@
-use crate::error::CredsManageResult;
-use crate::models::{BasicAuthEntry, TokenAuthEntry};
-
 use securitydept_creds::{
     BasicAuthCred, BasicAuthCredsConfig, BasicAuthCredsValidator, MapBasicAuthCredsValidator,
     MapTokenAuthCredsValidator, TokenAuthCred, TokenAuthCredsConfig,
@@ -8,6 +5,11 @@ use securitydept_creds::{
 pub use securitydept_creds::{
     hash_password_argon2, hash_token_sha256, parse_basic_auth_header_opt,
     parse_bearer_auth_header_opt, verify_password_argon2, verify_token_sha256,
+};
+
+use crate::{
+    error::CredsManageResult,
+    models::{BasicAuthEntry, TokenAuthEntry},
 };
 
 /// Check basic auth credentials against a list of entries in a group.

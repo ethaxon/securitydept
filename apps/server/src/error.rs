@@ -16,6 +16,10 @@ pub enum ServerError {
     ConfigLoad { message: String },
     #[snafu(display("Invalid configuration: {message}"))]
     InvalidConfig { message: String },
+    #[snafu(display("Server boot error: {source}"))]
+    ServerBoot {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
     #[snafu(transparent)]
     CredsManage { source: CredsManageError },
     #[snafu(transparent)]

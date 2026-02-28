@@ -1,18 +1,24 @@
-use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::{
+    io::{Read, Seek, SeekFrom, Write},
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 
 use chrono::Utc;
 use fs2::FileExt;
 use notify::{RecursiveMode, Watcher};
 use securitydept_creds::{Argon2BasicAuthCred, Sha256TokenAuthCred, generate_token};
 use snafu::ResultExt;
-use tokio::sync::{Mutex, RwLock};
-use tokio::task::JoinHandle;
+use tokio::{
+    sync::{Mutex, RwLock},
+    task::JoinHandle,
+};
 
-use crate::error::{self, CredsManageResult};
-use crate::models::{AuthEntry, AuthEntryMeta, BasicAuthEntry, DataFile, Group, TokenAuthEntry};
+use crate::{
+    error::{self, CredsManageResult},
+    models::{AuthEntry, AuthEntryMeta, BasicAuthEntry, DataFile, Group, TokenAuthEntry},
+};
 
 /// File-backed store for auth entries and groups.
 ///

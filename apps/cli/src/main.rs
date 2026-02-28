@@ -1,15 +1,16 @@
 mod config;
 mod error;
 
-use crate::error::CliResult;
 use clap::{Parser, Subcommand};
+use securitydept_creds_manage::{
+    migrations::{Migrator, models::MigratorTrait},
+    models::{AuthEntry, AuthEntryKind, Group},
+    store::CredsManageStore,
+};
 use tabled::{Table, Tabled};
 use tracing_subscriber::EnvFilter;
 
-use securitydept_creds_manage::models::{AuthEntry, AuthEntryKind, Group};
-use securitydept_creds_manage::store::CredsManageStore;
-
-use crate::config::CliConfig;
+use crate::{config::CliConfig, error::CliResult};
 
 #[derive(Parser)]
 #[command(name = "securitydept-cli", about = "SecurityDept management CLI")]
@@ -33,6 +34,11 @@ enum Commands {
     Group {
         #[command(subcommand)]
         action: GroupAction,
+    },
+    /// Manage data file migrations
+    Migrate {
+        #[command(subcommand)]
+        action: MigrateAction,
     },
 }
 
@@ -120,6 +126,16 @@ enum GroupAction {
     },
 }
 
+#[derive(Subcommand)]
+enum MigrateAction {
+    /// Apply forward migrations.
+    Up {
+        /// Optional number of migration steps to apply.
+        #[arg(long)]
+        steps: Option<u32>,
+    },
+}
+
 // Display structs for tabled output
 
 #[derive(Tabled)]
@@ -179,6 +195,23 @@ async fn main() -> CliResult<()> {
 
     let cli = Cli::parse();
     let config = CliConfig::load(&cli.config)?;
+
+    let migrator = Migrator::default();
+    migrator.try_auto_migrate(&config.creds_manage)?;
+
+    if let Commands::Migrate { action } = &cli.command {
+        match action {
+            MigrateAction::Up { steps } => {
+                migrator.up(&config.creds_manage, *steps)?;
+                println!(
+                    "Migration completed: data file {}",
+                    config.creds_manage.data_path
+                );
+            }
+        }
+        return Ok(());
+    }
+
     let store = CredsManageStore::load(&config.creds_manage.data_path).await?;
 
     match cli.command {
@@ -269,6 +302,7 @@ async fn main() -> CliResult<()> {
                 println!("Deleted group: {id}");
             }
         },
+        Commands::Migrate { .. } => unreachable!("handled above"),
     }
 
     Ok(())

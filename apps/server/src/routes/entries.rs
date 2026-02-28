@@ -1,13 +1,10 @@
-use axum::extract::Path;
-use axum::{Extension, Json};
-
+use axum::{Extension, Json, extract::Path};
 use securitydept_creds_manage::models::{
     AuthEntry, CreateBasicEntryRequest, CreateBasicEntryResponse, CreateTokenEntryRequest,
     CreateTokenEntryResponse, UpdateEntryRequest,
 };
 
-use crate::error::ServerError;
-use crate::state::ServerState;
+use crate::{error::ServerError, state::ServerState};
 
 /// GET /api/entries
 pub async fn list(Extension(state): Extension<ServerState>) -> Json<Vec<AuthEntry>> {

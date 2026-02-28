@@ -23,7 +23,8 @@ use crate::error::{ServerError, ServerResult};
 pub struct ServerConfig {
     #[serde(default)]
     pub server: ServerCoreConfig,
-    /// When absent (`None`), OIDC is disabled; /auth/login will create a dev session.
+    /// When absent (`None`), OIDC is disabled; /auth/login will create a dev
+    /// session.
     #[serde(default)]
     pub oidc: Option<OidcConfig>,
     #[serde(default)]
@@ -31,9 +32,11 @@ pub struct ServerConfig {
 }
 
 impl ServerConfig {
-    /// Load config: TOML file -> env vars (using `__` as nesting separator) -> validate.
+    /// Load config: TOML file -> env vars (using `__` as nesting separator) ->
+    /// validate.
     ///
-    /// Set `OIDC_ENABLED=false` to force-disable OIDC regardless of config file.
+    /// Set `OIDC_ENABLED=false` to force-disable OIDC regardless of config
+    /// file.
     pub fn load(path: impl AsRef<Path>) -> ServerResult<Self> {
         let mut config: ServerConfig = Figment::new()
             .merge(Toml::file(path.as_ref()))
@@ -73,8 +76,8 @@ pub struct ServerCoreConfig {
     pub webui_dir: Option<String>,
     /// External base URL for generating absolute URLs (e.g. OIDC redirect).
     ///
-    /// - `"auto"` (default): infer from request headers at runtime
-    ///   (Forwarded > X-Forwarded-Host/Proto > Host > bind address).
+    /// - `"auto"` (default): infer from request headers at runtime (Forwarded >
+    ///   X-Forwarded-Host/Proto > Host > bind address).
     /// - Any other value: use as-is (e.g. `"https://auth.example.com"`).
     #[serde(default)]
     pub external_base_url: ExternalBaseUrl,

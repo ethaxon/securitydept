@@ -38,5 +38,8 @@
 		"source.organizeImports.biome": "explicit",
 		"source.fixAll.biome": "explicit"
 	},
-	"rust-analyzer.cargo.features": ["securitydept-creds/zone"]
+	"rust-analyzer.cargo.features": [
+		"securitydept-creds/zone",
+		"securitydept-creds-manage/migration"
+	]
 }

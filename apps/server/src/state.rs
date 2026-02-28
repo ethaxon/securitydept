@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
-use securitydept_creds_manage::session::SessionManager;
-use securitydept_creds_manage::store::CredsManageStore;
+use securitydept_creds_manage::{session::SessionManager, store::CredsManageStore};
+pub use securitydept_oidc::MokaPendingOauthStore;
 use securitydept_oidc::OidcClient;
 
-pub use securitydept_oidc::MokaPendingOauthStore;
-
-use crate::config::ServerConfig;
-use crate::error::{ServerError, ServerResult};
+use crate::{
+    config::ServerConfig,
+    error::{ServerError, ServerResult},
+};
 
 /// Shared application state available to all handlers.
 #[derive(Clone)]

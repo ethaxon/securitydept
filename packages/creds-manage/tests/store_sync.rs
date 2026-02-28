@@ -1,9 +1,10 @@
-use std::future::Future;
-use std::path::PathBuf;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::{
+    future::Future,
+    path::PathBuf,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
 
-use securitydept_creds_manage::models::DataFile;
-use securitydept_creds_manage::store::CredsManageStore;
+use securitydept_creds_manage::{models::DataFile, store::CredsManageStore};
 
 fn temp_data_file_path(name: &str) -> PathBuf {
     let millis = SystemTime::now()

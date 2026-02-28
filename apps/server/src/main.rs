@@ -7,16 +7,17 @@ mod state;
 use std::sync::Arc;
 
 use clap::Parser;
-use snafu::{ResultExt, Whatever};
+use securitydept_creds_manage::{
+    migrations::Migrator, session::SessionManager, store::CredsManageStore,
+};
+use securitydept_oidc::OidcClient;
+use snafu::ResultExt;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use securitydept_creds_manage::session::SessionManager;
-use securitydept_creds_manage::store::CredsManageStore;
-use securitydept_oidc::OidcClient;
-
 use crate::{
     config::ServerConfig,
+    error::{ServerBootSnafu, ServerResult},
     state::{MokaPendingOauthStore, ServerState},
 };
 
@@ -40,7 +41,7 @@ fn resolve_config_path(cli_config: &str) -> String {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Whatever> {
+async fn main() -> ServerResult<()> {
     let default_log_level = if cfg!(debug_assertions) {
         "debug"
     } else {
@@ -58,19 +59,17 @@ async fn main() -> Result<(), Whatever> {
 
     let config_path = resolve_config_path(&cli.config);
     info!(config = %config_path, "Loading configuration");
-    let config = ServerConfig::load(&config_path).whatever_context("Failed to load config")?;
+    let config = ServerConfig::load(&config_path)?;
 
-    let store = CredsManageStore::load(&config.creds_manage.data_path)
-        .await
-        .whatever_context("Failed to load data store")?;
+    Migrator::default().try_auto_migrate(&config.creds_manage)?;
+
+    let store = CredsManageStore::load(&config.creds_manage.data_path).await?;
 
     info!(external_base_url = ?config.server.external_base_url, "Resolved external base URL config");
 
     let oidc = if let Some(ref oidc_config) = config.oidc {
         Some(Arc::new(
-            OidcClient::from_config(oidc_config.clone())
-                .await
-                .whatever_context("Failed to initialize OIDC client")?,
+            OidcClient::from_config(oidc_config.clone()).await?,
         ))
     } else {
         info!("OIDC disabled (no [oidc] section); /auth/login will create a dev session");
@@ -99,10 +98,12 @@ async fn main() -> Result<(), Whatever> {
 
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
-        .whatever_context("Failed to bind server")?;
+        .boxed()
+        .context(ServerBootSnafu)?;
     axum::serve(listener, app)
         .await
-        .whatever_context("Server error")?;
+        .boxed()
+        .context(ServerBootSnafu)?;
 
     Ok(())
 }

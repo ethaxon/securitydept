@@ -3,6 +3,9 @@ name = "securitydept-creds-manage"
 version = "0.1.1"
 edition = "2024"
 
+[features]
+migration = []
+
 [dependencies]
 securitydept-utils = { path = "../utils" }
 securitydept-creds = { path = "../creds" }

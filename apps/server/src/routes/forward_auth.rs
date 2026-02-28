@@ -1,11 +1,12 @@
-use axum::Extension;
-use axum::extract::Path;
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Response};
-use tracing::{debug, warn};
-
+use axum::{
+    Extension,
+    extract::Path,
+    http::{HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
+};
 use securitydept_creds::{parse_basic_auth_header_opt, parse_bearer_auth_header_opt};
 use securitydept_creds_manage::auth::{check_basic_auth, check_token_auth};
+use tracing::{debug, warn};
 
 use crate::state::ServerState;
 

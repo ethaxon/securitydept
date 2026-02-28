@@ -1,18 +1,21 @@
-use axum::extract::Query;
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Redirect, Response};
-use axum::{Extension, Json};
-use securitydept_creds_manage::CredsManageError;
+use axum::{
+    Extension, Json,
+    extract::Query,
+    http::{HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Redirect, Response},
+};
+use securitydept_creds_manage::{CredsManageError, models::UserInfo};
 use securitydept_oidc::{OidcCodeCallbackSearchParams, OidcError};
 use tracing::info;
 
-use securitydept_creds_manage::models::UserInfo;
+use crate::{
+    error::ServerError,
+    middleware::{SESSION_COOKIE_NAME, get_session_id},
+    state::ServerState,
+};
 
-use crate::error::ServerError;
-use crate::middleware::{SESSION_COOKIE_NAME, get_session_id};
-use crate::state::ServerState;
-
-/// GET /auth/login -- redirect to OIDC provider, or create dev session when OIDC is disabled.
+/// GET /auth/login -- redirect to OIDC provider, or create dev session when
+/// OIDC is disabled.
 pub async fn login(
     Extension(state): Extension<ServerState>,
     headers: HeaderMap,

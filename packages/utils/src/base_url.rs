@@ -1,4 +1,3 @@
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     fmt::{self, Display},
     str::FromStr,
@@ -6,6 +5,7 @@ use std::{
 };
 
 use rfc7239::parse as parse_forwarded;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Parsed representation of the `oidc_redirect_url_base` config value.
 #[derive(Debug, Clone, Default)]
@@ -84,7 +84,8 @@ impl ExternalBaseUrl {
     }
 }
 
-/// HTTP/2 `:authority` pseudo-header name. Only present when the `http` crate accepts it.
+/// HTTP/2 `:authority` pseudo-header name. Only present when the `http` crate
+/// accepts it.
 static AUTHORITY_HEADER_NAME: OnceLock<Option<http::HeaderName>> = OnceLock::new();
 
 fn authority_header_name() -> Option<&'static http::HeaderName> {
@@ -109,9 +110,9 @@ pub fn resolve_external_base_url(
 
 /// Infer external base URL from request headers.
 ///
-/// Each source yields (host, protocol) independently; we take the first non-None
-/// host and first non-None protocol by priority, then infer protocol from host if
-/// still missing, then fallback to bind address.
+/// Each source yields (host, protocol) independently; we take the first
+/// non-None host and first non-None protocol by priority, then infer protocol
+/// from host if still missing, then fallback to bind address.
 fn infer_external_base_url_from_headers(
     headers: &http::HeaderMap,
     fallback_host: &str,
@@ -141,7 +142,8 @@ fn infer_external_base_url_from_headers(
     format!("{}://{}", protocol, host)
 }
 
-/// Forwarded (RFC 7239): (host, protocol). Uses first node; strips quotes per §4.
+/// Forwarded (RFC 7239): (host, protocol). Uses first node; strips quotes per
+/// §4.
 fn try_forwarded(headers: &http::HeaderMap) -> (Option<String>, Option<String>) {
     let value = match headers
         .get(http::header::FORWARDED)
@@ -160,7 +162,8 @@ fn try_forwarded(headers: &http::HeaderMap) -> (Option<String>, Option<String>) 
     (host, protocol)
 }
 
-/// X-Forwarded-Host / X-Forwarded-Proto: (host, protocol). Proto is None if header missing.
+/// X-Forwarded-Host / X-Forwarded-Proto: (host, protocol). Proto is None if
+/// header missing.
 fn try_x_forwarded(headers: &http::HeaderMap) -> (Option<String>, Option<String>) {
     let host = headers
         .get("x-forwarded-host")
@@ -175,8 +178,8 @@ fn try_x_forwarded(headers: &http::HeaderMap) -> (Option<String>, Option<String>
     (host, protocol)
 }
 
-/// Host / :authority: (host, None). Host is HTTP/1.1; :authority is the HTTP/2 pseudo-header.
-/// Protocol cannot be inferred from these alone.
+/// Host / :authority: (host, None). Host is HTTP/1.1; :authority is the HTTP/2
+/// pseudo-header. Protocol cannot be inferred from these alone.
 fn try_host_header(headers: &http::HeaderMap) -> (Option<String>, Option<String>) {
     let host = headers
         .get(http::header::HOST)
@@ -187,7 +190,8 @@ fn try_host_header(headers: &http::HeaderMap) -> (Option<String>, Option<String>
     (host, None)
 }
 
-/// When protocol is missing (e.g. only Host header), infer from host: loopback → http, else https.
+/// When protocol is missing (e.g. only Host header), infer from host: loopback
+/// → http, else https.
 fn infer_protocol_from_host(host: &str) -> &'static str {
     if is_loopback_host(host) {
         "http"
@@ -216,8 +220,9 @@ fn is_loopback_host(host: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use http::HeaderMap;
+
+    use super::*;
 
     fn make_fallback() -> (&'static str, u16) {
         ("0.0.0.0", 7021)

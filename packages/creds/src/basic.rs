@@ -21,7 +21,8 @@ pub fn parse_basic_auth_header_opt(header_value: &str) -> Option<(String, String
     Some((user.to_string(), pass.to_string()))
 }
 
-/// Parse a basic auth header value ("Basic base64(user:pass)") with error handling.
+/// Parse a basic auth header value ("Basic base64(user:pass)") with error
+/// handling.
 pub fn parse_basic_auth_header(header_value: &str) -> Result<(String, String), CredsError> {
     let encoded = header_value.strip_prefix("Basic ").ok_or_else(|| {
         CredsError::InvalidCredentialsFormat {

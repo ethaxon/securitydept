@@ -94,12 +94,26 @@ impl Group {
     }
 }
 
+pub const DATA_FILE_VERSION: u32 = 2;
+
 /// Top-level data structure persisted to the data file.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataFile {
+    pub version: u32,
     pub groups: Vec<Group>,
     pub basic_creds: Vec<BasicAuthEntry>,
     pub token_creds: Vec<TokenAuthEntry>,
+}
+
+impl Default for DataFile {
+    fn default() -> Self {
+        Self {
+            version: DATA_FILE_VERSION,
+            groups: Vec::new(),
+            basic_creds: Vec::new(),
+            token_creds: Vec::new(),
+        }
+    }
 }
 
 /// Unified auth entry view for API/CLI responses.
@@ -153,7 +167,8 @@ pub struct CreateBasicEntryRequest {
     pub group_ids: Vec<String>,
 }
 
-/// Response after creating a token auth entry (includes the plaintext token once).
+/// Response after creating a token auth entry (includes the plaintext token
+/// once).
 #[derive(Debug, Serialize)]
 pub struct CreateBasicEntryResponse {
     #[serde(flatten)]
@@ -168,7 +183,8 @@ pub struct CreateTokenEntryRequest {
     pub group_ids: Vec<String>,
 }
 
-/// Response after creating a token auth entry (includes the plaintext token once).
+/// Response after creating a token auth entry (includes the plaintext token
+/// once).
 #[derive(Debug, Serialize)]
 pub struct CreateTokenEntryResponse {
     #[serde(flatten)]

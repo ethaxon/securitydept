@@ -5,7 +5,9 @@ edition = "2024"
 
 [dependencies]
 securitydept-utils = { path = "../../packages/utils" }
-securitydept-creds-manage = { path = "../../packages/creds-manage" }
+securitydept-creds-manage = { path = "../../packages/creds-manage", features = [
+    "migration",
+] }
 securitydept-creds = { path = "../../packages/creds" }
 securitydept-oidc = { path = "../../packages/oidc" }
 axum = { workspace = true }

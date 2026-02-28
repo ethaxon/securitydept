@@ -2,9 +2,11 @@
 
 use std::collections::HashMap;
 
-use crate::config::BasicAuthCredsConfig;
-use crate::error::{CredsError, CredsResult};
-use crate::{BasicAuthCred, TokenAuthCred, TokenAuthCredsConfig};
+use crate::{
+    BasicAuthCred, TokenAuthCred, TokenAuthCredsConfig,
+    config::BasicAuthCredsConfig,
+    error::{CredsError, CredsResult},
+};
 
 /// Validator for Basic Authentication credentials.
 pub trait BasicAuthCredsValidator<Cred>
@@ -101,10 +103,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::Argon2BasicAuthCred;
-    use crate::BasicAuthCred;
-
     use super::*;
+    use crate::{Argon2BasicAuthCred, BasicAuthCred};
 
     fn test_config() -> BasicAuthCredsConfig<Argon2BasicAuthCred> {
         BasicAuthCredsConfig {

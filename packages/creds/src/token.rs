@@ -1,10 +1,11 @@
-use crate::error::{CredsError, CredsResult};
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
+use std::fmt::{Debug, Formatter};
+
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use rand::TryRng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::fmt::{Debug, Formatter};
+
+use crate::error::{CredsError, CredsResult};
 
 /// Parse a bearer token header value ("Bearer <token>").
 pub fn parse_bearer_auth_header_opt(header_value: &str) -> Option<String> {

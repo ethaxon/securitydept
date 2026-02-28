@@ -1,5 +1,4 @@
-use axum::Json;
-use axum::extract::Query;
+use axum::{Json, extract::Query};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Default)]

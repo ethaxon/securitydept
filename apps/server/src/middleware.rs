@@ -1,8 +1,10 @@
-use axum::Extension;
-use axum::extract::Request;
-use axum::http::{HeaderMap, StatusCode};
-use axum::middleware::Next;
-use axum::response::{IntoResponse, Response};
+use axum::{
+    Extension,
+    extract::Request,
+    http::{HeaderMap, StatusCode},
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
 use serde_json::json;
 
 use crate::state::ServerState;

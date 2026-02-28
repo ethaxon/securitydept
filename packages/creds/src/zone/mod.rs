@@ -1,5 +1,7 @@
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::{
+    http::{HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
+};
 use serde::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 use web_route::WebRoute;
@@ -86,7 +88,8 @@ impl BasicAuthZone {
         request_path == &self.logout_path as &str
     }
 
-    /// Rule for whether a `WWW-Authenticate` challenge header should be attached.
+    /// Rule for whether a `WWW-Authenticate` challenge header should be
+    /// attached.
     ///
     /// Only emit challenge when unauthorized response comes from `login_path`.
     pub fn should_attach_challenge_header(&self, request_path: &str, status: StatusCode) -> bool {
@@ -102,7 +105,8 @@ impl BasicAuthZone {
         (StatusCode::UNAUTHORIZED, headers).into_response()
     }
 
-    /// Build success redirect response for a successful `/basic/login` authentication.
+    /// Build success redirect response for a successful `/basic/login`
+    /// authentication.
     pub fn login_success_response(&self) -> Response {
         let mut headers = HeaderMap::new();
         if let Ok(value) = HeaderValue::from_str(&self.login_success_redirect_path) {

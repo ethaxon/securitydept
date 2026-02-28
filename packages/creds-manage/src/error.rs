@@ -42,6 +42,11 @@ pub enum CredsManageError {
     Creds {
         source: securitydept_creds::error::CredsError,
     },
+    #[cfg(feature = "migration")]
+    #[snafu(display("Migration error: {source}"), context(false))]
+    Migration {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 impl ToHttpStatus for CredsManageError {
