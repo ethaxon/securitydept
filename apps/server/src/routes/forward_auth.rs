@@ -4,8 +4,10 @@ use axum::{
     http::{HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
 };
-use securitydept_creds::{parse_basic_auth_header_opt, parse_bearer_auth_header_opt};
-use securitydept_creds_manage::auth::{check_basic_auth, check_token_auth};
+use securitydept_core::{
+    creds::{parse_basic_auth_header_opt, parse_bearer_auth_header_opt},
+    creds_manage::auth::{check_basic_auth, check_token_auth},
+};
 use tracing::{debug, warn};
 
 use crate::state::ServerState;

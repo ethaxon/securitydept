@@ -14,6 +14,9 @@ pub enum OidcError {
     #[snafu(display("OIDC redirect URL error: {source}"))]
     RedirectUrl { source: url::ParseError },
 
+    #[snafu(display("OIDC refresh token sealing error: {message}"))]
+    RefreshTokenSealing { message: String },
+
     #[snafu(display("OIDC claims error: {message}"))]
     Claims { message: String },
 
@@ -46,6 +49,7 @@ impl ToHttpStatus for OidcError {
             | OidcError::Claims { .. }
             | OidcError::PendingOauth { .. } => StatusCode::UNAUTHORIZED,
             OidcError::InvalidConfig { .. }
+            | OidcError::RefreshTokenSealing { .. }
             | OidcError::Metadata { .. }
             | OidcError::TokenExchange { .. }
             | OidcError::RedirectUrl { .. }

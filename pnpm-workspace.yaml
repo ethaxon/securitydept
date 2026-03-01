@@ -2,6 +2,7 @@ overrides:
   vite: 8.0.0-beta.15
 
 packages:
+  - packages/oidc
   - apps/webui
 
 onlyBuiltDependencies:

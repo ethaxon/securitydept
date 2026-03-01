@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "packages/core",
     "packages/oidc",
     "packages/utils",
     "packages/creds",
@@ -13,7 +14,7 @@ resolver = "3"
 serde = { version = "1", features = ["derive"] }
 axum = { version = "0.8", features = ["macros"] }
 serde_json = "1"
-snafu = "0.8"
+snafu = "0.9"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

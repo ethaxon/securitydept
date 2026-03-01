@@ -753,6 +753,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ct-codecs"
+version = "1.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b10589d1a5e400d61f9f38f12f884cfd080ff345de8f17efda36fe0e4a02aa8"
+
+[[package]]
 name = "ctutils"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -771,7 +777,7 @@ dependencies = [
  "cpufeatures 0.2.17",
  "curve25519-dalek-derive",
  "digest 0.10.7",
- "fiat-crypto",
+ "fiat-crypto 0.2.9",
  "rustc_version 0.4.1",
  "subtle",
  "zeroize",
@@ -1139,6 +1145,12 @@ name = "fiat-crypto"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
+
+[[package]]
+name = "fiat-crypto"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64cd1e32ddd350061ae6edb1b082d7c54915b5c672c389143b9a63403a109f24"
 
 [[package]]
 name = "figment"
@@ -2229,6 +2241,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "orion"
+version = "0.17.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "58fa7b8bd24f9f1b7fa56de934075adba4b6fb1bf0bf38db74f4236e05e14776"
+dependencies = [
+ "ct-codecs",
+ "fiat-crypto 0.3.0",
+ "getrandom 0.4.1",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "p256"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3052,9 +3077,7 @@ version = "0.1.1"
 dependencies = [
  "clap",
  "figment",
- "securitydept-creds",
- "securitydept-creds-manage",
- "securitydept-utils",
+ "securitydept-core",
  "serde",
  "serde_json",
  "snafu",
@@ -3063,6 +3086,16 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "winres",
+]
+
+[[package]]
+name = "securitydept-core"
+version = "0.1.1"
+dependencies = [
+ "securitydept-creds",
+ "securitydept-creds-manage",
+ "securitydept-oidc",
+ "securitydept-utils",
 ]
 
 [[package]]
@@ -3110,10 +3143,12 @@ dependencies = [
 name = "securitydept-oidc"
 version = "0.1.1"
 dependencies = [
+ "axum",
  "boa_engine",
  "http",
  "moka",
  "openidconnect",
+ "orion",
  "securitydept-utils",
  "serde",
  "serde-constant",
@@ -3134,10 +3169,7 @@ dependencies = [
  "clap",
  "figment",
  "openidconnect",
- "securitydept-creds",
- "securitydept-creds-manage",
- "securitydept-oidc",
- "securitydept-utils",
+ "securitydept-core",
  "serde",
  "serde_json",
  "snafu",
@@ -3426,18 +3458,18 @@ dependencies = [
 
 [[package]]
 name = "snafu"
-version = "0.8.9"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e84b3f4eacbf3a1ce05eac6763b4d629d60cbc94d632e4092c54ade71f1e1a2"
+checksum = "d1d4bced6a69f90b2056c03dcff2c4737f98d6fb9e0853493996e1d253ca29c6"
 dependencies = [
  "snafu-derive",
 ]
 
 [[package]]
 name = "snafu-derive"
-version = "0.8.9"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1c97747dbf44bb1ca44a561ece23508e99cb592e862f22222dcf42f51d1e451"
+checksum = "54254b8531cafa275c5e096f62d48c81435d1015405a91198ddb11e967301d40"
 dependencies = [
  "heck",
  "proc-macro2",

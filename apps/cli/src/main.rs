@@ -2,7 +2,7 @@ mod config;
 mod error;
 
 use clap::{Parser, Subcommand};
-use securitydept_creds_manage::{
+use securitydept_core::creds_manage::{
     migrations::{Migrator, models::MigratorTrait},
     models::{AuthEntry, AuthEntryKind, Group},
     store::CredsManageStore,

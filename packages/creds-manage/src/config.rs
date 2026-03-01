@@ -13,6 +13,7 @@ fn default_data_path() -> String {
     "./data/data.json".to_string()
 }
 
+#[cfg(feature = "migration")]
 fn default_auto_migrate() -> bool {
     true
 }

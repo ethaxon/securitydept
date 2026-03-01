@@ -64,6 +64,9 @@ pub struct OidcConfig {
     pub userinfo_endpoint: Option<String>,
     #[serde_as(as = "NoneAsEmptyString")]
     #[serde(default)]
+    pub introspection_endpoint: Option<String>,
+    #[serde_as(as = "NoneAsEmptyString")]
+    #[serde(default)]
     pub jwks_uri: Option<String>,
     #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<CoreClientAuthMethod>, _)>>")]
     #[serde(default)]
@@ -91,6 +94,14 @@ pub struct OidcConfig {
     #[cfg(feature = "default-pending-store")]
     #[serde(default)]
     pub pending_store: Option<MokaPendingOauthStoreConfig>,
+    #[serde(default)]
+    pub master_key: Option<String>,
+    /// When enabled, refresh tokens will be encrypted using the master key
+    /// Mainly used in the scenario of distributed stateless service frontend
+    /// storage of refresh token, to prevent the attack of refresh token being
+    /// stolen in plain text.
+    #[serde(default)]
+    pub sealed_refresh_token: bool,
 }
 
 impl OidcConfig {

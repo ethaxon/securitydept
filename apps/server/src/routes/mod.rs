@@ -17,6 +17,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/auth/login", get(auth::login))
         .route("/auth/callback", get(auth::callback))
         .route("/auth/logout", post(auth::logout))
+        .route("/auth/refresh", post(auth::refresh_token))
         .route("/auth/me", get(auth::me));
 
     let api_routes = Router::new()

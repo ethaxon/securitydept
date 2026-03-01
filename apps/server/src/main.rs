@@ -7,10 +7,10 @@ mod state;
 use std::sync::Arc;
 
 use clap::Parser;
-use securitydept_creds_manage::{
-    migrations::Migrator, session::SessionManager, store::CredsManageStore,
+use securitydept_core::{
+    creds_manage::{migrations::Migrator, session::SessionManager, store::CredsManageStore},
+    oidc::OidcClient,
 };
-use securitydept_oidc::OidcClient;
 use snafu::ResultExt;
 use tracing::info;
 use tracing_subscriber::EnvFilter;

@@ -18,20 +18,36 @@ port = 7021
 client_id = "your-client-id"
 client_secret = "your-client-secret"
 well_known_url = "https://your-oidc-provider.com/.well-known/openid-configuration"
-# scopes = ["openid", "profile", "email"]
-# Optional overrides when using well_known_url. When well_known_url is omitted,
-# issuer_url/authorization_endpoint/token_endpoint/jwks_uri are required and userinfo_endpoint is recommended:
+# or scopes = ["openid", "profile", "email"]
+scopes = ["openid", "profile", "email"]
+
+## Optional overrides when using well_known_url. When well_known_url is omitted,
+## issuer_url/authorization_endpoint/token_endpoint/jwks_uri are required and userinfo_endpoint is recommended:
+# 
 # issuer_url = "https://your-oidc-provider.com"
 # authorization_endpoint = "https://your-oidc-provider.com/authorize"
 # token_endpoint = "https://your-oidc-provider.com/token"
 # userinfo_endpoint = "https://your-oidc-provider.com/userinfo"
 # jwks_uri = "https://your-oidc-provider.com/jwks"
-# Optional metadata hints/overrides
+
+## Optional metadata hints/overrides
+# 
 # token_endpoint_auth_methods_supported = ["client_secret_basic"]
 # id_token_signing_alg_values_supported = ["RS256"]
 # userinfo_signing_alg_values_supported = ["none"]
 # pkce_enabled = true
+
+## Optional claims check script, if not set, the default rust claims checker will be used.
+# 
 # claims_check_script = "./claims-script-check.mts"
+
+## When enabled, refresh tokens will be encrypted using the master key
+## Mainly used in the scenario of distributed stateless service frontend
+## storage of refresh token, to prevent the attack of refresh token being
+## stolen in plain text.
+# 
+# master_key = "your-master-key"
+# sealed_refresh_token_capsule = true
 
 [creds_manage]
 data_path = "./data/data.json"

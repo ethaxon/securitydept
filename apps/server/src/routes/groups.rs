@@ -1,5 +1,5 @@
 use axum::{Extension, Json, extract::Path};
-use securitydept_creds_manage::models::{CreateGroupRequest, Group, UpdateGroupRequest};
+use securitydept_core::creds_manage::models::{CreateGroupRequest, Group, UpdateGroupRequest};
 
 use crate::{error::ServerError, state::ServerState};
 

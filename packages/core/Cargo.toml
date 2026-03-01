@@ -1,0 +1,23 @@
+[package]
+name = "securitydept-core"
+version = "0.1.1"
+edition = "2024"
+
+[features]
+default = []
+utils = ["dep:securitydept-utils"]
+oidc = ["dep:securitydept-oidc"]
+oidc-axum = ["oidc", "securitydept-oidc/axum"]
+oidc-claims-script = ["oidc", "securitydept-oidc/claims-script"]
+oidc-default-pending-store = ["oidc", "securitydept-oidc/default-pending-store"]
+oidc-moka-pending-store = ["oidc", "securitydept-oidc/moka-pending-store"]
+creds = ["dep:securitydept-creds"]
+creds-zone = ["creds", "securitydept-creds/zone"]
+creds-manage = ["dep:securitydept-creds-manage"]
+creds-manage-migration = ["creds-manage", "securitydept-creds-manage/migration"]
+
+[dependencies]
+securitydept-utils = { path = "../utils", optional = true }
+securitydept-oidc = { path = "../oidc", optional = true }
+securitydept-creds = { path = "../creds", optional = true }
+securitydept-creds-manage = { path = "../creds-manage", optional = true }

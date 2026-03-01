@@ -1,5 +1,4 @@
-use securitydept_creds::CredsError;
-use securitydept_creds_manage::CredsManageError;
+use securitydept_core::{creds::CredsError, creds_manage::CredsManageError};
 use snafu::Snafu;
 
 #[derive(Debug, Snafu)]

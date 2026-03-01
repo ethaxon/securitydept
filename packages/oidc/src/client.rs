@@ -77,6 +77,7 @@ pub struct OidcClient {
     claims_checker: ScriptClaimsChecker,
     #[cfg(not(feature = "claims-script"))]
     claims_checker: DefaultClaimsChecker,
+    master_key_aead: Option<orion::aead::SecretKey>,
     scopes: Vec<String>,
     pkce_enabled: bool,
 }
@@ -126,13 +127,196 @@ impl OidcClient {
         #[cfg(not(feature = "claims-script"))]
         let claims_checker = DefaultClaimsChecker;
 
+        let master_key_aead = config
+            .master_key
+            .as_ref()
+            .map(|master_key| {
+                orion::aead::SecretKey::from_slice(master_key.as_bytes()).map_err(|e| {
+                    OidcError::InvalidConfig {
+                        message: format!("Failed to parse master key: {e}"),
+                    }
+                })
+            })
+            .transpose()?;
+
         Ok(Self {
             client,
             scopes: config.scopes.clone(),
             pkce_enabled: config.pkce_enabled,
             claims_checker,
             config,
+            master_key_aead,
         })
+    }
+
+    pub async fn handle_code_authorize(
+        &self,
+        external_base_url: &Url,
+        pending_oauth_store: &impl PendingOauthStore,
+    ) -> OidcResult<OidcCodeFlowAuthorizationRequest> {
+        let authorization_request = self.authorize_url(external_base_url)?;
+        pending_oauth_store
+            .insert(
+                authorization_request.csrf_token.secret().to_string(),
+                authorization_request.nonce.secret().to_string(),
+                authorization_request.pkce_verifier_secret.clone(),
+            )
+            .await?;
+        Ok(authorization_request)
+    }
+
+    pub async fn handle_code_callback(
+        &self,
+        search_params: OidcCodeCallbackSearchParams,
+        external_base_url: &Url,
+        pending_oauth_store: &impl PendingOauthStore,
+    ) -> OidcResult<OidcCodeCallbackResult> {
+        let code = &search_params.code;
+        let state = search_params
+            .state
+            .as_ref()
+            .ok_or_else(|| OidcError::CSRFValidation {
+                message: "Missing state parameter in callback (required for CSRF validation)"
+                    .to_string(),
+            })?;
+
+        let pending =
+            pending_oauth_store
+                .take(state)
+                .await?
+                .ok_or_else(|| OidcError::PendingOauth {
+                    source: "Invalid or expired state (reuse or unknown); try logging in again"
+                        .to_string()
+                        .into(),
+                })?;
+
+        let nonce = openidconnect::Nonce::new(pending.nonce.clone());
+        let code_verifier = pending.code_verifier;
+
+        let code_exchange = self
+            .exchange_code(external_base_url, code, &nonce, code_verifier.as_deref())
+            .await?;
+
+        let claims_check_result = self
+            .check_claims(
+                &code_exchange.id_token_claims,
+                code_exchange.user_info_claims.as_ref(),
+            )
+            .await?;
+
+        Ok(OidcCodeCallbackResult {
+            code: search_params.code,
+            pkce_verifier_secret: code_verifier,
+            state: search_params.state,
+            nonce: pending.nonce,
+            access_token: code_exchange.access_token,
+            id_token: code_exchange.id_token,
+            refresh_token: code_exchange.refresh_token,
+            id_token_claims: code_exchange.id_token_claims,
+            user_info_claims: code_exchange.user_info_claims,
+            claims_check_result,
+        })
+    }
+
+    pub async fn handle_token_refresh(
+        &self,
+        refresh_token: String,
+    ) -> OidcResult<OidcRefreshTokenResult> {
+        let http_client =
+            reqwest::Client::builder()
+                .build()
+                .map_err(|e| OidcError::TokenExchange {
+                    message: format!("Failed to build HTTP client: {e}"),
+                })?;
+
+        let refresh_token = self.unseal_refresh_token(refresh_token)?;
+
+        let token_response = self
+            .client
+            .exchange_refresh_token(&refresh_token)
+            .map_err(|e| OidcError::TokenRefresh {
+                message: format!("Token endpoint not set or config error: {e}"),
+            })?
+            .request_async(&http_client)
+            .await
+            .map_err(|e| OidcError::TokenRefresh {
+                message: format!("Refresh token request failed: {e}"),
+            })?;
+
+        let access_token = token_response.access_token().secret().clone();
+        let refresh_token = token_response
+            .refresh_token()
+            .map(|v| self.seal_refresh_token(v))
+            .transpose()?;
+
+        let mut result = OidcRefreshTokenResult {
+            access_token,
+            refresh_token,
+            id_token: None,
+            user_info_claims: None,
+            claims_check_result: None,
+            id_token_claims: None,
+        };
+
+        if let Some(next_id_token) = token_response.extra_fields().id_token() {
+            let id_token_verifier = self.client.id_token_verifier();
+            let id_token_claims = next_id_token
+                .claims(&id_token_verifier, |_nonce: Option<&Nonce>| Ok(()))
+                .map_err(|e| OidcError::TokenExchange {
+                    message: format!("Failed to verify refreshed ID token: {e}"),
+                })?;
+            let user_info_claims = if self.client.user_info_url().is_some() {
+                Some(
+                    self.request_userinfo(
+                        &self.client,
+                        &http_client,
+                        token_response.access_token().clone(),
+                    )
+                    .await?,
+                )
+            } else {
+                None
+            };
+            let claims_check_result = self
+                .check_claims(id_token_claims, user_info_claims.as_ref())
+                .await?;
+            result.id_token = Some(next_id_token.to_string());
+            result.id_token_claims = Some(id_token_claims.clone());
+            result.user_info_claims = user_info_claims;
+            result.claims_check_result = Some(claims_check_result);
+        }
+
+        Ok(result)
+    }
+
+    async fn request_userinfo(
+        &self,
+        client: &DiscoveredClientWithExtra,
+        http_client: &reqwest::Client,
+        access_token: openidconnect::AccessToken,
+    ) -> OidcResult<UserInfoClaimsWithExtra> {
+        let userinfo_claims: UserInfoClaimsWithExtra = client
+            .user_info(access_token, None)
+            .map_err(|e| OidcError::Claims {
+                message: format!("UserInfo request configuration failed: {e}"),
+            })?
+            .request_async(http_client)
+            .await
+            .map_err(|e| OidcError::Claims {
+                message: format!("UserInfo request failed: {e}"),
+            })?;
+
+        Ok(userinfo_claims)
+    }
+
+    async fn check_claims(
+        &self,
+        id_token_claims: &IdTokenClaimsWithExtra,
+        user_info_claims: Option<&UserInfoClaimsWithExtra>,
+    ) -> OidcResult<ClaimsCheckResult> {
+        self.claims_checker
+            .check_claims(id_token_claims, user_info_claims)
+            .await
     }
 
     async fn fetch_and_merge_metadata(
@@ -408,7 +592,10 @@ impl OidcClient {
 
         let id_token = id_token.to_string();
         let access_token = token_response.access_token().secret().clone();
-        let refresh_token = token_response.refresh_token().map(|v| v.secret().clone());
+        let refresh_token = token_response
+            .refresh_token()
+            .map(|v| self.seal_refresh_token(v))
+            .transpose()?;
 
         let user_info_claims = if self.client.user_info_url().is_some() {
             let user_info_claims = self
@@ -428,168 +615,44 @@ impl OidcClient {
         })
     }
 
-    pub async fn handle_code_authorize(
-        &self,
-        external_base_url: &Url,
-        pending_oauth_store: &impl PendingOauthStore,
-    ) -> OidcResult<OidcCodeFlowAuthorizationRequest> {
-        let authorization_request = self.authorize_url(external_base_url)?;
-        pending_oauth_store
-            .insert(
-                authorization_request.csrf_token.secret().to_string(),
-                authorization_request.nonce.secret().to_string(),
-                authorization_request.pkce_verifier_secret.clone(),
-            )
-            .await?;
-        Ok(authorization_request)
-    }
-
-    pub async fn handle_code_callback(
-        &self,
-        search_params: OidcCodeCallbackSearchParams,
-        external_base_url: &Url,
-        pending_oauth_store: &impl PendingOauthStore,
-    ) -> OidcResult<OidcCodeCallbackResult> {
-        let code = &search_params.code;
-        let state = search_params
-            .state
-            .as_ref()
-            .ok_or_else(|| OidcError::CSRFValidation {
-                message: "Missing state parameter in callback (required for CSRF validation)"
-                    .to_string(),
-            })?;
-
-        let pending =
-            pending_oauth_store
-                .take(state)
-                .await?
-                .ok_or_else(|| OidcError::PendingOauth {
-                    source: "Invalid or expired state (reuse or unknown); try logging in again"
-                        .to_string()
-                        .into(),
+    fn seal_refresh_token(&self, refresh_token: &RefreshToken) -> OidcResult<String> {
+        let refresh_token = refresh_token.secret();
+        if self.config.sealed_refresh_token {
+            let master_key =
+                self.master_key_aead
+                    .as_ref()
+                    .ok_or_else(|| OidcError::InvalidConfig {
+                        message: "Master key is required to when sealed refresh token is enabled"
+                            .to_string(),
+                    })?;
+            let sealed_refresh_token = orion::aead::seal(master_key, refresh_token.as_bytes())
+                .map_err(|e| OidcError::RefreshTokenSealing {
+                    message: format!("Failed to seal refresh token: {e}"),
                 })?;
-
-        let nonce = openidconnect::Nonce::new(pending.nonce.clone());
-        let code_verifier = pending.code_verifier;
-
-        let code_exchange = self
-            .exchange_code(external_base_url, code, &nonce, code_verifier.as_deref())
-            .await?;
-
-        let claims_check_result = self
-            .check_claims(
-                &code_exchange.id_token_claims,
-                code_exchange.user_info_claims.as_ref(),
-            )
-            .await?;
-
-        Ok(OidcCodeCallbackResult {
-            code: search_params.code,
-            pkce_verifier_secret: code_verifier,
-            state: search_params.state,
-            nonce: pending.nonce,
-            access_token: code_exchange.access_token,
-            id_token: code_exchange.id_token,
-            refresh_token: code_exchange.refresh_token,
-            id_token_claims: code_exchange.id_token_claims,
-            user_info_claims: code_exchange.user_info_claims,
-            claims_check_result,
-        })
-    }
-
-    pub async fn handle_refresh_token(
-        &self,
-        refresh_token: &RefreshToken,
-    ) -> OidcResult<OidcRefreshTokenResult> {
-        let http_client =
-            reqwest::Client::builder()
-                .build()
-                .map_err(|e| OidcError::TokenExchange {
-                    message: format!("Failed to build HTTP client: {e}"),
-                })?;
-
-        let token_response = self
-            .client
-            .exchange_refresh_token(refresh_token)
-            .map_err(|e| OidcError::TokenRefresh {
-                message: format!("Token endpoint not set or config error: {e}"),
-            })?
-            .request_async(&http_client)
-            .await
-            .map_err(|e| OidcError::TokenRefresh {
-                message: format!("Refresh token request failed: {e}"),
-            })?;
-
-        let refresh_token = token_response.refresh_token().map(|v| v.secret().clone());
-        let access_token = token_response.access_token().secret().clone();
-
-        let mut result = OidcRefreshTokenResult {
-            access_token,
-            refresh_token,
-            id_token: None,
-            user_info_claims: None,
-            claims_check_result: None,
-            id_token_claims: None,
-        };
-
-        if let Some(next_id_token) = token_response.extra_fields().id_token() {
-            let id_token_verifier = self.client.id_token_verifier();
-            let id_token_claims = next_id_token
-                .claims(&id_token_verifier, |_nonce: Option<&Nonce>| Ok(()))
-                .map_err(|e| OidcError::TokenExchange {
-                    message: format!("Failed to verify refreshed ID token: {e}"),
-                })?;
-            let user_info_claims = if self.client.user_info_url().is_some() {
-                Some(
-                    self.request_userinfo(
-                        &self.client,
-                        &http_client,
-                        token_response.access_token().clone(),
-                    )
-                    .await?,
-                )
-            } else {
-                None
-            };
-            let claims_check_result = self
-                .check_claims(id_token_claims, user_info_claims.as_ref())
-                .await?;
-            result.id_token = Some(next_id_token.to_string());
-            result.id_token_claims = Some(id_token_claims.clone());
-            result.user_info_claims = user_info_claims;
-            result.claims_check_result = Some(claims_check_result);
+            Ok(String::from_utf8_lossy(&sealed_refresh_token).to_string())
+        } else {
+            Ok(refresh_token.clone())
         }
-
-        Ok(result)
     }
 
-    async fn request_userinfo(
-        &self,
-        client: &DiscoveredClientWithExtra,
-        http_client: &reqwest::Client,
-        access_token: openidconnect::AccessToken,
-    ) -> OidcResult<UserInfoClaimsWithExtra> {
-        let userinfo_claims: UserInfoClaimsWithExtra = client
-            .user_info(access_token, None)
-            .map_err(|e| OidcError::Claims {
-                message: format!("UserInfo request configuration failed: {e}"),
-            })?
-            .request_async(http_client)
-            .await
-            .map_err(|e| OidcError::Claims {
-                message: format!("UserInfo request failed: {e}"),
-            })?;
-
-        Ok(userinfo_claims)
-    }
-
-    async fn check_claims(
-        &self,
-        id_token_claims: &IdTokenClaimsWithExtra,
-        user_info_claims: Option<&UserInfoClaimsWithExtra>,
-    ) -> OidcResult<ClaimsCheckResult> {
-        self.claims_checker
-            .check_claims(id_token_claims, user_info_claims)
-            .await
+    fn unseal_refresh_token(&self, refresh_token: String) -> OidcResult<RefreshToken> {
+        if self.config.sealed_refresh_token {
+            let master_key =
+                self.master_key_aead
+                    .as_ref()
+                    .ok_or_else(|| OidcError::InvalidConfig {
+                        message: "Master key is required to when sealed refresh token is enabled"
+                            .to_string(),
+                    })?;
+            let unsealed_refresh_token = orion::aead::open(master_key, refresh_token.as_bytes())
+                .map_err(|e| OidcError::RefreshTokenSealing {
+                    message: format!("Failed to unseal refresh token: {e}"),
+                })?;
+            Ok(RefreshToken::new(
+                String::from_utf8_lossy(&unsealed_refresh_token).to_string(),
+            ))
+        } else {
+            Ok(RefreshToken::new(refresh_token))
+        }
     }
 }

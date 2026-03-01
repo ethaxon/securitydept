@@ -2,10 +2,9 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use securitydept_creds::CredsError;
-use securitydept_creds_manage::CredsManageError;
-use securitydept_oidc::OidcError;
-use securitydept_utils::http::ToHttpStatus;
+use securitydept_core::{
+    creds::CredsError, creds_manage::CredsManageError, oidc::OidcError, utils::http::ToHttpStatus,
+};
 use serde_json::json;
 use snafu::Snafu;
 
@@ -18,6 +17,10 @@ pub enum ServerError {
     InvalidConfig { message: String },
     #[snafu(display("Server boot error: {source}"))]
     ServerBoot {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    #[snafu(display("Runtime error: {source}"))]
+    Runtime {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
     #[snafu(transparent)]

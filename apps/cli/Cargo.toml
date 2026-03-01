@@ -4,11 +4,12 @@ version = "0.1.1"
 edition = "2024"
 
 [dependencies]
-securitydept-creds-manage = { path = "../../packages/creds-manage", features = [
-    "migration",
+securitydept-core = { path = "../../packages/core", features = [
+    "utils",
+    "creds",
+    "creds-manage",
+    "creds-manage-migration",
 ] }
-securitydept-utils = { path = "../../packages/utils" }
-securitydept-creds = { path = "../../packages/creds" }
 clap = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

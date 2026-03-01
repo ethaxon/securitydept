@@ -24,7 +24,7 @@ Status: v0.1.1 release-ready — Core flows are implemented across API, CLI, and
 - **Entries & groups**: Basic auth and token auth entries, grouped by name; CRUD via REST API and CLI.
 - **Forward-auth**: `GET /api/forwardauth/traefik/:group` and `/api/forwardauth/nginx/:group` — validate `Authorization` against group entries; no session.
 - **Config**: TOML + env (Figment); single JSON data file for entries and groups.
-- **Reusable crates**: `securitydept-oidc` and `securitydept-creds` can be reused by other Rust services.
+- **Reusable crates**: `securitydept-core` re-exports sub-crates with feature flags for aligned versions; `securitydept-oidc` and `securitydept-creds` can also be used directly.
 
 ## Workspace Crates
 
@@ -32,6 +32,7 @@ Status: v0.1.1 release-ready — Core flows are implemented across API, CLI, and
 - **`securitydept-creds`**: Basic/bearer parsing, Argon2/SHA-256 primitives, credential traits, validator traits/helpers.
 - **`securitydept-creds-manage`**: File-backed store + models for entries/groups, app-level auth helpers, session manager.
 - **`securitydept-utils`**: Shared URL/HTTP utility helpers.
+- **`securitydept-core`**: Aggregator crate that re-exports internal crates via features to keep downstream versions aligned.
 - **`securitydept-server`**: HTTP server (Axum) wiring all crates into APIs/forward-auth endpoints.
 - **`securitydept-cli`**: Local management CLI using the same store/config model.
 

@@ -4,7 +4,7 @@ use openidconnect::{
     core::{CoreGenderClaim, CoreJweContentEncryptionAlgorithm, CoreJwsSigningAlgorithm},
 };
 use serde::{Deserialize, Serialize};
-use url::Url;
+use url::{Url, form_urlencoded};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaimsCheckResult {
@@ -42,6 +42,37 @@ pub struct OidcCodeFlowAuthorizationRequest {
     pub pkce_verifier_secret: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OidcTokenSet {
+    pub access_token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+}
+
+pub trait TokenSetTrait {
+    fn access_token(&self) -> &str;
+    fn id_token(&self) -> Option<&str>;
+    fn refresh_token(&self) -> Option<&str>;
+
+    fn to_fragment(&self) -> String {
+        let mut fragment = &mut form_urlencoded::Serializer::new(String::new());
+
+        fragment = fragment.append_pair("access_token", self.access_token());
+
+        if let Some(refresh_token) = self.refresh_token() {
+            fragment = fragment.append_pair("refresh_token", refresh_token)
+        };
+
+        if let Some(id_token) = self.id_token() {
+            fragment = fragment.append_pair("id_token", id_token)
+        }
+
+        fragment.finish()
+    }
+}
+
 #[derive(Deserialize)]
 pub struct OidcCodeCallbackSearchParams {
     pub code: String,
@@ -70,6 +101,18 @@ pub struct OidcCodeCallbackResult {
     pub claims_check_result: ClaimsCheckResult,
 }
 
+impl TokenSetTrait for OidcCodeCallbackResult {
+    fn access_token(&self) -> &str {
+        &self.access_token
+    }
+    fn id_token(&self) -> Option<&str> {
+        Some(&self.id_token)
+    }
+    fn refresh_token(&self) -> Option<&str> {
+        self.refresh_token.as_deref()
+    }
+}
+
 pub struct OidcRefreshTokenResult {
     pub access_token: String,
     pub id_token: Option<String>,
@@ -79,11 +122,14 @@ pub struct OidcRefreshTokenResult {
     pub claims_check_result: Option<ClaimsCheckResult>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OidcTokenSet {
-    pub access_token: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id_token: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub refresh_token: Option<String>,
+impl TokenSetTrait for OidcRefreshTokenResult {
+    fn access_token(&self) -> &str {
+        &self.access_token
+    }
+    fn id_token(&self) -> Option<&str> {
+        self.id_token.as_deref()
+    }
+    fn refresh_token(&self) -> Option<&str> {
+        self.refresh_token.as_deref()
+    }
 }

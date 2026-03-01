@@ -4,12 +4,18 @@ use axum::{
     http::{HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
-use securitydept_creds_manage::{CredsManageError, models::UserInfo};
-use securitydept_oidc::{OidcCodeCallbackSearchParams, OidcError};
+use securitydept_core::{
+    creds_manage::{CredsManageError, models::UserInfo},
+    oidc::{
+        OidcCodeCallbackSearchParams, OidcError,
+        routes::{RefreshTokenPayload, refresh_token_route},
+    },
+};
+use snafu::ResultExt;
 use tracing::info;
 
 use crate::{
-    error::ServerError,
+    error::{RuntimeSnafu, ServerError, ServerResult},
     middleware::{SESSION_COOKIE_NAME, get_session_id},
     state::ServerState,
 };
@@ -30,7 +36,7 @@ pub async fn login(
                 &state.config.server.host,
                 state.config.server.port,
             )
-            .map_err(|e| securitydept_oidc::OidcError::RedirectUrl { source: e })?;
+            .map_err(|e| OidcError::RedirectUrl { source: e })?;
         let authorization_request = oidc
             .handle_code_authorize(&external_base_url, &state.pending_oauth)
             .await?;
@@ -106,7 +112,10 @@ pub async fn callback(
 }
 
 /// POST /auth/logout -- destroy session.
-pub async fn logout(Extension(state): Extension<ServerState>, headers: HeaderMap) -> Response {
+pub async fn logout(
+    Extension(state): Extension<ServerState>,
+    headers: HeaderMap,
+) -> ServerResult<Response> {
     if let Some(session_id) = get_session_id(&headers) {
         state.sessions.remove(&session_id).await;
     }
@@ -114,21 +123,36 @@ pub async fn logout(Extension(state): Extension<ServerState>, headers: HeaderMap
     // Clear cookie
     let cookie = format!("{SESSION_COOKIE_NAME}=; Path=/; HttpOnly; Max-Age=0");
     let mut resp_headers = HeaderMap::new();
-    resp_headers.insert("Set-Cookie", HeaderValue::from_str(&cookie).unwrap());
+    resp_headers.insert(
+        "Set-Cookie",
+        HeaderValue::from_str(&cookie)
+            .boxed()
+            .context(RuntimeSnafu)?,
+    );
 
-    (
+    Ok((
         StatusCode::OK,
         resp_headers,
         Json(serde_json::json!({"ok": true})),
     )
-        .into_response()
+        .into_response())
+}
+
+pub async fn refresh_token(
+    Extension(state): Extension<ServerState>,
+    headers: HeaderMap,
+    Json(payload): Json<RefreshTokenPayload>,
+) -> ServerResult<Response> {
+    let oidc_client = state.oidc_client()?;
+    let result = refresh_token_route(oidc_client, &headers, payload).await?;
+    Ok(result.into_response())
 }
 
 /// GET /auth/me -- return current user info.
 pub async fn me(
     Extension(state): Extension<ServerState>,
     headers: HeaderMap,
-) -> Result<Json<UserInfo>, ServerError> {
+) -> ServerResult<Json<UserInfo>> {
     let session_id = get_session_id(&headers).ok_or(CredsManageError::SessionNotFound)?;
 
     let session = state

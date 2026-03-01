@@ -4,7 +4,7 @@ use figment::{
     Figment,
     providers::{Format, Toml},
 };
-use securitydept_creds_manage::CredsManageConfig;
+use securitydept_core::creds_manage::CredsManageConfig;
 use serde::Deserialize;
 
 use crate::error::{CliError, CliResult};

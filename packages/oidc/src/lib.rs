@@ -4,6 +4,8 @@ pub mod config;
 pub mod error;
 pub mod models;
 pub mod pending_store;
+#[cfg(feature = "axum")]
+pub mod routes;
 
 pub use client::OidcClient;
 pub use config::OidcConfig;

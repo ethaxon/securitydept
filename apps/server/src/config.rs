@@ -4,9 +4,9 @@ use figment::{
     Figment,
     providers::{Env, Format, Toml},
 };
-use securitydept_creds_manage::CredsManageConfig;
-use securitydept_oidc::OidcConfig;
-use securitydept_utils::base_url::ExternalBaseUrl;
+use securitydept_core::{
+    creds_manage::CredsManageConfig, oidc::OidcConfig, utils::base_url::ExternalBaseUrl,
+};
 use serde::Deserialize;
 
 use crate::error::{ServerError, ServerResult};
