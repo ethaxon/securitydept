@@ -67,6 +67,12 @@ pub struct OidcConfig {
     pub introspection_endpoint: Option<String>,
     #[serde_as(as = "NoneAsEmptyString")]
     #[serde(default)]
+    pub revocation_endpoint: Option<String>,
+    #[serde_as(as = "NoneAsEmptyString")]
+    #[serde(default)]
+    pub device_authorization_endpoint: Option<String>,
+    #[serde_as(as = "NoneAsEmptyString")]
+    #[serde(default)]
     pub jwks_uri: Option<String>,
     #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<CoreClientAuthMethod>, _)>>")]
     #[serde(default)]

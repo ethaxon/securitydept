@@ -1,6 +1,7 @@
+use chrono::{DateTime, Utc};
 use openidconnect::{
-    AdditionalClaims, CsrfToken, EmptyExtraTokenFields, IdTokenClaims, IdTokenFields, Nonce,
-    UserInfoClaims,
+    AdditionalClaims, AdditionalProviderMetadata, CsrfToken, EmptyExtraTokenFields, IdTokenClaims,
+    IdTokenFields, Nonce, UserInfoClaims,
     core::{CoreGenderClaim, CoreJweContentEncryptionAlgorithm, CoreJwsSigningAlgorithm},
 };
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,17 @@ pub struct ExtraClaims {
 }
 
 impl AdditionalClaims for ExtraClaims {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ExtraProviderMetadata {
+    pub introspection_endpoint: Option<String>,
+    pub revocation_endpoint: Option<String>,
+    pub device_authorization_endpoint: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Value,
+}
+
+impl AdditionalProviderMetadata for ExtraProviderMetadata {}
 
 pub type UserInfoClaimsWithExtra = UserInfoClaims<ExtraClaims, CoreGenderClaim>;
 pub type IdTokenClaimsWithExtra = IdTokenClaims<ExtraClaims, CoreGenderClaim>;
@@ -55,6 +67,7 @@ pub trait TokenSetTrait {
     fn access_token(&self) -> &str;
     fn id_token(&self) -> Option<&str>;
     fn refresh_token(&self) -> Option<&str>;
+    fn access_token_expiration(&self) -> Option<&DateTime<Utc>>;
 
     fn to_fragment(&self) -> String {
         let mut fragment = &mut form_urlencoded::Serializer::new(String::new());
@@ -67,6 +80,10 @@ pub trait TokenSetTrait {
 
         if let Some(id_token) = self.id_token() {
             fragment = fragment.append_pair("id_token", id_token)
+        }
+
+        if let Some(access_token_expiration) = self.access_token_expiration() {
+            fragment = fragment.append_pair("expires_at", &access_token_expiration.to_rfc3339())
         }
 
         fragment.finish()
@@ -82,6 +99,7 @@ pub struct OidcCodeCallbackSearchParams {
 
 pub struct OidcCodeExchangeResult {
     pub access_token: String,
+    pub access_token_expiration: Option<DateTime<Utc>>,
     pub id_token: String,
     pub refresh_token: Option<String>,
     pub id_token_claims: IdTokenClaimsWithExtra,
@@ -94,6 +112,7 @@ pub struct OidcCodeCallbackResult {
     pub state: Option<String>,
     pub nonce: String,
     pub access_token: String,
+    pub access_token_expiration: Option<DateTime<Utc>>,
     pub id_token: String,
     pub refresh_token: Option<String>,
     pub id_token_claims: IdTokenClaimsWithExtra,
@@ -111,10 +130,14 @@ impl TokenSetTrait for OidcCodeCallbackResult {
     fn refresh_token(&self) -> Option<&str> {
         self.refresh_token.as_deref()
     }
+    fn access_token_expiration(&self) -> Option<&DateTime<Utc>> {
+        self.access_token_expiration.as_ref()
+    }
 }
 
 pub struct OidcRefreshTokenResult {
     pub access_token: String,
+    pub access_token_expiration: Option<DateTime<Utc>>,
     pub id_token: Option<String>,
     pub refresh_token: Option<String>,
     pub id_token_claims: Option<IdTokenClaimsWithExtra>,
@@ -131,5 +154,8 @@ impl TokenSetTrait for OidcRefreshTokenResult {
     }
     fn refresh_token(&self) -> Option<&str> {
         self.refresh_token.as_deref()
+    }
+    fn access_token_expiration(&self) -> Option<&DateTime<Utc>> {
+        self.access_token_expiration.as_ref()
     }
 }

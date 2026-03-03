@@ -23,6 +23,7 @@ serde_with = { workspace = true }
 http = { workspace = true }
 axum = { workspace = true, optional = true }
 boa_engine = { version = "0.21", optional = true }
+chrono = { workspace = true }
 swc_core = { version = "58", features = [
     "__parser",
     "common",

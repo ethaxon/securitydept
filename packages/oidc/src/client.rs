@@ -1,14 +1,16 @@
+use chrono::Utc;
 use openidconnect::{
     AuthUrl, AuthenticationFlow, AuthorizationCode, Client, ClientId, ClientSecret, CsrfToken,
-    EmptyAdditionalProviderMetadata, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl,
-    JsonWebKeySet, JsonWebKeySetUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, RefreshToken, ResponseTypes, Scope, StandardErrorResponse,
-    StandardTokenResponse, TokenUrl, UserInfoUrl,
+    DeviceAuthorizationUrl, EndpointMaybeSet, EndpointNotSet, EndpointSet, IntrospectionUrl,
+    IssuerUrl, JsonWebKeySet, JsonWebKeySetUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge,
+    PkceCodeVerifier, ProviderMetadata, RedirectUrl, RefreshToken, ResponseTypes, RevocationUrl,
+    Scope, StandardErrorResponse, StandardTokenResponse, TokenUrl, UserInfoUrl,
     core::{
-        CoreAuthDisplay, CoreAuthPrompt, CoreErrorResponseType, CoreGenderClaim, CoreJsonWebKey,
-        CoreJweContentEncryptionAlgorithm, CoreProviderMetadata, CoreResponseType,
-        CoreRevocableToken, CoreRevocationErrorResponse, CoreSubjectIdentifierType,
-        CoreTokenIntrospectionResponse, CoreTokenType,
+        CoreAuthDisplay, CoreAuthPrompt, CoreClaimName, CoreClaimType, CoreClientAuthMethod,
+        CoreErrorResponseType, CoreGenderClaim, CoreGrantType, CoreJsonWebKey,
+        CoreJweContentEncryptionAlgorithm, CoreJweKeyManagementAlgorithm, CoreResponseMode,
+        CoreResponseType, CoreRevocableToken, CoreRevocationErrorResponse,
+        CoreSubjectIdentifierType, CoreTokenIntrospectionResponse, CoreTokenType,
     },
     reqwest,
 };
@@ -25,9 +27,27 @@ use crate::{
     claims::ClaimsChecker,
     config::{OidcConfig, default_id_token_signing_alg_values_supported},
     error::{OidcError, OidcResult},
-    models::{IdTokenFieldsWithExtra, OidcCodeCallbackResult, OidcRefreshTokenResult},
+    models::{
+        ExtraProviderMetadata, IdTokenFieldsWithExtra, OidcCodeCallbackResult,
+        OidcRefreshTokenResult,
+    },
 };
 pub type TokenResponseWithExtra = StandardTokenResponse<IdTokenFieldsWithExtra, CoreTokenType>;
+
+pub type ProviderMetadataWithExtra = ProviderMetadata<
+    ExtraProviderMetadata,
+    CoreAuthDisplay,
+    CoreClientAuthMethod,
+    CoreClaimName,
+    CoreClaimType,
+    CoreGrantType,
+    CoreJweContentEncryptionAlgorithm,
+    CoreJweKeyManagementAlgorithm,
+    CoreJsonWebKey,
+    CoreResponseMode,
+    CoreResponseType,
+    CoreSubjectIdentifierType,
+>;
 
 pub type ClientWithExtra<
     HasAuthUrl = EndpointNotSet,
@@ -58,9 +78,9 @@ pub type ClientWithExtra<
 
 pub type DiscoveredClientWithExtra = ClientWithExtra<
     EndpointSet,      // HasAuthUrl
-    EndpointNotSet,   // HasDeviceAuthUrl
-    EndpointNotSet,   // HasIntrospectionUrl
-    EndpointNotSet,   // HasRevocationUrl
+    EndpointMaybeSet, // HasDeviceAuthUrl
+    EndpointMaybeSet, // HasIntrospectionUrl
+    EndpointMaybeSet, // HasRevocationUrl
     EndpointMaybeSet, // HasTokenUrl
     EndpointMaybeSet, // HasUserInfoUrl
 >;
@@ -119,7 +139,38 @@ impl OidcClient {
 
         let metadata = metadata.set_jwks(jwks);
 
-        let client = ClientWithExtra::from_provider_metadata(metadata, client_id, client_secret);
+        let introspection_endpoint = metadata
+            .additional_metadata()
+            .introspection_endpoint
+            .as_ref()
+            .map(|s| IntrospectionUrl::new(s.to_string()))
+            .transpose()
+            .map_err(|e| OidcError::Metadata {
+                message: format!("Invalid introspection_endpoint: {e}"),
+            })?;
+        let revocation_endpoint = metadata
+            .additional_metadata()
+            .revocation_endpoint
+            .as_ref()
+            .map(|s| RevocationUrl::new(s.to_string()))
+            .transpose()
+            .map_err(|e| OidcError::Metadata {
+                message: format!("Invalid revocation_endpoint: {e}"),
+            })?;
+        let device_authorization_endpoint = metadata
+            .additional_metadata()
+            .device_authorization_endpoint
+            .as_ref()
+            .map(|s| DeviceAuthorizationUrl::new(s.to_string()))
+            .transpose()
+            .map_err(|e| OidcError::Metadata {
+                message: format!("Invalid device_authorization_endpoint: {e}"),
+            })?;
+
+        let client = ClientWithExtra::from_provider_metadata(metadata, client_id, client_secret)
+            .set_introspection_url_option(introspection_endpoint)
+            .set_revocation_url_option(revocation_endpoint)
+            .set_device_authorization_url_option(device_authorization_endpoint);
 
         #[cfg(feature = "claims-script")]
         let claims_checker =
@@ -210,6 +261,7 @@ impl OidcClient {
             state: search_params.state,
             nonce: pending.nonce,
             access_token: code_exchange.access_token,
+            access_token_expiration: code_exchange.access_token_expiration,
             id_token: code_exchange.id_token,
             refresh_token: code_exchange.refresh_token,
             id_token_claims: code_exchange.id_token_claims,
@@ -231,6 +283,7 @@ impl OidcClient {
 
         let refresh_token = self.unseal_refresh_token(refresh_token)?;
 
+        let now = Utc::now();
         let token_response = self
             .client
             .exchange_refresh_token(&refresh_token)
@@ -244,6 +297,9 @@ impl OidcClient {
             })?;
 
         let access_token = token_response.access_token().secret().clone();
+        let access_token_expiration = token_response
+            .expires_in()
+            .map(|expires_in| now + expires_in);
         let refresh_token = token_response
             .refresh_token()
             .map(|v| self.seal_refresh_token(v))
@@ -251,6 +307,7 @@ impl OidcClient {
 
         let mut result = OidcRefreshTokenResult {
             access_token,
+            access_token_expiration,
             refresh_token,
             id_token: None,
             user_info_claims: None,
@@ -323,7 +380,7 @@ impl OidcClient {
         config: &OidcConfig,
         well_known_url: &str,
         http_client: &reqwest::Client,
-    ) -> OidcResult<CoreProviderMetadata> {
+    ) -> OidcResult<ProviderMetadataWithExtra> {
         let body = http_client
             .get(well_known_url)
             .send()
@@ -337,7 +394,7 @@ impl OidcClient {
                 message: format!("Failed to read discovery response: {e}"),
             })?;
 
-        let mut metadata: CoreProviderMetadata =
+        let mut metadata: ProviderMetadataWithExtra =
             serde_json::from_slice(&body).map_err(|e| OidcError::Metadata {
                 message: format!("Failed to parse discovery document: {e}"),
             })?;
@@ -406,10 +463,26 @@ impl OidcClient {
             ));
         }
 
+        if let Some(introspection_endpoint) = config.introspection_endpoint.as_ref() {
+            metadata.additional_metadata_mut().introspection_endpoint =
+                Some(introspection_endpoint.clone());
+        }
+
+        if let Some(revocation_endpoint) = config.revocation_endpoint.as_ref() {
+            metadata.additional_metadata_mut().revocation_endpoint =
+                Some(revocation_endpoint.clone());
+        }
+
+        if let Some(device_authorization_endpoint) = config.device_authorization_endpoint.as_ref() {
+            metadata
+                .additional_metadata_mut()
+                .device_authorization_endpoint = Some(device_authorization_endpoint.clone());
+        }
+
         Ok(metadata)
     }
 
-    async fn build_metadata_manual(config: &OidcConfig) -> OidcResult<CoreProviderMetadata> {
+    async fn build_metadata_manual(config: &OidcConfig) -> OidcResult<ProviderMetadataWithExtra> {
         let issuer_url = IssuerUrl::new(
             config.issuer_url.as_deref().unwrap_or_default().to_string(),
         )
@@ -456,14 +529,19 @@ impl OidcClient {
             .clone()
             .unwrap_or_else(default_id_token_signing_alg_values_supported);
 
-        let metadata = CoreProviderMetadata::new(
+        let metadata = ProviderMetadataWithExtra::new(
             issuer_url,
             authorization_endpoint,
             jwks_uri,
             vec![ResponseTypes::new(vec![CoreResponseType::Code])],
             vec![CoreSubjectIdentifierType::Public],
             id_token_signing_alg_values_supported,
-            EmptyAdditionalProviderMetadata::default(),
+            ExtraProviderMetadata {
+                introspection_endpoint: config.introspection_endpoint.clone(),
+                revocation_endpoint: config.revocation_endpoint.clone(),
+                device_authorization_endpoint: config.device_authorization_endpoint.clone(),
+                extra: serde_json::Value::default(),
+            },
         )
         .set_token_endpoint(Some(token_url))
         .set_userinfo_endpoint(userinfo_url)
@@ -590,8 +668,12 @@ impl OidcClient {
                     message: format!("Failed to verify ID token: {e}"),
                 })?;
 
+        let now = Utc::now();
         let id_token = id_token.to_string();
         let access_token = token_response.access_token().secret().clone();
+        let access_token_expiration = token_response
+            .expires_in()
+            .map(|expires_in| now + expires_in);
         let refresh_token = token_response
             .refresh_token()
             .map(|v| self.seal_refresh_token(v))
@@ -611,6 +693,7 @@ impl OidcClient {
             id_token_claims: id_token_claims.to_owned(),
             refresh_token,
             access_token,
+            access_token_expiration,
             user_info_claims,
         })
     }
