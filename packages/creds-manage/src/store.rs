@@ -8,7 +8,7 @@ use std::{
 use chrono::Utc;
 use fs2::FileExt;
 use notify::{RecursiveMode, Watcher};
-use securitydept_creds::{Argon2BasicAuthCred, Sha256TokenAuthCred, generate_token};
+use securitydept_creds::{Argon2BasicAuthCred, Sha256TokenAuthCred, generate_static_token};
 use snafu::ResultExt;
 use tokio::{
     sync::{Mutex, RwLock},
@@ -143,7 +143,7 @@ impl CredsManageStore {
                 ensure_entry_name_is_unique(data, &name, None)?;
                 ensure_groups_exist(data, &group_ids)?;
 
-                let token = generate_token()?;
+                let token = generate_static_token()?;
                 let entry = TokenAuthEntry {
                     cred: Sha256TokenAuthCred::new(token.clone())?,
                     meta: AuthEntryMeta::new(name, group_ids),

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    BasicAuthCred, TokenAuthCred, TokenAuthCredsConfig,
+    BasicAuthCred, StaticTokenAuthCred, StaticTokenAuthCredsConfig,
     config::BasicAuthCredsConfig,
     error::{CredsError, CredsResult},
 };
@@ -17,7 +17,7 @@ where
     fn verify_cred(&self, username: &str, password: &str) -> CredsResult<Option<&Cred>> {
         let cred = self
             .get_cred(username)?
-            .ok_or(CredsError::InvalidCredentials)?;
+            .ok_or(CredsError::InvalidBasicCredentials)?;
         cred.verify_password(password)?;
         Ok(Some(cred))
     }
@@ -63,33 +63,33 @@ where
     }
 }
 
-pub trait TokenAuthCredsValidator<Cred>
+pub trait StaticTokenAuthCredsValidator<Cred>
 where
-    Cred: TokenAuthCred,
+    Cred: StaticTokenAuthCred,
 {
     fn get_cred(&self, token: &str) -> CredsResult<Option<&Cred>>;
     fn verify_cred(&self, token: &str) -> CredsResult<Option<&Cred>> {
         let cred = self
             .get_cred(token)?
-            .ok_or(CredsError::InvalidCredentials)?;
+            .ok_or(CredsError::InvalidStaticTokenCredentials)?;
         cred.verify_token(token)?;
         Ok(Some(cred))
     }
 }
 
-pub struct MapTokenAuthCredsValidator<Creds>
+pub struct MapStaticTokenAuthCredsValidator<Creds>
 where
-    Creds: TokenAuthCred + Clone,
+    Creds: StaticTokenAuthCred + Clone,
 {
     pub creds: HashMap<String, Creds>,
 }
 
-impl<Creds> MapTokenAuthCredsValidator<Creds>
+impl<Creds> MapStaticTokenAuthCredsValidator<Creds>
 where
-    Creds: TokenAuthCred + Clone,
+    Creds: StaticTokenAuthCred + Clone,
 {
     /// Create a new validator from configuration.
-    pub fn from_config(config: &TokenAuthCredsConfig<Creds>) -> CredsResult<Self> {
+    pub fn from_config(config: &StaticTokenAuthCredsConfig<Creds>) -> CredsResult<Self> {
         config.validate()?;
         Ok(Self {
             creds: config

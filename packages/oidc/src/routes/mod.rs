@@ -1,5 +1,4 @@
 use axum::response::{IntoResponse, Redirect, Response};
-use http::HeaderMap;
 use serde::Deserialize;
 use snafu::ResultExt;
 use url::Url;
@@ -14,8 +13,6 @@ pub struct RefreshTokenPayload {
 
 pub async fn refresh_token_route(
     oidc_client: &OidcClient,
-    // TODO: add headers to verify access token
-    _headers: &HeaderMap,
     payload: RefreshTokenPayload,
 ) -> OidcResult<Response> {
     let mut redirect_uri = Url::parse(&payload.redirect_uri).context(RedirectUrlSnafu)?;

@@ -1,6 +1,6 @@
 use securitydept_creds::{
     BasicAuthCred, BasicAuthCredsConfig, BasicAuthCredsValidator, MapBasicAuthCredsValidator,
-    MapTokenAuthCredsValidator, TokenAuthCred, TokenAuthCredsConfig,
+    MapStaticTokenAuthCredsValidator, StaticTokenAuthCredsConfig, token::TokenAuthCred,
 };
 pub use securitydept_creds::{
     hash_password_argon2, hash_token_sha256, parse_basic_auth_header_opt,
@@ -37,7 +37,7 @@ pub fn check_token_auth(
     entries: &[TokenAuthEntry],
     token: &str,
 ) -> CredsManageResult<Option<String>> {
-    let validator = MapTokenAuthCredsValidator::from_config(&TokenAuthCredsConfig {
+    let validator = MapStaticTokenAuthCredsValidator::from_config(&StaticTokenAuthCredsConfig {
         tokens: entries.to_vec(),
     })?;
 

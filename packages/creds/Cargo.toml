@@ -5,6 +5,12 @@ edition = "2024"
 
 [features]
 zone = ["dep:typed-builder", "dep:web-route", "dep:axum"]
+jwk = []
+oidc = ["dep:openidconnect"]
+jwt = ["dep:jsonwebtoken", "jwk"]
+jwe = ["jwt", "dep:josekit", "jwk"]
+# jwe requires openssl, so we don't enable it by default for more pure dependencies
+rfc9068 = ["jwt", "jwk"]
 
 [dependencies]
 securitydept-utils = { path = "../utils" }
@@ -23,3 +29,6 @@ rand = { workspace = true }
 web-route = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 typed-builder = { workspace = true, optional = true }
+jsonwebtoken = { workspace = true, optional = true }
+josekit = { workspace = true, optional = true }
+openidconnect = { workspace = true, optional = true }

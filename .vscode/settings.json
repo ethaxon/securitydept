@@ -38,5 +38,6 @@
 		"source.organizeImports.biome": "explicit",
 		"source.fixAll.biome": "explicit"
 	},
-	"biome.lsp.bin": "${workspaceFolder}/node_modules/.bin/biome"
+	"biome.lsp.bin": "${workspaceFolder}/node_modules/.bin/biome",
+	"rust-analyzer.cargo.features": "all"
 }

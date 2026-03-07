@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{BasicAuthCred, TokenAuthCred};
+use crate::{BasicAuthCred, StaticTokenAuthCred};
 
 /// Configuration for Basic Authentication.
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -27,18 +27,18 @@ where
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
-pub struct TokenAuthCredsConfig<Creds>
+pub struct StaticTokenAuthCredsConfig<Creds>
 where
-    Creds: TokenAuthCred + Clone,
+    Creds: StaticTokenAuthCred + Clone,
 {
     /// List of allowed credentials.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tokens: Vec<Creds>,
 }
 
-impl<Creds> TokenAuthCredsConfig<Creds>
+impl<Creds> StaticTokenAuthCredsConfig<Creds>
 where
-    Creds: TokenAuthCred + Clone,
+    Creds: StaticTokenAuthCred + Clone,
 {
     /// Validate the configuration.
     pub fn validate(&self) -> Result<(), crate::error::CredsError> {

@@ -1,5 +1,8 @@
 use chrono::{DateTime, Utc};
-use securitydept_creds::{Argon2BasicAuthCred, BasicAuthCred, Sha256TokenAuthCred, TokenAuthCred};
+use securitydept_creds::{
+    Argon2BasicAuthCred, BasicAuthCred, Sha256TokenAuthCred, StaticTokenAuthCred,
+    token::TokenAuthCred,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -56,12 +59,14 @@ impl BasicAuthCred for BasicAuthEntry {
 }
 
 impl TokenAuthCred for TokenAuthEntry {
-    fn token_hash(&self) -> &str {
-        self.cred.token_hash()
-    }
-
     fn verify_token(&self, token: &str) -> securitydept_creds::CredsResult<bool> {
         self.cred.verify_token(token)
+    }
+}
+
+impl StaticTokenAuthCred for TokenAuthEntry {
+    fn token_hash(&self) -> &str {
+        self.cred.token_hash()
     }
 }
 

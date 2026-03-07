@@ -140,11 +140,10 @@ pub async fn logout(
 
 pub async fn refresh_token(
     Extension(state): Extension<ServerState>,
-    headers: HeaderMap,
     Json(payload): Json<RefreshTokenPayload>,
 ) -> ServerResult<Response> {
     let oidc_client = state.oidc_client()?;
-    let result = refresh_token_route(oidc_client, &headers, payload).await?;
+    let result = refresh_token_route(oidc_client, payload).await?;
     Ok(result.into_response())
 }
 
