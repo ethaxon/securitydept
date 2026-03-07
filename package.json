@@ -19,14 +19,14 @@
 	],
 	"author": "Zhou Yeheng <root@aitiotekt.com>",
 	"license": "MIT",
-	"packageManager": "pnpm@10.29.3",
+	"packageManager": "pnpm@10.30.3",
 	"scripts": {
 		"prepare": "prek install",
 		"lint": "biome check",
 		"lint-fix": "biome check --write"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.4.2",
+		"@biomejs/biome": "2.4.6",
 		"@j178/prek": "^0.3.2",
 		"@types/node": "^25.2.3",
 		"shx": "^0.4.0",

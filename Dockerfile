@@ -15,7 +15,7 @@ COPY . .
 RUN cargo build --release
 
 FROM node:lts-alpine AS webui-builder
-RUN npm install -g pnpm@10.29.3
+RUN npm install -g pnpm@10.30.3
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 WORKDIR /app
