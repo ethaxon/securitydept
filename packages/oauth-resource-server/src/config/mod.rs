@@ -91,7 +91,9 @@ impl OAuthResourceServerConfig {
                 .is_none_or(|value| value.trim().is_empty())
         {
             return Err(OAuthResourceServerError::InvalidConfig {
-                message: "introspection.introspection_url must be set when introspection is enabled without well_known_url discovery".to_string(),
+                message: "introspection.introspection_url must be set when introspection is \
+                          enabled without well_known_url discovery"
+                    .to_string(),
             });
         }
 

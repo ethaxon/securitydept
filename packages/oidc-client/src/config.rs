@@ -68,7 +68,10 @@ impl OidcConfig {
                     "authorization_endpoint",
                     self.provider_oidc.authorization_endpoint.as_deref(),
                 ),
-                ("token_endpoint", self.provider_oidc.token_endpoint.as_deref()),
+                (
+                    "token_endpoint",
+                    self.provider_oidc.token_endpoint.as_deref(),
+                ),
                 ("jwks_uri", self.remote.jwks_uri.as_deref()),
                 (
                     "userinfo_endpoint",

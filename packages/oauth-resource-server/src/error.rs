@@ -31,7 +31,9 @@ pub enum OAuthResourceServerError {
     #[snafu(display("OAuth resource server JWE key error: {message}"))]
     JweKey { message: String },
 
-    #[snafu(display("OAuth resource server does not support {token_format:?} access tokens in this verifier"))]
+    #[snafu(display(
+        "OAuth resource server does not support {token_format:?} access tokens in this verifier"
+    ))]
     UnsupportedTokenFormat { token_format: TokenFormat },
 }
 

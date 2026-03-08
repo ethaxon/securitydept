@@ -4,7 +4,7 @@ use openidconnect::{
     AdditionalProviderMetadata, AuthUrl, DeviceAuthorizationUrl, IntrospectionUrl, IssuerUrl,
     JsonWebKeySetUrl, ProviderMetadata, ResponseTypes, RevocationUrl, TokenUrl, UserInfoUrl,
     core::{
-        CoreAuthDisplay, CoreClientAuthMethod, CoreClaimName, CoreClaimType, CoreGrantType,
+        CoreAuthDisplay, CoreClaimName, CoreClaimType, CoreClientAuthMethod, CoreGrantType,
         CoreJsonWebKey, CoreJweContentEncryptionAlgorithm, CoreJweKeyManagementAlgorithm,
         CoreJwsSigningAlgorithm, CoreResponseMode, CoreResponseType, CoreSubjectIdentifierType,
     },
@@ -55,4 +55,3 @@ pub struct OAuthProviderMetadata {
     pub userinfo_signing_alg_values_supported: Option<Vec<CoreJwsSigningAlgorithm>>,
     pub additional_metadata: ExtraProviderMetadata,
 }
-

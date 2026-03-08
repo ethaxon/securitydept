@@ -4,7 +4,6 @@ version = "0.2.0-alpha.2"
 edition = "2024"
 
 [features]
-zone = ["dep:typed-builder", "dep:web-route", "dep:axum"]
 jwk = []
 oidc = ["dep:openidconnect"]
 jwt = ["dep:jsonwebtoken", "jwk"]
@@ -27,9 +26,6 @@ hex = { workspace = true }
 rand = { workspace = true }
 serde_with = { workspace = true }
 
-web-route = { workspace = true, optional = true }
-axum = { workspace = true, optional = true }
-typed-builder = { workspace = true, optional = true }
 jsonwebtoken = { workspace = true, optional = true }
 josekit = { workspace = true, optional = true }
 openidconnect = { workspace = true, optional = true }

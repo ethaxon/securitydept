@@ -14,7 +14,6 @@ Responsibilities:
 - JWE decryption helpers
 - RFC 9068 access-token validation
 - shared credential and verifier traits
-- basic-auth zone helpers
 
 This layer should not know about:
 
@@ -79,6 +78,10 @@ These modes are deployment contracts. They should expose normalized principal da
 - bearer access-token verification
 - local basic-auth credentials
 - static-token credentials
+
+Current dedicated crate:
+
+- `securitydept-basic-auth-zone`
 
 A future shared abstraction should likely normalize all of them into a common authenticated-principal model.
 

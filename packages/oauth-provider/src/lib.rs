@@ -9,7 +9,5 @@ pub use config::{
     default_metadata_refresh_interval_seconds,
 };
 pub use error::{OAuthProviderError, OAuthProviderResult};
-pub use models::{
-    ExtraProviderMetadata, OAuthProviderMetadata, ProviderMetadataWithExtra,
-};
+pub use models::{ExtraProviderMetadata, OAuthProviderMetadata, ProviderMetadataWithExtra};
 pub use runtime::OAuthProviderRuntime;

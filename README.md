@@ -23,6 +23,8 @@ The current repository already contains major parts of the lower layers and a wo
 
 - `securitydept-creds`
   - low-level verification primitives for basic auth, static tokens, JWT, JWE, and RFC 9068 access tokens
+- `securitydept-basic-auth-zone`
+  - reusable basic-auth challenge-zone configuration and response helpers
 - `securitydept-oauth-provider`
   - shared provider runtime for discovery metadata, JWKS, and introspection with cache and refresh
 - `securitydept-oidc-client`

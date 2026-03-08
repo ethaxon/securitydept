@@ -75,7 +75,8 @@ impl MigratorTrait for Migrator {
         let old: DataFileV1 = serde_json::from_value(value).context(error::DataParseSnafu)?;
         let migrated = migrate_v1_to_v2(old)?;
 
-        let serialized = serde_json::to_string_pretty(&migrated).context(error::DataSerializeSnafu)?;
+        let serialized =
+            serde_json::to_string_pretty(&migrated).context(error::DataSerializeSnafu)?;
         std::fs::write(&path, serialized).context(error::DataWriteSnafu)?;
         Ok(())
     }

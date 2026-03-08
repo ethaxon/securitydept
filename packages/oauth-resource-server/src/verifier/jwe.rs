@@ -185,7 +185,10 @@ mod tests {
     use josekit::jwk::alg::rsa::RsaKeyPair;
     use tokio::time::{Duration, sleep};
 
-    use super::{load_jwe_decryption_keys, load_jwk_file, load_jwks_file, load_pem_file, OAuthResourceServerVerifierJwe};
+    use super::{
+        OAuthResourceServerVerifierJwe, load_jwe_decryption_keys, load_jwk_file, load_jwks_file,
+        load_pem_file,
+    };
     use crate::OAuthResourceServerJweConfig;
 
     fn temp_path(suffix: &str) -> PathBuf {
@@ -200,8 +203,11 @@ mod tests {
     async fn load_single_jwk_file_works() {
         let path = temp_path("jwk");
         let jwk = josekit::jwk::Jwk::generate_oct_key(32).expect("oct key should generate");
-        std::fs::write(&path, serde_json::to_vec(&jwk).expect("jwk should serialize"))
-            .expect("jwk file should write");
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&jwk).expect("jwk should serialize"),
+        )
+        .expect("jwk file should write");
 
         let loaded = load_jwk_file(path.to_str().expect("path should be valid"))
             .await
@@ -281,8 +287,11 @@ mod tests {
         let pem_path = temp_path("pem");
 
         let jwk = josekit::jwk::Jwk::generate_oct_key(32).expect("oct key should generate");
-        std::fs::write(&jwk_path, serde_json::to_vec(&jwk).expect("jwk should serialize"))
-            .expect("jwk file should write");
+        std::fs::write(
+            &jwk_path,
+            serde_json::to_vec(&jwk).expect("jwk should serialize"),
+        )
+        .expect("jwk file should write");
 
         let pem = RsaKeyPair::generate(2048)
             .expect("rsa key should generate")
@@ -308,8 +317,11 @@ mod tests {
     async fn watcher_reloads_rotated_keys() {
         let jwk_path = temp_path("jwk");
         let initial = josekit::jwk::Jwk::generate_oct_key(32).expect("oct key should generate");
-        std::fs::write(&jwk_path, serde_json::to_vec(&initial).expect("jwk should serialize"))
-            .expect("jwk file should write");
+        std::fs::write(
+            &jwk_path,
+            serde_json::to_vec(&initial).expect("jwk should serialize"),
+        )
+        .expect("jwk file should write");
 
         let verifier = OAuthResourceServerVerifierJwe::from_config(&OAuthResourceServerJweConfig {
             jwe_jwk_path: Some(jwk_path.to_string_lossy().into_owned()),
@@ -322,8 +334,11 @@ mod tests {
         sleep(Duration::from_millis(200)).await;
 
         let updated = josekit::jwk::Jwk::generate_oct_key(64).expect("oct key should generate");
-        std::fs::write(&jwk_path, serde_json::to_vec(&updated).expect("jwk should serialize"))
-            .expect("rotated jwk file should write");
+        std::fs::write(
+            &jwk_path,
+            serde_json::to_vec(&updated).expect("jwk should serialize"),
+        )
+        .expect("rotated jwk file should write");
 
         let mut observed = None;
         for _ in 0..10 {

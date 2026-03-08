@@ -18,8 +18,7 @@ use self::jwe::OAuthResourceServerVerifierJwe;
 use crate::{
     OAuthResourceServerConfig, OAuthResourceServerError, OAuthResourceServerMetadata,
     OAuthResourceServerResult, VerificationPolicy, VerifiedAccessToken, VerifiedOpaqueToken,
-    VerifiedToken,
-    models::scope_contains_all,
+    VerifiedToken, models::scope_contains_all,
 };
 
 pub struct OAuthResourceServerVerifier {
@@ -34,8 +33,10 @@ impl OAuthResourceServerVerifier {
     pub async fn from_config(config: OAuthResourceServerConfig) -> OAuthResourceServerResult<Self> {
         config.validate()?;
         let provider = Arc::new(
-            securitydept_oauth_provider::OAuthProviderRuntime::from_config(config.provider_config())
-                .await?,
+            securitydept_oauth_provider::OAuthProviderRuntime::from_config(
+                config.provider_config(),
+            )
+            .await?,
         );
         Self::from_provider(provider, config).await
     }

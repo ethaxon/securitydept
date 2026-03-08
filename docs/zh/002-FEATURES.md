@@ -24,7 +24,6 @@
 - `packages/creds/src/jwe.rs`
 - `packages/creds/src/rfc9068.rs`
 - `packages/creds/src/validator.rs`
-- `packages/creds/src/zone/mod.rs`
 
 ## 2. 上层 OIDC 客户端
 
@@ -86,7 +85,7 @@
 
 主要参考：
 
-- `packages/creds/src/zone/mod.rs`
+- `packages/basic-auth-zone/src/lib.rs`
 - [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md)
 
 ## 5. 有状态 cookie-session 认证上下文

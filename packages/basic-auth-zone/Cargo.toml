@@ -1,0 +1,10 @@
+[package]
+name = "securitydept-basic-auth-zone"
+version = "0.2.0-alpha.2"
+edition = "2024"
+
+[dependencies]
+axum = { workspace = true }
+serde = { workspace = true }
+typed-builder = { workspace = true }
+web-route = { workspace = true }

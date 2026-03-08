@@ -6,7 +6,9 @@ pub struct OAuthResourceServerJweConfig {
     /// decrypt JWE access tokens.
     ///
     /// Example:
-    /// `{ "keys": [ { "kty": "RSA", "kid": "enc-1", "n": "...", "e": "...", "d": "...", "p": "...", "q": "...", "dp": "...", "dq": "...", "qi": "..." } ] }`
+    /// `{ "keys": [ { "kty": "RSA", "kid": "enc-1", "n": "...", "e": "...",
+    /// "d": "...", "p": "...", "q": "...", "dp": "...", "dq": "...", "qi":
+    /// "..." } ] }`
     #[serde(default)]
     pub jwe_jwks_path: Option<String>,
     /// Path to a local single JWK file containing one private key used to

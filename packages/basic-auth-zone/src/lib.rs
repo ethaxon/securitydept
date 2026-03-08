@@ -14,17 +14,21 @@ use web_route::WebRoute;
 /// - logout path: `/basic/logout`
 /// - login success redirect path: `/`
 /// - realm: `securitydept`
-#[derive(Debug, Clone, Serialize, Deserialize, Default, TypedBuilder)]
-#[builder(field_defaults(default))]
+#[derive(Debug, Clone, Serialize, Deserialize, TypedBuilder)]
 pub struct BasicAuthZoneConfig {
+    #[builder(default = default_zone_prefix())]
     #[serde(default = "default_zone_prefix")]
     pub zone_prefix: String,
+    #[builder(default = default_login_subpath())]
     #[serde(default = "default_login_subpath")]
     pub login_subpath: String,
+    #[builder(default = default_logout_subpath())]
     #[serde(default = "default_logout_subpath")]
     pub logout_subpath: String,
+    #[builder(default = default_login_success_redirect_path())]
     #[serde(default = "default_login_success_redirect_path")]
     pub login_success_redirect_path: String,
+    #[builder(default = default_realm())]
     #[serde(default = "default_realm")]
     pub realm: String,
 }
@@ -59,25 +63,22 @@ pub struct BasicAuthZone {
 }
 
 impl BasicAuthZone {
-    pub fn from_config(config: BasicAuthZoneConfig) -> Self {
-        let zone_prefix = WebRoute::new(config.zone_prefix);
-        Self {
-            zone_prefix: zone_prefix.clone(),
-            login_path: zone_prefix.join(config.login_subpath),
-            logout_path: zone_prefix.join(config.logout_subpath),
-            login_success_redirect_path: WebRoute::new(config.login_success_redirect_path),
-            realm: config.realm,
-        }
+    pub fn new(config: BasicAuthZoneConfig) -> Self {
+        Self::from(config)
     }
 
     /// Returns `WWW-Authenticate` header value for the configured realm.
     pub fn challenge_header_value(&self) -> String {
-        format!(r#"Basic realm=\"{}\""#, self.realm)
+        format!(r#"Basic realm="{}""#, self.realm)
     }
 
     /// Returns true when request path is inside configured middleware zone.
     pub fn is_zone_path(&self, request_path: &str) -> bool {
-        request_path.starts_with(&self.zone_prefix as &str)
+        let zone_prefix = &self.zone_prefix as &str;
+        request_path == zone_prefix
+            || request_path
+                .strip_prefix(zone_prefix)
+                .is_some_and(|suffix| suffix.starts_with('/'))
     }
 
     pub fn is_login_path(&self, request_path: &str) -> bool {
@@ -100,7 +101,7 @@ impl BasicAuthZone {
     pub fn login_challenge_response(&self) -> Response {
         let mut headers = HeaderMap::new();
         if let Ok(value) = HeaderValue::from_str(&self.challenge_header_value()) {
-            headers.insert("WWW-Authenticate", value);
+            headers.insert(axum::http::header::WWW_AUTHENTICATE, value);
         }
         (StatusCode::UNAUTHORIZED, headers).into_response()
     }
@@ -110,7 +111,7 @@ impl BasicAuthZone {
     pub fn login_success_response(&self) -> Response {
         let mut headers = HeaderMap::new();
         if let Ok(value) = HeaderValue::from_str(&self.login_success_redirect_path) {
-            headers.insert("Location", value);
+            headers.insert(axum::http::header::LOCATION, value);
         }
         (StatusCode::FOUND, headers).into_response()
     }
@@ -132,6 +133,43 @@ impl BasicAuthZone {
         } else {
             StatusCode::UNAUTHORIZED.into_response()
         }
+    }
+}
+
+impl From<BasicAuthZoneConfig> for BasicAuthZone {
+    fn from(config: BasicAuthZoneConfig) -> Self {
+        let zone_prefix = WebRoute::new(config.zone_prefix);
+        let login_success_redirect_path = if config.login_success_redirect_path.starts_with('/') {
+            WebRoute::new(config.login_success_redirect_path)
+        } else {
+            zone_prefix.join(config.login_success_redirect_path)
+        };
+
+        Self {
+            zone_prefix: zone_prefix.clone(),
+            login_path: zone_prefix.join(config.login_subpath),
+            logout_path: zone_prefix.join(config.logout_subpath),
+            login_success_redirect_path,
+            realm: config.realm,
+        }
+    }
+}
+
+impl Default for BasicAuthZoneConfig {
+    fn default() -> Self {
+        Self {
+            zone_prefix: default_zone_prefix(),
+            login_subpath: default_login_subpath(),
+            logout_subpath: default_logout_subpath(),
+            login_success_redirect_path: default_login_success_redirect_path(),
+            realm: default_realm(),
+        }
+    }
+}
+
+impl Default for BasicAuthZone {
+    fn default() -> Self {
+        Self::from(BasicAuthZoneConfig::default())
     }
 }
 
@@ -158,7 +196,7 @@ mod tests {
             .login_success_redirect_path("app".to_string())
             .realm("corp".to_string())
             .build();
-        let zone = BasicAuthZone::from_config(zone_config);
+        let zone = BasicAuthZone::from(zone_config);
 
         assert_eq!(&zone.zone_prefix as &str, "/internal/basic");
         assert_eq!(&zone.login_path as &str, "/internal/basic/signin");
@@ -167,13 +205,12 @@ mod tests {
             &zone.login_success_redirect_path as &str,
             "/internal/basic/app"
         );
-        assert_eq!(zone.challenge_header_value(), r#"Basic realm=\"corp\""#);
+        assert_eq!(zone.challenge_header_value(), r#"Basic realm="corp""#);
     }
 
     #[test]
     fn test_zone_path_match() {
-        let zone_config = BasicAuthZoneConfig::default();
-        let zone = BasicAuthZone::from_config(zone_config);
+        let zone = BasicAuthZone::from(BasicAuthZoneConfig::default());
 
         assert!(zone.is_zone_path("/basic"));
         assert!(zone.is_zone_path("/basic/login"));
@@ -184,8 +221,7 @@ mod tests {
 
     #[test]
     fn test_should_attach_challenge_header() {
-        let zone_config = BasicAuthZoneConfig::default();
-        let zone = BasicAuthZone::from_config(zone_config);
+        let zone = BasicAuthZone::from(BasicAuthZoneConfig::default());
 
         assert!(zone.should_attach_challenge_header("/basic/login", StatusCode::UNAUTHORIZED));
         assert!(!zone.should_attach_challenge_header("/api/v1/me", StatusCode::UNAUTHORIZED));

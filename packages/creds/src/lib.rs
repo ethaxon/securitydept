@@ -12,8 +12,6 @@ pub mod rfc9068;
 pub mod static_token;
 pub mod token;
 pub mod validator;
-#[cfg(feature = "zone")]
-pub mod zone;
 
 pub use basic::{
     Argon2BasicAuthCred, BasicAuthCred, hash_password_argon2, parse_basic_auth_header_opt,
@@ -46,5 +44,3 @@ pub use validator::{
     BasicAuthCredsValidator, MapBasicAuthCredsValidator, MapStaticTokenAuthCredsValidator,
     StaticTokenAuthCredsValidator,
 };
-#[cfg(feature = "zone")]
-pub use zone::BasicAuthZoneConfig;

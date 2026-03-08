@@ -11,13 +11,19 @@ reexport-openidconnect = ["dep:openidconnect", "reexport-oauth2"]
 oauth-provider = ["dep:securitydept-oauth-provider", "reexport-openidconnect"]
 oidc-client = ["dep:securitydept-oidc-client", "reexport-openidconnect"]
 oidc-client-axum = ["oidc-client", "securitydept-oidc-client/axum"]
-oidc-client-claims-script = ["oidc-client", "securitydept-oidc-client/claims-script"]
+oidc-client-claims-script = [
+    "oidc-client",
+    "securitydept-oidc-client/claims-script",
+]
 oidc-client-default-pending-store = [
     "oidc-client",
     "oidc-client-moka-pending-store",
     "securitydept-oidc-client/default-pending-store",
 ]
-oidc-client-moka-pending-store = ["oidc-client", "securitydept-oidc-client/moka-pending-store"]
+oidc-client-moka-pending-store = [
+    "oidc-client",
+    "securitydept-oidc-client/moka-pending-store",
+]
 oauth-resource-server = [
     "dep:securitydept-oauth-resource-server",
     "reexport-openidconnect",
@@ -26,8 +32,8 @@ oauth-resource-server-jwe = [
     "oauth-resource-server",
     "securitydept-oauth-resource-server/jwe",
 ]
+basic-auth-zone = ["dep:securitydept-basic-auth-zone", "creds"]
 creds = ["dep:securitydept-creds"]
-creds-zone = ["creds", "securitydept-creds/zone"]
 creds-jwk = ["creds", "securitydept-creds/jwk"]
 creds-jwt = ["creds", "creds-jwk", "securitydept-creds/jwt", "dep:jsonwebtoken"]
 # jwe requires openssl, so we don't enable it by default for more pure dependencies
@@ -53,6 +59,7 @@ securitydept-utils = { path = "../utils", optional = true }
 securitydept-oauth-provider = { path = "../oauth-provider", optional = true }
 securitydept-oidc-client = { path = "../oidc-client", optional = true }
 securitydept-oauth-resource-server = { path = "../oauth-resource-server", optional = true }
+securitydept-basic-auth-zone = { path = "../basic-auth-zone", optional = true }
 securitydept-creds = { path = "../creds", optional = true }
 securitydept-creds-manage = { path = "../creds-manage", optional = true }
 openidconnect = { workspace = true, optional = true }

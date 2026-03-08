@@ -3,10 +3,9 @@ pub mod error;
 pub mod models;
 pub mod verifier;
 
-pub use config::OAuthResourceServerConfig;
-pub use config::OAuthResourceServerIntrospectionConfig;
 #[cfg(feature = "jwe")]
 pub use config::OAuthResourceServerJweConfig;
+pub use config::{OAuthResourceServerConfig, OAuthResourceServerIntrospectionConfig};
 pub use error::{OAuthResourceServerError, OAuthResourceServerResult};
 #[cfg(feature = "jwe")]
 pub use models::LocalJweDecryptionKeySet;

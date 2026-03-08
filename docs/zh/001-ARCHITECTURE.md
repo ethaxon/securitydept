@@ -14,7 +14,6 @@ Crate: `securitydept-creds`
 - JWE 解密助手
 - RFC 9068 访问令牌验证
 - 共享凭证和验证器 trait
-- 基础认证区域助手
 
 该层不应了解：
 
@@ -81,6 +80,10 @@ Crate: `securitydept-oauth-resource-server`
 - 静态令牌凭证
 
 未来的共享抽象可能应将所有这些规范化为通用的认证主体模型。
+
+当前的专用 crate：
+
+- `securitydept-basic-auth-zone`
 
 ## 第 6 层：凭证管理
 

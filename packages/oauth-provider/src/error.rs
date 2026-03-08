@@ -17,4 +17,3 @@ pub enum OAuthProviderError {
     #[snafu(display("OAuth provider introspection error: {message}"))]
     Introspection { message: String },
 }
-

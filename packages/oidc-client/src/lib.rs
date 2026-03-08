@@ -10,7 +10,6 @@ pub mod routes;
 pub use client::OidcClient;
 pub use config::OidcConfig;
 pub use error::{OidcError, OidcResult};
-pub use securitydept_oauth_provider::{OAuthProviderConfig, OAuthProviderRuntime};
 pub use models::{
     ClaimsCheckResult, ExtraOidcClaims, IdTokenClaimsWithExtra, OidcCodeCallbackSearchParams,
     OidcCodeExchangeResult, OidcCodeFlowAuthorizationRequest, OidcTokenSet,
@@ -19,3 +18,4 @@ pub use models::{
 #[cfg(feature = "moka-pending-store")]
 pub use pending_store::{MokaPendingOauthStore, MokaPendingOauthStoreConfig};
 pub use pending_store::{PendingOauth, PendingOauthStore};
+pub use securitydept_oauth_provider::{OAuthProviderConfig, OAuthProviderRuntime};

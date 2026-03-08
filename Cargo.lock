@@ -3212,6 +3212,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "securitydept-basic-auth-zone"
+version = "0.2.0-alpha.2"
+dependencies = [
+ "axum",
+ "serde",
+ "typed-builder",
+ "web-route",
+]
+
+[[package]]
 name = "securitydept-cli"
 version = "0.2.0-alpha.2"
 dependencies = [
@@ -3236,6 +3246,7 @@ dependencies = [
  "jsonwebtoken",
  "oauth2",
  "openidconnect",
+ "securitydept-basic-auth-zone",
  "securitydept-creds",
  "securitydept-creds-manage",
  "securitydept-oauth-provider",
@@ -3249,7 +3260,6 @@ name = "securitydept-creds"
 version = "0.2.0-alpha.2"
 dependencies = [
  "argon2",
- "axum",
  "base64",
  "hex",
  "http",
@@ -3265,8 +3275,6 @@ dependencies = [
  "snafu",
  "tokio",
  "tracing",
- "typed-builder",
- "web-route",
 ]
 
 [[package]]

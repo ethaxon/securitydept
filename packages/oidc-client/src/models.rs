@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use openidconnect::{
-    AdditionalClaims, CsrfToken, EmptyExtraTokenFields, IdTokenClaims,
-    IdTokenFields, Nonce, UserInfoClaims,
+    AdditionalClaims, CsrfToken, EmptyExtraTokenFields, IdTokenClaims, IdTokenFields, Nonce,
+    UserInfoClaims,
     core::{CoreGenderClaim, CoreJweContentEncryptionAlgorithm, CoreJwsSigningAlgorithm},
 };
 use serde::{Deserialize, Serialize};

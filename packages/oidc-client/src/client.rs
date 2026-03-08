@@ -3,13 +3,13 @@ use std::sync::Arc;
 use chrono::Utc;
 use openidconnect::{
     AuthenticationFlow, AuthorizationCode, Client, ClientId, ClientSecret, CsrfToken,
-    DeviceAuthorizationUrl, EndpointMaybeSet, EndpointNotSet, EndpointSet, IntrospectionUrl,
-    Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken,
+    DeviceAuthorizationUrl, EndpointMaybeSet, EndpointNotSet, EndpointSet, IntrospectionUrl, Nonce,
+    OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken,
     RevocationUrl, Scope, StandardErrorResponse, StandardTokenResponse,
     core::{
-        CoreAuthDisplay, CoreAuthPrompt, CoreErrorResponseType, CoreGenderClaim,
-        CoreJweContentEncryptionAlgorithm, CoreJsonWebKey, CoreRevocableToken,
-        CoreRevocationErrorResponse, CoreTokenIntrospectionResponse, CoreTokenType,
+        CoreAuthDisplay, CoreAuthPrompt, CoreErrorResponseType, CoreGenderClaim, CoreJsonWebKey,
+        CoreJweContentEncryptionAlgorithm, CoreRevocableToken, CoreRevocationErrorResponse,
+        CoreTokenIntrospectionResponse, CoreTokenType,
     },
     reqwest,
 };
@@ -533,12 +533,10 @@ fn build_client(
         .transpose()
         .map_err(|e| format!("Invalid device_authorization_endpoint: {e}"))?;
 
-    Ok(ClientWithExtra::from_provider_metadata(
-        metadata,
-        client_id,
-        client_secret,
+    Ok(
+        ClientWithExtra::from_provider_metadata(metadata, client_id, client_secret)
+            .set_introspection_url_option(introspection_endpoint)
+            .set_revocation_url_option(revocation_endpoint)
+            .set_device_authorization_url_option(device_authorization_endpoint),
     )
-    .set_introspection_url_option(introspection_endpoint)
-    .set_revocation_url_option(revocation_endpoint)
-    .set_device_authorization_url_option(device_authorization_endpoint))
 }

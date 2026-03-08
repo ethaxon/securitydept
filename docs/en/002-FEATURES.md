@@ -24,7 +24,6 @@ Primary code:
 - `packages/creds/src/jwe.rs`
 - `packages/creds/src/rfc9068.rs`
 - `packages/creds/src/validator.rs`
-- `packages/creds/src/zone/mod.rs`
 
 ## 2. Upper-layer OIDC client
 
@@ -86,7 +85,7 @@ Current status:
 
 Primary references:
 
-- `packages/creds/src/zone/mod.rs`
+- `packages/basic-auth-zone/src/lib.rs`
 - [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md)
 
 ## 5. Stateful cookie-session auth context
