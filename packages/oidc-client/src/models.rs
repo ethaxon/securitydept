@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use openidconnect::{
-    AdditionalClaims, AdditionalProviderMetadata, CsrfToken, EmptyExtraTokenFields, IdTokenClaims,
+    AdditionalClaims, CsrfToken, EmptyExtraTokenFields, IdTokenClaims,
     IdTokenFields, Nonce, UserInfoClaims,
     core::{CoreGenderClaim, CoreJweContentEncryptionAlgorithm, CoreJwsSigningAlgorithm},
 };
@@ -12,34 +14,23 @@ pub struct ClaimsCheckResult {
     pub display_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub picture: Option<String>,
-    pub claims: serde_json::Value,
+    pub claims: HashMap<String, serde_json::Value>,
 }
 
 /// Additional claims we accept from the OIDC provider (open-ended).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct ExtraClaims {
+pub struct ExtraOidcClaims {
     #[serde(flatten)]
-    pub extra: serde_json::Value,
+    pub extra: HashMap<String, serde_json::Value>,
 }
 
-impl AdditionalClaims for ExtraClaims {}
+impl AdditionalClaims for ExtraOidcClaims {}
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ExtraProviderMetadata {
-    pub introspection_endpoint: Option<String>,
-    pub revocation_endpoint: Option<String>,
-    pub device_authorization_endpoint: Option<String>,
-    #[serde(flatten)]
-    pub extra: serde_json::Value,
-}
-
-impl AdditionalProviderMetadata for ExtraProviderMetadata {}
-
-pub type UserInfoClaimsWithExtra = UserInfoClaims<ExtraClaims, CoreGenderClaim>;
-pub type IdTokenClaimsWithExtra = IdTokenClaims<ExtraClaims, CoreGenderClaim>;
+pub type UserInfoClaimsWithExtra = UserInfoClaims<ExtraOidcClaims, CoreGenderClaim>;
+pub type IdTokenClaimsWithExtra = IdTokenClaims<ExtraOidcClaims, CoreGenderClaim>;
 
 pub type IdTokenFieldsWithExtra = IdTokenFields<
-    ExtraClaims,
+    ExtraOidcClaims,
     EmptyExtraTokenFields,
     CoreGenderClaim,
     CoreJweContentEncryptionAlgorithm,

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use securitydept_creds::{
     Argon2BasicAuthCred, BasicAuthCred, Sha256TokenAuthCred, StaticTokenAuthCred,
@@ -158,7 +160,7 @@ pub struct Session {
     pub display_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub picture: Option<String>,
-    pub claims: serde_json::Value,
+    pub claims: HashMap<String, serde_json::Value>,
     pub expires_at: DateTime<Utc>,
 }
 
@@ -232,5 +234,5 @@ pub struct UserInfo {
     pub display_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub picture: Option<String>,
-    pub claims: serde_json::Value,
+    pub claims: HashMap<String, serde_json::Value>,
 }

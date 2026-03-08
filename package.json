@@ -1,18 +1,24 @@
 {
 	"name": "securitydept",
-	"version": "0.1.1",
+	"version": "0.2.0-alpha.2",
 	"private": true,
 	"type": "module",
-	"description": "SecurityDept, a simple, standalone auth service that integrates with external OIDC to manage and provides reusable authentication middleware endpoints for reverse proxies.",
+	"description": "SecurityDept is a mesh-oriented authentication and authorization toolkit built as reusable Rust crates plus a reference server app.",
 	"keywords": [
-		"oidc",
 		"auth",
-		"authorization",
 		"authentication",
+		"authorization",
+		"oidc",
+		"oauth",
 		"middleware",
-		"reverse proxy",
-		"traefik",
-		"nginx"
+		"rust",
+		"security",
+		"token",
+		"credentials",
+		"basic-auth",
+		"jwt",
+		"jwe",
+		"rfc9068"
 	],
 	"workspaces": [
 		"apps/webui"

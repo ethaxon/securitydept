@@ -2010,6 +2010,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
+name = "maplit"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3207,7 +3213,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-cli"
-version = "0.1.1"
+version = "0.2.0-alpha.2"
 dependencies = [
  "clap",
  "figment",
@@ -3224,7 +3230,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-core"
-version = "0.1.1"
+version = "0.2.0-alpha.2"
 dependencies = [
  "josekit",
  "jsonwebtoken",
@@ -3232,13 +3238,15 @@ dependencies = [
  "openidconnect",
  "securitydept-creds",
  "securitydept-creds-manage",
- "securitydept-oidc",
+ "securitydept-oauth-provider",
+ "securitydept-oauth-resource-server",
+ "securitydept-oidc-client",
  "securitydept-utils",
 ]
 
 [[package]]
 name = "securitydept-creds"
-version = "0.1.1"
+version = "0.2.0-alpha.2"
 dependencies = [
  "argon2",
  "axum",
@@ -3252,6 +3260,7 @@ dependencies = [
  "securitydept-utils",
  "serde",
  "serde_json",
+ "serde_with",
  "sha2",
  "snafu",
  "tokio",
@@ -3262,7 +3271,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-creds-manage"
-version = "0.1.1"
+version = "0.2.0-alpha.2"
 dependencies = [
  "chrono",
  "fs2",
@@ -3281,8 +3290,42 @@ dependencies = [
 ]
 
 [[package]]
-name = "securitydept-oidc"
-version = "0.1.1"
+name = "securitydept-oauth-provider"
+version = "0.2.0-alpha.2"
+dependencies = [
+ "oauth2",
+ "openidconnect",
+ "securitydept-utils",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "snafu",
+ "tokio",
+]
+
+[[package]]
+name = "securitydept-oauth-resource-server"
+version = "0.2.0-alpha.2"
+dependencies = [
+ "chrono",
+ "http",
+ "josekit",
+ "oauth2",
+ "openidconnect",
+ "securitydept-creds",
+ "securitydept-oauth-provider",
+ "securitydept-utils",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "snafu",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "securitydept-oidc-client"
+version = "0.2.0-alpha.2"
 dependencies = [
  "axum",
  "boa_engine",
@@ -3291,6 +3334,7 @@ dependencies = [
  "moka",
  "openidconnect",
  "orion",
+ "securitydept-oauth-provider",
  "securitydept-utils",
  "serde",
  "serde-constant",
@@ -3305,11 +3349,12 @@ dependencies = [
 
 [[package]]
 name = "securitydept-server"
-version = "0.1.1"
+version = "0.2.0-alpha.2"
 dependencies = [
  "axum",
  "clap",
  "figment",
+ "maplit",
  "openidconnect",
  "securitydept-core",
  "serde",
@@ -3324,11 +3369,13 @@ dependencies = [
 
 [[package]]
 name = "securitydept-utils"
-version = "0.1.1"
+version = "0.2.0-alpha.2"
 dependencies = [
  "http",
  "rfc7239",
  "serde",
+ "serde_json",
+ "serde_with",
  "url",
 ]
 

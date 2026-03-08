@@ -10,8 +10,9 @@ pub mod routes;
 pub use client::OidcClient;
 pub use config::OidcConfig;
 pub use error::{OidcError, OidcResult};
+pub use securitydept_oauth_provider::{OAuthProviderConfig, OAuthProviderRuntime};
 pub use models::{
-    ClaimsCheckResult, ExtraClaims, IdTokenClaimsWithExtra, OidcCodeCallbackSearchParams,
+    ClaimsCheckResult, ExtraOidcClaims, IdTokenClaimsWithExtra, OidcCodeCallbackSearchParams,
     OidcCodeExchangeResult, OidcCodeFlowAuthorizationRequest, OidcTokenSet,
     UserInfoClaimsWithExtra,
 };

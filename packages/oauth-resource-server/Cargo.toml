@@ -1,0 +1,24 @@
+[package]
+name = "securitydept-oauth-resource-server"
+version = "0.2.0-alpha.2"
+edition = "2024"
+
+[features]
+default = []
+jwe = ["securitydept-creds/jwe", "dep:josekit"]
+
+[dependencies]
+securitydept-oauth-provider = { path = "../oauth-provider" }
+securitydept-creds = { path = "../creds", features = ["rfc9068", "oidc"] }
+securitydept-utils = { path = "../utils" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+snafu = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt", "time", "fs"] }
+tracing = { workspace = true }
+openidconnect = { workspace = true }
+oauth2 = { workspace = true }
+chrono = { workspace = true }
+josekit = { workspace = true, optional = true }
+http = { workspace = true }

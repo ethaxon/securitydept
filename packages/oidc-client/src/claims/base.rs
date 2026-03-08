@@ -51,7 +51,7 @@ impl ClaimsChecker for DefaultClaimsChecker {
         let transformed_claims = if let Some(user_info_claims) = user_info_claims {
             let user_info_claims_json =
                 serde_json::to_value(user_info_claims).map_err(|e| OidcError::Claims {
-                    message: format!("Failed to convert claims to JSON: {e}"),
+                    message: format!("Failed to convert user info claims to JSON: {e}"),
                 })?;
             if let (
                 serde_json::Value::Object(mut id_token_claims_obj),
@@ -59,19 +59,25 @@ impl ClaimsChecker for DefaultClaimsChecker {
             ) = (id_token_claims_json, user_info_claims_json)
             {
                 id_token_claims_obj.extend(user_info_claims_obj);
-                serde_json::Value::Object(id_token_claims_obj)
+                id_token_claims_obj
             } else {
                 return Err(OidcError::Claims {
                     message: "Failed to convert mixed claims to JSON".to_string(),
                 });
             }
         } else {
-            id_token_claims_json
+            if let serde_json::Value::Object(id_token_claims_obj) = id_token_claims_json {
+                id_token_claims_obj
+            } else {
+                return Err(OidcError::Claims {
+                    message: "Failed to convert id token claims to JSON".to_string(),
+                });
+            }
         };
         Ok(ClaimsCheckResult {
             display_name: name,
             picture,
-            claims: transformed_claims,
+            claims: transformed_claims.into_iter().collect(),
         })
     }
 }

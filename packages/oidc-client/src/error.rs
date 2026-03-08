@@ -1,4 +1,5 @@
 use http::StatusCode;
+use securitydept_oauth_provider::OAuthProviderError;
 use securitydept_utils::http::ToHttpStatus;
 use snafu::Snafu;
 
@@ -60,3 +61,14 @@ impl ToHttpStatus for OidcError {
 }
 
 pub type OidcResult<T> = std::result::Result<T, OidcError>;
+
+impl From<OAuthProviderError> for OidcError {
+    fn from(value: OAuthProviderError) -> Self {
+        match value {
+            OAuthProviderError::InvalidConfig { message } => Self::InvalidConfig { message },
+            OAuthProviderError::Metadata { message } => Self::Metadata { message },
+            OAuthProviderError::HttpClient { message } => Self::Metadata { message },
+            OAuthProviderError::Introspection { message } => Self::TokenExchange { message },
+        }
+    }
+}

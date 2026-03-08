@@ -3,7 +3,9 @@ cargo-features = ["profile-rustflags"]
 [workspace]
 members = [
     "packages/core",
-    "packages/oidc",
+    "packages/oidc-client",
+    "packages/oauth-provider",
+    "packages/oauth-resource-server",
     "packages/utils",
     "packages/creds",
     "packages/creds-manage",
@@ -30,15 +32,17 @@ serde_with = "3"
 base64 = "0.22"
 figment = { version = "0.10", features = ["toml", "env"] }
 web-route = "0.2"
-typed-builder = "0.23.2"
+typed-builder = "0.23"
 argon2 = "0.6.0-rc.7"
 sha2 = "0.10"
 hex = "0.4"
 rand = { version = "0.10", features = ["thread_rng"] }
 chrono = "0.4"
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
-josekit = "0.10.3"
+josekit = "0.10"
 tower-http = { version = "0.6", features = ["cors", "fs"] }
+maplit = "1"
+notify = "8"
 
 [patch.crates-io]
 openidconnect = { git = "https://github.com/ethaxon/openidconnect-rs.git", branch = "set_option" }

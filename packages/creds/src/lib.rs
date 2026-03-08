@@ -27,16 +27,16 @@ pub use jwe::{
     verify_token_jwe_payload_with_jwks,
 };
 #[cfg(all(feature = "jwk", feature = "jwe"))]
-pub use jwk::{JweJwkTrait, JweJwksTrait};
+pub use jwk::{JweJwkTrait, JweJwksTrait, LocalJweDecryptionKeySet};
 #[cfg(all(feature = "jwk", feature = "jwt"))]
 pub use jwk::{JwtJwkTrait, JwtJwksTrait};
 #[cfg(feature = "jwt")]
 pub use jwt::{
-    EmptyJwtClaims, ExtraJwtClaims, JwtClaimsTrait, JwtDecodingKey, JwtHeader, JwtTokenData,
-    JwtValidation, verify_token_jwt, verify_token_jwt_with_jwks,
+    Audience, CoreJwtClaims, JwtClaimsTrait, JwtDecodingKey, JwtHeader, JwtTokenData,
+    JwtValidation, Scope, verify_token_jwt, verify_token_jwt_with_jwks,
 };
 #[cfg(feature = "rfc9068")]
-pub use rfc9068::{TokenData, TokenFormat, verify_token_rfc9068_with_jwks};
+pub use rfc9068::{TokenData, TokenFormat, TokenJwtClaims, verify_token_rfc9068_with_jwks};
 pub use static_token::{
     Sha256TokenAuthCred, StaticTokenAuthCred, generate_static_token, hash_token_sha256,
     verify_token_sha256,

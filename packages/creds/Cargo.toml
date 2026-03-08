@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-creds"
-version = "0.1.1"
+version = "0.2.0-alpha.2"
 edition = "2024"
 
 [features]
@@ -25,6 +25,7 @@ argon2 = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
+serde_with = { workspace = true }
 
 web-route = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }

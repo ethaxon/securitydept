@@ -27,7 +27,7 @@ impl SessionManager {
         &self,
         display_name: String,
         picture: Option<String>,
-        claims: serde_json::Value,
+        claims: HashMap<String, serde_json::Value>,
     ) -> String {
         let session_id = Uuid::new_v4().to_string();
         let session = Session {

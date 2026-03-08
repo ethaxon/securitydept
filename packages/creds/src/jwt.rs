@@ -1,10 +1,12 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Deref};
 
+use jsonwebtoken::TokenData as JwtTokenDataOrigin;
 pub use jsonwebtoken::{
-    DecodingKey as JwtDecodingKey, Header as JwtHeader, TokenData as JwtTokenData,
-    Validation as JwtValidation,
+    DecodingKey as JwtDecodingKey, Header as JwtHeader, Validation as JwtValidation,
 };
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use securitydept_utils::ser::SpaceSeparated;
+use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
+use serde_with::{OneOrMany, formats::PreferOne, serde_as};
 use snafu::ResultExt;
 
 use crate::{
@@ -12,20 +14,88 @@ use crate::{
     error::{CredsError, JSONWebTokenSnafu},
 };
 
-pub trait JwtClaimsTrait: DeserializeOwned + Clone {}
+pub type JwtTokenData<T> = JwtTokenDataOrigin<T>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmptyJwtClaims {}
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Audience(#[serde_as(as = "OneOrMany<_, PreferOne>")] Vec<String>);
 
-impl JwtClaimsTrait for EmptyJwtClaims {}
+impl Deref for Audience {
+    type Target = Vec<String>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtraJwtClaims {
-    #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
-impl JwtClaimsTrait for ExtraJwtClaims {}
+#[serde_as]
+#[derive(Debug, Deserialize, Clone)]
+pub struct Scope(#[serde_as(as = "SpaceSeparated<String>")] Vec<String>);
+
+impl Serialize for Scope {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.0.join(" "))
+    }
+}
+
+impl Deref for Scope {
+    type Target = Vec<String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub trait JwtClaimsTrait: DeserializeOwned + Clone {
+    fn get_subject(&self) -> Option<&str>;
+    fn get_issuer(&self) -> Option<&str>;
+    fn get_audience(&self) -> Option<&Audience>;
+    fn get_expiration_time(&self) -> Option<u64>;
+    fn get_not_before(&self) -> Option<u64>;
+    fn get_additional(&self) -> Option<&HashMap<String, serde_json::Value>>;
+}
+
+/// [RFC 7519](https://www.rfc-editor.org/rfc/rfc7519) claims.
+/// This is the core claims that are required by the RFC.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CoreJwtClaims {
+    #[serde(rename = "sub")]
+    pub subject: Option<String>,
+    #[serde(rename = "iss")]
+    pub issuer: Option<String>,
+    #[serde(rename = "aud")]
+    pub audience: Option<Audience>,
+    #[serde(rename = "exp")]
+    pub expiration_time: Option<u64>,
+    #[serde(rename = "nbf")]
+    pub not_before: Option<u64>,
+    #[serde(flatten)]
+    pub additional: HashMap<String, serde_json::Value>,
+}
+
+impl JwtClaimsTrait for CoreJwtClaims {
+    fn get_subject(&self) -> Option<&str> {
+        self.subject.as_deref()
+    }
+    fn get_issuer(&self) -> Option<&str> {
+        self.issuer.as_deref()
+    }
+    fn get_audience(&self) -> Option<&Audience> {
+        self.audience.as_ref()
+    }
+    fn get_expiration_time(&self) -> Option<u64> {
+        self.expiration_time
+    }
+    fn get_not_before(&self) -> Option<u64> {
+        self.not_before
+    }
+    fn get_additional(&self) -> Option<&HashMap<String, serde_json::Value>> {
+        Some(&self.additional)
+    }
+}
 
 pub fn verify_token_jwt<CLAIMS, F>(
     token: &str,

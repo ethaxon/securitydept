@@ -4,6 +4,7 @@ use axum::{
     http::{HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
+use maplit::hashmap;
 use securitydept_core::{
     creds_manage::{CredsManageError, models::UserInfo},
     oidc::{
@@ -50,7 +51,9 @@ pub async fn login(
         .create(
             "dev".to_string(),
             None,
-            serde_json::json!({ "oidc_enabled": false }),
+            hashmap! {
+                "oidc_enabled".to_string() => serde_json::json!(false),
+            },
         )
         .await;
     let cookie = format!(

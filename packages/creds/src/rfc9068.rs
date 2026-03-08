@@ -1,10 +1,69 @@
+use std::collections::HashMap;
+
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
-    CredsResult, JwtClaimsTrait, JwtJwkTrait, JwtJwksTrait, JwtTokenData, JwtValidation,
-    verify_token_jwt_with_jwks,
+    Audience, CredsResult, JwtClaimsTrait, JwtJwkTrait, JwtJwksTrait, JwtTokenData, JwtValidation,
+    Scope, verify_token_jwt_with_jwks,
 };
+
+/// [RFC 9068](https://www.rfc-editor.org/rfc/rfc9068) claims.
+/// This is the claims that are required by the RFC.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TokenJwtClaims {
+    #[serde(rename = "sub")]
+    pub subject: String,
+    #[serde(rename = "iss")]
+    pub issuer: String,
+    #[serde(rename = "aud")]
+    pub audience: Audience,
+    #[serde(rename = "exp")]
+    pub expiration_time: u64,
+    #[serde(rename = "nbf")]
+    pub not_before: Option<u64>,
+    #[serde(rename = "iat")]
+    pub issued_at: u64,
+    #[serde(rename = "jti")]
+    pub jwt_id: String,
+    #[serde(rename = "client_id")]
+    pub client_id: String,
+    #[serde(rename = "scope")]
+    pub scope: Option<Scope>,
+    #[serde(rename = "auth_time")]
+    pub auth_time: Option<u64>,
+    #[serde(rename = "acr")]
+    pub acr: Option<String>,
+    #[serde(rename = "amr")]
+    pub amr: Option<Vec<String>>,
+    #[serde(rename = "nounce")]
+    pub nounce: Option<String>,
+    #[serde(rename = "azp")]
+    pub azp: Option<String>,
+    #[serde(flatten)]
+    pub additional: HashMap<String, serde_json::Value>,
+}
+
+impl JwtClaimsTrait for TokenJwtClaims {
+    fn get_subject(&self) -> Option<&str> {
+        Some(&self.subject)
+    }
+    fn get_issuer(&self) -> Option<&str> {
+        Some(&self.issuer)
+    }
+    fn get_audience(&self) -> Option<&Audience> {
+        Some(&self.audience)
+    }
+    fn get_expiration_time(&self) -> Option<u64> {
+        Some(self.expiration_time)
+    }
+    fn get_not_before(&self) -> Option<u64> {
+        self.not_before
+    }
+    fn get_additional(&self) -> Option<&HashMap<String, serde_json::Value>> {
+        Some(&self.additional)
+    }
+}
 
 #[derive(Deserialize)]
 struct JWTHeaderMinimalValidation {

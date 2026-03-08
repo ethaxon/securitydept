@@ -29,13 +29,30 @@ struct JweCompactHeader {
 }
 
 #[derive(Debug)]
-pub struct JweTokenData<Claims>
+pub struct JweTokenData<CLAIMS>
 where
-    Claims: JwtClaimsTrait,
+    CLAIMS: JwtClaimsTrait,
 {
     jwe_header: jwe::JweHeader,
     jwt_header: JwtHeader,
-    claims: Claims,
+    claims: CLAIMS,
+}
+
+impl<CLAIMS> JweTokenData<CLAIMS>
+where
+    CLAIMS: JwtClaimsTrait,
+{
+    pub fn jwe_header(&self) -> &jwe::JweHeader {
+        &self.jwe_header
+    }
+
+    pub fn jwt_header(&self) -> &JwtHeader {
+        &self.jwt_header
+    }
+
+    pub fn claims(&self) -> &CLAIMS {
+        &self.claims
+    }
 }
 
 impl<CLAIMS> Clone for JweTokenData<CLAIMS>

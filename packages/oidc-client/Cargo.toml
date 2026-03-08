@@ -1,6 +1,6 @@
 [package]
-name = "securitydept-oidc"
-version = "0.1.1"
+name = "securitydept-oidc-client"
+version = "0.2.0-alpha.2"
 edition = "2024"
 
 [features]
@@ -11,6 +11,7 @@ moka-pending-store = ["dep:moka"]
 axum = ["dep:axum"]
 
 [dependencies]
+securitydept-oauth-provider = { path = "../oauth-provider" }
 securitydept-utils = { path = "../utils" }
 openidconnect = { workspace = true }
 serde = { workspace = true }

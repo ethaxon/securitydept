@@ -1,10 +1,12 @@
 [package]
 name = "securitydept-utils"
-version = "0.1.1"
+version = "0.2.0-alpha.2"
 edition = "2024"
 
 [dependencies]
 http = { workspace = true }
 serde = { workspace = true }
 url = { workspace = true }
+serde_with = { workspace = true }
+serde_json = { workspace = true }
 rfc7239 = "0.1"

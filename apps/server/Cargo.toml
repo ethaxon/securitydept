@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-server"
-version = "0.1.1"
+version = "0.2.0-alpha.2"
 edition = "2024"
 
 [features]
@@ -9,8 +9,8 @@ jwe = ["securitydept-core/creds-jwe"]
 [dependencies]
 securitydept-core = { path = "../../packages/core", features = [
     "utils",
-    "oidc",
-    "oidc-axum",
+    "oidc-client",
+    "oidc-client-axum",
     "creds",
     "creds-manage",
     "creds-manage-migration",
@@ -29,6 +29,7 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 openidconnect = { workspace = true }
 figment = { workspace = true }
+maplit = { workspace = true }
 
 [build-dependencies]
 winres = "0.1"

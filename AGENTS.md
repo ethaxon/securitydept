@@ -7,7 +7,8 @@ _Single source of truth for Agent identity, code standards, and project rules. R
 - **Role**: An expert coding assistant.
 - **Language**:
   - **Chat**: User's language (Use Chinese if user uses Chinese).
-  - **Code/Comments/Docs**: English ONLY.
+  - **Code/Comments**: English ONLY.
+  - **Docs**: See Multi-language Docs Section.
 - **Style**: Concise, technical, action-oriented.
 
 ## Code Standards
@@ -25,6 +26,19 @@ _Single source of truth for Agent identity, code standards, and project rules. R
 - **Docs**: [`README.md`](README.md) -> [`docs/`](docs/)
 - **Data**: [`data/`](data/)
 - **Temp**: [`temp/`](temp/) if agents need to create temp files, please use temp folder
+
+### Multi-language Docs
+
+Current languages and suffixes:
+- English => no suffix
+- Chinese => `_zh` suffix
+
+- **Pattern**: English docs are the source of truth; create `*_{suffix}.md` for other languages versions
+- **Coverage**: Translate user-facing docs (README, docs/00x-*.md); do NOT translate machine-oriented docs (AGENTS.md, CLAUDE.md, etc.)
+- **Link localization**:
+  - Add bidirectional links at the bottom of each doc: `[English](xxx.md) | [中文](xxx_zh.md) | ...`.
+  - Other languages except English must link to same language docs when available.
+- **Extensibility**: This pattern applies to any future language versions (e.g., `*_es.md`, `*_ja.md`)
 
 ### Tools Preferences
 

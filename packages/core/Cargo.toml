@@ -1,20 +1,31 @@
 [package]
 name = "securitydept-core"
-version = "0.1.1"
+version = "0.2.0-alpha.2"
 edition = "2024"
 
 [features]
 default = []
 utils = ["dep:securitydept-utils"]
-oidc = ["dep:securitydept-oidc", "dep:openidconnect", "dep:oauth2"]
-oidc-axum = ["oidc", "securitydept-oidc/axum"]
-oidc-claims-script = ["oidc", "securitydept-oidc/claims-script"]
-oidc-default-pending-store = [
-    "oidc",
-    "oidc-moka-pending-store",
-    "securitydept-oidc/default-pending-store",
+reexport-oauth2 = ["dep:oauth2"]
+reexport-openidconnect = ["dep:openidconnect", "reexport-oauth2"]
+oauth-provider = ["dep:securitydept-oauth-provider", "reexport-openidconnect"]
+oidc-client = ["dep:securitydept-oidc-client", "reexport-openidconnect"]
+oidc-client-axum = ["oidc-client", "securitydept-oidc-client/axum"]
+oidc-client-claims-script = ["oidc-client", "securitydept-oidc-client/claims-script"]
+oidc-client-default-pending-store = [
+    "oidc-client",
+    "oidc-client-moka-pending-store",
+    "securitydept-oidc-client/default-pending-store",
 ]
-oidc-moka-pending-store = ["oidc", "securitydept-oidc/moka-pending-store"]
+oidc-client-moka-pending-store = ["oidc-client", "securitydept-oidc-client/moka-pending-store"]
+oauth-resource-server = [
+    "dep:securitydept-oauth-resource-server",
+    "reexport-openidconnect",
+]
+oauth-resource-server-jwe = [
+    "oauth-resource-server",
+    "securitydept-oauth-resource-server/jwe",
+]
 creds = ["dep:securitydept-creds"]
 creds-zone = ["creds", "securitydept-creds/zone"]
 creds-jwk = ["creds", "securitydept-creds/jwk"]
@@ -33,13 +44,15 @@ creds-rfc9068 = [
     "creds-jwt",
     "securitydept-creds/rfc9068",
 ]
-creds-oidc = ["creds", "securitydept-creds/oidc", "dep:openidconnect"]
+creds-oidc = ["creds", "securitydept-creds/oidc", "reexport-openidconnect"]
 creds-manage = ["dep:securitydept-creds-manage"]
 creds-manage-migration = ["creds-manage", "securitydept-creds-manage/migration"]
 
 [dependencies]
 securitydept-utils = { path = "../utils", optional = true }
-securitydept-oidc = { path = "../oidc", optional = true }
+securitydept-oauth-provider = { path = "../oauth-provider", optional = true }
+securitydept-oidc-client = { path = "../oidc-client", optional = true }
+securitydept-oauth-resource-server = { path = "../oauth-resource-server", optional = true }
 securitydept-creds = { path = "../creds", optional = true }
 securitydept-creds-manage = { path = "../creds-manage", optional = true }
 openidconnect = { workspace = true, optional = true }

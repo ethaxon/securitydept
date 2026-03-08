@@ -1,0 +1,14 @@
+[package]
+name = "securitydept-oauth-provider"
+version = "0.2.0-alpha.2"
+edition = "2024"
+
+[dependencies]
+securitydept-utils = { path = "../utils" }
+openidconnect = { workspace = true }
+oauth2 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+snafu = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync"] }

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 use boa_engine::{Context, Source};
 use serde::{Deserialize, Serialize};
@@ -26,7 +26,7 @@ pub struct ScriptClaimsCheckSuccessResult {
     pub display_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub picture: Option<String>,
-    pub claims: serde_json::Value,
+    pub claims: HashMap<String, serde_json::Value>,
 }
 
 impl From<ScriptClaimsCheckSuccessResult> for ClaimsCheckResult {
