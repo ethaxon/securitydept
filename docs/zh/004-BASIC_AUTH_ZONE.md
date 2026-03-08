@@ -51,4 +51,4 @@ SecurityDept 应将基础认证挑战隔离在显式的挑战路由后面。
 
 ---
 
-[English Version](004-BASIC_AUTH_ZONE.md) | [中文版本](004-BASIC_AUTH_ZONE_zh.md)
+[English](../en/004-BASIC_AUTH_ZONE.md) | [中文](004-BASIC_AUTH_ZONE.md)

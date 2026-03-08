@@ -87,7 +87,7 @@ Current status:
 Primary references:
 
 - `packages/creds/src/zone/mod.rs`
-- `docs/004-BASIC_AUTH_ZONE.md`
+- [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md)
 
 ## 5. Stateful cookie-session auth context
 
@@ -173,4 +173,4 @@ Current status:
 
 ---
 
-[English Version](002-FEATURES.md) | [中文版本](002-FEATURES_zh.md)
+[English](002-FEATURES.md) | [中文](../zh/002-FEATURES.md)

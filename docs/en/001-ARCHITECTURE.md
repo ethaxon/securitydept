@@ -134,4 +134,4 @@ Transparent forwarding is only correct when the downstream node accepts the same
 
 ---
 
-[English Version](001-ARCHITECTURE.md) | [中文版本](001-ARCHITECTURE_zh.md)
+[English](001-ARCHITECTURE.md) | [中文](../zh/001-ARCHITECTURE.md)

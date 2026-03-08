@@ -123,4 +123,4 @@
 
 ---
 
-[English Version](003-AUTH_CONTEXT_MODES.md) | [中文版本](003-AUTH_CONTEXT_MODES_zh.md)
+[English](../en/003-AUTH_CONTEXT_MODES.md) | [中文](003-AUTH_CONTEXT_MODES.md)

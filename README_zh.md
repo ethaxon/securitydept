@@ -67,12 +67,12 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
 
 | 文档 | 重点 |
 | --- | --- |
-| [docs/000-OVERVIEW.md](docs/000-OVERVIEW.md) | 项目目标、层次结构和文档索引 |
-| [docs/001-ARCHITECTURE.md](docs/001-ARCHITECTURE.md) | 分层架构和 crate 边界 |
-| [docs/002-FEATURES.md](docs/002-FEATURES.md) | 能力矩阵：已实现 vs 计划中 |
-| [docs/003-AUTH_CONTEXT_MODES.md](docs/003-AUTH_CONTEXT_MODES.md) | 基础区域、cookie-session 和无状态 token-set 模式 |
-| [docs/004-BASIC_AUTH_ZONE.md](docs/004-BASIC_AUTH_ZONE.md) | 基础认证区域的 UX 和协议说明 |
-| [docs/100-ROADMAP.md](docs/100-ROADMAP.md) | 与当前目标对齐的序列路线图 |
+| [docs/zh/000-OVERVIEW.md](docs/zh/000-OVERVIEW.md) | 项目目标、层次结构和文档索引 |
+| [docs/zh/001-ARCHITECTURE.md](docs/zh/001-ARCHITECTURE.md) | 分层架构和 crate 边界 |
+| [docs/zh/002-FEATURES.md](docs/zh/002-FEATURES.md) | 能力矩阵：已实现 vs 计划中 |
+| [docs/zh/003-AUTH_CONTEXT_MODES.md](docs/zh/003-AUTH_CONTEXT_MODES.md) | 基础区域、cookie-session 和无状态 token-set 模式 |
+| [docs/zh/004-BASIC_AUTH_ZONE.md](docs/zh/004-BASIC_AUTH_ZONE.md) | 基础认证区域的 UX 和协议说明 |
+| [docs/zh/100-ROADMAP.md](docs/zh/100-ROADMAP.md) | 与当前目标对齐的序列路线图 |
 
 ## 开发
 
@@ -88,4 +88,4 @@ just dev-webui
 
 ---
 
-[English Version](README.md) | 中文版本
+[English](README.md) | [中文](README_zh.md)

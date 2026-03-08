@@ -27,19 +27,6 @@ _Single source of truth for Agent identity, code standards, and project rules. R
 - **Data**: [`data/`](data/)
 - **Temp**: [`temp/`](temp/) if agents need to create temp files, please use temp folder
 
-### Multi-language Docs
-
-Current languages and suffixes:
-- English => no suffix
-- Chinese => `_zh` suffix
-
-- **Pattern**: English docs are the source of truth; create `*_{suffix}.md` for other languages versions
-- **Coverage**: Translate user-facing docs (README, docs/00x-*.md); do NOT translate machine-oriented docs (AGENTS.md, CLAUDE.md, etc.)
-- **Link localization**:
-  - Add bidirectional links at the bottom of each doc: `[English](xxx.md) | [中文](xxx_zh.md) | ...`.
-  - Other languages except English must link to same language docs when available.
-- **Extensibility**: This pattern applies to any future language versions (e.g., `*_es.md`, `*_ja.md`)
-
 ### Tools Preferences
 
 - **tools management**: use `mise` to manage tools such as `node`, `pnpm`, `rust`, etc.
@@ -49,3 +36,18 @@ Current languages and suffixes:
 - **typescript**: use tsconfig.json with references for managing the typescript project.
 - **webui stack**: use typescript + vite + react + @tanstack/react-xxx seriers + tailwindcss + shadcn/ui for the webui stack.
 - **server stack**: use rust + axum + openconnectid + serde + snafu + tracing series for the server stack.
+
+### Multi-language Docs
+
+**Directory Structure:**
+- English docs: `docs/{lang}/00x-TITLE.md` (e.g., `docs/en/00x-TITLE.md`)
+
+**Current languages:**
+- English: `docs/en/00x-TITLE.md`
+- Chinese: `docs/zh/00x-TITLE.md`
+
+**Rules:**
+- Translate user-facing docs only (README, docs/00x-*.md); do NOT translate machine-oriented docs (AGENTS.md, CLAUDE.md, etc.)
+- Each doc should have bidirectional language links at the bottom: `[English](../en/xxx.md) | [中文](xxx.md)` (in Chinese docs) or `[English](xxx.md) | [中文](../zh/xxx.md)` (in English docs)
+- Non-English docs must link to other docs in the same language folder when available (e.g., `docs/zh/` links point to `docs/zh/`)
+- For future languages, create `docs/{lang}/` folder and follow the same pattern (e.g., `docs/es/`, `docs/ja/`)

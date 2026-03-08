@@ -104,4 +104,4 @@ Current real-world role:
 
 ---
 
-[English Version](100-ROADMAP.md) | [中文版本](100-ROADMAP_zh.md)
+[English](100-ROADMAP.md) | [中文](../zh/100-ROADMAP.md)

@@ -67,12 +67,12 @@ These modes are intentionally above the current `oidc-client` and `oauth-resourc
 
 | Doc | Focus |
 | --- | --- |
-| [docs/000-OVERVIEW.md](docs/000-OVERVIEW.md) | Project goals, layers, and document index |
-| [docs/001-ARCHITECTURE.md](docs/001-ARCHITECTURE.md) | Layered architecture and crate boundaries |
-| [docs/002-FEATURES.md](docs/002-FEATURES.md) | Capability matrix: implemented vs planned |
-| [docs/003-AUTH_CONTEXT_MODES.md](docs/003-AUTH_CONTEXT_MODES.md) | Basic zone, cookie-session, and stateless token-set modes |
-| [docs/004-BASIC_AUTH_ZONE.md](docs/004-BASIC_AUTH_ZONE.md) | Basic auth zone UX and protocol notes |
-| [docs/100-ROADMAP.md](docs/100-ROADMAP.md) | Sequenced roadmap aligned with current goals |
+| [docs/en/000-OVERVIEW.md](docs/en/000-OVERVIEW.md) ([中文](docs/zh/000-OVERVIEW.md)) | Project goals, layers, and document index |
+| [docs/en/001-ARCHITECTURE.md](docs/en/001-ARCHITECTURE.md) ([中文](docs/zh/001-ARCHITECTURE.md)) | Layered architecture and crate boundaries |
+| [docs/en/002-FEATURES.md](docs/en/002-FEATURES.md) ([中文](docs/zh/002-FEATURES.md)) | Capability matrix: implemented vs planned |
+| [docs/en/003-AUTH_CONTEXT_MODES.md](docs/en/003-AUTH_CONTEXT_MODES.md) ([中文](docs/zh/003-AUTH_CONTEXT_MODES.md)) | Basic zone, cookie-session, and stateless token-set modes |
+| [docs/en/004-BASIC_AUTH_ZONE.md](docs/en/004-BASIC_AUTH_ZONE.md) ([中文](docs/zh/004-BASIC_AUTH_ZONE.md)) | Basic auth zone UX and protocol notes |
+| [docs/en/100-ROADMAP.md](docs/en/100-ROADMAP.md) ([中文](docs/zh/100-ROADMAP.md)) | Sequenced roadmap aligned with current goals |
 
 ## Development
 
@@ -88,4 +88,4 @@ just dev-webui
 
 ---
 
-[English Version](README.md) | [中文版本](README_zh.md)
+[English](README.md) | [中文](README_zh.md)

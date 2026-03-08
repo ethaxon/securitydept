@@ -58,12 +58,12 @@ SecurityDept 应在底层 crate 之上提供三种明确的认证上下文模式
 
 ## 文档索引
 
-- [001-ARCHITECTURE_zh.md](001-ARCHITECTURE_zh.md) - 架构和 crate 边界
-- [002-FEATURES_zh.md](002-FEATURES_zh.md) - 能力矩阵
-- [003-AUTH_CONTEXT_MODES_zh.md](003-AUTH_CONTEXT_MODES_zh.md) - 认证上下文模式
-- [004-BASIC_AUTH_ZONE_zh.md](004-BASIC_AUTH_ZONE_zh.md) - 基础认证区域
-- [100-ROADMAP_zh.md](100-ROADMAP_zh.md) - 路线图
+- [001-ARCHITECTURE.md](001-ARCHITECTURE.md) - 架构和 crate 边界
+- [002-FEATURES.md](002-FEATURES.md) - 能力矩阵
+- [003-AUTH_CONTEXT_MODES.md](003-AUTH_CONTEXT_MODES.md) - 认证上下文模式
+- [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md) - 基础认证区域
+- [100-ROADMAP.md](100-ROADMAP.md) - 路线图
 
 ---
 
-[English Version](001-ARCHITECTURE.md) | [中文版本](001-ARCHITECTURE_zh.md)
+[English](../en/000-OVERVIEW.md) | [中文](000-OVERVIEW.md)

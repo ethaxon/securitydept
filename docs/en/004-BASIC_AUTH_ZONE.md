@@ -51,4 +51,4 @@ Users should also be able to implement this themselves without depending on a la
 
 ---
 
-[English Version](004-BASIC_AUTH_ZONE.md) | [中文版本](004-BASIC_AUTH_ZONE_zh.md)
+[English](004-BASIC_AUTH_ZONE.md) | [中文](../zh/004-BASIC_AUTH_ZONE.md)

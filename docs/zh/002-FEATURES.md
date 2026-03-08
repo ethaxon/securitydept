@@ -87,7 +87,7 @@
 主要参考：
 
 - `packages/creds/src/zone/mod.rs`
-- `docs/004-BASIC_AUTH_ZONE.md`
+- [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md)
 
 ## 5. 有状态 cookie-session 认证上下文
 
@@ -173,4 +173,4 @@
 
 ---
 
-[English Version](002-FEATURES.md) | [中文版本](002-FEATURES_zh.md)
+[English](../en/002-FEATURES.md) | [中文](002-FEATURES.md)

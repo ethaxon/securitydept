@@ -134,4 +134,4 @@ Apps:
 
 ---
 
-[English Version](001-ARCHITECTURE.md) | [中文版本](001-ARCHITECTURE_zh.md)
+[English](../en/001-ARCHITECTURE.md) | [中文](001-ARCHITECTURE.md)

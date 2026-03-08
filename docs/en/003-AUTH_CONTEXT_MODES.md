@@ -123,4 +123,4 @@ The third option is future work, but it should already exist in the design langu
 
 ---
 
-[English Version](003-AUTH_CONTEXT_MODES.md) | [中文版本](003-AUTH_CONTEXT_MODES_zh.md)
+[English](003-AUTH_CONTEXT_MODES.md) | [中文](../zh/003-AUTH_CONTEXT_MODES.md)
