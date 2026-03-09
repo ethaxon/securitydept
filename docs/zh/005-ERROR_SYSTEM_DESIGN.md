@@ -76,6 +76,16 @@ use std::borrow::Cow;
 pub struct ErrorPresentation {
     pub code: &'static str,
     pub message: Cow<'static, str>,
+    pub recovery: UserRecovery,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UserRecovery {
+    None,
+    Retry,
+    RestartFlow,
+    Reauthenticate,
+    ContactSupport,
 }
 
 pub trait ToErrorPresentation {
@@ -90,6 +100,64 @@ pub trait ToErrorPresentation {
 - `ToErrorPresentation`：安全的公共响应
 
 这是核心变化。
+
+`UserRecovery` 是当前更推荐的额外元信息，因为它直接告诉调用方下一步应该采取什么动作。
+
+在当前项目复杂度下，它比下面这些字段更有价值：
+
+- `severity`
+- `retryable: bool`
+- `reauth_required: bool`
+
+这些字段要么过于偏向展示层，要么在认证流程中一旦组合起来就显得太粗糙。
+
+## 为什么 `UserRecovery` 比布尔标记更好
+
+两个布尔值看起来简单，但很快就会产生含义模糊的组合：
+
+- `retryable = true`, `reauth_required = true`
+- `retryable = false`, `reauth_required = false`
+
+前端仍然需要猜测下一步动作。
+
+一个恢复动作枚举会更明确：
+
+- `Retry`
+- `RestartFlow`
+- `Reauthenticate`
+- `ContactSupport`
+
+这也让服务端契约更贴近“用户接下来该做什么”，而不是 UI 样式或局部实现细节。
+
+## 为什么当前不推荐引入 `severity`
+
+在认证流程里，`severity` 往往不是最重要的信号。
+
+在实践中：
+
+- 大多数失败在运营意义上仍然都是错误
+- 前端通常可以根据 `code` 和 `recovery` 决定展示样式
+- `severity` 很容易在不同产品里变得主观且不稳定
+
+因此，只有在多个客户端确实需要共享一套视觉优先级契约时，再考虑引入 `severity` 会更合适。
+
+## 为什么当前不推荐引入 `DisclosureLevel`
+
+只有在项目必须面向多个可见性层级的受众时，单独的披露级别模型才真正必要，例如：
+
+- 匿名终端用户
+- 已登录终端用户
+- 租户管理员
+- 系统运营人员
+
+SecurityDept 目前还不需要这层额外抽象。
+
+当前只需要两个 sink：
+
+- 带有完整错误细节的内部日志
+- 返回给客户端的清理后展示
+
+这个边界无需专门引入 `DisclosureLevel` 也可以清晰建模。
 
 ## 为什么变体级别的公共消息很重要
 
@@ -130,20 +198,24 @@ impl ToErrorPresentation for OidcError {
             OidcError::RedirectUrl { .. } => ErrorPresentation {
                 code: "oidc_redirect_url_invalid",
                 message: "登录重定向 URL 无效。".into(),
+                recovery: UserRecovery::ContactSupport,
             },
             OidcError::Metadata { .. }
             | OidcError::TokenExchange { .. }
             | OidcError::TokenRefresh { .. } => ErrorPresentation {
                 code: "oidc_temporarily_unavailable",
                 message: "认证暂时不可用。".into(),
+                recovery: UserRecovery::Retry,
             },
             OidcError::CSRFValidation { .. } => ErrorPresentation {
                 code: "oidc_request_invalid",
                 message: "登录请求不再生效。请重新开始。".into(),
+                recovery: UserRecovery::RestartFlow,
             },
             _ => ErrorPresentation {
                 code: "internal_error",
                 message: "请求失败。".into(),
+                recovery: UserRecovery::ContactSupport,
             },
         }
     }
@@ -211,6 +283,19 @@ SecurityDept 的推荐类别：
 
 在实践中，`redirect URL error` 和 `code invalid/expired` 属于第一类，但公共消息仍应经过规范和清理。
 
+## 响应元信息
+
+公共响应应该直接暴露恢复动作意图。
+
+例如：
+
+- 登录请求过期或重复使用时返回 `RestartFlow`
+- 会话缺失或登录状态失效时返回 `Reauthenticate`
+- 临时性运营故障返回 `Retry`
+- 用户无法自行修复的配置或策略问题返回 `ContactSupport`
+
+这比抽象的严重级别更可执行。
+
 ## 响应格式
 
 未来的 API 响应应该优先使用结构化的错误负载，而不是单个 `error` 字符串：
@@ -221,7 +306,8 @@ SecurityDept 的推荐类别：
   "status": 401,
   "error": {
     "code": "oidc_request_expired",
-    "message": "登录请求已过期。请重新开始。"
+    "message": "登录请求已过期。请重新开始。",
+    "recovery": "restart_flow"
   }
 }
 ```
@@ -313,6 +399,8 @@ SecurityDept 可以逐步采用这个方法。
 - 面向用户的展示语义
 
 这种模型比试图将所有内容编码到一个 `Display` 字符串中具有更好的可扩展性。
+
+对于项目当前阶段，这也已经足够。SecurityDept 应该在概念上区分协议/传输、领域和展示三个关注点，但现在没有必要为了这三个关注点再拆成三套并行的错误枚举体系。使用领域错误加边界映射 trait 就足够了。
 
 ---
 

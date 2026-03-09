@@ -1,5 +1,8 @@
 use http::StatusCode;
-use securitydept_utils::http::ToHttpStatus;
+use securitydept_utils::{
+    error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
+    http::ToHttpStatus,
+};
 use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
@@ -56,6 +59,50 @@ impl ToHttpStatus for CredsManageError {
             CredsManageError::DuplicateEntryName { .. }
             | CredsManageError::DuplicateGroupName { .. } => StatusCode::CONFLICT,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl ToErrorPresentation for CredsManageError {
+    fn to_error_presentation(&self) -> ErrorPresentation {
+        match self {
+            CredsManageError::Creds { source } => source.to_error_presentation(),
+            CredsManageError::EntryNotFound { .. } => ErrorPresentation::new(
+                "entry_not_found",
+                "The requested auth entry was not found.",
+                UserRecovery::None,
+            ),
+            CredsManageError::GroupNotFound { .. } => ErrorPresentation::new(
+                "group_not_found",
+                "The requested group was not found.",
+                UserRecovery::None,
+            ),
+            CredsManageError::DuplicateEntryName { .. } => ErrorPresentation::new(
+                "duplicate_entry_name",
+                "An auth entry with the same name already exists.",
+                UserRecovery::None,
+            ),
+            CredsManageError::DuplicateGroupName { .. } => ErrorPresentation::new(
+                "duplicate_group_name",
+                "A group with the same name already exists.",
+                UserRecovery::None,
+            ),
+            CredsManageError::ConfigLoad { .. }
+            | CredsManageError::DataRead { .. }
+            | CredsManageError::DataWrite { .. }
+            | CredsManageError::DataParse { .. }
+            | CredsManageError::DataSerialize { .. }
+            | CredsManageError::InvalidConfig { .. } => ErrorPresentation::new(
+                "creds_manage_unavailable",
+                "Credential management is temporarily unavailable.",
+                UserRecovery::ContactSupport,
+            ),
+            #[cfg(feature = "migration")]
+            CredsManageError::Migration { .. } => ErrorPresentation::new(
+                "creds_manage_unavailable",
+                "Credential management is temporarily unavailable.",
+                UserRecovery::ContactSupport,
+            ),
         }
     }
 }

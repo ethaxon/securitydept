@@ -79,8 +79,6 @@ importers:
         specifier: 8.0.0-beta.15
         version: 8.0.0-beta.15(@types/node@25.2.3)(esbuild@0.27.3)(jiti@2.6.1)
 
-  packages/oidc: {}
-
 packages:
 
   '@babel/code-frame@7.29.0':

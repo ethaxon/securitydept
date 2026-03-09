@@ -4,7 +4,11 @@ use axum::{
 };
 use securitydept_core::{
     creds::CredsError, creds_manage::CredsManageError, oidc::OidcError,
-    session_context::SessionContextError, utils::http::ToHttpStatus,
+    session_context::SessionContextError,
+    utils::{
+        error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
+        http::ToHttpStatus,
+    },
 };
 use serde_json::json;
 use snafu::Snafu;
@@ -44,12 +48,52 @@ impl ToHttpStatus for ServerError {
     }
 }
 
+impl ToErrorPresentation for ServerError {
+    fn to_error_presentation(&self) -> ErrorPresentation {
+        match self {
+            ServerError::CredsManage { source } => source.to_error_presentation(),
+            ServerError::Oidc { source } => source.to_error_presentation(),
+            ServerError::Creds { source } => source.to_error_presentation(),
+            ServerError::SessionContext { source } => source.to_error_presentation(),
+            ServerError::ConfigLoad { .. }
+            | ServerError::InvalidConfig { .. }
+            | ServerError::ServerBoot { .. } => ErrorPresentation::new(
+                "service_unavailable",
+                "The service is temporarily unavailable.",
+                UserRecovery::ContactSupport,
+            ),
+        }
+    }
+}
+
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
         let status = self.to_http_status();
-        let message = self.to_string();
+        let presentation = self.to_error_presentation();
 
-        let body = json!({ "error": message, "status": status.as_u16(), "success": false });
+        if status.is_server_error() {
+            tracing::error!(
+                status = status.as_u16(),
+                error_code = presentation.code,
+                recovery = ?presentation.recovery,
+                internal_error = %self,
+                "request failed"
+            );
+        } else {
+            tracing::warn!(
+                status = status.as_u16(),
+                error_code = presentation.code,
+                recovery = ?presentation.recovery,
+                internal_error = %self,
+                "request failed"
+            );
+        }
+
+        let body = json!({
+            "error": presentation,
+            "status": status.as_u16(),
+            "success": false
+        });
         (status, axum::Json(body)).into_response()
     }
 }

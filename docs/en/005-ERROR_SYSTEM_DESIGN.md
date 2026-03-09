@@ -76,6 +76,16 @@ use std::borrow::Cow;
 pub struct ErrorPresentation {
     pub code: &'static str,
     pub message: Cow<'static, str>,
+    pub recovery: UserRecovery,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UserRecovery {
+    None,
+    Retry,
+    RestartFlow,
+    Reauthenticate,
+    ContactSupport,
 }
 
 pub trait ToErrorPresentation {
@@ -90,6 +100,64 @@ Then each public-facing error type implements three independent concerns:
 - `ToErrorPresentation`: safe public response
 
 That separation is the core change.
+
+`UserRecovery` is the preferred extra metadata because it tells the caller what action is appropriate next.
+
+For the current project complexity, this is more useful than fields such as:
+
+- `severity`
+- `retryable: bool`
+- `reauth_required: bool`
+
+Those flags are either too presentation-specific or too coarse once auth flows become more complex.
+
+## Why `UserRecovery` Is Better Than Boolean Flags
+
+Two booleans look simple, but they quickly create ambiguous combinations:
+
+- `retryable = true`, `reauth_required = true`
+- `retryable = false`, `reauth_required = false`
+
+The frontend still has to guess what to do.
+
+A single recovery enum is more explicit:
+
+- `Retry`
+- `RestartFlow`
+- `Reauthenticate`
+- `ContactSupport`
+
+This also keeps the server contract closer to user intent and farther from UI styling concerns.
+
+## Why `severity` Is Not Recommended Yet
+
+A `severity` field is usually not the most important signal in auth flows.
+
+In practice:
+
+- most failures are still operationally errors
+- frontend styling can derive from `code` and `recovery`
+- severity often becomes unstable and subjective across products
+
+For that reason, `severity` should only be added later if multiple clients actually need a shared visual-priority contract.
+
+## Why `DisclosureLevel` Is Not Recommended Yet
+
+A separate disclosure model only becomes necessary when the project must support multiple public audiences with different visibility levels, for example:
+
+- anonymous end user
+- signed-in end user
+- tenant admin
+- system operator
+
+SecurityDept does not need that extra abstraction yet.
+
+For now, two sinks are enough:
+
+- internal logs with full error detail
+- client responses with sanitized presentation
+
+That boundary can be modeled without a dedicated `DisclosureLevel`.
 
 ## Why Variant-Level Public Messages Matter
 
@@ -130,20 +198,24 @@ impl ToErrorPresentation for OidcError {
             OidcError::RedirectUrl { .. } => ErrorPresentation {
                 code: "oidc_redirect_url_invalid",
                 message: "The login redirect URL is invalid.".into(),
+                recovery: UserRecovery::ContactSupport,
             },
             OidcError::Metadata { .. }
             | OidcError::TokenExchange { .. }
             | OidcError::TokenRefresh { .. } => ErrorPresentation {
                 code: "oidc_temporarily_unavailable",
                 message: "Authentication is temporarily unavailable.".into(),
+                recovery: UserRecovery::Retry,
             },
             OidcError::CSRFValidation { .. } => ErrorPresentation {
                 code: "oidc_request_invalid",
                 message: "The sign-in request is no longer valid. Start again.".into(),
+                recovery: UserRecovery::RestartFlow,
             },
             _ => ErrorPresentation {
                 code: "internal_error",
                 message: "Request failed.".into(),
+                recovery: UserRecovery::ContactSupport,
             },
         }
     }
@@ -211,6 +283,19 @@ Recommended categories for SecurityDept:
 
 In practice, `redirect URL error` and `code invalid/expired` belong in the first category, but the public message should still be normalized and sanitized.
 
+## Response Metadata
+
+The public response should expose recovery intent directly.
+
+Example:
+
+- `RestartFlow` for expired or reused login requests
+- `Reauthenticate` for missing session or expired login state
+- `Retry` for transient operational failures
+- `ContactSupport` for configuration or policy problems the user cannot fix
+
+This is more actionable than a generic severity level.
+
 ## Response Shape
 
 A future API response should prefer structured error payloads over a single `error` string:
@@ -221,7 +306,8 @@ A future API response should prefer structured error payloads over a single `err
   "status": 401,
   "error": {
     "code": "oidc_request_expired",
-    "message": "The sign-in request expired. Start again."
+    "message": "The sign-in request expired. Start again.",
+    "recovery": "restart_flow"
   }
 }
 ```
@@ -313,6 +399,8 @@ The same three-layer rule should still hold:
 - user-facing presentation semantics
 
 That model scales better than trying to encode everything into one `Display` string.
+
+It is also enough for the current stage of the project. SecurityDept should keep those three concerns separated conceptually, but it does not need three parallel error enum hierarchies for protocol, domain, and presentation right now. Domain errors plus boundary mapping traits are sufficient.
 
 ---
 

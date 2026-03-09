@@ -1,6 +1,9 @@
 use http::StatusCode;
 use securitydept_oauth_provider::OAuthProviderError;
-use securitydept_utils::http::ToHttpStatus;
+use securitydept_utils::{
+    error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
+    http::ToHttpStatus,
+};
 use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
@@ -69,6 +72,57 @@ impl From<OAuthProviderError> for OidcError {
             OAuthProviderError::Metadata { message } => Self::Metadata { message },
             OAuthProviderError::HttpClient { message } => Self::Metadata { message },
             OAuthProviderError::Introspection { message } => Self::TokenExchange { message },
+        }
+    }
+}
+
+impl ToErrorPresentation for OidcError {
+    fn to_error_presentation(&self) -> ErrorPresentation {
+        match self {
+            OidcError::RedirectUrl { .. } => ErrorPresentation::new(
+                "oidc_redirect_url_invalid",
+                "The login redirect URL is invalid.",
+                UserRecovery::ContactSupport,
+            ),
+            OidcError::CSRFValidation { .. } => ErrorPresentation::new(
+                "oidc_request_invalid",
+                "The sign-in request is no longer valid. Start again.",
+                UserRecovery::RestartFlow,
+            ),
+            OidcError::PendingOauth { .. } => ErrorPresentation::new(
+                "oidc_request_expired",
+                "The sign-in request expired or was already used. Start again.",
+                UserRecovery::RestartFlow,
+            ),
+            OidcError::ClaimsCheckReject { .. } => ErrorPresentation::new(
+                "oidc_access_denied",
+                "Your account is not allowed to sign in.",
+                UserRecovery::ContactSupport,
+            ),
+            OidcError::TokenRefresh { .. } | OidcError::RefreshTokenSealing { .. } => {
+                ErrorPresentation::new(
+                    "oidc_reauthentication_required",
+                    "Your sign-in session expired. Sign in again.",
+                    UserRecovery::Reauthenticate,
+                )
+            }
+            OidcError::Metadata { .. } | OidcError::TokenExchange { .. } => ErrorPresentation::new(
+                "oidc_sign_in_failed",
+                "The sign-in could not be completed. Start again.",
+                UserRecovery::RestartFlow,
+            ),
+            OidcError::Claims { .. } => ErrorPresentation::new(
+                "oidc_invalid_response",
+                "The sign-in response was invalid. Start again.",
+                UserRecovery::RestartFlow,
+            ),
+            OidcError::ClaimsCheckScriptCompile { .. } | OidcError::InvalidConfig { .. } => {
+                ErrorPresentation::new(
+                    "oidc_temporarily_unavailable",
+                    "Authentication is temporarily unavailable.",
+                    UserRecovery::ContactSupport,
+                )
+            }
         }
     }
 }

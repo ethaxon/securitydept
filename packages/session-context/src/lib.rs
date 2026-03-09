@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use axum::http::StatusCode;
+use securitydept_utils::error::{ErrorPresentation, ToErrorPresentation, UserRecovery};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use snafu::Snafu;
@@ -158,6 +159,23 @@ impl SessionContextError {
         match self {
             Self::MissingContext => StatusCode::UNAUTHORIZED,
             Self::Session { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl ToErrorPresentation for SessionContextError {
+    fn to_error_presentation(&self) -> ErrorPresentation {
+        match self {
+            SessionContextError::MissingContext => ErrorPresentation::new(
+                "authentication_required",
+                "Sign in to continue.",
+                UserRecovery::Reauthenticate,
+            ),
+            SessionContextError::Session { .. } => ErrorPresentation::new(
+                "session_unavailable",
+                "The session is temporarily unavailable.",
+                UserRecovery::Retry,
+            ),
         }
     }
 }

@@ -39,5 +39,6 @@
 		"source.fixAll.biome": "explicit"
 	},
 	"biome.lsp.bin": "${workspaceFolder}/node_modules/.bin/biome",
+	"biome.requireConfiguration": true,
 	"rust-analyzer.cargo.features": "all"
 }

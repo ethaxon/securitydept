@@ -3422,6 +3422,7 @@ name = "securitydept-session-context"
 version = "0.2.0-alpha.2"
 dependencies = [
  "axum",
+ "securitydept-utils",
  "serde",
  "serde_json",
  "snafu",

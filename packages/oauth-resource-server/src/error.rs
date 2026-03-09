@@ -1,7 +1,10 @@
 use http::StatusCode;
 use securitydept_creds::{CredsError, TokenFormat};
 use securitydept_oauth_provider::OAuthProviderError;
-use securitydept_utils::http::ToHttpStatus;
+use securitydept_utils::{
+    error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
+    http::ToHttpStatus,
+};
 use snafu::Snafu;
 
 pub type OAuthResourceServerResult<T> = Result<T, OAuthResourceServerError>;
@@ -60,6 +63,38 @@ impl ToHttpStatus for OAuthResourceServerError {
             | OAuthResourceServerError::HttpClient { .. } => StatusCode::INTERNAL_SERVER_ERROR,
             #[cfg(feature = "jwe")]
             OAuthResourceServerError::JweKey { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl ToErrorPresentation for OAuthResourceServerError {
+    fn to_error_presentation(&self) -> ErrorPresentation {
+        match self {
+            OAuthResourceServerError::TokenValidation { source } => source.to_error_presentation(),
+            OAuthResourceServerError::PolicyViolation { .. } => ErrorPresentation::new(
+                "access_denied",
+                "You do not have permission to access this resource.",
+                UserRecovery::None,
+            ),
+            OAuthResourceServerError::UnsupportedTokenFormat { .. }
+            | OAuthResourceServerError::Introspection { .. } => ErrorPresentation::new(
+                "auth_invalid_token",
+                "The access token is invalid or expired.",
+                UserRecovery::Reauthenticate,
+            ),
+            OAuthResourceServerError::InvalidConfig { .. }
+            | OAuthResourceServerError::Metadata { .. }
+            | OAuthResourceServerError::HttpClient { .. } => ErrorPresentation::new(
+                "auth_temporarily_unavailable",
+                "Authentication is temporarily unavailable.",
+                UserRecovery::Retry,
+            ),
+            #[cfg(feature = "jwe")]
+            OAuthResourceServerError::JweKey { .. } => ErrorPresentation::new(
+                "auth_temporarily_unavailable",
+                "Authentication is temporarily unavailable.",
+                UserRecovery::Retry,
+            ),
         }
     }
 }

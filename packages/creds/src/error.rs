@@ -1,6 +1,9 @@
 //! Error types for Basic Authentication.
 use http::StatusCode;
-use securitydept_utils::http::ToHttpStatus;
+use securitydept_utils::{
+    error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
+    http::ToHttpStatus,
+};
 use snafu::Snafu;
 
 /// Result type alias for Basic Authentication operations.
@@ -49,6 +52,47 @@ impl ToHttpStatus for CredsError {
             CredsError::PasswordHash { .. }
             | CredsError::ConfigError { .. }
             | CredsError::RandomBytes { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl ToErrorPresentation for CredsError {
+    fn to_error_presentation(&self) -> ErrorPresentation {
+        match self {
+            CredsError::InvalidCredentialsFormat { .. } => ErrorPresentation::new(
+                "auth_invalid_credentials_format",
+                "The provided credentials are invalid.",
+                UserRecovery::Reauthenticate,
+            ),
+            CredsError::InvalidBasicCredentials => ErrorPresentation::new(
+                "auth_invalid_basic_credentials",
+                "Username or password is incorrect.",
+                UserRecovery::Reauthenticate,
+            ),
+            CredsError::InvalidStaticTokenCredentials => ErrorPresentation::new(
+                "auth_invalid_static_token",
+                "The access token is invalid.",
+                UserRecovery::Reauthenticate,
+            ),
+            #[cfg(feature = "jwt")]
+            CredsError::JSONWebToken { .. } => ErrorPresentation::new(
+                "auth_invalid_token",
+                "The access token is invalid or expired.",
+                UserRecovery::Reauthenticate,
+            ),
+            #[cfg(feature = "jwe")]
+            CredsError::JoseKit { .. } => ErrorPresentation::new(
+                "auth_invalid_token",
+                "The access token is invalid or expired.",
+                UserRecovery::Reauthenticate,
+            ),
+            CredsError::PasswordHash { .. }
+            | CredsError::ConfigError { .. }
+            | CredsError::RandomBytes { .. } => ErrorPresentation::new(
+                "auth_temporarily_unavailable",
+                "Authentication is temporarily unavailable.",
+                UserRecovery::ContactSupport,
+            ),
         }
     }
 }

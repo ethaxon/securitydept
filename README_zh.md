@@ -76,6 +76,7 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
 | [docs/zh/002-FEATURES.md](docs/zh/002-FEATURES.md) | 能力矩阵：已实现 vs 计划中 |
 | [docs/zh/003-AUTH_CONTEXT_MODES.md](docs/zh/003-AUTH_CONTEXT_MODES.md) | 基础区域、cookie-session 和无状态 token-set 模式 |
 | [docs/zh/004-BASIC_AUTH_ZONE.md](docs/zh/004-BASIC_AUTH_ZONE.md) | 基础认证区域的 UX 和协议说明 |
+| [docs/zh/005-ERROR_SYSTEM_DESIGN.md](docs/zh/005-ERROR_SYSTEM_DESIGN.md) | 对外安全错误响应、内部诊断与恢复动作设计 |
 | [docs/zh/100-ROADMAP.md](docs/zh/100-ROADMAP.md) | 与当前目标对齐的序列路线图 |
 
 ## 开发

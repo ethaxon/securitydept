@@ -34,3 +34,11 @@ lint-ts:
     pnpm lint
 
 lint: lint-rs lint-ts
+
+fix-rs:
+    cargo clippy --workspace --all-features --fix --allow-dirty
+
+fix-ts:
+    pnpm lint-fix
+
+fix: fix-rs fix-ts
