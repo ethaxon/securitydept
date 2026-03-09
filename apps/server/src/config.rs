@@ -5,8 +5,8 @@ use figment::{
     providers::{Env, Format, Toml},
 };
 use securitydept_core::{
-    creds_manage::CredsManageConfig, oidc::OidcConfig,
-    session_context::SessionContextConfig, utils::base_url::ExternalBaseUrl,
+    creds_manage::CredsManageConfig, oidc::OidcConfig, session_context::SessionContextConfig,
+    utils::base_url::ExternalBaseUrl,
 };
 use serde::Deserialize;
 

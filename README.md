@@ -33,6 +33,8 @@ The current repository already contains major parts of the lower layers and a wo
   - OIDC client / relying-party flows, callback handling, refresh, claims normalization
 - `securitydept-oauth-resource-server`
   - bearer access-token verification for JWT, JWE, and opaque token introspection
+- `securitydept-realip`
+  - trusted-proxy/provider-aware client IP resolution for stacked CDN and reverse-proxy deployments
 - `securitydept-creds-manage`
   - local management for simple credentials such as basic auth and static tokens
 - `securitydept-core`
@@ -64,6 +66,7 @@ These modes are intentionally above the current `oidc-client` and `oauth-resourc
 - Planned / partially specified
   - basic auth zone mode as a first-class auth-context mode
   - stateless token-set auth-context mode
+  - real-IP trust-boundary resolution for stacked proxy/CDN deployments
   - frontend TypeScript SDKs for auth-context modes
   - mesh-aware bearer propagation and token-set management
 
@@ -77,6 +80,7 @@ These modes are intentionally above the current `oidc-client` and `oauth-resourc
 | [docs/en/003-AUTH_CONTEXT_MODES.md](docs/en/003-AUTH_CONTEXT_MODES.md) ([中文](docs/zh/003-AUTH_CONTEXT_MODES.md)) | Basic zone, cookie-session, and stateless token-set modes |
 | [docs/en/004-BASIC_AUTH_ZONE.md](docs/en/004-BASIC_AUTH_ZONE.md) ([中文](docs/zh/004-BASIC_AUTH_ZONE.md)) | Basic auth zone UX and protocol notes |
 | [docs/en/005-ERROR_SYSTEM_DESIGN.md](docs/en/005-ERROR_SYSTEM_DESIGN.md) ([中文](docs/zh/005-ERROR_SYSTEM_DESIGN.md)) | Safe user-facing errors vs internal diagnostics, with auth-specific guidance |
+| [docs/en/006-REALIP.md](docs/en/006-REALIP.md) ([中文](docs/zh/006-REALIP.md)) | Trusted-peer-aware real-IP strategy for stacked proxy and CDN deployments |
 | [docs/en/100-ROADMAP.md](docs/en/100-ROADMAP.md) ([中文](docs/zh/100-ROADMAP.md)) | Sequenced roadmap aligned with current goals |
 
 ## Development

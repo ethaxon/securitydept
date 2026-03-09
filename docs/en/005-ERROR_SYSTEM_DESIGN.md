@@ -343,45 +343,6 @@ Recommended behavior at the boundary:
 
 That keeps operations effective without leaking internals.
 
-## Migration Path
-
-SecurityDept can adopt this incrementally.
-
-### Step 1
-
-Add a small shared presentation type and trait in a common crate.
-
-Possible location:
-
-- `packages/utils`
-- or a future dedicated error crate if cross-cutting concerns grow
-
-### Step 2
-
-Implement the trait for top-level public error types first:
-
-- `OidcError`
-- `OAuthResourceServerError`
-- `CredsManageError`
-- `ServerError`
-
-### Step 3
-
-Update `apps/server/src/error.rs` so `IntoResponse` uses:
-
-- `to_http_status()`
-- `to_error_presentation()`
-
-instead of `self.to_string()`.
-
-### Step 4
-
-Refine auth-sensitive variants by introducing typed reason enums where needed, especially for:
-
-- pending OAuth state lookup
-- authorization code exchange failures
-- redirect target validation
-
 ## Future Direction
 
 As the project grows into multiple auth-context modes, the error system should also become mode-aware.
@@ -401,6 +362,84 @@ The same three-layer rule should still hold:
 That model scales better than trying to encode everything into one `Display` string.
 
 It is also enough for the current stage of the project. SecurityDept should keep those three concerns separated conceptually, but it does not need three parallel error enum hierarchies for protocol, domain, and presentation right now. Domain errors plus boundary mapping traits are sufficient.
+
+## Implementation Status
+
+The error system described in this document has been fully implemented.
+
+### Completed
+
+- `packages/utils/src/error.rs` - Shared `ErrorPresentation`, `UserRecovery`, and `ToErrorPresentation` trait
+- `packages/oidc-client/src/error.rs` - `ToErrorPresentation` impl for `OidcError`
+- `packages/oauth-resource-server/src/error.rs` - `ToErrorPresentation` impl for `OAuthResourceServerError`
+- `packages/creds/src/error.rs` - `ToErrorPresentation` impl for `CredsError`
+- `packages/creds-manage/src/error.rs` - `ToErrorPresentation` impl for `CredsManageError`
+- `packages/session-context/src/lib.rs` - `ToErrorPresentation` impl for `SessionContextError`
+- `apps/server/src/error.rs` - `ToErrorPresentation` impl for `ServerError` and `IntoResponse` using the three-layer model
+
+### Response Shape
+
+The server now returns structured error responses:
+
+```json
+{
+  "error": {
+    "code": "oidc_request_expired",
+    "message": "The sign-in request expired or was already used. Start again.",
+    "recovery": "restart_flow"
+  },
+  "status": 401,
+  "success": false
+}
+```
+
+### Migration Path (Historical)
+
+SecurityDept adopted this incrementally.
+
+### Step 1
+
+Add a small shared presentation type and trait in a common crate.
+
+Possible location:
+
+- `packages/utils`
+- or a future dedicated error crate if cross-cutting concerns grow
+
+**Status: DONE**
+
+### Step 2
+
+Implement the trait for top-level public error types first:
+
+- `OidcError`
+- `OAuthResourceServerError`
+- `CredsManageError`
+- `ServerError`
+- `SessionContextError`
+
+**Status: DONE**
+
+### Step 3
+
+Update `apps/server/src/error.rs` so `IntoResponse` uses:
+
+- `to_http_status()`
+- `to_error_presentation()`
+
+instead of `self.to_string()`.
+
+**Status: DONE**
+
+### Step 4
+
+Refine auth-sensitive variants by introducing typed reason enums where needed, especially for:
+
+- pending OAuth state lookup
+- authorization code exchange failures
+- redirect target validation
+
+**Status: PENDING** - The current implementation uses fixed messages per variant (Pattern A). Pattern B with typed reason enums can be added when needed.
 
 ---
 

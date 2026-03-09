@@ -93,7 +93,20 @@ Crate: `securitydept-oauth-resource-server`
 - `SessionContextConfig` —— 会话 cookie 和安全配置
 - `SessionContextSession` —— 用于 insert/get/require/clear 操作的会话句柄
 
-## 第 6 层：凭证管理
+## 第 6 层：Real IP 解析
+
+Crate: `securitydept-realip`
+
+职责：
+
+- 建模 trusted peer CIDR provider
+- 在多层 CDN 和反向代理链路中解析有效客户端 IP
+- 对 transport 元数据和 forwarded 头应用 source-specific trust 规则
+- 管理 trusted peer 列表的刷新与 watch 行为
+
+该 crate 关注带信任边界语义的客户端 IP 解析，不负责 URL 重建、rate limiting 或流量过滤策略。
+
+## 第 7 层：凭证管理
 
 Crate: `securitydept-creds-manage`
 
@@ -106,7 +119,7 @@ Crate: `securitydept-creds-manage`
 
 该 crate 是操作存储，而非令牌验证核心。
 
-## 第 7 层：参考应用
+## 第 8 层：参考应用
 
 Apps:
 
@@ -129,6 +142,7 @@ Apps:
 - `oidc-client` 不得吸收资源服务器验证
 - `oauth-resource-server` 不得吸收浏览器登录流程
 - 提供者缓存/发现必须位于两者之下
+- real-IP trust resolution 应位于应用层之下，不应在每个 server 中以临时逻辑重复实现
 - 认证上下文模式应组合底层 crate，而不是复制其逻辑
 - bearer 令牌转发应明确建模，不应隐藏在登录 API 中
 

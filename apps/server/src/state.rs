@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 pub use securitydept_core::oidc::MokaPendingOauthStore;
 use securitydept_core::{
-    creds_manage::store::CredsManageStore,
-    oidc::OidcClient,
-    session_context::SessionContextConfig,
+    creds_manage::store::CredsManageStore, oidc::OidcClient, session_context::SessionContextConfig,
 };
 
 use crate::{

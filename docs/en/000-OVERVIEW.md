@@ -33,6 +33,8 @@ That requires a clean split between:
   - OIDC relying-party client behavior
 - `securitydept-oauth-resource-server`
   - bearer-token verification behavior
+- `securitydept-realip`
+  - trusted-proxy/provider-aware client IP resolution
 - `securitydept-creds-manage`
   - local basic-auth and static-token management
 - `securitydept-server`
@@ -63,4 +65,5 @@ Those modes are deployment-oriented compositions, not replacements for `oidc-cli
 - [003-AUTH_CONTEXT_MODES.md](003-AUTH_CONTEXT_MODES.md) / [中文](../zh/003-AUTH_CONTEXT_MODES.md)
 - [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md) / [中文](../zh/004-BASIC_AUTH_ZONE.md)
 - [005-ERROR_SYSTEM_DESIGN.md](005-ERROR_SYSTEM_DESIGN.md) / [中文](../zh/005-ERROR_SYSTEM_DESIGN.md)
+- [006-REALIP.md](006-REALIP.md) / [中文](../zh/006-REALIP.md)
 - [100-ROADMAP.md](100-ROADMAP.md) / [中文](../zh/100-ROADMAP.md)

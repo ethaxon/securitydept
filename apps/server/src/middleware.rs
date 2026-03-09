@@ -1,16 +1,10 @@
 use std::collections::HashMap;
 
-use axum::{
-    Extension,
-    extract::Request,
-    http::StatusCode,
-    middleware::Next,
-    response::{IntoResponse, Response},
-};
-use serde_json::{Value, json};
+use axum::{Extension, extract::Request, middleware::Next, response::Response};
+use serde_json::Value;
 use tower_sessions::Session;
 
-use crate::state::ServerState;
+use crate::{error::ServerResult, state::ServerState};
 
 /// Middleware that requires a valid session.
 pub async fn require_session(
@@ -18,15 +12,9 @@ pub async fn require_session(
     session: Session,
     request: Request,
     next: Next,
-) -> Response {
+) -> ServerResult<Response> {
     let handle = state.session_config.session_handle(session);
 
-    match handle.require::<HashMap<String, Value>>().await {
-        Ok(_) => next.run(request).await,
-        Err(_) => (
-            StatusCode::UNAUTHORIZED,
-            axum::Json(json!({ "error": "Not authenticated" })),
-        )
-            .into_response(),
-    }
+    let _ = handle.require::<HashMap<String, Value>>().await?;
+    Ok(next.run(request).await)
 }

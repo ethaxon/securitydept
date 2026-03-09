@@ -93,7 +93,20 @@ The `securitydept-session-context` crate provides:
 
 A future shared abstraction should likely normalize all of them into a common authenticated-principal model.
 
-## Layer 6: Credential Management
+## Layer 6: Real IP Resolution
+
+Crate: `securitydept-realip`
+
+Responsibilities:
+
+- model trusted peer CIDR providers
+- resolve effective client IP across stacked CDN and reverse-proxy hops
+- apply source-specific trust rules for transport metadata and forwarded headers
+- manage refresh and watch behavior for trusted peer lists
+
+This crate is about trust-boundary-aware client-IP resolution. It is not responsible for URL reconstruction, rate limiting, or traffic filtering policy.
+
+## Layer 7: Credential Management
 
 Crate: `securitydept-creds-manage`
 
@@ -106,7 +119,7 @@ Responsibilities:
 
 This crate is operational storage, not the token-verification core.
 
-## Layer 7: Reference Applications
+## Layer 8: Reference Applications
 
 Apps:
 
@@ -129,6 +142,7 @@ It is not the architecture boundary for the project.
 - `oidc-client` must not absorb resource-server verification.
 - `oauth-resource-server` must not absorb browser login flow.
 - provider caching/discovery must stay below both of them.
+- real-IP trust resolution should live below applications and should not be duplicated ad hoc in each server.
 - auth-context modes should compose lower crates instead of duplicating their logic.
 - bearer-token forwarding should be modeled explicitly and should not be hidden inside login APIs.
 

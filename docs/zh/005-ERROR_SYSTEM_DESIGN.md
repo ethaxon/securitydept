@@ -402,6 +402,84 @@ SecurityDept 可以逐步采用这个方法。
 
 对于项目当前阶段，这也已经足够。SecurityDept 应该在概念上区分协议/传输、领域和展示三个关注点，但现在没有必要为了这三个关注点再拆成三套并行的错误枚举体系。使用领域错误加边界映射 trait 就足够了。
 
+## 实现状态
+
+本文档描述的错误系统已经完全实现。
+
+### 已完成
+
+- `packages/utils/src/error.rs` - 共享的 `ErrorPresentation`、`UserRecovery` 和 `ToErrorPresentation` trait
+- `packages/oidc-client/src/error.rs` - `OidcError` 的 `ToErrorPresentation` 实现
+- `packages/oauth-resource-server/src/error.rs` - `OAuthResourceServerError` 的 `ToErrorPresentation` 实现
+- `packages/creds/src/error.rs` - `CredsError` 的 `ToErrorPresentation` 实现
+- `packages/creds-manage/src/error.rs` - `CredsManageError` 的 `ToErrorPresentation` 实现
+- `packages/session-context/src/lib.rs` - `SessionContextError` 的 `ToErrorPresentation` 实现
+- `apps/server/src/error.rs` - `ServerError` 的 `ToErrorPresentation` 实现和使用三层模型的 `IntoResponse`
+
+### 响应格式
+
+服务器现在返回结构化的错误响应：
+
+```json
+{
+  "error": {
+    "code": "oidc_request_expired",
+    "message": "登录请求已过期或已被使用。请重新开始。",
+    "recovery": "restart_flow"
+  },
+  "status": 401,
+  "success": false
+}
+```
+
+### 迁移路径（历史）
+
+SecurityDept 逐步采用了这个方法。
+
+### 步骤 1
+
+在一个通用的 crate 中添加一个小型共享展示类型和 trait。
+
+可能的位置：
+
+- `packages/utils`
+- 或者如果跨领域关注点增长，未来可以创建专用的错误 crate
+
+**状态：已完成**
+
+### 步骤 2
+
+首先为顶层公共错误类型实现该 trait：
+
+- `OidcError`
+- `OAuthResourceServerError`
+- `CredsManageError`
+- `ServerError`
+- `SessionContextError`
+
+**状态：已完成**
+
+### 步骤 3
+
+更新 `apps/server/src/error.rs`，使 `IntoResponse` 使用：
+
+- `to_http_status()`
+- `to_error_presentation()`
+
+而不是 `self.to_string()`。
+
+**状态：已完成**
+
+### 步骤 4
+
+通过引入类型化的原因枚举来优化认证敏感变体，特别是在以下方面：
+
+- 待处理的 OAuth 状态查找
+- 授权码交换失败
+- 重定向目标验证
+
+**状态：待处理** - 当前实现使用每个变体的固定消息（模式 A）。模式 B 与类型化的原因枚举可以在需要时添加。
+
 ---
 
 [English](../en/005-ERROR_SYSTEM_DESIGN.md) | [中文](005-ERROR_SYSTEM_DESIGN.md)

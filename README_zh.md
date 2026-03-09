@@ -33,6 +33,8 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
   - OIDC 客户端/依赖方（relying-party）流程、回调处理、刷新、声明规范化
 - `securitydept-oauth-resource-server`
   - 用于 JWT、JWE 和不透明令牌内省的 bearer 访问令牌验证
+- `securitydept-realip`
+  - 面向多层 CDN 与反向代理部署的 trusted-proxy/provider 感知客户端 IP 解析
 - `securitydept-creds-manage`
   - 用于简单凭证（如基础认证和静态令牌）的本地管理
 - `securitydept-core`
@@ -64,6 +66,7 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
 - 计划中/部分已规范
   - 基础认证区域模式作为一等认证上下文模式
   - 无状态 token-set 认证上下文模式
+  - 面向多层 proxy/CDN 部署的 real-IP 信任边界解析
   - 用于认证上下文模式的前端 TypeScript SDK
   - 网格感知的 bearer 传播和 token-set 管理
 
@@ -77,6 +80,7 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
 | [docs/zh/003-AUTH_CONTEXT_MODES.md](docs/zh/003-AUTH_CONTEXT_MODES.md) | 基础区域、cookie-session 和无状态 token-set 模式 |
 | [docs/zh/004-BASIC_AUTH_ZONE.md](docs/zh/004-BASIC_AUTH_ZONE.md) | 基础认证区域的 UX 和协议说明 |
 | [docs/zh/005-ERROR_SYSTEM_DESIGN.md](docs/zh/005-ERROR_SYSTEM_DESIGN.md) | 对外安全错误响应、内部诊断与恢复动作设计 |
+| [docs/zh/006-REALIP.md](docs/zh/006-REALIP.md) | 多层代理与多 CDN/provider 部署下的 trusted-peer real-IP 策略 |
 | [docs/zh/100-ROADMAP.md](docs/zh/100-ROADMAP.md) | 与当前目标对齐的序列路线图 |
 
 ## 开发

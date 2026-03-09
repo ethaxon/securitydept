@@ -148,7 +148,25 @@
 - `packages/creds-manage/src/auth.rs`
 - `apps/cli/src/main.rs`
 
-## 8. 参考服务器应用
+## 8. real-IP 解析
+
+目标：
+
+- 面向 trusted peer 的客户端 IP 解析
+- 支持多层 CDN 和反向代理链路
+- 为 PROXY protocol 和 forwarded 头提供 source-specific 优先级
+- 为 trusted CIDR provider 提供远程刷新和本地 watch
+
+当前状态：
+
+- 设计已文档化
+- 实现尚未开始
+
+主要参考：
+
+- [006-REALIP.md](006-REALIP.md)
+
+## 9. 参考服务器应用
 
 目标：
 
@@ -167,7 +185,8 @@
 2. 将基础认证区域模式实现为有文档支持、有参考支持的流程
 3. 实现无状态 token-set 模式，具有明确的令牌生命周期规则
 4. 添加模式 4、5 和特别是 6 的 TS SDK 支持
-5. 保持 `apps/server` 作为所有支持模式的集成试验场
+5. 将 `securitydept-realip` 实现为可复用的信任边界模块
+6. 保持 `apps/server` 作为所有支持模式的集成试验场
 
 ---
 

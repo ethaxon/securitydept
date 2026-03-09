@@ -15,11 +15,14 @@ where
 {
     fn get_cred(&self, username: &str) -> CredsResult<Option<&Cred>>;
     fn verify_cred(&self, username: &str, password: &str) -> CredsResult<Option<&Cred>> {
-        let cred = self
-            .get_cred(username)?
-            .ok_or(CredsError::InvalidBasicCredentials)?;
-        cred.verify_password(password)?;
-        Ok(Some(cred))
+        let Some(cred) = self.get_cred(username)? else {
+            return Ok(None);
+        };
+        if cred.verify_password(password)? {
+            Ok(Some(cred))
+        } else {
+            Ok(None)
+        }
     }
     fn realm(&self) -> Option<&str>;
 }
@@ -109,14 +112,8 @@ mod tests {
     fn test_config() -> BasicAuthCredsConfig<Argon2BasicAuthCred> {
         BasicAuthCredsConfig {
             users: vec![
-                Argon2BasicAuthCred {
-                    username: "admin".to_string(),
-                    password_hash: "secret123".to_string(),
-                },
-                Argon2BasicAuthCred {
-                    username: "user".to_string(),
-                    password_hash: "password".to_string(),
-                },
+                Argon2BasicAuthCred::new("admin".to_string(), "secret123".to_string()).unwrap(),
+                Argon2BasicAuthCred::new("user".to_string(), "password".to_string()).unwrap(),
             ],
             realm: Some("Test".to_string()),
         }
@@ -137,7 +134,7 @@ mod tests {
         let validator = MapBasicAuthCredsValidator::from_config(&test_config()).unwrap();
         assert_eq!(
             validator.get_cred("admin")?.map(|c| c.display_name()),
-            Some("Administrator")
+            Some("admin")
         );
         assert_eq!(
             validator.get_cred("user")?.map(|c| c.display_name()),

@@ -148,7 +148,25 @@ Primary code:
 - `packages/creds-manage/src/auth.rs`
 - `apps/cli/src/main.rs`
 
-## 8. Reference server app
+## 8. real-IP resolution
+
+Target:
+
+- trusted-peer-aware client IP resolution
+- support for stacked CDN and reverse-proxy chains
+- source-specific precedence for PROXY protocol and forwarded headers
+- remote refresh and local watch for trusted CIDR providers
+
+Current status:
+
+- design documented
+- implementation not started yet
+
+Primary references:
+
+- [006-REALIP.md](006-REALIP.md)
+
+## 9. Reference server app
 
 Target:
 
@@ -167,7 +185,8 @@ Current status:
 2. implement basic auth zone mode as a documented, reference-backed flow
 3. implement stateless token-set mode with explicit token lifecycle rules
 4. add TS SDK support for modes 4, 5, and especially 6
-5. keep `apps/server` as the integration proving ground for all supported modes
+5. implement `securitydept-realip` as a reusable trust-boundary module
+6. keep `apps/server` as the integration proving ground for all supported modes
 
 ---
 

@@ -25,7 +25,6 @@ sha2 = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
 serde_with = { workspace = true }
-
 jsonwebtoken = { workspace = true, optional = true }
 josekit = { workspace = true, optional = true }
 openidconnect = { workspace = true, optional = true }
