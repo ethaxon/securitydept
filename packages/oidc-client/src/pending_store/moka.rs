@@ -11,16 +11,16 @@ use crate::{
 /// Configuration for PendingOauthStore.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MokaPendingOauthStoreConfig {
-    /// Time-to-live for pending OAuth entries in seconds.
-    #[serde(default = "default_ttl_secs")]
-    pub ttl_secs: u64,
+    /// Time-to-live for pending OAuth entries.
+    #[serde(default = "default_ttl", with = "humantime_serde")]
+    pub ttl: Duration,
     /// Maximum number of entries in the cache.
     #[serde(default = "default_max_capacity")]
     pub max_capacity: u64,
 }
 
-fn default_ttl_secs() -> u64 {
-    300 // 5 minutes
+fn default_ttl() -> Duration {
+    Duration::from_secs(300) // 5 minutes
 }
 
 fn default_max_capacity() -> u64 {
@@ -30,7 +30,7 @@ fn default_max_capacity() -> u64 {
 impl Default for MokaPendingOauthStoreConfig {
     fn default() -> Self {
         Self {
-            ttl_secs: default_ttl_secs(),
+            ttl: default_ttl(),
             max_capacity: default_max_capacity(),
         }
     }
@@ -54,7 +54,7 @@ impl MokaPendingOauthStore {
 
     pub fn from_config(config: &MokaPendingOauthStoreConfig) -> Self {
         let inner = Cache::builder()
-            .time_to_live(Duration::from_secs(config.ttl_secs))
+            .time_to_live(config.ttl)
             .max_capacity(config.max_capacity)
             .build();
         Self { inner }

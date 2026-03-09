@@ -1,10 +1,6 @@
 use std::{path::PathBuf, sync::Arc, time::SystemTime};
 
-use tokio::{
-    sync::RwLock,
-    task::JoinHandle,
-    time::{Duration, sleep},
-};
+use tokio::{sync::RwLock, task::JoinHandle, time::sleep};
 use tracing::{debug, warn};
 
 use crate::{
@@ -28,7 +24,7 @@ pub(super) fn spawn_jwe_key_watcher(
     config: OAuthResourceServerJweConfig,
     decryption_keys: Arc<RwLock<Option<LocalJweDecryptionKeySet>>>,
 ) -> Option<JoinHandle<()>> {
-    if config.watch_interval_seconds == 0 {
+    if config.watch_interval.is_zero() {
         return None;
     }
 
@@ -39,7 +35,7 @@ pub(super) fn spawn_jwe_key_watcher(
 
     Some(tokio::spawn(async move {
         let mut watched_files = initialize_watch_state(watched_files).await;
-        let interval = Duration::from_secs(config.watch_interval_seconds);
+        let interval = config.watch_interval;
 
         loop {
             sleep(interval).await;

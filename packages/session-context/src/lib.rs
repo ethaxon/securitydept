@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration as StdDuration;
 
 use axum::http::StatusCode;
 use securitydept_utils::error::{ErrorPresentation, ToErrorPresentation, UserRecovery};
@@ -76,9 +77,9 @@ pub struct SessionContextConfig {
     #[builder(default)]
     #[serde(default)]
     pub same_site: SessionCookieSameSite,
-    #[builder(default = Some(86_400))]
-    #[serde(default = "default_ttl_seconds")]
-    pub ttl_seconds: Option<i64>,
+    #[builder(default = Some(StdDuration::from_secs(86_400)))]
+    #[serde(default = "default_ttl", with = "humantime_serde::option")]
+    pub ttl: Option<StdDuration>,
 }
 
 fn default_cookie_name() -> String {
@@ -97,8 +98,8 @@ fn default_true() -> bool {
     true
 }
 
-fn default_ttl_seconds() -> Option<i64> {
-    Some(86_400)
+fn default_ttl() -> Option<StdDuration> {
+    Some(StdDuration::from_secs(86_400))
 }
 
 impl Default for SessionContextConfig {
@@ -110,7 +111,7 @@ impl Default for SessionContextConfig {
             http_only: default_true(),
             secure: false,
             same_site: SessionCookieSameSite::default(),
-            ttl_seconds: default_ttl_seconds(),
+            ttl: default_ttl(),
         }
     }
 }
@@ -134,8 +135,8 @@ impl SessionContextConfig {
             .with_http_only(self.http_only)
             .with_secure(self.secure);
 
-        if let Some(ttl_seconds) = self.ttl_seconds {
-            layer = layer.with_expiry(Expiry::OnInactivity(Duration::seconds(ttl_seconds)));
+        if let Some(ttl) = self.ttl {
+            layer = layer.with_expiry(Expiry::OnInactivity(Duration::seconds(ttl.as_secs() as i64)));
         }
 
         layer
@@ -281,7 +282,7 @@ mod tests {
         assert!(config.http_only);
         assert!(!config.secure);
         assert_eq!(config.same_site, SessionCookieSameSite::Lax);
-        assert_eq!(config.ttl_seconds, Some(86_400));
+        assert_eq!(config.ttl, Some(StdDuration::from_secs(86_400)));
     }
 
     #[test]

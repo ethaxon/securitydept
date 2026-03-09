@@ -141,6 +141,13 @@ Current status:
 - implemented
 - already used by the reference server and CLI
 
+Storage design:
+
+- `ArcSwap<DataFile>` for lock-free concurrent reads
+- atomic file writes via `atomic-write-file` (temp file → fsync → rename)
+- debounced filesystem watching via `notify-debouncer-full` on the parent directory, with automatic 1s polling fallback when FS events are unavailable
+- content-hash-based self-write detection: after a successful save, the store records the written content hash; the watcher skips the next matching event to prevent recursive reloads
+
 Primary code:
 
 - `packages/creds-manage/src/store.rs`

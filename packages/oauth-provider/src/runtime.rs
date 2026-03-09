@@ -145,7 +145,7 @@ impl OAuthProviderRuntime {
     }
 
     async fn ensure_metadata_fresh(&self) -> OAuthProviderResult<()> {
-        if self.config.remote.metadata_refresh_interval_seconds == 0
+        if self.config.remote.metadata_refresh_interval.is_zero()
             || self.config.remote.well_known_url.is_none()
         {
             return Ok(());
@@ -153,8 +153,8 @@ impl OAuthProviderRuntime {
 
         let should_refresh = {
             let state = self.state.read().await;
-            state.metadata_fetched_at.elapsed().as_secs()
-                >= self.config.remote.metadata_refresh_interval_seconds
+            state.metadata_fetched_at.elapsed()
+                >= self.config.remote.metadata_refresh_interval
         };
 
         if should_refresh {
@@ -165,14 +165,14 @@ impl OAuthProviderRuntime {
     }
 
     async fn ensure_jwks_fresh(&self) -> OAuthProviderResult<()> {
-        if self.config.remote.jwks_refresh_interval_seconds == 0 {
+        if self.config.remote.jwks_refresh_interval.is_zero() {
             return Ok(());
         }
 
         let should_refresh = {
             let state = self.state.read().await;
-            state.jwks_fetched_at.elapsed().as_secs()
-                >= self.config.remote.jwks_refresh_interval_seconds
+            state.jwks_fetched_at.elapsed()
+                >= self.config.remote.jwks_refresh_interval
         };
 
         if should_refresh {

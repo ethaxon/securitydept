@@ -116,6 +116,10 @@ Responsibilities:
 - manage local static tokens
 - provide storage and synchronization primitives for simple operator-managed credentials
 - support scenarios such as registry login management and basic gateway auth
+- lock-free reads via `ArcSwap` snapshot publishing
+- atomic file writes (temp file → fsync → rename) to prevent corruption
+- debounced filesystem watching (`notify-debouncer-full`) with automatic polling fallback
+- content-hash-based self-write detection to avoid recursive reloads
 
 This crate is operational storage, not the token-verification core.
 

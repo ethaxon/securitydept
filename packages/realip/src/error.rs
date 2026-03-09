@@ -13,6 +13,12 @@ pub enum RealIpError {
     #[snafu(display("Unknown provider kind `{kind}` for provider `{name}`"))]
     UnknownProviderKind { name: String, kind: String },
 
+    #[snafu(display("No custom provider factory registered for kind `{kind}`"))]
+    MissingProviderFactory { kind: String },
+
+    #[snafu(display("Duplicate custom provider factory registration for kind `{kind}`"))]
+    DuplicateProviderFactory { kind: String },
+
     #[snafu(display("Provider `{provider}` is missing required field `{field}`"))]
     MissingProviderField { provider: String, field: &'static str },
 
@@ -45,4 +51,7 @@ pub enum RealIpError {
 
     #[snafu(display("Provider `{provider}` has invalid CIDR or IP entry `{entry}`"))]
     InvalidProviderEntry { provider: String, entry: String },
+
+    #[snafu(display("Provider `{provider}` failed: {details}"))]
+    ProviderLoad { provider: String, details: String },
 }

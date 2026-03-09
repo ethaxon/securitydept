@@ -6,6 +6,7 @@ use rfc7239::parse as parse_forwarded;
 
 use crate::{
     config::{ChainDirection, FallbackStrategy, HeaderInputConfig, HeaderMode, RealIpConfig},
+    extension::ProviderFactoryRegistry,
     error::RealIpResult,
     providers::{ProviderRegistry, ProviderSnapshot},
 };
@@ -47,8 +48,16 @@ pub struct RealIpResolver {
 
 impl RealIpResolver {
     pub async fn from_config(config: RealIpConfig) -> RealIpResult<Self> {
+        let factories = ProviderFactoryRegistry::with_builtin_providers()?;
+        Self::from_config_with_factories(config, &factories).await
+    }
+
+    pub async fn from_config_with_factories(
+        config: RealIpConfig,
+        factories: &ProviderFactoryRegistry,
+    ) -> RealIpResult<Self> {
         config.validate()?;
-        let providers = ProviderRegistry::from_configs(&config.providers).await?;
+        let providers = ProviderRegistry::from_configs_with_factories(&config.providers, factories).await?;
         Ok(Self { config, providers })
     }
 
@@ -308,12 +317,18 @@ fn resolve_from_chain(
 #[cfg(test)]
 mod tests {
     use std::{fs, net::IpAddr, path::PathBuf};
+    use std::sync::Arc;
 
     use http::HeaderMap;
 
     use super::*;
     use crate::config::{
-        HeaderInputConfig, HeaderMode, ProviderConfig, RefreshFailurePolicy, SourceConfig,
+        CommandProviderConfig, CoreProviderConfig, CustomProviderConfig, HeaderInputConfig, HeaderMode,
+        InlineProviderConfig, LocalFileProviderConfig, ProviderConfig, RefreshFailurePolicy,
+        SourceConfig,
+    };
+    use crate::extension::{
+        CustomProviderFactory, DynamicProvider, ProviderFactoryRegistry, ProviderLoadFuture,
     };
 
     fn temp_file(name: &str, content: &str) -> PathBuf {
@@ -327,38 +342,16 @@ mod tests {
     async fn resolves_recursive_xff_after_skipping_trusted_proxies() {
         let config = RealIpConfig {
             providers: vec![
-                ProviderConfig {
+                ProviderConfig::Core(CoreProviderConfig::Inline(InlineProviderConfig {
                     name: "cloudflare".to_string(),
-                    kind: "inline".to_string(),
                     cidrs: vec!["203.0.113.0/24".parse().unwrap()],
-                    path: None,
-                    url: None,
-                    command: None,
-                    args: Vec::new(),
-                    refresh: None,
-                    watch: false,
-                    debounce: None,
-                    timeout: None,
-                    on_refresh_failure: RefreshFailurePolicy::KeepLastGood,
-                    max_stale: None,
                     extra: Default::default(),
-                },
-                ProviderConfig {
+                })),
+                ProviderConfig::Core(CoreProviderConfig::Inline(InlineProviderConfig {
                     name: "edgeone".to_string(),
-                    kind: "inline".to_string(),
                     cidrs: vec!["198.51.100.0/24".parse().unwrap()],
-                    path: None,
-                    url: None,
-                    command: None,
-                    args: Vec::new(),
-                    refresh: None,
-                    watch: false,
-                    debounce: None,
-                    timeout: None,
-                    on_refresh_failure: RefreshFailurePolicy::KeepLastGood,
-                    max_stale: None,
                     extra: Default::default(),
-                },
+                })),
             ],
             sources: vec![SourceConfig {
                 name: "cloudflare".to_string(),
@@ -406,22 +399,16 @@ mod tests {
     async fn loads_local_file_provider() {
         let path = temp_file("local-provider", "127.0.0.1/32\n::1/128\n");
         let config = RealIpConfig {
-            providers: vec![ProviderConfig {
+            providers: vec![ProviderConfig::Core(CoreProviderConfig::LocalFile(
+                LocalFileProviderConfig {
                 name: "local".to_string(),
-                kind: "local-file".to_string(),
-                cidrs: vec![],
-                path: Some(path.clone()),
-                url: None,
-                command: None,
-                args: Vec::new(),
-                refresh: None,
+                path: path.clone(),
                 watch: false,
                 debounce: None,
-                timeout: None,
-                on_refresh_failure: RefreshFailurePolicy::KeepLastGood,
                 max_stale: None,
                 extra: Default::default(),
-            }],
+            },
+            ))],
             sources: vec![],
             fallback: Default::default(),
         };
@@ -436,30 +423,91 @@ mod tests {
     #[tokio::test]
     async fn loads_command_provider() {
         let config = RealIpConfig {
-            providers: vec![ProviderConfig {
+            providers: vec![ProviderConfig::Core(CoreProviderConfig::Command(
+                CommandProviderConfig {
                 name: "command".to_string(),
-                kind: "command".to_string(),
-                cidrs: vec![],
-                path: None,
-                url: None,
-                command: Some("sh".to_string()),
+                command: "sh".to_string(),
                 args: vec![
                     "-c".to_string(),
                     "printf '10.0.0.1\\n10.0.0.0/24\\n'".to_string(),
                 ],
                 refresh: None,
-                watch: false,
-                debounce: None,
                 timeout: Some(std::time::Duration::from_secs(5)),
                 on_refresh_failure: RefreshFailurePolicy::KeepLastGood,
                 max_stale: None,
                 extra: Default::default(),
-            }],
+            },
+            ))],
             sources: vec![],
             fallback: Default::default(),
         };
 
         let resolver = RealIpResolver::from_config(config).await.unwrap();
+        let trusted = resolver.providers.all_cidrs().await;
+        assert_eq!(trusted.len(), 2);
+    }
+
+    struct StaticCustomProvider {
+        cidrs: Vec<IpNet>,
+    }
+
+    impl DynamicProvider for StaticCustomProvider {
+        fn load<'a>(&'a self) -> ProviderLoadFuture<'a> {
+            let cidrs = self.cidrs.clone();
+            Box::pin(async move { Ok(cidrs) })
+        }
+    }
+
+    struct StaticCustomProviderFactory;
+
+    impl CustomProviderFactory for StaticCustomProviderFactory {
+        fn kind(&self) -> &'static str {
+            "static-custom"
+        }
+
+        fn create(&self, config: &CustomProviderConfig) -> RealIpResult<Arc<dyn DynamicProvider>> {
+            let cidrs = config
+                .extra
+                .get("cidrs")
+                .and_then(|value| value.as_array())
+                .into_iter()
+                .flatten()
+                .filter_map(|value| value.as_str())
+                .map(|value| value.parse::<IpNet>().unwrap())
+                .collect();
+            Ok(Arc::new(StaticCustomProvider { cidrs }))
+        }
+    }
+
+    #[tokio::test]
+    async fn loads_custom_provider_via_factory_registry() {
+        let mut factories = ProviderFactoryRegistry::new();
+        factories.register(StaticCustomProviderFactory).unwrap();
+
+        let config = RealIpConfig {
+            providers: vec![ProviderConfig::Custom(CustomProviderConfig {
+                name: "custom".to_string(),
+                kind: "static-custom".to_string(),
+                refresh: None,
+                timeout: None,
+                on_refresh_failure: RefreshFailurePolicy::KeepLastGood,
+                max_stale: None,
+                extra: [
+                    (
+                        "cidrs".to_string(),
+                        serde_json::json!(["10.10.0.0/16", "127.0.0.1/32"]),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            })],
+            sources: vec![],
+            fallback: Default::default(),
+        };
+
+        let resolver = RealIpResolver::from_config_with_factories(config, &factories)
+            .await
+            .unwrap();
         let trusted = resolver.providers.all_cidrs().await;
         assert_eq!(trusted.len(), 2);
     }

@@ -20,5 +20,6 @@ tracing = { workspace = true }
 openidconnect = { workspace = true }
 oauth2 = { workspace = true }
 chrono = { workspace = true }
+humantime-serde = { workspace = true }
 josekit = { workspace = true, optional = true }
 http = { workspace = true }

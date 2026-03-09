@@ -325,7 +325,7 @@ mod tests {
 
         let verifier = OAuthResourceServerVerifierJwe::from_config(&OAuthResourceServerJweConfig {
             jwe_jwk_path: Some(jwk_path.to_string_lossy().into_owned()),
-            watch_interval_seconds: 1,
+            watch_interval: Duration::from_secs(1),
             ..Default::default()
         })
         .await

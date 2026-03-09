@@ -141,6 +141,13 @@
 - 已实现
 - 已被参考服务器和 CLI 使用
 
+存储设计：
+
+- 通过 `ArcSwap<DataFile>` 实现无锁并发读取
+- 通过 `atomic-write-file` 实现原子文件写入（临时文件 → fsync → rename）
+- 基于 `notify-debouncer-full` 的去抖文件系统监听（监听父目录），当 FS 事件不可用时自动回退到 1s 轮询
+- 基于内容哈希的自写检测：成功保存后记录写入内容的哈希值，watcher 跳过下一个匹配事件以防止递归重载
+
 主要代码：
 
 - `packages/creds-manage/src/store.rs`

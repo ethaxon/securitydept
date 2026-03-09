@@ -1,6 +1,8 @@
 pub mod config;
 pub mod error;
+pub mod extension;
 
+mod builtins;
 mod providers;
 mod resolve;
 

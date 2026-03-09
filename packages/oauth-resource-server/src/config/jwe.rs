@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -33,8 +35,8 @@ pub struct OAuthResourceServerJweConfig {
     /// Optional `use` override applied to the JWK derived from `jwe_pem_path`.
     #[serde(default)]
     pub jwe_pem_key_use: Option<String>,
-    /// Poll interval, in seconds, for watching local JWE key files for key
-    /// rotation. Set to `0` to disable background watching.
-    #[serde(default)]
-    pub watch_interval_seconds: u64,
+    /// Poll interval for watching local JWE key files for key rotation.
+    /// Set to `"0s"` to disable background watching.
+    #[serde(default, with = "humantime_serde")]
+    pub watch_interval: Duration,
 }

@@ -250,6 +250,110 @@ command provider 允许运维方接入自己的环境发现逻辑，而不必强
 - 全部 Docker bridge subnet
 - 全部 node private network
 
+当前已内建的环境专属 provider：
+
+- `docker-provider`
+- `kube-provider`
+
+### `docker-provider`
+
+`docker-provider` 通过 Docker API 发现受信任的 Docker network subnet。
+
+推荐用途：
+
+- 仅把专门承载 NGINX / Traefik / ingress gateway 的 Docker network 作为 trusted peer source
+
+建议字段：
+
+- `name`
+- `kind: docker-provider`
+- `host`
+  - 可选
+  - 不设置时使用本地 Docker 默认连接方式
+- `network`
+  - 可选
+  - 单个 network 名称
+- `networks`
+  - 可选
+  - 多个 network 名称
+
+行为说明：
+
+- 若未指定 `network` 或 `networks`，provider 会列出当前可见网络并读取其中可解析的 subnet
+- 更推荐显式指定 dedicated ingress network，避免范围过宽
+
+示例：
+
+```yaml
+- name: docker-ingress
+  kind: docker-provider
+  host: unix:///var/run/docker.sock
+  networks: ["edge-ingress", "internal-proxy"]
+  refresh: 30s
+  timeout: 5s
+  on_refresh_failure: keep-last-good
+  max_stale: 10m
+```
+
+### `kube-provider`
+
+`kube-provider` 通过 Kubernetes API 发现受信任的 Pod / Endpoints / EndpointSlice 地址。
+
+推荐用途：
+
+- 发现 ingress controller Pod IP
+- 发现 gateway service 对应的 Endpoints
+- 发现由 label selector 约束的一组 trusted proxy 实例
+
+建议字段：
+
+- `name`
+- `kind: kube-provider`
+- `resource`
+  - 可选
+  - `pods`、`endpoints`、`endpointslices`
+  - 默认 `pods`
+- `namespace`
+  - `endpoints` 场景强烈建议设置
+- `name`
+  - 可选
+  - 主要用于 `endpoints` 精确定位单个对象
+- `label_selector`
+  - 可选
+- `field_selector`
+  - 可选
+
+行为说明：
+
+- `resource: pods` 时，读取 Pod IP
+- `resource: endpoints` 时，读取 Endpoints subsets.addresses
+- `resource: endpointslices` 时，读取 EndpointSlice endpoints.addresses
+- 不建议把整个 cluster Pod CIDR 当 trusted source；应尽量用 namespace + selector 收敛范围
+
+示例：
+
+```yaml
+- name: kube-ingress-pods
+  kind: kube-provider
+  resource: pods
+  namespace: ingress-nginx
+  label_selector: app.kubernetes.io/name=ingress-nginx
+  refresh: 30s
+  timeout: 5s
+  on_refresh_failure: keep-last-good
+  max_stale: 10m
+
+- name: kube-gateway-endpoints
+  kind: kube-provider
+  resource: endpoints
+  namespace: gateway-system
+  name: edge-gateway
+  refresh: 30s
+  timeout: 5s
+  on_refresh_failure: keep-last-good
+  max_stale: 10m
+```
+
 ### 专属 Provider 扩展
 
 对于具备稳定运维模式的部署环境，增加专属 provider 是合理的。
@@ -333,6 +437,25 @@ providers:
     kind: inline
     cidrs: ["127.0.0.1/32", "::1/128"]
 
+  - name: docker-ingress
+    kind: docker-provider
+    host: unix:///var/run/docker.sock
+    networks: ["edge-ingress"]
+    refresh: 30s
+    timeout: 5s
+    on_refresh_failure: keep-last-good
+    max_stale: 10m
+
+  - name: kube-ingress-pods
+    kind: kube-provider
+    resource: pods
+    namespace: ingress-nginx
+    label_selector: app.kubernetes.io/name=ingress-nginx
+    refresh: 30s
+    timeout: 5s
+    on_refresh_failure: keep-last-good
+    max_stale: 10m
+
 sources:
   - name: cloudflare
     priority: 100
@@ -351,7 +474,7 @@ sources:
 
   - name: internal-proxy
     priority: 50
-    peers_from: ["local-proxies", "discovered-ingress", "loopback"]
+    peers_from: ["local-proxies", "discovered-ingress", "docker-ingress", "kube-ingress-pods", "loopback"]
     accept_transport:
       - kind: proxy-protocol
     accept_headers:

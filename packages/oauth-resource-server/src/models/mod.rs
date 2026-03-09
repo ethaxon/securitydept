@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use openidconnect::{IntrospectionUrl, IssuerUrl, JsonWebKeySetUrl, core::CoreJsonWebKeySet};
 use securitydept_creds::{JwtClaimsTrait, Scope, TokenData};
 
@@ -20,19 +22,19 @@ pub struct OAuthResourceServerMetadata {
 pub struct VerificationPolicy {
     allowed_audiences: Vec<String>,
     required_scopes: Vec<String>,
-    clock_skew_seconds: u64,
+    clock_skew: Duration,
 }
 
 impl VerificationPolicy {
     pub fn new(
         allowed_audiences: Vec<String>,
         required_scopes: Vec<String>,
-        clock_skew_seconds: u64,
+        clock_skew: Duration,
     ) -> Self {
         Self {
             allowed_audiences,
             required_scopes,
-            clock_skew_seconds,
+            clock_skew,
         }
     }
 
@@ -44,8 +46,8 @@ impl VerificationPolicy {
         &self.required_scopes
     }
 
-    pub fn clock_skew_seconds(&self) -> u64 {
-        self.clock_skew_seconds
+    pub fn clock_skew(&self) -> Duration {
+        self.clock_skew
     }
 }
 

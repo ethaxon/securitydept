@@ -5,6 +5,8 @@ pub mod jwe;
 pub use introspection::OAuthResourceServerIntrospectionConfig;
 #[cfg(feature = "jwe")]
 pub use jwe::OAuthResourceServerJweConfig;
+use std::time::Duration;
+
 use securitydept_oauth_provider::{
     OAuthProviderConfig, OAuthProviderOidcConfig, OAuthProviderRemoteConfig,
 };
@@ -28,9 +30,9 @@ pub struct OAuthResourceServerConfig {
     #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
     #[serde(default)]
     pub required_scopes: Vec<String>,
-    /// Allowed clock skew, in seconds, when validating `exp` and `nbf`.
-    #[serde(default = "default_clock_skew_seconds")]
-    pub clock_skew_seconds: u64,
+    /// Allowed clock skew when validating `exp` and `nbf`.
+    #[serde(default = "default_clock_skew", with = "humantime_serde")]
+    pub clock_skew: Duration,
     /// Optional opaque-token introspection configuration.
     ///
     /// Example TOML:
@@ -58,7 +60,7 @@ pub struct OAuthResourceServerConfig {
     /// jwe_jwks_path = "config/jwe-private.jwks"
     /// # or jwe_jwk_path = "config/jwe-private.jwk"
     /// # or jwe_pem_path = "config/jwe-private.pem"
-    /// watch_interval_seconds = 30
+    /// watch_interval = "30s"
     /// jwe_pem_key_id = "enc-key-1"
     /// jwe_pem_algorithm = "RSA-OAEP-256"
     /// jwe_pem_key_use = "enc"
@@ -120,7 +122,7 @@ impl Default for OAuthResourceServerConfig {
             remote: OAuthProviderRemoteConfig::default(),
             audiences: Vec::new(),
             required_scopes: Vec::new(),
-            clock_skew_seconds: default_clock_skew_seconds(),
+            clock_skew: default_clock_skew(),
             introspection: None,
             #[cfg(feature = "jwe")]
             jwe: None,
@@ -128,8 +130,8 @@ impl Default for OAuthResourceServerConfig {
     }
 }
 
-fn default_clock_skew_seconds() -> u64 {
-    60
+fn default_clock_skew() -> Duration {
+    Duration::from_secs(60)
 }
 
 #[cfg(test)]

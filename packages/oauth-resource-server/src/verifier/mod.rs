@@ -52,7 +52,7 @@ impl OAuthResourceServerVerifier {
             policy: VerificationPolicy::new(
                 config.audiences.clone(),
                 config.required_scopes.clone(),
-                config.clock_skew_seconds,
+                config.clock_skew,
             ),
             introspection: config
                 .introspection
@@ -320,7 +320,7 @@ pub(super) fn apply_validation_policy(
     metadata: &OAuthResourceServerMetadata,
     policy: &VerificationPolicy,
 ) {
-    validation.leeway = policy.clock_skew_seconds();
+    validation.leeway = policy.clock_skew().as_secs();
     validation.validate_nbf = true;
     validation.set_required_spec_claims(&["exp", "iss"]);
     validation.set_issuer(&[metadata.issuer.as_str()]);

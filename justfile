@@ -42,3 +42,11 @@ fix-ts:
     pnpm lint-fix
 
 fix: fix-rs fix-ts
+
+test-rs:
+    cargo test --workspace --all-features
+
+test-ts:
+    pnpm test
+
+test: test-rs test-ts

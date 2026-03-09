@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use openidconnect::core::{CoreClientAuthMethod, CoreJwsSigningAlgorithm};
 use securitydept_utils::ser::CommaOrSpaceSeparated;
 use serde::Deserialize;
@@ -13,7 +15,7 @@ pub struct OAuthProviderRemoteConfig {
     /// OpenID Connect discovery document URL.
     ///
     /// When set, the runtime fetches remote metadata and periodically refreshes
-    /// it when `metadata_refresh_interval_seconds > 0`.
+    /// it when `metadata_refresh_interval > 0`.
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
     pub well_known_url: Option<String>,
@@ -23,16 +25,16 @@ pub struct OAuthProviderRemoteConfig {
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
     pub jwks_uri: Option<String>,
-    /// Refresh interval, in seconds, for the discovery metadata cache.
+    /// Refresh interval for the discovery metadata cache.
     ///
     /// Set to `0` to disable periodic discovery refresh.
-    #[serde(default = "default_metadata_refresh_interval_seconds")]
-    pub metadata_refresh_interval_seconds: u64,
-    /// Refresh interval, in seconds, for the remote JWKS cache.
+    #[serde(default = "default_metadata_refresh_interval", with = "humantime_serde")]
+    pub metadata_refresh_interval: Duration,
+    /// Refresh interval for the remote JWKS cache.
     ///
     /// Set to `0` to disable time-based JWKS refresh.
-    #[serde(default = "default_jwks_refresh_interval_seconds")]
-    pub jwks_refresh_interval_seconds: u64,
+    #[serde(default = "default_jwks_refresh_interval", with = "humantime_serde")]
+    pub jwks_refresh_interval: Duration,
 }
 
 impl OAuthProviderRemoteConfig {
@@ -97,12 +99,12 @@ impl OAuthProviderConfig {
     }
 }
 
-pub fn default_metadata_refresh_interval_seconds() -> u64 {
-    0
+pub fn default_metadata_refresh_interval() -> Duration {
+    Duration::ZERO
 }
 
-pub fn default_jwks_refresh_interval_seconds() -> u64 {
-    300
+pub fn default_jwks_refresh_interval() -> Duration {
+    Duration::from_secs(300)
 }
 
 pub fn default_id_token_signing_alg_values_supported() -> Vec<CoreJwsSigningAlgorithm> {

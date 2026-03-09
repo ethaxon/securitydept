@@ -250,6 +250,110 @@ They should not default to trusting:
 - every Docker bridge subnet
 - every node-private network
 
+Currently built-in environment-specific providers:
+
+- `docker-provider`
+- `kube-provider`
+
+### `docker-provider`
+
+`docker-provider` discovers trusted Docker network subnets through the Docker API.
+
+Recommended use:
+
+- trust only dedicated Docker networks that carry NGINX, Traefik, or ingress gateway hops
+
+Recommended fields:
+
+- `name`
+- `kind: docker-provider`
+- `host`
+  - optional
+  - uses the local Docker default connection when omitted
+- `network`
+  - optional
+  - a single network name
+- `networks`
+  - optional
+  - multiple network names
+
+Behavior notes:
+
+- when neither `network` nor `networks` is set, the provider lists visible networks and reads any parseable subnet
+- explicit dedicated ingress networks are preferred over broad discovery
+
+Example:
+
+```yaml
+- name: docker-ingress
+  kind: docker-provider
+  host: unix:///var/run/docker.sock
+  networks: ["edge-ingress", "internal-proxy"]
+  refresh: 30s
+  timeout: 5s
+  on_refresh_failure: keep-last-good
+  max_stale: 10m
+```
+
+### `kube-provider`
+
+`kube-provider` discovers trusted Pod, Endpoints, or EndpointSlice addresses through the Kubernetes API.
+
+Recommended use:
+
+- discover ingress controller Pod IPs
+- discover gateway service Endpoints
+- discover a constrained set of trusted proxy instances by label selector
+
+Recommended fields:
+
+- `name`
+- `kind: kube-provider`
+- `resource`
+  - optional
+  - `pods`, `endpoints`, or `endpointslices`
+  - defaults to `pods`
+- `namespace`
+  - strongly recommended for `endpoints`
+- `name`
+  - optional
+  - mainly used to target a single `endpoints` object
+- `label_selector`
+  - optional
+- `field_selector`
+  - optional
+
+Behavior notes:
+
+- `resource: pods` reads Pod IPs
+- `resource: endpoints` reads `subsets.addresses`
+- `resource: endpointslices` reads `endpoints.addresses`
+- trusting the entire cluster Pod CIDR is not recommended; prefer namespace and selectors to narrow the peer set
+
+Example:
+
+```yaml
+- name: kube-ingress-pods
+  kind: kube-provider
+  resource: pods
+  namespace: ingress-nginx
+  label_selector: app.kubernetes.io/name=ingress-nginx
+  refresh: 30s
+  timeout: 5s
+  on_refresh_failure: keep-last-good
+  max_stale: 10m
+
+- name: kube-gateway-endpoints
+  kind: kube-provider
+  resource: endpoints
+  namespace: gateway-system
+  name: edge-gateway
+  refresh: 30s
+  timeout: 5s
+  on_refresh_failure: keep-last-good
+  max_stale: 10m
+```
+
 ### Dedicated provider plugins
 
 It is acceptable to add dedicated providers for deployment environments that have stable operational patterns.
@@ -333,6 +437,25 @@ providers:
     kind: inline
     cidrs: ["127.0.0.1/32", "::1/128"]
 
+  - name: docker-ingress
+    kind: docker-provider
+    host: unix:///var/run/docker.sock
+    networks: ["edge-ingress"]
+    refresh: 30s
+    timeout: 5s
+    on_refresh_failure: keep-last-good
+    max_stale: 10m
+
+  - name: kube-ingress-pods
+    kind: kube-provider
+    resource: pods
+    namespace: ingress-nginx
+    label_selector: app.kubernetes.io/name=ingress-nginx
+    refresh: 30s
+    timeout: 5s
+    on_refresh_failure: keep-last-good
+    max_stale: 10m
+
 sources:
   - name: cloudflare
     priority: 100
@@ -351,7 +474,7 @@ sources:
 
   - name: internal-proxy
     priority: 50
-    peers_from: ["local-proxies", "discovered-ingress", "loopback"]
+    peers_from: ["local-proxies", "discovered-ingress", "docker-ingress", "kube-ingress-pods", "loopback"]
     accept_transport:
       - kind: proxy-protocol
     accept_headers:
