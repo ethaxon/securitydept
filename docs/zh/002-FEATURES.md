@@ -98,15 +98,14 @@
 
 当前状态：
 
-- 在 `apps/server` 中部分实现
-- 当前服务器流程在 OIDC 回调后使用内存会话
-- 尚未提取为专用的可复用认证上下文层
+- `apps/server` 中已有参考实现
+- 可复用提取现已位于 `securitydept-session-context`
 
 主要参考：
 
+- `packages/session-context/src/lib.rs`
 - `apps/server/src/routes/auth.rs`
 - `apps/server/src/middleware.rs`
-- `packages/creds-manage/src/session.rs`
 
 ## 6. 无状态 token-set 认证上下文
 

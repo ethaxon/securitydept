@@ -1,55 +1,31 @@
+use std::collections::HashMap;
+
 use axum::{
     Extension,
     extract::Request,
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use serde_json::json;
+use serde_json::{Value, json};
+use tower_sessions::Session;
 
 use crate::state::ServerState;
-
-pub const SESSION_COOKIE_NAME: &str = "securitydept_session";
-
-/// Extract session ID from cookies.
-pub fn get_session_id(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get("cookie")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|cookies| {
-            cookies
-                .split(';')
-                .map(|c| c.trim())
-                .find(|c| c.starts_with(&format!("{SESSION_COOKIE_NAME}=")))
-                .map(|c| c[SESSION_COOKIE_NAME.len() + 1..].to_string())
-        })
-}
 
 /// Middleware that requires a valid session.
 pub async fn require_session(
     Extension(state): Extension<ServerState>,
+    session: Session,
     request: Request,
     next: Next,
 ) -> Response {
-    let session_id = get_session_id(request.headers());
+    let handle = state.session_config.session_handle(session);
 
-    let session_id = match session_id {
-        Some(id) => id,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                axum::Json(json!({ "error": "Not authenticated" })),
-            )
-                .into_response();
-        }
-    };
-
-    let session = state.sessions.get(&session_id).await;
-    match session {
-        Some(_) => next.run(request).await,
-        None => (
+    match handle.require::<HashMap<String, Value>>().await {
+        Ok(_) => next.run(request).await,
+        Err(_) => (
             StatusCode::UNAUTHORIZED,
-            axum::Json(json!({ "error": "Session expired or invalid" })),
+            axum::Json(json!({ "error": "Not authenticated" })),
         )
             .into_response(),
     }

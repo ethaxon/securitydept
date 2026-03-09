@@ -25,6 +25,8 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
   - 用于基础认证、静态令牌、JWT、JWE 和 RFC 9068 访问令牌的底层验证原语
 - `securitydept-basic-auth-zone`
   - 可复用的 basic-auth challenge-zone 配置与响应辅助
+- `securitydept-session-context`
+  - 基于 tower-sessions 的可复用 cookie-session 认证上下文辅助
 - `securitydept-oauth-provider`
   - 共享提供者运行时，支持发现元数据、JWKS 和内省（introspection），带有缓存和刷新
 - `securitydept-oidc-client`

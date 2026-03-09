@@ -62,6 +62,7 @@ SecurityDept 应在底层 crate 之上提供三种明确的认证上下文模式
 - [002-FEATURES.md](002-FEATURES.md) - 能力矩阵
 - [003-AUTH_CONTEXT_MODES.md](003-AUTH_CONTEXT_MODES.md) - 认证上下文模式
 - [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md) - 基础认证区域
+- [005-ERROR_SYSTEM_DESIGN.md](005-ERROR_SYSTEM_DESIGN.md) - 错误系统设计
 - [100-ROADMAP.md](100-ROADMAP.md) - 路线图
 
 ---

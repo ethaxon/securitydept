@@ -8,10 +8,11 @@ use std::sync::Arc;
 
 use clap::Parser;
 use securitydept_core::{
-    creds_manage::{migrations::Migrator, session::SessionManager, store::CredsManageStore},
+    creds_manage::{migrations::Migrator, store::CredsManageStore},
     oidc::OidcClient,
 };
 use snafu::ResultExt;
+use tower_sessions_memory_store::MemoryStore;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -76,8 +77,8 @@ async fn main() -> ServerResult<()> {
         None
     };
 
-    // 24-hour session TTL
-    let sessions = SessionManager::new(86400);
+    let session_config = config.session.clone();
+    let session_store = MemoryStore::default();
 
     let pending_oauth = MokaPendingOauthStore::from_config_opt(
         config.oidc.as_ref().and_then(|o| o.pending_store.as_ref()),
@@ -86,12 +87,13 @@ async fn main() -> ServerResult<()> {
     let state = ServerState {
         config: Arc::new(config.clone()),
         store: Arc::new(store),
-        sessions,
+        session_config: session_config.clone(),
         oidc,
         pending_oauth,
     };
 
-    let app = routes::build_router(state);
+    let app = routes::build_router(state)
+        .layer(session_config.session_layer(session_store));
 
     let bind_addr = format!("{}:{}", config.server.host, config.server.port);
     info!(addr = %bind_addr, "Starting server");

@@ -5,7 +5,8 @@ use figment::{
     providers::{Env, Format, Toml},
 };
 use securitydept_core::{
-    creds_manage::CredsManageConfig, oidc::OidcConfig, utils::base_url::ExternalBaseUrl,
+    creds_manage::CredsManageConfig, oidc::OidcConfig,
+    session_context::SessionContextConfig, utils::base_url::ExternalBaseUrl,
 };
 use serde::Deserialize;
 
@@ -27,6 +28,8 @@ pub struct ServerConfig {
     /// session.
     #[serde(default)]
     pub oidc: Option<OidcConfig>,
+    #[serde(default)]
+    pub session: SessionContextConfig,
     #[serde(default)]
     pub creds_manage: CredsManageConfig,
 }

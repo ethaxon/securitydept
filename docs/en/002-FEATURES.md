@@ -98,15 +98,14 @@ Target:
 
 Current status:
 
-- partially implemented in `apps/server`
-- current server flow uses in-memory sessions after OIDC callback
-- not yet extracted into a dedicated reusable auth-context layer
+- reference implementation exists in `apps/server`
+- reusable extraction now lives in `securitydept-session-context`
 
 Primary references:
 
+- `packages/session-context/src/lib.rs`
 - `apps/server/src/routes/auth.rs`
 - `apps/server/src/middleware.rs`
-- `packages/creds-manage/src/session.rs`
 
 ## 6. Stateless token-set auth context
 

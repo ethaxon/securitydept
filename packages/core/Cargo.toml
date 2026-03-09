@@ -33,6 +33,7 @@ oauth-resource-server-jwe = [
     "securitydept-oauth-resource-server/jwe",
 ]
 basic-auth-zone = ["dep:securitydept-basic-auth-zone", "creds"]
+session-context = ["dep:securitydept-session-context"]
 creds = ["dep:securitydept-creds"]
 creds-jwk = ["creds", "securitydept-creds/jwk"]
 creds-jwt = ["creds", "creds-jwk", "securitydept-creds/jwt", "dep:jsonwebtoken"]
@@ -60,6 +61,7 @@ securitydept-oauth-provider = { path = "../oauth-provider", optional = true }
 securitydept-oidc-client = { path = "../oidc-client", optional = true }
 securitydept-oauth-resource-server = { path = "../oauth-resource-server", optional = true }
 securitydept-basic-auth-zone = { path = "../basic-auth-zone", optional = true }
+securitydept-session-context = { path = "../session-context", optional = true }
 securitydept-creds = { path = "../creds", optional = true }
 securitydept-creds-manage = { path = "../creds-manage", optional = true }
 openidconnect = { workspace = true, optional = true }

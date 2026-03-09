@@ -84,6 +84,14 @@ Crate: `securitydept-oauth-resource-server`
 当前的专用 crate：
 
 - `securitydept-basic-auth-zone`
+- `securitydept-session-context` —— 为 cookie-session 模式提取的可复用会话上下文抽象
+
+`securitydept-session-context` crate 提供：
+
+- `SessionContext<T>` —— 带有主体、属性和可选额外数据的通用会话上下文
+- `SessionPrincipal` —— 规范化的主体，包含显示名称、头像和声明
+- `SessionContextConfig` —— 会话 cookie 和安全配置
+- `SessionContextSession` —— 用于 insert/get/require/clear 操作的会话句柄
 
 ## 第 6 层：凭证管理
 

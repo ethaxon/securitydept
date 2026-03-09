@@ -1,0 +1,319 @@
+# Error System Design
+
+This document describes the current error handling shape in SecurityDept, the security problem in that shape, and the recommended future direction.
+
+The main design goal is simple:
+
+- keep rich internal diagnostics for logs and operations
+- return safe but useful messages to end users
+- avoid collapsing everything into vague `Authentication failed`
+
+## Current State
+
+Today the codebase already has two useful layers:
+
+1. `snafu` enums model domain-specific error variants
+2. `ToHttpStatus` maps those variants to HTTP status codes
+
+Examples:
+
+- `packages/oidc-client/src/error.rs`
+- `packages/oauth-resource-server/src/error.rs`
+- `packages/creds-manage/src/error.rs`
+- `apps/server/src/error.rs`
+
+The current reference server then turns the error into JSON by returning:
+
+- `status` from `ToHttpStatus`
+- `error` from `self.to_string()`
+
+That is convenient, but it couples two different concerns:
+
+- internal diagnostic text
+- user-facing response text
+
+For authentication flows this is often unsafe. Raw error strings may include:
+
+- provider-side failure details
+- exact configuration mistakes
+- token or callback processing context
+- storage or sealing failure details
+
+Those details are useful in logs, but they should not automatically reach the browser or CLI user.
+
+## Problem Statement
+
+The project needs a third layer in addition to `snafu` and `ToHttpStatus`:
+
+- user-facing error presentation
+
+This layer should answer:
+
+- what message should the user see?
+- how specific should that message be?
+- what stable machine code should the frontend receive?
+
+It should not reuse `Display` as the public message contract.
+
+## Design Goals
+
+- Preserve full internal context for logs and debugging.
+- Keep HTTP status mapping separate from presentation.
+- Allow variant-specific safe messages for auth flows.
+- Allow optional per-instance overrides when some context is safe to expose.
+- Give frontends a stable error `code` instead of forcing message parsing.
+- Make it easy to audit which variants disclose specific user-visible reasons.
+
+## Recommended Model
+
+Keep the current `snafu` enums as the internal source of truth.
+
+Add a separate presentation trait, for example:
+
+```rust
+use std::borrow::Cow;
+
+pub struct ErrorPresentation {
+    pub code: &'static str,
+    pub message: Cow<'static, str>,
+}
+
+pub trait ToErrorPresentation {
+    fn to_error_presentation(&self) -> ErrorPresentation;
+}
+```
+
+Then each public-facing error type implements three independent concerns:
+
+- `Display`: internal diagnostic text
+- `ToHttpStatus`: HTTP semantics
+- `ToErrorPresentation`: safe public response
+
+That separation is the core change.
+
+## Why Variant-Level Public Messages Matter
+
+A generic message such as `Authentication failed` is often too weak for real UX.
+
+Some auth failures should be disclosed in a specific but sanitized way:
+
+- invalid login redirect URL
+- authorization code expired
+- authorization code already used
+- login request expired
+- CSRF or state validation failed
+
+Those cases let the user recover by retrying or contacting an operator with a clear symptom.
+
+Other failures should stay generic:
+
+- upstream metadata fetch failed
+- HTTP client transport errors
+- token sealing failures
+- filesystem or database failures
+- unexpected provider response bodies
+
+Those are operational details, not end-user actions.
+
+## Recommended Variant Strategy
+
+There are two useful patterns.
+
+### Pattern A: Fixed Public Message per Variant
+
+For many variants, a fixed safe message is enough:
+
+```rust
+impl ToErrorPresentation for OidcError {
+    fn to_error_presentation(&self) -> ErrorPresentation {
+        match self {
+            OidcError::RedirectUrl { .. } => ErrorPresentation {
+                code: "oidc_redirect_url_invalid",
+                message: "The login redirect URL is invalid.".into(),
+            },
+            OidcError::Metadata { .. }
+            | OidcError::TokenExchange { .. }
+            | OidcError::TokenRefresh { .. } => ErrorPresentation {
+                code: "oidc_temporarily_unavailable",
+                message: "Authentication is temporarily unavailable.".into(),
+            },
+            OidcError::CSRFValidation { .. } => ErrorPresentation {
+                code: "oidc_request_invalid",
+                message: "The sign-in request is no longer valid. Start again.".into(),
+            },
+            _ => ErrorPresentation {
+                code: "internal_error",
+                message: "Request failed.".into(),
+            },
+        }
+    }
+}
+```
+
+This is the default pattern and should cover most cases.
+
+### Pattern B: Optional Public Override per Instance
+
+Some variants need different safe messages depending on the exact reason.
+
+Example: `PendingOauth` should not expose raw storage errors, but it may safely tell the user whether the login request is missing, expired, or already consumed.
+
+That should be modeled as structured reason data, not by parsing `source.to_string()`.
+
+```rust
+use std::borrow::Cow;
+
+pub enum PendingOauthReason {
+    Missing,
+    Expired,
+    AlreadyUsed,
+}
+
+#[derive(Debug, Snafu)]
+pub enum OidcError {
+    #[snafu(display("OIDC pending OAuth error: {source}"))]
+    PendingOauth {
+        source: Box<dyn std::error::Error + Send + Sync>,
+        reason: Option<PendingOauthReason>,
+        public_message: Option<Cow<'static, str>>,
+    },
+}
+```
+
+Then presentation can prefer:
+
+1. an explicit safe `public_message`
+2. a structured `reason`
+3. a generic fallback
+
+This gives callers a controlled override mechanism without weakening the default policy.
+
+## Important Rule
+
+Do not derive public messages from:
+
+- `source.to_string()`
+- provider response bodies
+- HTTP transport errors
+- arbitrary lower-layer strings
+
+If a lower layer has a user-meaningful condition, promote it into a typed variant or a typed reason enum first.
+
+## Suggested Auth Error Disclosure Policy
+
+Recommended categories for SecurityDept:
+
+| Category | End-user message style | Examples |
+| --- | --- | --- |
+| Safe and specific | Explain the recoverable problem | invalid redirect URL, login request expired, authorization code already used |
+| Safe but generic | Keep context broad | session expired, authentication required, access denied |
+| Internal only | Never expose raw detail | metadata fetch errors, introspection transport failures, storage errors, crypto/sealing failures |
+
+In practice, `redirect URL error` and `code invalid/expired` belong in the first category, but the public message should still be normalized and sanitized.
+
+## Response Shape
+
+A future API response should prefer structured error payloads over a single `error` string:
+
+```json
+{
+  "success": false,
+  "status": 401,
+  "error": {
+    "code": "oidc_request_expired",
+    "message": "The sign-in request expired. Start again."
+  }
+}
+```
+
+Benefits:
+
+- frontend logic can branch on `code`
+- message text can evolve without breaking clients
+- logs keep full internal detail separately
+
+If the current response shape must be preserved for compatibility, the project can temporarily add:
+
+- `error.code`
+- `error.message`
+
+or flatten to:
+
+- `error_code`
+- `error_message`
+
+The key point is to stop using `Display` as the public contract.
+
+## Logging Guidance
+
+When returning a sanitized user response, the server should still log the full internal error chain.
+
+Recommended behavior at the boundary:
+
+1. log the internal error with `tracing`
+2. map it to `status`
+3. map it to a sanitized presentation
+4. return only the sanitized presentation to the client
+
+That keeps operations effective without leaking internals.
+
+## Migration Path
+
+SecurityDept can adopt this incrementally.
+
+### Step 1
+
+Add a small shared presentation type and trait in a common crate.
+
+Possible location:
+
+- `packages/utils`
+- or a future dedicated error crate if cross-cutting concerns grow
+
+### Step 2
+
+Implement the trait for top-level public error types first:
+
+- `OidcError`
+- `OAuthResourceServerError`
+- `CredsManageError`
+- `ServerError`
+
+### Step 3
+
+Update `apps/server/src/error.rs` so `IntoResponse` uses:
+
+- `to_http_status()`
+- `to_error_presentation()`
+
+instead of `self.to_string()`.
+
+### Step 4
+
+Refine auth-sensitive variants by introducing typed reason enums where needed, especially for:
+
+- pending OAuth state lookup
+- authorization code exchange failures
+- redirect target validation
+
+## Future Direction
+
+As the project grows into multiple auth-context modes, the error system should also become mode-aware.
+
+Examples:
+
+- basic-auth zone mode may need browser-safe challenge and logout messages
+- cookie-session mode may need session-expired vs login-required distinctions
+- stateless token-set mode may need token-refresh-expired vs access-token-invalid distinctions
+
+The same three-layer rule should still hold:
+
+- internal error semantics
+- transport/status semantics
+- user-facing presentation semantics
+
+That model scales better than trying to encode everything into one `Display` string.
+
+---
+
+[English](005-ERROR_SYSTEM_DESIGN.md) | [中文](../zh/005-ERROR_SYSTEM_DESIGN.md)

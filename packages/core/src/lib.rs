@@ -18,5 +18,7 @@ pub use securitydept_oauth_provider as oauth_provider;
 pub use securitydept_oauth_resource_server as oauth_resource_server;
 #[cfg(feature = "oidc-client")]
 pub use securitydept_oidc_client as oidc;
+#[cfg(feature = "session-context")]
+pub use securitydept_session_context as session_context;
 #[cfg(feature = "utils")]
 pub use securitydept_utils as utils;

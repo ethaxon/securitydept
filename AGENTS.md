@@ -18,6 +18,7 @@ _Single source of truth for Agent identity, code standards, and project rules. R
   - If you community has a mature and modern library for a specific feature, use it instead of implementing it yourself.
 - **YAML**: 2-space indent, quote only when necessary.
 - **Bash**: `set -e`, `[[ ]]` not `[ ]`, quote variables.
+- **Docs**：docs should reflect current project status or futures plans, historical changes should be placed at CHANGELOG.md not in `docs` folder.
 
 ## Project Rules
 
@@ -42,12 +43,12 @@ _Single source of truth for Agent identity, code standards, and project rules. R
 **Directory Structure:**
 - English docs: `docs/{lang}/00x-TITLE.md` (e.g., `docs/en/00x-TITLE.md`)
 
-**Current languages:**
-- English: `docs/en/00x-TITLE.md`
-- Chinese: `docs/zh/00x-TITLE.md`
-
 **Rules:**
 - Translate user-facing docs only (README, docs/00x-*.md); do NOT translate machine-oriented docs (AGENTS.md, CLAUDE.md, etc.)
 - Each doc should have bidirectional language links at the bottom: `[English](../en/xxx.md) | [中文](xxx.md)` (in Chinese docs) or `[English](xxx.md) | [中文](../zh/xxx.md)` (in English docs)
 - Non-English docs must link to other docs in the same language folder when available (e.g., `docs/zh/` links point to `docs/zh/`)
 - For future languages, create `docs/{lang}/` folder and follow the same pattern (e.g., `docs/es/`, `docs/ja/`)
+
+**Current languages:**
+- English: `docs/en/00x-TITLE.md`
+- Chinese: `docs/zh/00x-TITLE.md`

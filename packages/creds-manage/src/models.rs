@@ -153,17 +153,6 @@ impl From<&TokenAuthEntry> for AuthEntry {
     }
 }
 
-/// Session info stored in memory after OIDC login.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Session {
-    pub session_id: String,
-    pub display_name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub picture: Option<String>,
-    pub claims: HashMap<String, serde_json::Value>,
-    pub expires_at: DateTime<Utc>,
-}
-
 /// Request payload for creating a basic auth entry.
 #[derive(Debug, Deserialize)]
 pub struct CreateBasicEntryRequest {

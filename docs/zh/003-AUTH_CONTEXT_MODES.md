@@ -58,13 +58,14 @@
 该模式应组合：
 
 - `securitydept-oidc-client`
-- `securitydept-creds-manage` 或未来的专用会话上下文层
+- `securitydept-session-context` —— 提供 `SessionContext<T>`、`SessionPrincipal`、`SessionContextConfig` 和会话句柄操作
+- `tower-sessions-*` 生态中的可选后端 session store
 - 可选的 TS 助手用于重定向登录 UX
 
 当前仓库状态：
 
 - 参考实现存在于 `apps/server`
-- 可复用提取仍在进行中
+- 可复用提取现已存在于 `securitydept-session-context`
 
 ## 模式 C：无状态 Token-Set
 

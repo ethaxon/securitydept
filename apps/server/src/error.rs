@@ -3,7 +3,8 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use securitydept_core::{
-    creds::CredsError, creds_manage::CredsManageError, oidc::OidcError, utils::http::ToHttpStatus,
+    creds::CredsError, creds_manage::CredsManageError, oidc::OidcError,
+    session_context::SessionContextError, utils::http::ToHttpStatus,
 };
 use serde_json::json;
 use snafu::Snafu;
@@ -19,16 +20,14 @@ pub enum ServerError {
     ServerBoot {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
-    #[snafu(display("Runtime error: {source}"))]
-    Runtime {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
     #[snafu(transparent)]
     CredsManage { source: CredsManageError },
     #[snafu(transparent)]
     Oidc { source: OidcError },
     #[snafu(transparent)]
     Creds { source: CredsError },
+    #[snafu(transparent)]
+    SessionContext { source: SessionContextError },
 }
 
 impl ToHttpStatus for ServerError {
@@ -39,6 +38,7 @@ impl ToHttpStatus for ServerError {
                 creds_manage_error.to_http_status()
             }
             oidc_error @ ServerError::Oidc { .. } => oidc_error.to_http_status(),
+            ServerError::SessionContext { source } => source.status_code(),
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

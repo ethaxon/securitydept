@@ -25,6 +25,8 @@ The current repository already contains major parts of the lower layers and a wo
   - low-level verification primitives for basic auth, static tokens, JWT, JWE, and RFC 9068 access tokens
 - `securitydept-basic-auth-zone`
   - reusable basic-auth challenge-zone configuration and response helpers
+- `securitydept-session-context`
+  - reusable cookie-session auth context helpers built on tower-sessions
 - `securitydept-oauth-provider`
   - shared provider runtime for discovery metadata, JWKS, and introspection with cache and refresh
 - `securitydept-oidc-client`
@@ -74,6 +76,7 @@ These modes are intentionally above the current `oidc-client` and `oauth-resourc
 | [docs/en/002-FEATURES.md](docs/en/002-FEATURES.md) ([中文](docs/zh/002-FEATURES.md)) | Capability matrix: implemented vs planned |
 | [docs/en/003-AUTH_CONTEXT_MODES.md](docs/en/003-AUTH_CONTEXT_MODES.md) ([中文](docs/zh/003-AUTH_CONTEXT_MODES.md)) | Basic zone, cookie-session, and stateless token-set modes |
 | [docs/en/004-BASIC_AUTH_ZONE.md](docs/en/004-BASIC_AUTH_ZONE.md) ([中文](docs/zh/004-BASIC_AUTH_ZONE.md)) | Basic auth zone UX and protocol notes |
+| [docs/en/005-ERROR_SYSTEM_DESIGN.md](docs/en/005-ERROR_SYSTEM_DESIGN.md) ([中文](docs/zh/005-ERROR_SYSTEM_DESIGN.md)) | Safe user-facing errors vs internal diagnostics, with auth-specific guidance |
 | [docs/en/100-ROADMAP.md](docs/en/100-ROADMAP.md) ([中文](docs/zh/100-ROADMAP.md)) | Sequenced roadmap aligned with current goals |
 
 ## Development

@@ -32,9 +32,6 @@ pub enum CredsManageError {
     #[snafu(display("Duplicate group name: {name}"))]
     DuplicateGroupName { name: String },
 
-    #[snafu(display("Session not found"))]
-    SessionNotFound,
-
     #[snafu(display("Invalid configuration: {message}"))]
     InvalidConfig { message: String },
 
@@ -58,7 +55,6 @@ impl ToHttpStatus for CredsManageError {
             }
             CredsManageError::DuplicateEntryName { .. }
             | CredsManageError::DuplicateGroupName { .. } => StatusCode::CONFLICT,
-            CredsManageError::SessionNotFound => StatusCode::UNAUTHORIZED,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

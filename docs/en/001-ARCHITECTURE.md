@@ -79,9 +79,17 @@ These modes are deployment contracts. They should expose normalized principal da
 - local basic-auth credentials
 - static-token credentials
 
-Current dedicated crate:
+Current dedicated crates:
 
 - `securitydept-basic-auth-zone`
+- `securitydept-session-context` — extracted reusable session context abstraction for cookie-session mode
+
+The `securitydept-session-context` crate provides:
+
+- `SessionContext<T>` — generic session context with principal, attributes, and optional extra data
+- `SessionPrincipal` — normalized principal with display name, picture, and claims
+- `SessionContextConfig` — session cookie and security configuration
+- `SessionContextSession` — session handle for insert/get/require/clear operations
 
 A future shared abstraction should likely normalize all of them into a common authenticated-principal model.
 

@@ -49,5 +49,14 @@ scopes = ["openid", "profile", "email"]
 # master_key = "your-master-key"
 # sealed_refresh_token_capsule = true
 
+# [session]
+# cookie_name = "securitydept_session"
+# session_context_key = "securitydept.session_context"
+# cookie_path = "/"
+# http_only = true
+# secure = false            # set true for HTTPS deployments
+# same_site = "lax"         # "strict", "lax", or "none"
+# ttl_seconds = 86400       # 24 hours; null to disable expiry
+
 [creds_manage]
 data_path = "./data/data.json"

@@ -58,13 +58,14 @@ Expected properties:
 This mode should compose:
 
 - `securitydept-oidc-client`
-- `securitydept-creds-manage` or a future dedicated session-context layer
+- `securitydept-session-context` — provides `SessionContext<T>`, `SessionPrincipal`, `SessionContextConfig`, and session handle operations
+- optional backing session store from the `tower-sessions-*` ecosystem
 - optional TS helper for redirect-to-login UX
 
 Current repository status:
 
 - reference implementation exists in `apps/server`
-- reusable extraction is still pending
+- reusable extraction now exists in `securitydept-session-context`
 
 ## Mode C: Stateless Token-Set
 

@@ -1,23 +1,25 @@
+use std::collections::HashMap;
+
 use axum::{
     Extension, Json,
     extract::Query,
-    http::{HeaderMap, HeaderValue, StatusCode},
+    http::HeaderMap,
     response::{IntoResponse, Redirect, Response},
 };
-use maplit::hashmap;
 use securitydept_core::{
-    creds_manage::{CredsManageError, models::UserInfo},
+    creds_manage::models::UserInfo,
     oidc::{
         OidcCodeCallbackSearchParams, OidcError,
         routes::{RefreshTokenPayload, refresh_token_route},
     },
+    session_context::{SessionContext, SessionPrincipal},
 };
-use snafu::ResultExt;
+use serde_json::Value;
+use tower_sessions::Session;
 use tracing::info;
 
 use crate::{
-    error::{RuntimeSnafu, ServerError, ServerResult},
-    middleware::{SESSION_COOKIE_NAME, get_session_id},
+    error::{ServerError, ServerResult},
     state::ServerState,
 };
 
@@ -25,6 +27,7 @@ use crate::{
 /// OIDC is disabled.
 pub async fn login(
     Extension(state): Extension<ServerState>,
+    session: Session,
     headers: HeaderMap,
 ) -> Result<Response, ServerError> {
     if let Some(ref oidc) = state.oidc {
@@ -46,29 +49,30 @@ pub async fn login(
     }
 
     // OIDC disabled: create a dev session for local debugging
-    let session_id = state
-        .sessions
-        .create(
-            "dev".to_string(),
-            None,
-            hashmap! {
-                "oidc_enabled".to_string() => serde_json::json!(false),
-            },
+    let handle = state.session_config.session_handle(session);
+    handle.cycle_id().await?;
+
+    let context: SessionContext = SessionContext::builder()
+        .principal(
+            SessionPrincipal::builder()
+                .display_name("dev")
+                .claims(HashMap::from([(
+                    "oidc_enabled".to_string(),
+                    Value::Bool(false),
+                )]))
+                .build(),
         )
-        .await;
-    let cookie = format!(
-        "{SESSION_COOKIE_NAME}={session_id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400"
-    );
-    let mut headers = HeaderMap::new();
-    headers.insert("Set-Cookie", HeaderValue::from_str(&cookie).unwrap());
-    headers.insert("Location", HeaderValue::from_static("/"));
-    Ok((StatusCode::FOUND, headers).into_response())
+        .build();
+    handle.insert(&context).await?;
+
+    Ok(Redirect::to("/").into_response())
 }
 
 /// GET /auth/callback
 /// Handle OIDC code exchange.
 pub async fn callback(
     Extension(state): Extension<ServerState>,
+    session: Session,
     headers: HeaderMap,
     Query(search_params): Query<OidcCodeCallbackSearchParams>,
 ) -> Result<Response, ServerError> {
@@ -90,55 +94,34 @@ pub async fn callback(
         .await?;
     let claims_check_result = code_callback_result.claims_check_result;
 
-    // Create session
-    let session_id = state
-        .sessions
-        .create(
-            claims_check_result.display_name.clone(),
-            claims_check_result.picture,
-            claims_check_result.claims,
-        )
-        .await;
+    let handle = state.session_config.session_handle(session);
+    handle.cycle_id().await?;
+
+    let principal = SessionPrincipal {
+        display_name: claims_check_result.display_name.clone(),
+        picture: claims_check_result.picture,
+        claims: claims_check_result.claims,
+    };
+
+    let context: SessionContext = SessionContext::builder()
+        .principal(principal)
+        .build();
+    handle.insert(&context).await?;
 
     info!(display_name = %claims_check_result.display_name, "User logged in");
 
-    // Set session cookie and redirect to app root
-    let cookie = format!(
-        "{SESSION_COOKIE_NAME}={session_id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400"
-    );
-
-    let mut headers = HeaderMap::new();
-    headers.insert("Set-Cookie", HeaderValue::from_str(&cookie).unwrap());
-    headers.insert("Location", HeaderValue::from_static("/"));
-
-    Ok((StatusCode::FOUND, headers).into_response())
+    Ok(Redirect::to("/").into_response())
 }
 
 /// POST /auth/logout -- destroy session.
 pub async fn logout(
     Extension(state): Extension<ServerState>,
-    headers: HeaderMap,
+    session: Session,
 ) -> ServerResult<Response> {
-    if let Some(session_id) = get_session_id(&headers) {
-        state.sessions.remove(&session_id).await;
-    }
+    let handle = state.session_config.session_handle(session);
+    handle.flush().await?;
 
-    // Clear cookie
-    let cookie = format!("{SESSION_COOKIE_NAME}=; Path=/; HttpOnly; Max-Age=0");
-    let mut resp_headers = HeaderMap::new();
-    resp_headers.insert(
-        "Set-Cookie",
-        HeaderValue::from_str(&cookie)
-            .boxed()
-            .context(RuntimeSnafu)?,
-    );
-
-    Ok((
-        StatusCode::OK,
-        resp_headers,
-        Json(serde_json::json!({"ok": true})),
-    )
-        .into_response())
+    Ok(Json(serde_json::json!({"ok": true})).into_response())
 }
 
 pub async fn refresh_token(
@@ -153,19 +136,14 @@ pub async fn refresh_token(
 /// GET /auth/me -- return current user info.
 pub async fn me(
     Extension(state): Extension<ServerState>,
-    headers: HeaderMap,
+    session: Session,
 ) -> ServerResult<Json<UserInfo>> {
-    let session_id = get_session_id(&headers).ok_or(CredsManageError::SessionNotFound)?;
-
-    let session = state
-        .sessions
-        .get(&session_id)
-        .await
-        .ok_or(CredsManageError::SessionNotFound)?;
+    let handle = state.session_config.session_handle(session);
+    let context = handle.require::<HashMap<String, Value>>().await?;
 
     Ok(Json(UserInfo {
-        display_name: session.display_name,
-        picture: session.picture,
-        claims: session.claims,
+        display_name: context.principal.display_name,
+        picture: context.principal.picture,
+        claims: context.principal.claims,
     }))
 }
