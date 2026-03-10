@@ -2,8 +2,8 @@ use std::{net::IpAddr, sync::Arc};
 
 use bollard::{
     API_DEFAULT_VERSION, Docker,
-    models::Network,
-    network::ListNetworksOptions,
+    models::Ipam,
+    query_parameters::InspectNetworkOptions,
 };
 use ipnet::IpNet;
 use k8s_openapi::api::{
@@ -62,14 +62,17 @@ struct DockerProvider {
 impl DynamicProvider for DockerProvider {
     fn load<'a>(&'a self) -> ProviderLoadFuture<'a> {
         Box::pin(async move {
-            let networks = if self.networks.is_empty() {
+            let ipams: Vec<Option<Ipam>> = if self.networks.is_empty() {
                 self.docker
-                    .list_networks(None::<ListNetworksOptions<String>>)
+                    .list_networks(None::<bollard::query_parameters::ListNetworksOptions>)
                     .await
                     .map_err(|error| RealIpError::ProviderLoad {
                         provider: self.provider_name.clone(),
                         details: error.to_string(),
                     })?
+                    .into_iter()
+                    .map(|n| n.ipam)
+                    .collect()
             } else {
                 let mut items = Vec::new();
                 for network in &self.networks {
@@ -77,19 +80,19 @@ impl DynamicProvider for DockerProvider {
                         .docker
                         .inspect_network(
                             network,
-                            None::<bollard::network::InspectNetworkOptions<String>>,
+                            None::<InspectNetworkOptions>,
                         )
                         .await
                         .map_err(|error| RealIpError::ProviderLoad {
                             provider: self.provider_name.clone(),
                             details: error.to_string(),
                         })?;
-                    items.push(item);
+                    items.push(item.ipam);
                 }
                 items
             };
 
-            extract_docker_subnets(&self.provider_name, &networks)
+            extract_docker_subnets(&self.provider_name, &ipams)
         })
     }
 }
@@ -210,10 +213,10 @@ fn connect_docker(host: Option<&str>) -> Result<Docker, String> {
     }
 }
 
-fn extract_docker_subnets(provider: &str, networks: &[Network]) -> RealIpResult<Vec<IpNet>> {
+fn extract_docker_subnets(provider: &str, ipams: &[Option<Ipam>]) -> RealIpResult<Vec<IpNet>> {
     let mut cidrs = Vec::new();
-    for network in networks {
-        let Some(ipam) = &network.ipam else {
+    for ipam in ipams {
+        let Some(ipam) = ipam else {
             continue;
         };
         let Some(configs) = &ipam.config else {

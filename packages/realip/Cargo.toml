@@ -5,11 +5,11 @@ edition = "2024"
 
 [dependencies]
 arc-swap = { workspace = true }
-bollard = { version = "0.18", default-features = false, features = ["ssl", "pipe"] }
+bollard = { version = "0.20", default-features = false, features = ["ssl", "pipe"] }
 http = { workspace = true }
 ipnet = { workspace = true }
-k8s-openapi = { version = "0.24", features = ["v1_30"] }
-kube = { version = "0.98", default-features = false, features = ["client", "rustls-tls"] }
+k8s-openapi = { version = "0.27", features = ["v1_31"] }
+kube = { version = "3", default-features = false, features = ["client", "rustls-tls"] }
 notify = { workspace = true }
 reqwest = { workspace = true }
 rfc7239 = { workspace = true }
@@ -21,4 +21,5 @@ tracing = { workspace = true }
 humantime-serde = { workspace = true }
 
 [dev-dependencies]
+testcontainers = "0.27"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
