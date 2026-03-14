@@ -16,16 +16,16 @@
 		"@tanstack/react-router": "^1.120.2",
 		"@tanstack/react-query": "^5.75.5",
 		"@tanstack/react-table": "^8.21.3",
-		"lucide-react": "^0.575",
+		"lucide-react": "^0.577",
 		"clsx": "^2.1.1",
 		"tailwind-merge": "^3.3.0"
 	},
 	"devDependencies": {
 		"@types/react": "^19.1.4",
 		"@types/react-dom": "^19.1.5",
-		"@vitejs/plugin-react": "^5.1.4",
-		"vite": "^7.3.1",
-		"tailwindcss": "^4.1.7",
-		"@tailwindcss/vite": "^4.1.7"
+		"@vitejs/plugin-react": "^6.0.1",
+		"vite": "^8.0.0",
+		"tailwindcss": "^4.2.1",
+		"@tailwindcss/vite": "^4.2.1"
 	}
 }

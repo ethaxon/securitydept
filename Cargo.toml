@@ -57,6 +57,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 fs2 = "0.4"
 serde-constant = "0.1"
+testcontainers = "0.27"
 
 [patch.crates-io]
 openidconnect = { git = "https://github.com/ethaxon/openidconnect-rs.git", branch = "set_option" }

@@ -1,10 +1,6 @@
 use std::{net::IpAddr, sync::Arc};
 
-use bollard::{
-    API_DEFAULT_VERSION, Docker,
-    models::Ipam,
-    query_parameters::InspectNetworkOptions,
-};
+use bollard::{API_DEFAULT_VERSION, Docker, models::Ipam, query_parameters::InspectNetworkOptions};
 use ipnet::IpNet;
 use k8s_openapi::api::{
     core::v1::{Endpoints, Pod},
@@ -15,7 +11,9 @@ use kube::{Api, Client, api::ListParams};
 use crate::{
     config::CustomProviderConfig,
     error::{RealIpError, RealIpResult},
-    extension::{CustomProviderFactory, DynamicProvider, ProviderFactoryRegistry, ProviderLoadFuture},
+    extension::{
+        CustomProviderFactory, DynamicProvider, ProviderFactoryRegistry, ProviderLoadFuture,
+    },
 };
 
 pub fn register_builtin_provider_factories(
@@ -40,10 +38,11 @@ impl CustomProviderFactory for DockerProviderFactory {
             .and_then(|value| value.as_str())
             .map(str::to_string);
         let networks = string_list(config, "networks");
-        let docker = connect_docker(host.as_deref()).map_err(|error| RealIpError::ProviderLoad {
-            provider: config.name.clone(),
-            details: error,
-        })?;
+        let docker =
+            connect_docker(host.as_deref()).map_err(|error| RealIpError::ProviderLoad {
+                provider: config.name.clone(),
+                details: error,
+            })?;
 
         Ok(Arc::new(DockerProvider {
             provider_name: config.name.clone(),
@@ -78,10 +77,7 @@ impl DynamicProvider for DockerProvider {
                 for network in &self.networks {
                     let item = self
                         .docker
-                        .inspect_network(
-                            network,
-                            None::<InspectNetworkOptions>,
-                        )
+                        .inspect_network(network, None::<InspectNetworkOptions>)
                         .await
                         .map_err(|error| RealIpError::ProviderLoad {
                             provider: self.provider_name.clone(),
@@ -155,22 +151,28 @@ struct KubeProvider {
 impl DynamicProvider for KubeProvider {
     fn load<'a>(&'a self) -> ProviderLoadFuture<'a> {
         Box::pin(async move {
-            let client = Client::try_default()
-                .await
-                .map_err(|error| RealIpError::ProviderLoad {
-                    provider: self.provider_name.clone(),
-                    details: error.to_string(),
-                })?;
-            let params = list_params(self.label_selector.as_deref(), self.field_selector.as_deref());
+            let client =
+                Client::try_default()
+                    .await
+                    .map_err(|error| RealIpError::ProviderLoad {
+                        provider: self.provider_name.clone(),
+                        details: error.to_string(),
+                    })?;
+            let params = list_params(
+                self.label_selector.as_deref(),
+                self.field_selector.as_deref(),
+            );
 
             match self.resource.as_str() {
-                "pods" => load_kube_pods(
-                    &self.provider_name,
-                    client,
-                    self.namespace.as_deref(),
-                    params,
-                )
-                .await,
+                "pods" => {
+                    load_kube_pods(
+                        &self.provider_name,
+                        client,
+                        self.namespace.as_deref(),
+                        params,
+                    )
+                    .await
+                }
                 "endpoints" => {
                     load_kube_endpoints(
                         &self.provider_name,
@@ -202,12 +204,10 @@ impl DynamicProvider for KubeProvider {
 fn connect_docker(host: Option<&str>) -> Result<Docker, String> {
     match host {
         None => Docker::connect_with_local_defaults().map_err(|error| error.to_string()),
-        Some(host) if host.starts_with("unix://") => Docker::connect_with_local(
-            host.trim_start_matches("unix://"),
-            120,
-            API_DEFAULT_VERSION,
-        )
-        .map_err(|error| error.to_string()),
+        Some(host) if host.starts_with("unix://") => {
+            Docker::connect_with_local(host.trim_start_matches("unix://"), 120, API_DEFAULT_VERSION)
+                .map_err(|error| error.to_string())
+        }
         Some(host) => Docker::connect_with_http(host, 120, API_DEFAULT_VERSION)
             .map_err(|error| error.to_string()),
     }
@@ -226,10 +226,14 @@ fn extract_docker_subnets(provider: &str, ipams: &[Option<Ipam>]) -> RealIpResul
             let Some(subnet) = &config.subnet else {
                 continue;
             };
-            cidrs.push(subnet.parse::<IpNet>().map_err(|_| RealIpError::ProviderLoad {
-                provider: provider.to_string(),
-                details: format!("invalid docker subnet `{subnet}`"),
-            })?);
+            cidrs.push(
+                subnet
+                    .parse::<IpNet>()
+                    .map_err(|_| RealIpError::ProviderLoad {
+                        provider: provider.to_string(),
+                        details: format!("invalid docker subnet `{subnet}`"),
+                    })?,
+            );
         }
     }
     Ok(cidrs)
@@ -256,10 +260,13 @@ async fn load_kube_pods(
         Some(namespace) => Api::namespaced(client, namespace),
         None => Api::all(client),
     };
-    let list = pods.list(&params).await.map_err(|error| RealIpError::ProviderLoad {
-        provider: provider.to_string(),
-        details: error.to_string(),
-    })?;
+    let list = pods
+        .list(&params)
+        .await
+        .map_err(|error| RealIpError::ProviderLoad {
+            provider: provider.to_string(),
+            details: error.to_string(),
+        })?;
 
     let mut cidrs = Vec::new();
     for pod in list.items {
@@ -291,10 +298,14 @@ async fn load_kube_endpoints(
     let api: Api<Endpoints> = Api::namespaced(client, namespace);
 
     let endpoints = if let Some(name) = name {
-        vec![api.get(name).await.map_err(|error| RealIpError::ProviderLoad {
-            provider: provider.to_string(),
-            details: error.to_string(),
-        })?]
+        vec![
+            api.get(name)
+                .await
+                .map_err(|error| RealIpError::ProviderLoad {
+                    provider: provider.to_string(),
+                    details: error.to_string(),
+                })?,
+        ]
     } else {
         api.list(&params)
             .await
@@ -334,10 +345,13 @@ async fn load_kube_endpoint_slices(
         Some(namespace) => Api::namespaced(client, namespace),
         None => Api::all(client),
     };
-    let list = api.list(&params).await.map_err(|error| RealIpError::ProviderLoad {
-        provider: provider.to_string(),
-        details: error.to_string(),
-    })?;
+    let list = api
+        .list(&params)
+        .await
+        .map_err(|error| RealIpError::ProviderLoad {
+            provider: provider.to_string(),
+            details: error.to_string(),
+        })?;
 
     let mut cidrs = Vec::new();
     for slice in list.items {
@@ -368,4 +382,92 @@ fn string_list(config: &CustomProviderConfig, key: &str) -> Vec<String> {
         }
     }
     Vec::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        collections::BTreeMap,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use bollard::models::{IpamConfig, NetworkCreateRequest};
+    use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
+
+    use super::*;
+    use crate::{
+        config::{CustomProviderConfig, RefreshFailurePolicy},
+        extension::CustomProviderFactory,
+    };
+
+    fn unique_network_name() -> String {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        format!("securitydept-realip-test-{suffix}")
+    }
+
+    #[tokio::test]
+    async fn docker_provider_loads_configured_network_subnets() {
+        let docker = match connect_docker(None) {
+            Ok(docker) => docker,
+            Err(error) => {
+                eprintln!("skipping docker provider test: {error}");
+                return;
+            }
+        };
+
+        let network_name = unique_network_name();
+        let expected_subnet: IpNet = "10.231.0.0/24".parse().unwrap();
+
+        docker
+            .create_network(NetworkCreateRequest {
+                name: network_name.clone(),
+                driver: Some("bridge".to_string()),
+                ipam: Some(Ipam {
+                    config: Some(vec![IpamConfig {
+                        subnet: Some(expected_subnet.to_string()),
+                        ..Default::default()
+                    }]),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        let container = GenericImage::new("alpine", "3.20")
+            .with_wait_for(WaitFor::seconds(1))
+            .with_cmd(["sh", "-c", "sleep 60"])
+            .with_network(network_name.clone())
+            .start()
+            .await
+            .unwrap();
+
+        let mut extra = BTreeMap::new();
+        extra.insert(
+            "networks".to_string(),
+            serde_json::json!([network_name.clone()]),
+        );
+
+        let provider = DockerProviderFactory
+            .create(&CustomProviderConfig {
+                name: "docker-test".to_string(),
+                kind: "docker-provider".to_string(),
+                refresh: None,
+                timeout: None,
+                on_refresh_failure: RefreshFailurePolicy::KeepLastGood,
+                max_stale: None,
+                extra,
+            })
+            .unwrap();
+
+        let cidrs = provider.load().await.unwrap();
+
+        assert_eq!(cidrs, vec![expected_subnet]);
+
+        container.rm().await.unwrap();
+        docker.remove_network(&network_name).await.unwrap();
+    }
 }
