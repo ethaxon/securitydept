@@ -6,8 +6,8 @@ use rfc7239::parse as parse_forwarded;
 
 use crate::{
     config::{ChainDirection, FallbackStrategy, HeaderInputConfig, HeaderMode, RealIpConfig},
-    extension::ProviderFactoryRegistry,
     error::RealIpResult,
+    extension::ProviderFactoryRegistry,
     providers::{ProviderRegistry, ProviderSnapshot},
 };
 
@@ -57,7 +57,8 @@ impl RealIpResolver {
         factories: &ProviderFactoryRegistry,
     ) -> RealIpResult<Self> {
         config.validate()?;
-        let providers = ProviderRegistry::from_configs_with_factories(&config.providers, factories).await?;
+        let providers =
+            ProviderRegistry::from_configs_with_factories(&config.providers, factories).await?;
         Ok(Self { config, providers })
     }
 
@@ -316,19 +317,20 @@ fn resolve_from_chain(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, net::IpAddr, path::PathBuf};
-    use std::sync::Arc;
+    use std::{fs, net::IpAddr, path::PathBuf, sync::Arc};
 
     use http::HeaderMap;
 
     use super::*;
-    use crate::config::{
-        CommandProviderConfig, CoreProviderConfig, CustomProviderConfig, HeaderInputConfig, HeaderMode,
-        InlineProviderConfig, LocalFileProviderConfig, ProviderConfig, RefreshFailurePolicy,
-        SourceConfig,
-    };
-    use crate::extension::{
-        CustomProviderFactory, DynamicProvider, ProviderFactoryRegistry, ProviderLoadFuture,
+    use crate::{
+        config::{
+            CommandProviderConfig, CoreProviderConfig, CustomProviderConfig, HeaderInputConfig,
+            HeaderMode, InlineProviderConfig, LocalFileProviderConfig, ProviderConfig,
+            RefreshFailurePolicy, SourceConfig,
+        },
+        extension::{
+            CustomProviderFactory, DynamicProvider, ProviderFactoryRegistry, ProviderLoadFuture,
+        },
     };
 
     fn temp_file(name: &str, content: &str) -> PathBuf {
@@ -401,13 +403,13 @@ mod tests {
         let config = RealIpConfig {
             providers: vec![ProviderConfig::Core(CoreProviderConfig::LocalFile(
                 LocalFileProviderConfig {
-                name: "local".to_string(),
-                path: path.clone(),
-                watch: false,
-                debounce: None,
-                max_stale: None,
-                extra: Default::default(),
-            },
+                    name: "local".to_string(),
+                    path: path.clone(),
+                    watch: false,
+                    debounce: None,
+                    max_stale: None,
+                    extra: Default::default(),
+                },
             ))],
             sources: vec![],
             fallback: Default::default(),
@@ -425,18 +427,18 @@ mod tests {
         let config = RealIpConfig {
             providers: vec![ProviderConfig::Core(CoreProviderConfig::Command(
                 CommandProviderConfig {
-                name: "command".to_string(),
-                command: "sh".to_string(),
-                args: vec![
-                    "-c".to_string(),
-                    "printf '10.0.0.1\\n10.0.0.0/24\\n'".to_string(),
-                ],
-                refresh: None,
-                timeout: Some(std::time::Duration::from_secs(5)),
-                on_refresh_failure: RefreshFailurePolicy::KeepLastGood,
-                max_stale: None,
-                extra: Default::default(),
-            },
+                    name: "command".to_string(),
+                    command: "sh".to_string(),
+                    args: vec![
+                        "-c".to_string(),
+                        "printf '10.0.0.1\\n10.0.0.0/24\\n'".to_string(),
+                    ],
+                    refresh: None,
+                    timeout: Some(std::time::Duration::from_secs(5)),
+                    on_refresh_failure: RefreshFailurePolicy::KeepLastGood,
+                    max_stale: None,
+                    extra: Default::default(),
+                },
             ))],
             sources: vec![],
             fallback: Default::default(),
@@ -492,12 +494,10 @@ mod tests {
                 timeout: None,
                 on_refresh_failure: RefreshFailurePolicy::KeepLastGood,
                 max_stale: None,
-                extra: [
-                    (
-                        "cidrs".to_string(),
-                        serde_json::json!(["10.10.0.0/16", "127.0.0.1/32"]),
-                    ),
-                ]
+                extra: [(
+                    "cidrs".to_string(),
+                    serde_json::json!(["10.10.0.0/16", "127.0.0.1/32"]),
+                )]
                 .into_iter()
                 .collect(),
             })],

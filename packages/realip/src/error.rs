@@ -20,7 +20,10 @@ pub enum RealIpError {
     DuplicateProviderFactory { kind: String },
 
     #[snafu(display("Provider `{provider}` is missing required field `{field}`"))]
-    MissingProviderField { provider: String, field: &'static str },
+    MissingProviderField {
+        provider: String,
+        field: &'static str,
+    },
 
     #[snafu(display("Source `{source_name}` references unknown provider `{provider}`"))]
     UnknownSourceProvider {
@@ -38,10 +41,7 @@ pub enum RealIpError {
     ProviderCommand { command: String, details: String },
 
     #[snafu(display("Provider request for `{url}` failed: {source}"))]
-    ProviderHttp {
-        url: String,
-        source: reqwest::Error,
-    },
+    ProviderHttp { url: String, source: reqwest::Error },
 
     #[snafu(display("Failed to watch provider path `{:?}`: {details}", path))]
     WatchProvider { path: PathBuf, details: String },

@@ -18,8 +18,8 @@ use tracing::{debug, warn};
 
 use crate::{
     config::{CoreProviderConfig, ProviderConfig, RefreshFailurePolicy, parse_ip_or_cidr},
-    extension::{DynamicProvider, ProviderFactoryRegistry},
     error::{RealIpError, RealIpResult},
+    extension::{DynamicProvider, ProviderFactoryRegistry},
 };
 
 #[derive(Debug, Clone)]
@@ -125,7 +125,8 @@ fn spawn_refresh_task(
     Some(tokio::spawn(async move {
         loop {
             sleep(refresh).await;
-            if let Err(error) = refresh_provider(&config, custom_provider.as_deref(), &state).await {
+            if let Err(error) = refresh_provider(&config, custom_provider.as_deref(), &state).await
+            {
                 warn!(provider = %config.name(), error = %error, "Failed to refresh real-ip provider");
             }
         }
@@ -206,12 +207,14 @@ async fn load_provider(
         ProviderConfig::Core(CoreProviderConfig::Command(_)) => {
             parse_entries(config.name(), &run_command_provider(config).await?)?
         }
-        ProviderConfig::Custom(config) => custom_provider
-            .ok_or_else(|| RealIpError::MissingProviderFactory {
-                kind: config.kind.clone(),
-            })?
-            .load()
-            .await?,
+        ProviderConfig::Custom(config) => {
+            custom_provider
+                .ok_or_else(|| RealIpError::MissingProviderFactory {
+                    kind: config.kind.clone(),
+                })?
+                .load()
+                .await?
+        }
     };
 
     if cidrs.is_empty() {
@@ -251,10 +254,12 @@ async fn read_remote_file(config: &ProviderConfig) -> RealIpResult<String> {
     if let Some(timeout) = config.timeout() {
         builder = builder.timeout(timeout);
     }
-    let client = builder.build().map_err(|source| RealIpError::ProviderHttp {
-        url: url.clone(),
-        source,
-    })?;
+    let client = builder
+        .build()
+        .map_err(|source| RealIpError::ProviderHttp {
+            url: url.clone(),
+            source,
+        })?;
     let response = client
         .get(&url)
         .send()
@@ -290,7 +295,8 @@ async fn run_command_provider(config: &ProviderConfig) -> RealIpResult<String> {
                 details: error.to_string(),
             })?
     } else {
-        child.output()
+        child
+            .output()
             .await
             .map_err(|error| RealIpError::ProviderCommand {
                 command: command.clone(),

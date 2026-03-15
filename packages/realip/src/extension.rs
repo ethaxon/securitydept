@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    future::Future,
-    pin::Pin,
-    sync::Arc,
-};
+use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use ipnet::IpNet;
 
@@ -13,7 +8,8 @@ use crate::{
     error::{RealIpError, RealIpResult},
 };
 
-pub type ProviderLoadFuture<'a> = Pin<Box<dyn Future<Output = RealIpResult<Vec<IpNet>>> + Send + 'a>>;
+pub type ProviderLoadFuture<'a> =
+    Pin<Box<dyn Future<Output = RealIpResult<Vec<IpNet>>> + Send + 'a>>;
 
 pub trait DynamicProvider: Send + Sync {
     fn load<'a>(&'a self) -> ProviderLoadFuture<'a>;

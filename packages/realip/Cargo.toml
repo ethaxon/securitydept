@@ -2,14 +2,25 @@
 name = "securitydept-realip"
 version = "0.2.0-alpha.2"
 edition = "2024"
+[features]
+default = []
+docker = ["dep:bollard"]
+kube = ["dep:k8s-openapi", "dep:kube"]
+kube-integration = ["kube"]
 
 [dependencies]
 arc-swap = { workspace = true }
-bollard = { version = "0.20", default-features = false, features = ["ssl", "pipe"] }
+bollard = { workspace = true, default-features = false, features = [
+    "ssl",
+    "pipe",
+], optional = true }
 http = { workspace = true }
 ipnet = { workspace = true }
-k8s-openapi = { version = "0.27", features = ["v1_31"] }
-kube = { version = "3", default-features = false, features = ["client", "rustls-tls"] }
+k8s-openapi = { version = "0.27", features = ["v1_31"], optional = true }
+kube = { version = "3", default-features = false, features = [
+    "client",
+    "rustls-tls",
+], optional = true }
 notify = { workspace = true }
 reqwest = { workspace = true }
 rfc7239 = { workspace = true }
@@ -21,5 +32,21 @@ tracing = { workspace = true }
 humantime-serde = { workspace = true }
 
 [dev-dependencies]
+anyhow = { workspace = true }
+rustls = { workspace = true, features = ["ring"] }
 testcontainers = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[[test]]
+name = "docker_provider"
+path = "tests/docker_provider.rs"
+required-features = ["docker"]
+
+[[test]]
+name = "kube_provider"
+path = "tests/kube_provider.rs"
+required-features = ["kube-integration"]
+
+[[test]]
+name = "core_providers"
+path = "tests/core_providers.rs"

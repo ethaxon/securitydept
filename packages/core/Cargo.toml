@@ -5,6 +5,34 @@ edition = "2024"
 
 [features]
 default = []
+# Keep this in sync with all user-facing features below.
+# IMPORTANT: Any new feature added to this crate must also be added to `full`.
+full = [
+    "utils",
+    "reexport-oauth2",
+    "reexport-openidconnect",
+    "oauth-provider",
+    "oidc-client",
+    "oidc-client-axum",
+    "oidc-client-claims-script",
+    "oidc-client-default-pending-store",
+    "oidc-client-moka-pending-store",
+    "oauth-resource-server",
+    "oauth-resource-server-jwe",
+    "basic-auth-zone",
+    "session-context",
+    "realip",
+    "realip-docker",
+    "realip-kube",
+    "creds",
+    "creds-jwk",
+    "creds-jwt",
+    "creds-jwe",
+    "creds-rfc9068",
+    "creds-oidc",
+    "creds-manage",
+    "creds-manage-migration",
+]
 utils = ["dep:securitydept-utils"]
 reexport-oauth2 = ["dep:oauth2"]
 reexport-openidconnect = ["dep:openidconnect", "reexport-oauth2"]
@@ -35,6 +63,8 @@ oauth-resource-server-jwe = [
 basic-auth-zone = ["dep:securitydept-basic-auth-zone", "creds"]
 session-context = ["dep:securitydept-session-context"]
 realip = ["dep:securitydept-realip"]
+realip-docker = ["realip", "securitydept-realip/docker"]
+realip-kube = ["realip", "securitydept-realip/kube"]
 creds = ["dep:securitydept-creds"]
 creds-jwk = ["creds", "securitydept-creds/jwk"]
 creds-jwt = ["creds", "creds-jwk", "securitydept-creds/jwt", "dep:jsonwebtoken"]
@@ -63,7 +93,7 @@ securitydept-oidc-client = { path = "../oidc-client", optional = true }
 securitydept-oauth-resource-server = { path = "../oauth-resource-server", optional = true }
 securitydept-basic-auth-zone = { path = "../basic-auth-zone", optional = true }
 securitydept-session-context = { path = "../session-context", optional = true }
-securitydept-realip = { path = "../realip", optional = true }
+securitydept-realip = { path = "../realip", optional = true, default-features = false }
 securitydept-creds = { path = "../creds", optional = true }
 securitydept-creds-manage = { path = "../creds-manage", optional = true }
 openidconnect = { workspace = true, optional = true }

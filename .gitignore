@@ -9,9 +9,11 @@ data/*
 !data/.gitkeep
 temp/*
 !temp/.gitkeep
-
-temp
 **/target
+
+# AI
+.factory
+.claude/*local*
 
 # Web Dev
 /webui

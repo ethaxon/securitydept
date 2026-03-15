@@ -255,9 +255,10 @@ impl CoreProviderConfig {
 
     pub fn watch_path(&self) -> Option<(&PathBuf, Duration)> {
         match self {
-            Self::LocalFile(config) if config.watch => {
-                Some((&config.path, config.debounce.unwrap_or(Duration::from_secs(2))))
-            }
+            Self::LocalFile(config) if config.watch => Some((
+                &config.path,
+                config.debounce.unwrap_or(Duration::from_secs(2)),
+            )),
             _ => None,
         }
     }
@@ -486,10 +487,7 @@ mod tests {
         assert_eq!(custom.timeout, Some(Duration::from_secs(5)));
         assert_eq!(custom.max_stale, Some(Duration::from_secs(600)));
         assert_eq!(
-            custom
-                .extra
-                .get("host")
-                .and_then(serde_json::Value::as_str),
+            custom.extra.get("host").and_then(serde_json::Value::as_str),
             Some("unix:///var/run/docker.sock")
         );
         assert_eq!(
