@@ -8,7 +8,6 @@ default = ["claims-script", "default-pending-store"]
 claims-script = ["dep:boa_engine", "dep:swc_core"]
 default-pending-store = ["moka-pending-store"]
 moka-pending-store = ["dep:moka"]
-axum = ["dep:axum"]
 
 [dependencies]
 securitydept-oauth-provider = { path = "../oauth-provider" }
@@ -17,12 +16,11 @@ openidconnect = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["fs", "rt", "sync"] }
 tracing = { workspace = true }
 url = { workspace = true }
 serde_with = { workspace = true }
 http = { workspace = true }
-axum = { workspace = true, optional = true }
 boa_engine = { version = "0.21", optional = true }
 chrono = { workspace = true }
 swc_core = { version = "58", features = [
@@ -37,5 +35,4 @@ swc_core = { version = "58", features = [
 ], optional = true }
 serde-constant = { workspace = true }
 humantime-serde = { workspace = true }
-moka = { version = "0.12", features = ["future"], optional = true }
-orion = "0.17"
+moka = { workspace = true, features = ["future"], optional = true }

@@ -3,6 +3,7 @@ use std::sync::Arc;
 pub use securitydept_core::oidc::MokaPendingOauthStore;
 use securitydept_core::{
     creds_manage::store::CredsManageStore, oidc::OidcClient, session_context::SessionContextConfig,
+    token_set_context::TokenSetContext,
 };
 
 use crate::{
@@ -16,6 +17,7 @@ pub struct ServerState {
     pub config: Arc<ServerConfig>,
     pub store: Arc<CredsManageStore>,
     pub session_config: SessionContextConfig,
+    pub token_set_context: Arc<TokenSetContext>,
     /// None when OIDC is disabled (oidc_enabled = false) for local debugging.
     pub oidc: Option<Arc<OidcClient>>,
     /// Pending OAuth flows: state (CSRF) -> nonce, for callback validation.

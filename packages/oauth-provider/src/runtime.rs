@@ -153,8 +153,7 @@ impl OAuthProviderRuntime {
 
         let should_refresh = {
             let state = self.state.read().await;
-            state.metadata_fetched_at.elapsed()
-                >= self.config.remote.metadata_refresh_interval
+            state.metadata_fetched_at.elapsed() >= self.config.remote.metadata_refresh_interval
         };
 
         if should_refresh {
@@ -171,8 +170,7 @@ impl OAuthProviderRuntime {
 
         let should_refresh = {
             let state = self.state.read().await;
-            state.jwks_fetched_at.elapsed()
-                >= self.config.remote.jwks_refresh_interval
+            state.jwks_fetched_at.elapsed() >= self.config.remote.jwks_refresh_interval
         };
 
         if should_refresh {

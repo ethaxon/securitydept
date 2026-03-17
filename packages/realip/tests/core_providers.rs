@@ -5,7 +5,7 @@ use securitydept_realip::{
     ProviderRegistry,
     config::{
         CommandProviderConfig, CoreProviderConfig, InlineProviderConfig, LocalFileProviderConfig,
-        ProviderConfig, RemoteFileProviderConfig, RefreshFailurePolicy,
+        ProviderConfig, RefreshFailurePolicy, RemoteFileProviderConfig,
     },
 };
 
@@ -36,7 +36,10 @@ async fn test_local_file_provider() -> anyhow::Result<()> {
     let tmp_dir = std::env::temp_dir();
     let file_path = tmp_dir.join(format!("realip-test-local-{}", std::process::id()));
 
-    std::fs::write(&file_path, "172.16.0.0/12\n10.10.10.10\n# comment\n1.1.1.1, 8.8.8.8  9.9.9.9\n")?;
+    std::fs::write(
+        &file_path,
+        "172.16.0.0/12\n10.10.10.10\n# comment\n1.1.1.1, 8.8.8.8  9.9.9.9\n",
+    )?;
 
     let config = ProviderConfig::Core(CoreProviderConfig::LocalFile(LocalFileProviderConfig {
         name: "local-file-test".to_string(),
@@ -94,7 +97,8 @@ async fn test_remote_file_provider() -> anyhow::Result<()> {
 
     tokio::spawn(async move {
         while let Ok((mut socket, _)) = listener.accept().await {
-            let response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 18\r\n\r\n4.4.4.4\n5.5.5.0/24\n";
+            let response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: \
+                            18\r\n\r\n4.4.4.4\n5.5.5.0/24\n";
             let _ = tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes()).await;
         }
     });

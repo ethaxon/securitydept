@@ -15,11 +15,11 @@ pub enum OidcError {
     #[snafu(display("OIDC token exchange error: {message}"))]
     TokenExchange { message: String },
 
+    #[snafu(display("OIDC device authorization error: {message}"))]
+    DeviceAuthorization { message: String },
+
     #[snafu(display("OIDC redirect URL error: {source}"))]
     RedirectUrl { source: url::ParseError },
-
-    #[snafu(display("OIDC refresh token sealing error: {message}"))]
-    RefreshTokenSealing { message: String },
 
     #[snafu(display("OIDC claims error: {message}"))]
     Claims { message: String },
@@ -43,6 +43,9 @@ pub enum OidcError {
 
     #[snafu(display("OIDC token refresh error: {message}"))]
     TokenRefresh { message: String },
+
+    #[snafu(display("OIDC token revocation error: {message}"))]
+    TokenRevocation { message: String },
 }
 
 impl ToHttpStatus for OidcError {
@@ -53,11 +56,12 @@ impl ToHttpStatus for OidcError {
             | OidcError::Claims { .. }
             | OidcError::PendingOauth { .. } => StatusCode::UNAUTHORIZED,
             OidcError::InvalidConfig { .. }
-            | OidcError::RefreshTokenSealing { .. }
             | OidcError::Metadata { .. }
             | OidcError::TokenExchange { .. }
+            | OidcError::DeviceAuthorization { .. }
             | OidcError::RedirectUrl { .. }
             | OidcError::TokenRefresh { .. }
+            | OidcError::TokenRevocation { .. }
             | OidcError::ClaimsCheckScriptCompile { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -99,13 +103,21 @@ impl ToErrorPresentation for OidcError {
                 "Your account is not allowed to sign in.",
                 UserRecovery::ContactSupport,
             ),
-            OidcError::TokenRefresh { .. } | OidcError::RefreshTokenSealing { .. } => {
-                ErrorPresentation::new(
-                    "oidc_reauthentication_required",
-                    "Your sign-in session expired. Sign in again.",
-                    UserRecovery::Reauthenticate,
-                )
-            }
+            OidcError::DeviceAuthorization { .. } => ErrorPresentation::new(
+                "oidc_device_authorization_failed",
+                "The device sign-in could not be started. Try again.",
+                UserRecovery::Retry,
+            ),
+            OidcError::TokenRefresh { .. } => ErrorPresentation::new(
+                "oidc_reauthentication_required",
+                "Your sign-in session expired. Sign in again.",
+                UserRecovery::Reauthenticate,
+            ),
+            OidcError::TokenRevocation { .. } => ErrorPresentation::new(
+                "oidc_token_revocation_failed",
+                "The token could not be revoked. Try again.",
+                UserRecovery::Retry,
+            ),
             OidcError::Metadata { .. } | OidcError::TokenExchange { .. } => ErrorPresentation::new(
                 "oidc_sign_in_failed",
                 "The sign-in could not be completed. Start again.",

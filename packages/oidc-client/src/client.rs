@@ -2,14 +2,14 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use openidconnect::{
-    AuthenticationFlow, AuthorizationCode, Client, ClientId, ClientSecret, CsrfToken,
+    AccessToken, AuthenticationFlow, AuthorizationCode, Client, ClientId, ClientSecret, CsrfToken,
     DeviceAuthorizationUrl, EndpointMaybeSet, EndpointNotSet, EndpointSet, IntrospectionUrl, Nonce,
     OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken,
     RevocationUrl, Scope, StandardErrorResponse, StandardTokenResponse,
     core::{
-        CoreAuthDisplay, CoreAuthPrompt, CoreErrorResponseType, CoreGenderClaim, CoreJsonWebKey,
-        CoreJweContentEncryptionAlgorithm, CoreRevocableToken, CoreRevocationErrorResponse,
-        CoreTokenIntrospectionResponse, CoreTokenType,
+        CoreAuthDisplay, CoreAuthPrompt, CoreDeviceAuthorizationResponse, CoreErrorResponseType,
+        CoreGenderClaim, CoreJsonWebKey, CoreJweContentEncryptionAlgorithm, CoreRevocableToken,
+        CoreRevocationErrorResponse, CoreTokenIntrospectionResponse, CoreTokenType,
     },
     reqwest,
 };
@@ -22,10 +22,10 @@ use crate::claims::DefaultClaimsChecker;
 use crate::claims::ScriptClaimsChecker;
 use crate::{
     ClaimsCheckResult, ExtraOidcClaims, IdTokenClaimsWithExtra, OidcCodeCallbackSearchParams,
-    OidcCodeExchangeResult, OidcCodeFlowAuthorizationRequest, PendingOauthStore,
-    UserInfoClaimsWithExtra,
+    OidcCodeExchangeResult, OidcCodeFlowAuthorizationRequest, OidcDeviceAuthorizationResult,
+    OidcRevocableToken, PendingOauthStore, UserInfoClaimsWithExtra,
     claims::ClaimsChecker,
-    config::OidcConfig,
+    config::OidcClientConfig,
     error::{OidcError, OidcResult},
     models::{IdTokenFieldsWithExtra, OidcCodeCallbackResult, OidcRefreshTokenResult},
 };
@@ -74,20 +74,19 @@ pub type DiscoveredClientWithExtra = ClientWithExtra<
 /// `external_base_url = "auto"` can produce the correct absolute callback URL
 /// based on the incoming request headers.
 pub struct OidcClient {
-    config: OidcConfig,
+    config: OidcClientConfig,
     provider: Arc<OAuthProviderRuntime>,
     base_client: DiscoveredClientWithExtra,
     #[cfg(feature = "claims-script")]
     claims_checker: ScriptClaimsChecker,
     #[cfg(not(feature = "claims-script"))]
     claims_checker: DefaultClaimsChecker,
-    master_key_aead: Option<orion::aead::SecretKey>,
     scopes: Vec<String>,
     pkce_enabled: bool,
 }
 
 impl OidcClient {
-    pub async fn from_config(config: OidcConfig) -> OidcResult<Self> {
+    pub async fn from_config(config: OidcClientConfig) -> OidcResult<Self> {
         config.validate()?;
         let provider = Arc::new(OAuthProviderRuntime::from_config(config.provider_config()).await?);
         Self::from_provider(provider, config).await
@@ -95,7 +94,7 @@ impl OidcClient {
 
     pub async fn from_provider(
         provider: Arc<OAuthProviderRuntime>,
-        config: OidcConfig,
+        config: OidcClientConfig,
     ) -> OidcResult<Self> {
         config.validate()?;
 
@@ -112,24 +111,11 @@ impl OidcClient {
         #[cfg(not(feature = "claims-script"))]
         let claims_checker = DefaultClaimsChecker;
 
-        let master_key_aead = config
-            .master_key
-            .as_ref()
-            .map(|master_key| {
-                orion::aead::SecretKey::from_slice(master_key.as_bytes()).map_err(|e| {
-                    OidcError::InvalidConfig {
-                        message: format!("Failed to parse master key: {e}"),
-                    }
-                })
-            })
-            .transpose()?;
-
         Ok(Self {
             config,
             provider,
             base_client,
             claims_checker,
-            master_key_aead,
             scopes: vec![],
             pkce_enabled: false,
         }
@@ -154,6 +140,38 @@ impl OidcClient {
             )
             .await?;
         Ok(authorization_request)
+    }
+
+    pub async fn handle_device_authorize(&self) -> OidcResult<OidcDeviceAuthorizationResult> {
+        let client = self.fresh_client().await?;
+        let mut request =
+            client
+                .exchange_device_code()
+                .map_err(|e| OidcError::DeviceAuthorization {
+                    message: format!("Device authorization endpoint not set or config error: {e}"),
+                })?;
+
+        for scope in &self.scopes {
+            request = request.add_scope(Scope::new(scope.clone()));
+        }
+
+        let details: CoreDeviceAuthorizationResponse = request
+            .request_async(self.provider.http_client())
+            .await
+            .map_err(|e| OidcError::DeviceAuthorization {
+                message: format!("Device authorization request failed: {e}"),
+            })?;
+
+        Ok(OidcDeviceAuthorizationResult {
+            device_code: details.device_code().secret().to_string(),
+            user_code: details.user_code().secret().to_string(),
+            verification_uri: details.verification_uri().to_string(),
+            verification_uri_complete: details
+                .verification_uri_complete()
+                .map(|value| value.secret().to_string()),
+            expires_in_seconds: details.expires_in().as_secs(),
+            interval_seconds: Some(details.interval().as_secs()),
+        })
     }
 
     pub async fn handle_code_callback(
@@ -215,7 +233,7 @@ impl OidcClient {
         refresh_token: String,
     ) -> OidcResult<OidcRefreshTokenResult> {
         let client = self.fresh_client().await?;
-        let refresh_token = self.unseal_refresh_token(refresh_token)?;
+        let refresh_token = RefreshToken::new(refresh_token);
         let now = Utc::now();
 
         let token_response = client
@@ -235,8 +253,7 @@ impl OidcClient {
             .map(|expires_in| now + expires_in);
         let refresh_token = token_response
             .refresh_token()
-            .map(|value| self.seal_refresh_token(value))
-            .transpose()?;
+            .map(|value| value.secret().clone());
 
         let mut result = OidcRefreshTokenResult {
             access_token,
@@ -277,6 +294,25 @@ impl OidcClient {
         }
 
         Ok(result)
+    }
+
+    pub async fn handle_token_revoke(&self, token: OidcRevocableToken) -> OidcResult<()> {
+        let client = self.fresh_client().await?;
+        let token: CoreRevocableToken = match token {
+            OidcRevocableToken::AccessToken(token) => AccessToken::new(token).into(),
+            OidcRevocableToken::RefreshToken(token) => RefreshToken::new(token).into(),
+        };
+
+        client
+            .revoke_token(token)
+            .map_err(|e| OidcError::TokenRevocation {
+                message: format!("Revocation endpoint not set or config error: {e}"),
+            })?
+            .request_async(self.provider.http_client())
+            .await
+            .map_err(|e| OidcError::TokenRevocation {
+                message: format!("Token revocation request failed: {e}"),
+            })
     }
 
     async fn request_userinfo(
@@ -427,8 +463,7 @@ impl OidcClient {
             .map(|expires_in| now + expires_in);
         let refresh_token = token_response
             .refresh_token()
-            .map(|value| self.seal_refresh_token(value))
-            .transpose()?;
+            .map(|value| value.secret().clone());
 
         let user_info_claims = if client.user_info_url().is_some() {
             Some(
@@ -453,47 +488,6 @@ impl OidcClient {
         })
     }
 
-    fn seal_refresh_token(&self, refresh_token: &RefreshToken) -> OidcResult<String> {
-        let refresh_token = refresh_token.secret();
-        if self.config.sealed_refresh_token {
-            let master_key =
-                self.master_key_aead
-                    .as_ref()
-                    .ok_or_else(|| OidcError::InvalidConfig {
-                        message: "Master key is required to when sealed refresh token is enabled"
-                            .to_string(),
-                    })?;
-            let sealed_refresh_token = orion::aead::seal(master_key, refresh_token.as_bytes())
-                .map_err(|e| OidcError::RefreshTokenSealing {
-                    message: format!("Failed to seal refresh token: {e}"),
-                })?;
-            Ok(String::from_utf8_lossy(&sealed_refresh_token).to_string())
-        } else {
-            Ok(refresh_token.clone())
-        }
-    }
-
-    fn unseal_refresh_token(&self, refresh_token: String) -> OidcResult<RefreshToken> {
-        if self.config.sealed_refresh_token {
-            let master_key =
-                self.master_key_aead
-                    .as_ref()
-                    .ok_or_else(|| OidcError::InvalidConfig {
-                        message: "Master key is required to when sealed refresh token is enabled"
-                            .to_string(),
-                    })?;
-            let unsealed_refresh_token = orion::aead::open(master_key, refresh_token.as_bytes())
-                .map_err(|e| OidcError::RefreshTokenSealing {
-                    message: format!("Failed to unseal refresh token: {e}"),
-                })?;
-            Ok(RefreshToken::new(
-                String::from_utf8_lossy(&unsealed_refresh_token).to_string(),
-            ))
-        } else {
-            Ok(RefreshToken::new(refresh_token))
-        }
-    }
-
     fn with_runtime_flags(mut self) -> Self {
         self.scopes = self.config.scopes.clone();
         self.pkce_enabled = self.config.pkce_enabled;
@@ -502,7 +496,7 @@ impl OidcClient {
 }
 
 fn build_client(
-    config: &OidcConfig,
+    config: &OidcClientConfig,
     metadata: ProviderMetadataWithExtra,
 ) -> Result<DiscoveredClientWithExtra, String> {
     let client_id = ClientId::new(config.client_id.clone());

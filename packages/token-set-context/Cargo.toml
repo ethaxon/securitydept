@@ -1,0 +1,15 @@
+[package]
+name = "securitydept-token-set-context"
+version = "0.2.0-alpha.2"
+edition = "2024"
+
+[dependencies]
+base64 = { workspace = true }
+chrono = { workspace = true }
+http = { workspace = true }
+orion = "0.17"
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+typed-builder = { workspace = true }
+url = { workspace = true }

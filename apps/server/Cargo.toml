@@ -10,7 +10,7 @@ jwe = ["securitydept-core/creds-jwe"]
 securitydept-core = { path = "../../packages/core", features = [
     "utils",
     "oidc-client",
-    "oidc-client-axum",
+    "token-set-context",
     "session-context",
     "creds",
     "creds-manage",
@@ -33,6 +33,7 @@ snafu = { workspace = true }
 openidconnect = { workspace = true }
 figment = { workspace = true }
 maplit = { workspace = true }
+url = { workspace = true }
 
 [build-dependencies]
 winres = "0.1"

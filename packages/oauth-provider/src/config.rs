@@ -28,7 +28,10 @@ pub struct OAuthProviderRemoteConfig {
     /// Refresh interval for the discovery metadata cache.
     ///
     /// Set to `0` to disable periodic discovery refresh.
-    #[serde(default = "default_metadata_refresh_interval", with = "humantime_serde")]
+    #[serde(
+        default = "default_metadata_refresh_interval",
+        with = "humantime_serde"
+    )]
     pub metadata_refresh_interval: Duration,
     /// Refresh interval for the remote JWKS cache.
     ///

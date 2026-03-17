@@ -46,6 +46,25 @@ pub struct OidcCodeFlowAuthorizationRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OidcDeviceAuthorizationResult {
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_uri_complete: Option<String>,
+    pub expires_in_seconds: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interval_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", content = "token", rename_all = "snake_case")]
+pub enum OidcRevocableToken {
+    AccessToken(String),
+    RefreshToken(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OidcTokenSet {
     pub access_token: String,
     #[serde(skip_serializing_if = "Option::is_none")]

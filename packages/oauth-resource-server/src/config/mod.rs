@@ -2,11 +2,11 @@ pub mod introspection;
 #[cfg(feature = "jwe")]
 pub mod jwe;
 
+use std::time::Duration;
+
 pub use introspection::OAuthResourceServerIntrospectionConfig;
 #[cfg(feature = "jwe")]
 pub use jwe::OAuthResourceServerJweConfig;
-use std::time::Duration;
-
 use securitydept_oauth_provider::{
     OAuthProviderConfig, OAuthProviderOidcConfig, OAuthProviderRemoteConfig,
 };

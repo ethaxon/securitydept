@@ -5,6 +5,7 @@ members = [
     "packages/core",
     "packages/basic-auth-zone",
     "packages/session-context",
+    "packages/token-set-context",
     "packages/oidc-client",
     "packages/oauth-provider",
     "packages/oauth-resource-server",
@@ -61,6 +62,7 @@ testcontainers = "0.27"
 anyhow = "1"
 rustls = "0.23"
 bollard = { version = "0.20", default-features = false }
+moka = "0.12"
 
 [patch.crates-io]
 openidconnect = { git = "https://github.com/ethaxon/openidconnect-rs.git", branch = "set_option" }

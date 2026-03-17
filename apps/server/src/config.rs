@@ -5,8 +5,8 @@ use figment::{
     providers::{Env, Format, Toml},
 };
 use securitydept_core::{
-    creds_manage::CredsManageConfig, oidc::OidcConfig, session_context::SessionContextConfig,
-    utils::base_url::ExternalBaseUrl,
+    creds_manage::CredsManageConfig, oidc::OidcClientConfig, session_context::SessionContextConfig,
+    token_set_context::TokenSetContextConfig, utils::base_url::ExternalBaseUrl,
 };
 use serde::Deserialize;
 
@@ -27,7 +27,9 @@ pub struct ServerConfig {
     /// When absent (`None`), OIDC is disabled; /auth/login will create a dev
     /// session.
     #[serde(default)]
-    pub oidc: Option<OidcConfig>,
+    pub oidc: Option<OidcClientConfig>,
+    #[serde(default)]
+    pub token_set_context: TokenSetContextConfig,
     #[serde(default)]
     pub session: SessionContextConfig,
     #[serde(default)]
@@ -64,6 +66,11 @@ impl ServerConfig {
         if let Some(ref oidc_config) = self.oidc {
             oidc_config.validate()?;
         };
+        self.token_set_context
+            .validate()
+            .map_err(|e| ServerError::InvalidConfig {
+                message: e.to_string(),
+            })?;
         Ok(())
     }
 }

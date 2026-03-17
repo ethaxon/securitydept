@@ -14,10 +14,7 @@ use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, ne
 use securitydept_creds::{Argon2BasicAuthCred, Sha256TokenAuthCred, generate_static_token};
 use sha2::{Digest, Sha256};
 use snafu::ResultExt;
-use tokio::{
-    sync::Mutex,
-    task::JoinHandle,
-};
+use tokio::{sync::Mutex, task::JoinHandle};
 
 use crate::{
     error::{self, CredsManageResult},
@@ -124,23 +121,19 @@ impl CredsManageStore {
         let _io_guard = self.io_lock.lock().await;
 
         let (created, snapshot) =
-            atomic_mutate_data_file(
-                &self.path,
-                &self.last_committed_hash,
-                move |data| {
-                    ensure_entry_name_is_unique(data, &name, None)?;
-                    ensure_groups_exist(data, &group_ids)?;
+            atomic_mutate_data_file(&self.path, &self.last_committed_hash, move |data| {
+                ensure_entry_name_is_unique(data, &name, None)?;
+                ensure_groups_exist(data, &group_ids)?;
 
-                    let entry = BasicAuthEntry {
-                        cred: Argon2BasicAuthCred::new(username, password)?,
-                        meta: AuthEntryMeta::new(name, group_ids),
-                    };
+                let entry = BasicAuthEntry {
+                    cred: Argon2BasicAuthCred::new(username, password)?,
+                    meta: AuthEntryMeta::new(name, group_ids),
+                };
 
-                    let created = AuthEntry::from(&entry);
-                    data.basic_creds.push(entry);
-                    Ok(created)
-                },
-            )
+                let created = AuthEntry::from(&entry);
+                data.basic_creds.push(entry);
+                Ok(created)
+            })
             .await?;
 
         self.data.store(Arc::new(snapshot));
@@ -155,24 +148,20 @@ impl CredsManageStore {
         let _io_guard = self.io_lock.lock().await;
 
         let (created, snapshot) =
-            atomic_mutate_data_file(
-                &self.path,
-                &self.last_committed_hash,
-                move |data| {
-                    ensure_entry_name_is_unique(data, &name, None)?;
-                    ensure_groups_exist(data, &group_ids)?;
+            atomic_mutate_data_file(&self.path, &self.last_committed_hash, move |data| {
+                ensure_entry_name_is_unique(data, &name, None)?;
+                ensure_groups_exist(data, &group_ids)?;
 
-                    let token = generate_static_token()?;
-                    let entry = TokenAuthEntry {
-                        cred: Sha256TokenAuthCred::new(token.clone())?,
-                        meta: AuthEntryMeta::new(name, group_ids),
-                    };
+                let token = generate_static_token()?;
+                let entry = TokenAuthEntry {
+                    cred: Sha256TokenAuthCred::new(token.clone())?,
+                    meta: AuthEntryMeta::new(name, group_ids),
+                };
 
-                    let created = AuthEntry::from(&entry);
-                    data.token_creds.push(entry);
-                    Ok((created, token))
-                },
-            )
+                let created = AuthEntry::from(&entry);
+                data.token_creds.push(entry);
+                Ok((created, token))
+            })
             .await?;
 
         self.data.store(Arc::new(snapshot));
@@ -191,48 +180,44 @@ impl CredsManageStore {
         let id = id.to_string();
 
         let (updated, snapshot) =
-            atomic_mutate_data_file(
-                &self.path,
-                &self.last_committed_hash,
-                move |data| {
-                    if let Some(ref new_name) = name {
-                        ensure_entry_name_is_unique(data, new_name, Some(&id))?;
-                    }
-                    if let Some(ref gids) = group_ids {
-                        ensure_groups_exist(data, gids)?;
-                    }
+            atomic_mutate_data_file(&self.path, &self.last_committed_hash, move |data| {
+                if let Some(ref new_name) = name {
+                    ensure_entry_name_is_unique(data, new_name, Some(&id))?;
+                }
+                if let Some(ref gids) = group_ids {
+                    ensure_groups_exist(data, gids)?;
+                }
 
-                    if let Some(entry) = data.basic_creds.iter_mut().find(|e| e.meta.id == id) {
-                        if let Some(new_name) = name.clone() {
-                            entry.meta.name = new_name;
-                        }
-                        if let Some(new_username) = username {
-                            entry.cred.username = new_username;
-                        }
-                        if let Some(new_password) = password {
-                            entry.cred.update_password(new_password)?;
-                        }
-                        if let Some(gids) = group_ids.clone() {
-                            entry.meta.group_ids = gids;
-                        }
-                        entry.meta.updated_at = Utc::now();
-                        return Ok(AuthEntry::from(&*entry));
+                if let Some(entry) = data.basic_creds.iter_mut().find(|e| e.meta.id == id) {
+                    if let Some(new_name) = name.clone() {
+                        entry.meta.name = new_name;
                     }
-
-                    if let Some(entry) = data.token_creds.iter_mut().find(|e| e.meta.id == id) {
-                        if let Some(new_name) = name {
-                            entry.meta.name = new_name;
-                        }
-                        if let Some(gids) = group_ids {
-                            entry.meta.group_ids = gids;
-                        }
-                        entry.meta.updated_at = Utc::now();
-                        return Ok(AuthEntry::from(&*entry));
+                    if let Some(new_username) = username {
+                        entry.cred.username = new_username;
                     }
+                    if let Some(new_password) = password {
+                        entry.cred.update_password(new_password)?;
+                    }
+                    if let Some(gids) = group_ids.clone() {
+                        entry.meta.group_ids = gids;
+                    }
+                    entry.meta.updated_at = Utc::now();
+                    return Ok(AuthEntry::from(&*entry));
+                }
 
-                    Err(error::CredsManageError::EntryNotFound { id })
-                },
-            )
+                if let Some(entry) = data.token_creds.iter_mut().find(|e| e.meta.id == id) {
+                    if let Some(new_name) = name {
+                        entry.meta.name = new_name;
+                    }
+                    if let Some(gids) = group_ids {
+                        entry.meta.group_ids = gids;
+                    }
+                    entry.meta.updated_at = Utc::now();
+                    return Ok(AuthEntry::from(&*entry));
+                }
+
+                Err(error::CredsManageError::EntryNotFound { id })
+            })
             .await?;
 
         self.data.store(Arc::new(snapshot));
@@ -244,25 +229,21 @@ impl CredsManageStore {
         let id = id.to_string();
 
         let (_, snapshot) =
-            atomic_mutate_data_file(
-                &self.path,
-                &self.last_committed_hash,
-                move |data| {
-                    let basic_len_before = data.basic_creds.len();
-                    data.basic_creds.retain(|e| e.meta.id != id);
+            atomic_mutate_data_file(&self.path, &self.last_committed_hash, move |data| {
+                let basic_len_before = data.basic_creds.len();
+                data.basic_creds.retain(|e| e.meta.id != id);
 
-                    let token_len_before = data.token_creds.len();
-                    data.token_creds.retain(|e| e.meta.id != id);
+                let token_len_before = data.token_creds.len();
+                data.token_creds.retain(|e| e.meta.id != id);
 
-                    if data.basic_creds.len() == basic_len_before
-                        && data.token_creds.len() == token_len_before
-                    {
-                        return Err(error::CredsManageError::EntryNotFound { id: id.clone() });
-                    }
+                if data.basic_creds.len() == basic_len_before
+                    && data.token_creds.len() == token_len_before
+                {
+                    return Err(error::CredsManageError::EntryNotFound { id: id.clone() });
+                }
 
-                    Ok(())
-                },
-            )
+                Ok(())
+            })
             .await?;
 
         self.data.store(Arc::new(snapshot));
@@ -334,54 +315,50 @@ impl CredsManageStore {
         let entry_ids = entry_ids.unwrap_or_default();
 
         let (created, snapshot) =
-            atomic_mutate_data_file(
-                &self.path,
-                &self.last_committed_hash,
-                move |data| {
-                    if data.groups.iter().any(|g| g.name == group_for_write.name) {
-                        return Err(error::CredsManageError::DuplicateGroupName {
-                            name: group_for_write.name.clone(),
+            atomic_mutate_data_file(&self.path, &self.last_committed_hash, move |data| {
+                if data.groups.iter().any(|g| g.name == group_for_write.name) {
+                    return Err(error::CredsManageError::DuplicateGroupName {
+                        name: group_for_write.name.clone(),
+                    });
+                }
+
+                for entry_id in &entry_ids {
+                    if !entry_exists(data, entry_id) {
+                        return Err(error::CredsManageError::EntryNotFound {
+                            id: entry_id.clone(),
                         });
                     }
+                }
 
-                    for entry_id in &entry_ids {
-                        if !entry_exists(data, entry_id) {
-                            return Err(error::CredsManageError::EntryNotFound {
-                                id: entry_id.clone(),
-                            });
+                data.groups.push(group_for_write.clone());
+                if !entry_ids.is_empty() {
+                    for entry in &mut data.basic_creds {
+                        if entry_ids.iter().any(|id| id == &entry.meta.id)
+                            && !entry
+                                .meta
+                                .group_ids
+                                .iter()
+                                .any(|gid| gid == &group_for_write.id)
+                        {
+                            entry.meta.group_ids.push(group_for_write.id.clone());
+                            entry.meta.updated_at = Utc::now();
                         }
                     }
-
-                    data.groups.push(group_for_write.clone());
-                    if !entry_ids.is_empty() {
-                        for entry in &mut data.basic_creds {
-                            if entry_ids.iter().any(|id| id == &entry.meta.id)
-                                && !entry
-                                    .meta
-                                    .group_ids
-                                    .iter()
-                                    .any(|gid| gid == &group_for_write.id)
-                            {
-                                entry.meta.group_ids.push(group_for_write.id.clone());
-                                entry.meta.updated_at = Utc::now();
-                            }
-                        }
-                        for entry in &mut data.token_creds {
-                            if entry_ids.iter().any(|id| id == &entry.meta.id)
-                                && !entry
-                                    .meta
-                                    .group_ids
-                                    .iter()
-                                    .any(|gid| gid == &group_for_write.id)
-                            {
-                                entry.meta.group_ids.push(group_for_write.id.clone());
-                                entry.meta.updated_at = Utc::now();
-                            }
+                    for entry in &mut data.token_creds {
+                        if entry_ids.iter().any(|id| id == &entry.meta.id)
+                            && !entry
+                                .meta
+                                .group_ids
+                                .iter()
+                                .any(|gid| gid == &group_for_write.id)
+                        {
+                            entry.meta.group_ids.push(group_for_write.id.clone());
+                            entry.meta.updated_at = Utc::now();
                         }
                     }
-                    Ok(group_for_write)
-                },
-            )
+                }
+                Ok(group_for_write)
+            })
             .await?;
 
         self.data.store(Arc::new(snapshot));
@@ -399,72 +376,56 @@ impl CredsManageStore {
         let selected_entry_ids = entry_ids;
 
         let (updated, snapshot) =
-            atomic_mutate_data_file(
-                &self.path,
-                &self.last_committed_hash,
-                move |data| {
-                    if data.groups.iter().any(|g| g.id != id && g.name == name) {
-                        return Err(error::CredsManageError::DuplicateGroupName {
-                            name: name.clone(),
-                        });
-                    }
+            atomic_mutate_data_file(&self.path, &self.last_committed_hash, move |data| {
+                if data.groups.iter().any(|g| g.id != id && g.name == name) {
+                    return Err(error::CredsManageError::DuplicateGroupName { name: name.clone() });
+                }
 
-                    if let Some(ref entry_ids) = selected_entry_ids {
-                        for entry_id in entry_ids {
-                            if !entry_exists(data, entry_id) {
-                                return Err(error::CredsManageError::EntryNotFound {
-                                    id: entry_id.clone(),
-                                });
-                            }
+                if let Some(ref entry_ids) = selected_entry_ids {
+                    for entry_id in entry_ids {
+                        if !entry_exists(data, entry_id) {
+                            return Err(error::CredsManageError::EntryNotFound {
+                                id: entry_id.clone(),
+                            });
                         }
                     }
+                }
 
-                    let target_group_id = {
-                        let group =
-                            data.groups.iter_mut().find(|g| g.id == id).ok_or_else(|| {
-                                error::CredsManageError::GroupNotFound { id: id.clone() }
-                            })?;
-                        group.name = name;
-                        group.id.clone()
+                let target_group_id = {
+                    let group =
+                        data.groups.iter_mut().find(|g| g.id == id).ok_or_else(|| {
+                            error::CredsManageError::GroupNotFound { id: id.clone() }
+                        })?;
+                    group.name = name;
+                    group.id.clone()
+                };
+
+                for entry in &mut data.basic_creds {
+                    let was_member = entry.meta.group_ids.iter().any(|g| g == &target_group_id);
+                    let target_member = if let Some(ref entry_ids) = selected_entry_ids {
+                        entry_ids.iter().any(|entry_id| entry_id == &entry.meta.id)
+                    } else {
+                        was_member
                     };
+                    update_group_membership(&mut entry.meta, &target_group_id, target_member);
+                }
 
-                    for entry in &mut data.basic_creds {
-                        let was_member =
-                            entry.meta.group_ids.iter().any(|g| g == &target_group_id);
-                        let target_member = if let Some(ref entry_ids) = selected_entry_ids {
-                            entry_ids.iter().any(|entry_id| entry_id == &entry.meta.id)
-                        } else {
-                            was_member
-                        };
-                        update_group_membership(
-                            &mut entry.meta,
-                            &target_group_id,
-                            target_member,
-                        );
-                    }
+                for entry in &mut data.token_creds {
+                    let was_member = entry.meta.group_ids.iter().any(|g| g == &target_group_id);
+                    let target_member = if let Some(ref entry_ids) = selected_entry_ids {
+                        entry_ids.iter().any(|entry_id| entry_id == &entry.meta.id)
+                    } else {
+                        was_member
+                    };
+                    update_group_membership(&mut entry.meta, &target_group_id, target_member);
+                }
 
-                    for entry in &mut data.token_creds {
-                        let was_member =
-                            entry.meta.group_ids.iter().any(|g| g == &target_group_id);
-                        let target_member = if let Some(ref entry_ids) = selected_entry_ids {
-                            entry_ids.iter().any(|entry_id| entry_id == &entry.meta.id)
-                        } else {
-                            was_member
-                        };
-                        update_group_membership(
-                            &mut entry.meta,
-                            &target_group_id,
-                            target_member,
-                        );
-                    }
-
-                    data.groups
-                        .iter()
-                        .find(|g| g.id == id)
-                        .cloned()
-                        .ok_or_else(|| error::CredsManageError::GroupNotFound { id: id.clone() })
-                },
-            )
+                data.groups
+                    .iter()
+                    .find(|g| g.id == id)
+                    .cloned()
+                    .ok_or_else(|| error::CredsManageError::GroupNotFound { id: id.clone() })
+            })
             .await?;
 
         self.data.store(Arc::new(snapshot));
@@ -476,40 +437,30 @@ impl CredsManageStore {
         let id = id.to_string();
 
         let (_, snapshot) =
-            atomic_mutate_data_file(
-                &self.path,
-                &self.last_committed_hash,
-                move |data| {
-                    let removed_group = data.groups.iter().find(|g| g.id == id).cloned();
-                    let Some(removed_group) = removed_group else {
-                        return Err(error::CredsManageError::GroupNotFound { id: id.clone() });
-                    };
+            atomic_mutate_data_file(&self.path, &self.last_committed_hash, move |data| {
+                let removed_group = data.groups.iter().find(|g| g.id == id).cloned();
+                let Some(removed_group) = removed_group else {
+                    return Err(error::CredsManageError::GroupNotFound { id: id.clone() });
+                };
 
-                    data.groups.retain(|g| g.id != id);
+                data.groups.retain(|g| g.id != id);
 
-                    for entry in &mut data.basic_creds {
-                        let len_before = entry.meta.group_ids.len();
-                        entry
-                            .meta
-                            .group_ids
-                            .retain(|gid| gid != &removed_group.id);
-                        if entry.meta.group_ids.len() != len_before {
-                            entry.meta.updated_at = Utc::now();
-                        }
+                for entry in &mut data.basic_creds {
+                    let len_before = entry.meta.group_ids.len();
+                    entry.meta.group_ids.retain(|gid| gid != &removed_group.id);
+                    if entry.meta.group_ids.len() != len_before {
+                        entry.meta.updated_at = Utc::now();
                     }
-                    for entry in &mut data.token_creds {
-                        let len_before = entry.meta.group_ids.len();
-                        entry
-                            .meta
-                            .group_ids
-                            .retain(|gid| gid != &removed_group.id);
-                        if entry.meta.group_ids.len() != len_before {
-                            entry.meta.updated_at = Utc::now();
-                        }
+                }
+                for entry in &mut data.token_creds {
+                    let len_before = entry.meta.group_ids.len();
+                    entry.meta.group_ids.retain(|gid| gid != &removed_group.id);
+                    if entry.meta.group_ids.len() != len_before {
+                        entry.meta.updated_at = Utc::now();
                     }
-                    Ok(())
-                },
-            )
+                }
+                Ok(())
+            })
             .await?;
 
         self.data.store(Arc::new(snapshot));
@@ -621,15 +572,14 @@ async fn run_debounced_watch(
         .ok_or_else(|| "data file has no parent directory".to_string())?
         .to_path_buf();
 
-    let mut debouncer: Debouncer<notify::RecommendedWatcher, RecommendedCache> =
-        new_debouncer(
-            Duration::from_secs(1),
-            None,
-            move |event: DebounceEventResult| {
-                let _ = tx.send(event);
-            },
-        )
-        .map_err(|e| e.to_string())?;
+    let mut debouncer: Debouncer<notify::RecommendedWatcher, RecommendedCache> = new_debouncer(
+        Duration::from_secs(1),
+        None,
+        move |event: DebounceEventResult| {
+            let _ = tx.send(event);
+        },
+    )
+    .map_err(|e| e.to_string())?;
 
     debouncer
         .watch(&watch_dir, RecursiveMode::NonRecursive)
@@ -648,24 +598,15 @@ async fn run_debounced_watch(
             }
         };
 
-        let target_touched = events.iter().any(|e| {
-            e.event
-                .paths
-                .iter()
-                .any(|p| is_same_file(p, &target_path))
-        });
+        let target_touched = events
+            .iter()
+            .any(|e| e.event.paths.iter().any(|p| is_same_file(p, &target_path)));
 
         if !target_touched {
             continue;
         }
 
-        if let Err(err) = reload_if_external(
-            &path,
-            &data,
-            &last_committed_hash,
-        )
-        .await
-        {
+        if let Err(err) = reload_if_external(&path, &data, &last_committed_hash).await {
             tracing::warn!(path = %path.display(), error = %err, "failed to sync store cache from disk");
         }
     }
@@ -697,13 +638,7 @@ async fn run_poll_loop(
 
     loop {
         ticker.tick().await;
-        if let Err(err) = reload_if_external(
-            &path,
-            &data,
-            &last_committed_hash,
-        )
-        .await
-        {
+        if let Err(err) = reload_if_external(&path, &data, &last_committed_hash).await {
             tracing::warn!(path = %path.display(), error = %err, "polling sync failed");
         }
     }
@@ -734,8 +669,7 @@ async fn reload_if_external(
     let disk_data = parse_data_file_bytes(&raw)?;
 
     // Only swap if content actually changed.
-    let current_serialized =
-        serde_json::to_string_pretty(&**data.load()).unwrap_or_default();
+    let current_serialized = serde_json::to_string_pretty(&**data.load()).unwrap_or_default();
     if content_hash(current_serialized.as_bytes()) == hash {
         return Ok(());
     }
@@ -798,8 +732,8 @@ where
     F: FnOnce(&mut DataFile) -> CredsManageResult<T> + Send + 'static,
 {
     let path = path.to_path_buf();
-    let (op_result, data, serialized_bytes) = tokio::task::spawn_blocking(
-        move || -> CredsManageResult<(T, DataFile, Vec<u8>)> {
+    let (op_result, data, serialized_bytes) =
+        tokio::task::spawn_blocking(move || -> CredsManageResult<(T, DataFile, Vec<u8>)> {
             if let Some(parent) = path.parent()
                 && !parent.as_os_str().is_empty()
             {
@@ -817,13 +751,10 @@ where
                 .open(&path)
                 .context(error::DataWriteSnafu)?;
 
-            lock_file
-                .lock_exclusive()
-                .context(error::DataWriteSnafu)?;
+            lock_file.lock_exclusive().context(error::DataWriteSnafu)?;
 
             let result = (|| -> CredsManageResult<(T, DataFile, Vec<u8>)> {
-                let content = std::fs::read_to_string(&path)
-                    .context(error::DataReadSnafu)?;
+                let content = std::fs::read_to_string(&path).context(error::DataReadSnafu)?;
 
                 let mut data = parse_data_file(&content)?;
                 let op_result = op(&mut data)?;
@@ -833,8 +764,9 @@ where
                 let serialized_bytes = serialized.into_bytes();
 
                 // Atomic write: temp file → fsync → rename
-                let mut atomic_file =
-                    AtomicWriteFile::options().open(&path).context(error::DataWriteSnafu)?;
+                let mut atomic_file = AtomicWriteFile::options()
+                    .open(&path)
+                    .context(error::DataWriteSnafu)?;
                 atomic_file
                     .write_all(&serialized_bytes)
                     .context(error::DataWriteSnafu)?;
@@ -846,10 +778,9 @@ where
 
             let _ = lock_file.unlock();
             result
-        },
-    )
-    .await
-    .expect("store mutate task panicked")?;
+        })
+        .await
+        .expect("store mutate task panicked")?;
 
     // Record the hash only after a successful write.
     *last_committed_hash.lock().await = Some(content_hash(&serialized_bytes));

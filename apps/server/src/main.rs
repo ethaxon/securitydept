@@ -10,6 +10,7 @@ use clap::Parser;
 use securitydept_core::{
     creds_manage::{migrations::Migrator, store::CredsManageStore},
     oidc::OidcClient,
+    token_set_context::TokenSetContext,
 };
 use snafu::ResultExt;
 use tower_sessions_memory_store::MemoryStore;
@@ -79,6 +80,13 @@ async fn main() -> ServerResult<()> {
 
     let session_config = config.session.clone();
     let session_store = MemoryStore::default();
+    let token_set_context = Arc::new(
+        TokenSetContext::from_config(&config.token_set_context).map_err(|e| {
+            crate::error::ServerError::InvalidConfig {
+                message: e.to_string(),
+            }
+        })?,
+    );
 
     let pending_oauth = MokaPendingOauthStore::from_config_opt(
         config.oidc.as_ref().and_then(|o| o.pending_store.as_ref()),
@@ -88,12 +96,12 @@ async fn main() -> ServerResult<()> {
         config: Arc::new(config.clone()),
         store: Arc::new(store),
         session_config: session_config.clone(),
+        token_set_context,
         oidc,
         pending_oauth,
     };
 
-    let app = routes::build_router(state)
-        .layer(session_config.session_layer(session_store));
+    let app = routes::build_router(state).layer(session_config.session_layer(session_store));
 
     let bind_addr = format!("{}:{}", config.server.host, config.server.port);
     info!(addr = %bind_addr, "Starting server");

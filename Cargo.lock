@@ -4187,6 +4187,7 @@ dependencies = [
  "securitydept-oidc-client",
  "securitydept-realip",
  "securitydept-session-context",
+ "securitydept-token-set-context",
  "securitydept-utils",
 ]
 
@@ -4276,14 +4277,12 @@ dependencies = [
 name = "securitydept-oidc-client"
 version = "0.2.0-alpha.2"
 dependencies = [
- "axum",
  "boa_engine",
  "chrono",
  "http",
  "humantime-serde",
  "moka",
  "openidconnect",
- "orion",
  "securitydept-oauth-provider",
  "securitydept-utils",
  "serde",
@@ -4340,6 +4339,7 @@ dependencies = [
  "tower-sessions-memory-store",
  "tracing",
  "tracing-subscriber",
+ "url",
  "winres",
 ]
 
@@ -4356,6 +4356,21 @@ dependencies = [
  "tokio",
  "tower-sessions",
  "typed-builder",
+]
+
+[[package]]
+name = "securitydept-token-set-context"
+version = "0.2.0-alpha.2"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "http",
+ "orion",
+ "serde",
+ "serde_json",
+ "snafu",
+ "typed-builder",
+ "url",
 ]
 
 [[package]]

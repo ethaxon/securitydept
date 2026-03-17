@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::time::Duration as StdDuration;
+use std::{collections::HashMap, time::Duration as StdDuration};
 
 use axum::http::StatusCode;
 use securitydept_utils::error::{ErrorPresentation, ToErrorPresentation, UserRecovery};
@@ -136,7 +135,9 @@ impl SessionContextConfig {
             .with_secure(self.secure);
 
         if let Some(ttl) = self.ttl {
-            layer = layer.with_expiry(Expiry::OnInactivity(Duration::seconds(ttl.as_secs() as i64)));
+            layer = layer.with_expiry(Expiry::OnInactivity(
+                Duration::seconds(ttl.as_secs() as i64),
+            ));
         }
 
         layer

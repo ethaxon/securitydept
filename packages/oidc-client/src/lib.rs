@@ -4,16 +4,14 @@ pub mod config;
 pub mod error;
 pub mod models;
 pub mod pending_store;
-#[cfg(feature = "axum")]
-pub mod routes;
 
 pub use client::OidcClient;
-pub use config::OidcConfig;
+pub use config::OidcClientConfig;
 pub use error::{OidcError, OidcResult};
 pub use models::{
     ClaimsCheckResult, ExtraOidcClaims, IdTokenClaimsWithExtra, OidcCodeCallbackSearchParams,
-    OidcCodeExchangeResult, OidcCodeFlowAuthorizationRequest, OidcTokenSet,
-    UserInfoClaimsWithExtra,
+    OidcCodeExchangeResult, OidcCodeFlowAuthorizationRequest, OidcDeviceAuthorizationResult,
+    OidcRevocableToken, OidcTokenSet, UserInfoClaimsWithExtra,
 };
 #[cfg(feature = "moka-pending-store")]
 pub use pending_store::{MokaPendingOauthStore, MokaPendingOauthStoreConfig};

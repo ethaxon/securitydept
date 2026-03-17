@@ -18,7 +18,7 @@ use crate::{OidcError, OidcResult};
 /// recommended, and userinfo claims are fetched only when it is set.
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]
-pub struct OidcConfig {
+pub struct OidcClientConfig {
     pub client_id: String,
     #[serde(default)]
     pub client_secret: Option<String>,
@@ -43,17 +43,9 @@ pub struct OidcConfig {
     #[cfg(feature = "default-pending-store")]
     #[serde(default)]
     pub pending_store: Option<MokaPendingOauthStoreConfig>,
-    #[serde(default)]
-    pub master_key: Option<String>,
-    /// When enabled, refresh tokens will be encrypted using the master key
-    /// Mainly used in the scenario of distributed stateless service frontend
-    /// storage of refresh token, to prevent the attack of refresh token being
-    /// stolen in plain text.
-    #[serde(default)]
-    pub sealed_refresh_token: bool,
 }
 
-impl OidcConfig {
+impl OidcClientConfig {
     pub fn validate(&self) -> OidcResult<()> {
         if self.claims_check_script.is_some() && cfg!(not(feature = "claims-script")) {
             return Err(OidcError::InvalidConfig {

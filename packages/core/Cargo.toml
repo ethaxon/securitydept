@@ -13,7 +13,6 @@ full = [
     "reexport-openidconnect",
     "oauth-provider",
     "oidc-client",
-    "oidc-client-axum",
     "oidc-client-claims-script",
     "oidc-client-default-pending-store",
     "oidc-client-moka-pending-store",
@@ -21,6 +20,7 @@ full = [
     "oauth-resource-server-jwe",
     "basic-auth-zone",
     "session-context",
+    "token-set-context",
     "realip",
     "realip-docker",
     "realip-kube",
@@ -38,7 +38,6 @@ reexport-oauth2 = ["dep:oauth2"]
 reexport-openidconnect = ["dep:openidconnect", "reexport-oauth2"]
 oauth-provider = ["dep:securitydept-oauth-provider", "reexport-openidconnect"]
 oidc-client = ["dep:securitydept-oidc-client", "reexport-openidconnect"]
-oidc-client-axum = ["oidc-client", "securitydept-oidc-client/axum"]
 oidc-client-claims-script = [
     "oidc-client",
     "securitydept-oidc-client/claims-script",
@@ -62,6 +61,7 @@ oauth-resource-server-jwe = [
 ]
 basic-auth-zone = ["dep:securitydept-basic-auth-zone", "creds"]
 session-context = ["dep:securitydept-session-context"]
+token-set-context = ["dep:securitydept-token-set-context"]
 realip = ["dep:securitydept-realip"]
 realip-docker = ["realip", "securitydept-realip/docker"]
 realip-kube = ["realip", "securitydept-realip/kube"]
@@ -93,6 +93,7 @@ securitydept-oidc-client = { path = "../oidc-client", optional = true }
 securitydept-oauth-resource-server = { path = "../oauth-resource-server", optional = true }
 securitydept-basic-auth-zone = { path = "../basic-auth-zone", optional = true }
 securitydept-session-context = { path = "../session-context", optional = true }
+securitydept-token-set-context = { path = "../token-set-context", optional = true }
 securitydept-realip = { path = "../realip", optional = true, default-features = false }
 securitydept-creds = { path = "../creds", optional = true }
 securitydept-creds-manage = { path = "../creds-manage", optional = true }

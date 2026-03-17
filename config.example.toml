@@ -41,14 +41,6 @@ scopes = ["openid", "profile", "email"]
 # 
 # claims_check_script = "./claims-script-check.mts"
 
-## When enabled, refresh tokens will be encrypted using the master key
-## Mainly used in the scenario of distributed stateless service frontend
-## storage of refresh token, to prevent the attack of refresh token being
-## stolen in plain text.
-# 
-# master_key = "your-master-key"
-# sealed_refresh_token_capsule = true
-
 # [session]
 # cookie_name = "securitydept_session"
 # session_context_key = "securitydept.session_context"
@@ -60,3 +52,9 @@ scopes = ["openid", "profile", "email"]
 
 [creds_manage]
 data_path = "./data/data.json"
+
+# [token_set_context]
+## When enabled, refresh tokens are sealed before they leave the server-side
+## auth-context layer. This belongs to mode C state handling, not OIDC protocol config.
+# sealed_refresh_token = true
+# master_key = "your-master-key"

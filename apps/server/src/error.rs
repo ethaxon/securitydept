@@ -3,7 +3,9 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use securitydept_core::{
-    creds::CredsError, creds_manage::CredsManageError, oidc::OidcError,
+    creds::CredsError,
+    creds_manage::CredsManageError,
+    oidc::OidcError,
     session_context::SessionContextError,
     utils::{
         error::{ErrorPresentation, ToErrorPresentation, UserRecovery},

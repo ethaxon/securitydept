@@ -8,11 +8,9 @@ use axum::{
 };
 use securitydept_core::{
     creds_manage::models::UserInfo,
-    oidc::{
-        OidcCodeCallbackSearchParams, OidcError,
-        routes::{RefreshTokenPayload, refresh_token_route},
-    },
+    oidc::{OidcCodeCallbackSearchParams, OidcError},
     session_context::{SessionContext, SessionPrincipal},
+    token_set_context::{RefreshTokenPayload, TokenRefreshRedirectFragment},
 };
 use serde_json::Value;
 use tower_sessions::Session;
@@ -103,9 +101,7 @@ pub async fn callback(
         claims: claims_check_result.claims,
     };
 
-    let context: SessionContext = SessionContext::builder()
-        .principal(principal)
-        .build();
+    let context: SessionContext = SessionContext::builder().principal(principal).build();
     handle.insert(&context).await?;
 
     info!(display_name = %claims_check_result.display_name, "User logged in");
@@ -129,8 +125,37 @@ pub async fn refresh_token(
     Json(payload): Json<RefreshTokenPayload>,
 ) -> ServerResult<Response> {
     let oidc_client = state.oidc_client()?;
-    let result = refresh_token_route(oidc_client, payload).await?;
-    Ok(result.into_response())
+    let refresh_token = state
+        .token_set_context
+        .unseal_refresh_token(&payload.refresh_token)
+        .map_err(|e| ServerError::InvalidConfig {
+            message: e.to_string(),
+        })?;
+    let result = oidc_client.handle_token_refresh(refresh_token).await?;
+    let mut redirect_uri =
+        url::Url::parse(&payload.redirect_uri).map_err(|e| ServerError::InvalidConfig {
+            message: format!("invalid redirect_uri: {e}"),
+        })?;
+
+    let sealed_refresh_token = result
+        .refresh_token
+        .as_deref()
+        .map(|value| state.token_set_context.seal_refresh_token(value))
+        .transpose()
+        .map_err(|e| ServerError::InvalidConfig {
+            message: e.to_string(),
+        })?;
+
+    let fragment = TokenRefreshRedirectFragment {
+        access_token: result.access_token,
+        id_token: result.id_token,
+        sealed_refresh_token,
+        access_token_expires_at: result.access_token_expiration,
+    }
+    .to_fragment();
+
+    redirect_uri.set_fragment(Some(&fragment));
+    Ok(Redirect::to(redirect_uri.as_str()).into_response())
 }
 
 /// GET /auth/me -- return current user info.
