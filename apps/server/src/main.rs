@@ -10,7 +10,7 @@ use clap::Parser;
 use securitydept_core::{
     creds_manage::{migrations::Migrator, store::CredsManageStore},
     oidc::OidcClient,
-    token_set_context::TokenSetContext,
+    token_set_context::{MokaPendingAuthStateMetadataRedemptionStore, TokenSetContext},
 };
 use snafu::ResultExt;
 use tower_sessions_memory_store::MemoryStore;
@@ -91,12 +91,16 @@ async fn main() -> ServerResult<()> {
     let pending_oauth = MokaPendingOauthStore::from_config_opt(
         config.oidc.as_ref().and_then(|o| o.pending_store.as_ref()),
     );
+    let metadata_redemption_store = Arc::new(MokaPendingAuthStateMetadataRedemptionStore::new(
+        config.token_set_context.metadata_redemption.clone(),
+    ));
 
     let state = ServerState {
         config: Arc::new(config.clone()),
         store: Arc::new(store),
         session_config: session_config.clone(),
         token_set_context,
+        metadata_redemption_store,
         oidc,
         pending_oauth,
     };

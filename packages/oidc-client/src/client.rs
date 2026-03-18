@@ -1,15 +1,18 @@
-use std::sync::Arc;
+use std::{borrow::Cow, cmp::min, sync::Arc, time::Duration};
 
+use base64::Engine;
 use chrono::Utc;
 use openidconnect::{
-    AccessToken, AuthenticationFlow, AuthorizationCode, Client, ClientId, ClientSecret, CsrfToken,
-    DeviceAuthorizationUrl, EndpointMaybeSet, EndpointNotSet, EndpointSet, IntrospectionUrl, Nonce,
-    OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken,
-    RevocationUrl, Scope, StandardErrorResponse, StandardTokenResponse,
+    AccessToken, AuthType, AuthenticationFlow, AuthorizationCode, Client, ClientId, ClientSecret,
+    CsrfToken, DeviceAuthorizationUrl, DeviceCodeErrorResponse, DeviceCodeErrorResponseType,
+    EndpointMaybeSet, EndpointNotSet, EndpointSet, IntrospectionUrl, Nonce, OAuth2TokenResponse,
+    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, RevocationUrl, Scope,
+    StandardErrorResponse, StandardTokenResponse, SubjectIdentifier,
     core::{
-        CoreAuthDisplay, CoreAuthPrompt, CoreDeviceAuthorizationResponse, CoreErrorResponseType,
-        CoreGenderClaim, CoreJsonWebKey, CoreJweContentEncryptionAlgorithm, CoreRevocableToken,
-        CoreRevocationErrorResponse, CoreTokenIntrospectionResponse, CoreTokenType,
+        CoreAuthDisplay, CoreAuthPrompt, CoreClientAuthMethod, CoreDeviceAuthorizationResponse,
+        CoreErrorResponseType, CoreGenderClaim, CoreJsonWebKey, CoreJweContentEncryptionAlgorithm,
+        CoreRevocableToken, CoreRevocationErrorResponse, CoreTokenIntrospectionResponse,
+        CoreTokenType,
     },
     reqwest,
 };
@@ -23,7 +26,8 @@ use crate::claims::ScriptClaimsChecker;
 use crate::{
     ClaimsCheckResult, ExtraOidcClaims, IdTokenClaimsWithExtra, OidcCodeCallbackSearchParams,
     OidcCodeExchangeResult, OidcCodeFlowAuthorizationRequest, OidcDeviceAuthorizationResult,
-    OidcRevocableToken, PendingOauthStore, UserInfoClaimsWithExtra,
+    OidcDeviceTokenPollResult, OidcDeviceTokenResult, OidcRevocableToken, PendingOauthStore,
+    UserInfoClaimsWithExtra,
     claims::ClaimsChecker,
     config::OidcClientConfig,
     error::{OidcError, OidcResult},
@@ -131,12 +135,44 @@ impl OidcClient {
         external_base_url: &Url,
         pending_oauth_store: &impl PendingOauthStore,
     ) -> OidcResult<OidcCodeFlowAuthorizationRequest> {
-        let authorization_request = self.authorize_url(external_base_url)?;
+        self.handle_code_authorize_with_redirect_override(
+            external_base_url,
+            pending_oauth_store,
+            None,
+        )
+        .await
+    }
+
+    pub async fn handle_code_authorize_with_redirect_override(
+        &self,
+        external_base_url: &Url,
+        pending_oauth_store: &impl PendingOauthStore,
+        redirect_url_override: Option<&str>,
+    ) -> OidcResult<OidcCodeFlowAuthorizationRequest> {
+        self.handle_code_authorize_with_redirect_override_and_extra_data(
+            external_base_url,
+            pending_oauth_store,
+            redirect_url_override,
+            None,
+        )
+        .await
+    }
+
+    pub async fn handle_code_authorize_with_redirect_override_and_extra_data(
+        &self,
+        external_base_url: &Url,
+        pending_oauth_store: &impl PendingOauthStore,
+        redirect_url_override: Option<&str>,
+        extra_data: Option<serde_json::Value>,
+    ) -> OidcResult<OidcCodeFlowAuthorizationRequest> {
+        let authorization_request =
+            self.authorize_url_with_redirect_override(external_base_url, redirect_url_override)?;
         pending_oauth_store
             .insert(
                 authorization_request.csrf_token.secret().to_string(),
                 authorization_request.nonce.secret().to_string(),
                 authorization_request.pkce_verifier_secret.clone(),
+                extra_data,
             )
             .await?;
         Ok(authorization_request)
@@ -169,9 +205,105 @@ impl OidcClient {
             verification_uri_complete: details
                 .verification_uri_complete()
                 .map(|value| value.secret().to_string()),
-            expires_in_seconds: details.expires_in().as_secs(),
-            interval_seconds: Some(details.interval().as_secs()),
+            expires_in: details.expires_in(),
+            interval: Some(details.interval()),
         })
+    }
+
+    pub async fn handle_device_token_poll(
+        &self,
+        device_authorization: &OidcDeviceAuthorizationResult,
+        current_interval: Option<Duration>,
+    ) -> OidcResult<OidcDeviceTokenPollResult> {
+        let current_interval = current_interval.unwrap_or_else(|| {
+            device_authorization.poll_interval(self.config.device_poll_interval)
+        });
+
+        match self.request_device_token_once(device_authorization).await? {
+            DeviceTokenPollResponse::Complete(token_response) => {
+                let token_result = self.build_device_token_result(*token_response).await?;
+                Ok(OidcDeviceTokenPollResult::Complete {
+                    token_result: Box::new(token_result),
+                })
+            }
+            DeviceTokenPollResponse::Pending => Ok(OidcDeviceTokenPollResult::Pending {
+                interval: current_interval,
+            }),
+            DeviceTokenPollResponse::SlowDown => Ok(OidcDeviceTokenPollResult::SlowDown {
+                interval: current_interval.saturating_add(Duration::from_secs(5)),
+            }),
+            DeviceTokenPollResponse::Denied { error_description } => {
+                Ok(OidcDeviceTokenPollResult::Denied { error_description })
+            }
+            DeviceTokenPollResponse::Expired { error_description } => {
+                Ok(OidcDeviceTokenPollResult::Expired { error_description })
+            }
+        }
+    }
+
+    pub async fn handle_device_token_poll_until_complete(
+        &self,
+        device_authorization: &OidcDeviceAuthorizationResult,
+        timeout: Option<Duration>,
+    ) -> OidcResult<OidcDeviceTokenResult> {
+        let started_at = std::time::Instant::now();
+        let mut interval = device_authorization.poll_interval(self.config.device_poll_interval);
+
+        // Enforce a minimum interval of 1 second to prevent busy-polling
+        // when the server returns interval=0.
+        const MIN_POLL_INTERVAL: Duration = Duration::from_secs(1);
+
+        loop {
+            if let Some(timeout) = timeout {
+                let elapsed = started_at.elapsed();
+                if elapsed >= timeout {
+                    return Err(OidcError::DeviceTokenPoll {
+                        message: format!(
+                            "Device token polling timed out after {} seconds",
+                            timeout.as_secs()
+                        ),
+                    });
+                }
+            }
+
+            match self
+                .handle_device_token_poll(device_authorization, Some(interval))
+                .await?
+            {
+                OidcDeviceTokenPollResult::Complete { token_result } => return Ok(*token_result),
+                OidcDeviceTokenPollResult::Pending {
+                    interval: next_interval,
+                }
+                | OidcDeviceTokenPollResult::SlowDown {
+                    interval: next_interval,
+                } => {
+                    interval = next_interval.max(MIN_POLL_INTERVAL);
+                    let sleep_duration = if let Some(timeout) = timeout {
+                        let remaining = timeout.saturating_sub(started_at.elapsed());
+                        min(interval, remaining)
+                    } else {
+                        interval
+                    };
+                    tokio::time::sleep(sleep_duration).await;
+                }
+                OidcDeviceTokenPollResult::Denied { error_description } => {
+                    return Err(OidcError::DeviceTokenPoll {
+                        message: format_device_token_terminal_message(
+                            "access_denied",
+                            error_description.as_deref(),
+                        ),
+                    });
+                }
+                OidcDeviceTokenPollResult::Expired { error_description } => {
+                    return Err(OidcError::DeviceTokenPoll {
+                        message: format_device_token_terminal_message(
+                            "expired_token",
+                            error_description.as_deref(),
+                        ),
+                    });
+                }
+            }
+        }
     }
 
     pub async fn handle_code_callback(
@@ -179,6 +311,22 @@ impl OidcClient {
         search_params: OidcCodeCallbackSearchParams,
         external_base_url: &Url,
         pending_oauth_store: &impl PendingOauthStore,
+    ) -> OidcResult<OidcCodeCallbackResult> {
+        self.handle_code_callback_with_redirect_override(
+            search_params,
+            external_base_url,
+            pending_oauth_store,
+            None,
+        )
+        .await
+    }
+
+    pub async fn handle_code_callback_with_redirect_override(
+        &self,
+        search_params: OidcCodeCallbackSearchParams,
+        external_base_url: &Url,
+        pending_oauth_store: &impl PendingOauthStore,
+        redirect_url_override: Option<&str>,
     ) -> OidcResult<OidcCodeCallbackResult> {
         let code = &search_params.code;
         let state = search_params
@@ -203,7 +351,13 @@ impl OidcClient {
         let code_verifier = pending.code_verifier;
 
         let code_exchange = self
-            .exchange_code(external_base_url, code, &nonce, code_verifier.as_deref())
+            .exchange_code_with_redirect_override(
+                external_base_url,
+                code,
+                &nonce,
+                code_verifier.as_deref(),
+                redirect_url_override,
+            )
             .await?;
 
         let claims_check_result = self
@@ -218,6 +372,7 @@ impl OidcClient {
             pkce_verifier_secret: code_verifier,
             state: search_params.state,
             nonce: pending.nonce,
+            pending_extra_data: pending.extra_data,
             access_token: code_exchange.access_token,
             access_token_expiration: code_exchange.access_token_expiration,
             id_token: code_exchange.id_token,
@@ -269,7 +424,7 @@ impl OidcClient {
             let id_token_verifier = client.id_token_verifier();
             let id_token_claims = next_id_token
                 .claims(&id_token_verifier, |_nonce: Option<&Nonce>| Ok(()))
-                .map_err(|e| OidcError::TokenExchange {
+                .map_err(|e| OidcError::TokenRefresh {
                     message: format!("Failed to verify refreshed ID token: {e}"),
                 })?;
             let user_info_claims = if client.user_info_url().is_some() {
@@ -278,6 +433,7 @@ impl OidcClient {
                         &client,
                         self.provider.http_client(),
                         token_response.access_token().clone(),
+                        Some(id_token_claims.subject().clone()),
                     )
                     .await?,
                 )
@@ -320,9 +476,10 @@ impl OidcClient {
         client: &DiscoveredClientWithExtra,
         http_client: &reqwest::Client,
         access_token: openidconnect::AccessToken,
+        expected_subject: Option<SubjectIdentifier>,
     ) -> OidcResult<UserInfoClaimsWithExtra> {
         client
-            .user_info(access_token, None)
+            .user_info(access_token, expected_subject)
             .map_err(|e| OidcError::Claims {
                 message: format!("UserInfo request configuration failed: {e}"),
             })?
@@ -343,17 +500,22 @@ impl OidcClient {
             .await
     }
 
-    fn resolve_redirect_url(&self, external_base_url: &Url) -> OidcResult<Url> {
+    fn resolve_redirect_url(
+        &self,
+        external_base_url: &Url,
+        redirect_url_override: Option<&str>,
+    ) -> OidcResult<Url> {
         external_base_url
-            .join(&self.config.redirect_url)
+            .join(redirect_url_override.unwrap_or(&self.config.redirect_url))
             .map_err(|e| OidcError::RedirectUrl { source: e })
     }
 
-    fn client_with_redirect(
+    fn client_with_redirect_override(
         &self,
         external_base_url: &Url,
+        redirect_url_override: Option<&str>,
     ) -> OidcResult<DiscoveredClientWithExtra> {
-        let redirect_url = self.resolve_redirect_url(external_base_url)?;
+        let redirect_url = self.resolve_redirect_url(external_base_url, redirect_url_override)?;
         Ok(self
             .base_client
             .clone()
@@ -368,11 +530,12 @@ impl OidcClient {
         })
     }
 
-    async fn fresh_client_with_redirect(
+    async fn fresh_client_with_redirect_override(
         &self,
         external_base_url: &Url,
+        redirect_url_override: Option<&str>,
     ) -> OidcResult<DiscoveredClientWithExtra> {
-        let redirect_url = self.resolve_redirect_url(external_base_url)?;
+        let redirect_url = self.resolve_redirect_url(external_base_url, redirect_url_override)?;
         Ok(self
             .fresh_client()
             .await?
@@ -383,7 +546,16 @@ impl OidcClient {
         &self,
         external_base_url: &Url,
     ) -> OidcResult<OidcCodeFlowAuthorizationRequest> {
-        let client = self.client_with_redirect(external_base_url)?;
+        self.authorize_url_with_redirect_override(external_base_url, None)
+    }
+
+    pub fn authorize_url_with_redirect_override(
+        &self,
+        external_base_url: &Url,
+        redirect_url_override: Option<&str>,
+    ) -> OidcResult<OidcCodeFlowAuthorizationRequest> {
+        let client =
+            self.client_with_redirect_override(external_base_url, redirect_url_override)?;
 
         let mut req = client.authorize_url(
             AuthenticationFlow::<openidconnect::core::CoreResponseType>::AuthorizationCode,
@@ -419,7 +591,27 @@ impl OidcClient {
         nonce: &Nonce,
         pkce_verifier_secret: Option<&str>,
     ) -> OidcResult<OidcCodeExchangeResult> {
-        let client = self.fresh_client_with_redirect(external_base_url).await?;
+        self.exchange_code_with_redirect_override(
+            external_base_url,
+            code,
+            nonce,
+            pkce_verifier_secret,
+            None,
+        )
+        .await
+    }
+
+    pub async fn exchange_code_with_redirect_override(
+        &self,
+        external_base_url: &Url,
+        code: &str,
+        nonce: &Nonce,
+        pkce_verifier_secret: Option<&str>,
+        redirect_url_override: Option<&str>,
+    ) -> OidcResult<OidcCodeExchangeResult> {
+        let client = self
+            .fresh_client_with_redirect_override(external_base_url, redirect_url_override)
+            .await?;
 
         let mut token_request = client
             .exchange_code(AuthorizationCode::new(code.to_string()))
@@ -471,6 +663,7 @@ impl OidcClient {
                     &client,
                     self.provider.http_client(),
                     token_response.access_token().clone(),
+                    Some(id_token_claims.subject().clone()),
                 )
                 .await?,
             )
@@ -492,6 +685,238 @@ impl OidcClient {
         self.scopes = self.config.scopes.clone();
         self.pkce_enabled = self.config.pkce_enabled;
         self
+    }
+
+    async fn request_device_token_once(
+        &self,
+        device_authorization: &OidcDeviceAuthorizationResult,
+    ) -> OidcResult<DeviceTokenPollResponse> {
+        let client = self.fresh_client().await?;
+        let token_url = client
+            .token_uri()
+            .cloned()
+            .ok_or_else(|| OidcError::DeviceTokenPoll {
+                message: "Token endpoint not set for device token polling".to_string(),
+            })?;
+
+        let auth_type = self.resolve_token_endpoint_auth_type().await?;
+        let mut params = vec![
+            (
+                Cow::Borrowed("grant_type"),
+                Cow::Borrowed("urn:ietf:params:oauth:grant-type:device_code"),
+            ),
+            (
+                Cow::Borrowed("device_code"),
+                Cow::Owned(device_authorization.device_code.clone()),
+            ),
+        ];
+
+        if matches!(auth_type, AuthType::RequestBody) {
+            params.push((
+                Cow::Borrowed("client_id"),
+                Cow::Owned(self.config.client_id.clone()),
+            ));
+            if let Some(client_secret) = self.config.client_secret.as_ref() {
+                params.push((
+                    Cow::Borrowed("client_secret"),
+                    Cow::Owned(client_secret.clone()),
+                ));
+            }
+        }
+
+        let mut request = self
+            .provider
+            .http_client()
+            .post(token_url.url().clone())
+            .header(reqwest::header::ACCEPT, "application/json")
+            .form(&params);
+
+        if matches!(auth_type, AuthType::BasicAuth) {
+            let client_secret =
+                self.config
+                    .client_secret
+                    .as_ref()
+                    .ok_or_else(|| OidcError::DeviceTokenPoll {
+                        message: "client_secret is required for basic token endpoint auth"
+                            .to_string(),
+                    })?;
+            let credentials = format!(
+                "{}:{}",
+                form_urlencode(&self.config.client_id),
+                form_urlencode(client_secret)
+            );
+            let header_value = format!(
+                "Basic {}",
+                base64::engine::general_purpose::STANDARD.encode(credentials)
+            );
+            request = request.header(reqwest::header::AUTHORIZATION, header_value);
+        }
+
+        let response = request
+            .send()
+            .await
+            .map_err(|e| OidcError::DeviceTokenPoll {
+                message: format!("Device token poll request failed: {e}"),
+            })?;
+        let status = response.status();
+        let body = response
+            .bytes()
+            .await
+            .map_err(|e| OidcError::DeviceTokenPoll {
+                message: format!("Failed to read device token poll response: {e}"),
+            })?;
+
+        if status.is_success() {
+            let token_response =
+                serde_json::from_slice::<TokenResponseWithExtra>(&body).map_err(|e| {
+                    OidcError::DeviceTokenPoll {
+                        message: format!(
+                            "Failed to parse device token response: {e}; body: {}",
+                            String::from_utf8_lossy(&body)
+                        ),
+                    }
+                })?;
+            return Ok(DeviceTokenPollResponse::Complete(Box::new(token_response)));
+        }
+
+        let error_response =
+            serde_json::from_slice::<DeviceCodeErrorResponse>(&body).map_err(|e| {
+                OidcError::DeviceTokenPoll {
+                    message: format!(
+                        "Device token poll failed with HTTP {} and an unparseable body: {e}; \
+                         body: {}",
+                        status,
+                        String::from_utf8_lossy(&body)
+                    ),
+                }
+            })?;
+
+        match error_response.error() {
+            DeviceCodeErrorResponseType::AuthorizationPending => {
+                Ok(DeviceTokenPollResponse::Pending)
+            }
+            DeviceCodeErrorResponseType::SlowDown => Ok(DeviceTokenPollResponse::SlowDown),
+            DeviceCodeErrorResponseType::AccessDenied => Ok(DeviceTokenPollResponse::Denied {
+                error_description: error_response.error_description().cloned(),
+            }),
+            DeviceCodeErrorResponseType::ExpiredToken => Ok(DeviceTokenPollResponse::Expired {
+                error_description: error_response.error_description().cloned(),
+            }),
+            other => Err(OidcError::DeviceTokenPoll {
+                message: format!("Device token poll returned terminal error: {other}"),
+            }),
+        }
+    }
+
+    async fn build_device_token_result(
+        &self,
+        token_response: TokenResponseWithExtra,
+    ) -> OidcResult<OidcDeviceTokenResult> {
+        let client = self.fresh_client().await?;
+        let id_token_verifier = client.id_token_verifier();
+        let id_token =
+            token_response
+                .extra_fields()
+                .id_token()
+                .ok_or_else(|| OidcError::DeviceTokenPoll {
+                    message: "Missing ID token in device token response".to_string(),
+                })?;
+        let id_token_claims = id_token
+            .claims(&id_token_verifier, |_nonce: Option<&Nonce>| Ok(()))
+            .map_err(|e| OidcError::DeviceTokenPoll {
+                message: format!("Failed to verify device-flow ID token: {e}"),
+            })?;
+
+        let now = Utc::now();
+        let access_token = token_response.access_token().secret().clone();
+        let access_token_expiration = token_response
+            .expires_in()
+            .map(|expires_in| now + expires_in);
+        let refresh_token = token_response
+            .refresh_token()
+            .map(|value| value.secret().clone());
+
+        let user_info_claims = if client.user_info_url().is_some() {
+            Some(
+                self.request_userinfo(
+                    &client,
+                    self.provider.http_client(),
+                    token_response.access_token().clone(),
+                    Some(id_token_claims.subject().clone()),
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
+        let claims_check_result = self
+            .check_claims(id_token_claims, user_info_claims.as_ref())
+            .await?;
+
+        Ok(OidcDeviceTokenResult {
+            access_token,
+            access_token_expiration,
+            id_token: id_token.to_string(),
+            refresh_token,
+            id_token_claims: id_token_claims.to_owned(),
+            user_info_claims,
+            claims_check_result,
+        })
+    }
+
+    async fn resolve_token_endpoint_auth_type(&self) -> OidcResult<AuthType> {
+        let metadata = self.provider.oidc_provider_metadata().await?;
+        let supported = metadata.token_endpoint_auth_methods_supported();
+
+        if self.config.client_secret.is_none() {
+            return Ok(AuthType::RequestBody);
+        }
+
+        let supports_basic = supported
+            .is_none_or(|methods| methods.contains(&CoreClientAuthMethod::ClientSecretBasic));
+        if supports_basic {
+            return Ok(AuthType::BasicAuth);
+        }
+
+        let supports_request_body = supported.is_some_and(|methods| {
+            methods.contains(&CoreClientAuthMethod::ClientSecretPost)
+                || methods.contains(&CoreClientAuthMethod::None)
+        });
+        if supports_request_body {
+            return Ok(AuthType::RequestBody);
+        }
+
+        Err(OidcError::DeviceTokenPoll {
+            message: "The provider only advertises unsupported token endpoint auth methods for \
+                      device polling"
+                .to_string(),
+        })
+    }
+}
+
+enum DeviceTokenPollResponse {
+    Pending,
+    SlowDown,
+    Denied { error_description: Option<String> },
+    Expired { error_description: Option<String> },
+    // Box the large variant to keep all arms at pointer size and silence
+    // clippy::large_enum_variant
+    Complete(Box<TokenResponseWithExtra>),
+}
+
+fn form_urlencode(value: &str) -> String {
+    url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
+}
+
+fn format_device_token_terminal_message(
+    error_code: &str,
+    error_description: Option<&str>,
+) -> String {
+    match error_description {
+        Some(error_description) => {
+            format!("Device token polling stopped with {error_code}: {error_description}")
+        }
+        None => format!("Device token polling stopped with {error_code}"),
     }
 }
 

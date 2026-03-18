@@ -6,6 +6,7 @@ use crate::OidcResult;
 pub struct PendingOauth {
     pub nonce: String,
     pub code_verifier: Option<String>,
+    pub extra_data: Option<serde_json::Value>,
 }
 
 pub trait PendingOauthStore {
@@ -16,6 +17,7 @@ pub trait PendingOauthStore {
         state: String,
         nonce: String,
         code_verifier: Option<String>,
+        extra_data: Option<serde_json::Value>,
     ) -> impl Future<Output = OidcResult<()>>;
     /// Take the pending data for this state (one-time use). Returns None if
     /// state unknown or already used.

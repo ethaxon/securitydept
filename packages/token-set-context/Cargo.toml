@@ -3,13 +3,24 @@ name = "securitydept-token-set-context"
 version = "0.2.0-alpha.2"
 edition = "2024"
 
+[features]
+default = ["default-pending-store"]
+default-pending-store = ["moka-pending-store"]
+moka-pending-store = ["dep:moka"]
+
 [dependencies]
+securitydept-oidc-client = { path = "../oidc-client" }
 base64 = { workspace = true }
 chrono = { workspace = true }
+humantime-serde = { workspace = true }
 http = { workspace = true }
+moka = { workspace = true, features = ["future", "sync"], optional = true }
 orion = "0.17"
+regex = { workspace = true }
 serde = { workspace = true }
+serde_regex = { version = "1" }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 typed-builder = { workspace = true }
 url = { workspace = true }
+uuid = { workspace = true }

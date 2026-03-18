@@ -18,6 +18,9 @@ pub enum OidcError {
     #[snafu(display("OIDC device authorization error: {message}"))]
     DeviceAuthorization { message: String },
 
+    #[snafu(display("OIDC device token poll error: {message}"))]
+    DeviceTokenPoll { message: String },
+
     #[snafu(display("OIDC redirect URL error: {source}"))]
     RedirectUrl { source: url::ParseError },
 
@@ -59,6 +62,7 @@ impl ToHttpStatus for OidcError {
             | OidcError::Metadata { .. }
             | OidcError::TokenExchange { .. }
             | OidcError::DeviceAuthorization { .. }
+            | OidcError::DeviceTokenPoll { .. }
             | OidcError::RedirectUrl { .. }
             | OidcError::TokenRefresh { .. }
             | OidcError::TokenRevocation { .. }
@@ -107,6 +111,11 @@ impl ToErrorPresentation for OidcError {
                 "oidc_device_authorization_failed",
                 "The device sign-in could not be started. Try again.",
                 UserRecovery::Retry,
+            ),
+            OidcError::DeviceTokenPoll { .. } => ErrorPresentation::new(
+                "oidc_device_sign_in_failed",
+                "The device sign-in could not be completed. Start again.",
+                UserRecovery::RestartFlow,
             ),
             OidcError::TokenRefresh { .. } => ErrorPresentation::new(
                 "oidc_reauthentication_required",

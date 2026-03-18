@@ -52,9 +52,70 @@ pub struct OidcDeviceAuthorizationResult {
     pub verification_uri: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verification_uri_complete: Option<String>,
-    pub expires_in_seconds: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub interval_seconds: Option<u64>,
+    #[serde(with = "humantime_serde")]
+    pub expires_in: std::time::Duration,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "humantime_serde::option"
+    )]
+    pub interval: Option<std::time::Duration>,
+}
+
+impl OidcDeviceAuthorizationResult {
+    pub fn poll_interval(&self, fallback: std::time::Duration) -> std::time::Duration {
+        self.interval.unwrap_or(fallback)
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum OidcDeviceTokenPollResult {
+    Pending {
+        #[serde(with = "humantime_serde")]
+        interval: std::time::Duration,
+    },
+    SlowDown {
+        #[serde(with = "humantime_serde")]
+        interval: std::time::Duration,
+    },
+    Denied {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_description: Option<String>,
+    },
+    Expired {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_description: Option<String>,
+    },
+    Complete {
+        token_result: Box<OidcDeviceTokenResult>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct OidcDeviceTokenResult {
+    pub access_token: String,
+    pub access_token_expiration: Option<DateTime<Utc>>,
+    pub id_token: String,
+    pub refresh_token: Option<String>,
+    pub id_token_claims: IdTokenClaimsWithExtra,
+    pub user_info_claims: Option<UserInfoClaimsWithExtra>,
+    pub claims_check_result: ClaimsCheckResult,
+}
+
+impl TokenSetTrait for OidcDeviceTokenResult {
+    fn access_token(&self) -> &str {
+        &self.access_token
+    }
+    fn id_token(&self) -> Option<&str> {
+        Some(&self.id_token)
+    }
+    fn refresh_token(&self) -> Option<&str> {
+        self.refresh_token.as_deref()
+    }
+    fn access_token_expiration(&self) -> Option<&DateTime<Utc>> {
+        self.access_token_expiration.as_ref()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -121,6 +182,7 @@ pub struct OidcCodeCallbackResult {
     pub pkce_verifier_secret: Option<String>,
     pub state: Option<String>,
     pub nonce: String,
+    pub pending_extra_data: Option<serde_json::Value>,
     pub access_token: String,
     pub access_token_expiration: Option<DateTime<Utc>>,
     pub id_token: String,

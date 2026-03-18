@@ -34,6 +34,7 @@ openidconnect = { workspace = true }
 figment = { workspace = true }
 maplit = { workspace = true }
 url = { workspace = true }
+chrono = { workspace = true }
 
 [build-dependencies]
 winres = "0.1"

@@ -78,9 +78,33 @@ Best for:
 
 Target state representation:
 
-- `id_token`
-- `access_token`
-- `sealed_refresh_token`
+- token core data travels in the fragment:
+  - `access_token`
+  - `id_token`
+  - `refresh_token`
+  - `expires_at`
+- non-token metadata travels through a short-lived redemption handle:
+  - `metadata_redemption_id`
+
+Convention:
+
+- Use the generic external field name `refresh_token`
+- Use the internal Rust field name `refresh_material` to signal that it may be protected refresh material rather than a raw refresh token that can be sent directly to the OIDC provider
+- Resolve `redirect_uri` inside `token-set-context`; the current config types are:
+  - `TokenSetRedirectUriConfig`
+  - `TokenSetRedirectUriRule`
+- The current top-level state model is:
+  - `AuthStateSnapshot`
+  - `AuthStateDelta`
+- After refresh, `AuthenticationSource.kind` should switch to `refresh_token` and record source-kind history in `source_kind_history`
+- The state model is now split into:
+  - `AuthTokenSnapshot`
+  - `AuthTokenDelta`
+  - `AuthStateMetadataSnapshot`
+  - `AuthStateMetadataDelta`
+  - `AuthStateSnapshot`
+  - `AuthStateDelta`
+  - `PendingAuthStateMetadataRedemption`
 
 Expected frontend capabilities:
 
@@ -89,12 +113,36 @@ Expected frontend capabilities:
 - refresh in the background
 - redirect to authorization endpoint when needed
 - derive display identity from token material
+- handle full snapshots on callback
+- handle token deltas and metadata deltas on refresh
+- fall back to existing metadata when metadata delta retrieval fails
 
 Expected backend capabilities:
 
 - verify forwarded bearer token when acting as a resource server
 - optionally refresh discovery metadata and JWKS through the shared provider runtime
 - keep bearer propagation policy explicit
+- use a coordinator inside `token-set-context` to unseal refresh material, refresh tokens, rebuild state, and produce transport DTOs
+- provide short-lived metadata redemption storage and exchange
+- round-trip the final callback `redirect_uri` through `oidc-client` pending OAuth extra data
+
+Failure semantics:
+
+- callback: neither token snapshot nor metadata snapshot may fail
+- refresh: token delta may not fail; metadata delta may fail and is treated as an empty delta
+
+Current implementation status:
+
+- `apps/server` already wires:
+  - `GET /auth/login/token-set`
+  - `GET /auth/callback/token-set`
+  - `POST /auth/refresh`
+  - `POST /auth/metadata/redeem`
+- callback currently returns a full token snapshot fragment and issues `metadata_redemption_id`
+- refresh currently returns a token delta fragment and issues `metadata_redemption_id` when metadata changes
+- the refresh request payload now uses:
+  - `current_auth_state`
+- the default metadata redemption implementation is currently `MokaPendingAuthStateMetadataRedemptionStore`
 
 Important note:
 
@@ -102,13 +150,20 @@ This mode does not mean `oidc-client` becomes a resource server. Instead, both `
 
 ## Shared Future Abstractions
 
-A future reusable auth-context layer should probably define:
+A future reusable auth-context layer should probably define, or is already starting to define:
 
 - `AuthenticatedPrincipal`
-- `ManagedTokenSet`
 - `SealedRefreshMaterial`
 - `AuthenticationSource`
 - `BearerPropagationPolicy`
+- `TokenPropagator`
+- `AuthTokenSnapshot`
+- `AuthTokenDelta`
+- `AuthStateMetadataSnapshot`
+- `AuthStateMetadataDelta`
+- `AuthStateSnapshot`
+- `AuthStateDelta`
+- `PendingAuthStateMetadataRedemption`
 
 ## Bearer Propagation Policy
 

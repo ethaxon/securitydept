@@ -78,9 +78,33 @@
 
 目标状态表示：
 
-- `id_token`
-- `access_token`
-- `sealed_refresh_token`
+- token 核心信息通过 fragment 传递：
+  - `access_token`
+  - `id_token`
+  - `refresh_token`
+  - `expires_at`
+- 非 token metadata 通过短期兑换句柄传递：
+  - `metadata_redemption_id`
+
+约定：
+
+- 对外字段名使用通用的 `refresh_token`
+- 内部 Rust 字段名使用 `refresh_material` 以强调它可能是经过保护的刷新材料，而不一定是可直接提交给 OIDC provider 的原始 refresh token
+- `redirect_uri` 由 `token-set-context` 统一解析；当前配置类型为：
+  - `TokenSetRedirectUriConfig`
+  - `TokenSetRedirectUriRule`
+- 当前主状态模型为：
+  - `AuthStateSnapshot`
+  - `AuthStateDelta`
+- refresh 之后，`AuthenticationSource.kind` 应切换为 `refresh_token`，并在 `source_kind_history` 中记录来源类型历史
+- 状态模型当前已拆为：
+  - `AuthTokenSnapshot`
+  - `AuthTokenDelta`
+  - `AuthStateMetadataSnapshot`
+  - `AuthStateMetadataDelta`
+  - `AuthStateSnapshot`
+  - `AuthStateDelta`
+  - `PendingAuthStateMetadataRedemption`
 
 预期前端能力：
 
@@ -89,12 +113,36 @@
 - 后台刷新
 - 需要时重定向到授权端点
 - 从令牌材料派生显示身份
+- 处理 callback 的完整 snapshot
+- 处理 refresh 的 token delta 与 metadata delta
+- 在 metadata delta 获取失败时回退到已有 metadata
 
 预期后端能力：
 
 - 作为资源服务器时验证转发的 bearer 令牌
 - 可选地通过共享提供者运行时刷新发现元数据和 JWKS
 - 保持 bearer 传播策略明确
+- 通过 `token-set-context` 内的协调层完成 refresh material 解封、令牌刷新、状态重建与返回 DTO 生成
+- 提供短期 metadata redemption 存储与兑换能力
+- callback 阶段通过 `oidc-client` 的 pending OAuth extra data 回传最终 `redirect_uri`
+
+失败语义：
+
+- callback：token snapshot 与 metadata snapshot 都不允许失败
+- refresh：token delta 不允许失败；metadata delta 允许失败，失败时视为“空 delta”
+
+当前实现状态：
+
+- `apps/server` 已接入：
+  - `GET /auth/login/token-set`
+  - `GET /auth/callback/token-set`
+  - `POST /auth/refresh`
+  - `POST /auth/metadata/redeem`
+- callback 当前返回完整 token snapshot fragment，并签发 `metadata_redemption_id`
+- refresh 当前返回 token delta fragment，并在 metadata 有变化时签发 `metadata_redemption_id`
+- refresh 请求体当前使用：
+  - `current_auth_state`
+- metadata redemption 默认实现当前为 `MokaPendingAuthStateMetadataRedemptionStore`
 
 重要说明：
 
@@ -102,13 +150,20 @@
 
 ## 共享的未来抽象
 
-未来的可复用认证上下文层可能应定义：
+未来的可复用认证上下文层可能应定义或已经开始具备：
 
 - `AuthenticatedPrincipal`
-- `ManagedTokenSet`
 - `SealedRefreshMaterial`
 - `AuthenticationSource`
 - `BearerPropagationPolicy`
+- `TokenPropagator`
+- `AuthTokenSnapshot`
+- `AuthTokenDelta`
+- `AuthStateMetadataSnapshot`
+- `AuthStateMetadataDelta`
+- `AuthStateSnapshot`
+- `AuthStateDelta`
+- `PendingAuthStateMetadataRedemption`
 
 ## Bearer 传播策略
 

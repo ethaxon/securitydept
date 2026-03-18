@@ -3,14 +3,17 @@ use std::collections::HashMap;
 use axum::{
     Extension, Json,
     extract::Query,
-    http::HeaderMap,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
 use securitydept_core::{
     creds_manage::models::UserInfo,
     oidc::{OidcCodeCallbackSearchParams, OidcError},
     session_context::{SessionContext, SessionPrincipal},
-    token_set_context::{RefreshTokenPayload, TokenRefreshRedirectFragment},
+    token_set_context::{
+        AuthStateCoordinator, MetadataRedemptionRequest, MetadataRedemptionResponse,
+        OidcAuthStateOptions, TokenRefreshPayload, TokenSetAuthorizeQuery,
+    },
 };
 use serde_json::Value;
 use tower_sessions::Session;
@@ -66,6 +69,40 @@ pub async fn login(
     Ok(Redirect::to("/").into_response())
 }
 
+/// GET /auth/login/token-set -- redirect to OIDC provider for stateless
+/// token-set mode.
+pub async fn login_token_set(
+    Extension(state): Extension<ServerState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenSetAuthorizeQuery>,
+) -> Result<Response, ServerError> {
+    let oidc = state.oidc_client()?;
+    let external_base_url = state
+        .config
+        .server
+        .external_base_url
+        .resolve_url(
+            &headers,
+            &state.config.server.host,
+            state.config.server.port,
+        )
+        .map_err(|e| OidcError::RedirectUrl { source: e })?;
+    let coordinator = AuthStateCoordinator::new(&state.token_set_context, oidc);
+    let authorization_request = coordinator
+        .authorize_code_flow(
+            &external_base_url,
+            &state.pending_oauth,
+            query.redirect_uri.as_deref(),
+            Some("/auth/callback/token-set"),
+        )
+        .await
+        .map_err(|e| ServerError::InvalidConfig {
+            message: e.to_string(),
+        })?;
+
+    Ok(Redirect::temporary(authorization_request.authorization_url.as_str()).into_response())
+}
+
 /// GET /auth/callback
 /// Handle OIDC code exchange.
 pub async fn callback(
@@ -109,6 +146,45 @@ pub async fn callback(
     Ok(Redirect::to("/").into_response())
 }
 
+/// GET /auth/callback/token-set
+/// Handle OIDC code exchange for stateless token-set mode.
+pub async fn callback_token_set(
+    Extension(state): Extension<ServerState>,
+    headers: HeaderMap,
+    Query(search_params): Query<OidcCodeCallbackSearchParams>,
+) -> Result<Response, ServerError> {
+    let oidc = state.oidc_client()?;
+    let external_base_url = state
+        .config
+        .server
+        .external_base_url
+        .resolve_url(
+            &headers,
+            &state.config.server.host,
+            state.config.server.port,
+        )
+        .map_err(|e| OidcError::RedirectUrl { source: e })?;
+    let coordinator = AuthStateCoordinator::new(&state.token_set_context, oidc);
+    let coordination_result = coordinator
+        .handle_code_callback_with_metadata_store(
+            search_params,
+            &external_base_url,
+            &state.pending_oauth,
+            &OidcAuthStateOptions::default(),
+            state.metadata_redemption_store.as_ref(),
+            Some("/auth/callback/token-set"),
+        )
+        .await
+        .map_err(|e| ServerError::InvalidConfig {
+            message: e.to_string(),
+        })?;
+    let mut redirect_uri = coordination_result.redirect_uri;
+    let fragment = coordination_result.redirect_fragment.to_fragment();
+
+    redirect_uri.set_fragment(Some(&fragment));
+    Ok(Redirect::to(redirect_uri.as_str()).into_response())
+}
+
 /// POST /auth/logout -- destroy session.
 pub async fn logout(
     Extension(state): Extension<ServerState>,
@@ -122,40 +198,41 @@ pub async fn logout(
 
 pub async fn refresh_token(
     Extension(state): Extension<ServerState>,
-    Json(payload): Json<RefreshTokenPayload>,
+    Json(payload): Json<TokenRefreshPayload>,
 ) -> ServerResult<Response> {
     let oidc_client = state.oidc_client()?;
-    let refresh_token = state
-        .token_set_context
-        .unseal_refresh_token(&payload.refresh_token)
+    let coordinator = AuthStateCoordinator::new(&state.token_set_context, oidc_client);
+    let coordination_result = coordinator
+        .refresh_from_payload_with_metadata_store(
+            &payload,
+            Some(state.metadata_redemption_store.as_ref()),
+        )
+        .await
         .map_err(|e| ServerError::InvalidConfig {
             message: e.to_string(),
         })?;
-    let result = oidc_client.handle_token_refresh(refresh_token).await?;
-    let mut redirect_uri =
-        url::Url::parse(&payload.redirect_uri).map_err(|e| ServerError::InvalidConfig {
-            message: format!("invalid redirect_uri: {e}"),
-        })?;
-
-    let sealed_refresh_token = result
-        .refresh_token
-        .as_deref()
-        .map(|value| state.token_set_context.seal_refresh_token(value))
-        .transpose()
-        .map_err(|e| ServerError::InvalidConfig {
-            message: e.to_string(),
-        })?;
-
-    let fragment = TokenRefreshRedirectFragment {
-        access_token: result.access_token,
-        id_token: result.id_token,
-        sealed_refresh_token,
-        access_token_expires_at: result.access_token_expiration,
-    }
-    .to_fragment();
+    let mut redirect_uri = coordination_result.redirect_uri;
+    let fragment = coordination_result.redirect_fragment.to_fragment();
 
     redirect_uri.set_fragment(Some(&fragment));
     Ok(Redirect::to(redirect_uri.as_str()).into_response())
+}
+
+pub async fn redeem_metadata(
+    Extension(state): Extension<ServerState>,
+    Json(payload): Json<MetadataRedemptionRequest>,
+) -> ServerResult<Response> {
+    let metadata = state
+        .metadata_redemption_store
+        .redeem(&payload.metadata_redemption_id, chrono::Utc::now())
+        .map_err(|e| ServerError::InvalidConfig {
+            message: e.to_string(),
+        })?;
+
+    match metadata {
+        Some(metadata) => Ok(Json(MetadataRedemptionResponse { metadata }).into_response()),
+        None => Ok(StatusCode::NOT_FOUND.into_response()),
+    }
 }
 
 /// GET /auth/me -- return current user info.

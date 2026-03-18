@@ -15,9 +15,12 @@ use crate::{middleware::require_session, state::ServerState};
 pub fn build_router(state: ServerState) -> Router {
     let auth_routes = Router::new()
         .route("/auth/login", get(auth::login))
+        .route("/auth/login/token-set", get(auth::login_token_set))
         .route("/auth/callback", get(auth::callback))
+        .route("/auth/callback/token-set", get(auth::callback_token_set))
         .route("/auth/logout", post(auth::logout))
         .route("/auth/refresh", post(auth::refresh_token))
+        .route("/auth/metadata/redeem", post(auth::redeem_metadata))
         .route("/auth/me", get(auth::me));
 
     let api_routes = Router::new()

@@ -43,6 +43,10 @@ pub struct OidcClientConfig {
     #[cfg(feature = "default-pending-store")]
     #[serde(default)]
     pub pending_store: Option<MokaPendingOauthStoreConfig>,
+    /// Default interval to poll the device token endpoint if the provider
+    /// doesn't specify one.
+    #[serde(default = "default_device_poll_interval", with = "humantime_serde")]
+    pub device_poll_interval: std::time::Duration,
 }
 
 impl OidcClientConfig {
@@ -114,4 +118,8 @@ pub fn default_id_token_signing_alg_values_supported() -> Vec<CoreJwsSigningAlgo
 
 pub fn default_redirect_url() -> String {
     "/auth/callback".to_string()
+}
+
+pub fn default_device_poll_interval() -> std::time::Duration {
+    std::time::Duration::from_secs(5)
 }

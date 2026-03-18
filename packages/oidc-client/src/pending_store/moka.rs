@@ -67,6 +67,7 @@ impl PendingOauthStore for MokaPendingOauthStore {
         state: String,
         nonce: String,
         code_verifier: Option<String>,
+        extra_data: Option<serde_json::Value>,
     ) -> OidcResult<()> {
         self.inner
             .insert(
@@ -74,6 +75,7 @@ impl PendingOauthStore for MokaPendingOauthStore {
                 PendingOauth {
                     nonce,
                     code_verifier,
+                    extra_data,
                 },
             )
             .await;
@@ -104,12 +106,14 @@ mod tests {
                 "state1".to_string(),
                 "nonce1".to_string(),
                 Some("verifier1".to_string()),
+                None,
             )
             .await?;
 
         let result = store.take("state1").await?.unwrap();
         assert_eq!(result.nonce, "nonce1");
         assert_eq!(result.code_verifier, Some("verifier1".to_string()));
+        assert!(result.extra_data.is_none());
 
         // Should be None after take (one-time use)
         assert!(store.take("state1").await?.is_none());

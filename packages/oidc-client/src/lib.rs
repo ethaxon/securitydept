@@ -9,9 +9,10 @@ pub use client::OidcClient;
 pub use config::OidcClientConfig;
 pub use error::{OidcError, OidcResult};
 pub use models::{
-    ClaimsCheckResult, ExtraOidcClaims, IdTokenClaimsWithExtra, OidcCodeCallbackSearchParams,
-    OidcCodeExchangeResult, OidcCodeFlowAuthorizationRequest, OidcDeviceAuthorizationResult,
-    OidcRevocableToken, OidcTokenSet, UserInfoClaimsWithExtra,
+    ClaimsCheckResult, ExtraOidcClaims, IdTokenClaimsWithExtra, OidcCodeCallbackResult,
+    OidcCodeCallbackSearchParams, OidcCodeExchangeResult, OidcCodeFlowAuthorizationRequest,
+    OidcDeviceAuthorizationResult, OidcDeviceTokenPollResult, OidcDeviceTokenResult,
+    OidcRefreshTokenResult, OidcRevocableToken, OidcTokenSet, UserInfoClaimsWithExtra,
 };
 #[cfg(feature = "moka-pending-store")]
 pub use pending_store::{MokaPendingOauthStore, MokaPendingOauthStoreConfig};
