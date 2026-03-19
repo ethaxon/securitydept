@@ -46,7 +46,7 @@ SecurityDept should provide three explicit auth-context modes above the lower-le
 
 1. Basic auth zone mode
 2. Cookie-session mode
-3. Stateless token-set mode (`id_token + access_token + sealed_refresh_token`)
+3. Stateless token-set mode (token snapshot/delta + metadata snapshot/delta)
 
 Those modes are deployment-oriented compositions, not replacements for `oidc-client` or `oauth-resource-server`.
 

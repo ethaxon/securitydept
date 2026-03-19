@@ -47,7 +47,7 @@
    - 规范化主体形状
    - 可选重定向助手 SDK
 7. 实现无状态 token-set 模式
-   - `id_token + access_token + sealed_refresh_token`
+   - token snapshot / delta 与 metadata snapshot / delta
    - 前端令牌生命周期规则
    - 多提供者令牌管理
    - 同资源转发的 bearer 传播策略
@@ -57,7 +57,7 @@
 
 - 基础认证区域：已文档化，未完全产品化
 - cookie-session：参考实现已存在，可复用提取待定
-- 无状态 token-set 模式：计划中
+- 无状态 token-set 模式：服务端与共享 crate 基本落地，客户端 SDK 待实现
 
 ## 阶段 4：前端 SDK
 
@@ -68,7 +68,7 @@
 
 状态：
 
-- 计划中
+- token-set SDK 待实现，其余模式仍在计划中
 
 ## 阶段 5：本地凭证操作
 

@@ -47,7 +47,7 @@ Status:
    - normalized principal shape
    - optional redirect helper SDK
 7. Implement stateless token-set mode
-   - `id_token + access_token + sealed_refresh_token`
+   - token snapshot / delta plus metadata snapshot / delta
    - frontend token lifecycle rules
    - multi-provider token management
    - bearer propagation policy for same-resource forwarding
@@ -57,7 +57,7 @@ Status:
 
 - basic auth zone: documented, not fully productized
 - cookie-session: reference implementation exists, reusable extraction pending
-- stateless token-set mode: planned
+- stateless token-set mode: core server and shared crate are in place, client SDK remains pending
 
 ## Phase 4: Frontend SDKs
 
@@ -68,7 +68,7 @@ Status:
 
 Status:
 
-- planned
+- token-set SDK remains pending; the other modes are still planned
 
 ## Phase 5: Local Credential Operations
 

@@ -24,8 +24,8 @@ use crate::{
     state::ServerState,
 };
 
-/// GET /auth/login -- redirect to OIDC provider, or create dev session when
-/// OIDC is disabled.
+/// GET /auth/session/login -- redirect to OIDC provider, or create dev session
+/// when OIDC is disabled.
 pub async fn login(
     Extension(state): Extension<ServerState>,
     session: Session,
@@ -69,7 +69,7 @@ pub async fn login(
     Ok(Redirect::to("/").into_response())
 }
 
-/// GET /auth/login/token-set -- redirect to OIDC provider for stateless
+/// GET /auth/token-set/login -- redirect to OIDC provider for stateless
 /// token-set mode.
 pub async fn login_token_set(
     Extension(state): Extension<ServerState>,
@@ -93,7 +93,7 @@ pub async fn login_token_set(
             &external_base_url,
             &state.pending_oauth,
             query.redirect_uri.as_deref(),
-            Some("/auth/callback/token-set"),
+            Some("/auth/token-set/callback"),
         )
         .await
         .map_err(|e| ServerError::InvalidConfig {
@@ -103,7 +103,7 @@ pub async fn login_token_set(
     Ok(Redirect::temporary(authorization_request.authorization_url.as_str()).into_response())
 }
 
-/// GET /auth/callback
+/// GET /auth/session/callback
 /// Handle OIDC code exchange.
 pub async fn callback(
     Extension(state): Extension<ServerState>,
@@ -146,7 +146,7 @@ pub async fn callback(
     Ok(Redirect::to("/").into_response())
 }
 
-/// GET /auth/callback/token-set
+/// GET /auth/token-set/callback
 /// Handle OIDC code exchange for stateless token-set mode.
 pub async fn callback_token_set(
     Extension(state): Extension<ServerState>,
@@ -172,7 +172,7 @@ pub async fn callback_token_set(
             &state.pending_oauth,
             &OidcAuthStateOptions::default(),
             state.metadata_redemption_store.as_ref(),
-            Some("/auth/callback/token-set"),
+            Some("/auth/token-set/callback"),
         )
         .await
         .map_err(|e| ServerError::InvalidConfig {
@@ -185,7 +185,7 @@ pub async fn callback_token_set(
     Ok(Redirect::to(redirect_uri.as_str()).into_response())
 }
 
-/// POST /auth/logout -- destroy session.
+/// POST /auth/session/logout -- destroy session.
 pub async fn logout(
     Extension(state): Extension<ServerState>,
     session: Session,
@@ -235,7 +235,7 @@ pub async fn redeem_metadata(
     }
 }
 
-/// GET /auth/me -- return current user info.
+/// GET /auth/session/me -- return current user info.
 pub async fn me(
     Extension(state): Extension<ServerState>,
     session: Session,

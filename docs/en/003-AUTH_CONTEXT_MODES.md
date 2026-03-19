@@ -134,10 +134,14 @@ Failure semantics:
 Current implementation status:
 
 - `apps/server` already wires:
-  - `GET /auth/login/token-set`
-  - `GET /auth/callback/token-set`
-  - `POST /auth/refresh`
-  - `POST /auth/metadata/redeem`
+  - `GET /auth/session/login`
+  - `GET /auth/session/callback`
+  - `POST /auth/session/logout`
+  - `GET /auth/session/me`
+  - `GET /auth/token-set/login`
+  - `GET /auth/token-set/callback`
+  - `POST /auth/token-set/refresh`
+  - `POST /auth/token-set/metadata/redeem`
 - callback currently returns a full token snapshot fragment and issues `metadata_redemption_id`
 - refresh currently returns a token delta fragment and issues `metadata_redemption_id` when metadata changes
 - the refresh request payload now uses:

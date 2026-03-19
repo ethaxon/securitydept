@@ -24,8 +24,8 @@ use crate::error::{ServerError, ServerResult};
 pub struct ServerConfig {
     #[serde(default)]
     pub server: ServerCoreConfig,
-    /// When absent (`None`), OIDC is disabled; /auth/login will create a dev
-    /// session.
+    /// When absent (`None`), OIDC is disabled; /auth/session/login will create
+    /// a dev session.
     #[serde(default)]
     pub oidc: Option<OidcClientConfig>,
     #[serde(default)]

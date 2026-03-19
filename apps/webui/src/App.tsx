@@ -30,7 +30,7 @@ const queryClient = new QueryClient({
 // Check auth status; redirect to /login if unauthenticated
 async function requireAuth() {
 	try {
-		await api.get("/auth/me");
+		await api.get("/auth/session/me");
 	} catch (e) {
 		if (e instanceof ApiError && e.status === 401) {
 			throw redirect({ to: "/login" });

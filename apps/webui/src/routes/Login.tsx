@@ -12,7 +12,7 @@ export function LoginPage() {
 					</p>
 				</div>
 				<a
-					href="/auth/login"
+					href="/auth/session/login"
 					className="flex w-full items-center justify-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
 				>
 					Sign in

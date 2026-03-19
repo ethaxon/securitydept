@@ -111,23 +111,24 @@
 
 目标：
 
-- `id_token + access_token + sealed_refresh_token`
+- token snapshot / delta 与 metadata snapshot / delta 的组合
 - 无需服务器端浏览器会话存储
 - 适用于分布式 SPA 和网格状代理场景
 - 后期前端 TS SDK 用于令牌存储、头注入、刷新和登录重定向
 
 当前状态：
 
-- 计划中
-- 底层组件已存在，但尚无专用的 token-set 上下文层
+- 核心服务端与共享 crate 已实现
+- `securitydept-token-set-context` 已提供专用 token-set 上下文层
+- `apps/server` 已接入 `/auth/token-set/*` 路径完成 callback、refresh 与 metadata redemption
+- 客户端 SDK 仍待单独实现
 
 缺失部分：
 
-- token-set 模型和生命周期规则
-- 前端所有状态的密封刷新令牌处理契约
-- 从 token-set 规范化主体提取
-- 同资源转发的 bearer 传播策略
+- 客户端 SDK 的状态合并、持久化与自动刷新
+- 浏览器侧对 `metadata_redemption_id` 的兑换与回退策略落地
 - 用于多提供者令牌管理的 TS SDK
+- 更完整的 token exchange / downstream propagation 场景
 
 ## 7. creds-manage
 

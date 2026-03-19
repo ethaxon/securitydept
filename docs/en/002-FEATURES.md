@@ -111,23 +111,24 @@ Primary references:
 
 Target:
 
-- `id_token + access_token + sealed_refresh_token`
+- composition of token snapshot/delta and metadata snapshot/delta
 - no server-side browser session storage
 - suitable for distributed SPA and mesh-like proxy scenarios
 - later frontend TS SDK for token storage, header injection, refresh, and login redirects
 
 Current status:
 
-- planned
-- lower-level pieces exist, but no dedicated token-set context layer yet
+- core server support and shared crate are implemented
+- `securitydept-token-set-context` now provides a dedicated token-set context layer
+- `apps/server` already exposes `/auth/token-set/*` routes for callback, refresh, and metadata redemption
+- the client SDK is still planned as a separate follow-up
 
 Missing pieces:
 
-- token-set model and lifecycle rules
-- sealed refresh-token handling contract for frontend-owned state
-- normalized principal extraction from token sets
-- bearer propagation policy for same-resource forwarding
+- client-side merge, persistence, and background refresh behavior
+- browser-side redemption and fallback handling for `metadata_redemption_id`
 - TS SDK for multi-provider token management
+- more complete token-exchange / downstream propagation scenarios
 
 ## 7. creds-manage
 

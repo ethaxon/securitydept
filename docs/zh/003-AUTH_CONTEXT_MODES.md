@@ -134,10 +134,14 @@
 当前实现状态：
 
 - `apps/server` 已接入：
-  - `GET /auth/login/token-set`
-  - `GET /auth/callback/token-set`
-  - `POST /auth/refresh`
-  - `POST /auth/metadata/redeem`
+  - `GET /auth/session/login`
+  - `GET /auth/session/callback`
+  - `POST /auth/session/logout`
+  - `GET /auth/session/me`
+  - `GET /auth/token-set/login`
+  - `GET /auth/token-set/callback`
+  - `POST /auth/token-set/refresh`
+  - `POST /auth/token-set/metadata/redeem`
 - callback 当前返回完整 token snapshot fragment，并签发 `metadata_redemption_id`
 - refresh 当前返回 token delta fragment，并在 metadata 有变化时签发 `metadata_redemption_id`
 - refresh 请求体当前使用：

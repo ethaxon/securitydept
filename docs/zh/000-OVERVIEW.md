@@ -46,7 +46,7 @@ SecurityDept 应在底层 crate 之上提供三种明确的认证上下文模式
 
 1. 基础认证区域模式（basic auth zone mode）
 2. Cookie-session 模式
-3. 无状态 token-set 模式（`id_token + access_token + sealed_refresh_token`）
+3. 无状态 token-set 模式（token snapshot/delta + metadata snapshot/delta）
 
 这些模式是面向部署的组合，而不是 `oidc-client` 或 `oauth-resource-server` 的替代品。
 

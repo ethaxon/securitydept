@@ -10,7 +10,7 @@ export interface UserInfo {
 export function useMe() {
 	return useQuery<UserInfo>({
 		queryKey: ["auth", "me"],
-		queryFn: () => api.get("/auth/me"),
+		queryFn: () => api.get("/auth/session/me"),
 		retry: false,
 	});
 }
@@ -18,7 +18,7 @@ export function useMe() {
 export function useLogout() {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: () => api.post("/auth/logout", {}),
+		mutationFn: () => api.post("/auth/session/logout", {}),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["auth"] });
 			window.location.href = "/login";

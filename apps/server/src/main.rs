@@ -74,7 +74,7 @@ async fn main() -> ServerResult<()> {
             OidcClient::from_config(oidc_config.clone()).await?,
         ))
     } else {
-        info!("OIDC disabled (no [oidc] section); /auth/login will create a dev session");
+        info!("OIDC disabled (no [oidc] section); /auth/session/login will create a dev session");
         None
     };
 
