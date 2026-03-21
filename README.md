@@ -27,12 +27,16 @@ The current repository already contains major parts of the lower layers and a wo
   - reusable basic-auth challenge-zone configuration and response helpers
 - `securitydept-session-context`
   - reusable cookie-session auth context helpers built on tower-sessions
+- `securitydept-auth-runtime`
+  - route-ready session and token-set auth orchestration for the reference server
 - `securitydept-oauth-provider`
   - shared provider runtime for discovery metadata, JWKS, and introspection with cache and refresh
 - `securitydept-oidc-client`
   - OIDC client / relying-party flows, callback handling, refresh, claims normalization
 - `securitydept-oauth-resource-server`
   - bearer access-token verification for JWT, JWE, and opaque token introspection
+- `securitydept-token-set-context`
+  - reusable token-set auth-state, redirect, metadata-redemption, and token-propagation helpers
 - `securitydept-realip`
   - trusted-proxy/provider-aware client IP resolution for stacked CDN and reverse-proxy deployments
 - `securitydept-creds-manage`
@@ -50,7 +54,7 @@ SecurityDept should eventually support three top-level authentication context mo
 
 1. Basic auth zone mode
 2. Cookie-session mode
-3. Stateless `id_token + access_token + sealed_refresh_token` mode
+3. Stateless token-set mode
 
 These modes are intentionally above the current `oidc-client` and `oauth-resource-server` crates. They should compose lower layers instead of collapsing responsibilities into a single crate.
 
@@ -62,7 +66,7 @@ These modes are intentionally above the current `oidc-client` and `oauth-resourc
   - OAuth provider runtime
   - OAuth resource server verifier
   - creds-manage for basic auth and static tokens
-  - reference server app with cookie-session flow
+  - reference server app with cookie-session, basic-auth zone, and stateless token-set flows
 - Planned / partially specified
   - basic auth zone mode as a first-class auth-context mode
   - stateless token-set auth-context mode
@@ -86,7 +90,7 @@ These modes are intentionally above the current `oidc-client` and `oauth-resourc
 ## Development
 
 ```bash
-cp config.toml.example config.toml
+cp config.example.toml config.toml
 just dev-server
 just dev-webui
 ```

@@ -27,12 +27,16 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
   - 可复用的 basic-auth challenge-zone 配置与响应辅助
 - `securitydept-session-context`
   - 基于 tower-sessions 的可复用 cookie-session 认证上下文辅助
+- `securitydept-auth-runtime`
+  - 面向参考服务器的 session 与 token-set 路由级认证编排
 - `securitydept-oauth-provider`
   - 共享提供者运行时，支持发现元数据、JWKS 和内省（introspection），带有缓存和刷新
 - `securitydept-oidc-client`
   - OIDC 客户端/依赖方（relying-party）流程、回调处理、刷新、声明规范化
 - `securitydept-oauth-resource-server`
   - 用于 JWT、JWE 和不透明令牌内省的 bearer 访问令牌验证
+- `securitydept-token-set-context`
+  - 可复用的 token-set 认证状态、redirect、metadata redemption 与 token 传播辅助
 - `securitydept-realip`
   - 面向多层 CDN 与反向代理部署的 trusted-proxy/provider 感知客户端 IP 解析
 - `securitydept-creds-manage`
@@ -50,7 +54,7 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
 
 1. 基础认证区域模式（basic auth zone mode）
 2. Cookie-session 模式
-3. 无状态的 `id_token + access_token + sealed_refresh_token` 模式
+3. 无状态 token-set 模式
 
 这些模式有意设计在当前的 `oidc-client` 和 `oauth-resource-server` crate 之上。它们应该组合底层功能，而不是将职责合并到单个 crate 中。
 
@@ -62,7 +66,7 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
   - OAuth 提供者运行时
   - OAuth 资源服务器验证器
   - 用于基础认证和静态令牌的 creds-manage
-  - 带有 cookie-session 流程的参考服务器应用
+  - 带有 cookie-session、基础认证区域和无状态 token-set 流程的参考服务器应用
 - 计划中/部分已规范
   - 基础认证区域模式作为一等认证上下文模式
   - 无状态 token-set 认证上下文模式
@@ -86,7 +90,7 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
 ## 开发
 
 ```bash
-cp config.toml.example config.toml
+cp config.example.toml config.toml
 just dev-server
 just dev-webui
 ```
