@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-core"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 edition = "2024"
 
 [features]
@@ -9,6 +9,7 @@ default = []
 # IMPORTANT: Any new feature added to this crate must also be added to `full`.
 full = [
     "utils",
+    "auth-runtime",
     "reexport-oauth2",
     "reexport-openidconnect",
     "oauth-provider",
@@ -34,6 +35,12 @@ full = [
     "creds-manage-migration",
 ]
 utils = ["dep:securitydept-utils"]
+auth-runtime = [
+    "dep:securitydept-auth-runtime",
+    "oidc-client",
+    "session-context",
+    "token-set-context",
+]
 reexport-oauth2 = ["dep:oauth2"]
 reexport-openidconnect = ["dep:openidconnect", "reexport-oauth2"]
 oauth-provider = ["dep:securitydept-oauth-provider", "reexport-openidconnect"]
@@ -88,6 +95,7 @@ creds-manage-migration = ["creds-manage", "securitydept-creds-manage/migration"]
 
 [dependencies]
 securitydept-utils = { path = "../utils", optional = true }
+securitydept-auth-runtime = { path = "../auth-runtime", optional = true }
 securitydept-oauth-provider = { path = "../oauth-provider", optional = true }
 securitydept-oidc-client = { path = "../oidc-client", optional = true }
 securitydept-oauth-resource-server = { path = "../oauth-resource-server", optional = true }

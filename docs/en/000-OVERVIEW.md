@@ -31,6 +31,12 @@ That requires a clean split between:
   - shared remote-provider connectivity and cache runtime
 - `securitydept-oidc-client`
   - OIDC relying-party client behavior
+- `securitydept-auth-runtime`
+  - route-ready session and token-set auth orchestration for `apps/server`
+- `securitydept-session-context`
+  - reusable session context abstraction for cookie-session mode
+- `securitydept-token-set-context`
+  - reusable auth-state, redirect, metadata-redemption, and token-propagation layer for stateless token-set mode
 - `securitydept-oauth-resource-server`
   - bearer-token verification behavior
 - `securitydept-realip`
@@ -38,7 +44,7 @@ That requires a clean split between:
 - `securitydept-creds-manage`
   - local basic-auth and static-token management
 - `securitydept-server`
-  - reference app that currently validates mainly cookie-session and local-credential scenarios
+  - reference app that wires the supported auth-context modes and local-credential scenarios together
 
 ## Target Auth Context Modes
 

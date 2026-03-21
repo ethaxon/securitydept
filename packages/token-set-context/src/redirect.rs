@@ -101,6 +101,17 @@ impl TokenSetRedirectUriConfig {
 
         Ok(())
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct TokenSetRedirectUriResolver {
+    config: TokenSetRedirectUriConfig,
+}
+
+impl TokenSetRedirectUriResolver {
+    pub fn from_config(config: TokenSetRedirectUriConfig) -> Self {
+        Self { config }
+    }
 
     pub fn resolve_redirect_uri(
         &self,
@@ -108,7 +119,7 @@ impl TokenSetRedirectUriConfig {
     ) -> Result<Url, TokenSetRedirectUriError> {
         match requested_redirect_uri {
             Some(requested_redirect_uri) => {
-                if !self.dynamic_redirect_uri_enabled {
+                if !self.config.dynamic_redirect_uri_enabled {
                     return Err(TokenSetRedirectUriError::InvalidRedirectUri {
                         message: "dynamic redirect uri is disabled".to_string(),
                     });
@@ -121,9 +132,10 @@ impl TokenSetRedirectUriConfig {
                 })?;
 
                 if self
+                    .config
                     .allowed_redirect_uris
                     .iter()
-                    .any(|rule| rule_matches(rule, redirect_uri.as_str()))
+                    .any(|rule| Self::rule_matches(rule, redirect_uri.as_str()))
                 {
                     Ok(redirect_uri)
                 } else {
@@ -136,6 +148,7 @@ impl TokenSetRedirectUriConfig {
                 }
             }
             None => self
+                .config
                 .default_redirect_uri
                 .as_deref()
                 .ok_or_else(|| TokenSetRedirectUriError::InvalidRedirectUri {
@@ -149,12 +162,12 @@ impl TokenSetRedirectUriConfig {
                 }),
         }
     }
-}
 
-fn rule_matches(rule: &TokenSetRedirectUriRule, redirect_uri: &str) -> bool {
-    match rule {
-        TokenSetRedirectUriRule::All => true,
-        TokenSetRedirectUriRule::Regex { value } => value.is_match(redirect_uri),
-        TokenSetRedirectUriRule::Strict { value } => value == redirect_uri,
+    fn rule_matches(rule: &TokenSetRedirectUriRule, redirect_uri: &str) -> bool {
+        match rule {
+            TokenSetRedirectUriRule::All => true,
+            TokenSetRedirectUriRule::Regex { value } => value.is_match(redirect_uri),
+            TokenSetRedirectUriRule::Strict { value } => value == redirect_uri,
+        }
     }
 }

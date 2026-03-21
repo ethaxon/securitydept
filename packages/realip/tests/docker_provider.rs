@@ -23,7 +23,6 @@ fn unique_network_name() -> String {
 }
 
 #[tokio::test]
-#[ignore = "requires a reachable Docker daemon"]
 async fn docker_provider_loads_configured_network_subnets() {
     let docker = Docker::connect_with_local_defaults().unwrap();
     let network_name = unique_network_name();

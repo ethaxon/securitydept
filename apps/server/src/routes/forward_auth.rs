@@ -76,13 +76,19 @@ async fn check_forward_auth(
     group: &str,
     headers: &HeaderMap,
 ) -> Result<String, StatusCode> {
-    let Some(group_obj) = state.store.find_group_by_name(group).await else {
+    let Some(group_obj) = state.creds_manage_store.find_group_by_name(group).await else {
         warn!(group = %group, "Forward auth rejected: group not found");
         return Err(StatusCode::UNAUTHORIZED);
     };
 
-    let basic_entries = state.store.basic_entries_by_group_id(&group_obj.id).await;
-    let token_entries = state.store.token_entries_by_group_id(&group_obj.id).await;
+    let basic_entries = state
+        .creds_manage_store
+        .basic_entries_by_group_id(&group_obj.id)
+        .await;
+    let token_entries = state
+        .creds_manage_store
+        .token_entries_by_group_id(&group_obj.id)
+        .await;
 
     if basic_entries.is_empty() && token_entries.is_empty() {
         warn!(

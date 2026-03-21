@@ -10,7 +10,7 @@ use clap::Parser;
 use securitydept_core::{
     creds_manage::{migrations::Migrator, store::CredsManageStore},
     oidc::OidcClient,
-    token_set_context::{MokaPendingAuthStateMetadataRedemptionStore, TokenSetContext},
+    token_set_context::TokenSetContext,
 };
 use snafu::ResultExt;
 use tower_sessions_memory_store::MemoryStore;
@@ -20,7 +20,7 @@ use tracing_subscriber::EnvFilter;
 use crate::{
     config::ServerConfig,
     error::{ServerBootSnafu, ServerResult},
-    state::{MokaPendingOauthStore, ServerState},
+    state::ServerState,
 };
 
 #[derive(Parser)]
@@ -78,37 +78,31 @@ async fn main() -> ServerResult<()> {
         None
     };
 
-    let session_config = config.session.clone();
-    let session_store = MemoryStore::default();
+    let session_context_config = config.session_context.clone();
+    let session_context_store = MemoryStore::default();
     let token_set_context = Arc::new(
-        TokenSetContext::from_config(&config.token_set_context).map_err(|e| {
+        TokenSetContext::from_config(config.token_set_context.clone()).map_err(|e| {
             crate::error::ServerError::InvalidConfig {
                 message: e.to_string(),
             }
         })?,
     );
 
-    let pending_oauth = MokaPendingOauthStore::from_config_opt(
-        config.oidc.as_ref().and_then(|o| o.pending_store.as_ref()),
-    );
-    let metadata_redemption_store = Arc::new(MokaPendingAuthStateMetadataRedemptionStore::new(
-        config.token_set_context.metadata_redemption.clone(),
-    ));
-
-    let state = ServerState {
-        config: Arc::new(config.clone()),
-        store: Arc::new(store),
-        session_config: session_config.clone(),
-        token_set_context,
-        metadata_redemption_store,
-        oidc,
-        pending_oauth,
-    };
-
-    let app = routes::build_router(state).layer(session_config.session_layer(session_store));
-
     let bind_addr = format!("{}:{}", config.server.host, config.server.port);
     info!(addr = %bind_addr, "Starting server");
+
+    let state = ServerState {
+        creds_manage_store: Arc::new(store),
+        token_set_context,
+        oidc,
+        config: Arc::new(config),
+    };
+
+    let app =
+        routes::build_router(state).layer(securitydept_core::session_context::build_session_layer(
+            &session_context_config,
+            session_context_store,
+        ));
 
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await

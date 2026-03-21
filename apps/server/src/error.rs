@@ -3,10 +3,12 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use securitydept_core::{
+    auth_runtime::AuthRuntimeError,
     creds::CredsError,
     creds_manage::CredsManageError,
     oidc::OidcError,
     session_context::SessionContextError,
+    token_set_context::TokenSetContextError,
     utils::{
         error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
         http::ToHttpStatus,
@@ -34,6 +36,10 @@ pub enum ServerError {
     Creds { source: CredsError },
     #[snafu(transparent)]
     SessionContext { source: SessionContextError },
+    #[snafu(transparent)]
+    TokenSetContext { source: TokenSetContextError },
+    #[snafu(transparent)]
+    AuthRuntime { source: AuthRuntimeError },
 }
 
 impl ToHttpStatus for ServerError {
@@ -57,6 +63,8 @@ impl ToErrorPresentation for ServerError {
             ServerError::Oidc { source } => source.to_error_presentation(),
             ServerError::Creds { source } => source.to_error_presentation(),
             ServerError::SessionContext { source } => source.to_error_presentation(),
+            ServerError::TokenSetContext { source } => source.to_error_presentation(),
+            ServerError::AuthRuntime { source } => source.to_error_presentation(),
             ServerError::ConfigLoad { .. }
             | ServerError::InvalidConfig { .. }
             | ServerError::ServerBoot { .. } => ErrorPresentation::new(

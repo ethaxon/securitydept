@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 
 use securitydept_oidc_client::{OidcCodeCallbackResult, OidcRefreshTokenResult};
-use serde_json::{Value, json};
+use serde_json::Value;
 use typed_builder::TypedBuilder;
 
 use crate::{
-    AuthStateMetadataSnapshot, AuthStateSnapshot, AuthTokenSnapshot, AuthenticatedPrincipal,
-    AuthenticationSource, AuthenticationSourceKind, BearerPropagationPolicy, SealedRefreshMaterial,
-    TokenSetContext, TokenSetContextError,
+    AuthStateMetadataDelta, AuthStateMetadataSnapshot, AuthStateSnapshot, AuthTokenSnapshot,
+    AuthenticatedPrincipal, AuthenticationSource, AuthenticationSourceKind,
+    BearerPropagationPolicy, CurrentAuthStateMetadataSnapshotPartial,
+    CurrentAuthenticationSourcePartial, PendingAuthStateMetadataRedemptionStore,
+    SealedRefreshMaterial, TokenSetContext, TokenSetContextError,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, TypedBuilder, Default)]
@@ -22,15 +24,18 @@ pub struct OidcAuthStateOptions {
     pub metadata_attributes: HashMap<String, Value>,
 }
 
-impl TokenSetContext {
+impl<MS> TokenSetContext<MS>
+where
+    MS: PendingAuthStateMetadataRedemptionStore,
+{
     pub fn auth_state_snapshot_from_code_callback(
         &self,
         result: &OidcCodeCallbackResult,
         options: &OidcAuthStateOptions,
     ) -> Result<AuthStateSnapshot, TokenSetContextError> {
-        let mut source_attributes = options.source_attributes.clone();
-        push_source_kind_history(
-            &mut source_attributes,
+        let mut kind_history = Vec::new();
+        push_kind_history(
+            &mut kind_history,
             &AuthenticationSourceKind::OidcAuthorizationCode,
         );
 
@@ -50,7 +55,8 @@ impl TokenSetContext {
                     kind: AuthenticationSourceKind::OidcAuthorizationCode,
                     provider_id: options.provider_id.clone(),
                     issuer: Some(result.id_token_claims.issuer().url().to_string()),
-                    attributes: source_attributes,
+                    kind_history,
+                    attributes: options.source_attributes.clone(),
                 },
                 bearer_propagation_policy: options
                     .bearer_propagation_policy
@@ -61,43 +67,18 @@ impl TokenSetContext {
         })
     }
 
-    pub fn auth_state_snapshot_from_refresh_result(
-        &self,
-        current: &AuthStateSnapshot,
+    pub fn auth_state_metadata_delta_from_refresh_result(
+        current_metadata: Option<&CurrentAuthStateMetadataSnapshotPartial>,
         result: &OidcRefreshTokenResult,
-    ) -> Result<AuthStateSnapshot, TokenSetContextError> {
-        let mut source = current.metadata.source.clone();
-        source.kind = AuthenticationSourceKind::RefreshToken;
-        push_source_kind_history(
-            &mut source.attributes,
-            &AuthenticationSourceKind::RefreshToken,
-        );
-
-        if let Some(id_token_claims) = result.id_token_claims.as_ref() {
-            source.issuer = Some(id_token_claims.issuer().url().to_string());
+    ) -> AuthStateMetadataDelta {
+        AuthStateMetadataDelta {
+            principal: principal_from_refresh_result(result),
+            source: Some(refreshed_source(
+                current_metadata.and_then(|metadata| metadata.source.as_ref()),
+                result,
+            )),
+            ..Default::default()
         }
-
-        Ok(AuthStateSnapshot {
-            tokens: AuthTokenSnapshot {
-                access_token: result.access_token.clone(),
-                id_token: result
-                    .id_token
-                    .clone()
-                    .or_else(|| current.tokens.id_token.clone()),
-                refresh_material: match result.refresh_token.as_deref() {
-                    Some(refresh_token) => Some(self.seal_refresh_token(refresh_token)?),
-                    None => current.tokens.refresh_material.clone(),
-                },
-                access_token_expires_at: result.access_token_expiration,
-            },
-            metadata: AuthStateMetadataSnapshot {
-                principal: principal_from_refresh_result(result)
-                    .or_else(|| current.metadata.principal.clone()),
-                source,
-                bearer_propagation_policy: current.metadata.bearer_propagation_policy.clone(),
-                attributes: current.metadata.attributes.clone(),
-            },
-        })
     }
 }
 
@@ -126,41 +107,47 @@ fn principal_from_refresh_result(
     })
 }
 
-fn push_source_kind_history(
-    attributes: &mut HashMap<String, Value>,
-    kind: &AuthenticationSourceKind,
-) {
-    let kind_value = source_kind_value(kind);
-    let history = attributes
-        .entry("source_kind_history".to_string())
-        .or_insert_with(|| Value::Array(Vec::new()));
+fn refreshed_source(
+    current_source: Option<&CurrentAuthenticationSourcePartial>,
+    result: &OidcRefreshTokenResult,
+) -> AuthenticationSource {
+    let mut source = AuthenticationSource {
+        kind: AuthenticationSourceKind::RefreshToken,
+        provider_id: current_source.and_then(|source| source.provider_id.clone()),
+        issuer: current_source.and_then(|source| source.issuer.clone()),
+        kind_history: current_source
+            .and_then(|source| source.kind_history.as_ref())
+            .cloned()
+            .unwrap_or_default(),
+        attributes: current_source
+            .map(|source| source.attributes.clone())
+            .unwrap_or_default(),
+    };
+    push_kind_history(
+        &mut source.kind_history,
+        &AuthenticationSourceKind::RefreshToken,
+    );
 
-    match history {
-        Value::Array(entries) => {
-            if entries.last() != Some(&kind_value) {
-                entries.push(kind_value);
-            }
-        }
-        _ => {
-            *history = Value::Array(vec![kind_value]);
-        }
+    if let Some(id_token_claims) = result.id_token_claims.as_ref() {
+        source.issuer = Some(id_token_claims.issuer().url().to_string());
+    }
+
+    source
+}
+
+fn push_kind_history(history: &mut Vec<AuthenticationSourceKind>, kind: &AuthenticationSourceKind) {
+    if history.last() != Some(kind) {
+        history.push(kind.clone());
     }
 }
 
-fn source_kind_value(kind: &AuthenticationSourceKind) -> Value {
-    match kind {
-        AuthenticationSourceKind::OidcAuthorizationCode => json!("oidc_authorization_code"),
-        AuthenticationSourceKind::RefreshToken => json!("refresh_token"),
-        AuthenticationSourceKind::ForwardedBearer => json!("forwarded_bearer"),
-        AuthenticationSourceKind::StaticToken => json!("static_token"),
-        AuthenticationSourceKind::Unknown => json!("unknown"),
-    }
-}
-
-fn seal_optional_refresh_material(
-    context: &TokenSetContext,
+fn seal_optional_refresh_material<MS>(
+    context: &TokenSetContext<MS>,
     refresh_token: Option<&str>,
-) -> Result<Option<SealedRefreshMaterial>, TokenSetContextError> {
+) -> Result<Option<SealedRefreshMaterial>, TokenSetContextError>
+where
+    MS: PendingAuthStateMetadataRedemptionStore,
+{
     refresh_token
         .map(|value| context.seal_refresh_token(value))
         .transpose()
@@ -168,44 +155,88 @@ fn seal_optional_refresh_material(
 
 #[cfg(test)]
 mod tests {
-    use super::{push_source_kind_history, source_kind_value};
-    use crate::AuthenticationSourceKind;
+    use super::{push_kind_history, refreshed_source};
+    use crate::{
+        AuthStateMetadataDelta, AuthenticationSourceKind, CurrentAuthenticationSourcePartial,
+    };
 
     #[test]
-    fn source_kind_history_appends_new_kinds() {
-        let mut attributes = std::collections::HashMap::new();
+    fn kind_history_appends_new_kinds() {
+        let mut history = Vec::new();
 
-        push_source_kind_history(
-            &mut attributes,
+        push_kind_history(
+            &mut history,
             &AuthenticationSourceKind::OidcAuthorizationCode,
         );
-        push_source_kind_history(&mut attributes, &AuthenticationSourceKind::RefreshToken);
+        push_kind_history(&mut history, &AuthenticationSourceKind::RefreshToken);
 
         assert_eq!(
-            attributes.get("source_kind_history"),
-            Some(&serde_json::json!([
-                "oidc_authorization_code",
-                "refresh_token"
-            ]))
+            history,
+            vec![
+                AuthenticationSourceKind::OidcAuthorizationCode,
+                AuthenticationSourceKind::RefreshToken
+            ]
         );
     }
 
     #[test]
-    fn source_kind_history_merges_same_top_kind() {
-        let mut attributes = std::collections::HashMap::from([(
-            "source_kind_history".to_string(),
-            serde_json::json!(["refresh_token"]),
-        )]);
+    fn kind_history_merges_same_top_kind() {
+        let mut history = vec![AuthenticationSourceKind::RefreshToken];
 
-        push_source_kind_history(&mut attributes, &AuthenticationSourceKind::RefreshToken);
+        push_kind_history(&mut history, &AuthenticationSourceKind::RefreshToken);
+
+        assert_eq!(history, vec![AuthenticationSourceKind::RefreshToken]);
+    }
+
+    #[test]
+    fn metadata_delta_is_generated_without_previous_snapshot() {
+        let delta: AuthStateMetadataDelta = AuthStateMetadataDelta {
+            source: Some(refreshed_source(None, &mock_refresh_result())),
+            ..Default::default()
+        };
 
         assert_eq!(
-            attributes.get("source_kind_history"),
-            Some(&serde_json::json!(["refresh_token"]))
+            delta.source.as_ref().map(|source| &source.kind),
+            Some(&AuthenticationSourceKind::RefreshToken)
         );
         assert_eq!(
-            source_kind_value(&AuthenticationSourceKind::RefreshToken),
-            serde_json::json!("refresh_token")
+            delta.source.as_ref().map(|source| &source.kind_history),
+            Some(&vec![AuthenticationSourceKind::RefreshToken])
         );
+    }
+
+    #[test]
+    fn refreshed_source_preserves_partial_source_fields() {
+        let source = refreshed_source(
+            Some(&CurrentAuthenticationSourcePartial {
+                provider_id: Some("primary".to_string()),
+                issuer: Some("https://issuer.example.com".to_string()),
+                kind_history: Some(vec![AuthenticationSourceKind::OidcAuthorizationCode]),
+                ..Default::default()
+            }),
+            &mock_refresh_result(),
+        );
+
+        assert_eq!(source.provider_id.as_deref(), Some("primary"));
+        assert_eq!(source.issuer.as_deref(), Some("https://issuer.example.com"));
+        assert_eq!(
+            source.kind_history,
+            vec![
+                AuthenticationSourceKind::OidcAuthorizationCode,
+                AuthenticationSourceKind::RefreshToken
+            ]
+        );
+    }
+
+    fn mock_refresh_result() -> securitydept_oidc_client::OidcRefreshTokenResult {
+        securitydept_oidc_client::OidcRefreshTokenResult {
+            access_token: "access-token".to_string(),
+            access_token_expiration: None,
+            id_token: None,
+            refresh_token: None,
+            id_token_claims: None,
+            user_info_claims: None,
+            claims_check_result: None,
+        }
     }
 }

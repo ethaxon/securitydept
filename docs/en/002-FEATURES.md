@@ -104,7 +104,8 @@ Current status:
 Primary references:
 
 - `packages/session-context/src/lib.rs`
-- `apps/server/src/routes/auth.rs`
+- `apps/server/src/routes/auth/mod.rs`
+- `apps/server/src/routes/auth/session.rs`
 - `apps/server/src/middleware.rs`
 
 ## 6. Stateless token-set auth context
@@ -120,8 +121,14 @@ Current status:
 
 - core server support and shared crate are implemented
 - `securitydept-token-set-context` now provides a dedicated token-set context layer
+- `securitydept-auth-runtime` now provides route-ready token-set orchestration on top of `securitydept-token-set-context`
 - `apps/server` already exposes `/auth/token-set/*` routes for callback, refresh, and metadata redemption
 - the client SDK is still planned as a separate follow-up
+- default convenience aliases now exist for the common case:
+  - `DefaultOidcClient`
+  - `DefaultOidcClientConfig`
+  - `DefaultTokenSetContext`
+  - `DefaultTokenSetContextConfig`
 
 Missing pieces:
 
@@ -189,7 +196,7 @@ Current status:
 
 ## Recommended Near-Term Focus
 
-1. extract reusable auth-context abstractions above `oidc-client` and `oauth-resource-server`
+1. continue refining the reusable auth-context abstractions above `oidc-client` and `oauth-resource-server`
 2. implement basic auth zone mode as a documented, reference-backed flow
 3. implement stateless token-set mode with explicit token lifecycle rules
 4. add TS SDK support for modes 4, 5, and especially 6

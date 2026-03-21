@@ -6,6 +6,8 @@ pub use jsonwebtoken;
 pub use oauth2;
 #[cfg(feature = "oidc-client")]
 pub use openidconnect;
+#[cfg(feature = "auth-runtime")]
+pub use securitydept_auth_runtime as auth_runtime;
 #[cfg(feature = "basic-auth-zone")]
 pub use securitydept_basic_auth_zone as basic_auth_zone;
 #[cfg(feature = "creds")]

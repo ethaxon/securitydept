@@ -59,6 +59,7 @@
 
 - `securitydept-oidc-client`
 - `securitydept-session-context` —— 提供 `SessionContext<T>`、`SessionPrincipal`、`SessionContextConfig` 和会话句柄操作
+- `securitydept-auth-runtime` —— 将 `oidc-client` 与 `session-context` 组合成可直接挂接路由的 session 认证服务，例如 `OidcSessionAuthService` 与 `DevSessionAuthService`
 - `tower-sessions-*` 生态中的可选后端 session store
 - 可选的 TS 助手用于重定向登录 UX
 
@@ -66,6 +67,7 @@
 
 - 参考实现存在于 `apps/server`
 - 可复用提取现已存在于 `securitydept-session-context`
+- 路由层的 session 认证编排现已提取到 `securitydept-auth-runtime`
 
 ## 模式 C：无状态 Token-Set
 
@@ -93,10 +95,15 @@
 - `redirect_uri` 由 `token-set-context` 统一解析；当前配置类型为：
   - `TokenSetRedirectUriConfig`
   - `TokenSetRedirectUriRule`
+- `oidc-client` 现在为常见场景提供默认 pending OAuth store 类型别名：
+  - `DefaultPendingOauthStore`
+  - `DefaultPendingOauthStoreConfig`
+  - `DefaultOidcClient`
+  - `DefaultOidcClientConfig`
 - 当前主状态模型为：
   - `AuthStateSnapshot`
   - `AuthStateDelta`
-- refresh 之后，`AuthenticationSource.kind` 应切换为 `refresh_token`，并在 `source_kind_history` 中记录来源类型历史
+- refresh 之后，`AuthenticationSource.kind` 应切换为 `refresh_token`，并在 `kind_history` 中记录来源类型历史
 - 状态模型当前已拆为：
   - `AuthTokenSnapshot`
   - `AuthTokenDelta`
@@ -122,7 +129,8 @@
 - 作为资源服务器时验证转发的 bearer 令牌
 - 可选地通过共享提供者运行时刷新发现元数据和 JWKS
 - 保持 bearer 传播策略明确
-- 通过 `token-set-context` 内的协调层完成 refresh material 解封、令牌刷新、状态重建与返回 DTO 生成
+- 由 `token-set-context` 负责 refresh material 保护、redirect URI 解析、metadata redemption、状态重建与传输 DTO 生成
+- 由 `auth-runtime` 在 `token-set-context` 之上暴露可直接挂路由的 token-set 处理服务
 - 提供短期 metadata redemption 存储与兑换能力
 - callback 阶段通过 `oidc-client` 的 pending OAuth extra data 回传最终 `redirect_uri`
 
@@ -145,8 +153,14 @@
 - callback 当前返回完整 token snapshot fragment，并签发 `metadata_redemption_id`
 - refresh 当前返回 token delta fragment，并在 metadata 有变化时签发 `metadata_redemption_id`
 - refresh 请求体当前使用：
-  - `current_auth_state`
-- metadata redemption 默认实现当前为 `MokaPendingAuthStateMetadataRedemptionStore`
+  - 必需的 `refresh_token`
+  - 可选的旧 `id_token`
+  - 可选的 `current_metadata_snapshot`
+- 可复用的 token-set 路由编排现已存在于 `securitydept-auth-runtime::TokenSetAuthService`
+- metadata redemption 的默认实现现在包括：
+  - `MokaPendingAuthStateMetadataRedemptionStore`
+  - `DefaultTokenSetContext`
+  - `DefaultTokenSetContextConfig`
 
 重要说明：
 

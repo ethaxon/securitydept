@@ -3,6 +3,7 @@ cargo-features = ["profile-rustflags"]
 [workspace]
 members = [
     "packages/core",
+    "packages/auth-runtime",
     "packages/basic-auth-zone",
     "packages/session-context",
     "packages/token-set-context",

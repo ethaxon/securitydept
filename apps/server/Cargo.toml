@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-server"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 edition = "2024"
 
 [features]
@@ -9,6 +9,7 @@ jwe = ["securitydept-core/creds-jwe"]
 [dependencies]
 securitydept-core = { path = "../../packages/core", features = [
     "utils",
+    "auth-runtime",
     "oidc-client",
     "token-set-context",
     "session-context",

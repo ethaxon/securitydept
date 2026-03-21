@@ -56,8 +56,8 @@ Status:
 Status:
 
 - basic auth zone: documented, not fully productized
-- cookie-session: reference implementation exists, reusable extraction pending
-- stateless token-set mode: core server and shared crate are in place, client SDK remains pending
+- cookie-session: reference implementation exists, reusable extraction is available in `securitydept-session-context` and `securitydept-auth-runtime`
+- stateless token-set mode: core server and shared crate are in place, route orchestration is available in `securitydept-auth-runtime`, client SDK remains pending
 
 ## Phase 4: Frontend SDKs
 
@@ -68,7 +68,7 @@ Status:
 
 Status:
 
-- token-set SDK remains pending; the other modes are still planned
+- token-set SDK remains pending; the other modes are still planned or partially implemented
 
 ## Phase 5: Local Credential Operations
 
@@ -93,6 +93,7 @@ Current real-world role:
 
 - validation environment
 - auth entry point for private Docker registry mirror scenarios
+- integration proving ground for cookie-session, basic-auth, and stateless token-set flows
 
 ## Cross-Cutting Priorities
 

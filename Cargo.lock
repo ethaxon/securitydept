@@ -4145,8 +4145,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "securitydept-auth-runtime"
+version = "0.2.0-alpha.3"
+dependencies = [
+ "axum",
+ "chrono",
+ "http",
+ "securitydept-oidc-client",
+ "securitydept-session-context",
+ "securitydept-token-set-context",
+ "securitydept-utils",
+ "serde_json",
+ "snafu",
+ "tower-sessions",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "securitydept-basic-auth-zone"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 dependencies = [
  "axum",
  "serde",
@@ -4156,7 +4174,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-cli"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 dependencies = [
  "clap",
  "figment",
@@ -4173,12 +4191,13 @@ dependencies = [
 
 [[package]]
 name = "securitydept-core"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 dependencies = [
  "josekit",
  "jsonwebtoken",
  "oauth2",
  "openidconnect",
+ "securitydept-auth-runtime",
  "securitydept-basic-auth-zone",
  "securitydept-creds",
  "securitydept-creds-manage",
@@ -4193,7 +4212,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-creds"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -4215,7 +4234,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-creds-manage"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 dependencies = [
  "arc-swap",
  "atomic-write-file",
@@ -4239,7 +4258,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-oauth-provider"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 dependencies = [
  "humantime-serde",
  "oauth2",
@@ -4254,7 +4273,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-oauth-resource-server"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 dependencies = [
  "chrono",
  "http",
@@ -4275,7 +4294,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-oidc-client"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 dependencies = [
  "base64 0.22.1",
  "boa_engine",
@@ -4299,7 +4318,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-realip"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -4323,7 +4342,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-server"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 dependencies = [
  "axum",
  "chrono",
@@ -4347,7 +4366,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-session-context"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 dependencies = [
  "axum",
  "humantime-serde",
@@ -4362,7 +4381,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-token-set-context"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -4372,6 +4391,7 @@ dependencies = [
  "orion",
  "regex",
  "securitydept-oidc-client",
+ "securitydept-utils",
  "serde",
  "serde_json",
  "serde_regex",
@@ -4383,7 +4403,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-utils"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 dependencies = [
  "http",
  "rfc7239",

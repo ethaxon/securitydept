@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-token-set-context"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 edition = "2024"
 
 [features]
@@ -10,6 +10,7 @@ moka-pending-store = ["dep:moka"]
 
 [dependencies]
 securitydept-oidc-client = { path = "../oidc-client" }
+securitydept-utils = { path = "../utils" }
 base64 = { workspace = true }
 chrono = { workspace = true }
 humantime-serde = { workspace = true }

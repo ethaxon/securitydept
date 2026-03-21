@@ -59,6 +59,7 @@ This mode should compose:
 
 - `securitydept-oidc-client`
 - `securitydept-session-context` — provides `SessionContext<T>`, `SessionPrincipal`, `SessionContextConfig`, and session handle operations
+- `securitydept-auth-runtime` — composes `oidc-client` and `session-context` into route-ready session auth services such as `OidcSessionAuthService` and `DevSessionAuthService`
 - optional backing session store from the `tower-sessions-*` ecosystem
 - optional TS helper for redirect-to-login UX
 
@@ -66,6 +67,7 @@ Current repository status:
 
 - reference implementation exists in `apps/server`
 - reusable extraction now exists in `securitydept-session-context`
+- route-level session auth orchestration now exists in `securitydept-auth-runtime`
 
 ## Mode C: Stateless Token-Set
 
@@ -93,10 +95,15 @@ Convention:
 - Resolve `redirect_uri` inside `token-set-context`; the current config types are:
   - `TokenSetRedirectUriConfig`
   - `TokenSetRedirectUriRule`
+- `oidc-client` now exposes default pending OAuth store aliases for the common case:
+  - `DefaultPendingOauthStore`
+  - `DefaultPendingOauthStoreConfig`
+  - `DefaultOidcClient`
+  - `DefaultOidcClientConfig`
 - The current top-level state model is:
   - `AuthStateSnapshot`
   - `AuthStateDelta`
-- After refresh, `AuthenticationSource.kind` should switch to `refresh_token` and record source-kind history in `source_kind_history`
+- After refresh, `AuthenticationSource.kind` should switch to `refresh_token` and record source-kind history in `kind_history`
 - The state model is now split into:
   - `AuthTokenSnapshot`
   - `AuthTokenDelta`
@@ -122,7 +129,8 @@ Expected backend capabilities:
 - verify forwarded bearer token when acting as a resource server
 - optionally refresh discovery metadata and JWKS through the shared provider runtime
 - keep bearer propagation policy explicit
-- use a coordinator inside `token-set-context` to unseal refresh material, refresh tokens, rebuild state, and produce transport DTOs
+- let `token-set-context` own refresh material protection, redirect URI resolution, metadata redemption, state reconstruction, and transport DTO generation
+- let `auth-runtime` expose route-ready token-set handlers on top of `token-set-context`
 - provide short-lived metadata redemption storage and exchange
 - round-trip the final callback `redirect_uri` through `oidc-client` pending OAuth extra data
 
@@ -145,8 +153,14 @@ Current implementation status:
 - callback currently returns a full token snapshot fragment and issues `metadata_redemption_id`
 - refresh currently returns a token delta fragment and issues `metadata_redemption_id` when metadata changes
 - the refresh request payload now uses:
-  - `current_auth_state`
-- the default metadata redemption implementation is currently `MokaPendingAuthStateMetadataRedemptionStore`
+  - required `refresh_token`
+  - optional previous `id_token`
+  - optional `current_metadata_snapshot`
+- reusable token-set route orchestration now exists in `securitydept-auth-runtime::TokenSetAuthService`
+- the default metadata redemption implementation now includes:
+  - `MokaPendingAuthStateMetadataRedemptionStore`
+  - `DefaultTokenSetContext`
+  - `DefaultTokenSetContextConfig`
 
 Important note:
 

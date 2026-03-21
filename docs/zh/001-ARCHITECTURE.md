@@ -86,6 +86,7 @@ Crate: `securitydept-oauth-resource-server`
 - `securitydept-basic-auth-zone`
 - `securitydept-session-context` —— 为 cookie-session 模式提取的可复用会话上下文抽象
 - `securitydept-token-set-context` —— 为无状态 token-set 模式提取的可复用认证状态、redirect 与 metadata redemption 协调层
+- `securitydept-auth-runtime` —— 为 session 与 token-set 模式提取的面向路由的认证编排层
 
 `securitydept-session-context` crate 提供：
 
@@ -99,10 +100,18 @@ Crate: `securitydept-oauth-resource-server`
 - `AuthTokenSnapshot` / `AuthTokenDelta`
 - `AuthStateMetadataSnapshot` / `AuthStateMetadataDelta`
 - `AuthStateSnapshot` / `AuthStateDelta`
-- `AuthStateCoordinator`
 - `TokenPropagator`
-- `MokaPendingAuthStateMetadataRedemptionStore`
 - `TokenSetRedirectUriConfig`
+- `DefaultTokenSetContext`
+- `DefaultTokenSetContextConfig`
+- `DefaultPendingAuthStateMetadataRedemptionStore`
+
+cookie-session 和无状态 token-set 的路由层编排位于 `securitydept-auth-runtime`：
+
+- `SessionAuthServiceTrait`
+- `OidcSessionAuthService`
+- `DevSessionAuthService`
+- `TokenSetAuthService`
 
 ## 第 6 层：Real IP 解析
 

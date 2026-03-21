@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::{
     OidcResult,
-    pending_store::{PendingOauthStore, base::PendingOauth},
+    pending_store::{PendingOauth, PendingOauthStore, PendingOauthStoreConfig},
 };
 
 /// Configuration for PendingOauthStore.
@@ -19,14 +19,6 @@ pub struct MokaPendingOauthStoreConfig {
     pub max_capacity: u64,
 }
 
-fn default_ttl() -> Duration {
-    Duration::from_secs(300) // 5 minutes
-}
-
-fn default_max_capacity() -> u64 {
-    1000
-}
-
 impl Default for MokaPendingOauthStoreConfig {
     fn default() -> Self {
         Self {
@@ -36,6 +28,16 @@ impl Default for MokaPendingOauthStoreConfig {
     }
 }
 
+impl PendingOauthStoreConfig for MokaPendingOauthStoreConfig {}
+
+fn default_ttl() -> Duration {
+    Duration::from_secs(300) // 5 minutes
+}
+
+fn default_max_capacity() -> u64 {
+    1000
+}
+
 /// One-time store for OAuth state -> (nonce, code_verifier) during the login
 /// redirect round-trip.
 #[derive(Clone)]
@@ -43,25 +45,17 @@ pub struct MokaPendingOauthStore {
     inner: Cache<String, PendingOauth>,
 }
 
-impl MokaPendingOauthStore {
-    pub fn from_config_opt(config: Option<&MokaPendingOauthStoreConfig>) -> Self {
-        if let Some(config) = config {
-            Self::from_config(config)
-        } else {
-            Self::default()
-        }
-    }
+impl PendingOauthStore for MokaPendingOauthStore {
+    type Config = MokaPendingOauthStoreConfig;
 
-    pub fn from_config(config: &MokaPendingOauthStoreConfig) -> Self {
+    fn from_config(config: &Self::Config) -> Self {
         let inner = Cache::builder()
             .time_to_live(config.ttl)
             .max_capacity(config.max_capacity)
             .build();
         Self { inner }
     }
-}
 
-impl PendingOauthStore for MokaPendingOauthStore {
     async fn insert(
         &self,
         state: String,
@@ -88,19 +82,13 @@ impl PendingOauthStore for MokaPendingOauthStore {
     }
 }
 
-impl Default for MokaPendingOauthStore {
-    fn default() -> Self {
-        Self::from_config(&MokaPendingOauthStoreConfig::default())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[tokio::test]
     async fn test_insert_and_take() -> OidcResult<()> {
-        let store = MokaPendingOauthStore::default();
+        let store = MokaPendingOauthStore::from_config_opt(None);
         store
             .insert(
                 "state1".to_string(),
@@ -123,7 +111,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unknown_state() -> OidcResult<()> {
-        let store = MokaPendingOauthStore::default();
+        let store = MokaPendingOauthStore::from_config_opt(None);
         assert!(store.take("unknown").await?.is_none());
         Ok(())
     }

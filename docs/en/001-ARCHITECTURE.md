@@ -84,6 +84,7 @@ Current dedicated crates:
 - `securitydept-basic-auth-zone`
 - `securitydept-session-context` — extracted reusable session context abstraction for cookie-session mode
 - `securitydept-token-set-context` — extracted reusable auth-state, redirect, and metadata-redemption coordination layer for stateless token-set mode
+- `securitydept-auth-runtime` — extracted route-ready auth orchestration for session and token-set modes
 
 The `securitydept-session-context` crate provides:
 
@@ -97,10 +98,18 @@ The `securitydept-token-set-context` crate currently provides:
 - `AuthTokenSnapshot` / `AuthTokenDelta`
 - `AuthStateMetadataSnapshot` / `AuthStateMetadataDelta`
 - `AuthStateSnapshot` / `AuthStateDelta`
-- `AuthStateCoordinator`
 - `TokenPropagator`
-- `MokaPendingAuthStateMetadataRedemptionStore`
 - `TokenSetRedirectUriConfig`
+- `DefaultTokenSetContext`
+- `DefaultTokenSetContextConfig`
+- `DefaultPendingAuthStateMetadataRedemptionStore`
+
+Route-level orchestration for cookie-session and stateless token-set modes lives in `securitydept-auth-runtime`:
+
+- `SessionAuthServiceTrait`
+- `OidcSessionAuthService`
+- `DevSessionAuthService`
+- `TokenSetAuthService`
 
 A future shared abstraction should likely normalize all of them into a common authenticated-principal model.
 

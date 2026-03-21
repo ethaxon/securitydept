@@ -6,9 +6,7 @@ use securitydept_utils::ser::CommaOrSpaceSeparated;
 use serde::Deserialize;
 use serde_with::{PickFirst, serde_as};
 
-#[cfg(feature = "default-pending-store")]
-use crate::pending_store::MokaPendingOauthStoreConfig;
-use crate::{OidcError, OidcResult};
+use crate::{OidcError, OidcResult, PendingOauthStoreConfig};
 
 /// Input configuration for building the OIDC client.
 ///
@@ -18,7 +16,10 @@ use crate::{OidcError, OidcResult};
 /// recommended, and userinfo claims are fetched only when it is set.
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]
-pub struct OidcClientConfig {
+pub struct OidcClientConfig<PC>
+where
+    PC: PendingOauthStoreConfig,
+{
     pub client_id: String,
     #[serde(default)]
     pub client_secret: Option<String>,
@@ -40,16 +41,18 @@ pub struct OidcClientConfig {
     #[serde(default = "default_redirect_url")]
     pub redirect_url: String,
     /// Configuration for the pending OAuth store.
-    #[cfg(feature = "default-pending-store")]
-    #[serde(default)]
-    pub pending_store: Option<MokaPendingOauthStoreConfig>,
+    #[serde(default, bound = "PC: PendingOauthStoreConfig")]
+    pub pending_store: Option<PC>,
     /// Default interval to poll the device token endpoint if the provider
     /// doesn't specify one.
     #[serde(default = "default_device_poll_interval", with = "humantime_serde")]
     pub device_poll_interval: std::time::Duration,
 }
 
-impl OidcClientConfig {
+impl<PC> OidcClientConfig<PC>
+where
+    PC: PendingOauthStoreConfig,
+{
     pub fn validate(&self) -> OidcResult<()> {
         if self.claims_check_script.is_some() && cfg!(not(feature = "claims-script")) {
             return Err(OidcError::InvalidConfig {

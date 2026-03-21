@@ -1,0 +1,18 @@
+[package]
+name = "securitydept-auth-runtime"
+version = "0.2.0-alpha.3"
+edition = "2024"
+
+[dependencies]
+axum = { workspace = true }
+chrono = { workspace = true }
+http = { workspace = true }
+securitydept-oidc-client = { path = "../oidc-client" }
+securitydept-session-context = { path = "../session-context" }
+securitydept-token-set-context = { path = "../token-set-context" }
+securitydept-utils = { path = "../utils" }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tower-sessions = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }

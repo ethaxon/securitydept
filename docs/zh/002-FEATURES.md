@@ -104,7 +104,8 @@
 主要参考：
 
 - `packages/session-context/src/lib.rs`
-- `apps/server/src/routes/auth.rs`
+- `apps/server/src/routes/auth/mod.rs`
+- `apps/server/src/routes/auth/session.rs`
 - `apps/server/src/middleware.rs`
 
 ## 6. 无状态 token-set 认证上下文
@@ -120,8 +121,14 @@
 
 - 核心服务端与共享 crate 已实现
 - `securitydept-token-set-context` 已提供专用 token-set 上下文层
+- `securitydept-auth-runtime` 已在 `securitydept-token-set-context` 之上提供路由层 token-set 编排
 - `apps/server` 已接入 `/auth/token-set/*` 路径完成 callback、refresh 与 metadata redemption
 - 客户端 SDK 仍待单独实现
+- 常见场景已提供默认类型别名：
+  - `DefaultOidcClient`
+  - `DefaultOidcClientConfig`
+  - `DefaultTokenSetContext`
+  - `DefaultTokenSetContextConfig`
 
 缺失部分：
 
@@ -189,7 +196,7 @@
 
 ## 推荐的近期重点
 
-1. 从 `oidc-client` 和 `oauth-resource-server` 之上提取可复用的认证上下文抽象
+1. 继续完善 `oidc-client` 和 `oauth-resource-server` 之上的可复用认证上下文抽象
 2. 将基础认证区域模式实现为有文档支持、有参考支持的流程
 3. 实现无状态 token-set 模式，具有明确的令牌生命周期规则
 4. 添加模式 4、5 和特别是 6 的 TS SDK 支持

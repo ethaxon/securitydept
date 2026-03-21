@@ -1,19 +1,54 @@
-use std::{fmt, sync::Arc};
+use std::{fmt, pin::Pin, sync::Arc};
 
+use chrono::Utc;
+use http::StatusCode;
+use securitydept_oidc_client::{
+    OidcClient, OidcCodeCallbackResult, OidcCodeCallbackSearchParams,
+    OidcCodeFlowAuthorizationRequest, OidcError, OidcRefreshTokenResult, PendingOauthStore,
+};
+use securitydept_utils::{
+    error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
+    http::ToHttpStatus,
+};
+use serde::Deserialize;
+use serde_json::json;
 use snafu::Snafu;
 use typed_builder::TypedBuilder;
+use url::Url;
 
 use crate::{
-    AeadRefreshMaterialProtector, PassthroughRefreshMaterialProtector, RefreshMaterialError,
-    RefreshMaterialProtector, SealedRefreshMaterial,
-    metadata_redemption::PendingAuthStateMetadataRedemptionConfig,
-    redirect::{TokenSetRedirectUriConfig, TokenSetRedirectUriError},
+    AeadRefreshMaterialProtector, AuthStateDelta, AuthStateMetadataDelta, AuthStateSnapshot,
+    AuthTokenDelta, AuthTokenDeltaRedirectFragment, AuthTokenSnapshotRedirectFragment,
+    CurrentAuthStateMetadataSnapshotPartial, MetadataRedemptionRequest, MetadataRedemptionResponse,
+    OidcAuthStateOptions, PassthroughRefreshMaterialProtector,
+    PendingAuthStateMetadataRedemptionPayload, PendingAuthStateMetadataRedemptionStore,
+    PendingAuthStateMetadataRedemptionStoreError, RefreshMaterialError, RefreshMaterialProtector,
+    SealedRefreshMaterial, TokenPropagator, TokenPropagatorConfig, TokenPropagatorError,
+    TokenRefreshPayload, TokenSetRedirectUriConfig, TokenSetRedirectUriError,
+    TokenSetRedirectUriResolver, metadata_redemption::PendingAuthStateMetadataRedemptionConfig,
 };
 
-#[derive(
-    Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, TypedBuilder, Default,
-)]
-pub struct TokenSetContextConfig {
+const PENDING_REDIRECT_URI_KEY: &str = "redirect_uri";
+
+#[derive(Debug, Clone)]
+pub struct TokenSetContextTokenRefreshResult {
+    pub redirect_uri: Url,
+    pub auth_state_delta: AuthStateDelta,
+    pub redirect_fragment: AuthTokenDeltaRedirectFragment,
+}
+
+#[derive(Debug, Clone)]
+pub struct TokenSetContextCodeCallbackResult {
+    pub token_set_redirect_uri: Url,
+    pub auth_state_snapshot: AuthStateSnapshot,
+    pub redirect_fragment: AuthTokenSnapshotRedirectFragment,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, TypedBuilder, Default)]
+pub struct TokenSetContextConfig<MC>
+where
+    MC: PendingAuthStateMetadataRedemptionConfig,
+{
     #[builder(default)]
     #[serde(default)]
     pub master_key: Option<String>,
@@ -21,11 +56,17 @@ pub struct TokenSetContextConfig {
     #[serde(default)]
     pub sealed_refresh_token: bool,
     #[builder(default)]
-    #[serde(default)]
-    pub metadata_redemption: PendingAuthStateMetadataRedemptionConfig,
+    #[serde(
+        default,
+        bound(deserialize = "MC: PendingAuthStateMetadataRedemptionConfig")
+    )]
+    pub metadata_redemption: MC,
     #[builder(default)]
     #[serde(default)]
     pub redirect_uri: TokenSetRedirectUriConfig,
+    #[builder(default)]
+    #[serde(default)]
+    pub token_propagation: TokenPropagatorConfig,
 }
 
 #[derive(Debug, Snafu)]
@@ -36,21 +77,93 @@ pub enum TokenSetContextError {
     RefreshMaterial { source: RefreshMaterialError },
     #[snafu(display("redirect uri operation failed: {source}"))]
     RedirectUri { source: TokenSetRedirectUriError },
+    #[snafu(display("OIDC operation failed: {source}"), context(false))]
+    Oidc { source: OidcError },
+    #[snafu(
+        display("metadata redemption operation failed: {source}"),
+        context(false)
+    )]
+    MetadataRedemption {
+        source: PendingAuthStateMetadataRedemptionStoreError,
+    },
+    #[snafu(display("token propagator operation failed: {source}"), context(false))]
+    TokenPropagatorError { source: TokenPropagatorError },
+}
+
+pub type TokenSetContextResult<T> = Result<T, TokenSetContextError>;
+
+impl TokenSetContextError {
+    pub fn status_code(&self) -> StatusCode {
+        match self {
+            Self::Oidc { source } => source.to_http_status(),
+            Self::ContextConfig { .. }
+            | Self::RefreshMaterial { .. }
+            | Self::RedirectUri { .. }
+            | Self::MetadataRedemption { .. }
+            | Self::TokenPropagatorError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl ToErrorPresentation for TokenSetContextError {
+    fn to_error_presentation(&self) -> ErrorPresentation {
+        match self {
+            Self::Oidc { source } => source.to_error_presentation(),
+            Self::ContextConfig { .. } => ErrorPresentation::new(
+                "token_set_context_invalid",
+                "Token-set authentication is misconfigured.",
+                UserRecovery::ContactSupport,
+            ),
+            Self::RefreshMaterial { .. } => ErrorPresentation::new(
+                "token_set_refresh_material_invalid",
+                "The sign-in state is no longer valid. Sign in again.",
+                UserRecovery::Reauthenticate,
+            ),
+            Self::RedirectUri { .. } => ErrorPresentation::new(
+                "token_set_redirect_uri_invalid",
+                "The token-set redirect URL is invalid.",
+                UserRecovery::RestartFlow,
+            ),
+            Self::MetadataRedemption { .. } => ErrorPresentation::new(
+                "token_set_metadata_unavailable",
+                "Authentication metadata is temporarily unavailable.",
+                UserRecovery::Retry,
+            ),
+            Self::TokenPropagatorError { .. } => ErrorPresentation::new(
+                "token_propagation_failed",
+                "The token could not be propagated.",
+                UserRecovery::Retry,
+            ),
+        }
+    }
 }
 
 #[derive(Clone)]
-pub struct TokenSetContext {
+pub struct TokenSetContext<MS>
+where
+    MS: PendingAuthStateMetadataRedemptionStore,
+{
     refresh_material_protector: Arc<dyn RefreshMaterialProtector>,
-    redirect_uri: TokenSetRedirectUriConfig,
+    redirect_uri_resolver: TokenSetRedirectUriResolver,
+    #[allow(dead_code)]
+    // TODO
+    token_propagator: TokenPropagator,
+    metadata_redemption_store: MS,
 }
 
-impl fmt::Debug for TokenSetContext {
+impl<MS> fmt::Debug for TokenSetContext<MS>
+where
+    MS: PendingAuthStateMetadataRedemptionStore,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("TokenSetContext { refresh_material_protector: REDACTED }")
     }
 }
 
-impl TokenSetContextConfig {
+impl<MC> TokenSetContextConfig<MC>
+where
+    MC: PendingAuthStateMetadataRedemptionConfig,
+{
     pub fn validate(&self) -> Result<(), TokenSetContextError> {
         if self.sealed_refresh_token
             && self
@@ -71,8 +184,13 @@ impl TokenSetContextConfig {
     }
 }
 
-impl TokenSetContext {
-    pub fn from_config(config: &TokenSetContextConfig) -> Result<Self, TokenSetContextError> {
+impl<MS> TokenSetContext<MS>
+where
+    MS: PendingAuthStateMetadataRedemptionStore,
+{
+    pub fn from_config(
+        config: TokenSetContextConfig<MS::Config>,
+    ) -> Result<Self, TokenSetContextError> {
         config.validate()?;
 
         let refresh_material_protector: Arc<dyn RefreshMaterialProtector> =
@@ -92,9 +210,17 @@ impl TokenSetContext {
                 Arc::new(PassthroughRefreshMaterialProtector)
             };
 
+        let token_propagator = TokenPropagator::from_config(&config.token_propagation)?;
+
+        let metadata_redemption_store = MS::from_config(&config.metadata_redemption)?;
+
+        let redirect_uri_resolver = TokenSetRedirectUriResolver::from_config(config.redirect_uri);
+
         Ok(Self {
             refresh_material_protector,
-            redirect_uri: config.redirect_uri.clone(),
+            redirect_uri_resolver,
+            metadata_redemption_store,
+            token_propagator,
         })
     }
 
@@ -116,12 +242,184 @@ impl TokenSetContext {
             .map_err(|source| TokenSetContextError::RefreshMaterial { source })
     }
 
-    pub fn resolve_redirect_uri(
+    pub fn resolve_token_set_redirect_uri(
         &self,
-        requested_redirect_uri: Option<&str>,
+        requested_token_set_redirect_uri: Option<&str>,
     ) -> Result<url::Url, TokenSetContextError> {
-        self.redirect_uri
-            .resolve_redirect_uri(requested_redirect_uri)
+        self.redirect_uri_resolver
+            .resolve_redirect_uri(requested_token_set_redirect_uri)
             .map_err(|source| TokenSetContextError::RedirectUri { source })
     }
+
+    pub async fn authorize_code_flow<PS>(
+        &self,
+        oidc_client: &OidcClient<PS>,
+        external_base_url: &Url,
+        requested_token_set_redirect_uri: Option<&str>,
+        redirect_url_override: Option<&str>,
+    ) -> TokenSetContextResult<OidcCodeFlowAuthorizationRequest>
+    where
+        PS: PendingOauthStore,
+    {
+        let redirect_uri = self.resolve_token_set_redirect_uri(requested_token_set_redirect_uri)?;
+
+        let request = oidc_client
+            .handle_code_authorize_with_redirect_override_and_extra_data(
+                external_base_url,
+                redirect_url_override,
+                Some(json!({
+                    PENDING_REDIRECT_URI_KEY: redirect_uri.as_str(),
+                })),
+            )
+            .await?;
+
+        Ok(request)
+    }
+
+    pub async fn refresh_from_payload_with_metadata_store<PS>(
+        &self,
+        oidc_client: &OidcClient<PS>,
+        payload: &TokenRefreshPayload,
+    ) -> TokenSetContextResult<TokenSetContextTokenRefreshResult>
+    where
+        PS: PendingOauthStore,
+    {
+        self.refresh_from_payload_with_metadata_store_and_auth_state_metadata_delta_fn(
+            oidc_client,
+            payload,
+            |metadata, result| {
+                Box::pin(async move {
+                    TokenSetContext::<MS>::auth_state_metadata_delta_from_refresh_result(
+                        metadata, result,
+                    )
+                })
+            },
+        )
+        .await
+    }
+
+    pub async fn refresh_from_payload_with_metadata_store_and_auth_state_metadata_delta_fn<PS, F>(
+        &self,
+        oidc_client: &OidcClient<PS>,
+        payload: &TokenRefreshPayload,
+        auth_state_metadata_delta_fn: F,
+    ) -> TokenSetContextResult<TokenSetContextTokenRefreshResult>
+    where
+        PS: PendingOauthStore,
+        F: for<'c> FnOnce(
+            Option<&'c CurrentAuthStateMetadataSnapshotPartial>,
+            &'c OidcRefreshTokenResult,
+        )
+            -> Pin<Box<dyn Future<Output = AuthStateMetadataDelta> + Send + 'c>>,
+    {
+        let token_set_redirect_uri =
+            self.resolve_token_set_redirect_uri(payload.token_set_redirect_uri.as_deref())?;
+        let refresh_token = self.unseal_refresh_token(&payload.refresh_material)?;
+        let refresh_result = oidc_client
+            .handle_token_refresh(refresh_token, payload.id_token.clone())
+            .await?;
+        let refresh_material_delta = refresh_result
+            .refresh_token
+            .as_deref()
+            .map(|value| self.seal_refresh_token(value))
+            .transpose()?;
+        let token_delta = AuthTokenDelta {
+            access_token: refresh_result.access_token.clone(),
+            id_token: refresh_result.id_token.clone(),
+            refresh_material: refresh_material_delta,
+            access_token_expires_at: refresh_result.access_token_expiration,
+        };
+        let metadata_delta = auth_state_metadata_delta_fn(
+            payload.current_metadata_snapshot.as_ref(),
+            &refresh_result,
+        )
+        .await;
+        let metadata_redemption_id = if metadata_delta.is_empty() {
+            Some(
+                self.metadata_redemption_store
+                    .issue(
+                        PendingAuthStateMetadataRedemptionPayload::Delta(metadata_delta.clone()),
+                        Utc::now(),
+                    )?
+                    .id,
+            )
+        } else {
+            None
+        };
+
+        let redirect_fragment =
+            AuthTokenDeltaRedirectFragment::from_delta(&token_delta, metadata_redemption_id);
+
+        Ok(TokenSetContextTokenRefreshResult {
+            redirect_uri: token_set_redirect_uri,
+            auth_state_delta: AuthStateDelta {
+                tokens: token_delta,
+                metadata: metadata_delta,
+            },
+            redirect_fragment,
+        })
+    }
+
+    pub async fn handle_code_callback_with_metadata_store<PS>(
+        &self,
+        oidc_client: &OidcClient<PS>,
+        search_params: OidcCodeCallbackSearchParams,
+        external_base_url: &Url,
+        options: &OidcAuthStateOptions,
+        redirect_url_override: Option<&str>,
+    ) -> TokenSetContextResult<TokenSetContextCodeCallbackResult>
+    where
+        PS: PendingOauthStore,
+    {
+        let result = oidc_client
+            .handle_code_callback_with_redirect_override(
+                search_params,
+                external_base_url,
+                redirect_url_override,
+            )
+            .await?;
+        let token_set_redirect_uri =
+            self.resolve_token_set_redirect_uri(callback_redirect_uri(&result).as_deref())?;
+
+        let auth_state_snapshot = self.auth_state_snapshot_from_code_callback(&result, options)?;
+        let metadata_redemption_id = self
+            .metadata_redemption_store
+            .issue(
+                PendingAuthStateMetadataRedemptionPayload::Snapshot(
+                    auth_state_snapshot.metadata.clone(),
+                ),
+                Utc::now(),
+            )?
+            .id;
+        let redirect_fragment = AuthTokenSnapshotRedirectFragment::from_snapshot(
+            &auth_state_snapshot.tokens,
+            metadata_redemption_id,
+        );
+
+        Ok(TokenSetContextCodeCallbackResult {
+            token_set_redirect_uri,
+            auth_state_snapshot,
+            redirect_fragment,
+        })
+    }
+
+    pub async fn redeem_metadata(
+        &self,
+        payload: &MetadataRedemptionRequest,
+    ) -> TokenSetContextResult<Option<MetadataRedemptionResponse>> {
+        let metadata = self
+            .metadata_redemption_store
+            .redeem(&payload.metadata_redemption_id, Utc::now())?;
+
+        Ok(metadata.map(|metadata| MetadataRedemptionResponse { metadata }))
+    }
+}
+
+fn callback_redirect_uri(result: &OidcCodeCallbackResult) -> Option<String> {
+    result
+        .pending_extra_data
+        .as_ref()
+        .and_then(|value| value.get(PENDING_REDIRECT_URI_KEY))
+        .and_then(|value| value.as_str())
+        .map(ToOwned::to_owned)
 }

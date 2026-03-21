@@ -14,16 +14,16 @@ use crate::{middleware::require_session, state::ServerState};
 /// Build the complete application router.
 pub fn build_router(state: ServerState) -> Router {
     let session_auth_routes = Router::new()
-        .route("/login", get(auth::login))
-        .route("/callback", get(auth::callback))
-        .route("/logout", post(auth::logout))
-        .route("/me", get(auth::me));
+        .route("/login", get(auth::session::login))
+        .route("/callback", get(auth::session::callback))
+        .route("/logout", post(auth::session::logout))
+        .route("/me", get(auth::session::me));
     let token_set_auth_routes = Router::new()
-        .route("/login", get(auth::login_token_set))
-        .route("/callback", get(auth::callback_token_set))
-        .route("/refresh", post(auth::refresh_token))
-        .route("/metadata/redeem", post(auth::redeem_metadata));
-    let basic_auth_routes = Router::new();
+        .route("/login", get(auth::token_set::login))
+        .route("/callback", get(auth::token_set::callback))
+        .route("/refresh", post(auth::token_set::refresh))
+        .route("/metadata/redeem", post(auth::token_set::redeem_metadata));
+    let basic_auth_routes = auth::basic::router();
     let auth_routes = Router::new()
         .nest("/auth/session", session_auth_routes)
         .nest("/auth/token-set", token_set_auth_routes)

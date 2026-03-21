@@ -7,7 +7,7 @@ use openidconnect::{
     CsrfToken, DeviceAuthorizationUrl, DeviceCodeErrorResponse, DeviceCodeErrorResponseType,
     EndpointMaybeSet, EndpointNotSet, EndpointSet, IntrospectionUrl, Nonce, OAuth2TokenResponse,
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, RevocationUrl, Scope,
-    StandardErrorResponse, StandardTokenResponse, SubjectIdentifier,
+    StandardErrorResponse, StandardTokenResponse, SubjectIdentifier, TokenResponse,
     core::{
         CoreAuthDisplay, CoreAuthPrompt, CoreClientAuthMethod, CoreDeviceAuthorizationResponse,
         CoreErrorResponseType, CoreGenderClaim, CoreJsonWebKey, CoreJweContentEncryptionAlgorithm,
@@ -27,7 +27,7 @@ use crate::{
     ClaimsCheckResult, ExtraOidcClaims, IdTokenClaimsWithExtra, OidcCodeCallbackSearchParams,
     OidcCodeExchangeResult, OidcCodeFlowAuthorizationRequest, OidcDeviceAuthorizationResult,
     OidcDeviceTokenPollResult, OidcDeviceTokenResult, OidcRevocableToken, PendingOauthStore,
-    UserInfoClaimsWithExtra,
+    PendingOauthStoreConfig, UserInfoClaimsWithExtra,
     claims::ClaimsChecker,
     config::OidcClientConfig,
     error::{OidcError, OidcResult},
@@ -77,8 +77,11 @@ pub type DiscoveredClientWithExtra = ClientWithExtra<
 /// The redirect URI is resolved dynamically per-request so that
 /// `external_base_url = "auto"` can produce the correct absolute callback URL
 /// based on the incoming request headers.
-pub struct OidcClient {
-    config: OidcClientConfig,
+pub struct OidcClient<PS>
+where
+    PS: PendingOauthStore,
+{
+    config: OidcClientConfig<PS::Config>,
     provider: Arc<OAuthProviderRuntime>,
     base_client: DiscoveredClientWithExtra,
     #[cfg(feature = "claims-script")]
@@ -87,10 +90,14 @@ pub struct OidcClient {
     claims_checker: DefaultClaimsChecker,
     scopes: Vec<String>,
     pkce_enabled: bool,
+    pending_oauth_store: PS,
 }
 
-impl OidcClient {
-    pub async fn from_config(config: OidcClientConfig) -> OidcResult<Self> {
+impl<PS> OidcClient<PS>
+where
+    PS: PendingOauthStore,
+{
+    pub async fn from_config(config: OidcClientConfig<PS::Config>) -> OidcResult<Self> {
         config.validate()?;
         let provider = Arc::new(OAuthProviderRuntime::from_config(config.provider_config()).await?);
         Self::from_provider(provider, config).await
@@ -98,7 +105,7 @@ impl OidcClient {
 
     pub async fn from_provider(
         provider: Arc<OAuthProviderRuntime>,
-        config: OidcClientConfig,
+        config: OidcClientConfig<PS::Config>,
     ) -> OidcResult<Self> {
         config.validate()?;
 
@@ -116,6 +123,7 @@ impl OidcClient {
         let claims_checker = DefaultClaimsChecker;
 
         Ok(Self {
+            pending_oauth_store: PS::from_config_opt(config.pending_store.as_ref()),
             config,
             provider,
             base_client,
@@ -133,25 +141,18 @@ impl OidcClient {
     pub async fn handle_code_authorize(
         &self,
         external_base_url: &Url,
-        pending_oauth_store: &impl PendingOauthStore,
     ) -> OidcResult<OidcCodeFlowAuthorizationRequest> {
-        self.handle_code_authorize_with_redirect_override(
-            external_base_url,
-            pending_oauth_store,
-            None,
-        )
-        .await
+        self.handle_code_authorize_with_redirect_override(external_base_url, None)
+            .await
     }
 
     pub async fn handle_code_authorize_with_redirect_override(
         &self,
         external_base_url: &Url,
-        pending_oauth_store: &impl PendingOauthStore,
         redirect_url_override: Option<&str>,
     ) -> OidcResult<OidcCodeFlowAuthorizationRequest> {
         self.handle_code_authorize_with_redirect_override_and_extra_data(
             external_base_url,
-            pending_oauth_store,
             redirect_url_override,
             None,
         )
@@ -161,13 +162,12 @@ impl OidcClient {
     pub async fn handle_code_authorize_with_redirect_override_and_extra_data(
         &self,
         external_base_url: &Url,
-        pending_oauth_store: &impl PendingOauthStore,
         redirect_url_override: Option<&str>,
         extra_data: Option<serde_json::Value>,
     ) -> OidcResult<OidcCodeFlowAuthorizationRequest> {
         let authorization_request =
             self.authorize_url_with_redirect_override(external_base_url, redirect_url_override)?;
-        pending_oauth_store
+        self.pending_oauth_store
             .insert(
                 authorization_request.csrf_token.secret().to_string(),
                 authorization_request.nonce.secret().to_string(),
@@ -310,22 +310,15 @@ impl OidcClient {
         &self,
         search_params: OidcCodeCallbackSearchParams,
         external_base_url: &Url,
-        pending_oauth_store: &impl PendingOauthStore,
     ) -> OidcResult<OidcCodeCallbackResult> {
-        self.handle_code_callback_with_redirect_override(
-            search_params,
-            external_base_url,
-            pending_oauth_store,
-            None,
-        )
-        .await
+        self.handle_code_callback_with_redirect_override(search_params, external_base_url, None)
+            .await
     }
 
     pub async fn handle_code_callback_with_redirect_override(
         &self,
         search_params: OidcCodeCallbackSearchParams,
         external_base_url: &Url,
-        pending_oauth_store: &impl PendingOauthStore,
         redirect_url_override: Option<&str>,
     ) -> OidcResult<OidcCodeCallbackResult> {
         let code = &search_params.code;
@@ -338,7 +331,7 @@ impl OidcClient {
             })?;
 
         let pending =
-            pending_oauth_store
+            self.pending_oauth_store
                 .take(state)
                 .await?
                 .ok_or_else(|| OidcError::PendingOauth {
@@ -386,6 +379,8 @@ impl OidcClient {
     pub async fn handle_token_refresh(
         &self,
         refresh_token: String,
+        // optional previous id_token to prevent not return new id_token
+        id_token: Option<String>,
     ) -> OidcResult<OidcRefreshTokenResult> {
         let client = self.fresh_client().await?;
         let refresh_token = RefreshToken::new(refresh_token);
@@ -409,12 +404,16 @@ impl OidcClient {
         let refresh_token = token_response
             .refresh_token()
             .map(|value| value.secret().clone());
+        let id_token = token_response
+            .id_token()
+            .map(|value| value.to_string())
+            .or(id_token);
 
         let mut result = OidcRefreshTokenResult {
             access_token,
             access_token_expiration,
             refresh_token,
-            id_token: None,
+            id_token,
             user_info_claims: None,
             claims_check_result: None,
             id_token_claims: None,
@@ -921,7 +920,7 @@ fn format_device_token_terminal_message(
 }
 
 fn build_client(
-    config: &OidcClientConfig,
+    config: &OidcClientConfig<impl PendingOauthStoreConfig>,
     metadata: ProviderMetadataWithExtra,
 ) -> Result<DiscoveredClientWithExtra, String> {
     let client_id = ClientId::new(config.client_id.clone());

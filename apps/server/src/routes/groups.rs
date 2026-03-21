@@ -5,7 +5,7 @@ use crate::{error::ServerError, state::ServerState};
 
 /// GET /api/groups
 pub async fn list(Extension(state): Extension<ServerState>) -> Json<Vec<Group>> {
-    Json(state.store.list_groups().await)
+    Json(state.creds_manage_store.list_groups().await)
 }
 
 /// GET /api/groups/:id
@@ -13,7 +13,7 @@ pub async fn get(
     Extension(state): Extension<ServerState>,
     Path(id): Path<String>,
 ) -> Result<Json<Group>, ServerError> {
-    let group = state.store.get_group(&id).await?;
+    let group = state.creds_manage_store.get_group(&id).await?;
     Ok(Json(group))
 }
 
@@ -23,7 +23,10 @@ pub async fn create(
     Json(req): Json<CreateGroupRequest>,
 ) -> Result<Json<Group>, ServerError> {
     let group = Group::new(req.name);
-    let created = state.store.create_group(group, req.entry_ids).await?;
+    let created = state
+        .creds_manage_store
+        .create_group(group, req.entry_ids)
+        .await?;
     Ok(Json(created))
 }
 
@@ -34,7 +37,7 @@ pub async fn update(
     Json(req): Json<UpdateGroupRequest>,
 ) -> Result<Json<Group>, ServerError> {
     let updated = state
-        .store
+        .creds_manage_store
         .update_group(&id, req.name, req.entry_ids)
         .await?;
     Ok(Json(updated))
@@ -45,6 +48,6 @@ pub async fn delete(
     Extension(state): Extension<ServerState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
-    state.store.delete_group(&id).await?;
+    state.creds_manage_store.delete_group(&id).await?;
     Ok(Json(serde_json::json!({"ok": true})))
 }

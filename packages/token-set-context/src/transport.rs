@@ -4,18 +4,24 @@ use typed_builder::TypedBuilder;
 use url::form_urlencoded;
 
 use crate::{
-    AuthStateSnapshot, AuthTokenDelta, AuthTokenSnapshot, MetadataRedemptionId,
-    PendingAuthStateMetadataRedemptionPayload, SealedRefreshMaterial,
+    AuthTokenDelta, AuthTokenSnapshot, CurrentAuthStateMetadataSnapshotPartial,
+    MetadataRedemptionId, PendingAuthStateMetadataRedemptionPayload, SealedRefreshMaterial,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TokenRefreshPayload {
     #[serde(rename = "refresh_token")]
     pub refresh_material: SealedRefreshMaterial,
+    #[serde(
+        rename = "redirect_uri",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub token_set_redirect_uri: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub redirect_uri: Option<String>,
+    pub id_token: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub current_auth_state: Option<AuthStateSnapshot>,
+    pub current_metadata_snapshot: Option<CurrentAuthStateMetadataSnapshotPartial>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -121,21 +127,6 @@ impl AuthTokenDeltaRedirectFragment {
             access_token_expires_at: delta.access_token_expires_at,
             metadata_redemption_id,
         }
-    }
-
-    pub fn from_auth_state(
-        auth_state: &AuthStateSnapshot,
-        metadata_redemption_id: Option<MetadataRedemptionId>,
-    ) -> Self {
-        Self::from_delta(
-            &AuthTokenDelta {
-                access_token: auth_state.tokens.access_token.clone(),
-                id_token: auth_state.tokens.id_token.clone(),
-                refresh_material: auth_state.tokens.refresh_material.clone(),
-                access_token_expires_at: auth_state.tokens.access_token_expires_at,
-            },
-            metadata_redemption_id,
-        )
     }
 
     pub fn to_fragment(&self) -> String {

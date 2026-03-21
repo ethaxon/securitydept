@@ -8,7 +8,7 @@ use crate::{error::ServerError, state::ServerState};
 
 /// GET /api/entries
 pub async fn list(Extension(state): Extension<ServerState>) -> Json<Vec<AuthEntry>> {
-    Json(state.store.list_entries().await)
+    Json(state.creds_manage_store.list_entries().await)
 }
 
 /// GET /api/entries/:id
@@ -16,7 +16,7 @@ pub async fn get(
     Extension(state): Extension<ServerState>,
     Path(id): Path<String>,
 ) -> Result<Json<AuthEntry>, ServerError> {
-    let entry = state.store.get_entry(&id).await?;
+    let entry = state.creds_manage_store.get_entry(&id).await?;
     Ok(Json(entry))
 }
 
@@ -26,7 +26,7 @@ pub async fn create_basic(
     Json(req): Json<CreateBasicEntryRequest>,
 ) -> Result<Json<CreateBasicEntryResponse>, ServerError> {
     let created = state
-        .store
+        .creds_manage_store
         .create_basic_entry(req.name, req.username, req.password, req.group_ids)
         .await?;
     Ok(Json(CreateBasicEntryResponse { entry: created }))
@@ -38,7 +38,7 @@ pub async fn create_token(
     Json(req): Json<CreateTokenEntryRequest>,
 ) -> Result<Json<CreateTokenEntryResponse>, ServerError> {
     let (created, token) = state
-        .store
+        .creds_manage_store
         .create_token_entry(req.name, req.group_ids)
         .await?;
     Ok(Json(CreateTokenEntryResponse {
@@ -54,7 +54,7 @@ pub async fn update(
     Json(req): Json<UpdateEntryRequest>,
 ) -> Result<Json<AuthEntry>, ServerError> {
     let updated = state
-        .store
+        .creds_manage_store
         .update_entry(&id, req.name, req.username, req.password, req.group_ids)
         .await?;
     Ok(Json(updated))
@@ -65,6 +65,6 @@ pub async fn delete(
     Extension(state): Extension<ServerState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
-    state.store.delete_entry(&id).await?;
+    state.creds_manage_store.delete_entry(&id).await?;
     Ok(Json(serde_json::json!({"ok": true})))
 }

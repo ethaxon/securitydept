@@ -56,8 +56,8 @@
 状态：
 
 - 基础认证区域：已文档化，未完全产品化
-- cookie-session：参考实现已存在，可复用提取待定
-- 无状态 token-set 模式：服务端与共享 crate 基本落地，客户端 SDK 待实现
+- cookie-session：参考实现已存在，可复用提取已落在 `securitydept-session-context` 和 `securitydept-auth-runtime`
+- 无状态 token-set 模式：服务端与共享 crate 基本落地，路由编排已落在 `securitydept-auth-runtime`，客户端 SDK 待实现
 
 ## 阶段 4：前端 SDK
 
@@ -68,7 +68,7 @@
 
 状态：
 
-- token-set SDK 待实现，其余模式仍在计划中
+- token-set SDK 待实现，其余模式仍在计划中或已部分落地
 
 ## 阶段 5：本地凭证操作
 
@@ -93,6 +93,7 @@
 
 - 验证环境
 - 私有 Docker 注册表镜像场景的认证入口
+- cookie-session、基础认证区域和无状态 token-set 流程的集成试验场
 
 ## 跨领域优先事项
 

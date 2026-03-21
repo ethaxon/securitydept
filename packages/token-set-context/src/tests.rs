@@ -4,12 +4,12 @@ use http::HeaderMap;
 use crate::{
     AeadRefreshMaterialProtector, AuthStateMetadataSnapshot, AuthStateSnapshot, AuthTokenSnapshot,
     AuthenticatedPrincipal, AuthenticationSource, AuthenticationSourceKind,
-    BearerPropagationPolicy, MetadataRedemptionId, MokaPendingAuthStateMetadataRedemptionStore,
-    PassthroughRefreshMaterialProtector, PendingAuthStateMetadataRedemptionConfig,
+    BearerPropagationPolicy, MetadataRedemptionId, MokaPendingAuthStateMetadataRedemptionConfig,
+    MokaPendingAuthStateMetadataRedemptionStore, PassthroughRefreshMaterialProtector,
     PendingAuthStateMetadataRedemptionPayload, PendingAuthStateMetadataRedemptionStore,
     RefreshMaterialProtector, SealedRefreshMaterial, TokenPropagator, TokenPropagatorConfig,
     TokenPropagatorError, TokenSetContext, TokenSetContextConfig, TokenSetRedirectUriConfig,
-    TokenSetRedirectUriRule,
+    TokenSetRedirectUriResolver, TokenSetRedirectUriRule, context::TokenSetContextResult,
 };
 
 #[test]
@@ -134,7 +134,7 @@ fn aead_protector_round_trips_base64_material() {
 
 #[test]
 fn token_set_context_config_requires_master_key_when_sealing_is_enabled() {
-    let error = TokenSetContextConfig {
+    let error = TokenSetContextConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
         master_key: None,
         sealed_refresh_token: true,
         ..Default::default()
@@ -146,13 +146,14 @@ fn token_set_context_config_requires_master_key_when_sealing_is_enabled() {
 }
 
 #[test]
-fn token_set_context_round_trips_refresh_token() {
-    let context = TokenSetContext::from_config(&TokenSetContextConfig {
-        master_key: Some("01234567890123456789012345678901".to_string()),
-        sealed_refresh_token: true,
-        ..Default::default()
-    })
-    .expect("context should build");
+fn token_set_context_round_trips_refresh_token() -> TokenSetContextResult<()> {
+    let context = TokenSetContext::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
+        TokenSetContextConfig {
+            master_key: Some("01234567890123456789012345678901".to_string()),
+            sealed_refresh_token: true,
+            ..Default::default()
+        },
+    )?;
     let sealed = context
         .seal_refresh_token("refresh-token")
         .expect("seal should succeed");
@@ -163,6 +164,8 @@ fn token_set_context_round_trips_refresh_token() {
             .expect("unseal should succeed"),
         "refresh-token"
     );
+
+    Ok(())
 }
 
 #[test]
@@ -244,67 +247,10 @@ fn token_propagator_rejects_direct_header_for_exchange_policy() {
 }
 
 #[test]
-fn metadata_delta_between_states_only_contains_changed_fields() {
-    let previous = AuthStateSnapshot::builder()
-        .tokens(
-            AuthTokenSnapshot::builder()
-                .access_token("access-token")
-                .build(),
-        )
-        .metadata(
-            AuthStateMetadataSnapshot::builder()
-                .principal(
-                    AuthenticatedPrincipal::builder()
-                        .subject("user-123")
-                        .display_name("Alice")
-                        .build(),
-                )
-                .build(),
-        )
-        .build();
-    let next = AuthStateSnapshot::builder()
-        .tokens(
-            AuthTokenSnapshot::builder()
-                .access_token("next-access-token")
-                .build(),
-        )
-        .metadata(
-            AuthStateMetadataSnapshot::builder()
-                .principal(
-                    AuthenticatedPrincipal::builder()
-                        .subject("user-123")
-                        .display_name("Bob")
-                        .build(),
-                )
-                .attributes(std::collections::HashMap::from([(
-                    "trace".to_string(),
-                    serde_json::json!("updated"),
-                )]))
-                .build(),
-        )
-        .build();
-
-    let delta = crate::AuthStateMetadataDelta::between(&previous, &next);
-
-    assert_eq!(
-        delta
-            .principal
-            .as_ref()
-            .map(|principal| principal.display_name.as_str()),
-        Some("Bob")
-    );
-    assert!(delta.source.is_none());
-    assert_eq!(
-        delta.attributes.get("trace"),
-        Some(&serde_json::json!("updated"))
-    );
-}
-
-#[test]
-fn metadata_redemption_store_redeems_once() {
-    let store = MokaPendingAuthStateMetadataRedemptionStore::new(
-        PendingAuthStateMetadataRedemptionConfig::default(),
-    );
+fn metadata_redemption_store_redeems_once() -> TokenSetContextResult<()> {
+    let store = MokaPendingAuthStateMetadataRedemptionStore::from_config(
+        &MokaPendingAuthStateMetadataRedemptionConfig::default(),
+    )?;
     let now = Utc::now();
     let issued = store
         .issue(
@@ -327,16 +273,18 @@ fn metadata_redemption_store_redeems_once() {
         Some(PendingAuthStateMetadataRedemptionPayload::Delta(_))
     ));
     assert!(redeemed_again.is_none());
+
+    Ok(())
 }
 
 #[test]
-fn metadata_redemption_store_drops_expired_entries() {
-    let store = MokaPendingAuthStateMetadataRedemptionStore::new(
-        PendingAuthStateMetadataRedemptionConfig {
+fn metadata_redemption_store_drops_expired_entries() -> TokenSetContextResult<()> {
+    let store = MokaPendingAuthStateMetadataRedemptionStore::from_config(
+        &MokaPendingAuthStateMetadataRedemptionConfig {
             ttl: std::time::Duration::from_millis(10),
             ..Default::default()
         },
-    );
+    )?;
     let now = Utc::now();
     let issued = store
         .issue(
@@ -356,11 +304,13 @@ fn metadata_redemption_store_drops_expired_entries() {
         .expect("redeem should succeed");
 
     assert!(redeemed.is_none());
+
+    Ok(())
 }
 
 #[test]
 fn redirect_uri_config_resolves_dynamic_allowed_redirect() {
-    let redirect_uri = TokenSetRedirectUriConfig {
+    let redirect_uri = TokenSetRedirectUriResolver::from_config(TokenSetRedirectUriConfig {
         default_redirect_uri: Some("https://app.example.com/default".to_string()),
         dynamic_redirect_uri_enabled: true,
         allowed_redirect_uris: vec![TokenSetRedirectUriRule::Regex {
@@ -368,7 +318,7 @@ fn redirect_uri_config_resolves_dynamic_allowed_redirect() {
                 .expect("regex should compile"),
         }],
         ..Default::default()
-    }
+    })
     .resolve_redirect_uri(Some("https://app.example.com/callback/tenant-a"))
     .expect("redirect should be allowed");
 

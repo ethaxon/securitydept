@@ -115,33 +115,27 @@ impl Default for SessionContextConfig {
     }
 }
 
-impl SessionContextConfig {
-    pub fn session_handle(&self, session: Session) -> SessionContextSession {
-        SessionContextSession {
-            session,
-            session_context_key: self.session_context_key.clone(),
-        }
+pub fn build_session_layer<Store>(
+    config: &SessionContextConfig,
+    store: Store,
+) -> SessionManagerLayer<Store>
+where
+    Store: SessionStore,
+{
+    let mut layer = SessionManagerLayer::new(store)
+        .with_name(config.cookie_name.clone())
+        .with_path(config.cookie_path.clone())
+        .with_same_site(config.same_site.into())
+        .with_http_only(config.http_only)
+        .with_secure(config.secure);
+
+    if let Some(ttl) = config.ttl {
+        layer = layer.with_expiry(Expiry::OnInactivity(
+            Duration::seconds(ttl.as_secs() as i64),
+        ));
     }
 
-    pub fn session_layer<Store>(&self, store: Store) -> SessionManagerLayer<Store>
-    where
-        Store: SessionStore,
-    {
-        let mut layer = SessionManagerLayer::new(store)
-            .with_name(self.cookie_name.clone())
-            .with_path(self.cookie_path.clone())
-            .with_same_site(self.same_site.into())
-            .with_http_only(self.http_only)
-            .with_secure(self.secure);
-
-        if let Some(ttl) = self.ttl {
-            layer = layer.with_expiry(Expiry::OnInactivity(
-                Duration::seconds(ttl.as_secs() as i64),
-            ));
-        }
-
-        layer
-    }
+    layer
 }
 
 #[derive(Debug, Snafu)]
@@ -200,6 +194,13 @@ impl From<Session> for SessionContextSession {
 impl SessionContextSession {
     pub fn new(session: Session) -> Self {
         Self::from(session)
+    }
+
+    pub fn from_config(session: Session, config: &SessionContextConfig) -> Self {
+        Self {
+            session,
+            session_context_key: config.session_context_key.clone(),
+        }
     }
 
     pub fn with_key(session: Session, session_context_key: impl Into<String>) -> Self {

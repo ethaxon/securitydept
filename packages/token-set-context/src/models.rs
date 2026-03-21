@@ -21,7 +21,7 @@ pub enum AuthenticationSourceKind {
     Unknown,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder, Default)]
 pub struct AuthenticationSource {
     #[builder(default = AuthenticationSourceKind::Unknown)]
     #[serde(default)]
@@ -32,20 +32,12 @@ pub struct AuthenticationSource {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(strip_option, into))]
     pub issuer: Option<String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[builder(default)]
+    pub kind_history: Vec<AuthenticationSourceKind>,
+    #[serde(flatten)]
     #[builder(default)]
     pub attributes: HashMap<String, Value>,
-}
-
-impl Default for AuthenticationSource {
-    fn default() -> Self {
-        Self {
-            kind: AuthenticationSourceKind::Unknown,
-            provider_id: None,
-            issuer: None,
-            attributes: HashMap::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder)]
@@ -106,7 +98,7 @@ pub struct AuthStateMetadataSnapshot {
     #[builder(default = BearerPropagationPolicy::ValidateThenForward)]
     #[serde(default = "default_bearer_propagation_policy")]
     pub bearer_propagation_policy: BearerPropagationPolicy,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
     #[builder(default)]
     pub attributes: HashMap<String, Value>,
 }
@@ -117,9 +109,44 @@ impl Default for AuthStateMetadataSnapshot {
             principal: None,
             source: AuthenticationSource::default(),
             bearer_propagation_policy: default_bearer_propagation_policy(),
-            attributes: HashMap::new(),
+            attributes: HashMap::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder, Default)]
+pub struct CurrentAuthenticationSourcePartial {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub kind: Option<AuthenticationSourceKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub provider_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub issuer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub kind_history: Option<Vec<AuthenticationSourceKind>>,
+    #[serde(default, flatten, skip_serializing_if = "HashMap::is_empty")]
+    #[builder(default)]
+    pub attributes: HashMap<String, Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder, Default)]
+pub struct CurrentAuthStateMetadataSnapshotPartial {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub principal: Option<AuthenticatedPrincipal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub source: Option<CurrentAuthenticationSourcePartial>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub bearer_propagation_policy: Option<BearerPropagationPolicy>,
+    #[serde(default, flatten, skip_serializing_if = "HashMap::is_empty")]
+    #[builder(default)]
+    pub attributes: HashMap<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder, Default)]
@@ -133,7 +160,7 @@ pub struct AuthStateMetadataDelta {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(strip_option))]
     pub bearer_propagation_policy: Option<BearerPropagationPolicy>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, flatten, skip_serializing_if = "HashMap::is_empty")]
     #[builder(default)]
     pub attributes: HashMap<String, Value>,
 }
@@ -148,7 +175,11 @@ pub struct AuthStateSnapshot {
 pub struct AuthStateDelta {
     pub tokens: AuthTokenDelta,
     #[builder(default)]
-    #[serde(default)]
+    #[serde(
+        default,
+        flatten,
+        skip_serializing_if = "AuthStateMetadataDelta::is_empty"
+    )]
     pub metadata: AuthStateMetadataDelta,
 }
 
@@ -185,24 +216,6 @@ impl AuthTokenSnapshot {
 }
 
 impl AuthStateMetadataDelta {
-    pub fn between(previous: &AuthStateSnapshot, next: &AuthStateSnapshot) -> Self {
-        Self {
-            principal: (previous.metadata.principal != next.metadata.principal)
-                .then(|| next.metadata.principal.clone())
-                .flatten(),
-            source: (previous.metadata.source != next.metadata.source)
-                .then(|| next.metadata.source.clone()),
-            bearer_propagation_policy: (previous.metadata.bearer_propagation_policy
-                != next.metadata.bearer_propagation_policy)
-                .then(|| next.metadata.bearer_propagation_policy.clone()),
-            attributes: if previous.metadata.attributes != next.metadata.attributes {
-                next.metadata.attributes.clone()
-            } else {
-                HashMap::new()
-            },
-        }
-    }
-
     pub fn is_empty(&self) -> bool {
         self.principal.is_none()
             && self.source.is_none()
