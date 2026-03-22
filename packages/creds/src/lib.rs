@@ -33,8 +33,12 @@ pub use jwt::{
     Audience, CoreJwtClaims, JwtClaimsTrait, JwtDecodingKey, JwtHeader, JwtTokenData,
     JwtValidation, Scope, verify_token_jwt, verify_token_jwt_with_jwks,
 };
+#[cfg(all(feature = "rfc9068", feature = "jwe"))]
+pub use rfc9068::verify_token_rfc9068_with_jwks;
 #[cfg(feature = "rfc9068")]
-pub use rfc9068::{TokenData, TokenFormat, TokenJwtClaims, verify_token_rfc9068_with_jwks};
+pub use rfc9068::{
+    TokenData, TokenFormat, TokenJwtClaims, verify_token_rfc9068_with_jwks_without_jwe,
+};
 pub use static_token::{
     Sha256TokenAuthCred, StaticTokenAuthCred, generate_static_token, hash_token_sha256,
     verify_token_sha256,

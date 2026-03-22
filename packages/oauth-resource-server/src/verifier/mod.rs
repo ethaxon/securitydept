@@ -6,10 +6,7 @@ mod watcher;
 
 use std::sync::Arc;
 
-use securitydept_creds::{
-    JwtClaimsTrait, JwtValidation, TokenData, TokenFormat, TokenJwtClaims,
-    verify_token_rfc9068_with_jwks,
-};
+use securitydept_creds::{JwtClaimsTrait, JwtValidation, TokenData, TokenFormat, TokenJwtClaims};
 use tracing::debug;
 
 use self::introspection::OAuthResourceServerVerifierIntrospection;
@@ -284,10 +281,14 @@ fn verify_jwt_with_policy<CLAIMS>(
 where
     CLAIMS: JwtClaimsTrait,
 {
-    verify_token_rfc9068_with_jwks(token, jwks, |mut validation: JwtValidation| {
-        apply_validation_policy(&mut validation, metadata, policy);
-        Ok(validation)
-    })
+    securitydept_creds::verify_token_rfc9068_with_jwks_without_jwe(
+        token,
+        jwks,
+        |mut validation: JwtValidation| {
+            apply_validation_policy(&mut validation, metadata, policy);
+            Ok(validation)
+        },
+    )
     .map_err(|source| OAuthResourceServerError::TokenValidation { source })
 }
 
@@ -303,7 +304,7 @@ where
 {
     use crate::LocalJweDecryptionKeySet;
 
-    verify_token_rfc9068_with_jwks(
+    securitydept_creds::verify_token_rfc9068_with_jwks(
         token,
         jwks,
         &LocalJweDecryptionKeySet::new(Vec::new()),

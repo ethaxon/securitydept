@@ -4,98 +4,222 @@ version = "0.2.0-alpha.3"
 edition = "2024"
 
 [features]
-default = []
 # Keep this in sync with all user-facing features below.
 # IMPORTANT: Any new feature added to this crate must also be added to `full`.
 full = [
-    "utils",
-    "auth-runtime",
     "reexport-oauth2",
     "reexport-openidconnect",
-    "oauth-provider",
-    "oidc-client",
-    "oidc-client-claims-script",
-    "oidc-client-default-pending-store",
-    "oidc-client-moka-pending-store",
-    "oauth-resource-server",
-    "oauth-resource-server-jwe",
+    "reexport-jsonwebtoken",
+    "reexport-josekit",
+    "auth-runtime",
     "basic-auth-context",
-    "session-context",
-    "token-set-context",
-    "realip",
-    "realip-docker",
-    "realip-kube",
     "creds",
     "creds-jwk",
+    "creds-oidc",
     "creds-jwt",
     "creds-jwe",
     "creds-rfc9068",
-    "creds-oidc",
     "creds-manage",
     "creds-manage-migration",
+    "oauth-provider",
+    "oauth-resource-server",
+    "oauth-resource-server-jwe",
+    "oidc-client",
+    "oidc-client-recommend",
+    "oidc-client-claims-script",
+    "oidc-client-recommend-pending-store",
+    "oidc-client-moka-pending-store",
+    "realip",
+    "realip-docker",
+    "realip-kube",
+    "session-context",
+    "token-set-context",
+    "token-set-context-recommend",
+    "token-set-context-recommend-pending-store",
+    "token-set-context-moka-pending-store",
+    "token-set-context-recommend-propagation-forwarder",
+    "token-set-context-axum-reverse-proxy-propagation-forwarder",
+    "utils",
 ]
-utils = ["dep:securitydept-utils"]
+
+# Reexports
+reexport-oauth2 = ["dep:oauth2"]
+reexport-openidconnect = [
+    "dep:openidconnect",
+    "reexport-oauth2",
+]
+reexport-jsonwebtoken = ["dep:jsonwebtoken"]
+reexport-josekit = ["dep:josekit"]
+
+# Auth Runtime
 auth-runtime = [
     "dep:securitydept-auth-runtime",
-    "oidc-client",
     "basic-auth-context",
     "creds",
+    "oidc-client",
     "oauth-resource-server",
     "realip",
     "session-context",
     "token-set-context",
+    "utils",
 ]
-reexport-oauth2 = ["dep:oauth2"]
-reexport-openidconnect = ["dep:openidconnect", "reexport-oauth2"]
-oauth-provider = ["dep:securitydept-oauth-provider", "reexport-openidconnect"]
-oidc-client = ["dep:securitydept-oidc-client", "reexport-openidconnect"]
+
+# Basic Auth Context
+basic-auth-context = [
+    "dep:securitydept-basic-auth-context",
+    "utils",
+    "creds",
+    "realip",
+]
+
+# Creds
+creds = [
+    "dep:securitydept-creds",
+    "utils",
+]
+creds-jwk = [
+    "creds",
+    "securitydept-creds/jwk",
+]
+creds-oidc = [
+    "creds",
+    "securitydept-creds/oidc",
+    "reexport-openidconnect",
+]
+creds-jwt = [
+    "creds",
+    "securitydept-creds/jwt",
+    "reexport-jsonwebtoken",
+    "creds-jwk",
+]
+creds-jwe = [
+    "creds",
+    "securitydept-creds/jwe",
+    "creds-jwt",
+    "reexport-josekit",
+    "creds-jwk",
+]
+creds-rfc9068 = [
+    "creds",
+    "securitydept-creds/rfc9068",
+    "creds-jwt",
+    "creds-jwk",
+]
+
+# Creds Manage
+creds-manage = [
+    "dep:securitydept-creds-manage",
+    "utils",
+    "creds",
+    "reexport-openidconnect",
+]
+creds-manage-migration = [
+    "creds-manage",
+    "securitydept-creds-manage/migration",
+]
+
+# Oauth Provider
+oauth-provider = [
+    "dep:securitydept-oauth-provider",
+    "utils",
+    "reexport-openidconnect",
+    "reexport-oauth2",
+]
+
+# Oauth Resource Server
+oauth-resource-server = [
+    "dep:securitydept-oauth-resource-server",
+    "oauth-provider",
+    "creds-rfc9068",
+    "creds-oidc",
+    "utils",
+    "reexport-openidconnect",
+    "reexport-oauth2",
+]
+oauth-resource-server-jwe = [
+    "oauth-resource-server",
+    "securitydept-oauth-resource-server/jwe",
+    "creds-jwe",
+    "reexport-josekit",
+]
+
+# Oidc Client
+oidc-client = [
+    "dep:securitydept-oidc-client",
+    "oauth-provider",
+    "utils",
+    "reexport-openidconnect",
+]
+oidc-client-recommend = [
+    "oidc-client",
+    "securitydept-oidc-client/recommend",
+    "oidc-client-claims-script",
+    "oidc-client-recommend-pending-store",
+]
 oidc-client-claims-script = [
     "oidc-client",
     "securitydept-oidc-client/claims-script",
 ]
-oidc-client-default-pending-store = [
+oidc-client-recommend-pending-store = [
     "oidc-client",
+    "securitydept-oidc-client/recommend-pending-store",
     "oidc-client-moka-pending-store",
-    "securitydept-oidc-client/default-pending-store",
 ]
 oidc-client-moka-pending-store = [
     "oidc-client",
     "securitydept-oidc-client/moka-pending-store",
 ]
-oauth-resource-server = [
-    "dep:securitydept-oauth-resource-server",
-    "reexport-openidconnect",
-]
-oauth-resource-server-jwe = [
-    "oauth-resource-server",
-    "securitydept-oauth-resource-server/jwe",
-]
-basic-auth-context = ["dep:securitydept-basic-auth-context", "creds"]
-session-context = ["dep:securitydept-session-context"]
-token-set-context = ["dep:securitydept-token-set-context"]
+
+# Realip
 realip = ["dep:securitydept-realip"]
-realip-docker = ["realip", "securitydept-realip/docker"]
-realip-kube = ["realip", "securitydept-realip/kube"]
-creds = ["dep:securitydept-creds"]
-creds-jwk = ["creds", "securitydept-creds/jwk"]
-creds-jwt = ["creds", "creds-jwk", "securitydept-creds/jwt", "dep:jsonwebtoken"]
-# jwe requires openssl, so we don't enable it by default for more pure dependencies
-creds-jwe = [
-    "creds",
-    "creds-jwk",
-    "creds-jwt",
-    "securitydept-creds/jwe",
-    "dep:josekit",
+realip-docker = [
+    "realip",
+    "securitydept-realip/docker",
 ]
-creds-rfc9068 = [
-    "creds",
-    "creds-jwk",
-    "creds-jwt",
-    "securitydept-creds/rfc9068",
+realip-kube = [
+    "realip",
+    "securitydept-realip/kube",
 ]
-creds-oidc = ["creds", "securitydept-creds/oidc", "reexport-openidconnect"]
-creds-manage = ["dep:securitydept-creds-manage"]
-creds-manage-migration = ["creds-manage", "securitydept-creds-manage/migration"]
+
+# Session Context
+session-context = [
+    "dep:securitydept-session-context",
+    "utils",
+]
+
+# Token Set Context
+token-set-context = [
+    "dep:securitydept-token-set-context",
+    "oidc-client",
+    "oauth-resource-server",
+    "utils",
+]
+token-set-context-recommend = [
+    "token-set-context",
+    "securitydept-token-set-context/recommend",
+    "token-set-context-recommend-pending-store",
+]
+token-set-context-recommend-pending-store = [
+    "token-set-context",
+    "securitydept-token-set-context/recommend-pending-store",
+    "token-set-context-moka-pending-store",
+]
+token-set-context-moka-pending-store = [
+    "token-set-context",
+    "securitydept-token-set-context/moka-pending-store",
+]
+token-set-context-recommend-propagation-forwarder = [
+    "token-set-context",
+    "securitydept-token-set-context/recommend-propagation-forwarder",
+    "token-set-context-axum-reverse-proxy-propagation-forwarder",
+]
+token-set-context-axum-reverse-proxy-propagation-forwarder = [
+    "token-set-context",
+    "securitydept-token-set-context/axum-reverse-proxy-propagation-forwarder",
+]
+
+# Utils
+utils = ["dep:securitydept-utils"]
 
 [dependencies]
 securitydept-utils = { path = "../utils", optional = true }

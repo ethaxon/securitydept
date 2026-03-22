@@ -9,14 +9,18 @@ use url::Url;
 use crate::{
     AeadRefreshMaterialProtector, AllowedPropagationTarget, AuthStateMetadataSnapshot,
     AuthStateSnapshot, AuthTokenSnapshot, AuthenticatedPrincipal, AuthenticationSource,
-    AuthenticationSourceKind, BearerPropagationPolicy, MetadataRedemptionId,
-    MokaPendingAuthStateMetadataRedemptionConfig, MokaPendingAuthStateMetadataRedemptionStore,
-    PassthroughRefreshMaterialProtector, PendingAuthStateMetadataRedemptionPayload,
-    PendingAuthStateMetadataRedemptionStore, PropagatedBearer, PropagatedTokenValidationConfig,
-    PropagationDestinationPolicy, PropagationDirective, PropagationRequestTarget,
-    PropagationScheme, RefreshMaterialProtector, SealedRefreshMaterial, TokenPropagator,
-    TokenPropagatorConfig, TokenPropagatorError, TokenSetContext, TokenSetContextConfig,
-    TokenSetRedirectUriConfig, TokenSetRedirectUriResolver, TokenSetRedirectUriRule,
+    AuthenticationSourceKind, BearerPropagationPolicy, PassthroughRefreshMaterialProtector,
+    PropagatedBearer, PropagatedTokenValidationConfig, PropagationDestinationPolicy,
+    PropagationDirective, PropagationRequestTarget, PropagationScheme,
+    RefreshMaterialProtector, SealedRefreshMaterial, TokenPropagator, TokenPropagatorConfig,
+    TokenPropagatorError, TokenSetRedirectUriConfig, TokenSetRedirectUriResolver,
+    TokenSetRedirectUriRule,
+};
+#[cfg(feature = "moka-pending-store")]
+use crate::{
+    MetadataRedemptionId, MokaPendingAuthStateMetadataRedemptionConfig,
+    MokaPendingAuthStateMetadataRedemptionStore, PendingAuthStateMetadataRedemptionPayload,
+    PendingAuthStateMetadataRedemptionStore, TokenSetContext, TokenSetContextConfig,
     context::TokenSetContextResult,
 };
 
@@ -135,6 +139,7 @@ fn aead_protector_round_trips_base64_material() {
     );
 }
 
+#[cfg(feature = "moka-pending-store")]
 #[test]
 fn token_set_context_config_requires_master_key_when_sealing_is_enabled() {
     let error = TokenSetContextConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
@@ -148,6 +153,7 @@ fn token_set_context_config_requires_master_key_when_sealing_is_enabled() {
     assert!(format!("{error}").contains("master_key is required"));
 }
 
+#[cfg(feature = "moka-pending-store")]
 #[test]
 fn token_set_context_round_trips_refresh_token() -> TokenSetContextResult<()> {
     let context = TokenSetContext::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
@@ -413,6 +419,7 @@ fn token_propagator_set_node_target_resolver_updates_runtime_behavior() {
         .expect("resolver update should take effect immediately");
 }
 
+#[cfg(feature = "moka-pending-store")]
 #[test]
 fn token_set_context_wraps_token_propagator() {
     let context = TokenSetContext::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
@@ -657,6 +664,7 @@ fn propagated_bearer_with_claims() -> PropagatedBearer<'static> {
     }
 }
 
+#[cfg(feature = "moka-pending-store")]
 #[test]
 fn metadata_redemption_store_redeems_once() -> TokenSetContextResult<()> {
     let store = MokaPendingAuthStateMetadataRedemptionStore::from_config(
@@ -688,6 +696,7 @@ fn metadata_redemption_store_redeems_once() -> TokenSetContextResult<()> {
     Ok(())
 }
 
+#[cfg(feature = "moka-pending-store")]
 #[test]
 fn metadata_redemption_store_drops_expired_entries() -> TokenSetContextResult<()> {
     let store = MokaPendingAuthStateMetadataRedemptionStore::from_config(

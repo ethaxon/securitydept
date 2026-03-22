@@ -3,10 +3,9 @@ name = "securitydept-realip"
 version = "0.2.0-alpha.3"
 edition = "2024"
 [features]
-default = []
 docker = ["dep:bollard"]
 kube = ["dep:k8s-openapi", "dep:kube"]
-kube-integration = ["kube"]
+kube-integration-test = ["kube"]
 
 [dependencies]
 arc-swap = { workspace = true }
@@ -45,7 +44,7 @@ required-features = ["docker"]
 [[test]]
 name = "kube_provider"
 path = "tests/kube_provider.rs"
-required-features = ["kube-integration"]
+required-features = ["kube-integration-test"]
 
 [[test]]
 name = "core_providers"

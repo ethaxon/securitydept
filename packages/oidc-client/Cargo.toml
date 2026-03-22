@@ -4,9 +4,9 @@ version = "0.2.0-alpha.3"
 edition = "2024"
 
 [features]
-default = ["claims-script", "default-pending-store"]
+recommend = ["claims-script", "recommend-pending-store"]
 claims-script = ["dep:boa_engine", "dep:swc_core"]
-default-pending-store = ["moka-pending-store"]
+recommend-pending-store = ["moka-pending-store"]
 moka-pending-store = ["dep:moka"]
 
 [dependencies]

@@ -140,8 +140,7 @@ where
     }
 }
 
-#[cfg(not(feature = "jwe"))]
-pub fn verify_token_rfc9068_with_jwks<CLAIMS, JWTJWK, JWTJWKS, VF>(
+pub fn verify_token_rfc9068_with_jwks_without_jwe<CLAIMS, JWTJWK, JWTJWKS, VF>(
     token: &str,
     jwt_jwks: &JWTJWKS,
     validation_fn: VF,

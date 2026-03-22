@@ -3,10 +3,11 @@ pub mod entries;
 pub mod forward_auth;
 pub mod groups;
 pub mod health;
+pub mod propagation;
 
 use axum::{
     Router, middleware,
-    routing::{delete, get, post, put},
+    routing::{any, delete, get, post, put},
 };
 
 use crate::{
@@ -57,13 +58,27 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/forwardauth/nginx/{group}", get(forward_auth::nginx));
 
+    // Propagation forwarding: forward bearer-authenticated requests with
+    // propagation context to downstream services via reverse proxy.
+    let propagation_routes = if state.propagation_forwarder.is_some() {
+        Router::new()
+            .route(
+                "/api/propagation/{*rest}",
+                any(propagation::propagation_forward),
+            )
+            .layer(middleware::from_fn(require_dashboard_auth))
+    } else {
+        Router::new()
+    };
+
     let app = Router::new()
         .route("/api/health", get(health::health))
         .nest("/basic", auth::basic::router())
         .merge(auth_routes)
         .merge(api_routes)
         .merge(basic_api_routes)
-        .merge(forward_auth_routes);
+        .merge(forward_auth_routes)
+        .merge(propagation_routes);
 
     // Serve static webui files if configured
     let app = if let Some(ref webui_dir) = state.config.server.webui_dir {

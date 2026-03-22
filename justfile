@@ -50,3 +50,6 @@ test-ts:
     pnpm test
 
 test: test-rs test-ts
+
+update-core-feature-gates:
+    node scripts/update-core-feature-gates.ts

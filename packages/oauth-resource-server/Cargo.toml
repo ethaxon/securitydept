@@ -4,7 +4,6 @@ version = "0.2.0-alpha.3"
 edition = "2024"
 
 [features]
-default = []
 jwe = ["securitydept-creds/jwe", "dep:josekit"]
 
 [dependencies]

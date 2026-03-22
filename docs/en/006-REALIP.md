@@ -56,7 +56,7 @@ The crate employs three levels of testing to ensure correctness without flakines
 3. **Containerized Provider Tests (`tests/docker_provider.rs`, `tests/kube_provider.rs`)**: 
    - Spins up real `testcontainers` infrastructure.
    - Bootstraps real Docker networks or ephemeral Kubernetes (Kind/K3d) clusters.
-   - Deploys test proxies (e.g., Traefik, native Pods, Services) and validates IP resolution synchronously using `kube-integration` or `docker` features.
+   - Deploys test proxies (e.g., Traefik, native Pods, Services) and validates IP resolution synchronously using `kube-integration-test` or `docker` features.
    - Run tests selectively via `cargo test -p securitydept-realip --test [test_name]`.
 
 ---

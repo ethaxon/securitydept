@@ -8,10 +8,13 @@ use securitydept_core::{
     basic_auth_context::{BasicAuthContextConfig, BasicAuthZoneConfig},
     creds::Argon2BasicAuthCred,
     creds_manage::CredsManageConfig,
-    oidc::DefaultOidcClientConfig,
+    oidc::{MokaPendingOauthStoreConfig, OidcClientConfig},
     realip::RealIpResolveConfig,
     session_context::SessionContextConfig,
-    token_set_context::DefaultTokenSetContextConfig,
+    token_set_context::{
+        AxumReverseProxyPropagationForwarderConfig, MokaPendingAuthStateMetadataRedemptionConfig,
+        TokenSetContextConfig,
+    },
     utils::base_url::ExternalBaseUrl,
 };
 use serde::Deserialize;
@@ -33,9 +36,9 @@ pub struct ServerConfig {
     /// When absent (`None`), OIDC is disabled; /auth/session/login will create
     /// a dev session.
     #[serde(default)]
-    pub oidc: Option<DefaultOidcClientConfig>,
+    pub oidc: Option<OidcClientConfig<MokaPendingOauthStoreConfig>>,
     #[serde(default)]
-    pub token_set_context: DefaultTokenSetContextConfig,
+    pub token_set_context: TokenSetContextConfig<MokaPendingAuthStateMetadataRedemptionConfig>,
     #[serde(default)]
     pub session_context: SessionContextConfig,
     #[serde(default = "default_basic_auth_context")]
@@ -44,6 +47,10 @@ pub struct ServerConfig {
     pub real_ip_resolve: Option<RealIpResolveConfig>,
     #[serde(default)]
     pub creds_manage: CredsManageConfig,
+    /// When present, enables the axum-reverse-proxy propagation forwarder
+    /// for bearer-authenticated dashboard requests with propagation context.
+    #[serde(default)]
+    pub propagation_forwarder: Option<AxumReverseProxyPropagationForwarderConfig>,
 }
 
 impl ServerConfig {
@@ -110,6 +117,13 @@ impl ServerConfig {
             real_ip.validate().map_err(|e| ServerError::InvalidConfig {
                 message: e.to_string(),
             })?;
+        }
+        if let Some(forwarder_config) = &self.propagation_forwarder {
+            forwarder_config
+                .validate()
+                .map_err(|e| ServerError::InvalidConfig {
+                    message: format!("invalid propagation forwarder config: {e}"),
+                })?;
         }
         Ok(())
     }

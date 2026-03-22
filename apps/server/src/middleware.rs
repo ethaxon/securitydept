@@ -9,7 +9,6 @@ use axum::{
 };
 use securitydept_core::{
     auth_runtime::TokenSetResourcePrincipal,
-    creds::parse_bearer_auth_header_opt,
     session_context::{SessionContextError, SessionContextSession},
     token_set_context::{
         DEFAULT_PROPAGATION_HEADER_NAME, PropagatedBearer, PropagationDirective,

@@ -4,9 +4,11 @@ version = "0.2.0-alpha.3"
 edition = "2024"
 
 [features]
-default = ["default-pending-store"]
-default-pending-store = ["moka-pending-store"]
+recommend = ["recommend-pending-store"]
+recommend-pending-store = ["moka-pending-store"]
 moka-pending-store = ["dep:moka"]
+recommend-propagation-forwarder = ["axum-reverse-proxy-propagation-forwarder"]
+axum-reverse-proxy-propagation-forwarder = ["dep:axum", "dep:axum-reverse-proxy"]
 
 [dependencies]
 securitydept-oidc-client = { path = "../oidc-client" }
@@ -26,3 +28,5 @@ snafu = { workspace = true }
 typed-builder = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
+axum = { workspace = true, optional = true }
+axum-reverse-proxy = { version = "1", optional = true }

@@ -1,10 +1,10 @@
-#[cfg(feature = "creds-jwe")]
+#[cfg(feature = "reexport-josekit")]
 pub use josekit;
-#[cfg(feature = "creds-jwt")]
+#[cfg(feature = "reexport-jsonwebtoken")]
 pub use jsonwebtoken;
-#[cfg(feature = "oidc-client")]
+#[cfg(feature = "reexport-oauth2")]
 pub use oauth2;
-#[cfg(feature = "oidc-client")]
+#[cfg(feature = "reexport-openidconnect")]
 pub use openidconnect;
 #[cfg(feature = "auth-runtime")]
 pub use securitydept_auth_runtime as auth_runtime;

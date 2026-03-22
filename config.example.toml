@@ -58,3 +58,9 @@ data_path = "./data/data.json"
 ## auth-context layer. This belongs to mode C state handling, not OIDC protocol config.
 # sealed_refresh_token = true
 # master_key = "your-master-key"
+
+## Propagation forwarder: enables the axum-reverse-proxy-based forwarding for
+## bearer-authenticated requests with an X-SecurityDept-Propagation header.
+## When this section is present, /api/propagation/* routes become available.
+# [propagation_forwarder]
+# proxy_path = "/"

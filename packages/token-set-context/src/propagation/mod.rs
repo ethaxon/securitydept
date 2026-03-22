@@ -422,6 +422,13 @@ impl TokenPropagator {
             .map_err(|source| TokenPropagatorError::InvalidHeaderValue { source })
     }
 
+    pub fn resolve_target_origin(
+        &self,
+        target: &PropagationRequestTarget,
+    ) -> Result<String, TokenPropagatorError> {
+        Ok(self.resolve_target(target)?.origin())
+    }
+
     pub fn apply_authorization_header(
         &self,
         bearer: &PropagatedBearer<'_>,
@@ -766,6 +773,10 @@ fn parse_directive_host(value: &str) -> Result<(String, Option<u16>), TokenPropa
 }
 
 impl ResolvedPropagationTarget {
+    fn origin(&self) -> String {
+        format!("{}://{}:{}", self.scheme.as_str(), self.hostname, self.port)
+    }
+
     fn from_url(node_id: Option<String>, url: Url) -> Result<Self, TokenPropagatorError> {
         let target = PropagationRequestTarget::from_url(node_id, &url)?;
         let scheme = target

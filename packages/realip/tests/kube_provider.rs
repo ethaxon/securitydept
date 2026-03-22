@@ -24,7 +24,7 @@ use testcontainers::{
 use tokio::sync::Mutex;
 
 const DOCKER_SOCKET: &str = "/var/run/docker.sock";
-const HELPER_IMAGE_NAME: &str = "securitydept-realip-kube-integration-helper";
+const HELPER_IMAGE_NAME: &str = "securitydept-realip-kube-integration-test-helper";
 const HELPER_IMAGE_TAG: &str = "v1";
 const KIND_NODE_IMAGE: &str = "kindest/node:v1.31.2";
 const K3S_IMAGE: &str = "rancher/k3s:v1.31.4-k3s1";

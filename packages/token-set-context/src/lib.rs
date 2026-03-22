@@ -1,6 +1,6 @@
 mod context;
-#[cfg(feature = "default-pending-store")]
-mod default;
+#[cfg(feature = "axum-reverse-proxy-propagation-forwarder")]
+mod forwarder;
 mod metadata_redemption;
 mod models;
 mod oidc;
@@ -15,11 +15,10 @@ pub use context::{
     TokenSetContext, TokenSetContextCodeCallbackResult, TokenSetContextConfig,
     TokenSetContextError, TokenSetContextTokenRefreshResult,
 };
-#[cfg(feature = "default-pending-store")]
-pub use default::{
-    DefaultPendingAuthStateMetadataRedemptionConfig,
-    DefaultPendingAuthStateMetadataRedemptionStore, DefaultTokenSetContext,
-    DefaultTokenSetContextConfig,
+#[cfg(feature = "axum-reverse-proxy-propagation-forwarder")]
+pub use forwarder::{
+    AxumReverseProxyPropagationForwarder, AxumReverseProxyPropagationForwarderConfig,
+    AxumReverseProxyPropagationForwarderError,
 };
 pub use metadata_redemption::{
     MetadataRedemptionId, PendingAuthStateMetadataRedemption,

@@ -16,7 +16,7 @@ use securitydept_core::{
     },
     oidc::OidcClient,
     realip::RealIpResolver,
-    token_set_context::TokenSetContext,
+    token_set_context::{AxumReverseProxyPropagationForwarder, TokenSetContext},
 };
 use snafu::ResultExt;
 use tower_sessions_memory_store::MemoryStore;
@@ -128,6 +128,21 @@ async fn main() -> ServerResult<()> {
         })?,
     );
 
+    let propagation_forwarder = config
+        .propagation_forwarder
+        .as_ref()
+        .map(|forwarder_config| {
+            AxumReverseProxyPropagationForwarder::new(forwarder_config.clone()).map(Arc::new)
+        })
+        .transpose()
+        .map_err(|e| crate::error::ServerError::InvalidConfig {
+            message: format!("invalid propagation forwarder config: {e}"),
+        })?;
+
+    if propagation_forwarder.is_some() {
+        info!("Propagation forwarder enabled");
+    }
+
     let bind_addr = format!("{}:{}", config.server.host, config.server.port);
     info!(addr = %bind_addr, "Starting server");
 
@@ -144,6 +159,7 @@ async fn main() -> ServerResult<()> {
         token_set_resource_verifier,
         real_ip_resolver,
         oidc,
+        propagation_forwarder,
         config: Arc::new(config),
     };
 

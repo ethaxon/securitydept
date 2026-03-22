@@ -11,9 +11,12 @@ use securitydept_core::{
     creds::Argon2BasicAuthCred,
     creds_manage::store::CredsManageStore,
     oauth_resource_server::OAuthResourceServerVerifier,
-    oidc::{DefaultOidcClient, DefaultPendingOauthStore, OidcError},
+    oidc::{OidcClient, OidcError},
     realip::{RealIpResolver, ResolvedClientIp, TransportContext},
-    token_set_context::{DefaultTokenSetContext, MokaPendingAuthStateMetadataRedemptionStore},
+    token_set_context::{
+        AxumReverseProxyPropagationForwarder, MokaPendingAuthStateMetadataRedemptionStore,
+        TokenSetContext,
+    },
 };
 use url::Url;
 
@@ -27,16 +30,18 @@ use crate::{
 pub struct ServerState {
     pub config: Arc<ServerConfig>,
     pub creds_manage_store: Arc<CredsManageStore>,
-    pub token_set_context: Arc<DefaultTokenSetContext>,
+    pub token_set_context: Arc<TokenSetContext<MokaPendingAuthStateMetadataRedemptionStore>>,
     pub basic_auth_context: Arc<BasicAuthContext<Argon2BasicAuthCred>>,
     pub token_set_resource_verifier: Option<Arc<OAuthResourceServerVerifier>>,
     pub real_ip_resolver: Option<Arc<RealIpResolver>>,
     /// None when OIDC is disabled (oidc_enabled = false) for local debugging.
-    pub oidc: Option<Arc<DefaultOidcClient>>,
+    pub oidc: Option<Arc<OidcClient<MokaPendingOauthStore>>>,
+    /// None when [propagation_forwarder] config is absent.
+    pub propagation_forwarder: Option<Arc<AxumReverseProxyPropagationForwarder>>,
 }
 
 impl ServerState {
-    pub fn session_auth_service(&self) -> OidcSessionAuthService<'_, DefaultPendingOauthStore> {
+    pub fn session_auth_service(&self) -> OidcSessionAuthService<'_, MokaPendingOauthStore> {
         OidcSessionAuthService::new(self.oidc.as_deref(), &self.config.session_context)
             .expect("session auth service config must be valid")
     }
