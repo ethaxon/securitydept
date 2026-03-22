@@ -1,6 +1,6 @@
-# Basic Auth Zone Mode
+# Basic Auth Context Mode
 
-Basic Auth zone mode is the smallest auth-context mode SecurityDept should support.
+Basic Auth context mode is the smallest auth-context mode SecurityDept should support.
 
 It is intended for deployments where browser-native Basic Auth is acceptable and a full OIDC flow would be excessive.
 
@@ -32,13 +32,24 @@ For that reason, a future reference implementation may still need the classic cr
 
 ## Relationship to Other Layers
 
-Basic auth zone mode should not depend on OIDC.
+Basic auth context mode should not depend on OIDC.
 
 It should mainly compose:
 
 - `securitydept-creds`
 - `securitydept-creds-manage`
+- optional `securitydept-realip` access restrictions for weaker deployments
 - optional server and TS helpers
+
+## Current Config Direction
+
+The current Rust crate is `securitydept-basic-auth-context`.
+
+Its configuration already separates:
+
+- global basic-auth context settings
+- one or more zone definitions with their own post-auth redirect rules
+- optional `real_ip_access` restrictions backed by `securitydept-realip::RealIpAccessConfig`
 
 ## Planned SDK Scope
 

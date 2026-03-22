@@ -1,6 +1,6 @@
-# 基础认证区域模式
+# 基础认证上下文模式
 
-基础认证区域模式是 SecurityDept 应支持的最小认证上下文模式。
+基础认证上下文模式是 SecurityDept 应支持的最小认证上下文模式。
 
 它旨在用于浏览器原生基础认证可接受且完整 OIDC 流程会过度的部署。
 
@@ -32,13 +32,24 @@ SecurityDept 应将基础认证挑战隔离在显式的挑战路由后面。
 
 ## 与其他层的关系
 
-基础认证区域模式不应依赖 OIDC。
+基础认证上下文模式不应依赖 OIDC。
 
 它主要应组合：
 
 - `securitydept-creds`
 - `securitydept-creds-manage`
+- 对安全性较弱场景可选的 `securitydept-realip` 访问限制
 - 可选的服务器和 TS 助手
+
+## 当前配置方向
+
+当前 Rust crate 为 `securitydept-basic-auth-context`。
+
+其配置已开始区分：
+
+- 全局 basic-auth context 设置
+- 一个或多个 zone 定义及其各自的 post-auth redirect 规则
+- 基于 `securitydept-realip::RealIpAccessConfig` 的可选 `real_ip_access` 访问限制
 
 ## 计划的 SDK 范围
 

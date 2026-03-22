@@ -3,22 +3,28 @@ use serde::{Deserialize, Serialize};
 use crate::{BasicAuthCred, StaticTokenAuthCred};
 
 /// Configuration for Basic Authentication.
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BasicAuthCredsConfig<Creds>
 where
-    Creds: BasicAuthCred + Clone,
+    Creds: BasicAuthCred,
 {
     /// List of allowed credentials.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub users: Vec<Creds>,
-    /// Realm for authentication challenge.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub realm: Option<String>,
+}
+
+impl<Creds> Default for BasicAuthCredsConfig<Creds>
+where
+    Creds: BasicAuthCred,
+{
+    fn default() -> Self {
+        Self { users: Vec::new() }
+    }
 }
 
 impl<Creds> BasicAuthCredsConfig<Creds>
 where
-    Creds: BasicAuthCred + Clone,
+    Creds: BasicAuthCred,
 {
     /// Validate the configuration.
     pub fn validate(&self) -> Result<(), crate::error::CredsError> {
@@ -26,14 +32,23 @@ where
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct StaticTokenAuthCredsConfig<Creds>
 where
     Creds: StaticTokenAuthCred + Clone,
 {
     /// List of allowed credentials.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub tokens: Vec<Creds>,
+}
+
+impl<Creds> Default for StaticTokenAuthCredsConfig<Creds>
+where
+    Creds: StaticTokenAuthCred + Clone,
+{
+    fn default() -> Self {
+        Self { tokens: Vec::new() }
+    }
 }
 
 impl<Creds> StaticTokenAuthCredsConfig<Creds>

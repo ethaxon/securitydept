@@ -11,7 +11,7 @@ The project is evolving away from a single "OIDC login + local session" product 
 - low-level credential verification primitives
 - OIDC client flows
 - OAuth resource server verification
-- basic-auth zone flows for the simplest browser-native cases
+- basic-auth context flows for the simplest browser-native cases
 - stateful cookie-session authentication contexts
 - stateless token-set authentication contexts for distributed SPA and proxy scenarios
 - local credential management for basic auth and static tokens
@@ -23,12 +23,12 @@ The current repository already contains major parts of the lower layers and a wo
 
 - `securitydept-creds`
   - low-level verification primitives for basic auth, static tokens, JWT, JWE, and RFC 9068 access tokens
-- `securitydept-basic-auth-zone`
-  - reusable basic-auth challenge-zone configuration and response helpers
+- `securitydept-basic-auth-context`
+  - reusable basic-auth context, zone, post-auth redirect, and real-IP access-policy helpers
 - `securitydept-session-context`
-  - reusable cookie-session auth context helpers built on tower-sessions
+  - reusable cookie-session auth context helpers built on tower-sessions, including post-auth redirects
 - `securitydept-auth-runtime`
-  - route-ready session and token-set auth orchestration for the reference server
+  - route-ready session, token-set, and basic-auth orchestration for the reference server
 - `securitydept-oauth-provider`
   - shared provider runtime for discovery metadata, JWKS, and introspection with cache and refresh
 - `securitydept-oidc-client`
@@ -36,7 +36,7 @@ The current repository already contains major parts of the lower layers and a wo
 - `securitydept-oauth-resource-server`
   - bearer access-token verification for JWT, JWE, and opaque token introspection
 - `securitydept-token-set-context`
-  - reusable token-set auth-state, redirect, metadata-redemption, and token-propagation helpers
+  - reusable token-set auth-state, redirect, metadata-redemption, and token-propagation helpers; resource-token facts stay outside auth-state metadata, and node-aware propagation may use an optional runtime resolver
 - `securitydept-realip`
   - trusted-proxy/provider-aware client IP resolution for stacked CDN and reverse-proxy deployments
 - `securitydept-creds-manage`
@@ -52,7 +52,7 @@ The current repository already contains major parts of the lower layers and a wo
 
 SecurityDept should eventually support three top-level authentication context modes:
 
-1. Basic auth zone mode
+1. Basic auth context mode
 2. Cookie-session mode
 3. Stateless token-set mode
 
@@ -66,13 +66,32 @@ These modes are intentionally above the current `oidc-client` and `oauth-resourc
   - OAuth provider runtime
   - OAuth resource server verifier
   - creds-manage for basic auth and static tokens
-  - reference server app with cookie-session, basic-auth zone, and stateless token-set flows
+  - reference server app with cookie-session, basic-auth context, and stateless token-set flows
+  - real-IP resolution plus optional real-IP access policy for basic-auth contexts
+  - server-owned bearer propagation validation with destination allowlists and access-token-derived resource facts
 - Planned / partially specified
-  - basic auth zone mode as a first-class auth-context mode
-  - stateless token-set auth-context mode
-  - real-IP trust-boundary resolution for stacked proxy/CDN deployments
+  - richer multi-zone basic-auth context composition
+  - stateless token-set client SDK and browser-side merge/persistence behavior
   - frontend TypeScript SDKs for auth-context modes
-  - mesh-aware bearer propagation and token-set management
+  - a recommended propagation forwarder feature layered above `TokenPropagator`
+
+## Reference Server Auth
+
+The reference server currently exposes two dashboard-management entry styles:
+
+- `/api/*`
+  - tries bearer access-token verification first when an `Authorization: Bearer ...` header is present
+  - otherwise falls back to cookie session
+  - then falls back to configured basic-auth guarded by `basic-auth-context` and optional real-IP policy
+  - when `X-SecurityDept-Propagation` is present, `/api/*` requires bearer access-token authentication and rejects cookie/basic flows with an auth-method mismatch response
+  - the header value uses a Forwarded-style parameter format such as `by=dashboard;for=node-a;host=service.internal.example.com:443;proto=https`
+  - successful bearer authentication keeps access-token-derived resource facts in request runtime context for later propagation-aware handlers
+- `/basic/*`
+  - dedicated basic-auth zone for the reference server dashboard
+  - `/basic/api/*` aliases the dashboard management API behind the admin basic-auth flow
+  - if `X-SecurityDept-Propagation` is present, the basic-auth route returns the same auth-method mismatch response
+
+This admin basic-auth flow is separate from `creds-manage` entries. The managed basic-auth credentials stored in `creds-manage` are data for downstream/forward-auth style use cases, not dashboard administrator login.
 
 ## Docs
 

@@ -1,7 +1,10 @@
 use std::{collections::HashMap, time::Duration as StdDuration};
 
 use axum::http::StatusCode;
-use securitydept_utils::error::{ErrorPresentation, ToErrorPresentation, UserRecovery};
+use securitydept_utils::{
+    error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
+    redirect::{RedirectTargetConfig, RedirectTargetError, UriRelativeRedirectTargetResolver},
+};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use snafu::Snafu;
@@ -79,6 +82,9 @@ pub struct SessionContextConfig {
     #[builder(default = Some(StdDuration::from_secs(86_400)))]
     #[serde(default = "default_ttl", with = "humantime_serde::option")]
     pub ttl: Option<StdDuration>,
+    #[builder(default = default_post_auth_redirect())]
+    #[serde(default = "default_post_auth_redirect")]
+    pub post_auth_redirect: RedirectTargetConfig,
 }
 
 fn default_cookie_name() -> String {
@@ -101,6 +107,10 @@ fn default_ttl() -> Option<StdDuration> {
     Some(StdDuration::from_secs(86_400))
 }
 
+fn default_post_auth_redirect() -> RedirectTargetConfig {
+    RedirectTargetConfig::strict_default("/")
+}
+
 impl Default for SessionContextConfig {
     fn default() -> Self {
         Self {
@@ -111,6 +121,7 @@ impl Default for SessionContextConfig {
             secure: false,
             same_site: SessionCookieSameSite::default(),
             ttl: default_ttl(),
+            post_auth_redirect: default_post_auth_redirect(),
         }
     }
 }
@@ -146,6 +157,8 @@ pub enum SessionContextError {
     Session {
         source: tower_sessions::session::Error,
     },
+    #[snafu(display("post-auth redirect is invalid: {source}"))]
+    RedirectTarget { source: RedirectTargetError },
 }
 
 pub type SessionContextResult<T> = Result<T, SessionContextError>;
@@ -154,7 +167,7 @@ impl SessionContextError {
     pub fn status_code(&self) -> StatusCode {
         match self {
             Self::MissingContext => StatusCode::UNAUTHORIZED,
-            Self::Session { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Session { .. } | Self::RedirectTarget { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -172,7 +185,25 @@ impl ToErrorPresentation for SessionContextError {
                 "The session is temporarily unavailable.",
                 UserRecovery::Retry,
             ),
+            SessionContextError::RedirectTarget { .. } => ErrorPresentation::new(
+                "session_post_auth_redirect_invalid",
+                "The configured post-auth redirect is invalid.",
+                UserRecovery::ContactSupport,
+            ),
         }
+    }
+}
+
+impl SessionContextConfig {
+    pub fn resolve_post_auth_redirect(
+        &self,
+        requested_post_auth_redirect: Option<&str>,
+    ) -> SessionContextResult<String> {
+        UriRelativeRedirectTargetResolver::from_config(self.post_auth_redirect.clone())
+            .map_err(|source| SessionContextError::RedirectTarget { source })?
+            .resolve_redirect_target(requested_post_auth_redirect)
+            .map(|value| value.to_string())
+            .map_err(|source| SessionContextError::RedirectTarget { source })
     }
 }
 
@@ -273,6 +304,8 @@ impl SessionContextSession {
 
 #[cfg(test)]
 mod tests {
+    use securitydept_utils::redirect::RedirectTargetRule;
+
     use super::*;
 
     #[test]
@@ -285,6 +318,10 @@ mod tests {
         assert!(!config.secure);
         assert_eq!(config.same_site, SessionCookieSameSite::Lax);
         assert_eq!(config.ttl, Some(StdDuration::from_secs(86_400)));
+        assert_eq!(
+            config.post_auth_redirect.default_redirect_target.as_deref(),
+            Some("/")
+        );
     }
 
     #[test]
@@ -312,6 +349,31 @@ mod tests {
                 .as_ref()
                 .and_then(|extra| extra.get("provider")),
             Some(&Value::String("local".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_post_auth_redirect_resolution() {
+        let config = SessionContextConfig::builder()
+            .post_auth_redirect(RedirectTargetConfig::dynamic_default_and_dynamic_targets(
+                "/",
+                [RedirectTargetRule::Strict {
+                    value: "/app".to_string(),
+                }],
+            ))
+            .build();
+
+        assert_eq!(
+            config
+                .resolve_post_auth_redirect(None)
+                .expect("default redirect should resolve"),
+            "/"
+        );
+        assert_eq!(
+            config
+                .resolve_post_auth_redirect(Some("/app"))
+                .expect("dynamic redirect should resolve"),
+            "/app"
         );
     }
 }

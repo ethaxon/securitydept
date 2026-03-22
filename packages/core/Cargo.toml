@@ -19,7 +19,7 @@ full = [
     "oidc-client-moka-pending-store",
     "oauth-resource-server",
     "oauth-resource-server-jwe",
-    "basic-auth-zone",
+    "basic-auth-context",
     "session-context",
     "token-set-context",
     "realip",
@@ -38,6 +38,10 @@ utils = ["dep:securitydept-utils"]
 auth-runtime = [
     "dep:securitydept-auth-runtime",
     "oidc-client",
+    "basic-auth-context",
+    "creds",
+    "oauth-resource-server",
+    "realip",
     "session-context",
     "token-set-context",
 ]
@@ -66,7 +70,7 @@ oauth-resource-server-jwe = [
     "oauth-resource-server",
     "securitydept-oauth-resource-server/jwe",
 ]
-basic-auth-zone = ["dep:securitydept-basic-auth-zone", "creds"]
+basic-auth-context = ["dep:securitydept-basic-auth-context", "creds"]
 session-context = ["dep:securitydept-session-context"]
 token-set-context = ["dep:securitydept-token-set-context"]
 realip = ["dep:securitydept-realip"]
@@ -99,7 +103,7 @@ securitydept-auth-runtime = { path = "../auth-runtime", optional = true }
 securitydept-oauth-provider = { path = "../oauth-provider", optional = true }
 securitydept-oidc-client = { path = "../oidc-client", optional = true }
 securitydept-oauth-resource-server = { path = "../oauth-resource-server", optional = true }
-securitydept-basic-auth-zone = { path = "../basic-auth-zone", optional = true }
+securitydept-basic-auth-context = { path = "../basic-auth-context", optional = true }
 securitydept-session-context = { path = "../session-context", optional = true }
 securitydept-token-set-context = { path = "../token-set-context", optional = true }
 securitydept-realip = { path = "../realip", optional = true, default-features = false }

@@ -5,8 +5,13 @@ use figment::{
     providers::{Env, Format, Toml},
 };
 use securitydept_core::{
-    creds_manage::CredsManageConfig, oidc::DefaultOidcClientConfig,
-    session_context::SessionContextConfig, token_set_context::DefaultTokenSetContextConfig,
+    basic_auth_context::{BasicAuthContextConfig, BasicAuthZoneConfig},
+    creds::Argon2BasicAuthCred,
+    creds_manage::CredsManageConfig,
+    oidc::DefaultOidcClientConfig,
+    realip::RealIpResolveConfig,
+    session_context::SessionContextConfig,
+    token_set_context::DefaultTokenSetContextConfig,
     utils::base_url::ExternalBaseUrl,
 };
 use serde::Deserialize;
@@ -33,6 +38,10 @@ pub struct ServerConfig {
     pub token_set_context: DefaultTokenSetContextConfig,
     #[serde(default)]
     pub session_context: SessionContextConfig,
+    #[serde(default = "default_basic_auth_context")]
+    pub basic_auth_context: BasicAuthContextConfig<Argon2BasicAuthCred>,
+    #[serde(default)]
+    pub real_ip_resolve: Option<RealIpResolveConfig>,
     #[serde(default)]
     pub creds_manage: CredsManageConfig,
 }
@@ -66,12 +75,42 @@ impl ServerConfig {
     fn validate(&self) -> ServerResult<()> {
         if let Some(ref oidc_config) = self.oidc {
             oidc_config.validate()?;
-        };
+        }
+        if self.basic_auth_context.zones.len() != 1 {
+            return Err(ServerError::InvalidConfig {
+                message: "server currently requires exactly one basic_auth_context zone"
+                    .to_string(),
+            });
+        }
+        if self.basic_auth_context.zones[0].zone_prefix != "/basic" {
+            return Err(ServerError::InvalidConfig {
+                message: "server currently requires basic_auth_context.zones[0].zone_prefix to be \
+                          `/basic`"
+                    .to_string(),
+            });
+        }
+        if self.basic_auth_context.real_ip_access.is_some() && self.real_ip_resolve.is_none() {
+            return Err(ServerError::InvalidConfig {
+                message: "server.real_ip_resolve is required when \
+                          basic_auth_context.real_ip_access is configured"
+                    .to_string(),
+            });
+        }
         self.token_set_context
             .validate()
             .map_err(|e| ServerError::InvalidConfig {
                 message: e.to_string(),
             })?;
+        self.basic_auth_context
+            .validate()
+            .map_err(|e| ServerError::InvalidConfig {
+                message: e.to_string(),
+            })?;
+        if let Some(real_ip) = &self.real_ip_resolve {
+            real_ip.validate().map_err(|e| ServerError::InvalidConfig {
+                message: e.to_string(),
+            })?;
+        }
         Ok(())
     }
 }
@@ -100,4 +139,10 @@ fn default_host() -> String {
 
 fn default_port() -> u16 {
     7021
+}
+
+fn default_basic_auth_context() -> BasicAuthContextConfig<Argon2BasicAuthCred> {
+    BasicAuthContextConfig::builder()
+        .zones(vec![BasicAuthZoneConfig::default()])
+        .build()
 }

@@ -54,6 +54,7 @@ Expected properties:
 - backend stores or manages authentication context
 - browser mainly carries an HTTP-only session cookie
 - `me` endpoint returns normalized principal data
+- post-auth redirect targets should be validated through the shared redirect-target restriction model instead of using unchecked raw redirect strings
 
 This mode should compose:
 
@@ -92,7 +93,7 @@ Convention:
 
 - Use the generic external field name `refresh_token`
 - Use the internal Rust field name `refresh_material` to signal that it may be protected refresh material rather than a raw refresh token that can be sent directly to the OIDC provider
-- Resolve `redirect_uri` inside `token-set-context`; the current config types are:
+- Resolve `post_auth_redirect_uri` inside `token-set-context`; the current config types are:
   - `TokenSetRedirectUriConfig`
   - `TokenSetRedirectUriRule`
 - `oidc-client` now exposes default pending OAuth store aliases for the common case:
@@ -132,7 +133,7 @@ Expected backend capabilities:
 - let `token-set-context` own refresh material protection, redirect URI resolution, metadata redemption, state reconstruction, and transport DTO generation
 - let `auth-runtime` expose route-ready token-set handlers on top of `token-set-context`
 - provide short-lived metadata redemption storage and exchange
-- round-trip the final callback `redirect_uri` through `oidc-client` pending OAuth extra data
+- round-trip the final callback `post_auth_redirect_uri` through `oidc-client` pending OAuth extra data
 
 Failure semantics:
 
@@ -164,7 +165,12 @@ Current implementation status:
 
 Important note:
 
-This mode does not mean `oidc-client` becomes a resource server. Instead, both `oidc-client` and `oauth-resource-server` should feed a shared authenticated-principal abstraction.
+This mode does not mean `oidc-client` becomes a resource server.
+
+Current code separates:
+
+- `AuthenticatedPrincipal` for authentication-facing identity data from `id_token` / `user_info`
+- `ResourceTokenPrincipal` for access-token-derived resource facts from JWT validation or introspection
 
 ## Shared Future Abstractions
 
@@ -175,6 +181,7 @@ A future reusable auth-context layer should probably define, or is already start
 - `AuthenticationSource`
 - `BearerPropagationPolicy`
 - `TokenPropagator`
+- `PropagatedBearer`
 - `AuthTokenSnapshot`
 - `AuthTokenDelta`
 - `AuthStateMetadataSnapshot`
@@ -187,13 +194,96 @@ A future reusable auth-context layer should probably define, or is already start
 
 For mesh-like deployments, forwarding the original bearer token is only valid when the downstream node accepts the same issuer and audience contract.
 
-A future policy abstraction should distinguish at least:
+The current propagation model is server-owned. The auth-state metadata does not carry propagation policy, and it does not carry resource-token facts.
 
-- transparent forward
+The server config now distinguishes:
+
 - validate then forward
 - exchange for downstream token
 
-The third option is future work, but it should already exist in the design language of the project.
+Direct forwarding uses explicit destination and token validation configuration:
+
+- `TokenPropagatorConfig.default_policy`
+- `TokenPropagatorConfig.destination_policy`
+- `TokenPropagatorConfig.token_validation`
+
+Destination allowlists support:
+
+- `allowed_node_ids`
+- `AllowedPropagationTarget::ExactOrigin`
+- `AllowedPropagationTarget::DomainSuffix`
+- `AllowedPropagationTarget::DomainRegex`
+- `AllowedPropagationTarget::Cidr`
+
+Token validation supports:
+
+- issuer allowlist
+- audience allowlist
+- required scopes
+- allowed `azp`
+
+Current runtime boundary:
+
+- `TokenPropagator` validates `PropagatedBearer`
+- `PropagatedBearer` carries the raw bearer string plus optional `ResourceTokenPrincipal`
+- `PropagationRequestTarget` may be fully specified with scheme/hostname/optional port, or may carry only `node_id`
+- node-only targets require an optional runtime `PropagationNodeTargetResolver`; otherwise validation fails explicitly
+- `TokenPropagator` exposes a runtime `set_node_target_resolver(...)` hook, so the resolver can be installed or swapped after construction
+- propagation checks do not read `AuthStateSnapshot`
+- expiration / active checks are expected to happen in the resource-server verification step that produced `ResourceTokenPrincipal`
+
+Current reference-server behavior:
+
+- the main dashboard API (`/api/*`) can enter a propagation-aware mode via `X-SecurityDept-Propagation`
+- the header value uses a Forwarded-style parameter list, for example `by=dashboard;for=node-a;host=service.internal.example.com:443;proto=https`
+- in that mode the server requires bearer access-token authentication and does not fall back to cookie session or basic-auth
+- successful bearer authentication keeps resource-token facts in request runtime context so propagation-aware handlers can perform `token-set-context` validation
+
+Planned forwarding direction:
+
+- `TokenPropagator` is still only a policy and header-attachment component; it is not a full reverse proxy
+- the planned direction is a recommended forwarder feature layered above `TokenPropagator`
+- that forwarder should handle standard proxy concerns such as `Forwarded` / `X-Forwarded-*`, while `TokenPropagator` remains focused on destination and token validation
+
+Example:
+
+```yaml
+token_propagation:
+  default_policy: validate_then_forward
+  destination_policy:
+    allowed_node_ids:
+      - registry-mirror-a
+    allowed_targets:
+      - kind: exact_origin
+        scheme: https
+        hostname: registry-mirror.internal.example.com
+        port: 443
+      - kind: domain_suffix
+        scheme: https
+        domain_suffix: mesh.internal.example.com
+        port: 443
+      - kind: domain_regex
+        scheme: https
+        domain_regex: '^api-[a-z0-9-]+\.mesh\.internal\.example\.com$'
+        port: 443
+      - kind: cidr
+        scheme: https
+        cidr: 10.0.0.0/24
+        port: 8443
+    deny_sensitive_ip_literals: true
+    require_explicit_port: true
+  token_validation:
+    required_issuers:
+      - https://issuer.example.com
+    allowed_audiences:
+      - mesh-api
+    required_scopes:
+      - mesh.forward
+    allowed_azp:
+      - securitydept-web
+```
+
+`exchange_for_downstream_token` is still future work, but it remains part of the design language and config surface.
 
 ---
 

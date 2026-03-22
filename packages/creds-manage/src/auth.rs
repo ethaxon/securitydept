@@ -20,7 +20,6 @@ pub fn check_basic_auth(
 ) -> CredsManageResult<Option<String>> {
     let validator = MapBasicAuthCredsValidator::from_config(&BasicAuthCredsConfig {
         users: entries.to_vec(),
-        realm: None,
     })?;
 
     if let Some(entry) = validator.get_cred(username)?

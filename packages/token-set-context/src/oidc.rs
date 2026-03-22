@@ -7,17 +7,15 @@ use typed_builder::TypedBuilder;
 use crate::{
     AuthStateMetadataDelta, AuthStateMetadataSnapshot, AuthStateSnapshot, AuthTokenSnapshot,
     AuthenticatedPrincipal, AuthenticationSource, AuthenticationSourceKind,
-    BearerPropagationPolicy, CurrentAuthStateMetadataSnapshotPartial,
-    CurrentAuthenticationSourcePartial, PendingAuthStateMetadataRedemptionStore,
-    SealedRefreshMaterial, TokenSetContext, TokenSetContextError,
+    CurrentAuthStateMetadataSnapshotPartial, CurrentAuthenticationSourcePartial,
+    PendingAuthStateMetadataRedemptionStore, SealedRefreshMaterial, TokenSetContext,
+    TokenSetContextError,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, TypedBuilder, Default)]
 pub struct OidcAuthStateOptions {
     #[builder(default, setter(strip_option, into))]
-    pub provider_id: Option<String>,
-    #[builder(default, setter(strip_option))]
-    pub bearer_propagation_policy: Option<BearerPropagationPolicy>,
+    pub source_provider_id: Option<String>,
     #[builder(default)]
     pub source_attributes: HashMap<String, Value>,
     #[builder(default)]
@@ -53,15 +51,11 @@ where
                 principal: Some(principal_from_code_callback(result)),
                 source: AuthenticationSource {
                     kind: AuthenticationSourceKind::OidcAuthorizationCode,
-                    provider_id: options.provider_id.clone(),
+                    provider_id: options.source_provider_id.clone(),
                     issuer: Some(result.id_token_claims.issuer().url().to_string()),
                     kind_history,
                     attributes: options.source_attributes.clone(),
                 },
-                bearer_propagation_policy: options
-                    .bearer_propagation_policy
-                    .clone()
-                    .unwrap_or(BearerPropagationPolicy::ValidateThenForward),
                 attributes: options.metadata_attributes.clone(),
             },
         })

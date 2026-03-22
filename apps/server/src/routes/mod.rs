@@ -9,7 +9,10 @@ use axum::{
     routing::{delete, get, post, put},
 };
 
-use crate::{middleware::require_session, state::ServerState};
+use crate::{
+    middleware::{require_basic_auth, require_dashboard_auth},
+    state::ServerState,
+};
 
 /// Build the complete application router.
 pub fn build_router(state: ServerState) -> Router {
@@ -23,25 +26,29 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/callback", get(auth::token_set::callback))
         .route("/refresh", post(auth::token_set::refresh))
         .route("/metadata/redeem", post(auth::token_set::redeem_metadata));
-    let basic_auth_routes = auth::basic::router();
     let auth_routes = Router::new()
         .nest("/auth/session", session_auth_routes)
-        .nest("/auth/token-set", token_set_auth_routes)
-        .nest("/auth/basic", basic_auth_routes);
+        .nest("/auth/token-set", token_set_auth_routes);
+
+    let creds_manage_api_routes = Router::new()
+        .route("/entries", get(entries::list))
+        .route("/entries/basic", post(entries::create_basic))
+        .route("/entries/token", post(entries::create_token))
+        .route("/entries/{id}", get(entries::get))
+        .route("/entries/{id}", put(entries::update))
+        .route("/entries/{id}", delete(entries::delete))
+        .route("/groups", get(groups::list))
+        .route("/groups", post(groups::create))
+        .route("/groups/{id}", get(groups::get))
+        .route("/groups/{id}", put(groups::update))
+        .route("/groups/{id}", delete(groups::delete));
 
     let api_routes = Router::new()
-        .route("/api/entries", get(entries::list))
-        .route("/api/entries/basic", post(entries::create_basic))
-        .route("/api/entries/token", post(entries::create_token))
-        .route("/api/entries/{id}", get(entries::get))
-        .route("/api/entries/{id}", put(entries::update))
-        .route("/api/entries/{id}", delete(entries::delete))
-        .route("/api/groups", get(groups::list))
-        .route("/api/groups", post(groups::create))
-        .route("/api/groups/{id}", get(groups::get))
-        .route("/api/groups/{id}", put(groups::update))
-        .route("/api/groups/{id}", delete(groups::delete))
-        .layer(middleware::from_fn(require_session));
+        .nest("/api", creds_manage_api_routes.clone())
+        .layer(middleware::from_fn(require_dashboard_auth));
+    let basic_api_routes = Router::new()
+        .nest("/basic/api", creds_manage_api_routes)
+        .layer(middleware::from_fn(require_basic_auth));
 
     let forward_auth_routes = Router::new()
         .route(
@@ -52,8 +59,10 @@ pub fn build_router(state: ServerState) -> Router {
 
     let app = Router::new()
         .route("/api/health", get(health::health))
+        .nest("/basic", auth::basic::router())
         .merge(auth_routes)
         .merge(api_routes)
+        .merge(basic_api_routes)
         .merge(forward_auth_routes);
 
     // Serve static webui files if configured

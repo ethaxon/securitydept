@@ -39,7 +39,10 @@ pub use models::{
 };
 pub use oidc::OidcAuthStateOptions;
 pub use propagation::{
-    BearerPropagationPolicy, TokenPropagator, TokenPropagatorConfig, TokenPropagatorError,
+    AllowedPropagationTarget, BearerPropagationPolicy, DEFAULT_PROPAGATION_HEADER_NAME,
+    PropagatedBearer, PropagatedTokenValidationConfig, PropagationDestinationPolicy,
+    PropagationDirective, PropagationNodeTargetResolver, PropagationRequestTarget,
+    PropagationScheme, TokenPropagator, TokenPropagatorConfig, TokenPropagatorError,
 };
 pub use redirect::{
     TokenSetRedirectUriConfig, TokenSetRedirectUriError, TokenSetRedirectUriResolver,

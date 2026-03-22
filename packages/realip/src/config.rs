@@ -6,7 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::error::{RealIpError, RealIpResult};
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
-pub struct RealIpConfig {
+pub struct RealIpResolveConfig {
     #[serde(default)]
     pub providers: Vec<ProviderConfig>,
     #[serde(default)]
@@ -15,7 +15,7 @@ pub struct RealIpConfig {
     pub fallback: FallbackConfig,
 }
 
-impl RealIpConfig {
+impl RealIpResolveConfig {
     pub fn validate(&self) -> RealIpResult<()> {
         let mut provider_names = std::collections::BTreeSet::new();
         for provider in &self.providers {

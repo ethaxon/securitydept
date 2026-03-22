@@ -1,0 +1,14 @@
+[package]
+name = "securitydept-basic-auth-context"
+version = "0.2.0-alpha.3"
+edition = "2024"
+
+[dependencies]
+axum = { workspace = true }
+securitydept-utils = { path = "../utils" }
+serde = { workspace = true }
+snafu = { workspace = true }
+typed-builder = { workspace = true }
+web-route = { workspace = true }
+securitydept-creds = { path = "../creds" }
+securitydept-realip = { path = "../realip" }

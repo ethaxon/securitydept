@@ -10,6 +10,7 @@ moka-pending-store = ["dep:moka"]
 
 [dependencies]
 securitydept-oidc-client = { path = "../oidc-client" }
+securitydept-oauth-resource-server = { path = "../oauth-resource-server" }
 securitydept-utils = { path = "../utils" }
 base64 = { workspace = true }
 chrono = { workspace = true }

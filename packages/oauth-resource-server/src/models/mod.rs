@@ -1,7 +1,8 @@
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use openidconnect::{IntrospectionUrl, IssuerUrl, JsonWebKeySetUrl, core::CoreJsonWebKeySet};
 use securitydept_creds::{JwtClaimsTrait, Scope, TokenData};
+use serde_json::Value;
 
 pub mod introspection;
 #[cfg(feature = "jwe")]
@@ -23,6 +24,16 @@ pub struct VerificationPolicy {
     allowed_audiences: Vec<String>,
     required_scopes: Vec<String>,
     clock_skew: Duration,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceTokenPrincipal {
+    pub subject: Option<String>,
+    pub issuer: Option<String>,
+    pub audiences: Vec<String>,
+    pub scopes: Vec<String>,
+    pub authorized_party: Option<String>,
+    pub claims: HashMap<String, Value>,
 }
 
 impl VerificationPolicy {
@@ -88,6 +99,75 @@ where
 {
     fn from(value: VerifiedAccessToken<CLAIMS>) -> Self {
         Self::Structured(Box::new(value))
+    }
+}
+
+impl<CLAIMS> VerifiedToken<CLAIMS>
+where
+    CLAIMS: JwtClaimsTrait,
+{
+    pub fn to_resource_token_principal(&self) -> ResourceTokenPrincipal {
+        match self {
+            Self::Structured(token) => structured_token_principal(&token.token_data),
+            Self::Opaque(token) => ResourceTokenPrincipal {
+                subject: token.subject().map(str::to_string),
+                issuer: token.issuer().map(str::to_string),
+                audiences: token.audience().cloned().unwrap_or_default(),
+                scopes: token.scopes().unwrap_or_default(),
+                authorized_party: None,
+                claims: HashMap::new(),
+            },
+        }
+    }
+}
+
+fn structured_token_principal<CLAIMS>(token_data: &TokenData<CLAIMS>) -> ResourceTokenPrincipal
+where
+    CLAIMS: JwtClaimsTrait,
+{
+    let claims = match token_data {
+        TokenData::JWT(token) => &token.claims,
+        TokenData::Opaque => unreachable!("structured token data must not be opaque"),
+        #[allow(unreachable_patterns)]
+        _ => unreachable!("unexpected structured token variant"),
+    };
+    let additional = claims.get_additional().cloned().unwrap_or_default();
+    let audiences = claims
+        .get_audience()
+        .map(|audience| audience.iter().cloned().collect())
+        .unwrap_or_default();
+    let scopes = additional
+        .get("scope")
+        .or_else(|| additional.get("scp"))
+        .map(value_as_scope_list)
+        .unwrap_or_default();
+
+    ResourceTokenPrincipal {
+        subject: claims.get_subject().map(str::to_string),
+        issuer: claims.get_issuer().map(str::to_string),
+        audiences,
+        scopes,
+        authorized_party: additional
+            .get("azp")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        claims: additional,
+    }
+}
+
+fn value_as_scope_list(value: &Value) -> Vec<String> {
+    match value {
+        Value::String(raw) => raw
+            .split_whitespace()
+            .filter(|scope| !scope.is_empty())
+            .map(str::to_string)
+            .collect(),
+        Value::Array(items) => items
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect(),
+        _ => Vec::new(),
     }
 }
 

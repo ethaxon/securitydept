@@ -11,7 +11,7 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
 - 底层凭证验证原语
 - OIDC 客户端流程
 - OAuth 资源服务器验证
-- 最简单场景下的基础认证（basic-auth）区域流程
+- 最简单场景下的基础认证（basic-auth）上下文流程
 - 有状态的 cookie-session 认证上下文
 - 无状态的 token-set 认证上下文（适用于分布式 SPA 和代理场景）
 - 基础认证和静态令牌的本机凭证管理
@@ -23,12 +23,12 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
 
 - `securitydept-creds`
   - 用于基础认证、静态令牌、JWT、JWE 和 RFC 9068 访问令牌的底层验证原语
-- `securitydept-basic-auth-zone`
-  - 可复用的 basic-auth challenge-zone 配置与响应辅助
+- `securitydept-basic-auth-context`
+  - 可复用的 basic-auth 上下文、zone、post-auth redirect 与 real-IP 访问策略辅助
 - `securitydept-session-context`
-  - 基于 tower-sessions 的可复用 cookie-session 认证上下文辅助
+  - 基于 tower-sessions 的可复用 cookie-session 认证上下文辅助，包含 post-auth redirect
 - `securitydept-auth-runtime`
-  - 面向参考服务器的 session 与 token-set 路由级认证编排
+  - 面向参考服务器的 session、token-set 与 basic-auth 路由级认证编排
 - `securitydept-oauth-provider`
   - 共享提供者运行时，支持发现元数据、JWKS 和内省（introspection），带有缓存和刷新
 - `securitydept-oidc-client`
@@ -36,7 +36,7 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
 - `securitydept-oauth-resource-server`
   - 用于 JWT、JWE 和不透明令牌内省的 bearer 访问令牌验证
 - `securitydept-token-set-context`
-  - 可复用的 token-set 认证状态、redirect、metadata redemption 与 token 传播辅助
+  - 可复用的 token-set 认证状态、redirect、metadata redemption 与 token 传播辅助；资源态 token facts 不进入认证 metadata，且 node-aware propagation 可使用可选的运行时 resolver
 - `securitydept-realip`
   - 面向多层 CDN 与反向代理部署的 trusted-proxy/provider 感知客户端 IP 解析
 - `securitydept-creds-manage`
@@ -52,7 +52,7 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
 
 SecurityDept 最终应支持三种顶层认证上下文模式：
 
-1. 基础认证区域模式（basic auth zone mode）
+1. 基础认证上下文模式（basic auth context mode）
 2. Cookie-session 模式
 3. 无状态 token-set 模式
 
@@ -66,13 +66,32 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
   - OAuth 提供者运行时
   - OAuth 资源服务器验证器
   - 用于基础认证和静态令牌的 creds-manage
-  - 带有 cookie-session、基础认证区域和无状态 token-set 流程的参考服务器应用
+  - 带有 cookie-session、basic-auth 上下文和无状态 token-set 流程的参考服务器应用
+  - real-IP 解析，以及 basic-auth context 的可选 real-IP 访问策略
+  - 由服务端持有的 bearer propagation 校验，包括目标 allowlist 与 access-token 资源事实校验
 - 计划中/部分已规范
-  - 基础认证区域模式作为一等认证上下文模式
-  - 无状态 token-set 认证上下文模式
-  - 面向多层 proxy/CDN 部署的 real-IP 信任边界解析
+  - 更丰富的多 zone basic-auth context 组合
+  - 无状态 token-set 客户端 SDK 以及浏览器侧合并/持久化行为
   - 用于认证上下文模式的前端 TypeScript SDK
-  - 网格感知的 bearer 传播和 token-set 管理
+  - 构建在 `TokenPropagator` 之上的推荐 propagation forwarder feature
+
+## 参考服务器认证入口
+
+当前参考服务器提供两种 dashboard 管理入口：
+
+- `/api/*`
+  - 如果存在 `Authorization: Bearer ...`，优先尝试通过 `oauth-resource-server` 校验 bearer access token
+  - 否则回退到 cookie session
+  - 最后回退到受 `basic-auth-context` 与可选 real-IP 策略约束的配置型 basic-auth
+  - 如果带有 `X-SecurityDept-Propagation`，则 `/api/*` 强制要求 bearer access-token 认证，cookie/basic 会返回“认证方式不匹配”
+  - 该 header 的值使用类似 `Forwarded` 的参数格式，例如 `by=dashboard;for=node-a;host=service.internal.example.com:443;proto=https`
+  - bearer 认证成功后，请求运行时上下文会保留 access-token 导出的资源事实，供后续 propagation-aware handler 使用
+- `/basic/*`
+  - 参考服务器 dashboard 专用的 basic-auth zone
+  - `/basic/api/*` 是 dashboard 管理 API 的 basic-auth 别名入口
+  - 如果带有 `X-SecurityDept-Propagation`，basic-auth 路由会直接返回“认证方式不匹配”
+
+这套管理员 basic-auth 与 `creds-manage` 中被管理的 basic-auth 账号是分离的。`creds-manage` 中的 basic-auth 凭证是供 downstream / forward-auth 等业务场景使用的数据，不是 dashboard 管理员登录账号。
 
 ## 文档
 

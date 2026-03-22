@@ -5,8 +5,13 @@ edition = "2024"
 
 [dependencies]
 http = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
+serde_regex = { version = "1" }
+snafu = { workspace = true }
+typed-builder = { workspace = true }
 url = { workspace = true }
 serde_with = { workspace = true }
 serde_json = { workspace = true }
 rfc7239 = { workspace = true }
+iri-string = { workspace = true }

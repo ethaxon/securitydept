@@ -1,15 +1,23 @@
 use chrono::{TimeDelta, Utc};
 use http::HeaderMap;
+use regex::Regex;
+use securitydept_oauth_resource_server::ResourceTokenPrincipal;
+use serde_json::json;
+use std::sync::Arc;
+use url::Url;
 
 use crate::{
-    AeadRefreshMaterialProtector, AuthStateMetadataSnapshot, AuthStateSnapshot, AuthTokenSnapshot,
-    AuthenticatedPrincipal, AuthenticationSource, AuthenticationSourceKind,
-    BearerPropagationPolicy, MetadataRedemptionId, MokaPendingAuthStateMetadataRedemptionConfig,
-    MokaPendingAuthStateMetadataRedemptionStore, PassthroughRefreshMaterialProtector,
-    PendingAuthStateMetadataRedemptionPayload, PendingAuthStateMetadataRedemptionStore,
-    RefreshMaterialProtector, SealedRefreshMaterial, TokenPropagator, TokenPropagatorConfig,
-    TokenPropagatorError, TokenSetContext, TokenSetContextConfig, TokenSetRedirectUriConfig,
-    TokenSetRedirectUriResolver, TokenSetRedirectUriRule, context::TokenSetContextResult,
+    AeadRefreshMaterialProtector, AllowedPropagationTarget, AuthStateMetadataSnapshot,
+    AuthStateSnapshot, AuthTokenSnapshot, AuthenticatedPrincipal, AuthenticationSource,
+    AuthenticationSourceKind, BearerPropagationPolicy, MetadataRedemptionId,
+    MokaPendingAuthStateMetadataRedemptionConfig, MokaPendingAuthStateMetadataRedemptionStore,
+    PassthroughRefreshMaterialProtector, PendingAuthStateMetadataRedemptionPayload,
+    PendingAuthStateMetadataRedemptionStore, PropagatedBearer, PropagatedTokenValidationConfig,
+    PropagationDestinationPolicy, PropagationDirective, PropagationRequestTarget,
+    PropagationScheme, RefreshMaterialProtector, SealedRefreshMaterial, TokenPropagator,
+    TokenPropagatorConfig, TokenPropagatorError, TokenSetContext, TokenSetContextConfig,
+    TokenSetRedirectUriConfig, TokenSetRedirectUriResolver, TokenSetRedirectUriRule,
+    context::TokenSetContextResult,
 };
 
 #[test]
@@ -47,7 +55,7 @@ fn auth_token_snapshot_applies_authorization_header() {
 }
 
 #[test]
-fn auth_state_snapshot_builder_supports_principal_source_and_policy() {
+fn auth_state_snapshot_builder_supports_principal_and_source() {
     let auth_state = AuthStateSnapshot::builder()
         .tokens(
             AuthTokenSnapshot::builder()
@@ -72,7 +80,6 @@ fn auth_state_snapshot_builder_supports_principal_source_and_policy() {
                         .issuer("https://issuer.example.com")
                         .build(),
                 )
-                .bearer_propagation_policy(BearerPropagationPolicy::TransparentForward)
                 .build(),
         )
         .build();
@@ -89,10 +96,6 @@ fn auth_state_snapshot_builder_supports_principal_source_and_policy() {
     assert_eq!(
         auth_state.metadata.source.kind,
         AuthenticationSourceKind::OidcAuthorizationCode
-    );
-    assert_eq!(
-        auth_state.metadata.bearer_propagation_policy,
-        BearerPropagationPolicy::TransparentForward
     );
 }
 
@@ -172,51 +175,16 @@ fn token_set_context_round_trips_refresh_token() -> TokenSetContextResult<()> {
 fn token_propagator_uses_server_default_policy_by_default() {
     let propagator = TokenPropagator::from_config(&TokenPropagatorConfig {
         default_policy: BearerPropagationPolicy::ValidateThenForward,
-        trust_auth_state_policy: false,
+        destination_policy: PropagationDestinationPolicy {
+            allowed_node_ids: vec!["node-a".to_string()],
+            ..Default::default()
+        },
+        ..Default::default()
     })
     .expect("propagator should build");
-    let auth_state = AuthStateSnapshot::builder()
-        .tokens(
-            AuthTokenSnapshot::builder()
-                .access_token("access-token")
-                .build(),
-        )
-        .metadata(
-            AuthStateMetadataSnapshot::builder()
-                .bearer_propagation_policy(BearerPropagationPolicy::TransparentForward)
-                .build(),
-        )
-        .build();
-
     assert_eq!(
-        propagator.resolve_policy(&auth_state),
+        propagator.resolve_policy(),
         BearerPropagationPolicy::ValidateThenForward
-    );
-}
-
-#[test]
-fn token_propagator_can_opt_into_auth_state_policy() {
-    let propagator = TokenPropagator::from_config(&TokenPropagatorConfig {
-        default_policy: BearerPropagationPolicy::ValidateThenForward,
-        trust_auth_state_policy: true,
-    })
-    .expect("propagator should build");
-    let auth_state = AuthStateSnapshot::builder()
-        .tokens(
-            AuthTokenSnapshot::builder()
-                .access_token("access-token")
-                .build(),
-        )
-        .metadata(
-            AuthStateMetadataSnapshot::builder()
-                .bearer_propagation_policy(BearerPropagationPolicy::TransparentForward)
-                .build(),
-        )
-        .build();
-
-    assert_eq!(
-        propagator.resolve_policy(&auth_state),
-        BearerPropagationPolicy::TransparentForward
     );
 }
 
@@ -224,26 +192,469 @@ fn token_propagator_can_opt_into_auth_state_policy() {
 fn token_propagator_rejects_direct_header_for_exchange_policy() {
     let propagator = TokenPropagator::from_config(&TokenPropagatorConfig {
         default_policy: BearerPropagationPolicy::ExchangeForDownstreamToken,
-        trust_auth_state_policy: false,
+        destination_policy: PropagationDestinationPolicy {
+            allowed_node_ids: vec!["node-a".to_string()],
+            ..Default::default()
+        },
+        ..Default::default()
     })
     .expect("propagator should build");
-    let auth_state = AuthStateSnapshot::builder()
-        .tokens(
-            AuthTokenSnapshot::builder()
-                .access_token("access-token")
-                .build(),
-        )
-        .metadata(AuthStateMetadataSnapshot::default())
-        .build();
-
     let error = propagator
-        .authorization_header_value(&auth_state)
+        .authorization_header_value(
+            &PropagatedBearer {
+                access_token: "access-token",
+                resource_token_principal: None,
+            },
+            &PropagationRequestTarget::new(
+                Some("node-a".to_string()),
+                PropagationScheme::Https,
+                "service.internal.example.com",
+                443,
+            ),
+        )
         .expect_err("exchange policy should not attach a direct header");
 
     assert!(matches!(
         error,
         TokenPropagatorError::UnsupportedDirectAuthorization { .. }
     ));
+}
+
+#[test]
+fn propagation_directive_round_trips_forwarded_style_value() {
+    let directive = PropagationDirective::parse(
+        "by=dashboard;for=node-a;host=service.internal.example.com:443;proto=https",
+    )
+    .expect("directive should parse");
+
+    assert_eq!(directive.by.as_deref(), Some("dashboard"));
+    assert_eq!(directive.r#for.as_deref(), Some("node-a"));
+    assert_eq!(directive.hostname, "service.internal.example.com");
+    assert_eq!(directive.port, Some(443));
+    assert_eq!(directive.proto, PropagationScheme::Https);
+
+    let header_value = directive
+        .to_header_value()
+        .expect("directive should serialize");
+    assert_eq!(
+        header_value.to_str().expect("header value should be ascii"),
+        "by=dashboard;for=node-a;host=service.internal.example.com:443;proto=https"
+    );
+}
+
+#[test]
+fn propagation_directive_maps_to_request_target_with_default_port() {
+    let directive =
+        PropagationDirective::parse("for=node-a;host=service.internal.example.com;proto=https")
+            .expect("directive should parse");
+
+    let target = directive.to_request_target();
+    assert_eq!(target.node_id.as_deref(), Some("node-a"));
+    assert_eq!(target.scheme, Some(PropagationScheme::Https));
+    assert_eq!(
+        target.hostname.as_deref(),
+        Some("service.internal.example.com")
+    );
+    assert_eq!(target.port, None);
+}
+
+#[test]
+fn token_propagator_allows_matching_node_id_and_claims() {
+    let propagator = TokenPropagator::from_config(&TokenPropagatorConfig {
+        destination_policy: PropagationDestinationPolicy {
+            allowed_node_ids: vec!["node-a".to_string()],
+            ..Default::default()
+        },
+        token_validation: PropagatedTokenValidationConfig {
+            required_issuers: vec!["https://issuer.example.com".to_string()],
+            allowed_audiences: vec!["mesh-api".to_string()],
+            required_scopes: vec!["mesh.forward".to_string()],
+            allowed_azp: vec!["securitydept-web".to_string()],
+        },
+        ..Default::default()
+    })
+    .expect("propagator should build");
+
+    let target = PropagationRequestTarget::new(
+        Some("node-a".to_string()),
+        PropagationScheme::Https,
+        "unlisted.internal.example.com",
+        443,
+    );
+    let mut headers = HeaderMap::new();
+
+    propagator
+        .apply_authorization_header(&propagated_bearer_with_claims(), &target, &mut headers)
+        .expect("target should be allowed");
+
+    assert_eq!(headers["authorization"], "Bearer access-token");
+}
+
+#[test]
+fn token_propagator_allows_missing_explicit_port_with_scheme_default() {
+    let propagator = TokenPropagator::from_config(&TokenPropagatorConfig {
+        destination_policy: PropagationDestinationPolicy {
+            allowed_targets: vec![AllowedPropagationTarget::ExactOrigin {
+                scheme: PropagationScheme::Https,
+                hostname: "service.internal.example.com".to_string(),
+                port: 443,
+            }],
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .expect("propagator should build");
+
+    let target = PropagationRequestTarget::new(
+        None,
+        PropagationScheme::Https,
+        "service.internal.example.com",
+        None,
+    );
+
+    propagator
+        .validate_target(&propagated_bearer_with_claims(), &target)
+        .expect("target should use the default https port");
+}
+
+#[derive(Debug)]
+struct StaticNodeTargetResolver;
+
+impl crate::PropagationNodeTargetResolver for StaticNodeTargetResolver {
+    fn resolve_url(&self, node_id: &str) -> Option<Url> {
+        match node_id {
+            "node-a" => Url::parse("https://service.internal.example.com").ok(),
+            _ => None,
+        }
+    }
+}
+
+#[test]
+fn token_propagator_rejects_node_only_target_without_resolver() {
+    let propagator = TokenPropagator::from_config(&TokenPropagatorConfig {
+        destination_policy: PropagationDestinationPolicy {
+            allowed_node_ids: vec!["node-a".to_string()],
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .expect("propagator should build");
+
+    let error = propagator
+        .validate_target(
+            &propagated_bearer_with_claims(),
+            &PropagationRequestTarget::for_node("node-a"),
+        )
+        .expect_err("node-only target should require a resolver");
+
+    assert!(matches!(
+        error,
+        TokenPropagatorError::NodeTargetResolverRequired { .. }
+    ));
+}
+
+#[test]
+fn token_propagator_allows_node_only_target_with_resolver() {
+    let propagator = TokenPropagator::from_config_with_node_target_resolver(
+        &TokenPropagatorConfig {
+            destination_policy: PropagationDestinationPolicy {
+                allowed_node_ids: vec!["node-a".to_string()],
+                allowed_targets: vec![AllowedPropagationTarget::ExactOrigin {
+                    scheme: PropagationScheme::Https,
+                    hostname: "service.internal.example.com".to_string(),
+                    port: 443,
+                }],
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        Some(Arc::new(StaticNodeTargetResolver)),
+    )
+    .expect("propagator should build");
+
+    propagator
+        .validate_target(
+            &propagated_bearer_with_claims(),
+            &PropagationRequestTarget::for_node("node-a"),
+        )
+        .expect("resolver should expand the node id into a valid target");
+}
+
+#[test]
+fn token_propagator_set_node_target_resolver_updates_runtime_behavior() {
+    let propagator = TokenPropagator::from_config(&TokenPropagatorConfig {
+        destination_policy: PropagationDestinationPolicy {
+            allowed_node_ids: vec!["node-a".to_string()],
+            allowed_targets: vec![AllowedPropagationTarget::ExactOrigin {
+                scheme: PropagationScheme::Https,
+                hostname: "service.internal.example.com".to_string(),
+                port: 443,
+            }],
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .expect("propagator should build");
+
+    let target = PropagationRequestTarget::for_node("node-a");
+
+    let error = propagator
+        .validate_target(&propagated_bearer_with_claims(), &target)
+        .expect_err("node-only target should fail before the resolver is installed");
+    assert!(matches!(
+        error,
+        TokenPropagatorError::NodeTargetResolverRequired { .. }
+    ));
+
+    propagator.set_node_target_resolver(Some(Arc::new(StaticNodeTargetResolver)));
+
+    propagator
+        .validate_target(&propagated_bearer_with_claims(), &target)
+        .expect("resolver update should take effect immediately");
+}
+
+#[test]
+fn token_set_context_wraps_token_propagator() {
+    let context = TokenSetContext::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
+        TokenSetContextConfig {
+            token_propagation: TokenPropagatorConfig {
+                destination_policy: PropagationDestinationPolicy {
+                    allowed_targets: vec![AllowedPropagationTarget::ExactOrigin {
+                        scheme: PropagationScheme::Https,
+                        hostname: "service.internal.example.com".to_string(),
+                        port: 443,
+                    }],
+                    ..Default::default()
+                },
+                token_validation: PropagatedTokenValidationConfig {
+                    required_issuers: vec!["https://issuer.example.com".to_string()],
+                    allowed_audiences: vec!["mesh-api".to_string()],
+                    required_scopes: vec!["mesh.forward".to_string()],
+                    allowed_azp: vec!["securitydept-web".to_string()],
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .expect("context should build");
+    let target = PropagationRequestTarget::new(
+        None,
+        PropagationScheme::Https,
+        "service.internal.example.com",
+        443,
+    );
+    let mut headers = HeaderMap::new();
+
+    context
+        .apply_propagation_authorization_header(
+            &propagated_bearer_with_claims(),
+            &target,
+            &mut headers,
+        )
+        .expect("propagation should succeed");
+
+    assert_eq!(headers["authorization"], "Bearer access-token");
+}
+
+#[test]
+fn token_propagator_allows_matching_domain_suffix() {
+    let propagator = TokenPropagator::from_config(&TokenPropagatorConfig {
+        destination_policy: PropagationDestinationPolicy {
+            allowed_targets: vec![AllowedPropagationTarget::DomainSuffix {
+                scheme: PropagationScheme::Https,
+                domain_suffix: "mesh.internal.example.com".to_string(),
+                port: 443,
+            }],
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .expect("propagator should build");
+
+    let target = PropagationRequestTarget::new(
+        None,
+        PropagationScheme::Https,
+        "api.mesh.internal.example.com",
+        443,
+    );
+
+    propagator
+        .validate_target(&propagated_bearer_with_claims(), &target)
+        .expect("domain target should be allowed");
+}
+
+#[test]
+fn token_propagator_allows_matching_domain_regex() {
+    let propagator = TokenPropagator::from_config(&TokenPropagatorConfig {
+        destination_policy: PropagationDestinationPolicy {
+            allowed_targets: vec![AllowedPropagationTarget::DomainRegex {
+                scheme: PropagationScheme::Https,
+                domain_regex: Regex::new(r"^api-[a-z0-9-]+\.mesh\.internal\.example\.com$")
+                    .expect("regex should compile"),
+                port: 443,
+            }],
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .expect("propagator should build");
+
+    let target = PropagationRequestTarget::new(
+        None,
+        PropagationScheme::Https,
+        "api-orders.mesh.internal.example.com",
+        443,
+    );
+
+    propagator
+        .validate_target(&propagated_bearer_with_claims(), &target)
+        .expect("regex target should be allowed");
+}
+
+#[test]
+fn token_propagator_allows_matching_cidr_ip_literal() {
+    let propagator = TokenPropagator::from_config(&TokenPropagatorConfig {
+        destination_policy: PropagationDestinationPolicy {
+            allowed_targets: vec![AllowedPropagationTarget::Cidr {
+                scheme: PropagationScheme::Https,
+                cidr: "10.0.0.0/24".to_string(),
+                port: 8443,
+            }],
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .expect("propagator should build");
+
+    let target = PropagationRequestTarget::new(None, PropagationScheme::Https, "10.0.0.42", 8443);
+
+    propagator
+        .validate_target(&propagated_bearer_with_claims(), &target)
+        .expect("cidr target should be allowed");
+}
+
+#[test]
+fn token_propagator_rejects_unlisted_target() {
+    let propagator = TokenPropagator::from_config(&TokenPropagatorConfig::default())
+        .expect("propagator should build");
+
+    let error = propagator
+        .validate_target(
+            &propagated_bearer_with_claims(),
+            &PropagationRequestTarget::new(
+                None,
+                PropagationScheme::Https,
+                "api.mesh.internal.example.com",
+                443,
+            ),
+        )
+        .expect_err("target should be denied");
+
+    assert!(matches!(
+        error,
+        TokenPropagatorError::DestinationNotAllowed { .. }
+    ));
+}
+
+#[test]
+fn token_propagator_rejects_missing_required_scope() {
+    let propagator = TokenPropagator::from_config(&TokenPropagatorConfig {
+        destination_policy: PropagationDestinationPolicy {
+            allowed_targets: vec![AllowedPropagationTarget::ExactOrigin {
+                scheme: PropagationScheme::Https,
+                hostname: "service.internal.example.com".to_string(),
+                port: 443,
+            }],
+            ..Default::default()
+        },
+        token_validation: PropagatedTokenValidationConfig {
+            required_scopes: vec!["admin".to_string()],
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .expect("propagator should build");
+
+    let error = propagator
+        .validate_target(
+            &propagated_bearer_with_claims(),
+            &PropagationRequestTarget::new(
+                None,
+                PropagationScheme::Https,
+                "service.internal.example.com",
+                443,
+            ),
+        )
+        .expect_err("scope should be rejected");
+
+    assert!(matches!(
+        error,
+        TokenPropagatorError::TokenScopeMissing { .. }
+    ));
+}
+
+#[test]
+fn token_propagator_rejects_when_resource_token_principal_is_missing() {
+    let propagator = TokenPropagator::from_config(&TokenPropagatorConfig {
+        destination_policy: PropagationDestinationPolicy {
+            allowed_targets: vec![AllowedPropagationTarget::ExactOrigin {
+                scheme: PropagationScheme::Https,
+                hostname: "service.internal.example.com".to_string(),
+                port: 443,
+            }],
+            ..Default::default()
+        },
+        token_validation: PropagatedTokenValidationConfig {
+            required_issuers: vec!["https://issuer.example.com".to_string()],
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .expect("propagator should build");
+    let error = propagator
+        .validate_target(
+            &PropagatedBearer {
+                access_token: "access-token",
+                resource_token_principal: None,
+            },
+            &PropagationRequestTarget::new(
+                None,
+                PropagationScheme::Https,
+                "service.internal.example.com",
+                443,
+            ),
+        )
+        .expect_err("token facts should be required");
+
+    assert!(matches!(error, TokenPropagatorError::TokenFactsUnavailable));
+}
+
+fn propagated_bearer_with_claims() -> PropagatedBearer<'static> {
+    static ACCESS_TOKEN: &str = "access-token";
+    let resource_token_principal = Box::leak(Box::new(ResourceTokenPrincipal {
+        subject: Some("user-123".to_string()),
+        issuer: Some("https://issuer.example.com".to_string()),
+        audiences: vec!["mesh-api".to_string(), "profile".to_string()],
+        scopes: vec![
+            "openid".to_string(),
+            "mesh.forward".to_string(),
+            "profile".to_string(),
+        ],
+        authorized_party: Some("securitydept-web".to_string()),
+        claims: [
+            ("aud".to_string(), json!(["mesh-api", "profile"])),
+            ("scope".to_string(), json!("openid mesh.forward profile")),
+            ("azp".to_string(), json!("securitydept-web")),
+        ]
+        .into_iter()
+        .collect(),
+    }));
+
+    PropagatedBearer {
+        access_token: ACCESS_TOKEN,
+        resource_token_principal: Some(resource_token_principal),
+    }
 }
 
 #[test]
@@ -309,21 +720,21 @@ fn metadata_redemption_store_drops_expired_entries() -> TokenSetContextResult<()
 }
 
 #[test]
-fn redirect_uri_config_resolves_dynamic_allowed_redirect() {
-    let redirect_uri = TokenSetRedirectUriResolver::from_config(TokenSetRedirectUriConfig {
-        default_redirect_uri: Some("https://app.example.com/default".to_string()),
-        dynamic_redirect_uri_enabled: true,
-        allowed_redirect_uris: vec![TokenSetRedirectUriRule::Regex {
-            value: regex::Regex::new(r"^https://app\.example\.com/callback(/.*)?$")
-                .expect("regex should compile"),
-        }],
-        ..Default::default()
-    })
-    .resolve_redirect_uri(Some("https://app.example.com/callback/tenant-a"))
-    .expect("redirect should be allowed");
+fn post_auth_redirect_uri_config_resolves_dynamic_allowed_redirect() {
+    let post_auth_redirect_uri =
+        TokenSetRedirectUriResolver::from_config(TokenSetRedirectUriConfig {
+            default_redirect_target: Some("https://app.example.com/default".to_string()),
+            dynamic_redirect_target_enabled: true,
+            allowed_redirect_targets: vec![TokenSetRedirectUriRule::Regex {
+                value: regex::Regex::new(r"^https://app\.example\.com/callback(/.*)?$")
+                    .expect("regex should compile"),
+            }],
+        })
+        .resolve_redirect_uri(Some("https://app.example.com/callback/tenant-a"))
+        .expect("redirect should be allowed");
 
     assert_eq!(
-        redirect_uri.as_str(),
+        post_auth_redirect_uri.as_str(),
         "https://app.example.com/callback/tenant-a"
     );
 }

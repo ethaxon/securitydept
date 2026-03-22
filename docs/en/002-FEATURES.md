@@ -79,13 +79,13 @@ Target:
 
 Current status:
 
-- design documented
-- lower-level pieces exist
-- reference integration is still incomplete as a first-class auth-context mode
+- implemented as `securitydept-basic-auth-context`
+- includes reusable zones, post-auth redirect policy, and optional `securitydept-realip::RealIpAccessConfig`
+- integrated into the reference server as the `/basic/*` dashboard access path and `/basic/api/*` API alias
 
 Primary references:
 
-- `packages/basic-auth-zone/src/lib.rs`
+- `packages/basic-auth-context/src/lib.rs`
 - [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md)
 
 ## 5. Stateful cookie-session auth context
@@ -123,6 +123,16 @@ Current status:
 - `securitydept-token-set-context` now provides a dedicated token-set context layer
 - `securitydept-auth-runtime` now provides route-ready token-set orchestration on top of `securitydept-token-set-context`
 - `apps/server` already exposes `/auth/token-set/*` routes for callback, refresh, and metadata redemption
+- bearer propagation now uses server-owned destination policy plus access-token-derived `ResourceTokenPrincipal` facts
+- `TokenPropagator` now accepts either a direct destination target or a node-only target resolved via an optional runtime `PropagationNodeTargetResolver`
+- `apps/server` dashboard API auth order is now:
+  - bearer access token first when a bearer header is present
+  - then cookie session
+  - then configured basic-auth guarded by `basic-auth-context` and optional real-IP policy
+- `apps/server` now treats `X-SecurityDept-Propagation` as a propagation-aware dashboard context:
+  - the header value uses a Forwarded-style parameter format such as `by=dashboard;for=node-a;host=service.internal.example.com:443;proto=https`
+  - `/api/*` requires bearer access-token authentication in that case
+  - `/basic/*` returns an auth-method mismatch response instead of challenging basic auth
 - the client SDK is still planned as a separate follow-up
 - default convenience aliases now exist for the common case:
   - `DefaultOidcClient`
@@ -136,6 +146,7 @@ Missing pieces:
 - browser-side redemption and fallback handling for `metadata_redemption_id`
 - TS SDK for multi-provider token management
 - more complete token-exchange / downstream propagation scenarios
+- a recommended propagation forwarder feature built above `TokenPropagator` and standard proxy header handling
 
 ## 7. creds-manage
 
@@ -174,8 +185,9 @@ Target:
 
 Current status:
 
-- design documented
-- implementation not started yet
+- implemented as `securitydept-realip`
+- includes provider-backed trusted CIDR resolution, trust-boundary-aware parsing, and reusable `RealIpAccessConfig`
+- integrated into the reference server for basic-auth dashboard restrictions
 
 Primary references:
 
@@ -191,8 +203,8 @@ Target:
 Current status:
 
 - implemented as `apps/server`
-- currently validates mainly cookie-session mode plus creds-manage and lower-level auth pieces
-- should evolve to validate basic auth zone and stateless token-set modes as first-class scenarios
+- already validates cookie-session, basic-auth-context, stateless token-set, creds-manage, and real-IP-aware dashboard access
+- should continue evolving as the proving ground for propagation-aware forwarding and richer multi-zone deployments
 
 ## Recommended Near-Term Focus
 

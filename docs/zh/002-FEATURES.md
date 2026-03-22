@@ -79,13 +79,13 @@
 
 当前状态：
 
-- 设计已文档化
-- 底层组件已存在
-- 作为一等认证上下文模式的参考集成仍不完整
+- 已作为 `securitydept-basic-auth-context` 实现
+- 包含可复用的 zones、post-auth redirect 策略和可选的 `securitydept-realip::RealIpAccessConfig`
+- 已集成进参考服务器，作为 `/basic/*` dashboard 入口和 `/basic/api/*` API 别名
 
 主要参考：
 
-- `packages/basic-auth-zone/src/lib.rs`
+- `packages/basic-auth-context/src/lib.rs`
 - [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md)
 
 ## 5. 有状态 cookie-session 认证上下文
@@ -123,6 +123,16 @@
 - `securitydept-token-set-context` 已提供专用 token-set 上下文层
 - `securitydept-auth-runtime` 已在 `securitydept-token-set-context` 之上提供路由层 token-set 编排
 - `apps/server` 已接入 `/auth/token-set/*` 路径完成 callback、refresh 与 metadata redemption
+- bearer propagation 现在使用服务端持有的目标策略以及来源于 access token 校验链路的 `ResourceTokenPrincipal`
+- `TokenPropagator` 现在既支持直接目标，也支持通过可选运行时 `PropagationNodeTargetResolver` 解析的 node-only target
+- `apps/server` 的 dashboard API 当前认证顺序为：
+  - 如果存在 bearer header，则优先由 `oauth-resource-server` 校验 bearer access token
+  - 然后是 cookie session
+  - 最后是受 `basic-auth-context` 与可选 real-IP 策略约束的配置型 basic-auth
+- `apps/server` 现在将 `X-SecurityDept-Propagation` 视为 propagation-aware 的 dashboard 语境：
+  - 该 header 的值使用类似 `Forwarded` 的参数格式，例如 `by=dashboard;for=node-a;host=service.internal.example.com:443;proto=https`
+  - 此时 `/api/*` 强制要求 bearer access-token 认证
+  - `/basic/*` 不再 challenge basic-auth，而是直接返回认证方式不匹配
 - 客户端 SDK 仍待单独实现
 - 常见场景已提供默认类型别名：
   - `DefaultOidcClient`
@@ -136,6 +146,7 @@
 - 浏览器侧对 `metadata_redemption_id` 的兑换与回退策略落地
 - 用于多提供者令牌管理的 TS SDK
 - 更完整的 token exchange / downstream propagation 场景
+- 构建在 `TokenPropagator` 与标准代理头处理之上的推荐 propagation forwarder feature
 
 ## 7. creds-manage
 
@@ -174,8 +185,9 @@
 
 当前状态：
 
-- 设计已文档化
-- 实现尚未开始
+- 已作为 `securitydept-realip` 实现
+- 包含 provider 驱动的 trusted CIDR 解析、带信任边界语义的 header/transport 解析，以及可复用的 `RealIpAccessConfig`
+- 已集成进参考服务器，用于 basic-auth dashboard 的 real-IP 限制
 
 主要参考：
 
@@ -191,8 +203,8 @@
 当前状态：
 
 - 作为 `apps/server` 实现
-- 当前主要验证 cookie-session 模式加上 creds-manage 和底层认证组件
-- 应演变为将基础认证区域和无状态 token-set 模式作为一等场景进行验证
+- 已验证 cookie-session、basic-auth-context、无状态 token-set、creds-manage 以及带 real-IP 约束的 dashboard 访问
+- 后续应继续作为 propagation-aware forwarding 与更丰富多 zone 部署的试验场
 
 ## 推荐的近期重点
 

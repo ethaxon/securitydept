@@ -4,7 +4,7 @@ cargo-features = ["profile-rustflags"]
 members = [
     "packages/core",
     "packages/auth-runtime",
-    "packages/basic-auth-zone",
+    "packages/basic-auth-context",
     "packages/session-context",
     "packages/token-set-context",
     "packages/oidc-client",
@@ -64,6 +64,7 @@ anyhow = "1"
 rustls = "0.23"
 bollard = { version = "0.20", default-features = false }
 moka = "0.12"
+iri-string = "0.7.10"
 
 [patch.crates-io]
 openidconnect = { git = "https://github.com/ethaxon/openidconnect-rs.git", branch = "set_option" }

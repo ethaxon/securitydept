@@ -74,7 +74,7 @@ pub fn verify_password_argon2(password: &str, password_hash: &str) -> CredsResul
         .is_ok())
 }
 
-pub trait BasicAuthCred {
+pub trait BasicAuthCred: Clone {
     fn username(&self) -> &str;
     fn display_name(&self) -> &str {
         self.username()

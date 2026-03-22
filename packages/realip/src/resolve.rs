@@ -5,7 +5,9 @@ use ipnet::IpNet;
 use rfc7239::parse as parse_forwarded;
 
 use crate::{
-    config::{ChainDirection, FallbackStrategy, HeaderInputConfig, HeaderMode, RealIpConfig},
+    config::{
+        ChainDirection, FallbackStrategy, HeaderInputConfig, HeaderMode, RealIpResolveConfig,
+    },
     error::RealIpResult,
     extension::ProviderFactoryRegistry,
     providers::{ProviderRegistry, ProviderSnapshot},
@@ -42,18 +44,18 @@ struct CompiledSource {
 }
 
 pub struct RealIpResolver {
-    config: RealIpConfig,
+    config: RealIpResolveConfig,
     providers: ProviderRegistry,
 }
 
 impl RealIpResolver {
-    pub async fn from_config(config: RealIpConfig) -> RealIpResult<Self> {
+    pub async fn from_config(config: RealIpResolveConfig) -> RealIpResult<Self> {
         let factories = ProviderFactoryRegistry::with_builtin_providers()?;
         Self::from_config_with_factories(config, &factories).await
     }
 
     pub async fn from_config_with_factories(
-        config: RealIpConfig,
+        config: RealIpResolveConfig,
         factories: &ProviderFactoryRegistry,
     ) -> RealIpResult<Self> {
         config.validate()?;
@@ -342,7 +344,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolves_recursive_xff_after_skipping_trusted_proxies() {
-        let config = RealIpConfig {
+        let config = RealIpResolveConfig {
             providers: vec![
                 ProviderConfig::Core(CoreProviderConfig::Inline(InlineProviderConfig {
                     name: "cloudflare".to_string(),
@@ -400,7 +402,7 @@ mod tests {
     #[tokio::test]
     async fn loads_local_file_provider() {
         let path = temp_file("local-provider", "127.0.0.1/32\n::1/128\n");
-        let config = RealIpConfig {
+        let config = RealIpResolveConfig {
             providers: vec![ProviderConfig::Core(CoreProviderConfig::LocalFile(
                 LocalFileProviderConfig {
                     name: "local".to_string(),
@@ -424,7 +426,7 @@ mod tests {
 
     #[tokio::test]
     async fn loads_command_provider() {
-        let config = RealIpConfig {
+        let config = RealIpResolveConfig {
             providers: vec![ProviderConfig::Core(CoreProviderConfig::Command(
                 CommandProviderConfig {
                     name: "command".to_string(),
@@ -486,7 +488,7 @@ mod tests {
         let mut factories = ProviderFactoryRegistry::new();
         factories.register(StaticCustomProviderFactory).unwrap();
 
-        let config = RealIpConfig {
+        let config = RealIpResolveConfig {
             providers: vec![ProviderConfig::Custom(CustomProviderConfig {
                 name: "custom".to_string(),
                 kind: "static-custom".to_string(),

@@ -1,11 +1,18 @@
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::http::HeaderMap;
 pub use securitydept_core::oidc::MokaPendingOauthStore;
 use securitydept_core::{
-    auth_runtime::{OidcSessionAuthService, TokenSetAuthService},
+    auth_runtime::{
+        BasicAuthContextService, OidcSessionAuthService, TokenSetAuthService,
+        TokenSetResourceService,
+    },
+    basic_auth_context::BasicAuthContext,
+    creds::Argon2BasicAuthCred,
     creds_manage::store::CredsManageStore,
+    oauth_resource_server::OAuthResourceServerVerifier,
     oidc::{DefaultOidcClient, DefaultPendingOauthStore, OidcError},
+    realip::{RealIpResolver, ResolvedClientIp, TransportContext},
     token_set_context::{DefaultTokenSetContext, MokaPendingAuthStateMetadataRedemptionStore},
 };
 use url::Url;
@@ -21,13 +28,28 @@ pub struct ServerState {
     pub config: Arc<ServerConfig>,
     pub creds_manage_store: Arc<CredsManageStore>,
     pub token_set_context: Arc<DefaultTokenSetContext>,
+    pub basic_auth_context: Arc<BasicAuthContext<Argon2BasicAuthCred>>,
+    pub token_set_resource_verifier: Option<Arc<OAuthResourceServerVerifier>>,
+    pub real_ip_resolver: Option<Arc<RealIpResolver>>,
     /// None when OIDC is disabled (oidc_enabled = false) for local debugging.
     pub oidc: Option<Arc<DefaultOidcClient>>,
 }
 
 impl ServerState {
     pub fn session_auth_service(&self) -> OidcSessionAuthService<'_, DefaultPendingOauthStore> {
-        OidcSessionAuthService::new(self.oidc.as_deref(), &self.config.session_context, "/")
+        OidcSessionAuthService::new(self.oidc.as_deref(), &self.config.session_context)
+            .expect("session auth service config must be valid")
+    }
+
+    pub fn basic_auth_context_service(&self) -> BasicAuthContextService<'_, Argon2BasicAuthCred> {
+        BasicAuthContextService::new(&self.basic_auth_context)
+            .expect("basic-auth context service config must be valid")
+    }
+
+    pub fn token_set_resource_service(&self) -> Option<TokenSetResourceService<'_>> {
+        self.token_set_resource_verifier
+            .as_deref()
+            .map(TokenSetResourceService::new)
     }
 
     pub fn token_set_auth_service(
@@ -51,5 +73,20 @@ impl ServerState {
             .external_base_url
             .resolve_url(headers, &self.config.server.host, self.config.server.port)
             .map_err(|e| OidcError::RedirectUrl { source: e }.into())
+    }
+
+    pub async fn resolve_client_ip(
+        &self,
+        headers: &HeaderMap,
+        peer_addr: Option<SocketAddr>,
+    ) -> Option<ResolvedClientIp> {
+        let resolver = self.real_ip_resolver.as_deref()?;
+        let peer_ip = peer_addr?.ip();
+
+        Some(
+            resolver
+                .resolve(peer_ip, headers, &TransportContext::default())
+                .await,
+        )
     }
 }

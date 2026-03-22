@@ -6,9 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use typed_builder::TypedBuilder;
 
-use crate::{
-    BearerPropagationPolicy, SealedRefreshMaterial, propagation::default_bearer_propagation_policy,
-};
+use crate::SealedRefreshMaterial;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -87,7 +85,7 @@ pub struct AuthTokenDelta {
     pub access_token_expires_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder, Default)]
 pub struct AuthStateMetadataSnapshot {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(strip_option))]
@@ -95,23 +93,9 @@ pub struct AuthStateMetadataSnapshot {
     #[builder(default)]
     #[serde(default)]
     pub source: AuthenticationSource,
-    #[builder(default = BearerPropagationPolicy::ValidateThenForward)]
-    #[serde(default = "default_bearer_propagation_policy")]
-    pub bearer_propagation_policy: BearerPropagationPolicy,
     #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
     #[builder(default)]
     pub attributes: HashMap<String, Value>,
-}
-
-impl Default for AuthStateMetadataSnapshot {
-    fn default() -> Self {
-        Self {
-            principal: None,
-            source: AuthenticationSource::default(),
-            bearer_propagation_policy: default_bearer_propagation_policy(),
-            attributes: HashMap::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder, Default)]
@@ -141,9 +125,6 @@ pub struct CurrentAuthStateMetadataSnapshotPartial {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(strip_option))]
     pub source: Option<CurrentAuthenticationSourcePartial>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[builder(default, setter(strip_option))]
-    pub bearer_propagation_policy: Option<BearerPropagationPolicy>,
     #[serde(default, flatten, skip_serializing_if = "HashMap::is_empty")]
     #[builder(default)]
     pub attributes: HashMap<String, Value>,
@@ -157,9 +138,6 @@ pub struct AuthStateMetadataDelta {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(strip_option))]
     pub source: Option<AuthenticationSource>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[builder(default, setter(strip_option))]
-    pub bearer_propagation_policy: Option<BearerPropagationPolicy>,
     #[serde(default, flatten, skip_serializing_if = "HashMap::is_empty")]
     #[builder(default)]
     pub attributes: HashMap<String, Value>,
@@ -219,7 +197,6 @@ impl AuthStateMetadataDelta {
     pub fn is_empty(&self) -> bool {
         self.principal.is_none()
             && self.source.is_none()
-            && self.bearer_propagation_policy.is_none()
             && self.attributes.is_empty()
     }
 }

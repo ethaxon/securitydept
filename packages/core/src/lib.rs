@@ -8,8 +8,8 @@ pub use oauth2;
 pub use openidconnect;
 #[cfg(feature = "auth-runtime")]
 pub use securitydept_auth_runtime as auth_runtime;
-#[cfg(feature = "basic-auth-zone")]
-pub use securitydept_basic_auth_zone as basic_auth_zone;
+#[cfg(feature = "basic-auth-context")]
+pub use securitydept_basic_auth_context as basic_auth_context;
 #[cfg(feature = "creds")]
 pub use securitydept_creds as creds;
 #[cfg(feature = "creds-manage")]

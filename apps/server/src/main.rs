@@ -8,8 +8,14 @@ use std::sync::Arc;
 
 use clap::Parser;
 use securitydept_core::{
+    basic_auth_context::BasicAuthContext,
     creds_manage::{migrations::Migrator, store::CredsManageStore},
+    oauth_resource_server::{
+        OAuthResourceServerConfig, OAuthResourceServerIntrospectionConfig,
+        OAuthResourceServerVerifier,
+    },
     oidc::OidcClient,
+    realip::RealIpResolver,
     token_set_context::TokenSetContext,
 };
 use snafu::ResultExt;
@@ -77,9 +83,43 @@ async fn main() -> ServerResult<()> {
         info!("OIDC disabled (no [oidc] section); /auth/session/login will create a dev session");
         None
     };
+    let token_set_resource_verifier = if let Some(ref oidc_config) = config.oidc {
+        let verifier_config = OAuthResourceServerConfig {
+            remote: oidc_config.remote.clone(),
+            introspection: oidc_config.client_secret.as_ref().map(|client_secret| {
+                OAuthResourceServerIntrospectionConfig {
+                    client_id: Some(oidc_config.client_id.clone()),
+                    client_secret: Some(client_secret.clone()),
+                    token_type_hint: Some("access_token".to_string()),
+                    ..Default::default()
+                }
+            }),
+            ..Default::default()
+        };
+        Some(Arc::new(
+            OAuthResourceServerVerifier::from_config(verifier_config)
+                .await
+                .map_err(|e| crate::error::ServerError::InvalidConfig {
+                    message: format!("invalid token-set resource verifier config: {e}"),
+                })?,
+        ))
+    } else {
+        None
+    };
 
     let session_context_config = config.session_context.clone();
     let session_context_store = MemoryStore::default();
+    let real_ip_resolver = if let Some(real_ip_config) = config.real_ip_resolve.clone() {
+        Some(Arc::new(
+            RealIpResolver::from_config(real_ip_config)
+                .await
+                .map_err(|e| crate::error::ServerError::InvalidConfig {
+                    message: format!("invalid real-ip config: {e}"),
+                })?,
+        ))
+    } else {
+        None
+    };
     let token_set_context = Arc::new(
         TokenSetContext::from_config(config.token_set_context.clone()).map_err(|e| {
             crate::error::ServerError::InvalidConfig {
@@ -94,6 +134,15 @@ async fn main() -> ServerResult<()> {
     let state = ServerState {
         creds_manage_store: Arc::new(store),
         token_set_context,
+        basic_auth_context: Arc::new(
+            BasicAuthContext::from_config(config.basic_auth_context.clone()).map_err(|e| {
+                crate::error::ServerError::InvalidConfig {
+                    message: e.to_string(),
+                }
+            })?,
+        ),
+        token_set_resource_verifier,
+        real_ip_resolver,
         oidc,
         config: Arc::new(config),
     };
@@ -108,10 +157,13 @@ async fn main() -> ServerResult<()> {
         .await
         .boxed()
         .context(ServerBootSnafu)?;
-    axum::serve(listener, app)
-        .await
-        .boxed()
-        .context(ServerBootSnafu)?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .boxed()
+    .context(ServerBootSnafu)?;
 
     Ok(())
 }

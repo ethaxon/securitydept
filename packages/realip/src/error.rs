@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{net::IpAddr, path::PathBuf};
 
 use snafu::Snafu;
 
@@ -54,4 +54,10 @@ pub enum RealIpError {
 
     #[snafu(display("Provider `{provider}` failed: {details}"))]
     ProviderLoad { provider: String, details: String },
+
+    #[snafu(display("Invalid real-ip access config: {message}"))]
+    AccessConfig { message: String },
+
+    #[snafu(display("Real-ip access denied for `{client_ip}`: {reason}"))]
+    AccessDenied { client_ip: IpAddr, reason: String },
 }

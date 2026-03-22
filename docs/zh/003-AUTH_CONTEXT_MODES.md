@@ -54,6 +54,7 @@
 - 后端存储或管理认证上下文
 - 浏览器主要携带 HTTP-only 会话 cookie
 - `me` 端点返回规范化的主体数据
+- post-auth redirect 目标应通过共享的 redirect-target 限制模型校验，而不是直接使用未经限制的原始重定向字符串
 
 该模式应组合：
 
@@ -92,7 +93,7 @@
 
 - 对外字段名使用通用的 `refresh_token`
 - 内部 Rust 字段名使用 `refresh_material` 以强调它可能是经过保护的刷新材料，而不一定是可直接提交给 OIDC provider 的原始 refresh token
-- `redirect_uri` 由 `token-set-context` 统一解析；当前配置类型为：
+- `post_auth_redirect_uri` 由 `token-set-context` 统一解析；当前配置类型为：
   - `TokenSetRedirectUriConfig`
   - `TokenSetRedirectUriRule`
 - `oidc-client` 现在为常见场景提供默认 pending OAuth store 类型别名：
@@ -132,7 +133,7 @@
 - 由 `token-set-context` 负责 refresh material 保护、redirect URI 解析、metadata redemption、状态重建与传输 DTO 生成
 - 由 `auth-runtime` 在 `token-set-context` 之上暴露可直接挂路由的 token-set 处理服务
 - 提供短期 metadata redemption 存储与兑换能力
-- callback 阶段通过 `oidc-client` 的 pending OAuth extra data 回传最终 `redirect_uri`
+- callback 阶段通过 `oidc-client` 的 pending OAuth extra data 回传最终 `post_auth_redirect_uri`
 
 失败语义：
 
@@ -164,7 +165,12 @@
 
 重要说明：
 
-此模式并不意味着 `oidc-client` 变成资源服务器。相反，`oidc-client` 和 `oauth-resource-server` 都应为一个共享的认证主体抽象提供支持。
+此模式并不意味着 `oidc-client` 变成资源服务器。
+
+当前代码已经明确拆分：
+
+- `AuthenticatedPrincipal`：来自 `id_token` / `user_info` 的认证侧身份信息
+- `ResourceTokenPrincipal`：来自 JWT 校验或 introspection 的 access-token 资源侧事实
 
 ## 共享的未来抽象
 
@@ -175,6 +181,7 @@
 - `AuthenticationSource`
 - `BearerPropagationPolicy`
 - `TokenPropagator`
+- `PropagatedBearer`
 - `AuthTokenSnapshot`
 - `AuthTokenDelta`
 - `AuthStateMetadataSnapshot`
@@ -187,13 +194,96 @@
 
 对于网格状部署，仅当下游节点接受相同的发行者和受众契约时，转发原始 bearer 令牌才是有效的。
 
-未来的策略抽象应至少区分：
+当前的 propagation 模型完全由服务端配置决定，认证状态 metadata 已不再携带 propagation policy，也不再承载资源态 token facts。
 
-- 透明转发
+服务端配置当前区分：
+
 - 验证后转发
 - 为下游令牌交换
 
-第三个选项是未来的工作，但它应该已经存在于项目的设计语言中。
+直接转发依赖两类显式校验配置：
+
+- `TokenPropagatorConfig.default_policy`
+- `TokenPropagatorConfig.destination_policy`
+- `TokenPropagatorConfig.token_validation`
+
+目标 allowlist 当前支持：
+
+- `allowed_node_ids`
+- `AllowedPropagationTarget::ExactOrigin`
+- `AllowedPropagationTarget::DomainSuffix`
+- `AllowedPropagationTarget::DomainRegex`
+- `AllowedPropagationTarget::Cidr`
+
+token 校验当前支持：
+
+- issuer allowlist
+- audience allowlist
+- 必需 scopes
+- 允许的 `azp`
+
+当前运行时边界：
+
+- `TokenPropagator` 校验的是 `PropagatedBearer`
+- `PropagatedBearer` 携带原始 bearer 字符串以及可选的 `ResourceTokenPrincipal`
+- `PropagationRequestTarget` 可以直接携带 scheme/hostname/可选 port，也可以只携带 `node_id`
+- 仅有 `node_id` 的 target 需要在运行时提供可选的 `PropagationNodeTargetResolver`；否则会明确校验失败
+- `TokenPropagator` 暴露了运行时 `set_node_target_resolver(...)` 钩子，因此 resolver 可以在构造后安装或替换
+- propagation 校验不再读取 `AuthStateSnapshot`
+- 过期 / active 检查应在生成 `ResourceTokenPrincipal` 的资源服务器校验步骤中完成
+
+当前参考服务器行为：
+
+- 主 dashboard API（`/api/*`）可通过 `X-SecurityDept-Propagation` 进入 propagation-aware 模式
+- 该 header 的值使用类似 `Forwarded` 的参数列表，例如 `by=dashboard;for=node-a;host=service.internal.example.com:443;proto=https`
+- 在该模式下，服务端强制要求 bearer access-token 认证，不再回退到 cookie session 或 basic-auth
+- bearer 认证成功后，资源态 token facts 会保留在请求运行时上下文里，供后续 propagation-aware handler 调用 `token-set-context` 校验
+
+规划中的转发方向：
+
+- `TokenPropagator` 目前仍只是策略与 header 附加组件，不是完整反向代理
+- 当前规划是在 `TokenPropagator` 之上提供推荐的 forwarder feature
+- 该 forwarder 应负责 `Forwarded` / `X-Forwarded-*` 等标准代理问题，而 `TokenPropagator` 继续只关注目标与 token 校验
+
+示例：
+
+```yaml
+token_propagation:
+  default_policy: validate_then_forward
+  destination_policy:
+    allowed_node_ids:
+      - registry-mirror-a
+    allowed_targets:
+      - kind: exact_origin
+        scheme: https
+        hostname: registry-mirror.internal.example.com
+        port: 443
+      - kind: domain_suffix
+        scheme: https
+        domain_suffix: mesh.internal.example.com
+        port: 443
+      - kind: domain_regex
+        scheme: https
+        domain_regex: '^api-[a-z0-9-]+\.mesh\.internal\.example\.com$'
+        port: 443
+      - kind: cidr
+        scheme: https
+        cidr: 10.0.0.0/24
+        port: 8443
+    deny_sensitive_ip_literals: true
+    require_explicit_port: true
+  token_validation:
+    required_issuers:
+      - https://issuer.example.com
+    allowed_audiences:
+      - mesh-api
+    required_scopes:
+      - mesh.forward
+    allowed_azp:
+      - securitydept-web
+```
+
+`exchange_for_downstream_token` 仍然是未来工作，但已经保留在设计语言和配置表面中。
 
 ---
 

@@ -13,11 +13,11 @@ pub struct TokenRefreshPayload {
     #[serde(rename = "refresh_token")]
     pub refresh_material: SealedRefreshMaterial,
     #[serde(
-        rename = "redirect_uri",
+        rename = "post_auth_redirect_uri",
         default,
         skip_serializing_if = "Option::is_none"
     )]
-    pub token_set_redirect_uri: Option<String>,
+    pub post_auth_redirect_uri: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id_token: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -27,7 +27,7 @@ pub struct TokenRefreshPayload {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct TokenSetAuthorizeQuery {
     #[serde(default)]
-    pub redirect_uri: Option<String>,
+    pub post_auth_redirect_uri: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -83,10 +83,10 @@ Crate: `securitydept-oauth-resource-server`
 
 当前的专用 crate：
 
-- `securitydept-basic-auth-zone`
-- `securitydept-session-context` —— 为 cookie-session 模式提取的可复用会话上下文抽象
-- `securitydept-token-set-context` —— 为无状态 token-set 模式提取的可复用认证状态、redirect 与 metadata redemption 协调层
-- `securitydept-auth-runtime` —— 为 session 与 token-set 模式提取的面向路由的认证编排层
+- `securitydept-basic-auth-context`
+- `securitydept-session-context` —— 为 cookie-session 模式提取的可复用会话上下文抽象，包含 post-auth redirect 策略
+- `securitydept-token-set-context` —— 为无状态 token-set 模式提取的可复用认证状态、redirect、metadata redemption 与 bearer propagation 协调层
+- `securitydept-auth-runtime` —— 为 session、token-set 与 basic-auth 模式提取的面向路由的认证编排层
 
 `securitydept-session-context` crate 提供：
 
@@ -101,10 +101,19 @@ Crate: `securitydept-oauth-resource-server`
 - `AuthStateMetadataSnapshot` / `AuthStateMetadataDelta`
 - `AuthStateSnapshot` / `AuthStateDelta`
 - `TokenPropagator`
+- `PropagatedBearer`
 - `TokenSetRedirectUriConfig`
 - `DefaultTokenSetContext`
 - `DefaultTokenSetContextConfig`
 - `DefaultPendingAuthStateMetadataRedemptionStore`
+
+当前的重要边界：
+
+- `AuthStateMetadataSnapshot` 只承载认证侧 metadata，例如 `AuthenticatedPrincipal`
+- 用于资源授权与 bearer propagation 的 access-token 事实单独建模为 `ResourceTokenPrincipal`
+- `TokenPropagator` 现在校验的是 `PropagatedBearer` 与目标上下文，而不是整份 auth-state snapshot
+- 仅有 `node_id` 的 propagation target 通过可选的 `PropagationNodeTargetResolver` 解析
+- 真正的请求转发仍不属于 `token-set-context`；当前规划是未来在 `TokenPropagator` 之上提供推荐的 forwarder feature
 
 cookie-session 和无状态 token-set 的路由层编排位于 `securitydept-auth-runtime`：
 
@@ -112,6 +121,8 @@ cookie-session 和无状态 token-set 的路由层编排位于 `securitydept-aut
 - `OidcSessionAuthService`
 - `DevSessionAuthService`
 - `TokenSetAuthService`
+- `BasicAuthContextService`
+- `TokenSetResourceService`
 
 ## 第 6 层：Real IP 解析
 
@@ -154,10 +165,11 @@ Apps:
 `apps/server` 应保持为组合能力的试验场：
 
 - 底层验证
-- 基础认证区域模式
+- basic-auth context 模式
 - cookie-session 模式
 - 无状态 token-set 模式
 - creds-manage 集成
+- 带 real-IP 约束的 dashboard 访问控制
 
 它不是项目的架构边界。
 

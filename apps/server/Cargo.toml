@@ -10,6 +10,7 @@ jwe = ["securitydept-core/creds-jwe"]
 securitydept-core = { path = "../../packages/core", features = [
     "utils",
     "auth-runtime",
+    "basic-auth-context",
     "oidc-client",
     "token-set-context",
     "session-context",

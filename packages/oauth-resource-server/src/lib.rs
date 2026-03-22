@@ -10,7 +10,7 @@ pub use error::{OAuthResourceServerError, OAuthResourceServerResult};
 #[cfg(feature = "jwe")]
 pub use models::LocalJweDecryptionKeySet;
 pub use models::{
-    OAuthResourceServerMetadata, VerificationPolicy, VerifiedAccessToken, VerifiedOpaqueToken,
-    VerifiedToken,
+    OAuthResourceServerMetadata, ResourceTokenPrincipal, VerificationPolicy, VerifiedAccessToken,
+    VerifiedOpaqueToken, VerifiedToken,
 };
 pub use verifier::OAuthResourceServerVerifier;

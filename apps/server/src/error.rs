@@ -50,6 +50,7 @@ impl ToHttpStatus for ServerError {
                 creds_manage_error.to_http_status()
             }
             oidc_error @ ServerError::Oidc { .. } => oidc_error.to_http_status(),
+            ServerError::AuthRuntime { source } => source.status_code(),
             ServerError::SessionContext { source } => source.status_code(),
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }

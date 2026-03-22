@@ -24,7 +24,6 @@ where
             Ok(None)
         }
     }
-    fn realm(&self) -> Option<&str>;
 }
 
 pub struct MapBasicAuthCredsValidator<Creds>
@@ -32,7 +31,6 @@ where
     Creds: BasicAuthCred + Clone,
 {
     pub creds: HashMap<String, Creds>,
-    pub realm: Option<String>,
 }
 
 impl<Creds> MapBasicAuthCredsValidator<Creds>
@@ -48,7 +46,6 @@ where
                 .iter()
                 .map(|creds| (creds.username().to_string(), creds.clone()))
                 .collect(),
-            realm: config.realm.clone(),
         })
     }
 }
@@ -59,10 +56,6 @@ where
 {
     fn get_cred(&self, username: &str) -> CredsResult<Option<&Creds>> {
         Ok(self.creds.get(username))
-    }
-
-    fn realm(&self) -> Option<&str> {
-        self.realm.as_deref()
     }
 }
 
@@ -115,7 +108,6 @@ mod tests {
                 Argon2BasicAuthCred::new("admin".to_string(), "secret123".to_string()).unwrap(),
                 Argon2BasicAuthCred::new("user".to_string(), "password".to_string()).unwrap(),
             ],
-            realm: Some("Test".to_string()),
         }
     }
 

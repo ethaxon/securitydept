@@ -2,6 +2,8 @@ use axum::{
     Json,
     response::{IntoResponse, Redirect, Response},
 };
+use securitydept_creds::{CoreJwtClaims, parse_bearer_auth_header_opt};
+use securitydept_oauth_resource_server::{OAuthResourceServerVerifier, ResourceTokenPrincipal};
 use securitydept_oidc_client::{OidcClient, OidcCodeCallbackSearchParams, PendingOauthStore};
 use securitydept_token_set_context::{
     MetadataRedemptionRequest, OidcAuthStateOptions, PendingAuthStateMetadataRedemptionStore,
@@ -49,7 +51,7 @@ where
             .authorize_code_flow(
                 self.oidc_client,
                 external_base_url,
-                query.redirect_uri.as_deref(),
+                query.post_auth_redirect_uri.as_deref(),
                 Some(self.callback_path),
             )
             .await?;
@@ -72,11 +74,11 @@ where
                 Some(self.callback_path),
             )
             .await?;
-        let mut token_set_redirect_uri = coordination_result.token_set_redirect_uri;
+        let mut post_auth_redirect_uri = coordination_result.post_auth_redirect_uri;
         let fragment = coordination_result.redirect_fragment.to_fragment();
 
-        token_set_redirect_uri.set_fragment(Some(&fragment));
-        Ok(Redirect::to(token_set_redirect_uri.as_str()).into_response())
+        post_auth_redirect_uri.set_fragment(Some(&fragment));
+        Ok(Redirect::to(post_auth_redirect_uri.as_str()).into_response())
     }
 
     pub async fn refresh(
@@ -87,11 +89,11 @@ where
             .token_set_context
             .refresh_from_payload_with_metadata_store(self.oidc_client, payload)
             .await?;
-        let mut redirect_uri = coordination_result.redirect_uri;
+        let mut post_auth_redirect_uri = coordination_result.post_auth_redirect_uri;
         let fragment = coordination_result.redirect_fragment.to_fragment();
 
-        redirect_uri.set_fragment(Some(&fragment));
-        Ok(Redirect::to(redirect_uri.as_str()).into_response())
+        post_auth_redirect_uri.set_fragment(Some(&fragment));
+        Ok(Redirect::to(post_auth_redirect_uri.as_str()).into_response())
     }
 
     pub async fn redeem_metadata(
@@ -104,5 +106,38 @@ where
             Some(metadata) => Ok(Json(metadata).into_response()),
             None => Ok(axum::http::StatusCode::NOT_FOUND.into_response()),
         }
+    }
+}
+
+pub type TokenSetResourcePrincipal = ResourceTokenPrincipal;
+
+#[derive(Clone, Copy)]
+pub struct TokenSetResourceService<'a> {
+    verifier: &'a OAuthResourceServerVerifier,
+}
+
+impl<'a> TokenSetResourceService<'a> {
+    pub fn new(verifier: &'a OAuthResourceServerVerifier) -> Self {
+        Self { verifier }
+    }
+
+    pub async fn authenticate_authorization_header(
+        &self,
+        authorization_header: Option<&str>,
+    ) -> Result<Option<TokenSetResourcePrincipal>, AuthRuntimeError> {
+        let Some(authorization_header) = authorization_header else {
+            return Ok(None);
+        };
+        let Some(token) = parse_bearer_auth_header_opt(authorization_header) else {
+            return Ok(None);
+        };
+
+        let verified = self
+            .verifier
+            .verify_token::<CoreJwtClaims>(&token)
+            .await
+            .map_err(|source| AuthRuntimeError::OAuthResourceServer { source })?;
+
+        Ok(Some(verified.to_resource_token_principal()))
     }
 }

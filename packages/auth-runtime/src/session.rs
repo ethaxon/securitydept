@@ -55,18 +55,17 @@ pub trait SessionAuthServiceTrait {
 
 pub struct DevSessionAuthService<'a> {
     session_context_config: &'a SessionContextConfig,
-    post_auth_redirect_path: &'a str,
 }
 
 impl<'a> DevSessionAuthService<'a> {
-    pub fn new(
-        session_context_config: &'a SessionContextConfig,
-        post_auth_redirect_path: &'a str,
-    ) -> Self {
-        Self {
+    pub fn new(session_context_config: &'a SessionContextConfig) -> Result<Self, AuthRuntimeError> {
+        session_context_config
+            .resolve_post_auth_redirect(None)
+            .map_err(|source| AuthRuntimeError::SessionContext { source })?;
+
+        Ok(Self {
             session_context_config,
-            post_auth_redirect_path,
-        }
+        })
     }
 }
 
@@ -102,18 +101,22 @@ impl<'a> SessionAuthServiceTrait for DevSessionAuthService<'a> {
             .await
             .map_err(|source| AuthRuntimeError::SessionContext { source })?;
 
-        Ok(Redirect::to(self.post_auth_redirect_path).into_response())
+        let redirect_target = self
+            .session_context_config
+            .resolve_post_auth_redirect(None)
+            .map_err(|source| AuthRuntimeError::SessionContext { source })?;
+
+        Ok(Redirect::to(&redirect_target).into_response())
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct OidcSessionAuthService<'a, PS>
 where
     PS: PendingOauthStore,
 {
     oidc_client: Option<&'a OidcClient<PS>>,
     session_context_config: &'a SessionContextConfig,
-    post_auth_redirect_path: &'a str,
 }
 
 impl<'a, P> OidcSessionAuthService<'a, P>
@@ -123,13 +126,15 @@ where
     pub fn new(
         oidc_client: Option<&'a OidcClient<P>>,
         session_context_config: &'a SessionContextConfig,
-        post_auth_redirect_path: &'a str,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, AuthRuntimeError> {
+        session_context_config
+            .resolve_post_auth_redirect(None)
+            .map_err(|source| AuthRuntimeError::SessionContext { source })?;
+
+        Ok(Self {
             oidc_client,
             session_context_config,
-            post_auth_redirect_path,
-        }
+        })
     }
 
     pub async fn callback(
@@ -165,7 +170,12 @@ where
             .map_err(|source| AuthRuntimeError::SessionContext { source })?;
 
         info!(display_name = %claims_check_result.display_name, "User logged in");
-        Ok(Redirect::to(self.post_auth_redirect_path).into_response())
+        let redirect_target = self
+            .session_context_config
+            .resolve_post_auth_redirect(None)
+            .map_err(|source| AuthRuntimeError::SessionContext { source })?;
+
+        Ok(Redirect::to(&redirect_target).into_response())
     }
 }
 
@@ -190,7 +200,7 @@ where
             let authorization_url = authorization_request.authorization_url;
             Ok(Redirect::temporary(authorization_url.as_str()).into_response())
         } else {
-            DevSessionAuthService::new(self.session_context_config, self.post_auth_redirect_path)
+            DevSessionAuthService::new(self.session_context_config)?
                 .login(_session, external_base_url)
                 .await
         }

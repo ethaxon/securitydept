@@ -27,6 +27,15 @@ impl VerifiedOpaqueToken {
         self.response.aud()
     }
 
+    pub fn scopes(&self) -> Option<Vec<String>> {
+        self.response.scopes().map(|scopes| {
+            scopes
+                .iter()
+                .map(|scope| scope.as_ref().to_string())
+                .collect()
+        })
+    }
+
     pub fn expires_at(&self) -> Option<DateTime<Utc>> {
         self.response.exp()
     }

@@ -81,10 +81,10 @@ These modes are deployment contracts. They should expose normalized principal da
 
 Current dedicated crates:
 
-- `securitydept-basic-auth-zone`
-- `securitydept-session-context` — extracted reusable session context abstraction for cookie-session mode
-- `securitydept-token-set-context` — extracted reusable auth-state, redirect, and metadata-redemption coordination layer for stateless token-set mode
-- `securitydept-auth-runtime` — extracted route-ready auth orchestration for session and token-set modes
+- `securitydept-basic-auth-context`
+- `securitydept-session-context` — extracted reusable session context abstraction for cookie-session mode, including post-auth redirect policy
+- `securitydept-token-set-context` — extracted reusable auth-state, redirect, metadata-redemption, and bearer-propagation coordination layer for stateless token-set mode
+- `securitydept-auth-runtime` — extracted route-ready auth orchestration for session, token-set, and basic-auth modes
 
 The `securitydept-session-context` crate provides:
 
@@ -99,10 +99,19 @@ The `securitydept-token-set-context` crate currently provides:
 - `AuthStateMetadataSnapshot` / `AuthStateMetadataDelta`
 - `AuthStateSnapshot` / `AuthStateDelta`
 - `TokenPropagator`
+- `PropagatedBearer`
 - `TokenSetRedirectUriConfig`
 - `DefaultTokenSetContext`
 - `DefaultTokenSetContextConfig`
 - `DefaultPendingAuthStateMetadataRedemptionStore`
+
+Important current boundary:
+
+- `AuthStateMetadataSnapshot` carries authentication-facing metadata such as `AuthenticatedPrincipal`
+- access-token-derived facts used for resource authorization and bearer propagation are modeled separately as `ResourceTokenPrincipal`
+- `TokenPropagator` now validates `PropagatedBearer` plus destination context, rather than reading the whole auth-state snapshot
+- node-only propagation targets are resolved through an optional `PropagationNodeTargetResolver`
+- request forwarding itself is still outside `token-set-context`; the planned direction is a recommended forwarder feature layered above `TokenPropagator`
 
 Route-level orchestration for cookie-session and stateless token-set modes lives in `securitydept-auth-runtime`:
 
@@ -110,6 +119,8 @@ Route-level orchestration for cookie-session and stateless token-set modes lives
 - `OidcSessionAuthService`
 - `DevSessionAuthService`
 - `TokenSetAuthService`
+- `BasicAuthContextService`
+- `TokenSetResourceService`
 
 A future shared abstraction should likely normalize all of them into a common authenticated-principal model.
 
@@ -154,10 +165,11 @@ Apps:
 `apps/server` should remain a proving ground for combined capabilities:
 
 - low-level verification
-- basic auth zone mode
+- basic auth context mode
 - cookie-session mode
 - stateless token-set mode
 - creds-manage integration
+- real-IP-aware dashboard access control
 
 It is not the architecture boundary for the project.
 
