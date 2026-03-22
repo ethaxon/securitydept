@@ -3,64 +3,137 @@ host = "0.0.0.0"
 port = 7021
 # Optional path to webui static files.
 # webui_dir = "./webui"
-# External base URL for generating absolute URLs (e.g. OIDC redirect_uri).
+# External base URL for generating absolute URLs such as OIDC callback URLs.
 # "auto" (default) = infer from request headers at runtime:
 #   Forwarded (RFC 7239) > X-Forwarded-Host/Proto > Host header > http://{host}:{port}
-# Or set a fixed URL, e.g. "https://auth.example.com"
-# external_base_url = "auto" # for production
+# Or set a fixed URL, for example:
+# external_base_url = "https://auth.example.com"
 
-# Remove the entire [oidc] section (or set OIDC_ENABLED=false) to disable OIDC for local debugging.
-# issuer_url is required. When well_known_url is set, discovery is loaded from it and the
-# endpoint URLs below (if set) override discovered values. When well_known_url is not set,
-# issuer_url, authorization_endpoint, token_endpoint and jwks_uri must be set.
-# userinfo_endpoint is recommended; user_info_claims are fetched only when it is set.
+# Remove the entire [oidc] section, or set OIDC_ENABLED=false, to disable OIDC
+# and use dev-session login instead.
 [oidc]
 client_id = "your-client-id"
 client_secret = "your-client-secret"
 well_known_url = "https://your-oidc-provider.com/.well-known/openid-configuration"
-# or scopes = ["openid", "profile", "email"]
 scopes = ["openid", "profile", "email"]
+# redirect_url = "/auth/callback"
+# claims_check_script = "./claims-script-check.mts"
+# pkce_enabled = true
+# device_poll_interval = "5s"
 
-## Optional overrides when using well_known_url. When well_known_url is omitted,
-## issuer_url/authorization_endpoint/token_endpoint/jwks_uri are required and userinfo_endpoint is recommended:
-# 
+# Optional direct endpoint overrides when well_known_url is not used, or when a
+# discovered value should be overridden.
 # issuer_url = "https://your-oidc-provider.com"
 # authorization_endpoint = "https://your-oidc-provider.com/authorize"
 # token_endpoint = "https://your-oidc-provider.com/token"
 # userinfo_endpoint = "https://your-oidc-provider.com/userinfo"
 # jwks_uri = "https://your-oidc-provider.com/jwks"
 
-## Optional metadata hints/overrides
-# 
-# token_endpoint_auth_methods_supported = ["client_secret_basic"]
-# id_token_signing_alg_values_supported = ["RS256"]
-# userinfo_signing_alg_values_supported = ["none"]
-# pkce_enabled = true
+# Optional pending OAuth store tuning.
+# [oidc.pending_store]
+# ttl = "5m"
+# max_capacity = 1000
 
-## Optional claims check script, if not set, the default rust claims checker will be used.
-# 
-# claims_check_script = "./claims-script-check.mts"
-
-# [session]
+[session_context]
 # cookie_name = "securitydept_session"
 # session_context_key = "securitydept.session_context"
 # cookie_path = "/"
 # http_only = true
 # secure = false            # set true for HTTPS deployments
 # same_site = "lax"         # "strict", "lax", or "none"
-# ttl = "1d"                # human-readable duration; omit to disable expiry
+# ttl = "1d"                # omit to disable expiry
+
+# Default post-login redirect for session mode.
+# [session_context.post_auth_redirect]
+# default_redirect_target = "/"
+# dynamic_redirect_target_enabled = true
+# allowed_redirect_targets = [{ kind = "strict", value = "/dashboard" }]
+
+[token_set_context]
+# When enabled, refresh tokens are sealed before leaving the server-side
+# auth-context layer.
+# sealed_refresh_token = true
+# master_key = "01234567890123456789012345678901"
+
+# Pending metadata redemption store tuning.
+# [token_set_context.metadata_redemption]
+# ttl = "60s"
+# max_capacity = 1000
+
+# Post-auth redirect for token-set mode. The current default is effectively
+# open (`allowed_redirect_targets = [{ kind = "all" }]`), so tighten this in
+# production.
+# [token_set_context.post_auth_redirect]
+# dynamic_redirect_target_enabled = true
+# allowed_redirect_targets = [{ kind = "all" }]
+
+# Downstream bearer propagation policy.
+# [token_set_context.token_propagation]
+# default_policy = "validate_then_forward"
+#
+# [token_set_context.token_propagation.destination_policy]
+# allowed_node_ids = ["registry-mirror-a"]
+# allowed_targets = [
+#   { kind = "exact_origin", scheme = "https", hostname = "service.internal.example.com", port = 443 },
+#   { kind = "domain_suffix", scheme = "https", domain_suffix = "mesh.internal.example.com", port = 443 },
+# ]
+#
+# [token_set_context.token_propagation.token_validation]
+# required_issuers = ["https://your-oidc-provider.com"]
+# allowed_audiences = ["mesh-api"]
+# required_scopes = ["mesh.forward"]
+# allowed_azp = ["securitydept-web"]
 
 [creds_manage]
 data_path = "./data/data.json"
 
-# [token_set_context]
-## When enabled, refresh tokens are sealed before they leave the server-side
-## auth-context layer. This belongs to mode C state handling, not OIDC protocol config.
-# sealed_refresh_token = true
-# master_key = "your-master-key"
+[basic_auth_context]
+# This is the dashboard-management basic-auth config used for /basic/*
+# and /basic/api/*, not the managed creds stored in creds_manage.
+# realm = "securitydept"
 
-## Propagation forwarder: enables the axum-reverse-proxy-based forwarding for
-## bearer-authenticated requests with an X-SecurityDept-Propagation header.
-## When this section is present, /api/propagation/* routes become available.
+# Global post-auth redirect for /basic/login success.
+# [basic_auth_context.post_auth_redirect]
+# default_redirect_target = "/"
+# dynamic_redirect_target_enabled = true
+# allowed_redirect_targets = [{ kind = "strict", value = "/basic" }]
+
+# Optional real-IP access restriction for dashboard basic-auth.
+# When this section is set, [real_ip_resolve] must also be configured.
+# [basic_auth_context.real_ip_access]
+# allowed_cidrs = ["10.0.0.0/8", "192.168.0.0/16"]
+# allow_fallback = false
+
+[[basic_auth_context.users]]
+username = "admin"
+password_hash = "$argon2id$v=19$m=19456,t=2,p=1$replace$with$your$argon2$hash"
+
+# The server currently requires exactly one zone and it must use /basic.
+[[basic_auth_context.zones]]
+zone_prefix = "/basic"
+login_subpath = "/login"
+logout_subpath = "/logout"
+# realm = "securitydept"
+
+# Optional real-IP resolution strategy. Required when
+# basic_auth_context.real_ip_access is configured.
+# [real_ip_resolve.fallback]
+# strategy = "remote-addr"
+#
+# [[real_ip_resolve.providers]]
+# name = "edge-proxy"
+# kind = "inline"
+# cidrs = ["10.0.0.0/24", "192.168.10.0/24"]
+#
+# [[real_ip_resolve.sources]]
+# name = "edge-xff"
+# priority = 100
+# peers_from = ["edge-proxy"]
+# accept_headers = [
+#   { kind = "x-forwarded-for", mode = "recursive", direction = "right-to-left" },
+#   { kind = "forwarded", mode = "recursive", direction = "right-to-left", param = "for" },
+# ]
+
+# Optional propagation forwarder. When configured, /api/propagation/* routes are enabled.
 # [propagation_forwarder]
 # proxy_path = "/"
