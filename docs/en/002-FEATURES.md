@@ -125,6 +125,7 @@ Current status:
 - `apps/server` already exposes `/auth/token-set/*` routes for callback, refresh, and metadata redemption
 - bearer propagation now uses server-owned destination policy plus access-token-derived `ResourceTokenPrincipal` facts
 - `TokenPropagator` now accepts either a direct destination target or a node-only target resolved via an optional runtime `PropagationNodeTargetResolver`
+- `securitydept-token-set-context` now includes an optional `axum-reverse-proxy-propagation-forwarder` feature, with `recommend-propagation-forwarder` as a feature alias
 - `apps/server` dashboard API auth order is now:
   - bearer access token first when a bearer header is present
   - then cookie session
@@ -133,12 +134,10 @@ Current status:
   - the header value uses a Forwarded-style parameter format such as `by=dashboard;for=node-a;host=service.internal.example.com:443;proto=https`
   - `/api/*` requires bearer access-token authentication in that case
   - `/basic/*` returns an auth-method mismatch response instead of challenging basic auth
+- `apps/server` now integrates the `AxumReverseProxyPropagationForwarder` for actual downstream forwarding:
+  - enabled when the `[propagation_forwarder]` config section is present
+  - `/api/propagation/*` catch-all route forwards bearer-authenticated requests with validated propagation context to resolved downstream targets
 - the client SDK is still planned as a separate follow-up
-- default convenience aliases now exist for the common case:
-  - `DefaultOidcClient`
-  - `DefaultOidcClientConfig`
-  - `DefaultTokenSetContext`
-  - `DefaultTokenSetContextConfig`
 
 Missing pieces:
 
@@ -146,7 +145,7 @@ Missing pieces:
 - browser-side redemption and fallback handling for `metadata_redemption_id`
 - TS SDK for multi-provider token management
 - more complete token-exchange / downstream propagation scenarios
-- a recommended propagation forwarder feature built above `TokenPropagator` and standard proxy header handling
+- richer forwarding policy and more complete downstream token-exchange scenarios on top of the current `axum-reverse-proxy` forwarder feature
 
 ## 7. creds-manage
 
@@ -204,7 +203,8 @@ Current status:
 
 - implemented as `apps/server`
 - already validates cookie-session, basic-auth-context, stateless token-set, creds-manage, and real-IP-aware dashboard access
-- should continue evolving as the proving ground for propagation-aware forwarding and richer multi-zone deployments
+- now integrates the `axum-reverse-proxy` propagation forwarder for bearer-authenticated downstream forwarding via `/api/propagation/*`
+- should continue evolving as the proving ground for richer multi-zone deployments
 
 ## Recommended Near-Term Focus
 

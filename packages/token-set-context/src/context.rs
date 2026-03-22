@@ -1,18 +1,13 @@
 use std::{fmt, pin::Pin, sync::Arc};
 
 use chrono::Utc;
-use http::{StatusCode, header::HeaderMap};
+use http::header::HeaderMap;
 use securitydept_oidc_client::{
     OidcClient, OidcCodeCallbackResult, OidcCodeCallbackSearchParams,
-    OidcCodeFlowAuthorizationRequest, OidcError, OidcRefreshTokenResult, PendingOauthStore,
-};
-use securitydept_utils::{
-    error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
-    http::ToHttpStatus,
+    OidcCodeFlowAuthorizationRequest, OidcRefreshTokenResult, PendingOauthStore,
 };
 use serde::Deserialize;
 use serde_json::json;
-use snafu::Snafu;
 use typed_builder::TypedBuilder;
 use url::Url;
 
@@ -22,11 +17,11 @@ use crate::{
     CurrentAuthStateMetadataSnapshotPartial, MetadataRedemptionRequest, MetadataRedemptionResponse,
     OidcAuthStateOptions, PassthroughRefreshMaterialProtector,
     PendingAuthStateMetadataRedemptionPayload, PendingAuthStateMetadataRedemptionStore,
-    PendingAuthStateMetadataRedemptionStoreError, PropagatedBearer, PropagationRequestTarget,
-    PropagationNodeTargetResolver, RefreshMaterialError, RefreshMaterialProtector,
-    SealedRefreshMaterial, TokenPropagator, TokenPropagatorConfig, TokenPropagatorError,
-    TokenRefreshPayload, TokenSetRedirectUriConfig, TokenSetRedirectUriError,
-    TokenSetRedirectUriResolver, TokenSetRedirectUriRule,
+    PropagatedBearer, PropagationNodeTargetResolver, PropagationRequestTarget,
+    RefreshMaterialProtector, SealedRefreshMaterial, TokenPropagator, TokenPropagatorConfig,
+    TokenRefreshPayload, TokenSetRedirectUriConfig, TokenSetRedirectUriResolver,
+    TokenSetRedirectUriRule,
+    error::{TokenSetContextError, TokenSetContextResult},
     metadata_redemption::PendingAuthStateMetadataRedemptionConfig,
 };
 
@@ -90,75 +85,6 @@ where
     }
 }
 
-#[derive(Debug, Snafu)]
-pub enum TokenSetContextError {
-    #[snafu(display("token-set context is misconfigured: {message}"))]
-    ContextConfig { message: String },
-    #[snafu(display("refresh material operation failed: {source}"))]
-    RefreshMaterial { source: RefreshMaterialError },
-    #[snafu(display("redirect uri operation failed: {source}"))]
-    RedirectUri { source: TokenSetRedirectUriError },
-    #[snafu(display("OIDC operation failed: {source}"), context(false))]
-    Oidc { source: OidcError },
-    #[snafu(
-        display("metadata redemption operation failed: {source}"),
-        context(false)
-    )]
-    MetadataRedemption {
-        source: PendingAuthStateMetadataRedemptionStoreError,
-    },
-    #[snafu(display("token propagator operation failed: {source}"), context(false))]
-    TokenPropagatorError { source: TokenPropagatorError },
-}
-
-pub type TokenSetContextResult<T> = Result<T, TokenSetContextError>;
-
-impl TokenSetContextError {
-    pub fn status_code(&self) -> StatusCode {
-        match self {
-            Self::Oidc { source } => source.to_http_status(),
-            Self::ContextConfig { .. }
-            | Self::RefreshMaterial { .. }
-            | Self::RedirectUri { .. }
-            | Self::MetadataRedemption { .. }
-            | Self::TokenPropagatorError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
-
-impl ToErrorPresentation for TokenSetContextError {
-    fn to_error_presentation(&self) -> ErrorPresentation {
-        match self {
-            Self::Oidc { source } => source.to_error_presentation(),
-            Self::ContextConfig { .. } => ErrorPresentation::new(
-                "token_set_context_invalid",
-                "Token-set authentication is misconfigured.",
-                UserRecovery::ContactSupport,
-            ),
-            Self::RefreshMaterial { .. } => ErrorPresentation::new(
-                "token_set_refresh_material_invalid",
-                "The sign-in state is no longer valid. Sign in again.",
-                UserRecovery::Reauthenticate,
-            ),
-            Self::RedirectUri { .. } => ErrorPresentation::new(
-                "token_set_post_auth_redirect_uri_invalid",
-                "The token-set redirect URL is invalid.",
-                UserRecovery::RestartFlow,
-            ),
-            Self::MetadataRedemption { .. } => ErrorPresentation::new(
-                "token_set_metadata_unavailable",
-                "Authentication metadata is temporarily unavailable.",
-                UserRecovery::Retry,
-            ),
-            Self::TokenPropagatorError { .. } => ErrorPresentation::new(
-                "token_propagation_failed",
-                "The token could not be propagated.",
-                UserRecovery::Retry,
-            ),
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct TokenSetContext<MS>
 where
@@ -183,7 +109,7 @@ impl<MC> TokenSetContextConfig<MC>
 where
     MC: PendingAuthStateMetadataRedemptionConfig,
 {
-    pub fn validate(&self) -> Result<(), TokenSetContextError> {
+    pub fn validate(&self) -> TokenSetContextResult<()> {
         if self.sealed_refresh_token
             && self
                 .master_key
@@ -210,16 +136,14 @@ impl<MS> TokenSetContext<MS>
 where
     MS: PendingAuthStateMetadataRedemptionStore,
 {
-    pub fn from_config(
-        config: TokenSetContextConfig<MS::Config>,
-    ) -> Result<Self, TokenSetContextError> {
+    pub fn from_config(config: TokenSetContextConfig<MS::Config>) -> TokenSetContextResult<Self> {
         Self::from_config_with_node_target_resolver(config, None)
     }
 
     pub fn from_config_with_node_target_resolver(
         config: TokenSetContextConfig<MS::Config>,
         node_target_resolver: Option<Arc<dyn PropagationNodeTargetResolver>>,
-    ) -> Result<Self, TokenSetContextError> {
+    ) -> TokenSetContextResult<Self> {
         config.validate()?;
 
         let refresh_material_protector: Arc<dyn RefreshMaterialProtector> =
@@ -260,7 +184,7 @@ where
     pub fn seal_refresh_token(
         &self,
         refresh_token: &str,
-    ) -> Result<SealedRefreshMaterial, TokenSetContextError> {
+    ) -> TokenSetContextResult<SealedRefreshMaterial> {
         self.refresh_material_protector
             .seal(refresh_token)
             .map_err(|source| TokenSetContextError::RefreshMaterial { source })
@@ -269,7 +193,7 @@ where
     pub fn unseal_refresh_token(
         &self,
         material: &SealedRefreshMaterial,
-    ) -> Result<String, TokenSetContextError> {
+    ) -> TokenSetContextResult<String> {
         self.refresh_material_protector
             .unseal(material)
             .map_err(|source| TokenSetContextError::RefreshMaterial { source })
@@ -278,7 +202,7 @@ where
     pub fn resolve_post_auth_redirect_uri(
         &self,
         requested_post_auth_redirect_uri: Option<&str>,
-    ) -> Result<url::Url, TokenSetContextError> {
+    ) -> TokenSetContextResult<url::Url> {
         self.redirect_uri_resolver
             .resolve_redirect_uri(requested_post_auth_redirect_uri)
             .map_err(|source| TokenSetContextError::RedirectUri { source })
@@ -300,7 +224,7 @@ where
         &self,
         bearer: &PropagatedBearer<'_>,
         target: &PropagationRequestTarget,
-    ) -> Result<(), TokenSetContextError> {
+    ) -> TokenSetContextResult<()> {
         self.token_propagator
             .validate_target(bearer, target)
             .map_err(|source| TokenSetContextError::TokenPropagatorError { source })
@@ -310,7 +234,7 @@ where
         &self,
         bearer: &PropagatedBearer<'_>,
         target: &PropagationRequestTarget,
-    ) -> Result<http::header::HeaderValue, TokenSetContextError> {
+    ) -> TokenSetContextResult<http::header::HeaderValue> {
         self.token_propagator
             .authorization_header_value(bearer, target)
             .map_err(|source| TokenSetContextError::TokenPropagatorError { source })
@@ -321,7 +245,7 @@ where
         bearer: &PropagatedBearer<'_>,
         target: &PropagationRequestTarget,
         headers: &mut HeaderMap,
-    ) -> Result<(), TokenSetContextError> {
+    ) -> TokenSetContextResult<()> {
         self.token_propagator
             .apply_authorization_header(bearer, target, headers)
             .map_err(|source| TokenSetContextError::TokenPropagatorError { source })

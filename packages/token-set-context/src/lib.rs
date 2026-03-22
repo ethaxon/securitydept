@@ -1,4 +1,5 @@
 mod context;
+mod error;
 #[cfg(feature = "axum-reverse-proxy-propagation-forwarder")]
 mod forwarder;
 mod metadata_redemption;
@@ -13,12 +14,13 @@ mod transport;
 
 pub use context::{
     TokenSetContext, TokenSetContextCodeCallbackResult, TokenSetContextConfig,
-    TokenSetContextError, TokenSetContextTokenRefreshResult,
+    TokenSetContextTokenRefreshResult,
 };
+pub use error::{TokenSetContextError, TokenSetContextResult};
 #[cfg(feature = "axum-reverse-proxy-propagation-forwarder")]
 pub use forwarder::{
     AxumReverseProxyPropagationForwarder, AxumReverseProxyPropagationForwarderConfig,
-    AxumReverseProxyPropagationForwarderError,
+    AxumReverseProxyPropagationForwarderError, AxumReverseProxyPropagationForwarderResult,
 };
 pub use metadata_redemption::{
     MetadataRedemptionId, PendingAuthStateMetadataRedemption,
@@ -42,6 +44,7 @@ pub use propagation::{
     PropagatedBearer, PropagatedTokenValidationConfig, PropagationDestinationPolicy,
     PropagationDirective, PropagationNodeTargetResolver, PropagationRequestTarget,
     PropagationScheme, TokenPropagator, TokenPropagatorConfig, TokenPropagatorError,
+    TokenPropagatorResult,
 };
 pub use redirect::{
     TokenSetRedirectUriConfig, TokenSetRedirectUriError, TokenSetRedirectUriResolver,

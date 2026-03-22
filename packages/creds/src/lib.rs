@@ -14,8 +14,8 @@ pub mod token;
 pub mod validator;
 
 pub use basic::{
-    Argon2BasicAuthCred, BasicAuthCred, hash_password_argon2, parse_basic_auth_header_opt,
-    verify_password_argon2,
+    Argon2BasicAuthCred, BasicAuthCred, hash_password_argon2, is_basic_auth_header,
+    parse_basic_auth_header_opt, verify_password_argon2,
 };
 pub use config::{BasicAuthCredsConfig, StaticTokenAuthCredsConfig};
 pub use error::{CredsError, CredsResult};
@@ -43,7 +43,9 @@ pub use static_token::{
     Sha256TokenAuthCred, StaticTokenAuthCred, generate_static_token, hash_token_sha256,
     verify_token_sha256,
 };
-pub use token::{TokenAuthCred, parse_bearer_auth_header, parse_bearer_auth_header_opt};
+pub use token::{
+    TokenAuthCred, is_bearer_auth_header, parse_bearer_auth_header, parse_bearer_auth_header_opt,
+};
 pub use validator::{
     BasicAuthCredsValidator, MapBasicAuthCredsValidator, MapStaticTokenAuthCredsValidator,
     StaticTokenAuthCredsValidator,

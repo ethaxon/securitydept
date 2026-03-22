@@ -125,6 +125,7 @@
 - `apps/server` 已接入 `/auth/token-set/*` 路径完成 callback、refresh 与 metadata redemption
 - bearer propagation 现在使用服务端持有的目标策略以及来源于 access token 校验链路的 `ResourceTokenPrincipal`
 - `TokenPropagator` 现在既支持直接目标，也支持通过可选运行时 `PropagationNodeTargetResolver` 解析的 node-only target
+- `securitydept-token-set-context` 现已包含可选的 `axum-reverse-proxy-propagation-forwarder` feature，`recommend-propagation-forwarder` 作为其 feature 别名
 - `apps/server` 的 dashboard API 当前认证顺序为：
   - 如果存在 bearer header，则优先由 `oauth-resource-server` 校验 bearer access token
   - 然后是 cookie session
@@ -133,12 +134,10 @@
   - 该 header 的值使用类似 `Forwarded` 的参数格式，例如 `by=dashboard;for=node-a;host=service.internal.example.com:443;proto=https`
   - 此时 `/api/*` 强制要求 bearer access-token 认证
   - `/basic/*` 不再 challenge basic-auth，而是直接返回认证方式不匹配
+- `apps/server` 现已集成 `AxumReverseProxyPropagationForwarder` 用于实际的下游转发：
+  - 当 `[propagation_forwarder]` 配置节存在时启用
+  - `/api/propagation/*` 通配路由将经过 bearer 认证且带有已验证 propagation 上下文的请求转发到已解析的下游目标
 - 客户端 SDK 仍待单独实现
-- 常见场景已提供默认类型别名：
-  - `DefaultOidcClient`
-  - `DefaultOidcClientConfig`
-  - `DefaultTokenSetContext`
-  - `DefaultTokenSetContextConfig`
 
 缺失部分：
 
@@ -146,7 +145,7 @@
 - 浏览器侧对 `metadata_redemption_id` 的兑换与回退策略落地
 - 用于多提供者令牌管理的 TS SDK
 - 更完整的 token exchange / downstream propagation 场景
-- 构建在 `TokenPropagator` 与标准代理头处理之上的推荐 propagation forwarder feature
+- 在当前 `axum-reverse-proxy` forwarder feature 之上实现更丰富的转发策略和更完整的下游 token-exchange 场景
 
 ## 7. creds-manage
 
@@ -204,7 +203,8 @@
 
 - 作为 `apps/server` 实现
 - 已验证 cookie-session、basic-auth-context、无状态 token-set、creds-manage 以及带 real-IP 约束的 dashboard 访问
-- 后续应继续作为 propagation-aware forwarding 与更丰富多 zone 部署的试验场
+- 现已集成 `axum-reverse-proxy` propagation forwarder，通过 `/api/propagation/*` 实现 bearer 认证的下游转发
+- 后续应继续作为更丰富多 zone 部署的试验场
 
 ## 推荐的近期重点
 

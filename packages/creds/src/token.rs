@@ -1,8 +1,16 @@
 use crate::error::{CredsError, CredsResult};
 
+pub fn is_bearer_auth_header(header_value: &str) -> bool {
+    header_value.len() >= 7 && header_value[..7].eq_ignore_ascii_case("Bearer ")
+}
+
 /// Parse a bearer token header value ("Bearer <token>").
 pub fn parse_bearer_auth_header_opt(header_value: &str) -> Option<String> {
-    header_value.strip_prefix("Bearer ").map(|t| t.to_string())
+    if is_bearer_auth_header(header_value) {
+        Some(header_value[7..].trim().to_string())
+    } else {
+        None
+    }
 }
 
 pub fn parse_bearer_auth_header(header_value: &str) -> Result<String, CredsError> {

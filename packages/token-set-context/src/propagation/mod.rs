@@ -1,5 +1,6 @@
 mod cidr;
 mod config;
+mod error;
 
 use std::{
     collections::HashSet,
@@ -14,9 +15,9 @@ pub use config::{
     AllowedPropagationTarget, BearerPropagationPolicy, PropagatedTokenValidationConfig,
     PropagationDestinationPolicy, PropagationScheme, TokenPropagatorConfig,
 };
+pub use error::{TokenPropagatorError, TokenPropagatorResult};
 use http::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use securitydept_oauth_resource_server::ResourceTokenPrincipal;
-use snafu::Snafu;
 use url::Url;
 
 pub const DEFAULT_PROPAGATION_HEADER_NAME: &str = "x-securitydept-propagation";
@@ -62,7 +63,7 @@ impl PropagationRequestTarget {
         }
     }
 
-    pub fn from_url(node_id: Option<String>, url: &Url) -> Result<Self, TokenPropagatorError> {
+    pub fn from_url(node_id: Option<String>, url: &Url) -> TokenPropagatorResult<Self> {
         let scheme = parse_scheme(url.scheme())?;
         let hostname = url
             .host_str()
@@ -80,7 +81,12 @@ impl PropagationRequestTarget {
                 format!("{}://{}:{port}", scheme.as_str(), hostname)
             }
             (Some(scheme), Some(hostname), None) => {
-                format!("{}://{}:{}", scheme.as_str(), hostname, scheme.default_port())
+                format!(
+                    "{}://{}:{}",
+                    scheme.as_str(),
+                    hostname,
+                    scheme.default_port()
+                )
             }
             (None, None, None) => self
                 .node_id
@@ -122,7 +128,7 @@ pub struct PropagationDirective {
 }
 
 impl PropagationDirective {
-    pub fn parse(value: &str) -> Result<Self, TokenPropagatorError> {
+    pub fn parse(value: &str) -> TokenPropagatorResult<Self> {
         let mut by = None;
         let mut for_identifier = None;
         let mut hostname = None;
@@ -177,7 +183,7 @@ impl PropagationDirective {
         })
     }
 
-    pub fn from_header_value(value: &HeaderValue) -> Result<Self, TokenPropagatorError> {
+    pub fn from_header_value(value: &HeaderValue) -> TokenPropagatorResult<Self> {
         let value =
             value
                 .to_str()
@@ -188,7 +194,7 @@ impl PropagationDirective {
         Self::parse(value)
     }
 
-    pub fn to_header_value(&self) -> Result<HeaderValue, TokenPropagatorError> {
+    pub fn to_header_value(&self) -> TokenPropagatorResult<HeaderValue> {
         let mut segments = Vec::new();
 
         if let Some(by) = &self.by {
@@ -231,55 +237,6 @@ impl<'a> PropagatedBearer<'a> {
     }
 }
 
-#[derive(Debug, Snafu)]
-pub enum TokenPropagatorError {
-    #[snafu(display("token propagator is misconfigured: {message}"))]
-    PropagatorConfig { message: String },
-    #[snafu(display(
-        "token propagation policy `{policy:?}` cannot attach an authorization header directly"
-    ))]
-    UnsupportedDirectAuthorization { policy: BearerPropagationPolicy },
-    #[snafu(display("authorization header value is invalid: {source}"))]
-    InvalidHeaderValue {
-        source: http::header::InvalidHeaderValue,
-    },
-    #[snafu(display("propagation directive is invalid: {message}"))]
-    InvalidPropagationDirective { message: String },
-    #[snafu(display("propagation target uses unsupported scheme `{scheme}`"))]
-    UnsupportedTargetScheme { scheme: String },
-    #[snafu(display("propagation target `{target}` is incomplete"))]
-    IncompleteTarget { target: String },
-    #[snafu(display(
-        "propagation target for node `{node_id}` requires a node target resolver"
-    ))]
-    NodeTargetResolverRequired { node_id: String },
-    #[snafu(display("propagation target for node `{node_id}` could not be resolved"))]
-    NodeTargetUnresolved { node_id: String },
-    #[snafu(display("propagation target host `{host}` is invalid"))]
-    InvalidTargetHost { host: String },
-    #[snafu(display("propagation target `{target}` is not allowed"))]
-    DestinationNotAllowed { target: String },
-    #[snafu(display(
-        "propagation target host `{host}` is a sensitive IP literal and is not allowed"
-    ))]
-    SensitiveIpLiteralDenied { host: String },
-    #[snafu(display("propagation CIDR `{cidr}` is invalid"))]
-    InvalidCidr { cidr: String },
-    #[snafu(display("propagated token issuer `{issuer}` is not allowed"))]
-    TokenIssuerNotAllowed { issuer: String },
-    #[snafu(display(
-        "propagated token facts are unavailable; resource_token_principal is required for \
-         validation"
-    ))]
-    TokenFactsUnavailable,
-    #[snafu(display("propagated token is missing an allowed audience"))]
-    TokenAudienceNotAllowed,
-    #[snafu(display("propagated token is missing required scope `{scope}`"))]
-    TokenScopeMissing { scope: String },
-    #[snafu(display("propagated token azp `{azp}` is not allowed"))]
-    TokenAzpNotAllowed { azp: String },
-}
-
 #[derive(Debug, Clone)]
 pub struct TokenPropagator {
     default_policy: BearerPropagationPolicy,
@@ -289,7 +246,7 @@ pub struct TokenPropagator {
 }
 
 impl TokenPropagatorConfig {
-    pub fn validate(&self) -> Result<(), TokenPropagatorError> {
+    pub fn validate(&self) -> TokenPropagatorResult<()> {
         for target in &self.destination_policy.allowed_targets {
             match target {
                 AllowedPropagationTarget::ExactOrigin { hostname, port, .. } => {
@@ -346,14 +303,14 @@ impl PropagationScheme {
 }
 
 impl TokenPropagator {
-    pub fn from_config(config: &TokenPropagatorConfig) -> Result<Self, TokenPropagatorError> {
+    pub fn from_config(config: &TokenPropagatorConfig) -> TokenPropagatorResult<Self> {
         Self::from_config_with_node_target_resolver(config, None)
     }
 
     pub fn from_config_with_node_target_resolver(
         config: &TokenPropagatorConfig,
         node_target_resolver: Option<Arc<dyn PropagationNodeTargetResolver>>,
-    ) -> Result<Self, TokenPropagatorError> {
+    ) -> TokenPropagatorResult<Self> {
         config.validate()?;
 
         Ok(Self {
@@ -387,7 +344,7 @@ impl TokenPropagator {
         &self,
         bearer: &PropagatedBearer<'_>,
         target: &PropagationRequestTarget,
-    ) -> Result<(), TokenPropagatorError> {
+    ) -> TokenPropagatorResult<()> {
         self.validate_destination(target)?;
         self.validate_token(bearer)?;
         Ok(())
@@ -397,7 +354,7 @@ impl TokenPropagator {
         &self,
         bearer: &PropagatedBearer<'_>,
         target: &PropagationRequestTarget,
-    ) -> Result<String, TokenPropagatorError> {
+    ) -> TokenPropagatorResult<String> {
         match self.resolve_policy() {
             BearerPropagationPolicy::ValidateThenForward => {
                 self.validate_target(bearer, target)?;
@@ -415,7 +372,7 @@ impl TokenPropagator {
         &self,
         bearer: &PropagatedBearer<'_>,
         target: &PropagationRequestTarget,
-    ) -> Result<HeaderValue, TokenPropagatorError> {
+    ) -> TokenPropagatorResult<HeaderValue> {
         let authorization_value = self.authorization_value(bearer, target)?;
 
         HeaderValue::from_str(&authorization_value)
@@ -425,7 +382,7 @@ impl TokenPropagator {
     pub fn resolve_target_origin(
         &self,
         target: &PropagationRequestTarget,
-    ) -> Result<String, TokenPropagatorError> {
+    ) -> TokenPropagatorResult<String> {
         Ok(self.resolve_target(target)?.origin())
     }
 
@@ -434,7 +391,7 @@ impl TokenPropagator {
         bearer: &PropagatedBearer<'_>,
         target: &PropagationRequestTarget,
         headers: &mut HeaderMap,
-    ) -> Result<(), TokenPropagatorError> {
+    ) -> TokenPropagatorResult<()> {
         headers.insert(
             AUTHORIZATION,
             self.authorization_header_value(bearer, target)?,
@@ -442,10 +399,7 @@ impl TokenPropagator {
         Ok(())
     }
 
-    fn validate_destination(
-        &self,
-        target: &PropagationRequestTarget,
-    ) -> Result<(), TokenPropagatorError> {
+    fn validate_destination(&self, target: &PropagationRequestTarget) -> TokenPropagatorResult<()> {
         let target = self.resolve_target(target)?;
         validate_host(&target.hostname)?;
         validate_port(target.port)?;
@@ -501,7 +455,7 @@ impl TokenPropagator {
     fn resolve_target(
         &self,
         target: &PropagationRequestTarget,
-    ) -> Result<ResolvedPropagationTarget, TokenPropagatorError> {
+    ) -> TokenPropagatorResult<ResolvedPropagationTarget> {
         match (&target.node_id, &target.scheme, &target.hostname) {
             (node_id, Some(scheme), Some(hostname)) => Ok(ResolvedPropagationTarget {
                 node_id: node_id.clone(),
@@ -531,7 +485,7 @@ impl TokenPropagator {
         }
     }
 
-    fn validate_token(&self, bearer: &PropagatedBearer<'_>) -> Result<(), TokenPropagatorError> {
+    fn validate_token(&self, bearer: &PropagatedBearer<'_>) -> TokenPropagatorResult<()> {
         let requires_token_facts = !self.token_validation.required_issuers.is_empty()
             || !self.token_validation.allowed_audiences.is_empty()
             || !self.token_validation.required_scopes.is_empty()
@@ -607,7 +561,7 @@ impl TokenPropagator {
     }
 }
 
-fn parse_scheme(scheme: &str) -> Result<PropagationScheme, TokenPropagatorError> {
+fn parse_scheme(scheme: &str) -> TokenPropagatorResult<PropagationScheme> {
     match scheme {
         "https" => Ok(PropagationScheme::Https),
         "http" => Ok(PropagationScheme::Http),
@@ -617,7 +571,7 @@ fn parse_scheme(scheme: &str) -> Result<PropagationScheme, TokenPropagatorError>
     }
 }
 
-fn validate_port(port: u16) -> Result<(), TokenPropagatorError> {
+fn validate_port(port: u16) -> TokenPropagatorResult<()> {
     if port == 0 {
         return Err(TokenPropagatorError::PropagatorConfig {
             message: "propagation targets must use a non-zero port".to_string(),
@@ -627,7 +581,7 @@ fn validate_port(port: u16) -> Result<(), TokenPropagatorError> {
     Ok(())
 }
 
-fn validate_host(host: &str) -> Result<(), TokenPropagatorError> {
+fn validate_host(host: &str) -> TokenPropagatorResult<()> {
     let normalized = normalize_host(host);
     if normalized.is_empty() {
         return Err(TokenPropagatorError::InvalidTargetHost {
@@ -708,7 +662,7 @@ fn domain_suffix_matches(host: &str, suffix: &str) -> bool {
 fn validate_domain_regex_target(
     domain_regex: &regex::Regex,
     port: u16,
-) -> Result<(), TokenPropagatorError> {
+) -> TokenPropagatorResult<()> {
     if domain_regex.as_str().is_empty() {
         return Err(TokenPropagatorError::PropagatorConfig {
             message: "domain regex propagation target must not be empty".to_string(),
@@ -725,7 +679,7 @@ fn trim_quoted_value(value: &str) -> &str {
         .unwrap_or(value)
 }
 
-fn parse_directive_identifier(field: &str, value: &str) -> Result<String, TokenPropagatorError> {
+fn parse_directive_identifier(field: &str, value: &str) -> TokenPropagatorResult<String> {
     if value.is_empty() {
         return Err(TokenPropagatorError::InvalidPropagationDirective {
             message: format!("propagation directive `{field}` must not be empty"),
@@ -744,7 +698,7 @@ fn parse_directive_identifier(field: &str, value: &str) -> Result<String, TokenP
     Ok(value.to_string())
 }
 
-fn parse_directive_host(value: &str) -> Result<(String, Option<u16>), TokenPropagatorError> {
+fn parse_directive_host(value: &str) -> TokenPropagatorResult<(String, Option<u16>)> {
     if value.is_empty() {
         return Err(TokenPropagatorError::InvalidPropagationDirective {
             message: "propagation directive `host` must not be empty".to_string(),
@@ -777,20 +731,22 @@ impl ResolvedPropagationTarget {
         format!("{}://{}:{}", self.scheme.as_str(), self.hostname, self.port)
     }
 
-    fn from_url(node_id: Option<String>, url: Url) -> Result<Self, TokenPropagatorError> {
+    fn from_url(node_id: Option<String>, url: Url) -> TokenPropagatorResult<Self> {
         let target = PropagationRequestTarget::from_url(node_id, &url)?;
-        let scheme = target
-            .scheme
-            .clone()
-            .ok_or_else(|| TokenPropagatorError::IncompleteTarget {
-                target: target.display(),
-            })?;
-        let hostname = target
-            .hostname
-            .clone()
-            .ok_or_else(|| TokenPropagatorError::IncompleteTarget {
-                target: target.display(),
-            })?;
+        let scheme =
+            target
+                .scheme
+                .clone()
+                .ok_or_else(|| TokenPropagatorError::IncompleteTarget {
+                    target: target.display(),
+                })?;
+        let hostname =
+            target
+                .hostname
+                .clone()
+                .ok_or_else(|| TokenPropagatorError::IncompleteTarget {
+                    target: target.display(),
+                })?;
 
         Ok(Self {
             node_id: target.node_id,

@@ -111,7 +111,7 @@ Important current boundary:
 - access-token-derived facts used for resource authorization and bearer propagation are modeled separately as `ResourceTokenPrincipal`
 - `TokenPropagator` now validates `PropagatedBearer` plus destination context, rather than reading the whole auth-state snapshot
 - node-only propagation targets are resolved through an optional `PropagationNodeTargetResolver`
-- request forwarding itself is still outside `token-set-context`; the planned direction is a recommended forwarder feature layered above `TokenPropagator`
+- request forwarding itself is still kept separate from the core propagation policy, but `securitydept-token-set-context` now provides an optional `axum-reverse-proxy-propagation-forwarder` feature layered above `TokenPropagator`
 
 Route-level orchestration for cookie-session and stateless token-set modes lives in `securitydept-auth-runtime`:
 

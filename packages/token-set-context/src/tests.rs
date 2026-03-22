@@ -1,9 +1,10 @@
+use std::sync::Arc;
+
 use chrono::{TimeDelta, Utc};
 use http::HeaderMap;
 use regex::Regex;
 use securitydept_oauth_resource_server::ResourceTokenPrincipal;
 use serde_json::json;
-use std::sync::Arc;
 use url::Url;
 
 use crate::{
@@ -11,17 +12,16 @@ use crate::{
     AuthStateSnapshot, AuthTokenSnapshot, AuthenticatedPrincipal, AuthenticationSource,
     AuthenticationSourceKind, BearerPropagationPolicy, PassthroughRefreshMaterialProtector,
     PropagatedBearer, PropagatedTokenValidationConfig, PropagationDestinationPolicy,
-    PropagationDirective, PropagationRequestTarget, PropagationScheme,
-    RefreshMaterialProtector, SealedRefreshMaterial, TokenPropagator, TokenPropagatorConfig,
-    TokenPropagatorError, TokenSetRedirectUriConfig, TokenSetRedirectUriResolver,
-    TokenSetRedirectUriRule,
+    PropagationDirective, PropagationRequestTarget, PropagationScheme, RefreshMaterialProtector,
+    SealedRefreshMaterial, TokenPropagator, TokenPropagatorConfig, TokenPropagatorError,
+    TokenSetRedirectUriConfig, TokenSetRedirectUriResolver, TokenSetRedirectUriRule,
 };
 #[cfg(feature = "moka-pending-store")]
 use crate::{
     MetadataRedemptionId, MokaPendingAuthStateMetadataRedemptionConfig,
     MokaPendingAuthStateMetadataRedemptionStore, PendingAuthStateMetadataRedemptionPayload,
     PendingAuthStateMetadataRedemptionStore, TokenSetContext, TokenSetContextConfig,
-    context::TokenSetContextResult,
+    error::TokenSetContextResult,
 };
 
 #[test]

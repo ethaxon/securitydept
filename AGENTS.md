@@ -1,6 +1,6 @@
 # AGENTS.md
 
-_Single source of truth for Agent identity, code standards, and project rules. Referenced by `.cursorrules`, `CLAUDE.md`, and `GEMINI.md`._
+_Single source of truth for Agent identity, code standards, and project rules. Symbolinked by `CLAUDE.md`, and `GEMINI.md`, only edit `AGENTS.md` when needed._
 
 ## Identity & Communication
 
@@ -16,6 +16,7 @@ _Single source of truth for Agent identity, code standards, and project rules. R
 - **General**:
   - Comments explain _why_, not _what_. Update docs when logic changes.
   - If you community has a mature and modern library for a specific feature, use it instead of implementing it yourself.
+  - Do NOT automatically create git commits. Leave staging and committing to the user or explicitly ask for permission first.
 - **YAML**: 2-space indent, quote only when necessary.
 - **Bash**: `set -e`, `[[ ]]` not `[ ]`, quote variables.
 - **Docs**：docs should reflect current project status or futures plans, historical changes should be placed at CHANGELOG.md not in `docs` folder.

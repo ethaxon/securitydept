@@ -40,6 +40,8 @@ pub enum ServerError {
     TokenSetContext { source: TokenSetContextError },
     #[snafu(transparent)]
     AuthRuntime { source: AuthRuntimeError },
+    #[snafu(transparent)]
+    TokenPropagator { source: securitydept_core::token_set_context::TokenPropagatorError },
 }
 
 impl ToHttpStatus for ServerError {
@@ -52,6 +54,7 @@ impl ToHttpStatus for ServerError {
             oidc_error @ ServerError::Oidc { .. } => oidc_error.to_http_status(),
             ServerError::AuthRuntime { source } => source.status_code(),
             ServerError::SessionContext { source } => source.status_code(),
+            ServerError::TokenPropagator { .. } => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -66,6 +69,7 @@ impl ToErrorPresentation for ServerError {
             ServerError::SessionContext { source } => source.to_error_presentation(),
             ServerError::TokenSetContext { source } => source.to_error_presentation(),
             ServerError::AuthRuntime { source } => source.to_error_presentation(),
+            ServerError::TokenPropagator { source } => source.to_error_presentation(),
             ServerError::ConfigLoad { .. }
             | ServerError::InvalidConfig { .. }
             | ServerError::ServerBoot { .. } => ErrorPresentation::new(

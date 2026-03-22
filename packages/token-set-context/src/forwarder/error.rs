@@ -1,3 +1,4 @@
+use securitydept_utils::error::{ErrorPresentation, ToErrorPresentation, UserRecovery};
 use snafu::Snafu;
 
 use crate::TokenPropagatorError;
@@ -10,4 +11,25 @@ pub enum AxumReverseProxyPropagationForwarderError {
     TokenPropagator { source: TokenPropagatorError },
     #[snafu(display("resolved propagation target origin is invalid: {source}"))]
     InvalidOrigin { source: url::ParseError },
+}
+
+pub type AxumReverseProxyPropagationForwarderResult<T> =
+    Result<T, AxumReverseProxyPropagationForwarderError>;
+
+impl ToErrorPresentation for AxumReverseProxyPropagationForwarderError {
+    fn to_error_presentation(&self) -> ErrorPresentation {
+        match self {
+            Self::Config { .. } => ErrorPresentation::new(
+                "propagation_forwarder_config_invalid",
+                "The propagation forwarder is misconfigured.",
+                UserRecovery::ContactSupport,
+            ),
+            Self::TokenPropagator { source } => source.to_error_presentation(),
+            Self::InvalidOrigin { .. } => ErrorPresentation::new(
+                "propagation_forwarder_invalid_origin",
+                "The propagation target URL is invalid.",
+                UserRecovery::ContactSupport,
+            ),
+        }
+    }
 }

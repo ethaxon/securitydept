@@ -113,7 +113,7 @@ Crate: `securitydept-oauth-resource-server`
 - 用于资源授权与 bearer propagation 的 access-token 事实单独建模为 `ResourceTokenPrincipal`
 - `TokenPropagator` 现在校验的是 `PropagatedBearer` 与目标上下文，而不是整份 auth-state snapshot
 - 仅有 `node_id` 的 propagation target 通过可选的 `PropagationNodeTargetResolver` 解析
-- 真正的请求转发仍不属于 `token-set-context`；当前规划是未来在 `TokenPropagator` 之上提供推荐的 forwarder feature
+- 真正的请求转发与核心 propagation 策略保持分离，但 `securitydept-token-set-context` 现已在 `TokenPropagator` 之上提供可选的 `axum-reverse-proxy-propagation-forwarder` feature
 
 cookie-session 和无状态 token-set 的路由层编排位于 `securitydept-auth-runtime`：
 

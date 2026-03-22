@@ -28,7 +28,7 @@ pub enum DashboardAuthContext {
     Basic,
     Bearer {
         access_token: String,
-        resource_token_principal: TokenSetResourcePrincipal,
+        resource_token_principal: Box<TokenSetResourcePrincipal>,
         propagation: Option<PropagationDirective>,
     },
 }
@@ -43,7 +43,7 @@ impl DashboardAuthContext {
                 ..
             } => Some(PropagatedBearer {
                 access_token,
-                resource_token_principal: Some(resource_token_principal),
+                resource_token_principal: Some(resource_token_principal.as_ref()),
             }),
             Self::Session | Self::Basic => None,
         }
@@ -77,10 +77,10 @@ pub async fn require_basic_auth(
     request: Request,
     next: Next,
 ) -> ServerResult<Response> {
-    match parse_propagation(request.headers()) {
-        Ok(Some(_)) => return Ok(propagation_auth_mismatch_response()),
-        Ok(None) => {}
-        Err(response) => return Ok(response),
+    let propagation = parse_propagation(request.headers())?;
+    
+    if propagation.is_some() {
+        return Ok(propagation_auth_mismatch_response());
     }
 
     let request_path = request.uri().path().to_string();
@@ -116,14 +116,9 @@ pub async fn require_dashboard_auth(
     request: Request,
     next: Next,
 ) -> ServerResult<Response> {
-    let propagation = match parse_propagation(request.headers()) {
-        Ok(propagation) => propagation,
-        Err(response) => return Ok(response),
-    };
+    let propagation = parse_propagation(request.headers())?;
     let has_cookie_header = request.headers().contains_key(header::COOKIE);
-    let resolved_client_ip = state
-        .resolve_client_ip(request.headers(), Some(peer_addr))
-        .await;
+
     let authorization = request
         .headers()
         .get(header::AUTHORIZATION)
@@ -132,11 +127,9 @@ pub async fn require_dashboard_auth(
     let mut request = request;
 
     if let Some(authorization) = authorization.as_deref()
-        && authorization
-            .get(..7)
-            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("Bearer "))
+        && let Some(access_token) =
+            securitydept_core::creds::parse_bearer_auth_header_opt(authorization)
     {
-        let access_token = authorization["Bearer ".len()..].trim().to_string();
         let resource_token_principal = state
             .token_set_resource_service()
             .ok_or(crate::error::ServerError::SessionContext {
@@ -152,20 +145,21 @@ pub async fn require_dashboard_auth(
             .extensions_mut()
             .insert(DashboardAuthContext::Bearer {
                 access_token,
-                resource_token_principal,
+                resource_token_principal: Box::new(resource_token_principal),
                 propagation,
             });
         return Ok(next.run(request).await);
     }
 
-    if propagation.is_some() {
-        return Ok(propagation_auth_mismatch_response());
-    }
+
 
     if has_cookie_header {
         let handle = SessionContextSession::from_config(session, &state.config.session_context);
 
         if handle.get::<HashMap<String, Value>>().await?.is_some() {
+            if propagation.is_some() {
+                return Ok(propagation_auth_mismatch_response());
+            }
             request
                 .extensions_mut()
                 .insert(DashboardAuthContext::Session);
@@ -174,15 +168,22 @@ pub async fn require_dashboard_auth(
     }
 
     if let Some(authorization) = authorization.as_deref()
-        && authorization
-            .get(..6)
-            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("Basic "))
-        && state
+        && securitydept_core::creds::is_basic_auth_header(authorization)
+    {
+        let resolved_client_ip = state
+            .resolve_client_ip(request.headers(), Some(peer_addr))
+            .await;
+
+        if state
             .basic_auth_context_service()
             .authorize_request(Some(authorization), resolved_client_ip.as_ref())?
-    {
+        {
+        if propagation.is_some() {
+            return Ok(propagation_auth_mismatch_response());
+        }
         request.extensions_mut().insert(DashboardAuthContext::Basic);
         return Ok(next.run(request).await);
+    }
     }
 
     Err(crate::error::ServerError::SessionContext {
@@ -190,14 +191,14 @@ pub async fn require_dashboard_auth(
     })
 }
 
-fn parse_propagation(headers: &HeaderMap) -> Result<Option<PropagationDirective>, Response> {
+fn parse_propagation(headers: &HeaderMap) -> Result<Option<PropagationDirective>, crate::error::ServerError> {
     let Some(value) = headers.get(DEFAULT_PROPAGATION_HEADER_NAME) else {
         return Ok(None);
     };
 
     PropagationDirective::from_header_value(value)
         .map(Some)
-        .map_err(invalid_propagation_response)
+        .map_err(|source| crate::error::ServerError::TokenPropagator { source })
 }
 
 fn propagation_auth_mismatch_response() -> Response {
@@ -211,25 +212,6 @@ fn propagation_auth_mismatch_response() -> Response {
         Json(serde_json::json!({
             "error": presentation,
             "status": StatusCode::UNAUTHORIZED.as_u16(),
-            "success": false
-        })),
-    )
-        .into_response()
-}
-
-fn invalid_propagation_response(
-    error: securitydept_core::token_set_context::TokenPropagatorError,
-) -> Response {
-    let presentation = ErrorPresentation::new(
-        "propagation_context_invalid",
-        format!("The propagation header is invalid: {error}"),
-        UserRecovery::Retry,
-    );
-    (
-        StatusCode::BAD_REQUEST,
-        Json(serde_json::json!({
-            "error": presentation,
-            "status": StatusCode::BAD_REQUEST.as_u16(),
             "success": false
         })),
     )

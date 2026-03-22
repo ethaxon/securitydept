@@ -12,24 +12,34 @@ use serde::{Deserialize, Serialize};
 
 use crate::{CredsError, CredsResult};
 
+pub fn is_basic_auth_header(header_value: &str) -> bool {
+    header_value.len() >= 6 && header_value[..6].eq_ignore_ascii_case("Basic ")
+}
+
 /// Parse a basic auth header value ("Basic base64(user:pass)").
 pub fn parse_basic_auth_header_opt(header_value: &str) -> Option<(String, String)> {
-    let encoded = header_value.strip_prefix("Basic ")?;
-    let decoded = BASE64.decode(encoded).ok()?;
-    let decoded_str = String::from_utf8(decoded).ok()?;
-    let (user, pass) = decoded_str.split_once(':')?;
-    Some((user.to_string(), pass.to_string()))
+    if is_basic_auth_header(header_value) {
+        let encoded = header_value[6..].trim();
+        let decoded = BASE64.decode(encoded).ok()?;
+        let decoded_str = String::from_utf8(decoded).ok()?;
+        let (user, pass) = decoded_str.split_once(':')?;
+        Some((user.to_string(), pass.to_string()))
+    } else {
+        None
+    }
 }
 
 /// Parse a basic auth header value ("Basic base64(user:pass)") with error
 /// handling.
 pub fn parse_basic_auth_header(header_value: &str) -> Result<(String, String), CredsError> {
-    let encoded = header_value.strip_prefix("Basic ").ok_or_else(|| {
-        CredsError::InvalidCredentialsFormat {
+    if !is_basic_auth_header(header_value) {
+        return Err(CredsError::InvalidCredentialsFormat {
             message: "Authorization header must have 'Basic' scheme and credentials for basic auth"
                 .to_string(),
-        }
-    })?;
+        });
+    }
+
+    let encoded = header_value[6..].trim();
 
     let decoded = BASE64
         .decode(encoded)

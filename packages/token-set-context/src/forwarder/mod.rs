@@ -4,4 +4,6 @@ mod error;
 
 pub use axum_reverse_proxy::AxumReverseProxyPropagationForwarder;
 pub use config::AxumReverseProxyPropagationForwarderConfig;
-pub use error::AxumReverseProxyPropagationForwarderError;
+pub use error::{
+    AxumReverseProxyPropagationForwarderError, AxumReverseProxyPropagationForwarderResult,
+};
