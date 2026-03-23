@@ -19,7 +19,7 @@ use securitydept_core::{
 use serde_json::Value;
 use tower_sessions::Session;
 
-use crate::{error::ServerResult, state::ServerState};
+use crate::{error::ServerResult, http_response::into_axum_response, state::ServerState};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -78,7 +78,7 @@ pub async fn require_basic_auth(
     next: Next,
 ) -> ServerResult<Response> {
     let propagation = parse_propagation(request.headers())?;
-    
+
     if propagation.is_some() {
         return Ok(propagation_auth_mismatch_response());
     }
@@ -103,7 +103,9 @@ pub async fn require_basic_auth(
         .basic_auth_context
         .zone_for_request_path(&request_path)
     {
-        Ok(zone.unauthorized_response_for_path(&request_path))
+        Ok(into_axum_response(
+            zone.unauthorized_response_for_path(&request_path),
+        ))
     } else {
         Ok(axum::http::StatusCode::NOT_FOUND.into_response())
     }
@@ -151,8 +153,6 @@ pub async fn require_dashboard_auth(
         return Ok(next.run(request).await);
     }
 
-
-
     if has_cookie_header {
         let handle = SessionContextSession::from_config(session, &state.config.session_context);
 
@@ -178,12 +178,12 @@ pub async fn require_dashboard_auth(
             .basic_auth_context_service()
             .authorize_request(Some(authorization), resolved_client_ip.as_ref())?
         {
-        if propagation.is_some() {
-            return Ok(propagation_auth_mismatch_response());
+            if propagation.is_some() {
+                return Ok(propagation_auth_mismatch_response());
+            }
+            request.extensions_mut().insert(DashboardAuthContext::Basic);
+            return Ok(next.run(request).await);
         }
-        request.extensions_mut().insert(DashboardAuthContext::Basic);
-        return Ok(next.run(request).await);
-    }
     }
 
     Err(crate::error::ServerError::SessionContext {
@@ -191,7 +191,9 @@ pub async fn require_dashboard_auth(
     })
 }
 
-fn parse_propagation(headers: &HeaderMap) -> Result<Option<PropagationDirective>, crate::error::ServerError> {
+fn parse_propagation(
+    headers: &HeaderMap,
+) -> Result<Option<PropagationDirective>, crate::error::ServerError> {
     let Some(value) = headers.get(DEFAULT_PROPAGATION_HEADER_NAME) else {
         return Ok(None);
     };

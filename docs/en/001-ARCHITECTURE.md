@@ -82,9 +82,9 @@ These modes are deployment contracts. They should expose normalized principal da
 Current dedicated crates:
 
 - `securitydept-basic-auth-context`
-- `securitydept-session-context` — extracted reusable session context abstraction for cookie-session mode, including post-auth redirect policy
+- `securitydept-session-context` — extracted reusable session context abstraction for cookie-session mode, including post-auth redirect policy, without direct Axum response types
 - `securitydept-token-set-context` — extracted reusable auth-state, redirect, metadata-redemption, and bearer-propagation coordination layer for stateless token-set mode
-- `securitydept-auth-runtime` — extracted route-ready auth orchestration for session, token-set, and basic-auth modes
+- `securitydept-auth-runtime` — extracted route-ready auth orchestration for session, token-set, and basic-auth modes, with independent feature gates for each mode
 
 The `securitydept-session-context` crate provides:
 
@@ -121,6 +121,11 @@ Route-level orchestration for cookie-session and stateless token-set modes lives
 - `TokenSetAuthService`
 - `BasicAuthContextService`
 - `TokenSetResourceService`
+
+Current boundary note:
+
+- `securitydept-basic-auth-context` and `securitydept-auth-runtime` now return framework-neutral HTTP response metadata instead of Axum response types
+- Axum-specific response assembly is kept in `apps/server`
 
 A future shared abstraction should likely normalize all of them into a common authenticated-principal model.
 

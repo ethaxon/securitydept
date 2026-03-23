@@ -1,12 +1,10 @@
-use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
+use http::StatusCode;
 use securitydept_basic_auth_context::{BasicAuthContext, BasicAuthZone};
 use securitydept_creds::{
     BasicAuthCred, BasicAuthCredsValidator, MapBasicAuthCredsValidator, parse_basic_auth_header_opt,
 };
 use securitydept_realip::ResolvedClientIp;
+use securitydept_utils::http::HttpResponse;
 use serde::{Deserialize, Serialize};
 
 use crate::AuthRuntimeError;
@@ -39,13 +37,13 @@ where
         authorization_header: Option<&str>,
         requested_post_auth_redirect: Option<&str>,
         resolved_client_ip: Option<&ResolvedClientIp>,
-    ) -> Result<Response, AuthRuntimeError> {
+    ) -> Result<HttpResponse, AuthRuntimeError> {
         let Some(zone) = self.basic_auth_context.zone_for_request_path(request_path) else {
-            return Ok(StatusCode::NOT_FOUND.into_response());
+            return Ok(HttpResponse::new(StatusCode::NOT_FOUND));
         };
 
         if !self.real_ip_allowed(resolved_client_ip)? {
-            return Ok(StatusCode::FORBIDDEN.into_response());
+            return Ok(HttpResponse::new(StatusCode::FORBIDDEN));
         }
 
         if self.verify_basic_auth(authorization_header)? {
@@ -56,11 +54,11 @@ where
         }
     }
 
-    pub fn logout(&self, request_path: &str) -> Response {
+    pub fn logout(&self, request_path: &str) -> HttpResponse {
         self.basic_auth_context
             .zone_for_request_path(request_path)
             .map(BasicAuthZone::logout_poison_response)
-            .unwrap_or_else(|| StatusCode::NOT_FOUND.into_response())
+            .unwrap_or_else(|| HttpResponse::new(StatusCode::NOT_FOUND))
     }
 
     pub fn authorize_request(
@@ -189,7 +187,7 @@ mod tests {
             .login("/basic/login", None, None, None)
             .expect("login should return response");
 
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status, StatusCode::UNAUTHORIZED);
     }
 
     #[test]
@@ -205,12 +203,9 @@ mod tests {
             )
             .expect("login should return response");
 
-        assert_eq!(response.status(), StatusCode::FOUND);
+        assert_eq!(response.status, StatusCode::FOUND);
         assert_eq!(
-            response
-                .headers()
-                .get(axum::http::header::LOCATION)
-                .unwrap(),
+            response.headers.get(http::header::LOCATION).unwrap(),
             "/console"
         );
     }

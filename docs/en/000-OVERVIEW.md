@@ -32,9 +32,11 @@ That requires a clean split between:
 - `securitydept-oidc-client`
   - OIDC relying-party client behavior
 - `securitydept-auth-runtime`
-  - route-ready session and token-set auth orchestration for `apps/server`
+  - route-ready auth orchestration with independently gated basic-auth, session, and token-set features
+- `securitydept-basic-auth-context`
+  - reusable basic-auth zone and redirect abstraction with framework-neutral response metadata
 - `securitydept-session-context`
-  - reusable session context abstraction for cookie-session mode
+  - reusable session context abstraction for cookie-session mode without direct Axum coupling
 - `securitydept-token-set-context`
   - reusable auth-state, redirect, metadata-redemption, and token-propagation layer for stateless token-set mode
 - `securitydept-oauth-resource-server`
@@ -63,6 +65,7 @@ Those modes are deployment-oriented compositions, not replacements for `oidc-cli
 - Model stateless and stateful auth-context modes explicitly.
 - Support both backend-first and frontend-strong deployments.
 - Keep the server app as a proving ground, not the product boundary.
+- Keep reusable crates framework-neutral when the boundary can stay in the reference app.
 
 ## Document Index
 
@@ -72,4 +75,6 @@ Those modes are deployment-oriented compositions, not replacements for `oidc-cli
 - [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md) / [中文](../zh/004-BASIC_AUTH_ZONE.md)
 - [005-ERROR_SYSTEM_DESIGN.md](005-ERROR_SYSTEM_DESIGN.md) / [中文](../zh/005-ERROR_SYSTEM_DESIGN.md)
 - [006-REALIP.md](006-REALIP.md) / [中文](../zh/006-REALIP.md)
+- [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) / [中文](../zh/007-CLIENT_SDK_GUIDE.md)
+  - formal client SDK architecture, package boundaries, foundation protocols, and implementation guidance
 - [100-ROADMAP.md](100-ROADMAP.md) / [中文](../zh/100-ROADMAP.md)

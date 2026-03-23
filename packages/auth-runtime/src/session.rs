@@ -1,13 +1,10 @@
 use std::{collections::HashMap, future::Future};
 
-use axum::{
-    Json,
-    response::{IntoResponse, Redirect, Response},
-};
 use securitydept_oidc_client::{OidcClient, OidcCodeCallbackSearchParams, PendingOauthStore};
 use securitydept_session_context::{
     SessionContext, SessionContextConfig, SessionContextSession, SessionPrincipal,
 };
+use securitydept_utils::http::HttpResponse;
 use serde_json::Value;
 use tower_sessions::Session;
 use tracing::info;
@@ -21,9 +18,12 @@ pub trait SessionAuthServiceTrait {
         &self,
         session: Session,
         external_base_url: &Url,
-    ) -> impl Future<Output = Result<Response, AuthRuntimeError>>;
+    ) -> impl Future<Output = Result<HttpResponse, AuthRuntimeError>>;
 
-    fn logout(&self, session: Session) -> impl Future<Output = Result<Response, AuthRuntimeError>> {
+    fn logout(
+        &self,
+        session: Session,
+    ) -> impl Future<Output = Result<serde_json::Value, AuthRuntimeError>> {
         let handle = SessionContextSession::from_config(session, self.session_context_config());
 
         Box::pin(async move {
@@ -32,14 +32,14 @@ pub trait SessionAuthServiceTrait {
                 .await
                 .map_err(|source| AuthRuntimeError::SessionContext { source })?;
 
-            Ok(Json(serde_json::json!({"ok": true})).into_response())
+            Ok(serde_json::json!({"ok": true}))
         })
     }
 
     fn me(
         &self,
         session: Session,
-    ) -> impl Future<Output = Result<Json<SessionContext<HashMap<String, Value>>>, AuthRuntimeError>>
+    ) -> impl Future<Output = Result<SessionContext<HashMap<String, Value>>, AuthRuntimeError>>
     {
         let handle = SessionContextSession::from_config(session, self.session_context_config());
         Box::pin(async move {
@@ -48,7 +48,7 @@ pub trait SessionAuthServiceTrait {
                 .await
                 .map_err(|source| AuthRuntimeError::SessionContext { source })?;
 
-            Ok(Json(context))
+            Ok(context)
         })
     }
 }
@@ -78,7 +78,7 @@ impl<'a> SessionAuthServiceTrait for DevSessionAuthService<'a> {
         &self,
         session: Session,
         _external_base_url: &Url,
-    ) -> Result<Response, AuthRuntimeError> {
+    ) -> Result<HttpResponse, AuthRuntimeError> {
         let handle = SessionContextSession::from_config(session, self.session_context_config);
         handle
             .cycle_id()
@@ -106,7 +106,7 @@ impl<'a> SessionAuthServiceTrait for DevSessionAuthService<'a> {
             .resolve_post_auth_redirect(None)
             .map_err(|source| AuthRuntimeError::SessionContext { source })?;
 
-        Ok(Redirect::to(&redirect_target).into_response())
+        Ok(HttpResponse::found(&redirect_target))
     }
 }
 
@@ -142,7 +142,7 @@ where
         session: Session,
         external_base_url: &Url,
         search_params: OidcCodeCallbackSearchParams,
-    ) -> Result<Response, AuthRuntimeError> {
+    ) -> Result<HttpResponse, AuthRuntimeError> {
         let oidc = self.oidc_client.ok_or(AuthRuntimeError::OidcDisabled)?;
 
         let code_callback_result = oidc
@@ -175,7 +175,7 @@ where
             .resolve_post_auth_redirect(None)
             .map_err(|source| AuthRuntimeError::SessionContext { source })?;
 
-        Ok(Redirect::to(&redirect_target).into_response())
+        Ok(HttpResponse::found(&redirect_target))
     }
 }
 
@@ -191,14 +191,14 @@ where
         &self,
         _session: Session,
         external_base_url: &Url,
-    ) -> Result<Response, AuthRuntimeError> {
+    ) -> Result<HttpResponse, AuthRuntimeError> {
         if let Some(oidc) = self.oidc_client {
             let authorization_request = oidc
                 .handle_code_authorize(external_base_url)
                 .await
                 .map_err(|source| AuthRuntimeError::Oidc { source })?;
             let authorization_url = authorization_request.authorization_url;
-            Ok(Redirect::temporary(authorization_url.as_str()).into_response())
+            Ok(HttpResponse::temporary_redirect(authorization_url.as_str()))
         } else {
             DevSessionAuthService::new(self.session_context_config)?
                 .login(_session, external_base_url)

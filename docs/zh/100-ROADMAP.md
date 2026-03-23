@@ -41,7 +41,7 @@
 5. 实现基础认证区域模式
    - 后端路由助手
    - 文档化流程
-   - 小型可选 TS 助手
+   - 轻量客户端 helper，用于 zone-aware 的 `401 -> login` 跳转与 logout URL 处理
 6. 实现 cookie-session 模式
    - 可复用后端认证上下文提取
    - 规范化主体形状
@@ -57,18 +57,24 @@
 
 - 基础认证区域：已文档化，未完全产品化
 - cookie-session：参考实现已存在，可复用提取已落在 `securitydept-session-context` 和 `securitydept-auth-runtime`
-- 无状态 token-set 模式：服务端与共享 crate 基本落地，路由编排已落在 `securitydept-auth-runtime`，客户端 SDK 待实现
+- 无状态 token-set 模式：服务端与共享 crate 基本落地，路由编排已落在 `securitydept-auth-runtime`，客户端 SDK 架构现已正式定稿，但实现仍待推进
 
 ## 阶段 4：前端 SDK
 
 8. 提供轻量级 TypeScript SDK
-   - 基础认证区域重定向助手
+   - 基础认证区域 helper，用于 zone 边界识别、`401 -> login` 跳转与 logout 重定向
    - cookie-session 重定向助手
    - 无状态 token-set SDK 用于令牌存储、头注入、后台刷新和登录重定向
 
 状态：
 
-- token-set SDK 待实现，其余模式仍在计划中或已部分落地
+- TypeScript 客户端 SDK 架构已在 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 中正式定稿
+- basic-auth 与 session helper 仍待实现，`apps/server` 与 `apps/webui` 将作为第一批真实接入验证目标
+- token-set SDK 实现仍待推进；mixed-custody 与 stateful BFF 边界已纳入设计，但当前仍属 provisional
+
+参考：
+
+- [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
 
 ## 阶段 5：本地凭证操作
 

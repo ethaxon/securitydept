@@ -9,7 +9,7 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::{error::ServerError, state::ServerState};
+use crate::{error::ServerError, http_response::into_axum_response, state::ServerState};
 
 #[derive(Debug, Deserialize)]
 pub struct BasicAuthLoginQuery {
@@ -42,9 +42,10 @@ pub async fn login(
             query.post_auth_redirect.as_deref(),
             resolved_client_ip.as_ref(),
         )
+        .map(into_axum_response)
         .map_err(ServerError::from)
 }
 
 pub async fn logout(Extension(state): Extension<ServerState>) -> Response {
-    state.basic_auth_context_service().logout("/basic/logout")
+    into_axum_response(state.basic_auth_context_service().logout("/basic/logout"))
 }

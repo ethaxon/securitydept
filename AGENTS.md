@@ -36,6 +36,7 @@ _Single source of truth for Agent identity, code standards, and project rules. S
 - **node package manager**: use `pnpm` as the package manager.
 - **rust toolchain**: use `rust-toolchain.toml` to manage the rust toolchain, use `cargo` as the build tool.
 - **typescript**: use tsconfig.json with references for managing the typescript project.
+- **typescript validation**: when SDK or transport DTO validation is needed, prefer the `@standard-schema` protocol with user-supplied validators instead of binding to a specific library such as `zod`.
 - **webui stack**: use typescript + vite + react + @tanstack/react-xxx seriers + tailwindcss + shadcn/ui for the webui stack.
 - **server stack**: use rust + axum + openconnectid + serde + snafu + tracing series for the server stack.
 

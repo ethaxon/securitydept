@@ -4,7 +4,7 @@ version = "0.2.0-alpha.3"
 edition = "2024"
 
 [dependencies]
-axum = { workspace = true }
+http = { workspace = true }
 securitydept-utils = { path = "../utils" }
 serde = { workspace = true }
 snafu = { workspace = true }

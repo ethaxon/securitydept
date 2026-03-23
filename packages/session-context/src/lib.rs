@@ -1,6 +1,6 @@
 use std::{collections::HashMap, time::Duration as StdDuration};
 
-use axum::http::StatusCode;
+use http::StatusCode;
 use securitydept_utils::{
     error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
     redirect::{RedirectTargetConfig, RedirectTargetError, UriRelativeRedirectTargetResolver},

@@ -19,16 +19,18 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
 
 当前仓库已包含底层的大部分功能和一个可用的参考服务器。更高级别的认证上下文模式正在进行文档化，以便后续实现遵循一致的设计。
 
+参考服务器仍然使用 Axum，但可复用的 `securitydept-basic-auth-context`、`securitydept-session-context` 与 `securitydept-auth-runtime` crate 现在已经把 Axum 专属的响应组装留在边界层之外，以便更容易复用到其他生态中。
+
 ## 工作区 Crates
 
 - `securitydept-creds`
   - 用于基础认证、静态令牌、JWT、JWE 和 RFC 9068 访问令牌的底层验证原语
 - `securitydept-basic-auth-context`
-  - 可复用的 basic-auth 上下文、zone、post-auth redirect 与 real-IP 访问策略辅助
+  - 可复用的 basic-auth 上下文、zone、post-auth redirect 与 real-IP 访问策略辅助，并提供与框架无关的 HTTP 响应元数据
 - `securitydept-session-context`
-  - 基于 tower-sessions 的可复用 cookie-session 认证上下文辅助，包含 post-auth redirect
+  - 基于 tower-sessions 的可复用 cookie-session 认证上下文辅助，包含 post-auth redirect，且不再直接耦合 Axum
 - `securitydept-auth-runtime`
-  - 面向参考服务器的 session、token-set 与 basic-auth 路由级认证编排
+  - 面向参考服务器的 session、token-set 与 basic-auth 路由级认证编排，并按 `basic-auth-context`、`session-context`、`token-set-context` 三个 feature 独立控制
 - `securitydept-oauth-provider`
   - 共享提供者运行时，支持发现元数据、JWKS 和内省（introspection），带有缓存和刷新
 - `securitydept-oidc-client`
@@ -71,8 +73,8 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
   - 由服务端持有的 bearer propagation 校验，包括目标 allowlist 与 access-token 资源事实校验
 - 计划中/部分已规范
   - 更丰富的多 zone basic-auth context 组合
-  - 无状态 token-set 客户端 SDK 以及浏览器侧合并/持久化行为
-  - 用于认证上下文模式的前端 TypeScript SDK
+  - 按正式 client SDK 指南落地 TypeScript 客户端 SDK
+  - token-set 模式在浏览器侧的合并、持久化、刷新与 mixed-custody 行为
   - 构建在 `TokenPropagator` 之上的推荐 propagation forwarder feature
 
 ## 参考服务器认证入口
@@ -104,6 +106,7 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
 | [docs/zh/004-BASIC_AUTH_ZONE.md](docs/zh/004-BASIC_AUTH_ZONE.md) | 基础认证区域的 UX 和协议说明 |
 | [docs/zh/005-ERROR_SYSTEM_DESIGN.md](docs/zh/005-ERROR_SYSTEM_DESIGN.md) | 对外安全错误响应、内部诊断与恢复动作设计 |
 | [docs/zh/006-REALIP.md](docs/zh/006-REALIP.md) | 多层代理与多 CDN/provider 部署下的 trusted-peer real-IP 策略 |
+| [docs/zh/007-CLIENT_SDK_GUIDE.md](docs/zh/007-CLIENT_SDK_GUIDE.md) | 客户端 SDK 正式架构：包布局、foundation 协议、适配层、运行时边界与实现约束 |
 | [docs/zh/100-ROADMAP.md](docs/zh/100-ROADMAP.md) | 与当前目标对齐的序列路线图 |
 
 ## 开发

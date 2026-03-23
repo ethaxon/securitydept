@@ -41,7 +41,9 @@ pub enum ServerError {
     #[snafu(transparent)]
     AuthRuntime { source: AuthRuntimeError },
     #[snafu(transparent)]
-    TokenPropagator { source: securitydept_core::token_set_context::TokenPropagatorError },
+    TokenPropagator {
+        source: securitydept_core::token_set_context::TokenPropagatorError,
+    },
 }
 
 impl ToHttpStatus for ServerError {

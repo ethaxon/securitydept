@@ -195,8 +195,6 @@ impl AuthTokenSnapshot {
 
 impl AuthStateMetadataDelta {
     pub fn is_empty(&self) -> bool {
-        self.principal.is_none()
-            && self.source.is_none()
-            && self.attributes.is_empty()
+        self.principal.is_none() && self.source.is_none() && self.attributes.is_empty()
     }
 }

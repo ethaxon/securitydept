@@ -32,13 +32,16 @@ Expected properties:
 - challenge zone isolation
 - challenge trigger endpoint
 - logout via credential poisoning workaround
-- optional tiny TypeScript helper that redirects to the challenge URL
+- thin client helper that knows the active zone boundary
+- when a protected API inside the zone returns `401`, redirect from the current route to the zone login URL with `post_auth_redirect_uri`
+- logout helper redirects to the zone logout URL
 
 This mode should compose:
 
 - `securitydept-creds`
 - `securitydept-creds-manage`
 - optional server routing helpers
+- optional `basic-auth-context-client` helper for zone-aware redirect orchestration
 
 ## Mode B: Cookie-Session
 
@@ -60,7 +63,7 @@ This mode should compose:
 
 - `securitydept-oidc-client`
 - `securitydept-session-context` — provides `SessionContext<T>`, `SessionPrincipal`, `SessionContextConfig`, and session handle operations
-- `securitydept-auth-runtime` — composes `oidc-client` and `session-context` into route-ready session auth services such as `OidcSessionAuthService` and `DevSessionAuthService`
+- `securitydept-auth-runtime` — composes `oidc-client` and `session-context` into route-ready session auth services such as `OidcSessionAuthService` and `DevSessionAuthService`, enabled through the `session-context` feature
 - optional backing session store from the `tower-sessions-*` ecosystem
 - optional TS helper for redirect-to-login UX
 
@@ -69,6 +72,7 @@ Current repository status:
 - reference implementation exists in `apps/server`
 - reusable extraction now exists in `securitydept-session-context`
 - route-level session auth orchestration now exists in `securitydept-auth-runtime`
+- reusable crates no longer need Axum directly; the reference server adapts their framework-neutral return values at the boundary
 
 ## Mode C: Stateless Token-Set
 
@@ -131,7 +135,7 @@ Expected backend capabilities:
 - optionally refresh discovery metadata and JWKS through the shared provider runtime
 - keep bearer propagation policy explicit
 - let `token-set-context` own refresh material protection, redirect URI resolution, metadata redemption, state reconstruction, and transport DTO generation
-- let `auth-runtime` expose route-ready token-set handlers on top of `token-set-context`
+- let `auth-runtime` expose route-ready token-set handlers on top of `token-set-context`, enabled through the `token-set-context` feature
 - provide short-lived metadata redemption storage and exchange
 - round-trip the final callback `post_auth_redirect_uri` through `oidc-client` pending OAuth extra data
 
@@ -158,6 +162,7 @@ Current implementation status:
   - optional previous `id_token`
   - optional `current_metadata_snapshot`
 - reusable token-set route orchestration now exists in `securitydept-auth-runtime::TokenSetAuthService`
+- `securitydept-auth-runtime` also gates its basic-auth and session orchestration behind separate `basic-auth-context` and `session-context` features
 - the default metadata redemption implementation now includes:
   - `MokaPendingAuthStateMetadataRedemptionStore`
   - `DefaultTokenSetContext`

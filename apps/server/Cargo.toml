@@ -9,13 +9,10 @@ jwe = ["securitydept-core/creds-jwe"]
 [dependencies]
 securitydept-core = { path = "../../packages/core", features = [
     "utils",
-    "auth-runtime",
+    "auth-runtime-full",
     "basic-auth-context",
-    "oidc-client",
-    "oidc-client-recommend-pending-store",
-    "token-set-context",
-    "token-set-context-recommend-pending-store",
-    "token-set-context-recommend-propagation-forwarder",
+    "oidc-client-recommend",
+    "token-set-context-recommend",
     "session-context",
     "creds",
     "creds-manage",

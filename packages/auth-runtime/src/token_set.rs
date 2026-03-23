@@ -1,14 +1,12 @@
-use axum::{
-    Json,
-    response::{IntoResponse, Redirect, Response},
-};
 use securitydept_creds::{CoreJwtClaims, parse_bearer_auth_header_opt};
 use securitydept_oauth_resource_server::{OAuthResourceServerVerifier, ResourceTokenPrincipal};
 use securitydept_oidc_client::{OidcClient, OidcCodeCallbackSearchParams, PendingOauthStore};
 use securitydept_token_set_context::{
-    MetadataRedemptionRequest, OidcAuthStateOptions, PendingAuthStateMetadataRedemptionStore,
-    TokenRefreshPayload, TokenSetAuthorizeQuery, TokenSetContext,
+    MetadataRedemptionRequest, MetadataRedemptionResponse, OidcAuthStateOptions,
+    PendingAuthStateMetadataRedemptionStore, TokenRefreshPayload, TokenSetAuthorizeQuery,
+    TokenSetContext,
 };
+use securitydept_utils::http::HttpResponse;
 use url::Url;
 
 use crate::AuthRuntimeError;
@@ -45,7 +43,7 @@ where
         &self,
         external_base_url: &Url,
         query: &TokenSetAuthorizeQuery,
-    ) -> Result<Response, AuthRuntimeError> {
+    ) -> Result<HttpResponse, AuthRuntimeError> {
         let authorization_request = self
             .token_set_context
             .authorize_code_flow(
@@ -56,14 +54,16 @@ where
             )
             .await?;
 
-        Ok(Redirect::temporary(authorization_request.authorization_url.as_str()).into_response())
+        Ok(HttpResponse::temporary_redirect(
+            authorization_request.authorization_url.as_str(),
+        ))
     }
 
     pub async fn callback(
         &self,
         external_base_url: &Url,
         search_params: OidcCodeCallbackSearchParams,
-    ) -> Result<Response, AuthRuntimeError> {
+    ) -> Result<HttpResponse, AuthRuntimeError> {
         let coordination_result = self
             .token_set_context
             .handle_code_callback_with_metadata_store(
@@ -78,13 +78,13 @@ where
         let fragment = coordination_result.redirect_fragment.to_fragment();
 
         post_auth_redirect_uri.set_fragment(Some(&fragment));
-        Ok(Redirect::to(post_auth_redirect_uri.as_str()).into_response())
+        Ok(HttpResponse::found(post_auth_redirect_uri.as_str()))
     }
 
     pub async fn refresh(
         &self,
         payload: &TokenRefreshPayload,
-    ) -> Result<Response, AuthRuntimeError> {
+    ) -> Result<HttpResponse, AuthRuntimeError> {
         let coordination_result = self
             .token_set_context
             .refresh_from_payload_with_metadata_store(self.oidc_client, payload)
@@ -93,19 +93,17 @@ where
         let fragment = coordination_result.redirect_fragment.to_fragment();
 
         post_auth_redirect_uri.set_fragment(Some(&fragment));
-        Ok(Redirect::to(post_auth_redirect_uri.as_str()).into_response())
+        Ok(HttpResponse::found(post_auth_redirect_uri.as_str()))
     }
 
     pub async fn redeem_metadata(
         &self,
         payload: &MetadataRedemptionRequest,
-    ) -> Result<Response, AuthRuntimeError> {
-        let metadata = self.token_set_context.redeem_metadata(payload).await?;
-
-        match metadata {
-            Some(metadata) => Ok(Json(metadata).into_response()),
-            None => Ok(axum::http::StatusCode::NOT_FOUND.into_response()),
-        }
+    ) -> Result<Option<MetadataRedemptionResponse>, AuthRuntimeError> {
+        self.token_set_context
+            .redeem_metadata(payload)
+            .await
+            .map_err(|source| AuthRuntimeError::TokenSetContext { source })
     }
 }
 

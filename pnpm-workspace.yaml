@@ -1,5 +1,4 @@
 packages:
-  - packages/oidc
   - apps/webui
 
 onlyBuiltDependencies:

@@ -1,4 +1,9 @@
-use axum::{Extension, Json, extract::Query, http::HeaderMap, response::Response};
+use axum::{
+    Extension, Json,
+    extract::Query,
+    http::HeaderMap,
+    response::{IntoResponse, Response},
+};
 use securitydept_core::{
     auth_runtime::SessionAuthServiceTrait, creds_manage::models::UserInfo,
     oidc::OidcCodeCallbackSearchParams,
@@ -7,6 +12,7 @@ use tower_sessions::Session;
 
 use crate::{
     error::{ServerError, ServerResult},
+    http_response::into_axum_response,
     state::ServerState,
 };
 
@@ -22,6 +28,7 @@ pub async fn login(
         .session_auth_service()
         .login(session, &external_base_url)
         .await
+        .map(into_axum_response)
         .map_err(ServerError::from)
 }
 
@@ -37,6 +44,7 @@ pub async fn callback(
         .session_auth_service()
         .callback(session, &external_base_url, search_params)
         .await
+        .map(into_axum_response)
         .map_err(ServerError::from)
 }
 
@@ -45,11 +53,13 @@ pub async fn logout(
     Extension(state): Extension<ServerState>,
     session: Session,
 ) -> ServerResult<Response> {
-    state
+    let body = state
         .session_auth_service()
         .logout(session)
         .await
-        .map_err(ServerError::from)
+        .map_err(ServerError::from)?;
+
+    Ok(Json(body).into_response())
 }
 
 /// GET /auth/session/me -- return current user info.
@@ -61,8 +71,7 @@ pub async fn me(
         .session_auth_service()
         .me(session)
         .await
-        .map_err(ServerError::from)?
-        .0;
+        .map_err(ServerError::from)?;
 
     Ok(Json(UserInfo {
         display_name: context.principal.display_name,

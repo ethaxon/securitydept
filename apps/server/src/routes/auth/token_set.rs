@@ -1,4 +1,9 @@
-use axum::{Extension, Json, extract::Query, http::HeaderMap, response::Response};
+use axum::{
+    Extension, Json,
+    extract::Query,
+    http::HeaderMap,
+    response::{IntoResponse, Response},
+};
 use securitydept_core::{
     oidc::OidcCodeCallbackSearchParams,
     token_set_context::{MetadataRedemptionRequest, TokenRefreshPayload, TokenSetAuthorizeQuery},
@@ -6,6 +11,7 @@ use securitydept_core::{
 
 use crate::{
     error::{ServerError, ServerResult},
+    http_response::into_axum_response,
     state::ServerState,
 };
 
@@ -21,6 +27,7 @@ pub async fn login(
         .token_set_auth_service()?
         .login(&external_base_url, &query)
         .await
+        .map(into_axum_response)
         .map_err(ServerError::from)
 }
 
@@ -36,6 +43,7 @@ pub async fn callback(
         .token_set_auth_service()?
         .callback(&external_base_url, search_params)
         .await
+        .map(into_axum_response)
         .map_err(ServerError::from)
 }
 
@@ -48,6 +56,7 @@ pub async fn refresh(
         .token_set_auth_service()?
         .refresh(&payload)
         .await
+        .map(into_axum_response)
         .map_err(ServerError::from)
 }
 
@@ -56,9 +65,13 @@ pub async fn redeem_metadata(
     Extension(state): Extension<ServerState>,
     Json(payload): Json<MetadataRedemptionRequest>,
 ) -> ServerResult<Response> {
-    state
+    match state
         .token_set_auth_service()?
         .redeem_metadata(&payload)
         .await
-        .map_err(ServerError::from)
+        .map_err(ServerError::from)?
+    {
+        Some(metadata) => Ok(Json(metadata).into_response()),
+        None => Ok(axum::http::StatusCode::NOT_FOUND.into_response()),
+    }
 }

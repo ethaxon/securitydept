@@ -32,13 +32,16 @@
 - challenge 区域隔离
 - challenge 触发端点
 - 通过凭证中毒（credential-poisoning）变通方法实现注销
-- 可选的小型 TypeScript 助手用于重定向到 challenge URL
+- 轻量客户端 helper，可感知当前 zone 边界
+- 当 zone 内受保护 API 返回 `401` 时，从当前路由跳转到 zone login URL，并带上 `post_auth_redirect_uri`
+- logout helper 跳转到 zone logout URL
 
 该模式应组合：
 
 - `securitydept-creds`
 - `securitydept-creds-manage`
 - 可选的服务器路由助手
+- 可选的 `basic-auth-context-client`，用于 zone-aware 重定向编排
 
 ## 模式 B：Cookie-Session
 
@@ -60,7 +63,7 @@
 
 - `securitydept-oidc-client`
 - `securitydept-session-context` —— 提供 `SessionContext<T>`、`SessionPrincipal`、`SessionContextConfig` 和会话句柄操作
-- `securitydept-auth-runtime` —— 将 `oidc-client` 与 `session-context` 组合成可直接挂接路由的 session 认证服务，例如 `OidcSessionAuthService` 与 `DevSessionAuthService`
+- `securitydept-auth-runtime` —— 将 `oidc-client` 与 `session-context` 组合成可直接挂接路由的 session 认证服务，例如 `OidcSessionAuthService` 与 `DevSessionAuthService`，并通过 `session-context` feature 启用
 - `tower-sessions-*` 生态中的可选后端 session store
 - 可选的 TS 助手用于重定向登录 UX
 
@@ -69,6 +72,7 @@
 - 参考实现存在于 `apps/server`
 - 可复用提取现已存在于 `securitydept-session-context`
 - 路由层的 session 认证编排现已提取到 `securitydept-auth-runtime`
+- 可复用 crate 已不再直接需要 Axum；参考服务器在边界层负责把其中性的返回值适配成 Axum 响应
 
 ## 模式 C：无状态 Token-Set
 
@@ -131,7 +135,7 @@
 - 可选地通过共享提供者运行时刷新发现元数据和 JWKS
 - 保持 bearer 传播策略明确
 - 由 `token-set-context` 负责 refresh material 保护、redirect URI 解析、metadata redemption、状态重建与传输 DTO 生成
-- 由 `auth-runtime` 在 `token-set-context` 之上暴露可直接挂路由的 token-set 处理服务
+- 由 `auth-runtime` 在 `token-set-context` 之上暴露可直接挂路由的 token-set 处理服务，并通过 `token-set-context` feature 启用
 - 提供短期 metadata redemption 存储与兑换能力
 - callback 阶段通过 `oidc-client` 的 pending OAuth extra data 回传最终 `post_auth_redirect_uri`
 
@@ -158,6 +162,7 @@
   - 可选的旧 `id_token`
   - 可选的 `current_metadata_snapshot`
 - 可复用的 token-set 路由编排现已存在于 `securitydept-auth-runtime::TokenSetAuthService`
+- `securitydept-auth-runtime` 还通过独立的 `basic-auth-context` 与 `session-context` feature 控制 basic-auth 与 session 编排能力
 - metadata redemption 的默认实现现在包括：
   - `MokaPendingAuthStateMetadataRedemptionStore`
   - `DefaultTokenSetContext`

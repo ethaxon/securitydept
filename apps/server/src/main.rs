@@ -1,5 +1,6 @@
 mod config;
 mod error;
+mod http_response;
 mod middleware;
 mod routes;
 mod state;

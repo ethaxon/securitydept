@@ -4,11 +4,17 @@ version = "0.2.0-alpha.3"
 edition = "2024"
 
 [features]
-recommend = ["recommend-pending-store"]
+recommend = [
+    "recommend-pending-store",
+    "axum-reverse-proxy-propagation-forwarder",
+]
 recommend-pending-store = ["moka-pending-store"]
 moka-pending-store = ["dep:moka"]
 recommend-propagation-forwarder = ["axum-reverse-proxy-propagation-forwarder"]
-axum-reverse-proxy-propagation-forwarder = ["dep:axum", "dep:axum-reverse-proxy"]
+axum-reverse-proxy-propagation-forwarder = [
+    "dep:axum",
+    "dep:axum-reverse-proxy",
+]
 
 [dependencies]
 securitydept-oidc-client = { path = "../oidc-client" }

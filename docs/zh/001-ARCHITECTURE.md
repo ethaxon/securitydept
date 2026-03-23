@@ -84,9 +84,9 @@ Crate: `securitydept-oauth-resource-server`
 当前的专用 crate：
 
 - `securitydept-basic-auth-context`
-- `securitydept-session-context` —— 为 cookie-session 模式提取的可复用会话上下文抽象，包含 post-auth redirect 策略
+- `securitydept-session-context` —— 为 cookie-session 模式提取的可复用会话上下文抽象，包含 post-auth redirect 策略，且不再直接暴露 Axum 响应类型
 - `securitydept-token-set-context` —— 为无状态 token-set 模式提取的可复用认证状态、redirect、metadata redemption 与 bearer propagation 协调层
-- `securitydept-auth-runtime` —— 为 session、token-set 与 basic-auth 模式提取的面向路由的认证编排层
+- `securitydept-auth-runtime` —— 为 session、token-set 与 basic-auth 模式提取的面向路由的认证编排层，并为每种模式提供独立 feature gate
 
 `securitydept-session-context` crate 提供：
 
@@ -123,6 +123,11 @@ cookie-session 和无状态 token-set 的路由层编排位于 `securitydept-aut
 - `TokenSetAuthService`
 - `BasicAuthContextService`
 - `TokenSetResourceService`
+
+当前边界说明：
+
+- `securitydept-basic-auth-context` 与 `securitydept-auth-runtime` 现在返回与框架无关的 HTTP 响应元数据，而不是 Axum 响应类型
+- Axum 专属的响应组装保留在 `apps/server`
 
 ## 第 6 层：Real IP 解析
 

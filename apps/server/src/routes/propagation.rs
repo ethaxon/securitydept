@@ -17,11 +17,13 @@ pub async fn propagation_forward(
     Extension(auth_context): Extension<DashboardAuthContext>,
     request: Request,
 ) -> Result<Response, ServerError> {
-    let forwarder = state.propagation_forwarder.as_deref().ok_or_else(|| {
-        ServerError::InvalidConfig {
-            message: "propagation forwarding is not enabled on this server".to_string(),
-        }
-    })?;
+    let forwarder =
+        state
+            .propagation_forwarder
+            .as_deref()
+            .ok_or_else(|| ServerError::InvalidConfig {
+                message: "propagation forwarding is not enabled on this server".to_string(),
+            })?;
 
     let bearer = auth_context
         .propagated_bearer()

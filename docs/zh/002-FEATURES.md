@@ -75,18 +75,22 @@
 
 - 最简单的浏览器原生认证模式
 - 简单的 challenge-触发流程
-- 可选的 TS 助手用于重定向到认证端点
+- 轻量客户端 helper，用于围绕认证端点处理 zone-aware 重定向
 
 当前状态：
 
 - 已作为 `securitydept-basic-auth-context` 实现
 - 包含可复用的 zones、post-auth redirect 策略和可选的 `securitydept-realip::RealIpAccessConfig`
+- 已不再直接依赖 Axum；调用方可将返回的 HTTP 响应元数据适配到自己的框架
 - 已集成进参考服务器，作为 `/basic/*` dashboard 入口和 `/basic/api/*` API 别名
+- 对应的客户端 helper SDK 已在 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 中正式定稿；实现上仍应保持轻量，聚焦 zone-aware 的 `401 -> login` 重定向以及 logout URL 处理
+- 客户端 helper SDK 仍待实现；它应保持轻量，聚焦 zone-aware 的 `401 -> login` 重定向以及 logout URL 处理
 
 主要参考：
 
 - `packages/basic-auth-context/src/lib.rs`
 - [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md)
+- [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
 
 ## 5. 有状态 cookie-session 认证上下文
 
@@ -100,6 +104,8 @@
 
 - `apps/server` 中已有参考实现
 - 可复用提取现已位于 `securitydept-session-context`
+- 可复用 crate 当前只依赖 `tower-sessions` 与 `http`，不再直接暴露 Axum 响应类型
+- 对应的 TypeScript 客户端 helper 已在 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 中正式定义，但尚未实现
 
 主要参考：
 
@@ -107,6 +113,7 @@
 - `apps/server/src/routes/auth/mod.rs`
 - `apps/server/src/routes/auth/session.rs`
 - `apps/server/src/middleware.rs`
+- [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
 
 ## 6. 无状态 token-set 认证上下文
 
@@ -122,6 +129,7 @@
 - 核心服务端与共享 crate 已实现
 - `securitydept-token-set-context` 已提供专用 token-set 上下文层
 - `securitydept-auth-runtime` 已在 `securitydept-token-set-context` 之上提供路由层 token-set 编排
+- `securitydept-auth-runtime` 现已将 `basic-auth-context`、`session-context` 与 `token-set-context` 拆为独立 crate feature，下游无需再引入未使用的编排路径
 - `apps/server` 已接入 `/auth/token-set/*` 路径完成 callback、refresh 与 metadata redemption
 - bearer propagation 现在使用服务端持有的目标策略以及来源于 access token 校验链路的 `ResourceTokenPrincipal`
 - `TokenPropagator` 现在既支持直接目标，也支持通过可选运行时 `PropagationNodeTargetResolver` 解析的 node-only target
@@ -137,15 +145,21 @@
 - `apps/server` 现已集成 `AxumReverseProxyPropagationForwarder` 用于实际的下游转发：
   - 当 `[propagation_forwarder]` 配置节存在时启用
   - `/api/propagation/*` 通配路由将经过 bearer 认证且带有已验证 propagation 上下文的请求转发到已解析的下游目标
-- 客户端 SDK 仍待单独实现
+- 客户端 SDK 现在已有正式架构与实现指南，但具体实现仍待推进
+- 这些流程的 Axum 响应组装现已留在 `apps/server` 边界层，而不是放在可复用 runtime crate 内部
 
 缺失部分：
 
 - 客户端 SDK 的状态合并、持久化与自动刷新
 - 浏览器侧对 `metadata_redemption_id` 的兑换与回退策略落地
-- 用于多提供者令牌管理的 TS SDK
+- 用于多提供者令牌管理的 TS SDK 实现
+- mixed-custody 与 stateful BFF token-set 能力已被纳入设计边界，但当前仍属 provisional，且不是第一版实现目标
 - 更完整的 token exchange / downstream propagation 场景
 - 在当前 `axum-reverse-proxy` forwarder feature 之上实现更丰富的转发策略和更完整的下游 token-exchange 场景
+
+规划参考：
+
+- [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
 
 ## 7. creds-manage
 

@@ -6,14 +6,12 @@ use axum_reverse_proxy::ReverseProxy;
 use http::header::AUTHORIZATION;
 use url::Url;
 
-use crate::{
-    DEFAULT_PROPAGATION_HEADER_NAME, PropagatedBearer, PropagationRequestTarget,
-    TokenPropagator,
-};
-
 use super::{
     config::AxumReverseProxyPropagationForwarderConfig,
     error::AxumReverseProxyPropagationForwarderError,
+};
+use crate::{
+    DEFAULT_PROPAGATION_HEADER_NAME, PropagatedBearer, PropagationRequestTarget, TokenPropagator,
 };
 
 #[derive(Debug, Clone)]
@@ -42,14 +40,12 @@ impl AxumReverseProxyPropagationForwarder {
     ) -> Result<Response<Body>, AxumReverseProxyPropagationForwarderError> {
         let authorization_header_value = propagator
             .authorization_header_value(bearer, target)
-            .map_err(|source| AxumReverseProxyPropagationForwarderError::TokenPropagator {
-                source,
-            })?;
-        let origin = propagator
-            .resolve_target_origin(target)
-            .map_err(|source| AxumReverseProxyPropagationForwarderError::TokenPropagator {
-                source,
-            })?;
+            .map_err(
+                |source| AxumReverseProxyPropagationForwarderError::TokenPropagator { source },
+            )?;
+        let origin = propagator.resolve_target_origin(target).map_err(|source| {
+            AxumReverseProxyPropagationForwarderError::TokenPropagator { source }
+        })?;
 
         prepare_forward_request(authorization_header_value, &mut request);
 
@@ -58,7 +54,10 @@ impl AxumReverseProxyPropagationForwarder {
         })?;
         let proxy = ReverseProxy::new(self.config.proxy_path.clone(), origin.to_string());
 
-        let response = proxy.proxy_request(request).await.expect("reverse proxy is infallible");
+        let response = proxy
+            .proxy_request(request)
+            .await
+            .expect("reverse proxy is infallible");
 
         Ok(response)
     }
@@ -68,7 +67,9 @@ fn prepare_forward_request(
     authorization_header_value: http::HeaderValue,
     request: &mut Request<Body>,
 ) {
-    request.headers_mut().remove(DEFAULT_PROPAGATION_HEADER_NAME);
+    request
+        .headers_mut()
+        .remove(DEFAULT_PROPAGATION_HEADER_NAME);
     request
         .headers_mut()
         .insert(AUTHORIZATION, authorization_header_value);

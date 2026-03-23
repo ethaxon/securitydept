@@ -1,13 +1,11 @@
 use std::sync::Arc;
 
-use axum::{
-    http::{HeaderMap, HeaderValue, StatusCode},
-    response::{IntoResponse, Response},
-};
+use http::StatusCode;
 use securitydept_creds::{BasicAuthCred, BasicAuthCredsConfig};
 use securitydept_realip::{RealIpAccessConfig, RealIpAccessManager, RealIpError, ResolvedClientIp};
-use securitydept_utils::redirect::{
-    RedirectTargetConfig, RedirectTargetError, UriRelativeRedirectTargetResolver,
+use securitydept_utils::{
+    http::HttpResponse,
+    redirect::{RedirectTargetConfig, RedirectTargetError, UriRelativeRedirectTargetResolver},
 };
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
@@ -308,12 +306,8 @@ impl BasicAuthZone {
     }
 
     /// Build the challenge response for login trigger route.
-    pub fn login_challenge_response(&self) -> Response {
-        let mut headers = HeaderMap::new();
-        if let Ok(value) = HeaderValue::from_str(&self.challenge_header_value()) {
-            headers.insert(axum::http::header::WWW_AUTHENTICATE, value);
-        }
-        (StatusCode::UNAUTHORIZED, headers).into_response()
+    pub fn login_challenge_response(&self) -> HttpResponse {
+        HttpResponse::unauthorized_with_basic_challenge(&self.challenge_header_value())
     }
 
     /// Build success redirect response for a successful `/basic/login`
@@ -321,31 +315,27 @@ impl BasicAuthZone {
     pub fn login_success_response(
         &self,
         requested_post_auth_redirect: Option<&str>,
-    ) -> Result<Response, BasicAuthContextError> {
+    ) -> Result<HttpResponse, BasicAuthContextError> {
         let redirect_target = self.resolve_post_auth_redirect(requested_post_auth_redirect)?;
-        let mut headers = HeaderMap::new();
-        if let Ok(value) = HeaderValue::from_str(&redirect_target) {
-            headers.insert(axum::http::header::LOCATION, value);
-        }
-        Ok((StatusCode::FOUND, headers).into_response())
+        Ok(HttpResponse::found(&redirect_target))
     }
 
     /// Build logout poisoning response.
     ///
     /// MUST be `401` without `WWW-Authenticate`.
-    pub fn logout_poison_response(&self) -> Response {
-        StatusCode::UNAUTHORIZED.into_response()
+    pub fn logout_poison_response(&self) -> HttpResponse {
+        HttpResponse::new(StatusCode::UNAUTHORIZED)
     }
 
     /// Build unauthorized response for generic handler paths.
     ///
     /// - for `login_path`: 401 with challenge header.
     /// - for all other paths: plain 401 without challenge header.
-    pub fn unauthorized_response_for_path(&self, request_path: &str) -> Response {
+    pub fn unauthorized_response_for_path(&self, request_path: &str) -> HttpResponse {
         if self.is_login_path(request_path) {
             self.login_challenge_response()
         } else {
-            StatusCode::UNAUTHORIZED.into_response()
+            HttpResponse::new(StatusCode::UNAUTHORIZED)
         }
     }
 

@@ -12,6 +12,10 @@ full = [
     "reexport-jsonwebtoken",
     "reexport-josekit",
     "auth-runtime",
+    "auth-runtime-full",
+    "auth-runtime-basic-auth-context",
+    "auth-runtime-session-context",
+    "auth-runtime-token-set-context",
     "basic-auth-context",
     "creds",
     "creds-jwk",
@@ -54,14 +58,35 @@ reexport-josekit = ["dep:josekit"]
 # Auth Runtime
 auth-runtime = [
     "dep:securitydept-auth-runtime",
+    "utils",
+]
+auth-runtime-full = [
+    "auth-runtime",
+    "securitydept-auth-runtime/full",
+    "auth-runtime-basic-auth-context",
+    "auth-runtime-session-context",
+    "auth-runtime-token-set-context",
+]
+auth-runtime-basic-auth-context = [
+    "auth-runtime",
+    "securitydept-auth-runtime/basic-auth-context",
     "basic-auth-context",
     "creds",
-    "oidc-client",
-    "oauth-resource-server",
     "realip",
+]
+auth-runtime-session-context = [
+    "auth-runtime",
+    "securitydept-auth-runtime/session-context",
+    "oidc-client",
     "session-context",
+]
+auth-runtime-token-set-context = [
+    "auth-runtime",
+    "securitydept-auth-runtime/token-set-context",
+    "creds",
+    "oauth-resource-server",
+    "oidc-client",
     "token-set-context",
-    "utils",
 ]
 
 # Basic Auth Context
@@ -198,6 +223,7 @@ token-set-context-recommend = [
     "token-set-context",
     "securitydept-token-set-context/recommend",
     "token-set-context-recommend-pending-store",
+    "token-set-context-axum-reverse-proxy-propagation-forwarder",
 ]
 token-set-context-recommend-pending-store = [
     "token-set-context",
@@ -223,7 +249,7 @@ utils = ["dep:securitydept-utils"]
 
 [dependencies]
 securitydept-utils = { path = "../utils", optional = true }
-securitydept-auth-runtime = { path = "../auth-runtime", optional = true }
+securitydept-auth-runtime = { path = "../auth-runtime", optional = true, default-features = false }
 securitydept-oauth-provider = { path = "../oauth-provider", optional = true }
 securitydept-oidc-client = { path = "../oidc-client", optional = true }
 securitydept-oauth-resource-server = { path = "../oauth-resource-server", optional = true }

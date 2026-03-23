@@ -41,7 +41,7 @@ Status:
 5. Implement basic auth zone mode
    - backend routing helpers
    - documented flow
-   - small optional TS helper
+   - thin client helper for zone-aware `401 -> login` redirect and logout URL handling
 6. Implement cookie-session mode
    - reusable backend auth-context extraction
    - normalized principal shape
@@ -57,18 +57,24 @@ Status:
 
 - basic auth zone: documented, not fully productized
 - cookie-session: reference implementation exists, reusable extraction is available in `securitydept-session-context` and `securitydept-auth-runtime`
-- stateless token-set mode: core server and shared crate are in place, route orchestration is available in `securitydept-auth-runtime`, client SDK remains pending
+- stateless token-set mode: core server and shared crate are in place, route orchestration is available in `securitydept-auth-runtime`, and the client SDK architecture is now formally specified even though implementation remains pending
 
 ## Phase 4: Frontend SDKs
 
 8. Provide lightweight TypeScript SDKs
-   - basic auth zone redirect helper
+   - basic auth zone helper for zone boundary detection, `401 -> login` redirection, and logout redirects
    - cookie-session redirect helper
    - stateless token-set SDK for token storage, header injection, background refresh, and login redirects
 
 Status:
 
-- token-set SDK remains pending; the other modes are still planned or partially implemented
+- the TypeScript SDK architecture is now formally specified in [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
+- basic-auth and session helpers remain to be implemented, with `apps/server` and `apps/webui` intended as the first real integration targets
+- token-set SDK implementation remains pending; mixed-custody and stateful BFF boundaries are documented but remain provisional
+
+Reference:
+
+- [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
 
 ## Phase 5: Local Credential Operations
 

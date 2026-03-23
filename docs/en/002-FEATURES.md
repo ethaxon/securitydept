@@ -75,18 +75,22 @@ Target:
 
 - minimal browser-native auth mode
 - simple challenge-trigger flow
-- optional TS helper for redirecting to the auth endpoint
+- thin client helper for zone-aware redirect handling around the auth endpoint
 
 Current status:
 
 - implemented as `securitydept-basic-auth-context`
 - includes reusable zones, post-auth redirect policy, and optional `securitydept-realip::RealIpAccessConfig`
+- no longer requires Axum directly; callers can adapt the returned HTTP response metadata to their own framework
 - integrated into the reference server as the `/basic/*` dashboard access path and `/basic/api/*` API alias
+- the client-side helper SDK is now formally designed in [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md); implementation should stay thin and focus on zone-aware `401 -> login` redirection plus logout URL handling
+- client-side helper SDK remains planned; it should stay thin and focus on zone-aware `401 -> login` redirection plus logout URL handling
 
 Primary references:
 
 - `packages/basic-auth-context/src/lib.rs`
 - [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md)
+- [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
 
 ## 5. Stateful cookie-session auth context
 
@@ -100,6 +104,8 @@ Current status:
 
 - reference implementation exists in `apps/server`
 - reusable extraction now lives in `securitydept-session-context`
+- reusable crate now depends on `tower-sessions` plus `http`, without direct Axum response types
+- the corresponding TypeScript client helper is now formally specified in [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md), but not implemented yet
 
 Primary references:
 
@@ -107,6 +113,7 @@ Primary references:
 - `apps/server/src/routes/auth/mod.rs`
 - `apps/server/src/routes/auth/session.rs`
 - `apps/server/src/middleware.rs`
+- [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
 
 ## 6. Stateless token-set auth context
 
@@ -122,6 +129,7 @@ Current status:
 - core server support and shared crate are implemented
 - `securitydept-token-set-context` now provides a dedicated token-set context layer
 - `securitydept-auth-runtime` now provides route-ready token-set orchestration on top of `securitydept-token-set-context`
+- `securitydept-auth-runtime` now splits `basic-auth-context`, `session-context`, and `token-set-context` into independent crate features so downstreams can avoid importing unused orchestration paths
 - `apps/server` already exposes `/auth/token-set/*` routes for callback, refresh, and metadata redemption
 - bearer propagation now uses server-owned destination policy plus access-token-derived `ResourceTokenPrincipal` facts
 - `TokenPropagator` now accepts either a direct destination target or a node-only target resolved via an optional runtime `PropagationNodeTargetResolver`
@@ -137,15 +145,21 @@ Current status:
 - `apps/server` now integrates the `AxumReverseProxyPropagationForwarder` for actual downstream forwarding:
   - enabled when the `[propagation_forwarder]` config section is present
   - `/api/propagation/*` catch-all route forwards bearer-authenticated requests with validated propagation context to resolved downstream targets
-- the client SDK is still planned as a separate follow-up
+- the client SDK now has a formal architecture and implementation guide in [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md), but implementation remains pending
+- Axum-specific response assembly for those flows now lives in `apps/server`, not inside the reusable runtime crate
 
 Missing pieces:
 
 - client-side merge, persistence, and background refresh behavior
 - browser-side redemption and fallback handling for `metadata_redemption_id`
-- TS SDK for multi-provider token management
+- TS SDK implementation for multi-provider token management
+- mixed-custody and stateful BFF token-set behavior are now recognized as design boundaries, but remain provisional and are not a v1 implementation target
 - more complete token-exchange / downstream propagation scenarios
 - richer forwarding policy and more complete downstream token-exchange scenarios on top of the current `axum-reverse-proxy` forwarder feature
+
+Planning reference:
+
+- [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
 
 ## 7. creds-manage
 
