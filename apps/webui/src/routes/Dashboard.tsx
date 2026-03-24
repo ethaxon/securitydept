@@ -1,5 +1,5 @@
 import { KeyRound, Shield, Users } from "lucide-react";
-import { useEntries } from "@/api/entries";
+import { AuthEntryKind, useEntries } from "@/api/entries";
 import { useGroups } from "@/api/groups";
 import { useServerHealth } from "@/api/serverHealth";
 import { Layout } from "@/components/layout/Layout";
@@ -13,8 +13,12 @@ export function DashboardPage() {
 		isError: isHealthError,
 	} = useServerHealth();
 
-	const basicCount = entries.filter((e) => e.kind === "basic").length;
-	const tokenCount = entries.filter((e) => e.kind === "token").length;
+	const basicCount = entries.filter(
+		(e) => e.kind === AuthEntryKind.Basic,
+	).length;
+	const tokenCount = entries.filter(
+		(e) => e.kind === AuthEntryKind.Token,
+	).length;
 
 	const stats = [
 		{

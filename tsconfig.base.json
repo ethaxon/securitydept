@@ -3,8 +3,6 @@
 		"composite": true,
 		"module": "preserve",
 		"moduleResolution": "bundler",
-		"importHelpers": true,
-		"esModuleInterop": true,
 		"forceConsistentCasingInFileNames": true,
 		"strict": true,
 		"noImplicitOverride": true,

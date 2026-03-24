@@ -29,16 +29,19 @@ _Single source of truth for Agent identity, code standards, and project rules. S
 - **Data**: [`data/`](data/)
 - **Temp**: [`temp/`](temp/) if agents need to create temp files, please use temp folder
 
-### Tools Preferences
+### Tools Preferences & Workflows
 
-- **tools management**: use `mise` to manage tools such as `node`, `pnpm`, `rust`, etc.
-- **actions**: use `justfile` to manage actions such as `build`, `test`, `lint`, `format`, etc, `justfile` will automatically load the `.env` file.
-- **node package manager**: use `pnpm` as the package manager.
-- **rust toolchain**: use `rust-toolchain.toml` to manage the rust toolchain, use `cargo` as the build tool.
-- **typescript**: use tsconfig.json with references for managing the typescript project.
-- **typescript validation**: when SDK or transport DTO validation is needed, prefer the `@standard-schema` protocol with user-supplied validators instead of binding to a specific library such as `zod`.
-- **webui stack**: use typescript + vite + react + @tanstack/react-xxx seriers + tailwindcss + shadcn/ui for the webui stack.
-- **server stack**: use rust + axum + openconnectid + serde + snafu + tracing series for the server stack.
+- **Toolchains**: `mise` (env), `pnpm` (Node config), `rust-toolchain.toml` / `cargo` (Rust).
+- **Task Runner**: Use `just` for actions (`build`, `test`, `lint`, `format`); `.env` is auto-loaded.
+- **Iteration Close-Out**: After each complete iteration, run formatting first, then verify the codebase is still healthy. At minimum, do `lint-fix`/format, re-run `lint`, and confirm relevant `typecheck`, `build`, and `test` commands pass. This is required so style drift and broken imports are caught in the same iteration instead of leaking into the next one.
+- **TypeScript**:
+  - Manage via `tsconfig.json` references.
+  - Use `bundler` resolution (prefer extensionless imports without `.js` suffixes if not necessary).
+  - Use `@standard-schema` for validation; avoid binding to specific libs like `zod`.
+  - For enum-like string domains, prefer the modern JS-compatible pattern `export const Foo = { ... } as const` together with `export type Foo = (typeof Foo)[keyof typeof Foo]`. This keeps runtime output simple, stays maximally compatible with JS consumers and string protocols, and still gives strong TS completions.
+  - For public contracts, high-frequency discriminants, and repeated telemetry vocabulary with stable meaning, prefer extracting named constants instead of scattering repeated raw strings. Do this when it improves consistency and discoverability, not for one-off UI copy or ad-hoc local text.
+- **Web UI Stack**: TS + Vite + React + `@tanstack/react-*` + TailwindCSS + shadcn/ui.
+- **Server Stack**: Rust + axum + openconnectid + serde + snafu + tracing.
 
 ### Multi-language Docs
 

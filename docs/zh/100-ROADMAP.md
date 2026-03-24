@@ -57,7 +57,7 @@
 
 - 基础认证区域：已文档化，未完全产品化
 - cookie-session：参考实现已存在，可复用提取已落在 `securitydept-session-context` 和 `securitydept-auth-runtime`
-- 无状态 token-set 模式：服务端与共享 crate 基本落地，路由编排已落在 `securitydept-auth-runtime`，客户端 SDK 架构现已正式定稿，但实现仍待推进
+- 无状态 token-set 模式：服务端与共享 crate 基本落地，路由编排已落在 `securitydept-auth-runtime`，browser-owned client SDK 基线也已在 `sdks/ts` 中实现；mixed-custody / BFF / server-side token-set 继续留在后续范围
 
 ## 阶段 4：前端 SDK
 
@@ -68,9 +68,10 @@
 
 状态：
 
-- TypeScript 客户端 SDK 架构已在 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 中正式定稿
-- basic-auth 与 session helper 仍待实现，`apps/server` 与 `apps/webui` 将作为第一批真实接入验证目标
-- token-set SDK 实现仍待推进；mixed-custody 与 stateful BFF 边界已纳入设计，但当前仍属 provisional
+- TypeScript 客户端 SDK 已不再只是架构草案；foundation、auth-context roots、`./web` adapter、React adapter 与 reference app dogfooding 基线都已落地
+- 当前已具备 external-consumer scenario、token-set web focused lifecycle baseline、以及最小 React adapter focused test
+- 当前阶段的重点不再是“是否开始实现 SDK”，而是冻结 `stable / provisional / experimental` 语义、明确 token-set v1 scope baseline，并继续积累 adopter-facing clarity
+- mixed-custody、stateful BFF、server-side token-set、OTel / DI 等更高复杂度主题继续放在后续阶段，而不是当前前端 SDK 主线
 
 参考：
 

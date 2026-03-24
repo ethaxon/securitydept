@@ -1,0 +1,40 @@
+{
+	"name": "@securitydept/session-context-client",
+	"version": "0.1.0",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"import": "./dist/index.mjs"
+		},
+		"./react": {
+			"types": "./dist/react/index.d.mts",
+			"import": "./dist/react/index.mjs"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc -b"
+	},
+	"dependencies": {
+		"@securitydept/client": "workspace:*"
+	},
+	"peerDependencies": {
+		"react": ">=18.0.0"
+	},
+	"peerDependenciesMeta": {
+		"react": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@types/react": "^19.1.8",
+		"react": "^19.1.0",
+		"tsdown": "^0.21.4",
+		"typescript": "^6.0.2"
+	}
+}

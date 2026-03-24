@@ -1,0 +1,18 @@
+{
+	"name": "@securitydept/ts-sdks",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "pnpm -r --filter './packages/*' run build",
+		"examples:typecheck": "tsc -p examples/tsconfig.json --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "tsc -b --force && pnpm run examples:typecheck"
+	},
+	"devDependencies": {
+		"tsdown": "^0.21.4",
+		"typescript": "^6.0.2",
+		"vitest": "^4.1.1"
+	}
+}

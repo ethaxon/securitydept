@@ -35,13 +35,16 @@ export function Header() {
 						<>
 							<div className="flex items-center gap-2">
 								<Avatar className="h-8 w-8">
-									<AvatarImage src={user.picture} alt={user.display_name} />
+									<AvatarImage
+										src={user.principal.picture}
+										alt={user.principal.displayName}
+									/>
 									<AvatarFallback>
-										{getInitials(user.display_name)}
+										{getInitials(user.principal.displayName)}
 									</AvatarFallback>
 								</Avatar>
 								<span className="hidden text-sm text-zinc-600 sm:inline dark:text-zinc-400">
-									{truncateDisplayName(user.display_name, 20)}
+									{truncateDisplayName(user.principal.displayName, 20)}
 								</span>
 							</div>
 							<button

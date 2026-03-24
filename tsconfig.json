@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "./tsconfig.scripts.json"
+		},
+		{
+			"path": "./sdks/ts/tsconfig.json"
 		}
 	]
 }

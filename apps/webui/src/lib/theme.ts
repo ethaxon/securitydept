@@ -1,35 +1,47 @@
 import { useEffect, useState } from "react";
 
-export type ThemePreference = "system" | "light" | "dark";
+export const ThemePreference = {
+	System: "system",
+	Light: "light",
+	Dark: "dark",
+} as const;
+
+export type ThemePreference =
+	(typeof ThemePreference)[keyof typeof ThemePreference];
+
+type ResolvedThemePreference =
+	| typeof ThemePreference.Light
+	| typeof ThemePreference.Dark;
 
 const THEME_STORAGE_KEY = "securitydept-theme";
 
-function getSystemTheme(): "light" | "dark" {
-	if (typeof window === "undefined") return "light";
+function getSystemTheme(): ResolvedThemePreference {
+	if (typeof window === "undefined") return ThemePreference.Light;
 	return window.matchMedia("(prefers-color-scheme: dark)").matches
-		? "dark"
-		: "light";
+		? ThemePreference.Dark
+		: ThemePreference.Light;
 }
 
 function applyTheme(preference: ThemePreference) {
 	if (typeof document === "undefined") return;
 	const root = document.documentElement;
-	const resolved = preference === "system" ? getSystemTheme() : preference;
-	root.classList.toggle("dark", resolved === "dark");
+	const resolved =
+		preference === ThemePreference.System ? getSystemTheme() : preference;
+	root.classList.toggle("dark", resolved === ThemePreference.Dark);
 	root.style.colorScheme = resolved;
 }
 
 function readThemePreference(): ThemePreference {
-	if (typeof window === "undefined") return "system";
+	if (typeof window === "undefined") return ThemePreference.System;
 	try {
 		const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-		if (stored === "light" || stored === "dark" || stored === "system") {
-			return stored;
+		if (Object.values(ThemePreference).includes(stored as ThemePreference)) {
+			return stored as ThemePreference;
 		}
 	} catch {
 		// Ignore storage read errors and fallback to system preference.
 	}
-	return "system";
+	return ThemePreference.System;
 }
 
 function persistThemePreference(preference: ThemePreference) {
@@ -42,7 +54,9 @@ function persistThemePreference(preference: ThemePreference) {
 }
 
 export function useThemePreference() {
-	const [preference, setPreference] = useState<ThemePreference>("system");
+	const [preference, setPreference] = useState<ThemePreference>(
+		ThemePreference.System,
+	);
 
 	useEffect(() => {
 		const initial = readThemePreference();
@@ -53,8 +67,8 @@ export function useThemePreference() {
 	useEffect(() => {
 		const media = window.matchMedia("(prefers-color-scheme: dark)");
 		const onChange = () => {
-			if (preference === "system") {
-				applyTheme("system");
+			if (preference === ThemePreference.System) {
+				applyTheme(ThemePreference.System);
 			}
 		};
 

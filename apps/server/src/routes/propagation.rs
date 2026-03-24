@@ -77,3 +77,193 @@ fn target_display(
             .unwrap_or_else(|| "default".to_string()),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, sync::Arc};
+
+    use axum::{
+        Extension, Json, Router,
+        body::{Body, to_bytes},
+        http::{Request, StatusCode, header::AUTHORIZATION},
+        routing::get,
+    };
+    use securitydept_core::{
+        basic_auth_context::{BasicAuthContext, BasicAuthContextConfig, BasicAuthZoneConfig},
+        creds::Argon2BasicAuthCred,
+        creds_manage::{CredsManageConfig, models::DataFile, store::CredsManageStore},
+        oauth_resource_server::ResourceTokenPrincipal,
+        session_context::SessionContextConfig,
+        token_set_context::{
+            AllowedPropagationTarget, AxumReverseProxyPropagationForwarder,
+            AxumReverseProxyPropagationForwarderConfig,
+            MokaPendingAuthStateMetadataRedemptionConfig, PropagationDestinationPolicy,
+            PropagationDirective, PropagationScheme, TokenPropagatorConfig, TokenSetContext,
+            TokenSetContextConfig,
+        },
+    };
+    use tokio::net::TcpListener;
+
+    use crate::{config::ServerConfig, middleware::DashboardAuthContext, state::ServerState};
+
+    #[tokio::test]
+    async fn propagation_forward_proxies_to_same_server_health_path() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        let upstream = Router::new().route(
+            "/api/health",
+            get(|request: Request<Body>| async move {
+                let authorization = request
+                    .headers()
+                    .get(AUTHORIZATION)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_string);
+                let propagation_header = request
+                    .headers()
+                    .get(securitydept_core::token_set_context::DEFAULT_PROPAGATION_HEADER_NAME)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_string);
+
+                Json(serde_json::json!({
+                    "status": "ok",
+                    "path": request.uri().path(),
+                    "query": request.uri().query(),
+                    "authorization": authorization,
+                    "propagation_header": propagation_header,
+                }))
+            }),
+        );
+        let upstream_listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("upstream listener should bind");
+        let upstream_addr = upstream_listener
+            .local_addr()
+            .expect("upstream listener should have an address");
+        let upstream_server = tokio::spawn(async move {
+            axum::serve(upstream_listener, upstream)
+                .await
+                .expect("upstream server should run");
+        });
+
+        let token_set_context_config =
+            TokenSetContextConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
+                token_propagation: TokenPropagatorConfig {
+                    destination_policy: PropagationDestinationPolicy {
+                        allowed_targets: vec![AllowedPropagationTarget::ExactOrigin {
+                            scheme: PropagationScheme::Http,
+                            hostname: "localhost".to_string(),
+                            port: upstream_addr.port(),
+                        }],
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+        let forwarder_config = AxumReverseProxyPropagationForwarderConfig {
+            proxy_path: "/api/propagation".to_string(),
+        };
+        let data_path = std::env::temp_dir().join(format!(
+            "securitydept-propagation-route-test-{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::write(
+            &data_path,
+            serde_json::to_vec(&DataFile::default()).expect("default data file should serialize"),
+        )
+        .expect("test data file should be written");
+
+        let state = ServerState {
+            config: Arc::new(ServerConfig {
+                server: Default::default(),
+                oidc: None,
+                token_set_context: token_set_context_config.clone(),
+                session_context: SessionContextConfig::default(),
+                basic_auth_context: BasicAuthContextConfig::<Argon2BasicAuthCred>::builder()
+                    .zones(vec![BasicAuthZoneConfig::default()])
+                    .build(),
+                real_ip_resolve: None,
+                creds_manage: CredsManageConfig {
+                    data_path: data_path.to_string_lossy().into_owned(),
+                    ..Default::default()
+                },
+                propagation_forwarder: Some(forwarder_config.clone()),
+            }),
+            creds_manage_store: Arc::new(
+                CredsManageStore::load(&data_path)
+                    .await
+                    .expect("creds store should load"),
+            ),
+            token_set_context: Arc::new(
+                TokenSetContext::from_config(token_set_context_config)
+                    .expect("token set context should build"),
+            ),
+            basic_auth_context: Arc::new(
+                BasicAuthContext::from_config(
+                    BasicAuthContextConfig::<Argon2BasicAuthCred>::builder()
+                        .zones(vec![BasicAuthZoneConfig::default()])
+                        .build(),
+                )
+                .expect("basic auth context should build"),
+            ),
+            token_set_resource_verifier: None,
+            real_ip_resolver: None,
+            oidc: None,
+            propagation_forwarder: Some(Arc::new(
+                AxumReverseProxyPropagationForwarder::new(forwarder_config)
+                    .expect("propagation forwarder should build"),
+            )),
+        };
+
+        let propagation_directive = PropagationDirective::parse(&format!(
+            "by=dashboard;for=local-health;host=localhost:{};proto=http",
+            upstream_addr.port()
+        ))
+        .expect("directive should parse");
+        let response = super::propagation_forward(
+            Extension(state),
+            Extension(DashboardAuthContext::Bearer {
+                access_token: "dashboard-at".to_string(),
+                resource_token_principal: Box::new(ResourceTokenPrincipal {
+                    subject: Some("user-1".to_string()),
+                    issuer: None,
+                    audiences: Vec::new(),
+                    scopes: Vec::new(),
+                    authorized_party: None,
+                    claims: HashMap::new(),
+                }),
+                propagation: Some(propagation_directive.clone()),
+            }),
+            Request::builder()
+                .uri("/api/propagation/api/health?via=token-set")
+                .header(
+                    securitydept_core::token_set_context::DEFAULT_PROPAGATION_HEADER_NAME,
+                    propagation_directive
+                        .to_header_value()
+                        .expect("directive should serialize"),
+                )
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("propagation forward should succeed");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body should read");
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).expect("response body should be json");
+        assert_eq!(payload["status"], "ok");
+        assert_eq!(payload["path"], "/api/health");
+        assert_eq!(payload["query"], "via=token-set");
+        assert_eq!(payload["authorization"], "Bearer dashboard-at");
+        assert_eq!(payload["propagation_header"], serde_json::Value::Null);
+
+        upstream_server.abort();
+        let _ = std::fs::remove_file(&data_path);
+    }
+}

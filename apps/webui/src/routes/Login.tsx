@@ -1,6 +1,23 @@
+import { useEffect, useState } from "react";
+import { resolveLoginUrl } from "@/api/auth";
 import { AppIcon } from "@/components/common/AppIcon";
 
 export function LoginPage() {
+	const [loginHref, setLoginHref] = useState("/auth/session/login");
+
+	useEffect(() => {
+		let cancelled = false;
+		void resolveLoginUrl().then((href) => {
+			if (!cancelled) {
+				setLoginHref(href);
+			}
+		});
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
 	return (
 		<div className="flex h-screen items-center justify-center bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
 			<div className="w-full max-w-sm space-y-6 rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -12,7 +29,7 @@ export function LoginPage() {
 					</p>
 				</div>
 				<a
-					href="/auth/session/login"
+					href={loginHref}
 					className="flex w-full items-center justify-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
 				>
 					Sign in

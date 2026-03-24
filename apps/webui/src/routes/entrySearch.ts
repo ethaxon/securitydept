@@ -1,6 +1,8 @@
+import { AuthEntryKind } from "@/api/entries";
+
 export interface EntrySearch {
 	name?: string;
-	kind?: "basic" | "token";
+	kind?: (typeof AuthEntryKind)[keyof typeof AuthEntryKind];
 	username?: string;
 	group_ids?: string[];
 }
@@ -33,7 +35,11 @@ function normalizeIds(value: unknown): string[] | undefined {
 
 export function parseEntrySearch(search: Record<string, unknown>): EntrySearch {
 	const kindRaw = normalizeString(search.kind);
-	const kind = kindRaw === "basic" || kindRaw === "token" ? kindRaw : undefined;
+	const kind = Object.values(AuthEntryKind).includes(
+		kindRaw as (typeof AuthEntryKind)[keyof typeof AuthEntryKind],
+	)
+		? (kindRaw as (typeof AuthEntryKind)[keyof typeof AuthEntryKind])
+		: undefined;
 
 	return {
 		name: normalizeString(search.name),

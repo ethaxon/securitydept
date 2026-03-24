@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 export const navItems = [
 	{ to: "/", label: "Dashboard", icon: LayoutDashboard },
 	{ to: "/entries", label: "Auth Entries", icon: KeyRound },
+	{ to: "/token-set", label: "Token Set", icon: KeyRound },
 	{ to: "/groups", label: "Groups", icon: Users },
 ] as const;
 

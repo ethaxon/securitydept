@@ -4429,6 +4429,7 @@ dependencies = [
  "figment",
  "maplit",
  "openidconnect",
+ "rustls",
  "securitydept-core",
  "serde",
  "serde_json",

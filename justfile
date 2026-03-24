@@ -53,3 +53,22 @@ test: test-rs test-ts
 
 update-core-feature-gates:
     node scripts/update-core-feature-gates.ts
+
+build-sdks:
+    cd sdks/ts && pnpm build
+
+test-sdks:
+    cd sdks/ts && pnpm test
+
+typecheck-sdks:
+    cd sdks/ts && pnpm typecheck
+
+verify-client-sdk-iteration:
+    pnpm lint-fix
+    pnpm lint
+    cd sdks/ts && pnpm test
+    cd sdks/ts && pnpm typecheck
+    cd sdks/ts && pnpm build
+    cd apps/webui && pnpm test
+    cd apps/webui && pnpm typecheck
+    cd apps/webui && pnpm build

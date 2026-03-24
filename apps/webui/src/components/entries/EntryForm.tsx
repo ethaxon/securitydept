@@ -4,6 +4,7 @@ import { Copy, KeyRound } from "lucide-react";
 import { useState } from "react";
 import {
 	type AuthEntry,
+	AuthEntryKind,
 	type CreateTokenResponse,
 	useCreateBasicEntry,
 	useCreateTokenEntry,
@@ -12,15 +13,21 @@ import {
 import { useGroups } from "@/api/groups";
 import type { EntrySearch } from "@/routes/entrySearch";
 
+const EntryFormMode = {
+	Create: "create",
+	Edit: "edit",
+} as const;
+type EntryFormMode = (typeof EntryFormMode)[keyof typeof EntryFormMode];
+
 interface EntryFormProps {
-	mode: "create" | "edit";
+	mode: EntryFormMode;
 	entry?: AuthEntry;
 	initial?: EntrySearch;
 }
 
 export function EntryForm({ mode, entry, initial }: EntryFormProps) {
 	const navigate = useNavigate();
-	const isEdit = mode === "edit";
+	const isEdit = mode === EntryFormMode.Edit;
 	const [generatedToken, setGeneratedToken] = useState<string | null>(null);
 
 	const { data: groups = [] } = useGroups();
@@ -30,7 +37,9 @@ export function EntryForm({ mode, entry, initial }: EntryFormProps) {
 
 	const form = useForm({
 		defaultValues: {
-			kind: isEdit ? (entry?.kind ?? "basic") : (initial?.kind ?? "basic"),
+			kind: isEdit
+				? (entry?.kind ?? AuthEntryKind.Basic)
+				: (initial?.kind ?? AuthEntryKind.Basic),
 			name: isEdit
 				? (initial?.name ?? entry?.name ?? "")
 				: (initial?.name ?? ""),
@@ -46,9 +55,11 @@ export function EntryForm({ mode, entry, initial }: EntryFormProps) {
 				await updateEntry.mutateAsync({
 					id: entry.id,
 					name: value.name,
-					username: entry.kind === "basic" ? value.username : undefined,
+					username:
+						entry.kind === AuthEntryKind.Basic ? value.username : undefined,
 					password:
-						entry.kind === "basic" && value.password.trim().length > 0
+						entry.kind === AuthEntryKind.Basic &&
+						value.password.trim().length > 0
 							? value.password
 							: undefined,
 					group_ids: value.group_ids,
@@ -58,7 +69,7 @@ export function EntryForm({ mode, entry, initial }: EntryFormProps) {
 			}
 
 			setGeneratedToken(null);
-			if (value.kind === "basic") {
+			if (value.kind === AuthEntryKind.Basic) {
 				await createBasic.mutateAsync({
 					name: value.name,
 					username: value.username,
@@ -116,15 +127,15 @@ export function EntryForm({ mode, entry, initial }: EntryFormProps) {
 								<>
 									<button
 										type="button"
-										onClick={() => field.handleChange("basic")}
-										className={`rounded-md px-3 py-1.5 text-sm font-medium ${field.state.value === "basic" ? "bg-blue-600 text-white" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"}`}
+										onClick={() => field.handleChange(AuthEntryKind.Basic)}
+										className={`rounded-md px-3 py-1.5 text-sm font-medium ${field.state.value === AuthEntryKind.Basic ? "bg-blue-600 text-white" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"}`}
 									>
 										Basic Auth
 									</button>
 									<button
 										type="button"
-										onClick={() => field.handleChange("token")}
-										className={`rounded-md px-3 py-1.5 text-sm font-medium ${field.state.value === "token" ? "bg-blue-600 text-white" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"}`}
+										onClick={() => field.handleChange(AuthEntryKind.Token)}
+										className={`rounded-md px-3 py-1.5 text-sm font-medium ${field.state.value === AuthEntryKind.Token ? "bg-blue-600 text-white" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"}`}
 									>
 										Token Auth
 									</button>
@@ -149,7 +160,7 @@ export function EntryForm({ mode, entry, initial }: EntryFormProps) {
 					</form.Field>
 					<form.Subscribe selector={(state) => state.values.kind}>
 						{(kind) =>
-							kind === "basic" && (
+							kind === AuthEntryKind.Basic && (
 								<>
 									<form.Field name="username">
 										{(field) => (

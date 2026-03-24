@@ -25,7 +25,7 @@ axum = { workspace = true }
 tower-http = { workspace = true }
 tower-sessions = { workspace = true }
 tower-sessions-memory-store = "0.15"
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 clap = { workspace = true }
@@ -37,6 +37,7 @@ figment = { workspace = true }
 maplit = { workspace = true }
 url = { workspace = true }
 chrono = { workspace = true }
+rustls = { workspace = true }
 
 [build-dependencies]
 winres = "0.1"

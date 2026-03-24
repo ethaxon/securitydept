@@ -12,7 +12,10 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true
+			"recommended": true,
+			"suspicious": {
+				"noConfusingVoidType": "off"
+			}
 		}
 	},
 	"javascript": {
@@ -62,6 +65,16 @@
 				"parser": {
 					"allowComments": true,
 					"allowTrailingCommas": true
+				}
+			}
+		},
+		{
+			"includes": ["**/__tests__/**/*.ts", "**/__tests__/**/*.tsx"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noNonNullAssertion": "off"
+					}
 				}
 			}
 		}

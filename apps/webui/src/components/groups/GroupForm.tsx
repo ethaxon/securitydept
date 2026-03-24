@@ -5,8 +5,14 @@ import { useEntries } from "@/api/entries";
 import type { Group } from "@/api/groups";
 import { useCreateGroup, useUpdateGroup } from "@/api/groups";
 
+const GroupFormMode = {
+	Create: "create",
+	Edit: "edit",
+} as const;
+type GroupFormMode = (typeof GroupFormMode)[keyof typeof GroupFormMode];
+
 interface GroupFormProps {
-	mode: "create" | "edit";
+	mode: GroupFormMode;
 	group?: Group;
 }
 
@@ -16,7 +22,7 @@ function sortedUnique(ids: string[]) {
 
 export function GroupForm({ mode, group }: GroupFormProps) {
 	const navigate = useNavigate();
-	const isEdit = mode === "edit";
+	const isEdit = mode === GroupFormMode.Edit;
 	const createGroup = useCreateGroup();
 	const updateGroup = useUpdateGroup();
 	const { data: entries = [] } = useEntries();

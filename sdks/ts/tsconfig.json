@@ -1,0 +1,26 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"composite": true,
+		"declaration": true,
+		"declarationMap": true,
+		"sourceMap": true,
+		"skipLibCheck": true,
+		"target": "ES2022",
+		"lib": ["ES2022"],
+		"types": [],
+		"paths": {
+			"@securitydept/client": ["./packages/client/src/index.ts"],
+			"@securitydept/client/*": ["./packages/client/src/*/index.ts"],
+			"@securitydept/test-utils": ["./packages/test-utils/src/index.ts"]
+		}
+	},
+	"references": [
+		{ "path": "./packages/client" },
+		{ "path": "./packages/test-utils" },
+		{ "path": "./packages/basic-auth-context-client" },
+		{ "path": "./packages/session-context-client" },
+		{ "path": "./packages/token-set-context-client" }
+	],
+	"files": []
+}

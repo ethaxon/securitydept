@@ -57,7 +57,7 @@ Status:
 
 - basic auth zone: documented, not fully productized
 - cookie-session: reference implementation exists, reusable extraction is available in `securitydept-session-context` and `securitydept-auth-runtime`
-- stateless token-set mode: core server and shared crate are in place, route orchestration is available in `securitydept-auth-runtime`, and the client SDK architecture is now formally specified even though implementation remains pending
+- stateless token-set mode: the core server and shared crate are in place, route orchestration is available in `securitydept-auth-runtime`, and the browser-owned client SDK baseline now exists in `sdks/ts`; mixed-custody / BFF / server-side token-set remain later-scope topics
 
 ## Phase 4: Frontend SDKs
 
@@ -68,9 +68,10 @@ Status:
 
 Status:
 
-- the TypeScript SDK architecture is now formally specified in [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
-- basic-auth and session helpers remain to be implemented, with `apps/server` and `apps/webui` intended as the first real integration targets
-- token-set SDK implementation remains pending; mixed-custody and stateful BFF boundaries are documented but remain provisional
+- the TypeScript SDK is no longer only an architecture draft; the foundation packages, auth-context roots, `./web` adapters, React adapters, and reference-app dogfooding baseline are now implemented
+- the repository now already has external-consumer scenarios, a token-set web focused lifecycle baseline, and a minimal React adapter focused test
+- the current phase is no longer “start implementing the SDK”; it is contract freeze for `stable / provisional / experimental`, token-set v1 scope clarification, and clearer adopter-facing status
+- mixed-custody, stateful BFF, server-side token-set, and heavier OTel / DI themes remain later-stage topics rather than the current frontend SDK track
 
 Reference:
 

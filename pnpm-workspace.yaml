@@ -1,5 +1,11 @@
+overrides:
+  # for tsdown peer dependency
+  typescript: 6.0.2
+
 packages:
   - apps/webui
+  - sdks/ts
+  - sdks/ts/packages/*
 
 onlyBuiltDependencies:
   - "@j178/prek"

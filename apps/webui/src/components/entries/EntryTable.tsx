@@ -7,8 +7,7 @@ import {
 } from "@tanstack/react-table";
 import { Pencil, Trash2 } from "lucide-react";
 import { useMemo } from "react";
-import type { AuthEntry } from "@/api/entries";
-import { useDeleteEntry } from "@/api/entries";
+import { type AuthEntry, AuthEntryKind, useDeleteEntry } from "@/api/entries";
 import type { Group } from "@/api/groups";
 
 export function EntryTable({
@@ -39,7 +38,7 @@ export function EntryTable({
 				cell: ({ row }) => (
 					<span
 						className={
-							row.original.kind === "basic"
+							row.original.kind === AuthEntryKind.Basic
 								? "inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400"
 								: "inline-flex items-center rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
 						}

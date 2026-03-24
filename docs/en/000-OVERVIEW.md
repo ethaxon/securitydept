@@ -67,6 +67,23 @@ Those modes are deployment-oriented compositions, not replacements for `oidc-cli
 - Keep the server app as a proving ground, not the product boundary.
 - Keep reusable crates framework-neutral when the boundary can stay in the reference app.
 
+## TypeScript SDK Status and Entry Path
+
+The TypeScript client SDK is now a working part of this repository, not only a future design topic.
+
+The current phase has also shifted:
+
+- the question is no longer “does the SDK exist yet?”, but “which contracts are already explainable to external consumers in the current 0.x stage?”
+- the boundary between root exports, adapters, and reference-app glue should be read primarily through [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
+- token-set should currently be read through a browser-owned v1 baseline, not as if mixed-custody / BFF / server-side token-set were already inside scope
+
+The most direct way to enter the current SDK stack is:
+
+- start with [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) for package boundaries, capability ownership, stability labels, and minimal entry snippets
+- inspect `sdks/ts/packages/*` for the actual foundation, `./web`, and React adapter exports
+- inspect `apps/webui/src/routes/TokenSet.tsx` and `apps/webui/src/routes/tokenSet/*` as the main reference route for lifecycle, trace, and propagation dogfooding
+- treat `apps/webui/src/api/*` as reference-app glue, not as the default SDK surface
+
 ## Document Index
 
 - [001-ARCHITECTURE.md](001-ARCHITECTURE.md) / [中文](../zh/001-ARCHITECTURE.md)

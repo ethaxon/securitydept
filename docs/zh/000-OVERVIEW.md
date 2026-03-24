@@ -67,6 +67,23 @@ SecurityDept 应在底层 crate 之上提供三种明确的认证上下文模式
 - 保持服务器应用作为试验场，而非产品边界
 - 在可以把边界留给参考应用时，尽量保持可复用 crate 的框架中立
 
+## TypeScript SDK 当前状态与进入路径
+
+TypeScript client SDK 现在已经是仓库中的可用组成部分，而不再只是未来设计议题。
+
+当前阶段的重点也已经变化：
+
+- 不是“SDK 是否存在”，而是“哪些 contract 已经可以按当前 0.x 对外解释”
+- 根导出、adapter、reference app glue 的边界应优先以 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 为准
+- token-set 当前应按 browser-owned v1 baseline 理解，而不是把 mixed-custody / BFF / server-side token-set 一并读进当前范围
+
+当前更直接的进入方式是：
+
+- 先看 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)，理解包边界、能力归属、稳定性口径与最小接入片段
+- 再看 `sdks/ts/packages/*`，确认 foundation、`./web` 与 React adapter 的真实导出
+- 再看 `apps/webui/src/routes/TokenSet.tsx` 与 `apps/webui/src/routes/tokenSet/*`，把它们作为 lifecycle、trace 与 propagation dogfooding 的主 reference route
+- 将 `apps/webui/src/api/*` 继续视为 reference app glue，而不是默认 SDK surface
+
 ## 文档索引
 
 - [001-ARCHITECTURE.md](001-ARCHITECTURE.md) - 架构和 crate 边界

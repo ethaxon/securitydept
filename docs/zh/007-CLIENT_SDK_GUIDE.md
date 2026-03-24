@@ -400,9 +400,24 @@ Mixed-custody 应被写入设计，但当前应明确标注为：
 核心不是浏览器导航，而是中性的 redirect instruction：
 
 ```ts
+export const AuthGuardResultKind = {
+  Ok: "ok",
+  Redirect: "redirect",
+} as const
+
+export const AuthGuardRedirectStatus = {
+  Found: 302,
+  SeeOther: 303,
+  TemporaryRedirect: 307,
+} as const
+
 type AuthGuardResult<T> =
-  | { kind: "ok"; value: T }
-  | { kind: "redirect"; status: 302 | 303 | 307; location: string }
+  | { kind: typeof AuthGuardResultKind.Ok; value: T }
+  | {
+      kind: typeof AuthGuardResultKind.Redirect
+      status: (typeof AuthGuardRedirectStatus)[keyof typeof AuthGuardRedirectStatus]
+      location: string
+    }
 ```
 
 ### `token-set-context`
@@ -426,12 +441,15 @@ type AuthGuardResult<T> =
 当前与服务端对齐的基础契约：
 
 ```ts
-type UserRecovery =
-  | "none"
-  | "retry"
-  | "restart_flow"
-  | "reauthenticate"
-  | "contact_support"
+export const UserRecovery = {
+  None: "none",
+  Retry: "retry",
+  RestartFlow: "restart_flow",
+  Reauthenticate: "reauthenticate",
+  ContactSupport: "contact_support",
+} as const
+
+type UserRecovery = (typeof UserRecovery)[keyof typeof UserRecovery]
 
 interface ErrorPresentation {
   code: string
@@ -444,6 +462,7 @@ interface ErrorPresentation {
 
 - 尽量保留服务端返回的 `error: { code, message, recovery }`
 - `code` 是跨端稳定契约，`message` 不是
+- 对这类高频、稳定、可判别的字符串域，优先使用导出的 `const object + type alias`，例如 `UserRecovery`、`ClientErrorKind`、`AuthGuardResultKind`、`TokenSetBootstrapSource`，而不是裸字符串 union 或 TypeScript `enum`
 - 保留 `cause` 与结构化上下文
 - redirect / reauthenticate 一类流程性结果不应一律建模成普通异常
 
@@ -569,6 +588,282 @@ foundation 应正式提供可观测性层：
 
 subpath exports 本身也是 public contract。
 
+### 当前 0.x 阶段的冻结语义
+
+在当前 TypeScript SDK 的 0.x 阶段，这里的 `stable / provisional / experimental` 应按以下方式理解，而不是按“感觉上差不多”理解：
+
+- `stable`
+  - 含义：当前已承诺为外部消费者提供可直接依赖的公开 contract
+  - 允许变化：新增能力、向后兼容的 convenience、文档澄清、内部重构
+  - 不应发生：静默改变主入口职责、把 capability ownership 从一个层级挪到另一个层级、让既有最小接入路径失效
+  - 当前依据：根导出边界明确、最小进入路径可说明、ordinary usage 不依赖 reference-app-only glue、并且已有 export/build/public vocabulary 这类最小自动化护栏
+- `provisional`
+  - 含义：已可用、也属于 public surface，但仍按“冻结中的 adapter / capability 边界”管理
+  - 允许变化：在不破坏主能力方向的前提下继续补 lifecycle、补 convenience、补 focused automation、细化 capability requirement
+  - 仍需谨慎：入口形态频繁重排、把 app glue 重新带回 adapter、在没有额外证据前提前提升为 `stable`
+  - 当前依据：subpath 真实可用，但解释 ordinary usage 时仍更依赖 capability requirement、adapter-owned lifecycle、以及 focused evidence
+- `experimental`
+  - 含义：为了测试、演示、探索而暴露的能力，不应被读成发布前稳定承诺
+  - 允许变化：重命名、重排、替换实现、甚至删除
+  - 当前依据：主要服务测试/demo/workbench，而不是面向外部 adopter 的核心接入面
+
+这里的关键不是“标签好不好看”，而是：
+
+- `stable` 回答的是“现在什么可以被当作 v1 候选公开 contract”
+- `provisional` 回答的是“什么已经公开可用，但仍按更严格的冻结标准维护”
+- `experimental` 回答的是“什么目前主要服务内部验证，而不是外部承诺”
+
+### 当前 Contract 快照
+
+下面这张表是当前 TS SDK 的主判断入口。稳定性、能力前提与边界解释尽量只在这里集中表达，后面的 adopter / verified / promotion 段落只做补充，不再平行复述。
+
+| 包 / Subpath | 稳定性 | 宿主 / 能力要求 | 当前解释 |
+|---|---|---|---|
+| `@securitydept/client` | `stable` | 不要求 DOM，不自动注入 `fetch`；调用方显式提供 transport/runtime | Foundation 根导出 |
+| `@securitydept/client/persistence` | `stable` | 不要求浏览器 storage；in-memory / codec / protocol 属于 foundation | Foundation persistence capability |
+| `@securitydept/client/web` | `stable` ¹ | `fetch` / `AbortSignal`；browser convenience，不引入 side effect | Foundation-owned capability adapter |
+| `@securitydept/client/persistence/web` | `stable` ¹ | Web storage 语义；如无则注入自定义 store | Foundation-owned storage adapter |
+| `@securitydept/basic-auth-context-client` | `stable` | 不要求 React；redirect convenience 留在 `./web` | Basic-auth 根 contract |
+| `@securitydept/basic-auth-context-client/web` | `provisional` | `location` / redirect 语义 | Auth-context browser adapter |
+| `@securitydept/basic-auth-context-client/react` | `provisional` | React runtime | React adapter |
+| `@securitydept/session-context-client` | `stable` | Transport / cancellation；登录跳转流程不属于 SDK surface | Session 根 contract |
+| `@securitydept/session-context-client/react` | `provisional` | React runtime | React adapter |
+| `@securitydept/token-set-context-client` | `stable` ² | Callback / restore / refresh / persistence / traceSink | Browser-owned token-set v1 根 contract |
+| `@securitydept/token-set-context-client/web` | `provisional` | `location` / `history` / `fetch` / flow-state storage | Token-set browser adapter |
+| `@securitydept/token-set-context-client/react` | `provisional` | React runtime | Token-set React adapter |
+| `@securitydept/test-utils` | `experimental` | Fake clock / scheduler / transport / trace collector | 测试/演示基础设施 |
+
+¹ Adapter subpath 默认 `provisional`，但 `@securitydept/client/web` 与 `@securitydept/client/persistence/web` 是刻意保留的 `stable` 例外：职责窄、无产品语义、只把 foundation protocol 接到宿主能力上。
+
+² 此 `stable` 仅覆盖 browser-owned token-set v1 contract。Mixed-custody / BFF / server-side token-set 不在承诺范围内。
+
+统一解释：
+
+- `stable`：当前已可作为 0.x 外部 contract 直接解释
+- `provisional`：公开可用，但仍按更严格的 adapter 冻结标准维护
+- `experimental`：主要服务测试/demo/workbench，而不是 adopter-facing contract
+- 自动化当前锁住 export map、`sideEffects: false` 与构建 entry 对齐；稳定性标签本身仍是文档层判断
+
+#### Capability Boundary Rules
+
+用下面这些规则快速回答"某个能力到底在哪一层"，不必反复读完整指南：
+
+- **redirect / location / history** → `./web` subpath 或 app glue，不回流到 foundation 根导出
+- **fetch / AbortSignal** → foundation transport 可表达取消；browser convenience 继续属于 `./web`
+- **persistence / web storage** → protocol 与 codec 属于 foundation；`localStorage` / `sessionStorage` 适配属于 `persistence/web`
+- **React state / subscription** → `./react` subpath，不与根导出混同
+- **traceSink / lifecycle trace** → SDK contract
+- **trace timeline UI / DOM harness / propagation probe / business helper** → reference app glue，不属于 SDK surface
+
+### token-set-context-client v1 Scope Baseline
+
+`@securitydept/token-set-context-client` 当前应按冻结中的 browser-owned v1 baseline 理解，而不是把所有未来 custody 模型都读进来。
+
+| 在 v1 scope 内 | 不在 v1 scope 内 |
+|---|---|
+| browser-owned token-set flow | mixed-custody token family 管理 |
+| callback fragment parsing + metadata redemption | stateful BFF token ownership |
+| in-memory auth state signal | server-side token-set adapter / SSR token store |
+| persisted restore + explicit clear | cross-tab sync / visibility re-check 等更大 browser lifecycle hardening |
+| refresh-token-driven refresh | 多 provider orchestration / token family policy |
+| bearer authorization header projection | product-specific resource helpers / propagation probe / trace timeline UI |
+| `createTokenSetAuthorizedTransport()` 等 token-snapshot transport convenience |  |
+| `./web` browser bootstrap / callback fragment capture / reset helpers |  |
+| `./react` 最小 integration |  |
+
+这些主题继续留在 v1 之外，是因为：
+
+- mixed-custody / BFF / server-side token-set 会实质改变 ownership model
+- 更大的 browser lifecycle hardening 属于后续 adapter hardening，而不是第一版 root-contract freeze
+- app-specific helper 与 probe 依赖 reference app API 形状和产品模型，留在 `apps/webui` 才能保持 SDK surface 清晰
+
+### Adopter 使用清单
+
+本节只回答外部 adopter 最关心的问题：我能不能用、该从哪一层开始、哪些东西不要误读成 SDK surface。
+
+| 如果你需要... | 当前应这样理解 | 不要这样假设 |
+|---|---|---|
+| Browser App / SPA token-set | 用 `@securitydept/token-set-context-client` 根导出；browser bootstrap / callback / storage 走 `./web` | timeline UI、propagation probe、`apps/webui/src/api/*` 是 SDK surface |
+| React integration | 用 `@securitydept/*/react` 做最小 Provider + hook integration | route guard、pending redirect UI、reference page interaction form 属于 adapter contract |
+| browser-owned baseline 之外的 token-set | 立即按“超出 v1 scope”处理 | mixed-custody / BFF / SSR token store 已经内建支持 |
+
+#### 不应被当作 SDK Surface 的内容
+
+| 内容 | 应在哪里 | 原因 |
+|---|---|---|
+| `apps/webui/src/api/*` 业务 helper | reference app | 依赖 reference app API 形状与产品模型 |
+| trace timeline UI / DOM harness | reference app | 调试/演示 glue，非外部 contract |
+| propagation smoke / same-server probe | reference app + server config | 依赖产品路由与服务配置 |
+| SSR session redirect glue（完整版） | app/server 层 | 框架 response 边界属于 app |
+| cross-tab sync / visibility lifecycle | 超出 v1 scope | 后续 adapter hardening 主题 |
+
+#### 开始接入前的确认清单
+
+- 你的运行环境具备 `fetch` / `AbortSignal`
+- 你的存储需求可由 `localStorage` / `sessionStorage` 满足，或已准备好注入自定义 store
+- 你已理解 `./web` 与 `./react` subpath 仍是 `provisional`
+- 你不期望 SDK 吸收 route guard / 登录跳转 / timeline UI 等产品级关注点
+- 如果用 React，你准备由宿主显式提供 transport / scheduler / clock
+
+### Verified Environments / Host Assumptions
+
+这里的“当前已验证”指能力前提 + 测试环境粒度，不是品牌浏览器兼容矩阵。
+
+| 范围 | Required Host Capability | Currently Verified | Assumed but Not Broadly Verified | Not Yet Verified / Not Promised |
+|---|---|---|---|---|
+| Foundation 包 | ES2020+、`Promise`、`Map` / `Set` / `WeakRef` | Node.js（vitest）、modern browser（Vite build） |  | IE / legacy environments、非 ES 模块宿主、CJS 消费者 |
+| Browser capability adapter | `fetch`、`AbortSignal`、`localStorage` / `sessionStorage` 语义 | apps/webui dogfooding、vitest jsdom | `sessionStorage` 跨 tab 隔离、storage event 精确行为 | Service Worker 环境、非标准 storage 宿主、浏览器版本矩阵 |
+| Auth-context `./web` adapter | `location.href`、`history.replaceState`、`fetch`、flow-state storage | apps/webui dogfooding、token-set browser focused lifecycle tests | SPA router 边缘行为、iframe / webview 适用性 | 非 SPA router 场景、SSR 宿主、React Native / Electron |
+| React adapter | React 18+（`useSyncExternalStore`）、宿主提供 transport / scheduler / clock | vitest focused adapter test(s)、apps/webui dogfooding | React 17、React Server Components、concurrent mode 边缘行为 | 非 React 宿主、React Native |
+
+### 最小进入路径
+
+下面这些片段的目标是回答“最小怎么开始接”，而不是替代 reference app。
+
+#### 1. Foundation 入口：runtime 仍由宿主显式拥有
+
+当宿主希望自己掌握 transport/runtime 接线时，优先从 foundation 包开始。
+
+```ts
+import { createRuntime } from "@securitydept/client";
+import { SessionContextClient } from "@securitydept/session-context-client";
+
+const runtime = createRuntime({
+	transport: {
+		async execute(request) {
+			const response = await fetch(request.url, {
+				method: request.method,
+				headers: request.headers,
+				body: request.body,
+			});
+
+			return {
+				status: response.status,
+				headers: Object.fromEntries(response.headers.entries()),
+				body: await response.json().catch(() => null),
+			};
+		},
+	},
+});
+
+const sessionClient = new SessionContextClient({
+	baseUrl: "https://auth.example.com",
+});
+
+const session = await sessionClient.fetchMe(runtime.transport);
+```
+
+#### 2. Browser 入口：`./web` 负责 browser glue
+
+当宿主希望直接使用浏览器侧的 `fetch`、storage flow-state 与 callback bootstrap helper 时，优先从 `./web` 进入。
+
+```ts
+import {
+	bootstrapTokenSetClient,
+	createTokenSetBrowserClient,
+	resolveTokenSetAuthorizeUrl,
+} from "@securitydept/token-set-context-client/web";
+
+const client = createTokenSetBrowserClient({
+	baseUrl: "https://auth.example.com",
+	defaultPostAuthRedirectUri: window.location.href,
+});
+
+const bootstrap = await bootstrapTokenSetClient(client);
+
+if (bootstrap.source === "empty") {
+	window.location.href = resolveTokenSetAuthorizeUrl(client);
+}
+```
+
+#### 3. React 入口：React adapter 只负责 integration
+
+React adapter 的职责是把 SDK 状态接到 React，不负责产品级 route guard、API helper 或 timeline UI。
+
+```tsx
+import { createWebRuntime } from "@securitydept/client/web";
+import {
+	TokenSetContextProvider,
+	useAccessToken,
+} from "@securitydept/token-set-context-client/react";
+
+const runtime = createWebRuntime();
+
+function ProtectedCallButton() {
+	const accessToken = useAccessToken();
+
+	return <button disabled={!accessToken}>Call protected API</button>;
+}
+
+export function App() {
+	return (
+		<TokenSetContextProvider
+			config={{
+				baseUrl: "https://auth.example.com",
+				defaultPostAuthRedirectUri: window.location.href,
+			}}
+			transport={runtime.transport}
+			scheduler={runtime.scheduler}
+			clock={runtime.clock}
+		>
+			<ProtectedCallButton />
+		</TokenSetContextProvider>
+	);
+}
+```
+
+#### 4. SSR redirect 入口：继续属于 app/server glue
+
+SSR redirect 处理目前仍属于 app/server 层。SDK 可以帮助构造 redirect URL，但不会隐藏框架自己的 response 边界。
+
+```ts
+import { SessionContextClient } from "@securitydept/session-context-client";
+
+const sessionClient = new SessionContextClient({
+	baseUrl: "https://auth.example.com",
+});
+
+export async function loader(request: Request) {
+	const url = new URL(request.url);
+	const returnTo = `${url.origin}${url.pathname}${url.search}`;
+
+	return Response.redirect(sessionClient.loginUrl(returnTo), 302);
+}
+```
+
+### Provisional Adapter 维护标准
+
+Auth-context `./web` 与 `./react` subpath 已可用，但仍按比根导出更严格的 `provisional` 标尺维护。Foundation-owned stable 例外（`@securitydept/client/web`、`@securitydept/client/persistence/web`）见 [Capability 清单](#当前-public-contract-与-capability-清单)脚注 ¹。
+
+维护规则：
+
+- 保持 subpath 职责稳定：browser capability 留在 `./web`，React integration 留在 `./react`，business helper 留在 SDK 之外
+- 保持 import-time 行为稳定：不做全局 patch、不偷偷注入 polyfill、导入 adapter 不产生 side effect
+- 允许 additive convenience 演进；避免每轮改入口形态迫使使用方重新学习
+- 用 reference app dogfooding 加 focused smoke/regression 测试保护 adapter contract，不只靠文档
+- 当前最小 evidence 基线：external-consumer scenario、token-set web lifecycle tests、至少一条 token-set React focused test
+
+#### Provisional Adapter 晋升前 Checklist
+
+全部条件满足后方可重新评估晋升到 `stable`：
+
+| 条件 | 判断标准 |
+|---|---|
+| Capability boundary 已稳定 | 连续多轮迭代与 review 中核心职责没有发生重排或重大扩展 |
+| Minimal entry path 已清晰 | 有独立最小进入示例，不依赖阅读完整 reference page |
+| Ordinary usage 不依赖 reference-app glue | 标准使用场景可脱离 `apps/webui` 产品级 glue 独立说明 |
+| Focused automation 覆盖 adapter lifecycle | 关键 subpath/export 事实以及 adapter 主 lifecycle 有 focused 护栏 |
+| Verified environments 已足够清楚 | 宿主能力前提已如实写出，与真实验证粒度一致（见 [Verified Environments](#verified-environments--host-assumptions)） |
+
+#### 当前晋升就绪度（快照，非路线图）
+
+| Adapter | 最强证据 | 当前缺口 |
+|---|---|---|
+| `token-set-context-client/web` | Focused lifecycle tests、reference app dogfooding、最小入口示例 | 更大范围 browser lifecycle hardening（cross-tab sync 等） |
+| `token-set-context-client/react` | 最小 React focused test、入口示例 | Lifecycle 冻结证据不足；React 17 / concurrent mode 未验证 |
+| `basic-auth-context-client/web` + `/react` | External-consumer scenario 覆盖 | 无专属 focused adapter automation；独立示例不如 token-set 清晰 |
+| `session-context-client/react` | 仅 external-consumer scenario | 无任何专属 React adapter focused tests |
+
 ## 示例与参考实现
 
 ### 真实参考实现
@@ -578,14 +873,20 @@ subpath exports 本身也是 public contract。
 
 它们应作为第一优先级的 dogfooding / reference app。
 
-### 最小示例
+当前应明确按如下方式理解：
 
-仍应补充更小的最小示例，用于隔离验证：
+- `apps/server`：reference server，负责给客户端 SDK 提供真实 auth / forward-auth / propagation 语义
+- `apps/webui`：reference app，负责验证真实 read/write/auth lifecycle、trace timeline、以及最小可用 propagation dogfood
+- `apps/webui/src/api/*` 中的业务 helper：属于 reference app glue，不属于 SDK public surface
+- `apps/webui/src/routes/tokenSet/*`：属于 reference page UI / observability glue，用于解释与回归 SDK 边界，不是 SDK package
+- `sdks/ts/packages/test-utils`：属于测试/演示基础设施，不应与 reference app glue 混淆
 
-- foundation
-- web adapter
-- React adapter
-- SSR redirect
+### 当前 Bundle / Code Split 判断
+
+- iteration 12 已经通过 `/token-set` 的局部 route split 收掉最明显的 chunk warning
+- 因此 bundle/code split 目前可从“阻塞项”降级为“后续工程议题”
+- 如果后续继续推进，更合理的下一步切分点应优先放在其他高密度 reference routes 或 shared UI hot paths，而不是继续围绕同一处 token-set 页面做机械拆分
+- 在当前阶段，它应让位于 SDK public contract、capability requirement 与边界表达的固化工作
 
 ### Demo 与 OIDC Provider
 

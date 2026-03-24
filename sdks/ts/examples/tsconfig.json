@@ -1,0 +1,47 @@
+{
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"composite": false,
+		"noEmit": true,
+		"declaration": false,
+		"declarationMap": false,
+		"sourceMap": false,
+		"lib": ["ES2022", "DOM"],
+		"paths": {
+			"@securitydept/client": ["../packages/client/src/index.ts"],
+			"@securitydept/client/persistence": [
+				"../packages/client/src/persistence/index.ts"
+			],
+			"@securitydept/client/persistence/web": [
+				"../packages/client/src/persistence/web/index.ts"
+			],
+			"@securitydept/client/web": ["../packages/client/src/web/index.ts"],
+			"@securitydept/basic-auth-context-client": [
+				"../packages/basic-auth-context-client/src/index.ts"
+			],
+			"@securitydept/basic-auth-context-client/react": [
+				"../packages/basic-auth-context-client/src/react/index.tsx"
+			],
+			"@securitydept/basic-auth-context-client/web": [
+				"../packages/basic-auth-context-client/src/web/index.ts"
+			],
+			"@securitydept/session-context-client": [
+				"../packages/session-context-client/src/index.ts"
+			],
+			"@securitydept/session-context-client/react": [
+				"../packages/session-context-client/src/react/index.tsx"
+			],
+			"@securitydept/token-set-context-client": [
+				"../packages/token-set-context-client/src/index.ts"
+			],
+			"@securitydept/token-set-context-client/react": [
+				"../packages/token-set-context-client/src/react/index.tsx"
+			],
+			"@securitydept/token-set-context-client/web": [
+				"../packages/token-set-context-client/src/web/index.ts"
+			],
+			"@securitydept/test-utils": ["../packages/test-utils/src/index.ts"]
+		}
+	},
+	"include": ["./**/*.test.ts"]
+}

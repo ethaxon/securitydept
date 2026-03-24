@@ -400,9 +400,24 @@ They should support redirect-aware SSR / server request handling.
 The core is not browser navigation. The core is a neutral redirect instruction:
 
 ```ts
+export const AuthGuardResultKind = {
+  Ok: "ok",
+  Redirect: "redirect",
+} as const
+
+export const AuthGuardRedirectStatus = {
+  Found: 302,
+  SeeOther: 303,
+  TemporaryRedirect: 307,
+} as const
+
 type AuthGuardResult<T> =
-  | { kind: "ok"; value: T }
-  | { kind: "redirect"; status: 302 | 303 | 307; location: string }
+  | { kind: typeof AuthGuardResultKind.Ok; value: T }
+  | {
+      kind: typeof AuthGuardResultKind.Redirect
+      status: (typeof AuthGuardRedirectStatus)[keyof typeof AuthGuardRedirectStatus]
+      location: string
+    }
 ```
 
 ### `token-set-context`
@@ -426,12 +441,15 @@ A two-layer model is preferred:
 Current server-aligned base contract:
 
 ```ts
-type UserRecovery =
-  | "none"
-  | "retry"
-  | "restart_flow"
-  | "reauthenticate"
-  | "contact_support"
+export const UserRecovery = {
+  None: "none",
+  Retry: "retry",
+  RestartFlow: "restart_flow",
+  Reauthenticate: "reauthenticate",
+  ContactSupport: "contact_support",
+} as const
+
+type UserRecovery = (typeof UserRecovery)[keyof typeof UserRecovery]
 
 interface ErrorPresentation {
   code: string
@@ -444,6 +462,7 @@ Current principles:
 
 - preserve server-returned `error: { code, message, recovery }` when available
 - `code` is the stable cross-layer contract; `message` is not
+- prefer exported `const object + type alias` contracts such as `UserRecovery`, `ClientErrorKind`, `AuthGuardResultKind`, and `TokenSetBootstrapSource` over raw string unions or TypeScript `enum`
 - preserve `cause` and structured context
 - redirect / reauthenticate flows should not always be modeled as ordinary exceptions
 
@@ -569,6 +588,282 @@ Prefer `experimental` for:
 
 Subpath exports are also public contract.
 
+### Current 0.x Freeze Semantics
+
+In the current 0.x TypeScript SDK stage, `stable / provisional / experimental` should be read with explicit release semantics, not as loose adjectives:
+
+- `stable`
+  - Meaning: the current public contract is ready to be depended on directly by external consumers
+  - Allowed change: additive capability, backward-compatible convenience, documentation clarification, internal refactors
+  - Should not happen: silent responsibility shifts between layers, entry-path churn, or changes that invalidate the documented minimal entry path
+  - Current basis: the root capability boundary is clear, minimal entry paths are explainable, ordinary usage does not rely on reference-app-only glue, and there are already narrow guardrails around exports/build/public vocabulary
+- `provisional`
+  - Meaning: publicly usable and intentionally exported, but still managed as a freezing adapter/capability boundary rather than a settled release-grade surface
+  - Allowed change: lifecycle hardening, additive convenience, more focused automation, clearer capability requirements
+  - Still risky: frequent entry-shape churn, pulling app glue back into adapters, or promoting to `stable` before the evidence changes
+  - Current basis: the subpaths are real and usable, but ordinary usage still depends more heavily on capability requirements, adapter-owned lifecycle boundaries, and focused evidence
+- `experimental`
+  - Meaning: exposed mainly for testing, demos, or exploration, not as a publishable stability promise
+  - Allowed change: renaming, reshaping, replacement, or removal
+  - Current basis: these surfaces primarily serve tests/demo/workbench scenarios rather than core adopter-facing integration
+
+The important distinction is:
+
+- `stable` answers what is already a v1-candidate external contract
+- `provisional` answers what is public and usable, but still under a stricter freeze bar
+- `experimental` answers what is still mainly for internal validation rather than external promise
+
+### Current Contract Snapshot
+
+This is the current working contract map for the TypeScript SDK. It keeps the main stability, capability, and boundary judgment in one place so later sections can reference it instead of restating it.
+
+| Package / Subpath | Stability | Host / Capability Requirement | Current Reading |
+|---|---|---|---|
+| `@securitydept/client` | `stable` | No DOM, no implicit `fetch`; caller provides transport/runtime | Foundation root export |
+| `@securitydept/client/persistence` | `stable` | No browser storage; in-memory stores, codecs, protocols remain foundation | Foundation persistence capability |
+| `@securitydept/client/web` | `stable` ¹ | `fetch` / `AbortSignal`; browser convenience without side effects | Foundation-owned capability adapter |
+| `@securitydept/client/persistence/web` | `stable` ¹ | Web-storage semantics; inject custom store if unavailable | Foundation-owned storage adapter |
+| `@securitydept/basic-auth-context-client` | `stable` | No React; redirect convenience stays in `./web` | Basic-auth root contract |
+| `@securitydept/basic-auth-context-client/web` | `provisional` | `location` / redirect semantics | Auth-context browser adapter |
+| `@securitydept/basic-auth-context-client/react` | `provisional` | React runtime | React adapter |
+| `@securitydept/session-context-client` | `stable` | Transport / cancellation; login redirect flow is not SDK surface | Session root contract |
+| `@securitydept/session-context-client/react` | `provisional` | React runtime | React adapter |
+| `@securitydept/token-set-context-client` | `stable` ² | Callback / restore / refresh / persistence / traceSink | Browser-owned token-set v1 root contract |
+| `@securitydept/token-set-context-client/web` | `provisional` | `location` / `history` / `fetch` / flow-state storage | Token-set browser adapter |
+| `@securitydept/token-set-context-client/react` | `provisional` | React runtime | Token-set React adapter |
+| `@securitydept/test-utils` | `experimental` | Fake clock / scheduler / transport / trace collector | Test/demo infra |
+
+¹ Adapter subpaths default to `provisional`, but `@securitydept/client/web` and `@securitydept/client/persistence/web` are intentional `stable` exceptions because they remain foundation-owned capability adapters: narrow responsibility, no product semantics, and only wire foundation protocols to host capabilities.
+
+² This `stable` label covers the browser-owned token-set v1 contract only. Mixed-custody / BFF / server-side token-set are not included.
+
+Shared reading rules:
+
+- `stable` means the current public contract is already explainable as a 0.x external contract, even though additive evolution may still happen
+- `provisional` means public and usable, but still under a stricter adapter freeze bar
+- `experimental` means test/demo/workbench-facing rather than adopter-facing
+- automation currently locks export maps, `sideEffects: false`, and build entry alignment; stability labels themselves remain a documentation-layer judgment
+
+#### Capability Boundary Rules
+
+Use these rules to answer "which layer owns this capability?" without rereading the whole guide:
+
+- **redirect / location / history** → `./web` subpaths or app glue, not foundation root exports
+- **fetch / AbortSignal** → foundation transport can express cancellation; browser convenience stays in `./web`
+- **persistence / web storage** → protocols & codecs are foundation; `localStorage` / `sessionStorage` adapters belong in `persistence/web`
+- **React state / subscription** → `./react` subpaths only, not root exports
+- **traceSink / lifecycle trace** → SDK contract
+- **trace timeline UI / DOM harnesses / propagation probes / business helpers** → reference app glue, not SDK surface
+
+### token-set-context-client v1 Scope Baseline
+
+Read `@securitydept/token-set-context-client` as a frozen browser-owned v1 baseline, not as an umbrella for every future custody model.
+
+| In v1 scope | Outside v1 scope |
+|---|---|
+| browser-owned token-set flow | mixed-custody token family management |
+| callback fragment parsing + metadata redemption | stateful BFF token ownership |
+| in-memory auth-state signals | server-side token-set adapters / SSR token stores |
+| persisted restore + explicit clear | cross-tab sync / visibility re-check and larger browser lifecycle hardening |
+| refresh-token-driven refresh | multi-provider orchestration / token-family policy |
+| bearer authorization-header projection | product-specific resource helpers / propagation probes / trace timeline UI |
+| transport convenience such as `createTokenSetAuthorizedTransport()` |  |
+| `./web` browser bootstrap / callback fragment capture / reset helpers |  |
+| minimal `./react` integration |  |
+
+Why these topics stay out of v1:
+
+- mixed-custody / BFF / server-side token-set materially change the ownership model rather than extend the current one
+- larger browser lifecycle work belongs to later adapter hardening, not the first root-contract freeze
+- app-specific helpers and probes depend on reference-app API shapes and product models, so leaving them in `apps/webui` keeps the SDK surface understandable
+
+### Adopter Checklist
+
+Use this section to decide quickly whether the current SDK fits your use case and where to enter it.
+
+| If you need... | Use / Expect | Do not assume |
+|---|---|---|
+| browser app / SPA token-set | `@securitydept/token-set-context-client` root (`stable`), plus `./web` for browser bootstrap/callback/storage | timeline UI, propagation probes, or `apps/webui/src/api/*` are SDK surface |
+| React integration | `@securitydept/*/react` for minimal Provider + hook integration | route guards, pending-redirect UI, or reference-page interaction forms are part of the adapter contract |
+| token-set beyond browser-owned baseline | read it as outside v1 scope immediately | mixed-custody / BFF / SSR token store support already exists |
+
+What must not be treated as SDK surface:
+
+| Item | Where It Lives | Why |
+|---|---|---|
+| `apps/webui/src/api/*` business helpers | reference app | depends on reference-app API shapes and product models |
+| trace timeline UI / DOM harnesses | reference app | debugging/demo glue, not external contract |
+| propagation smoke / same-server probes | reference app + server config | depends on product routes and service config |
+| SSR session redirect glue (full form) | app/server layer | framework response boundary belongs to the app |
+| cross-tab sync / visibility lifecycle | outside v1 scope | future adapter hardening topic |
+
+Before you adopt:
+
+- your runtime has `fetch` / `AbortSignal` support for browser-facing paths
+- your storage needs fit `localStorage` / `sessionStorage`, or you are ready to inject a custom store
+- you understand that `./web` and `./react` subpaths are still `provisional`
+- you do not expect the SDK to absorb product concerns such as route guards, login redirects, or timeline UI
+- if you use React, you are ready to provide transport / scheduler / clock from the host
+
+### Verified Environments / Host Assumptions
+
+"Currently verified" here means capability prerequisite plus test-environment granularity, not a brand-browser matrix.
+
+| Scope | Required Host Capability | Currently Verified | Assumed but Not Broadly Verified | Not Yet Verified / Not Promised |
+|---|---|---|---|---|
+| Foundation packages | ES2020+, `Promise`, `Map` / `Set` / `WeakRef` | Node.js (vitest), modern browser (Vite build) |  | IE / legacy environments, non-ES-module hosts, CJS consumers |
+| Browser capability adapters | `fetch`, `AbortSignal`, `localStorage` / `sessionStorage` semantics | apps/webui dogfooding, vitest jsdom | `sessionStorage` cross-tab isolation, storage-event exact behavior | Service Worker environments, non-standard storage hosts, per-browser matrices |
+| Auth-context `./web` adapters | `location.href`, `history.replaceState`, `fetch`, flow-state storage | apps/webui dogfooding, token-set browser focused lifecycle tests | SPA-router edge behavior, iframe / webview suitability | non-SPA router scenarios, SSR hosts, React Native / Electron |
+| React adapters | React 18+ (`useSyncExternalStore`), host-provided transport / scheduler / clock | vitest focused adapter test(s), apps/webui dogfooding | React 17, React Server Components, concurrent-mode edge behavior | non-React hosts, React Native |
+
+### Minimal Entry Paths
+
+These are intentionally small “how do I start?” snippets, not replacements for the reference app.
+
+#### 1. Foundation entry: runtime stays explicit
+
+Use the foundation packages when the host wants to own transport/runtime wiring itself.
+
+```ts
+import { createRuntime } from "@securitydept/client";
+import { SessionContextClient } from "@securitydept/session-context-client";
+
+const runtime = createRuntime({
+	transport: {
+		async execute(request) {
+			const response = await fetch(request.url, {
+				method: request.method,
+				headers: request.headers,
+				body: request.body,
+			});
+
+			return {
+				status: response.status,
+				headers: Object.fromEntries(response.headers.entries()),
+				body: await response.json().catch(() => null),
+			};
+		},
+	},
+});
+
+const sessionClient = new SessionContextClient({
+	baseUrl: "https://auth.example.com",
+});
+
+const session = await sessionClient.fetchMe(runtime.transport);
+```
+
+#### 2. Browser entry: `./web` owns browser glue
+
+Use `./web` when the host wants browser capability helpers such as `fetch`, storage-backed flow state, and callback bootstrap.
+
+```ts
+import {
+	bootstrapTokenSetClient,
+	createTokenSetBrowserClient,
+	resolveTokenSetAuthorizeUrl,
+} from "@securitydept/token-set-context-client/web";
+
+const client = createTokenSetBrowserClient({
+	baseUrl: "https://auth.example.com",
+	defaultPostAuthRedirectUri: window.location.href,
+});
+
+const bootstrap = await bootstrapTokenSetClient(client);
+
+if (bootstrap.source === "empty") {
+	window.location.href = resolveTokenSetAuthorizeUrl(client);
+}
+```
+
+#### 3. React entry: React adapters stop at integration
+
+Use React adapters to connect SDK state to React. Product-specific route guards, API helpers, and trace UI stay outside these packages.
+
+```tsx
+import { createWebRuntime } from "@securitydept/client/web";
+import {
+	TokenSetContextProvider,
+	useAccessToken,
+} from "@securitydept/token-set-context-client/react";
+
+const runtime = createWebRuntime();
+
+function ProtectedCallButton() {
+	const accessToken = useAccessToken();
+
+	return <button disabled={!accessToken}>Call protected API</button>;
+}
+
+export function App() {
+	return (
+		<TokenSetContextProvider
+			config={{
+				baseUrl: "https://auth.example.com",
+				defaultPostAuthRedirectUri: window.location.href,
+			}}
+			transport={runtime.transport}
+			scheduler={runtime.scheduler}
+			clock={runtime.clock}
+		>
+			<ProtectedCallButton />
+		</TokenSetContextProvider>
+	);
+}
+```
+
+#### 4. SSR redirect entry: still app/server glue
+
+SSR redirect handling is still an app/server concern. The SDK helps build the redirect URL, but it does not hide your framework’s response boundary.
+
+```ts
+import { SessionContextClient } from "@securitydept/session-context-client";
+
+const sessionClient = new SessionContextClient({
+	baseUrl: "https://auth.example.com",
+});
+
+export async function loader(request: Request) {
+	const url = new URL(request.url);
+	const returnTo = `${url.origin}${url.pathname}${url.search}`;
+
+	return Response.redirect(sessionClient.loginUrl(returnTo), 302);
+}
+```
+
+### Provisional Adapter Maintenance Standard
+
+Auth-context `./web` and `./react` subpaths are usable but maintained under a stricter `provisional` bar than root exports. Foundation-owned stable exceptions (`@securitydept/client/web`, `@securitydept/client/persistence/web`) are explained in the [Capability Checklist](#current-public-contract-and-capability-checklist) footnote ¹.
+
+Maintenance rules:
+
+- keep subpath ownership stable: browser capability in `./web`, React integration in `./react`, business helpers outside the SDK
+- keep import-time behavior stable: no global patching, no implicit polyfills, no side effects on import
+- allow additive convenience evolution; avoid shape churn that forces consumers to relearn every iteration
+- guard adapter contract with reference-app dogfooding plus focused smoke/regression tests, not prose alone
+- current minimum evidence baseline: external-consumer scenarios, token-set web lifecycle tests, at least one token-set React focused test
+
+#### Provisional Adapter Promotion Checklist
+
+All conditions must be satisfied before re-evaluating promotion to `stable`:
+
+| Condition | Judgment Criterion |
+|---|---|
+| Capability boundary is stable | No significant reshuffling across multiple iterations and reviews |
+| Minimal entry path is clear | Standalone minimal example exists, not dependent on full reference-app pages |
+| Ordinary usage independent of reference-app glue | Standard use case explainable without `apps/webui` product glue |
+| Focused automation covers adapter lifecycle | Key export facts and main lifecycle path have focused guardrails |
+| Verified environments described accurately | Host prerequisites match actual verification granularity (see [Verified Environments](#verified-environments--host-assumptions)) |
+
+#### Current Promotion Readiness (snapshot, not roadmap)
+
+| Adapter | Strongest Evidence | Current Gap |
+|---|---|---|
+| `token-set-context-client/web` | Focused lifecycle tests, reference-app dogfooding, minimal entry example | Broader browser lifecycle hardening (cross-tab sync, etc.) |
+| `token-set-context-client/react` | Minimal React focused test, entry example | Lifecycle freeze evidence insufficient; React 17 / concurrent mode not verified |
+| `basic-auth-context-client/web` + `/react` | External-consumer scenario coverage | No dedicated focused adapter automation; standalone examples less clear |
+| `session-context-client/react` | External-consumer scenario only | No dedicated React adapter focused tests at all |
+
 ## Examples and Reference Implementations
 
 ### Primary Real Reference Apps
@@ -578,14 +873,20 @@ Subpath exports are also public contract.
 
 These should be treated as the first-priority dogfooding and reference applications.
 
-### Minimal Examples
+The current intended reading is:
 
-Additional smaller examples should still exist to isolate and validate:
+- `apps/server`: the reference server, providing real auth, forward-auth, and propagation semantics for the client SDKs
+- `apps/webui`: the reference app, validating real read/write flows, auth lifecycle behavior, trace timeline usage, and minimal usable propagation dogfood
+- business helpers under `apps/webui/src/api/*`: reference app glue, not SDK public surface
+- `apps/webui/src/routes/tokenSet/*`: reference-page UI / observability glue, used to explain and regression-test SDK boundaries, not an SDK package
+- `sdks/ts/packages/test-utils`: test/demo infrastructure, and should not be conflated with reference app glue
 
-- foundation usage
-- web adapters
-- React adapters
-- SSR redirect behavior
+### Current Bundle / Code Split Judgment
+
+- iteration 12 already removed the most obvious chunk warning through a local route split for `/token-set`
+- because of that, bundle/code splitting can currently be downgraded from “blocking issue” to “follow-up engineering topic”
+- if more work is needed later, the next reasonable split points should be other dense reference routes or shared UI hot paths, not repeated mechanical splitting of the same token-set page
+- at the current stage, this topic should stay behind SDK public contract, capability requirement, and boundary hardening
 
 ### Demo and OIDC Provider
 

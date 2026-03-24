@@ -4,7 +4,7 @@
   <b>SecurityDept</b>
 </h1>
 
-SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包，由可复用的 Rust crate 和一个参考服务器应用组成。
+SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包，由可复用的 Rust crate、一个 TypeScript client SDK workspace，以及参考 server/web 应用组成。
 
 本项目正从单一的 "OIDC 登录 + 本地会话" 产品演进为一个分层的库栈，支持以下功能：
 
@@ -17,7 +17,7 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
 - 基础认证和静态令牌的本机凭证管理
 - 验证组合栈的参考服务器应用
 
-当前仓库已包含底层的大部分功能和一个可用的参考服务器。更高级别的认证上下文模式正在进行文档化，以便后续实现遵循一致的设计。
+当前仓库已包含底层的大部分功能、一个可用的参考服务器，以及位于 `sdks/ts` 下的可用 TypeScript SDK workspace。更高级别的认证上下文模式不再只是设计说明，而是已经通过 reference app 与正式 client SDK 指南进入了真实 dogfooding。
 
 参考服务器仍然使用 Axum，但可复用的 `securitydept-basic-auth-context`、`securitydept-session-context` 与 `securitydept-auth-runtime` crate 现在已经把 Axum 专属的响应组装留在边界层之外，以便更容易复用到其他生态中。
 
@@ -69,13 +69,25 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
   - OAuth 资源服务器验证器
   - 用于基础认证和静态令牌的 creds-manage
   - 带有 cookie-session、basic-auth 上下文和无状态 token-set 流程的参考服务器应用
+  - 位于 `sdks/ts/packages/*` 的 TypeScript SDK foundation 包、browser adapter 与 React adapter
+  - `apps/webui` 上覆盖 session/token-set lifecycle、protected API、trace timeline 与 propagation smoke 的 reference route dogfooding
   - real-IP 解析，以及 basic-auth context 的可选 real-IP 访问策略
   - 由服务端持有的 bearer propagation 校验，包括目标 allowlist 与 access-token 资源事实校验
 - 计划中/部分已规范
   - 更丰富的多 zone basic-auth context 组合
-  - 按正式 client SDK 指南落地 TypeScript 客户端 SDK
   - token-set 模式在浏览器侧的合并、持久化、刷新与 mixed-custody 行为
   - 构建在 `TokenPropagator` 之上的推荐 propagation forwarder feature
+
+## TypeScript SDK 入口
+
+当前仓库已经包含可工作的 TypeScript SDK workspace，不再只是架构草案。
+
+最自然的进入路径是：
+
+- 先看 [docs/zh/007-CLIENT_SDK_GUIDE.md](docs/zh/007-CLIENT_SDK_GUIDE.md) ([English](docs/en/007-CLIENT_SDK_GUIDE.md))，理解包边界、稳定性口径、能力归属和最小接入片段
+- 再看 `sdks/ts/packages/*`，确认 foundation、`./web` 与 React subpath 的真实导出
+- 再看 `apps/webui/src/routes/TokenSet.tsx` 与 `apps/webui/src/routes/tokenSet/*`，把它们作为解释 lifecycle、trace 与 propagation 边界的 reference app
+- 将 `apps/webui/src/api/*` 继续视为 reference app glue，而不是推荐的 SDK public API
 
 ## 参考服务器认证入口
 

@@ -1,11 +1,6 @@
-const BASE = "";
+import type { UserRecovery } from "@securitydept/client";
 
-type UserRecovery =
-	| "none"
-	| "retry"
-	| "restart_flow"
-	| "reauthenticate"
-	| "contact_support";
+const BASE = "";
 
 type ApiErrorPayload = {
 	error?:
