@@ -43,9 +43,24 @@ export class BasicAuthContextClient {
 
 	/** Find the zone that contains the given path. */
 	zoneForPath(path: string): ResolvedBasicAuthZone | undefined {
-		return this.zones.find(
-			(z) => path === z.zonePrefix || path.startsWith(`${z.zonePrefix}/`),
-		);
+		let matchedZone: ResolvedBasicAuthZone | undefined;
+
+		for (const zone of this.zones) {
+			const matches =
+				path === zone.zonePrefix || path.startsWith(`${zone.zonePrefix}/`);
+			if (!matches) {
+				continue;
+			}
+
+			if (
+				!matchedZone ||
+				zone.zonePrefix.length > matchedZone.zonePrefix.length
+			) {
+				matchedZone = zone;
+			}
+		}
+
+		return matchedZone;
 	}
 
 	/** Check whether a path falls inside any configured zone. */

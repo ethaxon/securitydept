@@ -6,6 +6,7 @@
 		"declaration": false,
 		"declarationMap": false,
 		"sourceMap": false,
+		"jsx": "react-jsx",
 		"lib": ["ES2022", "DOM"],
 		"paths": {
 			"@securitydept/client": ["../packages/client/src/index.ts"],

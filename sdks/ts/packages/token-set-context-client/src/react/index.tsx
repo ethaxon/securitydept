@@ -13,6 +13,7 @@ import {
 	useContext,
 	useEffect,
 	useMemo,
+	useRef,
 	useSyncExternalStore,
 } from "react";
 import { TokenSetContextClient } from "../client";
@@ -70,6 +71,7 @@ export function TokenSetContextProvider({
 			sessionStore,
 		],
 	);
+	const lifecycleMountsRef = useRef(new Map<TokenSetContextClient, number>());
 
 	// Bridge the signal to React via useSyncExternalStore.
 	const state = useSyncExternalStore(
@@ -80,8 +82,26 @@ export function TokenSetContextProvider({
 		() => client.state.get(),
 	);
 
-	// Clean up on unmount.
-	useEffect(() => () => client.dispose(), [client]);
+	// Clean up on unmount, while tolerating React 18 StrictMode effect replays.
+	useEffect(() => {
+		const lifecycleMounts = lifecycleMountsRef.current;
+		lifecycleMounts.set(client, (lifecycleMounts.get(client) ?? 0) + 1);
+
+		return () => {
+			const nextMounts = (lifecycleMounts.get(client) ?? 1) - 1;
+			if (nextMounts <= 0) {
+				lifecycleMounts.delete(client);
+			} else {
+				lifecycleMounts.set(client, nextMounts);
+			}
+
+			queueMicrotask(() => {
+				if (!lifecycleMounts.has(client)) {
+					client.dispose();
+				}
+			});
+		};
+	}, [client]);
 
 	const value = useMemo(() => ({ client, state }), [client, state]);
 

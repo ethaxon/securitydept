@@ -684,7 +684,7 @@ Use this section to decide quickly whether the current SDK fits your use case an
 | If you need... | Use / Expect | Do not assume |
 |---|---|---|
 | browser app / SPA token-set | `@securitydept/token-set-context-client` root (`stable`), plus `./web` for browser bootstrap/callback/storage | timeline UI, propagation probes, or `apps/webui/src/api/*` are SDK surface |
-| React integration | `@securitydept/*/react` for minimal Provider + hook integration | route guards, pending-redirect UI, or reference-page interaction forms are part of the adapter contract |
+| React integration | `@securitydept/*/react` for minimal Provider + hook integration; `session-context-client/react` can start directly from the React entry below | route guards, pending-redirect UI, or reference-page interaction forms are part of the adapter contract |
 | token-set beyond browser-owned baseline | read it as outside v1 scope immediately | mixed-custody / BFF / SSR token store support already exists |
 
 What must not be treated as SDK surface:
@@ -776,38 +776,44 @@ if (bootstrap.source === "empty") {
 }
 ```
 
-#### 3. React entry: React adapters stop at integration
+#### 3. React entry: `session-context-client/react` starts with Provider + hook wiring
 
-Use React adapters to connect SDK state to React. Product-specific route guards, API helpers, and trace UI stay outside these packages.
+If an adopter wants a React entry for session-context, start with `SessionContextProvider` + `useSessionPrincipal`; route guards, page-level UI, and app glue still stay with the host.
 
 ```tsx
-import { createWebRuntime } from "@securitydept/client/web";
 import {
-	TokenSetContextProvider,
-	useAccessToken,
-} from "@securitydept/token-set-context-client/react";
+	SessionContextProvider,
+	useSessionPrincipal,
+} from "@securitydept/session-context-client/react";
 
-const runtime = createWebRuntime();
+function SessionBadge() {
+	const principal = useSessionPrincipal();
 
-function ProtectedCallButton() {
-	const accessToken = useAccessToken();
-
-	return <button disabled={!accessToken}>Call protected API</button>;
+	return <output>{principal?.displayName ?? "guest"}</output>;
 }
 
 export function App() {
 	return (
-		<TokenSetContextProvider
-			config={{
-				baseUrl: "https://auth.example.com",
-				defaultPostAuthRedirectUri: window.location.href,
+		<SessionContextProvider
+			config={{ baseUrl: "https://auth.example.com" }}
+			transport={{
+				async execute(request) {
+					const response = await fetch(request.url, {
+						method: request.method,
+						headers: request.headers,
+						body: request.body,
+					});
+
+					return {
+						status: response.status,
+						headers: Object.fromEntries(response.headers.entries()),
+						body: await response.json().catch(() => null),
+					};
+				},
 			}}
-			transport={runtime.transport}
-			scheduler={runtime.scheduler}
-			clock={runtime.clock}
 		>
-			<ProtectedCallButton />
-		</TokenSetContextProvider>
+			<SessionBadge />
+		</SessionContextProvider>
 	);
 }
 ```
@@ -859,10 +865,10 @@ All conditions must be satisfied before re-evaluating promotion to `stable`:
 
 | Adapter | Strongest Evidence | Current Gap |
 |---|---|---|
-| `token-set-context-client/web` | Focused lifecycle tests, reference-app dogfooding, minimal entry example | Broader browser lifecycle hardening (cross-tab sync, etc.) |
-| `token-set-context-client/react` | Minimal React focused test, entry example | Lifecycle freeze evidence insufficient; React 17 / concurrent mode not verified |
-| `basic-auth-context-client/web` + `/react` | External-consumer scenario coverage | No dedicated focused adapter automation; standalone examples less clear |
-| `session-context-client/react` | External-consumer scenario only | No dedicated React adapter focused tests at all |
+| `token-set-context-client/web` | Focused lifecycle tests (covering callback precedence/recovery, retained-fragment replacement/reset-to-empty transitions, and shared-store fresh-client restore/reset), reference-app dogfooding, minimal entry example | Broader browser lifecycle hardening (cross-tab sync, etc.) |
+| `token-set-context-client/react` | Minimal React focused test, entry example, StrictMode remount/disposal focused test, reconfigure dispose/subscription-isolation focused test | React 17 / concurrent mode not verified; broader host matrix still uncovered |
+| `basic-auth-context-client/web` + `/react` | Redirect-contract focused root tests, external-consumer scenario coverage, standalone minimal entry example, query/hash-bearing browser-route forwarding focused web tests, dedicated React provider/hook focused test | Broader browser-host semantics remain unverified |
+| `session-context-client/react` | Standalone minimal entry example, dedicated React provider/hook, refresh/cleanup focused test, StrictMode stale-fetch discard focused test, reconfigure stale-result discard focused test | React 17 / concurrent mode not verified; broader host matrix still uncovered |
 
 ## Examples and Reference Implementations
 

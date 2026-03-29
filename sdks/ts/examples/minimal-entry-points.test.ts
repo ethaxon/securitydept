@@ -1,8 +1,3 @@
-import {
-	AuthGuardResultKind,
-	BasicAuthContextClient,
-} from "@securitydept/basic-auth-context-client";
-import { performRedirect } from "@securitydept/basic-auth-context-client/web";
 import { createRuntime } from "@securitydept/client";
 import { createWebRuntime } from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
@@ -97,25 +92,9 @@ describe("minimal entry points", () => {
 		const sessionClient = new SessionContextClient({
 			baseUrl: "https://auth.example.com",
 		});
-		const basicAuthClient = new BasicAuthContextClient({
-			baseUrl: "https://auth.example.com",
-			zones: [{ zonePrefix: "/basic" }],
-		});
-		const redirect = basicAuthClient.handleUnauthorized(
-			"/basic/api/groups",
-			401,
-		);
 
 		expect(sessionClient.loginUrl("https://app.example.com/protected")).toBe(
 			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fprotected",
 		);
-		expect(redirect.kind).toBe(AuthGuardResultKind.Redirect);
-
-		vi.stubGlobal("location", { href: "https://app.example.com/current" });
-		performRedirect(redirect);
-		expect(globalThis.location.href).toBe(
-			"https://auth.example.com/basic/login?post_auth_redirect_uri=%2Fbasic%2Fapi%2Fgroups",
-		);
-		vi.unstubAllGlobals();
 	});
 });
