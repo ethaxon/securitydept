@@ -26,8 +26,10 @@ pub struct TokenJwtClaims {
     pub issued_at: u64,
     #[serde(rename = "jti")]
     pub jwt_id: String,
+    // client_id is required by RFC 9068, but it is not required by all implementations, such as
+    // authentik
     #[serde(rename = "client_id")]
-    pub client_id: String,
+    pub client_id: Option<String>,
     #[serde(rename = "scope")]
     pub scope: Option<Scope>,
     #[serde(rename = "auth_time")]
@@ -40,7 +42,7 @@ pub struct TokenJwtClaims {
     pub nounce: Option<String>,
     #[serde(rename = "azp")]
     pub azp: Option<String>,
-    #[serde(flatten)]
+    #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
     pub additional: HashMap<String, serde_json::Value>,
 }
 
