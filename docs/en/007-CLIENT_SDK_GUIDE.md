@@ -389,6 +389,33 @@ Mixed-custody should appear in the formal design, but it must be clearly marked 
 - high complexity
 - not fully implemented in v1
 
+#### Multi-OIDC-Client / Multi-Requirement Route Orchestration Boundary
+
+Another downstream-adopter scenario must also be considered:
+
+- a single frontend host talks to multiple backend services
+- different backend services may use different OIDC clients / audiences / scope sets
+- one frontend route area may require credentials for both `app1` and `app2`
+
+The hard problem in this scenario is not only “how to get tokens”, but also:
+
+- which requirements can be satisfied silently
+- which requirements require interactive redirect
+- whether multiple interactive requirements should produce a user-choice step first
+- how remaining requirements resume after callback recovery
+
+Current recommended direction:
+
+- the SDK may eventually grow **headless orchestration primitives / scheduler direction**
+- `token-set-context-client`, or a future layer above it, may own pending-requirement / callback-recovery state-machine concerns
+- chooser UI, router policy, and product-facing interaction steps should remain in adopter-owned app glue
+
+The current status should stay explicit:
+
+- this is a high-value downstream reference-case direction
+- it should inform future `token-set-context-client` design
+- but it is **not part of the currently verified v1 contract**
+
 ## Server Support
 
 Server support should not mean “a separate server-only client core”. It should still build on the same portable capability model.
@@ -867,7 +894,7 @@ All conditions must be satisfied before re-evaluating promotion to `stable`:
 |---|---|---|
 | `token-set-context-client/web` | Focused lifecycle tests (covering callback precedence/recovery, retained-fragment replacement/reset-to-empty transitions, and shared-store fresh-client restore/reset), reference-app dogfooding, minimal entry example | Broader browser lifecycle hardening (cross-tab sync, etc.) |
 | `token-set-context-client/react` | Minimal React focused test, entry example, StrictMode remount/disposal focused test, reconfigure dispose/subscription-isolation focused test | React 17 / concurrent mode not verified; broader host matrix still uncovered |
-| `basic-auth-context-client/web` + `/react` | Redirect-contract focused root tests, external-consumer scenario coverage, standalone minimal entry example, query/hash-bearing browser-route forwarding focused web tests, dedicated React provider/hook focused test | Broader browser-host semantics remain unverified |
+| `basic-auth-context-client/web` + `/react` | Redirect-contract focused root tests, zone-aware external-consumer scenario coverage, zone-aware standalone minimal entry example, query/hash-bearing browser-route forwarding focused web tests, dedicated React provider/hook focused test | Broader browser-host semantics remain unverified |
 | `session-context-client/react` | Standalone minimal entry example, dedicated React provider/hook, refresh/cleanup focused test, StrictMode stale-fetch discard focused test, reconfigure stale-result discard focused test | React 17 / concurrent mode not verified; broader host matrix still uncovered |
 
 ## Examples and Reference Implementations
@@ -886,6 +913,18 @@ The current intended reading is:
 - business helpers under `apps/webui/src/api/*`: reference app glue, not SDK public surface
 - `apps/webui/src/routes/tokenSet/*`: reference-page UI / observability glue, used to explain and regression-test SDK boundaries, not an SDK package
 - `sdks/ts/packages/test-utils`: test/demo infrastructure, and should not be conflated with reference app glue
+
+### Downstream Reference Case: Outposts
+
+In addition to `apps/server` and `apps/webui`, `/workspace/outposts` should be treated as a high-value downstream adopter reference case:
+
+- it does not replace the primary reference-app / dogfooding path
+- its value is validating real multi-backend, multi-OIDC-client, route-level requirement-orchestration scenarios
+- it is more useful for guiding future headless orchestration primitive / scheduler direction than for being read as a current completed capability
+
+See the staged planning document:
+
+- [021-REFERENCE-APP-OUTPOSTS.md](021-REFERENCE-APP-OUTPOSTS.md)
 
 ### Current Bundle / Code Split Judgment
 
