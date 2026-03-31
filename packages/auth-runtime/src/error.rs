@@ -41,7 +41,7 @@ pub enum AuthRuntimeError {
     #[cfg(feature = "token-set-context")]
     #[snafu(transparent)]
     TokenSetContext {
-        source: securitydept_token_set_context::TokenSetContextError,
+        source: securitydept_token_set_context::MediatedContextError,
     },
 }
 

@@ -8,8 +8,8 @@ use crate::{
     AuthStateMetadataDelta, AuthStateMetadataSnapshot, AuthStateSnapshot, AuthTokenSnapshot,
     AuthenticatedPrincipal, AuthenticationSource, AuthenticationSourceKind,
     CurrentAuthStateMetadataSnapshotPartial, CurrentAuthenticationSourcePartial,
-    PendingAuthStateMetadataRedemptionStore, SealedRefreshMaterial, TokenSetContext,
-    TokenSetContextError,
+    PendingAuthStateMetadataRedemptionStore, SealedRefreshMaterial, MediatedContext,
+    MediatedContextError,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, TypedBuilder, Default)]
@@ -22,7 +22,7 @@ pub struct OidcAuthStateOptions {
     pub metadata_attributes: HashMap<String, Value>,
 }
 
-impl<MS> TokenSetContext<MS>
+impl<MS> MediatedContext<MS>
 where
     MS: PendingAuthStateMetadataRedemptionStore,
 {
@@ -30,7 +30,7 @@ where
         &self,
         result: &OidcCodeCallbackResult,
         options: &OidcAuthStateOptions,
-    ) -> Result<AuthStateSnapshot, TokenSetContextError> {
+    ) -> Result<AuthStateSnapshot, MediatedContextError> {
         let mut kind_history = Vec::new();
         push_kind_history(
             &mut kind_history,
@@ -136,9 +136,9 @@ fn push_kind_history(history: &mut Vec<AuthenticationSourceKind>, kind: &Authent
 }
 
 fn seal_optional_refresh_material<MS>(
-    context: &TokenSetContext<MS>,
+    context: &MediatedContext<MS>,
     refresh_token: Option<&str>,
-) -> Result<Option<SealedRefreshMaterial>, TokenSetContextError>
+) -> Result<Option<SealedRefreshMaterial>, MediatedContextError>
 where
     MS: PendingAuthStateMetadataRedemptionStore,
 {

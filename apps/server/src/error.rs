@@ -8,7 +8,7 @@ use securitydept_core::{
     creds_manage::CredsManageError,
     oidc::OidcError,
     session_context::SessionContextError,
-    token_set_context::TokenSetContextError,
+    token_set_context::MediatedContextError,
     utils::{
         error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
         http::ToHttpStatus,
@@ -37,7 +37,7 @@ pub enum ServerError {
     #[snafu(transparent)]
     SessionContext { source: SessionContextError },
     #[snafu(transparent)]
-    TokenSetContext { source: TokenSetContextError },
+    TokenSetContext { source: MediatedContextError },
     #[snafu(transparent)]
     AuthRuntime { source: AuthRuntimeError },
     #[snafu(transparent)]

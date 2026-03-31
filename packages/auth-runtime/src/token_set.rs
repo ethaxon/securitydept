@@ -2,9 +2,9 @@ use securitydept_creds::{CoreJwtClaims, parse_bearer_auth_header_opt};
 use securitydept_oauth_resource_server::{OAuthResourceServerVerifier, ResourceTokenPrincipal};
 use securitydept_oidc_client::{OidcClient, OidcCodeCallbackSearchParams, PendingOauthStore};
 use securitydept_token_set_context::{
-    MetadataRedemptionRequest, MetadataRedemptionResponse, OidcAuthStateOptions,
-    PendingAuthStateMetadataRedemptionStore, TokenRefreshPayload, TokenSetAuthorizeQuery,
-    TokenSetContext,
+    MediatedContext, MetadataRedemptionRequest, MetadataRedemptionResponse,
+    OidcAuthStateOptions, PendingAuthStateMetadataRedemptionStore, TokenRefreshPayload,
+    TokenSetAuthorizeQuery,
 };
 use securitydept_utils::http::HttpResponse;
 use url::Url;
@@ -18,7 +18,7 @@ where
     MS: PendingAuthStateMetadataRedemptionStore,
 {
     oidc_client: &'a OidcClient<PS>,
-    token_set_context: &'a TokenSetContext<MS>,
+    token_set_context: &'a MediatedContext<MS>,
     callback_path: &'a str,
 }
 
@@ -29,7 +29,7 @@ where
 {
     pub fn new(
         oidc_client: &'a OidcClient<P>,
-        token_set_context: &'a TokenSetContext<M>,
+        token_set_context: &'a MediatedContext<M>,
         callback_path: &'a str,
     ) -> Self {
         Self {

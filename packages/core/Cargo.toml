@@ -215,6 +215,7 @@ session-context = [
 # Token Set Context
 token-set-context = [
     "dep:securitydept-token-set-context",
+    "oauth-provider",
     "oidc-client",
     "oauth-resource-server",
     "utils",

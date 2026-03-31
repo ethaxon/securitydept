@@ -15,7 +15,7 @@ use securitydept_core::{
     realip::{RealIpResolver, ResolvedClientIp, TransportContext},
     token_set_context::{
         AxumReverseProxyPropagationForwarder, MokaPendingAuthStateMetadataRedemptionStore,
-        TokenSetContext,
+        MediatedContext,
     },
 };
 use url::Url;
@@ -30,7 +30,7 @@ use crate::{
 pub struct ServerState {
     pub config: Arc<ServerConfig>,
     pub creds_manage_store: Arc<CredsManageStore>,
-    pub token_set_context: Arc<TokenSetContext<MokaPendingAuthStateMetadataRedemptionStore>>,
+    pub token_set_context: Arc<MediatedContext<MokaPendingAuthStateMetadataRedemptionStore>>,
     pub basic_auth_context: Arc<BasicAuthContext<Argon2BasicAuthCred>>,
     pub token_set_resource_verifier: Option<Arc<OAuthResourceServerVerifier>>,
     pub real_ip_resolver: Option<Arc<RealIpResolver>>,

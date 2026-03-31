@@ -5,7 +5,7 @@ pub mod error;
 pub mod models;
 pub mod pending_store;
 pub use client::OidcClient;
-pub use config::OidcClientConfig;
+pub use config::{OidcClientConfig, OidcClientRawConfig};
 pub use error::{OidcError, OidcResult};
 pub use models::{
     ClaimsCheckResult, ExtraOidcClaims, IdTokenClaimsWithExtra, OidcCodeCallbackResult,

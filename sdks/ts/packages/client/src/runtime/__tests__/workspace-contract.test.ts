@@ -51,7 +51,16 @@ const CONTRACTS: PackageContract[] = [
 	{
 		dir: "token-set-context-client",
 		name: "@securitydept/token-set-context-client",
-		exportKeys: [".", "./web", "./react"],
+		exportKeys: [
+			".",
+			"./token-set",
+			"./token-set/web",
+			"./token-set/react",
+			"./web",
+			"./react",
+			"./orchestration",
+			"./oidc",
+		],
 		reactAdapter: true,
 		experimental: false,
 	},

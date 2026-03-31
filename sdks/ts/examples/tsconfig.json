@@ -35,6 +35,21 @@
 			"@securitydept/token-set-context-client": [
 				"../packages/token-set-context-client/src/index.ts"
 			],
+			"@securitydept/token-set-context-client/token-set": [
+				"../packages/token-set-context-client/src/token-set/index.ts"
+			],
+			"@securitydept/token-set-context-client/token-set/web": [
+				"../packages/token-set-context-client/src/token-set/web/index.ts"
+			],
+			"@securitydept/token-set-context-client/token-set/react": [
+				"../packages/token-set-context-client/src/token-set/react/index.tsx"
+			],
+			"@securitydept/token-set-context-client/orchestration": [
+				"../packages/token-set-context-client/src/orchestration/index.ts"
+			],
+			"@securitydept/token-set-context-client/oidc": [
+				"../packages/token-set-context-client/src/oidc/index.ts"
+			],
 			"@securitydept/token-set-context-client/react": [
 				"../packages/token-set-context-client/src/react/index.tsx"
 			],

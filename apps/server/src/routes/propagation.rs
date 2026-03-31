@@ -98,8 +98,8 @@ mod tests {
             AllowedPropagationTarget, AxumReverseProxyPropagationForwarder,
             AxumReverseProxyPropagationForwarderConfig,
             MokaPendingAuthStateMetadataRedemptionConfig, PropagationDestinationPolicy,
-            PropagationDirective, PropagationScheme, TokenPropagatorConfig, TokenSetContext,
-            TokenSetContextConfig,
+            PropagationDirective, PropagationScheme, TokenPropagatorConfig, MediatedContext,
+            MediatedContextConfig,
         },
     };
     use tokio::net::TcpListener;
@@ -146,7 +146,7 @@ mod tests {
         });
 
         let token_set_context_config =
-            TokenSetContextConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
+            MediatedContextConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
                 token_propagation: TokenPropagatorConfig {
                     destination_policy: PropagationDestinationPolicy {
                         allowed_targets: vec![AllowedPropagationTarget::ExactOrigin {
@@ -198,7 +198,7 @@ mod tests {
                     .expect("creds store should load"),
             ),
             token_set_context: Arc::new(
-                TokenSetContext::from_config(token_set_context_config)
+                MediatedContext::from_config(token_set_context_config)
                     .expect("token set context should build"),
             ),
             basic_auth_context: Arc::new(

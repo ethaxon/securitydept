@@ -1,14 +1,23 @@
+// Token-set state persistence.
+//
+// This module is a token-set-specific wrapper around the generic
+// createAuthStatePersistence helper from the orchestration layer.
+//
+// Why a wrapper instead of direct use?
+// - The token-set sealed flow uses the same AuthSnapshot shape, so the generic
+//   persistence can handle the actual store/parse/validate work.
+// - The token-set specific error codes (token_set.*) and the
+//   TokenSetContextSource.Persistence trace source need to remain
+//   token-set specific, so we keep this thin shim that re-maps error codes.
+//
+// If the error code distinction becomes unimportant in the future,
+// this file can be replaced entirely by direct use of createAuthStatePersistence.
+
 import type { RecordStore } from "@securitydept/client";
 import { ClientError, ClientErrorKind } from "@securitydept/client";
-import { type AuthStateSnapshot, TokenSetContextSource } from "./types";
-
-const TOKEN_SET_STATE_VERSION = 1;
-
-interface StoredTokenSetStateEnvelope {
-	version: number;
-	storedAt: number;
-	value: AuthStateSnapshot;
-}
+import { createAuthStatePersistence } from "./orchestration/index";
+import type { AuthStateSnapshot } from "./types";
+import { TokenSetContextSource } from "./types";
 
 export interface TokenSetStatePersistence {
 	load(): Promise<AuthStateSnapshot | null>;
@@ -16,110 +25,73 @@ export interface TokenSetStatePersistence {
 	clear(): Promise<void>;
 }
 
+/**
+ * Create a persistence adapter for token-set auth state.
+ *
+ * Delegates the generic store/parse/validate work to the orchestration layer,
+ * then re-maps persistence error codes to the token-set namespace for
+ * backward-compatible trace output.
+ */
 export function createTokenSetStatePersistence(options: {
 	store: RecordStore;
 	key: string;
 	now: () => number;
 }): TokenSetStatePersistence {
+	// Delegate to the protocol-agnostic persistence from the orchestration layer.
+	const base = createAuthStatePersistence(options);
+
 	return {
 		async load(): Promise<AuthStateSnapshot | null> {
-			const raw = await options.store.get(options.key);
-			if (raw === null) {
-				return null;
+			try {
+				return await base.load();
+			} catch (cause) {
+				// Re-map orchestration error codes to token-set namespace for
+				// backward compatibility with existing trace consumers.
+				throw remapPersistenceError(cause);
 			}
-
-			const parsed = parseEnvelope(raw);
-			return parsed.value;
 		},
 
 		async save(snapshot: AuthStateSnapshot): Promise<void> {
-			const envelope: StoredTokenSetStateEnvelope = {
-				version: TOKEN_SET_STATE_VERSION,
-				storedAt: options.now(),
-				value: snapshot,
-			};
-
-			await options.store.set(options.key, JSON.stringify(envelope));
+			return base.save(snapshot);
 		},
 
 		async clear(): Promise<void> {
-			await options.store.remove(options.key);
+			return base.clear();
 		},
 	};
 }
 
-function parseEnvelope(raw: string): StoredTokenSetStateEnvelope {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch (cause) {
-		throw new ClientError({
-			kind: ClientErrorKind.Protocol,
-			code: "token_set.persistence.invalid_json",
-			message: "Persisted token-set state is not valid JSON",
-			source: TokenSetContextSource.Persistence,
-			cause,
-		});
+/**
+ * Map orchestration-layer persistence errors to token-set-specific error codes.
+ *
+ * The orchestration layer uses `token_orchestration.persistence.*` codes;
+ * the token-set v1 surface has historically advertised `token_set.persistence.*`
+ * codes. Remapping keeps backward compatibility while the orchestration layer
+ * owns the actual implementation.
+ */
+function remapPersistenceError(cause: unknown): unknown {
+	if (!(cause instanceof ClientError)) {
+		return cause;
 	}
 
-	if (
-		!parsed ||
-		typeof parsed !== "object" ||
-		!("version" in parsed) ||
-		!("value" in parsed)
-	) {
-		throw new ClientError({
-			kind: ClientErrorKind.Protocol,
-			code: "token_set.persistence.invalid_envelope",
-			message: "Persisted token-set state has an invalid envelope",
-			source: TokenSetContextSource.Persistence,
-		});
-	}
-
-	const envelope = parsed as Partial<StoredTokenSetStateEnvelope>;
-
-	if (envelope.version !== TOKEN_SET_STATE_VERSION) {
-		throw new ClientError({
-			kind: ClientErrorKind.Protocol,
-			code: "token_set.persistence.unsupported_version",
-			message: `Unsupported token-set state version: ${String(envelope.version)}`,
-			source: TokenSetContextSource.Persistence,
-		});
-	}
-
-	if (!isAuthStateSnapshot(envelope.value)) {
-		throw new ClientError({
-			kind: ClientErrorKind.Protocol,
-			code: "token_set.persistence.invalid_snapshot",
-			message: "Persisted token-set state payload is invalid",
-			source: TokenSetContextSource.Persistence,
-		});
-	}
-
-	return {
-		version: TOKEN_SET_STATE_VERSION,
-		storedAt:
-			typeof envelope.storedAt === "number" ? envelope.storedAt : Date.now(),
-		value: envelope.value,
+	const codeMap: Record<string, string> = {
+		"token_orchestration.persistence.invalid_json":
+			"token_set.persistence.invalid_json",
+		"token_orchestration.persistence.invalid_envelope":
+			"token_set.persistence.invalid_envelope",
+		"token_orchestration.persistence.unsupported_version":
+			"token_set.persistence.unsupported_version",
+		"token_orchestration.persistence.invalid_snapshot":
+			"token_set.persistence.invalid_snapshot",
 	};
-}
 
-function isAuthStateSnapshot(value: unknown): value is AuthStateSnapshot {
-	if (!value || typeof value !== "object") {
-		return false;
-	}
+	const mappedCode = codeMap[cause.code] ?? cause.code;
 
-	const snapshot = value as Partial<AuthStateSnapshot>;
-	const tokens = snapshot.tokens as
-		| Partial<AuthStateSnapshot["tokens"]>
-		| undefined;
-	const metadata = snapshot.metadata;
-
-	return (
-		!!tokens &&
-		typeof tokens === "object" &&
-		typeof tokens.accessToken === "string" &&
-		!!metadata &&
-		typeof metadata === "object"
-	);
+	return new ClientError({
+		kind: cause.kind ?? ClientErrorKind.Protocol,
+		code: mappedCode,
+		message: cause.message,
+		source: TokenSetContextSource.Persistence,
+		cause,
+	});
 }

@@ -100,6 +100,37 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		path: "examples/public-contract-constants.test.ts",
 		layers: [EvidenceSemanticLayer.MinimalEntry],
 	},
+	{
+		// This example backs MinimalEntry (public-contract / minimal adopter usage)
+		// only. It does NOT back VerifiedEnvironments — the Verified Environments
+		// section covers Node.js / browser host-capability claims (fetch, storage,
+		// React), which this orchestration contract test does not address.
+		path: "examples/token-orchestration-contract.test.ts",
+		layers: [EvidenceSemanticLayer.MinimalEntry],
+	},
+	{
+		// This example backs MinimalEntry for the /orchestration subpath entry
+		// and root backward-compat. Not VerifiedEnvironments — same reasoning
+		// as token-orchestration-contract.test.ts above.
+		path: "examples/token-orchestration-subpath.test.ts",
+		layers: [EvidenceSemanticLayer.MinimalEntry],
+	},
+	{
+		// This example backs MinimalEntry for the AuthMaterialController lifecycle
+		// layer. It proves the controller is usable for protocol-agnostic token
+		// material (OIDC and backend-issued scenarios).
+		// Not VerifiedEnvironments — proves contract usability, not host capability.
+		path: "examples/auth-material-controller-contract.test.ts",
+		layers: [EvidenceSemanticLayer.MinimalEntry],
+	},
+	{
+		// This example backs MinimalEntry for the frontend pure OIDC client
+		// pillar (oauth4webapi wrapper). It proves the wrapper's config vocabulary,
+		// error boundaries, and orchestration handoff shape.
+		// Not VerifiedEnvironments — no real OIDC provider in test env.
+		path: "examples/oidc-client-wrapper-contract.test.ts",
+		layers: [EvidenceSemanticLayer.MinimalEntry],
+	},
 ];
 
 function evidenceForLayer(layer: EvidenceSemanticLayer): EvidenceFileMapping[] {

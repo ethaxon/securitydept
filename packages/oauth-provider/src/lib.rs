@@ -2,6 +2,7 @@ pub mod config;
 pub mod error;
 pub mod models;
 pub mod runtime;
+pub mod shared;
 
 pub use config::{
     OAuthProviderConfig, OAuthProviderOidcConfig, OAuthProviderRemoteConfig,
@@ -11,3 +12,4 @@ pub use config::{
 pub use error::{OAuthProviderError, OAuthProviderResult};
 pub use models::{ExtraProviderMetadata, OAuthProviderMetadata, ProviderMetadataWithExtra};
 pub use runtime::OAuthProviderRuntime;
+pub use shared::OidcSharedConfig;

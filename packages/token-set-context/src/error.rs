@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[derive(Debug, Snafu)]
-pub enum TokenSetContextError {
+pub enum MediatedContextError {
     #[snafu(display("token-set context is misconfigured: {message}"))]
     ContextConfig { message: String },
     #[snafu(display("refresh material operation failed: {source}"))]
@@ -32,9 +32,9 @@ pub enum TokenSetContextError {
     TokenPropagatorError { source: TokenPropagatorError },
 }
 
-pub type TokenSetContextResult<T> = Result<T, TokenSetContextError>;
+pub type MediatedContextResult<T> = Result<T, MediatedContextError>;
 
-impl TokenSetContextError {
+impl MediatedContextError {
     pub fn status_code(&self) -> StatusCode {
         match self {
             Self::Oidc { source } => source.to_http_status(),
@@ -47,12 +47,12 @@ impl TokenSetContextError {
     }
 }
 
-impl ToErrorPresentation for TokenSetContextError {
+impl ToErrorPresentation for MediatedContextError {
     fn to_error_presentation(&self) -> ErrorPresentation {
         match self {
             Self::Oidc { source } => source.to_error_presentation(),
             Self::ContextConfig { .. } => ErrorPresentation::new(
-                "token_set_context_invalid",
+                "mediated_context_invalid",
                 "Token-set authentication is misconfigured.",
                 UserRecovery::ContactSupport,
             ),

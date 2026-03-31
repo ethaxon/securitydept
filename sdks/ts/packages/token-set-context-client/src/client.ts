@@ -12,8 +12,11 @@ import {
 	LogLevel,
 	readonlySignal,
 } from "@securitydept/client";
-import { mergeTokenDelta, parseTokenFragment } from "./fragment-parser";
-import { createTokenSetStatePersistence } from "./persistence";
+import { parseTokenFragment } from "./fragment-parser";
+// The orchestration controller manages state + persistence as a unit.
+// TokenSetContextClient builds on top of it for the generic lifecycle
+// and handles token-set-specific concerns (callback, refresh scheduling) itself.
+import { createAuthMaterialController } from "./orchestration/index";
 import type {
 	AuthStateMetadataSnapshot,
 	AuthStateSnapshot,
@@ -57,7 +60,13 @@ const TokenSetRefreshTriggerKind = {
  *   currently guards client lifecycle and post-await state transitions.
  */
 export class TokenSetContextClient {
-	private readonly _state = createSignal<AuthStateSnapshot | null>(null);
+	// The orchestration controller owns state + persistence lifecycle.
+	// token-set-specific concerns (callback fragment parsing, refresh scheduling)
+	// are layered on top here and remain in the client.
+	private readonly _authMaterial;
+	// Internal signal bridges the controller's snapshot to a reactive signal,
+	// because the controller uses a plain getter (no signal) for simplicity.
+	private readonly _stateSignal = createSignal<AuthStateSnapshot | null>(null);
 	private readonly _baseUrl: string;
 	private readonly _loginPath: string;
 	private readonly _refreshPath: string;
@@ -65,9 +74,6 @@ export class TokenSetContextClient {
 	private readonly _refreshWindowMs: number;
 	private readonly _defaultPostAuthRedirectUri?: string;
 	private readonly _runtime: ClientRuntime;
-	private readonly _persistence: ReturnType<
-		typeof createTokenSetStatePersistence
-	> | null;
 	private readonly _rootCancellation: CancellationTokenSourceTrait =
 		createCancellationTokenSource();
 	private _refreshHandle: CancelableHandle | null = null;
@@ -85,17 +91,22 @@ export class TokenSetContextClient {
 		this._refreshWindowMs = config.refreshWindowMs ?? DEFAULT_REFRESH_WINDOW_MS;
 		this._defaultPostAuthRedirectUri = config.defaultPostAuthRedirectUri;
 		this._runtime = runtime;
-		this._persistence =
-			this._runtime.persistentStore === undefined
-				? null
-				: createTokenSetStatePersistence({
-						store: this._runtime.persistentStore,
-						key:
-							config.persistentStateKey ??
-							`${DEFAULT_PERSISTENCE_KEY_PREFIX}:v1:${this._baseUrl}`,
-						now: () => this._runtime.clock.now(),
-					});
-		this.state = readonlySignal(this._state);
+		// Build the orchestration controller for generic state+persistence lifecycle.
+		// The token-set client layers callback parsing & refresh scheduling on top.
+		this._authMaterial = createAuthMaterialController(
+			runtime.persistentStore !== undefined
+				? {
+						persistence: {
+							store: runtime.persistentStore,
+							key:
+								config.persistentStateKey ??
+								`${DEFAULT_PERSISTENCE_KEY_PREFIX}:v1:${this._baseUrl}`,
+							now: () => this._runtime.clock.now(),
+						},
+					}
+				: {},
+		);
+		this.state = readonlySignal(this._stateSignal);
 	}
 
 	/** Build the login/authorize URL with optional post-auth redirect. */
@@ -148,8 +159,7 @@ export class TokenSetContextClient {
 				metadata,
 			};
 
-			await this._persistSnapshot(snapshot);
-			this._setState(snapshot);
+			await this._applySnapshot(snapshot);
 
 			this._runtime.logger?.log({
 				level: LogLevel.Info,
@@ -159,7 +169,7 @@ export class TokenSetContextClient {
 
 			this._recordTrace("token_set.callback.succeeded", {
 				hasMetadataRedemption: parsed.metadataRedemptionId !== undefined,
-				persisted: this._persistence !== null,
+				persisted: this._authMaterial.persistence !== null,
 			});
 
 			return snapshot;
@@ -172,7 +182,10 @@ export class TokenSetContextClient {
 	/** Manually set auth state (e.g. from persisted storage or SSR bootstrap). */
 	restoreState(snapshot: AuthStateSnapshot): void {
 		this._throwIfNotOperational();
-		this._setState(snapshot);
+		// Sync both the controller (bearer/refresh reads) and the reactive signal.
+		this._authMaterial.injectSnapshot(snapshot);
+		this._stateSignal.set(snapshot);
+		this._scheduleRefresh();
 		this._recordTrace("token_set.state.restored", {
 			sourceKind: TokenSetStateRestoreSourceKind.Manual,
 		});
@@ -182,17 +195,17 @@ export class TokenSetContextClient {
 	async restorePersistedState(): Promise<AuthStateSnapshot | null> {
 		this._throwIfNotOperational();
 
-		if (!this._persistence) {
+		if (!this._authMaterial.persistence) {
 			return null;
 		}
 
 		let snapshot: AuthStateSnapshot | null;
 		try {
-			snapshot = await this._persistence.load();
+			snapshot = await this._authMaterial.restoreFromPersistence();
 		} catch (error) {
 			let cleared = false;
 			try {
-				await this._persistence.clear();
+				await this._authMaterial.persistence.clear();
 				cleared = true;
 			} catch (clearError) {
 				this._runtime.logger?.log({
@@ -226,7 +239,8 @@ export class TokenSetContextClient {
 			return null;
 		}
 
-		this._setState(snapshot);
+		this._stateSignal.set(snapshot);
+		this._scheduleRefresh();
 		this._recordTrace("token_set.state.restored", {
 			sourceKind: TokenSetStateRestoreSourceKind.PersistentStore,
 		});
@@ -236,11 +250,11 @@ export class TokenSetContextClient {
 
 	/** Explicitly clear persisted auth state without disposing the client. */
 	async clearPersistedState(): Promise<void> {
-		if (!this._persistence) {
+		if (!this._authMaterial.persistence) {
 			return;
 		}
 
-		await this._persistence.clear();
+		await this._authMaterial.persistence.clear();
 	}
 
 	/** Clear current in-memory auth state and optionally persisted state. */
@@ -248,15 +262,13 @@ export class TokenSetContextClient {
 		this._throwIfNotOperational();
 
 		this._cancelRefresh("clear_state");
-		this._state.set(null);
-
-		const clearPersisted = options.clearPersisted ?? true;
-		if (clearPersisted) {
-			await this.clearPersistedState();
-		}
+		// Delegate to the orchestration controller to clear state + (optionally) persistence.
+		await this._authMaterial.clearState(options);
+		// Sync the reactive signal after the controller clears in-memory state.
+		this._stateSignal.set(null);
 
 		this._recordTrace("token_set.state.cleared", {
-			clearPersisted,
+			clearPersisted: options.clearPersisted ?? true,
 		});
 	}
 
@@ -269,7 +281,7 @@ export class TokenSetContextClient {
 	 * extracts the fragment from the Location header directly.
 	 */
 	async refresh(): Promise<AuthStateSnapshot | null> {
-		const current = this._state.get();
+		const current = this._authMaterial.snapshot;
 		if (!current?.tokens.refreshMaterial) {
 			return null;
 		}
@@ -321,7 +333,6 @@ export class TokenSetContextClient {
 
 				const fragment = location.substring(fragmentIndex + 1);
 				const parsed = parseTokenFragment(fragment);
-				const merged = mergeTokenDelta(current.tokens, parsed.tokens);
 
 				let metadata = current.metadata;
 				if (parsed.metadataRedemptionId) {
@@ -335,13 +346,14 @@ export class TokenSetContextClient {
 
 				this._throwIfNotOperational();
 
-				const newSnapshot: AuthStateSnapshot = {
-					tokens: merged,
+				// Delegate token merge + persistence to the orchestration controller.
+				// The controller applies mergeTokenDelta internally and saves to store.
+				// The client layer keeps: redirect parsing, metadata redemption, scheduling.
+				const newSnapshot = await this._authMaterial.applyDelta(parsed.tokens, {
 					metadata,
-				};
-
-				await this._persistSnapshot(newSnapshot);
-				this._setState(newSnapshot);
+				});
+				this._stateSignal.set(newSnapshot);
+				this._scheduleRefresh();
 
 				this._runtime.logger?.log({
 					level: LogLevel.Info,
@@ -351,7 +363,7 @@ export class TokenSetContextClient {
 
 				this._recordTrace("token_set.refresh.succeeded", {
 					hasMetadataRedemption: parsed.metadataRedemptionId !== undefined,
-					persisted: this._persistence !== null,
+					persisted: this._authMaterial.persistence !== null,
 				});
 
 				return newSnapshot;
@@ -367,11 +379,8 @@ export class TokenSetContextClient {
 
 	/** Get the current bearer authorization header value. */
 	authorizationHeader(): string | null {
-		const current = this._state.get();
-		if (!current) {
-			return null;
-		}
-		return `Bearer ${current.tokens.accessToken}`;
+		// Delegate to the orchestration-layer helper for consistent bearer projection.
+		return this._authMaterial.authorizationHeader;
 	}
 
 	/** Redeem metadata from the server by redemption ID. */
@@ -438,23 +447,20 @@ export class TokenSetContextClient {
 				source: TRACE_SCOPE,
 			}),
 		);
-		this._state.set(null);
+		this._stateSignal.set(null);
 		this._recordTrace("token_set.disposed");
 	}
 
 	// --- Private helpers ---
 
-	private _setState(snapshot: AuthStateSnapshot): void {
-		this._state.set(snapshot);
+	/**
+	 * Apply a snapshot via the orchestration controller (state + persistence as a unit),
+	 * then update the reactive signal and trigger token-set-specific refresh scheduling.
+	 */
+	private async _applySnapshot(snapshot: AuthStateSnapshot): Promise<void> {
+		await this._authMaterial.applySnapshot(snapshot);
+		this._stateSignal.set(snapshot);
 		this._scheduleRefresh();
-	}
-
-	private async _persistSnapshot(snapshot: AuthStateSnapshot): Promise<void> {
-		if (!this._persistence) {
-			return;
-		}
-
-		await this._persistence.save(snapshot);
 	}
 
 	private _throwIfNotOperational(): void {
@@ -477,7 +483,7 @@ export class TokenSetContextClient {
 
 		this._cancelRefresh("reschedule");
 
-		const current = this._state.get();
+		const current = this._authMaterial.snapshot;
 		if (
 			!current?.tokens.accessTokenExpiresAt ||
 			!current.tokens.refreshMaterial

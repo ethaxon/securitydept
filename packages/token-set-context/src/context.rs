@@ -21,28 +21,28 @@ use crate::{
     RefreshMaterialProtector, SealedRefreshMaterial, TokenPropagator, TokenPropagatorConfig,
     TokenRefreshPayload, TokenSetRedirectUriConfig, TokenSetRedirectUriResolver,
     TokenSetRedirectUriRule,
-    error::{TokenSetContextError, TokenSetContextResult},
+    error::{MediatedContextError, MediatedContextResult},
     metadata_redemption::PendingAuthStateMetadataRedemptionConfig,
 };
 
 const PENDING_POST_AUTH_REDIRECT_URI_KEY: &str = "post_auth_redirect_uri";
 
 #[derive(Debug, Clone)]
-pub struct TokenSetContextTokenRefreshResult {
+pub struct MediatedContextTokenRefreshResult {
     pub post_auth_redirect_uri: Url,
     pub auth_state_delta: AuthStateDelta,
     pub redirect_fragment: AuthTokenDeltaRedirectFragment,
 }
 
 #[derive(Debug, Clone)]
-pub struct TokenSetContextCodeCallbackResult {
+pub struct MediatedContextCodeCallbackResult {
     pub post_auth_redirect_uri: Url,
     pub auth_state_snapshot: AuthStateSnapshot,
     pub redirect_fragment: AuthTokenSnapshotRedirectFragment,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, TypedBuilder)]
-pub struct TokenSetContextConfig<MC>
+pub struct MediatedContextConfig<MC>
 where
     MC: PendingAuthStateMetadataRedemptionConfig,
 {
@@ -70,7 +70,7 @@ fn default_post_auth_redirect_config() -> TokenSetRedirectUriConfig {
     TokenSetRedirectUriConfig::dynamic_targets([TokenSetRedirectUriRule::All])
 }
 
-impl<MC> Default for TokenSetContextConfig<MC>
+impl<MC> Default for MediatedContextConfig<MC>
 where
     MC: PendingAuthStateMetadataRedemptionConfig,
 {
@@ -86,7 +86,7 @@ where
 }
 
 #[derive(Clone)]
-pub struct TokenSetContext<MS>
+pub struct MediatedContext<MS>
 where
     MS: PendingAuthStateMetadataRedemptionStore,
 {
@@ -96,60 +96,60 @@ where
     metadata_redemption_store: MS,
 }
 
-impl<MS> fmt::Debug for TokenSetContext<MS>
+impl<MS> fmt::Debug for MediatedContext<MS>
 where
     MS: PendingAuthStateMetadataRedemptionStore,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("TokenSetContext { refresh_material_protector: REDACTED }")
+        f.write_str("MediatedContext { refresh_material_protector: REDACTED }")
     }
 }
 
-impl<MC> TokenSetContextConfig<MC>
+impl<MC> MediatedContextConfig<MC>
 where
     MC: PendingAuthStateMetadataRedemptionConfig,
 {
-    pub fn validate(&self) -> TokenSetContextResult<()> {
+    pub fn validate(&self) -> MediatedContextResult<()> {
         if self.sealed_refresh_token
             && self
                 .master_key
                 .as_deref()
                 .is_none_or(|value| value.trim().is_empty())
         {
-            return Err(TokenSetContextError::ContextConfig {
+            return Err(MediatedContextError::ContextConfig {
                 message: "master_key is required when sealed_refresh_token is enabled".to_string(),
             });
         }
 
         self.post_auth_redirect
             .validate_as_uri()
-            .map_err(|source| TokenSetContextError::RedirectUri { source })?;
+            .map_err(|source| MediatedContextError::RedirectUri { source })?;
         self.token_propagation
             .validate()
-            .map_err(|source| TokenSetContextError::TokenPropagatorError { source })?;
+            .map_err(|source| MediatedContextError::TokenPropagatorError { source })?;
 
         Ok(())
     }
 }
 
-impl<MS> TokenSetContext<MS>
+impl<MS> MediatedContext<MS>
 where
     MS: PendingAuthStateMetadataRedemptionStore,
 {
-    pub fn from_config(config: TokenSetContextConfig<MS::Config>) -> TokenSetContextResult<Self> {
+    pub fn from_config(config: MediatedContextConfig<MS::Config>) -> MediatedContextResult<Self> {
         Self::from_config_with_node_target_resolver(config, None)
     }
 
     pub fn from_config_with_node_target_resolver(
-        config: TokenSetContextConfig<MS::Config>,
+        config: MediatedContextConfig<MS::Config>,
         node_target_resolver: Option<Arc<dyn PropagationNodeTargetResolver>>,
-    ) -> TokenSetContextResult<Self> {
+    ) -> MediatedContextResult<Self> {
         config.validate()?;
 
         let refresh_material_protector: Arc<dyn RefreshMaterialProtector> =
             if config.sealed_refresh_token {
                 let master_key = config.master_key.as_deref().ok_or_else(|| {
-                    TokenSetContextError::ContextConfig {
+                    MediatedContextError::ContextConfig {
                         message: "master_key is required when sealed_refresh_token is enabled"
                             .to_string(),
                     }
@@ -157,7 +157,7 @@ where
 
                 Arc::new(
                     AeadRefreshMaterialProtector::from_master_key(master_key)
-                        .map_err(|source| TokenSetContextError::RefreshMaterial { source })?,
+                        .map_err(|source| MediatedContextError::RefreshMaterial { source })?,
                 )
             } else {
                 Arc::new(PassthroughRefreshMaterialProtector)
@@ -184,28 +184,28 @@ where
     pub fn seal_refresh_token(
         &self,
         refresh_token: &str,
-    ) -> TokenSetContextResult<SealedRefreshMaterial> {
+    ) -> MediatedContextResult<SealedRefreshMaterial> {
         self.refresh_material_protector
             .seal(refresh_token)
-            .map_err(|source| TokenSetContextError::RefreshMaterial { source })
+            .map_err(|source| MediatedContextError::RefreshMaterial { source })
     }
 
     pub fn unseal_refresh_token(
         &self,
         material: &SealedRefreshMaterial,
-    ) -> TokenSetContextResult<String> {
+    ) -> MediatedContextResult<String> {
         self.refresh_material_protector
             .unseal(material)
-            .map_err(|source| TokenSetContextError::RefreshMaterial { source })
+            .map_err(|source| MediatedContextError::RefreshMaterial { source })
     }
 
     pub fn resolve_post_auth_redirect_uri(
         &self,
         requested_post_auth_redirect_uri: Option<&str>,
-    ) -> TokenSetContextResult<url::Url> {
+    ) -> MediatedContextResult<url::Url> {
         self.redirect_uri_resolver
             .resolve_redirect_uri(requested_post_auth_redirect_uri)
-            .map_err(|source| TokenSetContextError::RedirectUri { source })
+            .map_err(|source| MediatedContextError::RedirectUri { source })
     }
 
     pub fn token_propagator(&self) -> &TokenPropagator {
@@ -224,20 +224,20 @@ where
         &self,
         bearer: &PropagatedBearer<'_>,
         target: &PropagationRequestTarget,
-    ) -> TokenSetContextResult<()> {
+    ) -> MediatedContextResult<()> {
         self.token_propagator
             .validate_target(bearer, target)
-            .map_err(|source| TokenSetContextError::TokenPropagatorError { source })
+            .map_err(|source| MediatedContextError::TokenPropagatorError { source })
     }
 
     pub fn propagation_authorization_header_value(
         &self,
         bearer: &PropagatedBearer<'_>,
         target: &PropagationRequestTarget,
-    ) -> TokenSetContextResult<http::header::HeaderValue> {
+    ) -> MediatedContextResult<http::header::HeaderValue> {
         self.token_propagator
             .authorization_header_value(bearer, target)
-            .map_err(|source| TokenSetContextError::TokenPropagatorError { source })
+            .map_err(|source| MediatedContextError::TokenPropagatorError { source })
     }
 
     pub fn apply_propagation_authorization_header(
@@ -245,10 +245,10 @@ where
         bearer: &PropagatedBearer<'_>,
         target: &PropagationRequestTarget,
         headers: &mut HeaderMap,
-    ) -> TokenSetContextResult<()> {
+    ) -> MediatedContextResult<()> {
         self.token_propagator
             .apply_authorization_header(bearer, target, headers)
-            .map_err(|source| TokenSetContextError::TokenPropagatorError { source })
+            .map_err(|source| MediatedContextError::TokenPropagatorError { source })
     }
 
     pub async fn authorize_code_flow<PS>(
@@ -257,7 +257,7 @@ where
         external_base_url: &Url,
         requested_post_auth_redirect_uri: Option<&str>,
         redirect_url_override: Option<&str>,
-    ) -> TokenSetContextResult<OidcCodeFlowAuthorizationRequest>
+    ) -> MediatedContextResult<OidcCodeFlowAuthorizationRequest>
     where
         PS: PendingOauthStore,
     {
@@ -281,7 +281,7 @@ where
         &self,
         oidc_client: &OidcClient<PS>,
         payload: &TokenRefreshPayload,
-    ) -> TokenSetContextResult<TokenSetContextTokenRefreshResult>
+    ) -> MediatedContextResult<MediatedContextTokenRefreshResult>
     where
         PS: PendingOauthStore,
     {
@@ -290,7 +290,7 @@ where
             payload,
             |metadata, result| {
                 Box::pin(async move {
-                    TokenSetContext::<MS>::auth_state_metadata_delta_from_refresh_result(
+                    MediatedContext::<MS>::auth_state_metadata_delta_from_refresh_result(
                         metadata, result,
                     )
                 })
@@ -304,7 +304,7 @@ where
         oidc_client: &OidcClient<PS>,
         payload: &TokenRefreshPayload,
         auth_state_metadata_delta_fn: F,
-    ) -> TokenSetContextResult<TokenSetContextTokenRefreshResult>
+    ) -> MediatedContextResult<MediatedContextTokenRefreshResult>
     where
         PS: PendingOauthStore,
         F: for<'c> FnOnce(
@@ -351,7 +351,7 @@ where
         let redirect_fragment =
             AuthTokenDeltaRedirectFragment::from_delta(&token_delta, metadata_redemption_id);
 
-        Ok(TokenSetContextTokenRefreshResult {
+        Ok(MediatedContextTokenRefreshResult {
             post_auth_redirect_uri,
             auth_state_delta: AuthStateDelta {
                 tokens: token_delta,
@@ -368,7 +368,7 @@ where
         external_base_url: &Url,
         auth_state_options: &OidcAuthStateOptions,
         redirect_url_override: Option<&str>,
-    ) -> TokenSetContextResult<TokenSetContextCodeCallbackResult>
+    ) -> MediatedContextResult<MediatedContextCodeCallbackResult>
     where
         PS: PendingOauthStore,
     {
@@ -398,7 +398,7 @@ where
             metadata_redemption_id,
         );
 
-        Ok(TokenSetContextCodeCallbackResult {
+        Ok(MediatedContextCodeCallbackResult {
             post_auth_redirect_uri,
             auth_state_snapshot,
             redirect_fragment,
@@ -408,7 +408,7 @@ where
     pub async fn redeem_metadata(
         &self,
         payload: &MetadataRedemptionRequest,
-    ) -> TokenSetContextResult<Option<MetadataRedemptionResponse>> {
+    ) -> MediatedContextResult<Option<MetadataRedemptionResponse>> {
         let metadata = self
             .metadata_redemption_store
             .redeem(&payload.metadata_redemption_id, Utc::now())?;

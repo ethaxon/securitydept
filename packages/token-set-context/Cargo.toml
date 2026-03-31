@@ -17,6 +17,7 @@ axum-reverse-proxy-propagation-forwarder = [
 ]
 
 [dependencies]
+securitydept-oauth-provider = { path = "../oauth-provider" }
 securitydept-oidc-client = { path = "../oidc-client" }
 securitydept-oauth-resource-server = { path = "../oauth-resource-server" }
 securitydept-utils = { path = "../utils" }

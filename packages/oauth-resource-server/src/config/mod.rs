@@ -8,7 +8,7 @@ pub use introspection::OAuthResourceServerIntrospectionConfig;
 #[cfg(feature = "jwe")]
 pub use jwe::OAuthResourceServerJweConfig;
 use securitydept_oauth_provider::{
-    OAuthProviderConfig, OAuthProviderOidcConfig, OAuthProviderRemoteConfig,
+    OAuthProviderConfig, OAuthProviderOidcConfig, OAuthProviderRemoteConfig, OidcSharedConfig,
 };
 use securitydept_utils::ser::CommaOrSpaceSeparated;
 use serde::Deserialize;
@@ -102,6 +102,50 @@ impl OAuthResourceServerConfig {
         Ok(())
     }
 
+    /// Apply shared defaults from an `[oidc]` block in-place.
+    ///
+    /// Resolution order for supported fields:
+    /// - `well_known_url`, `issuer_url`, `jwks_uri` — local > shared > None
+    /// - `introspection.client_id`, `introspection.client_secret` — local >
+    ///   shared > None (only when `introspection` is already `Some`)
+    ///
+    /// Duration fields are resolved with sentinel heuristics; see
+    /// [`OidcSharedConfig`] for the known limitation.
+    pub fn apply_shared_defaults(&mut self, shared: &OidcSharedConfig) {
+        self.remote = shared.resolve_remote(&self.remote);
+
+        // Apply shared credential defaults into the introspection block when
+        // present so that a single confidential client identity can serve both
+        // oidc-client and introspection without repeating the secret.
+        if let Some(introspection) = self.introspection.as_mut() {
+            if introspection.client_id.is_none() {
+                introspection.client_id = shared.resolve_client_id(None);
+            }
+            if introspection.client_secret.is_none() {
+                introspection.client_secret = shared.resolve_client_secret(None);
+            }
+        }
+    }
+
+    /// **Recommended entry point.** Apply shared defaults and validate in one
+    /// step.
+    ///
+    /// Equivalent to `self.apply_shared_defaults(shared); self.validate()`
+    /// but eliminates manual glue.
+    ///
+    /// ```text
+    /// [oidc]                      ──┐
+    ///                               ├──▸ resolve_config() ──▸ validated &mut self
+    /// [oauth_resource_server]     ──┘
+    /// ```
+    pub fn resolve_config(
+        &mut self,
+        shared: &OidcSharedConfig,
+    ) -> OAuthResourceServerResult<()> {
+        self.apply_shared_defaults(shared);
+        self.validate()
+    }
+
     pub fn provider_config(&self) -> OAuthProviderConfig {
         OAuthProviderConfig {
             remote: self.remote.clone(),
@@ -136,7 +180,7 @@ fn default_clock_skew() -> Duration {
 
 #[cfg(test)]
 mod tests {
-    use securitydept_oauth_provider::OAuthProviderRemoteConfig;
+    use securitydept_oauth_provider::{OAuthProviderRemoteConfig, OidcSharedConfig};
 
     #[cfg(feature = "jwe")]
     use super::OAuthResourceServerJweConfig;
@@ -234,5 +278,196 @@ mod tests {
         };
 
         assert!(config.validate().is_ok());
+    }
+
+    // ---------------------------------------------------------------------------
+    // Shared-defaults resolution tests
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn apply_shared_defaults_inherits_well_known_url_from_oidc_block() {
+        let shared = OidcSharedConfig {
+            remote: OAuthProviderRemoteConfig {
+                well_known_url: Some(
+                    "https://auth.example.com/.well-known/openid-configuration".to_string(),
+                ),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let mut config = OAuthResourceServerConfig::default();
+        config.apply_shared_defaults(&shared);
+
+        assert_eq!(
+            config.remote.well_known_url.as_deref(),
+            Some("https://auth.example.com/.well-known/openid-configuration"),
+            "well_known_url should be inherited from [oidc]"
+        );
+    }
+
+    #[test]
+    fn local_well_known_url_takes_priority_over_shared() {
+        let shared = OidcSharedConfig {
+            remote: OAuthProviderRemoteConfig {
+                well_known_url: Some("https://shared.example.com/.well-known".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let mut config = OAuthResourceServerConfig {
+            remote: OAuthProviderRemoteConfig {
+                well_known_url: Some("https://local.example.com/.well-known".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        config.apply_shared_defaults(&shared);
+
+        assert_eq!(
+            config.remote.well_known_url.as_deref(),
+            Some("https://local.example.com/.well-known"),
+            "local well_known_url should take priority over shared"
+        );
+    }
+
+    #[test]
+    fn apply_shared_defaults_fills_introspection_client_id_from_oidc_block() {
+        let shared = OidcSharedConfig {
+            remote: OAuthProviderRemoteConfig {
+                well_known_url: Some(
+                    "https://auth.example.com/.well-known/openid-configuration".to_string(),
+                ),
+                ..Default::default()
+            },
+            client_id: Some("shared-app".to_string()),
+            client_secret: Some("shared-secret".to_string()),
+        };
+
+        let mut config = OAuthResourceServerConfig {
+            introspection: Some(OAuthResourceServerIntrospectionConfig::default()),
+            ..Default::default()
+        };
+        config.apply_shared_defaults(&shared);
+
+        let introspection = config.introspection.as_ref().unwrap();
+        assert_eq!(
+            introspection.client_id.as_deref(),
+            Some("shared-app"),
+            "introspection.client_id should be inherited from [oidc]"
+        );
+        assert_eq!(
+            introspection.client_secret.as_deref(),
+            Some("shared-secret"),
+            "introspection.client_secret should be inherited from [oidc]"
+        );
+        // validate() should now pass
+        assert!(
+            config.validate().is_ok(),
+            "config should be valid after shared defaults applied"
+        );
+    }
+
+    #[test]
+    fn local_introspection_client_id_not_overwritten_by_shared() {
+        let shared = OidcSharedConfig {
+            client_id: Some("shared-app".to_string()),
+            ..Default::default()
+        };
+
+        let mut config = OAuthResourceServerConfig {
+            remote: OAuthProviderRemoteConfig {
+                well_known_url: Some(
+                    "https://auth.example.com/.well-known/openid-configuration".to_string(),
+                ),
+                ..Default::default()
+            },
+            introspection: Some(OAuthResourceServerIntrospectionConfig {
+                client_id: Some("local-rs".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        config.apply_shared_defaults(&shared);
+
+        assert_eq!(
+            config.introspection.unwrap().client_id.as_deref(),
+            Some("local-rs"),
+            "local introspection.client_id must take priority over shared"
+        );
+    }
+
+    #[test]
+    fn shared_defaults_not_applied_when_no_introspection_block() {
+        let shared = OidcSharedConfig {
+            client_id: Some("shared-app".to_string()),
+            remote: OAuthProviderRemoteConfig {
+                well_known_url: Some(
+                    "https://auth.example.com/.well-known/openid-configuration".to_string(),
+                ),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let mut config = OAuthResourceServerConfig::default();
+        config.apply_shared_defaults(&shared);
+
+        // No introspection block — should not create one from shared defaults
+        assert!(
+            config.introspection.is_none(),
+            "should not create introspection block from shared defaults alone"
+        );
+    }
+
+    // ---------------------------------------------------------------------------
+    // resolve_config (unified entry) tests
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn resolve_config_applies_defaults_and_validates_in_one_step() {
+        let shared = OidcSharedConfig {
+            remote: OAuthProviderRemoteConfig {
+                well_known_url: Some(
+                    "https://auth.example.com/.well-known/openid-configuration".to_string(),
+                ),
+                ..Default::default()
+            },
+            client_id: Some("shared-app".to_string()),
+            client_secret: Some("shared-secret".to_string()),
+        };
+
+        let mut config = OAuthResourceServerConfig {
+            introspection: Some(OAuthResourceServerIntrospectionConfig::default()),
+            ..Default::default()
+        };
+
+        config
+            .resolve_config(&shared)
+            .expect("should resolve and validate");
+
+        assert_eq!(
+            config.remote.well_known_url.as_deref(),
+            Some("https://auth.example.com/.well-known/openid-configuration"),
+        );
+        assert_eq!(
+            config
+                .introspection
+                .as_ref()
+                .unwrap()
+                .client_id
+                .as_deref(),
+            Some("shared-app"),
+        );
+    }
+
+    #[test]
+    fn resolve_config_propagates_validation_error() {
+        let shared = OidcSharedConfig::default(); // no well_known_url
+        let mut config = OAuthResourceServerConfig::default(); // no manual fields
+
+        let result = config.resolve_config(&shared);
+        assert!(result.is_err(), "should fail validation");
     }
 }

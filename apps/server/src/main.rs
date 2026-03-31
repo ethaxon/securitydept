@@ -17,7 +17,7 @@ use securitydept_core::{
     },
     oidc::OidcClient,
     realip::RealIpResolver,
-    token_set_context::{AxumReverseProxyPropagationForwarder, TokenSetContext},
+    token_set_context::{AxumReverseProxyPropagationForwarder, MediatedContext},
 };
 use snafu::ResultExt;
 use tower_sessions_memory_store::MemoryStore;
@@ -122,7 +122,7 @@ async fn main() -> ServerResult<()> {
         None
     };
     let token_set_context = Arc::new(
-        TokenSetContext::from_config(config.token_set_context.clone()).map_err(|e| {
+        MediatedContext::from_config(config.token_set_context.clone()).map_err(|e| {
             crate::error::ServerError::InvalidConfig {
                 message: e.to_string(),
             }

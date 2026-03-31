@@ -8,6 +8,18 @@
 			"types": "./dist/index.d.mts",
 			"import": "./dist/index.mjs"
 		},
+		"./token-set": {
+			"types": "./dist/token-set/index.d.mts",
+			"import": "./dist/token-set/index.mjs"
+		},
+		"./token-set/web": {
+			"types": "./dist/token-set/web/index.d.mts",
+			"import": "./dist/token-set/web/index.mjs"
+		},
+		"./token-set/react": {
+			"types": "./dist/token-set/react/index.d.mts",
+			"import": "./dist/token-set/react/index.mjs"
+		},
 		"./web": {
 			"types": "./dist/web/index.d.mts",
 			"import": "./dist/web/index.mjs"
@@ -15,6 +27,14 @@
 		"./react": {
 			"types": "./dist/react/index.d.mts",
 			"import": "./dist/react/index.mjs"
+		},
+		"./orchestration": {
+			"types": "./dist/orchestration/index.d.mts",
+			"import": "./dist/orchestration/index.mjs"
+		},
+		"./oidc": {
+			"types": "./dist/oidc/index.d.mts",
+			"import": "./dist/oidc/index.mjs"
 		}
 	},
 	"files": [
@@ -28,9 +48,13 @@
 		"@securitydept/client": "workspace:*"
 	},
 	"peerDependencies": {
+		"oauth4webapi": "^3.0.0",
 		"react": ">=18.0.0"
 	},
 	"peerDependenciesMeta": {
+		"oauth4webapi": {
+			"optional": true
+		},
 		"react": {
 			"optional": true
 		}
@@ -38,6 +62,8 @@
 	"devDependencies": {
 		"@types/react": "^19.1.8",
 		"@types/react-dom": "^19.2.3",
+		"oauth4webapi": "^3.8.5",
+		"oidc-client-ts": "^3.5.0",
 		"react": "^19.1.0",
 		"react-dom": "^19.2.4",
 		"tsdown": "^0.21.4",

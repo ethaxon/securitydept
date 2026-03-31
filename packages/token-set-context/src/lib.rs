@@ -1,3 +1,31 @@
+//! # securitydept-token-set-context
+//!
+//! **Unified backend product surface** for the securitydept OIDC mode family,
+//! symmetric with the frontend `token-set-context-client` TS SDK.
+//!
+//! ## Backend modes
+//!
+//! Enter via the [`backend`] module:
+//!
+//! | Mode | Entry | Description |
+//! |---|---|---|
+//! | `backend-oidc-pure` | [`backend::BackendOidcPureRawConfig`] | Standard OIDC client + resource server |
+//! | `backend-oidc-mediated` | [`backend::BackendOidcMediatedRawConfig`] | Enhanced OIDC with sealed refresh, metadata redemption, token propagation |
+//!
+//! Both modes share the same [`backend::OidcSharedConfig`] resolution
+//! pipeline and `resolve_config()` entry point pattern.
+//!
+//! ## Infrastructure crates (implementation layer)
+//!
+//! The following crates provide the underlying implementations. Adopters
+//! typically do not need to depend on them directly — key types are
+//! re-exported through [`backend`]:
+//!
+//! - `securitydept-oauth-provider` — OIDC discovery, JWKS, metadata refresh
+//! - `securitydept-oidc-client` — OIDC authorization code / device flows
+//! - `securitydept-oauth-resource-server` — JWT verification, introspection
+
+pub mod backend;
 mod context;
 mod error;
 #[cfg(feature = "axum-reverse-proxy-propagation-forwarder")]
@@ -13,10 +41,10 @@ mod tests;
 mod transport;
 
 pub use context::{
-    TokenSetContext, TokenSetContextCodeCallbackResult, TokenSetContextConfig,
-    TokenSetContextTokenRefreshResult,
+    MediatedContext, MediatedContextCodeCallbackResult, MediatedContextConfig,
+    MediatedContextTokenRefreshResult,
 };
-pub use error::{TokenSetContextError, TokenSetContextResult};
+pub use error::{MediatedContextError, MediatedContextResult};
 #[cfg(feature = "axum-reverse-proxy-propagation-forwarder")]
 pub use forwarder::{
     AxumReverseProxyPropagationForwarder, AxumReverseProxyPropagationForwarderConfig,

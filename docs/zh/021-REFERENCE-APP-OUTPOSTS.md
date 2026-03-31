@@ -21,7 +21,13 @@
 - 认证流程不再只是“单 client 登录”，而是“route-level requirement orchestration”
 - adopter 必须自己决定哪些步骤静默完成、哪些步骤直接跳转、哪些步骤先让用户选择
 
-这正好能帮助我们检验：`token-set-context-client` 后续是否真的能支撑现实世界中的多资格场景，而不是只停留在单 provider / 单 callback happy path。
+这正好能帮助我们回答两件事：
+
+- `token-set-context-client` 的 OIDC mode family（`frontend-oidc` / `backend-oidc-pure` / `backend-oidc-mediated`）后续是否真的能支撑多资格场景（详见 [008-OIDC-MODE-FAMILY](008-OIDC-MODE-FAMILY.md)）
+- OIDC mode family 中各模式的边界是否清晰：
+  - **`/orchestration`**：共享 protocol-agnostic token lifecycle 基座
+  - **`/oidc` (`frontend-oidc`)**：前端纯 OIDC client
+  - **`/token-set` (`backend-oidc-mediated`)**：后端增强 OIDC adapter
 
 ## 这个案例应该验证什么
 
@@ -62,20 +68,28 @@
 
 ## 对 SDK 设计的直接影响
 
-这个参考案例对 `token-set-context-client` 的影响最直接。
+这个参考案例对 `token-set-context-client` OIDC mode family 的影响最直接：
+
+- `outposts` 当前单 `confluence` 链路更适合验证 **`frontend-oidc` / `backend-oidc-pure`** 以及 **通用 orchestration + resource-server** 这一层
+- 它暂时**不直接验证** `backend-oidc-mediated`（sealed refresh、metadata redemption）本身
 
 当前建议：
 
 1. SDK 应保留对多 token family / 多 source 管理的抽象空间
-2. route-level 多 requirement 编排应优先朝 **headless orchestration primitive** 演进
-3. 默认推荐实现可以存在，但它应是：
+2. `token-set-context-client` 的 OIDC mode family 已按以下结构演进：
+   - `/orchestration`：共享 token lifecycle 基座
+   - `/oidc`：`frontend-oidc` 模式
+   - `/token-set`：`backend-oidc-mediated` 模式
+3. route-level 多 requirement 编排应优先朝 **headless orchestration primitive** 演进
+4. 默认推荐实现可以存在，但它应是：
    - scheduler / orchestrator 默认实现
    - 最薄的 `web` / `angular` / `react` 适配
    - reference/example UI
-4. 选择界面、交互文案、失败回退策略不应直接写死在 core SDK 中
+5. 选择界面、交互文案、失败回退策略不应直接写死在 core SDK 中
 
 换句话说：
 
+- **“通用 token orchestration”值得先从 token-set 特定流程中剥离出来**
 - **“多资格调度能力”值得进入 SDK 设计视野**
 - **“多资格交互 UI”不应成为 SDK 内建职责**
 
@@ -89,8 +103,10 @@
    - access token 注入
    - audience / scope contract
    - `oauth-resource-server` 在真实 adopter 单链路里的 Bearer 校验基线
-   - route-level requirement 调度最小原型
-3. 不急着把 chooser UI 或 router glue 抽回 SDK
+3. 把这条单链路总结成对 SDK 的直接反馈：
+   - 标准 OIDC 场景已有 `/orchestration`（protocol-agnostic）和 `/oidc`（`frontend-oidc`）
+   - `backend-oidc-mediated`（sealed + metadata）是更窄的 adapter 层（`/token-set`）
+4. 不急着把 chooser UI 或 router glue 抽回 SDK
 
 ## 中期计划
 

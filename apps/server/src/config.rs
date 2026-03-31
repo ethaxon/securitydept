@@ -13,7 +13,7 @@ use securitydept_core::{
     session_context::SessionContextConfig,
     token_set_context::{
         AxumReverseProxyPropagationForwarderConfig, MokaPendingAuthStateMetadataRedemptionConfig,
-        TokenSetContextConfig,
+        MediatedContextConfig,
     },
     utils::base_url::ExternalBaseUrl,
 };
@@ -38,7 +38,7 @@ pub struct ServerConfig {
     #[serde(default)]
     pub oidc: Option<OidcClientConfig<MokaPendingOauthStoreConfig>>,
     #[serde(default)]
-    pub token_set_context: TokenSetContextConfig<MokaPendingAuthStateMetadataRedemptionConfig>,
+    pub token_set_context: MediatedContextConfig<MokaPendingAuthStateMetadataRedemptionConfig>,
     #[serde(default)]
     pub session_context: SessionContextConfig,
     #[serde(default = "default_basic_auth_context")]

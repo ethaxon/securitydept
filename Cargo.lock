@@ -4472,6 +4472,7 @@ dependencies = [
  "moka",
  "orion",
  "regex",
+ "securitydept-oauth-provider",
  "securitydept-oauth-resource-server",
  "securitydept-oidc-client",
  "securitydept-utils",

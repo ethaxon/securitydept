@@ -1,16 +1,60 @@
 // --- Token Set Context Client types ---
 // Aligned with server-side models from token-set-context crate.
+//
+// Token material / metadata / snapshot / delta types are now re-exported
+// from the internal orchestration layer. These are protocol-agnostic
+// types that do not depend on token-set sealed flow specifics.
+//
+// Token-set specific types (config, transport DTOs, context source
+// constants) remain defined here because they express token-set
+// protocol semantics.
 
-export const AuthenticationSourceKind = {
-	OidcAuthorizationCode: "oidc_authorization_code",
-	RefreshToken: "refresh_token",
-	ForwardedBearer: "forwarded_bearer",
-	StaticToken: "static_token",
-	Unknown: "unknown",
-} as const;
+// Re-export generic token orchestration types under their v1 names.
+// This keeps the public API fully backward compatible.
+import type {
+	AuthDelta as _AuthDelta,
+	AuthMetadataDelta as _AuthMetadataDelta,
+	AuthMetadataSnapshot as _AuthMetadataSnapshot,
+	AuthPrincipal as _AuthPrincipal,
+	AuthSnapshot as _AuthSnapshot,
+	AuthSource as _AuthSource,
+	TokenDelta as _TokenDelta,
+	TokenSnapshot as _TokenSnapshot,
+} from "./orchestration/types";
+import { AuthSourceKind as _AuthSourceKind } from "./orchestration/types";
 
-export type AuthenticationSourceKind =
-	(typeof AuthenticationSourceKind)[keyof typeof AuthenticationSourceKind];
+// --- v1 re-exports (backward compatible aliases) ---
+
+/** @see {@link _AuthSourceKind} - re-exported from orchestration layer */
+export const AuthenticationSourceKind = _AuthSourceKind;
+export type AuthenticationSourceKind = _AuthSourceKind;
+
+/** @see {@link _AuthSource} - re-exported from orchestration layer */
+export type AuthenticationSource = _AuthSource;
+
+/** @see {@link _AuthPrincipal} - re-exported from orchestration layer */
+export type AuthenticatedPrincipal = _AuthPrincipal;
+
+/** @see {@link _TokenSnapshot} - re-exported from orchestration layer */
+export type AuthTokenSnapshot = _TokenSnapshot;
+
+/** @see {@link _TokenDelta} - re-exported from orchestration layer */
+export type AuthTokenDelta = _TokenDelta;
+
+/** @see {@link _AuthMetadataSnapshot} - re-exported from orchestration layer */
+export type AuthStateMetadataSnapshot = _AuthMetadataSnapshot;
+
+/** @see {@link _AuthMetadataDelta} - re-exported from orchestration layer */
+export type AuthStateMetadataDelta = _AuthMetadataDelta;
+
+/** @see {@link _AuthSnapshot} - re-exported from orchestration layer */
+export type AuthStateSnapshot = _AuthSnapshot;
+
+/** @see {@link _AuthDelta} - re-exported from orchestration layer */
+export type AuthStateDelta = _AuthDelta;
+
+// --- Token-set specific constants ---
+// These are token-set protocol specific and stay in this file.
 
 export const TokenSetContextSource = {
 	Client: "token_set_context_client",
@@ -28,59 +72,7 @@ export const TokenSetStateRestoreSourceKind = {
 export type TokenSetStateRestoreSourceKind =
 	(typeof TokenSetStateRestoreSourceKind)[keyof typeof TokenSetStateRestoreSourceKind];
 
-export interface AuthenticationSource {
-	kind: AuthenticationSourceKind;
-	providerId?: string;
-	issuer?: string;
-	kindHistory?: AuthenticationSourceKind[];
-	attributes?: Record<string, unknown>;
-}
-
-export interface AuthenticatedPrincipal {
-	subject: string;
-	displayName: string;
-	picture?: string;
-	issuer?: string;
-	claims?: Record<string, unknown>;
-}
-
-export interface AuthTokenSnapshot {
-	accessToken: string;
-	idToken?: string;
-	refreshMaterial?: string;
-	accessTokenExpiresAt?: string;
-}
-
-export interface AuthTokenDelta {
-	accessToken: string;
-	idToken?: string;
-	refreshMaterial?: string;
-	accessTokenExpiresAt?: string;
-}
-
-export interface AuthStateMetadataSnapshot {
-	principal?: AuthenticatedPrincipal;
-	source?: AuthenticationSource;
-	attributes?: Record<string, unknown>;
-}
-
-export interface AuthStateMetadataDelta {
-	principal?: AuthenticatedPrincipal;
-	source?: AuthenticationSource;
-	attributes?: Record<string, unknown>;
-}
-
-export interface AuthStateSnapshot {
-	tokens: AuthTokenSnapshot;
-	metadata: AuthStateMetadataSnapshot;
-}
-
-export interface AuthStateDelta {
-	tokens: AuthTokenDelta;
-	metadata?: AuthStateMetadataDelta;
-}
-
-// --- Transport DTOs ---
+// --- Token-set specific transport DTOs ---
 
 export interface TokenRefreshPayload {
 	refreshToken: string;
@@ -101,7 +93,7 @@ export interface MetadataRedemptionResponse {
 	metadata: AuthStateMetadataSnapshot | AuthStateMetadataDelta;
 }
 
-// --- Config ---
+// --- Token-set specific config ---
 
 export interface TokenSetContextClientConfig {
 	/** Base URL of the SecurityDept server. */

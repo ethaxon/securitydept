@@ -20,8 +20,8 @@ use crate::{
 use crate::{
     MetadataRedemptionId, MokaPendingAuthStateMetadataRedemptionConfig,
     MokaPendingAuthStateMetadataRedemptionStore, PendingAuthStateMetadataRedemptionPayload,
-    PendingAuthStateMetadataRedemptionStore, TokenSetContext, TokenSetContextConfig,
-    error::TokenSetContextResult,
+    PendingAuthStateMetadataRedemptionStore, MediatedContext, MediatedContextConfig,
+    error::MediatedContextResult,
 };
 
 #[test]
@@ -141,8 +141,8 @@ fn aead_protector_round_trips_base64_material() {
 
 #[cfg(feature = "moka-pending-store")]
 #[test]
-fn token_set_context_config_requires_master_key_when_sealing_is_enabled() {
-    let error = TokenSetContextConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
+fn mediated_context_config_requires_master_key_when_sealing_is_enabled() {
+    let error = MediatedContextConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
         master_key: None,
         sealed_refresh_token: true,
         ..Default::default()
@@ -155,9 +155,9 @@ fn token_set_context_config_requires_master_key_when_sealing_is_enabled() {
 
 #[cfg(feature = "moka-pending-store")]
 #[test]
-fn token_set_context_round_trips_refresh_token() -> TokenSetContextResult<()> {
-    let context = TokenSetContext::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
-        TokenSetContextConfig {
+fn mediated_context_round_trips_refresh_token() -> MediatedContextResult<()> {
+    let context = MediatedContext::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
+        MediatedContextConfig {
             master_key: Some("01234567890123456789012345678901".to_string()),
             sealed_refresh_token: true,
             ..Default::default()
@@ -421,9 +421,9 @@ fn token_propagator_set_node_target_resolver_updates_runtime_behavior() {
 
 #[cfg(feature = "moka-pending-store")]
 #[test]
-fn token_set_context_wraps_token_propagator() {
-    let context = TokenSetContext::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
-        TokenSetContextConfig {
+fn mediated_context_wraps_token_propagator() {
+    let context = MediatedContext::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
+        MediatedContextConfig {
             token_propagation: TokenPropagatorConfig {
                 destination_policy: PropagationDestinationPolicy {
                     allowed_targets: vec![AllowedPropagationTarget::ExactOrigin {
@@ -666,7 +666,7 @@ fn propagated_bearer_with_claims() -> PropagatedBearer<'static> {
 
 #[cfg(feature = "moka-pending-store")]
 #[test]
-fn metadata_redemption_store_redeems_once() -> TokenSetContextResult<()> {
+fn metadata_redemption_store_redeems_once() -> MediatedContextResult<()> {
     let store = MokaPendingAuthStateMetadataRedemptionStore::from_config(
         &MokaPendingAuthStateMetadataRedemptionConfig::default(),
     )?;
@@ -698,7 +698,7 @@ fn metadata_redemption_store_redeems_once() -> TokenSetContextResult<()> {
 
 #[cfg(feature = "moka-pending-store")]
 #[test]
-fn metadata_redemption_store_drops_expired_entries() -> TokenSetContextResult<()> {
+fn metadata_redemption_store_drops_expired_entries() -> MediatedContextResult<()> {
     let store = MokaPendingAuthStateMetadataRedemptionStore::from_config(
         &MokaPendingAuthStateMetadataRedemptionConfig {
             ttl: std::time::Duration::from_millis(10),

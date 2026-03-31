@@ -77,6 +77,41 @@ export default defineConfig({
 				),
 			},
 			{
+				find: "@securitydept/token-set-context-client/orchestration",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client/src/orchestration/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/token-set-context-client/oidc",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client/src/oidc/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/token-set-context-client/token-set/web",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client/src/token-set/web/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/token-set-context-client/token-set/react",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client/src/token-set/react/index.tsx",
+				),
+			},
+			{
+				find: "@securitydept/token-set-context-client/token-set",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client/src/token-set/index.ts",
+				),
+			},
+			{
 				find: "@securitydept/token-set-context-client",
 				replacement: path.join(
 					packagesDir,

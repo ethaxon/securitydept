@@ -21,7 +21,13 @@ That makes `outposts` valuable for validating:
 - auth flows that are no longer just “single client login”, but “route-level requirement orchestration”
 - adopter-owned decisions around silent acquisition, direct redirects, and user-choice flows
 
-This is exactly the kind of scenario that can tell us whether `token-set-context-client` can support real multi-requirement integration instead of staying limited to single-provider / single-callback happy paths.
+This is exactly the kind of scenario that can help us answer two questions:
+
+- whether `token-set-context-client`'s OIDC mode family (`frontend-oidc` / `backend-oidc-pure` / `backend-oidc-mediated`) can truly support multi-requirement scenarios (see [008-OIDC-MODE-FAMILY](008-OIDC-MODE-FAMILY.md))
+- whether the OIDC mode family boundaries are clear:
+  - **`/orchestration`**: shared protocol-agnostic token lifecycle substrate
+  - **`/oidc` (`frontend-oidc`)**: frontend pure OIDC client
+  - **`/token-set` (`backend-oidc-mediated`)**: backend enhanced OIDC adapter
 
 ## What This Case Should Validate
 
@@ -62,20 +68,28 @@ The correct boundary is:
 
 ## Direct Impact on SDK Design
 
-This reference case matters most for `token-set-context-client`.
+This reference case matters most for `token-set-context-client`'s OIDC mode family:
+
+- the current `outposts` single-`confluence` path is better at validating **`frontend-oidc` / `backend-oidc-pure`** and the **orchestration + resource-server** layer
+- it does **not yet directly validate** `backend-oidc-mediated` (sealed refresh, metadata redemption) itself
 
 Current recommendation:
 
 1. keep room in the SDK for multi-token-family / multi-source abstractions
-2. move route-level multi-requirement orchestration toward **headless orchestration primitives** first
-3. if a default recommendation exists, it should be:
+2. `token-set-context-client`'s OIDC mode family has evolved into:
+   - `/orchestration`: shared token lifecycle substrate
+   - `/oidc`: `frontend-oidc` mode
+   - `/token-set`: `backend-oidc-mediated` mode
+3. move route-level multi-requirement orchestration toward **headless orchestration primitives** first
+4. if a default recommendation exists, it should be:
    - a default scheduler / orchestrator
    - very thin `web` / `angular` / `react` adapters
    - a reference/example UI
-4. chooser UI, product copy, and failure fallback policy should not be hard-coded into the core SDK
+5. chooser UI, product copy, and failure fallback policy should not be hard-coded into the core SDK
 
 In short:
 
+- **the orchestration layer has been separated from token-set specific flows as `/orchestration`**
 - **multi-requirement orchestration is worth bringing into SDK design**
 - **multi-requirement interaction UI should not become a built-in SDK responsibility**
 
@@ -89,8 +103,10 @@ The near-term focus should be:
    - access-token injection
    - audience / scope contract
    - the `oauth-resource-server` Bearer-validation baseline in a real adopter single-path integration
-   - a minimal route-level requirement orchestration prototype
-3. do not rush chooser UI or router glue back into the SDK
+3. turn that single-path integration into direct SDK feedback:
+   - standard OIDC scenarios already have `/orchestration` (protocol-agnostic) and `/oidc` (`frontend-oidc`)
+   - `backend-oidc-mediated` (sealed + metadata) is the narrower adapter layer (`/token-set`)
+4. do not rush chooser UI or router glue back into the SDK
 
 ## Mid-Term Plan
 
