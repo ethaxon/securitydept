@@ -1,7 +1,7 @@
 // OIDC Client Wrapper — Comparison-Driven Evidence
 //
 // This file serves as adopter-facing evidence that:
-//   1. createOidcClient wraps oauth4webapi as the official frontend pure OIDC base
+//   1. createFrontendOidcModeClient wraps oauth4webapi as the official frontend pure OIDC base
 //   2. The wrapper provides a unified config vocabulary and PKCE+state management
 //   3. Token results are normalized into a shape ready for orchestration handoff
 //   4. oidc-client-ts is not the official base — this documents why
@@ -15,25 +15,25 @@
 // the wrapper's structural guarantees and error boundaries.
 
 import type {
-	OidcClientConfig,
-	OidcTokenResult,
-} from "@securitydept/token-set-context-client/oidc";
-import { createOidcClient } from "@securitydept/token-set-context-client/oidc";
+	FrontendOidcModeClientConfig,
+	FrontendOidcModeTokenResult,
+} from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import { createFrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
 // A. Config vocabulary — what the wrapper owns
 // ---------------------------------------------------------------------------
 
-describe("OidcClient / config vocabulary", () => {
+describe("FrontendOidcModeClient / config vocabulary", () => {
 	it("accepts minimal config for a browser PKCE flow", () => {
-		const config: OidcClientConfig = {
+		const config: FrontendOidcModeClientConfig = {
 			issuer: "https://auth.example.com",
 			clientId: "spa-client",
 			redirectUri: "https://app.example.com/callback",
 		};
 
-		const client = createOidcClient(config);
+		const client = createFrontendOidcModeClient(config);
 
 		expect(client.config.issuer).toBe("https://auth.example.com");
 		expect(client.config.clientId).toBe("spa-client");
@@ -41,7 +41,7 @@ describe("OidcClient / config vocabulary", () => {
 	});
 
 	it("defaults scopes to ['openid'] when not specified", () => {
-		const client = createOidcClient({
+		const client = createFrontendOidcModeClient({
 			issuer: "https://auth.example.com",
 			clientId: "spa",
 			redirectUri: "https://app.example.com/callback",
@@ -53,14 +53,14 @@ describe("OidcClient / config vocabulary", () => {
 	});
 
 	it("accepts custom scopes", () => {
-		const config: OidcClientConfig = {
+		const config: FrontendOidcModeClientConfig = {
 			issuer: "https://auth.example.com",
 			clientId: "spa",
 			redirectUri: "https://app.example.com/callback",
 			scopes: ["openid", "profile", "email"],
 		};
 
-		const client = createOidcClient(config);
+		const client = createFrontendOidcModeClient(config);
 		expect(client.config.scopes).toEqual(["openid", "profile", "email"]);
 	});
 });
@@ -69,9 +69,9 @@ describe("OidcClient / config vocabulary", () => {
 // B. Wrapper error boundaries — before discovery
 // ---------------------------------------------------------------------------
 
-describe("OidcClient / error boundaries", () => {
+describe("FrontendOidcModeClient / error boundaries", () => {
 	it("throws when authorize() is called before discover()", async () => {
-		const client = createOidcClient({
+		const client = createFrontendOidcModeClient({
 			issuer: "https://auth.example.com",
 			clientId: "spa",
 			redirectUri: "https://app.example.com/callback",
@@ -81,7 +81,7 @@ describe("OidcClient / error boundaries", () => {
 	});
 
 	it("throws when handleCallback() is called before discover()", async () => {
-		const client = createOidcClient({
+		const client = createFrontendOidcModeClient({
 			issuer: "https://auth.example.com",
 			clientId: "spa",
 			redirectUri: "https://app.example.com/callback",
@@ -101,15 +101,15 @@ describe("OidcClient / error boundaries", () => {
 // C. Token result shape — what the orchestration handoff expects
 // ---------------------------------------------------------------------------
 
-describe("OidcClient / token result shape contract", () => {
-	it("OidcTokenResult shape is compatible with orchestration handoff", () => {
+describe("FrontendOidcModeClient / token result shape contract", () => {
+	it("FrontendOidcModeTokenResult shape is compatible with orchestration handoff", () => {
 		// This verifies the type contract at compile time + runtime shape.
 		// After a real callback, the adopter would do:
 		//   controller.applySnapshot({
 		//     tokens: { accessToken: tokens.accessToken, ... },
 		//     metadata: { source: { kind: "oidc_authorization_code" } },
 		//   })
-		const mockResult: OidcTokenResult = {
+		const mockResult: FrontendOidcModeTokenResult = {
 			accessToken: "at-from-oidc",
 			idToken: "id-token-jwt",
 			refreshToken: "rt-from-oidc",
@@ -153,7 +153,7 @@ describe("OidcClient / token result shape contract", () => {
 // only to verify we haven't missed important config dimensions.
 // ---------------------------------------------------------------------------
 
-describe("OidcClient / comparison evidence", () => {
+describe("FrontendOidcModeClient / comparison evidence", () => {
 	it("documents that oauth4webapi is the official base (not oidc-client-ts)", () => {
 		// This test exists as a living document in the test suite.
 		// The comparison analysis is in the comments above and in types.ts.

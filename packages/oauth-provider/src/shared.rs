@@ -15,9 +15,9 @@ use crate::{OAuthProviderRemoteConfig, default_jwks_refresh_interval};
 ///
 /// - `well_known_url`, `issuer_url`, `jwks_uri` — URL fields with true
 ///   presence-aware fallback (local `Some` > shared `Some` > `None`)
-/// - `client_id`, `client_secret` — optional confidential-client defaults;
-///   not pure provider connectivity, but commonly shared between
-///   `oidc_client` (full client) and `oauth_resource_server.introspection`
+/// - `client_id`, `client_secret` — optional confidential-client defaults; not
+///   pure provider connectivity, but commonly shared between `oidc_client`
+///   (full client) and `oauth_resource_server.introspection`
 ///
 /// # Known limitations
 ///
@@ -76,8 +76,7 @@ impl OidcSharedConfig {
             } else {
                 local.metadata_refresh_interval
             },
-            jwks_refresh_interval: if local.jwks_refresh_interval
-                == default_jwks_refresh_interval()
+            jwks_refresh_interval: if local.jwks_refresh_interval == default_jwks_refresh_interval()
             {
                 self.remote.jwks_refresh_interval
             } else {

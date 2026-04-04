@@ -7,21 +7,29 @@ use securitydept_oauth_resource_server::ResourceTokenPrincipal;
 use serde_json::json;
 use url::Url;
 
-use crate::{
-    AeadRefreshMaterialProtector, AllowedPropagationTarget, AuthStateMetadataSnapshot,
-    AuthStateSnapshot, AuthTokenSnapshot, AuthenticatedPrincipal, AuthenticationSource,
-    AuthenticationSourceKind, BearerPropagationPolicy, PassthroughRefreshMaterialProtector,
-    PropagatedBearer, PropagatedTokenValidationConfig, PropagationDestinationPolicy,
-    PropagationDirective, PropagationRequestTarget, PropagationScheme, RefreshMaterialProtector,
-    SealedRefreshMaterial, TokenPropagator, TokenPropagatorConfig, TokenPropagatorError,
-    TokenSetRedirectUriConfig, TokenSetRedirectUriResolver, TokenSetRedirectUriRule,
-};
 #[cfg(feature = "moka-pending-store")]
+use crate::backend_oidc_mediated_mode::{
+    BackendOidcMediatedModeRuntime, BackendOidcMediatedModeRuntimeConfig,
+    BackendOidcMediatedModeRuntimeResult, MetadataRedemptionId,
+    MokaPendingAuthStateMetadataRedemptionConfig, MokaPendingAuthStateMetadataRedemptionStore,
+    PendingAuthStateMetadataRedemptionPayload, PendingAuthStateMetadataRedemptionStore,
+};
 use crate::{
-    MetadataRedemptionId, MokaPendingAuthStateMetadataRedemptionConfig,
-    MokaPendingAuthStateMetadataRedemptionStore, PendingAuthStateMetadataRedemptionPayload,
-    PendingAuthStateMetadataRedemptionStore, MediatedContext, MediatedContextConfig,
-    error::MediatedContextResult,
+    access_token_substrate::{
+        AllowedPropagationTarget, BearerPropagationPolicy, PropagatedBearer,
+        PropagatedTokenValidationConfig, PropagationDestinationPolicy, PropagationDirective,
+        PropagationRequestTarget, PropagationScheme, TokenPropagator, TokenPropagatorConfig,
+        TokenPropagatorError,
+    },
+    backend_oidc_mediated_mode::{
+        AeadRefreshMaterialProtector, PassthroughRefreshMaterialProtector,
+        RefreshMaterialProtector, SealedRefreshMaterial, TokenSetRedirectUriConfig,
+        TokenSetRedirectUriResolver, TokenSetRedirectUriRule,
+    },
+    models::{
+        AuthStateMetadataSnapshot, AuthStateSnapshot, AuthTokenSnapshot, AuthenticatedPrincipal,
+        AuthenticationSource, AuthenticationSourceKind,
+    },
 };
 
 #[test]
@@ -142,27 +150,29 @@ fn aead_protector_round_trips_base64_material() {
 #[cfg(feature = "moka-pending-store")]
 #[test]
 fn mediated_context_config_requires_master_key_when_sealing_is_enabled() {
-    let error = MediatedContextConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
-        master_key: None,
-        sealed_refresh_token: true,
-        ..Default::default()
-    }
-    .validate()
-    .expect_err("config should be rejected");
+    let error =
+        BackendOidcMediatedModeRuntimeConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
+            master_key: None,
+            sealed_refresh_token: true,
+            ..Default::default()
+        }
+        .validate()
+        .expect_err("config should be rejected");
 
     assert!(format!("{error}").contains("master_key is required"));
 }
 
 #[cfg(feature = "moka-pending-store")]
 #[test]
-fn mediated_context_round_trips_refresh_token() -> MediatedContextResult<()> {
-    let context = MediatedContext::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
-        MediatedContextConfig {
-            master_key: Some("01234567890123456789012345678901".to_string()),
-            sealed_refresh_token: true,
-            ..Default::default()
-        },
-    )?;
+fn mediated_context_round_trips_refresh_token() -> BackendOidcMediatedModeRuntimeResult<()> {
+    let context =
+        BackendOidcMediatedModeRuntime::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
+            BackendOidcMediatedModeRuntimeConfig {
+                master_key: Some("01234567890123456789012345678901".to_string()),
+                sealed_refresh_token: true,
+                ..Default::default()
+            },
+        )?;
     let sealed = context
         .seal_refresh_token("refresh-token")
         .expect("seal should succeed");
@@ -326,7 +336,7 @@ fn token_propagator_allows_missing_explicit_port_with_scheme_default() {
 #[derive(Debug)]
 struct StaticNodeTargetResolver;
 
-impl crate::PropagationNodeTargetResolver for StaticNodeTargetResolver {
+impl crate::access_token_substrate::PropagationNodeTargetResolver for StaticNodeTargetResolver {
     fn resolve_url(&self, node_id: &str) -> Option<Url> {
         match node_id {
             "node-a" => Url::parse("https://service.internal.example.com").ok(),
@@ -421,30 +431,38 @@ fn token_propagator_set_node_target_resolver_updates_runtime_behavior() {
 
 #[cfg(feature = "moka-pending-store")]
 #[test]
-fn mediated_context_wraps_token_propagator() {
-    let context = MediatedContext::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
-        MediatedContextConfig {
-            token_propagation: TokenPropagatorConfig {
-                destination_policy: PropagationDestinationPolicy {
-                    allowed_targets: vec![AllowedPropagationTarget::ExactOrigin {
-                        scheme: PropagationScheme::Https,
-                        hostname: "service.internal.example.com".to_string(),
-                        port: 443,
-                    }],
-                    ..Default::default()
-                },
-                token_validation: PropagatedTokenValidationConfig {
-                    required_issuers: vec!["https://issuer.example.com".to_string()],
-                    allowed_audiences: vec!["mesh-api".to_string()],
-                    required_scopes: vec!["mesh.forward".to_string()],
-                    allowed_azp: vec!["securitydept-web".to_string()],
-                },
+fn mediated_runtime_builds_without_propagator() {
+    // Propagator is now substrate-level and constructed independently.
+    // This test verifies the runtime builds cleanly without it.
+    let _runtime =
+        BackendOidcMediatedModeRuntime::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
+            BackendOidcMediatedModeRuntimeConfig {
                 ..Default::default()
             },
+        )
+        .expect("runtime should build without propagator");
+}
+
+#[test]
+fn token_propagator_standalone_applies_authorization_header() {
+    let propagator = TokenPropagator::from_config(&TokenPropagatorConfig {
+        destination_policy: PropagationDestinationPolicy {
+            allowed_targets: vec![AllowedPropagationTarget::ExactOrigin {
+                scheme: PropagationScheme::Https,
+                hostname: "service.internal.example.com".to_string(),
+                port: 443,
+            }],
             ..Default::default()
         },
-    )
-    .expect("context should build");
+        token_validation: PropagatedTokenValidationConfig {
+            required_issuers: vec!["https://issuer.example.com".to_string()],
+            allowed_audiences: vec!["mesh-api".to_string()],
+            required_scopes: vec!["mesh.forward".to_string()],
+            allowed_azp: vec!["securitydept-web".to_string()],
+        },
+        ..Default::default()
+    })
+    .expect("propagator should build");
     let target = PropagationRequestTarget::new(
         None,
         PropagationScheme::Https,
@@ -453,12 +471,8 @@ fn mediated_context_wraps_token_propagator() {
     );
     let mut headers = HeaderMap::new();
 
-    context
-        .apply_propagation_authorization_header(
-            &propagated_bearer_with_claims(),
-            &target,
-            &mut headers,
-        )
+    propagator
+        .apply_authorization_header(&propagated_bearer_with_claims(), &target, &mut headers)
         .expect("propagation should succeed");
 
     assert_eq!(headers["authorization"], "Bearer access-token");
@@ -666,7 +680,7 @@ fn propagated_bearer_with_claims() -> PropagatedBearer<'static> {
 
 #[cfg(feature = "moka-pending-store")]
 #[test]
-fn metadata_redemption_store_redeems_once() -> MediatedContextResult<()> {
+fn metadata_redemption_store_redeems_once() -> BackendOidcMediatedModeRuntimeResult<()> {
     let store = MokaPendingAuthStateMetadataRedemptionStore::from_config(
         &MokaPendingAuthStateMetadataRedemptionConfig::default(),
     )?;
@@ -674,7 +688,7 @@ fn metadata_redemption_store_redeems_once() -> MediatedContextResult<()> {
     let issued = store
         .issue(
             PendingAuthStateMetadataRedemptionPayload::Delta(
-                crate::AuthStateMetadataDelta::default(),
+                crate::models::AuthStateMetadataDelta::default(),
             ),
             now,
         )
@@ -698,7 +712,7 @@ fn metadata_redemption_store_redeems_once() -> MediatedContextResult<()> {
 
 #[cfg(feature = "moka-pending-store")]
 #[test]
-fn metadata_redemption_store_drops_expired_entries() -> MediatedContextResult<()> {
+fn metadata_redemption_store_drops_expired_entries() -> BackendOidcMediatedModeRuntimeResult<()> {
     let store = MokaPendingAuthStateMetadataRedemptionStore::from_config(
         &MokaPendingAuthStateMetadataRedemptionConfig {
             ttl: std::time::Duration::from_millis(10),
@@ -709,7 +723,7 @@ fn metadata_redemption_store_drops_expired_entries() -> MediatedContextResult<()
     let issued = store
         .issue(
             PendingAuthStateMetadataRedemptionPayload::Delta(
-                crate::AuthStateMetadataDelta::default(),
+                crate::models::AuthStateMetadataDelta::default(),
             ),
             now,
         )

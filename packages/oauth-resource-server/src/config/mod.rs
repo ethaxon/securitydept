@@ -138,10 +138,7 @@ impl OAuthResourceServerConfig {
     ///                               ├──▸ resolve_config() ──▸ validated &mut self
     /// [oauth_resource_server]     ──┘
     /// ```
-    pub fn resolve_config(
-        &mut self,
-        shared: &OidcSharedConfig,
-    ) -> OAuthResourceServerResult<()> {
+    pub fn resolve_config(&mut self, shared: &OidcSharedConfig) -> OAuthResourceServerResult<()> {
         self.apply_shared_defaults(shared);
         self.validate()
     }
@@ -452,12 +449,7 @@ mod tests {
             Some("https://auth.example.com/.well-known/openid-configuration"),
         );
         assert_eq!(
-            config
-                .introspection
-                .as_ref()
-                .unwrap()
-                .client_id
-                .as_deref(),
+            config.introspection.as_ref().unwrap().client_id.as_deref(),
             Some("shared-app"),
         );
     }

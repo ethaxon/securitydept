@@ -27,7 +27,7 @@ export interface CreateAuthorizedTransportOptions {
  * request.
  *
  * This helper is generic token orchestration: it does not care about
- * token-set sealed flow or any specific OIDC protocol.
+ * OIDC-mediated sealed flow or any specific OIDC protocol.
  */
 export function createAuthorizedTransport(
 	headerProvider: BearerHeaderProvider,

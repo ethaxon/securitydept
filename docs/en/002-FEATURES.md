@@ -89,7 +89,7 @@ Current status:
 Primary references:
 
 - `packages/basic-auth-context/src/lib.rs`
-- [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md)
+- [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md)
 - [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
 
 ## 5. Stateful cookie-session auth context
@@ -128,8 +128,8 @@ Current status:
 
 - core server support and shared crate are implemented
 - `securitydept-token-set-context` now provides a dedicated token-set context layer
-- `securitydept-auth-runtime` now provides route-ready token-set orchestration on top of `securitydept-token-set-context`
-- `securitydept-auth-runtime` now splits `basic-auth-context`, `session-context`, and `token-set-context` into independent crate features so downstreams can avoid importing unused orchestration paths
+- `securitydept-auth-runtime` has been dissolved; route helpers are now in their owning crates: `BasicAuthContextService` in `securitydept-basic-auth-context`, `SessionAuthServiceTrait` / `OidcSessionAuthService` / `DevSessionAuthService` in `securitydept-session-context` (via `service` feature), `BackendOidcMediatedModeAuthService` and `AccessTokenSubstrateResourceService` in `securitydept-token-set-context`
+- `BackendOidcMediatedConfigSource` trait is now in place: `BackendOidcMediatedConfig` (raw input) / `ResolvedBackendOidcMediatedConfig` (resolved bundle) / `BackendOidcMediatedConfigSource` trait are all implemented
 - `apps/server` already exposes `/auth/token-set/*` routes for callback, refresh, and metadata redemption
 - bearer propagation now uses server-owned destination policy plus access-token-derived `ResourceTokenPrincipal` facts
 - `TokenPropagator` now accepts either a direct destination target or a node-only target resolved via an optional runtime `PropagationNodeTargetResolver`
@@ -147,6 +147,7 @@ Current status:
   - `/api/propagation/*` catch-all route forwards bearer-authenticated requests with validated propagation context to resolved downstream targets
 - the client SDK now has a formal architecture and implementation guide in [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md), but implementation remains pending
 - Axum-specific response assembly for those flows now lives in `apps/server`, not inside the reusable runtime crate
+- the configuration surface has been reshaped to `BackendOidcMediatedConfig` (raw input) / `ResolvedBackendOidcMediatedConfig` (resolved bundle) / `BackendOidcMediatedConfigSource` trait (now implemented)
 
 Missing pieces:
 

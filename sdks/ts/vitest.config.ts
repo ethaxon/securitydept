@@ -63,20 +63,6 @@ export default defineConfig({
 				),
 			},
 			{
-				find: "@securitydept/token-set-context-client/web",
-				replacement: path.join(
-					packagesDir,
-					"token-set-context-client/src/web/index.ts",
-				),
-			},
-			{
-				find: "@securitydept/token-set-context-client/react",
-				replacement: path.join(
-					packagesDir,
-					"token-set-context-client/src/react/index.tsx",
-				),
-			},
-			{
 				find: "@securitydept/token-set-context-client/orchestration",
 				replacement: path.join(
 					packagesDir,
@@ -84,38 +70,38 @@ export default defineConfig({
 				),
 			},
 			{
-				find: "@securitydept/token-set-context-client/oidc",
+				find: "@securitydept/token-set-context-client/frontend-oidc-mode",
 				replacement: path.join(
 					packagesDir,
-					"token-set-context-client/src/oidc/index.ts",
+					"token-set-context-client/src/frontend-oidc-mode/index.ts",
 				),
 			},
 			{
-				find: "@securitydept/token-set-context-client/token-set/web",
+				find: "@securitydept/token-set-context-client/backend-oidc-mediated-mode/web",
 				replacement: path.join(
 					packagesDir,
-					"token-set-context-client/src/token-set/web/index.ts",
+					"token-set-context-client/src/backend-oidc-mediated-mode/web/index.ts",
 				),
 			},
 			{
-				find: "@securitydept/token-set-context-client/token-set/react",
+				find: "@securitydept/token-set-context-client/backend-oidc-mediated-mode/react",
 				replacement: path.join(
 					packagesDir,
-					"token-set-context-client/src/token-set/react/index.tsx",
+					"token-set-context-client/src/backend-oidc-mediated-mode/react/index.tsx",
 				),
 			},
 			{
-				find: "@securitydept/token-set-context-client/token-set",
+				find: "@securitydept/token-set-context-client/backend-oidc-mediated-mode",
 				replacement: path.join(
 					packagesDir,
-					"token-set-context-client/src/token-set/index.ts",
+					"token-set-context-client/src/backend-oidc-mediated-mode/index.ts",
 				),
 			},
 			{
-				find: "@securitydept/token-set-context-client",
+				find: "@securitydept/token-set-context-client/backend-oidc-pure-mode",
 				replacement: path.join(
 					packagesDir,
-					"token-set-context-client/src/index.ts",
+					"token-set-context-client/src/backend-oidc-pure-mode/index.ts",
 				),
 			},
 			{

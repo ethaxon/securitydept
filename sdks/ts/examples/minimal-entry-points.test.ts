@@ -2,9 +2,9 @@ import { createRuntime } from "@securitydept/client";
 import { createWebRuntime } from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
 import {
-	createTokenSetBrowserClient,
-	resolveTokenSetAuthorizeUrl,
-} from "@securitydept/token-set-context-client/web";
+	createBackendOidcMediatedModeBrowserClient,
+	resolveBackendOidcMediatedModeAuthorizeUrl,
+} from "@securitydept/token-set-context-client/backend-oidc-mediated-mode/web";
 import { describe, expect, it, vi } from "vitest";
 
 describe("minimal entry points", () => {
@@ -38,9 +38,9 @@ describe("minimal entry points", () => {
 	});
 
 	it("supports a browser-oriented token-set entry path", () => {
-		const client = createTokenSetBrowserClient({
+		const client = createBackendOidcMediatedModeBrowserClient({
 			baseUrl: "https://auth.example.com",
-			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
+			defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
 			transport: {
 				execute: vi.fn(async () => ({
 					status: 200,
@@ -65,11 +65,11 @@ describe("minimal entry points", () => {
 		});
 
 		expect(
-			resolveTokenSetAuthorizeUrl(client, {
-				href: "https://app.example.com/token-set#callback",
+			resolveBackendOidcMediatedModeAuthorizeUrl(client, {
+				href: "https://app.example.com/oidc-mediated#callback",
 			}),
 		).toBe(
-			"https://auth.example.com/auth/token-set/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Ftoken-set",
+			"https://auth.example.com/auth/oidc-mediated/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Foidc-mediated",
 		);
 	});
 

@@ -5,8 +5,8 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use securitydept_core::{
-    auth_runtime::SessionAuthServiceTrait, creds_manage::models::UserInfo,
-    oidc::OidcCodeCallbackSearchParams,
+    creds_manage::models::UserInfo, oidc::OidcCodeCallbackSearchParams,
+    session_context::SessionAuthServiceTrait,
 };
 use tower_sessions::Session;
 

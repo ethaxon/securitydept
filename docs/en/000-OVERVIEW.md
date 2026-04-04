@@ -31,12 +31,10 @@ That requires a clean split between:
   - shared remote-provider connectivity and cache runtime
 - `securitydept-oidc-client`
   - OIDC relying-party client behavior
-- `securitydept-auth-runtime`
-  - route-ready auth orchestration with independently gated basic-auth, session, and token-set features
 - `securitydept-basic-auth-context`
-  - reusable basic-auth zone and redirect abstraction with framework-neutral response metadata
+  - reusable basic-auth zone and redirect abstraction with framework-neutral response metadata; `BasicAuthContextService` now lives directly in this crate
 - `securitydept-session-context`
-  - reusable session context abstraction for cookie-session mode without direct Axum coupling
+  - reusable session context abstraction for cookie-session mode without direct Axum coupling; `SessionAuthServiceTrait`, `OidcSessionAuthService`, and `DevSessionAuthService` are now directly in this crate via the `service` feature
 - `securitydept-token-set-context`
   - reusable auth-state, redirect, metadata-redemption, and token-propagation layer for stateless token-set mode
 - `securitydept-oauth-resource-server`
@@ -47,6 +45,12 @@ That requires a clean split between:
   - local basic-auth and static-token management
 - `securitydept-server`
   - reference app that wires the supported auth-context modes and local-credential scenarios together
+
+The more accurate reading now is:
+
+- `securitydept-basic-auth-context`, `securitydept-session-context`, and `securitydept-token-set-context` are the long-term auth-context product surfaces
+- route-facing services have all been moved back into their owning crates: `BasicAuthContextService` into `securitydept-basic-auth-context`, session services into `securitydept-session-context` (via the `service` feature), `BackendOidcMediatedModeAuthService` and `AccessTokenSubstrateResourceService` into `securitydept-token-set-context`
+- the `securitydept-auth-runtime` aggregation layer has been dissolved and removed from the workspace
 
 ## Target Auth Context Modes
 
@@ -88,10 +92,10 @@ The most direct way to enter the current SDK stack is:
 
 - [001-ARCHITECTURE.md](001-ARCHITECTURE.md) / [中文](../zh/001-ARCHITECTURE.md)
 - [002-FEATURES.md](002-FEATURES.md) / [中文](../zh/002-FEATURES.md)
-- [003-AUTH_CONTEXT_MODES.md](003-AUTH_CONTEXT_MODES.md) / [中文](../zh/003-AUTH_CONTEXT_MODES.md)
-- [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md) / [中文](../zh/004-BASIC_AUTH_ZONE.md)
 - [005-ERROR_SYSTEM_DESIGN.md](005-ERROR_SYSTEM_DESIGN.md) / [中文](../zh/005-ERROR_SYSTEM_DESIGN.md)
 - [006-REALIP.md](006-REALIP.md) / [中文](../zh/006-REALIP.md)
 - [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) / [中文](../zh/007-CLIENT_SDK_GUIDE.md)
   - formal client SDK architecture, package boundaries, foundation protocols, and implementation guidance
+- [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) / [中文](../zh/020-AUTH_CONTEXT_AND_MODES.md)
+  - unified auth-context, basic-auth zone, and token-set mode design
 - [100-ROADMAP.md](100-ROADMAP.md) / [中文](../zh/100-ROADMAP.md)

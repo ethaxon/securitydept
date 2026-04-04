@@ -89,7 +89,7 @@
 主要参考：
 
 - `packages/basic-auth-context/src/lib.rs`
-- [004-BASIC_AUTH_ZONE.md](004-BASIC_AUTH_ZONE.md)
+- [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md)
 - [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
 
 ## 5. 有状态 cookie-session 认证上下文
@@ -128,9 +128,8 @@
 
 - 核心服务端与共享 crate 已实现
 - `securitydept-token-set-context` 已提供专用 token-set 上下文层
-- `securitydept-auth-runtime` 已在 `securitydept-token-set-context` 之上提供路由层 token-set 编排
-- `securitydept-auth-runtime` 现已将 `basic-auth-context`、`session-context` 与 `token-set-context` 拆为独立 crate feature，下游无需再引入未使用的编排路径
-- `apps/server` 已接入 `/auth/token-set/*` 路径完成 callback、refresh 与 metadata redemption
+- `securitydept-auth-runtime` 已解散，并将 route helper 拆回各 owning crate：`BasicAuthContextService` 归属 `securitydept-basic-auth-context`，`SessionAuthServiceTrait` / `OidcSessionAuthService` / `DevSessionAuthService` 归属 `securitydept-session-context`（`service` feature），`BackendOidcMediatedModeAuthService` 与 `AccessTokenSubstrateResourceService` 归属 `securitydept-token-set-context`
+- `BackendOidcMediatedConfigSource` trait 已落地：`BackendOidcMediatedConfig`（raw）/ `ResolvedBackendOidcMediatedConfig`（resolved）/ `BackendOidcMediatedConfigSource` trait 已全部实现
 - bearer propagation 现在使用服务端持有的目标策略以及来源于 access token 校验链路的 `ResourceTokenPrincipal`
 - `TokenPropagator` 现在既支持直接目标，也支持通过可选运行时 `PropagationNodeTargetResolver` 解析的 node-only target
 - `securitydept-token-set-context` 现已包含可选的 `axum-reverse-proxy-propagation-forwarder` feature，`recommend-propagation-forwarder` 作为其 feature 别名
@@ -147,6 +146,7 @@
   - `/api/propagation/*` 通配路由将经过 bearer 认证且带有已验证 propagation 上下文的请求转发到已解析的下游目标
 - 客户端 SDK 现在已有正式架构与实现指南，但具体实现仍待推进
 - 这些流程的 Axum 响应组装现已留在 `apps/server` 边界层，而不是放在可复用 runtime crate 内部
+- config 面已重排为 `BackendOidcMediatedConfig`（raw 输入）/ `ResolvedBackendOidcMediatedConfig`（resolved bundle）/ `BackendOidcMediatedConfigSource` trait（已落地）
 
 缺失部分：
 

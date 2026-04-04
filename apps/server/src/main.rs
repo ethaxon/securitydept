@@ -11,13 +11,13 @@ use clap::Parser;
 use securitydept_core::{
     basic_auth_context::BasicAuthContext,
     creds_manage::{migrations::Migrator, store::CredsManageStore},
-    oauth_resource_server::{
-        OAuthResourceServerConfig, OAuthResourceServerIntrospectionConfig,
-        OAuthResourceServerVerifier,
-    },
+    oauth_resource_server::OAuthResourceServerVerifier,
     oidc::OidcClient,
     realip::RealIpResolver,
-    token_set_context::{AxumReverseProxyPropagationForwarder, MediatedContext},
+    token_set_context::{
+        access_token_substrate::{AxumReverseProxyPropagationForwarder, TokenPropagator},
+        backend_oidc_mediated_mode::BackendOidcMediatedModeRuntime,
+    },
 };
 use snafu::ResultExt;
 use tower_sessions_memory_store::MemoryStore;
@@ -76,29 +76,22 @@ async fn main() -> ServerResult<()> {
 
     info!(external_base_url = ?config.server.external_base_url, "Resolved external base URL config");
 
-    let oidc = if let Some(ref oidc_config) = config.oidc {
+    // Resolve OIDC shared-defaults via
+    // BackendOidcMediatedConfigSource::resolve_all().
+    let resolved_oidc = config.resolve_oidc()?;
+
+    let oidc = if let Some(ref resolved) = resolved_oidc {
         Some(Arc::new(
-            OidcClient::from_config(oidc_config.clone()).await?,
+            OidcClient::from_config(resolved.oidc_client.clone()).await?,
         ))
     } else {
         info!("OIDC disabled (no [oidc] section); /auth/session/login will create a dev session");
         None
     };
-    let token_set_resource_verifier = if let Some(ref oidc_config) = config.oidc {
-        let verifier_config = OAuthResourceServerConfig {
-            remote: oidc_config.remote.clone(),
-            introspection: oidc_config.client_secret.as_ref().map(|client_secret| {
-                OAuthResourceServerIntrospectionConfig {
-                    client_id: Some(oidc_config.client_id.clone()),
-                    client_secret: Some(client_secret.clone()),
-                    token_type_hint: Some("access_token".to_string()),
-                    ..Default::default()
-                }
-            }),
-            ..Default::default()
-        };
+
+    let token_set_resource_verifier = if let Some(ref resolved) = resolved_oidc {
         Some(Arc::new(
-            OAuthResourceServerVerifier::from_config(verifier_config)
+            OAuthResourceServerVerifier::from_config(resolved.oauth_resource_server.clone())
                 .await
                 .map_err(|e| crate::error::ServerError::InvalidConfig {
                     message: format!("invalid token-set resource verifier config: {e}"),
@@ -121,10 +114,17 @@ async fn main() -> ServerResult<()> {
     } else {
         None
     };
-    let token_set_context = Arc::new(
-        MediatedContext::from_config(config.token_set_context.clone()).map_err(|e| {
-            crate::error::ServerError::InvalidConfig {
+    let mediated_runtime = Arc::new(
+        BackendOidcMediatedModeRuntime::from_config(config.mediated.mediated_runtime.clone())
+            .map_err(|e| crate::error::ServerError::InvalidConfig {
                 message: e.to_string(),
+            })?,
+    );
+
+    let token_propagator = Arc::new(
+        TokenPropagator::from_config(&config.mediated.token_propagation).map_err(|e| {
+            crate::error::ServerError::InvalidConfig {
+                message: format!("token_propagation config: {e}"),
             }
         })?,
     );
@@ -149,7 +149,8 @@ async fn main() -> ServerResult<()> {
 
     let state = ServerState {
         creds_manage_store: Arc::new(store),
-        token_set_context,
+        mediated_runtime,
+        token_propagator,
         basic_auth_context: Arc::new(
             BasicAuthContext::from_config(config.basic_auth_context.clone()).map_err(|e| {
                 crate::error::ServerError::InvalidConfig {

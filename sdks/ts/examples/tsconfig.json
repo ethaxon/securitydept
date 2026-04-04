@@ -32,29 +32,23 @@
 			"@securitydept/session-context-client/react": [
 				"../packages/session-context-client/src/react/index.tsx"
 			],
-			"@securitydept/token-set-context-client": [
-				"../packages/token-set-context-client/src/index.ts"
+			"@securitydept/token-set-context-client/backend-oidc-mediated-mode": [
+				"../packages/token-set-context-client/src/backend-oidc-mediated-mode/index.ts"
 			],
-			"@securitydept/token-set-context-client/token-set": [
-				"../packages/token-set-context-client/src/token-set/index.ts"
+			"@securitydept/token-set-context-client/backend-oidc-mediated-mode/web": [
+				"../packages/token-set-context-client/src/backend-oidc-mediated-mode/web/index.ts"
 			],
-			"@securitydept/token-set-context-client/token-set/web": [
-				"../packages/token-set-context-client/src/token-set/web/index.ts"
+			"@securitydept/token-set-context-client/backend-oidc-mediated-mode/react": [
+				"../packages/token-set-context-client/src/backend-oidc-mediated-mode/react/index.tsx"
 			],
-			"@securitydept/token-set-context-client/token-set/react": [
-				"../packages/token-set-context-client/src/token-set/react/index.tsx"
+			"@securitydept/token-set-context-client/backend-oidc-pure-mode": [
+				"../packages/token-set-context-client/src/backend-oidc-pure-mode/index.ts"
+			],
+			"@securitydept/token-set-context-client/frontend-oidc-mode": [
+				"../packages/token-set-context-client/src/frontend-oidc-mode/index.ts"
 			],
 			"@securitydept/token-set-context-client/orchestration": [
 				"../packages/token-set-context-client/src/orchestration/index.ts"
-			],
-			"@securitydept/token-set-context-client/oidc": [
-				"../packages/token-set-context-client/src/oidc/index.ts"
-			],
-			"@securitydept/token-set-context-client/react": [
-				"../packages/token-set-context-client/src/react/index.tsx"
-			],
-			"@securitydept/token-set-context-client/web": [
-				"../packages/token-set-context-client/src/web/index.ts"
 			],
 			"@securitydept/test-utils": ["../packages/test-utils/src/index.ts"]
 		}

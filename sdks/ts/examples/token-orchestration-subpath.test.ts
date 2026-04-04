@@ -5,12 +5,12 @@
 //   1. The new @securitydept/token-set-context-client/orchestration subpath is
 //      a real, importable entry point for protocol-agnostic token orchestration.
 //
-//   2. The existing @securitydept/token-set-context-client root import remains
+//   2. The @securitydept/token-set-context-client/orchestration subpath serves as
 //      backward-compatible — the orchestration exports are still accessible there.
 //
 // When to prefer the subpath vs the root:
 //   - prefer /orchestration when you want ONLY the protocol-agnostic layer
-//     (no TokenSetContextClient, no callback/metadata redemption, no ./web surface)
+//     (no BackendOidcMediatedModeClient, no callback/metadata redemption, no ./web surface)
 //   - prefer the root import when you already depend on the full token-set surface
 //     and need only a few orchestration helpers
 //
@@ -24,24 +24,22 @@
 // host capability (Node.js/browser/React).
 
 import { createInMemoryRecordStore } from "@securitydept/client";
-// --- Root import (backward-compatible) ---
-import {
-	AuthSourceKind as AuthSourceKindFromRoot,
-	bearerHeader as bearerHeaderFromRoot,
-	createAuthStatePersistence as createAuthStatePersistenceFromRoot,
-} from "@securitydept/token-set-context-client";
 import type {
 	AuthSnapshot,
 	AuthSource,
 	TokenDelta,
 	TokenSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
+// --- Root import (backward-compatible) ---
 // --- Subpath import (recommended for protocol-agnostic usage) ---
 import {
 	AuthSourceKind,
+	AuthSourceKind as AuthSourceKindFromRoot,
 	bearerHeader,
+	bearerHeader as bearerHeaderFromRoot,
 	createAuthorizedTransport,
 	createAuthStatePersistence,
+	createAuthStatePersistence as createAuthStatePersistenceFromRoot,
 	mergeTokenDelta,
 } from "@securitydept/token-set-context-client/orchestration";
 import { describe, expect, it } from "vitest";
@@ -79,7 +77,7 @@ describe("token orchestration / subpath entry (@.../orchestration)", () => {
 		expect(merged.refreshMaterial).toBe("base-rt");
 	});
 
-	it("composes persistence + bearer via subpath — no token-set sealed fields", async () => {
+	it("composes persistence + bearer via subpath — no OIDC-mediated sealed fields", async () => {
 		const store = createInMemoryRecordStore();
 		const persistence = createAuthStatePersistence({
 			store,

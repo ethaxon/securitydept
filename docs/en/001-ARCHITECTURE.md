@@ -81,10 +81,9 @@ These modes are deployment contracts. They should expose normalized principal da
 
 Current dedicated crates:
 
-- `securitydept-basic-auth-context`
-- `securitydept-session-context` — extracted reusable session context abstraction for cookie-session mode, including post-auth redirect policy, without direct Axum response types
-- `securitydept-token-set-context` — extracted reusable auth-state, redirect, metadata-redemption, and bearer-propagation coordination layer for stateless token-set mode
-- `securitydept-auth-runtime` — extracted route-ready auth orchestration for session, token-set, and basic-auth modes, with independent feature gates for each mode
+- `securitydept-basic-auth-context` — reusable basic-auth context with zone model, post-auth redirect policy, and optional real-IP access control; `BasicAuthContextService` now lives directly in this crate
+- `securitydept-session-context` — extracted reusable session context abstraction for cookie-session mode, including post-auth redirect policy, without direct Axum response types; route-facing `SessionAuthServiceTrait`, `OidcSessionAuthService`, and `DevSessionAuthService` are now directly in this crate via the `service` feature
+- `securitydept-token-set-context` — extracted reusable auth-state, redirect, metadata-redemption, and bearer-propagation coordination layer for stateless token-set mode; `BackendOidcMediatedModeAuthService` and `AccessTokenSubstrateResourceService` now live directly in this crate
 
 The `securitydept-session-context` crate provides:
 
@@ -95,15 +94,15 @@ The `securitydept-session-context` crate provides:
 
 The `securitydept-token-set-context` crate currently provides:
 
-- `AuthTokenSnapshot` / `AuthTokenDelta`
-- `AuthStateMetadataSnapshot` / `AuthStateMetadataDelta`
-- `AuthStateSnapshot` / `AuthStateDelta`
+- top-level `frontend_oidc_mode` / `backend_oidc_pure_mode` / `backend_oidc_mediated_mode`
+- top-level `access_token_substrate` / `orchestration` / `models`
+- `BackendOidcMediatedModeRuntime`
+- `BackendOidcMediatedConfig` (raw input) / `ResolvedBackendOidcMediatedConfig` (resolved bundle)
+- `BackendOidcMediatedConfigSource` trait — composable config-source trait for adopters, exposing individual resolve entry points: `resolve_oidc_client`, `resolve_oauth_resource_server`, `resolve_mediated_runtime`, `resolve_token_propagation`, `resolve_all`
 - `TokenPropagator`
 - `PropagatedBearer`
 - `TokenSetRedirectUriConfig`
-- `DefaultTokenSetContext`
-- `DefaultTokenSetContextConfig`
-- `DefaultPendingAuthStateMetadataRedemptionStore`
+- metadata-redemption store traits and related default implementations
 
 Important current boundary:
 
@@ -113,18 +112,18 @@ Important current boundary:
 - node-only propagation targets are resolved through an optional `PropagationNodeTargetResolver`
 - request forwarding itself is still kept separate from the core propagation policy, but `securitydept-token-set-context` now provides an optional `axum-reverse-proxy-propagation-forwarder` feature layered above `TokenPropagator`
 
-Route-level orchestration for cookie-session and stateless token-set modes lives in `securitydept-auth-runtime`:
+Route-facing services now live directly in their owning crates:
 
-- `SessionAuthServiceTrait`
-- `OidcSessionAuthService`
-- `DevSessionAuthService`
-- `TokenSetAuthService`
-- `BasicAuthContextService`
-- `TokenSetResourceService`
+- `SessionAuthServiceTrait` / `OidcSessionAuthService` / `DevSessionAuthService` → `securitydept-session-context` (feature: `service`)
+- `BasicAuthContextService` → `securitydept-basic-auth-context`
+- `BackendOidcMediatedModeAuthService` (formerly `TokenSetAuthService`) → `securitydept-token-set-context::backend_oidc_mediated_mode`
+- `AccessTokenSubstrateResourceService` (formerly `TokenSetResourceService`) → `securitydept-token-set-context::access_token_substrate`
+
+The `securitydept-auth-runtime` aggregation layer has been dissolved and removed from the workspace.
 
 Current boundary note:
 
-- `securitydept-basic-auth-context` and `securitydept-auth-runtime` now return framework-neutral HTTP response metadata instead of Axum response types
+- the long-term direction for `securitydept-basic-auth-context`, `securitydept-session-context`, and `securitydept-token-set-context` is framework-neutral HTTP response metadata or service contracts rather than Axum response types
 - Axum-specific response assembly is kept in `apps/server`
 
 A future shared abstraction should likely normalize all of them into a common authenticated-principal model.

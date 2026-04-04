@@ -20,8 +20,7 @@ Examples:
 - `packages/oidc-client/src/error.rs`
 - `packages/oauth-resource-server/src/error.rs`
 - `packages/creds-manage/src/error.rs`
-- `packages/token-set-context/src/context.rs`
-- `packages/auth-runtime/src/error.rs`
+- `packages/token-set-context/src/backend_oidc_mediated_mode/error.rs`
 - `apps/server/src/error.rs`
 
 The current reference server then turns the error into JSON by returning:
@@ -377,8 +376,10 @@ The error system described in this document has been fully implemented.
 - `packages/creds/src/error.rs` - `ToErrorPresentation` impl for `CredsError`
 - `packages/creds-manage/src/error.rs` - `ToErrorPresentation` impl for `CredsManageError`
 - `packages/session-context/src/lib.rs` - `ToErrorPresentation` impl for `SessionContextError`
-- `packages/token-set-context/src/context.rs` - `ToErrorPresentation` impl for `TokenSetContextError`
-- `packages/auth-runtime/src/error.rs` - `ToErrorPresentation` impl for `AuthRuntimeError`
+- `packages/session-context/src/service.rs` - `ToErrorPresentation` impl for `SessionAuthServiceError`
+- `packages/basic-auth-context/src/service.rs` - `ToErrorPresentation` impl for `BasicAuthContextServiceError`
+- `packages/token-set-context/src/backend_oidc_mediated_mode/error.rs` - `ToErrorPresentation` impl for `BackendOidcMediatedModeRuntimeError`
+- `packages/token-set-context/src/access_token_substrate/service.rs` - `ToErrorPresentation` impl for `AccessTokenSubstrateResourceServiceError`
 - `apps/server/src/error.rs` - `ToErrorPresentation` impl for `ServerError` and `IntoResponse` using the three-layer model
 
 ### Response Shape
@@ -419,8 +420,10 @@ Implement the trait for top-level public error types first:
 - `OidcError`
 - `OAuthResourceServerError`
 - `CredsManageError`
-- `TokenSetContextError`
-- `AuthRuntimeError`
+- `BackendOidcMediatedModeRuntimeError`
+- `BasicAuthContextServiceError`
+- `SessionAuthServiceError`
+- `AccessTokenSubstrateResourceServiceError`
 - `ServerError`
 - `SessionContextError`
 

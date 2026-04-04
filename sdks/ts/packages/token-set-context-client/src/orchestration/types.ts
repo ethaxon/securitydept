@@ -1,13 +1,13 @@
 // --- Generic Token Orchestration types ---
 // These types describe token material shape, snapshot/delta semantics,
 // and metadata shape without binding to any specific token acquisition
-// protocol (OIDC authorization code, token-set sealed flow, etc.).
+// protocol (OIDC authorization code, OIDC-mediated sealed flow, etc.).
 
 /**
  * A point-in-time snapshot of token material.
  *
  * This is protocol-agnostic: it does not know whether the tokens were
- * obtained via standard OIDC, a token-set sealed callback, or any other
+ * obtained via standard OIDC, a OIDC-mediated sealed callback, or any other
  * mechanism.
  */
 export interface TokenSnapshot {

@@ -38,21 +38,21 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		],
 	},
 	{
-		path: "packages/token-set-context-client/src/__tests__/web.test.ts",
+		path: "packages/token-set-context-client/src/backend-oidc-mediated-mode/__tests__/web.test.ts",
 		layers: [
 			EvidenceSemanticLayer.VerifiedEnvironments,
 			EvidenceSemanticLayer.PromotionReadiness,
 		],
 	},
 	{
-		path: "packages/token-set-context-client/src/react/__tests__/adapter.test.ts",
+		path: "packages/token-set-context-client/src/backend-oidc-mediated-mode/react/__tests__/adapter.test.ts",
 		layers: [
 			EvidenceSemanticLayer.VerifiedEnvironments,
 			EvidenceSemanticLayer.PromotionReadiness,
 		],
 	},
 	{
-		path: "examples/token-set-browser-scenario.test.ts",
+		path: "examples/backend-oidc-mediated-browser-scenario.test.ts",
 		layers: [EvidenceSemanticLayer.VerifiedEnvironments],
 	},
 	{

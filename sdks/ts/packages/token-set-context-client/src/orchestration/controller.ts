@@ -9,7 +9,7 @@
 //
 // It does NOT handle:
 //   - token acquisition (redirect, callback, metadata redemption)
-//   - token-set sealed flow or any specific OIDC protocol
+//   - OIDC-mediated sealed flow or any specific OIDC protocol
 //   - refresh scheduling (that belongs to the token-set client layer)
 //   - multi-provider orchestration, router, or chooser logic
 //
@@ -17,8 +17,8 @@
 //   - Use this controller when you have token material from any source
 //     (standard OIDC exchange, backend-issued token, forwarded bearer, etc.)
 //     and want a managed lifecycle without tying to a specific protocol client.
-//   - If you need token-set sealed callback handling or automatic refresh
-//     scheduling, use TokenSetContextClient instead.
+//   - If you need OIDC-mediated sealed callback handling or automatic refresh
+//     scheduling, use BackendOidcMediatedModeClient instead.
 
 import type { HttpTransport, RecordStore } from "@securitydept/client";
 import { createAuthorizedTransport } from "./auth-transport";

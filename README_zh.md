@@ -19,7 +19,7 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
 
 当前仓库已包含底层的大部分功能、一个可用的参考服务器，以及位于 `sdks/ts` 下的可用 TypeScript SDK workspace。更高级别的认证上下文模式不再只是设计说明，而是已经通过 reference app 与正式 client SDK 指南进入了真实 dogfooding。
 
-参考服务器仍然使用 Axum，但可复用的 `securitydept-basic-auth-context`、`securitydept-session-context` 与 `securitydept-auth-runtime` crate 现在已经把 Axum 专属的响应组装留在边界层之外，以便更容易复用到其他生态中。
+参考服务器仍然使用 Axum，但可复用的 `securitydept-basic-auth-context`、`securitydept-session-context` 与 `securitydept-token-set-context` crate 已经把 Axum 专属的响应组装留在边界层之外，以便更容易复用到其他生态中。route-facing service 已全部回到各自的 owning crate，`securitydept-auth-runtime` 聚合层不再存在。
 
 ## 工作区 Crates
 
@@ -28,9 +28,7 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
 - `securitydept-basic-auth-context`
   - 可复用的 basic-auth 上下文、zone、post-auth redirect 与 real-IP 访问策略辅助，并提供与框架无关的 HTTP 响应元数据
 - `securitydept-session-context`
-  - 基于 tower-sessions 的可复用 cookie-session 认证上下文辅助，包含 post-auth redirect，且不再直接耦合 Axum
-- `securitydept-auth-runtime`
-  - 面向参考服务器的 session、token-set 与 basic-auth 路由级认证编排，并按 `basic-auth-context`、`session-context`、`token-set-context` 三个 feature 独立控制
+  - 基于 tower-sessions 的可复用 cookie-session 认证上下文辅助，包含 post-auth redirect，且不再直接耦合 Axum；`SessionAuthServiceTrait`、`OidcSessionAuthService`、`DevSessionAuthService` 均已通过 `service` feature 直接归属于此 crate
 - `securitydept-oauth-provider`
   - 共享提供者运行时，支持发现元数据、JWKS 和内省（introspection），带有缓存和刷新
 - `securitydept-oidc-client`
@@ -38,7 +36,7 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
 - `securitydept-oauth-resource-server`
   - 用于 JWT、JWE 和不透明令牌内省的 bearer 访问令牌验证
 - `securitydept-token-set-context`
-  - 可复用的 token-set 认证状态、redirect、metadata redemption 与 token 传播辅助；资源态 token facts 不进入认证 metadata，且 node-aware propagation 可使用可选的运行时 resolver
+  - 可复用的 token-set 认证状态、redirect、metadata redemption、access-token substrate 与 mode-specific OIDC 辅助；资源态 token facts 不进入认证 metadata，且 backend-oidc-mediated 配置正在走向“可组合 config-source trait + resolved bundle”分层
 - `securitydept-realip`
   - 面向多层 CDN 与反向代理部署的 trusted-proxy/provider 感知客户端 IP 解析
 - `securitydept-creds-manage`
@@ -76,6 +74,7 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
 - 计划中/部分已规范
   - 更丰富的多 zone basic-auth context 组合
   - token-set 模式在浏览器侧的合并、持久化、刷新与 mixed-custody 行为
+  - 解散 `securitydept-auth-runtime` 并完成服务归属重构（已完成）
   - 构建在 `TokenPropagator` 之上的推荐 propagation forwarder feature
 
 ## TypeScript SDK 入口
@@ -114,8 +113,6 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
 | [docs/zh/000-OVERVIEW.md](docs/zh/000-OVERVIEW.md) | 项目目标、层次结构和文档索引 |
 | [docs/zh/001-ARCHITECTURE.md](docs/zh/001-ARCHITECTURE.md) | 分层架构和 crate 边界 |
 | [docs/zh/002-FEATURES.md](docs/zh/002-FEATURES.md) | 能力矩阵：已实现 vs 计划中 |
-| [docs/zh/003-AUTH_CONTEXT_MODES.md](docs/zh/003-AUTH_CONTEXT_MODES.md) | 基础区域、cookie-session 和无状态 token-set 模式 |
-| [docs/zh/004-BASIC_AUTH_ZONE.md](docs/zh/004-BASIC_AUTH_ZONE.md) | 基础认证区域的 UX 和协议说明 |
 | [docs/zh/005-ERROR_SYSTEM_DESIGN.md](docs/zh/005-ERROR_SYSTEM_DESIGN.md) | 对外安全错误响应、内部诊断与恢复动作设计 |
 | [docs/zh/006-REALIP.md](docs/zh/006-REALIP.md) | 多层代理与多 CDN/provider 部署下的 trusted-peer real-IP 策略 |
 | [docs/zh/007-CLIENT_SDK_GUIDE.md](docs/zh/007-CLIENT_SDK_GUIDE.md) | 客户端 SDK 正式架构：包布局、foundation 协议、适配层、运行时边界与实现约束 |

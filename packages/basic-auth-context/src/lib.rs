@@ -1,3 +1,5 @@
+mod service;
+
 use std::sync::Arc;
 
 use http::StatusCode;
@@ -8,6 +10,7 @@ use securitydept_utils::{
     redirect::{RedirectTargetConfig, RedirectTargetError, UriRelativeRedirectTargetResolver},
 };
 use serde::{Deserialize, Serialize};
+pub use service::{BasicAuthContextService, BasicAuthContextServiceError};
 use snafu::Snafu;
 use typed_builder::TypedBuilder;
 use web_route::WebRoute;

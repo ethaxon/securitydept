@@ -1,3 +1,6 @@
+#[cfg(feature = "service")]
+mod service;
+
 use std::{collections::HashMap, time::Duration as StdDuration};
 
 use http::StatusCode;
@@ -7,6 +10,10 @@ use securitydept_utils::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
+#[cfg(feature = "service")]
+pub use service::{
+    DevSessionAuthService, OidcSessionAuthService, SessionAuthServiceError, SessionAuthServiceTrait,
+};
 use snafu::Snafu;
 use tower_sessions::{
     Expiry, Session, SessionManagerLayer, SessionStore,

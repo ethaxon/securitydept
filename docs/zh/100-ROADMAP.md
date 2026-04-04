@@ -56,8 +56,8 @@
 状态：
 
 - 基础认证区域：已文档化，未完全产品化
-- cookie-session：参考实现已存在，可复用提取已落在 `securitydept-session-context` 和 `securitydept-auth-runtime`
-- 无状态 token-set 模式：服务端与共享 crate 基本落地，路由编排已落在 `securitydept-auth-runtime`，browser-owned client SDK 基线也已在 `sdks/ts` 中实现；mixed-custody / BFF / server-side token-set 继续留在后续范围
+- cookie-session：参考实现已存在；可复用提取主体已在 `securitydept-session-context`，route-facing service（`SessionAuthServiceTrait` / `OidcSessionAuthService` / `DevSessionAuthService`）已通过 `service` feature 直接归属于该 crate
+- 无状态 token-set 模式：服务端与共享 crate 基本落地；`securitydept-auth-runtime` 已解散，mode-specific 与 substrate-specific service 已全部回到 `securitydept-token-set-context`；config 面已重排为 `BackendOidcMediatedConfigSource` trait + `ResolvedBackendOidcMediatedConfig`；mixed-custody / BFF / server-side token-set 继续留在后续范围
 
 ## 阶段 4：前端 SDK
 

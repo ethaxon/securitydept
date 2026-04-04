@@ -29,13 +29,6 @@ const CORE_LIB_PATH = path.join(ROOT, "packages/core/src/lib.rs");
 
 const INTERNAL_REEXPORT_CRATES: InternalReexportCrate[] = [
 	{
-		feature: "auth-runtime",
-		packageName: "securitydept-auth-runtime",
-		title: "Auth Runtime",
-		rustCrate: "securitydept_auth_runtime",
-		exportAlias: "auth_runtime",
-	},
-	{
 		feature: "basic-auth-context",
 		packageName: "securitydept-basic-auth-context",
 		title: "Basic Auth Context",

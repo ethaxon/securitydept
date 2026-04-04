@@ -20,8 +20,7 @@
 - `packages/oidc-client/src/error.rs`
 - `packages/oauth-resource-server/src/error.rs`
 - `packages/creds-manage/src/error.rs`
-- `packages/token-set-context/src/context.rs`
-- `packages/auth-runtime/src/error.rs`
+- `packages/token-set-context/src/backend_oidc_mediated_mode/error.rs`
 - `apps/server/src/error.rs`
 
 当前参考服务器通过将错误转换为 JSON 来返回：
@@ -416,8 +415,10 @@ SecurityDept 可以逐步采用这个方法。
 - `packages/creds/src/error.rs` - `CredsError` 的 `ToErrorPresentation` 实现
 - `packages/creds-manage/src/error.rs` - `CredsManageError` 的 `ToErrorPresentation` 实现
 - `packages/session-context/src/lib.rs` - `SessionContextError` 的 `ToErrorPresentation` 实现
-- `packages/token-set-context/src/context.rs` - `TokenSetContextError` 的 `ToErrorPresentation` 实现
-- `packages/auth-runtime/src/error.rs` - `AuthRuntimeError` 的 `ToErrorPresentation` 实现
+- `packages/session-context/src/service.rs` - `SessionAuthServiceError` 的 `ToErrorPresentation` 实现
+- `packages/basic-auth-context/src/service.rs` - `BasicAuthContextServiceError` 的 `ToErrorPresentation` 实现
+- `packages/token-set-context/src/backend_oidc_mediated_mode/error.rs` - `BackendOidcMediatedModeRuntimeError` 的 `ToErrorPresentation` 实现
+- `packages/token-set-context/src/access_token_substrate/service.rs` - `AccessTokenSubstrateResourceServiceError` 的 `ToErrorPresentation` 实现
 - `apps/server/src/error.rs` - `ServerError` 的 `ToErrorPresentation` 实现和使用三层模型的 `IntoResponse`
 
 ### 响应格式
@@ -458,8 +459,10 @@ SecurityDept 逐步采用了这个方法。
 - `OidcError`
 - `OAuthResourceServerError`
 - `CredsManageError`
-- `TokenSetContextError`
-- `AuthRuntimeError`
+- `BackendOidcMediatedModeRuntimeError`
+- `BasicAuthContextServiceError`
+- `SessionAuthServiceError`
+- `AccessTokenSubstrateResourceServiceError`
 - `ServerError`
 - `SessionContextError`
 

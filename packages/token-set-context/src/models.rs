@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use typed_builder::TypedBuilder;
 
-use crate::SealedRefreshMaterial;
+use crate::backend_oidc_mediated_mode::SealedRefreshMaterial;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]

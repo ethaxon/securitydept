@@ -1,6 +1,6 @@
 # Outposts Reference Case
 
-This document explains why `/workspace/outposts` should be treated as a high-value downstream reference case for the `securitydept` Client SDKs, and how it should inform SDK planning in the near, mid, and long term.
+This document explains why `~/workspace/outposts` should be treated as a high-value downstream reference case for the `securitydept` Client SDKs, and how it should inform SDK planning in the near, mid, and long term.
 
 It is not a replacement for `apps/webui`.  
 `apps/webui` remains the primary dogfooding / reference app. The value of `outposts` is that it represents a **real downstream adopter**, not an in-repo product demo for the SDK itself.
@@ -23,11 +23,13 @@ That makes `outposts` valuable for validating:
 
 This is exactly the kind of scenario that can help us answer two questions:
 
-- whether `token-set-context-client`'s OIDC mode family (`frontend-oidc` / `backend-oidc-pure` / `backend-oidc-mediated`) can truly support multi-requirement scenarios (see [008-OIDC-MODE-FAMILY](008-OIDC-MODE-FAMILY.md))
+- whether the current auth stack's auth-context / mode layering can truly support multi-requirement scenarios, with the frontend entering via `token-set-context-client` and the backend via `securitydept-token-set-context` (see [020-AUTH_CONTEXT_AND_MODES](020-AUTH_CONTEXT_AND_MODES.md))
 - whether the OIDC mode family boundaries are clear:
   - **`/orchestration`**: shared protocol-agnostic token lifecycle substrate
-  - **`/oidc` (`frontend-oidc`)**: frontend pure OIDC client
-  - **`/token-set` (`backend-oidc-mediated`)**: backend enhanced OIDC adapter
+  - **`/frontend-oidc-mode` (`frontend-oidc`)**: frontend pure OIDC client
+  - **`/backend-oidc-pure-mode`**: the explicit frontend-facing entry for consuming `backend-oidc-pure`, even if it starts as a thin config / guard / transport surface
+  - **`/backend-oidc-mediated-mode`**: the explicit frontend-facing entry for consuming `backend-oidc-mediated`, aligned to the same official mode name instead of another half-step flow name
+  - **`securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_pure_mode, backend_oidc_mediated_mode, access_token_substrate}`**: the Rust side should expose explicit mode modules and the shared substrate, rather than keeping `frontend` / `backend` as the first-level public namespace
 
 ## What This Case Should Validate
 
@@ -68,18 +70,20 @@ The correct boundary is:
 
 ## Direct Impact on SDK Design
 
-This reference case matters most for `token-set-context-client`'s OIDC mode family:
+This reference case matters most for the current auth stack's OIDC mode family:
 
 - the current `outposts` single-`confluence` path is better at validating **`frontend-oidc` / `backend-oidc-pure`** and the **orchestration + resource-server** layer
 - it does **not yet directly validate** `backend-oidc-mediated` (sealed refresh, metadata redemption) itself
+- it is, however, a strong reference for the cross-mode substrate around access-token injection, resource-server verification, and `X-SecurityDept-Propagation`
 
 Current recommendation:
 
 1. keep room in the SDK for multi-token-family / multi-source abstractions
-2. `token-set-context-client`'s OIDC mode family has evolved into:
+2. the frontend product surface's internal subpath family has evolved into, while the Rust side should converge on top-level `*_mode` / shared modules:
    - `/orchestration`: shared token lifecycle substrate
-   - `/oidc`: `frontend-oidc` mode
-   - `/token-set`: `backend-oidc-mediated` mode
+   - `/frontend-oidc-mode`: `frontend-oidc` mode
+   - `/backend-oidc-pure-mode`: explicit frontend-facing subpath for consuming `backend-oidc-pure`
+   - `/backend-oidc-mediated-mode`: explicit frontend-facing subpath for consuming `backend-oidc-mediated`
 3. move route-level multi-requirement orchestration toward **headless orchestration primitives** first
 4. if a default recommendation exists, it should be:
    - a default scheduler / orchestrator
@@ -89,7 +93,7 @@ Current recommendation:
 
 In short:
 
-- **the orchestration layer has been separated from token-set specific flows as `/orchestration`**
+- **the orchestration layer has been separated from OIDC-mediated-specific flows as `/orchestration`**
 - **multi-requirement orchestration is worth bringing into SDK design**
 - **multi-requirement interaction UI should not become a built-in SDK responsibility**
 
@@ -104,8 +108,10 @@ The near-term focus should be:
    - audience / scope contract
    - the `oauth-resource-server` Bearer-validation baseline in a real adopter single-path integration
 3. turn that single-path integration into direct SDK feedback:
-   - standard OIDC scenarios already have `/orchestration` (protocol-agnostic) and `/oidc` (`frontend-oidc`)
-   - `backend-oidc-mediated` (sealed + metadata) is the narrower adapter layer (`/token-set`)
+   - standard OIDC scenarios should converge on two formal mode-aligned frontend entries: `/frontend-oidc-mode` and `/backend-oidc-pure-mode`
+   - frontend consumption of `backend-oidc-mediated` should enter through `/backend-oidc-mediated-mode`; its backend-side counterpart is also `backend-oidc-mediated`
+   - the Rust crate should not keep `frontend` / `backend` as its first-level public namespace; the canonical shape should be top-level `*_mode` modules plus `access_token_substrate`
+   - resource-server / propagation / forwarder should no longer be described as `backend-oidc-mediated`-only materials; they depend only on the access token and propagation header, so they should be promoted into the top-level shared module `access_token_substrate`
 4. do not rush chooser UI or router glue back into the SDK
 
 ## Mid-Term Plan
@@ -139,7 +145,7 @@ The reason is simple:
 ## Related Documents
 
 - SDK boundaries and current contract: `docs/en/007-CLIENT_SDK_GUIDE.md`
-- Outposts project-side auth plan: `/workspace/outposts/docs/en/003-AUTH.md`
+- Outposts project-side auth plan: `~/workspace/outposts/docs/en/003-AUTH.md`
 
 ---
 

@@ -25,7 +25,6 @@
 	],
 	"author": "Zhou Yeheng <root@aitiotekt.com>",
 	"license": "MIT",
-	"packageManager": "pnpm@10.30.3",
 	"scripts": {
 		"prepare": "prek install",
 		"lint": "biome check",

@@ -1,14 +1,14 @@
 // Token Orchestration Additive Contract Test
 //
 // This test serves as adopter-facing evidence that the generic token
-// orchestration exports from @securitydept/token-set-context-client are:
+// orchestration exports from @securitydept/token-set-context-client/orchestration are:
 //
-//   1. Stably exported from the package root (public contract)
-//   2. Protocol-agnostic — they work without any token-set sealed flow fields
+//   1. Exported from the /orchestration subpath (public contract)
+//   2. Protocol-agnostic — they work without any OIDC-mediated sealed flow fields
 //   3. Composable as a minimal orchestration stack for non-token-set scenarios
 //
 // Current status of these exports:
-//   - They are additive public exports from @securitydept/token-set-context-client
+//   - They are public exports from @securitydept/token-set-context-client/orchestration
 //   - They are NOT a separate npm package
 //   - They are the generic layer beneath the token-set-specific adapter
 //   - Stability: additive, freezing-in-progress; not yet promoted to stable
@@ -21,24 +21,24 @@ import type {
 	AuthSource,
 	TokenDelta,
 	TokenSnapshot,
-} from "@securitydept/token-set-context-client";
+} from "@securitydept/token-set-context-client/orchestration";
 import {
 	AuthSourceKind,
 	bearerHeader,
 	createAuthorizedTransport,
 	createAuthStatePersistence,
 	mergeTokenDelta,
-} from "@securitydept/token-set-context-client";
+} from "@securitydept/token-set-context-client/orchestration";
 import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
-// A. Root export surface — these names must be importable from the package root
+// A. Root export surface — these names must be importable from the /orchestration subpath
 // ---------------------------------------------------------------------------
 
-describe("token orchestration / root export surface", () => {
+describe("token orchestration / orchestration subpath export surface", () => {
 	it("exports protocol-agnostic types and constants", () => {
 		// AuthSourceKind is the canonical enum-style constant for auth source kinds.
-		// It does not bind to token-set sealed flow semantics.
+		// It does not bind to OIDC-mediated sealed flow semantics.
 		expect(AuthSourceKind.OidcAuthorizationCode).toBe(
 			"oidc_authorization_code",
 		);
@@ -46,7 +46,7 @@ describe("token orchestration / root export surface", () => {
 		expect(AuthSourceKind.Unknown).toBe("unknown");
 	});
 
-	it("exports bearerHeader as a callable root export", () => {
+	it("exports bearerHeader as a callable orchestration export", () => {
 		// bearerHeader is a generic projection — it does not know or care which
 		// protocol was used to obtain the token.
 		const snapshot: TokenSnapshot = { accessToken: "test-at" };
@@ -54,7 +54,7 @@ describe("token orchestration / root export surface", () => {
 		expect(bearerHeader(null)).toBeNull();
 	});
 
-	it("exports mergeTokenDelta as a callable root export", () => {
+	it("exports mergeTokenDelta as a callable orchestration export", () => {
 		const base: TokenSnapshot = {
 			accessToken: "old-at",
 			refreshMaterial: "old-rt",
@@ -71,15 +71,15 @@ describe("token orchestration / root export surface", () => {
 
 // ---------------------------------------------------------------------------
 // B. Minimal adopter usage — a non-token-set orchestration combination
-//    that uses only generic orchestration exports, no token-set sealed fields
+//    that uses only generic orchestration exports, no OIDC-mediated sealed fields
 // ---------------------------------------------------------------------------
 
 describe("token orchestration / minimal adopter usage", () => {
-	it("composes persistence + bearer transport without token-set sealed fields", async () => {
+	it("composes persistence + bearer transport without OIDC-mediated sealed fields", async () => {
 		// This represents the simplest possible adopter that wants to:
 		//   1. Persist some auth state (e.g. from a standard OIDC flow)
 		//   2. Project it as a bearer header on outgoing requests
-		//   3. Do so without any knowledge of token-set sealed payload / metadata redemption
+		//   3. Do so without any knowledge of OIDC-mediated sealed payload / metadata redemption
 
 		const store = createInMemoryRecordStore();
 		const persistence = createAuthStatePersistence({

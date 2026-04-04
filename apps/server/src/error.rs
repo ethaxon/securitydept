@@ -3,12 +3,15 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use securitydept_core::{
-    auth_runtime::AuthRuntimeError,
+    basic_auth_context::BasicAuthContextServiceError,
     creds::CredsError,
     creds_manage::CredsManageError,
     oidc::OidcError,
-    session_context::SessionContextError,
-    token_set_context::MediatedContextError,
+    session_context::{SessionAuthServiceError, SessionContextError},
+    token_set_context::{
+        access_token_substrate::{AccessTokenSubstrateResourceServiceError, TokenPropagatorError},
+        backend_oidc_mediated_mode::BackendOidcMediatedModeRuntimeError,
+    },
     utils::{
         error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
         http::ToHttpStatus,
@@ -37,25 +40,33 @@ pub enum ServerError {
     #[snafu(transparent)]
     SessionContext { source: SessionContextError },
     #[snafu(transparent)]
-    TokenSetContext { source: MediatedContextError },
+    SessionAuthService { source: SessionAuthServiceError },
     #[snafu(transparent)]
-    AuthRuntime { source: AuthRuntimeError },
-    #[snafu(transparent)]
-    TokenPropagator {
-        source: securitydept_core::token_set_context::TokenPropagatorError,
+    BasicAuthContextService {
+        source: BasicAuthContextServiceError,
     },
+    #[snafu(transparent)]
+    MediatedRuntime {
+        source: BackendOidcMediatedModeRuntimeError,
+    },
+    #[snafu(transparent)]
+    ResourceService {
+        source: AccessTokenSubstrateResourceServiceError,
+    },
+    #[snafu(transparent)]
+    TokenPropagator { source: TokenPropagatorError },
 }
 
 impl ToHttpStatus for ServerError {
     fn to_http_status(&self) -> StatusCode {
         match self {
-            creds_error @ ServerError::Creds { .. } => creds_error.to_http_status(),
-            creds_manage_error @ ServerError::CredsManage { .. } => {
-                creds_manage_error.to_http_status()
-            }
-            oidc_error @ ServerError::Oidc { .. } => oidc_error.to_http_status(),
-            ServerError::AuthRuntime { source } => source.status_code(),
+            ServerError::Creds { .. } => self.to_http_status(),
+            ServerError::CredsManage { .. } => self.to_http_status(),
+            ServerError::Oidc { .. } => self.to_http_status(),
+            ServerError::SessionAuthService { source } => source.status_code(),
             ServerError::SessionContext { source } => source.status_code(),
+            ServerError::BasicAuthContextService { source } => source.to_http_status(),
+            ServerError::ResourceService { source } => source.to_http_status(),
             ServerError::TokenPropagator { .. } => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -69,8 +80,10 @@ impl ToErrorPresentation for ServerError {
             ServerError::Oidc { source } => source.to_error_presentation(),
             ServerError::Creds { source } => source.to_error_presentation(),
             ServerError::SessionContext { source } => source.to_error_presentation(),
-            ServerError::TokenSetContext { source } => source.to_error_presentation(),
-            ServerError::AuthRuntime { source } => source.to_error_presentation(),
+            ServerError::SessionAuthService { source } => source.to_error_presentation(),
+            ServerError::BasicAuthContextService { source } => source.to_error_presentation(),
+            ServerError::MediatedRuntime { source } => source.to_error_presentation(),
+            ServerError::ResourceService { source } => source.to_error_presentation(),
             ServerError::TokenPropagator { source } => source.to_error_presentation(),
             ServerError::ConfigLoad { .. }
             | ServerError::InvalidConfig { .. }

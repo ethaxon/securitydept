@@ -19,7 +19,7 @@ The project is evolving away from a single "OIDC login + local session" product 
 
 The current repository already contains major parts of the lower layers, a working reference server, and a working TypeScript SDK workspace under `sdks/ts`. The higher-level auth-context modes are no longer just design notes: the current repository already dogfoods them through the reference app and the formal client SDK guide.
 
-The reference server still uses Axum, but the reusable `securitydept-basic-auth-context`, `securitydept-session-context`, and `securitydept-auth-runtime` crates now keep Axum-specific response assembly outside their core APIs so they can be reused in other ecosystems more easily.
+The reference server still uses Axum, but the reusable `securitydept-basic-auth-context`, `securitydept-session-context`, and `securitydept-token-set-context` crates keep Axum-specific response assembly outside their core APIs so they can be reused in other ecosystems more easily. Route-facing services have been moved back into their owning crates; the `securitydept-auth-runtime` aggregation layer no longer exists.
 
 ## Workspace Crates
 
@@ -28,9 +28,7 @@ The reference server still uses Axum, but the reusable `securitydept-basic-auth-
 - `securitydept-basic-auth-context`
   - reusable basic-auth context, zone, post-auth redirect, and real-IP access-policy helpers with framework-neutral HTTP response metadata
 - `securitydept-session-context`
-  - reusable cookie-session auth context helpers built on tower-sessions, including post-auth redirects, without direct Axum coupling
-- `securitydept-auth-runtime`
-  - route-ready session, token-set, and basic-auth orchestration with independent `basic-auth-context`, `session-context`, and `token-set-context` features
+  - reusable cookie-session auth context helpers built on tower-sessions, including post-auth redirects, without direct Axum coupling; `SessionAuthServiceTrait`, `OidcSessionAuthService`, and `DevSessionAuthService` are now directly in this crate via the `service` feature
 - `securitydept-oauth-provider`
   - shared provider runtime for discovery metadata, JWKS, and introspection with cache and refresh
 - `securitydept-oidc-client`
@@ -38,7 +36,7 @@ The reference server still uses Axum, but the reusable `securitydept-basic-auth-
 - `securitydept-oauth-resource-server`
   - bearer access-token verification for JWT, JWE, and opaque token introspection
 - `securitydept-token-set-context`
-  - reusable token-set auth-state, redirect, metadata-redemption, and token-propagation helpers; resource-token facts stay outside auth-state metadata, and node-aware propagation may use an optional runtime resolver
+  - reusable token-set auth-state, redirect, metadata-redemption, access-token substrate, and mode-specific OIDC helpers; resource-token facts stay outside auth-state metadata, and backend-oidc-mediated config is moving toward a composable config-source trait plus resolved bundle split
 - `securitydept-realip`
   - trusted-proxy/provider-aware client IP resolution for stacked CDN and reverse-proxy deployments
 - `securitydept-creds-manage`
@@ -76,6 +74,7 @@ These modes are intentionally above the current `oidc-client` and `oauth-resourc
 - Planned / partially specified
   - richer multi-zone basic-auth context composition
   - token-set browser-side merge, persistence, refresh, and mixed-custody behavior
+  - dissolution of `securitydept-auth-runtime` and service rehoming (completed)
   - a recommended propagation forwarder feature layered above `TokenPropagator`
 
 ## TypeScript SDKs
@@ -114,11 +113,10 @@ This admin basic-auth flow is separate from `creds-manage` entries. The managed 
 | [docs/en/000-OVERVIEW.md](docs/en/000-OVERVIEW.md) ([中文](docs/zh/000-OVERVIEW.md)) | Project goals, layers, and document index |
 | [docs/en/001-ARCHITECTURE.md](docs/en/001-ARCHITECTURE.md) ([中文](docs/zh/001-ARCHITECTURE.md)) | Layered architecture and crate boundaries |
 | [docs/en/002-FEATURES.md](docs/en/002-FEATURES.md) ([中文](docs/zh/002-FEATURES.md)) | Capability matrix: implemented vs planned |
-| [docs/en/003-AUTH_CONTEXT_MODES.md](docs/en/003-AUTH_CONTEXT_MODES.md) ([中文](docs/zh/003-AUTH_CONTEXT_MODES.md)) | Basic zone, cookie-session, and stateless token-set modes |
-| [docs/en/004-BASIC_AUTH_ZONE.md](docs/en/004-BASIC_AUTH_ZONE.md) ([中文](docs/zh/004-BASIC_AUTH_ZONE.md)) | Basic auth zone UX and protocol notes |
 | [docs/en/005-ERROR_SYSTEM_DESIGN.md](docs/en/005-ERROR_SYSTEM_DESIGN.md) ([中文](docs/zh/005-ERROR_SYSTEM_DESIGN.md)) | Safe user-facing errors vs internal diagnostics, with auth-specific guidance |
 | [docs/en/006-REALIP.md](docs/en/006-REALIP.md) ([中文](docs/zh/006-REALIP.md)) | Trusted-peer-aware real-IP strategy for stacked proxy and CDN deployments |
 | [docs/en/007-CLIENT_SDK_GUIDE.md](docs/en/007-CLIENT_SDK_GUIDE.md) ([中文](docs/zh/007-CLIENT_SDK_GUIDE.md)) | Formal client SDK architecture: package layout, foundation protocols, adapters, runtime boundaries, and implementation rules |
+| [docs/en/020-AUTH_CONTEXT_AND_MODES.md](docs/en/020-AUTH_CONTEXT_AND_MODES.md) ([中文](docs/zh/020-AUTH_CONTEXT_AND_MODES.md)) | Unified auth-context design covering basic-auth zones, session-context, and token-set OIDC modes |
 | [docs/en/100-ROADMAP.md](docs/en/100-ROADMAP.md) ([中文](docs/zh/100-ROADMAP.md)) | Sequenced roadmap aligned with current goals |
 
 ## Development

@@ -52,14 +52,12 @@ const CONTRACTS: PackageContract[] = [
 		dir: "token-set-context-client",
 		name: "@securitydept/token-set-context-client",
 		exportKeys: [
-			".",
-			"./token-set",
-			"./token-set/web",
-			"./token-set/react",
-			"./web",
-			"./react",
+			"./backend-oidc-mediated-mode",
+			"./backend-oidc-mediated-mode/web",
+			"./backend-oidc-mediated-mode/react",
+			"./backend-oidc-pure-mode",
+			"./frontend-oidc-mode",
 			"./orchestration",
-			"./oidc",
 		],
 		reactAdapter: true,
 		experimental: false,
@@ -102,7 +100,10 @@ describe("workspace package contract", () => {
 			if (contract.reactAdapter) {
 				expect(packageJson.peerDependencies?.react).toBeDefined();
 				expect(packageJson.peerDependenciesMeta?.react?.optional).toBe(true);
-				expect(exportMap["./react"]).toBeDefined();
+				const hasReactExport = Object.keys(exportMap).some((k) =>
+					k.endsWith("/react"),
+				);
+				expect(hasReactExport).toBe(true);
 			} else {
 				expect(packageJson.peerDependencies?.react).toBeUndefined();
 			}

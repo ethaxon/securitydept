@@ -16,7 +16,7 @@ interface StoredStateEnvelope {
  *
  * This persistence layer is protocol-agnostic: it stores / loads an
  * AuthSnapshot without caring whether the snapshot came from a
- * token-set sealed flow or a standard OIDC exchange.
+ * OIDC-mediated sealed flow or a standard OIDC exchange.
  */
 export interface AuthStatePersistence {
 	load(): Promise<AuthSnapshot | null>;

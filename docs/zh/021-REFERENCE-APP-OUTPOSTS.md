@@ -1,6 +1,6 @@
 # Outposts 参考案例
 
-本文档说明为什么 `/workspace/outposts` 应被视为 `securitydept` Client SDK 的一个高价值下游参考案例，以及它在近期、中期和长期分别应如何反哺 SDK 设计。
+本文档说明为什么 `~/workspace/outposts` 应被视为 `securitydept` Client SDK 的一个高价值下游参考案例，以及它在近期、中期和长期分别应如何反哺 SDK 设计。
 
 它不是 `apps/webui` 的替代品。  
 `apps/webui` 仍然是第一优先级 dogfooding / reference app；`outposts` 的价值在于它代表了一个**真实下游 adopter**，而不是 SDK 自己的产品内示例。
@@ -23,11 +23,13 @@
 
 这正好能帮助我们回答两件事：
 
-- `token-set-context-client` 的 OIDC mode family（`frontend-oidc` / `backend-oidc-pure` / `backend-oidc-mediated`）后续是否真的能支撑多资格场景（详见 [008-OIDC-MODE-FAMILY](008-OIDC-MODE-FAMILY.md)）
+- 当前认证栈的 auth context / mode 分层（前端通过 `token-set-context-client` 进入，后端通过 `securitydept-token-set-context` 进入）后续是否真的能支撑多资格场景（详见 [020-AUTH_CONTEXT_AND_MODES](020-AUTH_CONTEXT_AND_MODES.md)）
 - OIDC mode family 中各模式的边界是否清晰：
   - **`/orchestration`**：共享 protocol-agnostic token lifecycle 基座
-  - **`/oidc` (`frontend-oidc`)**：前端纯 OIDC client
-  - **`/token-set` (`backend-oidc-mediated`)**：后端增强 OIDC adapter
+  - **`/frontend-oidc-mode` (`frontend-oidc`)**：前端纯 OIDC client
+  - **`/backend-oidc-pure-mode`**：前端消费 `backend-oidc-pure` 的显式入口，即使一开始只是薄的 config / guard / transport contract
+  - **`/backend-oidc-mediated-mode`**：前端消费 `backend-oidc-mediated` 的显式入口；与后端同名 mode 对齐，而不是另造半步 flow 名
+  - **`securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_pure_mode, backend_oidc_mediated_mode, access_token_substrate}`**：Rust 侧应显式暴露 mode modules 与 shared substrate，而不是继续把 `frontend` / `backend` 当一级 public namespace
 
 ## 这个案例应该验证什么
 
@@ -68,18 +70,20 @@
 
 ## 对 SDK 设计的直接影响
 
-这个参考案例对 `token-set-context-client` OIDC mode family 的影响最直接：
+这个参考案例对当前认证栈的 OIDC mode family 影响最直接：
 
 - `outposts` 当前单 `confluence` 链路更适合验证 **`frontend-oidc` / `backend-oidc-pure`** 以及 **通用 orchestration + resource-server** 这一层
 - 它暂时**不直接验证** `backend-oidc-mediated`（sealed refresh、metadata redemption）本身
+- 它对 access-token 注入、resource-server 校验、`X-SecurityDept-Propagation` 这组跨 mode substrate 反而更有直接参考价值
 
 当前建议：
 
 1. SDK 应保留对多 token family / 多 source 管理的抽象空间
-2. `token-set-context-client` 的 OIDC mode family 已按以下结构演进：
+2. 前端产品面内部的 subpath family 已按以下结构演进；Rust 侧则应并列收口到顶层 `*_mode` / shared modules：
    - `/orchestration`：共享 token lifecycle 基座
-   - `/oidc`：`frontend-oidc` 模式
-   - `/token-set`：`backend-oidc-mediated` 模式
+   - `/frontend-oidc-mode`：`frontend-oidc` 模式
+   - `/backend-oidc-pure-mode`：前端消费 `backend-oidc-pure` 的显式子路径
+   - `/backend-oidc-mediated-mode`：前端消费 `backend-oidc-mediated` 的显式子路径
 3. route-level 多 requirement 编排应优先朝 **headless orchestration primitive** 演进
 4. 默认推荐实现可以存在，但它应是：
    - scheduler / orchestrator 默认实现
@@ -89,7 +93,7 @@
 
 换句话说：
 
-- **“通用 token orchestration”值得先从 token-set 特定流程中剥离出来**
+- **“通用 token orchestration”值得先从 OIDC-mediated 特定流程中剥离出来**
 - **“多资格调度能力”值得进入 SDK 设计视野**
 - **“多资格交互 UI”不应成为 SDK 内建职责**
 
@@ -104,8 +108,10 @@
    - audience / scope contract
    - `oauth-resource-server` 在真实 adopter 单链路里的 Bearer 校验基线
 3. 把这条单链路总结成对 SDK 的直接反馈：
-   - 标准 OIDC 场景已有 `/orchestration`（protocol-agnostic）和 `/oidc`（`frontend-oidc`）
-   - `backend-oidc-mediated`（sealed + metadata）是更窄的 adapter 层（`/token-set`）
+   - 标准 OIDC 场景应收口为 `/frontend-oidc-mode` 与 `/backend-oidc-pure-mode` 两条 formal mode-aligned 前端入口
+   - 前端消费 `backend-oidc-mediated` 时，通过 `/backend-oidc-mediated-mode` 进入；其对应的后端 mode 同样是 `backend-oidc-mediated`
+   - Rust crate 不应继续把 `frontend` / `backend` 作为一级 public namespace；更合适的 canonical shape 是顶层 `*_mode` 与 `access_token_substrate`
+   - resource-server / propagation / forwarder 不应再被写成 `backend-oidc-mediated` 专属材料；它们只依赖 access token 与 propagation header，应提升为顶层 shared module `access_token_substrate`
 4. 不急着把 chooser UI 或 router glue 抽回 SDK
 
 ## 中期计划
@@ -139,7 +145,7 @@
 ## 相关文档
 
 - SDK 边界与当前口径：`docs/zh/007-CLIENT_SDK_GUIDE.md`
-- Outposts 项目内认证方案：`/workspace/outposts/docs/zh/003-AUTH.md`
+- Outposts 项目内认证方案：`~/workspace/outposts/docs/zh/003-AUTH.md`
 
 ---
 

@@ -3,19 +3,22 @@ use std::{net::SocketAddr, sync::Arc};
 use axum::http::HeaderMap;
 pub use securitydept_core::oidc::MokaPendingOauthStore;
 use securitydept_core::{
-    auth_runtime::{
-        BasicAuthContextService, OidcSessionAuthService, TokenSetAuthService,
-        TokenSetResourceService,
-    },
-    basic_auth_context::BasicAuthContext,
+    basic_auth_context::{BasicAuthContext, BasicAuthContextService},
     creds::Argon2BasicAuthCred,
     creds_manage::store::CredsManageStore,
     oauth_resource_server::OAuthResourceServerVerifier,
     oidc::{OidcClient, OidcError},
     realip::{RealIpResolver, ResolvedClientIp, TransportContext},
+    session_context::OidcSessionAuthService,
     token_set_context::{
-        AxumReverseProxyPropagationForwarder, MokaPendingAuthStateMetadataRedemptionStore,
-        MediatedContext,
+        access_token_substrate::{
+            AccessTokenSubstrateResourceService, AxumReverseProxyPropagationForwarder,
+            TokenPropagator,
+        },
+        backend_oidc_mediated_mode::{
+            BackendOidcMediatedModeAuthService, BackendOidcMediatedModeRuntime,
+            MokaPendingAuthStateMetadataRedemptionStore,
+        },
     },
 };
 use url::Url;
@@ -30,7 +33,9 @@ use crate::{
 pub struct ServerState {
     pub config: Arc<ServerConfig>,
     pub creds_manage_store: Arc<CredsManageStore>,
-    pub token_set_context: Arc<MediatedContext<MokaPendingAuthStateMetadataRedemptionStore>>,
+    pub mediated_runtime:
+        Arc<BackendOidcMediatedModeRuntime<MokaPendingAuthStateMetadataRedemptionStore>>,
+    pub token_propagator: Arc<TokenPropagator>,
     pub basic_auth_context: Arc<BasicAuthContext<Argon2BasicAuthCred>>,
     pub token_set_resource_verifier: Option<Arc<OAuthResourceServerVerifier>>,
     pub real_ip_resolver: Option<Arc<RealIpResolver>>,
@@ -51,23 +56,27 @@ impl ServerState {
             .expect("basic-auth context service config must be valid")
     }
 
-    pub fn token_set_resource_service(&self) -> Option<TokenSetResourceService<'_>> {
+    pub fn resource_service(&self) -> Option<AccessTokenSubstrateResourceService<'_>> {
         self.token_set_resource_verifier
             .as_deref()
-            .map(TokenSetResourceService::new)
+            .map(AccessTokenSubstrateResourceService::new)
     }
 
-    pub fn token_set_auth_service(
+    pub fn mediated_auth_service(
         &self,
     ) -> ServerResult<
-        TokenSetAuthService<'_, MokaPendingOauthStore, MokaPendingAuthStateMetadataRedemptionStore>,
+        BackendOidcMediatedModeAuthService<
+            '_,
+            MokaPendingOauthStore,
+            MokaPendingAuthStateMetadataRedemptionStore,
+        >,
     > {
         let oidc = self.oidc.as_deref().ok_or(ServerError::InvalidConfig {
-            message: "TokenSetAuthService requires OIDC to be enabled".to_string(),
+            message: "BackendOidcMediatedModeAuthService requires OIDC to be enabled".to_string(),
         })?;
-        Ok(TokenSetAuthService::new(
+        Ok(BackendOidcMediatedModeAuthService::new(
             oidc,
-            &self.token_set_context,
+            &self.mediated_runtime,
             "/auth/token-set/callback",
         ))
     }

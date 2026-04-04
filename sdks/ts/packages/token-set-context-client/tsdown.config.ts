@@ -2,19 +2,19 @@ import { defineConfig } from "tsdown";
 
 export default defineConfig({
 	entry: {
-		// Root — backward-compatible bridge (not canonical for any pillar).
-		index: "./src/index.ts",
-		// Token-set sealed flow — canonical entries.
-		"token-set/index": "./src/token-set/index.ts",
-		"token-set/web/index": "./src/token-set/web/index.ts",
-		"token-set/react/index": "./src/token-set/react/index.tsx",
-		// Old paths kept as backward-compatible bridges.
-		"web/index": "./src/web/index.ts",
-		"react/index": "./src/react/index.tsx",
-		// Shared orchestration substrate.
+		// backend-oidc-mediated mode — canonical entries.
+		"backend-oidc-mediated-mode/index":
+			"./src/backend-oidc-mediated-mode/index.ts",
+		"backend-oidc-mediated-mode/web/index":
+			"./src/backend-oidc-mediated-mode/web/index.ts",
+		"backend-oidc-mediated-mode/react/index":
+			"./src/backend-oidc-mediated-mode/react/index.tsx",
+		// backend-oidc-pure mode — formal frontend-facing surface.
+		"backend-oidc-pure-mode/index": "./src/backend-oidc-pure-mode/index.ts",
+		// frontend-oidc mode — browser-native OIDC (wraps oauth4webapi).
+		"frontend-oidc-mode/index": "./src/frontend-oidc-mode/index.ts",
+		// Shared token-lifecycle substrate.
 		"orchestration/index": "./src/orchestration/index.ts",
-		// Frontend pure OIDC client (wraps oauth4webapi).
-		"oidc/index": "./src/oidc/index.ts",
 	},
 	format: "esm",
 	dts: true,

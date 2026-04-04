@@ -6,7 +6,9 @@ use axum::{
 };
 use securitydept_core::{
     oidc::OidcCodeCallbackSearchParams,
-    token_set_context::{MetadataRedemptionRequest, TokenRefreshPayload, TokenSetAuthorizeQuery},
+    token_set_context::backend_oidc_mediated_mode::{
+        MetadataRedemptionRequest, TokenRefreshPayload, TokenSetAuthorizeQuery,
+    },
 };
 
 use crate::{
@@ -24,7 +26,7 @@ pub async fn login(
 ) -> Result<Response, ServerError> {
     let external_base_url = state.external_base_url(&headers)?;
     state
-        .token_set_auth_service()?
+        .mediated_auth_service()?
         .login(&external_base_url, &query)
         .await
         .map(into_axum_response)
@@ -40,7 +42,7 @@ pub async fn callback(
 ) -> Result<Response, ServerError> {
     let external_base_url = state.external_base_url(&headers)?;
     state
-        .token_set_auth_service()?
+        .mediated_auth_service()?
         .callback(&external_base_url, search_params)
         .await
         .map(into_axum_response)
@@ -53,7 +55,7 @@ pub async fn refresh(
     Json(payload): Json<TokenRefreshPayload>,
 ) -> ServerResult<Response> {
     state
-        .token_set_auth_service()?
+        .mediated_auth_service()?
         .refresh(&payload)
         .await
         .map(into_axum_response)
@@ -66,7 +68,7 @@ pub async fn redeem_metadata(
     Json(payload): Json<MetadataRedemptionRequest>,
 ) -> ServerResult<Response> {
     match state
-        .token_set_auth_service()?
+        .mediated_auth_service()?
         .redeem_metadata(&payload)
         .await
         .map_err(ServerError::from)?

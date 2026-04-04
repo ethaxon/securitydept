@@ -3,15 +3,21 @@ name = "securitydept-session-context"
 version = "0.2.0-alpha.3"
 edition = "2024"
 
+[features]
+service = ["dep:securitydept-oidc-client"]
+
 [dependencies]
 humantime-serde = { workspace = true }
 http = { workspace = true }
+securitydept-oidc-client = { path = "../oidc-client", optional = true }
 securitydept-utils = { path = "../utils" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 tower-sessions = { workspace = true }
+tracing = { workspace = true }
 typed-builder = { workspace = true }
+url = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

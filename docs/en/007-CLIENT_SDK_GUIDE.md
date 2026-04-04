@@ -78,8 +78,11 @@ TypeScript examples:
 - `@securitydept/basic-auth-context-client/web`
 - `@securitydept/session-context-client`
 - `@securitydept/session-context-client/react`
-- `@securitydept/token-set-context-client`
-- `@securitydept/token-set-context-client/react`
+- `@securitydept/token-set-context-client/frontend-oidc-mode`
+- `@securitydept/token-set-context-client/backend-oidc-pure-mode`
+- `@securitydept/token-set-context-client/backend-oidc-mediated-mode`
+- `@securitydept/token-set-context-client/backend-oidc-mediated-mode/web`
+- `@securitydept/token-set-context-client/backend-oidc-mediated-mode/react`
 
 For npm packages that expose React adapters:
 
@@ -277,7 +280,7 @@ Recommended layers:
 Example:
 
 ```ts
-createTokenSetContextClient({
+createBackendOidcMediatedModeClient({
   runtime: {
     transport,
     persistence,
@@ -377,7 +380,7 @@ The more appropriate next-stage plan is to split the capability behind `token-se
      - standard backend OIDC + resource server
      - the `token-set-context` sealed + metadata flow
 
-2. **token-set-specific OIDC browser adapter**
+2. **backend-oidc-mediated browser adapter**
    - callback fragment parsing
    - sealed + metadata-specific redirect flow
    - metadata redemption
@@ -391,7 +394,7 @@ Read the current heavy module responsibilities accordingly:
   - refresh scheduling
   - bearer header injection helpers
   - refresh failure recovery policy
-- **token-set-specific browser adapter layer**
+- **backend-oidc-mediated browser adapter layer**
   - callback fragment parsing
   - metadata redemption flow
   - sealed + metadata-specific recovery behavior
@@ -402,49 +405,102 @@ And do not keep assuming that it should also own:
 - route-level orchestration
 - chooser UI / app policy
 
-One extra clarification: the current split between the generic orchestration layer and the token-set-specific adapter layer is an internal module boundary. The outward shape has been formalized as the OIDC mode family (see [008-OIDC-MODE-FAMILY](008-OIDC-MODE-FAMILY.md)).
+One extra clarification: the current split between the generic orchestration layer and the OIDC-mediated-specific adapter layer is only an internal module boundary. Outwardly, this now has to be read through two related surfaces:
+
+- the TS frontend runtime surface: `token-set-context-client`
+- the Rust crate public surface: `securitydept-token-set-context`
+
+The Rust side should no longer be read as “just a backend crate with a `backend` module.” The adopter-facing shape should instead converge on top-level `*_mode` and shared modules (see [020-AUTH_CONTEXT_AND_MODES](020-AUTH_CONTEXT_AND_MODES.md)).
 
 #### OIDC Mode Family (replaces "three pillars" terminology)
 
-Starting from iteration 51, the primary terminology shifts from "three pillars" to the unified **OIDC mode family**:
+The primary terminology now uses the unified auth-context / mode layering. Full design: [020-AUTH_CONTEXT_AND_MODES](020-AUTH_CONTEXT_AND_MODES.md).
 
-| Mode | Who runs OIDC flows | TS SDK subpath | Rust crate |
+##### Product surface
+
+| Surface / Authority | SDK / Crate | Role |
+|---|---|---|
+| **TS frontend runtime surface** | `token-set-context-client` (TS) | Unified frontend subpath / runtime surface for all OIDC modes |
+| **Rust top-level mode / shared-module public surface** | `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_pure_mode, backend_oidc_mediated_mode, access_token_substrate, orchestration, models}` | Unified adopter-facing structure built from mode modules plus shared modules |
+| **Rust ownership boundary (implementation-layer explanation)** | mode-specific contract ownership + shared substrate ownership | Explains internal ownership without continuing to dictate the first-level public path |
+
+##### Mode overview
+
+| Mode | Who runs OIDC flows | TS SDK subpath | Rust-side authority entry |
 |---|---|---|---|
-| `frontend-oidc` | Frontend | `/oidc` | `securitydept-oidc-client` (config only) |
-| `backend-oidc-pure` | Backend | (future) | `securitydept-oidc-client` |
-| `backend-oidc-mediated` | Backend (mediated) | `/token-set` (legacy name) | `securitydept-oidc-client` + `securitydept-token-set-context` |
+| `frontend-oidc` | Frontend (browser) | `/frontend-oidc-mode` | `securitydept-token-set-context::frontend_oidc_mode` should own config and integration contracts; current code still carries transitional naming rather than the final public shape |
+| `backend-oidc-pure` | Backend | `/backend-oidc-pure-mode` | `securitydept-token-set-context::backend_oidc_pure_mode` should own the mode entry plus frontend-consumable contracts |
+| `backend-oidc-mediated` | Backend (mediated) | `/backend-oidc-mediated-mode` | `securitydept-token-set-context::backend_oidc_mediated_mode` should own the mode entry plus frontend-consumable contracts |
 
-Full mode family design: [008-OIDC-MODE-FAMILY](008-OIDC-MODE-FAMILY.md).
+The TS subpaths in this section intentionally use the canonical mode-aligned names.  
+If implementation still contains legacy export names or legacy directory shapes, treat those as migration leftovers rather than the documentation’s final naming.
+
+##### Infrastructure layer (implementation crates)
+
+The following crates are internal implementation details. Adopters should not need to depend on them directly. Today parts of them are still gathered under a transitional `backend`-heavy layout, but conceptually they serve the whole Rust public surface rather than one first-level backend namespace:
+
+| Crate | Scope |
+|---|---|
+| `securitydept-oauth-provider` | OIDC discovery, JWKS, metadata refresh, `OidcSharedConfig` |
+| `securitydept-oidc-client` | OIDC authorization code / device flows |
+| `securitydept-oauth-resource-server` | JWT verification, introspection |
 
 #### `frontend-oidc`: Frontend Pure OIDC Client
 
 - Frontend handles authorize/callback/token-exchange via `oauth4webapi` (official base)
-- Backend only returns OIDC config rules, does not run OIDC flows itself
+- The Rust backend does **not** run the OIDC redirect/callback/token-exchange runtime itself, but the Rust crate should still expose frontend-consumable config and integration contracts through `securitydept-token-set-context::frontend_oidc_mode`; current implementation still carries transitional naming
 - `oidc-client-ts` serves as comparison/reference case (`devDependency` only)
 
 Dependency strategy:
-- `oauth4webapi`: official base, `optional peerDependency` + `devDependency`; adopters using `/oidc` must install it
+- `oauth4webapi`: official base, `optional peerDependency` + `devDependency`; adopters using `/frontend-oidc-mode` must install it
 - `oidc-client-ts`: comparison case, `devDependency` only; no installation requirement for adopters
 
 #### `backend-oidc-mediated`: What "token-set" Actually Means
 
-The current `/token-set` subpath implements `backend-oidc-mediated` mode:
+The capability family historically called "token-set" needs to be split into two layers in the current structure:
+
+- on the frontend product surface, the frontend-facing entry is named directly as `/backend-oidc-mediated-mode`
+- on the Rust crate public surface, the corresponding mode module should be named directly as `securitydept-token-set-context::backend_oidc_mediated_mode`
+- the corresponding query / payload / redirect-fragment / metadata-redemption contracts should also live under that mode module rather than remaining a root-level miscellany
+
+What matters here is the mode boundary. `backend-oidc-mediated` is one formal mode within `securitydept-token-set-context`:
 
 - Backend mediates all provider interaction; frontend never touches provider directly
 - Sealed refresh material (AEAD encrypted), metadata redemption, post-auth redirect rules
 - "token-set" describes the data structure, not the mode of operation
 
+#### `backend-oidc-pure`: Standard Backend OIDC
+
+`backend-oidc-pure` is another formal mode. The backend runs a standard OIDC client + resource-server verifier; the frontend receives opaque sessions, tokens, or protocol-agnostic material. The canonical frontend-facing entry should be `/backend-oidc-pure-mode`; the Rust-side canonical module should be `securitydept-token-set-context::backend_oidc_pure_mode`. Even if the first implementation is only a thin config / guard / transport projection, it should no longer remain absent or live in ad-hoc app glue.
+
 #### Shared Configuration Model
 
-`oidc-client` and `oauth-resource-server` share provider connectivity config via `OidcSharedConfig` (`securitydept-oauth-provider`). See [008-OIDC-MODE-FAMILY](008-OIDC-MODE-FAMILY.md) §2-3.
+`oidc-client` and `oauth-resource-server` share provider connectivity config via `OidcSharedConfig` (`securitydept-oauth-provider`). More accurately, `OidcSharedConfig` should be read as the shared OIDC configuration authority for the whole Rust crate public surface, not as an internal detail of one `backend` namespace. See the `token-set-context` section in [020-AUTH_CONTEXT_AND_MODES](020-AUTH_CONTEXT_AND_MODES.md).
+
+#### Current Rust Authority-Surface Gap
+
+The most important current mismatch is not merely naming. It is that the public surface has not been fully closed:
+
+- `securitydept-token-set-context` still carries transitional first-level `frontend` / `backend` modules in code
+- but the canonical public API is better expressed directly as top-level `frontend_oidc_mode`, `backend_oidc_pure_mode`, `backend_oidc_mediated_mode`, `access_token_substrate`, `orchestration`, and `models`
+- `frontend-oidc` config rules, the integration contracts it needs to interoperate with `access_token_substrate`, and the frontend-consumable query / payload / fragment / redemption contracts for `backend-oidc-mediated` all belong to those top-level mode/shared modules
+- mediated-specific materials such as `BackendOidcMediatedModeRuntime`, `metadata_redemption`, refresh-material protection, and redirect resolution belong conceptually to the `backend-oidc-mediated` runtime domain, not to a generic root-level capability surface
+- the access-token contracts consumed by resource-server verification, as well as `propagation` and `forwarder`, should no longer be hard-bound to `backend-oidc-mediated`; they depend only on the access token and `X-SecurityDept-Propagation`, so they should be promoted into the top-level shared module `access_token_substrate`
+
+So the more accurate current reading is:
+
+- the top-level mode/shared-module public shape is the right target, but code still carries transitional namespaces
+- `frontend_oidc_mode` is no longer merely a config producer, because it must also own the integration contracts that connect `frontend-oidc` to `access_token_substrate`
+- the crate root still carries historical flattening and should not be treated as the final conceptual model
 
 #### Cross-mode Constraints
 
-- All three OIDC modes belong to the `token-set-context-client` product family
+- All three OIDC modes belong to the same auth stack, with the frontend entering via `token-set-context-client` and the backend via `securitydept-token-set-context`
+- The TS frontend product surface should expose three formal mode-aligned subpaths: `/frontend-oidc-mode`, `/backend-oidc-pure-mode`, and `/backend-oidc-mediated-mode`
 - `/orchestration` is shared infrastructure, not a replacement for any mode
 - Different modes should reuse the same token lifecycle, persistence, transport semantics
 - No dual-authority ownership within a single token family
-- the pillars may later be composed together, but a single token family must still keep one authority
+- the modes may later be composed together, but a single token family must still keep one authority
 - this does not mean three stable public surfaces already exist today; it is first and foremost the next clear implementation direction
 
 #### Mixed Custody and BFF Boundary
@@ -478,21 +534,29 @@ The hard problem in this scenario is not only “how to get tokens”, but also:
 
 Current recommended direction:
 
-- the SDK may eventually grow **headless orchestration primitives / scheduler direction**
-- `token-set-context-client`, or a future layer above it, may own pending-requirement / callback-recovery state-machine concerns
+- the auth stack may eventually grow **headless orchestration primitives / scheduler direction**
+- on the frontend side, `token-set-context-client` or a future layer above it may own pending-requirement / callback-recovery state-machine concerns; on the backend side, `securitydept-token-set-context` mode family boundaries need to stay aligned
 - chooser UI, router policy, and product-facing interaction steps should remain in adopter-owned app glue
 
 The current status should stay explicit:
 
-- this is a high-value downstream reference-case direction
-- it should inform future `token-set-context-client` design
+- this is a high-value downstream reference-case direction that should inform future auth stack design (frontend `token-set-context-client` + backend `securitydept-token-set-context`)
 - but it is **not part of the currently verified v1 contract**
 
 ## Server Support
 
 Server support should not mean “a separate server-only client core”. It should still build on the same portable capability model.
 
-For `token-set-context-client`, this means the future backend pure OIDC client and backend sealed refresh + metadata redemption flow should also stay on top of the same orchestration / lifecycle substrate rather than becoming detached sibling cores.
+The frontend `token-set-context-client` orchestration / lifecycle substrate (token snapshot, persistence, transport projection) is designed as cross-mode shared infrastructure. The Rust crate `securitydept-token-set-context` is better read as:
+
+- `frontend_oidc_mode`
+- `backend_oidc_pure_mode`
+- `backend_oidc_mediated_mode`
+- `access_token_substrate`
+- `orchestration`
+- `models`
+
+Within that structure, each `*_mode` module owns the config / contract / runtime entry for its mode, `access_token_substrate` owns the shared resource-server / propagation / forwarder substrate, and `orchestration` / `models` carry only truly shared abstractions.
 
 ### `basic-auth-context` and `session-context`
 
@@ -563,7 +627,7 @@ Current principles:
 
 - preserve server-returned `error: { code, message, recovery }` when available
 - `code` is the stable cross-layer contract; `message` is not
-- prefer exported `const object + type alias` contracts such as `UserRecovery`, `ClientErrorKind`, `AuthGuardResultKind`, and `TokenSetBootstrapSource` over raw string unions or TypeScript `enum`
+- prefer exported `const object + type alias` contracts such as `UserRecovery`, `ClientErrorKind`, `AuthGuardResultKind`, and `BackendOidcMediatedModeBootstrapSource` over raw string unions or TypeScript `enum`
 - preserve `cause` and structured context
 - redirect / reauthenticate flows should not always be modeled as ordinary exceptions
 
@@ -718,6 +782,9 @@ The important distinction is:
 
 This is the current working contract map for the TypeScript SDK. It keeps the main stability, capability, and boundary judgment in one place so later sections can reference it instead of restating it.
 
+This table uses canonical mode-aligned names as the target contract.  
+If implementation is still migrating, this table takes precedence over leftover legacy shapes.
+
 | Package / Subpath | Stability | Host / Capability Requirement | Current Reading |
 |---|---|---|---|
 | `@securitydept/client` | `stable` | No DOM, no implicit `fetch`; caller provides transport/runtime | Foundation root export |
@@ -729,23 +796,23 @@ This is the current working contract map for the TypeScript SDK. It keeps the ma
 | `@securitydept/basic-auth-context-client/react` | `provisional` | React runtime | React adapter |
 | `@securitydept/session-context-client` | `stable` | Transport / cancellation; login redirect flow is not SDK surface | Session root contract |
 | `@securitydept/session-context-client/react` | `provisional` | React runtime | React adapter |
-| `@securitydept/token-set-context-client` | bridge ² | Backward-compatible re-export only; no longer canonical for any scenario pillar | Root backward-compatible bridge |
-| `@securitydept/token-set-context-client/token-set` | `stable` ² | Callback / restore / refresh / persistence / traceSink | Token-set sealed flow **canonical entry** |
-| `@securitydept/token-set-context-client/token-set/web` | `provisional` | `location` / `history` / `fetch` / flow-state storage | Token-set browser adapter canonical entry |
-| `@securitydept/token-set-context-client/token-set/react` | `provisional` | React runtime | Token-set React adapter canonical entry |
-| `@securitydept/token-set-context-client/web` | bridge | Legacy path, backward-compat; new code should use `./token-set/web` | Browser adapter compat bridge |
-| `@securitydept/token-set-context-client/react` | bridge | Legacy path, backward-compat; new code should use `./token-set/react` | React adapter compat bridge |
-| `@securitydept/token-set-context-client/orchestration` | `provisional` ³ | No token-set sealed flow fields; protocol-agnostic token snapshot / persistence / transport / `AuthMaterialController` thin control layer | Token orchestration **explicit subpath entry** (still in the same package, not a separate npm package; recommended for protocol-agnostic usage) |
-| `@securitydept/token-set-context-client/oidc` | `experimental` ⁴ | Frontend pure OIDC client (`frontend-oidc` mode); based on `oauth4webapi`, does not introduce `oidc-client-ts`; normalizes token material for `/orchestration` | Frontend pure OIDC **explicit subpath entry** |
+| `@securitydept/token-set-context-client/backend-oidc-mediated-mode` | `stable` ² | Callback / restore / refresh / persistence / traceSink | **Canonical frontend-facing entry** for consuming `backend-oidc-mediated` |
+| `@securitydept/token-set-context-client/backend-oidc-mediated-mode/web` | `provisional` | `location` / `history` / `fetch` / flow-state storage | Canonical browser-adapter subpath for consuming `backend-oidc-mediated` |
+| `@securitydept/token-set-context-client/backend-oidc-mediated-mode/react` | `provisional` | React runtime | Canonical React-adapter subpath for consuming `backend-oidc-mediated` |
+| `@securitydept/token-set-context-client/orchestration` | `provisional` ³ | No backend-oidc-mediated sealed flow fields; protocol-agnostic token snapshot / persistence / transport / `AuthMaterialController` thin control layer | Shared token lifecycle substrate **explicit subpath entry** (recommended for protocol-agnostic usage; not a complete mode/flow entry) |
+| `@securitydept/token-set-context-client/frontend-oidc-mode` | `experimental` ⁴ | Frontend pure OIDC client (`frontend-oidc` mode); based on `oauth4webapi`, does not introduce `oidc-client-ts`; normalizes token material for `/orchestration` | `frontend-oidc` **mode-aligned explicit subpath entry** |
+| `@securitydept/token-set-context-client/backend-oidc-pure-mode` | `experimental` ⁵ | Opaque session / requirement / config projection / thin transport contract; frontend consumption surface for `backend-oidc-pure`, without running the provider flow itself | `backend-oidc-pure` **mode-aligned explicit subpath entry** (it no longer remains absent even when thin) |
 | `@securitydept/test-utils` | `experimental` | Fake clock / scheduler / transport / trace collector | Test/demo infra |
 
 ¹ Adapter subpaths default to `provisional`, but `@securitydept/client/web` and `@securitydept/client/persistence/web` are intentional `stable` exceptions because they remain foundation-owned capability adapters: narrow responsibility, no product semantics, and only wire foundation protocols to host capabilities.
 
-² This `stable` label covers the `/token-set` canonical subpath for the browser-owned token-set v1 contract. The root entry is a backward-compatible bridge with no stability commitment. Mixed-custody / BFF / server-side token-set are not included.
+² This `stable` label covers `/backend-oidc-mediated-mode` as the canonical frontend-facing subpath for consuming `backend-oidc-mediated`. Root entry (`.`) and legacy `./web` / `./react` bridges have been removed and no longer exist in the package exports. Mixed-custody / BFF / server-side mediated token ownership are not included.
 
-³ The orchestration capability is accessible via the explicit `@securitydept/token-set-context-client/orchestration` subpath (recommended); the root import retains backward-compatible re-exports. Both entry points expose the same content and still live inside the same npm package — not a separate package. Adopters can use `AuthMaterialController` (thin lifecycle controller) and its `applyDelta()` externally-driven update entry, or individual low-level helpers (`bearerHeader`, `createAuthStatePersistence`, `createAuthorizedTransport`). The controller only owns token material lifecycle — it does not provide acquisition, redirect, or refresh scheduling. By itself it is not a full scenario pillar; it is the shared substrate for the OIDC mode family (`frontend-oidc`, `backend-oidc-pure`, `backend-oidc-mediated`). The official frontend OIDC wrapping uses `oauth4webapi`; `oidc-client-ts` serves as a comparison case (see [008-OIDC-MODE-FAMILY](008-OIDC-MODE-FAMILY.md)). Stability is still freezing-in-progress (`provisional`): publicly accessible with an explicit entry, but not a full `stable` promise.
+³ The orchestration capability is accessible via the explicit `@securitydept/token-set-context-client/orchestration` subpath. It lives inside the same npm package — not a separate package. Adopters can use `AuthMaterialController` (thin lifecycle controller) and its `applyDelta()` externally-driven update entry, or individual low-level helpers (`bearerHeader`, `createAuthStatePersistence`, `createAuthorizedTransport`). The controller only owns token material lifecycle — it does not provide acquisition, redirect, or refresh scheduling. By itself it is not a complete mode or complete flow entry; it is the shared token-lifecycle substrate inside the frontend product surface, reused by subpaths such as `/backend-oidc-mediated-mode` and `/frontend-oidc-mode`, while remaining aligned with the higher-level auth-context / mode layering. The official frontend OIDC wrapping uses `oauth4webapi`; `oidc-client-ts` serves as a comparison case (see [020-AUTH_CONTEXT_AND_MODES](020-AUTH_CONTEXT_AND_MODES.md)). Stability is still freezing-in-progress (`provisional`): publicly accessible with an explicit entry, but not a full `stable` promise.
 
-⁴ The `/oidc` subpath implements `frontend-oidc` mode, with `oauth4webapi` as the official base. Currently `experimental`: has an explicit entry and normalize logic, but the runtime surface is not yet fully frozen. Adopters using `/oidc` must install `oauth4webapi` (`optional peerDependency`).
+⁴ The `/frontend-oidc-mode` subpath implements `frontend-oidc` mode, with `oauth4webapi` as the official base. Currently `experimental`: has an explicit entry and normalize logic, but the runtime surface is not yet fully frozen. Adopters using `/frontend-oidc-mode` must install `oauth4webapi` (`optional peerDependency`).
+
+⁵ `/backend-oidc-pure-mode` is the formal frontend-facing subpath for `backend-oidc-pure`. Its first implementation may stay thin and config-first, but the documentation and export surface no longer accept the story that pure mode has no frontend entry.
 
 Shared reading rules:
 
@@ -753,6 +820,18 @@ Shared reading rules:
 - `provisional` means public and usable, but still under a stricter adapter freeze bar
 - `experimental` means test/demo/workbench-facing rather than adopter-facing
 - automation currently locks export maps, `sideEffects: false`, and build entry alignment; stability labels themselves remain a documentation-layer judgment
+
+#### How To Read `token-set-context-client` Subpaths
+
+Read `@securitydept/token-set-context-client` first as the **frontend product surface**, then read its internal subpath family:
+
+- root (`.`) and legacy `./web` / `./react` bridges have been removed and no longer exist in the package exports
+- `/backend-oidc-mediated-mode*` is the explicit family for frontend consumption of `backend-oidc-mediated`
+- `/backend-oidc-pure-mode` is the explicit frontend-facing subpath for `backend-oidc-pure`, even if the surface remains thin
+- `/frontend-oidc-mode` is the mode-aligned frontend implementation subpath for `frontend-oidc`
+- `/orchestration` is shared token-lifecycle substrate, not a complete mode or complete flow
+- the OIDC mode family lives at the cross-stack design layer; the subpath family lives inside the frontend product surface, so they should not be read as the same axis
+- the Rust side should likewise converge on top-level `*_mode` / shared modules; TS subpaths and Rust crate modules should describe the same mode/shared boundaries
 
 #### Capability Boundary Rules
 
@@ -765,17 +844,17 @@ Use these rules to answer "which layer owns this capability?" without rereading 
 - **traceSink / lifecycle trace** → SDK contract
 - **trace timeline UI / DOM harnesses / propagation probes / business helpers** → reference app glue, not SDK surface
 
-#### token-set-client Abstraction Split (In Progress)
+#### token-set-context-client Frontend Subpath / Abstraction Split (In Progress)
 
 Based on the current `outposts` single-provider / single-app integration against `oauth-resource-server`, `token-set-context-client` has introduced a clearer internal module boundary:
 
 - **generic token orchestration** (`src/orchestration/`)
   - owns combined `access_token` / `id_token` / `refresh_token` state
   - owns restore / refresh / persistence / disposal / transport projection
-  - does not need to know whether the token source is standard OIDC, backend-issued OIDC, or a token-set sealed flow
-- **token-set-specific browser adapter**
+  - does not need to know whether the token source is standard OIDC, backend-issued OIDC, or a backend-oidc-mediated sealed flow
+- **backend-oidc-mediated browser adapter**
   - owns callback fragments, sealed payloads, metadata redemption, and redirect recovery
-  - this is the layer that understands token-set-specific protocol shape
+  - this is the layer that understands OIDC-mediated protocol shape
 
 First internal module slice delivered:
 
@@ -785,44 +864,46 @@ First internal module slice delivered:
 | `orchestration/token-ops.ts` | `mergeTokenDelta()`, `bearerHeader()` |
 | `orchestration/persistence.ts` | `createAuthStatePersistence()` |
 | `orchestration/auth-transport.ts` | `createAuthorizedTransport()` |
-| `oidc/types.ts` | `OidcClientConfig` / `OidcTokenResult` / `AuthorizeResult` — frontend pure OIDC client config and protocol vocabulary |
-| `oidc/client.ts` | `createOidcClient()` — wraps oauth4webapi for standard browser OIDC Authorization Code + PKCE flow |
+| `frontend-oidc-mode/types.ts` | `FrontendOidcModeClientConfig` / `FrontendOidcModeTokenResult` / `FrontendOidcModeAuthorizeResult` — frontend pure OIDC client config and protocol vocabulary |
+| `frontend-oidc-mode/client.ts` | `createFrontendOidcModeClient()` — wraps oauth4webapi for standard browser OIDC Authorization Code + PKCE flow |
 | `orchestration/controller.ts` | `AuthMaterialController` / `createAuthMaterialController()` — thin control layer composing snapshot read/write + persistence + bearer + transport; provides `applyDelta()` for externally-driven renew/update |
 
 Existing v1 types (`AuthTokenSnapshot`, `AuthStateSnapshot`, etc.) are now re-export aliases of the orchestration types, fully backward compatible.
 
-Current status (as of iteration 51):
+Current status:
 
 - `@securitydept/token-set-context-client/orchestration` is the **explicit recommended subpath** for protocol-agnostic usage
-- the root import still re-exports the same orchestration surface for backward compatibility
+- `/orchestration` is the sole entry for protocol-agnostic orchestration exports (the root bridge has been removed)
 - these exports are **not** a separate npm package — still inside `@securitydept/token-set-context-client`
+- the frontend-facing projection for `backend-oidc-pure` should likewise land as a `backend-oidc-pure-mode` family rather than remaining a “no-entry” exception
 - `AuthMaterialController` (`createAuthMaterialController()`) is the **thin control layer** entry — it composes snapshot read/write, bearer projection, persistence restore/save/clear, and authorized transport in a single manageable object; see `examples/auth-material-controller-contract.test.ts`
 - when to use the controller vs raw helpers:
   - prefer the controller when you want a managed token lifecycle (apply + persist + transport as a unit)
   - use raw helpers (`bearerHeader`, `createAuthStatePersistence`, etc.) for targeted composition where you control the lifecycle yourself
-  - the controller does NOT handle acquisition, callback redemption, or refresh scheduling — those remain token-set-specific
-- v1 public surface (`TokenSetContextClient`, `./web`, `./react`) is fully intact
+  - the controller does NOT handle acquisition, callback redemption, or refresh scheduling — those remain OIDC-mediated-specific
+- v1 public surface (`BackendOidcMediatedModeClient`, `./backend-oidc-mediated-mode/web`, `./backend-oidc-mediated-mode/react`) has been consolidated to canonical subpaths
 - `AuthMaterialController.applyDelta()` is the protocol-agnostic entry for externally-driven renew/update:
   - accepts a `TokenDelta` (only the changed fields); internally calls `mergeTokenDelta()` to merge
   - when `options.metadata` is absent, current metadata is preserved (refresh does not change principal)
   - when `options.metadata` is provided, metadata is replaced (re-auth or source change scenarios)
   - auto-saves the merged snapshot to persistence (same as `applySnapshot`)
   - throws if no existing snapshot — `applySnapshot` must be called first for initial token material
-- `TokenSetContextClient` now builds more of its lifecycle on top of the controller:
+- `BackendOidcMediatedModeClient` now builds more of its lifecycle on top of the controller:
   - `restoreState()` / `clearState()` / `restorePersistedState()` route through the controller
   - `authorizationHeader()` is served directly by the controller
   - `refresh()` success path routes through `_authMaterial.applyDelta()` for token merge + persistence
-- `/orchestration` should no longer be abstracted forward in isolation as the final frontend OIDC answer; the next shape decision should come from the three real cases: `oauth4webapi`, `oidc-client-ts`, and the future `angular-auth-oidc-client`
-- the planned official pure-client OIDC route still lives inside `token-set-context-client`; it will wrap `oauth4webapi` and share the same orchestration substrate with the backend pure OIDC client and backend sealed refresh + metadata redemption flow
+- `/orchestration` should no longer be abstracted forward in isolation as the final frontend OIDC answer; the next shape decision should come from the three real cases: `oauth4webapi`, `oidc-client-ts`, and the future `angular-auth-oidc-client` to calibrate the `frontend-oidc` mode implementation
+- the planned official `frontend-oidc` implementation still lives inside `token-set-context-client` (`/frontend-oidc-mode` subpath), wrapping `oauth4webapi` and reusing the same-package orchestration substrate. The frontend-facing counterparts for `backend-oidc-pure` and `backend-oidc-mediated` should converge on `/backend-oidc-pure-mode` and `/backend-oidc-mediated-mode`
 - the default expectation is continued evolution through subpaths / additive surface inside the same package, not an immediate split into a parallel package
-- iteration 50 completed a structural reshaping: token-set v1 surface moved from root to explicit `/token-set` subpath family
-- current public subpath family:
-  - `/token-set` — sealed refresh + metadata redemption flow (`stable` v1)
-  - `/token-set/web` — browser adapter (`provisional`; canonical path reshaped, stability promotion pending dedicated evidence)
-  - `/token-set/react` — React adapter (`provisional`; canonical path reshaped, stability promotion pending dedicated evidence)
-  - `/orchestration` — shared protocol-agnostic lifecycle substrate (`provisional`)
-  - `/oidc` — frontend pure OIDC client, wrapping oauth4webapi (`experimental`)
-- root (`.`) is now a backward-compatible bridge only, no longer the canonical entry for any scenario pillar
+- the frontend public surface should now be read through the exact mode-aligned canonical subpath family rather than a root bridge:
+- `/backend-oidc-mediated-mode` — canonical frontend-facing subpath for `backend-oidc-mediated` (`stable` v1)
+- `/backend-oidc-mediated-mode/web` — backend-oidc-mediated mode browser-adapter subpath (`provisional`; stability promotion pending dedicated evidence)
+- `/backend-oidc-mediated-mode/react` — backend-oidc-mediated mode React-adapter subpath (`provisional`; stability promotion pending dedicated evidence)
+- `/orchestration` — shared protocol-agnostic token-lifecycle substrate reused by `/backend-oidc-mediated-mode` and `/frontend-oidc-mode` (`provisional`)
+- `/frontend-oidc-mode` — mode-aligned frontend subpath for `frontend-oidc`, wrapping oauth4webapi (`experimental`)
+- `/backend-oidc-pure-mode` — explicit frontend-facing subpath for `backend-oidc-pure`; the first implementation may remain thin/config-first (`experimental`)
+- root (`.`) and legacy `./web` / `./react` bridges have been removed; the canonical subpath family is now the only public surface
+- the Rust side still needs to retire the transitional `frontend` / `backend` split and converge on top-level `*_mode` / shared modules for frontend-consumable config, cross-boundary contracts, and shared substrate
 - dependency semantics:
   - `oauth4webapi` = official base, `optional peerDependency` + `devDependency`
   - `oidc-client-ts` = comparison/reference case, `devDependency` only
@@ -833,19 +914,19 @@ Read `@securitydept/token-set-context-client` as a frozen browser-owned v1 basel
 
 | In v1 scope | Outside v1 scope |
 |---|---|
-| browser-owned token-set flow | mixed-custody token family management |
+| browser-owned `backend-oidc-mediated` consumption | mixed-custody token family management |
 | callback fragment parsing + metadata redemption | stateful BFF token ownership |
-| in-memory auth-state signals | server-side token-set adapters / SSR token stores |
+| in-memory auth-state signals | server-side mediated token ownership / SSR token stores |
 | persisted restore + explicit clear | cross-tab sync / visibility re-check and larger browser lifecycle hardening |
 | refresh-token-driven refresh | multi-provider orchestration / token-family policy |
 | bearer authorization-header projection | product-specific resource helpers / propagation probes / trace timeline UI |
-| transport convenience such as `createTokenSetAuthorizedTransport()` |  |
+| transport convenience such as `createBackendOidcMediatedModeAuthorizedTransport()` |  |
 | `./web` browser bootstrap / callback fragment capture / reset helpers |  |
 | minimal `./react` integration |  |
 
 Why these topics stay out of v1:
 
-- mixed-custody / BFF / server-side token-set materially change the ownership model rather than extend the current one
+- mixed-custody / BFF / server-side mediated token ownership materially change the ownership model rather than extend the current one
 - larger browser lifecycle work belongs to later adapter hardening, not the first root-contract freeze
 - app-specific helpers and probes depend on reference-app API shapes and product models, so leaving them in `apps/webui` keeps the SDK surface understandable
 
@@ -855,9 +936,10 @@ Use this section to decide quickly whether the current SDK fits your use case an
 
 | If you need... | Use / Expect | Do not assume |
 |---|---|---|
-| browser app / SPA token-set | `@securitydept/token-set-context-client/token-set` canonical entry (`stable`), plus `./token-set/web` for browser bootstrap/callback/storage | timeline UI, propagation probes, or `apps/webui/src/api/*` are SDK surface |
+| browser app / SPA consuming `backend-oidc-mediated` | `@securitydept/token-set-context-client/backend-oidc-mediated-mode` canonical entry (`stable`), plus `./backend-oidc-mediated-mode/web` for browser bootstrap/callback/storage | timeline UI, propagation probes, or `apps/webui/src/api/*` are SDK surface |
+| frontend consumption of `backend-oidc-pure` | `@securitydept/token-set-context-client/backend-oidc-pure-mode` for frontend-facing config / requirement / transport contracts | every related flow must still remain in app glue |
 | React integration | `@securitydept/*/react` for minimal Provider + hook integration; `session-context-client/react` can start directly from the React entry below | route guards, pending-redirect UI, or reference-page interaction forms are part of the adapter contract |
-| token-set beyond browser-owned baseline | read it as outside v1 scope immediately | mixed-custody / BFF / SSR token store support already exists |
+| mediated token ownership beyond the browser-owned baseline | read it as outside v1 scope immediately | mixed-custody / BFF / SSR token-store support already exists |
 
 What must not be treated as SDK surface:
 
@@ -885,7 +967,7 @@ Before you adopt:
 |---|---|---|---|---|
 | Foundation packages | ES2020+, `Promise`, `Map` / `Set` / `WeakRef` | Node.js (vitest), modern browser (Vite build) |  | IE / legacy environments, non-ES-module hosts, CJS consumers |
 | Browser capability adapters | `fetch`, `AbortSignal`, `localStorage` / `sessionStorage` semantics | apps/webui dogfooding, vitest jsdom | `sessionStorage` cross-tab isolation, storage-event exact behavior | Service Worker environments, non-standard storage hosts, per-browser matrices |
-| Auth-context `./web` adapters | `location.href`, `history.replaceState`, `fetch`, flow-state storage | apps/webui dogfooding, token-set browser focused lifecycle tests | SPA-router edge behavior, iframe / webview suitability | non-SPA router scenarios, SSR hosts, React Native / Electron |
+| Auth-context `./web` adapters | `location.href`, `history.replaceState`, `fetch`, flow-state storage | apps/webui dogfooding, backend-oidc-mediated browser focused lifecycle tests | SPA-router edge behavior, iframe / webview suitability | non-SPA router scenarios, SSR hosts, React Native / Electron |
 | React adapters | React 18+ (`useSyncExternalStore`), host-provided transport / scheduler / clock | vitest focused adapter test(s), apps/webui dogfooding | React 17, React Server Components, concurrent-mode edge behavior | non-React hosts, React Native |
 
 ### Minimal Entry Paths
@@ -925,26 +1007,26 @@ const sessionClient = new SessionContextClient({
 const session = await sessionClient.fetchMe(runtime.transport);
 ```
 
-#### 2. Browser entry: `./web` owns browser glue
+#### 2. Browser entry: `./backend-oidc-mediated-mode/web` owns browser glue
 
-Use `./web` when the host wants browser capability helpers such as `fetch`, storage-backed flow state, and callback bootstrap.
+Use `./backend-oidc-mediated-mode/web` when the host wants browser capability helpers such as `fetch`, storage-backed flow state, and callback bootstrap.
 
 ```ts
 import {
-	bootstrapTokenSetClient,
-	createTokenSetBrowserClient,
-	resolveTokenSetAuthorizeUrl,
-} from "@securitydept/token-set-context-client/web";
+	bootstrapBackendOidcMediatedModeClient,
+	createBackendOidcMediatedModeBrowserClient,
+	resolveBackendOidcMediatedModeAuthorizeUrl,
+} from "@securitydept/token-set-context-client/backend-oidc-mediated-mode/web";
 
-const client = createTokenSetBrowserClient({
+const client = createBackendOidcMediatedModeBrowserClient({
 	baseUrl: "https://auth.example.com",
 	defaultPostAuthRedirectUri: window.location.href,
 });
 
-const bootstrap = await bootstrapTokenSetClient(client);
+const bootstrap = await bootstrapBackendOidcMediatedModeClient(client);
 
 if (bootstrap.source === "empty") {
-	window.location.href = resolveTokenSetAuthorizeUrl(client);
+	window.location.href = resolveBackendOidcMediatedModeAuthorizeUrl(client);
 }
 ```
 
@@ -1037,8 +1119,8 @@ All conditions must be satisfied before re-evaluating promotion to `stable`:
 
 | Adapter | Strongest Evidence | Current Gap |
 |---|---|---|
-| `token-set-context-client/web` | Focused lifecycle tests (covering callback precedence/recovery, retained-fragment replacement/reset-to-empty transitions, and shared-store fresh-client restore/reset), reference-app dogfooding, minimal entry example | Broader browser lifecycle hardening (cross-tab sync, etc.) |
-| `token-set-context-client/react` | Minimal React focused test, entry example, StrictMode remount/disposal focused test, reconfigure dispose/subscription-isolation focused test | React 17 / concurrent mode not verified; broader host matrix still uncovered |
+| `token-set-context-client/backend-oidc-mediated-mode/web` | Focused lifecycle tests (covering callback precedence/recovery, retained-fragment replacement/reset-to-empty transitions, and shared-store fresh-client restore/reset), reference-app dogfooding, minimal entry example | Broader browser lifecycle hardening (cross-tab sync, etc.) |
+| `token-set-context-client/backend-oidc-mediated-mode/react` | Minimal React focused test, entry example, StrictMode remount/disposal focused test, reconfigure dispose/subscription-isolation focused test | React 17 / concurrent mode not verified; broader host matrix still uncovered |
 | `basic-auth-context-client/web` + `/react` | Redirect-contract focused root tests, zone-aware external-consumer scenario coverage, zone-aware standalone minimal entry example, query/hash-bearing browser-route forwarding focused web tests, dedicated React provider/hook focused test | Broader browser-host semantics remain unverified |
 | `session-context-client/react` | Standalone minimal entry example, dedicated React provider/hook, refresh/cleanup focused test, StrictMode stale-fetch discard focused test, reconfigure stale-result discard focused test | React 17 / concurrent mode not verified; broader host matrix still uncovered |
 
@@ -1061,7 +1143,7 @@ The current intended reading is:
 
 ### Downstream Reference Case: Outposts
 
-In addition to `apps/server` and `apps/webui`, `/workspace/outposts` should be treated as a high-value downstream adopter reference case:
+In addition to `apps/server` and `apps/webui`, `~/workspace/outposts` should be treated as a high-value downstream adopter reference case:
 
 - it does not replace the primary reference-app / dogfooding path
 - its value is validating real multi-backend, multi-OIDC-client, route-level requirement-orchestration scenarios
@@ -1074,9 +1156,9 @@ See the staged planning document:
 
 ### Current Bundle / Code Split Judgment
 
-- iteration 12 already removed the most obvious chunk warning through a local route split for `/token-set`
+- the `/backend-oidc-mediated-mode` page has already removed the most obvious chunk warning through a local route split
 - because of that, bundle/code splitting can currently be downgraded from “blocking issue” to “follow-up engineering topic”
-- if more work is needed later, the next reasonable split points should be other dense reference routes or shared UI hot paths, not repeated mechanical splitting of the same token-set page
+- if more work is needed later, the next reasonable split points should be other dense reference routes or shared UI hot paths, not repeated mechanical splitting of the same OIDC-mediated page
 - at the current stage, this topic should stay behind SDK public contract, capability requirement, and boundary hardening
 
 ### Demo and OIDC Provider

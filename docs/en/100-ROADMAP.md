@@ -56,8 +56,8 @@ Status:
 Status:
 
 - basic auth zone: documented, not fully productized
-- cookie-session: reference implementation exists, reusable extraction is available in `securitydept-session-context` and `securitydept-auth-runtime`
-- stateless token-set mode: the core server and shared crate are in place, route orchestration is available in `securitydept-auth-runtime`, and the browser-owned client SDK baseline now exists in `sdks/ts`; mixed-custody / BFF / server-side token-set remain later-scope topics
+- cookie-session: reference implementation exists; the reusable core already lives in `securitydept-session-context`; route-facing services (`SessionAuthServiceTrait` / `OidcSessionAuthService` / `DevSessionAuthService`) are now directly in that crate via the `service` feature
+- stateless token-set mode: the core server and shared crate are in place; `securitydept-auth-runtime` has been dissolved; mode-specific and substrate-specific services are now in `securitydept-token-set-context`; the config surface has been reshaped to `BackendOidcMediatedConfigSource` trait + `ResolvedBackendOidcMediatedConfig`; mixed-custody / BFF / server-side token-set remain later-scope topics
 
 ## Phase 4: Frontend SDKs
 

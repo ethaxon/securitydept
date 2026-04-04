@@ -8,11 +8,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use securitydept_core::{
-    auth_runtime::TokenSetResourcePrincipal,
     session_context::{SessionContextError, SessionContextSession},
-    token_set_context::{
+    token_set_context::access_token_substrate::{
         DEFAULT_PROPAGATION_HEADER_NAME, PropagatedBearer, PropagationDirective,
-        PropagationRequestTarget,
+        PropagationRequestTarget, ResourceTokenPrincipal,
     },
     utils::error::{ErrorPresentation, UserRecovery},
 };
@@ -28,7 +27,7 @@ pub enum DashboardAuthContext {
     Basic,
     Bearer {
         access_token: String,
-        resource_token_principal: Box<TokenSetResourcePrincipal>,
+        resource_token_principal: Box<ResourceTokenPrincipal>,
         propagation: Option<PropagationDirective>,
     },
 }
@@ -133,7 +132,7 @@ pub async fn require_dashboard_auth(
             securitydept_core::creds::parse_bearer_auth_header_opt(authorization)
     {
         let resource_token_principal = state
-            .token_set_resource_service()
+            .resource_service()
             .ok_or(crate::error::ServerError::SessionContext {
                 source: SessionContextError::MissingContext,
             })?

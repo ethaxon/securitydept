@@ -9,17 +9,19 @@ jwe = ["securitydept-core/creds-jwe"]
 [dependencies]
 securitydept-core = { path = "../../packages/core", features = [
     "utils",
-    "auth-runtime-full",
     "basic-auth-context",
     "oidc-client-recommend",
     "token-set-context-recommend",
     "session-context",
+    "session-context-service",
     "creds",
     "creds-manage",
     "creds-manage-migration",
     "creds-rfc9068",
     "creds-jwt",
     "creds-oidc",
+    "realip",
+    "oauth-resource-server",
 ] }
 axum = { workspace = true }
 tower-http = { workspace = true }

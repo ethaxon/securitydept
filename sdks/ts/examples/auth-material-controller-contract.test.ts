@@ -8,7 +8,7 @@
 //   1. Standard OIDC / backend-issued token material scenario — adopter
 //      receives tokens from any source and manages them through the controller
 //   2. Full lifecycle: apply → header projection → transport → persist → restore → clear
-//   3. Only /orchestration subpath imports — no token-set sealed flow semantics
+//   3. Only /orchestration subpath imports — no OIDC-mediated sealed flow semantics
 //
 // What the controller does NOT handle (and is not tested here):
 //   - Token acquisition (redirect, callback, metadata redemption)

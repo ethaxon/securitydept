@@ -43,12 +43,7 @@ pub async fn propagation_forward(
     );
 
     let response = forwarder
-        .forward(
-            state.token_set_context.token_propagator(),
-            &bearer,
-            &target,
-            request,
-        )
+        .forward(&state.token_propagator, &bearer, &target, request)
         .await
         .map_err(|e| {
             tracing::warn!(error = %e, "Propagation forwarding failed");
@@ -61,7 +56,7 @@ pub async fn propagation_forward(
 }
 
 fn target_display(
-    target: &securitydept_core::token_set_context::PropagationRequestTarget,
+    target: &securitydept_core::token_set_context::access_token_substrate::PropagationRequestTarget,
 ) -> String {
     format!(
         "{}://{}:{}",
@@ -95,11 +90,15 @@ mod tests {
         oauth_resource_server::ResourceTokenPrincipal,
         session_context::SessionContextConfig,
         token_set_context::{
-            AllowedPropagationTarget, AxumReverseProxyPropagationForwarder,
-            AxumReverseProxyPropagationForwarderConfig,
-            MokaPendingAuthStateMetadataRedemptionConfig, PropagationDestinationPolicy,
-            PropagationDirective, PropagationScheme, TokenPropagatorConfig, MediatedContext,
-            MediatedContextConfig,
+            access_token_substrate::{
+                AllowedPropagationTarget, AxumReverseProxyPropagationForwarder,
+                AxumReverseProxyPropagationForwarderConfig, PropagationDestinationPolicy,
+                PropagationDirective, PropagationScheme, TokenPropagator, TokenPropagatorConfig,
+            },
+            backend_oidc_mediated_mode::{
+                BackendOidcMediatedConfig, BackendOidcMediatedModeRuntime,
+                BackendOidcMediatedModeRuntimeConfig, MokaPendingAuthStateMetadataRedemptionConfig,
+            },
         },
     };
     use tokio::net::TcpListener;
@@ -120,7 +119,7 @@ mod tests {
                     .map(str::to_string);
                 let propagation_header = request
                     .headers()
-                    .get(securitydept_core::token_set_context::DEFAULT_PROPAGATION_HEADER_NAME)
+                    .get(securitydept_core::token_set_context::access_token_substrate::DEFAULT_PROPAGATION_HEADER_NAME)
                     .and_then(|value| value.to_str().ok())
                     .map(str::to_string);
 
@@ -145,19 +144,19 @@ mod tests {
                 .expect("upstream server should run");
         });
 
-        let token_set_context_config =
-            MediatedContextConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
-                token_propagation: TokenPropagatorConfig {
-                    destination_policy: PropagationDestinationPolicy {
-                        allowed_targets: vec![AllowedPropagationTarget::ExactOrigin {
-                            scheme: PropagationScheme::Http,
-                            hostname: "localhost".to_string(),
-                            port: upstream_addr.port(),
-                        }],
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
+        let token_propagation_config = TokenPropagatorConfig {
+            destination_policy: PropagationDestinationPolicy {
+                allowed_targets: vec![AllowedPropagationTarget::ExactOrigin {
+                    scheme: PropagationScheme::Http,
+                    hostname: "localhost".to_string(),
+                    port: upstream_addr.port(),
+                }],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mediated_runtime_config =
+            BackendOidcMediatedModeRuntimeConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
                 ..Default::default()
             };
         let forwarder_config = AxumReverseProxyPropagationForwarderConfig {
@@ -180,7 +179,12 @@ mod tests {
             config: Arc::new(ServerConfig {
                 server: Default::default(),
                 oidc: None,
-                token_set_context: token_set_context_config.clone(),
+                mediated: BackendOidcMediatedConfig {
+                    oidc_client: Default::default(),
+                    oauth_resource_server: Default::default(),
+                    mediated_runtime: mediated_runtime_config.clone(),
+                    token_propagation: token_propagation_config.clone(),
+                },
                 session_context: SessionContextConfig::default(),
                 basic_auth_context: BasicAuthContextConfig::<Argon2BasicAuthCred>::builder()
                     .zones(vec![BasicAuthZoneConfig::default()])
@@ -197,9 +201,13 @@ mod tests {
                     .await
                     .expect("creds store should load"),
             ),
-            token_set_context: Arc::new(
-                MediatedContext::from_config(token_set_context_config)
-                    .expect("token set context should build"),
+            mediated_runtime: Arc::new(
+                BackendOidcMediatedModeRuntime::from_config(mediated_runtime_config)
+                    .expect("mediated runtime should build"),
+            ),
+            token_propagator: Arc::new(
+                TokenPropagator::from_config(&token_propagation_config)
+                    .expect("token propagator should build"),
             ),
             basic_auth_context: Arc::new(
                 BasicAuthContext::from_config(
@@ -240,7 +248,7 @@ mod tests {
             Request::builder()
                 .uri("/api/propagation/api/health?via=token-set")
                 .header(
-                    securitydept_core::token_set_context::DEFAULT_PROPAGATION_HEADER_NAME,
+                    securitydept_core::token_set_context::access_token_substrate::DEFAULT_PROPAGATION_HEADER_NAME,
                     propagation_directive
                         .to_header_value()
                         .expect("directive should serialize"),

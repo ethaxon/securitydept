@@ -8,18 +8,34 @@ use securitydept_core::{
     basic_auth_context::{BasicAuthContextConfig, BasicAuthZoneConfig},
     creds::Argon2BasicAuthCred,
     creds_manage::CredsManageConfig,
-    oidc::{MokaPendingOauthStoreConfig, OidcClientConfig},
+    oidc::MokaPendingOauthStoreConfig,
     realip::RealIpResolveConfig,
     session_context::SessionContextConfig,
     token_set_context::{
-        AxumReverseProxyPropagationForwarderConfig, MokaPendingAuthStateMetadataRedemptionConfig,
-        MediatedContextConfig,
+        access_token_substrate::AxumReverseProxyPropagationForwarderConfig,
+        backend_oidc_mediated_mode::{
+            BackendOidcMediatedConfig, BackendOidcMediatedConfigSource,
+            MokaPendingAuthStateMetadataRedemptionConfig, ResolvedBackendOidcMediatedConfig,
+        },
+        orchestration::OidcSharedConfig,
     },
     utils::base_url::ExternalBaseUrl,
 };
 use serde::Deserialize;
 
 use crate::error::{ServerError, ServerResult};
+
+/// Concrete type alias for the server's mediated-mode config.
+type ServerMediatedConfig = BackendOidcMediatedConfig<
+    MokaPendingOauthStoreConfig,
+    MokaPendingAuthStateMetadataRedemptionConfig,
+>;
+
+/// Concrete type alias for the server's resolved mediated-mode config.
+pub type ServerResolvedMediatedConfig = ResolvedBackendOidcMediatedConfig<
+    MokaPendingOauthStoreConfig,
+    MokaPendingAuthStateMetadataRedemptionConfig,
+>;
 
 /// Top-level configuration loaded from TOML file + environment variables.
 ///
@@ -28,29 +44,62 @@ use crate::error::{ServerError, ServerResult};
 /// Env var mapping uses `__` (double underscore) as the nesting separator:
 ///   SERVER__HOST  -> server.host
 ///   OIDC__CLIENT_ID -> oidc.client_id
+///   OIDC_CLIENT__PKCE_ENABLED -> oidc_client.pkce_enabled
 ///   CREDS_MANAGE__DATA_PATH -> creds_manage.data_path
+///
+/// # OIDC config resolution
+///
+/// OIDC-related fields (`oidc_client`, `oauth_resource_server`,
+/// `mediated_runtime`, `token_propagation`) are provided by
+/// `BackendOidcMediatedConfig` via `#[serde(flatten)]` and resolved
+/// against `[oidc]` shared defaults using
+/// [`BackendOidcMediatedConfigSource::resolve_all`].
+///
+/// ```text
+/// [oidc]                     shared provider defaults (well_known_url, client_id, ...)
+/// [oidc_client]              client-specific overrides (pkce, scopes, claims_check_script)
+/// [oauth_resource_server]    resource-server overrides (introspection inherits from [oidc])
+/// [mediated_runtime]         mode-specific runtime config
+/// [token_propagation]        substrate-level propagation config
+/// ```
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerConfig {
     #[serde(default)]
     pub server: ServerCoreConfig,
-    /// When absent (`None`), OIDC is disabled; /auth/session/login will create
-    /// a dev session.
+
+    // -- OIDC shared defaults --
+    /// Shared OIDC provider defaults. When absent (`None`), OIDC is disabled;
+    /// `/auth/session/login` will create a dev session.
     #[serde(default)]
-    pub oidc: Option<OidcClientConfig<MokaPendingOauthStoreConfig>>,
+    pub oidc: Option<OidcSharedConfig>,
+
+    // -- BackendOidcMediatedConfig (flattened) --
+    //
+    // Provides: oidc_client, oauth_resource_server, mediated_runtime,
+    // token_propagation — all at the top-level TOML namespace.
+    /// Backend OIDC mediated mode config. Flattened so its fields
+    /// (`oidc_client`, `oauth_resource_server`, `mediated_runtime`,
+    /// `token_propagation`) appear at the top level in TOML and env vars.
+    #[serde(flatten)]
+    pub mediated: ServerMediatedConfig,
+
+    // -- Server-specific (not in BackendOidcMediatedConfig) --
+    /// When present, enables the axum-reverse-proxy propagation forwarder
+    /// for bearer-authenticated dashboard requests with propagation context.
     #[serde(default)]
-    pub token_set_context: MediatedContextConfig<MokaPendingAuthStateMetadataRedemptionConfig>,
+    pub propagation_forwarder: Option<AxumReverseProxyPropagationForwarderConfig>,
+
+    // -- Independent auth contexts --
     #[serde(default)]
     pub session_context: SessionContextConfig,
     #[serde(default = "default_basic_auth_context")]
     pub basic_auth_context: BasicAuthContextConfig<Argon2BasicAuthCred>,
     #[serde(default)]
     pub real_ip_resolve: Option<RealIpResolveConfig>,
+
+    // -- Infra --
     #[serde(default)]
     pub creds_manage: CredsManageConfig,
-    /// When present, enables the axum-reverse-proxy propagation forwarder
-    /// for bearer-authenticated dashboard requests with propagation context.
-    #[serde(default)]
-    pub propagation_forwarder: Option<AxumReverseProxyPropagationForwarderConfig>,
 }
 
 impl ServerConfig {
@@ -79,10 +128,28 @@ impl ServerConfig {
         Ok(config)
     }
 
+    /// Resolve `[oidc]` shared defaults into validated mediated-mode config.
+    ///
+    /// Returns `None` when OIDC is disabled (no `[oidc]` section).
+    ///
+    /// Delegates to [`BackendOidcMediatedConfigSource::resolve_all`] — the
+    /// single canonical implementation of shared-defaults resolution.
+    pub fn resolve_oidc(&self) -> ServerResult<Option<ServerResolvedMediatedConfig>> {
+        let Some(ref shared) = self.oidc else {
+            return Ok(None);
+        };
+
+        let resolved =
+            self.mediated
+                .resolve_all(shared)
+                .map_err(|e| ServerError::InvalidConfig {
+                    message: format!("OIDC config resolution: {e}"),
+                })?;
+
+        Ok(Some(resolved))
+    }
+
     fn validate(&self) -> ServerResult<()> {
-        if let Some(ref oidc_config) = self.oidc {
-            oidc_config.validate()?;
-        }
         if self.basic_auth_context.zones.len() != 1 {
             return Err(ServerError::InvalidConfig {
                 message: "server currently requires exactly one basic_auth_context zone"
@@ -103,11 +170,8 @@ impl ServerConfig {
                     .to_string(),
             });
         }
-        self.token_set_context
-            .validate()
-            .map_err(|e| ServerError::InvalidConfig {
-                message: e.to_string(),
-            })?;
+        // mediated_runtime and token_propagation validation is deferred to
+        // resolve_oidc() which calls BackendOidcMediatedConfigSource::resolve_all().
         self.basic_auth_context
             .validate()
             .map_err(|e| ServerError::InvalidConfig {

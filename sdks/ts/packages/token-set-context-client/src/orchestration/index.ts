@@ -7,7 +7,7 @@
 //   import { ... } from "@securitydept/token-set-context-client/orchestration"
 //
 // Contents: token snapshot types, delta merge, bearer projection, persistence,
-// and authorized transport — all without any token-set sealed flow semantics.
+// and authorized transport — all without any OIDC-mediated sealed flow semantics.
 //
 // Current status: PUBLIC subpath within token-set-context-client (same npm package).
 // Stability: provisional (additive, freezing-in-progress; not yet promoted to stable).

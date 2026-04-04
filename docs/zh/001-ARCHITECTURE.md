@@ -83,10 +83,9 @@ Crate: `securitydept-oauth-resource-server`
 
 当前的专用 crate：
 
-- `securitydept-basic-auth-context`
-- `securitydept-session-context` —— 为 cookie-session 模式提取的可复用会话上下文抽象，包含 post-auth redirect 策略，且不再直接暴露 Axum 响应类型
-- `securitydept-token-set-context` —— 为无状态 token-set 模式提取的可复用认证状态、redirect、metadata redemption 与 bearer propagation 协调层
-- `securitydept-auth-runtime` —— 为 session、token-set 与 basic-auth 模式提取的面向路由的认证编排层，并为每种模式提供独立 feature gate
+- `securitydept-basic-auth-context` —— 可复用 basic-auth 上下文，包含 zone 模型、post-auth redirect 策略与可选 real-IP 访问限制；`BasicAuthContextService` 现已直接归属于此 crate
+- `securitydept-session-context` —— 为 cookie-session 模式提取的可复用会话上下文抽象，包含 post-auth redirect 策略，不再直接暴露 Axum 响应类型；route-facing 的 `SessionAuthServiceTrait`、`OidcSessionAuthService`、`DevSessionAuthService` 现已通过 `service` feature 直接归属于此 crate
+- `securitydept-token-set-context` —— 为无状态 token-set 模式提取的可复用认证状态、redirect、metadata redemption 与 bearer propagation 协调层；`BackendOidcMediatedModeAuthService` 与 `AccessTokenSubstrateResourceService` 现已直接归属于此 crate
 
 `securitydept-session-context` crate 提供：
 
@@ -97,15 +96,15 @@ Crate: `securitydept-oauth-resource-server`
 
 `securitydept-token-set-context` crate 当前提供：
 
-- `AuthTokenSnapshot` / `AuthTokenDelta`
-- `AuthStateMetadataSnapshot` / `AuthStateMetadataDelta`
-- `AuthStateSnapshot` / `AuthStateDelta`
+- 顶层 `frontend_oidc_mode` / `backend_oidc_pure_mode` / `backend_oidc_mediated_mode`
+- 顶层 `access_token_substrate` / `orchestration` / `models`
+- `BackendOidcMediatedModeRuntime`
+- `BackendOidcMediatedConfig`（raw 输入）/ `ResolvedBackendOidcMediatedConfig`（resolved bundle）
+- `BackendOidcMediatedConfigSource` trait — 供 adopter 组合的 config-source trait，提供 `resolve_oidc_client`、`resolve_oauth_resource_server`、`resolve_mediated_runtime`、`resolve_token_propagation`、`resolve_all` 各独立 resolve 入口
 - `TokenPropagator`
 - `PropagatedBearer`
 - `TokenSetRedirectUriConfig`
-- `DefaultTokenSetContext`
-- `DefaultTokenSetContextConfig`
-- `DefaultPendingAuthStateMetadataRedemptionStore`
+- metadata redemption store traits 与相关默认实现
 
 当前的重要边界：
 
@@ -115,18 +114,18 @@ Crate: `securitydept-oauth-resource-server`
 - 仅有 `node_id` 的 propagation target 通过可选的 `PropagationNodeTargetResolver` 解析
 - 真正的请求转发与核心 propagation 策略保持分离，但 `securitydept-token-set-context` 现已在 `TokenPropagator` 之上提供可选的 `axum-reverse-proxy-propagation-forwarder` feature
 
-cookie-session 和无状态 token-set 的路由层编排位于 `securitydept-auth-runtime`：
+route-facing service 现已直接归属于各 owning crate：
 
-- `SessionAuthServiceTrait`
-- `OidcSessionAuthService`
-- `DevSessionAuthService`
-- `TokenSetAuthService`
-- `BasicAuthContextService`
-- `TokenSetResourceService`
+- `SessionAuthServiceTrait` / `OidcSessionAuthService` / `DevSessionAuthService` → `securitydept-session-context`（feature: `service`）
+- `BasicAuthContextService` → `securitydept-basic-auth-context`
+- `BackendOidcMediatedModeAuthService`（原 `TokenSetAuthService`）→ `securitydept-token-set-context::backend_oidc_mediated_mode`
+- `AccessTokenSubstrateResourceService`（原 `TokenSetResourceService`）→ `securitydept-token-set-context::access_token_substrate`
+
+`securitydept-auth-runtime` 聚合层已解散，不再作为工作区 member 存在。
 
 当前边界说明：
 
-- `securitydept-basic-auth-context` 与 `securitydept-auth-runtime` 现在返回与框架无关的 HTTP 响应元数据，而不是 Axum 响应类型
+- `securitydept-basic-auth-context`、`securitydept-session-context`、`securitydept-token-set-context` 的长期方向都是返回与框架无关的 HTTP 响应元数据或 service contract，而不是 Axum 响应类型
 - Axum 专属的响应组装保留在 `apps/server`
 
 ## 第 6 层：Real IP 解析

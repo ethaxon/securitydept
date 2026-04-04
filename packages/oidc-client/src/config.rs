@@ -203,10 +203,7 @@ where
     ///                   ├──▸ resolve_config() ──▸ validated OidcClientConfig
     /// [oidc_client]   ──┘
     /// ```
-    pub fn resolve_config(
-        self,
-        shared: &OidcSharedConfig,
-    ) -> OidcResult<OidcClientConfig<PC>> {
+    pub fn resolve_config(self, shared: &OidcSharedConfig) -> OidcResult<OidcClientConfig<PC>> {
         let config = self.apply_shared_defaults(shared)?;
         config.validate()?;
         Ok(config)
@@ -313,9 +310,7 @@ mod tests {
             },
             ..Default::default()
         };
-        let config = raw
-            .apply_shared_defaults(&shared)
-            .expect("should resolve");
+        let config = raw.apply_shared_defaults(&shared).expect("should resolve");
 
         assert_eq!(config.client_id, "local-app", "local client_id must win");
     }
@@ -327,10 +322,12 @@ mod tests {
 
         let result = raw.apply_shared_defaults(&shared);
         assert!(result.is_err(), "should fail when client_id is absent");
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("client_id must be set"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("client_id must be set")
+        );
     }
 
     #[test]
@@ -344,9 +341,7 @@ mod tests {
             ..Default::default()
         };
         let raw = RawConfig::default();
-        let config = raw
-            .apply_shared_defaults(&shared)
-            .expect("should resolve");
+        let config = raw.apply_shared_defaults(&shared).expect("should resolve");
 
         assert_eq!(config.scopes, default_scopes());
     }
@@ -368,7 +363,9 @@ mod tests {
         let raw = RawConfig::default();
 
         // resolve_config = apply_shared_defaults + validate in one call
-        let config = raw.resolve_config(&shared).expect("should resolve and validate");
+        let config = raw
+            .resolve_config(&shared)
+            .expect("should resolve and validate");
         assert_eq!(config.client_id, "app");
         assert_eq!(
             config.remote.well_known_url.as_deref(),
@@ -386,6 +383,9 @@ mod tests {
         let raw = RawConfig::default();
 
         let result = raw.resolve_config(&shared);
-        assert!(result.is_err(), "should fail validation without well_known_url or manual endpoints");
+        assert!(
+            result.is_err(),
+            "should fail validation without well_known_url or manual endpoints"
+        );
     }
 }

@@ -4216,28 +4216,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "securitydept-auth-runtime"
-version = "0.2.0-alpha.3"
-dependencies = [
- "chrono",
- "http",
- "securitydept-basic-auth-context",
- "securitydept-creds",
- "securitydept-oauth-resource-server",
- "securitydept-oidc-client",
- "securitydept-realip",
- "securitydept-session-context",
- "securitydept-token-set-context",
- "securitydept-utils",
- "serde",
- "serde_json",
- "snafu",
- "tower-sessions",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "securitydept-basic-auth-context"
 version = "0.2.0-alpha.3"
 dependencies = [
@@ -4276,7 +4254,6 @@ dependencies = [
  "jsonwebtoken",
  "oauth2",
  "openidconnect",
- "securitydept-auth-runtime",
  "securitydept-basic-auth-context",
  "securitydept-creds",
  "securitydept-creds-manage",
@@ -4450,13 +4427,16 @@ version = "0.2.0-alpha.3"
 dependencies = [
  "http",
  "humantime-serde",
+ "securitydept-oidc-client",
  "securitydept-utils",
  "serde",
  "serde_json",
  "snafu",
  "tokio",
  "tower-sessions",
+ "tracing",
  "typed-builder",
+ "url",
 ]
 
 [[package]]
@@ -4472,6 +4452,7 @@ dependencies = [
  "moka",
  "orion",
  "regex",
+ "securitydept-creds",
  "securitydept-oauth-provider",
  "securitydept-oauth-resource-server",
  "securitydept-oidc-client",
