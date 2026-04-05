@@ -65,11 +65,12 @@ A `zone` is not its own auth context, and it is not a mode.
 A `mode` is also not its own auth context.  
 `mode` exists only inside `token-set-context`, where it describes the OIDC integration shape for that context.
 
-`token-set-context` currently has exactly three formal modes:
+`token-set-context` currently has exactly two formal modes:
 
 - `frontend-oidc`
-- `backend-oidc-pure`
-- `backend-oidc-mediated`
+- `backend-oidc`
+
+Within `backend-oidc`, `backend-oidc-pure` and `backend-oidc-mediated` should no longer be read as peer first-level modes. They are presets / profiles inside `backend-oidc`.
 
 ### 2.4 Public surfaces and ownership boundaries
 
@@ -81,7 +82,7 @@ This project also distinguishes two kinds of structure:
 This is especially important for `token-set-context`:
 
 - TS public surface: `token-set-context-client` plus its mode-aligned / shared subpath family
-- Rust public surface: `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_pure_mode, backend_oidc_mediated_mode, access_token_substrate, orchestration, models}`
+- Rust public surface: the canonical target should converge on `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode, access_token_substrate, orchestration, models}`; current code is still in the transitional `backend_oidc_pure_mode` / `backend_oidc_mediated_mode` split
 - Rust ownership boundary: the implementation may still distinguish mode-specific contract authority from shared runtime substrate ownership, but that should not keep driving the first-level public namespace
 
 ## 3. Auth Context Overview
@@ -90,7 +91,7 @@ This is especially important for `token-set-context`:
 |---|---|---|---|---|
 | `basic-auth-context` | browser-native Basic Auth where OIDC would be too heavy | browser credential cache + challenge routes | `zone` | Rust: `securitydept-basic-auth-context`; TS: `basic-auth-context-client` |
 | `session-context` | centralized services, BFFs, weak frontend capability | backend session store + HTTP-only cookie | no mode family | Rust: `securitydept-session-context` (route helpers now directly available via `service` feature); TS: `session-context-client` |
-| `token-set-context` | strong frontend capability, distributed SPAs, shared frontend/backend OIDC ownership | determined by the concrete mode | `frontend-oidc` / `backend-oidc-pure` / `backend-oidc-mediated` | Rust: `securitydept-token-set-context`; TS: `token-set-context-client` |
+| `token-set-context` | strong frontend capability, distributed SPAs, shared frontend/backend OIDC ownership | determined by the concrete mode | `frontend-oidc` / `backend-oidc` (presets: `pure`, `mediated`) | Rust: `securitydept-token-set-context`; TS: `token-set-context-client` |
 
 The required hierarchy is:
 
@@ -223,8 +224,8 @@ More accurately:
 
 | Surface | Entry | Responsibility | Current status |
 |---|---|---|---|
-| TS frontend runtime surface | `token-set-context-client` | unified frontend mode-aligned subpath / adapter / runtime surface | exists |
-| Rust crate public surface | `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_pure_mode, backend_oidc_mediated_mode, access_token_substrate, orchestration, models}` | top-level `*_mode` + shared-module structure for adopters | canonical shape implemented; legacy `frontend` / `backend` internal directories physically deleted |
+| TS frontend runtime surface | `token-set-context-client` | unified frontend mode-aligned subpath / adapter / runtime surface | exists; current code still splits `/backend-oidc-pure-mode` and `/backend-oidc-mediated-mode`, while the canonical target is `/backend-oidc-mode` |
+| Rust crate public surface | `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode, access_token_substrate, orchestration, models}` | top-level `*_mode` + shared-module structure for adopters | canonical target is clear; current code is still split across `backend_oidc_pure_mode` / `backend_oidc_mediated_mode` |
 | Rust ownership boundary | mode-specific config / contract ownership + shared runtime substrate ownership | the internal explanation of “who owns what” | real, but should not remain the first-level public namespace |
 
 The key decisions are:
@@ -233,26 +234,74 @@ The key decisions are:
 - the Rust public API is better expressed directly as top-level `*_mode` and shared modules than by forcing adopters through a first-level `frontend` / `backend` split
 - “the backend does not run a given frontend flow” does not mean “Rust does not need the corresponding mode module or contract authority”
 
-Both structural changes have been completed:
+The current structural reality is:
 
-- route-facing token-set services have been moved back into `securitydept-token-set-context` as mode-specific and shared-substrate services
-- the `backend-oidc-mediated` configuration surface has been reshaped from a raw/resolved pair into a composable config-source trait plus a distinct resolved bundle
+- `backend-oidc` is the long-term backend OIDC mode; current code still carries it through `backend-oidc-pure` / `backend-oidc-mediated` preset-specific modules
+- OIDC protocol flows (authorize / callback / refresh / exchange) are provided by `OidcClient`; the identity extraction (principal / issuer) shared by both backend modes has been pushed down into `securitydept-oidc-client::auth_state`
+- backend-oidc runtimes handle capability-specific post-processing (sealed refresh vs plain, metadata redemption, redirect policy, and so on)
+- `backend-oidc` should expose an explicit `user_info` exchange contract: `id_token` in the request body plus bearer `access_token` in the request header
+- but the protocol composition behind that `user_info` path is better pushed down into `securitydept-oidc-client`: parse ID-token claims (with server-side nonce skipping where appropriate), call userinfo, then run `check_claims`
+- the mode layer should keep only the endpoint owner, request/response contract, and route/auth/policy ownership
+- `frontend-oidc` has no backend runtime, but it now owns formal mode-qualified config projection and integration contracts
 
-### 6.3 Canonical mode names and TS subpaths
+### 6.3 Canonical modes and presets/profiles
 
-`token-set-context` uses exactly these formal modes:
+`token-set-context` should now use exactly these formal modes:
 
 | Mode | Who runs the OIDC flow | TS canonical subpath | Rust authority / runtime |
 |---|---|---|---|
 | `frontend-oidc` | frontend (browser) | `/frontend-oidc-mode` | `securitydept-token-set-context::frontend_oidc_mode` |
-| `backend-oidc-pure` | backend | `/backend-oidc-pure-mode` | `securitydept-token-set-context::backend_oidc_pure_mode` |
-| `backend-oidc-mediated` | backend (mediated) | `/backend-oidc-mediated-mode` | `securitydept-token-set-context::backend_oidc_mediated_mode` |
+| `backend-oidc` | backend | `/backend-oidc-mode` | `securitydept-token-set-context::backend_oidc_mode` |
+
+Current code still exposes these transitional shapes:
+
+- `/backend-oidc-pure-mode`
+- `/backend-oidc-mediated-mode`
+- `securitydept-token-set-context::backend_oidc_pure_mode`
+- `securitydept-token-set-context::backend_oidc_mediated_mode`
+
+They should be read as preset-specific migration surfaces for `backend-oidc`, not as long-term peer modes.
 
 These legacy public names are no longer canonical:
 
 - `/token-set`
 - `/oidc`
 - `/oidc-mediated`
+
+#### 6.3.1 `backend-oidc` presets / profiles
+
+`backend-oidc` should stably support at least these preset bundles:
+
+| Preset / Profile | Meaning | Default capability bundle |
+|---|---|---|
+| `pure` | minimal backend OIDC baseline | `refresh_material_protection = passthrough`, `metadata_delivery = none`, `post_auth_redirect_policy = caller_validated` |
+| `mediated` | backend OIDC with custody / policy augmentation | `refresh_material_protection = sealed`, `metadata_delivery = redemption`, `post_auth_redirect_policy = resolved` |
+
+These presets are recommended capability bundles, not additional first-level mode names.
+
+#### 6.3.2 `backend-oidc` capability axes
+
+`backend-oidc` should stop being implemented as “two modes with two long-lived API shapes” and instead converge on one capability framework. The key capability axes are:
+
+- `refresh_material_protection`
+  - `passthrough`
+  - `sealed`
+- `metadata_delivery`
+  - `none`
+  - `redemption`
+- `post_auth_redirect_policy`
+  - `caller_validated`
+  - `resolved`
+- `token_propagation`
+  - `enabled`
+  - `disabled`
+- `user_info_support`
+  - `enabled`
+
+Two things must stay explicit:
+
+- `metadata_redemption` and `user_info` are orthogonal capabilities, not substitutes
+- `backend-oidc-pure` / `backend-oidc-mediated` are just recommended preset bundles on top of these axes
 
 ### 6.3.1 Route-service ownership
 
@@ -298,20 +347,35 @@ The core shareable fields remain:
 
 while fields such as `scopes`, `audiences`, and `redirect_url` remain role-specific and should not be flattened into one generic default.
 
-### 6.4.1 `backend-oidc-mediated` configuration — current state
+### 6.4.1 Unified `backend-oidc` configuration direction
 
-`backend-oidc-mediated` now uses:
+Current code still exposes:
 
-- `BackendOidcMediatedConfig` (raw input)
-- `ResolvedBackendOidcMediatedConfig` (resolved bundle)
-- `BackendOidcMediatedConfigSource` trait — composable config-source trait for adopters, with individual resolve entry points:
-  - `resolve_oidc_client`
-  - `resolve_oauth_resource_server`
-  - `resolve_mediated_runtime`
-  - `resolve_token_propagation`
-  - `resolve_all` (convenience: resolves all at once)
+- `BackendOidcPureConfig` / `ResolvedBackendOidcPureConfig` / `BackendOidcPureConfigSource`
+- `BackendOidcMediatedConfig` / `ResolvedBackendOidcMediatedConfig` / `BackendOidcMediatedConfigSource`
 
-Adopters can compose individual resolvers rather than being limited to one monolithic `resolve_all()` entry.
+But the canonical direction should no longer keep two parallel config-source surfaces. A more coherent long-term shape is:
+
+- `BackendOidcModeConfig`
+- `ResolvedBackendOidcModeConfig`
+- `BackendOidcModeConfigSource`
+
+`BackendOidcModeConfigSource` should remain composable rather than monolithic. At minimum it should expose:
+
+- `resolve_oidc_client`
+- `resolve_oauth_resource_server`
+- `resolve_user_info`
+- `resolve_refresh_material_protection`
+- `resolve_metadata_delivery`
+- `resolve_post_auth_redirect_policy`
+- `resolve_token_propagation`
+- `resolve_all`
+
+The goal is therefore:
+
+- one backend-oidc capability config-source surface
+- multiple validated preset/profile bundles
+- one core implementation instead of two long-lived parallel config systems
 
 ### 6.5 `frontend-oidc`
 
@@ -326,53 +390,83 @@ So the correct reading is:
 - `frontend-oidc` has no backend runtime
 - but it **does** have a formal Rust mode module
 - that module is no longer just a config producer; once `frontend-oidc` also participates in resource-server / propagation / forwarder semantics, it must define the mode-qualified integration contracts that connect `frontend-oidc` to `access_token_substrate`
+- those contracts should express how frontend-produced token / auth-state material is formally consumed by the backend and the shared substrate, rather than re-exporting the substrate runtime itself under the mode module
 
-### 6.6 `backend-oidc-pure`
+### 6.6 `backend-oidc`
 
-In `backend-oidc-pure` mode:
+`backend-oidc` should be read as one backend OIDC capability framework, not as two long-lived parallel modes:
 
 - the backend runs a standard OIDC client + resource-server verifier
-- the frontend usually receives opaque sessions, tokens, or protocol-agnostic material
-- the formal frontend-facing entry should be `/backend-oidc-pure-mode`
+- OIDC protocol flows (authorize / callback / refresh / exchange) are provided by `OidcClient`
+- identity extraction shared across presets is pushed down into `securitydept-oidc-client::auth_state`
+- runtime layers own only capability-specific augmentation (refresh-material protection, metadata delivery, redirect policy, and so on)
+- the canonical browser-facing callback / refresh contract should use a unified fragment family
+- `user_info` is a formal `backend-oidc` capability: `id_token` in the request body, bearer `access_token` in the request header
+- the protocol composition behind `user_info` belongs in `securitydept-oidc-client`, while `backend-oidc` owns endpoint ownership, mode-qualified request/response contracts, and route/auth/policy boundaries
 
-Even if the initial `backend-oidc-pure-mode` surface is thin and only contains:
+More concretely, `backend-oidc` should unify:
 
-- config projection
-- requirement / guard contracts
-- transport contracts
+- code authorize
+- callback
+- refresh
+- token exchange
+- user-info / claims-normalization integration
+- the boundary to `access_token_substrate`
 
-it is still a formal mode-aligned surface, not an optional mirror to add later.
+while `pure` / `mediated` become presets that add different capability bundles on top of the same baseline.
 
-### 6.7 `backend-oidc-mediated`
+#### 6.6.1 `backend-oidc` and presets
 
-In `backend-oidc-mediated` mode:
+The canonical public surface for `backend-oidc` should converge on:
 
-- the backend mediates provider interaction
-- the frontend never talks to the provider directly
-- the mode-specific capabilities include:
-  - sealed refresh material
-  - metadata redemption
-  - post-auth redirect policy
+- TS: `/backend-oidc-mode`
+- Rust: `securitydept-token-set-context::backend_oidc_mode`
 
-Those mediated-specific capabilities still need to split into two layers:
+The currently exposed shapes:
 
-1. **backend runtime / policy**
-   - `BackendOidcMediatedModeRuntime`
-   - `metadata_redemption`
-   - refresh-material protection
-   - redirect resolution
-2. **frontend-consumable cross-boundary contracts**
-   - authorize query
-   - refresh payload
-   - redirect fragments
-   - metadata redemption request / response
-
-The first layer belongs to the `backend-oidc-mediated` backend runtime.  
-The second layer should be projected through `securitydept-token-set-context::backend_oidc_mediated_mode`, then consumed by:
-
+- `/backend-oidc-pure-mode`
 - `/backend-oidc-mediated-mode`
-- `/backend-oidc-mediated-mode/web`
-- `/backend-oidc-mediated-mode/react`
+- `backend_oidc_pure_mode`
+- `backend_oidc_mediated_mode`
+
+should be treated as:
+
+- preset-specific migration entries
+- in service of the current consolidation work
+
+not as long-term peer mode families.
+
+#### 6.6.2 Typical presets
+
+`backend-oidc` currently needs at least these two representative presets:
+
+- `pure`
+  - `refresh_material_protection = passthrough`
+  - `metadata_delivery = none`
+  - `post_auth_redirect_policy = caller_validated`
+- `mediated`
+  - `refresh_material_protection = sealed`
+  - `metadata_delivery = redemption`
+  - `post_auth_redirect_policy = resolved`
+
+The more accurate relationship is:
+
+- `mediated` = `backend-oidc` baseline + custody / policy augmentation
+- not another long-lived first-class mode
+
+### 6.7 Transitional implementation state
+
+Current implementation still keeps separate pure / mediated modules and TS subpaths:
+
+- Rust: `backend_oidc_pure_mode` / `backend_oidc_mediated_mode`
+- TS: `/backend-oidc-pure-mode` / `/backend-oidc-mediated-mode`
+
+But the next step should stop optimizing for “keep two APIs perfectly in sync forever” and instead converge on:
+
+- one `backend-oidc` core implementation
+- one capability schema / validation layer
+- one canonical frontend-facing subpath
+- pure / mediated retained only as presets / profiles or capability preconfigurations
 
 ### 6.8 Current root-level misclassification
 
@@ -380,15 +474,15 @@ There is still a large set of materials under `packages/token-set-context/src/` 
 
 | Current material | Correct home |
 |---|---|
-| `runtime.rs`, `metadata_redemption/*`, `refresh_material.rs` | `backend-oidc-mediated` runtime domain |
+| `runtime.rs`, `metadata_redemption/*`, `refresh_material.rs` | preset-specific runtime domain of `backend-oidc` (currently mainly the mediated preset) |
 | `propagation/*`, `forwarder/*`, resource-server-facing access-token / downstream forwarding policy | cross-mode access-token substrate inside `token-set-context` |
-| mediated-specific runtime / policy parts in `redirect.rs` | `backend-oidc-mediated` runtime domain |
-| query / payload / fragment / redemption request/response contracts in `transport.rs` | `securitydept-token-set-context::backend_oidc_mediated_mode` cross-boundary contract surface |
+| mediated-specific runtime / policy parts in `redirect.rs` | preset-specific runtime domain of `backend-oidc` (currently mainly the mediated preset) |
+| query / payload / fragment / redemption request/response contracts in `transport.rs` | `securitydept-token-set-context::backend_oidc_mode` cross-boundary contract surface |
 
 So:
 
 - `metadata_redemption` is not a generic root capability
-- `BackendOidcMediatedModeRuntime` is not a root-level product surface parallel to every mode
+- `BackendOidcMediatedModeRuntime` should not keep being read as a long-lived first-class mode runtime; it is more accurately a runtime augmentation for one `backend-oidc` preset
 - `propagation` / `forwarder` should not remain hard-bound to `backend-oidc-mediated`
 - `transport.rs` should not remain a root-level contract miscellany forever
 
@@ -432,7 +526,7 @@ A recommended future forwarder should be layered above this substrate rather tha
 That substrate should also connect cleanly to the top-level mode modules:
 
 - `securitydept-token-set-context::access_token_substrate` owns runtime policy, resource verification, forwarding policy, and header attachment
-- `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_pure_mode, backend_oidc_mediated_mode}` each own the config / requirement / transport / integration contracts for that mode
+- `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode}` should own the config / requirement / transport / integration contracts for those formal modes
 - `securitydept-token-set-context::orchestration` and `::models` should only carry truly shared abstractions, not pretend to be a mode
 - the TS frontend product surface should consume only the contracts it actually needs, rather than reading mode-agnostic access-token substrate as mediated-only capability
 
@@ -467,7 +561,7 @@ The most important thing to protect in the current auth design is not more vocab
 
 - `auth context` is the top-level application integration surface
 - only `basic-auth-context` has `zone`
-- only `token-set-context` has `mode`
+- only `token-set-context` has `mode`; its formal modes are now `frontend-oidc` and `backend-oidc`, with pure / mediated retained as backend-oidc presets
 - `session-context` is its own auth context and must not be collapsed into the mode family
 
 That means future docs, crates, TS subpaths, and public symbols should all converge on this hierarchy rather than mixing `context`, `zone`, and `mode` at one level again.

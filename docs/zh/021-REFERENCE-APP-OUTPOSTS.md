@@ -27,9 +27,9 @@
 - OIDC mode family 中各模式的边界是否清晰：
   - **`/orchestration`**：共享 protocol-agnostic token lifecycle 基座
   - **`/frontend-oidc-mode` (`frontend-oidc`)**：前端纯 OIDC client
-  - **`/backend-oidc-pure-mode`**：前端消费 `backend-oidc-pure` 的显式入口，即使一开始只是薄的 config / guard / transport contract
-  - **`/backend-oidc-mediated-mode`**：前端消费 `backend-oidc-mediated` 的显式入口；与后端同名 mode 对齐，而不是另造半步 flow 名
-  - **`securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_pure_mode, backend_oidc_mediated_mode, access_token_substrate}`**：Rust 侧应显式暴露 mode modules 与 shared substrate，而不是继续把 `frontend` / `backend` 当一级 public namespace
+  - **`/backend-oidc-mode`**：前端消费统一 `backend-oidc` capability framework 的 canonical 入口
+  - **`/backend-oidc-pure-mode` / `/backend-oidc-mediated-mode`**：当前实现中 pure / mediated preset 的过渡入口
+  - **`securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode, access_token_substrate}`**：Rust 侧应显式暴露 formal modes 与 shared substrate，而不是继续把 `frontend` / `backend` 当一级 public namespace
 
 ## 这个案例应该验证什么
 
@@ -72,8 +72,8 @@
 
 这个参考案例对当前认证栈的 OIDC mode family 影响最直接：
 
-- `outposts` 当前单 `confluence` 链路更适合验证 **`frontend-oidc` / `backend-oidc-pure`** 以及 **通用 orchestration + resource-server** 这一层
-- 它暂时**不直接验证** `backend-oidc-mediated`（sealed refresh、metadata redemption）本身
+- `outposts` 当前单 `confluence` 链路更适合验证 **`frontend-oidc` / `backend-oidc` baseline** 以及 **通用 orchestration + resource-server** 这一层
+- 它暂时更接近 `backend-oidc` 的 `pure` preset，而不直接验证 sealed refresh / metadata redemption 这组 mediated augmentation
 - 它对 access-token 注入、resource-server 校验、`X-SecurityDept-Propagation` 这组跨 mode substrate 反而更有直接参考价值
 
 当前建议：
@@ -82,8 +82,8 @@
 2. 前端产品面内部的 subpath family 已按以下结构演进；Rust 侧则应并列收口到顶层 `*_mode` / shared modules：
    - `/orchestration`：共享 token lifecycle 基座
    - `/frontend-oidc-mode`：`frontend-oidc` 模式
-   - `/backend-oidc-pure-mode`：前端消费 `backend-oidc-pure` 的显式子路径
-   - `/backend-oidc-mediated-mode`：前端消费 `backend-oidc-mediated` 的显式子路径
+   - `/backend-oidc-mode`：前端消费 `backend-oidc` 的 canonical 子路径
+   - `/backend-oidc-pure-mode` / `/backend-oidc-mediated-mode`：当前 pure / mediated preset 的过渡子路径
 3. route-level 多 requirement 编排应优先朝 **headless orchestration primitive** 演进
 4. 默认推荐实现可以存在，但它应是：
    - scheduler / orchestrator 默认实现
@@ -108,10 +108,10 @@
    - audience / scope contract
    - `oauth-resource-server` 在真实 adopter 单链路里的 Bearer 校验基线
 3. 把这条单链路总结成对 SDK 的直接反馈：
-   - 标准 OIDC 场景应收口为 `/frontend-oidc-mode` 与 `/backend-oidc-pure-mode` 两条 formal mode-aligned 前端入口
-   - 前端消费 `backend-oidc-mediated` 时，通过 `/backend-oidc-mediated-mode` 进入；其对应的后端 mode 同样是 `backend-oidc-mediated`
-   - Rust crate 不应继续把 `frontend` / `backend` 作为一级 public namespace；更合适的 canonical shape 是顶层 `*_mode` 与 `access_token_substrate`
-   - resource-server / propagation / forwarder 不应再被写成 `backend-oidc-mediated` 专属材料；它们只依赖 access token 与 propagation header，应提升为顶层 shared module `access_token_substrate`
+   - 标准 OIDC 场景应长期收口为 `/frontend-oidc-mode` 与 `/backend-oidc-mode` 两条 formal mode-aligned 前端入口
+   - pure / mediated 更适合作为 `backend-oidc` 的 preset/profile，而不是长期并列 mode
+   - Rust crate 不应继续把 `frontend` / `backend` 作为一级 public namespace；更合适的 canonical shape 是顶层 `frontend_oidc_mode`、`backend_oidc_mode` 与 `access_token_substrate`
+   - resource-server / propagation / forwarder 不应再被写成某个 preset 专属材料；它们只依赖 access token 与 propagation header，应提升为顶层 shared module `access_token_substrate`
 4. 不急着把 chooser UI 或 router glue 抽回 SDK
 
 ## 中期计划

@@ -7,7 +7,10 @@ export type {
 	CancellationTokenTrait,
 	DisposableTrait,
 } from "./cancellation/index";
-export { createCancellationTokenSource } from "./cancellation/index";
+export {
+	createCancellationTokenSource,
+	createLinkedCancellationToken,
+} from "./cancellation/index";
 // --- Errors ---
 export type { ErrorPresentation } from "./errors/index";
 export {

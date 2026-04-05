@@ -94,15 +94,32 @@ The `securitydept-session-context` crate provides:
 
 The `securitydept-token-set-context` crate currently provides:
 
-- top-level `frontend_oidc_mode` / `backend_oidc_pure_mode` / `backend_oidc_mediated_mode`
+- canonical target: top-level `frontend_oidc_mode` / `backend_oidc_mode`
+- current implementation: `backend_oidc_pure_mode` / `backend_oidc_mediated_mode` still exist as preset-specific transitional modules for `backend-oidc`
 - top-level `access_token_substrate` / `orchestration` / `models`
 - `BackendOidcMediatedModeRuntime`
 - `BackendOidcMediatedConfig` (raw input) / `ResolvedBackendOidcMediatedConfig` (resolved bundle)
 - `BackendOidcMediatedConfigSource` trait — composable config-source trait for adopters, exposing individual resolve entry points: `resolve_oidc_client`, `resolve_oauth_resource_server`, `resolve_mediated_runtime`, `resolve_token_propagation`, `resolve_all`
+- `BackendOidcPureConfig` (raw input) / `ResolvedBackendOidcPureConfig` (resolved bundle)
+- `BackendOidcPureConfigSource` trait — symmetric config-source trait matching mediated
+- `BackendOidcPureModeRuntime` — pure OIDC backend mode orchestration for authorize/callback/refresh
+- `BackendOidcPureModeAuthService` — route-facing service for pure OIDC mode
+- `FrontendOidcModeConfigProjection` — backend-to-frontend OIDC configuration projection
+- `FrontendOidcModeIntegrationRequirement` — backend requirements for frontend-produced tokens
+- `FrontendOidcModeTokenMaterial` — formal token-material contract for frontend-produced tokens
 - `TokenPropagator`
 - `PropagatedBearer`
 - `TokenSetRedirectUriConfig`
 - metadata-redemption store traits and related default implementations
+
+The more accurate mode boundary is:
+
+- `frontend-oidc` and `backend-oidc` are the formal modes
+- `backend-oidc-pure` and `backend-oidc-mediated` are better treated as presets / profiles inside `backend-oidc`
+- OIDC protocol flows (authorize / callback / refresh / exchange) are provided by `OidcClient`; `securitydept-oidc-client::auth_state` provides shared cross-mode identity extraction (`OidcExtractedPrincipal`, `extract_principal_from_code_callback`, `extract_principal_from_refresh_result`)
+- mode runtimes handle capability-specific post-processing (sealed refresh vs plain, metadata redemption, redirect policy, and so on)
+- `backend-oidc-mediated` augments the pure baseline with sealed refresh, metadata redemption, and mediated redirect / fragment contracts
+- `frontend-oidc` has no backend runtime, but exposes formal config projection and integration contracts via `frontend_oidc_mode`
 
 Important current boundary:
 

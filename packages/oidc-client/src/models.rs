@@ -231,3 +231,26 @@ impl TokenSetTrait for OidcRefreshTokenResult {
         self.access_token_expiration.as_ref()
     }
 }
+
+/// Normalized result from the shared `user_info` exchange helper.
+///
+/// Produced by
+/// [`OidcClient::handle_user_info_exchange`](crate::OidcClient::handle_user_info_exchange).
+/// Backend modes convert this into their mode-qualified `UserInfoResponse`
+/// transport type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserInfoExchangeResult {
+    /// The subject identifier from the ID token.
+    pub subject: String,
+    /// Display name (derived from preferred_username, nickname, or subject).
+    pub display_name: String,
+    /// Profile picture URL, if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
+    /// The token issuer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    /// Merged and post-processed claims from id_token + userinfo.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claims: Option<HashMap<String, serde_json::Value>>,
+}

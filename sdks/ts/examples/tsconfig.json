@@ -32,17 +32,14 @@
 			"@securitydept/session-context-client/react": [
 				"../packages/session-context-client/src/react/index.tsx"
 			],
-			"@securitydept/token-set-context-client/backend-oidc-mediated-mode": [
-				"../packages/token-set-context-client/src/backend-oidc-mediated-mode/index.ts"
+			"@securitydept/token-set-context-client/backend-oidc-mode": [
+				"../packages/token-set-context-client/src/backend-oidc-mode/index.ts"
 			],
-			"@securitydept/token-set-context-client/backend-oidc-mediated-mode/web": [
-				"../packages/token-set-context-client/src/backend-oidc-mediated-mode/web/index.ts"
+			"@securitydept/token-set-context-client/backend-oidc-mode/web": [
+				"../packages/token-set-context-client/src/backend-oidc-mode/web/index.ts"
 			],
-			"@securitydept/token-set-context-client/backend-oidc-mediated-mode/react": [
-				"../packages/token-set-context-client/src/backend-oidc-mediated-mode/react/index.tsx"
-			],
-			"@securitydept/token-set-context-client/backend-oidc-pure-mode": [
-				"../packages/token-set-context-client/src/backend-oidc-pure-mode/index.ts"
+			"@securitydept/token-set-context-client/backend-oidc-mode/react": [
+				"../packages/token-set-context-client/src/backend-oidc-mode/react/index.tsx"
 			],
 			"@securitydept/token-set-context-client/frontend-oidc-mode": [
 				"../packages/token-set-context-client/src/frontend-oidc-mode/index.ts"

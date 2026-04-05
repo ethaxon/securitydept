@@ -95,9 +95,9 @@ mod tests {
                 AxumReverseProxyPropagationForwarderConfig, PropagationDestinationPolicy,
                 PropagationDirective, PropagationScheme, TokenPropagator, TokenPropagatorConfig,
             },
-            backend_oidc_mediated_mode::{
-                BackendOidcMediatedConfig, BackendOidcMediatedModeRuntime,
-                BackendOidcMediatedModeRuntimeConfig, MokaPendingAuthStateMetadataRedemptionConfig,
+            backend_oidc_mode::{
+                BackendOidcModeConfig, BackendOidcModeRuntime, BackendOidcModeRuntimeConfig,
+                MokaPendingAuthStateMetadataRedemptionConfig,
             },
         },
     };
@@ -156,7 +156,7 @@ mod tests {
             ..Default::default()
         };
         let mediated_runtime_config =
-            BackendOidcMediatedModeRuntimeConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
+            BackendOidcModeRuntimeConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
                 ..Default::default()
             };
         let forwarder_config = AxumReverseProxyPropagationForwarderConfig {
@@ -179,10 +179,10 @@ mod tests {
             config: Arc::new(ServerConfig {
                 server: Default::default(),
                 oidc: None,
-                mediated: BackendOidcMediatedConfig {
+                backend_oidc: BackendOidcModeConfig {
                     oidc_client: Default::default(),
+                    oidc_runtime: mediated_runtime_config.clone(),
                     oauth_resource_server: Default::default(),
-                    mediated_runtime: mediated_runtime_config.clone(),
                     token_propagation: token_propagation_config.clone(),
                 },
                 session_context: SessionContextConfig::default(),
@@ -202,7 +202,7 @@ mod tests {
                     .expect("creds store should load"),
             ),
             mediated_runtime: Arc::new(
-                BackendOidcMediatedModeRuntime::from_config(mediated_runtime_config)
+                BackendOidcModeRuntime::from_config(mediated_runtime_config)
                     .expect("mediated runtime should build"),
             ),
             token_propagator: Arc::new(

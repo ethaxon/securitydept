@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use typed_builder::TypedBuilder;
 
-use crate::backend_oidc_mediated_mode::SealedRefreshMaterial;
+use crate::backend_oidc_mode::SealedRefreshMaterial;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -59,9 +59,8 @@ pub struct AuthenticatedPrincipal {
 pub struct AuthTokenSnapshot {
     #[builder(setter(into))]
     pub access_token: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[builder(default, setter(strip_option, into))]
-    pub id_token: Option<String>,
+    #[builder(default, setter(into))]
+    pub id_token: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(strip_option))]
     pub refresh_material: Option<SealedRefreshMaterial>,

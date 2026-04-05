@@ -26,7 +26,8 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/login", get(auth::token_set::login))
         .route("/callback", get(auth::token_set::callback))
         .route("/refresh", post(auth::token_set::refresh))
-        .route("/metadata/redeem", post(auth::token_set::redeem_metadata));
+        .route("/metadata/redeem", post(auth::token_set::redeem_metadata))
+        .route("/user-info", post(auth::token_set::user_info));
     let auth_routes = Router::new()
         .nest("/auth/session", session_auth_routes)
         .nest("/auth/token-set", token_set_auth_routes);

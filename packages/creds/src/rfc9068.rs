@@ -105,6 +105,8 @@ pub enum TokenData<CLAIMS: JwtClaimsTrait> {
     JWT(Box<JwtTokenData<CLAIMS>>),
     #[cfg(feature = "jwe")]
     JWE(Box<crate::JweTokenData<CLAIMS>>),
+    #[cfg(not(feature = "jwe"))]
+    JWE,
     Opaque,
 }
 

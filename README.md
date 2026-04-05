@@ -36,7 +36,7 @@ The reference server still uses Axum, but the reusable `securitydept-basic-auth-
 - `securitydept-oauth-resource-server`
   - bearer access-token verification for JWT, JWE, and opaque token introspection
 - `securitydept-token-set-context`
-  - reusable token-set auth-state, redirect, metadata-redemption, access-token substrate, and mode-specific OIDC helpers; resource-token facts stay outside auth-state metadata, and backend-oidc-mediated config is moving toward a composable config-source trait plus resolved bundle split
+  - reusable token-set auth-state, redirect, metadata-redemption, access-token substrate, and mode-specific OIDC helpers; current code still splits `backend_oidc_pure_mode` and `backend_oidc_mediated_mode`, but the canonical direction is a single `backend_oidc_mode` capability framework with pure / mediated reduced to presets / profiles
 - `securitydept-realip`
   - trusted-proxy/provider-aware client IP resolution for stacked CDN and reverse-proxy deployments
 - `securitydept-creds-manage`
@@ -76,6 +76,7 @@ These modes are intentionally above the current `oidc-client` and `oauth-resourc
   - token-set browser-side merge, persistence, refresh, and mixed-custody behavior
   - dissolution of `securitydept-auth-runtime` and service rehoming (completed)
   - a recommended propagation forwarder feature layered above `TokenPropagator`
+  - consolidation of the current pure / mediated split into one `backend-oidc` capability framework with presets / profiles instead of long-lived peer modes
 
 ## TypeScript SDKs
 

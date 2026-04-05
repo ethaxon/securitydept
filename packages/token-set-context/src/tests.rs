@@ -8,11 +8,11 @@ use serde_json::json;
 use url::Url;
 
 #[cfg(feature = "moka-pending-store")]
-use crate::backend_oidc_mediated_mode::{
-    BackendOidcMediatedModeRuntime, BackendOidcMediatedModeRuntimeConfig,
-    BackendOidcMediatedModeRuntimeResult, MetadataRedemptionId,
-    MokaPendingAuthStateMetadataRedemptionConfig, MokaPendingAuthStateMetadataRedemptionStore,
-    PendingAuthStateMetadataRedemptionPayload, PendingAuthStateMetadataRedemptionStore,
+use crate::backend_oidc_mode::{
+    BackendOidcModeRuntime, BackendOidcModeRuntimeConfig, BackendOidcModeRuntimeResult,
+    MetadataRedemptionId, MokaPendingAuthStateMetadataRedemptionConfig,
+    MokaPendingAuthStateMetadataRedemptionStore, PendingAuthStateMetadataRedemptionPayload,
+    PendingAuthStateMetadataRedemptionStore, RefreshMaterialProtection,
 };
 use crate::{
     access_token_substrate::{
@@ -21,10 +21,10 @@ use crate::{
         PropagationRequestTarget, PropagationScheme, TokenPropagator, TokenPropagatorConfig,
         TokenPropagatorError,
     },
-    backend_oidc_mediated_mode::{
-        AeadRefreshMaterialProtector, PassthroughRefreshMaterialProtector,
-        RefreshMaterialProtector, SealedRefreshMaterial, TokenSetRedirectUriConfig,
-        TokenSetRedirectUriResolver, TokenSetRedirectUriRule,
+    backend_oidc_mode::{
+        AeadRefreshMaterialProtector, BackendOidcModeRedirectUriConfig,
+        BackendOidcModeRedirectUriResolver, BackendOidcModeRedirectUriRule,
+        PassthroughRefreshMaterialProtector, RefreshMaterialProtector, SealedRefreshMaterial,
     },
     models::{
         AuthStateMetadataSnapshot, AuthStateSnapshot, AuthTokenSnapshot, AuthenticatedPrincipal,
@@ -96,7 +96,7 @@ fn auth_state_snapshot_builder_supports_principal_and_source() {
         )
         .build();
 
-    assert_eq!(auth_state.tokens.id_token.as_deref(), Some("id-token"));
+    assert_eq!(&auth_state.tokens.id_token, "id-token");
     assert_eq!(
         auth_state
             .tokens
@@ -149,27 +149,29 @@ fn aead_protector_round_trips_base64_material() {
 
 #[cfg(feature = "moka-pending-store")]
 #[test]
-fn mediated_context_config_requires_master_key_when_sealing_is_enabled() {
-    let error =
-        BackendOidcMediatedModeRuntimeConfig::<MokaPendingAuthStateMetadataRedemptionConfig> {
-            master_key: None,
-            sealed_refresh_token: true,
+fn mediated_context_config_rejects_empty_master_key_on_build() {
+    let error = BackendOidcModeRuntime::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
+        BackendOidcModeRuntimeConfig {
+            refresh_material_protection: RefreshMaterialProtection::Sealed {
+                master_key: String::new(),
+            },
             ..Default::default()
-        }
-        .validate()
-        .expect_err("config should be rejected");
+        },
+    )
+    .expect_err("runtime build should be rejected with empty key");
 
-    assert!(format!("{error}").contains("master_key is required"));
+    assert!(format!("{error}").contains("refresh_material"));
 }
 
 #[cfg(feature = "moka-pending-store")]
 #[test]
-fn mediated_context_round_trips_refresh_token() -> BackendOidcMediatedModeRuntimeResult<()> {
+fn mediated_context_round_trips_refresh_token() -> BackendOidcModeRuntimeResult<()> {
     let context =
-        BackendOidcMediatedModeRuntime::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
-            BackendOidcMediatedModeRuntimeConfig {
-                master_key: Some("01234567890123456789012345678901".to_string()),
-                sealed_refresh_token: true,
+        BackendOidcModeRuntime::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
+            BackendOidcModeRuntimeConfig {
+                refresh_material_protection: RefreshMaterialProtection::Sealed {
+                    master_key: "01234567890123456789012345678901".to_string(),
+                },
                 ..Default::default()
             },
         )?;
@@ -435,8 +437,8 @@ fn mediated_runtime_builds_without_propagator() {
     // Propagator is now substrate-level and constructed independently.
     // This test verifies the runtime builds cleanly without it.
     let _runtime =
-        BackendOidcMediatedModeRuntime::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
-            BackendOidcMediatedModeRuntimeConfig {
+        BackendOidcModeRuntime::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
+            BackendOidcModeRuntimeConfig {
                 ..Default::default()
             },
         )
@@ -680,7 +682,7 @@ fn propagated_bearer_with_claims() -> PropagatedBearer<'static> {
 
 #[cfg(feature = "moka-pending-store")]
 #[test]
-fn metadata_redemption_store_redeems_once() -> BackendOidcMediatedModeRuntimeResult<()> {
+fn metadata_redemption_store_redeems_once() -> BackendOidcModeRuntimeResult<()> {
     let store = MokaPendingAuthStateMetadataRedemptionStore::from_config(
         &MokaPendingAuthStateMetadataRedemptionConfig::default(),
     )?;
@@ -712,7 +714,7 @@ fn metadata_redemption_store_redeems_once() -> BackendOidcMediatedModeRuntimeRes
 
 #[cfg(feature = "moka-pending-store")]
 #[test]
-fn metadata_redemption_store_drops_expired_entries() -> BackendOidcMediatedModeRuntimeResult<()> {
+fn metadata_redemption_store_drops_expired_entries() -> BackendOidcModeRuntimeResult<()> {
     let store = MokaPendingAuthStateMetadataRedemptionStore::from_config(
         &MokaPendingAuthStateMetadataRedemptionConfig {
             ttl: std::time::Duration::from_millis(10),
@@ -745,10 +747,10 @@ fn metadata_redemption_store_drops_expired_entries() -> BackendOidcMediatedModeR
 #[test]
 fn post_auth_redirect_uri_config_resolves_dynamic_allowed_redirect() {
     let post_auth_redirect_uri =
-        TokenSetRedirectUriResolver::from_config(TokenSetRedirectUriConfig {
+        BackendOidcModeRedirectUriResolver::from_config(BackendOidcModeRedirectUriConfig {
             default_redirect_target: Some("https://app.example.com/default".to_string()),
             dynamic_redirect_target_enabled: true,
-            allowed_redirect_targets: vec![TokenSetRedirectUriRule::Regex {
+            allowed_redirect_targets: vec![BackendOidcModeRedirectUriRule::Regex {
                 value: regex::Regex::new(r"^https://app\.example\.com/callback(/.*)?$")
                     .expect("regex should compile"),
             }],

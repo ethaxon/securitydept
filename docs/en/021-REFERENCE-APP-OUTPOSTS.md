@@ -27,9 +27,9 @@ This is exactly the kind of scenario that can help us answer two questions:
 - whether the OIDC mode family boundaries are clear:
   - **`/orchestration`**: shared protocol-agnostic token lifecycle substrate
   - **`/frontend-oidc-mode` (`frontend-oidc`)**: frontend pure OIDC client
-  - **`/backend-oidc-pure-mode`**: the explicit frontend-facing entry for consuming `backend-oidc-pure`, even if it starts as a thin config / guard / transport surface
-  - **`/backend-oidc-mediated-mode`**: the explicit frontend-facing entry for consuming `backend-oidc-mediated`, aligned to the same official mode name instead of another half-step flow name
-  - **`securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_pure_mode, backend_oidc_mediated_mode, access_token_substrate}`**: the Rust side should expose explicit mode modules and the shared substrate, rather than keeping `frontend` / `backend` as the first-level public namespace
+  - **`/backend-oidc-mode`**: the canonical frontend-facing entry for consuming the unified `backend-oidc` capability framework
+  - **`/backend-oidc-pure-mode` / `/backend-oidc-mediated-mode`**: transitional preset-specific entries in the current implementation
+  - **`securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode, access_token_substrate}`**: the Rust side should expose the formal modes and the shared substrate, rather than keeping `frontend` / `backend` as the first-level public namespace
 
 ## What This Case Should Validate
 
@@ -72,8 +72,8 @@ The correct boundary is:
 
 This reference case matters most for the current auth stack's OIDC mode family:
 
-- the current `outposts` single-`confluence` path is better at validating **`frontend-oidc` / `backend-oidc-pure`** and the **orchestration + resource-server** layer
-- it does **not yet directly validate** `backend-oidc-mediated` (sealed refresh, metadata redemption) itself
+- the current `outposts` single-`confluence` path is better at validating the **`frontend-oidc` / `backend-oidc` baseline** and the **orchestration + resource-server** layer
+- it is currently closer to the `pure` preset of `backend-oidc`, and does **not yet directly validate** the sealed-refresh / metadata-redemption augmentation
 - it is, however, a strong reference for the cross-mode substrate around access-token injection, resource-server verification, and `X-SecurityDept-Propagation`
 
 Current recommendation:
@@ -82,8 +82,8 @@ Current recommendation:
 2. the frontend product surface's internal subpath family has evolved into, while the Rust side should converge on top-level `*_mode` / shared modules:
    - `/orchestration`: shared token lifecycle substrate
    - `/frontend-oidc-mode`: `frontend-oidc` mode
-   - `/backend-oidc-pure-mode`: explicit frontend-facing subpath for consuming `backend-oidc-pure`
-   - `/backend-oidc-mediated-mode`: explicit frontend-facing subpath for consuming `backend-oidc-mediated`
+   - `/backend-oidc-mode`: canonical frontend-facing subpath for consuming `backend-oidc`
+   - `/backend-oidc-pure-mode` / `/backend-oidc-mediated-mode`: transitional subpaths for the current pure / mediated presets
 3. move route-level multi-requirement orchestration toward **headless orchestration primitives** first
 4. if a default recommendation exists, it should be:
    - a default scheduler / orchestrator
@@ -108,10 +108,10 @@ The near-term focus should be:
    - audience / scope contract
    - the `oauth-resource-server` Bearer-validation baseline in a real adopter single-path integration
 3. turn that single-path integration into direct SDK feedback:
-   - standard OIDC scenarios should converge on two formal mode-aligned frontend entries: `/frontend-oidc-mode` and `/backend-oidc-pure-mode`
-   - frontend consumption of `backend-oidc-mediated` should enter through `/backend-oidc-mediated-mode`; its backend-side counterpart is also `backend-oidc-mediated`
-   - the Rust crate should not keep `frontend` / `backend` as its first-level public namespace; the canonical shape should be top-level `*_mode` modules plus `access_token_substrate`
-   - resource-server / propagation / forwarder should no longer be described as `backend-oidc-mediated`-only materials; they depend only on the access token and propagation header, so they should be promoted into the top-level shared module `access_token_substrate`
+   - standard OIDC scenarios should converge on two formal mode-aligned frontend entries: `/frontend-oidc-mode` and `/backend-oidc-mode`
+   - pure / mediated are better treated as presets / profiles inside `backend-oidc`, not as long-lived peer modes
+   - the Rust crate should not keep `frontend` / `backend` as its first-level public namespace; the canonical shape should be top-level `frontend_oidc_mode`, `backend_oidc_mode`, and `access_token_substrate`
+   - resource-server / propagation / forwarder should no longer be described as preset-owned materials; they depend only on the access token and propagation header, so they should be promoted into the top-level shared module `access_token_substrate`
 4. do not rush chooser UI or router glue back into the SDK
 
 ## Mid-Term Plan

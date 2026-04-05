@@ -7,24 +7,33 @@
 //!
 //! | Module | Description |
 //! |---|---|
-//! | [`frontend_oidc_mode`] | Frontend pure OIDC — config + integration contracts |
-//! | [`backend_oidc_pure_mode`] | Standard backend OIDC — config + frontend-facing contracts |
-//! | [`backend_oidc_mediated_mode`] | Backend-mediated OIDC — [`BackendOidcMediatedModeRuntime`](backend_oidc_mediated_mode::BackendOidcMediatedModeRuntime) + transport contracts |
-//! | [`access_token_substrate`] | Cross-mode shared substrate: propagation, forwarder, resource-server |
+//! | [`backend_oidc_mode`] | **Canonical** — unified backend OIDC capability framework (capabilities, config, runtime, service, transport) |
+//! | [`frontend_oidc_mode`] | Frontend OIDC — config projection, integration contracts, model aliases |
+//! | [`access_token_substrate`] | Cross-mode shared substrate: resource-server verification, propagation, forwarder |
 //! | [`orchestration`] | Cross-mode shared config, OIDC client, provider infrastructure |
 //! | [`models`] | Shared auth-state data models |
 //!
+//! ## Mode relationship
+//!
+//! - `backend-oidc` is the canonical unified surface. It parameterizes runtime
+//!   behaviour through capability axes (`refresh_material_protection`,
+//!   `metadata_delivery`, `post_auth_redirect`). Adopters configure the axes
+//!   directly — no preset indirection needed.
+//! - `frontend-oidc` has no backend runtime — the browser owns the full OIDC
+//!   lifecycle. This module provides config projection, integration contracts
+//!   describing what the backend expects from frontend-produced tokens, and
+//!   mode-qualified model aliases.
+//!
 //! ## Entry point
 //!
-//! Adopters should enter via the appropriate `*_mode` module for their
-//! deployment topology, use [`orchestration`] for shared config resolution,
-//! and [`access_token_substrate`] for token verification and propagation.
+//! Adopters should enter via [`backend_oidc_mode`] for new integrations,
+//! use [`orchestration`] for shared config resolution, and
+//! [`access_token_substrate`] for token verification and propagation.
 
 // --- Canonical public modules ---
 
 pub mod access_token_substrate;
-pub mod backend_oidc_mediated_mode;
-pub mod backend_oidc_pure_mode;
+pub mod backend_oidc_mode;
 pub mod frontend_oidc_mode;
 pub mod models;
 pub mod orchestration;

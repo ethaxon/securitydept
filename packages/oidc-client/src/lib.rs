@@ -1,3 +1,4 @@
+pub mod auth_state;
 pub mod claims;
 pub mod client;
 pub mod config;
@@ -12,6 +13,7 @@ pub use models::{
     OidcCodeCallbackSearchParams, OidcCodeExchangeResult, OidcCodeFlowAuthorizationRequest,
     OidcDeviceAuthorizationResult, OidcDeviceTokenPollResult, OidcDeviceTokenResult,
     OidcRefreshTokenResult, OidcRevocableToken, OidcTokenSet, UserInfoClaimsWithExtra,
+    UserInfoExchangeResult,
 };
 #[cfg(feature = "moka-pending-store")]
 pub use pending_store::{MokaPendingOauthStore, MokaPendingOauthStoreConfig};

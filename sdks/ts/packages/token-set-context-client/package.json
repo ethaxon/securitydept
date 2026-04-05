@@ -4,21 +4,17 @@
 	"type": "module",
 	"sideEffects": false,
 	"exports": {
-		"./backend-oidc-mediated-mode": {
-			"types": "./dist/backend-oidc-mediated-mode/index.d.mts",
-			"import": "./dist/backend-oidc-mediated-mode/index.mjs"
+		"./backend-oidc-mode": {
+			"types": "./dist/backend-oidc-mode/index.d.mts",
+			"import": "./dist/backend-oidc-mode/index.mjs"
 		},
-		"./backend-oidc-mediated-mode/web": {
-			"types": "./dist/backend-oidc-mediated-mode/web/index.d.mts",
-			"import": "./dist/backend-oidc-mediated-mode/web/index.mjs"
+		"./backend-oidc-mode/web": {
+			"types": "./dist/backend-oidc-mode/web/index.d.mts",
+			"import": "./dist/backend-oidc-mode/web/index.mjs"
 		},
-		"./backend-oidc-mediated-mode/react": {
-			"types": "./dist/backend-oidc-mediated-mode/react/index.d.mts",
-			"import": "./dist/backend-oidc-mediated-mode/react/index.mjs"
-		},
-		"./backend-oidc-pure-mode": {
-			"types": "./dist/backend-oidc-pure-mode/index.d.mts",
-			"import": "./dist/backend-oidc-pure-mode/index.mjs"
+		"./backend-oidc-mode/react": {
+			"types": "./dist/backend-oidc-mode/react/index.d.mts",
+			"import": "./dist/backend-oidc-mode/react/index.mjs"
 		},
 		"./frontend-oidc-mode": {
 			"types": "./dist/frontend-oidc-mode/index.d.mts",

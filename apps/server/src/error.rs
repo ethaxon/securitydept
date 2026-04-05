@@ -10,7 +10,7 @@ use securitydept_core::{
     session_context::{SessionAuthServiceError, SessionContextError},
     token_set_context::{
         access_token_substrate::{AccessTokenSubstrateResourceServiceError, TokenPropagatorError},
-        backend_oidc_mediated_mode::BackendOidcMediatedModeRuntimeError,
+        backend_oidc_mode::BackendOidcModeRuntimeError,
     },
     utils::{
         error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
@@ -46,9 +46,7 @@ pub enum ServerError {
         source: BasicAuthContextServiceError,
     },
     #[snafu(transparent)]
-    MediatedRuntime {
-        source: BackendOidcMediatedModeRuntimeError,
-    },
+    BackendOidcRuntime { source: BackendOidcModeRuntimeError },
     #[snafu(transparent)]
     ResourceService {
         source: AccessTokenSubstrateResourceServiceError,
@@ -82,7 +80,7 @@ impl ToErrorPresentation for ServerError {
             ServerError::SessionContext { source } => source.to_error_presentation(),
             ServerError::SessionAuthService { source } => source.to_error_presentation(),
             ServerError::BasicAuthContextService { source } => source.to_error_presentation(),
-            ServerError::MediatedRuntime { source } => source.to_error_presentation(),
+            ServerError::BackendOidcRuntime { source } => source.to_error_presentation(),
             ServerError::ResourceService { source } => source.to_error_presentation(),
             ServerError::TokenPropagator { source } => source.to_error_presentation(),
             ServerError::ConfigLoad { .. }

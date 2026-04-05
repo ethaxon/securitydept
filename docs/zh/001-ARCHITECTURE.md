@@ -96,15 +96,32 @@ Crate: `securitydept-oauth-resource-server`
 
 `securitydept-token-set-context` crate 当前提供：
 
-- 顶层 `frontend_oidc_mode` / `backend_oidc_pure_mode` / `backend_oidc_mediated_mode`
+- canonical target：顶层 `frontend_oidc_mode` / `backend_oidc_mode`
+- 当前实现：`backend_oidc_pure_mode` / `backend_oidc_mediated_mode` 仍作为 `backend-oidc` preset-specific 过渡 module 存在
 - 顶层 `access_token_substrate` / `orchestration` / `models`
 - `BackendOidcMediatedModeRuntime`
 - `BackendOidcMediatedConfig`（raw 输入）/ `ResolvedBackendOidcMediatedConfig`（resolved bundle）
 - `BackendOidcMediatedConfigSource` trait — 供 adopter 组合的 config-source trait，提供 `resolve_oidc_client`、`resolve_oauth_resource_server`、`resolve_mediated_runtime`、`resolve_token_propagation`、`resolve_all` 各独立 resolve 入口
+- `BackendOidcPureConfig`（raw 输入）/ `ResolvedBackendOidcPureConfig`（resolved bundle）
+- `BackendOidcPureConfigSource` trait — 与 mediated 对称的 config-source trait
+- `BackendOidcPureModeRuntime` — 纯 OIDC 后端模式的授权/回调/刷新编排
+- `BackendOidcPureModeAuthService` — 纯 OIDC 模式的 route-facing service
+- `FrontendOidcModeConfigProjection` — 后端向前端投影 OIDC 配置
+- `FrontendOidcModeIntegrationRequirement` — 后端对前端产出 token 的验证要求
+- `FrontendOidcModeTokenMaterial` — 前端产出的 token material 形式契约
 - `TokenPropagator`
 - `PropagatedBearer`
 - `TokenSetRedirectUriConfig`
 - metadata redemption store traits 与相关默认实现
+
+更准确的 mode 边界是：
+
+- `frontend-oidc` 与 `backend-oidc` 才是 formal mode
+- `backend-oidc-pure` 与 `backend-oidc-mediated` 更适合作为 `backend-oidc` 的 preset/profile
+- OIDC 协议级流程（authorize / callback / refresh / exchange）由 `OidcClient` 统一提供；`securitydept-oidc-client::auth_state` 已承接跨 mode 共用的 identity extraction 能力（`OidcExtractedPrincipal`、`extract_principal_from_code_callback`、`extract_principal_from_refresh_result`）
+- mode runtime 层负责 capability-specific post-processing（sealed refresh vs plain、metadata redemption、redirect policy 等）
+- `backend-oidc-mediated` 在 pure-mode baseline 之上继续叠加 sealed refresh、metadata redemption、mediated redirect / fragment contract
+- `frontend-oidc` 没有 backend runtime，但通过 `frontend_oidc_mode` 暴露正式 config projection 和 integration contract
 
 当前的重要边界：
 

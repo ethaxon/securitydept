@@ -15,8 +15,8 @@ use securitydept_core::{
             AccessTokenSubstrateResourceService, AxumReverseProxyPropagationForwarder,
             TokenPropagator,
         },
-        backend_oidc_mediated_mode::{
-            BackendOidcMediatedModeAuthService, BackendOidcMediatedModeRuntime,
+        backend_oidc_mode::{
+            BackendOidcModeAuthService, BackendOidcModeRuntime,
             MokaPendingAuthStateMetadataRedemptionStore,
         },
     },
@@ -33,8 +33,7 @@ use crate::{
 pub struct ServerState {
     pub config: Arc<ServerConfig>,
     pub creds_manage_store: Arc<CredsManageStore>,
-    pub mediated_runtime:
-        Arc<BackendOidcMediatedModeRuntime<MokaPendingAuthStateMetadataRedemptionStore>>,
+    pub mediated_runtime: Arc<BackendOidcModeRuntime<MokaPendingAuthStateMetadataRedemptionStore>>,
     pub token_propagator: Arc<TokenPropagator>,
     pub basic_auth_context: Arc<BasicAuthContext<Argon2BasicAuthCred>>,
     pub token_set_resource_verifier: Option<Arc<OAuthResourceServerVerifier>>,
@@ -65,16 +64,16 @@ impl ServerState {
     pub fn mediated_auth_service(
         &self,
     ) -> ServerResult<
-        BackendOidcMediatedModeAuthService<
+        BackendOidcModeAuthService<
             '_,
             MokaPendingOauthStore,
             MokaPendingAuthStateMetadataRedemptionStore,
         >,
     > {
         let oidc = self.oidc.as_deref().ok_or(ServerError::InvalidConfig {
-            message: "BackendOidcMediatedModeAuthService requires OIDC to be enabled".to_string(),
+            message: "BackendOidcModeAuthService requires OIDC to be enabled".to_string(),
         })?;
-        Ok(BackendOidcMediatedModeAuthService::new(
+        Ok(BackendOidcModeAuthService::new(
             oidc,
             &self.mediated_runtime,
             "/auth/token-set/callback",

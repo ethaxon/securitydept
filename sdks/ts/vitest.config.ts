@@ -77,31 +77,24 @@ export default defineConfig({
 				),
 			},
 			{
-				find: "@securitydept/token-set-context-client/backend-oidc-mediated-mode/web",
+				find: "@securitydept/token-set-context-client/backend-oidc-mode/web",
 				replacement: path.join(
 					packagesDir,
-					"token-set-context-client/src/backend-oidc-mediated-mode/web/index.ts",
+					"token-set-context-client/src/backend-oidc-mode/web/index.ts",
 				),
 			},
 			{
-				find: "@securitydept/token-set-context-client/backend-oidc-mediated-mode/react",
+				find: "@securitydept/token-set-context-client/backend-oidc-mode/react",
 				replacement: path.join(
 					packagesDir,
-					"token-set-context-client/src/backend-oidc-mediated-mode/react/index.tsx",
+					"token-set-context-client/src/backend-oidc-mode/react/index.tsx",
 				),
 			},
 			{
-				find: "@securitydept/token-set-context-client/backend-oidc-mediated-mode",
+				find: "@securitydept/token-set-context-client/backend-oidc-mode",
 				replacement: path.join(
 					packagesDir,
-					"token-set-context-client/src/backend-oidc-mediated-mode/index.ts",
-				),
-			},
-			{
-				find: "@securitydept/token-set-context-client/backend-oidc-pure-mode",
-				replacement: path.join(
-					packagesDir,
-					"token-set-context-client/src/backend-oidc-pure-mode/index.ts",
+					"token-set-context-client/src/backend-oidc-mode/index.ts",
 				),
 			},
 			{

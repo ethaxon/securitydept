@@ -36,9 +36,7 @@ pub use securitydept_oidc_client::{
 pub enum BackendConfigError {
     OidcClient(securitydept_oidc_client::OidcError),
     ResourceServer(securitydept_oauth_resource_server::OAuthResourceServerError),
-    BackendOidcMediatedModeRuntime(
-        crate::backend_oidc_mediated_mode::BackendOidcMediatedModeRuntimeError,
-    ),
+    BackendOidcModeRuntime(crate::backend_oidc_mode::BackendOidcModeRuntimeError),
     TokenPropagation(crate::access_token_substrate::TokenPropagatorError),
 }
 
@@ -47,7 +45,7 @@ impl std::fmt::Display for BackendConfigError {
         match self {
             Self::OidcClient(e) => write!(f, "oidc_client config: {e}"),
             Self::ResourceServer(e) => write!(f, "oauth_resource_server config: {e}"),
-            Self::BackendOidcMediatedModeRuntime(e) => write!(f, "mediated_runtime: {e}"),
+            Self::BackendOidcModeRuntime(e) => write!(f, "backend_oidc_mode_runtime: {e}"),
             Self::TokenPropagation(e) => write!(f, "token_propagation config: {e}"),
         }
     }
@@ -58,7 +56,7 @@ impl std::error::Error for BackendConfigError {
         match self {
             Self::OidcClient(e) => Some(e),
             Self::ResourceServer(e) => Some(e),
-            Self::BackendOidcMediatedModeRuntime(e) => Some(e),
+            Self::BackendOidcModeRuntime(e) => Some(e),
             Self::TokenPropagation(e) => Some(e),
         }
     }
@@ -76,10 +74,8 @@ impl From<securitydept_oauth_resource_server::OAuthResourceServerError> for Back
     }
 }
 
-impl From<crate::backend_oidc_mediated_mode::BackendOidcMediatedModeRuntimeError>
-    for BackendConfigError
-{
-    fn from(e: crate::backend_oidc_mediated_mode::BackendOidcMediatedModeRuntimeError) -> Self {
-        Self::BackendOidcMediatedModeRuntime(e)
+impl From<crate::backend_oidc_mode::BackendOidcModeRuntimeError> for BackendConfigError {
+    fn from(e: crate::backend_oidc_mode::BackendOidcModeRuntimeError) -> Self {
+        Self::BackendOidcModeRuntime(e)
     }
 }

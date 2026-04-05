@@ -16,7 +16,7 @@ use securitydept_core::{
     realip::RealIpResolver,
     token_set_context::{
         access_token_substrate::{AxumReverseProxyPropagationForwarder, TokenPropagator},
-        backend_oidc_mediated_mode::BackendOidcMediatedModeRuntime,
+        backend_oidc_mode::{BackendOidcModeConfigSource, BackendOidcModeRuntime},
     },
 };
 use snafu::ResultExt;
@@ -77,7 +77,7 @@ async fn main() -> ServerResult<()> {
     info!(external_base_url = ?config.server.external_base_url, "Resolved external base URL config");
 
     // Resolve OIDC shared-defaults via
-    // BackendOidcMediatedConfigSource::resolve_all().
+    // BackendOidcModeConfigSource::resolve_all().
     let resolved_oidc = config.resolve_oidc()?;
 
     let oidc = if let Some(ref resolved) = resolved_oidc {
@@ -115,14 +115,15 @@ async fn main() -> ServerResult<()> {
         None
     };
     let mediated_runtime = Arc::new(
-        BackendOidcMediatedModeRuntime::from_config(config.mediated.mediated_runtime.clone())
-            .map_err(|e| crate::error::ServerError::InvalidConfig {
+        BackendOidcModeRuntime::from_config(config.backend_oidc.runtime_config().clone()).map_err(
+            |e| crate::error::ServerError::InvalidConfig {
                 message: e.to_string(),
-            })?,
+            },
+        )?,
     );
 
     let token_propagator = Arc::new(
-        TokenPropagator::from_config(&config.mediated.token_propagation).map_err(|e| {
+        TokenPropagator::from_config(&config.backend_oidc.token_propagation).map_err(|e| {
             crate::error::ServerError::InvalidConfig {
                 message: format!("token_propagation config: {e}"),
             }

@@ -11,8 +11,8 @@ use openidconnect::{
     core::{
         CoreAuthDisplay, CoreAuthPrompt, CoreClientAuthMethod, CoreDeviceAuthorizationResponse,
         CoreErrorResponseType, CoreGenderClaim, CoreJsonWebKey, CoreJweContentEncryptionAlgorithm,
-        CoreRevocableToken, CoreRevocationErrorResponse, CoreTokenIntrospectionResponse,
-        CoreTokenType,
+        CoreJwsSigningAlgorithm, CoreRevocableToken, CoreRevocationErrorResponse,
+        CoreTokenIntrospectionResponse, CoreTokenType,
     },
     reqwest,
 };
@@ -27,7 +27,7 @@ use crate::{
     ClaimsCheckResult, ExtraOidcClaims, IdTokenClaimsWithExtra, OidcCodeCallbackSearchParams,
     OidcCodeExchangeResult, OidcCodeFlowAuthorizationRequest, OidcDeviceAuthorizationResult,
     OidcDeviceTokenPollResult, OidcDeviceTokenResult, OidcRevocableToken, PendingOauthStore,
-    PendingOauthStoreConfig, UserInfoClaimsWithExtra,
+    PendingOauthStoreConfig, UserInfoClaimsWithExtra, UserInfoExchangeResult,
     claims::ClaimsChecker,
     config::OidcClientConfig,
     error::{OidcError, OidcResult},
@@ -468,6 +468,75 @@ where
             .map_err(|e| OidcError::TokenRevocation {
                 message: format!("Token revocation request failed: {e}"),
             })
+    }
+
+    /// Shared `user_info` exchange helper for backend modes.
+    ///
+    /// Given a raw `id_token` string and a bearer `access_token`, this method:
+    ///
+    /// 1. Decodes and verifies the ID token (nonce validation is skipped, since
+    ///    this is a server-side post-flow call, not an in-flight callback).
+    /// 2. Optionally calls the provider's userinfo endpoint (if available).
+    /// 3. Runs `check_claims` to produce a `ClaimsCheckResult`.
+    ///
+    /// Backend modes (`backend-oidc-pure`, `backend-oidc-mediated`) should call
+    /// this helper rather than reimplementing the user-info protocol stack.
+    pub async fn handle_user_info_exchange(
+        &self,
+        id_token_raw: &str,
+        access_token: &str,
+    ) -> OidcResult<UserInfoExchangeResult> {
+        let client = self.fresh_client().await?;
+        let id_token_verifier = client.id_token_verifier();
+
+        // Parse the raw ID token string into the typed token via serde.
+        let id_token: openidconnect::IdToken<
+            ExtraOidcClaims,
+            CoreGenderClaim,
+            CoreJweContentEncryptionAlgorithm,
+            CoreJwsSigningAlgorithm,
+        > = serde_json::from_value(serde_json::Value::String(id_token_raw.to_string())).map_err(
+            |e| OidcError::Claims {
+                message: format!("Failed to parse ID token string in user_info exchange: {e}"),
+            },
+        )?;
+
+        // Verify and decode — skip nonce for server-side post-flow calls.
+        let id_token_claims = id_token
+            .claims(&id_token_verifier, |_nonce: Option<&Nonce>| Ok(()))
+            .map_err(|e| OidcError::Claims {
+                message: format!("Failed to verify ID token in user_info exchange: {e}"),
+            })?;
+
+        let access_token_obj = AccessToken::new(access_token.to_string());
+
+        let user_info_claims = if client.user_info_url().is_some() {
+            Some(
+                self.request_userinfo(
+                    &client,
+                    self.provider.http_client(),
+                    access_token_obj,
+                    Some(id_token_claims.subject().clone()),
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
+
+        let claims_check_result = self
+            .check_claims(id_token_claims, user_info_claims.as_ref())
+            .await?;
+
+        let issuer = id_token_claims.issuer().url().to_string();
+
+        Ok(UserInfoExchangeResult {
+            subject: id_token_claims.subject().to_string(),
+            display_name: claims_check_result.display_name,
+            picture: claims_check_result.picture,
+            issuer: Some(issuer),
+            claims: Some(claims_check_result.claims),
+        })
     }
 
     async fn request_userinfo(

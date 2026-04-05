@@ -57,7 +57,7 @@ Status:
 
 - basic auth zone: documented, not fully productized
 - cookie-session: reference implementation exists; the reusable core already lives in `securitydept-session-context`; route-facing services (`SessionAuthServiceTrait` / `OidcSessionAuthService` / `DevSessionAuthService`) are now directly in that crate via the `service` feature
-- stateless token-set mode: the core server and shared crate are in place; `securitydept-auth-runtime` has been dissolved; mode-specific and substrate-specific services are now in `securitydept-token-set-context`; the config surface has been reshaped to `BackendOidcMediatedConfigSource` trait + `ResolvedBackendOidcMediatedConfig`; mixed-custody / BFF / server-side token-set remain later-scope topics
+- stateless token-set mode: the core server and shared crate are in place; `securitydept-auth-runtime` has been dissolved; mode-specific and substrate-specific services are now in `securitydept-token-set-context`; `frontend-oidc` now has formal config projection and integration contracts (`FrontendOidcModeConfigProjection` + `FrontendOidcModeIntegrationRequirement`); OIDC protocol-level principal extraction shared across presets is in `securitydept-oidc-client::auth_state`; current code still keeps `backend-oidc-pure` / `backend-oidc-mediated` as preset-specific module families, but the next mainline is a unified `backend-oidc` capability framework with preset/profile validation; mixed-custody / BFF / server-side token-set remain later-scope topics
 
 ## Phase 4: Frontend SDKs
 

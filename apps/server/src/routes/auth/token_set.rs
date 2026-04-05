@@ -6,8 +6,9 @@ use axum::{
 };
 use securitydept_core::{
     oidc::OidcCodeCallbackSearchParams,
-    token_set_context::backend_oidc_mediated_mode::{
-        MetadataRedemptionRequest, TokenRefreshPayload, TokenSetAuthorizeQuery,
+    token_set_context::backend_oidc_mode::{
+        BackendOidcModeAuthorizeQuery, BackendOidcModeMetadataRedemptionRequest,
+        BackendOidcModeRefreshPayload, BackendOidcModeUserInfoRequest,
     },
 };
 
@@ -22,7 +23,7 @@ use crate::{
 pub async fn login(
     Extension(state): Extension<ServerState>,
     headers: HeaderMap,
-    Query(query): Query<TokenSetAuthorizeQuery>,
+    Query(query): Query<BackendOidcModeAuthorizeQuery>,
 ) -> Result<Response, ServerError> {
     let external_base_url = state.external_base_url(&headers)?;
     state
@@ -43,7 +44,7 @@ pub async fn callback(
     let external_base_url = state.external_base_url(&headers)?;
     state
         .mediated_auth_service()?
-        .callback(&external_base_url, search_params)
+        .callback_fragment_return(&external_base_url, search_params, None)
         .await
         .map(into_axum_response)
         .map_err(ServerError::from)
@@ -52,11 +53,11 @@ pub async fn callback(
 /// POST /auth/token-set/refresh -- refresh token-set state.
 pub async fn refresh(
     Extension(state): Extension<ServerState>,
-    Json(payload): Json<TokenRefreshPayload>,
+    Json(payload): Json<BackendOidcModeRefreshPayload>,
 ) -> ServerResult<Response> {
     state
         .mediated_auth_service()?
-        .refresh(&payload)
+        .refresh_fragment_return(&payload, None)
         .await
         .map(into_axum_response)
         .map_err(ServerError::from)
@@ -65,7 +66,7 @@ pub async fn refresh(
 /// POST /auth/token-set/metadata/redeem -- redeem metadata by one-time id.
 pub async fn redeem_metadata(
     Extension(state): Extension<ServerState>,
-    Json(payload): Json<MetadataRedemptionRequest>,
+    Json(payload): Json<BackendOidcModeMetadataRedemptionRequest>,
 ) -> ServerResult<Response> {
     match state
         .mediated_auth_service()?
@@ -76,4 +77,34 @@ pub async fn redeem_metadata(
         Some(metadata) => Ok(Json(metadata).into_response()),
         None => Ok(axum::http::StatusCode::NOT_FOUND.into_response()),
     }
+}
+
+/// POST /auth/token-set/user-info -- exchange id_token + access_token for
+/// normalized user info.
+pub async fn user_info(
+    Extension(state): Extension<ServerState>,
+    headers: HeaderMap,
+    Json(payload): Json<BackendOidcModeUserInfoRequest>,
+) -> ServerResult<Response> {
+    let access_token =
+        extract_bearer_token(&headers).ok_or_else(|| ServerError::InvalidConfig {
+            message: "Missing or invalid Authorization: Bearer header".to_string(),
+        })?;
+
+    let response = state
+        .mediated_auth_service()?
+        .user_info(&payload, access_token)
+        .await
+        .map_err(ServerError::from)?;
+
+    Ok(Json(response).into_response())
+}
+
+/// Extract bearer token from Authorization header.
+fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .strip_prefix("Bearer ")
 }

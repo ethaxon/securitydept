@@ -79,10 +79,9 @@ TypeScript 示例：
 - `@securitydept/session-context-client`
 - `@securitydept/session-context-client/react`
 - `@securitydept/token-set-context-client/frontend-oidc-mode`
-- `@securitydept/token-set-context-client/backend-oidc-pure-mode`
-- `@securitydept/token-set-context-client/backend-oidc-mediated-mode`
-- `@securitydept/token-set-context-client/backend-oidc-mediated-mode/web`
-- `@securitydept/token-set-context-client/backend-oidc-mediated-mode/react`
+- `@securitydept/token-set-context-client/backend-oidc-mode`
+- `@securitydept/token-set-context-client/backend-oidc-mode/web`
+- `@securitydept/token-set-context-client/backend-oidc-mode/react`
 
 对于暴露 React 适配器的 npm 包：
 
@@ -420,58 +419,72 @@ adapter 层再提供：
 
 | 产品面 / 权威面 | SDK / Crate | 角色 |
 |---|---|---|
-| **TS 前端运行时面** | `token-set-context-client`（TS） | 所有 OIDC 模式的统一前端 subpath / runtime 入口 |
-| **Rust 顶层 mode / shared module public surface** | `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_pure_mode, backend_oidc_mediated_mode, access_token_substrate, orchestration, models}` | 统一的 mode module + shared module adopter-facing 结构 |
+| **TS 前端运行时面** | `token-set-context-client`（TS） | 统一前端 subpath / runtime 入口；canonical target 是 `/frontend-oidc-mode` 与 `/backend-oidc-mode` |
+| **Rust 顶层 mode / shared module public surface** | `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode, access_token_substrate, orchestration, models}` | 统一的 mode module + shared module adopter-facing 结构 |
 | **Rust ownership boundary（实现层说明）** | mode-specific contract ownership + shared substrate ownership | 解释内部“谁负责什么”，但不再主导一级 public path |
 
 ##### 模式总览
 
 | 模式 | 谁运行 OIDC 流程 | TS SDK 子路径 | Rust 侧权威入口 |
 |---|---|---|---|
-| `frontend-oidc` | 前端（浏览器） | `/frontend-oidc-mode` | `securitydept-token-set-context::frontend_oidc_mode` 应负责配置与 integration contract；当前代码仍有过渡期命名，不是最终 public shape |
-| `backend-oidc-pure` | 后端 | `/backend-oidc-pure-mode` | `securitydept-token-set-context::backend_oidc_pure_mode` 应收口 mode entry 与前端可消费 contract |
-| `backend-oidc-mediated` | 后端（经中介） | `/backend-oidc-mediated-mode` | `securitydept-token-set-context::backend_oidc_mediated_mode` 应收口 mode entry 与前端可消费 contract |
+| `frontend-oidc` | 前端（浏览器） | `/frontend-oidc-mode` | `securitydept-token-set-context::frontend_oidc_mode` 负责配置与 integration contract；它没有 backend runtime，但必须提供 frontend-produced token/auth-state material 对接 shared substrate 所需的正式 contract |
+| `backend-oidc` | 后端 | `/backend-oidc-mode` | `securitydept-token-set-context::backend_oidc_mode` 负责统一 backend OIDC capability framework、前端可消费 contract、以及与 `access_token_substrate` 的边界 |
 
-本节里的 TS 子路径直接采用 canonical mode-aligned naming。  
-如果当前实现仍残留旧导出名或旧目录形状，应视为待迁移实现，而不是文档层的最终命名。
+当前实现仍保留：
+
+- `/backend-oidc-pure-mode`
+- `/backend-oidc-mediated-mode`
+- `backend_oidc_pure_mode`
+- `backend_oidc_mediated_mode`
+
+但它们应被读成 `backend-oidc` 的 preset-specific 过渡入口，而不是长期并列的一级 mode。
+
+##### `backend-oidc` 的 preset/profile
+
+`backend-oidc` 当前至少需要两组推荐 preset：
+
+| Preset / Profile | 语义 | 默认能力组合 |
+|---|---|---|
+| `pure` | 最小后端 OIDC baseline | `refresh_material_protection = passthrough`、`metadata_delivery = none`、`post_auth_redirect_policy = caller_validated` |
+| `mediated` | custody / policy augmentation | `refresh_material_protection = sealed`、`metadata_delivery = redemption`、`post_auth_redirect_policy = resolved` |
+
+这些 preset 是能力预配置，不是额外一级 mode。
 
 ##### 基础设施层（内部实现 crate）
 
-以下 crate 是内部实现层，adopter 不需要直接依赖。当前代码里部分能力仍带过渡期 `backend` 聚合痕迹，但从概念上说它们服务于整个 Rust public surface，而不只是某个一级 backend namespace：
+以下 crate 是内部实现层，adopter 不需要直接依赖。当前代码里部分能力仍带过渡期拆分痕迹，但从概念上说它们服务于整个 Rust public surface，而不只是某个 pure / mediated 分支：
 
 | Crate | 职责 |
 |---|---|
 | `securitydept-oauth-provider` | OIDC discovery、JWKS、metadata 刷新、`OidcSharedConfig` |
-| `securitydept-oidc-client` | OIDC 授权码 / 设备流 |
+| `securitydept-oidc-client` | OIDC 授权码 / 设备流、共享 `user_info` 协议组合能力 |
 | `securitydept-oauth-resource-server` | JWT 验证、introspection |
 
 #### `frontend-oidc`：前端纯 OIDC 客户端
 
 - 前端通过 `oauth4webapi`（官方基座）处理 authorize/callback/token-exchange
-- Rust 后端**不**自己运行 OIDC redirect/callback/token-exchange，但 Rust crate 仍应通过 `securitydept-token-set-context::frontend_oidc_mode` 提供前端可消费配置与 integration contract；当前实现仍有过渡期命名
+- Rust 后端**不**自己运行 OIDC redirect/callback/token-exchange，但 Rust crate 仍应通过 `securitydept-token-set-context::frontend_oidc_mode` 提供前端可消费配置，以及 frontend-produced token/auth-state material 与 `access_token_substrate` 对接所需的正式 integration contract；当前实现仍偏薄
 - `oidc-client-ts` 作为 comparison/reference case（`devDependency` only）
 
 依赖策略：
 - `oauth4webapi`：官方基座，`optional peerDependency` + `devDependency`；使用 `/frontend-oidc-mode` 的 adopter 需安装
 - `oidc-client-ts`：comparison case，`devDependency` only；不对 adopter 产生安装要求
 
-#### `backend-oidc-mediated`：原 "token-set" 的真正含义
+#### `backend-oidc`：统一后端 OIDC capability framework
 
-历史上被统称为 "token-set" 的那组能力，在当前结构里需要拆开理解：
+`backend-oidc` 不应再被解释成“pure 和 mediated 两套长期并列 mode”，而应视为一套统一后端能力框架：
 
-- 前端产品面中，对应的前端消费入口直接命名为 `/backend-oidc-mediated-mode`
-- Rust crate public surface 中，对应的 mode module 应直接命名为 `securitydept-token-set-context::backend_oidc_mediated_mode`
-- 对应的 query / payload / redirect fragment / metadata redemption contract 也应归到这个 mode module 下，而不应长期散落在 crate 根部
+- 后端运行标准 OIDC client + resource server verifier
+- 可跨 preset 复用的 OIDC 协议级编排尽量下沉到 `securitydept-oidc-client`
+- browser-facing callback / refresh canonical contract 使用统一 fragment family
+- `user_info` 是 `backend-oidc` 的正式能力，协议核心应通过 `securitydept-oidc-client` 共享，而不是 pure / mediated 各写一套
+- `metadata_redemption` 与 `user_info` 是正交能力，不是替代关系
+- `resource-server`、`propagation`、`forwarder` 是 shared substrate，不再绑死在某个 preset
 
-真正需要强调的是 `backend-oidc-mediated` 的 mode 边界：
+对外更准确的说法是：
 
-- 后端中介所有 provider 交互，前端不直接接触 provider
-- Sealed refresh material（AEAD 加密）、metadata redemption、post-auth redirect 规则
-- "token-set"描述的是数据结构名而非操作模式
-
-#### `backend-oidc-pure`：标准后端 OIDC
-
-`backend-oidc-pure` 是另一个正式 mode。后端运行标准 OIDC client + resource server 验证，前端接收不透明 session、token，或协议无关 material。前端产品面上的 canonical 入口应直接命名为 `/backend-oidc-pure-mode`；Rust crate 侧的 canonical module 则应为 `securitydept-token-set-context::backend_oidc_pure_mode`。即使初始实现只是薄的 config / guard / transport projection，也不应继续缺席或留在 app glue。
+- `backend-oidc-mode` 是 canonical target
+- `backend-oidc-pure-mode` / `backend-oidc-mediated-mode` 是当前实现过渡期的 preset-specific 入口
 
 #### 共享配置模型
 
@@ -481,24 +494,20 @@ adapter 层再提供：
 
 当前实现里最不和谐的地方不是“命名不够好看”，而是 public surface 还没收透：
 
-- `securitydept-token-set-context` 当前代码仍带着过渡期 `frontend` / `backend` 一级模块形状
-- 但 canonical public API 更适合直接收口到顶层 `frontend_oidc_mode`、`backend_oidc_pure_mode`、`backend_oidc_mediated_mode`、`access_token_substrate`、`orchestration`、`models`
-- `frontend-oidc` 的配置规则、它与 `access_token_substrate` 对接所需的 integration contract、以及 `backend-oidc-mediated` 的前端可消费 query / payload / fragment / redemption contract，本质上都属于这些顶层 mode/shared modules 的职责
-- `metadata_redemption`、`BackendOidcMediatedModeRuntime`、refresh material、redirect resolver 等 mediated-specific 材料，本质上属于 `backend-oidc-mediated` runtime domain，不应继续被误读成 generic crate-root capability
-- `resource-server` 消费的 access-token contract、`propagation`、`forwarder` 则不应再被绑死在 `backend-oidc-mediated`；它们只依赖 access token 与 `X-SecurityDept-Propagation`，应提升为顶层 shared module `access_token_substrate`
-
-所以当前更准确的结论是：
-
-- Rust 顶层 mode/shared module public surface：目标已明确，但代码仍在过渡期
-- `frontend_oidc_mode` 不再只是 config producer，还必须承接 frontend-oidc 与 `access_token_substrate` 对接所需的 integration contract
-- crate 根：仍保留历史扁平导出，是待收口的实现形状，不是最终概念模型
+- `securitydept-token-set-context` 当前代码仍保留 `backend_oidc_pure_mode` / `backend_oidc_mediated_mode` 过渡拆分
+- 但 canonical public API 更适合直接收口到顶层 `frontend_oidc_mode`、`backend_oidc_mode`、`access_token_substrate`、`orchestration`、`models`
+- `frontend-oidc` 的配置规则与 integration contract，本质上属于顶层 `frontend_oidc_mode`
+- pure / mediated 当前分别持有的 query / payload / fragment / redemption contract，应逐步并回 `backend_oidc_mode`
+- `metadata_redemption`、`BackendOidcMediatedModeRuntime`、refresh material、redirect resolver 等 mediated-specific 材料，本质上属于 `backend-oidc` 某个 preset 的 runtime augmentation，而不是长期独立 public mode surface
+- `resource-server` 消费的 access-token contract、`propagation`、`forwarder` 则应稳定归入 shared module `access_token_substrate`
 
 #### 跨模式约束
 
-- OIDC mode family 三个模式属于同一认证栈，前端通过 `token-set-context-client` 进入，后端通过 `securitydept-token-set-context` 进入
-- TS 前端产品面应有三个 formal mode-aligned 子路径：`/frontend-oidc-mode`、`/backend-oidc-pure-mode`、`/backend-oidc-mediated-mode`
+- OIDC mode family 当前只有两个 formal mode：`frontend-oidc` 与 `backend-oidc`
+- TS 前端产品面 canonical 子路径应收口到：`/frontend-oidc-mode`、`/backend-oidc-mode`、`/orchestration`
+- `/backend-oidc-pure-mode` 与 `/backend-oidc-mediated-mode` 是当前实现过渡期的 preset-specific 子路径，而不是长期 canonical family
 - `/orchestration` 是共享基础设施层，不是任一模式的完整替代
-- 不同模式应复用同一套 token lifecycle、persistence、transport 语义
+- 不同 mode / preset 应复用同一套 token lifecycle、persistence、transport 语义
 - 同一 token family 不应出现多权威并存
 
 #### Mixed-Custody 与 BFF 边界
@@ -794,23 +803,21 @@ subpath exports 本身也是 public contract。
 | `@securitydept/basic-auth-context-client/react` | `provisional` | React runtime | React adapter |
 | `@securitydept/session-context-client` | `stable` | Transport / cancellation；登录跳转流程不属于 SDK surface | Session 根 contract |
 | `@securitydept/session-context-client/react` | `provisional` | React runtime | React adapter |
-| `@securitydept/token-set-context-client/backend-oidc-mediated-mode` | `stable` ² | Callback / restore / refresh / persistence / traceSink | 前端消费 `backend-oidc-mediated` 的 **canonical 入口** |
-| `@securitydept/token-set-context-client/backend-oidc-mediated-mode/web` | `provisional` | `location` / `history` / `fetch` / flow-state storage | 前端消费 `backend-oidc-mediated` 的 browser adapter canonical 子路径 |
-| `@securitydept/token-set-context-client/backend-oidc-mediated-mode/react` | `provisional` | React runtime | 前端消费 `backend-oidc-mediated` 的 React adapter canonical 子路径 |
-| `@securitydept/token-set-context-client/orchestration` | `provisional` ³ | 不感知 backend-oidc-mediated sealed flow；协议无关 token snapshot / persistence / transport / `AuthMaterialController` 薄控制层 | Shared token lifecycle substrate **显式子路径入口**（推荐的协议无关基座；不是完整模式/流程入口） |
-| `@securitydept/token-set-context-client/frontend-oidc-mode` | `experimental` ⁴ | 前端纯 OIDC client（`frontend-oidc` 模式）；基于 `oauth4webapi`，不引入 `oidc-client-ts`；normalize token material 给 `/orchestration` | `frontend-oidc` **mode-aligned 显式子路径入口** |
-| `@securitydept/token-set-context-client/backend-oidc-pure-mode` | `experimental` ⁵ | Opaque session / requirement / config projection / thin transport contract；前端消费 `backend-oidc-pure` mode，不自行运行 provider flow | `backend-oidc-pure` **mode-aligned 显式子路径入口**（即使实现很薄，也不再缺席） |
+| `@securitydept/token-set-context-client/backend-oidc-mode` | `provisional` ² | Backend OIDC capability negotiation、callback / refresh fragment family、preset/profile introspection、persistence / traceSink | 前端消费 `backend-oidc` 的 **canonical 入口**；当前实现仍拆在 pure / mediated 过渡子路径中 |
+| `@securitydept/token-set-context-client/backend-oidc-mode/web` | `provisional` | `location` / `history` / `fetch` / flow-state storage | 前端消费 `backend-oidc` 的 browser adapter canonical 子路径；当前实现仍拆在 pure / mediated 过渡子路径中 |
+| `@securitydept/token-set-context-client/backend-oidc-mode/react` | `provisional` | React runtime | 前端消费 `backend-oidc` 的 React adapter canonical 子路径；当前实现仍拆在 pure / mediated 过渡子路径中 |
+| `@securitydept/token-set-context-client/orchestration` | `provisional` ³ | 不感知 backend-oidc preset-specific sealed flow；协议无关 token snapshot / persistence / transport / `AuthMaterialController` 薄控制层 | Shared token lifecycle substrate **显式子路径入口**（推荐的协议无关基座；不是完整模式/流程入口） |
+| `@securitydept/token-set-context-client/frontend-oidc-mode` | `provisional` ⁴ | 前端纯 OIDC client（`frontend-oidc` 模式）；基于 `oauth4webapi`；提供与 Rust `FrontendOidcMode*` 对齐的 cross-boundary contract（`ConfigProjection` / `IntegrationRequirement` / `TokenMaterial`）及 adapter | `frontend-oidc` **mode-aligned 显式子路径入口** |
 | `@securitydept/test-utils` | `experimental` | Fake clock / scheduler / transport / trace collector | 测试/演示基础设施 |
 
 ¹ Adapter subpath 默认 `provisional`，但 `@securitydept/client/web` 与 `@securitydept/client/persistence/web` 是刻意保留的 `stable` 例外：职责窄、无产品语义、只把 foundation protocol 接到宿主能力上。
 
-² 此 `stable` 覆盖 `/backend-oidc-mediated-mode` 这一前端消费 `backend-oidc-mediated` 的 canonical 子路径。Root entry (`.`) 及旧 `./web` / `./react` bridge 已移除，不再存在于 package exports 中。Mixed-custody / BFF / server-side mediated token ownership 不在承诺范围内。
+² `/backend-oidc-mode*` 是当前文档中的 canonical 目标 contract。现有代码仍通过 `/backend-oidc-pure-mode*` 与 `/backend-oidc-mediated-mode*` 承载该能力面，因此当前稳定性只能视为 `provisional`；root (`.`) 及旧 `./web` / `./react` bridge 已移除。
 
-³ orchestration 能力通过 `@securitydept/token-set-context-client/orchestration` 显式子路径对外暴露，承载在同一 npm 包内，未独立成新包。外部 adopter 可使用 `AuthMaterialController`（薄控制层）及其 `applyDelta()` 外部驱动更新入口，或直接使用底层 helper（`bearerHeader`, `createAuthStatePersistence`, `createAuthorizedTransport` 等）。控制层仅承接 token material lifecycle，不提供 acquisition / redirect / refresh scheduling 能力。它本身不是完整模式或完整 flow 入口，而是前端产品面内部的共享 token lifecycle 基座，供 `/backend-oidc-mediated-mode` 与 `/frontend-oidc-mode` 等子路径复用，并与更高层的 auth context / mode 分层设计保持一致。官方前端 OIDC 封装使用 `oauth4webapi`，`oidc-client-ts` 为 comparison case（详见 [020-AUTH_CONTEXT_AND_MODES](020-AUTH_CONTEXT_AND_MODES.md)）。稳定性仍属冻结进行中（`provisional`）：已公开、有显式入口，但不是完整 `stable` 承诺。
+³ orchestration 能力通过 `@securitydept/token-set-context-client/orchestration` 显式子路径对外暴露，承载在同一 npm 包内，未独立成新包。外部 adopter 可使用 `AuthMaterialController`（薄控制层）及其 `applyDelta()` 外部驱动更新入口，或直接使用底层 helper（`bearerHeader`, `createAuthStatePersistence`, `createAuthorizedTransport` 等）。控制层仅承接 token material lifecycle，不提供 acquisition / redirect / refresh scheduling 能力。它本身不是完整模式或完整 flow 入口，而是前端产品面内部的共享 token lifecycle 基座，供 `/backend-oidc-mode` 与 `/frontend-oidc-mode` 等子路径复用，并与更高层的 auth context / mode 分层设计保持一致。官方前端 OIDC 封装使用 `oauth4webapi`，`oidc-client-ts` 为 comparison case（详见 [020-AUTH_CONTEXT_AND_MODES](020-AUTH_CONTEXT_AND_MODES.md)）。稳定性仍属冻结进行中（`provisional`）：已公开、有显式入口，但不是完整 `stable` 承诺。
 
-⁴ `/frontend-oidc-mode` 子路径实现 `frontend-oidc` 模式，以 `oauth4webapi` 为基座。当前为 `experimental`：已有显式入口和 normalize 逻辑，但 runtime surface 尚未完整冻结。使用 `/frontend-oidc-mode` 的 adopter 需安装 `oauth4webapi`（`optional peerDependency`）。
+⁴ `/frontend-oidc-mode` 子路径实现 `frontend-oidc` 模式，以 `oauth4webapi` 为基座。当前为 `provisional`：已有显式入口、browser runtime、与 Rust `FrontendOidcMode*` 对齐的 cross-boundary contract（`ConfigProjection` / `IntegrationRequirement` / `TokenMaterial`）、以及从 browser result 到 orchestration substrate 的正式 adapter。使用 `/frontend-oidc-mode` 的 adopter 需安装 `oauth4webapi`（`optional peerDependency`）。
 
-⁵ `/backend-oidc-pure-mode` 是 `backend-oidc-pure` 的 formal frontend-facing 子路径。它的初始实现可以是薄的 config-first / guard-first / transport-contract surface，但文档与导出层不再接受“pure mode 没有前端入口”这一叙事。
 统一解释：
 
 - `stable`：当前已可作为 0.x 外部 contract 直接解释
@@ -823,8 +830,8 @@ subpath exports 本身也是 public contract。
 把 `@securitydept/token-set-context-client` 先读成**前端产品面**，再读它内部的 subpath family：
 
 - root (`.`) 及旧 `./web` / `./react` bridge 已移除，不再存在于 package exports 中
-- `/backend-oidc-mediated-mode*` 是前端消费 `backend-oidc-mediated` 的显式 family
-- `/backend-oidc-pure-mode` 是前端消费 `backend-oidc-pure` 的显式子路径，即使表面很薄
+- `/backend-oidc-mode*` 是前端消费 `backend-oidc` 的 canonical family
+- `/backend-oidc-pure-mode*` 与 `/backend-oidc-mediated-mode*` 是当前实现中的 preset-specific 过渡 family
 - `/frontend-oidc-mode` 是 `frontend-oidc` 的 mode-aligned 前端实现子路径
 - `/orchestration` 是共享 token lifecycle substrate，不是完整模式或完整 flow
 - mode family 是跨前后端设计层；subpath family 是前端产品面内部导出层，二者不是同一维度
@@ -848,22 +855,24 @@ subpath exports 本身也是 public contract。
 - **通用 token orchestration**（`src/orchestration/`）
   - 管 `access_token` / `id_token` / `refresh_token` 的组合状态
   - 管 restore / refresh / persistence / disposal / transport projection
-  - 不要求知道 token 的来源是标准 OIDC、后端 OIDC 还是 backend-oidc-mediated sealed flow
-- **backend-oidc-mediated browser adapter**
-  - 管 callback fragment、sealed payload、metadata redemption、redirect recovery
-  - 这一层才感知 OIDC-mediated 的特定协议形状
+  - 不要求知道 token 的来源是标准 OIDC、后端 OIDC 或某个 backend-oidc preset
+- **backend-oidc preset-specific adapter**
+  - 管 callback fragment、preset-specific payload、metadata redemption、redirect recovery
+  - 这一层只在确实需要 preset augmentation 时才感知 sealed / redemption 等特定协议形状
 
 当前已落地的最小内部模块切片：
 
 | 内部模块 | 内容 |
 |---|---|
-| `orchestration/types.ts` | `TokenSnapshot`, `TokenDelta`, `AuthSnapshot`, `AuthPrincipal`, `AuthSource` 等协议无关类型 |
+| `orchestration/types.ts` | `TokenSnapshot`, `TokenDelta`, `AuthSnapshot`, `AuthPrincipal`, `AuthSource` |
 | `orchestration/token-ops.ts` | `mergeTokenDelta()`, `bearerHeader()` |
 | `orchestration/persistence.ts` | `createAuthStatePersistence()` |
 | `orchestration/auth-transport.ts` | `createAuthorizedTransport()` |
-| `frontend-oidc-mode/types.ts` | `FrontendOidcModeClientConfig` / `FrontendOidcModeTokenResult` / `FrontendOidcModeAuthorizeResult` — 前端 pure OIDC client 配置与协议词汇 |
-| `frontend-oidc-mode/client.ts` | `createFrontendOidcModeClient()` — 封装 oauth4webapi 的标准 browser OIDC Authorization Code + PKCE 流程 |
-| `orchestration/controller.ts` | `AuthMaterialController` / `createAuthMaterialController()` — 薄控制层，组合 snapshot read/write + persistence + bearer + transport；提供 `applyDelta()` 外部驱动 renew/update 入口 |
+| `orchestration/controller.ts` | `AuthMaterialController` / `createAuthMaterialController()` |
+| `frontend-oidc-mode/types.ts` | `FrontendOidcModeClientConfig` / `FrontendOidcModeTokenResult` / `FrontendOidcModeAuthorizeResult` |
+| `frontend-oidc-mode/client.ts` | `createFrontendOidcModeClient()` |
+| `frontend-oidc-mode/contracts.ts` | `FrontendOidcModeConfigProjection` / `IntegrationRequirement` / `TokenMaterial` + adapters |
+| `backend-oidc-pure-mode/contracts.ts` | 当前纯 preset 的过渡 contract：`BackendOidcPureModeConfigProjection` / `IntegrationRequirement` / fragment token-set return / refresh / `UserInfoRequest` / `UserInfoResponse` + adapters（已接入 Rust-side service） |
 
 现有 v1 类型（`AuthTokenSnapshot`, `AuthStateSnapshot` 等）是对 orchestration 类型的 re-export alias，完全向后兼容。
 
@@ -872,8 +881,8 @@ subpath exports 本身也是 public contract。
 - 这些 orchestration exports 现在是**已公开的 additive exports**，不是 purely internal-only
 - 它们仍承载在 `@securitydept/token-set-context-client` 包内，**不是**独立 npm 包
 - 外部 adopter 可以使用这些 exports 组合通用 token orchestration 能力（见 `examples/token-orchestration-contract.test.ts`）
-- `backend-oidc-pure` 的前端投影也应补齐为 `backend-oidc-pure-mode` family，而不是继续作为“无入口”的例外
-- v1 public surface（`BackendOidcMediatedModeClient`、`./backend-oidc-mediated-mode/web`、`./backend-oidc-mediated-mode/react`）已收口到 canonical 子路径
+- 当前 pure preset 的 frontend-facing contracts 已通过 `backend-oidc-pure-mode/contracts.ts` 进入过渡 public surface
+- v1 代码仍通过 `BackendOidcMediatedModeClient`、`./backend-oidc-mediated-mode/web`、`./backend-oidc-mediated-mode/react` 承载 mediated preset，但文档上的 canonical target 已切到 `backend-oidc-mode*`
 - `@securitydept/token-set-context-client/orchestration` 已成为**显式子路径入口**，推荐协议无关场景优先从此进入
 - `/orchestration` 子路径是协议无关 orchestration exports 的唯一入口（root bridge 已移除）
 - `AuthMaterialController`（`createAuthMaterialController()`）是本层的薄控制层入口，组合了 snapshot read/write、bearer projection、persistence restore/save/clear 与 authorized transport 四件套
@@ -889,15 +898,15 @@ subpath exports 本身也是 public contract。
   - `refresh()` 成功路径通过 `_authMaterial.applyDelta()` 完成 token 合并 + persistence save
   - `createBackendOidcMediatedModeAuthorizedTransport()` 内部委托到 `createAuthorizedTransport()`
 - 但 `/orchestration` 不应再被继续单独抽象推演成最终前端 OIDC 方案；下一阶段应直接用 `oauth4webapi`、`oidc-client-ts` 与未来 `angular-auth-oidc-client` 三组现实案例来校准 `frontend-oidc` 模式的前端实现
-- 当前规划中的官方 `frontend-oidc` 前端实现，仍位于 `token-set-context-client` 内部（`/frontend-oidc-mode` 子路径），以封装 `oauth4webapi` 为基座，复用同包内的 orchestration 基础设施。对应的 `backend-oidc-pure` / `backend-oidc-mediated` 前端消费入口则应分别收口到 `/backend-oidc-pure-mode` 与 `/backend-oidc-mediated-mode`
+- 当前规划中的官方 `frontend-oidc` 前端实现，仍位于 `token-set-context-client` 内部（`/frontend-oidc-mode` 子路径），以封装 `oauth4webapi` 为基座，复用同包内的 orchestration 基础设施。对应的后端消费入口应长期收口到 `/backend-oidc-mode`；纯 / mediated 仅作为 preset-specific 过渡入口存在
 - 当前默认预期是沿同一包内的 subpath / additive surface 继续演进，而不是先把它拆成并列新包
 - 当前前端 public surface 应按 exact mode-aligned canonical subpath family 理解，而不再依赖 root bridge：
-- `/backend-oidc-mediated-mode` — 前端消费 `backend-oidc-mediated` 的 canonical 子路径（`stable` v1）
-- `/backend-oidc-mediated-mode/web` — backend-oidc-mediated mode browser adapter 子路径（`provisional`，稳定性待专项 evidence 提升）
-- `/backend-oidc-mediated-mode/react` — backend-oidc-mediated mode React adapter 子路径（`provisional`，稳定性待专项 evidence 提升）
-- `/orchestration` — 共享 protocol-agnostic token lifecycle substrate，供 `/backend-oidc-mediated-mode` 与 `/frontend-oidc-mode` 复用（`provisional`）
-- `/frontend-oidc-mode` — `frontend-oidc` 的 mode-aligned 前端子路径，封装 oauth4webapi（`experimental`）
-- `/backend-oidc-pure-mode` — 前端消费 `backend-oidc-pure` 的显式子路径；初始实现可保持 thin/config-first（`experimental`）
+- `/backend-oidc-mode` — 前端消费 `backend-oidc` 的 canonical 子路径（`provisional`；当前代码仍在 pure / mediated 过渡拆分期）
+- `/backend-oidc-mode/web` — backend-oidc mode browser adapter 子路径（`provisional`）
+- `/backend-oidc-mode/react` — backend-oidc mode React adapter 子路径（`provisional`）
+- `/orchestration` — 共享 protocol-agnostic token lifecycle substrate，供 `/backend-oidc-mode` 与 `/frontend-oidc-mode` 复用（`provisional`）
+- `/frontend-oidc-mode` — `frontend-oidc` 的 mode-aligned 前端子路径，封装 oauth4webapi + 与 Rust `FrontendOidcMode*` 对齐的 cross-boundary contract（`provisional`）
+- `/backend-oidc-pure-mode`、`/backend-oidc-mediated-mode` — 当前实现中的 preset-specific 过渡子路径（`provisional`）
 - root (`.`) 及旧 `./web` / `./react` bridge 已移除，canonical 子路径家族是唯一对外 public surface
 - Rust 侧的 `securitydept-token-set-context` 仍需把当前过渡期 `frontend` / `backend` 形状收口为顶层 `*_mode` / shared modules，承接前端可消费配置、跨边界 contract 与 shared substrate
 - 依赖语义：
@@ -911,7 +920,7 @@ subpath exports 本身也是 public contract。
 
 | 在 v1 scope 内 | 不在 v1 scope 内 |
 |---|---|
-| browser-owned `backend-oidc-mediated` consumption | mixed-custody token family 管理 |
+| browser-owned `backend-oidc` consumption（当前主要通过 mediated preset 验证） | mixed-custody token family 管理 |
 | callback fragment parsing + metadata redemption | stateful BFF token ownership |
 | in-memory auth state signal | server-side mediated token ownership / SSR token store |
 | persisted restore + explicit clear | cross-tab sync / visibility re-check 等更大 browser lifecycle hardening |
@@ -933,8 +942,8 @@ subpath exports 本身也是 public contract。
 
 | 如果你需要... | 当前应这样理解 | 不要这样假设 |
 |---|---|---|
-| Browser App / SPA 消费 `backend-oidc-mediated` | 用 `@securitydept/token-set-context-client/backend-oidc-mediated-mode` canonical 入口；browser bootstrap / callback / storage 走 `./backend-oidc-mediated-mode/web` | timeline UI、propagation probe、`apps/webui/src/api/*` 是 SDK surface |
-| 前端消费 `backend-oidc-pure` | 用 `@securitydept/token-set-context-client/backend-oidc-pure-mode` 进入前端可消费 config / requirement / transport contract | 所有 related flow 仍都只能留在 app glue |
+| Browser App / SPA 消费 `backend-oidc` | 长期应从 `@securitydept/token-set-context-client/backend-oidc-mode` 进入；当前代码仍通过 `./backend-oidc-mediated-mode*` 与 `./backend-oidc-pure-mode*` 两组过渡入口承载 | timeline UI、propagation probe、`apps/webui/src/api/*` 是 SDK surface |
+| 前端消费特定 preset | 只有在需要显式锚定当前 pure / mediated 过渡实现时，才直接用 `@securitydept/token-set-context-client/backend-oidc-pure-mode` 或 `.../backend-oidc-mediated-mode` | pure / mediated 只是当前的过渡 preset-specific family，不应被当作长期并列 canonical family |
 | React integration | 用 `@securitydept/*/react` 做最小 Provider + hook integration；`session-context-client/react` 可直接从下方 React 入口片段开始 | route guard、pending redirect UI、reference page interaction form 属于 adapter contract |
 | browser-owned baseline 之外的 mediated token ownership | 立即按“超出 v1 scope”处理 | mixed-custody / BFF / SSR token store 已经内建支持 |
 

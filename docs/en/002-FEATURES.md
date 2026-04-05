@@ -130,6 +130,11 @@ Current status:
 - `securitydept-token-set-context` now provides a dedicated token-set context layer
 - `securitydept-auth-runtime` has been dissolved; route helpers are now in their owning crates: `BasicAuthContextService` in `securitydept-basic-auth-context`, `SessionAuthServiceTrait` / `OidcSessionAuthService` / `DevSessionAuthService` in `securitydept-session-context` (via `service` feature), `BackendOidcMediatedModeAuthService` and `AccessTokenSubstrateResourceService` in `securitydept-token-set-context`
 - `BackendOidcMediatedConfigSource` trait is now in place: `BackendOidcMediatedConfig` (raw input) / `ResolvedBackendOidcMediatedConfig` (resolved bundle) / `BackendOidcMediatedConfigSource` trait are all implemented
+- current code still carries `backend-oidc-pure` and `backend-oidc-mediated` as two preset-specific module families, but the canonical direction is now a single `backend-oidc` capability framework:
+  - OIDC protocol flows (authorize / callback / refresh / exchange) are provided by `OidcClient`; `securitydept-oidc-client::auth_state` provides identity extraction shared across presets (principal / issuer)
+  - `backend_oidc_pure_mode` and `backend_oidc_mediated_mode` currently host the pure / mediated preset runtime, route-facing service, and transport contracts
+  - the goal is no longer to preserve two long-lived parallel APIs, but to converge on `backend_oidc_mode` + capability validation + presets / profiles
+  - `frontend_oidc_mode` now has formal `FrontendOidcModeConfigProjection` + `FrontendOidcModeIntegrationRequirement` + `FrontendOidcModeTokenMaterial`
 - `apps/server` already exposes `/auth/token-set/*` routes for callback, refresh, and metadata redemption
 - bearer propagation now uses server-owned destination policy plus access-token-derived `ResourceTokenPrincipal` facts
 - `TokenPropagator` now accepts either a direct destination target or a node-only target resolved via an optional runtime `PropagationNodeTargetResolver`

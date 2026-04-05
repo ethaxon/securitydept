@@ -13,9 +13,9 @@ use securitydept_core::{
     session_context::SessionContextConfig,
     token_set_context::{
         access_token_substrate::AxumReverseProxyPropagationForwarderConfig,
-        backend_oidc_mediated_mode::{
-            BackendOidcMediatedConfig, BackendOidcMediatedConfigSource,
-            MokaPendingAuthStateMetadataRedemptionConfig, ResolvedBackendOidcMediatedConfig,
+        backend_oidc_mode::{
+            BackendOidcModeConfig, BackendOidcModeConfigSource,
+            MokaPendingAuthStateMetadataRedemptionConfig, ResolvedBackendOidcModeConfig,
         },
         orchestration::OidcSharedConfig,
     },
@@ -25,14 +25,14 @@ use serde::Deserialize;
 
 use crate::error::{ServerError, ServerResult};
 
-/// Concrete type alias for the server's mediated-mode config.
-type ServerMediatedConfig = BackendOidcMediatedConfig<
+/// Concrete type alias for the server's backend-oidc config.
+type ServerOidcModeConfig = BackendOidcModeConfig<
     MokaPendingOauthStoreConfig,
     MokaPendingAuthStateMetadataRedemptionConfig,
 >;
 
-/// Concrete type alias for the server's resolved mediated-mode config.
-pub type ServerResolvedMediatedConfig = ResolvedBackendOidcMediatedConfig<
+/// Concrete type alias for the server's resolved backend-oidc config.
+pub type ServerResolvedOidcModeConfig = ResolvedBackendOidcModeConfig<
     MokaPendingOauthStoreConfig,
     MokaPendingAuthStateMetadataRedemptionConfig,
 >;
@@ -50,16 +50,16 @@ pub type ServerResolvedMediatedConfig = ResolvedBackendOidcMediatedConfig<
 /// # OIDC config resolution
 ///
 /// OIDC-related fields (`oidc_client`, `oauth_resource_server`,
-/// `mediated_runtime`, `token_propagation`) are provided by
-/// `BackendOidcMediatedConfig` via `#[serde(flatten)]` and resolved
+/// `runtime`, `token_propagation`) are provided by
+/// `BackendOidcModeConfig` via `#[serde(flatten)]` and resolved
 /// against `[oidc]` shared defaults using
-/// [`BackendOidcMediatedConfigSource::resolve_all`].
+/// [`BackendOidcModeConfigSource::resolve_all`].
 ///
 /// ```text
 /// [oidc]                     shared provider defaults (well_known_url, client_id, ...)
 /// [oidc_client]              client-specific overrides (pkce, scopes, claims_check_script)
+/// [oidc_extension]           mode-specific runtime config
 /// [oauth_resource_server]    resource-server overrides (introspection inherits from [oidc])
-/// [mediated_runtime]         mode-specific runtime config
 /// [token_propagation]        substrate-level propagation config
 /// ```
 #[derive(Debug, Clone, Deserialize)]
@@ -73,17 +73,17 @@ pub struct ServerConfig {
     #[serde(default)]
     pub oidc: Option<OidcSharedConfig>,
 
-    // -- BackendOidcMediatedConfig (flattened) --
+    // -- BackendOidcModeConfig (flattened) --
     //
-    // Provides: oidc_client, oauth_resource_server, mediated_runtime,
+    // Provides: oidc_client, oauth_resource_server, runtime,
     // token_propagation — all at the top-level TOML namespace.
-    /// Backend OIDC mediated mode config. Flattened so its fields
-    /// (`oidc_client`, `oauth_resource_server`, `mediated_runtime`,
+    /// Backend OIDC mode config. Flattened so its fields
+    /// (`oidc_client`, `oauth_resource_server`, `runtime`,
     /// `token_propagation`) appear at the top level in TOML and env vars.
     #[serde(flatten)]
-    pub mediated: ServerMediatedConfig,
+    pub backend_oidc: ServerOidcModeConfig,
 
-    // -- Server-specific (not in BackendOidcMediatedConfig) --
+    // -- Server-specific (not in BackendOidcModeConfig) --
     /// When present, enables the axum-reverse-proxy propagation forwarder
     /// for bearer-authenticated dashboard requests with propagation context.
     #[serde(default)]
@@ -128,19 +128,19 @@ impl ServerConfig {
         Ok(config)
     }
 
-    /// Resolve `[oidc]` shared defaults into validated mediated-mode config.
+    /// Resolve `[oidc]` shared defaults into validated backend-oidc config.
     ///
     /// Returns `None` when OIDC is disabled (no `[oidc]` section).
     ///
-    /// Delegates to [`BackendOidcMediatedConfigSource::resolve_all`] — the
+    /// Delegates to [`BackendOidcModeConfigSource::resolve_all`] — the
     /// single canonical implementation of shared-defaults resolution.
-    pub fn resolve_oidc(&self) -> ServerResult<Option<ServerResolvedMediatedConfig>> {
+    pub fn resolve_oidc(&self) -> ServerResult<Option<ServerResolvedOidcModeConfig>> {
         let Some(ref shared) = self.oidc else {
             return Ok(None);
         };
 
         let resolved =
-            self.mediated
+            self.backend_oidc
                 .resolve_all(shared)
                 .map_err(|e| ServerError::InvalidConfig {
                     message: format!("OIDC config resolution: {e}"),
@@ -170,8 +170,8 @@ impl ServerConfig {
                     .to_string(),
             });
         }
-        // mediated_runtime and token_propagation validation is deferred to
-        // resolve_oidc() which calls BackendOidcMediatedConfigSource::resolve_all().
+        // runtime and token_propagation validation is deferred to
+        // resolve_oidc() which calls BackendOidcModeConfigSource::resolve_all().
         self.basic_auth_context
             .validate()
             .map_err(|e| ServerError::InvalidConfig {
