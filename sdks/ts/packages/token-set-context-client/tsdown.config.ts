@@ -10,6 +10,8 @@ export default defineConfig({
 		"frontend-oidc-mode/index": "./src/frontend-oidc-mode/index.ts",
 		// Shared token-lifecycle substrate.
 		"orchestration/index": "./src/orchestration/index.ts",
+		// Access-token substrate — cross-mode capability contracts.
+		"access-token-substrate/index": "./src/access-token-substrate/index.ts",
 	},
 	format: "esm",
 	dts: true,

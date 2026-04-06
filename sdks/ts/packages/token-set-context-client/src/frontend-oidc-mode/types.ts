@@ -1,39 +1,95 @@
-// Frontend Pure OIDC Client — oauth4webapi wrapper types
+// Frontend OIDC Mode — client-specific types
 //
 // This module defines the configuration and protocol vocabulary for the
-// frontend pure OIDC client pillar of token-set-context-client.
+// frontend OIDC client pillar of token-set-context-client.
 //
 // Design principles:
 //   - Wraps oauth4webapi (official base) to provide a thin, opinionated layer
 //   - Reuses orchestration/lifecycle infrastructure for token material management
 //   - Does NOT replace oauth4webapi — it adds lifecycle ownership on top
-//   - Does NOT import OIDC-mediated sealed flow concepts (redirect recovery,
-//     metadata redemption, sealed refresh token)
 //
-// What this wrapper owns vs what oauth4webapi owns:
-//   oauth4webapi:  protocol encoding, crypto, token validation, PKCE
-//   this wrapper:  config vocabulary, authorize URL assembly, callback parsing → orchestration handoff
-//
-// Stability: experimental (first slice — not yet a stable public surface)
+// Stability: provisional (mode-aligned surface)
 
-// (oauth4webapi types are used in client.ts, not here — this file only defines
-// our own config/result vocabulary that is intentionally decoupled from o4w types)
+import type {
+	AuthDelta as _AuthDelta,
+	AuthMetadataDelta as _AuthMetadataDelta,
+	AuthMetadataSnapshot as _AuthMetadataSnapshot,
+	AuthPrincipal as _AuthPrincipal,
+	AuthSnapshot as _AuthSnapshot,
+	AuthSource as _AuthSource,
+	TokenDelta as _TokenDelta,
+	TokenSnapshot as _TokenSnapshot,
+} from "../orchestration/types";
+import { AuthSourceKind as _AuthSourceKind } from "../orchestration/types";
+
+// ---------------------------------------------------------------------------
+// Orchestration re-exports (mode-qualified aliases)
+// ---------------------------------------------------------------------------
+
+/** @see {@link _AuthSourceKind} */
+export const AuthenticationSourceKind = _AuthSourceKind;
+export type AuthenticationSourceKind = _AuthSourceKind;
+
+/** @see {@link _AuthSource} */
+export type AuthenticationSource = _AuthSource;
+
+/** @see {@link _AuthPrincipal} */
+export type AuthenticatedPrincipal = _AuthPrincipal;
+
+/** @see {@link _TokenSnapshot} */
+export type AuthTokenSnapshot = _TokenSnapshot;
+
+/** @see {@link _TokenDelta} */
+export type AuthTokenDelta = _TokenDelta;
+
+/** @see {@link _AuthMetadataSnapshot} */
+export type AuthStateMetadataSnapshot = _AuthMetadataSnapshot;
+
+/** @see {@link _AuthMetadataDelta} */
+export type AuthStateMetadataDelta = _AuthMetadataDelta;
+
+/** @see {@link _AuthSnapshot} */
+export type AuthStateSnapshot = _AuthSnapshot;
+
+/** @see {@link _AuthDelta} */
+export type AuthStateDelta = _AuthDelta;
+
+// ---------------------------------------------------------------------------
+// Mode-specific constants
+// ---------------------------------------------------------------------------
+
+export const FrontendOidcModeContextSource = {
+	Client: "frontend_oidc_mode_client",
+} as const;
+
+export type FrontendOidcModeContextSource =
+	(typeof FrontendOidcModeContextSource)[keyof typeof FrontendOidcModeContextSource];
+
+export const FrontendOidcModeStateRestoreSourceKind = {
+	Manual: "manual",
+	PersistentStore: "persistent_store",
+} as const;
+
+export type FrontendOidcModeStateRestoreSourceKind =
+	(typeof FrontendOidcModeStateRestoreSourceKind)[keyof typeof FrontendOidcModeStateRestoreSourceKind];
 
 // ---------------------------------------------------------------------------
 // OIDC Client Configuration
 // ---------------------------------------------------------------------------
 
 /**
- * Minimal configuration for a browser-based OIDC Authorization Code + PKCE flow.
+ * Configuration for a browser-based OIDC Authorization Code + PKCE flow.
  *
- * This vocabulary covers the subset of OIDC config that a standard browser SPA
- * needs for the authorization code flow. It intentionally excludes:
- *   - client_secret (browser apps should use PKCE, not secrets)
- *   - token introspection / revocation (not first-slice scope)
- *   - session management / logout (not first-slice scope)
- *   - DPoP / mTLS (advanced; may be added as a future extension)
+ * This vocabulary covers both the protocol-level OIDC config (issuer, endpoints,
+ * PKCE, scopes) and the lifecycle-level config (refresh window, persistence,
+ * pending state).
+ *
+ * Most protocol fields map 1:1 from `FrontendOidcModeConfigProjection` via the
+ * `configProjectionToClientConfig()` adapter.
  */
 export interface FrontendOidcModeClientConfig {
+	// --- Provider identity ---
+
 	/** The OIDC provider's issuer URL (must match the `iss` in discovery). */
 	issuer: string;
 
@@ -46,24 +102,149 @@ export interface FrontendOidcModeClientConfig {
 	/** OAuth 2.0 scopes to request. Defaults to `["openid"]`. */
 	scopes?: string[];
 
+	// --- Endpoint overrides (from backend projection) ---
+
 	/**
-	 * Where to redirect the user in the application after callback processing.
-	 * This is an app-level concept, not an OAuth parameter.
+	 * Authorization endpoint override. When set, the client uses this
+	 * instead of discovering the endpoint from the provider metadata.
 	 */
-	postLoginRedirectUri?: string;
+	authorizationEndpoint?: string;
+
+	/**
+	 * Token endpoint override. When set, the client uses this
+	 * instead of discovering the endpoint from the provider metadata.
+	 */
+	tokenEndpoint?: string;
+
+	/**
+	 * UserInfo endpoint override. When set, the client uses this
+	 * instead of discovering the endpoint from the provider metadata.
+	 */
+	userinfoEndpoint?: string;
+
+	/**
+	 * Revocation endpoint override. When set, the client uses this
+	 * instead of discovering the endpoint from the provider metadata.
+	 */
+	revocationEndpoint?: string;
+
+	// --- Protocol control ---
+
+	/**
+	 * Whether PKCE is enabled for the authorization code flow.
+	 * Defaults to `true`.
+	 */
+	pkceEnabled?: boolean;
+
+	/**
+	 * **Unsafe.** Only populated when `UnsafeFrontendClientSecret` capability is
+	 * enabled on the server. Browser apps should use PKCE, not secrets.
+	 */
+	clientSecret?: string;
+
+	/**
+	 * Scopes that MUST be present in the token endpoint response.
+	 * The client can validate granted scopes against this set after callback.
+	 */
+	requiredScopes?: string[];
+
+	/**
+	 * Claims check script for client-side evaluation.
+	 * The backend reads the script from the filesystem and inlines the content
+	 * in the config projection so the browser can evaluate it directly.
+	 */
+	claimsCheckScript?: import("./contracts").FrontendOidcModeClaimsCheckScript;
+
+	// --- Provider metadata (from backend projection) ---
+
+	/**
+	 * JWKS URI for direct key fetching.
+	 * Needed when the browser must decode / verify the ID token
+	 * independently (e.g. for claims extraction).
+	 */
+	jwksUri?: string;
+
+	/** How often to refresh provider discovery metadata (human-readable duration, e.g. "5m"). */
+	metadataRefreshInterval?: string;
+
+	/** How often to refresh the remote JWKS (human-readable duration, e.g. "5m"). */
+	jwksRefreshInterval?: string;
+
+	/**
+	 * Supported token endpoint authentication methods override.
+	 * When set, used to select the auth method instead of relying on discovery.
+	 */
+	tokenEndpointAuthMethodsSupported?: string[];
+
+	/**
+	 * Supported algorithms for signing ID tokens.
+	 * Can be passed to the authorization server override to constrain
+	 * which algorithms are accepted during token processing.
+	 */
+	idTokenSigningAlgValuesSupported?: string[];
+
+	/**
+	 * Supported algorithms for signing UserInfo responses.
+	 */
+	userinfoSigningAlgValuesSupported?: string[];
+
+	// --- Lifecycle control ---
+
+	/**
+	 * Buffer before access token expiry to trigger auto-refresh, in ms.
+	 * Defaults to `60_000` (1 minute).
+	 */
+	refreshWindowMs?: number;
+
+	/**
+	 * Key used with `runtime.persistentStore` for persisted auth state.
+	 * When not set, a default key is derived from the issuer + clientId.
+	 */
+	persistentStateKey?: string;
+
+	/**
+	 * Default URI to redirect the user to after callback processing.
+	 * This is an app-level concept, not an OAuth parameter.
+	 * Can be overridden per `authorizeUrl()` call.
+	 */
+	defaultPostAuthRedirectUri?: string;
 }
 
 // ---------------------------------------------------------------------------
-// Authorize Request
+// Pending OAuth State (stored in sessionStore for redirect flows)
 // ---------------------------------------------------------------------------
 
-/** Parameters for building an authorization URL. */
+/**
+ * Transient state stored in sessionStore during the authorization redirect.
+ *
+ * When the user clicks "login", the client generates PKCE + nonce + state,
+ * stores them in sessionStore keyed by `state`, then redirects. On callback,
+ * the client retrieves this state to complete the code exchange.
+ */
+export interface FrontendOidcModePendingState {
+	/** PKCE code_verifier (empty string when PKCE is disabled). */
+	codeVerifier: string;
+	/** OAuth 2.0 state parameter. */
+	state: string;
+	/** OIDC nonce for id_token validation. */
+	nonce: string;
+	/** Where to redirect the user in the app after callback. */
+	postAuthRedirectUri?: string;
+	/** Timestamp (ms) when this pending state was created. TTL enforcement. */
+	createdAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// Authorize Request (low-level)
+// ---------------------------------------------------------------------------
+
+/** Parameters for building an authorization URL (low-level). */
 export interface FrontendOidcModeAuthorizeParams {
 	/** Additional OAuth parameters to include (e.g. login_hint, prompt). */
 	extraParams?: Record<string, string>;
 }
 
-/** The result of building an authorization request. */
+/** The result of building an authorization request (low-level). */
 export interface FrontendOidcModeAuthorizeResult {
 	/** The full authorization URL to redirect to. */
 	redirectUrl: string;
@@ -71,10 +252,12 @@ export interface FrontendOidcModeAuthorizeResult {
 	codeVerifier: string;
 	/** The state parameter — must match in the callback phase. */
 	state: string;
+	/** The nonce for id_token validation. */
+	nonce: string;
 }
 
 // ---------------------------------------------------------------------------
-// Callback Processing
+// Callback Processing (low-level)
 // ---------------------------------------------------------------------------
 
 /**
@@ -97,26 +280,18 @@ export interface FrontendOidcModeTokenResult {
 }
 
 // ---------------------------------------------------------------------------
-// Comparison notes: oauth4webapi vs oidc-client-ts
-//
-// These notes capture the first-round protocol/shape comparison used to
-// determine what this wrapper should own vs what should stay in oauth4webapi.
-//
-// | Concern                   | oauth4webapi          | oidc-client-ts        | Our wrapper          |
-// |---------------------------|-----------------------|-----------------------|----------------------|
-// | Discovery fetch           | discoveryRequest()    | OidcMetadata (Mgr)    | wraps o4w discovery  |
-// | Authorize URL             | buildAuthorizationUrl | signinRedirect (Mgr)  | wraps o4w + PKCE gen |
-// | PKCE generation           | generateRandomCodeVer | internal in Mgr       | wraps o4w            |
-// | Callback processing       | validateAuthResponse  | signinCallback (Mgr)  | wraps o4w + handoff  |
-// | Token exchange            | authorizationCodeGrant| internal in Mgr       | wraps o4w            |
-// | Token refresh             | refreshTokenGrant     | signinSilent (Mgr)    | future slice         |
-// | Token storage             | N/A (BYO)             | WebStorageStateStore  | orchestration layer  |
-// | Bearer header projection  | N/A (BYO)             | N/A (BYO)             | orchestration layer  |
-// | Session mgmt / logout     | N/A                   | signoutRedirect etc.  | future slice (maybe) |
-// | UserInfo                  | userinfoRequest()     | getUser → User.profile| future slice (maybe) |
-//
-// Key takeaway: oauth4webapi gives us the right granularity (individual protocol
-// steps) without opinionated state management. oidc-client-ts bundles everything
-// into UserManager which is harder to compose with our orchestration layer.
-// That's why oauth4webapi is the official base, and oidc-client-ts is comparison.
+// High-level callback result
 // ---------------------------------------------------------------------------
+
+/**
+ * Result of the high-level `handleCallback()`.
+ *
+ * Contains the persisted auth snapshot plus the app-level post-auth redirect
+ * URI that was stored in the pending state during `authorizeUrl()`.
+ */
+export interface FrontendOidcModeCallbackResult {
+	/** The auth state snapshot, already persisted and reflected in `state` signal. */
+	snapshot: AuthStateSnapshot;
+	/** The app-level redirect URI from `authorizeUrl()`, if any. */
+	postAuthRedirectUri?: string;
+}

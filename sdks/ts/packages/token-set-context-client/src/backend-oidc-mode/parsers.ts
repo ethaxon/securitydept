@@ -1,20 +1,25 @@
-// Backend OIDC Mode — unified fragment parsers
+// Backend OIDC Mode — unified response body parsers
 //
 // Single implementation that works for both pure and mediated presets.
 // The parser extracts all possible fields; the consumer checks for
 // `metadataRedemptionId` presence based on their preset.
+//
+// These parsers handle both delivery modes:
+//   - Fragment redirect: parse from URL fragment query string
+//   - JSON body: parse directly from parsed JSON (same field names)
 
 import type {
-	BackendOidcModeCallbackFragment,
-	BackendOidcModeRefreshFragment,
+	BackendOidcModeCallbackReturns,
+	BackendOidcModeRefreshReturns,
 } from "./contracts";
 
 // ---------------------------------------------------------------------------
-// Callback fragment parser
+// Callback response body parser
 // ---------------------------------------------------------------------------
 
 /**
- * Parse a callback redirect fragment into a typed callback fragment.
+ * Parse a callback redirect fragment (or JSON response body fields) into a
+ * typed callback response body.
  *
  * Returns `null` if the required `access_token` or `id_token` fields
  * are missing.
@@ -25,7 +30,7 @@ import type {
  */
 export function parseBackendOidcModeCallbackFragment(
 	fragment: string,
-): BackendOidcModeCallbackFragment | null {
+): BackendOidcModeCallbackReturns | null {
 	const raw = fragment.startsWith("#") ? fragment.slice(1) : fragment;
 	const params = new URLSearchParams(raw);
 
@@ -43,17 +48,18 @@ export function parseBackendOidcModeCallbackFragment(
 }
 
 // ---------------------------------------------------------------------------
-// Refresh fragment parser
+// Refresh response body parser
 // ---------------------------------------------------------------------------
 
 /**
- * Parse a refresh redirect fragment into a typed refresh fragment.
+ * Parse a refresh redirect fragment (or JSON response body fields) into a
+ * typed refresh response body.
  *
  * Returns `null` if the required `access_token` field is missing.
  */
 export function parseBackendOidcModeRefreshFragment(
 	fragment: string,
-): BackendOidcModeRefreshFragment | null {
+): BackendOidcModeRefreshReturns | null {
 	const raw = fragment.startsWith("#") ? fragment.slice(1) : fragment;
 	const params = new URLSearchParams(raw);
 
@@ -70,33 +76,98 @@ export function parseBackendOidcModeRefreshFragment(
 }
 
 // ---------------------------------------------------------------------------
-// Orchestration adapters
+// JSON body parsers (200 OK response body from *_body_return endpoints)
 // ---------------------------------------------------------------------------
 
 /**
- * Convert a callback fragment into an orchestration `TokenSnapshot`.
+ * Parse a raw JSON object (from a 200 OK `callback_body_return` response)
+ * into a typed callback returns value.
+ *
+ * Returns `null` if the required `access_token` or `id_token` fields are
+ * missing or not strings.
  */
-export function callbackFragmentToTokenSnapshot(
-	fragment: BackendOidcModeCallbackFragment,
-): import("../orchestration/types").TokenSnapshot {
+export function parseBackendOidcModeCallbackBody(
+	body: Record<string, unknown>,
+): BackendOidcModeCallbackReturns | null {
+	const accessToken =
+		typeof body.access_token === "string" ? body.access_token : undefined;
+	const idToken = typeof body.id_token === "string" ? body.id_token : undefined;
+	if (!accessToken || !idToken) return null;
+
 	return {
-		accessToken: fragment.accessToken,
-		idToken: fragment.idToken,
-		refreshMaterial: fragment.refreshToken,
-		accessTokenExpiresAt: fragment.expiresAt,
+		accessToken,
+		idToken,
+		refreshToken:
+			typeof body.refresh_token === "string" ? body.refresh_token : undefined,
+		expiresAt:
+			typeof body.access_token_expires_at === "string"
+				? body.access_token_expires_at
+				: undefined,
+		metadataRedemptionId:
+			typeof body.metadata_redemption_id === "string"
+				? body.metadata_redemption_id
+				: undefined,
 	};
 }
 
 /**
- * Convert a refresh fragment into an orchestration `TokenDelta`.
+ * Parse a raw JSON object (from a 200 OK `refresh_body_return` response)
+ * into a typed refresh returns value.
+ *
+ * Returns `null` if the required `access_token` field is missing or not a
+ * string.
  */
-export function refreshFragmentToTokenDelta(
-	fragment: BackendOidcModeRefreshFragment,
+export function parseBackendOidcModeRefreshBody(
+	body: Record<string, unknown>,
+): BackendOidcModeRefreshReturns | null {
+	const accessToken =
+		typeof body.access_token === "string" ? body.access_token : undefined;
+	if (!accessToken) return null;
+
+	return {
+		accessToken,
+		idToken: typeof body.id_token === "string" ? body.id_token : undefined,
+		refreshToken:
+			typeof body.refresh_token === "string" ? body.refresh_token : undefined,
+		expiresAt:
+			typeof body.access_token_expires_at === "string"
+				? body.access_token_expires_at
+				: undefined,
+		metadataRedemptionId:
+			typeof body.metadata_redemption_id === "string"
+				? body.metadata_redemption_id
+				: undefined,
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Orchestration adapters
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a callback response body into an orchestration `TokenSnapshot`.
+ */
+export function callbackReturnsToTokenSnapshot(
+	body: BackendOidcModeCallbackReturns,
+): import("../orchestration/types").TokenSnapshot {
+	return {
+		accessToken: body.accessToken,
+		idToken: body.idToken,
+		refreshMaterial: body.refreshToken,
+		accessTokenExpiresAt: body.expiresAt,
+	};
+}
+
+/**
+ * Convert a refresh response body into an orchestration `TokenDelta`.
+ */
+export function refreshReturnsToTokenDelta(
+	body: BackendOidcModeRefreshReturns,
 ): import("../orchestration/types").TokenDelta {
 	return {
-		accessToken: fragment.accessToken,
-		idToken: fragment.idToken,
-		refreshMaterial: fragment.refreshToken,
-		accessTokenExpiresAt: fragment.expiresAt,
+		accessToken: body.accessToken,
+		idToken: body.idToken,
+		refreshMaterial: body.refreshToken,
+		accessTokenExpiresAt: body.expiresAt,
 	};
 }

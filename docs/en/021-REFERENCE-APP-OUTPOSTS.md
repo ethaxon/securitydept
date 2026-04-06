@@ -1,9 +1,9 @@
 # Outposts Reference Case
 
-This document explains why `~/workspace/outposts` should be treated as a high-value downstream reference case for the `securitydept` Client SDKs, and how it should inform SDK planning in the near, mid, and long term.
+This document explains why `~/workspace/outposts` should be treated as a high-value downstream reference case for the `securitydept` Client SDKsand how it should inform SDK planning in the nearmidand long term.
 
 It is not a replacement for `apps/webui`.  
-`apps/webui` remains the primary dogfooding / reference app. The value of `outposts` is that it represents a **real downstream adopter**, not an in-repo product demo for the SDK itself.
+`apps/webui` remains the primary dogfooding / reference app. The value of `outposts` is that it represents a **real downstream adopter**not an in-repo product demo for the SDK itself.
 
 ## Why This Case Matters
 
@@ -18,28 +18,27 @@ That makes `outposts` valuable for validating:
 
 - a single frontend host managing multiple backend token families / token sets
 - frontend route areas that require credentials for more than one app
-- auth flows that are no longer just “single client login”, but “route-level requirement orchestration”
-- adopter-owned decisions around silent acquisition, direct redirects, and user-choice flows
+- auth flows that are no longer just “single client login”but “route-level requirement orchestration”
+- adopter-owned decisions around silent acquisitiondirect redirectsand user-choice flows
 
 This is exactly the kind of scenario that can help us answer two questions:
 
-- whether the current auth stack's auth-context / mode layering can truly support multi-requirement scenarios, with the frontend entering via `token-set-context-client` and the backend via `securitydept-token-set-context` (see [020-AUTH_CONTEXT_AND_MODES](020-AUTH_CONTEXT_AND_MODES.md))
+- whether the current auth stack's auth-context / mode layering can truly support multi-requirement scenarioswith the frontend entering via `token-set-context-client` and the backend via `securitydept-token-set-context` (see [020-AUTH_CONTEXT_AND_MODES](020-AUTH_CONTEXT_AND_MODES.md))
 - whether the OIDC mode family boundaries are clear:
   - **`/orchestration`**: shared protocol-agnostic token lifecycle substrate
   - **`/frontend-oidc-mode` (`frontend-oidc`)**: frontend pure OIDC client
   - **`/backend-oidc-mode`**: the canonical frontend-facing entry for consuming the unified `backend-oidc` capability framework
-  - **`/backend-oidc-pure-mode` / `/backend-oidc-mediated-mode`**: transitional preset-specific entries in the current implementation
-  - **`securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode, access_token_substrate}`**: the Rust side should expose the formal modes and the shared substrate, rather than keeping `frontend` / `backend` as the first-level public namespace
+  - **`securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode, access_token_substrate}`**: the Rust side should expose the formal modes and the shared substrate rather than keeping `frontend` / `backend` as the first-level public namespace
 
 ## What This Case Should Validate
 
-In the near term, `outposts` should be used to validate:
+In the near term`outposts` should be used to validate:
 
 1. whether a provider-neutral frontend auth boundary is clear enough  
    the current single-`confluence` flow is already on a standard OIDC / Authentik-first baseline. The next question is whether frontend auth capability can stay provider-neutral beyond that single path instead of re-binding to one provider SDK.
 
 2. where route-level requirement orchestration should live  
-   When one route requires both `app1` and `app2`, the hard problem is not only “how to get tokens”, but:
+   When one route requires both `app1` and `app2`the hard problem is not only “how to get tokens”but:
    - which requirement runs first
    - which requirements can be satisfied silently
    - which requirements require interactive redirect
@@ -47,7 +46,7 @@ In the near term, `outposts` should be used to validate:
    - how failure of one requirement affects the route
 
 3. whether backend Bearer / OIDC validation can remain provider-neutral  
-   `confluence` is already close to a generic issuer + JWKS + audience + scope validation model. This case can confirm that the backend needs a stable OIDC contract, not assumptions inherited from a frontend IdP SDK.
+   `confluence` is already close to a generic issuerJWKSaudiencescope validation model. This case can confirm that the backend needs a stable OIDC contractnot assumptions inherited from a frontend IdP SDK.
 
 4. whether local multi-workspace development remains smooth  
    This reference case should use direct local references:
@@ -66,30 +65,29 @@ This case must not be treated as proof that:
 The correct boundary is:
 
 - `securitydept` may eventually provide **headless primitive / scheduler direction** for this kind of downstream scenario
-- chooser UI, router policy, and product-facing flow semantics still belong to the adopter’s own app glue
+- chooser UIrouter policyand product-facing flow semantics still belong to the adopter’s own app glue
 
 ## Direct Impact on SDK Design
 
 This reference case matters most for the current auth stack's OIDC mode family:
 
-- the current `outposts` single-`confluence` path is better at validating the **`frontend-oidc` / `backend-oidc` baseline** and the **orchestration + resource-server** layer
-- it is currently closer to the `pure` preset of `backend-oidc`, and does **not yet directly validate** the sealed-refresh / metadata-redemption augmentation
-- it is, however, a strong reference for the cross-mode substrate around access-token injection, resource-server verification, and `X-SecurityDept-Propagation`
+- the current `outposts` single-`confluence` path is better at validating the **`frontend-oidc` / `backend-oidc` baseline** and the **orchestrationresource-server** layer
+- it is currently closer to the `pure` preset of `backend-oidc`and does **not yet directly validate** the sealed-refresh / metadata-redemption augmentation
+- it ishowevera strong reference for the cross-mode substrate around access-token injectionresource-server verificationand `X-SecurityDept-Propagation`
 
 Current recommendation:
 
 1. keep room in the SDK for multi-token-family / multi-source abstractions
-2. the frontend product surface's internal subpath family has evolved into, while the Rust side should converge on top-level `*_mode` / shared modules:
+2. the frontend product surface's internal subpath family has evolved intowhile the Rust side should converge on top-level `*_mode` / shared modules:
    - `/orchestration`: shared token lifecycle substrate
    - `/frontend-oidc-mode`: `frontend-oidc` mode
    - `/backend-oidc-mode`: canonical frontend-facing subpath for consuming `backend-oidc`
-   - `/backend-oidc-pure-mode` / `/backend-oidc-mediated-mode`: transitional subpaths for the current pure / mediated presets
 3. move route-level multi-requirement orchestration toward **headless orchestration primitives** first
-4. if a default recommendation exists, it should be:
+4. if a default recommendation existsit should be:
    - a default scheduler / orchestrator
    - very thin `web` / `angular` / `react` adapters
    - a reference/example UI
-5. chooser UI, product copy, and failure fallback policy should not be hard-coded into the core SDK
+5. chooser UIproduct copyand failure fallback policy should not be hard-coded into the core SDK
 
 In short:
 
@@ -102,16 +100,16 @@ In short:
 The near-term focus should be:
 
 1. split out a provider-neutral auth boundary inside `outposts`
-2. on top of the current standard OIDC / Authentik-first baseline, validate:
+2. on top of the current standard OIDC / Authentik-first baselinevalidate:
    - callback / redirect / route preservation
    - access-token injection
    - audience / scope contract
    - the `oauth-resource-server` Bearer-validation baseline in a real adopter single-path integration
 3. turn that single-path integration into direct SDK feedback:
    - standard OIDC scenarios should converge on two formal mode-aligned frontend entries: `/frontend-oidc-mode` and `/backend-oidc-mode`
-   - pure / mediated are better treated as presets / profiles inside `backend-oidc`, not as long-lived peer modes
-   - the Rust crate should not keep `frontend` / `backend` as its first-level public namespace; the canonical shape should be top-level `frontend_oidc_mode`, `backend_oidc_mode`, and `access_token_substrate`
-   - resource-server / propagation / forwarder should no longer be described as preset-owned materials; they depend only on the access token and propagation header, so they should be promoted into the top-level shared module `access_token_substrate`
+   - pure / mediated are better treated as presets / profiles inside `backend-oidc`not as long-lived peer modes
+   - the Rust crate should not keep `frontend` / `backend` as its first-level public namespace; the canonical shape should be top-level `frontend_oidc_mode``backend_oidc_mode`and `access_token_substrate`
+   - resource-server / propagation / forwarder should no longer be described as preset-owned materials; they depend only on the access token and propagation headerso they should be promoted into the top-level shared module `access_token_substrate`
 4. do not rush chooser UI or router glue back into the SDK
 
 ## Mid-Term Plan
@@ -124,7 +122,7 @@ The mid-term focus should be:
 
 ## Long-Term Plan
 
-The long-term goal is not to turn `outposts` into a second internal SDK demo, but to:
+The long-term goal is not to turn `outposts` into a second internal SDK demobut to:
 
 1. keep it as an active real-adopter feedback surface
 2. ground future SDK boundary decisions in a real migration experience
@@ -140,7 +138,7 @@ This case should use direct local workspace dependencies instead of published ve
 The reason is simple:
 
 - this is a jointly evolving real-adopter case
-- its value comes from validating current SDK boundaries immediately, not from trailing released packages
+- its value comes from validating current SDK boundaries immediatelynot from trailing released packages
 
 ## Related Documents
 

@@ -42,14 +42,23 @@ pub struct OAuthProviderRemoteConfig {
 
 impl OAuthProviderRemoteConfig {
     pub fn validate(&self) -> OAuthProviderResult<()> {
-        if self.well_known_url.is_none() && (self.issuer_url.is_none() || self.jwks_uri.is_none()) {
+        if !self.is_discovery_configured() {
             return Err(OAuthProviderError::InvalidConfig {
-                message: "When well_known_url is not set, issuer_url and jwks_uri must be set"
+                message: "At least one of well_known_url or issuer_url or jwks_uri should be set"
                     .to_string(),
             });
         }
 
         Ok(())
+    }
+
+    /// Returns `true` when at least one discovery source is configured
+    /// (`well_known_url`, `issuer_url`, or `jwks_uri`).
+    ///
+    /// When `false`, no OIDC discovery or JWK resolution can take place,
+    /// meaning a resource-server verifier should **not** be constructed.
+    pub fn is_discovery_configured(&self) -> bool {
+        self.well_known_url.is_some() || self.issuer_url.is_some() || self.jwks_uri.is_some()
     }
 }
 

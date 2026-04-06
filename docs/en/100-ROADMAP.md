@@ -1,6 +1,6 @@
 # Roadmap
 
-This roadmap is aligned with the current project goal: turn SecurityDept into a mesh-oriented authentication and authorization toolkit, with `apps/server` acting as the proving ground.
+This roadmap is aligned with the current project goal: turn SecurityDept into a mesh-oriented authentication and authorization toolkitwith `apps/server` acting as the proving ground.
 
 ## Phase 1: Low-Level Verification and Provider Layers
 
@@ -57,7 +57,7 @@ Status:
 
 - basic auth zone: documented, not fully productized
 - cookie-session: reference implementation exists; the reusable core already lives in `securitydept-session-context`; route-facing services (`SessionAuthServiceTrait` / `OidcSessionAuthService` / `DevSessionAuthService`) are now directly in that crate via the `service` feature
-- stateless token-set mode: the core server and shared crate are in place; `securitydept-auth-runtime` has been dissolved; mode-specific and substrate-specific services are now in `securitydept-token-set-context`; `frontend-oidc` now has formal config projection and integration contracts (`FrontendOidcModeConfigProjection` + `FrontendOidcModeIntegrationRequirement`); OIDC protocol-level principal extraction shared across presets is in `securitydept-oidc-client::auth_state`; current code still keeps `backend-oidc-pure` / `backend-oidc-mediated` as preset-specific module families, but the next mainline is a unified `backend-oidc` capability framework with preset/profile validation; mixed-custody / BFF / server-side token-set remain later-scope topics
+- stateless token-set mode: the core server and shared crate are in place; `securitydept-auth-runtime` has been dissolved; mode-specific and substrate-specific services are now in `securitydept-token-set-context`; `frontend-oidc` now has formal `Config / ResolvedConfig / ConfigSource / Runtime / Service / ConfigProjection`; OIDC protocol-level principal extraction shared across presets is in `securitydept-oidc-client::auth_state`; `backend-oidc` is now a single capability framework whose different capability bundles are expressed as presets / profiles; mixed-custody / BFF / server-side token-set remain later-scope topics
 
 ## Phase 4: Frontend SDKs
 
@@ -69,7 +69,7 @@ Status:
 Status:
 
 - the TypeScript SDK is no longer only an architecture draft; the foundation packages, auth-context roots, `./web` adapters, React adapters, and reference-app dogfooding baseline are now implemented
-- the repository now already has external-consumer scenarios, a token-set web focused lifecycle baseline, and a minimal React adapter focused test
+- the repository now already has external-consumer scenarios, a token-set web-focused lifecycle baseline, and a minimal React-adapter-focused test
 - the current phase is no longer “start implementing the SDK”; it is contract freeze for `stable / provisional / experimental`, token-set v1 scope clarification, and clearer adopter-facing status
 - mixed-custody, stateful BFF, server-side token-set, and heavier OTel / DI themes remain later-stage topics rather than the current frontend SDK track
 
@@ -100,7 +100,7 @@ Current real-world role:
 
 - validation environment
 - auth entry point for private Docker registry mirror scenarios
-- integration proving ground for cookie-session, basic-auth, and stateless token-set flows
+- integration proving ground for cookie-sessionbasic-authand stateless token-set flows
 
 ## Cross-Cutting Priorities
 

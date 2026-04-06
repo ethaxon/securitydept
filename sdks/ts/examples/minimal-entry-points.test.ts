@@ -69,7 +69,7 @@ describe("minimal entry points", () => {
 				href: "https://app.example.com/oidc-mediated#callback",
 			}),
 		).toBe(
-			"https://auth.example.com/auth/token-set/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Foidc-mediated",
+			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Foidc-mediated",
 		);
 	});
 

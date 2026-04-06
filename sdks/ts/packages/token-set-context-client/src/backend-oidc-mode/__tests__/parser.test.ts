@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-	callbackFragmentToTokenSnapshot,
+	callbackReturnsToTokenSnapshot,
 	parseBackendOidcModeCallbackFragment,
 	parseBackendOidcModeRefreshFragment,
-	refreshFragmentToTokenDelta,
+	refreshReturnsToTokenDelta,
 } from "../parsers";
 
 describe("parseBackendOidcModeCallbackFragment", () => {
@@ -80,7 +80,7 @@ describe("parseBackendOidcModeRefreshFragment", () => {
 
 describe("callbackFragmentToTokenSnapshot", () => {
 	it("maps fragment fields to orchestration TokenSnapshot", () => {
-		const snapshot = callbackFragmentToTokenSnapshot({
+		const snapshot = callbackReturnsToTokenSnapshot({
 			accessToken: "at",
 			idToken: "idt",
 			refreshToken: "rt",
@@ -96,7 +96,7 @@ describe("callbackFragmentToTokenSnapshot", () => {
 
 describe("refreshFragmentToTokenDelta", () => {
 	it("maps fragment fields to orchestration TokenDelta", () => {
-		const delta = refreshFragmentToTokenDelta({
+		const delta = refreshReturnsToTokenDelta({
 			accessToken: "at2",
 			idToken: "idt2",
 			refreshToken: "rt2",
@@ -110,7 +110,7 @@ describe("refreshFragmentToTokenDelta", () => {
 	});
 
 	it("handles optional fields as undefined", () => {
-		const delta = refreshFragmentToTokenDelta({ accessToken: "at" });
+		const delta = refreshReturnsToTokenDelta({ accessToken: "at" });
 		expect(delta.accessToken).toBe("at");
 		expect(delta.idToken).toBeUndefined();
 		expect(delta.refreshMaterial).toBeUndefined();

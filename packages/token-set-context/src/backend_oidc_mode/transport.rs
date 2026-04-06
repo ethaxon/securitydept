@@ -13,7 +13,10 @@ use super::{
     metadata_redemption::{MetadataRedemptionId, PendingAuthStateMetadataRedemptionPayload},
     refresh_material::SealedRefreshMaterial,
 };
-use crate::models::{AuthTokenDelta, AuthTokenSnapshot, CurrentAuthStateMetadataSnapshotPartial};
+use crate::models::{
+    AuthStateMetadataDelta, AuthStateMetadataSnapshot, AuthTokenDelta, AuthTokenSnapshot,
+    CurrentAuthStateMetadataSnapshotPartial,
+};
 
 // ---------------------------------------------------------------------------
 // Authorize query
@@ -57,16 +60,20 @@ pub struct BackendOidcModeRefreshPayload {
 }
 
 // ---------------------------------------------------------------------------
-// Callback fragment
+// Callback response body
 // ---------------------------------------------------------------------------
 
-/// Browser-facing callback redirect fragment for the unified backend-oidc mode.
+/// Token material returned from the backend-oidc callback flow.
+///
+/// Dual-mode delivery: browser redirect flows embed this as a URL fragment
+/// (`to_fragment_query_string`); programmatic flows serialize it as a JSON
+/// response body (`to_response_body`).
 ///
 /// `id_token` is always present in a callback (authorization code flow always
 /// yields an ID token). `metadata_redemption_id` is present only when the
 /// `metadata_delivery = redemption` capability is active.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder)]
-pub struct BackendOidcModeCallbackFragment {
+pub struct BackendOidcModeCallbackReturns {
     #[builder(setter(into))]
     pub access_token: String,
     #[builder(default, setter(into))]
@@ -80,9 +87,16 @@ pub struct BackendOidcModeCallbackFragment {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(strip_option))]
     pub metadata_redemption_id: Option<MetadataRedemptionId>,
+    /// Inline metadata snapshot (mutually exclusive with `metadata_redemption_id`).
+    ///
+    /// Populated by `callback_body_return` to avoid a separate redemption
+    /// round-trip. `None` when `callback_fragment_return` is used instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub metadata: Option<AuthStateMetadataSnapshot>,
 }
 
-impl BackendOidcModeCallbackFragment {
+impl BackendOidcModeCallbackReturns {
     /// Build from an auth-token snapshot with an optional metadata redemption
     /// id (present only when `metadata_delivery = redemption`).
     pub fn from_snapshot(
@@ -95,10 +109,29 @@ impl BackendOidcModeCallbackFragment {
             refresh_material: snapshot.refresh_material.clone(),
             access_token_expires_at: snapshot.access_token_expires_at,
             metadata_redemption_id,
+            metadata: None,
         }
     }
 
-    /// Serialize the callback fragment into a URL-encoded query-string.
+    /// Build from an auth-token snapshot with inline metadata.
+    ///
+    /// Used by `callback_body_return` to embed metadata directly, skipping the
+    /// store write and client redemption round-trip.
+    pub fn from_snapshot_with_inline_metadata(
+        snapshot: &AuthTokenSnapshot,
+        metadata: AuthStateMetadataSnapshot,
+    ) -> Self {
+        Self {
+            access_token: snapshot.access_token.clone(),
+            id_token: snapshot.id_token.clone(),
+            refresh_material: snapshot.refresh_material.clone(),
+            access_token_expires_at: snapshot.access_token_expires_at,
+            metadata_redemption_id: None,
+            metadata: Some(metadata),
+        }
+    }
+
+    /// Serialize as a URL-encoded query-string for a fragment redirect.
     ///
     /// The result is suitable for use as `url.set_fragment(Some(&qs))`.
     pub fn to_fragment_query_string(&self) -> String {
@@ -116,19 +149,31 @@ impl BackendOidcModeCallbackFragment {
         }
         s.finish()
     }
+
+    /// Serialize as a JSON value for a direct HTTP response body.
+    ///
+    /// Suitable for programmatic flows where the client calls this endpoint
+    /// via `fetch()` and reads the response body directly.
+    pub fn to_response_body(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
 }
 
 // ---------------------------------------------------------------------------
-// Refresh fragment
+// Refresh response body
 // ---------------------------------------------------------------------------
 
-/// Browser-facing refresh redirect fragment for the unified backend-oidc mode.
+/// Token delta returned from the backend-oidc refresh flow.
+///
+/// Dual-mode delivery: browser redirect flows embed this as a URL fragment
+/// (`to_fragment_query_string`); programmatic/silent refresh flows serialize
+/// it as a JSON response body (`to_response_body`).
 ///
 /// `id_token` is optional because a refresh may or may not yield a new one.
 /// `metadata_redemption_id` is present only when metadata delivery is active
 /// and the refresh produced a metadata delta worth persisting.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder)]
-pub struct BackendOidcModeRefreshFragment {
+pub struct BackendOidcModeRefreshReturns {
     #[builder(setter(into))]
     pub access_token: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -143,9 +188,16 @@ pub struct BackendOidcModeRefreshFragment {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(strip_option))]
     pub metadata_redemption_id: Option<MetadataRedemptionId>,
+    /// Inline metadata delta (mutually exclusive with `metadata_redemption_id`).
+    ///
+    /// Populated by `refresh_body_return` to avoid a separate redemption
+    /// round-trip. `None` when `refresh_fragment_return` is used instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub metadata: Option<AuthStateMetadataDelta>,
 }
 
-impl BackendOidcModeRefreshFragment {
+impl BackendOidcModeRefreshReturns {
     /// Build from an auth-token delta with an optional metadata redemption id.
     pub fn from_delta(
         delta: &AuthTokenDelta,
@@ -157,10 +209,29 @@ impl BackendOidcModeRefreshFragment {
             refresh_material: delta.refresh_material.clone(),
             access_token_expires_at: delta.access_token_expires_at,
             metadata_redemption_id,
+            metadata: None,
         }
     }
 
-    /// Serialize the refresh fragment into a URL-encoded query-string.
+    /// Build from an auth-token delta with inline metadata.
+    ///
+    /// Used by `refresh_body_return` to embed metadata directly, skipping the
+    /// store write and client redemption round-trip.
+    pub fn from_delta_with_inline_metadata(
+        delta: &AuthTokenDelta,
+        metadata: AuthStateMetadataDelta,
+    ) -> Self {
+        Self {
+            access_token: delta.access_token.clone(),
+            id_token: delta.id_token.clone(),
+            refresh_material: delta.refresh_material.clone(),
+            access_token_expires_at: delta.access_token_expires_at,
+            metadata_redemption_id: None,
+            metadata: Some(metadata),
+        }
+    }
+
+    /// Serialize as a URL-encoded query-string for a fragment redirect.
     pub fn to_fragment_query_string(&self) -> String {
         let mut s = form_urlencoded::Serializer::new(String::new());
         s.append_pair("access_token", &self.access_token);
@@ -177,6 +248,14 @@ impl BackendOidcModeRefreshFragment {
             s.append_pair("metadata_redemption_id", mrid.expose());
         }
         s.finish()
+    }
+
+    /// Serialize as a JSON value for a direct HTTP response body.
+    ///
+    /// Suitable for programmatic/silent refresh where the client calls this
+    /// endpoint via `fetch()` and reads the response body directly.
+    pub fn to_response_body(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
     }
 }
 

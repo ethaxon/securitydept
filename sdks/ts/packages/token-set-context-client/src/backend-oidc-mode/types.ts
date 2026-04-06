@@ -48,8 +48,8 @@ export type AuthStateDelta = _AuthDelta;
 // --- Mode-specific constants ---
 
 export const BackendOidcModeContextSource = {
-	Client: "token_set_context_client",
-	Persistence: "token-set-context",
+	Client: "backend_oidc_mode_client",
+	Persistence: "backend-oidc-mode",
 } as const;
 
 export type BackendOidcModeContextSource =

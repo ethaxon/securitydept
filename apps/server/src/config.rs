@@ -12,7 +12,10 @@ use securitydept_core::{
     realip::RealIpResolveConfig,
     session_context::SessionContextConfig,
     token_set_context::{
-        access_token_substrate::AxumReverseProxyPropagationForwarderConfig,
+        access_token_substrate::{
+            AccessTokenSubstrateConfig, AccessTokenSubstrateConfigSource,
+            ResolvedAccessTokenSubstrateConfig,
+        },
         backend_oidc_mode::{
             BackendOidcModeConfig, BackendOidcModeConfigSource,
             MokaPendingAuthStateMetadataRedemptionConfig, ResolvedBackendOidcModeConfig,
@@ -42,26 +45,31 @@ pub type ServerResolvedOidcModeConfig = ResolvedBackendOidcModeConfig<
 /// Priority (highest wins): env vars > TOML file > struct defaults.
 ///
 /// Env var mapping uses `__` (double underscore) as the nesting separator:
-///   SERVER__HOST  -> server.host
-///   OIDC__CLIENT_ID -> oidc.client_id
+///   SERVER__HOST              -> server.host
+///   OIDC__CLIENT_ID           -> oidc.client_id
 ///   OIDC_CLIENT__PKCE_ENABLED -> oidc_client.pkce_enabled
-///   CREDS_MANAGE__DATA_PATH -> creds_manage.data_path
+///   CREDS_MANAGE__DATA_PATH   -> creds_manage.data_path
 ///
-/// # OIDC config resolution
+/// # TOML structure
 ///
-/// OIDC-related fields (`oidc_client`, `oauth_resource_server`,
-/// `runtime`, `token_propagation`) are provided by
-/// `BackendOidcModeConfig` via `#[serde(flatten)]` and resolved
-/// against `[oidc]` shared defaults using
-/// [`BackendOidcModeConfigSource::resolve_all`].
+/// ```toml
+/// [oidc]                      # shared provider defaults (well_known_url, client_id, …)
+/// well_known_url = "…"
+/// client_id      = "…"
 ///
-/// ```text
-/// [oidc]                     shared provider defaults (well_known_url, client_id, ...)
-/// [oidc_client]              client-specific overrides (pkce, scopes, claims_check_script)
-/// [oidc_extension]           mode-specific runtime config
-/// [oauth_resource_server]    resource-server overrides (introspection inherits from [oidc])
-/// [token_propagation]        substrate-level propagation config
+/// [oidc_client]               # BackendOidcModeConfig — client overrides + runtime capabilities
+/// pkce_enabled   = true       # (inherits [oidc] shared defaults via resolve_oidc)
+///
+/// [oauth_resource_server]     # AccessTokenSubstrateConfig — resource-server + propagation
+/// audiences = ["api://…"]     # (inherits [oidc] shared defaults via resolve_substrate)
 /// ```
+///
+/// # Resolution
+///
+/// Raw TOML values are not used directly. Call
+/// [`resolve_oidc`](Self::resolve_oidc)
+/// and [`resolve_substrate`](Self::resolve_substrate) at startup to apply
+/// `[oidc]` shared defaults and validate both sub-configs.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerConfig {
     #[serde(default)]
@@ -70,25 +78,30 @@ pub struct ServerConfig {
     // -- OIDC shared defaults --
     /// Shared OIDC provider defaults. When absent (`None`), OIDC is disabled;
     /// `/auth/session/login` will create a dev session.
-    #[serde(default)]
+    #[serde(default, rename = "oidc")]
     pub oidc: Option<OidcSharedConfig>,
 
-    // -- BackendOidcModeConfig (flattened) --
-    //
-    // Provides: oidc_client, oauth_resource_server, runtime,
-    // token_propagation — all at the top-level TOML namespace.
-    /// Backend OIDC mode config. Flattened so its fields
-    /// (`oidc_client`, `oauth_resource_server`, `runtime`,
-    /// `token_propagation`) appear at the top level in TOML and env vars.
-    #[serde(flatten)]
+    // -- BackendOidcModeConfig ([oidc_client] section) --
+    /// Backend OIDC mode config, read from the `[oidc_client]` TOML section.
+    ///
+    /// Contains OIDC client overrides and runtime capability axes
+    /// (`refresh_material_protection`, `metadata_delivery`,
+    /// `post_auth_redirect`). Call [`resolve_oidc`](Self::resolve_oidc) to
+    /// apply `[oidc]` shared defaults and validate.
+    #[serde(rename = "oidc_client")]
     pub backend_oidc: ServerOidcModeConfig,
 
-    // -- Server-specific (not in BackendOidcModeConfig) --
-    /// When present, enables the axum-reverse-proxy propagation forwarder
-    /// for bearer-authenticated dashboard requests with propagation context.
-    #[serde(default)]
-    pub propagation_forwarder: Option<AxumReverseProxyPropagationForwarderConfig>,
+    // -- AccessTokenSubstrateConfig ([oauth_resource_server] section) --
+    /// Access-token substrate config, read from the `[oauth_resource_server]`
+    /// TOML section.
+    ///
+    /// Contains resource-server verification config and token-propagation
+    /// policy. Call [`resolve_substrate`](Self::resolve_substrate) to apply
+    /// `[oidc]` shared defaults and validate.
+    #[serde(rename = "oauth_resource_server")]
+    pub access_token_substrate: AccessTokenSubstrateConfig,
 
+    // -- Server-specific (not in BackendOidcModeConfig) --
     // -- Independent auth contexts --
     #[serde(default)]
     pub session_context: SessionContextConfig,
@@ -124,6 +137,33 @@ impl ServerConfig {
             config.oidc = None;
         }
 
+        if config.basic_auth_context.zones.is_empty() {
+            config
+                .basic_auth_context
+                .zones
+                .push(BasicAuthZoneConfig::default());
+        }
+
+        if config.basic_auth_context.zones.len() == 1 {
+            let zone = &mut config.basic_auth_context.zones[0];
+            let default_zone = BasicAuthZoneConfig::default();
+            if zone.zone_prefix != default_zone.zone_prefix
+                || zone.login_subpath != default_zone.login_subpath
+                || zone.logout_subpath != default_zone.logout_subpath
+            {
+                tracing::warn!(
+                    "basic_auth_context.zones[0] paths are fixed to: prefix='{}', login='{}', \
+                     logout='{}'; overriding user config",
+                    default_zone.zone_prefix,
+                    default_zone.login_subpath,
+                    default_zone.logout_subpath
+                );
+                zone.zone_prefix = default_zone.zone_prefix;
+                zone.login_subpath = default_zone.login_subpath;
+                zone.logout_subpath = default_zone.logout_subpath;
+            }
+        }
+
         config.validate()?;
         Ok(config)
     }
@@ -132,8 +172,9 @@ impl ServerConfig {
     ///
     /// Returns `None` when OIDC is disabled (no `[oidc]` section).
     ///
-    /// Delegates to [`BackendOidcModeConfigSource::resolve_all`] — the
-    /// single canonical implementation of shared-defaults resolution.
+    /// Resolves only the OIDC mode sub-configs (oidc_client, runtime).
+    /// Resource-server resolution is handled separately by
+    /// [`resolve_substrate`](Self::resolve_substrate).
     pub fn resolve_oidc(&self) -> ServerResult<Option<ServerResolvedOidcModeConfig>> {
         let Some(ref shared) = self.oidc else {
             return Ok(None);
@@ -147,6 +188,24 @@ impl ServerConfig {
                 })?;
 
         Ok(Some(resolved))
+    }
+
+    /// Resolve `[oidc]` shared defaults into the access-token substrate config.
+    ///
+    /// Applies OIDC provider defaults (well_known_url, client_id,
+    /// client_secret) to `substrate.resource_server` so that introspection
+    /// can inherit from the shared `[oidc]` block.
+    ///
+    /// When OIDC is disabled (`None`), resource-server config is returned
+    /// unchanged (valid when no resource-server verification is needed).
+    ///
+    /// Delegates to [`AccessTokenSubstrateConfigSource::resolve_all`].
+    pub fn resolve_substrate(&self) -> ServerResult<ResolvedAccessTokenSubstrateConfig> {
+        self.access_token_substrate
+            .resolve_all(self.oidc.as_ref())
+            .map_err(|e| ServerError::InvalidConfig {
+                message: format!("access_token_substrate config: {e}"),
+            })
     }
 
     fn validate(&self) -> ServerResult<()> {
@@ -170,7 +229,7 @@ impl ServerConfig {
                     .to_string(),
             });
         }
-        // runtime and token_propagation validation is deferred to
+        // runtime validation (including token_propagation) is deferred to
         // resolve_oidc() which calls BackendOidcModeConfigSource::resolve_all().
         self.basic_auth_context
             .validate()
@@ -181,13 +240,6 @@ impl ServerConfig {
             real_ip.validate().map_err(|e| ServerError::InvalidConfig {
                 message: e.to_string(),
             })?;
-        }
-        if let Some(forwarder_config) = &self.propagation_forwarder {
-            forwarder_config
-                .validate()
-                .map_err(|e| ServerError::InvalidConfig {
-                    message: format!("invalid propagation forwarder config: {e}"),
-                })?;
         }
         Ok(())
     }

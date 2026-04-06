@@ -1,6 +1,6 @@
 # Error System Design
 
-This document describes the current error handling shape in SecurityDept, the security problem in that shape, and the recommended future direction.
+This document describes the current error handling shape in SecurityDeptthe security problem in that shapeand the recommended future direction.
 
 The main design goal is simple:
 
@@ -20,7 +20,7 @@ Examples:
 - `packages/oidc-client/src/error.rs`
 - `packages/oauth-resource-server/src/error.rs`
 - `packages/creds-manage/src/error.rs`
-- `packages/token-set-context/src/backend_oidc_mediated_mode/error.rs`
+- `packages/token-set-context/src/backend_oidc_mode/error.rs`
 - `apps/server/src/error.rs`
 
 The current reference server then turns the error into JSON by returning:
@@ -28,7 +28,7 @@ The current reference server then turns the error into JSON by returning:
 - `status` from `ToHttpStatus`
 - `error` from `ToErrorPresentation`
 
-That is convenient, but it couples two different concerns:
+That is convenientbut it couples two different concerns:
 
 - internal diagnostic text
 - user-facing response text
@@ -40,7 +40,7 @@ For authentication flows this is often unsafe. Raw error strings may include:
 - token or callback processing context
 - storage or sealing failure details
 
-Those details are useful in logs, but they should not automatically reach the browser or CLI user.
+Those details are useful in logsbut they should not automatically reach the browser or CLI user.
 
 ## Problem Statement
 
@@ -69,18 +69,18 @@ It should not reuse `Display` as the public message contract.
 
 Keep the current `snafu` enums as the internal source of truth.
 
-Add a separate presentation trait, for example:
+Add a separate presentation traitfor example:
 
 ```rust
 use std::borrow::Cow;
 
 pub struct ErrorPresentation {
     pub code: &'static str,
-    pub message: Cow<'static, str>,
+    pub message: Cow<'staticstr>,
     pub recovery: UserRecovery,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(DebugCloneCopyPartialEqEq)]
 pub enum UserRecovery {
     None,
     Retry,
@@ -104,7 +104,7 @@ That separation is the core change.
 
 `UserRecovery` is the preferred extra metadata because it tells the caller what action is appropriate next.
 
-For the current project complexity, this is more useful than fields such as:
+For the current project complexitythis is more useful than fields such as:
 
 - `severity`
 - `retryable: bool`
@@ -114,10 +114,10 @@ Those flags are either too presentation-specific or too coarse once auth flows b
 
 ## Why `UserRecovery` Is Better Than Boolean Flags
 
-Two booleans look simple, but they quickly create ambiguous combinations:
+Two booleans look simplebut they quickly create ambiguous combinations:
 
-- `retryable = true`, `reauth_required = true`
-- `retryable = false`, `reauth_required = false`
+- `retryable = true``reauth_required = true`
+- `retryable = false``reauth_required = false`
 
 The frontend still has to guess what to do.
 
@@ -140,11 +140,11 @@ In practice:
 - frontend styling can derive from `code` and `recovery`
 - severity often becomes unstable and subjective across products
 
-For that reason, `severity` should only be added later if multiple clients actually need a shared visual-priority contract.
+For that reason`severity` should only be added later if multiple clients actually need a shared visual-priority contract.
 
 ## Why `DisclosureLevel` Is Not Recommended Yet
 
-A separate disclosure model only becomes necessary when the project must support multiple public audiences with different visibility levels, for example:
+A separate disclosure model only becomes necessary when the project must support multiple public audiences with different visibility levelsfor example:
 
 - anonymous end user
 - signed-in end user
@@ -153,7 +153,7 @@ A separate disclosure model only becomes necessary when the project must support
 
 SecurityDept does not need that extra abstraction yet.
 
-For now, two sinks are enough:
+For nowtwo sinks are enough:
 
 - internal logs with full error detail
 - client responses with sanitized presentation
@@ -182,7 +182,7 @@ Other failures should stay generic:
 - filesystem or database failures
 - unexpected provider response bodies
 
-Those are operational details, not end-user actions.
+Those are operational detailsnot end-user actions.
 
 ## Recommended Variant Strategy
 
@@ -190,7 +190,7 @@ There are two useful patterns.
 
 ### Pattern A: Fixed Public Message per Variant
 
-For many variants, a fixed safe message is enough:
+For many variantsa fixed safe message is enough:
 
 ```rust
 impl ToErrorPresentation for OidcError {
@@ -229,9 +229,9 @@ This is the default pattern and should cover most cases.
 
 Some variants need different safe messages depending on the exact reason.
 
-Example: `PendingOauth` should not expose raw storage errors, but it may safely tell the user whether the login request is missing, expired, or already consumed.
+Example: `PendingOauth` should not expose raw storage errorsbut it may safely tell the user whether the login request is missingexpiredor already consumed.
 
-That should be modeled as structured reason data, not by parsing `source.to_string()`.
+That should be modeled as structured reason datanot by parsing `source.to_string()`.
 
 ```rust
 use std::borrow::Cow;
@@ -242,13 +242,13 @@ pub enum PendingOauthReason {
     AlreadyUsed,
 }
 
-#[derive(Debug, Snafu)]
+#[derive(DebugSnafu)]
 pub enum OidcError {
     #[snafu(display("OIDC pending OAuth error: {source}"))]
     PendingOauth {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn std::error::ErrorSendSync>,
         reason: Option<PendingOauthReason>,
-        public_message: Option<Cow<'static, str>>,
+        public_message: Option<Cow<'staticstr>>,
     },
 }
 ```
@@ -270,7 +270,7 @@ Do not derive public messages from:
 - HTTP transport errors
 - arbitrary lower-layer strings
 
-If a lower layer has a user-meaningful condition, promote it into a typed variant or a typed reason enum first.
+If a lower layer has a user-meaningful conditionpromote it into a typed variant or a typed reason enum first.
 
 ## Suggested Auth Error Disclosure Policy
 
@@ -278,11 +278,11 @@ Recommended categories for SecurityDept:
 
 | Category | End-user message style | Examples |
 | --- | --- | --- |
-| Safe and specific | Explain the recoverable problem | invalid redirect URL, login request expired, authorization code already used |
-| Safe but generic | Keep context broad | session expired, authentication required, access denied |
-| Internal only | Never expose raw detail | metadata fetch errors, introspection transport failures, storage errors, crypto/sealing failures |
+| Safe and specific | Explain the recoverable problem | invalid redirect URLlogin request expiredauthorization code already used |
+| Safe but generic | Keep context broad | session expiredauthentication requiredaccess denied |
+| Internal only | Never expose raw detail | metadata fetch errorsintrospection transport failuresstorage errorscrypto/sealing failures |
 
-In practice, `redirect URL error` and `code invalid/expired` belong in the first category, but the public message should still be normalized and sanitized.
+In practice`redirect URL error` and `code invalid/expired` belong in the first categorybut the public message should still be normalized and sanitized.
 
 ## Response Metadata
 
@@ -319,7 +319,7 @@ Benefits:
 - message text can evolve without breaking clients
 - logs keep full internal detail separately
 
-If the current response shape must be preserved for compatibility, the project can temporarily add:
+If the current response shape must be preserved for compatibilitythe project can temporarily add:
 
 - `error.code`
 - `error.message`
@@ -333,7 +333,7 @@ The key point is to stop using `Display` as the public contract.
 
 ## Logging Guidance
 
-When returning a sanitized user response, the server should still log the full internal error chain.
+When returning a sanitized user responsethe server should still log the full internal error chain.
 
 Recommended behavior at the boundary:
 
@@ -346,7 +346,7 @@ That keeps operations effective without leaking internals.
 
 ## Future Direction
 
-As the project grows into multiple auth-context modes, the error system should also become mode-aware.
+As the project grows into multiple auth-context modesthe error system should also become mode-aware.
 
 Examples:
 
@@ -362,7 +362,7 @@ The same three-layer rule should still hold:
 
 That model scales better than trying to encode everything into one `Display` string.
 
-It is also enough for the current stage of the project. SecurityDept should keep those three concerns separated conceptually, but it does not need three parallel error enum hierarchies for protocol, domain, and presentation right now. Domain errors plus boundary mapping traits are sufficient.
+It is also enough for the current stage of the project. SecurityDept should keep those three concerns separated conceptuallybut it does not need three parallel error enum hierarchies for protocoldomainand presentation right now. Domain errors plus boundary mapping traits are sufficient.
 
 ## Implementation Status
 
@@ -370,7 +370,7 @@ The error system described in this document has been fully implemented.
 
 ### Completed
 
-- `packages/utils/src/error.rs` - Shared `ErrorPresentation`, `UserRecovery`, and `ToErrorPresentation` trait
+- `packages/utils/src/error.rs` - Shared `ErrorPresentation``UserRecovery`and `ToErrorPresentation` trait
 - `packages/oidc-client/src/error.rs` - `ToErrorPresentation` impl for `OidcError`
 - `packages/oauth-resource-server/src/error.rs` - `ToErrorPresentation` impl for `OAuthResourceServerError`
 - `packages/creds/src/error.rs` - `ToErrorPresentation` impl for `CredsError`
@@ -378,7 +378,7 @@ The error system described in this document has been fully implemented.
 - `packages/session-context/src/lib.rs` - `ToErrorPresentation` impl for `SessionContextError`
 - `packages/session-context/src/service.rs` - `ToErrorPresentation` impl for `SessionAuthServiceError`
 - `packages/basic-auth-context/src/service.rs` - `ToErrorPresentation` impl for `BasicAuthContextServiceError`
-- `packages/token-set-context/src/backend_oidc_mediated_mode/error.rs` - `ToErrorPresentation` impl for `BackendOidcMediatedModeRuntimeError`
+- `packages/token-set-context/src/backend_oidc_mode/error.rs` - `ToErrorPresentation` impl for `BackendOidcModeRuntimeError`
 - `packages/token-set-context/src/access_token_substrate/service.rs` - `ToErrorPresentation` impl for `AccessTokenSubstrateResourceServiceError`
 - `apps/server/src/error.rs` - `ToErrorPresentation` impl for `ServerError` and `IntoResponse` using the three-layer model
 
@@ -420,7 +420,7 @@ Implement the trait for top-level public error types first:
 - `OidcError`
 - `OAuthResourceServerError`
 - `CredsManageError`
-- `BackendOidcMediatedModeRuntimeError`
+- `BackendOidcModeRuntimeError`
 - `BasicAuthContextServiceError`
 - `SessionAuthServiceError`
 - `AccessTokenSubstrateResourceServiceError`
@@ -442,7 +442,7 @@ instead of `self.to_string()`.
 
 ### Step 4
 
-Refine auth-sensitive variants by introducing typed reason enums where needed, especially for:
+Refine auth-sensitive variants by introducing typed reason enums where neededespecially for:
 
 - pending OAuth state lookup
 - authorization code exchange failures

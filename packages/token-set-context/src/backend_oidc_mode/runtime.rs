@@ -16,6 +16,7 @@ use securitydept_utils::{
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
+use snafu::Snafu;
 use url::Url;
 
 use super::{
@@ -32,14 +33,17 @@ use super::{
         RefreshMaterialProtector, SealedRefreshMaterial,
     },
     transport::{
-        BackendOidcModeCallbackFragment, BackendOidcModeRefreshFragment,
-        BackendOidcModeRefreshPayload,
+        BackendOidcModeCallbackReturns, BackendOidcModeRefreshPayload,
+        BackendOidcModeRefreshReturns,
     },
 };
-use crate::models::{
-    AuthStateDelta, AuthStateMetadataDelta, AuthStateMetadataSnapshot, AuthStateSnapshot,
-    AuthTokenDelta, AuthTokenSnapshot, AuthenticatedPrincipal, AuthenticationSource,
-    AuthenticationSourceKind, CurrentAuthStateMetadataSnapshotPartial,
+use crate::{
+    backend_oidc_mode::config::ResolvedBackendOidcModeConfig,
+    models::{
+        AuthStateDelta, AuthStateMetadataDelta, AuthStateMetadataSnapshot, AuthStateSnapshot,
+        AuthTokenDelta, AuthTokenSnapshot, AuthenticatedPrincipal, AuthenticationSource,
+        AuthenticationSourceKind, CurrentAuthStateMetadataSnapshotPartial,
+    },
 };
 
 const PENDING_POST_AUTH_REDIRECT_URI_KEY: &str = "post_auth_redirect_uri";
@@ -54,7 +58,7 @@ pub struct BackendOidcModeCodeCallbackResult {
     /// Present only when `post_auth_redirect_policy = resolved`.
     pub post_auth_redirect_uri: Option<Url>,
     pub auth_state_snapshot: AuthStateSnapshot,
-    pub redirect_fragment: BackendOidcModeCallbackFragment,
+    pub response_body: BackendOidcModeCallbackReturns,
 }
 
 /// Result of a backend-oidc token refresh flow.
@@ -63,7 +67,7 @@ pub struct BackendOidcModeTokenRefreshResult {
     /// Present only when `post_auth_redirect_policy = resolved`.
     pub post_auth_redirect_uri: Option<Url>,
     pub auth_state_delta: AuthStateDelta,
-    pub redirect_fragment: BackendOidcModeRefreshFragment,
+    pub response_body: BackendOidcModeRefreshReturns,
 }
 
 // ---------------------------------------------------------------------------
@@ -93,6 +97,10 @@ pub struct BackendOidcModeAuthStateOptions {
 /// metadata_delivery:           Redemption { config }  | None
 /// post_auth_redirect:          Resolved { config }    | CallerValidated
 /// ```
+///
+/// Note: `token_propagation` has been moved to
+/// [`AccessTokenSubstrateConfig`](crate::access_token_substrate::AccessTokenSubstrateConfig)
+/// as a substrate-level capability axis.
 #[derive(Debug, Clone, Deserialize)]
 pub struct BackendOidcModeRuntimeConfig<MC>
 where
@@ -157,68 +165,39 @@ where
 // Error
 // ---------------------------------------------------------------------------
 
-/// Error type for the unified runtime.
-#[derive(Debug)]
+/// Error type for the unified backend-oidc runtime.
+#[derive(Debug, Snafu)]
 pub enum BackendOidcModeRuntimeError {
-    Oidc(securitydept_oidc_client::OidcError),
+    #[snafu(display("oidc: {source}"), context(false))]
+    Oidc {
+        source: securitydept_oidc_client::OidcError,
+    },
+
+    #[snafu(display("refresh_material: {source}"), context(false))]
     RefreshMaterial {
         source: super::refresh_material::RefreshMaterialError,
     },
+
+    #[snafu(display("redirect_uri: {source}"), context(false))]
     RedirectUri {
         source: super::redirect::BackendOidcModeRedirectUriError,
     },
+
+    #[snafu(display("metadata_store: {source}"), context(false))]
     MetadataStore {
         source: super::metadata_redemption::PendingAuthStateMetadataRedemptionStoreError,
     },
-    Config {
-        message: String,
-    },
+
+    #[snafu(display("config: {message}"))]
+    Config { message: String },
 }
 
 pub type BackendOidcModeRuntimeResult<T> = Result<T, BackendOidcModeRuntimeError>;
 
-impl std::fmt::Display for BackendOidcModeRuntimeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Oidc(e) => write!(f, "oidc: {e}"),
-            Self::RefreshMaterial { source } => write!(f, "refresh_material: {source}"),
-            Self::RedirectUri { source } => write!(f, "redirect_uri: {source}"),
-            Self::MetadataStore { source } => write!(f, "metadata_store: {source}"),
-            Self::Config { message } => write!(f, "config: {message}"),
-        }
-    }
-}
-
-impl std::error::Error for BackendOidcModeRuntimeError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Oidc(e) => Some(e),
-            Self::RefreshMaterial { source } => Some(source),
-            Self::RedirectUri { source } => Some(source),
-            Self::MetadataStore { source } => Some(source),
-            Self::Config { .. } => None,
-        }
-    }
-}
-
-impl From<securitydept_oidc_client::OidcError> for BackendOidcModeRuntimeError {
-    fn from(e: securitydept_oidc_client::OidcError) -> Self {
-        Self::Oidc(e)
-    }
-}
-
-impl From<super::metadata_redemption::PendingAuthStateMetadataRedemptionStoreError>
-    for BackendOidcModeRuntimeError
-{
-    fn from(e: super::metadata_redemption::PendingAuthStateMetadataRedemptionStoreError) -> Self {
-        Self::MetadataStore { source: e }
-    }
-}
-
 impl ToErrorPresentation for BackendOidcModeRuntimeError {
     fn to_error_presentation(&self) -> ErrorPresentation {
         match self {
-            Self::Oidc(e) => e.to_error_presentation(),
+            Self::Oidc { source } => source.to_error_presentation(),
             Self::Config { .. } => ErrorPresentation::new(
                 "backend_oidc_mode_config_invalid",
                 "Backend-oidc mode runtime is misconfigured.",
@@ -246,7 +225,7 @@ impl ToErrorPresentation for BackendOidcModeRuntimeError {
 impl ToHttpStatus for BackendOidcModeRuntimeError {
     fn to_http_status(&self) -> StatusCode {
         match self {
-            Self::Oidc(e) => e.to_http_status(),
+            Self::Oidc { source } => source.to_http_status(),
             Self::Config { .. }
             | Self::RefreshMaterial { .. }
             | Self::RedirectUri { .. }
@@ -270,9 +249,7 @@ where
     /// (e.g. redirect URI format).
     pub fn validate(&self) -> BackendOidcModeRuntimeResult<()> {
         if let PostAuthRedirectPolicy::Resolved { ref config } = self.post_auth_redirect {
-            config
-                .validate_as_uri()
-                .map_err(|source| BackendOidcModeRuntimeError::RedirectUri { source })?;
+            config.validate_as_uri()?;
         }
 
         Ok(())
@@ -296,10 +273,9 @@ where
         let refresh_material_protector: Arc<dyn RefreshMaterialProtector> = match &config
             .refresh_material_protection
         {
-            RefreshMaterialProtection::Sealed { master_key } => Arc::new(
-                AeadRefreshMaterialProtector::from_master_key(master_key)
-                    .map_err(|source| BackendOidcModeRuntimeError::RefreshMaterial { source })?,
-            ),
+            RefreshMaterialProtection::Sealed { master_key } => {
+                Arc::new(AeadRefreshMaterialProtector::from_master_key(master_key)?)
+            }
             RefreshMaterialProtection::Passthrough => Arc::new(PassthroughRefreshMaterialProtector),
         };
 
@@ -315,9 +291,7 @@ where
         // redirect config by type.
         let redirect_uri_resolver = match config.post_auth_redirect {
             PostAuthRedirectPolicy::Resolved { ref config } => {
-                config
-                    .validate_as_uri()
-                    .map_err(|source| BackendOidcModeRuntimeError::RedirectUri { source })?;
+                config.validate_as_uri()?;
                 Some(BackendOidcModeRedirectUriResolver::from_config(
                     config.clone(),
                 ))
@@ -333,6 +307,46 @@ where
         })
     }
 
+    /// **Recommended entry point.** Build both the runtime and the optional
+    /// OIDC client from a resolved backend-oidc config.
+    ///
+    /// Mirrors [`AccessTokenSubstrateRuntime::from_resolved_config`]:
+    ///
+    /// ```text
+    /// BackendOidcModeRuntime::from_resolved_config(resolved_oidc.as_ref()).await?
+    ///   ──▸ (BackendOidcModeRuntime<MS>, Option<Arc<OidcClient<PS>>>)
+    ///
+    /// AccessTokenSubstrateRuntime::from_resolved_config(&resolved_substrate).await?
+    ///   ──▸ (AccessTokenSubstrateRuntime, Option<Arc<OAuthResourceServerVerifier>>)
+    /// ```
+    ///
+    /// Pass `None` when OIDC is disabled — the runtime is built from a default
+    /// config and `oidc_client` will be `None`.
+    ///
+    /// # Type parameters
+    /// - `PS` — pending OAuth store (Store type, e.g. `MokaPendingOauthStore`)
+    /// - `MS` — pending auth-state metadata redemption store (inferred from
+    ///   `Self`)
+    pub async fn from_resolved_config<PS>(
+        resolved: Option<&ResolvedBackendOidcModeConfig<PS::Config, MS::Config>>,
+    ) -> BackendOidcModeRuntimeResult<(Self, Option<Arc<OidcClient<PS>>>)>
+    where
+        PS: PendingOauthStore,
+        PS::Config: Clone,
+        MS::Config: Clone,
+    {
+        let (runtime_config, oidc_client) = match resolved {
+            Some(r) => {
+                let client = OidcClient::<PS>::from_config(r.oidc_client.clone()).await?;
+                (r.runtime.clone(), Some(Arc::new(client)))
+            }
+            None => (BackendOidcModeRuntimeConfig::default(), None),
+        };
+
+        let runtime = Self::from_config(runtime_config)?;
+        Ok((runtime, oidc_client))
+    }
+
     // -----------------------------------------------------------------------
     // Low-level helpers
     // -----------------------------------------------------------------------
@@ -343,7 +357,7 @@ where
     ) -> BackendOidcModeRuntimeResult<SealedRefreshMaterial> {
         self.refresh_material_protector
             .seal(refresh_token)
-            .map_err(|source| BackendOidcModeRuntimeError::RefreshMaterial { source })
+            .map_err(Into::into)
     }
 
     pub fn unseal_refresh_token(
@@ -352,7 +366,7 @@ where
     ) -> BackendOidcModeRuntimeResult<String> {
         self.refresh_material_protector
             .unseal(material)
-            .map_err(|source| BackendOidcModeRuntimeError::RefreshMaterial { source })
+            .map_err(Into::into)
     }
 
     fn resolve_post_auth_redirect_uri(
@@ -363,7 +377,7 @@ where
             Some(resolver) => resolver
                 .resolve_redirect_uri(requested)
                 .map(Some)
-                .map_err(|source| BackendOidcModeRuntimeError::RedirectUri { source }),
+                .map_err(Into::into),
             None => Ok(None), // caller_validated — no resolution here
         }
     }
@@ -501,7 +515,7 @@ where
         // Issue metadata redemption if active.
         let metadata_redemption_id = self.issue_metadata_snapshot(&auth_state_snapshot)?;
 
-        let redirect_fragment = BackendOidcModeCallbackFragment::from_snapshot(
+        let response_body = BackendOidcModeCallbackReturns::from_snapshot(
             &auth_state_snapshot.tokens,
             metadata_redemption_id,
         );
@@ -509,7 +523,7 @@ where
         Ok(BackendOidcModeCodeCallbackResult {
             post_auth_redirect_uri,
             auth_state_snapshot,
-            redirect_fragment,
+            response_body,
         })
     }
 
@@ -558,8 +572,8 @@ where
         // Issue metadata redemption if active AND metadata is non-empty.
         let metadata_redemption_id = self.issue_metadata_delta(&metadata_delta)?;
 
-        let redirect_fragment =
-            BackendOidcModeRefreshFragment::from_delta(&token_delta, metadata_redemption_id);
+        let response_body =
+            BackendOidcModeRefreshReturns::from_delta(&token_delta, metadata_redemption_id);
 
         Ok(BackendOidcModeTokenRefreshResult {
             post_auth_redirect_uri,
@@ -567,7 +581,116 @@ where
                 tokens: token_delta,
                 metadata: metadata_delta,
             },
-            redirect_fragment,
+            response_body,
+        })
+    }
+
+    /// Handle the OIDC code callback for a JSON body response, embedding
+    /// metadata inline.
+    ///
+    /// Compared to [`handle_code_callback`](Self::handle_code_callback) this
+    /// method:
+    ///
+    /// - Skips `post_auth_redirect_uri` resolution (irrelevant for body flows)
+    /// - Skips `issue_metadata_snapshot` and the associated store write
+    /// - Embeds `AuthStateMetadataSnapshot` directly in the response body
+    ///
+    /// This removes one store write and one client redemption round-trip,
+    /// making it the preferred implementation for `callback_body_return`.
+    pub async fn handle_code_callback_inline<PS>(
+        &self,
+        oidc_client: &OidcClient<PS>,
+        search_params: OidcCodeCallbackSearchParams,
+        external_base_url: &Url,
+        auth_state_options: &BackendOidcModeAuthStateOptions,
+        redirect_url_override: Option<&str>,
+    ) -> BackendOidcModeRuntimeResult<BackendOidcModeCodeCallbackResult>
+    where
+        PS: PendingOauthStore,
+    {
+        let result = oidc_client
+            .handle_code_callback_with_redirect_override(
+                search_params,
+                external_base_url,
+                redirect_url_override,
+            )
+            .await?;
+
+        let auth_state_snapshot =
+            self.auth_state_snapshot_from_code_callback(&result, auth_state_options)?;
+
+        // Embed metadata inline — no store write, no redemption ID.
+        let response_body = BackendOidcModeCallbackReturns::from_snapshot_with_inline_metadata(
+            &auth_state_snapshot.tokens,
+            auth_state_snapshot.metadata.clone(),
+        );
+
+        Ok(BackendOidcModeCodeCallbackResult {
+            post_auth_redirect_uri: None,
+            auth_state_snapshot,
+            response_body,
+        })
+    }
+
+    /// Handle a token refresh for a JSON body response, embedding metadata
+    /// inline.
+    ///
+    /// Compared to [`handle_token_refresh`](Self::handle_token_refresh) this
+    /// method:
+    ///
+    /// - Skips `post_auth_redirect_uri` resolution (irrelevant for body flows)
+    /// - Skips `issue_metadata_delta` and the associated store write
+    /// - Embeds `AuthStateMetadataDelta` directly in the response body
+    ///
+    /// This removes one store write and one client redemption round-trip,
+    /// making it the preferred implementation for `refresh_body_return`.
+    pub async fn handle_token_refresh_inline<PS>(
+        &self,
+        oidc_client: &OidcClient<PS>,
+        payload: &BackendOidcModeRefreshPayload,
+    ) -> BackendOidcModeRuntimeResult<BackendOidcModeTokenRefreshResult>
+    where
+        PS: PendingOauthStore,
+    {
+        // Unseal or passthrough refresh token.
+        let refresh_token = self.unseal_refresh_token(&payload.refresh_material)?;
+
+        let refresh_result = oidc_client
+            .handle_token_refresh(refresh_token, payload.id_token.clone())
+            .await?;
+
+        // Re-seal or passthrough the new refresh token.
+        let refresh_material_delta = refresh_result
+            .refresh_token
+            .as_deref()
+            .map(|value| self.seal_refresh_token(value))
+            .transpose()?;
+
+        let token_delta = AuthTokenDelta {
+            access_token: refresh_result.access_token.clone(),
+            id_token: refresh_result.id_token.clone(),
+            refresh_material: refresh_material_delta,
+            access_token_expires_at: refresh_result.access_token_expiration,
+        };
+
+        let metadata_delta = Self::auth_state_metadata_delta_from_refresh_result(
+            payload.current_metadata_snapshot.as_ref(),
+            &refresh_result,
+        );
+
+        // Embed metadata inline — no store write, no redemption ID.
+        let response_body = BackendOidcModeRefreshReturns::from_delta_with_inline_metadata(
+            &token_delta,
+            metadata_delta.clone(),
+        );
+
+        Ok(BackendOidcModeTokenRefreshResult {
+            post_auth_redirect_uri: None,
+            auth_state_delta: AuthStateDelta {
+                tokens: token_delta,
+                metadata: metadata_delta,
+            },
+            response_body,
         })
     }
 

@@ -18,6 +18,13 @@ export type {
 	CreateAuthorizedTransportOptions,
 } from "./auth-transport";
 export { createAuthorizedTransport } from "./auth-transport";
+// Base client: shared lifecycle infrastructure for mode-specific clients.
+export type { BaseOidcModeClientOptions } from "./base-client";
+export {
+	BaseOidcModeClient,
+	describeError,
+	StateRestoreSourceKind,
+} from "./base-client";
 // Controller: thin lifecycle layer that composes state + persistence + transport.
 export type {
 	ApplyDeltaOptions,

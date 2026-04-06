@@ -36,8 +36,10 @@ use super::{
 /// | [`login`](Self::login) | Initiate OIDC authorization code flow → redirect |
 /// | [`callback`](Self::callback) | Handle OIDC code callback → typed result |
 /// | [`callback_fragment_return`](Self::callback_fragment_return) | callback → 302 fragment redirect |
+/// | [`callback_body_return`](Self::callback_body_return) | callback → JSON body (for programmatic flows) |
 /// | [`refresh`](Self::refresh) | Refresh tokens → typed result |
 /// | [`refresh_fragment_return`](Self::refresh_fragment_return) | refresh → 302 fragment redirect |
+/// | [`refresh_body_return`](Self::refresh_body_return) | refresh → JSON body (for silent/programmatic refresh) |
 /// | [`redeem_metadata`](Self::redeem_metadata) | Redeem one-time metadata (if `metadata_delivery = redemption`) |
 /// | [`user_info`](Self::user_info) | User info exchange |
 #[derive(Clone)]
@@ -136,7 +138,7 @@ where
         caller_post_auth_redirect_uri: Option<&Url>,
     ) -> Result<HttpResponse, BackendOidcModeRuntimeError> {
         let result = self.callback(external_base_url, search_params).await?;
-        let qs = result.redirect_fragment.to_fragment_query_string();
+        let qs = result.response_body.to_fragment_query_string();
 
         let redirect_url = pick_redirect_uri(
             result.post_auth_redirect_uri.as_ref(),
@@ -145,6 +147,36 @@ where
         let mut url = redirect_url.clone();
         url.set_fragment(Some(&qs));
         Ok(HttpResponse::found(url.as_str()))
+    }
+
+    /// Handle the OIDC code callback and return token material + inline
+    /// metadata as a JSON response body (200 OK).
+    ///
+    /// Unlike [`callback_fragment_return`](Self::callback_fragment_return) this
+    /// method uses the inline runtime path:
+    ///
+    /// - **No** `post_auth_redirect_uri` resolution (irrelevant for body flows)
+    /// - **No** metadata store write — `AuthStateMetadataSnapshot` is embedded
+    ///   directly in the response body under the `metadata` key
+    ///
+    /// This avoids one store write and one client redemption round-trip,
+    /// making it the preferred handler for programmatic callback flows.
+    pub async fn callback_body_return(
+        &self,
+        external_base_url: &Url,
+        search_params: OidcCodeCallbackSearchParams,
+    ) -> Result<serde_json::Value, BackendOidcModeRuntimeError> {
+        let result = self
+            .runtime
+            .handle_code_callback_inline(
+                self.oidc_client,
+                search_params,
+                external_base_url,
+                &self.auth_state_options,
+                None,
+            )
+            .await?;
+        Ok(result.response_body.to_response_body())
     }
 
     // -----------------------------------------------------------------------
@@ -162,13 +194,16 @@ where
     }
 
     /// Refresh tokens and redirect with the delta in the URL fragment.
+    ///
+    /// Suitable for browser navigation flows. For programmatic/silent refresh
+    /// via `fetch()`, use [`refresh_body_return`](Self::refresh_body_return).
     pub async fn refresh_fragment_return(
         &self,
         payload: &BackendOidcModeRefreshPayload,
         caller_post_auth_redirect_uri: Option<&Url>,
     ) -> Result<HttpResponse, BackendOidcModeRuntimeError> {
         let result = self.refresh(payload).await?;
-        let qs = result.redirect_fragment.to_fragment_query_string();
+        let qs = result.response_body.to_fragment_query_string();
 
         let redirect_url = pick_redirect_uri(
             result.post_auth_redirect_uri.as_ref(),
@@ -177,6 +212,30 @@ where
         let mut url = redirect_url.clone();
         url.set_fragment(Some(&qs));
         Ok(HttpResponse::found(url.as_str()))
+    }
+
+    /// Refresh tokens and return token delta + inline metadata as a JSON
+    /// response body (200 OK).
+    ///
+    /// Unlike [`refresh_fragment_return`](Self::refresh_fragment_return) this
+    /// method uses the inline runtime path:
+    ///
+    /// - **No** `post_auth_redirect_uri` resolution (irrelevant for body flows)
+    /// - **No** metadata store write — `AuthStateMetadataDelta` is embedded
+    ///   directly in the response body under the `metadata` key
+    ///
+    /// This avoids one store write and one client redemption round-trip,
+    /// making it the preferred handler for silent/programmatic refresh via
+    /// `fetch()`.
+    pub async fn refresh_body_return(
+        &self,
+        payload: &BackendOidcModeRefreshPayload,
+    ) -> Result<serde_json::Value, BackendOidcModeRuntimeError> {
+        let result = self
+            .runtime
+            .handle_token_refresh_inline(self.oidc_client, payload)
+            .await?;
+        Ok(result.response_body.to_response_body())
     }
 
     // -----------------------------------------------------------------------

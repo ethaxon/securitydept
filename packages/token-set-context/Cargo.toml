@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-token-set-context"
-version = "0.2.0-alpha.3"
+version = "0.2.0-alpha.4"
 edition = "2024"
 
 [features]
@@ -30,8 +30,14 @@ serde = { workspace = true }
 serde_regex = { version = "1" }
 serde_json = { workspace = true }
 snafu = { workspace = true }
+tracing = { workspace = true }
 typed-builder = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 axum = { workspace = true, optional = true }
 axum-reverse-proxy = { version = "1", optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+rustls = { workspace = true }
+axum = { workspace = true, features = ["tokio"] }

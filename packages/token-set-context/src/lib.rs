@@ -8,7 +8,7 @@
 //! | Module | Description |
 //! |---|---|
 //! | [`backend_oidc_mode`] | **Canonical** — unified backend OIDC capability framework (capabilities, config, runtime, service, transport) |
-//! | [`frontend_oidc_mode`] | Frontend OIDC — config projection, integration contracts, model aliases |
+//! | [`frontend_oidc_mode`] | Frontend OIDC — config, runtime, service, cross-boundary contracts |
 //! | [`access_token_substrate`] | Cross-mode shared substrate: resource-server verification, propagation, forwarder |
 //! | [`orchestration`] | Cross-mode shared config, OIDC client, provider infrastructure |
 //! | [`models`] | Shared auth-state data models |
@@ -19,10 +19,10 @@
 //!   behaviour through capability axes (`refresh_material_protection`,
 //!   `metadata_delivery`, `post_auth_redirect`). Adopters configure the axes
 //!   directly — no preset indirection needed.
-//! - `frontend-oidc` has no backend runtime — the browser owns the full OIDC
-//!   lifecycle. This module provides config projection, integration contracts
-//!   describing what the backend expects from frontend-produced tokens, and
-//!   mode-qualified model aliases.
+//! - `frontend-oidc` has no backend OIDC client runtime — the browser owns the
+//!   full OIDC lifecycle. This module provides formal config, runtime, and
+//!   service patterns alongside cross-boundary contracts describing what the
+//!   backend expects from frontend-produced tokens.
 //!
 //! ## Entry point
 //!

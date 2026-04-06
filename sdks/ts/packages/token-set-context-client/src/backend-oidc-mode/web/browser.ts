@@ -22,8 +22,8 @@ import { createWebRuntime } from "@securitydept/client/web";
 import { BackendOidcModeClient } from "../client";
 import type { AuthStateSnapshot } from "../types";
 
-const TOKEN_SET_PERSISTENT_PREFIX = "securitydept.web.token_set:";
-const TOKEN_SET_SESSION_PREFIX = "securitydept.web.token_set:";
+const BACKEND_OIDC_PERSISTENT_PREFIX = "securitydept.web.backend_oidc:";
+const BACKEND_OIDC_SESSION_PREFIX = "securitydept.web.backend_oidc:";
 const TOKEN_SET_CALLBACK_FRAGMENT_KEY = "pending_callback_fragment";
 
 export interface LocationLike {
@@ -70,10 +70,10 @@ export function createBackendOidcModeBrowserClient(
 		traceSink: options.traceSink,
 		persistentStore:
 			options.persistentStore ??
-			createLocalStorageStore(TOKEN_SET_PERSISTENT_PREFIX),
+			createLocalStorageStore(BACKEND_OIDC_PERSISTENT_PREFIX),
 		sessionStore:
 			options.sessionStore ??
-			createSessionStorageStore(TOKEN_SET_SESSION_PREFIX),
+			createSessionStorageStore(BACKEND_OIDC_SESSION_PREFIX),
 		fetchTransport: {
 			redirect: FetchTransportRedirectKind.Manual,
 		},
@@ -90,7 +90,7 @@ export function createBackendOidcModeBrowserClient(
 }
 
 export function createBackendOidcModeCallbackFragmentStore(
-	sessionStore = createSessionStorageStore(TOKEN_SET_SESSION_PREFIX),
+	sessionStore = createSessionStorageStore(BACKEND_OIDC_SESSION_PREFIX),
 ): EphemeralFlowStore<string> {
 	return createEphemeralFlowStore<string>({
 		store: sessionStore,

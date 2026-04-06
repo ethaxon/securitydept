@@ -128,13 +128,12 @@
 
 - 核心服务端与共享 crate 已实现
 - `securitydept-token-set-context` 已提供专用 token-set 上下文层
-- `securitydept-auth-runtime` 已解散，并将 route helper 拆回各 owning crate：`BasicAuthContextService` 归属 `securitydept-basic-auth-context`，`SessionAuthServiceTrait` / `OidcSessionAuthService` / `DevSessionAuthService` 归属 `securitydept-session-context`（`service` feature），`BackendOidcMediatedModeAuthService` 与 `AccessTokenSubstrateResourceService` 归属 `securitydept-token-set-context`
-- `BackendOidcMediatedConfigSource` trait 已落地：`BackendOidcMediatedConfig`（raw）/ `ResolvedBackendOidcMediatedConfig`（resolved）/ `BackendOidcMediatedConfigSource` trait 已全部实现
-- 当前代码仍拆成 `backend-oidc-pure` 与 `backend-oidc-mediated` 两套 preset-specific module，但 canonical 方向已经改成单一 `backend-oidc` capability framework：
+- `securitydept-auth-runtime` 已解散，并将 route helper 拆回各 owning crate：`BasicAuthContextService` 归属 `securitydept-basic-auth-context`，`SessionAuthServiceTrait` / `OidcSessionAuthService` / `DevSessionAuthService` 归属 `securitydept-session-context`（`service` feature），`BackendOidcModeAuthService` 与 `AccessTokenSubstrateResourceService` 归属 `securitydept-token-set-context`
+- `BackendOidcModeConfigSource` trait 已落地：`BackendOidcModeConfig`（raw）/ `ResolvedBackendOidcModeConfig`（resolved）/ `BackendOidcModeConfigSource` trait 已全部实现
+- 以前分离的 `backend-oidc-pure` 与 `backend-oidc-mediated` 已统一合并为单一的 `backend-oidc` capability framework：
   - OIDC 协议级流程（authorize / callback / refresh / exchange）由 `OidcClient` 统一提供；`securitydept-oidc-client::auth_state` 已承接跨 preset 共用的 identity extraction（principal / issuer）
-  - `backend_oidc_pure_mode` 与 `backend_oidc_mediated_mode` 当前分别承载 pure / mediated preset 的 route-facing service、runtime 与 transport contract
-  - 后续目标不是继续维护两套长期并列 API，而是收口为 `backend_oidc_mode` + capability validation + preset/profile
-  - `frontend_oidc_mode` 已拥有正式 `FrontendOidcModeConfigProjection` + `FrontendOidcModeIntegrationRequirement` + `FrontendOidcModeTokenMaterial`
+  - 前面提到的模式作为 `pure` 和 `mediated` preset/profile 提供，统一接受 3 轴配置（`refresh_material_protection`、`metadata_delivery`、`post_auth_redirect_policy`）；token propagation 是独立的跨 mode capability axis，归属 `access_token_substrate`
+  - `frontend_oidc_mode` 已拥有正式 `Config / ResolvedConfig / ConfigSource / Runtime / Service / ConfigProjection`
 - bearer propagation 现在使用服务端持有的目标策略以及来源于 access token 校验链路的 `ResourceTokenPrincipal`
 - `TokenPropagator` 现在既支持直接目标，也支持通过可选运行时 `PropagationNodeTargetResolver` 解析的 node-only target
 - `securitydept-token-set-context` 现已包含可选的 `axum-reverse-proxy-propagation-forwarder` feature，`recommend-propagation-forwarder` 作为其 feature 别名
@@ -151,7 +150,7 @@
   - `/api/propagation/*` 通配路由将经过 bearer 认证且带有已验证 propagation 上下文的请求转发到已解析的下游目标
 - 客户端 SDK 现在已有正式架构与实现指南，但具体实现仍待推进
 - 这些流程的 Axum 响应组装现已留在 `apps/server` 边界层，而不是放在可复用 runtime crate 内部
-- config 面已重排为 `BackendOidcMediatedConfig`（raw 输入）/ `ResolvedBackendOidcMediatedConfig`（resolved bundle）/ `BackendOidcMediatedConfigSource` trait（已落地）
+- config 面已重排为 `BackendOidcModeConfig`（raw 输入）/ `ResolvedBackendOidcModeConfig`（resolved bundle）/ `BackendOidcModeConfigSource` trait（已落地）
 
 缺失部分：
 
@@ -161,7 +160,7 @@
 - mixed-custody 与 stateful BFF token-set 能力已被纳入设计边界，但当前仍属 provisional，且不是第一版实现目标
 - 更完整的 token exchange / downstream propagation 场景
 - 在当前 `axum-reverse-proxy` forwarder feature 之上实现更丰富的转发策略和更完整的下游 token-exchange 场景
-- 将当前 pure / mediated 双分支 public surface 与配置面统一为单一 `backend-oidc` capability framework
+- 确保 3 轴 capability framework 继续良好支持未来的其他组合
 
 规划参考：
 
@@ -216,7 +215,7 @@
 
 目标：
 
-- 验证项目 1 + 4/5/6 + 7 的组合栈
+- 验证项目 14/5/67 的组合栈
 - 作为真实部署场景的试验场
 
 当前状态：

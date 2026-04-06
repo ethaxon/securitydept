@@ -38,9 +38,9 @@ describe("public contract constants", () => {
 		expect(BackendOidcModeBootstrapSource.Callback).toBe("callback");
 		expect(BackendOidcModeBootstrapSource.Restore).toBe("restore");
 		expect(BackendOidcModeContextSource.Client).toBe(
-			"token_set_context_client",
+			"backend_oidc_mode_client",
 		);
-		expect(BackendOidcModeContextSource.Persistence).toBe("token-set-context");
+		expect(BackendOidcModeContextSource.Persistence).toBe("backend-oidc-mode");
 		expect(BackendOidcModeStateRestoreSourceKind.Manual).toBe("manual");
 		expect(BackendOidcModeStateRestoreSourceKind.PersistentStore).toBe(
 			"persistent_store",

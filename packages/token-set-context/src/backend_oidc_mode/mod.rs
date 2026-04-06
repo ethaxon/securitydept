@@ -3,9 +3,9 @@
 //! This is the **canonical adopter-facing entry** for all backend OIDC
 //! deployments.
 //!
-//! # Capability axes
+//! # Mode capability axes
 //!
-//! The behaviour of `backend-oidc` is parameterized by three capability axes:
+//! `backend-oidc` owns three OIDC-specific capability axes:
 //!
 //! - **`refresh_material_protection`** — `passthrough` (plain) vs `sealed`
 //!   (AEAD-encrypted)
@@ -13,14 +13,17 @@
 //! - **`post_auth_redirect_policy`** — `caller_validated` (no service policy)
 //!   vs `resolved` (runtime allowlist)
 //!
+//! The cross-mode **`token_propagation`** axis lives in
+//! [`access_token_substrate`](crate::access_token_substrate).
+//!
 //! # Presets
 //!
 //! Two canonical presets configure common capability bundles:
 //!
-//! | Preset | Refresh | Metadata | Redirect |
-//! |---|---|---|---|
-//! | `Pure` | passthrough | none | caller_validated |
-//! | `Mediated` | sealed | redemption | resolved |
+//! | Preset | Refresh | Metadata | Redirect | Propagation (substrate) |
+//! |---|---|---|---|---|
+//! | `Pure` | passthrough | none | caller_validated | disabled |
+//! | `Mediated` | sealed | redemption | resolved | enabled |
 //!
 //! # Module structure
 //!
@@ -35,8 +38,8 @@
 //! - [`runtime`] — unified runtime (authorize / callback / refresh / metadata
 //!   redemption)
 //! - [`service`] — unified route-facing auth service
-//! - [`transport`] — canonical contract vocabulary (fragments, payloads, user
-//!   info, metadata redemption)
+//! - [`transport`] — canonical contract vocabulary (response bodies, payloads,
+//!   user info, metadata redemption)
 
 pub mod capabilities;
 pub mod config;
@@ -91,8 +94,8 @@ pub use runtime::{
 pub use service::BackendOidcModeAuthService;
 // --- Public re-exports: transport ---
 pub use transport::{
-    BackendOidcModeAuthorizeQuery, BackendOidcModeCallbackFragment,
+    BackendOidcModeAuthorizeQuery, BackendOidcModeCallbackReturns,
     BackendOidcModeMetadataRedemptionRequest, BackendOidcModeMetadataRedemptionResponse,
-    BackendOidcModeRefreshFragment, BackendOidcModeRefreshPayload, BackendOidcModeUserInfoRequest,
+    BackendOidcModeRefreshPayload, BackendOidcModeRefreshReturns, BackendOidcModeUserInfoRequest,
     BackendOidcModeUserInfoResponse,
 };

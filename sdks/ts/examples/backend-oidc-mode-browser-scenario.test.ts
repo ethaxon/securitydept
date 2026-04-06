@@ -46,12 +46,13 @@ describe("external backend-oidc-mode browser scenario", () => {
 			.on(
 				(request) => request.url.endsWith("/refresh"),
 				() => ({
-					status: 302,
-					headers: {
-						location:
-							"https://app.example.com/oidc-mediated#access_token=refreshed-at&refresh_token=refreshed-rt&expires_at=2026-01-01T00%3A10%3A00Z",
+					status: 200,
+					headers: { "content-type": "application/json" },
+					body: {
+						access_token: "refreshed-at",
+						refresh_token: "refreshed-rt",
+						access_token_expires_at: "2026-01-01T00:10:00Z",
 					},
-					body: null,
 				}),
 			);
 		const client = createBackendOidcModeBrowserClient({

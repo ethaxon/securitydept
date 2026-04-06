@@ -27,7 +27,7 @@ pub async fn login(
 ) -> Result<Response, ServerError> {
     let external_base_url = state.external_base_url(&headers)?;
     state
-        .mediated_auth_service()?
+        .backend_oidc_auth_service()?
         .login(&external_base_url, &query)
         .await
         .map(into_axum_response)
@@ -35,7 +35,7 @@ pub async fn login(
 }
 
 /// GET /auth/token-set/callback -- handle OIDC code exchange for stateless
-/// token-set mode.
+/// token-set mode (fragment redirect).
 pub async fn callback(
     Extension(state): Extension<ServerState>,
     headers: HeaderMap,
@@ -43,24 +43,41 @@ pub async fn callback(
 ) -> Result<Response, ServerError> {
     let external_base_url = state.external_base_url(&headers)?;
     state
-        .mediated_auth_service()?
+        .backend_oidc_auth_service()?
         .callback_fragment_return(&external_base_url, search_params, None)
         .await
         .map(into_axum_response)
         .map_err(ServerError::from)
 }
 
-/// POST /auth/token-set/refresh -- refresh token-set state.
+/// POST /auth/token-set/callback -- handle OIDC code exchange and return
+/// token material + inline metadata as JSON body (for programmatic flows).
+pub async fn callback_body(
+    Extension(state): Extension<ServerState>,
+    headers: HeaderMap,
+    Query(search_params): Query<OidcCodeCallbackSearchParams>,
+) -> ServerResult<Response> {
+    let external_base_url = state.external_base_url(&headers)?;
+    let body = state
+        .backend_oidc_auth_service()?
+        .callback_body_return(&external_base_url, search_params)
+        .await
+        .map_err(ServerError::from)?;
+    Ok(Json(body).into_response())
+}
+
+/// POST /auth/token-set/refresh -- refresh token-set state and return
+/// token delta + inline metadata as JSON body.
 pub async fn refresh(
     Extension(state): Extension<ServerState>,
     Json(payload): Json<BackendOidcModeRefreshPayload>,
 ) -> ServerResult<Response> {
-    state
-        .mediated_auth_service()?
-        .refresh_fragment_return(&payload, None)
+    let body = state
+        .backend_oidc_auth_service()?
+        .refresh_body_return(&payload)
         .await
-        .map(into_axum_response)
-        .map_err(ServerError::from)
+        .map_err(ServerError::from)?;
+    Ok(Json(body).into_response())
 }
 
 /// POST /auth/token-set/metadata/redeem -- redeem metadata by one-time id.
@@ -69,7 +86,7 @@ pub async fn redeem_metadata(
     Json(payload): Json<BackendOidcModeMetadataRedemptionRequest>,
 ) -> ServerResult<Response> {
     match state
-        .mediated_auth_service()?
+        .backend_oidc_auth_service()?
         .redeem_metadata(&payload)
         .await
         .map_err(ServerError::from)?
@@ -92,7 +109,7 @@ pub async fn user_info(
         })?;
 
     let response = state
-        .mediated_auth_service()?
+        .backend_oidc_auth_service()?
         .user_info(&payload, access_token)
         .await
         .map_err(ServerError::from)?;

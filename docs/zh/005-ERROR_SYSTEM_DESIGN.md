@@ -20,7 +20,7 @@
 - `packages/oidc-client/src/error.rs`
 - `packages/oauth-resource-server/src/error.rs`
 - `packages/creds-manage/src/error.rs`
-- `packages/token-set-context/src/backend_oidc_mediated_mode/error.rs`
+- `packages/token-set-context/src/backend_oidc_mode/error.rs`
 - `apps/server/src/error.rs`
 
 当前参考服务器通过将错误转换为 JSON 来返回：
@@ -76,11 +76,11 @@ use std::borrow::Cow;
 
 pub struct ErrorPresentation {
     pub code: &'static str,
-    pub message: Cow<'static, str>,
+    pub message: Cow<'staticstr>,
     pub recovery: UserRecovery,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(DebugCloneCopyPartialEqEq)]
 pub enum UserRecovery {
     None,
     Retry,
@@ -116,8 +116,8 @@ pub trait ToErrorPresentation {
 
 两个布尔值看起来简单，但很快就会产生含义模糊的组合：
 
-- `retryable = true`, `reauth_required = true`
-- `retryable = false`, `reauth_required = false`
+- `retryable = true``reauth_required = true`
+- `retryable = false``reauth_required = false`
 
 前端仍然需要猜测下一步动作。
 
@@ -242,13 +242,13 @@ pub enum PendingOauthReason {
     AlreadyUsed,
 }
 
-#[derive(Debug, Snafu)]
+#[derive(DebugSnafu)]
 pub enum OidcError {
     #[snafu(display("OIDC pending OAuth error: {source}"))]
     PendingOauth {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn std::error::ErrorSendSync>,
         reason: Option<PendingOauthReason>,
-        public_message: Option<Cow<'static, str>>,
+        public_message: Option<Cow<'staticstr>>,
     },
 }
 ```
@@ -417,7 +417,7 @@ SecurityDept 可以逐步采用这个方法。
 - `packages/session-context/src/lib.rs` - `SessionContextError` 的 `ToErrorPresentation` 实现
 - `packages/session-context/src/service.rs` - `SessionAuthServiceError` 的 `ToErrorPresentation` 实现
 - `packages/basic-auth-context/src/service.rs` - `BasicAuthContextServiceError` 的 `ToErrorPresentation` 实现
-- `packages/token-set-context/src/backend_oidc_mediated_mode/error.rs` - `BackendOidcMediatedModeRuntimeError` 的 `ToErrorPresentation` 实现
+- `packages/token-set-context/src/backend_oidc_mode/error.rs` - `BackendOidcModeRuntimeError` 的 `ToErrorPresentation` 实现
 - `packages/token-set-context/src/access_token_substrate/service.rs` - `AccessTokenSubstrateResourceServiceError` 的 `ToErrorPresentation` 实现
 - `apps/server/src/error.rs` - `ServerError` 的 `ToErrorPresentation` 实现和使用三层模型的 `IntoResponse`
 
@@ -459,7 +459,7 @@ SecurityDept 逐步采用了这个方法。
 - `OidcError`
 - `OAuthResourceServerError`
 - `CredsManageError`
-- `BackendOidcMediatedModeRuntimeError`
+- `BackendOidcModeRuntimeError`
 - `BasicAuthContextServiceError`
 - `SessionAuthServiceError`
 - `AccessTokenSubstrateResourceServiceError`

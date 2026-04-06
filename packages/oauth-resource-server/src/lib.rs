@@ -13,4 +13,7 @@ pub use models::{
     OAuthResourceServerMetadata, ResourceTokenPrincipal, VerificationPolicy, VerifiedAccessToken,
     VerifiedOpaqueToken, VerifiedToken,
 };
+// Re-export the remote-config struct so downstream crates can construct an
+// `OAuthResourceServerConfig` without adding a direct dep on oauth-provider.
+pub use securitydept_oauth_provider::OAuthProviderRemoteConfig;
 pub use verifier::OAuthResourceServerVerifier;

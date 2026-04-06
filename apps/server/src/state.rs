@@ -6,14 +6,13 @@ use securitydept_core::{
     basic_auth_context::{BasicAuthContext, BasicAuthContextService},
     creds::Argon2BasicAuthCred,
     creds_manage::store::CredsManageStore,
-    oauth_resource_server::OAuthResourceServerVerifier,
     oidc::{OidcClient, OidcError},
     realip::{RealIpResolver, ResolvedClientIp, TransportContext},
     session_context::OidcSessionAuthService,
     token_set_context::{
         access_token_substrate::{
-            AccessTokenSubstrateResourceService, AxumReverseProxyPropagationForwarder,
-            TokenPropagator,
+            AccessTokenSubstrateResourceService, AccessTokenSubstrateRuntime,
+            AxumReverseProxyPropagationForwarder, OAuthResourceServerVerifier,
         },
         backend_oidc_mode::{
             BackendOidcModeAuthService, BackendOidcModeRuntime,
@@ -33,20 +32,23 @@ use crate::{
 pub struct ServerState {
     pub config: Arc<ServerConfig>,
     pub creds_manage_store: Arc<CredsManageStore>,
-    pub mediated_runtime: Arc<BackendOidcModeRuntime<MokaPendingAuthStateMetadataRedemptionStore>>,
-    pub token_propagator: Arc<TokenPropagator>,
+    pub backend_oidc_runtime:
+        Arc<BackendOidcModeRuntime<MokaPendingAuthStateMetadataRedemptionStore>>,
+    pub substrate_runtime: AccessTokenSubstrateRuntime,
     pub basic_auth_context: Arc<BasicAuthContext<Argon2BasicAuthCred>>,
-    pub token_set_resource_verifier: Option<Arc<OAuthResourceServerVerifier>>,
     pub real_ip_resolver: Option<Arc<RealIpResolver>>,
     /// None when OIDC is disabled (oidc_enabled = false) for local debugging.
-    pub oidc: Option<Arc<OidcClient<MokaPendingOauthStore>>>,
-    /// None when [propagation_forwarder] config is absent.
+    pub oidc_client: Option<Arc<OidcClient<MokaPendingOauthStore>>>,
+    /// None when [oauth_resource_server] config is absent or has no discovery
+    /// source.
+    pub oauth_resource_server_verifier: Option<Arc<OAuthResourceServerVerifier>>,
+    /// None when [oauth_resource_server.token_propagation] is not enabled.
     pub propagation_forwarder: Option<Arc<AxumReverseProxyPropagationForwarder>>,
 }
 
 impl ServerState {
     pub fn session_auth_service(&self) -> OidcSessionAuthService<'_, MokaPendingOauthStore> {
-        OidcSessionAuthService::new(self.oidc.as_deref(), &self.config.session_context)
+        OidcSessionAuthService::new(self.oidc_client.as_deref(), &self.config.session_context)
             .expect("session auth service config must be valid")
     }
 
@@ -56,12 +58,14 @@ impl ServerState {
     }
 
     pub fn resource_service(&self) -> Option<AccessTokenSubstrateResourceService<'_>> {
-        self.token_set_resource_verifier
-            .as_deref()
-            .map(AccessTokenSubstrateResourceService::new)
+        let verifier = self.oauth_resource_server_verifier.as_deref()?;
+        Some(AccessTokenSubstrateResourceService::new(
+            &self.substrate_runtime,
+            verifier,
+        ))
     }
 
-    pub fn mediated_auth_service(
+    pub fn backend_oidc_auth_service(
         &self,
     ) -> ServerResult<
         BackendOidcModeAuthService<
@@ -70,12 +74,15 @@ impl ServerState {
             MokaPendingAuthStateMetadataRedemptionStore,
         >,
     > {
-        let oidc = self.oidc.as_deref().ok_or(ServerError::InvalidConfig {
-            message: "BackendOidcModeAuthService requires OIDC to be enabled".to_string(),
-        })?;
+        let oidc = self
+            .oidc_client
+            .as_deref()
+            .ok_or(ServerError::InvalidConfig {
+                message: "BackendOidcModeAuthService requires OIDC to be enabled".to_string(),
+            })?;
         Ok(BackendOidcModeAuthService::new(
             oidc,
-            &self.mediated_runtime,
+            &self.backend_oidc_runtime,
             "/auth/token-set/callback",
         ))
     }

@@ -5,35 +5,63 @@
 //
 // This subpath provides two layers:
 //
-// 1. Browser runtime: the oauth4webapi-based OIDC client
-//    (FrontendOidcModeClient, FrontendOidcModeClientConfig, etc.)
+// 1. Browser runtime: the oauth4webapi-based OIDC client with full lifecycle
+//    management (FrontendOidcModeClient — state signal, auto-refresh,
+//    pending state, claims check, dispose)
 //
 // 2. Cross-boundary contracts: types aligned with Rust FrontendOidcMode*
-//    (FrontendOidcModeConfigProjection, FrontendOidcModeIntegrationRequirement,
-//     FrontendOidcModeTokenMaterial)
+//    (FrontendOidcModeConfigProjection — the canonical config interop
+//    contract between backend and frontend. The canonical owner of frontend-oidc-mode
+//    is config projection and future policy/service patterns. Real interaction
+//    between frontend and backend/substrate relies mainly on bearer access tokens
+//    and endpoint-specific inputs, not on mode-qualified token material DTOs.)
 //
-// Plus adapters bridging browser runtime results into the shared
-// orchestration substrate and cross-boundary contract material.
+// Plus adapters bridging backend projections into browser runtime config
+// and browser runtime results into the shared orchestration substrate.
 //
 // Stability: provisional (mode-aligned surface)
 
 // --- Browser runtime ---
 
-export type { FrontendOidcModeClient } from "./client";
-export { createFrontendOidcModeClient } from "./client";
+export { createFrontendOidcModeClient, FrontendOidcModeClient } from "./client";
+
+// --- Types: config, protocol, lifecycle ---
+
 export type {
 	FrontendOidcModeAuthorizeParams,
 	FrontendOidcModeAuthorizeResult,
+	FrontendOidcModeCallbackResult,
 	FrontendOidcModeClientConfig,
+	FrontendOidcModePendingState,
 	FrontendOidcModeTokenResult,
+} from "./types";
+
+// --- Types: orchestration re-exports (mode-qualified aliases) ---
+
+export type {
+	AuthenticatedPrincipal as FrontendOidcModeAuthenticatedPrincipal,
+	AuthenticationSource as FrontendOidcModeAuthenticationSource,
+	AuthStateDelta as FrontendOidcModeAuthStateDelta,
+	AuthStateMetadataSnapshot as FrontendOidcModeAuthStateMetadataSnapshot,
+	AuthStateSnapshot as FrontendOidcModeAuthStateSnapshot,
+	AuthTokenDelta as FrontendOidcModeAuthTokenDelta,
+	AuthTokenSnapshot as FrontendOidcModeAuthTokenSnapshot,
+} from "./types";
+
+export {
+	FrontendOidcModeContextSource,
+	FrontendOidcModeStateRestoreSourceKind,
 } from "./types";
 
 // --- Cross-boundary contracts (aligned with Rust FrontendOidcMode*) ---
 
 export type {
+	FrontendOidcModeClaimsCheckFailureResult,
+	FrontendOidcModeClaimsCheckResult,
+	FrontendOidcModeClaimsCheckScript,
+	FrontendOidcModeClaimsCheckSuccessResult,
 	FrontendOidcModeConfigProjection,
-	FrontendOidcModeIntegrationRequirement,
-	FrontendOidcModeTokenMaterial,
+	FrontendOidcModeUserInfoResponse,
 } from "./contracts";
 
 // --- Adapters: projection → client config, result → orchestration ---
@@ -41,5 +69,9 @@ export type {
 export {
 	configProjectionToClientConfig,
 	tokenResultToAuthSnapshot,
-	tokenResultToTokenMaterial,
 } from "./contracts";
+
+// --- Authorized transport ---
+
+export type { CreateFrontendOidcModeAuthorizedTransportOptions } from "./auth-transport";
+export { createFrontendOidcModeAuthorizedTransport } from "./auth-transport";

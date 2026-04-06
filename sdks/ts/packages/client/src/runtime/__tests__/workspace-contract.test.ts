@@ -57,6 +57,7 @@ const CONTRACTS: PackageContract[] = [
 			"./backend-oidc-mode/react",
 			"./frontend-oidc-mode",
 			"./orchestration",
+			"./access-token-substrate",
 		],
 		reactAdapter: true,
 		experimental: false,

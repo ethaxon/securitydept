@@ -36,7 +36,7 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
 - `securitydept-oauth-resource-server`
   - 用于 JWT、JWE 和不透明令牌内省的 bearer 访问令牌验证
 - `securitydept-token-set-context`
-  - 可复用的 token-set 认证状态、redirect、metadata redemption、access-token substrate 与 mode-specific OIDC 辅助；当前代码仍拆成 `backend_oidc_pure_mode` / `backend_oidc_mediated_mode`，但 canonical 方向是单一 `backend_oidc_mode` capability framework，pure / mediated 退回为 preset/profile
+  - 可复用的 token-set 认证状态、redirect、metadata redemption、access-token substrate 以及单一的 `backend_oidc_mode` capability framework，其中 pure / mediated 被实现为 preset/profile
 - `securitydept-realip`
   - 面向多层 CDN 与反向代理部署的 trusted-proxy/provider 感知客户端 IP 解析
 - `securitydept-creds-manage`
@@ -74,9 +74,8 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
 - 计划中/部分已规范
   - 更丰富的多 zone basic-auth context 组合
   - token-set 模式在浏览器侧的合并、持久化、刷新与 mixed-custody 行为
-  - 解散 `securitydept-auth-runtime` 并完成服务归属重构（已完成）
-  - 构建在 `TokenPropagator` 之上的推荐 propagation forwarder feature
-  - 将当前 pure / mediated 双分支实现收口为单一 `backend-oidc` capability framework，并以 preset/profile 取代长期并列 mode
+  - 构建在 `AccessTokenSubstrateRuntime` / `TokenPropagator` 之上的推荐 propagation forwarder feature，并通过正式的 `ConfigSource + Forwarder` trait 边界接入
+  - mixed-custody、BFF、server-side token ownership 等更高复杂度 token-set 形态
 
 ## TypeScript SDK 入口
 

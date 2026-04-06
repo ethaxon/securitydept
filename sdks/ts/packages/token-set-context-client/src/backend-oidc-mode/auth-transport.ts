@@ -1,7 +1,7 @@
 // Backend OIDC Mode — authorized transport wrapper.
 //
 // Wraps the generic createAuthorizedTransport from the orchestration layer,
-// remapping error codes to the token-set namespace.
+// remapping error codes to the backend-oidc namespace.
 
 import type { HttpTransport } from "@securitydept/client";
 import {
@@ -52,8 +52,8 @@ function remapAuthError(cause: unknown): unknown {
 	if (cause.code === "token_orchestration.authorization.unavailable") {
 		return new ClientError({
 			kind: cause.kind ?? ClientErrorKind.Unauthenticated,
-			code: "token_set.authorization.unavailable",
-			message: "Token-set authorization header is unavailable",
+			code: "backend_oidc.authorization.unavailable",
+			message: "Backend OIDC authorization header is unavailable",
 			recovery: UserRecovery.Reauthenticate,
 			source: BackendOidcModeContextSource.Client,
 			cause,

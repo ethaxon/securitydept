@@ -340,12 +340,12 @@ fn validate_rfc9068_scope_policy(
         TokenData::JWT(data) => validate_scope_policy(data.claims.scope.as_ref(), policy),
         #[cfg(feature = "jwe")]
         TokenData::JWE(data) => validate_scope_policy(data.claims().scope.as_ref(), policy),
-        #[cfg(not(feature = "jwe"))]
-        TokenData::JWE => Err(OAuthResourceServerError::UnsupportedTokenFormat {
-            token_format: TokenFormat::JWE,
-        }),
         TokenData::Opaque => Err(OAuthResourceServerError::UnsupportedTokenFormat {
             token_format: TokenFormat::Opaque,
+        }),
+        #[cfg(not(feature = "jwe"))]
+        _ => Err(OAuthResourceServerError::UnsupportedTokenFormat {
+            token_format: TokenFormat::JWE,
         }),
     }
 }

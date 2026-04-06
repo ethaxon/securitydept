@@ -1,13 +1,17 @@
 use securitydept_oauth_provider::OidcSharedConfig;
-use securitydept_oauth_resource_server::OAuthResourceServerConfig;
 use securitydept_oidc_client::{OidcClientConfig, OidcClientRawConfig, PendingOauthStoreConfig};
 use serde::Deserialize;
 
 use super::{
+    capabilities::{MetadataDelivery, PostAuthRedirectPolicy, RefreshMaterialProtection},
     metadata_redemption::PendingAuthStateMetadataRedemptionConfig,
     runtime::BackendOidcModeRuntimeConfig,
 };
-use crate::{access_token_substrate::TokenPropagatorConfig, orchestration::BackendConfigError};
+use crate::orchestration::BackendConfigError;
+
+// ---------------------------------------------------------------------------
+// Config source trait
+// ---------------------------------------------------------------------------
 
 /// Trait for types that supply unified `backend-oidc` configuration components.
 ///
@@ -22,9 +26,9 @@ where
     // --- Component accessors ---
 
     fn oidc_client_raw_config(&self) -> &OidcClientRawConfig<PC>;
-    fn oauth_resource_server_config(&self) -> &OAuthResourceServerConfig;
-    fn runtime_config(&self) -> &BackendOidcModeRuntimeConfig<MC>;
-    fn token_propagation_config(&self) -> &TokenPropagatorConfig;
+    fn refresh_material_protection(&self) -> &RefreshMaterialProtection;
+    fn metadata_delivery(&self) -> &MetadataDelivery<MC>;
+    fn post_auth_redirect(&self) -> &PostAuthRedirectPolicy;
 
     // --- Resolve helpers (default implementations) ---
 
@@ -42,36 +46,27 @@ where
             .map_err(Into::into)
     }
 
-    /// Resolve OAuth resource server config by applying shared defaults.
-    fn resolve_oauth_resource_server(
-        &self,
-        shared: &OidcSharedConfig,
-    ) -> Result<OAuthResourceServerConfig, BackendConfigError> {
-        let mut rs = self.oauth_resource_server_config().clone();
-        rs.resolve_config(shared)?;
-        Ok(rs)
-    }
-
-    /// Validate backend-oidc runtime config.
+    /// Build and validate backend-oidc runtime config.
     fn resolve_runtime(&self) -> Result<BackendOidcModeRuntimeConfig<MC>, BackendConfigError>
     where
         MC: Clone,
     {
-        let cfg = self.runtime_config().clone();
+        let cfg = BackendOidcModeRuntimeConfig {
+            refresh_material_protection: self.refresh_material_protection().clone(),
+            metadata_delivery: self.metadata_delivery().clone(),
+            post_auth_redirect: self.post_auth_redirect().clone(),
+        };
         cfg.validate()
             .map_err(BackendConfigError::BackendOidcModeRuntime)?;
         Ok(cfg)
     }
 
-    /// Validate token propagation config.
-    fn resolve_token_propagation(&self) -> Result<TokenPropagatorConfig, BackendConfigError> {
-        let cfg = self.token_propagation_config().clone();
-        cfg.validate()
-            .map_err(BackendConfigError::TokenPropagation)?;
-        Ok(cfg)
-    }
-
-    /// **Recommended entry point.** Resolve all sub-configs in one step.
+    /// **Recommended entry point.** Resolve all OIDC mode sub-configs in one
+    /// step.
+    ///
+    /// Note: resource-server config resolution (which also needs the OIDC
+    /// shared defaults) is handled separately via
+    /// [`AccessTokenSubstrateConfig::resolve_resource_server`].
     fn resolve_all(
         &self,
         shared: &OidcSharedConfig,
@@ -82,32 +77,68 @@ where
     {
         Ok(ResolvedBackendOidcModeConfig {
             oidc_client: self.resolve_oidc_client(shared)?,
-            oauth_resource_server: self.resolve_oauth_resource_server(shared)?,
-            oidc_runtime: self.resolve_runtime()?,
-            token_propagation: self.resolve_token_propagation()?,
+            runtime: self.resolve_runtime()?,
         })
     }
 }
 
+// ---------------------------------------------------------------------------
+// Raw config (TOML / env deserialisable)
+// ---------------------------------------------------------------------------
+
 /// Combined raw configuration for a unified `backend-oidc` deployment.
+///
+/// All capability axis fields are flattened at the top level so TOML adopters
+/// can write a single `[backend_oidc]` section without nested sub-tables.
+///
+/// ```text
+/// [backend_oidc]
+/// # oidc client fields (from OidcClientRawConfig)
+/// well_known_url = "..."
+/// client_id      = "..."
+///
+/// # runtime capability axes
+/// refresh_material_protection = { type = "sealed", master_key = "..." }
+/// metadata_delivery           = { type = "none" }
+/// post_auth_redirect          = { type = "caller_validated" }
+/// ```
 #[derive(Debug, Clone, Deserialize)]
 pub struct BackendOidcModeConfig<PC, MC>
 where
     PC: PendingOauthStoreConfig,
     MC: PendingAuthStateMetadataRedemptionConfig,
 {
-    #[serde(default, bound = "PC: PendingOauthStoreConfig")]
+    // --- OIDC client ---
+    #[serde(default, flatten, bound = "PC: PendingOauthStoreConfig")]
     pub oidc_client: OidcClientRawConfig<PC>,
-    #[serde(default)]
-    pub oauth_resource_server: OAuthResourceServerConfig,
+
+    // --- Runtime capability axes (flattened from BackendOidcModeRuntimeConfig) ---
+    #[serde(default, bound(deserialize = ""))]
+    pub refresh_material_protection: RefreshMaterialProtection,
+
     #[serde(
         default,
-        rename = "oidc_extension",
-        bound = "MC: PendingAuthStateMetadataRedemptionConfig"
+        bound(deserialize = "MC: PendingAuthStateMetadataRedemptionConfig")
     )]
-    pub oidc_runtime: BackendOidcModeRuntimeConfig<MC>,
+    pub metadata_delivery: MetadataDelivery<MC>,
+
     #[serde(default)]
-    pub token_propagation: TokenPropagatorConfig,
+    pub post_auth_redirect: PostAuthRedirectPolicy,
+}
+
+impl<PC, MC> Default for BackendOidcModeConfig<PC, MC>
+where
+    PC: PendingOauthStoreConfig,
+    MC: PendingAuthStateMetadataRedemptionConfig,
+{
+    fn default() -> Self {
+        Self {
+            oidc_client: OidcClientRawConfig::default(),
+            refresh_material_protection: RefreshMaterialProtection::default(),
+            metadata_delivery: MetadataDelivery::default(),
+            post_auth_redirect: PostAuthRedirectPolicy::default(),
+        }
+    }
 }
 
 impl<PC, MC> BackendOidcModeConfigSource<PC, MC> for BackendOidcModeConfig<PC, MC>
@@ -119,20 +150,26 @@ where
         &self.oidc_client
     }
 
-    fn oauth_resource_server_config(&self) -> &OAuthResourceServerConfig {
-        &self.oauth_resource_server
+    fn refresh_material_protection(&self) -> &RefreshMaterialProtection {
+        &self.refresh_material_protection
     }
 
-    fn runtime_config(&self) -> &BackendOidcModeRuntimeConfig<MC> {
-        &self.oidc_runtime
+    fn metadata_delivery(&self) -> &MetadataDelivery<MC> {
+        &self.metadata_delivery
     }
 
-    fn token_propagation_config(&self) -> &TokenPropagatorConfig {
-        &self.token_propagation
+    fn post_auth_redirect(&self) -> &PostAuthRedirectPolicy {
+        &self.post_auth_redirect
     }
 }
 
+// ---------------------------------------------------------------------------
+// Resolved (validated) config
+// ---------------------------------------------------------------------------
+
 /// Validated configuration bundle for unified `backend-oidc`.
+///
+/// Produced by [`BackendOidcModeConfigSource::resolve_all`].
 #[derive(Debug, Clone)]
 pub struct ResolvedBackendOidcModeConfig<PC, MC>
 where
@@ -140,15 +177,16 @@ where
     MC: PendingAuthStateMetadataRedemptionConfig,
 {
     pub oidc_client: OidcClientConfig<PC>,
-    pub oauth_resource_server: OAuthResourceServerConfig,
-    pub oidc_runtime: BackendOidcModeRuntimeConfig<MC>,
-    pub token_propagation: TokenPropagatorConfig,
+    pub runtime: BackendOidcModeRuntimeConfig<MC>,
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use securitydept_oauth_provider::{OAuthProviderRemoteConfig, OidcSharedConfig};
-    use securitydept_oauth_resource_server::OAuthResourceServerIntrospectionConfig;
     use securitydept_oidc_client::PendingOauthStoreConfig;
     use serde::Deserialize;
 
@@ -165,8 +203,11 @@ mod tests {
 
     type Config = BackendOidcModeConfig<TestPendingStoreConfig, TestMetadataConfig>;
 
+    /// Verify that OIDC client config inherits shared provider defaults.
+    /// Note: resource-server shared-defaults resolution is tested separately in
+    /// `access_token_substrate::config` tests.
     #[test]
-    fn resolve_config_inherits_shared_defaults() {
+    fn resolve_config_inherits_oidc_client_shared_defaults() {
         let shared = OidcSharedConfig {
             remote: OAuthProviderRemoteConfig {
                 well_known_url: Some(
@@ -176,31 +217,13 @@ mod tests {
             },
             client_id: Some("shared-app".to_string()),
             client_secret: Some("shared-secret".to_string()),
+            ..Default::default()
         };
 
-        let raw = Config {
-            oidc_client: OidcClientRawConfig::default(),
-            oauth_resource_server: OAuthResourceServerConfig {
-                introspection: Some(OAuthResourceServerIntrospectionConfig::default()),
-                ..Default::default()
-            },
-            oidc_runtime: BackendOidcModeRuntimeConfig::default(),
-            token_propagation: TokenPropagatorConfig::default(),
-        };
+        let raw = Config::default();
 
         let config = raw.resolve_all(&shared).expect("should resolve");
-
         assert_eq!(config.oidc_client.client_id, "shared-app");
-        assert_eq!(
-            config
-                .oauth_resource_server
-                .introspection
-                .as_ref()
-                .unwrap()
-                .client_id
-                .as_deref(),
-            Some("shared-app"),
-        );
     }
 
     #[test]
@@ -213,12 +236,7 @@ mod tests {
             ..Default::default()
         };
 
-        let raw = Config {
-            oidc_client: OidcClientRawConfig::default(),
-            oauth_resource_server: OAuthResourceServerConfig::default(),
-            oidc_runtime: BackendOidcModeRuntimeConfig::default(),
-            token_propagation: TokenPropagatorConfig::default(),
-        };
+        let raw = Config::default();
 
         let err = raw.resolve_all(&shared).unwrap_err();
         assert!(matches!(err, BackendConfigError::OidcClient(_)));
@@ -236,19 +254,12 @@ mod tests {
         };
 
         let raw = Config {
-            oidc_client: OidcClientRawConfig::default(),
-            oauth_resource_server: OAuthResourceServerConfig::default(),
-            oidc_runtime: BackendOidcModeRuntimeConfig {
-                // `Resolved` with dynamic enabled but no targets triggers
-                // the remaining runtime validation path.
-                post_auth_redirect: crate::backend_oidc_mode::PostAuthRedirectPolicy::Resolved {
-                    config: crate::backend_oidc_mode::BackendOidcModeRedirectUriConfig::builder()
-                        .dynamic_redirect_target_enabled(true)
-                        .build(),
-                },
-                ..Default::default()
+            post_auth_redirect: crate::backend_oidc_mode::PostAuthRedirectPolicy::Resolved {
+                config: crate::backend_oidc_mode::BackendOidcModeRedirectUriConfig::builder()
+                    .dynamic_redirect_target_enabled(true)
+                    .build(),
             },
-            token_propagation: TokenPropagatorConfig::default(),
+            ..Default::default()
         };
 
         let err = raw.resolve_all(&shared).unwrap_err();

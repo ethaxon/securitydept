@@ -80,16 +80,16 @@ securitydept 认证栈需要分成两层来理解：
 对 `token-set-context` 尤其重要：
 
 - TS public surface：`token-set-context-client` 及其 mode-aligned / shared subpath family
-- Rust public surface：canonical target 应收口到 `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode, access_token_substrate, orchestration, models}`；当前代码仍处于 `backend_oidc_pure_mode` / `backend_oidc_mediated_mode` 过渡拆分期
+- Rust public surface：canonical target 已收口到 `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode, access_token_substrate, orchestration, models}`
 - Rust ownership boundary：内部仍可区分 mode-specific contract authority 与 shared runtime substrate ownership，但这不应继续主导一级 public path
 
 ## 3. Auth Context 总览
 
 | Auth Context | 适用场景 | 状态 ownership | 内部细分 | 主要产品面 |
 |---|---|---|---|---|
-| `basic-auth-context` | 浏览器原生 Basic Auth 可接受、OIDC 过重的场景 | 浏览器凭证缓存 + challenge route | `zone` | Rust: `securitydept-basic-auth-context`；TS: `basic-auth-context-client` |
-| `session-context` | 集中式服务、BFF、弱前端能力 | 后端 session store + HTTP-only cookie | 无 mode family | Rust: `securitydept-session-context`（route helper 已通过 `service` feature 直接展露）；TS: `session-context-client` |
-| `token-set-context` | 强前端能力、分布式 SPA、前后端共同参与 OIDC | 由具体 mode 决定 | `frontend-oidc` / `backend-oidc`（presets: `pure`, `mediated`） | Rust: `securitydept-token-set-context`；TS: `token-set-context-client` |
+| `basic-auth-context` | 浏览器原生 Basic Auth 可接受、OIDC 过重的场景 | 浏览器凭证缓存、challenge route | `zone` | Rust: `securitydept-basic-auth-context`；TS: `basic-auth-context-client` |
+| `session-context` | 集中式服务、BFF、弱前端能力 | 后端 session store、HTTP-only cookie | 无 mode family | Rust: `securitydept-session-context`（route helper 已通过 `service` feature 直接展露）；TS: `session-context-client` |
+| `token-set-context` | 强前端能力、分布式 SPA、前后端共同参与 OIDC | 由具体 mode 决定 | `frontend-oidc` / `backend-oidc`（presets: `pure`、`mediated`） | Rust: `securitydept-token-set-context`；TS: `token-set-context-client` |
 
 这里的关键层级必须保持稳定：
 
@@ -222,9 +222,9 @@ securitydept 认证栈需要分成两层来理解：
 
 | 面 | 入口 | 职责 | 当前状态 |
 |---|---|---|---|
-| TS 前端 runtime 面 | `token-set-context-client` | 统一前端 mode-aligned subpath / adapter / runtime surface | 已存在；当前实现仍拆成 `/backend-oidc-pure-mode` 与 `/backend-oidc-mediated-mode`，canonical target 是 `/backend-oidc-mode` |
-| Rust crate public surface | `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode, access_token_substrate, orchestration, models}` | 顶层 `*_mode` + shared modules 的 adopter-facing 结构 | canonical target 已明确；当前代码仍以 `backend_oidc_pure_mode` / `backend_oidc_mediated_mode` 过渡拆分 |
-| Rust ownership boundary | mode-specific config / contract ownership + shared runtime substrate ownership | 解释“谁负责什么”的内部逻辑边界 | 真实存在，但不应继续充当一级 public namespace |
+| TS 前端 runtime 面 | `token-set-context-client` | 统一前端 mode-aligned subpath / adapter / runtime surface | 已统一收口为 `/backend-oidc-mode`、`/frontend-oidc-mode`、`/access-token-substrate` |
+| Rust crate public surface | `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode, access_token_substrate, orchestration, models}` | 顶层 `*_mode` / shared modules 的 adopter-facing 结构 | public surface 已统一 |
+| Rust ownership boundary | mode-specific config / contract ownership、shared runtime substrate ownership | 解释“谁负责什么”的内部逻辑边界 | 真实存在，但不应继续充当一级 public namespace |
 
 这里最重要的判断是：
 
@@ -234,13 +234,13 @@ securitydept 认证栈需要分成两层来理解：
 
 当前的结构是：
 
-- `backend-oidc` 才是长期的 backend OIDC mode；当前代码仍以 `backend-oidc-pure` / `backend-oidc-mediated` 两个 preset-specific module 暂时承载它
-- OIDC 协议级流程（authorize / callback / refresh / exchange）由 `OidcClient` 统一提供；两个 backend mode 共享的 identity extraction（principal / issuer）已下沉到 `securitydept-oidc-client::auth_state`
-- backend-oidc runtime 层负责 capability-specific post-processing（sealed refresh vs plain、metadata redemption、redirect policy 等）
+- `backend-oidc` 是后端的 OIDC mode，提供 `pure` 与 `mediated` 等 preset 能力预设
+- OIDC 协议级流程（authorize / callback / refresh / exchange）由 `OidcClient` 统一提供；两个后端 preset 共享的 identity extraction（principal / issuer）已下沉到 `securitydept-oidc-client::auth_state`
+- backend-oidc runtime 层负责 capability-specific post-processing（sealed refresh vs plain、metadata fallback、redirect policy 等）
 - `backend-oidc` 应提供显式 `user_info` exchange contract：请求体提交 `id_token`，请求头提交 bearer `access_token`
 - 但这条 `user_info` 的协议组合能力更适合下沉到 `securitydept-oidc-client`：解析 `id_token` claims（server-side 路径可跳过 `nonce` 校验）、调用 userinfo、运行 `check_claims`
 - mode 层自己只保留 endpoint owner、request/response contract，以及 route / auth / policy 归属
-- `frontend-oidc` 没有 backend runtime，但已拥有正式的 mode-qualified config projection 与 integration contract
+- `frontend-oidc` 没有 backend runtime，但已拥有正式的 `Config / ResolvedConfig / ConfigSource / Runtime / Service / ConfigProjection`
 
 ### 6.3 Canonical mode 与 preset/profile
 
@@ -251,17 +251,10 @@ securitydept 认证栈需要分成两层来理解：
 | `frontend-oidc` | 前端（浏览器） | `/frontend-oidc-mode` | `securitydept-token-set-context::frontend_oidc_mode` |
 | `backend-oidc` | 后端 | `/backend-oidc-mode` | `securitydept-token-set-context::backend_oidc_mode` |
 
-当前代码仍保留以下过渡实现形状：
+这些是历史遗留和内部概念，已从 canonical public surface 中统一：
 
-- `/backend-oidc-pure-mode`
-- `/backend-oidc-mediated-mode`
-- `securitydept-token-set-context::backend_oidc_pure_mode`
-- `securitydept-token-set-context::backend_oidc_mediated_mode`
-
-但它们应被理解为：
-
-- `backend-oidc` 的 preset-specific 过渡入口
-- 而不是长期并列的一级 mode
+- `backend-oidc` 内部包含完整的 preset 逻辑
+- `/backend-oidc-mode` 是其唯一的 frontend/backend 通信层入口
 
 不再接受这些旧 public naming 作为 canonical shape：
 
@@ -282,7 +275,7 @@ securitydept 认证栈需要分成两层来理解：
 
 #### 6.3.2 `backend-oidc` 的能力轴
 
-`backend-oidc` 不应再被做成“两套 mode + 两套 API 形状”，而应收口为单一 capability framework。当前最重要的能力轴是：
+`backend-oidc` 不应再被做成“两套 mode两套 API 形状”，而应收口为单一 capability framework。当前最重要的能力轴是：
 
 - `refresh_material_protection`
   - `passthrough`
@@ -293,15 +286,12 @@ securitydept 认证栈需要分成两层来理解：
 - `post_auth_redirect_policy`
   - `caller_validated`
   - `resolved`
-- `token_propagation`
-  - `enabled`
-  - `disabled`
-- `user_info_support`
-  - `enabled`
+
+Token propagation **不是** `backend-oidc` 的 capability axis，它是归属 `access_token_substrate` 的跨 mode capability（`TokenPropagation` / `AccessTokenSubstrateRuntime`）。
 
 其中需要明确：
 
-- `metadata_redemption` 与 `user_info` 不是互斥替代关系，而是正交能力
+- `metadata_redemption` 是独立的数据源投递能力，而 user-info baseline 获取则是基建本身固有的基线行为
 - `backend-oidc-pure` / `backend-oidc-mediated` 只是上述能力轴上的两组推荐 preset
 - 允许渐进增强，但不允许无约束的任意拼装；最终 canonical config 应提供 capability validation
 
@@ -309,7 +299,7 @@ securitydept 认证栈需要分成两层来理解：
 
 参考服务器现已直接通过各 owning crate 使用这些 route helper：
 
-- `BackendOidcMediatedModeAuthService`（原 `TokenSetAuthService`）→ `securitydept-token-set-context::backend_oidc_mediated_mode`
+- `BackendOidcModeAuthService`（原 `TokenSetAuthService`）→ `securitydept-token-set-context::backend_oidc_mode`
 - `AccessTokenSubstrateResourceService`（原 `TokenSetResourceService`）→ `securitydept-token-set-context::access_token_substrate`
 - `SessionAuthServiceTrait` / `OidcSessionAuthService` / `DevSessionAuthService` → `securitydept-session-context`（`service` feature）
 
@@ -351,31 +341,23 @@ required_scopes = ["entries.read"]
 
 ### 6.4.1 `backend-oidc` 配置面的统一方向
 
-当前代码仍保留：
-
-- `BackendOidcPureConfig` / `ResolvedBackendOidcPureConfig` / `BackendOidcPureConfigSource`
-- `BackendOidcMediatedConfig` / `ResolvedBackendOidcMediatedConfig` / `BackendOidcMediatedConfigSource`
-
-但 canonical 方向不应继续维持两套并列 config-source 入口。更合理的长期形状是：
+但 canonical 方向已经收口整合：
 
 - `BackendOidcModeConfig`
 - `ResolvedBackendOidcModeConfig`
 - `BackendOidcModeConfigSource`
 
-其中 `BackendOidcModeConfigSource` 应允许 adopter 自行组合，而不是只暴露一个“整包 resolve”入口。至少应保留：
+其中 `BackendOidcModeConfigSource` 提供两组 component accessor 和对应的 resolve helper：
 
-- `resolve_oidc_client`
-- `resolve_oauth_resource_server`
-- `resolve_user_info`
-- `resolve_refresh_material_protection`
-- `resolve_metadata_delivery`
-- `resolve_post_auth_redirect_policy`
-- `resolve_token_propagation`
-- `resolve_all`
+- `oidc_client_raw_config` → `resolve_oidc_client`（应用 `[oidc]` shared defaults）
+- `runtime_config` → `resolve_runtime`（校验 `BackendOidcModeRuntimeConfig`，其中包含 3 轴 capability axes）
+- `resolve_all`（推荐入口，一次性 resolve backend-oidc 所需组件）
+
+3 轴 capability axes（`refresh_material_protection`、`metadata_delivery`、`post_auth_redirect_policy`）是 `BackendOidcModeRuntimeConfig` 的内部结构，由 `resolve_runtime` 统一校验，而不是 config-source trait 上的独立方法。Token propagation 是归属 `access_token_substrate` 的独立 capability，不是 `BackendOidcModeRuntimeConfig` 的字段。
 
 也就是说，配置面的统一目标是：
 
-- 一套 backend-oidc capability config-source
+- 一套 backend-oidc capability config-source trait（3 组件resolve_all）
 - 多个可验证的 preset/profile
 - 单一核心实现，而不是 pure / mediated 两份并行 config 体系
 
@@ -385,24 +367,24 @@ required_scopes = ["entries.read"]
 
 - 浏览器通过 `oauth4webapi` 运行 authorize / callback / token-exchange
 - Rust 后端不运行该 flow runtime
-- 但 Rust 仍必须通过 `securitydept-token-set-context::frontend_oidc_mode` 投影前端可消费配置，以及 frontend-oidc 与 `access_token_substrate` 对接所需的 mode-specific integration contract
+- 但 Rust 仍必须通过 `securitydept-token-set-context::frontend_oidc_mode` 投影前端可消费配置
 
 因此正确口径是：
 
 - `frontend-oidc` 没有 backend runtime
 - 但它**有**正式的 Rust mode module
-- 这个 module 不再只是 config producer；当 `frontend-oidc` 也要接入 resource-server / propagation / forwarder 语义时，它必须同时定义 frontend-oidc 与 `access_token_substrate` 对接的 mode-qualified integration contract
+- 这个 module 不再只是 config producer；当 `frontend-oidc` 也要接入 resource-server / propagation / forwarder 语义时，它可以直接利用 `token-set-context-client` 的 substrate 进行对接
 - 这些 contract 应表达“前端获得的 token / auth-state material 如何被后端与 shared substrate 正式消费”，而不是把 `access_token_substrate` 本体重新挂到 mode module 下面
 
 ### 6.6 `backend-oidc`
 
 `backend-oidc` 应被读成单一的后端 OIDC capability framework，而不是两套长期并列 mode：
 
-- 后端运行标准 OIDC client + resource-server verifier
+- 后端运行标准 OIDC client，并与 resource-server verifier 协作
 - OIDC 协议级流程（authorize / callback / refresh / exchange）由 `OidcClient` 提供
 - 跨 preset 共享的 identity extraction（principal / issuer）下沉到 `securitydept-oidc-client::auth_state`
 - mode runtime 层只负责 capability-specific augmentation（refresh material protection、metadata delivery、redirect policy 等）
-- browser-facing callback / refresh canonical public contract 统一采用 fragment family
+- browser-facing callback / refresh canonical public contract 统一采用 mode-qualified contract
 - `user_info` 是 `backend-oidc` 的正式能力面：请求体提交 `id_token`，请求头提交 bearer `access_token`
 - `user_info` 背后的协议组合能力更适合下沉到 `securitydept-oidc-client`，由 `backend-oidc` 自己保留 endpoint owner、mode-qualified request/response contract，以及 route/auth/policy ownership
 
@@ -419,24 +401,10 @@ required_scopes = ["entries.read"]
 
 #### 6.6.1 `backend-oidc` 与 preset 的边界
 
-`backend-oidc` 的 canonical public surface 应收口到：
+`backend-oidc` 的 canonical public surface 已收口到：
 
 - TS：`/backend-oidc-mode`
 - Rust：`securitydept-token-set-context::backend_oidc_mode`
-
-当前代码仍暴露的：
-
-- `/backend-oidc-pure-mode`
-- `/backend-oidc-mediated-mode`
-- `backend_oidc_pure_mode`
-- `backend_oidc_mediated_mode`
-
-都应被视为：
-
-- preset-specific 过渡入口
-- 为本轮统一核心实现服务的迁移形状
-
-而不是长期稳定的一等 mode family。
 
 #### 6.6.2 典型 preset
 
@@ -456,14 +424,9 @@ required_scopes = ["entries.read"]
 - `mediated` 是在 `backend-oidc` baseline 上增加 custody / policy augmentation
 - 而不是另起一套长期并列 mode
 
-### 6.7 当前实现过渡状态
+### 6.7 当前实现
 
-当前实现仍保留 pure / mediated 两套 module 与 TS subpath，主要是为了渐进迁移：
-
-- Rust：`backend_oidc_pure_mode` / `backend_oidc_mediated_mode`
-- TS：`/backend-oidc-pure-mode` / `/backend-oidc-mediated-mode`
-
-但下一步工作不应继续围绕“两边 API 形状保持同步”长期修补，而应直接收口为：
+当前实现已收口：
 
 - 一套 `backend-oidc` 核心实现
 - 一套 capability schema / validation
@@ -479,7 +442,7 @@ required_scopes = ["entries.read"]
 | `runtime.rs`、`metadata_redemption/*`、`refresh_material.rs` | `backend-oidc` 的 preset-specific runtime domain（当前主要是 mediated preset） |
 | `propagation/*`、`forwarder/*`、resource-server-facing access-token / downstream forwarding policy | `token-set-context` 内跨 mode 的 access-token substrate |
 | `redirect.rs` 中 mediated-specific runtime / policy | `backend-oidc` 的 preset-specific runtime domain（当前主要是 mediated preset） |
-| `transport.rs` 中的 query / payload / fragment / redemption request/response | `securitydept-token-set-context::backend_oidc_mode` cross-boundary contract |
+| `transport.rs` 中的 query / payload / callback/refresh return / redemption request/response | `securitydept-token-set-context::backend_oidc_mode` cross-boundary contract |
 
 因此：
 
@@ -504,7 +467,7 @@ required_scopes = ["entries.read"]
 
 因此当前合理边界是：
 
-- propagation policy 由服务端配置拥有
+- propagation policy 不再属于 `backend_oidc_mode` 的 capability axis，而应回到 `access_token_substrate` 自己的 capability/config/runtime 面
 - auth-state metadata 不再承载 propagation policy
 - resource-token facts 不应混进前端 auth-state metadata
 - resource-server / forwarder / propagation 的公共 contract 应在 `token-set-context` 内被提升为跨 mode substrate，而不是继续停留在 mediated-specific 目录语义下
@@ -523,12 +486,26 @@ required_scopes = ["entries.read"]
 - `PropagatedBearer` 附加与验证
 
 `TokenPropagator` 与上层 forwarder 都不是完整反向代理。  
-未来推荐的 forwarder 应构建在这层 substrate 之上，而不是让它直接吸收 `Forwarded` / `X-Forwarded-*` 的完整代理职责。
+这层 substrate 的更合理形态应继续收口为：
+
+- `access_token_substrate::capabilities::TokenPropagation`
+- `access_token_substrate::AccessTokenSubstrateConfig`
+- `access_token_substrate::AccessTokenSubstrateRuntime`
+- `access_token_substrate::forwarder::PropagationForwarderConfigSource`
+- `access_token_substrate::forwarder::PropagationForwarder`
+
+其中：
+
+- `TokenPropagation` 属于 `access_token_substrate` 的 capability / config 维度，而不是 `backend_oidc_mode` 的 mode capability
+- `AccessTokenSubstrateRuntime` 负责 token propagation runtime behavior：持有 `token_propagator`，提供 `propagation_enabled()` 与 `build_forwarder()`；**不持有** `OAuthResourceServerVerifier`，verifier 在 `AccessTokenSubstrateResourceService` 组合层接入
+- `PropagationForwarderConfigSource` 约束 forwarder config 的形状
+- `PropagationForwarder` 约束 forwarder runtime API 形状
+- forwarder 作为 app-level feature 构建在 substrate runtime 之上，而不是反向塞进 OIDC mode runtime
 
 同时，这层 substrate 也应与顶层 mode modules 正确对接：
 
-- `securitydept-token-set-context::access_token_substrate` 负责 runtime policy、resource verification、forwarding policy 与 header attachment
-- `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode}` 分别负责各 mode 的 config / requirement / transport / integration contract
+- `securitydept-token-set-context::access_token_substrate` 负责 capability / config / runtime / service / forwarder trait boundary，以及 resource verification、propagation policy、header attachment
+- `securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode}` 分别负责各 mode 的 config / runtime / service / transport contract，本身尽量只承载 OIDC client / mode 相关职责
 - `securitydept-token-set-context::orchestration` 与 `::models` 只承载 truly shared abstraction，不冒充具体 mode
 - TS 前端产品面只消费其确实需要的 contract，不再把 mode-agnostic access-token substrate 误读成 mediated-only 能力
 
@@ -536,7 +513,7 @@ required_scopes = ["entries.read"]
 
 - 不应为了形式对称先造一个空的 shadow namespace 去镜像 `access_token_substrate`
 - 也不应继续把 `frontend` / `backend` 当作一级 public namespace 来组织 adopter-facing 结构
-- 当 `frontend-oidc` 要把获得的 access token 接到 resource-server / propagation / forwarder 语义上时，`securitydept-token-set-context::frontend_oidc_mode` 必须提供正式、mode-qualified 的 integration contract，去对接 `securitydept-token-set-context::access_token_substrate`
+- 当前 `frontend-oidc` 与后端 / substrate 的实际稳定交互以 bearer access token 和 endpoint-specific input 为主，而不是独立的 mode-qualified token handoff DTO
 
 ## 7. 共享抽象方向
 

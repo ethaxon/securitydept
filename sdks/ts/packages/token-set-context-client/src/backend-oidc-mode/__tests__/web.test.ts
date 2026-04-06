@@ -1134,7 +1134,7 @@ describe("token-set web helpers", () => {
 			}),
 		).rejects.toMatchObject({
 			kind: "unauthenticated",
-			code: "token_set.authorization.unavailable",
+			code: "backend_oidc.authorization.unavailable",
 		});
 	});
 });

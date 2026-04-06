@@ -18,6 +18,9 @@ use crate::{OAuthProviderRemoteConfig, default_jwks_refresh_interval};
 /// - `client_id`, `client_secret` — optional confidential-client defaults; not
 ///   pure provider connectivity, but commonly shared between `oidc_client`
 ///   (full client) and `oauth_resource_server.introspection`
+/// - `required_scopes` — scopes that MUST appear in token endpoint responses;
+///   presence-aware (`Vec::is_empty` sentinel: local non-empty wins, else
+///   shared)
 ///
 /// # Known limitations
 ///
@@ -50,6 +53,12 @@ pub struct OidcSharedConfig {
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
     pub client_secret: Option<String>,
+
+    /// Shared required-scopes list. Applied when the local client config does
+    /// not specify its own `required_scopes`.
+    #[serde_as(as = "securitydept_utils::ser::CommaOrSpaceSeparated<String>")]
+    #[serde(default)]
+    pub required_scopes: Vec<String>,
 }
 
 impl OidcSharedConfig {
@@ -101,6 +110,19 @@ impl OidcSharedConfig {
         local
             .map(ToOwned::to_owned)
             .or_else(|| self.client_secret.clone())
+    }
+
+    /// Resolve a local `required_scopes` list against the shared default.
+    ///
+    /// Resolution: local non-empty wins; when local is empty the shared list is
+    /// used instead. This allows partial overrides while still using
+    /// `Vec::is_empty` as the "not set" sentinel (no `Option` wrapper needed).
+    pub fn resolve_required_scopes(&self, local: &[String]) -> Vec<String> {
+        if !local.is_empty() {
+            local.to_vec()
+        } else {
+            self.required_scopes.clone()
+        }
     }
 }
 

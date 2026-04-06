@@ -419,6 +419,9 @@ where
             id_token_claims: None,
         };
 
+        // Validate required scopes after successful refresh.
+        self.check_required_scopes(token_response.scopes())?;
+
         if let Some(next_id_token) = token_response.extra_fields().id_token() {
             let id_token_verifier = client.id_token_verifier();
             let id_token_claims = next_id_token
@@ -739,6 +742,9 @@ where
             None
         };
 
+        // Validate required scopes after successful exchange.
+        self.check_required_scopes(token_response.scopes())?;
+
         Ok(OidcCodeExchangeResult {
             id_token,
             id_token_claims: id_token_claims.to_owned(),
@@ -747,6 +753,40 @@ where
             access_token_expiration,
             user_info_claims,
         })
+    }
+
+    /// Verify that the token response's `scope` field covers all
+    /// `required_scopes` configured for this client.
+    ///
+    /// A `None` scope field in the response is treated as "unknown" and
+    /// the check is skipped (the provider chose not to echo back the scope).
+    /// Returns `Err(OidcError::ScopeValidation)` listing the missing scopes
+    /// when the check fails.
+    fn check_required_scopes(
+        &self,
+        response_scopes: Option<&Vec<openidconnect::Scope>>,
+    ) -> OidcResult<()> {
+        if self.config.required_scopes.is_empty() {
+            return Ok(());
+        }
+        let granted = match response_scopes {
+            Some(scopes) => scopes,
+            // Provider omitted the scope field — skip check per RFC 6749 §5.1.
+            None => return Ok(()),
+        };
+        let granted_strs: Vec<&str> = granted.iter().map(|s| s.as_str()).collect();
+        let missing: Vec<String> = self
+            .config
+            .required_scopes
+            .iter()
+            .filter(|req| !granted_strs.contains(&req.as_str()))
+            .cloned()
+            .collect();
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(OidcError::ScopeValidation { missing })
+        }
     }
 
     fn with_runtime_flags(mut self) -> Self {

@@ -14,7 +14,7 @@ import { BackendOidcModeClient } from "../client";
 
 const BASE_URL = "https://api.example.com";
 const DEFAULT_PERSISTENCE_KEY =
-	"securitydept.token_set_context:v1:https://api.example.com";
+	"securitydept.backend_oidc:v1:https://api.example.com";
 
 class TestClock {
 	constructor(private _now: number) {}
@@ -136,12 +136,14 @@ describe("BackendOidcModeClient", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("refreshes tokens from a redirect fragment", async () => {
+	it("refreshes tokens from a JSON response body", async () => {
 		const transport = createTestTransport(() => ({
-			status: 302,
-			headers: {
-				location:
-					"https://app.example.com/#access_token=new-at&refresh_token=new-rt&expires_at=2026-12-31T00%3A00%3A00Z",
+			status: 200,
+			headers: { "content-type": "application/json" },
+			body: {
+				access_token: "new-at",
+				refresh_token: "new-rt",
+				access_token_expires_at: "2026-12-31T00:00:00Z",
 			},
 		}));
 		const { runtime } = createTestRuntime(transport);
@@ -163,10 +165,11 @@ describe("BackendOidcModeClient", () => {
 		expect(result?.tokens.accessTokenExpiresAt).toBe("2026-12-31T00:00:00Z");
 	});
 
-	it("throws when a refresh redirect has no Location header", async () => {
+	it("throws when a refresh response body is missing access_token", async () => {
 		const transport = createTestTransport(() => ({
-			status: 302,
-			headers: {},
+			status: 200,
+			headers: { "content-type": "application/json" },
+			body: { id_token: "only-id-token" },
 		}));
 		const { runtime } = createTestRuntime(transport);
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
@@ -176,7 +179,7 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		await expect(client.refresh()).rejects.toThrow(/missing Location/i);
+		await expect(client.refresh()).rejects.toThrow(/missing access_token/i);
 	});
 
 	it("persists callback state, supports explicit restore, and only clears on explicit clear", async () => {
@@ -295,17 +298,19 @@ describe("BackendOidcModeClient", () => {
 		expect(client.state.get()).toBeNull();
 		expect(await persistentStore.get(DEFAULT_PERSISTENCE_KEY)).toBeNull();
 		expect(trace.events.map((event) => event.type)).toContain(
-			"token_set.state.restore_discarded",
+			"backend_oidc.state.restore_discarded",
 		);
 	});
 
 	it("updates persisted state after a successful refresh", async () => {
 		const persistentStore = createInMemoryRecordStore();
 		const transport = createTestTransport(() => ({
-			status: 302,
-			headers: {
-				location:
-					"https://app.example.com/#access_token=refreshed-at&refresh_token=refreshed-rt&expires_at=2026-12-31T00%3A00%3A00Z",
+			status: 200,
+			headers: { "content-type": "application/json" },
+			body: {
+				access_token: "refreshed-at",
+				refresh_token: "refreshed-rt",
+				access_token_expires_at: "2026-12-31T00:00:00Z",
 			},
 		}));
 		const { runtime } = createTestRuntime(transport, { persistentStore });
@@ -356,10 +361,12 @@ describe("BackendOidcModeClient", () => {
 		expect(client.state.get()).toBeNull();
 
 		deferred.resolve({
-			status: 302,
-			headers: {
-				location:
-					"https://app.example.com/#access_token=late-at&refresh_token=late-rt&expires_at=2026-12-31T00%3A00%3A00Z",
+			status: 200,
+			headers: { "content-type": "application/json" },
+			body: {
+				access_token: "late-at",
+				refresh_token: "late-rt",
+				access_token_expires_at: "2026-12-31T00:00:00Z",
 			},
 		});
 
@@ -399,7 +406,7 @@ describe("BackendOidcModeClient", () => {
 		await expect(refreshPromise).rejects.toMatchObject({
 			name: "ClientError",
 			kind: "cancelled",
-			code: "token_set.client_disposed",
+			code: "backend_oidc.client_disposed",
 		});
 		expect(scheduler.pendingCount).toBe(0);
 		expect(client.state.get()).toBeNull();
@@ -435,11 +442,11 @@ describe("BackendOidcModeClient", () => {
 
 		expect(trace.events.map((event) => event.type)).toEqual(
 			expect.arrayContaining([
-				"token_set.callback.started",
-				"token_set.metadata_redemption.started",
-				"token_set.metadata_redemption.succeeded",
-				"token_set.refresh.scheduled",
-				"token_set.callback.succeeded",
+				"backend_oidc.callback.started",
+				"backend_oidc.metadata_redemption.started",
+				"backend_oidc.metadata_redemption.succeeded",
+				"backend_oidc.refresh.scheduled",
+				"backend_oidc.callback.succeeded",
 			]),
 		);
 	});
@@ -462,10 +469,13 @@ describe("BackendOidcModeClient", () => {
 			}
 
 			return {
-				status: 302,
-				headers: {
-					location:
-						"https://app.example.com/#access_token=next-at&refresh_token=next-rt&expires_at=2026-01-01T00%3A04%3A00Z&metadata_redemption_id=meta-refresh",
+				status: 200,
+				headers: { "content-type": "application/json" },
+				body: {
+					access_token: "next-at",
+					refresh_token: "next-rt",
+					access_token_expires_at: "2026-01-01T00:04:00Z",
+					metadata_redemption_id: "meta-refresh",
 				},
 			};
 		});
@@ -494,13 +504,13 @@ describe("BackendOidcModeClient", () => {
 
 		expect(trace.events.map((event) => event.type)).toEqual(
 			expect.arrayContaining([
-				"token_set.state.restored",
-				"token_set.refresh.scheduled",
-				"token_set.refresh.fired",
-				"token_set.refresh.started",
-				"token_set.metadata_redemption.started",
-				"token_set.metadata_redemption.succeeded",
-				"token_set.refresh.succeeded",
+				"backend_oidc.state.restored",
+				"backend_oidc.refresh.scheduled",
+				"backend_oidc.refresh.fired",
+				"backend_oidc.refresh.started",
+				"backend_oidc.metadata_redemption.started",
+				"backend_oidc.metadata_redemption.succeeded",
+				"backend_oidc.refresh.succeeded",
 			]),
 		);
 	});

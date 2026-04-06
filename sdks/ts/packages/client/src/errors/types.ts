@@ -21,6 +21,7 @@ export interface ErrorPresentation {
 
 /** Machine-facing error kind discriminator. */
 export const ClientErrorKind = {
+	Authorization: "authorization",
 	Transport: "transport",
 	Server: "server",
 	Protocol: "protocol",

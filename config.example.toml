@@ -15,24 +15,48 @@ port = 7021
 client_id = "your-client-id"
 client_secret = "your-client-secret"
 well_known_url = "https://your-oidc-provider.com/.well-known/openid-configuration"
+
+# Optional direct endpoint overrides when well_known_url is not used, or when a
+# discovered value should be overridden.
+# issuer_url = "https://your-oidc-provider.com"
+# jwks_uri = "https://your-oidc-provider.com/jwks"
+
+[oidc_client]
 scopes = ["openid", "profile", "email"]
 # redirect_url = "/auth/callback"
 # claims_check_script = "./claims-script-check.mts"
 # pkce_enabled = true
 # device_poll_interval = "5s"
 
-# Optional direct endpoint overrides when well_known_url is not used, or when a
-# discovered value should be overridden.
-# issuer_url = "https://your-oidc-provider.com"
+# Optional direct endpoint overrides.
 # authorization_endpoint = "https://your-oidc-provider.com/authorize"
 # token_endpoint = "https://your-oidc-provider.com/token"
 # userinfo_endpoint = "https://your-oidc-provider.com/userinfo"
-# jwks_uri = "https://your-oidc-provider.com/jwks"
 
 # Optional pending OAuth store tuning.
-# [oidc.pending_store]
+# [oidc_client.pending_store]
 # ttl = "5m"
 # max_capacity = 1000
+
+# When enabled, refresh tokens are sealed before leaving the server-side
+# auth-context layer.
+# [oidc_client.refresh_material_protection]
+# kind = "sealed"
+# master_key = "01234567890123456789012345678901"
+
+# Pending metadata redemption store tuning.
+# [oidc_client.metadata_delivery]
+# kind = "redemption"
+# ttl = "60s"
+# max_capacity = 1000
+
+# Post-auth redirect for backend OIDC mode. The current default is effectively
+# open (`allowed_redirect_targets = [{ kind = "all" }]`), so tighten this in
+# production.
+# [oidc_client.post_auth_redirect]
+# kind = "resolved"
+# dynamic_redirect_target_enabled = true
+# allowed_redirect_targets = [{ kind = "all" }]
 
 [session_context]
 # cookie_name = "securitydept_session"
@@ -49,29 +73,16 @@ scopes = ["openid", "profile", "email"]
 # dynamic_redirect_target_enabled = true
 # allowed_redirect_targets = [{ kind = "strict", value = "/dashboard" }]
 
-[token_set_context]
-# When enabled, refresh tokens are sealed before leaving the server-side
-# auth-context layer.
-# sealed_refresh_token = true
-# master_key = "01234567890123456789012345678901"
-
-# Pending metadata redemption store tuning.
-# [token_set_context.metadata_redemption]
-# ttl = "60s"
-# max_capacity = 1000
-
-# Post-auth redirect for token-set mode. The current default is effectively
-# open (`allowed_redirect_targets = [{ kind = "all" }]`), so tighten this in
-# production.
-# [token_set_context.post_auth_redirect]
-# dynamic_redirect_target_enabled = true
-# allowed_redirect_targets = [{ kind = "all" }]
+[oauth_resource_server]
+# audiences = ["api://securitydept"]
+# required_scopes = ["entries.read"]
 
 # Downstream bearer propagation policy.
-# [token_set_context.token_propagation]
+# [oauth_resource_server.token_propagation]
+# kind = "enabled"
 # default_policy = "validate_then_forward"
 #
-# [token_set_context.token_propagation.destination_policy]
+# [oauth_resource_server.token_propagation.destination_policy]
 # allowed_node_ids = ["registry-mirror-a"]
 # allowed_targets = [
 #   { kind = "exact_origin", scheme = "https", hostname = "service.internal.example.com", port = 443 },
@@ -84,7 +95,7 @@ scopes = ["openid", "profile", "email"]
 #   { kind = "exact_origin", scheme = "http", hostname = "localhost", port = 7021 },
 # ]
 #
-# [token_set_context.token_propagation.token_validation]
+# [oauth_resource_server.token_propagation.token_validation]
 # required_issuers = ["https://your-oidc-provider.com"]
 # allowed_audiences = ["mesh-api"]
 # required_scopes = ["mesh.forward"]
@@ -114,11 +125,8 @@ data_path = "./data/data.json"
 username = "admin"
 password_hash = "$argon2id$v=19$m=19456,t=2,p=1$replace$with$your$argon2$hash"
 
-# The server currently requires exactly one zone and it must use /basic.
-[[basic_auth_context.zones]]
-zone_prefix = "/basic"
-login_subpath = "/login"
-logout_subpath = "/logout"
+# Optional realm override for the basic-auth dashboard zone.
+# [[basic_auth_context.zones]]
 # realm = "securitydept"
 
 # Optional real-IP resolution strategy. Required when
@@ -140,8 +148,3 @@ logout_subpath = "/logout"
 #   { kind = "forwarded", mode = "recursive", direction = "right-to-left", param = "for" },
 # ]
 
-# Optional propagation forwarder. When configured, /api/propagation/* routes are enabled.
-# For the current same-server healthcheck dogfood, pair this with the
-# localhost allow-target example above and probe `/api/propagation/api/health`.
-# [propagation_forwarder]
-# proxy_path = "/api/propagation"

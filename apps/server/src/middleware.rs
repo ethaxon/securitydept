@@ -3,16 +3,13 @@ use std::{collections::HashMap, net::SocketAddr};
 use axum::{
     Extension, Json,
     extract::{ConnectInfo, Request},
-    http::{HeaderMap, StatusCode, header},
+    http::{StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
 };
 use securitydept_core::{
     session_context::{SessionContextError, SessionContextSession},
-    token_set_context::access_token_substrate::{
-        DEFAULT_PROPAGATION_HEADER_NAME, PropagatedBearer, PropagationDirective,
-        PropagationRequestTarget, ResourceTokenPrincipal,
-    },
+    token_set_context::access_token_substrate::AccessTokenSubstrateResourceService,
     utils::error::{ErrorPresentation, UserRecovery},
 };
 use serde_json::Value;
@@ -20,65 +17,20 @@ use tower_sessions::Session;
 
 use crate::{error::ServerResult, http_response::into_axum_response, state::ServerState};
 
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub enum DashboardAuthContext {
-    Session,
-    Basic,
-    Bearer {
-        access_token: String,
-        resource_token_principal: Box<ResourceTokenPrincipal>,
-        propagation: Option<PropagationDirective>,
-    },
-}
-
-#[allow(dead_code)]
-impl DashboardAuthContext {
-    pub fn propagated_bearer(&self) -> Option<PropagatedBearer<'_>> {
-        match self {
-            Self::Bearer {
-                access_token,
-                resource_token_principal,
-                ..
-            } => Some(PropagatedBearer {
-                access_token,
-                resource_token_principal: Some(resource_token_principal.as_ref()),
-            }),
-            Self::Session | Self::Basic => None,
-        }
-    }
-
-    pub fn propagation_required(&self) -> bool {
-        match self {
-            Self::Bearer { propagation, .. } => propagation.is_some(),
-            Self::Session | Self::Basic => false,
-        }
-    }
-
-    pub fn propagation_target(&self) -> Option<PropagationRequestTarget> {
-        match self {
-            Self::Bearer {
-                propagation: Some(propagation),
-                ..
-            } => Some(propagation.to_request_target()),
-            Self::Bearer {
-                propagation: None, ..
-            }
-            | Self::Session
-            | Self::Basic => None,
-        }
-    }
-}
-
 pub async fn require_basic_auth(
     Extension(state): Extension<ServerState>,
     ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
     request: Request,
     next: Next,
 ) -> ServerResult<Response> {
-    let propagation = parse_propagation(request.headers())?;
+    let propagation =
+        AccessTokenSubstrateResourceService::parse_propagation_directive(request.headers())
+            .map_err(crate::error::ServerError::from)?;
 
     if propagation.is_some() {
+        if !state.substrate_runtime.propagation_enabled() {
+            return Ok(propagation_not_enabled_response());
+        }
         return Ok(propagation_auth_mismatch_response());
     }
 
@@ -117,7 +69,12 @@ pub async fn require_dashboard_auth(
     request: Request,
     next: Next,
 ) -> ServerResult<Response> {
-    let propagation = parse_propagation(request.headers())?;
+    let propagation =
+        AccessTokenSubstrateResourceService::parse_propagation_directive(request.headers())
+            .map_err(crate::error::ServerError::from)?;
+    if propagation.is_some() && !state.substrate_runtime.propagation_enabled() {
+        return Ok(propagation_not_enabled_response());
+    }
     let has_cookie_header = request.headers().contains_key(header::COOKIE);
 
     let authorization = request
@@ -125,13 +82,12 @@ pub async fn require_dashboard_auth(
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .map(str::to_string);
-    let mut request = request;
 
     if let Some(authorization) = authorization.as_deref()
-        && let Some(access_token) =
+        && let Some(_access_token) =
             securitydept_core::creds::parse_bearer_auth_header_opt(authorization)
     {
-        let resource_token_principal = state
+        let _resource_token_principal = state
             .resource_service()
             .ok_or(crate::error::ServerError::SessionContext {
                 source: SessionContextError::MissingContext,
@@ -142,13 +98,6 @@ pub async fn require_dashboard_auth(
                 source: SessionContextError::MissingContext,
             })?;
 
-        request
-            .extensions_mut()
-            .insert(DashboardAuthContext::Bearer {
-                access_token,
-                resource_token_principal: Box::new(resource_token_principal),
-                propagation,
-            });
         return Ok(next.run(request).await);
     }
 
@@ -159,9 +108,7 @@ pub async fn require_dashboard_auth(
             if propagation.is_some() {
                 return Ok(propagation_auth_mismatch_response());
             }
-            request
-                .extensions_mut()
-                .insert(DashboardAuthContext::Session);
+
             return Ok(next.run(request).await);
         }
     }
@@ -180,7 +127,6 @@ pub async fn require_dashboard_auth(
             if propagation.is_some() {
                 return Ok(propagation_auth_mismatch_response());
             }
-            request.extensions_mut().insert(DashboardAuthContext::Basic);
             return Ok(next.run(request).await);
         }
     }
@@ -188,18 +134,6 @@ pub async fn require_dashboard_auth(
     Err(crate::error::ServerError::SessionContext {
         source: SessionContextError::MissingContext,
     })
-}
-
-fn parse_propagation(
-    headers: &HeaderMap,
-) -> Result<Option<PropagationDirective>, crate::error::ServerError> {
-    let Some(value) = headers.get(DEFAULT_PROPAGATION_HEADER_NAME) else {
-        return Ok(None);
-    };
-
-    PropagationDirective::from_header_value(value)
-        .map(Some)
-        .map_err(|source| crate::error::ServerError::TokenPropagator { source })
 }
 
 fn propagation_auth_mismatch_response() -> Response {
@@ -213,6 +147,24 @@ fn propagation_auth_mismatch_response() -> Response {
         Json(serde_json::json!({
             "error": presentation,
             "status": StatusCode::UNAUTHORIZED.as_u16(),
+            "success": false
+        })),
+    )
+        .into_response()
+}
+
+fn propagation_not_enabled_response() -> Response {
+    let presentation = ErrorPresentation::new(
+        "propagation_disabled",
+        "This request requires propagation, but the propagation capability is disabled on this \
+         server.",
+        UserRecovery::None,
+    );
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({
+            "error": presentation,
+            "status": StatusCode::BAD_REQUEST.as_u16(),
             "success": false
         })),
     )

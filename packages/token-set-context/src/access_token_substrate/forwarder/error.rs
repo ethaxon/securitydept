@@ -3,9 +3,13 @@ use snafu::Snafu;
 
 use super::super::TokenPropagatorError;
 
+/// Error type for propagation forwarders.
+///
+/// This type is framework-agnostic; concrete forwarder implementations
+/// (e.g. `AxumReverseProxyPropagationForwarder`) use it as their error variant.
 #[derive(Debug, Snafu)]
-pub enum AxumReverseProxyPropagationForwarderError {
-    #[snafu(display("axum reverse proxy propagation forwarder is misconfigured: {message}"))]
+pub enum PropagationForwarderError {
+    #[snafu(display("propagation forwarder is misconfigured: {message}"))]
     Config { message: String },
     #[snafu(display("token propagation failed: {source}"), context(false))]
     TokenPropagator { source: TokenPropagatorError },
@@ -13,10 +17,9 @@ pub enum AxumReverseProxyPropagationForwarderError {
     InvalidOrigin { source: url::ParseError },
 }
 
-pub type AxumReverseProxyPropagationForwarderResult<T> =
-    Result<T, AxumReverseProxyPropagationForwarderError>;
+pub type PropagationForwarderResult<T> = Result<T, PropagationForwarderError>;
 
-impl ToErrorPresentation for AxumReverseProxyPropagationForwarderError {
+impl ToErrorPresentation for PropagationForwarderError {
     fn to_error_presentation(&self) -> ErrorPresentation {
         match self {
             Self::Config { .. } => ErrorPresentation::new(

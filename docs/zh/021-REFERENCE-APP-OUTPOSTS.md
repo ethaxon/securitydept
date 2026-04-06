@@ -28,7 +28,6 @@
   - **`/orchestration`**：共享 protocol-agnostic token lifecycle 基座
   - **`/frontend-oidc-mode` (`frontend-oidc`)**：前端纯 OIDC client
   - **`/backend-oidc-mode`**：前端消费统一 `backend-oidc` capability framework 的 canonical 入口
-  - **`/backend-oidc-pure-mode` / `/backend-oidc-mediated-mode`**：当前实现中 pure / mediated preset 的过渡入口
   - **`securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode, access_token_substrate}`**：Rust 侧应显式暴露 formal modes 与 shared substrate，而不是继续把 `frontend` / `backend` 当一级 public namespace
 
 ## 这个案例应该验证什么
@@ -47,7 +46,7 @@
    - 某一个 requirement 失败时如何处理
 
 3. 后端 Bearer / OIDC 校验是否能保持 provider-neutral  
-   `confluence` 当前已经基本是 issuer + JWKS + audience + scope 校验模型。这个案例可以帮助我们确认：后端真正需要的是稳定 OIDC contract，而不是某个前端 IdP SDK 的伴随假设。
+   `confluence` 当前已经基本是 issuerJWKSaudiencescope 校验模型。这个案例可以帮助我们确认：后端真正需要的是稳定 OIDC contract，而不是某个前端 IdP SDK 的伴随假设。
 
 4. 本地多工作区联动开发方式是否顺畅  
    这个案例应直接使用本地指向：
@@ -72,8 +71,8 @@
 
 这个参考案例对当前认证栈的 OIDC mode family 影响最直接：
 
-- `outposts` 当前单 `confluence` 链路更适合验证 **`frontend-oidc` / `backend-oidc` baseline** 以及 **通用 orchestration + resource-server** 这一层
-- 它暂时更接近 `backend-oidc` 的 `pure` preset，而不直接验证 sealed refresh / metadata redemption 这组 mediated augmentation
+- `outposts` 当前单 `confluence` 链路更适合验证 **`frontend-oidc` / `backend-oidc` baseline** 以及 **通用 orchestrationresource-server** 这一层
+- 它暂时更接近 `backend-oidc` 的 `pure` preset，而不直接验证 sealed refresh / metadata fallback 这组 mediated augmentation
 - 它对 access-token 注入、resource-server 校验、`X-SecurityDept-Propagation` 这组跨 mode substrate 反而更有直接参考价值
 
 当前建议：
@@ -83,7 +82,6 @@
    - `/orchestration`：共享 token lifecycle 基座
    - `/frontend-oidc-mode`：`frontend-oidc` 模式
    - `/backend-oidc-mode`：前端消费 `backend-oidc` 的 canonical 子路径
-   - `/backend-oidc-pure-mode` / `/backend-oidc-mediated-mode`：当前 pure / mediated preset 的过渡子路径
 3. route-level 多 requirement 编排应优先朝 **headless orchestration primitive** 演进
 4. 默认推荐实现可以存在，但它应是：
    - scheduler / orchestrator 默认实现

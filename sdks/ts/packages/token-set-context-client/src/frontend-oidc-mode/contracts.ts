@@ -7,19 +7,68 @@
 // Layer distinction:
 //   - browser runtime types: FrontendOidcModeClientConfig, FrontendOidcModeAuthorizeParams, etc.
 //     → owned by the browser OIDC client (client.ts / types.ts)
-//   - cross-boundary contracts: FrontendOidcModeConfigProjection, FrontendOidcModeIntegrationRequirement,
-//     FrontendOidcModeTokenMaterial
-//     → aligned with Rust, define the interop contract between frontend and backend
+//   - cross-boundary contracts: FrontendOidcModeConfigProjection
+//     → aligned with Rust, defines the config interop contract between frontend and backend
 //
-// NOTE: user_info contracts are NOT exported here yet. The endpoint owner and
-// protocol core for user_info are still being established (see review 1,
-// finding 3). When the Rust authority and shared oidc-client helper land,
-// this module can re-introduce the aligned TS types.
+// User info contracts are included: the frontend uses `userinfoRequest()` from
+// oauth4webapi to fetch claims directly from the provider's userinfo endpoint.
 
 import type {
 	FrontendOidcModeClientConfig,
 	FrontendOidcModeTokenResult,
 } from "./types";
+
+// ---------------------------------------------------------------------------
+// Claims check script (aligned with Rust FrontendOidcModeClaimsCheckScript)
+// ---------------------------------------------------------------------------
+
+/**
+ * Structured claims check script delivered in the config projection.
+ *
+ * This is the TS equivalent of Rust `FrontendOidcModeClaimsCheckScript`.
+ * Currently only `inline` is supported; future variants (e.g. a signed URL)
+ * can be added without breaking existing consumers.
+ */
+export type FrontendOidcModeClaimsCheckScript =
+	/** Script content is embedded inline by the backend. */
+	{ type: "inline"; content: string };
+
+// ---------------------------------------------------------------------------
+// Claims check result (aligned with Rust ScriptClaimsCheckResult)
+// ---------------------------------------------------------------------------
+
+/**
+ * Successful claims check result.
+ *
+ * Returned when the claims check script (or default logic) accepts the
+ * ID token + userInfo claims and produces a normalized identity.
+ */
+export interface FrontendOidcModeClaimsCheckSuccessResult {
+	success: true;
+	displayName: string;
+	picture?: string;
+	claims: Record<string, unknown>;
+}
+
+/**
+ * Failed claims check result.
+ *
+ * Returned when the claims check script explicitly rejects the claims.
+ */
+export interface FrontendOidcModeClaimsCheckFailureResult {
+	success: false;
+	error?: string;
+	claims?: unknown;
+}
+
+/**
+ * Discriminated union for claims check results.
+ *
+ * Aligned with Rust `ScriptClaimsCheckResult` (untagged serde).
+ */
+export type FrontendOidcModeClaimsCheckResult =
+	| FrontendOidcModeClaimsCheckSuccessResult
+	| FrontendOidcModeClaimsCheckFailureResult;
 
 // ---------------------------------------------------------------------------
 // Config projection (aligned with Rust FrontendOidcModeConfigProjection)
@@ -32,59 +81,74 @@ import type {
  * against the same provider. This is the TS equivalent of Rust
  * `FrontendOidcModeConfigProjection`.
  *
- * Mapping:
- * - Rust `well_known_url` → TS `wellKnownUrl`
- * - Rust `client_id` → TS `clientId`
- * - Rust `scopes` → TS `scopes`
- * - Rust `redirect_url` → TS `redirectUrl`
+ * Faithfully reflects the resolved `OidcClientConfig` minus server-only
+ * fields (`pendingStore`, `devicePollInterval`).
+ *
+ * `clientSecret` is only populated when `UnsafeFrontendClientSecret` capability
+ * is enabled on the server.
  */
 export interface FrontendOidcModeConfigProjection {
-	/** OIDC discovery URL. */
-	wellKnownUrl: string;
+	// --- Provider connectivity (from OAuthProviderRemoteConfig) ---
+
+	/** OIDC discovery URL (e.g. `https://auth.example.com/.well-known/openid-configuration`). */
+	wellKnownUrl?: string;
+	/** Issuer URL. When `wellKnownUrl` is set, this is derived from discovery; when not, use directly. */
+	issuerUrl?: string;
+	/** JWKS URI for direct key fetching without discovery. */
+	jwksUri?: string;
+	/** How often to refresh provider discovery metadata (human-readable duration, e.g. "5m"). */
+	metadataRefreshInterval?: string;
+	/** How often to refresh the remote JWKS (human-readable duration, e.g. "5m"). */
+	jwksRefreshInterval?: string;
+
+	// --- Provider OIDC endpoint overrides ---
+
+	/** Authorization endpoint override. `undefined` means "derived from discovery." */
+	authorizationEndpoint?: string;
+	/** Token endpoint override. `undefined` means "derived from discovery." */
+	tokenEndpoint?: string;
+	/** UserInfo endpoint override. `undefined` means "derived from discovery." */
+	userinfoEndpoint?: string;
+	/** Revocation endpoint override. `undefined` means "derived from discovery." */
+	revocationEndpoint?: string;
+	/**
+	 * Supported token endpoint authentication methods.
+	 * `undefined` means "use provider discovery."
+	 */
+	tokenEndpointAuthMethodsSupported?: string[];
+	/**
+	 * Supported algorithms for signing ID tokens.
+	 * `undefined` means "use provider discovery."
+	 */
+	idTokenSigningAlgValuesSupported?: string[];
+	/**
+	 * Supported algorithms for signing UserInfo responses.
+	 * `undefined` means "use provider discovery."
+	 */
+	userinfoSigningAlgValuesSupported?: string[];
+
 	/** The `client_id` for authorization requests. */
 	clientId: string;
+	/**
+	 * **Unsafe.** Only populated when `UnsafeFrontendClientSecret` capability is
+	 * enabled. The frontend should log a warning when this field is present.
+	 */
+	clientSecret?: string;
 	/** Scopes to request. */
 	scopes?: string[];
+	/** Scopes that MUST be present in the token endpoint response. */
+	requiredScopes?: string[];
 	/** The redirect URL for the OIDC callback. */
-	redirectUrl?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Integration requirement (aligned with Rust FrontendOidcModeIntegrationRequirement)
-// ---------------------------------------------------------------------------
-
-/**
- * What the backend expects from frontend-produced tokens.
- *
- * This is the TS equivalent of Rust `FrontendOidcModeIntegrationRequirement`.
- */
-export interface FrontendOidcModeIntegrationRequirement {
-	/** Expected audiences in the access token. */
-	requiredAudiences?: string[];
-	/** Expected token issuer URL. */
-	expectedIssuer?: string;
-	/** Whether the backend requires a JWT access token. */
-	requiresJwtAccessToken?: boolean;
-	/** Whether the backend supports token propagation. */
-	supportsPropagation?: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Token material (aligned with Rust FrontendOidcModeTokenMaterial)
-// ---------------------------------------------------------------------------
-
-/**
- * Minimal token material the frontend produces for the backend.
- *
- * This is the TS equivalent of Rust `FrontendOidcModeTokenMaterial`.
- * The frontend sends the access token via `Authorization: Bearer <token>`
- * and optionally forwards the ID token for identity claims.
- */
-export interface FrontendOidcModeTokenMaterial {
-	/** The bearer access token. */
-	accessToken: string;
-	/** Optional ID token for identity claims forwarding. */
-	idToken?: string;
+	redirectUrl: string;
+	/** Whether PKCE is enabled for the authorization code flow. */
+	pkceEnabled?: boolean;
+	/**
+	 * Claims check script for client-side evaluation.
+	 *
+	 * The backend read the script from the filesystem and inlined it here.
+	 * Currently only `inline` is supported.
+	 */
+	claimsCheckScript?: FrontendOidcModeClaimsCheckScript;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,26 +159,67 @@ export interface FrontendOidcModeTokenMaterial {
  * Convert a backend config projection into a browser runtime client config.
  *
  * This bridges the backend-provided projection (REST endpoint response)
- * to the browser OIDC client config used by `createFrontendOidcModeClient`.
+ * to the browser OIDC client config used by `FrontendOidcModeClient`.
+ *
+ * All projection fields are mapped through to their `FrontendOidcModeClientConfig`
+ * counterparts, including endpoint overrides, protocol control, JWKS metadata,
+ * and claims check script.
+ *
+ * When `clientSecret` is present in the projection (unsafe capability),
+ * the adapter logs a warning and passes it through.
  */
 export function configProjectionToClientConfig(
 	projection: FrontendOidcModeConfigProjection,
 	overrides?: Partial<
-		Pick<FrontendOidcModeClientConfig, "redirectUri" | "postLoginRedirectUri">
+		Pick<
+			FrontendOidcModeClientConfig,
+			"redirectUri" | "defaultPostAuthRedirectUri"
+		>
 	>,
 ): FrontendOidcModeClientConfig {
-	// Extract issuer from well-known URL by removing the discovery suffix
-	const issuer = projection.wellKnownUrl.replace(
-		/\/\.well-known\/openid-configuration\/?$/,
-		"",
-	);
+	// Derive issuer: prefer issuerUrl, then strip discovery suffix from wellKnownUrl
+	const issuer =
+		projection.issuerUrl ??
+		projection.wellKnownUrl?.replace(
+			/\/\.well-known\/openid-configuration\/?$/,
+			"",
+		) ??
+		"";
+
+	if (projection.clientSecret) {
+		console.warn(
+			"[securitydept] ⚠️  SECURITY WARNING: the server exposed client_secret to the " +
+				"browser via UnsafeFrontendClientSecret capability. This is a security " +
+				"anti-pattern. Contact your administrator.",
+		);
+	}
 
 	return {
 		issuer,
 		clientId: projection.clientId,
 		scopes: projection.scopes,
-		redirectUri: overrides?.redirectUri ?? projection.redirectUrl ?? "",
-		postLoginRedirectUri: overrides?.postLoginRedirectUri,
+		redirectUri: overrides?.redirectUri ?? projection.redirectUrl,
+		defaultPostAuthRedirectUri: overrides?.defaultPostAuthRedirectUri,
+		// Endpoint overrides
+		authorizationEndpoint: projection.authorizationEndpoint,
+		tokenEndpoint: projection.tokenEndpoint,
+		userinfoEndpoint: projection.userinfoEndpoint,
+		revocationEndpoint: projection.revocationEndpoint,
+		// Protocol control
+		pkceEnabled: projection.pkceEnabled,
+		clientSecret: projection.clientSecret,
+		requiredScopes: projection.requiredScopes,
+		claimsCheckScript: projection.claimsCheckScript,
+		// Provider metadata
+		jwksUri: projection.jwksUri,
+		metadataRefreshInterval: projection.metadataRefreshInterval,
+		jwksRefreshInterval: projection.jwksRefreshInterval,
+		tokenEndpointAuthMethodsSupported:
+			projection.tokenEndpointAuthMethodsSupported,
+		idTokenSigningAlgValuesSupported:
+			projection.idTokenSigningAlgValuesSupported,
+		userinfoSigningAlgValuesSupported:
+			projection.userinfoSigningAlgValuesSupported,
 	};
 }
 
@@ -153,17 +258,29 @@ export function tokenResultToAuthSnapshot(
 	};
 }
 
+// ---------------------------------------------------------------------------
+// User info contract
+// ---------------------------------------------------------------------------
+
 /**
- * Convert a browser OIDC token result into a `FrontendOidcModeTokenMaterial`.
+ * User info response from the OIDC provider's userinfo endpoint.
  *
- * This extracts the cross-boundary contract material from the browser
- * runtime result.
+ * In frontend-oidc mode, the browser client calls the provider's userinfo
+ * endpoint directly using the access token, without involving the backend.
+ * This is fundamentally different from backend-oidc mode, where user info
+ * retrieval is mediated by the backend.
  */
-export function tokenResultToTokenMaterial(
-	result: FrontendOidcModeTokenResult,
-): FrontendOidcModeTokenMaterial {
-	return {
-		accessToken: result.accessToken,
-		idToken: result.idToken,
-	};
+export interface FrontendOidcModeUserInfoResponse {
+	/** The subject identifier (OIDC `sub` claim). */
+	subject: string;
+	/** Display name (`name` claim or derived). */
+	displayName?: string;
+	/** Profile picture URL. */
+	picture?: string;
+	/** Email address. */
+	email?: string;
+	/** Whether the email is verified. */
+	emailVerified?: boolean;
+	/** Raw claims from the userinfo response. */
+	claims?: Record<string, unknown>;
 }

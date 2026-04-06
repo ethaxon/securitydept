@@ -27,30 +27,32 @@ export {
 
 export type {
 	BackendOidcModeAuthorizeQuery,
-	BackendOidcModeCallbackFragment,
+	BackendOidcModeCallbackReturns,
 	BackendOidcModeConfigProjection,
 	BackendOidcModeIntegrationRequirement,
 	BackendOidcModeMetadataRedemptionRequest,
 	BackendOidcModeMetadataRedemptionResponse,
-	BackendOidcModeRefreshFragment,
 	BackendOidcModeRefreshPayload,
 	BackendOidcModeRefreshResult,
+	BackendOidcModeRefreshReturns,
 	BackendOidcModeUserInfoRequest,
 	BackendOidcModeUserInfoResponse,
 } from "./contracts";
 
-// --- Fragment parsers ---
+// --- Response body parsers ---
 
 export {
+	parseBackendOidcModeCallbackBody,
 	parseBackendOidcModeCallbackFragment,
+	parseBackendOidcModeRefreshBody,
 	parseBackendOidcModeRefreshFragment,
 } from "./parsers";
 
 // --- Orchestration adapters ---
 
 export {
-	callbackFragmentToTokenSnapshot,
-	refreshFragmentToTokenDelta,
+	callbackReturnsToTokenSnapshot as callbackFragmentToTokenSnapshot,
+	refreshReturnsToTokenDelta as refreshFragmentToTokenDelta,
 } from "./parsers";
 
 // --- Client ---

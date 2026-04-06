@@ -35,6 +35,15 @@ where
     #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
     #[serde(default = "default_scopes")]
     pub scopes: Vec<String>,
+    /// Scopes that MUST be present in the token endpoint response.
+    ///
+    /// When non-empty, `exchange_code` and `handle_token_refresh` will verify
+    /// that the returned `scope` field covers all entries. An empty list (the
+    /// default) disables the check. Can be shared from
+    /// `[oidc].required_scopes`.
+    #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
+    #[serde(default)]
+    pub required_scopes: Vec<String>,
     #[serde(default)]
     pub claims_check_script: Option<String>,
     /// When true, use PKCE (code_challenge / code_verifier) for the
@@ -124,6 +133,9 @@ where
 /// - `well_known_url`, `issuer_url`, `jwks_uri` — true presence-aware
 /// - `client_id`, `client_secret` — presence-aware optional credentials
 ///
+/// Shareable from `[oidc]`:
+/// - `required_scopes` — presence-aware (local non-empty wins; else shared)
+///
 /// Not shared (must stay in `[oidc_client]`):
 /// - `scopes`, `redirect_url`, `pkce_enabled`, `claims_check_script`
 #[serde_as]
@@ -149,6 +161,11 @@ where
     #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
     #[serde(default = "default_scopes")]
     pub scopes: Vec<String>,
+    /// Scopes that MUST be present in the token endpoint response.
+    /// Falls back to `[oidc].required_scopes` when local is empty.
+    #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
+    #[serde(default)]
+    pub required_scopes: Vec<String>,
     #[serde(default)]
     pub claims_check_script: Option<String>,
     #[serde(default)]
@@ -184,6 +201,7 @@ where
             remote: shared.resolve_remote(&self.remote),
             provider_oidc: self.provider_oidc,
             scopes: self.scopes,
+            required_scopes: shared.resolve_required_scopes(&self.required_scopes),
             claims_check_script: self.claims_check_script,
             pkce_enabled: self.pkce_enabled,
             redirect_url: self.redirect_url,
@@ -221,6 +239,7 @@ where
             remote: OAuthProviderRemoteConfig::default(),
             provider_oidc: OAuthProviderOidcConfig::default(),
             scopes: default_scopes(),
+            required_scopes: vec![],
             claims_check_script: None,
             pkce_enabled: false,
             redirect_url: default_redirect_url(),

@@ -15,7 +15,7 @@
 4. 若未命中任何 source，降级使用直连 peer IP。
 
 ## 配置结构
-分为 `providers`, `sources` 和 `fallback` 三部分。
+分为 `providers``sources` 和 `fallback` 三部分。
 
 ### 1. Providers
 定义信任边界。内建类型：
@@ -53,7 +53,7 @@ pub struct ResolvedClientIp {
 为兼顾准确与稳定性，crate 采用三层递进的测试体系：
 1. **单元测试 (`src/*`)**: 验证 IP 解析与重构逻辑、CIDR 匹配及策略覆盖率。
 2. **Core 集成测试 (`tests/core_providers.rs`)**: 启动模拟端口或写入随机临时文件，独立测试 `inline`/`local-file`/`remote-file`/`command` 在防抖/轮询/异步容错上的健壮性。
-3. **环境特定行为测试 (`tests/docker_provider.rs`, `tests/kube_provider.rs`)**:
+3. **环境特定行为测试 (`tests/docker_provider.rs``tests/kube_provider.rs`)**:
    - 依赖 `testcontainers` 动态启动底层基础环境。
    - 对 `kube-provider` 这类复杂发现会建立 Kind 或 K3d 轻量集群，创建原生 Pod/Service 及 Traefik 组件，再用内部集成 client 直接查询端点进行闭环对比验证；对 docker 亦同。
    - 开发与独立验证：可以用 `cargo test -p securitydept-realip --test [测试文件名]` 单独运行。

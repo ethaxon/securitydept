@@ -11,12 +11,12 @@ use clap::Parser;
 use securitydept_core::{
     basic_auth_context::BasicAuthContext,
     creds_manage::{migrations::Migrator, store::CredsManageStore},
-    oauth_resource_server::OAuthResourceServerVerifier,
-    oidc::OidcClient,
     realip::RealIpResolver,
     token_set_context::{
-        access_token_substrate::{AxumReverseProxyPropagationForwarder, TokenPropagator},
-        backend_oidc_mode::{BackendOidcModeConfigSource, BackendOidcModeRuntime},
+        access_token_substrate::{
+            AccessTokenSubstrateRuntime, AxumReverseProxyPropagationForwarderConfig,
+        },
+        backend_oidc_mode::BackendOidcModeRuntime,
     },
 };
 use snafu::ResultExt;
@@ -76,30 +76,18 @@ async fn main() -> ServerResult<()> {
 
     info!(external_base_url = ?config.server.external_base_url, "Resolved external base URL config");
 
-    // Resolve OIDC shared-defaults via
-    // BackendOidcModeConfigSource::resolve_all().
+    // Build OIDC runtime artifacts: backend-oidc runtime + optional OIDC client.
     let resolved_oidc = config.resolve_oidc()?;
-
-    let oidc = if let Some(ref resolved) = resolved_oidc {
-        Some(Arc::new(
-            OidcClient::from_config(resolved.oidc_client.clone()).await?,
-        ))
-    } else {
+    let (backend_oidc_runtime, oidc_client) = BackendOidcModeRuntime::from_resolved_config::<
+        state::MokaPendingOauthStore,
+    >(resolved_oidc.as_ref())
+    .await
+    .map_err(|e| crate::error::ServerError::InvalidConfig {
+        message: format!("backend_oidc: {e}"),
+    })?;
+    if oidc_client.is_none() {
         info!("OIDC disabled (no [oidc] section); /auth/session/login will create a dev session");
-        None
-    };
-
-    let token_set_resource_verifier = if let Some(ref resolved) = resolved_oidc {
-        Some(Arc::new(
-            OAuthResourceServerVerifier::from_config(resolved.oauth_resource_server.clone())
-                .await
-                .map_err(|e| crate::error::ServerError::InvalidConfig {
-                    message: format!("invalid token-set resource verifier config: {e}"),
-                })?,
-        ))
-    } else {
-        None
-    };
+    }
 
     let session_context_config = config.session_context.clone();
     let session_context_store = MemoryStore::default();
@@ -114,32 +102,30 @@ async fn main() -> ServerResult<()> {
     } else {
         None
     };
-    let mediated_runtime = Arc::new(
-        BackendOidcModeRuntime::from_config(config.backend_oidc.runtime_config().clone()).map_err(
-            |e| crate::error::ServerError::InvalidConfig {
-                message: e.to_string(),
-            },
-        )?,
-    );
 
-    let token_propagator = Arc::new(
-        TokenPropagator::from_config(&config.backend_oidc.token_propagation).map_err(|e| {
-            crate::error::ServerError::InvalidConfig {
-                message: format!("token_propagation config: {e}"),
-            }
-        })?,
-    );
+    // Build access-token substrate runtime + optional resource-server verifier.
+    let resolved_substrate = config.resolve_substrate()?;
+    let (substrate_runtime, oauth_resource_server_verifier) =
+        AccessTokenSubstrateRuntime::from_resolved_config(&resolved_substrate)
+            .await
+            .map_err(|e| crate::error::ServerError::InvalidConfig {
+                message: format!("access_token_substrate: {e}"),
+            })?;
 
-    let propagation_forwarder = config
-        .propagation_forwarder
-        .as_ref()
-        .map(|forwarder_config| {
-            AxumReverseProxyPropagationForwarder::new(forwarder_config.clone()).map(Arc::new)
-        })
-        .transpose()
-        .map_err(|e| crate::error::ServerError::InvalidConfig {
-            message: format!("invalid propagation forwarder config: {e}"),
-        })?;
+    let propagation_forwarder = if substrate_runtime.propagation_enabled() {
+        let forwarder_config = AxumReverseProxyPropagationForwarderConfig::builder()
+            .proxy_path("/api/propagation".to_string())
+            .build();
+        substrate_runtime
+            .build_forwarder(&forwarder_config)
+            .transpose()
+            .map_err(|e| crate::error::ServerError::InvalidConfig {
+                message: format!("invalid propagation forwarder config: {e}"),
+            })?
+            .map(Arc::new)
+    } else {
+        None
+    };
 
     if propagation_forwarder.is_some() {
         info!("Propagation forwarder enabled");
@@ -150,8 +136,8 @@ async fn main() -> ServerResult<()> {
 
     let state = ServerState {
         creds_manage_store: Arc::new(store),
-        mediated_runtime,
-        token_propagator,
+        backend_oidc_runtime: Arc::new(backend_oidc_runtime),
+        substrate_runtime,
         basic_auth_context: Arc::new(
             BasicAuthContext::from_config(config.basic_auth_context.clone()).map_err(|e| {
                 crate::error::ServerError::InvalidConfig {
@@ -159,9 +145,9 @@ async fn main() -> ServerResult<()> {
                 }
             })?,
         ),
-        token_set_resource_verifier,
         real_ip_resolver,
-        oidc,
+        oidc_client,
+        oauth_resource_server_verifier,
         propagation_forwarder,
         config: Arc::new(config),
     };

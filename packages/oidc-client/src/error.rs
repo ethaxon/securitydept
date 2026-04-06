@@ -49,6 +49,11 @@ pub enum OidcError {
 
     #[snafu(display("OIDC token revocation error: {message}"))]
     TokenRevocation { message: String },
+
+    /// Token endpoint returned a scope set that does not satisfy
+    /// `required_scopes`. `missing` lists the absent scopes.
+    #[snafu(display("OIDC scope validation error: token is missing required scopes: {missing:?}"))]
+    ScopeValidation { missing: Vec<String> },
 }
 
 impl ToHttpStatus for OidcError {
@@ -67,6 +72,7 @@ impl ToHttpStatus for OidcError {
             | OidcError::TokenRefresh { .. }
             | OidcError::TokenRevocation { .. }
             | OidcError::ClaimsCheckScriptCompile { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            OidcError::ScopeValidation { .. } => StatusCode::FORBIDDEN,
         }
     }
 }
@@ -144,6 +150,11 @@ impl ToErrorPresentation for OidcError {
                     UserRecovery::ContactSupport,
                 )
             }
+            OidcError::ScopeValidation { .. } => ErrorPresentation::new(
+                "oidc_insufficient_scope",
+                "The issued token does not grant the required permissions.",
+                UserRecovery::ContactSupport,
+            ),
         }
     }
 }

@@ -85,7 +85,7 @@ Crate: `securitydept-oauth-resource-server`
 
 - `securitydept-basic-auth-context` —— 可复用 basic-auth 上下文，包含 zone 模型、post-auth redirect 策略与可选 real-IP 访问限制；`BasicAuthContextService` 现已直接归属于此 crate
 - `securitydept-session-context` —— 为 cookie-session 模式提取的可复用会话上下文抽象，包含 post-auth redirect 策略，不再直接暴露 Axum 响应类型；route-facing 的 `SessionAuthServiceTrait`、`OidcSessionAuthService`、`DevSessionAuthService` 现已通过 `service` feature 直接归属于此 crate
-- `securitydept-token-set-context` —— 为无状态 token-set 模式提取的可复用认证状态、redirect、metadata redemption 与 bearer propagation 协调层；`BackendOidcMediatedModeAuthService` 与 `AccessTokenSubstrateResourceService` 现已直接归属于此 crate
+- `securitydept-token-set-context` —— 为无状态 token-set 模式提取的可复用认证状态、redirect、metadata fallback 与 bearer propagation 协调层；`BackendOidcModeAuthService` 与 `AccessTokenSubstrateResourceService` 现已直接归属于此 crate
 
 `securitydept-session-context` crate 提供：
 
@@ -97,31 +97,24 @@ Crate: `securitydept-oauth-resource-server`
 `securitydept-token-set-context` crate 当前提供：
 
 - canonical target：顶层 `frontend_oidc_mode` / `backend_oidc_mode`
-- 当前实现：`backend_oidc_pure_mode` / `backend_oidc_mediated_mode` 仍作为 `backend-oidc` preset-specific 过渡 module 存在
 - 顶层 `access_token_substrate` / `orchestration` / `models`
-- `BackendOidcMediatedModeRuntime`
-- `BackendOidcMediatedConfig`（raw 输入）/ `ResolvedBackendOidcMediatedConfig`（resolved bundle）
-- `BackendOidcMediatedConfigSource` trait — 供 adopter 组合的 config-source trait，提供 `resolve_oidc_client`、`resolve_oauth_resource_server`、`resolve_mediated_runtime`、`resolve_token_propagation`、`resolve_all` 各独立 resolve 入口
-- `BackendOidcPureConfig`（raw 输入）/ `ResolvedBackendOidcPureConfig`（resolved bundle）
-- `BackendOidcPureConfigSource` trait — 与 mediated 对称的 config-source trait
-- `BackendOidcPureModeRuntime` — 纯 OIDC 后端模式的授权/回调/刷新编排
-- `BackendOidcPureModeAuthService` — 纯 OIDC 模式的 route-facing service
+- `BackendOidcModeRuntime`
+- `BackendOidcModeConfig`（raw 输入）/ `ResolvedBackendOidcModeConfig`（resolved bundle）
+- `BackendOidcModeConfigSource` trait — 供 adopter 组合的 config-source trait，提供 `resolve_oidc_client`、`resolve_runtime`、`resolve_all` 等入口
+- `BackendOidcModeAuthService` — 后端 OIDC 模式的 route-facing service
 - `FrontendOidcModeConfigProjection` — 后端向前端投影 OIDC 配置
-- `FrontendOidcModeIntegrationRequirement` — 后端对前端产出 token 的验证要求
-- `FrontendOidcModeTokenMaterial` — 前端产出的 token material 形式契约
 - `TokenPropagator`
 - `PropagatedBearer`
-- `TokenSetRedirectUriConfig`
-- metadata redemption store traits 与相关默认实现
+- metadata fallback store traits 与相关默认实现
 
 更准确的 mode 边界是：
 
 - `frontend-oidc` 与 `backend-oidc` 才是 formal mode
-- `backend-oidc-pure` 与 `backend-oidc-mediated` 更适合作为 `backend-oidc` 的 preset/profile
+- `backend-oidc` 已统一为 3 轴 capability framework，提供 `pure` 和 `mediated` 等 preset/profile；`TokenPropagation` 已收回 `access_token_substrate`
 - OIDC 协议级流程（authorize / callback / refresh / exchange）由 `OidcClient` 统一提供；`securitydept-oidc-client::auth_state` 已承接跨 mode 共用的 identity extraction 能力（`OidcExtractedPrincipal`、`extract_principal_from_code_callback`、`extract_principal_from_refresh_result`）
-- mode runtime 层负责 capability-specific post-processing（sealed refresh vs plain、metadata redemption、redirect policy 等）
-- `backend-oidc-mediated` 在 pure-mode baseline 之上继续叠加 sealed refresh、metadata redemption、mediated redirect / fragment contract
-- `frontend-oidc` 没有 backend runtime，但通过 `frontend_oidc_mode` 暴露正式 config projection 和 integration contract
+- mode runtime 层负责 capability-specific post-processing（sealed refresh vs plain、metadata fallback、redirect policy 等）
+- `backend-oidc` 的 capability axes 由具体配置参数化
+- `frontend-oidc` 没有 backend runtime，但通过 `frontend_oidc_mode` 暴露正式的 `Config / ResolvedConfig / ConfigSource / Runtime / Service / ConfigProjection`
 
 当前的重要边界：
 
@@ -135,7 +128,7 @@ route-facing service 现已直接归属于各 owning crate：
 
 - `SessionAuthServiceTrait` / `OidcSessionAuthService` / `DevSessionAuthService` → `securitydept-session-context`（feature: `service`）
 - `BasicAuthContextService` → `securitydept-basic-auth-context`
-- `BackendOidcMediatedModeAuthService`（原 `TokenSetAuthService`）→ `securitydept-token-set-context::backend_oidc_mediated_mode`
+- `BackendOidcModeAuthService`（原 `TokenSetAuthService`）→ `securitydept-token-set-context::backend_oidc_mode`
 - `AccessTokenSubstrateResourceService`（原 `TokenSetResourceService`）→ `securitydept-token-set-context::access_token_substrate`
 
 `securitydept-auth-runtime` 聚合层已解散，不再作为工作区 member 存在。

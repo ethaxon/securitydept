@@ -108,11 +108,17 @@ impl OAuthResourceServerConfig {
     /// - `well_known_url`, `issuer_url`, `jwks_uri` — local > shared > None
     /// - `introspection.client_id`, `introspection.client_secret` — local >
     ///   shared > None (only when `introspection` is already `Some`)
+    /// - `required_scopes` — local non-empty wins; else inherited from shared
     ///
     /// Duration fields are resolved with sentinel heuristics; see
     /// [`OidcSharedConfig`] for the known limitation.
     pub fn apply_shared_defaults(&mut self, shared: &OidcSharedConfig) {
         self.remote = shared.resolve_remote(&self.remote);
+
+        // Inherit required_scopes from [oidc] when local list is empty.
+        if self.required_scopes.is_empty() {
+            self.required_scopes = shared.required_scopes.clone();
+        }
 
         // Apply shared credential defaults into the introspection block when
         // present so that a single confidential client identity can serve both
@@ -340,6 +346,7 @@ mod tests {
             },
             client_id: Some("shared-app".to_string()),
             client_secret: Some("shared-secret".to_string()),
+            ..Default::default()
         };
 
         let mut config = OAuthResourceServerConfig {
@@ -418,6 +425,55 @@ mod tests {
         );
     }
 
+    #[test]
+    fn shared_required_scopes_inherited_when_local_is_empty() {
+        let shared = OidcSharedConfig {
+            remote: OAuthProviderRemoteConfig {
+                well_known_url: Some(
+                    "https://auth.example.com/.well-known/openid-configuration".to_string(),
+                ),
+                ..Default::default()
+            },
+            required_scopes: vec!["openid".to_string(), "read:data".to_string()],
+            ..Default::default()
+        };
+
+        let mut config = OAuthResourceServerConfig::default();
+        config.apply_shared_defaults(&shared);
+
+        assert_eq!(
+            config.required_scopes,
+            vec!["openid".to_string(), "read:data".to_string()],
+            "required_scopes should be inherited from [oidc]"
+        );
+    }
+
+    #[test]
+    fn local_required_scopes_win_over_shared() {
+        let shared = OidcSharedConfig {
+            remote: OAuthProviderRemoteConfig {
+                well_known_url: Some(
+                    "https://auth.example.com/.well-known/openid-configuration".to_string(),
+                ),
+                ..Default::default()
+            },
+            required_scopes: vec!["openid".to_string()],
+            ..Default::default()
+        };
+
+        let mut config = OAuthResourceServerConfig {
+            required_scopes: vec!["entries.read".to_string(), "entries.write".to_string()],
+            ..Default::default()
+        };
+        config.apply_shared_defaults(&shared);
+
+        assert_eq!(
+            config.required_scopes,
+            vec!["entries.read".to_string(), "entries.write".to_string()],
+            "local required_scopes must take priority over shared"
+        );
+    }
+
     // ---------------------------------------------------------------------------
     // resolve_config (unified entry) tests
     // ---------------------------------------------------------------------------
@@ -433,6 +489,7 @@ mod tests {
             },
             client_id: Some("shared-app".to_string()),
             client_secret: Some("shared-secret".to_string()),
+            ..Default::default()
         };
 
         let mut config = OAuthResourceServerConfig {

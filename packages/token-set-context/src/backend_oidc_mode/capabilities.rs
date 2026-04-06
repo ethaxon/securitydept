@@ -151,6 +151,9 @@ impl PostAuthRedirectPolicy {
 ///
 /// Each field uses the simple discriminant enum. Use this for preset
 /// definitions, display, and telemetry — not for config deserialization.
+///
+/// User info is a baseline capability of every `backend-oidc` deployment and
+/// is not modelled as a separate axis.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackendOidcModeCapabilities {
     #[serde(default)]

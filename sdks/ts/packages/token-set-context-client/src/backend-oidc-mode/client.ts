@@ -1,55 +1,41 @@
 import type {
-	CancelableHandle,
-	CancellationTokenSourceTrait,
 	CancellationTokenTrait,
 	ClientRuntime,
-	ReadableSignalTrait,
 } from "@securitydept/client";
 import {
 	ClientError,
 	ClientErrorKind,
-	createCancellationTokenSource,
 	createLinkedCancellationToken,
-	createSignal,
 	LogLevel,
-	readonlySignal,
 } from "@securitydept/client";
-import { createAuthMaterialController } from "../orchestration/index";
+import { BaseOidcModeClient } from "../orchestration/index";
 import type {
 	BackendOidcModeMetadataRedemptionResponse,
 	BackendOidcModeUserInfoResponse,
 } from "./contracts";
 import {
-	callbackFragmentToTokenSnapshot,
+	callbackReturnsToTokenSnapshot,
+	parseBackendOidcModeCallbackBody,
 	parseBackendOidcModeCallbackFragment,
-	parseBackendOidcModeRefreshFragment,
-	refreshFragmentToTokenDelta,
+	parseBackendOidcModeRefreshBody,
+	refreshReturnsToTokenDelta,
 } from "./parsers";
 import type {
 	AuthStateMetadataSnapshot,
 	AuthStateSnapshot,
 	BackendOidcModeClientConfig,
 } from "./types";
-import {
-	BackendOidcModeContextSource,
-	BackendOidcModeStateRestoreSourceKind,
-} from "./types";
+import { BackendOidcModeContextSource } from "./types";
 
-const DEFAULT_LOGIN_PATH = "/auth/token-set/login";
-const DEFAULT_REFRESH_PATH = "/auth/token-set/refresh";
-const DEFAULT_METADATA_REDEEM_PATH = "/auth/token-set/metadata/redeem";
-const DEFAULT_USER_INFO_PATH = "/auth/token-set/user-info";
+const DEFAULT_LOGIN_PATH = "/auth/oidc/login";
+const DEFAULT_REFRESH_PATH = "/auth/oidc/refresh";
+const DEFAULT_METADATA_REDEEM_PATH = "/auth/oidc/metadata/redeem";
+const DEFAULT_USER_INFO_PATH = "/auth/oidc/user-info";
 const DEFAULT_REFRESH_WINDOW_MS = 60_000;
-const DEFAULT_PERSISTENCE_KEY_PREFIX = "securitydept.token_set_context";
-const TRACE_SCOPE = "token-set-context";
+const DEFAULT_PERSISTENCE_KEY_PREFIX = "securitydept.backend_oidc";
+const TRACE_SCOPE = "backend-oidc-mode";
 const TRACE_SOURCE = BackendOidcModeContextSource.Client;
-// Maximum single setTimeout slice (30 minutes) — avoids platform timer overflow.
-const MAX_SCHEDULE_SLICE_MS = 30 * 60 * 1000;
-const BackendOidcModeRefreshTriggerKind = {
-	Immediate: "immediate",
-	Slice: "slice",
-	Deadline: "deadline",
-} as const;
+const TRACE_PREFIX = "backend_oidc";
 
 /**
  * Backend OIDC Mode Client.
@@ -62,49 +48,40 @@ const BackendOidcModeRefreshTriggerKind = {
  * - Runtime-backed trace and persistence integration
  * - Bearer header construction
  */
-export class BackendOidcModeClient {
-	private readonly _authMaterial;
-	private readonly _stateSignal = createSignal<AuthStateSnapshot | null>(null);
+export class BackendOidcModeClient extends BaseOidcModeClient {
 	private readonly _baseUrl: string;
 	private readonly _loginPath: string;
 	private readonly _refreshPath: string;
 	private readonly _metadataRedeemPath: string;
 	private readonly _userInfoPath: string;
-	private readonly _refreshWindowMs: number;
 	private readonly _defaultPostAuthRedirectUri?: string;
-	private readonly _runtime: ClientRuntime;
-	private readonly _rootCancellation: CancellationTokenSourceTrait =
-		createCancellationTokenSource();
-	private _refreshHandle: CancelableHandle | null = null;
-	private _disposed = false;
-
-	/** Read-only signal exposing the current auth state snapshot. */
-	readonly state: ReadableSignalTrait<AuthStateSnapshot | null>;
 
 	constructor(config: BackendOidcModeClientConfig, runtime: ClientRuntime) {
-		this._baseUrl = config.baseUrl.replace(/\/+$/, "");
+		const baseUrl = config.baseUrl.replace(/\/+$/, "");
+		super({
+			runtime,
+			refreshWindowMs: config.refreshWindowMs ?? DEFAULT_REFRESH_WINDOW_MS,
+			traceScope: TRACE_SCOPE,
+			traceSource: TRACE_SOURCE,
+			tracePrefix: TRACE_PREFIX,
+			clientName: "BackendOidcModeClient",
+			persistence: runtime.persistentStore
+				? {
+						store: runtime.persistentStore,
+						key:
+							config.persistentStateKey ??
+							`${DEFAULT_PERSISTENCE_KEY_PREFIX}:v1:${baseUrl}`,
+					}
+				: undefined,
+		});
+
+		this._baseUrl = baseUrl;
 		this._loginPath = config.loginPath ?? DEFAULT_LOGIN_PATH;
 		this._refreshPath = config.refreshPath ?? DEFAULT_REFRESH_PATH;
 		this._metadataRedeemPath =
 			config.metadataRedeemPath ?? DEFAULT_METADATA_REDEEM_PATH;
 		this._userInfoPath = config.userInfoPath ?? DEFAULT_USER_INFO_PATH;
-		this._refreshWindowMs = config.refreshWindowMs ?? DEFAULT_REFRESH_WINDOW_MS;
 		this._defaultPostAuthRedirectUri = config.defaultPostAuthRedirectUri;
-		this._runtime = runtime;
-		this._authMaterial = createAuthMaterialController(
-			runtime.persistentStore !== undefined
-				? {
-						persistence: {
-							store: runtime.persistentStore,
-							key:
-								config.persistentStateKey ??
-								`${DEFAULT_PERSISTENCE_KEY_PREFIX}:v1:${this._baseUrl}`,
-							now: () => this._runtime.clock.now(),
-						},
-					}
-				: {},
-		);
-		this.state = readonlySignal(this._stateSignal);
 	}
 
 	/** Build the login/authorize URL with optional post-auth redirect. */
@@ -122,11 +99,14 @@ export class BackendOidcModeClient {
 	}
 
 	/**
-	 * Handle a callback fragment from a redirect.
-	 * Parses tokens, redeems metadata, persists state, and updates the auth signal.
+	 * Handle a callback fragment from a redirect (fragment-redirect flow).
+	 *
+	 * Parses tokens, redeems metadata if a redemption ID is present, persists
+	 * state, and updates the auth signal. Inline metadata (from
+	 * `callback_body_return` servers) is used directly, skipping redemption.
 	 */
 	async handleCallback(fragment: string): Promise<AuthStateSnapshot> {
-		this._recordTrace("token_set.callback.started");
+		this._recordTrace("backend_oidc.callback.started");
 
 		try {
 			this._throwIfNotOperational();
@@ -141,20 +121,21 @@ export class BackendOidcModeClient {
 				});
 			}
 
-			let metadata: AuthStateMetadataSnapshot = {};
-			if (callbackFragment.metadataRedemptionId) {
-				const redeemed = await this.redeemMetadata(
-					callbackFragment.metadataRedemptionId,
-				);
-				if (redeemed) {
-					metadata = redeemed.metadata as AuthStateMetadataSnapshot;
-				}
-			}
+			// Resolve metadata: inline → redemption → userInfo fallback.
+			const tokenSnapshot = callbackReturnsToTokenSnapshot(callbackFragment);
+			const metadata = await this._resolveMetadata({
+				inlineMetadata: callbackFragment.metadata,
+				metadataRedemptionId: callbackFragment.metadataRedemptionId,
+				baseMetadata: {},
+				// idToken is always present in a callback fragment.
+				accessToken: tokenSnapshot.accessToken,
+				idToken: tokenSnapshot.idToken,
+			});
 
 			this._throwIfNotOperational();
 
 			const snapshot: AuthStateSnapshot = {
-				tokens: callbackFragmentToTokenSnapshot(callbackFragment),
+				tokens: tokenSnapshot,
 				metadata,
 			};
 
@@ -166,114 +147,99 @@ export class BackendOidcModeClient {
 				scope: TRACE_SCOPE,
 			});
 
-			this._recordTrace("token_set.callback.succeeded", {
+			this._recordTrace("backend_oidc.callback.succeeded", {
 				hasMetadataRedemption:
 					callbackFragment.metadataRedemptionId !== undefined,
+				hasInlineMetadata: callbackFragment.metadata !== undefined,
+				hasUserInfoFallback:
+					!callbackFragment.metadata && !callbackFragment.metadataRedemptionId,
 				persisted: this._authMaterial.persistence !== null,
 			});
 
 			return snapshot;
 		} catch (error) {
-			this._recordFailureTrace("token_set.callback.failed", error);
+			this._recordFailureTrace("backend_oidc.callback.failed", error);
 			throw error;
 		}
 	}
 
-	/** Manually set auth state (e.g. from persisted storage or SSR bootstrap). */
-	restoreState(snapshot: AuthStateSnapshot): void {
-		this._throwIfNotOperational();
-		this._authMaterial.injectSnapshot(snapshot);
-		this._stateSignal.set(snapshot);
-		this._scheduleRefresh();
-		this._recordTrace("token_set.state.restored", {
-			sourceKind: BackendOidcModeStateRestoreSourceKind.Manual,
-		});
-	}
+	/**
+	 * Handle a callback from a JSON body response (body-return flow).
+	 *
+	 * Unlike {@link handleCallback}, this method accepts the parsed JSON object
+	 * from a `callback_body_return` (200 OK) response:
+	 *
+	 * - Metadata is embedded inline — no redemption round-trip
+	 * - No URL fragment parsing
+	 *
+	 * Use this when the server uses `callback_body_return` and the client
+	 * receives the JSON body directly (e.g. in a single-page app that POSTs
+	 * the code to the backend and reads the 200 OK response).
+	 */
+	async handleCallbackBody(
+		body: Record<string, unknown>,
+	): Promise<AuthStateSnapshot> {
+		this._recordTrace("backend_oidc.callback.started");
 
-	/** Restore auth state from `runtime.persistentStore` when available. */
-	async restorePersistedState(): Promise<AuthStateSnapshot | null> {
-		this._throwIfNotOperational();
-
-		if (!this._authMaterial.persistence) {
-			return null;
-		}
-
-		let snapshot: AuthStateSnapshot | null;
 		try {
-			snapshot = await this._authMaterial.restoreFromPersistence();
-		} catch (error) {
-			let cleared = false;
-			try {
-				await this._authMaterial.persistence.clear();
-				cleared = true;
-			} catch (clearError) {
-				this._runtime.logger?.log({
-					level: LogLevel.Warn,
-					message: "Failed to clear invalid persisted token-set state",
-					scope: TRACE_SCOPE,
-					code: "token_set.persistence.clear_failed",
-					attributes: describeError(clearError),
+			this._throwIfNotOperational();
+
+			const callbackBody = parseBackendOidcModeCallbackBody(body);
+			if (!callbackBody) {
+				throw new ClientError({
+					kind: ClientErrorKind.Protocol,
+					message: "Callback response body missing access_token or id_token",
+					code: "backend_oidc.callback.missing_access_token",
+					source: TRACE_SCOPE,
 				});
 			}
 
+			// Resolve metadata: inline → redemption → userInfo fallback.
+			const cbTokenSnapshot = callbackReturnsToTokenSnapshot(callbackBody);
+			const metadata = await this._resolveMetadata({
+				inlineMetadata: callbackBody.metadata,
+				metadataRedemptionId: callbackBody.metadataRedemptionId,
+				baseMetadata: {},
+				accessToken: cbTokenSnapshot.accessToken,
+				idToken: cbTokenSnapshot.idToken,
+			});
+
+			this._throwIfNotOperational();
+
+			const snapshot: AuthStateSnapshot = {
+				tokens: cbTokenSnapshot,
+				metadata,
+			};
+
+			await this._applySnapshot(snapshot);
+
 			this._runtime.logger?.log({
-				level: LogLevel.Warn,
-				message: "Discarded invalid persisted token-set state",
+				level: LogLevel.Info,
+				message: "Auth state initialized from callback body",
 				scope: TRACE_SCOPE,
-				code: "token_set.persistence.discarded",
-				attributes: {
-					cleared,
-					...describeError(error),
-				},
 			});
-			this._recordFailureTrace("token_set.state.restore_discarded", error, {
-				cleared,
+
+			this._recordTrace("backend_oidc.callback.succeeded", {
+				hasMetadataRedemption: callbackBody.metadataRedemptionId !== undefined,
+				hasInlineMetadata: callbackBody.metadata !== undefined,
+				hasUserInfoFallback:
+					!callbackBody.metadata && !callbackBody.metadataRedemptionId,
+				persisted: this._authMaterial.persistence !== null,
 			});
-			return null;
+
+			return snapshot;
+		} catch (error) {
+			this._recordFailureTrace("backend_oidc.callback.failed", error);
+			throw error;
 		}
-
-		this._throwIfNotOperational();
-
-		if (!snapshot) {
-			return null;
-		}
-
-		this._stateSignal.set(snapshot);
-		this._scheduleRefresh();
-		this._recordTrace("token_set.state.restored", {
-			sourceKind: BackendOidcModeStateRestoreSourceKind.PersistentStore,
-		});
-
-		return snapshot;
-	}
-
-	/** Explicitly clear persisted auth state without disposing the client. */
-	async clearPersistedState(): Promise<void> {
-		if (!this._authMaterial.persistence) {
-			return;
-		}
-
-		await this._authMaterial.persistence.clear();
-	}
-
-	/** Clear current in-memory auth state and optionally persisted state. */
-	async clearState(options: { clearPersisted?: boolean } = {}): Promise<void> {
-		this._throwIfNotOperational();
-
-		this._cancelRefresh("clear_state");
-		await this._authMaterial.clearState(options);
-		this._stateSignal.set(null);
-
-		this._recordTrace("token_set.state.cleared", {
-			clearPersisted: options.clearPersisted ?? true,
-		});
 	}
 
 	/**
 	 * Attempt to refresh the current token set.
 	 *
-	 * Protocol: The server's refresh endpoint responds with a 302 redirect
-	 * whose Location header contains a URL with token data in the fragment.
+	 * Protocol: The server's `refresh_body_return` endpoint responds with
+	 * 200 OK and a JSON body containing the token delta. This avoids the
+	 * 302 → fragment pattern that fetch() cannot follow across domains.
 	 */
 	async refresh(options?: {
 		cancellationToken?: CancellationTokenTrait;
@@ -283,7 +249,7 @@ export class BackendOidcModeClient {
 			return null;
 		}
 
-		this._recordTrace("token_set.refresh.started", {
+		this._recordTrace("backend_oidc.refresh.started", {
 			hasIdToken: current.tokens.idToken !== undefined,
 		});
 
@@ -309,52 +275,36 @@ export class BackendOidcModeClient {
 
 			this._throwIfNotOperational();
 
-			if (response.status === 302 || response.status === 303) {
-				const location = response.headers.location;
-				if (!location) {
+			if (response.status === 200 && response.body) {
+				const refreshBody = parseBackendOidcModeRefreshBody(
+					response.body as Record<string, unknown>,
+				);
+				if (!refreshBody) {
 					throw new ClientError({
 						kind: ClientErrorKind.Protocol,
-						message: "Refresh redirect missing Location header",
-						code: "refresh.missing_location",
+						message: "Refresh response body missing access_token",
+						code: "backend_oidc.refresh.missing_access_token",
 						source: TRACE_SCOPE,
 					});
 				}
 
-				const fragmentIndex = location.indexOf("#");
-				if (fragmentIndex === -1) {
-					throw new ClientError({
-						kind: ClientErrorKind.Protocol,
-						message: "Refresh redirect Location has no fragment",
-						code: "refresh.missing_fragment",
-						source: TRACE_SCOPE,
-					});
-				}
-
-				const fragment = location.substring(fragmentIndex + 1);
-				const refreshFragment = parseBackendOidcModeRefreshFragment(fragment);
-				if (!refreshFragment) {
-					throw new ClientError({
-						kind: ClientErrorKind.Protocol,
-						message: "Refresh fragment missing access_token",
-						code: "refresh.missing_access_token",
-						source: TRACE_SCOPE,
-					});
-				}
-
-				let metadata = current.metadata;
-				if (refreshFragment.metadataRedemptionId) {
-					const redeemed = await this.redeemMetadata(
-						refreshFragment.metadataRedemptionId,
-					);
-					if (redeemed) {
-						metadata = redeemed.metadata as AuthStateMetadataSnapshot;
-					}
-				}
+				// Resolve metadata: inline → redemption → userInfo fallback.
+				// For refresh the base is the current metadata snapshot (merge)
+				// rather than empty.
+				const metadata = await this._resolveMetadata({
+					inlineMetadata: refreshBody.metadata
+						? { ...current.metadata, ...refreshBody.metadata }
+						: undefined,
+					metadataRedemptionId: refreshBody.metadataRedemptionId,
+					baseMetadata: current.metadata,
+					accessToken: refreshBody.accessToken,
+					idToken: refreshBody.idToken ?? current.tokens.idToken,
+				});
 
 				this._throwIfNotOperational();
 
 				const newSnapshot = await this._authMaterial.applyDelta(
-					refreshFragmentToTokenDelta(refreshFragment),
+					refreshReturnsToTokenDelta(refreshBody),
 					{ metadata },
 				);
 				this._stateSignal.set(newSnapshot);
@@ -366,9 +316,11 @@ export class BackendOidcModeClient {
 					scope: TRACE_SCOPE,
 				});
 
-				this._recordTrace("token_set.refresh.succeeded", {
-					hasMetadataRedemption:
-						refreshFragment.metadataRedemptionId !== undefined,
+				this._recordTrace("backend_oidc.refresh.succeeded", {
+					hasMetadataRedemption: refreshBody.metadataRedemptionId !== undefined,
+					hasInlineMetadata: refreshBody.metadata !== undefined,
+					hasUserInfoFallback:
+						!refreshBody.metadata && !refreshBody.metadataRedemptionId,
 					persisted: this._authMaterial.persistence !== null,
 				});
 
@@ -377,14 +329,86 @@ export class BackendOidcModeClient {
 
 			throw ClientError.fromHttpResponse(response.status, response.body);
 		} catch (error) {
-			this._recordFailureTrace("token_set.refresh.failed", error);
+			this._recordFailureTrace("backend_oidc.refresh.failed", error);
 			throw error;
 		}
 	}
 
-	/** Get the current bearer authorization header value. */
-	authorizationHeader(): string | null {
-		return this._authMaterial.authorizationHeader;
+	/**
+	 * Resolve auth-state metadata for a callback or refresh result.
+	 *
+	 * Resolution order (first match wins):
+	 *
+	 * 1. **Inline** — server embedded metadata directly in the response body.
+	 * 2. **Redemption** — server returned a one-time redemption ID; fetch from
+	 *    the metadata-redeem endpoint.
+	 * 3. **UserInfo fallback** — neither inline metadata nor a redemption ID is
+	 *    present; call `/user-info` and populate `metadata.principal` from the
+	 *    response. This costs one extra request but guarantees that `principal`
+	 *    is always populated after authentication.
+	 */
+	private async _resolveMetadata(opts: {
+		/** Already-resolved inline metadata (skip all network calls). */
+		inlineMetadata?: AuthStateMetadataSnapshot;
+		/** One-time redemption ID from the response body. */
+		metadataRedemptionId?: string;
+		/** Starting metadata to merge into (e.g. current snapshot for refresh). */
+		baseMetadata: AuthStateMetadataSnapshot;
+		/** Access token to use for the userInfo fallback. */
+		accessToken: string;
+		/** ID token to include in the userInfo request body. */
+		idToken?: string;
+	}): Promise<AuthStateMetadataSnapshot> {
+		const {
+			inlineMetadata,
+			metadataRedemptionId,
+			baseMetadata,
+			accessToken,
+			idToken,
+		} = opts;
+
+		// Priority 1: inline metadata already present.
+		if (inlineMetadata) {
+			return inlineMetadata;
+		}
+
+		// Priority 2: one-time redemption ID.
+		if (metadataRedemptionId) {
+			const redeemed = await this.redeemMetadata(metadataRedemptionId);
+			if (redeemed) {
+				return redeemed.metadata as AuthStateMetadataSnapshot;
+			}
+		}
+
+		// Priority 3: userInfo fallback — populate principal from /user-info.
+		// We never call this if we already have a principal in baseMetadata,
+		// to avoid a redundant request on servers that deliver metadata via
+		// inline/redemption only on the first login.
+		if (!baseMetadata.principal) {
+			try {
+				const userInfo = await this._fetchUserInfoRaw(accessToken, idToken);
+				return {
+					...baseMetadata,
+					principal: {
+						subject: userInfo.subject,
+						displayName: userInfo.displayName,
+						picture: userInfo.picture,
+						issuer: userInfo.issuer,
+						claims: userInfo.claims,
+					},
+				};
+			} catch {
+				// Best-effort: a failed userInfo call should not break the auth flow.
+				this._runtime.logger?.log({
+					level: LogLevel.Warn,
+					message:
+						"userInfo fallback failed; proceeding without principal metadata",
+					scope: TRACE_SCOPE,
+				});
+			}
+		}
+
+		return baseMetadata;
 	}
 
 	/** Redeem metadata from the server by redemption ID. */
@@ -392,7 +416,7 @@ export class BackendOidcModeClient {
 		redemptionId: string,
 		options?: { cancellationToken?: CancellationTokenTrait },
 	): Promise<BackendOidcModeMetadataRedemptionResponse | null> {
-		this._recordTrace("token_set.metadata_redemption.started", {
+		this._recordTrace("backend_oidc.metadata_redemption.started", {
 			redemptionId,
 		});
 
@@ -416,7 +440,7 @@ export class BackendOidcModeClient {
 			this._throwIfNotOperational();
 
 			if (response.status === 200 && response.body) {
-				this._recordTrace("token_set.metadata_redemption.succeeded", {
+				this._recordTrace("backend_oidc.metadata_redemption.succeeded", {
 					redemptionId,
 					found: true,
 				});
@@ -424,7 +448,7 @@ export class BackendOidcModeClient {
 			}
 
 			if (response.status === 404) {
-				this._recordTrace("token_set.metadata_redemption.succeeded", {
+				this._recordTrace("backend_oidc.metadata_redemption.succeeded", {
 					redemptionId,
 					found: false,
 				});
@@ -433,9 +457,13 @@ export class BackendOidcModeClient {
 
 			throw ClientError.fromHttpResponse(response.status, response.body);
 		} catch (error) {
-			this._recordFailureTrace("token_set.metadata_redemption.failed", error, {
-				redemptionId,
-			});
+			this._recordFailureTrace(
+				"backend_oidc.metadata_redemption.failed",
+				error,
+				{
+					redemptionId,
+				},
+			);
 			throw error;
 		}
 	}
@@ -449,7 +477,7 @@ export class BackendOidcModeClient {
 	async fetchUserInfo(options?: {
 		cancellationToken?: CancellationTokenTrait;
 	}): Promise<BackendOidcModeUserInfoResponse> {
-		this._recordTrace("token_set.user_info.started");
+		this._recordTrace("backend_oidc.user_info.started");
 
 		try {
 			this._throwIfNotOperational();
@@ -459,207 +487,57 @@ export class BackendOidcModeClient {
 				throw new ClientError({
 					kind: ClientErrorKind.Unauthenticated,
 					message: "Cannot fetch user info without access_token and id_token",
-					code: "token_set.user_info.unauthenticated",
+					code: "backend_oidc.user_info.unauthenticated",
 					source: TRACE_SCOPE,
 				});
 			}
 
-			const response = await this._runtime.transport.execute({
-				url: this._baseUrl + this._userInfoPath,
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					authorization: `Bearer ${current.tokens.accessToken}`,
-				},
-				body: JSON.stringify({
-					id_token: current.tokens.idToken,
-				}),
-				cancellationToken: createLinkedCancellationToken(
-					...(options?.cancellationToken
-						? [this._rootCancellation.token, options.cancellationToken]
-						: [this._rootCancellation.token]),
-				),
-			});
+			const result = await this._fetchUserInfoRaw(
+				current.tokens.accessToken,
+				current.tokens.idToken,
+				options,
+			);
 
-			this._throwIfNotOperational();
-
-			if (response.status === 200 && response.body) {
-				this._recordTrace("token_set.user_info.succeeded");
-				return response.body as BackendOidcModeUserInfoResponse;
-			}
-
-			throw ClientError.fromHttpResponse(response.status, response.body);
+			this._recordTrace("backend_oidc.user_info.succeeded");
+			return result;
 		} catch (error) {
-			this._recordFailureTrace("token_set.user_info.failed", error);
+			this._recordFailureTrace("backend_oidc.user_info.failed", error);
 			throw error;
 		}
 	}
 
-	/** Cancel any pending refresh and release client resources. */
-	dispose(): void {
-		if (this._disposed) {
-			return;
-		}
-
-		this._disposed = true;
-		this._cancelRefresh("dispose");
-		this._rootCancellation.cancel(
-			new ClientError({
-				kind: ClientErrorKind.Cancelled,
-				code: "token_set.client_disposed",
-				message: "BackendOidcModeClient was disposed",
-				source: TRACE_SCOPE,
+	/**
+	 * Raw userInfo HTTP call — accepts explicit tokens rather than reading
+	 * from current state. Used by `fetchUserInfo` and by `_resolveMetadata`
+	 * as a best-effort fallback when no metadata is delivered with the token
+	 * response.
+	 */
+	private async _fetchUserInfoRaw(
+		accessToken: string,
+		idToken?: string,
+		options?: { cancellationToken?: CancellationTokenTrait },
+	): Promise<BackendOidcModeUserInfoResponse> {
+		const response = await this._runtime.transport.execute({
+			url: this._baseUrl + this._userInfoPath,
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				authorization: `Bearer ${accessToken}`,
+			},
+			body: JSON.stringify({
+				id_token: idToken,
 			}),
-		);
-		this._stateSignal.set(null);
-		this._recordTrace("token_set.disposed");
-	}
-
-	// --- Private helpers ---
-
-	private async _applySnapshot(snapshot: AuthStateSnapshot): Promise<void> {
-		await this._authMaterial.applySnapshot(snapshot);
-		this._stateSignal.set(snapshot);
-		this._scheduleRefresh();
-	}
-
-	private _throwIfNotOperational(): void {
-		if (this._disposed) {
-			this._rootCancellation.token.throwIfCancellationRequested();
-		}
-
-		this._rootCancellation.token.throwIfCancellationRequested();
-	}
-
-	private _scheduleRefresh(): void {
-		if (this._rootCancellation.token.isCancellationRequested) {
-			return;
-		}
-
-		this._cancelRefresh("reschedule");
-
-		const current = this._authMaterial.snapshot;
-		if (
-			!current?.tokens.accessTokenExpiresAt ||
-			!current.tokens.refreshMaterial
-		) {
-			return;
-		}
-
-		const expiresAt = new Date(current.tokens.accessTokenExpiresAt).getTime();
-		const refreshAt = expiresAt - this._refreshWindowMs;
-		const now = this._runtime.clock.now();
-		const remainingMs = refreshAt - now;
-
-		if (remainingMs <= 0) {
-			this._recordTrace("token_set.refresh.fired", {
-				trigger: BackendOidcModeRefreshTriggerKind.Immediate,
-			});
-			this.refresh().catch(() => {});
-			return;
-		}
-
-		const delayMs = Math.min(remainingMs, MAX_SCHEDULE_SLICE_MS);
-		this._recordTrace("token_set.refresh.scheduled", {
-			refreshAt,
-			delayMs,
-			remainingMs,
-			segmented: delayMs < remainingMs,
+			cancellationToken: createLinkedCancellationToken(
+				...(options?.cancellationToken
+					? [this._rootCancellation.token, options.cancellationToken]
+					: [this._rootCancellation.token]),
+			),
 		});
 
-		this._refreshHandle = this._runtime.scheduler.setTimeout(delayMs, () => {
-			if (this._rootCancellation.token.isCancellationRequested) {
-				return;
-			}
-
-			const nextRemainingMs = refreshAt - this._runtime.clock.now();
-			this._recordTrace("token_set.refresh.fired", {
-				trigger:
-					nextRemainingMs > 0
-						? BackendOidcModeRefreshTriggerKind.Slice
-						: BackendOidcModeRefreshTriggerKind.Deadline,
-				remainingMs: Math.max(0, nextRemainingMs),
-			});
-
-			if (nextRemainingMs > 0) {
-				this._scheduleRefresh();
-				return;
-			}
-
-			this.refresh().catch(() => {});
-		});
-	}
-
-	private _cancelRefresh(reason: string): void {
-		if (!this._refreshHandle) {
-			return;
+		if (response.status === 200 && response.body) {
+			return response.body as BackendOidcModeUserInfoResponse;
 		}
 
-		this._refreshHandle.cancel();
-		this._refreshHandle = null;
-		this._recordTrace("token_set.refresh.cancelled", {
-			reason,
-		});
+		throw ClientError.fromHttpResponse(response.status, response.body);
 	}
-
-	private _recordTrace(
-		type: string,
-		attributes?: Record<string, unknown>,
-	): void {
-		this._runtime.traceSink?.record({
-			type,
-			at: this._runtime.clock.now(),
-			scope: TRACE_SCOPE,
-			source: TRACE_SOURCE,
-			attributes,
-		});
-	}
-
-	private _recordFailureTrace(
-		type: string,
-		error: unknown,
-		attributes?: Record<string, unknown>,
-	): void {
-		this._recordTrace(type, {
-			...attributes,
-			...describeError(error),
-		});
-	}
-}
-
-function describeError(error: unknown): Record<string, unknown> {
-	if (
-		typeof error === "object" &&
-		error !== null &&
-		"kind" in error &&
-		"code" in error &&
-		"recovery" in error
-	) {
-		const clientError = error as Pick<
-			ClientError,
-			"kind" | "code" | "recovery"
-		>;
-		return {
-			errorKind: clientError.kind,
-			errorCode: clientError.code,
-			recovery: clientError.recovery,
-		};
-	}
-
-	if (
-		typeof error === "object" &&
-		error !== null &&
-		"name" in error &&
-		"message" in error
-	) {
-		const genericError = error as Pick<Error, "name" | "message">;
-		return {
-			errorName: genericError.name,
-			errorMessage: genericError.message,
-		};
-	}
-
-	return {
-		errorValue: String(error),
-	};
 }

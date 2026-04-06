@@ -23,6 +23,10 @@
 		"./orchestration": {
 			"types": "./dist/orchestration/index.d.mts",
 			"import": "./dist/orchestration/index.mjs"
+		},
+		"./access-token-substrate": {
+			"types": "./dist/access-token-substrate/index.d.mts",
+			"import": "./dist/access-token-substrate/index.mjs"
 		}
 	},
 	"files": [
