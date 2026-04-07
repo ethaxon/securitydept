@@ -1,4 +1,8 @@
 export { SessionContextClient } from "./client";
+export {
+	SessionInfoSchema,
+	SessionUserInfoResponseSchema,
+} from "./schemas";
 export type {
 	SessionContextClientConfig,
 	SessionInfo,

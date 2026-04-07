@@ -8,9 +8,17 @@
 			"types": "./dist/index.d.mts",
 			"import": "./dist/index.mjs"
 		},
+		"./web": {
+			"types": "./dist/web/index.d.mts",
+			"import": "./dist/web/index.mjs"
+		},
 		"./react": {
 			"types": "./dist/react/index.d.mts",
 			"import": "./dist/react/index.mjs"
+		},
+		"./server": {
+			"types": "./dist/server/index.d.mts",
+			"import": "./dist/server/index.mjs"
 		}
 	},
 	"files": [

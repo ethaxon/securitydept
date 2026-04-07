@@ -257,3 +257,227 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use tower_sessions::Session;
+    use tower_sessions_memory_store::MemoryStore;
+    use url::Url;
+
+    use super::*;
+    use crate::SessionContextConfig;
+
+    /// Minimal in-memory PendingOauthStore for testing without the moka
+    /// feature.
+    #[derive(Clone)]
+    struct TestPendingOauthStore;
+
+    impl securitydept_oidc_client::PendingOauthStore for TestPendingOauthStore {
+        type Config = TestPendingOauthStoreConfig;
+
+        fn from_config(_config: &Self::Config) -> Self {
+            Self
+        }
+
+        async fn insert(
+            &self,
+            _state: String,
+            _nonce: String,
+            _code_verifier: Option<String>,
+            _extra_data: Option<serde_json::Value>,
+        ) -> securitydept_oidc_client::OidcResult<()> {
+            Ok(())
+        }
+
+        async fn take(
+            &self,
+            _state: &str,
+        ) -> securitydept_oidc_client::OidcResult<Option<securitydept_oidc_client::PendingOauth>>
+        {
+            Ok(None)
+        }
+    }
+
+    #[derive(Clone, Default, serde::Deserialize)]
+    struct TestPendingOauthStoreConfig;
+
+    impl securitydept_oidc_client::PendingOauthStoreConfig for TestPendingOauthStoreConfig {}
+
+    fn test_session() -> Session {
+        let store = Arc::new(MemoryStore::default());
+        Session::new(None, store, None)
+    }
+
+    fn test_base_url() -> Url {
+        Url::parse("https://auth.example.com").unwrap()
+    }
+
+    // -----------------------------------------------------------------------
+    // DevSessionAuthService
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn dev_login_writes_session_and_redirects() {
+        let config = SessionContextConfig::default();
+        let service =
+            DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
+        let session = test_session();
+        let base_url = test_base_url();
+
+        let response = service
+            .login(session.clone(), &base_url)
+            .await
+            .expect("login should succeed");
+
+        // Should redirect to the configured post_auth_redirect (default: "/").
+        assert_eq!(response.status, http::StatusCode::FOUND);
+
+        // Session should now contain the dev principal.
+        let handle = SessionContextSession::from_config(session, &config);
+        let context = handle
+            .get::<HashMap<String, serde_json::Value>>()
+            .await
+            .expect("session read should succeed")
+            .expect("session context should exist after login");
+
+        assert_eq!(context.principal.display_name, "dev");
+        assert_eq!(
+            context.principal.claims.get("oidc_enabled"),
+            Some(&serde_json::Value::Bool(false))
+        );
+    }
+
+    #[tokio::test]
+    async fn dev_logout_flushes_session() {
+        let config = SessionContextConfig::default();
+        let service =
+            DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
+        let session = test_session();
+        let base_url = test_base_url();
+
+        // Login first to populate the session.
+        service
+            .login(session.clone(), &base_url)
+            .await
+            .expect("login should succeed");
+
+        // Verify principal exists before logout.
+        let handle = SessionContextSession::from_config(session.clone(), &config);
+        assert!(
+            handle
+                .get::<HashMap<String, serde_json::Value>>()
+                .await
+                .expect("session read should succeed")
+                .is_some(),
+            "session context should exist before logout"
+        );
+
+        // Logout.
+        let result = service.logout(session.clone()).await;
+        assert!(result.is_ok(), "logout should succeed");
+
+        // After flush, a fresh read from the same session should find nothing
+        // (since flush clears the entire session record from the store).
+        let handle_post = SessionContextSession::from_config(session, &config);
+        let context_post = handle_post
+            .get::<HashMap<String, serde_json::Value>>()
+            .await
+            .expect("session read should succeed");
+        assert!(
+            context_post.is_none(),
+            "session context should be empty after logout/flush"
+        );
+    }
+
+    #[tokio::test]
+    async fn dev_me_returns_context_after_login() {
+        let config = SessionContextConfig::default();
+        let service =
+            DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
+        let session = test_session();
+        let base_url = test_base_url();
+
+        // Before login, me() should fail with MissingContext.
+        let me_before = service.me(session.clone()).await;
+        assert!(
+            me_before.is_err(),
+            "me() should fail when no session context exists"
+        );
+
+        // Login.
+        service
+            .login(session.clone(), &base_url)
+            .await
+            .expect("login should succeed");
+
+        // After login, me() should return the dev context.
+        let context = service
+            .me(session.clone())
+            .await
+            .expect("me() should succeed after login");
+
+        assert_eq!(context.principal.display_name, "dev");
+    }
+
+    // -----------------------------------------------------------------------
+    // OidcSessionAuthService (without OIDC client = dev fallback)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn oidc_service_without_client_falls_back_to_dev() {
+        let config = SessionContextConfig::default();
+        let service = OidcSessionAuthService::<TestPendingOauthStore>::new(
+            None,
+            &config,
+        )
+        .expect("OidcSessionAuthService should construct");
+        let session = test_session();
+        let base_url = test_base_url();
+
+        let response = service
+            .login(session.clone(), &base_url)
+            .await
+            .expect("login should succeed via dev fallback");
+
+        // Should redirect (dev fallback behavior).
+        assert_eq!(response.status, http::StatusCode::FOUND);
+
+        // Session should contain the dev principal.
+        let context = service
+            .me(session.clone())
+            .await
+            .expect("me() should succeed after dev-fallback login");
+        assert_eq!(context.principal.display_name, "dev");
+    }
+
+    #[tokio::test]
+    async fn oidc_service_logout_flushes_session() {
+        let config = SessionContextConfig::default();
+        let service = OidcSessionAuthService::<TestPendingOauthStore>::new(
+            None,
+            &config,
+        )
+        .expect("OidcSessionAuthService should construct");
+        let session = test_session();
+        let base_url = test_base_url();
+
+        // Login first.
+        service
+            .login(session.clone(), &base_url)
+            .await
+            .expect("login should succeed");
+
+        // Logout.
+        let result = service.logout(session.clone()).await;
+        assert!(result.is_ok(), "logout should succeed");
+
+        // me() should fail after logout.
+        let me_after = service.me(session.clone()).await;
+        assert!(
+            me_after.is_err(),
+            "me() should fail after logout/flush"
+        );
+    }
+}

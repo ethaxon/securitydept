@@ -37,6 +37,7 @@ import {
 	AuthSourceKind as AuthSourceKindFromRoot,
 	bearerHeader,
 	bearerHeader as bearerHeaderFromRoot,
+	type CreateAuthStatePersistenceOptions,
 	createAuthorizedTransport,
 	createAuthStatePersistence,
 	createAuthStatePersistence as createAuthStatePersistenceFromRoot,
@@ -79,11 +80,12 @@ describe("token orchestration / subpath entry (@.../orchestration)", () => {
 
 	it("composes persistence + bearer via subpath — no OIDC-mediated sealed fields", async () => {
 		const store = createInMemoryRecordStore();
-		const persistence = createAuthStatePersistence({
+		const persistenceOptions: CreateAuthStatePersistenceOptions = {
 			store,
 			key: "subpath-adopter:v1",
 			now: Date.now,
-		});
+		};
+		const persistence = createAuthStatePersistence(persistenceOptions);
 
 		const snapshot: AuthSnapshot = {
 			tokens: { accessToken: "oidc-at", refreshMaterial: "oidc-rt" },

@@ -37,14 +37,14 @@ const CONTRACTS: PackageContract[] = [
 	{
 		dir: "basic-auth-context-client",
 		name: "@securitydept/basic-auth-context-client",
-		exportKeys: [".", "./react", "./web"],
+		exportKeys: [".", "./react", "./web", "./server"],
 		reactAdapter: true,
 		experimental: false,
 	},
 	{
 		dir: "session-context-client",
 		name: "@securitydept/session-context-client",
-		exportKeys: [".", "./react"],
+		exportKeys: [".", "./web", "./react", "./server"],
 		reactAdapter: true,
 		experimental: false,
 	},

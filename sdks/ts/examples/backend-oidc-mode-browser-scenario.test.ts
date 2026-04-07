@@ -4,9 +4,12 @@ import {
 	FakeScheduler,
 	FakeTransport,
 } from "@securitydept/test-utils";
+import type { BackendOidcModeRefreshOptions } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	BackendOidcModeBootstrapSource,
+	type BootstrapBackendOidcModeClientOptions,
 	bootstrapBackendOidcModeClient,
+	type CreateBackendOidcModeCallbackFragmentStoreOptions,
 	createBackendOidcModeBrowserClient,
 	createBackendOidcModeCallbackFragmentStore,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
@@ -64,17 +67,23 @@ describe("external backend-oidc-mode browser scenario", () => {
 			clock,
 			scheduler,
 		});
+		const fragmentStoreOptions: CreateBackendOidcModeCallbackFragmentStoreOptions =
+			{ sessionStore };
 		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(sessionStore);
+			createBackendOidcModeCallbackFragmentStore(fragmentStoreOptions);
 
-		const emptyBootstrap = await bootstrapBackendOidcModeClient(client, {
+		const emptyBootstrapOptions: BootstrapBackendOidcModeClientOptions = {
 			location: {
 				href: "https://app.example.com/oidc-mediated",
 				hash: "",
 			},
 			history: createHistoryRecorder(),
 			callbackFragmentStore,
-		});
+		};
+		const emptyBootstrap = await bootstrapBackendOidcModeClient(
+			client,
+			emptyBootstrapOptions,
+		);
 
 		expect(emptyBootstrap).toEqual({
 			source: BackendOidcModeBootstrapSource.Empty,
@@ -101,7 +110,8 @@ describe("external backend-oidc-mode browser scenario", () => {
 		expect(callbackHistory.replacedUrl).toBe("/oidc-mediated?tab=demo");
 		expect(client.authorizationHeader()).toBe("Bearer callback-at");
 
-		const refreshed = await client.refresh();
+		const refreshOptions: BackendOidcModeRefreshOptions = {};
+		const refreshed = await client.refresh(refreshOptions);
 
 		expect(refreshed?.tokens.accessToken).toBe("refreshed-at");
 		expect(refreshed?.tokens.refreshMaterial).toBe("refreshed-rt");

@@ -120,6 +120,51 @@ Current TypeScript build direction:
 
 `apps/webui` should keep using Vitebut Vite should not become the primary build pipeline for SDK packages.
 
+<a id="typescript-sdk-coding-standards"></a>
+## TypeScript SDK Coding Standards
+
+These rules apply to all TypeScript packages under `sdks/ts/`. They are summarized in `AGENTS.md`; this section provides the full rationale for reference and review.
+
+### Enum-like String Domains
+
+For string-valued constants with a bounded domain, prefer:
+
+```ts
+export const Foo = {
+  Bar: "bar",
+  Baz: "baz",
+} as const;
+export type Foo = (typeof Foo)[keyof typeof Foo];
+```
+
+This keeps runtime output simple (plain object, no class), stays maximally compatible with JS consumers and string protocols (JSON, discriminants), and still gives strong TypeScript completions and exhaustiveness checking.
+
+Avoid TypeScript `enum` — it emits a runtime IIFE, interops poorly with `isolatedModules`, and confuses `as const` narrowing.
+
+### Named Constants for Public Contracts
+
+For public contracts, high-frequency discriminants, and repeated telemetry vocabulary with stable meaning, extract named constants instead of scattering raw strings. Examples: error `code` strings, trace event names, log scope tags.
+
+Do this when it improves consistency and discoverability. Do **not** apply it mechanically — one-off UI copy or ad-hoc local text stays inline.
+
+### API Shape: Options Object First
+
+<a id="ts-sdk-api-shape"></a>
+
+Public SDK functions default to an **`options` object** for any optional parameter set.
+
+A bare positional second parameter is only acceptable when **both** conditions hold:
+
+1. The parameter's semantics are self-evident without a name (e.g., a simple string key or a required primary value).
+2. It is the sole high-frequency argument that yields clear ergonomic benefit at the call site.
+
+A single optional field from a wider options bucket does **not** qualify as a positional overload just because it was historically the only parameter.
+
+**When an existing API is widened** with new options that cannot be expressed positionally, convert the entire second argument to an options object — even if it is a breaking change. This is the intentional direction for the SDK surface.
+
+**Rationale — established in Iteration 76:**  
+`resetBackendOidcModeBrowserState` previously took `(client, callbackFragmentStore?)`. When `callbackFragmentKey` and `sessionStore` were added, the second parameter was converted to `(client, options?)`. `callbackFragmentStore` is an `EphemeralFlowStore<string>` — an options-bucket field, not a self-evident positional value — so it does not meet the positional exception threshold. The resulting breaking change was accepted as an intentional API style unification.
+
 ## Foundation Design
 
 `foundation` is the shared design and infrastructure layer. It should not own auth-context-specific state machines.
@@ -276,23 +321,29 @@ Recommended layers:
 - auth-context config
 - adapter / framework config
 
-Example:
+Example (current real API):
 
 ```ts
-createBackendOidcModeClient({
-  runtime: {
-    transport,
-    persistence,
-    scheduler,
-    clock,
+// Direct client construction (full control)
+import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
+
+const client = new BackendOidcModeClient(
+  {
+    baseUrl: "https://auth.example.com",
+    loginPath: "/auth/oidc/login",    // SDK default; adopters may override
+    refreshPath: "/auth/oidc/refresh",
+    refreshWindowMs: 60_000,
   },
-  auth: {
-    authorizePath,
-    callbackPath,
-    refreshPath,
-    refreshWindowMs,
-  },
-})
+  runtime,
+);
+
+// Browser convenience entry (see /backend-oidc-mode/web)
+import { createBackendOidcModeBrowserClient } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+
+const browserClient = createBackendOidcModeBrowserClient({
+  baseUrl: "https://auth.example.com",
+  loginPath: "/auth/token-set/login", // adopter-specific override
+});
 ```
 
 Validation:
@@ -554,9 +605,14 @@ The current status should stay explicit:
 - this is a high-value downstream reference-case direction that should inform future auth stack design (frontend `token-set-context-client`, backend `securitydept-token-set-context`)
 - but it is **not part of the currently verified v1 contract**
 
-## Server Support
+## SSR / Server-Side Support
 
-Server support should not mean “a separate server-only client core”. It should still build on the same portable capability model.
+In this guide, "server-side support" means TypeScript SDK behavior for SSR /
+server-render hosts and server request / response handling boundaries. It does
+not mean Rust route-facing service crates.
+
+Server-side support should not mean "a separate server-only client core". It
+should still build on the same portable capability model.
 
 The frontend `token-set-context-client` orchestration / lifecycle substrate (token snapshot, persistence, transport projection) is designed as cross-mode shared infrastructure. The Rust crate `securitydept-token-set-context` is better read as:
 
@@ -572,6 +628,9 @@ Within that structure, each `*_mode` module owns the config / contract / runtime
 ### `basic-auth-context` and `session-context`
 
 They should support redirect-aware SSR / server request handling.
+
+This is a direction for the TS SDK surface, not a statement that the current
+SDK already ships a fully productized SSR helper layer.
 
 The core is not browser navigation. The core is a neutral redirect instruction:
 
@@ -873,14 +932,14 @@ First internal module slice delivered:
 |---|---|
 | `orchestration/types.ts` | `TokenSnapshot`, `TokenDelta`, `AuthSnapshot`, `AuthPrincipal`, `AuthSource` — protocol-agnostic types |
 | `orchestration/token-ops.ts` | `mergeTokenDelta()`, `bearerHeader()` |
-| `orchestration/persistence.ts` | `createAuthStatePersistence()` |
+| `orchestration/persistence.ts` | `createAuthStatePersistence()` and strongly typed config `CreateAuthStatePersistenceOptions` |
 | `orchestration/auth-transport.ts` | `createAuthorizedTransport()` |
 | `orchestration/controller.ts` | `AuthMaterialController` / `createAuthMaterialController()` — thin control layer composing snapshot read/writepersistencebearertransport; provides `applyDelta()` for externally-driven renew/update |
 | `frontend-oidc-mode/types.ts` | `FrontendOidcModeClientConfig` / `FrontendOidcModeTokenResult` / `FrontendOidcModeAuthorizeResult` / `FrontendOidcModeUserInfo` — browser runtime config and protocol vocabulary |
 | `frontend-oidc-mode/client.ts` | `createFrontendOidcModeClient()` / `FrontendOidcModeClient` — wraps `oauth4webapi` for standard browser OIDC Authorization Code + PKCE flow |
 | `frontend-oidc-mode/contracts.ts` | `FrontendOidcModeConfigProjection` — Rust-aligned config projection plus adapters (`configProjectionToClientConfig`, `tokenResultToAuthSnapshot`) |
 | `access-token-substrate/contracts.ts` | `TokenPropagation` / `AccessTokenSubstrateIntegrationInfo` — shared substrate vocabulary |
-| `backend-oidc-mode/contracts.ts` | `BackendOidcModeConfigProjection` / `BackendOidcModeCallbackFragment` / `BackendOidcModeRefreshFragment` / `BackendOidcModeRefreshPayload` / `BackendOidcModeRefreshResult` / `BackendOidcModeUserInfoRequest` / `BackendOidcModeUserInfoResponse`; plus parsers and orchestration adapters |
+| `backend-oidc-mode/contracts.ts` | `BackendOidcModeCapabilities` / `BackendOidcModePreset` / `BackendOidcModeCallbackReturns` / `BackendOidcModeRefreshReturns` / `BackendOidcModeRefreshPayload` / `BackendOidcModeRefreshResult` / `BackendOidcModeUserInfoRequest` / `BackendOidcModeUserInfoResponse`; plus parsers and orchestration adapters |
 
 Existing v1 types such as `AuthTokenSnapshot` and `AuthStateSnapshot` are now re-export aliases of the orchestration types, fully backward compatible.
 
@@ -905,6 +964,7 @@ Current status:
   - `restoreState()` / `clearState()` / `restorePersistedState()` route through the controller
   - `authorizationHeader()` is served directly by the controller
   - `refresh()` success path routes through `_authMaterial.applyDelta()` for token mergepersistence
+  - Methods utilizing configuration objects now declare well-defined options contracts (such as `BackendOidcModeRefreshOptions`, `BackendOidcModeFetchUserInfoOptions`, and `BackendOidcModeMetadataRedemptionOptions`) safely exported from the canonical `backend-oidc-mode` subpath.
 - `/orchestration` should no longer be abstracted forward in isolation as the final frontend OIDC answer; the next shape decision should come from the three real cases: `oauth4webapi``oidc-client-ts`and the future `angular-auth-oidc-client` to calibrate the `frontend-oidc` mode implementation
 - the planned official `frontend-oidc` implementation still lives inside `token-set-context-client` (`/frontend-oidc-mode` subpath)wrapping `oauth4webapi` and reusing the same-package orchestration substrate. The backend-facing frontend entry is `/backend-oidc-mode`
 - the default expectation is continued evolution through subpaths / additive surface inside the same packagenot an immediate split into a parallel package
@@ -923,9 +983,10 @@ Current status:
 
 ### token-set-context-client v1 Scope Baseline
 
-Read `@securitydept/token-set-context-client` as a frozen browser-owned v1 baselinenot as an umbrella for every future custody model.
+Read `@securitydept/token-set-context-client` as a frozen browser-owned v1
+baseline, not as an umbrella for every future custody model.
 
-| In v1 scope | Outside v1 scope |
+| In the current baseline contract | Not part of the current baseline contract |
 |---|---|
 | browser-owned `backend-oidc` consumption | mixed-custody token family management |
 | callback returns parsingmetadata fallback | stateful BFF token ownership |
@@ -937,33 +998,73 @@ Read `@securitydept/token-set-context-client` as a frozen browser-owned v1 basel
 | `./web` browser bootstrap / callback returns capture / reset helpers |  |
 | minimal `./react` integration |  |
 
-Why these topics stay out of v1:
+The right-hand column does **not** mean "all deferred beyond 2.0".
+After the current `2.0-alpha` re-audit, these topics split into three groups:
+
+- `2.0` backlog: popup login, cross-tab / visibility lifecycle hardening, and multi-provider orchestration
+- `3.0` deferred: mixed-custody / BFF / server-side mediated token ownership
+- non-SDK surface by design: product-specific helpers, probes, and timeline UI
+
+Why these topics stay out of the current baseline contract:
 
 - mixed-custody / BFF / server-side mediated token ownership materially change the ownership model rather than extend the current one
 - larger browser lifecycle work belongs to later adapter hardeningnot the first root-contract freeze
 - app-specific helpers and probes depend on reference-app API shapes and product modelsso leaving them in `apps/webui` keeps the SDK surface understandable
 
-### Planned Features (Post-v1)
+### 2.0-alpha Re-audit of Unfinished Items
 
-#### Popup-based Login
+This guide mixes three kinds of content:
 
-Both `backend-oidc-mode` and `frontend-oidc-mode` currently support only redirect-based login (full-page navigation). Popup-based login — opening a popup window for OIDC authentication and relaying the result back to the opener via `postMessage` — is a planned post-v1 capability.
+- current implemented contract
+- design rules / intended architecture
+- unfinished but still intended product features
 
-Design direction:
+To reduce ambiguity during the current `2.0-alpha.x` stage, the following
+table is the authoritative re-audit view of the major unfinished items still
+mentioned in this document.
 
-- shared popup window management infrastructure in `@securitydept/client/web` (`openPopupChannel`, `computePopupFeatures`)
-- `postMessage`-based communication with type-discriminated payloads (`securitydept:backend-oidc:callback`, `securitydept:frontend-oidc:callback`)
-- callback relay scripts provided by the SDK for apps to embed in their popup callback pages (`relayBackendOidcCallback`, `relayFrontendOidcCallback`)
-- `backend-oidc-mode/web`: `popupLogin()` as a top-level function that opens a popup to the backend's login URL, waits for the relayed fragment via `postMessage`, then calls the existing `handleCallback()`
-- `frontend-oidc-mode`: `popupLogin()` as a method on `FrontendOidcModeClient` that combines `authorizeUrl()` → popup → `exchangeCode()` → claims check → persist
-- popup-blocked detection: reject with a specific error so the caller can fall back to redirect
-- `targetOrigin` validation on all `postMessage` listeners
+| Topic | Current audit status | Required direction before 2.0 GA |
+|---|---|---|
+| `@standard-schema` support | **Multi-path adoption implemented.** Foundation validation entry (`createSchema`, `validateWithSchema`, `validateWithSchemaSync`) in `@securitydept/client`. Real adoption: `session-context-client.fetchMe()`, `frontend-oidc-mode.parseConfigProjection()`, `BasicAuthContextClient` config validation, `parseBackendOidcModeCallbackBody` / `parseBackendOidcModeRefreshBody`. Behavioral evidence in `standard-schema-adoption.test.ts` and `standard-schema-expanded-adoption.test.ts`. | Incremental expansion to remaining cross-boundary payloads as needed. |
+| Scheduling and unified input sources | **Foundation baseline implemented.** `Scheduler` / `Clock` abstractions + default runtimes + new foundation helpers: `timer()`, `interval()`, `scheduleAt()`, `fromEventPattern()` in `@securitydept/client`. Browser adapter: `fromVisibilityChange()` in `@securitydept/client/web`. Real adoption: `FrontendOidcModeClient` metadata refresh uses `interval()`. | `fromSignal`, storage adapter, and cross-tab leader election remain deferred. |
+| `basic-auth-context-client` thin browser helper | **Implemented baseline.** Zone-aware login/logout URL construction, neutral redirect instructions, `./web` redirect helper, and focused tests already exist. | Keep thin; no large product-UI expansion required for 2.0. |
+| `session-context-client` login-trigger convenience | **Baseline implemented.** `loginWithRedirect()` convenience exists in `@securitydept/session-context-client/web`; behavior-level tests confirm pending redirect state and browser navigation. | Keep thin; expand only if adopter feedback requires additional convenience. |
+| Redirect-based token-set login convenience | **Baseline implemented.** `loginWithBackendOidcRedirect()` in `backend-oidc-mode/web` and `FrontendOidcModeClient.loginWithRedirect()` in `frontend-oidc-mode` provide one-shot redirect convenience; behavior-level tests cover both. | Keep thin; expand only if adopter feedback requires additional convenience. |
+| Popup-based login for `backend-oidc-mode` / `frontend-oidc-mode` | **Baseline implemented.** Shared popup infra (`openPopupWindow`, `waitForPopupRelay`, `relayPopupCallback`, `PopupErrorCode`) in `@securitydept/client/web`. `loginWithBackendOidcPopup` + `relayBackendOidcPopupCallback` in `backend-oidc-mode/web`. `FrontendOidcModeClient.popupLogin()` in `frontend-oidc-mode`. Stable error codes for blocked, closed, timeout, and relay error semantics. | Cross-tab lifecycle hardening, chooser UI, and multi-provider orchestration are explicitly deferred beyond the baseline. |
+| Multi-OIDC-client / multi-requirement route orchestration | **Headless primitive baseline implemented.** `createRequirementPlanner()` in `@securitydept/token-set-context-client/orchestration` provides a mode-agnostic, sequential requirement planner with `AuthRequirement`, `RequirementKind`, `PlanStatus`, `ResolutionStatus`, and `PlanSnapshot`. Supports ordered progression, mixed resolution statuses, reset/retry, and error paths. | Chooser UI, app router integration, cross-tab orchestration, and non-sequential (parallel / conditional) flows remain deferred. |
+| `basic-auth-context` SSR / server-render-host support | **Server helper baseline implemented.** `createBasicAuthServerHelper()` in `@securitydept/basic-auth-context-client/server` provides host-neutral `handleUnauthorized()`, `loginUrlForPath()`, and `logoutUrlForPath()` with `ServerRequestContext` / `ServerRedirectInstruction` contracts. Contract-level evidence in `ssr-server-helper-baseline.test.ts`. | Framework-specific adapters (Next.js, Remix) remain deferred. |
+| `session-context` SSR / server-render-host support | **Server helper baseline implemented.** `createSessionServerHelper()` in `@securitydept/session-context-client/server` provides host-neutral `fetchMe()` with cookie-forwarding transport, `loginUrl()`, and `logoutUrl()`. Contract-level evidence in `ssr-server-helper-baseline.test.ts`. | Framework-specific adapters and response mutation abstraction remain deferred. |
+| TS SDK freeze and release-gate discipline | **Fully implemented for 0.x baseline.** `public-surface-inventory.json` provides authoritative inventory with stability, evidence, docs anchors, and `changeDiscipline` per subpath. `release-gate.test.ts` (14 tests) validates export alignment, evidence, docs anchors (EN heading + ZH parity), stability, discipline/stability alignment, and migration ledger existence. `110-TS_SDK_MIGRATIONS.md` serves as the adopter-facing migration ledger. | Full semver / release automation / changelog generation remain deferred. |
+| Mixed-custody / BFF / server-side token ownership | Important design boundary, but still high-complexity and not part of the browser-owned 2.0 baseline. | Explicitly defer to 3.0 rather than letting it distort the 2.0 release target. |
 
-Open design questions:
+This table intentionally audits TS SDK surface only. Rust backend service
+support is a separate repository concern and must not be confused with the
+SSR / server-side support terminology used here.
 
-- whether the popup `redirect_uri` should be configured separately from the main redirect URI
-- whether the callback relay page is served by the backend or the frontend app
-- whether SDK should auto-fallback to redirect when popup is blocked, or leave that to the caller
+#### Popup-based Login Design Direction
+
+Popup login baseline is **implemented**. The following components are available:
+
+Current implementation:
+
+- shared popup infrastructure in `@securitydept/client/web`:
+  - `openPopupWindow()` — popup open with blocked detection
+  - `waitForPopupRelay()` — `postMessage` relay wait with closed/timeout handling
+  - `relayPopupCallback()` — generic relay helper for callback pages
+  - `PopupErrorCode` — stable error codes (`popup.blocked`, `popup.closed_by_user`, `popup.relay_timeout`, `popup.relay_error`)
+  - `computePopupFeatures()` — centered popup features string
+- `backend-oidc-mode/web`:
+  - `loginWithBackendOidcPopup()` — top-level popup login, relays fragment back to existing bootstrap pipeline, respects `callbackFragmentKey` / `sessionStore` namespacing
+  - `relayBackendOidcPopupCallback()` — mode-local callback relay helper
+- `frontend-oidc-mode`:
+  - `FrontendOidcModeClient.popupLogin()` — instance method, combines `authorizeUrl()` → popup → relay → `handleCallback()` → persist
+  - `relayFrontendOidcPopupCallback()` — mode-local callback relay helper
+
+Explicitly deferred beyond the baseline:
+
+- cross-tab lifecycle hardening / leader election
+- chooser UI or multi-provider orchestration
+- auto-fallback (popup blocked → redirect) — left to the caller
 
 ### Adopter Checklist
 
@@ -974,7 +1075,7 @@ Use this section to decide quickly whether the current SDK fits your use case an
 | browser app / SPA consuming `backend-oidc` | enter directly via `@securitydept/token-set-context-client/backend-oidc-mode` | timeline UIpropagation probesor `apps/webui/src/api/*` are SDK surface |
 | frontend consumption of a specific preset | still use `@securitydept/token-set-context-client/backend-oidc-mode`then react to capability/preset information in the returned contracts | pure / mediated map to separate long-lived canonical families |
 | React integration | `@securitydept/*/react` for minimal Providerhook integration; `session-context-client/react` can start directly from the React entry below | route guardspending-redirect UIor reference-page interaction forms are part of the adapter contract |
-| mediated token ownership beyond the browser-owned baseline | read it as outside v1 scope immediately | mixed-custody / BFF / SSR token-store support already exists |
+| mediated token ownership beyond the browser-owned baseline | read it as explicitly deferred to `3.0`, not as part of the `2.0` public surface | mixed-custody / BFF / SSR token-store support already exists |
 
 What must not be treated as SDK surface:
 
@@ -984,7 +1085,7 @@ What must not be treated as SDK surface:
 | trace timeline UI / DOM harnesses | reference app | debugging/demo gluenot external contract |
 | propagation smoke / same-server probes | reference appserver config | depends on product routes and service config |
 | SSR session redirect glue (full form) | app/server layer | framework response boundary belongs to the app |
-| cross-tab sync / visibility lifecycle | outside v1 scope | future adapter hardening topic |
+| cross-tab sync / visibility lifecycle hardening | future adapter hardening backlog | not part of the current public adapter contract yet; `2.0` should still add a baseline before GA |
 
 Before you adopt:
 
@@ -1044,21 +1145,87 @@ const session = await sessionClient.fetchMe(runtime.transport);
 
 #### 2. Browser entry: `./backend-oidc-mode/web` owns browser glue
 
-Use `./backend-oidc-mode/web` when the host wants browser capability helpers such as `fetch`storage-backed flow stateand callback bootstrap.
+Use `./backend-oidc-mode/web` when the host wants browser capability helpers such as `fetch`, storage-backed flow state, and callback bootstrap.
+
+`createBackendOidcModeBrowserClient()` accepts **every field** of `BackendOidcModeClientConfig` (`baseUrl`, `loginPath`, `refreshPath`, `metadataRedeemPath`, `userInfoPath`, `refreshWindowMs`, `persistentStateKey`, `defaultPostAuthRedirectUri`) plus browser-specific runtime wiring (`persistentStore`, `sessionStore`, `transport`, `fetchTransport`, `scheduler`, `clock`, `logger`, `traceSink`). If you need full control over the `ClientRuntime`, construct `BackendOidcModeClient` directly instead.
+
+**`transport` vs `fetchTransport` priority:**
+
+- When `transport` is provided, it is used as the runtime transport directly; `fetchTransport` is ignored.
+- When `transport` is omitted, the entry creates a default `fetch`-based transport via `createWebRuntime`. In that path, `fetchTransport` options are merged with the SDK default (`redirect: "manual"`) so adopters can tune fetch behavior without replacing the entire transport.
+- The SDK default `redirect: "manual"` is the safe default required for backend-oidc browser protocol handling.
+
+**Storage isolation for multiple integrations on the same origin**: when multiple independent backend-oidc integrations share the same origin and storage:
+
+- `persistentStateKey` isolates persisted auth state (token snapshots)
+- Callback fragment isolation is handled by passing `callbackFragmentKey` + `sessionStore` to `bootstrapBackendOidcModeClient` and `resetBackendOidcModeBrowserState`; use `resolveBackendOidcModeCallbackFragmentKey(persistentStateKey)` to derive a namespaced key
+- `resetBackendOidcModeBrowserState` accepts the same `callbackFragmentKey` / `sessionStore` convenience parameters as bootstrap, so cleanup correctly targets the namespaced fragment store. When `callbackFragmentStore` is explicitly provided, it takes priority over `callbackFragmentKey` / `sessionStore`
+
+> [!NOTE]
+> All browser convenience helpers provide named configuration types exported directly from `@securitydept/token-set-context-client/backend-oidc-mode/web`. For example, `BootstrapBackendOidcModeClientOptions` and `ResetBackendOidcModeBrowserStateOptions` can be imported for explicit contract typing.
+
+**One-shot login redirect:** `loginWithBackendOidcRedirect(client, options?)` is the recommended one-step browser entry point for triggering a backend-oidc login. It resolves the authorize URL and navigates the window. Its options contract `LoginWithBackendOidcRedirectOptions` is exported from `@securitydept/token-set-context-client/backend-oidc-mode/web`.
+
+**Session-context browser convenience:** `@securitydept/session-context-client/web` provides `loginWithRedirect(client, options?)` — a one-shot redirect helper for session-based login that saves the post-auth redirect intent and navigates to the login URL. Its options contract `LoginWithRedirectOptions` is exported from the `/web` subpath.
+
+**Frontend-oidc login redirect:** `FrontendOidcModeClient.loginWithRedirect(options?)` builds the OIDC authorize URL (with PKCE + nonce), stores pending state, and navigates the browser. Its options contract `FrontendOidcModeLoginWithRedirectOptions` is exported from `@securitydept/token-set-context-client/frontend-oidc-mode`.
 
 ```ts
 import {
 	bootstrapBackendOidcModeClient,
 	createBackendOidcModeBrowserClient,
 	resolveBackendOidcModeAuthorizeUrl,
+	resolveBackendOidcModeCallbackFragmentKey,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+
+const INTEGRATION_KEY = "my-app:backend-oidc";
+const mySessionStore = /* custom session store */ undefined;
 
 const client = createBackendOidcModeBrowserClient({
 	baseUrl: "https://auth.example.com",
 	defaultPostAuthRedirectUri: window.location.href,
+	loginPath: "/auth/token-set/login",     // adopter-specific path override
+	persistentStateKey: INTEGRATION_KEY,    // namespaces persisted auth state
+	sessionStore: mySessionStore,           // custom session storage
 });
 
-const bootstrap = await bootstrapBackendOidcModeClient(client);
+// callbackFragmentKey + sessionStore together provide end-to-end fragment isolation
+const bootstrap = await bootstrapBackendOidcModeClient(client, {
+	sessionStore: mySessionStore,
+	callbackFragmentKey: resolveBackendOidcModeCallbackFragmentKey(INTEGRATION_KEY),
+});
+
+if (bootstrap.source === "empty") {
+	window.location.href = resolveBackendOidcModeAuthorizeUrl(client);
+}
+```
+
+```ts
+import {
+	bootstrapBackendOidcModeClient,
+	createBackendOidcModeBrowserClient,
+	createBackendOidcModeCallbackFragmentStore,
+	resolveBackendOidcModeAuthorizeUrl,
+	resolveBackendOidcModeCallbackFragmentKey,
+} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+
+const INTEGRATION_KEY = "my-app:backend-oidc";
+
+const client = createBackendOidcModeBrowserClient({
+	baseUrl: "https://auth.example.com",
+	defaultPostAuthRedirectUri: window.location.href,
+	// Adopter-specific path overrides (SDK defaults to /auth/oidc/*)
+	loginPath: "/auth/token-set/login",
+	// Namespaces persisted auth state in localStorage
+	persistentStateKey: INTEGRATION_KEY,
+});
+
+// Use the matching namespaced fragment key for sessionStorage isolation
+const fragmentStore = createBackendOidcModeCallbackFragmentStore({
+	key: resolveBackendOidcModeCallbackFragmentKey(INTEGRATION_KEY),
+});
+
+const bootstrap = await bootstrapBackendOidcModeClient(client, { callbackFragmentStore: fragmentStore });
 
 if (bootstrap.source === "empty") {
 	window.location.href = resolveBackendOidcModeAuthorizeUrl(client);
@@ -1107,9 +1274,76 @@ export function App() {
 }
 ```
 
-#### 4. SSR redirect entry: still app/server glue
+#### 4. SSR / server-host entry: dedicated `./server` helpers
 
-SSR redirect handling is still an app/server concern. The SDK helps build the redirect URLbut it does not hide your framework’s response boundary.
+In SSR or server-side request handlers (Next.js `getServerSideProps`, Remix `loader`, Astro endpoints, plain Node handlers, etc.), use the dedicated **`./server` subpath** for each auth-context package. These helpers provide host-neutral, cookie-aware operations without browser globals.
+
+**Architectural boundary:**
+
+| Responsibility | Owner |
+|---|---|
+| Login / logout / redirect URL construction | SDK `./server` helpers |
+| Session probe with cookie forwarding (`fetchMe`) | SDK `./server` helpers, via host-provided transport |
+| Zone-based 401 → redirect instruction | SDK `./server` helpers (`handleUnauthorized`) |
+| HTTP response construction (302, Set-Cookie, body) | Host / framework |
+| Browser navigation (`window.location`) | `/web` subpath only (not imported in SSR) |
+
+##### session-context: login redirect + session probe (recommended baseline)
+
+```ts
+import { createSessionServerHelper } from "@securitydept/session-context-client/server";
+
+const helper = createSessionServerHelper({
+	config: { baseUrl: "https://auth.example.com" },
+	transport: fetchTransport, // your fetch-based HttpTransport
+});
+
+export async function getServerSideProps(context) {
+	const session = await helper.fetchMe({
+		headers: { cookie: context.req.headers.cookie ?? "" },
+	});
+
+	if (!session) {
+		return {
+			redirect: {
+				destination: helper.loginUrl(context.resolvedUrl),
+				permanent: false,
+			},
+		};
+	}
+
+	return { props: { user: session.principal } };
+}
+```
+
+##### basic-auth-context: zone-based redirect instruction (recommended baseline)
+
+```ts
+import { createBasicAuthServerHelper } from "@securitydept/basic-auth-context-client/server";
+
+const helper = createBasicAuthServerHelper({
+	config: {
+		baseUrl: "https://auth.example.com",
+		zones: [{ zonePrefix: "/api" }],
+	},
+});
+
+export async function handleRequest(request: Request) {
+	const url = new URL(request.url);
+
+	// After receiving a 401 from upstream:
+	const redirect = helper.handleUnauthorized({ path: url.pathname });
+	if (redirect) {
+		return Response.redirect(redirect.destination, redirect.statusCode);
+	}
+
+	// ...
+}
+```
+
+##### Low-level escape hatch: root client + custom transport
+
+If the `./server` helpers do not cover your use case, you can still import directly from the root subpath and construct a custom transport manually. This is the pre-helper approach and remains available as an escape hatch:
 
 ```ts
 import { SessionContextClient } from "@securitydept/session-context-client";
@@ -1118,13 +1352,26 @@ const sessionClient = new SessionContextClient({
 	baseUrl: "https://auth.example.com",
 });
 
-export async function loader(request: Request) {
-	const url = new URL(request.url);
-	const returnTo = `${url.origin}${url.pathname}${url.search}`;
+// Manual transport with cookie forwarding
+const ssrTransport = {
+	async execute(request) {
+		const response = await fetch(request.url, {
+			method: request.method,
+			headers: { ...request.headers, cookie: incomingCookies },
+		});
+		return {
+			status: response.status,
+			headers: Object.fromEntries(response.headers.entries()),
+			body: await response.json().catch(() => null),
+		};
+	},
+};
 
-	return Response.redirect(sessionClient.loginUrl(returnTo)302);
-}
+const session = await sessionClient.fetchMe(ssrTransport);
 ```
+
+> [!IMPORTANT]
+> In SSR contexts, import from `./server` (recommended) or the **root** subpath. **Never** import from `/web` — it depends on browser globals (`window.location`) and must not be used in server-side code.
 
 ### Provisional Adapter Maintenance Standard
 

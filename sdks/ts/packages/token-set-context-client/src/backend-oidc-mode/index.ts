@@ -28,7 +28,6 @@ export {
 export type {
 	BackendOidcModeAuthorizeQuery,
 	BackendOidcModeCallbackReturns,
-	BackendOidcModeConfigProjection,
 	BackendOidcModeIntegrationRequirement,
 	BackendOidcModeMetadataRedemptionRequest,
 	BackendOidcModeMetadataRedemptionResponse,
@@ -57,6 +56,11 @@ export {
 
 // --- Client ---
 
+export type {
+	BackendOidcModeFetchUserInfoOptions,
+	BackendOidcModeMetadataRedemptionOptions,
+	BackendOidcModeRefreshOptions,
+} from "./client";
 export { BackendOidcModeClient } from "./client";
 
 // --- Client types ---

@@ -66,17 +66,35 @@ export type BackendOidcModeStateRestoreSourceKind =
 // --- Mode-specific config ---
 
 export interface BackendOidcModeClientConfig {
-	/** Base URL of the SecurityDept server. */
+	/** Base URL of the backend server that runs the OIDC flow. */
 	baseUrl: string;
-	/** Path to login/authorize endpoint (default: "/auth/token-set/login"). */
+	/**
+	 * Path to the login/authorize endpoint.
+	 *
+	 * SDK default: `"/auth/oidc/login"`.
+	 *
+	 * Adopters whose server uses a different route family (e.g.
+	 * `securitydept-server` uses `"/auth/token-set/login"`) should pass the
+	 * adopter-specific path here.
+	 */
 	loginPath?: string;
-	/** Path to callback page (default: "/auth/token-set/callback"). */
-	callbackPath?: string;
-	/** Path to token refresh endpoint (default: "/auth/token-set/refresh"). */
+	/**
+	 * Path to the token refresh endpoint.
+	 *
+	 * SDK default: `"/auth/oidc/refresh"`.
+	 */
 	refreshPath?: string;
-	/** Path to metadata redemption endpoint (default: "/auth/token-set/metadata/redeem"). */
+	/**
+	 * Path to the metadata redemption endpoint.
+	 *
+	 * SDK default: `"/auth/oidc/metadata/redeem"`.
+	 */
 	metadataRedeemPath?: string;
-	/** Path to user info endpoint (default: "/auth/token-set/user-info"). */
+	/**
+	 * Path to the user info endpoint.
+	 *
+	 * SDK default: `"/auth/oidc/user-info"`.
+	 */
 	userInfoPath?: string;
 	/** Buffer before expiry to trigger refresh, in ms (default: 60000 = 1 minute). */
 	refreshWindowMs?: number;

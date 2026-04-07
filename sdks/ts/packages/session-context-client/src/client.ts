@@ -8,7 +8,9 @@ import {
 	ClientError,
 	ClientErrorKind,
 	createEphemeralFlowStore,
+	validateWithSchemaSync,
 } from "@securitydept/client";
+import { SessionInfoSchema, SessionUserInfoResponseSchema } from "./schemas";
 import {
 	type SessionContextClientConfig,
 	SessionContextSource,
@@ -21,12 +23,6 @@ const DEFAULT_ME_PATH = "/auth/session/me";
 const DEFAULT_POST_AUTH_REDIRECT_PARAM = "post_auth_redirect_uri";
 const DEFAULT_LOGIN_REDIRECT_STATE_KEY =
 	"securitydept.session_context.pending_login_redirect";
-
-interface SessionUserInfoResponse {
-	display_name: string;
-	picture?: string;
-	claims?: Record<string, unknown>;
-}
 
 /**
  * Session Context Client.
@@ -184,19 +180,27 @@ export class SessionContextClient {
 	}
 }
 
+/**
+ * Normalize a /me response body using @standard-schema aligned schemas.
+ *
+ * Tries the canonical SessionInfo shape first, then falls back to the
+ * server-side snake_case UserInfo shape. Throws a protocol-level ClientError
+ * if neither schema matches.
+ */
 function normalizeSessionInfo(body: unknown): SessionInfo {
-	if (isSessionInfo(body)) {
-		return body;
+	// Try canonical camelCase shape first.
+	const infoResult = validateWithSchemaSync(SessionInfoSchema, body);
+	if (infoResult.success) {
+		return infoResult.value;
 	}
 
-	if (isSessionUserInfoResponse(body)) {
-		return {
-			principal: {
-				displayName: body.display_name,
-				picture: body.picture,
-				claims: body.claims,
-			},
-		};
+	// Try server-side snake_case shape.
+	const userInfoResult = validateWithSchemaSync(
+		SessionUserInfoResponseSchema,
+		body,
+	);
+	if (userInfoResult.success) {
+		return userInfoResult.value;
 	}
 
 	throw new ClientError({
@@ -205,27 +209,4 @@ function normalizeSessionInfo(body: unknown): SessionInfo {
 		message: "Session /me payload is invalid",
 		source: SessionContextSource.SessionContext,
 	});
-}
-
-function isSessionInfo(value: unknown): value is SessionInfo {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		"principal" in value &&
-		typeof value.principal === "object" &&
-		value.principal !== null &&
-		"displayName" in value.principal &&
-		typeof value.principal.displayName === "string"
-	);
-}
-
-function isSessionUserInfoResponse(
-	value: unknown,
-): value is SessionUserInfoResponse {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		"display_name" in value &&
-		typeof value.display_name === "string"
-	);
 }

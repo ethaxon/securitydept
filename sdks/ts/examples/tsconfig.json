@@ -26,8 +26,17 @@
 			"@securitydept/basic-auth-context-client/web": [
 				"../packages/basic-auth-context-client/src/web/index.ts"
 			],
+			"@securitydept/basic-auth-context-client/server": [
+				"../packages/basic-auth-context-client/src/server/index.ts"
+			],
 			"@securitydept/session-context-client": [
 				"../packages/session-context-client/src/index.ts"
+			],
+			"@securitydept/session-context-client/web": [
+				"../packages/session-context-client/src/web/index.ts"
+			],
+			"@securitydept/session-context-client/server": [
+				"../packages/session-context-client/src/server/index.ts"
 			],
 			"@securitydept/session-context-client/react": [
 				"../packages/session-context-client/src/react/index.tsx"

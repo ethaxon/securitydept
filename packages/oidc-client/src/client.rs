@@ -482,7 +482,7 @@ where
     /// 2. Optionally calls the provider's userinfo endpoint (if available).
     /// 3. Runs `check_claims` to produce a `ClaimsCheckResult`.
     ///
-    /// Backend modes (`backend-oidc-pure`, `backend-oidc-mediated`) should call
+    /// Backend OIDC presets (pure, mediated, etc.) should call
     /// this helper rather than reimplementing the user-info protocol stack.
     pub async fn handle_user_info_exchange(
         &self,

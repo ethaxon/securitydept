@@ -15,6 +15,10 @@
 		"./web": {
 			"types": "./dist/web/index.d.mts",
 			"import": "./dist/web/index.mjs"
+		},
+		"./server": {
+			"types": "./dist/server/index.d.mts",
+			"import": "./dist/server/index.mjs"
 		}
 	},
 	"files": [

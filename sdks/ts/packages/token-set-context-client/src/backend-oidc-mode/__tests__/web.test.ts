@@ -5,6 +5,8 @@ import {
 	createInMemoryRecordStore,
 	type HttpRequest,
 	type HttpResponse,
+	type LogEntry,
+	LogLevel,
 	type Scheduler,
 	UserRecovery,
 } from "@securitydept/client";
@@ -17,6 +19,7 @@ import {
 	createBackendOidcModeBrowserClient,
 	createBackendOidcModeCallbackFragmentStore,
 	resetBackendOidcModeBrowserState,
+	resolveBackendOidcModeCallbackFragmentKey,
 } from "../web/browser";
 
 function createHistoryRecorder() {
@@ -43,8 +46,9 @@ const testScheduler: Scheduler = {
 describe("token-set web helpers", () => {
 	it("captures callback fragments and clears only the URL hash from history", async () => {
 		const sessionStore = createInMemoryRecordStore();
-		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(sessionStore);
+		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+		});
 		const history = createHistoryRecorder();
 
 		const fragment = await captureBackendOidcModeCallbackFragmentFromUrl({
@@ -109,8 +113,9 @@ describe("token-set web helpers", () => {
 			scheduler: testScheduler,
 			defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
 		});
-		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(sessionStore);
+		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+		});
 
 		const result = await bootstrapBackendOidcModeClient(client, {
 			location: {
@@ -141,8 +146,9 @@ describe("token-set web helpers", () => {
 				},
 			},
 		});
-		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(sessionStore);
+		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+		});
 
 		await expect(
 			bootstrapBackendOidcModeClient(client, {
@@ -173,8 +179,9 @@ describe("token-set web helpers", () => {
 				},
 			},
 		});
-		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(sessionStore);
+		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+		});
 
 		await expect(
 			bootstrapBackendOidcModeClient(client, {
@@ -222,15 +229,16 @@ describe("token-set web helpers", () => {
 				},
 			},
 		});
-		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(sessionStore);
+		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+		});
 
 		await client.handleCallback(
 			"access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&metadata_redemption_id=meta-1",
 		);
 		await callbackFragmentStore.save("access_token=pending-at");
 
-		await resetBackendOidcModeBrowserState(client, callbackFragmentStore);
+		await resetBackendOidcModeBrowserState(client, { callbackFragmentStore });
 
 		expect(client.state.get()).toBeNull();
 		expect(await callbackFragmentStore.load()).toBeNull();
@@ -276,8 +284,9 @@ describe("token-set web helpers", () => {
 				throw new Error(`Unexpected request: ${request.method} ${request.url}`);
 			},
 		};
-		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(sessionStore);
+		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+		});
 		const firstClient = createBackendOidcModeBrowserClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
@@ -327,10 +336,9 @@ describe("token-set web helpers", () => {
 			"Alice",
 		);
 
-		await resetBackendOidcModeBrowserState(
-			restoredClient,
+		await resetBackendOidcModeBrowserState(restoredClient, {
 			callbackFragmentStore,
-		);
+		});
 
 		const freshClient = createBackendOidcModeBrowserClient({
 			baseUrl: "https://auth.example.com",
@@ -406,8 +414,9 @@ describe("token-set web helpers", () => {
 				throw new Error(`Unexpected request: ${request.method} ${request.url}`);
 			},
 		};
-		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(sessionStore);
+		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+		});
 		const oldClient = createBackendOidcModeBrowserClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
@@ -538,8 +547,9 @@ describe("token-set web helpers", () => {
 				throw new Error(`Unexpected request: ${request.method} ${request.url}`);
 			},
 		};
-		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(sessionStore);
+		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+		});
 		const oldClient = createBackendOidcModeBrowserClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
@@ -672,8 +682,9 @@ describe("token-set web helpers", () => {
 				throw new Error(`Unexpected request: ${request.method} ${request.url}`);
 			},
 		};
-		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(sessionStore);
+		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+		});
 		const oldClient = createBackendOidcModeBrowserClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
@@ -776,8 +787,9 @@ describe("token-set web helpers", () => {
 				throw new Error(`Unexpected request: ${request.method} ${request.url}`);
 			},
 		};
-		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(sessionStore);
+		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+		});
 
 		await callbackFragmentStore.save(
 			"access_token=old-at&id_token=old-idt&refresh_token=old-rt&metadata_redemption_id=meta-old",
@@ -897,8 +909,9 @@ describe("token-set web helpers", () => {
 				throw new Error(`Unexpected request: ${request.method} ${request.url}`);
 			},
 		};
-		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(sessionStore);
+		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+		});
 		const retryingClient = createBackendOidcModeBrowserClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
@@ -1008,8 +1021,9 @@ describe("token-set web helpers", () => {
 				throw new Error(`Unexpected request: ${request.method} ${request.url}`);
 			},
 		};
-		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(sessionStore);
+		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+		});
 
 		await callbackFragmentStore.save(
 			"access_token=old-at&id_token=old-idt&refresh_token=old-rt&metadata_redemption_id=meta-old",
@@ -1040,10 +1054,9 @@ describe("token-set web helpers", () => {
 		expect(callbackResult.snapshot?.tokens.accessToken).toBe("new-at");
 		expect(await callbackFragmentStore.load()).toBeNull();
 
-		await resetBackendOidcModeBrowserState(
-			bootstrapClient,
+		await resetBackendOidcModeBrowserState(bootstrapClient, {
 			callbackFragmentStore,
-		);
+		});
 
 		expect(bootstrapClient.state.get()).toBeNull();
 		expect(await callbackFragmentStore.load()).toBeNull();
@@ -1136,5 +1149,409 @@ describe("token-set web helpers", () => {
 			kind: "unauthenticated",
 			code: "backend_oidc.authorization.unavailable",
 		});
+	});
+
+	it("forwards persistentStateKey through the browser entry to isolate persisted state", async () => {
+		const persistentStore = createInMemoryRecordStore();
+		const sessionStore = createInMemoryRecordStore();
+		const transport = {
+			async execute(request: HttpRequest): Promise<HttpResponse> {
+				if (request.url.endsWith("/metadata/redeem")) {
+					return {
+						status: 200,
+						headers: {},
+						body: {
+							metadata: {
+								principal: {
+									subject: "user-1",
+									displayName: "Alice",
+								},
+							},
+						},
+					};
+				}
+
+				throw new Error(`Unexpected request: ${request.method} ${request.url}`);
+			},
+		};
+
+		// Client A: uses a custom persistentStateKey
+		const clientA = createBackendOidcModeBrowserClient({
+			baseUrl: "https://auth.example.com",
+			persistentStateKey: "tenant-a",
+			persistentStore,
+			sessionStore,
+			transport,
+			clock: testClock,
+			scheduler: testScheduler,
+		});
+
+		await clientA.handleCallback(
+			"access_token=a-at&id_token=a-idt&refresh_token=a-rt&metadata_redemption_id=meta-a",
+		);
+		expect(clientA.state.get()?.tokens.accessToken).toBe("a-at");
+
+		// Client B: uses a different persistentStateKey on the same store
+		const clientB = createBackendOidcModeBrowserClient({
+			baseUrl: "https://auth.example.com",
+			persistentStateKey: "tenant-b",
+			persistentStore,
+			sessionStore,
+			transport,
+			clock: testClock,
+			scheduler: testScheduler,
+		});
+
+		// Client B must NOT see Client A's state
+		const restoredB = await clientB.restorePersistedState();
+		expect(restoredB).toBeNull();
+
+		// Client C: uses the same key as A — must see A's state
+		const clientC = createBackendOidcModeBrowserClient({
+			baseUrl: "https://auth.example.com",
+			persistentStateKey: "tenant-a",
+			persistentStore,
+			sessionStore,
+			transport,
+			clock: testClock,
+			scheduler: testScheduler,
+		});
+
+		const restoredC = await clientC.restorePersistedState();
+		expect(restoredC?.tokens.accessToken).toBe("a-at");
+	});
+
+	it("isolates callback fragments via callbackFragmentKey in the default bootstrap path", async () => {
+		// Two integrations share a single in-memory session store (same origin scenario).
+		// Each passes callbackFragmentKey to bootstrapBackendOidcModeClient so the
+		// default fragment store is namespaced — no manual store construction required.
+		const sharedPersistentStore = createInMemoryRecordStore();
+		const sharedSessionStore = createInMemoryRecordStore();
+
+		const makeTransport = (
+			subject: string,
+		): { execute: (req: HttpRequest) => Promise<HttpResponse> } => ({
+			async execute(request: HttpRequest): Promise<HttpResponse> {
+				if (request.url.endsWith("/metadata/redeem")) {
+					return {
+						status: 200,
+						headers: {},
+						body: {
+							metadata: { principal: { subject, displayName: subject } },
+						},
+					};
+				}
+				throw new Error(`Unexpected: ${request.url}`);
+			},
+		});
+
+		const keyA = resolveBackendOidcModeCallbackFragmentKey("tenant-a");
+		const keyB = resolveBackendOidcModeCallbackFragmentKey("tenant-b");
+		expect(keyA).not.toBe(keyB);
+
+		const clientA = createBackendOidcModeBrowserClient({
+			baseUrl: "https://auth.example.com",
+			persistentStateKey: "tenant-a",
+			persistentStore: sharedPersistentStore,
+			sessionStore: sharedSessionStore,
+			transport: makeTransport("alice"),
+			clock: testClock,
+			scheduler: testScheduler,
+		});
+
+		// Integration A bootstraps with a callback fragment in the URL
+		// callbackFragmentKey is wired directly into the default store — no manual store needed
+		const resultA = await bootstrapBackendOidcModeClient(clientA, {
+			location: {
+				href: "https://app.example.com/#access_token=a-at&id_token=a-idt&refresh_token=a-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-a",
+				hash: "#access_token=a-at&id_token=a-idt&refresh_token=a-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-a",
+			},
+			history: createHistoryRecorder(),
+			sessionStore: sharedSessionStore,
+			callbackFragmentKey: keyA,
+		});
+		expect(resultA.source).toBe(BackendOidcModeBootstrapSource.Callback);
+		expect(resultA.snapshot?.tokens.accessToken).toBe("a-at");
+
+		const clientB = createBackendOidcModeBrowserClient({
+			baseUrl: "https://auth.example.com",
+			persistentStateKey: "tenant-b",
+			persistentStore: sharedPersistentStore,
+			sessionStore: sharedSessionStore,
+			transport: makeTransport("bob"),
+			clock: testClock,
+			scheduler: testScheduler,
+		});
+
+		// Integration B bootstraps on a plain URL — should see Empty, not A's callback
+		const resultB = await bootstrapBackendOidcModeClient(clientB, {
+			location: {
+				href: "https://app.example.com/",
+				hash: "",
+			},
+			history: createHistoryRecorder(),
+			sessionStore: sharedSessionStore,
+			callbackFragmentKey: keyB,
+		});
+		// B must not see A's fragment — correct isolation means Empty, not Callback
+		expect(resultB.source).toBe(BackendOidcModeBootstrapSource.Empty);
+	});
+	it("forwards logger through the browser entry and invokes it during real client behavior", async () => {
+		const logEntries: LogEntry[] = [];
+		const logger = {
+			log(entry: LogEntry): void {
+				logEntries.push(entry);
+			},
+		};
+		const persistentStore = createInMemoryRecordStore();
+		const sessionStore = createInMemoryRecordStore();
+		const transport = {
+			async execute(request: HttpRequest): Promise<HttpResponse> {
+				if (request.url.endsWith("/metadata/redeem")) {
+					return {
+						status: 200,
+						headers: {},
+						body: {
+							metadata: {
+								principal: {
+									subject: "user-1",
+									displayName: "Alice",
+								},
+							},
+						},
+					};
+				}
+
+				throw new Error(`Unexpected request: ${request.method} ${request.url}`);
+			},
+		};
+
+		const client = createBackendOidcModeBrowserClient({
+			persistentStore,
+			sessionStore,
+			transport,
+			clock: testClock,
+			scheduler: testScheduler,
+			logger,
+		});
+
+		await client.handleCallback(
+			"access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&metadata_redemption_id=meta-1",
+		);
+
+		// The logger must have been called at least once with an Info-level
+		// entry scoped to backend-oidc-mode during the callback lifecycle.
+		const infoEntries = logEntries.filter(
+			(e) => e.level === LogLevel.Info && e.scope === "backend-oidc-mode",
+		);
+		expect(infoEntries.length).toBeGreaterThanOrEqual(1);
+		expect(infoEntries[0]?.message).toBe(
+			"Auth state initialized from callback",
+		);
+	});
+
+	it("uses redirect: manual by default when no transport or fetchTransport is provided", async () => {
+		const capturedInits: RequestInit[] = [];
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async (
+			_input: RequestInfo | URL,
+			init?: RequestInit,
+		) => {
+			capturedInits.push(init ?? {});
+			return new Response(
+				JSON.stringify({
+					metadata: {
+						principal: { subject: "user-1", displayName: "Alice" },
+					},
+				}),
+				{
+					status: 200,
+					headers: { "content-type": "application/json" },
+				},
+			);
+		};
+
+		try {
+			const client = createBackendOidcModeBrowserClient({
+				persistentStore: createInMemoryRecordStore(),
+				sessionStore: createInMemoryRecordStore(),
+				clock: testClock,
+				scheduler: testScheduler,
+			});
+
+			await client.handleCallback(
+				"access_token=at&id_token=idt&metadata_redemption_id=meta-1",
+			);
+
+			// The default fetch transport must use redirect: "manual".
+			expect(capturedInits.length).toBeGreaterThanOrEqual(1);
+			expect(capturedInits[0]?.redirect).toBe("manual");
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("forwards fetchTransport options to the default fetch transport", async () => {
+		const capturedInits: RequestInit[] = [];
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async (
+			_input: RequestInfo | URL,
+			init?: RequestInit,
+		) => {
+			capturedInits.push(init ?? {});
+			return new Response(
+				JSON.stringify({
+					metadata: {
+						principal: { subject: "user-1", displayName: "Alice" },
+					},
+				}),
+				{
+					status: 200,
+					headers: { "content-type": "application/json" },
+				},
+			);
+		};
+
+		try {
+			const client = createBackendOidcModeBrowserClient({
+				persistentStore: createInMemoryRecordStore(),
+				sessionStore: createInMemoryRecordStore(),
+				clock: testClock,
+				scheduler: testScheduler,
+				// Override the SDK default redirect: "manual" → "follow"
+				fetchTransport: { redirect: "follow" },
+			});
+
+			await client.handleCallback(
+				"access_token=at&id_token=idt&metadata_redemption_id=meta-1",
+			);
+
+			// fetchTransport overrides the default — redirect must be "follow"
+			expect(capturedInits.length).toBeGreaterThanOrEqual(1);
+			expect(capturedInits[0]?.redirect).toBe("follow");
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("ignores fetchTransport when a custom transport is provided", async () => {
+		const requests: HttpRequest[] = [];
+		const customTransport = {
+			async execute(request: HttpRequest): Promise<HttpResponse> {
+				requests.push(request);
+				if (request.url.endsWith("/metadata/redeem")) {
+					return {
+						status: 200,
+						headers: {},
+						body: {
+							metadata: {
+								principal: { subject: "user-1", displayName: "Alice" },
+							},
+						},
+					};
+				}
+
+				throw new Error(`Unexpected: ${request.url}`);
+			},
+		};
+
+		const client = createBackendOidcModeBrowserClient({
+			persistentStore: createInMemoryRecordStore(),
+			sessionStore: createInMemoryRecordStore(),
+			clock: testClock,
+			scheduler: testScheduler,
+			transport: customTransport,
+			// This should be completely ignored because transport is present.
+			fetchTransport: { redirect: "follow" },
+		});
+
+		await client.handleCallback(
+			"access_token=at&id_token=idt&metadata_redemption_id=meta-1",
+		);
+
+		// The custom transport handled the request, not the fetch transport.
+		expect(requests.length).toBeGreaterThanOrEqual(1);
+		expect(requests[0]?.url).toContain("/metadata/redeem");
+	});
+
+	it("resets namespaced callback fragments via callbackFragmentKey and sessionStore convenience path", async () => {
+		const sharedSessionStore = createInMemoryRecordStore();
+		const keyA = resolveBackendOidcModeCallbackFragmentKey("tenant-a");
+		const keyB = resolveBackendOidcModeCallbackFragmentKey("tenant-b");
+
+		// Seed a callback fragment for integration A
+		const storeA = createBackendOidcModeCallbackFragmentStore({
+			sessionStore: sharedSessionStore,
+			key: keyA,
+		});
+		await storeA.save("access_token=a-at&id_token=a-idt");
+
+		// Seed a callback fragment for integration B
+		const storeB = createBackendOidcModeCallbackFragmentStore({
+			sessionStore: sharedSessionStore,
+			key: keyB,
+		});
+		await storeB.save("access_token=b-at&id_token=b-idt");
+
+		// Reset only integration A using the convenience path
+		const clientA = createBackendOidcModeBrowserClient({
+			persistentStateKey: "tenant-a",
+			persistentStore: createInMemoryRecordStore(),
+			sessionStore: sharedSessionStore,
+			transport: {
+				async execute(): Promise<HttpResponse> {
+					throw new Error("should not be called");
+				},
+			},
+		});
+
+		await resetBackendOidcModeBrowserState(clientA, {
+			sessionStore: sharedSessionStore,
+			callbackFragmentKey: keyA,
+		});
+
+		// Integration A's fragment must be cleared
+		expect(await storeA.load()).toBeNull();
+		// Integration B's fragment must be untouched
+		expect(await storeB.load()).toBe("access_token=b-at&id_token=b-idt");
+	});
+
+	it("prefers callbackFragmentStore over callbackFragmentKey/sessionStore in reset", async () => {
+		const sessionStore = createInMemoryRecordStore();
+		const explicitStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+			key: "explicit-key",
+		});
+		await explicitStore.save("access_token=explicit-at&id_token=explicit-idt");
+
+		// Also seed a fragment under a different key
+		const otherStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore,
+			key: "other-key",
+		});
+		await otherStore.save("access_token=other-at&id_token=other-idt");
+
+		const client = createBackendOidcModeBrowserClient({
+			persistentStore: createInMemoryRecordStore(),
+			sessionStore,
+			transport: {
+				async execute(): Promise<HttpResponse> {
+					throw new Error("should not be called");
+				},
+			},
+		});
+
+		// callbackFragmentStore takes priority — only explicit-key is cleared
+		await resetBackendOidcModeBrowserState(client, {
+			callbackFragmentStore: explicitStore,
+			// These should be ignored because callbackFragmentStore is present
+			callbackFragmentKey: "other-key",
+			sessionStore,
+		});
+
+		expect(await explicitStore.load()).toBeNull();
+		expect(await otherStore.load()).toBe(
+			"access_token=other-at&id_token=other-idt",
+		);
 	});
 });

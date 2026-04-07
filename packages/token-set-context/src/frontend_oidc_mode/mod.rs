@@ -7,8 +7,7 @@
 //!
 //! # Module structure
 //!
-//! - [`contracts`] — config projection, token material, mode-qualified model
-//!   aliases
+//! - [`contracts`] — config projection and claims-check script types
 //! - [`capabilities`] / [`FrontendOidcModeCapabilities`] /
 //!   [`UnsafeFrontendClientSecret`] — opt-in unsafe features
 //! - [`config`] / [`FrontendOidcModeConfig`] /

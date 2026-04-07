@@ -1,3 +1,5 @@
+import { validateWithSchemaSync } from "@securitydept/client";
+import { BasicAuthContextClientConfigSchema } from "./schemas";
 import type {
 	AuthGuardResult,
 	BasicAuthContextClientConfig,
@@ -35,10 +37,23 @@ export class BasicAuthContextClient {
 	private readonly _postAuthRedirectParam: string;
 
 	constructor(config: BasicAuthContextClientConfig) {
-		this._baseUrl = config.baseUrl.replace(/\/+$/, "");
+		// Deprecation-phase validation: warn on invalid config but do not throw.
+		// A future minor release will escalate this to a hard error.
+		// See 110-TS_SDK_MIGRATIONS.md for the full deprecation note.
+		const result = validateWithSchemaSync(
+			BasicAuthContextClientConfigSchema,
+			config,
+		);
+		if (!result.success) {
+			console.warn(
+				`[BasicAuthContextClient] Deprecated config shape detected (will become an error in a future release): ${result.issues.map((i) => i.message).join("; ")}`,
+			);
+		}
+
+		this._baseUrl = (config.baseUrl ?? "").replace(/\/+$/, "");
 		this._postAuthRedirectParam =
 			config.postAuthRedirectParam ?? DEFAULT_POST_AUTH_REDIRECT_PARAM;
-		this.zones = config.zones.map(resolveZone);
+		this.zones = (config.zones ?? []).map(resolveZone);
 	}
 
 	/** Find the zone that contains the given path. */

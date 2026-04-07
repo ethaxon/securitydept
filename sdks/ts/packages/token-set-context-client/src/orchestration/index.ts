@@ -33,8 +33,26 @@ export type {
 	CreateAuthMaterialControllerOptions,
 } from "./controller";
 export { createAuthMaterialController } from "./controller";
-export type { AuthStatePersistence } from "./persistence";
+export type {
+	AuthStatePersistence,
+	CreateAuthStatePersistenceOptions,
+} from "./persistence";
 export { createAuthStatePersistence } from "./persistence";
+// Multi-requirement orchestration planner
+export type {
+	AuthRequirement,
+	CreateRequirementPlannerOptions,
+	PlanSnapshot,
+	RequirementPlanner,
+	RequirementResolution,
+} from "./requirement-planner";
+export {
+	createRequirementPlanner,
+	PlanStatus,
+	RequirementKind,
+	RequirementPlannerError,
+	ResolutionStatus,
+} from "./requirement-planner";
 export { bearerHeader, mergeTokenDelta } from "./token-ops";
 export type {
 	AuthDelta,

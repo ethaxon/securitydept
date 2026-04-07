@@ -23,7 +23,15 @@
 
 // --- Browser runtime ---
 
-export { createFrontendOidcModeClient, FrontendOidcModeClient } from "./client";
+export type {
+	FrontendOidcModeLoginWithRedirectOptions,
+	FrontendOidcModePopupLoginOptions,
+} from "./client";
+export {
+	createFrontendOidcModeClient,
+	FrontendOidcModeClient,
+	relayFrontendOidcPopupCallback,
+} from "./client";
 
 // --- Types: config, protocol, lifecycle ---
 
@@ -68,7 +76,10 @@ export type {
 
 export {
 	configProjectionToClientConfig,
+	FrontendOidcModeConfigProjectionSchema,
+	parseConfigProjection,
 	tokenResultToAuthSnapshot,
+	validateConfigProjection,
 } from "./contracts";
 
 // --- Authorized transport ---

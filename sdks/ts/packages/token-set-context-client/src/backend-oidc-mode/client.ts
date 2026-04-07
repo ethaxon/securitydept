@@ -37,6 +37,18 @@ const TRACE_SCOPE = "backend-oidc-mode";
 const TRACE_SOURCE = BackendOidcModeContextSource.Client;
 const TRACE_PREFIX = "backend_oidc";
 
+export interface BackendOidcModeRefreshOptions {
+	cancellationToken?: CancellationTokenTrait;
+}
+
+export interface BackendOidcModeFetchUserInfoOptions {
+	cancellationToken?: CancellationTokenTrait;
+}
+
+export interface BackendOidcModeMetadataRedemptionOptions {
+	cancellationToken?: CancellationTokenTrait;
+}
+
 /**
  * Backend OIDC Mode Client.
  *
@@ -241,9 +253,9 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	 * 200 OK and a JSON body containing the token delta. This avoids the
 	 * 302 → fragment pattern that fetch() cannot follow across domains.
 	 */
-	async refresh(options?: {
-		cancellationToken?: CancellationTokenTrait;
-	}): Promise<AuthStateSnapshot | null> {
+	async refresh(
+		options?: BackendOidcModeRefreshOptions,
+	): Promise<AuthStateSnapshot | null> {
 		const current = this._authMaterial.snapshot;
 		if (!current?.tokens.refreshMaterial) {
 			return null;
@@ -414,7 +426,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	/** Redeem metadata from the server by redemption ID. */
 	async redeemMetadata(
 		redemptionId: string,
-		options?: { cancellationToken?: CancellationTokenTrait },
+		options?: BackendOidcModeMetadataRedemptionOptions,
 	): Promise<BackendOidcModeMetadataRedemptionResponse | null> {
 		this._recordTrace("backend_oidc.metadata_redemption.started", {
 			redemptionId,
@@ -471,12 +483,12 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	/**
 	 * Exchange the current id_token + access_token for normalized user info.
 	 *
-	 * Protocol: POST /auth/token-set/user-info with Bearer access_token
+	 * Protocol: POST /auth/oidc/user-info (SDK default) with Bearer access_token
 	 * and JSON body `{ id_token }`. Returns the server-normalized user info.
 	 */
-	async fetchUserInfo(options?: {
-		cancellationToken?: CancellationTokenTrait;
-	}): Promise<BackendOidcModeUserInfoResponse> {
+	async fetchUserInfo(
+		options?: BackendOidcModeFetchUserInfoOptions,
+	): Promise<BackendOidcModeUserInfoResponse> {
 		this._recordTrace("backend_oidc.user_info.started");
 
 		try {

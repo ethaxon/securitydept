@@ -120,6 +120,51 @@ sdks/
 
 `apps/webui` 应继续使用 Vite，但不应作为 SDK 包的主构建链路。
 
+<a id="typescript-sdk-coding-standards"></a>
+## TypeScript SDK 编码规范
+
+以下规则适用于 `sdks/ts/` 下的所有 TypeScript 包。`AGENTS.md` 中有精简摘要；本节提供完整 rationale，供参考和 review 使用。
+
+### 枚举类字符串域
+
+对有界字符串值域的常量，优先使用：
+
+```ts
+export const Foo = {
+  Bar: "bar",
+  Baz: "baz",
+} as const;
+export type Foo = (typeof Foo)[keyof typeof Foo];
+```
+
+这样运行时输出简单（普通对象，无 class），与 JS 消费者和字符串协议（JSON、discriminant）保持最大兼容性，同时保留 TypeScript 完整补全和穷举检查能力。
+
+避免使用 TypeScript `enum`——它会生成运行时 IIFE，与 `isolatedModules` 兼容性差，且会干扰 `as const` 窄化。
+
+### 公共契约的命名常量
+
+对于公共契约、高频 discriminant、具有稳定含义的重复 telemetry 词汇，应提取命名常量，而不是散落原始字符串。例如：错误 `code` 字符串、trace 事件名、日志 scope 标签。
+
+在能提升一致性和可发现性时使用。**不要**机械套用——一次性 UI 文案或局部临时文本保持内联。
+
+### API 形状：options object 优先
+
+<a id="ts-sdk-api-shape"></a>
+
+公开 SDK 函数对任何可选参数集默认使用 **`options` object**。
+
+裸 positional 第二参数仅在同时满足以下**两个**条件时才可接受：
+
+1. 参数语义无需命名即可自明（如简单的字符串 key 或必选主值）。
+2. 它是唯一的高频参数，在调用点能带来明确的人体工程学收益。
+
+来自更宽 options bucket 的单个可选字段，**不能**仅因为历史上曾是唯一参数就保留为 positional overload。
+
+**当现有 API 扩宽**，新 options 无法以 positional 方式表达时，应将整个第二参数转为 options object——即使是 breaking change。这是 SDK surface 的有意方向。
+
+**Rationale——在第 76 轮确立：**  
+`resetBackendOidcModeBrowserState` 原签名为 `(client, callbackFragmentStore?)`。加入 `callbackFragmentKey` 和 `sessionStore` 时，第二参数整体转为 `(client, options?)`。`callbackFragmentStore` 是 `EphemeralFlowStore<string>`——属于 options bucket 中的一个字段，不满足 positional 例外条件。由此产生的 breaking change 被接受为有意的 API 风格统一。
+
 ## Foundation 设计
 
 `foundation` 是设计层和共享基础层，优先作为内部层存在。它不应承载 auth-context 专属状态机。
@@ -276,23 +321,29 @@ interface EphemeralFlowStore<T> {
 - auth-context config
 - adapter / framework config
 
-示例：
+示例（当前真实 API）：
 
 ```ts
-createBackendOidcModeClient({
-  runtime: {
-    transport,
-    persistence,
-    scheduler,
-    clock,
+// Direct client construction (full control)
+import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
+
+const client = new BackendOidcModeClient(
+  {
+    baseUrl: "https://auth.example.com",
+    loginPath: "/auth/oidc/login",    // SDK default; adopters may override
+    refreshPath: "/auth/oidc/refresh",
+    refreshWindowMs: 60_000,
   },
-  auth: {
-    authorizePath,
-    callbackPath,
-    refreshPath,
-    refreshWindowMs,
-  },
-})
+  runtime,
+);
+
+// Browser convenience entry (see /backend-oidc-mode/web)
+import { createBackendOidcModeBrowserClient } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+
+const browserClient = createBackendOidcModeBrowserClient({
+  baseUrl: "https://auth.example.com",
+  loginPath: "/auth/token-set/login", // adopter-specific override
+});
 ```
 
 配置校验：
@@ -554,7 +605,11 @@ Mixed-custody 应被写入设计，但当前应明确标注为：
 - 这是一个高价值的下游参考案例方向，有助于指导整个认证栈（前端 `token-set-context-client`后端 `securitydept-token-set-context`）的后续设计
 - 但它**不属于当前 v1 已验证 contract**
 
-## 服务端支持
+## SSR / 服务端宿主支持
+
+本文件中的“服务端支持”，指的是 TypeScript SDK 在 SSR / server-render
+宿主、以及 server request / response handling 边界下的行为与契约；它**不**
+指 Rust route-facing service crate。
 
 服务端支持不应被理解为“再做一套服务端版客户端 SDK 核心”，而应建立在同一套 portable capability 之上。
 
@@ -572,6 +627,8 @@ Mixed-custody 应被写入设计，但当前应明确标注为：
 ### `basic-auth-context` / `session-context`
 
 应支持 redirect-aware SSR / server request handling。
+
+这里表达的是 TS SDK 的目标方向，不应被读成“当前已经有完整产品化的 SSR helper 层”。
 
 核心不是浏览器导航，而是中性的 redirect instruction：
 
@@ -873,14 +930,14 @@ subpath exports 本身也是 public contract。
 |---|---|
 | `orchestration/types.ts` | `TokenSnapshot`、`TokenDelta`、`AuthSnapshot`、`AuthPrincipal`、`AuthSource` |
 | `orchestration/token-ops.ts` | `mergeTokenDelta()`、`bearerHeader()` |
-| `orchestration/persistence.ts` | `createAuthStatePersistence()` |
+| `orchestration/persistence.ts` | `createAuthStatePersistence()` 及对应的强类型选项配置 `CreateAuthStatePersistenceOptions` |
 | `orchestration/auth-transport.ts` | `createAuthorizedTransport()` |
 | `orchestration/controller.ts` | `AuthMaterialController` / `createAuthMaterialController()` |
 | `frontend-oidc-mode/types.ts` | `FrontendOidcModeClientConfig` / `FrontendOidcModeTokenResult` / `FrontendOidcModeAuthorizeResult` / `FrontendOidcModeUserInfo` |
 | `frontend-oidc-mode/client.ts` | `createFrontendOidcModeClient()` / `FrontendOidcModeClient` |
 | `frontend-oidc-mode/contracts.ts` | `FrontendOidcModeConfigProjection` adapters |
 | `access-token-substrate/contracts.ts` | `TokenPropagation` / `AccessTokenSubstrateIntegrationInfo` |
-| `backend-oidc-mode/contracts.ts` | `BackendOidcModeConfigProjection` / callback / refresh / `UserInfoRequest` / `UserInfoResponse` adapters（已接入 Rust-side service） |
+| `backend-oidc-mode/contracts.ts` | `BackendOidcModeCapabilities` / `BackendOidcModePreset` / callback / refresh / redemption / `UserInfoRequest` / `UserInfoResponse` 等 transport contract |
 
 现有 v1 类型（如 `AuthTokenSnapshot`、`AuthStateSnapshot`）是对 orchestration 类型的 re-export alias，完全向后兼容。
 
@@ -900,9 +957,10 @@ subpath exports 本身也是 public contract。
   - 自动 save merged snapshot 到 persistence（与 `applySnapshot` 一致）
   - 如无现有 snapshot 则抛出错误（需先调用 `applySnapshot` 建立初始状态）
 - `BackendOidcModeClient` 内部已进一步建立在控制层之上：
-  - `restoreState()` / `clearState()` / `restorePersistedState()` 通过控制层完成
-  - `authorizationHeader()` 由控制层直接返回
-  - `refresh()` 成功路径通过 `_authMaterial.applyDelta()` 完成 token 合并persistence save
+  - `restoreState()` / `clearState()` / `restorePersistedState()` 通过 controller 路由
+  - `authorizationHeader()` 直接由 controller 提供
+  - `refresh()` 成功路径通过 `_authMaterial.applyDelta()` 完成 token 合并并持久化
+  - 原来采用配置对象作为参数的公有方法，已被定义并将它们的强类型契约导出至 `backend-oidc-mode` canonical subpath，包括 `BackendOidcModeRefreshOptions`、`BackendOidcModeFetchUserInfoOptions` 及 `BackendOidcModeMetadataRedemptionOptions`。
   - `createBackendOidcModeAuthorizedTransport()` 内部委托到 `createAuthorizedTransport()`
 - 但 `/orchestration` 不应再被继续单独抽象推演成最终前端 OIDC 方案；下一阶段应直接用 `oauth4webapi`、`oidc-client-ts` 与未来 `angular-auth-oidc-client` 三组现实案例来校准 `frontend-oidc` 模式的前端实现
 - 当前规划中的官方 `frontend-oidc` 前端实现，位于 `token-set-context-client` 内部（`/frontend-oidc-mode` 子路径），以封装 `oauth4webapi` 为基座，复用同包内的 orchestration 基础设施。对应的后端消费入口是 `/backend-oidc-mode`
@@ -925,7 +983,7 @@ subpath exports 本身也是 public contract。
 
 `@securitydept/token-set-context-client` 当前应按冻结中的 browser-owned v1 baseline 理解，而不是把所有未来 custody 模型都读进来。
 
-| 在 v1 scope 内 | 不在 v1 scope 内 |
+| 当前 baseline contract 内 | 不属于当前 baseline contract |
 |---|---|
 | browser-owned `backend-oidc` consumption | mixed-custody token family 管理 |
 | callback returns parsingmetadata fallback | stateful BFF token ownership |
@@ -937,33 +995,69 @@ subpath exports 本身也是 public contract。
 | `./web` browser bootstrap / callback returns capture / reset helpers |  |
 | `./react` 最小 integration |  |
 
-这些主题继续留在 v1 之外，是因为：
+右侧列并**不**等于“全部延期到 2.0 之后”。  
+在当前 `2.0-alpha` 重审后，这些主题应拆成三类：
+
+- `2.0` backlog：popup 登录、cross-tab / visibility lifecycle hardening、多 provider orchestration
+- `3.0` 延期：mixed-custody / BFF / server-side mediated token ownership
+- 设计上就不属于 SDK surface：product-specific helper、probe、timeline UI
+
+这些主题继续留在当前 baseline contract 之外，是因为：
 
 - mixed-custody / BFF / server-side mediated token ownership 会实质改变 ownership model
 - 更大的 browser lifecycle hardening 属于后续 adapter hardening，而不是第一版 root-contract freeze
 - app-specific helper 与 probe 依赖 reference app API 形状和产品模型，留在 `apps/webui` 才能保持 SDK surface 清晰
 
-### 计划特性（Post-v1）
+### 2.0-alpha 重审：未完成项状态
 
-#### Popup-based Login
+这份 guide 当前同时承载了三类内容：
 
-`backend-oidc-mode` 与 `frontend-oidc-mode` 当前仅支持 redirect-based 登录（全页面跳转）。Popup-based 登录——在弹窗中完成 OIDC 认证，通过 `postMessage` 将结果 relay 回 opener——是 post-v1 计划能力。
+- 当前已实现 contract
+- 设计规则 / 预期架构
+- 尚未完成、但仍属于产品面目标的功能
 
-设计方向：
+为了减少当前 `2.0-alpha.x` 阶段的歧义，下面这张表应被视为本文件中主要未完成项的 authoritative 重审结论。
 
-- 共享 popup 窗口管理基础设施放在 `@securitydept/client/web`（`openPopupChannel`、`computePopupFeatures`）
-- 基于 `postMessage` 的 type-discriminated 通信协议（`securitydept:backend-oidc:callback`、`securitydept:frontend-oidc:callback`）
-- SDK 提供 callback relay 脚本供应用嵌入 popup callback 页面（`relayBackendOidcCallback`、`relayFrontendOidcCallback`）
-- `backend-oidc-mode/web`：`popupLogin()` 作为顶层函数，打开弹窗到后端 login URL，等待 `postMessage` relay 回的 fragment，再调用已有的 `handleCallback()`
-- `frontend-oidc-mode`：`popupLogin()` 作为 `FrontendOidcModeClient` 方法，组合 `authorizeUrl()` → 弹窗 → `exchangeCode()` → claims check → persist
-- popup 被阻止检测：reject 特定错误，消费方可据此降级为 redirect
-- 所有 `postMessage` listener 必须校验 `targetOrigin`
+| 主题 | 当前重审结论 | 2.0 GA 前要求 |
+|---|---|---|
+| `@standard-schema` 支持 | **多路径 adoption 已实现。** Foundation validation entry（`createSchema`、`validateWithSchema`、`validateWithSchemaSync`）在 `@securitydept/client` 中。真实 adoption：`session-context-client.fetchMe()`、`frontend-oidc-mode.parseConfigProjection()`、`BasicAuthContextClient` config validation、`parseBackendOidcModeCallbackBody` / `parseBackendOidcModeRefreshBody`。行为级 evidence 在 `standard-schema-adoption.test.ts` 和 `standard-schema-expanded-adoption.test.ts`。 | 按需逐步扩展到其他 cross-boundary payload。 |
+| 调度与统一输入源 | **Foundation baseline 已实现。** `Scheduler` / `Clock` 抽象 + 默认 runtimes + 新 foundation helpers：`timer()`、`interval()`、`scheduleAt()`、`fromEventPattern()` 在 `@securitydept/client` 中。浏览器 adapter：`fromVisibilityChange()` 在 `@securitydept/client/web` 中。真实 adoption：`FrontendOidcModeClient` metadata refresh 使用 `interval()`。 | `fromSignal`、storage adapter、cross-tab leader election 仍延期。 |
+| `basic-auth-context-client` 轻量 browser helper | **baseline 已实现。** zone-aware login/logout URL 构造、neutral redirect instruction、`./web` redirect helper 与 focused tests 已存在。 | 2.0 前继续保持 thin，不要求扩成更重的产品 UI。 |
+| `session-context-client` login-trigger convenience | **baseline 已实现。** `loginWithRedirect()` convenience 已在 `@securitydept/session-context-client/web` 中建立；行为级测试覆盖 pending redirect state 和浏览器导航。 | 保持 thin；仅在 adopter 反馈需要时扩展。 |
+| token-set redirect 登录 convenience | **baseline 已实现。** `loginWithBackendOidcRedirect()` 在 `backend-oidc-mode/web` 中、`FrontendOidcModeClient.loginWithRedirect()` 在 `frontend-oidc-mode` 中提供一步式 redirect convenience；行为级测试覆盖两者。 | 保持 thin；仅在 adopter 反馈需要时扩展。 |
+| `backend-oidc-mode` / `frontend-oidc-mode` 的 popup 登录 | **baseline 已实现。** 共享 popup 基础设施（`openPopupWindow`、`waitForPopupRelay`、`relayPopupCallback`、`PopupErrorCode`）在 `@securitydept/client/web` 中。`loginWithBackendOidcPopup` + `relayBackendOidcPopupCallback` 在 `backend-oidc-mode/web` 中。`FrontendOidcModeClient.popupLogin()` 在 `frontend-oidc-mode` 中。稳定错误码覆盖 blocked、closed、timeout 和 relay error 语义。 | Cross-tab lifecycle hardening、chooser UI 和 multi-provider orchestration 明确延期到 baseline 之后。 |
+| 多 OIDC Client / 多资格路由编排 | **Headless primitive baseline 已实现。** `createRequirementPlanner()` 在 `@securitydept/token-set-context-client/orchestration` 中提供 mode-agnostic 顺序 requirement planner，包含 `AuthRequirement`、`RequirementKind`、`PlanStatus`、`ResolutionStatus`、`PlanSnapshot`。支持顺序推进、混合 resolution 状态、reset/retry 与错误路径。 | Chooser UI、app router 集成、跨 tab 编排、非顺序（并行/条件）flow 仍延期。 |
+| `basic-auth-context` 的 SSR / server-render-host 支持 | **Server helper baseline 已实现。** `createBasicAuthServerHelper()` 在 `@securitydept/basic-auth-context-client/server` 中提供 host-neutral 的 `handleUnauthorized()`、`loginUrlForPath()`、`logoutUrlForPath()`，含 `ServerRequestContext` / `ServerRedirectInstruction` contract。Contract-level evidence 在 `ssr-server-helper-baseline.test.ts`。 | Framework-specific adapter（Next.js、Remix）仍延期。 |
+| `session-context` 的 SSR / server-render-host 支持 | **Server helper baseline 已实现。** `createSessionServerHelper()` 在 `@securitydept/session-context-client/server` 中提供 host-neutral 的 `fetchMe()` + cookie 转发 transport、`loginUrl()`、`logoutUrl()`。Contract-level evidence 在 `ssr-server-helper-baseline.test.ts`。 | Framework-specific adapter 和 response mutation abstraction 仍延期。 |
+| TS SDK 冻结与 release-gate 纪律 | **0.x baseline 全部实现。** `public-surface-inventory.json` 提供含 stability、evidence、docs anchor、`changeDiscipline` 的权威清单。`release-gate.test.ts`（14 tests）校验 export 对齐、evidence、docs anchor（EN heading + ZH 结构对齐）、stability、discipline/stability 对齐、migration ledger 存在性。`110-TS_SDK_MIGRATIONS.md` 为 adopter 可引用的迁移记录。 | Full semver / release automation / changelog generation 仍延期。 |
+| Mixed-Custody / BFF / server-side token ownership | 是重要边界，但复杂度高，不属于当前 browser-owned 2.0 baseline。 | 明确延期到 3.0，而不是继续扰动 2.0 release target。 |
 
-待定设计问题：
+这张表刻意只审计 TS SDK surface。Rust backend service support 属于仓库中的另一类问题，不应和这里的 SSR / 服务端宿主支持混为一谈。
 
-- popup 的 `redirect_uri` 是否需要与主 redirect URI 分开配置
-- callback relay 页面由后端提供还是由前端应用提供
-- popup 被阻止时是否由 SDK 自动降级为 redirect，还是交给消费方决策
+#### Popup-based 登录设计方向
+
+Popup 登录 baseline **已实现**。以下组件可用：
+
+当前实现：
+
+- 共享 popup 基础设施在 `@securitydept/client/web` 中：
+  - `openPopupWindow()` — 弹窗打开 + blocked 检测
+  - `waitForPopupRelay()` — `postMessage` relay 等待（含 closed/timeout 处理）
+  - `relayPopupCallback()` — 通用 callback relay helper
+  - `PopupErrorCode` — 稳定错误码（`popup.blocked`、`popup.closed_by_user`、`popup.relay_timeout`、`popup.relay_error`）
+  - `computePopupFeatures()` — 居中弹窗 features 字符串
+- `backend-oidc-mode/web`：
+  - `loginWithBackendOidcPopup()` — 顶层 popup 登录，relay fragment 回既有 bootstrap 管线，尊重 `callbackFragmentKey` / `sessionStore` 命名空间
+  - `relayBackendOidcPopupCallback()` — mode-local callback relay helper
+- `frontend-oidc-mode`：
+  - `FrontendOidcModeClient.popupLogin()` — 实例方法，组合 `authorizeUrl()` → 弹窗 → relay → `handleCallback()` → persist
+  - `relayFrontendOidcPopupCallback()` — mode-local callback relay helper
+
+明确延期到 baseline 之后：
+
+- cross-tab lifecycle hardening / leader election
+- chooser UI 或多 provider orchestration
+- 自动降级（popup blocked → redirect）— 留给消费方决策
 
 ### Adopter 使用清单
 
@@ -974,7 +1068,7 @@ subpath exports 本身也是 public contract。
 | Browser App / SPA 消费 `backend-oidc` | 直接从 `@securitydept/token-set-context-client/backend-oidc-mode` 进入 | timeline UI、propagation probe、`apps/webui/src/api/*` 是 SDK surface |
 | 前端消费特定 preset | 继续通过 `@securitydept/token-set-context-client/backend-oidc-mode`，再用 capability/preset 信息决定具体行为 | pure / mediated 对应额外的长期并列 canonical family |
 | React integration | 用 `@securitydept/*/react` 做最小 Providerhook integration；`session-context-client/react` 可直接从下方 React 入口片段开始 | route guard、pending redirect UI、reference page interaction form 属于 adapter contract |
-| browser-owned baseline 之外的 mediated token ownership | 立即按“超出 v1 scope”处理 | mixed-custody / BFF / SSR token store 已经内建支持 |
+| browser-owned baseline 之外的 mediated token ownership | 直接按“明确延期到 `3.0`，不属于当前 `2.0` public surface”理解 | mixed-custody / BFF / SSR token store 已经内建支持 |
 
 #### 不应被当作 SDK Surface 的内容
 
@@ -984,7 +1078,7 @@ subpath exports 本身也是 public contract。
 | trace timeline UI / DOM harness | reference app | 调试/演示 glue，非外部 contract |
 | propagation smoke / same-server probe | reference appserver config | 依赖产品路由与服务配置 |
 | SSR session redirect glue（完整版） | app/server 层 | 框架 response 边界属于 app |
-| cross-tab sync / visibility lifecycle | 超出 v1 scope | 后续 adapter hardening 主题 |
+| cross-tab sync / visibility lifecycle hardening | 后续 adapter hardening backlog | 当前还不属于 public adapter contract，但 `2.0` GA 前应补出最小 baseline |
 
 #### 开始接入前的确认清单
 
@@ -1046,19 +1140,85 @@ const session = await sessionClient.fetchMe(runtime.transport);
 
 当宿主希望直接使用浏览器侧的 `fetch`、storage flow-state 与 callback bootstrap helper 时，优先从 `./backend-oidc-mode/web` 进入。
 
+`createBackendOidcModeBrowserClient()` 承接 `BackendOidcModeClientConfig` 的**全部字段**（`baseUrl`、`loginPath`、`refreshPath`、`metadataRedeemPath`、`userInfoPath`、`refreshWindowMs`、`persistentStateKey`、`defaultPostAuthRedirectUri`），同时管理浏览器 runtime 接线（`persistentStore`、`sessionStore`、`transport`、`fetchTransport`、`scheduler`、`clock`、`logger`、`traceSink`）。如果需要完全控制 `ClientRuntime`，应直接构造 `BackendOidcModeClient`。
+
+**`transport` 与 `fetchTransport` 的优先级：**
+
+- 传入 `transport` 时，它直接作为 runtime transport，`fetchTransport` 被忽略
+- 不传 `transport` 时，entry 通过 `createWebRuntime` 创建默认的 `fetch` transport；此路径下 `fetchTransport` 选项会与 SDK 默认值（`redirect: "manual"`）合并，允许 adopter 微调 fetch 行为而无需重写整个 transport
+- SDK 默认 `redirect: "manual"` 是 backend-oidc 浏览器协议处理所需的安全默认值
+
+**同源多集成的存储隔离**：当同一 origin 下运行多个独立的 backend-oidc integration 且共享相同存储时：
+
+- `persistentStateKey` 隔离 persisted auth state（已登录 token 快照）
+- callback fragment 隔离通过 `bootstrapBackendOidcModeClient` 和 `resetBackendOidcModeBrowserState` 的 `callbackFragmentKey` + `sessionStore` 完成；使用 `resolveBackendOidcModeCallbackFragmentKey(persistentStateKey)` 派生 namespaced key
+- `resetBackendOidcModeBrowserState` 会跟 bootstrap 同样接受 `callbackFragmentKey` / `sessionStore` convenience 参数，确保清理能够正确找到独立的 fragment store。显式提供的 `callbackFragmentStore` 优先级高于 `callbackFragmentKey` / `sessionStore`
+
+> [!NOTE]
+> 所有的 browser helpers 的选项参数都已被提取为强类型的命名接口，并且直接可以从 `@securitydept/token-set-context-client/backend-oidc-mode/web` 中导入。例如 `BootstrapBackendOidcModeClientOptions` 和 `ResetBackendOidcModeBrowserStateOptions` 等可以用来进行显式的类型声明。
+
+**一步登录跳转：** `loginWithBackendOidcRedirect(client, options?)` 是推荐的一步式 backend-oidc 登录浏览器入口。它会解析授权 URL 并导航当前窗口。选项合约 `LoginWithBackendOidcRedirectOptions` 从 `@securitydept/token-set-context-client/backend-oidc-mode/web` 导出。
+
+**Session-context 浏览器便捷层：** `@securitydept/session-context-client/web` 提供 `loginWithRedirect(client, options?)` — 一步式 session 登录跳转 helper，保存 post-auth redirect intent 并导航至登录 URL。选项合约 `LoginWithRedirectOptions` 从 `/web` 子路径导出。
+
+**Frontend-oidc 登录跳转：** `FrontendOidcModeClient.loginWithRedirect(options?)` 构建 OIDC 授权 URL（含 PKCE + nonce），存储 pending state 并导航浏览器。选项合约 `FrontendOidcModeLoginWithRedirectOptions` 从 `@securitydept/token-set-context-client/frontend-oidc-mode` 导出。
+
 ```ts
 import {
 	bootstrapBackendOidcModeClient,
 	createBackendOidcModeBrowserClient,
 	resolveBackendOidcModeAuthorizeUrl,
+	resolveBackendOidcModeCallbackFragmentKey,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+
+const INTEGRATION_KEY = "my-app:backend-oidc";
+const mySessionStore = /* custom session store */ undefined;
 
 const client = createBackendOidcModeBrowserClient({
 	baseUrl: "https://auth.example.com",
 	defaultPostAuthRedirectUri: window.location.href,
+	loginPath: "/auth/token-set/login",     // adopter-specific path override
+	persistentStateKey: INTEGRATION_KEY,    // namespaces persisted auth state
+	sessionStore: mySessionStore,           // custom session storage
 });
 
-const bootstrap = await bootstrapBackendOidcModeClient(client);
+// callbackFragmentKey + sessionStore together provide end-to-end fragment isolation
+const bootstrap = await bootstrapBackendOidcModeClient(client, {
+	sessionStore: mySessionStore,
+	callbackFragmentKey: resolveBackendOidcModeCallbackFragmentKey(INTEGRATION_KEY),
+});
+
+if (bootstrap.source === "empty") {
+	window.location.href = resolveBackendOidcModeAuthorizeUrl(client);
+}
+```
+
+```ts
+import {
+	bootstrapBackendOidcModeClient,
+	createBackendOidcModeBrowserClient,
+	createBackendOidcModeCallbackFragmentStore,
+	resolveBackendOidcModeAuthorizeUrl,
+	resolveBackendOidcModeCallbackFragmentKey,
+} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+
+const INTEGRATION_KEY = "my-app:backend-oidc";
+
+const client = createBackendOidcModeBrowserClient({
+	baseUrl: "https://auth.example.com",
+	defaultPostAuthRedirectUri: window.location.href,
+	// Adopter-specific path overrides (SDK defaults to /auth/oidc/*)
+	loginPath: "/auth/token-set/login",
+	// Namespaces persisted auth state in localStorage
+	persistentStateKey: INTEGRATION_KEY,
+});
+
+// Use the matching namespaced fragment key for sessionStorage isolation
+const fragmentStore = createBackendOidcModeCallbackFragmentStore({
+	key: resolveBackendOidcModeCallbackFragmentKey(INTEGRATION_KEY),
+});
+
+const bootstrap = await bootstrapBackendOidcModeClient(client, { callbackFragmentStore: fragmentStore });
 
 if (bootstrap.source === "empty") {
 	window.location.href = resolveBackendOidcModeAuthorizeUrl(client);
@@ -1107,9 +1267,76 @@ export function App() {
 }
 ```
 
-#### 4. SSR redirect 入口：继续属于 app/server glue
+#### 4. SSR / server-host 入口：dedicated `./server` helpers
 
-SSR redirect 处理目前仍属于 app/server 层。SDK 可以帮助构造 redirect URL，但不会隐藏框架自己的 response 边界。
+在 SSR 或服务端请求处理器（Next.js `getServerSideProps`、Remix `loader`、Astro endpoints、Node request handler 等）中，使用各 auth-context package 的 **`./server` 子路径**。这些 helpers 提供 host-neutral、cookie-aware 的操作，无需浏览器全局变量。
+
+**架构边界：**
+
+| 职责 | 归属 |
+|---|---|
+| 登录 / 登出 / 跳转 URL 构造 | SDK `./server` helpers |
+| 带 cookie 转发的 Session 探测 (`fetchMe`) | SDK `./server` helpers，通过 host 提供的 transport |
+| 基于 zone 的 401 → 跳转指令 | SDK `./server` helpers (`handleUnauthorized`) |
+| HTTP 响应构造（302、Set-Cookie、body） | Host / 框架 |
+| 浏览器导航（`window.location`） | 仅 `/web` 子路径（SSR 中不应导入） |
+
+##### session-context: 登录跳转 + session 探测（推荐 baseline）
+
+```ts
+import { createSessionServerHelper } from "@securitydept/session-context-client/server";
+
+const helper = createSessionServerHelper({
+	config: { baseUrl: "https://auth.example.com" },
+	transport: fetchTransport, // 你的 fetch-based HttpTransport
+});
+
+export async function getServerSideProps(context) {
+	const session = await helper.fetchMe({
+		headers: { cookie: context.req.headers.cookie ?? "" },
+	});
+
+	if (!session) {
+		return {
+			redirect: {
+				destination: helper.loginUrl(context.resolvedUrl),
+				permanent: false,
+			},
+		};
+	}
+
+	return { props: { user: session.principal } };
+}
+```
+
+##### basic-auth-context: 基于 zone 的跳转指令（推荐 baseline）
+
+```ts
+import { createBasicAuthServerHelper } from "@securitydept/basic-auth-context-client/server";
+
+const helper = createBasicAuthServerHelper({
+	config: {
+		baseUrl: "https://auth.example.com",
+		zones: [{ zonePrefix: "/api" }],
+	},
+});
+
+export async function handleRequest(request: Request) {
+	const url = new URL(request.url);
+
+	// 收到上游 401 后：
+	const redirect = helper.handleUnauthorized({ path: url.pathname });
+	if (redirect) {
+		return Response.redirect(redirect.destination, redirect.statusCode);
+	}
+
+	// ...
+}
+```
+
+##### 低层 escape hatch：root client + 自定义 transport
+
+如果 `./server` helpers 不能覆盖你的场景，仍可直接从 root subpath 导入并手动构造 transport。这是 helper 之前的做法，作为 escape hatch 保留：
 
 ```ts
 import { SessionContextClient } from "@securitydept/session-context-client";
@@ -1118,13 +1345,26 @@ const sessionClient = new SessionContextClient({
 	baseUrl: "https://auth.example.com",
 });
 
-export async function loader(request: Request) {
-	const url = new URL(request.url);
-	const returnTo = `${url.origin}${url.pathname}${url.search}`;
+// 手动带 cookie 转发的 transport
+const ssrTransport = {
+	async execute(request) {
+		const response = await fetch(request.url, {
+			method: request.method,
+			headers: { ...request.headers, cookie: incomingCookies },
+		});
+		return {
+			status: response.status,
+			headers: Object.fromEntries(response.headers.entries()),
+			body: await response.json().catch(() => null),
+		};
+	},
+};
 
-	return Response.redirect(sessionClient.loginUrl(returnTo)302);
-}
+const session = await sessionClient.fetchMe(ssrTransport);
 ```
+
+> [!IMPORTANT]
+> 在 SSR 场景中，请从 `./server`（推荐）或 **根** 子路径导入。**绝不要**从 `/web` 导入 — 它依赖浏览器全局变量（`window.location`），不应在服务端代码中使用。
 
 ### Provisional Adapter 维护标准
 

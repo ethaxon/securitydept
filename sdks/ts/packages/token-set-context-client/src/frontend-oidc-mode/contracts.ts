@@ -13,6 +13,7 @@
 // User info contracts are included: the frontend uses `userinfoRequest()` from
 // oauth4webapi to fetch claims directly from the provider's userinfo endpoint.
 
+import { createSchema, validateWithSchemaSync } from "@securitydept/client";
 import type {
 	FrontendOidcModeClientConfig,
 	FrontendOidcModeTokenResult,
@@ -220,6 +221,251 @@ export function configProjectionToClientConfig(
 			projection.idTokenSigningAlgValuesSupported,
 		userinfoSigningAlgValuesSupported:
 			projection.userinfoSigningAlgValuesSupported,
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers for schema validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate that an optional field, when present as an array, contains only strings.
+ * Returns an issue result if invalid, or null if valid (assigns to projection).
+ */
+function validateStringArrayField(
+	raw: Record<string, unknown>,
+	field: keyof FrontendOidcModeConfigProjection,
+	projection: FrontendOidcModeConfigProjection,
+): { issues: ReadonlyArray<{ message: string; path: PropertyKey[] }> } | null {
+	if (raw[field] === undefined) return null;
+	if (!Array.isArray(raw[field])) {
+		return {
+			issues: [
+				{
+					message: `${field} must be an array of strings when present`,
+					path: [field],
+				},
+			],
+		};
+	}
+	const arr = raw[field] as unknown[];
+	for (let i = 0; i < arr.length; i++) {
+		if (typeof arr[i] !== "string") {
+			return {
+				issues: [
+					{
+						message: `${field}[${i}] must be a string`,
+						path: [field, i],
+					},
+				],
+			};
+		}
+	}
+	// Safe cast — all elements verified as strings.
+	(projection as unknown as Record<string, unknown>)[field] = arr as string[];
+	return null;
+}
+
+// ---------------------------------------------------------------------------
+// Config projection validation schema (@standard-schema aligned)
+// ---------------------------------------------------------------------------
+
+/**
+ * Schema for validating a raw `FrontendOidcModeConfigProjection` from an
+ * untrusted cross-boundary source (e.g. a REST endpoint response body).
+ *
+ * Validates required fields (`clientId`, `redirectUrl`) and checks
+ * structural correctness of the configuration projection.
+ */
+export const FrontendOidcModeConfigProjectionSchema =
+	createSchema<FrontendOidcModeConfigProjection>({
+		validate(input: unknown) {
+			if (typeof input !== "object" || input === null) {
+				return {
+					issues: [
+						{
+							message: "Expected an object for config projection",
+						},
+					],
+				};
+			}
+
+			const raw = input as Record<string, unknown>;
+
+			if (typeof raw.clientId !== "string" || !raw.clientId) {
+				return {
+					issues: [
+						{
+							message: "clientId is required and must be a non-empty string",
+							path: ["clientId"],
+						},
+					],
+				};
+			}
+
+			if (typeof raw.redirectUrl !== "string" || !raw.redirectUrl) {
+				return {
+					issues: [
+						{
+							message: "redirectUrl is required and must be a non-empty string",
+							path: ["redirectUrl"],
+						},
+					],
+				};
+			}
+
+			const projection: FrontendOidcModeConfigProjection = {
+				clientId: raw.clientId,
+				redirectUrl: raw.redirectUrl,
+			};
+
+			// Optional string fields.
+			if (typeof raw.wellKnownUrl === "string")
+				projection.wellKnownUrl = raw.wellKnownUrl;
+			if (typeof raw.issuerUrl === "string")
+				projection.issuerUrl = raw.issuerUrl;
+			if (typeof raw.jwksUri === "string") projection.jwksUri = raw.jwksUri;
+			if (typeof raw.metadataRefreshInterval === "string")
+				projection.metadataRefreshInterval = raw.metadataRefreshInterval;
+			if (typeof raw.jwksRefreshInterval === "string")
+				projection.jwksRefreshInterval = raw.jwksRefreshInterval;
+			if (typeof raw.authorizationEndpoint === "string")
+				projection.authorizationEndpoint = raw.authorizationEndpoint;
+			if (typeof raw.tokenEndpoint === "string")
+				projection.tokenEndpoint = raw.tokenEndpoint;
+			if (typeof raw.userinfoEndpoint === "string")
+				projection.userinfoEndpoint = raw.userinfoEndpoint;
+			if (typeof raw.revocationEndpoint === "string")
+				projection.revocationEndpoint = raw.revocationEndpoint;
+			if (typeof raw.clientSecret === "string")
+				projection.clientSecret = raw.clientSecret;
+			if (typeof raw.pkceEnabled === "boolean")
+				projection.pkceEnabled = raw.pkceEnabled;
+
+			// Optional string array fields — validate elements are strings.
+			const stringArrayResult = validateStringArrayField(
+				raw,
+				"scopes",
+				projection,
+			);
+			if (stringArrayResult) return stringArrayResult;
+
+			const requiredScopesResult = validateStringArrayField(
+				raw,
+				"requiredScopes",
+				projection,
+			);
+			if (requiredScopesResult) return requiredScopesResult;
+
+			const tokenAuthResult = validateStringArrayField(
+				raw,
+				"tokenEndpointAuthMethodsSupported",
+				projection,
+			);
+			if (tokenAuthResult) return tokenAuthResult;
+
+			const idTokenAlgResult = validateStringArrayField(
+				raw,
+				"idTokenSigningAlgValuesSupported",
+				projection,
+			);
+			if (idTokenAlgResult) return idTokenAlgResult;
+
+			const userinfoAlgResult = validateStringArrayField(
+				raw,
+				"userinfoSigningAlgValuesSupported",
+				projection,
+			);
+			if (userinfoAlgResult) return userinfoAlgResult;
+
+			// Claims check script — reject structurally invalid objects.
+			if (raw.claimsCheckScript !== undefined) {
+				if (
+					typeof raw.claimsCheckScript !== "object" ||
+					raw.claimsCheckScript === null
+				) {
+					return {
+						issues: [
+							{
+								message: "claimsCheckScript must be an object when present",
+								path: ["claimsCheckScript"],
+							},
+						],
+					};
+				}
+				const script = raw.claimsCheckScript as Record<string, unknown>;
+				if (script.type !== "inline" || typeof script.content !== "string") {
+					return {
+						issues: [
+							{
+								message:
+									'claimsCheckScript must have type "inline" and string content',
+								path: ["claimsCheckScript"],
+							},
+						],
+					};
+				}
+				projection.claimsCheckScript = {
+					type: "inline",
+					content: script.content,
+				};
+			}
+
+			return { value: projection };
+		},
+	});
+
+/**
+ * Validate raw input against `FrontendOidcModeConfigProjectionSchema`.
+ *
+ * Use this when receiving a config projection from an untrusted source
+ * (e.g. parsing a REST response body) to ensure structural correctness
+ * before passing it to `configProjectionToClientConfig()`.
+ */
+export function validateConfigProjection(input: unknown) {
+	return validateWithSchemaSync(FrontendOidcModeConfigProjectionSchema, input);
+}
+
+/**
+ * Parse an untrusted config projection into a browser runtime client config.
+ *
+ * This is the canonical validated consumption path for cross-boundary config
+ * projections. It combines schema validation with the projection-to-config
+ * adapter in one step:
+ *
+ *   `unknown → validated FrontendOidcModeConfigProjection → FrontendOidcModeClientConfig`
+ *
+ * Returns `{ success: true, value: FrontendOidcModeClientConfig }` on success,
+ * or `{ success: false, issues: [...] }` on validation failure.
+ *
+ * @example
+ * ```ts
+ * const result = parseConfigProjection(responseBody);
+ * if (result.success) {
+ *   const client = new FrontendOidcModeClient(result.value, runtime);
+ * } else {
+ *   console.error("Invalid config projection:", result.issues);
+ * }
+ * ```
+ */
+export function parseConfigProjection(
+	input: unknown,
+	overrides?: Partial<
+		Pick<
+			FrontendOidcModeClientConfig,
+			"redirectUri" | "defaultPostAuthRedirectUri"
+		>
+	>,
+):
+	| { success: true; value: FrontendOidcModeClientConfig }
+	| import("@securitydept/client").ValidationFailure {
+	const validationResult = validateConfigProjection(input);
+	if (!validationResult.success) {
+		return validationResult;
+	}
+	return {
+		success: true,
+		value: configProjectionToClientConfig(validationResult.value, overrides),
 	};
 }
 

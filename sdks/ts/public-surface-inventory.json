@@ -1,0 +1,279 @@
+{
+	"description": "Authoritative TS SDK public-surface inventory. Machine-readable, test-validated. Inventory is the source-of-truth for stability levels and change discipline; 007-CLIENT_SDK_GUIDE.md must stay aligned.",
+	"changeDisciplineValues": {
+		"stable-deprecation-first": "Breaking changes require a deprecation period. Removal only after at least one minor release with the deprecated API still available and a migration note in the migration ledger.",
+		"provisional-migration-required": "Breaking changes are allowed but must be accompanied by a migration note in the migration ledger and a review-visible justification.",
+		"experimental-fast-break": "Breaking changes are expected and may happen without prior deprecation. A brief note in the migration ledger is recommended but not enforced by the gate."
+	},
+	"migrationLedger": "110-TS_SDK_MIGRATIONS.md",
+	"packages": [
+		{
+			"name": "@securitydept/client",
+			"dir": "client",
+			"stability": "stable",
+			"subpaths": [
+				{
+					"exportKey": ".",
+					"stability": "stable",
+					"owner": "foundation",
+					"changeDiscipline": "stable-deprecation-first",
+					"evidence": ["examples/minimal-entry-points.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Foundation Design"
+					}
+				},
+				{
+					"exportKey": "./persistence",
+					"stability": "stable",
+					"owner": "foundation",
+					"changeDiscipline": "stable-deprecation-first",
+					"evidence": ["examples/standard-schema-adoption.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Persistence"
+					}
+				},
+				{
+					"exportKey": "./persistence/web",
+					"stability": "stable",
+					"owner": "foundation",
+					"changeDiscipline": "stable-deprecation-first",
+					"evidence": ["examples/minimal-entry-points.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Persistence"
+					}
+				},
+				{
+					"exportKey": "./web",
+					"stability": "stable",
+					"owner": "foundation",
+					"changeDiscipline": "stable-deprecation-first",
+					"evidence": [
+						"examples/popup-login-baseline.test.ts",
+						"packages/client/src/web/__tests__/visibility.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Minimal Entry Paths"
+					}
+				}
+			]
+		},
+		{
+			"name": "@securitydept/basic-auth-context-client",
+			"dir": "basic-auth-context-client",
+			"stability": "stable",
+			"subpaths": [
+				{
+					"exportKey": ".",
+					"stability": "stable",
+					"owner": "basic-auth-context",
+					"changeDiscipline": "stable-deprecation-first",
+					"evidence": [
+						"examples/basic-auth-guard-scenario.test.ts",
+						"examples/ssr-server-host-baseline.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "`basic-auth-context-client`"
+					}
+				},
+				{
+					"exportKey": "./react",
+					"stability": "provisional",
+					"owner": "basic-auth-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": ["examples/basic-auth-web-minimal-entry.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Provisional Adapter Maintenance Standard"
+					}
+				},
+				{
+					"exportKey": "./web",
+					"stability": "provisional",
+					"owner": "basic-auth-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": ["examples/basic-auth-web-minimal-entry.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Provisional Adapter Maintenance Standard"
+					}
+				},
+				{
+					"exportKey": "./server",
+					"stability": "provisional",
+					"owner": "basic-auth-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": [
+						"examples/ssr-server-helper-baseline.test.ts",
+						"packages/basic-auth-context-client/src/server/__tests__/helpers.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "SSR / server-host entry: dedicated `./server` helpers"
+					}
+				}
+			]
+		},
+		{
+			"name": "@securitydept/session-context-client",
+			"dir": "session-context-client",
+			"stability": "stable",
+			"subpaths": [
+				{
+					"exportKey": ".",
+					"stability": "stable",
+					"owner": "session-context",
+					"changeDiscipline": "stable-deprecation-first",
+					"evidence": [
+						"examples/session-context-scenario.test.ts",
+						"examples/ssr-server-host-baseline.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "`session-context-client`"
+					}
+				},
+				{
+					"exportKey": "./web",
+					"stability": "provisional",
+					"owner": "session-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": ["examples/login-redirect-convenience.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Provisional Adapter Maintenance Standard"
+					}
+				},
+				{
+					"exportKey": "./react",
+					"stability": "provisional",
+					"owner": "session-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": ["examples/session-context-react-minimal-entry.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Provisional Adapter Maintenance Standard"
+					}
+				},
+				{
+					"exportKey": "./server",
+					"stability": "provisional",
+					"owner": "session-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": [
+						"examples/ssr-server-helper-baseline.test.ts",
+						"packages/session-context-client/src/server/__tests__/helpers.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "SSR / server-host entry: dedicated `./server` helpers"
+					}
+				}
+			]
+		},
+		{
+			"name": "@securitydept/token-set-context-client",
+			"dir": "token-set-context-client",
+			"stability": "stable",
+			"subpaths": [
+				{
+					"exportKey": "./backend-oidc-mode",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": [
+						"examples/backend-oidc-mode-subpath-contract.test.ts",
+						"examples/oidc-client-wrapper-contract.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Current Contract Snapshot"
+					}
+				},
+				{
+					"exportKey": "./backend-oidc-mode/web",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": [
+						"examples/backend-oidc-mode-browser-scenario.test.ts",
+						"examples/popup-login-baseline.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Browser entry: `./backend-oidc-mode/web` owns browser glue"
+					}
+				},
+				{
+					"exportKey": "./backend-oidc-mode/react",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": [
+						"packages/token-set-context-client/src/backend-oidc-mode/react/__tests__/adapter.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Provisional Adapter Maintenance Standard"
+					}
+				},
+				{
+					"exportKey": "./frontend-oidc-mode",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": ["examples/scheduling-input-source-baseline.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "`frontend-oidc`: Frontend Pure OIDC Client"
+					}
+				},
+				{
+					"exportKey": "./orchestration",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": [
+						"examples/multi-requirement-orchestration.test.ts",
+						"examples/token-orchestration-contract.test.ts",
+						"packages/token-set-context-client/src/orchestration/__tests__/requirement-planner.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Current Contract Snapshot"
+					}
+				},
+				{
+					"exportKey": "./access-token-substrate",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": ["examples/token-orchestration-subpath.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Current Contract Snapshot"
+					}
+				}
+			]
+		},
+		{
+			"name": "@securitydept/test-utils",
+			"dir": "test-utils",
+			"stability": "experimental",
+			"subpaths": [
+				{
+					"exportKey": ".",
+					"stability": "experimental",
+					"owner": "foundation",
+					"changeDiscipline": "experimental-fast-break",
+					"evidence": [],
+					"docsAnchor": null
+				}
+			]
+		}
+	]
+}

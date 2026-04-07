@@ -24,11 +24,18 @@ export interface AuthStatePersistence {
 	clear(): Promise<void>;
 }
 
-export function createAuthStatePersistence(options: {
+/**
+ * Configuration options for creating auth state persistence.
+ */
+export interface CreateAuthStatePersistenceOptions {
 	store: RecordStore;
 	key: string;
 	now: () => number;
-}): AuthStatePersistence {
+}
+
+export function createAuthStatePersistence(
+	options: CreateAuthStatePersistenceOptions,
+): AuthStatePersistence {
 	return {
 		async load(): Promise<AuthSnapshot | null> {
 			const raw = await options.store.get(options.key);

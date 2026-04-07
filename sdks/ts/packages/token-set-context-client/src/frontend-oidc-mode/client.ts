@@ -33,8 +33,14 @@ import {
 	ClientError,
 	ClientErrorKind,
 	createEphemeralFlowStore,
+	interval,
 	LogLevel,
 } from "@securitydept/client";
+import {
+	openPopupWindow,
+	relayPopupCallback,
+	waitForPopupRelay,
+} from "@securitydept/client/web";
 import {
 	type AuthorizationServer,
 	authorizationCodeGrantRequest,
@@ -144,6 +150,40 @@ function parseDurationToMs(duration: string): number {
 // ---------------------------------------------------------------------------
 // FrontendOidcModeClient
 // ---------------------------------------------------------------------------
+
+/**
+ * Options for {@link FrontendOidcModeClient.loginWithRedirect}.
+ */
+export interface FrontendOidcModeLoginWithRedirectOptions {
+	/**
+	 * Where to redirect the user after successful authentication.
+	 *
+	 * When omitted, the client's `defaultPostAuthRedirectUri` from config
+	 * is used.
+	 */
+	postAuthRedirectUri?: string;
+	/** Extra query parameters to append to the authorization URL. */
+	extraParams?: Record<string, string>;
+}
+
+/**
+ * Options for {@link FrontendOidcModeClient.popupLogin}.
+ */
+export interface FrontendOidcModePopupLoginOptions {
+	/**
+	 * The popup callback URL. This page should call
+	 * `relayFrontendOidcPopupCallback()` to relay the result back.
+	 */
+	popupCallbackUrl: string;
+	/** Extra query parameters to append to the authorization URL. */
+	extraParams?: Record<string, string>;
+	/** Popup window width in pixels (default: 500). */
+	popupWidth?: number;
+	/** Popup window height in pixels (default: 600). */
+	popupHeight?: number;
+	/** Maximum time in ms to wait for the popup relay (default: 120000). */
+	timeoutMs?: number;
+}
 
 /**
  * Browser-side OIDC client for frontend-oidc mode.
@@ -259,6 +299,54 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			this._recordFailureTrace("frontend_oidc.authorize.failed", error);
 			throw error;
 		}
+	}
+
+	/**
+	 * One-shot browser redirect to the OIDC provider's authorization endpoint.
+	 *
+	 * Builds the authorize URL (including PKCE + nonce), stores pending state,
+	 * and navigates the current window.  This is the recommended entry point
+	 * for initiating frontend-oidc login in a browser context.
+	 */
+	async loginWithRedirect(
+		options: FrontendOidcModeLoginWithRedirectOptions = {},
+	): Promise<void> {
+		const url = await this.authorizeUrl(
+			options.postAuthRedirectUri,
+			options.extraParams,
+		);
+
+		window.location.href = url;
+	}
+
+	/**
+	 * Initiate frontend-oidc login via a popup window.
+	 *
+	 * Opens a popup to the OIDC provider's authorization endpoint, waits for
+	 * the popup callback page to relay the callback URL back via `postMessage`,
+	 * then processes the callback through the existing `handleCallback()` pipeline.
+	 *
+	 * @returns The callback result from processing the authorization code.
+	 */
+	async popupLogin(
+		options: FrontendOidcModePopupLoginOptions,
+	): Promise<FrontendOidcModeCallbackResult> {
+		const url = await this.authorizeUrl(
+			options.popupCallbackUrl,
+			options.extraParams,
+		);
+
+		const popup = openPopupWindow(url, {
+			width: options.popupWidth,
+			height: options.popupHeight,
+		});
+
+		const callbackUrl = await waitForPopupRelay({
+			popup,
+			timeoutMs: options.timeoutMs,
+		});
+
+		return this.handleCallback(callbackUrl);
 	}
 
 	/**
@@ -908,9 +996,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 		this._cancelMetadataRefresh();
 
-		this._metadataRefreshHandle = this._runtime.scheduler.setTimeout(
-			intervalMs,
-			() => {
+		this._metadataRefreshHandle = interval({
+			scheduler: this._runtime.scheduler,
+			periodMs: intervalMs,
+			callback: () => {
 				if (this._rootCancellation.token.isCancellationRequested) return;
 				this.discover()
 					.then(() => {
@@ -923,7 +1012,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 						);
 					});
 			},
-		);
+		});
 	}
 
 	private _cancelMetadataRefresh(): void {
@@ -948,4 +1037,32 @@ export function createFrontendOidcModeClient(
 	runtime: ClientRuntime,
 ): FrontendOidcModeClient {
 	return new FrontendOidcModeClient(config, runtime);
+}
+
+// ---------------------------------------------------------------------------
+// Popup callback relay helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Relay the frontend-oidc popup callback result back to the opener window.
+ *
+ * Call this from the popup callback page. It posts the full callback URL
+ * (including query parameters with code and state) back to the opener
+ * and closes the popup.
+ *
+ * @example
+ * ```html
+ * <script type="module">
+ *   import { relayFrontendOidcPopupCallback } from "@securitydept/token-set-context-client/frontend-oidc-mode";
+ *   relayFrontendOidcPopupCallback();
+ * </script>
+ * ```
+ */
+export function relayFrontendOidcPopupCallback(options?: {
+	targetOrigin?: string;
+}): void {
+	relayPopupCallback({
+		payload: window.location.href,
+		targetOrigin: options?.targetOrigin,
+	});
 }

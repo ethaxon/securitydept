@@ -171,20 +171,6 @@ export interface BackendOidcModeRefreshResult {
 }
 
 // ---------------------------------------------------------------------------
-// Config projection
-// ---------------------------------------------------------------------------
-
-/**
- * Backend-to-frontend OIDC configuration projection.
- */
-export interface BackendOidcModeConfigProjection {
-	wellKnownUrl: string;
-	clientId: string;
-	scopes?: string[];
-	redirectUrl?: string;
-}
-
-// ---------------------------------------------------------------------------
 // Integration requirement
 // ---------------------------------------------------------------------------
 

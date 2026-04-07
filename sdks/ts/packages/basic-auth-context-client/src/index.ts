@@ -1,4 +1,5 @@
 export { BasicAuthContextClient } from "./client";
+export { BasicAuthContextClientConfigSchema } from "./schemas";
 export type {
 	AuthGuardResult,
 	BasicAuthContextClientConfig,

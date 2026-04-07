@@ -28,9 +28,11 @@
 		"build": "tsdown",
 		"typecheck": "tsc -b"
 	},
-	"peerDependencies": {},
 	"devDependencies": {
 		"tsdown": "^0.21.4",
 		"typescript": "^6.0.2"
+	},
+	"dependencies": {
+		"@standard-schema/spec": "^1.1.0"
 	}
 }

@@ -73,6 +73,48 @@ describe("minimal entry points", () => {
 		);
 	});
 
+	it("allows adopter-specific path overrides via browser entry", () => {
+		// securitydept-server uses /auth/token-set/* instead of the SDK
+		// default /auth/oidc/*. Adopters must be able to pass these overrides
+		// through the browser convenience entry.
+		const client = createBackendOidcModeBrowserClient({
+			baseUrl: "https://auth.example.com",
+			loginPath: "/auth/token-set/login",
+			refreshPath: "/auth/token-set/refresh",
+			metadataRedeemPath: "/auth/token-set/metadata/redeem",
+			userInfoPath: "/auth/token-set/user-info",
+			transport: {
+				execute: vi.fn(async () => ({
+					status: 200,
+					headers: {},
+					body: null,
+				})),
+			},
+			persistentStore: {
+				async get() {
+					return null;
+				},
+				async set() {},
+				async remove() {},
+			},
+			sessionStore: {
+				async get() {
+					return null;
+				},
+				async set() {},
+				async remove() {},
+			},
+		});
+
+		expect(
+			resolveBackendOidcModeAuthorizeUrl(client, {
+				href: "https://app.example.com/dashboard",
+			}),
+		).toBe(
+			"https://auth.example.com/auth/token-set/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard",
+		);
+	});
+
 	it("keeps browser convenience optional in the foundation runtime", () => {
 		const runtime = createWebRuntime({
 			transport: {

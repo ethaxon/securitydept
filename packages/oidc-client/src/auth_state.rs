@@ -2,9 +2,8 @@
 //!
 //! These functions extract authenticated principal information from OIDC
 //! protocol results (code callback and token refresh). They are
-//! protocol-level helpers usable by any backend OIDC mode
-//! (`backend-oidc-pure`, `backend-oidc-mediated`, etc.) without
-//! mode-specific coupling.
+//! protocol-level helpers usable by any `backend-oidc` preset (pure,
+//! mediated, etc.) without mode-specific coupling.
 //!
 //! # Usage
 //!

@@ -21,3 +21,5 @@ url = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+tower-sessions-memory-store = "0.15"
+securitydept-oidc-client = { path = "../oidc-client" }

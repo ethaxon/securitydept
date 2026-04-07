@@ -42,10 +42,31 @@ export default defineConfig({
 				),
 			},
 			{
+				find: "@securitydept/basic-auth-context-client/server",
+				replacement: path.join(
+					packagesDir,
+					"basic-auth-context-client/src/server/index.ts",
+				),
+			},
+			{
 				find: "@securitydept/basic-auth-context-client",
 				replacement: path.join(
 					packagesDir,
 					"basic-auth-context-client/src/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/session-context-client/web",
+				replacement: path.join(
+					packagesDir,
+					"session-context-client/src/web/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/session-context-client/server",
+				replacement: path.join(
+					packagesDir,
+					"session-context-client/src/server/index.ts",
 				),
 			},
 			{

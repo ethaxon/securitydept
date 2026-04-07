@@ -87,7 +87,8 @@ pub struct BackendOidcModeCallbackReturns {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(strip_option))]
     pub metadata_redemption_id: Option<MetadataRedemptionId>,
-    /// Inline metadata snapshot (mutually exclusive with `metadata_redemption_id`).
+    /// Inline metadata snapshot (mutually exclusive with
+    /// `metadata_redemption_id`).
     ///
     /// Populated by `callback_body_return` to avoid a separate redemption
     /// round-trip. `None` when `callback_fragment_return` is used instead.
@@ -188,7 +189,8 @@ pub struct BackendOidcModeRefreshReturns {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(strip_option))]
     pub metadata_redemption_id: Option<MetadataRedemptionId>,
-    /// Inline metadata delta (mutually exclusive with `metadata_redemption_id`).
+    /// Inline metadata delta (mutually exclusive with
+    /// `metadata_redemption_id`).
     ///
     /// Populated by `refresh_body_return` to avoid a separate redemption
     /// round-trip. `None` when `refresh_fragment_return` is used instead.

@@ -38,8 +38,9 @@ _Single source of truth for Agent identity, code standards, and project rules. S
   - Manage via `tsconfig.json` references.
   - Use `bundler` resolution (prefer extensionless imports without `.js` suffixes if not necessary).
   - Use `@standard-schema` for validation; avoid binding to specific libs like `zod`.
-  - For enum-like string domains, prefer the modern JS-compatible pattern `export const Foo = { ... } as const` together with `export type Foo = (typeof Foo)[keyof typeof Foo]`. This keeps runtime output simple, stays maximally compatible with JS consumers and string protocols, and still gives strong TS completions.
-  - For public contracts, high-frequency discriminants, and repeated telemetry vocabulary with stable meaning, prefer extracting named constants instead of scattering repeated raw strings. Do this when it improves consistency and discoverability, not for one-off UI copy or ad-hoc local text.
+  - For enum-like string domains, prefer `export const Foo = { ... } as const` + `export type Foo = (typeof Foo)[keyof typeof Foo]`.
+  - For public contracts and repeated telemetry vocabulary, extract named constants instead of scattering raw strings.
+  - **TS SDK API shape — options object first**: public functions use an `options` object for optional params; positional second args only when self-evident and uniquely ergonomic. Widening an API converts the whole second arg to options even if it's a breaking change. See [TypeScript SDK Coding Standards](docs/en/007-CLIENT_SDK_GUIDE.md#typescript-sdk-coding-standards) for the full decision rationale.
 - **Web UI Stack**: TS + Vite + React + `@tanstack/react-*` + TailwindCSS + shadcn/ui.
 - **Server Stack**: Rust + axum + openconnectid + serde + snafu + tracing.
 

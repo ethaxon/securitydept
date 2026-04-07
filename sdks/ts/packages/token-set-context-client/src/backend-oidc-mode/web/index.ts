@@ -5,7 +5,13 @@
 
 export type {
 	BackendOidcModeBootstrapResult,
+	BootstrapBackendOidcModeClientOptions,
+	CaptureBackendOidcModeCallbackFragmentFromUrlOptions,
 	CreateBackendOidcModeBrowserClientOptions,
+	CreateBackendOidcModeCallbackFragmentStoreOptions,
+	LoginWithBackendOidcPopupOptions,
+	LoginWithBackendOidcRedirectOptions,
+	ResetBackendOidcModeBrowserStateOptions,
 } from "./browser";
 export {
 	BackendOidcModeBootstrapSource,
@@ -13,7 +19,11 @@ export {
 	captureBackendOidcModeCallbackFragmentFromUrl,
 	createBackendOidcModeBrowserClient,
 	createBackendOidcModeCallbackFragmentStore,
+	loginWithBackendOidcPopup,
+	loginWithBackendOidcRedirect,
+	relayBackendOidcPopupCallback,
 	resetBackendOidcModeBrowserState,
 	resolveBackendOidcModeAuthorizeUrl,
+	resolveBackendOidcModeCallbackFragmentKey,
 	resolveBackendOidcModeReturnUri,
 } from "./browser";

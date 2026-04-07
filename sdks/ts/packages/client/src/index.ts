@@ -74,11 +74,20 @@ export { createRuntime } from "./runtime/index";
 export type {
 	CancelableHandle as SchedulerCancelableHandle,
 	Clock,
+	FromEventPatternOptions,
+	IntervalOptions,
+	ScheduleAtOptions,
 	Scheduler,
+	Subscription,
+	TimerOptions,
 } from "./scheduling/index";
 export {
 	createDefaultClock,
 	createDefaultScheduler,
+	fromEventPattern,
+	interval,
+	scheduleAt,
+	timer,
 } from "./scheduling/index";
 // --- Signals ---
 export type {
@@ -98,3 +107,14 @@ export type {
 	HttpTransport,
 } from "./transport/index";
 export { FetchTransportRedirectKind } from "./transport/index";
+// --- Validation ---
+export type {
+	ValidationFailure,
+	ValidationResult,
+	ValidationSuccess,
+} from "./validation/index";
+export {
+	createSchema,
+	validateWithSchema,
+	validateWithSchemaSync,
+} from "./validation/index";
