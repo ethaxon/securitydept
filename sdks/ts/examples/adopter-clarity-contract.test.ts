@@ -52,8 +52,38 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		],
 	},
 	{
+		// Standalone minimal-entry example for backend-oidc-mode/react.
+		// Proves provider wiring, convenience hook consumption, and
+		// full context hook usage from React.
+		path: "examples/backend-oidc-react-minimal-entry.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
+	},
+	{
 		path: "examples/backend-oidc-mode-browser-scenario.test.ts",
 		layers: [EvidenceSemanticLayer.VerifiedEnvironments],
+	},
+	{
+		// Standalone minimal-entry example for backend-oidc-mode/web.
+		// Proves browser client creation, bootstrap, authorize URL,
+		// and SSR restoreState alternative.
+		path: "examples/backend-oidc-web-minimal-entry.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
+	},
+	{
+		// Standalone minimal-entry example for backend-oidc-mode root subpath.
+		// Proves direct client construction, restoreState, authorizationHeader,
+		// and callback fragment parser from the platform-neutral root import.
+		path: "examples/backend-oidc-mode-minimal-entry.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
 	},
 	{
 		path: "examples/basic-auth-guard-scenario.test.ts",
@@ -97,6 +127,16 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		],
 	},
 	{
+		// Standalone minimal-entry example for basic-auth-context-client/react.
+		// Proves provider wiring, hook consumption, and zone-aware contract
+		// usage from React context.
+		path: "examples/basic-auth-react-minimal-entry.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
+	},
+	{
 		path: "examples/public-contract-constants.test.ts",
 		layers: [EvidenceSemanticLayer.MinimalEntry],
 	},
@@ -116,6 +156,16 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		layers: [EvidenceSemanticLayer.MinimalEntry],
 	},
 	{
+		// Standalone minimal-entry example for access-token-substrate.
+		// Proves TokenPropagation capability vocabulary and
+		// AccessTokenSubstrateIntegrationInfo contract shape.
+		path: "examples/access-token-substrate-minimal-entry.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
+	},
+	{
 		// This example backs MinimalEntry for the AuthMaterialController lifecycle
 		// layer. It proves the controller is usable for protocol-agnostic token
 		// material (OIDC and backend-issued scenarios).
@@ -130,6 +180,67 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		// Not VerifiedEnvironments — no real OIDC provider in test env.
 		path: "examples/oidc-client-wrapper-contract.test.ts",
 		layers: [EvidenceSemanticLayer.MinimalEntry],
+	},
+	{
+		// Standalone minimal-entry example for frontend-oidc-mode.
+		// Proves factory construction, restoreState, state signal,
+		// authorizationHeader, and dispose lifecycle.
+		path: "examples/frontend-oidc-minimal-entry.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
+	},
+	{
+		// Standalone minimal-entry example for session-context-client/web.
+		// Proves the canonical browser import path for loginWithRedirect and
+		// the LoginWithRedirectOptions named contract.
+		path: "examples/session-web-minimal-entry.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
+	},
+	{
+		// Standalone minimal-entry example for basic-auth-context-client/server.
+		// Proves helper construction, handleUnauthorized redirect instruction,
+		// and loginUrlForPath/logoutUrlForPath usage.
+		path: "examples/basic-auth-server-minimal-entry.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
+	},
+	{
+		// Standalone minimal-entry example for session-context-client/server.
+		// Proves helper construction, fetchMe with cookie forwarding,
+		// and loginUrl/logoutUrl generation.
+		path: "examples/session-server-minimal-entry.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
+	},
+	{
+		// Visibility lifecycle hardening baseline.
+		// Proves reconciler composability with AuthMaterialController
+		// and throttle behavior on tab re-activation.
+		path: "examples/visibility-hardening-baseline.test.ts",
+		layers: [EvidenceSemanticLayer.PromotionReadiness],
+	},
+	{
+		// Cross-tab state sync baseline.
+		// Proves key-based storage event listening, filtering,
+		// and composability with AuthMaterialController.
+		path: "examples/cross-tab-sync-baseline.test.ts",
+		layers: [EvidenceSemanticLayer.PromotionReadiness],
+	},
+	{
+		// Route orchestration baseline with matched route chain.
+		// Proves parent requirement inheritance, child append,
+		// shared-prefix preservation, and chooser decision tracking.
+		path: "examples/route-orchestration-baseline.test.ts",
+		layers: [EvidenceSemanticLayer.PromotionReadiness],
 	},
 ];
 

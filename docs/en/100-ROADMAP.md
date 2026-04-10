@@ -113,21 +113,23 @@ What this should validate:
 - single-host / multi-backend token families
 - route-level requirement orchestration and failure policy boundaries
 - clearer separation between SDK primitives and adopter app glue
+- Angular / React framework adapters should be driven by `securitydept` domain semantics and ergonomics, not copied from an adopter's current auth-module shape
 
 ### Priority 2: Close the browser-owned token-set v1 baseline before expanding scope
 
 Why this remains high priority:
 
 - the docs already state that the current token-set direction is a browser-owned v1 baseline
-- after the re-audit, only mixed-custody / BFF / server-side token ownership remain explicitly deferred to `3.0`
-- popup login baseline is now implemented; cross-tab lifecycle hardening and multi-provider orchestration remain unfinished `2.0` backlog items
-- without a roadmap-level reminder, both the true `3.0` deferrals and the still-required `2.0` backlog items are too easy to misread in day-to-day implementation discussions
+- after the re-audit, only mixed-custody / BFF / server-side token ownership remain explicitly deferred to `0.3.0`
+- popup login, cross-tab lifecycle hardening, and the matched-route multi-provider orchestration baseline are now implemented; the more real remaining work is framework-level adapters, real provider integration, and downstream adopter calibration
+- without a roadmap-level reminder, both the true `0.3.0` deferrals and the still-required `0.2.0` backlog items are too easy to misread in day-to-day implementation discussions
 
 What needs to be made more explicit:
 
 - what evidence is required before the current token-set baseline can be treated as a v1-ready external contract
 - which remaining hardening topics are still inside the browser-owned baseline
-- which adjacent topics are `2.0` backlog versus explicitly deferred to `3.0`
+- which adjacent topics are `0.2.0` backlog versus explicitly deferred to `0.3.0`
+- how real framework adapters and downstream integration proof enter the authority layer instead of living only in guides or adopter code
 
 ### Priority 3: Restore auth-context product parity across the three modes
 
@@ -168,19 +170,19 @@ Current rule of thumb:
 - TypeScript remains the only active SDK productization track
 - Kotlin / Swift remain future follow-on work after the TS external contract is materially clearer
 
-## 2.0 Release Backlog (Derived From the Client SDK Re-audit)
+## 0.2.0 Release Backlog (Derived From the Client SDK Re-audit)
 
-Unless a topic is explicitly deferred to 3.0 below, unfinished items still
+Unless a topic is explicitly deferred to 0.3.0 below, unfinished items still
 described in [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) should now be
-treated as **2.0 release backlog**, not as vague future ideas.
+treated as **0.2.0 release backlog**, not as vague future ideas.
 
-The intent for `2.0` is not "perfectly complete", but:
+The intent for `0.2.0` is not "perfectly complete", but:
 
 - basic implementation exists
 - adopter-facing shape is explainable
 - at least one meaningful validation path exists (tests, examples, or reference-app proof)
 
-Current 2.0 backlog priorities:
+Current 0.2.0 backlog priorities:
 
 1. **TS SDK freeze and release-gate discipline**
    - ~~authoritative public-surface inventory~~ (implemented: `public-surface-inventory.json` covering all packages, subpaths, stability, evidence, and docs anchors)
@@ -198,16 +200,21 @@ Current 2.0 backlog priorities:
 
 4. **Real multi-requirement orchestration baseline**
    - ~~move multi-OIDC / multi-requirement route orchestration beyond boundary discussion~~ (implemented: `createRequirementPlanner()` in `@securitydept/token-set-context-client/orchestration`)
-   - ~~deliver at least one headless primitive / pending-requirement model before 2.0 GA~~ (implemented: sequential planner with `AuthRequirement`, `RequirementKind`, `PlanStatus`, `ResolutionStatus`, `PlanSnapshot`)
+   - ~~deliver at least one headless primitive / pending-requirement model before 0.2.0 GA~~ (implemented: sequential planner with `AuthRequirement`, `RequirementKind`, `PlanStatus`, `ResolutionStatus`, `PlanSnapshot`)
+   - ~~add the matched-route-chain route orchestration baseline and complete the cross-tab / visibility readiness sweep~~ (implemented: `createRouteRequirementOrchestrator()`, `createCrossTabSync()`, `createVisibilityReconciler()`, and their focused baselines)
+   - remaining gap: framework-specific adapters for `@tanstack/react-router`, Angular Router, and real adopter-level provider integration / glue proof
 
 5. **SSR / server-side host baseline clarity**
    - ~~`basic-auth-context` and `session-context` should each have a minimal SSR / server-host story beyond conceptual redirect wording~~ (implemented: `createBasicAuthServerHelper()` in `./server`, `createSessionServerHelper()` in `./server`)
    - ~~if no dedicated SSR-oriented helper baseline ships, narrow the guide so `CLIENT_SDK_GUIDE` does not overstate server-side support~~ (shipped: dedicated `./server` subpaths with host-neutral helpers)
-   - keep `token-set-context` server-side ownership outside the 2.0 baseline; mixed-custody / BFF remain 3.0 themes
+   - keep `token-set-context` server-side ownership outside the `0.2.0` baseline; mixed-custody / BFF remain `0.3.0` themes
 
 6. **Auth-context product parity**
    - reduce the gap between the more mature token-set client surface and the lighter basic-auth / session client surfaces
    - keep those surfaces intentionally thin where appropriate, but no longer under-specified
+   - ~~`./web` browser convenience parity: both `basic-auth-context-client/web` and `session-context-client/web` now export `loginWithRedirect()` with named `LoginWithRedirectOptions` contracts~~ (implemented)
+   - ~~`./react` context value discoverability: `SessionContextValue` is now a named exported type~~ (implemented)
+   - remaining gap: these surfaces are intentionally thinner than token-set; the current parity target is named contract discoverability, not feature equivalence
 
 ## Phase 5: Local Credential Operations
 
@@ -242,10 +249,10 @@ Current real-world role:
 - document bearer forwarding boundaries clearly
 - add more integration tests around the reference app as new modes land
 
-## Deferred To 3.0
+## Deferred To 0.3.0
 
 These topics remain real, but after the current re-audit they are the main
-items that should stay outside the 2.0 release target:
+items that should stay outside the `0.2.0` release target:
 
 - mixed-custody token ownership
 - stateful BFF / server-side token-set ownership

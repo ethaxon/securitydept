@@ -53,6 +53,9 @@
 			"@securitydept/token-set-context-client/frontend-oidc-mode": [
 				"../packages/token-set-context-client/src/frontend-oidc-mode/index.ts"
 			],
+			"@securitydept/token-set-context-client/access-token-substrate": [
+				"../packages/token-set-context-client/src/access-token-substrate/index.ts"
+			],
 			"@securitydept/token-set-context-client/orchestration": [
 				"../packages/token-set-context-client/src/orchestration/index.ts"
 			],

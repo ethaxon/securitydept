@@ -8,6 +8,13 @@ export {
 	createAbortSignalBridge,
 	normalizeAbortError,
 } from "./cancellation";
+// --- Cross-tab state sync ---
+export type {
+	CreateCrossTabSyncOptions,
+	CrossTabSync,
+	CrossTabSyncCallback,
+} from "./cross-tab-sync";
+export { createCrossTabSync } from "./cross-tab-sync";
 // --- Popup shared infrastructure ---
 export type {
 	PopupFeaturesOptions,
@@ -28,3 +35,10 @@ export { createWebRuntime } from "./runtime";
 // --- Browser input adapters ---
 export type { FromVisibilityChangeOptions } from "./visibility";
 export { fromVisibilityChange, VisibilityState } from "./visibility";
+// --- Visibility lifecycle hardening ---
+export type {
+	CreateVisibilityReconcilerOptions,
+	ReconcileCallback,
+	VisibilityReconciler,
+} from "./visibility-reconciler";
+export { createVisibilityReconciler } from "./visibility-reconciler";

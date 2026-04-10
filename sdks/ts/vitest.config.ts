@@ -91,6 +91,13 @@ export default defineConfig({
 				),
 			},
 			{
+				find: "@securitydept/token-set-context-client/access-token-substrate",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client/src/access-token-substrate/index.ts",
+				),
+			},
+			{
 				find: "@securitydept/token-set-context-client/frontend-oidc-mode",
 				replacement: path.join(
 					packagesDir,

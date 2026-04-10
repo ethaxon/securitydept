@@ -53,6 +53,15 @@ export {
 	RequirementPlannerError,
 	ResolutionStatus,
 } from "./requirement-planner";
+// Route-level orchestration — headless router integration baseline
+export type {
+	ChooserDecision,
+	CreateRouteRequirementOrchestratorOptions,
+	RouteMatchNode,
+	RouteOrchestrationSnapshot,
+	RouteRequirementOrchestrator,
+} from "./route-orchestrator";
+export { createRouteRequirementOrchestrator } from "./route-orchestrator";
 export { bearerHeader, mergeTokenDelta } from "./token-ops";
 export type {
 	AuthDelta,

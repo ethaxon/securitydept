@@ -66,6 +66,7 @@ The correct boundary is:
 
 - `securitydept` may eventually provide **headless primitive / scheduler direction** for this kind of downstream scenario
 - chooser UIrouter policyand product-facing flow semantics still belong to the adopter’s own app glue
+- if the current Angular auth module in `outposts` carries migration-era constraints, treat it as migration input plus host constraints, not as the template for the SDK's public Angular API
 
 ## Direct Impact on SDK Design
 
@@ -88,6 +89,7 @@ Current recommendation:
    - very thin `web` / `angular` / `react` adapters
    - a reference/example UI
 5. chooser UIproduct copyand failure fallback policy should not be hard-coded into the core SDK
+6. the public Angular adapter contract should primarily express `securitydept` domain capabilities, route/orchestration projection, and Angular ergonomics, then prove that `outposts` can migrate onto it
 
 In short:
 
@@ -111,6 +113,7 @@ The near-term focus should be:
    - the Rust crate should not keep `frontend` / `backend` as its first-level public namespace; the canonical shape should be top-level `frontend_oidc_mode``backend_oidc_mode`and `access_token_substrate`
    - resource-server / propagation / forwarder should no longer be described as preset-owned materials; they depend only on the access token and propagation headerso they should be promoted into the top-level shared module `access_token_substrate`
 4. do not rush chooser UI or router glue back into the SDK
+5. even if `outposts` currently bridges through `angular-auth-oidc-client` or a project-local `AuthService`, do not productize those transitional shapes as SDK API; first derive a better Angular adapter / helper contract, then validate migration onto it
 
 ## Mid-Term Plan
 

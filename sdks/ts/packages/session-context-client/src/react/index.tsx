@@ -11,10 +11,15 @@ import {
 import { SessionContextClient } from "../client";
 import type { SessionContextClientConfig, SessionInfo } from "../types";
 
-interface SessionContextValue {
+/** Value exposed by the session context React provider. */
+export interface SessionContextValue {
+	/** The underlying SessionContextClient instance. */
 	client: SessionContextClient;
+	/** Current session info, or null if unauthenticated / not yet loaded. */
 	session: SessionInfo | null;
+	/** Whether the initial session probe is in progress. */
 	loading: boolean;
+	/** Trigger a re-fetch of the session info. */
 	refresh: () => void;
 }
 

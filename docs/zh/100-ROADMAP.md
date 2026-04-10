@@ -111,21 +111,23 @@
 - 单宿主 / 多后端 token family
 - route-level requirement orchestration 及 failure policy 边界
 - SDK primitives 与 adopter app glue 的更清晰分界
+- Angular / React framework adapter 应由 `securitydept` 自己的领域语义与 ergonomics 主导，而不是照搬 adopter 现有 auth 模块形状
 
 ### 优先级 2：先收口 browser-owned token-set v1 baseline，再讨论扩大范围
 
 为什么它仍是高优先级：
 
 - 文档已经明确当前 token-set 方向是 browser-owned v1 baseline
-- 在本次重审后，只有 mixed-custody / BFF / server-side token ownership 继续明确延期到 `3.0`
-- popup login baseline 已实现；cross-tab lifecycle hardening 和多 provider orchestration 仍是未完成的 `2.0` backlog
-- 如果 roadmap 层不持续强调，真正的 `3.0` 延期项与仍需在 `2.0` 内补齐的 backlog 很容易在日常实现讨论里重新混淆
+- 在本次重审后，只有 mixed-custody / BFF / server-side token ownership 继续明确延期到 `0.3.0`
+- popup login baseline、cross-tab lifecycle hardening 与 matched-route 多 provider orchestration baseline 均已实现；当前更真实的剩余工作是框架级 adapter、真实 provider integration 与下游 adopter 校准
+- 如果 roadmap 层不持续强调，真正的 `0.3.0` 延期项与仍需在 `0.2.0` 内补齐的 backlog 很容易在日常实现讨论里重新混淆
 
 这里仍需补强的是：
 
 - 当前 token-set baseline 还需要哪些证据，才能被当作 v1-ready external contract
 - 哪些剩余 hardening topic 仍属于 browser-owned baseline 内
-- 哪些相邻主题属于 `2.0` backlog，哪些才是明确延期到 `3.0`
+- 哪些相邻主题属于 `0.2.0` backlog，哪些才是明确延期到 `0.3.0`
+- 真实 framework adapter 与 downstream integration proof 应如何进入 authority，而不是只停留在 guide / adopter 层
 
 ### 优先级 3：恢复三个 auth-context mode 之间的产品面对齐
 
@@ -166,17 +168,17 @@
 - TypeScript 继续作为唯一 active SDK productization track
 - Kotlin / Swift 继续作为后续工作，等 TS external contract 足够清晰后再推进
 
-## 2.0 发布前 backlog（基于 CLIENT_SDK_GUIDE 重审）
+## 0.2.0 发布前 backlog（基于 CLIENT_SDK_GUIDE 重审）
 
-除非某个主题在下方被**明确延期到 3.0**，否则 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 中仍被写为产品目标、但尚未完成的内容，现都应视为 **2.0 release backlog**，而不再是模糊的“以后再说”。
+除非某个主题在下方被**明确延期到 0.3.0**，否则 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 中仍被写为产品目标、但尚未完成的内容，现都应视为 **0.2.0 release backlog**，而不再是模糊的“以后再说”。
 
-这里对 `2.0` 的要求不是“完全做满”，而是：
+这里对 `0.2.0` 的要求不是“完全做满”，而是：
 
 - 至少有基础实现
 - adopter-facing shape 已可解释
 - 至少存在一条有意义的验证路径（测试、example 或 reference app 证据）
 
-当前 2.0 backlog 优先级如下：
+当前 0.2.0 backlog 优先级如下：
 
 1. **TS SDK 冻结与 release-gate 纪律**
    - ~~authoritative public-surface inventory~~（已实现：`public-surface-inventory.json` 覆盖全部 package、subpath、stability、evidence、docs anchor）
@@ -194,16 +196,21 @@
 
 4. **真实多资格编排 baseline**
    - ~~让多 OIDC / 多资格路由编排从"边界讨论"进入最小实现~~（已实现：`createRequirementPlanner()` 在 `@securitydept/token-set-context-client/orchestration` 中）
-   - ~~在 2.0 GA 前至少交付一个 headless primitive / pending-requirement model~~（已实现：顺序 planner，含 `AuthRequirement`、`RequirementKind`、`PlanStatus`、`ResolutionStatus`、`PlanSnapshot`）
+   - ~~在 0.2.0 GA 前至少交付一个 headless primitive / pending-requirement model~~（已实现：顺序 planner，含 `AuthRequirement`、`RequirementKind`、`PlanStatus`、`ResolutionStatus`、`PlanSnapshot`）
+   - ~~补出 matched-route-chain route orchestration baseline，并完成 cross-tab / visibility readiness sweep~~（已实现：`createRouteRequirementOrchestrator()`、`createCrossTabSync()`、`createVisibilityReconciler()` 以及对应 focused baselines）
+   - 剩余 gap：`@tanstack/react-router`、Angular Router 等 framework-specific adapter，以及真实 adopter 级 provider integration / glue proof
 
 5. **SSR / 服务端宿主 baseline 清晰化**
    - ~~`basic-auth-context` 与 `session-context` 都应拥有一个不止停留在 redirect 概念描述层的最小 SSR / server-host story~~（已实现：`createBasicAuthServerHelper()` 在 `./server`，`createSessionServerHelper()` 在 `./server`）
-   - ~~如果 2.0 前不交付 dedicated SSR-oriented helper baseline，就应同步收窄 `CLIENT_SDK_GUIDE`，避免继续夸大服务端支持~~（已交付：dedicated `./server` subpath + host-neutral helper）
-   - `token-set-context` 的 server-side ownership 继续排除在 2.0 baseline 外；mixed-custody / BFF 继续留在 3.0 主题
+   - ~~如果 0.2.0 前不交付 dedicated SSR-oriented helper baseline，就应同步收窄 `CLIENT_SDK_GUIDE`，避免继续夸大服务端支持~~（已交付：dedicated `./server` subpath + host-neutral helper）
+   - `token-set-context` 的 server-side ownership 继续排除在 `0.2.0` baseline 外；mixed-custody / BFF 继续留在 `0.3.0` 主题
 
 6. **auth-context 产品面对齐**
    - 缩小 token-set client surface 与 basic-auth / session client surface 之间的成熟度差距
-   - 在应保持 thin 的前提下，避免另外两条线继续处于“文档已写但产品面仍偏轻”的状态
+   - 在应保持 thin 的前提下，避免另外两条线继续处于"文档已写但产品面仍偏轻"的状态
+   - ~~`./web` browser convenience 对齐：`basic-auth-context-client/web` 与 `session-context-client/web` 现均导出 `loginWithRedirect()` 及命名 `LoginWithRedirectOptions` 合约~~（已实现）
+   - ~~`./react` context value 可发现性：`SessionContextValue` 现为命名导出类型~~（已实现）
+   - 剩余 gap：这些 surface 有意保持 thinner than token-set；当前 parity 目标是命名合约可发现性，而非功能对等
 
 ## 阶段 5：本地凭证操作
 
@@ -238,9 +245,9 @@
 - 清晰记录 bearer 转发边界
 - 随着新模式的实现添加更多集成测试
 
-## 延期到 3.0 的主题
+## 延期到 0.3.0 的主题
 
-这些主题依然真实存在，但在本次重审后，它们是当前最明确应留在 2.0 目标之外的内容：
+这些主题依然真实存在，但在本次重审后，它们是当前最明确应留在 `0.2.0` 目标之外的内容：
 
 - mixed-custody token ownership
 - stateful BFF / server-side token-set ownership

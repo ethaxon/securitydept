@@ -52,7 +52,9 @@
 					"changeDiscipline": "stable-deprecation-first",
 					"evidence": [
 						"examples/popup-login-baseline.test.ts",
-						"packages/client/src/web/__tests__/visibility.test.ts"
+						"packages/client/src/web/__tests__/visibility.test.ts",
+						"examples/visibility-hardening-baseline.test.ts",
+						"examples/cross-tab-sync-baseline.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -85,7 +87,10 @@
 					"stability": "provisional",
 					"owner": "basic-auth-context",
 					"changeDiscipline": "provisional-migration-required",
-					"evidence": ["examples/basic-auth-web-minimal-entry.test.ts"],
+					"evidence": [
+						"packages/basic-auth-context-client/src/react/__tests__/adapter.test.ts",
+						"examples/basic-auth-react-minimal-entry.test.ts"
+					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Provisional Adapter Maintenance Standard"
@@ -96,7 +101,10 @@
 					"stability": "provisional",
 					"owner": "basic-auth-context",
 					"changeDiscipline": "provisional-migration-required",
-					"evidence": ["examples/basic-auth-web-minimal-entry.test.ts"],
+					"evidence": [
+						"examples/basic-auth-web-minimal-entry.test.ts",
+						"examples/auth-context-discoverability-parity.test.ts"
+					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Provisional Adapter Maintenance Standard"
@@ -109,7 +117,8 @@
 					"changeDiscipline": "provisional-migration-required",
 					"evidence": [
 						"examples/ssr-server-helper-baseline.test.ts",
-						"packages/basic-auth-context-client/src/server/__tests__/helpers.test.ts"
+						"packages/basic-auth-context-client/src/server/__tests__/helpers.test.ts",
+						"examples/basic-auth-server-minimal-entry.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -142,7 +151,10 @@
 					"stability": "provisional",
 					"owner": "session-context",
 					"changeDiscipline": "provisional-migration-required",
-					"evidence": ["examples/login-redirect-convenience.test.ts"],
+					"evidence": [
+						"examples/login-redirect-convenience.test.ts",
+						"examples/session-web-minimal-entry.test.ts"
+					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Provisional Adapter Maintenance Standard"
@@ -153,7 +165,10 @@
 					"stability": "provisional",
 					"owner": "session-context",
 					"changeDiscipline": "provisional-migration-required",
-					"evidence": ["examples/session-context-react-minimal-entry.test.ts"],
+					"evidence": [
+						"examples/session-context-react-minimal-entry.test.ts",
+						"examples/auth-context-discoverability-parity.test.ts"
+					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Provisional Adapter Maintenance Standard"
@@ -166,7 +181,8 @@
 					"changeDiscipline": "provisional-migration-required",
 					"evidence": [
 						"examples/ssr-server-helper-baseline.test.ts",
-						"packages/session-context-client/src/server/__tests__/helpers.test.ts"
+						"packages/session-context-client/src/server/__tests__/helpers.test.ts",
+						"examples/session-server-minimal-entry.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -187,7 +203,8 @@
 					"changeDiscipline": "provisional-migration-required",
 					"evidence": [
 						"examples/backend-oidc-mode-subpath-contract.test.ts",
-						"examples/oidc-client-wrapper-contract.test.ts"
+						"examples/oidc-client-wrapper-contract.test.ts",
+						"examples/backend-oidc-mode-minimal-entry.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -201,7 +218,8 @@
 					"changeDiscipline": "provisional-migration-required",
 					"evidence": [
 						"examples/backend-oidc-mode-browser-scenario.test.ts",
-						"examples/popup-login-baseline.test.ts"
+						"examples/popup-login-baseline.test.ts",
+						"examples/backend-oidc-web-minimal-entry.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -214,7 +232,8 @@
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
 					"evidence": [
-						"packages/token-set-context-client/src/backend-oidc-mode/react/__tests__/adapter.test.ts"
+						"packages/token-set-context-client/src/backend-oidc-mode/react/__tests__/adapter.test.ts",
+						"examples/backend-oidc-react-minimal-entry.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -226,7 +245,10 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"evidence": ["examples/scheduling-input-source-baseline.test.ts"],
+					"evidence": [
+						"examples/scheduling-input-source-baseline.test.ts",
+						"examples/frontend-oidc-minimal-entry.test.ts"
+					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "`frontend-oidc`: Frontend Pure OIDC Client"
@@ -238,9 +260,11 @@
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
 					"evidence": [
+						"examples/token-orchestration-subpath.test.ts",
 						"examples/multi-requirement-orchestration.test.ts",
 						"examples/token-orchestration-contract.test.ts",
-						"packages/token-set-context-client/src/orchestration/__tests__/requirement-planner.test.ts"
+						"packages/token-set-context-client/src/orchestration/__tests__/requirement-planner.test.ts",
+						"examples/route-orchestration-baseline.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -252,7 +276,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"evidence": ["examples/token-orchestration-subpath.test.ts"],
+					"evidence": ["examples/access-token-substrate-minimal-entry.test.ts"],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Current Contract Snapshot"

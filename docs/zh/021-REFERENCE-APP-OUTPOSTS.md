@@ -66,6 +66,7 @@
 
 - `securitydept` 可以为这种下游场景提供 **headless primitive / scheduler direction**
 - 但 chooser UI、router policy、产品级交互流程仍然应留在 adopter 自己的 app glue 中
+- `outposts` 当前 Angular auth 模块如果带有历史过渡痕迹，应被视为迁移样本与宿主约束，而不是 SDK Angular public API 模板
 
 ## 对 SDK 设计的直接影响
 
@@ -88,6 +89,7 @@
    - 最薄的 `web` / `angular` / `react` 适配
    - reference/example UI
 5. 选择界面、交互文案、失败回退策略不应直接写死在 core SDK 中
+6. Angular adapter 的 public contract 应优先表达 `securitydept` 自己的领域能力、route/orchestration 投影与 Angular ergonomics，再去证明它能承接 `outposts` 迁移
 
 换句话说：
 
@@ -111,6 +113,7 @@
    - Rust crate 不应继续把 `frontend` / `backend` 作为一级 public namespace；更合适的 canonical shape 是顶层 `frontend_oidc_mode`、`backend_oidc_mode` 与 `access_token_substrate`
    - resource-server / propagation / forwarder 不应再被写成某个 preset 专属材料；它们只依赖 access token 与 propagation header，应提升为顶层 shared module `access_token_substrate`
 4. 不急着把 chooser UI 或 router glue 抽回 SDK
+5. 即使 `outposts` 当前使用 `angular-auth-oidc-client` 或 project-local `AuthService` 桥接，也不要把这些过渡形状直接 productize 成 SDK API；应先提炼更合理的 Angular adapter / helper contract，再验证迁移
 
 ## 中期计划
 
