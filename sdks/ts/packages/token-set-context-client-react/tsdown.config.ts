@@ -1,0 +1,19 @@
+import { defineConfig } from "tsdown";
+
+export default defineConfig({
+	entry: {
+		// React context provider + hooks (backend-oidc-mode + multi-client registry).
+		index: "./src/index.tsx",
+		// Optional React Query subpath (peer: @tanstack/react-query).
+		"react-query/index": "./src/react-query/index.ts",
+	},
+	target: "es2022",
+	format: "esm",
+	dts: true,
+	sourcemap: true,
+	clean: true,
+	deps: {
+		neverBundle: ["react", "react-dom", "@tanstack/react-query"],
+	},
+	outDir: "./dist",
+});

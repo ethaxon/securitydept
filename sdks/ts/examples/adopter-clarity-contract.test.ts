@@ -45,7 +45,7 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		],
 	},
 	{
-		path: "packages/token-set-context-client/src/backend-oidc-mode/react/__tests__/adapter.test.ts",
+		path: "packages/token-set-context-client-react/src/__tests__/adapter.test.ts",
 		layers: [
 			EvidenceSemanticLayer.VerifiedEnvironments,
 			EvidenceSemanticLayer.PromotionReadiness,
@@ -105,11 +105,11 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		layers: [EvidenceSemanticLayer.PromotionReadiness],
 	},
 	{
-		path: "packages/basic-auth-context-client/src/react/__tests__/adapter.test.ts",
+		path: "packages/basic-auth-context-client-react/src/__tests__/adapter.test.ts",
 		layers: [EvidenceSemanticLayer.PromotionReadiness],
 	},
 	{
-		path: "packages/session-context-client/src/react/__tests__/adapter.test.ts",
+		path: "packages/session-context-client-react/src/__tests__/adapter.test.ts",
 		layers: [EvidenceSemanticLayer.PromotionReadiness],
 	},
 	{
@@ -154,6 +154,17 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		// as token-orchestration-contract.test.ts above.
 		path: "examples/token-orchestration-subpath.test.ts",
 		layers: [EvidenceSemanticLayer.MinimalEntry],
+	},
+	{
+		// MinimalEntry evidence for @securitydept/client/auth-coordination.
+		// Proves the canonical import path, multi-requirement planner usage with
+		// opaque string kinds, sequential progression, and reset contract.
+		// Not VerifiedEnvironments — proves adopter contract, not host capability.
+		path: "examples/multi-requirement-orchestration.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
 	},
 	{
 		// Standalone minimal-entry example for access-token-substrate.
@@ -239,8 +250,86 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		// Route orchestration baseline with matched route chain.
 		// Proves parent requirement inheritance, child append,
 		// shared-prefix preservation, and chooser decision tracking.
+		// Backs MinimalEntry for @securitydept/client/auth-coordination
+		// (route-level orchestrator adopter contract).
 		path: "examples/route-orchestration-baseline.test.ts",
-		layers: [EvidenceSemanticLayer.PromotionReadiness],
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
+	},
+	{
+		// TanStack React Router adapter.
+		// Backs MinimalEntry for @securitydept/client-react/tanstack-router.
+		// Proves canonical import path, route match projection, custom requirements key,
+		// activator lifecycle, and shared-prefix transition preservation.
+		path: "examples/tanstack-react-router-adapter.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
+	},
+	{
+		// Angular Router adapter (route projection + guard).
+		// Backs MinimalEntry for @securitydept/client-angular.
+		// Proves canonical import path, pathFromRoot projection, empty-path handling,
+		// routeConfig fallback, and guard adapter integration.
+		path: "examples/angular-router-adapter.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
+	},
+	{
+		// Angular integration family adapter (productized Angular-native surface).
+		// Proves: InjectionToken for all 3 packages, provideXxx() factories,
+		// service facades, Angular signal bridge, RxJS Observable bridge,
+		// bearer interceptor factory, CallbackResumeService, e2e lifecycle.
+		// Tests import real @angular/core InjectionToken + signal, real RxJS Observable.
+		path: "examples/angular-integration-adapter.test.ts",
+		layers: [
+			EvidenceSemanticLayer.PromotionReadiness,
+			EvidenceSemanticLayer.MinimalEntry,
+		],
+	},
+	{
+		// Angular full-route aggregation guard (Iteration 106 canonical pattern).
+		// Backs MinimalEntry for @securitydept/client-angular and
+		// @securitydept/token-set-context-client-angular.
+		// Proves: withRouteRequirements declaration, extractFullRouteRequirements
+		// multi-level accumulation (parent + child), single-pass planner evaluation,
+		// and createTokenSetRouteAggregationGuard API shape.
+		path: "examples/angular-full-route-aggregation.test.ts",
+		layers: [
+			EvidenceSemanticLayer.PromotionReadiness,
+			EvidenceSemanticLayer.MinimalEntry,
+		],
+	},
+	{
+		// React planner-host baseline.
+		// Backs MinimalEntry for @securitydept/client-react root export (.).
+		// Proves canonical import shape, AuthPlannerHostProvider, useAuthPlannerHost,
+		// AuthRequirementsClientSetProvider, useEffectiveClientSet, and the full
+		// composition semantics (inherit/merge/replace) from a React adopter perspective.
+		// Also covers async selector support (chooser UI pattern).
+		path: "examples/react-planner-host-baseline.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
+	},
+	{
+		// TanStack Router route-security contract (Iteration 107).
+		// Backs MinimalEntry for @securitydept/client-react/tanstack-router.
+		// Proves: withTanStackRouteRequirements declaration, merge/replace/inherit
+		// composition, extractTanStackRouteRequirements aggregation,
+		// createTanStackRouteSecurityPolicy root-level runtime policy,
+		// handler resolution order, public zone via replace, and Angular parity.
+		path: "examples/tanstack-route-security-contract.test.ts",
+		layers: [
+			EvidenceSemanticLayer.MinimalEntry,
+			EvidenceSemanticLayer.PromotionReadiness,
+		],
 	},
 ];
 

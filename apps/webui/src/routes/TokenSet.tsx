@@ -8,16 +8,16 @@ import {
 	createCancellationTokenSource,
 	UserRecovery,
 } from "@securitydept/client";
-import type { AuthStateSnapshot } from "@securitydept/token-set-context-client";
-import type { TokenSetBootstrapSource as TokenSetBootstrapSourceType } from "@securitydept/token-set-context-client/web";
+import type { AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import type { BackendOidcModeBootstrapSource as BackendOidcModeBootstrapSourceType } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import {
-	bootstrapTokenSetClient,
-	createTokenSetBrowserClient,
-	resetTokenSetBrowserState,
-	resolveTokenSetAuthorizeUrl,
-	resolveTokenSetReturnUri,
-	TokenSetBootstrapSource,
-} from "@securitydept/token-set-context-client/web";
+	BackendOidcModeBootstrapSource,
+	bootstrapBackendOidcModeClient,
+	createBackendOidcModeBrowserClient,
+	resetBackendOidcModeBrowserState,
+	resolveBackendOidcModeAuthorizeUrl,
+	resolveBackendOidcModeReturnUri,
+} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import {
 	useEffect,
 	useMemo,
@@ -63,7 +63,7 @@ type BootstrapStatus =
 	| { kind: typeof BootstrapStatusKind.Booting }
 	| {
 			kind: typeof BootstrapStatusKind.Ready;
-			source: TokenSetBootstrapSourceType;
+			source: BackendOidcModeBootstrapSourceType;
 	  }
 	| { kind: typeof BootstrapStatusKind.Error; message: string };
 
@@ -300,8 +300,10 @@ export function TokenSetPage() {
 	);
 	const client = useMemo(
 		() =>
-			createTokenSetBrowserClient({
-				defaultPostAuthRedirectUri: resolveTokenSetReturnUri(window.location),
+			createBackendOidcModeBrowserClient({
+				defaultPostAuthRedirectUri: resolveBackendOidcModeReturnUri(
+					window.location,
+				),
 				traceSink: traceTimeline,
 			}),
 		[traceTimeline],
@@ -419,7 +421,7 @@ export function TokenSetPage() {
 	useEffect(() => {
 		let active = true;
 
-		void bootstrapTokenSetClient(client)
+		void bootstrapBackendOidcModeClient(client)
 			.then((result) => {
 				if (!active) {
 					return;
@@ -607,10 +609,10 @@ export function TokenSetPage() {
 		propagationRequestRef.current = null;
 
 		try {
-			await resetTokenSetBrowserState(client);
+			await resetBackendOidcModeBrowserState(client);
 			setBootstrap({
 				kind: BootstrapStatusKind.Ready,
-				source: TokenSetBootstrapSource.Empty,
+				source: BackendOidcModeBootstrapSource.Empty,
 			});
 			setProtectedGroups([]);
 			setGroupsStatus(ProtectedRequestStatusKind.Idle);
@@ -1401,7 +1403,7 @@ export function TokenSetPage() {
 								<button
 									type="button"
 									onClick={() => {
-										window.location.href = resolveTokenSetAuthorizeUrl(
+										window.location.href = resolveBackendOidcModeAuthorizeUrl(
 											client,
 											window.location,
 										);

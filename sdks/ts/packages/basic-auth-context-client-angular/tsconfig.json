@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.sdks.json",
+	"compilerOptions": {
+		"outDir": "./dist-tsc",
+		"rootDir": "./src",
+		"lib": ["ES2022", "DOM"]
+	},
+	"angularCompilerOptions": {
+		"compilationMode": "partial",
+		"strictTemplates": true
+	},
+	"include": ["src"],
+	"references": [{ "path": "../basic-auth-context-client" }]
+}

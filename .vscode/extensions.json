@@ -6,6 +6,9 @@
 		"ms-azuretools.vscode-containers",
 		"samuelcolvin.jinjahtml",
 		"hverlin.mise-vscode",
-		"biomejs.biome"
+		"biomejs.biome",
+		"panicbit.cargo",
+		"vadimcn.vscode-lldb",
+		"tamasfe.even-better-toml"
 	]
 }

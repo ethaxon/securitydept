@@ -2,27 +2,25 @@
 //
 // This file demonstrates that the headless orchestration primitive can drive
 // a real multi-requirement flow: session → backend-oidc → custom.
+//
+// Canonical import: @securitydept/client/auth-coordination
+// (moved from @securitydept/token-set-context-client/orchestration in iteration 102)
 
 import type {
 	PlanStatus as PlanStatusType,
-	RequirementKind as RequirementKindType,
 	ResolutionStatus as ResolutionStatusType,
-} from "@securitydept/token-set-context-client/orchestration";
+} from "@securitydept/client/auth-coordination";
 import {
 	createRequirementPlanner,
 	PlanStatus,
-	RequirementKind,
 	RequirementPlannerError,
 	ResolutionStatus,
-} from "@securitydept/token-set-context-client/orchestration";
+} from "@securitydept/client/auth-coordination";
 import { describe, expect, it } from "vitest";
 
-// Type-level proof: named types are directly importable from the subpath.
-// These assignments verify the type forms are usable, not just the value forms.
-const _kindProof: RequirementKindType = RequirementKind.Session;
+// Type-level proof: named types are directly importable from the new canonical subpath.
 const _statusProof: ResolutionStatusType = ResolutionStatus.Fulfilled;
 const _planProof: PlanStatusType = PlanStatus.Pending;
-void _kindProof;
 void _statusProof;
 void _planProof;
 
@@ -32,17 +30,17 @@ void _planProof;
 
 describe("adopter-facing reference flow: session → backend-oidc → settled", () => {
 	it("drives a complete two-requirement flow to settled", () => {
-		// An adopter would define their requirements:
+		// An adopter would define their requirements using plain kind strings:
 		const planner = createRequirementPlanner({
 			requirements: [
 				{
 					id: "corp-session",
-					kind: RequirementKind.Session,
+					kind: "session",
 					label: "Corporate SSO session",
 				},
 				{
 					id: "api-access",
-					kind: RequirementKind.BackendOidc,
+					kind: "backend_oidc",
 					label: "API access token",
 					attributes: { audience: "https://api.example.com" },
 				},
@@ -53,7 +51,7 @@ describe("adopter-facing reference flow: session → backend-oidc → settled", 
 		let snap = planner.snapshot();
 		expect(snap.status).toBe(PlanStatus.Pending);
 		expect(snap.nextPending?.id).toBe("corp-session");
-		expect(snap.nextPending?.kind).toBe(RequirementKind.Session);
+		expect(snap.nextPending?.kind).toBe("session");
 
 		// Step 2: Adopter performs SSO login... then resolves.
 		planner.resolve({
@@ -64,7 +62,7 @@ describe("adopter-facing reference flow: session → backend-oidc → settled", 
 		snap = planner.snapshot();
 		expect(snap.status).toBe(PlanStatus.Pending);
 		expect(snap.nextPending?.id).toBe("api-access");
-		expect(snap.nextPending?.kind).toBe(RequirementKind.BackendOidc);
+		expect(snap.nextPending?.kind).toBe("backend_oidc");
 		expect(snap.resolved).toBe(1);
 
 		// Step 3: Adopter exchanges backend-oidc token... then resolves.
@@ -89,13 +87,13 @@ describe("mixed resolution reference flow", () => {
 	it("handles skipped and failed requirements gracefully", () => {
 		const planner = createRequirementPlanner({
 			requirements: [
-				{ id: "primary-session", kind: RequirementKind.Session },
+				{ id: "primary-session", kind: "session" },
 				{
 					id: "optional-analytics",
-					kind: RequirementKind.Custom,
+					kind: "custom",
 					label: "Analytics token (optional)",
 				},
-				{ id: "main-api", kind: RequirementKind.BackendOidc },
+				{ id: "main-api", kind: "backend_oidc" },
 			],
 		});
 
@@ -125,7 +123,7 @@ describe("mixed resolution reference flow", () => {
 
 		// The adopter can now inspect resolutions to decide what to do.
 		const failed = snap.resolutions.filter(
-			(r) => r.status === ResolutionStatus.Failed,
+			(r: { status: string }) => r.status === ResolutionStatus.Failed,
 		);
 		expect(failed).toHaveLength(1);
 		expect(failed[0].requirementId).toBe("main-api");
@@ -140,8 +138,8 @@ describe("reset and retry flow", () => {
 	it("allows retrying a failed plan after reset", () => {
 		const planner = createRequirementPlanner({
 			requirements: [
-				{ id: "session", kind: RequirementKind.Session },
-				{ id: "api", kind: RequirementKind.BackendOidc },
+				{ id: "session", kind: "session" },
+				{ id: "api", kind: "backend_oidc" },
 			],
 		});
 
@@ -188,8 +186,8 @@ describe("error handling in orchestration flow", () => {
 	it("prevents out-of-order resolution", () => {
 		const planner = createRequirementPlanner({
 			requirements: [
-				{ id: "first", kind: RequirementKind.Session },
-				{ id: "second", kind: RequirementKind.BackendOidc },
+				{ id: "first", kind: "session" },
+				{ id: "second", kind: "backend_oidc" },
 			],
 		});
 
@@ -203,7 +201,7 @@ describe("error handling in orchestration flow", () => {
 
 	it("prevents double resolution after settled", () => {
 		const planner = createRequirementPlanner({
-			requirements: [{ id: "only", kind: RequirementKind.Session }],
+			requirements: [{ id: "only", kind: "session" }],
 		});
 
 		planner.resolve({

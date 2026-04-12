@@ -5,18 +5,23 @@
 	"type": "module",
 	"scripts": {
 		"build": "pnpm -r --filter './packages/*' run build",
-		"examples:typecheck": "tsc -p examples/tsconfig.json --noEmit",
-		"test": "vitest run",
+		"test": "pnpm run build && vitest run",
 		"test:watch": "vitest",
-		"typecheck": "tsc -b --force && pnpm run examples:typecheck"
+		"typecheck": "tsc -b --force"
 	},
 	"devDependencies": {
-		"@types/react": "^19.1.8",
-		"@types/react-dom": "^19.2.3",
-		"react": "^19.1.0",
-		"react-dom": "^19.2.4",
-		"tsdown": "^0.21.4",
-		"typescript": "^6.0.2",
-		"vitest": "^4.1.1"
+		"@securitydept/client": "workspace:*",
+		"@securitydept/client-angular": "workspace:*",
+		"@securitydept/client-react": "workspace:*",
+		"@securitydept/test-utils": "workspace:*",
+		"@securitydept/basic-auth-context-client": "workspace:*",
+		"@securitydept/basic-auth-context-client-angular": "workspace:*",
+		"@securitydept/basic-auth-context-client-react": "workspace:*",
+		"@securitydept/session-context-client": "workspace:*",
+		"@securitydept/session-context-client-angular": "workspace:*",
+		"@securitydept/session-context-client-react": "workspace:*",
+		"@securitydept/token-set-context-client": "workspace:*",
+		"@securitydept/token-set-context-client-angular": "workspace:*",
+		"@securitydept/token-set-context-client-react": "workspace:*"
 	}
 }

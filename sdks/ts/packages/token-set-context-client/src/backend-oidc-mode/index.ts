@@ -81,5 +81,8 @@ export {
 
 // --- Authorized transport ---
 
-export type { CreateBackendOidcModeAuthorizedTransportOptions } from "./auth-transport";
+export type {
+	AuthorizationHeaderProviderTrait,
+	CreateBackendOidcModeAuthorizedTransportOptions,
+} from "./auth-transport";
 export { createBackendOidcModeAuthorizedTransport } from "./auth-transport";

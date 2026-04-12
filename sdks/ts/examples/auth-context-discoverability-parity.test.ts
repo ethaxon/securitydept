@@ -16,8 +16,8 @@ import type {
 	SessionContextClientConfig,
 	SessionInfo,
 } from "@securitydept/session-context-client";
-import type { SessionContextValue } from "@securitydept/session-context-client/react";
 import type { LoginWithRedirectOptions as SessionLoginOptions } from "@securitydept/session-context-client/web";
+import type { SessionContextValue } from "@securitydept/session-context-client-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------

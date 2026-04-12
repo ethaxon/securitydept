@@ -1,26 +1,19 @@
 {
-	"extends": "../../tsconfig.base.json",
-	"compilerOptions": {
-		"composite": true,
-		"declaration": true,
-		"declarationMap": true,
-		"sourceMap": true,
-		"skipLibCheck": true,
-		"target": "ES2022",
-		"lib": ["ES2022"],
-		"types": [],
-		"paths": {
-			"@securitydept/client": ["./packages/client/src/index.ts"],
-			"@securitydept/client/*": ["./packages/client/src/*/index.ts"],
-			"@securitydept/test-utils": ["./packages/test-utils/src/index.ts"]
-		}
-	},
+	"files": [],
 	"references": [
 		{ "path": "./packages/client" },
+		{ "path": "./packages/client-angular" },
+		{ "path": "./packages/client-react" },
 		{ "path": "./packages/test-utils" },
 		{ "path": "./packages/basic-auth-context-client" },
+		{ "path": "./packages/basic-auth-context-client-angular" },
+		{ "path": "./packages/basic-auth-context-client-react" },
 		{ "path": "./packages/session-context-client" },
-		{ "path": "./packages/token-set-context-client" }
-	],
-	"files": []
+		{ "path": "./packages/session-context-client-angular" },
+		{ "path": "./packages/session-context-client-react" },
+		{ "path": "./packages/token-set-context-client" },
+		{ "path": "./packages/token-set-context-client-angular" },
+		{ "path": "./packages/token-set-context-client-react" },
+		{ "path": "./examples" }
+	]
 }

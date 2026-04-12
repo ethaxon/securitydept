@@ -9,13 +9,13 @@
 // backend-OIDC auth state in React?" in one glance.
 
 import { createInMemoryRecordStore } from "@securitydept/client";
-import type { BackendOidcModeContextProviderProps } from "@securitydept/token-set-context-client/backend-oidc-mode/react";
+import type { BackendOidcModeContextProviderProps } from "@securitydept/token-set-context-client-react";
 import {
 	BackendOidcModeContextProvider,
 	useAccessToken,
 	useAuthState,
 	useBackendOidcModeContext,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/react";
+} from "@securitydept/token-set-context-client-react";
 import { act, createElement, type ReactElement, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";

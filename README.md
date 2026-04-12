@@ -67,7 +67,7 @@ These modes are intentionally above the current `oidc-client` and `oauth-resourc
   - OAuth resource server verifier
   - creds-manage for basic auth and static tokens
   - reference server app with cookie-session, basic-auth context, and stateless token-set flows
-  - TypeScript SDK foundation packages, browser adapters, and React adapters under `sdks/ts/packages/*`
+  - TypeScript SDK foundation packages, browser adapters, React / Angular framework packages, and `@securitydept/client` subpaths (including `web-router`) under `sdks/ts/packages/*`
   - `apps/webui` reference route dogfooding for session/token-set lifecycle, protected API calls, trace timeline, and propagation smoke
   - real-IP resolution plus optional real-IP access policy for basic-auth contexts
   - server-owned bearer propagation validation with destination allowlists and access-token-derived resource facts
@@ -84,7 +84,7 @@ The repository now includes a working TypeScript SDK workspace under `sdks/ts`, 
 For the fastest entry path:
 
 - read [docs/en/007-CLIENT_SDK_GUIDE.md](docs/en/007-CLIENT_SDK_GUIDE.md) ([中文](docs/zh/007-CLIENT_SDK_GUIDE.md)) for package boundaries, stability labels, capability ownership, and the minimal entry snippets
-- inspect `sdks/ts/packages/*` for the actual foundation, `./web`, and React subpath exports
+- inspect `sdks/ts/packages/*` for the actual foundation `./web` exports, React / Angular adapters, and `@securitydept/client` subpaths such as `web-router`
 - inspect `apps/webui/src/routes/TokenSet.tsx` and `apps/webui/src/routes/tokenSet/*` as the reference app that dogfoods lifecycle, trace, and propagation boundaries
 - treat `apps/webui/src/api/*` as reference-app glue rather than recommended SDK public API
 

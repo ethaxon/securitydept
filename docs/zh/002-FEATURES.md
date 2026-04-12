@@ -83,8 +83,7 @@
 - 包含可复用的 zones、post-auth redirect 策略和可选的 `securitydept-realip::RealIpAccessConfig`
 - 已不再直接依赖 Axum；调用方可将返回的 HTTP 响应元数据适配到自己的框架
 - 已集成进参考服务器，作为 `/basic/*` dashboard 入口和 `/basic/api/*` API 别名
-- 对应的客户端 helper SDK 已在 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 中正式定稿；实现上仍应保持轻量，聚焦 zone-aware 的 `401 -> login` 重定向以及 logout URL 处理
-- 客户端 helper SDK 仍待实现；它应保持轻量，聚焦 zone-aware 的 `401 -> login` 重定向以及 logout URL 处理
+- 浏览器侧已以 `@securitydept/basic-auth-context-client`（`/web`、`-react`、`-angular`）交付；见 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)。实现仍保持轻量：zone-aware `401 -> login` 重定向与 logout URL 处理
 
 主要参考：
 
@@ -105,7 +104,7 @@
 - `apps/server` 中已有参考实现
 - 可复用提取现已位于 `securitydept-session-context`
 - 可复用 crate 当前只依赖 `tower-sessions` 与 `http`，不再直接暴露 Axum 响应类型
-- 对应的 TypeScript 客户端 helper 已在 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 中正式定义，但尚未实现
+- 对应的 TypeScript 包已以 `@securitydept/session-context-client` 交付，含 `/web`、`-react`、`-angular` 入口；见 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
 
 主要参考：
 
@@ -122,7 +121,7 @@
 - token snapshot / delta 与 metadata snapshot / delta 的组合
 - 无需服务器端浏览器会话存储
 - 适用于分布式 SPA 和网格状代理场景
-- 后期前端 TS SDK 用于令牌存储、头注入、刷新和登录重定向
+- TypeScript 客户端包用于令牌存储、头注入、刷新与登录重定向（`token-set-context-client` 家族与框架 adapter；见 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)）
 
 当前状态：
 
@@ -148,7 +147,7 @@
 - `apps/server` 现已集成 `AxumReverseProxyPropagationForwarder` 用于实际的下游转发：
   - 当 `[propagation_forwarder]` 配置节存在时启用
   - `/api/propagation/*` 通配路由将经过 bearer 认证且带有已验证 propagation 上下文的请求转发到已解析的下游目标
-- 客户端 SDK 现在已有正式架构与实现指南，但具体实现仍待推进
+- 客户端 SDK 已有正式架构与实现指南（见 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)），当前工作重心在契约收口与 surface 清理，而非「尚未实现」阶段
 - 这些流程的 Axum 响应组装现已留在 `apps/server` 边界层，而不是放在可复用 runtime crate 内部
 - config 面已重排为 `BackendOidcModeConfig`（raw 输入）/ `ResolvedBackendOidcModeConfig`（resolved bundle）/ `BackendOidcModeConfigSource` trait（已落地）
 

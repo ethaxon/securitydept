@@ -1,0 +1,28 @@
+{
+	"compilerOptions": {
+		"ignoreDeprecations": "6.0",
+		"target": "ES2022",
+		"module": "ES2022",
+		"moduleResolution": "bundler",
+		"declaration": true,
+		"declarationMap": true,
+		"inlineSources": true,
+		"outDir": "./dist",
+		"strict": true,
+		"noImplicitOverride": true,
+		"noImplicitReturns": true,
+		"noFallthroughCasesInSwitch": true,
+		"forceConsistentCasingInFileNames": true,
+		"paths": {
+			"@securitydept/client": ["../client/dist/index.d.mts"],
+			"@securitydept/session-context-client": [
+				"../session-context-client/dist/index.d.mts"
+			]
+		}
+	},
+	"angularCompilerOptions": {
+		"compilationMode": "partial",
+		"strictTemplates": true
+	},
+	"exclude": ["**/*.spec.ts"]
+}

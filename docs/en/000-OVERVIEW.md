@@ -84,7 +84,7 @@ The current phase has also shifted:
 The most direct way to enter the current SDK stack is:
 
 - start with [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) for package boundariescapability ownershipstability labelsand minimal entry snippets
-- inspect `sdks/ts/packages/*` for the actual foundation`./web`and React adapter exports
+- inspect `sdks/ts/packages/*` for the actual foundation `./web` exports, framework adapters (React / Angular), and `@securitydept/client` subpaths such as `./web-router`
 - inspect `apps/webui/src/routes/TokenSet.tsx` and `apps/webui/src/routes/tokenSet/*` as the main reference route for lifecycletraceand propagation dogfooding
 - treat `apps/webui/src/api/*` as reference-app gluenot as the default SDK surface
 

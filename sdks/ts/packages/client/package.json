@@ -5,20 +5,34 @@
 	"sideEffects": false,
 	"exports": {
 		".": {
+			"monorepo-tsc": "./src/index.ts",
 			"types": "./dist/index.d.mts",
 			"import": "./dist/index.mjs"
 		},
 		"./persistence": {
+			"monorepo-tsc": "./src/persistence/index.ts",
 			"types": "./dist/persistence/index.d.mts",
 			"import": "./dist/persistence/index.mjs"
 		},
 		"./persistence/web": {
+			"monorepo-tsc": "./src/persistence/web/index.ts",
 			"types": "./dist/persistence/web/index.d.mts",
 			"import": "./dist/persistence/web/index.mjs"
 		},
 		"./web": {
+			"monorepo-tsc": "./src/web/index.ts",
 			"types": "./dist/web/index.d.mts",
 			"import": "./dist/web/index.mjs"
+		},
+		"./auth-coordination": {
+			"monorepo-tsc": "./src/auth-coordination/index.ts",
+			"types": "./dist/auth-coordination/index.d.mts",
+			"import": "./dist/auth-coordination/index.mjs"
+		},
+		"./web-router": {
+			"monorepo-tsc": "./src/web-router/index.ts",
+			"types": "./dist/web-router/index.d.mts",
+			"import": "./dist/web-router/index.mjs"
 		}
 	},
 	"files": [
@@ -28,11 +42,7 @@
 		"build": "tsdown",
 		"typecheck": "tsc -b"
 	},
-	"devDependencies": {
-		"tsdown": "^0.21.4",
-		"typescript": "^6.0.2"
-	},
 	"dependencies": {
-		"@standard-schema/spec": "^1.1.0"
+		"@standard-schema/spec": "^1.0.0"
 	}
 }

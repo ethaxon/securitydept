@@ -32,6 +32,7 @@ _Single source of truth for Agent identity, code standards, and project rules. S
 ### Tools Preferences & Workflows
 
 - **Toolchains**: `mise` (env), `pnpm` (Node config), `rust-toolchain.toml` / `cargo` (Rust).
+- **Environment must match `mise`**: before running Node / pnpm / Rust verification, use the tool versions declared in [`mise.toml`](mise.toml). Do NOT rely on the host shell's fallback toolchain when it differs from `mise current`. If command results may be version-sensitive, treat non-`mise` runs as non-authoritative and rerun under the `mise` environment before making review or release judgments.
 - **Task Runner**: Use `just` for actions (`build`, `test`, `lint`, `format`); `.env` is auto-loaded.
 - **Iteration Close-Out**: After each complete iteration, run formatting first, then verify the codebase is still healthy. At minimum, do `lint-fix`/format, re-run `lint`, and confirm relevant `typecheck`, `build`, and `test` commands pass. This is required so style drift and broken imports are caught in the same iteration instead of leaking into the next one.
 - **TypeScript**:

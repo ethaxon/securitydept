@@ -60,6 +60,37 @@
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Minimal Entry Paths"
 					}
+				},
+				{
+					"exportKey": "./auth-coordination",
+					"stability": "provisional",
+					"owner": "foundation",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Canonical owner of shared auth requirement orchestration primitives (RequirementPlanner, RouteRequirementOrchestrator). Moved from @securitydept/token-set-context-client/orchestration in iteration 102. Kind is an opaque string; each auth-context defines its own named constants.",
+					"evidence": [
+						"examples/multi-requirement-orchestration.test.ts",
+						"examples/route-orchestration-baseline.test.ts",
+						"packages/client/src/auth-coordination/__tests__/requirement-planner.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Auth Coordination"
+					}
+				},
+				{
+					"exportKey": "./web-router",
+					"stability": "provisional",
+					"owner": "foundation",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Iteration 110 — raw Web router/security baseline. Navigation API first with History API + popstate fallback. Pre-commit intercept wires PlannerHost requirement evaluation into both backends so non-framework (Web Components / Lit / vanilla) adopters have a canonical router/security path aligned with Angular and TanStack Router.",
+					"evidence": [
+						"examples/web-router-navigation-api.test.ts",
+						"examples/web-router-history-fallback.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Raw Web Router Baseline"
+					}
 				}
 			]
 		},
@@ -80,20 +111,6 @@
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "`basic-auth-context-client`"
-					}
-				},
-				{
-					"exportKey": "./react",
-					"stability": "provisional",
-					"owner": "basic-auth-context",
-					"changeDiscipline": "provisional-migration-required",
-					"evidence": [
-						"packages/basic-auth-context-client/src/react/__tests__/adapter.test.ts",
-						"examples/basic-auth-react-minimal-entry.test.ts"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Provisional Adapter Maintenance Standard"
 					}
 				},
 				{
@@ -123,6 +140,25 @@
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "SSR / server-host entry: dedicated `./server` helpers"
+					}
+				}
+			]
+		},
+		{
+			"name": "@securitydept/basic-auth-context-client-react",
+			"dir": "basic-auth-context-client-react",
+			"stability": "provisional",
+			"buildTool": "tsdown",
+			"subpaths": [
+				{
+					"exportKey": ".",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": ["examples/basic-auth-react-minimal-entry.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Framework Router Adapters"
 					}
 				}
 			]
@@ -161,20 +197,6 @@
 					}
 				},
 				{
-					"exportKey": "./react",
-					"stability": "provisional",
-					"owner": "session-context",
-					"changeDiscipline": "provisional-migration-required",
-					"evidence": [
-						"examples/session-context-react-minimal-entry.test.ts",
-						"examples/auth-context-discoverability-parity.test.ts"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Provisional Adapter Maintenance Standard"
-					}
-				},
-				{
 					"exportKey": "./server",
 					"stability": "provisional",
 					"owner": "session-context",
@@ -187,6 +209,25 @@
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "SSR / server-host entry: dedicated `./server` helpers"
+					}
+				}
+			]
+		},
+		{
+			"name": "@securitydept/session-context-client-react",
+			"dir": "session-context-client-react",
+			"stability": "provisional",
+			"buildTool": "tsdown",
+			"subpaths": [
+				{
+					"exportKey": ".",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": ["examples/session-context-react-minimal-entry.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Framework Router Adapters"
 					}
 				}
 			]
@@ -227,31 +268,19 @@
 					}
 				},
 				{
-					"exportKey": "./backend-oidc-mode/react",
-					"stability": "provisional",
-					"owner": "token-set-context",
-					"changeDiscipline": "provisional-migration-required",
-					"evidence": [
-						"packages/token-set-context-client/src/backend-oidc-mode/react/__tests__/adapter.test.ts",
-						"examples/backend-oidc-react-minimal-entry.test.ts"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Provisional Adapter Maintenance Standard"
-					}
-				},
-				{
 					"exportKey": "./frontend-oidc-mode",
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
+					"note": "Includes config projection source contract (config-source.ts): resolveConfigProjection(), networkConfigSource(), ConfigProjectionSourceKind, ClientReadinessState. Iteration 108: async clientFactory support added.",
 					"evidence": [
 						"examples/scheduling-input-source-baseline.test.ts",
-						"examples/frontend-oidc-minimal-entry.test.ts"
+						"examples/frontend-oidc-minimal-entry.test.ts",
+						"examples/async-client-readiness-contract.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "`frontend-oidc`: Frontend Pure OIDC Client"
+						"heading": "Config Projection Source Contract"
 					}
 				},
 				{
@@ -259,12 +288,11 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
+					"note": "Token-set-specific orchestration layer: auth-transport, base-client, controller, persistence, token-ops, types. RequirementPlanner and RouteRequirementOrchestrator have been migrated to @securitydept/client/auth-coordination (iteration 102).",
 					"evidence": [
 						"examples/token-orchestration-subpath.test.ts",
-						"examples/multi-requirement-orchestration.test.ts",
 						"examples/token-orchestration-contract.test.ts",
-						"packages/token-set-context-client/src/orchestration/__tests__/requirement-planner.test.ts",
-						"examples/route-orchestration-baseline.test.ts"
+						"examples/auth-material-controller-contract.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -281,6 +309,21 @@
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Current Contract Snapshot"
 					}
+				},
+				{
+					"exportKey": "./registry",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Iteration 110 — framework-neutral multi-client token-set auth registry core. Owns keyed storage, readiness tracking (not_initialized → initializing → ready | failed), priority=primary|lazy lifecycle, preload / whenReady / idleWarmup verbs, and multi-axis discrimination (urlPatterns, callbackPath, requirementKind, providerFamily). Angular and React adapters wrap it thinly.",
+					"evidence": [
+						"examples/multi-client-lazy-init-contract.test.ts",
+						"examples/async-client-readiness-contract.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Shared Client Lifecycle Contract"
+					}
 				}
 			]
 		},
@@ -296,6 +339,161 @@
 					"changeDiscipline": "experimental-fast-break",
 					"evidence": [],
 					"docsAnchor": null
+				}
+			]
+		},
+		{
+			"name": "@securitydept/basic-auth-context-client-angular",
+			"dir": "basic-auth-context-client-angular",
+			"stability": "provisional",
+			"buildTool": "ng-packagr",
+			"subpaths": [
+				{
+					"exportKey": ".",
+					"stability": "provisional",
+					"owner": "basic-auth-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": ["examples/angular-integration-adapter.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Framework Router Adapters"
+					}
+				}
+			]
+		},
+		{
+			"name": "@securitydept/session-context-client-angular",
+			"dir": "session-context-client-angular",
+			"stability": "provisional",
+			"buildTool": "ng-packagr",
+			"subpaths": [
+				{
+					"exportKey": ".",
+					"stability": "provisional",
+					"owner": "session-context",
+					"changeDiscipline": "provisional-migration-required",
+					"evidence": ["examples/angular-integration-adapter.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Framework Router Adapters"
+					}
+				}
+			]
+		},
+		{
+			"name": "@securitydept/token-set-context-client-react",
+			"dir": "token-set-context-client-react",
+			"stability": "provisional",
+			"buildTool": "tsdown",
+			"subpaths": [
+				{
+					"exportKey": ".",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Iteration 110 — React 19 productization. Adds TokenSetAuthProvider, useTokenSetAuthRegistry / useTokenSetAuthService / useTokenSetAuthState / useTokenSetAccessToken, useTokenSetCallbackResume, and TokenSetCallbackOutlet on top of the existing BackendOidcModeContextProvider. Wraps the framework-neutral registry core (@securitydept/token-set-context-client/registry).",
+					"evidence": [
+						"packages/token-set-context-client-react/src/__tests__/adapter.test.ts",
+						"examples/backend-oidc-react-minimal-entry.test.ts",
+						"examples/react-multi-client-registry-baseline.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Framework Router Adapters"
+					}
+				},
+				{
+					"exportKey": "./react-query",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Iteration 110 — thin React Query integration helpers (not a separate package). @tanstack/react-query is an optional peer dependency. Consumer-layer only: auth lifecycle ownership stays in the token-set / client-react family.",
+					"evidence": ["examples/react-query-integration-evidence.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "React Query Integration"
+					}
+				}
+			]
+		},
+		{
+			"name": "@securitydept/token-set-context-client-angular",
+			"dir": "token-set-context-client-angular",
+			"stability": "provisional",
+			"buildTool": "ng-packagr",
+			"subpaths": [
+				{
+					"exportKey": ".",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Root export owns TokenSetAuthRegistry DI service, multi-client integration, bearer interceptor, callback resume, and the canonical Angular route-security builders. secureRouteRoot() / secureRoute() are the adopter-facing Angular Router path: child routes declare serializable requirement metadata only, root registers non-serializable runtime policy (planner hosts, requirementPolicies, handlers), and both canActivate + canActivateChild evaluate the full route chain in one pass. createTokenSetRouteAggregationGuard() remains the lower-level route-tree primitive. createTokenSetAuthGuard() has been removed from the package. Signal bridge utilities (bridgeToAngularSignal, signalToObservable) live in @securitydept/client-angular.",
+					"evidence": [
+						"examples/angular-integration-adapter.test.ts",
+						"examples/angular-full-route-aggregation.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Framework Router Adapters"
+					}
+				}
+			]
+		},
+		{
+			"name": "@securitydept/client-react",
+			"dir": "client-react",
+			"stability": "provisional",
+			"buildTool": "tsdown",
+			"subpaths": [
+				{
+					"exportKey": ".",
+					"stability": "provisional",
+					"owner": "shared-framework",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "React planner-host integration: AuthPlannerHostProvider, useAuthPlannerHost, AuthRequirementsClientSetProvider, useEffectiveClientSet. Provides React Context glue for the shared PlannerHost contract from @securitydept/client/auth-coordination. Canonical import: @securitydept/client-react.",
+					"evidence": ["examples/react-planner-host-baseline.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Auth Coordination"
+					}
+				},
+				{
+					"exportKey": "./tanstack-router",
+					"stability": "provisional",
+					"owner": "shared-framework",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Canonical owner of TanStack React Router route-security contract, aligned with Angular's @securitydept/client-angular route metadata contract. Canonical adopter-facing entry (Iteration 107 Review1 fix): createSecureBeforeLoad() — a beforeLoad-compatible factory that wires root-level runtime policy into TanStack Router execution semantics (throws redirect or RouteSecurityBlockedError). Child routes use withTanStackRouteRequirements() for serializable staticData declaration only. Lower-level building blocks: extractTanStackRouteRequirements (full-route aggregation with merge/replace/inherit), createTanStackRouteSecurityPolicy (headless evaluator), projectTanStackRouteMatches, createTanStackRouteActivator.",
+					"evidence": [
+						"examples/tanstack-react-router-adapter.test.ts",
+						"examples/tanstack-route-security-contract.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Framework Router Adapters"
+					}
+				}
+			]
+		},
+		{
+			"name": "@securitydept/client-angular",
+			"dir": "client-angular",
+			"stability": "provisional",
+			"buildTool": "ng-packagr",
+			"subpaths": [
+				{
+					"exportKey": ".",
+					"stability": "provisional",
+					"owner": "shared-framework",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Canonical owner of Angular framework bridge utilities. Provides: AuthRouteAdapter (projection from ActivatedRouteSnapshot to RouteMatchNode[]), PlannerHost DI wiring (provideAuthPlannerHost, AUTH_PLANNER_HOST, injectPlannerHost), route-metadata helpers (withRouteRequirements, extractFullRouteRequirements, ROUTE_REQUIREMENTS_DATA_KEY, ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY, resolveEffectiveRequirements), signal/Observable bridge utilities (bridgeToAngularSignal, signalToObservable — generic, not token-set-specific), and provideRouteScopedRequirements (lower-level non-router DI-scope helper). ReadableSignalTrait from @securitydept/client is the canonical signal contract.",
+					"evidence": [
+						"examples/angular-router-adapter.test.ts",
+						"examples/angular-full-route-aggregation.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Framework Router Adapters"
+					}
 				}
 			]
 		}

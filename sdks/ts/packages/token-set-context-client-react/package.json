@@ -1,0 +1,41 @@
+{
+	"name": "@securitydept/token-set-context-client-react",
+	"version": "0.1.0",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"monorepo-tsc": "./src/index.tsx",
+			"types": "./dist/index.d.mts",
+			"import": "./dist/index.mjs"
+		},
+		"./react-query": {
+			"monorepo-tsc": "./src/react-query/index.ts",
+			"types": "./dist/react-query/index.d.mts",
+			"import": "./dist/react-query/index.mjs"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc -b"
+	},
+	"dependencies": {
+		"@securitydept/client": "workspace:*",
+		"@securitydept/token-set-context-client": "workspace:*"
+	},
+	"peerDependencies": {
+		"react": ">=19.0.0",
+		"@tanstack/react-query": ">=5.0.0"
+	},
+	"peerDependenciesMeta": {
+		"@tanstack/react-query": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@tanstack/react-query": "^5.90.2"
+	}
+}

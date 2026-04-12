@@ -1,0 +1,26 @@
+{
+	"name": "@securitydept/basic-auth-context-client-angular",
+	"version": "0.1.0",
+	"type": "module",
+	"sideEffects": false,
+	"files": [
+		"dist"
+	],
+	"exports": {
+		".": {
+			"monorepo-tsc": "./src/public-api.ts",
+			"types": "./dist/types/securitydept-basic-auth-context-client-angular.d.ts",
+			"default": "./dist/fesm2022/securitydept-basic-auth-context-client-angular.mjs"
+		}
+	},
+	"scripts": {
+		"build": "ng-packagr -p ng-package.json -c tsconfig.lib.json"
+	},
+	"peerDependencies": {
+		"@securitydept/basic-auth-context-client": "workspace:*",
+		"@angular/core": ">=19.0.0"
+	},
+	"devDependencies": {
+		"@securitydept/basic-auth-context-client": "workspace:*"
+	}
+}

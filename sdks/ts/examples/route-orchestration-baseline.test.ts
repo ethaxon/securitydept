@@ -9,12 +9,14 @@
 //   6. Route chain transition — diverging decision discard
 //   7. Route deactivation / reset
 //   8. onPendingRequirement callback fires on activation and after resolution
+//
+// Canonical import: @securitydept/client/auth-coordination
+// (moved from @securitydept/token-set-context-client/orchestration in iteration 102)
 
 import {
 	createRouteRequirementOrchestrator,
-	RequirementKind,
 	ResolutionStatus,
-} from "@securitydept/token-set-context-client/orchestration";
+} from "@securitydept/client/auth-coordination";
 import { describe, expect, it, vi } from "vitest";
 
 describe("route requirement orchestrator (matched-route-chain)", () => {
@@ -24,11 +26,11 @@ describe("route requirement orchestrator (matched-route-chain)", () => {
 		orchestrator.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: RequirementKind.Session }],
+				requirements: [{ id: "session", kind: "session" }],
 			},
 			{
 				routeId: "/app/dashboard",
-				requirements: [{ id: "api-token", kind: RequirementKind.BackendOidc }],
+				requirements: [{ id: "api-token", kind: "backend_oidc" }],
 			},
 		]);
 
@@ -48,13 +50,11 @@ describe("route requirement orchestrator (matched-route-chain)", () => {
 		orchestrator.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: RequirementKind.Session }],
+				requirements: [{ id: "session", kind: "session" }],
 			},
 			{
 				routeId: "/app/admin",
-				requirements: [
-					{ id: "admin-oidc", kind: RequirementKind.FrontendOidc },
-				],
+				requirements: [{ id: "admin-oidc", kind: "frontend_oidc" }],
 			},
 		]);
 
@@ -77,11 +77,11 @@ describe("route requirement orchestrator (matched-route-chain)", () => {
 		orchestrator.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: RequirementKind.Session }],
+				requirements: [{ id: "session", kind: "session" }],
 			},
 			{
 				routeId: "/app/dashboard",
-				requirements: [{ id: "api-token", kind: RequirementKind.BackendOidc }],
+				requirements: [{ id: "api-token", kind: "backend_oidc" }],
 			},
 		]);
 
@@ -108,7 +108,7 @@ describe("route requirement orchestrator (matched-route-chain)", () => {
 		orchestrator.activateMatchedRoutes([
 			{
 				routeId: "/settings",
-				requirements: [{ id: "oidc", kind: RequirementKind.FrontendOidc }],
+				requirements: [{ id: "oidc", kind: "frontend_oidc" }],
 			},
 		]);
 
@@ -131,11 +131,11 @@ describe("route requirement orchestrator (matched-route-chain)", () => {
 		orchestrator.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "first", kind: RequirementKind.Session }],
+				requirements: [{ id: "first", kind: "session" }],
 			},
 			{
 				routeId: "/app/page",
-				requirements: [{ id: "second", kind: RequirementKind.BackendOidc }],
+				requirements: [{ id: "second", kind: "backend_oidc" }],
 			},
 		]);
 
@@ -163,11 +163,11 @@ describe("route requirement orchestrator (matched-route-chain)", () => {
 		orchestrator.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: RequirementKind.Session }],
+				requirements: [{ id: "session", kind: "session" }],
 			},
 			{
 				routeId: "/app/dashboard",
-				requirements: [{ id: "dash-token", kind: RequirementKind.BackendOidc }],
+				requirements: [{ id: "dash-token", kind: "backend_oidc" }],
 			},
 		]);
 
@@ -187,13 +187,11 @@ describe("route requirement orchestrator (matched-route-chain)", () => {
 		orchestrator.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: RequirementKind.Session }],
+				requirements: [{ id: "session", kind: "session" }],
 			},
 			{
 				routeId: "/app/settings",
-				requirements: [
-					{ id: "settings-oidc", kind: RequirementKind.FrontendOidc },
-				],
+				requirements: [{ id: "settings-oidc", kind: "frontend_oidc" }],
 			},
 		]);
 
@@ -215,11 +213,11 @@ describe("route requirement orchestrator (matched-route-chain)", () => {
 		orchestrator.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: RequirementKind.Session }],
+				requirements: [{ id: "session", kind: "session" }],
 			},
 			{
 				routeId: "/app/dashboard",
-				requirements: [{ id: "dash-token", kind: RequirementKind.BackendOidc }],
+				requirements: [{ id: "dash-token", kind: "backend_oidc" }],
 			},
 		]);
 
@@ -242,11 +240,11 @@ describe("route requirement orchestrator (matched-route-chain)", () => {
 		orchestrator.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: RequirementKind.Session }],
+				requirements: [{ id: "session", kind: "session" }],
 			},
 			{
 				routeId: "/app/profile",
-				requirements: [{ id: "profile-req", kind: RequirementKind.Custom }],
+				requirements: [{ id: "profile-req", kind: "custom" }],
 			},
 		]);
 
@@ -260,7 +258,7 @@ describe("route requirement orchestrator (matched-route-chain)", () => {
 		orchestrator.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "s", kind: RequirementKind.Session }],
+				requirements: [{ id: "s", kind: "session" }],
 			},
 		]);
 

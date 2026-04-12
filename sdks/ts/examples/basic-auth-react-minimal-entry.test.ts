@@ -9,11 +9,11 @@
 // An adopter reading this file should understand "how do I wire up
 // basic-auth zone awareness in React?" in one glance.
 
-import type { BasicAuthContextProviderProps } from "@securitydept/basic-auth-context-client/react";
+import type { BasicAuthContextProviderProps } from "@securitydept/basic-auth-context-client-react";
 import {
 	BasicAuthContextProvider,
 	useBasicAuthContext,
-} from "@securitydept/basic-auth-context-client/react";
+} from "@securitydept/basic-auth-context-client-react";
 import { act, createElement, type ReactElement, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";

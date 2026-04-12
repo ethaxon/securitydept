@@ -2,7 +2,7 @@
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
 		"skipLibCheck": true,
-		"outDir": "./dist",
+		"outDir": "./dist-tsc",
 		"rootDir": "./src",
 		"paths": {
 			"@/*": ["./src/*"]
@@ -17,5 +17,16 @@
 		"**/dist",
 		"src/**/__tests__/**/*.ts",
 		"src/**/__tests__/**/*.tsx"
+	],
+	"references": [
+		{
+			"path": "../../sdks/ts/packages/client"
+		},
+		{
+			"path": "../../sdks/ts/packages/session-context-client"
+		},
+		{
+			"path": "../../sdks/ts/packages/token-set-context-client"
+		}
 	]
 }

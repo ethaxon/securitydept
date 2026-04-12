@@ -9,6 +9,10 @@
 // Contents: token snapshot types, delta merge, bearer projection, persistence,
 // and authorized transport — all without any OIDC-mediated sealed flow semantics.
 //
+// NOTE: The shared auth requirement orchestration primitives (requirement planner,
+// route orchestrator) have moved to @securitydept/client/auth-coordination.
+// Migration: see docs/en/110-TS_SDK_MIGRATIONS.md
+//
 // Current status: PUBLIC subpath within token-set-context-client (same npm package).
 // Stability: provisional (additive, freezing-in-progress; not yet promoted to stable).
 // Not a separate npm package — extraction path is clear if warranted later.
@@ -38,30 +42,6 @@ export type {
 	CreateAuthStatePersistenceOptions,
 } from "./persistence";
 export { createAuthStatePersistence } from "./persistence";
-// Multi-requirement orchestration planner
-export type {
-	AuthRequirement,
-	CreateRequirementPlannerOptions,
-	PlanSnapshot,
-	RequirementPlanner,
-	RequirementResolution,
-} from "./requirement-planner";
-export {
-	createRequirementPlanner,
-	PlanStatus,
-	RequirementKind,
-	RequirementPlannerError,
-	ResolutionStatus,
-} from "./requirement-planner";
-// Route-level orchestration — headless router integration baseline
-export type {
-	ChooserDecision,
-	CreateRouteRequirementOrchestratorOptions,
-	RouteMatchNode,
-	RouteOrchestrationSnapshot,
-	RouteRequirementOrchestrator,
-} from "./route-orchestrator";
-export { createRouteRequirementOrchestrator } from "./route-orchestrator";
 export { bearerHeader, mergeTokenDelta } from "./token-ops";
 export type {
 	AuthDelta,

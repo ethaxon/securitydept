@@ -1,0 +1,37 @@
+{
+	"name": "@securitydept/client-react",
+	"version": "0.1.0",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"monorepo-tsc": "./src/planner-host/index.tsx",
+			"types": "./dist/index.d.mts",
+			"import": "./dist/index.mjs"
+		},
+		"./tanstack-router": {
+			"monorepo-tsc": "./src/tanstack-router/index.ts",
+			"types": "./dist/tanstack-router/index.d.mts",
+			"import": "./dist/tanstack-router/index.mjs"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc -b"
+	},
+	"dependencies": {
+		"@securitydept/client": "workspace:*"
+	},
+	"peerDependencies": {
+		"react": ">=19.0.0",
+		"@tanstack/react-router": ">=1.0.0"
+	},
+	"peerDependenciesMeta": {
+		"@tanstack/react-router": {
+			"optional": true
+		}
+	}
+}

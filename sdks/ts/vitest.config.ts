@@ -24,14 +24,25 @@ export default defineConfig({
 				replacement: path.join(packagesDir, "client/src/persistence/index.ts"),
 			},
 			{
+				find: "@securitydept/client/auth-coordination",
+				replacement: path.join(
+					packagesDir,
+					"client/src/auth-coordination/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/client/web-router",
+				replacement: path.join(packagesDir, "client/src/web-router/index.ts"),
+			},
+			{
 				find: "@securitydept/client",
 				replacement: path.join(packagesDir, "client/src/index.ts"),
 			},
 			{
-				find: "@securitydept/basic-auth-context-client/react",
+				find: "@securitydept/basic-auth-context-client-react",
 				replacement: path.join(
 					packagesDir,
-					"basic-auth-context-client/src/react/index.tsx",
+					"basic-auth-context-client-react/src/index.tsx",
 				),
 			},
 			{
@@ -49,10 +60,25 @@ export default defineConfig({
 				),
 			},
 			{
+				// Angular packages use ng-packagr output (vitest can't parse decorators)
+				find: "@securitydept/basic-auth-context-client-angular",
+				replacement: path.join(
+					packagesDir,
+					"basic-auth-context-client-angular/dist/fesm2022/securitydept-basic-auth-context-client-angular.mjs",
+				),
+			},
+			{
 				find: "@securitydept/basic-auth-context-client",
 				replacement: path.join(
 					packagesDir,
 					"basic-auth-context-client/src/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/session-context-client-react",
+				replacement: path.join(
+					packagesDir,
+					"session-context-client-react/src/index.tsx",
 				),
 			},
 			{
@@ -70,10 +96,10 @@ export default defineConfig({
 				),
 			},
 			{
-				find: "@securitydept/session-context-client/react",
+				find: "@securitydept/session-context-client-angular",
 				replacement: path.join(
 					packagesDir,
-					"session-context-client/src/react/index.tsx",
+					"session-context-client-angular/dist/fesm2022/securitydept-session-context-client-angular.mjs",
 				),
 			},
 			{
@@ -81,6 +107,61 @@ export default defineConfig({
 				replacement: path.join(
 					packagesDir,
 					"session-context-client/src/index.ts",
+				),
+			},
+			{
+				// client-react tanstack-router subpath — MUST precede root alias
+				find: "@securitydept/client-react/tanstack-router",
+				replacement: path.join(
+					packagesDir,
+					"client-react/src/tanstack-router/index.ts",
+				),
+			},
+			{
+				// client-react root export — planner-host React Context integration
+				find: "@securitydept/client-react",
+				replacement: path.join(
+					packagesDir,
+					"client-react/src/planner-host/index.tsx",
+				),
+			},
+			{
+				// token-set-context-client-react react-query subpath — MUST precede root alias
+				find: "@securitydept/token-set-context-client-react/react-query",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client-react/src/react-query/index.ts",
+				),
+			},
+			{
+				// token-set-context-client-react root (BackendOidc React context/hooks)
+				find: "@securitydept/token-set-context-client-react",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client-react/src/index.tsx",
+				),
+			},
+			{
+				// client-angular — shared Angular route adapter; requires prior ng-packagr build.
+				// Points to FESM output to avoid Angular decorator parse issues in vitest.
+				find: "@securitydept/client-angular",
+				replacement: path.join(
+					packagesDir,
+					"client-angular/dist/fesm2022/securitydept-client-angular.mjs",
+				),
+			},
+			{
+				find: "@securitydept/token-set-context-client-angular",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client-angular/dist/fesm2022/securitydept-token-set-context-client-angular.mjs",
+				),
+			},
+			{
+				find: "@securitydept/token-set-context-client/registry",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client/src/registry/index.ts",
 				),
 			},
 			{
@@ -112,13 +193,6 @@ export default defineConfig({
 				),
 			},
 			{
-				find: "@securitydept/token-set-context-client/backend-oidc-mode/react",
-				replacement: path.join(
-					packagesDir,
-					"token-set-context-client/src/backend-oidc-mode/react/index.tsx",
-				),
-			},
-			{
 				find: "@securitydept/token-set-context-client/backend-oidc-mode",
 				replacement: path.join(
 					packagesDir,
@@ -136,5 +210,7 @@ export default defineConfig({
 			"packages/*/src/**/__tests__/**/*.test.ts",
 			"examples/**/*.test.ts",
 		],
+		// Load @angular/compiler JIT so partial-compiled ng-packagr output works.
+		setupFiles: ["./vitest.angular-setup.ts"],
 	},
 });

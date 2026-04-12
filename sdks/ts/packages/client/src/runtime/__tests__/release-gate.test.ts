@@ -38,6 +38,7 @@ interface PackageEntry {
 	name: string;
 	dir: string;
 	stability: string;
+	buildTool?: string;
 	subpaths: SubpathEntry[];
 }
 
@@ -99,16 +100,43 @@ describe("release-gate: public-surface inventory validation", () => {
 		const mismatches: string[] = [];
 
 		for (const pkg of inventory.packages) {
-			const packageJsonPath = path.join(packagesRoot, pkg.dir, "package.json");
+			let packageJsonPath: string;
+			if (pkg.buildTool === "ng-packagr") {
+				// ng-packagr packages emit exports in dist/package.json, not the source package.json.
+				// Validate against the built dist artifact instead of skipping.
+				packageJsonPath = path.join(
+					packagesRoot,
+					pkg.dir,
+					"dist",
+					"package.json",
+				);
+				if (!fs.existsSync(packageJsonPath)) {
+					mismatches.push(
+						`${pkg.name}: dist/package.json not found — run build:angular before the release gate`,
+					);
+					continue;
+				}
+			} else {
+				packageJsonPath = path.join(packagesRoot, pkg.dir, "package.json");
+			}
+
 			const packageJson = JSON.parse(
 				fs.readFileSync(packageJsonPath, "utf8"),
 			) as { exports?: Record<string, unknown> };
-			const actualExportKeys = Object.keys(packageJson.exports ?? {});
+			// Filter out "./package.json" — ng-packagr injects it automatically and it
+			// is not a public surface that needs to appear in the inventory.
+			const actualExportKeys = Object.keys(packageJson.exports ?? {}).filter(
+				(k) => k !== "./package.json",
+			);
 
 			for (const subpath of pkg.subpaths) {
 				if (!actualExportKeys.includes(subpath.exportKey)) {
+					const source =
+						pkg.buildTool === "ng-packagr"
+							? "dist/package.json"
+							: "package.json";
 					mismatches.push(
-						`${pkg.name}: inventory declares "${subpath.exportKey}" but package.json does not export it`,
+						`${pkg.name}: inventory declares "${subpath.exportKey}" but ${source} does not export it`,
 					);
 				}
 			}
@@ -121,17 +149,42 @@ describe("release-gate: public-surface inventory validation", () => {
 		const undeclared: string[] = [];
 
 		for (const pkg of inventory.packages) {
-			const packageJsonPath = path.join(packagesRoot, pkg.dir, "package.json");
+			let packageJsonPath: string;
+			if (pkg.buildTool === "ng-packagr") {
+				// ng-packagr packages emit exports in dist/package.json, not the source package.json.
+				// Validate against the built dist artifact instead of skipping.
+				packageJsonPath = path.join(
+					packagesRoot,
+					pkg.dir,
+					"dist",
+					"package.json",
+				);
+				if (!fs.existsSync(packageJsonPath)) {
+					// Already reported in the previous test — silently skip here.
+					continue;
+				}
+			} else {
+				packageJsonPath = path.join(packagesRoot, pkg.dir, "package.json");
+			}
+
 			const packageJson = JSON.parse(
 				fs.readFileSync(packageJsonPath, "utf8"),
 			) as { exports?: Record<string, unknown> };
-			const actualExportKeys = Object.keys(packageJson.exports ?? {});
+			// Filter out "./package.json" — ng-packagr injects it automatically and it
+			// is not a public surface that needs to appear in the inventory.
+			const actualExportKeys = Object.keys(packageJson.exports ?? {}).filter(
+				(k) => k !== "./package.json",
+			);
 			const inventoryKeys = pkg.subpaths.map((s) => s.exportKey);
 
 			for (const key of actualExportKeys) {
 				if (!inventoryKeys.includes(key)) {
+					const source =
+						pkg.buildTool === "ng-packagr"
+							? "dist/package.json"
+							: "package.json";
 					undeclared.push(
-						`${pkg.name}: package.json exports "${key}" but inventory does not declare it`,
+						`${pkg.name}: ${source} exports "${key}" but inventory does not declare it`,
 					);
 				}
 			}

@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.sdks.json",
+	"compilerOptions": {
+		"jsx": "react-jsx",
+		"outDir": "./dist-tsc",
+		"rootDir": "./src",
+		"lib": ["ES2022", "DOM"]
+	},
+	"include": ["src"],
+	"references": [
+		{ "path": "../client" },
+		{ "path": "../token-set-context-client" }
+	]
+}

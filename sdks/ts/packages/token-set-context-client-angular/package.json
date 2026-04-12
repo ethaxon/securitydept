@@ -1,0 +1,33 @@
+{
+	"name": "@securitydept/token-set-context-client-angular",
+	"version": "0.1.0",
+	"type": "module",
+	"sideEffects": false,
+	"files": [
+		"dist"
+	],
+	"exports": {
+		".": {
+			"monorepo-tsc": "./src/public-api.ts",
+			"types": "./dist/types/securitydept-token-set-context-client-angular.d.ts",
+			"default": "./dist/fesm2022/securitydept-token-set-context-client-angular.mjs"
+		}
+	},
+	"scripts": {
+		"build": "ng-packagr -p ng-package.json -c tsconfig.lib.json"
+	},
+	"peerDependencies": {
+		"@securitydept/client": "workspace:*",
+		"@securitydept/client-angular": "workspace:*",
+		"@securitydept/token-set-context-client": "workspace:*",
+		"@angular/core": ">=19.0.0",
+		"@angular/common": ">=19.0.0",
+		"@angular/router": ">=19.0.0",
+		"rxjs": ">=7.0.0"
+	},
+	"devDependencies": {
+		"@securitydept/client": "workspace:*",
+		"@securitydept/client-angular": "workspace:*",
+		"@securitydept/token-set-context-client": "workspace:*"
+	}
+}

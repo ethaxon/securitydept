@@ -1,7 +1,7 @@
 {
 	"extends": "./tsconfig.base.json",
 	"compilerOptions": {
-		"emitDeclarationOnly": true,
+		"outDir": "./dist-tsc/scripts",
 		"types": ["node"],
 		"module": "NodeNext",
 		"moduleResolution": "nodenext"

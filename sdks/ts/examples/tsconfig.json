@@ -1,66 +1,26 @@
 {
-	"extends": "../tsconfig.json",
+	"extends": "../tsconfig.sdks.json",
 	"compilerOptions": {
-		"composite": false,
-		"noEmit": true,
-		"declaration": false,
-		"declarationMap": false,
-		"sourceMap": false,
+		"composite": true,
+		"outDir": "./dist-tsc",
 		"jsx": "react-jsx",
 		"lib": ["ES2022", "DOM"],
-		"paths": {
-			"@securitydept/client": ["../packages/client/src/index.ts"],
-			"@securitydept/client/persistence": [
-				"../packages/client/src/persistence/index.ts"
-			],
-			"@securitydept/client/persistence/web": [
-				"../packages/client/src/persistence/web/index.ts"
-			],
-			"@securitydept/client/web": ["../packages/client/src/web/index.ts"],
-			"@securitydept/basic-auth-context-client": [
-				"../packages/basic-auth-context-client/src/index.ts"
-			],
-			"@securitydept/basic-auth-context-client/react": [
-				"../packages/basic-auth-context-client/src/react/index.tsx"
-			],
-			"@securitydept/basic-auth-context-client/web": [
-				"../packages/basic-auth-context-client/src/web/index.ts"
-			],
-			"@securitydept/basic-auth-context-client/server": [
-				"../packages/basic-auth-context-client/src/server/index.ts"
-			],
-			"@securitydept/session-context-client": [
-				"../packages/session-context-client/src/index.ts"
-			],
-			"@securitydept/session-context-client/web": [
-				"../packages/session-context-client/src/web/index.ts"
-			],
-			"@securitydept/session-context-client/server": [
-				"../packages/session-context-client/src/server/index.ts"
-			],
-			"@securitydept/session-context-client/react": [
-				"../packages/session-context-client/src/react/index.tsx"
-			],
-			"@securitydept/token-set-context-client/backend-oidc-mode": [
-				"../packages/token-set-context-client/src/backend-oidc-mode/index.ts"
-			],
-			"@securitydept/token-set-context-client/backend-oidc-mode/web": [
-				"../packages/token-set-context-client/src/backend-oidc-mode/web/index.ts"
-			],
-			"@securitydept/token-set-context-client/backend-oidc-mode/react": [
-				"../packages/token-set-context-client/src/backend-oidc-mode/react/index.tsx"
-			],
-			"@securitydept/token-set-context-client/frontend-oidc-mode": [
-				"../packages/token-set-context-client/src/frontend-oidc-mode/index.ts"
-			],
-			"@securitydept/token-set-context-client/access-token-substrate": [
-				"../packages/token-set-context-client/src/access-token-substrate/index.ts"
-			],
-			"@securitydept/token-set-context-client/orchestration": [
-				"../packages/token-set-context-client/src/orchestration/index.ts"
-			],
-			"@securitydept/test-utils": ["../packages/test-utils/src/index.ts"]
-		}
+		"types": ["node"]
 	},
-	"include": ["./**/*.test.ts"]
+	"include": ["./**/*.test.ts"],
+	"references": [
+		{ "path": "../packages/client" },
+		{ "path": "../packages/client-angular" },
+		{ "path": "../packages/client-react" },
+		{ "path": "../packages/test-utils" },
+		{ "path": "../packages/basic-auth-context-client" },
+		{ "path": "../packages/basic-auth-context-client-angular" },
+		{ "path": "../packages/basic-auth-context-client-react" },
+		{ "path": "../packages/session-context-client" },
+		{ "path": "../packages/session-context-client-angular" },
+		{ "path": "../packages/session-context-client-react" },
+		{ "path": "../packages/token-set-context-client" },
+		{ "path": "../packages/token-set-context-client-angular" },
+		{ "path": "../packages/token-set-context-client-react" }
+	]
 }

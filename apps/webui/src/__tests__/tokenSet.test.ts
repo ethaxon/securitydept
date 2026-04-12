@@ -16,7 +16,7 @@ import {
 	createTokenSetBrowserClient,
 	createTokenSetCallbackFragmentStore,
 	TokenSetBootstrapSource,
-} from "@securitydept/token-set-context-client/web";
+} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { describe, expect, it } from "vitest";
 import { AuthEntryKind } from "../api/entries";
 import {

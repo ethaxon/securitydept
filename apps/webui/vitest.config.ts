@@ -34,7 +34,7 @@ export default defineConfig({
 				),
 			},
 			{
-				find: "@securitydept/token-set-context-client/web",
+				find: "@securitydept/token-set-context-client/backend-oidc-mode/web",
 				replacement: path.join(
 					packagesDir,
 					"token-set-context-client/src/web/index.ts",

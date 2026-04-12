@@ -113,7 +113,7 @@ The near-term focus should be:
    - the Rust crate should not keep `frontend` / `backend` as its first-level public namespace; the canonical shape should be top-level `frontend_oidc_mode``backend_oidc_mode`and `access_token_substrate`
    - resource-server / propagation / forwarder should no longer be described as preset-owned materials; they depend only on the access token and propagation headerso they should be promoted into the top-level shared module `access_token_substrate`
 4. do not rush chooser UI or router glue back into the SDK
-5. even if `outposts` currently bridges through `angular-auth-oidc-client` or a project-local `AuthService`, do not productize those transitional shapes as SDK API; first derive a better Angular adapter / helper contract, then validate migration onto it
+5. as `outposts` migrates from `angular-auth-oidc-client` toward the SDK Angular packages (`provideTokenSetAuth()`, `@securitydept/token-set-context-client-angular`, etc.), do not productize app-local transitional glue as SDK API; treat [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) as the adapter contract, then validate migration onto those surfaces
 
 ## Mid-Term Plan
 

@@ -63,25 +63,26 @@ SecurityDept client SDKs should follow a TanStack-like package style:
 
 - split public packages by auth context or capability
 - keep the default surface framework-neutral
-- expose framework adapters through subpath exports inside the same package
+- expose framework adapters through dedicated independent packages
 - do not create extra framework aggregate packages such as `@securitydept/react-client`
 
 TypeScript examples:
 
 - `@securitydept/client`
-- `@securitydept/client/react`
 - `@securitydept/client/web`
 - `@securitydept/client/persistence`
 - `@securitydept/client/persistence/web`
 - `@securitydept/basic-auth-context-client`
-- `@securitydept/basic-auth-context-client/react`
+- `@securitydept/basic-auth-context-client-react`
+- `@securitydept/basic-auth-context-client-angular`
 - `@securitydept/basic-auth-context-client/web`
 - `@securitydept/session-context-client`
-- `@securitydept/session-context-client/react`
+- `@securitydept/session-context-client-react`
+- `@securitydept/session-context-client-angular`
 - `@securitydept/token-set-context-client/frontend-oidc-mode`
 - `@securitydept/token-set-context-client/backend-oidc-mode`
-- `@securitydept/token-set-context-client/backend-oidc-mode/web`
-- `@securitydept/token-set-context-client/backend-oidc-mode/react`
+- `@securitydept/token-set-context-client-react`
+- `@securitydept/token-set-context-client-angular`
 
 For npm packages that expose React adapters:
 
@@ -311,6 +312,44 @@ Suggested exports:
 - `@securitydept/client/persistence`
 - `@securitydept/client/persistence/web`
 
+### Auth Coordination
+
+The auth coordination subpath (`@securitydept/client/auth-coordination`) is the canonical owner of the shared, protocol-agnostic requirement orchestration primitives.
+
+It provides:
+
+- `RequirementPlanner` — headless multi-requirement sequencer (session, OIDC, custom). Requirements are identified by `id` + `kind`, where `kind` is an opaque `string`. Each auth-context or adopter project defines its own named kind constants.
+- `RouteRequirementOrchestrator` — route-level glue that maps a matched route chain (`RouteMatchNode[]`) to a `RequirementPlanner` instance, preserving shared-prefix resolutions across route transitions.
+- `PlannerHost` / `createPlannerHost()` — host-layer coordination contract for multi-requirement auth guards. Evaluates a set of `AuthGuardClientOption` candidates and selects the next pending one to act on. Supports pluggable candidate selection strategies (default: sequential first-unauthenticated; custom: e.g. chooser UI popup).
+- `RequirementsClientSet` / `ScopedRequirementsClientSet` — composable requirement collections with `inherit` / `merge` / `replace` composition semantics for parent-child scope hierarchies.
+- `resolveEffectiveClientSet()` — resolves parent + child composition into the effective set.
+- Shared types: `AuthRequirement`, `AuthGuardClientOption`, `CandidateSelector`, `RouteMatchNode`, `PlanSnapshot`, `PlanStatus`, `ResolutionStatus`, `RequirementPlannerError`, `ChooserDecision`, `RouteOrchestrationSnapshot`, `PlannerHostResult`.
+
+**Framework-specific planner host integrations:**
+
+- **Angular** (`@securitydept/client-angular`): `AUTH_PLANNER_HOST` injection token, `provideAuthPlannerHost()`, `injectPlannerHost()`, route-metadata helpers (`withRouteRequirements()`, `extractFullRouteRequirements()`, `ROUTE_REQUIREMENTS_DATA_KEY`, `ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY`, `resolveEffectiveRequirements()`), signal/Observable bridge utilities (`bridgeToAngularSignal()`, `signalToObservable()`). `AUTH_REQUIREMENTS_CLIENT_SET` and `provideRouteScopedRequirements()` are retained only as lower-level non-router DI-scope helpers.
+- **React** (`@securitydept/client-react`): `AuthPlannerHostProvider`, `useAuthPlannerHost()`, `AuthRequirementsClientSetProvider`, `useEffectiveClientSet()`.
+
+**Why this lives in `@securitydept/client` and not in `token-set-context-client`:**
+
+The planner and orchestrator are protocol-agnostic. Their requirement kind vocabulary (session, OIDC, custom) clearly spans beyond token-set. Hosting them in `token-set-context-client` forced non-token-set adopters (basic-auth, session) to take an unwanted package dependency. `@securitydept/client` is the foundation shared across all auth-context families and is the correct ownership boundary.
+
+Canonical export:
+
+```ts
+import {
+  createRequirementPlanner,
+  createRouteRequirementOrchestrator,
+  createPlannerHost,
+  resolveEffectiveClientSet,
+  RequirementsClientSetComposition,
+  PlanStatus,
+  ResolutionStatus,
+} from "@securitydept/client/auth-coordination";
+```
+
+Stability: `provisional` (`provisional-migration-required`). Moved from `@securitydept/token-set-context-client/orchestration` in iteration 102. Planner-host layer added in iteration 104. See [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) for migration notes.
+
 ### Configuration
 
 Configuration should be layerednot flattened into one large options object.
@@ -424,15 +463,15 @@ The more appropriate next-stage plan is to split the capability behind `token-se
 1. **generic token orchestration / token material layer**
    - combined `access_token` / `id_token` / `refresh_token` snapshots
    - restore / clear / refresh scheduling
-   - persistencetracingand transport projection
+   - persistence, tracing, and transport projection
    - this layer should not care whether the tokens came from:
      - standard frontend OIDC
-     - standard backend OIDCresource server
-     - the `token-set-context` sealedmetadata flow
+     - standard backend OIDC resource server
+     - the `token-set-context` sealed metadata flow
 
 2. **backend-oidc-mediated browser adapter**
    - callback returns parsing
-   - sealedmetadata-specific redirect flow
+   - sealed metadata-specific redirect flow
    - metadata fallback
    - flow-state / redirect-recovery storage
 
@@ -447,7 +486,7 @@ Read the current heavy module responsibilities accordingly:
 - **backend-oidc-mediated browser adapter layer**
   - callback returns parsing
   - metadata fallback flow
-  - sealedmetadata-specific recovery behavior
+  - sealed metadata-specific recovery behavior
 
 And do not keep assuming that it should also own:
 
@@ -825,51 +864,56 @@ Subpath exports are also public contract.
 
 ### Current 0.x Freeze Semantics
 
-In the current 0.x TypeScript SDK stage`stable / provisional / experimental` should be read with explicit release semanticsnot as loose adjectives:
+In the current 0.x TypeScript SDK stage, `stable / provisional / experimental` should be read with explicit release semantics, not as loose adjectives:
 
 - `stable`
   - Meaning: the current public contract is ready to be depended on directly by external consumers
-  - Allowed change: additive capabilitybackward-compatible conveniencedocumentation clarificationinternal refactors
-  - Should not happen: silent responsibility shifts between layersentry-path churnor changes that invalidate the documented minimal entry path
-  - Current basis: the root capability boundary is clearminimal entry paths are explainableordinary usage does not rely on reference-app-only glueand there are already narrow guardrails around exports/build/public vocabulary
+  - Allowed change: additive capability, backward-compatible convenience, documentation clarification, and internal refactors
+  - Should not happen: silent responsibility shifts between layers, entry-path churn, or changes that invalidate the documented minimal entry path
+  - Current basis: the root capability boundary is clear, minimal entry paths are explainable, ordinary usage does not rely on reference-app-only glue, and there are already narrow guardrails around exports/build/public vocabulary
 - `provisional`
-  - Meaning: publicly usable and intentionally exportedbut still managed as a freezing adapter/capability boundary rather than a settled release-grade surface
-  - Allowed change: lifecycle hardeningadditive conveniencemore focused automationclearer capability requirements
-  - Still risky: frequent entry-shape churnpulling app glue back into adaptersor promoting to `stable` before the evidence changes
-  - Current basis: the subpaths are real and usablebut ordinary usage still depends more heavily on capability requirementsadapter-owned lifecycle boundariesand focused evidence
+  - Meaning: publicly usable and intentionally exported, but still managed as a freezing adapter/capability boundary rather than a settled release-grade surface
+  - Allowed change: lifecycle hardening, additive convenience, more focused automation, and clearer capability requirements
+  - Still risky: frequent entry-shape churn, pulling app glue back into adapters, or promoting to `stable` before the evidence changes
+  - Current basis: the subpaths are real and usable, but ordinary usage still depends more heavily on capability requirements, adapter-owned lifecycle boundaries, and focused evidence
 - `experimental`
-  - Meaning: exposed mainly for testingdemosor explorationnot as a publishable stability promise
-  - Allowed change: renamingreshapingreplacementor removal
+  - Meaning: exposed mainly for testing, demos, or exploration, not as a publishable stability promise
+  - Allowed change: renaming, reshaping, replacement, or removal
   - Current basis: these surfaces primarily serve tests/demo/workbench scenarios rather than core adopter-facing integration
 
 The important distinction is:
 
 - `stable` answers what is already a v1-candidate external contract
-- `provisional` answers what is public and usablebut still under a stricter freeze bar
+- `provisional` answers what is public and usable, but still under a stricter freeze bar
 - `experimental` answers what is still mainly for internal validation rather than external promise
 
 ### Current Contract Snapshot
 
-This is the current working contract map for the TypeScript SDK. It keeps the main stabilitycapabilityand boundary judgment in one place so later sections can reference it instead of restating it.
+This is the current working contract map for the TypeScript SDK. It keeps the main stability, capability, and boundary judgment in one place so later sections can reference it instead of restating it.
 
 This table uses canonical mode-aligned names as the target contract.  
-If implementation is still migratingthis table takes precedence over leftover legacy shapes.
+If implementation is still migrating, this table takes precedence over leftover legacy shapes.
 
 | Package / Subpath | Stability | Host / Capability Requirement | Current Reading |
 |---|---|---|---|
-| `@securitydept/client` | `stable` | No DOMno implicit `fetch`; caller provides transport/runtime | Foundation root export |
-| `@securitydept/client/persistence` | `stable` | No browser storage; in-memory storescodecsprotocols remain foundation | Foundation persistence capability |
+| `@securitydept/client` | `stable` | No DOM, no implicit `fetch`; caller provides transport/runtime | Foundation root export |
+| `@securitydept/client/persistence` | `stable` | No browser storage; in-memory stores, codecs, and protocols remain foundation | Foundation persistence capability |
 | `@securitydept/client/web` | `stable` ¹ | `fetch` / `AbortSignal`; browser convenience without side effects | Foundation-owned capability adapter |
 | `@securitydept/client/persistence/web` | `stable` ¹ | Web-storage semantics; inject custom store if unavailable | Foundation-owned storage adapter |
 | `@securitydept/basic-auth-context-client` | `stable` | No React; redirect convenience stays in `./web` | Basic-auth root contract |
 | `@securitydept/basic-auth-context-client/web` | `provisional` | `location` / redirect semantics | Auth-context browser adapter; `loginWithRedirect` zone-aware convenience + named `LoginWithRedirectOptions` |
-| `@securitydept/basic-auth-context-client/react` | `provisional` | React runtime | React adapter |
+| `@securitydept/basic-auth-context-client-react` | `provisional` | React runtime | React adapter |
+| `@securitydept/basic-auth-context-client-angular` | `provisional` | Angular 17+ `@angular/core` InjectionToken + service | Angular adapter: `BASIC_AUTH_CONTEXT_CLIENT` token, `provideBasicAuthContext()`, `BasicAuthContextService` |
 | `@securitydept/session-context-client` | `stable` | Transport / cancellation; login redirect flow is not SDK surface | Session root contract |
-| `@securitydept/session-context-client/react` | `provisional` | React runtime | React adapter; `SessionContextValue` exported for type-level reference |
+| `@securitydept/session-context-client-react` | `provisional` | React runtime | React adapter; `SessionContextValue` exported for type-level reference |
+| `@securitydept/session-context-client-angular` | `provisional` | Angular 17+ `@angular/core` InjectionToken + signal state | Angular adapter: `SESSION_CONTEXT_CLIENT` token, `provideSessionContext()`, `SessionContextService` with signal |
 | `@securitydept/token-set-context-client/backend-oidc-mode` | `provisional` ² | Backend OIDC capability negotiation, callback / refresh transport contracts, preset/profile introspection, persistence / traceSink | **Canonical frontend-facing entry** for consuming `backend-oidc` |
 | `@securitydept/token-set-context-client/backend-oidc-mode/web` | `provisional` | `location` / `history` / `fetch` / flow-state storage | Canonical browser-adapter subpath for consuming `backend-oidc` |
-| `@securitydept/token-set-context-client/backend-oidc-mode/react` | `provisional` | React runtime | Canonical React-adapter subpath for consuming `backend-oidc` |
+| `@securitydept/token-set-context-client-react` | `provisional` | React runtime | Canonical React-adapter package for consuming `backend-oidc` |
 | `@securitydept/token-set-context-client/orchestration` | `provisional` ³ | No backend-oidc preset-specific sealed-flow fields; protocol-agnostic token snapshot / persistence / transport / `AuthMaterialController` thin control layer | Shared token lifecycle substrate **explicit subpath entry** (recommended for protocol-agnostic usage; not a complete mode/flow entry) |
+| `@securitydept/token-set-context-client-angular` | `provisional` ⁶ | Angular 17+ Signal / RxJS / HttpClient / DI / callback lifecycle; duck-typed, no build-time `@angular/*` or `rxjs` dep | Angular integration family: signal bridge, Observable bridge, bearer interceptor, provider lifecycle, callback resume. Route adapter now in `@securitydept/client-angular` |
+| `@securitydept/client-react/tanstack-router` | `provisional` | `@tanstack/react-router` matched routes; duck-typed, no build-time dep | **Canonical** TanStack React Router route-security contract. Canonical adopter-facing entry: `createSecureBeforeLoad()` (beforeLoad factory, wires runtime policy into router execution) + `withTanStackRouteRequirements()` (child route serializable declaration). Lower-level: `extractTanStackRouteRequirements()`, `createTanStackRouteSecurityPolicy()`, `projectTanStackRouteMatches()`, `createTanStackRouteActivator()` |
+| `@securitydept/client-angular` | `provisional` | Angular `@angular/router` `ActivatedRouteSnapshot`; duck-typed, no runtime dep | **Canonical** Angular Router projection adapter (`AuthRouteAdapter`); no token-set policy |
 | `@securitydept/token-set-context-client/frontend-oidc-mode` | `provisional` ⁴ | Frontend pure OIDC client (`frontend-oidc` mode); based on `oauth4webapi`; provides a full browser client, `ConfigProjection` adapter, claims check, refresh, and `userInfo()` | `frontend-oidc` **mode-aligned explicit subpath entry** |
 | `@securitydept/token-set-context-client/access-token-substrate` | `provisional` ⁵ | Access-token substrate vocabulary, `TokenPropagation` capability, and integration info aligned with Rust `access_token_substrate` | shared substrate **explicit subpath entry** |
 | `@securitydept/test-utils` | `experimental` | Fake clock / scheduler / transport / trace collector | Test/demo infra |
@@ -883,6 +927,8 @@ If implementation is still migratingthis table takes precedence over leftover le
 ⁴ The `/frontend-oidc-mode` subpath implements `frontend-oidc` mode with `oauth4webapi` as the official base. It is currently `provisional`: it has an explicit entry, browser runtime, Rust-aligned `ConfigProjection`, and richer client APIs such as claims check, refresh, and `userInfo()`. Adopters using `/frontend-oidc-mode` must install `oauth4webapi` (`optional peerDependency`).
 
 ⁵ The `/access-token-substrate` subpath carries shared access-token substrate vocabulary. It is not another mode; it is the shared contract surface aligned with Rust `securitydept-token-set-context::access_token_substrate`.
+
+⁶ The `-angular` package is the Angular integration family. Unlike the per-concern React adapters (`-react` package on each client family), Angular needs a cohesive entry covering five integration dimensions: SDK signal → Angular Signal bridging, SDK signal → RxJS Observable bridging, bearer token injection via Angular `HttpInterceptorFn`, provider lifecycle management (construct + auto-dispose on `DestroyRef`), and OIDC callback resume helpers. All interfaces are duck-typed; no `@angular/*` or `rxjs` build-time dependency is required.
 
 Shared reading rules:
 
@@ -907,12 +953,12 @@ Read `@securitydept/token-set-context-client` first as the **frontend product su
 
 Use these rules to answer "which layer owns this capability?" without rereading the whole guide:
 
-- **redirect / location / history** → `./web` subpaths or app gluenot foundation root exports
+- **redirect / location / history** → `./web` subpaths or app glue, not foundation root exports
 - **fetch / AbortSignal** → foundation transport can express cancellation; browser convenience stays in `./web`
 - **persistence / web storage** → protocols & codecs are foundation; `localStorage` / `sessionStorage` adapters belong in `persistence/web`
-- **React state / subscription** → `./react` subpaths onlynot root exports
+- **React state / subscription** → independent `-react` packages, not root exports
 - **traceSink / lifecycle trace** → SDK contract
-- **trace timeline UI / DOM harnesses / propagation probes / business helpers** → reference app gluenot SDK surface
+- **trace timeline UI / DOM harnesses / propagation probes / business helpers** → reference app glue, not SDK surface
 
 #### token-set-context-client Frontend Subpath / Abstraction Split
 
@@ -934,14 +980,82 @@ First internal module slice delivered:
 | `orchestration/token-ops.ts` | `mergeTokenDelta()`, `bearerHeader()` |
 | `orchestration/persistence.ts` | `createAuthStatePersistence()` and strongly typed config `CreateAuthStatePersistenceOptions` |
 | `orchestration/auth-transport.ts` | `createAuthorizedTransport()` |
-| `orchestration/controller.ts` | `AuthMaterialController` / `createAuthMaterialController()` — thin control layer composing snapshot read/writepersistencebearertransport; provides `applyDelta()` for externally-driven renew/update |
+| `orchestration/controller.ts` | `AuthMaterialController` / `createAuthMaterialController()` — thin control layer composing snapshot read/write, persistence, bearer projection, and transport; provides `applyDelta()` for externally-driven renew/update |
 | `frontend-oidc-mode/types.ts` | `FrontendOidcModeClientConfig` / `FrontendOidcModeTokenResult` / `FrontendOidcModeAuthorizeResult` / `FrontendOidcModeUserInfo` — browser runtime config and protocol vocabulary |
 | `frontend-oidc-mode/client.ts` | `createFrontendOidcModeClient()` / `FrontendOidcModeClient` — wraps `oauth4webapi` for standard browser OIDC Authorization Code + PKCE flow |
 | `frontend-oidc-mode/contracts.ts` | `FrontendOidcModeConfigProjection` — Rust-aligned config projection plus adapters (`configProjectionToClientConfig`, `tokenResultToAuthSnapshot`) |
+| `frontend-oidc-mode/config-source.ts` | `ConfigProjectionSource*` — async config projection source contract: source types (`inline`, `network`, `persisted`, `bootstrap_script`), `resolveConfigProjection()` precedence resolver, `ClientReadinessState`, and `networkConfigSource()` convenience helper |
 | `access-token-substrate/contracts.ts` | `TokenPropagation` / `AccessTokenSubstrateIntegrationInfo` — shared substrate vocabulary |
 | `backend-oidc-mode/contracts.ts` | `BackendOidcModeCapabilities` / `BackendOidcModePreset` / `BackendOidcModeCallbackReturns` / `BackendOidcModeRefreshReturns` / `BackendOidcModeRefreshPayload` / `BackendOidcModeRefreshResult` / `BackendOidcModeUserInfoRequest` / `BackendOidcModeUserInfoResponse`; plus parsers and orchestration adapters |
 
 Existing v1 types such as `AuthTokenSnapshot` and `AuthStateSnapshot` are now re-export aliases of the orchestration types, fully backward compatible.
+
+#### Config Projection Source Contract (`frontend-oidc-mode/config-source.ts`)
+
+The `frontend-oidc-mode` subpath now owns a formal **async config projection source** contract. This is a core/shared capability — not an Angular-only or React-only concern.
+
+**Problem solved**: Before this contract, adopters who wanted to fetch their OIDC client config from a backend endpoint (e.g. `/api/auth/config`) had to create app-local workarounds (Angular `APP_INITIALIZER` + closure hack, React `useEffect` + context). These hacks leaked SDK ownership to the adopter layer and prevented framework adapters from expressing readiness semantics properly.
+
+**Source types** (`ConfigProjectionSourceKind`):
+
+| Source Kind | Resolution | Use Case |
+|---|---|---|
+| `inline` | Sync — config provided at registration time | Hardcoded config, test environments |
+| `network` | Async — fetches from backend endpoint | Production backend-driven config projection |
+| `persisted` | Async — restores from localStorage/sessionStorage | Offline-first, warm restart optimization |
+| `bootstrap_script` | Sync — reads from `window.__BOOTSTRAP__` globals | SSR-injected config, CDN edge config |
+
+**Resolution semantics** (`resolveConfigProjection(sources[])`):
+- Sources are tried in declaration order (highest priority first)
+- First successful source wins; failures skip to next with diagnostic logging
+- All sources exhausted → throws with diagnostic summary
+- Results include `sourceKind` for telemetry and caching decisions
+
+**Readiness state** (`ClientReadinessState`):
+- `not_initialized` → `initializing` → `ready` | `failed`
+- Both the Angular and React adapters now surface this state through the shared `@securitydept/token-set-context-client/registry` core
+- React `useTokenSetCallbackResume` / `TokenSetCallbackOutlet` drive the canonical callback path through `registry.whenReady(clientKey)` before invoking `handleCallback()`, so async / lazy clients are materialised on demand rather than silently dropped (iteration 110 review-1 fix)
+- Route guards (`createTokenSetRouteAggregationGuard`) and callback service (`CallbackResumeService`) use `registry.whenReady(key)` to await async initialization
+- Bearer interceptors intentionally do **not** await readiness — they use `registry.get()` and pass through unauthenticated when the client is not yet ready (guards are the enforcement layer)
+
+**Convenience helper** (`networkConfigSource(options)`):
+- Builds a `ConfigProjectionSourceNetwork` from an API endpoint URL
+- Constructs the correct `GET /api/auth/config?redirect_uri=...` URL
+- Handles HTTP error status and delegates validation to `parseConfigProjection()`
+
+**Canonical usage** (Angular adapter):
+
+```ts
+import { resolveConfigProjection, networkConfigSource, createFrontendOidcModeClient }
+  from "@securitydept/token-set-context-client/frontend-oidc-mode";
+
+provideTokenSetAuth({
+  clients: [{
+    key: "main",
+    // Async clientFactory — registry tracks readiness automatically
+    clientFactory: async () => {
+      const resolved = await resolveConfigProjection([
+        networkConfigSource({
+          apiEndpoint: "https://api.example.com/api",
+          redirectUri: `${location.origin}/auth/callback`,
+        }),
+      ]);
+      return createFrontendOidcModeClient(resolved.config, runtime);
+    },
+    urlPatterns: ["/api/"],
+    callbackPath: "/auth/callback",
+  }],
+});
+```
+
+**Key design decisions**:
+- Config source resolution is framework-agnostic by design — the `resolveConfigProjection()` / `networkConfigSource()` API lives in the core `frontend-oidc-mode` subpath, not in any framework adapter. Both the Angular adapter (`TokenSetAuthRegistry`) and the React adapter (`TokenSetAuthProvider` + `useTokenSetCallbackResume`) consume it via async `clientFactory`; the React callback path awaits `registry.whenReady(clientKey)` before calling `handleCallback()` so async / lazy clients are driven end-to-end without adopter glue.
+- `TokenSetClientEntry.clientFactory` now accepts `() => Promise<OidcModeClient>` in addition to sync return
+- `TokenSetAuthRegistry.register()` uses TypeScript overloads to preserve backward-compatible sync return type inference
+- Metadata (urlPatterns, callbackPath, requirementKind, providerFamily) is registered eagerly before async resolution completes — lookup dimensions work immediately
+- Route guards (`createTokenSetRouteAggregationGuard`) use `registry.whenReady(key)` to await async client materialization before evaluating auth — first protected navigation will block until all relevant clients are ready
+- Callback service (`CallbackResumeService`) uses `registry.whenReady(clientKey)` before calling `handleCallback()` — no timing assumption about client readiness
+- Bearer interceptors use `registry.get(key)` (not `whenReady`) — explicit design: if a client is still initializing, the request passes through without an `Authorization` header. Guards (not interceptors) are the enforcement point for "client must be ready before the user reaches this route".
 
 Current status:
 
@@ -949,40 +1063,70 @@ Current status:
 - `/orchestration` is the sole entry for protocol-agnostic orchestration exports (the root bridge has been removed)
 - these exports are **not** a separate npm package — still inside `@securitydept/token-set-context-client`
 - `backend-oidc-mode/contracts.ts` is already part of the canonical frontend-facing contract surface
-- `AuthMaterialController` (`createAuthMaterialController()`) is the **thin control layer** entry — it composes snapshot read/writebearer projectionpersistence restore/save/clearand authorized transport in a single manageable object; see `examples/auth-material-controller-contract.test.ts`
+- `AuthMaterialController` (`createAuthMaterialController()`) is the **thin control layer** entry — it composes snapshot read/write, bearer projection, persistence restore/save/clear, and authorized transport in a single manageable object; see `examples/auth-material-controller-contract.test.ts`
 - when to use the controller vs raw helpers:
-  - prefer the controller when you want a managed token lifecycle (applypersisttransport as a unit)
+  - prefer the controller when you want a managed token lifecycle (apply, persist, and transport as a unit)
   - use raw helpers such as `bearerHeader` and `createAuthStatePersistence` for targeted composition where you control the lifecycle yourself
-  - the controller does NOT handle acquisitioncallback redemptionor refresh scheduling — those remain OIDC-mediated-specific
+  - the controller does NOT handle acquisition, callback redemption, or refresh scheduling — those remain OIDC-mediated-specific
 - `AuthMaterialController.applyDelta()` is the protocol-agnostic entry for externally-driven renew/update:
   - accepts a `TokenDelta` (only the changed fields); internally calls `mergeTokenDelta()` to merge
-  - when `options.metadata` is absentcurrent metadata is preserved (refresh does not change principal)
-  - when `options.metadata` is providedmetadata is replaced (re-auth or source change scenarios)
+  - when `options.metadata` is absent, current metadata is preserved (refresh does not change principal)
+  - when `options.metadata` is provided, metadata is replaced (re-auth or source change scenarios)
   - auto-saves the merged snapshot to persistence (same as `applySnapshot`)
   - throws if no existing snapshot — `applySnapshot` must be called first for initial token material
 - `BackendOidcModeClient` now builds more of its lifecycle on top of the controller:
   - `restoreState()` / `clearState()` / `restorePersistedState()` route through the controller
   - `authorizationHeader()` is served directly by the controller
-  - `refresh()` success path routes through `_authMaterial.applyDelta()` for token mergepersistence
+  - `refresh()` success path routes through `_authMaterial.applyDelta()` for token merge + persistence
   - Methods utilizing configuration objects now declare well-defined options contracts (such as `BackendOidcModeRefreshOptions`, `BackendOidcModeFetchUserInfoOptions`, and `BackendOidcModeMetadataRedemptionOptions`) safely exported from the canonical `backend-oidc-mode` subpath.
 - `/orchestration` should no longer be abstracted forward in isolation as the final frontend OIDC answer; the next shape decision should come from `oauth4webapi`, `oidc-client-ts`, and a real Angular host case to calibrate the `frontend-oidc` mode implementation
 - for the Angular case, prefer a real downstream host such as `outposts`; its current `angular-auth-oidc-client`-based bridge is migration input, not the template for the SDK's public Angular contract
-- the planned official `frontend-oidc` implementation still lives inside `token-set-context-client` (`/frontend-oidc-mode` subpath)wrapping `oauth4webapi` and reusing the same-package orchestration substrate. The backend-facing frontend entry is `/backend-oidc-mode`
-- the default expectation is continued evolution through subpaths / additive surface inside the same packagenot an immediate split into a parallel package
+- the planned official `frontend-oidc` implementation still lives inside `token-set-context-client` (`/frontend-oidc-mode` subpath), wrapping `oauth4webapi` and reusing the same-package orchestration substrate. The backend-facing frontend entry is `/backend-oidc-mode`
+- the default expectation is continued evolution through subpaths / additive surface inside the same package, not an immediate split into a parallel package
 - the frontend public surface should now be read through the exact mode-aligned canonical subpath family rather than a root bridge:
 - `/backend-oidc-mode` — canonical frontend-facing subpath for `backend-oidc` (`provisional`)
 - `/backend-oidc-mode/web` — backend-oidc browser-adapter subpath (`provisional`)
-- `/backend-oidc-mode/react` — backend-oidc React-adapter subpath (`provisional`)
 - `/orchestration` — shared protocol-agnostic token-lifecycle substrate reused by `/backend-oidc-mode` and `/frontend-oidc-mode` (`provisional`)
-- `/frontend-oidc-mode` — mode-aligned frontend subpath for `frontend-oidc`, wrapping `oauth4webapi` and exposing a richer browser client plus `ConfigProjection` adapter (`provisional`)
+- `/frontend-oidc-mode` — mode-aligned frontend subpath for `frontend-oidc`, wrapping `oauth4webapi` and exposing a richer browser client plus `ConfigProjection` adapter and **config projection source contract** (`provisional`)
 - `/access-token-substrate` — shared substrate contract subpath aligned with Rust `access_token_substrate` (`provisional`)
 - root (`.`) and legacy `./web` / `./react` bridges have been removed; the canonical subpath family is now the only public surface
-- the Rust side already exposes top-level `*_mode` / shared modules for frontend-consumable configcross-boundary contractsand shared substrate
+- the Rust side already exposes top-level `*_mode` / shared modules for frontend-consumable config, cross-boundary contracts, and shared substrate
 - dependency semantics:
   - `oauth4webapi` = official base, `optional peerDependency` + `devDependency`
-  - `oidc-client-ts` = comparison/reference case`devDependency` only
+  - `oidc-client-ts` = comparison/reference case, `devDependency` only
+
+### Framework Router Adapters
+
+Route-level auth orchestration requires mapping framework-specific matched route trees into the SDK's `RouteMatchNode[]` contract. The SDK provides dedicated adapter subpaths for supported router frameworks:
+
+| Adapter Path / Package | Framework | Stability | Purpose |
+|---|---|---|---|
+| `@securitydept/client-react/tanstack-router` | `@tanstack/react-router` | `provisional` | **Canonical owner.** Full route-security contract aligned with Angular sibling. Canonical adopter-facing entry: `createSecureBeforeLoad()` — root-level beforeLoad factory that wires non-serializable runtime policy into TanStack Router execution semantics (throws `redirect` or `RouteSecurityBlockedError`); child routes use `withTanStackRouteRequirements()` for serializable `staticData` declaration only. Full-route aggregation via `extractTanStackRouteRequirements()` with `merge` / `replace` / `inherit` composition. Lower-level primitives: `createTanStackRouteSecurityPolicy()`, `projectTanStackRouteMatches()`, `createTanStackRouteActivator()` |
+| `@securitydept/client-angular` | Angular Router | `provisional` | **Canonical owner.** Route-metadata helpers (`withRouteRequirements`, `extractFullRouteRequirements`, `resolveEffectiveRequirements`) with `merge` / `replace` composition; planner-host DI wiring; signal/Observable bridge utilities (`bridgeToAngularSignal`, `signalToObservable`); `AuthRouteAdapter` injectable service |
+
+Design rules:
+
+- Adapters use **duck-typed interfaces** and do **not** introduce build-time dependencies on framework packages (`@tanstack/react-router`, `@angular/router`)
+- Adopters bring their own framework dependency; adapters accept structurally compatible objects
+- Adapters project and integrate, but **do not** own router lifecycle, navigation, or UI
+- The headless orchestration core (`/orchestration`) remains framework-agnostic
+- Auth requirements are declared in route configuration (TanStack `staticData`, Angular route `data`) under a well-known key (`authRequirements` by default)
+
+#### Framework adapter independent packages audit (iteration 100 decision)
+
+Framework adapters (both React and Angular) have been split into dedicated npm packages. Angular adapters use `ng-packagr` to generate APF / FESM2022 output, while React adapters use `tsdown`.
+
+| Surface | React adapter package | Angular adapter package | Status |
+|---|---|---|---|
+| `basic-auth-context-client` | `@securitydept/basic-auth-context-client-react` | `@securitydept/basic-auth-context-client-angular` | **Landed**: React: `BasicAuthContextProvider` + hooks; Angular: `@Injectable()` service + InjectionToken + provideBasicAuthContext() |
+| `session-context-client` | `@securitydept/session-context-client-react` | `@securitydept/session-context-client-angular` | **Landed**: React: `SessionContextProvider` + hooks + `SessionContextValue`; Angular: `@Injectable()` service + Angular signal state + provideSessionContext() |
+| `token-set-context-client` (cross-mode) | `@securitydept/token-set-context-client-react` | `@securitydept/token-set-context-client-angular` | **Landed**: Angular: multi-client registry + interceptor + canonical `secureRouteRoot` / `secureRoute` route-security builders; React: Auth hooks. (Framework route projection lives in `@securitydept/client-react` and `@securitydept/client-angular`) |
+
+> **Note**: API contract shapes are landed and test-covered. Live `outposts` host integration has not yet started and may surface ergonomics adjustments during actual consumption.
+
 
 ### token-set-context-client v1 Scope Baseline
+
 
 Read `@securitydept/token-set-context-client` as a frozen browser-owned v1
 baseline, not as an umbrella for every future custody model.
@@ -990,14 +1134,14 @@ baseline, not as an umbrella for every future custody model.
 | In the current baseline contract | Not part of the current baseline contract |
 |---|---|
 | browser-owned `backend-oidc` consumption | mixed-custody token family management |
-| callback returns parsingmetadata fallback | stateful BFF token ownership |
+| callback returns parsing, metadata fallback | stateful BFF token ownership |
 | in-memory auth-state signals | server-side mediated token ownership / SSR token stores |
-| persisted restoreexplicit clear | cross-tab sync / visibility re-check and larger browser lifecycle hardening |
+| persisted restore, explicit clear | cross-tab sync / visibility re-check and larger browser lifecycle hardening |
 | refresh-token-driven refresh | multi-provider orchestration / token-family policy |
 | bearer authorization-header projection | product-specific resource helpers / propagation probes / trace timeline UI |
 | transport convenience such as `createBackendOidcModeAuthorizedTransport()` | popup-based login flow |
 | `./web` browser bootstrap / callback returns capture / reset helpers |  |
-| minimal `./react` integration |  |
+| framework-specific independent adapter integration (`-react` and `-angular` package families) |  |
 
 The right-hand column does **not** mean "all deferred beyond 2.0".
 After the current `2.0-alpha` re-audit, these topics split into three groups:
@@ -1009,8 +1153,8 @@ After the current `2.0-alpha` re-audit, these topics split into three groups:
 Why these topics stay out of the current baseline contract:
 
 - mixed-custody / BFF / server-side mediated token ownership materially change the ownership model rather than extend the current one
-- larger browser lifecycle work belongs to later adapter hardeningnot the first root-contract freeze
-- app-specific helpers and probes depend on reference-app API shapes and product modelsso leaving them in `apps/webui` keeps the SDK surface understandable
+- larger browser lifecycle work belongs to later adapter hardening, not the first root-contract freeze
+- app-specific helpers and probes depend on reference-app API shapes and product models, so leaving them in `apps/webui` keeps the SDK surface understandable
 
 ### 2.0-alpha Re-audit of Unfinished Items
 
@@ -1032,7 +1176,7 @@ mentioned in this document.
 | `session-context-client` login-trigger convenience | **Baseline implemented.** `loginWithRedirect()` convenience exists in `@securitydept/session-context-client/web`; behavior-level tests confirm pending redirect state and browser navigation. | Keep thin; expand only if adopter feedback requires additional convenience. |
 | Redirect-based token-set login convenience | **Baseline implemented.** `loginWithBackendOidcRedirect()` in `backend-oidc-mode/web` and `FrontendOidcModeClient.loginWithRedirect()` in `frontend-oidc-mode` provide one-shot redirect convenience; behavior-level tests cover both. | Keep thin; expand only if adopter feedback requires additional convenience. |
 | Popup-based login for `backend-oidc-mode` / `frontend-oidc-mode` | **Baseline implemented.** Shared popup infra (`openPopupWindow`, `waitForPopupRelay`, `relayPopupCallback`, `PopupErrorCode`) in `@securitydept/client/web`. `loginWithBackendOidcPopup` + `relayBackendOidcPopupCallback` in `backend-oidc-mode/web`. `FrontendOidcModeClient.popupLogin()` in `frontend-oidc-mode`. Stable error codes for blocked, closed, timeout, and relay error semantics. | Cross-tab lifecycle hardening, chooser UI, and multi-provider orchestration are explicitly deferred beyond the baseline. |
-| Multi-OIDC-client / multi-requirement route orchestration | **Headless primitive baseline implemented.** `createRequirementPlanner()` in `@securitydept/token-set-context-client/orchestration` provides a mode-agnostic, sequential requirement planner with `AuthRequirement`, `RequirementKind`, `PlanStatus`, `ResolutionStatus`, and `PlanSnapshot`. Supports ordered progression, mixed resolution statuses, reset/retry, and error paths. | Chooser UI, app router integration, cross-tab orchestration, and non-sequential (parallel / conditional) flows remain deferred. |
+| Multi-OIDC-client / multi-requirement route orchestration | **Headless primitive baseline implemented.** `createRequirementPlanner()` in `@securitydept/client/auth-coordination` provides a mode-agnostic, sequential requirement planner with `AuthRequirement`, `PlanStatus`, `ResolutionStatus`, and `PlanSnapshot`. `kind` is an opaque `string`; no `RequirementKind` constant is exported. Supports ordered progression, mixed resolution statuses, reset/retry, and error paths. `createRouteRequirementOrchestrator()` provides route-level glue for matched-route-chain semantics. | Chooser UI, app router integration, cross-tab orchestration, and non-sequential (parallel / conditional) flows remain deferred. |
 | `basic-auth-context` SSR / server-render-host support | **Server helper baseline implemented.** `createBasicAuthServerHelper()` in `@securitydept/basic-auth-context-client/server` provides host-neutral `handleUnauthorized()`, `loginUrlForPath()`, and `logoutUrlForPath()` with `ServerRequestContext` / `ServerRedirectInstruction` contracts. Contract-level evidence in `ssr-server-helper-baseline.test.ts`. | Framework-specific adapters (Next.js, Remix) remain deferred. |
 | `session-context` SSR / server-render-host support | **Server helper baseline implemented.** `createSessionServerHelper()` in `@securitydept/session-context-client/server` provides host-neutral `fetchMe()` with cookie-forwarding transport, `loginUrl()`, and `logoutUrl()`. Contract-level evidence in `ssr-server-helper-baseline.test.ts`. | Framework-specific adapters and response mutation abstraction remain deferred. |
 | TS SDK freeze and release-gate discipline | **Fully implemented for 0.x baseline.** `public-surface-inventory.json` provides authoritative inventory with stability, evidence, docs anchors, and `changeDiscipline` per subpath. `release-gate.test.ts` (14 tests) validates export alignment, evidence, docs anchors (EN heading + ZH parity), stability, discipline/stability alignment, and migration ledger existence. `110-TS_SDK_MIGRATIONS.md` serves as the adopter-facing migration ledger. | Full semver / release automation / changelog generation remain deferred. |
@@ -1073,9 +1217,9 @@ Use this section to decide quickly whether the current SDK fits your use case an
 
 | If you need... | Use / Expect | Do not assume |
 |---|---|---|
-| browser app / SPA consuming `backend-oidc` | enter directly via `@securitydept/token-set-context-client/backend-oidc-mode` | timeline UIpropagation probesor `apps/webui/src/api/*` are SDK surface |
-| frontend consumption of a specific preset | still use `@securitydept/token-set-context-client/backend-oidc-mode`then react to capability/preset information in the returned contracts | pure / mediated map to separate long-lived canonical families |
-| React integration | `@securitydept/*/react` for minimal Providerhook integration; `session-context-client/react` can start directly from the React entry below | route guardspending-redirect UIor reference-page interaction forms are part of the adapter contract |
+| browser app / SPA consuming `backend-oidc` | enter directly via `@securitydept/token-set-context-client/backend-oidc-mode` | timeline UI, propagation probes, or `apps/webui/src/api/*` are SDK surface |
+| frontend consumption of a specific preset | still use `@securitydept/token-set-context-client/backend-oidc-mode`, then react to capability/preset information in the returned contracts | pure / mediated map to separate long-lived canonical families |
+| React integration | `@securitydept/*-react` for minimal Provider, hook integration; `session-context-client-react` can start directly from the React entry below | route guards, pending-redirect UI, or reference-page interaction forms are part of the adapter contract |
 | mediated token ownership beyond the browser-owned baseline | read it as explicitly deferred to `3.0`, not as part of the `2.0` public surface | mixed-custody / BFF / SSR token-store support already exists |
 
 What must not be treated as SDK surface:
@@ -1083,33 +1227,33 @@ What must not be treated as SDK surface:
 | Item | Where It Lives | Why |
 |---|---|---|
 | `apps/webui/src/api/*` business helpers | reference app | depends on reference-app API shapes and product models |
-| trace timeline UI / DOM harnesses | reference app | debugging/demo gluenot external contract |
-| propagation smoke / same-server probes | reference appserver config | depends on product routes and service config |
+| trace timeline UI / DOM harnesses | reference app | debugging/demo glue, not external contract |
+| propagation smoke / same-server probes | reference app, server config | depends on product routes and service config |
 | SSR session redirect glue (full form) | app/server layer | framework response boundary belongs to the app |
 | cross-tab sync / visibility lifecycle hardening | future adapter hardening backlog | not part of the current public adapter contract yet; `2.0` should still add a baseline before GA |
 
 Before you adopt:
 
 - your runtime has `fetch` / `AbortSignal` support for browser-facing paths
-- your storage needs fit `localStorage` / `sessionStorage`or you are ready to inject a custom store
-- you understand that `./web` and `./react` subpaths are still `provisional`
-- you do not expect the SDK to absorb product concerns such as route guardslogin redirectsor timeline UI
-- if you use Reactyou are ready to provide transport / scheduler / clock from the host
+- your storage needs fit `localStorage` / `sessionStorage`, or you are ready to inject a custom store
+- you understand that `./web` and `-react` independent packages are still `provisional`
+- you do not expect the SDK to absorb product concerns such as route guards, login redirects, or timeline UI
+- if you use React, you are ready to provide transport / scheduler / clock from the host
 
 ### Verified Environments / Host Assumptions
 
-"Currently verified" here means capability prerequisite plus test-environment granularitynot a brand-browser matrix.
+"Currently verified" here means capability prerequisite plus test-environment granularity, not a brand-browser matrix.
 
 | Scope | Required Host Capability | Currently Verified | Assumed but Not Broadly Verified | Not Yet Verified / Not Promised |
 |---|---|---|---|---|
-| Foundation packages | ES2020+`Promise``Map` / `Set` / `WeakRef` | Node.js (vitest)modern browser (Vite build) |  | IE / legacy environmentsnon-ES-module hostsCJS consumers |
-| Browser capability adapters | `fetch``AbortSignal``localStorage` / `sessionStorage` semantics | apps/webui dogfoodingvitest jsdom | `sessionStorage` cross-tab isolationstorage-event exact behavior | Service Worker environmentsnon-standard storage hostsper-browser matrices |
-| Auth-context `./web` adapters | `location.href``history.replaceState``fetch`flow-state storage | apps/webui dogfoodingbackend-oidc-mediated browser focused lifecycle tests | SPA-router edge behavioriframe / webview suitability | non-SPA router scenariosSSR hostsReact Native / Electron |
-| React adapters | React 18+ (`useSyncExternalStore`)host-provided transport / scheduler / clock | vitest focused adapter test(s)apps/webui dogfooding | React 17React Server Componentsconcurrent-mode edge behavior | non-React hostsReact Native |
+| Foundation packages | ES2020+, `Promise`, `Map` / `Set` / `WeakRef` | Node.js (vitest), modern browser (Vite build) |  | IE / legacy environments, non-ES-module hosts, CJS consumers |
+| Browser capability adapters | `fetch`, `AbortSignal`, `localStorage` / `sessionStorage` semantics | apps/webui dogfooding, vitest jsdom | `sessionStorage` cross-tab isolation, storage-event exact behavior | Service Worker environments, non-standard storage hosts, per-browser matrices |
+| Auth-context `./web` adapters | `location.href`, `history.replaceState`, `fetch`, flow-state storage | apps/webui dogfooding, backend-oidc-mediated browser focused lifecycle tests | SPA-router edge behavior, iframe / webview suitability | non-SPA router scenarios, SSR hosts, React Native / Electron |
+| React adapters | React 18+ (`useSyncExternalStore`), host-provided transport / scheduler / clock | vitest focused adapter test(s), apps/webui dogfooding | React 17, React Server Components, concurrent-mode edge behavior | non-React hosts, React Native |
 
 ### Minimal Entry Paths
 
-These are intentionally small “how do I start?” snippetsnot replacements for the reference app.
+These are intentionally small “how do I start?” snippets, not replacements for the reference app.
 
 #### 1. Foundation entry: runtime stays explicit
 
@@ -1122,7 +1266,7 @@ import { SessionContextClient } from "@securitydept/session-context-client";
 const runtime = createRuntime({
 	transport: {
 		async execute(request) {
-			const response = await fetch(request.url{
+			const response = await fetch(request.url, {
 				method: request.method,
 				headers: request.headers,
 				body: request.body,
@@ -1235,15 +1379,15 @@ if (bootstrap.source === "empty") {
 }
 ```
 
-#### 3. React entry: `session-context-client/react` starts with Providerhook wiring
+#### 3. React entry: `session-context-client-react` starts with Provider, hook wiring
 
-If an adopter wants a React entry for session-contextstart with `SessionContextProvider``useSessionPrincipal`; route guardspage-level UIand app glue still stay with the host.
+If an adopter wants a React entry for session-context, start with `SessionContextProvider`, `useSessionPrincipal`; route guards, page-level UI, and app glue still stay with the host.
 
 ```tsx
 import {
 	SessionContextProvider,
 	useSessionPrincipal,
-} from "@securitydept/session-context-client/react";
+} from "@securitydept/session-context-client-react";
 
 function SessionBadge() {
 	const principal = useSessionPrincipal();
@@ -1257,7 +1401,7 @@ export function App() {
 			config={{ baseUrl: "https://auth.example.com" }}
 			transport={{
 				async execute(request) {
-					const response = await fetch(request.url{
+					const response = await fetch(request.url, {
 						method: request.method,
 						headers: request.headers,
 						body: request.body,
@@ -1378,15 +1522,15 @@ const session = await sessionClient.fetchMe(ssrTransport);
 
 ### Provisional Adapter Maintenance Standard
 
-Auth-context `./web` and `./react` subpaths are usable but maintained under a stricter `provisional` bar than root exports. Foundation-owned stable exceptions (`@securitydept/client/web``@securitydept/client/persistence/web`) are explained in the [Capability Checklist](#current-public-contract-and-capability-checklist) footnote ¹.
+`./web` and `./server` subpaths plus dedicated framework adapter packages (`*-react`, `*-angular`) are usable, but maintained under a stricter `provisional` bar than foundation root exports. Foundation-owned stable exceptions (`@securitydept/client/web`, `@securitydept/client/persistence/web`) are explained in the [Capability Checklist](#current-public-contract-and-capability-checklist) footnote ¹.
 
 Maintenance rules:
 
-- keep subpath ownership stable: browser capability in `./web`React integration in `./react`business helpers outside the SDK
-- keep import-time behavior stable: no global patchingno implicit polyfillsno side effects on import
+- keep responsibilities isolated: browser capability in `./web`, React integration in dedicated `*-react` packages, Angular integration in dedicated `*-angular` packages, business helpers outside the SDK
+- keep import-time behavior stable: no global patching, no implicit polyfills, no side effects on import
 - allow additive convenience evolution; avoid shape churn that forces consumers to relearn every iteration
-- guard adapter contract with reference-app dogfooding plus focused smoke/regression testsnot prose alone
-- current minimum evidence baseline: external-consumer scenariostoken-set web lifecycle testsat least one token-set React focused test
+- guard adapter contract with reference-app dogfooding plus focused smoke/regression tests, not prose alone
+- current minimum evidence baseline: external-consumer scenarios, token-set web lifecycle tests, at least one React focused test and one Angular focused test
 
 #### Provisional Adapter Promotion Checklist
 
@@ -1395,27 +1539,151 @@ All conditions must be satisfied before re-evaluating promotion to `stable`:
 | Condition | Judgment Criterion |
 |---|---|
 | Capability boundary is stable | No significant reshuffling across multiple iterations and reviews |
-| Minimal entry path is clear | Standalone minimal example existsnot dependent on full reference-app pages |
+| Minimal entry path is clear | Standalone minimal example exists, not dependent on full reference-app pages |
 | Ordinary usage independent of reference-app glue | Standard use case explainable without `apps/webui` product glue |
 | Focused automation covers adapter lifecycle | Key export facts and main lifecycle path have focused guardrails |
 | Verified environments described accurately | Host prerequisites match actual verification granularity (see [Verified Environments](#verified-environments--host-assumptions)) |
 
-#### Current Promotion Readiness (snapshotnot roadmap)
+#### Current Promotion Readiness (snapshot, not roadmap)
 
 | Adapter | Strongest Evidence | Current Gap |
 |---|---|---|
-| `token-set-context-client/backend-oidc-mode` | Standalone minimal entry example (`backend-oidc-mode-minimal-entry.test.ts`), subpath contract test, wrapper contract comparison | Platform-neutral root; browser/React coverage via child subpaths |
+| `token-set-context-client/backend-oidc-mode` | Standalone minimal entry example (`backend-oidc-mode-minimal-entry.test.ts`), subpath contract test, wrapper contract comparison | Platform-neutral root; browser/React coverage via web subpaths and `-react` packages |
 | `token-set-context-client/backend-oidc-mode/web` | Standalone minimal entry example (`backend-oidc-web-minimal-entry.test.ts`), focused lifecycle tests (callback precedence/recovery, retained JSON body replacement, shared-store fresh-client restore/reset), popup login baseline, visibility hardening baseline (`visibility-hardening-baseline.test.ts`), cross-tab sync baseline (`cross-tab-sync-baseline.test.ts`), reference-app dogfooding | Broader browser-matrix coverage and real downstream adopter integration are still unverified |
-| `token-set-context-client/backend-oidc-mode/react` | Standalone minimal entry example (`backend-oidc-react-minimal-entry.test.ts`), dedicated React adapter focused test (`adapter.test.ts`) covering signal sync/disposal/StrictMode/reconfigure, subpath contract test | React 17 / concurrent mode not verified; broader host matrix still uncovered |
+| `token-set-context-client-react` | Standalone minimal entry example (`backend-oidc-react-minimal-entry.test.ts`), dedicated React adapter focused test (`adapter.test.ts`) covering signal sync/disposal/StrictMode/reconfigure, subpath contract test | React 17 / concurrent mode not verified; broader host matrix still uncovered |
 | `basic-auth-context-client/web` | Redirect-contract focused root tests, zone-aware external-consumer scenario coverage, zone-aware standalone minimal entry example, query/hash-bearing browser-route forwarding focused web tests, zone-aware `loginWithRedirect` convenience with named options contract | Broader browser-host semantics remain unverified |
-| `basic-auth-context-client/react` | Dedicated React provider/hook focused test (`adapter.test.ts`), standalone minimal entry example (`basic-auth-react-minimal-entry.test.ts`) proving provider wiring, hook consumption, and zone-aware contract usage | Broader browser-host semantics remain unverified |
+| `basic-auth-context-client-react` | Dedicated React provider/hook focused test (`adapter.test.ts`), standalone minimal entry example (`basic-auth-react-minimal-entry.test.ts`) proving provider wiring, hook consumption, and zone-aware contract usage | Broader browser-host semantics remain unverified |
 | `session-context-client/web` | Standalone minimal entry example (`session-web-minimal-entry.test.ts`), multi-line convenience baseline (`login-redirect-convenience.test.ts`), `loginWithRedirect` + named `LoginWithRedirectOptions` | Broader browser-host semantics remain unverified |
-| `session-context-client/react` | Standalone minimal entry example, dedicated React provider/hook, `SessionContextValue` type exports, refresh/cleanup focused test, StrictMode stale-fetch discard focused test, reconfigure stale-result discard focused test | React 17 / concurrent mode not verified; broader host matrix still uncovered |
+| `session-context-client-react` | Standalone minimal entry example, dedicated React provider/hook, `SessionContextValue` type exports, refresh/cleanup focused test, StrictMode stale-fetch discard focused test, reconfigure stale-result discard focused test | React 17 / concurrent mode not verified; broader host matrix still uncovered |
 | `basic-auth-context-client/server` | Standalone minimal entry example (`basic-auth-server-minimal-entry.test.ts`), shared SSR baseline (`ssr-server-helper-baseline.test.ts`), dedicated helper focused test | Framework-specific server adapter coverage (Next.js, Remix, etc.) |
 | `session-context-client/server` | Standalone minimal entry example (`session-server-minimal-entry.test.ts`), shared SSR baseline (`ssr-server-helper-baseline.test.ts`), dedicated helper focused test | Framework-specific server adapter coverage (Next.js, Remix, etc.) |
 | `token-set-context-client/frontend-oidc-mode` | Standalone minimal entry example (`frontend-oidc-minimal-entry.test.ts`), wrapper contract comparison (`oidc-client-wrapper-contract.test.ts`), scheduling input source baseline | Real OIDC provider integration and framework-level adapter validation are still incomplete; popup/callback round-trip coverage remains limited |
 | `token-set-context-client/access-token-substrate` | Standalone minimal entry example (`access-token-substrate-minimal-entry.test.ts`) | Substrate vocabulary only; no runtime propagation integration tested |
-| `token-set-context-client/orchestration` | Subpath entry test (`token-orchestration-subpath.test.ts`), orchestration contract test, multi-requirement orchestration test, requirement planner unit tests, route orchestration baseline (`route-orchestration-baseline.test.ts`) covering matched-route-chain semantics, chooser decisions, and route transition | Conditional flows, parallel orchestration, framework-specific router adapters, and real Angular/React adopter calibration remain open |
+| `client/auth-coordination` | Requirement planner unit tests (`packages/client/src/auth-coordination/__tests__/requirement-planner.test.ts`), multi-requirement orchestration example (`examples/multi-requirement-orchestration.test.ts`), route orchestration baseline (`examples/route-orchestration-baseline.test.ts`) covering matched-route-chain semantics, chooser decisions, and route transition; TanStack Router adapter (`examples/tanstack-react-router-adapter.test.ts`), Angular Router adapter (`examples/angular-router-adapter.test.ts`) | Conditional flows, parallel orchestration, and real adopter end-to-end calibration remain open |
+
+## Raw Web Router Baseline
+
+**Subpath**: `@securitydept/client/web-router` (provisional, iteration 110).
+
+Non-framework adopters (vanilla TS, Web Components, Lit) need a security-aware router on par with the React / Angular / TanStack integrations. The raw web router baseline is the canonical answer: a small, framework-neutral router core that layers requirement-based guarding on top of native browser navigation primitives.
+
+Design choices:
+
+- **Navigation API first, History API fallback.** `createNavigationAdapter()` probes `window.navigation`. When present, the router uses the Navigation API's `navigate` event for synchronous intent interception and `intercept({ handler })` to commit after requirement evaluation. When absent, the router installs a thin wrapper over `history.pushState` / `history.replaceState` + `popstate` that provides the same pre-commit hook shape. Both backends pass the same evidence suite.
+- **PlannerHost is the authority.** The router does not reimplement requirement planning. Each route segment may declare `requirements?: readonly AuthGuardClientOption[]` (see `@securitydept/client/auth-coordination`). On every navigation intent the router walks the matched root→leaf `WebRouteDefinition` chain, calls `extractFullRouteRequirements(chain)` once to build a flat candidate list, and — when that list is non-empty — `await`s `plannerHost.evaluate(candidates)`. It then applies the returned `PlannerHostResult`: if `allAuthenticated` is false, it invokes `pendingCandidate.onUnauthenticated()`; the return value is `true` (allow the navigation), `false` (cancel via `preventDefault` on the intent), or a URL string (redirect). Unauthenticated handling is **per candidate** via each option's `onUnauthenticated` — there is no top-level `onUnauthenticated` on `createWebRouter`. Segments with an empty aggregated list skip the planner pass.
+- **Adapter surface.**
+  - `createNavigationAdapter(options?)` — returns a `NavigationAdapter` with `kind: "navigation-api" | "history"`.
+  - `isNavigationApiAvailable()` — explicit capability probe; adopters can assert or downgrade explicitly.
+  - `createWebRouter({ navigationAdapter?, plannerHost?, routes?, onNavigate?, defaultComposition? })` — returns a `WebRouter` with `navigate(url)`, `back()`, `forward()`, `match(url)`, `currentMatch()`, `currentUrl()`, `extractRequirements(match)`, `onNavigate(listener)` (returns unsubscribe), `addRoute`, `routes()`, `destroy()`, and `readonly adapter`. Pass `navigationAdapter` either as a ready `NavigationAdapter` or as options forwarded to `createNavigationAdapter()`.
+  - `NavigationAdapterKind` — exported string-constant union for telemetry and tests.
+- **Full-route requirement aggregation.** Routes form a tree via `WebRouteDefinition.children`; each segment may declare its own `requirements` and an explicit `composition: "inherit" | "merge" | "replace"` (default `"merge"`). On every navigation the router resolves the matched leaf to its full root→leaf chain, calls `extractFullRouteRequirements(chain)` once to compose the effective candidate set, and hands that single list to `plannerHost.evaluate()`. This contract depth mirrors the Angular `createTokenSetRouteAggregationGuard` / `extractFullRouteRequirements` pair and the TanStack Router adapter — non-framework adopters no longer have to hand-roll per-level requirement merging.
+- **No framework bindings.** The router ships zero React / Angular / TanStack imports. Framework packages may wrap it, but it works standalone.
+
+Minimal example (framework-neutral; matches the evidence tests):
+
+```ts
+import { createPlannerHost } from "@securitydept/client/auth-coordination";
+import { createNavigationAdapter, createWebRouter } from "@securitydept/client/web-router";
+
+const plannerHost = createPlannerHost();
+const navigationAdapter = createNavigationAdapter();
+const router = createWebRouter({
+  navigationAdapter,
+  plannerHost,
+  routes: [
+    {
+      id: "dashboard",
+      match: "/dashboard",
+      requirements: [
+        {
+          requirementId: "session",
+          requirementKind: "session",
+          checkAuthenticated: () => false,
+          onUnauthenticated: () => "/login",
+        },
+      ],
+    },
+    { id: "public", match: "/public" },
+  ],
+});
+
+const off = router.onNavigate((commit) => {
+  console.log("committed", commit.url.href);
+});
+
+await router.navigate("/dashboard");
+off();
+router.destroy();
+```
+
+Evidence: [`examples/web-router-navigation-api.test.ts`](../../sdks/ts/examples/web-router-navigation-api.test.ts) and [`examples/web-router-history-fallback.test.ts`](../../sdks/ts/examples/web-router-history-fallback.test.ts) prove both backends exercise the same public contract, including redirect, block, and commit paths. [`examples/web-router-full-route-aggregation.test.ts`](../../sdks/ts/examples/web-router-full-route-aggregation.test.ts) extends the contract with evidence for nested routes: `inherit` / `merge` / `replace` composition, root→leaf chain exposure on `WebRouteMatch.chain`, and `plannerHost.evaluate()` receiving the full aggregated candidate set in a single call (blocking navigation when a nested requirement fails).
+
+## Shared Client Lifecycle Contract
+
+**Subpath**: `@securitydept/token-set-context-client/registry` (provisional, iteration 110).
+
+Iteration 110 extracts the framework-neutral multi-client management core out of the Angular adapter so React and raw-Web consumers share identical readiness, lifecycle, and lookup semantics. The Angular `TokenSetAuthRegistry` is now a thin DI wrapper over this core; the React `TokenSetAuthProvider` registers against the same core.
+
+Readiness state machine (`ClientReadinessState`):
+
+```
+not_initialized --(register primary | preload lazy)--> initializing
+initializing    --(factory resolves)----------------> ready
+initializing    --(factory rejects)-----------------> failed
+failed          --(reset(key))----------------------> not_initialized
+```
+
+Key concepts:
+
+- **`ClientInitializationPriority`** — `"primary"` (materialized eagerly on `register`) vs `"lazy"` (materialized only when `whenReady` / `preload` / `idleWarmup` forces it, or when a requirement evaluates through the client). The default is `"primary"` to preserve iteration-109 behavior.
+- **`preload(key)`** — forces a lazy client to materialize without waiting for a requirement. Returns the resolved service or the rejected promise.
+- **`whenReady(key)`** — waits for `ready`, triggers `preload` for `lazy` entries, throws `failed`. Idempotent.
+- **`idleWarmup()`** — schedules `preload` for every `lazy + not_initialized` client via `requestIdleCallback` (with a `setTimeout` fallback). Returns a `cancel()` thunk. Intended for production shells to amortize OIDC metadata fetches during browser idle time.
+- **`reset(key)`** — tears down a service and moves the entry back to `not_initialized`, enabling re-registration after transient failure.
+- **Multi-axis discrimination.** The registry indexes clients by `urlPatterns`, `callbackPath`, `requirementKind`, and `providerFamily`. `clientKeyGenFor*` are lazy generators; `clientKeyListFor*` snapshots the generator result. Adapters layer framework-specific sugar on top but never reimplement indexing.
+
+Error shape: `require("missing")` throws `[TokenSetAuthRegistry] No client registered for key "missing" (and ready). Available keys: ...`. The trailing `(and ready)` is intentional — it distinguishes "key never registered" from "registered but not yet ready" and is checked by Angular adapter contract tests.
+
+Evidence: [`examples/multi-client-lazy-init-contract.test.ts`](../../sdks/ts/examples/multi-client-lazy-init-contract.test.ts) proves the `primary | lazy` discrimination, `preload`, `whenReady`, `idleWarmup`, failure propagation, and `reset`. [`examples/async-client-readiness-contract.test.ts`](../../sdks/ts/examples/async-client-readiness-contract.test.ts) proves async factory + failure semantics.
+
+## React Query Integration
+
+**Subpath**: `@securitydept/token-set-context-client-react/react-query` (provisional, iteration 110).
+
+Per iteration-110 manager ruling, React ecosystem integrations must not ship as standalone packages. React Query support lives as a **subpath** inside the main React package with `@tanstack/react-query` listed as an **optional peer dependency** and mirrored in `devDependencies` for the subpath to type-check. Consumers that do not import the subpath pay zero cost.
+
+Strict consumer-only position:
+
+- The subpath is a **consumer** of the token-set registry and `TokenSetAuthService` readable signal. It is **never** an authority — there is no query-driven login, refresh, or lifecycle mutation path here.
+- Query state is derived from the registry; the registry is not derived from query state.
+- If React Query is unavailable at runtime, consumers simply do not import the subpath. The main package works standalone.
+
+Surface:
+
+- `tokenSetQueryKeys` — deterministic key factory: `all()`, `forClient(key)`, `readiness(key)`, `authState(key)`. Exported so adopters can invalidate / colocate queries with their own keys.
+- `useTokenSetReadinessQuery(clientKey, options?)` — wraps `registry.whenReady(clientKey)` as a `useQuery`. Returns standard `UseQueryResult<TokenSetAuthService, Error>`.
+- `useTokenSetAuthorizationHeader(clientKey)` — returns `{ enabled: boolean; authorization: string | null }` derived from the client's access-token signal, suitable for plugging into `fetch` / axios / Query `queryFn` headers.
+- `invalidateTokenSetQueriesForClient(queryClient, clientKey)` — thin wrapper over `queryClient.invalidateQueries({ queryKey: tokenSetQueryKeys.forClient(key) })`.
+
+Minimal example:
+
+```tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TokenSetAuthProvider } from "@securitydept/token-set-context-client-react";
+import {
+  useTokenSetReadinessQuery,
+  useTokenSetAuthorizationHeader,
+} from "@securitydept/token-set-context-client-react/react-query";
+
+function Dashboard() {
+  const ready = useTokenSetReadinessQuery("main");
+  const header = useTokenSetAuthorizationHeader("main");
+  if (ready.status !== "success") return null;
+  // header.authorization can be passed into other queries' fetch layer.
+}
+```
+
+Evidence: [`examples/react-query-integration-evidence.test.ts`](../../sdks/ts/examples/react-query-integration-evidence.test.ts) proves the subpath resolves through vitest alias, drives `useQuery` from `whenReady()`, mirrors the access-token signal, and supports targeted invalidation.
 
 ## Examples and Reference Implementations
 
@@ -1428,18 +1696,18 @@ These should be treated as the first-priority dogfooding and reference applicati
 
 The current intended reading is:
 
-- `apps/server`: the reference serverproviding real authforward-authand propagation semantics for the client SDKs
-- `apps/webui`: the reference appvalidating real read/write flowsauth lifecycle behaviortrace timeline usageand minimal usable propagation dogfood
-- business helpers under `apps/webui/src/api/*`: reference app gluenot SDK public surface
-- `apps/webui/src/routes/tokenSet/*`: reference-page UI / observability glueused to explain and regression-test SDK boundariesnot an SDK package
-- `sdks/ts/packages/test-utils`: test/demo infrastructureand should not be conflated with reference app glue
+- `apps/server`: the reference server, providing real auth, forward-auth, and propagation semantics for the client SDKs
+- `apps/webui`: the reference app, validating real read/write flows, auth lifecycle behavior, trace timeline usage, and minimal usable propagation dogfood
+- business helpers under `apps/webui/src/api/*`: reference app glue, not SDK public surface
+- `apps/webui/src/routes/tokenSet/*`: reference-page UI / observability glue, used to explain and regression-test SDK boundaries, not an SDK package
+- `sdks/ts/packages/test-utils`: test/demo infrastructure, and should not be conflated with reference app glue
 
 ### Downstream Reference Case: Outposts
 
-In addition to `apps/server` and `apps/webui``~/workspace/outposts` should be treated as a high-value downstream adopter reference case:
+In addition to `apps/server` and `apps/webui`, `~/workspace/outposts` should be treated as a high-value downstream adopter reference case:
 
 - it does not replace the primary reference-app / dogfooding path
-- its value is validating real multi-backendmulti-OIDC-clientroute-level requirement-orchestration scenarios
+- its value is validating real multi-backend, multi-OIDC-client, route-level requirement-orchestration scenarios
 - it is more useful for guiding future headless orchestration primitive / scheduler direction than for being read as a current completed capability
 - the Angular integration path in `outposts` should be treated as a real browser OIDC / router host case for shaping the SDK
 - but its current `angular-auth-oidc-client`-based auth module carries obvious migration-era constraints and should be treated as migration input plus host constraints, not as the source of truth for the SDK's public Angular API
@@ -1451,14 +1719,14 @@ See the staged planning document:
 ### Current Bundle / Code Split Judgment
 
 - the `/backend-oidc-mode` page has already removed the most obvious chunk warning through a local route split
-- because of thatbundle/code splitting can currently be downgraded from “blocking issue” to “follow-up engineering topic”
-- if more work is needed laterthe next reasonable split points should be other dense reference routes or shared UI hot pathsnot repeated mechanical splitting of the same OIDC-mediated page
-- at the current stagethis topic should stay behind SDK public contractcapability requirementand boundary hardening
+- because of that, bundle/code splitting can currently be downgraded from “blocking issue” to “follow-up engineering topic”
+- if more work is needed later, the next reasonable split points should be other dense reference routes or shared UI hot paths, not repeated mechanical splitting of the same OIDC-mediated page
+- at the current stage, this topic should stay behind SDK public contract, capability requirement, and boundary hardening
 
 ### Demo and OIDC Provider
 
 - fake/test infrastructure can be reused to build interactive demos such as timeline and trace visualizers
-- if a full OIDC flow demo is neededuse a lightweight container-friendly demo provider
+- if a full OIDC flow demo is needed, use a lightweight container-friendly demo provider
 - Dex is the current preferred first option
 - demos themselves should support Docker / `docker compose`
 

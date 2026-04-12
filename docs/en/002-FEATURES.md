@@ -83,8 +83,7 @@ Current status:
 - includes reusable zonespost-auth redirect policyand optional `securitydept-realip::RealIpAccessConfig`
 - no longer requires Axum directly; callers can adapt the returned HTTP response metadata to their own framework
 - integrated into the reference server as the `/basic/*` dashboard access path and `/basic/api/*` API alias
-- the client-side helper SDK is now formally designed in [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md); implementation should stay thin and focus on zone-aware `401 -> login` redirection plus logout URL handling
-- client-side helper SDK remains planned; it should stay thin and focus on zone-aware `401 -> login` redirection plus logout URL handling
+- browser-side packages ship as `@securitydept/basic-auth-context-client` (`/web`, `-react`, `-angular`); see [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md). Implementations stay thin: zone-aware `401 -> login` redirects and logout URL handling
 
 Primary references:
 
@@ -105,7 +104,7 @@ Current status:
 - reference implementation exists in `apps/server`
 - reusable extraction now lives in `securitydept-session-context`
 - reusable crate now depends on `tower-sessions` plus `http`without direct Axum response types
-- the corresponding TypeScript client helper is now formally specified in [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)but not implemented yet
+- the corresponding TypeScript packages ship as `@securitydept/session-context-client` with `/web`, `-react`, and `-angular` entry points; see [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
 
 Primary references:
 
@@ -122,7 +121,7 @@ Target:
 - composition of token snapshot/delta and metadata snapshot/delta
 - no server-side browser session storage
 - suitable for distributed SPA and mesh-like proxy scenarios
-- later frontend TS SDK for token storageheader injectionrefreshand login redirects
+- TypeScript client packages for token storage, header injection, refresh, and login redirects (`token-set-context-client` family and framework adapters; see [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md))
 
 Current status:
 

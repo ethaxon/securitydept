@@ -1,0 +1,27 @@
+{
+	"name": "@securitydept/session-context-client-react",
+	"version": "0.1.0",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"monorepo-tsc": "./src/index.ts",
+			"types": "./dist/index.d.mts",
+			"import": "./dist/index.mjs"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc -b"
+	},
+	"dependencies": {
+		"@securitydept/client": "workspace:*",
+		"@securitydept/session-context-client": "workspace:*"
+	},
+	"peerDependencies": {
+		"react": ">=19.0.0"
+	}
+}

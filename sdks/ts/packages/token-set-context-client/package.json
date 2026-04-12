@@ -5,28 +5,34 @@
 	"sideEffects": false,
 	"exports": {
 		"./backend-oidc-mode": {
+			"monorepo-tsc": "./src/backend-oidc-mode/index.ts",
 			"types": "./dist/backend-oidc-mode/index.d.mts",
 			"import": "./dist/backend-oidc-mode/index.mjs"
 		},
 		"./backend-oidc-mode/web": {
+			"monorepo-tsc": "./src/backend-oidc-mode/web/index.ts",
 			"types": "./dist/backend-oidc-mode/web/index.d.mts",
 			"import": "./dist/backend-oidc-mode/web/index.mjs"
 		},
-		"./backend-oidc-mode/react": {
-			"types": "./dist/backend-oidc-mode/react/index.d.mts",
-			"import": "./dist/backend-oidc-mode/react/index.mjs"
-		},
 		"./frontend-oidc-mode": {
+			"monorepo-tsc": "./src/frontend-oidc-mode/index.ts",
 			"types": "./dist/frontend-oidc-mode/index.d.mts",
 			"import": "./dist/frontend-oidc-mode/index.mjs"
 		},
 		"./orchestration": {
+			"monorepo-tsc": "./src/orchestration/index.ts",
 			"types": "./dist/orchestration/index.d.mts",
 			"import": "./dist/orchestration/index.mjs"
 		},
 		"./access-token-substrate": {
+			"monorepo-tsc": "./src/access-token-substrate/index.ts",
 			"types": "./dist/access-token-substrate/index.d.mts",
 			"import": "./dist/access-token-substrate/index.mjs"
+		},
+		"./registry": {
+			"monorepo-tsc": "./src/registry/index.ts",
+			"types": "./dist/registry/index.d.mts",
+			"import": "./dist/registry/index.mjs"
 		}
 	},
 	"files": [
@@ -40,25 +46,11 @@
 		"@securitydept/client": "workspace:*"
 	},
 	"peerDependencies": {
-		"oauth4webapi": "^3.0.0",
-		"react": ">=18.0.0"
+		"oauth4webapi": "^3.0.0"
 	},
 	"peerDependenciesMeta": {
 		"oauth4webapi": {
 			"optional": true
-		},
-		"react": {
-			"optional": true
 		}
-	},
-	"devDependencies": {
-		"@types/react": "^19.1.8",
-		"@types/react-dom": "^19.2.3",
-		"oauth4webapi": "^3.8.5",
-		"oidc-client-ts": "^3.5.0",
-		"react": "^19.1.0",
-		"react-dom": "^19.2.4",
-		"tsdown": "^0.21.4",
-		"typescript": "^6.0.2"
 	}
 }

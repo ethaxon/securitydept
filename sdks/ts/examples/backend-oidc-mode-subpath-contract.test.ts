@@ -5,7 +5,7 @@
 //
 // Section A: /backend-oidc-mode canonical entry
 // Section B: /backend-oidc-mode/web canonical entry
-// Section C: /backend-oidc-mode/react canonical entry
+// Section C: @securitydept/token-set-context-client-react canonical entry
 
 import type { BackendOidcModeClientConfig } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
@@ -13,15 +13,15 @@ import {
 	BackendOidcModeClient,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
+	BackendOidcModeBootstrapSource,
+	bootstrapBackendOidcModeClient,
+} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+import {
 	BackendOidcModeContextProvider,
 	useAccessToken,
 	useAuthState,
 	useBackendOidcModeContext,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/react";
-import {
-	BackendOidcModeBootstrapSource,
-	bootstrapBackendOidcModeClient,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+} from "@securitydept/token-set-context-client-react";
 import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -64,7 +64,7 @@ describe("backend-oidc-mode/web canonical subpath", () => {
 });
 
 // ---------------------------------------------------------------------------
-// C. /backend-oidc-mode/react canonical entry
+// C. @securitydept/token-set-context-client-react canonical entry
 // ---------------------------------------------------------------------------
 
 describe("backend-oidc-mode/react canonical subpath", () => {

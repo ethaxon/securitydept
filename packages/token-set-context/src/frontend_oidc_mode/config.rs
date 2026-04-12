@@ -239,6 +239,10 @@ impl ResolvedFrontendOidcModeConfig {
             redirect_url: self.oidc_client.redirect_url.clone(),
             pkce_enabled: self.oidc_client.pkce_enabled,
             claims_check_script,
+            generated_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64,
         })
     }
 }

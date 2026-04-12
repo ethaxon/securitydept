@@ -5,18 +5,17 @@
 	"sideEffects": false,
 	"exports": {
 		".": {
+			"monorepo-tsc": "./src/index.ts",
 			"types": "./dist/index.d.mts",
 			"import": "./dist/index.mjs"
 		},
-		"./react": {
-			"types": "./dist/react/index.d.mts",
-			"import": "./dist/react/index.mjs"
-		},
 		"./web": {
+			"monorepo-tsc": "./src/web/index.ts",
 			"types": "./dist/web/index.d.mts",
 			"import": "./dist/web/index.mjs"
 		},
 		"./server": {
+			"monorepo-tsc": "./src/server/index.ts",
 			"types": "./dist/server/index.d.mts",
 			"import": "./dist/server/index.mjs"
 		}
@@ -30,21 +29,5 @@
 	},
 	"dependencies": {
 		"@securitydept/client": "workspace:*"
-	},
-	"peerDependencies": {
-		"react": ">=18.0.0"
-	},
-	"peerDependenciesMeta": {
-		"react": {
-			"optional": true
-		}
-	},
-	"devDependencies": {
-		"@types/react": "^19.1.8",
-		"@types/react-dom": "^19.2.3",
-		"react": "^19.1.0",
-		"react-dom": "^19.2.4",
-		"tsdown": "^0.21.4",
-		"typescript": "^6.0.2"
 	}
 }

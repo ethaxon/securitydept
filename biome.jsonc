@@ -42,6 +42,9 @@
 			"**",
 			"!dist",
 			"!**/dist",
+			// ng-packagr intermediate build artefacts (also in .gitignore)
+			"!dist-tsc",
+			"!**/dist-tsc",
 			"!webui",
 			"!target",
 			"!**/target",
@@ -69,7 +72,12 @@
 			}
 		},
 		{
-			"includes": ["**/__tests__/**/*.ts", "**/__tests__/**/*.tsx"],
+			// Disable noNonNullAssertion for test files (both package unit tests and workspace examples)
+			"includes": [
+				"**/__tests__/**/*.ts",
+				"**/__tests__/**/*.tsx",
+				"**/examples/**/*.ts"
+			],
 			"linter": {
 				"rules": {
 					"style": {

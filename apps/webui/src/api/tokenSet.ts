@@ -8,11 +8,11 @@ import {
 	FetchTransportRedirectKind,
 } from "@securitydept/client";
 import { createFetchTransport } from "@securitydept/client/web";
-import type { AuthorizationHeaderProviderTrait } from "@securitydept/token-set-context-client";
+import type { AuthorizationHeaderProviderTrait } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
-	createTokenSetAuthorizedTransport,
-	TokenSetContextSource,
-} from "@securitydept/token-set-context-client";
+	BackendOidcModeContextSource,
+	createBackendOidcModeAuthorizedTransport,
+} from "@securitydept/token-set-context-client/backend-oidc-mode";
 import type {
 	AuthEntry,
 	CreateBasicEntryResponse,
@@ -97,7 +97,7 @@ function encodeBasicAuthorization(username: string, password: string): string {
 		kind: ClientErrorKind.Configuration,
 		message: "Basic authorization encoding is unavailable in this runtime",
 		code: "basic_auth.encoding.unavailable",
-		source: TokenSetContextSource.Client,
+		source: BackendOidcModeContextSource.Client,
 	});
 }
 
@@ -105,7 +105,7 @@ function createAuthorizedTokenSetApiTransport(
 	client: AuthorizationHeaderProviderTrait,
 	options: TokenSetApiRequestOptions,
 ): HttpTransport {
-	return createTokenSetAuthorizedTransport(client, {
+	return createBackendOidcModeAuthorizedTransport(client, {
 		transport: options.transport ?? tokenSetApiTransport,
 	});
 }

@@ -86,3 +86,33 @@ export {
 
 export type { CreateFrontendOidcModeAuthorizedTransportOptions } from "./auth-transport";
 export { createFrontendOidcModeAuthorizedTransport } from "./auth-transport";
+
+// --- Config projection source contract (core — no web runtime assumptions) ---
+
+export type {
+	ConfigProjectionSource,
+	ConfigProjectionSourceBootstrapScript,
+	ConfigProjectionSourceInline,
+	ConfigProjectionSourceNetwork,
+	ConfigProjectionSourcePersisted,
+	PersistedConfigEnvelope,
+	ResolvedConfigProjection,
+} from "./config-source";
+
+export {
+	ClientReadinessState,
+	ConfigProjectionSourceKind,
+	resolveConfigProjection,
+} from "./config-source";
+
+// --- Config projection web/browser runtime helpers ---
+
+export type { IdleRevalidationOptions } from "./config-source-web";
+
+export {
+	bootstrapScriptSource,
+	networkConfigSource,
+	persistConfigProjection,
+	persistedConfigSource,
+	scheduleIdleRevalidation,
+} from "./config-source-web";

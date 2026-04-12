@@ -113,7 +113,7 @@
    - Rust crate 不应继续把 `frontend` / `backend` 作为一级 public namespace；更合适的 canonical shape 是顶层 `frontend_oidc_mode`、`backend_oidc_mode` 与 `access_token_substrate`
    - resource-server / propagation / forwarder 不应再被写成某个 preset 专属材料；它们只依赖 access token 与 propagation header，应提升为顶层 shared module `access_token_substrate`
 4. 不急着把 chooser UI 或 router glue 抽回 SDK
-5. 即使 `outposts` 当前使用 `angular-auth-oidc-client` 或 project-local `AuthService` 桥接，也不要把这些过渡形状直接 productize 成 SDK API；应先提炼更合理的 Angular adapter / helper contract，再验证迁移
+5. 在 `outposts` 从 `angular-auth-oidc-client` 迁向 SDK Angular 包（`provideTokenSetAuth()`、`@securitydept/token-set-context-client-angular` 等）的过程中，不要把应用内过渡 glue 当 SDK API 产品化；应以 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 中的 adapter 契约为准，再验证迁移到这些公开表面
 
 ## 中期计划
 

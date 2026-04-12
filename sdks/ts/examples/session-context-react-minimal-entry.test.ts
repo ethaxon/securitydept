@@ -4,7 +4,7 @@ import {
 	SessionContextProvider,
 	type SessionContextProviderProps,
 	useSessionPrincipal,
-} from "@securitydept/session-context-client/react";
+} from "@securitydept/session-context-client-react";
 import { act, createElement, type ReactElement, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";

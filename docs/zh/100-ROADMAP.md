@@ -195,10 +195,24 @@
    - ~~`backend-oidc-mode` / `frontend-oidc-mode` 的 popup login baseline~~（已实现：共享 infra 在 `@securitydept/client/web`，`loginWithBackendOidcPopup`，`FrontendOidcModeClient.popupLogin()`）
 
 4. **真实多资格编排 baseline**
-   - ~~让多 OIDC / 多资格路由编排从"边界讨论"进入最小实现~~（已实现：`createRequirementPlanner()` 在 `@securitydept/token-set-context-client/orchestration` 中）
-   - ~~在 0.2.0 GA 前至少交付一个 headless primitive / pending-requirement model~~（已实现：顺序 planner，含 `AuthRequirement`、`RequirementKind`、`PlanStatus`、`ResolutionStatus`、`PlanSnapshot`）
-   - ~~补出 matched-route-chain route orchestration baseline，并完成 cross-tab / visibility readiness sweep~~（已实现：`createRouteRequirementOrchestrator()`、`createCrossTabSync()`、`createVisibilityReconciler()` 以及对应 focused baselines）
-   - 剩余 gap：`@tanstack/react-router`、Angular Router 等 framework-specific adapter，以及真实 adopter 级 provider integration / glue proof
+   - ~~让多 OIDC / 多资格路由编排从"边界讨论"进入最小实现~~（已实现：`createRequirementPlanner()` 在 `@securitydept/client/auth-coordination` 中）
+   - ~~在 0.2.0 GA 前至少交付一个 headless primitive / pending-requirement model~~（已实现：顺序 planner，含 `AuthRequirement`、`PlanStatus`、`ResolutionStatus`、`PlanSnapshot`；`kind` 为 opaque `string`，不再导出 `RequirementKind` 常量）
+   - ~~补出 matched-route-chain route orchestration baseline，并完成 cross-tab / visibility readiness sweep~~（已实现：`createRouteRequirementOrchestrator()` 在 `@securitydept/client/auth-coordination` 中、`createCrossTabSync()`、`createVisibilityReconciler()` 以及对应 focused baselines）
+   - ~~`@tanstack/react-router` 与 Angular Router 的 framework-specific adapter~~（已实现：`@securitydept/client-react/tanstack-router` 与 `@securitydept/client-angular` 独立包；TanStack Router 现已拥有与 Angular 对等的完整 route-security contract：`createSecureBeforeLoad()` 作为 canonical adopter-facing beforeLoad factory，`withTanStackRouteRequirements()` 用于 child route 可序列化声明，`extractTanStackRouteRequirements()` 支持 `merge` / `replace` / `inherit` 组合语义的全路径聚合；下层 primitive `projectTanStackRouteMatches()` / `createTanStackRouteActivator()` 继续保留；parity 审计已文档化于 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md#framework-router-adapters)）
+   - ~~Angular 集成家族拆包为独立 npm 包~~（已实现：`@securitydept/basic-auth-context-client-angular`、`@securitydept/session-context-client-angular`、`@securitydept/token-set-context-client-angular` 三个独立包，使用 `ng-packagr` 生成 APF / FESM2022 输出，支持真实 `@Injectable()` decorator；`token-set-context-client-angular` 实现 multi-client registry contract）
+   - ~~React adapter 拆包为独立 npm 包~~（已实现：`@securitydept/basic-auth-context-client-react`、`@securitydept/session-context-client-react`、`@securitydept/token-set-context-client-react` 三个独立包，使用 `tsdown` 构建；原有核心包的 `./react` 子路径已移除，见迁移记录 [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md)）
+   - ~~planner-host 协调 baseline~~（已实现：`createPlannerHost()` 支持可插拔 `CandidateSelector`、`RequirementsClientSetComposition`（inherit/merge/replace）、`resolveEffectiveClientSet()` 在 `@securitydept/client/auth-coordination`；Angular DI 集成在 `@securitydept/client-angular`；React Context 集成在 `@securitydept/client-react`）
+   - ~~createTokenSetAuthGuard 重构为 planner-host 架构~~（已实现：新 `clientOptions` + `plannerHost` API 替代旧 `query`/`clientKey`/`fromRoute` 判别联合；旧 API 完全移除）
+   - ~~Angular Router auth canonical path：route-metadata + full-route aggregation~~（已实现：`secureRouteRoot()` / `secureRoute()` 成为 adopter-facing Angular Router 路径；route metadata 具备 `merge` / `replace` 组合语义，root-level runtime policy 保持非序列化，并通过 `createTokenSetRouteAggregationGuard()` 为 `canActivate` + `canActivateChild` 一次性评估整条路由链；`createTokenSetAuthGuard()` 已从包中移除；signal 桥接工具（`bridgeToAngularSignal`、`signalToObservable`）迁至 `@securitydept/client-angular`）
+   - ~~Angular 构建拓扑切换为 pnpm 递归 build~~（已实现：Angular workspace 依赖在 `devDependencies` 中镜像 `workspace:*` `peerDependencies`；根构建使用 `pnpm -r` 实现自动拓扑排序）
+   - 剩余差距：
+     - ~~`outposts` 代码库从 `angular-auth-oidc-client` 到 SDK Angular adapter 包的实际迁移~~（进行中：`outposts-web` 现已使用 SDK 的 `provideTokenSetAuth()` + async `clientFactory` + `resolveConfigProjection([networkConfigSource(...)])`；编译时 OIDC 凭证已移除；`confluence` 后端提供 `/api/auth/config` 投影端点；route guard、callback service 已通过 `whenReady()` 接入 readiness contract）
+     - 剩余 projection source 差距（后续迭代）：
+       - ~~`persisted` source restore + 重验证（热启动优化）~~（已实现：`persistedConfigSource()` + `RecordStore` 抽象、`persistConfigProjection()` 写回、`scheduleIdleRevalidation()` 基于 `maxAge` + `timestamp` 新鲜度感知）
+       - ~~`bootstrap_script` source（服务端注入 config）~~（已实现：`bootstrapScriptSource()` 读取 `window.__OUTPOSTS_CONFIG__` 多来源兼容 payload；生产宿主：bun-injector sidecar + nginx，通过 docker-compose 共享卷）
+       - ~~多 client 懒初始化（空闲预取）~~（iteration 110 已实现：`@securitydept/token-set-context-client/registry` 中的 `ClientInitializationPriority = "primary" | "lazy"`；`preload(key)`、`whenReady(key)`、`idleWarmup()` 使用 `requestIdleCallback` + `setTimeout` 回退；Angular `provideTokenSetAuth({ idleWarmup: true })`；React `TokenSetAuthProvider idleWarmup`）
+       - ~~React adapter `useTokenSetAuth()` 的异步 readiness 等价机制~~（iteration 110 已实现：`@securitydept/token-set-context-client-react` 中 `TokenSetAuthProvider` + `useTokenSetAuthRegistry` / `useTokenSetAuthService` / `useTokenSetAuthState` / `useTokenSetAccessToken` / `useTokenSetCallbackResume`，以及 `TokenSetCallbackOutlet`；React Query consumer subpath `/react-query` 中 `useTokenSetReadinessQuery` 作为异步 readiness 桥梁；review-1 跟进：callback 路径在调用 `handleCallback()` 前 await `registry.whenReady(clientKey)`，并通过 `CallbackResumeStatus = "idle" | "pending" | "resolved" | "error"` 暴露状态机，证据见 `examples/react-callback-async-readiness.test.ts`）
+       - ~~原生 Web 路由全路径聚合与 Angular / TanStack 对齐~~（iteration 110 review-1 已实现：`@securitydept/client/web-router` 支持嵌套 `WebRouteDefinition.children` + `composition: "inherit" | "merge" | "replace"`，通过 `WebRouteMatch.chain` 暴露完整 root→leaf 链路，并通过 `extractFullRouteRequirements(chain)` 单次向 `plannerHost.evaluate()` 提交完整聚合候选集；证据见 `examples/web-router-full-route-aggregation.test.ts`）
 
 5. **SSR / 服务端宿主 baseline 清晰化**
    - ~~`basic-auth-context` 与 `session-context` 都应拥有一个不止停留在 redirect 概念描述层的最小 SSR / server-host story~~（已实现：`createBasicAuthServerHelper()` 在 `./server`，`createSessionServerHelper()` 在 `./server`）
@@ -209,7 +223,7 @@
    - 缩小 token-set client surface 与 basic-auth / session client surface 之间的成熟度差距
    - 在应保持 thin 的前提下，避免另外两条线继续处于"文档已写但产品面仍偏轻"的状态
    - ~~`./web` browser convenience 对齐：`basic-auth-context-client/web` 与 `session-context-client/web` 现均导出 `loginWithRedirect()` 及命名 `LoginWithRedirectOptions` 合约~~（已实现）
-   - ~~`./react` context value 可发现性：`SessionContextValue` 现为命名导出类型~~（已实现）
+   - ~~`-react` 独立包 context value 可发现性：`SessionContextValue` 现为命名导出类型~~（已实现）
    - 剩余 gap：这些 surface 有意保持 thinner than token-set；当前 parity 目标是命名合约可发现性，而非功能对等
 
 ## 阶段 5：本地凭证操作

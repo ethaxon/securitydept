@@ -5,7 +5,7 @@ setup:
     pnpm install
     cargo check --workspace --all-features
 
-build-webui:
+build-webui: build-sdks
     cd apps/webui && pnpm build
 
 build-server:
@@ -57,18 +57,21 @@ update-core-feature-gates:
 build-sdks:
     cd sdks/ts && pnpm build
 
-test-sdks:
+test-sdks: 
     cd sdks/ts && pnpm test
 
 typecheck-sdks:
     cd sdks/ts && pnpm typecheck
 
+typecheck:
+    pnpm typecheck
+
 verify-client-sdk-iteration:
     pnpm lint-fix
     pnpm lint
-    cd sdks/ts && pnpm test
-    cd sdks/ts && pnpm typecheck
     cd sdks/ts && pnpm build
+    cd sdks/ts && pnpm typecheck
+    cd sdks/ts && pnpm test
     cd apps/webui && pnpm test
     cd apps/webui && pnpm typecheck
     cd apps/webui && pnpm build
