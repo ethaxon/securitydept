@@ -79,7 +79,7 @@ export class SessionContextService {
 	refresh(): void {
 		this.loading.set(true);
 		this.client
-			.fetchMe(this.transport)
+			.fetchUserInfo(this.transport)
 			.then((result) => {
 				this.session.set(result);
 				this.loading.set(false);
@@ -125,7 +125,7 @@ export class SessionContextService {
  */
 export interface ProvideSessionContextOptions {
 	config: SessionContextClientConfig;
-	/** HTTP transport for /me probing. */
+	/** HTTP transport for /user-info probing. */
 	transport: HttpTransport;
 	sessionStore?: RecordStore;
 }

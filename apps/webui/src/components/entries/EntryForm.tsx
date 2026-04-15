@@ -6,11 +6,15 @@ import {
 	type AuthEntry,
 	AuthEntryKind,
 	type CreateTokenResponse,
-	useCreateBasicEntry,
-	useCreateTokenEntry,
-	useUpdateEntry,
 } from "@/api/entries";
-import { useGroups } from "@/api/groups";
+import { AuthModeNotice } from "@/components/auth/AuthModeNotice";
+import {
+	useDashboardAccessNotice,
+	useDashboardCreateBasicEntryMutation,
+	useDashboardCreateTokenEntryMutation,
+	useDashboardGroupsQuery,
+	useDashboardUpdateEntryMutation,
+} from "@/hooks/useDashboardApi";
 import type { EntrySearch } from "@/routes/entrySearch";
 
 const EntryFormMode = {
@@ -30,10 +34,11 @@ export function EntryForm({ mode, entry, initial }: EntryFormProps) {
 	const isEdit = mode === EntryFormMode.Edit;
 	const [generatedToken, setGeneratedToken] = useState<string | null>(null);
 
-	const { data: groups = [] } = useGroups();
-	const createBasic = useCreateBasicEntry();
-	const createToken = useCreateTokenEntry();
-	const updateEntry = useUpdateEntry();
+	const accessNotice = useDashboardAccessNotice();
+	const { data: groups = [] } = useDashboardGroupsQuery();
+	const createBasic = useDashboardCreateBasicEntryMutation();
+	const createToken = useDashboardCreateTokenEntryMutation();
+	const updateEntry = useDashboardUpdateEntryMutation();
 
 	const form = useForm({
 		defaultValues: {
@@ -100,6 +105,15 @@ export function EntryForm({ mode, entry, initial }: EntryFormProps) {
 			});
 		},
 	});
+
+	if (accessNotice) {
+		return (
+			<AuthModeNotice
+				title={accessNotice.title}
+				description={accessNotice.description}
+			/>
+		);
+	}
 
 	return (
 		<div className="space-y-4">

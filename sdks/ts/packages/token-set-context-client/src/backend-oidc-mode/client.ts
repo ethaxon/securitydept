@@ -18,6 +18,7 @@ import {
 	parseBackendOidcModeCallbackBody,
 	parseBackendOidcModeCallbackFragment,
 	parseBackendOidcModeRefreshBody,
+	parseBackendOidcModeUserInfoBody,
 	refreshReturnsToTokenDelta,
 } from "./parsers";
 import type {
@@ -547,7 +548,18 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		});
 
 		if (response.status === 200 && response.body) {
-			return response.body as BackendOidcModeUserInfoResponse;
+			const parsed = parseBackendOidcModeUserInfoBody(
+				response.body as Record<string, unknown>,
+			);
+			if (!parsed) {
+				throw new ClientError({
+					kind: ClientErrorKind.Protocol,
+					message: "User info response missing required 'subject' field",
+					code: "backend_oidc.user_info.invalid_response",
+					source: TRACE_SCOPE,
+				});
+			}
+			return parsed;
 		}
 
 		throw ClientError.fromHttpResponse(response.status, response.body);

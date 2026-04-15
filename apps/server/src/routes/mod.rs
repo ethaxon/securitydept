@@ -21,7 +21,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/login", get(auth::session::login))
         .route("/callback", get(auth::session::callback))
         .route("/logout", post(auth::session::logout))
-        .route("/me", get(auth::session::me));
+        .route("/user-info", get(auth::session::user_info));
     let token_set_auth_routes = Router::new()
         .route("/login", get(auth::token_set::login))
         .route("/callback", get(auth::token_set::callback))

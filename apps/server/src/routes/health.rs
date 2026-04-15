@@ -56,7 +56,7 @@ pub async fn health(Query(query): Query<HealthQuery>) -> Json<HealthResponse> {
             },
             ApiRouteInfo {
                 method: "GET",
-                path: "/auth/session/me",
+                path: "/auth/session/user-info",
                 auth_required: false,
                 description: "Get current session user info",
             },

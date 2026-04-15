@@ -7,7 +7,7 @@
 // Key design:
 //   - The host provides incoming request headers (cookies, forwarded-for, etc.)
 //   - The helper creates a cookie-forwarding transport wrapper
-//   - fetchMe, login URL, logout URL are all server-host-safe
+//   - fetchUserInfo, login URL, logout URL are all server-host-safe
 
 import type { HttpTransport } from "@securitydept/client";
 import { SessionContextClient } from "../client";
@@ -60,7 +60,7 @@ export interface SessionServerHelper {
 	 * Returns `SessionInfo` if authenticated, `null` if not.
 	 * The host's cookies are forwarded via the transport.
 	 */
-	fetchMe(context: ServerRequestContext): Promise<SessionInfo | null>;
+	fetchUserInfo(context: ServerRequestContext): Promise<SessionInfo | null>;
 
 	/** Build the login URL (server-host-safe, no browser globals). */
 	loginUrl(postAuthRedirectUri?: string): string;
@@ -84,7 +84,7 @@ export interface SessionServerHelper {
  * });
  *
  * // In a server request handler:
- * const session = await helper.fetchMe({
+ * const session = await helper.fetchUserInfo({
  *   headers: { cookie: req.headers.cookie ?? "" },
  * });
  *
@@ -102,7 +102,9 @@ export function createSessionServerHelper(
 	return {
 		client,
 
-		async fetchMe(context: ServerRequestContext): Promise<SessionInfo | null> {
+		async fetchUserInfo(
+			context: ServerRequestContext,
+		): Promise<SessionInfo | null> {
 			// Create a forwarding transport that injects the request headers.
 			const forwardingTransport: HttpTransport = {
 				async execute(request) {
@@ -116,7 +118,7 @@ export function createSessionServerHelper(
 				},
 			};
 
-			return client.fetchMe(forwardingTransport);
+			return client.fetchUserInfo(forwardingTransport);
 		},
 
 		loginUrl(postAuthRedirectUri?: string): string {

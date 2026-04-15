@@ -63,12 +63,16 @@ export interface TanStackRouteMatch {
 	/**
 	 * Static route context, typically set via `beforeLoad` or `staticData`.
 	 * Auth requirements should be declared here under a well-known key.
+	 *
+	 * Typed as `object` (not `Record<string, unknown>`) to remain structurally
+	 * compatible with TanStack Router's open `StaticDataRouteOption` interface,
+	 * which does not carry an index signature.
 	 */
-	staticData?: Record<string, unknown>;
+	staticData?: object;
 	/** Route context merged from parent. */
-	context?: Record<string, unknown>;
+	context?: object;
 	/** Route loader data, if available. */
-	loaderData?: Record<string, unknown>;
+	loaderData?: object;
 }
 
 // ---------------------------------------------------------------------------
@@ -186,8 +190,10 @@ export function extractTanStackRouteRequirements(
 	let result: AuthRequirement[] = [];
 
 	for (const match of matches) {
-		const raw = match.staticData?.[key];
-		const compositionRaw = match.staticData?.[DEFAULT_COMPOSITION_KEY];
+		const raw = (match.staticData as Record<string, unknown>)?.[key];
+		const compositionRaw = (match.staticData as Record<string, unknown>)?.[
+			DEFAULT_COMPOSITION_KEY
+		];
 		const composition = isValidComposition(compositionRaw)
 			? compositionRaw
 			: RequirementsClientSetComposition.Merge;
@@ -284,7 +290,9 @@ export function projectTanStackRouteMatches(
 ): RouteMatchNode[] {
 	const key = options?.requirementsKey ?? DEFAULT_REQUIREMENTS_KEY;
 	return matches.map((match) => {
-		const rawRequirements = match.staticData?.[key];
+		const rawRequirements = (match.staticData as Record<string, unknown>)?.[
+			key
+		];
 		const requirements: AuthRequirement[] = Array.isArray(rawRequirements)
 			? rawRequirements
 			: [];
@@ -656,9 +664,8 @@ function isValidComposition(
 	);
 }
 
-// Re-export composition enum for adopter convenience
-export { RequirementsClientSetComposition };
-
 // Unused import prevents TS from complaining if @tanstack/react-router types
 // are not available at build time (peerDep is optional for pure orchestration).
 export type { AnyRoute, RegisteredRouter };
+// Re-export composition enum for adopter convenience
+export { RequirementsClientSetComposition };

@@ -187,9 +187,10 @@ where
     pub async fn refresh(
         &self,
         payload: &BackendOidcModeRefreshPayload,
+        external_base_url: &Url,
     ) -> Result<BackendOidcModeTokenRefreshResult, BackendOidcModeRuntimeError> {
         self.runtime
-            .handle_token_refresh(self.oidc_client, payload)
+            .handle_token_refresh(self.oidc_client, payload, external_base_url)
             .await
     }
 
@@ -201,8 +202,9 @@ where
         &self,
         payload: &BackendOidcModeRefreshPayload,
         caller_post_auth_redirect_uri: Option<&Url>,
+        external_base_url: &Url,
     ) -> Result<HttpResponse, BackendOidcModeRuntimeError> {
-        let result = self.refresh(payload).await?;
+        let result = self.refresh(payload, external_base_url).await?;
         let qs = result.response_body.to_fragment_query_string();
 
         let redirect_url = pick_redirect_uri(

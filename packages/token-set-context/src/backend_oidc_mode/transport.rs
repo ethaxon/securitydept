@@ -283,14 +283,18 @@ pub struct BackendOidcModeMetadataRedemptionResponse {
 
 /// Request body for the unified backend-oidc `user_info` endpoint.
 ///
-/// `id_token` is submitted in the request body. The `access_token` is
-/// submitted as a bearer token in the `Authorization` header.
+/// `id_token` is submitted in the request body (snake_case, matching the SDK).
+/// The `access_token` is submitted as a bearer token in the `Authorization`
+/// header.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BackendOidcModeUserInfoRequest {
     pub id_token: String,
 }
 
 /// Normalized user info response.
+///
+/// Wire format uses snake_case consistently with all other transport structs.
+/// The TypeScript SDK maps `display_name` → `displayName` via its parser.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BackendOidcModeUserInfoResponse {
     pub subject: String,

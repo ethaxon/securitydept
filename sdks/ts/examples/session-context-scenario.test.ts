@@ -8,7 +8,8 @@ describe("external session context scenario", () => {
 		const sessionStore = createInMemoryRecordStore();
 		const transport = new FakeTransport()
 			.on(
-				(request) => request.method === "GET" && request.url.endsWith("/me"),
+				(request) =>
+					request.method === "GET" && request.url.endsWith("/user-info"),
 				() => ({
 					status: 200,
 					headers: {},
@@ -41,7 +42,7 @@ describe("external session context scenario", () => {
 			"https://app.example.com/dashboard",
 		);
 
-		const session = await client.fetchMe(transport);
+		const session = await client.fetchUserInfo(transport);
 
 		expect(session?.principal.displayName).toBe("Alice");
 		expect(session?.principal.picture).toBe(
@@ -56,7 +57,7 @@ describe("external session context scenario", () => {
 		expect(transport.history).toEqual([
 			expect.objectContaining({
 				method: "GET",
-				url: "https://auth.example.com/auth/session/me",
+				url: "https://auth.example.com/auth/session/user-info",
 			}),
 			expect.objectContaining({
 				method: "POST",

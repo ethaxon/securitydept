@@ -16,7 +16,7 @@ function mockTransport(handler: (req: HttpRequest) => HttpResponse): {
 }
 
 describe("createSessionServerHelper", () => {
-	describe("fetchMe", () => {
+	describe("fetchUserInfo", () => {
 		it("forwards request headers (cookies) to the transport", async () => {
 			const transport = mockTransport((req) => {
 				// Verify the cookie was forwarded.
@@ -37,7 +37,7 @@ describe("createSessionServerHelper", () => {
 				transport,
 			});
 
-			const session = await helper.fetchMe({
+			const session = await helper.fetchUserInfo({
 				headers: { cookie: "session=abc123" },
 			});
 
@@ -57,7 +57,7 @@ describe("createSessionServerHelper", () => {
 				transport,
 			});
 
-			const session = await helper.fetchMe({
+			const session = await helper.fetchUserInfo({
 				headers: { cookie: "" },
 			});
 

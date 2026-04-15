@@ -340,7 +340,7 @@ export function createHistoryAdapter(
 		const anchor = path.find(
 			(node): node is HTMLAnchorElement => node instanceof HTMLAnchorElement,
 		);
-		if (!anchor || !anchor.href || anchor.target === "_blank") return;
+		if (!anchor?.href || anchor.target === "_blank") return;
 		const targetUrl = new URL(anchor.href);
 		if (targetUrl.origin !== location.origin) return;
 		event.preventDefault();

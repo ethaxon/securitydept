@@ -16,14 +16,14 @@ export type {
 export {
 	BackendOidcModeBootstrapSource,
 	bootstrapBackendOidcModeClient,
+	buildAuthorizeUrlReturningToCurrent,
 	captureBackendOidcModeCallbackFragmentFromUrl,
 	createBackendOidcModeBrowserClient,
 	createBackendOidcModeCallbackFragmentStore,
+	currentLocationAsPostAuthRedirectUri,
 	loginWithBackendOidcPopup,
 	loginWithBackendOidcRedirect,
 	relayBackendOidcPopupCallback,
 	resetBackendOidcModeBrowserState,
-	resolveBackendOidcModeAuthorizeUrl,
 	resolveBackendOidcModeCallbackFragmentKey,
-	resolveBackendOidcModeReturnUri,
 } from "./browser";

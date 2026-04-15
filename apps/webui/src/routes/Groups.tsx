@@ -1,15 +1,26 @@
 import { Link } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { useGroups } from "@/api/groups";
+import { AuthModeNotice } from "@/components/auth/AuthModeNotice";
 import { GroupTable } from "@/components/groups/GroupTable";
 import { Layout } from "@/components/layout/Layout";
+import {
+	useDashboardAccessNotice,
+	useDashboardGroupsQuery,
+} from "@/hooks/useDashboardApi";
 
 export function GroupsPage() {
-	const { data: groups = [], isLoading } = useGroups();
+	const accessNotice = useDashboardAccessNotice();
+	const { data: groups = [], isLoading } = useDashboardGroupsQuery();
 
 	return (
 		<Layout>
-			<div className="mx-auto max-w-screen-lg space-y-6">
+			<div className="mx-auto max-w-5xl space-y-6">
+				{accessNotice ? (
+					<AuthModeNotice
+						title={accessNotice.title}
+						description={accessNotice.description}
+					/>
+				) : null}
 				<div className="flex items-center justify-between gap-3">
 					<h1 className="text-2xl font-semibold">Groups</h1>
 					<Link

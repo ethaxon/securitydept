@@ -101,24 +101,25 @@ impl ClaimsChecker for ScriptClaimsChecker {
         if let Some(boa_compat_source) = &self.boa_compat_source {
             let mut context = Context::default();
 
-            // Inject the claims as a global JSON string, then parse inside JS
+            // Embed the JSON directly as a parenthesised JS expression.
+            // JSON is a subset of JS value syntax, so serde_json output is
+            // always safe to embed verbatim — no string quoting or escaping
+            // is needed, and single-quotes / backslashes in claim values
+            // cannot break the injection.
             let id_token_claims_json_block = {
-                let id_token_claims_json =
-                    serde_json::to_string(&id_token_claims).map_err(|e| OidcError::Claims {
+                let json = serde_json::to_string(&id_token_claims).map_err(|e| {
+                    OidcError::Claims {
                         message: format!("Failed to serialize id_token_claims: {e}"),
-                    })?;
-                format!(r#"JSON.parse('{id_token_claims_json}')"#,)
-                    .replace('\\', "\\\\")
-                    .replace('\'', "\\'")
+                    }
+                })?;
+                format!("({json})")
             };
             let user_info_claims_json_block = if let Some(user_info_claims) = user_info_claims {
-                let user_info_claims_json =
+                let json =
                     serde_json::to_string(&user_info_claims).map_err(|e| OidcError::Claims {
                         message: format!("Failed to serialize user_info_claims: {e}"),
                     })?;
-                format!(r#"JSON.parse('{user_info_claims_json}')"#,)
-                    .replace('\\', "\\\\")
-                    .replace('\'', "\\'")
+                format!("({json})")
             } else {
                 "null".to_string()
             };

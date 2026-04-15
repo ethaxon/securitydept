@@ -33,9 +33,6 @@ import {
 	useSyncExternalStore,
 } from "react";
 
-export type { AuthStateSnapshot, BackendOidcModeClientConfig };
-export { BackendOidcModeClient };
-
 export {
 	type ClientFilter,
 	ClientInitializationPriority,
@@ -66,6 +63,8 @@ export {
 	useTokenSetCallbackResume,
 } from "./token-set-auth-provider";
 export { TokenSetAuthService } from "./token-set-auth-service";
+export type { AuthStateSnapshot, BackendOidcModeClientConfig };
+export { BackendOidcModeClient };
 
 // ---------------------------------------------------------------------------
 // Context

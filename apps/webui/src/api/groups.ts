@@ -6,18 +6,23 @@ export interface Group {
 	name: string;
 }
 
-export function useGroups() {
+interface GroupQueryOptions {
+	enabled?: boolean;
+}
+
+export function useGroups(options: GroupQueryOptions = {}) {
 	return useQuery<Group[]>({
 		queryKey: ["groups"],
 		queryFn: () => api.get("/api/groups"),
+		enabled: options.enabled ?? true,
 	});
 }
 
-export function useGroup(id: string) {
+export function useGroup(id: string, options: GroupQueryOptions = {}) {
 	return useQuery<Group>({
 		queryKey: ["group", id],
 		queryFn: () => api.get(`/api/groups/${id}`),
-		enabled: Boolean(id),
+		enabled: (options.enabled ?? true) && Boolean(id),
 	});
 }
 

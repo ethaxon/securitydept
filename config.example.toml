@@ -23,7 +23,6 @@ well_known_url = "https://your-oidc-provider.com/.well-known/openid-configuratio
 
 [oidc_client]
 scopes = ["openid", "profile", "email"]
-# redirect_url = "/auth/callback"
 # claims_check_script = "./claims-script-check.mts"
 # pkce_enabled = true
 # device_poll_interval = "5s"
@@ -67,12 +66,6 @@ scopes = ["openid", "profile", "email"]
 # same_site = "lax"         # "strict", "lax", or "none"
 # ttl = "1d"                # omit to disable expiry
 
-# Default post-login redirect for session mode.
-# [session_context.post_auth_redirect]
-# default_redirect_target = "/"
-# dynamic_redirect_target_enabled = true
-# allowed_redirect_targets = [{ kind = "strict", value = "/dashboard" }]
-
 [oauth_resource_server]
 # audiences = ["api://securitydept"]
 # required_scopes = ["entries.read"]
@@ -109,11 +102,10 @@ data_path = "./data/data.json"
 # and /basic/api/*, not the managed creds stored in creds_manage.
 # realm = "securitydept"
 
-# Global post-auth redirect for /basic/login success.
-# [basic_auth_context.post_auth_redirect]
-# default_redirect_target = "/"
-# dynamic_redirect_target_enabled = true
-# allowed_redirect_targets = [{ kind = "strict", value = "/basic" }]
+# post_auth_redirect is NOT configurable in this deployment.
+# The server always redirects to '/' (dashboard root) after basic auth login,
+# ignoring any user-configured or query-param-supplied redirect targets.
+# Configuring this has no effect and will emit a startup warning.
 
 # Optional real-IP access restriction for dashboard basic-auth.
 # When this section is set, [real_ip_resolve] must also be configured.
@@ -147,4 +139,3 @@ password_hash = "$argon2id$v=19$m=19456,t=2,p=1$replace$with$your$argon2$hash"
 #   { kind = "x-forwarded-for", mode = "recursive", direction = "right-to-left" },
 #   { kind = "forwarded", mode = "recursive", direction = "right-to-left", param = "for" },
 # ]
-

@@ -170,8 +170,12 @@ where
     pub claims_check_script: Option<String>,
     #[serde(default)]
     pub pkce_enabled: bool,
-    #[serde(default = "default_redirect_url")]
-    pub redirect_url: String,
+    /// Explicit redirect URL. When `None` (the default), each auth context
+    /// uses its own hardcoded callback path at resolution time. In the
+    /// combined `apps/webui` + `apps/server` deployment this field has no
+    /// effect and will produce a startup warning if set.
+    #[serde(default)]
+    pub redirect_url: Option<String>,
     #[serde(default, bound = "PC: PendingOauthStoreConfig")]
     pub pending_store: Option<PC>,
     #[serde(default = "default_device_poll_interval", with = "humantime_serde")]
@@ -204,7 +208,8 @@ where
             required_scopes: shared.resolve_required_scopes(&self.required_scopes),
             claims_check_script: self.claims_check_script,
             pkce_enabled: self.pkce_enabled,
-            redirect_url: self.redirect_url,
+            redirect_url: self.redirect_url.as_deref().unwrap_or(&default_redirect_url()).to_owned(),
+
             pending_store: self.pending_store,
             device_poll_interval: self.device_poll_interval,
         })
@@ -242,7 +247,8 @@ where
             required_scopes: vec![],
             claims_check_script: None,
             pkce_enabled: false,
-            redirect_url: default_redirect_url(),
+            redirect_url: None,
+
             pending_store: None,
             device_poll_interval: default_device_poll_interval(),
         }

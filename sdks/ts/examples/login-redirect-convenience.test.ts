@@ -149,7 +149,7 @@ describe("backend-oidc-mode/web loginWithBackendOidcRedirect", () => {
 
 			loginWithBackendOidcRedirect(client);
 
-			// Default behavior: resolveBackendOidcModeReturnUri strips hash.
+			// Default behavior: currentLocationAsPostAuthRedirectUri strips hash.
 			// Then authorizeUrl uses it for post_auth_redirect_uri.
 			expect(locationMock.href).toContain(
 				"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=",

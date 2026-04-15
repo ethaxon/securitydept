@@ -1,18 +1,29 @@
 import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
-import { useEntry } from "@/api/entries";
+import { AuthModeNotice } from "@/components/auth/AuthModeNotice";
 import { EntryForm } from "@/components/entries/EntryForm";
 import { Layout } from "@/components/layout/Layout";
+import {
+	useDashboardAccessNotice,
+	useDashboardEntryQuery,
+} from "@/hooks/useDashboardApi";
 
 export function EntryEditPage() {
 	const { entryId } = useParams({ from: "/entries/$entryId/edit" });
 	const search = useSearch({ from: "/entries/$entryId/edit" });
-	const { data: entry, isLoading } = useEntry(entryId);
+	const accessNotice = useDashboardAccessNotice();
+	const { data: entry, isLoading } = useDashboardEntryQuery(entryId);
 	const formKey = `edit:${entryId}:${JSON.stringify(search)}`;
 
 	return (
 		<Layout>
-			<div className="mx-auto max-w-screen-lg space-y-6">
+			<div className="mx-auto max-w-5xl space-y-6">
+				{accessNotice ? (
+					<AuthModeNotice
+						title={accessNotice.title}
+						description={accessNotice.description}
+					/>
+				) : null}
 				<div className="space-y-2">
 					<Link
 						to="/entries"

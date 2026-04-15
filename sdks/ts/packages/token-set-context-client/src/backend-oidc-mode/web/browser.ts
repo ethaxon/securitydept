@@ -208,7 +208,14 @@ export function createBackendOidcModeCallbackFragmentStore(
 	});
 }
 
-export function resolveBackendOidcModeReturnUri(
+/**
+ * Extract the current page URL (without hash) as a post-auth redirect URI.
+ *
+ * Useful when building an authorize URL that should return the user to
+ * whichever page they are currently on.  The hash is stripped because
+ * servers typically cannot relay fragment identifiers via 302 redirects.
+ */
+export function currentLocationAsPostAuthRedirectUri(
 	location: Pick<LocationLike, "href"> = window.location,
 ): string {
 	const url = new URL(location.href);
@@ -337,11 +344,19 @@ export async function bootstrapBackendOidcModeClient(
 	};
 }
 
-export function resolveBackendOidcModeAuthorizeUrl(
+/**
+ * Build an authorize URL that returns the user to the current page.
+ *
+ * Convenience wrapper: extracts `window.location.href` (minus hash) as the
+ * `post_auth_redirect_uri` and appends it to the client's authorize URL.
+ * If the redirect target is known statically, prefer `client.authorizeUrl()`
+ * with an explicit path instead.
+ */
+export function buildAuthorizeUrlReturningToCurrent(
 	client: BackendOidcModeClient,
 	location: Pick<LocationLike, "href"> = window.location,
 ): string {
-	return client.authorizeUrl(resolveBackendOidcModeReturnUri(location));
+	return client.authorizeUrl(currentLocationAsPostAuthRedirectUri(location));
 }
 
 /**
@@ -372,7 +387,8 @@ export function loginWithBackendOidcRedirect(
 ): void {
 	const location = options.location ?? window.location;
 	const postAuthRedirectUri =
-		options.postAuthRedirectUri ?? resolveBackendOidcModeReturnUri(location);
+		options.postAuthRedirectUri ??
+		currentLocationAsPostAuthRedirectUri(location);
 
 	window.location.href = client.authorizeUrl(postAuthRedirectUri);
 }

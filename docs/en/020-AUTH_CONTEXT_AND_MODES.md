@@ -5,6 +5,18 @@
 > It replaces the previous split documentation for auth contextsbasic-auth
 > zonesand the OIDC mode family.
 
+The role of this document is to:
+
+- explain the conceptual layering of auth context / zone / mode
+- explain Rust- and TS-side ownership boundaries
+- explain which structures are top-level contexts, which are modes, and which are only internal substrates
+
+This document does **not** try to:
+
+- list the current TS public package / subpath capability snapshot: see [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
+- define current priorities, backlog, or deferred boundaries: see [100-ROADMAP.md](100-ROADMAP.md)
+- serve as the migration history: see [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md)
+
 ## 1. Core Layering
 
 The securitydept auth stack should be read in two layers:
@@ -325,7 +337,7 @@ well_known_url = "https://auth.example.com/.well-known/openid-configuration"
 [oidc_client]
 client_id = "my-app"
 client_secret = "secret"
-redirect_url = "/auth/callback"
+redirect_url = "/auth/session/callback"
 
 [oauth_resource_server]
 audiences = ["api://my-app"]
@@ -339,7 +351,8 @@ The core shareable fields remain:
 - `jwks_uri`
 - metadata / JWKS refresh intervals
 
-while fields such as `scopes``audiences`and `redirect_url` remain role-specific and should not be flattened into one generic default.
+while fields such as `scopes`, `audiences`, and `redirect_url` remain role-specific and should not be flattened into one generic default.  
+In particular, `redirect_url` should now be read as an explicit per-flow path: for example, session uses `/auth/session/callback`, while token-set uses `/auth/token-set/callback`.
 
 ### 6.4.1 Unified `backend-oidc` configuration direction
 

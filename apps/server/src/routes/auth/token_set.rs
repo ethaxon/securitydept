@@ -36,12 +36,18 @@ pub async fn login(
 
 /// GET /auth/token-set/callback -- handle OIDC code exchange for stateless
 /// token-set mode (fragment redirect).
+///
+/// The post-auth redirect URI is resolved by the runtime's `Resolved` policy,
+/// which validates the client-supplied `post_auth_redirect_uri` (stored during
+/// login) against an allowlist configured in `config.rs`. Unknown values fall
+/// back to the default redirect target (`/`).
 pub async fn callback(
     Extension(state): Extension<ServerState>,
     headers: HeaderMap,
     Query(search_params): Query<OidcCodeCallbackSearchParams>,
 ) -> Result<Response, ServerError> {
     let external_base_url = state.external_base_url(&headers)?;
+
     state
         .backend_oidc_auth_service()?
         .callback_fragment_return(&external_base_url, search_params, None)

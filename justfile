@@ -4,6 +4,10 @@ set windows-shell := ["pwsh.exe", "-NoLogo", "-ExecutionPolicy", "RemoteSigned",
 setup:
     pnpm install
     cargo check --workspace --all-features
+    
+# requires zellij watchexec
+dev-all:
+    zellij --layout dev.kdl
 
 build-webui: build-sdks
     cd apps/webui && pnpm build
@@ -23,7 +27,11 @@ dev-webui:
     cd apps/webui && pnpm dev
 
 dev-server:
-    watchexec --restart --watch apps/server --watch packages/core --watch config.toml --exts rs,toml -- cargo run --manifest-path apps/server/Cargo.toml
+    watchexec --restart --watch apps/server --watch packages --watch config.toml --exts rs,toml -- cargo run --manifest-path apps/server/Cargo.toml
+
+# Generate an Argon2id password hash for config.toml basic_auth_context.users
+hash-password password="":
+    @cargo run --manifest-path apps/server/Cargo.toml -q -- hash-password {{if password != "" { "--password " + password } else { "" } }}
 
 dev: dev-server
 
@@ -62,9 +70,6 @@ test-sdks:
 
 typecheck-sdks:
     cd sdks/ts && pnpm typecheck
-
-typecheck:
-    pnpm typecheck
 
 verify-client-sdk-iteration:
     pnpm lint-fix

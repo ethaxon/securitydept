@@ -91,7 +91,7 @@ describe("session-context react minimal entry", () => {
 		expect(transport.execute).toHaveBeenCalledWith(
 			expect.objectContaining({
 				method: "GET",
-				url: "https://auth.example.com/auth/session/me",
+				url: "https://auth.example.com/auth/session/user-info",
 			}),
 		);
 

@@ -7,9 +7,10 @@ mod state;
 
 use std::sync::Arc;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use securitydept_core::{
     basic_auth_context::BasicAuthContext,
+    creds::hash_password_argon2,
     creds_manage::{migrations::Migrator, store::CredsManageStore},
     realip::RealIpResolver,
     token_set_context::{
@@ -33,9 +34,24 @@ use crate::{
 #[derive(Parser)]
 #[command(name = "securitydept-server", about = "SecurityDept auth server")]
 struct Cli {
-    /// Path to config file
-    #[arg(short, long, default_value = "config.toml")]
+    #[command(subcommand)]
+    command: Option<Command>,
+
+    /// Path to config file (used by `serve`)
+    #[arg(short, long, default_value = "config.toml", global = true)]
     config: String,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Start the server (default when no subcommand is given)
+    Serve,
+    /// Generate an Argon2id password hash for use in config.toml
+    HashPassword {
+        /// Password to hash (reads from stdin if omitted)
+        #[arg(short, long)]
+        password: Option<String>,
+    },
 }
 
 fn resolve_config_path(cli_config: &str) -> String {
@@ -51,6 +67,43 @@ fn resolve_config_path(cli_config: &str) -> String {
 
 #[tokio::main]
 async fn main() -> ServerResult<()> {
+    let cli = Cli::parse();
+
+    match cli.command.unwrap_or(Command::Serve) {
+        Command::HashPassword { password } => {
+            run_hash_password(password);
+            Ok(())
+        }
+        Command::Serve => run_serve(cli.config).await,
+    }
+}
+
+/// Generate an Argon2id hash and print it to stdout.
+fn run_hash_password(password: Option<String>) {
+    let password = password.unwrap_or_else(|| {
+        eprint!("Enter password: ");
+        let mut input = String::new();
+        std::io::stdin()
+            .read_line(&mut input)
+            .expect("failed to read password from stdin");
+        input.trim().to_string()
+    });
+
+    if password.is_empty() {
+        eprintln!("Error: password must not be empty");
+        std::process::exit(1);
+    }
+
+    match hash_password_argon2(&password) {
+        Ok(hash) => println!("{hash}"),
+        Err(e) => {
+            eprintln!("Error: failed to hash password: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn run_serve(config_arg: String) -> ServerResult<()> {
     let default_log_level = if cfg!(debug_assertions) {
         "debug"
     } else {
@@ -64,9 +117,7 @@ async fn main() -> ServerResult<()> {
 
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
-    let cli = Cli::parse();
-
-    let config_path = resolve_config_path(&cli.config);
+    let config_path = resolve_config_path(&config_arg);
     info!(config = %config_path, "Loading configuration");
     let config = ServerConfig::load(&config_path)?;
 

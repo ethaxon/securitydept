@@ -49,22 +49,19 @@ describe("webui auth smoke", () => {
 		await expect(auth.resolveLoginUrl()).resolves.toBe("/auth/session/login");
 	});
 
-	it("stores redirect intent when route auth check fails", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => createJsonResponse(401, { message: "unauthorized" })),
-		);
+	it("stores and clears redirect intent via session helpers", async () => {
 		const auth = await import("../api/auth");
 
-		await expect(
-			auth.requireAuthenticatedRoute("/groups?tab=members"),
-		).rejects.toBeDefined();
+		await auth.rememberPostAuthRedirect("/groups?tab=members");
 		await expect(auth.resolveLoginUrl()).resolves.toBe(
 			"/auth/session/login?post_auth_redirect_uri=%2Fgroups%3Ftab%3Dmembers",
 		);
+
+		// After consuming, the redirect intent is cleared
+		await expect(auth.resolveLoginUrl()).resolves.toBe("/auth/session/login");
 	});
 
-	it("clears stale redirect intent after authenticated route check", async () => {
+	it("fetchCurrentSession returns session when authenticated", async () => {
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async () =>
@@ -75,15 +72,25 @@ describe("webui auth smoke", () => {
 		);
 		const auth = await import("../api/auth");
 
-		await auth.rememberPostAuthRedirect("/entries");
-		await expect(auth.requireAuthenticatedRoute("/groups")).resolves.toEqual({
+		const session = await auth.fetchCurrentSession();
+		expect(session).toEqual({
 			principal: {
 				displayName: "Alice",
 				picture: undefined,
 				claims: undefined,
 			},
 		});
-		await expect(auth.resolveLoginUrl()).resolves.toBe("/auth/session/login");
+	});
+
+	it("fetchCurrentSession returns null when unauthenticated", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => createJsonResponse(401, { message: "unauthorized" })),
+		);
+		const auth = await import("../api/auth");
+
+		const session = await auth.fetchCurrentSession();
+		expect(session).toBeNull();
 	});
 
 	it("posts logout and clears redirect state", async () => {

@@ -12,7 +12,7 @@ import { createSessionServerHelper } from "@securitydept/session-context-client/
 import { describe, expect, it, vi } from "vitest";
 
 describe("session server minimal entry", () => {
-	it("shows the standalone server entry path: helper construction → fetchMe → login redirect", async () => {
+	it("shows the standalone server entry path: helper construction → fetchUserInfo → login redirect", async () => {
 		// 1. Create a mock transport that simulates an unauthenticated response.
 		const transport = {
 			execute: vi.fn(async () => ({
@@ -30,7 +30,7 @@ describe("session server minimal entry", () => {
 		const helper = createSessionServerHelper(options);
 
 		// 3. Probe the session with forwarded cookies.
-		const session = await helper.fetchMe({
+		const session = await helper.fetchUserInfo({
 			headers: { cookie: "session_id=abc123" },
 		});
 
@@ -53,7 +53,7 @@ describe("session server minimal entry", () => {
 		);
 	});
 
-	it("shows the authenticated path: fetchMe returns session info", async () => {
+	it("shows the authenticated path: fetchUserInfo returns session info", async () => {
 		const transport = {
 			execute: vi.fn(async () => ({
 				status: 200,
@@ -69,7 +69,7 @@ describe("session server minimal entry", () => {
 			transport,
 		});
 
-		const session = await helper.fetchMe({
+		const session = await helper.fetchUserInfo({
 			headers: { cookie: "session_id=valid" },
 		});
 

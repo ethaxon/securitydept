@@ -282,7 +282,7 @@ describe("session-context react adapter", () => {
 		expect(view.container.textContent).toBe("loading:none");
 		expect(firstRequests).toEqual([
 			expect.objectContaining({
-				url: "https://alpha.example.com/auth/session/me",
+				url: "https://alpha.example.com/auth/session/user-info",
 			}),
 		]);
 
@@ -302,7 +302,7 @@ describe("session-context react adapter", () => {
 		expect(view.container.textContent).toBe("loading:none");
 		expect(secondRequests).toEqual([
 			expect.objectContaining({
-				url: "https://beta.example.com/auth/session/me",
+				url: "https://beta.example.com/auth/session/user-info",
 			}),
 		]);
 
@@ -386,10 +386,10 @@ describe("session-context react adapter", () => {
 		expect(requests).toHaveLength(2);
 		expect(requests).toEqual([
 			expect.objectContaining({
-				url: "https://auth.example.com/auth/session/me",
+				url: "https://auth.example.com/auth/session/user-info",
 			}),
 			expect.objectContaining({
-				url: "https://auth.example.com/auth/session/me",
+				url: "https://auth.example.com/auth/session/user-info",
 			}),
 		]);
 		expect(observed).toEqual(["loading:none", "loading:none"]);

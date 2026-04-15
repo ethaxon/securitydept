@@ -17,12 +17,16 @@ use securitydept_core::{
             ResolvedAccessTokenSubstrateConfig,
         },
         backend_oidc_mode::{
-            BackendOidcModeConfig, BackendOidcModeConfigSource,
-            MokaPendingAuthStateMetadataRedemptionConfig, ResolvedBackendOidcModeConfig,
+            BackendOidcModeConfig, BackendOidcModeConfigSource, BackendOidcModeRedirectUriConfig,
+            MokaPendingAuthStateMetadataRedemptionConfig, PostAuthRedirectPolicy,
+            ResolvedBackendOidcModeConfig,
         },
         orchestration::OidcSharedConfig,
     },
-    utils::base_url::ExternalBaseUrl,
+    utils::{
+        base_url::ExternalBaseUrl,
+        redirect::{RedirectTargetConfig, RedirectTargetRule},
+    },
 };
 use serde::Deserialize;
 
@@ -137,6 +141,47 @@ impl ServerConfig {
             config.oidc = None;
         }
 
+        // Warn when redirect_url is set — each auth context (session, token-set)
+        // hardcodes its own callback path via redirect_url_override at runtime, so
+        // this field has no effect and will be silently ignored.
+        if config.backend_oidc.oidc_client.redirect_url.is_some() {
+            tracing::warn!(
+                "oidc_client.redirect_url is set in config but has no effect: each auth context \
+                 (session → /auth/session/callback, token-set → /auth/token-set/callback) uses a \
+                 hardcoded redirect path. Remove this field to silence this warning."
+            );
+        }
+
+        // post_auth_redirect is forced to a Resolved policy with a strict
+        // allowlist. The SDK / login page supplies post_auth_redirect_uri
+        // as a query parameter; the runtime validates it against:
+        //   default: "/"  (dashboard)
+        //   allowed: "/", "/playground/token-set"
+        // Any other value falls back to "/".
+        let server_token_set_redirect = PostAuthRedirectPolicy::Resolved {
+            config: BackendOidcModeRedirectUriConfig::dynamic_default_and_dynamic_targets(
+                "/",
+                [
+                    RedirectTargetRule::Strict {
+                        value: "/".to_string(),
+                    },
+                    RedirectTargetRule::Strict {
+                        value: "/playground/token-set".to_string(),
+                    },
+                ],
+            ),
+        };
+        if !matches!(
+            config.backend_oidc.post_auth_redirect,
+            PostAuthRedirectPolicy::Resolved { .. }
+        ) {
+            tracing::info!(
+                "oidc_client.post_auth_redirect overridden to Resolved policy with allowlist \
+                 ['/', '/playground/token-set']"
+            );
+        }
+        config.backend_oidc.post_auth_redirect = server_token_set_redirect;
+
         if config.basic_auth_context.zones.is_empty() {
             config
                 .basic_auth_context
@@ -161,6 +206,29 @@ impl ServerConfig {
                 zone.zone_prefix = default_zone.zone_prefix;
                 zone.login_subpath = default_zone.login_subpath;
                 zone.logout_subpath = default_zone.logout_subpath;
+            }
+        }
+
+        // Hardcode basic_auth_context.post_auth_redirect to strict "/".
+        // In the server+webui deployment, basic auth login always returns to
+        // the dashboard root. Allowing user-supplied or query-param-driven
+        // redirects would create an open-redirect vector.
+        let server_basic_redirect = RedirectTargetConfig::strict_default("/");
+        if config.basic_auth_context.post_auth_redirect != server_basic_redirect {
+            tracing::warn!(
+                "basic_auth_context.post_auth_redirect is overridden to strict '/': the server \
+                 always redirects to the dashboard root after basic auth login. Remove this \
+                 section to silence this warning."
+            );
+            config.basic_auth_context.post_auth_redirect = server_basic_redirect;
+        }
+        for zone in &mut config.basic_auth_context.zones {
+            if zone.post_auth_redirect.is_some() {
+                tracing::warn!(
+                    "basic_auth_context.zones[].post_auth_redirect is ignored: the server always \
+                     redirects to '/' after basic auth login."
+                );
+                zone.post_auth_redirect = None;
             }
         }
 

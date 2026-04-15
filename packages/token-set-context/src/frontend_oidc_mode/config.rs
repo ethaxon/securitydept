@@ -313,7 +313,7 @@ mod tests {
     fn projection_reflects_resolved_config() {
         let raw = FrontendOidcModeConfig {
             oidc_client: OidcClientRawConfig {
-                redirect_url: "https://app.example.com/callback".to_string(),
+                redirect_url: Some("https://app.example.com/callback".to_string()),
                 pkce_enabled: true,
                 ..Default::default()
             },

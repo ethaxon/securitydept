@@ -6,7 +6,6 @@ import {
 	type SessionInfo,
 } from "@securitydept/session-context-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { redirect } from "@tanstack/react-router";
 
 const sessionClient = new SessionContextClient(
 	{ baseUrl: "" },
@@ -19,7 +18,7 @@ const sessionTransport = createFetchTransport({
 });
 
 export async function fetchCurrentSession(): Promise<SessionInfo | null> {
-	return await sessionClient.fetchMe(sessionTransport);
+	return await sessionClient.fetchUserInfo(sessionTransport);
 }
 
 export async function rememberPostAuthRedirect(
@@ -37,28 +36,20 @@ export async function resolveLoginUrl(): Promise<string> {
 	return sessionClient.loginUrl(pendingRedirect ?? undefined);
 }
 
-export async function requireAuthenticatedRoute(
-	postAuthRedirectUri: string,
-): Promise<SessionInfo> {
-	const session = await fetchCurrentSession();
-	if (!session) {
-		await rememberPostAuthRedirect(postAuthRedirectUri);
-		throw redirect({ to: "/login" });
-	}
-
-	await clearPostAuthRedirect();
-	return session;
-}
-
 export async function logoutCurrentSession(): Promise<void> {
 	await sessionClient.logout(sessionTransport);
 	await sessionClient.clearPendingLoginRedirect();
 }
 
-export function useMe() {
+interface AuthQueryOptions {
+	enabled?: boolean;
+}
+
+export function useUserInfo(options: AuthQueryOptions = {}) {
 	return useQuery<SessionInfo | null>({
-		queryKey: ["auth", "me"],
+		queryKey: ["auth", "user-info"],
 		queryFn: fetchCurrentSession,
+		enabled: options.enabled ?? true,
 		retry: false,
 	});
 }

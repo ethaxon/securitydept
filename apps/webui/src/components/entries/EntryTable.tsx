@@ -7,8 +7,9 @@ import {
 } from "@tanstack/react-table";
 import { Pencil, Trash2 } from "lucide-react";
 import { useMemo } from "react";
-import { type AuthEntry, AuthEntryKind, useDeleteEntry } from "@/api/entries";
+import { type AuthEntry, AuthEntryKind } from "@/api/entries";
 import type { Group } from "@/api/groups";
+import { useDashboardDeleteEntryMutation } from "@/hooks/useDashboardApi";
 
 export function EntryTable({
 	entries,
@@ -17,7 +18,7 @@ export function EntryTable({
 	entries: AuthEntry[];
 	groups: Group[];
 }) {
-	const deleteEntry = useDeleteEntry();
+	const deleteEntry = useDashboardDeleteEntryMutation();
 	const groupNameById = useMemo(
 		() => new Map(groups.map((group) => [group.id, group.name])),
 		[groups],

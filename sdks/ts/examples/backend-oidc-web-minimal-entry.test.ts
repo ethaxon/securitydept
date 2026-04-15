@@ -11,9 +11,9 @@ import { createInMemoryRecordStore } from "@securitydept/client";
 import {
 	BackendOidcModeBootstrapSource,
 	bootstrapBackendOidcModeClient,
+	buildAuthorizeUrlReturningToCurrent,
 	createBackendOidcModeBrowserClient,
 	createBackendOidcModeCallbackFragmentStore,
-	resolveBackendOidcModeAuthorizeUrl,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { describe, expect, it } from "vitest";
 
@@ -58,7 +58,7 @@ describe("backend-oidc-mode web minimal entry", () => {
 		expect(client.state.get()).toBeNull();
 
 		// 3. Build the authorize URL — the adopter redirects the browser here.
-		const authorizeUrl = resolveBackendOidcModeAuthorizeUrl(client, {
+		const authorizeUrl = buildAuthorizeUrlReturningToCurrent(client, {
 			href: "https://app.example.com/dashboard",
 		});
 

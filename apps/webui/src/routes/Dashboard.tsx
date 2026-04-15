@@ -1,12 +1,18 @@
 import { KeyRound, Shield, Users } from "lucide-react";
-import { AuthEntryKind, useEntries } from "@/api/entries";
-import { useGroups } from "@/api/groups";
+import { AuthEntryKind } from "@/api/entries";
 import { useServerHealth } from "@/api/serverHealth";
+import { AuthModeNotice } from "@/components/auth/AuthModeNotice";
 import { Layout } from "@/components/layout/Layout";
+import {
+	useDashboardAccessNotice,
+	useDashboardEntriesQuery,
+	useDashboardGroupsQuery,
+} from "@/hooks/useDashboardApi";
 
 export function DashboardPage() {
-	const { data: entries = [] } = useEntries();
-	const { data: groups = [] } = useGroups();
+	const accessNotice = useDashboardAccessNotice();
+	const { data: entries = [] } = useDashboardEntriesQuery();
+	const { data: groups = [] } = useDashboardGroupsQuery();
 	const {
 		data: serverHealth,
 		isLoading: isHealthLoading,
@@ -54,6 +60,12 @@ export function DashboardPage() {
 	return (
 		<Layout>
 			<div className="mx-auto max-w-5xl space-y-6">
+				{accessNotice ? (
+					<AuthModeNotice
+						title={accessNotice.title}
+						description={accessNotice.description}
+					/>
+				) : null}
 				<h1 className="text-2xl font-semibold">Dashboard</h1>
 				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 					{stats.map((stat) => (

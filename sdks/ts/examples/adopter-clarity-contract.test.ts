@@ -224,7 +224,7 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 	},
 	{
 		// Standalone minimal-entry example for session-context-client/server.
-		// Proves helper construction, fetchMe with cookie forwarding,
+		// Proves helper construction, fetchUserInfo with cookie forwarding,
 		// and loginUrl/logoutUrl generation.
 		path: "examples/session-server-minimal-entry.test.ts",
 		layers: [

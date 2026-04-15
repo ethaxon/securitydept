@@ -1,16 +1,27 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
-import { useGroup } from "@/api/groups";
+import { AuthModeNotice } from "@/components/auth/AuthModeNotice";
 import { GroupForm } from "@/components/groups/GroupForm";
 import { Layout } from "@/components/layout/Layout";
+import {
+	useDashboardAccessNotice,
+	useDashboardGroupQuery,
+} from "@/hooks/useDashboardApi";
 
 export function GroupEditPage() {
 	const { groupId } = useParams({ from: "/groups/$groupId/edit" });
-	const { data: group, isLoading } = useGroup(groupId);
+	const accessNotice = useDashboardAccessNotice();
+	const { data: group, isLoading } = useDashboardGroupQuery(groupId);
 
 	return (
 		<Layout>
-			<div className="mx-auto max-w-screen-lg space-y-6">
+			<div className="mx-auto max-w-5xl space-y-6">
+				{accessNotice ? (
+					<AuthModeNotice
+						title={accessNotice.title}
+						description={accessNotice.description}
+					/>
+				) : null}
 				<div className="space-y-2">
 					<Link
 						to="/groups"

@@ -428,5 +428,4 @@ export function createWebRouter<TData = unknown>(
 }
 
 // Re-export navigation adapter surface for convenience.
-export { NavigationAdapterKind };
-export { RequirementsClientSetComposition };
+export { NavigationAdapterKind, RequirementsClientSetComposition };

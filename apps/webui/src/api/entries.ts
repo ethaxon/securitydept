@@ -27,18 +27,23 @@ export type CreateTokenResponse = {
 	token: string;
 };
 
-export function useEntries() {
+interface EntryQueryOptions {
+	enabled?: boolean;
+}
+
+export function useEntries(options: EntryQueryOptions = {}) {
 	return useQuery<AuthEntry[]>({
 		queryKey: ["entries"],
 		queryFn: () => api.get("/api/entries"),
+		enabled: options.enabled ?? true,
 	});
 }
 
-export function useEntry(id: string) {
+export function useEntry(id: string, options: EntryQueryOptions = {}) {
 	return useQuery<AuthEntry>({
 		queryKey: ["entry", id],
 		queryFn: () => api.get(`/api/entries/${id}`),
-		enabled: Boolean(id),
+		enabled: (options.enabled ?? true) && Boolean(id),
 	});
 }
 

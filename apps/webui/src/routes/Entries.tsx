@@ -1,17 +1,28 @@
 import { Link } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { useEntries } from "@/api/entries";
-import { useGroups } from "@/api/groups";
+import { AuthModeNotice } from "@/components/auth/AuthModeNotice";
 import { EntryTable } from "@/components/entries/EntryTable";
 import { Layout } from "@/components/layout/Layout";
+import {
+	useDashboardAccessNotice,
+	useDashboardEntriesQuery,
+	useDashboardGroupsQuery,
+} from "@/hooks/useDashboardApi";
 
 export function EntriesPage() {
-	const { data: entries = [], isLoading } = useEntries();
-	const { data: groups = [] } = useGroups();
+	const accessNotice = useDashboardAccessNotice();
+	const { data: entries = [], isLoading } = useDashboardEntriesQuery();
+	const { data: groups = [] } = useDashboardGroupsQuery();
 
 	return (
 		<Layout>
 			<div className="mx-auto max-w-screen-lg space-y-6">
+				{accessNotice ? (
+					<AuthModeNotice
+						title={accessNotice.title}
+						description={accessNotice.description}
+					/>
+				) : null}
 				<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 					<h1 className="text-2xl font-semibold">Auth Entries</h1>
 					<Link

@@ -6,7 +6,7 @@
 //
 // Key architectural boundary:
 //   - The SDK provides **host-neutral URL builders and transport-bound
-//     operations** (fetchMe, logout, authorizeUrl, loginUrl).
+//     operations** (fetchUserInfo, logout, authorizeUrl, loginUrl).
 //   - The host owns **HTTP response construction** (302 redirect headers,
 //     Set-Cookie, response body rendering).
 //   - Browser-specific navigation convenience (loginWithRedirect, etc.)
@@ -59,11 +59,12 @@ describe("session-context-client SSR / server-host contract", () => {
 		expect(logoutTarget).toBe("https://auth.example.com/auth/session/logout");
 	});
 
-	it("fetchMe() works against server-forwarded cookies via arbitrary transport", async () => {
+	it("fetchUserInfo() works against server-forwarded cookies via arbitrary transport", async () => {
 		// In SSR, the host forwards the user's cookies via a custom transport
 		// that injects Cookie headers.  The SDK does NOT own cookie handling.
 		const transport = new FakeTransport().on(
-			(request) => request.method === "GET" && request.url.endsWith("/me"),
+			(request) =>
+				request.method === "GET" && request.url.endsWith("/user-info"),
 			(request) => {
 				// Verify the host forwarded the cookie header.
 				expect(request.headers?.cookie).toBe("session=abc123");
@@ -96,14 +97,15 @@ describe("session-context-client SSR / server-host contract", () => {
 			},
 		};
 
-		const session = await client.fetchMe(ssrTransport);
+		const session = await client.fetchUserInfo(ssrTransport);
 		expect(session?.principal.displayName).toBe("SSR User");
 		expect(session?.principal.claims).toEqual({ role: "viewer" });
 	});
 
-	it("fetchMe() returns null when unauthenticated, enabling server-side redirect", async () => {
+	it("fetchUserInfo() returns null when unauthenticated, enabling server-side redirect", async () => {
 		const transport = new FakeTransport().on(
-			(request) => request.method === "GET" && request.url.endsWith("/me"),
+			(request) =>
+				request.method === "GET" && request.url.endsWith("/user-info"),
 			() => ({ status: 401, headers: {}, body: null }),
 		);
 
@@ -111,7 +113,7 @@ describe("session-context-client SSR / server-host contract", () => {
 			baseUrl: "https://auth.example.com",
 		});
 
-		const session = await client.fetchMe(transport);
+		const session = await client.fetchUserInfo(transport);
 		expect(session).toBeNull();
 
 		// Example SSR handler pattern:

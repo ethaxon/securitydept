@@ -29,8 +29,8 @@ export interface SessionContextClientConfig {
 	loginPath?: string;
 	/** Logout path (default: "/logout"). */
 	logoutPath?: string;
-	/** Me endpoint path (default: "/me"). */
-	mePath?: string;
+	/** User info endpoint path (default: "/auth/session/user-info"). */
+	userInfoPath?: string;
 	/** Name of the query parameter for post-auth redirect (default: "post_auth_redirect_uri"). */
 	postAuthRedirectParam?: string;
 	/** Optional key used with `runtime.sessionStore` for pending login redirect state. */

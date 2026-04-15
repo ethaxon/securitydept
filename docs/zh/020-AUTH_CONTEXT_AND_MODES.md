@@ -3,6 +3,18 @@
 > 本文档统一定义 securitydept 认证栈中的 `auth context`、`zone`、`mode`、以及相关产品面与权威边界。  
 > 它替代原先分散的认证上下文、basic-auth zone、OIDC mode family 三份文档。
 
+本文档的职责是：
+
+- 解释 auth context / zone / mode 的概念分层
+- 解释 Rust / TS 两侧的 ownership boundary
+- 解释哪些东西是 context、哪些只是 mode、哪些只是内部 substrate
+
+本文档**不**负责：
+
+- 罗列当前 TS public package / subpath 能力快照：见 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
+- 描述当前优先级、backlog 与延期边界：见 [100-ROADMAP.md](100-ROADMAP.md)
+- 记录具体迁移史：见 [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md)
+
 ## 1. 核心分层
 
 securitydept 认证栈需要分成两层来理解：
@@ -323,7 +335,7 @@ well_known_url = "https://auth.example.com/.well-known/openid-configuration"
 [oidc_client]
 client_id = "my-app"
 client_secret = "secret"
-redirect_url = "/auth/callback"
+redirect_url = "/auth/session/callback"
 
 [oauth_resource_server]
 audiences = ["api://my-app"]
@@ -337,7 +349,8 @@ required_scopes = ["entries.read"]
 - `jwks_uri`
 - metadata / jwks refresh interval
 
-而 `scopes`、`audiences`、`redirect_url` 这类语义明显依赖具体角色的字段，不应被混成统一共享默认值。
+而 `scopes`、`audiences`、`redirect_url` 这类语义明显依赖具体角色的字段，不应被混成统一共享默认值。  
+尤其是 `redirect_url`，当前真实宿主已经要求按具体 flow 显式对齐，例如 session 使用 `/auth/session/callback`，token-set 使用 `/auth/token-set/callback`。
 
 ### 6.4.1 `backend-oidc` 配置面的统一方向
 

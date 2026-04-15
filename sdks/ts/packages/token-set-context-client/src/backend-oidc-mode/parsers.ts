@@ -2,6 +2,7 @@ import { validateWithSchemaSync } from "@securitydept/client";
 import type {
 	BackendOidcModeCallbackReturns,
 	BackendOidcModeRefreshReturns,
+	BackendOidcModeUserInfoResponse,
 } from "./contracts";
 import {
 	BackendOidcModeCallbackBodySchema,
@@ -139,5 +140,35 @@ export function refreshReturnsToTokenDelta(
 		idToken: body.idToken,
 		refreshMaterial: body.refreshToken,
 		accessTokenExpiresAt: body.expiresAt,
+	};
+}
+
+// ---------------------------------------------------------------------------
+// User info response parser
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a raw JSON object (from a 200 OK `/user-info` response) into a
+ * typed user info response.
+ *
+ * Maps snake_case wire format (`display_name`) to camelCase TS
+ * (`displayName`), consistent with all other transport parsers.
+ *
+ * Returns `null` if the required `subject` field is missing.
+ */
+export function parseBackendOidcModeUserInfoBody(
+	body: Record<string, unknown>,
+): BackendOidcModeUserInfoResponse | null {
+	if (typeof body.subject !== "string") return null;
+
+	return {
+		subject: body.subject,
+		displayName: typeof body.display_name === "string" ? body.display_name : "",
+		picture: typeof body.picture === "string" ? body.picture : undefined,
+		issuer: typeof body.issuer === "string" ? body.issuer : undefined,
+		claims:
+			typeof body.claims === "object" && body.claims !== null
+				? (body.claims as Record<string, unknown>)
+				: undefined,
 	};
 }

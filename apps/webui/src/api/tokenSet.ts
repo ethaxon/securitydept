@@ -40,6 +40,8 @@ export interface TokenSetApiRequestOptions {
 	baseUrl?: string;
 	transport?: HttpTransport;
 	cancellationToken?: CancellationTokenTrait;
+	/** Web AbortSignal — bridged to CancellationTokenTrait for React Query compatibility. */
+	abortSignal?: AbortSignal;
 }
 
 export interface ForwardAuthBoundaryProbeResult {
@@ -64,6 +66,18 @@ export interface CreateBasicEntryWithTokenSetRequest {
 export interface CreateGroupWithTokenSetRequest {
 	name: string;
 	entry_ids?: string[];
+}
+
+export interface UpdateGroupWithTokenSetRequest {
+	name: string;
+	entry_ids?: string[];
+}
+
+export interface UpdateEntryWithTokenSetRequest {
+	name?: string;
+	username?: string;
+	password?: string;
+	group_ids?: string[];
 }
 
 export interface PropagationProbeResult {
@@ -110,6 +124,48 @@ function createAuthorizedTokenSetApiTransport(
 	});
 }
 
+/**
+ * Bridge AbortSignal to CancellationTokenTrait so React Query queryFn can
+ * use its built-in signal for automatic cancellation.
+ */
+function resolveCancellationToken(
+	options: TokenSetApiRequestOptions,
+): CancellationTokenTrait | undefined {
+	if (options.cancellationToken) return options.cancellationToken;
+	const signal = options.abortSignal;
+	if (!signal) return undefined;
+
+	// Minimal CancellationTokenTrait wrapping AbortSignal:
+	return {
+		get isCancellationRequested() {
+			return signal.aborted;
+		},
+		get reason() {
+			return signal.reason;
+		},
+		onCancellationRequested(listener: (reason: unknown) => void) {
+			const handler = () => listener(signal.reason);
+			signal.addEventListener("abort", handler);
+			return {
+				dispose() {
+					signal.removeEventListener("abort", handler);
+				},
+			};
+		},
+		throwIfCancellationRequested() {
+			if (signal.aborted) {
+				throw new ClientError({
+					kind: ClientErrorKind.Cancelled,
+					message: "Request was cancelled via AbortSignal",
+					code: "client.cancelled",
+					source: BackendOidcModeContextSource.Client,
+					cause: signal.reason,
+				});
+			}
+		},
+	};
+}
+
 export async function listGroupsWithTokenSet(
 	client: AuthorizationHeaderProviderTrait,
 	options: TokenSetApiRequestOptions = {},
@@ -121,7 +177,7 @@ export async function listGroupsWithTokenSet(
 		headers: {
 			accept: "application/json",
 		},
-		cancellationToken: options.cancellationToken,
+		cancellationToken: resolveCancellationToken(options),
 	});
 
 	if (response.status !== 200 || !Array.isArray(response.body)) {
@@ -142,7 +198,7 @@ export async function listEntriesWithTokenSet(
 		headers: {
 			accept: "application/json",
 		},
-		cancellationToken: options.cancellationToken,
+		cancellationToken: resolveCancellationToken(options),
 	});
 
 	if (response.status !== 200 || !Array.isArray(response.body)) {
@@ -166,7 +222,7 @@ export async function createTokenEntryWithTokenSet(
 			"content-type": "application/json",
 		},
 		body: JSON.stringify(request),
-		cancellationToken: options.cancellationToken,
+		cancellationToken: resolveCancellationToken(options),
 	});
 
 	if (
@@ -196,7 +252,7 @@ export async function createBasicEntryWithTokenSet(
 			"content-type": "application/json",
 		},
 		body: JSON.stringify(request),
-		cancellationToken: options.cancellationToken,
+		cancellationToken: resolveCancellationToken(options),
 	});
 
 	if (
@@ -225,7 +281,7 @@ export async function createGroupWithTokenSet(
 			"content-type": "application/json",
 		},
 		body: JSON.stringify(request),
-		cancellationToken: options.cancellationToken,
+		cancellationToken: resolveCancellationToken(options),
 	});
 
 	if (
@@ -239,6 +295,174 @@ export async function createGroupWithTokenSet(
 	}
 
 	return response.body as Group;
+}
+
+export async function getGroupWithTokenSet(
+	client: AuthorizationHeaderProviderTrait,
+	groupId: string,
+	options: TokenSetApiRequestOptions = {},
+): Promise<Group> {
+	const transport = createAuthorizedTokenSetApiTransport(client, options);
+	const response = await transport.execute({
+		url: `${options.baseUrl ?? ""}/api/groups/${encodeURIComponent(groupId)}`,
+		method: "GET",
+		headers: {
+			accept: "application/json",
+		},
+		cancellationToken: resolveCancellationToken(options),
+	});
+
+	if (
+		response.status !== 200 ||
+		!response.body ||
+		typeof response.body !== "object" ||
+		!("id" in response.body) ||
+		!("name" in response.body)
+	) {
+		throw ClientError.fromHttpResponse(response.status, response.body);
+	}
+
+	return response.body as Group;
+}
+
+export async function updateGroupWithTokenSet(
+	client: AuthorizationHeaderProviderTrait,
+	groupId: string,
+	request: UpdateGroupWithTokenSetRequest,
+	options: TokenSetApiRequestOptions = {},
+): Promise<Group> {
+	const transport = createAuthorizedTokenSetApiTransport(client, options);
+	const response = await transport.execute({
+		url: `${options.baseUrl ?? ""}/api/groups/${encodeURIComponent(groupId)}`,
+		method: "PUT",
+		headers: {
+			accept: "application/json",
+			"content-type": "application/json",
+		},
+		body: JSON.stringify(request),
+		cancellationToken: resolveCancellationToken(options),
+	});
+
+	if (
+		response.status !== 200 ||
+		!response.body ||
+		typeof response.body !== "object" ||
+		!("id" in response.body) ||
+		!("name" in response.body)
+	) {
+		throw ClientError.fromHttpResponse(response.status, response.body);
+	}
+
+	return response.body as Group;
+}
+
+export async function deleteGroupWithTokenSet(
+	client: AuthorizationHeaderProviderTrait,
+	groupId: string,
+	options: TokenSetApiRequestOptions = {},
+): Promise<void> {
+	const transport = createAuthorizedTokenSetApiTransport(client, options);
+	const response = await transport.execute({
+		url: `${options.baseUrl ?? ""}/api/groups/${encodeURIComponent(groupId)}`,
+		method: "DELETE",
+		headers: {
+			accept: "application/json",
+		},
+		cancellationToken: resolveCancellationToken(options),
+	});
+
+	if (
+		response.status !== 200 ||
+		!response.body ||
+		typeof response.body !== "object" ||
+		!("ok" in response.body)
+	) {
+		throw ClientError.fromHttpResponse(response.status, response.body);
+	}
+}
+
+export async function getEntryWithTokenSet(
+	client: AuthorizationHeaderProviderTrait,
+	entryId: string,
+	options: TokenSetApiRequestOptions = {},
+): Promise<AuthEntry> {
+	const transport = createAuthorizedTokenSetApiTransport(client, options);
+	const response = await transport.execute({
+		url: `${options.baseUrl ?? ""}/api/entries/${encodeURIComponent(entryId)}`,
+		method: "GET",
+		headers: {
+			accept: "application/json",
+		},
+		cancellationToken: resolveCancellationToken(options),
+	});
+
+	if (
+		response.status !== 200 ||
+		!response.body ||
+		typeof response.body !== "object" ||
+		!("id" in response.body) ||
+		!("name" in response.body)
+	) {
+		throw ClientError.fromHttpResponse(response.status, response.body);
+	}
+
+	return response.body as AuthEntry;
+}
+
+export async function updateEntryWithTokenSet(
+	client: AuthorizationHeaderProviderTrait,
+	entryId: string,
+	request: UpdateEntryWithTokenSetRequest,
+	options: TokenSetApiRequestOptions = {},
+): Promise<AuthEntry> {
+	const transport = createAuthorizedTokenSetApiTransport(client, options);
+	const response = await transport.execute({
+		url: `${options.baseUrl ?? ""}/api/entries/${encodeURIComponent(entryId)}`,
+		method: "PUT",
+		headers: {
+			accept: "application/json",
+			"content-type": "application/json",
+		},
+		body: JSON.stringify(request),
+		cancellationToken: resolveCancellationToken(options),
+	});
+
+	if (
+		response.status !== 200 ||
+		!response.body ||
+		typeof response.body !== "object" ||
+		!("id" in response.body) ||
+		!("name" in response.body)
+	) {
+		throw ClientError.fromHttpResponse(response.status, response.body);
+	}
+
+	return response.body as AuthEntry;
+}
+
+export async function deleteEntryWithTokenSet(
+	client: AuthorizationHeaderProviderTrait,
+	entryId: string,
+	options: TokenSetApiRequestOptions = {},
+): Promise<void> {
+	const transport = createAuthorizedTokenSetApiTransport(client, options);
+	const response = await transport.execute({
+		url: `${options.baseUrl ?? ""}/api/entries/${encodeURIComponent(entryId)}`,
+		method: "DELETE",
+		headers: {
+			accept: "application/json",
+		},
+		cancellationToken: resolveCancellationToken(options),
+	});
+
+	if (
+		response.status !== 200 ||
+		!response.body ||
+		typeof response.body !== "object" ||
+		!("ok" in response.body)
+	) {
+		throw ClientError.fromHttpResponse(response.status, response.body);
+	}
 }
 
 export async function probeForwardAuthBoundaryWithTokenSet(

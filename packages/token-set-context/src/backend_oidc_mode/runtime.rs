@@ -249,7 +249,7 @@ where
     /// (e.g. redirect URI format).
     pub fn validate(&self) -> BackendOidcModeRuntimeResult<()> {
         if let PostAuthRedirectPolicy::Resolved { ref config } = self.post_auth_redirect {
-            config.validate_as_uri()?;
+            config.validate_as_uri_reference()?;
         }
 
         Ok(())
@@ -291,7 +291,7 @@ where
         // redirect config by type.
         let redirect_uri_resolver = match config.post_auth_redirect {
             PostAuthRedirectPolicy::Resolved { ref config } => {
-                config.validate_as_uri()?;
+                config.validate_as_uri_reference()?;
                 Some(BackendOidcModeRedirectUriResolver::from_config(
                     config.clone(),
                 ))
@@ -372,10 +372,11 @@ where
     fn resolve_post_auth_redirect_uri(
         &self,
         requested: Option<&str>,
+        external_base_url: &Url,
     ) -> BackendOidcModeRuntimeResult<Option<Url>> {
         match &self.redirect_uri_resolver {
             Some(resolver) => resolver
-                .resolve_redirect_uri(requested)
+                .resolve_redirect_uri(requested, external_base_url)
                 .map(Some)
                 .map_err(Into::into),
             None => Ok(None), // caller_validated — no resolution here
@@ -460,12 +461,21 @@ where
     where
         PS: PendingOauthStore,
     {
-        let post_auth_redirect_uri =
-            self.resolve_post_auth_redirect_uri(requested_post_auth_redirect_uri)?;
+        // Validate the requested redirect URI against the allowlist (if the
+        // Resolved policy is active). We discard the resolved Url and store
+        // the *original* requested string — the callback will re-resolve it.
+        // Storing the original avoids a double-resolve mismatch where the
+        // allowlist contains relative paths but the stored value is absolute.
+        if requested_post_auth_redirect_uri.is_some() {
+            let _ = self.resolve_post_auth_redirect_uri(
+                requested_post_auth_redirect_uri,
+                external_base_url,
+            )?;
+        }
 
-        let extra_data = post_auth_redirect_uri.map(|uri| {
+        let extra_data = requested_post_auth_redirect_uri.map(|uri| {
             json!({
-                PENDING_POST_AUTH_REDIRECT_URI_KEY: uri.as_str(),
+                PENDING_POST_AUTH_REDIRECT_URI_KEY: uri,
             })
         });
 
@@ -504,6 +514,7 @@ where
         let post_auth_redirect_uri = if self.redirect_uri_resolver.is_some() {
             self.resolve_post_auth_redirect_uri(
                 callback_post_auth_redirect_uri(&result).as_deref(),
+                external_base_url,
             )?
         } else {
             None
@@ -532,13 +543,17 @@ where
         &self,
         oidc_client: &OidcClient<PS>,
         payload: &BackendOidcModeRefreshPayload,
+        external_base_url: &Url,
     ) -> BackendOidcModeRuntimeResult<BackendOidcModeTokenRefreshResult>
     where
         PS: PendingOauthStore,
     {
         // Resolve post_auth_redirect_uri.
         let post_auth_redirect_uri = if self.redirect_uri_resolver.is_some() {
-            self.resolve_post_auth_redirect_uri(payload.post_auth_redirect_uri.as_deref())?
+            self.resolve_post_auth_redirect_uri(
+                payload.post_auth_redirect_uri.as_deref(),
+                external_base_url,
+            )?
         } else {
             None
         };

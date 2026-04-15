@@ -62,14 +62,14 @@ pub async fn logout(
     Ok(Json(body).into_response())
 }
 
-/// GET /auth/session/me -- return current user info.
-pub async fn me(
+/// GET /auth/session/user-info -- return current user info.
+pub async fn user_info(
     Extension(state): Extension<ServerState>,
     session: Session,
 ) -> ServerResult<Json<UserInfo>> {
     let context = state
         .session_auth_service()
-        .me(session)
+        .user_info(session)
         .await
         .map_err(ServerError::from)?;
 

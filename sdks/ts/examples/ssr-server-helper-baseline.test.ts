@@ -52,9 +52,9 @@ describe("basic-auth server helper — server-host flow", () => {
 // ===========================================================================
 
 describe("session server helper — server-host flow with cookie forwarding", () => {
-	it("fetchMe forwards cookies and returns session info", async () => {
+	it("fetchUserInfo forwards cookies and returns session info", async () => {
 		const transport = new FakeTransport().on(
-			(req) => req.method === "GET" && req.url.endsWith("/me"),
+			(req) => req.method === "GET" && req.url.endsWith("/user-info"),
 			(req) => {
 				// Verify cookie was forwarded from the server request.
 				expect(req.headers?.cookie).toBe("session_id=xyz789");
@@ -76,7 +76,7 @@ describe("session server helper — server-host flow with cookie forwarding", ()
 		});
 
 		// Simulate: server extracts cookies from incoming request.
-		const session = await helper.fetchMe({
+		const session = await helper.fetchUserInfo({
 			headers: { cookie: "session_id=xyz789" },
 		});
 
@@ -87,7 +87,7 @@ describe("session server helper — server-host flow with cookie forwarding", ()
 
 	it("produces login redirect URL when unauthenticated", async () => {
 		const transport = new FakeTransport().on(
-			(req) => req.method === "GET" && req.url.endsWith("/me"),
+			(req) => req.method === "GET" && req.url.endsWith("/user-info"),
 			() => ({ status: 401, headers: {}, body: null }),
 		);
 
@@ -96,7 +96,7 @@ describe("session server helper — server-host flow with cookie forwarding", ()
 			transport,
 		});
 
-		const session = await helper.fetchMe({ headers: {} });
+		const session = await helper.fetchUserInfo({ headers: {} });
 		expect(session).toBeNull();
 
 		// Host builds a redirect response.

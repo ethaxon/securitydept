@@ -37,7 +37,42 @@ export default defineConfig({
 				find: "@securitydept/token-set-context-client/backend-oidc-mode/web",
 				replacement: path.join(
 					packagesDir,
-					"token-set-context-client/src/web/index.ts",
+					"token-set-context-client/src/backend-oidc-mode/web/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/token-set-context-client/backend-oidc-mode",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client/src/backend-oidc-mode/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/token-set-context-client/registry",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client/src/registry/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/token-set-context-client/orchestration",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client/src/orchestration/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/token-set-context-client-react/react-query",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client-react/src/react-query/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/token-set-context-client-react",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client-react/src/index.tsx",
 				),
 			},
 			{

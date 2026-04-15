@@ -1,9 +1,14 @@
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { Save, Users } from "lucide-react";
-import { useEntries } from "@/api/entries";
 import type { Group } from "@/api/groups";
-import { useCreateGroup, useUpdateGroup } from "@/api/groups";
+import { AuthModeNotice } from "@/components/auth/AuthModeNotice";
+import {
+	useDashboardAccessNotice,
+	useDashboardCreateGroupMutation,
+	useDashboardEntriesQuery,
+	useDashboardUpdateGroupMutation,
+} from "@/hooks/useDashboardApi";
 
 const GroupFormMode = {
 	Create: "create",
@@ -23,9 +28,10 @@ function sortedUnique(ids: string[]) {
 export function GroupForm({ mode, group }: GroupFormProps) {
 	const navigate = useNavigate();
 	const isEdit = mode === GroupFormMode.Edit;
-	const createGroup = useCreateGroup();
-	const updateGroup = useUpdateGroup();
-	const { data: entries = [] } = useEntries();
+	const accessNotice = useDashboardAccessNotice();
+	const createGroup = useDashboardCreateGroupMutation();
+	const updateGroup = useDashboardUpdateGroupMutation();
+	const { data: entries = [] } = useDashboardEntriesQuery();
 
 	const initialEntryIds = isEdit
 		? entries
@@ -56,6 +62,15 @@ export function GroupForm({ mode, group }: GroupFormProps) {
 			await navigate({ to: "/groups" });
 		},
 	});
+
+	if (accessNotice) {
+		return (
+			<AuthModeNotice
+				title={accessNotice.title}
+				description={accessNotice.description}
+			/>
+		);
+	}
 
 	return (
 		<form

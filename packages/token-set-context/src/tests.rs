@@ -746,6 +746,7 @@ fn metadata_redemption_store_drops_expired_entries() -> BackendOidcModeRuntimeRe
 
 #[test]
 fn post_auth_redirect_uri_config_resolves_dynamic_allowed_redirect() {
+    let external_base_url = Url::parse("https://app.example.com").expect("base url should parse");
     let post_auth_redirect_uri =
         BackendOidcModeRedirectUriResolver::from_config(BackendOidcModeRedirectUriConfig {
             default_redirect_target: Some("https://app.example.com/default".to_string()),
@@ -755,7 +756,10 @@ fn post_auth_redirect_uri_config_resolves_dynamic_allowed_redirect() {
                     .expect("regex should compile"),
             }],
         })
-        .resolve_redirect_uri(Some("https://app.example.com/callback/tenant-a"))
+        .resolve_redirect_uri(
+            Some("https://app.example.com/callback/tenant-a"),
+            &external_base_url,
+        )
         .expect("redirect should be allowed");
 
     assert_eq!(

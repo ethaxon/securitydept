@@ -12,19 +12,22 @@ import type { AuthStateSnapshot } from "@securitydept/token-set-context-client/b
 import type { BackendOidcModeBootstrapSource as BackendOidcModeBootstrapSourceType } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import {
 	BackendOidcModeBootstrapSource,
-	bootstrapBackendOidcModeClient,
-	createBackendOidcModeBrowserClient,
 	resetBackendOidcModeBrowserState,
-	resolveBackendOidcModeAuthorizeUrl,
-	resolveBackendOidcModeReturnUri,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import {
+	useTokenSetAuthService,
+	useTokenSetAuthState,
+} from "@securitydept/token-set-context-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
 	useState,
 	useSyncExternalStore,
 } from "react";
+import { TOKEN_SET_CLIENT_KEY } from "@/App";
 import type {
 	AuthEntry,
 	CreateBasicEntryResponse,
@@ -34,19 +37,25 @@ import type { Group } from "@/api/groups";
 import {
 	assessPropagationProbeResult,
 	createBasicEntryWithTokenSet,
-	createGroupWithTokenSet,
 	createTokenEntryWithTokenSet,
 	DEFAULT_PROPAGATION_FORWARDER_CONFIG_SNIPPET,
 	DEFAULT_PROPAGATION_PROBE_PATH,
-	listEntriesWithTokenSet,
-	listGroupsWithTokenSet,
 	probeForwardAuthBoundaryWithTokenSet,
 	probeForwardAuthWithBasicEntry,
 	probeForwardAuthWithEntryToken,
 	probePropagationRouteWithTokenSet,
 } from "@/api/tokenSet";
 import { Layout } from "@/components/layout/Layout";
-import { createTraceTimelineStore } from "@/lib/traceTimeline";
+import {
+	tokenSetAppQueryKeys,
+	useCreateGroupMutation,
+	useTokenSetEntriesQuery,
+	useTokenSetGroupsQuery,
+} from "@/hooks/useTokenSetQueries";
+import {
+	type BackendOidcModeReactClient,
+	tokenSetTraceTimeline,
+} from "@/lib/tokenSetClient";
 import {
 	createTokenSetAppTraceRecorder,
 	readTokenSetTraceErrorAttributes,
@@ -66,16 +75,6 @@ type BootstrapStatus =
 			source: BackendOidcModeBootstrapSourceType;
 	  }
 	| { kind: typeof BootstrapStatusKind.Error; message: string };
-
-const ProtectedRequestStatusKind = {
-	Idle: "idle",
-	Loading: "loading",
-	Ready: "ready",
-	Cancelled: "cancelled",
-	Error: "error",
-} as const;
-type ProtectedRequestStatus =
-	(typeof ProtectedRequestStatusKind)[keyof typeof ProtectedRequestStatusKind];
 
 const MutationStatusKind = {
 	Idle: "idle",
@@ -178,14 +177,47 @@ interface LatestBasicEntryCredential {
 const DEFAULT_PROPAGATION_DIRECTIVE =
 	"by=dashboard;for=local-health;host=localhost:7021;proto=http";
 
-function summarizeToken(token: string | undefined): string {
-	if (!token) {
-		return "Unavailable";
-	}
-	if (token.length <= 16) {
-		return token;
-	}
-	return `${token.slice(0, 8)}...${token.slice(-8)}`;
+// A token cell that shows a truncated preview and expands on demand.
+function CollapsibleTokenCell({
+	label,
+	value,
+}: {
+	label: string;
+	value: string | null | undefined;
+}) {
+	const [open, setOpen] = useState(false);
+	const toggle = useCallback(() => setOpen((v) => !v), []);
+
+	const preview =
+		value && value.length > 24
+			? `${value.slice(0, 12)}…${value.slice(-8)}`
+			: (value ?? "Unavailable");
+
+	return (
+		<div className="min-w-0 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+			<div className="flex items-center justify-between gap-2">
+				<p className="text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+					{label}
+				</p>
+				{value && (
+					<button
+						type="button"
+						onClick={toggle}
+						className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+					>
+						{open ? "Collapse" : "Expand"}
+					</button>
+				)}
+			</div>
+			{open ? (
+				<p className="mt-2 break-all font-mono text-sm">{value}</p>
+			) : (
+				<p className="mt-2 truncate font-mono text-sm text-zinc-500 dark:text-zinc-400">
+					{preview}
+				</p>
+			)}
+		</div>
+	);
 }
 
 function readMetadata(snapshot: AuthStateSnapshot | null): string {
@@ -293,34 +325,31 @@ function readMutationStatusText(status: MutationStatus, label: string): string {
 }
 
 export function TokenSetPage() {
-	const traceTimeline = useMemo(() => createTraceTimelineStore(), []);
+	const traceTimeline = tokenSetTraceTimeline;
 	const recordAppTrace = useMemo(
 		() => createTokenSetAppTraceRecorder(traceTimeline),
-		[traceTimeline],
+		[],
 	);
-	const client = useMemo(
-		() =>
-			createBackendOidcModeBrowserClient({
-				defaultPostAuthRedirectUri: resolveBackendOidcModeReturnUri(
-					window.location,
-				),
-				traceSink: traceTimeline,
-			}),
-		[traceTimeline],
-	);
-	const state = useSyncExternalStore(
-		(onStoreChange) => client.state.subscribe(onStoreChange),
-		() => client.state.get(),
-	);
+
+	// --- React canonical consumer path ---
+	// State subscription via canonical hook (replaces manual useSyncExternalStore).
+	// Client access via service for business operations.
+	const service = useTokenSetAuthService(TOKEN_SET_CLIENT_KEY);
+	const state = useTokenSetAuthState(
+		TOKEN_SET_CLIENT_KEY,
+	) as AuthStateSnapshot | null;
+
+	// The service's client is a Proxy over BackendOidcModeClient that
+	// satisfies both ReactClient and the full BackendOidcModeClient surface.
+	// Narrow to BackendOidcModeReactClient so downstream code can call
+	// authorizationHeader(), refresh(), authorizeUrl(), etc.
+	const client = service.client as BackendOidcModeReactClient;
+
 	const traceEvents = useSyncExternalStore(
 		(listener) => traceTimeline.subscribe(listener),
 		() => traceTimeline.get(),
 	);
-	const groupsRequestRef = useRef<CancellationTokenSourceTrait | null>(null);
-	const entriesRequestRef = useRef<CancellationTokenSourceTrait | null>(null);
-	const createGroupRequestRef = useRef<CancellationTokenSourceTrait | null>(
-		null,
-	);
+
 	const createTokenEntryRequestRef =
 		useRef<CancellationTokenSourceTrait | null>(null);
 	const createBasicEntryRequestRef =
@@ -336,16 +365,16 @@ export function TokenSetPage() {
 	});
 	const [busyAction, setBusyAction] = useState<BusyActionKind | null>(null);
 	const [actionError, setActionError] = useState<string | null>(null);
-	const [groupsStatus, setGroupsStatus] = useState<ProtectedRequestStatus>(
-		ProtectedRequestStatusKind.Idle,
-	);
-	const [groupsError, setGroupsError] = useState<string | null>(null);
-	const [protectedGroups, setProtectedGroups] = useState<Group[]>([]);
-	const [entriesStatus, setEntriesStatus] = useState<ProtectedRequestStatus>(
-		ProtectedRequestStatusKind.Idle,
-	);
-	const [entriesError, setEntriesError] = useState<string | null>(null);
-	const [protectedEntries, setProtectedEntries] = useState<AuthEntry[]>([]);
+
+	// --- React Query read paths (replaces imperative loadGroups / loadEntries) ---
+	const queryClient = useQueryClient();
+	const groupsQuery = useTokenSetGroupsQuery(client);
+	const entriesQuery = useTokenSetEntriesQuery(client);
+	const protectedGroups = groupsQuery.data ?? [];
+
+	// --- React Query mutation paths ---
+	const createGroupMutation = useCreateGroupMutation(client);
+	const protectedEntries = entriesQuery.data ?? [];
 	const [selectedGroupId, setSelectedGroupId] = useState("");
 	const [newGroupName, setNewGroupName] = useState("");
 	const [selectedGroupEntryIds, setSelectedGroupEntryIds] = useState<string[]>(
@@ -355,10 +384,7 @@ export function TokenSetPage() {
 	const [newBasicEntryName, setNewBasicEntryName] = useState("");
 	const [newBasicEntryUsername, setNewBasicEntryUsername] = useState("");
 	const [newBasicEntryPassword, setNewBasicEntryPassword] = useState("");
-	const [groupMutationStatus, setGroupMutationStatus] =
-		useState<MutationStatus>({
-			kind: MutationStatusKind.Idle,
-		});
+
 	const [tokenEntryStatus, setTokenEntryStatus] = useState<MutationStatus>({
 		kind: MutationStatusKind.Idle,
 	});
@@ -418,165 +444,52 @@ export function TokenSetPage() {
 		);
 	}, [protectedEntries]);
 
+	// Bootstrap readiness — driven by the provider's auto-restore.
+	// The service.restorePromise tracks the full browser bootstrap
+	// (fragment capture + callback + persistent restore), so we just
+	// await it and update the page-local bootstrap status.
 	useEffect(() => {
 		let active = true;
 
-		void bootstrapBackendOidcModeClient(client)
-			.then((result) => {
-				if (!active) {
-					return;
-				}
-				setBootstrap({
-					kind: BootstrapStatusKind.Ready,
-					source: result.source,
+		const restorePromise = service.restorePromise;
+		if (restorePromise) {
+			void restorePromise
+				.then((snapshot) => {
+					if (!active) return;
+					setBootstrap({
+						kind: BootstrapStatusKind.Ready,
+						source: snapshot
+							? (BackendOidcModeBootstrapSource.Restore as BackendOidcModeBootstrapSourceType)
+							: (BackendOidcModeBootstrapSource.Empty as BackendOidcModeBootstrapSourceType),
+					});
+				})
+				.catch((error: unknown) => {
+					if (!active) return;
+					setBootstrap({
+						kind: BootstrapStatusKind.Error,
+						message:
+							error instanceof Error
+								? error.message
+								: "Token-set bootstrap failed",
+					});
 				});
-			})
-			.catch((error: unknown) => {
-				if (!active) {
-					return;
-				}
-				setBootstrap({
-					kind: BootstrapStatusKind.Error,
-					message:
-						error instanceof Error
-							? error.message
-							: "Token-set bootstrap failed",
-				});
+		} else {
+			// No restore promise means auto-restore is disabled or already done.
+			setBootstrap({
+				kind: BootstrapStatusKind.Ready,
+				source: state
+					? (BackendOidcModeBootstrapSource.Restore as BackendOidcModeBootstrapSourceType)
+					: (BackendOidcModeBootstrapSource.Empty as BackendOidcModeBootstrapSourceType),
 			});
+		}
 
 		return () => {
 			active = false;
-			groupsRequestRef.current?.cancel();
-			entriesRequestRef.current?.cancel();
-			createGroupRequestRef.current?.cancel();
-			createTokenEntryRequestRef.current?.cancel();
-			createBasicEntryRequestRef.current?.cancel();
-			forwardAuthRequestRef.current?.cancel();
-			propagationRequestRef.current?.cancel();
-			groupsRequestRef.current = null;
-			entriesRequestRef.current = null;
-			createGroupRequestRef.current = null;
-			createTokenEntryRequestRef.current = null;
-			createBasicEntryRequestRef.current = null;
 			forwardAuthRequestRef.current = null;
 			propagationRequestRef.current = null;
-			client.dispose();
+			// Client lifecycle is now owned by the provider — no manual dispose.
 		};
-	}, [client]);
-
-	async function loadGroups(): Promise<void> {
-		if (groupsRequestRef.current) {
-			recordAppTrace("token_set.app.groups.load.cancel_requested", {
-				reason: "superseded",
-			});
-		}
-		groupsRequestRef.current?.cancel();
-		const cancellation = createCancellationTokenSource();
-		groupsRequestRef.current = cancellation;
-		setGroupsStatus(ProtectedRequestStatusKind.Loading);
-		setGroupsError(null);
-		recordAppTrace("token_set.app.groups.load.started", {
-			path: "/api/groups",
-		});
-
-		try {
-			const groups = await listGroupsWithTokenSet(client, {
-				cancellationToken: cancellation.token,
-			});
-			if (groupsRequestRef.current !== cancellation) {
-				return;
-			}
-			setProtectedGroups(groups);
-			setGroupsStatus(ProtectedRequestStatusKind.Ready);
-			recordAppTrace("token_set.app.groups.load.succeeded", {
-				path: "/api/groups",
-				count: groups.length,
-			});
-		} catch (error) {
-			if (groupsRequestRef.current !== cancellation) {
-				return;
-			}
-			if (isCancelledClientError(error)) {
-				setGroupsStatus(ProtectedRequestStatusKind.Cancelled);
-				recordAppTrace("token_set.app.groups.load.cancelled", {
-					path: "/api/groups",
-				});
-				return;
-			}
-			setGroupsStatus(ProtectedRequestStatusKind.Error);
-			setGroupsError(
-				readErrorDetails(error, "Failed to load groups via token-set").message,
-			);
-			recordAppTrace("token_set.app.groups.load.failed", {
-				path: "/api/groups",
-				...readTokenSetTraceErrorAttributes(
-					error,
-					"Failed to load groups via token-set",
-				),
-			});
-		} finally {
-			if (groupsRequestRef.current === cancellation) {
-				groupsRequestRef.current = null;
-			}
-		}
-	}
-
-	async function loadEntries(): Promise<void> {
-		if (entriesRequestRef.current) {
-			recordAppTrace("token_set.app.entries.load.cancel_requested", {
-				reason: "superseded",
-			});
-		}
-		entriesRequestRef.current?.cancel();
-		const cancellation = createCancellationTokenSource();
-		entriesRequestRef.current = cancellation;
-		setEntriesStatus(ProtectedRequestStatusKind.Loading);
-		setEntriesError(null);
-		recordAppTrace("token_set.app.entries.load.started", {
-			path: "/api/entries",
-		});
-
-		try {
-			const entries = await listEntriesWithTokenSet(client, {
-				cancellationToken: cancellation.token,
-			});
-			if (entriesRequestRef.current !== cancellation) {
-				return;
-			}
-			setProtectedEntries(entries);
-			setEntriesStatus(ProtectedRequestStatusKind.Ready);
-			recordAppTrace("token_set.app.entries.load.succeeded", {
-				path: "/api/entries",
-				count: entries.length,
-			});
-		} catch (error) {
-			if (entriesRequestRef.current !== cancellation) {
-				return;
-			}
-			if (isCancelledClientError(error)) {
-				setEntriesStatus(ProtectedRequestStatusKind.Cancelled);
-				recordAppTrace("token_set.app.entries.load.cancelled", {
-					path: "/api/entries",
-				});
-				return;
-			}
-			setEntriesStatus(ProtectedRequestStatusKind.Error);
-			setEntriesError(
-				readErrorDetails(error, "Failed to load entries via token-set").message,
-			);
-			recordAppTrace("token_set.app.entries.load.failed", {
-				path: "/api/entries",
-				...readTokenSetTraceErrorAttributes(
-					error,
-					"Failed to load entries via token-set",
-				),
-			});
-		} finally {
-			if (entriesRequestRef.current === cancellation) {
-				entriesRequestRef.current = null;
-			}
-		}
-	}
+	}, [service, state]);
 
 	async function handleRefresh() {
 		setBusyAction(BusyActionKind.Refresh);
@@ -593,16 +506,10 @@ export function TokenSetPage() {
 	async function handleClear() {
 		setBusyAction(BusyActionKind.Clear);
 		setActionError(null);
-		groupsRequestRef.current?.cancel();
-		entriesRequestRef.current?.cancel();
-		createGroupRequestRef.current?.cancel();
 		createTokenEntryRequestRef.current?.cancel();
 		createBasicEntryRequestRef.current?.cancel();
 		forwardAuthRequestRef.current?.cancel();
 		propagationRequestRef.current?.cancel();
-		groupsRequestRef.current = null;
-		entriesRequestRef.current = null;
-		createGroupRequestRef.current = null;
 		createTokenEntryRequestRef.current = null;
 		createBasicEntryRequestRef.current = null;
 		forwardAuthRequestRef.current = null;
@@ -614,12 +521,13 @@ export function TokenSetPage() {
 				kind: BootstrapStatusKind.Ready,
 				source: BackendOidcModeBootstrapSource.Empty,
 			});
-			setProtectedGroups([]);
-			setGroupsStatus(ProtectedRequestStatusKind.Idle);
-			setGroupsError(null);
-			setProtectedEntries([]);
-			setEntriesStatus(ProtectedRequestStatusKind.Idle);
-			setEntriesError(null);
+			// Reset React Query caches — removes cached data and resets to initial state.
+			void queryClient.resetQueries({
+				queryKey: tokenSetAppQueryKeys.groups(TOKEN_SET_CLIENT_KEY),
+			});
+			void queryClient.resetQueries({
+				queryKey: tokenSetAppQueryKeys.entries(TOKEN_SET_CLIENT_KEY),
+			});
 			setSelectedGroupId("");
 			setNewGroupName("");
 			setSelectedGroupEntryIds([]);
@@ -627,7 +535,7 @@ export function TokenSetPage() {
 			setNewBasicEntryName("");
 			setNewBasicEntryUsername("");
 			setNewBasicEntryPassword("");
-			setGroupMutationStatus({ kind: MutationStatusKind.Idle });
+			createGroupMutation.reset();
 			setTokenEntryStatus({ kind: MutationStatusKind.Idle });
 			setBasicEntryStatus({ kind: MutationStatusKind.Idle });
 			setLatestGeneratedEntry(null);
@@ -658,12 +566,6 @@ export function TokenSetPage() {
 
 	async function handleCreateGroup() {
 		if (!newGroupName.trim() || selectedGroupEntryIds.length === 0) {
-			setGroupMutationStatus({
-				kind: MutationStatusKind.Error,
-				message:
-					"Provide a group name and select at least one existing entry first.",
-				recovery: UserRecovery.None,
-			});
 			recordAppTrace("token_set.app.groups.create.validation_failed", {
 				groupNameProvided: newGroupName.trim().length > 0,
 				selectedEntryCount: selectedGroupEntryIds.length,
@@ -671,74 +573,34 @@ export function TokenSetPage() {
 			return;
 		}
 
-		if (createGroupRequestRef.current) {
-			recordAppTrace("token_set.app.groups.create.cancel_requested", {
-				reason: "superseded",
-			});
-		}
-		createGroupRequestRef.current?.cancel();
-		const cancellation = createCancellationTokenSource();
-		createGroupRequestRef.current = cancellation;
-		setGroupMutationStatus({ kind: MutationStatusKind.Loading });
+		const selectedEntryNames = protectedEntries
+			.filter((entry) => selectedGroupEntryIds.includes(entry.id))
+			.map((entry) => entry.name);
+
 		recordAppTrace("token_set.app.groups.create.started", {
 			groupName: newGroupName.trim(),
 			selectedEntryCount: selectedGroupEntryIds.length,
 		});
 
 		try {
-			const selectedEntryNames = protectedEntries
-				.filter((entry) => selectedGroupEntryIds.includes(entry.id))
-				.map((entry) => entry.name);
-			const result = await createGroupWithTokenSet(
-				client,
-				{
-					name: newGroupName.trim(),
-					entry_ids: selectedGroupEntryIds,
-				},
-				{
-					cancellationToken: cancellation.token,
-				},
-			);
-			if (createGroupRequestRef.current !== cancellation) {
-				return;
-			}
+			const result = await createGroupMutation.mutateAsync({
+				name: newGroupName.trim(),
+				entry_ids: selectedGroupEntryIds,
+			});
 
+			// Page-local side effects on success (form reset, latest-created display).
 			setLatestCreatedGroup(result);
 			setLatestCreatedGroupMembers(selectedEntryNames);
 			setNewGroupName("");
 			setSelectedGroupEntryIds([]);
 			setSelectedGroupId(result.id);
-			setGroupMutationStatus({
-				kind: MutationStatusKind.Created,
-				entryName: result.name,
-			});
 			recordAppTrace("token_set.app.groups.create.succeeded", {
 				groupId: result.id,
 				groupName: result.name,
 				selectedEntryCount: selectedEntryNames.length,
 			});
-			await loadGroups();
-			await loadEntries();
+			// Post-mutation invalidation is handled by useCreateGroupMutation.onSuccess.
 		} catch (error) {
-			if (createGroupRequestRef.current !== cancellation) {
-				return;
-			}
-			if (isCancelledClientError(error)) {
-				setGroupMutationStatus({ kind: MutationStatusKind.Cancelled });
-				recordAppTrace("token_set.app.groups.create.cancelled", {
-					groupName: newGroupName.trim(),
-				});
-				return;
-			}
-			const details = readErrorDetails(
-				error,
-				"Failed to create group via token-set",
-			);
-			setGroupMutationStatus({
-				kind: MutationStatusKind.Error,
-				message: details.message,
-				recovery: details.recovery,
-			});
 			recordAppTrace("token_set.app.groups.create.failed", {
 				groupName: newGroupName.trim(),
 				...readTokenSetTraceErrorAttributes(
@@ -746,10 +608,7 @@ export function TokenSetPage() {
 					"Failed to create group via token-set",
 				),
 			});
-		} finally {
-			if (createGroupRequestRef.current === cancellation) {
-				createGroupRequestRef.current = null;
-			}
+			// Error state is owned by createGroupMutation (mutation.error / mutation.isError).
 		}
 	}
 
@@ -810,7 +669,9 @@ export function TokenSetPage() {
 				groupId: selectedGroup.id,
 				groupName: selectedGroup.name,
 			});
-			await loadEntries();
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetAppQueryKeys.entries(TOKEN_SET_CLIENT_KEY),
+			});
 		} catch (error) {
 			if (createTokenEntryRequestRef.current !== cancellation) {
 				return;
@@ -924,7 +785,9 @@ export function TokenSetPage() {
 				groupId: selectedGroup.id,
 				groupName: selectedGroup.name,
 			});
-			await loadEntries();
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetAppQueryKeys.entries(TOKEN_SET_CLIENT_KEY),
+			});
 		} catch (error) {
 			if (createBasicEntryRequestRef.current !== cancellation) {
 				return;
@@ -1403,9 +1266,8 @@ export function TokenSetPage() {
 								<button
 									type="button"
 									onClick={() => {
-										window.location.href = resolveBackendOidcModeAuthorizeUrl(
-											client,
-											window.location,
+										window.location.href = client.authorizeUrl(
+											"/playground/token-set",
 										);
 									}}
 									className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
@@ -1449,14 +1311,14 @@ export function TokenSetPage() {
 						)}
 
 						<div className="grid gap-3 sm:grid-cols-2">
-							<div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-								<p className="text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-									Access Token
-								</p>
-								<p className="mt-2 font-mono text-sm">
-									{summarizeToken(state?.tokens.accessToken)}
-								</p>
-							</div>
+							<CollapsibleTokenCell
+								label="Access Token"
+								value={state?.tokens.accessToken}
+							/>
+							<CollapsibleTokenCell
+								label="ID Token"
+								value={state?.tokens.idToken}
+							/>
 							<div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
 								<p className="text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
 									Refresh Token
@@ -1473,14 +1335,10 @@ export function TokenSetPage() {
 									{state?.tokens.accessTokenExpiresAt ?? "Unavailable"}
 								</p>
 							</div>
-							<div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-								<p className="text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-									Authorization Header
-								</p>
-								<p className="mt-2 font-mono text-sm">
-									{client.authorizationHeader() ?? "Unavailable"}
-								</p>
-							</div>
+							<CollapsibleTokenCell
+								label="Authorization Header"
+								value={client.authorizationHeader()}
+							/>
 						</div>
 					</section>
 
@@ -1509,22 +1367,26 @@ export function TokenSetPage() {
 						<div className="flex flex-wrap gap-2">
 							<button
 								type="button"
-								onClick={() => void loadGroups()}
+								onClick={() => void groupsQuery.refetch()}
 								disabled={
-									groupsStatus === ProtectedRequestStatusKind.Loading ||
+									groupsQuery.isFetching ||
 									bootstrap.kind !== BootstrapStatusKind.Ready ||
 									!state?.tokens.accessToken
 								}
 								className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
 							>
-								{groupsStatus === ProtectedRequestStatusKind.Loading
+								{groupsQuery.isFetching
 									? "Loading Groups..."
 									: "Load Groups via Bearer"}
 							</button>
 							<button
 								type="button"
-								onClick={() => groupsRequestRef.current?.cancel()}
-								disabled={groupsStatus !== ProtectedRequestStatusKind.Loading}
+								onClick={() =>
+									void queryClient.cancelQueries({
+										queryKey: tokenSetAppQueryKeys.groups(TOKEN_SET_CLIENT_KEY),
+									})
+								}
+								disabled={!groupsQuery.isFetching}
 								className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
 							>
 								Cancel Load
@@ -1537,13 +1399,13 @@ export function TokenSetPage() {
 							Request Status
 						</p>
 						<p className="mt-2 text-sm">
-							{groupsStatus === ProtectedRequestStatusKind.Idle
+							{groupsQuery.status === "pending" && !groupsQuery.isFetching
 								? "No protected group request has been issued yet."
-								: `Status: ${groupsStatus}`}
+								: `Status: ${groupsQuery.status}${groupsQuery.isFetching ? " (fetching)" : ""}`}
 						</p>
-						{groupsError && (
+						{groupsQuery.error && (
 							<p className="mt-2 text-sm text-red-600 dark:text-red-400">
-								{groupsError}
+								{groupsQuery.error.message}
 							</p>
 						)}
 					</div>
@@ -1591,24 +1453,22 @@ export function TokenSetPage() {
 						<div className="flex flex-wrap gap-2">
 							<button
 								type="button"
-								onClick={() => void loadEntries()}
+								onClick={() => void entriesQuery.refetch()}
 								disabled={
-									entriesStatus === ProtectedRequestStatusKind.Loading ||
+									entriesQuery.isFetching ||
 									bootstrap.kind !== BootstrapStatusKind.Ready ||
 									!state?.tokens.accessToken
 								}
 								className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
 							>
-								{entriesStatus === ProtectedRequestStatusKind.Loading
+								{entriesQuery.isFetching
 									? "Loading Members..."
 									: "Load Entries for Membership"}
 							</button>
 							<button
 								type="button"
-								onClick={() => createGroupRequestRef.current?.cancel()}
-								disabled={
-									groupMutationStatus.kind !== MutationStatusKind.Loading
-								}
+								onClick={() => createGroupMutation.reset()}
+								disabled={!createGroupMutation.isPending}
 								className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
 							>
 								Cancel Create
@@ -1668,7 +1528,7 @@ export function TokenSetPage() {
 										type="button"
 										onClick={() => void handleCreateGroup()}
 										disabled={
-											groupMutationStatus.kind === MutationStatusKind.Loading ||
+											createGroupMutation.isPending ||
 											bootstrap.kind !== BootstrapStatusKind.Ready ||
 											!state?.tokens.accessToken ||
 											newGroupName.trim().length === 0 ||
@@ -1676,7 +1536,7 @@ export function TokenSetPage() {
 										}
 										className="rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
 									>
-										{groupMutationStatus.kind === MutationStatusKind.Loading
+										{createGroupMutation.isPending
 											? "Creating..."
 											: "Create Group"}
 									</button>
@@ -1689,19 +1549,19 @@ export function TokenSetPage() {
 								Mutation Status
 							</p>
 							<p className="mt-2 text-sm">
-								{readMutationStatusText(groupMutationStatus, "group")}
+								{createGroupMutation.isIdle
+									? "No group mutation has been issued yet."
+									: createGroupMutation.isPending
+										? "Status: loading"
+										: createGroupMutation.isSuccess
+											? `Created ${createGroupMutation.data.name}.`
+											: `Status: ${createGroupMutation.status}`}
 							</p>
-							{groupMutationStatus.kind === MutationStatusKind.Error && (
+							{createGroupMutation.isError && (
 								<p className="mt-2 text-sm text-red-600 dark:text-red-400">
-									{groupMutationStatus.message}
+									{createGroupMutation.error.message}
 								</p>
 							)}
-							{groupMutationStatus.kind === MutationStatusKind.Error &&
-								groupMutationStatus.recovery !== UserRecovery.None && (
-									<p className="mt-2 text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-										Recovery: {groupMutationStatus.recovery}
-									</p>
-								)}
 							{latestCreatedGroup && (
 								<div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/40">
 									<p className="text-xs uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">
@@ -1742,22 +1602,27 @@ export function TokenSetPage() {
 						<div className="flex flex-wrap gap-2">
 							<button
 								type="button"
-								onClick={() => void loadEntries()}
+								onClick={() => void entriesQuery.refetch()}
 								disabled={
-									entriesStatus === ProtectedRequestStatusKind.Loading ||
+									entriesQuery.isFetching ||
 									bootstrap.kind !== BootstrapStatusKind.Ready ||
 									!state?.tokens.accessToken
 								}
 								className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
 							>
-								{entriesStatus === ProtectedRequestStatusKind.Loading
+								{entriesQuery.isFetching
 									? "Loading Entries..."
 									: "Load Entries via Bearer"}
 							</button>
 							<button
 								type="button"
-								onClick={() => entriesRequestRef.current?.cancel()}
-								disabled={entriesStatus !== ProtectedRequestStatusKind.Loading}
+								onClick={() =>
+									void queryClient.cancelQueries({
+										queryKey:
+											tokenSetAppQueryKeys.entries(TOKEN_SET_CLIENT_KEY),
+									})
+								}
+								disabled={!entriesQuery.isFetching}
 								className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
 							>
 								Cancel Load
@@ -1964,13 +1829,13 @@ export function TokenSetPage() {
 								Protected Entries
 							</p>
 							<p className="mt-2 text-sm">
-								{entriesStatus === ProtectedRequestStatusKind.Idle
+								{entriesQuery.status === "pending" && !entriesQuery.isFetching
 									? "No protected entry request has been issued yet."
-									: `Status: ${entriesStatus}`}
+									: `Status: ${entriesQuery.status}${entriesQuery.isFetching ? " (fetching)" : ""}`}
 							</p>
-							{entriesError && (
+							{entriesQuery.error && (
 								<p className="mt-2 text-sm text-red-600 dark:text-red-400">
-									{entriesError}
+									{entriesQuery.error.message}
 								</p>
 							)}
 							<div className="mt-4 space-y-3">

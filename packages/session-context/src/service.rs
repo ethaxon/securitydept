@@ -54,7 +54,7 @@ impl securitydept_utils::error::ToErrorPresentation for SessionAuthServiceError 
 
 /// Trait for session-based authentication services.
 ///
-/// Provides login, logout, and me operations using tower-sessions.
+/// Provides login, logout, and user_info operations using tower-sessions.
 pub trait SessionAuthServiceTrait {
     fn session_context_config(&self) -> &SessionContextConfig;
     fn login(
@@ -79,7 +79,7 @@ pub trait SessionAuthServiceTrait {
         })
     }
 
-    fn me(
+    fn user_info(
         &self,
         session: Session,
     ) -> impl Future<Output = Result<SessionContext<HashMap<String, Value>>, SessionAuthServiceError>>
@@ -197,7 +197,11 @@ where
             .ok_or(SessionAuthServiceError::OidcDisabled)?;
 
         let code_callback_result = oidc
-            .handle_code_callback(search_params, external_base_url)
+            .handle_code_callback_with_redirect_override(
+                search_params,
+                external_base_url,
+                Some("/auth/session/callback"),
+            )
             .await
             .map_err(|source| SessionAuthServiceError::Oidc { source })?;
         let claims_check_result = code_callback_result.claims_check_result;
@@ -244,8 +248,13 @@ where
         external_base_url: &Url,
     ) -> Result<HttpResponse, SessionAuthServiceError> {
         if let Some(oidc) = self.oidc_client {
+            // Session OIDC callback lives at /auth/session/callback — override
+            // the default redirect_url so the IdP returns to the correct path.
             let authorization_request = oidc
-                .handle_code_authorize(external_base_url)
+                .handle_code_authorize_with_redirect_override(
+                    external_base_url,
+                    Some("/auth/session/callback"),
+                )
                 .await
                 .map_err(|source| SessionAuthServiceError::Oidc { source })?;
             let authorization_url = authorization_request.authorization_url;
@@ -399,11 +408,11 @@ mod tests {
         let session = test_session();
         let base_url = test_base_url();
 
-        // Before login, me() should fail with MissingContext.
-        let me_before = service.me(session.clone()).await;
+        // Before login, user_info() should fail with MissingContext.
+        let me_before = service.user_info(session.clone()).await;
         assert!(
             me_before.is_err(),
-            "me() should fail when no session context exists"
+            "user_info() should fail when no session context exists"
         );
 
         // Login.
@@ -412,11 +421,11 @@ mod tests {
             .await
             .expect("login should succeed");
 
-        // After login, me() should return the dev context.
+        // After login, user_info() should return the dev context.
         let context = service
-            .me(session.clone())
+            .user_info(session.clone())
             .await
-            .expect("me() should succeed after login");
+            .expect("user_info() should succeed after login");
 
         assert_eq!(context.principal.display_name, "dev");
     }
@@ -446,9 +455,9 @@ mod tests {
 
         // Session should contain the dev principal.
         let context = service
-            .me(session.clone())
+            .user_info(session.clone())
             .await
-            .expect("me() should succeed after dev-fallback login");
+            .expect("user_info() should succeed after dev-fallback login");
         assert_eq!(context.principal.display_name, "dev");
     }
 
@@ -473,11 +482,11 @@ mod tests {
         let result = service.logout(session.clone()).await;
         assert!(result.is_ok(), "logout should succeed");
 
-        // me() should fail after logout.
-        let me_after = service.me(session.clone()).await;
+        // user_info() should fail after logout.
+        let me_after = service.user_info(session.clone()).await;
         assert!(
             me_after.is_err(),
-            "me() should fail after logout/flush"
+            "user_info() should fail after logout/flush"
         );
     }
 }

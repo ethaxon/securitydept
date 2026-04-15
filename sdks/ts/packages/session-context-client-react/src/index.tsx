@@ -69,7 +69,7 @@ export function SessionContextProvider({
 	useEffect(() => {
 		let cancelled = false;
 		setLoading(true);
-		client.fetchMe(transport).then((result) => {
+		client.fetchUserInfo(transport).then((result) => {
 			if (!cancelled) {
 				setSession(result);
 				setLoading(false);

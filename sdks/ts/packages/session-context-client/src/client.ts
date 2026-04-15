@@ -19,7 +19,7 @@ import {
 
 const DEFAULT_LOGIN_PATH = "/auth/session/login";
 const DEFAULT_LOGOUT_PATH = "/auth/session/logout";
-const DEFAULT_ME_PATH = "/auth/session/me";
+const DEFAULT_USER_INFO_PATH = "/auth/session/user-info";
 const DEFAULT_POST_AUTH_REDIRECT_PARAM = "post_auth_redirect_uri";
 const DEFAULT_LOGIN_REDIRECT_STATE_KEY =
 	"securitydept.session_context.pending_login_redirect";
@@ -27,14 +27,14 @@ const DEFAULT_LOGIN_REDIRECT_STATE_KEY =
 /**
  * Session Context Client.
  *
- * Provides login/logout URL construction, session probing via `/me`, and
+ * Provides login/logout URL construction, session probing via `/user-info`, and
  * minimal session-scoped flow state for login redirect intent.
  */
 export class SessionContextClient {
 	private readonly _baseUrl: string;
 	private readonly _loginPath: string;
 	private readonly _logoutPath: string;
-	private readonly _mePath: string;
+	private readonly _userInfoPath: string;
 	private readonly _postAuthRedirectParam: string;
 	private readonly _pendingLoginRedirectStore?: EphemeralFlowStore<string>;
 	private readonly _loginRedirectStateKey: string;
@@ -46,7 +46,7 @@ export class SessionContextClient {
 		this._baseUrl = config.baseUrl.replace(/\/+$/, "");
 		this._loginPath = config.loginPath ?? DEFAULT_LOGIN_PATH;
 		this._logoutPath = config.logoutPath ?? DEFAULT_LOGOUT_PATH;
-		this._mePath = config.mePath ?? DEFAULT_ME_PATH;
+		this._userInfoPath = config.userInfoPath ?? DEFAULT_USER_INFO_PATH;
 		this._postAuthRedirectParam =
 			config.postAuthRedirectParam ?? DEFAULT_POST_AUTH_REDIRECT_PARAM;
 		this._loginRedirectStateKey =
@@ -121,18 +121,18 @@ export class SessionContextClient {
 	}
 
 	/**
-	 * Fetch the current session info from `/me`.
+	 * Fetch the current session info from `/user-info`.
 	 *
 	 * Returns `null` only for 401/403 (unauthenticated).
 	 * Throws `ClientError` for any other non-2xx response to distinguish
 	 * server failures from unauthenticated state.
 	 */
-	async fetchMe(
+	async fetchUserInfo(
 		transport: HttpTransport,
 		cancellationToken?: CancellationTokenTrait,
 	): Promise<SessionInfo | null> {
 		const response = await transport.execute({
-			url: this._baseUrl + this._mePath,
+			url: this._baseUrl + this._userInfoPath,
 			method: "GET",
 			headers: {},
 			cancellationToken,
@@ -155,7 +155,7 @@ export class SessionContextClient {
 		transport: HttpTransport,
 		cancellationToken?: CancellationTokenTrait,
 	): Promise<boolean> {
-		const me = await this.fetchMe(transport, cancellationToken);
+		const me = await this.fetchUserInfo(transport, cancellationToken);
 		return me !== null;
 	}
 
@@ -205,8 +205,8 @@ function normalizeSessionInfo(body: unknown): SessionInfo {
 
 	throw new ClientError({
 		kind: ClientErrorKind.Protocol,
-		code: "session.invalid_me_payload",
-		message: "Session /me payload is invalid",
+		code: "session.invalid_user_info_payload",
+		message: "Session /user-info payload is invalid",
 		source: SessionContextSource.SessionContext,
 	});
 }

@@ -23,7 +23,7 @@ function createTestTransport(
 }
 
 describe("SessionContextClient", () => {
-	it("normalizes the current /me user payload into SessionInfo", async () => {
+	it("normalizes the current /user-info user payload into SessionInfo", async () => {
 		const transport = createTestTransport(() => ({
 			status: 200,
 			headers: {},
@@ -38,7 +38,7 @@ describe("SessionContextClient", () => {
 			baseUrl: "https://api.example.com",
 		});
 
-		const result = await client.fetchMe(transport);
+		const result = await client.fetchUserInfo(transport);
 		expect(result).toEqual({
 			principal: {
 				displayName: "Alice",
@@ -58,7 +58,7 @@ describe("SessionContextClient", () => {
 			baseUrl: "https://api.example.com",
 		});
 
-		const result = await client.fetchMe(transport);
+		const result = await client.fetchUserInfo(transport);
 		expect(result).toBeNull();
 	});
 
@@ -72,7 +72,7 @@ describe("SessionContextClient", () => {
 			baseUrl: "https://api.example.com",
 		});
 
-		const result = await client.fetchMe(transport);
+		const result = await client.fetchUserInfo(transport);
 		expect(result).toBeNull();
 	});
 
@@ -88,7 +88,7 @@ describe("SessionContextClient", () => {
 		});
 
 		try {
-			await client.fetchMe(transport);
+			await client.fetchUserInfo(transport);
 			expect.fail("should have thrown");
 		} catch (err) {
 			expect(err).toBeInstanceOf(ClientError);
@@ -98,7 +98,7 @@ describe("SessionContextClient", () => {
 		}
 	});
 
-	it("throws ClientError for invalid /me payloads", async () => {
+	it("throws ClientError for invalid /user-info payloads", async () => {
 		const transport = createTestTransport(() => ({
 			status: 200,
 			headers: {},
@@ -109,10 +109,10 @@ describe("SessionContextClient", () => {
 			baseUrl: "https://api.example.com",
 		});
 
-		await expect(client.fetchMe(transport)).rejects.toMatchObject({
+		await expect(client.fetchUserInfo(transport)).rejects.toMatchObject({
 			name: "ClientError",
 			kind: ClientErrorKind.Protocol,
-			code: "session.invalid_me_payload",
+			code: "session.invalid_user_info_payload",
 			source: SessionContextSource.SessionContext,
 		});
 	});
@@ -154,7 +154,7 @@ describe("SessionContextClient", () => {
 		const transport = createTestTransport((request) => {
 			requests.push(request);
 			return {
-				status: request.url.endsWith("/me") ? 401 : 200,
+				status: request.url.endsWith("/user-info") ? 401 : 200,
 				headers: {},
 				body: {},
 			};
@@ -164,7 +164,7 @@ describe("SessionContextClient", () => {
 			baseUrl: "https://api.example.com",
 		});
 
-		await client.fetchMe(transport, cancellationToken);
+		await client.fetchUserInfo(transport, cancellationToken);
 		await client.logout(transport, cancellationToken);
 
 		expect(requests).toHaveLength(2);

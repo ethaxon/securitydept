@@ -1,6 +1,11 @@
 import type { UserRecovery } from "@securitydept/client";
+import { AuthContextMode, resolveAuthContextMode } from "@/lib/authContext";
 
-const BASE = "";
+/** API path prefix — prepends `/basic` when using basic auth so that
+ *  `/api/entries` becomes `/basic/api/entries`. */
+function resolveApiBase(): string {
+	return resolveAuthContextMode() === AuthContextMode.Basic ? "/basic" : "";
+}
 
 type ApiErrorPayload = {
 	error?:
@@ -28,7 +33,8 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-	const res = await fetch(`${BASE}${path}`, {
+	const base = resolveApiBase();
+	const res = await fetch(`${base}${path}`, {
 		headers: {
 			"Content-Type": "application/json",
 			...options.headers,

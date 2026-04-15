@@ -2,8 +2,8 @@ import { createRuntime } from "@securitydept/client";
 import { createWebRuntime } from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
 import {
+	buildAuthorizeUrlReturningToCurrent,
 	createBackendOidcModeBrowserClient,
-	resolveBackendOidcModeAuthorizeUrl,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { describe, expect, it, vi } from "vitest";
 
@@ -26,13 +26,13 @@ describe("minimal entry points", () => {
 			baseUrl: "https://auth.example.com",
 		});
 
-		const session = await client.fetchMe(runtime.transport);
+		const session = await client.fetchUserInfo(runtime.transport);
 
 		expect(session?.principal.displayName).toBe("Alice");
 		expect(transport.execute).toHaveBeenCalledWith(
 			expect.objectContaining({
 				method: "GET",
-				url: "https://auth.example.com/auth/session/me",
+				url: "https://auth.example.com/auth/session/user-info",
 			}),
 		);
 	});
@@ -65,7 +65,7 @@ describe("minimal entry points", () => {
 		});
 
 		expect(
-			resolveBackendOidcModeAuthorizeUrl(client, {
+			buildAuthorizeUrlReturningToCurrent(client, {
 				href: "https://app.example.com/oidc-mediated#callback",
 			}),
 		).toBe(
@@ -107,7 +107,7 @@ describe("minimal entry points", () => {
 		});
 
 		expect(
-			resolveBackendOidcModeAuthorizeUrl(client, {
+			buildAuthorizeUrlReturningToCurrent(client, {
 				href: "https://app.example.com/dashboard",
 			}),
 		).toBe(

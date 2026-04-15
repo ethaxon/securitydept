@@ -30,6 +30,12 @@ export default defineConfig(({ mode }) => {
 						Forwarded: "for=127.0.0.1;proto=http;host=localhost:7022",
 					},
 				},
+				"/basic": {
+					target: backendUrl,
+					headers: {
+						Forwarded: "for=127.0.0.1;proto=http;host=localhost:7022",
+					},
+				},
 			},
 			port: 7022,
 		},
