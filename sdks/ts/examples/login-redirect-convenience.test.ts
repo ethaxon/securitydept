@@ -223,12 +223,15 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 			expect(locationMock.href).toContain("client_id=spa-client");
 			expect(locationMock.href).toContain("prompt=consent");
 			expect(locationMock.href).toContain("code_challenge=");
-		});
 
-		// Pending state should be stored (authorizeUrl stores it internally).
-		const pendingKey = "securitydept.frontend_oidc.pending";
-		const pendingRaw = await sessionStore.get(pendingKey);
-		expect(pendingRaw).toBeTruthy();
+			const authorizeUrl = new URL(locationMock.href);
+			const state = authorizeUrl.searchParams.get("state");
+			expect(state).toBeTruthy();
+
+			const pendingKey = `securitydept.frontend_oidc.pending:${state}`;
+			const pendingRaw = await sessionStore.get(pendingKey);
+			expect(pendingRaw).toBeTruthy();
+		});
 
 		client.dispose();
 	});

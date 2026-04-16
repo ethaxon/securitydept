@@ -4,6 +4,10 @@
 export interface RecordStore {
 	get(key: string): Promise<string | null>;
 	set(key: string, value: string): Promise<void>;
+	/**
+	 * Atomically read and remove a record within the store's consistency domain.
+	 */
+	take?(key: string): Promise<string | null>;
 	remove(key: string): Promise<void>;
 }
 
@@ -33,6 +37,14 @@ export interface EphemeralFlowStore<T> {
 	save(value: T): Promise<void>;
 	consume(): Promise<T | null>;
 	clear(): Promise<void>;
+}
+
+/** Semantic store for keyed ephemeral flow state (one-time-use per key). */
+export interface KeyedEphemeralFlowStore<T> {
+	load(key: string): Promise<T | null>;
+	save(key: string, value: T): Promise<void>;
+	take(key: string): Promise<T | null>;
+	clear(key: string): Promise<void>;
 }
 
 /** Versioned storage envelope — first-version migration support. */

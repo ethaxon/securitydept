@@ -12,6 +12,14 @@ export function createLocalStorageStore(prefix = ""): RecordStore {
 		async set(key: string, value: string): Promise<void> {
 			globalThis.localStorage.setItem(prefix + key, value);
 		},
+		async take(key: string): Promise<string | null> {
+			const storageKey = prefix + key;
+			const value = globalThis.localStorage.getItem(storageKey);
+			if (value !== null) {
+				globalThis.localStorage.removeItem(storageKey);
+			}
+			return value;
+		},
 		async remove(key: string): Promise<void> {
 			globalThis.localStorage.removeItem(prefix + key);
 		},
@@ -29,6 +37,14 @@ export function createSessionStorageStore(prefix = ""): RecordStore {
 		},
 		async set(key: string, value: string): Promise<void> {
 			globalThis.sessionStorage.setItem(prefix + key, value);
+		},
+		async take(key: string): Promise<string | null> {
+			const storageKey = prefix + key;
+			const value = globalThis.sessionStorage.getItem(storageKey);
+			if (value !== null) {
+				globalThis.sessionStorage.removeItem(storageKey);
+			}
+			return value;
 		},
 		async remove(key: string): Promise<void> {
 			globalThis.sessionStorage.removeItem(prefix + key);

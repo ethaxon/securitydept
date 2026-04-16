@@ -1,0 +1,26 @@
+[server]
+host = "127.0.0.1"
+port = {{ serverPort }}
+external_base_url = "{{ webuiBaseUrl }}"
+
+[oidc]
+client_id = "{{ oidcClientId }}"
+well_known_url = "{{ oidcWellKnownUrl }}"
+
+[oidc_client]
+scopes = ["openid", "profile", "email", "offline_access"]
+pkce_enabled = true
+
+[frontend_oidc_override]
+unsafe_frontend_client_secret = "disabled"
+
+[oauth_resource_server]
+
+[creds_manage]
+data_path = "{{ dataPath }}"
+
+[basic_auth_context]
+
+[[basic_auth_context.users]]
+username = "admin"
+password_hash = "$argon2id$v=19$m=19456,t=2,p=1$SkhQcmVBWmtTT2hoRUxZcWJsQlVwUQ$8qiuSJai40tUAxqbEEvoc1QBzkyOCY6sLH9DXJHt2/Y"

@@ -10,6 +10,7 @@
 		"**/vite*.ts",
 		"**/vite*.mts",
 		"**/scripts/**/*.ts",
-		"*/claims-script-check.mts"
+		"*/claims-script-check.mts",
+		"**/skills/**/*.ts"
 	]
 }

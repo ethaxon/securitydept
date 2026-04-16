@@ -1,0 +1,23 @@
+{
+	"name": "@securitydept/e2e-utils",
+	"version": "0.1.0",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"monorepo-tsc": "./src/index.ts",
+			"types": "./dist/index.d.mts",
+			"import": "./dist/index.mjs"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc -b"
+	},
+	"dependencies": {
+		"nunjucks": "^3.2.4"
+	}
+}

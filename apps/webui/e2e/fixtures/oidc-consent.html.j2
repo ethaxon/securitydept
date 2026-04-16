@@ -1,0 +1,11 @@
+{% extends "_oidc-layout.html.j2" %}
+{% set title = "SecurityDept E2E Consent" %}
+
+{% block content %}
+<h1>Approve Browser Callback</h1>
+<p><code>{{ clientId | escape }}</code> is asking for a browser-owned authorization code flow with PKCE and redirect
+    restoration back to the playground route.</p>
+<form method="post" action="/interaction/{{ uid | escape }}/confirm">
+    <button id="oidc-approve" type="submit">Approve access</button>
+</form>
+{% endblock %}

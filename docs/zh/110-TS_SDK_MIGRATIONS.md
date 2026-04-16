@@ -44,6 +44,55 @@ TS SDK 当前处于 `0.x` 阶段。这不意味着"随便改" — 而是**允许
 
 ## 迁移说明
 
+### 2026-04-20 @securitydept/token-set-context-client-react —— browser-owned host route 的结构化 callback failure details
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `@securitydept/token-set-context-client-react`
+
+**变更**：
+
+browser-owned callback host 不再需要解析不透明的 callback error message。
+
+- `CallbackResumeState` 现在在既有 `error` 之外额外暴露 `errorDetails`
+- `@securitydept/token-set-context-client-react` 现在导出 `CallbackResumeErrorDetails` 与 `readCallbackResumeErrorDetails(error)`
+- canonical reference host route 现在基于结构化 `code` / `recovery` 渲染稳定的 callback-failure product state（`callback.unknown_state`、`callback.pending_stale`、`callback.pending_client_mismatch`、`callback.duplicate_state`），而不是继续依赖 raw message text
+
+**迁移**：
+
+1. 如果你的 host route 已经消费 `useTokenSetCallbackResume()`，渲染 callback failure 时优先读取 `state.errorDetails`。
+2. 如果你的 host route 只拿到 `unknown` error，请改用 `readCallbackResumeErrorDetails(error)`，不要再解析 `error.message` 来推断 callback 语义。
+3. callback failure 断言应改为面向稳定的 `code` / `recovery` 输出，而不是依赖英文 message 片段。
+
+**理由**：
+
+iteration 118 已经在 SDK core 中正式化 single-consume callback semantics，但 host route 仍要从不透明错误文本反推产品行为。iteration 119 通过在 React adapter boundary 暴露 typed callback-failure surface，并在 reference app 的 browser-owned callback route 上完成验证，补齐了这条 owner boundary 上的语义缺口。
+
+### 2026-04-20 @securitydept/client/persistence 与 @securitydept/token-set-context-client/frontend-oidc-mode —— atomic single-consume callback state 正式下沉到 foundation persistence contract
+
+**Discipline**: `stable-deprecation-first` 与 `provisional-migration-required`
+
+**Subpath**: `@securitydept/client/persistence` 与 `@securitydept/token-set-context-client/frontend-oidc-mode`
+
+**变更**：
+
+browser-owned callback correctness contract 现在正式依赖 foundation 层的 single-consume capability，而不再建立在 app-level `load() + remove()` 近似之上。
+
+- `RecordStore` 现在公开 `take(key)` capability，用于 store 一致性域内的 atomic read-and-remove
+- 仓库内提供的内存、`localStorage` 与 `sessionStorage` store 都直接实现了这项能力
+- `createEphemeralFlowStore()` 与 `createKeyedEphemeralFlowStore()` 在消费一次性 flow state 时，现已要求 `RecordStore.take()`
+- `frontend-oidc-mode` 的 keyed pending callback state 现在把 duplicate replay、missing state、stale state 与 client mismatch 视为建立在该 consume contract 之上的正式 callback semantics
+
+**迁移**：
+
+1. 如果你提供自定义 `RecordStore`，并把它用于 `createEphemeralFlowStore()` 或 `createKeyedEphemeralFlowStore()`，请补上 `take(key)`，以一次 store-level step 完成读取和移除。
+2. 不要再在宿主代码里通过 `get()` 再 `remove()` 的方式模拟 callback / redirect state 的 single-consume。
+3. 如果你过去按一个固定 key 读取 frontend OIDC pending state，请迁移到 keyed pending-state 形状（`pending:${state}`），并把重复 callback replay 视为 `callback.duplicate_state`，而不是静默 no-op。
+
+**理由**：
+
+iteration 118 已把 browser-owned frontend OIDC flow 收口到 keyed pending state 与 duplicate callback detection，但高层 correctness contract 仍然踩在更弱的 `load() + remove()` 近似之上。把 consume primitive 下沉到 shared persistence contract，才是在正确 owner boundary 上补齐语义缺口。
+
 ### 2026-04-19 @securitydept/token-set-context-client-react 与 ./react-query —— canonical React token-set consumer path 收口到 keyed SDK owner
 
 **Discipline**: `provisional-migration-required`

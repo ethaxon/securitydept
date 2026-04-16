@@ -21,13 +21,14 @@ layout {
         children
     }
     tab name="WebUI" {
-        pane command="just" {
-            args "dev-webui"
+        pane command="pnpm" {
+            args "dev"
+            cwd "apps/webui"
         }
     }
     tab name="Server" {
-        pane command="just" {
-            args "dev-server"
+        pane command="watchexec" {
+            args "watchexec --watch apps/server --watch packages --watch config.toml --exts rs,toml -- cargo run --manifest-path apps/server/Cargo.toml"
         }
     }
 }

@@ -200,6 +200,7 @@
 2. **验证抽象与输入/runtime 完整性**
    - ~~真实 SDK 级别的 `@standard-schema` 采用，而不只是 guide 偏好~~（已实现：`createSchema` / `validateWithSchema` 位于 `@securitydept/client`；真实采用体现在 `session-context-client.fetchUserInfo()`、`frontend-oidc-mode.parseConfigProjection()`、`BasicAuthContextClient` config validation、`parseBackendOidcModeCallbackBody` / `parseBackendOidcModeRefreshBody`）
    - ~~在当前 raw scheduler abstraction 之上补出最小 unified input-source / scheduling baseline~~（已实现：`timer`、`interval`、`scheduleAt`、`fromEventPattern` 位于 `@securitydept/client`；`fromVisibilityChange` 位于 `@securitydept/client/web`；真实采用见 `FrontendOidcModeClient`）
+   - ~~为浏览器 redirect / callback flow 建立正式 atomic single-consume persistence~~（iteration 118 已实现、iteration 119 已 productize：`@securitydept/client/persistence` 现已定义 `RecordStore.take()` capability；仓库内内存 / 浏览器 store 已实现；`createEphemeralFlowStore()` 与 `createKeyedEphemeralFlowStore()` 依赖该能力；`frontend-oidc-mode` callback 现已把 keyed pending state、duplicate replay、stale state 与 client mismatch 视为 contract-level correctness，而 React callback host 与 browser e2e 进一步把这些 failure 证明为稳定、浏览器可见的结果）
 
 3. **login-trigger convenience 收口**
    - ~~`session-context-client`：从 URL-only helper 前进到最小 redirect-trigger convenience~~（已实现：`session-context-client/web` 中的 `loginWithRedirect()`）

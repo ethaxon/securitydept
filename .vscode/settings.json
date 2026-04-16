@@ -44,7 +44,11 @@
 	"chat.tools.terminal.autoApprove": {
 		"mise": true,
 		"just": true,
-		"mv": true
+		"mv": true,
+		"watchexec": true,
+		"pgrep": true,
+		"lsof": true,
+		"true": true
 	},
 	"ruff.format.preview": true
 }

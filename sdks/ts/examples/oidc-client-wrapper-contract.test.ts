@@ -14,6 +14,7 @@
 // protocol steps (discovery, token exchange) need a real server, so we test
 // the wrapper's structural guarantees and error boundaries.
 
+import { createInMemoryRecordStore } from "@securitydept/client";
 import type {
 	FrontendOidcModeClientConfig,
 	FrontendOidcModeTokenResult,
@@ -23,6 +24,8 @@ import { describe, expect, it, vi } from "vitest";
 
 // Minimal runtime stub for tests that don't make real requests
 function createTestRuntime() {
+	const sessionStore = createInMemoryRecordStore();
+
 	return {
 		transport: {
 			execute: vi.fn(async () => ({
@@ -39,11 +42,7 @@ function createTestRuntime() {
 		clock: {
 			now: () => Date.now(),
 		},
-		sessionStore: {
-			get: vi.fn(async () => null),
-			set: vi.fn(async () => {}),
-			remove: vi.fn(async () => {}),
-		},
+		sessionStore,
 	};
 }
 

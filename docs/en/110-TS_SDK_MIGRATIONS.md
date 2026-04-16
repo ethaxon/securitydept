@@ -44,6 +44,55 @@ Entry format:
 
 ## Migration Notes
 
+### 2026-04-20 @securitydept/token-set-context-client-react — structured callback failure details for browser-owned host routes
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `@securitydept/token-set-context-client-react`
+
+**Change**:
+
+Browser-owned callback hosts no longer need to parse opaque callback error messages.
+
+- `CallbackResumeState` now exposes `errorDetails` alongside the existing `error`
+- `@securitydept/token-set-context-client-react` now exports `CallbackResumeErrorDetails` and `readCallbackResumeErrorDetails(error)`
+- the canonical reference host route now renders stable callback-failure product states (`callback.unknown_state`, `callback.pending_stale`, `callback.pending_client_mismatch`, `callback.duplicate_state`) from structured `code` / `recovery` details rather than raw message text
+
+**Migration**:
+
+1. If your host route already consumes `useTokenSetCallbackResume()`, prefer `state.errorDetails` when rendering callback failures.
+2. If your host route only receives an `unknown` error, use `readCallbackResumeErrorDetails(error)` instead of parsing `error.message` for callback semantics.
+3. Update callback failure assertions to target stable `code` / `recovery` output rather than English message fragments.
+
+**Justification**:
+
+Iteration 118 formalised single-consume callback semantics in the SDK core, but host routes still had to infer product behavior from opaque error text. Iteration 119 closes that gap by making the typed callback-failure surface available at the React adapter boundary and proving it through the reference app's browser-owned callback route.
+
+### 2026-04-20 @securitydept/client/persistence and @securitydept/token-set-context-client/frontend-oidc-mode — atomic single-consume callback state formalised on the foundation persistence contract
+
+**Discipline**: `stable-deprecation-first` and `provisional-migration-required`
+
+**Subpath**: `@securitydept/client/persistence` and `@securitydept/token-set-context-client/frontend-oidc-mode`
+
+**Change**:
+
+The browser-owned callback correctness contract now depends on a formal foundation-level single-consume capability instead of an app-level `load() + remove()` approximation.
+
+- `RecordStore` now exposes the `take(key)` capability for atomic read-and-remove within the store's consistency domain
+- repo-provided in-memory, `localStorage`, and `sessionStorage` stores implement that capability directly
+- `createEphemeralFlowStore()` and `createKeyedEphemeralFlowStore()` now require `RecordStore.take()` when one-time flow state is consumed
+- `frontend-oidc-mode` keyed pending callback state now treats duplicate replay, missing state, stale state, and client mismatch as formal callback semantics built on that consume contract
+
+**Migration**:
+
+1. If you provide a custom `RecordStore` and use it with `createEphemeralFlowStore()` or `createKeyedEphemeralFlowStore()`, add a `take(key)` implementation that reads and removes in one store-level step.
+2. Do not emulate single-consume in host code by calling `get()` then `remove()` around callback or redirect state.
+3. If you were reading frontend OIDC pending state from one fixed key, move to the keyed pending-state model (`pending:${state}`) and treat duplicate callback replay as `callback.duplicate_state` rather than a silent no-op.
+
+**Justification**:
+
+Iteration 118 hardened the browser-owned frontend OIDC flow around keyed pending state and duplicate callback detection, but that higher-level contract was still sitting on a weaker `load() + remove()` approximation. Moving the consume primitive into the shared persistence contract closes the semantic gap at the correct owner boundary.
+
 ### 2026-04-19 @securitydept/token-set-context-client-react and ./react-query — canonical React token-set consumer path tightened around keyed SDK ownership
 
 **Discipline**: `provisional-migration-required`
@@ -664,7 +713,7 @@ Compile-time OIDC credentials baked into the frontend bundle prevent backend-dri
 | `@securitydept/client` | `./web-router` | Raw Web router baseline (`createNavigationAdapter`, `createWebRouter`, `isNavigationApiAvailable`, `NavigationAdapterKind`, `WebRouteDefinition`, `WebRouteMatch`, `WebRouteMatcher`, `WebRouter`, `defineWebRoute`, `extractFullRouteRequirements`, `RequirementsClientSetComposition`). Navigation API-first, History API + `popstate` fallback. Full-route aggregation with `inherit` / `merge` / `replace` composition at parity with Angular / TanStack Router adapters (review-1 follow-up). |
 | `@securitydept/token-set-context-client` | `./registry` | Framework-neutral multi-client registry core (`createTokenSetAuthRegistry`, `TokenSetAuthRegistry`, `ClientInitializationPriority`, `ClientReadinessState`, `OidcModeClient`, `OidcCallbackClient`, `ClientMeta`, `TokenSetClientEntry`, `ClientQueryOptions`). The shared managed OIDC client contract owner now lives here rather than being duplicated inside Angular / React adapters. |
 | `@securitydept/token-set-context-client-react` | `./react-query` | Token-set React Query consumer subpath for canonical groups / entries read/write workflows (`tokenSetQueryKeys`, `useTokenSetReadinessQuery`, `useTokenSetAuthorizationHeader`, `invalidateTokenSetQueriesForClient`, query hooks, mutation hooks, and token-set management contracts). **Not a standalone package**: optional peer `@tanstack/react-query`. |
-| `@securitydept/token-set-context-client-react` | `.` (additive) | `TokenSetAuthService`, `TokenSetAuthProvider`, `useTokenSetAuthRegistry`, `useTokenSetAuthService`, `useTokenSetAuthState`, `useTokenSetAccessToken`, `useTokenSetCallbackResume`, `CallbackResumeState`, `CallbackResumeStatus`, `TokenSetCallbackComponent` with a retained `TokenSetCallbackOutlet` compatibility alias. Angular-parity multi-client story on React. The callback hook awaits `registry.whenReady(clientKey)` before `handleCallback()`, so async / lazy clients no longer silently drop callbacks (review-1 follow-up). |
+| `@securitydept/token-set-context-client-react` | `.` (additive) | `TokenSetAuthService`, `TokenSetAuthProvider`, `useTokenSetAuthRegistry`, `useTokenSetAuthService`, `useTokenSetAuthState`, `useTokenSetAccessToken`, `useTokenSetCallbackResume`, `CallbackResumeState`, `CallbackResumeStatus`, `CallbackResumeErrorDetails`, `readCallbackResumeErrorDetails`, `TokenSetCallbackComponent` with a retained `TokenSetCallbackOutlet` compatibility alias. Angular-parity multi-client story on React. The callback hook awaits `registry.whenReady(clientKey)` before `handleCallback()`, and now exposes structured callback-failure details so browser-owned host routes can render stable failure states without parsing raw error text. |
 
 **Breaking migrations**
 

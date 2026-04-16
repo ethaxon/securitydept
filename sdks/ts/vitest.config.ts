@@ -208,6 +208,7 @@ export default defineConfig({
 	test: {
 		include: [
 			"packages/*/src/**/__tests__/**/*.test.ts",
+			"packages/*/src/**/__tests__/**/*.test.tsx",
 			"examples/**/*.test.ts",
 		],
 		// Load @angular/compiler JIT so partial-compiled ng-packagr output works.

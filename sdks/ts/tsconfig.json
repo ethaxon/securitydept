@@ -5,6 +5,7 @@
 		{ "path": "./packages/client-angular" },
 		{ "path": "./packages/client-react" },
 		{ "path": "./packages/test-utils" },
+		{ "path": "./packages/e2e-utils" },
 		{ "path": "./packages/basic-auth-context-client" },
 		{ "path": "./packages/basic-auth-context-client-angular" },
 		{ "path": "./packages/basic-auth-context-client-react" },

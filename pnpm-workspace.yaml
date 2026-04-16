@@ -2,6 +2,7 @@ packages:
   - apps/webui
   - sdks/ts
   - sdks/ts/packages/*
+  - .agents/skills/playwright-skill
 
 onlyBuiltDependencies:
   - "@j178/prek"

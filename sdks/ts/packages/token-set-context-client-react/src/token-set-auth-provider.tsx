@@ -29,17 +29,15 @@ import {
 	useEffect,
 	useMemo,
 	useRef,
-	useState,
 	useSyncExternalStore,
 } from "react";
 import type {
-	OidcCallbackClient,
-	OidcModeClient,
 	TokenSetBackendOidcClient,
 	TokenSetClientEntry,
 	TokenSetReactClient,
 } from "./contracts";
 import { TokenSetAuthService } from "./token-set-auth-service";
+import { disposeCallbackResumeCache } from "./token-set-callback";
 
 // ---------------------------------------------------------------------------
 // Registry context
@@ -127,6 +125,7 @@ export function TokenSetAuthProvider({
 			}
 			queueMicrotask(() => {
 				if (mountCountRef.current <= 0) {
+					disposeCallbackResumeCache(registry);
 					registry.dispose();
 				}
 			});
@@ -203,226 +202,4 @@ export function useTokenSetAuthState(
 export function useTokenSetAccessToken(key: string): string | null {
 	const snapshot = useTokenSetAuthState(key);
 	return snapshot?.tokens.accessToken ?? null;
-}
-
-// ---------------------------------------------------------------------------
-// Callback resume hook + outlet
-// ---------------------------------------------------------------------------
-
-export interface UseTokenSetCallbackResumeOptions {
-	/**
-	 * Source of the current URL. Defaults to `window.location.href` when
-	 * available. Tests or SSR can inject their own.
-	 */
-	getCurrentUrl?: () => string | undefined;
-}
-
-/**
- * Tri-state lifecycle of an OIDC callback resume driven by the registry.
- *
- * - `idle`     — the current URL is not an OIDC callback for any registered
- *                client. Outlets should render their `fallback` slot.
- * - `pending`  — a client key was matched; the registry is either
- *                materializing the client (async / lazy factory in flight)
- *                or `handleCallback()` is running. Outlets should render
- *                `pending`.
- * - `resolved` — `handleCallback()` succeeded; `result` is available.
- * - `error`    — either `whenReady()` or `handleCallback()` rejected. The
- *                registry did not side-effect anything that requires
- *                rollback; adopters choose whether to retry or surface the
- *                error.
- */
-export const CallbackResumeStatus = {
-	Idle: "idle",
-	Pending: "pending",
-	Resolved: "resolved",
-	Error: "error",
-} as const;
-export type CallbackResumeStatus =
-	(typeof CallbackResumeStatus)[keyof typeof CallbackResumeStatus];
-
-export interface CallbackResumeState {
-	clientKey: string | null;
-	status: CallbackResumeStatus;
-	result: { snapshot: unknown; postAuthRedirectUri?: string } | null;
-	error: unknown;
-}
-
-/**
- * Detect whether the current URL is an OIDC callback for some registered
- * client and drive the canonical resume path:
- *
- * 1. Match the URL to a client key via `registry.clientKeyForCallback()`.
- * 2. Await `registry.whenReady(clientKey)` — this triggers materialization
- *    for lazy clients and waits out async factories for primary clients
- *    that have not yet settled. This is the line that closes the async
- *    readiness gap reported by iteration 110 review-1: the callback path
- *    no longer silently no-ops when the service has not been materialized
- *    yet.
- * 3. Call `service.client.handleCallback(currentUrl)`.
- *
- * The returned state is Suspense-friendly (`status` tracks the lifecycle)
- * and can be consumed directly by `TokenSetCallbackComponent` or by adopter
- * components rendering their own pending UX.
- */
-export function useTokenSetCallbackResume(
-	options: UseTokenSetCallbackResumeOptions = {},
-): CallbackResumeState {
-	const registry = useTokenSetAuthRegistry();
-	const currentUrl =
-		options.getCurrentUrl?.() ??
-		(typeof window !== "undefined" ? window.location.href : undefined);
-
-	const clientKey = useMemo(() => {
-		if (!currentUrl) return null;
-		return registry.clientKeyForCallback(currentUrl) ?? null;
-	}, [registry, currentUrl]);
-
-	const [state, setState] = useState<CallbackResumeState>(() => ({
-		clientKey,
-		status:
-			clientKey && currentUrl
-				? CallbackResumeStatus.Pending
-				: CallbackResumeStatus.Idle,
-		result: null,
-		error: null,
-	}));
-
-	useEffect(() => {
-		if (!clientKey || !currentUrl) {
-			setState({
-				clientKey: null,
-				status: CallbackResumeStatus.Idle,
-				result: null,
-				error: null,
-			});
-			return;
-		}
-		let cancelled = false;
-		setState({
-			clientKey,
-			status: CallbackResumeStatus.Pending,
-			result: null,
-			error: null,
-		});
-		void (async () => {
-			try {
-				const service = await registry.whenReady(clientKey);
-				if (cancelled) return;
-				const result = await service.client.handleCallback(currentUrl);
-				if (cancelled) return;
-				setState({
-					clientKey,
-					status: CallbackResumeStatus.Resolved,
-					result,
-					error: null,
-				});
-			} catch (error) {
-				if (cancelled) return;
-				setState({
-					clientKey,
-					status: CallbackResumeStatus.Error,
-					result: null,
-					error,
-				});
-			}
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [registry, clientKey, currentUrl]);
-
-	return state;
-}
-
-// Ensure types are referenced so imports are not elided.
-export type {
-	OidcCallbackClient,
-	OidcModeClient,
-	TokenSetBackendOidcClient,
-	TokenSetReactClient,
-};
-
-export interface TokenSetCallbackComponentProps {
-	/**
-	 * Optional render prop for the pending state (registry warming the
-	 * client or `handleCallback()` in flight).
-	 */
-	pending?: ReactNode;
-	/**
-	 * Optional render prop for the "not a callback URL" state.
-	 */
-	fallback?: ReactNode;
-	/**
-	 * Called after successful callback resolution. Typical adoption uses
-	 * this to navigate to `postAuthRedirectUri` via the host router.
-	 */
-	onResolved?: (result: {
-		clientKey: string;
-		postAuthRedirectUri: string | undefined;
-	}) => void;
-	/**
-	 * Called when the callback could not be resolved (invalid state, PKCE
-	 * mismatch, registry materialization error, etc.). Default behaviour
-	 * renders `fallback`.
-	 */
-	onError?: (error: unknown) => void;
-}
-
-/**
- * Drop-in component for an OIDC callback route. Looks at the current URL,
- * finds the matching client via the registry (including async/lazy
- * clients — they are awaited via `registry.whenReady()`), and drives
- * `client.handleCallback(url)`. Renders `pending` while the callback is
- * in flight and `fallback` when the URL is not a recognised callback.
- */
-export function TokenSetCallbackComponent({
-	pending,
-	fallback,
-	onResolved,
-	onError,
-}: TokenSetCallbackComponentProps): ReactNode {
-	const state = useTokenSetCallbackResume();
-	const resolvedRef = useRef(false);
-	const erroredRef = useRef(false);
-
-	useEffect(() => {
-		if (
-			state.status === CallbackResumeStatus.Resolved &&
-			state.clientKey &&
-			!resolvedRef.current
-		) {
-			resolvedRef.current = true;
-			onResolved?.({
-				clientKey: state.clientKey,
-				postAuthRedirectUri: state.result?.postAuthRedirectUri,
-			});
-		}
-		if (state.status === CallbackResumeStatus.Error && !erroredRef.current) {
-			erroredRef.current = true;
-			onError?.(state.error);
-		}
-	}, [
-		state.status,
-		state.clientKey,
-		state.result,
-		state.error,
-		onResolved,
-		onError,
-	]);
-
-	switch (state.status) {
-		case CallbackResumeStatus.Idle:
-			return fallback ?? null;
-		case CallbackResumeStatus.Pending:
-			return pending ?? null;
-		case CallbackResumeStatus.Resolved:
-			return null;
-		case CallbackResumeStatus.Error:
-			return fallback ?? null;
-		default: {
-			const _exhaustive: never = state.status;
-			return _exhaustive;
-		}
-	}
 }

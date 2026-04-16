@@ -26,3 +26,4 @@ temp/*
 **/.DS_Store
 **/.angular-build
 **/dist-tsc
+**/test-results

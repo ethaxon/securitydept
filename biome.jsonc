@@ -58,7 +58,8 @@
 			"!.vite",
 			"!.vitest",
 			"!assets",
-			"!**/*.local.*"
+			"!**/*.local.*",
+			"!**/skills"
 		]
 	},
 	"overrides": [

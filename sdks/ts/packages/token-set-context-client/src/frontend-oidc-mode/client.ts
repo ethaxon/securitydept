@@ -27,14 +27,15 @@
 import type {
 	CancelableHandle,
 	ClientRuntime,
-	EphemeralFlowStore,
+	KeyedEphemeralFlowStore,
 } from "@securitydept/client";
 import {
 	ClientError,
 	ClientErrorKind,
-	createEphemeralFlowStore,
+	createKeyedEphemeralFlowStore,
 	interval,
 	LogLevel,
+	UserRecovery,
 } from "@securitydept/client";
 import {
 	openPopupWindow,
@@ -43,6 +44,7 @@ import {
 } from "@securitydept/client/web";
 import {
 	type AuthorizationServer,
+	allowInsecureRequests,
 	authorizationCodeGrantRequest,
 	type Client,
 	None as ClientNone,
@@ -62,6 +64,7 @@ import {
 	validateAuthResponse,
 } from "oauth4webapi";
 import { BaseOidcModeClient } from "../orchestration/index";
+import { FrontendOidcModeCallbackErrorCode } from "./callback-error-codes";
 import type {
 	FrontendOidcModeClaimsCheckResult,
 	FrontendOidcModeClaimsCheckScript,
@@ -86,11 +89,23 @@ import { FrontendOidcModeContextSource } from "./types";
 
 const DEFAULT_REFRESH_WINDOW_MS = 60_000;
 const DEFAULT_PERSISTENCE_KEY_PREFIX = "securitydept.frontend_oidc";
-const PENDING_STATE_KEY = "securitydept.frontend_oidc.pending";
+const PENDING_STATE_KEY_PREFIX = "securitydept.frontend_oidc.pending";
+const CONSUMED_STATE_KEY_PREFIX = "securitydept.frontend_oidc.consumed";
 const PENDING_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const CONSUMED_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const TRACE_SCOPE = "frontend-oidc-mode";
 const TRACE_SOURCE = FrontendOidcModeContextSource.Client;
 const TRACE_PREFIX = "frontend_oidc";
+
+interface FrontendOidcModeConsumedState {
+	consumedAt: number;
+}
+
+type PendingStateTakeResult =
+	| { kind: "taken"; pending: FrontendOidcModePendingState }
+	| { kind: "missing" }
+	| { kind: "duplicate" }
+	| { kind: "stale"; pending: FrontendOidcModePendingState };
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -112,6 +127,15 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> {
 	const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
 	const json = new TextDecoder().decode(bytes);
 	return JSON.parse(json);
+}
+
+function isLoopbackHttpIssuerUrl(url: URL): boolean {
+	return (
+		url.protocol === "http:" &&
+		(url.hostname === "localhost" ||
+			url.hostname === "127.0.0.1" ||
+			url.hostname === "::1")
+	);
 }
 
 /**
@@ -207,7 +231,9 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	private _authServer: AuthorizationServer | null = null;
 
 	// --- Pending state ---
-	private _pendingStore: EphemeralFlowStore<FrontendOidcModePendingState> | null =
+	private _pendingStore: KeyedEphemeralFlowStore<FrontendOidcModePendingState> | null =
+		null;
+	private _consumedStateStore: KeyedEphemeralFlowStore<FrontendOidcModeConsumedState> | null =
 		null;
 
 	// --- Metadata refresh ---
@@ -242,9 +268,14 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 		if (runtime.sessionStore) {
 			this._pendingStore =
-				createEphemeralFlowStore<FrontendOidcModePendingState>({
+				createKeyedEphemeralFlowStore<FrontendOidcModePendingState>({
 					store: runtime.sessionStore,
-					key: PENDING_STATE_KEY,
+					keyPrefix: PENDING_STATE_KEY_PREFIX,
+				});
+			this._consumedStateStore =
+				createKeyedEphemeralFlowStore<FrontendOidcModeConsumedState>({
+					store: runtime.sessionStore,
+					keyPrefix: CONSUMED_STATE_KEY_PREFIX,
 				});
 		}
 	}
@@ -287,6 +318,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			await this._savePendingState({
 				codeVerifier: result.codeVerifier,
 				state: result.state,
+				contextSource: FrontendOidcModeContextSource.Client,
+				issuer: this._config.issuer,
+				clientId: this._config.clientId,
+				redirectUri: this._config.redirectUri,
 				nonce: result.nonce,
 				postAuthRedirectUri: effectiveRedirectUri,
 				createdAt: this._runtime.clock.now(),
@@ -371,27 +406,57 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 				throw new ClientError({
 					kind: ClientErrorKind.Protocol,
 					message: "Callback URL missing state parameter",
-					code: "callback.missing_state",
+					code: FrontendOidcModeCallbackErrorCode.MissingState,
+					recovery: UserRecovery.RestartFlow,
 					source: TRACE_SCOPE,
 				});
 			}
 
-			const pending = await this._consumePendingState();
-			if (!pending) {
+			const pendingResult = await this._takePendingState(state);
+			if (pendingResult.kind === "missing") {
 				throw new ClientError({
 					kind: ClientErrorKind.Protocol,
 					message:
-						"No pending authorization state found for this callback (expired or never started)",
-					code: "callback.pending_not_found",
+						"No pending authorization state exists for this callback state",
+					code: FrontendOidcModeCallbackErrorCode.UnknownState,
+					recovery: UserRecovery.RestartFlow,
 					source: TRACE_SCOPE,
 				});
 			}
 
-			if (pending.state !== state) {
+			if (pendingResult.kind === "duplicate") {
 				throw new ClientError({
 					kind: ClientErrorKind.Protocol,
-					message: "OAuth state mismatch between callback and pending state",
-					code: "callback.state_mismatch",
+					message: "This callback state has already been consumed",
+					code: FrontendOidcModeCallbackErrorCode.DuplicateState,
+					recovery: UserRecovery.RestartFlow,
+					source: TRACE_SCOPE,
+				});
+			}
+
+			if (pendingResult.kind === "stale") {
+				throw new ClientError({
+					kind: ClientErrorKind.Protocol,
+					message: "Pending authorization state expired before callback",
+					code: FrontendOidcModeCallbackErrorCode.PendingStale,
+					recovery: UserRecovery.RestartFlow,
+					source: TRACE_SCOPE,
+				});
+			}
+
+			const pending = pendingResult.pending;
+			if (
+				pending.contextSource !== FrontendOidcModeContextSource.Client ||
+				pending.issuer !== this._config.issuer ||
+				pending.clientId !== this._config.clientId ||
+				pending.redirectUri !== this._config.redirectUri
+			) {
+				throw new ClientError({
+					kind: ClientErrorKind.Protocol,
+					message:
+						"Pending authorization state does not belong to this frontend OIDC client",
+					code: FrontendOidcModeCallbackErrorCode.PendingClientMismatch,
+					recovery: UserRecovery.RestartFlow,
 					source: TRACE_SCOPE,
 				});
 			}
@@ -536,7 +601,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	async discover(): Promise<void> {
 		const configuredIssuer = this._config.issuer;
 		const configuredIssuerUrl = new URL(configuredIssuer);
-		const response = await discoveryRequest(configuredIssuerUrl);
+		const response = await discoveryRequest(
+			configuredIssuerUrl,
+			this._oauthRequestOptions(),
+		);
 		const compatibleIssuer = await resolveDiscoveryIssuerCompatibility(
 			response,
 			configuredIssuer,
@@ -619,6 +687,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			params,
 			this._config.redirectUri,
 			this._pkceEnabled ? (codeVerifier ?? nopkce) : nopkce,
+			this._oauthRequestOptions(),
 		);
 
 		const result = await processAuthorizationCodeResponse(
@@ -644,6 +713,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			this._o4wClient,
 			this._clientAuth,
 			refreshToken,
+			this._oauthRequestOptions(),
 		);
 
 		const result = await processRefreshTokenResponse(
@@ -665,6 +735,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			authServer,
 			this._o4wClient,
 			accessToken,
+			this._oauthRequestOptions(),
 		);
 
 		const claims = await processUserInfoResponse(
@@ -746,6 +817,15 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 					c.userinfoSigningAlgValuesSupported,
 			}),
 		};
+	}
+
+	private _oauthRequestOptions():
+		| { [allowInsecureRequests]: true }
+		| undefined {
+		const issuerUrl = new URL(this._config.issuer);
+		return isLoopbackHttpIssuerUrl(issuerUrl)
+			? { [allowInsecureRequests]: true }
+			: undefined;
 	}
 
 	private _requireAuthServer(method: string): AuthorizationServer {
@@ -969,10 +1049,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	}
 
 	// =======================================================================
-	// Private: Pending state management (EphemeralFlowStore)
+	// Private: Pending state management (KeyedEphemeralFlowStore)
 	// =======================================================================
 
-	private _requirePendingStore(): EphemeralFlowStore<FrontendOidcModePendingState> {
+	private _requirePendingStore(): KeyedEphemeralFlowStore<FrontendOidcModePendingState> {
 		if (!this._pendingStore) {
 			throw new ClientError({
 				kind: ClientErrorKind.Configuration,
@@ -985,19 +1065,70 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		return this._pendingStore;
 	}
 
+	private _requireConsumedStateStore(): KeyedEphemeralFlowStore<FrontendOidcModeConsumedState> {
+		if (!this._consumedStateStore) {
+			throw new ClientError({
+				kind: ClientErrorKind.Configuration,
+				message:
+					"FrontendOidcModeClient requires runtime.sessionStore for redirect-based flows",
+				code: "frontend_oidc.no_session_store",
+				source: TRACE_SCOPE,
+			});
+		}
+		return this._consumedStateStore;
+	}
+
 	private async _savePendingState(
 		pending: FrontendOidcModePendingState,
 	): Promise<void> {
-		await this._requirePendingStore().save(pending);
+		await this._clearConsumedState(pending.state);
+		await this._requirePendingStore().save(pending.state, pending);
 	}
 
-	private async _consumePendingState(): Promise<FrontendOidcModePendingState | null> {
-		const pending = await this._requirePendingStore().consume();
-		if (!pending) return null;
+	private async _takePendingState(
+		state: string,
+	): Promise<PendingStateTakeResult> {
+		const pending = await this._requirePendingStore().take(state);
+		if (!pending) {
+			const consumedState = await this._loadConsumedState(state);
+			return consumedState ? { kind: "duplicate" } : { kind: "missing" };
+		}
+
 		if (this._runtime.clock.now() - pending.createdAt > PENDING_STATE_TTL_MS) {
+			return { kind: "stale", pending };
+		}
+
+		await this._markConsumedState(state);
+		return { kind: "taken", pending };
+	}
+
+	private async _markConsumedState(state: string): Promise<void> {
+		await this._requireConsumedStateStore().save(state, {
+			consumedAt: this._runtime.clock.now(),
+		});
+	}
+
+	private async _loadConsumedState(
+		state: string,
+	): Promise<FrontendOidcModeConsumedState | null> {
+		const consumedState = await this._requireConsumedStateStore().load(state);
+		if (!consumedState) {
 			return null;
 		}
-		return pending;
+
+		if (
+			this._runtime.clock.now() - consumedState.consumedAt >
+			CONSUMED_STATE_TTL_MS
+		) {
+			await this._clearConsumedState(state);
+			return null;
+		}
+
+		return consumedState;
+	}
+
+	private async _clearConsumedState(state: string): Promise<void> {
+		await this._requireConsumedStateStore().clear(state);
 	}
 
 	// =======================================================================

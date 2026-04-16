@@ -28,7 +28,12 @@
 					"stability": "stable",
 					"owner": "foundation",
 					"changeDiscipline": "stable-deprecation-first",
-					"evidence": ["examples/standard-schema-adoption.test.ts"],
+					"note": "Owns the low-level persistence contracts used by browser login/callback flows, including the RecordStore atomic take capability and the keyed ephemeral flow-store helpers that formalise single-consume redirect state.",
+					"evidence": [
+						"examples/standard-schema-adoption.test.ts",
+						"packages/client/src/persistence/__tests__/ephemeral-flow-store.test.ts",
+						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client.test.ts"
+					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Persistence"
@@ -393,11 +398,13 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Iteration 110 + 116 — React 19 productization plus canonical keyed consumer-path closeout. Adds TokenSetAuthProvider, useTokenSetAuthRegistry / useTokenSetAuthService / useTokenSetAuthState / useTokenSetAccessToken, useTokenSetCallbackResume, TokenSetCallbackComponent (with a retained TokenSetCallbackOutlet compatibility alias), and the SDK-owned lower-level keyed accessor useTokenSetBackendOidcClient(clientKey) on top of the framework-neutral registry core (@securitydept/token-set-context-client/registry).",
+					"note": "Iteration 110 + 116 + 119 — React 19 productization, canonical keyed consumer-path closeout, and browser-owned callback failure-path productization. Adds TokenSetAuthProvider, useTokenSetAuthRegistry / useTokenSetAuthService / useTokenSetAuthState / useTokenSetAccessToken, useTokenSetCallbackResume, CallbackResumeErrorDetails, readCallbackResumeErrorDetails, TokenSetCallbackComponent (with a retained TokenSetCallbackOutlet compatibility alias), and the SDK-owned lower-level keyed accessor useTokenSetBackendOidcClient(clientKey) on top of the framework-neutral registry core (@securitydept/token-set-context-client/registry). Callback hosts now consume structured callback-failure details rather than parsing raw message text.",
 					"evidence": [
+						"packages/token-set-context-client-react/src/__tests__/token-set-auth-provider.test.tsx",
 						"packages/token-set-context-client-react/src/__tests__/adapter.test.ts",
 						"examples/backend-oidc-react-minimal-entry.test.ts",
-						"examples/react-multi-client-registry-baseline.test.ts"
+						"examples/react-multi-client-registry-baseline.test.ts",
+						"../../apps/webui/e2e/frontend-oidc.spec.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",

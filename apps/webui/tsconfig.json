@@ -1,59 +1,14 @@
 {
-	"extends": "../../tsconfig.base.json",
-	"compilerOptions": {
-		"skipLibCheck": true,
-		"outDir": "./dist-tsc",
-		"rootDir": "./src",
-		"paths": {
-			"@/*": ["./src/*"],
-			"@securitydept/client-react/tanstack-router": [
-				"../../sdks/ts/packages/client-react/src/tanstack-router/index.ts"
-			],
-			"@securitydept/token-set-context-client/backend-oidc-mode/web": [
-				"../../sdks/ts/packages/token-set-context-client/src/backend-oidc-mode/web/index.ts"
-			],
-			"@securitydept/token-set-context-client/backend-oidc-mode": [
-				"../../sdks/ts/packages/token-set-context-client/src/backend-oidc-mode/index.ts"
-			],
-			"@securitydept/token-set-context-client/registry": [
-				"../../sdks/ts/packages/token-set-context-client/src/registry/index.ts"
-			],
-			"@securitydept/token-set-context-client/orchestration": [
-				"../../sdks/ts/packages/token-set-context-client/src/orchestration/index.ts"
-			],
-			"@securitydept/token-set-context-client-react/react-query": [
-				"../../sdks/ts/packages/token-set-context-client-react/src/react-query/index.ts"
-			],
-			"@securitydept/token-set-context-client-react": [
-				"../../sdks/ts/packages/token-set-context-client-react/src/index.tsx"
-			]
-		},
-		"target": "es2022",
-		"lib": ["esnext", "dom"],
-		"jsx": "react-jsx"
-	},
-	"include": ["src/**/*.ts", "src/**/*.tsx"],
-	"exclude": [
-		"**/node_modules",
-		"**/dist",
-		"src/**/__tests__/**/*.ts",
-		"src/**/__tests__/**/*.tsx"
-	],
+	"files": [],
 	"references": [
 		{
-			"path": "../../sdks/ts/packages/client"
+			"path": "./tsconfig.app.json"
 		},
 		{
-			"path": "../../sdks/ts/packages/client-react"
+			"path": "./tsconfig.test.json"
 		},
 		{
-			"path": "../../sdks/ts/packages/session-context-client"
-		},
-		{
-			"path": "../../sdks/ts/packages/token-set-context-client"
-		},
-		{
-			"path": "../../sdks/ts/packages/token-set-context-client-react"
+			"path": "./tsconfig.e2e.json"
 		}
 	]
 }

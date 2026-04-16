@@ -6,6 +6,9 @@
 	"scripts": {
 		"build": "vite build && shx cp -r dist ../../webui",
 		"dev": "vite dev",
+		"e2e:prepare": "pnpm --filter @securitydept/e2e-utils build",
+		"e2e": "pnpm run e2e:prepare && playwright test -c playwright.config.ts",
+		"e2e:headed": "pnpm run e2e:prepare && playwright test -c playwright.config.ts --headed",
 		"test": "vitest run",
 		"typecheck": "tsc --noEmit"
 	},
@@ -27,6 +30,7 @@
 		"tailwind-merge": "^3.3.0"
 	},
 	"devDependencies": {
+		"@securitydept/e2e-utils": "workspace:*",
 		"@securitydept/test-utils": "workspace:*"
 	}
 }

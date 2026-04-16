@@ -208,7 +208,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn from_path_returns_explicit_error_when_typescript_transpilation_is_unavailable() {
+    async fn from_path_handles_typescript_claims_check_scripts_explicitly() {
         let path = std::env::temp_dir().join(format!(
             "securitydept-frontend-claims-check-{}.mts",
             uuid::Uuid::new_v4()
@@ -224,13 +224,35 @@ mod tests {
         )
         .expect("write temp claims script");
 
-        let error = FrontendOidcModeClaimsCheckScript::from_path(
+        let result = FrontendOidcModeClaimsCheckScript::from_path(
             path.to_str().expect("temp path should be utf-8"),
         )
-        .await
-        .expect_err("typescript transpilation should be unavailable without dependency feature forwarding");
+        .await;
 
-        assert!(error.to_string().contains("claims-script feature"));
+        match result {
+            Ok(FrontendOidcModeClaimsCheckScript::Inline { content }) => {
+                assert!(
+                    !content.contains("interface Claims"),
+                    "typescript-only syntax should be removed from the inlined script"
+                );
+                assert!(
+                    content.contains("export default function claimsCheck"),
+                    "transpiled script should still expose the claimsCheck entrypoint"
+                );
+                assert!(
+                    content.contains("display_name: idTokenClaims.sub"),
+                    "transpiled script should preserve the claims-check logic"
+                );
+            }
+            Err(error) => {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("claims-script feature to be enabled"),
+                    "typescript claims script loading should fail with an explicit feature error when transpilation support is unavailable: {error}"
+                );
+            }
+        }
 
         let _ = fs::remove_file(path);
     }

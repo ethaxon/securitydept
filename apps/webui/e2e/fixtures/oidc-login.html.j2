@@ -1,0 +1,24 @@
+{% extends "_oidc-layout.html.j2" %}
+{% set title = "SecurityDept E2E Sign In" %}
+
+{% block content %}
+{% if errorMessage %}
+<div class="error">{{ errorMessage | escape }}</div>
+{% endif %}
+<h1>SecurityDept E2E Sign In</h1>
+<p>This local provider is owned by the Playwright harness. It exists only to exercise the real browser-managed frontend
+    OIDC flow.</p>
+<form method="post" action="/interaction/{{ uid | escape }}/login">
+    <label>
+        Username
+        <input id="oidc-login" name="login" autocomplete="username" value="{{ loginHint | escape }}" />
+    </label>
+    <label>
+        Password
+        <input id="oidc-password" type="password" name="password" autocomplete="current-password"
+            value="{{ passwordHint | escape }}" />
+    </label>
+    <button id="oidc-submit" type="submit">Sign In</button>
+</form>
+<p class="hint">Use <code>{{ usernameHint | escape }}</code> / <code>{{ passwordHint | escape }}</code>.</p>
+{% endblock %}

@@ -50,21 +50,25 @@ export type {
 	TokenSetReactClient,
 } from "./contracts";
 export {
-	type CallbackResumeState,
-	CallbackResumeStatus,
 	TokenSetAuthProvider,
 	type TokenSetAuthProviderProps,
-	TokenSetCallbackComponent,
-	type TokenSetCallbackComponentProps,
-	type UseTokenSetCallbackResumeOptions,
 	useTokenSetAccessToken,
 	useTokenSetAuthRegistry,
 	useTokenSetAuthService,
 	useTokenSetAuthState,
 	useTokenSetBackendOidcClient,
-	useTokenSetCallbackResume,
 } from "./token-set-auth-provider";
 export { TokenSetAuthService } from "./token-set-auth-service";
+export {
+	type CallbackResumeErrorDetails,
+	type CallbackResumeState,
+	CallbackResumeStatus,
+	readCallbackResumeErrorDetails,
+	TokenSetCallbackComponent,
+	type TokenSetCallbackComponentProps,
+	type UseTokenSetCallbackResumeOptions,
+	useTokenSetCallbackResume,
+} from "./token-set-callback";
 export type { AuthStateSnapshot, BackendOidcModeClientConfig };
 export { BackendOidcModeClient };
 

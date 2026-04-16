@@ -1,0 +1,37 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"skipLibCheck": true,
+		"outDir": "./dist-tsc/tests",
+		"rootDir": "./src",
+		"customConditions": ["monorepo-tsc"],
+		"paths": {
+			"@/*": ["./src/*"]
+		},
+		"target": "es2022",
+		"lib": ["esnext", "dom"],
+		"jsx": "react-jsx"
+	},
+	"include": ["src/**/__tests__/**/*.ts", "src/**/__tests__/**/*.tsx"],
+	"exclude": ["**/node_modules", "**/dist"],
+	"references": [
+		{
+			"path": "../../sdks/ts/packages/client"
+		},
+		{
+			"path": "../../sdks/ts/packages/client-react"
+		},
+		{
+			"path": "../../sdks/ts/packages/session-context-client"
+		},
+		{
+			"path": "../../sdks/ts/packages/token-set-context-client"
+		},
+		{
+			"path": "../../sdks/ts/packages/token-set-context-client-react"
+		},
+		{
+			"path": "./tsconfig.app.json"
+		}
+	]
+}

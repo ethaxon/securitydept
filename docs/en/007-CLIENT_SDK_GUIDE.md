@@ -194,6 +194,12 @@ The rules are:
 - browser storage glue lives behind the `/web` subpath
 - token material or projection-cache business policy should not be scattered into adopter apps
 
+The current persistence authority also includes the one-time-use callback/redirect contract:
+
+- `RecordStore.take(key)` is the formal atomic single-consume capability within a store's consistency domain
+- the repo-provided in-memory and browser storage adapters implement that capability directly
+- `createEphemeralFlowStore()` / `createKeyedEphemeralFlowStore()` are the canonical helpers for redirect and callback state that must be consumed exactly once
+
 ### Auth Coordination
 
 `@securitydept/client/auth-coordination` owns shared cross-auth-context orchestration primitives:
@@ -432,6 +438,14 @@ That host split changes how React authority should be read:
 - bearer-backed dashboard access is proven across both token-set modes by the same keyed React Query / registry surface
 - TanStack route security still closes over both token-set modes with `createSecureBeforeLoad()` + `withTanStackRouteRequirements()`; no additional React-only secure-guard convenience layer was needed in the reference app
 
+It also changes how frontend-mode callback correctness should be read:
+
+- pending redirect state is keyed by OAuth `state`, not stored under one global pending slot
+- callback consumption is built on the foundation `RecordStore.take()` capability via keyed ephemeral flow stores
+- duplicate replay, missing state, stale pending state, and client-mismatch callback paths are part of the public correctness contract rather than best-effort app glue
+- React callback hosts should render from structured callback failure details (`code`, `recovery`, `kind`, `source`) rather than parsing opaque `Error.message` text
+- the reference app callback route now productizes `callback.unknown_state`, `callback.pending_stale`, `callback.pending_client_mismatch`, and `callback.duplicate_state` as stable browser-visible host states with restart guidance, and browser e2e asserts those host-visible outcomes directly
+
 ### Framework Router Adapters
 
 Framework router adapters now live under the shared framework owner:
@@ -565,6 +579,7 @@ Only consider promotion from `provisional` to `stable` when all of the following
 | `session-context-client/web` | provisional, with login-redirect convenience established |
 | `basic-auth-context-client/server` / `session-context-client/server` | provisional, with an SSR/server-host baseline established |
 | `*-react` / `*-angular` adapter family | provisional, with real reference-app / downstream-adopter proof but not yet a broad host matrix |
+| `@securitydept/token-set-context-client/frontend-oidc-mode` | provisional, with keyed pending-state ownership and single-consume callback semantics now formalised on top of the foundation persistence contract |
 | `token-set-context-client-react/react-query` | provisional; SDK-owned read/write authority is established for the canonical token-set groups / entries consumer path |
 
 ## Raw Web Router Baseline

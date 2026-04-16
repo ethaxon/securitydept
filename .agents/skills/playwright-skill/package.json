@@ -1,0 +1,31 @@
+{
+	"name": "playwright-skill",
+	"version": "4.1.0",
+	"description": "(Modified) General-purpose browser automation with Playwright for Claude Code with auto-detection and smart test management",
+	"author": "lackeyjb",
+	"type": "module",
+	"main": "run.ts",
+	"scripts": {
+		"setup": "pnpm install && pnpm run doctor",
+		"doctor": "node --input-type=module -e \"const { getAgentBrowserSupport } = await import('./lib/helpers.ts'); console.log(JSON.stringify(getAgentBrowserSupport(), null, 2));\"",
+		"cli": "playwright-cli",
+		"setup:browsers": "pnpm exec playwright install chromium",
+		"install-all-browsers": "pnpm exec playwright install chromium firefox webkit"
+	},
+	"keywords": [
+		"playwright",
+		"automation",
+		"browser-testing",
+		"web-automation",
+		"claude-skill",
+		"general-purpose"
+	],
+	"peerDependencies": {
+		"@playwright/cli": ">=0.1.8",
+		"playwright": ">=1.59.0"
+	},
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"license": "MIT"
+}

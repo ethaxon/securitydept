@@ -48,6 +48,13 @@ export default defineConfig({
 				),
 			},
 			{
+				find: "@securitydept/token-set-context-client/frontend-oidc-mode",
+				replacement: path.join(
+					packagesDir,
+					"token-set-context-client/src/frontend-oidc-mode/index.ts",
+				),
+			},
+			{
 				find: "@securitydept/token-set-context-client/registry",
 				replacement: path.join(
 					packagesDir,

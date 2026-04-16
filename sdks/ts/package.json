@@ -10,6 +10,7 @@
 		"typecheck": "tsc -b --force"
 	},
 	"devDependencies": {
+		"@securitydept/e2e-utils": "workspace:*",
 		"@securitydept/client": "workspace:*",
 		"@securitydept/client-angular": "workspace:*",
 		"@securitydept/client-react": "workspace:*",

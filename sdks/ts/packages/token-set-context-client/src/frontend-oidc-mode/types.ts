@@ -226,6 +226,14 @@ export interface FrontendOidcModePendingState {
 	codeVerifier?: string;
 	/** OAuth 2.0 state parameter. */
 	state: string;
+	/** Identifies the frontend-oidc client mode that created this pending state. */
+	contextSource: FrontendOidcModeContextSource;
+	/** Provider issuer for the client that initiated this redirect flow. */
+	issuer: string;
+	/** OAuth client identifier for the client that initiated this redirect flow. */
+	clientId: string;
+	/** Redirect URI expected by the client that initiated this redirect flow. */
+	redirectUri: string;
 	/** OIDC nonce for id_token validation. */
 	nonce: string;
 	/** Where to redirect the user in the app after callback. */

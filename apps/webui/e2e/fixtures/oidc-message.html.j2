@@ -1,0 +1,15 @@
+{% extends "_oidc-layout.html.j2" %}
+{% set title = pageTitle %}
+
+{% block content %}
+<h1>{{ heading | escape }}</h1>
+<p>{{ body | escape }}</p>
+{% if details and details.length > 0 %}
+<dl class="details">
+    {% for detail in details %}
+    <dt>{{ detail.label | escape }}</dt>
+    <dd><code>{{ detail.value | escape }}</code></dd>
+    {% endfor %}
+</dl>
+{% endif %}
+{% endblock %}

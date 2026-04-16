@@ -57,6 +57,7 @@ export {
 export type {
 	Codec,
 	EphemeralFlowStore,
+	KeyedEphemeralFlowStore,
 	PersistentAuthStore,
 	RecordStore,
 	RecoverableStateStore,
@@ -66,6 +67,7 @@ export {
 	createEphemeralFlowStore,
 	createInMemoryRecordStore,
 	createJsonCodec,
+	createKeyedEphemeralFlowStore,
 } from "./persistence/index";
 // --- Runtime ---
 export type { ClientRuntime, CreateRuntimeOptions } from "./runtime/index";

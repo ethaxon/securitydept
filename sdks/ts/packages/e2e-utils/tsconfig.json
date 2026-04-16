@@ -1,0 +1,9 @@
+{
+	"extends": "../../tsconfig.sdks.json",
+	"compilerOptions": {
+		"outDir": "./dist-tsc",
+		"rootDir": "./src",
+		"types": ["node"]
+	},
+	"include": ["src"]
+}

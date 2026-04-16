@@ -4,8 +4,10 @@ import {
 	withTanStackRouteRequirements,
 } from "@securitydept/client-react/tanstack-router";
 import {
+	type CallbackResumeErrorDetails,
+	CallbackResumeStatus,
 	TokenSetAuthProvider,
-	TokenSetCallbackComponent,
+	useTokenSetCallbackResume,
 } from "@securitydept/token-set-context-client-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -17,7 +19,14 @@ import {
 	redirect,
 } from "@tanstack/react-router";
 
-import { lazy, Suspense, useMemo, useState, useSyncExternalStore } from "react";
+import {
+	lazy,
+	Suspense,
+	useEffect,
+	useMemo,
+	useRef,
+	useSyncExternalStore,
+} from "react";
 
 import {
 	clearPostAuthRedirect,
@@ -43,6 +52,7 @@ import {
 	TOKEN_SET_FRONTEND_MODE_CLIENT_KEY,
 	TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
 } from "@/lib/tokenSetConfig";
+import { describeFrontendModeCallbackFailure } from "@/lib/tokenSetFrontendCallbackPresentation";
 import {
 	ensureTokenSetFrontendModeClientReady,
 	tokenSetFrontendModeClientFactory,
@@ -372,7 +382,45 @@ function TokenSetFrontendModePlaygroundRoutePage() {
 }
 
 function TokenSetFrontendCallbackRoutePage() {
-	const [error, setError] = useState<string | null>(null);
+	const state = useTokenSetCallbackResume();
+	const handledResolvedRef = useRef(false);
+	const failurePresentation =
+		state.status === CallbackResumeStatus.Error && state.errorDetails
+			? describeFrontendModeCallbackFailure(state.errorDetails)
+			: null;
+
+	useEffect(() => {
+		if (
+			state.status === CallbackResumeStatus.Resolved &&
+			!handledResolvedRef.current
+		) {
+			handledResolvedRef.current = true;
+			window.location.href = state.result?.postAuthRedirectUri ?? "/";
+		}
+	}, [state.status, state.result]);
+
+	function renderErrorMeta(errorDetails: CallbackResumeErrorDetails) {
+		return (
+			<dl className="grid gap-3 text-sm text-zinc-600 dark:text-zinc-300 sm:grid-cols-2">
+				<div className="space-y-1 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
+					<dt className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500 dark:text-zinc-400">
+						Error code
+					</dt>
+					<dd className="font-mono text-sm text-zinc-800 dark:text-zinc-100">
+						{errorDetails.code ?? "unknown"}
+					</dd>
+				</div>
+				<div className="space-y-1 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
+					<dt className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500 dark:text-zinc-400">
+						Recovery
+					</dt>
+					<dd className="font-mono text-sm text-zinc-800 dark:text-zinc-100">
+						{errorDetails.recovery}
+					</dd>
+				</div>
+			</dl>
+		);
+	}
 
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-zinc-50 p-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
@@ -390,37 +438,49 @@ function TokenSetFrontendCallbackRoutePage() {
 						callback, then returns you to the stored post-auth redirect.
 					</p>
 				</div>
-				{error ? (
-					<div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/80 dark:bg-rose-950/40 dark:text-rose-300">
-						{error}
+				{failurePresentation && state.errorDetails ? (
+					<div
+						className={
+							failurePresentation.tone === "warning"
+								? "space-y-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-900 dark:border-amber-900/80 dark:bg-amber-950/40 dark:text-amber-100"
+								: "space-y-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-rose-900 dark:border-rose-900/80 dark:bg-rose-950/40 dark:text-rose-100"
+						}
+					>
+						<div className="space-y-2">
+							<p className="text-xs font-semibold uppercase tracking-[0.22em]">
+								Callback failure
+							</p>
+							<h2 className="text-xl font-semibold">
+								{failurePresentation.title}
+							</h2>
+							<p className="text-sm leading-6 opacity-90">
+								{failurePresentation.description}
+							</p>
+						</div>
+						{renderErrorMeta(state.errorDetails)}
+						{failurePresentation.actionHref &&
+						failurePresentation.actionLabel ? (
+							<a
+								href={failurePresentation.actionHref}
+								className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+							>
+								{failurePresentation.actionLabel}
+							</a>
+						) : null}
 					</div>
 				) : null}
-				<TokenSetCallbackComponent
-					pending={
-						<p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">
-							Warming the frontend-mode client registry and resuming the OIDC
-							callback...
-						</p>
-					}
-					fallback={
-						error ? null : (
-							<p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/80 dark:bg-amber-950/40 dark:text-amber-300">
-								This URL does not currently carry a recognized frontend-mode
-								callback payload.
-							</p>
-						)
-					}
-					onResolved={(result) => {
-						window.location.href = result.postAuthRedirectUri ?? "/";
-					}}
-					onError={(callbackError) => {
-						setError(
-							callbackError instanceof Error
-								? callbackError.message
-								: "Frontend-mode callback failed.",
-						);
-					}}
-				/>
+				{state.status === CallbackResumeStatus.Pending ? (
+					<p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">
+						Warming the frontend-mode client registry and resuming the OIDC
+						callback...
+					</p>
+				) : null}
+				{state.status === CallbackResumeStatus.Idle ? (
+					<p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/80 dark:bg-amber-950/40 dark:text-amber-300">
+						This URL does not currently carry a recognized frontend-mode
+						callback payload.
+					</p>
+				) : null}
 			</div>
 		</div>
 	);
