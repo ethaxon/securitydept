@@ -39,8 +39,8 @@ impl FrontendOidcModeService {
     /// # Errors
     ///
     /// Returns an `io::Error` if the claims check script file cannot be read.
-    pub fn config_projection(&self) -> std::io::Result<FrontendOidcModeConfigProjection> {
-        self.runtime.config_projection()
+    pub async fn config_projection(&self) -> std::io::Result<FrontendOidcModeConfigProjection> {
+        self.runtime.config_projection().await
     }
 }
 
@@ -74,11 +74,12 @@ mod tests {
         FrontendOidcModeService::new(runtime)
     }
 
-    #[test]
-    fn service_delegates_to_runtime() {
+    #[tokio::test]
+    async fn service_delegates_to_runtime() {
         let service = test_service();
         let projection = service
             .config_projection()
+            .await
             .expect("projection should succeed");
         assert_eq!(projection.client_id, "spa-client");
     }

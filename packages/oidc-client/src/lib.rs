@@ -6,6 +6,7 @@ pub mod error;
 pub mod models;
 pub mod pending_store;
 pub use client::OidcClient;
+pub use claims::transpile_claims_script_typescript_to_javascript;
 pub use config::{OidcClientConfig, OidcClientRawConfig};
 pub use error::{OidcError, OidcResult};
 pub use models::{

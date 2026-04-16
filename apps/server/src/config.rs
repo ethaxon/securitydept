@@ -17,10 +17,15 @@ use securitydept_core::{
             ResolvedAccessTokenSubstrateConfig,
         },
         backend_oidc_mode::{
-            BackendOidcModeConfig, BackendOidcModeConfigSource, BackendOidcModeRedirectUriConfig,
+            BackendOidcModeConfigSource, BackendOidcModeRedirectUriConfig,
             MokaPendingAuthStateMetadataRedemptionConfig, PostAuthRedirectPolicy,
             ResolvedBackendOidcModeConfig,
         },
+        cross_mode_config::{
+            BackendOidcModeOverrideConfig, FrontendOidcModeOverrideConfig,
+            TokenSetOidcSharedUnionConfig,
+        },
+        frontend_oidc_mode::{FrontendOidcModeConfigSource, ResolvedFrontendOidcModeConfig},
         orchestration::OidcSharedConfig,
     },
     utils::{
@@ -32,17 +37,29 @@ use serde::Deserialize;
 
 use crate::error::{ServerError, ServerResult};
 
-/// Concrete type alias for the server's backend-oidc config.
-type ServerOidcModeConfig = BackendOidcModeConfig<
+/// Concrete type alias for the server's shared OIDC-client union config.
+type ServerOidcClientUnionConfig = TokenSetOidcSharedUnionConfig<
     MokaPendingOauthStoreConfig,
     MokaPendingAuthStateMetadataRedemptionConfig,
 >;
+
+/// Concrete type alias for the server's backend-oidc override config.
+type ServerBackendOidcOverrideConfig = BackendOidcModeOverrideConfig<
+    MokaPendingOauthStoreConfig,
+    MokaPendingAuthStateMetadataRedemptionConfig,
+>;
+
+/// Concrete type alias for the server's frontend-oidc override config.
+type ServerFrontendOidcOverrideConfig = FrontendOidcModeOverrideConfig;
 
 /// Concrete type alias for the server's resolved backend-oidc config.
 pub type ServerResolvedOidcModeConfig = ResolvedBackendOidcModeConfig<
     MokaPendingOauthStoreConfig,
     MokaPendingAuthStateMetadataRedemptionConfig,
 >;
+
+/// Concrete type alias for the server's resolved frontend-oidc config.
+pub type ServerResolvedFrontendOidcModeConfig = ResolvedFrontendOidcModeConfig;
 
 /// Top-level configuration loaded from TOML file + environment variables.
 ///
@@ -51,8 +68,9 @@ pub type ServerResolvedOidcModeConfig = ResolvedBackendOidcModeConfig<
 /// Env var mapping uses `__` (double underscore) as the nesting separator:
 ///   SERVER__HOST              -> server.host
 ///   OIDC__CLIENT_ID           -> oidc.client_id
-///   OIDC_CLIENT__PKCE_ENABLED -> oidc_client.pkce_enabled
-///   CREDS_MANAGE__DATA_PATH   -> creds_manage.data_path
+///   OIDC_CLIENT__PKCE_ENABLED           -> oidc_client.pkce_enabled
+///   BACKEND_OIDC_OVERRIDE__PKCE_ENABLED -> backend_oidc_override.pkce_enabled
+///   CREDS_MANAGE__DATA_PATH             -> creds_manage.data_path
 ///
 /// # TOML structure
 ///
@@ -61,8 +79,11 @@ pub type ServerResolvedOidcModeConfig = ResolvedBackendOidcModeConfig<
 /// well_known_url = "…"
 /// client_id      = "…"
 ///
-/// [oidc_client]               # BackendOidcModeConfig — client overrides + runtime capabilities
-/// pkce_enabled   = true       # (inherits [oidc] shared defaults via resolve_oidc)
+/// [oidc_client]               # shared OIDC-client union config
+/// pkce_enabled = true         # shared base before mode-specific overrides
+///
+/// [backend_oidc_override]     # optional backend-mode overrides
+/// [frontend_oidc_override]    # optional frontend-mode overrides
 ///
 /// [oauth_resource_server]     # AccessTokenSubstrateConfig — resource-server + propagation
 /// audiences = ["api://…"]     # (inherits [oidc] shared defaults via resolve_substrate)
@@ -85,15 +106,38 @@ pub struct ServerConfig {
     #[serde(default, rename = "oidc")]
     pub oidc: Option<OidcSharedConfig>,
 
-    // -- BackendOidcModeConfig ([oidc_client] section) --
-    /// Backend OIDC mode config, read from the `[oidc_client]` TOML section.
+    // -- Cross-mode shared union ([oidc_client] section) --
+    /// Cross-mode shared OIDC config, read from the `[oidc_client]` TOML
+    /// section.
     ///
-    /// Contains OIDC client overrides and runtime capability axes
-    /// (`refresh_material_protection`, `metadata_delivery`,
-    /// `post_auth_redirect`). Call [`resolve_oidc`](Self::resolve_oidc) to
-    /// apply `[oidc]` shared defaults and validate.
+    /// This crate-owned struct holds the shared OIDC-client intersection plus
+    /// the full backend/frontend union surface. The server composes concrete
+    /// backend/frontend configs from it instead of owning frontend inheritance
+    /// policy locally.
     #[serde(rename = "oidc_client")]
-    pub backend_oidc: ServerOidcModeConfig,
+    pub oidc_client_union: ServerOidcClientUnionConfig,
+
+    // -- BackendOidcModeConfig override ([backend_oidc_override] section) --
+    /// Backend OIDC mode override config, read from the
+    /// `[backend_oidc_override]` TOML section.
+    ///
+    /// All fields are optional. The crate-level composer overlays this section
+    /// on top of the shared `[oidc_client]` config, with subfield merge
+    /// limited to the `OidcClientRawConfig`-like surface and whole-field
+    /// replacement for non-client fields.
+    #[serde(default, rename = "backend_oidc_override")]
+    pub backend_oidc_override: ServerBackendOidcOverrideConfig,
+
+    // -- FrontendOidcModeConfig override ([frontend_oidc_override] section) --
+    /// Frontend OIDC mode override config, read from the
+    /// `[frontend_oidc_override]` TOML section.
+    ///
+    /// All fields are optional. The crate-level composer overlays this section
+    /// on top of the shared `[oidc_client]` config, with subfield merge
+    /// limited to the `OidcClientRawConfig`-like surface and whole-field
+    /// replacement for non-client fields.
+    #[serde(default, rename = "frontend_oidc_override")]
+    pub frontend_oidc_override: ServerFrontendOidcOverrideConfig,
 
     // -- AccessTokenSubstrateConfig ([oauth_resource_server] section) --
     /// Access-token substrate config, read from the `[oauth_resource_server]`
@@ -144,19 +188,53 @@ impl ServerConfig {
         // Warn when redirect_url is set — each auth context (session, token-set)
         // hardcodes its own callback path via redirect_url_override at runtime, so
         // this field has no effect and will be silently ignored.
-        if config.backend_oidc.oidc_client.redirect_url.is_some() {
+        if config.oidc_client_union.oidc_client.redirect_url.is_some() {
             tracing::warn!(
-                "oidc_client.redirect_url is set in config but has no effect: each auth context \
-                 (session → /auth/session/callback, token-set → /auth/token-set/callback) uses a \
-                 hardcoded redirect path. Remove this field to silence this warning."
+                "oidc_client.redirect_url is set in config but has no effect for backend-mode: \
+                 each auth context (session → /auth/session/callback, token-set backend mode → \
+                 /auth/token-set/backend-mode/callback) uses a hardcoded redirect path. Remove \
+                 this field to silence this warning."
             );
+        }
+
+        if config
+            .backend_oidc_override
+            .oidc_client
+            .redirect_url
+            .is_some()
+        {
+            tracing::warn!(
+                "backend_oidc_override.redirect_url is set in config but has no effect: token-set \
+                 backend mode uses a hardcoded callback path \
+                 (/auth/token-set/backend-mode/callback). Remove this field to silence this \
+                 warning."
+            );
+        }
+
+        let server_session_redirect = RedirectTargetConfig::dynamic_default_and_dynamic_targets(
+            "/",
+            [
+                RedirectTargetRule::Strict {
+                    value: "/".to_string(),
+                },
+                RedirectTargetRule::Strict {
+                    value: "/playground/session".to_string(),
+                },
+            ],
+        );
+        if config.session_context.post_auth_redirect != server_session_redirect {
+            tracing::warn!(
+                "session_context.post_auth_redirect is overridden to allowlist ['/', \
+                 '/playground/session']; remove this section to silence this warning."
+            );
+            config.session_context.post_auth_redirect = server_session_redirect;
         }
 
         // post_auth_redirect is forced to a Resolved policy with a strict
         // allowlist. The SDK / login page supplies post_auth_redirect_uri
         // as a query parameter; the runtime validates it against:
         //   default: "/"  (dashboard)
-        //   allowed: "/", "/playground/token-set"
+        //   allowed: "/", "/playground/token-set/backend-mode"
         // Any other value falls back to "/".
         let server_token_set_redirect = PostAuthRedirectPolicy::Resolved {
             config: BackendOidcModeRedirectUriConfig::dynamic_default_and_dynamic_targets(
@@ -166,21 +244,21 @@ impl ServerConfig {
                         value: "/".to_string(),
                     },
                     RedirectTargetRule::Strict {
-                        value: "/playground/token-set".to_string(),
+                        value: "/playground/token-set/backend-mode".to_string(),
                     },
                 ],
             ),
         };
         if !matches!(
-            config.backend_oidc.post_auth_redirect,
-            PostAuthRedirectPolicy::Resolved { .. }
+            config.backend_oidc_override.post_auth_redirect,
+            Some(PostAuthRedirectPolicy::Resolved { .. })
         ) {
             tracing::info!(
-                "oidc_client.post_auth_redirect overridden to Resolved policy with allowlist \
-                 ['/', '/playground/token-set']"
+                "backend_oidc_override.post_auth_redirect overridden to Resolved policy with \
+                 allowlist ['/', '/playground/token-set/backend-mode']"
             );
         }
-        config.backend_oidc.post_auth_redirect = server_token_set_redirect;
+        config.backend_oidc_override.post_auth_redirect = Some(server_token_set_redirect);
 
         if config.basic_auth_context.zones.is_empty() {
             config
@@ -209,24 +287,33 @@ impl ServerConfig {
             }
         }
 
-        // Hardcode basic_auth_context.post_auth_redirect to strict "/".
-        // In the server+webui deployment, basic auth login always returns to
-        // the dashboard root. Allowing user-supplied or query-param-driven
-        // redirects would create an open-redirect vector.
-        let server_basic_redirect = RedirectTargetConfig::strict_default("/");
+        // Hardcode basic_auth_context.post_auth_redirect to a narrow allowlist.
+        // In the server+webui deployment, basic auth login may only return to
+        // the dashboard root or the dedicated basic-auth playground.
+        let server_basic_redirect = RedirectTargetConfig::dynamic_default_and_dynamic_targets(
+            "/",
+            [
+                RedirectTargetRule::Strict {
+                    value: "/".to_string(),
+                },
+                RedirectTargetRule::Strict {
+                    value: "/playground/basic-auth".to_string(),
+                },
+            ],
+        );
         if config.basic_auth_context.post_auth_redirect != server_basic_redirect {
             tracing::warn!(
-                "basic_auth_context.post_auth_redirect is overridden to strict '/': the server \
-                 always redirects to the dashboard root after basic auth login. Remove this \
-                 section to silence this warning."
+                "basic_auth_context.post_auth_redirect is overridden to allowlist ['/', \
+                 '/playground/basic-auth']: the server only redirects basic auth login to \
+                 approved first-party pages. Remove this section to silence this warning."
             );
             config.basic_auth_context.post_auth_redirect = server_basic_redirect;
         }
         for zone in &mut config.basic_auth_context.zones {
             if zone.post_auth_redirect.is_some() {
                 tracing::warn!(
-                    "basic_auth_context.zones[].post_auth_redirect is ignored: the server always \
-                     redirects to '/' after basic auth login."
+                    "basic_auth_context.zones[].post_auth_redirect is ignored: the server uses \
+                     the global allowlist ['/', '/playground/basic-auth'] for basic auth login."
                 );
                 zone.post_auth_redirect = None;
             }
@@ -248,11 +335,39 @@ impl ServerConfig {
             return Ok(None);
         };
 
+        let backend_oidc = self
+            .oidc_client_union
+            .compose_backend_config(&self.backend_oidc_override);
+
         let resolved =
-            self.backend_oidc
+            backend_oidc
                 .resolve_all(shared)
                 .map_err(|e| ServerError::InvalidConfig {
                     message: format!("OIDC config resolution: {e}"),
+                })?;
+
+        Ok(Some(resolved))
+    }
+
+    /// Resolve `[oidc]` shared defaults into validated frontend-oidc config.
+    ///
+    /// Returns `None` when OIDC is disabled (no `[oidc]` section).
+    pub fn resolve_frontend_oidc(
+        &self,
+    ) -> ServerResult<Option<ServerResolvedFrontendOidcModeConfig>> {
+        let Some(ref shared) = self.oidc else {
+            return Ok(None);
+        };
+
+        let frontend_oidc = self
+            .oidc_client_union
+            .compose_frontend_config(&self.frontend_oidc_override);
+
+        let resolved =
+            frontend_oidc
+                .resolve_all(shared)
+                .map_err(|e| ServerError::InvalidConfig {
+                    message: format!("frontend_oidc config resolution: {e}"),
                 })?;
 
         Ok(Some(resolved))

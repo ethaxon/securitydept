@@ -9,11 +9,7 @@ import {
 	type TokenSetClientEntry as CoreTokenSetClientEntry,
 	createTokenSetAuthRegistry,
 } from "@securitydept/token-set-context-client/registry";
-import type {
-	OidcCallbackClient,
-	OidcModeClient,
-	TokenSetClientEntry,
-} from "./contracts";
+import type { TokenSetAngularClient, TokenSetClientEntry } from "./contracts";
 import { TokenSetAuthService } from "./token-set-auth.service";
 
 // Re-export core registry types so existing adopter imports from
@@ -39,7 +35,7 @@ export { ClientInitializationPriority } from "@securitydept/token-set-context-cl
 //   - access-token sugar routed through the service's signal
 // ============================================================================
 
-type AngularClient = OidcModeClient & OidcCallbackClient;
+type AngularClient = TokenSetAngularClient;
 
 @Injectable()
 export class TokenSetAuthRegistry {

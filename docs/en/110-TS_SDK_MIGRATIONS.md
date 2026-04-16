@@ -44,6 +44,76 @@ Entry format:
 
 ## Migration Notes
 
+### 2026-04-19 @securitydept/token-set-context-client-react and ./react-query — canonical React token-set consumer path tightened around keyed SDK ownership
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `@securitydept/token-set-context-client-react` and `@securitydept/token-set-context-client-react/react-query`
+
+**Change**:
+
+The canonical React token-set consumer path is now keyed and SDK-owned end to end:
+
+- `@securitydept/token-set-context-client-react` now exports `useTokenSetBackendOidcClient(clientKey)` as the formal lower-level keyed accessor for backend-oidc-specific behavior
+- `@securitydept/token-set-context-client-react/react-query` canonical groups / entries hooks no longer require adopters to pass an explicit `client`
+- the reference app no longer treats app-local `BackendOidcModeReactClient`, `getTokenSetClient()`, or `service.client as ...` narrowing as the canonical consumer story
+
+**Migration**:
+
+1. Replace canonical hook calls such as:
+   ```ts
+   useTokenSetGroupsQuery({ clientKey, client })
+   useTokenSetCreateGroupMutation({ clientKey, client })
+   ```
+   with keyed-only calls:
+   ```ts
+   useTokenSetGroupsQuery({ clientKey })
+   useTokenSetCreateGroupMutation({ clientKey })
+   ```
+2. If a React consumer needs backend-oidc-specific behavior such as `authorizeUrl()`, `authorizationHeader()`, `refresh()`, or `clearState()`, replace app-local `service.client as ...` narrowing with `useTokenSetBackendOidcClient(clientKey)`.
+3. Keep app-local token-set modules focused on bootstrap config, trace sinks, or provider wiring rather than canonical consumer contracts.
+
+**Justification**:
+
+Iteration 115 moved the token-set React Query write path into the SDK, but the canonical React consumer story still depended on app-local client ownership patterns. Iteration 116 closes that gap by making the keyed registry / service path the formal consumer contract, and by moving the lower-level backend-oidc accessor into the SDK instead of leaving it in `apps/webui`.
+
+### 2026-04-19 @securitydept/token-set-context-client-react/react-query — canonical mutation ownership moved into the SDK subpath
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `@securitydept/token-set-context-client-react/react-query`
+
+**Change**:
+
+The React Query subpath now owns the canonical token-set groups / entries mutation surface in addition to the existing read-side helpers.
+
+It now exports:
+
+- groups / entries query hooks
+- groups / entries mutation hooks
+- token-set management entity / request / response contracts used by those hooks
+- query-key extensions for `groups`, `group`, `entries`, and `entry`
+- post-mutation invalidation semantics for the canonical groups / entries flows
+
+This also changes the owner boundary: `apps/webui` is no longer the canonical owner of token-set React Query write semantics. It is now a consumer / authority-evidence host of the SDK-owned surface.
+
+**Migration**:
+
+1. Replace app-local token-set React Query wrappers such as `useTokenSetQueries.ts` with imports from `@securitydept/token-set-context-client-react/react-query`.
+2. Replace app-local `tokenSetAppQueryKeys.*` usage with `tokenSetQueryKeys.groups(...)`, `tokenSetQueryKeys.group(...)`, `tokenSetQueryKeys.entries(...)`, and `tokenSetQueryKeys.entry(...)`.
+3. When a mutation needs request-scoped transport or cancellation, pass it through `requestOptions` on the mutation variables:
+    ```ts
+    mutation.mutate({
+       name: "Operators",
+       group_ids: ["group-1"],
+       requestOptions: { cancellationToken },
+    });
+    ```
+
+**Justification**:
+
+Iteration 114 proved the real mutation lifecycle and invalidation semantics in `apps/webui`, but leaving those semantics app-local kept the reference app in the wrong owner role. Iteration 115 moves the canonical groups / entries write path, entity contracts, and query-key / invalidation policy into the SDK subpath so React adopters get a complete SDK-owned read/write story.
+
 ### 2026-04-12 React adapters moved from same-package subpaths to dedicated npm packages (breaking move)
 
 **Discipline**: `provisional-migration-required`
@@ -592,9 +662,9 @@ Compile-time OIDC credentials baked into the frontend bundle prevent backend-dri
 | Package | Subpath | Purpose |
 |---|---|---|
 | `@securitydept/client` | `./web-router` | Raw Web router baseline (`createNavigationAdapter`, `createWebRouter`, `isNavigationApiAvailable`, `NavigationAdapterKind`, `WebRouteDefinition`, `WebRouteMatch`, `WebRouteMatcher`, `WebRouter`, `defineWebRoute`, `extractFullRouteRequirements`, `RequirementsClientSetComposition`). Navigation API-first, History API + `popstate` fallback. Full-route aggregation with `inherit` / `merge` / `replace` composition at parity with Angular / TanStack Router adapters (review-1 follow-up). |
-| `@securitydept/token-set-context-client` | `./registry` | Framework-neutral multi-client registry core (`createTokenSetAuthRegistry`, `TokenSetAuthRegistry`, `ClientInitializationPriority`, `ClientReadinessState`, `ClientMeta`, `TokenSetClientEntry`, `ClientQueryOptions`). |
-| `@securitydept/token-set-context-client-react` | `./react-query` | Thin React Query consumer subpath (`tokenSetQueryKeys`, `useTokenSetReadinessQuery`, `useTokenSetAuthorizationHeader`, `invalidateTokenSetQueriesForClient`). **Not a standalone package**: optional peer `@tanstack/react-query`. |
-| `@securitydept/token-set-context-client-react` | `.` (additive) | `TokenSetAuthService`, `TokenSetAuthProvider`, `useTokenSetAuthRegistry`, `useTokenSetAuthService`, `useTokenSetAuthState`, `useTokenSetAccessToken`, `useTokenSetCallbackResume`, `CallbackResumeState`, `CallbackResumeStatus`, `TokenSetCallbackOutlet`. Angular-parity multi-client story on React. The callback hook awaits `registry.whenReady(clientKey)` before `handleCallback()`, so async / lazy clients no longer silently drop callbacks (review-1 follow-up). |
+| `@securitydept/token-set-context-client` | `./registry` | Framework-neutral multi-client registry core (`createTokenSetAuthRegistry`, `TokenSetAuthRegistry`, `ClientInitializationPriority`, `ClientReadinessState`, `OidcModeClient`, `OidcCallbackClient`, `ClientMeta`, `TokenSetClientEntry`, `ClientQueryOptions`). The shared managed OIDC client contract owner now lives here rather than being duplicated inside Angular / React adapters. |
+| `@securitydept/token-set-context-client-react` | `./react-query` | Token-set React Query consumer subpath for canonical groups / entries read/write workflows (`tokenSetQueryKeys`, `useTokenSetReadinessQuery`, `useTokenSetAuthorizationHeader`, `invalidateTokenSetQueriesForClient`, query hooks, mutation hooks, and token-set management contracts). **Not a standalone package**: optional peer `@tanstack/react-query`. |
+| `@securitydept/token-set-context-client-react` | `.` (additive) | `TokenSetAuthService`, `TokenSetAuthProvider`, `useTokenSetAuthRegistry`, `useTokenSetAuthService`, `useTokenSetAuthState`, `useTokenSetAccessToken`, `useTokenSetCallbackResume`, `CallbackResumeState`, `CallbackResumeStatus`, `TokenSetCallbackComponent` with a retained `TokenSetCallbackOutlet` compatibility alias. Angular-parity multi-client story on React. The callback hook awaits `registry.whenReady(clientKey)` before `handleCallback()`, so async / lazy clients no longer silently drop callbacks (review-1 follow-up). |
 
 **Breaking migrations**
 
@@ -622,8 +692,16 @@ React ecosystem integrations (React Query, potential future Zustand / Jotai / Ta
 - `examples/web-router-full-route-aggregation.test.ts` — nested routes + `inherit` / `merge` / `replace` composition + single-call `plannerHost.evaluate()` with full candidate set (review-1 follow-up)
 - `examples/multi-client-lazy-init-contract.test.ts` — framework-neutral `priority | preload | whenReady | idleWarmup | reset` contract
 - `examples/react-multi-client-registry-baseline.test.ts` — React provider + hooks covering multi-client registration and disposal
-- `examples/react-query-integration-evidence.test.ts` — React Query subpath consumer semantics
-- `examples/react-callback-async-readiness.test.ts` — `useTokenSetCallbackResume` / `TokenSetCallbackOutlet` drive async / lazy client materialisation via `registry.whenReady()` with pending + error surface coverage (review-1 follow-up)
+- `examples/react-query-integration-evidence.test.ts` — React Query subpath canonical query + mutation consumer semantics
+- `examples/react-callback-async-readiness.test.ts` — `useTokenSetCallbackResume` / `TokenSetCallbackComponent` (plus the retained `TokenSetCallbackOutlet` compatibility alias) drive async / lazy client materialisation via `registry.whenReady()` with pending + error surface coverage (review-1 follow-up)
+
+**Reference-app authority update (non-breaking)**
+
+- iteration 117 split the former generic token-set host path in `apps/webui` / `apps/server` into two explicit reference modes:
+   - backend mode: `/auth/token-set/backend-mode/*` plus `/playground/token-set/backend-mode`
+   - frontend mode: `/api/auth/token-set/frontend-mode/config`, `/playground/token-set/frontend-mode`, and `/auth/token-set/frontend-mode/callback`
+- `TokenSetCallbackComponent` now has real host-level authority only through the frontend-mode callback route
+- dashboard bearer integration and TanStack route security now operate across both token-set modes without adding any new public React secure-guard surface
 
 ---
 

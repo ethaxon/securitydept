@@ -8,6 +8,7 @@ use securitydept_core::{
     creds_manage::models::UserInfo, oidc::OidcCodeCallbackSearchParams,
     session_context::SessionAuthServiceTrait,
 };
+use serde::Deserialize;
 use tower_sessions::Session;
 
 use crate::{
@@ -16,17 +17,28 @@ use crate::{
     state::ServerState,
 };
 
+#[derive(Debug, Deserialize)]
+pub struct SessionLoginQuery {
+    #[serde(default)]
+    pub post_auth_redirect_uri: Option<String>,
+}
+
 /// GET /auth/session/login -- redirect to OIDC provider, or create dev session
 /// when OIDC is disabled.
 pub async fn login(
     Extension(state): Extension<ServerState>,
     session: Session,
     headers: HeaderMap,
+    Query(query): Query<SessionLoginQuery>,
 ) -> Result<Response, ServerError> {
     let external_base_url = state.external_base_url(&headers)?;
     state
         .session_auth_service()
-        .login(session, &external_base_url)
+        .login(
+            session,
+            &external_base_url,
+            query.post_auth_redirect_uri.as_deref(),
+        )
         .await
         .map(into_axum_response)
         .map_err(ServerError::from)

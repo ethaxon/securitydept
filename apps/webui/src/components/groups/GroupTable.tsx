@@ -45,7 +45,7 @@ export function GroupTable({ groups }: { groups: Group[] }) {
 						</Link>
 						<button
 							type="button"
-							onClick={() => deleteGroup.mutate(row.original.id)}
+							onClick={() => deleteGroup.mutate({ groupId: row.original.id })}
 							className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30"
 						>
 							<Trash2 className="h-4 w-4" />

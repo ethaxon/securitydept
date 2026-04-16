@@ -96,7 +96,7 @@ export function EntryTable({
 						</Link>
 						<button
 							type="button"
-							onClick={() => deleteEntry.mutate(row.original.id)}
+							onClick={() => deleteEntry.mutate({ entryId: row.original.id })}
 							className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30"
 						>
 							<Trash2 className="h-4 w-4" />

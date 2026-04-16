@@ -208,7 +208,11 @@ where
             required_scopes: shared.resolve_required_scopes(&self.required_scopes),
             claims_check_script: self.claims_check_script,
             pkce_enabled: self.pkce_enabled,
-            redirect_url: self.redirect_url.as_deref().unwrap_or(&default_redirect_url()).to_owned(),
+            redirect_url: self
+                .redirect_url
+                .as_deref()
+                .unwrap_or(&default_redirect_url())
+                .to_owned(),
 
             pending_store: self.pending_store,
             device_poll_interval: self.device_poll_interval,

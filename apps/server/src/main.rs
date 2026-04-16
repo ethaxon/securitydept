@@ -18,6 +18,7 @@ use securitydept_core::{
             AccessTokenSubstrateRuntime, AxumReverseProxyPropagationForwarderConfig,
         },
         backend_oidc_mode::BackendOidcModeRuntime,
+        frontend_oidc_mode::FrontendOidcModeRuntime,
     },
 };
 use snafu::ResultExt;
@@ -139,6 +140,10 @@ async fn run_serve(config_arg: String) -> ServerResult<()> {
     if oidc_client.is_none() {
         info!("OIDC disabled (no [oidc] section); /auth/session/login will create a dev session");
     }
+    let frontend_oidc_runtime = config
+        .resolve_frontend_oidc()?
+        .map(FrontendOidcModeRuntime::new)
+        .map(Arc::new);
 
     let session_context_config = config.session_context.clone();
     let session_context_store = MemoryStore::default();
@@ -188,6 +193,7 @@ async fn run_serve(config_arg: String) -> ServerResult<()> {
     let state = ServerState {
         creds_manage_store: Arc::new(store),
         backend_oidc_runtime: Arc::new(backend_oidc_runtime),
+        frontend_oidc_runtime,
         substrate_runtime,
         basic_auth_context: Arc::new(
             BasicAuthContext::from_config(config.basic_auth_context.clone()).map_err(|e| {

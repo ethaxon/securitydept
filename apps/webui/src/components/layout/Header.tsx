@@ -39,17 +39,19 @@ export function Header() {
 							<span className="hidden rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600 sm:inline-flex dark:bg-zinc-800 dark:text-zinc-300">
 								{user.contextLabel}
 							</span>
-							<div className="flex items-center gap-2">
-								<Avatar className="h-8 w-8">
-									<AvatarImage src={user.picture} alt={user.displayName} />
-									<AvatarFallback>
-										{getInitials(user.displayName)}
-									</AvatarFallback>
-								</Avatar>
-								<span className="hidden text-sm text-zinc-600 sm:inline dark:text-zinc-400">
-									{truncateDisplayName(user.displayName, 20)}
-								</span>
-							</div>
+							{user.showIdentity !== false ? (
+								<div className="flex items-center gap-2">
+									<Avatar className="h-8 w-8">
+										<AvatarImage src={user.picture} alt={user.displayName} />
+										<AvatarFallback>
+											{getInitials(user.displayName)}
+										</AvatarFallback>
+									</Avatar>
+									<span className="hidden text-sm text-zinc-600 sm:inline dark:text-zinc-400">
+										{truncateDisplayName(user.displayName, 20)}
+									</span>
+								</div>
+							) : null}
 							<button
 								type="button"
 								onClick={() => logout.mutate()}

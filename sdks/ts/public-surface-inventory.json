@@ -315,10 +315,12 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Iteration 110 — framework-neutral multi-client token-set auth registry core. Owns keyed storage, readiness tracking (not_initialized → initializing → ready | failed), priority=primary|lazy lifecycle, preload / whenReady / idleWarmup verbs, and multi-axis discrimination (urlPatterns, callbackPath, requirementKind, providerFamily). Angular and React adapters wrap it thinly.",
+					"note": "Iteration 110 + 116 review-2 — framework-neutral multi-client token-set auth registry core. Owns keyed storage, readiness tracking (not_initialized → initializing → ready | failed), priority=primary|lazy lifecycle, preload / whenReady / idleWarmup verbs, multi-axis discrimination (urlPatterns, callbackPath, requirementKind, providerFamily), and the shared managed OIDC client contracts (`OidcModeClient`, `OidcCallbackClient`). Angular and React adapters now wrap this shared contract owner thinly instead of redefining it locally.",
 					"evidence": [
 						"examples/multi-client-lazy-init-contract.test.ts",
-						"examples/async-client-readiness-contract.test.ts"
+						"examples/async-client-readiness-contract.test.ts",
+						"examples/angular-integration-adapter.test.ts",
+						"examples/react-multi-client-registry-baseline.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -391,7 +393,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Iteration 110 — React 19 productization. Adds TokenSetAuthProvider, useTokenSetAuthRegistry / useTokenSetAuthService / useTokenSetAuthState / useTokenSetAccessToken, useTokenSetCallbackResume, and TokenSetCallbackOutlet on top of the existing BackendOidcModeContextProvider. Wraps the framework-neutral registry core (@securitydept/token-set-context-client/registry).",
+					"note": "Iteration 110 + 116 — React 19 productization plus canonical keyed consumer-path closeout. Adds TokenSetAuthProvider, useTokenSetAuthRegistry / useTokenSetAuthService / useTokenSetAuthState / useTokenSetAccessToken, useTokenSetCallbackResume, TokenSetCallbackComponent (with a retained TokenSetCallbackOutlet compatibility alias), and the SDK-owned lower-level keyed accessor useTokenSetBackendOidcClient(clientKey) on top of the framework-neutral registry core (@securitydept/token-set-context-client/registry).",
 					"evidence": [
 						"packages/token-set-context-client-react/src/__tests__/adapter.test.ts",
 						"examples/backend-oidc-react-minimal-entry.test.ts",
@@ -407,7 +409,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Iteration 110 — thin React Query integration helpers (not a separate package). @tanstack/react-query is an optional peer dependency. Consumer-layer only: auth lifecycle ownership stays in the token-set / client-react family.",
+					"note": "Iteration 115 + 116 — canonical token-set React Query consumer surface for groups / entries read and write workflows (not a separate package). @tanstack/react-query is an optional peer dependency. Auth lifecycle ownership still stays in the token-set / client-react family; the subpath owns query-key extensions, token-set management entity contracts, post-mutation invalidation for the canonical groups / entries flows, and the adopter-facing canonical path is now keyed-only (`clientKey`) instead of requiring explicit `client` passing.",
 					"evidence": ["examples/react-query-integration-evidence.test.ts"],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",

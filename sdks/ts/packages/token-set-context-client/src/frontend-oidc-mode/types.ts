@@ -222,8 +222,8 @@ export interface FrontendOidcModeClientConfig {
  * the client retrieves this state to complete the code exchange.
  */
 export interface FrontendOidcModePendingState {
-	/** PKCE code_verifier (empty string when PKCE is disabled). */
-	codeVerifier: string;
+	/** PKCE code_verifier (undefined when PKCE is disabled). */
+	codeVerifier?: string;
 	/** OAuth 2.0 state parameter. */
 	state: string;
 	/** OIDC nonce for id_token validation. */
@@ -248,8 +248,8 @@ export interface FrontendOidcModeAuthorizeParams {
 export interface FrontendOidcModeAuthorizeResult {
 	/** The full authorization URL to redirect to. */
 	redirectUrl: string;
-	/** The code_verifier for PKCE — must be stored for the callback phase. */
-	codeVerifier: string;
+	/** The code_verifier for PKCE — omitted when PKCE is disabled. */
+	codeVerifier?: string;
 	/** The state parameter — must match in the callback phase. */
 	state: string;
 	/** The nonce for id_token validation. */

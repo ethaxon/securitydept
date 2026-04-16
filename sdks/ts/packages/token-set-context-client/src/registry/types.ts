@@ -7,9 +7,36 @@
 // wrappers over the core registry; the lifecycle / readiness / discrimination
 // semantics live here.
 
+import type { ReadableSignalTrait } from "@securitydept/client";
 import type { ClientReadinessState } from "../frontend-oidc-mode/config-source";
+import type { AuthSnapshot } from "../orchestration";
 
 export type { ClientReadinessState };
+
+// ---------------------------------------------------------------------------
+// Shared managed OIDC client contracts
+// ---------------------------------------------------------------------------
+
+/**
+ * Framework-neutral contract for an OIDC mode client managed by the shared
+ * token-set registry family.
+ */
+export interface OidcModeClient {
+	state: ReadableSignalTrait<AuthSnapshot | null>;
+	dispose(): void;
+	restorePersistedState(): Promise<AuthSnapshot | null>;
+}
+
+/**
+ * Framework-neutral contract for a managed OIDC client that can resume an
+ * authorization callback.
+ */
+export interface OidcCallbackClient {
+	handleCallback(callbackUrl: string): Promise<{
+		snapshot: AuthSnapshot;
+		postAuthRedirectUri?: string;
+	}>;
+}
 
 // ---------------------------------------------------------------------------
 // Initialization priority — primary (eager) vs lazy (idle warmup)

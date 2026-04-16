@@ -5,7 +5,7 @@
 // Proves the three properties the review asked for:
 //
 // 1. Async primary clients: when the callback URL is visited before the
-//    client factory has resolved, `TokenSetCallbackOutlet` enters the
+//    client factory has resolved, `TokenSetCallbackComponent` enters the
 //    pending state, then transitions to resolved once the factory settles
 //    and `handleCallback()` runs against the matched client.
 //
@@ -28,13 +28,13 @@ import type { AuthSnapshot } from "@securitydept/token-set-context-client/orches
 import { AuthSourceKind } from "@securitydept/token-set-context-client/orchestration";
 import type {
 	OidcCallbackClient,
-	OidcModeClient,
+	TokenSetReactClient,
 } from "@securitydept/token-set-context-client-react";
 import {
 	CallbackResumeStatus,
 	ClientInitializationPriority,
 	TokenSetAuthProvider,
-	TokenSetCallbackOutlet,
+	TokenSetCallbackComponent,
 	useTokenSetCallbackResume,
 } from "@securitydept/token-set-context-client-react";
 import { act, createElement, type ReactElement } from "react";
@@ -79,9 +79,7 @@ interface MockClientKnobs {
 	handleCallback?: OidcCallbackClient["handleCallback"];
 }
 
-function createMockClient(
-	knobs: MockClientKnobs = {},
-): OidcModeClient & OidcCallbackClient {
+function createMockClient(knobs: MockClientKnobs = {}): TokenSetReactClient {
 	const ctrl = createTestSignal<AuthSnapshot | null>(knobs.snapshot ?? null);
 	return {
 		state: ctrl.signal,
@@ -93,6 +91,13 @@ function createMockClient(
 				snapshot: makeSnapshot("cb-token"),
 				postAuthRedirectUri: "/home",
 			}),
+		authorizeUrl: vi.fn().mockReturnValue("/auth/token-set/login"),
+		authorizationHeader() {
+			const accessToken = ctrl.signal.get()?.tokens.accessToken;
+			return accessToken ? `Bearer ${accessToken}` : null;
+		},
+		refresh: vi.fn().mockResolvedValue(makeSnapshot("refreshed")),
+		clearState: vi.fn().mockResolvedValue(undefined),
 	};
 }
 
@@ -153,13 +158,10 @@ describe("React callback outlet — async primary client", () => {
 
 	it("awaits async materialisation before driving handleCallback()", async () => {
 		const asyncClient = createMockClient();
-		let resolveFactory: (c: OidcModeClient & OidcCallbackClient) => void =
-			() => {};
-		const factoryPromise = new Promise<OidcModeClient & OidcCallbackClient>(
-			(resolve) => {
-				resolveFactory = resolve;
-			},
-		);
+		let resolveFactory: (c: TokenSetReactClient) => void = () => {};
+		const factoryPromise = new Promise<TokenSetReactClient>((resolve) => {
+			resolveFactory = resolve;
+		});
 
 		const resolvedSpy = vi.fn();
 		const view = render(
@@ -176,7 +178,7 @@ describe("React callback outlet — async primary client", () => {
 					],
 					idleWarmup: false,
 				},
-				createElement(TokenSetCallbackOutlet, {
+				createElement(TokenSetCallbackComponent, {
 					pending: createElement("span", { "data-testid": "pending" }, "…"),
 					fallback: createElement(
 						"span",
@@ -207,7 +209,7 @@ describe("React callback outlet — async primary client", () => {
 					],
 					idleWarmup: false,
 				},
-				createElement(TokenSetCallbackOutlet, {
+				createElement(TokenSetCallbackComponent, {
 					pending: createElement("span", { "data-testid": "pending" }, "…"),
 					fallback: createElement(
 						"span",
@@ -285,7 +287,7 @@ describe("React callback outlet — lazy client", () => {
 					],
 					idleWarmup: false,
 				},
-				createElement(TokenSetCallbackOutlet, {
+				createElement(TokenSetCallbackComponent, {
 					pending: createElement("span", { "data-testid": "pending" }, "…"),
 					fallback: createElement("span", { "data-testid": "fallback" }, "no"),
 					onResolved: resolvedSpy,
@@ -387,7 +389,7 @@ describe("useTokenSetCallbackResume — state transitions", () => {
 					],
 					idleWarmup: false,
 				},
-				createElement(TokenSetCallbackOutlet, {
+				createElement(TokenSetCallbackComponent, {
 					pending: createElement("span", { "data-testid": "pending" }, "…"),
 					fallback: createElement(
 						"span",
@@ -418,7 +420,7 @@ describe("useTokenSetCallbackResume — state transitions", () => {
 					],
 					idleWarmup: false,
 				},
-				createElement(TokenSetCallbackOutlet, {
+				createElement(TokenSetCallbackComponent, {
 					pending: createElement("span", { "data-testid": "pending" }, "…"),
 					fallback: createElement(
 						"span",

@@ -1,6 +1,5 @@
 import { Injectable, inject } from "@angular/core";
 import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import type { OidcCallbackClient, OidcModeClient } from "./contracts";
 import { TokenSetAuthRegistry } from "./token-set-auth-registry";
 
 /**
@@ -82,9 +81,7 @@ export class CallbackResumeService {
 		// clientFactory is still in-flight when the callback page first loads,
 		// we wait for it to materialize rather than throwing.
 		const service = await this.registry.whenReady(clientKey);
-		const callbackClient = service.client as OidcModeClient &
-			OidcCallbackClient;
-		const result = await callbackClient.handleCallback(callbackUrl);
+		const result = await service.client.handleCallback(callbackUrl);
 
 		// postAuthRedirectUri is recovered from the core client's pending state,
 		// which was stored by authorizeUrl() when loginWithRedirect() was called.

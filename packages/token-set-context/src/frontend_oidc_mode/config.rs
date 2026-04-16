@@ -165,8 +165,8 @@ impl ResolvedFrontendOidcModeConfig {
     /// # Errors
     ///
     /// Returns an `io::Error` if the claims check script path is configured but
-    /// the file cannot be read.
-    pub fn to_config_projection(&self) -> std::io::Result<FrontendOidcModeConfigProjection> {
+    /// the file cannot be read or transpiled.
+    pub async fn to_config_projection(&self) -> std::io::Result<FrontendOidcModeConfigProjection> {
         let client_secret = if self.capabilities.unsafe_frontend_client_secret.is_enabled() {
             self.oidc_client.client_secret.clone()
         } else {
@@ -174,12 +174,10 @@ impl ResolvedFrontendOidcModeConfig {
         };
 
         // Read the script file from the filesystem and inline it.
-        let claims_check_script = self
-            .oidc_client
-            .claims_check_script
-            .as_deref()
-            .map(FrontendOidcModeClaimsCheckScript::from_path)
-            .transpose()?;
+        let claims_check_script = match self.oidc_client.claims_check_script.as_deref() {
+            Some(path) => Some(FrontendOidcModeClaimsCheckScript::from_path(path).await?),
+            None => None,
+        };
 
         Ok(FrontendOidcModeConfigProjection {
             // Provider connectivity
@@ -309,8 +307,8 @@ mod tests {
         assert!(err.to_string().contains("client_id must be set"));
     }
 
-    #[test]
-    fn projection_reflects_resolved_config() {
+    #[tokio::test]
+    async fn projection_reflects_resolved_config() {
         let raw = FrontendOidcModeConfig {
             oidc_client: OidcClientRawConfig {
                 redirect_url: Some("https://app.example.com/callback".to_string()),
@@ -322,6 +320,7 @@ mod tests {
         let resolved = raw.resolve_all(&shared_config()).expect("should resolve");
         let projection = resolved
             .to_config_projection()
+            .await
             .expect("projection should succeed");
 
         assert_eq!(

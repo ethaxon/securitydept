@@ -18,6 +18,7 @@ use securitydept_core::{
             BackendOidcModeAuthService, BackendOidcModeRuntime,
             MokaPendingAuthStateMetadataRedemptionStore,
         },
+        frontend_oidc_mode::{FrontendOidcModeRuntime, FrontendOidcModeService},
     },
 };
 use url::Url;
@@ -34,6 +35,7 @@ pub struct ServerState {
     pub creds_manage_store: Arc<CredsManageStore>,
     pub backend_oidc_runtime:
         Arc<BackendOidcModeRuntime<MokaPendingAuthStateMetadataRedemptionStore>>,
+    pub frontend_oidc_runtime: Option<Arc<FrontendOidcModeRuntime>>,
     pub substrate_runtime: AccessTokenSubstrateRuntime,
     pub basic_auth_context: Arc<BasicAuthContext<Argon2BasicAuthCred>>,
     pub real_ip_resolver: Option<Arc<RealIpResolver>>,
@@ -65,7 +67,7 @@ impl ServerState {
         ))
     }
 
-    pub fn backend_oidc_auth_service(
+    pub fn backend_oidc_mode_auth_service(
         &self,
     ) -> ServerResult<
         BackendOidcModeAuthService<
@@ -83,8 +85,18 @@ impl ServerState {
         Ok(BackendOidcModeAuthService::new(
             oidc,
             &self.backend_oidc_runtime,
-            "/auth/token-set/callback",
+            "/auth/token-set/backend-mode/callback",
         ))
+    }
+
+    pub fn frontend_oidc_mode_service(&self) -> ServerResult<FrontendOidcModeService> {
+        let runtime = self
+            .frontend_oidc_runtime
+            .as_deref()
+            .ok_or(ServerError::InvalidConfig {
+                message: "FrontendOidcModeService requires OIDC to be enabled".to_string(),
+            })?;
+        Ok(FrontendOidcModeService::new(runtime.clone()))
     }
 
     pub fn external_base_url(&self, headers: &HeaderMap) -> Result<Url, ServerError> {

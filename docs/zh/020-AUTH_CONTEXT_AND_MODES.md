@@ -170,6 +170,7 @@ securitydept 认证栈需要分成两层来理解：
 
 - zone-aware 的 `401 -> login` 重定向
 - logout URL / logout helper
+- 使用 `post_auth_redirect_uri` 生成 login URL
 
 它不应演化成新的大前端 runtime。
 
@@ -350,7 +351,7 @@ required_scopes = ["entries.read"]
 - metadata / jwks refresh interval
 
 而 `scopes`、`audiences`、`redirect_url` 这类语义明显依赖具体角色的字段，不应被混成统一共享默认值。  
-尤其是 `redirect_url`，当前真实宿主已经要求按具体 flow 显式对齐，例如 session 使用 `/auth/session/callback`，token-set 使用 `/auth/token-set/callback`。
+尤其是 `redirect_url`，当前真实宿主已经要求按具体 flow 显式对齐，例如 session 使用 `/auth/session/callback`，token-set backend mode 使用 `/auth/token-set/backend-mode/callback`，而 token-set frontend mode 则在加载 `/api/auth/token-set/frontend-mode/config` 后，于浏览器路由 `/auth/token-set/frontend-mode/callback` 完成 callback。
 
 ### 6.4.1 `backend-oidc` 配置面的统一方向
 

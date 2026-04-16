@@ -24,16 +24,19 @@ chrono = { workspace = true }
 humantime-serde = { workspace = true }
 http = { workspace = true }
 moka = { workspace = true, features = ["future", "sync"], optional = true }
+openidconnect = { workspace = true }
 orion = "0.17"
 regex = { workspace = true }
 serde = { workspace = true }
 serde_regex = { version = "1" }
 serde_json = { workspace = true }
+serde_with = { workspace = true }
 snafu = { workspace = true }
 tracing = { workspace = true }
 typed-builder = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
+tokio = { workspace = true, features = ["fs", "sync"] }
 axum = { workspace = true, optional = true }
 axum-reverse-proxy = { version = "1", optional = true }
 

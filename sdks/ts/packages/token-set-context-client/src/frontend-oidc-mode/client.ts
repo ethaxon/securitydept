@@ -51,6 +51,7 @@ import {
 	discoveryRequest,
 	generateRandomCodeVerifier,
 	generateRandomState,
+	nopkce,
 	processAuthorizationCodeResponse,
 	processDiscoveryResponse,
 	processRefreshTokenResponse,
@@ -66,6 +67,7 @@ import type {
 	FrontendOidcModeClaimsCheckScript,
 	FrontendOidcModeUserInfoResponse,
 } from "./contracts";
+import { resolveDiscoveryIssuerCompatibility } from "./discovery";
 import type {
 	AuthStateMetadataSnapshot,
 	AuthStateSnapshot,
@@ -532,11 +534,27 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 	/** Fetch and cache the provider's OpenID discovery document. */
 	async discover(): Promise<void> {
-		const issuerUrl = new URL(this._config.issuer);
-		const response = await discoveryRequest(issuerUrl);
-		const discovered = await processDiscoveryResponse(issuerUrl, response);
+		const configuredIssuer = this._config.issuer;
+		const configuredIssuerUrl = new URL(configuredIssuer);
+		const response = await discoveryRequest(configuredIssuerUrl);
+		const compatibleIssuer = await resolveDiscoveryIssuerCompatibility(
+			response,
+			configuredIssuer,
+		);
+		const compatibleIssuerUrl = new URL(compatibleIssuer);
+		const discovered = await processDiscoveryResponse(
+			compatibleIssuerUrl,
+			response,
+		);
 		this._authServer = this._applyEndpointOverrides(discovered);
 		this._scheduleMetadataRefresh();
+
+		if (compatibleIssuer !== configuredIssuer) {
+			this._recordTrace("frontend_oidc.discovery.issuer_compat_resolved", {
+				configuredIssuer,
+				resolvedIssuer: compatibleIssuer,
+			});
+		}
 	}
 
 	/** Build an authorization URL with PKCE + nonce (low-level). */
@@ -560,14 +578,12 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		authUrl.searchParams.set("state", state);
 		authUrl.searchParams.set("nonce", nonce);
 
-		let codeVerifier: string;
+		let codeVerifier: string | undefined;
 		if (this._pkceEnabled) {
 			codeVerifier = generateRandomCodeVerifier();
 			const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
 			authUrl.searchParams.set("code_challenge", codeChallenge);
 			authUrl.searchParams.set("code_challenge_method", "S256");
-		} else {
-			codeVerifier = "";
 		}
 
 		if (params?.extraParams) {
@@ -582,7 +598,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	/** Exchange an authorization code for tokens (low-level). */
 	async exchangeCode(
 		callbackUrl: string,
-		codeVerifier: string,
+		codeVerifier: string | undefined,
 		state: string,
 		expectedNonce?: string,
 	): Promise<FrontendOidcModeTokenResult> {
@@ -602,7 +618,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			this._clientAuth,
 			params,
 			this._config.redirectUri,
-			codeVerifier,
+			this._pkceEnabled ? (codeVerifier ?? nopkce) : nopkce,
 		);
 
 		const result = await processAuthorizationCodeResponse(

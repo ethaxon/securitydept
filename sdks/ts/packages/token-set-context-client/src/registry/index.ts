@@ -30,6 +30,8 @@ export type {
 	ClientMeta,
 	ClientQueryOptions,
 	CreateTokenSetAuthRegistryOptions,
+	OidcCallbackClient,
+	OidcModeClient,
 	TokenSetClientEntry,
 } from "./types";
 export { ClientInitializationPriority } from "./types";

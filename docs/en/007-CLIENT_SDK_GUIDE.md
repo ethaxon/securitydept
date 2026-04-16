@@ -245,6 +245,7 @@ Its job is not to grow into a full frontend runtime. It exists to help adopters 
 - zone-aware `401 -> login`
 - logout URLs and logout helpers
 - redirect instructions in server-host scenarios
+- login URLs that carry the unified `post_auth_redirect_uri` query parameter
 
 ### `session-context-client`
 
@@ -418,6 +419,19 @@ The token-set family should no longer be read as the sole owner of every piece o
 `frontend-oidc-mode` remains the projection-source authority.  
 Source precedence, freshness, restore, and revalidate semantics belong there; how a host obtains config (network / bootstrap script / persisted) is handled by the mode surface plus adopter glue.
 
+#### Reference-App Host Evidence (`apps/webui` / `apps/server`)
+
+The reference app now proves two distinct token-set host modes instead of one generic “Token Set” path:
+
+- backend mode: server-owned callback and redirect completion via `/auth/token-set/backend-mode/*`, with the reference page at `/playground/token-set/backend-mode`
+- frontend mode: browser-owned callback via `/auth/token-set/frontend-mode/callback`, with config projection served from `/api/auth/token-set/frontend-mode/config` and the host page at `/playground/token-set/frontend-mode`
+
+That host split changes how React authority should be read:
+
+- `TokenSetCallbackComponent` is now validated only through the frontend-mode callback route, not through the older backend-owned path
+- bearer-backed dashboard access is proven across both token-set modes by the same keyed React Query / registry surface
+- TanStack route security still closes over both token-set modes with `createSecureBeforeLoad()` + `withTanStackRouteRequirements()`; no additional React-only secure-guard convenience layer was needed in the reference app
+
 ### Framework Router Adapters
 
 Framework router adapters now live under the shared framework owner:
@@ -551,7 +565,7 @@ Only consider promotion from `provisional` to `stable` when all of the following
 | `session-context-client/web` | provisional, with login-redirect convenience established |
 | `basic-auth-context-client/server` / `session-context-client/server` | provisional, with an SSR/server-host baseline established |
 | `*-react` / `*-angular` adapter family | provisional, with real reference-app / downstream-adopter proof but not yet a broad host matrix |
-| `token-set-context-client-react/react-query` | provisional; read-path authority is established, while SDK-owned canonical mutation surface is still being tightened |
+| `token-set-context-client-react/react-query` | provisional; SDK-owned read/write authority is established for the canonical token-set groups / entries consumer path |
 
 ## Raw Web Router Baseline
 
@@ -598,15 +612,21 @@ Its current meaning must stay explicit:
 What is already authoritative today:
 
 - groups / entries read paths
+- groups / entries write paths
 - readiness queries
+- keyed-only canonical hook ergonomics (`clientKey` is the adopter-facing selector; the hook resolves the client internally)
 - authorization-header derivation
+- `useTokenSetBackendOidcClient(clientKey)` as the SDK-owned lower-level backend-oidc accessor for React consumers
 - the query-key namespace
+- post-mutation invalidation for the canonical groups / entries flows
+- token-set management entity / request / response contracts used by the React consumer hooks
 
-What is still being tightened:
+What reference-app authority now proves:
 
-- iteration 114 proved that reference-app-local mutation dogfooding works
-- but an SDK-owned canonical mutation surface is still being brought into place
-- therefore `./react-query` must still be read as a **read-side + readiness + query-key primitive layer**
+- `apps/webui` dashboard consumes SDK-owned token-set query + mutation hooks directly
+- `apps/webui` token-set reference page consumes the same SDK-owned mutation path for group and entry creation workflows
+- `apps/webui` login / dashboard / token-set page no longer rely on app-local `getTokenSetClient()` or `service.client as ...` as the canonical React consumer path
+- app-local canonical wrappers are no longer the owner boundary for token-set React Query write semantics
 
 ## Examples and Reference Implementations
 

@@ -134,6 +134,7 @@
   - 前面提到的模式作为 `pure` 和 `mediated` preset/profile 提供，统一接受 3 轴配置（`refresh_material_protection`、`metadata_delivery`、`post_auth_redirect_policy`）；token propagation 是独立的跨 mode capability axis，归属 `access_token_substrate`
   - `frontend_oidc_mode` 已拥有正式 `Config / ResolvedConfig / ConfigSource / Runtime / Service / ConfigProjection`
 - bearer propagation 现在使用服务端持有的目标策略以及来源于 access token 校验链路的 `ResourceTokenPrincipal`
+- `apps/server` 现在已显式暴露 token-set backend mode 路由 `/auth/token-set/backend-mode/*`，并提供 frontend mode config projection 端点 `/api/auth/token-set/frontend-mode/config`
 - `TokenPropagator` 现在既支持直接目标，也支持通过可选运行时 `PropagationNodeTargetResolver` 解析的 node-only target
 - `securitydept-token-set-context` 现已包含可选的 `axum-reverse-proxy-propagation-forwarder` feature，`recommend-propagation-forwarder` 作为其 feature 别名
 - `apps/server` 的 dashboard API 当前认证顺序为：

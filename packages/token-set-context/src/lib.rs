@@ -34,6 +34,7 @@
 
 pub mod access_token_substrate;
 pub mod backend_oidc_mode;
+pub mod cross_mode_config;
 pub mod frontend_oidc_mode;
 pub mod models;
 pub mod orchestration;

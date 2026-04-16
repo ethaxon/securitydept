@@ -1,5 +1,12 @@
 import { Link, useMatchRoute } from "@tanstack/react-router";
-import { FlaskConical, KeyRound, LayoutDashboard, Users } from "lucide-react";
+import {
+	FlaskConical,
+	KeyRound,
+	LayoutDashboard,
+	Lock,
+	Shield,
+	Users,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const navItems = [
@@ -9,7 +16,18 @@ export const navItems = [
 ] as const;
 
 export const playgroundItems = [
-	{ to: "/playground/token-set", label: "Token Set", icon: FlaskConical },
+	{ to: "/playground/session", label: "Session", icon: Shield },
+	{
+		to: "/playground/token-set/backend-mode",
+		label: "Token Set Backend",
+		icon: FlaskConical,
+	},
+	{
+		to: "/playground/token-set/frontend-mode",
+		label: "Token Set Frontend",
+		icon: FlaskConical,
+	},
+	{ to: "/playground/basic-auth", label: "Basic Auth", icon: Lock },
 ] as const;
 
 export function Sidebar() {

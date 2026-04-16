@@ -208,13 +208,13 @@ where
         Ok(())
     }
 
-    pub fn resolve_post_auth_redirect(
+    pub fn resolve_post_auth_redirect_uri(
         &self,
-        requested_post_auth_redirect: Option<&str>,
+        requested_post_auth_redirect_uri: Option<&str>,
     ) -> BasicAuthContextResult<WebRoute> {
         let redirect_target = self
             .post_auth_redirect_resolver
-            .resolve_redirect_target(requested_post_auth_redirect)
+            .resolve_redirect_target(requested_post_auth_redirect_uri)
             .map_err(|source| BasicAuthContextError::RedirectTarget { source })?;
 
         Ok(resolve_root_web_route(redirect_target.as_str()))
@@ -317,9 +317,10 @@ impl BasicAuthZone {
     /// authentication.
     pub fn login_success_response(
         &self,
-        requested_post_auth_redirect: Option<&str>,
+        requested_post_auth_redirect_uri: Option<&str>,
     ) -> Result<HttpResponse, BasicAuthContextError> {
-        let redirect_target = self.resolve_post_auth_redirect(requested_post_auth_redirect)?;
+        let redirect_target =
+            self.resolve_post_auth_redirect_uri(requested_post_auth_redirect_uri)?;
         Ok(HttpResponse::found(&redirect_target))
     }
 
@@ -342,13 +343,13 @@ impl BasicAuthZone {
         }
     }
 
-    pub fn resolve_post_auth_redirect(
+    pub fn resolve_post_auth_redirect_uri(
         &self,
-        requested_post_auth_redirect: Option<&str>,
+        requested_post_auth_redirect_uri: Option<&str>,
     ) -> Result<WebRoute, BasicAuthContextError> {
         let redirect_target = self
             .post_auth_redirect_resolver
-            .resolve_redirect_target(requested_post_auth_redirect)
+            .resolve_redirect_target(requested_post_auth_redirect_uri)
             .map_err(|source| BasicAuthContextError::RedirectTarget { source })?;
 
         Ok(resolve_web_route(
@@ -410,7 +411,7 @@ mod tests {
         assert_eq!(&zone.logout_path as &str, "/internal/basic/signout");
         assert_eq!(
             &zone
-                .resolve_post_auth_redirect(None)
+                .resolve_post_auth_redirect_uri(None)
                 .expect("redirect should resolve") as &str,
             "/internal/basic/app"
         );
@@ -433,7 +434,7 @@ mod tests {
 
         assert_eq!(
             &zone
-                .resolve_post_auth_redirect(Some("/app"))
+                .resolve_post_auth_redirect_uri(Some("/app"))
                 .expect("redirect should resolve") as &str,
             "/app"
         );
@@ -528,7 +529,7 @@ mod tests {
         assert_eq!(context.zones[0].realm, "corp");
         assert_eq!(
             &context.zones[0]
-                .resolve_post_auth_redirect(None)
+                .resolve_post_auth_redirect_uri(None)
                 .expect("zone redirect should resolve") as &str,
             "/console"
         );

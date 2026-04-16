@@ -35,8 +35,9 @@ import {
 import type {
 	OidcCallbackClient,
 	OidcModeClient,
-	ReactClient,
+	TokenSetBackendOidcClient,
 	TokenSetClientEntry,
+	TokenSetReactClient,
 } from "./contracts";
 import { TokenSetAuthService } from "./token-set-auth-service";
 
@@ -45,7 +46,7 @@ import { TokenSetAuthService } from "./token-set-auth-service";
 // ---------------------------------------------------------------------------
 
 export type ReactRegistry = CoreTokenSetAuthRegistry<
-	ReactClient,
+	TokenSetReactClient,
 	TokenSetAuthService
 >;
 
@@ -85,7 +86,7 @@ export function TokenSetAuthProvider({
 	// *final* unmount has actually settled.
 	const registry = useMemo(
 		() =>
-			createTokenSetAuthRegistry<ReactClient, TokenSetAuthService>({
+			createTokenSetAuthRegistry<TokenSetReactClient, TokenSetAuthService>({
 				materialize: (client, entry) =>
 					new TokenSetAuthService(client, entry.autoRestore ?? true),
 				dispose: (service) => service.dispose(),
@@ -169,6 +170,20 @@ export function useTokenSetAuthService(key: string): TokenSetAuthService {
 }
 
 /**
+ * SDK-owned keyed lower-level accessor for backend-oidc token-set clients.
+ *
+ * Use this when a keyed React consumer needs backend-oidc-specific behavior
+ * such as `authorizeUrl()`, `authorizationHeader()`, or `refresh()`.
+ */
+export function useTokenSetBackendOidcClient(
+	key: string,
+): TokenSetBackendOidcClient {
+	const service = useTokenSetAuthService(key);
+	useDebugValue(`TokenSetBackendOidcClient(${key})`);
+	return service.client;
+}
+
+/**
  * Subscribe to the auth snapshot for a given client key. Re-renders
  * whenever the underlying signal changes.
  */
@@ -247,7 +262,7 @@ export interface CallbackResumeState {
  * 3. Call `service.client.handleCallback(currentUrl)`.
  *
  * The returned state is Suspense-friendly (`status` tracks the lifecycle)
- * and can be consumed directly by `TokenSetCallbackOutlet` or by adopter
+ * and can be consumed directly by `TokenSetCallbackComponent` or by adopter
  * components rendering their own pending UX.
  */
 export function useTokenSetCallbackResume(
@@ -321,9 +336,14 @@ export function useTokenSetCallbackResume(
 }
 
 // Ensure types are referenced so imports are not elided.
-export type { OidcCallbackClient, OidcModeClient, ReactClient };
+export type {
+	OidcCallbackClient,
+	OidcModeClient,
+	TokenSetBackendOidcClient,
+	TokenSetReactClient,
+};
 
-export interface TokenSetCallbackOutletProps {
+export interface TokenSetCallbackComponentProps {
 	/**
 	 * Optional render prop for the pending state (registry warming the
 	 * client or `handleCallback()` in flight).
@@ -356,12 +376,12 @@ export interface TokenSetCallbackOutletProps {
  * `client.handleCallback(url)`. Renders `pending` while the callback is
  * in flight and `fallback` when the URL is not a recognised callback.
  */
-export function TokenSetCallbackOutlet({
+export function TokenSetCallbackComponent({
 	pending,
 	fallback,
 	onResolved,
 	onError,
-}: TokenSetCallbackOutletProps): ReactNode {
+}: TokenSetCallbackComponentProps): ReactNode {
 	const state = useTokenSetCallbackResume();
 	const resolvedRef = useRef(false);
 	const erroredRef = useRef(false);

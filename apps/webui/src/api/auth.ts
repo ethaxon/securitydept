@@ -31,9 +31,13 @@ export async function clearPostAuthRedirect(): Promise<void> {
 	await sessionClient.clearPendingLoginRedirect();
 }
 
+export function buildLoginUrl(postAuthRedirectUri?: string): string {
+	return sessionClient.loginUrl(postAuthRedirectUri);
+}
+
 export async function resolveLoginUrl(): Promise<string> {
 	const pendingRedirect = await sessionClient.consumePendingLoginRedirect();
-	return sessionClient.loginUrl(pendingRedirect ?? undefined);
+	return buildLoginUrl(pendingRedirect ?? undefined);
 }
 
 export async function logoutCurrentSession(): Promise<void> {

@@ -57,6 +57,16 @@ scopes = ["openid", "profile", "email"]
 # dynamic_redirect_target_enabled = true
 # allowed_redirect_targets = [{ kind = "all" }]
 
+# Optional backend-mode-only override layer.
+# [backend_oidc_override]
+# pkce_enabled = true
+
+# Optional frontend-mode-only override layer.
+[frontend_oidc_override]
+unsafe_frontend_client_secret = "enabled"
+# pkce_enabled = true
+
+
 [session_context]
 # cookie_name = "securitydept_session"
 # session_context_key = "securitydept.session_context"

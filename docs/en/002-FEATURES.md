@@ -133,7 +133,7 @@ Current status:
   - OIDC protocol flows (authorize / callback / refresh / exchange) are provided by `OidcClient`; `securitydept-oidc-client::auth_state` provides identity extraction shared across presets (principal / issuer)
   - the former split modes are now expressed as `pure` and `mediated` presets / profiles, parameterized by a unified 3-axis configuration (`refresh_material_protection`, `metadata_delivery`, `post_auth_redirect_policy`); token propagation is a separate shared capability owned by `access_token_substrate`
   - `frontend_oidc_mode` now has formal `Config / ResolvedConfig / ConfigSource / Runtime / Service / ConfigProjection`
-- `apps/server` already exposes `/auth/token-set/*` routes for callbackrefreshand metadata fallback
+- `apps/server` now exposes explicit token-set backend-mode routes at `/auth/token-set/backend-mode/*` and a frontend-mode config projection endpoint at `/api/auth/token-set/frontend-mode/config`
 - bearer propagation now uses server-owned destination policy plus access-token-derived `ResourceTokenPrincipal` facts
 - `TokenPropagator` now accepts either a direct destination target or a node-only target resolved via an optional runtime `PropagationNodeTargetResolver`
 - `securitydept-token-set-context` now includes an optional `axum-reverse-proxy-propagation-forwarder` feature, with `recommend-propagation-forwarder` as a feature alias

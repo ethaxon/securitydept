@@ -4,9 +4,23 @@
 //! client and the backend. They are the Rust counterpart of the TS
 //! `@securitydept/token-set-context-client/frontend-oidc-mode` contracts.
 
-use std::time::Duration;
+use std::{
+    collections::HashMap,
+    sync::{LazyLock, Mutex},
+    time::{Duration, SystemTime},
+};
 
 use serde::{Deserialize, Serialize};
+use securitydept_oidc_client::transpile_claims_script_typescript_to_javascript;
+
+#[derive(Debug, Clone)]
+struct CachedFrontendClaimsCheckScript {
+    modified_at: Option<SystemTime>,
+    content: String,
+}
+
+static FRONTEND_CLAIMS_CHECK_SCRIPT_CACHE: LazyLock<Mutex<HashMap<String, CachedFrontendClaimsCheckScript>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 // ---------------------------------------------------------------------------
 // Claims check script
@@ -31,8 +45,42 @@ pub enum FrontendOidcModeClaimsCheckScript {
 
 impl FrontendOidcModeClaimsCheckScript {
     /// Read the script from the given filesystem path and wrap it as `Inline`.
-    pub fn from_path(path: &str) -> std::io::Result<Self> {
-        let content = std::fs::read_to_string(path)?;
+    pub async fn from_path(path: &str) -> std::io::Result<Self> {
+        let modified_at = tokio::fs::metadata(path)
+            .await
+            .ok()
+            .and_then(|metadata| metadata.modified().ok());
+
+        if let Some(cached) = FRONTEND_CLAIMS_CHECK_SCRIPT_CACHE
+            .lock()
+            .expect("frontend claims-check cache poisoned")
+            .get(path)
+            .cloned()
+            .filter(|cached| cached.modified_at == modified_at)
+        {
+            return Ok(Self::Inline {
+                content: cached.content,
+            });
+        }
+
+        let mut content = tokio::fs::read_to_string(path).await?;
+        if matches!(std::path::Path::new(path).extension().and_then(|ext| ext.to_str()), Some("ts" | "mts")) {
+            content = transpile_claims_script_typescript_to_javascript(path, &content)
+                .await
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
+        }
+
+        FRONTEND_CLAIMS_CHECK_SCRIPT_CACHE
+            .lock()
+            .expect("frontend claims-check cache poisoned")
+            .insert(
+                path.to_string(),
+                CachedFrontendClaimsCheckScript {
+                    modified_at,
+                    content: content.clone(),
+                },
+            );
+
         Ok(Self::Inline { content })
     }
 
@@ -151,4 +199,39 @@ pub struct FrontendOidcModeConfigProjection {
     /// Clients compare this against a max-age policy to decide whether an
     /// idle revalidation is needed.
     pub generated_at: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn from_path_returns_explicit_error_when_typescript_transpilation_is_unavailable() {
+        let path = std::env::temp_dir().join(format!(
+            "securitydept-frontend-claims-check-{}.mts",
+            uuid::Uuid::new_v4()
+        ));
+        fs::write(
+            &path,
+            r#"
+                interface Claims { sub: string; }
+                export default function claimsCheck(idTokenClaims: Claims) {
+                    return { success: true, display_name: idTokenClaims.sub, claims: idTokenClaims };
+                }
+            "#,
+        )
+        .expect("write temp claims script");
+
+        let error = FrontendOidcModeClaimsCheckScript::from_path(
+            path.to_str().expect("temp path should be utf-8"),
+        )
+        .await
+        .expect_err("typescript transpilation should be unavailable without dependency feature forwarding");
+
+        assert!(error.to_string().contains("claims-script feature"));
+
+        let _ = fs::remove_file(path);
+    }
 }

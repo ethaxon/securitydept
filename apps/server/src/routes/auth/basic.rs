@@ -14,7 +14,7 @@ use crate::{error::ServerError, http_response::into_axum_response, state::Server
 #[derive(Debug, Deserialize)]
 pub struct BasicAuthLoginQuery {
     #[serde(default)]
-    pub post_auth_redirect: Option<String>,
+    pub post_auth_redirect_uri: Option<String>,
 }
 
 pub fn router() -> Router {
@@ -39,7 +39,7 @@ pub async fn login(
         .login(
             "/basic/login",
             authorization,
-            query.post_auth_redirect.as_deref(),
+            query.post_auth_redirect_uri.as_deref(),
             resolved_client_ip.as_ref(),
         )
         .map(into_axum_response)

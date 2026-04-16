@@ -245,6 +245,7 @@ DI 只在 framework adapter 或内部 runtime glue 中作为能力存在。
 - zone-aware `401 -> login`
 - logout URL / logout helper
 - server-host 下的 redirect instruction
+- 带统一 `post_auth_redirect_uri` query 参数的 login URL
 
 ### `session-context-client`
 
@@ -418,6 +419,19 @@ SDK 默认不内置全局 polyfill。
 `frontend-oidc-mode` 仍是 projection-source authority。  
 source precedence、freshness、restore / revalidate 语义属于该层；具体宿主如何拿到配置（network / bootstrap script / persisted）则由 mode surface 与 adopter glue 共同完成。
 
+#### reference app 宿主证据（`apps/webui` / `apps/server`）
+
+reference app 现在不再只有一条笼统的 “Token Set” 路径，而是明确证明两种 token-set host mode：
+
+- backend mode：server-owned callback / redirect completion，经由 `/auth/token-set/backend-mode/*`，reference page 位于 `/playground/token-set/backend-mode`
+- frontend mode：browser-owned callback，经由 `/auth/token-set/frontend-mode/callback`，config projection 由 `/api/auth/token-set/frontend-mode/config` 提供，宿主页位于 `/playground/token-set/frontend-mode`
+
+这也改变了 React authority 的阅读方式：
+
+- `TokenSetCallbackComponent` 现在只通过 frontend-mode callback route 获得真实宿主验证，而不再借 backend-owned 路线“代证”
+- dashboard bearer access 通过同一套 keyed React Query / registry surface 同时覆盖 backend/frontend 两种 token-set mode
+- TanStack route security 仍通过 `createSecureBeforeLoad()` + `withTanStackRouteRequirements()` 覆盖两种 token-set mode；reference app 没有证明需要额外的 React-only secure-guard convenience layer
+
 ### Framework Router Adapters
 
 framework router adapter 已收口到共享 framework owner：
@@ -554,7 +568,7 @@ server-host adopter 应优先从 dedicated `./server` helper 进入：
 | `session-context-client/web` | provisional，login redirect convenience 已成形 |
 | `basic-auth-context-client/server` / `session-context-client/server` | provisional，SSR/server-host baseline 已建立 |
 | `*-react` / `*-angular` adapter family | provisional，已有真实 reference app / downstream adopter 证据，但 host matrix 尚未广泛铺开 |
-| `token-set-context-client-react/react-query` | provisional，读路径 authority 已成立；写路径 canonical SDK owner 仍在继续收口 |
+| `token-set-context-client-react/react-query` | provisional，canonical token-set groups / entries consumer path 的 SDK-owned 读写 authority 已成立 |
 
 ## Raw Web Router Baseline（原生 Web 路由基线）
 
@@ -601,15 +615,21 @@ React 与 Angular adapter 都应消费这套 shared core，而不是各自重写
 当前已经成立的 authority：
 
 - groups / entries 读路径
+- groups / entries 写路径
 - readiness query
+- keyed-only canonical hook ergonomics（adopter-facing selector 是 `clientKey`，hook 内部自行解析 client）
 - authorization header derivation
+- `useTokenSetBackendOidcClient(clientKey)` 作为 React consumer 的 SDK-owned lower-level backend-oidc accessor
 - query key namespace
+- canonical groups / entries flow 的 post-mutation invalidation
+- React consumer hooks 所使用的 token-set management entity / request / response contract
 
-当前仍在继续收口的边界：
+当前 reference-app authority 已证明：
 
-- 第 114 轮证明了 reference-app-local mutation dogfooding 成立
-- 但 SDK-owned canonical mutation surface 仍在继续推进中
-- 因此 `./react-query` 目前仍应被读成 **read-side + readiness + query-key primitive 层**
+- `apps/webui` dashboard 已直接消费 SDK-owned token-set query + mutation hooks
+- `apps/webui` token-set reference page 的 group / entry 创建流程也已切到同一套 SDK-owned mutation path
+- `apps/webui` 的 login / dashboard / token-set page 主路径已经不再依赖 app-local `getTokenSetClient()` 或 `service.client as ...` 作为 canonical React consumer path
+- app-local canonical wrapper 已不再是 token-set React Query 写语义的 owner 边界
 
 ## 示例与参考实现
 

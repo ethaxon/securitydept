@@ -10,14 +10,20 @@ import {
 } from "@securitydept/client";
 import type { AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import type { BackendOidcModeBootstrapSource as BackendOidcModeBootstrapSourceType } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
-import {
-	BackendOidcModeBootstrapSource,
-	resetBackendOidcModeBrowserState,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+import { BackendOidcModeBootstrapSource } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import {
 	useTokenSetAuthService,
 	useTokenSetAuthState,
+	useTokenSetBackendOidcClient,
 } from "@securitydept/token-set-context-client-react";
+import {
+	tokenSetQueryKeys,
+	useTokenSetCreateBasicEntryMutation,
+	useTokenSetCreateGroupMutation,
+	useTokenSetCreateTokenEntryMutation,
+	useTokenSetEntriesQuery,
+	useTokenSetGroupsQuery,
+} from "@securitydept/token-set-context-client-react/react-query";
 import { useQueryClient } from "@tanstack/react-query";
 import {
 	useCallback,
@@ -27,17 +33,10 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
-import { TOKEN_SET_CLIENT_KEY } from "@/App";
-import type {
-	AuthEntry,
-	CreateBasicEntryResponse,
-	CreateTokenResponse,
-} from "@/api/entries";
+import type { AuthEntry, CreateTokenResponse } from "@/api/entries";
 import type { Group } from "@/api/groups";
 import {
 	assessPropagationProbeResult,
-	createBasicEntryWithTokenSet,
-	createTokenEntryWithTokenSet,
 	DEFAULT_PROPAGATION_FORWARDER_CONFIG_SNIPPET,
 	DEFAULT_PROPAGATION_PROBE_PATH,
 	probeForwardAuthBoundaryWithTokenSet,
@@ -47,20 +46,24 @@ import {
 } from "@/api/tokenSet";
 import { Layout } from "@/components/layout/Layout";
 import {
-	tokenSetAppQueryKeys,
-	useCreateGroupMutation,
-	useTokenSetEntriesQuery,
-	useTokenSetGroupsQuery,
-} from "@/hooks/useTokenSetQueries";
+	AuthContextMode,
+	clearAuthContextMode,
+	getAuthContextMode,
+	setAuthContextMode,
+} from "@/lib/authContext";
 import {
-	type BackendOidcModeReactClient,
-	tokenSetTraceTimeline,
-} from "@/lib/tokenSetClient";
+	clearTokenSetBackendModeBrowserState,
+	tokenSetBackendModeTraceTimeline,
+} from "@/lib/tokenSetBackendModeClient";
+import {
+	TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+	TOKEN_SET_BACKEND_MODE_PLAYGROUND_PATH,
+} from "@/lib/tokenSetConfig";
 import {
 	createTokenSetAppTraceRecorder,
 	readTokenSetTraceErrorAttributes,
-} from "@/routes/tokenSet/appTrace";
-import { TraceTimelineSection } from "@/routes/tokenSet/TraceTimelineSection";
+} from "@/routes/tokenSetBackendMode/appTrace";
+import { TraceTimelineSection } from "@/routes/tokenSetBackendMode/TraceTimelineSection";
 
 const BootstrapStatusKind = {
 	Booting: "booting",
@@ -324,8 +327,8 @@ function readMutationStatusText(status: MutationStatus, label: string): string {
 	return `Status: ${status.kind}`;
 }
 
-export function TokenSetPage() {
-	const traceTimeline = tokenSetTraceTimeline;
+export function TokenSetBackendModePlaygroundPage() {
+	const traceTimeline = tokenSetBackendModeTraceTimeline;
 	const recordAppTrace = useMemo(
 		() => createTokenSetAppTraceRecorder(traceTimeline),
 		[],
@@ -333,17 +336,14 @@ export function TokenSetPage() {
 
 	// --- React canonical consumer path ---
 	// State subscription via canonical hook (replaces manual useSyncExternalStore).
-	// Client access via service for business operations.
-	const service = useTokenSetAuthService(TOKEN_SET_CLIENT_KEY);
+	// Lower-level backend-oidc access via SDK-owned keyed hook.
+	const service = useTokenSetAuthService(TOKEN_SET_BACKEND_MODE_CLIENT_KEY);
 	const state = useTokenSetAuthState(
-		TOKEN_SET_CLIENT_KEY,
+		TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	) as AuthStateSnapshot | null;
-
-	// The service's client is a Proxy over BackendOidcModeClient that
-	// satisfies both ReactClient and the full BackendOidcModeClient surface.
-	// Narrow to BackendOidcModeReactClient so downstream code can call
-	// authorizationHeader(), refresh(), authorizeUrl(), etc.
-	const client = service.client as BackendOidcModeReactClient;
+	const client = useTokenSetBackendOidcClient(
+		TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+	);
 
 	const traceEvents = useSyncExternalStore(
 		(listener) => traceTimeline.subscribe(listener),
@@ -368,12 +368,24 @@ export function TokenSetPage() {
 
 	// --- React Query read paths (replaces imperative loadGroups / loadEntries) ---
 	const queryClient = useQueryClient();
-	const groupsQuery = useTokenSetGroupsQuery(client);
-	const entriesQuery = useTokenSetEntriesQuery(client);
+	const groupsQuery = useTokenSetGroupsQuery({
+		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+	});
+	const entriesQuery = useTokenSetEntriesQuery({
+		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+	});
 	const protectedGroups = groupsQuery.data ?? [];
 
 	// --- React Query mutation paths ---
-	const createGroupMutation = useCreateGroupMutation(client);
+	const createGroupMutation = useTokenSetCreateGroupMutation({
+		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+	});
+	const createTokenEntryMutation = useTokenSetCreateTokenEntryMutation({
+		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+	});
+	const createBasicEntryMutation = useTokenSetCreateBasicEntryMutation({
+		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+	});
 	const protectedEntries = entriesQuery.data ?? [];
 	const [selectedGroupId, setSelectedGroupId] = useState("");
 	const [newGroupName, setNewGroupName] = useState("");
@@ -443,6 +455,14 @@ export function TokenSetPage() {
 			),
 		);
 	}, [protectedEntries]);
+
+	useEffect(() => {
+		if (state?.tokens.accessToken) {
+			if (getAuthContextMode() !== AuthContextMode.TokenSetBackend) {
+				setAuthContextMode(AuthContextMode.TokenSetBackend);
+			}
+		}
+	}, [state?.tokens.accessToken]);
 
 	// Bootstrap readiness — driven by the provider's auto-restore.
 	// The service.restorePromise tracks the full browser bootstrap
@@ -516,17 +536,19 @@ export function TokenSetPage() {
 		propagationRequestRef.current = null;
 
 		try {
-			await resetBackendOidcModeBrowserState(client);
+			await clearTokenSetBackendModeBrowserState(client);
+			if (getAuthContextMode() === AuthContextMode.TokenSetBackend) {
+				clearAuthContextMode();
+			}
 			setBootstrap({
 				kind: BootstrapStatusKind.Ready,
 				source: BackendOidcModeBootstrapSource.Empty,
 			});
 			// Reset React Query caches — removes cached data and resets to initial state.
 			void queryClient.resetQueries({
-				queryKey: tokenSetAppQueryKeys.groups(TOKEN_SET_CLIENT_KEY),
-			});
-			void queryClient.resetQueries({
-				queryKey: tokenSetAppQueryKeys.entries(TOKEN_SET_CLIENT_KEY),
+				queryKey: tokenSetQueryKeys.forClient(
+					TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+				),
 			});
 			setSelectedGroupId("");
 			setNewGroupName("");
@@ -634,6 +656,7 @@ export function TokenSetPage() {
 		createTokenEntryRequestRef.current?.cancel();
 		const cancellation = createCancellationTokenSource();
 		createTokenEntryRequestRef.current = cancellation;
+		createTokenEntryMutation.reset();
 		setTokenEntryStatus({ kind: MutationStatusKind.Loading });
 		recordAppTrace("token_set.app.entries.token.create.started", {
 			entryName: newTokenEntryName.trim(),
@@ -642,16 +665,13 @@ export function TokenSetPage() {
 		});
 
 		try {
-			const result = await createTokenEntryWithTokenSet(
-				client,
-				{
-					name: newTokenEntryName.trim(),
-					group_ids: [selectedGroup.id],
-				},
-				{
+			const result = await createTokenEntryMutation.mutateAsync({
+				name: newTokenEntryName.trim(),
+				group_ids: [selectedGroup.id],
+				requestOptions: {
 					cancellationToken: cancellation.token,
 				},
-			);
+			});
 			if (createTokenEntryRequestRef.current !== cancellation) {
 				return;
 			}
@@ -668,9 +688,6 @@ export function TokenSetPage() {
 				entryName: result.entry.name,
 				groupId: selectedGroup.id,
 				groupName: selectedGroup.name,
-			});
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetAppQueryKeys.entries(TOKEN_SET_CLIENT_KEY),
 			});
 		} catch (error) {
 			if (createTokenEntryRequestRef.current !== cancellation) {
@@ -740,6 +757,7 @@ export function TokenSetPage() {
 		createBasicEntryRequestRef.current?.cancel();
 		const cancellation = createCancellationTokenSource();
 		createBasicEntryRequestRef.current = cancellation;
+		createBasicEntryMutation.reset();
 		setBasicEntryStatus({ kind: MutationStatusKind.Loading });
 		recordAppTrace("token_set.app.entries.basic.create.started", {
 			entryName: newBasicEntryName.trim(),
@@ -749,19 +767,15 @@ export function TokenSetPage() {
 		});
 
 		try {
-			const result: CreateBasicEntryResponse =
-				await createBasicEntryWithTokenSet(
-					client,
-					{
-						name: newBasicEntryName.trim(),
-						username: newBasicEntryUsername.trim(),
-						password: newBasicEntryPassword,
-						group_ids: [selectedGroup.id],
-					},
-					{
-						cancellationToken: cancellation.token,
-					},
-				);
+			const result = await createBasicEntryMutation.mutateAsync({
+				name: newBasicEntryName.trim(),
+				username: newBasicEntryUsername.trim(),
+				password: newBasicEntryPassword,
+				group_ids: [selectedGroup.id],
+				requestOptions: {
+					cancellationToken: cancellation.token,
+				},
+			});
 			if (createBasicEntryRequestRef.current !== cancellation) {
 				return;
 			}
@@ -784,9 +798,6 @@ export function TokenSetPage() {
 				entryName: result.entry.name,
 				groupId: selectedGroup.id,
 				groupName: selectedGroup.name,
-			});
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetAppQueryKeys.entries(TOKEN_SET_CLIENT_KEY),
 			});
 		} catch (error) {
 			if (createBasicEntryRequestRef.current !== cancellation) {
@@ -1233,23 +1244,62 @@ export function TokenSetPage() {
 	return (
 		<Layout>
 			<div className="mx-auto max-w-6xl space-y-6">
-				<div className="space-y-2">
-					<h1 className="text-2xl font-semibold">Token Set</h1>
-					<p className="max-w-4xl text-sm text-zinc-500 dark:text-zinc-400">
-						This page now exercises three business mutation families through the
-						dashboard token-set bearer: token entries, basic entries, and groups
-						with cross-resource membership reloads. It also compares downstream
-						forward-auth behavior across dashboard bearer, generated token
-						credentials, generated basic credentials, and a more explicit
-						propagation config probe. The same page now exposes both the SDK
-						auth lifecycle trace and app-level request/probe events as a
-						first-class debugging surface instead of leaving them hidden behind
-						tests.
-					</p>
-				</div>
+				<section className="rounded-[28px] border border-emerald-200 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.2),transparent_38%),linear-gradient(135deg,rgba(236,253,245,1),rgba(255,255,255,0.94))] p-8 shadow-sm dark:border-emerald-900/60 dark:bg-[radial-gradient(circle_at_top_left,rgba(5,150,105,0.24),transparent_35%),linear-gradient(135deg,rgba(9,9,11,1),rgba(16,24,39,0.94))]">
+					<div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+						<div className="max-w-3xl space-y-3">
+							<div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/70 bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 backdrop-blur dark:border-emerald-800 dark:bg-zinc-950/40 dark:text-emerald-300">
+								Token Set Backend Mode Playground
+							</div>
+							<h1 className="text-3xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+								Backend-mode bearer reference page
+							</h1>
+							<p className="text-sm leading-6 text-zinc-600 dark:text-zinc-300">
+								This page exercises the token-set backend-mode reference
+								workflow end to end: bootstrap and refresh state, dashboard
+								bearer-backed groups and entries, downstream forward-auth
+								comparisons, propagation probing, and the combined SDK plus app
+								trace timeline.
+							</p>
+						</div>
+						<div className="flex flex-col gap-3 sm:flex-row">
+							<button
+								type="button"
+								onClick={() => {
+									setAuthContextMode(AuthContextMode.TokenSetBackend);
+									window.location.href = client.authorizeUrl(
+										TOKEN_SET_BACKEND_MODE_PLAYGROUND_PATH,
+									);
+								}}
+								className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+							>
+								Start Backend-Mode Flow
+							</button>
+							<button
+								type="button"
+								onClick={() => void handleRefresh()}
+								disabled={busyAction !== null || !state?.tokens.refreshMaterial}
+								className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white/80 px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-400 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950/60 dark:text-zinc-200 dark:hover:border-zinc-500"
+							>
+								{busyAction === BusyActionKind.Refresh
+									? "Refreshing..."
+									: "Refresh Now"}
+							</button>
+							<button
+								type="button"
+								onClick={() => void handleClear()}
+								disabled={busyAction !== null}
+								className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white/80 px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-400 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950/60 dark:text-zinc-200 dark:hover:border-zinc-500"
+							>
+								{busyAction === BusyActionKind.Clear
+									? "Clearing..."
+									: "Forget Backend Mode State"}
+							</button>
+						</div>
+					</div>
+				</section>
 
 				<div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
-					<section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+					<section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
 						<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
 							<div>
 								<h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
@@ -1261,41 +1311,6 @@ export function TokenSetPage() {
 										? bootstrap.source
 										: bootstrap.kind}
 								</p>
-							</div>
-							<div className="flex flex-wrap gap-2">
-								<button
-									type="button"
-									onClick={() => {
-										window.location.href = client.authorizeUrl(
-											"/playground/token-set",
-										);
-									}}
-									className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
-								>
-									Start Token Flow
-								</button>
-								<button
-									type="button"
-									onClick={() => void handleRefresh()}
-									disabled={
-										busyAction !== null || !state?.tokens.refreshMaterial
-									}
-									className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-								>
-									{busyAction === BusyActionKind.Refresh
-										? "Refreshing..."
-										: "Refresh Now"}
-								</button>
-								<button
-									type="button"
-									onClick={() => void handleClear()}
-									disabled={busyAction !== null}
-									className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-								>
-									{busyAction === BusyActionKind.Clear
-										? "Clearing..."
-										: "Forget Token Set"}
-								</button>
 							</div>
 						</div>
 
@@ -1331,7 +1346,7 @@ export function TokenSetPage() {
 								<p className="text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
 									Expires At
 								</p>
-								<p className="mt-2 text-sm">
+								<p className="mt-2 break-all font-mono text-xs leading-5 text-zinc-600 dark:text-zinc-300">
 									{state?.tokens.accessTokenExpiresAt ?? "Unavailable"}
 								</p>
 							</div>
@@ -1342,7 +1357,7 @@ export function TokenSetPage() {
 						</div>
 					</section>
 
-					<section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+					<section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
 						<h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
 							Metadata
 						</h2>
@@ -1352,7 +1367,7 @@ export function TokenSetPage() {
 					</section>
 				</div>
 
-				<section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+				<section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
 					<div className="flex flex-wrap items-center justify-between gap-3">
 						<div>
 							<h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
@@ -1383,7 +1398,9 @@ export function TokenSetPage() {
 								type="button"
 								onClick={() =>
 									void queryClient.cancelQueries({
-										queryKey: tokenSetAppQueryKeys.groups(TOKEN_SET_CLIENT_KEY),
+										queryKey: tokenSetQueryKeys.groups(
+											TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+										),
 									})
 								}
 								disabled={!groupsQuery.isFetching}
@@ -1618,8 +1635,9 @@ export function TokenSetPage() {
 								type="button"
 								onClick={() =>
 									void queryClient.cancelQueries({
-										queryKey:
-											tokenSetAppQueryKeys.entries(TOKEN_SET_CLIENT_KEY),
+										queryKey: tokenSetQueryKeys.entries(
+											TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+										),
 									})
 								}
 								disabled={!entriesQuery.isFetching}

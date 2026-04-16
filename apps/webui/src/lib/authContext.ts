@@ -1,3 +1,8 @@
+import {
+	TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+	TOKEN_SET_FRONTEND_MODE_CLIENT_KEY,
+} from "@/lib/tokenSetConfig";
+
 // Auth context mode — tracks which authentication context the user chose
 // at the login chooser. Persisted to localStorage so logout, API gating,
 // and navigation can branch correctly.
@@ -7,7 +12,8 @@ const AUTH_CONTEXT_CHANGE_EVENT = "securitydept.webui.auth_context_mode.change";
 
 export const AuthContextMode = {
 	Session: "session",
-	TokenSet: "token-set",
+	TokenSetBackend: "token-set-backend-mode",
+	TokenSetFrontend: "token-set-frontend-mode",
 	Basic: "basic",
 } as const;
 
@@ -25,7 +31,8 @@ export function getAuthContextMode(): AuthContextMode | null {
 	const raw = localStorage.getItem(STORAGE_KEY);
 	if (
 		raw === AuthContextMode.Session ||
-		raw === AuthContextMode.TokenSet ||
+		raw === AuthContextMode.TokenSetBackend ||
+		raw === AuthContextMode.TokenSetFrontend ||
 		raw === AuthContextMode.Basic
 	) {
 		return raw;
@@ -65,4 +72,29 @@ export function setAuthContextMode(mode: AuthContextMode): void {
 export function clearAuthContextMode(): void {
 	localStorage.removeItem(STORAGE_KEY);
 	notifyAuthContextModeChanged();
+}
+
+export function isTokenSetAuthContextMode(
+	mode: AuthContextMode | null,
+): mode is
+	| typeof AuthContextMode.TokenSetBackend
+	| typeof AuthContextMode.TokenSetFrontend {
+	return (
+		mode === AuthContextMode.TokenSetBackend ||
+		mode === AuthContextMode.TokenSetFrontend
+	);
+}
+
+export function resolveTokenSetClientKey(
+	mode: AuthContextMode | null,
+): string | null {
+	if (mode === AuthContextMode.TokenSetBackend) {
+		return TOKEN_SET_BACKEND_MODE_CLIENT_KEY;
+	}
+
+	if (mode === AuthContextMode.TokenSetFrontend) {
+		return TOKEN_SET_FRONTEND_MODE_CLIENT_KEY;
+	}
+
+	return null;
 }

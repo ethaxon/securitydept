@@ -56,8 +56,8 @@ impl FrontendOidcModeRuntime {
     /// # Errors
     ///
     /// Returns an `io::Error` if the claims check script file cannot be read.
-    pub fn config_projection(&self) -> std::io::Result<FrontendOidcModeConfigProjection> {
-        self.config.to_config_projection()
+    pub async fn config_projection(&self) -> std::io::Result<FrontendOidcModeConfigProjection> {
+        self.config.to_config_projection().await
     }
 }
 
@@ -93,11 +93,12 @@ mod tests {
         FrontendOidcModeRuntime::new(config)
     }
 
-    #[test]
-    fn runtime_produces_config_projection() {
+    #[tokio::test]
+    async fn runtime_produces_config_projection() {
         let runtime = test_runtime();
         let projection = runtime
             .config_projection()
+            .await
             .expect("projection should succeed");
         assert_eq!(projection.client_id, "spa-client");
         assert_eq!(
@@ -108,8 +109,8 @@ mod tests {
         assert!(projection.client_secret.is_none());
     }
 
-    #[test]
-    fn runtime_exposes_client_secret_when_capability_enabled() {
+    #[tokio::test]
+    async fn runtime_exposes_client_secret_when_capability_enabled() {
         let shared = OidcSharedConfig {
             remote: OAuthProviderRemoteConfig {
                 well_known_url: Some(
@@ -134,6 +135,7 @@ mod tests {
         let runtime = FrontendOidcModeRuntime::new(resolved);
         let projection = runtime
             .config_projection()
+            .await
             .expect("projection should succeed");
         assert_eq!(projection.client_secret.as_deref(), Some("test-secret"));
     }

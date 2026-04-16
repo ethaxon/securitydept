@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
 		},
 		server: {
 			proxy: {
-				"/auth": {
+				"^/auth/(?!token-set/frontend-mode/callback(?:\\?.*)?$)": {
 					target: backendUrl,
 					// for local development server use forwarded header as callback url
 					headers: {

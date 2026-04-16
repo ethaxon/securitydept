@@ -3,7 +3,10 @@ import {
 	createSecureBeforeLoad,
 	withTanStackRouteRequirements,
 } from "@securitydept/client-react/tanstack-router";
-import { TokenSetAuthProvider } from "@securitydept/token-set-context-client-react";
+import {
+	TokenSetAuthProvider,
+	TokenSetCallbackComponent,
+} from "@securitydept/token-set-context-client-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
 	createRootRoute,
@@ -14,7 +17,7 @@ import {
 	redirect,
 } from "@tanstack/react-router";
 
-import { lazy, Suspense, useMemo, useSyncExternalStore } from "react";
+import { lazy, Suspense, useMemo, useState, useSyncExternalStore } from "react";
 
 import {
 	clearPostAuthRedirect,
@@ -30,9 +33,20 @@ import {
 } from "@/lib/authContext";
 import { useThemePreference } from "@/lib/theme";
 import {
-	ensureTokenSetClientReady,
-	tokenSetClientFactory,
-} from "@/lib/tokenSetClient";
+	ensureTokenSetBackendModeClientReady,
+	tokenSetBackendModeClientFactory,
+} from "@/lib/tokenSetBackendModeClient";
+import {
+	TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+	TOKEN_SET_BACKEND_MODE_PLAYGROUND_PATH,
+	TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH,
+	TOKEN_SET_FRONTEND_MODE_CLIENT_KEY,
+	TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
+} from "@/lib/tokenSetConfig";
+import {
+	ensureTokenSetFrontendModeClientReady,
+	tokenSetFrontendModeClientFactory,
+} from "@/lib/tokenSetFrontendModeClient";
 import { DashboardPage } from "@/routes/Dashboard";
 import { EntriesPage } from "@/routes/Entries";
 import { EntryCreatePage } from "@/routes/EntryCreate";
@@ -47,11 +61,24 @@ import { LoginPage } from "@/routes/Login";
 // Token-set client registry — canonical React consumer path
 // ---------------------------------------------------------------------------
 
-export const TOKEN_SET_CLIENT_KEY = "token-set";
+const TokenSetBackendModePlaygroundPage = lazy(async () => {
+	const module = await import("@/routes/TokenSetBackendModePlayground");
+	return { default: module.TokenSetBackendModePlaygroundPage };
+});
 
-const TokenSetPage = lazy(async () => {
-	const module = await import("@/routes/TokenSet");
-	return { default: module.TokenSetPage };
+const TokenSetFrontendModePlaygroundPage = lazy(async () => {
+	const module = await import("@/routes/TokenSetFrontendModePlayground");
+	return { default: module.TokenSetFrontendModePlaygroundPage };
+});
+
+const SessionPlaygroundPage = lazy(async () => {
+	const module = await import("@/routes/SessionPlayground");
+	return { default: module.SessionPlaygroundPage };
+});
+
+const BasicAuthPlaygroundPage = lazy(async () => {
+	const module = await import("@/routes/BasicAuthPlayground");
+	return { default: module.BasicAuthPlaygroundPage };
 });
 
 const queryClient = new QueryClient({
@@ -122,8 +149,11 @@ const authenticatedRoute = createRoute({
 	beforeLoad: async (ctx) => {
 		const mode = resolveAuthContextMode();
 
-		if (mode === AuthContextMode.TokenSet) {
-			const snapshot = await ensureTokenSetClientReady();
+		if (mode === AuthContextMode.TokenSetBackend) {
+			const snapshot = await ensureTokenSetBackendModeClientReady();
+			dashboardAuthenticated = Boolean(snapshot?.tokens.accessToken);
+		} else if (mode === AuthContextMode.TokenSetFrontend) {
+			const snapshot = await ensureTokenSetFrontendModeClientReady();
 			dashboardAuthenticated = Boolean(snapshot?.tokens.accessToken);
 		} else if (mode === AuthContextMode.Session) {
 			const session = await fetchCurrentSession();
@@ -203,15 +233,43 @@ const groupsEditRoute = createRoute({
 	component: GroupEditPage,
 });
 
-const tokenSetRoute = createRoute({
+const tokenSetBackendModePlaygroundRoute = createRoute({
 	getParentRoute: () => rootRoute,
-	path: "/playground/token-set",
-	component: TokenSetRoutePage,
+	path: TOKEN_SET_BACKEND_MODE_PLAYGROUND_PATH,
+	component: TokenSetBackendModePlaygroundRoutePage,
+});
+
+const tokenSetFrontendModePlaygroundRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
+	component: TokenSetFrontendModePlaygroundRoutePage,
+});
+
+const tokenSetFrontendCallbackRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH,
+	component: TokenSetFrontendCallbackRoutePage,
+});
+
+const sessionPlaygroundRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/playground/session",
+	component: SessionPlaygroundRoutePage,
+});
+
+const basicAuthPlaygroundRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/playground/basic-auth",
+	component: BasicAuthPlaygroundRoutePage,
 });
 
 const routeTree = rootRoute.addChildren([
 	loginRoute,
-	tokenSetRoute,
+	tokenSetBackendModePlaygroundRoute,
+	tokenSetFrontendModePlaygroundRoute,
+	tokenSetFrontendCallbackRoute,
+	sessionPlaygroundRoute,
+	basicAuthPlaygroundRoute,
 	authenticatedRoute.addChildren([
 		dashboardRoute,
 		entriesRoute,
@@ -225,39 +283,40 @@ const routeTree = rootRoute.addChildren([
 
 const router = createRouter({ routeTree });
 
-function TokenSetRoutePage() {
-	// Read the *raw* stored mode (null = not logged in at all) so we can
-	// distinguish "unauthenticated" from "logged in with a different context".
-	// useAuthContextMode() defaults to Session when null, which would wrongly
-	// block visitors who haven't chosen any context yet.
+function PlaygroundAccessBoundary({
+	expectedMode,
+	title,
+	loadingMessage,
+	children,
+}: {
+	expectedMode: AuthContextMode;
+	title: string;
+	loadingMessage: string;
+	children: React.ReactNode;
+}) {
 	const rawMode = useSyncExternalStore(
 		subscribeAuthContextMode,
 		getAuthContextMode,
 		getAuthContextMode,
 	);
 
-	// Block only users actively signed in with a non-token-set context.
-	// Unauthenticated (rawMode === null) users may visit to use "Start Token Flow".
-	if (rawMode !== null && rawMode !== AuthContextMode.TokenSet) {
+	if (rawMode !== null && rawMode !== expectedMode) {
 		return (
 			<div className="flex min-h-screen items-center justify-center bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
 				<div className="w-full max-w-md space-y-4 rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
 					<div className="space-y-1">
-						<h2 className="text-base font-semibold">Token Set Playground</h2>
+						<h2 className="text-base font-semibold">{title}</h2>
 						<p className="text-sm text-zinc-500 dark:text-zinc-400">
-							This playground requires the{" "}
+							This reference page requires the{" "}
 							<span className="font-medium text-zinc-700 dark:text-zinc-300">
-								Token Set
+								{expectedMode}
 							</span>{" "}
 							authentication context. You are currently signed in with a
 							different context.
 						</p>
 						<p className="text-sm text-zinc-500 dark:text-zinc-400">
-							Sign out first, then return to the login page and choose{" "}
-							<span className="font-medium text-zinc-700 dark:text-zinc-300">
-								Token Set (OIDC)
-							</span>
-							.
+							Sign out first, then return to the login page and choose the
+							matching context before using this playground.
 						</p>
 					</div>
 					<button
@@ -279,12 +338,115 @@ function TokenSetRoutePage() {
 		<Suspense
 			fallback={
 				<div className="mx-auto max-w-6xl p-6 text-sm text-zinc-500 dark:text-zinc-400">
-					Loading token-set reference page...
+					{loadingMessage}
 				</div>
 			}
 		>
-			<TokenSetPage />
+			{children}
 		</Suspense>
+	);
+}
+
+function TokenSetBackendModePlaygroundRoutePage() {
+	return (
+		<PlaygroundAccessBoundary
+			expectedMode={AuthContextMode.TokenSetBackend}
+			title="Token Set Backend Mode Playground"
+			loadingMessage="Loading token-set backend-mode reference page..."
+		>
+			<TokenSetBackendModePlaygroundPage />
+		</PlaygroundAccessBoundary>
+	);
+}
+
+function TokenSetFrontendModePlaygroundRoutePage() {
+	return (
+		<PlaygroundAccessBoundary
+			expectedMode={AuthContextMode.TokenSetFrontend}
+			title="Token Set Frontend Mode Playground"
+			loadingMessage="Loading token-set frontend-mode reference page..."
+		>
+			<TokenSetFrontendModePlaygroundPage />
+		</PlaygroundAccessBoundary>
+	);
+}
+
+function TokenSetFrontendCallbackRoutePage() {
+	const [error, setError] = useState<string | null>(null);
+
+	return (
+		<div className="flex min-h-screen items-center justify-center bg-zinc-50 p-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+			<div className="w-full max-w-lg space-y-4 rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+				<div className="space-y-2">
+					<p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-600 dark:text-teal-400">
+						Token Set Frontend Mode Callback
+					</p>
+					<h1 className="text-2xl font-semibold">
+						Completing browser-owned callback
+					</h1>
+					<p className="text-sm text-zinc-500 dark:text-zinc-400">
+						This route is owned by the React SDK callback component. It waits
+						for the frontend-mode client to become ready, resumes the OIDC
+						callback, then returns you to the stored post-auth redirect.
+					</p>
+				</div>
+				{error ? (
+					<div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/80 dark:bg-rose-950/40 dark:text-rose-300">
+						{error}
+					</div>
+				) : null}
+				<TokenSetCallbackComponent
+					pending={
+						<p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">
+							Warming the frontend-mode client registry and resuming the OIDC
+							callback...
+						</p>
+					}
+					fallback={
+						error ? null : (
+							<p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/80 dark:bg-amber-950/40 dark:text-amber-300">
+								This URL does not currently carry a recognized frontend-mode
+								callback payload.
+							</p>
+						)
+					}
+					onResolved={(result) => {
+						window.location.href = result.postAuthRedirectUri ?? "/";
+					}}
+					onError={(callbackError) => {
+						setError(
+							callbackError instanceof Error
+								? callbackError.message
+								: "Frontend-mode callback failed.",
+						);
+					}}
+				/>
+			</div>
+		</div>
+	);
+}
+
+function SessionPlaygroundRoutePage() {
+	return (
+		<PlaygroundAccessBoundary
+			expectedMode={AuthContextMode.Session}
+			title="Session Playground"
+			loadingMessage="Loading session reference page..."
+		>
+			<SessionPlaygroundPage />
+		</PlaygroundAccessBoundary>
+	);
+}
+
+function BasicAuthPlaygroundRoutePage() {
+	return (
+		<PlaygroundAccessBoundary
+			expectedMode={AuthContextMode.Basic}
+			title="Basic Auth Playground"
+			loadingMessage="Loading basic-auth reference page..."
+		>
+			<BasicAuthPlaygroundPage />
+		</PlaygroundAccessBoundary>
 	);
 }
 
@@ -305,9 +467,13 @@ export function App() {
 	const tokenSetClients = useMemo(
 		() => [
 			{
-				key: TOKEN_SET_CLIENT_KEY,
-				clientFactory: tokenSetClientFactory,
-				callbackPath: "/playground/token-set",
+				key: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+				clientFactory: tokenSetBackendModeClientFactory,
+			},
+			{
+				key: TOKEN_SET_FRONTEND_MODE_CLIENT_KEY,
+				clientFactory: tokenSetFrontendModeClientFactory,
+				callbackPath: TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH,
 			},
 		],
 		[],

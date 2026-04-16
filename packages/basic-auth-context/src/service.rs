@@ -76,7 +76,7 @@ where
         &self,
         request_path: &str,
         authorization_header: Option<&str>,
-        requested_post_auth_redirect: Option<&str>,
+        requested_post_auth_redirect_uri: Option<&str>,
         resolved_client_ip: Option<&ResolvedClientIp>,
     ) -> Result<HttpResponse, BasicAuthContextServiceError> {
         let Some(zone) = self.basic_auth_context.zone_for_request_path(request_path) else {
@@ -88,7 +88,7 @@ where
         }
 
         if self.verify_basic_auth(authorization_header)? {
-            zone.login_success_response(requested_post_auth_redirect)
+            zone.login_success_response(requested_post_auth_redirect_uri)
                 .map_err(|source| BasicAuthContextServiceError::BasicAuthContext { source })
         } else {
             Ok(zone.login_challenge_response())

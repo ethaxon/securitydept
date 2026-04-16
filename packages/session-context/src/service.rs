@@ -61,6 +61,7 @@ pub trait SessionAuthServiceTrait {
         &self,
         session: Session,
         external_base_url: &Url,
+        requested_post_auth_redirect_uri: Option<&str>,
     ) -> impl Future<Output = Result<HttpResponse, SessionAuthServiceError>>;
 
     fn logout(
@@ -101,6 +102,19 @@ pub struct DevSessionAuthService<'a> {
     session_context_config: &'a SessionContextConfig,
 }
 
+const PENDING_POST_AUTH_REDIRECT_URI_KEY: &str = "post_auth_redirect_uri";
+
+fn callback_post_auth_redirect_uri(
+    result: &securitydept_oidc_client::OidcCodeCallbackResult,
+) -> Option<String> {
+    result
+        .pending_extra_data
+        .as_ref()
+        .and_then(|value| value.get(PENDING_POST_AUTH_REDIRECT_URI_KEY))
+        .and_then(|value| value.as_str())
+        .map(ToOwned::to_owned)
+}
+
 impl<'a> DevSessionAuthService<'a> {
     pub fn new(
         session_context_config: &'a SessionContextConfig,
@@ -124,6 +138,7 @@ impl<'a> SessionAuthServiceTrait for DevSessionAuthService<'a> {
         &self,
         session: Session,
         _external_base_url: &Url,
+        requested_post_auth_redirect_uri: Option<&str>,
     ) -> Result<HttpResponse, SessionAuthServiceError> {
         let handle = SessionContextSession::from_config(session, self.session_context_config);
         handle
@@ -149,7 +164,7 @@ impl<'a> SessionAuthServiceTrait for DevSessionAuthService<'a> {
 
         let redirect_target = self
             .session_context_config
-            .resolve_post_auth_redirect(None)
+            .resolve_post_auth_redirect(requested_post_auth_redirect_uri)
             .map_err(|source| SessionAuthServiceError::SessionContext { source })?;
 
         Ok(HttpResponse::found(&redirect_target))
@@ -204,6 +219,8 @@ where
             )
             .await
             .map_err(|source| SessionAuthServiceError::Oidc { source })?;
+        let requested_post_auth_redirect_uri =
+            callback_post_auth_redirect_uri(&code_callback_result);
         let claims_check_result = code_callback_result.claims_check_result;
 
         let handle = SessionContextSession::from_config(session, self.session_context_config);
@@ -227,7 +244,7 @@ where
         info!(display_name = %claims_check_result.display_name, "User logged in");
         let redirect_target = self
             .session_context_config
-            .resolve_post_auth_redirect(None)
+            .resolve_post_auth_redirect(requested_post_auth_redirect_uri.as_deref())
             .map_err(|source| SessionAuthServiceError::SessionContext { source })?;
 
         Ok(HttpResponse::found(&redirect_target))
@@ -246,14 +263,21 @@ where
         &self,
         _session: Session,
         external_base_url: &Url,
+        requested_post_auth_redirect_uri: Option<&str>,
     ) -> Result<HttpResponse, SessionAuthServiceError> {
         if let Some(oidc) = self.oidc_client {
+            let extra_data = requested_post_auth_redirect_uri.map(|uri| {
+                serde_json::json!({
+                    PENDING_POST_AUTH_REDIRECT_URI_KEY: uri,
+                })
+            });
             // Session OIDC callback lives at /auth/session/callback — override
             // the default redirect_url so the IdP returns to the correct path.
             let authorization_request = oidc
-                .handle_code_authorize_with_redirect_override(
+                .handle_code_authorize_with_redirect_override_and_extra_data(
                     external_base_url,
                     Some("/auth/session/callback"),
+                    extra_data,
                 )
                 .await
                 .map_err(|source| SessionAuthServiceError::Oidc { source })?;
@@ -261,7 +285,11 @@ where
             Ok(HttpResponse::temporary_redirect(authorization_url.as_str()))
         } else {
             DevSessionAuthService::new(self.session_context_config)?
-                .login(_session, external_base_url)
+                .login(
+                    _session,
+                    external_base_url,
+                    requested_post_auth_redirect_uri,
+                )
                 .await
         }
     }
@@ -336,7 +364,7 @@ mod tests {
         let base_url = test_base_url();
 
         let response = service
-            .login(session.clone(), &base_url)
+            .login(session.clone(), &base_url, None)
             .await
             .expect("login should succeed");
 
@@ -359,6 +387,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dev_login_redirects_to_requested_playground() {
+        let config = SessionContextConfig::builder()
+            .post_auth_redirect(
+                securitydept_utils::redirect::RedirectTargetConfig::dynamic_default_and_dynamic_targets(
+                    "/",
+                    [securitydept_utils::redirect::RedirectTargetRule::Strict {
+                        value: "/playground/session".to_string(),
+                    }],
+                ),
+            )
+            .build();
+        let service =
+            DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
+        let session = test_session();
+        let base_url = test_base_url();
+
+        let response = service
+            .login(session, &base_url, Some("/playground/session"))
+            .await
+            .expect("login should succeed");
+
+        assert_eq!(response.status, http::StatusCode::FOUND);
+        assert_eq!(
+            response
+                .headers
+                .get(http::header::LOCATION)
+                .map(|s| s.to_str().expect("should convert string").to_string()),
+            Some("/playground/session".to_string())
+        );
+    }
+
+    #[tokio::test]
     async fn dev_logout_flushes_session() {
         let config = SessionContextConfig::default();
         let service =
@@ -368,7 +428,7 @@ mod tests {
 
         // Login first to populate the session.
         service
-            .login(session.clone(), &base_url)
+            .login(session.clone(), &base_url, None)
             .await
             .expect("login should succeed");
 
@@ -417,7 +477,7 @@ mod tests {
 
         // Login.
         service
-            .login(session.clone(), &base_url)
+            .login(session.clone(), &base_url, None)
             .await
             .expect("login should succeed");
 
@@ -437,16 +497,13 @@ mod tests {
     #[tokio::test]
     async fn oidc_service_without_client_falls_back_to_dev() {
         let config = SessionContextConfig::default();
-        let service = OidcSessionAuthService::<TestPendingOauthStore>::new(
-            None,
-            &config,
-        )
-        .expect("OidcSessionAuthService should construct");
+        let service = OidcSessionAuthService::<TestPendingOauthStore>::new(None, &config)
+            .expect("OidcSessionAuthService should construct");
         let session = test_session();
         let base_url = test_base_url();
 
         let response = service
-            .login(session.clone(), &base_url)
+            .login(session.clone(), &base_url, None)
             .await
             .expect("login should succeed via dev fallback");
 
@@ -464,17 +521,14 @@ mod tests {
     #[tokio::test]
     async fn oidc_service_logout_flushes_session() {
         let config = SessionContextConfig::default();
-        let service = OidcSessionAuthService::<TestPendingOauthStore>::new(
-            None,
-            &config,
-        )
-        .expect("OidcSessionAuthService should construct");
+        let service = OidcSessionAuthService::<TestPendingOauthStore>::new(None, &config)
+            .expect("OidcSessionAuthService should construct");
         let session = test_session();
         let base_url = test_base_url();
 
         // Login first.
         service
-            .login(session.clone(), &base_url)
+            .login(session.clone(), &base_url, None)
             .await
             .expect("login should succeed");
 

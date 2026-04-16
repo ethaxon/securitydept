@@ -22,16 +22,29 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/callback", get(auth::session::callback))
         .route("/logout", post(auth::session::logout))
         .route("/user-info", get(auth::session::user_info));
-    let token_set_auth_routes = Router::new()
-        .route("/login", get(auth::token_set::login))
-        .route("/callback", get(auth::token_set::callback))
-        .route("/callback", post(auth::token_set::callback_body))
-        .route("/refresh", post(auth::token_set::refresh))
-        .route("/metadata/redeem", post(auth::token_set::redeem_metadata))
-        .route("/user-info", post(auth::token_set::user_info));
+    let token_set_backend_mode_auth_routes = Router::new()
+        .route("/login", get(auth::token_set_backend_mode::login))
+        .route("/callback", get(auth::token_set_backend_mode::callback))
+        .route(
+            "/callback",
+            post(auth::token_set_backend_mode::callback_body),
+        )
+        .route("/refresh", post(auth::token_set_backend_mode::refresh))
+        .route(
+            "/metadata/redeem",
+            post(auth::token_set_backend_mode::redeem_metadata),
+        )
+        .route("/user-info", post(auth::token_set_backend_mode::user_info));
+    let token_set_frontend_mode_config_projection_routes = Router::new().route(
+        "/config",
+        get(auth::token_set_frontend_mode::config_projection),
+    );
     let auth_routes = Router::new()
         .nest("/auth/session", session_auth_routes)
-        .nest("/auth/token-set", token_set_auth_routes);
+        .nest(
+            "/auth/token-set/backend-mode",
+            token_set_backend_mode_auth_routes,
+        );
 
     let creds_manage_api_routes = Router::new()
         .route("/entries", get(entries::list))
@@ -77,6 +90,10 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/health", get(health::health))
         .nest("/basic", auth::basic::router())
         .merge(auth_routes)
+        .nest(
+            "/api/auth/token-set/frontend-mode",
+            token_set_frontend_mode_config_projection_routes,
+        )
         .merge(api_routes)
         .merge(basic_api_routes)
         .merge(forward_auth_routes)

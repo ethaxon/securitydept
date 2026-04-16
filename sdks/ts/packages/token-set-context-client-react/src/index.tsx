@@ -45,21 +45,23 @@ export {
 export type {
 	OidcCallbackClient,
 	OidcModeClient,
-	ReactClient,
+	TokenSetBackendOidcClient,
 	TokenSetClientEntry,
+	TokenSetReactClient,
 } from "./contracts";
 export {
 	type CallbackResumeState,
 	CallbackResumeStatus,
 	TokenSetAuthProvider,
 	type TokenSetAuthProviderProps,
-	TokenSetCallbackOutlet,
-	type TokenSetCallbackOutletProps,
+	TokenSetCallbackComponent,
+	type TokenSetCallbackComponentProps,
 	type UseTokenSetCallbackResumeOptions,
 	useTokenSetAccessToken,
 	useTokenSetAuthRegistry,
 	useTokenSetAuthService,
 	useTokenSetAuthState,
+	useTokenSetBackendOidcClient,
 	useTokenSetCallbackResume,
 } from "./token-set-auth-provider";
 export { TokenSetAuthService } from "./token-set-auth-service";

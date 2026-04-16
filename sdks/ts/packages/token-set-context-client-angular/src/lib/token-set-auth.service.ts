@@ -5,7 +5,7 @@ import {
 } from "@securitydept/client-angular";
 import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import type { Observable } from "rxjs";
-import type { OidcModeClient } from "./contracts";
+import type { TokenSetAngularClient } from "./contracts";
 
 // ============================================================================
 // 5. TokenSetAuthService — per-client service wrapper
@@ -34,7 +34,7 @@ export class TokenSetAuthService {
 
 	constructor(
 		/** The underlying SDK client instance. */
-		readonly client: OidcModeClient,
+		readonly client: TokenSetAngularClient,
 		autoRestore: boolean,
 	) {
 		this.authState = signal<AuthSnapshot | null>(null);

@@ -8,7 +8,7 @@
 // Stability: provisional (new in iteration 110)
 
 import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import type { OidcCallbackClient, OidcModeClient } from "./contracts";
+import type { TokenSetReactClient } from "./contracts";
 
 /**
  * Per-client React-native wrapper around an OIDC mode client.
@@ -17,14 +17,11 @@ import type { OidcCallbackClient, OidcModeClient } from "./contracts";
  * top of `getState` / `subscribe` via `useSyncExternalStore`.
  */
 export class TokenSetAuthService {
-	readonly client: OidcModeClient & OidcCallbackClient;
+	readonly client: TokenSetReactClient;
 	readonly restorePromise: Promise<AuthSnapshot | null> | null;
 	private disposed = false;
 
-	constructor(
-		client: OidcModeClient & OidcCallbackClient,
-		autoRestore: boolean,
-	) {
+	constructor(client: TokenSetReactClient, autoRestore: boolean) {
 		this.client = client;
 		this.restorePromise = autoRestore ? client.restorePersistedState() : null;
 	}

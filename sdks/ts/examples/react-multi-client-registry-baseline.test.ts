@@ -14,10 +14,7 @@
 import type { ReadableSignalTrait } from "@securitydept/client";
 import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import { AuthSourceKind } from "@securitydept/token-set-context-client/orchestration";
-import type {
-	OidcCallbackClient,
-	OidcModeClient,
-} from "@securitydept/token-set-context-client-react";
+import type { TokenSetReactClient } from "@securitydept/token-set-context-client-react";
 import {
 	ClientInitializationPriority,
 	TokenSetAuthProvider,
@@ -88,13 +85,20 @@ function makeSnapshot(accessToken: string): AuthSnapshot {
 
 function createMockClient(
 	initial: AuthSnapshot | null = null,
-): [OidcModeClient & OidcCallbackClient, (s: AuthSnapshot | null) => void] {
+): [TokenSetReactClient, (s: AuthSnapshot | null) => void] {
 	const ctrl = createTestSignal<AuthSnapshot | null>(initial);
-	const client: OidcModeClient & OidcCallbackClient = {
+	const client: TokenSetReactClient = {
 		state: ctrl.signal,
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
 		handleCallback: vi.fn().mockResolvedValue({ snapshot: makeSnapshot("cb") }),
+		authorizeUrl: vi.fn().mockReturnValue("/auth/token-set/login"),
+		authorizationHeader() {
+			const accessToken = ctrl.signal.get()?.tokens.accessToken;
+			return accessToken ? `Bearer ${accessToken}` : null;
+		},
+		refresh: vi.fn().mockResolvedValue(makeSnapshot("refreshed")),
+		clearState: vi.fn().mockResolvedValue(undefined),
 	};
 	return [client, ctrl.set];
 }

@@ -72,7 +72,7 @@ impl ScriptClaimsChecker {
                     })?;
 
             if is_typescript_script(path) {
-                source = transpile_typescript_to_javascript(path, &source).await?;
+                source = transpile_claims_script_typescript_to_javascript(path, &source).await?;
             }
 
             let boa_compat_source = transform_script_to_boa_compat(&source);
@@ -107,11 +107,10 @@ impl ClaimsChecker for ScriptClaimsChecker {
             // is needed, and single-quotes / backslashes in claim values
             // cannot break the injection.
             let id_token_claims_json_block = {
-                let json = serde_json::to_string(&id_token_claims).map_err(|e| {
-                    OidcError::Claims {
+                let json =
+                    serde_json::to_string(&id_token_claims).map_err(|e| OidcError::Claims {
                         message: format!("Failed to serialize id_token_claims: {e}"),
-                    }
-                })?;
+                    })?;
                 format!("({json})")
             };
             let user_info_claims_json_block = if let Some(user_info_claims) = user_info_claims {
@@ -205,7 +204,10 @@ fn is_typescript_script(path: &str) -> bool {
     )
 }
 
-async fn transpile_typescript_to_javascript(path: &str, source: &str) -> OidcResult<String> {
+pub async fn transpile_claims_script_typescript_to_javascript(
+    path: &str,
+    source: &str,
+) -> OidcResult<String> {
     let cm: Lrc<SourceMap> = Default::default();
     let fm = cm.new_source_file(
         FileName::Custom(path.to_string()).into(),

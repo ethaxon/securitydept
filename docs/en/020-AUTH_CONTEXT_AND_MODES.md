@@ -172,6 +172,7 @@ It only needs to help with:
 
 - zone-aware `401 -> login` redirection
 - logout URL / logout helper behavior
+- login URL generation with `post_auth_redirect_uri`
 
 It should not become another large frontend runtime.
 
@@ -352,7 +353,7 @@ The core shareable fields remain:
 - metadata / JWKS refresh intervals
 
 while fields such as `scopes`, `audiences`, and `redirect_url` remain role-specific and should not be flattened into one generic default.  
-In particular, `redirect_url` should now be read as an explicit per-flow path: for example, session uses `/auth/session/callback`, while token-set uses `/auth/token-set/callback`.
+In particular, `redirect_url` should now be read as an explicit per-flow path: for example, session uses `/auth/session/callback`, token-set backend mode uses `/auth/token-set/backend-mode/callback`, and token-set frontend mode completes on the browser route `/auth/token-set/frontend-mode/callback` after loading config from `/api/auth/token-set/frontend-mode/config`.
 
 ### 6.4.1 Unified `backend-oidc` configuration direction
 

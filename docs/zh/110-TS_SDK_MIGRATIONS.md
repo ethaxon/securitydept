@@ -44,6 +44,76 @@ TS SDK 当前处于 `0.x` 阶段。这不意味着"随便改" — 而是**允许
 
 ## 迁移说明
 
+### 2026-04-19 @securitydept/token-set-context-client-react 与 ./react-query —— canonical React token-set consumer path 收口到 keyed SDK owner
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `@securitydept/token-set-context-client-react` 与 `@securitydept/token-set-context-client-react/react-query`
+
+**变更**：
+
+canonical React token-set consumer path 现已端到端收口为 keyed 且 SDK-owned：
+
+- `@securitydept/token-set-context-client-react` 新增 `useTokenSetBackendOidcClient(clientKey)`，作为 backend-oidc-specific 行为的正式 keyed lower-level accessor
+- `@securitydept/token-set-context-client-react/react-query` 的 canonical groups / entries hooks 不再要求 adopter 显式传入 `client`
+- reference app 不再把 app-local `BackendOidcModeReactClient`、`getTokenSetClient()` 或 `service.client as ...` narrowing 当作 canonical consumer story
+
+**迁移**：
+
+1. 将这类 canonical hook 调用：
+   ```ts
+   useTokenSetGroupsQuery({ clientKey, client })
+   useTokenSetCreateGroupMutation({ clientKey, client })
+   ```
+   改为 keyed-only 调用：
+   ```ts
+   useTokenSetGroupsQuery({ clientKey })
+   useTokenSetCreateGroupMutation({ clientKey })
+   ```
+2. 如果 React consumer 需要 `authorizeUrl()`、`authorizationHeader()`、`refresh()`、`clearState()` 这类 backend-oidc-specific 能力，用 `useTokenSetBackendOidcClient(clientKey)` 替代 app-local `service.client as ...` narrowing。
+3. 让 app-local token-set 模块只保留 bootstrap config、trace sink、provider wiring 等 adopter glue，而不是继续承担 canonical consumer contract owner。
+
+**理由**：
+
+iteration 115 已把 token-set React Query 写路径迁回 SDK，但 canonical React consumer story 仍依赖 app-local client owner pattern。iteration 116 通过 keyed registry / service path 正式收口 consumer contract，并把 lower-level backend-oidc accessor 移入 SDK，结束了 `apps/webui` 对 canonical consumer shape 的持有。
+
+### 2026-04-19 @securitydept/token-set-context-client-react/react-query —— canonical mutation owner 迁入 SDK subpath
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `@securitydept/token-set-context-client-react/react-query`
+
+**变更**：
+
+React Query subpath 现在除了既有读侧 helper 之外，也拥有 canonical token-set groups / entries mutation surface。
+
+当前它已导出：
+
+- groups / entries query hooks
+- groups / entries mutation hooks
+- 这些 hooks 所使用的 token-set management entity / request / response contract
+- `groups` / `group` / `entries` / `entry` 的 query-key extension
+- canonical groups / entries flow 的 post-mutation invalidation 语义
+
+这也改变了 owner boundary：`apps/webui` 不再是 token-set React Query 写语义的 canonical owner，而是 SDK-owned surface 的 consumer / authority-evidence host。
+
+**迁移**：
+
+1. 将 app-local token-set React Query wrapper（如 `useTokenSetQueries.ts`）替换为从 `@securitydept/token-set-context-client-react/react-query` 直接导入。
+2. 将 app-local `tokenSetAppQueryKeys.*` 替换为 `tokenSetQueryKeys.groups(...)`、`tokenSetQueryKeys.group(...)`、`tokenSetQueryKeys.entries(...)`、`tokenSetQueryKeys.entry(...)`。
+3. 当 mutation 需要 request-scoped transport 或 cancellation 时，通过 mutation variables 上的 `requestOptions` 传入：
+    ```ts
+    mutation.mutate({
+       name: "Operators",
+       group_ids: ["group-1"],
+       requestOptions: { cancellationToken },
+    });
+    ```
+
+**理由**：
+
+iteration 114 已在 `apps/webui` 中证明真实 mutation lifecycle 与 invalidation 语义，但继续把这些语义留在 app-local 会让 reference app 处在错误的 owner 位置。iteration 115 将 canonical groups / entries 写路径、实体契约以及 query-key / invalidation policy 收回 SDK subpath，从而让 React adopter 获得完整的 SDK-owned read/write story。
+
 ### 2026-04-12 React adapter 从同包 subpath 迁移到独立 npm 包（breaking move）
 
 **Discipline**: `provisional-migration-required`
@@ -504,9 +574,9 @@ const token = key ? (registry.get(key)?.accessToken() ?? null) : registry.access
 | 包 | Subpath | 用途 |
 |---|---|---|
 | `@securitydept/client` | `./web-router` | 原生 Web 路由 baseline（`createNavigationAdapter`、`createWebRouter`、`isNavigationApiAvailable`、`NavigationAdapterKind`、`WebRouteDefinition`、`WebRouteMatch`、`WebRouteMatcher`、`WebRouter`、`defineWebRoute`、`extractFullRouteRequirements`、`RequirementsClientSetComposition`）。Navigation API 优先，History API + `popstate` 回退；全路径 requirement 聚合（`inherit` / `merge` / `replace` 合成）已与 Angular / TanStack Router adapter 对齐（review-1 跟进）。 |
-| `@securitydept/token-set-context-client` | `./registry` | Framework-neutral 多客户端注册核心（`createTokenSetAuthRegistry`、`TokenSetAuthRegistry`、`ClientInitializationPriority`、`ClientReadinessState`、`ClientMeta`、`TokenSetClientEntry`、`ClientQueryOptions`）。 |
-| `@securitydept/token-set-context-client-react` | `./react-query` | 薄 React Query consumer subpath（`tokenSetQueryKeys`、`useTokenSetReadinessQuery`、`useTokenSetAuthorizationHeader`、`invalidateTokenSetQueriesForClient`）。**非独立包**：`@tanstack/react-query` 为 optional peer。 |
-| `@securitydept/token-set-context-client-react` | `.`（additive） | `TokenSetAuthService`、`TokenSetAuthProvider`、`useTokenSetAuthRegistry` / `useTokenSetAuthService` / `useTokenSetAuthState` / `useTokenSetAccessToken` / `useTokenSetCallbackResume`、`CallbackResumeState`、`CallbackResumeStatus`、`TokenSetCallbackOutlet`。与 Angular 对等的 React 多客户端形态。Callback hook 在调用 `handleCallback()` 前 await `registry.whenReady(clientKey)`，async / lazy client 的 callback 不再被静默丢弃（review-1 跟进）。 |
+| `@securitydept/token-set-context-client` | `./registry` | Framework-neutral 多客户端注册核心（`createTokenSetAuthRegistry`、`TokenSetAuthRegistry`、`ClientInitializationPriority`、`ClientReadinessState`、`OidcModeClient`、`OidcCallbackClient`、`ClientMeta`、`TokenSetClientEntry`、`ClientQueryOptions`）。shared managed OIDC client contract owner 现也正式落在这里，而不再由 Angular / React adapter 各自重复定义。 |
+| `@securitydept/token-set-context-client-react` | `./react-query` | token-set React Query consumer subpath，覆盖 canonical groups / entries 读写 workflow（`tokenSetQueryKeys`、`useTokenSetReadinessQuery`、`useTokenSetAuthorizationHeader`、`invalidateTokenSetQueriesForClient`、query hooks、mutation hooks 以及 token-set management contract）。**非独立包**：`@tanstack/react-query` 为 optional peer。 |
+| `@securitydept/token-set-context-client-react` | `.`（additive） | `TokenSetAuthService`、`TokenSetAuthProvider`、`useTokenSetAuthRegistry` / `useTokenSetAuthService` / `useTokenSetAuthState` / `useTokenSetAccessToken` / `useTokenSetCallbackResume`、`CallbackResumeState`、`CallbackResumeStatus`、`TokenSetCallbackComponent`（保留 `TokenSetCallbackOutlet` 兼容别名）。与 Angular 对等的 React 多客户端形态。Callback hook 在调用 `handleCallback()` 前 await `registry.whenReady(clientKey)`，async / lazy client 的 callback 不再被静默丢弃（review-1 跟进）。 |
 
 **Breaking migrations**
 
@@ -534,8 +604,16 @@ React 生态集成（React Query、未来可能的 Zustand / Jotai / TanStack Qu
 - `examples/web-router-full-route-aggregation.test.ts` —— 嵌套路由 + `inherit` / `merge` / `replace` 合成 + 单次 `plannerHost.evaluate()` 收到完整聚合候选集（review-1 跟进）
 - `examples/multi-client-lazy-init-contract.test.ts` —— framework-neutral `priority | preload | whenReady | idleWarmup | reset` 契约
 - `examples/react-multi-client-registry-baseline.test.ts` —— React provider + hooks 多客户端注册与释放
-- `examples/react-query-integration-evidence.test.ts` —— React Query subpath consumer 语义
-- `examples/react-callback-async-readiness.test.ts` —— `useTokenSetCallbackResume` / `TokenSetCallbackOutlet` 通过 `registry.whenReady()` 驱动 async / lazy client 物化，覆盖 pending + error 暴露（review-1 跟进）
+- `examples/react-query-integration-evidence.test.ts` —— React Query subpath canonical query + mutation consumer 语义
+- `examples/react-callback-async-readiness.test.ts` —— `useTokenSetCallbackResume` / `TokenSetCallbackComponent`（兼容别名 `TokenSetCallbackOutlet`）通过 `registry.whenReady()` 驱动 async / lazy client 物化，覆盖 pending + error 暴露（review-1 跟进）
+
+**Reference-app authority 更新（非 breaking）**
+
+- iteration 117 将 `apps/webui` / `apps/server` 之前笼统的 token-set 宿主路径拆成两条显式 reference mode：
+   - backend mode：`/auth/token-set/backend-mode/*` 与 `/playground/token-set/backend-mode`
+   - frontend mode：`/api/auth/token-set/frontend-mode/config`、`/playground/token-set/frontend-mode` 与 `/auth/token-set/frontend-mode/callback`
+- `TokenSetCallbackComponent` 现在只通过 frontend-mode callback route 获得真实宿主 authority
+- dashboard bearer integration 与 TanStack route security 现在同时覆盖两条 token-set mode，且没有新增任何公开的 React secure-guard surface
 
 ---
 

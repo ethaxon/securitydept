@@ -61,6 +61,18 @@ describe("webui auth smoke", () => {
 		await expect(auth.resolveLoginUrl()).resolves.toBe("/auth/session/login");
 	});
 
+	it("builds an explicit session login URL without consuming stored redirect intent", async () => {
+		const auth = await import("../api/auth");
+
+		await auth.rememberPostAuthRedirect("/groups?tab=members");
+		expect(auth.buildLoginUrl("/playground/session")).toBe(
+			"/auth/session/login?post_auth_redirect_uri=%2Fplayground%2Fsession",
+		);
+		await expect(auth.resolveLoginUrl()).resolves.toBe(
+			"/auth/session/login?post_auth_redirect_uri=%2Fgroups%3Ftab%3Dmembers",
+		);
+	});
+
 	it("fetchCurrentSession returns session when authenticated", async () => {
 		vi.stubGlobal(
 			"fetch",
