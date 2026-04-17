@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createCancellationTokenSource } from "../../cancellation/cancellation-token";
 import { ClientError } from "../../errors/client-error";
+import { readErrorPresentationDescriptor } from "../../errors/presentation-descriptor";
 import {
 	ClientErrorKind,
 	ClientErrorSource,
+	ErrorPresentationTone,
 	UserRecovery,
 } from "../../errors/types";
 
@@ -84,6 +86,58 @@ describe("ClientError", () => {
 		});
 		expect(err.source).toBe("http");
 		expect(err.retryable).toBe(true);
+	});
+
+	it("builds a host-facing descriptor for popup errors", () => {
+		const descriptor = readErrorPresentationDescriptor(
+			new ClientError({
+				kind: ClientErrorKind.Authorization,
+				code: "popup.closed_by_user",
+				message: "Popup window was closed before completing the login flow.",
+				recovery: UserRecovery.RestartFlow,
+			}),
+			{
+				recoveryLinks: {
+					[UserRecovery.RestartFlow]: "/playground/token-set/frontend-mode",
+				},
+			},
+		);
+
+		expect(descriptor).toMatchObject({
+			code: "popup.closed_by_user",
+			title: "Popup login was closed",
+			recovery: UserRecovery.RestartFlow,
+			tone: ErrorPresentationTone.Warning,
+			primaryAction: {
+				recovery: UserRecovery.RestartFlow,
+				label: "Restart flow",
+				href: "/playground/token-set/frontend-mode",
+			},
+		});
+	});
+
+	it("builds a host-facing descriptor for reauthentication errors", () => {
+		const descriptor = readErrorPresentationDescriptor(
+			new ClientError({
+				kind: ClientErrorKind.Unauthenticated,
+				message: "Login required",
+				code: "authentication_required",
+				recovery: UserRecovery.Reauthenticate,
+			}),
+		);
+
+		expect(descriptor).toMatchObject({
+			code: "authentication_required",
+			kind: ClientErrorKind.Unauthenticated,
+			title: "Authentication required",
+			description: "Login required",
+			recovery: UserRecovery.Reauthenticate,
+			primaryAction: {
+				recovery: UserRecovery.Reauthenticate,
+				label: "Sign in again",
+				href: null,
+			},
+		});
 	});
 });
 

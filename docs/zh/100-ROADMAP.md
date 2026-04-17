@@ -180,6 +180,23 @@
 - TypeScript 继续作为唯一 active SDK productization track
 - Kotlin / Swift 继续作为后续工作，等 TS external contract 足够清晰后再推进
 
+### 优先级 6：保留讨论稿里尚未产品化的 foundation 议题可见性
+
+为什么这条需要单独写出来：
+
+- 最早的 SDK 讨论稿不只讨论 package boundary，也讨论了 richer event/source model、配置分层、可观测性、测试观察面、mixed-custody 等更宽的话题
+- 当前正式文档已经把其中一部分收口为权威结论，但另一部分仍停留在“方向已确认、尚未产品化”
+- 如果 roadmap 不明确保留这些 gap，它们会在日常实现中被误读成“已经做完”或“已经被否决”
+
+当前应明确保留可见性的主题：
+
+- richer event/operator/source surface 仍明显薄于讨论稿设想；当前 public baseline 仍刻意保持最小化
+- capability-first configuration layering 已是方向，但仍未收成统一 adopter-facing config story
+- logger / trace sink / operation tracer / testing observation hierarchy 已不再只是设计纪律：iteration 121 已把最小 shared trace path（`TraceEvent`、`createTraceTimelineStore()`、`FrontendOidcModeTraceEventType`、reference-app trace timeline consumption，以及 direct trace assertions）产品化；但更完整的 operation-tracer layering / exporter story 仍属于后续工作
+- dual-layer error model 现在也已从“讨论方向”前进到“部分产品化”：`@securitydept/client` 拥有共享 machine-facing runtime 与 host-facing presentation descriptor 之间的桥，`frontend-oidc-mode` 在其上拥有 callback-specific presentation mapping，而 `apps/webui` 已在 frontend callback / popup 与 backend browser action 上证明这条共享 contract。更完整的 cross-family presentation taxonomy hardening 仍属于后续工作，但 app-local message parsing 已不再是正确 baseline
+- Rust / server 侧的 structured trace 仍明显薄于 TS/browser 侧：当前更多还是基于 `tracing` 的运维日志，而不是稳定的 auth-flow operation taxonomy、timeline 与 machine-facing diagnosis surface；这条线应保留为后续 iteration 的正式规划主题，而不是在问题排查时临时补 `debug!`
+- mixed-custody / BFF 仍是明确的后续主题，不应因为 browser-owned baseline 已成熟就被误读成“已隐式解决”
+
 ## 0.2.0 发布 backlog（基于 Client SDK 重审）
 
 除非某个主题在下方被**明确延期到 `0.3.0`**，否则 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 中仍被写为产品目标、但尚未完成的内容，都应视为 **`0.2.0` release backlog**，而不再是模糊的“以后再说”。
@@ -205,12 +222,12 @@
 3. **login-trigger convenience 收口**
    - ~~`session-context-client`：从 URL-only helper 前进到最小 redirect-trigger convenience~~（已实现：`session-context-client/web` 中的 `loginWithRedirect()`）
    - ~~token-set browser entry：补出最小 redirect-trigger convenience~~（已实现：`backend-oidc-mode/web` 中的 `loginWithBackendOidcRedirect()`，以及 `FrontendOidcModeClient.loginWithRedirect()`）
-   - ~~`backend-oidc-mode` / `frontend-oidc-mode` 的 popup login baseline~~（已实现：`@securitydept/client/web` 中的共享基础设施、`loginWithBackendOidcPopup`、`FrontendOidcModeClient.popupLogin()`）
+   - ~~`backend-oidc-mode` / `frontend-oidc-mode` 的 popup login baseline~~（SDK baseline 已实现，并在 iteration 120 完成 reference-app productization：`@securitydept/client/web` 中的共享基础设施、`loginWithBackendOidcPopup`、`FrontendOidcModeClient.popupLogin()`，以及 `apps/webui` 中真实 frontend-mode popup relay host route 的 browser e2e 成功/用户关闭失败证明）
 
 4. **真实 multi-requirement orchestration baseline**
    - ~~让多 OIDC / 多资格 route orchestration 走出“边界讨论”~~（已实现：`@securitydept/client/auth-coordination` 中的 `createRequirementPlanner()`）
    - ~~在 `0.2.0` GA 前至少交付一条 headless primitive / pending-requirement model~~（已实现：顺序 planner，含 `AuthRequirement`、`PlanStatus`、`ResolutionStatus`、`PlanSnapshot`；`kind` 为 opaque `string`，不再导出 `RequirementKind` 常量）
-   - ~~补出 matched-route-chain route orchestration baseline，并完成 cross-tab / visibility readiness sweep~~（已实现：`@securitydept/client/auth-coordination` 中的 `createRouteRequirementOrchestrator()`、`createCrossTabSync()`、`createVisibilityReconciler()` 及对应 focused baselines）
+   - ~~补出 matched-route-chain route orchestration baseline，并完成 cross-tab / visibility readiness sweep~~（SDK baseline 已实现，并在 iteration 120 推进到 reference-app authority：`@securitydept/client/auth-coordination` 中的 `createRouteRequirementOrchestrator()`、`createCrossTabSync()`、`createVisibilityReconciler()`、对应 focused baselines，以及 `apps/webui` 对 frontend-mode 跨标签页 hydrate / clear 的 browser e2e 证明）
    - ~~`@tanstack/react-router` 与 Angular Router 的 framework-specific adapter~~（已实现：`@securitydept/client-react/tanstack-router` 与 `@securitydept/client-angular` 包；TanStack Router 现已拥有与 Angular 对等的完整 route-security contract：`createSecureBeforeLoad()`、`withTanStackRouteRequirements()`、`extractTanStackRouteRequirements()`；较低层 primitive `projectTanStackRouteMatches()` / `createTanStackRouteActivator()` 仍保留；parity 审计见 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md#framework-router-adapters)）
    - ~~Angular integration family 拆成独立 npm 包~~（已实现：`@securitydept/basic-auth-context-client-angular`、`@securitydept/session-context-client-angular`、`@securitydept/token-set-context-client-angular`；使用 `ng-packagr` 生成 APF / FESM2022 输出，并支持真实 `@Injectable()` decorator）
    - ~~React adapter 拆成独立包~~（已实现：React framework adapter 与 TanStack Router adapter 已为独立 npm 包；见迁移记录）
@@ -278,6 +295,7 @@
 - 保持 auth-context mode 架构位于底层能力层之上
 - 清晰记录 bearer forwarding boundary
 - 随着新 mode 落地，补充更多 reference-app 集成测试
+- 在 Rust / server 侧逐步建立更稳定的 auth-flow structured observability：优先覆盖 projection/config fetch、callback/token exchange、forward-auth / propagation 等高价值路径，并为它们收口 operation 名称、关键字段与 outcome vocabulary
 
 ## 延期到 0.3.0 的主题
 
@@ -287,6 +305,7 @@
 - stateful BFF / server-side token-set ownership
 - 建立在未来 orchestration primitive 之上的内建 chooser UI 或 router-level product flow semantics
 - 更重的 OTel / DI 主题
+- 完整的 Rust-side structured observability/exporter stack（例如更重的 OTel pipeline、跨服务 exporter、全局统一 trace ingestion）；在 `0.2.x` 阶段更优先的仍是收口最小 auth-flow operation taxonomy 与 diagnosis surface
 - 在 TS contract 尚未收稳前推进 Kotlin / Swift SDK productization
 
 ---

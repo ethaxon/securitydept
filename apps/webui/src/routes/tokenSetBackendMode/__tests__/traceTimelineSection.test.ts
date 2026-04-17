@@ -1,7 +1,7 @@
+import { createTraceTimelineStore } from "@securitydept/client";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { createTraceTimelineStore } from "@/lib/traceTimeline";
 import { TraceTimelineSection } from "../TraceTimelineSection";
 
 function renderTimeline(events = createTraceTimelineStore().get()): string {

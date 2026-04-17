@@ -18,6 +18,9 @@ export const webuiBaseUrl = `http://localhost:${webuiPort}`;
 export const frontendPlaygroundPath = "/playground/token-set/frontend-mode";
 export const frontendCallbackPath = "/auth/token-set/frontend-mode/callback";
 export const frontendCallbackUrl = `${webuiBaseUrl}${frontendCallbackPath}`;
+export const frontendPopupCallbackPath =
+	"/auth/token-set/frontend-mode/popup-callback";
+export const frontendPopupCallbackUrl = `${webuiBaseUrl}${frontendPopupCallbackPath}`;
 
 export const oidcClientId = "securitydept-webui-e2e";
 export const oidcTestAccount = Object.freeze({

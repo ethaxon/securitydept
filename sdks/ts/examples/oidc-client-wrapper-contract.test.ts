@@ -126,6 +126,7 @@ describe("FrontendOidcModeClient / error boundaries", () => {
 				"https://app.example.com/callback?code=abc&state=xyz",
 				"verifier",
 				"xyz",
+				"https://app.example.com/callback",
 			),
 		).rejects.toThrow(/discover/);
 	});

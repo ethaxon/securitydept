@@ -35,9 +35,9 @@ export {
 
 // --- Types: config, protocol, lifecycle ---
 
-export type { FrontendOidcModeCallbackErrorCode } from "./callback-error-codes";
-
 export { FrontendOidcModeCallbackErrorCode } from "./callback-error-codes";
+export { describeFrontendOidcModeCallbackError } from "./error-presentation";
+export { FrontendOidcModeTraceEventType } from "./trace-events";
 export type {
 	FrontendOidcModeAuthorizeParams,
 	FrontendOidcModeAuthorizeResult,

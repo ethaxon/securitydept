@@ -6,7 +6,7 @@
 	"scripts": {
 		"build": "vite build && shx cp -r dist ../../webui",
 		"dev": "vite dev",
-		"e2e:prepare": "pnpm --filter @securitydept/e2e-utils build",
+		"e2e:prepare": "pnpm -C ../../sdks/ts build",
 		"e2e": "pnpm run e2e:prepare && playwright test -c playwright.config.ts",
 		"e2e:headed": "pnpm run e2e:prepare && playwright test -c playwright.config.ts --headed",
 		"test": "vitest run",

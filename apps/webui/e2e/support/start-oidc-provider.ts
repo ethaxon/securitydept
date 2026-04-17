@@ -6,6 +6,7 @@ import Provider from "oidc-provider";
 
 import {
 	frontendCallbackUrl,
+	frontendPopupCallbackUrl,
 	oidcClientId,
 	oidcIssuerUrl,
 	oidcProviderPort,
@@ -57,7 +58,7 @@ const providerConfiguration: Exclude<
 			application_type: "web",
 			client_id: oidcClientId,
 			grant_types: ["authorization_code", "refresh_token"],
-			redirect_uris: [frontendCallbackUrl],
+			redirect_uris: [frontendCallbackUrl, frontendPopupCallbackUrl],
 			response_types: ["code"],
 			token_endpoint_auth_method: "none",
 		},

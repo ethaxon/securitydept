@@ -35,6 +35,11 @@ Current productization priority:
 2. Kotlin SDK (later)
 3. Swift SDK (later)
 
+Current explicit conclusion:
+
+- TypeScript remains the only active productization track
+- Kotlin / Swift are still directional commitments rather than synchronized product surfaces with a shared external contract today
+
 ## Top-Level Decisions
 
 - client SDKs stay separate from server route-orchestration concepts
@@ -104,6 +109,7 @@ The packaging rules stay the same:
 - framework adapters stay in independent packages
 - framework peers stay in `peerDependencies`
 - Angular adapters are built through `ng-packagr` and APF / FESM2022 output
+- independent framework-adapter packages are the current formal product boundary; same-package subpaths should no longer be treated as the default direction
 
 ## Recommended Repository Layout
 
@@ -180,6 +186,11 @@ Public shape stays centered on `ReadableSignalTrait`, `WritableSignalTrait`, and
 Direction: a minimal shared event protocol rather than a hard dependency on one observable library.  
 Public shape stays centered on `EventObserver`, `EventSubscriptionTrait`, and `EventStreamTrait`.
 
+Two extra rules remain important:
+
+- the public event layer stays intentionally thin; richer operators such as `switchMap`, `concatMap`, `exhaustMap`, `debounce`, `throttle`, and `withLatestFromSignal` are not yet part of the current productized baseline
+- event-envelope structure, timeline source taxonomy, and command/domain-event layering remain valid design directions, but only the parts that already entered inventory/evidence count as current public contract
+
 ### Transport
 
 The foundation defines transport protocols, not one concrete HTTP client or middleware style.  
@@ -199,6 +210,18 @@ The current persistence authority also includes the one-time-use callback/redire
 - `RecordStore.take(key)` is the formal atomic single-consume capability within a store's consistency domain
 - the repo-provided in-memory and browser storage adapters implement that capability directly
 - `createEphemeralFlowStore()` / `createKeyedEphemeralFlowStore()` are the canonical helpers for redirect and callback state that must be consumed exactly once
+
+Persistence should still be read semantically rather than as a universal KV:
+
+- long-lived state
+- recoverable state
+- ephemeral flow state
+
+The current formal conclusions are:
+
+- TTL and watch semantics are not mandatory foundation persistence capabilities
+- key conflicts should be solved through keyspace / ownership before hooks or middleware
+- persistence and signal state remain layered concerns rather than one merged store abstraction
 
 ### Auth Coordination
 
@@ -222,6 +245,12 @@ The configuration system owns:
 
 It does not own product-level route policy or business decisions.
 
+The following also remains explicit:
+
+- capability injection still comes before global singleton config
+- runtime/foundation config, auth-context config, and adapter/host config stay layered
+- there is no one big public configuration DSL today; if a future discussion shape has not entered inventory/evidence yet, it must not be described as current fact
+
 ### Scheduling and Unified Input Sources
 
 The foundation continues to own:
@@ -234,10 +263,26 @@ The foundation continues to own:
 
 These are shared scheduler/input primitives, not private implementations of one auth context.
 
+The current public baseline is still deliberately conservative:
+
+- `fromSignal`
+- `fromPromise`
+- `fromStorageEvent`
+- `fromAbortSignal`
+
+These richer helpers remain valid future directions from the original design discussion, but they are not current productized foundation entry points.
+
 ### Internal Dependency Injection
 
 DI exists as a capability in framework adapters or internal runtime glue.  
 Angular / React DI semantics must not leak back into the foundation root surface.
+
+The current internal wiring discipline also remains explicit:
+
+- prefer explicit capability wiring over a formal DI container
+- keep runtime dependencies separate from business config
+- keep composition roots concentrated
+- reflective / decorator / metadata-driven resolution is still not the current foundation direction
 
 ## Context Client Design
 
@@ -311,6 +356,21 @@ The error model continues to follow:
 - explicit error codes over message-only strings
 - public errors that remain interpretable instead of leaking host-internal exception shapes
 
+But the error model should not be read as “just one Error class”:
+
+- machine-facing runtime errors
+- user-facing presentation / recovery hints
+
+These two layers remain the authoritative direction.  
+Stable `code` and `recovery` are closer to public contract than message text; reference hosts should model around them instead of parsing `error.message`.
+
+Current productized owner boundaries are now explicit:
+
+- `@securitydept/client` owns the shared dual-layer bridge: `ClientError` remains the machine-facing runtime contract, while `ErrorPresentationDescriptor`, `ErrorPresentationTone`, and `readErrorPresentationDescriptor()` are the shared host-facing presentation/recovery contract
+- `@securitydept/token-set-context-client/frontend-oidc-mode` owns the family-specific callback presentation mapping through `describeFrontendOidcModeCallbackError()`, which translates stable callback codes into host-facing titles/descriptions on top of the shared descriptor contract rather than pushing that wording into each app
+- `@securitydept/token-set-context-client-react` now exposes `CallbackResumeErrorDetails.presentation`, so browser-owned callback hosts can consume a stable presentation descriptor directly instead of reverse-engineering one from `error.message`
+- the reference app proves this split on real host paths: frontend callback, frontend popup failure, and backend-mode refresh / clear failures all render from the shared descriptor contract, while host-owned links/labels remain app responsibility
+
 ## Cancellation and Disposal
 
 The public contract still expects:
@@ -319,7 +379,13 @@ The public contract still expects:
 - services / controllers / providers can release resources on teardown
 - adopters should not have to manually clean up SDK-owned watchers, timers, or subscriptions
 
-## LoggingTracingand Testing
+The following boundaries are still intentionally unresolved rather than forgotten:
+
+- the bridge between `CancellationTokenTrait` / `CancellationTokenSourceTrait` and `AbortSignal`
+- the relation between `DisposableTrait` and `Symbol.dispose`
+- whether linked cancellation sources enter a future baseline
+
+## Logging, Tracing, and Testing
 
 The rules stay the same:
 
@@ -327,7 +393,13 @@ The rules stay the same:
 - reference apps may build probes, timelines, and diagnostics, but those do not automatically become SDK public surface
 - real authority is maintained by inventory + evidence + release-gate
 
-## BuildCompatibilityand Side Effects
+Three engineering rules also remain important:
+
+- logger, trace sink, and operation tracer should still be treated as separate layers rather than one flat logging interface
+- structured trace, state snapshots, and redirect instructions stay higher-priority observation surfaces than text logs
+- test-tool directions such as `FakeClock`, `FakeScheduler`, `FakeTransport`, and `InMemoryTraceCollector` remain valid methodology, but only the parts that entered public surface count as formal SDK contract
+
+## Build, Compatibility, and Side Effects
 
 ### Output and Compatibility
 
@@ -343,6 +415,8 @@ If host capabilities must be patched, the adopter must decide explicitly.
 
 Public packages should be tree-shakeable by default.  
 Any import-time side effect must be treated as serious contract pollution.
+
+`sideEffects: false` should still be read as a design target, not as an accidental by-product of the current build.
 
 ## API Stability
 
@@ -446,6 +520,14 @@ It also changes how frontend-mode callback correctness should be read:
 - React callback hosts should render from structured callback failure details (`code`, `recovery`, `kind`, `source`) rather than parsing opaque `Error.message` text
 - the reference app callback route now productizes `callback.unknown_state`, `callback.pending_stale`, `callback.pending_client_mismatch`, and `callback.duplicate_state` as stable browser-visible host states with restart guidance, and browser e2e asserts those host-visible outcomes directly
 
+Frontend-mode browser authority now also includes popup and lifecycle proof in the same host:
+
+- popup login is no longer just an SDK helper baseline; the reference app owns a real popup relay route at `/auth/token-set/frontend-mode/popup-callback`, starts popup login from `/playground/token-set/frontend-mode`, and proves success plus a host-visible `popup.closed_by_user` failure through browser e2e
+- `FrontendOidcModeClient.popupLogin()` now uses `popupCallbackUrl` as the actual OAuth `redirect_uri` and allows an optional `postAuthRedirectUri`, so host-owned popup relay pages no longer depend on redirect-uri spoofing or app-local workarounds
+- cross-tab lifecycle authority is now proven at the reference-app layer as well: one tab can complete or clear frontend-mode state and another tab reconciles that persisted snapshot through browser storage events, with browser e2e asserting both hydrate and clear behavior
+- structured observation now has a minimal SDK-owned product surface: `TraceEvent` remains the low-level contract, `createTraceTimelineStore()` in `@securitydept/client` provides the canonical in-memory observation feed, `FrontendOidcModeTraceEventType` names the frontend-mode browser-flow trace taxonomy, and `apps/webui` consumes that shared trace feed directly instead of inventing an app-local string timeline
+- testing evidence now starts from the same structured surface: focused SDK tests assert popup and callback trace events directly, and browser e2e asserts frontend-mode popup / cross-tab behavior through `data-trace-type` markers derived from the structured trace timeline rather than only DOM prose
+
 ### Framework Router Adapters
 
 Framework router adapters now live under the shared framework owner:
@@ -510,6 +592,14 @@ The main currently verified hosts are:
 - TanStack Router host
 - raw Web Router baseline
 - the real adopter lines through `apps/webui` and `outposts`
+
+Runtime support boundaries should still be expressed in three layers rather than as a blunt “supports / does not support runtime X” table:
+
+- ECMAScript / built-in requirements
+- adapter capability requirements
+- verified environments
+
+This document does not aim to maintain a caniuse-style runtime matrix; if a host has not entered real evidence, it must not be written as “verified”.
 
 ### Minimal Entry Paths
 

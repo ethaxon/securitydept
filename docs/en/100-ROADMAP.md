@@ -180,6 +180,23 @@ Current rule of thumb:
 - TypeScript remains the only active SDK productization track
 - Kotlin / Swift remain future follow-on work after the TS external contract is materially clearer
 
+### Priority 6: Keep the still-unproductized foundation topics from the original discussion visible
+
+Why this needs to be explicit:
+
+- the original SDK discussion covered more than package boundaries; it also covered richer event/source models, configuration layering, observability, testing observation surfaces, and mixed-custody themes
+- the formal docs have now turned some of that into authority, but other parts still remain in the state of “direction agreed, product surface not yet built”
+- without roadmap visibility, those gaps are too easy to misread as either “already done” or “already rejected”
+
+The topics that should stay visible today are:
+
+- the richer event/operator/source surface is still intentionally thinner than the discussion draft envisioned; the current public baseline remains deliberately minimal
+- capability-first configuration layering is still the direction, but it is not yet a unified adopter-facing configuration story
+- logger / trace sink / operation tracer / testing observation hierarchy are no longer only design discipline: iteration 121 productized the minimal shared trace path (`TraceEvent`, `createTraceTimelineStore()`, `FrontendOidcModeTraceEventType`, reference-app trace timeline consumption, and direct trace assertions), while fuller operation-tracer layering / exporter stories remain future work
+- the dual-layer error model is now partially productized rather than merely discussed: `@securitydept/client` owns the shared machine-facing/runtime plus host-facing presentation descriptor bridge, `frontend-oidc-mode` owns callback-specific presentation mapping on top of it, and `apps/webui` proves that shared contract across frontend callback/popup and backend browser actions. Broader cross-family presentation taxonomy hardening remains future work, but app-local message parsing is no longer the right baseline
+- Rust / server-side structured trace is still noticeably thinner than the TS/browser side: today it is mostly operational `tracing` logs rather than a stable auth-flow operation taxonomy, timeline, and machine-facing diagnosis surface. This should stay visible as a real follow-up iteration topic, not something we patch with ad-hoc `debug!` calls only when an incident appears
+- mixed-custody / BFF remains an explicit later topic and must not be mistaken as “implicitly solved” just because the browser-owned baseline is now stronger
+
 ## 0.2.0 Release Backlog (Derived From the Client SDK Re-audit)
 
 Unless a topic is explicitly deferred to `0.3.0` below, unfinished items still described in [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) should now be treated as **`0.2.0` release backlog**, not as vague future ideas.
@@ -205,12 +222,12 @@ Current `0.2.0` backlog priorities:
 3. **Login-trigger convenience completion**
    - ~~`session-context-client`: move beyond URL-only helpers and add minimal redirect-trigger convenience~~ (implemented: `loginWithRedirect()` in `session-context-client/web`)
    - ~~token-set browser entry: add a minimal redirect-trigger convenience~~ (implemented: `loginWithBackendOidcRedirect()` in `backend-oidc-mode/web`, plus `FrontendOidcModeClient.loginWithRedirect()`)
-   - ~~popup login baseline for `backend-oidc-mode` / `frontend-oidc-mode`~~ (implemented: shared infra in `@securitydept/client/web`, plus `loginWithBackendOidcPopup` and `FrontendOidcModeClient.popupLogin()`)
+   - ~~popup login baseline for `backend-oidc-mode` / `frontend-oidc-mode`~~ (implemented in the SDK baseline and productized in iteration 120: shared infra in `@securitydept/client/web`, `loginWithBackendOidcPopup`, `FrontendOidcModeClient.popupLogin()`, and a real frontend-mode popup relay host route in `apps/webui` with browser-e2e proof for success and user-closed failure)
 
 4. **Real multi-requirement orchestration baseline**
    - ~~move multi-OIDC / multi-requirement route orchestration beyond boundary discussion~~ (implemented: `createRequirementPlanner()` in `@securitydept/client/auth-coordination`)
    - ~~deliver at least one headless primitive / pending-requirement model before `0.2.0` GA~~ (implemented: sequential planner with `AuthRequirement`, `PlanStatus`, `ResolutionStatus`, `PlanSnapshot`; `kind` remains an opaque `string`, with no exported `RequirementKind` constant)
-   - ~~add the matched-route-chain route-orchestration baseline and complete the cross-tab / visibility readiness sweep~~ (implemented: `createRouteRequirementOrchestrator()` in `@securitydept/client/auth-coordination`, `createCrossTabSync()`, `createVisibilityReconciler()`, and their focused baselines)
+   - ~~add the matched-route-chain route-orchestration baseline and complete the cross-tab / visibility readiness sweep~~ (implemented in the SDK baseline and advanced in iteration 120 to reference-app authority: `createRouteRequirementOrchestrator()` in `@securitydept/client/auth-coordination`, `createCrossTabSync()`, `createVisibilityReconciler()`, focused baselines, and `apps/webui` browser-e2e proof that frontend-mode state hydrates and clears across tabs)
    - ~~framework-specific adapters for `@tanstack/react-router` and Angular Router~~ (implemented: `@securitydept/client-react/tanstack-router` and `@securitydept/client-angular`; TanStack Router now has a full route-security contract aligned with Angular, and the parity audit is documented in [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md#framework-router-adapters))
    - ~~Angular integration family split into dedicated npm packages~~ (implemented: `@securitydept/basic-auth-context-client-angular`, `@securitydept/session-context-client-angular`, and `@securitydept/token-set-context-client-angular`, built with `ng-packagr` and real `@Injectable()` support)
    - ~~React adapters split into dedicated packages~~ (implemented: React framework adapters and TanStack Router adapters are now dedicated npm packages; see migration ledger)
@@ -278,6 +295,7 @@ Current real-world role:
 - keep auth-context modes above those lower layers
 - document bearer-forwarding boundaries clearly
 - add more integration tests around the reference app as new modes land
+- gradually build more stable auth-flow structured observability on the Rust / server side: start with high-value paths such as projection/config fetch, callback/token exchange, and forward-auth / propagation, and converge them on stable operation names, key fields, and outcome vocabulary
 
 ## Deferred To 0.3.0
 
@@ -287,6 +305,7 @@ These topics remain real, but after the current re-audit they are the clearest i
 - stateful BFF / server-side token-set ownership
 - built-in chooser UI or router-level product-flow semantics on top of any future orchestration primitive
 - heavier OTel / DI themes
+- a full Rust-side structured-observability/exporter stack (for example a heavier OTel pipeline, cross-service exporters, and global trace ingestion); during `0.2.x`, the higher-value work is still the minimal auth-flow operation taxonomy and diagnosis surface first
 - Kotlin / Swift SDK productization before the TS contract settles
 
 ---

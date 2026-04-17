@@ -19,6 +19,40 @@ export interface ErrorPresentation {
 	recovery: UserRecovery;
 }
 
+export const ErrorPresentationTone = {
+	Neutral: "neutral",
+	Warning: "warning",
+	Danger: "danger",
+} as const;
+
+export type ErrorPresentationTone =
+	(typeof ErrorPresentationTone)[keyof typeof ErrorPresentationTone];
+
+export interface ErrorPresentationActionDescriptor {
+	recovery: UserRecovery;
+	label: string;
+	href: string | null;
+}
+
+export interface ErrorPresentationDescriptor {
+	code: string | null;
+	kind: ClientErrorKind | null;
+	source?: string;
+	title: string;
+	description: string;
+	recovery: UserRecovery;
+	retryable: boolean;
+	tone: ErrorPresentationTone;
+	primaryAction: ErrorPresentationActionDescriptor | null;
+}
+
+export interface ReadErrorPresentationDescriptorOptions {
+	fallbackTitle?: string;
+	fallbackDescription?: string;
+	recoveryLinks?: Partial<Record<UserRecovery, string>>;
+	recoveryLabels?: Partial<Record<UserRecovery, string>>;
+}
+
 /** Machine-facing error kind discriminator. */
 export const ClientErrorKind = {
 	Authorization: "authorization",

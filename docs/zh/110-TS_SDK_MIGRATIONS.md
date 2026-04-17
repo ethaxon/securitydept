@@ -44,6 +44,30 @@ TS SDK 当前处于 `0.x` 阶段。这不意味着"随便改" — 而是**允许
 
 ## 迁移说明
 
+### 2026-04-21 @securitydept/token-set-context-client/frontend-oidc-mode —— popup redirect 语义现已与真实 host-owned relay route 对齐
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `@securitydept/token-set-context-client/frontend-oidc-mode`
+
+**变更**：
+
+`FrontendOidcModeClient.popupLogin()` 现在会把 `popupCallbackUrl` 当作真实 OAuth `redirect_uri`，并允许为 opener window 额外传入可选的 `postAuthRedirectUri`。
+
+- popup callback handling 不再假设所有成功 callback 都必须使用 `config.redirectUri`
+- host-owned popup relay route 现在可以在不依赖 app-local redirect spoofing 的前提下完成真实 authorization-code flow
+- canonical reference app 已通过 `/auth/token-set/frontend-mode/popup-callback` 与 browser e2e 证明这条行为，同时也在宿主层证明了 cross-tab hydrate / clear authority
+
+**迁移**：
+
+1. 如果你的 popup host route 已经把专用 relay page 作为 `popupCallbackUrl` 传入，就不再需要先把 callback 改写回 `config.redirectUri` 才能完成 code exchange。
+2. 如果 opener window 在 popup 成功后需要回到特定页面，请显式传入 `postAuthRedirectUri`，不要继续让 `popupCallbackUrl` 同时承担两种语义。
+3. 如果你的测试此前通过旧的 `authorizeUrl(postAuthRedirectUri, extraParams)` 路径来 stub `popupLogin()`，请改为匹配 popup-specific redirect 行为。
+
+**理由**：
+
+在 iteration 120 之前，popup API surface 虽然存在，但浏览器实际授权时仍使用非 popup 的 redirect URI，这意味着真实 app-owned popup relay route 无法诚实拥有 popup callback。这个缺口必须在 SDK owner boundary 修补，reference-app popup productization 与 browser-e2e authority 才会是真实行为，而不是模拟结果。
+
 ### 2026-04-20 @securitydept/token-set-context-client-react —— browser-owned host route 的结构化 callback failure details
 
 **Discipline**: `provisional-migration-required`
@@ -655,6 +679,19 @@ React 生态集成（React Query、未来可能的 Zustand / Jotai / TanStack Qu
 - `examples/react-multi-client-registry-baseline.test.ts` —— React provider + hooks 多客户端注册与释放
 - `examples/react-query-integration-evidence.test.ts` —— React Query subpath canonical query + mutation consumer 语义
 - `examples/react-callback-async-readiness.test.ts` —— `useTokenSetCallbackResume` / `TokenSetCallbackComponent`（兼容别名 `TokenSetCallbackOutlet`）通过 `registry.whenReady()` 驱动 async / lazy client 物化，覆盖 pending + error 暴露（review-1 跟进）
+
+**后续 additive 更新（iteration 121）**
+
+- `@securitydept/client` root 现在还拥有最小 structured trace consumption primitive：`createTraceTimelineStore()` 以及 `TraceTimelineStore` / `TraceTimelineEntry` contract。该变更为 additive，继续落在既有 stable root surface 上。
+- `@securitydept/token-set-context-client/frontend-oidc-mode` 现在导出 `FrontendOidcModeTraceEventType`，把 popup / callback / refresh / user-info 的 browser-flow trace taxonomy 显式化、可复用化，而不再要求 adopter 自己硬编码原始 event string。
+- `apps/webui` 的 frontend-mode host 现在直接消费这条共享 trace feed，browser e2e 也通过 structured trace marker 断言 popup relay 与 cross-tab hydrate / clear，而不再只依赖 incidental status text。
+
+**后续 additive 更新（iteration 122）**
+
+- `@securitydept/client` root 现在还拥有共享的 host-facing error presentation contract：`ErrorPresentationDescriptor`、`ErrorPresentationTone` 与 `readErrorPresentationDescriptor()` 负责把 machine-facing runtime error 桥接为稳定的 host-facing recovery / presentation descriptor，而不再要求 adopter 解析 `error.message`。
+- `@securitydept/token-set-context-client/frontend-oidc-mode` 现在导出 `describeFrontendOidcModeCallbackError()`，把 callback-specific host wording 与 restart guidance 保留在 family owner 内，同时继续建立在共享 descriptor contract 之上。
+- `@securitydept/token-set-context-client-react` 现在在 `CallbackResumeErrorDetails` 上直接暴露 `presentation`，browser-owned callback host 因此可以直接渲染同一条共享 descriptor surface。
+- `apps/webui` 现在已在 frontend callback route、frontend popup failure handling、backend-mode refresh / clear failure 上消费这条共享 presentation contract，browser e2e 也开始通过稳定的 `data-error-*` marker 断言这些结果，而不再只依赖页面文案。
 
 **Reference-app authority 更新（非 breaking）**
 

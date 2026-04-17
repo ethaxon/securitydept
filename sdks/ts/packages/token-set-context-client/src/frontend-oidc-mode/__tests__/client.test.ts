@@ -1,6 +1,24 @@
 import { createInMemoryRecordStore, createRuntime } from "@securitydept/client";
+import { InMemoryTraceCollector } from "@securitydept/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FrontendOidcModeCallbackErrorCode } from "../callback-error-codes";
+import { FrontendOidcModeTraceEventType } from "../trace-events";
+
+const webMocks = vi.hoisted(() => ({
+	openPopupWindow: vi.fn(),
+	relayPopupCallback: vi.fn(),
+	waitForPopupRelay: vi.fn(),
+}));
+
+vi.mock("@securitydept/client/web", async () => {
+	const actual = await vi.importActual<object>("@securitydept/client/web");
+	return {
+		...actual,
+		openPopupWindow: webMocks.openPopupWindow,
+		relayPopupCallback: webMocks.relayPopupCallback,
+		waitForPopupRelay: webMocks.waitForPopupRelay,
+	};
+});
 
 const oauthMocks = vi.hoisted(() => ({
 	allowInsecureRequests: Symbol("allowInsecureRequests"),
@@ -49,6 +67,9 @@ describe("FrontendOidcModeClient", () => {
 		oauthMocks.processAuthorizationCodeResponse.mockReset();
 		oauthMocks.processDiscoveryResponse.mockReset();
 		oauthMocks.validateAuthResponse.mockReset();
+		webMocks.openPopupWindow.mockReset();
+		webMocks.relayPopupCallback.mockReset();
+		webMocks.waitForPopupRelay.mockReset();
 
 		oauthMocks.generateRandomState
 			.mockReturnValueOnce("state-value")
@@ -61,6 +82,13 @@ describe("FrontendOidcModeClient", () => {
 		oauthMocks.processAuthorizationCodeResponse.mockResolvedValue({
 			access_token: "access-token",
 		});
+		webMocks.openPopupWindow.mockReturnValue({
+			close: vi.fn(),
+			window: { closed: false },
+		});
+		webMocks.waitForPopupRelay.mockResolvedValue(
+			"https://app.example.com/auth/popup-callback?code=auth-code&state=state-value",
+		);
 		oauthMocks.processDiscoveryResponse.mockReturnValue({
 			authorization_endpoint: "https://auth.example.com/authorize",
 			issuer: "https://auth.example.com",
@@ -388,6 +416,84 @@ describe("FrontendOidcModeClient", () => {
 			expect.objectContaining({
 				[oauthMocks.allowInsecureRequests]: true,
 			}),
+		);
+	});
+
+	it("records popup relay trace events for the browser-owned popup path", async () => {
+		const trace = new InMemoryTraceCollector();
+		const runtime = createRuntime({
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			sessionStore: createInMemoryRecordStore(),
+			traceSink: trace,
+		});
+
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			runtime,
+		);
+
+		await client.popupLogin({
+			popupCallbackUrl: "https://app.example.com/auth/popup-callback",
+			postAuthRedirectUri: "/playground/token-set/frontend-mode",
+		});
+
+		expect(
+			trace.ofType(FrontendOidcModeTraceEventType.PopupOpened),
+		).toHaveLength(1);
+		expect(
+			trace.ofType(FrontendOidcModeTraceEventType.PopupRelaySucceeded),
+		).toHaveLength(1);
+		expect(
+			trace.ofType(FrontendOidcModeTraceEventType.CallbackSucceeded),
+		).toHaveLength(1);
+	});
+
+	it("records callback failure details as structured trace attributes", async () => {
+		const trace = new InMemoryTraceCollector();
+		const runtime = createRuntime({
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			sessionStore: createInMemoryRecordStore(),
+			traceSink: trace,
+		});
+
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			runtime,
+		);
+
+		await expect(
+			client.handleCallback(
+				"https://app.example.com/auth/callback?code=auth-code&state=missing-state",
+			),
+		).rejects.toMatchObject({
+			code: FrontendOidcModeCallbackErrorCode.UnknownState,
+		});
+
+		expect(trace.ofType(FrontendOidcModeTraceEventType.CallbackFailed)).toEqual(
+			[
+				expect.objectContaining({
+					attributes: expect.objectContaining({
+						errorCode: FrontendOidcModeCallbackErrorCode.UnknownState,
+						recovery: "restart_flow",
+					}),
+				}),
+			],
 		);
 	});
 });

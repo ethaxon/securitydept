@@ -1,9 +1,11 @@
 import {
 	ClientError,
 	type ClientErrorKind,
+	type ErrorPresentationDescriptor,
 	UserRecovery,
 	type UserRecovery as UserRecoveryType,
 } from "@securitydept/client";
+import { describeFrontendOidcModeCallbackError } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
 	type ReactRegistry,
@@ -77,6 +79,7 @@ export interface CallbackResumeErrorDetails {
 	recovery: UserRecoveryType;
 	retryable: boolean;
 	source?: string;
+	presentation: ErrorPresentationDescriptor;
 	cause: unknown;
 }
 
@@ -84,34 +87,46 @@ export function readCallbackResumeErrorDetails(
 	error: unknown,
 ): CallbackResumeErrorDetails {
 	if (error instanceof ClientError) {
-		return {
+		const normalized = {
 			code: error.code,
 			kind: error.kind,
 			message: error.message,
 			recovery: error.recovery,
 			retryable: error.retryable,
 			source: error.source,
+		};
+		return {
+			...normalized,
+			presentation: describeFrontendOidcModeCallbackError(normalized),
 			cause: error,
 		};
 	}
 
 	if (error instanceof Error) {
-		return {
+		const normalized = {
 			code: null,
 			kind: null,
 			message: error.message,
 			recovery: UserRecovery.None,
 			retryable: false,
+		};
+		return {
+			...normalized,
+			presentation: describeFrontendOidcModeCallbackError(normalized),
 			cause: error,
 		};
 	}
 
-	return {
+	const normalized = {
 		code: null,
 		kind: null,
 		message: "Unknown callback error",
 		recovery: UserRecovery.None,
 		retryable: false,
+	};
+	return {
+		...normalized,
+		presentation: describeFrontendOidcModeCallbackError(normalized),
 		cause: error,
 	};
 }

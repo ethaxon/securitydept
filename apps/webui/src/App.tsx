@@ -3,8 +3,8 @@ import {
 	createSecureBeforeLoad,
 	withTanStackRouteRequirements,
 } from "@securitydept/client-react/tanstack-router";
+import { describeFrontendOidcModeCallbackError } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
-	type CallbackResumeErrorDetails,
 	CallbackResumeStatus,
 	TokenSetAuthProvider,
 	useTokenSetCallbackResume,
@@ -33,6 +33,7 @@ import {
 	fetchCurrentSession,
 	rememberPostAuthRedirect,
 } from "@/api/auth";
+import { ErrorPresentationCallout } from "@/components/common/ErrorPresentationCallout";
 import {
 	AuthContextMode,
 	clearAuthContextMode,
@@ -51,8 +52,8 @@ import {
 	TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH,
 	TOKEN_SET_FRONTEND_MODE_CLIENT_KEY,
 	TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
+	TOKEN_SET_FRONTEND_MODE_POPUP_CALLBACK_PATH,
 } from "@/lib/tokenSetConfig";
-import { describeFrontendModeCallbackFailure } from "@/lib/tokenSetFrontendCallbackPresentation";
 import {
 	ensureTokenSetFrontendModeClientReady,
 	tokenSetFrontendModeClientFactory,
@@ -66,6 +67,7 @@ import { GroupCreatePage } from "@/routes/GroupCreate";
 import { GroupEditPage } from "@/routes/GroupEdit";
 import { GroupsPage } from "@/routes/Groups";
 import { LoginPage } from "@/routes/Login";
+import { TokenSetFrontendModePopupCallbackPage } from "@/routes/TokenSetFrontendModePopupCallback";
 
 // ---------------------------------------------------------------------------
 // Token-set client registry — canonical React consumer path
@@ -261,6 +263,12 @@ const tokenSetFrontendCallbackRoute = createRoute({
 	component: TokenSetFrontendCallbackRoutePage,
 });
 
+const tokenSetFrontendPopupCallbackRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: TOKEN_SET_FRONTEND_MODE_POPUP_CALLBACK_PATH,
+	component: TokenSetFrontendModePopupCallbackPage,
+});
+
 const sessionPlaygroundRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/playground/session",
@@ -278,6 +286,7 @@ const routeTree = rootRoute.addChildren([
 	tokenSetBackendModePlaygroundRoute,
 	tokenSetFrontendModePlaygroundRoute,
 	tokenSetFrontendCallbackRoute,
+	tokenSetFrontendPopupCallbackRoute,
 	sessionPlaygroundRoute,
 	basicAuthPlaygroundRoute,
 	authenticatedRoute.addChildren([
@@ -386,7 +395,14 @@ function TokenSetFrontendCallbackRoutePage() {
 	const handledResolvedRef = useRef(false);
 	const failurePresentation =
 		state.status === CallbackResumeStatus.Error && state.errorDetails
-			? describeFrontendModeCallbackFailure(state.errorDetails)
+			? describeFrontendOidcModeCallbackError(state.errorDetails, {
+					recoveryLinks: {
+						restart_flow: TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
+					},
+					recoveryLabels: {
+						restart_flow: "Return to frontend-mode playground",
+					},
+				})
 			: null;
 
 	useEffect(() => {
@@ -398,29 +414,6 @@ function TokenSetFrontendCallbackRoutePage() {
 			window.location.href = state.result?.postAuthRedirectUri ?? "/";
 		}
 	}, [state.status, state.result]);
-
-	function renderErrorMeta(errorDetails: CallbackResumeErrorDetails) {
-		return (
-			<dl className="grid gap-3 text-sm text-zinc-600 dark:text-zinc-300 sm:grid-cols-2">
-				<div className="space-y-1 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
-					<dt className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500 dark:text-zinc-400">
-						Error code
-					</dt>
-					<dd className="font-mono text-sm text-zinc-800 dark:text-zinc-100">
-						{errorDetails.code ?? "unknown"}
-					</dd>
-				</div>
-				<div className="space-y-1 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
-					<dt className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500 dark:text-zinc-400">
-						Recovery
-					</dt>
-					<dd className="font-mono text-sm text-zinc-800 dark:text-zinc-100">
-						{errorDetails.recovery}
-					</dd>
-				</div>
-			</dl>
-		);
-	}
 
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-zinc-50 p-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
@@ -438,36 +431,11 @@ function TokenSetFrontendCallbackRoutePage() {
 						callback, then returns you to the stored post-auth redirect.
 					</p>
 				</div>
-				{failurePresentation && state.errorDetails ? (
-					<div
-						className={
-							failurePresentation.tone === "warning"
-								? "space-y-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-900 dark:border-amber-900/80 dark:bg-amber-950/40 dark:text-amber-100"
-								: "space-y-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-rose-900 dark:border-rose-900/80 dark:bg-rose-950/40 dark:text-rose-100"
-						}
-					>
-						<div className="space-y-2">
-							<p className="text-xs font-semibold uppercase tracking-[0.22em]">
-								Callback failure
-							</p>
-							<h2 className="text-xl font-semibold">
-								{failurePresentation.title}
-							</h2>
-							<p className="text-sm leading-6 opacity-90">
-								{failurePresentation.description}
-							</p>
-						</div>
-						{renderErrorMeta(state.errorDetails)}
-						{failurePresentation.actionHref &&
-						failurePresentation.actionLabel ? (
-							<a
-								href={failurePresentation.actionHref}
-								className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
-							>
-								{failurePresentation.actionLabel}
-							</a>
-						) : null}
-					</div>
+				{failurePresentation ? (
+					<ErrorPresentationCallout
+						descriptor={failurePresentation}
+						eyebrow="Callback failure"
+					/>
 				) : null}
 				{state.status === CallbackResumeStatus.Pending ? (
 					<p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">

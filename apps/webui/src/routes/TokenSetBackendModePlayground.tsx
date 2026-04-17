@@ -1,12 +1,12 @@
 import type {
 	CancellationTokenSourceTrait,
+	ErrorPresentationDescriptor,
 	UserRecovery as UserRecoveryType,
 } from "@securitydept/client";
 import {
-	ClientError,
 	ClientErrorKind,
 	createCancellationTokenSource,
-	UserRecovery,
+	readErrorPresentationDescriptor,
 } from "@securitydept/client";
 import type { AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import type { BackendOidcModeBootstrapSource as BackendOidcModeBootstrapSourceType } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
@@ -44,6 +44,7 @@ import {
 	probeForwardAuthWithEntryToken,
 	probePropagationRouteWithTokenSet,
 } from "@/api/tokenSet";
+import { ErrorPresentationCallout } from "@/components/common/ErrorPresentationCallout";
 import { Layout } from "@/components/layout/Layout";
 import {
 	AuthContextMode,
@@ -246,34 +247,6 @@ function isCancelledClientError(error: unknown): boolean {
 	);
 }
 
-function readErrorDetails(
-	error: unknown,
-	fallback: string,
-): { message: string; recovery: UserRecovery } {
-	if (error instanceof ClientError) {
-		const suffix =
-			error.recovery !== UserRecovery.None
-				? ` (${error.code}; recovery: ${error.recovery})`
-				: ` (${error.code})`;
-		return {
-			message: `${error.message}${suffix}`,
-			recovery: error.recovery,
-		};
-	}
-
-	if (error instanceof Error) {
-		return {
-			message: error.message,
-			recovery: UserRecovery.None,
-		};
-	}
-
-	return {
-		message: fallback,
-		recovery: UserRecovery.None,
-	};
-}
-
 function describeForwardAuthStatus(status: ForwardAuthStatus): string {
 	switch (status.kind) {
 		case ForwardAuthStatusKind.Idle:
@@ -364,7 +337,8 @@ export function TokenSetBackendModePlaygroundPage() {
 		kind: BootstrapStatusKind.Booting,
 	});
 	const [busyAction, setBusyAction] = useState<BusyActionKind | null>(null);
-	const [actionError, setActionError] = useState<string | null>(null);
+	const [actionError, setActionError] =
+		useState<ErrorPresentationDescriptor | null>(null);
 
 	// --- React Query read paths (replaces imperative loadGroups / loadEntries) ---
 	const queryClient = useQueryClient();
@@ -517,7 +491,13 @@ export function TokenSetBackendModePlaygroundPage() {
 		try {
 			await client.refresh();
 		} catch (error) {
-			setActionError(readErrorDetails(error, "Token refresh failed").message);
+			setActionError(
+				readErrorPresentationDescriptor(error, {
+					fallbackTitle: "Token refresh failed",
+					fallbackDescription:
+						"The backend-mode client could not refresh the current token set.",
+				}),
+			);
 		} finally {
 			setBusyAction(null);
 		}
@@ -571,7 +551,11 @@ export function TokenSetBackendModePlaygroundPage() {
 			setPropagationStatus({ kind: PropagationStatusKind.Idle });
 		} catch (error) {
 			setActionError(
-				readErrorDetails(error, "Failed to clear token-set state").message,
+				readErrorPresentationDescriptor(error, {
+					fallbackTitle: "Failed to clear token-set state",
+					fallbackDescription:
+						"The backend-mode client could not clear the current browser-owned token state.",
+				}),
 			);
 		} finally {
 			setBusyAction(null);
@@ -1320,9 +1304,11 @@ export function TokenSetBackendModePlaygroundPage() {
 							</div>
 						)}
 						{actionError && (
-							<div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
-								{actionError}
-							</div>
+							<ErrorPresentationCallout
+								descriptor={actionError}
+								eyebrow="Backend-mode action"
+								className="mb-4"
+							/>
 						)}
 
 						<div className="grid gap-3 sm:grid-cols-2">

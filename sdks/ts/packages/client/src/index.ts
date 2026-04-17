@@ -12,11 +12,18 @@ export {
 	createLinkedCancellationToken,
 } from "./cancellation/index";
 // --- Errors ---
-export type { ErrorPresentation } from "./errors/index";
+export type {
+	ErrorPresentation,
+	ErrorPresentationActionDescriptor,
+	ErrorPresentationDescriptor,
+	ReadErrorPresentationDescriptorOptions,
+} from "./errors/index";
 export {
 	ClientError,
 	ClientErrorKind,
 	ClientErrorSource,
+	ErrorPresentationTone,
+	readErrorPresentationDescriptor,
 	UserRecovery,
 } from "./errors/index";
 // --- Events ---
@@ -47,10 +54,13 @@ export type {
 	OperationTracerTrait,
 	TraceEvent,
 	TraceEventSinkTrait,
+	TraceTimelineEntry,
+	TraceTimelineStore,
 } from "./logging/index";
 export {
 	createConsoleLogger,
 	createNoopLogger,
+	createTraceTimelineStore,
 	LogLevel,
 } from "./logging/index";
 // --- Persistence ---

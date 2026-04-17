@@ -50,5 +50,6 @@
 		"lsof": true,
 		"true": true
 	},
-	"ruff.format.preview": true
+	"ruff.format.preview": true,
+	"angular.enable-strict-mode-prompt": false
 }

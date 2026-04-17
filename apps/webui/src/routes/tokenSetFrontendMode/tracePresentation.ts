@@ -18,24 +18,21 @@ export interface TraceBadge {
 }
 
 const OUTCOME_BADGES: Record<string, TraceBadge> = {
-	authenticated: { label: "Authenticated", tone: TraceBadgeTone.Success },
-	cancel_requested: { label: "Superseded", tone: TraceBadgeTone.Muted },
-	cancelled: { label: "Cancelled", tone: TraceBadgeTone.Muted },
+	cleared: { label: "Cleared", tone: TraceBadgeTone.Muted },
 	failed: { label: "Failed", tone: TraceBadgeTone.Danger },
-	ready: { label: "Ready", tone: TraceBadgeTone.Success },
+	hydrated: { label: "Hydrated", tone: TraceBadgeTone.Success },
+	opened: { label: "Opened", tone: TraceBadgeTone.Neutral },
 	started: { label: "Started", tone: TraceBadgeTone.Neutral },
 	succeeded: { label: "Succeeded", tone: TraceBadgeTone.Success },
-	unauthorized: { label: "Unauthorized", tone: TraceBadgeTone.Warning },
-	validation_failed: { label: "Validation", tone: TraceBadgeTone.Warning },
 };
 
 export function readTraceDomainBadge(entry: TraceTimelineEntry): TraceBadge {
 	if (
-		entry.type.startsWith("token_set.app.") ||
-		entry.scope === "apps.webui.token-set"
+		entry.type.startsWith("frontend_oidc.host.") ||
+		entry.scope === "apps.webui.token-set-frontend"
 	) {
 		return {
-			label: "App Trace",
+			label: "Host Adoption",
 			tone: TraceBadgeTone.Neutral,
 		};
 	}
@@ -58,12 +55,8 @@ export function readTraceOutcomeBadge(
 }
 
 export function readTraceDisplayType(entry: TraceTimelineEntry): string {
-	if (entry.type.startsWith("token_set.app.")) {
-		return entry.type.slice("token_set.app.".length);
-	}
-
-	if (entry.type.startsWith("token_set.")) {
-		return entry.type.slice("token_set.".length);
+	if (entry.type.startsWith("frontend_oidc.")) {
+		return entry.type.slice("frontend_oidc.".length);
 	}
 
 	return entry.type;
@@ -73,18 +66,19 @@ export function readTraceSummary(entry: TraceTimelineEntry): string | null {
 	const attributes = entry.attributes ?? {};
 	const fields: string[] = [];
 
-	appendStringField(fields, attributes.path);
-	appendStringField(fields, attributes.groupName);
-	appendStringField(fields, attributes.entryName);
-	appendStringField(fields, attributes.configStatus);
-	appendStringField(fields, attributes.reason);
-	appendNumberField(fields, attributes.count, "count");
-	appendNumberField(fields, attributes.status, "status");
-	appendPrefixedField(fields, attributes.kind, "kind");
-	appendPrefixedField(fields, attributes.errorKind, "kind");
-	appendPrefixedField(fields, attributes.code, "code");
-	appendPrefixedField(fields, attributes.errorCode, "code");
-	appendPrefixedField(fields, attributes.recovery, "recovery");
+	appendStringField(fields, attributes.popupCallbackUrl);
+	appendStringField(fields, attributes.configuredIssuer);
+	appendStringField(fields, attributes.resolvedIssuer);
+	appendStringField(fields, attributes.state, "state");
+	appendStringField(fields, attributes.reason, "reason");
+	appendStringField(fields, attributes.errorCode, "code");
+	appendStringField(fields, attributes.code, "code");
+	appendStringField(fields, attributes.recovery, "recovery");
+	appendBooleanField(fields, attributes.persisted, "persisted");
+	appendBooleanField(fields, attributes.hasClaimsCheck, "claims_check");
+	appendBooleanField(fields, attributes.newIdToken, "new_id_token");
+	appendBooleanField(fields, attributes.hasAccessToken, "has_access_token");
+	appendNumberField(fields, attributes.syncCount, "sync_count");
 
 	return fields.length > 0 ? fields.join(" · ") : null;
 }
@@ -112,23 +106,27 @@ export function readTraceBadgeClassName(tone: TraceBadgeTone): string {
 	}
 }
 
-function appendStringField(fields: string[], value: unknown): void {
-	if (typeof value === "string" && value.length > 0) {
-		fields.push(value);
-	}
-}
-
-function appendPrefixedField(
+function appendStringField(
 	fields: string[],
 	value: unknown,
-	label: string,
+	label?: string,
 ): void {
 	if (
 		typeof value === "string" &&
 		value.length > 0 &&
 		value !== UserRecovery.None
 	) {
-		fields.push(`${label}: ${value}`);
+		fields.push(label ? `${label}: ${value}` : value);
+	}
+}
+
+function appendBooleanField(
+	fields: string[],
+	value: unknown,
+	label: string,
+): void {
+	if (typeof value === "boolean") {
+		fields.push(`${label}: ${String(value)}`);
 	}
 }
 

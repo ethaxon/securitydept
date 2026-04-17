@@ -245,8 +245,8 @@ describe("frontend-oidc-mode popup baseline", () => {
 		expect(opts.popupCallbackUrl).toBe("https://app.example.com/callback");
 	});
 
-	it("popupLogin calls authorizeUrl and opens popup, then relays to handleCallback", async () => {
-		// This test proves: authorizeUrl is called → popup opens → relay is awaited → handleCallback is called.
+	it("popupLogin builds popup authorize state and opens popup, then relays to handleCallback", async () => {
+		// This test proves: popup authorize state is built → popup opens → relay is awaited → handleCallback is called.
 
 		const mockWin = { closed: false } as Window;
 
@@ -271,7 +271,11 @@ describe("frontend-oidc-mode popup baseline", () => {
 
 		// Create a minimal mock that extends FrontendOidcModeClient's prototype shape.
 		const mockClient = Object.create(FrontendOidcModeClient.prototype);
-		mockClient.authorizeUrl = vi
+		mockClient._runtime = {
+			clock: { now: () => Date.now() },
+			traceSink: { record: vi.fn() },
+		};
+		mockClient._authorizeUrlWithState = vi
 			.fn()
 			.mockResolvedValue(
 				"https://idp.example.com/authorize?client_id=test&redirect_uri=https://app.example.com/callback&state=abc",
@@ -286,7 +290,7 @@ describe("frontend-oidc-mode popup baseline", () => {
 			popupCallbackUrl: "https://app.example.com/popup-callback",
 		});
 
-		// Wait for authorizeUrl to resolve and popup to open.
+		// Wait for authorize state building to resolve and popup to open.
 		await new Promise((r) => setTimeout(r, 50));
 
 		// Simulate the popup callback page relaying the result.
@@ -301,11 +305,12 @@ describe("frontend-oidc-mode popup baseline", () => {
 
 		const result = await promise;
 
-		// Verify authorizeUrl was called with the popup callback URL.
-		expect(mockClient.authorizeUrl).toHaveBeenCalledWith(
-			"https://app.example.com/popup-callback",
-			undefined,
-		);
+		// Verify popup authorize state was built with the popup callback URL.
+		expect(mockClient._authorizeUrlWithState).toHaveBeenCalledWith({
+			postAuthRedirectUri: undefined,
+			redirectUri: "https://app.example.com/popup-callback",
+			extraParams: undefined,
+		});
 
 		// Verify handleCallback was called with the relayed callback URL.
 		expect(mockClient.handleCallback).toHaveBeenCalledWith(

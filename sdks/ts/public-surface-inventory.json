@@ -17,7 +17,13 @@
 					"stability": "stable",
 					"owner": "foundation",
 					"changeDiscipline": "stable-deprecation-first",
-					"evidence": ["examples/minimal-entry-points.test.ts"],
+					"note": "Owns the minimal shared observability surface as well as the shared dual-layer error bridge: TraceEvent, TraceEventSinkTrait, and createTraceTimelineStore() / TraceTimelineStore for machine-facing in-memory trace consumption, plus ErrorPresentationDescriptor / ErrorPresentationTone / readErrorPresentationDescriptor() for host-facing presentation and recovery descriptors built on machine-facing runtime errors.",
+					"evidence": [
+						"examples/minimal-entry-points.test.ts",
+						"packages/client/src/errors/__tests__/errors.test.ts",
+						"packages/client/src/logging/__tests__/trace-timeline-store.test.ts",
+						"../../apps/webui/e2e/frontend-oidc.spec.ts"
+					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Foundation Design"
@@ -277,11 +283,15 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Includes config projection source contract (config-source.ts): resolveConfigProjection(), networkConfigSource(), ConfigProjectionSourceKind, ClientReadinessState. Iteration 108: async clientFactory support added.",
+					"note": "Includes config projection source contract (config-source.ts): resolveConfigProjection(), networkConfigSource(), ConfigProjectionSourceKind, ClientReadinessState. Iteration 108 added async clientFactory support. Iteration 120 tightened popup semantics so popupLogin() uses popupCallbackUrl as the real OAuth redirect_uri, supports an explicit postAuthRedirectUri for the opener, and is now proven by the apps/webui reference host via popup relay plus cross-tab lifecycle browser e2e. Iteration 121 adds FrontendOidcModeTraceEventType so popup / callback / refresh / user-info structured trace taxonomy is shared and adopter-visible rather than app-local. Iteration 122 adds describeFrontendOidcModeCallbackError() so callback-specific host-facing presentation/recovery mapping stays under the family owner while building on the shared client error presentation descriptor contract.",
 					"evidence": [
 						"examples/scheduling-input-source-baseline.test.ts",
 						"examples/frontend-oidc-minimal-entry.test.ts",
-						"examples/async-client-readiness-contract.test.ts"
+						"examples/async-client-readiness-contract.test.ts",
+						"examples/popup-login-baseline.test.ts",
+						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/error-presentation.test.ts",
+						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client.test.ts",
+						"../../apps/webui/e2e/frontend-oidc.spec.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -398,7 +408,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Iteration 110 + 116 + 119 — React 19 productization, canonical keyed consumer-path closeout, and browser-owned callback failure-path productization. Adds TokenSetAuthProvider, useTokenSetAuthRegistry / useTokenSetAuthService / useTokenSetAuthState / useTokenSetAccessToken, useTokenSetCallbackResume, CallbackResumeErrorDetails, readCallbackResumeErrorDetails, TokenSetCallbackComponent (with a retained TokenSetCallbackOutlet compatibility alias), and the SDK-owned lower-level keyed accessor useTokenSetBackendOidcClient(clientKey) on top of the framework-neutral registry core (@securitydept/token-set-context-client/registry). Callback hosts now consume structured callback-failure details rather than parsing raw message text.",
+					"note": "Iteration 110 + 116 + 119 + 120 + 122 — React 19 productization, canonical keyed consumer-path closeout, browser-owned callback failure-path productization, frontend-mode popup/cross-tab host authority, and shared callback presentation descriptors. Adds TokenSetAuthProvider, useTokenSetAuthRegistry / useTokenSetAuthService / useTokenSetAuthState / useTokenSetAccessToken, useTokenSetCallbackResume, CallbackResumeErrorDetails, readCallbackResumeErrorDetails, TokenSetCallbackComponent (with a retained TokenSetCallbackOutlet compatibility alias), and the SDK-owned lower-level keyed accessor useTokenSetBackendOidcClient(clientKey) on top of the framework-neutral registry core (@securitydept/token-set-context-client/registry). CallbackResumeErrorDetails now also carries a shared host-facing presentation descriptor so browser-owned callback hosts can render stable recovery guidance directly, and the canonical reference host proves that shared descriptor surface across callback, popup, and backend browser actions through apps/webui tests and browser e2e.",
 					"evidence": [
 						"packages/token-set-context-client-react/src/__tests__/token-set-auth-provider.test.tsx",
 						"packages/token-set-context-client-react/src/__tests__/adapter.test.ts",

@@ -17,29 +17,30 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 	const hasEvents = props.events.length > 0;
 
 	return (
-		<section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+		<section
+			data-testid="frontend-oidc-trace-timeline"
+			className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+		>
 			<div className="flex flex-wrap items-center justify-between gap-3">
 				<div>
 					<h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-						Trace Timeline
+						Structured Trace Timeline
 					</h2>
 					<p className="mt-1 max-w-4xl text-sm text-zinc-500 dark:text-zinc-400">
-						This is the reference app view of the SDK trace sink plus app-level
-						protected action and probe events. It is meant to be the primary
-						behavior timeline for callback, restore, refresh, protected request
-						cancellation, forward-auth comparison, and propagation debugging.
+						This reference view consumes the shared SDK trace sink directly. It
+						covers popup lifecycle, callback outcomes, refresh, and the
+						host-owned cross-tab adoption events wired into the same structured
+						timeline.
 					</p>
 				</div>
-				<div className="flex flex-wrap gap-2">
-					<button
-						type="button"
-						onClick={props.onClear}
-						disabled={!hasEvents}
-						className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-					>
-						Clear Trace
-					</button>
-				</div>
+				<button
+					type="button"
+					onClick={props.onClear}
+					disabled={!hasEvents}
+					className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+				>
+					Clear Trace
+				</button>
 			</div>
 
 			<div className="mt-4 space-y-3">
@@ -51,12 +52,16 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 					return (
 						<div
 							key={event.id}
+							data-trace-type={event.type}
 							className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
 						>
 							<div className="flex flex-wrap items-start justify-between gap-3">
 								<div className="min-w-0">
 									<p className="text-sm font-medium">
 										{readTraceDisplayType(event)}
+									</p>
+									<p className="mt-1 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
+										{event.type}
 									</p>
 									<div className="mt-2 flex flex-wrap gap-2">
 										<span
@@ -100,8 +105,8 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 				})}
 				{!hasEvents && (
 					<div className="rounded-lg border border-dashed border-zinc-300 p-4 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-						No trace events recorded yet. Start the token flow or exercise one
-						of the protected actions above.
+						No frontend-mode trace events recorded yet. Start popup or redirect
+						login, then inspect how the browser-owned flow was observed.
 					</div>
 				)}
 			</div>

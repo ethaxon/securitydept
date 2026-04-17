@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
+import { createTraceTimelineStore } from "@securitydept/client";
 import { act, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
-import { createTraceTimelineStore } from "@/lib/traceTimeline";
 import { createTokenSetAppTraceRecorder } from "../appTrace";
 import { TraceTimelineSection } from "../TraceTimelineSection";
 

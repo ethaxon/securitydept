@@ -7,6 +7,8 @@ export const TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH =
 	"/playground/token-set/frontend-mode";
 export const TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH =
 	"/auth/token-set/frontend-mode/callback";
+export const TOKEN_SET_FRONTEND_MODE_POPUP_CALLBACK_PATH =
+	"/auth/token-set/frontend-mode/popup-callback";
 
 export const TOKEN_SET_BACKEND_MODE_LOGIN_PATH =
 	"/auth/token-set/backend-mode/login";

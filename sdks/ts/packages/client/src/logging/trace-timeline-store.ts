@@ -1,4 +1,4 @@
-import type { TraceEvent, TraceEventSinkTrait } from "@securitydept/client";
+import type { TraceEvent, TraceEventSinkTrait } from "./types";
 
 export interface TraceTimelineEntry extends TraceEvent {
 	id: number;

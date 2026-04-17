@@ -44,6 +44,30 @@ Entry format:
 
 ## Migration Notes
 
+### 2026-04-21 @securitydept/token-set-context-client/frontend-oidc-mode — popup redirect semantics now match real host-owned relay routes
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `@securitydept/token-set-context-client/frontend-oidc-mode`
+
+**Change**:
+
+`FrontendOidcModeClient.popupLogin()` now treats `popupCallbackUrl` as the actual OAuth `redirect_uri` used during authorization and code exchange, and it also accepts an optional `postAuthRedirectUri` for the opener window.
+
+- popup callback handling no longer assumes every successful callback must use `config.redirectUri`
+- host-owned popup relay routes can now complete the real authorization-code flow without app-local redirect spoofing
+- the canonical reference app proves this behavior through `/auth/token-set/frontend-mode/popup-callback` plus browser e2e, and also proves cross-tab hydrate / clear authority at the host layer
+
+**Migration**:
+
+1. If your popup host route already passes a dedicated relay page as `popupCallbackUrl`, you no longer need any workaround that rewrites the callback back to `config.redirectUri` before code exchange.
+2. If the opener window should resume on a specific page after popup success, pass `postAuthRedirectUri` explicitly instead of overloading `popupCallbackUrl` with two meanings.
+3. If your tests stubbed `popupLogin()` through the old `authorizeUrl(postAuthRedirectUri, extraParams)` path, update them to reflect the popup-specific redirect behavior.
+
+**Justification**:
+
+Before iteration 120, the popup API surface existed but the browser was still authorized against the non-popup redirect URI, which meant a real app-owned popup relay route could not honestly own the popup callback. The fix had to land at the SDK owner boundary so reference-app popup productization and browser-e2e authority could be real rather than simulated.
+
 ### 2026-04-20 @securitydept/token-set-context-client-react — structured callback failure details for browser-owned host routes
 
 **Discipline**: `provisional-migration-required`
@@ -743,6 +767,19 @@ React ecosystem integrations (React Query, potential future Zustand / Jotai / Ta
 - `examples/react-multi-client-registry-baseline.test.ts` — React provider + hooks covering multi-client registration and disposal
 - `examples/react-query-integration-evidence.test.ts` — React Query subpath canonical query + mutation consumer semantics
 - `examples/react-callback-async-readiness.test.ts` — `useTokenSetCallbackResume` / `TokenSetCallbackComponent` (plus the retained `TokenSetCallbackOutlet` compatibility alias) drive async / lazy client materialisation via `registry.whenReady()` with pending + error surface coverage (review-1 follow-up)
+
+**Subsequent additive updates (iteration 121)**
+
+- `@securitydept/client` root now also owns the minimal structured trace consumption primitive: `createTraceTimelineStore()` plus the `TraceTimelineStore` / `TraceTimelineEntry` contracts. This is additive and ships on the existing stable root surface.
+- `@securitydept/token-set-context-client/frontend-oidc-mode` now exports `FrontendOidcModeTraceEventType`, making popup / callback / refresh / user-info browser-flow trace taxonomy explicit and reusable instead of requiring adopters to hard-code raw event strings.
+- `apps/webui` frontend-mode host now consumes that shared trace feed directly and browser e2e asserts popup relay plus cross-tab hydrate / clear through structured trace markers, not only through incidental status text.
+
+**Subsequent additive updates (iteration 122)**
+
+- `@securitydept/client` root now also owns the shared host-facing error presentation contract: `ErrorPresentationDescriptor`, `ErrorPresentationTone`, and `readErrorPresentationDescriptor()` bridge machine-facing runtime errors into stable host-facing recovery/presentation descriptors without making adopters parse `error.message`.
+- `@securitydept/token-set-context-client/frontend-oidc-mode` now exports `describeFrontendOidcModeCallbackError()`, which keeps callback-specific host wording and restart guidance under the family owner while still building on the shared descriptor contract.
+- `@securitydept/token-set-context-client-react` now includes `presentation` on `CallbackResumeErrorDetails`, so browser-owned callback hosts can render the same shared descriptor surface directly.
+- `apps/webui` now consumes that shared presentation contract across the frontend callback route, frontend popup failure handling, and backend-mode refresh / clear failures, with browser e2e asserting stable `data-error-*` markers instead of relying only on prose.
 
 **Reference-app authority update (non-breaking)**
 

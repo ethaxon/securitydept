@@ -197,6 +197,11 @@ describe("TokenSetAuthProvider callback resume", () => {
 				recovery: UserRecovery.RestartFlow,
 				retryable: false,
 				source: "frontend-oidc-mode",
+				presentation: {
+					code: FrontendOidcModeCallbackErrorCode.PendingStale,
+					title: "Callback state expired",
+					recovery: UserRecovery.RestartFlow,
+				},
 				cause: callbackError,
 			},
 		});

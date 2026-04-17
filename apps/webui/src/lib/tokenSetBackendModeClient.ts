@@ -7,6 +7,7 @@
 // the two methods whose signatures differ from the TokenSetReactClient contract
 // (restorePersistedState, handleCallback).
 
+import { createTraceTimelineStore } from "@securitydept/client";
 import type { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	bootstrapBackendOidcModeClient,
@@ -24,7 +25,6 @@ import {
 	TOKEN_SET_BACKEND_MODE_REFRESH_PATH,
 	TOKEN_SET_BACKEND_MODE_USER_INFO_PATH,
 } from "@/lib/tokenSetConfig";
-import { createTraceTimelineStore } from "@/lib/traceTimeline";
 
 // ---------------------------------------------------------------------------
 // Shared trace timeline

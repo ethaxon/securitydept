@@ -16,13 +16,14 @@ export default defineConfig(({ mode }) => {
 		},
 		server: {
 			proxy: {
-				"^/auth/(?!token-set/frontend-mode/callback(?:\\?.*)?$)": {
-					target: backendUrl,
-					// for local development server use forwarded header as callback url
-					headers: {
-						Forwarded: "for=127.0.0.1;proto=http;host=localhost:7022",
+				"^/auth/(?!token-set/frontend-mode/(?:callback|popup-callback)(?:\\?.*)?$)":
+					{
+						target: backendUrl,
+						// for local development server use forwarded header as callback url
+						headers: {
+							Forwarded: "for=127.0.0.1;proto=http;host=localhost:7022",
+						},
 					},
-				},
 				"/api": {
 					target: backendUrl,
 					// for local development server use forwarded header as callback url
