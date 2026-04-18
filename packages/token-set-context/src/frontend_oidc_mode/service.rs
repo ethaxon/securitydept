@@ -8,6 +8,8 @@
 //! building config projections. Future capabilities (e.g. frontend token
 //! handoff validation) will be added here.
 
+use securitydept_utils::observability::DiagnosedResult;
+
 use super::{contracts::FrontendOidcModeConfigProjection, runtime::FrontendOidcModeRuntime};
 
 // ---------------------------------------------------------------------------
@@ -41,6 +43,13 @@ impl FrontendOidcModeService {
     /// Returns an `io::Error` if the claims check script file cannot be read.
     pub async fn config_projection(&self) -> std::io::Result<FrontendOidcModeConfigProjection> {
         self.runtime.config_projection().await
+    }
+
+    /// Build a config projection and return a machine-readable diagnosis.
+    pub async fn config_projection_with_diagnosis(
+        &self,
+    ) -> DiagnosedResult<FrontendOidcModeConfigProjection, std::io::Error> {
+        self.runtime.config_projection_with_diagnosis().await
     }
 }
 

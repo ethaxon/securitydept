@@ -44,6 +44,353 @@ TS SDK 当前处于 `0.x` 阶段。这不意味着"随便改" — 而是**允许
 
 ## 迁移说明
 
+### 2026-04-23 Cross-runtime observability consolidation —— 浏览器观察层级与 server auth diagnosis 现已拥有正式 owner，但没有新增 TS 导出
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**变更**：
+
+本轮没有新增 TypeScript public export，因此不需要更新 `public-surface-inventory.json`。
+
+但 reference app observability 与 server auth path 行为又发生了一轮实质性收口：
+
+- token-set frontend host 与 token-set backend host 现在共享同一条显式 structured-trace story，而不再是一条 formal owner + 一条 app-local convenience surface
+- `apps/webui/src/lib/authObservationHierarchy.ts` 现在把 token-set host、Basic Auth browser boundary 与 browser harness verified-environment claim 统一收成正式 project observation hierarchy
+- `securitydept-session-context` 现在在 `session.login`、`session.logout`、`session.user_info` 上暴露 machine-readable diagnosis
+- `securitydept-basic-auth-context` 现在在 `basic_auth.login`、`basic_auth.logout`、`basic_auth.authorize` 上暴露 machine-readable diagnosis，同时继续保留 protocol-specific response owner
+- `apps/server` 的 route 与 middleware 现在直接消费这些 diagnosed result，而不再把 plain route log 当成这些路径的唯一 runtime 证据
+
+**迁移**：
+
+1. 无需修改任何 TS import path。
+2. 如果你的宿主/runtime 叙事仍把 token-set frontend trace 当成唯一正式 structured surface，现在应更新为 frontend/backend host trace 共享同一 observation hierarchy。
+3. 如果你的 server integration 或测试仍通过 plain route log 得出 session/basic-auth auth path 结论，现在应迁移到 diagnosed `operation` / `outcome` / field surface。
+4. 如果你的文档仍只用散文描述 Basic Auth 与 browser harness 的观察方式，现在应改用显式 hierarchy vocabulary：public result、redirect/response instruction、structured trace/diagnosis、focused harness interaction、human-readable log。
+
+**理由**：
+
+第 135 轮补齐了更早最小 trace/diagnosis baseline 留下的 cross-runtime observability 缺口：frontend/backend token-set host trace、Basic Auth/browser harness observation 定位、以及 session/basic-auth server auth path 现在都拥有正式、machine-readable 的 owner。
+
+### 2026-04-23 WebKit matrix consolidation —— canonical distrobox baseline 现已验证当前完整 10 场景 harness，但没有新增 TS 导出
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**变更**：
+
+本轮没有新增 TypeScript public export，因此不需要更新 `public-surface-inventory.json`。
+
+但 browser harness 的 WebKit verified-environment matrix 又发生了实质性推进：
+
+- 剩余 6 条 `frontend-oidc` 场景现在已在 distrobox-hosted Ubuntu baseline 下验证通过
+- 2 条 WebKit Basic Auth 场景现在也已在同一 baseline 下验证通过
+- canonical 的 distrobox-hosted WebKit matrix 现在在当前 harness surface 上达到 10 verified / 0 blocked / 0 unavailable
+- 同时，verified matrix 内现在也正式保留一条更细的 browser-specific divergence：WebKit 会把显式 Basic Auth challenge 提交为带 `WWW-Authenticate` 的 `401` 响应，而 Chromium 与 Firefox 仍会在页面渲染前进入 browser-thrown auth failure channel
+
+**迁移**：
+
+1. 无需修改任何 TS import path。
+2. 如果你的文档或测试仍把 WebKit 写成 canonical distrobox baseline 下仍有部分 unavailable，现在应更新为完整 10 场景 verified matrix。
+3. 继续显式保留 WebKit Basic Auth divergence：它仍然是 verified browser evidence，但 challenge surface 与 Chromium / Firefox 不同。
+
+**理由**：
+
+第 134 轮在已产品化的 canonical distrobox baseline 之上收口了剩余 WebKit matrix，把最后一段 partial-status 叙事也改成了单一权威 verified surface。
+
+### 2026-04-23 WebKit verified matrix expansion —— popup relay 现已成为 canonical distrobox baseline 的正式场景，但没有新增 TS 导出
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**变更**：
+
+本轮没有新增 TypeScript public export，因此不需要更新 `public-surface-inventory.json`。
+
+但 browser harness 的 verified-environment matrix 又向前推进了一步：
+
+- `frontend-oidc.popup.relay` 现已成为 distrobox-hosted Ubuntu baseline 下的真实 WebKit verified scenario
+- `frontend-oidc.callback.redirect` 仍继续在该 baseline 下保持 verified，因此 WebKit 现在在当前 10 场景 harness matrix 中共有 2 个 verified scenario
+- 同一条 distrobox-hosted WebKit matrix 当前共有 0 个 blocked scenario 与 8 个 unavailable scenario；这些 remaining scenario 仍必须保留为正式 unavailable，而不是只写成“未来计划”
+- 这次扩矩阵没有引入新的 browser-specific failure divergence；popup relay 在 browser-owned host 中与现有 Chromium / Firefox 行为形状保持一致
+
+**迁移**：
+
+1. 无需修改任何 TS import path。
+2. 如果你的文档或测试仍把 WebKit 写成“只有一条 distrobox-hosted callback verified scenario”，现在应更新为包含 popup relay 这第二条 verified scenario。
+3. 对仍未验证的 WebKit 场景，继续保持正式状态表达，不要把它们改写成模糊的未来计划。
+
+**理由**：
+
+第 133 轮是在已产品化的 canonical distrobox baseline 之上继续扩 WebKit verified matrix，而不是再次改写 baseline-policy contract 本身。
+
+### 2026-04-23 Browser execution baseline policy productization —— 双 baseline authority 现已显式化，但没有新增 TS 导出
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**变更**：
+
+本轮没有新增 TypeScript public export，因此不需要更新 `public-surface-inventory.json`。
+
+但 browser harness owner 现在新增了一层正式 execution-baseline policy：
+
+- Chromium 与 Firefox 已明确把 `host-native` 保留为 `primary-authority`
+- WebKit 已明确把 `host-native` 保留为 `host-truth`，同时把 `distrobox-hosted` Ubuntu 作为 `canonical-recovery-path`
+- owner 现在正式拒绝把全部浏览器统一压进 distrobox 作为默认策略，因为那会丢掉已经验证完成的 host-native browser-owned evidence
+- 同一条 frontend OIDC baseline test 现在已经被同时用于 Firefox host-native 与 WebKit distrobox-hosted 证据
+
+**迁移**：
+
+1. 无需修改任何 TS import path。
+2. 如果你的测试或文档曾暗示 `distrobox` 应成为全部浏览器的统一 baseline，现在应改成显式的双 policy 词汇。
+3. 如果你的文档过去把 host-native 与 distrobox-hosted 证据压成单一 Linux 事实，现在应按 authority 角色拆开：host-native 可以继续作为 primary authority 或 host truth，而 distrobox-hosted 则作为 canonical recovery path。
+
+**理由**：
+
+第 132 轮把 execution-baseline policy 本身变成了 browser harness 的正式 owner contract，而不再只是围绕 harness 的散文说明。
+
+### 2026-04-22 第三浏览器 bring-up —— WebKit 现已采用 distrobox-hosted canonical execution baseline，但没有新增 TS 导出
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**变更**：
+
+本轮没有新增 TypeScript public export，因此不需要更新 `public-surface-inventory.json`。
+
+但浏览器 harness 能力和已验证环境基线发生了五点重要变化：
+
+- WebKit 不再被压成单一 Linux 结论：harness 现在同时报告 executable baseline（`system-executable` 或 `playwright-managed`）和 execution baseline（`host-native` 或 `distrobox-hosted`）
+- 对 Linux 非 Debian/Ubuntu 宿主，WebKit 的 host-native 运行在运行时启动 probe 观察到 MiniBrowser 缺少宿主依赖时，仍会被正式记为 `host-dependencies-missing`
+- repo 预置的 `distrobox` `playwright-env` 现已成为这类宿主上 WebKit 的 canonical Ubuntu execution baseline
+- 在这条 distrobox-hosted baseline 中，Playwright 托管的 WebKit runtime 已是 `available`，并且 `frontend-oidc.callback.redirect` 已经取得一条真实 verified callback 结果
+- Playwright 托管浏览器的 capability detection 现在来自 Playwright runtime 的 executable discovery 与 repo-level executable override，而不是私有缓存扫描
+- `playwright.config.ts` 继续从同一 owner 派生 project，而 `PLAYWRIGHT_INCLUDE_BLOCKED_PROJECTS=1` 仍可用于显式采集 host-native blocked 证据
+
+**迁移**：
+
+1. 无需修改任何 TS import path。
+2. 如果你的浏览器侧测试或文档过去把 WebKit 写成单一的 host-blocked 终点，现在应改成拆分后的 baseline 词汇：host-native blocked 证据仍然有效，但对 Linux 非 Debian/Ubuntu 宿主，canonical bring-up path 已改为 distrobox-hosted Ubuntu execution。
+3. 如果你需要在本地走 canonical WebKit 路径，应进入 repo 预置的 `distrobox` `playwright-env` 后再运行 Playwright。
+4. 如果你需要在本地为 host-native blocked 浏览器补证据，可在运行 `playwright test --project=<browser>` 前设置 `PLAYWRIGHT_INCLUDE_BLOCKED_PROJECTS=1`。
+5. browser-specific divergence 继续保持权威：Chromium 与 Firefox 仍共享 verified 的 no-cached-credentials Basic Auth 高层结论，而 WebKit 现在已有一条 distrobox-hosted verified callback 场景，但还没有完整矩阵。
+
+**理由**：
+
+第 131 轮把浏览器 harness 从“最小双浏览器已验证基线”推进到了“第三浏览器双路径基线”：host-native WebKit blocked 证据仍被正式保留，但 repo 的 canonical 路径现在继续进入 distrobox-hosted Ubuntu execution，并在其中拿到一条真实 WebKit callback verified 结果，同时没有引入新的 TS SDK public export。
+
+### 2026-04-22 第二浏览器已验证基线 —— Firefox 接入 Playwright harness，但没有新增 TS 导出
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**变更**：
+
+本轮没有新增 TypeScript public export，因此不需要更新 `public-surface-inventory.json`。
+
+但浏览器 harness 能力和已验证环境基线发生了三点重要变化：
+
+- Firefox 现在通过 Playwright 托管可执行文件发现路径检测到，并报告为可用，`detectionSource: "playwright-managed"`
+- 全部 10 个 auth-flow 场景（2 个 basic-auth + 8 个 frontend-oidc）现已在 Firefox 和 Chromium 上同时验证通过
+- `playwright.config.ts` 现在从 harness owner 生成多浏览器项目，在 Chromium 和 Firefox 上同时运行所有 e2e 测试
+
+**迁移**：
+
+1. 无需修改任何 TS import path。
+2. Basic Auth challenge 错误模式在不同浏览器间存在差异：Chromium 产生 `ERR_INVALID_AUTH_CREDENTIALS`，Firefox 产生 `NS_ERROR_NET_EMPTY_RESPONSE`。测试现在使用浏览器感知的匹配模式。
+3. Popup relay 时序在不同浏览器间存在差异：popup 关闭前的 `waitForURL` 已被移除，因为 Firefox 关闭 popup 的速度快于 callback URL 观察完成。测试现在仅等待 popup 关闭事件。
+
+**理由**：
+
+第 130 轮将浏览器 harness 从单浏览器推进到多浏览器已验证基线，但没有引入任何新的 TS SDK public export。
+
+### 2026-04-22 文档与 consumer 同步 —— 浏览器 harness 能力报告已产品化，但没有新增 TS 导出
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**变更**：
+
+本轮没有新增 TypeScript public export，因此不需要更新 `public-surface-inventory.json`。
+
+但 browser harness 的 authority boundary 发生了重要变化：
+
+- `apps/webui/e2e/support/browser-harness.ts` 现在是浏览器 harness 能力和已验证环境基线的权威 owner
+- 该 owner 正式报告哪些 Playwright 浏览器可用、哪些不可用及原因、哪些 auth-flow 场景在哪个浏览器上已验证，并明确区分 browser-native 与 harness-backed 路径
+- `basic-auth` 和 `frontend-oidc` 两个 e2e 测试套件现在直接消费该 owner 并断言已验证环境基线
+- `playwright.config.ts` 从同一 owner 派生浏览器检测逻辑，不再维护独立的可执行文件检测代码
+- 第二浏览器基线（Firefox/WebKit）正式标记为不可用，而非静默省略
+
+**迁移**：
+
+1. 无需修改任何 TS import path。
+2. 如果你的 e2e 测试套件需要断言浏览器可用性或 auth-flow 场景覆盖，请消费 `browser-harness.ts` owner，而不是自行维护独立的浏览器检测逻辑。
+3. 不要把当前仅 Chromium 可用的环境写成通用多浏览器已验证；Firefox/WebKit 场景正式报告为 `browser-unavailable`。
+
+**理由**：
+
+iteration 129 改变的是浏览器 harness 能力报告的 authority boundary 与 consumer 行为，而不是新的 TS SDK export surface。ledger 需要把这层区别显式写清楚。
+
+### 2026-04-22 文档与 consumer 同步 —— Basic Auth authenticated logout evidence 现已补出正式 Chromium harness，但没有新增 TS 导出
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**变更**：
+
+本轮没有新增 TypeScript public export，因此不需要更新 `public-surface-inventory.json`。
+
+但 reference-app 的 browser evidence 发生了三点重要变化：
+
+- `apps/webui` 现在把 verified browser baseline、browser-specific observed behavior 和 remaining unknowns 分开表达
+- reference app 现在拥有一条依赖正式 `Authorization` header harness 的 Chromium authenticated logout sequence
+- 当前本地 Playwright 环境仍只检测到 Chromium，因此本轮不宣称已验证的第二浏览器 baseline
+
+**迁移**：
+
+1. 无需修改任何 TS import path。
+2. 如果你的 host UI 要描述 Basic Auth logout 行为，请区分浏览器自己管理的 credential replay 与 harness 显式注入的 credential replay。
+3. 不要把新的 authenticated logout sequence 写成通用浏览器 cache eviction 证明；它证明的是 Chromium harness path，并且明确记录了第二浏览器 baseline 仍缺失。
+
+**理由**：
+
+iteration 128 改变的是 Basic Auth logout 行为的 browser evidence 边界，而不是新的 TS SDK export surface。ledger 需要把这层区别显式写清楚。
+
+### 2026-04-22 文档与 consumer 同步 —— Basic Auth browser evidence 现已区分 protocol guarantee 与 Chromium-observed behavior，但没有新增 TS 导出
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**变更**：
+
+本轮没有新增 TypeScript public export，因此不需要更新 `public-surface-inventory.json`。
+
+但 reference-app 的 browser authority 发生了两点重要变化：
+
+- `apps/webui` 的 Basic Auth playground 现在会把 protocol guarantee 与 browser-observed state 分开渲染，而不再把两者混写在同一段说明里
+- reference app 现在拥有 browser-e2e 证据，证明 Chromium 在没有 cached credentials 时会把显式 `/basic/login` 导航升级成 browser auth error，而 `/basic/logout` 仍是不带 `WWW-Authenticate` 的 plain `401`
+
+**迁移**：
+
+1. 无需修改任何 TS import path。
+2. 如果你的浏览器侧文档或 host UI 要描述 Basic Auth challenge 行为，请把 protocol guarantee 与 browser-specific observed outcome 分开表达。
+3. 不要把 Chromium 的 auth-error navigation 行为写成通用协议保证；logout 之后的 credential-cache eviction 仍是明确保留的 cross-browser debt。
+
+**理由**：
+
+iteration 127 改变的是 Basic Auth 行为的 browser evidence 与 host authority，而不是新的 TS SDK export surface。ledger 需要把这层区别显式写清楚。
+
+### 2026-04-22 文档与 consumer 同步 —— Basic Auth protocol exception 现已成为显式 baseline，但没有新增 TS 导出
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**变更**：
+
+本轮没有新增 TypeScript public export，因此不需要更新 `public-surface-inventory.json`。
+
+但 Basic Auth failure 的 authority boundary 发生了两点重要变化：
+
+- `securitydept-basic-auth-context` 现在拥有显式的 Basic Auth protocol-specific response contract，用于 challenge、plain unauthorized 与 logout-poison response
+- `apps/webui` 现在通过专用 consumer helper 区分带 `WWW-Authenticate` 的 challenge response 与 plain unauthorized / logout-poison `401`，而不再把所有 `401` 都当作普通 shared-envelope failure
+
+**迁移**：
+
+1. 无需修改任何 TS import path。
+2. 如果你的 app-local browser 代码要处理 Basic Auth boundary response，请显式区分 challenge / poison / plain unauthorized 语义，而不要假设所有 `401` 都应走 shared server error envelope 解析路径。
+3. 不要再尝试把 Basic Auth challenge 或 poison response retrofit 到 `ServerErrorEnvelope`；它们现在已被文档明确为 protocol-specific exception baseline。
+
+**理由**：
+
+iteration 126 改变的是 Basic Auth protocol exception 的 server/browser authority contract，而不是新的 TS SDK export surface。ledger 需要把这层区别显式写清楚。
+
+### 2026-04-22 文档与 consumer 同步 —— reference-app auth path 现已保住 browser/server error symmetry，但没有新增 TS 导出
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**变更**：
+
+本轮没有新增 TypeScript public export，因此不需要更新 `public-surface-inventory.json`。
+
+但 reference-app consumer boundary 发生了两点重要变化：
+
+- `apps/webui` 的 frontend-mode config projection fetch 现在会把结构化 server envelope 保留为 `ClientError`，不再塌缩成 app-local `Error` 字符串
+- `apps/webui` 的 dashboard API 调用现在通过 `ClientError.fromHttpResponse()` 消费结构化 auth envelope，而不再做 app-local status/message 解析
+
+本轮同时也缩小了 server-side plain-response debt：propagation auth-boundary middleware response 现已迁到 shared `ServerErrorEnvelope`；但带有 Basic Auth challenge/poison 协议语义的响应仍明确保留在 baseline 之外。
+
+**迁移**：
+
+1. 无需修改任何 TS import path。
+2. 如果你的 app-local 代码仍通过 `statusText`、plain `message` 或自定义 `ApiError` wrapper 解析 auth HTTP failure，请迁移到 `ClientError.fromHttpResponse()` + `readErrorPresentationDescriptor()`。
+3. 不要把 Basic Auth challenge / logout-poison response 当作当前 shared envelope baseline 的一部分；它们仍是 protocol-specific exception。
+
+**理由**：
+
+iteration 125 改变的是 reference app 的真实行为与跨语言 authority，而不是新的 TS export surface。ledger 需要把这层区别显式写清楚。
+
+### 2026-04-21 文档与 consumer 同步 —— Rust/server dual-layer error envelope 已接入，但没有新增 TS 导出
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**变更**：
+
+本轮没有新增 TypeScript public export，因此不需要更新 `public-surface-inventory.json`。
+
+但文档上的跨语言 error boundary 发生了两点重要变化：
+
+- `securitydept-utils::error` 现在拥有共享的 Rust/server dual-layer HTTP error contract（`ServerErrorKind`、`ServerErrorDescriptor`、`ServerErrorEnvelope`）
+- `ClientError.fromHttpResponse()` 这类 TS consumer 现在可以直接识别结构化 server error envelope，而不再只依赖扁平的 `code` / `message` / `recovery` body
+
+**迁移**：
+
+1. 无需修改任何 TS import path。
+2. 如果你在 TypeScript 中测试 server HTTP failure，优先断言结构化 `error.kind` / `error.code` / `error.presentation` envelope，而不是只断言 plain `message` 字符串。
+
+**理由**：
+
+iteration 124 改变的是共享 server-facing error boundary 与 consumer 行为，而不是新的 TS export surface。ledger 需要把这层区别写清楚。
+
+### 2026-04-21 文档权威同步 —— Rust/server auth-flow diagnosis baseline 已澄清，但没有 TS public-surface 变更
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `documentation-only authority sync`
+
+**变更**：
+
+本轮没有 TypeScript public surface 变化，因此不需要更新 `public-surface-inventory.json`。
+
+但权威文档现在已明确记录：
+
+- `securitydept-utils::observability` 拥有共享的 Rust/server auth-flow diagnosis vocabulary
+- 当前已产品化的服务端 operation 为 `projection.config_fetch`、`oidc.callback`、`oidc.token_refresh`、`forward_auth.check`、`propagation.forward`
+- 这条 baseline 之外的路径，除非后续单独接入，否则仍只是 plain `tracing` log
+
+**迁移**：
+
+1. 无需调整任何 TS import path 或 runtime 行为。
+2. 当你在跨语言 auth-flow observability 上写文档或做 review 时，应把 Rust/server diagnosis vocabulary 当作共享 server contract，而不是临时 route log。
+
+**理由**：
+
+iteration 123 修改的是 authority boundary，而不是新的 TS public API。把这点记录在 ledger 中，可以避免把“文档权威变化”误写成“TS SDK surface 变化”。
+
 ### 2026-04-21 @securitydept/token-set-context-client/frontend-oidc-mode —— popup redirect 语义现已与真实 host-owned relay route 对齐
 
 **Discipline**: `provisional-migration-required`

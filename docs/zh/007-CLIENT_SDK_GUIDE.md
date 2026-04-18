@@ -40,6 +40,202 @@
 - TypeScript 仍是唯一 active productization track
 - Kotlin / Swift 目前仍是方向性承诺，而不是已形成 shared external contract 的同步产品面
 
+## Rust / Server Diagnosis Baseline
+
+当前 Rust / server auth-flow diagnosis baseline 的权威 owner 是共享的 `securitydept-utils::observability` contract。
+
+当前已稳定的 vocabulary：
+
+- `AuthFlowDiagnosis`
+- `AuthFlowDiagnosisOutcome`
+- `DiagnosedResult<T, E>`
+
+当前已经进入真实服务端 auth path 的 operation name：
+
+- `projection.config_fetch`
+- `oidc.callback`
+- `oidc.token_refresh`
+- `propagation.forward`
+- `forward_auth.check`
+- `session.login`
+- `session.logout`
+- `session.user_info`
+- `basic_auth.login`
+- `basic_auth.logout`
+- `basic_auth.authorize`
+
+当前 owner boundary：
+
+- `securitydept-utils` 拥有共享 machine-readable diagnosis contract
+- `securitydept-token-set-context`、`securitydept-oidc-client`、`securitydept-session-context` 在各自 auth-flow 上消费这条 contract
+- `apps/server` 是记录并暴露这些 diagnosed result 的 HTTP boundary，不是 vocabulary owner
+
+当前已完成产品化的部分：
+
+- frontend-mode config projection 现在直接返回可供 focused Rust tests 断言的 machine-readable diagnosis surface
+- callback / token refresh diagnosis 已在 OIDC client 层共享，并被 session 与 backend-oidc server path 消费
+- forward-auth 与 propagation 现在会输出稳定的 `operation` / `outcome` / 关键字段 diagnosis record，而不再只剩人类阅读的 route log
+- session-context login / logout / user-info 现在也会输出由 `securitydept-session-context` 拥有、并被 `apps/server` 直接消费的稳定 diagnosed result
+- basic-auth login / logout / authorize 现在也会输出由 `securitydept-basic-auth-context` 拥有的稳定 diagnosed result；与此同时，protocol-specific response 语义仍由 Basic Auth context 自己继续拥有
+
+当前仍未产品化的部分：
+
+- 这些高价值 auth path 之外的更广泛 route coverage
+- 完整 timeline/exporter/OTel pipeline
+- 把所有 plain `tracing` log 全量替换为 diagnosed surface
+
+## Rust / Server Error Baseline
+
+当前 Rust / server dual-layer HTTP error baseline 的权威 owner 是共享的 `securitydept-utils::error` contract。
+
+当前 shared server error contract 包括：
+
+- `ErrorPresentation`
+- `UserRecovery`
+- `ServerErrorKind`
+- `ServerErrorDescriptor`
+- `ServerErrorEnvelope`
+
+当前边界分层：
+
+- diagnosis 继续回答“发生了什么”，owner 是 `securitydept-utils::observability`
+- server error envelope 回答“宿主/客户端应如何理解与恢复 HTTP failure”，owner 是 `securitydept-utils::error`
+- `apps/server` 负责把 `ServerError` 映射到 shared server error envelope，但不拥有 envelope schema 本身
+
+当前已产品化的 route/path coverage：
+
+- frontend-mode projection failure 现在通过 shared `ServerErrorEnvelope` 对外返回
+- session callback failure 现在通过 shared `ServerErrorEnvelope` 对外返回
+- backend-mode callback / refresh failure 现在通过 shared `ServerErrorEnvelope` 对外返回
+- dashboard propagation auth boundary failure（`propagation_auth_method_mismatch`、`propagation_disabled`）现在也通过 shared `ServerErrorEnvelope` 对外返回，而不再停留在 route-local JSON
+
+当前 envelope 保证：
+
+- 稳定的 machine-facing `kind` 与 `code`
+- 稳定的 recovery vocabulary
+- 与 machine-facing 字段并存的 host-facing `presentation` descriptor
+- 对仍直接读取 `error.code` / `error.message` / `error.recovery` 的 consumer 保持兼容
+
+当前 browser/server symmetry 证据：
+
+- `apps/webui` 的 frontend-mode config projection fetch 现在会把结构化 server envelope 保留为 `ClientError`，不再塌缩成 app-local `Error` 字符串
+- `apps/webui` 的 dashboard API client 现在通过 `ClientError.fromHttpResponse()` 消费结构化 auth envelope，而不再做 app-local status/message 解析
+- reference app 现在已经有两条 focused 证据，直接证明 `ServerErrorEnvelope -> ClientError -> readErrorPresentationDescriptor()`：一条是 frontend-mode config path，一条是 dashboard auth-boundary path
+
+当前仍未产品化的部分：
+
+- 不经过 `ServerError` 的 route-local status/message
+- 带有 `WWW-Authenticate` / logout poison 语义的 Basic Auth protocol response 仍是显式 plain-status 特例，尚未进入 shared envelope baseline
+- 完整 RFC 7807/problem-details 平台
+- 把所有 browser/server error schema 做成完全统一的跨语言大 contract
+
+## Protocol-Specific Auth Exception Baseline
+
+当前 Basic Auth protocol-specific exception baseline 的权威 owner 是 `securitydept-basic-auth-context`。
+
+当前 protocol-specific contract：
+
+- `BasicAuthProtocolResponseKind`
+- `BasicAuthProtocolResponse`
+- `BasicAuthZone::login_challenge_protocol_response()`
+- `BasicAuthZone::logout_poison_protocol_response()`
+- `BasicAuthZone::unauthorized_protocol_response_for_path()`
+
+当前边界分层：
+
+- `securitydept-utils::error` 继续拥有普通 HTTP failure 的 shared server error envelope baseline
+- `securitydept-basic-auth-context` 拥有必须保留 RFC 7235 challenge 语义或 poison/logout 语义的 Basic Auth response
+- `apps/server` 与 browser consumer 应把这些 path 当作 protocol-specific exception，而不是尝试把它们解析成 `ServerErrorEnvelope`
+
+当前已产品化的 path coverage：
+
+- 显式 `/basic/login` challenge path 现在通过共享的 Basic Auth protocol-response owner 生成，而不再靠 route-local response 拼装
+- `/basic/logout` poison path 现在也通过同一 owner 生成，而不再只是 route-local plain `401`
+- Basic Auth zone 内的受保护 JSON path 现在也通过同一 owner 区分 plain unauthorized 与显式 challenge response
+
+当前 direct consumer evidence：
+
+- crate-level tests 直接证明 challenge response 会保留 `WWW-Authenticate`，而 poison response 不会
+- `apps/webui` 现在拥有专用 `readBasicAuthBoundaryKind()` helper 和 focused tests，可区分 challenge、logout-poison 与 plain unauthorized JSON probe，而不会把它们误当成普通 envelope failure
+- `apps/webui` 现在也补出了一条 browser-level Basic Auth reference sequence，并明确把 protocol guarantee 与 browser-observed behavior 分开写实：在 Chromium 自动化且没有 cached credentials 的前提下，顶层导航到 `/basic/login` 会被观察为 browser auth error；而 `/basic/logout` 仍返回不带 `WWW-Authenticate` 的 plain `401`，受保护 JSON probe 也仍是 plain unauthorized
+- `apps/webui` 现在还补出了一条已验证的 Chromium authenticated logout sequence，不过它依赖正式的 browser harness：带 `Authorization` 注入的浏览器上下文会在 logout 前把受保护后端 probe 拉到 `200`，`/basic/logout` 仍返回不带 `WWW-Authenticate` 的 plain `401`，而 logout 之后下一次受保护 probe 仍保持 authenticated，因为 harness 会继续发送凭证
+- Chromium 与 Firefox 现在也把 no-cached-credentials challenge path 上的 browser-specific divergence 正式写实：已验证的高层结论保持一致，但 Chromium 呈现 browser auth error，而 Firefox 呈现原生 `NS_ERROR_*` failure page
+
+当前仍不在该 baseline 内的部分：
+
+- 面向非 Basic 协议的更通用 challenge-framework 抽象
+- 超出当前 challenge / poison / plain 401 切分之外的浏览器特定启发式
+- authenticated logout 之后，浏览器自己管理的 credential cache 是否真正被逐出，当前仍没有通用证据；现有 browser proof 只覆盖 Chromium 的 no-cached-credentials path，以及 Chromium 下的 authorization-header harness，不能误写成通用协议保证
+- 当前还没有完整的第三浏览器已验证矩阵；Firefox 已作为第二个已验证浏览器接入（通过 Playwright 托管缓存检测，全部 10 个 auth-flow 场景验证通过），而 WebKit 现在已经拥有正式的 `distrobox` Ubuntu execution path，并已拿到一条真实 verified callback 结果，但更广的 WebKit 场景矩阵仍未补齐
+
+## 浏览器 Harness 能力基线
+
+当前浏览器 harness 能力和已验证环境基线的权威所有者是 `apps/webui/e2e/support/browser-harness.ts`。
+
+该 owner 正式报告：
+
+- 当前环境中检测到哪些 Playwright 浏览器项目可用、blocked 或 unavailable
+- 哪条 executable baseline 产生了该浏览器项目（`system-executable` 或 `playwright-managed`）
+- 该项目属于哪条 execution baseline（`host-native` 或 `distrobox-hosted`）
+- 每个浏览器当前采用哪条 execution baseline policy（`primary-authority`、`host-truth`、`canonical-recovery-path`、`not-adopted`）
+- 哪些浏览器 unavailable 或 blocked 及原因（未检测到可执行文件、项目未配置、宿主依赖缺失）
+- 哪些 auth-flow 场景在哪个浏览器上已验证，明确区分 browser-native 路径和 harness-backed 路径
+- 哪些场景因浏览器 unavailable 或 blocked 而未验证
+
+当前基线拆分如下：
+
+| 浏览器路径 | 可用性 | 可执行文件基线 | 执行基线 | 原因 |
+|---|---|---|
+| 宿主上的 Chromium | 可用 | system executable | host-native | 已检测到系统可执行文件 |
+| 宿主上的 Firefox | 可用 | Playwright-managed | host-native | 已检测到 Playwright 托管可执行文件 |
+| 非 Debian/Ubuntu 宿主上的 WebKit | blocked | Playwright-managed | host-native | 运行时 probe 在 WebKit 启动阶段观察到宿主依赖缺失 |
+| `distrobox` `playwright-env` 中的 WebKit | 可用 | Playwright-managed | distrobox-hosted | repo 预置的 Ubuntu 24.04 执行路径；已在其中验证当前 10 场景 harness matrix 全量通过 |
+
+当前已验证 auth-flow 场景：
+
+| 场景 | 路径类型 | 测试套件 |
+|---|---|---|
+| `basic-auth.challenge.no-cached-credentials` | browser-native | basic-auth |
+| `basic-auth.logout.authorization-header-harness` | harness-backed | basic-auth |
+| `frontend-oidc.callback.redirect` | browser-native | frontend-oidc |
+| `frontend-oidc.popup.relay` | browser-native | frontend-oidc |
+| `frontend-oidc.popup.closed-by-user` | browser-native | frontend-oidc |
+| `frontend-oidc.cross-tab.storage` | browser-native | frontend-oidc |
+| `frontend-oidc.callback.duplicate-replay` | browser-native | frontend-oidc |
+| `frontend-oidc.callback.unknown-state` | browser-native | frontend-oidc |
+| `frontend-oidc.callback.stale-state` | browser-native | frontend-oidc |
+| `frontend-oidc.callback.client-mismatch` | browser-native | frontend-oidc |
+
+以上全部 10 个场景均已在 host-native baseline 下的 Chromium 和 Firefox 上验证通过。WebKit 不再是单一扁平结论：对 Linux 非 Debian/Ubuntu 宿主，host-native 路径仍会以 `host-dependencies-missing` 被正式报告为 `blocked`，但其细节现在来自真实启动 probe，而不是写死的库名表；repo 预置的 distrobox-hosted Ubuntu 路径则会把 WebKit 报告为 `available`，并通过真实 browser-owned 运行验证当前 10 场景 harness matrix 全量通过。在该 distrobox-hosted baseline 下，WebKit 当前共有 10 个 `verified`、0 个 `blocked`、0 个 `unavailable`。
+
+`basic-auth` 和 `frontend-oidc` 两个 e2e 测试套件在测试时直接消费该 owner 并断言已验证环境基线，而不再依赖散文描述。
+
+当前 execution baseline policy：
+
+| 浏览器 | 首选 execution baseline | Host-native 角色 | Distrobox-hosted 角色 |
+|---|---|---|---|
+| Chromium | host-native | primary-authority | not-adopted |
+| Firefox | host-native | primary-authority | not-adopted |
+| WebKit | distrobox-hosted | host-truth | canonical-recovery-path |
+
+这条 policy 现在已经进入 owner contract，而不再只是文档约定。Chromium 与 Firefox 当前继续把 host-native browser-owned evidence 当成正式 authority，因为这条宿主基线已经得到验证。WebKit 则继续保留 host-native bring-up failure 作为 unsupported Linux 宿主上的真实 host truth，同时把 distrobox-hosted Ubuntu 作为能够建立 verified browser-owned evidence 的 canonical recovery path。
+
+`playwright.config.ts` 从同一 owner 派生浏览器检测逻辑，不再维护独立的可执行文件检测代码。对于 Playwright 托管浏览器，capability detection 现在优先依赖 Playwright runtime 的 `browserType.executablePath()` 与 repo-level executable override，而不是扫描私有缓存布局。默认情况下它仍只运行当前 execution baseline 下的 available 浏览器；如需对 host-native blocked 浏览器采样证据，可通过 `PLAYWRIGHT_INCLUDE_BLOCKED_PROJECTS=1` 显式把 WebKit 这类 blocked project 纳入定点运行，而不会破坏默认绿色矩阵。对 Linux 非 Debian/Ubuntu 宿主来说，repo 预置的 `distrobox` `playwright-env` 现在则是 WebKit 的正式运行方案。
+
+当前正式策略也不是“把全部浏览器统一搬进 distrobox”。如果现在把 Chromium 与 Firefox 也压平成同一条容器路径，项目会丢失对 browser-owned challenge / popup / callback 宿主行为的直接 authority，而这些 host-native baseline 明明已经完成验证。
+
+尚未产品化：
+
+- 动态渲染 harness 报告的运行时 UI 集成
+- 跨 workspace 的 harness 报告（当前仅覆盖 `apps/webui`）
+
+当前已正式进入 authority 的 browser-specific divergence 包括：
+
+- Chromium 与 Firefox 在 Basic Auth no-cached-credentials path 上共享同一条 verified 高层结论
+- 但 browser-owned failure surface 仍然分叉（Chromium 为 `ERR_INVALID_AUTH_CREDENTIALS`，Firefox 为原生 `NS_ERROR_*` failure surface）
+- WebKit 现在有两条正式结论：host-native 路径在 Linux 非 Debian/Ubuntu 宿主上仍可能因缺失宿主依赖而在启动前失败，而 canonical 的 distrobox-hosted Ubuntu 路径现在已经形成完整 10 场景 verified matrix
+- WebKit Basic Auth 现在也引入了一条更细的 browser-specific divergence：在 distrobox-hosted WebKit 下，显式 `/basic/login` challenge 会提交一个带 `WWW-Authenticate` 的 `401` 响应，而 Chromium 与 Firefox 仍会在页面渲染前进入 browser-owned auth failure channel
+
 ## 顶层结论
 
 - 客户端 SDK 与服务端 route orchestration 概念分离
@@ -527,6 +723,14 @@ frontend-mode 的 browser authority 现在还包含同一宿主内的 popup 与 
 - cross-tab lifecycle authority 也已进入 reference-app 层：一个标签页完成或清除 frontend-mode state 后，另一个标签页会通过浏览器 storage event reconcile 这份 persisted snapshot，browser e2e 直接断言 hydrate 与 clear 两种行为
 - 结构化观察面现在也有了最小 SDK-owned product surface：`TraceEvent` 继续作为底层 contract，`@securitydept/client` 中的 `createTraceTimelineStore()` 提供 canonical in-memory observation feed，`FrontendOidcModeTraceEventType` 命名前端模式浏览器 flow 的 trace taxonomy，而 `apps/webui` 直接消费这条共享 trace feed，而不是再拼 app-local string timeline
 - testing evidence 也开始从同一条结构化表面出发：focused SDK tests 直接断言 popup 与 callback trace event，browser e2e 则通过由 structured trace timeline 派生的 `data-trace-type` 标记断言 frontend-mode popup / cross-tab 行为，而不再只依赖页面文案
+- token-set frontend host 与 token-set backend host 现在在 reference app 中共享同一条显式 structured-trace story：两条 timeline 都是正式 host-owned diagnosis surface，而不再是一条 formal owner + 一条 app-local convenience
+- 项目级 observation hierarchy 现在也已从 implicit prose 收成显式层级：
+  1. public result / protocol result
+  2. redirect / response instruction
+  3. structured trace / diagnosis surface
+  4. focused fake / harness interaction
+  5. human-readable text / log
+- 不同 auth family 会有不同 primary surface，但 hierarchy 本身统一：token-set frontend/backend 主要落在 structured trace；Basic Auth browser behavior 主要落在 public/protocol result；browser harness verified-environment claim 主要落在 focused harness interaction
 
 ### Framework Router Adapters
 

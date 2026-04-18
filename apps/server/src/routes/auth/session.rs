@@ -10,6 +10,7 @@ use securitydept_core::{
 };
 use serde::Deserialize;
 use tower_sessions::Session;
+use tracing::{info, warn};
 
 use crate::{
     error::{ServerError, ServerResult},
@@ -32,16 +33,31 @@ pub async fn login(
     Query(query): Query<SessionLoginQuery>,
 ) -> Result<Response, ServerError> {
     let external_base_url = state.external_base_url(&headers)?;
-    state
+    let diagnosed = state
         .session_auth_service()
-        .login(
+        .login_diagnosed(
             session,
             &external_base_url,
             query.post_auth_redirect_uri.as_deref(),
         )
-        .await
-        .map(into_axum_response)
-        .map_err(ServerError::from)
+        .await;
+    let (diagnosis, result) = diagnosed.into_parts();
+    match &result {
+        Ok(_) => info!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            "Session login completed"
+        ),
+        Err(error) => warn!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            error = %error,
+            "Session login failed"
+        ),
+    }
+    result.map(into_axum_response).map_err(ServerError::from)
 }
 
 /// GET /auth/session/callback -- handle OIDC code exchange.
@@ -65,11 +81,24 @@ pub async fn logout(
     Extension(state): Extension<ServerState>,
     session: Session,
 ) -> ServerResult<Response> {
-    let body = state
-        .session_auth_service()
-        .logout(session)
-        .await
-        .map_err(ServerError::from)?;
+    let diagnosed = state.session_auth_service().logout_diagnosed(session).await;
+    let (diagnosis, result) = diagnosed.into_parts();
+    match &result {
+        Ok(_) => info!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            "Session logout completed"
+        ),
+        Err(error) => warn!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            error = %error,
+            "Session logout failed"
+        ),
+    }
+    let body = result.map_err(ServerError::from)?;
 
     Ok(Json(body).into_response())
 }
@@ -79,11 +108,27 @@ pub async fn user_info(
     Extension(state): Extension<ServerState>,
     session: Session,
 ) -> ServerResult<Json<UserInfo>> {
-    let context = state
+    let diagnosed = state
         .session_auth_service()
-        .user_info(session)
-        .await
-        .map_err(ServerError::from)?;
+        .user_info_diagnosed(session)
+        .await;
+    let (diagnosis, result) = diagnosed.into_parts();
+    match &result {
+        Ok(_) => info!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            "Session user-info completed"
+        ),
+        Err(error) => warn!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            error = %error,
+            "Session user-info failed"
+        ),
+    }
+    let context = result.map_err(ServerError::from)?;
 
     Ok(Json(UserInfo {
         display_name: context.principal.display_name,

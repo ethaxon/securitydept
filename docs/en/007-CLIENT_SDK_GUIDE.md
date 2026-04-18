@@ -40,6 +40,202 @@ Current explicit conclusion:
 - TypeScript remains the only active productization track
 - Kotlin / Swift are still directional commitments rather than synchronized product surfaces with a shared external contract today
 
+## Rust / Server Diagnosis Baseline
+
+The authoritative owner for the current Rust / server auth-flow diagnosis baseline is the shared `securitydept-utils::observability` contract.
+
+Current stable vocabulary:
+
+- `AuthFlowDiagnosis`
+- `AuthFlowDiagnosisOutcome`
+- `DiagnosedResult<T, E>`
+
+Current operation names already adopted on real server-side auth paths:
+
+- `projection.config_fetch`
+- `oidc.callback`
+- `oidc.token_refresh`
+- `propagation.forward`
+- `forward_auth.check`
+- `session.login`
+- `session.logout`
+- `session.user_info`
+- `basic_auth.login`
+- `basic_auth.logout`
+- `basic_auth.authorize`
+
+Current owner boundary:
+
+- `securitydept-utils` owns the shared machine-readable diagnosis contract
+- `securitydept-token-set-context`, `securitydept-oidc-client`, and `securitydept-session-context` consume that contract for auth-flow operations
+- `apps/server` is the HTTP boundary that logs and exposes those diagnosed results; it is not the vocabulary owner
+
+What is already productized:
+
+- frontend-mode config projection now returns a direct machine-readable diagnosis surface that focused Rust tests can assert
+- callback / token refresh diagnosis is now shared at the OIDC client layer and consumed by session and backend-oidc server paths
+- forward-auth and propagation now emit stable `operation` / `outcome` / key-field diagnosis records rather than only human-readable route logs
+- session-context login / logout / user-info now emit stable diagnosed results owned by `securitydept-session-context` and consumed directly by `apps/server`
+- basic-auth login / logout / authorize now emit stable diagnosed results owned by `securitydept-basic-auth-context`, while protocol-specific response semantics remain owned by the Basic Auth context itself
+
+What is not yet productized:
+
+- broader route coverage outside these high-value auth paths
+- a full timeline/exporter/OTel pipeline
+- a complete replacement of all plain `tracing` logs with diagnosed surfaces
+
+## Rust / Server Error Baseline
+
+The authoritative owner for the current Rust / server dual-layer HTTP error baseline is the shared `securitydept-utils::error` contract.
+
+Current shared server error contract:
+
+- `ErrorPresentation`
+- `UserRecovery`
+- `ServerErrorKind`
+- `ServerErrorDescriptor`
+- `ServerErrorEnvelope`
+
+Current boundary split:
+
+- diagnosis continues to answer what happened and is owned by `securitydept-utils::observability`
+- the server error envelope answers how a host or client should interpret and recover from an HTTP failure, and is owned by `securitydept-utils::error`
+- `apps/server` maps `ServerError` into the shared server error envelope; it does not own the envelope schema itself
+
+Current productized route/path coverage:
+
+- frontend-mode projection failures now leave the server through the shared `ServerErrorEnvelope`
+- session callback failures now leave the server through the shared `ServerErrorEnvelope`
+- backend-mode callback / refresh failures now leave the server through the shared `ServerErrorEnvelope`
+- dashboard propagation auth-boundary failures (`propagation_auth_method_mismatch`, `propagation_disabled`) now also leave `apps/server` through the shared `ServerErrorEnvelope` instead of route-local JSON
+
+Current envelope guarantees:
+
+- stable machine-facing `kind` and `code`
+- stable recovery vocabulary
+- host-facing `presentation` descriptor embedded alongside the machine-facing fields
+- compatibility for consumers that still read `error.code` / `error.message` / `error.recovery` directly
+
+Current browser/server symmetry evidence:
+
+- `apps/webui` frontend-mode config projection fetch now preserves structured server envelopes as `ClientError` instead of collapsing them into app-local `Error` strings
+- `apps/webui` dashboard API client now consumes structured auth envelopes through `ClientError.fromHttpResponse()` instead of app-local status/message parsing
+- the reference app now has direct focused evidence for `ServerErrorEnvelope -> ClientError -> readErrorPresentationDescriptor()` on both the frontend-mode config path and a dashboard auth-boundary path
+
+What is not yet productized:
+
+- route-local statuses and messages that do not pass through `ServerError`
+- protocol-specific Basic Auth challenge / logout-poison responses still remain explicit plain-status exceptions because they must preserve `WWW-Authenticate` and poison-response semantics
+- a full RFC 7807/problem-details platform
+- full cross-language unification of every browser and server error schema
+
+## Protocol-Specific Auth Exception Baseline
+
+The authoritative owner for the current Basic Auth protocol-specific exception baseline is `securitydept-basic-auth-context`.
+
+Current protocol-specific contract:
+
+- `BasicAuthProtocolResponseKind`
+- `BasicAuthProtocolResponse`
+- `BasicAuthZone::login_challenge_protocol_response()`
+- `BasicAuthZone::logout_poison_protocol_response()`
+- `BasicAuthZone::unauthorized_protocol_response_for_path()`
+
+Current boundary split:
+
+- `securitydept-utils::error` continues to own the shared server error envelope baseline for ordinary HTTP failures
+- `securitydept-basic-auth-context` owns Basic Auth responses that must preserve RFC-7235-style challenge semantics or poison/logout semantics
+- `apps/server` and browser consumers should treat these paths as protocol-specific exceptions rather than trying to parse them as `ServerErrorEnvelope`
+
+Current productized path coverage:
+
+- the explicit `/basic/login` challenge path now resolves through the shared Basic Auth protocol-response owner instead of route-local response assembly
+- the `/basic/logout` poison path now resolves through the same owner instead of a route-local plain `401`
+- protected JSON paths inside the Basic Auth zone now use the same owner to distinguish plain unauthorized responses from explicit challenge responses
+
+Current direct consumer evidence:
+
+- crate-level tests prove that challenge responses keep `WWW-Authenticate` while poison responses do not
+- `apps/webui` now has a dedicated `readBasicAuthBoundaryKind()` helper and focused tests that distinguish challenge, logout-poison, and plain unauthorized JSON probe results without treating them as ordinary envelope failures
+- `apps/webui` now also has a browser-level Basic Auth reference sequence that keeps protocol guarantee separate from browser-observed behavior: under Chromium automation with no cached credentials, top-level `/basic/login` navigation is observed as a browser auth error, while `/basic/logout` still returns a plain `401` without `WWW-Authenticate` and the protected JSON probe remains plain unauthorized
+- `apps/webui` now also has a second verified Chromium browser sequence for the authenticated logout path under a formal browser harness: a context that injects `Authorization` reaches `200` on the protected backend probe before logout, `/basic/logout` still returns a plain `401` without `WWW-Authenticate`, and the next protected probe remains authenticated because the harness continues to send credentials
+- Chromium and Firefox now also make the browser-specific divergence explicit on the no-cached-credentials challenge path: the verified high-level conclusion stays the same, but Chromium surfaces a browser auth error while Firefox surfaces a native `NS_ERROR_*` failure page
+
+What remains outside this baseline:
+
+- a broader generalized challenge-framework abstraction across non-Basic protocols
+- browser-specific heuristics beyond the current challenge-vs-poison-vs-plain-401 split
+- native browser-managed credential-cache eviction evidence after an authenticated logout; the current browser proof covers Chromium's no-cached-credentials path plus a Chromium authorization-header harness, but still does not establish a universal cross-browser logout-eviction guarantee
+- a fully verified third-browser baseline across every auth-flow scenario; Firefox is now a verified second browser (detected from the Playwright-managed cache with all 10 auth-flow scenarios passing), and WebKit now has a canonical distrobox-hosted Ubuntu execution path with one real verified callback scenario, but the broader WebKit matrix is still incomplete
+
+## Browser Harness Capability Baseline
+
+The authoritative owner for the current browser harness capability and verified-environment baseline is `apps/webui/e2e/support/browser-harness.ts`.
+
+This owner formally reports:
+
+- which Playwright browser projects are detected and available, blocked, or unavailable in the current environment
+- which executable baseline produced that browser project (`system-executable` vs `playwright-managed`)
+- which execution baseline the project belongs to (`host-native` vs `distrobox-hosted`)
+- which execution baseline policy applies to each browser (`primary-authority`, `host-truth`, `canonical-recovery-path`, `not-adopted`)
+- which browsers are unavailable or blocked and why (executable not detected, project not configured, host dependencies missing)
+- which auth-flow scenarios are verified on which browser, distinguishing browser-native from harness-backed paths
+- which scenarios remain unverified because the browser is unavailable or blocked
+
+Current baseline split:
+
+| Browser path | Availability | Executable baseline | Execution baseline | Reason |
+|---|---|---|
+| Chromium on the host | available | system executable | host-native | system executable detected |
+| Firefox on the host | available | Playwright-managed | host-native | Playwright-managed executable detected |
+| WebKit on non-Debian/Ubuntu hosts | blocked | Playwright-managed | host-native | runtime probe observed missing host dependencies during WebKit startup |
+| WebKit in `distrobox` `playwright-env` | available | Playwright-managed | distrobox-hosted | repo-provided Ubuntu 24.04 execution path; the full current 10-scenario harness matrix is verified there |
+
+Current verified auth-flow scenarios:
+
+| Scenario | Path kind | Suite |
+|---|---|---|
+| `basic-auth.challenge.no-cached-credentials` | browser-native | basic-auth |
+| `basic-auth.logout.authorization-header-harness` | harness-backed | basic-auth |
+| `frontend-oidc.callback.redirect` | browser-native | frontend-oidc |
+| `frontend-oidc.popup.relay` | browser-native | frontend-oidc |
+| `frontend-oidc.popup.closed-by-user` | browser-native | frontend-oidc |
+| `frontend-oidc.cross-tab.storage` | browser-native | frontend-oidc |
+| `frontend-oidc.callback.duplicate-replay` | browser-native | frontend-oidc |
+| `frontend-oidc.callback.unknown-state` | browser-native | frontend-oidc |
+| `frontend-oidc.callback.stale-state` | browser-native | frontend-oidc |
+| `frontend-oidc.callback.client-mismatch` | browser-native | frontend-oidc |
+
+All 10 scenarios above are verified on both Chromium and Firefox in the host-native baseline. WebKit is no longer a single flattened story: the host-native path on non-Debian/Ubuntu hosts is still formally `blocked` with reason `host-dependencies-missing`, but its details now come from a runtime startup probe rather than a hard-coded library list. The canonical repo-provided distrobox-hosted Ubuntu path reports WebKit as `available` and now verifies the full current 10-scenario harness matrix through real browser-owned runs. Under that distrobox-hosted baseline, WebKit currently has 10 verified scenarios, 0 blocked scenarios, and 0 unavailable scenarios.
+
+Both the `basic-auth` and `frontend-oidc` e2e suites consume this owner at test time and assert the verified-environment baseline directly instead of relying on prose.
+
+Current execution baseline policy:
+
+| Browser | Preferred execution baseline | Host-native role | Distrobox-hosted role |
+|---|---|---|---|
+| Chromium | host-native | primary-authority | not-adopted |
+| Firefox | host-native | primary-authority | not-adopted |
+| WebKit | distrobox-hosted | host-truth | canonical-recovery-path |
+
+This policy is now part of the owner contract rather than only a documentation convention. Chromium and Firefox keep host-native browser-owned evidence as the current authority because that evidence is already verified on the host. WebKit keeps host-native bring-up failures as real host truth on unsupported Linux hosts, but distrobox-hosted Ubuntu is the canonical recovery path that can establish verified browser-owned evidence.
+
+The `playwright.config.ts` derives its browser detection from the same owner rather than maintaining independent executable-detection logic. Managed-browser capability detection now prefers the Playwright runtime contract (`browserType.executablePath()`) plus repo-level executable overrides instead of scanning private cache layout. By default it still runs only available browsers for the current execution baseline. Setting `PLAYWRIGHT_INCLUDE_BLOCKED_PROJECTS=1` still allows a blocked browser such as host-native WebKit to be targeted explicitly for evidence gathering without breaking the default green matrix, while the repo-provided `distrobox` `playwright-env` is now the canonical way to run WebKit on Linux non-Debian/Ubuntu hosts.
+
+The current strategy is intentionally not “put every browser into distrobox”. If Chromium and Firefox were flattened into the same containerized path today, the project would lose direct host-native authority for browser-owned challenge, popup, and callback behavior even though those host baselines are already verified.
+
+What is not yet productized:
+
+- runtime UI integration that renders the harness report dynamically
+- cross-workspace harness reporting (only `apps/webui` is covered)
+
+Current browser-specific divergence that is now part of authority:
+
+- Chromium and Firefox share the same verified no-cached-credentials Basic Auth conclusion
+- the browser-owned failure surface still diverges (`ERR_INVALID_AUTH_CREDENTIALS` in Chromium vs a native `NS_ERROR_*` failure surface in Firefox)
+- WebKit now has two formal outcomes: host-native execution can still fail at launch time on non-Debian/Ubuntu hosts because MiniBrowser cannot start without the missing host libraries above, while the canonical distrobox-hosted Ubuntu path now has a fully verified 10-scenario harness matrix
+- WebKit Basic Auth now introduces a narrower browser-specific divergence inside that verified matrix: under distrobox-hosted WebKit, the explicit `/basic/login` challenge commits a `401` response with `WWW-Authenticate`, while Chromium and Firefox still surface browser-owned auth failure channels before page render
+
 ## Top-Level Decisions
 
 - client SDKs stay separate from server route-orchestration concepts
@@ -527,6 +723,14 @@ Frontend-mode browser authority now also includes popup and lifecycle proof in t
 - cross-tab lifecycle authority is now proven at the reference-app layer as well: one tab can complete or clear frontend-mode state and another tab reconciles that persisted snapshot through browser storage events, with browser e2e asserting both hydrate and clear behavior
 - structured observation now has a minimal SDK-owned product surface: `TraceEvent` remains the low-level contract, `createTraceTimelineStore()` in `@securitydept/client` provides the canonical in-memory observation feed, `FrontendOidcModeTraceEventType` names the frontend-mode browser-flow trace taxonomy, and `apps/webui` consumes that shared trace feed directly instead of inventing an app-local string timeline
 - testing evidence now starts from the same structured surface: focused SDK tests assert popup and callback trace events directly, and browser e2e asserts frontend-mode popup / cross-tab behavior through `data-trace-type` markers derived from the structured trace timeline rather than only DOM prose
+- token-set frontend host and token-set backend host now share one explicit structured-trace story in the reference app: both timelines are formal host-owned diagnosis surfaces rather than one formal owner plus one app-local convenience
+- the project observation hierarchy is now explicit instead of implicit prose only:
+  1. public result / protocol result
+  2. redirect / response instruction
+  3. structured trace / diagnosis surface
+  4. focused fake / harness interaction
+  5. human-readable text / log
+- different auth families intentionally sit on different primary surfaces inside that shared hierarchy: token-set frontend/backend are primarily observed through structured trace, Basic Auth browser behavior is primarily observed through public/protocol result, and browser harness verified-environment claims are primarily observed through focused harness interaction
 
 ### Framework Router Adapters
 

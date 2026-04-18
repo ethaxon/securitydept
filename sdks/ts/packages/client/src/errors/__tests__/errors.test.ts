@@ -71,6 +71,35 @@ describe("ClientError", () => {
 		expect(err.presentation?.code).toBe("db_unavailable");
 	});
 
+	it("should consume a structured server error envelope", () => {
+		const err = ClientError.fromHttpResponse(503, {
+			success: false,
+			status: 503,
+			error: {
+				kind: "unavailable",
+				code: "service_unavailable",
+				message: "The service is temporarily unavailable.",
+				recovery: UserRecovery.ContactSupport,
+				retryable: false,
+				presentation: {
+					code: "service_unavailable",
+					message: "The service is temporarily unavailable.",
+					recovery: UserRecovery.ContactSupport,
+				},
+			},
+		});
+
+		expect(err.kind).toBe(ClientErrorKind.Server);
+		expect(err.source).toBe(ClientErrorSource.Server);
+		expect(err.code).toBe("service_unavailable");
+		expect(err.recovery).toBe(UserRecovery.ContactSupport);
+		expect(err.presentation).toMatchObject({
+			code: "service_unavailable",
+			message: "The service is temporarily unavailable.",
+			recovery: UserRecovery.ContactSupport,
+		});
+	});
+
 	it("should create from 401 HTTP response", () => {
 		const err = ClientError.fromHttpResponse(401);
 		expect(err.kind).toBe(ClientErrorKind.Unauthenticated);

@@ -6,6 +6,83 @@ import {
 	type UserRecovery as UserRecoveryType,
 } from "./types";
 
+type ServerErrorBody = {
+	kind?: string;
+	code?: string;
+	message?: string;
+	recovery?: string;
+	presentation?: {
+		code?: string;
+		message?: string;
+		recovery?: string;
+	};
+};
+
+function mapServerErrorKind(
+	kind: string | undefined,
+	status: number,
+): ClientErrorKind {
+	switch (kind) {
+		case "unauthenticated":
+			return ClientErrorKind.Unauthenticated;
+		case "unauthorized":
+			return ClientErrorKind.Unauthorized;
+		case "unavailable":
+		case "internal":
+			return ClientErrorKind.Server;
+		case "invalid_request":
+		case "conflict":
+			return ClientErrorKind.Protocol;
+		default:
+			return status === 401
+				? ClientErrorKind.Unauthenticated
+				: status === 403
+					? ClientErrorKind.Unauthorized
+					: status >= 500
+						? ClientErrorKind.Server
+						: ClientErrorKind.Protocol;
+	}
+}
+
+function readServerErrorBody(body: unknown): ServerErrorBody | undefined {
+	if (!body || typeof body !== "object") return undefined;
+	const record = body as Record<string, unknown>;
+	const error =
+		record.error && typeof record.error === "object"
+			? (record.error as Record<string, unknown>)
+			: record;
+
+	return {
+		kind: typeof error.kind === "string" ? error.kind : undefined,
+		code: typeof error.code === "string" ? error.code : undefined,
+		message: typeof error.message === "string" ? error.message : undefined,
+		recovery: typeof error.recovery === "string" ? error.recovery : undefined,
+		presentation:
+			error.presentation && typeof error.presentation === "object"
+				? {
+						code:
+							typeof (error.presentation as Record<string, unknown>).code ===
+							"string"
+								? ((error.presentation as Record<string, unknown>)
+										.code as string)
+								: undefined,
+						message:
+							typeof (error.presentation as Record<string, unknown>).message ===
+							"string"
+								? ((error.presentation as Record<string, unknown>)
+										.message as string)
+								: undefined,
+						recovery:
+							typeof (error.presentation as Record<string, unknown>)
+								.recovery === "string"
+								? ((error.presentation as Record<string, unknown>)
+										.recovery as string)
+								: undefined,
+					}
+				: undefined,
+	};
+}
+
 /**
  * Base client error carrying both machine-facing context and an optional
  * user-facing presentation layer.
@@ -60,26 +137,38 @@ export class ClientError extends Error {
 	/** Create a `ClientError` from a server error response body. */
 	static fromServerError(
 		body: {
+			kind?: string;
 			code?: string;
 			message?: string;
 			recovery?: string;
+			presentation?: {
+				code?: string;
+				message?: string;
+				recovery?: string;
+			};
 		},
 		overrides?: { kind?: ClientErrorKind; source?: string },
 	): ClientError {
+		const rawPresentation = body.presentation;
 		const presentation: ErrorPresentation | undefined =
-			body.code && body.message
+			(rawPresentation?.code ?? body.code) &&
+			(rawPresentation?.message ?? body.message)
 				? {
-						code: body.code,
-						message: body.message,
+						code: rawPresentation?.code ?? body.code ?? "unknown_server_error",
+						message:
+							rawPresentation?.message ??
+							body.message ??
+							"Unknown server error",
 						recovery:
+							(rawPresentation?.recovery as ErrorPresentation["recovery"]) ??
 							(body.recovery as ErrorPresentation["recovery"]) ??
 							UserRecovery.None,
 					}
 				: undefined;
 
 		return new ClientError({
-			kind: overrides?.kind ?? ClientErrorKind.Protocol,
-			message: body.message ?? "Unknown server error",
+			kind: overrides?.kind ?? mapServerErrorKind(body.kind, 400),
+			message: presentation?.message ?? body.message ?? "Unknown server error",
 			presentation,
 			source: overrides?.source,
 		});
@@ -90,21 +179,11 @@ export class ClientError extends Error {
 	 * Used when a non-success status is unexpected.
 	 */
 	static fromHttpResponse(status: number, body?: unknown): ClientError {
-		const serverBody =
-			body && typeof body === "object"
-				? (body as Record<string, string>)
-				: undefined;
+		const serverBody = readServerErrorBody(body);
 
 		// Derive kind and source from HTTP status first — these apply
 		// whether or not the response carries a structured error body.
-		const kind: ClientErrorKind =
-			status === 401
-				? ClientErrorKind.Unauthenticated
-				: status === 403
-					? ClientErrorKind.Unauthorized
-					: status >= 500
-						? ClientErrorKind.Server
-						: ClientErrorKind.Protocol;
+		const kind = mapServerErrorKind(serverBody?.kind, status);
 
 		const source =
 			status >= 500

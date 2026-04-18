@@ -1,5 +1,8 @@
 use securitydept_oidc_client::{OidcClient, OidcCodeCallbackSearchParams, PendingOauthStore};
-use securitydept_utils::http::HttpResponse;
+use securitydept_utils::{
+    http::HttpResponse,
+    observability::{AuthFlowDiagnosis, AuthFlowDiagnosisOutcome, DiagnosedResult},
+};
 use url::Url;
 
 use super::{
@@ -125,6 +128,46 @@ where
             .await
     }
 
+    pub async fn callback_fragment_return_with_diagnosis(
+        &self,
+        external_base_url: &Url,
+        search_params: OidcCodeCallbackSearchParams,
+        caller_post_auth_redirect_uri: Option<&Url>,
+    ) -> DiagnosedResult<HttpResponse, BackendOidcModeRuntimeError> {
+        let diagnosis = AuthFlowDiagnosis::started("oidc.callback")
+            .field("mode", "backend_oidc")
+            .field("response_transport", "fragment_redirect")
+            .field("callback_path", self.callback_path)
+            .field("external_base_url", external_base_url.as_str())
+            .field("has_state", search_params.state.is_some())
+            .field("has_code", !search_params.code.is_empty());
+
+        match self
+            .callback_fragment_return(
+                external_base_url,
+                search_params,
+                caller_post_auth_redirect_uri,
+            )
+            .await
+        {
+            Ok(response) => DiagnosedResult::success(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
+                    .field(
+                        "has_caller_post_auth_redirect_uri",
+                        caller_post_auth_redirect_uri.is_some(),
+                    ),
+                response,
+            ),
+            Err(error) => DiagnosedResult::failure(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                    .field("failure_stage", "backend_callback_fragment_return"),
+                error,
+            ),
+        }
+    }
+
     /// Handle the OIDC code callback and redirect with the token set in
     /// the URL fragment.
     ///
@@ -177,6 +220,38 @@ where
             )
             .await?;
         Ok(result.response_body.to_response_body())
+    }
+
+    pub async fn callback_body_return_with_diagnosis(
+        &self,
+        external_base_url: &Url,
+        search_params: OidcCodeCallbackSearchParams,
+    ) -> DiagnosedResult<serde_json::Value, BackendOidcModeRuntimeError> {
+        let diagnosis = AuthFlowDiagnosis::started("oidc.callback")
+            .field("mode", "backend_oidc")
+            .field("response_transport", "json_body")
+            .field("callback_path", self.callback_path)
+            .field("external_base_url", external_base_url.as_str())
+            .field("has_state", search_params.state.is_some())
+            .field("has_code", !search_params.code.is_empty());
+
+        match self
+            .callback_body_return(external_base_url, search_params)
+            .await
+        {
+            Ok(body) => DiagnosedResult::success(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
+                    .field("has_metadata", body.get("metadata").is_some()),
+                body,
+            ),
+            Err(error) => DiagnosedResult::failure(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                    .field("failure_stage", "backend_callback_body_return"),
+                error,
+            ),
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -238,6 +313,38 @@ where
             .handle_token_refresh_inline(self.oidc_client, payload)
             .await?;
         Ok(result.response_body.to_response_body())
+    }
+
+    pub async fn refresh_body_return_with_diagnosis(
+        &self,
+        payload: &BackendOidcModeRefreshPayload,
+        external_base_url: &Url,
+    ) -> DiagnosedResult<serde_json::Value, BackendOidcModeRuntimeError> {
+        let diagnosis = AuthFlowDiagnosis::started("oidc.token_refresh")
+            .field("mode", "backend_oidc")
+            .field("response_transport", "json_body")
+            .field("callback_path", self.callback_path)
+            .field("external_base_url", external_base_url.as_str())
+            .field(
+                "has_post_auth_redirect_uri",
+                payload.post_auth_redirect_uri.is_some(),
+            )
+            .field("has_id_token", payload.id_token.is_some());
+
+        match self.refresh_body_return(payload).await {
+            Ok(body) => DiagnosedResult::success(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
+                    .field("has_metadata", body.get("metadata").is_some()),
+                body,
+            ),
+            Err(error) => DiagnosedResult::failure(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                    .field("failure_stage", "backend_refresh_body_return"),
+                error,
+            ),
+        }
     }
 
     // -----------------------------------------------------------------------

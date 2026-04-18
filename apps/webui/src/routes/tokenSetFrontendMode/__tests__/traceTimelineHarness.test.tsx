@@ -5,9 +5,10 @@ import { act, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
 import {
-	createTokenSetBackendHostTraceRecorder,
-	TOKEN_SET_BACKEND_HOST_TRACE_SCOPE,
-} from "../appTrace";
+	FrontendHostTraceEventType,
+	TOKEN_SET_FRONTEND_HOST_TRACE_SCOPE,
+	TOKEN_SET_FRONTEND_HOST_TRACE_SOURCE,
+} from "@/lib/tokenSetFrontendModeClient";
 import { TraceTimelineSection } from "../TraceTimelineSection";
 
 function TraceTimelineHarness(props: {
@@ -26,10 +27,9 @@ function TraceTimelineHarness(props: {
 	);
 }
 
-describe("trace timeline harness", () => {
-	it("wires sdk trace, app trace, and clear interaction through the live store", async () => {
+describe("frontend trace timeline harness", () => {
+	it("wires sdk trace, frontend host trace, and clear interaction through the live store", async () => {
 		const timeline = createTraceTimelineStore();
-		const recordAppTrace = createTokenSetBackendHostTraceRecorder(timeline);
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const root = createRoot(container);
@@ -39,7 +39,7 @@ describe("trace timeline harness", () => {
 		});
 
 		expect(container.textContent).toContain(
-			"No backend-mode trace events recorded yet.",
+			"No frontend-mode trace events recorded yet.",
 		);
 
 		await act(async () => {
@@ -54,27 +54,27 @@ describe("trace timeline harness", () => {
 					recovery: "retry",
 				},
 			});
-			recordAppTrace("token_set.app.entries.load.failed", {
-				path: "/api/entries",
-				code: "token_set.authorization.unavailable",
-				recovery: "reauthenticate",
-			});
-			recordAppTrace("token_set.app.propagation_probe.cancel_requested", {
-				path: "/api/propagation/api/health",
-				reason: "superseded",
+			timeline.record({
+				type: FrontendHostTraceEventType.CrossTabCleared,
+				at: Date.parse("2026-01-01T00:00:01Z"),
+				scope: TOKEN_SET_FRONTEND_HOST_TRACE_SCOPE,
+				source: TOKEN_SET_FRONTEND_HOST_TRACE_SOURCE,
+				attributes: {
+					hasAccessToken: false,
+					syncCount: 4,
+				},
 			});
 		});
 
 		expect(container.textContent).toContain("SDK Lifecycle");
-		expect(container.textContent).toContain("App Trace");
-		expect(container.textContent).toContain(TOKEN_SET_BACKEND_HOST_TRACE_SCOPE);
-		expect(container.textContent).toContain("callback.failed");
-		expect(container.textContent).toContain("entries.load.failed");
-		expect(container.textContent).toContain("code: metadata_unavailable");
+		expect(container.textContent).toContain("Host Adoption");
 		expect(container.textContent).toContain(
-			"code: token_set.authorization.unavailable",
+			TOKEN_SET_FRONTEND_HOST_TRACE_SCOPE,
 		);
-		expect(container.textContent).toContain("Superseded");
+		expect(container.textContent).toContain("callback.failed");
+		expect(container.textContent).toContain("cross_tab.cleared");
+		expect(container.textContent).toContain("code: metadata_unavailable");
+		expect(container.textContent).toContain("sync_count: 4");
 
 		const clearButton = container.querySelector("button");
 		expect(clearButton).not.toBeNull();
@@ -84,7 +84,7 @@ describe("trace timeline harness", () => {
 		});
 
 		expect(container.textContent).toContain(
-			"No backend-mode trace events recorded yet.",
+			"No frontend-mode trace events recorded yet.",
 		);
 		expect(clearButton?.hasAttribute("disabled")).toBe(true);
 

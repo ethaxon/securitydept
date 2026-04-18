@@ -61,7 +61,7 @@ import {
 	TOKEN_SET_BACKEND_MODE_PLAYGROUND_PATH,
 } from "@/lib/tokenSetConfig";
 import {
-	createTokenSetAppTraceRecorder,
+	createTokenSetBackendHostTraceRecorder,
 	readTokenSetTraceErrorAttributes,
 } from "@/routes/tokenSetBackendMode/appTrace";
 import { TraceTimelineSection } from "@/routes/tokenSetBackendMode/TraceTimelineSection";
@@ -303,7 +303,7 @@ function readMutationStatusText(status: MutationStatus, label: string): string {
 export function TokenSetBackendModePlaygroundPage() {
 	const traceTimeline = tokenSetBackendModeTraceTimeline;
 	const recordAppTrace = useMemo(
-		() => createTokenSetAppTraceRecorder(traceTimeline),
+		() => createTokenSetBackendHostTraceRecorder(traceTimeline),
 		[],
 	);
 

@@ -10,10 +10,14 @@ use axum::{
 use securitydept_core::{
     session_context::{SessionContextError, SessionContextSession},
     token_set_context::access_token_substrate::AccessTokenSubstrateResourceService,
-    utils::error::{ErrorPresentation, UserRecovery},
+    utils::error::{
+        ErrorPresentation, ServerErrorDescriptor, ServerErrorEnvelope, ServerErrorKind,
+        UserRecovery,
+    },
 };
 use serde_json::Value;
 use tower_sessions::Session;
+use tracing::{info, warn};
 
 use crate::{error::ServerResult, http_response::into_axum_response, state::ServerState};
 
@@ -44,11 +48,33 @@ pub async fn require_basic_auth(
         .and_then(|value| value.to_str().ok())
         .map(str::to_string);
 
-    if state
+    let diagnosed = state
         .basic_auth_context_service()
-        .authorize_request(authorization.as_deref(), resolved_client_ip.as_ref())
-        .map_err(crate::error::ServerError::from)?
-    {
+        .authorize_request_diagnosed(authorization.as_deref(), resolved_client_ip.as_ref());
+    let (diagnosis, authorization_result) = diagnosed.into_parts();
+    match &authorization_result {
+        Ok(true) => info!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            "Basic-auth authorization succeeded"
+        ),
+        Ok(false) => info!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            "Basic-auth authorization rejected"
+        ),
+        Err(error) => warn!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            error = %error,
+            "Basic-auth authorization failed"
+        ),
+    }
+
+    if authorization_result.map_err(crate::error::ServerError::from)? {
         Ok(next.run(request).await)
     } else if let Some(zone) = state
         .basic_auth_context
@@ -120,10 +146,33 @@ pub async fn require_dashboard_auth(
             .resolve_client_ip(request.headers(), Some(peer_addr))
             .await;
 
-        if state
+        let diagnosed = state
             .basic_auth_context_service()
-            .authorize_request(Some(authorization), resolved_client_ip.as_ref())?
-        {
+            .authorize_request_diagnosed(Some(authorization), resolved_client_ip.as_ref());
+        let (diagnosis, authorization_result) = diagnosed.into_parts();
+        match &authorization_result {
+            Ok(true) => info!(
+                operation = %diagnosis.operation,
+                outcome = diagnosis.outcome.as_str(),
+                diagnosis = %diagnosis.to_json_value(),
+                "Dashboard basic-auth authorization succeeded"
+            ),
+            Ok(false) => info!(
+                operation = %diagnosis.operation,
+                outcome = diagnosis.outcome.as_str(),
+                diagnosis = %diagnosis.to_json_value(),
+                "Dashboard basic-auth authorization rejected"
+            ),
+            Err(error) => warn!(
+                operation = %diagnosis.operation,
+                outcome = diagnosis.outcome.as_str(),
+                diagnosis = %diagnosis.to_json_value(),
+                error = %error,
+                "Dashboard basic-auth authorization failed"
+            ),
+        }
+
+        if authorization_result? {
             if propagation.is_some() {
                 return Ok(propagation_auth_mismatch_response());
             }
@@ -142,15 +191,8 @@ fn propagation_auth_mismatch_response() -> Response {
         "This request requires bearer token authentication for propagation.",
         UserRecovery::Reauthenticate,
     );
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(serde_json::json!({
-            "error": presentation,
-            "status": StatusCode::UNAUTHORIZED.as_u16(),
-            "success": false
-        })),
-    )
-        .into_response()
+
+    shared_error_response(StatusCode::UNAUTHORIZED, presentation)
 }
 
 fn propagation_not_enabled_response() -> Response {
@@ -160,13 +202,19 @@ fn propagation_not_enabled_response() -> Response {
          server.",
         UserRecovery::None,
     );
+
+    shared_error_response(StatusCode::BAD_REQUEST, presentation)
+}
+
+fn shared_error_response(status: StatusCode, presentation: ErrorPresentation) -> Response {
+    let error = ServerErrorDescriptor::new(
+        ServerErrorKind::from_http_status(status.as_u16()),
+        presentation,
+    );
+
     (
-        StatusCode::BAD_REQUEST,
-        Json(serde_json::json!({
-            "error": presentation,
-            "status": StatusCode::BAD_REQUEST.as_u16(),
-            "success": false
-        })),
+        status,
+        Json(ServerErrorEnvelope::new(status.as_u16(), error)),
     )
         .into_response()
 }

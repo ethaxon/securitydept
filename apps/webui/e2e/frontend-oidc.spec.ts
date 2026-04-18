@@ -1,9 +1,23 @@
 import { expect, test } from "@playwright/test";
 import { FrontendOidcModeCallbackErrorCode } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
-	frontendPlaygroundPath,
-	frontendPopupCallbackPath,
-} from "./support/constants.ts";
+	AuthFlowSuiteId,
+	BlockedReason,
+	BrowserAvailability,
+	ExecutionBaseline,
+	ExecutionBaselineRole,
+	getAvailableBrowserNames,
+	getExecutionBaselinePolicy,
+	getProjectCapability,
+	getVerifiedScenario,
+	getVerifiedScenariosForSuite,
+	HarnessBrowserName as HarnessBrowserNameValues,
+	VerifiedPathKind,
+	VerifiedScenarioId,
+	VerifiedStatus,
+} from "./support/browser-harness.ts";
+import type { HarnessBrowserName } from "./support/browser-harness-contract.ts";
+import { frontendPlaygroundPath } from "./support/constants.ts";
 import {
 	createFrontendModeCallbackUrl,
 	seedFrontendOidcPendingState,
@@ -50,20 +64,169 @@ async function completeFrontendModePopupLogin(
 	await popup.locator("#oidc-submit").click();
 
 	await expect(popup.locator("#oidc-approve")).toBeVisible();
-	const popupCallbackArrival = popup.waitForURL(
-		new RegExp(`${frontendPopupCallbackPath.replaceAll("/", "\\/")}\\?`),
-	);
 	const popupClosed = popup.waitForEvent("close");
 	await popup.locator("#oidc-approve").click();
-	await popupCallbackArrival;
 	await popupClosed;
+	await expect(
+		page
+			.locator('[data-trace-type="frontend_oidc.popup.relay.succeeded"]')
+			.first(),
+	).toBeVisible({ timeout: 30_000 });
+	await expect(page.getByText("has_access_token=true")).toBeVisible({
+		timeout: 30_000,
+	});
 
 	await expect(
 		page.getByRole("button", { name: "Refresh tokens" }),
-	).toBeEnabled();
+	).toBeEnabled({ timeout: 30_000 });
 }
 
 test.describe("frontend-mode browser callback", () => {
+	test("validates browser harness baseline for frontend-oidc suite", ({
+		browserName,
+	}) => {
+		const browser = browserName as HarnessBrowserName;
+		const availableBrowsers = getAvailableBrowserNames();
+		expect(availableBrowsers).toContain(browser);
+		const currentBrowserPolicy = getExecutionBaselinePolicy(browser);
+		expect(currentBrowserPolicy).toBeDefined();
+		if (browser === HarnessBrowserNameValues.Webkit) {
+			expect(currentBrowserPolicy?.preferredExecutionBaseline).toBe(
+				ExecutionBaseline.DistroboxHosted,
+			);
+			expect(currentBrowserPolicy?.hostNative.role).toBe(
+				ExecutionBaselineRole.HostTruth,
+			);
+			expect(currentBrowserPolicy?.distroboxHosted.role).toBe(
+				ExecutionBaselineRole.CanonicalRecoveryPath,
+			);
+		} else {
+			expect(currentBrowserPolicy?.preferredExecutionBaseline).toBe(
+				ExecutionBaseline.HostNative,
+			);
+			expect(currentBrowserPolicy?.hostNative.role).toBe(
+				ExecutionBaselineRole.PrimaryAuthority,
+			);
+			expect(currentBrowserPolicy?.distroboxHosted.role).toBe(
+				ExecutionBaselineRole.NotAdopted,
+			);
+		}
+		const suiteScenarios = getVerifiedScenariosForSuite(
+			AuthFlowSuiteId.FrontendOidc,
+		);
+		const verifiedCount = suiteScenarios.filter(
+			(s) => s.status === VerifiedStatus.Verified,
+		).length;
+		expect(verifiedCount).toBeGreaterThanOrEqual(8);
+
+		const callbackScenario = getVerifiedScenario(
+			VerifiedScenarioId.FrontendOidcCallbackRedirect,
+			browser,
+		);
+		expect(callbackScenario).toBeDefined();
+		expect(callbackScenario?.pathKind).toBe(VerifiedPathKind.BrowserNative);
+		expect(callbackScenario?.status).toBe(VerifiedStatus.Verified);
+
+		const popupRelayScenario = getVerifiedScenario(
+			VerifiedScenarioId.FrontendOidcPopupRelay,
+			browser,
+		);
+		expect(popupRelayScenario).toBeDefined();
+		expect(popupRelayScenario?.pathKind).toBe(VerifiedPathKind.BrowserNative);
+		expect(popupRelayScenario?.status).toBe(VerifiedStatus.Verified);
+
+		const crossTabScenario = getVerifiedScenario(
+			VerifiedScenarioId.FrontendOidcCrossTabStorage,
+			browser,
+		);
+		expect(crossTabScenario).toBeDefined();
+		expect(crossTabScenario?.pathKind).toBe(VerifiedPathKind.BrowserNative);
+		expect(crossTabScenario?.status).toBe(VerifiedStatus.Verified);
+
+		const popupClosedScenario = getVerifiedScenario(
+			VerifiedScenarioId.FrontendOidcPopupClosedByUser,
+			browser,
+		);
+		expect(popupClosedScenario).toBeDefined();
+		expect(popupClosedScenario?.pathKind).toBe(VerifiedPathKind.BrowserNative);
+		expect(popupClosedScenario?.status).toBe(VerifiedStatus.Verified);
+
+		const duplicateReplayScenario = getVerifiedScenario(
+			VerifiedScenarioId.FrontendOidcCallbackDuplicateReplay,
+			browser,
+		);
+		expect(duplicateReplayScenario).toBeDefined();
+		expect(duplicateReplayScenario?.pathKind).toBe(
+			VerifiedPathKind.BrowserNative,
+		);
+		expect(duplicateReplayScenario?.status).toBe(VerifiedStatus.Verified);
+
+		const unknownStateScenario = getVerifiedScenario(
+			VerifiedScenarioId.FrontendOidcCallbackUnknownState,
+			browser,
+		);
+		expect(unknownStateScenario).toBeDefined();
+		expect(unknownStateScenario?.pathKind).toBe(VerifiedPathKind.BrowserNative);
+		expect(unknownStateScenario?.status).toBe(VerifiedStatus.Verified);
+
+		const staleStateScenario = getVerifiedScenario(
+			VerifiedScenarioId.FrontendOidcCallbackStaleState,
+			browser,
+		);
+		expect(staleStateScenario).toBeDefined();
+		expect(staleStateScenario?.pathKind).toBe(VerifiedPathKind.BrowserNative);
+		expect(staleStateScenario?.status).toBe(VerifiedStatus.Verified);
+
+		const clientMismatchScenario = getVerifiedScenario(
+			VerifiedScenarioId.FrontendOidcCallbackClientMismatch,
+			browser,
+		);
+		expect(clientMismatchScenario).toBeDefined();
+		expect(clientMismatchScenario?.pathKind).toBe(
+			VerifiedPathKind.BrowserNative,
+		);
+		expect(clientMismatchScenario?.status).toBe(VerifiedStatus.Verified);
+		const webkitCapability = getProjectCapability(
+			HarnessBrowserNameValues.Webkit,
+		);
+		expect(webkitCapability).toBeDefined();
+		if (webkitCapability?.availability === BrowserAvailability.Blocked) {
+			expect(webkitCapability.executionBaseline).toBe(
+				ExecutionBaseline.HostNative,
+			);
+			expect(webkitCapability.blockedReason).toBe(
+				BlockedReason.HostDependenciesMissing,
+			);
+			expect(webkitCapability.blockedDetails).toContain(
+				"Missing host libraries observed from runtime probe",
+			);
+		} else {
+			expect(webkitCapability?.availability).toBe(
+				BrowserAvailability.Available,
+			);
+			expect(webkitCapability?.executionBaseline).toBe(
+				ExecutionBaseline.DistroboxHosted,
+			);
+		}
+
+		const webkitCallback = getVerifiedScenario(
+			VerifiedScenarioId.FrontendOidcCallbackRedirect,
+			HarnessBrowserNameValues.Webkit,
+		);
+		expect(webkitCallback).toBeDefined();
+		if (webkitCapability?.availability === BrowserAvailability.Blocked) {
+			expect(webkitCallback?.status).toBe(VerifiedStatus.Blocked);
+			expect(webkitCallback?.blockedReason).toBe(
+				BlockedReason.HostDependenciesMissing,
+			);
+			expect(webkitCallback?.blockedDetails).toContain(
+				"Missing host libraries observed from runtime probe",
+			);
+		} else {
+			expect(webkitCallback?.status).toBe(VerifiedStatus.Verified);
+		}
+	});
+
 	test("restores the playground route after a real browser-owned callback", async ({
 		page,
 	}) => {

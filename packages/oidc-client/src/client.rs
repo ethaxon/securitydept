@@ -17,6 +17,9 @@ use openidconnect::{
     reqwest,
 };
 use securitydept_oauth_provider::{OAuthProviderRuntime, ProviderMetadataWithExtra};
+use securitydept_utils::observability::{
+    AuthFlowDiagnosis, AuthFlowDiagnosisOutcome, DiagnosedResult,
+};
 use url::Url;
 
 #[cfg(not(feature = "claims-script"))]
@@ -311,8 +314,13 @@ where
         search_params: OidcCodeCallbackSearchParams,
         external_base_url: &Url,
     ) -> OidcResult<OidcCodeCallbackResult> {
-        self.handle_code_callback_with_redirect_override(search_params, external_base_url, None)
-            .await
+        self.handle_code_callback_with_redirect_override_diagnosed(
+            search_params,
+            external_base_url,
+            None,
+        )
+        .await
+        .into_result()
     }
 
     pub async fn handle_code_callback_with_redirect_override(
@@ -321,6 +329,28 @@ where
         external_base_url: &Url,
         redirect_url_override: Option<&str>,
     ) -> OidcResult<OidcCodeCallbackResult> {
+        self.handle_code_callback_with_redirect_override_diagnosed(
+            search_params,
+            external_base_url,
+            redirect_url_override,
+        )
+        .await
+        .into_result()
+    }
+
+    pub async fn handle_code_callback_with_redirect_override_diagnosed(
+        &self,
+        search_params: OidcCodeCallbackSearchParams,
+        external_base_url: &Url,
+        redirect_url_override: Option<&str>,
+    ) -> DiagnosedResult<OidcCodeCallbackResult, OidcError> {
+        let diagnosis = AuthFlowDiagnosis::started("oidc.callback")
+            .field("redirect_override", redirect_url_override)
+            .field("external_base_url", external_base_url.as_str())
+            .field("pkce_enabled", self.pkce_enabled)
+            .field("has_state", search_params.state.is_some())
+            .field("has_code", !search_params.code.is_empty());
+
         let code = &search_params.code;
         let state = search_params
             .state
@@ -328,17 +358,47 @@ where
             .ok_or_else(|| OidcError::CSRFValidation {
                 message: "Missing state parameter in callback (required for CSRF validation)"
                     .to_string(),
-            })?;
+            });
 
-        let pending =
-            self.pending_oauth_store
-                .take(state)
-                .await?
-                .ok_or_else(|| OidcError::PendingOauth {
-                    source: "Invalid or expired state (reuse or unknown); try logging in again"
-                        .to_string()
-                        .into(),
-                })?;
+        let state = match state {
+            Ok(state) => state,
+            Err(error) => {
+                return DiagnosedResult::failure(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
+                        .field("failure_stage", "csrf_validation"),
+                    error,
+                );
+            }
+        };
+
+        let pending = match self.pending_oauth_store.take(state).await {
+            Ok(pending) => pending.ok_or_else(|| OidcError::PendingOauth {
+                source: "Invalid or expired state (reuse or unknown); try logging in again"
+                    .to_string()
+                    .into(),
+            }),
+            Err(error) => {
+                return DiagnosedResult::failure(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                        .field("failure_stage", "pending_oauth_store"),
+                    error,
+                );
+            }
+        };
+
+        let pending = match pending {
+            Ok(pending) => pending,
+            Err(error) => {
+                return DiagnosedResult::failure(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
+                        .field("failure_stage", "pending_oauth_state"),
+                    error,
+                );
+            }
+        };
 
         let nonce = openidconnect::Nonce::new(pending.nonce.clone());
         let code_verifier = pending.code_verifier;
@@ -351,16 +411,40 @@ where
                 code_verifier.as_deref(),
                 redirect_url_override,
             )
-            .await?;
+            .await;
+
+        let code_exchange = match code_exchange {
+            Ok(code_exchange) => code_exchange,
+            Err(error) => {
+                return DiagnosedResult::failure(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                        .field("failure_stage", "token_exchange"),
+                    error,
+                );
+            }
+        };
 
         let claims_check_result = self
             .check_claims(
                 &code_exchange.id_token_claims,
                 code_exchange.user_info_claims.as_ref(),
             )
-            .await?;
+            .await;
 
-        Ok(OidcCodeCallbackResult {
+        let claims_check_result = match claims_check_result {
+            Ok(claims_check_result) => claims_check_result,
+            Err(error) => {
+                return DiagnosedResult::failure(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                        .field("failure_stage", "claims_check"),
+                    error,
+                );
+            }
+        };
+
+        let result = OidcCodeCallbackResult {
             code: search_params.code,
             pkce_verifier_secret: code_verifier,
             state: search_params.state,
@@ -373,7 +457,16 @@ where
             id_token_claims: code_exchange.id_token_claims,
             user_info_claims: code_exchange.user_info_claims,
             claims_check_result,
-        })
+        };
+
+        DiagnosedResult::success(
+            diagnosis
+                .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
+                .field("subject", result.id_token_claims.subject().to_string())
+                .field("has_refresh_token", result.refresh_token.is_some())
+                .field("has_user_info_claims", result.user_info_claims.is_some()),
+            result,
+        )
     }
 
     pub async fn handle_token_refresh(
@@ -382,20 +475,71 @@ where
         // optional previous id_token to prevent not return new id_token
         id_token: Option<String>,
     ) -> OidcResult<OidcRefreshTokenResult> {
-        let client = self.fresh_client().await?;
+        self.handle_token_refresh_diagnosed(refresh_token, id_token)
+            .await
+            .into_result()
+    }
+
+    pub async fn handle_token_refresh_diagnosed(
+        &self,
+        refresh_token: String,
+        id_token: Option<String>,
+    ) -> DiagnosedResult<OidcRefreshTokenResult, OidcError> {
+        let diagnosis = AuthFlowDiagnosis::started("oidc.token_refresh")
+            .field("has_previous_id_token", id_token.is_some())
+            .field("pkce_enabled", self.pkce_enabled);
+
+        let client = match self.fresh_client().await {
+            Ok(client) => client,
+            Err(error) => {
+                return DiagnosedResult::failure(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                        .field("failure_stage", "client_metadata_refresh"),
+                    error,
+                );
+            }
+        };
         let refresh_token = RefreshToken::new(refresh_token);
         let now = Utc::now();
 
-        let token_response = client
-            .exchange_refresh_token(&refresh_token)
-            .map_err(|e| OidcError::TokenRefresh {
-                message: format!("Token endpoint not set or config error: {e}"),
-            })?
+        let token_request =
+            client
+                .exchange_refresh_token(&refresh_token)
+                .map_err(|e| OidcError::TokenRefresh {
+                    message: format!("Token endpoint not set or config error: {e}"),
+                });
+
+        let token_request = match token_request {
+            Ok(token_request) => token_request,
+            Err(error) => {
+                return DiagnosedResult::failure(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                        .field("failure_stage", "token_refresh_request_build"),
+                    error,
+                );
+            }
+        };
+
+        let token_response = token_request
             .request_async(self.provider.http_client())
             .await
             .map_err(|e| OidcError::TokenRefresh {
                 message: format!("Refresh token request failed: {e}"),
-            })?;
+            });
+
+        let token_response = match token_response {
+            Ok(token_response) => token_response,
+            Err(error) => {
+                return DiagnosedResult::failure(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                        .field("failure_stage", "token_refresh"),
+                    error,
+                );
+            }
+        };
 
         let access_token = token_response.access_token().secret().clone();
         let access_token_expiration = token_response
@@ -420,7 +564,14 @@ where
         };
 
         // Validate required scopes after successful refresh.
-        self.check_required_scopes(token_response.scopes())?;
+        if let Err(error) = self.check_required_scopes(token_response.scopes()) {
+            return DiagnosedResult::failure(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                    .field("failure_stage", "scope_validation"),
+                error,
+            );
+        }
 
         if let Some(next_id_token) = token_response.extra_fields().id_token() {
             let id_token_verifier = client.id_token_verifier();
@@ -428,30 +579,72 @@ where
                 .claims(&id_token_verifier, |_nonce: Option<&Nonce>| Ok(()))
                 .map_err(|e| OidcError::TokenRefresh {
                     message: format!("Failed to verify refreshed ID token: {e}"),
-                })?;
+                });
+            let id_token_claims = match id_token_claims {
+                Ok(id_token_claims) => id_token_claims,
+                Err(error) => {
+                    return DiagnosedResult::failure(
+                        diagnosis
+                            .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                            .field("failure_stage", "id_token_verification"),
+                        error,
+                    );
+                }
+            };
             let user_info_claims = if client.user_info_url().is_some() {
-                Some(
-                    self.request_userinfo(
+                match self
+                    .request_userinfo(
                         &client,
                         self.provider.http_client(),
                         token_response.access_token().clone(),
                         Some(id_token_claims.subject().clone()),
                     )
-                    .await?,
-                )
+                    .await
+                {
+                    Ok(user_info_claims) => Some(user_info_claims),
+                    Err(error) => {
+                        return DiagnosedResult::failure(
+                            diagnosis
+                                .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                                .field("failure_stage", "userinfo_exchange"),
+                            error,
+                        );
+                    }
+                }
             } else {
                 None
             };
             let claims_check_result = self
                 .check_claims(id_token_claims, user_info_claims.as_ref())
-                .await?;
+                .await;
+            let claims_check_result = match claims_check_result {
+                Ok(claims_check_result) => claims_check_result,
+                Err(error) => {
+                    return DiagnosedResult::failure(
+                        diagnosis
+                            .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                            .field("failure_stage", "claims_check"),
+                        error,
+                    );
+                }
+            };
             result.id_token = Some(next_id_token.to_string());
             result.id_token_claims = Some(id_token_claims.clone());
             result.user_info_claims = user_info_claims;
             result.claims_check_result = Some(claims_check_result);
         }
 
-        Ok(result)
+        DiagnosedResult::success(
+            diagnosis
+                .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
+                .field("has_refresh_token", result.refresh_token.is_some())
+                .field("has_new_id_token", result.id_token.is_some())
+                .field(
+                    "has_claims_check_result",
+                    result.claims_check_result.is_some(),
+                ),
+            result,
+        )
     }
 
     pub async fn handle_token_revoke(&self, token: OidcRevocableToken) -> OidcResult<()> {

@@ -4,6 +4,7 @@ import {
 	createInMemoryRecordStore,
 	type HttpRequest,
 	type HttpResponse,
+	readErrorPresentationDescriptor,
 	UserRecovery,
 } from "@securitydept/client";
 import {
@@ -17,7 +18,7 @@ import {
 	createBackendOidcModeBrowserClient,
 	createBackendOidcModeCallbackFragmentStore,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AuthEntryKind } from "../api/entries";
 import {
 	assessPropagationProbeResult,
@@ -33,6 +34,33 @@ import {
 	probeForwardAuthWithEntryToken,
 	probePropagationRouteWithTokenSet,
 } from "../api/tokenSet";
+
+class MemoryStorage {
+	private readonly data = new Map<string, string>();
+
+	getItem(key: string): string | null {
+		return this.data.get(key) ?? null;
+	}
+
+	setItem(key: string, value: string): void {
+		this.data.set(key, value);
+	}
+
+	removeItem(key: string): void {
+		this.data.delete(key);
+	}
+
+	clear(): void {
+		this.data.clear();
+	}
+}
+
+function createJsonResponse(status: number, body: unknown): Response {
+	return new Response(JSON.stringify(body), {
+		status,
+		headers: { "content-type": "application/json" },
+	});
+}
 
 function createHistoryRecorder() {
 	return {
@@ -62,6 +90,87 @@ function createTokenSetTransport() {
 }
 
 describe("token-set browser flow", () => {
+	it("maps config projection envelopes into ClientError presentation on the frontend-mode host path", async () => {
+		vi.resetModules();
+		vi.restoreAllMocks();
+		Object.defineProperty(globalThis, "window", {
+			value: {
+				location: { origin: "https://app.example.com" },
+				history: { replaceState() {} },
+			},
+			configurable: true,
+			writable: true,
+		});
+		Object.defineProperty(globalThis, "localStorage", {
+			value: new MemoryStorage(),
+			configurable: true,
+			writable: true,
+		});
+		Object.defineProperty(globalThis, "sessionStorage", {
+			value: new MemoryStorage(),
+			configurable: true,
+			writable: true,
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				createJsonResponse(401, {
+					status: 401,
+					error: {
+						kind: "unauthenticated",
+						code: "frontend_oidc.config_projection_failed",
+						message: "Sign in again to load the frontend-mode configuration.",
+						recovery: UserRecovery.Reauthenticate,
+						presentation: {
+							code: "frontend_oidc.config_projection_failed",
+							message: "Sign in again to load the frontend-mode configuration.",
+							recovery: UserRecovery.Reauthenticate,
+						},
+					},
+				}),
+			),
+		);
+
+		const { getTokenSetFrontendModeClient } = await import(
+			"../lib/tokenSetFrontendModeClient"
+		);
+
+		let failure: unknown;
+		try {
+			await getTokenSetFrontendModeClient();
+		} catch (error) {
+			failure = error;
+		}
+
+		expect(failure).toMatchObject({
+			name: "ClientError",
+			kind: ClientErrorKind.Unauthenticated,
+		});
+
+		const descriptor = readErrorPresentationDescriptor(failure, {
+			fallbackTitle: "Frontend-mode action failed",
+			fallbackDescription:
+				"The frontend-mode reference action could not complete.",
+			recoveryLinks: {
+				[UserRecovery.Reauthenticate]: "/playground/token-set-frontend",
+			},
+			recoveryLabels: {
+				[UserRecovery.Reauthenticate]: "Sign in again",
+			},
+		});
+
+		expect(descriptor.title).toBe("Authentication required");
+		expect(descriptor.description).toBe(
+			"Sign in again to load the frontend-mode configuration.",
+		);
+		expect(descriptor.recovery).toBe(UserRecovery.Reauthenticate);
+		expect(descriptor.primaryAction).toEqual({
+			recovery: UserRecovery.Reauthenticate,
+			label: "Sign in again",
+			href: "/playground/token-set-frontend",
+		});
+	});
+
 	it("captures callback fragments, clears the URL hash, and initializes client state", async () => {
 		const persistentStore = createInMemoryRecordStore();
 		const sessionStore = createInMemoryRecordStore();

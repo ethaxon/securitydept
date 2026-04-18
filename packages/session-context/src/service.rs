@@ -1,10 +1,13 @@
 use std::{collections::HashMap, future::Future};
 
 use securitydept_oidc_client::{OidcClient, OidcCodeCallbackSearchParams, PendingOauthStore};
-use securitydept_utils::http::HttpResponse;
+use securitydept_utils::{
+    http::HttpResponse,
+    observability::{AuthFlowDiagnosis, AuthFlowDiagnosisOutcome, DiagnosedResult},
+};
 use serde_json::Value;
 use tower_sessions::Session;
-use tracing::info;
+use tracing::{info, warn};
 use url::Url;
 
 use crate::{
@@ -57,26 +60,91 @@ impl securitydept_utils::error::ToErrorPresentation for SessionAuthServiceError 
 /// Provides login, logout, and user_info operations using tower-sessions.
 pub trait SessionAuthServiceTrait {
     fn session_context_config(&self) -> &SessionContextConfig;
+    fn login_diagnosed(
+        &self,
+        session: Session,
+        external_base_url: &Url,
+        requested_post_auth_redirect_uri: Option<&str>,
+    ) -> impl Future<Output = DiagnosedResult<HttpResponse, SessionAuthServiceError>>;
+
     fn login(
         &self,
         session: Session,
         external_base_url: &Url,
         requested_post_auth_redirect_uri: Option<&str>,
-    ) -> impl Future<Output = Result<HttpResponse, SessionAuthServiceError>>;
+    ) -> impl Future<Output = Result<HttpResponse, SessionAuthServiceError>> {
+        async move {
+            self.login_diagnosed(session, external_base_url, requested_post_auth_redirect_uri)
+                .await
+                .into_result()
+        }
+    }
+
+    fn logout_diagnosed(
+        &self,
+        session: Session,
+    ) -> impl Future<Output = DiagnosedResult<serde_json::Value, SessionAuthServiceError>> {
+        let handle = SessionContextSession::from_config(session, self.session_context_config());
+
+        Box::pin(async move {
+            let diagnosis = session_logout_diagnosis();
+            match handle.flush().await {
+                Ok(()) => DiagnosedResult::success(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
+                        .field("cleared_session", true),
+                    serde_json::json!({"ok": true}),
+                ),
+                Err(source) => DiagnosedResult::failure(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                        .field("cleared_session", false),
+                    SessionAuthServiceError::SessionContext { source },
+                ),
+            }
+        })
+    }
 
     fn logout(
         &self,
         session: Session,
     ) -> impl Future<Output = Result<serde_json::Value, SessionAuthServiceError>> {
+        async move { self.logout_diagnosed(session).await.into_result() }
+    }
+
+    fn user_info_diagnosed(
+        &self,
+        session: Session,
+    ) -> impl Future<
+        Output = DiagnosedResult<SessionContext<HashMap<String, Value>>, SessionAuthServiceError>,
+    > {
         let handle = SessionContextSession::from_config(session, self.session_context_config());
-
         Box::pin(async move {
-            handle
-                .flush()
-                .await
-                .map_err(|source| SessionAuthServiceError::SessionContext { source })?;
-
-            Ok(serde_json::json!({"ok": true}))
+            let diagnosis = session_user_info_diagnosis();
+            match handle.require::<HashMap<String, Value>>().await {
+                Ok(context) => DiagnosedResult::success(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
+                        .field("claim_count", context.principal.claims.len())
+                        .field("has_picture", context.principal.picture.is_some()),
+                    context,
+                ),
+                Err(source) => {
+                    let outcome = match &source {
+                        SessionContextError::MissingContext => AuthFlowDiagnosisOutcome::Rejected,
+                        _ => AuthFlowDiagnosisOutcome::Failed,
+                    };
+                    let reason = match &source {
+                        SessionContextError::MissingContext => "missing_context",
+                        SessionContextError::Session { .. } => "session_error",
+                        SessionContextError::RedirectTarget { .. } => "post_auth_redirect_invalid",
+                    };
+                    DiagnosedResult::failure(
+                        diagnosis.with_outcome(outcome).field("reason", reason),
+                        SessionAuthServiceError::SessionContext { source },
+                    )
+                }
+            }
         })
     }
 
@@ -85,15 +153,7 @@ pub trait SessionAuthServiceTrait {
         session: Session,
     ) -> impl Future<Output = Result<SessionContext<HashMap<String, Value>>, SessionAuthServiceError>>
     {
-        let handle = SessionContextSession::from_config(session, self.session_context_config());
-        Box::pin(async move {
-            let context = handle
-                .require::<HashMap<String, Value>>()
-                .await
-                .map_err(|source| SessionAuthServiceError::SessionContext { source })?;
-
-            Ok(context)
-        })
+        async move { self.user_info_diagnosed(session).await.into_result() }
     }
 }
 
@@ -103,6 +163,30 @@ pub struct DevSessionAuthService<'a> {
 }
 
 const PENDING_POST_AUTH_REDIRECT_URI_KEY: &str = "post_auth_redirect_uri";
+const SESSION_LOGIN_OPERATION: &str = "session.login";
+const SESSION_LOGOUT_OPERATION: &str = "session.logout";
+const SESSION_USER_INFO_OPERATION: &str = "session.user_info";
+
+fn session_login_diagnosis(
+    mode: &str,
+    requested_post_auth_redirect_uri: Option<&str>,
+) -> AuthFlowDiagnosis {
+    AuthFlowDiagnosis::started(SESSION_LOGIN_OPERATION)
+        .field("auth_family", "session-context")
+        .field("mode", mode)
+        .field(
+            "has_requested_post_auth_redirect_uri",
+            requested_post_auth_redirect_uri.is_some(),
+        )
+}
+
+fn session_logout_diagnosis() -> AuthFlowDiagnosis {
+    AuthFlowDiagnosis::started(SESSION_LOGOUT_OPERATION).field("auth_family", "session-context")
+}
+
+fn session_user_info_diagnosis() -> AuthFlowDiagnosis {
+    AuthFlowDiagnosis::started(SESSION_USER_INFO_OPERATION).field("auth_family", "session-context")
+}
 
 fn callback_post_auth_redirect_uri(
     result: &securitydept_oidc_client::OidcCodeCallbackResult,
@@ -134,17 +218,24 @@ impl<'a> SessionAuthServiceTrait for DevSessionAuthService<'a> {
         self.session_context_config
     }
 
-    async fn login(
+    async fn login_diagnosed(
         &self,
         session: Session,
         _external_base_url: &Url,
         requested_post_auth_redirect_uri: Option<&str>,
-    ) -> Result<HttpResponse, SessionAuthServiceError> {
+    ) -> DiagnosedResult<HttpResponse, SessionAuthServiceError> {
+        let diagnosis = session_login_diagnosis("dev", requested_post_auth_redirect_uri)
+            .field("oidc_enabled", false);
         let handle = SessionContextSession::from_config(session, self.session_context_config);
-        handle
-            .cycle_id()
-            .await
-            .map_err(|source| SessionAuthServiceError::SessionContext { source })?;
+        if let Err(source) = handle.cycle_id().await {
+            return DiagnosedResult::failure(
+                diagnosis
+                    .clone()
+                    .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                    .field("reason", "cycle_id_failed"),
+                SessionAuthServiceError::SessionContext { source },
+            );
+        }
 
         let context: SessionContext = SessionContext::builder()
             .principal(
@@ -157,17 +248,44 @@ impl<'a> SessionAuthServiceTrait for DevSessionAuthService<'a> {
                     .build(),
             )
             .build();
-        handle
-            .insert(&context)
-            .await
-            .map_err(|source| SessionAuthServiceError::SessionContext { source })?;
+        if let Err(source) = handle.insert(&context).await {
+            return DiagnosedResult::failure(
+                diagnosis
+                    .clone()
+                    .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                    .field("reason", "insert_failed"),
+                SessionAuthServiceError::SessionContext { source },
+            );
+        }
 
-        let redirect_target = self
+        match self
             .session_context_config
             .resolve_post_auth_redirect(requested_post_auth_redirect_uri)
-            .map_err(|source| SessionAuthServiceError::SessionContext { source })?;
+        {
+            Ok(redirect_target) => DiagnosedResult::success(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
+                    .field("redirect_target", &redirect_target),
+                HttpResponse::found(&redirect_target),
+            ),
+            Err(source) => DiagnosedResult::failure(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                    .field("reason", "post_auth_redirect_invalid"),
+                SessionAuthServiceError::SessionContext { source },
+            ),
+        }
+    }
 
-        Ok(HttpResponse::found(&redirect_target))
+    async fn login(
+        &self,
+        session: Session,
+        external_base_url: &Url,
+        requested_post_auth_redirect_uri: Option<&str>,
+    ) -> Result<HttpResponse, SessionAuthServiceError> {
+        self.login_diagnosed(session, external_base_url, requested_post_auth_redirect_uri)
+            .await
+            .into_result()
     }
 }
 
@@ -211,14 +329,24 @@ where
             .oidc_client
             .ok_or(SessionAuthServiceError::OidcDisabled)?;
 
-        let code_callback_result = oidc
-            .handle_code_callback_with_redirect_override(
+        let diagnosed = oidc
+            .handle_code_callback_with_redirect_override_diagnosed(
                 search_params,
                 external_base_url,
                 Some("/auth/session/callback"),
             )
-            .await
-            .map_err(|source| SessionAuthServiceError::Oidc { source })?;
+            .await;
+        let (callback_diagnosis, callback_result) = diagnosed.into_parts();
+        let code_callback_result = callback_result.map_err(|source| {
+            warn!(
+                operation = %callback_diagnosis.operation,
+                outcome = callback_diagnosis.outcome.as_str(),
+                diagnosis = %callback_diagnosis.to_json_value(),
+                error = %source,
+                "OIDC session callback failed"
+            );
+            SessionAuthServiceError::Oidc { source }
+        })?;
         let requested_post_auth_redirect_uri =
             callback_post_auth_redirect_uri(&code_callback_result);
         let claims_check_result = code_callback_result.claims_check_result;
@@ -241,7 +369,21 @@ where
             .await
             .map_err(|source| SessionAuthServiceError::SessionContext { source })?;
 
-        info!(display_name = %claims_check_result.display_name, "User logged in");
+        match callback_diagnosis.outcome {
+            AuthFlowDiagnosisOutcome::Succeeded => info!(
+                operation = %callback_diagnosis.operation,
+                outcome = callback_diagnosis.outcome.as_str(),
+                diagnosis = %callback_diagnosis.to_json_value(),
+                display_name = %claims_check_result.display_name,
+                "OIDC session callback succeeded"
+            ),
+            _ => warn!(
+                operation = %callback_diagnosis.operation,
+                outcome = callback_diagnosis.outcome.as_str(),
+                diagnosis = %callback_diagnosis.to_json_value(),
+                "OIDC session callback completed with a non-success diagnosis"
+            ),
+        }
         let redirect_target = self
             .session_context_config
             .resolve_post_auth_redirect(requested_post_auth_redirect_uri.as_deref())
@@ -259,13 +401,15 @@ where
         self.session_context_config
     }
 
-    async fn login(
+    async fn login_diagnosed(
         &self,
-        _session: Session,
+        session: Session,
         external_base_url: &Url,
         requested_post_auth_redirect_uri: Option<&str>,
-    ) -> Result<HttpResponse, SessionAuthServiceError> {
+    ) -> DiagnosedResult<HttpResponse, SessionAuthServiceError> {
         if let Some(oidc) = self.oidc_client {
+            let diagnosis = session_login_diagnosis("oidc", requested_post_auth_redirect_uri)
+                .field("oidc_enabled", true);
             let extra_data = requested_post_auth_redirect_uri.map(|uri| {
                 serde_json::json!({
                     PENDING_POST_AUTH_REDIRECT_URI_KEY: uri,
@@ -273,25 +417,65 @@ where
             });
             // Session OIDC callback lives at /auth/session/callback — override
             // the default redirect_url so the IdP returns to the correct path.
-            let authorization_request = oidc
+            match oidc
                 .handle_code_authorize_with_redirect_override_and_extra_data(
                     external_base_url,
                     Some("/auth/session/callback"),
                     extra_data,
                 )
                 .await
-                .map_err(|source| SessionAuthServiceError::Oidc { source })?;
-            let authorization_url = authorization_request.authorization_url;
-            Ok(HttpResponse::temporary_redirect(authorization_url.as_str()))
+            {
+                Ok(authorization_request) => {
+                    let authorization_url = authorization_request.authorization_url;
+                    DiagnosedResult::success(
+                        diagnosis
+                            .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
+                            .field("redirect_path", "/auth/session/callback")
+                            .field(
+                                "authorization_url_host",
+                                authorization_url.host_str().unwrap_or("unknown"),
+                            ),
+                        HttpResponse::temporary_redirect(authorization_url.as_str()),
+                    )
+                }
+                Err(source) => DiagnosedResult::failure(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                        .field("reason", "authorization_request_failed"),
+                    SessionAuthServiceError::Oidc { source },
+                ),
+            }
         } else {
-            DevSessionAuthService::new(self.session_context_config)?
-                .login(
-                    _session,
-                    external_base_url,
-                    requested_post_auth_redirect_uri,
-                )
-                .await
+            match DevSessionAuthService::new(self.session_context_config) {
+                Ok(service) => {
+                    service
+                        .login_diagnosed(
+                            session,
+                            external_base_url,
+                            requested_post_auth_redirect_uri,
+                        )
+                        .await
+                }
+                Err(error) => DiagnosedResult::failure(
+                    session_login_diagnosis("dev", requested_post_auth_redirect_uri)
+                        .field("oidc_enabled", false)
+                        .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                        .field("reason", "dev_service_init_failed"),
+                    error,
+                ),
+            }
         }
+    }
+
+    async fn login(
+        &self,
+        session: Session,
+        external_base_url: &Url,
+        requested_post_auth_redirect_uri: Option<&str>,
+    ) -> Result<HttpResponse, SessionAuthServiceError> {
+        self.login_diagnosed(session, external_base_url, requested_post_auth_redirect_uri)
+            .await
+            .into_result()
     }
 }
 
@@ -419,6 +603,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dev_login_diagnosed_exposes_machine_readable_fields() {
+        let config = SessionContextConfig::default();
+        let service =
+            DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
+        let session = test_session();
+        let base_url = test_base_url();
+
+        let diagnosed = service.login_diagnosed(session, &base_url, Some("/")).await;
+
+        assert!(diagnosed.result().is_ok());
+        assert_eq!(diagnosed.diagnosis().operation, SESSION_LOGIN_OPERATION);
+        assert_eq!(
+            diagnosed.diagnosis().outcome,
+            AuthFlowDiagnosisOutcome::Succeeded
+        );
+        assert_eq!(
+            diagnosed.diagnosis().fields["auth_family"],
+            "session-context"
+        );
+        assert_eq!(diagnosed.diagnosis().fields["mode"], "dev");
+        assert_eq!(
+            diagnosed.diagnosis().fields["has_requested_post_auth_redirect_uri"],
+            true
+        );
+    }
+
+    #[tokio::test]
     async fn dev_logout_flushes_session() {
         let config = SessionContextConfig::default();
         let service =
@@ -461,6 +672,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn logout_diagnosed_reports_succeeded_outcome() {
+        let config = SessionContextConfig::default();
+        let service =
+            DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
+        let session = test_session();
+        let base_url = test_base_url();
+
+        service
+            .login(session.clone(), &base_url, None)
+            .await
+            .expect("login should succeed");
+
+        let diagnosed = service.logout_diagnosed(session).await;
+
+        assert!(diagnosed.result().is_ok());
+        assert_eq!(diagnosed.diagnosis().operation, SESSION_LOGOUT_OPERATION);
+        assert_eq!(
+            diagnosed.diagnosis().outcome,
+            AuthFlowDiagnosisOutcome::Succeeded
+        );
+        assert_eq!(diagnosed.diagnosis().fields["cleared_session"], true);
+    }
+
+    #[tokio::test]
     async fn dev_me_returns_context_after_login() {
         let config = SessionContextConfig::default();
         let service =
@@ -488,6 +723,24 @@ mod tests {
             .expect("user_info() should succeed after login");
 
         assert_eq!(context.principal.display_name, "dev");
+    }
+
+    #[tokio::test]
+    async fn user_info_diagnosed_rejects_missing_context() {
+        let config = SessionContextConfig::default();
+        let service =
+            DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
+        let session = test_session();
+
+        let diagnosed = service.user_info_diagnosed(session).await;
+
+        assert!(diagnosed.result().is_err());
+        assert_eq!(diagnosed.diagnosis().operation, SESSION_USER_INFO_OPERATION);
+        assert_eq!(
+            diagnosed.diagnosis().outcome,
+            AuthFlowDiagnosisOutcome::Rejected
+        );
+        assert_eq!(diagnosed.diagnosis().fields["reason"], "missing_context");
     }
 
     // -----------------------------------------------------------------------

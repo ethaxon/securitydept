@@ -17,17 +17,21 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 	const hasEvents = props.events.length > 0;
 
 	return (
-		<section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+		<section
+			data-testid="token-set-backend-trace-timeline"
+			className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+		>
 			<div className="flex flex-wrap items-center justify-between gap-3">
 				<div>
 					<h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-						Trace Timeline
+						Structured Trace Timeline
 					</h2>
 					<p className="mt-1 max-w-4xl text-sm text-zinc-500 dark:text-zinc-400">
-						This is the reference app view of the SDK trace sink plus app-level
-						protected action and probe events. It is meant to be the primary
-						behavior timeline for callback, restore, refresh, protected request
-						cancellation, forward-auth comparison, and propagation debugging.
+						This reference view keeps the SDK trace sink and the backend
+						host-owned protected action, forward-auth, and propagation probes on
+						the same structured timeline. That combined trace is the primary
+						diagnosis surface for backend-mode callback, restore, refresh, and
+						auth-boundary debugging.
 					</p>
 				</div>
 				<div className="flex flex-wrap gap-2">
@@ -57,6 +61,9 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 								<div className="min-w-0">
 									<p className="text-sm font-medium">
 										{readTraceDisplayType(event)}
+									</p>
+									<p className="mt-1 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
+										{event.type}
 									</p>
 									<div className="mt-2 flex flex-wrap gap-2">
 										<span
@@ -100,8 +107,8 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 				})}
 				{!hasEvents && (
 					<div className="rounded-lg border border-dashed border-zinc-300 p-4 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-						No trace events recorded yet. Start the token flow or exercise one
-						of the protected actions above.
+						No backend-mode trace events recorded yet. Start the token flow or
+						exercise one of the protected actions above.
 					</div>
 				)}
 			</div>

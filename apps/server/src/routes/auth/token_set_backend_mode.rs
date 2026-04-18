@@ -10,6 +10,7 @@ use securitydept_core::{
         BackendOidcModeAuthorizeQuery, BackendOidcModeMetadataRedemptionRequest,
         BackendOidcModeRefreshPayload, BackendOidcModeUserInfoRequest,
     },
+    utils::observability::AuthFlowDiagnosisOutcome,
 };
 
 use crate::{
@@ -47,13 +48,30 @@ pub async fn callback(
     Query(search_params): Query<OidcCodeCallbackSearchParams>,
 ) -> Result<Response, ServerError> {
     let external_base_url = state.external_base_url(&headers)?;
-
-    state
+    let diagnosed = state
         .backend_oidc_mode_auth_service()?
-        .callback_fragment_return(&external_base_url, search_params, None)
-        .await
-        .map(into_axum_response)
-        .map_err(ServerError::from)
+        .callback_fragment_return_with_diagnosis(&external_base_url, search_params, None)
+        .await;
+    let (diagnosis, result) = diagnosed.into_parts();
+    let response = result.map(into_axum_response).map_err(|error| {
+        tracing::warn!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            error = %error,
+            "backend_oidc callback failed"
+        );
+        ServerError::from(error)
+    })?;
+    if matches!(diagnosis.outcome, AuthFlowDiagnosisOutcome::Succeeded) {
+        tracing::info!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            "backend_oidc callback succeeded"
+        );
+    }
+    Ok(response)
 }
 
 /// POST /auth/token-set/backend-mode/callback -- handle OIDC code exchange and
@@ -65,11 +83,29 @@ pub async fn callback_body(
     Query(search_params): Query<OidcCodeCallbackSearchParams>,
 ) -> ServerResult<Response> {
     let external_base_url = state.external_base_url(&headers)?;
-    let body = state
+    let diagnosed = state
         .backend_oidc_mode_auth_service()?
-        .callback_body_return(&external_base_url, search_params)
-        .await
-        .map_err(ServerError::from)?;
+        .callback_body_return_with_diagnosis(&external_base_url, search_params)
+        .await;
+    let (diagnosis, result) = diagnosed.into_parts();
+    let body = result.map_err(|error| {
+        tracing::warn!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            error = %error,
+            "backend_oidc callback body failed"
+        );
+        ServerError::from(error)
+    })?;
+    if matches!(diagnosis.outcome, AuthFlowDiagnosisOutcome::Succeeded) {
+        tracing::info!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            "backend_oidc callback body succeeded"
+        );
+    }
     Ok(Json(body).into_response())
 }
 
@@ -77,13 +113,33 @@ pub async fn callback_body(
 /// state and return token delta + inline metadata as JSON body.
 pub async fn refresh(
     Extension(state): Extension<ServerState>,
+    headers: HeaderMap,
     Json(payload): Json<BackendOidcModeRefreshPayload>,
 ) -> ServerResult<Response> {
-    let body = state
+    let external_base_url = state.external_base_url(&headers)?;
+    let diagnosed = state
         .backend_oidc_mode_auth_service()?
-        .refresh_body_return(&payload)
-        .await
-        .map_err(ServerError::from)?;
+        .refresh_body_return_with_diagnosis(&payload, &external_base_url)
+        .await;
+    let (diagnosis, result) = diagnosed.into_parts();
+    let body = result.map_err(|error| {
+        tracing::warn!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            error = %error,
+            "backend_oidc refresh failed"
+        );
+        ServerError::from(error)
+    })?;
+    if matches!(diagnosis.outcome, AuthFlowDiagnosisOutcome::Succeeded) {
+        tracing::info!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            "backend_oidc refresh succeeded"
+        );
+    }
     Ok(Json(body).into_response())
 }
 

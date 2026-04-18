@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
 import { defineConfig } from "@playwright/test";
+import { getConfiguredProjects } from "./e2e/support/browser-harness.ts";
 import {
 	serverBaseUrl,
 	webuiBaseUrl,
@@ -7,9 +7,9 @@ import {
 } from "./e2e/support/constants.ts";
 
 const webuiDir = import.meta.dirname;
-const chromiumExecutablePath = ["/sbin/chromium", "/usr/bin/chromium"].find(
-	(candidate) => existsSync(candidate),
-);
+const configuredProjects = getConfiguredProjects({
+	includeBlocked: process.env.PLAYWRIGHT_INCLUDE_BLOCKED_PROJECTS === "1",
+});
 
 export default defineConfig({
 	testDir: "./e2e",
@@ -24,10 +24,16 @@ export default defineConfig({
 		trace: "retain-on-failure",
 		screenshot: "only-on-failure",
 		video: "retain-on-failure",
-		launchOptions: chromiumExecutablePath
-			? { executablePath: chromiumExecutablePath }
-			: undefined,
 	},
+	projects: configuredProjects.map((project) => ({
+		name: project.browserName,
+		use: {
+			browserName: project.browserName,
+			launchOptions: project.executablePath
+				? { executablePath: project.executablePath }
+				: undefined,
+		},
+	})),
 	webServer: [
 		{
 			command: "node ./e2e/support/start-oidc-provider.ts",

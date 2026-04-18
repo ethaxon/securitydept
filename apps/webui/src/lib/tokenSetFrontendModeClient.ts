@@ -1,4 +1,5 @@
 import {
+	ClientError,
 	createSignal,
 	createTraceTimelineStore,
 	readonlySignal,
@@ -17,9 +18,8 @@ import type {
 	FrontendOidcModeClientConfig,
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
-	ConfigProjectionSourceKind,
 	createFrontendOidcModeClient,
-	resolveConfigProjection,
+	parseConfigProjection,
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import type { TokenSetReactClient } from "@securitydept/token-set-context-client-react";
@@ -34,10 +34,11 @@ const TOKEN_SET_FRONTEND_PERSISTENT_PREFIX =
 	"securitydept.webui.token-set-frontend:persistent:";
 const TOKEN_SET_FRONTEND_SESSION_PREFIX =
 	"securitydept.webui.token-set-frontend:session:";
-const FRONTEND_HOST_TRACE_SCOPE = "apps.webui.token-set-frontend";
-const FRONTEND_HOST_TRACE_SOURCE = "webui.token-set-frontend";
+export const TOKEN_SET_FRONTEND_HOST_TRACE_SCOPE =
+	"apps.webui.token-set-frontend";
+export const TOKEN_SET_FRONTEND_HOST_TRACE_SOURCE = "webui.token-set-frontend";
 
-const FrontendHostTraceEventType = {
+export const FrontendHostTraceEventType = {
 	CrossTabHydrated: "frontend_oidc.host.cross_tab.hydrated",
 	CrossTabCleared: "frontend_oidc.host.cross_tab.cleared",
 } as const;
@@ -79,8 +80,8 @@ function recordFrontendHostTrace(
 	tokenSetFrontendModeTraceTimeline.record({
 		type,
 		at: Date.now(),
-		scope: FRONTEND_HOST_TRACE_SCOPE,
-		source: FRONTEND_HOST_TRACE_SOURCE,
+		scope: TOKEN_SET_FRONTEND_HOST_TRACE_SCOPE,
+		source: TOKEN_SET_FRONTEND_HOST_TRACE_SOURCE,
 		attributes,
 	});
 }
@@ -148,30 +149,26 @@ function ensureTokenSetFrontendModeCrossTabSync(
 
 async function createTokenSetFrontendModeClient(): Promise<FrontendOidcModeClient> {
 	const redirectUri = buildAbsoluteUrl(TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH);
-	const resolved = await resolveConfigProjection([
-		{
-			kind: ConfigProjectionSourceKind.Network,
-			fetch: async () => {
-				const url = new URL(
-					buildAbsoluteUrl(TOKEN_SET_FRONTEND_MODE_CONFIG_PATH),
-				);
-				url.searchParams.set("redirect_uri", redirectUri);
-				const response = await fetch(url.toString());
-				if (!response.ok) {
-					throw new Error(
-						`Config projection fetch failed: ${response.status} ${response.statusText}`,
-					);
-				}
-				return response.json();
-			},
-			overrides: {
-				redirectUri,
-				defaultPostAuthRedirectUri: "/",
-			},
-		},
-	]);
+	const url = new URL(buildAbsoluteUrl(TOKEN_SET_FRONTEND_MODE_CONFIG_PATH));
+	url.searchParams.set("redirect_uri", redirectUri);
+	const response = await fetch(url.toString());
+	if (!response.ok) {
+		const body = await response.json().catch(() => undefined);
+		throw ClientError.fromHttpResponse(response.status, body);
+	}
+
+	const projection = await response.json();
+	const parsed = parseConfigProjection(projection, {
+		redirectUri,
+		defaultPostAuthRedirectUri: "/",
+	});
+	if (!parsed.success) {
+		throw new Error(
+			"Frontend-mode config projection response did not match the shared projection schema.",
+		);
+	}
 	tokenSetFrontendModePersistentStorageKey =
-		resolveTokenSetFrontendModePersistentStorageKey(resolved.config);
+		resolveTokenSetFrontendModePersistentStorageKey(parsed.value);
 	const runtime = createWebRuntime({
 		persistentStore: createLocalStorageStore(
 			TOKEN_SET_FRONTEND_PERSISTENT_PREFIX,
@@ -180,7 +177,7 @@ async function createTokenSetFrontendModeClient(): Promise<FrontendOidcModeClien
 		traceSink: tokenSetFrontendModeTraceTimeline,
 	});
 
-	return createFrontendOidcModeClient(resolved.config, runtime);
+	return createFrontendOidcModeClient(parsed.value, runtime);
 }
 
 async function ensureTokenSetFrontendModeClientSubscribed(): Promise<FrontendOidcModeClient> {

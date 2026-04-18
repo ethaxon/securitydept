@@ -8,6 +8,8 @@
 //! that future capabilities (browser-callback policy enforcement, frontend
 //! token handoff validation, address validation, etc.) have a proper owner.
 
+use securitydept_utils::observability::{AuthFlowDiagnosis, DiagnosedResult};
+
 use super::{
     capabilities::FrontendOidcModeCapabilities, config::ResolvedFrontendOidcModeConfig,
     contracts::FrontendOidcModeConfigProjection,
@@ -57,7 +59,44 @@ impl FrontendOidcModeRuntime {
     ///
     /// Returns an `io::Error` if the claims check script file cannot be read.
     pub async fn config_projection(&self) -> std::io::Result<FrontendOidcModeConfigProjection> {
-        self.config.to_config_projection().await
+        self.config_projection_with_diagnosis().await.into_result()
+    }
+
+    /// Build a config projection and return a machine-readable diagnosis.
+    pub async fn config_projection_with_diagnosis(
+        &self,
+    ) -> DiagnosedResult<FrontendOidcModeConfigProjection, std::io::Error> {
+        let base_diagnosis = AuthFlowDiagnosis::started("projection.config_fetch")
+            .field("mode", "frontend_oidc")
+            .field("client_id", self.config.oidc_client.client_id.clone())
+            .field("pkce_enabled", self.config.oidc_client.pkce_enabled)
+            .field(
+                "claims_check_script_configured",
+                self.config.oidc_client.claims_check_script.is_some(),
+            );
+
+        match self.config.to_config_projection().await {
+            Ok(projection) => DiagnosedResult::success(
+                base_diagnosis
+                    .with_outcome(
+                        securitydept_utils::observability::AuthFlowDiagnosisOutcome::Succeeded,
+                    )
+                    .field("has_client_secret", projection.client_secret.is_some())
+                    .field(
+                        "has_claims_check_script",
+                        projection.claims_check_script.is_some(),
+                    ),
+                projection,
+            ),
+            Err(error) => DiagnosedResult::failure(
+                base_diagnosis
+                    .with_outcome(
+                        securitydept_utils::observability::AuthFlowDiagnosisOutcome::Failed,
+                    )
+                    .field("failure_stage", "projection_generation"),
+                error,
+            ),
+        }
     }
 }
 
@@ -138,5 +177,17 @@ mod tests {
             .await
             .expect("projection should succeed");
         assert_eq!(projection.client_secret.as_deref(), Some("test-secret"));
+    }
+
+    #[tokio::test]
+    async fn runtime_reports_projection_diagnosis() {
+        let runtime = test_runtime();
+        let diagnosed = runtime.config_projection_with_diagnosis().await;
+
+        assert!(diagnosed.result().is_ok());
+        assert_eq!(diagnosed.diagnosis().operation, "projection.config_fetch");
+        assert_eq!(diagnosed.diagnosis().outcome.as_str(), "succeeded");
+        assert_eq!(diagnosed.diagnosis().fields["mode"], "frontend_oidc");
+        assert_eq!(diagnosed.diagnosis().fields["client_id"], "spa-client");
     }
 }

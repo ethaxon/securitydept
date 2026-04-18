@@ -4,6 +4,10 @@ set windows-shell := ["pwsh.exe", "-NoLogo", "-ExecutionPolicy", "RemoteSigned",
 setup:
     pnpm install
     cargo check --workspace --all-features
+
+setup-distrobox:
+    distrobox create --name playwright-env --image ubuntu:24.04
+    distrobox enter playwright-env -- bash -c "mise trust 2> /dev/null && pnpm exec playwright install --with-deps webkit"
     
 dev-webui:
     cd apps/webui && pnpm dev

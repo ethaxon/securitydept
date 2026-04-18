@@ -1,3 +1,8 @@
+import {
+	ClientErrorKind,
+	readErrorPresentationDescriptor,
+	UserRecovery,
+} from "@securitydept/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 class MemoryStorage {
@@ -32,6 +37,11 @@ describe("webui auth smoke", () => {
 		vi.resetModules();
 		vi.restoreAllMocks();
 		Object.defineProperty(globalThis, "sessionStorage", {
+			value: new MemoryStorage(),
+			configurable: true,
+			writable: true,
+		});
+		Object.defineProperty(globalThis, "localStorage", {
 			value: new MemoryStorage(),
 			configurable: true,
 			writable: true,
@@ -124,5 +134,65 @@ describe("webui auth smoke", () => {
 
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		await expect(auth.resolveLoginUrl()).resolves.toBe("/auth/session/login");
+	});
+
+	it("maps structured auth envelopes into ClientError presentation for dashboard APIs", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				createJsonResponse(401, {
+					status: 401,
+					error: {
+						kind: "unauthenticated",
+						code: "propagation_auth_method_mismatch",
+						message:
+							"This request requires bearer token authentication for propagation.",
+						recovery: UserRecovery.Reauthenticate,
+						presentation: {
+							code: "propagation_auth_method_mismatch",
+							message:
+								"This request requires bearer token authentication for propagation.",
+							recovery: UserRecovery.Reauthenticate,
+						},
+					},
+				}),
+			),
+		);
+
+		const { api } = await import("../api/client");
+
+		let failure: unknown;
+		try {
+			await api.get("/api/entries");
+		} catch (error) {
+			failure = error;
+		}
+
+		expect(failure).toMatchObject({
+			name: "ClientError",
+			kind: ClientErrorKind.Unauthenticated,
+			presentation: {
+				code: "propagation_auth_method_mismatch",
+				message:
+					"This request requires bearer token authentication for propagation.",
+				recovery: UserRecovery.Reauthenticate,
+			},
+		});
+
+		const descriptor = readErrorPresentationDescriptor(failure, {
+			recoveryLinks: {
+				[UserRecovery.Reauthenticate]: "/login",
+			},
+		});
+
+		expect(descriptor.title).toBe("Authentication required");
+		expect(descriptor.description).toBe(
+			"This request requires bearer token authentication for propagation.",
+		);
+		expect(descriptor.primaryAction).toEqual({
+			recovery: UserRecovery.Reauthenticate,
+			label: "Sign in again",
+			href: "/login",
+		});
 	});
 });

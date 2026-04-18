@@ -22,6 +22,10 @@ export const frontendPopupCallbackPath =
 	"/auth/token-set/frontend-mode/popup-callback";
 export const frontendPopupCallbackUrl = `${webuiBaseUrl}${frontendPopupCallbackPath}`;
 
+export const basicAuthPlaygroundPath = "/playground/basic-auth";
+export const basicAuthLoginPath = "/basic/login";
+export const basicAuthLogoutPath = "/basic/logout";
+
 export const oidcClientId = "securitydept-webui-e2e";
 export const oidcTestAccount = Object.freeze({
 	accountId: "e2e-user",

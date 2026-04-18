@@ -2,6 +2,7 @@ import { createTraceTimelineStore } from "@securitydept/client";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { TOKEN_SET_BACKEND_HOST_TRACE_SCOPE } from "../appTrace";
 import { TraceTimelineSection } from "../TraceTimelineSection";
 
 function renderTimeline(events = createTraceTimelineStore().get()): string {
@@ -17,7 +18,7 @@ describe("trace timeline section", () => {
 	it("renders empty state and keeps clear disabled when no trace exists", () => {
 		const markup = renderTimeline();
 
-		expect(markup).toContain("No trace events recorded yet.");
+		expect(markup).toContain("No backend-mode trace events recorded yet.");
 		expect(markup).toContain("Clear Trace");
 		expect(markup).toContain("disabled");
 	});
@@ -37,8 +38,8 @@ describe("trace timeline section", () => {
 		timeline.record({
 			type: "token_set.app.entries.load.failed",
 			at: Date.parse("2026-01-01T00:00:01Z"),
-			scope: "apps.webui.token-set",
-			source: "webui.token-set",
+			scope: TOKEN_SET_BACKEND_HOST_TRACE_SCOPE,
+			source: "webui.token-set-backend",
 			attributes: {
 				path: "/api/entries",
 				code: "token_set.authorization.unavailable",
@@ -48,8 +49,8 @@ describe("trace timeline section", () => {
 		timeline.record({
 			type: "token_set.app.propagation_probe.cancel_requested",
 			at: Date.parse("2026-01-01T00:00:02Z"),
-			scope: "apps.webui.token-set",
-			source: "webui.token-set",
+			scope: TOKEN_SET_BACKEND_HOST_TRACE_SCOPE,
+			source: "webui.token-set-backend",
 			attributes: {
 				path: "/api/propagation/api/health",
 				reason: "superseded",
@@ -60,6 +61,8 @@ describe("trace timeline section", () => {
 
 		expect(markup).toContain("SDK Lifecycle");
 		expect(markup).toContain("App Trace");
+		expect(markup).toContain("Structured Trace Timeline");
+		expect(markup).toContain(TOKEN_SET_BACKEND_HOST_TRACE_SCOPE);
 		expect(markup).toContain("Failed");
 		expect(markup).toContain("Superseded");
 		expect(markup).toContain("/api/entries");
@@ -70,7 +73,9 @@ describe("trace timeline section", () => {
 		timeline.clear();
 
 		const clearedMarkup = renderTimeline(timeline.get());
-		expect(clearedMarkup).toContain("No trace events recorded yet.");
+		expect(clearedMarkup).toContain(
+			"No backend-mode trace events recorded yet.",
+		);
 		expect(clearedMarkup).toContain('disabled=""');
 	});
 });

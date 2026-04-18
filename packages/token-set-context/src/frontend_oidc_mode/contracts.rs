@@ -10,8 +10,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use serde::{Deserialize, Serialize};
 use securitydept_oidc_client::transpile_claims_script_typescript_to_javascript;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 struct CachedFrontendClaimsCheckScript {
@@ -19,8 +19,9 @@ struct CachedFrontendClaimsCheckScript {
     content: String,
 }
 
-static FRONTEND_CLAIMS_CHECK_SCRIPT_CACHE: LazyLock<Mutex<HashMap<String, CachedFrontendClaimsCheckScript>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+static FRONTEND_CLAIMS_CHECK_SCRIPT_CACHE: LazyLock<
+    Mutex<HashMap<String, CachedFrontendClaimsCheckScript>>,
+> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 // ---------------------------------------------------------------------------
 // Claims check script
@@ -64,7 +65,12 @@ impl FrontendOidcModeClaimsCheckScript {
         }
 
         let mut content = tokio::fs::read_to_string(path).await?;
-        if matches!(std::path::Path::new(path).extension().and_then(|ext| ext.to_str()), Some("ts" | "mts")) {
+        if matches!(
+            std::path::Path::new(path)
+                .extension()
+                .and_then(|ext| ext.to_str()),
+            Some("ts" | "mts")
+        ) {
             content = transpile_claims_script_typescript_to_javascript(path, &content)
                 .await
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
@@ -249,7 +255,8 @@ mod tests {
                     error
                         .to_string()
                         .contains("claims-script feature to be enabled"),
-                    "typescript claims script loading should fail with an explicit feature error when transpilation support is unavailable: {error}"
+                    "typescript claims script loading should fail with an explicit feature error \
+                     when transpilation support is unavailable: {error}"
                 );
             }
         }

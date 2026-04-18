@@ -1,21 +1,25 @@
 import { ClientError, type TraceEventSinkTrait } from "@securitydept/client";
 
-const APP_TRACE_SCOPE = "apps.webui.token-set";
-const APP_TRACE_SOURCE = "webui.token-set";
+export const TOKEN_SET_BACKEND_HOST_TRACE_SCOPE =
+	"apps.webui.token-set-backend";
+export const TOKEN_SET_BACKEND_HOST_TRACE_SOURCE = "webui.token-set-backend";
 
-export function createTokenSetAppTraceRecorder(
+export function createTokenSetBackendHostTraceRecorder(
 	traceSink: TraceEventSinkTrait,
 ): (type: string, attributes?: Record<string, unknown>) => void {
 	return (type: string, attributes?: Record<string, unknown>) => {
 		traceSink.record({
 			type,
 			at: Date.now(),
-			scope: APP_TRACE_SCOPE,
-			source: APP_TRACE_SOURCE,
+			scope: TOKEN_SET_BACKEND_HOST_TRACE_SCOPE,
+			source: TOKEN_SET_BACKEND_HOST_TRACE_SOURCE,
 			attributes,
 		});
 	};
 }
+
+export const createTokenSetAppTraceRecorder =
+	createTokenSetBackendHostTraceRecorder;
 
 export function readTokenSetTraceErrorAttributes(
 	error: unknown,

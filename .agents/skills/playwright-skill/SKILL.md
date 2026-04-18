@@ -6,12 +6,6 @@ description: Complete browser automation with Playwright. Auto-detects dev serve
 **IMPORTANT - Path Resolution:**
 This skill can be installed in different locations (plugin system, manual installation, global, or project-specific). Before executing any commands, determine the skill directory based on where you loaded this SKILL.md file, and use that path in all commands below. Replace `$SKILL_DIR` with the actual discovered path.
 
-Common installation paths:
-
-- Plugin system: `~/.claude/plugins/marketplaces/playwright-skill/skills/playwright-skill`
-- Manual global: `~/.claude/skills/playwright-skill`
-- Project-specific: `<project>/.claude/skills/playwright-skill`
-
 For this repository, the canonical project install location is:
 
 - Shared project skill root: `<project>/.agents/skills/playwright-skill`
@@ -24,6 +18,7 @@ This project-specific variant is tuned for AI agent usage:
 - Prefer `playwright-cli` for token-efficient, session-oriented browser interaction
 - Keep `node run.ts /tmp/playwright-test-*.ts` as the fallback for custom multi-step automation
 - Prefer system browsers on Linux/Arch/Manjaro instead of forcing bundled Playwright browser downloads
+- On non-Debian/Ubuntu Linux hosts, if Playwright-managed WebKit is blocked by missing runtime libraries, prefer running WebKit inside the repo's `distrobox` Ubuntu environment instead of treating host-blocked WebKit as the final baseline
 - Use the shared `.agents/skills` install and expose it to agent-specific directories via symlinks
 
 General-purpose browser automation skill. I'll write custom Playwright code for any automation task you request and execute it via the universal executor.
@@ -77,6 +72,8 @@ npm run setup
 This installs the Node packages for the skill, including `playwright` and `@playwright/cli`, then prints detected system browser support.
 
 On Arch/Manjaro/Linux, this skill prefers a system browser instead of forcing bundled browser downloads.
+
+For repositories that already provide a `distrobox` helper for Playwright WebKit, prefer that path on non-Debian/Ubuntu Linux hosts when WebKit reports missing shared libraries. In this repo, use the existing `just setup-distrobox` flow and run the WebKit Playwright command inside `playwright-env` rather than trying to make the host Arch/Manjaro runtime satisfy Ubuntu/Debian-oriented WebKit dependencies directly.
 
 Recommended environment overrides when auto-detection is not enough:
 

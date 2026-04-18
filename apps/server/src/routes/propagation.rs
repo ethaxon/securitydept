@@ -3,6 +3,7 @@ use axum::{
     extract::Request,
     response::{IntoResponse, Response},
 };
+use securitydept_core::utils::observability::AuthFlowDiagnosisOutcome;
 
 use crate::{error::ServerError, state::ServerState};
 
@@ -32,15 +33,31 @@ pub async fn propagation_forward(
                 .to_string(),
         })?;
 
-    let response = resource_service
-        .propagate_request(forwarder, request)
-        .await
-        .map_err(|e| {
-            tracing::warn!(error = %e, "Propagation forwarding failed");
-            ServerError::InvalidConfig {
-                message: format!("propagation forwarding failed: {e}"),
-            }
-        })?;
+    let diagnosed = resource_service
+        .propagate_request_with_diagnosis(forwarder, request)
+        .await;
+    let diagnosis = diagnosed.diagnosis().clone();
+    let response = diagnosed.into_result().map_err(|error| {
+        tracing::warn!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            error = %error,
+            "Propagation forwarding failed"
+        );
+        ServerError::InvalidConfig {
+            message: format!("propagation forwarding failed: {error}"),
+        }
+    })?;
+
+    if matches!(diagnosis.outcome, AuthFlowDiagnosisOutcome::Succeeded) {
+        tracing::info!(
+            operation = %diagnosis.operation,
+            outcome = diagnosis.outcome.as_str(),
+            diagnosis = %diagnosis.to_json_value(),
+            "Propagation forwarding succeeded"
+        );
+    }
 
     Ok(response.into_response())
 }

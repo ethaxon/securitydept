@@ -107,6 +107,65 @@ fn default_realm() -> String {
     "securitydept".to_string()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BasicAuthProtocolResponseKind {
+    Challenge,
+    Unauthorized,
+    LogoutPoison,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BasicAuthProtocolResponse {
+    kind: BasicAuthProtocolResponseKind,
+    status: StatusCode,
+    challenge_header: Option<String>,
+}
+
+impl BasicAuthProtocolResponse {
+    pub fn challenge(challenge_header: String) -> Self {
+        Self {
+            kind: BasicAuthProtocolResponseKind::Challenge,
+            status: StatusCode::UNAUTHORIZED,
+            challenge_header: Some(challenge_header),
+        }
+    }
+
+    pub fn unauthorized() -> Self {
+        Self {
+            kind: BasicAuthProtocolResponseKind::Unauthorized,
+            status: StatusCode::UNAUTHORIZED,
+            challenge_header: None,
+        }
+    }
+
+    pub fn logout_poison() -> Self {
+        Self {
+            kind: BasicAuthProtocolResponseKind::LogoutPoison,
+            status: StatusCode::UNAUTHORIZED,
+            challenge_header: None,
+        }
+    }
+
+    pub fn kind(&self) -> BasicAuthProtocolResponseKind {
+        self.kind
+    }
+
+    pub fn status(&self) -> StatusCode {
+        self.status
+    }
+
+    pub fn challenge_header(&self) -> Option<&str> {
+        self.challenge_header.as_deref()
+    }
+
+    pub fn into_http_response(self) -> HttpResponse {
+        match self.challenge_header {
+            Some(header) => HttpResponse::unauthorized_with_basic_challenge(&header),
+            None => HttpResponse::new(self.status),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BasicAuthZone {
     pub zone_prefix: WebRoute,
@@ -309,8 +368,12 @@ impl BasicAuthZone {
     }
 
     /// Build the challenge response for login trigger route.
+    pub fn login_challenge_protocol_response(&self) -> BasicAuthProtocolResponse {
+        BasicAuthProtocolResponse::challenge(self.challenge_header_value())
+    }
+
     pub fn login_challenge_response(&self) -> HttpResponse {
-        HttpResponse::unauthorized_with_basic_challenge(&self.challenge_header_value())
+        self.login_challenge_protocol_response().into_http_response()
     }
 
     /// Build success redirect response for a successful `/basic/login`
@@ -327,20 +390,32 @@ impl BasicAuthZone {
     /// Build logout poisoning response.
     ///
     /// MUST be `401` without `WWW-Authenticate`.
+    pub fn logout_poison_protocol_response(&self) -> BasicAuthProtocolResponse {
+        BasicAuthProtocolResponse::logout_poison()
+    }
+
     pub fn logout_poison_response(&self) -> HttpResponse {
-        HttpResponse::new(StatusCode::UNAUTHORIZED)
+        self.logout_poison_protocol_response().into_http_response()
     }
 
     /// Build unauthorized response for generic handler paths.
     ///
     /// - for `login_path`: 401 with challenge header.
     /// - for all other paths: plain 401 without challenge header.
-    pub fn unauthorized_response_for_path(&self, request_path: &str) -> HttpResponse {
+    pub fn unauthorized_protocol_response_for_path(
+        &self,
+        request_path: &str,
+    ) -> BasicAuthProtocolResponse {
         if self.is_login_path(request_path) {
-            self.login_challenge_response()
+            self.login_challenge_protocol_response()
         } else {
-            HttpResponse::new(StatusCode::UNAUTHORIZED)
+            BasicAuthProtocolResponse::unauthorized()
         }
+    }
+
+    pub fn unauthorized_response_for_path(&self, request_path: &str) -> HttpResponse {
+        self.unauthorized_protocol_response_for_path(request_path)
+            .into_http_response()
     }
 
     pub fn resolve_post_auth_redirect_uri(
@@ -460,6 +535,45 @@ mod tests {
         assert!(zone.should_attach_challenge_header("/basic/login", StatusCode::UNAUTHORIZED));
         assert!(!zone.should_attach_challenge_header("/api/v1/me", StatusCode::UNAUTHORIZED));
         assert!(!zone.should_attach_challenge_header("/basic/login", StatusCode::FORBIDDEN));
+    }
+
+    #[test]
+    fn test_login_challenge_protocol_response_preserves_www_authenticate() {
+        let zone = BasicAuthZone::from_isolated_config(BasicAuthZoneConfig::default())
+            .expect("zone should build");
+
+        let response = zone.login_challenge_protocol_response();
+
+        assert_eq!(response.kind(), BasicAuthProtocolResponseKind::Challenge);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            response.challenge_header(),
+            Some(r#"Basic realm="securitydept""#),
+        );
+    }
+
+    #[test]
+    fn test_logout_poison_protocol_response_omits_www_authenticate() {
+        let zone = BasicAuthZone::from_isolated_config(BasicAuthZoneConfig::default())
+            .expect("zone should build");
+
+        let response = zone.logout_poison_protocol_response();
+
+        assert_eq!(response.kind(), BasicAuthProtocolResponseKind::LogoutPoison);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(response.challenge_header(), None);
+    }
+
+    #[test]
+    fn test_unauthorized_protocol_response_for_non_login_path_is_plain_401() {
+        let zone = BasicAuthZone::from_isolated_config(BasicAuthZoneConfig::default())
+            .expect("zone should build");
+
+        let response = zone.unauthorized_protocol_response_for_path("/basic/api/entries");
+
+        assert_eq!(response.kind(), BasicAuthProtocolResponseKind::Unauthorized);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(response.challenge_header(), None);
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize, Default)]

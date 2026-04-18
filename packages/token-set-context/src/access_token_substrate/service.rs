@@ -5,6 +5,7 @@ use securitydept_oauth_resource_server::{
 use securitydept_utils::{
     error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
     http::ToHttpStatus,
+    observability::{AuthFlowDiagnosis, AuthFlowDiagnosisOutcome, DiagnosedResult},
 };
 use snafu::Snafu;
 
@@ -192,47 +193,124 @@ impl<'a> AccessTokenSubstrateResourceService<'a> {
         forwarder: &F,
         request: http::Request<F::Body>,
     ) -> Result<http::Response<F::Body>, AccessTokenSubstrateResourceServiceError> {
+        self.propagate_request_with_diagnosis(forwarder, request)
+            .await
+            .into_result()
+    }
+
+    /// End-to-end propagation with a machine-readable diagnosis surface.
+    pub async fn propagate_request_with_diagnosis<F: PropagationForwarder>(
+        &self,
+        forwarder: &F,
+        request: http::Request<F::Body>,
+    ) -> DiagnosedResult<http::Response<F::Body>, AccessTokenSubstrateResourceServiceError> {
+        let mut diagnosis = AuthFlowDiagnosis::started("propagation.forward")
+            .field("transport", "authorization_header")
+            .field("directive_header", DEFAULT_PROPAGATION_HEADER_NAME);
+
         // 1. Extract and verify bearer token.
         let authorization_header = request
             .headers()
             .get(http::header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok());
 
-        let authorization_str = authorization_header
-            .ok_or(AccessTokenSubstrateResourceServiceError::BearerTokenRequired)?;
+        let Some(authorization_str) = authorization_header else {
+            return DiagnosedResult::failure(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
+                    .field("failure_stage", "authorization_header")
+                    .field("reason", "missing_bearer_token"),
+                AccessTokenSubstrateResourceServiceError::BearerTokenRequired,
+            );
+        };
 
-        let access_token = parse_bearer_auth_header_opt(authorization_str)
-            .ok_or(AccessTokenSubstrateResourceServiceError::BearerTokenRequired)?;
+        let Some(access_token) = parse_bearer_auth_header_opt(authorization_str) else {
+            return DiagnosedResult::failure(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
+                    .field("failure_stage", "authorization_header")
+                    .field("reason", "invalid_bearer_token"),
+                AccessTokenSubstrateResourceServiceError::BearerTokenRequired,
+            );
+        };
 
-        let resource_token_principal = self
+        let resource_token_principal = match self
             .verifier
             .verify_token::<CoreJwtClaims>(&access_token)
             .await
-            .map_err(
-                |source| AccessTokenSubstrateResourceServiceError::OAuthResourceServer { source },
-            )?
-            .to_resource_token_principal();
+        {
+            Ok(verified) => verified.to_resource_token_principal(),
+            Err(source) => {
+                return DiagnosedResult::failure(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                        .field("failure_stage", "token_verification"),
+                    AccessTokenSubstrateResourceServiceError::OAuthResourceServer { source },
+                );
+            }
+        };
 
         // 2. Parse propagation directive.
-        let directive_header = request
-            .headers()
-            .get(DEFAULT_PROPAGATION_HEADER_NAME)
-            .ok_or(AccessTokenSubstrateResourceServiceError::PropagationDirectiveRequired)?;
+        let Some(directive_header) = request.headers().get(DEFAULT_PROPAGATION_HEADER_NAME) else {
+            return DiagnosedResult::failure(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
+                    .field("failure_stage", "propagation_directive")
+                    .field("reason", "missing_propagation_directive"),
+                AccessTokenSubstrateResourceServiceError::PropagationDirectiveRequired,
+            );
+        };
 
-        let directive =
-            PropagationDirective::from_header_value(directive_header).map_err(|source| {
-                AccessTokenSubstrateResourceServiceError::PropagationDirectiveInvalid { source }
-            })?;
+        let directive = match PropagationDirective::from_header_value(directive_header) {
+            Ok(directive) => directive,
+            Err(source) => {
+                return DiagnosedResult::failure(
+                    diagnosis
+                        .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
+                        .field("failure_stage", "propagation_directive")
+                        .field("reason", "invalid_propagation_directive"),
+                    AccessTokenSubstrateResourceServiceError::PropagationDirectiveInvalid {
+                        source,
+                    },
+                );
+            }
+        };
 
         let bearer = PropagatedBearer {
             access_token: &access_token,
             resource_token_principal: Some(&resource_token_principal),
         };
         let target = directive.to_request_target();
+        diagnosis = diagnosis
+            .field("target_node_id", target.node_id.clone())
+            .field(
+                "target_scheme",
+                target.scheme.as_ref().map(|scheme| scheme.as_str()),
+            )
+            .field("target_hostname", target.hostname.clone())
+            .field("target_port", target.port);
 
         // 3. Forward.
-        self.propagate_bearer(forwarder, &bearer, &target, request)
+        match self
+            .propagate_bearer(forwarder, &bearer, &target, request)
             .await
+        {
+            Ok(response) => DiagnosedResult::success(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
+                    .field(
+                        "principal_subject",
+                        resource_token_principal.subject.clone(),
+                    ),
+                response,
+            ),
+            Err(error) => DiagnosedResult::failure(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                    .field("failure_stage", "forward"),
+                error,
+            ),
+        }
     }
 
     /// Validate and forward a bearer token to a downstream propagation target.

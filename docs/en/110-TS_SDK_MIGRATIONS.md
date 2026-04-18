@@ -44,6 +44,352 @@ Entry format:
 
 ## Migration Notes
 
+### 2026-04-23 Cross-runtime observability consolidation — browser hierarchy and server auth diagnosis now have formal owners with no new TS export
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**Change**:
+
+No new TypeScript public export was added in this iteration, so `public-surface-inventory.json` did not need an update.
+
+However, the reference-app observability and server auth-path behavior changed materially again:
+
+- token-set frontend host and token-set backend host now share one explicit structured-trace story instead of one formal owner plus one app-local convenience surface
+- `apps/webui/src/lib/authObservationHierarchy.ts` now formalizes the project observation hierarchy across token-set hosts, Basic Auth browser boundary, and browser harness verified-environment claims
+- `securitydept-session-context` now exposes machine-readable diagnosis on `session.login`, `session.logout`, and `session.user_info`
+- `securitydept-basic-auth-context` now exposes machine-readable diagnosis on `basic_auth.login`, `basic_auth.logout`, and `basic_auth.authorize` while keeping protocol-specific response ownership intact
+- `apps/server` routes and middleware now consume those diagnosed results directly instead of treating plain route logs as the only runtime evidence on those paths
+
+**Migration**:
+
+1. No TS import path changes are required.
+2. If your host/runtime reasoning still treats token-set frontend trace as the only formal structured surface, update that language to include backend-mode host trace under the same hierarchy.
+3. If your server integrations or tests still rely on plain route logs for session/basic-auth auth-path conclusions, migrate them to the diagnosed `operation` / `outcome` / field surface instead.
+4. If your docs describe Basic Auth and browser harness observation only through prose, update them to the explicit hierarchy vocabulary: public result, redirect/response instruction, structured trace/diagnosis, focused harness interaction, and human-readable log.
+
+**Justification**:
+
+Iteration 135 closes the cross-runtime observability gap left by the earlier minimal trace/diagnosis baselines: frontend/backend token-set host traces, Basic Auth/browser harness observation positioning, and session/basic-auth server auth paths now all have formal, machine-readable owners.
+
+### 2026-04-23 WebKit matrix consolidation — the canonical distrobox baseline now verifies the full current 10-scenario harness with no new TS export
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**Change**:
+
+No new TypeScript public export was added in this iteration, so `public-surface-inventory.json` did not need an update.
+
+However, the browser harness verified-environment matrix changed materially again for WebKit:
+
+- the remaining six `frontend-oidc` scenarios now verify under the distrobox-hosted Ubuntu baseline
+- both WebKit Basic Auth scenarios now also verify under that same baseline
+- the canonical distrobox-hosted WebKit matrix is now 10 verified / 0 blocked / 0 unavailable across the current harness surface
+- one narrower browser-specific divergence is now explicit inside that verified matrix: WebKit commits the explicit Basic Auth challenge as a `401` response with `WWW-Authenticate`, while Chromium and Firefox still surface browser-thrown auth failure channels before page render
+
+**Migration**:
+
+1. No TS import path changes are required.
+2. If your docs or tests still describe WebKit as partially unavailable in the canonical distrobox baseline, update them to the full 10-scenario verified matrix.
+3. Keep the WebKit Basic Auth divergence explicit: it is still verified, but its browser-owned challenge surface is not the same as Chromium or Firefox.
+
+**Justification**:
+
+Iteration 134 closes the remaining WebKit matrix under the already-productized canonical distrobox baseline and turns the last partial status narrative into one authoritative verified surface.
+
+### 2026-04-23 WebKit verified matrix expansion — popup relay is now part of the canonical distrobox baseline with no new TS export
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**Change**:
+
+No new TypeScript public export was added in this iteration, so `public-surface-inventory.json` did not need an update.
+
+However, the browser harness verified-environment matrix changed again for WebKit:
+
+- `frontend-oidc.popup.relay` is now a real verified WebKit scenario under the distrobox-hosted Ubuntu baseline
+- `frontend-oidc.callback.redirect` remains verified there, so WebKit now has 2 verified scenarios in the current 10-scenario harness matrix
+- the same distrobox-hosted WebKit matrix currently has 0 blocked scenarios and 8 unavailable scenarios, which remain formally unavailable rather than being described only as future work
+- no new browser-specific failure divergence was introduced by this expansion; popup relay aligned with the existing Chromium/Firefox behavior shape in the browser-owned host
+
+**Migration**:
+
+1. No TS import path changes are required.
+2. If your docs or tests still describe WebKit as having only one verified distrobox-hosted callback scenario, update that language to include popup relay as the second verified scenario.
+3. Keep the remaining unverified WebKit scenarios formal: do not rewrite them as vague future plans when they still lack browser-level evidence.
+
+**Justification**:
+
+Iteration 133 expands the verified WebKit matrix under the already-productized canonical distrobox baseline without changing the baseline-policy contract itself.
+
+### 2026-04-23 Browser execution baseline policy productization — dual baseline authority is now explicit with no new TS export
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**Change**:
+
+No new TypeScript public export was added in this iteration, so `public-surface-inventory.json` did not need an update.
+
+However, the browser harness owner now adds a formal execution-baseline policy layer:
+
+- Chromium and Firefox explicitly keep `host-native` as `primary-authority`
+- WebKit explicitly keeps `host-native` as `host-truth` while `distrobox-hosted` Ubuntu is its `canonical-recovery-path`
+- the owner now rejects flattening all browsers into distrobox as the default policy because that would discard already-verified host-native browser-owned evidence
+- the same frontend OIDC baseline test is now consumed as paired evidence on Firefox host-native and WebKit distrobox-hosted execution
+
+**Migration**:
+
+1. No TS import path changes are required.
+2. If your tests or docs implied that `distrobox` should become the universal browser baseline, migrate that language to the explicit dual-policy vocabulary instead.
+3. If your docs treated host-native and distrobox-hosted evidence as one flattened Linux fact, split them into authority roles: host-native can remain the primary authority or host truth, while distrobox-hosted can be the canonical recovery path.
+
+**Justification**:
+
+Iteration 132 turns execution-baseline policy itself into a productized owner contract instead of leaving it as prose around the browser harness.
+
+### 2026-04-22 Third-browser bring-up — WebKit now uses a distrobox-hosted canonical execution baseline with no new TS export
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**Change**:
+
+No new TypeScript public export was added in this iteration, so `public-surface-inventory.json` did not need an update.
+
+However, the browser harness capability and verified-environment baseline changed in five important ways:
+
+- WebKit is no longer flattened into one Linux conclusion: the harness now reports both executable baseline (`system-executable` vs `playwright-managed`) and execution baseline (`host-native` vs `distrobox-hosted`)
+- WebKit host-native runs on Linux non-Debian/Ubuntu hosts can still be formally `blocked` with `host-dependencies-missing` when a runtime startup probe observes missing host dependencies during MiniBrowser launch
+- the repo-provided `distrobox` `playwright-env` is now the canonical Ubuntu execution baseline for WebKit on those hosts
+- the Playwright-managed WebKit runtime is `available` in that distrobox-hosted baseline, and `frontend-oidc.callback.redirect` now has a real verified callback run there
+- managed-browser capability detection now comes from Playwright runtime executable discovery plus repo-level executable overrides rather than private cache scanning
+- `playwright.config.ts` continues to derive projects from the same owner, and `PLAYWRIGHT_INCLUDE_BLOCKED_PROJECTS=1` remains available for explicit host-native blocked evidence runs
+
+**Migration**:
+
+1. No TS import path changes are required.
+2. If your browser-facing tests or docs previously treated WebKit as a single host-blocked endpoint, migrate that language to the split baseline vocabulary: host-native blocked evidence is still real, but distrobox-hosted Ubuntu execution is the canonical bring-up path on Linux non-Debian/Ubuntu hosts.
+3. If you need the canonical WebKit path locally, enter the repo-provided `distrobox` `playwright-env` and run Playwright there.
+4. If you need to gather evidence for a host-native blocked browser project locally, set `PLAYWRIGHT_INCLUDE_BLOCKED_PROJECTS=1` before invoking `playwright test --project=<browser>`.
+5. Browser-specific divergence remains authoritative at the browser-owned failure surface level: Chromium and Firefox still share the verified no-cached-credentials Basic Auth conclusion, while WebKit now has one verified distrobox-hosted callback scenario but not yet a complete matrix.
+
+**Justification**:
+
+Iteration 131 advanced the browser harness from a verified dual-browser baseline to a split third-browser baseline: host-native WebKit blocked evidence remains formal, but the canonical repo path now continues into distrobox-hosted Ubuntu execution where one real WebKit callback scenario is verified, all without introducing any new TS SDK public export.
+
+### 2026-04-22 Second-browser verified baseline — Firefox enters the Playwright harness with no new TS export
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**Change**:
+
+No new TypeScript public export was added in this iteration, so `public-surface-inventory.json` did not need an update.
+
+However, the browser harness capability and verified-environment baseline changed in three important ways:
+
+- Firefox is now detected through Playwright-managed executable discovery and reported as available with `detectionSource: "playwright-managed"`
+- all 10 auth-flow scenarios (2 basic-auth + 8 frontend-oidc) are now verified on Firefox in addition to Chromium
+- `playwright.config.ts` now generates multi-browser projects from the harness owner, running all e2e specs on both Chromium and Firefox
+
+**Migration**:
+
+1. No TS import path changes are required.
+2. Basic Auth challenge error patterns differ between browsers: Chromium produces `ERR_INVALID_AUTH_CREDENTIALS`, Firefox produces `NS_ERROR_NET_EMPTY_RESPONSE`. Tests now use browser-aware patterns.
+3. Popup relay timing differs between browsers: the popup `waitForURL` before close was removed because Firefox closes the popup faster than the callback URL observation completes. The test now waits only for the popup close event.
+
+**Justification**:
+
+Iteration 130 advanced the browser harness from single-browser to multi-browser verified baseline without introducing any new TS SDK public export.
+
+### 2026-04-22 Browser harness capability reporting productized — verified-environment baseline is now a formal owner with no new TS export
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**Change**:
+
+No new TypeScript public export was added in this iteration, so `public-surface-inventory.json` did not need an update.
+
+However, the browser harness and verified-environment authority changed in four important ways:
+
+- `apps/webui/e2e/support/browser-harness.ts` now formally owns the browser harness capability report: which Playwright browsers are available, which are unavailable and why, and which auth-flow scenarios are verified on which browser
+- the verified-environment baseline explicitly distinguishes browser-native paths from harness-backed paths, and formally reports unavailable browsers instead of silently omitting them
+- both the `basic-auth` and `frontend-oidc` e2e suites now consume this owner and assert the verified-environment baseline at test time
+- `playwright.config.ts` derives its browser detection from the same owner instead of maintaining independent executable-detection logic
+
+**Migration**:
+
+1. No TS import path changes are required.
+2. If your browser-facing docs or test assertions reference "this workspace only detects Chromium" as prose, prefer the formal harness capability report vocabulary instead.
+3. If you add a new auth-flow browser evidence path, register it in the browser harness owner as a verified scenario with the appropriate path kind (browser-native or harness-backed).
+
+**Justification**:
+
+Iteration 129 turned scattered browser-environment prose facts into a formal owner with stable reporting surface, consumed by both auth-flow e2e suites, without introducing any new TS SDK public export.
+
+### 2026-04-22 Documentation and consumer sync — Basic Auth authenticated logout evidence now includes a formal Chromium harness with no new TS export
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**Change**:
+
+No new TypeScript public export was added in this iteration, so `public-surface-inventory.json` did not need an update.
+
+However, the reference-app browser evidence changed in three important ways:
+
+- `apps/webui` now exposes a verified-browser baseline section separate from browser-specific observed behavior and remaining unknowns
+- the reference app now has a verified authenticated logout sequence for Chromium under a formal `Authorization`-header harness
+- the current local Playwright environment still detects only Chromium, so no second-browser baseline is claimed in this iteration
+
+**Migration**:
+
+1. No TS import path changes are required.
+2. If your host UI describes Basic Auth logout behavior, distinguish native browser-managed credential replay from harness-supplied credential replay.
+3. Do not treat the new authenticated logout sequence as proof of universal browser cache eviction; it proves the Chromium harness path and documents the missing second-browser baseline explicitly.
+
+**Justification**:
+
+Iteration 128 changed the documented browser evidence boundary for Basic Auth logout behavior, but it did not introduce a new TS SDK export surface. The ledger should record that distinction explicitly.
+
+### 2026-04-22 Documentation and consumer sync — Basic Auth browser evidence now distinguishes protocol guarantee from Chromium-observed behavior with no new TS export
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**Change**:
+
+No new TypeScript public export was added in this iteration, so `public-surface-inventory.json` did not need an update.
+
+However, the reference-app browser authority changed in two important ways:
+
+- `apps/webui` Basic Auth playground now renders protocol guarantees separately from browser-observed state instead of describing both in one undifferentiated block
+- the reference app now has browser-e2e evidence that Chromium with no cached credentials escalates explicit `/basic/login` navigation into a browser auth error, while `/basic/logout` remains a plain `401` without `WWW-Authenticate`
+
+**Migration**:
+
+1. No TS import path changes are required.
+2. If your browser-facing docs or host UI describe Basic Auth challenge behavior, keep protocol guarantees separate from browser-specific observed outcomes.
+3. Do not document Chromium's auth-error navigation behavior as a universal protocol guarantee; post-logout credential-cache eviction still remains explicit cross-browser debt.
+
+**Justification**:
+
+Iteration 127 changed the documented browser evidence and host authority for Basic Auth behavior, but it did not introduce a new TS SDK export surface. The ledger should record that distinction explicitly.
+
+### 2026-04-22 Documentation and consumer sync — Basic Auth protocol exceptions are now an explicit baseline with no new TS export
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**Change**:
+
+No new TypeScript public export was added in this iteration, so `public-surface-inventory.json` did not need an update.
+
+However, the authority boundary for Basic Auth failures changed in two important ways:
+
+- `securitydept-basic-auth-context` now owns an explicit protocol-specific response contract for Basic Auth challenge, plain unauthorized, and logout-poison responses
+- `apps/webui` now uses a dedicated consumer helper to distinguish `WWW-Authenticate` challenge responses from plain unauthorized and logout-poison `401`s instead of treating every `401` as an ordinary shared-envelope failure
+
+**Migration**:
+
+1. No TS import path changes are required.
+2. If your app-local browser code handles Basic Auth boundary responses, distinguish challenge-vs-poison-vs-plain-unauthorized semantics explicitly instead of assuming every `401` should parse through the shared server error envelope path.
+3. Do not retrofit Basic Auth challenge or poison responses into `ServerErrorEnvelope`; they are now documented as a protocol-specific exception baseline.
+
+**Justification**:
+
+Iteration 126 changed the documented server/browser contract around Basic Auth protocol exceptions, but it did not introduce a new TS SDK export surface. The ledger should record that distinction explicitly.
+
+### 2026-04-22 Documentation and consumer sync — reference-app auth paths now preserve browser/server error symmetry with no new TS export
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**Change**:
+
+No new TypeScript public export was added in this iteration, so `public-surface-inventory.json` did not need an update.
+
+However, the reference-app consumer boundary changed in two important ways:
+
+- `apps/webui` frontend-mode config projection fetch now preserves structured server envelopes as `ClientError` instead of collapsing them into app-local `Error` strings
+- `apps/webui` dashboard API calls now consume structured auth envelopes through `ClientError.fromHttpResponse()` instead of app-local status/message parsing
+
+This iteration also narrowed the server-side plain-response debt by moving propagation auth-boundary middleware responses onto the shared `ServerErrorEnvelope`, while explicitly leaving Basic Auth challenge/poison protocol responses outside the baseline.
+
+**Migration**:
+
+1. No TS import path changes are required.
+2. If your app-local code still parses auth HTTP failures via `statusText`, plain `message`, or custom `ApiError` wrappers, migrate it to `ClientError.fromHttpResponse()` plus `readErrorPresentationDescriptor()`.
+3. Do not treat Basic Auth challenge / logout-poison responses as part of the current shared envelope baseline; they remain protocol-specific exceptions.
+
+**Justification**:
+
+Iteration 125 changed real reference-app behavior and cross-language authority, but it did not add a new TS export surface. The ledger should record that distinction explicitly.
+
+### 2026-04-21 Documentation and consumer sync — Rust/server dual-layer error envelope adopted with no new TS export
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `behavior-only consumer alignment`
+
+**Change**:
+
+No new TypeScript public export was added in this iteration, so `public-surface-inventory.json` did not need an update.
+
+However, the documented cross-language error boundary changed in two important ways:
+
+- `securitydept-utils::error` now owns the shared Rust/server dual-layer HTTP error contract (`ServerErrorKind`, `ServerErrorDescriptor`, `ServerErrorEnvelope`)
+- TS consumers such as `ClientError.fromHttpResponse()` now recognize the structured server error envelope directly instead of relying only on flatter `code` / `message` / `recovery` bodies
+
+**Migration**:
+
+1. No TS import path changes are required.
+2. If you test server HTTP failures in TypeScript, prefer asserting the structured `error.kind` / `error.code` / `error.presentation` envelope shape rather than only plain `message` strings.
+
+**Justification**:
+
+Iteration 124 changed the shared server-facing error boundary and consumer behavior, but it did not introduce a new TS export surface. The ledger should record that distinction explicitly.
+
+### 2026-04-21 Documentation authority sync — Rust/server auth-flow diagnosis baseline clarified with no TS public-surface change
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `documentation-only authority sync`
+
+**Change**:
+
+No TypeScript public surface changed in this iteration, so `public-surface-inventory.json` did not need an update.
+
+The authority docs now explicitly record that:
+
+- `securitydept-utils::observability` owns the shared Rust/server auth-flow diagnosis vocabulary
+- the current productized server-side operations are `projection.config_fetch`, `oidc.callback`, `oidc.token_refresh`, `forward_auth.check`, and `propagation.forward`
+- paths outside that baseline still remain plain `tracing` logs unless separately adopted
+
+**Migration**:
+
+1. No TS import path or runtime behavior changes are required.
+2. When documenting or reviewing cross-language auth-flow observability, treat the Rust/server diagnosis vocabulary as a shared server contract rather than as ad-hoc route logging.
+
+**Justification**:
+
+Iteration 123 changed the authority boundary without introducing a new TS public API. Recording that distinction here avoids conflating “authority changed” with “TS SDK surface changed”.
+
 ### 2026-04-21 @securitydept/token-set-context-client/frontend-oidc-mode — popup redirect semantics now match real host-owned relay routes
 
 **Discipline**: `provisional-migration-required`

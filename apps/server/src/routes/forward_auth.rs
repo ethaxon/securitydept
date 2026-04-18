@@ -7,6 +7,7 @@ use axum::{
 use securitydept_core::{
     creds::{parse_basic_auth_header_opt, parse_bearer_auth_header_opt},
     creds_manage::auth::{check_basic_auth, check_token_auth},
+    utils::observability::{AuthFlowDiagnosis, AuthFlowDiagnosisOutcome},
 };
 use tracing::{debug, warn};
 
@@ -21,9 +22,16 @@ pub async fn traefik(
     Path(group): Path<String>,
     headers: HeaderMap,
 ) -> Response {
-    match check_forward_auth(&state, &group, &headers).await {
-        Ok(entry_name) => {
-            debug!(group = %group, entry = %entry_name, "Traefik forward auth passed");
+    match check_forward_auth(&state, &group, &headers, "traefik").await {
+        Ok((entry_name, diagnosis)) => {
+            debug!(
+                group = %group,
+                entry = %entry_name,
+                operation = %diagnosis.operation,
+                outcome = diagnosis.outcome.as_str(),
+                diagnosis = %diagnosis.to_json_value(),
+                "Traefik forward auth passed"
+            );
             let mut resp_headers = HeaderMap::new();
             // Pass the authenticated entry name downstream
             if let Ok(val) = entry_name.parse() {
@@ -31,7 +39,16 @@ pub async fn traefik(
             }
             (StatusCode::OK, resp_headers).into_response()
         }
-        Err(status) => unauthorized_with_challenge(status),
+        Err((status, diagnosis)) => {
+            warn!(
+                group = %group,
+                operation = %diagnosis.operation,
+                outcome = diagnosis.outcome.as_str(),
+                diagnosis = %diagnosis.to_json_value(),
+                "Traefik forward auth rejected"
+            );
+            unauthorized_with_challenge(status)
+        }
     }
 }
 
@@ -44,16 +61,32 @@ pub async fn nginx(
     Path(group): Path<String>,
     headers: HeaderMap,
 ) -> Response {
-    match check_forward_auth(&state, &group, &headers).await {
-        Ok(entry_name) => {
-            debug!(group = %group, entry = %entry_name, "Nginx forward auth passed");
+    match check_forward_auth(&state, &group, &headers, "nginx").await {
+        Ok((entry_name, diagnosis)) => {
+            debug!(
+                group = %group,
+                entry = %entry_name,
+                operation = %diagnosis.operation,
+                outcome = diagnosis.outcome.as_str(),
+                diagnosis = %diagnosis.to_json_value(),
+                "Nginx forward auth passed"
+            );
             let mut resp_headers = HeaderMap::new();
             if let Ok(val) = entry_name.parse() {
                 resp_headers.insert("X-Auth-User", val);
             }
             (StatusCode::OK, resp_headers).into_response()
         }
-        Err(status) => unauthorized_with_challenge(status),
+        Err((status, diagnosis)) => {
+            warn!(
+                group = %group,
+                operation = %diagnosis.operation,
+                outcome = diagnosis.outcome.as_str(),
+                diagnosis = %diagnosis.to_json_value(),
+                "Nginx forward auth rejected"
+            );
+            unauthorized_with_challenge(status)
+        }
     }
 }
 
@@ -75,10 +108,23 @@ async fn check_forward_auth(
     state: &ServerState,
     group: &str,
     headers: &HeaderMap,
-) -> Result<String, StatusCode> {
+    adapter: &str,
+) -> Result<(String, AuthFlowDiagnosis), (StatusCode, AuthFlowDiagnosis)> {
+    let diagnosis = AuthFlowDiagnosis::started("forward_auth.check")
+        .field("group", group)
+        .field("adapter", adapter)
+        .field(
+            "has_authorization_header",
+            headers.contains_key("authorization"),
+        );
+
     let Some(group_obj) = state.creds_manage_store.find_group_by_name(group).await else {
-        warn!(group = %group, "Forward auth rejected: group not found");
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            diagnosis
+                .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
+                .field("reason", "group_not_found"),
+        ));
     };
 
     let basic_entries = state
@@ -91,27 +137,42 @@ async fn check_forward_auth(
         .await;
 
     if basic_entries.is_empty() && token_entries.is_empty() {
-        warn!(
-            group = %group,
-            group_id = %group_obj.id,
-            "Forward auth rejected: no entries found for group"
-        );
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            diagnosis
+                .clone()
+                .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
+                .field("group_id", group_obj.id.to_string())
+                .field("reason", "group_has_no_entries"),
+        ));
     }
 
     let auth_header = headers.get("authorization").and_then(|v| v.to_str().ok());
     let Some(auth_header) = auth_header else {
-        warn!(
-            group = %group,
-            "Forward auth rejected: missing Authorization header"
-        );
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            diagnosis
+                .clone()
+                .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
+                .field("group_id", group_obj.id.to_string())
+                .field("reason", "missing_authorization_header"),
+        ));
     };
 
     // Try basic auth first
     if let Some((username, password)) = parse_basic_auth_header_opt(auth_header) {
         match check_basic_auth(&basic_entries, &username, &password) {
-            Ok(Some(name)) => return Ok(name),
+            Ok(Some(name)) => {
+                return Ok((
+                    name.clone(),
+                    diagnosis
+                        .clone()
+                        .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
+                        .field("group_id", group_obj.id.to_string())
+                        .field("auth_scheme", "basic")
+                        .field("entry_name", name),
+                ));
+            }
             Ok(None) => {}
             Err(error) => {
                 warn!(
@@ -127,7 +188,17 @@ async fn check_forward_auth(
     // Try bearer token
     if let Some(token) = parse_bearer_auth_header_opt(auth_header) {
         match check_token_auth(&token_entries, &token) {
-            Ok(Some(name)) => return Ok(name),
+            Ok(Some(name)) => {
+                return Ok((
+                    name.clone(),
+                    diagnosis
+                        .clone()
+                        .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
+                        .field("group_id", group_obj.id.to_string())
+                        .field("auth_scheme", "bearer")
+                        .field("entry_name", name),
+                ));
+            }
             Ok(None) => {}
             Err(error) => {
                 warn!(
@@ -139,9 +210,11 @@ async fn check_forward_auth(
         }
     }
 
-    warn!(
-        group = %group,
-        "Forward auth rejected: no valid credentials matched"
-    );
-    Err(StatusCode::UNAUTHORIZED)
+    Err((
+        StatusCode::UNAUTHORIZED,
+        diagnosis
+            .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
+            .field("group_id", group_obj.id.to_string())
+            .field("reason", "no_valid_credentials"),
+    ))
 }

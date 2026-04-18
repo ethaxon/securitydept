@@ -13,11 +13,13 @@ use securitydept_core::{
         backend_oidc_mode::BackendOidcModeRuntimeError,
     },
     utils::{
-        error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
+        error::{
+            ErrorPresentation, ServerErrorDescriptor, ServerErrorEnvelope, ServerErrorKind,
+            ToErrorPresentation, UserRecovery,
+        },
         http::ToHttpStatus,
     },
 };
-use serde_json::json;
 use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
@@ -94,34 +96,54 @@ impl ToErrorPresentation for ServerError {
     }
 }
 
+impl ServerError {
+    fn to_server_error_kind(
+        &self,
+        status: StatusCode,
+        presentation: &ErrorPresentation,
+    ) -> ServerErrorKind {
+        match self {
+            ServerError::ConfigLoad { .. }
+            | ServerError::InvalidConfig { .. }
+            | ServerError::ServerBoot { .. } => ServerErrorKind::Unavailable,
+            _ if presentation.code == "service_unavailable" => ServerErrorKind::Unavailable,
+            _ => ServerErrorKind::from_http_status(status.as_u16()),
+        }
+    }
+
+    fn to_server_error_descriptor(&self, status: StatusCode) -> ServerErrorDescriptor {
+        let presentation = self.to_error_presentation();
+        let kind = self.to_server_error_kind(status, &presentation);
+        ServerErrorDescriptor::new(kind, presentation)
+    }
+}
+
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
         let status = self.to_http_status();
-        let presentation = self.to_error_presentation();
+        let error = self.to_server_error_descriptor(status);
 
         if status.is_server_error() {
             tracing::error!(
                 status = status.as_u16(),
-                error_code = presentation.code,
-                recovery = ?presentation.recovery,
+                error_kind = ?error.kind,
+                error_code = error.code,
+                recovery = ?error.recovery,
                 internal_error = %self,
                 "request failed"
             );
         } else {
             tracing::warn!(
                 status = status.as_u16(),
-                error_code = presentation.code,
-                recovery = ?presentation.recovery,
+                error_kind = ?error.kind,
+                error_code = error.code,
+                recovery = ?error.recovery,
                 internal_error = %self,
                 "request failed"
             );
         }
 
-        let body = json!({
-            "error": presentation,
-            "status": status.as_u16(),
-            "success": false
-        });
+        let body = ServerErrorEnvelope::new(status.as_u16(), error);
         (status, axum::Json(body)).into_response()
     }
 }
