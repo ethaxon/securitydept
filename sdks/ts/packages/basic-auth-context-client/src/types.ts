@@ -20,6 +20,22 @@ export interface BasicAuthContextClientConfig {
 	postAuthRedirectParam?: string;
 }
 
+export const BasicAuthBoundaryKind = {
+	Authenticated: "authenticated",
+	Challenge: "challenge",
+	Unauthorized: "unauthorized",
+	LogoutPoison: "logout_poison",
+} as const;
+
+export type BasicAuthBoundaryKind =
+	(typeof BasicAuthBoundaryKind)[keyof typeof BasicAuthBoundaryKind];
+
+export interface BasicAuthBoundaryObservation {
+	status: number;
+	challengeHeader?: string | null;
+	requestPath?: string;
+}
+
 export const AuthGuardResultKind = {
 	Ok: "ok",
 	Redirect: "redirect",

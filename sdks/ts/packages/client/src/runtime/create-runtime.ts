@@ -1,3 +1,4 @@
+import { createOperationTracer } from "../logging/operation-tracer";
 import { createDefaultClock } from "../scheduling/default-clock";
 import { createDefaultScheduler } from "../scheduling/default-scheduler";
 import type { HttpTransport } from "../transport/types";
@@ -17,12 +18,23 @@ export interface CreateRuntimeOptions
  * `@securitydept/client/web`.
  */
 export function createRuntime(overrides: CreateRuntimeOptions): ClientRuntime {
+	const clock = overrides.clock ?? createDefaultClock();
+	const traceSink = overrides.traceSink;
+	const logger = overrides.logger;
+
 	return {
 		transport: overrides.transport,
 		scheduler: overrides.scheduler ?? createDefaultScheduler(),
-		clock: overrides.clock ?? createDefaultClock(),
-		logger: overrides.logger,
-		traceSink: overrides.traceSink,
+		clock,
+		logger,
+		traceSink,
+		operationTracer:
+			overrides.operationTracer ??
+			createOperationTracer({
+				clock,
+				logger,
+				traceSink,
+			}),
 		persistentStore: overrides.persistentStore,
 		sessionStore: overrides.sessionStore,
 	};

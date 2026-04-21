@@ -6,6 +6,7 @@ use std::{collections::HashMap, time::Duration as StdDuration};
 use http::StatusCode;
 use securitydept_utils::{
     error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
+    principal::AuthenticatedPrincipal,
     redirect::{RedirectTargetConfig, RedirectTargetError, UriRelativeRedirectTargetResolver},
 };
 use serde::{Serialize, de::DeserializeOwned};
@@ -24,17 +25,7 @@ use typed_builder::TypedBuilder;
 pub const DEFAULT_COOKIE_NAME: &str = "securitydept_session";
 pub const DEFAULT_SESSION_CONTEXT_KEY: &str = "securitydept.session_context";
 
-#[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq, TypedBuilder)]
-pub struct SessionPrincipal {
-    #[builder(setter(into))]
-    pub display_name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[builder(default, setter(strip_option, into))]
-    pub picture: Option<String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    #[builder(default)]
-    pub claims: HashMap<String, Value>,
-}
+pub type SessionPrincipal = AuthenticatedPrincipal;
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq, TypedBuilder)]
 pub struct SessionContext<Extra = HashMap<String, Value>> {
@@ -334,7 +325,12 @@ mod tests {
     #[test]
     fn test_context_with_extra_data() {
         let context = SessionContext::builder()
-            .principal(SessionPrincipal::builder().display_name("dev").build())
+            .principal(
+                SessionPrincipal::builder()
+                    .subject("dev-session")
+                    .display_name("dev")
+                    .build(),
+            )
             .attributes(HashMap::from([(
                 "mode".to_string(),
                 Value::String("dev".to_string()),
@@ -345,6 +341,7 @@ mod tests {
             )]))
             .build();
 
+        assert_eq!(context.principal.subject, "dev-session");
         assert_eq!(context.principal.display_name, "dev");
         assert_eq!(
             context.attributes.get("mode"),

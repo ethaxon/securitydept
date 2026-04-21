@@ -72,6 +72,7 @@ describe("session-context-client SSR / server-host contract", () => {
 					status: 200,
 					headers: {},
 					body: {
+						subject: "session-user-ssr",
 						display_name: "SSR User",
 						picture: null,
 						claims: { role: "viewer" },

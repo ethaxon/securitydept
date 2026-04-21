@@ -1,4 +1,9 @@
-import { createInMemoryRecordStore, createRuntime } from "@securitydept/client";
+import {
+	ClientErrorKind,
+	createInMemoryRecordStore,
+	createRuntime,
+	OperationTraceEventType,
+} from "@securitydept/client";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FrontendOidcModeCallbackErrorCode } from "../callback-error-codes";
@@ -29,7 +34,11 @@ const oauthMocks = vi.hoisted(() => ({
 	generateRandomState: vi.fn(),
 	nopkce: Symbol("nopkce"),
 	processAuthorizationCodeResponse: vi.fn(),
+	processRefreshTokenResponse: vi.fn(),
 	processDiscoveryResponse: vi.fn(),
+	processUserInfoResponse: vi.fn(),
+	refreshTokenGrantRequest: vi.fn(),
+	userInfoRequest: vi.fn(),
 	validateAuthResponse: vi.fn(),
 }));
 
@@ -47,11 +56,11 @@ vi.mock("oauth4webapi", () => ({
 	openPopupWindow: vi.fn(),
 	processAuthorizationCodeResponse: oauthMocks.processAuthorizationCodeResponse,
 	processDiscoveryResponse: oauthMocks.processDiscoveryResponse,
-	processRefreshTokenResponse: vi.fn(),
-	processUserInfoResponse: vi.fn(),
-	refreshTokenGrantRequest: vi.fn(),
+	processRefreshTokenResponse: oauthMocks.processRefreshTokenResponse,
+	processUserInfoResponse: oauthMocks.processUserInfoResponse,
+	refreshTokenGrantRequest: oauthMocks.refreshTokenGrantRequest,
 	relayPopupCallback: vi.fn(),
-	userInfoRequest: vi.fn(),
+	userInfoRequest: oauthMocks.userInfoRequest,
 	validateAuthResponse: oauthMocks.validateAuthResponse,
 }));
 
@@ -65,7 +74,11 @@ describe("FrontendOidcModeClient", () => {
 		oauthMocks.generateRandomCodeVerifier.mockReset();
 		oauthMocks.generateRandomState.mockReset();
 		oauthMocks.processAuthorizationCodeResponse.mockReset();
+		oauthMocks.processRefreshTokenResponse.mockReset();
 		oauthMocks.processDiscoveryResponse.mockReset();
+		oauthMocks.processUserInfoResponse.mockReset();
+		oauthMocks.refreshTokenGrantRequest.mockReset();
+		oauthMocks.userInfoRequest.mockReset();
 		oauthMocks.validateAuthResponse.mockReset();
 		webMocks.openPopupWindow.mockReset();
 		webMocks.relayPopupCallback.mockReset();
@@ -82,6 +95,18 @@ describe("FrontendOidcModeClient", () => {
 		oauthMocks.processAuthorizationCodeResponse.mockResolvedValue({
 			access_token: "access-token",
 		});
+		oauthMocks.userInfoRequest.mockResolvedValue({ ok: true });
+		oauthMocks.processUserInfoResponse.mockResolvedValue({
+			sub: "oidc-user-1",
+			name: "Alice",
+			picture: "https://example.com/alice.png",
+		});
+		oauthMocks.refreshTokenGrantRequest.mockResolvedValue({ ok: true });
+		oauthMocks.processRefreshTokenResponse.mockResolvedValue({
+			access_token: "refresh-access-token",
+			refresh_token: "refresh-token-next",
+			expires_in: 300,
+		});
 		webMocks.openPopupWindow.mockReturnValue({
 			close: vi.fn(),
 			window: { closed: false },
@@ -94,6 +119,79 @@ describe("FrontendOidcModeClient", () => {
 			issuer: "https://auth.example.com",
 			token_endpoint: "https://auth.example.com/token",
 		});
+	});
+
+	it("normalizes raw userInfo into the shared authenticated principal contract", async () => {
+		const runtime = createRuntime({
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			sessionStore: createInMemoryRecordStore(),
+		});
+
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			runtime,
+		);
+
+		await client.discover();
+		oauthMocks.processUserInfoResponse.mockResolvedValueOnce({
+			sub: "oidc-user-2",
+			picture: "https://example.com/alice.png",
+			locale: "en-US",
+		});
+
+		await expect(client.fetchUserInfoRaw("access-token")).resolves.toEqual({
+			subject: "oidc-user-2",
+			displayName: "oidc-user-2",
+			picture: "https://example.com/alice.png",
+			email: undefined,
+			emailVerified: undefined,
+			claims: {
+				sub: "oidc-user-2",
+				picture: "https://example.com/alice.png",
+				locale: "en-US",
+			},
+		});
+	});
+
+	it("rejects raw userInfo payloads without a stable subject", async () => {
+		const runtime = createRuntime({
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			sessionStore: createInMemoryRecordStore(),
+		});
+
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			runtime,
+		);
+
+		await client.discover();
+		oauthMocks.processUserInfoResponse.mockResolvedValueOnce({
+			name: "Alice",
+		});
+
+		await expect(client.fetchUserInfoRaw("access-token")).rejects.toMatchObject(
+			{
+				name: "ClientError",
+				kind: ClientErrorKind.Protocol,
+				code: "frontend_oidc.invalid_user_info_payload",
+			},
+		);
 	});
 
 	it("does not pass an empty codeVerifier when pkce is disabled", async () => {
@@ -494,6 +592,117 @@ describe("FrontendOidcModeClient", () => {
 					}),
 				}),
 			],
+		);
+	});
+
+	it("correlates callback lifecycle events with frontend callback traces", async () => {
+		const trace = new InMemoryTraceCollector();
+		const runtime = createRuntime({
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			sessionStore: createInMemoryRecordStore(),
+			traceSink: trace,
+		});
+
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			runtime,
+		);
+
+		await client.authorizeUrl("/after-login");
+		await client.handleCallback(
+			"https://app.example.com/auth/callback?code=auth-code&state=state-value",
+		);
+
+		const callbackStarted = trace.ofType(
+			FrontendOidcModeTraceEventType.CallbackStarted,
+		)[0];
+		const callbackSucceeded = trace.ofType(
+			FrontendOidcModeTraceEventType.CallbackSucceeded,
+		)[0];
+		const operationId = callbackStarted?.operationId;
+
+		expect(operationId).toBeTruthy();
+		expect(callbackSucceeded?.operationId).toBe(operationId);
+		expect(
+			trace.assertOperationLifecycle(operationId!, [
+				OperationTraceEventType.Started,
+				OperationTraceEventType.Ended,
+			]),
+		).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					attributes: expect.objectContaining({
+						operationName: "frontend_oidc.callback",
+					}),
+				}),
+			]),
+		);
+	});
+
+	it("correlates refresh lifecycle events with frontend refresh traces", async () => {
+		const trace = new InMemoryTraceCollector();
+		const runtime = createRuntime({
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			sessionStore: createInMemoryRecordStore(),
+			traceSink: trace,
+		});
+
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			runtime,
+		);
+
+		client.restoreState({
+			tokens: {
+				accessToken: "seed-at",
+				idToken: "seed-idt",
+				refreshMaterial: "seed-rt",
+				accessTokenExpiresAt: "2026-01-01T00:05:00.000Z",
+			},
+			metadata: {},
+		});
+
+		await client.refresh();
+
+		const refreshStarted = trace.ofType(
+			FrontendOidcModeTraceEventType.RefreshStarted,
+		)[0];
+		const refreshSucceeded = trace.ofType(
+			FrontendOidcModeTraceEventType.RefreshSucceeded,
+		)[0];
+		const operationId = refreshStarted?.operationId;
+
+		expect(operationId).toBeTruthy();
+		expect(refreshSucceeded?.operationId).toBe(operationId);
+		expect(
+			trace.assertOperationLifecycle(operationId!, [
+				OperationTraceEventType.Started,
+				OperationTraceEventType.Ended,
+			]),
+		).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					attributes: expect.objectContaining({
+						operationName: "frontend_oidc.refresh",
+					}),
+				}),
+			]),
 		);
 	});
 });

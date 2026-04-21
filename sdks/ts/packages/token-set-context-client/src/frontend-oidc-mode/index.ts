@@ -110,12 +110,19 @@ export {
 
 // --- Config projection web/browser runtime helpers ---
 
-export type { IdleRevalidationOptions } from "./config-source-web";
+export type {
+	CreateFrontendOidcModeBrowserClientOptions,
+	FrontendOidcModeBrowserClientMaterialization,
+	IdleRevalidationOptions,
+} from "./config-source-web";
 
 export {
 	bootstrapScriptSource,
+	createFrontendOidcModeBrowserClient,
 	networkConfigSource,
 	persistConfigProjection,
 	persistedConfigSource,
+	resolveFrontendOidcModeBrowserStorageKey,
+	resolveFrontendOidcModePersistentStateKey,
 	scheduleIdleRevalidation,
 } from "./config-source-web";

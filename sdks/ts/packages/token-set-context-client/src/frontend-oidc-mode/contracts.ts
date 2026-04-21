@@ -13,7 +13,11 @@
 // User info contracts are included: the frontend uses `userinfoRequest()` from
 // oauth4webapi to fetch claims directly from the provider's userinfo endpoint.
 
-import { createSchema, validateWithSchemaSync } from "@securitydept/client";
+import {
+	type AuthenticatedPrincipal,
+	createSchema,
+	validateWithSchemaSync,
+} from "@securitydept/client";
 import type {
 	FrontendOidcModeClientConfig,
 	FrontendOidcModeTokenResult,
@@ -533,11 +537,12 @@ export function tokenResultToAuthSnapshot(
  * This is fundamentally different from backend-oidc mode, where user info
  * retrieval is mediated by the backend.
  */
-export interface FrontendOidcModeUserInfoResponse {
+export interface FrontendOidcModeUserInfoResponse
+	extends AuthenticatedPrincipal {
 	/** The subject identifier (OIDC `sub` claim). */
 	subject: string;
 	/** Display name (`name` claim or derived). */
-	displayName?: string;
+	displayName: string;
 	/** Profile picture URL. */
 	picture?: string;
 	/** Email address. */

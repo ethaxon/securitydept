@@ -804,13 +804,7 @@ fn refreshed_source(
 }
 
 fn into_authenticated_principal(extracted: OidcExtractedPrincipal) -> AuthenticatedPrincipal {
-    AuthenticatedPrincipal {
-        subject: extracted.subject,
-        display_name: extracted.display_name,
-        picture: extracted.picture,
-        issuer: extracted.issuer,
-        claims: extracted.claims,
-    }
+    extracted
 }
 
 fn push_kind_history(history: &mut Vec<AuthenticationSourceKind>, kind: &AuthenticationSourceKind) {

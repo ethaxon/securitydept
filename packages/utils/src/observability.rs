@@ -1,6 +1,66 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 
+pub struct AuthFlowOperation;
+
+impl AuthFlowOperation {
+    pub const PROJECTION_CONFIG_FETCH: &'static str = "projection.config_fetch";
+    pub const OIDC_CALLBACK: &'static str = "oidc.callback";
+    pub const OIDC_TOKEN_REFRESH: &'static str = "oidc.token_refresh";
+    pub const FORWARD_AUTH_CHECK: &'static str = "forward_auth.check";
+    pub const PROPAGATION_FORWARD: &'static str = "propagation.forward";
+    pub const BASIC_AUTH_LOGIN: &'static str = "basic_auth.login";
+    pub const BASIC_AUTH_LOGOUT: &'static str = "basic_auth.logout";
+    pub const BASIC_AUTH_AUTHORIZE: &'static str = "basic_auth.authorize";
+    pub const SESSION_LOGIN: &'static str = "session.login";
+    pub const SESSION_LOGOUT: &'static str = "session.logout";
+    pub const SESSION_USER_INFO: &'static str = "session.user_info";
+    pub const DASHBOARD_AUTH_CHECK: &'static str = "dashboard_auth.check";
+    pub const CREDS_MANAGE_GROUP_LIST: &'static str = "creds_manage.group.list";
+    pub const CREDS_MANAGE_GROUP_GET: &'static str = "creds_manage.group.get";
+    pub const CREDS_MANAGE_GROUP_CREATE: &'static str = "creds_manage.group.create";
+    pub const CREDS_MANAGE_GROUP_UPDATE: &'static str = "creds_manage.group.update";
+    pub const CREDS_MANAGE_GROUP_DELETE: &'static str = "creds_manage.group.delete";
+    pub const CREDS_MANAGE_ENTRY_LIST: &'static str = "creds_manage.entry.list";
+    pub const CREDS_MANAGE_ENTRY_GET: &'static str = "creds_manage.entry.get";
+    pub const CREDS_MANAGE_ENTRY_CREATE_BASIC: &'static str = "creds_manage.entry.create_basic";
+    pub const CREDS_MANAGE_ENTRY_CREATE_TOKEN: &'static str = "creds_manage.entry.create_token";
+    pub const CREDS_MANAGE_ENTRY_UPDATE: &'static str = "creds_manage.entry.update";
+    pub const CREDS_MANAGE_ENTRY_DELETE: &'static str = "creds_manage.entry.delete";
+}
+
+pub struct AuthFlowDiagnosisField;
+
+impl AuthFlowDiagnosisField {
+    pub const ADAPTER: &'static str = "adapter";
+    pub const AUTH_FAMILY: &'static str = "auth_family";
+    pub const CREDENTIAL_SOURCE: &'static str = "credential_source";
+    pub const DIRECTIVE_HEADER: &'static str = "directive_header";
+    pub const ENTITY_KIND: &'static str = "entity_kind";
+    pub const FAILURE_STAGE: &'static str = "failure_stage";
+    pub const GROUP: &'static str = "group";
+    pub const GROUP_ID: &'static str = "group_id";
+    pub const GROUP_IDS_COUNT: &'static str = "group_ids_count";
+    pub const HAS_AUTHORIZATION_HEADER: &'static str = "has_authorization_header";
+    pub const HAS_COOKIE_HEADER: &'static str = "has_cookie_header";
+    pub const HAS_PROPAGATION_DIRECTIVE: &'static str = "has_propagation_directive";
+    pub const HAS_TARGET_ID: &'static str = "has_target_id";
+    pub const HTTP_STATUS: &'static str = "http_status";
+    pub const METHOD: &'static str = "method";
+    pub const MODE: &'static str = "mode";
+    pub const OPERATION_KIND: &'static str = "operation_kind";
+    pub const PROPAGATION_ENABLED: &'static str = "propagation_enabled";
+    pub const REASON: &'static str = "reason";
+    pub const REQUEST_PATH: &'static str = "request_path";
+    pub const RESOLVED_CLIENT_IP_PRESENT: &'static str = "resolved_client_ip_present";
+    pub const ROUTE: &'static str = "route";
+    pub const STATUS: &'static str = "status";
+    pub const TARGET_ID: &'static str = "target_id";
+    pub const TARGET_PATH: &'static str = "target_path";
+    pub const TOKEN_CREATED: &'static str = "token_created";
+    pub const TRANSPORT: &'static str = "transport";
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthFlowDiagnosisOutcome {
@@ -117,27 +177,144 @@ mod tests {
     use super::*;
 
     #[test]
+    fn auth_flow_operation_constants_remain_stable() {
+        assert_eq!(
+            AuthFlowOperation::PROJECTION_CONFIG_FETCH,
+            "projection.config_fetch"
+        );
+        assert_eq!(AuthFlowOperation::OIDC_CALLBACK, "oidc.callback");
+        assert_eq!(AuthFlowOperation::OIDC_TOKEN_REFRESH, "oidc.token_refresh");
+        assert_eq!(AuthFlowOperation::FORWARD_AUTH_CHECK, "forward_auth.check");
+        assert_eq!(
+            AuthFlowOperation::PROPAGATION_FORWARD,
+            "propagation.forward"
+        );
+        assert_eq!(AuthFlowOperation::BASIC_AUTH_LOGIN, "basic_auth.login");
+        assert_eq!(AuthFlowOperation::BASIC_AUTH_LOGOUT, "basic_auth.logout");
+        assert_eq!(
+            AuthFlowOperation::BASIC_AUTH_AUTHORIZE,
+            "basic_auth.authorize"
+        );
+        assert_eq!(AuthFlowOperation::SESSION_LOGIN, "session.login");
+        assert_eq!(AuthFlowOperation::SESSION_LOGOUT, "session.logout");
+        assert_eq!(AuthFlowOperation::SESSION_USER_INFO, "session.user_info");
+        assert_eq!(
+            AuthFlowOperation::DASHBOARD_AUTH_CHECK,
+            "dashboard_auth.check"
+        );
+        assert_eq!(
+            AuthFlowOperation::CREDS_MANAGE_GROUP_LIST,
+            "creds_manage.group.list"
+        );
+        assert_eq!(
+            AuthFlowOperation::CREDS_MANAGE_GROUP_GET,
+            "creds_manage.group.get"
+        );
+        assert_eq!(
+            AuthFlowOperation::CREDS_MANAGE_GROUP_CREATE,
+            "creds_manage.group.create"
+        );
+        assert_eq!(
+            AuthFlowOperation::CREDS_MANAGE_GROUP_UPDATE,
+            "creds_manage.group.update"
+        );
+        assert_eq!(
+            AuthFlowOperation::CREDS_MANAGE_GROUP_DELETE,
+            "creds_manage.group.delete"
+        );
+        assert_eq!(
+            AuthFlowOperation::CREDS_MANAGE_ENTRY_LIST,
+            "creds_manage.entry.list"
+        );
+        assert_eq!(
+            AuthFlowOperation::CREDS_MANAGE_ENTRY_GET,
+            "creds_manage.entry.get"
+        );
+        assert_eq!(
+            AuthFlowOperation::CREDS_MANAGE_ENTRY_CREATE_BASIC,
+            "creds_manage.entry.create_basic"
+        );
+        assert_eq!(
+            AuthFlowOperation::CREDS_MANAGE_ENTRY_CREATE_TOKEN,
+            "creds_manage.entry.create_token"
+        );
+        assert_eq!(
+            AuthFlowOperation::CREDS_MANAGE_ENTRY_UPDATE,
+            "creds_manage.entry.update"
+        );
+        assert_eq!(
+            AuthFlowOperation::CREDS_MANAGE_ENTRY_DELETE,
+            "creds_manage.entry.delete"
+        );
+    }
+
+    #[test]
+    fn auth_flow_diagnosis_field_constants_work_with_field_insertion() {
+        let diagnosis = AuthFlowDiagnosis::started(AuthFlowOperation::DASHBOARD_AUTH_CHECK)
+            .field(AuthFlowDiagnosisField::AUTH_FAMILY, "dashboard")
+            .field(AuthFlowDiagnosisField::CREDENTIAL_SOURCE, "bearer")
+            .field(AuthFlowDiagnosisField::HAS_COOKIE_HEADER, true)
+            .field(AuthFlowDiagnosisField::PROPAGATION_ENABLED, false)
+            .field(AuthFlowDiagnosisField::REASON, "propagation_disabled");
+
+        let value = diagnosis.to_json_value();
+        assert_eq!(
+            value["fields"][AuthFlowDiagnosisField::AUTH_FAMILY],
+            "dashboard"
+        );
+        assert_eq!(
+            value["fields"][AuthFlowDiagnosisField::CREDENTIAL_SOURCE],
+            "bearer"
+        );
+        assert_eq!(
+            value["fields"][AuthFlowDiagnosisField::HAS_COOKIE_HEADER],
+            true
+        );
+        assert_eq!(
+            value["fields"][AuthFlowDiagnosisField::PROPAGATION_ENABLED],
+            false
+        );
+        assert_eq!(
+            value["fields"][AuthFlowDiagnosisField::REASON],
+            "propagation_disabled"
+        );
+    }
+
+    #[test]
     fn diagnosis_serializes_operation_outcome_and_fields() {
-        let diagnosis = AuthFlowDiagnosis::started("projection.config_fetch")
-            .field("mode", "frontend_oidc")
+        let diagnosis = AuthFlowDiagnosis::started(AuthFlowOperation::PROJECTION_CONFIG_FETCH)
+            .field(AuthFlowDiagnosisField::MODE, "frontend_oidc")
             .field("pkce_enabled", true);
 
         let value = diagnosis.to_json_value();
-        assert_eq!(value["operation"], "projection.config_fetch");
+        assert_eq!(
+            value["operation"],
+            AuthFlowOperation::PROJECTION_CONFIG_FETCH
+        );
         assert_eq!(value["outcome"], "started");
-        assert_eq!(value["fields"]["mode"], "frontend_oidc");
+        assert_eq!(
+            value["fields"][AuthFlowDiagnosisField::MODE],
+            "frontend_oidc"
+        );
         assert_eq!(value["fields"]["pkce_enabled"], true);
     }
 
     #[test]
     fn diagnosed_result_preserves_diagnosis_on_failure() {
         let diagnosed = DiagnosedResult::<(), &str>::failure(
-            AuthFlowDiagnosis::failed("propagation.forward").field("reason", "missing_header"),
+            AuthFlowDiagnosis::failed(AuthFlowOperation::PROPAGATION_FORWARD)
+                .field(AuthFlowDiagnosisField::REASON, "missing_header"),
             "boom",
         );
 
         assert!(diagnosed.result().is_err());
-        assert_eq!(diagnosed.diagnosis().operation, "propagation.forward");
-        assert_eq!(diagnosed.diagnosis().fields["reason"], "missing_header");
+        assert_eq!(
+            diagnosed.diagnosis().operation,
+            AuthFlowOperation::PROPAGATION_FORWARD
+        );
+        assert_eq!(
+            diagnosed.diagnosis().fields[AuthFlowDiagnosisField::REASON],
+            "missing_header"
+        );
     }
 }

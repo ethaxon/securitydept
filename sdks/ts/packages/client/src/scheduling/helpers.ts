@@ -3,6 +3,7 @@
 // These helpers sit above the injectable Scheduler / Clock and provide
 // reusable, cancelable wrappers for common scheduling patterns.
 
+import type { ReadableSignalTrait } from "../signals/types";
 import type { CancelableHandle, Clock, Scheduler } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -13,6 +14,43 @@ import type { CancelableHandle, Clock, Scheduler } from "./types";
 export interface Subscription {
 	/** Unsubscribe and release resources. */
 	unsubscribe(): void;
+}
+
+export interface FromSignalOptions<T> {
+	/** Signal to observe. */
+	signal: ReadableSignalTrait<T>;
+	/** Callback invoked when the signal value changes. */
+	callback: (value: T) => void;
+	/**
+	 * Emit the current snapshot immediately after subscription.
+	 * Defaults to `false`.
+	 */
+	emitInitialValue?: boolean;
+}
+
+export const PromiseSettlementKind = {
+	Fulfilled: "fulfilled",
+	Rejected: "rejected",
+} as const;
+
+export type PromiseSettlementKind =
+	(typeof PromiseSettlementKind)[keyof typeof PromiseSettlementKind];
+
+export type PromiseSettlement<T> =
+	| {
+			kind: typeof PromiseSettlementKind.Fulfilled;
+			value: T;
+	  }
+	| {
+			kind: typeof PromiseSettlementKind.Rejected;
+			reason: unknown;
+	  };
+
+export interface FromPromiseOptions<T> {
+	/** Promise-like source to observe. */
+	promise: PromiseLike<T>;
+	/** Callback invoked when the promise settles. */
+	callback: (settlement: PromiseSettlement<T>) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +181,92 @@ export interface ScheduleAtOptions {
 export function scheduleAt(options: ScheduleAtOptions): CancelableHandle {
 	const delay = Math.max(0, options.atMs - options.clock.now());
 	return options.scheduler.setTimeout(delay, options.callback);
+}
+
+// ---------------------------------------------------------------------------
+// fromSignal
+// ---------------------------------------------------------------------------
+
+/**
+ * Adapt an SDK signal into the shared {@link Subscription} callback model.
+ *
+ * @example
+ * ```ts
+ * const sub = fromSignal({
+ *   signal: authState,
+ *   callback: (snapshot) => console.log(snapshot),
+ * });
+ * sub.unsubscribe();
+ * ```
+ */
+export function fromSignal<T>(options: FromSignalOptions<T>): Subscription {
+	if (options.emitInitialValue) {
+		options.callback(options.signal.get());
+	}
+
+	const unsubscribe = options.signal.subscribe(() => {
+		options.callback(options.signal.get());
+	});
+
+	return {
+		unsubscribe() {
+			unsubscribe();
+		},
+	};
+}
+
+// ---------------------------------------------------------------------------
+// fromPromise
+// ---------------------------------------------------------------------------
+
+/**
+ * Adapt a promise settlement into the shared {@link Subscription} callback model.
+ *
+ * This helper is intentionally thin: it reports one settlement and lets the
+ * consumer decide how to model pending/fulfilled/error state.
+ *
+ * @example
+ * ```ts
+ * const sub = fromPromise({
+ *   promise: fetchConfig(),
+ *   callback: (settlement) => {
+ *     if (settlement.kind === PromiseSettlementKind.Fulfilled) {
+ *       console.log(settlement.value);
+ *     }
+ *   },
+ * });
+ * sub.unsubscribe();
+ * ```
+ */
+export function fromPromise<T>(options: FromPromiseOptions<T>): Subscription {
+	let active = true;
+
+	void Promise.resolve(options.promise).then(
+		(value) => {
+			if (!active) {
+				return;
+			}
+			options.callback({
+				kind: PromiseSettlementKind.Fulfilled,
+				value,
+			});
+		},
+		(reason) => {
+			if (!active) {
+				return;
+			}
+			options.callback({
+				kind: PromiseSettlementKind.Rejected,
+				reason,
+			});
+		},
+	);
+
+	return {
+		unsubscribe() {
+			active = false;
+		},
+	};
 }
 
 // ---------------------------------------------------------------------------

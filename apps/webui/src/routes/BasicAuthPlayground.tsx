@@ -1,3 +1,8 @@
+import {
+	BasicAuthBoundaryKind as BasicAuthBoundaryKinds,
+	readBasicAuthBoundaryKind,
+} from "@securitydept/basic-auth-context-client";
+import { useBasicAuthContext } from "@securitydept/basic-auth-context-client-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ExternalLink, Lock, LogIn, LogOut, ShieldAlert } from "lucide-react";
 import { useSyncExternalStore } from "react";
@@ -14,11 +19,9 @@ import {
 	authObservationProfiles,
 	listAuthObservationHierarchy,
 } from "@/lib/authObservationHierarchy";
-import {
-	BasicAuthBoundaryKind,
-	buildBasicAuthLoginUrl,
-	readBasicAuthBoundaryKind,
-} from "@/lib/basicAuth";
+
+type BasicAuthBoundaryKind =
+	(typeof BasicAuthBoundaryKinds)[keyof typeof BasicAuthBoundaryKinds];
 
 interface BasicAuthProbeResult {
 	authenticated: boolean;
@@ -37,7 +40,7 @@ async function probeBasicAuthStatus(): Promise<BasicAuthProbeResult> {
 		const payload = (await response.json().catch(() => [])) as unknown;
 		return {
 			authenticated: true,
-			boundaryKind: BasicAuthBoundaryKind.Authenticated,
+			boundaryKind: BasicAuthBoundaryKinds.Authenticated,
 			status: response.status,
 			challenge: response.headers.get("WWW-Authenticate"),
 			entryCount: Array.isArray(payload) ? payload.length : null,
@@ -123,15 +126,15 @@ function ObservationHierarchyCard({
 function readObservedBoundarySummary(
 	boundaryKind: BasicAuthBoundaryKind | undefined,
 ): string {
-	if (boundaryKind === BasicAuthBoundaryKind.Authenticated) {
+	if (boundaryKind === BasicAuthBoundaryKinds.Authenticated) {
 		return "This browser is currently replaying credentials for the /basic zone.";
 	}
 
-	if (boundaryKind === BasicAuthBoundaryKind.Challenge) {
+	if (boundaryKind === BasicAuthBoundaryKinds.Challenge) {
 		return "This browser surfaced an explicit Basic Auth challenge on the current probe path.";
 	}
 
-	if (boundaryKind === BasicAuthBoundaryKind.LogoutPoison) {
+	if (boundaryKind === BasicAuthBoundaryKinds.LogoutPoison) {
 		return "This browser observed a plain 401 poison response on the logout path without a fresh challenge header.";
 	}
 
@@ -139,6 +142,7 @@ function readObservedBoundarySummary(
 }
 
 export function BasicAuthPlaygroundPage() {
+	const basicAuthClient = useBasicAuthContext();
 	const rawMode = useSyncExternalStore(
 		subscribeAuthContextMode,
 		getAuthContextMode,
@@ -150,7 +154,9 @@ export function BasicAuthPlaygroundPage() {
 		retry: false,
 		staleTime: 5_000,
 	});
-	const loginHref = buildBasicAuthLoginUrl("/playground/basic-auth");
+	const loginHref =
+		basicAuthClient.loginUrlForZonePrefix("/basic", "/playground/basic-auth") ??
+		"/basic/login?post_auth_redirect_uri=%2Fplayground%2Fbasic-auth";
 	const logout = useMutation({
 		mutationKey: ["playground", "basic-auth", "logout"],
 		mutationFn: async () => {
@@ -167,14 +173,14 @@ export function BasicAuthPlaygroundPage() {
 
 	const probeStatus = probeQuery.isLoading
 		? "Checking"
-		: probeQuery.data?.boundaryKind === BasicAuthBoundaryKind.Authenticated
+		: probeQuery.data?.boundaryKind === BasicAuthBoundaryKinds.Authenticated
 			? "Authenticated"
-			: probeQuery.data?.boundaryKind === BasicAuthBoundaryKind.Challenge
+			: probeQuery.data?.boundaryKind === BasicAuthBoundaryKinds.Challenge
 				? "Challenge required"
 				: "Unauthorized without challenge";
 	const challengeHeader = probeQuery.data?.challenge ?? "None";
 	const boundaryKind =
-		probeQuery.data?.boundaryKind ?? BasicAuthBoundaryKind.Unauthorized;
+		probeQuery.data?.boundaryKind ?? BasicAuthBoundaryKinds.Unauthorized;
 	const protectedProbe = probeQuery.data
 		? String(probeQuery.data.status)
 		: probeQuery.isLoading

@@ -3,7 +3,10 @@ use std::{collections::HashMap, future::Future};
 use securitydept_oidc_client::{OidcClient, OidcCodeCallbackSearchParams, PendingOauthStore};
 use securitydept_utils::{
     http::HttpResponse,
-    observability::{AuthFlowDiagnosis, AuthFlowDiagnosisOutcome, DiagnosedResult},
+    observability::{
+        AuthFlowDiagnosis, AuthFlowDiagnosisField, AuthFlowDiagnosisOutcome, AuthFlowOperation,
+        DiagnosedResult,
+    },
 };
 use serde_json::Value;
 use tower_sessions::Session;
@@ -163,17 +166,14 @@ pub struct DevSessionAuthService<'a> {
 }
 
 const PENDING_POST_AUTH_REDIRECT_URI_KEY: &str = "post_auth_redirect_uri";
-const SESSION_LOGIN_OPERATION: &str = "session.login";
-const SESSION_LOGOUT_OPERATION: &str = "session.logout";
-const SESSION_USER_INFO_OPERATION: &str = "session.user_info";
 
 fn session_login_diagnosis(
     mode: &str,
     requested_post_auth_redirect_uri: Option<&str>,
 ) -> AuthFlowDiagnosis {
-    AuthFlowDiagnosis::started(SESSION_LOGIN_OPERATION)
-        .field("auth_family", "session-context")
-        .field("mode", mode)
+    AuthFlowDiagnosis::started(AuthFlowOperation::SESSION_LOGIN)
+        .field(AuthFlowDiagnosisField::AUTH_FAMILY, "session-context")
+        .field(AuthFlowDiagnosisField::MODE, mode)
         .field(
             "has_requested_post_auth_redirect_uri",
             requested_post_auth_redirect_uri.is_some(),
@@ -181,11 +181,13 @@ fn session_login_diagnosis(
 }
 
 fn session_logout_diagnosis() -> AuthFlowDiagnosis {
-    AuthFlowDiagnosis::started(SESSION_LOGOUT_OPERATION).field("auth_family", "session-context")
+    AuthFlowDiagnosis::started(AuthFlowOperation::SESSION_LOGOUT)
+        .field(AuthFlowDiagnosisField::AUTH_FAMILY, "session-context")
 }
 
 fn session_user_info_diagnosis() -> AuthFlowDiagnosis {
-    AuthFlowDiagnosis::started(SESSION_USER_INFO_OPERATION).field("auth_family", "session-context")
+    AuthFlowDiagnosis::started(AuthFlowOperation::SESSION_USER_INFO)
+        .field(AuthFlowDiagnosisField::AUTH_FAMILY, "session-context")
 }
 
 fn callback_post_auth_redirect_uri(
@@ -240,6 +242,7 @@ impl<'a> SessionAuthServiceTrait for DevSessionAuthService<'a> {
         let context: SessionContext = SessionContext::builder()
             .principal(
                 SessionPrincipal::builder()
+                    .subject("dev-session")
                     .display_name("dev")
                     .claims(HashMap::from([(
                         "oidc_enabled".to_string(),
@@ -350,6 +353,14 @@ where
         let requested_post_auth_redirect_uri =
             callback_post_auth_redirect_uri(&code_callback_result);
         let claims_check_result = code_callback_result.claims_check_result;
+        let subject = code_callback_result.id_token_claims.subject().to_string();
+        let issuer = Some(
+            code_callback_result
+                .id_token_claims
+                .issuer()
+                .url()
+                .to_string(),
+        );
 
         let handle = SessionContextSession::from_config(session, self.session_context_config);
         handle
@@ -358,8 +369,10 @@ where
             .map_err(|source| SessionAuthServiceError::SessionContext { source })?;
 
         let principal = SessionPrincipal {
+            subject,
             display_name: claims_check_result.display_name.clone(),
             picture: claims_check_result.picture,
+            issuer,
             claims: claims_check_result.claims,
         };
 

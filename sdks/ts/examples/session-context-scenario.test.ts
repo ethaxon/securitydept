@@ -14,6 +14,7 @@ describe("external session context scenario", () => {
 					status: 200,
 					headers: {},
 					body: {
+						subject: "session-user-1",
 						display_name: "Alice",
 						picture: "https://cdn.example.com/alice.png",
 					},

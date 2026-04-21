@@ -7,11 +7,29 @@ use axum::{
 use securitydept_core::{
     creds::{parse_basic_auth_header_opt, parse_bearer_auth_header_opt},
     creds_manage::auth::{check_basic_auth, check_token_auth},
-    utils::observability::{AuthFlowDiagnosis, AuthFlowDiagnosisOutcome},
+    utils::observability::{
+        AuthFlowDiagnosis, AuthFlowDiagnosisField, AuthFlowDiagnosisOutcome, AuthFlowOperation,
+    },
 };
-use tracing::{debug, warn};
 
-use crate::state::ServerState;
+use crate::{
+    diagnosis::{RouteDiagnosisContext, log_route_diagnosis},
+    state::ServerState,
+};
+
+fn forward_auth_base_diagnosis(
+    group: &str,
+    headers: &HeaderMap,
+    adapter: &str,
+) -> AuthFlowDiagnosis {
+    AuthFlowDiagnosis::started(AuthFlowOperation::FORWARD_AUTH_CHECK)
+        .field(AuthFlowDiagnosisField::GROUP, group)
+        .field(AuthFlowDiagnosisField::ADAPTER, adapter)
+        .field(
+            AuthFlowDiagnosisField::HAS_AUTHORIZATION_HEADER,
+            headers.contains_key("authorization"),
+        )
+}
 
 /// GET /api/forwardauth/traefik/:group
 ///
@@ -24,13 +42,14 @@ pub async fn traefik(
 ) -> Response {
     match check_forward_auth(&state, &group, &headers, "traefik").await {
         Ok((entry_name, diagnosis)) => {
-            debug!(
-                group = %group,
-                entry = %entry_name,
-                operation = %diagnosis.operation,
-                outcome = diagnosis.outcome.as_str(),
-                diagnosis = %diagnosis.to_json_value(),
-                "Traefik forward auth passed"
+            log_route_diagnosis(
+                RouteDiagnosisContext {
+                    route: "/api/forwardauth/traefik/:group",
+                    method: "GET",
+                    status: Some(StatusCode::OK.as_u16()),
+                },
+                &diagnosis,
+                "Traefik forward auth passed",
             );
             let mut resp_headers = HeaderMap::new();
             // Pass the authenticated entry name downstream
@@ -40,12 +59,14 @@ pub async fn traefik(
             (StatusCode::OK, resp_headers).into_response()
         }
         Err((status, diagnosis)) => {
-            warn!(
-                group = %group,
-                operation = %diagnosis.operation,
-                outcome = diagnosis.outcome.as_str(),
-                diagnosis = %diagnosis.to_json_value(),
-                "Traefik forward auth rejected"
+            log_route_diagnosis(
+                RouteDiagnosisContext {
+                    route: "/api/forwardauth/traefik/:group",
+                    method: "GET",
+                    status: Some(status.as_u16()),
+                },
+                &diagnosis,
+                "Traefik forward auth rejected",
             );
             unauthorized_with_challenge(status)
         }
@@ -63,13 +84,14 @@ pub async fn nginx(
 ) -> Response {
     match check_forward_auth(&state, &group, &headers, "nginx").await {
         Ok((entry_name, diagnosis)) => {
-            debug!(
-                group = %group,
-                entry = %entry_name,
-                operation = %diagnosis.operation,
-                outcome = diagnosis.outcome.as_str(),
-                diagnosis = %diagnosis.to_json_value(),
-                "Nginx forward auth passed"
+            log_route_diagnosis(
+                RouteDiagnosisContext {
+                    route: "/api/forwardauth/nginx/:group",
+                    method: "GET",
+                    status: Some(StatusCode::OK.as_u16()),
+                },
+                &diagnosis,
+                "Nginx forward auth passed",
             );
             let mut resp_headers = HeaderMap::new();
             if let Ok(val) = entry_name.parse() {
@@ -78,12 +100,14 @@ pub async fn nginx(
             (StatusCode::OK, resp_headers).into_response()
         }
         Err((status, diagnosis)) => {
-            warn!(
-                group = %group,
-                operation = %diagnosis.operation,
-                outcome = diagnosis.outcome.as_str(),
-                diagnosis = %diagnosis.to_json_value(),
-                "Nginx forward auth rejected"
+            log_route_diagnosis(
+                RouteDiagnosisContext {
+                    route: "/api/forwardauth/nginx/:group",
+                    method: "GET",
+                    status: Some(status.as_u16()),
+                },
+                &diagnosis,
+                "Nginx forward auth rejected",
             );
             unauthorized_with_challenge(status)
         }
@@ -110,20 +134,14 @@ async fn check_forward_auth(
     headers: &HeaderMap,
     adapter: &str,
 ) -> Result<(String, AuthFlowDiagnosis), (StatusCode, AuthFlowDiagnosis)> {
-    let diagnosis = AuthFlowDiagnosis::started("forward_auth.check")
-        .field("group", group)
-        .field("adapter", adapter)
-        .field(
-            "has_authorization_header",
-            headers.contains_key("authorization"),
-        );
+    let diagnosis = forward_auth_base_diagnosis(group, headers, adapter);
 
     let Some(group_obj) = state.creds_manage_store.find_group_by_name(group).await else {
         return Err((
             StatusCode::UNAUTHORIZED,
             diagnosis
                 .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-                .field("reason", "group_not_found"),
+                .field(AuthFlowDiagnosisField::REASON, "group_not_found"),
         ));
     };
 
@@ -142,8 +160,8 @@ async fn check_forward_auth(
             diagnosis
                 .clone()
                 .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-                .field("group_id", group_obj.id.to_string())
-                .field("reason", "group_has_no_entries"),
+                .field(AuthFlowDiagnosisField::GROUP_ID, group_obj.id.to_string())
+                .field(AuthFlowDiagnosisField::REASON, "group_has_no_entries"),
         ));
     }
 
@@ -154,8 +172,11 @@ async fn check_forward_auth(
             diagnosis
                 .clone()
                 .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-                .field("group_id", group_obj.id.to_string())
-                .field("reason", "missing_authorization_header"),
+                .field(AuthFlowDiagnosisField::GROUP_ID, group_obj.id.to_string())
+                .field(
+                    AuthFlowDiagnosisField::REASON,
+                    "missing_authorization_header",
+                ),
         ));
     };
 
@@ -175,12 +196,7 @@ async fn check_forward_auth(
             }
             Ok(None) => {}
             Err(error) => {
-                warn!(
-                    group = %group,
-                    username = %username,
-                    error = %error,
-                    "Basic credential validation failed"
-                );
+                tracing::warn!(group = %group, username = %username, error = %error, "Basic credential validation failed");
             }
         }
     }
@@ -201,11 +217,7 @@ async fn check_forward_auth(
             }
             Ok(None) => {}
             Err(error) => {
-                warn!(
-                    group = %group,
-                    error = %error,
-                    "Token credential validation failed"
-                );
+                tracing::warn!(group = %group, error = %error, "Token credential validation failed");
             }
         }
     }
@@ -214,7 +226,22 @@ async fn check_forward_auth(
         StatusCode::UNAUTHORIZED,
         diagnosis
             .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-            .field("group_id", group_obj.id.to_string())
-            .field("reason", "no_valid_credentials"),
+            .field(AuthFlowDiagnosisField::GROUP_ID, group_obj.id.to_string())
+            .field(AuthFlowDiagnosisField::REASON, "no_valid_credentials"),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn forward_auth_base_diagnosis_uses_shared_operation_vocabulary() {
+        let headers = HeaderMap::new();
+        let diagnosis = forward_auth_base_diagnosis("ops", &headers, "traefik");
+
+        assert_eq!(diagnosis.operation, AuthFlowOperation::FORWARD_AUTH_CHECK);
+        assert_eq!(diagnosis.fields[AuthFlowDiagnosisField::GROUP], "ops");
+        assert_eq!(diagnosis.fields[AuthFlowDiagnosisField::ADAPTER], "traefik");
+    }
 }

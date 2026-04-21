@@ -1,8 +1,10 @@
+import { BasicAuthContextProvider } from "@securitydept/basic-auth-context-client-react";
 import {
 	type AuthRequirement,
 	createSecureBeforeLoad,
 	withTanStackRouteRequirements,
 } from "@securitydept/client-react/tanstack-router";
+import { SessionContextProvider } from "@securitydept/session-context-client-react";
 import { describeFrontendOidcModeCallbackError } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
 	CallbackResumeStatus,
@@ -28,11 +30,6 @@ import {
 	useSyncExternalStore,
 } from "react";
 
-import {
-	clearPostAuthRedirect,
-	fetchCurrentSession,
-	rememberPostAuthRedirect,
-} from "@/api/auth";
 import { ErrorPresentationCallout } from "@/components/common/ErrorPresentationCallout";
 import {
 	AuthContextMode,
@@ -41,6 +38,13 @@ import {
 	resolveAuthContextMode,
 	subscribeAuthContextMode,
 } from "@/lib/authContext";
+import { basicAuthContextConfig } from "@/lib/basicAuthContext";
+import {
+	sessionContextClient,
+	sessionContextConfig,
+	sessionContextSessionStore,
+	sessionContextTransport,
+} from "@/lib/sessionContext";
 import { useThemePreference } from "@/lib/theme";
 import {
 	ensureTokenSetBackendModeClientReady,
@@ -168,13 +172,15 @@ const authenticatedRoute = createRoute({
 			const snapshot = await ensureTokenSetFrontendModeClientReady();
 			dashboardAuthenticated = Boolean(snapshot?.tokens.accessToken);
 		} else if (mode === AuthContextMode.Session) {
-			const session = await fetchCurrentSession();
+			const session = await sessionContextClient.fetchUserInfo(
+				sessionContextTransport,
+			);
 			dashboardAuthenticated = session !== null;
 
 			if (!session) {
-				await rememberPostAuthRedirect(ctx.location.href);
+				await sessionContextClient.savePendingLoginRedirect(ctx.location.href);
 			} else {
-				await clearPostAuthRedirect();
+				await sessionContextClient.clearPendingLoginRedirect();
 			}
 		} else if (mode === AuthContextMode.Basic) {
 			// Basic auth relies on the browser's cached credentials (from the
@@ -509,9 +515,17 @@ export function App() {
 
 	return (
 		<QueryClientProvider client={queryClient}>
-			<TokenSetAuthProvider clients={tokenSetClients}>
-				<RouterProvider router={router} />
-			</TokenSetAuthProvider>
+			<BasicAuthContextProvider config={basicAuthContextConfig}>
+				<SessionContextProvider
+					config={sessionContextConfig}
+					transport={sessionContextTransport}
+					sessionStore={sessionContextSessionStore}
+				>
+					<TokenSetAuthProvider clients={tokenSetClients}>
+						<RouterProvider router={router} />
+					</TokenSetAuthProvider>
+				</SessionContextProvider>
+			</BasicAuthContextProvider>
 		</QueryClientProvider>
 	);
 }

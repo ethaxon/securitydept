@@ -16,17 +16,13 @@ import type {
 	CancellationTokenTrait,
 	HttpTransport,
 } from "@securitydept/client";
+import { ClientError, FetchTransportRedirectKind } from "@securitydept/client";
 import {
-	ClientError,
-	ClientErrorKind,
-	FetchTransportRedirectKind,
-} from "@securitydept/client";
-import { createFetchTransport } from "@securitydept/client/web";
+	createCancellationTokenFromAbortSignal,
+	createFetchTransport,
+} from "@securitydept/client/web";
 import type { AuthorizationHeaderProviderTrait } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import {
-	BackendOidcModeContextSource,
-	createBackendOidcModeAuthorizedTransport,
-} from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { createBackendOidcModeAuthorizedTransport } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import type {
 	QueryClient,
 	QueryKey,
@@ -293,39 +289,7 @@ function resolveCancellationToken(
 		return options.cancellationToken;
 	}
 
-	const signal = options.abortSignal;
-	if (!signal) {
-		return undefined;
-	}
-
-	return {
-		get isCancellationRequested() {
-			return signal.aborted;
-		},
-		get reason() {
-			return signal.reason;
-		},
-		onCancellationRequested(listener: (reason: unknown) => void) {
-			const handler = () => listener(signal.reason);
-			signal.addEventListener("abort", handler);
-			return {
-				dispose() {
-					signal.removeEventListener("abort", handler);
-				},
-			};
-		},
-		throwIfCancellationRequested() {
-			if (signal.aborted) {
-				throw new ClientError({
-					kind: ClientErrorKind.Cancelled,
-					message: "Request was cancelled via AbortSignal",
-					code: "client.cancelled",
-					source: BackendOidcModeContextSource.Client,
-					cause: signal.reason,
-				});
-			}
-		},
-	};
+	return createCancellationTokenFromAbortSignal(options.abortSignal);
 }
 
 function createAuthorizedTokenSetApiTransport(

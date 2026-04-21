@@ -3,10 +3,10 @@ use axum::{
     extract::Query,
     response::{IntoResponse, Response},
 };
-use securitydept_core::utils::observability::AuthFlowDiagnosisOutcome;
 use serde::Deserialize;
 
 use crate::{
+    diagnosis::{RouteDiagnosisContext, log_route_diagnosis, log_route_diagnosis_error},
     error::{ServerError, ServerResult},
     state::ServerState,
 };
@@ -28,12 +28,15 @@ pub async fn config_projection(
         .await;
     let diagnosis = diagnosed.diagnosis().clone();
     let mut projection = diagnosed.into_result().map_err(|source| {
-        tracing::warn!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            error = %source,
-            "frontend_oidc config projection failed"
+        log_route_diagnosis_error(
+            RouteDiagnosisContext {
+                route: "/api/auth/token-set/frontend-mode/config",
+                method: "GET",
+                status: None,
+            },
+            &diagnosis,
+            &source,
+            "frontend_oidc config projection failed",
         );
         ServerError::InvalidConfig {
             message: format!("frontend_oidc projection: {source}"),
@@ -46,14 +49,15 @@ pub async fn config_projection(
         projection.redirect_url = redirect_uri;
     }
 
-    if matches!(diagnosis.outcome, AuthFlowDiagnosisOutcome::Succeeded) {
-        tracing::info!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            "frontend_oidc config projection succeeded"
-        );
-    }
+    log_route_diagnosis(
+        RouteDiagnosisContext {
+            route: "/api/auth/token-set/frontend-mode/config",
+            method: "GET",
+            status: Some(200),
+        },
+        &diagnosis,
+        "frontend_oidc config projection completed",
+    );
 
     Ok(Json(projection).into_response())
 }

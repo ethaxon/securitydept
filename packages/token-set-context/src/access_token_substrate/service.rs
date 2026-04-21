@@ -5,7 +5,10 @@ use securitydept_oauth_resource_server::{
 use securitydept_utils::{
     error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
     http::ToHttpStatus,
-    observability::{AuthFlowDiagnosis, AuthFlowDiagnosisOutcome, DiagnosedResult},
+    observability::{
+        AuthFlowDiagnosis, AuthFlowDiagnosisField, AuthFlowDiagnosisOutcome, AuthFlowOperation,
+        DiagnosedResult,
+    },
 };
 use snafu::Snafu;
 
@@ -204,9 +207,12 @@ impl<'a> AccessTokenSubstrateResourceService<'a> {
         forwarder: &F,
         request: http::Request<F::Body>,
     ) -> DiagnosedResult<http::Response<F::Body>, AccessTokenSubstrateResourceServiceError> {
-        let mut diagnosis = AuthFlowDiagnosis::started("propagation.forward")
-            .field("transport", "authorization_header")
-            .field("directive_header", DEFAULT_PROPAGATION_HEADER_NAME);
+        let mut diagnosis = AuthFlowDiagnosis::started(AuthFlowOperation::PROPAGATION_FORWARD)
+            .field(AuthFlowDiagnosisField::TRANSPORT, "authorization_header")
+            .field(
+                AuthFlowDiagnosisField::DIRECTIVE_HEADER,
+                DEFAULT_PROPAGATION_HEADER_NAME,
+            );
 
         // 1. Extract and verify bearer token.
         let authorization_header = request
@@ -218,8 +224,11 @@ impl<'a> AccessTokenSubstrateResourceService<'a> {
             return DiagnosedResult::failure(
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-                    .field("failure_stage", "authorization_header")
-                    .field("reason", "missing_bearer_token"),
+                    .field(
+                        AuthFlowDiagnosisField::FAILURE_STAGE,
+                        "authorization_header",
+                    )
+                    .field(AuthFlowDiagnosisField::REASON, "missing_bearer_token"),
                 AccessTokenSubstrateResourceServiceError::BearerTokenRequired,
             );
         };
@@ -228,8 +237,11 @@ impl<'a> AccessTokenSubstrateResourceService<'a> {
             return DiagnosedResult::failure(
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-                    .field("failure_stage", "authorization_header")
-                    .field("reason", "invalid_bearer_token"),
+                    .field(
+                        AuthFlowDiagnosisField::FAILURE_STAGE,
+                        "authorization_header",
+                    )
+                    .field(AuthFlowDiagnosisField::REASON, "invalid_bearer_token"),
                 AccessTokenSubstrateResourceServiceError::BearerTokenRequired,
             );
         };
@@ -244,7 +256,7 @@ impl<'a> AccessTokenSubstrateResourceService<'a> {
                 return DiagnosedResult::failure(
                     diagnosis
                         .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                        .field("failure_stage", "token_verification"),
+                        .field(AuthFlowDiagnosisField::FAILURE_STAGE, "token_verification"),
                     AccessTokenSubstrateResourceServiceError::OAuthResourceServer { source },
                 );
             }
@@ -255,8 +267,14 @@ impl<'a> AccessTokenSubstrateResourceService<'a> {
             return DiagnosedResult::failure(
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-                    .field("failure_stage", "propagation_directive")
-                    .field("reason", "missing_propagation_directive"),
+                    .field(
+                        AuthFlowDiagnosisField::FAILURE_STAGE,
+                        "propagation_directive",
+                    )
+                    .field(
+                        AuthFlowDiagnosisField::REASON,
+                        "missing_propagation_directive",
+                    ),
                 AccessTokenSubstrateResourceServiceError::PropagationDirectiveRequired,
             );
         };
@@ -267,8 +285,14 @@ impl<'a> AccessTokenSubstrateResourceService<'a> {
                 return DiagnosedResult::failure(
                     diagnosis
                         .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-                        .field("failure_stage", "propagation_directive")
-                        .field("reason", "invalid_propagation_directive"),
+                        .field(
+                            AuthFlowDiagnosisField::FAILURE_STAGE,
+                            "propagation_directive",
+                        )
+                        .field(
+                            AuthFlowDiagnosisField::REASON,
+                            "invalid_propagation_directive",
+                        ),
                     AccessTokenSubstrateResourceServiceError::PropagationDirectiveInvalid {
                         source,
                     },
@@ -307,7 +331,7 @@ impl<'a> AccessTokenSubstrateResourceService<'a> {
             Err(error) => DiagnosedResult::failure(
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                    .field("failure_stage", "forward"),
+                    .field(AuthFlowDiagnosisField::FAILURE_STAGE, "forward"),
                 error,
             ),
         }

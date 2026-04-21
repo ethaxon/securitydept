@@ -25,6 +25,7 @@ describe("createSessionServerHelper", () => {
 					status: 200,
 					headers: {},
 					body: {
+						subject: "ssr-user-1",
 						display_name: "SSR User",
 						picture: null,
 						claims: { role: "admin" },

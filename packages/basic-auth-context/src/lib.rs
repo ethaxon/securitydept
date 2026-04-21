@@ -373,7 +373,8 @@ impl BasicAuthZone {
     }
 
     pub fn login_challenge_response(&self) -> HttpResponse {
-        self.login_challenge_protocol_response().into_http_response()
+        self.login_challenge_protocol_response()
+            .into_http_response()
     }
 
     /// Build success redirect response for a successful `/basic/login`

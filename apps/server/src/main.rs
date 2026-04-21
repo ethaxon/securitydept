@@ -1,4 +1,5 @@
 mod config;
+mod diagnosis;
 mod error;
 mod http_response;
 mod middleware;

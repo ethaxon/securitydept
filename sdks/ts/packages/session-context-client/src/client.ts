@@ -85,6 +85,11 @@ export class SessionContextClient {
 		return this._baseUrl + this._logoutPath;
 	}
 
+	/** Save the pending post-auth redirect using the canonical browser-shell vocabulary. */
+	async rememberPostAuthRedirect(postAuthRedirectUri: string): Promise<void> {
+		await this.savePendingLoginRedirect(postAuthRedirectUri);
+	}
+
 	/** Save the pending post-auth redirect in `sessionStore` when available. */
 	async savePendingLoginRedirect(postAuthRedirectUri: string): Promise<void> {
 		if (!this._pendingLoginRedirectStore) {
@@ -118,6 +123,17 @@ export class SessionContextClient {
 		}
 
 		await this._pendingLoginRedirectStore.clear();
+	}
+
+	/** Clear the pending post-auth redirect using the canonical browser-shell vocabulary. */
+	async clearPostAuthRedirect(): Promise<void> {
+		await this.clearPendingLoginRedirect();
+	}
+
+	/** Resolve the next login URL by consuming any pending post-auth redirect intent. */
+	async resolveLoginUrl(): Promise<string> {
+		const pendingRedirect = await this.consumePendingLoginRedirect();
+		return this.loginUrl(pendingRedirect ?? undefined);
 	}
 
 	/**
@@ -177,6 +193,15 @@ export class SessionContextClient {
 		}
 
 		throw ClientError.fromHttpResponse(response.status, response.body);
+	}
+
+	/** Execute logout and clear any stale post-auth redirect intent in one canonical step. */
+	async logoutAndClearPendingLoginRedirect(
+		transport: HttpTransport,
+		cancellationToken?: CancellationTokenTrait,
+	): Promise<void> {
+		await this.logout(transport, cancellationToken);
+		await this.clearPendingLoginRedirect();
 	}
 }
 

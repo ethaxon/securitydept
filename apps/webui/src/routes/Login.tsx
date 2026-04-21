@@ -1,7 +1,8 @@
+import { useBasicAuthContext } from "@securitydept/basic-auth-context-client-react";
+import { useSessionContext } from "@securitydept/session-context-client-react";
 import { useTokenSetBackendOidcClient } from "@securitydept/token-set-context-client-react";
 import { FlaskConical, KeyRound, Lock, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
-import { resolveLoginUrl } from "@/api/auth";
 import { AppIcon } from "@/components/common/AppIcon";
 import { Header } from "@/components/layout/Header";
 import { AuthContextMode, setAuthContextMode } from "@/lib/authContext";
@@ -19,10 +20,14 @@ import { startTokenSetFrontendModeLogin } from "@/lib/tokenSetFrontendModeClient
 export function LoginPage() {
 	const [sessionHref, setSessionHref] = useState("/auth/session/login");
 	const [frontendModeBusy, setFrontendModeBusy] = useState(false);
+	const { resolveLoginUrl } = useSessionContext();
+	const basicAuthClient = useBasicAuthContext();
 	const tokenSetBackendModeClient = useTokenSetBackendOidcClient(
 		TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	);
 	const tokenSetBackendModeHref = tokenSetBackendModeClient.authorizeUrl();
+	const basicAuthHref =
+		basicAuthClient.loginUrlForZonePrefix("/basic") ?? "/basic/login";
 
 	useEffect(() => {
 		let cancelled = false;
@@ -35,7 +40,7 @@ export function LoginPage() {
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [resolveLoginUrl]);
 
 	return (
 		<div className="flex min-h-screen flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
@@ -114,7 +119,7 @@ export function LoginPage() {
 						{/* Basic context — HTTP Basic auth */}
 						<a
 							id="login-basic"
-							href="/basic/login"
+							href={basicAuthHref}
 							onClick={() => setAuthContextMode(AuthContextMode.Basic)}
 							className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 px-4 py-3 text-left text-sm font-medium transition-colors hover:border-amber-400 hover:bg-amber-50 dark:border-zinc-700 dark:hover:border-amber-600 dark:hover:bg-amber-950/40"
 						>

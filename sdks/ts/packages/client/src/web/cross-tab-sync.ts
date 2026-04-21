@@ -1,3 +1,5 @@
+import { fromStorageEvent } from "./input-sources";
+
 // Cross-tab auth state sync — minimal baseline using storage events
 //
 // Provides a minimal, composable cross-tab sync mechanism for auth state.
@@ -86,26 +88,24 @@ export function createCrossTabSync(
 ): CrossTabSync {
 	const target = options.target ?? globalThis;
 	let syncCount = 0;
-
-	function handleStorageEvent(event: Event): void {
-		const storageEvent = event as StorageEvent;
-		// Only react to changes on our watched key.
-		if (storageEvent.key !== options.key) return;
-		syncCount++;
-		options.onSync({
-			newValue: storageEvent.newValue,
-			oldValue: storageEvent.oldValue,
-		});
-	}
-
-	target.addEventListener("storage", handleStorageEvent as EventListener);
+	const subscription = fromStorageEvent({
+		target,
+		callback: (storageEvent) => {
+			// Only react to changes on our watched key.
+			if (storageEvent.key !== options.key) {
+				return;
+			}
+			syncCount++;
+			options.onSync({
+				newValue: storageEvent.newValue,
+				oldValue: storageEvent.oldValue,
+			});
+		},
+	});
 
 	return {
 		dispose() {
-			target.removeEventListener(
-				"storage",
-				handleStorageEvent as EventListener,
-			);
+			subscription.unsubscribe();
 		},
 		get syncCount() {
 			return syncCount;

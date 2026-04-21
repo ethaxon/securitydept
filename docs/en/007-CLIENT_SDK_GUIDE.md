@@ -49,6 +49,8 @@ Current stable vocabulary:
 - `AuthFlowDiagnosis`
 - `AuthFlowDiagnosisOutcome`
 - `DiagnosedResult<T, E>`
+- `AuthFlowOperation`
+- `AuthFlowDiagnosisField`
 
 Current operation names already adopted on real server-side auth paths:
 
@@ -63,6 +65,18 @@ Current operation names already adopted on real server-side auth paths:
 - `basic_auth.login`
 - `basic_auth.logout`
 - `basic_auth.authorize`
+- `dashboard_auth.check`
+- `creds_manage.group.list`
+- `creds_manage.group.get`
+- `creds_manage.group.create`
+- `creds_manage.group.update`
+- `creds_manage.group.delete`
+- `creds_manage.entry.list`
+- `creds_manage.entry.get`
+- `creds_manage.entry.create_basic`
+- `creds_manage.entry.create_token`
+- `creds_manage.entry.update`
+- `creds_manage.entry.delete`
 
 Current owner boundary:
 
@@ -77,10 +91,13 @@ What is already productized:
 - forward-auth and propagation now emit stable `operation` / `outcome` / key-field diagnosis records rather than only human-readable route logs
 - session-context login / logout / user-info now emit stable diagnosed results owned by `securitydept-session-context` and consumed directly by `apps/server`
 - basic-auth login / logout / authorize now emit stable diagnosed results owned by `securitydept-basic-auth-context`, while protocol-specific response semantics remain owned by the Basic Auth context itself
+- `apps/server` now uses a thin route diagnosis logging adapter so middleware and auth routes emit one shared `operation` / `outcome` / `diagnosis` log shape instead of drifting route-local `tracing` fields
+- dashboard auth boundary diagnosis now covers bearer acceptance, bearer rejection/failure, session-cookie acceptance/rejection, basic-auth acceptance/rejection, propagation-disabled, propagation auth-mismatch, and no-accepted-auth cases through one shared `dashboard_auth.check` vocabulary
+- credential-management routes now emit route-level diagnosis for groups and entries list/get/create/update/delete operations, including target-id and count fields while explicitly excluding password, token value, Authorization header, cookie, and raw session content from diagnosis payloads
 
 What is not yet productized:
 
-- broader route coverage outside these high-value auth paths
+- broader route coverage outside the current auth boundary and credential-management paths
 - a full timeline/exporter/OTel pipeline
 - a complete replacement of all plain `tracing` logs with diagnosed surfaces
 
@@ -444,7 +461,10 @@ It does not own product-level route policy or business decisions.
 The following also remains explicit:
 
 - capability injection still comes before global singleton config
-- runtime/foundation config, auth-context config, and adapter/host config stay layered
+- the current configuration story is now formalized in three layers rather than left as a design direction:
+  - runtime/foundation config: transport, persistence, scheduler/clock, trace/diagnostics, browser capability bridges
+  - auth-context config: issuer/clientId/endpoints, redirect policy, zone policy, required scopes, callback semantics
+  - adapter/host config: provider registration, callback host paths, client registry entries, app bootstrap and route integration
 - there is no one big public configuration DSL today; if a future discussion shape has not entered inventory/evidence yet, it must not be described as current fact
 
 ### Scheduling and Unified Input Sources
@@ -455,18 +475,27 @@ The foundation continues to own:
 - `interval`
 - `scheduleAt`
 - `fromEventPattern`
-- thin browser input-source bridges such as visibility handling
+- `fromSignal`
+- `fromPromise`
 
 These are shared scheduler/input primitives, not private implementations of one auth context.
 
-The current public baseline is still deliberately conservative:
+The browser/web layer currently owns the environment-specific bridges:
 
-- `fromSignal`
-- `fromPromise`
-- `fromStorageEvent`
+- `fromVisibilityChange`
 - `fromAbortSignal`
+- `fromStorageEvent`
 
-These richer helpers remain valid future directions from the original design discussion, but they are not current productized foundation entry points.
+These helpers now form the current richer unified input-source baseline. They stop at source adaptation and subscription cleanup; they do **not** imply a broader Rx/operator family.
+
+The following remain outside the current baseline:
+
+- `switchMap`
+- `concatMap`
+- `exhaustMap`
+- `debounce`
+- `throttle`
+- heavier stream-composition DSLs
 
 ### Internal Dependency Injection
 
@@ -504,6 +533,14 @@ It owns:
 - React / Angular provider and hook integration
 - server-host helpers
 
+Its authenticated human-principal contract now aligns with the shared `AuthenticatedPrincipal` baseline from `@securitydept/client` rather than keeping a separate narrower session-only semantic owner.
+
+This means:
+
+- stable principal identity is `subject` first, not an optional display-only convenience
+- the shared claims bag remains part of the semantic principal contract
+- host-facing display projection belongs to `projectAuthenticatedPrincipal()` and app-level projection helpers built on top of it, not repeated app-local fallback rules
+
 It is not a mode family and does not share token-set-style internal mode splits.
 
 ### `token-set-context-client`
@@ -526,6 +563,9 @@ Core rules:
 - the mode family still belongs to `token-set-context`
 - shared route / framework glue has moved back to `@securitydept/client*`
 - the browser-owned baseline stays clearly separate from mixed-custody / BFF themes
+- shared authenticated human-principal semantics now come from `@securitydept/client` and are consumed by both session-context-client and token-set-context-client instead of living in parallel family-local contracts
+- resource-token facts still belong to token material / substrate ownership and must not be folded into the shared authenticated-principal baseline
+- raw claims and host-facing display strings remain separate layers: the semantic principal may keep the claims bag, while app-facing display should go through shared projection helpers rather than per-app fallback code
 
 ## SSR / Server-Side Support
 
@@ -569,17 +609,27 @@ Current productized owner boundaries are now explicit:
 
 ## Cancellation and Disposal
 
-The public contract still expects:
+The public contract now includes a real shared baseline:
 
 - long-running browser flows can be canceled or reset
 - services / controllers / providers can release resources on teardown
 - adopters should not have to manually clean up SDK-owned watchers, timers, or subscriptions
 
-The following boundaries are still intentionally unresolved rather than forgotten:
+The current baseline is:
 
-- the bridge between `CancellationTokenTrait` / `CancellationTokenSourceTrait` and `AbortSignal`
-- the relation between `DisposableTrait` and `Symbol.dispose`
-- whether linked cancellation sources enter a future baseline
+- `DisposableTrait.dispose()` is the formal resource-release primitive; the SDK does not require `Symbol.dispose` for adopter interoperability
+- `CancellationTokenTrait` / `CancellationTokenSourceTrait` plus `createCancellationTokenSource()` are the shared cooperative cancellation contract
+- `createLinkedCancellationToken()` is part of the current baseline for token-level fan-in cancellation; disposal remains explicit on the owning source/handle that created the long-lived resource
+- `CancellationTokenSourceTrait.dispose()` is the current "release owned resources and cancel the owned token" story; `cancel()` remains the producer-side semantic cancellation verb when the resource itself should stay otherwise usable until released
+- `@securitydept/client/web` owns browser interop through `createAbortSignalBridge(token)` for fetch-facing consumers and `createCancellationTokenFromAbortSignal(signal)` for host/framework-facing consumers such as React Query query functions
+- reference consumers should not keep app-local `AbortSignal -> CancellationTokenTrait` wrappers; `apps/webui/src/api/tokenSet.ts` now consumes the shared web helper directly
+- `createVisibilityReconciler()` remains a real long-lived resource/teardown proof: it returns an explicit `dispose()` handle and focused tests assert listener release on teardown
+
+The following boundaries are still intentionally outside the current baseline rather than forgotten:
+
+- `Symbol.dispose` integration; `DisposableTrait` remains a plain `dispose()` contract today
+- linked cancellation sources / cancellation trees beyond `createLinkedCancellationToken()`; the current baseline only formalizes token linking, not linked source factories or ambient cancellation hierarchies
+- automatic global teardown registries beyond the explicit `dispose()` handles returned by SDK-owned long-lived resources
 
 ## Logging, Tracing, and Testing
 
@@ -594,6 +644,21 @@ Three engineering rules also remain important:
 - logger, trace sink, and operation tracer should still be treated as separate layers rather than one flat logging interface
 - structured trace, state snapshots, and redirect instructions stay higher-priority observation surfaces than text logs
 - test-tool directions such as `FakeClock`, `FakeScheduler`, `FakeTransport`, and `InMemoryTraceCollector` remain valid methodology, but only the parts that entered public surface count as formal SDK contract
+
+The current structured observation baseline is now more explicit:
+
+- `LoggerTrait` is the human-readable diagnostic channel only
+- `TraceEventSinkTrait` plus `TraceEvent` / `createTraceTimelineStore()` remain the machine-readable timeline channel
+- `createOperationTracer()` plus `OperationTraceEventType` now formalize the operation-lifecycle correlation layer on top of the trace sink rather than replacing it
+- `OperationScope` is now a real owner surface: `setAttribute()` feeds later lifecycle events, `recordError()` emits structured machine-readable error events and may also write a human-readable log, and `end()` closes the lifecycle once
+- `InMemoryTraceCollector` in `@securitydept/test-utils` now supports operation-level inspection through `ofOperation()`, `operationLifecycle()`, and `assertOperationLifecycle()`
+
+Iteration 141 also makes the auth-flow consumer path concrete instead of theoretical:
+
+- token-set frontend callback and refresh now emit operation lifecycle events and correlate existing frontend-mode trace events through one shared `operationId`
+- token-set backend callback fragment, callback body, metadata redemption, refresh, and nested user-info fallback traces now share the same operation correlation story
+- the reference app timelines in `apps/webui` now surface operation lifecycle entries as a first-class trace domain and display `operationId` directly, so the shared correlation surface is visible outside SDK-only tests
+- Rust/server diagnosis remains a sibling structured-observation owner in `securitydept-utils::observability`, not the same runtime primitive as TS `createOperationTracer()`
 
 ## Build, Compatibility, and Side Effects
 
@@ -641,11 +706,11 @@ The table below is the current TS SDK public-surface authority snapshot. It must
 | `@securitydept/basic-auth-context-client` | `stable` | `basic-auth-context` | `stable-deprecation-first` |
 | `@securitydept/basic-auth-context-client/web` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
 | `@securitydept/basic-auth-context-client/server` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
-| `@securitydept/basic-auth-context-client-react` | `provisional` | `token-set-context` | `provisional-migration-required` |
+| `@securitydept/basic-auth-context-client-react` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client` | `stable` | `session-context` | `stable-deprecation-first` |
 | `@securitydept/session-context-client/web` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client/server` | `provisional` | `session-context` | `provisional-migration-required` |
-| `@securitydept/session-context-client-react` | `provisional` | `token-set-context` | `provisional-migration-required` |
+| `@securitydept/session-context-client-react` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/backend-oidc-mode` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/backend-oidc-mode/web` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/frontend-oidc-mode` | `provisional` | `token-set-context` | `provisional-migration-required` |
@@ -693,7 +758,20 @@ The token-set family should no longer be read as the sole owner of every piece o
 #### Config Projection Source Contract (`frontend-oidc-mode/config-source.ts`)
 
 `frontend-oidc-mode` remains the projection-source authority.  
-Source precedence, freshness, restore, and revalidate semantics belong there; how a host obtains config (network / bootstrap script / persisted) is handled by the mode surface plus adopter glue.
+Source precedence, freshness, restore, and revalidate semantics belong there.
+
+Iteration 139 closes the largest remaining browser materialization owner split:
+
+- `createFrontendOidcModeBrowserClient()` now owns browser-side config projection fetch, validated projection parsing, runtime capability wiring through `createWebRuntime()`, and client materialization
+- `resolveFrontendOidcModePersistentStateKey()` and `resolveFrontendOidcModeBrowserStorageKey()` now own the canonical persistent-state key story instead of leaving that derivation in the reference app
+- the reference app keeps only host bootstrap concerns for frontend mode: host route constants, host trace consumption, and host-specific cross-tab reconciliation behavior
+
+That makes the layering explicit on the adopter-facing path:
+
+- config acquisition/bootstrap input: config endpoint + redirect URI
+- auth-context config: the resolved frontend OIDC projection
+- runtime/foundation config: transport, stores, clock/scheduler, trace sink
+- host glue: page routes, popup host route, trace rendering, cross-tab host UX
 
 #### Reference-App Host Evidence (`apps/webui` / `apps/server`)
 
@@ -722,6 +800,7 @@ Frontend-mode browser authority now also includes popup and lifecycle proof in t
 - `FrontendOidcModeClient.popupLogin()` now uses `popupCallbackUrl` as the actual OAuth `redirect_uri` and allows an optional `postAuthRedirectUri`, so host-owned popup relay pages no longer depend on redirect-uri spoofing or app-local workarounds
 - cross-tab lifecycle authority is now proven at the reference-app layer as well: one tab can complete or clear frontend-mode state and another tab reconciles that persisted snapshot through browser storage events, with browser e2e asserting both hydrate and clear behavior
 - structured observation now has a minimal SDK-owned product surface: `TraceEvent` remains the low-level contract, `createTraceTimelineStore()` in `@securitydept/client` provides the canonical in-memory observation feed, `FrontendOidcModeTraceEventType` names the frontend-mode browser-flow trace taxonomy, and `apps/webui` consumes that shared trace feed directly instead of inventing an app-local string timeline
+- iteration 141 then productizes the operation-correlation layer on top of that minimal baseline: `@securitydept/client` now owns `createOperationTracer()` and `OperationTraceEventType`, token-set frontend/backend callback + refresh flows correlate their existing trace events through one `operationId`, and the reference app timelines surface those lifecycle entries directly rather than treating them as test-only metadata
 - testing evidence now starts from the same structured surface: focused SDK tests assert popup and callback trace events directly, and browser e2e asserts frontend-mode popup / cross-tab behavior through `data-trace-type` markers derived from the structured trace timeline rather than only DOM prose
 - token-set frontend host and token-set backend host now share one explicit structured-trace story in the reference app: both timelines are formal host-owned diagnosis surfaces rather than one formal owner plus one app-local convenience
 - the project observation hierarchy is now explicit instead of implicit prose only:
@@ -820,7 +899,7 @@ When you integrate backend-owned OIDC / token-set flows in the browser, enter th
 
 This subpath owns browser-specific concerns such as redirect paths, callback resume, storage, and bootstrap semantics.
 
-#### 3. React entry: `session-context-client-react` starts with Provider, hook wiring
+#### 3. React entry: dedicated adapter packages own Provider and hook wiring
 
 React adopters should prefer the independent React adapter packages instead of hand-rolling provider glue from core roots.  
 That applies equally to:
@@ -829,7 +908,44 @@ That applies equally to:
 - `@securitydept/session-context-client-react`
 - `@securitydept/token-set-context-client-react`
 
-#### 4. SSR / server-host entry: dedicated `./server` helpers
+Their provider/config story should now be read with the same layering vocabulary:
+
+- `BasicAuthContextProvider({ config })`: auth-context config only; the provider is React host glue, and there is no separate runtime capability layer here today
+- `SessionContextProvider({ config, transport, sessionStore })`: `config` is auth-context config, while `transport` / `sessionStore` are runtime capabilities
+- `BackendOidcModeContextProvider({ config, transport, scheduler, clock, ... })`: `config` is auth-context config, while transport/scheduler/clock/stores/trace are runtime capability inputs
+- `TokenSetAuthProvider({ clients, idleWarmup })`: `clients` are adapter/host registration entries into the shared registry lifecycle, not a flattened auth-context config DSL
+
+Iteration 136 closes the main thin-surface parity gap in the reference app:
+
+- `apps/webui` now mounts `SessionContextProvider` and consumes `useSessionContext()` for session login URL resolution, pending redirect ownership, user-info state, and logout flows
+- `apps/webui` now mounts `BasicAuthContextProvider` and consumes `useBasicAuthContext()` for Basic Auth login entry wiring in `/login` and `/playground/basic-auth`
+- the remaining intentional asymmetry versus token-set is that session/basic-auth still do not duplicate token material ownership, callback orchestration, or bearer transport layering
+
+Iteration 137 then closes the remaining shared-convenience owner gap in `session-context`:
+
+- `SessionContextClient` now owns the framework-neutral browser-shell convenience for `rememberPostAuthRedirect()`, `clearPostAuthRedirect()`, `resolveLoginUrl()`, and logout-plus-redirect cleanup
+- `@securitydept/session-context-client-react` now wraps those core methods instead of being their first owner
+
+#### 4. Angular entry: thin DI wrappers preserve canonical owner boundaries
+
+Angular adopters should prefer the dedicated Angular adapter packages for DI, signal state, and provider registration glue:
+
+- `@securitydept/basic-auth-context-client-angular`
+- `@securitydept/session-context-client-angular`
+- `@securitydept/token-set-context-client-angular`
+
+They must not become the first owner of framework-neutral convenience.
+
+Their configuration story follows the same layering:
+
+- `provideBasicAuthContext({ config })`: auth-context config only
+- `SessionContextService.client` owns auth-context behavior, while Angular DI owns host registration and runtime capability injection such as transport
+- `provideTokenSetAuth({ clients, idleWarmup })`: Angular host registration only; each client entry still owns its auth-context config plus runtime composition
+
+- `@securitydept/session-context-client-angular` now exposes the same canonical session browser-shell path as React, and keeps low-level access on `auth.client` instead of duplicating core methods on the Angular service facade.
+- `@securitydept/basic-auth-context-client-angular` remains a thin facade over core zone, redirect, and boundary helpers; no new owner uplift was required because those shared helpers already live in `@securitydept/basic-auth-context-client`.
+
+#### 5. SSR / server-host entry: dedicated `./server` helpers
 
 Server-host adopters should prefer the dedicated `./server` helpers:
 

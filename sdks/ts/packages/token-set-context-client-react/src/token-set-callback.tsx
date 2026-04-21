@@ -2,6 +2,8 @@ import {
 	ClientError,
 	type ClientErrorKind,
 	type ErrorPresentationDescriptor,
+	fromPromise,
+	PromiseSettlementKind,
 	UserRecovery,
 	type UserRecovery as UserRecoveryType,
 } from "@securitydept/client";
@@ -195,34 +197,36 @@ export function useTokenSetCallbackResume(
 			error: null,
 			errorDetails: null,
 		});
-		void (async () => {
-			try {
-				const { result } = await resumeCallbackOnce(
-					registry,
-					clientKey,
-					currentUrl,
-				);
-				if (cancelled) return;
-				setState({
-					clientKey,
-					status: CallbackResumeStatus.Resolved,
-					result,
-					error: null,
-					errorDetails: null,
-				});
-			} catch (error) {
-				if (cancelled) return;
+		const subscription = fromPromise({
+			promise: resumeCallbackOnce(registry, clientKey, currentUrl),
+			callback: (settlement) => {
+				if (cancelled) {
+					return;
+				}
+
+				if (settlement.kind === PromiseSettlementKind.Fulfilled) {
+					setState({
+						clientKey,
+						status: CallbackResumeStatus.Resolved,
+						result: settlement.value.result,
+						error: null,
+						errorDetails: null,
+					});
+					return;
+				}
+
 				setState({
 					clientKey,
 					status: CallbackResumeStatus.Error,
 					result: null,
-					error,
-					errorDetails: readCallbackResumeErrorDetails(error),
+					error: settlement.reason,
+					errorDetails: readCallbackResumeErrorDetails(settlement.reason),
 				});
-			}
-		})();
+			},
+		});
 		return () => {
 			cancelled = true;
+			subscription.unsubscribe();
 		};
 	}, [registry, clientKey, currentUrl]);
 

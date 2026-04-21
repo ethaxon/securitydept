@@ -8,13 +8,20 @@
 import {
 	createDefaultClock,
 	createDefaultScheduler,
+	createSignal,
 	fromEventPattern,
+	fromPromise,
+	fromSignal,
 	interval,
+	type PromiseSettlement,
+	PromiseSettlementKind,
 	type Subscription,
 	scheduleAt,
 	timer,
 } from "@securitydept/client";
 import {
+	fromAbortSignal,
+	fromStorageEvent,
 	fromVisibilityChange,
 	VisibilityState,
 } from "@securitydept/client/web";
@@ -89,6 +96,45 @@ describe("scheduling foundation — export shape and behavior", () => {
 		sub.unsubscribe();
 		expect(handlers).toHaveLength(0);
 	});
+
+	it("fromSignal adapts signal changes into Subscription callbacks", () => {
+		expect(typeof fromSignal).toBe("function");
+
+		const signal = createSignal("idle");
+		const callback = vi.fn();
+
+		const sub: Subscription = fromSignal({
+			signal,
+			callback,
+			emitInitialValue: true,
+		});
+
+		expect(callback).toHaveBeenCalledWith("idle");
+		signal.set("ready");
+		expect(callback).toHaveBeenLastCalledWith("ready");
+
+		sub.unsubscribe();
+	});
+
+	it("fromPromise adapts promise settlement into a shared callback contract", async () => {
+		expect(typeof fromPromise).toBe("function");
+
+		const settlements: PromiseSettlement<string>[] = [];
+
+		fromPromise({
+			promise: Promise.resolve("resolved-config"),
+			callback: (settlement) => settlements.push(settlement),
+		});
+
+		await Promise.resolve();
+
+		expect(settlements).toEqual([
+			{
+				kind: PromiseSettlementKind.Fulfilled,
+				value: "resolved-config",
+			},
+		]);
+	});
 });
 
 // ===========================================================================
@@ -126,6 +172,51 @@ describe("browser input adapter — fromVisibilityChange", () => {
 		mockDoc.visibilityState = "hidden";
 		handler?.();
 		expect(callback).toHaveBeenCalledWith("hidden");
+
+		sub.unsubscribe();
+	});
+
+	it("fromAbortSignal is exported and delivers abort reasons", () => {
+		expect(typeof fromAbortSignal).toBe("function");
+
+		const controller = new AbortController();
+		const callback = vi.fn();
+
+		const sub = fromAbortSignal({
+			signal: controller.signal,
+			callback,
+		});
+
+		controller.abort("refresh-cancelled");
+		expect(callback).toHaveBeenCalledWith("refresh-cancelled");
+
+		sub.unsubscribe();
+	});
+
+	it("fromStorageEvent is exported and delivers storage events", () => {
+		expect(typeof fromStorageEvent).toBe("function");
+
+		const callback = vi.fn();
+		let handler: ((event: StorageEvent) => void) | undefined;
+		const target = {
+			addEventListener: (_type: string, listener: EventListener) => {
+				handler = listener as (event: StorageEvent) => void;
+			},
+			removeEventListener: vi.fn(),
+		};
+
+		const sub = fromStorageEvent({
+			target,
+			callback,
+		});
+
+		handler?.(
+			new StorageEvent("storage", {
+				key: "securitydept.webui.auth_context_mode",
+				newValue: "token-set-frontend-mode",
+			}),
+		);
+		expect(callback).toHaveBeenCalledOnce();
 
 		sub.unsubscribe();
 	});

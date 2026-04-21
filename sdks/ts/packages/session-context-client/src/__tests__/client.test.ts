@@ -23,15 +23,19 @@ function createTestTransport(
 }
 
 describe("SessionContextClient", () => {
-	it("normalizes the current /user-info user payload into SessionInfo", async () => {
+	it("normalizes the Rust session /auth/session/user-info payload into SessionInfo", async () => {
+		const rustSessionUserInfoResponse = {
+			subject: "session-user-1",
+			display_name: "Alice",
+			picture: "https://example.com/alice.png",
+			issuer: "https://issuer.example.com",
+			claims: { role: "admin" },
+		};
+
 		const transport = createTestTransport(() => ({
 			status: 200,
 			headers: {},
-			body: {
-				display_name: "Alice",
-				picture: "https://example.com/alice.png",
-				claims: { role: "admin" },
-			},
+			body: rustSessionUserInfoResponse,
 		}));
 
 		const client = new SessionContextClient({
@@ -41,9 +45,11 @@ describe("SessionContextClient", () => {
 		const result = await client.fetchUserInfo(transport);
 		expect(result).toEqual({
 			principal: {
-				displayName: "Alice",
-				picture: "https://example.com/alice.png",
-				claims: { role: "admin" },
+				subject: rustSessionUserInfoResponse.subject,
+				displayName: rustSessionUserInfoResponse.display_name,
+				picture: rustSessionUserInfoResponse.picture,
+				issuer: rustSessionUserInfoResponse.issuer,
+				claims: rustSessionUserInfoResponse.claims,
 			},
 		});
 	});
@@ -98,11 +104,15 @@ describe("SessionContextClient", () => {
 		}
 	});
 
-	it("throws ClientError for invalid /user-info payloads", async () => {
+	it("rejects the legacy session /auth/session/user-info payload without subject", async () => {
 		const transport = createTestTransport(() => ({
 			status: 200,
 			headers: {},
-			body: { unexpected: true },
+			body: {
+				display_name: "Alice",
+				picture: "https://example.com/alice.png",
+				claims: { role: "admin" },
+			},
 		}));
 
 		const client = new SessionContextClient({
@@ -200,6 +210,55 @@ describe("SessionContextClient", () => {
 		await client.savePendingLoginRedirect("/groups");
 
 		expect(await client.consumePendingLoginRedirect()).toBe("/groups");
+		expect(await client.loadPendingLoginRedirect()).toBeNull();
+	});
+
+	it("resolves the login URL by consuming pending redirect intent", async () => {
+		const sessionStore = createInMemoryRecordStore();
+		const client = new SessionContextClient(
+			{
+				baseUrl: "https://api.example.com",
+			},
+			{ sessionStore },
+		);
+
+		await client.rememberPostAuthRedirect("/entries?tab=all");
+
+		expect(await client.resolveLoginUrl()).toBe(
+			"https://api.example.com/auth/session/login?post_auth_redirect_uri=%2Fentries%3Ftab%3Dall",
+		);
+		expect(await client.loadPendingLoginRedirect()).toBeNull();
+		expect(await client.resolveLoginUrl()).toBe(
+			"https://api.example.com/auth/session/login",
+		);
+	});
+
+	it("executes logout and clears pending redirect intent in one canonical convenience", async () => {
+		const sessionStore = createInMemoryRecordStore();
+		const requests: HttpRequest[] = [];
+		const transport = createTestTransport((request) => {
+			requests.push(request);
+			return {
+				status: 200,
+				headers: {},
+				body: {},
+			};
+		});
+		const client = new SessionContextClient(
+			{
+				baseUrl: "https://api.example.com",
+			},
+			{ sessionStore },
+		);
+
+		await client.rememberPostAuthRedirect("/entries/new");
+		await client.logoutAndClearPendingLoginRedirect(transport);
+
+		expect(requests).toHaveLength(1);
+		expect(requests[0]).toMatchObject({
+			url: "https://api.example.com/auth/session/logout",
+			method: "POST",
+		});
 		expect(await client.loadPendingLoginRedirect()).toBeNull();
 	});
 

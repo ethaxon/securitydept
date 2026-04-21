@@ -44,6 +44,139 @@ TS SDK 当前处于 `0.x` 阶段。这不意味着"随便改" — 而是**允许
 
 ## 迁移说明
 
+### 2026-04-24 @securitydept/client / session-context / token-set-context-client —— shared authenticated-principal baseline 现已成为 canonical cross-family contract
+
+**Discipline**: `stable-deprecation-first`（`@securitydept/client`、`@securitydept/session-context-client`）+ `provisional-migration-required`（`@securitydept/token-set-context-client/*`）
+
+**Subpath**: `@securitydept/client`、`@securitydept/session-context-client`、`@securitydept/token-set-context-client/backend-oidc-mode`、`@securitydept/token-set-context-client/frontend-oidc-mode`、`@securitydept/token-set-context-client/orchestration`
+
+**变更**：
+
+仓库现在不再把 session 与 token-set 视为 authenticated human-principal 数据的两套独立 semantic owner。
+
+- `@securitydept/client` 现在拥有共享的 TS/browser `AuthenticatedPrincipal` baseline，以及 `normalizeAuthenticatedPrincipal()`、`normalizeAuthenticatedPrincipalWire()`、`projectAuthenticatedPrincipal()`
+- `session-context-client` 的 user-info normalization 现在要求稳定 `subject`，并把 principal contract 对齐到这条共享 baseline
+- token-set backend/frontend 的 user-info 与 orchestration principal 路径现在都消费同一条共享 semantic owner，而不再维护一套 token-set-only 平行 principal contract
+- `apps/webui` dashboard user projection 现在改走 shared helper-backed projection path，不再在 app 内按 mode 重复手写 fallback 规则
+- 这次 consolidation 只针对 authenticated human principal 语义；resource-token fact、browser-owned token material、mixed-custody、以及 BFF/server-side token ownership 仍是独立议题
+
+**迁移**：
+
+1. 如果你的 TS 代码仍把 session principal 视为只有 `displayName` 的窄数据，请迁移到共享 `AuthenticatedPrincipal` 形状，并提供/断言稳定的 `subject`。
+2. 如果你的代码仍直接解析 snake_case wire user-info payload，优先改用 `normalizeAuthenticatedPrincipalWire()`，让 `subject`、`display_name`、`issuer` 与 `claims` 的 normalization 留在同一个 owner。
+3. 如果你的 app 仍从原始 principal 字段拼接 host-facing current-user label，优先使用 `projectAuthenticatedPrincipal()` 或建立在其上的薄 app helper，而不是继续重复 `displayName ?? subject ?? ...` 之类的 fallback 逻辑。
+4. 不要把 resource-token principal/fact surface 视为这份 contract 的别名；它们仍属于 substrate/token-material concern，而不是 authenticated human-principal projection。
+
+**理由**：
+
+在 iteration 142 之前，session 与 token-set 都带着相互重叠但不完全一致的 principal 语义，这让 cross-family host code 与 cross-language authority 很难保持一致。本轮把 semantic owner 上提到共享 foundation，同时明确不把 resource-token 与后续 mixed-custody/BFF 主题误并入当前 baseline。
+
+### 2026-04-24 Operation tracer / trace sink / logger 分层产品化 —— operation lifecycle correlation 现已拥有真实 TS owner
+
+**Discipline**: `stable-deprecation-first`（foundation）+ `experimental-fast-break`（test-utils）
+
+**Subpath**: `@securitydept/client`, `@securitydept/test-utils`
+
+**变更**：
+
+TS/browser structured observation baseline 现在已包含一条真实的 operation correlation layer，而不再只是 interface-only 类型。
+
+- `@securitydept/client` 现在正式拥有 `createOperationTracer()` 与 `OperationTraceEventType`
+- `OperationScope` 现在已有 canonical implementation，会把 `operation.started`、`operation.event`、`operation.error`、`operation.ended` 发进 `TraceEventSinkTrait`
+- token-set frontend 的 callback/refresh 与 backend 的 callback family/refresh 现在都会通过同一个 `operationId` 关联它们现有的 trace event
+- `apps/webui` timeline 现在会直接展示 operation lifecycle entry 与 `operationId`，不再让这条相关性只停留在 SDK-focused tests 内部
+- `@securitydept/test-utils` 中的 `InMemoryTraceCollector` 现在支持 `ofOperation()`、`operationLifecycle()` 与 `assertOperationLifecycle()`，用于 operation-level assertion
+
+**迁移**：
+
+1. 当你需要 operation lifecycle correlation 时，优先使用 `createOperationTracer({ traceSink, logger, clock, scope, source })`，而不是手写 wrapper。
+2. 继续把 `LoggerTrait` 视为 human-readable auxiliary channel；不要再用 console text assertion 取代 machine-readable observation。
+3. 如果你的 auth-flow 测试仍在手写按 operation filter trace 数组，现在应迁移到 `InMemoryTraceCollector.ofOperation()` 与 `assertOperationLifecycle()`。
+4. 将 `operationId` 视为 lifecycle event 与现有 family-specific trace event 之间的稳定 correlation key；exporter/OTel/span-tree 仍明确不在当前 baseline 内。
+
+**理由**：
+
+在 iteration 141 之前，`OperationTracerTrait` 与 `OperationScope` 虽已是 public type，但缺少 canonical implementation 与真实 auth-flow consumer path。本轮把这个 owner gap 收口，但仍刻意不扩张为完整 exporter / OTel stack。
+
+### 2026-04-24 Unified input-source helper 收口 —— richer foundation/web source helpers 现已进入当前 public baseline
+
+**Discipline**: `stable-deprecation-first`
+
+**Subpath**: `@securitydept/client`, `@securitydept/client/web`
+
+**变更**：
+
+统一 input-source richer helper 现在已从“文档中承认的方向”前进为正式产品化 baseline。
+
+- `@securitydept/client` 现在正式拥有 `fromSignal()` 与 `fromPromise()`，并与 `timer()`、`interval()`、`scheduleAt()`、`fromEventPattern()` 共同构成 foundation 层 helper 集
+- `@securitydept/client/web` 现在正式拥有 `fromAbortSignal()` 与 `fromStorageEvent()`，并与 `fromVisibilityChange()` 一起构成 browser/web 层 source bridge
+- auth-flow / browser consumer 不再需要手写这些 bridge：React signal bridge、callback-resume promise settlement、browser cancellation interop 与 cross-tab storage listener 现在都直接消费 shared owner
+
+**迁移**：
+
+1. 当你需要 shared subscription 形状时，用 `fromSignal()` 替换手写 `signal.subscribe(...)` 到 external-store 的桥接代码。
+2. 当你在把异步完成状态投影到 host state 时，用 `fromPromise()` 替换 ad hoc `promise.then(...).catch(...)` + 手写 stale guard。
+3. 当 owner 明显属于 shared web layer 而不是 app-local code 时，用 `fromAbortSignal()` / `fromStorageEvent()` 替换直接的浏览器 `abort` / `storage` 监听 glue。
+4. 继续把这些 helper 视为 thin source adapter；operator-style composition 仍明确不在当前 baseline 内。
+
+**理由**：
+
+在 iteration 140 之前，文档一直明确保留这些 richer helper 的可见性，但实现层始终缺少正式 owner，导致设计讨论与当前 browser/auth-flow adopter 之间存在真实空档。本轮把这个 owner gap 收口，但没有把范围扩张成完整 stream/operator framework。
+
+### 2026-04-23 Capability-first configuration layering consolidation —— frontend-mode browser materialization 与 adapter vocabulary 现已拥有正式 owner
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `@securitydept/token-set-context-client/frontend-oidc-mode`
+
+**变更**：
+
+capability-first configuration layering 现在已从设计方向前进为当前正式 adopter-facing baseline：
+
+- `@securitydept/token-set-context-client/frontend-oidc-mode` 现在正式拥有 `createFrontendOidcModeBrowserClient()`，用于 browser 侧的 config projection fetch、validated parse、runtime capability wiring 与 client materialization
+- 同一 subpath 现在也正式拥有 `resolveFrontendOidcModePersistentStateKey()` 与 `resolveFrontendOidcModeBrowserStorageKey()`，用于 persistent-state key story
+- reference app 不再在 `apps/webui/src/lib/tokenSetFrontendModeClient.ts` 中保留 frontend-mode 的 config fetch + parse + `createWebRuntime()` + `createFrontendOidcModeClient()` assembly owner
+- adapter/provider entry docs 现在统一按三层书写：runtime/foundation config、auth-context config、adapter/host config
+
+**迁移**：
+
+1. 当宿主通过 projection endpoint 获取 frontend-mode config 时，用 `createFrontendOidcModeBrowserClient()` 替换 app-local browser materialization。
+2. 将 `configEndpoint` / `redirectUri` 视为 bootstrap input，而不是 auth-context config 本体。
+3. 将 transport/store/scheduler/clock/trace 视为 runtime capability input，而不是塞进同一个扁平 auth config 对象。
+4. route constant、popup host route、registry registration、trace render 这类 host-only concern 继续保留在 mode/root client config 之外。
+
+**理由**：
+
+在 iteration 139 之前，这条 foundation 方向其实早已明确，但 reference app 仍保留着最重的 frontend-mode materialization path，而 provider/config vocabulary 在不同 auth family 间也仍各说各话。本轮把这个 owner gap 收口，并把当前 layering story 正式写成 authority。
+
+### 2026-04-23 Cancellation / resource-release baseline consolidation —— shared AbortSignal interop 与 dispose 语义现已产品化
+
+**Discipline**: `stable-deprecation-first`
+
+**Subpath**: `@securitydept/client`, `@securitydept/client/web`
+
+**变更**：
+
+TS/browser foundation 现在已有一条明确的 cancellation / resource-release story，而不再是 core contract + app-local glue 并存：
+
+- `DisposableTrait`、`CancellationTokenTrait`、`CancellationTokenSourceTrait`、`createCancellationTokenSource()` 与 `createLinkedCancellationToken()` 现在都被正式写入当前 shared cancellation baseline
+- `CancellationTokenSourceTrait.dispose()` 现在被明确为当前 owner-side release primitive：释放拥有的资源也会一并取消其 token
+- `@securitydept/client/web` 现在正式拥有两个 bridge 方向：
+   - `createAbortSignalBridge(token)`：面向 fetch 这类需要 `AbortSignal` 的 browser-native consumer
+   - `createCancellationTokenFromAbortSignal(signal)`：面向先收到 `AbortSignal`、再调用接受 `CancellationTokenTrait` 的 SDK API 的 browser/framework consumer
+- reference app 已不再在 `apps/webui/src/api/tokenSet.ts` 中保留 app-local `AbortSignal -> CancellationTokenTrait` wrapper
+
+**迁移**：
+
+1. 将任何 app-local `AbortSignal -> CancellationTokenTrait` wrapper 替换为 `@securitydept/client/web` 导出的 `createCancellationTokenFromAbortSignal(signal)`。
+2. 当 browser adapter 需要把 foundation cancellation 交给 fetch 或其它 web-native API 时，继续使用 `createAbortSignalBridge(token)` 作为 canonical path。
+3. 将 `.dispose()` 视为当前显式资源释放 contract；不要假设已有 `Symbol.dispose` 支持。
+4. 如果需要 low-level cancellation fan-in，使用 `createLinkedCancellationToken()`；linked source factory 或 ambient cancellation tree 仍明确不在当前 baseline 内。
+
+**理由**：
+
+在 iteration 138 之前，core contract 虽已存在，但 browser consumer path 仍被拆成两半：fetch transport 使用 shared forward bridge，而 reference app 还保留了第二套 reverse bridge story。本轮把这条 owner split 收口，并把当前 release / disposal 边界正式写实。
+
 ### 2026-04-23 Cross-runtime observability consolidation —— 浏览器观察层级与 server auth diagnosis 现已拥有正式 owner，但没有新增 TS 导出
 
 **Discipline**: `provisional-migration-required`
@@ -574,6 +707,67 @@ iteration 114 已在 `apps/webui` 中证明真实 mutation lifecycle 与 invalid
 **理由**：
 
 React adapter 与 Angular adapter 采用一致的独立包策略。Angular adapter 因需要 `ng-packagr` APF 构建，一开始就必须是独立包；为了对齐打包策略、避免混合 `tsdown` + `ng-packagr` 的 subpath 导出形态不一致，React adapter 同步迁移到独立包。独立包还带来更清晰的 `peerDependencies` 声明与更优的 tree-shaking 边界。
+
+---
+
+### 2026-04-23 session shared convenience 从 adapter-local glue 上提至 core owner
+
+**Discipline**: `stable-deprecation-first`（core）+ `provisional-migration-required`（adapter）
+
+**涉及包**：
+
+- `@securitydept/session-context-client`
+- `@securitydept/session-context-client-react`
+- `@securitydept/session-context-client-angular`
+
+**变更**：
+
+framework-neutral 的 session browser-shell convenience 不再先长在 React adapter 私有层。
+
+- `SessionContextClient` 现在正式拥有 `rememberPostAuthRedirect()`、`clearPostAuthRedirect()`、`resolveLoginUrl()` 与 `logoutAndClearPendingLoginRedirect()`
+- `@securitydept/session-context-client-react` 现在改为包装这些 core 方法，而不是在 adapter 内部自行组合
+- `@securitydept/session-context-client-angular` 现在也通过其 DI/signal service facade 暴露同一条 convenience story
+
+**迁移**：
+
+1. 在 framework-neutral 的 session browser-shell flow 中优先使用新的 core convenience 方法。
+2. 将 React / Angular adapter 视为这些 core 方法的 thin host wrapper。
+3. adapter 内只保留 DI、signal state、provider registration 与 host state wiring。
+
+**理由**：
+
+这些方法并不是 React-specific 行为，而是 canonical 的 session browser-shell convenience，因此应归于 core，避免 adapter parity 再次失真。
+
+---
+
+### 2026-04-22 reference app 内的 session/basic-auth thin-surface parity consolidation
+
+**Discipline**: `provisional-migration-required`
+
+**涉及包**：
+
+- `@securitydept/session-context-client-react`
+- `@securitydept/basic-auth-context-client`
+- `@securitydept/basic-auth-context-client-react`
+
+**变更**：
+
+reference app（`apps/webui`）不再把本地浏览器 glue 当作 session/basic-auth flow 的主要 owner。
+
+- app-local `src/api/auth.ts` session helper 模块已删除
+- app-local `src/lib/basicAuth.ts` browser-boundary helper 模块已删除
+- `SessionContextProvider` / `useSessionContext()` 现在接管 `/login`、`/playground/session` 与 dashboard shell 的 session login URL 解析、pending redirect 状态、user-info 获取与 logout flow
+- `BasicAuthContextClient` 与 `BasicAuthContextProvider` / `useBasicAuthContext()` 现在接管 `/login` 与 `/playground/basic-auth` 的 Basic Auth login entry wiring 与 browser boundary consumption
+
+**迁移**：
+
+1. 用 `SessionContextProvider` + `useSessionContext()` 替换 app-local session glue。
+2. 用 `BasicAuthContextClient` 与 `BasicAuthContextProvider` 替换 app-local Basic Auth login/boundary helper。
+3. 继续保持 thin family 边界：不要在其上重复实现 token-set 的 callback orchestration、token persistence 或 bearer transport ownership。
+
+**理由**：
+
+这两条 family 仍然刻意比 token-set 更薄，但现在已经拥有真实 adopter-facing owner surface，而不是继续依赖未正式产品化的 reference-app glue。
 
 ---
 

@@ -23,8 +23,8 @@ dev-all:
 build-sdks:
     cd sdks/ts && pnpm build
 
-build-webui: build-sdks
-    cd apps/webui && pnpm build
+build-webui:
+    pnpm -r --filter @securitydept/webui... build
 
 build-server:
     cargo build --manifest-path apps/server/Cargo.toml --release
@@ -84,7 +84,7 @@ verify-client-sdk-iteration:
     cd sdks/ts && pnpm test
     cd apps/webui && pnpm test
     cd apps/webui && pnpm typecheck
-    cd apps/webui && pnpm build
+    pnpm -r --filter @securitydept/webui... build
 
 run-server: build
     cargo run --manifest-path apps/server/Cargo.toml --release

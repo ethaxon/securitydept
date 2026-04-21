@@ -59,7 +59,11 @@ describe("session server minimal entry", () => {
 				status: 200,
 				headers: {},
 				body: {
-					principal: { displayName: "Alice", email: "alice@example.com" },
+					principal: {
+						subject: "session-user-1",
+						displayName: "Alice",
+						email: "alice@example.com",
+					},
 				},
 			})),
 		};

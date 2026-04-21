@@ -18,7 +18,8 @@ use openidconnect::{
 };
 use securitydept_oauth_provider::{OAuthProviderRuntime, ProviderMetadataWithExtra};
 use securitydept_utils::observability::{
-    AuthFlowDiagnosis, AuthFlowDiagnosisOutcome, DiagnosedResult,
+    AuthFlowDiagnosis, AuthFlowDiagnosisField, AuthFlowDiagnosisOutcome, AuthFlowOperation,
+    DiagnosedResult,
 };
 use url::Url;
 
@@ -344,7 +345,7 @@ where
         external_base_url: &Url,
         redirect_url_override: Option<&str>,
     ) -> DiagnosedResult<OidcCodeCallbackResult, OidcError> {
-        let diagnosis = AuthFlowDiagnosis::started("oidc.callback")
+        let diagnosis = AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_CALLBACK)
             .field("redirect_override", redirect_url_override)
             .field("external_base_url", external_base_url.as_str())
             .field("pkce_enabled", self.pkce_enabled)
@@ -366,7 +367,7 @@ where
                 return DiagnosedResult::failure(
                     diagnosis
                         .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-                        .field("failure_stage", "csrf_validation"),
+                        .field(AuthFlowDiagnosisField::FAILURE_STAGE, "csrf_validation"),
                     error,
                 );
             }
@@ -382,7 +383,7 @@ where
                 return DiagnosedResult::failure(
                     diagnosis
                         .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                        .field("failure_stage", "pending_oauth_store"),
+                        .field(AuthFlowDiagnosisField::FAILURE_STAGE, "pending_oauth_store"),
                     error,
                 );
             }
@@ -394,7 +395,7 @@ where
                 return DiagnosedResult::failure(
                     diagnosis
                         .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-                        .field("failure_stage", "pending_oauth_state"),
+                        .field(AuthFlowDiagnosisField::FAILURE_STAGE, "pending_oauth_state"),
                     error,
                 );
             }
@@ -419,7 +420,7 @@ where
                 return DiagnosedResult::failure(
                     diagnosis
                         .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                        .field("failure_stage", "token_exchange"),
+                        .field(AuthFlowDiagnosisField::FAILURE_STAGE, "token_exchange"),
                     error,
                 );
             }
@@ -438,7 +439,7 @@ where
                 return DiagnosedResult::failure(
                     diagnosis
                         .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                        .field("failure_stage", "claims_check"),
+                        .field(AuthFlowDiagnosisField::FAILURE_STAGE, "claims_check"),
                     error,
                 );
             }
@@ -485,7 +486,7 @@ where
         refresh_token: String,
         id_token: Option<String>,
     ) -> DiagnosedResult<OidcRefreshTokenResult, OidcError> {
-        let diagnosis = AuthFlowDiagnosis::started("oidc.token_refresh")
+        let diagnosis = AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_TOKEN_REFRESH)
             .field("has_previous_id_token", id_token.is_some())
             .field("pkce_enabled", self.pkce_enabled);
 
@@ -495,7 +496,10 @@ where
                 return DiagnosedResult::failure(
                     diagnosis
                         .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                        .field("failure_stage", "client_metadata_refresh"),
+                        .field(
+                            AuthFlowDiagnosisField::FAILURE_STAGE,
+                            "client_metadata_refresh",
+                        ),
                     error,
                 );
             }
@@ -516,7 +520,10 @@ where
                 return DiagnosedResult::failure(
                     diagnosis
                         .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                        .field("failure_stage", "token_refresh_request_build"),
+                        .field(
+                            AuthFlowDiagnosisField::FAILURE_STAGE,
+                            "token_refresh_request_build",
+                        ),
                     error,
                 );
             }
@@ -535,7 +542,7 @@ where
                 return DiagnosedResult::failure(
                     diagnosis
                         .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                        .field("failure_stage", "token_refresh"),
+                        .field(AuthFlowDiagnosisField::FAILURE_STAGE, "token_refresh"),
                     error,
                 );
             }

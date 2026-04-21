@@ -65,6 +65,7 @@ describe("session-context-client @standard-schema adoption", () => {
 	it("SessionInfoSchema validates canonical camelCase payload", () => {
 		const result = validateWithSchemaSync(SessionInfoSchema, {
 			principal: {
+				subject: "session-user-1",
 				displayName: "Alice",
 				picture: "https://cdn.example.com/alice.png",
 				claims: { role: "admin" },
@@ -83,6 +84,7 @@ describe("session-context-client @standard-schema adoption", () => {
 
 	it("SessionUserInfoResponseSchema validates server-side snake_case payload and normalizes", () => {
 		const result = validateWithSchemaSync(SessionUserInfoResponseSchema, {
+			subject: "session-user-2",
 			display_name: "Bob",
 			picture: "https://cdn.example.com/bob.png",
 			claims: { team: "engineering" },

@@ -62,6 +62,7 @@ describe("session server helper — server-host flow with cookie forwarding", ()
 					status: 200,
 					headers: {},
 					body: {
+						subject: "session-user-server",
 						display_name: "Server User",
 						picture: null,
 						claims: { org: "acme" },

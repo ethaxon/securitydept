@@ -55,7 +55,11 @@ const TokenSetAuthRegistryContext = createContext<ReactRegistry | null>(null);
 // ---------------------------------------------------------------------------
 
 export interface TokenSetAuthProviderProps {
-	/** Client entries registered eagerly (primary) or lazily on mount. */
+	/**
+	 * Adapter/host registration entries. Each entry owns how one client composes
+	 * auth-context config plus runtime capabilities; the provider just registers
+	 * them into the shared React host lifecycle.
+	 */
 	clients: readonly TokenSetClientEntry[];
 	/**
 	 * When true (default), the provider schedules `registry.idleWarmup()` on
@@ -63,6 +67,7 @@ export interface TokenSetAuthProviderProps {
 	 * for tests that want deterministic materialization control.
 	 */
 	idleWarmup?: boolean;
+	/** React host glue only. */
 	children?: ReactNode;
 }
 

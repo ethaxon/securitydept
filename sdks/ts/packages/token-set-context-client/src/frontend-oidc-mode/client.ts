@@ -28,6 +28,7 @@ import type {
 	CancelableHandle,
 	ClientRuntime,
 	KeyedEphemeralFlowStore,
+	OperationScope,
 } from "@securitydept/client";
 import {
 	ClientError,
@@ -35,6 +36,7 @@ import {
 	createKeyedEphemeralFlowStore,
 	interval,
 	LogLevel,
+	normalizeAuthenticatedPrincipal,
 	UserRecovery,
 } from "@securitydept/client";
 import {
@@ -439,115 +441,131 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	async handleCallback(
 		callbackUrl: string,
 	): Promise<FrontendOidcModeCallbackResult> {
-		this._recordTrace(FrontendOidcModeTraceEventType.CallbackStarted);
+		return await this._runOperation(
+			"frontend_oidc.callback",
+			{ flow: "callback" },
+			async (operation) => {
+				this._recordTrace(
+					FrontendOidcModeTraceEventType.CallbackStarted,
+					undefined,
+					operation,
+				);
 
-		try {
-			this._throwIfNotOperational();
+				try {
+					this._throwIfNotOperational();
 
-			const url = new URL(callbackUrl);
-			const state = url.searchParams.get("state");
-			if (!state) {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					message: "Callback URL missing state parameter",
-					code: FrontendOidcModeCallbackErrorCode.MissingState,
-					recovery: UserRecovery.RestartFlow,
-					source: TRACE_SCOPE,
-				});
-			}
+					const url = new URL(callbackUrl);
+					const state = url.searchParams.get("state");
+					if (!state) {
+						throw new ClientError({
+							kind: ClientErrorKind.Protocol,
+							message: "Callback URL missing state parameter",
+							code: FrontendOidcModeCallbackErrorCode.MissingState,
+							recovery: UserRecovery.RestartFlow,
+							source: TRACE_SCOPE,
+						});
+					}
 
-			const pendingResult = await this._takePendingState(state);
-			if (pendingResult.kind === "missing") {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					message:
-						"No pending authorization state exists for this callback state",
-					code: FrontendOidcModeCallbackErrorCode.UnknownState,
-					recovery: UserRecovery.RestartFlow,
-					source: TRACE_SCOPE,
-				});
-			}
+					const pendingResult = await this._takePendingState(state);
+					if (pendingResult.kind === "missing") {
+						throw new ClientError({
+							kind: ClientErrorKind.Protocol,
+							message:
+								"No pending authorization state exists for this callback state",
+							code: FrontendOidcModeCallbackErrorCode.UnknownState,
+							recovery: UserRecovery.RestartFlow,
+							source: TRACE_SCOPE,
+						});
+					}
 
-			if (pendingResult.kind === "duplicate") {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					message: "This callback state has already been consumed",
-					code: FrontendOidcModeCallbackErrorCode.DuplicateState,
-					recovery: UserRecovery.RestartFlow,
-					source: TRACE_SCOPE,
-				});
-			}
+					if (pendingResult.kind === "duplicate") {
+						throw new ClientError({
+							kind: ClientErrorKind.Protocol,
+							message: "This callback state has already been consumed",
+							code: FrontendOidcModeCallbackErrorCode.DuplicateState,
+							recovery: UserRecovery.RestartFlow,
+							source: TRACE_SCOPE,
+						});
+					}
 
-			if (pendingResult.kind === "stale") {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					message: "Pending authorization state expired before callback",
-					code: FrontendOidcModeCallbackErrorCode.PendingStale,
-					recovery: UserRecovery.RestartFlow,
-					source: TRACE_SCOPE,
-				});
-			}
+					if (pendingResult.kind === "stale") {
+						throw new ClientError({
+							kind: ClientErrorKind.Protocol,
+							message: "Pending authorization state expired before callback",
+							code: FrontendOidcModeCallbackErrorCode.PendingStale,
+							recovery: UserRecovery.RestartFlow,
+							source: TRACE_SCOPE,
+						});
+					}
 
-			const pending = pendingResult.pending;
-			if (
-				pending.contextSource !== FrontendOidcModeContextSource.Client ||
-				pending.issuer !== this._config.issuer ||
-				pending.clientId !== this._config.clientId
-			) {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					message:
-						"Pending authorization state does not belong to this frontend OIDC client",
-					code: FrontendOidcModeCallbackErrorCode.PendingClientMismatch,
-					recovery: UserRecovery.RestartFlow,
-					source: TRACE_SCOPE,
-				});
-			}
+					const pending = pendingResult.pending;
+					if (
+						pending.contextSource !== FrontendOidcModeContextSource.Client ||
+						pending.issuer !== this._config.issuer ||
+						pending.clientId !== this._config.clientId
+					) {
+						throw new ClientError({
+							kind: ClientErrorKind.Protocol,
+							message:
+								"Pending authorization state does not belong to this frontend OIDC client",
+							code: FrontendOidcModeCallbackErrorCode.PendingClientMismatch,
+							recovery: UserRecovery.RestartFlow,
+							source: TRACE_SCOPE,
+						});
+					}
 
-			this._throwIfNotOperational();
+					this._throwIfNotOperational();
 
-			await this._ensureAuthServer();
-			const tokens = await this.exchangeCode(
-				callbackUrl,
-				pending.codeVerifier,
-				pending.state,
-				pending.redirectUri,
-				pending.nonce,
-			);
+					await this._ensureAuthServer(operation);
+					const tokens = await this.exchangeCode(
+						callbackUrl,
+						pending.codeVerifier,
+						pending.state,
+						pending.redirectUri,
+						pending.nonce,
+					);
 
-			this._throwIfNotOperational();
+					this._throwIfNotOperational();
 
-			const metadata = await this._performClaimsCheck(tokens);
+					const metadata = await this._performClaimsCheck(tokens);
 
-			const snapshot: AuthStateSnapshot = {
-				tokens: this._tokenResultToTokenSnapshot(tokens),
-				metadata,
-			};
+					const snapshot: AuthStateSnapshot = {
+						tokens: this._tokenResultToTokenSnapshot(tokens),
+						metadata,
+					};
 
-			await this._applySnapshot(snapshot);
+					await this._applySnapshot(snapshot);
 
-			this._runtime.logger?.log({
-				level: LogLevel.Info,
-				message: "Auth state initialized from OIDC callback",
-				scope: TRACE_SCOPE,
-			});
+					this._runtime.logger?.log({
+						level: LogLevel.Info,
+						message: "Auth state initialized from OIDC callback",
+						scope: TRACE_SCOPE,
+					});
 
-			this._recordTrace(FrontendOidcModeTraceEventType.CallbackSucceeded, {
-				hasClaimsCheck: metadata.principal !== undefined,
-				persisted: this._authMaterial.persistence !== null,
-			});
+					this._recordTrace(
+						FrontendOidcModeTraceEventType.CallbackSucceeded,
+						{
+							hasClaimsCheck: metadata.principal !== undefined,
+							persisted: this._authMaterial.persistence !== null,
+						},
+						operation,
+					);
 
-			return {
-				snapshot,
-				postAuthRedirectUri: pending.postAuthRedirectUri,
-			};
-		} catch (error) {
-			this._recordFailureTrace(
-				FrontendOidcModeTraceEventType.CallbackFailed,
-				error,
-			);
-			throw error;
-		}
+					return {
+						snapshot,
+						postAuthRedirectUri: pending.postAuthRedirectUri,
+					};
+				} catch (error) {
+					this._recordFailureTrace(
+						FrontendOidcModeTraceEventType.CallbackFailed,
+						error,
+						undefined,
+						operation,
+					);
+					throw error;
+				}
+			},
+		);
 	}
 
 	/**
@@ -561,52 +579,72 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		if (!current?.tokens.refreshMaterial) {
 			return null;
 		}
+		const refreshMaterial = current.tokens.refreshMaterial;
 
-		this._recordTrace(FrontendOidcModeTraceEventType.RefreshStarted, {
-			hasIdToken: current.tokens.idToken !== undefined,
-		});
+		return await this._runOperation(
+			"frontend_oidc.refresh",
+			{
+				flow: "refresh",
+				hasIdToken: current.tokens.idToken !== undefined,
+			},
+			async (operation) => {
+				this._recordTrace(
+					FrontendOidcModeTraceEventType.RefreshStarted,
+					{
+						hasIdToken: current.tokens.idToken !== undefined,
+					},
+					operation,
+				);
 
-		try {
-			this._throwIfNotOperational();
+				try {
+					this._throwIfNotOperational();
 
-			await this._ensureAuthServer();
-			const tokens = await this.refreshTokens(current.tokens.refreshMaterial);
+					await this._ensureAuthServer(operation);
+					const tokens = await this.refreshTokens(refreshMaterial);
 
-			this._throwIfNotOperational();
+					this._throwIfNotOperational();
 
-			let metadata: AuthStateMetadataSnapshot;
-			if (tokens.idToken) {
-				metadata = await this._performClaimsCheck(tokens);
-			} else {
-				metadata = current.metadata;
-			}
+					let metadata: AuthStateMetadataSnapshot;
+					if (tokens.idToken) {
+						metadata = await this._performClaimsCheck(tokens);
+					} else {
+						metadata = current.metadata;
+					}
 
-			const newSnapshot: AuthStateSnapshot = {
-				tokens: this._tokenResultToTokenSnapshot(tokens),
-				metadata,
-			};
+					const newSnapshot: AuthStateSnapshot = {
+						tokens: this._tokenResultToTokenSnapshot(tokens),
+						metadata,
+					};
 
-			await this._applySnapshot(newSnapshot);
+					await this._applySnapshot(newSnapshot);
 
-			this._runtime.logger?.log({
-				level: LogLevel.Info,
-				message: "Token refreshed successfully",
-				scope: TRACE_SCOPE,
-			});
+					this._runtime.logger?.log({
+						level: LogLevel.Info,
+						message: "Token refreshed successfully",
+						scope: TRACE_SCOPE,
+					});
 
-			this._recordTrace(FrontendOidcModeTraceEventType.RefreshSucceeded, {
-				newIdToken: tokens.idToken !== undefined,
-				persisted: this._authMaterial.persistence !== null,
-			});
+					this._recordTrace(
+						FrontendOidcModeTraceEventType.RefreshSucceeded,
+						{
+							newIdToken: tokens.idToken !== undefined,
+							persisted: this._authMaterial.persistence !== null,
+						},
+						operation,
+					);
 
-			return newSnapshot;
-		} catch (error) {
-			this._recordFailureTrace(
-				FrontendOidcModeTraceEventType.RefreshFailed,
-				error,
-			);
-			throw error;
-		}
+					return newSnapshot;
+				} catch (error) {
+					this._recordFailureTrace(
+						FrontendOidcModeTraceEventType.RefreshFailed,
+						error,
+						undefined,
+						operation,
+					);
+					throw error;
+				}
+			},
+		);
 	}
 
 	/**
@@ -651,7 +689,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	// =======================================================================
 
 	/** Fetch and cache the provider's OpenID discovery document. */
-	async discover(): Promise<void> {
+	async discover(operation?: OperationScope): Promise<void> {
 		const configuredIssuer = this._config.issuer;
 		const configuredIssuerUrl = new URL(configuredIssuer);
 		const response = await discoveryRequest(
@@ -677,6 +715,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 					configuredIssuer,
 					resolvedIssuer: compatibleIssuer,
 				},
+				operation,
 			);
 		}
 	}
@@ -811,11 +850,23 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			undefined as unknown as string,
 			response,
 		);
+		const principal = normalizeAuthenticatedPrincipal({
+			subject: claims.sub,
+			displayName: claims.name,
+			picture: claims.picture,
+			claims: claims as Record<string, unknown>,
+		});
+		if (!principal) {
+			throw new ClientError({
+				kind: ClientErrorKind.Protocol,
+				message: "User info response missing required 'sub' claim",
+				code: "frontend_oidc.invalid_user_info_payload",
+				source: TRACE_SCOPE,
+			});
+		}
 
 		return {
-			subject: String(claims.sub ?? ""),
-			displayName: typeof claims.name === "string" ? claims.name : undefined,
-			picture: typeof claims.picture === "string" ? claims.picture : undefined,
+			...principal,
 			email: typeof claims.email === "string" ? claims.email : undefined,
 			emailVerified:
 				typeof claims.email_verified === "boolean"
@@ -844,13 +895,13 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	// Private: Auth server management
 	// =======================================================================
 
-	private async _ensureAuthServer(): Promise<void> {
+	private async _ensureAuthServer(operation?: OperationScope): Promise<void> {
 		if (this._authServer) return;
 		if (this._canConstructManually()) {
 			this._authServer = this._constructManualAuthServer();
 			return;
 		}
-		await this.discover();
+		await this.discover(operation);
 	}
 
 	private _canConstructManually(): boolean {
@@ -1018,13 +1069,23 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			});
 		}
 
+		const principal = normalizeAuthenticatedPrincipal({
+			subject: decodeJwtPayload(tokens.idToken).sub,
+			displayName: claimsResult.displayName,
+			picture: claimsResult.picture,
+			claims: claimsResult.claims,
+		});
+		if (!principal) {
+			throw new ClientError({
+				kind: ClientErrorKind.Protocol,
+				message: "ID token claims missing required 'sub' claim",
+				code: "frontend_oidc.invalid_principal_payload",
+				source: TRACE_SCOPE,
+			});
+		}
+
 		return {
-			principal: {
-				subject: String(decodeJwtPayload(tokens.idToken).sub ?? ""),
-				displayName: claimsResult.displayName,
-				picture: claimsResult.picture,
-				claims: claimsResult.claims,
-			},
+			principal,
 			source: {
 				kind: "oidc_authorization_code",
 				providerId: this._config.issuer,

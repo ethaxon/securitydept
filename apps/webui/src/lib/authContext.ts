@@ -1,3 +1,5 @@
+import { fromEventPattern } from "@securitydept/client";
+import { fromStorageEvent } from "@securitydept/client/web";
 import {
 	TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	TOKEN_SET_FRONTEND_MODE_CLIENT_KEY,
@@ -49,18 +51,35 @@ export function subscribeAuthContextMode(listener: () => void): () => void {
 		return () => {};
 	}
 
-	const handleStorage = (event: StorageEvent) => {
-		if (event.key === null || event.key === STORAGE_KEY) {
+	const storageSubscription = fromStorageEvent({
+		target: window,
+		callback: (event) => {
+			if (event.key === null || event.key === STORAGE_KEY) {
+				listener();
+			}
+		},
+	});
+	const changeSubscription = fromEventPattern<Event>({
+		addHandler: (handler) => {
+			window.addEventListener(
+				AUTH_CONTEXT_CHANGE_EVENT,
+				handler as EventListener,
+			);
+		},
+		removeHandler: (handler) => {
+			window.removeEventListener(
+				AUTH_CONTEXT_CHANGE_EVENT,
+				handler as EventListener,
+			);
+		},
+		callback: () => {
 			listener();
-		}
-	};
-
-	window.addEventListener("storage", handleStorage);
-	window.addEventListener(AUTH_CONTEXT_CHANGE_EVENT, listener);
+		},
+	});
 
 	return () => {
-		window.removeEventListener("storage", handleStorage);
-		window.removeEventListener(AUTH_CONTEXT_CHANGE_EVENT, listener);
+		storageSubscription.unsubscribe();
+		changeSubscription.unsubscribe();
 	};
 }
 

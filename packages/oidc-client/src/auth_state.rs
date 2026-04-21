@@ -18,9 +18,7 @@
 //! let refreshed = extract_principal_from_refresh_result(&refresh_result);
 //! ```
 
-use std::collections::HashMap;
-
-use serde_json::Value;
+use securitydept_utils::principal::AuthenticatedPrincipal;
 
 use crate::{IdTokenClaimsWithExtra, OidcCodeCallbackResult, OidcRefreshTokenResult};
 
@@ -30,14 +28,7 @@ use crate::{IdTokenClaimsWithExtra, OidcCodeCallbackResult, OidcRefreshTokenResu
 /// OIDC flow produces, but it does *not* carry mode-specific metadata such as
 /// sealed refresh material or metadata-redemption IDs.  Mode modules convert
 /// this into their own `AuthenticatedPrincipal` (or equivalent) as needed.
-#[derive(Debug, Clone)]
-pub struct OidcExtractedPrincipal {
-    pub subject: String,
-    pub display_name: String,
-    pub picture: Option<String>,
-    pub issuer: Option<String>,
-    pub claims: HashMap<String, Value>,
-}
+pub type OidcExtractedPrincipal = AuthenticatedPrincipal;
 
 /// Extract principal from an OIDC authorization-code callback result.
 pub fn extract_principal_from_code_callback(

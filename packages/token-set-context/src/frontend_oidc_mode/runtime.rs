@@ -8,7 +8,9 @@
 //! that future capabilities (browser-callback policy enforcement, frontend
 //! token handoff validation, address validation, etc.) have a proper owner.
 
-use securitydept_utils::observability::{AuthFlowDiagnosis, DiagnosedResult};
+use securitydept_utils::observability::{
+    AuthFlowDiagnosis, AuthFlowDiagnosisField, AuthFlowOperation, DiagnosedResult,
+};
 
 use super::{
     capabilities::FrontendOidcModeCapabilities, config::ResolvedFrontendOidcModeConfig,
@@ -66,8 +68,8 @@ impl FrontendOidcModeRuntime {
     pub async fn config_projection_with_diagnosis(
         &self,
     ) -> DiagnosedResult<FrontendOidcModeConfigProjection, std::io::Error> {
-        let base_diagnosis = AuthFlowDiagnosis::started("projection.config_fetch")
-            .field("mode", "frontend_oidc")
+        let base_diagnosis = AuthFlowDiagnosis::started(AuthFlowOperation::PROJECTION_CONFIG_FETCH)
+            .field(AuthFlowDiagnosisField::MODE, "frontend_oidc")
             .field("client_id", self.config.oidc_client.client_id.clone())
             .field("pkce_enabled", self.config.oidc_client.pkce_enabled)
             .field(
@@ -93,7 +95,10 @@ impl FrontendOidcModeRuntime {
                     .with_outcome(
                         securitydept_utils::observability::AuthFlowDiagnosisOutcome::Failed,
                     )
-                    .field("failure_stage", "projection_generation"),
+                    .field(
+                        AuthFlowDiagnosisField::FAILURE_STAGE,
+                        "projection_generation",
+                    ),
                 error,
             ),
         }
@@ -185,9 +190,15 @@ mod tests {
         let diagnosed = runtime.config_projection_with_diagnosis().await;
 
         assert!(diagnosed.result().is_ok());
-        assert_eq!(diagnosed.diagnosis().operation, "projection.config_fetch");
+        assert_eq!(
+            diagnosed.diagnosis().operation,
+            AuthFlowOperation::PROJECTION_CONFIG_FETCH
+        );
         assert_eq!(diagnosed.diagnosis().outcome.as_str(), "succeeded");
-        assert_eq!(diagnosed.diagnosis().fields["mode"], "frontend_oidc");
+        assert_eq!(
+            diagnosed.diagnosis().fields[AuthFlowDiagnosisField::MODE],
+            "frontend_oidc"
+        );
         assert_eq!(diagnosed.diagnosis().fields["client_id"], "spa-client");
     }
 }

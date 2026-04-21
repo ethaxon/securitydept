@@ -1,3 +1,4 @@
+import { useSessionContext } from "@securitydept/session-context-client-react";
 import type { AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	type TokenSetBackendOidcClient,
@@ -20,7 +21,6 @@ import {
 } from "@securitydept/token-set-context-client-react/react-query";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
-import { logoutCurrentSession, useUserInfo } from "@/api/auth";
 import {
 	useCreateBasicEntry,
 	useCreateTokenEntry,
@@ -44,6 +44,7 @@ import {
 	resolveTokenSetClientKey,
 	subscribeAuthContextMode,
 } from "@/lib/authContext";
+import { projectDashboardUser } from "@/lib/dashboardPrincipal";
 import { clearTokenSetBackendModeBrowserState } from "@/lib/tokenSetBackendModeClient";
 import { TOKEN_SET_BACKEND_MODE_CLIENT_KEY } from "@/lib/tokenSetConfig";
 import { clearTokenSetFrontendModeBrowserState } from "@/lib/tokenSetFrontendModeClient";
@@ -51,13 +52,6 @@ import { clearTokenSetFrontendModeBrowserState } from "@/lib/tokenSetFrontendMod
 interface DashboardNotice {
 	title: string;
 	description: string;
-}
-
-interface DashboardUser {
-	displayName: string;
-	picture?: string;
-	contextLabel: string;
-	showIdentity?: boolean;
 }
 
 interface DashboardRuntime {
@@ -288,22 +282,19 @@ export function useDashboardDeleteEntryMutation() {
 
 export function useDashboardCurrentUser() {
 	const { mode, tokenSetClient, tokenSetState } = useDashboardRuntime();
-	const sessionQuery = useUserInfo({
-		enabled: mode === AuthContextMode.Session,
-	});
+	const { loading: sessionLoading, session } = useSessionContext();
 
 	if (mode === AuthContextMode.Session) {
-		if (!sessionQuery.data) {
-			return { user: null, isLoading: sessionQuery.isLoading };
+		if (!session) {
+			return { user: null, isLoading: sessionLoading };
 		}
 
 		return {
-			user: {
-				displayName: sessionQuery.data.principal.displayName,
-				picture: sessionQuery.data.principal.picture,
+			user: projectDashboardUser({
+				principal: session.principal,
 				contextLabel: "Session",
-			} satisfies DashboardUser,
-			isLoading: sessionQuery.isLoading,
+			}),
+			isLoading: sessionLoading,
 		};
 	}
 
@@ -311,14 +302,13 @@ export function useDashboardCurrentUser() {
 		const principal = tokenSetState?.metadata.principal;
 		return {
 			user: principal
-				? ({
-						displayName: principal.displayName ?? principal.subject ?? "User",
-						picture: principal.picture,
+				? projectDashboardUser({
+						principal,
 						contextLabel:
 							mode === AuthContextMode.TokenSetBackend
 								? "Token Set Backend Mode"
 								: "Token Set Frontend Mode",
-					} satisfies DashboardUser)
+					})
 				: null,
 			isLoading: false,
 			tokenSetClient,
@@ -326,11 +316,12 @@ export function useDashboardCurrentUser() {
 	}
 
 	return {
-		user: {
-			displayName: "Basic auth context",
+		user: projectDashboardUser({
 			contextLabel: "Basic",
+			fallbackDisplayName: "Basic auth context",
+			fallbackSubject: "context.basic-auth",
 			showIdentity: false,
-		} satisfies DashboardUser,
+		}),
 		isLoading: false,
 		tokenSetClient,
 	};
@@ -338,6 +329,7 @@ export function useDashboardCurrentUser() {
 
 export function useDashboardLogout() {
 	const { mode, tokenSetClient, tokenSetClientKey } = useDashboardRuntime();
+	const { logout: logoutCurrentSession } = useSessionContext();
 	const queryClient = useQueryClient();
 
 	const redirectToLogin = () => {
@@ -348,8 +340,7 @@ export function useDashboardLogout() {
 	const sessionLogoutMutation = useMutation({
 		mutationKey: ["dashboard", "logout", "session"],
 		mutationFn: logoutCurrentSession,
-		onSuccess: async () => {
-			await queryClient.removeQueries({ queryKey: ["auth"] });
+		onSuccess: () => {
 			redirectToLogin();
 		},
 	});

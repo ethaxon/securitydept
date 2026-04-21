@@ -46,8 +46,19 @@ export {
 	takeUntil,
 	tap,
 } from "./events/index";
+// --- Identity ---
+export type {
+	AuthenticatedPrincipal,
+	ProjectAuthenticatedPrincipalOptions,
+} from "./identity/index";
+export {
+	normalizeAuthenticatedPrincipal,
+	normalizeAuthenticatedPrincipalWire,
+	projectAuthenticatedPrincipal,
+} from "./identity/index";
 // --- Logging ---
 export type {
+	CreateOperationTracerOptions,
 	LogEntry,
 	LoggerTrait,
 	OperationScope,
@@ -60,8 +71,10 @@ export type {
 export {
 	createConsoleLogger,
 	createNoopLogger,
+	createOperationTracer,
 	createTraceTimelineStore,
 	LogLevel,
+	OperationTraceEventType,
 } from "./logging/index";
 // --- Persistence ---
 export type {
@@ -87,7 +100,10 @@ export type {
 	CancelableHandle as SchedulerCancelableHandle,
 	Clock,
 	FromEventPatternOptions,
+	FromPromiseOptions,
+	FromSignalOptions,
 	IntervalOptions,
+	PromiseSettlement,
 	ScheduleAtOptions,
 	Scheduler,
 	Subscription,
@@ -97,7 +113,10 @@ export {
 	createDefaultClock,
 	createDefaultScheduler,
 	fromEventPattern,
+	fromPromise,
+	fromSignal,
 	interval,
+	PromiseSettlementKind,
 	scheduleAt,
 	timer,
 } from "./scheduling/index";

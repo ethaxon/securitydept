@@ -14,6 +14,7 @@ use securitydept_core::{
 };
 
 use crate::{
+    diagnosis::{RouteDiagnosisContext, log_route_diagnosis, log_route_diagnosis_error},
     error::{ServerError, ServerResult},
     http_response::into_axum_response,
     state::ServerState,
@@ -54,21 +55,27 @@ pub async fn callback(
         .await;
     let (diagnosis, result) = diagnosed.into_parts();
     let response = result.map(into_axum_response).map_err(|error| {
-        tracing::warn!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            error = %error,
-            "backend_oidc callback failed"
+        log_route_diagnosis_error(
+            RouteDiagnosisContext {
+                route: "/auth/token-set/backend-mode/callback",
+                method: "GET",
+                status: None,
+            },
+            &diagnosis,
+            &error,
+            "backend_oidc callback failed",
         );
         ServerError::from(error)
     })?;
     if matches!(diagnosis.outcome, AuthFlowDiagnosisOutcome::Succeeded) {
-        tracing::info!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            "backend_oidc callback succeeded"
+        log_route_diagnosis(
+            RouteDiagnosisContext {
+                route: "/auth/token-set/backend-mode/callback",
+                method: "GET",
+                status: Some(response.status().as_u16()),
+            },
+            &diagnosis,
+            "backend_oidc callback succeeded",
         );
     }
     Ok(response)
@@ -89,21 +96,27 @@ pub async fn callback_body(
         .await;
     let (diagnosis, result) = diagnosed.into_parts();
     let body = result.map_err(|error| {
-        tracing::warn!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            error = %error,
-            "backend_oidc callback body failed"
+        log_route_diagnosis_error(
+            RouteDiagnosisContext {
+                route: "/auth/token-set/backend-mode/callback",
+                method: "POST",
+                status: None,
+            },
+            &diagnosis,
+            &error,
+            "backend_oidc callback body failed",
         );
         ServerError::from(error)
     })?;
     if matches!(diagnosis.outcome, AuthFlowDiagnosisOutcome::Succeeded) {
-        tracing::info!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            "backend_oidc callback body succeeded"
+        log_route_diagnosis(
+            RouteDiagnosisContext {
+                route: "/auth/token-set/backend-mode/callback",
+                method: "POST",
+                status: Some(200),
+            },
+            &diagnosis,
+            "backend_oidc callback body succeeded",
         );
     }
     Ok(Json(body).into_response())
@@ -123,21 +136,27 @@ pub async fn refresh(
         .await;
     let (diagnosis, result) = diagnosed.into_parts();
     let body = result.map_err(|error| {
-        tracing::warn!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            error = %error,
-            "backend_oidc refresh failed"
+        log_route_diagnosis_error(
+            RouteDiagnosisContext {
+                route: "/auth/token-set/backend-mode/refresh",
+                method: "POST",
+                status: None,
+            },
+            &diagnosis,
+            &error,
+            "backend_oidc refresh failed",
         );
         ServerError::from(error)
     })?;
     if matches!(diagnosis.outcome, AuthFlowDiagnosisOutcome::Succeeded) {
-        tracing::info!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            "backend_oidc refresh succeeded"
+        log_route_diagnosis(
+            RouteDiagnosisContext {
+                route: "/auth/token-set/backend-mode/refresh",
+                method: "POST",
+                status: Some(200),
+            },
+            &diagnosis,
+            "backend_oidc refresh succeeded",
         );
     }
     Ok(Json(body).into_response())

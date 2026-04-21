@@ -12,7 +12,27 @@
 // import from config-source.ts directly and provide their own source
 // factories without pulling in browser assumptions.
 
-import type { RecordStore } from "@securitydept/client";
+import {
+	ClientError,
+	type Clock,
+	type HttpTransport,
+	type LoggerTrait,
+	type RecordStore,
+	type Scheduler,
+	type TraceEventSinkTrait,
+} from "@securitydept/client";
+import {
+	createLocalStorageStore,
+	createSessionStorageStore,
+} from "@securitydept/client/persistence/web";
+import {
+	createWebRuntime,
+	type FetchTransportOptions,
+} from "@securitydept/client/web";
+import {
+	createFrontendOidcModeClient,
+	type FrontendOidcModeClient,
+} from "./client";
 import type {
 	ConfigProjectionSourceBootstrapScript,
 	ConfigProjectionSourceNetwork,
@@ -21,7 +41,122 @@ import type {
 	ResolvedConfigProjection,
 } from "./config-source";
 import { ConfigProjectionSourceKind } from "./config-source";
+import { parseConfigProjection } from "./contracts";
 import type { FrontendOidcModeClientConfig } from "./types";
+
+const FRONTEND_OIDC_PERSISTENT_PREFIX =
+	"securitydept.web.frontend_oidc:persistent:";
+const FRONTEND_OIDC_SESSION_PREFIX = "securitydept.web.frontend_oidc:session:";
+
+export function resolveFrontendOidcModePersistentStateKey(
+	config: FrontendOidcModeClientConfig,
+): string {
+	return (
+		config.persistentStateKey ??
+		`securitydept.frontend_oidc:v1:${config.issuer}:${config.clientId}`
+	);
+}
+
+export function resolveFrontendOidcModeBrowserStorageKey(
+	config: FrontendOidcModeClientConfig,
+	storagePrefix = FRONTEND_OIDC_PERSISTENT_PREFIX,
+): string {
+	return `${storagePrefix}${resolveFrontendOidcModePersistentStateKey(config)}`;
+}
+
+export interface CreateFrontendOidcModeBrowserClientOptions {
+	configEndpoint: string;
+	redirectUri: string;
+	defaultPostAuthRedirectUri?: string;
+	persistentStoragePrefix?: string;
+	sessionStoragePrefix?: string;
+	persistentStore?: RecordStore;
+	sessionStore?: RecordStore;
+	transport?: HttpTransport;
+	fetchTransport?: FetchTransportOptions;
+	scheduler?: Scheduler;
+	clock?: Clock;
+	logger?: LoggerTrait;
+	traceSink?: TraceEventSinkTrait;
+}
+
+export interface FrontendOidcModeBrowserClientMaterialization {
+	client: FrontendOidcModeClient;
+	config: FrontendOidcModeClientConfig;
+	resolvedProjection: ResolvedConfigProjection;
+	browserPersistentStorageKey: string;
+}
+
+/**
+ * Materialize a browser-owned frontend OIDC client from a projection endpoint
+ * plus browser runtime capabilities.
+ */
+export async function createFrontendOidcModeBrowserClient(
+	options: CreateFrontendOidcModeBrowserClientOptions,
+): Promise<FrontendOidcModeBrowserClientMaterialization> {
+	const configEndpoint = new URL(
+		options.configEndpoint,
+		window.location.origin,
+	);
+	configEndpoint.searchParams.set("redirect_uri", options.redirectUri);
+	const response = await fetch(configEndpoint.toString());
+	if (!response.ok) {
+		const body = await response.json().catch(() => undefined);
+		throw ClientError.fromHttpResponse(response.status, body);
+	}
+
+	const projection = await response.json();
+	const parsed = parseConfigProjection(projection, {
+		redirectUri: options.redirectUri,
+		defaultPostAuthRedirectUri: options.defaultPostAuthRedirectUri ?? "/",
+	});
+	if (!parsed.success) {
+		throw new Error(
+			"Frontend-mode config projection response did not match the shared projection schema.",
+		);
+	}
+
+	const resolvedProjection: ResolvedConfigProjection = {
+		config: parsed.value,
+		sourceKind: ConfigProjectionSourceKind.Network,
+		generatedAt:
+			typeof projection === "object" &&
+			projection !== null &&
+			"generatedAt" in projection &&
+			typeof (projection as { generatedAt?: unknown }).generatedAt === "number"
+				? (projection as { generatedAt: number }).generatedAt
+				: undefined,
+		rawProjection: projection,
+	};
+
+	const persistentStoragePrefix =
+		options.persistentStoragePrefix ?? FRONTEND_OIDC_PERSISTENT_PREFIX;
+	const sessionStoragePrefix =
+		options.sessionStoragePrefix ?? FRONTEND_OIDC_SESSION_PREFIX;
+	const runtime = createWebRuntime({
+		transport: options.transport,
+		fetchTransport: options.fetchTransport,
+		scheduler: options.scheduler,
+		clock: options.clock,
+		logger: options.logger,
+		traceSink: options.traceSink,
+		persistentStore:
+			options.persistentStore ??
+			createLocalStorageStore(persistentStoragePrefix),
+		sessionStore:
+			options.sessionStore ?? createSessionStorageStore(sessionStoragePrefix),
+	});
+
+	return {
+		client: createFrontendOidcModeClient(parsed.value, runtime),
+		config: parsed.value,
+		resolvedProjection,
+		browserPersistentStorageKey: resolveFrontendOidcModeBrowserStorageKey(
+			parsed.value,
+			persistentStoragePrefix,
+		),
+	};
+}
 
 // ---------------------------------------------------------------------------
 // Network source: browser fetch

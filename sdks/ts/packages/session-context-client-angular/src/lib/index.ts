@@ -49,7 +49,10 @@ export const SESSION_CONTEXT_TRANSPORT = new InjectionToken<HttpTransport>(
  * Angular service facade for `SessionContextClient`.
  *
  * Provides Angular signal-based state, auto-probe on construction,
- * and convenience methods. Automatically cleans up on component teardown.
+ * and convenience methods. The canonical browser-shell path is
+ * `rememberPostAuthRedirect()` + `resolveLoginUrl()` + `logout()`.
+ * Low-level escape hatches stay on `auth.client`, not on the Angular service
+ * facade itself. Automatically cleans up on component teardown.
  *
  * @example
  * ```ts
@@ -95,24 +98,26 @@ export class SessionContextService {
 		return this.session() !== null;
 	}
 
-	/** Build the login URL. */
-	loginUrl(postAuthRedirectUri?: string): string {
-		return this.client.loginUrl(postAuthRedirectUri);
+	/** Save a pending login redirect using the canonical browser-shell vocabulary. */
+	async rememberPostAuthRedirect(uri: string): Promise<void> {
+		return this.client.rememberPostAuthRedirect(uri);
 	}
 
-	/** Build the logout URL. */
-	logoutUrl(): string {
-		return this.client.logoutUrl();
+	/** Clear any pending post-auth redirect intent. */
+	async clearPostAuthRedirect(): Promise<void> {
+		return this.client.clearPostAuthRedirect();
 	}
 
-	/** Save a pending login redirect. */
-	async savePendingLoginRedirect(uri: string): Promise<void> {
-		return this.client.savePendingLoginRedirect(uri);
+	/** Resolve the next login URL by consuming any pending redirect intent. */
+	async resolveLoginUrl(): Promise<string> {
+		return this.client.resolveLoginUrl();
 	}
 
-	/** Consume the pending login redirect. */
-	async consumePendingLoginRedirect(): Promise<string | null> {
-		return this.client.consumePendingLoginRedirect();
+	/** Execute logout and clear any stale pending redirect intent. */
+	async logout(): Promise<void> {
+		await this.client.logoutAndClearPendingLoginRedirect(this.transport);
+		this.session.set(null);
+		this.loading.set(false);
 	}
 }
 

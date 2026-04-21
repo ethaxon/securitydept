@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import {
 	ClientErrorKind,
 	readErrorPresentationDescriptor,
@@ -49,36 +51,75 @@ describe("webui auth smoke", () => {
 	});
 
 	it("consumes pending redirect when resolving login URL", async () => {
-		const auth = await import("../api/auth");
+		const { sessionContextClient } = await import("../lib/sessionContext");
 
-		await auth.rememberPostAuthRedirect("/entries?tab=all");
+		await sessionContextClient.savePendingLoginRedirect("/entries?tab=all");
 
-		await expect(auth.resolveLoginUrl()).resolves.toBe(
+		const firstRedirect =
+			await sessionContextClient.consumePendingLoginRedirect();
+		expect(sessionContextClient.loginUrl(firstRedirect ?? undefined)).toBe(
 			"/auth/session/login?post_auth_redirect_uri=%2Fentries%3Ftab%3Dall",
 		);
-		await expect(auth.resolveLoginUrl()).resolves.toBe("/auth/session/login");
+
+		const secondRedirect =
+			await sessionContextClient.consumePendingLoginRedirect();
+		expect(sessionContextClient.loginUrl(secondRedirect ?? undefined)).toBe(
+			"/auth/session/login",
+		);
 	});
 
 	it("stores and clears redirect intent via session helpers", async () => {
-		const auth = await import("../api/auth");
+		const { sessionContextClient } = await import("../lib/sessionContext");
 
-		await auth.rememberPostAuthRedirect("/groups?tab=members");
-		await expect(auth.resolveLoginUrl()).resolves.toBe(
-			"/auth/session/login?post_auth_redirect_uri=%2Fgroups%3Ftab%3Dmembers",
+		await sessionContextClient.savePendingLoginRedirect("/groups?tab=members");
+		expect(await sessionContextClient.loadPendingLoginRedirect()).toBe(
+			"/groups?tab=members",
 		);
 
-		// After consuming, the redirect intent is cleared
-		await expect(auth.resolveLoginUrl()).resolves.toBe("/auth/session/login");
+		await sessionContextClient.clearPendingLoginRedirect();
+		const redirect = await sessionContextClient.consumePendingLoginRedirect();
+		expect(sessionContextClient.loginUrl(redirect ?? undefined)).toBe(
+			"/auth/session/login",
+		);
+	});
+
+	it("notifies auth-context subscribers through shared storage and custom-event bridges", async () => {
+		const { AuthContextMode, setAuthContextMode, subscribeAuthContextMode } =
+			await import("../lib/authContext");
+		const listener = vi.fn();
+		const unsubscribe = subscribeAuthContextMode(listener);
+
+		window.dispatchEvent(
+			new StorageEvent("storage", {
+				key: "securitydept.webui.auth_context_mode",
+				newValue: AuthContextMode.TokenSetFrontend,
+			}),
+		);
+		expect(listener).toHaveBeenCalledTimes(1);
+
+		setAuthContextMode(AuthContextMode.Basic);
+		expect(listener).toHaveBeenCalledTimes(2);
+
+		unsubscribe();
+		window.dispatchEvent(
+			new StorageEvent("storage", {
+				key: "securitydept.webui.auth_context_mode",
+				newValue: AuthContextMode.Session,
+			}),
+		);
+		expect(listener).toHaveBeenCalledTimes(2);
 	});
 
 	it("builds an explicit session login URL without consuming stored redirect intent", async () => {
-		const auth = await import("../api/auth");
+		const { sessionContextClient } = await import("../lib/sessionContext");
 
-		await auth.rememberPostAuthRedirect("/groups?tab=members");
-		expect(auth.buildLoginUrl("/playground/session")).toBe(
+		await sessionContextClient.savePendingLoginRedirect("/groups?tab=members");
+		expect(sessionContextClient.loginUrl("/playground/session")).toBe(
 			"/auth/session/login?post_auth_redirect_uri=%2Fplayground%2Fsession",
 		);
-		await expect(auth.resolveLoginUrl()).resolves.toBe(
+
+		const redirect = await sessionContextClient.consumePendingLoginRedirect();
+		expect(sessionContextClient.loginUrl(redirect ?? undefined)).toBe(
 			"/auth/session/login?post_auth_redirect_uri=%2Fgroups%3Ftab%3Dmembers",
 		);
 	});
@@ -88,17 +129,24 @@ describe("webui auth smoke", () => {
 			"fetch",
 			vi.fn(async () =>
 				createJsonResponse(200, {
+					subject: "session-user-1",
 					display_name: "Alice",
 				}),
 			),
 		);
-		const auth = await import("../api/auth");
+		const { sessionContextClient, sessionContextTransport } = await import(
+			"../lib/sessionContext"
+		);
 
-		const session = await auth.fetchCurrentSession();
+		const session = await sessionContextClient.fetchUserInfo(
+			sessionContextTransport,
+		);
 		expect(session).toEqual({
 			principal: {
+				subject: "session-user-1",
 				displayName: "Alice",
 				picture: undefined,
+				issuer: undefined,
 				claims: undefined,
 			},
 		});
@@ -109,9 +157,13 @@ describe("webui auth smoke", () => {
 			"fetch",
 			vi.fn(async () => createJsonResponse(401, { message: "unauthorized" })),
 		);
-		const auth = await import("../api/auth");
+		const { sessionContextClient, sessionContextTransport } = await import(
+			"../lib/sessionContext"
+		);
 
-		const session = await auth.fetchCurrentSession();
+		const session = await sessionContextClient.fetchUserInfo(
+			sessionContextTransport,
+		);
 		expect(session).toBeNull();
 	});
 
@@ -127,13 +179,19 @@ describe("webui auth smoke", () => {
 			},
 		);
 		vi.stubGlobal("fetch", fetchMock);
-		const auth = await import("../api/auth");
+		const { sessionContextClient, sessionContextTransport } = await import(
+			"../lib/sessionContext"
+		);
 
-		await auth.rememberPostAuthRedirect("/entries/new");
-		await auth.logoutCurrentSession();
+		await sessionContextClient.savePendingLoginRedirect("/entries/new");
+		await sessionContextClient.logout(sessionContextTransport);
+		await sessionContextClient.clearPendingLoginRedirect();
 
 		expect(fetchMock).toHaveBeenCalledTimes(1);
-		await expect(auth.resolveLoginUrl()).resolves.toBe("/auth/session/login");
+		const redirect = await sessionContextClient.consumePendingLoginRedirect();
+		expect(sessionContextClient.loginUrl(redirect ?? undefined)).toBe(
+			"/auth/session/login",
+		);
 	});
 
 	it("maps structured auth envelopes into ClientError presentation for dashboard APIs", async () => {

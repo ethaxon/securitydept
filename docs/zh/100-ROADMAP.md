@@ -149,10 +149,22 @@
 - roadmap 仍提 basic-auth 与 cookie-session helper，但没有把这件事明确成“当前存在的不平衡”
 - 如果持续放任，项目会很容易演变成：一条 TS product surface 很完整，另外两条只是“文档已写但未同等产品化”
 
-当前需要持续观察的 parity gap：
+第 136 轮后的当前 parity baseline：
 
-- `basic-auth-context-client` 虽然应保持 thin，但仍需要更清晰的 productized baseline
-- `session-context-client` 在 root contract 层已稳定，但 adopter-facing helper story 仍明显轻于 token-set
+- `basic-auth-context-client` 仍刻意保持 thin，但 reference app 已真实消费其 root/browser helper story 与 `@securitydept/basic-auth-context-client-react`，用于 login entry wiring 与 playground owner
+- `session-context-client` 现在已通过 `@securitydept/session-context-client-react` 接管 reference app 的 session login redirect、pending redirect、user-info 与 logout story
+- 仍保留的差异是刻意为之：这两条 family 都不复制 token-set 的 callback orchestration、token material persistence 与 bearer transport ownership
+
+第 137 轮补充收口：
+
+- 剩余的 framework-neutral session convenience 已从 React adapter glue 上提到 `SessionContextClient` core，让 React 与 Angular 消费同一条 canonical browser-shell story
+- `basic-auth-context` family audit 结论是没有同类 React-only convenience 漏口；共享 boundary helper 已在 core，adapter 继续保持 thin host wrapper
+
+第 142 轮补充收口：
+
+- shared authenticated-principal baseline 现已在 TypeScript、webui host projection 与 Rust auth crate 三侧明确落地：`@securitydept/client` 拥有 TS/browser semantic baseline，`securitydept-utils::principal` 拥有 Rust/server baseline
+- session-context 与 token-set 不再继续维护彼此不对齐的 human-principal semantic owner；后端侧仍保留的独立 struct 若存在，应只被视为 wire/transport DTO，而不是第二 semantic owner
+- resource-token fact 仍明确独立于 authenticated human-principal projection；mixed-custody / BFF / server-side token ownership 依然是后续主题，不能被这次 consolidation 误读成已进入当前范围
 
 ### 优先级 4：把 public-surface governance 与 release discipline 正式写进项目文档
 
@@ -190,12 +202,12 @@
 
 当前应明确保留可见性的主题：
 
-- richer event/operator/source surface 仍明显薄于讨论稿设想；当前 public baseline 仍刻意保持最小化
-- capability-first configuration layering 已是方向，但仍未收成统一 adopter-facing config story
-- logger / trace sink / operation tracer / testing observation hierarchy 已不再只是设计纪律：iteration 121 已把最小 shared trace path（`TraceEvent`、`createTraceTimelineStore()`、`FrontendOidcModeTraceEventType`、reference-app trace timeline consumption，以及 direct trace assertions）产品化。iteration 135 又完成了第一轮 cross-runtime consolidation：token-set frontend/backend 现已共享同一条显式 structured-trace host story，Basic Auth 与 browser harness 现已落到正式 observation hierarchy 上，而更完整的 operation-tracer layering / exporter story 仍属于后续工作
+- richer source-helper baseline 现已在 foundation 与 web/browser 两层完成产品化（`fromSignal`、`fromPromise`、`fromAbortSignal`、`fromStorageEvent`），但更完整的 operator family 与更重的 stream-composition DSL 仍属于后续工作
+- capability-first configuration layering 现在已从“方向”推进成正式 adopter-facing baseline：runtime/foundation config、auth-context config、adapter/host config 现已成为正式三层；`frontend-oidc-mode` 现已通过 `createFrontendOidcModeBrowserClient()` 拥有 browser materialization；当前 remaining non-baseline 则是不再假装已经存在一个统一的大而全 global config DSL
+- logger / trace sink / operation tracer / testing observation hierarchy 已不再只是设计纪律：iteration 121 已把最小 shared trace path（`TraceEvent`、`createTraceTimelineStore()`、`FrontendOidcModeTraceEventType`、reference-app trace timeline consumption，以及 direct trace assertions）产品化。iteration 135 又完成了第一轮 cross-runtime consolidation：token-set frontend/backend 现已共享同一条显式 structured-trace host story，Basic Auth 与 browser harness 现已落到正式 observation hierarchy 上。第 141 轮随后把缺失的 TS operation correlation layer 本身也产品化：`createOperationTracer()`、`OperationTraceEventType`、operation-aware `InMemoryTraceCollector`、token-set callback/refresh correlation，以及 reference-app timeline consumption 现已进入 baseline。更重的 exporter / cross-service ingestion / full OTel 仍属于后续工作
 - dual-layer error model 现在也已从“讨论方向”前进到“部分产品化”：`@securitydept/client` 拥有共享 machine-facing runtime 与 host-facing presentation descriptor 之间的桥，`frontend-oidc-mode` 在其上拥有 callback-specific presentation mapping，而 `apps/webui` 已在 frontend callback / popup 与 backend browser action 上证明这条共享 contract。更完整的 cross-family presentation taxonomy hardening 仍属于后续工作，但 app-local message parsing 已不再是正确 baseline
 - Rust / server 侧的 dual-layer HTTP error handling 也已不再只是讨论主题：iteration 124 已在 `securitydept-utils::error` 中产品化共享 `ServerErrorKind` / `ServerErrorDescriptor` / `ServerErrorEnvelope` baseline，并让 `apps/server` 的 `ServerError` 统一通过它对外返回，同时提供了 machine-facing + host-facing envelope 的直接 client/test consumption 证据。iteration 125 进一步把 propagation auth-boundary middleware response 与 `apps/webui` 的 reference-app consumer（frontend-mode config fetch、dashboard API client）拉进这条 baseline。iteration 126 则把剩余的 Basic Auth challenge/poison path 单独收成了 `securitydept-basic-auth-context` 拥有的 protocol-specific exception baseline，并通过 server/browser 直接证据明确这些响应必须保留 header/poison 语义，而不是被强行塞回 shared envelope baseline。iteration 127 继续补强了这条 exception baseline 的 browser-evidence 侧：reference app 现在把 protocol guarantee 与 Chromium-observed challenge behavior 分开写实，通过 browser e2e 证明 no-cached-credentials path，并把 logout 之后的 credential-cache eviction 明确保留为 cross-browser debt，而不是过度写成协议事实。iteration 128 则继续推进这条 evidence baseline：它补出了一条依赖正式 Chromium authorization-header harness 的 authenticated logout browser sequence，把 reference app 上的 verified browser matrix 单独显式化，并写清本地 Playwright 环境当前仍只有 Chromium，而没有已验证的第二浏览器路径。第 129 轮随后将浏览器 harness 能力报告本身产品化：`apps/webui/e2e/support/browser-harness.ts` 现在正式拥有哪种 Playwright 浏览器可用、哪种不可用、它们属于哪条 execution baseline，以及哪些 auth-flow 场景在哪个浏览器上已验证，并明确区分 browser-native 与 harness-backed；`basic-auth` 和 `frontend-oidc` 两个 e2e 测试套件均消费该 owner；`playwright.config.ts` 从同一 owner 派生浏览器检测。第 130 轮随后将 Firefox 作为第二个已验证浏览器接入 Playwright harness：全部 10 个 auth-flow 场景（2 个 basic-auth + 8 个 frontend-oidc）在 Firefox 上通过 Playwright 托管可执行文件检测验证通过，建立了首个多浏览器已验证基线。第 131 轮随后把第三浏览器路径从“host blocked 即终点”收正为正式的双路径叙事：对 Linux 非 Debian/Ubuntu 宿主，host-native WebKit 在运行时启动 probe 观察到宿主依赖缺失时仍会被正式记为 `blocked`；但 repo 预置的 `distrobox` `playwright-env` 现在成为 canonical 的 Ubuntu execution baseline，在其中 Playwright 托管 WebKit runtime 为 `available`，并且 `frontend-oidc.callback.redirect` 已经取得一条真实 verified callback 结果。harness owner 也不再把 Playwright 私有缓存布局当成稳定 contract，而是改由 Playwright runtime 的 executable discovery 与 repo-level override 输入提供 managed-browser capability。第 132 轮随后把 execution baseline policy 本身产品化：Chromium 与 Firefox 正式保留 host-native 作为 `primary-authority`，WebKit 则把 host-native 作为 `host-truth`、把 `distrobox` Ubuntu 作为 `canonical-recovery-path`，并明确拒绝把全部浏览器压平成同一条 distrobox 默认路径，因为那会抹掉已经验证完成的 host-native browser-owned evidence。现在同一条 frontend OIDC baseline test 已被同时用于 Firefox host-native 与 WebKit distrobox-hosted 证据，证明两条 baseline 回答的是不同问题，而不是谁简单替代谁。第 133 轮随后继续扩展了这条 canonical distrobox baseline 下的 WebKit verified matrix：`frontend-oidc.popup.relay` 现已加入 `frontend-oidc.callback.redirect`，使 distrobox-hosted WebKit 在当前 10 个 harness 场景中形成 2 个 verified、0 个 blocked、8 个 unavailable 的正式分布，而且没有引入新的 browser-specific failure divergence。第 134 轮随后一次性收口了剩余 WebKit matrix：剩余 6 条 `frontend-oidc` 场景与 2 条 Basic Auth 场景现已全部在 Playwright 下验证通过，使 distrobox-hosted WebKit 形成 10 个 verified、0 个 blocked、0 个 unavailable 的完整矩阵；同时也把一条更细的 browser-specific divergence 写成正式 authority：WebKit 会把显式 Basic Auth challenge 提交为带 `WWW-Authenticate` 的 `401` 响应，而 Chromium 与 Firefox 则仍在页面渲染前进入 browser-owned auth failure channel
-- Rust / server 侧的 structured observability 已不再只是 future topic：iteration 123 已在 `securitydept-utils::observability` 中建立最小共享 auth-flow diagnosis baseline，并把它接入 projection/config fetch、callback/token refresh、forward-auth 与 propagation，同时证明了至少一条可直接消费 machine-readable diagnosis surface 的测试路径。iteration 135 又把同一 owner 扩到 session-context login/logout/user-info 与 basic-auth login/logout/authorize，并让 `apps/server` route/middleware 直接消费这些 diagnosed result。更广的 route coverage 与 exporter/timeline 仍属于后续工作
+- Rust / server 侧的 structured observability 已不再只是 future topic：iteration 123 已在 `securitydept-utils::observability` 中建立最小共享 auth-flow diagnosis baseline，并把它接入 projection/config fetch、callback/token refresh、forward-auth 与 propagation，同时证明了至少一条可直接消费 machine-readable diagnosis surface 的测试路径。iteration 135 又把同一 owner 扩到 session-context login/logout/user-info 与 basic-auth login/logout/authorize，并让 `apps/server` route/middleware 直接消费这些 diagnosed result。iteration 143 则进一步把 vocabulary 与 route evidence 收口：`AuthFlowOperation` / `AuthFlowDiagnosisField` 现在拥有共享 Rust diagnosis taxonomy，`apps/server` 引入薄的 route diagnosis logging adapter，dashboard auth boundary 各分支开始输出 machine-readable diagnosis，而 credential-management 的 groups/entries route 也开始输出 secret-safe route diagnosis。更广的 exporter/timeline 与更外层的 route coverage 仍属于后续工作
 - mixed-custody / BFF 仍是明确的后续主题，不应因为 browser-owned baseline 已成熟就被误读成“已隐式解决”
 
 ## 0.2.0 发布 backlog（基于 Client SDK 重审）
@@ -217,7 +229,7 @@
 
 2. **验证抽象与输入/runtime 完整性**
    - ~~真实 SDK 级别的 `@standard-schema` 采用，而不只是 guide 偏好~~（已实现：`createSchema` / `validateWithSchema` 位于 `@securitydept/client`；真实采用体现在 `session-context-client.fetchUserInfo()`、`frontend-oidc-mode.parseConfigProjection()`、`BasicAuthContextClient` config validation、`parseBackendOidcModeCallbackBody` / `parseBackendOidcModeRefreshBody`）
-   - ~~在当前 raw scheduler abstraction 之上补出最小 unified input-source / scheduling baseline~~（已实现：`timer`、`interval`、`scheduleAt`、`fromEventPattern` 位于 `@securitydept/client`；`fromVisibilityChange` 位于 `@securitydept/client/web`；真实采用见 `FrontendOidcModeClient`）
+   - ~~在当前 raw scheduler abstraction 之上补出最小 unified input-source / scheduling baseline~~（已实现，并进一步收口为当前 richer baseline：`timer`、`interval`、`scheduleAt`、`fromEventPattern`、`fromSignal`、`fromPromise` 位于 `@securitydept/client`；`fromVisibilityChange`、`fromAbortSignal`、`fromStorageEvent` 位于 `@securitydept/client/web`；真实采用现已覆盖 React signal bridge、callback-resume promise settlement、cross-tab sync 与 browser cancellation interop）
    - ~~为浏览器 redirect / callback flow 建立正式 atomic single-consume persistence~~（iteration 118 已实现、iteration 119 已 productize：`@securitydept/client/persistence` 现已定义 `RecordStore.take()` capability；仓库内内存 / 浏览器 store 已实现；`createEphemeralFlowStore()` 与 `createKeyedEphemeralFlowStore()` 依赖该能力；`frontend-oidc-mode` callback 现已把 keyed pending state、duplicate replay、stale state 与 client mismatch 视为 contract-level correctness，而 React callback host 与 browser e2e 进一步把这些 failure 证明为稳定、浏览器可见的结果）
 
 3. **login-trigger convenience 收口**
@@ -264,6 +276,17 @@
    - ~~`-react` package 的 context value discoverability：`SessionContextValue` 现已是命名导出类型~~（已实现）
    - 剩余 gap：这些 surface 仍有意保持 thinner than token-set；当前 parity 目标是命名 contract discoverability，而不是 feature 等量齐观
 
+7. **shared cancellation / resource-release baseline**
+   - ~~shared TS/browser cancellation contract 与 browser interop~~（iteration 138 已实现：`@securitydept/client` 现在正式化 `DisposableTrait`、`CancellationTokenTrait`、`CancellationTokenSourceTrait`、`createCancellationTokenSource()` 与 `createLinkedCancellationToken()` 作为当前 cooperative cancellation / resource-release baseline；`@securitydept/client/web` 则正式拥有 `createAbortSignalBridge()` 与 `createCancellationTokenFromAbortSignal()` 这对 canonical browser interop helper）
+   - ~~reference app 不再拥有 app-local AbortSignal bridge glue~~（已实现：`apps/webui/src/api/tokenSet.ts` 现在直接消费共享 web helper，而不再手写 `AbortSignal -> CancellationTokenTrait`）
+   - remaining non-baseline：`Symbol.dispose` interop、超出 token linking 的 linked cancellation source tree、以及更广泛的 ambient/global teardown registry
+
+8. **capability-first configuration layering baseline**
+   - ~~把当前正式 configuration story 收成三层~~（iteration 139 已实现：runtime/foundation config、auth-context config、adapter/host config 现已写成 `007`、inventory 与 adapter/provider entry docs 中的 canonical configuration layering）
+   - ~~reference app 不再拥有 frontend-mode config/materialization assembly~~（已实现：`@securitydept/token-set-context-client/frontend-oidc-mode` 现已拥有 `createFrontendOidcModeBrowserClient()`、`resolveFrontendOidcModePersistentStateKey()` 与 `resolveFrontendOidcModeBrowserStorageKey()`；`apps/webui/src/lib/tokenSetFrontendModeClient.ts` 现在只保留 host bootstrap、host trace 与 host-specific cross-tab reconciliation）
+   - ~~adapter/provider option 不再继续被读成一个扁平大对象~~（已实现：Basic Auth / Session / token-set 的 React 与 Angular entry surface 现已统一按 auth-context config、runtime capability、host registration glue 三层解释）
+   - remaining non-baseline：仍没有跨所有 auth family 的单一 global config DSL，也没有 Rust server config 重写或 ambient cross-family config registry
+
 ## 阶段 5：本地凭证操作
 
 9. 继续发展 `securitydept-creds-manage`
@@ -296,7 +319,7 @@
 - 保持 auth-context mode 架构位于底层能力层之上
 - 清晰记录 bearer forwarding boundary
 - 随着新 mode 落地，补充更多 reference-app 集成测试
-- 在当前已产品化的 Rust / server auth-flow diagnosis baseline 之上继续扩展：现阶段已收口的 operation 包括 `projection.config_fetch`、`oidc.callback`、`oidc.token_refresh`、`forward_auth.check`、`propagation.forward`；后续应在保持 `securitydept-utils::observability` 为共享 vocabulary owner 的前提下，继续向更广的 server path 扩展，而不把本轮最小 baseline误写成完整 exporter/timeline 方案
+- 在当前已产品化的 Rust / server auth-flow diagnosis baseline 之上继续扩展：现阶段已收口的 operation 已包括 `projection.config_fetch`、`oidc.callback`、`oidc.token_refresh`、`forward_auth.check`、`propagation.forward`、session/basic-auth auth-context operation、`dashboard_auth.check`，以及 `creds_manage.group.*` / `creds_manage.entry.*` route operation；后续应在保持 `securitydept-utils::observability` 为共享 vocabulary owner 的前提下，继续向更广的 server path 扩展，而不把当前 baseline 误写成完整 exporter/timeline 方案
 - 在当前已产品化的 Rust / server dual-layer HTTP error baseline 之上继续扩展：保持 `securitydept-utils::error` 作为 shared envelope owner，并继续把 diagnosis（发生了什么）与 presentation/recovery（宿主如何处理）分层，而不是回退到 route-local status/message 拼接
 
 ## 延期到 0.3.0 的主题

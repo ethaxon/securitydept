@@ -7,19 +7,18 @@ use securitydept_realip::ResolvedClientIp;
 use securitydept_utils::{
     error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
     http::{HttpResponse, ToHttpStatus},
-    observability::{AuthFlowDiagnosis, AuthFlowDiagnosisOutcome, DiagnosedResult},
+    observability::{
+        AuthFlowDiagnosis, AuthFlowDiagnosisField, AuthFlowDiagnosisOutcome, AuthFlowOperation,
+        DiagnosedResult,
+    },
 };
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 
 use crate::{BasicAuthContext, BasicAuthContextError, BasicAuthZone};
 
-const BASIC_AUTH_LOGIN_OPERATION: &str = "basic_auth.login";
-const BASIC_AUTH_LOGOUT_OPERATION: &str = "basic_auth.logout";
-const BASIC_AUTH_AUTHORIZE_OPERATION: &str = "basic_auth.authorize";
-
 fn basic_auth_diagnosis(operation: &str) -> AuthFlowDiagnosis {
-    AuthFlowDiagnosis::started(operation).field("auth_family", "basic-auth")
+    AuthFlowDiagnosis::started(operation).field(AuthFlowDiagnosisField::AUTH_FAMILY, "basic-auth")
 }
 
 /// Errors produced by [`BasicAuthContextService`] operations.
@@ -104,20 +103,26 @@ where
         requested_post_auth_redirect_uri: Option<&str>,
         resolved_client_ip: Option<&ResolvedClientIp>,
     ) -> DiagnosedResult<HttpResponse, BasicAuthContextServiceError> {
-        let diagnosis = basic_auth_diagnosis(BASIC_AUTH_LOGIN_OPERATION)
-            .field("request_path", request_path)
+        let diagnosis = basic_auth_diagnosis(AuthFlowOperation::BASIC_AUTH_LOGIN)
+            .field(AuthFlowDiagnosisField::REQUEST_PATH, request_path)
             .field("authorization_present", authorization_header.is_some())
             .field(
                 "has_requested_post_auth_redirect_uri",
                 requested_post_auth_redirect_uri.is_some(),
             )
-            .field("resolved_client_ip_present", resolved_client_ip.is_some());
+            .field(
+                AuthFlowDiagnosisField::RESOLVED_CLIENT_IP_PRESENT,
+                resolved_client_ip.is_some(),
+            );
         let Some(zone) = self.basic_auth_context.zone_for_request_path(request_path) else {
             return DiagnosedResult::success(
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-                    .field("reason", "zone_not_found")
-                    .field("http_status", StatusCode::NOT_FOUND.as_u16()),
+                    .field(AuthFlowDiagnosisField::REASON, "zone_not_found")
+                    .field(
+                        AuthFlowDiagnosisField::HTTP_STATUS,
+                        StatusCode::NOT_FOUND.as_u16(),
+                    ),
                 HttpResponse::new(StatusCode::NOT_FOUND),
             );
         };
@@ -129,7 +134,7 @@ where
                     diagnosis
                         .clone()
                         .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                        .field("reason", "real_ip_resolution_failed"),
+                        .field(AuthFlowDiagnosisField::REASON, "real_ip_resolution_failed"),
                     source,
                 );
             }
@@ -138,8 +143,11 @@ where
             return DiagnosedResult::success(
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-                    .field("reason", "real_ip_forbidden")
-                    .field("http_status", StatusCode::FORBIDDEN.as_u16()),
+                    .field(AuthFlowDiagnosisField::REASON, "real_ip_forbidden")
+                    .field(
+                        AuthFlowDiagnosisField::HTTP_STATUS,
+                        StatusCode::FORBIDDEN.as_u16(),
+                    ),
                 HttpResponse::new(StatusCode::FORBIDDEN),
             );
         }
@@ -151,7 +159,10 @@ where
                     diagnosis
                         .clone()
                         .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                        .field("reason", "credential_validation_failed"),
+                        .field(
+                            AuthFlowDiagnosisField::REASON,
+                            "credential_validation_failed",
+                        ),
                     source,
                 );
             }
@@ -163,14 +174,17 @@ where
                     diagnosis
                         .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
                         .field("authenticated", true)
-                        .field("http_status", response.status.as_u16()),
+                        .field(
+                            AuthFlowDiagnosisField::HTTP_STATUS,
+                            response.status.as_u16(),
+                        ),
                     response,
                 ),
                 Err(source) => DiagnosedResult::failure(
                     diagnosis
                         .with_outcome(AuthFlowDiagnosisOutcome::Failed)
                         .field("authenticated", true)
-                        .field("reason", "post_auth_redirect_invalid"),
+                        .field(AuthFlowDiagnosisField::REASON, "post_auth_redirect_invalid"),
                     BasicAuthContextServiceError::BasicAuthContext { source },
                 ),
             }
@@ -180,8 +194,11 @@ where
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
                     .field("authenticated", false)
-                    .field("reason", "challenge_required")
-                    .field("http_status", response.status.as_u16()),
+                    .field(AuthFlowDiagnosisField::REASON, "challenge_required")
+                    .field(
+                        AuthFlowDiagnosisField::HTTP_STATUS,
+                        response.status.as_u16(),
+                    ),
                 response,
             )
         }
@@ -197,15 +214,18 @@ where
         &self,
         request_path: &str,
     ) -> DiagnosedResult<HttpResponse, BasicAuthContextServiceError> {
-        let diagnosis =
-            basic_auth_diagnosis(BASIC_AUTH_LOGOUT_OPERATION).field("request_path", request_path);
+        let diagnosis = basic_auth_diagnosis(AuthFlowOperation::BASIC_AUTH_LOGOUT)
+            .field(AuthFlowDiagnosisField::REQUEST_PATH, request_path);
         if let Some(protocol_response) = self.logout_protocol_response(request_path) {
             let response = protocol_response.into_http_response();
             DiagnosedResult::success(
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
                     .field("response_kind", "logout_poison")
-                    .field("http_status", response.status.as_u16()),
+                    .field(
+                        AuthFlowDiagnosisField::HTTP_STATUS,
+                        response.status.as_u16(),
+                    ),
                 response,
             )
         } else {
@@ -213,7 +233,10 @@ where
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
                     .field("response_kind", "not_found")
-                    .field("http_status", StatusCode::NOT_FOUND.as_u16()),
+                    .field(
+                        AuthFlowDiagnosisField::HTTP_STATUS,
+                        StatusCode::NOT_FOUND.as_u16(),
+                    ),
                 HttpResponse::new(StatusCode::NOT_FOUND),
             )
         }
@@ -242,9 +265,12 @@ where
         authorization_header: Option<&str>,
         resolved_client_ip: Option<&ResolvedClientIp>,
     ) -> DiagnosedResult<bool, BasicAuthContextServiceError> {
-        let diagnosis = basic_auth_diagnosis(BASIC_AUTH_AUTHORIZE_OPERATION)
+        let diagnosis = basic_auth_diagnosis(AuthFlowOperation::BASIC_AUTH_AUTHORIZE)
             .field("authorization_present", authorization_header.is_some())
-            .field("resolved_client_ip_present", resolved_client_ip.is_some());
+            .field(
+                AuthFlowDiagnosisField::RESOLVED_CLIENT_IP_PRESENT,
+                resolved_client_ip.is_some(),
+            );
 
         let real_ip_allowed = match self.real_ip_allowed(resolved_client_ip) {
             Ok(allowed) => allowed,
@@ -253,7 +279,7 @@ where
                     diagnosis
                         .clone()
                         .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                        .field("reason", "real_ip_resolution_failed"),
+                        .field(AuthFlowDiagnosisField::REASON, "real_ip_resolution_failed"),
                     source,
                 );
             }
@@ -263,7 +289,7 @@ where
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
                     .field("authorized", false)
-                    .field("reason", "real_ip_forbidden"),
+                    .field(AuthFlowDiagnosisField::REASON, "real_ip_forbidden"),
                 false,
             );
         }
@@ -284,14 +310,17 @@ where
                     diagnosis
                         .with_outcome(outcome)
                         .field("authorized", authorized)
-                        .field("reason", reason),
+                        .field(AuthFlowDiagnosisField::REASON, reason),
                     authorized,
                 )
             }
             Err(source) => DiagnosedResult::failure(
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                    .field("reason", "credential_validation_failed"),
+                    .field(
+                        AuthFlowDiagnosisField::REASON,
+                        "credential_validation_failed",
+                    ),
                 source,
             ),
         }
@@ -409,7 +438,10 @@ mod tests {
             .expect("login should return response");
 
         assert_eq!(response.status, StatusCode::UNAUTHORIZED);
-        assert_eq!(diagnosed.diagnosis().operation, BASIC_AUTH_LOGIN_OPERATION);
+        assert_eq!(
+            diagnosed.diagnosis().operation,
+            AuthFlowOperation::BASIC_AUTH_LOGIN
+        );
         assert_eq!(
             diagnosed.diagnosis().outcome,
             AuthFlowDiagnosisOutcome::Rejected
@@ -437,7 +469,10 @@ mod tests {
             response.headers.get(http::header::LOCATION).unwrap(),
             "/console"
         );
-        assert_eq!(diagnosed.diagnosis().operation, BASIC_AUTH_LOGIN_OPERATION);
+        assert_eq!(
+            diagnosed.diagnosis().operation,
+            AuthFlowOperation::BASIC_AUTH_LOGIN
+        );
         assert_eq!(
             diagnosed.diagnosis().outcome,
             AuthFlowDiagnosisOutcome::Succeeded
@@ -459,7 +494,7 @@ mod tests {
         );
         assert_eq!(
             diagnosed.diagnosis().operation,
-            BASIC_AUTH_AUTHORIZE_OPERATION
+            AuthFlowOperation::BASIC_AUTH_AUTHORIZE
         );
         assert_eq!(
             diagnosed.diagnosis().outcome,
@@ -479,7 +514,10 @@ mod tests {
             .expect("logout should produce response");
 
         assert_eq!(response.status, StatusCode::UNAUTHORIZED);
-        assert_eq!(diagnosed.diagnosis().operation, BASIC_AUTH_LOGOUT_OPERATION);
+        assert_eq!(
+            diagnosed.diagnosis().operation,
+            AuthFlowOperation::BASIC_AUTH_LOGOUT
+        );
         assert_eq!(
             diagnosed.diagnosis().outcome,
             AuthFlowDiagnosisOutcome::Succeeded

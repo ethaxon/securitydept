@@ -134,6 +134,12 @@ importers:
       '@radix-ui/react-avatar':
         specifier: ^1.1.10
         version: 1.1.11(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@securitydept/basic-auth-context-client':
+        specifier: workspace:*
+        version: link:../../sdks/ts/packages/basic-auth-context-client
+      '@securitydept/basic-auth-context-client-react':
+        specifier: workspace:*
+        version: link:../../sdks/ts/packages/basic-auth-context-client-react
       '@securitydept/client':
         specifier: workspace:*
         version: link:../../sdks/ts/packages/client
@@ -143,6 +149,9 @@ importers:
       '@securitydept/session-context-client':
         specifier: workspace:*
         version: link:../../sdks/ts/packages/session-context-client
+      '@securitydept/session-context-client-react':
+        specifier: workspace:*
+        version: link:../../sdks/ts/packages/session-context-client-react
       '@securitydept/token-set-context-client':
         specifier: workspace:*
         version: link:../../sdks/ts/packages/token-set-context-client

@@ -1,3 +1,5 @@
+import type { AuthenticatedPrincipal } from "@securitydept/client";
+
 // --- Session Context Client types ---
 
 export const SessionContextSource = {
@@ -7,12 +9,8 @@ export const SessionContextSource = {
 export type SessionContextSource =
 	(typeof SessionContextSource)[keyof typeof SessionContextSource];
 
-/** Session principal — aligned with server-side SessionPrincipal. */
-export interface SessionPrincipal {
-	displayName: string;
-	picture?: string;
-	claims?: Record<string, unknown>;
-}
+/** Session principal — shared authenticated principal semantics via @securitydept/client. */
+export type SessionPrincipal = AuthenticatedPrincipal;
 
 /** Session info returned from the server. */
 export interface SessionInfo {

@@ -5,6 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"build": "vite build && shx cp -r dist ../../webui",
+		"build:release": "pnpm -C ../.. -r --filter @securitydept/webui... build",
 		"dev": "vite dev",
 		"e2e:prepare": "pnpm -C ../../sdks/ts build",
 		"e2e": "pnpm run e2e:prepare && playwright test -c playwright.config.ts",
@@ -14,9 +15,12 @@
 	},
 	"dependencies": {
 		"@radix-ui/react-avatar": "^1.1.10",
+		"@securitydept/basic-auth-context-client": "workspace:*",
+		"@securitydept/basic-auth-context-client-react": "workspace:*",
 		"@securitydept/client": "workspace:*",
 		"@securitydept/client-react": "workspace:*",
 		"@securitydept/session-context-client": "workspace:*",
+		"@securitydept/session-context-client-react": "workspace:*",
 		"@securitydept/token-set-context-client": "workspace:*",
 		"@securitydept/token-set-context-client-react": "workspace:*",
 		"@tanstack/react-form": "^1.25.0",

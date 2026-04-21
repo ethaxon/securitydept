@@ -17,6 +17,7 @@ import type {
 	Scheduler,
 	TraceEventSinkTrait,
 } from "@securitydept/client";
+import { fromSignal } from "@securitydept/client";
 import type {
 	AuthStateSnapshot,
 	BackendOidcModeClientConfig,
@@ -89,14 +90,19 @@ const BackendOidcModeContext =
 // ---------------------------------------------------------------------------
 
 export interface BackendOidcModeContextProviderProps {
+	/** Auth-context config only (issuer/baseUrl/endpoints/redirect policy). */
 	config: BackendOidcModeClientConfig;
+	/** Runtime/foundation capability wiring for HTTP. */
 	transport: HttpTransport;
+	/** Runtime/foundation scheduling capability. */
 	scheduler: Scheduler;
+	/** Runtime/foundation clock capability. */
 	clock: Clock;
 	logger?: LoggerTrait;
 	traceSink?: TraceEventSinkTrait;
 	persistentStore?: RecordStore;
 	sessionStore?: RecordStore;
+	/** React host glue only. */
 	children: ReactNode;
 }
 
@@ -143,7 +149,17 @@ export function BackendOidcModeContextProvider({
 	// Bridge the signal to React via useSyncExternalStore.
 	const state = useSyncExternalStore(
 		useCallback(
-			(onStoreChange: () => void) => client.state.subscribe(onStoreChange),
+			(onStoreChange: () => void) => {
+				const subscription = fromSignal({
+					signal: client.state,
+					callback: () => {
+						onStoreChange();
+					},
+				});
+				return () => {
+					subscription.unsubscribe();
+				};
+			},
 			[client],
 		),
 		() => client.state.get(),

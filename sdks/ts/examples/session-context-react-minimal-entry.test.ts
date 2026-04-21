@@ -57,6 +57,7 @@ describe("session-context react minimal entry", () => {
 				headers: {},
 				body: {
 					principal: {
+						subject: "session-user-1",
 						displayName: "Alice",
 					},
 				},

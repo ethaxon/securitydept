@@ -14,8 +14,11 @@ import { TOKEN_SET_AUTH_REGISTRY } from "./tokens";
  */
 export interface ProvideTokenSetAuthOptions {
 	/**
-	 * One or more client entries to register.
-	 * Each entry must have a unique `key`.
+	 * Adapter/host registration entries.
+	 *
+	 * Each entry must have a unique `key`. The entry itself owns how one client
+	 * composes auth-context config and runtime capabilities; Angular DI here only
+	 * owns host registration, readiness wiring, and lifecycle.
 	 */
 	clients: TokenSetClientEntry[];
 	/**

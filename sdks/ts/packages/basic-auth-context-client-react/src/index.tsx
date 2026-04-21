@@ -19,7 +19,9 @@ export { BasicAuthContextClient };
 const BasicAuthContext = createContext<BasicAuthContextClient | null>(null);
 
 export interface BasicAuthContextProviderProps {
+	/** Auth-context config only (baseUrl, zones, redirect policy). */
 	config: BasicAuthContextClientConfig;
+	/** React host glue only; runtime capability wiring does not live here. */
 	children: ReactNode;
 }
 

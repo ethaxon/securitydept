@@ -1,7 +1,10 @@
 use securitydept_oidc_client::{OidcClient, OidcCodeCallbackSearchParams, PendingOauthStore};
 use securitydept_utils::{
     http::HttpResponse,
-    observability::{AuthFlowDiagnosis, AuthFlowDiagnosisOutcome, DiagnosedResult},
+    observability::{
+        AuthFlowDiagnosis, AuthFlowDiagnosisField, AuthFlowDiagnosisOutcome, AuthFlowOperation,
+        DiagnosedResult,
+    },
 };
 use url::Url;
 
@@ -134,8 +137,8 @@ where
         search_params: OidcCodeCallbackSearchParams,
         caller_post_auth_redirect_uri: Option<&Url>,
     ) -> DiagnosedResult<HttpResponse, BackendOidcModeRuntimeError> {
-        let diagnosis = AuthFlowDiagnosis::started("oidc.callback")
-            .field("mode", "backend_oidc")
+        let diagnosis = AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_CALLBACK)
+            .field(AuthFlowDiagnosisField::MODE, "backend_oidc")
             .field("response_transport", "fragment_redirect")
             .field("callback_path", self.callback_path)
             .field("external_base_url", external_base_url.as_str())
@@ -162,7 +165,10 @@ where
             Err(error) => DiagnosedResult::failure(
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                    .field("failure_stage", "backend_callback_fragment_return"),
+                    .field(
+                        AuthFlowDiagnosisField::FAILURE_STAGE,
+                        "backend_callback_fragment_return",
+                    ),
                 error,
             ),
         }
@@ -227,8 +233,8 @@ where
         external_base_url: &Url,
         search_params: OidcCodeCallbackSearchParams,
     ) -> DiagnosedResult<serde_json::Value, BackendOidcModeRuntimeError> {
-        let diagnosis = AuthFlowDiagnosis::started("oidc.callback")
-            .field("mode", "backend_oidc")
+        let diagnosis = AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_CALLBACK)
+            .field(AuthFlowDiagnosisField::MODE, "backend_oidc")
             .field("response_transport", "json_body")
             .field("callback_path", self.callback_path)
             .field("external_base_url", external_base_url.as_str())
@@ -248,7 +254,10 @@ where
             Err(error) => DiagnosedResult::failure(
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                    .field("failure_stage", "backend_callback_body_return"),
+                    .field(
+                        AuthFlowDiagnosisField::FAILURE_STAGE,
+                        "backend_callback_body_return",
+                    ),
                 error,
             ),
         }
@@ -320,8 +329,8 @@ where
         payload: &BackendOidcModeRefreshPayload,
         external_base_url: &Url,
     ) -> DiagnosedResult<serde_json::Value, BackendOidcModeRuntimeError> {
-        let diagnosis = AuthFlowDiagnosis::started("oidc.token_refresh")
-            .field("mode", "backend_oidc")
+        let diagnosis = AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_TOKEN_REFRESH)
+            .field(AuthFlowDiagnosisField::MODE, "backend_oidc")
             .field("response_transport", "json_body")
             .field("callback_path", self.callback_path)
             .field("external_base_url", external_base_url.as_str())
@@ -341,7 +350,10 @@ where
             Err(error) => DiagnosedResult::failure(
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Failed)
-                    .field("failure_stage", "backend_refresh_body_return"),
+                    .field(
+                        AuthFlowDiagnosisField::FAILURE_STAGE,
+                        "backend_refresh_body_return",
+                    ),
                 error,
             ),
         }
@@ -379,13 +391,7 @@ where
             .handle_user_info_exchange(&request.id_token, access_token)
             .await?;
 
-        Ok(BackendOidcModeUserInfoResponse {
-            subject: result.subject,
-            display_name: result.display_name,
-            picture: result.picture,
-            issuer: result.issuer,
-            claims: result.claims,
-        })
+        Ok(result.into())
     }
 
     /// Access the underlying OIDC client.

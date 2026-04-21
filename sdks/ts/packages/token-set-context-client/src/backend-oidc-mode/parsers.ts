@@ -1,4 +1,7 @@
-import { validateWithSchemaSync } from "@securitydept/client";
+import {
+	normalizeAuthenticatedPrincipalWire,
+	validateWithSchemaSync,
+} from "@securitydept/client";
 import type {
 	BackendOidcModeCallbackReturns,
 	BackendOidcModeRefreshReturns,
@@ -159,16 +162,5 @@ export function refreshReturnsToTokenDelta(
 export function parseBackendOidcModeUserInfoBody(
 	body: Record<string, unknown>,
 ): BackendOidcModeUserInfoResponse | null {
-	if (typeof body.subject !== "string") return null;
-
-	return {
-		subject: body.subject,
-		displayName: typeof body.display_name === "string" ? body.display_name : "",
-		picture: typeof body.picture === "string" ? body.picture : undefined,
-		issuer: typeof body.issuer === "string" ? body.issuer : undefined,
-		claims:
-			typeof body.claims === "object" && body.claims !== null
-				? (body.claims as Record<string, unknown>)
-				: undefined,
-	};
+	return normalizeAuthenticatedPrincipalWire(body);
 }

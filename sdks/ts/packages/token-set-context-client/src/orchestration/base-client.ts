@@ -18,6 +18,7 @@ import type {
 	CancelableHandle,
 	CancellationTokenSourceTrait,
 	ClientRuntime,
+	OperationScope,
 	ReadableSignalTrait,
 	RecordStore,
 } from "@securitydept/client";
@@ -359,14 +360,37 @@ export abstract class BaseOidcModeClient {
 	// Protected: Tracing helpers
 	// =======================================================================
 
+	protected async _runOperation<T>(
+		name: string,
+		attributes: Record<string, unknown> | undefined,
+		execute: (operation: OperationScope | undefined) => Promise<T>,
+	): Promise<T> {
+		const operation = this._runtime.operationTracer?.startOperation(
+			name,
+			attributes,
+		);
+
+		try {
+			const result = await execute(operation);
+			operation?.end({ outcome: "succeeded" });
+			return result;
+		} catch (error) {
+			operation?.recordError(error);
+			operation?.end({ outcome: "failed" });
+			throw error;
+		}
+	}
+
 	protected _recordTrace(
 		type: string,
 		attributes?: Record<string, unknown>,
+		operation?: OperationScope,
 	): void {
 		this._runtime.traceSink?.record({
 			type,
 			at: this._runtime.clock.now(),
 			scope: this._traceScope,
+			operationId: operation?.id,
 			source: this._traceSource,
 			attributes,
 		});
@@ -376,11 +400,16 @@ export abstract class BaseOidcModeClient {
 		type: string,
 		error: unknown,
 		attributes?: Record<string, unknown>,
+		operation?: OperationScope,
 	): void {
-		this._recordTrace(type, {
-			...attributes,
-			...describeError(error),
-		});
+		this._recordTrace(
+			type,
+			{
+				...attributes,
+				...describeError(error),
+			},
+			operation,
+		);
 	}
 }
 

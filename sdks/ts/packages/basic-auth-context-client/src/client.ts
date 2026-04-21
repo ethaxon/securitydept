@@ -2,11 +2,17 @@ import { validateWithSchemaSync } from "@securitydept/client";
 import { BasicAuthContextClientConfigSchema } from "./schemas";
 import type {
 	AuthGuardResult,
+	BasicAuthBoundaryKind,
+	BasicAuthBoundaryObservation,
 	BasicAuthContextClientConfig,
 	BasicAuthZoneConfig,
 	ResolvedBasicAuthZone,
 } from "./types";
-import { AuthGuardRedirectStatus, AuthGuardResultKind } from "./types";
+import {
+	AuthGuardRedirectStatus,
+	AuthGuardResultKind,
+	BasicAuthBoundaryKind as BasicAuthBoundaryKindValues,
+} from "./types";
 
 const DEFAULT_LOGIN_SUBPATH = "/login";
 const DEFAULT_LOGOUT_SUBPATH = "/logout";
@@ -22,6 +28,24 @@ function resolveZone(config: BasicAuthZoneConfig): ResolvedBasicAuthZone {
 		loginPath: prefix + loginSub,
 		logoutPath: prefix + logoutSub,
 	};
+}
+
+export function readBasicAuthBoundaryKind(
+	options: BasicAuthBoundaryObservation,
+): BasicAuthBoundaryKind {
+	if (options.status < 400) {
+		return BasicAuthBoundaryKindValues.Authenticated;
+	}
+
+	if (options.challengeHeader) {
+		return BasicAuthBoundaryKindValues.Challenge;
+	}
+
+	if (options.status === 401 && options.requestPath === "/basic/logout") {
+		return BasicAuthBoundaryKindValues.LogoutPoison;
+	}
+
+	return BasicAuthBoundaryKindValues.Unauthorized;
 }
 
 /**
@@ -78,6 +102,10 @@ export class BasicAuthContextClient {
 		return matchedZone;
 	}
 
+	zoneForPrefix(zonePrefix: string): ResolvedBasicAuthZone | undefined {
+		return this.zones.find((zone) => zone.zonePrefix === zonePrefix);
+	}
+
 	/** Check whether a path falls inside any configured zone. */
 	isInZone(path: string): boolean {
 		return this.zoneForPath(path) !== undefined;
@@ -93,6 +121,14 @@ export class BasicAuthContextClient {
 			return `${base}?${params.toString()}`;
 		}
 		return base;
+	}
+
+	loginUrlForZonePrefix(
+		zonePrefix: string,
+		postAuthRedirectUri?: string,
+	): string | null {
+		const zone = this.zoneForPrefix(zonePrefix);
+		return zone ? this.loginUrl(zone, postAuthRedirectUri) : null;
 	}
 
 	/** Build the full logout URL for a zone. */

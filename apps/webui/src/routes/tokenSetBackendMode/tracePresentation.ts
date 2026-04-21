@@ -30,6 +30,13 @@ const OUTCOME_BADGES: Record<string, TraceBadge> = {
 };
 
 export function readTraceDomainBadge(entry: TraceTimelineEntry): TraceBadge {
+	if (entry.type.startsWith("operation.")) {
+		return {
+			label: "Operation Lifecycle",
+			tone: TraceBadgeTone.Neutral,
+		};
+	}
+
 	if (
 		entry.type.startsWith("token_set.app.") ||
 		entry.scope === "apps.webui.token-set"
@@ -58,6 +65,10 @@ export function readTraceOutcomeBadge(
 }
 
 export function readTraceDisplayType(entry: TraceTimelineEntry): string {
+	if (entry.type.startsWith("operation.")) {
+		return entry.type.slice("operation.".length);
+	}
+
 	if (entry.type.startsWith("token_set.app.")) {
 		return entry.type.slice("token_set.app.".length);
 	}
@@ -74,6 +85,8 @@ export function readTraceSummary(entry: TraceTimelineEntry): string | null {
 	const fields: string[] = [];
 
 	appendStringField(fields, attributes.path);
+	appendPrefixedField(fields, attributes.operationName, "operation");
+	appendPrefixedField(fields, attributes.eventType, "event");
 	appendStringField(fields, attributes.groupName);
 	appendStringField(fields, attributes.entryName);
 	appendStringField(fields, attributes.configStatus);

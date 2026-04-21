@@ -1012,6 +1012,54 @@ describe("token-set browser flow", () => {
 		expect(seenCancellationToken).toBe(true);
 	});
 
+	it("bridges AbortSignal into the token-set request cancellation contract through the shared web helper", async () => {
+		const persistentStore = createInMemoryRecordStore();
+		const sessionStore = createInMemoryRecordStore();
+		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
+		const scheduler = new FakeScheduler(clock);
+		const controller = new AbortController();
+		let seenCancelledState = false;
+		let seenReason: unknown;
+		const transport = new FakeTransport().on(
+			(request) => request.url.endsWith("/api/groups"),
+			(request) => {
+				controller.abort("react-query");
+				seenCancelledState =
+					request.cancellationToken?.isCancellationRequested ?? false;
+				seenReason = request.cancellationToken?.reason;
+				request.cancellationToken?.throwIfCancellationRequested();
+				return {
+					status: 200,
+					headers: {},
+					body: [],
+				};
+			},
+		);
+		const client = createBackendOidcModeBrowserClient({
+			persistentStore,
+			sessionStore,
+			transport,
+			clock,
+			scheduler,
+		});
+
+		await client.handleCallback(
+			"access_token=abort-at&id_token=abort-idt&refresh_token=abort-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+		);
+
+		await expect(
+			listGroupsWithTokenSet(client, {
+				transport,
+				abortSignal: controller.signal,
+			}),
+		).rejects.toMatchObject({
+			kind: ClientErrorKind.Cancelled,
+			code: "client.cancelled",
+		});
+		expect(seenCancelledState).toBe(true);
+		expect(seenReason).toBe("react-query");
+	});
+
 	it("forwards cancellation and refuses to load entries without a token-set bearer", async () => {
 		const persistentStore = createInMemoryRecordStore();
 		const sessionStore = createInMemoryRecordStore();

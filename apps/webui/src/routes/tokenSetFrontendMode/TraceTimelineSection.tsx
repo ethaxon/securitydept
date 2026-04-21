@@ -53,6 +53,7 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 						<div
 							key={event.id}
 							data-trace-type={event.type}
+							data-trace-operation-id={event.operationId}
 							className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
 						>
 							<div className="flex flex-wrap items-start justify-between gap-3">
@@ -80,6 +81,11 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 									{summary && (
 										<p className="mt-3 text-sm text-zinc-600 dark:text-zinc-300">
 											{summary}
+										</p>
+									)}
+									{event.operationId && (
+										<p className="mt-2 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
+											Operation: {event.operationId}
 										</p>
 									)}
 									<p className="mt-2 text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">

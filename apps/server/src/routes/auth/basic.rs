@@ -8,9 +8,13 @@ use axum::{
     routing::{get, post},
 };
 use serde::Deserialize;
-use tracing::{info, warn};
 
-use crate::{error::ServerError, http_response::into_axum_response, state::ServerState};
+use crate::{
+    diagnosis::{RouteDiagnosisContext, log_route_diagnosis, log_route_diagnosis_error},
+    error::ServerError,
+    http_response::into_axum_response,
+    state::ServerState,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct BasicAuthLoginQuery {
@@ -42,20 +46,19 @@ pub async fn login(
         resolved_client_ip.as_ref(),
     );
     let (diagnosis, result) = diagnosed.into_parts();
+    let context = RouteDiagnosisContext {
+        route: "/basic/login",
+        method: "GET",
+        status: result
+            .as_ref()
+            .ok()
+            .map(|response| response.status.as_u16()),
+    };
     match &result {
-        Ok(_) => info!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            "Basic-auth login completed"
-        ),
-        Err(error) => warn!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            error = %error,
-            "Basic-auth login failed"
-        ),
+        Ok(_) => log_route_diagnosis(context, &diagnosis, "Basic-auth login completed"),
+        Err(error) => {
+            log_route_diagnosis_error(context, &diagnosis, error, "Basic-auth login failed")
+        }
     }
     result.map(into_axum_response).map_err(ServerError::from)
 }
@@ -65,20 +68,19 @@ pub async fn logout(Extension(state): Extension<ServerState>) -> Response {
         .basic_auth_context_service()
         .logout_diagnosed("/basic/logout");
     let (diagnosis, result) = diagnosed.into_parts();
+    let context = RouteDiagnosisContext {
+        route: "/basic/logout",
+        method: "POST",
+        status: result
+            .as_ref()
+            .ok()
+            .map(|response| response.status.as_u16()),
+    };
     match &result {
-        Ok(_) => info!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            "Basic-auth logout completed"
-        ),
-        Err(error) => warn!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            error = %error,
-            "Basic-auth logout failed"
-        ),
+        Ok(_) => log_route_diagnosis(context, &diagnosis, "Basic-auth logout completed"),
+        Err(error) => {
+            log_route_diagnosis_error(context, &diagnosis, error, "Basic-auth logout failed")
+        }
     }
     into_axum_response(result.expect("basic-auth logout diagnosis should not fail at route layer"))
 }

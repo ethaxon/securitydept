@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use http::header::{AUTHORIZATION, HeaderMap, HeaderValue};
+use securitydept_utils::principal::AuthenticatedPrincipal as SharedAuthenticatedPrincipal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use typed_builder::TypedBuilder;
@@ -38,22 +39,7 @@ pub struct AuthenticationSource {
     pub attributes: HashMap<String, Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder)]
-pub struct AuthenticatedPrincipal {
-    #[builder(setter(into))]
-    pub subject: String,
-    #[builder(setter(into))]
-    pub display_name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[builder(default, setter(strip_option, into))]
-    pub picture: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[builder(default, setter(strip_option, into))]
-    pub issuer: Option<String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    #[builder(default)]
-    pub claims: HashMap<String, Value>,
-}
+pub type AuthenticatedPrincipal = SharedAuthenticatedPrincipal;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder)]
 pub struct AuthTokenSnapshot {

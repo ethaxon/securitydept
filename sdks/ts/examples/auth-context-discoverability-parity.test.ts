@@ -117,6 +117,10 @@ describe("session ./react discoverability: SessionContextValue named contract", 
 			session: null,
 			loading: true,
 			refresh: () => {},
+			rememberPostAuthRedirect: async () => {},
+			clearPostAuthRedirect: async () => {},
+			resolveLoginUrl: async () => "/auth/session/login",
+			logout: async () => {},
 		};
 
 		expect(mockValue.loading).toBe(true);
@@ -125,7 +129,7 @@ describe("session ./react discoverability: SessionContextValue named contract", 
 
 	it("SessionContextValue has expected shape with session info", () => {
 		const sessionInfo: SessionInfo = {
-			principal: { displayName: "Alice" },
+			principal: { subject: "session-user-1", displayName: "Alice" },
 		};
 
 		const value: SessionContextValue = {
@@ -133,6 +137,10 @@ describe("session ./react discoverability: SessionContextValue named contract", 
 			session: sessionInfo,
 			loading: false,
 			refresh: () => {},
+			rememberPostAuthRedirect: async () => {},
+			clearPostAuthRedirect: async () => {},
+			resolveLoginUrl: async () => "/auth/session/login",
+			logout: async () => {},
 		};
 
 		expect(value.session?.principal.displayName).toBe("Alice");

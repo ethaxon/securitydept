@@ -7,7 +7,10 @@ import {
 	ClientErrorKind,
 	FetchTransportRedirectKind,
 } from "@securitydept/client";
-import { createFetchTransport } from "@securitydept/client/web";
+import {
+	createCancellationTokenFromAbortSignal,
+	createFetchTransport,
+} from "@securitydept/client/web";
 import type { AuthorizationHeaderProviderTrait } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	BackendOidcModeContextSource,
@@ -124,46 +127,11 @@ function createAuthorizedTokenSetApiTransport(
 	});
 }
 
-/**
- * Bridge AbortSignal to CancellationTokenTrait so React Query queryFn can
- * use its built-in signal for automatic cancellation.
- */
 function resolveCancellationToken(
 	options: TokenSetApiRequestOptions,
 ): CancellationTokenTrait | undefined {
 	if (options.cancellationToken) return options.cancellationToken;
-	const signal = options.abortSignal;
-	if (!signal) return undefined;
-
-	// Minimal CancellationTokenTrait wrapping AbortSignal:
-	return {
-		get isCancellationRequested() {
-			return signal.aborted;
-		},
-		get reason() {
-			return signal.reason;
-		},
-		onCancellationRequested(listener: (reason: unknown) => void) {
-			const handler = () => listener(signal.reason);
-			signal.addEventListener("abort", handler);
-			return {
-				dispose() {
-					signal.removeEventListener("abort", handler);
-				},
-			};
-		},
-		throwIfCancellationRequested() {
-			if (signal.aborted) {
-				throw new ClientError({
-					kind: ClientErrorKind.Cancelled,
-					message: "Request was cancelled via AbortSignal",
-					code: "client.cancelled",
-					source: BackendOidcModeContextSource.Client,
-					cause: signal.reason,
-				});
-			}
-		},
-	};
+	return createCancellationTokenFromAbortSignal(options.abortSignal);
 }
 
 export async function listGroupsWithTokenSet(

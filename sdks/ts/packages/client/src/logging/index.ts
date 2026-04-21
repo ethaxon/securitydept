@@ -1,5 +1,7 @@
 export { createConsoleLogger } from "./console-logger";
 export { createNoopLogger } from "./noop-logger";
+export type { CreateOperationTracerOptions } from "./operation-tracer";
+export { createOperationTracer } from "./operation-tracer";
 export type {
 	TraceTimelineEntry,
 	TraceTimelineStore,
@@ -13,4 +15,4 @@ export type {
 	TraceEvent,
 	TraceEventSinkTrait,
 } from "./types";
-export { LogLevel } from "./types";
+export { LogLevel, OperationTraceEventType } from "./types";

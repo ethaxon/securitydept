@@ -1,7 +1,7 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSessionContext } from "@securitydept/session-context-client-react";
+import { useMutation } from "@tanstack/react-query";
 import { ExternalLink, LogIn, LogOut, Shield, Waypoints } from "lucide-react";
 import { useSyncExternalStore } from "react";
-import { buildLoginUrl, logoutCurrentSession, useUserInfo } from "@/api/auth";
 import { Layout } from "@/components/layout/Layout";
 import {
 	AuthContextMode,
@@ -36,21 +36,24 @@ function StatusCard({
 }
 
 export function SessionPlaygroundPage() {
-	const queryClient = useQueryClient();
 	const rawMode = useSyncExternalStore(
 		subscribeAuthContextMode,
 		getAuthContextMode,
 		getAuthContextMode,
 	);
-	const sessionQuery = useUserInfo();
-	const loginHref = buildLoginUrl("/playground/session");
+	const {
+		client,
+		loading,
+		logout: logoutCurrentSession,
+		session,
+	} = useSessionContext();
+	const loginHref = client.loginUrl("/playground/session");
 
 	const logout = useMutation({
 		mutationKey: ["playground", "session", "logout"],
 		mutationFn: logoutCurrentSession,
-		onSuccess: async () => {
+		onSuccess: () => {
 			clearAuthContextMode();
-			await queryClient.removeQueries({ queryKey: ["auth"] });
 			window.location.href = "/playground/session";
 		},
 	});
@@ -60,8 +63,8 @@ export function SessionPlaygroundPage() {
 		window.location.href = loginHref;
 	};
 
-	const principal = sessionQuery.data?.principal;
-	const authStatus = sessionQuery.isLoading
+	const principal = session?.principal;
+	const authStatus = loading
 		? "Checking"
 		: principal
 			? "Authenticated"

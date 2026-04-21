@@ -1,26 +1,11 @@
 import {
-	ClientError,
 	createSignal,
 	createTraceTimelineStore,
 	readonlySignal,
 } from "@securitydept/client";
-import {
-	createLocalStorageStore,
-	createSessionStorageStore,
-} from "@securitydept/client/persistence/web";
-import {
-	createCrossTabSync,
-	createWebRuntime,
-	PopupErrorCode,
-} from "@securitydept/client/web";
-import type {
-	FrontendOidcModeClient,
-	FrontendOidcModeClientConfig,
-} from "@securitydept/token-set-context-client/frontend-oidc-mode";
-import {
-	createFrontendOidcModeClient,
-	parseConfigProjection,
-} from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import { createCrossTabSync, PopupErrorCode } from "@securitydept/client/web";
+import type { FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import { createFrontendOidcModeBrowserClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import type { TokenSetReactClient } from "@securitydept/token-set-context-client-react";
 import {
@@ -90,15 +75,6 @@ function buildAbsoluteUrl(path: string): string {
 	return new URL(path, window.location.origin).toString();
 }
 
-function resolveTokenSetFrontendModePersistentStorageKey(
-	config: FrontendOidcModeClientConfig,
-): string {
-	const key =
-		config.persistentStateKey ??
-		`securitydept.frontend_oidc:v1:${config.issuer}:${config.clientId}`;
-	return `${TOKEN_SET_FRONTEND_PERSISTENT_PREFIX}${key}`;
-}
-
 function ensureTokenSetFrontendModeCrossTabSync(
 	client: FrontendOidcModeClient,
 ): void {
@@ -149,35 +125,18 @@ function ensureTokenSetFrontendModeCrossTabSync(
 
 async function createTokenSetFrontendModeClient(): Promise<FrontendOidcModeClient> {
 	const redirectUri = buildAbsoluteUrl(TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH);
-	const url = new URL(buildAbsoluteUrl(TOKEN_SET_FRONTEND_MODE_CONFIG_PATH));
-	url.searchParams.set("redirect_uri", redirectUri);
-	const response = await fetch(url.toString());
-	if (!response.ok) {
-		const body = await response.json().catch(() => undefined);
-		throw ClientError.fromHttpResponse(response.status, body);
-	}
-
-	const projection = await response.json();
-	const parsed = parseConfigProjection(projection, {
+	const materialized = await createFrontendOidcModeBrowserClient({
+		configEndpoint: TOKEN_SET_FRONTEND_MODE_CONFIG_PATH,
 		redirectUri,
 		defaultPostAuthRedirectUri: "/",
-	});
-	if (!parsed.success) {
-		throw new Error(
-			"Frontend-mode config projection response did not match the shared projection schema.",
-		);
-	}
-	tokenSetFrontendModePersistentStorageKey =
-		resolveTokenSetFrontendModePersistentStorageKey(parsed.value);
-	const runtime = createWebRuntime({
-		persistentStore: createLocalStorageStore(
-			TOKEN_SET_FRONTEND_PERSISTENT_PREFIX,
-		),
-		sessionStore: createSessionStorageStore(TOKEN_SET_FRONTEND_SESSION_PREFIX),
+		persistentStoragePrefix: TOKEN_SET_FRONTEND_PERSISTENT_PREFIX,
+		sessionStoragePrefix: TOKEN_SET_FRONTEND_SESSION_PREFIX,
 		traceSink: tokenSetFrontendModeTraceTimeline,
 	});
+	tokenSetFrontendModePersistentStorageKey =
+		materialized.browserPersistentStorageKey;
 
-	return createFrontendOidcModeClient(parsed.value, runtime);
+	return materialized.client;
 }
 
 async function ensureTokenSetFrontendModeClientSubscribed(): Promise<FrontendOidcModeClient> {

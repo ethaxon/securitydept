@@ -23,6 +23,16 @@ export interface LoggerTrait {
 	log(entry: LogEntry): void;
 }
 
+export const OperationTraceEventType = {
+	Started: "operation.started",
+	Event: "operation.event",
+	Error: "operation.error",
+	Ended: "operation.ended",
+} as const;
+
+export type OperationTraceEventType =
+	(typeof OperationTraceEventType)[keyof typeof OperationTraceEventType];
+
 export interface TraceEvent {
 	type: string;
 	at: number;

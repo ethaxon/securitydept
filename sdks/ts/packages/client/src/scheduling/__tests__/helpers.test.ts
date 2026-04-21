@@ -1,9 +1,18 @@
 // Scheduling helpers — focused unit tests
 //
-// Tests for timer, interval, scheduleAt, fromEventPattern.
+// Tests for timer, interval, scheduleAt, fromSignal, fromPromise, fromEventPattern.
 
 import { describe, expect, it, vi } from "vitest";
-import { fromEventPattern, interval, scheduleAt, timer } from "../helpers";
+import { createSignal } from "../../signals/signal";
+import {
+	fromEventPattern,
+	fromPromise,
+	fromSignal,
+	interval,
+	PromiseSettlementKind,
+	scheduleAt,
+	timer,
+} from "../helpers";
 import type { Clock, Scheduler } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -198,6 +207,111 @@ describe("scheduleAt", () => {
 
 		handle.cancel();
 		scheduler.flush();
+		expect(callback).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// fromSignal
+// ---------------------------------------------------------------------------
+
+describe("fromSignal", () => {
+	it("delivers updated signal snapshots", () => {
+		const signal = createSignal("idle");
+		const callback = vi.fn();
+
+		const subscription = fromSignal({ signal, callback });
+		signal.set("ready");
+		signal.set("done");
+
+		expect(callback).toHaveBeenCalledTimes(2);
+		expect(callback).toHaveBeenNthCalledWith(1, "ready");
+		expect(callback).toHaveBeenNthCalledWith(2, "done");
+
+		subscription.unsubscribe();
+	});
+
+	it("can emit the current snapshot immediately", () => {
+		const signal = createSignal("bootstrapped");
+		const callback = vi.fn();
+
+		fromSignal({
+			signal,
+			callback,
+			emitInitialValue: true,
+		});
+
+		expect(callback).toHaveBeenCalledOnce();
+		expect(callback).toHaveBeenCalledWith("bootstrapped");
+	});
+
+	it("stops delivering updates after unsubscribe", () => {
+		const signal = createSignal("idle");
+		const callback = vi.fn();
+
+		const subscription = fromSignal({ signal, callback });
+		subscription.unsubscribe();
+		signal.set("ignored");
+
+		expect(callback).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// fromPromise
+// ---------------------------------------------------------------------------
+
+describe("fromPromise", () => {
+	it("reports fulfilled settlement", async () => {
+		const callback = vi.fn();
+
+		fromPromise({
+			promise: Promise.resolve("ready"),
+			callback,
+		});
+
+		await Promise.resolve();
+
+		expect(callback).toHaveBeenCalledWith({
+			kind: PromiseSettlementKind.Fulfilled,
+			value: "ready",
+		});
+	});
+
+	it("reports rejected settlement", async () => {
+		const callback = vi.fn();
+
+		fromPromise({
+			promise: Promise.reject(new Error("boom")),
+			callback,
+		});
+
+		await Promise.resolve();
+
+		expect(callback).toHaveBeenCalledTimes(1);
+		expect(callback.mock.calls[0][0]).toMatchObject({
+			kind: PromiseSettlementKind.Rejected,
+			reason: expect.objectContaining({
+				message: "boom",
+			}),
+		});
+	});
+
+	it("ignores settlement after unsubscribe", async () => {
+		let resolvePromise: ((value: string) => void) | undefined;
+		const callback = vi.fn();
+		const promise = new Promise<string>((resolve) => {
+			resolvePromise = resolve;
+		});
+
+		const subscription = fromPromise({
+			promise,
+			callback,
+		});
+		subscription.unsubscribe();
+		resolvePromise?.("ignored");
+		await Promise.resolve();
+
 		expect(callback).not.toHaveBeenCalled();
 	});
 });

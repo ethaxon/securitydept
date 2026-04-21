@@ -5,6 +5,8 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
+use securitydept_oidc_client::UserInfoExchangeResult;
+use securitydept_utils::principal::AuthenticatedPrincipal;
 use serde::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 use url::form_urlencoded;
@@ -305,4 +307,28 @@ pub struct BackendOidcModeUserInfoResponse {
     pub issuer: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claims: Option<HashMap<String, serde_json::Value>>,
+}
+
+impl From<AuthenticatedPrincipal> for BackendOidcModeUserInfoResponse {
+    fn from(principal: AuthenticatedPrincipal) -> Self {
+        Self {
+            subject: principal.subject,
+            display_name: principal.display_name,
+            picture: principal.picture,
+            issuer: principal.issuer,
+            claims: (!principal.claims.is_empty()).then_some(principal.claims),
+        }
+    }
+}
+
+impl From<UserInfoExchangeResult> for BackendOidcModeUserInfoResponse {
+    fn from(result: UserInfoExchangeResult) -> Self {
+        Self {
+            subject: result.subject,
+            display_name: result.display_name,
+            picture: result.picture,
+            issuer: result.issuer,
+            claims: result.claims,
+        }
+    }
 }

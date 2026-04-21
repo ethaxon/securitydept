@@ -1,4 +1,8 @@
-import type { LoggerTrait, TraceEventSinkTrait } from "../logging/types";
+import type {
+	LoggerTrait,
+	OperationTracerTrait,
+	TraceEventSinkTrait,
+} from "../logging/types";
 import type { RecordStore } from "../persistence/types";
 import type { Clock, Scheduler } from "../scheduling/types";
 import type { HttpTransport } from "../transport/types";
@@ -18,6 +22,7 @@ export interface ClientRuntime {
 	clock: Clock;
 	logger?: LoggerTrait;
 	traceSink?: TraceEventSinkTrait;
+	operationTracer?: OperationTracerTrait;
 	/** Optional persistent storage backing. */
 	persistentStore?: RecordStore;
 	/** Optional session-scoped storage backing. */

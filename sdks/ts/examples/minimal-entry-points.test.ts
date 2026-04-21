@@ -15,6 +15,7 @@ describe("minimal entry points", () => {
 				headers: {},
 				body: {
 					principal: {
+						subject: "session-user-1",
 						displayName: "Alice",
 					},
 				},

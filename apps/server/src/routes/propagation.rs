@@ -3,9 +3,12 @@ use axum::{
     extract::Request,
     response::{IntoResponse, Response},
 };
-use securitydept_core::utils::observability::AuthFlowDiagnosisOutcome;
 
-use crate::{error::ServerError, state::ServerState};
+use crate::{
+    diagnosis::{RouteDiagnosisContext, log_route_diagnosis, log_route_diagnosis_error},
+    error::ServerError,
+    state::ServerState,
+};
 
 /// Catch-all handler for propagation-aware forwarding.
 ///
@@ -38,26 +41,30 @@ pub async fn propagation_forward(
         .await;
     let diagnosis = diagnosed.diagnosis().clone();
     let response = diagnosed.into_result().map_err(|error| {
-        tracing::warn!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            error = %error,
-            "Propagation forwarding failed"
+        log_route_diagnosis_error(
+            RouteDiagnosisContext {
+                route: "/api/propagation",
+                method: "ANY",
+                status: None,
+            },
+            &diagnosis,
+            &error,
+            "Propagation forwarding failed",
         );
         ServerError::InvalidConfig {
             message: format!("propagation forwarding failed: {error}"),
         }
     })?;
 
-    if matches!(diagnosis.outcome, AuthFlowDiagnosisOutcome::Succeeded) {
-        tracing::info!(
-            operation = %diagnosis.operation,
-            outcome = diagnosis.outcome.as_str(),
-            diagnosis = %diagnosis.to_json_value(),
-            "Propagation forwarding succeeded"
-        );
-    }
+    log_route_diagnosis(
+        RouteDiagnosisContext {
+            route: "/api/propagation",
+            method: "ANY",
+            status: Some(response.status().as_u16()),
+        },
+        &diagnosis,
+        "Propagation forwarding completed",
+    );
 
     Ok(response.into_response())
 }

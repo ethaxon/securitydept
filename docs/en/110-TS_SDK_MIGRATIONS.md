@@ -44,6 +44,139 @@ Entry format:
 
 ## Migration Notes
 
+### 2026-04-24 @securitydept/client / session-context / token-set-context-client — shared authenticated-principal baseline is now the canonical cross-family contract
+
+**Discipline**: `stable-deprecation-first` (`@securitydept/client`, `@securitydept/session-context-client`) + `provisional-migration-required` (`@securitydept/token-set-context-client/*`)
+
+**Subpath**: `@securitydept/client`, `@securitydept/session-context-client`, `@securitydept/token-set-context-client/backend-oidc-mode`, `@securitydept/token-set-context-client/frontend-oidc-mode`, `@securitydept/token-set-context-client/orchestration`
+
+**Change**:
+
+The repository no longer treats session and token-set as separate semantic owners for authenticated human-principal data.
+
+- `@securitydept/client` now owns the shared TS/browser `AuthenticatedPrincipal` baseline plus `normalizeAuthenticatedPrincipal()`, `normalizeAuthenticatedPrincipalWire()`, and `projectAuthenticatedPrincipal()`
+- `session-context-client` user-info normalization now requires a stable `subject` and aligns its principal contract to that shared baseline
+- token-set backend/frontend user-info and orchestration principal paths now consume the same shared semantic owner instead of maintaining a parallel token-set-only principal contract
+- `apps/webui` dashboard user projection now uses a shared helper-backed projection path instead of app-local per-mode fallback rules
+- this consolidation is about authenticated human-principal semantics only; resource-token facts, browser-owned token material, mixed-custody, and BFF/server-side token ownership remain separate concerns
+
+**Migration**:
+
+1. If your TS code still treats session principal as `displayName`-only data, migrate it to the shared `AuthenticatedPrincipal` shape and provide/assert a stable `subject`.
+2. If your code parses snake_case wire user-info payloads directly, prefer `normalizeAuthenticatedPrincipalWire()` so `subject`, `display_name`, `issuer`, and `claims` normalization stays in one owner.
+3. If your app builds a host-facing current-user label from raw principal fields, prefer `projectAuthenticatedPrincipal()` or a thin app helper built on it instead of repeating `displayName ?? subject ?? ...` fallback logic.
+4. Do not treat resource-token principal/fact surfaces as aliases of this contract; they remain substrate/token-material concerns rather than authenticated human-principal projection.
+
+**Justification**:
+
+Before iteration 142, session and token-set each carried overlapping but non-identical principal semantics, which made cross-family host code and cross-language authority harder to keep coherent. This iteration moves the semantic owner to the shared foundation while keeping resource-token and later mixed-custody/BFF topics outside the current baseline.
+
+### 2026-04-24 Operation tracer / trace sink / logger layering productization — operation lifecycle correlation now has a real TS owner
+
+**Discipline**: `stable-deprecation-first` (foundation) + `experimental-fast-break` (test-utils)
+
+**Subpath**: `@securitydept/client`, `@securitydept/test-utils`
+
+**Change**:
+
+The TS/browser structured-observation baseline now includes a real operation-correlation layer instead of interfaces only.
+
+- `@securitydept/client` now owns `createOperationTracer()` and `OperationTraceEventType`
+- `OperationScope` is now backed by a canonical implementation that emits `operation.started`, `operation.event`, `operation.error`, and `operation.ended` into `TraceEventSinkTrait`
+- token-set frontend callback/refresh and backend callback family/refresh now correlate their existing trace events through one shared `operationId`
+- `apps/webui` timelines now surface operation lifecycle entries and `operationId` directly instead of leaving correlation trapped inside SDK-only tests
+- `@securitydept/test-utils` `InMemoryTraceCollector` now supports `ofOperation()`, `operationLifecycle()`, and `assertOperationLifecycle()` for operation-level assertions
+
+**Migration**:
+
+1. Prefer `createOperationTracer({ traceSink, logger, clock, scope, source })` instead of hand-rolled operation lifecycle wrappers.
+2. Treat `LoggerTrait` as a human-readable auxiliary channel only; do not replace machine-readable observation with console text assertions.
+3. If your auth-flow tests still hand-filter trace arrays for one operation, migrate them to `InMemoryTraceCollector.ofOperation()` and `assertOperationLifecycle()`.
+4. Treat `operationId` as the stable correlation key between lifecycle entries and existing family-specific trace events; exporter/OTel/span-tree work is still outside the current baseline.
+
+**Justification**:
+
+Before iteration 141, `OperationTracerTrait` and `OperationScope` were public types without a canonical implementation or a real auth-flow consumer path. This iteration closes that owner gap while keeping scope below a full exporter/OTel stack.
+
+### 2026-04-24 Unified input-source helper consolidation — richer foundation/web source helpers are now part of the current public baseline
+
+**Discipline**: `stable-deprecation-first`
+
+**Subpath**: `@securitydept/client`, `@securitydept/client/web`
+
+**Change**:
+
+The richer unified input-source helper story is now productized instead of remaining a documented direction only.
+
+- `@securitydept/client` now formally owns `fromSignal()` and `fromPromise()` alongside `timer()`, `interval()`, `scheduleAt()`, and `fromEventPattern()`
+- `@securitydept/client/web` now formally owns `fromAbortSignal()` and `fromStorageEvent()` alongside `fromVisibilityChange()`
+- real consumers no longer need to hand-roll these bridges in auth-flow/browser code: React signal bridging, callback-resume promise settlement, browser cancellation interop, and cross-tab storage listeners now consume the shared owners
+
+**Migration**:
+
+1. Replace hand-written `signal.subscribe(...)` to external-store bridge code with `fromSignal()` when you need the shared subscription shape.
+2. Replace ad hoc promise settlement bookkeeping (`promise.then(...).catch(...)` plus manual stale guards) with `fromPromise()` when you are adapting async completion into host state.
+3. Replace direct browser `abort` / `storage` listener glue with `fromAbortSignal()` and `fromStorageEvent()` when the owner is the shared web layer rather than app-local code.
+4. Continue to treat these helpers as thin source adapters only; operator-style composition remains outside the current baseline.
+
+**Justification**:
+
+Before iteration 140, the docs explicitly kept these richer helpers visible but not productized, which left a real owner gap between the design discussion and current browser/auth-flow adopters. This iteration closes that gap without expanding scope into a full stream/operator framework.
+
+### 2026-04-23 Capability-first configuration layering consolidation — frontend-mode browser materialization and adapter vocabulary now have formal owners
+
+**Discipline**: `provisional-migration-required`
+
+**Subpath**: `@securitydept/token-set-context-client/frontend-oidc-mode`
+
+**Change**:
+
+Capability-first configuration layering is now written as the current adopter-facing baseline instead of remaining a design direction.
+
+- `@securitydept/token-set-context-client/frontend-oidc-mode` now owns `createFrontendOidcModeBrowserClient()` for browser-side config projection fetch, validated parsing, runtime capability wiring, and client materialization
+- the same subpath now owns `resolveFrontendOidcModePersistentStateKey()` and `resolveFrontendOidcModeBrowserStorageKey()` for the persistent-state key story
+- the reference app no longer owns frontend-mode config fetch + parse + `createWebRuntime()` + `createFrontendOidcModeClient()` assembly in `apps/webui/src/lib/tokenSetFrontendModeClient.ts`
+- adapter/provider entry docs are now aligned on the same three layers: runtime/foundation config, auth-context config, and adapter/host config
+
+**Migration**:
+
+1. Replace app-local frontend-mode browser materialization with `createFrontendOidcModeBrowserClient()` when your host obtains config from a projection endpoint.
+2. Treat `configEndpoint` / `redirectUri` as bootstrap input, not as the auth-context config itself.
+3. Treat transport/stores/scheduler/clock/trace as runtime capability inputs, not as fields inside one flattened auth config object.
+4. Keep host-only concerns such as route constants, popup host routes, registry registration, and trace rendering outside the mode/root client config.
+
+**Justification**:
+
+Before iteration 139, the foundation direction was already clear, but the reference app still owned the highest-friction frontend-mode materialization path and the provider/config vocabulary still read inconsistently across auth families. This iteration closes that owner gap and writes the current layering story down as authority.
+
+### 2026-04-23 Cancellation / resource-release baseline consolidation — shared AbortSignal interop and dispose semantics are now productized
+
+**Discipline**: `stable-deprecation-first`
+
+**Subpath**: `@securitydept/client`, `@securitydept/client/web`
+
+**Change**:
+
+The TS/browser foundation now has one explicit cancellation/resource-release story instead of core contracts plus app-local glue.
+
+- `DisposableTrait`, `CancellationTokenTrait`, `CancellationTokenSourceTrait`, `createCancellationTokenSource()`, and `createLinkedCancellationToken()` are now written down as the current shared cancellation baseline
+- `CancellationTokenSourceTrait.dispose()` is the current owner-side release primitive: releasing an owned resource also cancels its token
+- `@securitydept/client/web` now owns both bridge directions:
+   - `createAbortSignalBridge(token)` for fetch-facing consumers that need `AbortSignal`
+   - `createCancellationTokenFromAbortSignal(signal)` for browser/framework consumers that receive `AbortSignal` first and need to call SDK APIs that accept `CancellationTokenTrait`
+- the reference app no longer owns an app-local `AbortSignal -> CancellationTokenTrait` wrapper in `apps/webui/src/api/tokenSet.ts`
+
+**Migration**:
+
+1. Replace any app-local `AbortSignal -> CancellationTokenTrait` wrapper with `createCancellationTokenFromAbortSignal(signal)` from `@securitydept/client/web`.
+2. Keep `createAbortSignalBridge(token)` as the canonical path when a browser adapter must hand an `AbortSignal` to fetch or another web-native API.
+3. Treat `.dispose()` as the current explicit resource-release contract; do not assume `Symbol.dispose` support.
+4. If you need low-level cancellation fan-in, use `createLinkedCancellationToken()`; linked source factories or ambient cancellation trees are still outside the current baseline.
+
+**Justification**:
+
+Before iteration 138, the core contract existed but the browser consumer path was still split: fetch transport used a shared forward bridge while the reference app kept a second reverse bridge story. This iteration closes that owner split and writes the current release/disposal boundary down explicitly.
+
 ### 2026-04-23 Cross-runtime observability consolidation — browser hierarchy and server auth diagnosis now have formal owners with no new TS export
 
 **Discipline**: `provisional-migration-required`
@@ -573,6 +706,67 @@ Framework-specific adapters for the three main families (BasicAuth, Session, OID
 **Justification**:
 
 React adapters now follow the same dedicated-package strategy as Angular adapters. Angular adapters required separate packages from the start due to `ng-packagr` APF build requirements. Aligning React adapters to the same strategy avoids a mixed `tsdown` + `ng-packagr` subpath pattern, provides cleaner `peerDependencies` declarations, and improves tree-shaking boundaries.
+
+---
+
+### 2026-04-23 Session shared convenience moved from adapter-local glue to core owner
+
+**Discipline**: `stable-deprecation-first` (core) + `provisional-migration-required` (adapters)
+
+**Packages**:
+
+- `@securitydept/session-context-client`
+- `@securitydept/session-context-client-react`
+- `@securitydept/session-context-client-angular`
+
+**Change**:
+
+Framework-neutral session browser-shell convenience no longer lives first in the React adapter.
+
+- `SessionContextClient` now owns `rememberPostAuthRedirect()`, `clearPostAuthRedirect()`, `resolveLoginUrl()`, and `logoutAndClearPendingLoginRedirect()`
+- `@securitydept/session-context-client-react` now wraps those core methods instead of implementing their composition locally
+- `@securitydept/session-context-client-angular` now exposes the same convenience story via its DI/signal service facade
+
+**Migration**:
+
+1. Prefer the new core convenience methods when authoring framework-neutral session browser-shell flows.
+2. Treat React / Angular adapters as thin host wrappers over those core methods.
+3. Keep only DI, signal state, provider registration, and host state wiring in adapters.
+
+**Justification**:
+
+These methods are not React-specific behavior; they are canonical session browser-shell convenience and therefore belong to core so adapter parity remains honest.
+
+---
+
+### 2026-04-22 Session/basic-auth thin-surface parity consolidation in the reference app
+
+**Discipline**: `provisional-migration-required`
+
+**Packages**:
+
+- `@securitydept/session-context-client-react`
+- `@securitydept/basic-auth-context-client`
+- `@securitydept/basic-auth-context-client-react`
+
+**Change**:
+
+The reference app (`apps/webui`) no longer treats local browser glue as the primary owner for session/basic-auth flows.
+
+- the app-local `src/api/auth.ts` session helper module was removed
+- the app-local `src/lib/basicAuth.ts` browser-boundary helper module was removed
+- `SessionContextProvider` / `useSessionContext()` now own session login URL resolution, pending redirect state, user-info fetching, and logout flows across `/login`, `/playground/session`, and the dashboard shell
+- `BasicAuthContextClient` plus `BasicAuthContextProvider` / `useBasicAuthContext()` now own Basic Auth login entry wiring and browser boundary consumption across `/login` and `/playground/basic-auth`
+
+**Migration**:
+
+1. Replace app-local session glue with `SessionContextProvider` + `useSessionContext()`.
+2. Replace app-local Basic Auth login/boundary helpers with `BasicAuthContextClient` and `BasicAuthContextProvider`.
+3. Keep these families thin: do not rebuild token-set callback orchestration, token persistence, or bearer transport ownership on top of them.
+
+**Justification**:
+
+These families are still thinner than token-set by design, but they now carry real adopter-facing owner surfaces instead of depending on undocumented reference-app glue.
 
 ---
 
@@ -1138,4 +1332,3 @@ React ecosystem integrations (React Query, potential future Zustand / Jotai / Ta
 ---
 
 [English](../en/110-TS_SDK_MIGRATIONS.md) | [中文](../zh/110-TS_SDK_MIGRATIONS.md)
-

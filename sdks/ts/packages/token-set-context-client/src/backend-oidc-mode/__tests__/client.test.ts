@@ -7,8 +7,13 @@ import type {
 	TraceEvent,
 	TraceEventSinkTrait,
 } from "@securitydept/client";
-import { createInMemoryRecordStore } from "@securitydept/client";
+import {
+	createInMemoryRecordStore,
+	createOperationTracer,
+	OperationTraceEventType,
+} from "@securitydept/client";
 import { createFetchTransport } from "@securitydept/client/web";
+import { InMemoryTraceCollector } from "@securitydept/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BackendOidcModeClient } from "../client";
 
@@ -119,6 +124,10 @@ function createTestRuntime(
 		scheduler,
 		clock,
 		traceSink: options?.traceSink,
+		operationTracer: createOperationTracer({
+			clock,
+			traceSink: options?.traceSink,
+		}),
 		persistentStore: options?.persistentStore,
 	};
 
@@ -511,6 +520,179 @@ describe("BackendOidcModeClient", () => {
 				"backend_oidc.metadata_redemption.started",
 				"backend_oidc.metadata_redemption.succeeded",
 				"backend_oidc.refresh.succeeded",
+			]),
+		);
+	});
+
+	it("correlates fragment callback lifecycle with nested backend traces", async () => {
+		const trace = new InMemoryTraceCollector();
+		const transport = createTestTransport((request): HttpResponse => {
+			if (request.url.endsWith("/metadata/redeem")) {
+				return {
+					status: 200,
+					headers: {} as Record<string, string>,
+					body: {
+						metadata: {
+							principal: {
+								subject: "user-op",
+								displayName: "User Op",
+							},
+						},
+					},
+				};
+			}
+
+			throw new Error(`Unexpected request: ${request.url}`);
+		});
+		const { runtime } = createTestRuntime(transport, { traceSink: trace });
+		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+
+		await client.handleCallback(
+			"access_token=trace-at&id_token=trace-idt&refresh_token=trace-rt&expires_at=2026-12-31T00%3A00%3A00Z&metadata_redemption_id=meta-op",
+		);
+
+		const callbackStarted = trace.ofType("backend_oidc.callback.started")[0];
+		const operationId = callbackStarted?.operationId;
+
+		expect(operationId).toBeTruthy();
+		expect(
+			trace.ofType("backend_oidc.metadata_redemption.started")[0]?.operationId,
+		).toBe(operationId);
+		expect(
+			trace.ofType("backend_oidc.callback.succeeded")[0]?.operationId,
+		).toBe(operationId);
+		expect(
+			trace.assertOperationLifecycle(operationId!, [
+				OperationTraceEventType.Started,
+				OperationTraceEventType.Ended,
+			]),
+		).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					attributes: expect.objectContaining({
+						operationName: "backend_oidc.callback",
+						flow: "callback.fragment",
+					}),
+				}),
+			]),
+		);
+	});
+
+	it("treats callback body as the same callback operation story", async () => {
+		const trace = new InMemoryTraceCollector();
+		const transport = createTestTransport(() => {
+			throw new Error("callback body should not hit transport");
+		});
+		const { runtime } = createTestRuntime(transport, { traceSink: trace });
+		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+
+		await client.handleCallbackBody({
+			access_token: "body-at",
+			id_token: "body-idt",
+			refresh_token: "body-rt",
+			access_token_expires_at: "2026-12-31T00:00:00Z",
+			metadata: {
+				principal: {
+					subject: "body-user",
+					display_name: "Body User",
+				},
+			},
+		});
+
+		const callbackStarted = trace.ofType("backend_oidc.callback.started")[0];
+		const operationId = callbackStarted?.operationId;
+
+		expect(operationId).toBeTruthy();
+		expect(
+			trace.ofType("backend_oidc.callback.succeeded")[0]?.operationId,
+		).toBe(operationId);
+		expect(
+			trace.assertOperationLifecycle(operationId!, [
+				OperationTraceEventType.Started,
+				OperationTraceEventType.Ended,
+			]),
+		).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					attributes: expect.objectContaining({
+						operationName: "backend_oidc.callback",
+						flow: "callback.body",
+					}),
+				}),
+			]),
+		);
+	});
+
+	it("correlates refresh lifecycle with nested redemption traces", async () => {
+		const trace = new InMemoryTraceCollector();
+		const transport = createTestTransport((request): HttpResponse => {
+			if (request.url.endsWith("/metadata/redeem")) {
+				return {
+					status: 200,
+					headers: {} as Record<string, string>,
+					body: {
+						metadata: {
+							source: {
+								kind: "refresh_token",
+							},
+						},
+					},
+				};
+			}
+
+			return {
+				status: 200,
+				headers: { "content-type": "application/json" },
+				body: {
+					access_token: "next-at",
+					refresh_token: "next-rt",
+					access_token_expires_at: "2026-01-01T00:04:00Z",
+					metadata_redemption_id: "meta-refresh-op",
+				},
+			};
+		});
+		const { runtime } = createTestRuntime(transport, { traceSink: trace });
+		const client = new BackendOidcModeClient(
+			{
+				baseUrl: BASE_URL,
+				refreshWindowMs: 60_000,
+			},
+			runtime,
+		);
+
+		client.restoreState({
+			tokens: {
+				accessToken: "seed-at",
+				refreshMaterial: "seed-rt",
+				accessTokenExpiresAt: "2026-01-01T00:01:30Z",
+			},
+			metadata: {},
+		});
+
+		await client.refresh();
+
+		const refreshStarted = trace.ofType("backend_oidc.refresh.started")[0];
+		const operationId = refreshStarted?.operationId;
+
+		expect(operationId).toBeTruthy();
+		expect(
+			trace.ofType("backend_oidc.metadata_redemption.started")[0]?.operationId,
+		).toBe(operationId);
+		expect(trace.ofType("backend_oidc.refresh.succeeded")[0]?.operationId).toBe(
+			operationId,
+		);
+		expect(
+			trace.assertOperationLifecycle(operationId!, [
+				OperationTraceEventType.Started,
+				OperationTraceEventType.Ended,
+			]),
+		).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					attributes: expect.objectContaining({
+						operationName: "backend_oidc.refresh",
+					}),
+				}),
 			]),
 		);
 	});

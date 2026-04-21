@@ -18,6 +18,7 @@ import {
 	type ReactElement,
 	StrictMode,
 	useEffect,
+	useRef,
 } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
@@ -143,6 +144,7 @@ describe("session-context react adapter", () => {
 				status: 200,
 				headers: {},
 				body: {
+					subject: "session-user-1",
 					display_name: "Alice",
 				},
 			});
@@ -164,6 +166,7 @@ describe("session-context react adapter", () => {
 				status: 200,
 				headers: {},
 				body: {
+					subject: "session-user-2",
 					display_name: "Bob",
 				},
 			});
@@ -177,6 +180,92 @@ describe("session-context react adapter", () => {
 			"loading:Alice",
 			"ready:Bob",
 		]);
+
+		view.unmount();
+	});
+
+	it("exposes login redirect helpers and transport-bound logout through the provider value", async () => {
+		(
+			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+		).IS_REACT_ACT_ENVIRONMENT = true;
+		const requests: HttpRequest[] = [];
+		const firstResponse = createDeferredResponse();
+		const logoutResponse = createDeferredResponse();
+		const transport = createTrackedTransport(requests, [
+			firstResponse,
+			logoutResponse,
+		]);
+		const sessionStore = createInMemoryRecordStore();
+		const observed: string[] = [];
+
+		function Probe() {
+			const value = useSessionContext();
+			const didRun = useRef(false);
+
+			useEffect(() => {
+				if (!value.loading && !didRun.current) {
+					didRun.current = true;
+					void (async () => {
+						await value.rememberPostAuthRedirect("/entries?tab=all");
+						observed.push(await value.resolveLoginUrl());
+						await value.logout();
+						observed.push(await value.resolveLoginUrl());
+					})();
+				}
+			}, [value]);
+
+			return createElement(
+				"output",
+				null,
+				`${value.loading ? "loading" : "ready"}:${value.session?.principal.displayName ?? "none"}`,
+			);
+		}
+
+		const providerProps = {
+			config: { baseUrl: "https://auth.example.com" },
+			transport,
+			sessionStore,
+		} satisfies Omit<SessionContextProviderProps, "children">;
+
+		const view = render(
+			createElement(
+				SessionContextProvider,
+				providerProps as SessionContextProviderProps,
+				createElement(Probe),
+			),
+		);
+
+		await act(async () => {
+			firstResponse.resolve({
+				status: 200,
+				headers: {},
+				body: {
+					subject: "session-user-1",
+					display_name: "Alice",
+				},
+			});
+			await firstResponse.promise;
+			await Promise.resolve();
+			await Promise.resolve();
+			logoutResponse.resolve({
+				status: 200,
+				headers: {},
+				body: {},
+			});
+			await logoutResponse.promise;
+		});
+
+		expect(observed).toEqual([
+			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=%2Fentries%3Ftab%3Dall",
+			"https://auth.example.com/auth/session/login",
+		]);
+		expect(requests).toContainEqual(
+			expect.objectContaining({
+				method: "POST",
+				url: "https://auth.example.com/auth/session/logout",
+			}),
+		);
+		expect(view.container.textContent).toBe("ready:none");
 
 		view.unmount();
 	});
@@ -224,6 +313,7 @@ describe("session-context react adapter", () => {
 				status: 200,
 				headers: {},
 				body: {
+					subject: "session-user-3",
 					display_name: "Carol",
 				},
 			});
@@ -322,6 +412,7 @@ describe("session-context react adapter", () => {
 				status: 200,
 				headers: {},
 				body: {
+					subject: "session-user-stale",
 					display_name: "Stale Alice",
 				},
 			});
@@ -399,6 +490,7 @@ describe("session-context react adapter", () => {
 				status: 200,
 				headers: {},
 				body: {
+					subject: "session-user-current",
 					display_name: "Current Alice",
 				},
 			});
@@ -413,6 +505,7 @@ describe("session-context react adapter", () => {
 				status: 200,
 				headers: {},
 				body: {
+					subject: "session-user-stale",
 					display_name: "Stale Alice",
 				},
 			});
