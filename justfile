@@ -1,9 +1,12 @@
 set dotenv-load := true
 set windows-shell := ["pwsh.exe", "-NoLogo", "-ExecutionPolicy", "RemoteSigned", "-Command"]
 
-setup:
+setup: setup-docs
     pnpm install
     cargo check --workspace --all-features
+
+setup-docs:
+    cd docsite && pnpm install
 
 setup-distrobox:
     distrobox create --name playwright-env --image ubuntu:24.04
@@ -11,6 +14,9 @@ setup-distrobox:
     
 dev-webui:
     cd apps/webui && pnpm dev
+
+dev-docs:
+    cd docsite && pnpm run dev
 
 dev-server:
     watchexec --watch apps/server --watch packages --watch config.toml --exts rs,toml -- cargo run --manifest-path apps/server/Cargo.toml
@@ -22,6 +28,14 @@ dev-all:
 
 build-sdks:
     cd sdks/ts && pnpm build
+
+build-docs:
+    cd docsite && pnpm run build
+
+preview-docs:
+    cd docsite && pnpm run preview
+
+verify-docs: build-docs
 
 build-webui:
     pnpm -r --filter @securitydept/webui... build
@@ -48,7 +62,10 @@ fix-rs:
 fix-ts:
     pnpm lint-fix
 
-fix: fix-rs fix-ts
+sync-docsite:
+    node docsite/scripts/sync-docsite-symlink.ts
+
+fix: fix-rs fix-ts sync-docsite
 
 test-rs:
     cargo test --workspace --all-features

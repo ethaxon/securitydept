@@ -16,7 +16,7 @@ export function EntriesPage() {
 
 	return (
 		<Layout>
-			<div className="mx-auto max-w-screen-lg space-y-6">
+			<div className="mx-auto max-w-5xl space-y-6">
 				{accessNotice ? (
 					<AuthModeNotice
 						title={accessNotice.title}

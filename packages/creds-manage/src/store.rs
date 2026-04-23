@@ -27,6 +27,18 @@ fn content_hash(data: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
+fn lock_file_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .map(|name| format!("{}.lock", name.to_string_lossy()))
+        .unwrap_or_else(|| "store.lock".to_string());
+
+    match path.parent() {
+        Some(parent) => parent.join(file_name),
+        None => PathBuf::from(file_name),
+    }
+}
+
 /// File-backed store for auth entries and groups.
 ///
 /// The store keeps an in-memory snapshot and synchronizes it with disk:
@@ -45,6 +57,53 @@ pub struct CredsManageStore {
     /// self-triggered event and then clears the marker.
     last_committed_hash: Arc<Mutex<Option<[u8; 32]>>>,
     sync_task: JoinHandle<()>,
+}
+
+fn invalid_basic_entry_material_error(message: impl Into<String>) -> error::CredsManageError {
+    error::CredsManageError::Creds {
+        source: securitydept_creds::CredsError::InvalidCredentialsFormat {
+            message: message.into(),
+        },
+    }
+}
+
+fn ensure_basic_entry_material_valid(username: &str, password: &str) -> CredsManageResult<()> {
+    if username.trim().is_empty() {
+        return Err(invalid_basic_entry_material_error(
+            "Basic entry username must not be empty",
+        ));
+    }
+
+    if password.is_empty() {
+        return Err(invalid_basic_entry_material_error(
+            "Basic entry password must not be empty",
+        ));
+    }
+
+    Ok(())
+}
+
+fn ensure_basic_entry_update_material_valid(
+    username: Option<&str>,
+    password: Option<&str>,
+) -> CredsManageResult<()> {
+    if let Some(username) = username
+        && username.trim().is_empty()
+    {
+        return Err(invalid_basic_entry_material_error(
+            "Basic entry username must not be empty",
+        ));
+    }
+
+    if let Some(password) = password
+        && password.is_empty()
+    {
+        return Err(invalid_basic_entry_material_error(
+            "Basic entry password must not be empty",
+        ));
+    }
+
+    Ok(())
 }
 
 impl CredsManageStore {
@@ -118,6 +177,8 @@ impl CredsManageStore {
         password: String,
         group_ids: Vec<String>,
     ) -> CredsManageResult<AuthEntry> {
+        ensure_basic_entry_material_valid(&username, &password)?;
+
         let _io_guard = self.io_lock.lock().await;
 
         let (created, snapshot) =
@@ -176,6 +237,8 @@ impl CredsManageStore {
         password: Option<String>,
         group_ids: Option<Vec<String>>,
     ) -> CredsManageResult<AuthEntry> {
+        ensure_basic_entry_update_material_valid(username.as_deref(), password.as_deref())?;
+
         let _io_guard = self.io_lock.lock().await;
         let id = id.to_string();
 
@@ -479,7 +542,6 @@ impl Drop for CredsManageStore {
         self.sync_task.abort();
     }
 }
-
 fn collect_all_entries(data: &DataFile) -> Vec<AuthEntry> {
     let mut entries = Vec::new();
     entries.extend(data.basic_creds.iter().map(AuthEntry::from));
@@ -683,7 +745,7 @@ async fn reload_if_external(
 // File I/O helpers
 // ---------------------------------------------------------------------------
 
-/// Read the data file contents under a shared (read) lock.
+/// Read the data file contents under a shared sidecar lock.
 async fn read_raw_file_with_lock(path: &Path) -> CredsManageResult<Vec<u8>> {
     let path = path.to_path_buf();
     tokio::task::spawn_blocking(move || -> CredsManageResult<Vec<u8>> {
@@ -693,17 +755,28 @@ async fn read_raw_file_with_lock(path: &Path) -> CredsManageResult<Vec<u8>> {
             std::fs::create_dir_all(parent).context(error::DataReadSnafu)?;
         }
 
-        let file = std::fs::OpenOptions::new()
+        let lock_path = lock_file_path(&path);
+        let lock_file = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .truncate(false)
-            .open(&path)
+            .open(&lock_path)
             .context(error::DataReadSnafu)?;
 
-        file.lock_shared().context(error::DataReadSnafu)?;
-        let result = std::fs::read(&path).context(error::DataReadSnafu);
-        let _ = file.unlock();
+        lock_file.lock_shared().context(error::DataReadSnafu)?;
+        let result = (|| -> CredsManageResult<Vec<u8>> {
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&path)
+                .context(error::DataReadSnafu)?;
+
+            std::fs::read(&path).context(error::DataReadSnafu)
+        })();
+        let _ = lock_file.unlock();
         result
     })
     .await
@@ -718,7 +791,7 @@ async fn read_data_file_with_lock(path: &Path) -> CredsManageResult<DataFile> {
 
 /// Atomically read-modify-write the data file.
 ///
-/// 1. Read current file under exclusive lock.
+/// 1. Read current file under an exclusive sidecar lock.
 /// 2. Apply the mutation closure.
 /// 3. Serialize → temp file → fsync → rename (via `AtomicWriteFile`).
 /// 4. Record the content hash so the watcher can skip the self-event.
@@ -740,20 +813,30 @@ where
                 std::fs::create_dir_all(parent).context(error::DataWriteSnafu)?;
             }
 
-            // Acquire an exclusive lock on the target file for the duration
-            // of read + write. This prevents concurrent writers from
-            // interleaving.
+            let lock_path = lock_file_path(&path);
+
+            // Acquire an exclusive lock on a sidecar file for the duration
+            // of read + write. This serializes writers while keeping the
+            // target file replaceable by the atomic writer.
             let lock_file = std::fs::OpenOptions::new()
                 .read(true)
                 .write(true)
                 .create(true)
                 .truncate(false)
-                .open(&path)
+                .open(&lock_path)
                 .context(error::DataWriteSnafu)?;
 
             lock_file.lock_exclusive().context(error::DataWriteSnafu)?;
 
             let result = (|| -> CredsManageResult<(T, DataFile, Vec<u8>)> {
+                std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .open(&path)
+                    .context(error::DataReadSnafu)?;
+
                 let content = std::fs::read_to_string(&path).context(error::DataReadSnafu)?;
 
                 let mut data = parse_data_file(&content)?;
@@ -802,4 +885,66 @@ fn parse_data_file_bytes(content: &[u8]) -> CredsManageResult<DataFile> {
     }
 
     serde_json::from_slice(content).context(error::DataParseSnafu)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use securitydept_creds::CredsError;
+
+    use super::*;
+
+    fn unique_store_path(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("securitydept-creds-manage-{label}-{nanos}.json"))
+    }
+
+    async fn load_test_store(label: &str) -> CredsManageStore {
+        CredsManageStore::load(unique_store_path(label))
+            .await
+            .expect("test store should load")
+    }
+
+    #[tokio::test]
+    async fn create_basic_entry_rejects_empty_username_as_invalid_credentials_format() {
+        let store = load_test_store("empty-username").await;
+
+        let error = store
+            .create_basic_entry(
+                "ops-user".to_string(),
+                "   ".to_string(),
+                "secret123".to_string(),
+                Vec::new(),
+            )
+            .await
+            .expect_err("empty username should be rejected");
+
+        match error {
+            error::CredsManageError::Creds {
+                source: CredsError::InvalidCredentialsFormat { message },
+            } => {
+                assert_eq!(message, "Basic entry username must not be empty");
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+
+    #[test]
+    fn update_entry_rejects_empty_password_as_invalid_credentials_format() {
+        let error = ensure_basic_entry_update_material_valid(None, Some(""))
+            .expect_err("empty password should be rejected");
+
+        match error {
+            error::CredsManageError::Creds {
+                source: CredsError::InvalidCredentialsFormat { message },
+            } => {
+                assert_eq!(message, "Basic entry password must not be empty");
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
 }

@@ -31,6 +31,24 @@ fn forward_auth_base_diagnosis(
         )
 }
 
+fn forward_auth_terminal_rejection_diagnosis(
+    diagnosis: AuthFlowDiagnosis,
+    group_id: String,
+    reason: &'static str,
+    failure_stage: Option<&'static str>,
+) -> AuthFlowDiagnosis {
+    let diagnosis = diagnosis
+        .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
+        .field(AuthFlowDiagnosisField::GROUP_ID, group_id)
+        .field(AuthFlowDiagnosisField::REASON, reason);
+
+    if let Some(failure_stage) = failure_stage {
+        diagnosis.field(AuthFlowDiagnosisField::FAILURE_STAGE, failure_stage)
+    } else {
+        diagnosis
+    }
+}
+
 /// GET /api/forwardauth/traefik/:group
 ///
 /// Traefik ForwardAuth: returns 200 if authenticated, 401 otherwise.
@@ -135,6 +153,7 @@ async fn check_forward_auth(
     adapter: &str,
 ) -> Result<(String, AuthFlowDiagnosis), (StatusCode, AuthFlowDiagnosis)> {
     let diagnosis = forward_auth_base_diagnosis(group, headers, adapter);
+    let mut credential_validation_failure_stage = None;
 
     let Some(group_obj) = state.creds_manage_store.find_group_by_name(group).await else {
         return Err((
@@ -189,14 +208,15 @@ async fn check_forward_auth(
                     diagnosis
                         .clone()
                         .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
-                        .field("group_id", group_obj.id.to_string())
-                        .field("auth_scheme", "basic")
-                        .field("entry_name", name),
+                        .field(AuthFlowDiagnosisField::GROUP_ID, group_obj.id.to_string())
+                        .field(AuthFlowDiagnosisField::AUTH_SCHEME, "basic")
+                        .field(AuthFlowDiagnosisField::ENTRY_NAME, name),
                 ));
             }
             Ok(None) => {}
             Err(error) => {
-                tracing::warn!(group = %group, username = %username, error = %error, "Basic credential validation failed");
+                let _ = error;
+                credential_validation_failure_stage = Some("basic_credential_validation");
             }
         }
     }
@@ -210,29 +230,40 @@ async fn check_forward_auth(
                     diagnosis
                         .clone()
                         .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
-                        .field("group_id", group_obj.id.to_string())
-                        .field("auth_scheme", "bearer")
-                        .field("entry_name", name),
+                        .field(AuthFlowDiagnosisField::GROUP_ID, group_obj.id.to_string())
+                        .field(AuthFlowDiagnosisField::AUTH_SCHEME, "bearer")
+                        .field(AuthFlowDiagnosisField::ENTRY_NAME, name),
                 ));
             }
             Ok(None) => {}
             Err(error) => {
-                tracing::warn!(group = %group, error = %error, "Token credential validation failed");
+                let _ = error;
+                if credential_validation_failure_stage.is_none() {
+                    credential_validation_failure_stage = Some("token_credential_validation");
+                }
             }
         }
     }
 
     Err((
         StatusCode::UNAUTHORIZED,
-        diagnosis
-            .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-            .field(AuthFlowDiagnosisField::GROUP_ID, group_obj.id.to_string())
-            .field(AuthFlowDiagnosisField::REASON, "no_valid_credentials"),
+        forward_auth_terminal_rejection_diagnosis(
+            diagnosis,
+            group_obj.id.to_string(),
+            if credential_validation_failure_stage.is_some() {
+                "credential_validation_failed"
+            } else {
+                "no_valid_credentials"
+            },
+            credential_validation_failure_stage,
+        ),
     ))
 }
 
 #[cfg(test)]
 mod tests {
+    use axum::http::header;
+
     use super::*;
 
     #[test]
@@ -243,5 +274,42 @@ mod tests {
         assert_eq!(diagnosis.operation, AuthFlowOperation::FORWARD_AUTH_CHECK);
         assert_eq!(diagnosis.fields[AuthFlowDiagnosisField::GROUP], "ops");
         assert_eq!(diagnosis.fields[AuthFlowDiagnosisField::ADAPTER], "traefik");
+    }
+
+    #[test]
+    fn forward_auth_terminal_rejection_diagnosis_stays_secret_safe() {
+        let diagnosis = forward_auth_terminal_rejection_diagnosis(
+            forward_auth_base_diagnosis("ops", &HeaderMap::new(), "traefik"),
+            "group-1".to_string(),
+            "credential_validation_failed",
+            Some("basic_credential_validation"),
+        );
+
+        assert_eq!(
+            diagnosis.fields[AuthFlowDiagnosisField::GROUP_ID],
+            "group-1"
+        );
+        assert_eq!(
+            diagnosis.fields[AuthFlowDiagnosisField::FAILURE_STAGE],
+            "basic_credential_validation"
+        );
+        assert!(!diagnosis.fields.contains_key("username"));
+        assert!(!diagnosis.fields.contains_key("password"));
+        assert!(!diagnosis.fields.contains_key("token_value"));
+        assert!(!diagnosis.fields.contains_key("cookie"));
+    }
+
+    #[test]
+    fn unauthorized_with_challenge_preserves_protocol_header() {
+        let response = unauthorized_with_challenge(StatusCode::UNAUTHORIZED);
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::WWW_AUTHENTICATE)
+                .expect("challenge response should preserve header"),
+            "Basic realm=\"securitydept\", Bearer realm=\"securitydept\""
+        );
     }
 }

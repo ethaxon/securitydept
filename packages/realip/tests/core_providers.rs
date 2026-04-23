@@ -97,9 +97,16 @@ async fn test_remote_file_provider() -> anyhow::Result<()> {
 
     tokio::spawn(async move {
         while let Ok((mut socket, _)) = listener.accept().await {
-            let response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: \
-                            18\r\n\r\n4.4.4.4\n5.5.5.0/24\n";
+            let mut request = [0_u8; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await;
+            let body = "4.4.4.4\n5.5.5.0/24\n";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body,
+            );
             let _ = tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes()).await;
+            let _ = tokio::io::AsyncWriteExt::shutdown(&mut socket).await;
         }
     });
 

@@ -44,6 +44,44 @@ Entry format:
 
 ## Migration Notes
 
+### 2026-04-25 Iteration 151 beta-readiness docs / packaging prep — no TS public-surface change
+
+**Discipline**: no new `changeDiscipline` entry required; existing inventory disciplines remain unchanged.
+
+**Subpath**: none.
+
+**Change**: iteration 151 prepares `0.2.0-beta.1` by auditing docs reality, release readiness matrices, Docker readiness, and the VitePress docs pipeline. It does not add, remove, rename, or widen any TS SDK public export.
+
+**Migration**: none. Adopters do not need to change imports or runtime usage because of the iteration 151 release-prep work.
+
+**Justification**: the explicit ledger entry prevents the beta-readiness docs/docsite work from being misread as a silent SDK surface migration. Public-surface changes remain governed by `public-surface-inventory.json` and this ledger.
+
+### 2026-04-25 @securitydept/token-set-context-client-angular — bearer interceptor gains `strictUrlMatch` option (additive, non-breaking)
+
+**Discipline**: `provisional-migration-required` (the package remains `provisional`; this change is an additive surface expansion and does not break any existing adopter)
+
+**Subpath**: `@securitydept/token-set-context-client-angular`
+
+**Change**:
+
+- Added `export interface BearerInterceptorOptions { strictUrlMatch?: boolean }`
+- Added `export const TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS = new InjectionToken<BearerInterceptorOptions>(...)`
+- `provideTokenSetBearerInterceptor()` now accepts an optional `options?: BearerInterceptorOptions`, expanded via the options-object form per [TypeScript SDK Coding Standards](007-CLIENT_SDK_GUIDE.md#typescript-sdk-coding-standards). Return type tightens from `Provider` to `Provider[]` (NgModule `providers` arrays accept `Provider | Provider[]`, so all existing call sites stay compatible).
+- `createTokenSetBearerInterceptor(registry, options?)` accepts the same options object.
+- Default `strictUrlMatch: false`: keeps the original single-client convenience fallback so URLs that match no `urlPatterns` still fall back to `registry.accessToken()`.
+- `strictUrlMatch: true`: requests that match no `urlPatterns` receive **no** `Authorization` header.
+
+**Migration**:
+
+- Adopters with multiple backends, multiple audiences, or any third-party HTTP traffic from the same Angular host:
+  - `provideTokenSetBearerInterceptor()` → `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`
+  - `createTokenSetBearerInterceptor(registry)` → `createTokenSetBearerInterceptor(registry, { strictUrlMatch: true })`
+- Single-backend adopters can keep the no-argument form; behavior is unchanged.
+
+**Justification**:
+
+Iteration 150 review 1 surfaced a real `outposts` calibration finding: the default single-client convenience fallback would inject the token on URLs that did not match any registered `urlPatterns` whenever a host had multiple backends, multiple audiences, or any third-party HTTP traffic — a cross-origin token-leakage risk. Per the AGENTS.md TS SDK API rule, optional parameters on public functions are added through the options-object form; the default stays `false` to preserve compatibility with existing single-client adopters.
+
 ### 2026-04-24 @securitydept/client / session-context / token-set-context-client — shared authenticated-principal baseline is now the canonical cross-family contract
 
 **Discipline**: `stable-deprecation-first` (`@securitydept/client`, `@securitydept/session-context-client`) + `provisional-migration-required` (`@securitydept/token-set-context-client/*`)

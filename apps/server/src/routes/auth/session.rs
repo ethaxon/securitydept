@@ -66,12 +66,33 @@ pub async fn callback(
     Query(search_params): Query<OidcCodeCallbackSearchParams>,
 ) -> Result<Response, ServerError> {
     let external_base_url = state.external_base_url(&headers)?;
-    state
+    let diagnosed = state
         .session_auth_service()
-        .callback(session, &external_base_url, search_params)
-        .await
-        .map(into_axum_response)
-        .map_err(ServerError::from)
+        .callback_diagnosed(session, &external_base_url, search_params)
+        .await;
+    let (diagnosis, result) = diagnosed.into_parts();
+    let context = RouteDiagnosisContext {
+        route: "/auth/session/callback",
+        method: "GET",
+        status: result
+            .as_ref()
+            .ok()
+            .map(|response| response.status.as_u16())
+            .or_else(|| {
+                result
+                    .as_ref()
+                    .err()
+                    .map(|error| error.status_code().as_u16())
+            }),
+    };
+    match &result {
+        Ok(_) => log_route_diagnosis(context, &diagnosis, "Session callback completed"),
+        Err(error) => {
+            log_route_diagnosis_error(context, &diagnosis, error, "Session callback failed")
+        }
+    }
+
+    result.map(into_axum_response).map_err(ServerError::from)
 }
 
 /// POST /auth/session/logout -- destroy session.

@@ -253,4 +253,64 @@ describe("webui auth smoke", () => {
 			href: "/login",
 		});
 	});
+
+	it("maps credential-management CRUD envelopes into ClientError presentation for dashboard APIs", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(
+						JSON.stringify({
+							success: false,
+							status: 409,
+							error: {
+								kind: "conflict",
+								code: "duplicate_group_name",
+								message: "A group with the same name already exists.",
+								recovery: UserRecovery.None,
+								presentation: {
+									code: "duplicate_group_name",
+									message: "A group with the same name already exists.",
+									recovery: UserRecovery.None,
+								},
+							},
+						}),
+						{
+							status: 409,
+							statusText: "browser conflict text should not win",
+							headers: { "content-type": "application/json" },
+						},
+					),
+			),
+		);
+
+		const { api } = await import("../api/client");
+
+		let failure: unknown;
+		try {
+			await api.post("/api/groups", { name: "Operators" });
+		} catch (error) {
+			failure = error;
+		}
+
+		expect(failure).toMatchObject({
+			name: "ClientError",
+			presentation: {
+				code: "duplicate_group_name",
+				message: "A group with the same name already exists.",
+				recovery: UserRecovery.None,
+			},
+		});
+
+		const descriptor = readErrorPresentationDescriptor(failure, {
+			fallbackTitle: "Group action failed",
+			fallbackDescription: "The group action could not complete.",
+		});
+
+		expect(descriptor.description).toBe(
+			"A group with the same name already exists.",
+		);
+		expect(descriptor.recovery).toBe(UserRecovery.None);
+		expect(descriptor.primaryAction).toBeNull();
+	});
 });

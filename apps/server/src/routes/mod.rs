@@ -3,7 +3,10 @@ pub mod entries;
 pub mod forward_auth;
 pub mod groups;
 pub mod health;
+pub mod policy;
 pub mod propagation;
+#[cfg(test)]
+pub mod test_support;
 
 use axum::{
     Router, middleware,
@@ -88,6 +91,7 @@ pub fn build_router(state: ServerState) -> Router {
 
     let app = Router::new()
         .route("/api/health", get(health::health))
+        .route("/health", get(health::health))
         .nest("/basic", auth::basic::router())
         .merge(auth_routes)
         .nest(

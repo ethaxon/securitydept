@@ -44,6 +44,44 @@ TS SDK 当前处于 `0.x` 阶段。这不意味着"随便改" — 而是**允许
 
 ## 迁移说明
 
+### 2026-04-25 Iteration 151 beta-readiness docs / packaging prep —— 无 TS public-surface 变更
+
+**Discipline**: 不需要新增 `changeDiscipline` 条目；inventory 中既有 discipline 保持不变。
+
+**Subpath**: 无。
+
+**变更**：iteration 151 为 `0.2.0-beta.1` 做 docs reality audit、release readiness matrix、Docker readiness 与 VitePress docs pipeline 准备。它不新增、移除、重命名或扩展任何 TS SDK public export。
+
+**迁移**：无。Adopter 不需要因为 iteration 151 的 release-prep 工作改变 import 或 runtime 使用方式。
+
+**理由**：显式留下本条记录，是为了避免 beta-readiness docs/docsite 工作被误读为 silent SDK surface migration。Public-surface change 仍以 `public-surface-inventory.json` 与本文档为准。
+
+### 2026-04-25 @securitydept/token-set-context-client-angular —— bearer interceptor 新增 `strictUrlMatch` 选项（additive，非 breaking）
+
+**Discipline**: `provisional-migration-required`（package 仍处于 `provisional`，本变更属于 additive surface expansion，不破坏既有 adopter）
+
+**Subpath**: `@securitydept/token-set-context-client-angular`
+
+**变更**：
+
+- 新增 `export interface BearerInterceptorOptions { strictUrlMatch?: boolean }`
+- 新增 `export const TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS = new InjectionToken<BearerInterceptorOptions>(...)`
+- `provideTokenSetBearerInterceptor()` 现在接受可选 `options?: BearerInterceptorOptions`，按 [TypeScript SDK Coding Standards](007-CLIENT_SDK_GUIDE.md#typescript-sdk-coding-standards) 的 options-object 形式扩展；返回类型由 `Provider` 收紧为 `Provider[]`（NgModule providers 数组接受 `Provider | Provider[]`，所有既有 adopter 调用站点向后兼容）
+- `createTokenSetBearerInterceptor(registry, options?)` 同样接受同一 options 对象
+- 默认 `strictUrlMatch: false`：保持原有 single-client convenience fallback 行为，未匹配 `urlPatterns` 的 URL 仍会回退到 `registry.accessToken()`
+- `strictUrlMatch: true`：未命中任何 `urlPatterns` 的请求**不会**被注入 `Authorization` header
+
+**迁移**：
+
+- 多 backend / 多 audience / 同一 host 会请求第三方 URL 的 Angular adopter：
+  - `provideTokenSetBearerInterceptor()` → `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`
+  - `createTokenSetBearerInterceptor(registry)` → `createTokenSetBearerInterceptor(registry, { strictUrlMatch: true })`
+- 单 backend adopter 可继续使用无参形式，行为不变。
+
+**理由**：
+
+迭代 150 review 1 在 `outposts` 真实链路 calibration 中发现：默认 single-client convenience fallback 在多 backend / 多 audience / 第三方 HTTP 流量下会向不匹配 `urlPatterns` 的 URL 注入 token，构成 cross-origin token leakage 风险。按 AGENTS.md TS SDK API rule，公开函数的可选参数以 options-object 形式扩展；默认值保持 false 以避免破坏既有 single-client adopter。
+
 ### 2026-04-24 @securitydept/client / session-context / token-set-context-client —— shared authenticated-principal baseline 现已成为 canonical cross-family contract
 
 **Discipline**: `stable-deprecation-first`（`@securitydept/client`、`@securitydept/session-context-client`）+ `provisional-migration-required`（`@securitydept/token-set-context-client/*`）

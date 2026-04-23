@@ -5,8 +5,11 @@ pub struct AuthFlowOperation;
 
 impl AuthFlowOperation {
     pub const PROJECTION_CONFIG_FETCH: &'static str = "projection.config_fetch";
+    pub const OIDC_AUTHORIZE: &'static str = "oidc.authorize";
     pub const OIDC_CALLBACK: &'static str = "oidc.callback";
+    pub const OIDC_METADATA_REDEEM: &'static str = "oidc.metadata_redeem";
     pub const OIDC_TOKEN_REFRESH: &'static str = "oidc.token_refresh";
+    pub const OIDC_USER_INFO: &'static str = "oidc.user_info";
     pub const FORWARD_AUTH_CHECK: &'static str = "forward_auth.check";
     pub const PROPAGATION_FORWARD: &'static str = "propagation.forward";
     pub const BASIC_AUTH_LOGIN: &'static str = "basic_auth.login";
@@ -33,28 +36,47 @@ pub struct AuthFlowDiagnosisField;
 
 impl AuthFlowDiagnosisField {
     pub const ADAPTER: &'static str = "adapter";
+    pub const ACCESS_TOKEN_PRESENT: &'static str = "access_token_present";
     pub const AUTH_FAMILY: &'static str = "auth_family";
+    pub const AUTH_SCHEME: &'static str = "auth_scheme";
+    pub const CALLBACK_PATH: &'static str = "callback_path";
     pub const CREDENTIAL_SOURCE: &'static str = "credential_source";
     pub const DIRECTIVE_HEADER: &'static str = "directive_header";
+    pub const ENTRY_IDS_COUNT: &'static str = "entry_ids_count";
+    pub const ENTRY_NAME: &'static str = "entry_name";
     pub const ENTITY_KIND: &'static str = "entity_kind";
+    pub const EXTERNAL_BASE_URL: &'static str = "external_base_url";
     pub const FAILURE_STAGE: &'static str = "failure_stage";
     pub const GROUP: &'static str = "group";
     pub const GROUP_ID: &'static str = "group_id";
     pub const GROUP_IDS_COUNT: &'static str = "group_ids_count";
     pub const HAS_AUTHORIZATION_HEADER: &'static str = "has_authorization_header";
+    pub const HAS_CODE: &'static str = "has_code";
     pub const HAS_COOKIE_HEADER: &'static str = "has_cookie_header";
+    pub const HAS_ID_TOKEN: &'static str = "has_id_token";
+    pub const HAS_METADATA: &'static str = "has_metadata";
+    pub const HAS_POST_AUTH_REDIRECT_URI: &'static str = "has_post_auth_redirect_uri";
     pub const HAS_PROPAGATION_DIRECTIVE: &'static str = "has_propagation_directive";
+    pub const HAS_REQUESTED_POST_AUTH_REDIRECT_URI: &'static str =
+        "has_requested_post_auth_redirect_uri";
+    pub const HAS_STATE: &'static str = "has_state";
     pub const HAS_TARGET_ID: &'static str = "has_target_id";
     pub const HTTP_STATUS: &'static str = "http_status";
+    pub const METADATA_ID_PRESENT: &'static str = "metadata_id_present";
+    pub const METADATA_REDEEMED: &'static str = "metadata_redeemed";
     pub const METHOD: &'static str = "method";
     pub const MODE: &'static str = "mode";
     pub const OPERATION_KIND: &'static str = "operation_kind";
+    pub const POST_AUTH_REDIRECT_PRESENT: &'static str = "post_auth_redirect_present";
     pub const PROPAGATION_ENABLED: &'static str = "propagation_enabled";
     pub const REASON: &'static str = "reason";
     pub const REQUEST_PATH: &'static str = "request_path";
+    pub const RESPONSE_TRANSPORT: &'static str = "response_transport";
     pub const RESOLVED_CLIENT_IP_PRESENT: &'static str = "resolved_client_ip_present";
+    pub const RESULT_COUNT: &'static str = "result_count";
     pub const ROUTE: &'static str = "route";
     pub const STATUS: &'static str = "status";
+    pub const SUBJECT: &'static str = "subject";
     pub const TARGET_ID: &'static str = "target_id";
     pub const TARGET_PATH: &'static str = "target_path";
     pub const TOKEN_CREATED: &'static str = "token_created";
@@ -182,8 +204,14 @@ mod tests {
             AuthFlowOperation::PROJECTION_CONFIG_FETCH,
             "projection.config_fetch"
         );
+        assert_eq!(AuthFlowOperation::OIDC_AUTHORIZE, "oidc.authorize");
         assert_eq!(AuthFlowOperation::OIDC_CALLBACK, "oidc.callback");
+        assert_eq!(
+            AuthFlowOperation::OIDC_METADATA_REDEEM,
+            "oidc.metadata_redeem"
+        );
         assert_eq!(AuthFlowOperation::OIDC_TOKEN_REFRESH, "oidc.token_refresh");
+        assert_eq!(AuthFlowOperation::OIDC_USER_INFO, "oidc.user_info");
         assert_eq!(AuthFlowOperation::FORWARD_AUTH_CHECK, "forward_auth.check");
         assert_eq!(
             AuthFlowOperation::PROPAGATION_FORWARD,
@@ -297,6 +325,52 @@ mod tests {
             "frontend_oidc"
         );
         assert_eq!(value["fields"]["pkce_enabled"], true);
+    }
+
+    #[test]
+    fn auth_flow_diagnosis_extended_field_constants_remain_stable() {
+        assert_eq!(
+            AuthFlowDiagnosisField::ACCESS_TOKEN_PRESENT,
+            "access_token_present"
+        );
+        assert_eq!(AuthFlowDiagnosisField::AUTH_SCHEME, "auth_scheme");
+        assert_eq!(AuthFlowDiagnosisField::CALLBACK_PATH, "callback_path");
+        assert_eq!(AuthFlowDiagnosisField::ENTRY_IDS_COUNT, "entry_ids_count");
+        assert_eq!(AuthFlowDiagnosisField::ENTRY_NAME, "entry_name");
+        assert_eq!(
+            AuthFlowDiagnosisField::EXTERNAL_BASE_URL,
+            "external_base_url"
+        );
+        assert_eq!(AuthFlowDiagnosisField::HAS_CODE, "has_code");
+        assert_eq!(AuthFlowDiagnosisField::HAS_ID_TOKEN, "has_id_token");
+        assert_eq!(AuthFlowDiagnosisField::HAS_METADATA, "has_metadata");
+        assert_eq!(
+            AuthFlowDiagnosisField::HAS_POST_AUTH_REDIRECT_URI,
+            "has_post_auth_redirect_uri"
+        );
+        assert_eq!(
+            AuthFlowDiagnosisField::HAS_REQUESTED_POST_AUTH_REDIRECT_URI,
+            "has_requested_post_auth_redirect_uri"
+        );
+        assert_eq!(AuthFlowDiagnosisField::HAS_STATE, "has_state");
+        assert_eq!(
+            AuthFlowDiagnosisField::METADATA_ID_PRESENT,
+            "metadata_id_present"
+        );
+        assert_eq!(
+            AuthFlowDiagnosisField::METADATA_REDEEMED,
+            "metadata_redeemed"
+        );
+        assert_eq!(
+            AuthFlowDiagnosisField::POST_AUTH_REDIRECT_PRESENT,
+            "post_auth_redirect_present"
+        );
+        assert_eq!(
+            AuthFlowDiagnosisField::RESPONSE_TRANSPORT,
+            "response_transport"
+        );
+        assert_eq!(AuthFlowDiagnosisField::RESULT_COUNT, "result_count");
+        assert_eq!(AuthFlowDiagnosisField::SUBJECT, "subject");
     }
 
     #[test]

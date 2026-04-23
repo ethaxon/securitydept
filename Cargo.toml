@@ -38,6 +38,7 @@ figment = { version = "0.10", features = ["toml", "env"] }
 web-route = "0.2"
 typed-builder = "0.23"
 tower-sessions = "0.15"
+tower = { version = "0.5", features = ["util"] }
 argon2 = "0.6.0-rc.7"
 sha2 = "0.11"
 hex = "0.4"

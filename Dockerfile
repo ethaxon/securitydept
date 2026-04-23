@@ -14,14 +14,14 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 RUN cargo build --release
 
-FROM node:lts-alpine AS webui-builder
-RUN npm install -g pnpm@10.30.3
+FROM node:24-alpine AS webui-builder
+RUN npm install -g pnpm@10.33.0
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 WORKDIR /app
 COPY . .
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile --ignore-scripts
-RUN (cd apps/webui && pnpm run build)
+RUN pnpm -r --filter @securitydept/webui... build
 
 FROM alpine AS runtime
 RUN apk add --no-cache ca-certificates

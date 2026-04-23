@@ -17,7 +17,7 @@ The project is evolving away from a single "OIDC login + local session" product 
 - local credential management for basic auth and static tokens
 - a reference server app that exercises the combined stack
 
-The current repository already contains major parts of the lower layers, a working reference server, and a working TypeScript SDK workspace under `sdks/ts`. The higher-level auth-context modes are no longer just design notes: the current repository already dogfoods them through the reference app and the formal client SDK guide.
+The current repository already contains major parts of the lower layers, a working reference server, and a working TypeScript SDK workspace under `sdks/ts`. The higher-level auth-context modes are no longer just design notes: the current repository dogfoods them through the reference app, the downstream `outposts` calibration case, and the formal client SDK guide. The active release-preparation target is `0.2.0-beta.1`; this is packaging / documentation readiness work, not a new auth capability line.
 
 The reference server still uses Axum, but the reusable `securitydept-basic-auth-context`, `securitydept-session-context`, and `securitydept-token-set-context` crates keep Axum-specific response assembly outside their core APIs so they can be reused in other ecosystems more easily. Route-facing services have been moved back into their owning crates; the `securitydept-auth-runtime` aggregation layer no longer exists.
 
@@ -88,6 +88,8 @@ For the fastest entry path:
 - inspect `apps/webui/src/routes/TokenSet.tsx` and `apps/webui/src/routes/tokenSet/*` as the reference app that dogfoods lifecycle, trace, and propagation boundaries
 - treat `apps/webui/src/api/*` as reference-app glue rather than recommended SDK public API
 
+The planned static docs site will be served from `https://securitydept.ethaxon.com/` once the independent VitePress / GitHub Pages pipeline is deployed. Until then, the source docs under `docs/en` and `docs/zh` remain canonical.
+
 ## Reference Server Auth
 
 The reference server currently exposes two dashboard-management entry styles:
@@ -117,7 +119,9 @@ This admin basic-auth flow is separate from `creds-manage` entries. The managed 
 | [docs/en/006-REALIP.md](docs/en/006-REALIP.md) ([中文](docs/zh/006-REALIP.md)) | Trusted-peer-aware real-IP strategy for stacked proxy and CDN deployments |
 | [docs/en/007-CLIENT_SDK_GUIDE.md](docs/en/007-CLIENT_SDK_GUIDE.md) ([中文](docs/zh/007-CLIENT_SDK_GUIDE.md)) | Formal client SDK architecture: package layout, foundation protocols, adapters, runtime boundaries, and implementation rules |
 | [docs/en/020-AUTH_CONTEXT_AND_MODES.md](docs/en/020-AUTH_CONTEXT_AND_MODES.md) ([中文](docs/zh/020-AUTH_CONTEXT_AND_MODES.md)) | Unified auth-context design covering basic-auth zones, session-context, and token-set OIDC modes |
-| [docs/en/100-ROADMAP.md](docs/en/100-ROADMAP.md) ([中文](docs/zh/100-ROADMAP.md)) | Sequenced roadmap aligned with current goals |
+| [docs/en/021-REFERENCE-APP-OUTPOSTS.md](docs/en/021-REFERENCE-APP-OUTPOSTS.md) ([中文](docs/zh/021-REFERENCE-APP-OUTPOSTS.md)) | Downstream adopter calibration case for the SDK Angular/token-set path |
+| [docs/en/100-ROADMAP.md](docs/en/100-ROADMAP.md) ([中文](docs/zh/100-ROADMAP.md)) | Current release blockers, `0.2.x` track, and `0.3.0` deferrals |
+| [docs/en/110-TS_SDK_MIGRATIONS.md](docs/en/110-TS_SDK_MIGRATIONS.md) ([中文](docs/zh/110-TS_SDK_MIGRATIONS.md)) | TypeScript SDK public-surface migration ledger |
 
 ## Development
 

@@ -17,7 +17,7 @@ SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包
 - 基础认证和静态令牌的本机凭证管理
 - 验证组合栈的参考服务器应用
 
-当前仓库已包含底层的大部分功能、一个可用的参考服务器，以及位于 `sdks/ts` 下的可用 TypeScript SDK workspace。更高级别的认证上下文模式不再只是设计说明，而是已经通过 reference app 与正式 client SDK 指南进入了真实 dogfooding。
+当前仓库已包含底层的大部分功能、一个可用的参考服务器，以及位于 `sdks/ts` 下的可用 TypeScript SDK workspace。更高级别的认证上下文模式不再只是设计说明，而是已经通过 reference app、真实下游 `outposts` calibration case 与正式 client SDK 指南进入了真实 dogfooding。当前 release-preparation 目标是 `0.2.0-beta.1`；这属于 packaging / documentation readiness 工作，不是新的 auth capability 线。
 
 参考服务器仍然使用 Axum，但可复用的 `securitydept-basic-auth-context`、`securitydept-session-context` 与 `securitydept-token-set-context` crate 已经把 Axum 专属的响应组装留在边界层之外，以便更容易复用到其他生态中。route-facing service 已全部回到各自的 owning crate，`securitydept-auth-runtime` 聚合层不再存在。
 
@@ -67,7 +67,7 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
   - OAuth 资源服务器验证器
   - 用于基础认证和静态令牌的 creds-manage
   - 带有 cookie-session、basic-auth 上下文和无状态 token-set 流程的参考服务器应用
-  - 位于 `sdks/ts/packages/*` 的 TypeScript SDK foundation 包、browser adapter 与 React adapter
+  - 位于 `sdks/ts/packages/*` 的 TypeScript SDK foundation 包、browser adapter、React / Angular framework packages，以及 `@securitydept/client` subpaths（包括 `web-router`）
   - `apps/webui` 上覆盖 session/token-set lifecycle、protected API、trace timeline 与 propagation smoke 的 reference route dogfooding
   - real-IP 解析，以及 basic-auth context 的可选 real-IP 访问策略
   - 由服务端持有的 bearer propagation 校验，包括目标 allowlist 与 access-token 资源事实校验
@@ -87,6 +87,8 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
 - 再看 `sdks/ts/packages/*`，确认 foundation、`./web` 与 React subpath 的真实导出
 - 再看 `apps/webui/src/routes/TokenSet.tsx` 与 `apps/webui/src/routes/tokenSet/*`，把它们作为解释 lifecycle、trace 与 propagation 边界的 reference app
 - 将 `apps/webui/src/api/*` 继续视为 reference app glue，而不是推荐的 SDK public API
+
+计划中的静态文档站将在独立 VitePress / GitHub Pages pipeline 部署后通过 `https://securitydept.ethaxon.com/` 提供。在此之前，`docs/zh` 与 `docs/en` 下的 source docs 仍是权威入口。
 
 ## 参考服务器认证入口
 
@@ -116,7 +118,10 @@ SecurityDept 最终应支持三种顶层认证上下文模式：
 | [docs/zh/005-ERROR_SYSTEM_DESIGN.md](docs/zh/005-ERROR_SYSTEM_DESIGN.md) | 对外安全错误响应、内部诊断与恢复动作设计 |
 | [docs/zh/006-REALIP.md](docs/zh/006-REALIP.md) | 多层代理与多 CDN/provider 部署下的 trusted-peer real-IP 策略 |
 | [docs/zh/007-CLIENT_SDK_GUIDE.md](docs/zh/007-CLIENT_SDK_GUIDE.md) | 客户端 SDK 正式架构：包布局、foundation 协议、适配层、运行时边界与实现约束 |
-| [docs/zh/100-ROADMAP.md](docs/zh/100-ROADMAP.md) | 与当前目标对齐的序列路线图 |
+| [docs/zh/020-AUTH_CONTEXT_AND_MODES.md](docs/zh/020-AUTH_CONTEXT_AND_MODES.md) | 统一的认证上下文、basic-auth zone 与 token-set mode 设计 |
+| [docs/zh/021-REFERENCE-APP-OUTPOSTS.md](docs/zh/021-REFERENCE-APP-OUTPOSTS.md) | SDK Angular/token-set 路径的真实下游 adopter calibration case |
+| [docs/zh/100-ROADMAP.md](docs/zh/100-ROADMAP.md) | 当前 release blockers、`0.2.x` 主线与 `0.3.0` deferrals |
+| [docs/zh/110-TS_SDK_MIGRATIONS.md](docs/zh/110-TS_SDK_MIGRATIONS.md) | TypeScript SDK public-surface migration ledger |
 
 ## 开发
 

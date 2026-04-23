@@ -37,7 +37,7 @@ fn group_create_success_diagnosis(group: &Group, entry_ids_count: usize) -> Auth
     .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
     .field(AuthFlowDiagnosisField::HAS_TARGET_ID, true)
     .field(AuthFlowDiagnosisField::TARGET_ID, group.id.clone())
-    .field("entry_ids_count", entry_ids_count)
+    .field(AuthFlowDiagnosisField::ENTRY_IDS_COUNT, entry_ids_count)
 }
 
 fn group_route_failure_diagnosis(
@@ -69,7 +69,7 @@ pub async fn list(Extension(state): Extension<ServerState>) -> Json<Vec<Group>> 
     )
     .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
     .field(AuthFlowDiagnosisField::HAS_TARGET_ID, false)
-    .field("result_count", groups.len());
+    .field(AuthFlowDiagnosisField::RESULT_COUNT, groups.len());
     log_route_diagnosis(
         RouteDiagnosisContext {
             route: "/api/groups",
@@ -167,7 +167,7 @@ pub async fn create(
                 "create",
                 Some(&attempted_group_id),
             )
-            .field("entry_ids_count", entry_ids_count);
+            .field(AuthFlowDiagnosisField::ENTRY_IDS_COUNT, entry_ids_count);
             log_route_diagnosis_error(
                 RouteDiagnosisContext {
                     route: "/api/groups",
@@ -205,7 +205,7 @@ pub async fn update(
             .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
             .field(AuthFlowDiagnosisField::HAS_TARGET_ID, true)
             .field(AuthFlowDiagnosisField::TARGET_ID, id.clone())
-            .field("entry_ids_count", entry_ids_count);
+            .field(AuthFlowDiagnosisField::ENTRY_IDS_COUNT, entry_ids_count);
             log_route_diagnosis(
                 RouteDiagnosisContext {
                     route: "/api/groups/:id",
@@ -225,7 +225,7 @@ pub async fn update(
                 "update",
                 Some(&id),
             )
-            .field("entry_ids_count", entry_ids_count);
+            .field(AuthFlowDiagnosisField::ENTRY_IDS_COUNT, entry_ids_count);
             log_route_diagnosis_error(
                 RouteDiagnosisContext {
                     route: "/api/groups/:id",
@@ -293,7 +293,13 @@ pub async fn delete(
 
 #[cfg(test)]
 mod tests {
+    use axum::{Extension, Json, extract::Path, http::StatusCode, response::IntoResponse};
+    use securitydept_core::creds_manage::models::{DataFile, Group};
+
     use super::*;
+    use crate::routes::test_support::{
+        assert_server_error_envelope, test_server_state, test_server_state_with_data,
+    };
 
     #[test]
     fn group_create_success_diagnosis_reports_created_group_without_secret_fields() {
@@ -309,7 +315,7 @@ mod tests {
             diagnosis.fields[AuthFlowDiagnosisField::TARGET_ID],
             group.id
         );
-        assert_eq!(diagnosis.fields["entry_ids_count"], 2);
+        assert_eq!(diagnosis.fields[AuthFlowDiagnosisField::ENTRY_IDS_COUNT], 2);
     }
 
     #[test]
@@ -327,5 +333,56 @@ mod tests {
             diagnosis.fields[AuthFlowDiagnosisField::TARGET_ID],
             "group-1"
         );
+    }
+
+    #[tokio::test]
+    async fn get_missing_group_returns_shared_server_error_envelope() {
+        let state = test_server_state("group-not-found").await;
+
+        let response = get(Extension(state), Path("missing-group".to_string()))
+            .await
+            .expect_err("missing group should fail")
+            .into_response();
+
+        assert_server_error_envelope(
+            response,
+            StatusCode::NOT_FOUND,
+            "invalid_request",
+            "group_not_found",
+            "none",
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn create_duplicate_group_returns_shared_server_error_envelope() {
+        let state = test_server_state_with_data(
+            "duplicate-group",
+            Some(DataFile {
+                groups: vec![Group::new("Operators".to_string())],
+                ..Default::default()
+            }),
+        )
+        .await;
+
+        let response = create(
+            Extension(state),
+            Json(CreateGroupRequest {
+                name: "Operators".to_string(),
+                entry_ids: None,
+            }),
+        )
+        .await
+        .expect_err("duplicate group name should fail")
+        .into_response();
+
+        assert_server_error_envelope(
+            response,
+            StatusCode::CONFLICT,
+            "conflict",
+            "duplicate_group_name",
+            "none",
+        )
+        .await;
     }
 }

@@ -1,7 +1,12 @@
 import { KeyRound, Shield, Users } from "lucide-react";
 import { AuthEntryKind } from "@/api/entries";
-import { useServerHealth } from "@/api/serverHealth";
+import {
+	describeApiRouteAuthBoundary,
+	describeApiRouteAvailability,
+	useServerHealth,
+} from "@/api/serverHealth";
 import { AuthModeNotice } from "@/components/auth/AuthModeNotice";
+import { BrowserHarnessSection } from "@/components/dashboard/BrowserHarnessSection";
 import { Layout } from "@/components/layout/Layout";
 import {
 	useDashboardAccessNotice,
@@ -106,44 +111,60 @@ export function DashboardPage() {
 								<tr>
 									<th className="px-3 py-2 font-medium">Method</th>
 									<th className="px-3 py-2 font-medium">Path</th>
-									<th className="px-3 py-2 font-medium">Auth</th>
+									<th className="px-3 py-2 font-medium">Boundary</th>
+									<th className="px-3 py-2 font-medium">Availability</th>
 									<th className="px-3 py-2 font-medium">Description</th>
 								</tr>
 							</thead>
 							<tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-								{(serverHealth?.apis ?? []).map((item) => (
-									<tr
-										key={`${item.method}:${item.path}:${item.description}`}
-										className="hover:bg-zinc-50 dark:hover:bg-zinc-900"
-									>
-										<td className="px-3 py-2 font-mono text-xs">
-											{item.method}
-										</td>
-										<td className="px-3 py-2 font-mono text-xs text-zinc-500 dark:text-zinc-400">
-											{item.path}
-										</td>
-										<td className="px-3 py-2">
-											{item.auth_required ? (
-												<span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-													Required
-												</span>
-											) : (
-												<span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300">
-													Public
-												</span>
-											)}
-										</td>
-										<td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
-											{item.description}
-										</td>
-									</tr>
-								))}
+								{(serverHealth?.apis ?? []).map((item) =>
+									(() => {
+										const accessLabel = item.auth_required
+											? "Required"
+											: "Public";
+										const boundaryLabel = describeApiRouteAuthBoundary(item);
+										const availabilityLabel =
+											describeApiRouteAvailability(item);
+
+										return (
+											<tr
+												key={`${item.method}:${item.path}:${item.description}`}
+												className="hover:bg-zinc-50 dark:hover:bg-zinc-900"
+											>
+												<td className="px-3 py-2 font-mono text-xs">
+													{item.method}
+												</td>
+												<td className="px-3 py-2 font-mono text-xs text-zinc-500 dark:text-zinc-400">
+													{item.path}
+												</td>
+												<td className="px-3 py-2">
+													<div className="flex flex-col gap-1">
+														<span className="inline-flex w-fit items-center rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+															{boundaryLabel}
+														</span>
+														<span className="text-xs text-zinc-500 dark:text-zinc-400">
+															{accessLabel}
+														</span>
+													</div>
+												</td>
+												<td className="px-3 py-2">
+													<span className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+														{availabilityLabel}
+													</span>
+												</td>
+												<td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
+													{item.description}
+												</td>
+											</tr>
+										);
+									})(),
+								)}
 								{!isHealthLoading &&
 									(serverHealth?.apis ?? []).length === 0 && (
 										<tr>
 											<td
 												className="px-3 py-3 text-zinc-500 dark:text-zinc-400"
-												colSpan={4}
+												colSpan={5}
 											>
 												No API metadata returned.
 											</td>
@@ -153,6 +174,7 @@ export function DashboardPage() {
 						</table>
 					</div>
 				</div>
+				<BrowserHarnessSection />
 			</div>
 		</Layout>
 	);

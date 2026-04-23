@@ -5,7 +5,12 @@ import {
 	type HttpInterceptor,
 	type HttpRequest,
 } from "@angular/common/http";
-import { Injectable, inject, type Provider } from "@angular/core";
+import {
+	Injectable,
+	InjectionToken,
+	inject,
+	type Provider,
+} from "@angular/core";
 import type { Observable } from "rxjs";
 import { TokenSetAuthRegistry } from "./token-set-auth-registry";
 
@@ -14,10 +19,50 @@ import { TokenSetAuthRegistry } from "./token-set-auth-registry";
 // ============================================================================
 
 /**
+ * Adopter-tunable behaviour for the token-set bearer interceptor.
+ *
+ * Iteration 150 (review 1) lifted `strictUrlMatch` out of the implicit
+ * single-client convenience path into an explicit option, so multi-backend
+ * adopters can guarantee that bearer tokens never leak outside the URL
+ * patterns they registered with `provideTokenSetAuth({ clients: [...] })`.
+ */
+export interface BearerInterceptorOptions {
+	/**
+	 * When `true`, the interceptor injects a bearer header ONLY for requests
+	 * whose URL matches a registered client's `urlPatterns`. Requests with no
+	 * matching client receive no `Authorization` header even when a token is
+	 * available elsewhere in the registry.
+	 *
+	 * When `false` (default, single-client convenience), the interceptor
+	 * falls back to `registry.accessToken()` for unmatched URLs — useful only
+	 * when the host issues all HTTP traffic to one already-known backend.
+	 *
+	 * Adopters with more than one backend, more than one OIDC audience, or
+	 * any third-party HTTP traffic from the same Angular host MUST set this
+	 * to `true` to prevent cross-origin token leakage.
+	 *
+	 * @default false
+	 */
+	strictUrlMatch?: boolean;
+}
+
+/**
+ * DI token for {@link BearerInterceptorOptions}. Adopters normally configure
+ * options via `provideTokenSetBearerInterceptor({ ... })`; the token is
+ * exported for advanced cases where the options need to be supplied or
+ * overridden separately (for example, in tests).
+ */
+export const TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS =
+	new InjectionToken<BearerInterceptorOptions>(
+		"TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS",
+	);
+
+/**
  * Angular class-based bearer-token interceptor (`HTTP_INTERCEPTORS` style).
  *
  * Selects the correct access token from the multi-client registry by URL
- * pattern, falling back to the first available token for single-client apps.
+ * pattern. Behaviour for unmatched URLs is governed by
+ * {@link BearerInterceptorOptions.strictUrlMatch}.
  *
  * Prefer the functional version via `createTokenSetBearerInterceptor()` +
  * `withInterceptors()` when using `provideHttpClient`. Use this class-based
@@ -27,12 +72,14 @@ import { TokenSetAuthRegistry } from "./token-set-auth-registry";
  * @example
  * ```ts
  * // NgModule providers:
- * provideTokenSetBearerInterceptor()
+ * provideTokenSetBearerInterceptor({ strictUrlMatch: true })
  * ```
  */
 @Injectable()
 export class TokenSetBearerInterceptor implements HttpInterceptor {
 	private readonly registry = inject(TokenSetAuthRegistry);
+	private readonly options: BearerInterceptorOptions =
+		inject(TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS, { optional: true }) ?? {};
 
 	intercept(
 		req: HttpRequest<unknown>,
@@ -49,7 +96,9 @@ export class TokenSetBearerInterceptor implements HttpInterceptor {
 		// without Authorization header.
 		const token = key
 			? (this.registry.get(key)?.accessToken() ?? null)
-			: this.registry.accessToken();
+			: this.options.strictUrlMatch
+				? null
+				: this.registry.accessToken();
 
 		if (!token) {
 			return next.handle(req);
@@ -82,12 +131,48 @@ export class TokenSetBearerInterceptor implements HttpInterceptor {
  * export class AppModule {}
  * ```
  */
-export function provideTokenSetBearerInterceptor(): Provider {
-	return {
-		provide: HTTP_INTERCEPTORS,
-		useClass: TokenSetBearerInterceptor,
-		multi: true,
-	};
+/**
+ * Create an `HTTP_INTERCEPTORS` multi-provider entry for bearer token injection.
+ *
+ * Returns Angular providers that register {@link TokenSetBearerInterceptor}
+ * as a class-based HTTP interceptor and (optionally) the
+ * {@link BearerInterceptorOptions} that govern its URL-match behaviour.
+ * Suitable for NgModule `providers` arrays.
+ *
+ * For functional-interceptor style (standalone apps using `provideHttpClient`),
+ * use `createTokenSetBearerInterceptor()` with `withInterceptors()` instead.
+ *
+ * @example
+ * ```ts
+ * @NgModule({
+ *   providers: [
+ *     provideTokenSetAuth({ clients: [...] }),
+ *     // Adopters with multiple backends or any third-party HTTP traffic
+ *     // MUST opt into strictUrlMatch to prevent token leakage.
+ *     provideTokenSetBearerInterceptor({ strictUrlMatch: true }),
+ *     provideHttpClient(withInterceptorsFromDi()),
+ *   ],
+ * })
+ * export class AppModule {}
+ * ```
+ */
+export function provideTokenSetBearerInterceptor(
+	options?: BearerInterceptorOptions,
+): Provider[] {
+	const providers: Provider[] = [
+		{
+			provide: HTTP_INTERCEPTORS,
+			useClass: TokenSetBearerInterceptor,
+			multi: true,
+		},
+	];
+	if (options) {
+		providers.push({
+			provide: TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS,
+			useValue: options,
+		});
+	}
+	return providers;
 }
 
 /**
@@ -122,8 +207,44 @@ export function provideTokenSetBearerInterceptor(): Provider {
  * ]));
  * ```
  */
+/**
+ * Create an Angular `HttpInterceptorFn` that injects bearer authorization
+ * headers, selecting the correct token from the multi-client registry
+ * based on URL pattern matching.
+ *
+ * If no URL pattern matches, the unmatched-URL behaviour is governed by
+ * {@link BearerInterceptorOptions.strictUrlMatch}: the default falls back
+ * to `registry.accessToken()` (single-client convenience), while
+ * `strictUrlMatch: true` returns no token, ensuring bearer headers are
+ * never injected for URLs outside the registered patterns.
+ *
+ * ## Async client readiness
+ *
+ * The interceptor does **not** block or delay the HTTP request waiting for
+ * an async client to materialize. If a client is still initializing when the
+ * request fires, the request proceeds without an Authorization header.
+ *
+ * This is intentional: blocking HTTP for client initialization would deadlock
+ * apps that make HTTP requests during initialization itself. Route guards
+ * (which use `registry.whenReady()`) are the correct place to enforce
+ * "client must be ready before user reaches this route".
+ *
+ * For NgModule-style apps using `HTTP_INTERCEPTORS`, use
+ * `provideTokenSetBearerInterceptor()` instead.
+ *
+ * @example
+ * ```ts
+ * import { provideHttpClient, withInterceptors } from "@angular/common/http";
+ * import { createTokenSetBearerInterceptor } from "@securitydept/token-set-context-client-angular";
+ *
+ * provideHttpClient(withInterceptors([
+ *   createTokenSetBearerInterceptor(registry, { strictUrlMatch: true }),
+ * ]));
+ * ```
+ */
 export function createTokenSetBearerInterceptor(
 	registry: TokenSetAuthRegistry,
+	options: BearerInterceptorOptions = {},
 ) {
 	return (
 		req: {
@@ -140,7 +261,9 @@ export function createTokenSetBearerInterceptor(
 		// a token. See class-based interceptor above for full rationale.
 		const token = key
 			? (registry.get(key)?.accessToken() ?? null)
-			: registry.accessToken();
+			: options.strictUrlMatch
+				? null
+				: registry.accessToken();
 
 		if (!token) {
 			return next(req);

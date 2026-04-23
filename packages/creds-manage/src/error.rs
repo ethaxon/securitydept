@@ -52,7 +52,7 @@ pub enum CredsManageError {
 impl ToHttpStatus for CredsManageError {
     fn to_http_status(&self) -> StatusCode {
         match self {
-            creds_error @ CredsManageError::Creds { .. } => creds_error.to_http_status(),
+            CredsManageError::Creds { source } => source.to_http_status(),
             CredsManageError::EntryNotFound { .. } | CredsManageError::GroupNotFound { .. } => {
                 StatusCode::NOT_FOUND
             }

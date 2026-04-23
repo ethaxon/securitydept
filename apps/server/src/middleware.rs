@@ -224,7 +224,10 @@ pub async fn require_dashboard_auth(
             has_propagation_directive,
             propagation_enabled,
         )
-        .field("subject", resource_token_principal.subject.clone());
+        .field(
+            AuthFlowDiagnosisField::SUBJECT,
+            resource_token_principal.subject.clone(),
+        );
         log_route_diagnosis(
             RouteDiagnosisContext {
                 route: DASHBOARD_AUTH_ROUTE,

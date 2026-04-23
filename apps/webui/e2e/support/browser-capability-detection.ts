@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chromium, firefox, webkit } from "playwright";
+import { createRequire } from "node:module";
 import {
 	BlockedReason,
 	BrowserAvailability,
@@ -11,6 +11,8 @@ import {
 	type PlaywrightProjectCapability,
 	UnavailableReason,
 } from "./browser-harness-contract.ts";
+
+const require = createRequire(import.meta.url);
 
 const chromiumCandidatePaths = ["/sbin/chromium", "/usr/bin/chromium"];
 
@@ -107,13 +109,46 @@ function defaultResolveManagedExecutablePath(
 	browserName: HarnessBrowserNameType,
 	fileExists: (filePath: string) => boolean,
 ): string | undefined {
+	const playwrightBrowsers = loadPlaywrightBrowsers();
+	if (!playwrightBrowsers) {
+		return undefined;
+	}
+
 	const executablePath =
 		browserName === HarnessBrowserName.Firefox
-			? firefox.executablePath()
+			? playwrightBrowsers.firefox.executablePath()
 			: browserName === HarnessBrowserName.Webkit
-				? webkit.executablePath()
-				: chromium.executablePath();
+				? playwrightBrowsers.webkit.executablePath()
+				: playwrightBrowsers.chromium.executablePath();
 	return fileExists(executablePath) ? executablePath : undefined;
+}
+
+function loadPlaywrightBrowsers():
+	| {
+			chromium: { executablePath(): string };
+			firefox: { executablePath(): string };
+			webkit: { executablePath(): string };
+	  }
+	| undefined {
+	const loadModule = (specifier: string) => {
+		try {
+			return require(specifier);
+		} catch {
+			return undefined;
+		}
+	};
+
+	const playwrightModule =
+		loadModule("playwright") ?? loadModule("@playwright/test");
+	if (
+		!playwrightModule?.chromium ||
+		!playwrightModule?.firefox ||
+		!playwrightModule?.webkit
+	) {
+		return undefined;
+	}
+
+	return playwrightModule;
 }
 
 export function detectBrowserCapabilities(

@@ -1,8 +1,10 @@
 use axum::{
     Extension, Json,
     extract::Query,
+    http::StatusCode,
     response::{IntoResponse, Response},
 };
+use securitydept_core::utils::error::{ErrorPresentation, UserRecovery};
 use serde::Deserialize;
 
 use crate::{
@@ -14,6 +16,18 @@ use crate::{
 #[derive(Debug, Deserialize, Default)]
 pub struct TokenSetFrontendModeConfigProjectionQuery {
     pub redirect_uri: Option<String>,
+}
+
+fn frontend_oidc_projection_failed_error(source: &std::io::Error) -> ServerError {
+    ServerError::route_presentation(
+        StatusCode::SERVICE_UNAVAILABLE,
+        ErrorPresentation::new(
+            "frontend_oidc_mode.config_projection_unavailable",
+            "Frontend sign-in configuration is temporarily unavailable.",
+            UserRecovery::Retry,
+        ),
+        format!("frontend_oidc projection: {source}"),
+    )
 }
 
 /// GET /api/auth/token-set/frontend-mode/config -- project frontend-owned OIDC
@@ -38,9 +52,7 @@ pub async fn config_projection(
             &source,
             "frontend_oidc config projection failed",
         );
-        ServerError::InvalidConfig {
-            message: format!("frontend_oidc projection: {source}"),
-        }
+        frontend_oidc_projection_failed_error(&source)
     })?;
 
     // The host may supply a runtime callback target so the browser-owned

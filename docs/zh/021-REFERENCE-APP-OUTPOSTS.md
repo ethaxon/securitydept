@@ -1,152 +1,98 @@
 # Outposts 参考案例
 
-本文档说明为什么 `~/workspace/outposts` 应被视为 `securitydept` Client SDK 的一个高价值下游参考案例，以及它在近期、中期和长期分别应如何反哺 SDK 设计。
+`~/workspace/outposts` 是 SecurityDept TypeScript SDK 当前的 downstream adopter calibration case。它补充 `apps/webui`，但不替代 `apps/webui`。
 
-它不是 `apps/webui` 的替代品。  
-`apps/webui` 仍然是第一优先级 dogfooding / reference app；`outposts` 的价值在于它代表了一个**真实下游 adopter**，而不是 SDK 自己的产品内示例。
+`apps/webui` 仍是仓库内第一优先级 reference app 与 release-gate 证据面。`outposts` 的价值在于它是真实 consuming workspace，拥有自己的 Angular host、backend service、route table 与部署约束。
+
+## 当前状态
+
+迭代 150 已关闭第一条真实 adopter calibration line：
+
+- `outposts-web -> confluence` 已改为消费 SecurityDept Angular/token-set packages，不再使用 `angular-auth-oidc-client`。
+- `angular-auth-oidc-client` 已从 downstream package manifest 移除。
+- Callback route 由 SDK `TokenSetCallbackComponent` 承担。
+- `secureRouteRoot()` 承载 provider-neutral requirement metadata 与 next-action policy。
+- `provideTokenSetAuth(...)` 注册 `Confluence` client，并使用 `providerFamily: "authentik"`、`callbackPath: "/auth/callback"` 与 Confluence API endpoint 的 URL patterns。
+- `provideTokenSetBearerInterceptor({ strictUrlMatch: true })` 将 bearer injection 限制到命中已注册 `urlPatterns` 的 URL，不再对 unmatched URL 使用 single-client fallback。
+- Downstream focused tests 锁住 callback path preservation、provider-neutral route metadata、bearer injection boundaries 与 redirect preservation。
+- `confluence` service 既有 backend tests 锁住 issuer/JWKS/audience/scope 行为，包括 optional-audience 与 missing-scope rejection。
 
 ## 为什么这个案例重要
 
-`outposts-web` 预期承载多个后端服务，例如：
+`outposts` 是有价值的 calibration case，因为它代表一个可能不止一个 backend service 的 host：
 
-- `confluence`
-- `app1`
-- `app2`
+- 一个 frontend host 未来可能管理多个 backend token families
+- 某些 route area 可能要求多个 app 的资格
+- host 拥有 user-choice flow、silent/interactive acquisition decision 与 product copy
+- backend 仍需要 provider-neutral bearer/OIDC validation
 
-这些服务未来可能分别接入不同的 OIDC client / audience / scope 组合。  
-这让 `outposts` 天然具备以下验证价值：
-
-- 同一前端宿主需要同时管理多个后端 token family / token set
-- 某些前端路由区域会同时要求多个 app 的资格
-- 认证流程不再只是“单 client 登录”，而是“route-level requirement orchestration”
-- adopter 必须自己决定哪些步骤静默完成、哪些步骤直接跳转、哪些步骤先让用户选择
-
-这正好能帮助我们回答两件事：
-
-- 当前认证栈的 auth context / mode 分层（前端通过 `token-set-context-client` 进入，后端通过 `securitydept-token-set-context` 进入）后续是否真的能支撑多资格场景（详见 [020-AUTH_CONTEXT_AND_MODES](020-AUTH_CONTEXT_AND_MODES.md)）
-- OIDC mode family 中各模式的边界是否清晰：
-  - **`/orchestration`**：共享 protocol-agnostic token lifecycle 基座
-  - **`/frontend-oidc-mode` (`frontend-oidc`)**：前端纯 OIDC client
-  - **`/backend-oidc-mode`**：前端消费统一 `backend-oidc` capability framework 的 canonical 入口
-  - **`securitydept-token-set-context::{frontend_oidc_mode, backend_oidc_mode, access_token_substrate}`**：Rust 侧应显式暴露 formal modes 与 shared substrate，而不是继续把 `frontend` / `backend` 当一级 public namespace
+这种压力能暴露 SDK primitive 到底可复用，还是只是按仓库内 reference app 形状写出的局部解。
 
 ## 这个案例应该验证什么
 
-近期应把 `outposts` 当成以下问题的现实验证面：
+近期验证范围：
 
-1. provider-neutral 前端 auth boundary 是否足够清晰  
-   当前单 `confluence` 主链路已经切到标准 OIDC / Authentik-first baseline；接下来要验证的是这条单链路之外，前端认证能力是否还能继续保持 provider-neutral，而不是重新绑定某个 provider SDK。
-
-2. route-level requirement orchestration 的边界应该放在哪里  
-   当某个路由既需要 `app1`、又需要 `app2` 的资格时，真正困难的不是“如何拿 token”，而是：
-   - 谁先拿
-   - 哪些可以静默获取
-   - 哪些必须交互跳转
-   - 是否要先向用户展示选择界面
-   - 某一个 requirement 失败时如何处理
-
-3. 后端 Bearer / OIDC 校验是否能保持 provider-neutral  
-   `confluence` 当前已经基本是 issuerJWKSaudiencescope 校验模型。这个案例可以帮助我们确认：后端真正需要的是稳定 OIDC contract，而不是某个前端 IdP SDK 的伴随假设。
-
-4. 本地多工作区联动开发方式是否顺畅  
-   这个案例应直接使用本地指向：
-   - Rust 走 `cargo` workspace `path`
-   - Node 走 `pnpm` `link:`
+1. 通过 SecurityDept packages 完成 Angular host integration。
+2. 通过 `link:` / `path` dependencies 验证 backend-driven config projection 与本地多 workspace 开发。
+3. Provider-neutral route requirements 与 callback preservation。
+4. 不向第三方 URL 泄露 token 的 strict bearer-header injection。
+5. Backend-side audience/scope/issuer validation。
+6. 真实 adopter glue 中出现的候选 SDK ergonomics 缺口。
 
 ## 不应该把这个案例验证成什么
 
-这个案例不应被误读为：
+这个案例不证明：
 
-- SDK 已经内建“多资格路由选择界面”
-- SDK 已经吸收 framework router / app-level chooser / page-level auth UX
-- SDK 已经完成更广 browser host semantics 或浏览器矩阵承诺
-- `outposts` 将取代 `apps/webui` 成为主要 release gate
+- SDK 已经内建 multi-requirement chooser UI
+- SDK 拥有 product route table、page copy 或 toast behavior
+- `outposts` app-local `AuthService` 应被复制进 SDK
+- `outposts` 替代 `apps/webui` 成为 primary release gate
+- cross-repository browser automation 属于当前产品线
 
-更准确的边界是：
+正确分工是：
 
-- `securitydept` 可以为这种下游场景提供 **headless primitive / scheduler direction**
-- 但 chooser UI、router policy、产品级交互流程仍然应留在 adopter 自己的 app glue 中
-- `outposts` 当前 Angular auth 模块如果带有历史过渡痕迹，应被视为迁移样本与宿主约束，而不是 SDK Angular public API 模板
+- 当重复 adopter pressure 证明某个 headless primitive 稳定时，SecurityDept 可以将其提升。
+- Adopter 拥有 product UX、business routes 与 local glue。
+- `apps/webui` 保持仓库内 primary reference app 与 release evidence owner。
 
 ## 对 SDK 设计的直接影响
 
-这个参考案例对当前认证栈的 OIDC mode family 影响最直接：
+当前影响：
 
-- `outposts` 当前单 `confluence` 链路更适合验证 **`frontend-oidc` / `backend-oidc` baseline** 以及 **通用 orchestrationresource-server** 这一层
-- 它暂时更接近 `backend-oidc` 的 `pure` preset，而不直接验证 sealed refresh / metadata fallback 这组 mediated augmentation
-- 它对 access-token 注入、resource-server 校验、`X-SecurityDept-Propagation` 这组跨 mode substrate 反而更有直接参考价值
-
-当前建议：
-
-1. SDK 应保留对多 token family / 多 source 管理的抽象空间
-2. 前端产品面内部的 subpath family 已按以下结构演进；Rust 侧则应并列收口到顶层 `*_mode` / shared modules：
-   - `/orchestration`：共享 token lifecycle 基座
-   - `/frontend-oidc-mode`：`frontend-oidc` 模式
-   - `/backend-oidc-mode`：前端消费 `backend-oidc` 的 canonical 子路径
-3. route-level 多 requirement 编排应优先朝 **headless orchestration primitive** 演进
-4. 默认推荐实现可以存在，但它应是：
-   - scheduler / orchestrator 默认实现
-   - 最薄的 `web` / `angular` / `react` 适配
-   - reference/example UI
-5. 选择界面、交互文案、失败回退策略不应直接写死在 core SDK 中
-6. Angular adapter 的 public contract 应优先表达 `securitydept` 自己的领域能力、route/orchestration 投影与 Angular ergonomics，再去证明它能承接 `outposts` 迁移
-
-换句话说：
-
-- **“通用 token orchestration”值得先从 OIDC-mediated 特定流程中剥离出来**
-- **“多资格调度能力”值得进入 SDK 设计视野**
-- **“多资格交互 UI”不应成为 SDK 内建职责**
+- Angular bearer injection 已拥有显式 `BearerInterceptorOptions.strictUrlMatch` 选项。
+- 多 backend 或存在 third-party traffic 的 Angular host 应启用 `strictUrlMatch: true`。
+- SDK 应为 keyed token-set state projection helper 保留空间，但当前 `outposts` `AuthService` 仍只是单 adopter 样本，不是 SDK API。
+- Framework route adapter 应保持 provider-neutral，只表达 requirements，而不表达 provider SDK 细节。
 
 ## 近期计划
 
-近期更适合做的事情：
+在把 `0.2.0-beta.1` 视为可进入 release execution 之前，只把这个案例作为证据与 backlog input：
 
-1. 在 `outposts` 内先完成 provider-neutral auth boundary 拆分
-2. 在当前标准 OIDC / Authentik-first baseline 上，优先验证：
-   - callback / redirect / route preservation
-   - access token 注入
-   - audience / scope contract
-   - `oauth-resource-server` 在真实 adopter 单链路里的 Bearer 校验基线
-3. 把这条单链路总结成对 SDK 的直接反馈：
-   - 标准 OIDC 场景应长期收口为 `/frontend-oidc-mode` 与 `/backend-oidc-mode` 两条 formal mode-aligned 前端入口
-   - pure / mediated 更适合作为 `backend-oidc` 的 preset/profile，而不是长期并列 mode
-   - Rust crate 不应继续把 `frontend` / `backend` 作为一级 public namespace；更合适的 canonical shape 是顶层 `frontend_oidc_mode`、`backend_oidc_mode` 与 `access_token_substrate`
-   - resource-server / propagation / forwarder 不应再被写成某个 preset 专属材料；它们只依赖 access token 与 propagation header，应提升为顶层 shared module `access_token_substrate`
-4. 不急着把 chooser UI 或 router glue 抽回 SDK
-5. 在 `outposts` 从 `angular-auth-oidc-client` 迁向 SDK Angular 包（`provideTokenSetAuth()`、`@securitydept/token-set-context-client-angular` 等）的过程中，不要把应用内过渡 glue 当 SDK API 产品化；应以 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 中的 adapter 契约为准，再验证迁移到这些公开表面
+1. 继续把当前单 `Confluence` path 锁定为 downstream proof。
+2. 不因为一个 downstream host 的本地 glue 就新增 SDK capability。
+3. 只有当 ergonomics 在多个 adopter，或同时在 `apps/webui` 与 `outposts` 中重复出现时，才记录为更高优先级候选。
+4. 对任何 multi-backend 或 third-party traffic 的 Angular adopter，继续推荐 strict bearer injection。
 
 ## 中期计划
 
-中期更适合做的事情：
-
-1. 从 `outposts` 的真实需求里提炼 requirement model
-2. 观察哪些调度步骤足够稳定，值得上升为 SDK 的 headless orchestration primitive
-3. 在 `web` / `angular` / `react` 适配层中，评估是否要提供“默认推荐调度实现”
+下一条有价值的 adopter evidence 是 `outposts` 中出现第二个 backend 或第二个 route requirement。这会验证当前 route-orchestration primitive 在 multi-requirement 压力下是否仍然顺手。
 
 ## 长期计划
 
-长期目标不是把 `outposts` 变成 SDK 的第二个产品内 demo，而是：
-
-1. 让它持续充当真实 adopter 的反馈面
-2. 让 SDK 的后续边界判断建立在真实项目迁移经验上
-3. 明确哪些能力应该进入 SDK，哪些能力应继续留在 adopter app glue
+保持 `outposts` 作为真实 feedback surface，而不是第二个仓库内 demo。它的价值在于可以与 reference app 不同，并暴露真实 host 约束。
 
 ## 本地联动开发约束
 
-这个案例应直接采用本地工作区依赖，而不是先依赖已发布版本：
+在 SDK 与 adopter 边界共同演化期间，这个案例应继续使用直接本地 workspace dependencies：
 
-- Rust：继续使用 workspace `path` 依赖，例如 `../securitydept/packages/core`
-- Node / pnpm：优先使用 `link:` 指向本地 `securitydept` TS package
-
-原因很简单：
-
-- 这是一个“正在共同演化”的现实 adopter 案例
-- 它的价值就在于能及时验证 SDK 最新边界，而不是回头对齐已发布包
+- Rust：使用指向本地 SecurityDept crates 的 `path` dependencies
+- Node / pnpm：使用指向本地 SecurityDept TS packages 的 `link:` references
 
 ## 相关文档
 
-- SDK 边界与当前口径：`docs/zh/007-CLIENT_SDK_GUIDE.md`
-- Outposts 项目内认证方案：`~/workspace/outposts/docs/zh/003-AUTH.md`
+- SDK 边界与当前契约：[007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
+- Auth context 与 modes：[020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md)
+- Roadmap 与 release blockers：[100-ROADMAP.md](100-ROADMAP.md)
 
 ---
 

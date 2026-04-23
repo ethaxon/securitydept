@@ -76,7 +76,7 @@ pub async fn list(Extension(state): Extension<ServerState>) -> Json<Vec<AuthEntr
     )
     .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
     .field(AuthFlowDiagnosisField::HAS_TARGET_ID, false)
-    .field("result_count", entries.len());
+    .field(AuthFlowDiagnosisField::RESULT_COUNT, entries.len());
     log_route_diagnosis(
         RouteDiagnosisContext {
             route: "/api/entries",
@@ -359,9 +359,11 @@ pub async fn delete(
 
 #[cfg(test)]
 mod tests {
+    use axum::{Extension, Json, http::StatusCode, response::IntoResponse};
     use securitydept_core::creds_manage::models::{AuthEntryKind, AuthEntryMeta};
 
     use super::*;
+    use crate::routes::test_support::{assert_server_error_envelope, test_server_state};
 
     fn sample_entry() -> AuthEntry {
         AuthEntry {
@@ -405,5 +407,32 @@ mod tests {
             diagnosis.fields[AuthFlowDiagnosisField::TARGET_ID],
             "entry-1"
         );
+    }
+
+    #[tokio::test]
+    async fn create_basic_with_invalid_material_returns_shared_server_error_envelope() {
+        let state = test_server_state("invalid-basic-material").await;
+
+        let response = create_basic(
+            Extension(state),
+            Json(CreateBasicEntryRequest {
+                name: "ops-user".to_string(),
+                username: "   ".to_string(),
+                password: "secret123".to_string(),
+                group_ids: Vec::new(),
+            }),
+        )
+        .await
+        .expect_err("invalid basic entry material should fail")
+        .into_response();
+
+        assert_server_error_envelope(
+            response,
+            StatusCode::UNAUTHORIZED,
+            "unauthenticated",
+            "auth_invalid_credentials_format",
+            "reauthenticate",
+        )
+        .await;
     }
 }

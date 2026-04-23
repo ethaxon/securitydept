@@ -1,0 +1,32 @@
+/* GitHub-only README badges hidden in the rendered docsite */
+.github-only.github-only {
+	display: none;
+}
+
+.badges {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+	align-items: center;
+	margin: 16px 0;
+}
+
+.badges a {
+	display: flex;
+}
+
+.badges br {
+	display: none;
+}
+
+.vp-doc hr {
+	margin: 24px 0;
+	border: 0;
+	border-top: 1px solid var(--vp-c-divider);
+}
+
+.vp-doc hr + h2 {
+	margin-top: 32px;
+	padding-top: 0;
+	border-top: 0;
+}

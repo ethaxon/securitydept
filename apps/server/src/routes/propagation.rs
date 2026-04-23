@@ -3,6 +3,7 @@ use axum::{
     extract::Request,
     response::{IntoResponse, Response},
 };
+use securitydept_core::utils::http::ToHttpStatus;
 
 use crate::{
     diagnosis::{RouteDiagnosisContext, log_route_diagnosis, log_route_diagnosis_error},
@@ -41,19 +42,18 @@ pub async fn propagation_forward(
         .await;
     let diagnosis = diagnosed.diagnosis().clone();
     let response = diagnosed.into_result().map_err(|error| {
+        let status = error.to_http_status().as_u16();
         log_route_diagnosis_error(
             RouteDiagnosisContext {
                 route: "/api/propagation",
                 method: "ANY",
-                status: None,
+                status: Some(status),
             },
             &diagnosis,
             &error,
             "Propagation forwarding failed",
         );
-        ServerError::InvalidConfig {
-            message: format!("propagation forwarding failed: {error}"),
-        }
+        ServerError::from(error)
     })?;
 
     log_route_diagnosis(

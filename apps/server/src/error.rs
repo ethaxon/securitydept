@@ -29,6 +29,12 @@ pub enum ServerError {
     ConfigLoad { message: String },
     #[snafu(display("Invalid configuration: {message}"))]
     InvalidConfig { message: String },
+    #[snafu(display("{message}"))]
+    RoutePresentation {
+        status: StatusCode,
+        presentation: ErrorPresentation,
+        message: String,
+    },
     #[snafu(display("Server boot error: {source}"))]
     ServerBoot {
         source: Box<dyn std::error::Error + Send + Sync>,
@@ -60,9 +66,10 @@ pub enum ServerError {
 impl ToHttpStatus for ServerError {
     fn to_http_status(&self) -> StatusCode {
         match self {
-            ServerError::Creds { .. } => self.to_http_status(),
-            ServerError::CredsManage { .. } => self.to_http_status(),
-            ServerError::Oidc { .. } => self.to_http_status(),
+            ServerError::Creds { source } => source.to_http_status(),
+            ServerError::CredsManage { source } => source.to_http_status(),
+            ServerError::Oidc { source } => source.to_http_status(),
+            ServerError::RoutePresentation { status, .. } => *status,
             ServerError::SessionAuthService { source } => source.status_code(),
             ServerError::SessionContext { source } => source.status_code(),
             ServerError::BasicAuthContextService { source } => source.to_http_status(),
@@ -85,6 +92,7 @@ impl ToErrorPresentation for ServerError {
             ServerError::BackendOidcRuntime { source } => source.to_error_presentation(),
             ServerError::ResourceService { source } => source.to_error_presentation(),
             ServerError::TokenPropagator { source } => source.to_error_presentation(),
+            ServerError::RoutePresentation { presentation, .. } => presentation.clone(),
             ServerError::ConfigLoad { .. }
             | ServerError::InvalidConfig { .. }
             | ServerError::ServerBoot { .. } => ErrorPresentation::new(
@@ -97,6 +105,18 @@ impl ToErrorPresentation for ServerError {
 }
 
 impl ServerError {
+    pub fn route_presentation(
+        status: StatusCode,
+        presentation: ErrorPresentation,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::RoutePresentation {
+            status,
+            presentation,
+            message: message.into(),
+        }
+    }
+
     fn to_server_error_kind(
         &self,
         status: StatusCode,
@@ -149,3 +169,41 @@ impl IntoResponse for ServerError {
 }
 
 pub type ServerResult<T> = std::result::Result<T, ServerError>;
+
+#[cfg(test)]
+mod tests {
+    use axum::body::to_bytes;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn route_presentation_errors_serialize_as_shared_server_error_envelope() {
+        let response = ServerError::route_presentation(
+            StatusCode::UNAUTHORIZED,
+            ErrorPresentation::new(
+                "backend_oidc_mode.bearer_token_required",
+                "A bearer access token is required for this endpoint.",
+                UserRecovery::Reauthenticate,
+            ),
+            "Missing or invalid Authorization: Bearer header",
+        )
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body should be readable");
+        let envelope: serde_json::Value =
+            serde_json::from_slice(&body).expect("response should be valid json");
+
+        assert_eq!(envelope["success"], false);
+        assert_eq!(envelope["status"], 401);
+        assert_eq!(envelope["error"]["kind"], "unauthenticated");
+        assert_eq!(
+            envelope["error"]["code"],
+            "backend_oidc_mode.bearer_token_required"
+        );
+        assert_eq!(envelope["error"]["recovery"], "reauthenticate");
+    }
+}

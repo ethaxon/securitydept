@@ -347,10 +347,19 @@ where
     ) -> DiagnosedResult<OidcCodeCallbackResult, OidcError> {
         let diagnosis = AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_CALLBACK)
             .field("redirect_override", redirect_url_override)
-            .field("external_base_url", external_base_url.as_str())
+            .field(
+                AuthFlowDiagnosisField::EXTERNAL_BASE_URL,
+                external_base_url.as_str(),
+            )
             .field("pkce_enabled", self.pkce_enabled)
-            .field("has_state", search_params.state.is_some())
-            .field("has_code", !search_params.code.is_empty());
+            .field(
+                AuthFlowDiagnosisField::HAS_STATE,
+                search_params.state.is_some(),
+            )
+            .field(
+                AuthFlowDiagnosisField::HAS_CODE,
+                !search_params.code.is_empty(),
+            );
 
         let code = &search_params.code;
         let state = search_params
@@ -463,7 +472,10 @@ where
         DiagnosedResult::success(
             diagnosis
                 .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
-                .field("subject", result.id_token_claims.subject().to_string())
+                .field(
+                    AuthFlowDiagnosisField::SUBJECT,
+                    result.id_token_claims.subject().to_string(),
+                )
                 .field("has_refresh_token", result.refresh_token.is_some())
                 .field("has_user_info_claims", result.user_info_claims.is_some()),
             result,

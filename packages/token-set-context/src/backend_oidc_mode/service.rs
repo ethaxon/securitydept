@@ -21,6 +21,94 @@ use super::{
     },
 };
 
+fn backend_oidc_login_diagnosis(
+    callback_path: &str,
+    external_base_url: &Url,
+    query: &BackendOidcModeAuthorizeQuery,
+) -> AuthFlowDiagnosis {
+    AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_AUTHORIZE)
+        .field(AuthFlowDiagnosisField::MODE, "backend_oidc")
+        .field(AuthFlowDiagnosisField::CALLBACK_PATH, callback_path)
+        .field(
+            AuthFlowDiagnosisField::EXTERNAL_BASE_URL,
+            external_base_url.as_str(),
+        )
+        .field(
+            AuthFlowDiagnosisField::POST_AUTH_REDIRECT_PRESENT,
+            query.post_auth_redirect_uri.is_some(),
+        )
+}
+
+fn backend_oidc_callback_diagnosis(
+    callback_path: &str,
+    external_base_url: &Url,
+    search_params: &OidcCodeCallbackSearchParams,
+    response_transport: &str,
+) -> AuthFlowDiagnosis {
+    AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_CALLBACK)
+        .field(AuthFlowDiagnosisField::MODE, "backend_oidc")
+        .field(
+            AuthFlowDiagnosisField::RESPONSE_TRANSPORT,
+            response_transport,
+        )
+        .field(AuthFlowDiagnosisField::CALLBACK_PATH, callback_path)
+        .field(
+            AuthFlowDiagnosisField::EXTERNAL_BASE_URL,
+            external_base_url.as_str(),
+        )
+        .field(
+            AuthFlowDiagnosisField::HAS_STATE,
+            search_params.state.is_some(),
+        )
+        .field(
+            AuthFlowDiagnosisField::HAS_CODE,
+            !search_params.code.is_empty(),
+        )
+}
+
+fn backend_oidc_refresh_diagnosis(
+    callback_path: &str,
+    external_base_url: &Url,
+    payload: &BackendOidcModeRefreshPayload,
+) -> AuthFlowDiagnosis {
+    AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_TOKEN_REFRESH)
+        .field(AuthFlowDiagnosisField::MODE, "backend_oidc")
+        .field(AuthFlowDiagnosisField::RESPONSE_TRANSPORT, "json_body")
+        .field(AuthFlowDiagnosisField::CALLBACK_PATH, callback_path)
+        .field(
+            AuthFlowDiagnosisField::EXTERNAL_BASE_URL,
+            external_base_url.as_str(),
+        )
+        .field(
+            AuthFlowDiagnosisField::HAS_POST_AUTH_REDIRECT_URI,
+            payload.post_auth_redirect_uri.is_some(),
+        )
+        .field(
+            AuthFlowDiagnosisField::HAS_ID_TOKEN,
+            payload.id_token.is_some(),
+        )
+}
+
+fn backend_oidc_metadata_redeem_diagnosis(
+    payload: &BackendOidcModeMetadataRedemptionRequest,
+) -> AuthFlowDiagnosis {
+    AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_METADATA_REDEEM)
+        .field(AuthFlowDiagnosisField::MODE, "backend_oidc")
+        .field(
+            AuthFlowDiagnosisField::METADATA_ID_PRESENT,
+            !payload.metadata_redemption_id.expose().is_empty(),
+        )
+}
+
+fn backend_oidc_user_info_diagnosis(access_token_present: bool) -> AuthFlowDiagnosis {
+    AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_USER_INFO)
+        .field(AuthFlowDiagnosisField::MODE, "backend_oidc")
+        .field(
+            AuthFlowDiagnosisField::ACCESS_TOKEN_PRESENT,
+            access_token_present,
+        )
+}
+
 /// Unified route-facing auth service for `backend-oidc` mode.
 ///
 /// Orchestrates OIDC authorization code flow, code callback, token refresh,
@@ -110,6 +198,27 @@ where
         ))
     }
 
+    pub async fn login_with_diagnosis(
+        &self,
+        external_base_url: &Url,
+        query: &BackendOidcModeAuthorizeQuery,
+    ) -> DiagnosedResult<HttpResponse, BackendOidcModeRuntimeError> {
+        let diagnosis = backend_oidc_login_diagnosis(self.callback_path, external_base_url, query);
+
+        match self.login(external_base_url, query).await {
+            Ok(response) => DiagnosedResult::success(
+                diagnosis.with_outcome(AuthFlowDiagnosisOutcome::Succeeded),
+                response,
+            ),
+            Err(error) => DiagnosedResult::failure(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                    .field(AuthFlowDiagnosisField::FAILURE_STAGE, "backend_authorize"),
+                error,
+            ),
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Callback
     // -----------------------------------------------------------------------
@@ -137,13 +246,12 @@ where
         search_params: OidcCodeCallbackSearchParams,
         caller_post_auth_redirect_uri: Option<&Url>,
     ) -> DiagnosedResult<HttpResponse, BackendOidcModeRuntimeError> {
-        let diagnosis = AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_CALLBACK)
-            .field(AuthFlowDiagnosisField::MODE, "backend_oidc")
-            .field("response_transport", "fragment_redirect")
-            .field("callback_path", self.callback_path)
-            .field("external_base_url", external_base_url.as_str())
-            .field("has_state", search_params.state.is_some())
-            .field("has_code", !search_params.code.is_empty());
+        let diagnosis = backend_oidc_callback_diagnosis(
+            self.callback_path,
+            external_base_url,
+            &search_params,
+            "fragment_redirect",
+        );
 
         match self
             .callback_fragment_return(
@@ -157,7 +265,7 @@ where
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
                     .field(
-                        "has_caller_post_auth_redirect_uri",
+                        AuthFlowDiagnosisField::HAS_POST_AUTH_REDIRECT_URI,
                         caller_post_auth_redirect_uri.is_some(),
                     ),
                 response,
@@ -233,13 +341,12 @@ where
         external_base_url: &Url,
         search_params: OidcCodeCallbackSearchParams,
     ) -> DiagnosedResult<serde_json::Value, BackendOidcModeRuntimeError> {
-        let diagnosis = AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_CALLBACK)
-            .field(AuthFlowDiagnosisField::MODE, "backend_oidc")
-            .field("response_transport", "json_body")
-            .field("callback_path", self.callback_path)
-            .field("external_base_url", external_base_url.as_str())
-            .field("has_state", search_params.state.is_some())
-            .field("has_code", !search_params.code.is_empty());
+        let diagnosis = backend_oidc_callback_diagnosis(
+            self.callback_path,
+            external_base_url,
+            &search_params,
+            "json_body",
+        );
 
         match self
             .callback_body_return(external_base_url, search_params)
@@ -248,7 +355,10 @@ where
             Ok(body) => DiagnosedResult::success(
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
-                    .field("has_metadata", body.get("metadata").is_some()),
+                    .field(
+                        AuthFlowDiagnosisField::HAS_METADATA,
+                        body.get("metadata").is_some(),
+                    ),
                 body,
             ),
             Err(error) => DiagnosedResult::failure(
@@ -329,22 +439,17 @@ where
         payload: &BackendOidcModeRefreshPayload,
         external_base_url: &Url,
     ) -> DiagnosedResult<serde_json::Value, BackendOidcModeRuntimeError> {
-        let diagnosis = AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_TOKEN_REFRESH)
-            .field(AuthFlowDiagnosisField::MODE, "backend_oidc")
-            .field("response_transport", "json_body")
-            .field("callback_path", self.callback_path)
-            .field("external_base_url", external_base_url.as_str())
-            .field(
-                "has_post_auth_redirect_uri",
-                payload.post_auth_redirect_uri.is_some(),
-            )
-            .field("has_id_token", payload.id_token.is_some());
+        let diagnosis =
+            backend_oidc_refresh_diagnosis(self.callback_path, external_base_url, payload);
 
         match self.refresh_body_return(payload).await {
             Ok(body) => DiagnosedResult::success(
                 diagnosis
                     .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
-                    .field("has_metadata", body.get("metadata").is_some()),
+                    .field(
+                        AuthFlowDiagnosisField::HAS_METADATA,
+                        body.get("metadata").is_some(),
+                    ),
                 body,
             ),
             Err(error) => DiagnosedResult::failure(
@@ -374,6 +479,39 @@ where
         self.runtime.redeem_metadata(payload).await
     }
 
+    pub async fn redeem_metadata_with_diagnosis(
+        &self,
+        payload: &BackendOidcModeMetadataRedemptionRequest,
+    ) -> DiagnosedResult<
+        Option<BackendOidcModeMetadataRedemptionResponse>,
+        BackendOidcModeRuntimeError,
+    > {
+        let diagnosis = backend_oidc_metadata_redeem_diagnosis(payload);
+
+        match self.redeem_metadata(payload).await {
+            Ok(metadata) => DiagnosedResult::success(
+                diagnosis
+                    .with_outcome(if metadata.is_some() {
+                        AuthFlowDiagnosisOutcome::Succeeded
+                    } else {
+                        AuthFlowDiagnosisOutcome::Rejected
+                    })
+                    .field(
+                        AuthFlowDiagnosisField::METADATA_REDEEMED,
+                        metadata.is_some(),
+                    ),
+                metadata,
+            ),
+            Err(error) => DiagnosedResult::failure(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                    .field(AuthFlowDiagnosisField::METADATA_REDEEMED, false)
+                    .field(AuthFlowDiagnosisField::FAILURE_STAGE, "metadata_redemption"),
+                error,
+            ),
+        }
+    }
+
     // -----------------------------------------------------------------------
     // User info
     // -----------------------------------------------------------------------
@@ -392,6 +530,29 @@ where
             .await?;
 
         Ok(result.into())
+    }
+
+    pub async fn user_info_with_diagnosis(
+        &self,
+        request: &BackendOidcModeUserInfoRequest,
+        access_token: &str,
+    ) -> DiagnosedResult<BackendOidcModeUserInfoResponse, BackendOidcModeRuntimeError> {
+        let diagnosis = backend_oidc_user_info_diagnosis(true);
+
+        match self.user_info(request, access_token).await {
+            Ok(response) => DiagnosedResult::success(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
+                    .field(AuthFlowDiagnosisField::SUBJECT, response.subject.clone()),
+                response,
+            ),
+            Err(error) => DiagnosedResult::failure(
+                diagnosis
+                    .with_outcome(AuthFlowDiagnosisOutcome::Failed)
+                    .field(AuthFlowDiagnosisField::FAILURE_STAGE, "user_info_exchange"),
+                error,
+            ),
+        }
     }
 
     /// Access the underlying OIDC client.
@@ -417,4 +578,68 @@ fn pick_redirect_uri(
                       (post_auth_redirect_policy = resolved) or the caller must supply it"
                 .to_string(),
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend_oidc_mode::metadata_redemption::MetadataRedemptionId;
+
+    #[test]
+    fn backend_oidc_login_diagnosis_reports_redirect_presence() {
+        let diagnosis = backend_oidc_login_diagnosis(
+            "/auth/token-set/backend-mode/callback",
+            &Url::parse("https://auth.example.com").expect("url should parse"),
+            &BackendOidcModeAuthorizeQuery {
+                post_auth_redirect_uri: Some("/app".to_string()),
+            },
+        );
+
+        assert_eq!(diagnosis.operation, AuthFlowOperation::OIDC_AUTHORIZE);
+        assert_eq!(
+            diagnosis.fields[AuthFlowDiagnosisField::MODE],
+            "backend_oidc"
+        );
+        assert_eq!(
+            diagnosis.fields[AuthFlowDiagnosisField::POST_AUTH_REDIRECT_PRESENT],
+            true
+        );
+    }
+
+    #[test]
+    fn backend_oidc_metadata_redeem_diagnosis_reports_metadata_identifier_presence() {
+        let diagnosis =
+            backend_oidc_metadata_redeem_diagnosis(&BackendOidcModeMetadataRedemptionRequest {
+                metadata_redemption_id: MetadataRedemptionId::new("meta-1"),
+            })
+            .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
+            .field(AuthFlowDiagnosisField::METADATA_REDEEMED, false);
+
+        assert_eq!(diagnosis.operation, AuthFlowOperation::OIDC_METADATA_REDEEM);
+        assert_eq!(
+            diagnosis.fields[AuthFlowDiagnosisField::METADATA_ID_PRESENT],
+            true
+        );
+        assert_eq!(
+            diagnosis.fields[AuthFlowDiagnosisField::METADATA_REDEEMED],
+            false
+        );
+    }
+
+    #[test]
+    fn backend_oidc_user_info_diagnosis_marks_missing_access_token_as_rejected() {
+        let diagnosis = backend_oidc_user_info_diagnosis(false)
+            .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
+            .field(AuthFlowDiagnosisField::REASON, "missing_access_token");
+
+        assert_eq!(diagnosis.operation, AuthFlowOperation::OIDC_USER_INFO);
+        assert_eq!(
+            diagnosis.fields[AuthFlowDiagnosisField::ACCESS_TOKEN_PRESENT],
+            false
+        );
+        assert_eq!(
+            diagnosis.fields[AuthFlowDiagnosisField::REASON],
+            "missing_access_token"
+        );
+    }
 }
