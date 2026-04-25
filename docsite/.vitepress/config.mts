@@ -1,6 +1,9 @@
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { defineConfig } from "vitepress";
 
 const REPO_URL = "https://github.com/ethaxon/securitydept";
+const DOCSITE_ROOT = resolve(import.meta.dirname, "..");
+const REPO_ROOT = resolve(DOCSITE_ROOT, "..");
 
 interface DocItem {
 	en: string;
@@ -21,7 +24,7 @@ type MarkdownToken = {
 	attrIndex(name: string): number;
 };
 
-type MarkdownRendererOptions = Record<string, unknown>;
+type MarkdownRendererOptions = unknown;
 
 type MarkdownRendererSelf = {
 	renderToken(
@@ -84,11 +87,43 @@ function buildSidebar(prefix: string, lang: "en" | "zh", title: string) {
 	];
 }
 
+function normalizePath(path: string): string {
+	return path.replace(/\\/g, "/");
+}
+
+function resolveSourcePath(filePath: string): string {
+	if (!filePath) return "";
+	return isAbsolute(filePath) ? filePath : resolve(DOCSITE_ROOT, filePath);
+}
+
+function resolveRepoRelativePath(
+	filePath: string,
+	hrefPath: string,
+): string | null {
+	if (!filePath || !hrefPath || hrefPath.startsWith("/")) return null;
+
+	const sourcePath = resolveSourcePath(filePath);
+	if (!sourcePath) return null;
+
+	const targetPath = resolve(dirname(sourcePath), hrefPath);
+	const repoRelativePath = relative(REPO_ROOT, targetPath);
+	if (!repoRelativePath) return null;
+	if (repoRelativePath.startsWith("..") || isAbsolute(repoRelativePath)) {
+		return null;
+	}
+
+	return normalizePath(repoRelativePath);
+}
+
 /**
  * Rewrite repository-relative Markdown / HTML links so the symlinked source
  * documents render correctly inside VitePress without a content-staging step.
  */
-function rewriteHref(href: string, lang: "en" | "zh"): string {
+function rewriteHref(
+	href: string,
+	filePath: string,
+	lang: "en" | "zh",
+): string {
 	if (
 		!href ||
 		/^[a-z][a-z0-9+.-]*:/i.test(href) ||
@@ -98,40 +133,50 @@ function rewriteHref(href: string, lang: "en" | "zh"): string {
 		return href;
 	}
 
-	const hashIdx = href.indexOf("#");
-	const path = hashIdx === -1 ? href : href.slice(0, hashIdx);
-	const hash = hashIdx === -1 ? "" : href.slice(hashIdx);
+	const pathEndIdx = href.search(/[?#]/);
+	const path = pathEndIdx === -1 ? href : href.slice(0, pathEndIdx);
+	const suffix = pathEndIdx === -1 ? "" : href.slice(pathEndIdx);
 
 	if (!path || path.startsWith("/")) return href;
 
-	const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
+	const normalized = normalizePath(path).replace(/^\.\//, "");
+	const repoRelativePath = resolveRepoRelativePath(filePath, path);
+	const resolved = repoRelativePath ?? normalized;
 	const langPrefix = lang === "en" ? "" : "/zh";
-	const map = (target: string) => `${target}${hash}`;
+	const map = (target: string) => `${target}${suffix}`;
 
-	if (normalized === "README.md") return map("/");
-	if (normalized === "README_zh.md") return map("/zh/");
-	if (normalized === "AGENTS.md") return map(`${langPrefix}/agents`);
-	if (/^LICENSE(\.md)?$/i.test(normalized)) return map(`${langPrefix}/license`);
+	if (resolved === "README.md") return map("/");
+	if (resolved === "README_zh.md") return map("/zh/");
+	if (resolved === "AGENTS.md") return map(`${langPrefix}/agents`);
+	if (/^LICENSE(\.md)?$/i.test(resolved)) return map(`${langPrefix}/license`);
 
-	const repoDocs = normalized.match(/^docs\/(en|zh)\/([^/]+)\.md$/i);
+	const repoDocs = resolved.match(/^docs\/(en|zh)\/([^/]+)\.md$/i);
 	if (repoDocs) {
 		const target =
 			repoDocs[1] === "en" ? `/docs/${repoDocs[2]}` : `/zh/docs/${repoDocs[2]}`;
 		return map(target);
 	}
 
-	const sibling = normalized.match(/^(?:\.\.\/)?(en|zh)\/([^/]+)\.md$/i);
+	const sibling = resolved.match(/^(?:\.\.\/)?(en|zh)\/([^/]+)\.md$/i);
 	if (sibling) {
 		const target =
 			sibling[1] === "en" ? `/docs/${sibling[2]}` : `/zh/docs/${sibling[2]}`;
 		return map(target);
 	}
 
-	const assets = normalized.match(/^(?:\.\.\/)*assets\/icons\/(.+)$/i);
+	const assets = resolved.match(/^(?:\.\.\/)*assets\/icons\/(.+)$/i);
 	if (assets) return map(`/${assets[1]}`);
 
-	const localDoc = normalized.match(/^([^/]+)\.md$/i);
+	const localDoc = resolved.match(/^([^/]+)\.md$/i);
 	if (localDoc) return map(`${langPrefix}/docs/${localDoc[1]}`);
+
+	if (
+		repoRelativePath &&
+		!repoRelativePath.startsWith("docs/") &&
+		!repoRelativePath.startsWith("assets/")
+	) {
+		return `${REPO_URL}/blob/main/${repoRelativePath}${suffix}`;
+	}
 
 	return href;
 }
@@ -214,28 +259,40 @@ export default defineConfig({
 					const filePath = env.realPath ?? env.path ?? "";
 					token.attrs[hrefIdx][1] = rewriteHref(
 						token.attrs[hrefIdx][1],
+						filePath,
 						detectLang(filePath),
 					);
 				}
 				return defaultLinkOpen(tokens, idx, opts, env, self);
 			};
 
-			const rewriteHtmlAttrs = (html: string, lang: "en" | "zh") =>
+			const rewriteHtmlAttrs = (
+				html: string,
+				filePath: string,
+				lang: "en" | "zh",
+			) =>
 				html
 					.replace(
 						/\b(href|src)="([^"]+)"/g,
-						(_m, attr, value) => `${attr}="${rewriteHref(value, lang)}"`,
+						(_m, attr, value) =>
+							`${attr}="${rewriteHref(value, filePath, lang)}"`,
 					)
 					.replace(
 						/\b(href|src)='([^']+)'/g,
-						(_m, attr, value) => `${attr}='${rewriteHref(value, lang)}'`,
+						(_m, attr, value) =>
+							`${attr}='${rewriteHref(value, filePath, lang)}'`,
 					);
 
 			for (const ruleName of ["html_block", "html_inline"] as const) {
 				const original = md.renderer.rules[ruleName] ?? renderToken;
 				md.renderer.rules[ruleName] = (tokens, idx, opts, env, self) => {
-					const lang = detectLang(env.realPath ?? env.path ?? "");
-					tokens[idx].content = rewriteHtmlAttrs(tokens[idx].content, lang);
+					const filePath = env.realPath ?? env.path ?? "";
+					const lang = detectLang(filePath);
+					tokens[idx].content = rewriteHtmlAttrs(
+						tokens[idx].content,
+						filePath,
+						lang,
+					);
 					return original(tokens, idx, opts, env, self);
 				};
 			}
