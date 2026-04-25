@@ -3,7 +3,7 @@
 	"version": "0.2.0-beta.1",
 	"private": true,
 	"type": "module",
-	"description": "SecurityDept is a mesh-oriented authentication and authorization toolkit built as reusable Rust crates plus a reference server app.",
+	"description": "SecurityDept is a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps.",
 	"keywords": [
 		"auth",
 		"authentication",

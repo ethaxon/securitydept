@@ -49,6 +49,7 @@ release channel 由版本号自动推断，而不是手工传参。
 
 主要命令：
 
+- `node scripts/release-cli.ts metadata sync`
 - `node scripts/release-cli.ts version check`
 - `node scripts/release-cli.ts version set 0.2.0-beta.1`
 - `node scripts/release-cli.ts npm publish --mode=dry-run`
@@ -60,6 +61,7 @@ release channel 由版本号自动推断，而不是手工传参。
 
 行为规则：
 
+- `metadata sync` 会把 [`securitydept-metadata.toml`](../../securitydept-metadata.toml) 中的共享发布元信息写入 publishable Rust crate 和 publishable npm package，包括 description、author、license、keywords、repository 链接以及最简 `README.md`。
 - `version set` 会更新 [`securitydept-metadata.toml`](../../securitydept-metadata.toml) 中列出的所有 release-managed `package.json` 和 `Cargo.toml`。
 - `version check` 也会校验 publishable Rust crate 之间的 `path` 依赖版本，并要求内部依赖使用 `=X.Y.Z[-alpha.N|-beta.N]` 这种精确版本约束。
 - `version set` 也会为这些 publishable Rust 内部依赖写入精确版本约束，保证本地 package 校验与 publish 准备阶段的一致性。
@@ -100,10 +102,11 @@ release 相关 workflow 必须遵循：
 
 建议在真正发布前按这个顺序跑本地检查：
 
-1. `mise exec --command "just release-version-check"`
-2. `mise exec --command "just release-npm-dry-run"`
-3. `mise exec --command "just release-crates-package-blocked"`
-4. `mise exec --command "just release-docker-metadata v0.2.0-beta.1"`
+1. `mise exec --command "just release-metadata-sync"`
+2. `mise exec --command "just release-version-check"`
+3. `mise exec --command "just release-npm-dry-run"`
+4. `mise exec --command "just release-crates-package-blocked"`
+5. `mise exec --command "just release-docker-metadata v0.2.0-beta.1"`
 
 如果需要先推进版本：
 

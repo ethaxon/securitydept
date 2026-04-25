@@ -4,7 +4,7 @@
   <b>SecurityDept</b>
 </h1>
 
-SecurityDept is a mesh-oriented authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps.
+SecurityDept is a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps.
 
 The project is evolving away from a single "OIDC login + local session" product into a layered library stack that can support:
 

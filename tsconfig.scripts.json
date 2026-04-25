@@ -4,7 +4,8 @@
 		"outDir": "./dist-tsc/scripts",
 		"types": ["node"],
 		"module": "NodeNext",
-		"moduleResolution": "nodenext"
+		"moduleResolution": "nodenext",
+		"allowImportingTsExtensions": true
 	},
 	"include": [
 		"**/vite*.ts",

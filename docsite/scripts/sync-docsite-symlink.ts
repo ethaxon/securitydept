@@ -32,7 +32,7 @@ function normalizePathForCompare(path: string) {
 	return path.replace(/\\/g, "/");
 }
 
-function ensureRelativeSymlink(entry: LinkEntry) {
+function ensureRelativeSymlink(entry: LinkEntry): "skipped" | "linked" {
 	const linkPath = resolve(docsiteRoot, entry.link);
 	const targetPath = resolve(repoRoot, entry.target);
 	const relativeTarget = relative(dirname(linkPath), targetPath);
@@ -58,8 +58,7 @@ function ensureRelativeSymlink(entry: LinkEntry) {
 				normalizePathForCompare(currentResolvedTarget) ===
 					normalizePathForCompare(targetPath)
 			) {
-				console.log(`ok ${entry.link} -> ${entry.target}`);
-				return;
+				return "skipped";
 			}
 		}
 
@@ -78,8 +77,22 @@ function ensureRelativeSymlink(entry: LinkEntry) {
 	}
 
 	console.log(`linked ${entry.link} -> ${entry.target}`);
+	return "linked";
 }
 
+let linkedCount = 0;
+let skippedCount = 0;
+
 for (const entry of entries) {
-	ensureRelativeSymlink(entry);
+	const result = ensureRelativeSymlink(entry);
+	if (result === "linked") {
+		linkedCount += 1;
+	}
+	if (result === "skipped") {
+		skippedCount += 1;
+	}
 }
+
+console.log(
+	`Docsite symlink sync completed. Linked: ${linkedCount}, Skipped: ${skippedCount}.`,
+);

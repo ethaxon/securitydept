@@ -49,6 +49,7 @@ Rationale:
 
 Primary commands:
 
+- `node scripts/release-cli.ts metadata sync`
 - `node scripts/release-cli.ts version check`
 - `node scripts/release-cli.ts version set 0.2.0-beta.1`
 - `node scripts/release-cli.ts npm publish --mode=dry-run`
@@ -60,6 +61,7 @@ Primary commands:
 
 Behavioral rules:
 
+- `metadata sync` writes shared publish metadata from [`securitydept-metadata.toml`](../../securitydept-metadata.toml) into publishable Rust crates and publishable npm packages, including descriptions, authors, licenses, keywords, repository links, and minimal package `README.md` files.
 - `version set` updates every release-managed `package.json` and `Cargo.toml` listed in [`securitydept-metadata.toml`](../../securitydept-metadata.toml).
 - `version check` also validates publishable Rust `path` dependencies between workspace crates and requires exact internal requirements in the form `=X.Y.Z[-alpha.N|-beta.N]`.
 - `version set` also writes those exact internal Rust dependency requirements for publishable crates, so local package verification and publish preparation stay aligned.
@@ -100,10 +102,11 @@ This keeps one implementation of:
 
 Recommended local sequence before an actual publish:
 
-1. `mise exec --command "just release-version-check"`
-2. `mise exec --command "just release-npm-dry-run"`
-3. `mise exec --command "just release-crates-package-blocked"`
-4. `mise exec --command "just release-docker-metadata v0.2.0-beta.1"`
+1. `mise exec --command "just release-metadata-sync"`
+2. `mise exec --command "just release-version-check"`
+3. `mise exec --command "just release-npm-dry-run"`
+4. `mise exec --command "just release-crates-package-blocked"`
+5. `mise exec --command "just release-docker-metadata v0.2.0-beta.1"`
 
 If the version needs to move first:
 

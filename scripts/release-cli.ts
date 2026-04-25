@@ -5,6 +5,7 @@ import { Builtins, Cli, Command, Option } from "clipanion";
 import { runCratesPublish } from "./lib/crates-release.ts";
 import { runDockerPublish } from "./lib/docker-release.ts";
 import { loadSecuritydeptMetadata } from "./lib/metadata.ts";
+import { runMetadataSync } from "./lib/metadata-sync.ts";
 import { runNpmPublish } from "./lib/npm-release.ts";
 import {
 	ensureVersionConsistency,
@@ -12,7 +13,7 @@ import {
 } from "./lib/version.ts";
 
 class VersionSetCommand extends Command {
-	static paths = [["version", "set"]];
+	static override paths = [["version", "set"]];
 
 	version = Option.String();
 
@@ -23,7 +24,7 @@ class VersionSetCommand extends Command {
 }
 
 class VersionCheckCommand extends Command {
-	static paths = [["version", "check"]];
+	static override paths = [["version", "check"]];
 
 	async execute(): Promise<number> {
 		ensureVersionConsistency();
@@ -31,8 +32,21 @@ class VersionCheckCommand extends Command {
 	}
 }
 
+class MetadataSyncCommand extends Command {
+	static override paths = [["metadata", "sync"]];
+
+	scope = Option.String("--scope", "all");
+
+	async execute(): Promise<number> {
+		runMetadataSync({
+			scope: this.scope === "rust" || this.scope === "npm" ? this.scope : "all",
+		});
+		return 0;
+	}
+}
+
 class NpmPublishCommand extends Command {
-	static paths = [["npm", "publish"]];
+	static override paths = [["npm", "publish"]];
 
 	mode = Option.String("--mode", "dry-run");
 	tag = Option.String("--tag");
@@ -51,7 +65,7 @@ class NpmPublishCommand extends Command {
 }
 
 class CratesPublishCommand extends Command {
-	static paths = [["crates", "publish"]];
+	static override paths = [["crates", "publish"]];
 
 	mode = Option.String("--mode", "package");
 	allowBlocked = Option.Boolean("--allow-blocked", false);
@@ -70,7 +84,7 @@ class CratesPublishCommand extends Command {
 }
 
 class DockerPublishCommand extends Command {
-	static paths = [["docker", "publish"]];
+	static override paths = [["docker", "publish"]];
 
 	ref = Option.String("--ref");
 	sha = Option.String("--sha");
@@ -108,6 +122,7 @@ cli.register(Builtins.HelpCommand);
 cli.register(Builtins.VersionCommand);
 cli.register(VersionSetCommand);
 cli.register(VersionCheckCommand);
+cli.register(MetadataSyncCommand);
 cli.register(NpmPublishCommand);
 cli.register(CratesPublishCommand);
 cli.register(DockerPublishCommand);

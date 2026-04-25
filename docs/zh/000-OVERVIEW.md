@@ -1,6 +1,6 @@
 # SecurityDept 概览
 
-SecurityDept 是一个分层的认证和授权项目，旨在实现三个相关目标：
+SecurityDept 是一个分层的认证和授权工具包，围绕三个相关目标组织：
 
 1. 可复用的 Rust crate，用于身份、令牌验证和凭证验证
 2. 面向 browser、React、Angular 与 server-host adopter 的 TypeScript SDK family

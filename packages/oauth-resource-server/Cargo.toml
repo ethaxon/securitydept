@@ -3,6 +3,14 @@ name = "securitydept-oauth-resource-server"
 version = "0.2.0-beta.1"
 edition = "2024"
 
+authors = ["Zhou Yeheng <root@aitiotekt.com>"]
+description = "OAuth Resource Server of SecurityDept, a layered authentication and authorization toolkit built as reusable Rust crates."
+license = "MIT"
+repository = "https://github.com/ethaxon/securitydept"
+homepage = "https://securitydept.ethaxon.com/"
+documentation = "https://docs.rs/securitydept-oauth-resource-server"
+readme = "README.md"
+keywords = ["auth","oauth","oidc","security","token"]
 [features]
 jwe = ["securitydept-creds/jwe", "dep:josekit"]
 

@@ -3,6 +3,14 @@ name = "securitydept-token-set-context"
 version = "0.2.0-beta.1"
 edition = "2024"
 
+authors = ["Zhou Yeheng <root@aitiotekt.com>"]
+description = "Token Set Context of SecurityDept, a layered authentication and authorization toolkit built as reusable Rust crates."
+license = "MIT"
+repository = "https://github.com/ethaxon/securitydept"
+homepage = "https://securitydept.ethaxon.com/"
+documentation = "https://docs.rs/securitydept-token-set-context"
+readme = "README.md"
+keywords = ["auth","oauth","oidc","security","token"]
 [features]
 recommend = ["recommend-pending-store", "recommend-propagation-forwarder"]
 recommend-pending-store = ["moka-pending-store"]

@@ -21,10 +21,25 @@ export type RustPackageMetadata = {
 export type SecuritydeptMetadata = {
 	project: {
 		version: string;
+		displayName: string;
+		description: string;
+		author: string;
+		license: string;
+		repositoryUrl: string;
+		repositoryGitUrl: string;
+		issuesUrl: string;
+		homepageUrl: string;
 	};
 	npm: {
 		defaultDistTag: string;
 		packDestination: string;
+		descriptionBase: string;
+		keywords: string[];
+	};
+	rust: {
+		descriptionBase: string;
+		keywords: string[];
+		documentationUrlBase: string;
 	};
 	docker: {
 		defaultRef: string;
@@ -40,9 +55,24 @@ export type SecuritydeptMetadata = {
 type RawMetadata = {
 	project?: {
 		version?: string;
+		display_name?: string;
+		description?: string;
+		author?: string;
+		license?: string;
+		repository_url?: string;
+		repository_git_url?: string;
+		issues_url?: string;
+		homepage_url?: string;
 	};
 	npm?: {
 		pack_destination?: string;
+		description_base?: string;
+		keywords?: string[];
+	};
+	rust?: {
+		description_base?: string;
+		keywords?: string[];
+		documentation_url_base?: string;
 	};
 	crates?: {
 		package_report?: string;
@@ -76,16 +106,88 @@ export function loadSecuritydeptMetadata(): SecuritydeptMetadata {
 	if (!version) {
 		throw new Error("securitydept-metadata.toml is missing [project].version");
 	}
+	if (!parsed.project?.display_name) {
+		throw new Error(
+			"securitydept-metadata.toml is missing [project].display_name",
+		);
+	}
+	if (!parsed.project.description) {
+		throw new Error(
+			"securitydept-metadata.toml is missing [project].description",
+		);
+	}
+	if (!parsed.project.author) {
+		throw new Error("securitydept-metadata.toml is missing [project].author");
+	}
+	if (!parsed.project.license) {
+		throw new Error("securitydept-metadata.toml is missing [project].license");
+	}
+	if (!parsed.project.repository_url) {
+		throw new Error(
+			"securitydept-metadata.toml is missing [project].repository_url",
+		);
+	}
+	if (!parsed.project.repository_git_url) {
+		throw new Error(
+			"securitydept-metadata.toml is missing [project].repository_git_url",
+		);
+	}
+	if (!parsed.project.issues_url) {
+		throw new Error(
+			"securitydept-metadata.toml is missing [project].issues_url",
+		);
+	}
+	if (!parsed.project.homepage_url) {
+		throw new Error(
+			"securitydept-metadata.toml is missing [project].homepage_url",
+		);
+	}
+	if (!parsed.npm?.description_base) {
+		throw new Error(
+			"securitydept-metadata.toml is missing [npm].description_base",
+		);
+	}
+	if (!parsed.npm.keywords || parsed.npm.keywords.length === 0) {
+		throw new Error("securitydept-metadata.toml is missing [npm].keywords");
+	}
+	if (!parsed.rust?.description_base) {
+		throw new Error(
+			"securitydept-metadata.toml is missing [rust].description_base",
+		);
+	}
+	if (!parsed.rust.keywords || parsed.rust.keywords.length === 0) {
+		throw new Error("securitydept-metadata.toml is missing [rust].keywords");
+	}
+	if (!parsed.rust.documentation_url_base) {
+		throw new Error(
+			"securitydept-metadata.toml is missing [rust].documentation_url_base",
+		);
+	}
 
 	const releasePolicy = parseReleasePolicy(version);
 
 	return {
 		project: {
 			version: releasePolicy.version.version,
+			displayName: parsed.project.display_name,
+			description: parsed.project.description,
+			author: parsed.project.author,
+			license: parsed.project.license,
+			repositoryUrl: parsed.project.repository_url,
+			repositoryGitUrl: parsed.project.repository_git_url,
+			issuesUrl: parsed.project.issues_url,
+			homepageUrl: parsed.project.homepage_url,
 		},
 		npm: {
 			defaultDistTag: releasePolicy.npmDistTag,
 			packDestination: parsed.npm?.pack_destination ?? "temp/release/npm",
+			descriptionBase: parsed.npm.description_base,
+			keywords: parsed.npm.keywords,
+		},
+		rust: {
+			descriptionBase: parsed.rust.description_base,
+			keywords: parsed.rust.keywords,
+			documentationUrlBase: parsed.rust.documentation_url_base,
 		},
 		docker: {
 			defaultRef: releasePolicy.gitTag,

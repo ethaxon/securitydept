@@ -1,6 +1,6 @@
 # SecurityDept Overview
 
-SecurityDept is a layered authentication and authorization project for three related outcomes:
+SecurityDept is a layered authentication and authorization toolkit organized around three related outcomes:
 
 1. reusable Rust crates for identity, token, and credential validation
 2. a TypeScript SDK family for browser, React, Angular, and server-host adopters

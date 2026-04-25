@@ -4,7 +4,7 @@
   <b>SecurityDept</b>
 </h1>
 
-SecurityDept 是一个面向网格（mesh-oriented）的认证和授权工具包，由可复用的 Rust crate、一个 TypeScript client SDK workspace，以及参考 server/web 应用组成。
+SecurityDept 是一个分层的认证和授权工具包，由可复用的 Rust crate、一个 TypeScript client SDK workspace，以及参考 server/web 应用组成。
 
 本项目正从单一的 "OIDC 登录 + 本地会话" 产品演进为一个分层的库栈，支持以下功能：
 

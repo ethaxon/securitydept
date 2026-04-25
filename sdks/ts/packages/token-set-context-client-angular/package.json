@@ -1,6 +1,30 @@
 {
 	"name": "@securitydept/token-set-context-client-angular",
 	"version": "0.2.0-beta.1",
+	"description": "Token Set Context Client Angular of the SecurityDept TypeScript SDK, a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps.",
+	"author": "Zhou Yeheng <root@aitiotekt.com>",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/ethaxon/securitydept.git",
+		"directory": "sdks/ts/packages/token-set-context-client-angular"
+	},
+	"homepage": "https://securitydept.ethaxon.com/",
+	"bugs": {
+		"url": "https://github.com/ethaxon/securitydept/issues"
+	},
+	"keywords": [
+		"securitydept",
+		"auth",
+		"authentication",
+		"authorization",
+		"oidc",
+		"oauth",
+		"sdk",
+		"typescript",
+		"token",
+		"credentials"
+	],
 	"type": "module",
 	"sideEffects": false,
 	"files": [

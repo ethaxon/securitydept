@@ -1,8 +1,34 @@
 [project]
 version = "0.2.0-beta.1"
+display_name = "SecurityDept"
+description = "SecurityDept is a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps."
+author = "Zhou Yeheng <root@aitiotekt.com>"
+license = "MIT"
+repository_url = "https://github.com/ethaxon/securitydept"
+repository_git_url = "git+https://github.com/ethaxon/securitydept.git"
+issues_url = "https://github.com/ethaxon/securitydept/issues"
+homepage_url = "https://securitydept.ethaxon.com/"
 
 [npm]
 pack_destination = "temp/release/npm"
+description_base = "the SecurityDept TypeScript SDK, a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps"
+keywords = [
+    "securitydept",
+    "auth",
+    "authentication",
+    "authorization",
+    "oidc",
+    "oauth",
+    "sdk",
+    "typescript",
+    "token",
+    "credentials",
+]
+
+[rust]
+description_base = "a layered authentication and authorization toolkit built as reusable Rust crates"
+keywords = ["auth", "oauth", "oidc", "security", "token"]
+documentation_url_base = "https://docs.rs"
 
 [crates]
 package_report = "temp/release/crates/package-report.json"

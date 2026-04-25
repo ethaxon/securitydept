@@ -68,11 +68,14 @@ fix-ts:
 sync-docsite:
     node docsite/scripts/sync-docsite-symlink.ts
 
-fix: fix-rs fix-ts sync-docsite
+fix: fix-rs fix-ts sync-docsite release-metadata-sync
 
 # Release automation and version control
 release-cli *args:
     node scripts/release-cli.ts {{args}}
+
+release-metadata-sync:
+    just release-cli metadata sync
 
 release-version-set version:
     just release-cli version set {{version}}
