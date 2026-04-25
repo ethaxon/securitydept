@@ -20,7 +20,7 @@ jwe = ["jwt", "dep:josekit", "jwk"]
 rfc9068 = ["jwt", "jwk"]
 
 [dependencies]
-securitydept-utils = { version = "=0.2.0-beta.1", path = "../utils" }
+securitydept-utils = { version = "~0.2.0-beta.1", path = "../utils" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }

@@ -15,8 +15,8 @@ keywords = ["auth","oauth","oidc","security","token"]
 migration = []
 
 [dependencies]
-securitydept-utils = { version = "=0.2.0-beta.1", path = "../utils" }
-securitydept-creds = { version = "=0.2.0-beta.1", path = "../creds" }
+securitydept-utils = { version = "~0.2.0-beta.1", path = "../utils" }
+securitydept-creds = { version = "~0.2.0-beta.1", path = "../creds" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }

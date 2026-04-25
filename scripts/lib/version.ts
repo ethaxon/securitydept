@@ -28,7 +28,7 @@ export function collectVersionMismatches(): VersionMismatch[] {
 	const publishableRustPackageNames = new Set(
 		metadata.rustPackages.filter((pkg) => pkg.publish).map((pkg) => pkg.name),
 	);
-	const expectedCargoDependencyVersion = `=${metadata.project.version}`;
+	const expectedCargoDependencyVersion = `~${metadata.project.version}`;
 
 	const manifestMismatches = versionedPackages.flatMap((pkg) => {
 		const actualVersion = readManifestVersion(resolveFromRoot(pkg.manifest));
@@ -98,7 +98,7 @@ export function setWorkspaceVersion(nextVersionText: string): void {
 	const publishableRustPackageNames = new Set(
 		metadata.rustPackages.filter((pkg) => pkg.publish).map((pkg) => pkg.name),
 	);
-	const expectedCargoDependencyVersion = `=${metadata.project.version}`;
+	const expectedCargoDependencyVersion = `~${metadata.project.version}`;
 	let updatedCargoDependencyCount = 0;
 
 	for (const pkg of versionedPackages) {

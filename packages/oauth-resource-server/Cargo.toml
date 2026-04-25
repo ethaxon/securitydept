@@ -15,9 +15,9 @@ keywords = ["auth","oauth","oidc","security","token"]
 jwe = ["securitydept-creds/jwe", "dep:josekit"]
 
 [dependencies]
-securitydept-oauth-provider = { version = "=0.2.0-beta.1", path = "../oauth-provider" }
-securitydept-creds = { version = "=0.2.0-beta.1", path = "../creds", features = ["rfc9068", "oidc"] }
-securitydept-utils = { version = "=0.2.0-beta.1", path = "../utils" }
+securitydept-oauth-provider = { version = "~0.2.0-beta.1", path = "../oauth-provider" }
+securitydept-creds = { version = "~0.2.0-beta.1", path = "../creds", features = ["rfc9068", "oidc"] }
+securitydept-utils = { version = "~0.2.0-beta.1", path = "../utils" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
