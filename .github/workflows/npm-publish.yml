@@ -46,6 +46,9 @@ jobs:
       - name: Install dependencies
         run: mise exec --command "pnpm install --frozen-lockfile"
 
+      - name: Build TypeScript SDK packages for npm publish
+        run: mise exec -C sdks/ts --command "pnpm build"
+
       - name: Pack and publish dry-run npm packages
         run: mise exec --command "node scripts/release-cli.ts npm publish
           --mode=dry-run"
@@ -87,6 +90,9 @@ jobs:
       - name: Install dependencies
         run: mise exec --command "pnpm install --frozen-lockfile"
 
+      - name: Build TypeScript SDK packages for npm publish
+        run: mise exec -C sdks/ts --command "pnpm build"
+
       - name: Publish npm packages
-        run: mise exec --command "node scripts/release-cli.ts npm publish
-          --mode=publish --provenance"
+        run: mise exec --command "node scripts/release-cli.ts npm publish --mode=publish
+          --provenance"

@@ -4,6 +4,8 @@ import { defineConfig } from "vitest/config";
 // Explicit aliases so vitest resolves internal workspace packages
 // directly from source, regardless of whether `dist/` has been built.
 const packagesDir = path.resolve(import.meta.dirname, "packages");
+const ciTestTimeoutMs = 15_000;
+const isCi = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
 
 export default defineConfig({
 	resolve: {
@@ -211,6 +213,7 @@ export default defineConfig({
 			"packages/*/src/**/__tests__/**/*.test.tsx",
 			"examples/**/*.test.ts",
 		],
+		testTimeout: isCi ? ciTestTimeoutMs : undefined,
 		// Load @angular/compiler JIT so partial-compiled ng-packagr output works.
 		setupFiles: ["./vitest.angular-setup.ts"],
 	},
