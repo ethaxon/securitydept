@@ -57,6 +57,7 @@ export function runMetadataSync(options: MetadataSyncOptions): void {
 				documentation: `${metadata.rust.documentationUrlBase}/${pkg.name}`,
 				readme: "README.md",
 				keywords: metadata.rust.keywords,
+				categories: metadata.rust.categories,
 			},
 		);
 		const manifestUpdated = writeIfChanged(manifestPath, updatedManifestSource);

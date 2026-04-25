@@ -17,7 +17,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: npm-publish-${{ github.ref }}
@@ -74,6 +73,9 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: npm-release
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -98,7 +100,5 @@ jobs:
         run: mise exec --command "pnpm install --frozen-lockfile"
 
       - name: Publish npm packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets['NPM_TOKEN'] }}
-        run: mise exec --command "node scripts/release-cli.ts npm publish --mode=publish
-          --provenance"
+        run: mise exec --command "node scripts/release-cli.ts npm publish
+          --mode=publish"

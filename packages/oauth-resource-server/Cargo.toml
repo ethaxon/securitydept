@@ -11,6 +11,7 @@ homepage = "https://securitydept.ethaxon.com/"
 documentation = "https://docs.rs/securitydept-oauth-resource-server"
 readme = "README.md"
 keywords = ["auth","oauth","oidc","security","token"]
+categories = ["authentication","network-programming","web-programming"]
 [features]
 jwe = ["securitydept-creds/jwe", "dep:josekit"]
 

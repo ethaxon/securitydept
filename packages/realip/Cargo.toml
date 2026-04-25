@@ -10,6 +10,7 @@ homepage = "https://securitydept.ethaxon.com/"
 documentation = "https://docs.rs/securitydept-realip"
 readme = "README.md"
 keywords = ["auth","oauth","oidc","security","token"]
+categories = ["authentication","network-programming","web-programming"]
 [features]
 docker = ["dep:bollard"]
 kube = ["dep:k8s-openapi", "dep:kube"]

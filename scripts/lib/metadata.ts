@@ -39,6 +39,7 @@ export type SecuritydeptMetadata = {
 	rust: {
 		descriptionBase: string;
 		keywords: string[];
+		categories: string[];
 		documentationUrlBase: string;
 	};
 	docker: {
@@ -72,6 +73,7 @@ type RawMetadata = {
 	rust?: {
 		description_base?: string;
 		keywords?: string[];
+		categories?: string[];
 		documentation_url_base?: string;
 	};
 	crates?: {
@@ -158,6 +160,9 @@ export function loadSecuritydeptMetadata(): SecuritydeptMetadata {
 	if (!parsed.rust.keywords || parsed.rust.keywords.length === 0) {
 		throw new Error("securitydept-metadata.toml is missing [rust].keywords");
 	}
+	if (!parsed.rust.categories || parsed.rust.categories.length === 0) {
+		throw new Error("securitydept-metadata.toml is missing [rust].categories");
+	}
 	if (!parsed.rust.documentation_url_base) {
 		throw new Error(
 			"securitydept-metadata.toml is missing [rust].documentation_url_base",
@@ -187,6 +192,7 @@ export function loadSecuritydeptMetadata(): SecuritydeptMetadata {
 		rust: {
 			descriptionBase: parsed.rust.description_base,
 			keywords: parsed.rust.keywords,
+			categories: parsed.rust.categories,
 			documentationUrlBase: parsed.rust.documentation_url_base,
 		},
 		docker: {

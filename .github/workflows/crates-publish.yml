@@ -1,84 +1,90 @@
 name: Crates Publish
 
 on:
-    push:
-        tags:
-            - "v*"
-    workflow_dispatch:
-        inputs:
-            mode:
-                description: Release mode
-                type: choice
-                required: true
-                default: package
-                options:
-                    - package
-                    - publish
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Release mode
+        type: choice
+        required: true
+        default: package
+        options:
+          - package
+          - publish
 
 permissions:
-    contents: read
+  contents: read
 
 concurrency:
-    group: crates-publish-${{ github.ref }}
-    cancel-in-progress: false
+  group: crates-publish-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-    package:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v6
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
-            - name: Setup mise
-              uses: jdx/mise-action@v4
+      - name: Setup mise
+        uses: jdx/mise-action@v4
 
-            - name: Install toolchain
-              run: mise install
+      - name: Install toolchain
+        run: mise install
 
-            - name: Restore Rust build cache
-              uses: Swatinem/rust-cache@v2
-              with:
-                  shared-key: crates-publish-rust-${{ github.job }}
-                  cache-workspace-crates: "true"
-                  cache-on-failure: "true"
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: crates-publish-rust-${{ github.job }}
+          cache-workspace-crates: "true"
+          cache-on-failure: "true"
 
-            - name: Package Rust crates in blocked dry-run mode
-              run: mise exec --command "node scripts/release-cli.ts crates publish
-                  --mode=package --allow-blocked
-                  --report=temp/release/crates/package-report.json"
+      - name: Package Rust crates in blocked dry-run mode
+        run: mise exec --command "node scripts/release-cli.ts crates publish
+          --mode=package --allow-blocked
+          --report=temp/release/crates/package-report.json"
 
-            - name: Upload crates dry-run report
-              uses: actions/upload-artifact@v7
-              with:
-                  name: crates-package-report
-                  path: temp/release/crates
+      - name: Upload crates dry-run report
+        uses: actions/upload-artifact@v7
+        with:
+          name: crates-package-report
+          path: temp/release/crates
 
-    publish:
-        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'publish'
-        needs: package
-        runs-on: ubuntu-latest
-        environment:
-            name: crates-io-release
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v6
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'publish'
+    needs: package
+    runs-on: ubuntu-latest
+    environment:
+      name: crates-io-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
-            - name: Setup mise
-              uses: jdx/mise-action@v4
+      - name: Setup mise
+        uses: jdx/mise-action@v4
 
-            - name: Install toolchain
-              run: mise install
+      - name: Install toolchain
+        run: mise install
 
-            - name: Restore Rust build cache
-              uses: Swatinem/rust-cache@v2
-              with:
-                  shared-key: crates-publish-rust-${{ github.job }}
-                  cache-workspace-crates: "true"
-                  cache-on-failure: "true"
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: crates-publish-rust-${{ github.job }}
+          cache-workspace-crates: "true"
+          cache-on-failure: "true"
 
-            - name: Publish Rust crates
-              env:
-                  CARGO_REGISTRY_TOKEN: ${{ secrets['CARGO_REGISTRY_TOKEN'] }}
-              run: mise exec --command "node scripts/release-cli.ts crates publish
-                  --mode=publish
-                  --report=temp/release/crates/publish-report.json"
+      - name: Exchange GitHub OIDC token for crates.io publish token
+        id: crates-io-auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Publish Rust crates
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
+        run: mise exec --command "node scripts/release-cli.ts crates publish
+          --mode=publish --report=temp/release/crates/publish-report.json"

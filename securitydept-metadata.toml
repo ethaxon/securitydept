@@ -28,6 +28,7 @@ keywords = [
 [rust]
 description_base = "a layered authentication and authorization toolkit built as reusable Rust crates"
 keywords = ["auth", "oauth", "oidc", "security", "token"]
+categories = ["authentication", "network-programming", "web-programming"]
 documentation_url_base = "https://docs.rs"
 
 [crates]

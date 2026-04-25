@@ -11,6 +11,7 @@ homepage = "https://securitydept.ethaxon.com/"
 documentation = "https://docs.rs/securitydept-basic-auth-context"
 readme = "README.md"
 keywords = ["auth","oauth","oidc","security","token"]
+categories = ["authentication","network-programming","web-programming"]
 [dependencies]
 http = { workspace = true }
 securitydept-utils = { version = "~0.2.0-beta.1", path = "../utils" }
