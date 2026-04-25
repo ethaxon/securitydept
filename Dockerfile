@@ -1,5 +1,8 @@
 FROM rustlang/rust:nightly-alpine AS rust-chef
+ENV RUSTUP_TOOLCHAIN=nightly-x86_64-unknown-linux-musl
+ENV RUSTUP_SKIP_SELF_UPDATE=1
 RUN apk add --no-cache curl ca-certificates
+RUN rustup set auto-self-update disable
 RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | sh
 RUN cargo binstall cargo-chef --no-confirm 
 WORKDIR /app

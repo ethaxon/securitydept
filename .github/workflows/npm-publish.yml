@@ -1,9 +1,6 @@
 name: NPM Publish
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       mode:
@@ -23,7 +20,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify:
+  dry-run:
+    if: inputs.mode == 'dry-run'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -36,7 +34,7 @@ jobs:
         run: mise install
 
       - name: Restore pnpm store cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{
@@ -47,15 +45,6 @@ jobs:
 
       - name: Install dependencies
         run: mise exec --command "pnpm install --frozen-lockfile"
-
-      - name: Lint repository
-        run: mise exec --command "pnpm lint"
-
-      - name: Typecheck TypeScript SDKs
-        run: mise exec -C sdks/ts --command "pnpm typecheck"
-
-      - name: Test TypeScript SDKs
-        run: mise exec -C sdks/ts --command "pnpm test"
 
       - name: Pack and publish dry-run npm packages
         run: mise exec --command "node scripts/release-cli.ts npm publish
@@ -68,8 +57,7 @@ jobs:
           path: temp/release/npm
 
   publish:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'publish'
-    needs: verify
+    if: inputs.mode == 'publish'
     runs-on: ubuntu-latest
     environment:
       name: npm-release
@@ -87,7 +75,7 @@ jobs:
         run: mise install
 
       - name: Restore pnpm store cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{

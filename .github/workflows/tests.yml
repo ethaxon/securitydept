@@ -5,6 +5,8 @@ on:
     branches:
       - main
       - master
+    tags:
+      - "v*"
     paths-ignore:
       - "**/*.md"
       - "**/*.kdl"
@@ -41,7 +43,7 @@ jobs:
         run: mise install
 
       - name: Restore pnpm store cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.local/share/pnpm/store
           key: >-
@@ -89,7 +91,7 @@ jobs:
         run: mise install
 
       - name: Restore pnpm store cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.local/share/pnpm/store
           key: >-
@@ -137,7 +139,7 @@ jobs:
         run: mise install
 
       - name: Restore pnpm store cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.local/share/pnpm/store
           key: >-
@@ -169,7 +171,7 @@ jobs:
         run: mise install
 
       - name: Restore pnpm store cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.local/share/pnpm/store
           key: >-
@@ -187,7 +189,7 @@ jobs:
           cache-on-failure: "true"
 
       - name: Restore Playwright browser cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml',
@@ -207,3 +209,92 @@ jobs:
 
       - name: Run web UI end-to-end tests
         run: mise exec -C apps/webui --command "pnpm run e2e"
+
+  npm-publish-dry-run:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - lint-and-typecheck
+      - rust-tests
+      - ts-tests
+      - e2e-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+
+      - name: Install toolchain
+        run: mise install
+
+      - name: Restore pnpm store cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{
+            hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-${{ github.workflow }}-
+            pnpm-store-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: mise exec --command "pnpm install --frozen-lockfile"
+
+      - name: Pack and publish dry-run npm packages
+        run: mise exec --command "node scripts/release-cli.ts npm publish
+          --mode=dry-run"
+
+      - name: Upload npm dry-run tarballs
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-dry-run-tarballs
+          path: temp/release/npm
+
+  crates-package:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - lint-and-typecheck
+      - rust-tests
+      - ts-tests
+      - e2e-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+
+      - name: Install toolchain
+        run: mise install
+
+      - name: Restore pnpm store cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{
+            hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-${{ github.workflow }}-
+            pnpm-store-${{ runner.os }}-
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: crates-publish-rust-${{ github.job }}
+          cache-workspace-crates: "true"
+          cache-on-failure: "true"
+
+      - name: Install dependencies
+        run: mise exec --command "pnpm install --frozen-lockfile"
+
+      - name: Package Rust crates
+        run: mise exec --command "node scripts/release-cli.ts crates publish
+          --mode=package --report=temp/release/crates/package-report.json"
+
+      - name: Upload crates package report
+        uses: actions/upload-artifact@v7
+        with:
+          name: crates-package-report
+          path: temp/release/crates
