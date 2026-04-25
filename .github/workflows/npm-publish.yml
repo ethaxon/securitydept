@@ -1,84 +1,100 @@
 name: NPM Publish
 
 on:
-    push:
-        tags:
-            - "v*"
-    workflow_dispatch:
-        inputs:
-            mode:
-                description: Release mode
-                type: choice
-                required: true
-                default: dry-run
-                options:
-                    - dry-run
-                    - publish
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Release mode
+        type: choice
+        required: true
+        default: dry-run
+        options:
+          - dry-run
+          - publish
 
 permissions:
-    contents: read
-    id-token: write
+  contents: read
+  id-token: write
 
 concurrency:
-    group: npm-publish-${{ github.ref }}
-    cancel-in-progress: false
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-    verify:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v6
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
-            - name: Setup mise
-              uses: jdx/mise-action@v4
+      - name: Setup mise
+        uses: jdx/mise-action@v4
 
-            - name: Install toolchain
-              run: mise install
+      - name: Install toolchain
+        run: mise install
 
-            - name: Install dependencies
-              run: mise exec --command "pnpm install --frozen-lockfile"
+      - name: Restore pnpm store cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
 
-            - name: Lint repository
-              run: mise exec --command "pnpm lint"
+      - name: Install dependencies
+        run: mise exec --command "pnpm install --frozen-lockfile"
 
-            - name: Typecheck TypeScript SDKs
-              run: mise exec -C sdks/ts --command "pnpm typecheck"
+      - name: Lint repository
+        run: mise exec --command "pnpm lint"
 
-            - name: Test TypeScript SDKs
-              run: mise exec -C sdks/ts --command "pnpm test"
+      - name: Typecheck TypeScript SDKs
+        run: mise exec -C sdks/ts --command "pnpm typecheck"
 
-            - name: Pack and publish dry-run npm packages
-              run: mise exec --command "node scripts/release-cli.ts npm publish
-                  --mode=dry-run"
+      - name: Test TypeScript SDKs
+        run: mise exec -C sdks/ts --command "pnpm test"
 
-            - name: Upload npm dry-run tarballs
-              uses: actions/upload-artifact@v7
-              with:
-                  name: npm-dry-run-tarballs
-                  path: temp/release/npm
+      - name: Pack and publish dry-run npm packages
+        run: mise exec --command "node scripts/release-cli.ts npm publish
+          --mode=dry-run"
 
-    publish:
-        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'publish'
-        needs: verify
-        runs-on: ubuntu-latest
-        environment:
-            name: npm-release
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v6
+      - name: Upload npm dry-run tarballs
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-dry-run-tarballs
+          path: temp/release/npm
 
-            - name: Setup mise
-              uses: jdx/mise-action@v4
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'publish'
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: npm-release
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
-            - name: Install toolchain
-              run: mise install
+      - name: Setup mise
+        uses: jdx/mise-action@v4
 
-            - name: Install dependencies
-              run: mise exec --command "pnpm install --frozen-lockfile"
+      - name: Install toolchain
+        run: mise install
 
-            - name: Publish npm packages
-              env:
-                  NODE_AUTH_TOKEN: ${{ secrets['NPM_TOKEN'] }}
-              run: mise exec --command "node scripts/release-cli.ts npm publish --mode=publish
-                  --provenance"
+      - name: Restore pnpm store cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: mise exec --command "pnpm install --frozen-lockfile"
+
+      - name: Publish npm packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets['NPM_TOKEN'] }}
+        run: mise exec --command "node scripts/release-cli.ts npm publish --mode=publish
+          --provenance"

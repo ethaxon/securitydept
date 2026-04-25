@@ -35,6 +35,13 @@ jobs:
             - name: Install toolchain
               run: mise install
 
+            - name: Restore Rust build cache
+              uses: Swatinem/rust-cache@v2
+              with:
+                  shared-key: crates-publish-rust
+                  cache-workspace-crates: "true"
+                  cache-on-failure: "true"
+
             - name: Package Rust crates in blocked dry-run mode
               run: mise exec --command "node scripts/release-cli.ts crates publish
                   --mode=package --allow-blocked
@@ -61,6 +68,13 @@ jobs:
 
             - name: Install toolchain
               run: mise install
+
+            - name: Restore Rust build cache
+              uses: Swatinem/rust-cache@v2
+              with:
+                  shared-key: crates-publish-rust
+                  cache-workspace-crates: "true"
+                  cache-on-failure: "true"
 
             - name: Publish Rust crates
               env:

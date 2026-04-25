@@ -28,6 +28,14 @@ jobs:
             - name: Install toolchain
               run: mise install
 
+            - name: Restore pnpm store cache
+              uses: actions/cache@v4
+              with:
+                  path: ~/.local/share/pnpm/store
+                  key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+                  restore-keys: |
+                      pnpm-store-${{ runner.os }}-
+
             - name: Install dependencies
               run: mise exec --command "pnpm install --frozen-lockfile"
 
@@ -39,6 +47,16 @@ jobs:
 
             - name: Typecheck repository
               run: mise exec --command "pnpm typecheck"
+
+            - name: Install Rust clippy component
+              run: mise exec --command "rustup component add --toolchain nightly clippy"
+
+            - name: Restore Rust build cache
+              uses: Swatinem/rust-cache@v2
+              with:
+                  shared-key: tests-rust
+                  cache-workspace-crates: "true"
+                  cache-on-failure: "true"
 
             - name: Lint Rust workspace
               run: mise exec --command "cargo clippy --workspace --all-features"
@@ -55,6 +73,21 @@ jobs:
             - name: Install toolchain
               run: mise install
 
+            - name: Restore pnpm store cache
+              uses: actions/cache@v4
+              with:
+                  path: ~/.local/share/pnpm/store
+                  key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+                  restore-keys: |
+                      pnpm-store-${{ runner.os }}-
+
+            - name: Restore Rust build cache
+              uses: Swatinem/rust-cache@v2
+              with:
+                  shared-key: tests-rust
+                  cache-workspace-crates: "true"
+                  cache-on-failure: "true"
+
             - name: Install dependencies
               run: mise exec --command "pnpm install --frozen-lockfile"
 
@@ -62,9 +95,12 @@ jobs:
               uses: docker/setup-buildx-action@v4
 
             - name: Build kube test helper
-              run: docker buildx build --load -t
+              run: >-
+                  docker buildx build --load -t
                   securitydept-realip-kube-integration-test-helper:v1 -f
                   packages/realip/tests/fixtures/kube-helper/Dockerfile
+                  --cache-from type=gha,scope=kube-test-helper --cache-to
+                  type=gha,mode=max,scope=kube-test-helper
                   packages/realip/tests/fixtures/kube-helper
 
             - name: Test Rust workspace
@@ -81,6 +117,14 @@ jobs:
 
             - name: Install toolchain
               run: mise install
+
+            - name: Restore pnpm store cache
+              uses: actions/cache@v4
+              with:
+                  path: ~/.local/share/pnpm/store
+                  key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+                  restore-keys: |
+                      pnpm-store-${{ runner.os }}-
 
             - name: Install dependencies
               run: mise exec --command "pnpm install --frozen-lockfile"
@@ -102,6 +146,30 @@ jobs:
 
             - name: Install toolchain
               run: mise install
+
+            - name: Restore pnpm store cache
+              uses: actions/cache@v4
+              with:
+                  path: ~/.local/share/pnpm/store
+                  key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+                  restore-keys: |
+                      pnpm-store-${{ runner.os }}-
+
+            - name: Restore Rust build cache
+              uses: Swatinem/rust-cache@v2
+              with:
+                  shared-key: tests-rust
+                  cache-workspace-crates: "true"
+                  cache-on-failure: "true"
+
+            - name: Restore Playwright browser cache
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cache/ms-playwright
+                  key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml',
+                      'apps/webui/package.json') }}
+                  restore-keys: |
+                      playwright-${{ runner.os }}-
 
             - name: Install dependencies
               run: mise exec --command "pnpm install --frozen-lockfile"

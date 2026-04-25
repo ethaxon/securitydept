@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { defineConfig } from "vitepress";
 
@@ -93,7 +94,15 @@ function normalizePath(path: string): string {
 
 function resolveSourcePath(filePath: string): string {
 	if (!filePath) return "";
-	return isAbsolute(filePath) ? filePath : resolve(DOCSITE_ROOT, filePath);
+	const sourcePath = isAbsolute(filePath)
+		? filePath
+		: resolve(DOCSITE_ROOT, filePath);
+
+	try {
+		return realpathSync(sourcePath);
+	} catch {
+		return sourcePath;
+	}
 }
 
 function resolveRepoRelativePath(
