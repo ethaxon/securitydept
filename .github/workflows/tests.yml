@@ -32,8 +32,11 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: ~/.local/share/pnpm/store
-                  key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+                  key: >-
+                      pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{
+                      github.job }}-${{ hashFiles('pnpm-lock.yaml') }}
                   restore-keys: |
+                      pnpm-store-${{ runner.os }}-${{ github.workflow }}-
                       pnpm-store-${{ runner.os }}-
 
             - name: Install dependencies
@@ -54,7 +57,7 @@ jobs:
             - name: Restore Rust build cache
               uses: Swatinem/rust-cache@v2
               with:
-                  shared-key: tests-rust
+                  shared-key: tests-rust-${{ github.job }}
                   cache-workspace-crates: "true"
                   cache-on-failure: "true"
 
@@ -77,14 +80,17 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: ~/.local/share/pnpm/store
-                  key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+                  key: >-
+                      pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{
+                      github.job }}-${{ hashFiles('pnpm-lock.yaml') }}
                   restore-keys: |
+                      pnpm-store-${{ runner.os }}-${{ github.workflow }}-
                       pnpm-store-${{ runner.os }}-
 
             - name: Restore Rust build cache
               uses: Swatinem/rust-cache@v2
               with:
-                  shared-key: tests-rust
+                  shared-key: tests-rust-${{ github.job }}
                   cache-workspace-crates: "true"
                   cache-on-failure: "true"
 
@@ -122,8 +128,11 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: ~/.local/share/pnpm/store
-                  key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+                  key: >-
+                      pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{
+                      github.job }}-${{ hashFiles('pnpm-lock.yaml') }}
                   restore-keys: |
+                      pnpm-store-${{ runner.os }}-${{ github.workflow }}-
                       pnpm-store-${{ runner.os }}-
 
             - name: Install dependencies
@@ -151,14 +160,17 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: ~/.local/share/pnpm/store
-                  key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+                  key: >-
+                      pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{
+                      github.job }}-${{ hashFiles('pnpm-lock.yaml') }}
                   restore-keys: |
+                      pnpm-store-${{ runner.os }}-${{ github.workflow }}-
                       pnpm-store-${{ runner.os }}-
 
             - name: Restore Rust build cache
               uses: Swatinem/rust-cache@v2
               with:
-                  shared-key: tests-rust
+                  shared-key: tests-rust-${{ github.job }}
                   cache-workspace-crates: "true"
                   cache-on-failure: "true"
 

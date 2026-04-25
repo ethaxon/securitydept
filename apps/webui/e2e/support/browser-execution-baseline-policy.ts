@@ -4,10 +4,21 @@ import {
 	ExecutionBaselineRole,
 	HarnessBrowserName,
 } from "./browser-harness-contract.ts";
-import { shouldPreferDistroboxHostedWebkit } from "./host-platform.ts";
+import {
+	type HostPlatformAdapter,
+	shouldPreferDistroboxHostedWebkit,
+} from "./host-platform.ts";
 
-export function buildExecutionBaselinePolicy(): BrowserExecutionBaselinePolicy[] {
-	const preferDistroboxHostedWebkit = shouldPreferDistroboxHostedWebkit();
+type BuildExecutionBaselinePolicyOptions = {
+	hostPlatform?: HostPlatformAdapter;
+};
+
+export function buildExecutionBaselinePolicy(
+	options: BuildExecutionBaselinePolicyOptions = {},
+): BrowserExecutionBaselinePolicy[] {
+	const preferDistroboxHostedWebkit = shouldPreferDistroboxHostedWebkit(
+		options.hostPlatform,
+	);
 
 	return [
 		{

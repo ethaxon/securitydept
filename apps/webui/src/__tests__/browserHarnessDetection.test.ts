@@ -84,11 +84,25 @@ describe("browser harness capability detection", () => {
 	});
 
 	it("keeps host-native authority separate from distrobox recovery policy", () => {
-		const policy = buildExecutionBaselinePolicy();
-		const firefoxPolicy = policy.find(
+		const ubuntuPolicy = buildExecutionBaselinePolicy({
+			hostPlatform: {
+				platform: "linux",
+				readOsRelease: () => "ID=ubuntu\nID_LIKE=debian\n",
+			},
+		});
+		const firefoxPolicy = ubuntuPolicy.find(
 			(entry) => entry.browserName === HarnessBrowserName.Firefox,
 		);
-		const webkitPolicy = policy.find(
+		const ubuntuWebkitPolicy = ubuntuPolicy.find(
+			(entry) => entry.browserName === HarnessBrowserName.Webkit,
+		);
+		const unsupportedLinuxPolicy = buildExecutionBaselinePolicy({
+			hostPlatform: {
+				platform: "linux",
+				readOsRelease: () => "ID=arch\nID_LIKE=archlinux\n",
+			},
+		});
+		const unsupportedLinuxWebkitPolicy = unsupportedLinuxPolicy.find(
 			(entry) => entry.browserName === HarnessBrowserName.Webkit,
 		);
 
@@ -97,7 +111,12 @@ describe("browser harness capability detection", () => {
 			hostNative: { role: ExecutionBaselineRole.PrimaryAuthority },
 			distroboxHosted: { role: ExecutionBaselineRole.NotAdopted },
 		});
-		expect(webkitPolicy).toMatchObject({
+		expect(ubuntuWebkitPolicy).toMatchObject({
+			preferredExecutionBaseline: ExecutionBaseline.HostNative,
+			hostNative: { role: ExecutionBaselineRole.PrimaryAuthority },
+			distroboxHosted: { role: ExecutionBaselineRole.NotAdopted },
+		});
+		expect(unsupportedLinuxWebkitPolicy).toMatchObject({
 			preferredExecutionBaseline: ExecutionBaseline.DistroboxHosted,
 			hostNative: { role: ExecutionBaselineRole.HostTruth },
 			distroboxHosted: {

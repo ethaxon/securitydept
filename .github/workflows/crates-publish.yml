@@ -38,7 +38,7 @@ jobs:
             - name: Restore Rust build cache
               uses: Swatinem/rust-cache@v2
               with:
-                  shared-key: crates-publish-rust
+                  shared-key: crates-publish-rust-${{ github.job }}
                   cache-workspace-crates: "true"
                   cache-on-failure: "true"
 
@@ -72,7 +72,7 @@ jobs:
             - name: Restore Rust build cache
               uses: Swatinem/rust-cache@v2
               with:
-                  shared-key: crates-publish-rust
+                  shared-key: crates-publish-rust-${{ github.job }}
                   cache-workspace-crates: "true"
                   cache-on-failure: "true"
 

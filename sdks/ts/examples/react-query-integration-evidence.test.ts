@@ -77,6 +77,20 @@ async function waitForStatus(
 	}
 }
 
+async function waitForText(
+	view: { container: HTMLElement },
+	selector: string,
+	target: string,
+	maxIters = 50,
+) {
+	for (let i = 0; i < maxIters; i++) {
+		if (view.container.querySelector(selector)?.textContent === target) {
+			return;
+		}
+		await flush();
+	}
+}
+
 function createTestSignal<T>(initial: T): {
 	signal: ReadableSignalTrait<T>;
 	set(v: T): void;
@@ -378,6 +392,7 @@ describe("react-query subpath — canonical token-set consumer surface", () => {
 		);
 
 		await waitForStatus(view, "success");
+		await waitForText(view, "#count", "1");
 		expect(view.container.querySelector("#count")?.textContent).toBe("1");
 		expect(http.requests[0]?.headers?.authorization).toBe("Bearer abc123");
 

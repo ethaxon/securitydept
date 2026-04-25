@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-type HostPlatformAdapter = {
+export type HostPlatformAdapter = {
 	platform?: NodeJS.Platform;
 	env?: NodeJS.ProcessEnv;
 	readOsRelease?: () => string | undefined;
