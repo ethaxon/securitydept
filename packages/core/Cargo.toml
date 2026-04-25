@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-core"
-version = "0.2.0-alpha.4"
+version = "0.2.0-beta.1"
 edition = "2024"
 
 [features]
@@ -216,16 +216,16 @@ token-set-context-axum-reverse-proxy-propagation-forwarder = [
 utils = ["dep:securitydept-utils"]
 
 [dependencies]
-securitydept-utils = { path = "../utils", optional = true }
-securitydept-oauth-provider = { path = "../oauth-provider", optional = true }
-securitydept-oidc-client = { path = "../oidc-client", optional = true }
-securitydept-oauth-resource-server = { path = "../oauth-resource-server", optional = true }
-securitydept-basic-auth-context = { path = "../basic-auth-context", optional = true }
-securitydept-session-context = { path = "../session-context", optional = true }
-securitydept-token-set-context = { path = "../token-set-context", optional = true }
-securitydept-realip = { path = "../realip", optional = true, default-features = false }
-securitydept-creds = { path = "../creds", optional = true }
-securitydept-creds-manage = { path = "../creds-manage", optional = true }
+securitydept-utils = { version = "=0.2.0-beta.1", path = "../utils", optional = true }
+securitydept-oauth-provider = { version = "=0.2.0-beta.1", path = "../oauth-provider", optional = true }
+securitydept-oidc-client = { version = "=0.2.0-beta.1", path = "../oidc-client", optional = true }
+securitydept-oauth-resource-server = { version = "=0.2.0-beta.1", path = "../oauth-resource-server", optional = true }
+securitydept-basic-auth-context = { version = "=0.2.0-beta.1", path = "../basic-auth-context", optional = true }
+securitydept-session-context = { version = "=0.2.0-beta.1", path = "../session-context", optional = true }
+securitydept-token-set-context = { version = "=0.2.0-beta.1", path = "../token-set-context", optional = true }
+securitydept-realip = { version = "=0.2.0-beta.1", path = "../realip", optional = true, default-features = false }
+securitydept-creds = { version = "=0.2.0-beta.1", path = "../creds", optional = true }
+securitydept-creds-manage = { version = "=0.2.0-beta.1", path = "../creds-manage", optional = true }
 openidconnect = { workspace = true, optional = true }
 oauth2 = { workspace = true, optional = true }
 jsonwebtoken = { workspace = true, optional = true }

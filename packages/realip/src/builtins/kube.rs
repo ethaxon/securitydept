@@ -1,11 +1,15 @@
-use std::{future::Future, net::IpAddr, pin::Pin, sync::Arc};
+use std::{future::Future, net::IpAddr, path::Path, pin::Pin, sync::Arc};
 
 use ipnet::IpNet;
 use k8s_openapi::api::{
     core::v1::{Endpoints, Pod},
     discovery::v1::EndpointSlice,
 };
-use kube::{Api, Client, api::ListParams};
+use kube::{
+    Api, Client, Config,
+    api::ListParams,
+    config::{KubeConfigOptions, Kubeconfig},
+};
 
 use crate::{
     config::CustomProviderConfig,
@@ -61,6 +65,11 @@ impl KubeProvider {
                     .get("field_selector")
                     .and_then(|value| value.as_str())
                     .map(str::to_string),
+                kubeconfig_path: config
+                    .extra
+                    .get("kubeconfig_path")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string),
             },
         }
     }
@@ -69,7 +78,7 @@ impl KubeProvider {
 impl DynamicProvider for KubeProvider {
     fn load<'a>(&'a self) -> ProviderLoadFuture<'a> {
         Box::pin(async move {
-            let backend = LiveKubeBackend::new(&self.provider_name).await?;
+            let backend = LiveKubeBackend::new(&self.provider_name, &self.request).await?;
             load_with_backend(&self.provider_name, &backend, &self.request).await
         })
     }
@@ -82,6 +91,7 @@ struct KubeProviderRequest {
     name: Option<String>,
     label_selector: Option<String>,
     field_selector: Option<String>,
+    kubeconfig_path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,18 +124,40 @@ struct LiveKubeBackend {
 }
 
 impl LiveKubeBackend {
-    async fn new(provider_name: &str) -> RealIpResult<Self> {
-        let client = Client::try_default()
-            .await
-            .map_err(|error| RealIpError::ProviderLoad {
-                provider: provider_name.to_string(),
-                details: error.to_string(),
-            })?;
+    async fn new(provider_name: &str, request: &KubeProviderRequest) -> RealIpResult<Self> {
+        let client = if let Some(path) = request.kubeconfig_path.as_deref() {
+            client_from_kubeconfig_path(provider_name, path).await?
+        } else {
+            Client::try_default()
+                .await
+                .map_err(|error| RealIpError::ProviderLoad {
+                    provider: provider_name.to_string(),
+                    details: error.to_string(),
+                })?
+        };
         Ok(Self {
             provider_name: provider_name.to_string(),
             client,
         })
     }
+}
+
+async fn client_from_kubeconfig_path(provider_name: &str, path: &str) -> RealIpResult<Client> {
+    let kubeconfig = Kubeconfig::read_from(Path::new(path)).map_err(|error| RealIpError::ProviderLoad {
+        provider: provider_name.to_string(),
+        details: error.to_string(),
+    })?;
+    let config = Config::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions::default())
+        .await
+        .map_err(|error| RealIpError::ProviderLoad {
+            provider: provider_name.to_string(),
+            details: error.to_string(),
+        })?;
+
+    Client::try_from(config).map_err(|error| RealIpError::ProviderLoad {
+        provider: provider_name.to_string(),
+        details: error.to_string(),
+    })
 }
 
 impl KubeBackend for LiveKubeBackend {
@@ -490,6 +522,7 @@ mod tests {
             name: None,
             label_selector: Some("app=test".to_string()),
             field_selector: Some("spec.nodeName=node-a".to_string()),
+            kubeconfig_path: None,
         };
 
         let cidrs = load_with_backend("test-kube", &backend, &request)
@@ -517,6 +550,7 @@ mod tests {
             name: None,
             label_selector: None,
             field_selector: None,
+            kubeconfig_path: None,
         };
 
         let error = load_with_backend("test-kube", &backend, &request)
@@ -555,6 +589,7 @@ mod tests {
             name: Some("ingress".to_string()),
             label_selector: Some("ignored=yes".to_string()),
             field_selector: None,
+            kubeconfig_path: None,
         };
 
         let cidrs = load_with_backend("test-kube", &backend, &request)
@@ -590,6 +625,7 @@ mod tests {
             name: None,
             label_selector: Some("kubernetes.io/service-name=dns".to_string()),
             field_selector: None,
+            kubeconfig_path: None,
         };
 
         let cidrs = load_with_backend("test-kube", &backend, &request)
@@ -617,6 +653,7 @@ mod tests {
             name: None,
             label_selector: None,
             field_selector: None,
+            kubeconfig_path: None,
         };
 
         let error = load_with_backend("test-kube", &backend, &request)

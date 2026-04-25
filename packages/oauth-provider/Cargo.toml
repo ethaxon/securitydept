@@ -1,10 +1,10 @@
 [package]
 name = "securitydept-oauth-provider"
-version = "0.2.0-alpha.4"
+version = "0.2.0-beta.1"
 edition = "2024"
 
 [dependencies]
-securitydept-utils = { path = "../utils" }
+securitydept-utils = { version = "=0.2.0-beta.1", path = "../utils" }
 openidconnect = { workspace = true }
 oauth2 = { workspace = true }
 serde = { workspace = true }

@@ -1,6 +1,6 @@
 {
 	"name": "securitydept",
-	"version": "0.2.0-alpha.4",
+	"version": "0.2.0-beta.1",
 	"private": true,
 	"type": "module",
 	"description": "SecurityDept is a mesh-oriented authentication and authorization toolkit built as reusable Rust crates plus a reference server app.",
@@ -28,7 +28,8 @@
 	"scripts": {
 		"prepare": "prek install",
 		"lint": "biome check",
-		"lint-fix": "biome check --write"
+		"lint-fix": "biome check --write",
+		"release": "node scripts/release-cli.ts"
 	},
 	"devDependencies": {
 		"@angular/common": "^21.2.8",
@@ -50,6 +51,7 @@
 		"@types/react": "^19.2.14",
 		"@types/react-dom": "^19.2.3",
 		"@vitejs/plugin-react": "^6.0.1",
+		"clipanion": "4.0.0-rc.4",
 		"jsdom": "^29.0.2",
 		"ng-packagr": "^21.2.2",
 		"nunjucks": "^3.2.4",
@@ -59,6 +61,7 @@
 		"react": "^19.2.5",
 		"react-dom": "^19.2.5",
 		"rxjs": "^7.8.2",
+		"semver": "^7.7.4",
 		"shx": "^0.4.0",
 		"tailwindcss": "^4.2.2",
 		"toml": "^4.1.1",

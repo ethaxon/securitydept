@@ -1,9 +1,9 @@
 use std::{
     collections::BTreeMap,
-    ffi::OsString,
     fs,
     net::TcpListener,
-    path::PathBuf,
+    path::{Path, PathBuf},
+    process::Command,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -11,25 +11,24 @@ use k8s_openapi::{
     api::core::v1::{Container, Namespace, Pod, PodSpec, Service, ServicePort, ServiceSpec},
     apimachinery::pkg::apis::meta::v1::ObjectMeta,
 };
-use kube::{Api, Client};
+use kube::{
+    Api, Client, Config,
+    config::{KubeConfigOptions, Kubeconfig},
+};
 use securitydept_realip::{
     ProviderRegistry,
     config::{CustomProviderConfig, ProviderConfig, RefreshFailurePolicy},
 };
 use testcontainers::{
-    GenericBuildableImage, GenericImage, ImageExt,
+    GenericImage, ImageExt,
     core::{ExecCommand, Mount},
-    runners::{AsyncBuilder, AsyncRunner},
+    runners::AsyncRunner,
 };
-use tokio::sync::Mutex;
-
 const DOCKER_SOCKET: &str = "/var/run/docker.sock";
 const HELPER_IMAGE_NAME: &str = "securitydept-realip-kube-integration-test-helper";
 const HELPER_IMAGE_TAG: &str = "v1";
 const KIND_NODE_IMAGE: &str = "kindest/node:v1.31.2";
 const K3S_IMAGE: &str = "rancher/k3s:v1.31.4-k3s1";
-
-static KUBECONFIG_ENV_LOCK: Mutex<()> = Mutex::const_new(());
 
 #[derive(Clone, Copy)]
 enum ClusterFlavor {
@@ -42,32 +41,6 @@ impl ClusterFlavor {
         match self {
             Self::Kind => "kind",
             Self::K3d => "k3d",
-        }
-    }
-}
-
-struct KubeconfigEnvGuard {
-    previous: Option<OsString>,
-}
-
-impl KubeconfigEnvGuard {
-    fn set(path: &PathBuf) -> Self {
-        let previous = std::env::var_os("KUBECONFIG");
-        unsafe {
-            std::env::set_var("KUBECONFIG", path);
-        }
-        Self { previous }
-    }
-}
-
-impl Drop for KubeconfigEnvGuard {
-    fn drop(&mut self) {
-        unsafe {
-            if let Some(value) = self.previous.take() {
-                std::env::set_var("KUBECONFIG", value);
-            } else {
-                std::env::remove_var("KUBECONFIG");
-            }
         }
     }
 }
@@ -88,6 +61,46 @@ fn reserve_local_port() -> u16 {
         .port()
 }
 
+fn helper_image_ref() -> String {
+    format!("{HELPER_IMAGE_NAME}:{HELPER_IMAGE_TAG}")
+}
+
+fn docker_stdout(args: &[&str]) -> anyhow::Result<String> {
+    let output = Command::new("docker").args(args).output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "docker {} failed with status {}: {}",
+            args.join(" "),
+            output.status,
+            stderr.trim()
+        );
+    }
+
+    String::from_utf8(output.stdout).map_err(anyhow::Error::from)
+}
+
+fn ensure_helper_image_ready() -> anyhow::Result<()> {
+    let server_os = docker_stdout(&["version", "--format", "{{.Server.Os}}"])?;
+    if server_os.trim() != "linux" {
+        anyhow::bail!(
+            "kube integration tests require Docker running Linux containers; detected server os '{}'.",
+            server_os.trim()
+        );
+    }
+
+    let image_ref = helper_image_ref();
+    if let Err(error) = docker_stdout(&["image", "inspect", &image_ref]) {
+        anyhow::bail!(
+            "required helper image '{}' is missing. Build it first with `just build-kube-test-helper`. {}",
+            image_ref,
+            error
+        );
+    }
+
+    Ok(())
+}
+
 async fn exec_stdout(
     container: &testcontainers::ContainerAsync<GenericImage>,
     command: impl IntoIterator<Item = impl Into<String>>,
@@ -104,36 +117,9 @@ async fn exec_stdout(
     Ok(stdout)
 }
 
-async fn build_helper_image() -> anyhow::Result<GenericImage> {
-    GenericBuildableImage::new(HELPER_IMAGE_NAME, HELPER_IMAGE_TAG)
-        .with_dockerfile_string(
-            r#"FROM docker:28-cli
-RUN apk add --no-cache bash curl ca-certificates
-RUN ARCH="$(apk --print-arch)" \
- && case "${ARCH}" in \
-        x86_64) BIN_ARCH="amd64" ;; \
-        aarch64) BIN_ARCH="arm64" ;; \
-        *) echo "unsupported arch: ${ARCH}" >&2; exit 1 ;; \
-    esac \
- && KIND_VERSION="v0.27.0" \
- && curl -fsSL -o /usr/local/bin/kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${BIN_ARCH}" \
- && chmod +x /usr/local/bin/kind \
- && K3D_VERSION="v5.8.3" \
- && curl -fsSL -o /usr/local/bin/k3d "https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}/k3d-linux-${BIN_ARCH}" \
- && chmod +x /usr/local/bin/k3d \
- && KUBECTL_VERSION="v1.31.2" \
- && curl -fsSL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${BIN_ARCH}/kubectl" \
- && chmod +x /usr/local/bin/kubectl
-CMD ["sleep", "infinity"]"#,
-        )
-        .build_image()
-        .await
-        .map_err(anyhow::Error::from)
-}
-
 async fn start_helper_container() -> anyhow::Result<testcontainers::ContainerAsync<GenericImage>> {
-    let image = build_helper_image().await?;
-    image
+    ensure_helper_image_ready()?;
+    GenericImage::new(HELPER_IMAGE_NAME, HELPER_IMAGE_TAG)
         .with_mount(Mount::bind_mount(DOCKER_SOCKET, DOCKER_SOCKET))
         .start()
         .await
@@ -209,8 +195,10 @@ async fn delete_cluster(
     };
 }
 
-async fn kube_client() -> anyhow::Result<Client> {
-    Client::try_default().await.map_err(anyhow::Error::from)
+async fn kube_client(kubeconfig_path: &Path) -> anyhow::Result<Client> {
+    let kubeconfig = Kubeconfig::read_from(kubeconfig_path)?;
+    let config = Config::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions::default()).await?;
+    Client::try_from(config).map_err(anyhow::Error::from)
 }
 
 async fn wait_for_provider_cidrs(
@@ -234,13 +222,14 @@ async fn wait_for_provider_cidrs(
         if tokio::time::Instant::now() >= deadline {
             anyhow::bail!("timed out waiting for kube provider to return CIDRs");
         }
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
 }
 
 fn kube_provider_config(
     name: &str,
     resource: &str,
+    kubeconfig_path: &Path,
     extra: BTreeMap<String, serde_json::Value>,
 ) -> ProviderConfig {
     ProviderConfig::Custom(CustomProviderConfig {
@@ -252,6 +241,10 @@ fn kube_provider_config(
         max_stale: None,
         extra: extra
             .into_iter()
+            .chain([(
+                "kubeconfig_path".to_string(),
+                serde_json::json!(kubeconfig_path.to_string_lossy().to_string()),
+            )])
             .chain([("resource".to_string(), serde_json::json!(resource))])
             .collect(),
     })
@@ -262,13 +255,11 @@ async fn kind_provider_loads_native_pod_ips() -> anyhow::Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .ok();
-    let _lock = KUBECONFIG_ENV_LOCK.lock().await;
     let helper = start_helper_container().await?;
     let (cluster_name, kubeconfig_path) = create_cluster(&helper, ClusterFlavor::Kind).await?;
-    let _kubeconfig_env = KubeconfigEnvGuard::set(&kubeconfig_path);
 
     let result = async {
-        let client = kube_client().await?;
+        let client = kube_client(&kubeconfig_path).await?;
         let namespace_name = unique_name("kind-native");
         Api::<Namespace>::all(client.clone())
             .create(
@@ -336,6 +327,7 @@ async fn kind_provider_loads_native_pod_ips() -> anyhow::Result<()> {
             kube_provider_config(
                 "kind-native-pods",
                 "pods",
+                &kubeconfig_path,
                 BTreeMap::from([
                     ("namespace".to_string(), serde_json::json!(namespace_name)),
                     (
@@ -355,6 +347,7 @@ async fn kind_provider_loads_native_pod_ips() -> anyhow::Result<()> {
             kube_provider_config(
                 "kind-native-endpoints",
                 "endpoints",
+                &kubeconfig_path,
                 BTreeMap::from([
                     ("namespace".to_string(), serde_json::json!(namespace_name)),
                     ("name".to_string(), serde_json::json!("realip-native-svc")),
@@ -369,6 +362,7 @@ async fn kind_provider_loads_native_pod_ips() -> anyhow::Result<()> {
             kube_provider_config(
                 "kind-native-endpoint-slices",
                 "endpoint-slices",
+                &kubeconfig_path,
                 BTreeMap::from([
                     ("namespace".to_string(), serde_json::json!(namespace_name)),
                     (
@@ -396,16 +390,15 @@ async fn k3d_provider_loads_k3s_default_traefik_pods() -> anyhow::Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .ok();
-    let _lock = KUBECONFIG_ENV_LOCK.lock().await;
     let helper = start_helper_container().await?;
     let (cluster_name, kubeconfig_path) = create_cluster(&helper, ClusterFlavor::K3d).await?;
-    let _kubeconfig_env = KubeconfigEnvGuard::set(&kubeconfig_path);
 
     let result = async {
         let cidrs = wait_for_provider_cidrs(
             kube_provider_config(
                 "k3d-traefik-pods",
                 "pods",
+                &kubeconfig_path,
                 BTreeMap::from([
                     ("namespace".to_string(), serde_json::json!("kube-system")),
                     (

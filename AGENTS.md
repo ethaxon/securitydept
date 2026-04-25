@@ -26,7 +26,7 @@ _Single source of truth for Agent identity, code standards, and project rules. S
 ### File Organization
 
 - **Docs**: [`README.md`](README.md) -> [`docs/`](docs/)
-- **Docs Site**: [`docsite/`](docsite/) is the VitePress source root. Keep source content in [`docs/en`](docs/en), [`docs/zh`](docs/zh), and root docs; stage them into `docsite/.staged/` before build so the published routes stay under `/{lang}/...` without relying on symlinked page trees. The custom domain is `securitydept.ethaxon.com` with VitePress `base: "/"`.
+- **Docs Site**: [`docsite/`](docsite/) is the VitePress source root. Keep source content in [`docs/en`](docs/en), [`docs/zh`](docs/zh), and root docs; maintain Git-compatible relative symlinks into `docsite/` via `docsite/scripts/sync-docsite-symlink.ts`. Do not copy source docs or restore a `docsite/.staged/` pipeline. The custom domain is `securitydept.ethaxon.com` with VitePress `base: "/"`. Docs site build/verification is independent from the main app build and should use `just build-docs` / `just verify-docs`.
 - **Data**: [`data/`](data/)
 - **Temp**: [`temp/`](temp/) if agents need to create temp files, please use temp folder
 
@@ -35,6 +35,7 @@ _Single source of truth for Agent identity, code standards, and project rules. S
 - **Toolchains**: `mise` (env), `pnpm` (Node config), `rust-toolchain.toml` / `cargo` (Rust).
 - **Environment must match `mise`**: before running Node / pnpm / Rust verification, use the tool versions declared in [`mise.toml`](mise.toml). Do NOT rely on the host shell's fallback toolchain when it differs from `mise current`. If command results may be version-sensitive, treat non-`mise` runs as non-authoritative and rerun under the `mise` environment before making review or release judgments.
 - **Task Runner**: Use `just` for actions (`build`, `test`, `lint`, `format`); `.env` is auto-loaded.
+- **Release authority**: treat [`securitydept-metadata.toml`](securitydept-metadata.toml) and [`scripts/release-cli.ts`](scripts/release-cli.ts) as the only release authority. Allowed project versions are `X.Y.Z`, `X.Y.Z-alpha.N`, and `X.Y.Z-beta.N`; channel aliases are inferred automatically (`alpha -> nightly`, `beta -> rc`, stable -> `latest`, with stable container images also tagging `release`). `release-cli version check/set` also owns publishable Cargo `path` dependency version requirements, not only manifest package versions. Use `just release-*` or `release-cli ...` instead of re-encoding release tags in scripts or workflows. Local blocked crate packaging may add `--allow-dirty`; publish flows should not. See [`docs/en/008-RELEASE_AUTOMATION.md`](docs/en/008-RELEASE_AUTOMATION.md) / [`docs/zh/008-RELEASE_AUTOMATION.md`](docs/zh/008-RELEASE_AUTOMATION.md).
 - **Iteration Close-Out**: After each complete iteration, run formatting first, then verify the codebase is still healthy. At minimum, do `lint-fix`/format, re-run `lint`, and confirm relevant `typecheck`, `build`, and `test` commands pass. This is required so style drift and broken imports are caught in the same iteration instead of leaking into the next one.
 - **TypeScript**:
   - Manage via `tsconfig.json` references.

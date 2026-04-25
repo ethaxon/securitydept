@@ -1,0 +1,182 @@
+[project]
+version = "0.2.0-beta.1"
+
+[npm]
+pack_destination = "temp/release/npm"
+
+[crates]
+package_report = "temp/release/crates/package-report.json"
+publish_report = "temp/release/crates/publish-report.json"
+
+[[node_package]]
+name = "securitydept"
+manifest = "package.json"
+private = true
+publish = false
+
+[[node_package]]
+name = "@securitydept/webui"
+manifest = "apps/webui/package.json"
+private = true
+publish = false
+
+[[node_package]]
+name = "@securitydept/docs-site"
+manifest = "docsite/package.json"
+private = true
+publish = false
+
+[[node_package]]
+name = "@securitydept/ts-sdks"
+manifest = "sdks/ts/package.json"
+private = true
+publish = false
+
+[[node_package]]
+name = "@securitydept/basic-auth-context-client"
+manifest = "sdks/ts/packages/basic-auth-context-client/package.json"
+private = false
+publish = true
+
+[[node_package]]
+name = "@securitydept/basic-auth-context-client-angular"
+manifest = "sdks/ts/packages/basic-auth-context-client-angular/package.json"
+private = false
+publish = true
+
+[[node_package]]
+name = "@securitydept/basic-auth-context-client-react"
+manifest = "sdks/ts/packages/basic-auth-context-client-react/package.json"
+private = false
+publish = true
+
+[[node_package]]
+name = "@securitydept/client"
+manifest = "sdks/ts/packages/client/package.json"
+private = false
+publish = true
+
+[[node_package]]
+name = "@securitydept/client-angular"
+manifest = "sdks/ts/packages/client-angular/package.json"
+private = false
+publish = true
+
+[[node_package]]
+name = "@securitydept/client-react"
+manifest = "sdks/ts/packages/client-react/package.json"
+private = false
+publish = true
+
+[[node_package]]
+name = "@securitydept/e2e-utils"
+manifest = "sdks/ts/packages/e2e-utils/package.json"
+private = true
+publish = false
+
+[[node_package]]
+name = "@securitydept/session-context-client"
+manifest = "sdks/ts/packages/session-context-client/package.json"
+private = false
+publish = true
+
+[[node_package]]
+name = "@securitydept/session-context-client-angular"
+manifest = "sdks/ts/packages/session-context-client-angular/package.json"
+private = false
+publish = true
+
+[[node_package]]
+name = "@securitydept/session-context-client-react"
+manifest = "sdks/ts/packages/session-context-client-react/package.json"
+private = false
+publish = true
+
+[[node_package]]
+name = "@securitydept/test-utils"
+manifest = "sdks/ts/packages/test-utils/package.json"
+private = true
+publish = false
+
+[[node_package]]
+name = "@securitydept/token-set-context-client"
+manifest = "sdks/ts/packages/token-set-context-client/package.json"
+private = false
+publish = true
+
+[[node_package]]
+name = "@securitydept/token-set-context-client-angular"
+manifest = "sdks/ts/packages/token-set-context-client-angular/package.json"
+private = false
+publish = true
+
+[[node_package]]
+name = "@securitydept/token-set-context-client-react"
+manifest = "sdks/ts/packages/token-set-context-client-react/package.json"
+private = false
+publish = true
+
+[[rust_package]]
+name = "securitydept-utils"
+manifest = "packages/utils/Cargo.toml"
+publish = true
+
+[[rust_package]]
+name = "securitydept-core"
+manifest = "packages/core/Cargo.toml"
+publish = true
+
+[[rust_package]]
+name = "securitydept-oidc-client"
+manifest = "packages/oidc-client/Cargo.toml"
+publish = true
+
+[[rust_package]]
+name = "securitydept-creds"
+manifest = "packages/creds/Cargo.toml"
+publish = true
+
+[[rust_package]]
+name = "securitydept-creds-manage"
+manifest = "packages/creds-manage/Cargo.toml"
+publish = true
+
+[[rust_package]]
+name = "securitydept-oauth-provider"
+manifest = "packages/oauth-provider/Cargo.toml"
+publish = true
+
+[[rust_package]]
+name = "securitydept-oauth-resource-server"
+manifest = "packages/oauth-resource-server/Cargo.toml"
+publish = true
+
+[[rust_package]]
+name = "securitydept-basic-auth-context"
+manifest = "packages/basic-auth-context/Cargo.toml"
+publish = true
+
+[[rust_package]]
+name = "securitydept-token-set-context"
+manifest = "packages/token-set-context/Cargo.toml"
+publish = true
+
+[[rust_package]]
+name = "securitydept-session-context"
+manifest = "packages/session-context/Cargo.toml"
+publish = true
+
+[[rust_package]]
+name = "securitydept-realip"
+manifest = "packages/realip/Cargo.toml"
+publish = true
+
+[[rust_package]]
+name = "securitydept-server"
+manifest = "apps/server/Cargo.toml"
+publish = false
+
+[[rust_package]]
+name = "securitydept-cli"
+manifest = "apps/cli/Cargo.toml"
+publish = false

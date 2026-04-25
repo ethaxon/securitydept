@@ -1,15 +1,15 @@
 [package]
 name = "securitydept-oauth-resource-server"
-version = "0.2.0-alpha.4"
+version = "0.2.0-beta.1"
 edition = "2024"
 
 [features]
 jwe = ["securitydept-creds/jwe", "dep:josekit"]
 
 [dependencies]
-securitydept-oauth-provider = { path = "../oauth-provider" }
-securitydept-creds = { path = "../creds", features = ["rfc9068", "oidc"] }
-securitydept-utils = { path = "../utils" }
+securitydept-oauth-provider = { version = "=0.2.0-beta.1", path = "../oauth-provider" }
+securitydept-creds = { version = "=0.2.0-beta.1", path = "../creds", features = ["rfc9068", "oidc"] }
+securitydept-utils = { version = "=0.2.0-beta.1", path = "../utils" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true }

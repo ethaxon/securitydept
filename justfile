@@ -1,6 +1,7 @@
 set dotenv-load := true
 set windows-shell := ["pwsh.exe", "-NoLogo", "-ExecutionPolicy", "RemoteSigned", "-Command"]
 
+# Workspace bootstrap and shared environments
 setup: setup-docs
     pnpm install
     cargo check --workspace --all-features
@@ -11,7 +12,8 @@ setup-docs:
 setup-distrobox:
     distrobox create --name playwright-env --image ubuntu:24.04
     distrobox enter playwright-env -- bash -c "mise trust 2> /dev/null && pnpm exec playwright install --with-deps webkit"
-    
+
+# Local development entrypoints
 dev-webui:
     cd apps/webui && pnpm dev
 
@@ -25,7 +27,7 @@ dev-server:
 dev-all:
     zellij --layout dev.kdl
 
-
+# Build and packaging tasks
 build-sdks:
     cd sdks/ts && pnpm build
 
@@ -48,6 +50,7 @@ build-cli:
 
 build: build-webui build-server build-cli
 
+# Lint, formatting, and repo maintenance
 lint-rs:
     cargo clippy --workspace --all-features
 
@@ -67,7 +70,46 @@ sync-docsite:
 
 fix: fix-rs fix-ts sync-docsite
 
-test-rs:
+# Release automation and version control
+release-cli *args:
+    node scripts/release-cli.ts {{args}}
+
+release-version-set version:
+    just release-cli version set {{version}}
+
+release-version-check:
+    just release-cli version check
+
+release-npm-dry-run:
+    pnpm lint
+    just typecheck-sdks
+    just test-sdks
+    just release-cli npm publish --mode=dry-run
+
+release-npm-publish:
+    pnpm lint
+    just typecheck-sdks
+    just test-sdks
+    just release-cli npm publish --mode=publish --provenance
+
+release-crates-package:
+    just release-cli crates publish --mode=package --report=temp/release/crates/package-report.json
+
+release-crates-package-blocked:
+    just release-cli crates publish --mode=package --allow-blocked --allow-dirty --report=temp/release/crates/package-report.json
+
+release-crates-publish:
+    just release-cli crates publish --mode=publish --report=temp/release/crates/publish-report.json
+
+release-docker-metadata ref:
+    just release-cli docker publish --ref={{ref}}
+
+# Integration test prerequisites
+build-kube-test-helper:
+    docker buildx build --load -t securitydept-realip-kube-integration-test-helper:v1 -f packages/realip/tests/fixtures/kube-helper/Dockerfile packages/realip/tests/fixtures/kube-helper
+
+# Test suites and verification loops
+test-rs: build-kube-test-helper
     cargo test --workspace --all-features
 
 test-sdks: 
@@ -75,7 +117,7 @@ test-sdks:
 
 test-webui:
     cd apps/webui && pnpm test
-    
+
 test-ts:
     just test-sdks
     just test-webui
@@ -87,6 +129,7 @@ e2e-webui:
 
 e2e: e2e-webui
 
+# Type checking and client iteration checks
 typecheck-sdks:
     cd sdks/ts && pnpm typecheck
 
@@ -103,6 +146,7 @@ verify-client-sdk-iteration:
     cd apps/webui && pnpm typecheck
     pnpm -r --filter @securitydept/webui... build
 
+# Runtime helpers and one-off utilities
 run-server: build
     cargo run --manifest-path apps/server/Cargo.toml --release
 

@@ -1,0 +1,84 @@
+name: NPM Publish
+
+on:
+    push:
+        tags:
+            - "v*"
+    workflow_dispatch:
+        inputs:
+            mode:
+                description: Release mode
+                type: choice
+                required: true
+                default: dry-run
+                options:
+                    - dry-run
+                    - publish
+
+permissions:
+    contents: read
+    id-token: write
+
+concurrency:
+    group: npm-publish-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    verify:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
+
+            - name: Setup mise
+              uses: jdx/mise-action@v4
+
+            - name: Install toolchain
+              run: mise install
+
+            - name: Install dependencies
+              run: mise exec --command "pnpm install --frozen-lockfile"
+
+            - name: Lint repository
+              run: mise exec --command "pnpm lint"
+
+            - name: Typecheck TypeScript SDKs
+              run: mise exec --command "just typecheck-sdks"
+
+            - name: Test TypeScript SDKs
+              run: mise exec --command "just test-sdks"
+
+            - name: Pack and publish dry-run npm packages
+              run: mise exec --command "node scripts/release-cli.ts npm publish
+                  --mode=dry-run"
+
+            - name: Upload npm dry-run tarballs
+              uses: actions/upload-artifact@v7
+              with:
+                  name: npm-dry-run-tarballs
+                  path: temp/release/npm
+
+    publish:
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'publish'
+        needs: verify
+        runs-on: ubuntu-latest
+        environment:
+            name: npm-release
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
+
+            - name: Setup mise
+              uses: jdx/mise-action@v4
+
+            - name: Install toolchain
+              run: mise install
+
+            - name: Install dependencies
+              run: mise exec --command "pnpm install --frozen-lockfile"
+
+            - name: Publish npm packages
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets['NPM_TOKEN'] }}
+              run: mise exec --command "node scripts/release-cli.ts npm publish --mode=publish
+                  --provenance"

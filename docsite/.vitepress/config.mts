@@ -158,8 +158,8 @@ export default defineConfig({
 		search: { provider: "local" },
 		socialLinks: [{ icon: "github", link: REPO_URL }],
 		footer: {
-			message: "Released under the MIT License.",
-			copyright: "Copyright (c) 2026 Zhou Yeheng",
+			message: "MIT License.",
+			copyright: "Copyright (c) 2026 Exthaxon",
 		},
 	},
 	locales: {

@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-token-set-context"
-version = "0.2.0-alpha.4"
+version = "0.2.0-beta.1"
 edition = "2024"
 
 [features]
@@ -14,11 +14,11 @@ axum-reverse-proxy-propagation-forwarder = [
 ]
 
 [dependencies]
-securitydept-oauth-provider = { path = "../oauth-provider" }
-securitydept-oidc-client = { path = "../oidc-client" }
-securitydept-oauth-resource-server = { path = "../oauth-resource-server" }
-securitydept-creds = { path = "../creds" }
-securitydept-utils = { path = "../utils" }
+securitydept-oauth-provider = { version = "=0.2.0-beta.1", path = "../oauth-provider" }
+securitydept-oidc-client = { version = "=0.2.0-beta.1", path = "../oidc-client" }
+securitydept-oauth-resource-server = { version = "=0.2.0-beta.1", path = "../oauth-resource-server" }
+securitydept-creds = { version = "=0.2.0-beta.1", path = "../creds" }
+securitydept-utils = { version = "=0.2.0-beta.1", path = "../utils" }
 base64 = { workspace = true }
 chrono = { workspace = true }
 humantime-serde = { workspace = true }

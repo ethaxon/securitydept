@@ -1,0 +1,70 @@
+name: Crates Publish
+
+on:
+    push:
+        tags:
+            - "v*"
+    workflow_dispatch:
+        inputs:
+            mode:
+                description: Release mode
+                type: choice
+                required: true
+                default: package
+                options:
+                    - package
+                    - publish
+
+permissions:
+    contents: read
+
+concurrency:
+    group: crates-publish-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    package:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
+
+            - name: Setup mise
+              uses: jdx/mise-action@v4
+
+            - name: Install toolchain
+              run: mise install
+
+            - name: Package Rust crates in blocked dry-run mode
+              run: mise exec --command "node scripts/release-cli.ts crates publish
+                  --mode=package --allow-blocked
+                  --report=temp/release/crates/package-report.json"
+
+            - name: Upload crates dry-run report
+              uses: actions/upload-artifact@v7
+              with:
+                  name: crates-package-report
+                  path: temp/release/crates
+
+    publish:
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'publish'
+        needs: package
+        runs-on: ubuntu-latest
+        environment:
+            name: crates-io-release
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
+
+            - name: Setup mise
+              uses: jdx/mise-action@v4
+
+            - name: Install toolchain
+              run: mise install
+
+            - name: Publish Rust crates
+              env:
+                  CARGO_REGISTRY_TOKEN: ${{ secrets['CARGO_REGISTRY_TOKEN'] }}
+              run: mise exec --command "node scripts/release-cli.ts crates publish
+                  --mode=publish
+                  --report=temp/release/crates/publish-report.json"

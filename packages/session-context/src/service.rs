@@ -688,13 +688,24 @@ mod tests {
 
     #[tokio::test]
     async fn dev_login_diagnosed_exposes_machine_readable_fields() {
-        let config = SessionContextConfig::default();
+        let config = SessionContextConfig::builder()
+            .post_auth_redirect(
+                securitydept_utils::redirect::RedirectTargetConfig::dynamic_default_and_dynamic_targets(
+                    "/",
+                    [securitydept_utils::redirect::RedirectTargetRule::Strict {
+                        value: "/playground/session".to_string(),
+                    }],
+                ),
+            )
+            .build();
         let service =
             DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
         let session = test_session();
         let base_url = test_base_url();
 
-        let diagnosed = service.login_diagnosed(session, &base_url, Some("/")).await;
+        let diagnosed = service
+            .login_diagnosed(session, &base_url, Some("/playground/session"))
+            .await;
 
         assert!(diagnosed.result().is_ok());
         assert_eq!(

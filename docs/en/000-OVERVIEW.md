@@ -97,6 +97,8 @@ The most direct way to enter the current SDK stack is:
 - [006-REALIP.md](006-REALIP.md) / [中文](../zh/006-REALIP.md)
 - [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) / [中文](../zh/007-CLIENT_SDK_GUIDE.md)
   - formal client SDK architecture, package boundaries, foundation protocols, and implementation guidance
+- [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md) / [中文](../zh/008-RELEASE_AUTOMATION.md)
+  - release-cli authority, allowed version shapes, channel inference, and CI workflow rules
 - [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) / [中文](../zh/020-AUTH_CONTEXT_AND_MODES.md)
   - unified auth-context, basic-auth zone, and token-set mode design
 - [021-REFERENCE-APP-OUTPOSTS.md](021-REFERENCE-APP-OUTPOSTS.md) / [中文](../zh/021-REFERENCE-APP-OUTPOSTS.md)

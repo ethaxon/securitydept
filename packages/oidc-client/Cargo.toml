@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-oidc-client"
-version = "0.2.0-alpha.4"
+version = "0.2.0-beta.1"
 edition = "2024"
 
 [features]
@@ -10,8 +10,8 @@ recommend-pending-store = ["moka-pending-store"]
 moka-pending-store = ["dep:moka"]
 
 [dependencies]
-securitydept-oauth-provider = { path = "../oauth-provider" }
-securitydept-utils = { path = "../utils" }
+securitydept-oauth-provider = { version = "=0.2.0-beta.1", path = "../oauth-provider" }
+securitydept-utils = { version = "=0.2.0-beta.1", path = "../utils" }
 openidconnect = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -1,6 +1,12 @@
 repos:
   - repo: local
     hooks:
+      - id: release-cli-version-check
+        name: release-cli version check
+        entry: mise exec --command "node scripts/release-cli.ts version check"
+        language: system
+        pass_filenames: false
+        stages: [commit]
       - id: pnpm-lint
         name: pnpm lint
         entry: pnpm lint
