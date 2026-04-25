@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
 import { loadSecuritydeptMetadata } from "./metadata.ts";
@@ -13,6 +13,26 @@ export type NpmPublishOptions = {
 	provenance: boolean;
 	packDestination?: string;
 };
+
+function resolvePublishDirectory(
+	manifestPath: string,
+	packageName: string,
+): string {
+	const packageDirectory = path.dirname(resolveFromRoot(manifestPath));
+	if (!packageName.endsWith("-angular")) {
+		return packageDirectory;
+	}
+
+	const distDirectory = path.join(packageDirectory, "dist");
+	const distManifestPath = path.join(distDirectory, "package.json");
+	if (!existsSync(distManifestPath)) {
+		throw new Error(
+			`Angular package ${packageName} is missing ${distManifestPath}. Build the package before publishing.`,
+		);
+	}
+
+	return packageDirectory;
+}
 
 export function runNpmPublish(options: NpmPublishOptions): void {
 	ensureVersionConsistency();
@@ -44,10 +64,13 @@ export function runNpmPublish(options: NpmPublishOptions): void {
 	}
 
 	for (const pkg of publishablePackages) {
-		const packageDirectory = path.dirname(resolveFromRoot(pkg.manifest));
-		console.log(`Packing ${pkg.name} from ${pkg.manifest}.`);
-		runCommand("npm", ["pack", `--pack-destination=${packDestination}`], {
-			cwd: packageDirectory,
+		const publishDirectory = resolvePublishDirectory(pkg.manifest, pkg.name);
+
+		console.log(
+			`Packing ${pkg.name} from ${path.relative(process.cwd(), publishDirectory)}.`,
+		);
+		runCommand("pnpm", ["pack", `--pack-destination=${packDestination}`], {
+			cwd: publishDirectory,
 		});
 
 		const publishArgs = ["publish", `--tag=${distTag}`];
@@ -61,7 +84,7 @@ export function runNpmPublish(options: NpmPublishOptions): void {
 		console.log(
 			`${options.mode === "dry-run" ? "Dry-running" : "Publishing"} ${pkg.name} with dist-tag ${distTag}.`,
 		);
-		runCommand("npm", publishArgs, { cwd: packageDirectory });
+		runCommand("pnpm", publishArgs, { cwd: publishDirectory });
 	}
 
 	console.log(

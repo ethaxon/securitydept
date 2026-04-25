@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-basic-auth-context"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 edition = "2024"
 
 authors = ["Zhou Yeheng <root@aitiotekt.com>"]
@@ -14,10 +14,10 @@ keywords = ["auth","oauth","oidc","security","token"]
 categories = ["authentication","network-programming","web-programming"]
 [dependencies]
 http = { workspace = true }
-securitydept-utils = { version = "~0.2.0-beta.1", path = "../utils" }
+securitydept-utils = { version = "~0.2.0-beta.2", path = "../utils" }
 serde = { workspace = true }
 snafu = { workspace = true }
 typed-builder = { workspace = true }
 web-route = { workspace = true }
-securitydept-creds = { version = "~0.2.0-beta.1", path = "../creds" }
-securitydept-realip = { version = "~0.2.0-beta.1", path = "../realip" }
+securitydept-creds = { version = "~0.2.0-beta.2", path = "../creds" }
+securitydept-realip = { version = "~0.2.0-beta.2", path = "../realip" }

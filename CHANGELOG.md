@@ -5,11 +5,37 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0-beta.2]
 
 ### Changed
 
+- Moved npm publish-time manifest sanitization into the root pnpm `beforePacking` hook so published package metadata is prepared through pnpm's package lifecycle rather than ad hoc release-script file rewriting.
+- Switched Angular SDK package publishing to `publishConfig.directory = "dist"` from the package root, preserving workspace resolution context while still publishing the ng-packagr output.
+- Updated the bilingual release automation docs and README examples to reflect the pnpmfile-based npm publish flow, the package-root Angular publish model, the `securitydept-core` Rust entrypoint guidance, and the remote-config Docker startup path.
+
+### Fixed
+
+- Removed monorepo-only `monorepo-tsc` export conditions from all published TypeScript SDK package manifests.
+- Fixed npm tarball metadata so internal `@securitydept/*` workspace dependencies are rewritten to concrete published versions during pack/publish, including Angular package dist manifests.
+
+## [0.2.0-beta.1]
+
+### Added
+
+- Expanded the Rust workspace from the original server-centered baseline into reusable auth crates for credentials, OIDC/OAuth, auth contexts, token-set flows, real-IP resolution, and credential management.
+- Added a TypeScript SDK workspace with browser/server client layers plus React and Angular adapters for the main auth-context flows.
+- Added richer Web UI and end-to-end coverage for basic-auth, session, and token-set OIDC flows, including browser harness and frontend/backend token-set playgrounds.
+
+### Changed
+
+- Refactored the server around clearer auth-context boundaries, policy/propagation routes, diagnosis surfaces, and more structured error/observability behavior.
+- Promoted the documentation set to a bilingual docs structure with a VitePress-based `docsite` and synchronized release/readiness authority docs.
+- Added release automation for shared metadata/version sync, package verification, and npm/crates publishing workflows with trusted publishing support.
 - Documentation updated to reflect current runtime and release pipeline behavior.
+
+### Fixed
+
+- Improved packaging and CI reliability across Rust crates, TypeScript SDKs, docs site builds, browser harness tests, and release evidence generation.
 
 ## [0.1.1]
 

@@ -59,6 +59,11 @@ const DOC_ITEMS: DocItem[] = [
 		zh: "Client SDK 指南",
 	},
 	{
+		slug: "008-RELEASE_AUTOMATION",
+		en: "Release Automation",
+		zh: "Release Automation",
+	},
+	{
 		slug: "020-AUTH_CONTEXT_AND_MODES",
 		en: "Auth Context and Modes",
 		zh: "认证上下文与模式",

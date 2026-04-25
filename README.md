@@ -4,132 +4,166 @@
   <b>SecurityDept</b>
 </h1>
 
-SecurityDept is a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps.
+SecurityDept is a layered authentication and authorization toolkit. It ships as reusable Rust crates, TypeScript SDK packages, and reference applications that validate the same contracts in real server and browser deployments.
 
-The project is evolving away from a single "OIDC login + local session" product into a layered library stack that can support:
+Current release line: `0.2.0-beta.2`. This beta line is focused on packaging, documentation, release automation, and reference-app readiness for the existing auth stack.
 
-- low-level credential verification primitives
-- OIDC client flows
-- OAuth resource server verification
-- basic-auth context flows for the simplest browser-native cases
-- stateful cookie-session authentication contexts
-- stateless token-set authentication contexts for distributed SPA and proxy scenarios
-- local credential management for basic auth and static tokens
-- a reference server app that exercises the combined stack
+## Use SecurityDept
 
-The current repository already contains major parts of the lower layers, a working reference server, and a working TypeScript SDK workspace under `sdks/ts`. The higher-level auth-context modes are no longer just design notes: the current repository dogfoods them through the reference app, the downstream `outposts` calibration case, and the formal client SDK guide. The active release-preparation target is `0.2.0-beta.1`; this is packaging / documentation readiness work, not a new auth capability line.
+### Rust Crates
 
-The reference server still uses Axum, but the reusable `securitydept-basic-auth-context`, `securitydept-session-context`, and `securitydept-token-set-context` crates keep Axum-specific response assembly outside their core APIs so they can be reused in other ecosystems more easily. Route-facing services have been moved back into their owning crates; the `securitydept-auth-runtime` aggregation layer no longer exists.
+Use the Rust crates when you are building server-side auth flows, credential verification, OIDC/OAuth integration, or framework-neutral auth-context services.
 
-## Workspace Crates
+Primary crate families:
 
-- `securitydept-creds`
-  - low-level verification primitives for basic auth, static tokens, JWT, JWE, and RFC 9068 access tokens
-- `securitydept-basic-auth-context`
-  - reusable basic-auth context, zone, post-auth redirect, and real-IP access-policy helpers with framework-neutral HTTP response metadata
-- `securitydept-session-context`
-  - reusable cookie-session auth context helpers built on tower-sessions, including post-auth redirects, without direct Axum coupling; `SessionAuthServiceTrait`, `OidcSessionAuthService`, and `DevSessionAuthService` are now directly in this crate via the `service` feature
-- `securitydept-oauth-provider`
-  - shared provider runtime for discovery metadata, JWKS, and introspection with cache and refresh
-- `securitydept-oidc-client`
-  - OIDC client / relying-party flows, callback handling, refresh, claims normalization
-- `securitydept-oauth-resource-server`
-  - bearer access-token verification for JWT, JWE, and opaque token introspection
-- `securitydept-token-set-context`
-  - reusable token-set auth-state, redirect, metadata-redemption, access-token substrate, and the unified `backend_oidc_mode` capability framework where pure / mediated are implemented as configuration presets / profiles
-- `securitydept-realip`
-  - trusted-proxy/provider-aware client IP resolution for stacked CDN and reverse-proxy deployments
-- `securitydept-creds-manage`
-  - local management for simple credentials such as basic auth and static tokens
-- `securitydept-core`
-  - aligned re-exports for downstream applications
-- `securitydept-server`
-  - reference Axum server used to validate combined behavior
-- `securitydept-cli`
-  - reference CLI for local credential management
+- `securitydept-creds`, `securitydept-creds-manage`, `securitydept-realip`
+- `securitydept-oidc-client`, `securitydept-oauth-provider`, `securitydept-oauth-resource-server`
+- `securitydept-basic-auth-context`, `securitydept-session-context`, `securitydept-token-set-context`
+- `securitydept-core` for aligned downstream re-exports
 
-## Planned Auth Context Modes
-
-SecurityDept should eventually support three top-level authentication context modes:
-
-1. Basic auth context mode
-2. Cookie-session mode
-3. Stateless token-set mode
-
-These modes are intentionally above the current `oidc-client` and `oauth-resource-server` crates. They should compose lower layers instead of collapsing responsibilities into a single crate.
-
-## Status Snapshot
-
-- Implemented or largely implemented
-  - low-level creds verification
-  - OIDC client flow
-  - OAuth provider runtime
-  - OAuth resource server verifier
-  - creds-manage for basic auth and static tokens
-  - reference server app with cookie-session, basic-auth context, and stateless token-set flows
-  - TypeScript SDK foundation packages, browser adapters, React / Angular framework packages, and `@securitydept/client` subpaths (including `web-router`) under `sdks/ts/packages/*`
-  - `apps/webui` reference route dogfooding for session/token-set lifecycle, protected API calls, trace timeline, and propagation smoke
-  - real-IP resolution plus optional real-IP access policy for basic-auth contexts
-  - server-owned bearer propagation validation with destination allowlists and access-token-derived resource facts
-- Planned / partially specified
-  - richer multi-zone basic-auth context composition
-  - token-set browser-side merge, persistence, refresh, and mixed-custody behavior
-  - a recommended propagation forwarder feature layered above `AccessTokenSubstrateRuntime` / `TokenPropagator`, with a formal `ConfigSource + Forwarder` trait boundary
-  - higher-complexity token-set shapes such as mixed-custody, BFF, and server-side token ownership
-
-## TypeScript SDKs
-
-The repository now includes a working TypeScript SDK workspace under `sdks/ts`, not only an architecture draft.
-
-For the fastest entry path:
-
-- read [docs/en/007-CLIENT_SDK_GUIDE.md](docs/en/007-CLIENT_SDK_GUIDE.md) ([中文](docs/zh/007-CLIENT_SDK_GUIDE.md)) for package boundaries, stability labels, capability ownership, and the minimal entry snippets
-- inspect `sdks/ts/packages/*` for the actual foundation `./web` exports, React / Angular adapters, and `@securitydept/client` subpaths such as `web-router`
-- inspect `apps/webui/src/routes/TokenSet.tsx` and `apps/webui/src/routes/tokenSet/*` as the reference app that dogfoods lifecycle, trace, and propagation boundaries
-- treat `apps/webui/src/api/*` as reference-app glue rather than recommended SDK public API
-
-The planned static docs site will be served from `https://securitydept.ethaxon.com/` once the independent VitePress / GitHub Pages pipeline is deployed. Until then, the source docs under `docs/en` and `docs/zh` remain canonical.
-
-## Reference Server Auth
-
-The reference server currently exposes two dashboard-management entry styles:
-
-- `/api/*`
-  - tries bearer access-token verification first when an `Authorization: Bearer ...` header is present
-  - otherwise falls back to cookie session
-  - then falls back to configured basic-auth guarded by `basic-auth-context` and optional real-IP policy
-  - when `X-SecurityDept-Propagation` is present, `/api/*` requires bearer access-token authentication and rejects cookie/basic flows with an auth-method mismatch response
-  - the header value uses a Forwarded-style parameter format such as `by=dashboard;for=node-a;host=service.internal.example.com:443;proto=https`
-  - successful bearer authentication keeps access-token-derived resource facts in request runtime context for later propagation-aware handlers
-- `/basic/*`
-  - dedicated basic-auth zone for the reference server dashboard
-  - `/basic/api/*` aliases the dashboard management API behind the admin basic-auth flow
-  - if `X-SecurityDept-Propagation` is present, the basic-auth route returns the same auth-method mismatch response
-
-This admin basic-auth flow is separate from `creds-manage` entries. The managed basic-auth credentials stored in `creds-manage` are data for downstream/forward-auth style use cases, not dashboard administrator login.
-
-## Docs
-
-| Doc | Focus |
-| --- | --- |
-| [docs/en/000-OVERVIEW.md](docs/en/000-OVERVIEW.md) ([中文](docs/zh/000-OVERVIEW.md)) | Project goals, layers, and document index |
-| [docs/en/001-ARCHITECTURE.md](docs/en/001-ARCHITECTURE.md) ([中文](docs/zh/001-ARCHITECTURE.md)) | Layered architecture and crate boundaries |
-| [docs/en/002-FEATURES.md](docs/en/002-FEATURES.md) ([中文](docs/zh/002-FEATURES.md)) | Capability matrix: implemented vs planned |
-| [docs/en/005-ERROR_SYSTEM_DESIGN.md](docs/en/005-ERROR_SYSTEM_DESIGN.md) ([中文](docs/zh/005-ERROR_SYSTEM_DESIGN.md)) | Safe user-facing errors vs internal diagnostics, with auth-specific guidance |
-| [docs/en/006-REALIP.md](docs/en/006-REALIP.md) ([中文](docs/zh/006-REALIP.md)) | Trusted-peer-aware real-IP strategy for stacked proxy and CDN deployments |
-| [docs/en/007-CLIENT_SDK_GUIDE.md](docs/en/007-CLIENT_SDK_GUIDE.md) ([中文](docs/zh/007-CLIENT_SDK_GUIDE.md)) | Formal client SDK architecture: package layout, foundation protocols, adapters, runtime boundaries, and implementation rules |
-| [docs/en/020-AUTH_CONTEXT_AND_MODES.md](docs/en/020-AUTH_CONTEXT_AND_MODES.md) ([中文](docs/zh/020-AUTH_CONTEXT_AND_MODES.md)) | Unified auth-context design covering basic-auth zones, session-context, and token-set OIDC modes |
-| [docs/en/021-REFERENCE-APP-OUTPOSTS.md](docs/en/021-REFERENCE-APP-OUTPOSTS.md) ([中文](docs/zh/021-REFERENCE-APP-OUTPOSTS.md)) | Downstream adopter calibration case for the SDK Angular/token-set path |
-| [docs/en/100-ROADMAP.md](docs/en/100-ROADMAP.md) ([中文](docs/zh/100-ROADMAP.md)) | Current release blockers, `0.2.x` track, and `0.3.0` deferrals |
-| [docs/en/110-TS_SDK_MIGRATIONS.md](docs/en/110-TS_SDK_MIGRATIONS.md) ([中文](docs/zh/110-TS_SDK_MIGRATIONS.md)) | TypeScript SDK public-surface migration ledger |
-
-## Development
+Typical example: enable the `session-context` surface through `securitydept-core`, then build the session payload with the re-exported types.
 
 ```bash
-cp config.example.toml config.toml
+cargo add securitydept-core --features session-context
+```
+
+```rust
+use securitydept_core::session_context::{
+  SessionContext,
+  SessionContextConfig,
+  SessionPrincipal,
+};
+
+let session_config = SessionContextConfig::default();
+let session = SessionContext::builder()
+  .principal(
+    SessionPrincipal::builder()
+      .subject("dev-session")
+      .display_name("dev")
+      .build(),
+  )
+  .build();
+```
+
+That is the recommended Rust entry style in this repo: depend on `securitydept-core`, turn on only the features you need, and import the product surface through its re-exports.
+
+Start with [Architecture](docs/en/001-ARCHITECTURE.md) and [Auth Context and Modes](docs/en/020-AUTH_CONTEXT_AND_MODES.md).
+
+### TypeScript SDKs
+
+Use the npm packages when you are building browser, React, Angular, or host-framework integrations for SecurityDept auth-context modes.
+
+Published SDK families:
+
+- `@securitydept/client`, `@securitydept/client-react`, `@securitydept/client-angular`
+- `@securitydept/basic-auth-context-client`, `@securitydept/basic-auth-context-client-react`, `@securitydept/basic-auth-context-client-angular`
+- `@securitydept/session-context-client`, `@securitydept/session-context-client-react`, `@securitydept/session-context-client-angular`
+- `@securitydept/token-set-context-client`, `@securitydept/token-set-context-client-react`, `@securitydept/token-set-context-client-angular`
+
+Typical example: wire a browser-only Basic Auth entry with `@securitydept/basic-auth-context-client`.
+
+```bash
+pnpm add @securitydept/basic-auth-context-client
+```
+
+```ts
+import {
+  AuthGuardResultKind,
+  BasicAuthContextClient,
+} from "@securitydept/basic-auth-context-client";
+
+const client = new BasicAuthContextClient({
+  baseUrl: "https://auth.example.com",
+  zones: [{ zonePrefix: "/basic" }],
+});
+
+const result = client.handleUnauthorized("/basic/api/groups", 401);
+
+if (result.kind === AuthGuardResultKind.Redirect) {
+  window.location.href = result.location;
+}
+```
+
+That is the minimal SDK entry: detect a zone-scoped `401` and redirect the browser to the matching login route.
+
+The canonical SDK entrypoint is [Client SDK Guide](docs/en/007-CLIENT_SDK_GUIDE.md). Treat `apps/webui/src/api/*` as reference-app glue, not public SDK API.
+
+### Reference App And Docker Image
+
+The reference runtime combines the Axum server and web UI to dogfood:
+
+- Basic Auth, cookie-session, and token-set auth-context modes
+- browser / React / Angular SDK adapter ergonomics
+- protected management APIs, bearer propagation, real-IP policy, route guards, and release packaging
+
+Typical example: fetch the published sample config and compose file, then start the reference image locally.
+
+```bash
+wget -O config.toml https://raw.githubusercontent.com/ethaxon/securitydept/main/config.example.toml
+wget -O docker-compose.yml https://raw.githubusercontent.com/ethaxon/securitydept/main/docker-compose.yml
+docker compose up -d
+```
+
+If you only want the smallest compose skeleton, it looks like this:
+
+```yaml
+services:
+  securitydept-server:
+    image: ghcr.io/ethaxon/securitydept:latest
+    ports:
+      - "7021:7021"
+    environment:
+      SECURITYDEPT_CONFIG: /app/config.toml
+    volumes:
+      - ./config.toml:/app/config.toml
+      - ./data:/app/data
+```
+
+The reference app is then exposed on `http://localhost:7021`.
+
+The Docker image is built by the `Docker Build` workflow and tagged through `scripts/release-cli.ts docker publish`; see [Release Automation](docs/en/008-RELEASE_AUTOMATION.md).
+
+## Develop This Repository
+
+Use the repository docs when changing SecurityDept itself:
+
+- [Overview](docs/en/000-OVERVIEW.md) for the document map and current artifact boundaries
+- [Features](docs/en/002-FEATURES.md) for implemented vs planned capability status
+- [Error System Design](docs/en/005-ERROR_SYSTEM_DESIGN.md) for response-envelope and diagnostics rules
+- [Reference App: Outposts](docs/en/021-REFERENCE-APP-OUTPOSTS.md) for real adopter calibration
+- [Roadmap](docs/en/100-ROADMAP.md) for current release state and deferrals
+- [TS SDK Migrations](docs/en/110-TS_SDK_MIGRATIONS.md) for public-surface migration records
+
+Local setup:
+
+```bash
+mise install
+pnpm install
+just setup-docs
+```
+
+Common loops:
+
+```bash
 just dev-server
 just dev-webui
+just lint
+just test
+just build-docs
 ```
+
+## Project Boundaries
+
+- SecurityDept is not a single monolithic auth service; it is a layered stack of reusable crates, SDKs, and reference apps.
+- The long-term product auth-context surfaces are Basic Auth context, session context, and token-set context.
+- Higher-complexity token-set deployments such as mixed custody, BFF, and server-side token ownership are not part of the current beta contract unless documented in the SDK guide.
+- Historical status belongs outside user-facing docs; stable docs should describe current behavior or explicit future plans.
+
+## Docs Site
+
+Source docs live in `docs/en` and `docs/zh`. The VitePress docsite in `docsite/` uses Git-compatible symlinks to those source docs and is built independently from the main app build.
+
+Planned public URL: `https://securitydept.ethaxon.com/`.
 
 ## License
 

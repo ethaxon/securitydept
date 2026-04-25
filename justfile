@@ -63,6 +63,9 @@ preview-docs:
 
 verify-docs: build-docs
 
+build-webui-only:
+    cd apps/webui && pnpm build
+
 build-webui:
     pnpm -r --filter @securitydept/webui... build
 
@@ -72,7 +75,8 @@ build-server:
 build-cli:
     cargo build --manifest-path apps/cli/Cargo.toml --release
 
-build: build-webui build-server build-cli
+build: build-server build-cli build-sdks
+    just build-webui-only
 
 # Lint, formatting, and repo maintenance
 lint-rs:

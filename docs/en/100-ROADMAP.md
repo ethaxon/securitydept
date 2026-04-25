@@ -2,39 +2,35 @@
 
 This roadmap is the current planning authority for SecurityDept. It describes the `0.2.0-beta.1` readiness line, the `0.2.x` backlog, and topics deferred to `0.3.0`.
 
-It does not explain the full auth-context model or SDK package map. Use [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) for auth context / mode design, [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) for the TypeScript SDK adopter guide, and [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) for public-surface migration history.
+It does not explain the full auth-context model or SDK package map. Use [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) for auth context / mode design, [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) for the TypeScript SDK adopter guide, and [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) for public-surface migration guidance.
 
 ## Current Release Target
 
-The active release-preparation target is `0.2.0-beta.1`.
+The current published baseline is `0.2.0-beta.1`.
 
-This beta is not a new auth-capability milestone. It is the first packaging and documentation readiness line for the current reusable Rust crates, TypeScript SDK packages, Docker image, and static docs site.
+This beta is not a new auth-capability milestone. It is the first packaging and documentation readiness line for the current reusable Rust crates, TypeScript SDK packages, Docker image, and static docs site, and the manual npm / crates release execution has already happened.
 
-Non-goals for the prep iteration:
+The repository goal is no longer to prove whether release execution is possible. It is to keep release automation, authority docs, and the published facts aligned so the next release run stays repeatable.
 
-- no tag push
-- no crates.io publish
-- no npm publish
-- no GHCR push
-- no release creation
-- no generated docsite output committed
-- no mixed-custody / BFF / server-side token ownership work
+## 0.2.0-beta.1 Release Record And Remaining Work
 
-## 0.2.0-beta.1 Blockers
+The Rust crates and publishable TypeScript SDK packages for `0.2.0-beta.1` have already been published manually. The following pre-release blockers are now closed:
 
-The beta cannot move to release execution until these are resolved or explicitly accepted as beta limitations:
+- publishable Rust crate versions, metadata, dependency order, and the default `cargo package` report have all been aligned to `0.2.0-beta.1`
+- the root `[patch.crates-io] openidconnect` override is gone and the workspace is back on `openidconnect = "4"`
+- `apps/server` and `apps/cli` are explicitly `publish = false` application artifacts
+- publishable TypeScript SDK packages are on `0.2.0-beta.1` and internal utility packages remain private
+- both npm publish and crates publish workflows now use GitHub OIDC trusted publishing
 
-| Area | Current blocker | Required disposition |
+The remaining work is about keeping the next release execution repeatable, not about carrying forward alpha-era blockers:
+
+| Area | Current status | Required next step |
 |---|---|---|
-| Rust crates | all workspace crates are still `0.2.0-alpha.4`; crates lack crates.io metadata (`license`, `description`, `repository`, `readme`, `keywords`, `categories`) | publish matrix must mark publishable crates, app crates, dependency order, and metadata fixes |
-| Rust packaging | workspace uses `[patch.crates-io] openidconnect` from a Git branch | real `cargo package` checks must prove exact impact and record whether this blocks beta publish |
-| Rust apps | `apps/server` and `apps/cli` are application artifacts, not library crates | mark `publish = false` or record an equivalent release-policy decision |
-| npm packages | SDK packages are still `0.1.0`; publishable packages target `0.2.0-beta.1` | package matrix must distinguish publishable SDKs from internal utilities |
-| npm internal utilities | `@securitydept/e2e-utils` and `@securitydept/test-utils` are not beta npm targets | mark `publish = no` / internal and avoid treating pack output as publish evidence |
-| Angular packages | APF exports warnings and dist export alignment must be classified | fix before beta if blocking; otherwise document as accepted beta limitation |
-| Docker | Dockerfile/toolchain/tag behavior must match beta release policy | fix stale build facts; ensure beta tags do not push `latest` |
-| Docs | source docs must match code/test facts and avoid historical narrative in current-status docs | complete docs audit and keep EN/ZH parity |
-| Docsite | Pages publishing worked only through a fragile symlink-heavy `docs/site` wrapper | move the site root to `docsite`, expose `docsite/docs -> ../docs`, and keep link rewriting minimal and explicit |
+| Rust package gate | the default `release-cli crates publish --mode=package` path and `.github/workflows/crates-publish.yml` now run a real package gate | keep the default report refreshed with current full-package evidence before the next release |
+| npm publish security posture | both the workflow and local publish entrypoints now pass `--provenance` and use trusted publishing | keep workflow, just recipes, and docs aligned on the same publish arguments |
+| Docker | Docker build and tag policy are aligned with the beta rules, but image publication still depends on each release execution | keep toolchain, tag policy, labels, and docs aligned |
+| Docs and roadmap authority | source docs now describe the current release and SDK facts | do not reintroduce historical blockers into current-status docs |
+| Docsite | `docsite/` is the VitePress source root and root content is linked in through minimal rewrite rules | keep link behavior in sync with source docs without reintroducing a staging pipeline |
 
 ## 0.2.x Active Track
 
@@ -71,7 +67,7 @@ The active baseline excludes:
 
 The reusable Rust package line is the set of workspace library crates under `packages/*`. `apps/server` and `apps/cli` are release artifacts for build/image readiness, not crates.io library publish targets.
 
-Before beta release execution, every publishable crate needs a real `cargo package` check without `--allow-dirty` and without `--no-verify`. The `[patch.crates-io] openidconnect` dependency must be treated as a likely packaging blocker until proven otherwise.
+The pre-`0.2.0-beta.1` `[patch.crates-io] openidconnect` packaging blocker is closed: the workspace is back on `openidconnect = "4"`. Future release execution still requires a real `cargo package` check for every publishable crate, without treating `--allow-dirty` or `--no-verify` as acceptable evidence.
 
 ## Docker Product Boundary
 
@@ -97,7 +93,7 @@ The project docs should be read as:
 - `020` auth context / mode design
 - `021` downstream reference case
 - `100` roadmap and release blockers
-- `110` TS SDK migration ledger
+- `110` TS SDK migration guide
 
 ## Deferred To 0.3.0
 

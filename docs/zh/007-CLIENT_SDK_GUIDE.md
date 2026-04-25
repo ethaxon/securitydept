@@ -332,7 +332,7 @@ Layering rules：
 
 | 条件 | 要求 |
 |---|---|
-| capability boundary 稳定 | 多轮迭代无 owner reshuffle |
+| capability boundary 稳定 | 在持续 release window 内无 owner reshuffle |
 | minimal entry 清晰 | 不依赖完整 reference page 也能解释 |
 | ordinary usage 成熟 | 不依赖 app-local glue |
 | focused evidence 完整 | lifecycle、regression、import-contract guardrail 存在 |
@@ -379,7 +379,7 @@ Registry 拥有 `primary` / `lazy` initialization priority、`preload`、`whenRe
 
 ### 下游参考案例：Outposts
 
-`~/workspace/outposts` 验证真实 Angular adopter 路径。迭代 150 后，它使用 `provideTokenSetAuth(...)` 加 `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`，证明了面向 downstream `confluence` backend 的 strict URL-prefix bounded bearer injection。其 app-local auth service 仍是 adopter glue，不是 SDK API 模板。
+`~/workspace/outposts` 验证真实 Angular adopter 路径。它使用 `provideTokenSetAuth(...)` 加 `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`，证明了面向 downstream `confluence` backend 的 strict URL-prefix bounded bearer injection。其 app-local auth service 仍是 adopter glue，不是 SDK API 模板。
 
 ### 当前 Bundle / Code Split 判断
 

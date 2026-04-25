@@ -1,44 +1,28 @@
-# Real IP Strategy
+# Real-IP Strategy
 
-`securitydept-realip` handles real-IP resolution across multiple trusted network boundaries (e.g.`Client -> CDN -> L4 LB -> Proxy -> app`). 
+`securitydept-realip` resolves the effective client IP across trusted network boundaries such as `client -> CDN -> load balancer -> reverse proxy -> app`.
 
-The core principle: **NEVER trust client-IP headers unless the connection comes directly from a verified trusted peer.**
+Core rule: **never trust client-IP headers unless the direct peer is a configured trusted peer.**
 
-## Core Model
-- **Providers**: Supply trusted CIDR sets (e.g.from local configremote URLsDocker/Kube APIs).
-- **Sources**: Map matched peer CIDRs to allowed parsing policies (which headers to trustand how).
+## Model
 
-### Resolution Pipeline
-1. Check socket peer address.
-2. Match peer against configured trusted `sources`.
-3. If matchedparse allowed inputs (PROXY protocol -> single-hop headers like `CF-Connecting-IP` -> recursive `X-Forwarded-For`/`Forwarded`).
-4. Fallback to socket peer address if no source matches.
+- **Providers** supply trusted CIDR sets. Built-in provider kinds include `inline`, `local-file`, `remote-file`, `command`, `docker-provider`, and `kube-provider`.
+- **Sources** bind providers to parsing policy: which headers or transport metadata may be trusted for peers from that provider.
+- **Fallback** defines behavior when the direct peer does not match any trusted source. The normal fallback is the socket peer address.
 
-## Configuration Shape
-Configuration consists of three sections: `providers``sources`and `fallback`.
+Avoid blanket-trusting entire private networks such as `10.0.0.0/8`; trust the specific ingress components instead.
 
-### 1. Providers
-Define trusted boundaries. Built-in kinds:
-- `inline`: Static CIDR list.
-- `local-file`: CIDR list from file (supports `watch`).
-- `remote-file`: Polled URLs (supports `refresh`).
-- `command`: Discover CIDRs via script execution.
-- `docker-provider`: Discovers ingress networks via Docker API.
-- `kube-provider`: Discovers ingress Pods/Endpoints via Kubernetes API.
+## Resolution Pipeline
 
-*Note: Avoid blanket trusting entire private networks (e.g.`10.0.0.0/8`). Narrow trust to specific ingress components.*
-
-### 2. Sources
-Define trust handling for matched providers:
-- `peers_from`: Provider names.
-- `accept_headers`: Allowed headers (e.g.`cf-connecting-ip` (single)`x-forwarded-for` (recursive right-to-left)).
-- `accept_transport`: e.g.`proxy-protocol`.
-
-### 3. Fallback
-Behavior when no source matches. Usually `remote-addr`.
+1. Read the socket peer address.
+2. Match the peer against configured trusted sources.
+3. If a source matches, parse only the inputs allowed by that source, such as PROXY protocol, `CF-Connecting-IP`, `X-Forwarded-For`, or `Forwarded`.
+4. If no source matches, return the socket peer address.
 
 ## API Shape
-Exposes a deterministic result to the application middleware:
+
+Applications receive a deterministic result:
+
 ```rust
 pub struct ResolvedClientIp {
     pub client_ip: std::net::IpAddr,
@@ -50,14 +34,16 @@ pub struct ResolvedClientIp {
 ```
 
 ## Testing Strategy
-The crate employs three levels of testing to ensure correctness without flakiness:
-1. **Unit Tests (`src/*`)**: Fast validation of logicparsingand IP normalization.
-2. **Core Integration Tests (`tests/core_providers.rs`)**: Validates standard providers (`inline``local-file``command``remote-file`) using mocked sockets and isolated temporary componentstesting refresh/watch routines.
-3. **Containerized Provider Tests (`tests/docker_provider.rs``tests/kube_provider.rs`)**: 
-   - Spins up real `testcontainers` infrastructure.
-   - Bootstraps real Docker networks or ephemeral Kubernetes (Kind/K3d) clusters.
-   - Deploys test proxies (e.g.Traefiknative PodsServices) and validates IP resolution synchronously using `kube-integration-test` or `docker` features.
-   - Run tests selectively via `cargo test -p securitydept-realip --test [test_name]`.
+
+- Unit tests cover parser and IP normalization behavior.
+- Core integration tests cover `inline`, `local-file`, `remote-file`, and `command` providers with isolated components.
+- Containerized provider tests cover Docker and Kubernetes provider behavior through real local infrastructure when those tests are explicitly selected.
+
+Run focused provider tests with:
+
+```bash
+cargo test -p securitydept-realip --test core_providers
+```
 
 ---
 

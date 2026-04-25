@@ -1,106 +1,104 @@
 # SecurityDept 概览
 
-SecurityDept 是一个分层的认证和授权工具包，围绕三个相关目标组织：
+本文是 SecurityDept 文档地图。README 是仓库入口页；本概览说明不同读者下一步应该看哪里，以及当前 artifact 边界是什么。
 
-1. 可复用的 Rust crate，用于身份、令牌验证和凭证验证
-2. 面向 browser、React、Angular 与 server-host adopter 的 TypeScript SDK family
-3. 参考应用，用于在真实部署场景中验证这些 crate 与 SDK
+当前 release line：`0.2.0-beta.1`。
 
-## 项目方向
+## 读者路径
 
-长期方向不是单一的单体认证服务。相反，SecurityDept 被塑造成一个栈，可以支持集中式和分布式部署：
+### Rust Adopters
 
-- 带有服务器端会话的集中式服务
-- 简单的浏览器原生基础认证（Basic Auth）流程
-- 直接管理 token-set 的分布式 SPA 应用
-- 在可信网络边界内，网格状节点间的无状态 bearer 令牌转发
+当你的集成点是 server、service mesh 边界、proxy 或本地 credential-management 工具时，使用 SecurityDept Rust crates。
 
-这需要对以下内容进行清晰分离：
+- 先看 [001-ARCHITECTURE.md](001-ARCHITECTURE.md)，理解 crate 分层和所有权。
+- 再看 [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md)，理解 Basic Auth context、session context 与 token-set context。
+- 当 route-facing errors、protocol exceptions 或 diagnostics 重要时，看 [005-ERROR_SYSTEM_DESIGN.md](005-ERROR_SYSTEM_DESIGN.md)。
+- 当部署位于 trusted reverse proxies、CDNs 或 provider-specific ingress layers 后方时，看 [006-REALIP.md](006-REALIP.md)。
 
-- 凭证验证原语
-- OIDC 客户端逻辑
-- OAuth 资源服务器逻辑
-- 构建在底层之上的认证上下文模式
-- 本地凭证管理
-- 参考应用
+### TypeScript SDK Adopters
 
-## 当前层次
+当你的集成点是 browser、React、Angular 或 host-framework code 时，使用 SDK packages。
 
-- `securitydept-creds`
-  - 底层凭证和令牌验证原语
-- `securitydept-oauth-provider`
-  - 共享的远程提供者连接和缓存运行时
-- `securitydept-oidc-client`
-  - OIDC 依赖方（relying-party）客户端行为
-- `securitydept-basic-auth-context`
-  - 可复用的 basic-auth zone 与 redirect 抽象，并提供与框架无关的响应元数据；`BasicAuthContextService` 现已直接归属于此 crate
-- `securitydept-session-context`
-  - 可复用的 session 上下文抽象，供 cookie-session 模式使用，且不再直接耦合 Axum；`SessionAuthServiceTrait`、`OidcSessionAuthService`、`DevSessionAuthService` 现已通过 `service` feature 直接归属于此 crate
-- `securitydept-token-set-context`
-  - 可复用的认证状态、redirect、metadata fallback 与 token 传播层，供无状态 token-set 模式使用
-- `securitydept-oauth-resource-server`
-  - bearer 令牌验证行为
-- `securitydept-realip`
-  - 面向 trusted-proxy/provider 的客户端 IP 解析
-- `securitydept-creds-manage`
-  - 本地基础认证和静态令牌管理
-- `securitydept-server`
-  - 参考应用，将支持的认证上下文模式与本地凭证场景串联起来
+- [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 是 package boundaries、subpaths、stability labels、adapter contracts 与 public API shape 的权威文档。
+- [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) 记录 public-surface migration decisions。
+- [021-REFERENCE-APP-OUTPOSTS.md](021-REFERENCE-APP-OUTPOSTS.md) 记录下游 Angular/token-set calibration case。
 
-当前更准确的理解是：
+### Reference App And Runtime Adopters
 
-- `securitydept-basic-auth-context`、`securitydept-session-context`、`securitydept-token-set-context` 是长期 auth-context 产品面
-- route-facing service 已全部回到各自 owning crate：`BasicAuthContextService` 归属 `securitydept-basic-auth-context`，session service 归属 `securitydept-session-context`（`service` feature），`BackendOidcMediatedModeAuthService` 与 `AccessTokenSubstrateResourceService` 归属 `securitydept-token-set-context`
-- `securitydept-auth-runtime` 聚合层已解散，不再作为工作区 member 存在
+当你需要可执行 baseline，而不是只做 library-only integration 时，使用 reference app 与 Docker image。
 
-## 目标认证上下文模式
+- `apps/server` 是 Axum reference server。
+- `apps/webui` 是 React reference UI。
+- Docker image 组合 server 与 web UI output；release tags 由 `release-cli docker publish` 规划。
+- [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md) 是 package、image、docs-site 与 CI release 行为的权威文档。
 
-SecurityDept 应在底层 crate 之上提供三种明确的认证上下文模式：
+### Contributors And Release Maintainers
 
-1. 基础认证区域模式（basic auth zone mode）
-2. Cookie-session 模式
-3. 无状态 token-set 模式（token snapshot/deltametadata snapshot/delta）
+修改 SecurityDept 本身时，从这些文档进入。
 
-这些模式是面向部署的组合，而不是 `oidc-client` 或 `oauth-resource-server` 的替代品。
+- [002-FEATURES.md](002-FEATURES.md) 跟踪 implemented vs planned capabilities。
+- [100-ROADMAP.md](100-ROADMAP.md) 跟踪当前 release 状态、beta readiness 与 deferrals。
+- [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md) 解释 `securitydept-metadata.toml`、`release-cli`、just recipes 与 publish workflows。
 
-## 设计原则
+## Artifact 边界
 
-- 偏好组合而非一个巨大的全能认证 crate
-- 保持令牌获取和令牌验证分离
-- 明确建模无状态和有状态认证上下文模式
-- 支持后端优先和前端强化的部署
-- 保持服务器应用作为试验场，而非产品边界
-- 在可以把边界留给参考应用时，尽量保持可复用 crate 的框架中立
+### Rust Crates
 
-## TypeScript SDK 当前状态与进入路径
+可发布 Rust library line 是 `packages/*` 下的 reusable crates：
 
-TypeScript client SDK 现在已经是仓库中的可用组成部分，而不再只是未来设计议题。当前 release-preparation 目标是 `0.2.0-beta.1`，重点是 packaging、docs reality、release matrices、Docker readiness 与 static docs site。
+- credential、token 与 real-IP primitives
+- OIDC/OAuth provider 与 resource-server 行为
+- Basic Auth、session、token-set auth-context services
+- `securitydept-core` 对齐 re-exports
 
-当前阶段的重点也已经变化：
+`apps/server` 与 `apps/cli` 是 build/runtime artifacts，不是 crates.io library surfaces。
 
-- 不是“SDK 是否存在”，而是“哪些 contract 已经可以按当前 0.x 对外解释”
-- 根导出、adapter、reference app glue 的边界应优先以 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) 为准
-- token-set 当前应按 browser-owned v1 baseline 理解，而不是把 mixed-custody / BFF / server-side token-set 一并读进当前范围
+### TypeScript SDK Packages
 
-当前更直接的进入方式是：
+可发布 SDK line 是 `sdks/ts/packages/*` 下的 packages，按以下方向分组：
 
-- 先看 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)，理解包边界、能力归属、稳定性口径与最小接入片段
-- 再看 `sdks/ts/packages/*`，确认 foundation、`./web` 导出、React / Angular 等 framework adapter，以及 `@securitydept/client` 的 `./web-router` 等 subpath 的真实导出
-- 再看 `apps/webui/src/routes/TokenSet.tsx` 与 `apps/webui/src/routes/tokenSet/*`，把它们作为 lifecycle、trace 与 propagation dogfooding 的主 reference route
-- 将 `apps/webui/src/api/*` 继续视为 reference app glue，而不是默认 SDK surface
+- shared client foundation packages
+- Basic Auth context client packages
+- session context client packages
+- token-set context client packages
+- React 与 Angular framework adapters
 
-## 文档索引
+`apps/webui/src/api/*` 下的 reference-app code 是本地 glue，不应视为 SDK API。
 
-- [001-ARCHITECTURE.md](001-ARCHITECTURE.md) - 架构和 crate 边界
-- [002-FEATURES.md](002-FEATURES.md) - 能力矩阵
-- [005-ERROR_SYSTEM_DESIGN.md](005-ERROR_SYSTEM_DESIGN.md) - 错误系统设计
-- [006-REALIP.md](006-REALIP.md) - 多层代理与多 provider 场景下的 real-IP 策略
-- [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) - 客户端 SDK 正式架构、包边界、foundation 协议与实现指南
-- [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md) - release-cli 权威入口、允许版本形态、channel 自动推断与 CI 规则
-- [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) - 统一的认证上下文、basic-auth zone 与 token-set mode 设计
-- [021-REFERENCE-APP-OUTPOSTS.md](021-REFERENCE-APP-OUTPOSTS.md) - SDK Angular/token-set 路径的真实下游 adopter calibration case
-- [100-ROADMAP.md](100-ROADMAP.md) - 当前 release blockers、`0.2.x` 主线与 `0.3.0` deferrals
-- [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) - TypeScript SDK public-surface migration ledger
+### Reference Applications
+
+reference applications 用于证明跨层行为：
+
+- multi-context login 与 logout routing
+- management API authorization across session、Basic Auth、token-set modes
+- bearer propagation 与 route-level error-envelope boundaries
+- 通过本地和下游 adopter tests 验证 React / Angular SDK ergonomics
+
+### Docs Site
+
+源文档位于 `docs/en` 与 `docs/zh`。`docsite/` 下的 VitePress site 通过 symlink 引用这些源文档，并与主 app 独立构建。
+
+## 权威文档
+
+| 文档 | 用途 |
+| --- | --- |
+| [001-ARCHITECTURE.md](001-ARCHITECTURE.md) | 分层、crate ownership 与 runtime boundaries |
+| [002-FEATURES.md](002-FEATURES.md) | implemented vs planned capability status |
+| [005-ERROR_SYSTEM_DESIGN.md](005-ERROR_SYSTEM_DESIGN.md) | safe public errors、protocol exceptions 与 internal diagnostics |
+| [006-REALIP.md](006-REALIP.md) | trusted-peer-aware client IP resolution |
+| [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) | TypeScript SDK package boundaries、adapters 与 public contracts |
+| [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md) | release metadata、package publishing、Docker tags 与 docs-site workflow |
+| [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) | Basic Auth、session、token-set auth-context design |
+| [021-REFERENCE-APP-OUTPOSTS.md](021-REFERENCE-APP-OUTPOSTS.md) | Angular/token-set integration 的下游 adopter calibration |
+| [100-ROADMAP.md](100-ROADMAP.md) | 当前 release 状态与 deferrals |
+| [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) | TypeScript SDK migration ledger |
+
+## 文档规则
+
+- 面向用户的 docs 只描述当前行为或明确的未来计划。
+- 历史实现细节不进入稳定 docs。
+- README、overview 与 focused doc 重叠时，focused doc 拥有详细 contract。
+- 中英文文档应保持含义等价；非英文文档链接优先指向同语言目录。
 
 ---
 

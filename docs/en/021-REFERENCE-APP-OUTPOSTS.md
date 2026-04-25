@@ -6,7 +6,7 @@
 
 ## Current Status
 
-Iteration 150 closed the first real adopter calibration line:
+The current downstream calibration line is:
 
 - `outposts-web -> confluence` now consumes the SecurityDept Angular/token-set packages instead of `angular-auth-oidc-client`.
 - `angular-auth-oidc-client` has been removed from the downstream package manifest.
@@ -66,7 +66,7 @@ Current impact:
 
 ## Near-Term Plan
 
-Before treating `0.2.0-beta.1` as ready for release execution, use this case only as evidence and backlog input:
+Use this case as evidence and backlog input:
 
 1. Keep the current single `Confluence` path locked as downstream proof.
 2. Do not add SDK capability solely because one downstream host has local glue.

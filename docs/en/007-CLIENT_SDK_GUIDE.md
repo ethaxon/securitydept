@@ -332,7 +332,7 @@ Do not import `/web` subpaths into server-hosted code.
 
 | Condition | Requirement |
 |---|---|
-| capability boundary is stable | no owner reshuffle across multiple iterations |
+| capability boundary is stable | no owner reshuffle across a sustained release window |
 | minimal entry is clear | explainable without a full reference page |
 | ordinary usage is mature | no app-local glue dependency |
 | focused evidence is complete | lifecycle, regression, and import-contract guardrails exist |
@@ -379,7 +379,7 @@ This is the token-set React consumer surface. It owns groups/entries read and wr
 
 ### Downstream Reference Case: Outposts
 
-`~/workspace/outposts` validates the real Angular adopter path. After iteration 150 it uses `provideTokenSetAuth(...)` plus `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`, proving strict URL-prefix bounded bearer injection against a downstream `confluence` backend. Its app-local auth service remains adopter glue, not an SDK API template.
+`~/workspace/outposts` validates the real Angular adopter path. It uses `provideTokenSetAuth(...)` plus `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`, proving strict URL-prefix bounded bearer injection against a downstream `confluence` backend. Its app-local auth service remains adopter glue, not an SDK API template.
 
 ### Current Bundle / Code Split Judgment
 

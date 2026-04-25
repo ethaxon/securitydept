@@ -1,112 +1,104 @@
 # SecurityDept Overview
 
-SecurityDept is a layered authentication and authorization toolkit organized around three related outcomes:
+This document is the map for the rest of the SecurityDept docs. The README is the repository landing page; this overview explains where each audience should go next and what the current artifact boundaries are.
 
-1. reusable Rust crates for identity, token, and credential validation
-2. a TypeScript SDK family for browser, React, Angular, and server-host adopters
-3. reference applications used to validate those crates and SDKs against real deployment scenarios
+Current release line: `0.2.0-beta.1`.
 
-## Project Direction
+## Audience Paths
 
-The long-term direction is not a single monolithic auth service. Instead, SecurityDept is being shaped into a stack that can support both centralized and distributed deployments:
+### Rust Adopters
 
-- centralized services with server-side sessions
-- simple browser-native Basic Auth flows
-- distributed SPA applications that manage token sets directly
-- stateless bearer-token forwarding between mesh-like nodes inside trusted network boundaries
+Use SecurityDept as Rust crates when your integration point is a server, service mesh boundary, proxy, or local credential-management tool.
 
-That requires a clean split between:
+- Start with [001-ARCHITECTURE.md](001-ARCHITECTURE.md) for crate layering and ownership.
+- Read [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) for Basic Auth context, session context, and token-set context.
+- Use [005-ERROR_SYSTEM_DESIGN.md](005-ERROR_SYSTEM_DESIGN.md) when route-facing errors, protocol exceptions, or diagnostics matter.
+- Use [006-REALIP.md](006-REALIP.md) when deployments sit behind trusted reverse proxies, CDNs, or provider-specific ingress layers.
 
-- credential verification primitives
-- OIDC client logic
-- OAuth resource-server logic
-- auth-context modes built on top of those lower layers
-- local credential management
-- reference applications
+### TypeScript SDK Adopters
 
-## Current Layers
+Use the SDK packages when your integration point is browser, React, Angular, or host-framework code.
 
-- `securitydept-creds`
-  - low-level credential and token verification primitives
-- `securitydept-oauth-provider`
-  - shared remote-provider connectivity and cache runtime
-- `securitydept-oidc-client`
-  - OIDC relying-party client behavior
-- `securitydept-basic-auth-context`
-  - reusable basic-auth zone and redirect abstraction with framework-neutral response metadata; `BasicAuthContextService` now lives directly in this crate
-- `securitydept-session-context`
-  - reusable session context abstraction for cookie-session mode without direct Axum coupling; `SessionAuthServiceTrait`, `OidcSessionAuthService`, and `DevSessionAuthService` are now directly in this crate via the `service` feature
-- `securitydept-token-set-context`
-  - reusable auth-state, redirect, metadata-redemption, and token-propagation layer for stateless token-set mode
-- `securitydept-oauth-resource-server`
-  - bearer-token verification behavior
-- `securitydept-realip`
-  - trusted-proxy/provider-aware client IP resolution
-- `securitydept-creds-manage`
-  - local basic-auth and static-token management
-- `securitydept-server`
-  - reference app that wires the supported auth-context modes and local-credential scenarios together
+- [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) is the authority for package boundaries, subpaths, stability labels, adapter contracts, and public API shape.
+- [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) records public-surface migration decisions.
+- [021-REFERENCE-APP-OUTPOSTS.md](021-REFERENCE-APP-OUTPOSTS.md) records the downstream Angular/token-set calibration case.
 
-The more accurate reading now is:
+### Reference App And Runtime Adopters
 
-- `securitydept-basic-auth-context`, `securitydept-session-context`, and `securitydept-token-set-context` are the long-term auth-context product surfaces
-- route-facing services have all been moved back into their owning crates: `BasicAuthContextService` into `securitydept-basic-auth-context`, session services into `securitydept-session-context` (via the `service` feature), `BackendOidcMediatedModeAuthService`, and `AccessTokenSubstrateResourceService` into `securitydept-token-set-context`
-- the `securitydept-auth-runtime` aggregation layer has been dissolved and removed from the workspace
+Use the reference app and Docker image when you need an executable baseline rather than a library-only integration.
 
-## Target Auth Context Modes
+- `apps/server` is the Axum reference server.
+- `apps/webui` is the React reference UI.
+- The Docker image combines the server and web UI output; release tags are planned by `release-cli docker publish`.
+- [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md) is the authority for package, image, docs-site, and CI release behavior.
 
-SecurityDept should provide three explicit auth-context modes above the lower-level crates:
+### Contributors And Release Maintainers
 
-1. Basic auth zone mode
-2. Cookie-session mode
-3. Stateless token-set mode (token snapshot/deltametadata snapshot/delta)
+Use these docs when changing SecurityDept itself.
 
-Those modes are deployment-oriented compositions, not replacements for `oidc-client` or `oauth-resource-server`.
+- [002-FEATURES.md](002-FEATURES.md) tracks implemented vs planned capabilities.
+- [100-ROADMAP.md](100-ROADMAP.md) tracks current release state, beta readiness, and deferrals.
+- [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md) explains `securitydept-metadata.toml`, `release-cli`, just recipes, and publish workflows.
 
-## Design Principles
+## Artifact Boundaries
 
-- Prefer composition over a giant all-in-one auth crate.
-- Keep token acquisition and token verification separate.
-- Model stateless and stateful auth-context modes explicitly.
-- Support both backend-first and frontend-strong deployments.
-- Keep the server app as a proving ground, not the product boundary.
-- Keep reusable crates framework-neutral when the boundary can stay in the reference app.
+### Rust Crates
 
-## TypeScript SDK Status and Entry Path
+The publishable Rust library line is the set of reusable crates under `packages/*`:
 
-The TypeScript client SDK is now a working part of this repository, not only a future design topic. The active release-preparation target is `0.2.0-beta.1`; it focuses on packaging, docs reality, release matrices, Docker readiness, and the static docs site.
+- credential, token, and real-IP primitives
+- OIDC/OAuth provider and resource-server behavior
+- Basic Auth, session, and token-set auth-context services
+- `securitydept-core` aligned re-exports
 
-The current phase has also shifted:
+`apps/server` and `apps/cli` are build/runtime artifacts, not crates.io library surfaces.
 
-- the question is no longer “does the SDK exist yet?” but “which contracts are already explainable to external consumers in the current 0.x stage?”
-- the boundary between root exports, adapters, and reference-app glue should be read primarily through [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)
-- token-set should currently be read through a browser-owned v1 baseline, not as if mixed-custody / BFF / server-side token-set were already inside scope
+### TypeScript SDK Packages
 
-The most direct way to enter the current SDK stack is:
+The publishable SDK line is the set of packages under `sdks/ts/packages/*`, grouped by:
 
-- start with [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) for package boundaries, capability ownership, stability labels, and minimal entry snippets
-- inspect `sdks/ts/packages/*` for the actual foundation `./web` exports, framework adapters (React / Angular), and `@securitydept/client` subpaths such as `./web-router`
-- inspect `apps/webui/src/routes/TokenSet.tsx` and `apps/webui/src/routes/tokenSet/*` as the main reference route for lifecycle, trace, and propagation dogfooding
-- treat `apps/webui/src/api/*` as reference-app glue, not as the default SDK surface
+- shared client foundation packages
+- Basic Auth context client packages
+- session context client packages
+- token-set context client packages
+- React and Angular framework adapters
 
-## Document Index
+Reference-app code under `apps/webui/src/api/*` is local glue and should not be treated as SDK API.
 
-- [001-ARCHITECTURE.md](001-ARCHITECTURE.md) / [中文](../zh/001-ARCHITECTURE.md)
-- [002-FEATURES.md](002-FEATURES.md) / [中文](../zh/002-FEATURES.md)
-- [005-ERROR_SYSTEM_DESIGN.md](005-ERROR_SYSTEM_DESIGN.md) / [中文](../zh/005-ERROR_SYSTEM_DESIGN.md)
-- [006-REALIP.md](006-REALIP.md) / [中文](../zh/006-REALIP.md)
-- [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) / [中文](../zh/007-CLIENT_SDK_GUIDE.md)
-  - formal client SDK architecture, package boundaries, foundation protocols, and implementation guidance
-- [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md) / [中文](../zh/008-RELEASE_AUTOMATION.md)
-  - release-cli authority, allowed version shapes, channel inference, and CI workflow rules
-- [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) / [中文](../zh/020-AUTH_CONTEXT_AND_MODES.md)
-  - unified auth-context, basic-auth zone, and token-set mode design
-- [021-REFERENCE-APP-OUTPOSTS.md](021-REFERENCE-APP-OUTPOSTS.md) / [中文](../zh/021-REFERENCE-APP-OUTPOSTS.md)
-  - downstream adopter calibration case for the SDK Angular/token-set path
-- [100-ROADMAP.md](100-ROADMAP.md) / [中文](../zh/100-ROADMAP.md)
-  - current release blockers, `0.2.x` track, and `0.3.0` deferrals
-- [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) / [中文](../zh/110-TS_SDK_MIGRATIONS.md)
-  - TypeScript SDK public-surface migration ledger
+### Reference Applications
+
+The reference applications prove cross-layer behavior:
+
+- multi-context login and logout routing
+- management API authorization across session, Basic Auth, and token-set modes
+- bearer propagation and route-level error-envelope boundaries
+- React and Angular SDK ergonomics through local and downstream adopter tests
+
+### Docs Site
+
+Source docs live in `docs/en` and `docs/zh`. The VitePress site in `docsite/` symlinks to those source docs and is built independently from the main app.
+
+## Canonical Documents
+
+| Document | Use It For |
+| --- | --- |
+| [001-ARCHITECTURE.md](001-ARCHITECTURE.md) | Layering, crate ownership, and runtime boundaries |
+| [002-FEATURES.md](002-FEATURES.md) | Implemented vs planned capability status |
+| [005-ERROR_SYSTEM_DESIGN.md](005-ERROR_SYSTEM_DESIGN.md) | Safe public errors, protocol exceptions, and internal diagnostics |
+| [006-REALIP.md](006-REALIP.md) | Trusted-peer-aware client IP resolution |
+| [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) | TypeScript SDK package boundaries, adapters, and public contracts |
+| [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md) | Release metadata, package publishing, Docker tags, and docs-site workflow |
+| [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) | Basic Auth, session, and token-set auth-context design |
+| [021-REFERENCE-APP-OUTPOSTS.md](021-REFERENCE-APP-OUTPOSTS.md) | Downstream adopter calibration for Angular/token-set integration |
+| [100-ROADMAP.md](100-ROADMAP.md) | Current release state and deferrals |
+| [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) | TypeScript SDK migration ledger |
+
+## Documentation Rules
+
+- User-facing docs describe current behavior or explicit future plans.
+- Historical implementation detail belongs outside stable docs.
+- When README, overview, and a focused doc overlap, the focused doc owns the detailed contract.
+- English and Chinese docs should stay equivalent in meaning, with links pointing to the same-language folder when available.
 
 ---
 

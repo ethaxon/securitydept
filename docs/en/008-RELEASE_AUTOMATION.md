@@ -51,13 +51,13 @@ Primary commands:
 
 - `node scripts/release-cli.ts metadata sync`
 - `node scripts/release-cli.ts version check`
-- `node scripts/release-cli.ts version set 0.2.0-beta.1`
+- `node scripts/release-cli.ts version set 0.2.0-beta.2`
 - `node scripts/release-cli.ts npm publish --mode=dry-run`
-- `node scripts/release-cli.ts npm publish --mode=publish`
+- `node scripts/release-cli.ts npm publish --mode=publish --provenance`
 - `node scripts/release-cli.ts crates publish --mode=package --report=temp/release/crates/package-report.json`
-- `node scripts/release-cli.ts crates publish --mode=package --allow-blocked --allow-dirty --report=temp/release/crates/package-report.json`
+- `node scripts/release-cli.ts crates publish --mode=package --allow-blocked --allow-dirty --report=temp/release/crates/blocked-package-report.json`
 - `node scripts/release-cli.ts crates publish --mode=publish --report=temp/release/crates/publish-report.json`
-- `node scripts/release-cli.ts docker publish --ref=refs/tags/v0.2.0-beta.1`
+- `node scripts/release-cli.ts docker publish --ref=refs/tags/v0.2.0-beta.2`
 
 Behavioral rules:
 
@@ -66,8 +66,11 @@ Behavioral rules:
 - `version check` also validates publishable Rust `path` dependencies between workspace crates and requires exact internal requirements in the form `=X.Y.Z[-alpha.N|-beta.N]`.
 - `version set` also writes those exact internal Rust dependency requirements for publishable crates, so local package verification and publish preparation stay aligned.
 - `npm publish` infers the dist-tag from the version unless an explicit override is passed.
-- the GitHub Actions npm publish job uses npm trusted publishing via GitHub OIDC and does not inject a long-lived `NPM_TOKEN`; public packages published through that trusted publisher path get provenance automatically.
+- npm package tarball manifest cleanup is owned by the root [`/.pnpmfile.cjs`](../../.pnpmfile.cjs) `hooks.beforePacking` hook rather than ad hoc release-script file rewriting. This hook rewrites `@securitydept/*` `workspace:` version specifiers to the package version that is being published, strips monorepo-only `monorepo-tsc` export conditions from all published packages, and strips Angular-only publish-time fields such as root-only `files` and `devDependencies`.
+- Angular SDK packages must publish from the package root with `publishConfig.directory = "dist"`; do not run `pnpm pack` or `pnpm publish` directly inside `dist`, because that loses workspace resolution context before `beforePacking` can sanitize the manifest.
+- the GitHub Actions npm publish job uses npm trusted publishing via GitHub OIDC and does not inject a long-lived `NPM_TOKEN`; both the workflow and the local publish entrypoint now pass `--provenance` explicitly so provenance does not depend on implicit defaults.
 - `crates publish --allow-dirty` exists only for local blocked packaging loops where the working tree is intentionally dirty; it is not part of CI publish flows.
+- `temp/release/crates/package-report.json` is reserved for the real package gate without `--allow-blocked` and without `--allow-dirty`; blocked diagnostics must write to a separate report such as `temp/release/crates/blocked-package-report.json`.
 - the GitHub Actions crates publish job uses crates.io trusted publishing by exchanging the GitHub OIDC token through `rust-lang/crates-io-auth-action@v1`, then passes the short-lived token to `cargo publish`; it does not read a repository-stored `CARGO_REGISTRY_TOKEN` secret.
 - `docker publish` is the authoritative Docker tag planner and can emit human-readable output, JSON, or GitHub Actions outputs.
 
@@ -90,8 +93,9 @@ The release block intentionally avoids explicit `beta` tags. The current version
 Release-related workflows must follow these rules:
 
 - npm publish uses `release-cli npm publish` directly and does not expose a manual dist-tag selector.
-- npm publish uses `release-cli npm publish` directly, relies on GitHub Actions `id-token: write`, and expects npm trusted publisher settings to point at `npm-publish.yml` (optionally scoped to the `npm-release` environment).
-- crates publish uses `release-cli crates publish`, keeps `--allow-dirty` out of publish jobs, and uses `rust-lang/crates-io-auth-action@v1` so crates.io trusted publisher settings can authorize `crates-publish.yml` (optionally scoped to the `crates-io-release` environment).
+- npm publish must preserve the package-root invocation model so pnpm can honor root `publishConfig.directory` and the root `.pnpmfile.cjs` `beforePacking` hook for Angular packages.
+- npm publish uses `release-cli npm publish` directly, relies on GitHub Actions `id-token: write`, passes `--provenance` on real publish paths, and expects npm trusted publisher settings to point at `npm-publish.yml` (optionally scoped to the `npm-release` environment).
+- crates publish uses `release-cli crates publish`; the default package gate must not use `--allow-blocked`, publish jobs keep `--allow-dirty` out, and `rust-lang/crates-io-auth-action@v1` enables crates.io trusted publishing for `crates-publish.yml` (optionally scoped to the `crates-io-release` environment).
 - Docker build computes tags through `release-cli docker publish --format=github-output` and feeds the resulting tags/labels directly into `docker/build-push-action`.
 
 This keeps one implementation of:
@@ -108,8 +112,8 @@ Recommended local sequence before an actual publish:
 1. `mise exec --command "just release-metadata-sync"`
 2. `mise exec --command "just release-version-check"`
 3. `mise exec --command "just release-npm-dry-run"`
-4. `mise exec --command "just release-crates-package-blocked"`
-5. `mise exec --command "just release-docker-metadata v0.2.0-beta.1"`
+4. `mise exec --command "just release-crates-package"`
+5. `mise exec --command "just release-docker-metadata v0.2.0-beta.2"`
 
 If the version needs to move first:
 

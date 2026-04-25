@@ -1,6 +1,6 @@
 {
 	"name": "@securitydept/webui",
-	"version": "0.2.0-beta.1",
+	"version": "0.2.0-beta.2",
 	"description": "WebUI for SecurityDept",
 	"type": "module",
 	"scripts": {

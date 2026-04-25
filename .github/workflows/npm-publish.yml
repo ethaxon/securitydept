@@ -101,4 +101,4 @@ jobs:
 
       - name: Publish npm packages
         run: mise exec --command "node scripts/release-cli.ts npm publish
-          --mode=publish"
+          --mode=publish --provenance"

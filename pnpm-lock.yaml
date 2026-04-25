@@ -7,6 +7,8 @@ settings:
 overrides:
   typescript: 6.0.2
 
+pnpmfileChecksum: sha256-N4AnC6eqPXpR3g5DTTXApSL4Sa9XkDYqLDKNqxIUUIg=
+
 importers:
 
   .:
@@ -262,6 +264,7 @@ importers:
       '@securitydept/basic-auth-context-client':
         specifier: workspace:*
         version: link:../basic-auth-context-client
+    publishDirectory: dist
 
   sdks/ts/packages/basic-auth-context-client-react:
     dependencies:
@@ -293,6 +296,7 @@ importers:
       '@securitydept/client':
         specifier: workspace:*
         version: link:../client
+    publishDirectory: dist
 
   sdks/ts/packages/client-react:
     dependencies:
@@ -333,6 +337,7 @@ importers:
       '@securitydept/session-context-client':
         specifier: workspace:*
         version: link:../session-context-client
+    publishDirectory: dist
 
   sdks/ts/packages/session-context-client-react:
     dependencies:
@@ -385,6 +390,7 @@ importers:
       '@securitydept/token-set-context-client':
         specifier: workspace:*
         version: link:../token-set-context-client
+    publishDirectory: dist
 
   sdks/ts/packages/token-set-context-client-react:
     dependencies:

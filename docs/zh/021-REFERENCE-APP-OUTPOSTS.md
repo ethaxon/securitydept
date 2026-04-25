@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-迭代 150 已关闭第一条真实 adopter calibration line：
+当前下游 calibration line 是：
 
 - `outposts-web -> confluence` 已改为消费 SecurityDept Angular/token-set packages，不再使用 `angular-auth-oidc-client`。
 - `angular-auth-oidc-client` 已从 downstream package manifest 移除。
@@ -66,7 +66,7 @@
 
 ## 近期计划
 
-在把 `0.2.0-beta.1` 视为可进入 release execution 之前，只把这个案例作为证据与 backlog input：
+将这个案例作为证据与 backlog input：
 
 1. 继续把当前单 `Confluence` path 锁定为 downstream proof。
 2. 不因为一个 downstream host 的本地 glue 就新增 SDK capability。
