@@ -7,6 +7,7 @@ import {
 } from "./metadata.ts";
 import { resolveFromRoot } from "./paths.ts";
 import { runCommand } from "./process.ts";
+import { isCrateVersionPublished } from "./release-registry.ts";
 import { ensureVersionConsistency } from "./version.ts";
 
 export type CratesPublishOptions = {
@@ -20,7 +21,7 @@ type CrateReportEntry = {
 	name: string;
 	manifest: string;
 	mode: "package" | "publish";
-	status: "ok" | "failed";
+	status: "ok" | "failed" | "skipped";
 	error?: string;
 };
 
@@ -38,12 +39,15 @@ const CRATE_DEPENDENCY_ORDER = [
 	"securitydept-core",
 ] as const;
 
-export function runCratesPublish(options: CratesPublishOptions): void {
+export async function runCratesPublish(
+	options: CratesPublishOptions,
+): Promise<void> {
 	ensureVersionConsistency();
 
 	const metadata = loadSecuritydeptMetadata();
 	const cratesToProcess = orderPublishableCrates(metadata.rustPackages);
 	const skippedCrates = metadata.rustPackages.filter((pkg) => !pkg.publish);
+	const releaseVersion = metadata.project.version;
 	const reportPath = resolveFromRoot(
 		options.reportPath ??
 			(options.mode === "package"
@@ -58,7 +62,66 @@ export function runCratesPublish(options: CratesPublishOptions): void {
 		);
 	}
 
+	if (options.mode === "package") {
+		try {
+			runWorkspaceCratesPackage(skippedCrates, options.allowDirty);
+			for (const pkg of cratesToProcess) {
+				reportEntries.push({
+					name: pkg.name,
+					manifest: pkg.manifest,
+					mode: options.mode,
+					status: "ok",
+				});
+			}
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			for (const pkg of cratesToProcess) {
+				reportEntries.push({
+					name: pkg.name,
+					manifest: pkg.manifest,
+					mode: options.mode,
+					status: "failed",
+					error: message,
+				});
+			}
+
+			writeCrateReport(reportPath, reportEntries);
+			if (!options.allowBlocked) {
+				throw error;
+			}
+		}
+
+		writeCrateReport(reportPath, reportEntries);
+		const failedEntries = reportEntries.filter(
+			(entry) => entry.status === "failed",
+		);
+		if (failedEntries.length > 0 && options.allowBlocked) {
+			console.warn(
+				`${failedEntries.length} crate operations failed; see ${path.relative(resolveFromRoot("."), reportPath)} for details.`,
+			);
+			return;
+		}
+
+		console.log(
+			`${options.mode} completed for ${cratesToProcess.length} publishable Rust crates.`,
+		);
+		return;
+	}
+
 	for (const pkg of cratesToProcess) {
+		if (await isCrateVersionPublished(pkg.name, releaseVersion)) {
+			reportEntries.push({
+				name: pkg.name,
+				manifest: pkg.manifest,
+				mode: options.mode,
+				status: "skipped",
+			});
+			console.log(
+				`Skipping ${pkg.name}@${releaseVersion} because that version is already published on crates.io.`,
+			);
+			continue;
+		}
+
 		const crateDirectory = path.dirname(resolveFromRoot(pkg.manifest));
 		const cargoArgs: string[] = [options.mode];
 		if (options.allowDirty) {
@@ -106,6 +169,24 @@ export function runCratesPublish(options: CratesPublishOptions): void {
 	console.log(
 		`${options.mode} completed for ${cratesToProcess.length} publishable Rust crates.`,
 	);
+}
+
+function runWorkspaceCratesPackage(
+	skippedCrates: RustPackageMetadata[],
+	allowDirty: boolean,
+): void {
+	const cargoArgs = ["package", "--workspace"];
+	for (const pkg of skippedCrates) {
+		cargoArgs.push("--exclude", pkg.name);
+	}
+	if (allowDirty) {
+		cargoArgs.push("--allow-dirty");
+	}
+
+	console.log(
+		`Running cargo package --workspace for ${CRATE_DEPENDENCY_ORDER.length} publishable Rust crates.`,
+	);
+	runCommand("cargo", cargoArgs, { cwd: resolveFromRoot(".") });
 }
 
 function orderPublishableCrates(

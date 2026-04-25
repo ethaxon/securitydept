@@ -5,6 +5,7 @@ import { loadSecuritydeptMetadata } from "./metadata.ts";
 import { resolveFromRoot } from "./paths.ts";
 import { runCommand } from "./process.ts";
 import { parseReleasePolicy } from "./release-policy.ts";
+import { isNpmVersionPublished } from "./release-registry.ts";
 import { ensureVersionConsistency } from "./version.ts";
 
 export type NpmPublishOptions = {
@@ -34,12 +35,15 @@ function resolvePublishDirectory(
 	return packageDirectory;
 }
 
-export function runNpmPublish(options: NpmPublishOptions): void {
+export async function runNpmPublish(options: NpmPublishOptions): Promise<void> {
 	ensureVersionConsistency();
 
 	const metadata = loadSecuritydeptMetadata();
 	const releasePolicy = parseReleasePolicy(metadata.project.version);
 	const distTag = options.tag ?? metadata.npm.defaultDistTag;
+	const releaseVersion = releasePolicy.version.version;
+	const disableGitChecks = shouldDisableGitChecks();
+	let skippedAlreadyPublishedCount = 0;
 
 	if (releasePolicy.track !== "stable" && distTag === "latest") {
 		throw new Error(
@@ -64,6 +68,17 @@ export function runNpmPublish(options: NpmPublishOptions): void {
 	}
 
 	for (const pkg of publishablePackages) {
+		if (
+			options.mode === "publish" &&
+			(await isNpmVersionPublished(pkg.name, releaseVersion))
+		) {
+			skippedAlreadyPublishedCount += 1;
+			console.log(
+				`Skipping ${pkg.name}@${releaseVersion} because that version is already published on npm.`,
+			);
+			continue;
+		}
+
 		const publishDirectory = resolvePublishDirectory(pkg.manifest, pkg.name);
 
 		console.log(
@@ -77,6 +92,9 @@ export function runNpmPublish(options: NpmPublishOptions): void {
 		if (options.mode === "dry-run") {
 			publishArgs.push("--dry-run");
 		}
+		if (disableGitChecks) {
+			publishArgs.push("--no-git-checks");
+		}
 		if (options.provenance) {
 			publishArgs.push("--provenance");
 		}
@@ -88,6 +106,14 @@ export function runNpmPublish(options: NpmPublishOptions): void {
 	}
 
 	console.log(
-		`${options.mode === "dry-run" ? "Dry-run completed" : "Publish completed"} for ${publishablePackages.length} npm packages.`,
+		`${options.mode === "dry-run" ? "Dry-run completed" : "Publish completed"} for ${publishablePackages.length - skippedAlreadyPublishedCount} npm packages${
+			skippedAlreadyPublishedCount > 0
+				? `; skipped ${skippedAlreadyPublishedCount} already-published version(s).`
+				: "."
+		}`,
 	);
+}
+
+function shouldDisableGitChecks(): boolean {
+	return process.env.GITHUB_ACTIONS === "true";
 }

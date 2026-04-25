@@ -54,7 +54,7 @@ class NpmPublishCommand extends Command {
 	packDestination = Option.String("--pack-destination");
 
 	async execute(): Promise<number> {
-		runNpmPublish({
+		await runNpmPublish({
 			mode: this.mode === "publish" ? "publish" : "dry-run",
 			tag: this.tag,
 			provenance: this.provenance,
@@ -73,7 +73,7 @@ class CratesPublishCommand extends Command {
 	report = Option.String("--report");
 
 	async execute(): Promise<number> {
-		runCratesPublish({
+		await runCratesPublish({
 			mode: this.mode === "publish" ? "publish" : "package",
 			allowBlocked: this.allowBlocked,
 			allowDirty: this.allowDirty,

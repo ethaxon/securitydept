@@ -66,10 +66,14 @@ release channel 由版本号自动推断，而不是手工传参。
 - `version check` 也会校验 publishable Rust crate 之间的 `path` 依赖版本，并要求内部依赖使用 `=X.Y.Z[-alpha.N|-beta.N]` 这种精确版本约束。
 - `version set` 也会为这些 publishable Rust 内部依赖写入精确版本约束，保证本地 package 校验与 publish 准备阶段的一致性。
 - `npm publish` 默认从版本号推断 dist-tag，除非显式传 override。
+- `npm publish` 在 GitHub Actions 的 tag workflow 中会自动关闭 pnpm 的 Git branch 校验，避免 detached release tag checkout 因 `publish-branch` 限制失败。
+- `npm publish --mode=publish` 会先查询 npm registry，遇到已经存在的版本就直接跳过，因此在部分 package 已成功发布后重跑时，只会继续剩余的 package。
 - npm package 的 tarball manifest 清洗现在统一由仓库根级 [`/.pnpmfile.cjs`](../../.pnpmfile.cjs) 的 `hooks.beforePacking` 负责，而不是由 release script 临时改写文件。这个 hook 会把 `@securitydept/*` 的 `workspace:` 版本说明符改写成当前发布包的版本，对所有发布包移除 monorepo 专用的 `monorepo-tsc` export condition，并对 Angular 发布态额外清理不应保留的字段，例如 root-only 的 `files` 和 `devDependencies`。
 - Angular SDK packages 必须从 package root 发布，并通过 `publishConfig.directory = "dist"` 指向构建产物；不要直接在 `dist` 目录里运行 `pnpm pack` 或 `pnpm publish`，因为那会在 `beforePacking` 介入前丢失 workspace resolution context。
 - GitHub Actions 里的 npm publish job 使用 GitHub OIDC 走 npm trusted publishing，不再注入长期有效的 `NPM_TOKEN`；workflow 与本地正式发布入口都显式传 `--provenance`，避免 provenance 依赖隐含默认行为。
 - `crates publish --allow-dirty` 只用于本地 blocked packaging 循环，解决工作树故意脏状态下的 `cargo package` 校验；CI publish 流程不应使用它。
+- 默认的 `crates publish --mode=package` gate 会用一次 `cargo package --workspace` 打包所有 publishable workspace crates。这是 prerelease 内部依赖链所必需的，因为 Cargo 会在后续 crate 的校验阶段优先从临时打包 registry 解析刚刚打包的上游 crate，而不是只去 crates.io 查还没发布的新版本。
+- `crates publish --mode=publish` 在每个 crate upload 前都会先查询 crates.io，已经存在的版本会直接跳过，因此部分发布成功后可安全重跑。
 - `temp/release/crates/package-report.json` 只保留给非 `--allow-blocked`、非 `--allow-dirty` 的真实 package gate；blocked diagnostic 必须写入独立 report，例如 `temp/release/crates/blocked-package-report.json`。
 - GitHub Actions 里的 crates publish job 通过 `rust-lang/crates-io-auth-action@v1` 把 GitHub OIDC token 交换成短时 crates.io publish token，再传给 `cargo publish`；它不再读取仓库 secret 形式的 `CARGO_REGISTRY_TOKEN`。
 - `docker publish` 是 Docker tag 规划的唯一权威入口，可输出 human-readable 文本、JSON 或 GitHub Actions output。
