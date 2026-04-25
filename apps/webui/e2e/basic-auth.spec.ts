@@ -19,6 +19,7 @@ import {
 	basicAuthPlaygroundPath,
 	serverBaseUrl,
 } from "./support/constants.ts";
+import { shouldPreferDistroboxHostedWebkit } from "./support/host-platform.ts";
 
 const basicAuthTestAccount = {
 	username: "admin",
@@ -33,6 +34,8 @@ const challengeErrorPatterns: Record<string, RegExp> = {
 	chromium: /ERR_INVALID_AUTH_CREDENTIALS/,
 	firefox: /NS_ERROR/,
 };
+
+const preferDistroboxHostedWebkit = shouldPreferDistroboxHostedWebkit();
 
 test.describe("basic-auth browser boundary", () => {
 	test("keeps guarantee and observed browser behavior distinct on the reference page", async ({
@@ -67,13 +70,19 @@ test.describe("basic-auth browser boundary", () => {
 		expect(currentBrowserPolicy).toBeDefined();
 		if (browserKey === HarnessBrowserNameValues.Webkit) {
 			expect(currentBrowserPolicy?.preferredExecutionBaseline).toBe(
-				ExecutionBaseline.DistroboxHosted,
+				preferDistroboxHostedWebkit
+					? ExecutionBaseline.DistroboxHosted
+					: ExecutionBaseline.HostNative,
 			);
 			expect(currentBrowserPolicy?.hostNative.role).toBe(
-				ExecutionBaselineRole.HostTruth,
+				preferDistroboxHostedWebkit
+					? ExecutionBaselineRole.HostTruth
+					: ExecutionBaselineRole.PrimaryAuthority,
 			);
 			expect(currentBrowserPolicy?.distroboxHosted.role).toBe(
-				ExecutionBaselineRole.CanonicalRecoveryPath,
+				preferDistroboxHostedWebkit
+					? ExecutionBaselineRole.CanonicalRecoveryPath
+					: ExecutionBaselineRole.NotAdopted,
 			);
 		} else {
 			expect(currentBrowserPolicy?.preferredExecutionBaseline).toBe(

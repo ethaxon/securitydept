@@ -66,9 +66,6 @@ bollard = { version = "0.20", default-features = false }
 moka = "0.12"
 iri-string = "0.7.12"
 
-[patch.crates-io]
-openidconnect = { git = "https://github.com/ethaxon/openidconnect-rs.git", branch = "set_option" }
-
 [profile.dev.package.swc_core]
 rustflags = ["-Zhint-mostly-unused"]
 

@@ -69,12 +69,41 @@ pub type ClientWithExtra<
 
 pub type DiscoveredClientWithExtra = ClientWithExtra<
     EndpointSet,
-    EndpointMaybeSet,
-    EndpointMaybeSet,
-    EndpointMaybeSet,
+    EndpointNotSet,
+    EndpointNotSet,
+    EndpointNotSet,
     EndpointMaybeSet,
     EndpointMaybeSet,
 >;
+
+type DeviceAuthorizationClientWithExtra = ClientWithExtra<
+    EndpointSet,
+    EndpointSet,
+    EndpointNotSet,
+    EndpointNotSet,
+    EndpointMaybeSet,
+    EndpointMaybeSet,
+>;
+
+type RevocationClientWithExtra = ClientWithExtra<
+    EndpointSet,
+    EndpointNotSet,
+    EndpointNotSet,
+    EndpointSet,
+    EndpointMaybeSet,
+    EndpointMaybeSet,
+>;
+
+struct OptionalClientEndpoints {
+    _introspection_endpoint: Option<IntrospectionUrl>,
+    revocation_endpoint: Option<RevocationUrl>,
+    device_authorization_endpoint: Option<DeviceAuthorizationUrl>,
+}
+
+struct BuiltClientWithExtra {
+    client: DiscoveredClientWithExtra,
+    optional_endpoints: OptionalClientEndpoints,
+}
 
 /// Wraps the OIDC discovered client for login/callback flows.
 ///
@@ -113,11 +142,9 @@ where
     ) -> OidcResult<Self> {
         config.validate()?;
 
-        let base_client =
-            build_client(&config, provider.oidc_provider_metadata().await?).map_err(|e| {
-                OidcError::Metadata {
-                    message: format!("Failed to build OIDC client from provider metadata: {e}"),
-                }
+        let built_client = build_client(&config, provider.oidc_provider_metadata().await?)
+            .map_err(|e| OidcError::Metadata {
+                message: format!("Failed to build OIDC client from provider metadata: {e}"),
             })?;
 
         #[cfg(feature = "claims-script")]
@@ -130,7 +157,7 @@ where
             pending_oauth_store: PS::from_config_opt(config.pending_store.as_ref()),
             config,
             provider,
-            base_client,
+            base_client: built_client.client,
             claims_checker,
             scopes: vec![],
             pkce_enabled: false,
@@ -183,13 +210,8 @@ where
     }
 
     pub async fn handle_device_authorize(&self) -> OidcResult<OidcDeviceAuthorizationResult> {
-        let client = self.fresh_client().await?;
-        let mut request =
-            client
-                .exchange_device_code()
-                .map_err(|e| OidcError::DeviceAuthorization {
-                    message: format!("Device authorization endpoint not set or config error: {e}"),
-                })?;
+        let client = self.fresh_device_authorization_client().await?;
+        let mut request = client.exchange_device_code();
 
         for scope in &self.scopes {
             request = request.add_scope(Scope::new(scope.clone()));
@@ -667,7 +689,7 @@ where
     }
 
     pub async fn handle_token_revoke(&self, token: OidcRevocableToken) -> OidcResult<()> {
-        let client = self.fresh_client().await?;
+        let client = self.fresh_revocation_client().await?;
         let token: CoreRevocableToken = match token {
             OidcRevocableToken::AccessToken(token) => AccessToken::new(token).into(),
             OidcRevocableToken::RefreshToken(token) => RefreshToken::new(token).into(),
@@ -806,11 +828,47 @@ where
     }
 
     async fn fresh_client(&self) -> OidcResult<DiscoveredClientWithExtra> {
+        Ok(self.fresh_client_parts().await?.client)
+    }
+
+    async fn fresh_client_parts(&self) -> OidcResult<BuiltClientWithExtra> {
         build_client(&self.config, self.provider.oidc_provider_metadata().await?).map_err(|e| {
             OidcError::Metadata {
                 message: format!("Failed to rebuild OIDC client from provider metadata: {e}"),
             }
         })
+    }
+
+    async fn fresh_device_authorization_client(
+        &self,
+    ) -> OidcResult<DeviceAuthorizationClientWithExtra> {
+        let built_client = self.fresh_client_parts().await?;
+        let device_authorization_endpoint = built_client
+            .optional_endpoints
+            .device_authorization_endpoint
+            .ok_or_else(|| OidcError::DeviceAuthorization {
+                message: "Device authorization endpoint not set or config error: device \
+                          authorization endpoint URL is not set"
+                    .to_string(),
+            })?;
+
+        Ok(built_client
+            .client
+            .set_device_authorization_url(device_authorization_endpoint))
+    }
+
+    async fn fresh_revocation_client(&self) -> OidcResult<RevocationClientWithExtra> {
+        let built_client = self.fresh_client_parts().await?;
+        let revocation_endpoint = built_client
+            .optional_endpoints
+            .revocation_endpoint
+            .ok_or_else(|| OidcError::TokenRevocation {
+                message: "Revocation endpoint not set or config error: revocation endpoint URL is \
+                          not set"
+                    .to_string(),
+            })?;
+
+        Ok(built_client.client.set_revocation_url(revocation_endpoint))
     }
 
     async fn fresh_client_with_redirect_override(
@@ -1243,7 +1301,7 @@ fn format_device_token_terminal_message(
 fn build_client(
     config: &OidcClientConfig<impl PendingOauthStoreConfig>,
     metadata: ProviderMetadataWithExtra,
-) -> Result<DiscoveredClientWithExtra, String> {
+) -> Result<BuiltClientWithExtra, String> {
     let client_id = ClientId::new(config.client_id.clone());
     let client_secret = config
         .client_secret
@@ -1272,10 +1330,12 @@ fn build_client(
         .transpose()
         .map_err(|e| format!("Invalid device_authorization_endpoint: {e}"))?;
 
-    Ok(
-        ClientWithExtra::from_provider_metadata(metadata, client_id, client_secret)
-            .set_introspection_url_option(introspection_endpoint)
-            .set_revocation_url_option(revocation_endpoint)
-            .set_device_authorization_url_option(device_authorization_endpoint),
-    )
+    Ok(BuiltClientWithExtra {
+        client: ClientWithExtra::from_provider_metadata(metadata, client_id, client_secret),
+        optional_endpoints: OptionalClientEndpoints {
+            _introspection_endpoint: introspection_endpoint,
+            revocation_endpoint,
+            device_authorization_endpoint,
+        },
+    })
 }

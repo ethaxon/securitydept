@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 import { getConfiguredProjects } from "./e2e/support/browser-harness.ts";
 import {
+	oidcIssuerUrl,
 	serverBaseUrl,
 	webuiBaseUrl,
 	webuiPort,
@@ -10,6 +11,7 @@ const webuiDir = import.meta.dirname;
 const configuredProjects = getConfiguredProjects({
 	includeBlocked: process.env.PLAYWRIGHT_INCLUDE_BLOCKED_PROJECTS === "1",
 });
+const runHeaded = process.env.PLAYWRIGHT_HEADED === "1";
 
 export default defineConfig({
 	testDir: "./e2e",
@@ -21,6 +23,7 @@ export default defineConfig({
 	},
 	use: {
 		baseURL: webuiBaseUrl,
+		headless: !runHeaded,
 		trace: "retain-on-failure",
 		screenshot: "only-on-failure",
 		video: "retain-on-failure",
@@ -39,9 +42,7 @@ export default defineConfig({
 			command: "node ./e2e/support/start-oidc-provider.ts",
 			cwd: webuiDir,
 			name: "OIDC Provider",
-			wait: {
-				stdout: /SecurityDept E2E OIDC provider listening at /,
-			},
+			url: `${oidcIssuerUrl}/healthz`,
 			reuseExistingServer: !process.env.CI,
 			timeout: 60_000,
 			stdout: "pipe",

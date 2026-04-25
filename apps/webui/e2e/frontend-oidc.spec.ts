@@ -22,6 +22,9 @@ import {
 	createFrontendModeCallbackUrl,
 	seedFrontendOidcPendingState,
 } from "./support/frontend-oidc-fixtures.ts";
+import { shouldPreferDistroboxHostedWebkit } from "./support/host-platform.ts";
+
+const preferDistroboxHostedWebkit = shouldPreferDistroboxHostedWebkit();
 
 async function completeFrontendModeLogin(
 	page: import("@playwright/test").Page,
@@ -92,13 +95,19 @@ test.describe("frontend-mode browser callback", () => {
 		expect(currentBrowserPolicy).toBeDefined();
 		if (browser === HarnessBrowserNameValues.Webkit) {
 			expect(currentBrowserPolicy?.preferredExecutionBaseline).toBe(
-				ExecutionBaseline.DistroboxHosted,
+				preferDistroboxHostedWebkit
+					? ExecutionBaseline.DistroboxHosted
+					: ExecutionBaseline.HostNative,
 			);
 			expect(currentBrowserPolicy?.hostNative.role).toBe(
-				ExecutionBaselineRole.HostTruth,
+				preferDistroboxHostedWebkit
+					? ExecutionBaselineRole.HostTruth
+					: ExecutionBaselineRole.PrimaryAuthority,
 			);
 			expect(currentBrowserPolicy?.distroboxHosted.role).toBe(
-				ExecutionBaselineRole.CanonicalRecoveryPath,
+				preferDistroboxHostedWebkit
+					? ExecutionBaselineRole.CanonicalRecoveryPath
+					: ExecutionBaselineRole.NotAdopted,
 			);
 		} else {
 			expect(currentBrowserPolicy?.preferredExecutionBaseline).toBe(
@@ -205,7 +214,9 @@ test.describe("frontend-mode browser callback", () => {
 				BrowserAvailability.Available,
 			);
 			expect(webkitCapability?.executionBaseline).toBe(
-				ExecutionBaseline.DistroboxHosted,
+				preferDistroboxHostedWebkit
+					? ExecutionBaseline.DistroboxHosted
+					: ExecutionBaseline.HostNative,
 			);
 		}
 

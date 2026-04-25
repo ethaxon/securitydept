@@ -3,11 +3,13 @@
 	"compilerOptions": {
 		"skipLibCheck": true,
 		"outDir": "./dist-tsc/tests",
-		"rootDir": "./src",
+		"rootDir": ".",
+		"allowImportingTsExtensions": true,
 		"customConditions": ["monorepo-tsc"],
 		"paths": {
 			"@/*": ["./src/*"]
 		},
+		"types": ["node"],
 		"target": "es2022",
 		"lib": ["esnext", "dom"],
 		"jsx": "react-jsx"
@@ -32,6 +34,9 @@
 		},
 		{
 			"path": "./tsconfig.app.json"
+		},
+		{
+			"path": "./tsconfig.e2e.json"
 		}
 	]
 }

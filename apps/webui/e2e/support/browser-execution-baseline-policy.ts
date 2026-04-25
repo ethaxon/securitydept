@@ -4,8 +4,11 @@ import {
 	ExecutionBaselineRole,
 	HarnessBrowserName,
 } from "./browser-harness-contract.ts";
+import { shouldPreferDistroboxHostedWebkit } from "./host-platform.ts";
 
 export function buildExecutionBaselinePolicy(): BrowserExecutionBaselinePolicy[] {
+	const preferDistroboxHostedWebkit = shouldPreferDistroboxHostedWebkit();
+
 	return [
 		{
 			browserName: HarnessBrowserName.Chromium,
@@ -45,21 +48,30 @@ export function buildExecutionBaselinePolicy(): BrowserExecutionBaselinePolicy[]
 		},
 		{
 			browserName: HarnessBrowserName.Webkit,
-			preferredExecutionBaseline: ExecutionBaseline.DistroboxHosted,
+			preferredExecutionBaseline: preferDistroboxHostedWebkit
+				? ExecutionBaseline.DistroboxHosted
+				: ExecutionBaseline.HostNative,
 			hostNative: {
 				executionBaseline: ExecutionBaseline.HostNative,
-				role: ExecutionBaselineRole.HostTruth,
-				summary:
-					"WebKit host-native still records the real host bring-up truth, especially when unsupported Linux hosts block before auth-flow begins.",
+				role: preferDistroboxHostedWebkit
+					? ExecutionBaselineRole.HostTruth
+					: ExecutionBaselineRole.PrimaryAuthority,
+				summary: preferDistroboxHostedWebkit
+					? "WebKit host-native still records the real host bring-up truth, especially when unsupported Linux hosts block before auth-flow begins."
+					: "WebKit keeps host-native browser-owned auth behavior as the primary authority when the host runtime itself is a verified baseline.",
 			},
 			distroboxHosted: {
 				executionBaseline: ExecutionBaseline.DistroboxHosted,
-				role: ExecutionBaselineRole.CanonicalRecoveryPath,
-				summary:
-					"WebKit uses distrobox-hosted Ubuntu as the canonical recovery path that can establish verified browser-owned evidence on unsupported Linux hosts.",
+				role: preferDistroboxHostedWebkit
+					? ExecutionBaselineRole.CanonicalRecoveryPath
+					: ExecutionBaselineRole.NotAdopted,
+				summary: preferDistroboxHostedWebkit
+					? "WebKit uses distrobox-hosted Ubuntu as the canonical recovery path that can establish verified browser-owned evidence on unsupported Linux hosts."
+					: "WebKit does not need a distrobox-hosted baseline when the host runtime itself is already the verified environment.",
 			},
-			summary:
-				"WebKit keeps host-native blocked evidence as host truth, while distrobox-hosted Ubuntu is the canonical path for verified browser-owned execution on unsupported Linux hosts.",
+			summary: preferDistroboxHostedWebkit
+				? "WebKit keeps host-native blocked evidence as host truth, while distrobox-hosted Ubuntu is the canonical path for verified browser-owned execution on unsupported Linux hosts."
+				: "WebKit keeps host-native as the authoritative execution baseline when the host runtime itself is verified.",
 		},
 	];
 }

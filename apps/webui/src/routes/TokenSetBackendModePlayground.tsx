@@ -7,6 +7,7 @@ import {
 	ClientErrorKind,
 	createCancellationTokenSource,
 	readErrorPresentationDescriptor,
+	UserRecovery,
 } from "@securitydept/client";
 import type { AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import type { BackendOidcModeBootstrapSource as BackendOidcModeBootstrapSourceType } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
@@ -180,6 +181,24 @@ interface LatestBasicEntryCredential {
 
 const DEFAULT_PROPAGATION_DIRECTIVE =
 	"by=dashboard;for=local-health;host=localhost:7021;proto=http";
+
+function readErrorDetails(
+	error: unknown,
+	fallbackDescription: string,
+): {
+	message: string;
+	recovery: UserRecoveryType;
+} {
+	const descriptor = readErrorPresentationDescriptor(error, {
+		fallbackTitle: "Backend-mode action failed",
+		fallbackDescription,
+	});
+
+	return {
+		message: descriptor.description,
+		recovery: descriptor.recovery,
+	};
+}
 
 // A token cell that shows a truncated preview and expands on demand.
 function CollapsibleTokenCell({

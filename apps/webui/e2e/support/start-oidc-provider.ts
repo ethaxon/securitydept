@@ -159,6 +159,12 @@ const provider = new Provider(oidcIssuerUrl, providerConfiguration);
 
 provider.proxy = true;
 provider.use(async (ctx, next) => {
+	if (ctx.path === "/healthz") {
+		ctx.status = 200;
+		ctx.body = "ok";
+		return;
+	}
+
 	if (!ctx.path.startsWith("/interaction/")) {
 		await next();
 		return;

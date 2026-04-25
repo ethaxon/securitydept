@@ -43,10 +43,10 @@ jobs:
               run: mise exec --command "pnpm lint"
 
             - name: Typecheck TypeScript SDKs
-              run: mise exec --command "just typecheck-sdks"
+              run: mise exec -C sdks/ts --command "pnpm typecheck"
 
             - name: Test TypeScript SDKs
-              run: mise exec --command "just test-sdks"
+              run: mise exec -C sdks/ts --command "pnpm test"
 
             - name: Pack and publish dry-run npm packages
               run: mise exec --command "node scripts/release-cli.ts npm publish

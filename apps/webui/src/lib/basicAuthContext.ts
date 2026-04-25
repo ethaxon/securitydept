@@ -1,9 +1,12 @@
-import { BasicAuthContextClient } from "@securitydept/basic-auth-context-client";
+import {
+	BasicAuthContextClient,
+	type BasicAuthContextClientConfig,
+} from "@securitydept/basic-auth-context-client";
 
-export const basicAuthContextConfig = {
+export const basicAuthContextConfig: BasicAuthContextClientConfig = {
 	baseUrl: "",
 	zones: [{ zonePrefix: "/basic" }],
-} as const;
+};
 
 export const basicAuthContextClient = new BasicAuthContextClient(
 	basicAuthContextConfig,

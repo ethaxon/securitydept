@@ -166,7 +166,11 @@ export function detectBrowserCapabilities(
 		adapter.resolveSystemChromiumExecutablePath ??
 		(() =>
 			resolveExecutableOverride(HarnessBrowserName.Chromium, env, fileExists) ??
-			defaultResolveSystemChromiumExecutablePath(fileExists));
+			defaultResolveSystemChromiumExecutablePath(fileExists) ??
+			defaultResolveManagedExecutablePath(
+				HarnessBrowserName.Chromium,
+				fileExists,
+			));
 	const chromiumPath = resolveSystemChromiumExecutablePath();
 	const firefoxPath = resolveManagedExecutablePath(HarnessBrowserName.Firefox);
 	const webkitPath = resolveManagedExecutablePath(HarnessBrowserName.Webkit);

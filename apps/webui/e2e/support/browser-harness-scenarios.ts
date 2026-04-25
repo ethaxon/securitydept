@@ -12,6 +12,7 @@ import {
 	VerifiedScenarioId,
 	VerifiedStatus,
 } from "./browser-harness-contract.ts";
+import { shouldPreferDistroboxHostedWebkit } from "./host-platform.ts";
 
 interface ScenarioCatalogEntry {
 	scenarioId: VerifiedScenarioId;
@@ -79,6 +80,10 @@ const scenarioCatalog: readonly ScenarioCatalogEntry[] = [
 		pathKind: VerifiedPathKind.BrowserNative,
 	},
 ] as const;
+
+const webkitRequiredExecutionBaseline = shouldPreferDistroboxHostedWebkit()
+	? ExecutionBaseline.DistroboxHosted
+	: undefined;
 
 const verifiedClaimsByBrowser = {
 	[HarnessBrowserName.Chromium]: [
@@ -188,61 +193,61 @@ const verifiedClaimsByBrowser = {
 	[HarnessBrowserName.Webkit]: [
 		{
 			scenarioId: VerifiedScenarioId.BasicAuthChallengeNoCachedCredentials,
-			requiredExecutionBaseline: ExecutionBaseline.DistroboxHosted,
+			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
 				"Distrobox-hosted Ubuntu WebKit preserves the explicit /basic/login challenge as a committed 401 response with WWW-Authenticate, while protected JSON and /basic/logout remain plain unauthorized without a fresh challenge header.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.BasicAuthLogoutAuthorizationHeaderHarness,
-			requiredExecutionBaseline: ExecutionBaseline.DistroboxHosted,
+			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
 				"Distrobox-hosted Ubuntu WebKit verifies the authorization-header harness path: protected backend access reaches 200 before logout, /basic/logout stays plain 401 without challenge, and the next protected probe remains authenticated because the harness keeps sending credentials.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackRedirect,
-			requiredExecutionBaseline: ExecutionBaseline.DistroboxHosted,
+			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
 				"Distrobox-hosted Ubuntu WebKit completes the real frontend-mode callback redirect through the browser-owned host route.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcPopupRelay,
-			requiredExecutionBaseline: ExecutionBaseline.DistroboxHosted,
+			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
 				"Distrobox-hosted Ubuntu WebKit completes popup login through the app-owned relay route inside the same browser host.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcPopupClosedByUser,
-			requiredExecutionBaseline: ExecutionBaseline.DistroboxHosted,
+			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
 				"Distrobox-hosted Ubuntu WebKit surfaces popup closed by user with the same host-visible restart_flow recovery path.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCrossTabStorage,
-			requiredExecutionBaseline: ExecutionBaseline.DistroboxHosted,
+			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
 				"Distrobox-hosted Ubuntu WebKit verifies the cross-tab hydrate and clear lifecycle inside the same browser-owned storage domain.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackDuplicateReplay,
-			requiredExecutionBaseline: ExecutionBaseline.DistroboxHosted,
+			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
 				"Distrobox-hosted Ubuntu WebKit surfaces callback.duplicate_state after the first callback is consumed.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackUnknownState,
-			requiredExecutionBaseline: ExecutionBaseline.DistroboxHosted,
+			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
 				"Distrobox-hosted Ubuntu WebKit surfaces callback.unknown_state with a restart path.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackStaleState,
-			requiredExecutionBaseline: ExecutionBaseline.DistroboxHosted,
+			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
 				"Distrobox-hosted Ubuntu WebKit surfaces callback.pending_stale with restart_flow recovery.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackClientMismatch,
-			requiredExecutionBaseline: ExecutionBaseline.DistroboxHosted,
+			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
 				"Distrobox-hosted Ubuntu WebKit surfaces callback.pending_client_mismatch for another frontend-mode client.",
 		},

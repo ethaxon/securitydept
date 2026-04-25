@@ -3,7 +3,7 @@
 import { createTraceTimelineStore } from "@securitydept/client";
 import { act, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	createTokenSetBackendHostTraceRecorder,
 	TOKEN_SET_BACKEND_HOST_TRACE_SCOPE,
@@ -27,6 +27,21 @@ function TraceTimelineHarness(props: {
 }
 
 describe("trace timeline harness", () => {
+	beforeEach(() => {
+		(
+			globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+		).IS_REACT_ACT_ENVIRONMENT = true;
+	});
+
+	afterEach(() => {
+		document.body.innerHTML = "";
+		delete (
+			globalThis as typeof globalThis & {
+				IS_REACT_ACT_ENVIRONMENT?: boolean;
+			}
+		).IS_REACT_ACT_ENVIRONMENT;
+	});
+
 	it("wires sdk trace, app trace, and clear interaction through the live store", async () => {
 		const timeline = createTraceTimelineStore();
 		const recordAppTrace = createTokenSetBackendHostTraceRecorder(timeline);

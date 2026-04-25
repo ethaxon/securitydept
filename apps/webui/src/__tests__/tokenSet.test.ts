@@ -262,11 +262,17 @@ describe("token-set browser flow", () => {
 		const history = createHistoryRecorder();
 
 		let resolveMetadata: ((response: HttpResponse) => void) | null = null;
+		let notifyMetadataRequestStarted: (() => void) | null = null;
+		const metadataRequestStarted = new Promise<void>((resolve) => {
+			notifyMetadataRequestStarted = resolve;
+		});
 		const transport = new FakeTransport().on(
 			(request: HttpRequest) => request.url.endsWith("/metadata/redeem"),
 			() =>
 				new Promise<HttpResponse>((resolve) => {
 					resolveMetadata = resolve;
+					notifyMetadataRequestStarted?.();
+					notifyMetadataRequestStarted = null;
 				}),
 		);
 
@@ -287,9 +293,21 @@ describe("token-set browser flow", () => {
 			history,
 			callbackFragmentStore,
 		});
+		const firstBootstrapExpectation = expect(
+			firstBootstrap,
+		).rejects.toMatchObject({
+			kind: ClientErrorKind.Cancelled,
+		});
 
+		await metadataRequestStarted;
 		firstClient.dispose();
-		resolveMetadata?.({
+		const pendingMetadataResolver = resolveMetadata as unknown as (
+			response: HttpResponse,
+		) => void;
+		if (!pendingMetadataResolver) {
+			throw new Error("Expected pending metadata resolver to be registered");
+		}
+		pendingMetadataResolver({
 			status: 200,
 			headers: {},
 			body: {
@@ -302,9 +320,7 @@ describe("token-set browser flow", () => {
 			},
 		});
 
-		await expect(firstBootstrap).rejects.toMatchObject({
-			kind: ClientErrorKind.Cancelled,
-		});
+		await firstBootstrapExpectation;
 		expect(await callbackFragmentStore.load()).toContain("late-at");
 
 		transport.reset();

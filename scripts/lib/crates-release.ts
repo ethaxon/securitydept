@@ -43,7 +43,7 @@ export function runCratesPublish(options: CratesPublishOptions): void {
 
 	for (const pkg of cratesToProcess) {
 		const crateDirectory = path.dirname(resolveFromRoot(pkg.manifest));
-		const cargoArgs = [options.mode];
+		const cargoArgs: string[] = [options.mode];
 		if (options.allowDirty) {
 			cargoArgs.push("--allow-dirty");
 		}
