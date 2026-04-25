@@ -20,6 +20,7 @@
 //   - Root-level policy consumption of child route staticData declarations
 
 import {
+	createExternalRedirectBeforeLoadHandler,
 	createSecureBeforeLoad,
 	createTanStackRouteSecurityPolicy,
 	DEFAULT_COMPOSITION_KEY,
@@ -33,7 +34,7 @@ import {
 	type TanStackRouteMatch,
 	withTanStackRouteRequirements,
 } from "@securitydept/client-react/tanstack-router";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // 1. withTanStackRouteRequirements helper
@@ -790,6 +791,75 @@ describe("TanStack route-security — createSecureBeforeLoad (execution glue)", 
 		// --- Navigation attempt 3: all met → navigation proceeds ---
 		expect(() => securedBeforeLoad(ctx1)).not.toThrow();
 	});
+
+	it("passes attempted URL context to unauthenticated handlers", () => {
+		let attemptedUrl: string | undefined;
+		const securedBeforeLoad = createSecureBeforeLoad({
+			checkAuthenticated: () => false,
+			defaultOnUnauthenticated: (_req, context) => {
+				attemptedUrl = context.attemptedUrl;
+				return false;
+			},
+		});
+		const ctx = buildBeforeLoadContext(
+			[
+				{
+					routeId: "/confluence",
+					staticData: withTanStackRouteRequirements([
+						{ id: "confluence-oidc", kind: "frontend_oidc" },
+					]),
+				},
+			],
+			"/confluence/spaces/abc?tab=pages",
+		);
+
+		try {
+			securedBeforeLoad(ctx);
+			expect.unreachable("should block");
+		} catch (err: unknown) {
+			expect(err).toBeInstanceOf(RouteSecurityBlockedError);
+		}
+		expect(attemptedUrl).toBe(
+			"http://localhost/confluence/spaces/abc?tab=pages",
+		);
+	});
+
+	it("external redirect handlers use attempted URL and never settle", async () => {
+		const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
+		const securedBeforeLoad = createSecureBeforeLoad({
+			checkAuthenticated: () => false,
+			requirementHandlers: {
+				frontend_oidc: createExternalRedirectBeforeLoadHandler(
+					async (_req, context) => {
+						await loginWithRedirect({
+							postAuthRedirectUri: context.attemptedUrl,
+						});
+					},
+				),
+			},
+		});
+		const ctx = buildBeforeLoadContext(
+			[
+				{
+					routeId: "/confluence",
+					staticData: withTanStackRouteRequirements([
+						{ id: "confluence-oidc", kind: "frontend_oidc" },
+					]),
+				},
+			],
+			"/confluence/spaces/abc?tab=pages",
+		);
+
+		const guardResult = securedBeforeLoad(ctx);
+		const settled = vi.fn();
+		Promise.resolve(guardResult).then(settled, settled);
+
+		await flushMicrotasks();
+		expect(loginWithRedirect).toHaveBeenCalledWith({
+			postAuthRedirectUri: "http://localhost/confluence/spaces/abc?tab=pages",
+		});
+		expect(settled).not.toHaveBeenCalled();
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -857,3 +927,10 @@ describe("TanStack route-security — Angular parity", () => {
 		expect(fn.name).toBe("secureBeforeLoad");
 	});
 });
+
+async function flushMicrotasks(): Promise<void> {
+	await Promise.resolve();
+	await Promise.resolve();
+	await Promise.resolve();
+	await new Promise((resolve) => setTimeout(resolve, 0));
+}

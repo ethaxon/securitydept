@@ -99,6 +99,35 @@ export interface TanStackRouterAdapterOptions {
 	requirementsKey?: string;
 }
 
+export interface TanStackRouteLocation {
+	pathname: string;
+	href: string;
+}
+
+/**
+ * Runtime context passed to route unauthenticated handlers.
+ *
+ * `attemptedUrl` is the TanStack Router target URL for the navigation being
+ * guarded. Use it as `postAuthRedirectUri` when a handler starts a full-page
+ * auth redirect; do not infer this from `window.location`, because the current
+ * document URL can still point at the previously committed route.
+ */
+export interface TanStackRouteUnauthenticatedContext {
+	readonly location: TanStackRouteLocation;
+	readonly attemptedUrl: string;
+	readonly matches: readonly TanStackRouteMatch[];
+	readonly cause: string | undefined;
+}
+
+export type TanStackRouteUnauthenticatedAction = boolean | string;
+
+export type TanStackRouteUnauthenticatedHandler = (
+	requirement: AuthRequirement,
+	context: TanStackRouteUnauthenticatedContext,
+) =>
+	| TanStackRouteUnauthenticatedAction
+	| Promise<TanStackRouteUnauthenticatedAction>;
+
 // ---------------------------------------------------------------------------
 // Route metadata declaration helper
 // ---------------------------------------------------------------------------
@@ -384,15 +413,12 @@ export interface TanStackRouteSecurityPolicyOptions {
 	 * Per-requirement-kind handlers.
 	 * Keys are `AuthRequirement.kind` strings.
 	 */
-	requirementHandlers?: Record<
-		string,
-		(requirement: AuthRequirement) => boolean | string
-	>;
+	requirementHandlers?: Record<string, TanStackRouteUnauthenticatedHandler>;
 
 	/**
 	 * Fallback handler when no kind-specific handler matches.
 	 */
-	defaultOnUnauthenticated?: (requirement: AuthRequirement) => boolean | string;
+	defaultOnUnauthenticated?: TanStackRouteUnauthenticatedHandler;
 
 	/**
 	 * Custom key for reading requirements from staticData.
@@ -411,7 +437,10 @@ export interface TanStackRouteSecurityResult {
 	/** The first unmet requirement, if any. */
 	readonly pendingRequirement: AuthRequirement | undefined;
 	/** Handler action for the pending requirement (from policy). */
-	readonly action: boolean | string | undefined;
+	readonly action:
+		| TanStackRouteUnauthenticatedAction
+		| Promise<TanStackRouteUnauthenticatedAction>
+		| undefined;
 	/** The full effective requirements after composition. */
 	readonly effectiveRequirements: readonly AuthRequirement[];
 }
@@ -464,10 +493,13 @@ export function createTanStackRouteSecurityPolicy(
 		evaluate(
 			matches: readonly TanStackRouteMatch[],
 			checkAuthenticated: (requirement: AuthRequirement) => boolean,
+			context?: TanStackRouteUnauthenticatedContext,
 		): TanStackRouteSecurityResult {
 			const effectiveRequirements = extractTanStackRouteRequirements(matches, {
 				requirementsKey: options.requirementsKey,
 			});
+			const handlerContext =
+				context ?? createFallbackUnauthenticatedContext(matches);
 
 			for (const req of effectiveRequirements) {
 				if (!checkAuthenticated(req)) {
@@ -478,7 +510,7 @@ export function createTanStackRouteSecurityPolicy(
 					return {
 						allMet: false,
 						pendingRequirement: req,
-						action: handler ? handler(req) : false,
+						action: handler ? handler(req, handlerContext) : false,
 						effectiveRequirements,
 					};
 				}
@@ -524,7 +556,7 @@ export class RouteSecurityBlockedError extends Error {
  */
 export interface SecureBeforeLoadContext {
 	/** URL location of the target route. */
-	location: { pathname: string; href: string };
+	location: TanStackRouteLocation;
 	/**
 	 * Matched route entries for the current navigation.
 	 * Shape matches {@link TanStackRouteMatch}.
@@ -625,11 +657,18 @@ export interface CreateSecureBeforeLoadOptions
  */
 export function createSecureBeforeLoad(
 	options: CreateSecureBeforeLoadOptions,
-): (ctx: SecureBeforeLoadContext) => void {
+): (ctx: SecureBeforeLoadContext) => void | Promise<void> {
 	const policy = createTanStackRouteSecurityPolicy(options);
 
-	return function secureBeforeLoad(ctx: SecureBeforeLoadContext): void {
-		const result = policy.evaluate(ctx.matches, options.checkAuthenticated);
+	return function secureBeforeLoad(
+		ctx: SecureBeforeLoadContext,
+	): void | Promise<void> {
+		const handlerContext = createUnauthenticatedContext(ctx);
+		const result = policy.evaluate(
+			ctx.matches,
+			options.checkAuthenticated,
+			handlerContext,
+		);
 
 		if (result.allMet) return;
 
@@ -637,22 +676,105 @@ export function createSecureBeforeLoad(
 
 		if (!pendingRequirement) return;
 
-		if (typeof action === "string") {
-			if (options.redirect) {
-				throw options.redirect({ to: action });
-			}
-			// No redirect function provided — throw a descriptive error.
-			throw new RouteSecurityBlockedError(pendingRequirement, result);
+		if (isPromiseLike(action)) {
+			return action.then((resolved) =>
+				handleSecureBeforeLoadAction(
+					resolved,
+					pendingRequirement,
+					result,
+					options,
+				),
+			);
 		}
 
-		// action is false or undefined — block navigation.
-		throw new RouteSecurityBlockedError(pendingRequirement, result);
+		return handleSecureBeforeLoadAction(
+			action,
+			pendingRequirement,
+			result,
+			options,
+		);
+	};
+}
+
+/**
+ * Build a route-security handler for full-page external redirects.
+ *
+ * The callback should start the browser navigation, typically by calling an
+ * auth client's `loginWithRedirect({ postAuthRedirectUri: context.attemptedUrl })`.
+ * After that navigation has been started, the returned guard result never
+ * settles so TanStack Router does not finalize an in-app blocked navigation
+ * while the page is leaving for an external IdP.
+ */
+export function createExternalRedirectBeforeLoadHandler(
+	startRedirect: (
+		requirement: AuthRequirement,
+		context: TanStackRouteUnauthenticatedContext,
+	) => void | Promise<void>,
+): TanStackRouteUnauthenticatedHandler {
+	return async (requirement, context) => {
+		await startRedirect(requirement, context);
+		return await neverSettlingBeforeLoadResult();
 	};
 }
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+function createUnauthenticatedContext(
+	ctx: SecureBeforeLoadContext,
+): TanStackRouteUnauthenticatedContext {
+	return {
+		location: ctx.location,
+		attemptedUrl: ctx.location.href || ctx.location.pathname,
+		matches: ctx.matches,
+		cause: ctx.cause,
+	};
+}
+
+function createFallbackUnauthenticatedContext(
+	matches: readonly TanStackRouteMatch[],
+): TanStackRouteUnauthenticatedContext {
+	return {
+		location: { pathname: "", href: "" },
+		attemptedUrl: "",
+		matches,
+		cause: undefined,
+	};
+}
+
+function handleSecureBeforeLoadAction(
+	action: TanStackRouteUnauthenticatedAction | undefined,
+	pendingRequirement: AuthRequirement,
+	result: TanStackRouteSecurityResult,
+	options: CreateSecureBeforeLoadOptions,
+): void {
+	if (typeof action === "string") {
+		if (options.redirect) {
+			throw options.redirect({ to: action });
+		}
+		// No redirect function provided — throw a descriptive error.
+		throw new RouteSecurityBlockedError(pendingRequirement, result);
+	}
+
+	// action is false or undefined — block navigation.
+	throw new RouteSecurityBlockedError(pendingRequirement, result);
+}
+
+function isPromiseLike<T>(value: unknown): value is Promise<T> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"then" in value &&
+		typeof value.then === "function"
+	);
+}
+
+function neverSettlingBeforeLoadResult(): Promise<never> {
+	return new Promise<never>(() => {
+		// Intentionally never resolves: a full-page browser redirect is in progress.
+	});
+}
 
 function isValidComposition(
 	raw: unknown,

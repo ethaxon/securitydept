@@ -6,7 +6,7 @@
 
 SecurityDept is a layered authentication and authorization toolkit. It ships as reusable Rust crates, TypeScript SDK packages, and reference applications that validate the same contracts in real server and browser deployments.
 
-Current release line: `0.2.0-beta.2`. This beta line is focused on packaging, documentation, release automation, and reference-app readiness for the existing auth stack.
+Current release line: `0.2.0-beta.3`. This beta line is focused on packaging, documentation, release automation, and reference-app readiness for the existing auth stack.
 
 <p class="badges" align="center">
   <a href="https://www.npmjs.com/package/@securitydept/client"><img src="https://img.shields.io/npm/v/%40securitydept%2Fclient?logo=npm&label=npm" alt="npm"></a>

@@ -2,7 +2,7 @@
 
 This document is the map for the rest of the SecurityDept docs. The README is the repository landing page; this overview explains where each audience should go next and what the current artifact boundaries are.
 
-Current release line: `0.2.0-beta.1`.
+Current release line: `0.2.0-beta.3`.
 
 ## Audience Paths
 

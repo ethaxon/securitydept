@@ -1,6 +1,6 @@
 {
 	"name": "@securitydept/session-context-client-react",
-	"version": "0.2.0-beta.2",
+	"version": "0.2.0-beta.3",
 	"description": "Session Context Client React of the SecurityDept TypeScript SDK, a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps.",
 	"author": "Zhou Yeheng <root@aitiotekt.com>",
 	"license": "MIT",

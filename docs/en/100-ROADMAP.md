@@ -1,26 +1,27 @@
 # Roadmap
 
-This roadmap is the current planning authority for SecurityDept. It describes the `0.2.0-beta.1` readiness line, the `0.2.x` backlog, and topics deferred to `0.3.0`.
+This roadmap is the current planning authority for SecurityDept. It describes the `0.2.0-beta.3` readiness line, the `0.2.x` backlog, and topics deferred to `0.3.0`.
 
 It does not explain the full auth-context model or SDK package map. Use [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) for auth context / mode design, [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) for the TypeScript SDK adopter guide, and [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) for public-surface migration guidance.
 
 ## Current Release Target
 
-The current published baseline is `0.2.0-beta.1`.
+The current published baseline is `0.2.0-beta.3`.
 
-This beta is not a new auth-capability milestone. It is the first packaging and documentation readiness line for the current reusable Rust crates, TypeScript SDK packages, Docker image, and static docs site, and the manual npm / crates release execution has already happened.
+This beta is not a new auth-context milestone. It is the current packaging, documentation, downstream-adopter router correctness, and release-readiness line for the reusable Rust crates, TypeScript SDK packages, Docker image, and static docs site.
 
 The repository goal is no longer to prove whether release execution is possible. It is to keep release automation, authority docs, and the published facts aligned so the next release run stays repeatable.
 
-## 0.2.0-beta.1 Release Record And Remaining Work
+## 0.2.0-beta.3 Release Record And Remaining Work
 
-The Rust crates and publishable TypeScript SDK packages for `0.2.0-beta.1` have already been published manually. The following pre-release blockers are now closed:
+The version authority has moved to `0.2.0-beta.3`. The following release-readiness facts must stay aligned before and after publish execution:
 
-- publishable Rust crate versions, metadata, dependency order, and the default `cargo package` report have all been aligned to `0.2.0-beta.1`
+- publishable Rust crate versions, metadata, dependency order, and the default `cargo package` report must align to `0.2.0-beta.3`
 - the root `[patch.crates-io] openidconnect` override is gone and the workspace is back on `openidconnect = "4"`
 - `apps/server` and `apps/cli` are explicitly `publish = false` application artifacts
-- publishable TypeScript SDK packages are on `0.2.0-beta.1` and internal utility packages remain private
+- publishable TypeScript SDK packages are on `0.2.0-beta.3` and internal utility packages remain private
 - both npm publish and crates publish workflows now use GitHub OIDC trusted publishing
+- Angular and TanStack Router auth redirect helpers preserve attempted-route `postAuthRedirectUri` and avoid settling framework guard results after a full-page external redirect starts
 
 The remaining work is about keeping the next release execution repeatable, not about carrying forward alpha-era blockers:
 
@@ -67,7 +68,7 @@ The active baseline excludes:
 
 The reusable Rust package line is the set of workspace library crates under `packages/*`. `apps/server` and `apps/cli` are release artifacts for build/image readiness, not crates.io library publish targets.
 
-The pre-`0.2.0-beta.1` `[patch.crates-io] openidconnect` packaging blocker is closed: the workspace is back on `openidconnect = "4"`. Future release execution still requires a real `cargo package` check for every publishable crate, without treating `--allow-dirty` or `--no-verify` as acceptable evidence.
+The pre-beta `[patch.crates-io] openidconnect` packaging blocker is closed: the workspace is back on `openidconnect = "4"`. Future release execution still requires a real `cargo package` check for every publishable crate, without treating `--allow-dirty` or `--no-verify` as acceptable evidence.
 
 ## Docker Product Boundary
 
@@ -75,7 +76,7 @@ The Docker image is a runtime artifact for the reference server plus web UI outp
 
 - toolchain versions aligned with `mise.toml` / `rust-toolchain.toml` or explicitly documented
 - web UI output copy path matching the real Vite build output
-- tag behavior where pre-release tags such as `v0.2.0-beta.1` do not publish `latest`
+- tag behavior where pre-release tags such as `v0.2.0-beta.3` do not publish `latest`
 - beta-acceptable labels, cache, provenance, and platform decisions
 
 ## Docs Product Boundary
@@ -97,7 +98,7 @@ The project docs should be read as:
 
 ## Deferred To 0.3.0
 
-These topics remain real, but they are outside the `0.2.0-beta.1` and `0.2.x` active release line:
+These topics remain real, but they are outside the `0.2.0-beta.3` and `0.2.x` active release line:
 
 - mixed-custody token ownership
 - stateful BFF / server-side token-set ownership

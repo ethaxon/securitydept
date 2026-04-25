@@ -1,4 +1,8 @@
-import { inject } from "@angular/core";
+import {
+	EnvironmentInjector,
+	inject,
+	runInInjectionContext,
+} from "@angular/core";
 import type {
 	ActivatedRouteSnapshot,
 	CanActivateFn,
@@ -55,6 +59,26 @@ export type TokenSetClientSelector =
 	| { clientKey: string; query?: never }
 	| { clientKey?: never; query: ClientQueryOptions };
 
+/**
+ * Runtime context passed to unauthenticated route handlers.
+ *
+ * `attemptedUrl` is the Angular Router target URL for the navigation being
+ * guarded. Use it as `postAuthRedirectUri`; do not read `Router.url` for this,
+ * because Angular still exposes the currently active URL while a guard is
+ * deciding whether the attempted navigation may proceed.
+ */
+export interface TokenSetRouteUnauthenticatedContext {
+	readonly route: ActivatedRouteSnapshot;
+	readonly state: RouterStateSnapshot;
+	readonly attemptedUrl: string;
+}
+
+export type TokenSetRouteUnauthenticatedHandler = (
+	unauthenticated: ReadonlyArray<UnauthenticatedEntry>,
+	requirement: AuthRequirement,
+	context: TokenSetRouteUnauthenticatedContext,
+) => boolean | string | UrlTree | Promise<boolean | string | UrlTree>;
+
 // ---------------------------------------------------------------------------
 // Per-requirement policy
 // ---------------------------------------------------------------------------
@@ -75,8 +99,10 @@ export type TokenSetClientSelector =
  *   requirementPolicies: {
  *     "confluence-oidc": {
  *       selector: { clientKey: "confluence" },
- *       onUnauthenticated: (failing, req) => {
- *         inject(AuthService).redirectToLogin("confluence").subscribe();
+ *       onUnauthenticated: (_failing, _req, context) => {
+ *         inject(AuthService)
+ *           .redirectToLogin("confluence", context.attemptedUrl)
+ *           .subscribe();
  *         return false;
  *       },
  *     },
@@ -109,10 +135,7 @@ export interface TokenSetRequirementPolicy {
 	 *   - `string` — redirect URL path
 	 *   - `UrlTree` — Angular router tree
 	 */
-	onUnauthenticated: (
-		unauthenticated: ReadonlyArray<UnauthenticatedEntry>,
-		requirement: AuthRequirement,
-	) => boolean | string | UrlTree;
+	onUnauthenticated: TokenSetRouteUnauthenticatedHandler;
 }
 
 // ---------------------------------------------------------------------------
@@ -166,30 +189,23 @@ export interface CreateTokenSetRouteAggregationGuardOptions {
 	 * ```ts
 	 * createTokenSetRouteAggregationGuard({
 	 *   requirementHandlers: {
-	 *     frontend_oidc: (failing, req) => {
-	 *       inject(AuthService).redirectToLogin(failing[0].clientKey).subscribe();
+	 *     frontend_oidc: (failing, _req, context) => {
+	 *       inject(AuthService)
+	 *         .redirectToLogin(failing[0].clientKey, context.attemptedUrl)
+	 *         .subscribe();
 	 *       return false;
 	 *     },
 	 *   },
 	 * })
 	 * ```
 	 */
-	requirementHandlers?: Record<
-		string,
-		(
-			unauthenticated: ReadonlyArray<UnauthenticatedEntry>,
-			requirement: AuthRequirement,
-		) => boolean | string | UrlTree
-	>;
+	requirementHandlers?: Record<string, TokenSetRouteUnauthenticatedHandler>;
 
 	/**
 	 * Fallback handler used when no `requirementPolicies[id]` or
 	 * `requirementHandlers[kind]` is found for the pending requirement.
 	 */
-	defaultOnUnauthenticated?: (
-		unauthenticated: ReadonlyArray<UnauthenticatedEntry>,
-		requirement: AuthRequirement,
-	) => boolean | string | UrlTree;
+	defaultOnUnauthenticated?: TokenSetRouteUnauthenticatedHandler;
 
 	/**
 	 * Custom route data key for reading requirements from route segments.
@@ -254,15 +270,15 @@ export interface CreateTokenSetRouteAggregationGuardOptions {
  * ```ts
  * // routes.ts — declare requirements in route data
  * import { withRouteRequirements } from "@securitydept/client-angular";
- * import { createTokenSetRouteAggregationGuard } from "@securitydept/token-set-context-client-angular";
+ * import {
+ *   createFrontendOidcLoginRedirectHandler,
+ *   createTokenSetRouteAggregationGuard,
+ * } from "@securitydept/token-set-context-client-angular";
  *
  * // Simple — kind-level handler
  * const guard = createTokenSetRouteAggregationGuard({
  *   requirementHandlers: {
- *     frontend_oidc: (_failing, _req) => {
- *       inject(AuthService).redirectToLogin("confluence").subscribe();
- *       return false;
- *     },
+ *     frontend_oidc: createFrontendOidcLoginRedirectHandler({ clientKey: "confluence" }),
  *   },
  * });
  *
@@ -299,8 +315,14 @@ export function createTokenSetRouteAggregationGuard(
 	options: CreateTokenSetRouteAggregationGuardOptions = {},
 ): CanActivateFn {
 	return async (route: ActivatedRouteSnapshot, state: RouterStateSnapshot) => {
+		const injector = inject(EnvironmentInjector);
 		const registry = inject(TokenSetAuthRegistry);
 		const router = inject(Router);
+		const handlerContext: TokenSetRouteUnauthenticatedContext = {
+			route,
+			state,
+			attemptedUrl: state.url,
+		};
 
 		// ── Resolve planner-host ────────────────────────────────────────────
 		const plannerHost =
@@ -393,7 +415,7 @@ export function createTokenSetRouteAggregationGuard(
 			attributes: r.requirement.attributes,
 			checkAuthenticated: () =>
 				r.entries.every(({ service }) => service.isAuthenticated()),
-			onUnauthenticated: (): boolean | string => {
+			onUnauthenticated: async (): Promise<boolean | string> => {
 				const failing = r.entries.filter(
 					({ service }) => !service.isAuthenticated(),
 				);
@@ -405,10 +427,17 @@ export function createTokenSetRouteAggregationGuard(
 
 				if (!handler) return false;
 
-				const result = handler(failing, r.requirement);
-				if (typeof result === "string") return result;
-				if (typeof result === "boolean") return result;
-				return result.toString();
+				const result = runUnauthenticatedHandlerInContext(
+					injector,
+					handler,
+					failing,
+					r.requirement,
+					handlerContext,
+				);
+				const resolved = await result;
+				if (typeof resolved === "string") return resolved;
+				if (typeof resolved === "boolean") return resolved;
+				return resolved.toString();
 			},
 			_resolved: r,
 		}));
@@ -435,7 +464,13 @@ export function createTokenSetRouteAggregationGuard(
 
 				if (!handler) return false;
 
-				const action = await handler(failing, candidate._resolved.requirement);
+				const action = await runUnauthenticatedHandlerInContext(
+					injector,
+					handler,
+					failing,
+					candidate._resolved.requirement,
+					handlerContext,
+				);
 				if (typeof action === "string") return router.parseUrl(action);
 				if (typeof action === "boolean") return action;
 				return action;
@@ -463,4 +498,77 @@ export function createTokenSetRouteAggregationGuard(
 			),
 		);
 	};
+}
+
+function runUnauthenticatedHandlerInContext(
+	injector: EnvironmentInjector,
+	handler: TokenSetRouteUnauthenticatedHandler,
+	unauthenticated: ReadonlyArray<UnauthenticatedEntry>,
+	requirement: AuthRequirement,
+	context: TokenSetRouteUnauthenticatedContext,
+): boolean | string | UrlTree | Promise<boolean | string | UrlTree> {
+	return runInInjectionContext(injector, () =>
+		handler(unauthenticated, requirement, context),
+	);
+}
+
+/**
+ * Build an Angular route-security handler that starts frontend-oidc login and
+ * records the attempted navigation URL as `postAuthRedirectUri`.
+ *
+ * Use this instead of reading `Router.url` inside a guard handler. During guard
+ * execution Angular has not committed the attempted navigation yet, so
+ * `Router.url` still points at the previously active page.
+ *
+ * After the browser redirect is started, the returned guard result intentionally
+ * never settles. That keeps Angular from finalizing the rejected in-app
+ * navigation while the page is already leaving for an external IdP.
+ */
+export function createFrontendOidcLoginRedirectHandler(options?: {
+	/**
+	 * Explicit client key. When omitted, the first failing registry entry is
+	 * used, which is the common one-client-per-requirement case.
+	 */
+	clientKey?: string;
+	/**
+	 * Fallback used only when Angular does not provide a target URL.
+	 * @default "/"
+	 */
+	fallbackPostAuthRedirectUri?: string;
+}): TokenSetRouteUnauthenticatedHandler {
+	return async (unauthenticated, _requirement, context) => {
+		const clientKey = options?.clientKey ?? unauthenticated[0]?.clientKey;
+		if (!clientKey) return false;
+
+		const registry = inject(TokenSetAuthRegistry);
+		const service = await registry.whenReady(clientKey);
+		if (!isLoginWithRedirectClient(service.client)) return false;
+
+		await service.client.loginWithRedirect({
+			postAuthRedirectUri:
+				context.attemptedUrl || options?.fallbackPostAuthRedirectUri || "/",
+		});
+		return await neverSettlingRedirectGuardResult();
+	};
+}
+
+function neverSettlingRedirectGuardResult(): Promise<never> {
+	return new Promise<never>(() => {
+		// Intentionally never resolves: a full-page browser redirect is in progress.
+	});
+}
+
+interface LoginWithRedirectClient {
+	loginWithRedirect(options?: { postAuthRedirectUri?: string }): Promise<void>;
+}
+
+function isLoginWithRedirectClient(
+	client: unknown,
+): client is LoginWithRedirectClient {
+	return (
+		typeof client === "object" &&
+		client !== null &&
+		"loginWithRedirect" in client &&
+		typeof client.loginWithRedirect === "function"
+	);
 }

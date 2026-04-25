@@ -6,7 +6,7 @@
 
 SecurityDept 是一个分层的认证和授权工具包。它以可复用 Rust crates、TypeScript SDK packages，以及用于验证真实 server / browser 部署契约的 reference apps 形式交付。
 
-当前 release line：`0.2.0-beta.2`。这条 beta line 聚焦现有 auth stack 的 packaging、文档、release automation 与 reference-app readiness。
+当前 release line：`0.2.0-beta.3`。这条 beta line 聚焦现有 auth stack 的 packaging、文档、release automation 与 reference-app readiness。
 
 <p class="badges" align="center">
   <a href="https://www.npmjs.com/package/@securitydept/client"><img src="https://img.shields.io/npm/v/%40securitydept%2Fclient?logo=npm&label=npm" alt="npm"></a>

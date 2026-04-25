@@ -2,7 +2,7 @@
 
 本文是 SecurityDept 文档地图。README 是仓库入口页；本概览说明不同读者下一步应该看哪里，以及当前 artifact 边界是什么。
 
-当前 release line：`0.2.0-beta.1`。
+当前 release line：`0.2.0-beta.3`。
 
 ## 读者路径
 

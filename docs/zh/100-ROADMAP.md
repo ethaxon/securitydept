@@ -1,26 +1,27 @@
 # 路线图
 
-本文是 SecurityDept 当前 planning authority，负责描述 `0.2.0-beta.1` readiness line、`0.2.x` backlog，以及延期到 `0.3.0` 的主题。
+本文是 SecurityDept 当前 planning authority，负责描述 `0.2.0-beta.3` readiness line、`0.2.x` backlog，以及延期到 `0.3.0` 的主题。
 
 它不解释完整 auth-context model 或 SDK package map。auth context / mode 设计见 [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md)，TypeScript SDK adopter guide 见 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)，public-surface migration guidance 见 [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md)。
 
 ## 当前发布目标
 
-当前已发布基线是 `0.2.0-beta.1`。
+当前已发布基线是 `0.2.0-beta.3`。
 
-这个 beta 不是新的 auth capability milestone。它是当前 reusable Rust crates、TypeScript SDK packages、Docker image 与 static docs site 的第一条 packaging / documentation readiness line，并且 npm / crates 的手动发布已经发生。
+这个 beta 不是新的 auth context milestone。它是当前 reusable Rust crates、TypeScript SDK packages、Docker image 与 static docs site 的 packaging、documentation、downstream-adopter router correctness 与 release-readiness line。
 
 当前仓库侧的目标不再是“证明能不能发布”，而是保持 release automation、authority docs 与已发布事实一致，为下一次 release execution 继续提供可复用路径。
 
-## 0.2.0-beta.1 Release Record And Remaining Work
+## 0.2.0-beta.3 Release Record And Remaining Work
 
-`0.2.0-beta.1` 的 Rust crates 与 publishable TS SDK packages 已完成手动发布。此前阻断 release execution 的以下事项已经关闭：
+版本权威已推进到 `0.2.0-beta.3`。发布执行前后必须持续保持以下 release-readiness 事实一致：
 
-- publishable Rust crates 版本、metadata、dependency order 与默认 `cargo package` report 已收口到 `0.2.0-beta.1`
+- publishable Rust crates 版本、metadata、dependency order 与默认 `cargo package` report 必须对齐到 `0.2.0-beta.3`
 - root `[patch.crates-io] openidconnect` 已移除，workspace 已回到 `openidconnect = "4"`
 - `apps/server` 与 `apps/cli` 已明确为 `publish = false` 的 application artifacts
-- publishable TS SDK packages 已切到 `0.2.0-beta.1`，internal utility packages 保持 private
+- publishable TS SDK packages 已切到 `0.2.0-beta.3`，internal utility packages 保持 private
 - npm publish workflow 与 crates publish workflow 都已切到 GitHub OIDC trusted publishing
+- Angular 与 TanStack Router auth redirect helpers 会保留 attempted-route `postAuthRedirectUri`，并在启动整页外部 redirect 后避免 settle framework guard result
 
 当前仍需持续维护的事项是下一次 release execution 的可重复性，而不是 alpha-era blocker：
 
@@ -67,7 +68,7 @@ TypeScript 仍是 `0.2.x` 唯一 active SDK productization language。
 
 可复用 Rust package line 是 `packages/*` 下的 workspace library crates。`apps/server` 与 `apps/cli` 是 build/image readiness 的 release artifacts，不是 crates.io library publish targets。
 
-`0.2.0-beta.1` 之前的 `[patch.crates-io] openidconnect` packaging blocker 已关闭：当前 workspace 已回到 `openidconnect = "4"`。后续 release execution 仍应继续对每个 publishable crate 执行真实 `cargo package` check，不得把 `--allow-dirty` 或 `--no-verify` 当通过证据。
+pre-beta 阶段的 `[patch.crates-io] openidconnect` packaging blocker 已关闭：当前 workspace 已回到 `openidconnect = "4"`。后续 release execution 仍应继续对每个 publishable crate 执行真实 `cargo package` check，不得把 `--allow-dirty` 或 `--no-verify` 当通过证据。
 
 ## Docker Product Boundary
 
@@ -75,7 +76,7 @@ Docker image 是 reference server 加 web UI output 的 runtime artifact。Beta 
 
 - toolchain versions 与 `mise.toml` / `rust-toolchain.toml` 对齐，或显式记录偏差
 - web UI output copy path 与真实 Vite build output 一致
-- pre-release tag（例如 `v0.2.0-beta.1`）不发布 `latest`
+- pre-release tag（例如 `v0.2.0-beta.3`）不发布 `latest`
 - labels、cache、provenance、platform decisions 达到 beta baseline
 
 ## Docs Product Boundary
@@ -97,7 +98,7 @@ Docker image 是 reference server 加 web UI output 的 runtime artifact。Beta 
 
 ## 延期到 0.3.0 的主题
 
-以下主题仍然真实存在，但不属于 `0.2.0-beta.1` 与 `0.2.x` active release line：
+以下主题仍然真实存在，但不属于 `0.2.0-beta.3` 与 `0.2.x` active release line：
 
 - mixed-custody token ownership
 - stateful BFF / server-side token-set ownership

@@ -51,13 +51,13 @@ release channel 由版本号自动推断，而不是手工传参。
 
 - `node scripts/release-cli.ts metadata sync`
 - `node scripts/release-cli.ts version check`
-- `node scripts/release-cli.ts version set 0.2.0-beta.2`
+- `node scripts/release-cli.ts version set 0.2.0-beta.3`
 - `node scripts/release-cli.ts npm publish --mode=dry-run`
 - `node scripts/release-cli.ts npm publish --mode=publish --provenance`
 - `node scripts/release-cli.ts crates publish --mode=package --report=temp/release/crates/package-report.json`
 - `node scripts/release-cli.ts crates publish --mode=package --allow-blocked --allow-dirty --report=temp/release/crates/blocked-package-report.json`
 - `node scripts/release-cli.ts crates publish --mode=publish --report=temp/release/crates/publish-report.json`
-- `node scripts/release-cli.ts docker publish --ref=refs/tags/v0.2.0-beta.2`
+- `node scripts/release-cli.ts docker publish --ref=refs/tags/v0.2.0-beta.3`
 
 行为规则：
 
@@ -116,11 +116,11 @@ release 相关 workflow 必须遵循：
 2. `mise exec --command "just release-version-check"`
 3. `mise exec --command "just release-npm-dry-run"`
 4. `mise exec --command "just release-crates-package"`
-5. `mise exec --command "just release-docker-metadata v0.2.0-beta.2"`
+5. `mise exec --command "just release-docker-metadata v0.2.0-beta.3"`
 
 如果需要先推进版本：
 
-1. `mise exec --command "just release-version-set 0.2.0-beta.2"`
+1. `mise exec --command "just release-version-set 0.2.0-beta.3"`
 2. `mise exec --command "just release-version-check"`
 
 ## 维护要求

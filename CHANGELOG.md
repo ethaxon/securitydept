@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0-beta.3]
+
+### Added
+
+- Added attempted-route unauthenticated handler context for Angular and TanStack Router adapters so external auth redirects can preserve the correct `postAuthRedirectUri`.
+- Added route helper support for full-page external auth redirects that intentionally never settle framework guard results after browser navigation starts.
+
+### Fixed
+
+- Fixed Angular token-set route unauthenticated handlers so `inject()` remains valid after async planner work.
+- Fixed Angular and TanStack Router login redirects to avoid using stale committed router URLs when a protected target route triggers authentication.
+
 ## [0.2.0-beta.2]
 
 ### Changed

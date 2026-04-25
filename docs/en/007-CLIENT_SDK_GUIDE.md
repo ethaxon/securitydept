@@ -29,7 +29,7 @@ Non-authority:
 - TypeScript is the only active SDK productization track for `0.2.x`.
 - Framework adapters stay thin and consume shared core owners rather than becoming first owners of framework-neutral behavior.
 - Public surface changes move together with inventory, evidence, docs anchors, and migration ledger entries.
-- `0.2.0-beta.1` release preparation is packaging and documentation readiness work; it does not add auth capability.
+- `0.2.0-beta.3` release preparation is packaging, documentation, downstream-adopter router correctness, and release readiness work; it does not add a new auth context.
 
 ## Terminology and Naming
 
@@ -147,7 +147,7 @@ SDK errors expose machine-facing codes and host-facing recovery hints where rele
 
 ## Logging, Tracing, and Testing
 
-`@securitydept/client` owns the minimal trace event and operation-correlation primitives used by SDK flows. `@securitydept/test-utils` remains experimental and is not a `0.2.0-beta.1` npm publish target.
+`@securitydept/client` owns the minimal trace event and operation-correlation primitives used by SDK flows. `@securitydept/test-utils` remains experimental and is not a current beta npm publish target.
 
 ## Build, Compatibility, and Side Effects
 
@@ -247,6 +247,10 @@ Framework router adapters are owned by:
 - `@securitydept/client-angular`
 
 Canonical semantics: full matched-route chain aggregation, `inherit` / `merge` / `replace`, child-route serializable metadata, root-level runtime policy, and no product chooser UI in the SDK.
+
+Angular token-set route handlers receive a route unauthenticated context with `attemptedUrl`. Use that value, or `createFrontendOidcLoginRedirectHandler()`, when starting `frontend-oidc` login so the attempted navigation is recorded as `postAuthRedirectUri`. Do not read Angular `Router.url` for this value inside a guard handler, because the attempted navigation has not been committed yet. A handler that has started a full-page external redirect should not resolve to `false`; the SDK helper returns a never-settling guard result after starting the redirect so Angular does not finalize an in-app navigation cancel while the page is leaving.
+
+TanStack Router's `createSecureBeforeLoad()` likewise passes an unauthenticated handler context with `attemptedUrl`. React/TanStack adopters that start a full-page external auth redirect should use `createExternalRedirectBeforeLoadHandler()`, call their login client inside the callback, and pass `context.attemptedUrl` as `postAuthRedirectUri`. Do not infer the target page from `window.location`; while `beforeLoad` is running, the current document URL may still be the previously committed route.
 
 ### token-set-context-client v1 Scope Baseline
 
@@ -383,7 +387,7 @@ This is the token-set React consumer surface. It owns groups/entries read and wr
 
 ### Current Bundle / Code Split Judgment
 
-Bundle and code-splitting are engineering optimization topics, not public-contract blockers for `0.2.0-beta.1`.
+Bundle and code-splitting are engineering optimization topics, not public-contract blockers for the current `0.2.0-beta.3` line.
 
 ### Demo and OIDC Provider
 
