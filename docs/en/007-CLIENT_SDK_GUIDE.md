@@ -313,11 +313,35 @@ Layering rules:
 - `provideBasicAuthContext({ config })`: auth-context config only.
 - `SessionContextService.client`: auth-context behavior; Angular DI owns host registration and transport injection.
 - `provideTokenSetAuth({ clients, idleWarmup })`: Angular host registration; each client entry still owns auth-context config and runtime composition.
-- `provideTokenSetBearerInterceptor(options?)` / `createTokenSetBearerInterceptor(registry, options?)`: bearer-header injection using the SDK options-object API form. `BearerInterceptorOptions.strictUrlMatch` controls unmatched URL behavior:
+- `provideTokenSetBearerInterceptor(options?)` / `createTokenSetBearerInterceptor(registry, options?)`: freshness-aware bearer-header injection using the SDK options-object API form. Before adding `Authorization`, the interceptor calls the shared refresh barrier. An expired token with refresh material is refreshed before the protected request proceeds; an expired token without usable refresh material produces no stale bearer and the auth state is cleared. `BearerInterceptorOptions.strictUrlMatch` controls unmatched URL behavior:
   - default `strictUrlMatch: false`: keeps the single-client convenience fallback that injects `registry.accessToken()` for unmatched URLs; use only when the host calls exactly one registered backend.
   - `strictUrlMatch: true`: unmatched URLs receive no `Authorization` header.
   - multi-backend, multi-audience, or third-party-traffic Angular adopters MUST use `strictUrlMatch: true`.
   - `TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS` is exported for advanced DI/test overrides.
+
+Freshness is owned by the token-set core, not by one framework adapter. `authorizationHeader()` is a synchronous fresh-or-null projection, while `ensureAuthorizationHeader()` waits for the coalesced refresh barrier and is the safe API for protected requests. The registry, Angular service, React service, React Query transport helper, and generic authorized transport all prefer the async ensure path when available. `AuthMaterialController` has no protocol-level refresh capability, so its `authorizationHeader` and `createTransport()` use fresh-or-null projection: expired or invalid-expiry material returns `null`, and `requireAuthorization: true` raises unauthenticated instead of sending a stale bearer. `registry.accessToken()` remains a sync convenience and returns `null` for expired material; use `registry.ensureAccessToken(key)` or `registry.ensureAuthorizationHeader(key)` when a request must wait for refresh. Calling the async registry helpers without a key is only valid when exactly one client is ready.
+
+If a downstream resource server reports `ExpiredSignature`, the rejection is correct: the frontend sent an expired JWT and the SDK/adopter must not inject that bearer. Diagnose whether the browser has refresh material before blaming the refresh barrier:
+
+```ts
+Object.entries(localStorage)
+  .filter(([k]) => k.includes("outposts.web.auth"))
+  .map(([key, raw]) => {
+    try {
+      const parsed = JSON.parse(raw);
+      const tokens = parsed.value?.tokens ?? parsed.tokens;
+      return {
+        key,
+        accessTokenExpiresAt: tokens?.accessTokenExpiresAt,
+        hasRefreshMaterial: Boolean(tokens?.refreshMaterial),
+      };
+    } catch {
+      return { key, parseError: true };
+    }
+  });
+```
+
+When `hasRefreshMaterial=false`, check the IdP, requested scopes, and refresh-token policy; the SDK still must not send the expired access token. When `hasRefreshMaterial=true`, the SDK should refresh before the first protected request or move the client to unauthenticated state, so `ExpiredSignature` should not appear on a request sent through the SDK bearer interceptor or authorized transport.
 
 #### 5. SSR / server-host entry: dedicated `./server` helpers
 
@@ -372,7 +396,7 @@ The registry owns `primary` / `lazy` initialization priority, `preload`, `whenRe
 
 **Subpath**: `@securitydept/token-set-context-client-react/react-query`
 
-This is the token-set React consumer surface. It owns groups/entries read and write hooks, readiness queries, keyed hook ergonomics, authorization-header derivation, query-key namespace, and canonical invalidation for token-set management flows. It is not the login, refresh, or runtime authority.
+This is the token-set React consumer surface. It owns groups/entries read and write hooks, readiness queries, keyed hook ergonomics, freshness-aware authorization-header derivation, query-key namespace, and canonical invalidation for token-set management flows. It is not the login, refresh, or runtime authority; request-time bearer injection still delegates to the token-set core refresh barrier.
 
 ## Examples and Reference Implementations
 
@@ -383,7 +407,7 @@ This is the token-set React consumer surface. It owns groups/entries read and wr
 
 ### Downstream Reference Case: Outposts
 
-`~/workspace/outposts` validates the real Angular adopter path. It uses `provideTokenSetAuth(...)` plus `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`, proving strict URL-prefix bounded bearer injection against a downstream `confluence` backend. Its app-local auth service remains adopter glue, not an SDK API template.
+`~/workspace/outposts` validates the real Angular adopter path. It uses `provideTokenSetAuth(...)` plus `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`, proving strict URL-prefix bounded bearer injection against a downstream `confluence` backend. The path also calibrates stale-token handling: the SDK must refresh or clear before the first protected Confluence request instead of sending an expired bearer that the backend correctly rejects with `ExpiredSignature`. Its app-local auth service remains adopter glue, not an SDK API template.
 
 ### Current Bundle / Code Split Judgment
 

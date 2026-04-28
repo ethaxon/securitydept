@@ -1,0 +1,451 @@
+name: Release
+
+on:
+    workflow_run:
+        workflows:
+            - Tests
+        types:
+            - completed
+    workflow_dispatch:
+        inputs:
+            source_ref:
+                description: Source ref to release, such as refs/heads/release or refs/tags/v0.2.0.
+                required: false
+                type: string
+            source_sha:
+                description: Source commit SHA to release. Defaults to the selected ref SHA.
+                required: false
+                type: string
+            publish_npm:
+                description: Publish npm packages.
+                required: true
+                type: boolean
+                default: false
+            publish_crates:
+                description: Publish Rust crates.
+                required: true
+                type: boolean
+                default: false
+            publish_docker:
+                description: Publish Docker image.
+                required: true
+                type: boolean
+                default: false
+
+permissions:
+    contents: read
+
+concurrency:
+    group: release-${{ github.event.workflow_run.head_sha || inputs.source_sha || inputs.source_ref || github.ref }}
+    cancel-in-progress: false
+
+env:
+    RELEASE_BRANCH: release
+    REGISTRY: ghcr.io
+    IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+    release-plan:
+        if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+        runs-on: ubuntu-latest
+        outputs:
+            source_event: ${{ steps.plan.outputs.source_event }}
+            source_ref: ${{ steps.plan.outputs.source_ref }}
+            source_ref_name: ${{ steps.plan.outputs.source_ref_name }}
+            source_sha: ${{ steps.plan.outputs.source_sha }}
+            version: ${{ steps.plan.outputs.version }}
+            expected_tag: ${{ steps.plan.outputs.expected_tag }}
+            expected_tag_status: ${{ steps.plan.outputs.expected_tag_status }}
+            expected_tag_target: ${{ steps.plan.outputs.expected_tag_target }}
+            expected_tag_policy: ${{ steps.plan.outputs.expected_tag_policy }}
+            can_publish: ${{ steps.plan.outputs.can_publish }}
+            publish_npm: ${{ steps.plan.outputs.publish_npm }}
+            publish_crates: ${{ steps.plan.outputs.publish_crates }}
+            publish_docker: ${{ steps.plan.outputs.publish_docker }}
+            local_run: ${{ steps.plan.outputs.local_run }}
+            cache_scope: ${{ steps.plan.outputs.cache_scope }}
+            release_branch: ${{ steps.plan.outputs.release_branch }}
+        steps:
+            - name: Checkout source
+              uses: actions/checkout@v6
+              with:
+                  ref: ${{ github.event.workflow_run.head_sha || inputs.source_sha || inputs.source_ref || github.sha }}
+                  fetch-depth: 0
+
+            - name: Setup mise and pnpm dependencies
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  cache-mode: read-write
+
+            - name: Resolve release plan
+              id: plan
+              env:
+                  PUBLISH_NPM: ${{ github.event_name == 'workflow_run' && 'auto' || inputs.publish_npm }}
+                  PUBLISH_CRATES: ${{ github.event_name == 'workflow_run' && 'auto' || inputs.publish_crates }}
+                  PUBLISH_DOCKER: ${{ github.event_name == 'workflow_run' && 'auto' || inputs.publish_docker }}
+                  SOURCE_REF: ${{ inputs.source_ref || '' }}
+                  SOURCE_SHA: ${{ inputs.source_sha || '' }}
+              run: >-
+                  mise exec --command "node scripts/release-cli.ts workflow release-plan
+                  --format=github-output --source-ref=${SOURCE_REF} --source-sha=${SOURCE_SHA}
+                  --publish-npm=${PUBLISH_NPM} --publish-crates=${PUBLISH_CRATES}
+                  --publish-docker=${PUBLISH_DOCKER}"
+
+            - name: Validate release source
+              if: steps.plan.outputs.can_publish == 'true'
+              run: >-
+                  mise exec --command "node scripts/release-cli.ts workflow
+                  validate-release-ref --kind=release --mode=publish
+                  --ref=${{ steps.plan.outputs.source_ref }}
+                  --ref-name=${{ steps.plan.outputs.source_ref_name }}
+                  --sha=${{ steps.plan.outputs.source_sha }}"
+
+            - name: Upload release plan report
+              uses: actions/upload-artifact@v7
+              with:
+                  name: release-plan-report
+                  path: temp/release/release-plan.json
+
+    rust-release-cache-prime:
+        if: needs.release-plan.outputs.can_publish == 'true' && needs.release-plan.outputs.publish_docker == 'true'
+        needs: release-plan
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout source
+              uses: actions/checkout@v6
+              with:
+                  ref: ${{ needs.release-plan.outputs.source_sha }}
+
+            - name: Setup mise and pnpm dependencies
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  cache-mode: read-only
+
+            - name: Restore Rust release build cache
+              uses: ./.github/actions/setup-rust-cache
+              with:
+                  shared-key: securitydept-rust-${{ runner.os }}-${{ needs.release-plan.outputs.cache_scope }}-release
+                  cache-mode: read-write
+
+            - name: Prime Rust release build cache
+              run: mise exec --command "cargo build --workspace --all-features --release --all-targets"
+
+    npm-release:
+        if: needs.release-plan.outputs.can_publish == 'true' && needs.release-plan.outputs.publish_npm == 'true'
+        needs: release-plan
+        runs-on: ubuntu-latest
+        environment:
+            name: npm-release
+        permissions:
+            contents: read
+            id-token: write
+        steps:
+            - name: Checkout source
+              uses: actions/checkout@v6
+              with:
+                  ref: ${{ needs.release-plan.outputs.source_sha }}
+
+            - name: Setup mise and pnpm dependencies
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  cache-mode: read-only
+
+            - name: Build TypeScript SDK packages for npm release
+              run: mise exec -C sdks/ts --command "pnpm build"
+
+            - name: Publish npm packages
+              env:
+                  LOCAL_RUN: ${{ needs.release-plan.outputs.local_run }}
+              run: |
+                  set -euo pipefail
+                  if [[ "${LOCAL_RUN}" == "true" ]]; then
+                    mise exec --command "node scripts/release-cli.ts npm publish --mode=dry-run --report=temp/release/npm/dry-run-report.json"
+                  else
+                    mise exec --command "node scripts/release-cli.ts npm publish --mode=publish --provenance --report=temp/release/npm/publish-report.json"
+                  fi
+
+            - name: Upload npm release artifacts
+              uses: actions/upload-artifact@v7
+              with:
+                  name: npm-publish-report
+                  path: temp/release/npm
+
+    crates-release:
+        if: needs.release-plan.outputs.can_publish == 'true' && needs.release-plan.outputs.publish_crates == 'true'
+        needs: release-plan
+        runs-on: ubuntu-latest
+        environment:
+            name: crates-io-release
+        permissions:
+            contents: read
+            id-token: write
+        steps:
+            - name: Checkout source
+              uses: actions/checkout@v6
+              with:
+                  ref: ${{ needs.release-plan.outputs.source_sha }}
+                  fetch-depth: 0
+
+            - name: Setup mise and pnpm dependencies
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  cache-mode: read-only
+
+            - name: Restore Rust debug build cache
+              uses: ./.github/actions/setup-rust-cache
+              with:
+                  shared-key: securitydept-rust-${{ runner.os }}-${{ needs.release-plan.outputs.cache_scope }}-debug
+                  cache-mode: read-only
+
+            - name: Run crates package gate
+              run: >-
+                  mise exec --command "node scripts/release-cli.ts crates publish
+                  --mode=package --report=temp/release/crates/package-report.json"
+
+            - name: Exchange GitHub OIDC token for crates.io publish token
+              if: needs.release-plan.outputs.local_run != 'true'
+              id: crates-io-auth
+              uses: rust-lang/crates-io-auth-action@v1
+
+            - name: Publish Rust crates
+              if: needs.release-plan.outputs.local_run != 'true'
+              env:
+                  CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
+              run: >-
+                  mise exec --command "node scripts/release-cli.ts crates publish
+                  --mode=publish --report=temp/release/crates/publish-report.json"
+
+            - name: Record local crates publish dry run
+              if: needs.release-plan.outputs.local_run == 'true'
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  cp temp/release/crates/package-report.json temp/release/crates/publish-report.json
+
+            - name: Upload crates release artifacts
+              uses: actions/upload-artifact@v7
+              with:
+                  name: crates-publish-report
+                  path: temp/release/crates
+
+    docker-release:
+        if: needs.release-plan.outputs.can_publish == 'true' && needs.release-plan.outputs.publish_docker == 'true'
+        needs:
+            - release-plan
+            - rust-release-cache-prime
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+        steps:
+            - name: Checkout source
+              uses: actions/checkout@v6
+              with:
+                  ref: ${{ needs.release-plan.outputs.source_sha }}
+
+            - name: Setup mise and pnpm dependencies
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  cache-mode: read-only
+
+            - name: Restore Rust release build cache
+              uses: ./.github/actions/setup-rust-cache
+              with:
+                  shared-key: securitydept-rust-${{ runner.os }}-${{ needs.release-plan.outputs.cache_scope }}-release
+                  cache-mode: read-only
+
+            - name: Build runtime binaries
+              run: |
+                  mise exec --command "cargo build --release --manifest-path apps/server/Cargo.toml --bin securitydept-server"
+                  mise exec --command "cargo build --release --manifest-path apps/cli/Cargo.toml --bin securitydept-cli"
+
+            - name: Build web UI assets
+              run: mise exec --command "pnpm -r --filter @securitydept/webui... build"
+
+            - name: Stage runtime artifacts
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  rm -rf release-runtime
+                  mkdir -p release-runtime/bin release-runtime/webui temp/release/docker
+                  cp target/release/securitydept-server release-runtime/bin/securitydept-server
+                  cp target/release/securitydept-cli release-runtime/bin/securitydept-cli
+                  cp -R webui/. release-runtime/webui/
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v4
+
+            - name: Log in to GHCR
+              if: needs.release-plan.outputs.local_run != 'true'
+              uses: docker/login-action@v4
+              with:
+                  registry: ${{ env.REGISTRY }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Resolve Docker tags and labels
+              id: docker_plan
+              shell: bash
+              env:
+                  SOURCE_REF: ${{ needs.release-plan.outputs.source_ref }}
+                  SOURCE_SHA: ${{ needs.release-plan.outputs.source_sha }}
+                  EXPECTED_TAG: ${{ needs.release-plan.outputs.expected_tag }}
+              run: |
+                  set -euo pipefail
+                  image_ref="$(printf '%s' "${REGISTRY}/${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
+                  docker_ref="${SOURCE_REF}"
+                  if [[ "${docker_ref}" == "refs/heads/${RELEASE_BRANCH}" ]]; then
+                    docker_ref="refs/tags/${EXPECTED_TAG}"
+                  fi
+                  mise exec --command "node scripts/release-cli.ts docker publish --format=github-output --ref=${docker_ref} --sha=${SOURCE_SHA} --revision=${SOURCE_SHA} --image=${image_ref} --source-url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+                  mise exec --command "node scripts/release-cli.ts docker publish --format=json --ref=${docker_ref} --sha=${SOURCE_SHA} --revision=${SOURCE_SHA} --image=${image_ref} --source-url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" > temp/release/docker/publish-report.json
+
+            - name: Build and push runtime Docker image
+              if: needs.release-plan.outputs.local_run != 'true'
+              uses: docker/build-push-action@v7
+              with:
+                  context: .
+                  file: ./Dockerfile.runtime
+                  platforms: linux/amd64
+                  push: true
+                  tags: ${{ steps.docker_plan.outputs.tags }}
+                  labels: ${{ steps.docker_plan.outputs.labels }}
+                  cache-from: type=gha,scope=docker-runtime-amd64
+                  cache-to: type=gha,mode=max,scope=docker-runtime-amd64
+
+            - name: Build runtime Docker image locally
+              if: needs.release-plan.outputs.local_run == 'true'
+              uses: docker/build-push-action@v7
+              with:
+                  context: .
+                  file: ./Dockerfile.runtime
+                  platforms: linux/amd64
+                  push: false
+                  load: true
+                  tags: ${{ steps.docker_plan.outputs.tags }}
+                  labels: ${{ steps.docker_plan.outputs.labels }}
+
+            - name: Upload Docker release artifacts
+              uses: actions/upload-artifact@v7
+              with:
+                  name: docker-publish-report
+                  path: |
+                      temp/release/docker
+                      release-runtime
+
+    release-report:
+        if: always()
+        needs:
+            - release-plan
+            - npm-release
+            - crates-release
+            - docker-release
+        runs-on: ubuntu-latest
+        steps:
+            - name: Write release workflow report
+              shell: bash
+              env:
+                  SOURCE_REF: ${{ needs.release-plan.outputs.source_ref }}
+                  SOURCE_REF_NAME: ${{ needs.release-plan.outputs.source_ref_name }}
+                  SOURCE_SHA: ${{ needs.release-plan.outputs.source_sha }}
+                  VERSION: ${{ needs.release-plan.outputs.version }}
+                  EXPECTED_TAG: ${{ needs.release-plan.outputs.expected_tag }}
+                  EXPECTED_TAG_STATUS: ${{ needs.release-plan.outputs.expected_tag_status }}
+                  EXPECTED_TAG_TARGET: ${{ needs.release-plan.outputs.expected_tag_target }}
+                  EXPECTED_TAG_POLICY: ${{ needs.release-plan.outputs.expected_tag_policy }}
+                  CAN_PUBLISH: ${{ needs.release-plan.outputs.can_publish }}
+                  PUBLISH_NPM: ${{ needs.release-plan.outputs.publish_npm }}
+                  PUBLISH_CRATES: ${{ needs.release-plan.outputs.publish_crates }}
+                  PUBLISH_DOCKER: ${{ needs.release-plan.outputs.publish_docker }}
+                  LOCAL_RUN: ${{ needs.release-plan.outputs.local_run }}
+                  NPM_RESULT: ${{ needs.npm-release.result }}
+                  CRATES_RESULT: ${{ needs.crates-release.result }}
+                  DOCKER_RESULT: ${{ needs.docker-release.result }}
+              run: |
+                  set -euo pipefail
+                  mkdir -p temp/release
+                  cat > temp/release/release-workflow-report.json <<EOF
+                  {
+                    "schemaVersion": 1,
+                    "createdAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+                    "sourceRef": "${SOURCE_REF}",
+                    "sourceRefName": "${SOURCE_REF_NAME}",
+                    "sourceSha": "${SOURCE_SHA}",
+                    "version": "${VERSION}",
+                    "expectedTag": "${EXPECTED_TAG}",
+                    "expectedTagStatus": "${EXPECTED_TAG_STATUS}",
+                    "expectedTagTarget": "${EXPECTED_TAG_TARGET}",
+                    "expectedTagPolicy": "${EXPECTED_TAG_POLICY}",
+                    "canPublish": ${CAN_PUBLISH:-false},
+                    "publishNpm": ${PUBLISH_NPM:-false},
+                    "publishCrates": ${PUBLISH_CRATES:-false},
+                    "publishDocker": ${PUBLISH_DOCKER:-false},
+                    "localRun": ${LOCAL_RUN:-false},
+                    "jobs": {
+                      "npmRelease": "${NPM_RESULT}",
+                      "cratesRelease": "${CRATES_RESULT}",
+                      "dockerRelease": "${DOCKER_RESULT}"
+                    }
+                  }
+                  EOF
+
+            - name: Upload release workflow report
+              uses: actions/upload-artifact@v7
+              with:
+                  name: release-workflow-report
+                  path: temp/release/release-workflow-report.json
+
+            - name: Enforce release job results
+              if: needs.release-plan.outputs.can_publish == 'true'
+              shell: bash
+              env:
+                  PUBLISH_NPM: ${{ needs.release-plan.outputs.publish_npm }}
+                  PUBLISH_CRATES: ${{ needs.release-plan.outputs.publish_crates }}
+                  PUBLISH_DOCKER: ${{ needs.release-plan.outputs.publish_docker }}
+                  NPM_RESULT: ${{ needs.npm-release.result }}
+                  CRATES_RESULT: ${{ needs.crates-release.result }}
+                  DOCKER_RESULT: ${{ needs.docker-release.result }}
+              run: |
+                  set -euo pipefail
+                  if [[ "${PUBLISH_NPM}" == "true" && "${NPM_RESULT}" != "success" ]]; then
+                    exit 1
+                  fi
+                  if [[ "${PUBLISH_CRATES}" == "true" && "${CRATES_RESULT}" != "success" ]]; then
+                    exit 1
+                  fi
+                  if [[ "${PUBLISH_DOCKER}" == "true" && "${DOCKER_RESULT}" != "success" ]]; then
+                    exit 1
+                  fi
+
+    release-tag:
+        if: >-
+            needs.release-plan.outputs.can_publish == 'true' &&
+            needs.release-plan.outputs.local_run != 'true' &&
+            needs.release-plan.outputs.source_ref == 'refs/heads/release' &&
+            (needs.release-plan.outputs.publish_npm == 'true' ||
+            needs.release-plan.outputs.publish_crates == 'true' ||
+            needs.release-plan.outputs.publish_docker == 'true')
+        needs:
+            - release-plan
+            - release-report
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - name: Checkout source
+              uses: actions/checkout@v6
+              with:
+                  ref: ${{ needs.release-plan.outputs.source_sha }}
+                  fetch-depth: 0
+
+            - name: Setup mise and pnpm dependencies
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  cache-mode: read-only
+
+            - name: Create or verify release tag
+              run: >-
+                  mise exec --command "node scripts/release-cli.ts workflow
+                  ensure-release-tag --ref=${{ needs.release-plan.outputs.source_ref }}
+                  --ref-name=${{ needs.release-plan.outputs.source_ref_name }}
+                  --sha=${{ needs.release-plan.outputs.source_sha }} --push"

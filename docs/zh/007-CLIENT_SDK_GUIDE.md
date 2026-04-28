@@ -313,11 +313,35 @@ Layering rules：
 - `provideBasicAuthContext({ config })`：仅 auth-context config。
 - `SessionContextService.client`：auth-context behavior；Angular DI 拥有 host registration 与 transport injection。
 - `provideTokenSetAuth({ clients, idleWarmup })`：Angular host registration；每个 client entry 仍拥有 auth-context config 与 runtime composition。
-- `provideTokenSetBearerInterceptor(options?)` / `createTokenSetBearerInterceptor(registry, options?)`：bearer-header injection，使用 SDK options-object API 形式。`BearerInterceptorOptions.strictUrlMatch` 控制 unmatched URL behavior：
+- `provideTokenSetBearerInterceptor(options?)` / `createTokenSetBearerInterceptor(registry, options?)`：具备 freshness-aware 语义的 bearer-header injection，使用 SDK options-object API 形式。注入 `Authorization` 前，interceptor 会调用 shared refresh barrier。带 refresh material 的 expired token 会先刷新再放行 protected request；没有可用 refresh material 的 expired token 不会被当作 stale bearer 注入，并且 auth state 会被清理。`BearerInterceptorOptions.strictUrlMatch` 控制 unmatched URL behavior：
   - 默认 `strictUrlMatch: false`：保留 single-client convenience fallback，会对 unmatched URL 注入 `registry.accessToken()`；仅当 host 只调用一个 registered backend 时使用。
   - `strictUrlMatch: true`：unmatched URL 不会收到 `Authorization` header。
   - multi-backend、multi-audience 或存在 third-party traffic 的 Angular adopter 必须使用 `strictUrlMatch: true`。
   - `TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS` 已导出，可用于高级 DI/test override。
+
+Freshness 由 token-set core 拥有，而不是由某个 framework adapter 单独修补。`authorizationHeader()` 是同步 fresh-or-null projection；`ensureAuthorizationHeader()` 会等待 coalesced refresh barrier，是 protected request 应使用的安全 API。Registry、Angular service、React service、React Query transport helper 与 generic authorized transport 在可用时都会优先走 async ensure path。`AuthMaterialController` 没有协议层 refresh 能力，因此它的 `authorizationHeader` 与 `createTransport()` 使用 fresh-or-null projection：expired 或 invalid-expiry material 会返回 `null`，并在 `requireAuthorization: true` 时抛出 unauthenticated，而不是发送 stale bearer。`registry.accessToken()` 仍是同步 convenience，并会对 expired material 返回 `null`；需要让 request 等待 refresh 时，请使用 `registry.ensureAccessToken(key)` 或 `registry.ensureAuthorizationHeader(key)`。不带 key 调用 async registry helper 只适用于当前恰好只有一个 ready client 的场景。
+
+如果 downstream resource server 返回 `ExpiredSignature`，正确归因是后端拒绝正常：前端确实发送了过期 JWT，SDK/adopter 不应注入这个 bearer。先用下面片段诊断浏览器里是否有 refresh material，再判断是 IdP 未下发 refresh token，还是 refresh barrier 没有生效：
+
+```ts
+Object.entries(localStorage)
+  .filter(([k]) => k.includes("outposts.web.auth"))
+  .map(([key, raw]) => {
+    try {
+      const parsed = JSON.parse(raw);
+      const tokens = parsed.value?.tokens ?? parsed.tokens;
+      return {
+        key,
+        accessTokenExpiresAt: tokens?.accessTokenExpiresAt,
+        hasRefreshMaterial: Boolean(tokens?.refreshMaterial),
+      };
+    } catch {
+      return { key, parseError: true };
+    }
+  });
+```
+
+`hasRefreshMaterial=false` 时需要检查 IdP、requested scopes 与 refresh-token policy；即便如此，SDK 仍不得发送 expired access token。`hasRefreshMaterial=true` 时，SDK 应在首个 protected request 前完成 refresh，或者把 client 推入 unauthenticated state；因此通过 SDK bearer interceptor 或 authorized transport 发送的请求不应再出现 `ExpiredSignature`。
 
 #### 5. SSR / server-host 入口：dedicated `./server` helpers
 
@@ -372,7 +396,7 @@ Registry 拥有 `primary` / `lazy` initialization priority、`preload`、`whenRe
 
 **Subpath**：`@securitydept/token-set-context-client-react/react-query`
 
-这是 token-set React consumer surface。它拥有 groups/entries read/write hooks、readiness queries、keyed hook ergonomics、authorization-header derivation、query-key namespace，以及 token-set management flows 的 canonical invalidation。它不是 login、refresh 或 runtime authority。
+这是 token-set React consumer surface。它拥有 groups/entries read/write hooks、readiness queries、keyed hook ergonomics、freshness-aware authorization-header derivation、query-key namespace，以及 token-set management flows 的 canonical invalidation。它不是 login、refresh 或 runtime authority；request-time bearer injection 仍委托 token-set core refresh barrier。
 
 ## 示例与参考实现
 
@@ -383,7 +407,7 @@ Registry 拥有 `primary` / `lazy` initialization priority、`preload`、`whenRe
 
 ### 下游参考案例：Outposts
 
-`~/workspace/outposts` 验证真实 Angular adopter 路径。它使用 `provideTokenSetAuth(...)` 加 `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`，证明了面向 downstream `confluence` backend 的 strict URL-prefix bounded bearer injection。其 app-local auth service 仍是 adopter glue，不是 SDK API 模板。
+`~/workspace/outposts` 验证真实 Angular adopter 路径。它使用 `provideTokenSetAuth(...)` 加 `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`，证明了面向 downstream `confluence` backend 的 strict URL-prefix bounded bearer injection。这个路径也用于校准 stale-token handling：SDK 必须在首个 protected Confluence request 前 refresh 或清理状态，而不是发送会被后端正确以 `ExpiredSignature` 拒绝的 expired bearer。其 app-local auth service 仍是 adopter glue，不是 SDK API 模板。
 
 ### 当前 Bundle / Code Split 判断
 

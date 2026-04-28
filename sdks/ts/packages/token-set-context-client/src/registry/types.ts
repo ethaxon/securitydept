@@ -9,7 +9,11 @@
 
 import type { ReadableSignalTrait } from "@securitydept/client";
 import type { ClientReadinessState } from "../frontend-oidc-mode/config-source";
-import type { AuthSnapshot } from "../orchestration";
+import type {
+	AuthSnapshot,
+	EnsureAuthorizationHeaderOptions,
+	EnsureFreshAuthStateOptions,
+} from "../orchestration";
 
 export type { ClientReadinessState };
 
@@ -25,6 +29,13 @@ export interface OidcModeClient {
 	state: ReadableSignalTrait<AuthSnapshot | null>;
 	dispose(): void;
 	restorePersistedState(): Promise<AuthSnapshot | null>;
+	authorizationHeader(): string | null;
+	ensureFreshAuthState(
+		options?: EnsureFreshAuthStateOptions,
+	): Promise<AuthSnapshot | null>;
+	ensureAuthorizationHeader(
+		options?: EnsureAuthorizationHeaderOptions,
+	): Promise<string | null>;
 }
 
 /**
@@ -198,6 +209,8 @@ export interface CreateTokenSetAuthRegistryOptions<TClient, TService> {
 	 * `registry.accessToken(key?)` convenience for interceptors.
 	 */
 	accessTokenOf?: (service: TService) => string | null;
+	ensureAccessTokenOf?: (service: TService) => Promise<string | null>;
+	ensureAuthorizationHeaderOf?: (service: TService) => Promise<string | null>;
 	/**
 	 * Custom idle scheduler for {@link TokenSetAuthRegistry.idleWarmup}.
 	 * Defaults to `requestIdleCallback` when available, `setTimeout(_, 0)`

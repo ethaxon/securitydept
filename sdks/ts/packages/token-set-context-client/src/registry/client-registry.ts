@@ -105,6 +105,12 @@ export class TokenSetAuthRegistry<TClient, TService> {
 	private readonly _accessTokenOf:
 		| ((service: TService) => string | null)
 		| undefined;
+	private readonly _ensureAccessTokenOf:
+		| ((service: TService) => Promise<string | null>)
+		| undefined;
+	private readonly _ensureAuthorizationHeaderOf:
+		| ((service: TService) => Promise<string | null>)
+		| undefined;
 	private readonly idleScheduler: (callback: () => void) => () => void;
 
 	// Materialized services (after clientFactory resolves)
@@ -132,6 +138,8 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		this.materialize = options.materialize;
 		this._dispose = options.dispose;
 		this._accessTokenOf = options.accessTokenOf;
+		this._ensureAccessTokenOf = options.ensureAccessTokenOf;
+		this._ensureAuthorizationHeaderOf = options.ensureAuthorizationHeaderOf;
 		this.idleScheduler = options.idleScheduler ?? defaultIdleScheduler;
 	}
 
@@ -661,6 +669,38 @@ export class TokenSetAuthRegistry<TClient, TService> {
 			if (token) return token;
 		}
 		return null;
+	}
+
+	async ensureAccessToken(key?: string): Promise<string | null> {
+		if (!this._ensureAccessTokenOf) return null;
+		if (key) {
+			const service = this.services.get(key);
+			return service ? await this._ensureAccessTokenOf(service) : null;
+		}
+		const services = [...this.services.values()];
+		if (services.length > 1) {
+			throw new Error(
+				"[TokenSetAuthRegistry] ensureAccessToken() without a key is only valid for a single ready client.",
+			);
+		}
+		const [service] = services;
+		return service ? await this._ensureAccessTokenOf(service) : null;
+	}
+
+	async ensureAuthorizationHeader(key?: string): Promise<string | null> {
+		if (!this._ensureAuthorizationHeaderOf) return null;
+		if (key) {
+			const service = this.services.get(key);
+			return service ? await this._ensureAuthorizationHeaderOf(service) : null;
+		}
+		const services = [...this.services.values()];
+		if (services.length > 1) {
+			throw new Error(
+				"[TokenSetAuthRegistry] ensureAuthorizationHeader() without a key is only valid for a single ready client.",
+			);
+		}
+		const [service] = services;
+		return service ? await this._ensureAuthorizationHeaderOf(service) : null;
 	}
 }
 

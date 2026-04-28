@@ -98,6 +98,11 @@ function createMockClient(
 		state: signal,
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
+		authorizationHeader: vi.fn(() => (snap ? "Bearer tok" : null)),
+		ensureFreshAuthState: vi.fn().mockResolvedValue(snap),
+		ensureAuthorizationHeader: vi
+			.fn()
+			.mockResolvedValue(snap ? "Bearer tok" : null),
 		handleCallback: vi.fn().mockResolvedValue({ snapshot: snap }),
 	};
 }

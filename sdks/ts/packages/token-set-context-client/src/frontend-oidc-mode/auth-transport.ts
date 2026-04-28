@@ -11,12 +11,17 @@ import {
 	ClientErrorKind,
 	UserRecovery,
 } from "@securitydept/client";
-import type { BearerHeaderProvider } from "../orchestration/index";
+import type {
+	AsyncBearerHeaderProvider,
+	BearerHeaderProvider,
+} from "../orchestration/index";
 import { createAuthorizedTransport } from "../orchestration/index";
 import { FrontendOidcModeContextSource } from "./types";
 
 /** @see {@link BearerHeaderProvider} */
-export type AuthorizationHeaderProviderTrait = BearerHeaderProvider;
+export type AuthorizationHeaderProviderTrait =
+	| BearerHeaderProvider
+	| AsyncBearerHeaderProvider;
 
 export interface CreateFrontendOidcModeAuthorizedTransportOptions {
 	transport: HttpTransport;
@@ -32,7 +37,7 @@ export interface CreateFrontendOidcModeAuthorizedTransportOptions {
  * Typical usage:
  * ```ts
  * const authorizedTransport = createFrontendOidcModeAuthorizedTransport(
- *     client,   // FrontendOidcModeClient implements authorizationHeader()
+ *     client,   // FrontendOidcModeClient implements ensureAuthorizationHeader()
  *     { transport: fetchTransport },
  * );
  * ```

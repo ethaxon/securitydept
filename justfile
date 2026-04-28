@@ -47,7 +47,6 @@ dev-docs:
 dev-server:
     watchexec --watch apps/server --watch packages --watch config.toml --exts rs,toml -- cargo run --manifest-path apps/server/Cargo.toml
 
-# requires zellij watchexec
 dev-all:
     zellij --layout dev.kdl
 
@@ -60,8 +59,6 @@ build-docs:
 
 preview-docs:
     cd docsite && pnpm run preview
-
-verify-docs: build-docs
 
 build-webui-only:
     cd apps/webui && pnpm build
@@ -115,25 +112,37 @@ release-npm-dry-run:
     pnpm lint
     just typecheck-sdks
     just test-sdks
-    just release-cli npm publish --mode=dry-run
+    just release-cli npm publish --mode=dry-run --report=temp/release/npm/dry-run-report.json
 
 release-npm-publish:
     pnpm lint
     just typecheck-sdks
     just test-sdks
-    just release-cli npm publish --mode=publish --provenance
+    just release-cli npm publish --mode=publish --provenance --report=temp/release/npm/publish-report.json
 
 release-crates-package:
     just release-cli crates publish --mode=package --report=temp/release/crates/package-report.json
 
 release-crates-package-blocked:
-    just release-cli crates publish --mode=package --allow-blocked --allow-dirty --report=temp/release/crates/package-report.json
+    just release-cli crates publish --mode=package --allow-blocked --allow-dirty --report=temp/release/crates/blocked-package-report.json
 
 release-crates-publish:
     just release-cli crates publish --mode=publish --report=temp/release/crates/publish-report.json
 
 release-docker-metadata ref:
     just release-cli docker publish --ref={{ref}}
+
+release-action-cli *args:
+    node scripts/actions-cli.ts {{args}}
+
+action-release-validate:
+    just release-action-cli release validate
+
+action-release-dry-run *args:
+    just release-action-cli release dispatch --dry-run {{args}}
+
+action-release-run *args:
+    just release-action-cli release dispatch {{args}}
 
 # Integration test prerequisites
 build-kube-test-helper:

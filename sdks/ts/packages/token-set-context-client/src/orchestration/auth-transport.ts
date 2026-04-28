@@ -14,7 +14,12 @@ const AUTH_TRANSPORT_SOURCE = "token-orchestration-transport";
  * the token was obtained.
  */
 export interface BearerHeaderProvider {
+	/** Raw synchronous projection. Prefer ensureAuthorizationHeader when available. */
 	authorizationHeader(): string | null;
+}
+
+export interface AsyncBearerHeaderProvider {
+	ensureAuthorizationHeader(): Promise<string | null>;
 }
 
 export interface CreateAuthorizedTransportOptions {
@@ -30,14 +35,14 @@ export interface CreateAuthorizedTransportOptions {
  * OIDC-mediated sealed flow or any specific OIDC protocol.
  */
 export function createAuthorizedTransport(
-	headerProvider: BearerHeaderProvider,
+	headerProvider: BearerHeaderProvider | AsyncBearerHeaderProvider,
 	options: CreateAuthorizedTransportOptions,
 ): HttpTransport {
 	const requireAuthorization = options.requireAuthorization ?? true;
 
 	return {
 		async execute(request: HttpRequest) {
-			const authorization = headerProvider.authorizationHeader();
+			const authorization = await resolveAuthorizationHeader(headerProvider);
 			if (!authorization) {
 				if (!requireAuthorization) {
 					return options.transport.execute(request);
@@ -60,4 +65,13 @@ export function createAuthorizedTransport(
 			});
 		},
 	};
+}
+
+function resolveAuthorizationHeader(
+	headerProvider: BearerHeaderProvider | AsyncBearerHeaderProvider,
+): Promise<string | null> | string | null {
+	if ("ensureAuthorizationHeader" in headerProvider) {
+		return headerProvider.ensureAuthorizationHeader();
+	}
+	return headerProvider.authorizationHeader();
 }

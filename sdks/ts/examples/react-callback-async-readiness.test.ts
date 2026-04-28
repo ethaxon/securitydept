@@ -96,6 +96,11 @@ function createMockClient(knobs: MockClientKnobs = {}): TokenSetReactClient {
 			const accessToken = ctrl.signal.get()?.tokens.accessToken;
 			return accessToken ? `Bearer ${accessToken}` : null;
 		},
+		ensureFreshAuthState: vi.fn().mockResolvedValue(ctrl.signal.get()),
+		ensureAuthorizationHeader: vi.fn().mockImplementation(async () => {
+			const accessToken = ctrl.signal.get()?.tokens.accessToken;
+			return accessToken ? `Bearer ${accessToken}` : null;
+		}),
 		refresh: vi.fn().mockResolvedValue(makeSnapshot("refreshed")),
 		clearState: vi.fn().mockResolvedValue(undefined),
 	};

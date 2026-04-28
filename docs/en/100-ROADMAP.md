@@ -10,7 +10,7 @@ The current published baseline is `0.2.0-beta.3`.
 
 This beta is not a new auth-context milestone. It is the current packaging, documentation, downstream-adopter router correctness, and release-readiness line for the reusable Rust crates, TypeScript SDK packages, Docker image, and static docs site.
 
-The repository goal is no longer to prove whether release execution is possible. It is to keep release automation, authority docs, and the published facts aligned so the next release run stays repeatable.
+The repository goal is no longer to prove whether release execution is possible. It is to keep release automation, authority docs, and the published facts aligned so the next release run stays repeatable. The current release-pipeline hardening line keeps active automation to `docs.yml`, `tests.yml`, and one guarded `release.yml` workflow that owns npm, crates.io, and Docker publishing.
 
 ## 0.2.0-beta.3 Release Record And Remaining Work
 
@@ -20,18 +20,21 @@ The version authority has moved to `0.2.0-beta.3`. The following release-readine
 - the root `[patch.crates-io] openidconnect` override is gone and the workspace is back on `openidconnect = "4"`
 - `apps/server` and `apps/cli` are explicitly `publish = false` application artifacts
 - publishable TypeScript SDK packages are on `0.2.0-beta.3` and internal utility packages remain private
-- both npm publish and crates publish workflows now use GitHub OIDC trusted publishing
+- npm and crates publish jobs in `release.yml` use GitHub OIDC trusted publishing
 - Angular and TanStack Router auth redirect helpers preserve attempted-route `postAuthRedirectUri` and avoid settling framework guard results after a full-page external redirect starts
+- token-set TypeScript SDK bearer injection is freshness-aware: expired access tokens are refreshed through a coalesced barrier before protected requests, or cleared/treated as unauthenticated instead of being sent downstream
 
 The remaining work is about keeping the next release execution repeatable, not about carrying forward alpha-era blockers:
 
 | Area | Current status | Required next step |
 |---|---|---|
-| Rust package gate | the default `release-cli crates publish --mode=package` path and `.github/workflows/crates-publish.yml` now run a real package gate | keep the default report refreshed with current full-package evidence before the next release |
-| npm publish security posture | both the workflow and local publish entrypoints now pass `--provenance` and use trusted publishing | keep workflow, just recipes, and docs aligned on the same publish arguments |
-| Docker | Docker build and tag policy are aligned with the beta rules, but image publication still depends on each release execution | keep toolchain, tag policy, labels, and docs aligned |
+| Rust crates publish | `release.yml` now runs package and publish inside `crates-release` with the `crates-io-release` environment, OIDC trusted publishing, and already-published crate version skips | keep package/publish reports attached to release runs, trusted publisher binding aligned with `release.yml`, and `--allow-dirty` / `--allow-blocked` out of publish paths |
+| npm publish | `release.yml` now builds TypeScript SDK packages and publishes inside `npm-release` with the `npm-release` environment, OIDC trusted publishing, `--provenance`, and npm report artifacts | keep package-root publish semantics, trusted publisher binding aligned with `release.yml`, and publish reports attached to release runs |
+| Docker | image publish belongs to `release.yml`; runtime artifacts are built outside Docker and assembled through Debian-slim `Dockerfile.runtime` | keep runtime artifact paths, ABI/base image choice, tags, labels, and docs aligned |
+| Release workflow benchmark | release-profile cache prime is currently a practice-approved provisional optimization with a unique writer topology, not a completed wall-clock proof | connect `pretend-act` or an equivalent local workflow benchmark once it can produce reproducible measurements, then tune the release cache/build split with data |
 | Docs and roadmap authority | source docs now describe the current release and SDK facts | do not reintroduce historical blockers into current-status docs |
 | Docsite | `docsite/` is the VitePress source root and root content is linked in through minimal rewrite rules | keep link behavior in sync with source docs without reintroducing a staging pipeline |
+| Downstream Angular bearer freshness | `outposts` exposed the stale bearer failure mode where an expired JWT reached Confluence and was correctly rejected as `ExpiredSignature`; SDK core now owns freshness checks, refresh coalescing, and no-stale-header behavior for Angular/React/transport callers | keep outposts validation in the release evidence loop and treat any recurring `ExpiredSignature` through SDK bearer paths as a refresh-material or barrier regression |
 
 ## 0.2.x Active Track
 

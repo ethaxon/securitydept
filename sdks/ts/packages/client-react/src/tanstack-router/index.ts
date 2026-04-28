@@ -128,6 +128,10 @@ export type TanStackRouteUnauthenticatedHandler = (
 	| TanStackRouteUnauthenticatedAction
 	| Promise<TanStackRouteUnauthenticatedAction>;
 
+export type TanStackRouteAuthenticatedCheck = (
+	requirement: AuthRequirement,
+) => boolean | Promise<boolean>;
+
 // ---------------------------------------------------------------------------
 // Route metadata declaration helper
 // ---------------------------------------------------------------------------
@@ -503,16 +507,46 @@ export function createTanStackRouteSecurityPolicy(
 
 			for (const req of effectiveRequirements) {
 				if (!checkAuthenticated(req)) {
-					const handler =
-						options.requirementHandlers?.[req.kind] ??
-						options.defaultOnUnauthenticated;
-
-					return {
-						allMet: false,
-						pendingRequirement: req,
-						action: handler ? handler(req, handlerContext) : false,
+					return createTanStackUnauthenticatedResult(
+						req,
 						effectiveRequirements,
-					};
+						handlerContext,
+						options,
+					);
+				}
+			}
+
+			return {
+				allMet: true,
+				pendingRequirement: undefined,
+				action: undefined,
+				effectiveRequirements,
+			};
+		},
+
+		/**
+		 * Async-capable evaluation for router guards that must wait for auth
+		 * freshness checks before deciding whether navigation is allowed.
+		 */
+		async evaluateAsync(
+			matches: readonly TanStackRouteMatch[],
+			checkAuthenticated: TanStackRouteAuthenticatedCheck,
+			context?: TanStackRouteUnauthenticatedContext,
+		): Promise<TanStackRouteSecurityResult> {
+			const effectiveRequirements = extractTanStackRouteRequirements(matches, {
+				requirementsKey: options.requirementsKey,
+			});
+			const handlerContext =
+				context ?? createFallbackUnauthenticatedContext(matches);
+
+			for (const req of effectiveRequirements) {
+				if (!(await checkAuthenticated(req))) {
+					return createTanStackUnauthenticatedResult(
+						req,
+						effectiveRequirements,
+						handlerContext,
+						options,
+					);
 				}
 			}
 
@@ -577,7 +611,7 @@ export interface CreateSecureBeforeLoadOptions
 	 * This is the auth-state bridge: the adopter supplies a function that
 	 * checks their auth store / context.
 	 */
-	checkAuthenticated: (requirement: AuthRequirement) => boolean;
+	checkAuthenticated: TanStackRouteAuthenticatedCheck;
 
 	/**
 	 * TanStack Router's `redirect()` function.
@@ -658,42 +692,54 @@ export interface CreateSecureBeforeLoadOptions
 export function createSecureBeforeLoad(
 	options: CreateSecureBeforeLoadOptions,
 ): (ctx: SecureBeforeLoadContext) => void | Promise<void> {
-	const policy = createTanStackRouteSecurityPolicy(options);
-
 	return function secureBeforeLoad(
 		ctx: SecureBeforeLoadContext,
 	): void | Promise<void> {
 		const handlerContext = createUnauthenticatedContext(ctx);
-		const result = policy.evaluate(
+		const result = evaluateRouteSecurityMaybeAsync(
 			ctx.matches,
 			options.checkAuthenticated,
 			handlerContext,
+			options,
 		);
 
-		if (result.allMet) return;
-
-		const { action, pendingRequirement } = result;
-
-		if (!pendingRequirement) return;
-
-		if (isPromiseLike(action)) {
-			return action.then((resolved) =>
-				handleSecureBeforeLoadAction(
-					resolved,
-					pendingRequirement,
-					result,
-					options,
-				),
+		if (isPromiseLike(result)) {
+			return result.then((resolved) =>
+				handleSecureBeforeLoadResult(resolved, options),
 			);
 		}
 
-		return handleSecureBeforeLoadAction(
-			action,
-			pendingRequirement,
-			result,
-			options,
-		);
+		return handleSecureBeforeLoadResult(result, options);
 	};
+}
+
+function handleSecureBeforeLoadResult(
+	result: TanStackRouteSecurityResult,
+	options: CreateSecureBeforeLoadOptions,
+): void | Promise<void> {
+	if (result.allMet) return;
+
+	const { action, pendingRequirement } = result;
+
+	if (!pendingRequirement) return;
+
+	if (isPromiseLike(action)) {
+		return action.then((resolved) =>
+			handleSecureBeforeLoadAction(
+				resolved,
+				pendingRequirement,
+				result,
+				options,
+			),
+		);
+	}
+
+	return handleSecureBeforeLoadAction(
+		action,
+		pendingRequirement,
+		result,
+		options,
+	);
 }
 
 /**
@@ -740,6 +786,108 @@ function createFallbackUnauthenticatedContext(
 		attemptedUrl: "",
 		matches,
 		cause: undefined,
+	};
+}
+
+function createTanStackUnauthenticatedResult(
+	requirement: AuthRequirement,
+	effectiveRequirements: readonly AuthRequirement[],
+	context: TanStackRouteUnauthenticatedContext,
+	options: TanStackRouteSecurityPolicyOptions,
+): TanStackRouteSecurityResult {
+	const handler =
+		options.requirementHandlers?.[requirement.kind] ??
+		options.defaultOnUnauthenticated;
+	return {
+		allMet: false,
+		pendingRequirement: requirement,
+		action: handler ? handler(requirement, context) : false,
+		effectiveRequirements,
+	};
+}
+
+function evaluateRouteSecurityMaybeAsync(
+	matches: readonly TanStackRouteMatch[],
+	checkAuthenticated: TanStackRouteAuthenticatedCheck,
+	context: TanStackRouteUnauthenticatedContext,
+	options: TanStackRouteSecurityPolicyOptions,
+): TanStackRouteSecurityResult | Promise<TanStackRouteSecurityResult> {
+	const effectiveRequirements = extractTanStackRouteRequirements(matches, {
+		requirementsKey: options.requirementsKey,
+	});
+
+	for (let index = 0; index < effectiveRequirements.length; index += 1) {
+		const requirement = effectiveRequirements[index];
+		if (!requirement) continue;
+		const authenticated = checkAuthenticated(requirement);
+		if (isPromiseLike<boolean>(authenticated)) {
+			return evaluateRouteSecurityFromAsyncCheck(
+				authenticated,
+				index,
+				effectiveRequirements,
+				checkAuthenticated,
+				context,
+				options,
+			);
+		}
+		if (!authenticated) {
+			return createTanStackUnauthenticatedResult(
+				requirement,
+				effectiveRequirements,
+				context,
+				options,
+			);
+		}
+	}
+
+	return {
+		allMet: true,
+		pendingRequirement: undefined,
+		action: undefined,
+		effectiveRequirements,
+	};
+}
+
+async function evaluateRouteSecurityFromAsyncCheck(
+	firstAuthenticated: Promise<boolean>,
+	firstIndex: number,
+	effectiveRequirements: readonly AuthRequirement[],
+	checkAuthenticated: TanStackRouteAuthenticatedCheck,
+	context: TanStackRouteUnauthenticatedContext,
+	options: TanStackRouteSecurityPolicyOptions,
+): Promise<TanStackRouteSecurityResult> {
+	const firstRequirement = effectiveRequirements[firstIndex];
+	if (firstRequirement && !(await firstAuthenticated)) {
+		return createTanStackUnauthenticatedResult(
+			firstRequirement,
+			effectiveRequirements,
+			context,
+			options,
+		);
+	}
+
+	for (
+		let index = firstIndex + 1;
+		index < effectiveRequirements.length;
+		index += 1
+	) {
+		const requirement = effectiveRequirements[index];
+		if (!requirement) continue;
+		if (!(await checkAuthenticated(requirement))) {
+			return createTanStackUnauthenticatedResult(
+				requirement,
+				effectiveRequirements,
+				context,
+				options,
+			);
+		}
+	}
+
+	return {
+		allMet: true,
+		pendingRequirement: undefined,
+		action: undefined,
+		effectiveRequirements,
 	};
 }
 

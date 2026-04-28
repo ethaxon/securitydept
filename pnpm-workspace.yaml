@@ -6,6 +6,7 @@ packages:
 
 onlyBuiltDependencies:
   - "@j178/prek"
+  - '@kie/act-js'
   - "@parcel/watcher"
   - esbuild
 overrides:

@@ -1,303 +1,323 @@
 name: Tests
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    tags:
-      - "v*"
-    paths-ignore:
-      - "**/*.md"
-      - "**/*.kdl"
-      - "assets/**"
-      - "LICENSE"
-      - "AGENTS.md"
-  pull_request:
-    paths-ignore:
-      - "**/*.md"
-      - "**/*.kdl"
-      - "assets/**"
-      - "LICENSE"
-      - "AGENTS.md"
-  workflow_dispatch:
+    push:
+        branches:
+            - main
+            - release
+        tags:
+            - "v*.*.*"
+        paths-ignore:
+            - "**/*.md"
+            - "**/*.kdl"
+            - "assets/**"
+            - "LICENSE"
+            - "LICENSE.md"
+            - "AGENTS.md"
+    pull_request:
+        branches:
+            - main
+        paths-ignore:
+            - "**/*.md"
+            - "**/*.kdl"
+            - "assets/**"
+            - "LICENSE"
+            - "LICENSE.md"
+            - "AGENTS.md"
+    workflow_dispatch:
 
 permissions:
-  contents: read
+    contents: read
+    actions: read
 
 concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: true
+    group: tests-${{ github.ref }}
+    cancel-in-progress: true
 
 jobs:
-  lint-and-typecheck:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+    preflight:
+        runs-on: ubuntu-latest
+        outputs:
+            run_tests: ${{ steps.preflight.outputs.run_tests }}
+            release_prepare_candidate: ${{ steps.preflight.outputs.release_prepare_candidate }}
+            source_event: ${{ steps.preflight.outputs.source_event }}
+            source_ref: ${{ steps.preflight.outputs.source_ref }}
+            source_ref_name: ${{ steps.preflight.outputs.source_ref_name }}
+            source_sha: ${{ steps.preflight.outputs.source_sha }}
+            cache_scope: ${{ steps.preflight.outputs.cache_scope }}
+            reused_run_id: ${{ steps.preflight.outputs.reused_run_id }}
+            reused_run_url: ${{ steps.preflight.outputs.reused_run_url }}
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
 
-      - name: Setup mise
-        uses: jdx/mise-action@v4
+            - name: Setup mise and pnpm dependencies
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  cache-mode: read-write
 
-      - name: Install toolchain
-        run: mise install
+            - name: Resolve tests preflight
+              id: preflight
+              env:
+                  GITHUB_TOKEN: ${{ github.token }}
+              run: >-
+                  mise exec --command "node scripts/release-cli.ts workflow
+                  tests-preflight --format=github-output"
 
-      - name: Restore pnpm store cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.local/share/pnpm/store
-          key: >-
-            pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{ github.job
-            }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-store-${{ runner.os }}-${{ github.workflow }}-
-            pnpm-store-${{ runner.os }}-
+    node-deps:
+        if: needs.preflight.outputs.run_tests == 'true'
+        needs: preflight
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
 
-      - name: Install dependencies
-        run: mise exec --command "pnpm install --frozen-lockfile"
+            - name: Setup mise and pnpm dependencies
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  cache-mode: read-only
 
-      - name: Lint repository
-        run: mise exec --command "pnpm lint"
+    rust-debug-cache-prime:
+        if: needs.preflight.outputs.run_tests == 'true'
+        needs:
+            - preflight
+            - node-deps
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
 
-      - name: Build TypeScript SDK packages for repository typecheck
-        run: mise exec -C sdks/ts --command "pnpm build"
+            - name: Setup mise and pnpm dependencies
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  cache-mode: read-only
 
-      - name: Typecheck repository
-        run: mise exec --command "pnpm typecheck"
+            - name: Restore Rust debug build cache
+              uses: ./.github/actions/setup-rust-cache
+              with:
+                  shared-key: securitydept-rust-${{ runner.os }}-${{
+                      needs.preflight.outputs.cache_scope }}-debug
+                  cache-mode: read-write
 
-      - name: Install Rust clippy component
-        run: mise exec --command "rustup component add --toolchain nightly clippy"
+            - name: Prime Rust debug build cache
+              run: mise exec --command "cargo build --workspace --all-features --all-targets"
 
-      - name: Restore Rust build cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: tests-rust-${{ github.job }}
-          cache-workspace-crates: "true"
-          cache-on-failure: "true"
+    lint-and-typecheck:
+        if: needs.preflight.outputs.run_tests == 'true'
+        needs:
+            - preflight
+            - node-deps
+            - rust-debug-cache-prime
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
 
-      - name: Lint Rust workspace
-        run: mise exec --command "cargo clippy --workspace --all-features"
+            - name: Setup mise and pnpm dependencies
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  cache-mode: read-only
 
-  rust-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+            - name: Lint repository
+              run: mise exec --command "pnpm lint"
 
-      - name: Setup mise
-        uses: jdx/mise-action@v4
+            - name: Build TypeScript SDK packages for repository typecheck
+              run: mise exec -C sdks/ts --command "pnpm build"
 
-      - name: Install toolchain
-        run: mise install
+            - name: Typecheck repository
+              run: mise exec --command "pnpm typecheck"
 
-      - name: Restore pnpm store cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.local/share/pnpm/store
-          key: >-
-            pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{ github.job
-            }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-store-${{ runner.os }}-${{ github.workflow }}-
-            pnpm-store-${{ runner.os }}-
+            - name: Install Rust clippy component
+              run: mise exec --command "rustup component add --toolchain nightly clippy"
 
-      - name: Restore Rust build cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: tests-rust-${{ github.job }}
-          cache-workspace-crates: "true"
-          cache-on-failure: "true"
+            - name: Restore Rust build cache
+              uses: ./.github/actions/setup-rust-cache
+              with:
+                  shared-key: securitydept-rust-${{ runner.os }}-${{
+                      needs.preflight.outputs.cache_scope }}-debug
+                  cache-mode: read-only
 
-      - name: Install dependencies
-        run: mise exec --command "pnpm install --frozen-lockfile"
+            - name: Lint Rust workspace
+              run: mise exec --command "cargo clippy --workspace --all-features"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+    rust-tests:
+        if: needs.preflight.outputs.run_tests == 'true'
+        needs:
+            - preflight
+            - node-deps
+            - rust-debug-cache-prime
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
 
-      - name: Build kube test helper
-        run: >-
-          docker buildx build --load -t
-          securitydept-realip-kube-integration-test-helper:v1 -f
-          packages/realip/tests/fixtures/kube-helper/Dockerfile --cache-from
-          type=gha,scope=kube-test-helper --cache-to
-          type=gha,mode=max,scope=kube-test-helper
-          packages/realip/tests/fixtures/kube-helper
+            - name: Setup mise and pnpm dependencies
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  cache-mode: read-only
 
-      - name: Test Rust workspace
-        run: mise exec --command "cargo test --workspace --all-features"
+            - name: Restore Rust build cache
+              uses: ./.github/actions/setup-rust-cache
+              with:
+                  shared-key: securitydept-rust-${{ runner.os }}-${{
+                      needs.preflight.outputs.cache_scope }}-debug
+                  cache-mode: read-only
 
-  ts-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v4
 
-      - name: Setup mise
-        uses: jdx/mise-action@v4
+            - name: Build kube test helper
+              run: |
+                  set -euo pipefail
+                  docker_args=(
+                    buildx build --load
+                    -t securitydept-realip-kube-integration-test-helper:v1
+                    -f packages/realip/tests/fixtures/kube-helper/Dockerfile
+                  )
+                  if [[ "${ACT:-}" != "true" ]]; then
+                    docker_args+=(
+                      --cache-from type=gha,scope=kube-test-helper-linux-amd64
+                      --cache-to type=gha,mode=max,scope=kube-test-helper-linux-amd64
+                    )
+                  fi
+                  docker "${docker_args[@]}" packages/realip/tests/fixtures/kube-helper
 
-      - name: Install toolchain
-        run: mise install
+            - name: Test Rust workspace
+              run: mise exec --command "cargo test --workspace --all-features"
 
-      - name: Restore pnpm store cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.local/share/pnpm/store
-          key: >-
-            pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{ github.job
-            }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-store-${{ runner.os }}-${{ github.workflow }}-
-            pnpm-store-${{ runner.os }}-
+    ts-tests:
+        if: needs.preflight.outputs.run_tests == 'true'
+        needs:
+            - preflight
+            - node-deps
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
 
-      - name: Install dependencies
-        run: mise exec --command "pnpm install --frozen-lockfile"
+            - name: Setup mise and pnpm dependencies
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  cache-mode: read-only
 
-      - name: Test TypeScript SDKs
-        run: mise exec -C sdks/ts --command "pnpm test"
+            - name: Test TypeScript SDKs
+              run: mise exec -C sdks/ts --command "pnpm test"
 
-      - name: Test web UI
-        run: mise exec -C apps/webui --command "pnpm test"
+            - name: Test web UI
+              run: mise exec -C apps/webui --command "pnpm test"
 
-  e2e-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+    e2e-tests:
+        if: needs.preflight.outputs.run_tests == 'true'
+        needs:
+            - preflight
+            - node-deps
+            - rust-tests
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
 
-      - name: Setup mise
-        uses: jdx/mise-action@v4
+            - name: Setup mise and pnpm dependencies
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  cache-mode: read-only
 
-      - name: Install toolchain
-        run: mise install
+            - name: Restore Rust build cache
+              uses: ./.github/actions/setup-rust-cache
+              with:
+                  shared-key: securitydept-rust-${{ runner.os }}-${{
+                      needs.preflight.outputs.cache_scope }}-debug
+                  cache-mode: read-only
 
-      - name: Restore pnpm store cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.local/share/pnpm/store
-          key: >-
-            pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{ github.job
-            }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-store-${{ runner.os }}-${{ github.workflow }}-
-            pnpm-store-${{ runner.os }}-
+            - name: Restore Playwright browser cache
+              uses: actions/cache@v5
+              with:
+                  path: ~/.cache/ms-playwright
+                  key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml',
+                      'apps/webui/package.json') }}
+                  restore-keys: |
+                      playwright-${{ runner.os }}-
 
-      - name: Restore Rust build cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: tests-rust-${{ github.job }}
-          cache-workspace-crates: "true"
-          cache-on-failure: "true"
+            - name: Install Playwright browsers and Linux dependencies
+              run: mise exec -C apps/webui --command "pnpm exec playwright install --with-deps
+                  webkit chromium firefox"
 
-      - name: Restore Playwright browser cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml',
-            'apps/webui/package.json') }}
-          restore-keys: |
-            playwright-${{ runner.os }}-
+            - name: Prebuild SecurityDept server for E2E
+              run: mise exec --command "cargo build --manifest-path apps/server/Cargo.toml"
 
-      - name: Install dependencies
-        run: mise exec --command "pnpm install --frozen-lockfile"
+            - name: Run web UI end-to-end tests
+              run: mise exec -C apps/webui --command "pnpm run e2e"
 
-      - name: Install Playwright browsers and Linux dependencies
-        run: mise exec -C apps/webui --command "pnpm exec playwright install --with-deps
-          webkit chromium firefox"
+    tests-report:
+        if: always()
+        needs:
+            - preflight
+            - lint-and-typecheck
+            - rust-tests
+            - ts-tests
+            - e2e-tests
+        runs-on: ubuntu-latest
+        steps:
+            - name: Write tests workflow report
+              shell: bash
+              env:
+                  RUN_TESTS: ${{ needs.preflight.outputs.run_tests }}
+                  RELEASE_PREPARE_CANDIDATE: ${{ needs.preflight.outputs.release_prepare_candidate }}
+                  SOURCE_EVENT: ${{ needs.preflight.outputs.source_event }}
+                  SOURCE_REF: ${{ needs.preflight.outputs.source_ref }}
+                  SOURCE_REF_NAME: ${{ needs.preflight.outputs.source_ref_name }}
+                  SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+                  CACHE_SCOPE: ${{ needs.preflight.outputs.cache_scope }}
+                  REUSED_RUN_ID: ${{ needs.preflight.outputs.reused_run_id }}
+                  REUSED_RUN_URL: ${{ needs.preflight.outputs.reused_run_url }}
+                  LINT_RESULT: ${{ needs.lint-and-typecheck.result }}
+                  RUST_RESULT: ${{ needs.rust-tests.result }}
+                  TS_RESULT: ${{ needs.ts-tests.result }}
+                  E2E_RESULT: ${{ needs.e2e-tests.result }}
+              run: |
+                  set -euo pipefail
+                  mkdir -p temp/release/tests
+                  cat > temp/release/tests/report.json <<EOF
+                  {
+                    "schemaVersion": 1,
+                    "createdAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+                    "runTests": ${RUN_TESTS},
+                    "releasePrepareCandidate": ${RELEASE_PREPARE_CANDIDATE},
+                    "sourceEvent": "${SOURCE_EVENT}",
+                    "sourceRef": "${SOURCE_REF}",
+                    "sourceRefName": "${SOURCE_REF_NAME}",
+                    "sourceSha": "${SOURCE_SHA}",
+                    "cacheScope": "${CACHE_SCOPE}",
+                    "reusedRunId": "${REUSED_RUN_ID}",
+                    "reusedRunUrl": "${REUSED_RUN_URL}",
+                    "jobs": {
+                      "lintAndTypecheck": "${LINT_RESULT}",
+                      "rustTests": "${RUST_RESULT}",
+                      "tsTests": "${TS_RESULT}",
+                      "e2eTests": "${E2E_RESULT}"
+                    }
+                  }
+                  EOF
 
-      - name: Prebuild SecurityDept server for E2E
-        run: mise exec --command "cargo build --manifest-path apps/server/Cargo.toml"
+            - name: Upload tests workflow report
+              uses: actions/upload-artifact@v7
+              with:
+                  name: tests-workflow-report
+                  path: temp/release/tests/report.json
 
-      - name: Run web UI end-to-end tests
-        run: mise exec -C apps/webui --command "pnpm run e2e"
-
-  npm-publish-dry-run:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs:
-      - lint-and-typecheck
-      - rust-tests
-      - ts-tests
-      - e2e-tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Setup mise
-        uses: jdx/mise-action@v4
-
-      - name: Install toolchain
-        run: mise install
-
-      - name: Restore pnpm store cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{
-            hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-store-${{ runner.os }}-${{ github.workflow }}-
-            pnpm-store-${{ runner.os }}-
-
-      - name: Install dependencies
-        run: mise exec --command "pnpm install --frozen-lockfile"
-
-      - name: Build TypeScript SDK packages for npm publish
-        run: mise exec -C sdks/ts --command "pnpm build"
-
-      - name: Pack and publish dry-run npm packages
-        run: mise exec --command "node scripts/release-cli.ts npm publish
-          --mode=dry-run"
-
-      - name: Upload npm dry-run tarballs
-        uses: actions/upload-artifact@v7
-        with:
-          name: npm-dry-run-tarballs
-          path: temp/release/npm
-
-  crates-package:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs:
-      - lint-and-typecheck
-      - rust-tests
-      - ts-tests
-      - e2e-tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Setup mise
-        uses: jdx/mise-action@v4
-
-      - name: Install toolchain
-        run: mise install
-
-      - name: Restore pnpm store cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{
-            hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-store-${{ runner.os }}-${{ github.workflow }}-
-            pnpm-store-${{ runner.os }}-
-
-      - name: Restore Rust build cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: crates-publish-rust-${{ github.job }}
-          cache-workspace-crates: "true"
-          cache-on-failure: "true"
-
-      - name: Install dependencies
-        run: mise exec --command "pnpm install --frozen-lockfile"
-
-      - name: Package Rust crates
-        run: mise exec --command "node scripts/release-cli.ts crates publish
-          --mode=package --report=temp/release/crates/package-report.json"
-
-      - name: Upload crates package report
-        uses: actions/upload-artifact@v7
-        with:
-          name: crates-package-report
-          path: temp/release/crates
+            - name: Enforce test job results
+              if: needs.preflight.outputs.run_tests == 'true'
+              shell: bash
+              env:
+                  LINT_RESULT: ${{ needs.lint-and-typecheck.result }}
+                  RUST_RESULT: ${{ needs.rust-tests.result }}
+                  TS_RESULT: ${{ needs.ts-tests.result }}
+                  E2E_RESULT: ${{ needs.e2e-tests.result }}
+              run: |
+                  set -euo pipefail
+                  for result in "${LINT_RESULT}" "${RUST_RESULT}" "${TS_RESULT}" "${E2E_RESULT}"; do
+                    if [[ "${result}" != "success" ]]; then
+                      echo "At least one test job failed or was skipped unexpectedly." >&2
+                      exit 1
+                    fi
+                  done

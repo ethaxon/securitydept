@@ -52,12 +52,14 @@ Primary commands:
 - `node scripts/release-cli.ts metadata sync`
 - `node scripts/release-cli.ts version check`
 - `node scripts/release-cli.ts version set 0.2.0-beta.3`
-- `node scripts/release-cli.ts npm publish --mode=dry-run`
-- `node scripts/release-cli.ts npm publish --mode=publish --provenance`
+- `node scripts/release-cli.ts npm publish --mode=dry-run --report=temp/release/npm/dry-run-report.json`
+- `node scripts/release-cli.ts npm publish --mode=publish --provenance --report=temp/release/npm/publish-report.json`
 - `node scripts/release-cli.ts crates publish --mode=package --report=temp/release/crates/package-report.json`
 - `node scripts/release-cli.ts crates publish --mode=package --allow-blocked --allow-dirty --report=temp/release/crates/blocked-package-report.json`
 - `node scripts/release-cli.ts crates publish --mode=publish --report=temp/release/crates/publish-report.json`
 - `node scripts/release-cli.ts docker publish --ref=refs/tags/v0.2.0-beta.3`
+- `node scripts/release-cli.ts workflow tests-preflight --format=github-output`
+- `node scripts/release-cli.ts workflow release-plan --format=github-output`
 
 Behavioral rules:
 
@@ -68,6 +70,7 @@ Behavioral rules:
 - `npm publish` infers the dist-tag from the version unless an explicit override is passed.
 - `npm publish` disables pnpm Git branch checks automatically in GitHub Actions tag workflows, so detached release-tag checkouts do not fail on `publish-branch` enforcement.
 - `npm publish --mode=publish` queries the npm registry first and skips any package version that is already published, so rerunning after a partial publish only continues with the remaining packages.
+- `npm publish --report=...` writes the package publish/skip result set used by both local release recipes and GitHub Actions artifacts.
 - npm package tarball manifest cleanup is owned by the root [`/.pnpmfile.cjs`](../../.pnpmfile.cjs) `hooks.beforePacking` hook rather than ad hoc release-script file rewriting. This hook rewrites `@securitydept/*` `workspace:` version specifiers to the package version that is being published, strips monorepo-only `monorepo-tsc` export conditions from all published packages, and strips Angular-only publish-time fields such as root-only `files` and `devDependencies`.
 - Angular SDK packages must publish from the package root with `publishConfig.directory = "dist"`; do not run `pnpm pack` or `pnpm publish` directly inside `dist`, because that loses workspace resolution context before `beforePacking` can sanitize the manifest.
 - the GitHub Actions npm publish job uses npm trusted publishing via GitHub OIDC and does not inject a long-lived `NPM_TOKEN`; both the workflow and the local publish entrypoint now pass `--provenance` explicitly so provenance does not depend on implicit defaults.
@@ -96,11 +99,38 @@ The release block intentionally avoids explicit `beta` tags. The current version
 
 Release-related workflows must follow these rules:
 
+- active workflow entrypoints are limited to `.github/workflows/docs.yml`, `.github/workflows/tests.yml`, and `.github/workflows/release.yml`.
+- `tests.yml` owns repository verification. It runs on `main`, `release`, `v*.*.*` tags, pull requests to `main`, and manual dispatch. It writes `tests-workflow-report` so release runs can be audited against the source SHA they depend on.
+- `release.yml` is the only release/build/publish authority. It starts from a successful `Tests` `workflow_run`, or from manual dispatch with an explicit source ref/SHA and publish toggles.
+- `release.yml` owns the source publish gate: it resolves the source with `release-cli workflow release-plan`, runs `release-cli version check`, compares the checked-in version to the expected tag, and verifies tag or `release` branch source lineage before any publish job can run.
+- `release` branch publish is the primary automated path. Its expected tag policy is `create-after-publish`: `release-plan` and `validate-release-ref` report the expected tag status, a missing expected tag is allowed before publish, and an existing expected tag must already point to the selected source SHA or the release fails before publishing.
+- After all selected publish jobs succeed, the `release-tag` job creates and pushes the expected `vX.Y.Z[-alpha.N|-beta.N]` tag for `release` branch sources. Tag-triggered releases remain supported as an audit/retry entrypoint, but the tag is treated as the release result and audit anchor for the branch path.
+- `workflow_dispatch` on `release.yml` may publish only when the selected source passes the same release gate; manual toggles choose whether npm, crates, and Docker publish jobs run.
+- Local `act` runs are detected by `release-cli workflow release-plan` through `ACT=true` or `SECURITYDEPT_LOCAL_ACTIONS=true` and emit `local_run=true`. The workflow keeps the same job graph, but publish jobs switch to local-safe behavior: npm uses `--mode=dry-run`, crates stop at the package gate and copy that report as the publish report, and Docker builds/loads the runtime image locally without logging in or pushing.
+- Local `act` release source validation keeps version/tag shape checks but avoids remote `origin/release` fetches. Real GitHub runs still enforce release-branch reachability against `origin/release` before publishing.
 - npm publish uses `release-cli npm publish` directly and does not expose a manual dist-tag selector.
 - npm publish must preserve the package-root invocation model so pnpm can honor root `publishConfig.directory` and the root `.pnpmfile.cjs` `beforePacking` hook for Angular packages.
-- npm publish uses `release-cli npm publish` directly, relies on GitHub Actions `id-token: write`, passes `--provenance` on real publish paths, and expects npm trusted publisher settings to point at `npm-publish.yml` (optionally scoped to the `npm-release` environment).
-- crates publish uses `release-cli crates publish`; the default package gate must not use `--allow-blocked`, publish jobs keep `--allow-dirty` out, and `rust-lang/crates-io-auth-action@v1` enables crates.io trusted publishing for `crates-publish.yml` (optionally scoped to the `crates-io-release` environment).
-- Docker build computes tags through `release-cli docker publish --format=github-output` and feeds the resulting tags/labels directly into `docker/build-push-action`.
+- real npm OIDC publish runs in the `npm-release` job inside `release.yml` with the `npm-release` environment. npm trusted publisher configuration must therefore bind publishable packages to `.github/workflows/release.yml` and `npm-release`.
+- `npm-release` is the only job that may request npm `id-token: write`; it builds the TypeScript SDK packages from the validated source and publishes with `release-cli npm publish --mode=publish --provenance --report=...`.
+- npm publish relies on GitHub Actions trusted publishing and passes `--provenance` on real publish paths.
+- crates publish uses `release-cli crates publish`; package gates must not use `--allow-blocked`, publish jobs keep `--allow-dirty` and `--allow-blocked` out, and `rust-lang/crates-io-auth-action@v1` enables crates.io trusted publishing.
+- real crates.io OIDC publish runs in the `crates-release` job inside `release.yml` with the `crates-io-release` environment. crates.io trusted publisher configuration must bind publishable crates to `.github/workflows/release.yml` and `crates-io-release`.
+- `crates-release` is the only job that may request crates.io `id-token: write`; it runs `crates publish --mode=package`, exchanges GitHub OIDC through `rust-lang/crates-io-auth-action@v1`, then runs `crates publish --mode=publish`. Package and publish reports are uploaded separately.
+- Docker release publishing is artifact-first inside the single `docker-release` job: the job builds `securitydept-server`, `securitydept-cli`, and the web UI outside Docker, stages them under `release-runtime/`, then builds `Dockerfile.runtime` in the same job.
+- `Dockerfile.runtime` is the release Docker path. It is Debian slim based to match the GNU/glibc binaries built on GitHub Ubuntu runners. The existing cargo-chef/Alpine `Dockerfile` remains a full-build diagnostic fallback, not the release publish path.
+- Docker tag calculation still comes from `release-cli docker publish --format=github-output` and feeds the resulting tags/labels directly into `docker/build-push-action`. When the source is `refs/heads/release`, Docker tag calculation uses `refs/tags/<expected-tag>` so release-branch publishes also produce the version and channel tags (`vX.Y.Z...`, `vX.Y`, `vX`, `rc` / `nightly` / `latest`) plus the immutable `sha-*` tag.
+- standalone npm, crates, Docker, and common-CI workflows are not active release entrypoints. Reintroducing one requires updating this document and moving trusted-publisher bindings deliberately.
+
+Cache and artifact rules:
+
+- pnpm and Rust setup/cache behavior is owned by repo-local composite actions under `.github/actions/`.
+- pnpm cache modes are explicit: `read-write`, `read-only`, and `none`. The stable restore key is `pnpm-store-${runner.os}-${hashFiles(lockfile)}`; only one job in a workflow topology may be the read-write owner for that key.
+- Rust cache modes are also explicit. A job that uses the shared key as `read-write` must be the only writer in that topology; downstream jobs use `read-only` restore or artifacts.
+- Debug CI topology lives directly in `.github/workflows/tests.yml`; `release.yml` depends on the successful `Tests` run instead of repeating the same debug verification graph.
+- Rust shared keys are stable branch/profile scopes such as `securitydept-rust-${runner.os}-${branch}-debug` and `securitydept-rust-${runner.os}-${branch}-release`. Do not embed `hashFiles(...)` manually in workflow `shared-key` values; `Swatinem/rust-cache` already adds its own Rust-environment hash for Cargo manifests, lockfiles, toolchains, and relevant env vars, and it can restore from previous lockfile versions.
+- `tests.yml` owns the debug Rust cache prime job and prebuilds `cargo build --workspace --all-features --all-targets` for clippy, tests, and E2E prebuild. `release.yml` owns a separate release-profile cache prime job that prebuilds `cargo build --workspace --all-features --release --all-targets` for runtime artifact builds. This is the current practice-approved provisional optimization and depends on the unique-writer topology; its wall-clock benefit still needs a reproducible local workflow benchmark before further tuning.
+- Docker buildx cache is scoped only to Docker layer caching. The runtime release scope no longer attempts to cache cargo or pnpm builds because those happen before Docker.
+- already-published skip behavior remains owned by `release-cli npm publish` and `release-cli crates publish`, so partial release reruns continue instead of failing on duplicate npm package or crate versions.
 
 This keeps one implementation of:
 
@@ -123,6 +153,21 @@ If the version needs to move first:
 
 1. `mise exec --command "just release-version-set 0.2.0-beta.3"`
 2. `mise exec --command "just release-version-check"`
+
+For local workflow simulation, prefer the `just` wrappers around `scripts/actions-cli.ts`: `just action-release-validate`, `just action-release-dry-run`, and `just action-release-run`. The real local run creates a temporary MockGithub repository and executes `.github/workflows/release.yml` through act-js, so checkout and artifact behavior are handled in the local mock GitHub environment. Because act sets `ACT=true` and the wrapper also sets `SECURITYDEPT_LOCAL_ACTIONS=true`, the release publish jobs perform only local dry-run/package/build work and never push to npm, crates.io, or GHCR.
+
+Example validation commands:
+
+```bash
+just action-release-validate
+just action-release-dry-run
+just action-release-run publish_npm=false publish_crates=false publish_docker=true
+```
+
+The action recipes accept both CLI-style flags such as `--publish-npm=false` and just-friendly shorthand such as `publish_npm=false`.
+Publish toggles default to `false`, matching `release.yml` manual dispatch defaults; opt in per channel when local package/build simulation is needed.
+
+`act -n` does not execute `release-plan`, so jobs whose `if` condition depends on `needs.release-plan.outputs.*` may not expand in dry-run mode. A real local `act workflow_dispatch` run receives `local_run=true` from `release-plan` and follows the local dry-run/package/no-push branches.
 
 ## Maintenance Expectations
 

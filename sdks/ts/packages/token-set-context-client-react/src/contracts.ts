@@ -20,7 +20,12 @@ export type { OidcCallbackClient, OidcModeClient };
 
 export type TokenSetBackendOidcClient = Pick<
 	BackendOidcModeClient,
-	"authorizeUrl" | "authorizationHeader" | "refresh" | "clearState"
+	| "authorizeUrl"
+	| "authorizationHeader"
+	| "ensureAuthorizationHeader"
+	| "ensureFreshAuthState"
+	| "refresh"
+	| "clearState"
 > &
 	OidcCallbackClient;
 

@@ -191,6 +191,99 @@ describe("BackendOidcModeClient", () => {
 		await expect(client.refresh()).rejects.toThrow(/missing access_token/i);
 	});
 
+	it("does not project an expired token as an authorization header", async () => {
+		const transport = createTestTransport(() => ({
+			status: 500,
+			headers: {},
+			body: null,
+		}));
+		const { runtime } = createTestRuntime(transport);
+		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+
+		client.restoreState({
+			tokens: {
+				accessToken: "expired-at",
+				accessTokenExpiresAt: "2025-12-31T23:59:59Z",
+			},
+			metadata: {},
+		});
+
+		expect(client.authorizationHeader()).toBeNull();
+		expect(await client.ensureAuthorizationHeader()).toBeNull();
+		expect(client.state.get()).toBeNull();
+	});
+
+	it("coalesces concurrent fresh authorization requests through one refresh", async () => {
+		const refreshResponse = createDeferred<HttpResponse>();
+		let refreshRequests = 0;
+		const transport = createTestTransport((request) => {
+			if (request.url.endsWith("/auth/oidc/refresh")) {
+				refreshRequests += 1;
+				return refreshResponse.promise;
+			}
+			if (request.url.endsWith("/auth/oidc/user-info")) {
+				return {
+					status: 200,
+					headers: { "content-type": "application/json" },
+					body: { principal: { subject: "user-1" } },
+				};
+			}
+			throw new Error(`Unexpected request: ${request.url}`);
+		});
+		const { runtime } = createTestRuntime(transport);
+		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+
+		client.restoreState({
+			tokens: {
+				accessToken: "expired-at",
+				accessTokenExpiresAt: "2025-12-31T23:59:59Z",
+				refreshMaterial: "rt",
+			},
+			metadata: {},
+		});
+
+		const firstHeader = client.ensureAuthorizationHeader();
+		const secondHeader = client.ensureAuthorizationHeader();
+		await flushMicrotasks();
+
+		expect(refreshRequests).toBe(1);
+		refreshResponse.resolve({
+			status: 200,
+			headers: { "content-type": "application/json" },
+			body: {
+				access_token: "fresh-at",
+				refresh_token: "fresh-rt",
+				access_token_expires_at: "2026-01-01T01:00:00Z",
+			},
+		});
+
+		await expect(firstHeader).resolves.toBe("Bearer fresh-at");
+		await expect(secondHeader).resolves.toBe("Bearer fresh-at");
+		expect(refreshRequests).toBe(1);
+	});
+
+	it("clears state instead of reusing a stale bearer when refresh fails", async () => {
+		const transport = createTestTransport(() => ({
+			status: 401,
+			headers: { "content-type": "application/json" },
+			body: { error: "invalid_grant" },
+		}));
+		const { runtime } = createTestRuntime(transport);
+		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+
+		client.restoreState({
+			tokens: {
+				accessToken: "expired-at",
+				accessTokenExpiresAt: "2025-12-31T23:59:59Z",
+				refreshMaterial: "rt",
+			},
+			metadata: {},
+		});
+
+		expect(await client.ensureAuthorizationHeader()).toBeNull();
+		expect(client.state.get()).toBeNull();
+	});
+
 	it("persists callback state, supports explicit restore, and only clears on explicit clear", async () => {
 		const persistentStore = createInMemoryRecordStore();
 		const transport = createTestTransport((request): HttpResponse => {

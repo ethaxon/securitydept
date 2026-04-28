@@ -32,6 +32,12 @@ import {
 } from "@securitydept/client";
 import type { AuthMaterialController } from "./controller";
 import { createAuthMaterialController } from "./controller";
+import {
+	freshBearerHeader,
+	getTokenFreshness,
+	shouldRefreshAccessToken,
+	TokenFreshnessState,
+} from "./token-ops";
 import type { AuthSnapshot } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -40,6 +46,7 @@ import type { AuthSnapshot } from "./types";
 
 // Maximum single setTimeout slice (30 minutes) — avoids platform timer overflow.
 const MAX_SCHEDULE_SLICE_MS = 30 * 60 * 1000;
+const DEFAULT_CLOCK_SKEW_MS = 30_000;
 
 const RefreshTriggerKind = {
 	Immediate: "immediate",
@@ -79,6 +86,16 @@ export interface BaseOidcModeClientOptions {
 	};
 }
 
+export interface EnsureFreshAuthStateOptions {
+	now?: number;
+	clockSkewMs?: number;
+	refreshWindowMs?: number;
+	forceRefreshWhenDue?: boolean;
+}
+
+export interface EnsureAuthorizationHeaderOptions
+	extends EnsureFreshAuthStateOptions {}
+
 // ---------------------------------------------------------------------------
 // Abstract Base Client
 // ---------------------------------------------------------------------------
@@ -107,6 +124,7 @@ export abstract class BaseOidcModeClient {
 	protected readonly _rootCancellation: CancellationTokenSourceTrait =
 		createCancellationTokenSource();
 	private _refreshHandle: CancelableHandle | null = null;
+	private _refreshBarrier: Promise<AuthSnapshot | null> | null = null;
 	private _disposed = false;
 
 	/** Read-only signal exposing the current auth state snapshot. */
@@ -197,13 +215,17 @@ export abstract class BaseOidcModeClient {
 			return null;
 		}
 
+		this._authMaterial.injectSnapshot(snapshot);
 		this._stateSignal.set(snapshot);
-		this._scheduleRefresh();
+		const restored = await this.ensureFreshAuthState();
+		if (restored) {
+			this._scheduleRefresh();
+		}
 		this._recordTrace(`${this._tracePrefix}.state.restored`, {
 			sourceKind: StateRestoreSourceKind.PersistentStore,
 		});
 
-		return snapshot;
+		return restored;
 	}
 
 	/** Explicitly clear persisted auth state without disposing the client. */
@@ -227,7 +249,53 @@ export abstract class BaseOidcModeClient {
 
 	/** Get the current bearer authorization header value. */
 	authorizationHeader(): string | null {
-		return this._authMaterial.authorizationHeader;
+		return freshBearerHeader(
+			this._authMaterial.snapshot,
+			this._freshnessOptions(),
+		);
+	}
+
+	async ensureFreshAuthState(
+		options: EnsureFreshAuthStateOptions = {},
+	): Promise<AuthSnapshot | null> {
+		this._throwIfNotOperational();
+
+		const snapshot = this._authMaterial.snapshot;
+		if (!snapshot) {
+			return null;
+		}
+
+		const freshnessOptions = this._freshnessOptions(options);
+		const freshness = getTokenFreshness(snapshot, freshnessOptions);
+		const forceRefreshWhenDue = options.forceRefreshWhenDue ?? false;
+
+		if (
+			freshness === TokenFreshnessState.Fresh ||
+			freshness === TokenFreshnessState.NoExpiry
+		) {
+			return snapshot;
+		}
+
+		if (freshness === TokenFreshnessState.RefreshDue && !forceRefreshWhenDue) {
+			if (shouldRefreshAccessToken(snapshot, freshnessOptions)) {
+				this._refreshThroughBarrier().catch(() => {});
+			}
+			return snapshot;
+		}
+
+		if (!snapshot.tokens.refreshMaterial) {
+			await this.clearState({ clearPersisted: true });
+			return null;
+		}
+
+		return await this._refreshThroughBarrier();
+	}
+
+	async ensureAuthorizationHeader(
+		options: EnsureAuthorizationHeaderOptions = {},
+	): Promise<string | null> {
+		const snapshot = await this.ensureFreshAuthState(options);
+		return freshBearerHeader(snapshot, this._freshnessOptions(options));
 	}
 
 	/** Cancel pending refresh and release client resources. */
@@ -302,6 +370,10 @@ export abstract class BaseOidcModeClient {
 		}
 
 		const expiresAt = new Date(current.tokens.accessTokenExpiresAt).getTime();
+		if (!Number.isFinite(expiresAt)) {
+			this._refreshThroughBarrier().catch(() => {});
+			return;
+		}
 		const refreshAt = expiresAt - this._refreshWindowMs;
 		const now = this._runtime.clock.now();
 		const remainingMs = refreshAt - now;
@@ -310,7 +382,7 @@ export abstract class BaseOidcModeClient {
 			this._recordTrace(`${this._tracePrefix}.refresh.fired`, {
 				trigger: RefreshTriggerKind.Immediate,
 			});
-			this.refresh().catch(() => {});
+			this._refreshThroughBarrier().catch(() => {});
 			return;
 		}
 
@@ -341,8 +413,54 @@ export abstract class BaseOidcModeClient {
 				return;
 			}
 
-			this.refresh().catch(() => {});
+			this._refreshThroughBarrier().catch(() => {});
 		});
+	}
+
+	private _freshnessOptions(options: EnsureFreshAuthStateOptions = {}) {
+		return {
+			now: options.now ?? this._runtime.clock.now(),
+			clockSkewMs: options.clockSkewMs ?? DEFAULT_CLOCK_SKEW_MS,
+			refreshWindowMs: options.refreshWindowMs ?? this._refreshWindowMs,
+		};
+	}
+
+	private _refreshThroughBarrier(): Promise<AuthSnapshot | null> {
+		if (this._refreshBarrier) {
+			return this._refreshBarrier;
+		}
+
+		this._refreshBarrier = (async () => {
+			try {
+				const refreshed = await this.refresh();
+				if (!refreshed) {
+					await this.clearState({ clearPersisted: true });
+					return null;
+				}
+				return refreshed;
+			} catch (error) {
+				try {
+					await this.clearState({ clearPersisted: true });
+				} catch (clearError) {
+					this._runtime.logger?.log({
+						level: LogLevel.Warn,
+						message: `Failed to clear ${this._traceScope} state after refresh failure`,
+						scope: this._traceScope,
+						code: `${this._tracePrefix}.refresh.clear_failed`,
+						attributes: describeError(clearError),
+					});
+				}
+				this._recordFailureTrace(
+					`${this._tracePrefix}.refresh.barrier_failed`,
+					error,
+				);
+				return null;
+			} finally {
+				this._refreshBarrier = null;
+			}
+		})();
+
+		return this._refreshBarrier;
 	}
 
 	protected _cancelRefresh(reason: string): void {

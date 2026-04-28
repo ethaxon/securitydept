@@ -1,0 +1,17 @@
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY release-runtime/bin/securitydept-server /app/securitydept-server
+COPY release-runtime/bin/securitydept-cli /app/securitydept-cli
+COPY release-runtime/webui /app/webui
+COPY LICENSE.md /app/LICENSE.md
+COPY README.md /app/README.md
+
+RUN mkdir -p /app/data
+
+CMD ["/app/securitydept-server"]

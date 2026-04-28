@@ -1,90 +1,83 @@
 name: Docs
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - "README.md"
-      - "README_zh.md"
-      - "LICENSE"
-      - "LICENSE.md"
-      - "AGENTS.md"
-      - "docs/**"
-      - "docsite/**"
-      - "mise.toml"
-      - "justfile"
-      - ".github/workflows/docs.yml"
-  pull_request:
-    paths:
-      - "README.md"
-      - "README_zh.md"
-      - "LICENSE"
-      - "LICENSE.md"
-      - "AGENTS.md"
-      - "docs/**"
-      - "docsite/**"
-      - "mise.toml"
-      - "justfile"
-      - ".github/workflows/docs.yml"
-  workflow_dispatch:
+    push:
+        branches:
+            - main
+        paths:
+            - "README.md"
+            - "README_zh.md"
+            - "LICENSE"
+            - "LICENSE.md"
+            - "docs/**"
+            - "docsite/**"
+            - "mise.toml"
+            - "justfile"
+            - ".github/workflows/docs.yml"
+    workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+    contents: read
+    pages: write
+    id-token: write
 
 concurrency:
-  group: docs-pages
-  cancel-in-progress: true
+    group: docs-pages
+    cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
 
-      - name: Setup mise
-        uses: jdx/mise-action@v4
+            - name: Setup mise
+              uses: ./.github/actions/setup-mise-pnpm
+              with:
+                  working-directory: docsite
+                  lockfile: docsite/pnpm-lock.yaml
+                  cache-mode: read-write
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v6
+            - name: Configure Pages
+              uses: actions/configure-pages@v6
 
-      - name: Install toolchain
-        run: mise install
+            - name: Build VitePress site
+              run: mise exec -C docsite --command "pnpm run build"
 
-      - name: Restore pnpm store cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.local/share/pnpm/store
-          key: >-
-            pnpm-store-${{ runner.os }}-${{ github.workflow }}-${{ github.job
-            }}-${{ hashFiles('docsite/pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-store-${{ runner.os }}-${{ github.workflow }}-
-            pnpm-store-${{ runner.os }}-
+            - name: Upload Pages artifact
+              uses: actions/upload-pages-artifact@v5
+              with:
+                  path: docsite/.vitepress/dist
 
-      - name: Install dependencies
-        run: mise exec -C docsite --command "pnpm install --frozen-lockfile"
+            - name: Write docs workflow report
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  mkdir -p temp/release/docs
+                  cat > temp/release/docs/report.json <<EOF
+                  {
+                    "schemaVersion": 1,
+                    "createdAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+                    "sourceRef": "${GITHUB_REF}",
+                    "sourceSha": "${GITHUB_SHA}",
+                    "artifact": "docsite/.vitepress/dist"
+                  }
+                  EOF
 
-      - name: Build VitePress site
-        run: mise exec -C docsite --command "pnpm run build"
+            - name: Upload docs workflow report
+              uses: actions/upload-artifact@v7
+              with:
+                  name: docs-workflow-report
+                  path: temp/release/docs/report.json
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: docsite/.vitepress/dist
-
-  deploy:
-    if: github.event_name != 'pull_request'
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
+    deploy:
+        needs: build
+        runs-on: ubuntu-latest
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        steps:
+            - name: Deploy to GitHub Pages
+              id: deployment
+              uses: actions/deploy-pages@v5

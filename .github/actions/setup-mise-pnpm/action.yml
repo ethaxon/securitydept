@@ -1,0 +1,56 @@
+name: Setup mise and pnpm
+description: Install mise toolchains, restore pnpm store cache, and install pnpm
+  dependencies.
+
+inputs:
+  working-directory:
+    description: Directory where the install command should run.
+    required: false
+    default: .
+  lockfile:
+    description: Lockfile used to derive the pnpm store cache key.
+    required: false
+    default: pnpm-lock.yaml
+  install-command:
+    description: pnpm install command to execute under mise.
+    required: false
+    default: pnpm install --frozen-lockfile
+  cache-mode:
+    description: Cache mode for the pnpm store. Use read-write for the unique
+      writer, read-only for restore-only consumers, or none to disable cache
+      access.
+    required: false
+    default: read-only
+
+runs:
+  using: composite
+  steps:
+    - name: Setup mise
+      uses: jdx/mise-action@v4
+
+    - name: Install toolchain
+      shell: bash
+      run: mise install
+
+    - name: Restore pnpm store cache
+      if: inputs.cache-mode != 'none'
+      id: pnpm-cache-restore
+      uses: actions/cache/restore@v5
+      with:
+        path: ~/.local/share/pnpm/store
+        key: pnpm-store-${{ runner.os }}-${{ hashFiles(inputs.lockfile) }}
+        restore-keys: |
+          pnpm-store-${{ runner.os }}-
+
+    - name: Install dependencies
+      shell: bash
+      run: mise exec -C "${{ inputs.working-directory }}" --command "${{
+        inputs.install-command }}"
+
+    - name: Save pnpm store cache
+      if: inputs.cache-mode == 'read-write' &&
+        steps.pnpm-cache-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: ~/.local/share/pnpm/store
+        key: ${{ steps.pnpm-cache-restore.outputs.cache-primary-key }}

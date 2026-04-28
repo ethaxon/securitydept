@@ -504,6 +504,69 @@ describe("TanStack route-security — createSecureBeforeLoad (execution glue)", 
 		expect(() => securedBeforeLoad(ctx)).not.toThrow();
 	});
 
+	it("waits for async freshness checks before allowing navigation", async () => {
+		const ensureFreshAuthState = vi.fn().mockResolvedValue({
+			tokens: { accessToken: "fresh-after-refresh" },
+		});
+		const securedBeforeLoad = createSecureBeforeLoad({
+			checkAuthenticated: async () => {
+				const snapshot = await ensureFreshAuthState({
+					forceRefreshWhenDue: true,
+				});
+				return snapshot !== null;
+			},
+		});
+		const ctx = buildBeforeLoadContext(
+			[
+				{
+					routeId: "/dashboard",
+					staticData: withTanStackRouteRequirements([
+						{ id: "oidc", kind: "frontend_oidc" },
+					]),
+				},
+			],
+			"/dashboard",
+		);
+
+		await expect(
+			Promise.resolve(securedBeforeLoad(ctx)),
+		).resolves.toBeUndefined();
+		expect(ensureFreshAuthState).toHaveBeenCalledWith({
+			forceRefreshWhenDue: true,
+		});
+	});
+
+	it("runs unauthenticated handler after async freshness check fails", async () => {
+		const ensureFreshAuthState = vi.fn().mockResolvedValue(null);
+		const securedBeforeLoad = createSecureBeforeLoad({
+			checkAuthenticated: async () => {
+				const snapshot = await ensureFreshAuthState({
+					forceRefreshWhenDue: true,
+				});
+				return snapshot !== null;
+			},
+			defaultOnUnauthenticated: () => false,
+		});
+		const ctx = buildBeforeLoadContext(
+			[
+				{
+					routeId: "/dashboard",
+					staticData: withTanStackRouteRequirements([
+						{ id: "oidc", kind: "frontend_oidc" },
+					]),
+				},
+			],
+			"/dashboard",
+		);
+
+		await expect(
+			Promise.resolve(securedBeforeLoad(ctx)),
+		).rejects.toBeInstanceOf(RouteSecurityBlockedError);
+		expect(ensureFreshAuthState).toHaveBeenCalledWith({
+			forceRefreshWhenDue: true,
+		});
+	});
+
 	it("throws redirect when handler returns a string path", () => {
 		const { redirectFn } = createMockRedirect();
 		const securedBeforeLoad = createSecureBeforeLoad({

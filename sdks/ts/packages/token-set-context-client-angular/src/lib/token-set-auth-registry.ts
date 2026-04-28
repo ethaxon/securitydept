@@ -53,6 +53,9 @@ export class TokenSetAuthRegistry {
 				new TokenSetAuthService(client, entry.autoRestore ?? true),
 			dispose: (service) => service.dispose(),
 			accessTokenOf: (service) => service.accessToken(),
+			ensureAccessTokenOf: (service) => service.ensureAccessToken(),
+			ensureAuthorizationHeaderOf: (service) =>
+				service.ensureAuthorizationHeader(),
 		});
 		// Try to bind core.dispose() to the current injection context's
 		// DestroyRef. Registry is typically constructed via DI (where this
@@ -259,5 +262,13 @@ export class TokenSetAuthRegistry {
 
 	accessToken(key?: string): string | null {
 		return this.core.accessToken(key);
+	}
+
+	async ensureAccessToken(key?: string): Promise<string | null> {
+		return await this.core.ensureAccessToken(key);
+	}
+
+	async ensureAuthorizationHeader(key?: string): Promise<string | null> {
+		return await this.core.ensureAuthorizationHeader(key);
 	}
 }

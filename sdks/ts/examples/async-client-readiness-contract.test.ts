@@ -73,6 +73,13 @@ function createMockClient(
 		state: stateCtrl.signal,
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
+		ensureFreshAuthState: vi
+			.fn()
+			.mockImplementation(async () => stateCtrl.signal.get()),
+		ensureAuthorizationHeader: vi.fn().mockImplementation(async () => {
+			const accessToken = stateCtrl.signal.get()?.tokens?.accessToken;
+			return accessToken ? `Bearer ${accessToken}` : null;
+		}),
 		isAuthenticated: () => stateCtrl.signal.get() !== null,
 		accessToken: () => stateCtrl.signal.get()?.tokens?.accessToken ?? null,
 		handleCallback: vi.fn().mockResolvedValue({

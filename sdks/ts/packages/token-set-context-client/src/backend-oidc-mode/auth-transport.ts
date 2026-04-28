@@ -9,12 +9,17 @@ import {
 	ClientErrorKind,
 	UserRecovery,
 } from "@securitydept/client";
-import type { BearerHeaderProvider } from "../orchestration/index";
+import type {
+	AsyncBearerHeaderProvider,
+	BearerHeaderProvider,
+} from "../orchestration/index";
 import { createAuthorizedTransport } from "../orchestration/index";
 import { BackendOidcModeContextSource } from "./types";
 
 /** @see {@link BearerHeaderProvider} */
-export type AuthorizationHeaderProviderTrait = BearerHeaderProvider;
+export type AuthorizationHeaderProviderTrait =
+	| BearerHeaderProvider
+	| AsyncBearerHeaderProvider;
 
 export interface CreateBackendOidcModeAuthorizedTransportOptions {
 	transport: HttpTransport;

@@ -18,12 +18,17 @@
 // Not a separate npm package — extraction path is clear if warranted later.
 
 export type {
+	AsyncBearerHeaderProvider,
 	BearerHeaderProvider,
 	CreateAuthorizedTransportOptions,
 } from "./auth-transport";
 export { createAuthorizedTransport } from "./auth-transport";
 // Base client: shared lifecycle infrastructure for mode-specific clients.
-export type { BaseOidcModeClientOptions } from "./base-client";
+export type {
+	BaseOidcModeClientOptions,
+	EnsureAuthorizationHeaderOptions,
+	EnsureFreshAuthStateOptions,
+} from "./base-client";
 export {
 	BaseOidcModeClient,
 	describeError,
@@ -42,7 +47,16 @@ export type {
 	CreateAuthStatePersistenceOptions,
 } from "./persistence";
 export { createAuthStatePersistence } from "./persistence";
-export { bearerHeader, mergeTokenDelta } from "./token-ops";
+export type { TokenFreshnessOptions } from "./token-ops";
+export {
+	bearerHeader,
+	freshBearerHeader,
+	getTokenFreshness,
+	isAccessTokenUsable,
+	mergeTokenDelta,
+	shouldRefreshAccessToken,
+	TokenFreshnessState,
+} from "./token-ops";
 export type {
 	AuthDelta,
 	AuthMetadataDelta,

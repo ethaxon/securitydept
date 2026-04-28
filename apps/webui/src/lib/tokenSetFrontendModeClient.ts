@@ -196,6 +196,18 @@ const tokenSetFrontendModeReactClient: TokenSetReactClient = {
 			tokenSetFrontendModeStateSignal.get()?.tokens.accessToken;
 		return accessToken ? `Bearer ${accessToken}` : null;
 	},
+	async ensureFreshAuthState(options) {
+		const client = await ensureTokenSetFrontendModeClientSubscribed();
+		const snapshot = await client.ensureFreshAuthState(options);
+		tokenSetFrontendModeStateSignal.set(client.state.get());
+		return snapshot;
+	},
+	async ensureAuthorizationHeader(options) {
+		const client = await ensureTokenSetFrontendModeClientSubscribed();
+		const authorization = await client.ensureAuthorizationHeader(options);
+		tokenSetFrontendModeStateSignal.set(client.state.get());
+		return authorization;
+	},
 	async refresh() {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
 		const snapshot = await client.refresh();

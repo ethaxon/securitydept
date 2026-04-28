@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { loadSecuritydeptMetadata } from "./metadata.ts";
@@ -13,6 +13,16 @@ export type NpmPublishOptions = {
 	tag?: string;
 	provenance: boolean;
 	packDestination?: string;
+	reportPath?: string;
+};
+
+type NpmPublishReportEntry = {
+	name: string;
+	manifest: string;
+	mode: "dry-run" | "publish";
+	status: "ok" | "skipped";
+	distTag: string;
+	version: string;
 };
 
 function resolvePublishDirectory(
@@ -44,6 +54,7 @@ export async function runNpmPublish(options: NpmPublishOptions): Promise<void> {
 	const releaseVersion = releasePolicy.version.version;
 	const disableGitChecks = shouldDisableGitChecks();
 	let skippedAlreadyPublishedCount = 0;
+	const reportEntries: NpmPublishReportEntry[] = [];
 
 	if (releasePolicy.track !== "stable" && distTag === "latest") {
 		throw new Error(
@@ -65,6 +76,14 @@ export async function runNpmPublish(options: NpmPublishOptions): Promise<void> {
 		console.log(
 			`Skipping ${pkg.name} (${pkg.manifest}) because publish=false.`,
 		);
+		reportEntries.push({
+			name: pkg.name,
+			manifest: pkg.manifest,
+			mode: options.mode,
+			status: "skipped",
+			distTag,
+			version: releaseVersion,
+		});
 	}
 
 	for (const pkg of publishablePackages) {
@@ -76,6 +95,14 @@ export async function runNpmPublish(options: NpmPublishOptions): Promise<void> {
 			console.log(
 				`Skipping ${pkg.name}@${releaseVersion} because that version is already published on npm.`,
 			);
+			reportEntries.push({
+				name: pkg.name,
+				manifest: pkg.manifest,
+				mode: options.mode,
+				status: "skipped",
+				distTag,
+				version: releaseVersion,
+			});
 			continue;
 		}
 
@@ -103,6 +130,18 @@ export async function runNpmPublish(options: NpmPublishOptions): Promise<void> {
 			`${options.mode === "dry-run" ? "Dry-running" : "Publishing"} ${pkg.name} with dist-tag ${distTag}.`,
 		);
 		runCommand("pnpm", publishArgs, { cwd: publishDirectory });
+		reportEntries.push({
+			name: pkg.name,
+			manifest: pkg.manifest,
+			mode: options.mode,
+			status: "ok",
+			distTag,
+			version: releaseVersion,
+		});
+	}
+
+	if (options.reportPath) {
+		writeNpmPublishReport(resolveFromRoot(options.reportPath), reportEntries);
 	}
 
 	console.log(
@@ -112,6 +151,14 @@ export async function runNpmPublish(options: NpmPublishOptions): Promise<void> {
 				: "."
 		}`,
 	);
+}
+
+function writeNpmPublishReport(
+	reportPath: string,
+	entries: NpmPublishReportEntry[],
+): void {
+	mkdirSync(path.dirname(reportPath), { recursive: true });
+	writeFileSync(reportPath, `${JSON.stringify(entries, null, 2)}\n`);
 }
 
 function shouldDisableGitChecks(): boolean {

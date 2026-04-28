@@ -94,6 +94,9 @@ export function TokenSetAuthProvider({
 					new TokenSetAuthService(client, entry.autoRestore ?? true),
 				dispose: (service) => service.dispose(),
 				accessTokenOf: (service) => service.accessToken(),
+				ensureAccessTokenOf: (service) => service.ensureAccessToken(),
+				ensureAuthorizationHeaderOf: (service) =>
+					service.ensureAuthorizationHeader(),
 			}),
 		[],
 	);
@@ -205,6 +208,7 @@ export function useTokenSetAuthState(
 
 /** Convenience: current access token for a client key (or null). */
 export function useTokenSetAccessToken(key: string): string | null {
-	const snapshot = useTokenSetAuthState(key);
-	return snapshot?.tokens.accessToken ?? null;
+	useTokenSetAuthState(key);
+	const service = useTokenSetAuthService(key);
+	return service.accessToken();
 }

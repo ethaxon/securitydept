@@ -484,15 +484,26 @@ export function createTokenSetRouteAggregationGuard(
 			.flatMap((r) => r.entries)
 			.map(({ service }) => service.restorePromise)
 			.filter((p): p is Promise<AuthSnapshot | null> => p !== null);
+		async function awaitAuthMaterial(): Promise<void> {
+			await Promise.all(pendingRestores);
+			const freshnessBarriers = deduped
+				.flatMap((r) => r.entries)
+				.map(({ service }) =>
+					typeof service.ensureFreshAuthState === "function"
+						? service.ensureFreshAuthState({ forceRefreshWhenDue: true })
+						: Promise.resolve(null),
+				);
+			await Promise.all(freshnessBarriers);
+		}
 
-		if (pendingRestores.length === 0) {
+		if (deduped.every((r) => r.entries.length === 0)) {
 			return decide();
 		}
 
 		// await the restore-phase Observable before running planner evaluation
 		// so the async guard always returns a Promise, not an Observable.
 		return firstValueFrom(
-			from(Promise.all(pendingRestores)).pipe(
+			from(awaitAuthMaterial()).pipe(
 				switchMap(() => from(decide())),
 				take(1),
 			),

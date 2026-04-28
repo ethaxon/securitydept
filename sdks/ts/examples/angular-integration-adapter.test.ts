@@ -29,7 +29,7 @@ import {
 	TokenSetAuthRegistry,
 	TokenSetAuthService,
 } from "@securitydept/token-set-context-client-angular";
-import { Observable } from "rxjs";
+import { firstValueFrom, Observable, of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -79,6 +79,18 @@ function createMockClient(
 		state: stateCtrl.signal,
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
+		authorizationHeader: vi.fn(() => {
+			const accessToken = stateCtrl.signal.get()?.tokens.accessToken;
+			return accessToken ? `Bearer ${accessToken}` : null;
+		}),
+		ensureFreshAuthState: vi.fn().mockResolvedValue(stateCtrl.signal.get()),
+		ensureAuthorizationHeader: vi
+			.fn()
+			.mockResolvedValue(
+				stateCtrl.signal.get()?.tokens.accessToken
+					? `Bearer ${stateCtrl.signal.get()?.tokens.accessToken}`
+					: null,
+			),
 		handleCallback: vi.fn().mockResolvedValue({
 			snapshot: makeSnapshot("callback-tok"),
 		}),
@@ -436,7 +448,7 @@ describe("Angular Integration — Callback Helpers", () => {
 // ===========================================================================
 
 describe("Angular Integration — Multi-client Bearer Interceptor", () => {
-	it("selects correct token based on URL pattern", () => {
+	it("selects correct token based on URL pattern", async () => {
 		const registry = new TokenSetAuthRegistry();
 
 		const apiClient = createMockClient(makeSnapshot("api-token"));
@@ -464,13 +476,13 @@ describe("Angular Integration — Multi-client Bearer Interceptor", () => {
 			},
 		};
 
-		const mockNext = vi.fn().mockReturnValue(new Observable());
-		interceptor(mockReq, mockNext);
+		const mockNext = vi.fn().mockReturnValue(of({}));
+		await firstValueFrom(interceptor(mockReq, mockNext));
 
 		expect(clonedHeaders.Authorization).toBe("Bearer api-token");
 	});
 
-	it("falls back to first available token when no URL pattern matches", () => {
+	it("falls back to first available token when no URL pattern matches", async () => {
 		const registry = new TokenSetAuthRegistry();
 
 		registry.register({
@@ -489,13 +501,13 @@ describe("Angular Integration — Multi-client Bearer Interceptor", () => {
 			},
 		};
 
-		const mockNext = vi.fn().mockReturnValue(new Observable());
-		interceptor(mockReq, mockNext);
+		const mockNext = vi.fn().mockReturnValue(of({}));
+		await firstValueFrom(interceptor(mockReq, mockNext));
 
 		expect(clonedHeaders.Authorization).toBe("Bearer fallback-tok");
 	});
 
-	it("passes request through when no token is available", () => {
+	it("passes request through when no token is available", async () => {
 		const registry = new TokenSetAuthRegistry();
 
 		registry.register({
@@ -509,12 +521,13 @@ describe("Angular Integration — Multi-client Bearer Interceptor", () => {
 			clone: vi.fn(),
 		};
 
-		const nextObs = new Observable();
+		const nextObs = of({});
 		const mockNext = vi.fn().mockReturnValue(nextObs);
 		const result = interceptor(mockReq, mockNext);
+		await firstValueFrom(result);
 
 		expect(mockReq.clone).not.toHaveBeenCalled();
-		expect(result).toBe(nextObs);
+		expect(mockNext).toHaveBeenCalledWith(mockReq);
 	});
 });
 
@@ -532,6 +545,17 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 			state: mainState.signal,
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn().mockResolvedValue(null),
+			authorizationHeader: vi.fn(() => {
+				const accessToken = mainState.signal.get()?.tokens.accessToken;
+				return accessToken ? `Bearer ${accessToken}` : null;
+			}),
+			ensureFreshAuthState: vi
+				.fn()
+				.mockImplementation(async () => mainState.signal.get()),
+			ensureAuthorizationHeader: vi.fn().mockImplementation(async () => {
+				const accessToken = mainState.signal.get()?.tokens.accessToken;
+				return accessToken ? `Bearer ${accessToken}` : null;
+			}),
 			handleCallback: vi.fn().mockResolvedValue({
 				snapshot: makeSnapshot("main-after-login"),
 			}),
@@ -542,6 +566,17 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 			state: adminState.signal,
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn().mockResolvedValue(null),
+			authorizationHeader: vi.fn(() => {
+				const accessToken = adminState.signal.get()?.tokens.accessToken;
+				return accessToken ? `Bearer ${accessToken}` : null;
+			}),
+			ensureFreshAuthState: vi
+				.fn()
+				.mockImplementation(async () => adminState.signal.get()),
+			ensureAuthorizationHeader: vi.fn().mockImplementation(async () => {
+				const accessToken = adminState.signal.get()?.tokens.accessToken;
+				return accessToken ? `Bearer ${accessToken}` : null;
+			}),
 			handleCallback: vi.fn().mockResolvedValue({
 				snapshot: makeSnapshot("admin-after-login"),
 			}),
@@ -588,7 +623,7 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 				return req;
 			},
 		};
-		interceptor(req, () => new Observable());
+		await firstValueFrom(interceptor(req, () => of({})));
 		expect(authHeader).toBe("Bearer main-tok");
 
 		// 7. Callback discrimination

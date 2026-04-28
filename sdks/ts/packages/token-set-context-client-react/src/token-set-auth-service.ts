@@ -7,7 +7,13 @@
 //
 // Stability: provisional (new in iteration 110)
 
-import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
+import {
+	type AuthSnapshot,
+	type EnsureAuthorizationHeaderOptions,
+	type EnsureFreshAuthStateOptions,
+	getTokenFreshness,
+	TokenFreshnessState,
+} from "@securitydept/token-set-context-client/orchestration";
 import type { TokenSetReactClient } from "./contracts";
 
 /**
@@ -37,11 +43,35 @@ export class TokenSetAuthService {
 	}
 
 	isAuthenticated(): boolean {
-		return this.getState() !== null;
+		return this.accessToken() !== null;
 	}
 
 	accessToken(): string | null {
-		return this.getState()?.tokens.accessToken ?? null;
+		const snapshot = this.getState();
+		if (!isFreshOrUsable(snapshot)) {
+			return null;
+		}
+		return snapshot?.tokens.accessToken ?? null;
+	}
+
+	async ensureFreshAuthState(
+		options?: EnsureFreshAuthStateOptions,
+	): Promise<AuthSnapshot | null> {
+		return await this.client.ensureFreshAuthState(options);
+	}
+
+	async ensureAccessToken(
+		options?: EnsureFreshAuthStateOptions,
+	): Promise<string | null> {
+		return (
+			(await this.ensureFreshAuthState(options))?.tokens.accessToken ?? null
+		);
+	}
+
+	async ensureAuthorizationHeader(
+		options?: EnsureAuthorizationHeaderOptions,
+	): Promise<string | null> {
+		return await this.client.ensureAuthorizationHeader(options);
 	}
 
 	dispose(): void {
@@ -53,4 +83,17 @@ export class TokenSetAuthService {
 			// Swallow — best effort.
 		}
 	}
+}
+
+function isFreshOrUsable(snapshot: AuthSnapshot | null): boolean {
+	const freshness = getTokenFreshness(snapshot, {
+		now: Date.now(),
+		clockSkewMs: 30_000,
+		refreshWindowMs: 0,
+	});
+	return (
+		freshness === TokenFreshnessState.Fresh ||
+		freshness === TokenFreshnessState.RefreshDue ||
+		freshness === TokenFreshnessState.NoExpiry
+	);
 }

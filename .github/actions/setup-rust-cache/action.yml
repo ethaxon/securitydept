@@ -1,0 +1,36 @@
+name: Setup Rust cache
+description: Restore Rust build cache with explicit read-write/read-only/none modes.
+
+inputs:
+  shared-key:
+    description: Stable shared Rust cache scope key, for example
+      runner-os-branch-profile. The workflow topology must guarantee a unique
+      read-write owner for this key; do not duplicate Cargo or toolchain hashes
+      here because rust-cache already adds its own Rust environment hash.
+    required: true
+  cache-mode:
+    description: Cache mode for Rust build artifacts. Use read-write for the unique
+      writer, read-only for restore-only consumers, or none to disable cache
+      access.
+    required: false
+    default: read-only
+  cache-on-failure:
+    description: Whether the read-write owner should save cache on failure.
+    required: false
+    default: "true"
+  cache-workspace-crates:
+    description: Whether workspace crates should be cached.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Restore Rust build cache
+      if: inputs.cache-mode != 'none'
+      uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: ${{ inputs.shared-key }}
+        cache-workspace-crates: ${{ inputs.cache-workspace-crates }}
+        cache-on-failure: ${{ inputs.cache-on-failure }}
+        save-if: ${{ inputs.cache-mode == 'read-write' }}

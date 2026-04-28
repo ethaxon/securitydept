@@ -3,7 +3,7 @@
 //
 // This controller composes the four core orchestration primitives:
 //   - in-memory auth state (snapshot read/write)
-//   - authorization header projection (bearerHeader)
+//   - authorization header projection (freshBearerHeader)
 //   - persistence (restore / save / clear)
 //   - authorized transport composition
 //
@@ -24,8 +24,8 @@ import type { HttpTransport, RecordStore } from "@securitydept/client";
 import { createAuthorizedTransport } from "./auth-transport";
 import type { AuthStatePersistence } from "./persistence";
 import { createAuthStatePersistence } from "./persistence";
-import { bearerHeader, mergeTokenDelta } from "./token-ops";
-import type { AuthDelta, AuthSnapshot, TokenSnapshot } from "./types";
+import { freshBearerHeader, mergeTokenDelta } from "./token-ops";
+import type { AuthDelta, AuthSnapshot } from "./types";
 
 // ---------------------------------------------------------------------------
 // Auth Material Controller types
@@ -185,17 +185,13 @@ export function createAuthMaterialController(
 			})
 		: null;
 
-	function currentTokens(): TokenSnapshot | null {
-		return currentSnapshot?.tokens ?? null;
-	}
-
 	const controller: AuthMaterialController = {
 		get snapshot(): AuthSnapshot | null {
 			return currentSnapshot;
 		},
 
 		get authorizationHeader(): string | null {
-			return bearerHeader(currentTokens());
+			return freshBearerHeader(currentSnapshot, freshnessOptions());
 		},
 
 		get persistence(): AuthStatePersistence | null {
@@ -265,11 +261,22 @@ export function createAuthMaterialController(
 			transportOptions: { requireAuthorization?: boolean } = {},
 		): HttpTransport {
 			return createAuthorizedTransport(
-				{ authorizationHeader: () => bearerHeader(currentTokens()) },
+				{
+					authorizationHeader: () =>
+						freshBearerHeader(currentSnapshot, freshnessOptions()),
+				},
 				{ transport: baseTransport, ...transportOptions },
 			);
 		},
 	};
 
 	return controller;
+}
+
+function freshnessOptions() {
+	return {
+		now: Date.now(),
+		clockSkewMs: 30_000,
+		refreshWindowMs: 0,
+	};
 }

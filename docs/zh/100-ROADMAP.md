@@ -10,7 +10,7 @@
 
 这个 beta 不是新的 auth context milestone。它是当前 reusable Rust crates、TypeScript SDK packages、Docker image 与 static docs site 的 packaging、documentation、downstream-adopter router correctness 与 release-readiness line。
 
-当前仓库侧的目标不再是“证明能不能发布”，而是保持 release automation、authority docs 与已发布事实一致，为下一次 release execution 继续提供可复用路径。
+当前仓库侧的目标不再是“证明能不能发布”，而是保持 release automation、authority docs 与已发布事实一致，为下一次 release execution 继续提供可复用路径。当前 release-pipeline hardening 主线只保留 `docs.yml`、`tests.yml` 和一个受保护的 `release.yml` workflow 作为 active automation，并由 `release.yml` 统一拥有 npm、crates.io 与 Docker publish。
 
 ## 0.2.0-beta.3 Release Record And Remaining Work
 
@@ -20,18 +20,21 @@
 - root `[patch.crates-io] openidconnect` 已移除，workspace 已回到 `openidconnect = "4"`
 - `apps/server` 与 `apps/cli` 已明确为 `publish = false` 的 application artifacts
 - publishable TS SDK packages 已切到 `0.2.0-beta.3`，internal utility packages 保持 private
-- npm publish workflow 与 crates publish workflow 都已切到 GitHub OIDC trusted publishing
+- `release.yml` 内的 npm 与 crates publish jobs 已切到 GitHub OIDC trusted publishing
 - Angular 与 TanStack Router auth redirect helpers 会保留 attempted-route `postAuthRedirectUri`，并在启动整页外部 redirect 后避免 settle framework guard result
+- token-set TypeScript SDK 的 bearer injection 已具备 freshness-aware 语义：expired access token 会先通过 coalesced barrier refresh，再发送 protected request；无法刷新时会清理/进入 unauthenticated，而不是继续向 downstream 发送 expired bearer
 
 当前仍需持续维护的事项是下一次 release execution 的可重复性，而不是 alpha-era blocker：
 
 | Area | 当前状态 | 下一步要求 |
 |---|---|---|
-| Rust package gate | 默认 `release-cli crates publish --mode=package` 与 `.github/workflows/crates-publish.yml` 现在都走真实 package gate | 下一次 release 前继续保持默认 report 为最新全量 evidence |
-| npm publish security posture | workflow 与手动入口都显式传 `--provenance`，并使用 trusted publishing | 后续 release 保持 workflow / just / docs 三者参数一致 |
-| Docker | Docker build / tag policy 已对齐 beta 规则，但真实镜像发布仍取决于当次 release execution | 继续保持 toolchain、tag policy、labels 与 docs 口径一致 |
+| Rust crates publish | `release.yml` 现在在 `crates-release` job 内完成 package 与 publish，并使用 `crates-io-release` environment、OIDC trusted publishing 与 already-published crate version skip 语义 | release run 必须保留 package / publish report artifact，保持 trusted publisher binding 与 `release.yml` 一致，并继续禁止在 publish path 使用 `--allow-dirty` / `--allow-blocked` |
+| npm publish | `release.yml` 现在在 `npm-release` job 内构建 TypeScript SDK packages 并发布，使用 `npm-release` environment、OIDC trusted publishing、`--provenance` 与 npm report artifact | 后续继续保持 package-root publish 语义、trusted publisher binding 与 `release.yml` 一致，并保留 publish report |
+| Docker | image publish 归 `release.yml`；runtime artifacts 在 Docker 外构建，再通过 Debian-slim `Dockerfile.runtime` 组装 | 继续保持 runtime artifact path、ABI/base image 选择、tags、labels 与 docs 口径一致 |
+| Release workflow benchmark | release-profile cache prime 目前是实践裁决下采用的暂定优化，并具备唯一 writer 拓扑，但不是已完成的耗时证明 | 等 `pretend-act` 或等价本地 workflow benchmark 能提供可复现测量后，再基于数据调整 release cache/build 拆分 |
 | Docs and roadmap authority | source docs 现在描述当前 release 与 SDK 事实 | 后续 release 不要把历史 blocker 重新写回 current-status docs |
 | Docsite | `docsite/` 已是 VitePress source root，根内容通过最小链接改写接入 | 继续保持链接规则与 source docs 同步，不引入新的 staging pipeline |
+| Downstream Angular bearer freshness | `outposts` 暴露了 stale bearer failure mode：expired JWT 到达 Confluence 后被后端正确以 `ExpiredSignature` 拒绝；现在 SDK core 拥有 freshness check、refresh coalescing 与 no-stale-header 行为，供 Angular/React/transport 调用 | 后续把 outposts validation 留在 release evidence loop 中；若 SDK bearer path 再出现 `ExpiredSignature`，应按 refresh-material 或 barrier regression 处理 |
 
 ## 0.2.x Active Track
 

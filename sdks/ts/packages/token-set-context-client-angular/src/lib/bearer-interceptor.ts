@@ -11,7 +11,7 @@ import {
 	inject,
 	type Provider,
 } from "@angular/core";
-import type { Observable } from "rxjs";
+import { from, type Observable, switchMap } from "rxjs";
 import { TokenSetAuthRegistry } from "./token-set-auth-registry";
 
 // ============================================================================
@@ -94,19 +94,23 @@ export class TokenSetBearerInterceptor implements HttpInterceptor {
 		// belongs to route guards (which use whenReady() to await readiness).
 		// A not-yet-ready client correctly produces no token → request proceeds
 		// without Authorization header.
-		const token = key
-			? (this.registry.get(key)?.accessToken() ?? null)
-			: this.options.strictUrlMatch
-				? null
-				: this.registry.accessToken();
-
-		if (!token) {
-			return next.handle(req);
-		}
-		const authReq = req.clone({
-			setHeaders: { Authorization: `Bearer ${token}` },
-		});
-		return next.handle(authReq);
+		return from(
+			key
+				? (this.registry.get(key)?.ensureAuthorizationHeader() ??
+						Promise.resolve(null))
+				: this.options.strictUrlMatch
+					? Promise.resolve(null)
+					: this.registry.ensureAuthorizationHeader(),
+		).pipe(
+			switchMap((authorization) => {
+				if (!authorization) {
+					return next.handle(req);
+				}
+				return next.handle(
+					req.clone({ setHeaders: { Authorization: authorization } }),
+				);
+			}),
+		);
 	}
 }
 
@@ -259,18 +263,22 @@ export function createTokenSetBearerInterceptor(
 		// (via clientKeyForUrl) but registry.get() returns undefined because the
 		// async clientFactory has not resolved yet, the request proceeds without
 		// a token. See class-based interceptor above for full rationale.
-		const token = key
-			? (registry.get(key)?.accessToken() ?? null)
-			: options.strictUrlMatch
-				? null
-				: registry.accessToken();
-
-		if (!token) {
-			return next(req);
-		}
-		const authReq = req.clone({
-			setHeaders: { Authorization: `Bearer ${token}` },
-		});
-		return next(authReq);
+		return from(
+			key
+				? (registry.get(key)?.ensureAuthorizationHeader() ??
+						Promise.resolve(null))
+				: options.strictUrlMatch
+					? Promise.resolve(null)
+					: registry.ensureAuthorizationHeader(),
+		).pipe(
+			switchMap((authorization) => {
+				if (!authorization) {
+					return next(req);
+				}
+				return next(
+					req.clone({ setHeaders: { Authorization: authorization } }),
+				);
+			}),
+		);
 	};
 }
