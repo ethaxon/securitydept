@@ -280,6 +280,8 @@ export function relayPopupCallback(
 	opener.postMessage(message, targetOrigin);
 
 	if (options.closeAfterRelay !== false) {
-		window.close();
+		setTimeout(() => {
+			window.close();
+		}, 0);
 	}
 }

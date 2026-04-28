@@ -225,7 +225,8 @@ describe("popup shared infrastructure", () => {
 	});
 
 	describe("relayPopupCallback", () => {
-		it("posts message to opener and closes window", () => {
+		it("posts message to opener and closes window after yielding for message delivery", async () => {
+			vi.useFakeTimers();
 			const postMessageFn = vi.fn();
 			const closeFn = vi.fn();
 			vi.stubGlobal("opener", { postMessage: postMessageFn });
@@ -247,8 +248,13 @@ describe("popup shared infrastructure", () => {
 				},
 				"https://app.example.com",
 			);
+			expect(closeFn).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(0);
+			expect(closeFn).toHaveBeenCalledOnce();
 
 			vi.unstubAllGlobals();
+			vi.useRealTimers();
 		});
 
 		it("does nothing when opener is null", () => {

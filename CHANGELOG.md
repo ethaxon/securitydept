@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0-beta.4]
+
+### Added
+
+- Added a token-set access-token freshness model and freshness-aware helpers so SDK callers can distinguish fresh, refresh-due, expired, and no-expiry bearer material before protected requests.
+- Added coalesced refresh barriers and fresh authorization APIs across token-set OIDC clients, registries, React services, Angular services, and authorized transports.
+- Added local release-workflow simulation commands and release/test/docs workflow planning outputs so CI and publishing decisions can be inspected consistently before running publish jobs.
+
+### Changed
+
+- Consolidated release automation around the docs, tests, and release workflows, with release-branch publishing, expected-tag creation after successful publish jobs, shared release reports, and read-only cache consumers after cache priming.
+- Updated Angular bearer interceptors, Angular route guards, React hooks/services, React Query helpers, and TanStack Router guards to use freshness-aware authentication paths instead of raw synchronous bearer projections.
+- Updated token-set restore behavior so expired persisted snapshots with refresh material wait for refresh before being treated as authenticated, while expired snapshots without refresh material are cleared or treated as unauthenticated.
+- Updated SDK docs and roadmap entries to describe freshness-aware bearer injection, `ExpiredSignature` diagnosis, refresh material expectations, and downstream outposts validation with locally packed SDK artifacts.
+
+### Fixed
+
+- Fixed protected token-set request paths that could inject stale `access_token` values after persistence restore, refresh failure, or expired-without-refresh-material states.
+- Fixed refresh coalescing so concurrent protected requests share the same in-flight refresh instead of racing or reusing stale bearer state.
+- Fixed TanStack and orchestration transport paths that could bypass the refresh barrier through synchronous auth checks or raw `bearerHeader()` fallback behavior.
+- Fixed Firefox popup-login relay flakiness by yielding before closing the callback popup, giving the opener a chance to receive the relay `postMessage` before the e2e waits for the success trace.
+
 ## [0.2.0-beta.3]
 
 ### Added
