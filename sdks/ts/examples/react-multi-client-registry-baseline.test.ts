@@ -11,9 +11,13 @@
 // This closes the canonical React consumer path that used to live only in
 // Angular (provideTokenSetAuth / TokenSetAuthRegistry / TokenSetAuthService).
 
-import type { ReadableSignalTrait } from "@securitydept/client";
-import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import { AuthSourceKind } from "@securitydept/token-set-context-client/orchestration";
+import { createSubject, type ReadableSignalTrait } from "@securitydept/client";
+import {
+	type AuthSnapshot,
+	AuthSourceKind,
+	EnsureAuthForResourceStatus,
+	TokenSetAuthFlowReason,
+} from "@securitydept/token-set-context-client/orchestration";
 import type { TokenSetReactClient } from "@securitydept/token-set-context-client-react";
 import {
 	ClientInitializationPriority,
@@ -89,6 +93,7 @@ function createMockClient(
 	const ctrl = createTestSignal<AuthSnapshot | null>(initial);
 	const client: TokenSetReactClient = {
 		state: ctrl.signal,
+		authEvents: createSubject(),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
 		handleCallback: vi.fn().mockResolvedValue({ snapshot: makeSnapshot("cb") }),
@@ -101,6 +106,22 @@ function createMockClient(
 		ensureAuthorizationHeader: vi.fn().mockImplementation(async () => {
 			const accessToken = ctrl.signal.get()?.tokens.accessToken;
 			return accessToken ? `Bearer ${accessToken}` : null;
+		}),
+		ensureAuthForResource: vi.fn().mockImplementation(async () => {
+			const snapshot = ctrl.signal.get();
+			if (snapshot) {
+				return {
+					status: EnsureAuthForResourceStatus.Authenticated,
+					snapshot,
+					freshness: "fresh" as const,
+				};
+			}
+			return {
+				status: EnsureAuthForResourceStatus.Unauthenticated,
+				snapshot: null,
+				authorizationHeader: null,
+				reason: TokenSetAuthFlowReason.NoSnapshot,
+			};
 		}),
 		refresh: vi.fn().mockResolvedValue(makeSnapshot("refreshed")),
 		clearState: vi.fn().mockResolvedValue(undefined),

@@ -8,7 +8,7 @@
 		"dev": "vitepress dev",
 		"build": "vitepress build",
 		"preview": "vitepress preview",
-		"sync-symlink": "node scripts/sync-docsite-symlink.ts"
+		"sync-symlink": "node scripts/fix-docsite-symlink.ts"
 	},
 	"devDependencies": {
 		"@types/node": "^25.6.0",

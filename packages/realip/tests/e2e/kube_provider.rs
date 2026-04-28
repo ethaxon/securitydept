@@ -24,6 +24,7 @@ use testcontainers::{
     core::{ExecCommand, Mount},
     runners::AsyncRunner,
 };
+
 const DOCKER_SOCKET: &str = "/var/run/docker.sock";
 const HELPER_IMAGE_NAME: &str = "securitydept-realip-kube-integration-test-helper";
 const HELPER_IMAGE_TAG: &str = "v1";
@@ -84,7 +85,8 @@ fn ensure_helper_image_ready() -> anyhow::Result<()> {
     let server_os = docker_stdout(&["version", "--format", "{{.Server.Os}}"])?;
     if server_os.trim() != "linux" {
         anyhow::bail!(
-            "kube integration tests require Docker running Linux containers; detected server os '{}'.",
+            "kube integration tests require Docker running Linux containers; detected server os \
+             '{}'.",
             server_os.trim()
         );
     }
@@ -92,7 +94,8 @@ fn ensure_helper_image_ready() -> anyhow::Result<()> {
     let image_ref = helper_image_ref();
     if let Err(error) = docker_stdout(&["image", "inspect", &image_ref]) {
         anyhow::bail!(
-            "required helper image '{}' is missing. Build it first with `just build-kube-test-helper`. {}",
+            "required helper image '{}' is missing. Build it first with `just \
+             build-kube-test-helper`. {}",
             image_ref,
             error
         );
@@ -107,9 +110,6 @@ async fn exec_stdout(
 ) -> anyhow::Result<String> {
     let mut result = container.exec(ExecCommand::new(command)).await?;
     let stdout = String::from_utf8(result.stdout_to_vec().await?)?;
-    // If testcontainers has exit_code, we should check it, but testcontainers 0.27
-    // might not have it exposed directly in ExecResult. Instead let's just also
-    // fetch stderr
     let stderr = String::from_utf8(result.stderr_to_vec().await?)?;
     if !stderr.is_empty() {
         println!("STDERR: {}", stderr);

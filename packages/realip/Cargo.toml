@@ -46,15 +46,11 @@ testcontainers = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [[test]]
-name = "docker_provider"
-path = "tests/docker_provider.rs"
+name = "integration"
+path = "tests/integration/main.rs"
 required-features = ["docker"]
 
 [[test]]
-name = "kube_provider"
-path = "tests/kube_provider.rs"
+name = "e2e"
+path = "tests/e2e/main.rs"
 required-features = ["kube-integration-test"]
-
-[[test]]
-name = "core_providers"
-path = "tests/core_providers.rs"

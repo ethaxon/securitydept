@@ -37,6 +37,11 @@
 			"monorepo-tsc": "./src/react-query/index.ts",
 			"types": "./dist/react-query/index.d.mts",
 			"import": "./dist/react-query/index.mjs"
+		},
+		"./tanstack-router": {
+			"monorepo-tsc": "./src/tanstack-router/index.ts",
+			"types": "./dist/tanstack-router/index.d.mts",
+			"import": "./dist/tanstack-router/index.mjs"
 		}
 	},
 	"files": [
@@ -48,6 +53,7 @@
 	},
 	"dependencies": {
 		"@securitydept/client": "workspace:*",
+		"@securitydept/client-react": "workspace:*",
 		"@securitydept/token-set-context-client": "workspace:*"
 	},
 	"peerDependencies": {

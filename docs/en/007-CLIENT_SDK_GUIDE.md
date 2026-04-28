@@ -83,6 +83,8 @@ State primitives are explicit, host-owned, and framework-neutral. Framework adap
 
 Events should describe machine-facing lifecycle facts. User-facing presentation belongs to the host.
 
+`@securitydept/client/events` exposes the foundation event-stream traits and operator facade used by token-set lifecycle telemetry. Family packages should emit SecurityDept event traits as their public contract; RxJS is an implementation and interop detail, not the shape adapters must expose.
+
 ### Transport
 
 Transport is always injected or selected by the host. SDK packages must not assume a global fetch policy beyond the documented browser/server entry.
@@ -195,17 +197,20 @@ The table below is the current TS SDK public-surface authority snapshot. It must
 | `@securitydept/session-context-client/web` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client/server` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client-react` | `provisional` | `session-context` | `provisional-migration-required` |
+| `@securitydept/client/events` | `provisional` | `foundation` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/backend-oidc-mode` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/backend-oidc-mode/web` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/frontend-oidc-mode` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/orchestration` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/access-token-substrate` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/registry` | `provisional` | `token-set-context` | `provisional-migration-required` |
+| `@securitydept/token-set-context-client/web-router` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/test-utils` | `experimental` | `foundation` | `experimental-fast-break` |
 | `@securitydept/basic-auth-context-client-angular` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client-angular` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client-react` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client-react/react-query` | `provisional` | `token-set-context` | `provisional-migration-required` |
+| `@securitydept/token-set-context-client-react/tanstack-router` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client-angular` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/client-react` | `provisional` | `shared-framework` | `provisional-migration-required` |
 | `@securitydept/client-react/tanstack-router` | `provisional` | `shared-framework` | `provisional-migration-required` |
@@ -219,6 +224,7 @@ The table below is the current TS SDK public-surface authority snapshot. It must
 - `/orchestration`: protocol-agnostic token lifecycle and route requirement primitives.
 - `/access-token-substrate`: access-token propagation vocabulary and substrate contract.
 - `/registry`: shared multi-client lifecycle core.
+- `/web-router`: token-set-specific raw Web Router helper that calls the canonical auth barrier before redirect/block fallback.
 
 #### Capability Boundary Rules
 
@@ -319,7 +325,11 @@ Layering rules:
   - multi-backend, multi-audience, or third-party-traffic Angular adopters MUST use `strictUrlMatch: true`.
   - `TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS` is exported for advanced DI/test overrides.
 
-Freshness is owned by the token-set core, not by one framework adapter. `authorizationHeader()` is a synchronous fresh-or-null projection, while `ensureAuthorizationHeader()` waits for the coalesced refresh barrier and is the safe API for protected requests. The registry, Angular service, React service, React Query transport helper, and generic authorized transport all prefer the async ensure path when available. `AuthMaterialController` has no protocol-level refresh capability, so its `authorizationHeader` and `createTransport()` use fresh-or-null projection: expired or invalid-expiry material returns `null`, and `requireAuthorization: true` raises unauthenticated instead of sending a stale bearer. `registry.accessToken()` remains a sync convenience and returns `null` for expired material; use `registry.ensureAccessToken(key)` or `registry.ensureAuthorizationHeader(key)` when a request must wait for refresh. Calling the async registry helpers without a key is only valid when exactly one client is ready.
+Freshness is owned by the token-set core, not by one framework adapter. `ensureAuthForResource(options)` is the canonical async barrier for route entry, resume reconciliation, authorized transports, interceptors, and React Query requests. It emits domain auth events, shares the coalesced refresh barrier, and can return an `Authorization` header plus an opaque temporary token handle. Event payloads must not contain raw access, refresh, or ID token values; token handles are only descriptors that can be resolved by the owning in-memory store while valid. `authorizationHeader()` remains a synchronous fresh-or-null projection, while `ensureAuthorizationHeader()` is a compatibility wrapper over the canonical resource barrier. `AuthMaterialController` has no protocol-level refresh capability, so its `authorizationHeader` and `createTransport()` use fresh-or-null projection: expired or invalid-expiry material returns `null`, and `requireAuthorization: true` raises unauthenticated instead of sending a stale bearer. `registry.accessToken()` remains a sync convenience and returns `null` for expired material; use `registry.ensureAuthForResource({ key, needsAuthorizationHeader: true })`, `registry.ensureAccessToken(key)`, or `registry.ensureAuthorizationHeader(key)` when a request must wait for refresh. Calling async registry helpers without a key is only valid when exactly one matching client is registered or ready, depending on the helper.
+
+Browser-owned frontend/backend OIDC factories attach page-resume reconciliation by default. Angular `provideTokenSetAuth(...)` installs the same default for registry-managed browser clients, including `clientFactory` implementations that directly return `createFrontendOidcModeClient(...)`. On `visibilitychange` back to visible, `pageshow`, `focus`, and `online`, the client calls `ensureAuthForResource({ source: "resume", forceRefreshWhenDue: true })` and emits resume requested/skipped/completed/failed events. This is a recovery barrier, not an interactive login trigger: refresh failures clear or preserve auth state through the normal token-set client paths, and route/request handlers decide whether to start login. Set per-client `resumeReconciliation: false` only for hosts that install their own equivalent lifecycle hook; pass `resumeReconciliationOptions` to provide custom browser targets or throttling in tests.
+
+Short access-token lifetimes should be handled through SDK-owned barriers: persisted restore forces refresh when material is already in the refresh window, browser resume reconciles after hidden tabs/sleep/bfcache, Angular route aggregation waits for `restorePromise` and `ensureAuthForResource({ source: "route_guard", forceRefreshWhenDue: true })` before invoking unauthenticated handlers, and protected requests use `ensureAuthForResource({ source: "http_interceptor" | "authorized_transport", needsAuthorizationHeader: true, forceRefreshWhenDue: true })`. TanStack Router hosts should use `createTokenSetSecureBeforeLoad()` from `@securitydept/token-set-context-client-react/tanstack-router`; raw web hosts should use `createTokenSetWebRouteAuthCandidate()` from `@securitydept/token-set-context-client/web-router`. Both helpers call `ensureAuthForResource({ source: "tanstack_before_load" | "raw_web_router", forceRefreshWhenDue: true })` before redirect/block fallback.
 
 If a downstream resource server reports `ExpiredSignature`, the rejection is correct: the frontend sent an expired JWT and the SDK/adopter must not inject that bearer. Diagnose whether the browser has refresh material before blaming the refresh barrier:
 
@@ -341,7 +351,7 @@ Object.entries(localStorage)
   });
 ```
 
-When `hasRefreshMaterial=false`, check the IdP, requested scopes, and refresh-token policy; the SDK still must not send the expired access token. When `hasRefreshMaterial=true`, the SDK should refresh before the first protected request or move the client to unauthenticated state, so `ExpiredSignature` should not appear on a request sent through the SDK bearer interceptor or authorized transport.
+When `hasRefreshMaterial=false`, check the IdP, requested scopes, and refresh-token policy; the SDK still must not send the expired access token. For Authentik deployments this usually means verifying that `offline_access` is requested/allowed and that refresh-token rotation/lifetime settings allow the browser client to keep usable refresh material. When `hasRefreshMaterial=true`, the SDK should refresh before route admission, page-resume recovery, or the first protected request, or move the client to unauthenticated state; `ExpiredSignature` should not appear on a request sent through the SDK bearer interceptor or authorized transport.
 
 #### 5. SSR / server-host entry: dedicated `./server` helpers
 

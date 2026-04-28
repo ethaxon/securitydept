@@ -13,9 +13,13 @@ The current downstream calibration line is:
 - The callback route is served by the SDK `TokenSetCallbackComponent`.
 - `secureRouteRoot()` carries provider-neutral requirement metadata and next-action policy.
 - `provideTokenSetAuth(...)` registers the `Confluence` client with `providerFamily: "authentik"`, `callbackPath: "/auth/callback"`, and URL patterns for the Confluence API endpoint.
+- For registry-managed browser clients, `provideTokenSetAuth(...)` now owns default page-resume reconciliation as well; `outposts` does not need to manually wrap `createFrontendOidcModeClient(...)` just to get resume recovery.
 - `provideTokenSetBearerInterceptor({ strictUrlMatch: true })` bounds bearer injection to URLs matching registered `urlPatterns` and avoids the single-client fallback for unmatched URLs.
+- Short access-token lifetimes are expected to recover through SDK freshness barriers: browser resume reconciliation, Angular route guard freshness, and request-time `ensureAuthForResource({ source: "http_interceptor", needsAuthorizationHeader: true })` all try refresh before login redirect or bearer injection when refresh material exists.
+- Real browser diagnostics can enable sanitized auth-event capture with `?sd-auth-events=1`; `outposts-web` then exposes `window.__OUTPOSTS_AUTH_DIAGNOSTICS__.events` containing event type, flow source, client key, freshness, refresh-material presence, reason, outcome, refresh barrier id, and sanitized error summary.
 - Focused downstream tests lock callback path preservation, provider-neutral route metadata, bearer injection boundaries, and redirect preservation.
 - Existing backend tests in the `confluence` service lock issuer/JWKS/audience/scope behavior, including optional-audience and missing-scope rejection cases.
+- Linked-package tests/build prove the local SDK contract wiring, but they do not replace a true Authentik browser/Network run. That run still needs an active `outposts-web` page and authenticated Authentik session to record localStorage refresh material, access-token expiry, resume refresh, route admission, and first protected API request behavior.
 
 ## Why This Case Matters
 
@@ -37,7 +41,8 @@ Near-term validation scope:
 3. Provider-neutral route requirements and callback preservation.
 4. Strict bearer-header injection that does not leak tokens to third-party URLs.
 5. Audience/scope/issuer validation on the backend side.
-6. Candidate SDK ergonomics gaps that appear in real adopter glue.
+6. Five-minute access-token behavior with usable refresh material: return from sleep/hidden tab, protected route admission, and the first Confluence API request should refresh instead of sending an expired bearer or redirecting prematurely.
+7. Candidate SDK ergonomics gaps that appear in real adopter glue.
 
 ## What This Case Must Not Be Misread As
 
@@ -61,6 +66,9 @@ Current impact:
 
 - Angular bearer injection now has an explicit `BearerInterceptorOptions.strictUrlMatch` option.
 - Multi-backend or third-party-traffic Angular hosts should opt into `strictUrlMatch: true`.
+- Browser token-set clients attach resume reconciliation by default, and Angular `provideTokenSetAuth(...)` applies that default to registry-managed browser clients. If `outposts` disables that hook locally for a given client, it must install an equivalent `visibilitychange`/`pageshow`/`focus`/`online` freshness barrier.
+- Angular route and request handling should stay on the canonical `ensureAuthForResource()` path; app-local route or bearer code must not recreate `ensureFreshAuthState()` / `ensureAuthorizationHeader()` fallback chains.
+- Authentik configuration must keep refresh material available to the browser-owned token-set client: request/allow `offline_access`, and set refresh-token rotation/lifetime so short access tokens can be renewed during normal tab resume and route/request flows.
 - The SDK should keep room for keyed token-set state projection helpers, but the current `outposts` `AuthService` remains a single-adopter sample and is not yet an SDK API.
 - Framework route adapters should stay provider-neutral and express requirements, not provider SDK details.
 

@@ -17,7 +17,17 @@
 //   - token-set-specific business semantics (that lives in the materialize
 //     callback supplied by the adapter)
 
+import {
+	createSubject,
+	type EventStreamTrait,
+	type EventSubscriptionTrait,
+} from "@securitydept/client";
 import { ClientReadinessState } from "../frontend-oidc-mode/config-source";
+import type {
+	EnsureAuthForResourceOptions,
+	EnsureAuthForResourceResult,
+	TokenSetAuthEvent,
+} from "../orchestration";
 import { isOidcCallback } from "./oidc-callback-url";
 import {
 	type ClientFilter,
@@ -26,6 +36,7 @@ import {
 	type ClientMeta,
 	type ClientQueryOptions,
 	type CreateTokenSetAuthRegistryOptions,
+	type EnsureRegistryAuthForResourceOptions,
 	type TokenSetClientEntry,
 } from "./types";
 
@@ -111,7 +122,19 @@ export class TokenSetAuthRegistry<TClient, TService> {
 	private readonly _ensureAuthorizationHeaderOf:
 		| ((service: TService) => Promise<string | null>)
 		| undefined;
+	private readonly _ensureAuthForResourceOf:
+		| ((
+				service: TService,
+				options: EnsureAuthForResourceOptions,
+		  ) => Promise<EnsureAuthForResourceResult>)
+		| undefined;
+	private readonly _authEventsOf:
+		| ((service: TService) => EventStreamTrait<TokenSetAuthEvent> | undefined)
+		| undefined;
 	private readonly idleScheduler: (callback: () => void) => () => void;
+	private readonly authEventSubject = createSubject<TokenSetAuthEvent>();
+	readonly authEvents: EventStreamTrait<TokenSetAuthEvent> =
+		this.authEventSubject;
 
 	// Materialized services (after clientFactory resolves)
 	private readonly services = new Map<string, TService>();
@@ -133,6 +156,10 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		string,
 		PendingRegistration<TService>
 	>();
+	private readonly authEventSubscriptions = new Map<
+		string,
+		EventSubscriptionTrait
+	>();
 
 	constructor(options: CreateTokenSetAuthRegistryOptions<TClient, TService>) {
 		this.materialize = options.materialize;
@@ -140,6 +167,8 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		this._accessTokenOf = options.accessTokenOf;
 		this._ensureAccessTokenOf = options.ensureAccessTokenOf;
 		this._ensureAuthorizationHeaderOf = options.ensureAuthorizationHeaderOf;
+		this._ensureAuthForResourceOf = options.ensureAuthForResourceOf;
+		this._authEventsOf = options.authEventsOf;
 		this.idleScheduler = options.idleScheduler ?? defaultIdleScheduler;
 	}
 
@@ -223,6 +252,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 					(client) => {
 						const service = this.materialize(client, entry);
 						this.services.set(entry.key, service);
+						this.attachAuthEvents(entry.key, service);
 						pendingEntry.state = ClientReadinessState.Ready;
 						return service;
 					},
@@ -239,6 +269,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 
 		const service = this.materialize(clientOrPromise, entry);
 		this.services.set(entry.key, service);
+		this.attachAuthEvents(entry.key, service);
 		return service;
 	}
 
@@ -357,6 +388,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 			}
 		}
 		this.services.delete(key);
+		this.detachAuthEvents(key);
 		this.entries.delete(key);
 		this.metas.delete(key);
 		this.pendingRegistrations.delete(key);
@@ -401,6 +433,9 @@ export class TokenSetAuthRegistry<TClient, TService> {
 			}
 		}
 		this.services.clear();
+		for (const key of this.authEventSubscriptions.keys()) {
+			this.detachAuthEvents(key);
+		}
 		this.entries.clear();
 		this.metas.clear();
 		this.pendingRegistrations.clear();
@@ -702,6 +737,120 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		const [service] = services;
 		return service ? await this._ensureAuthorizationHeaderOf(service) : null;
 	}
+
+	async ensureAuthForResource(
+		options: EnsureRegistryAuthForResourceOptions = {},
+	): Promise<EnsureAuthForResourceResult | null> {
+		const resolvedKey = this.resolveEnsureAuthKey(options);
+		if (!resolvedKey) return null;
+
+		const service =
+			options.waitForReady === false
+				? this.services.get(resolvedKey)
+				: await this.whenReady(resolvedKey);
+		if (!service) return null;
+
+		const {
+			key: _key,
+			query: _query,
+			waitForReady: _waitForReady,
+			...flow
+		} = options;
+		return this.ensureAuthForResourceOf(service, {
+			...flow,
+			clientKey: flow.clientKey ?? resolvedKey,
+		});
+	}
+
+	private resolveEnsureAuthKey(
+		options: EnsureRegistryAuthForResourceOptions,
+	): string | undefined {
+		if (options.key) return options.key;
+
+		const keys = options.query
+			? this.clientKeysForOptions(options.query)
+			: [...this.entries.keys()];
+		if (keys.length > 1) {
+			throw new Error(
+				"[TokenSetAuthRegistry] ensureAuthForResource() without a key is only valid for a single registered client.",
+			);
+		}
+		return keys[0];
+	}
+
+	private async ensureAuthForResourceOf(
+		service: TService,
+		options: EnsureAuthForResourceOptions,
+	): Promise<EnsureAuthForResourceResult | null> {
+		if (this._ensureAuthForResourceOf) {
+			return this._ensureAuthForResourceOf(service, options);
+		}
+		if (hasEnsureAuthForResource(service)) {
+			return service.ensureAuthForResource(options);
+		}
+		return null;
+	}
+
+	private attachAuthEvents(key: string, service: TService): void {
+		this.detachAuthEvents(key);
+		const stream = this.authEventsOf(service);
+		if (!stream) return;
+
+		this.authEventSubscriptions.set(
+			key,
+			stream.subscribe({
+				next: (event) => {
+					this.authEventSubject.next({
+						...event,
+						payload: {
+							...event.payload,
+							clientKey: event.payload.clientKey ?? key,
+						},
+					});
+				},
+			}),
+		);
+	}
+
+	private detachAuthEvents(key: string): void {
+		this.authEventSubscriptions.get(key)?.unsubscribe();
+		this.authEventSubscriptions.delete(key);
+	}
+
+	private authEventsOf(
+		service: TService,
+	): EventStreamTrait<TokenSetAuthEvent> | undefined {
+		if (this._authEventsOf) return this._authEventsOf(service);
+		if (hasAuthEvents(service)) return service.authEvents;
+		return undefined;
+	}
+}
+
+function hasEnsureAuthForResource(value: unknown): value is {
+	ensureAuthForResource(
+		options?: EnsureAuthForResourceOptions,
+	): Promise<EnsureAuthForResourceResult>;
+} {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"ensureAuthForResource" in value &&
+		typeof value.ensureAuthForResource === "function"
+	);
+}
+
+function hasAuthEvents(
+	value: unknown,
+): value is { authEvents: EventStreamTrait<TokenSetAuthEvent> } {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"authEvents" in value &&
+		typeof value.authEvents === "object" &&
+		value.authEvents !== null &&
+		"subscribe" in value.authEvents &&
+		typeof value.authEvents.subscribe === "function"
+	);
 }
 
 /**

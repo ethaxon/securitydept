@@ -6,6 +6,8 @@ export default defineConfig({
 		index: "./src/index.tsx",
 		// Optional React Query subpath (peer: @tanstack/react-query).
 		"react-query/index": "./src/react-query/index.ts",
+		// Token-set-specific TanStack Router beforeLoad helper.
+		"tanstack-router/index": "./src/tanstack-router/index.ts",
 	},
 	target: "es2022",
 	format: "esm",
@@ -13,7 +15,12 @@ export default defineConfig({
 	sourcemap: true,
 	clean: true,
 	deps: {
-		neverBundle: ["react", "react-dom", "@tanstack/react-query"],
+		neverBundle: [
+			"react",
+			"react-dom",
+			"@tanstack/react-query",
+			"@tanstack/react-router",
+		],
 	},
 	outDir: "./dist",
 });

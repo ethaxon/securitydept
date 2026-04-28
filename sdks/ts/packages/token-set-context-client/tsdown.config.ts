@@ -13,6 +13,8 @@ export default defineConfig({
 		"access-token-substrate/index": "./src/access-token-substrate/index.ts",
 		// Shared multi-client registry (framework-neutral).
 		"registry/index": "./src/registry/index.ts",
+		// Token-set-specific raw web router helpers.
+		"web-router/index": "./src/web-router/index.ts",
 	},
 	target: "es2022",
 	format: "esm",

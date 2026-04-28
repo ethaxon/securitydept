@@ -21,6 +21,32 @@ Rules:
 
 ## Current Migration Notes
 
+### Token-Set Event-Driven Auth Flow
+
+Packages:
+
+- `@securitydept/client/events`
+- `@securitydept/token-set-context-client/orchestration`
+- `@securitydept/token-set-context-client/registry`
+- `@securitydept/token-set-context-client-angular`
+- `@securitydept/token-set-context-client-react`
+
+Change:
+
+- Token-set clients now expose `authEvents` and `ensureAuthForResource(options)` as the canonical async route/request/resume barrier.
+- `ensureFreshAuthState()` and `ensureAuthorizationHeader()` remain compatibility wrappers, but new adapter code should pass an explicit source such as `route_guard`, `resume`, `http_interceptor`, or `authorized_transport`.
+- Authorization-header events may include an opaque temporary token handle descriptor. They must not include raw access, refresh, or ID token values.
+
+Migration:
+
+- Prefer `ensureAuthForResource({ source, forceRefreshWhenDue: true })` for route admission and resume recovery.
+- Prefer `ensureAuthForResource({ source, needsAuthorizationHeader: true, forceRefreshWhenDue: true })` before protected HTTP requests.
+- Subscribe to `authEvents` for lifecycle telemetry instead of inferring auth flow state from redirects, thrown errors, or raw token values.
+
+Justification:
+
+- Short access-token lifetimes need one shared refresh barrier across restore, resume, routes, interceptors, generic transports, and React Query instead of adapter-local freshness patches.
+
 ### Angular Token-Set Bearer Interceptor: `strictUrlMatch`
 
 Package: `@securitydept/token-set-context-client-angular`

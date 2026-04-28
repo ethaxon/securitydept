@@ -11,6 +11,7 @@ import {
 	inject,
 	type Provider,
 } from "@angular/core";
+import { TokenSetAuthFlowSource } from "@securitydept/token-set-context-client/orchestration";
 import { from, type Observable, switchMap } from "rxjs";
 import { TokenSetAuthRegistry } from "./token-set-auth-registry";
 
@@ -95,12 +96,9 @@ export class TokenSetBearerInterceptor implements HttpInterceptor {
 		// A not-yet-ready client correctly produces no token → request proceeds
 		// without Authorization header.
 		return from(
-			key
-				? (this.registry.get(key)?.ensureAuthorizationHeader() ??
-						Promise.resolve(null))
-				: this.options.strictUrlMatch
-					? Promise.resolve(null)
-					: this.registry.ensureAuthorizationHeader(),
+			resolveAuthorizationForRequest(this.registry, req.url, key, {
+				strictUrlMatch: this.options.strictUrlMatch,
+			}),
 		).pipe(
 			switchMap((authorization) => {
 				if (!authorization) {
@@ -264,12 +262,7 @@ export function createTokenSetBearerInterceptor(
 		// async clientFactory has not resolved yet, the request proceeds without
 		// a token. See class-based interceptor above for full rationale.
 		return from(
-			key
-				? (registry.get(key)?.ensureAuthorizationHeader() ??
-						Promise.resolve(null))
-				: options.strictUrlMatch
-					? Promise.resolve(null)
-					: registry.ensureAuthorizationHeader(),
+			resolveAuthorizationForRequest(registry, req.url, key, options),
 		).pipe(
 			switchMap((authorization) => {
 				if (!authorization) {
@@ -281,4 +274,25 @@ export function createTokenSetBearerInterceptor(
 			}),
 		);
 	};
+}
+
+async function resolveAuthorizationForRequest(
+	registry: TokenSetAuthRegistry,
+	url: string,
+	key: string | undefined,
+	options: BearerInterceptorOptions,
+): Promise<string | null> {
+	if (!key && options.strictUrlMatch) {
+		return null;
+	}
+
+	const result = await registry.ensureAuthForResource({
+		key,
+		waitForReady: false,
+		source: TokenSetAuthFlowSource.HttpInterceptor,
+		needsAuthorizationHeader: true,
+		forceRefreshWhenDue: true,
+		url,
+	});
+	return result?.authorizationHeader ?? null;
 }

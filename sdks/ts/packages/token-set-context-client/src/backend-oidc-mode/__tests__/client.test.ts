@@ -15,6 +15,12 @@ import {
 import { createFetchTransport } from "@securitydept/client/web";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+	EnsureAuthForResourceStatus,
+	type TokenSetAuthEvent,
+	TokenSetAuthEventType,
+	TokenSetAuthFlowSource,
+} from "../../orchestration";
 import { BackendOidcModeClient } from "../client";
 
 const BASE_URL = "https://api.example.com";
@@ -260,6 +266,183 @@ describe("BackendOidcModeClient", () => {
 		await expect(firstHeader).resolves.toBe("Bearer fresh-at");
 		await expect(secondHeader).resolves.toBe("Bearer fresh-at");
 		expect(refreshRequests).toBe(1);
+	});
+
+	it("emits contextual refresh lifecycle events when callers join a refresh barrier", async () => {
+		const refreshResponse = createDeferred<HttpResponse>();
+		let refreshRequests = 0;
+		const transport = createTestTransport((request) => {
+			if (request.url.endsWith("/auth/oidc/refresh")) {
+				refreshRequests += 1;
+				return refreshResponse.promise;
+			}
+			if (request.url.endsWith("/auth/oidc/user-info")) {
+				return {
+					status: 200,
+					headers: { "content-type": "application/json" },
+					body: { principal: { subject: "user-1" } },
+				};
+			}
+			throw new Error(`Unexpected request: ${request.url}`);
+		});
+		const { runtime } = createTestRuntime(transport);
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL, refreshWindowMs: 0 },
+			runtime,
+		);
+		const events: TokenSetAuthEvent[] = [];
+		client.authEvents.subscribe({
+			next: (event) => events.push(event),
+		});
+
+		client.restoreState({
+			tokens: {
+				accessToken: "refresh-due-at",
+				accessTokenExpiresAt: "2026-01-01T00:00:10Z",
+				refreshMaterial: "rt",
+			},
+			metadata: {},
+		});
+
+		const routeAdmission = client.ensureAuthForResource({
+			source: TokenSetAuthFlowSource.RouteGuard,
+			clientKey: "confluence",
+			logicalClientId: "wiki-main",
+			providerFamily: "authentik",
+			requirement: { id: "confluence-oidc", kind: "frontend_oidc" },
+			url: "/confluence",
+			forceRefreshWhenDue: true,
+		});
+		const protectedRequest = client.ensureAuthForResource({
+			source: TokenSetAuthFlowSource.HttpInterceptor,
+			clientKey: "confluence",
+			logicalClientId: "wiki-main",
+			providerFamily: "authentik",
+			requirement: { id: "confluence-oidc", kind: "frontend_oidc" },
+			url: "https://api.example.com/wiki/rest/api/content",
+			needsAuthorizationHeader: true,
+			forceRefreshWhenDue: true,
+		});
+		await flushMicrotasks();
+
+		expect(refreshRequests).toBe(1);
+		expect(events).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: TokenSetAuthEventType.AuthRefreshStarted,
+					payload: expect.objectContaining({
+						clientKey: "confluence",
+						logicalClientId: "wiki-main",
+						providerFamily: "authentik",
+						requirementId: "confluence-oidc",
+						url: "/confluence",
+						refreshBarrierId: expect.any(String),
+					}),
+				}),
+				expect.objectContaining({
+					type: TokenSetAuthEventType.AuthRefreshJoined,
+					payload: expect.objectContaining({
+						source: TokenSetAuthFlowSource.HttpInterceptor,
+						url: "https://api.example.com/wiki/rest/api/content",
+						refreshBarrierId: expect.any(String),
+					}),
+				}),
+			]),
+		);
+
+		refreshResponse.resolve({
+			status: 200,
+			headers: { "content-type": "application/json" },
+			body: {
+				access_token: "fresh-at",
+				refresh_token: "fresh-rt",
+				access_token_expires_at: "2026-01-01T01:00:00Z",
+			},
+		});
+
+		await expect(routeAdmission).resolves.toEqual(
+			expect.objectContaining({
+				status: EnsureAuthForResourceStatus.Authenticated,
+			}),
+		);
+		await expect(protectedRequest).resolves.toEqual(
+			expect.objectContaining({
+				status: EnsureAuthForResourceStatus.AuthorizationHeaderResolved,
+				authorizationHeader: "Bearer fresh-at",
+			}),
+		);
+		expect(events).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: TokenSetAuthEventType.AuthRefreshSucceeded,
+					payload: expect.objectContaining({
+						clientKey: "confluence",
+						logicalClientId: "wiki-main",
+						providerFamily: "authentik",
+						requirementId: "confluence-oidc",
+						url: "/confluence",
+						refreshBarrierId: expect.any(String),
+						hasRefreshMaterial: true,
+					}),
+				}),
+			]),
+		);
+		expect(refreshRequests).toBe(1);
+	});
+
+	it("emits authorization header events with opaque token handles", async () => {
+		const transport = createTestTransport(() => ({
+			status: 500,
+			headers: {},
+			body: null,
+		}));
+		const { runtime } = createTestRuntime(transport);
+		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const events: Array<unknown> = [];
+		client.authEvents.subscribe({ next: (event) => events.push(event) });
+
+		client.restoreState({
+			tokens: {
+				accessToken: "fresh-at",
+				accessTokenExpiresAt: "2026-01-01T01:00:00Z",
+				refreshMaterial: "refresh-secret",
+			},
+			metadata: {},
+		});
+
+		const result = await client.ensureAuthForResource({
+			source: TokenSetAuthFlowSource.AuthorizedTransport,
+			needsAuthorizationHeader: true,
+			forceRefreshWhenDue: true,
+			clientKey: "confluence",
+		});
+
+		expect(result.status).toBe(
+			EnsureAuthForResourceStatus.AuthorizationHeaderResolved,
+		);
+		if (
+			result.status !== EnsureAuthForResourceStatus.AuthorizationHeaderResolved
+		) {
+			throw new Error("Expected an authorization header result");
+		}
+		expect(result.authorizationHeader).toBe("Bearer fresh-at");
+		expect(result.tokenHandle?.clientKey).toBe("confluence");
+
+		const serializedEvents = JSON.stringify(events);
+		expect(serializedEvents).not.toContain("fresh-at");
+		expect(serializedEvents).not.toContain("refresh-secret");
+		expect(events).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: TokenSetAuthEventType.AuthorizationHeaderResolved,
+					payload: expect.objectContaining({
+						tokenHandle: expect.objectContaining({
+							clientKey: "confluence",
+						}),
+					}),
+				}),
+			]),
+		);
 	});
 
 	it("clears state instead of reusing a stale bearer when refresh fails", async () => {

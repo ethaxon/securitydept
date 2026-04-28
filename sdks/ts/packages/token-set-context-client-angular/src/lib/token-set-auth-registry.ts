@@ -1,5 +1,11 @@
 import { DestroyRef, Injectable, inject } from "@angular/core";
+import type { EventStreamTrait } from "@securitydept/client";
 import type { ClientReadinessState } from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import type {
+	EnsureAuthForResourceResult,
+	TokenSetAuthEvent,
+} from "@securitydept/token-set-context-client/orchestration";
+import { attachTokenSetResumeReconciliation } from "@securitydept/token-set-context-client/orchestration";
 import {
 	type ClientFilter,
 	type ClientKeySelector,
@@ -8,6 +14,7 @@ import {
 	type TokenSetAuthRegistry as CoreTokenSetAuthRegistry,
 	type TokenSetClientEntry as CoreTokenSetClientEntry,
 	createTokenSetAuthRegistry,
+	type EnsureRegistryAuthForResourceOptions,
 } from "@securitydept/token-set-context-client/registry";
 import type { TokenSetAngularClient, TokenSetClientEntry } from "./contracts";
 import { TokenSetAuthService } from "./token-set-auth.service";
@@ -19,6 +26,7 @@ export type {
 	ClientKeySelector,
 	ClientMeta,
 	ClientQueryOptions,
+	EnsureRegistryAuthForResourceOptions,
 } from "@securitydept/token-set-context-client/registry";
 export { ClientInitializationPriority } from "@securitydept/token-set-context-client/registry";
 
@@ -46,17 +54,31 @@ export class TokenSetAuthRegistry {
 	 * directly when they don't need Angular-specific behaviour.
 	 */
 	readonly core: CoreTokenSetAuthRegistry<AngularClient, TokenSetAuthService>;
+	readonly authEvents: EventStreamTrait<TokenSetAuthEvent>;
 
 	constructor() {
 		this.core = createTokenSetAuthRegistry<AngularClient, TokenSetAuthService>({
-			materialize: (client, entry) =>
-				new TokenSetAuthService(client, entry.autoRestore ?? true),
+			materialize: (client, entry) => {
+				const angularEntry = entry as TokenSetClientEntry;
+				const managedClient = attachTokenSetResumeReconciliation(client, {
+					resumeReconciliation: angularEntry.resumeReconciliation,
+					resumeReconciliationOptions: angularEntry.resumeReconciliationOptions,
+				});
+				return new TokenSetAuthService(
+					managedClient,
+					entry.autoRestore ?? true,
+				);
+			},
 			dispose: (service) => service.dispose(),
 			accessTokenOf: (service) => service.accessToken(),
 			ensureAccessTokenOf: (service) => service.ensureAccessToken(),
 			ensureAuthorizationHeaderOf: (service) =>
 				service.ensureAuthorizationHeader(),
+			ensureAuthForResourceOf: (service, options) =>
+				service.ensureAuthForResource(options),
+			authEventsOf: (service) => service.authEvents,
 		});
+		this.authEvents = this.core.authEvents;
 		// Try to bind core.dispose() to the current injection context's
 		// DestroyRef. Registry is typically constructed via DI (where this
 		// always succeeds); pure unit tests instantiate directly and must
@@ -270,5 +292,11 @@ export class TokenSetAuthRegistry {
 
 	async ensureAuthorizationHeader(key?: string): Promise<string | null> {
 		return await this.core.ensureAuthorizationHeader(key);
+	}
+
+	async ensureAuthForResource(
+		options: EnsureRegistryAuthForResourceOptions = {},
+	): Promise<EnsureAuthForResourceResult | null> {
+		return await this.core.ensureAuthForResource(options);
 	}
 }

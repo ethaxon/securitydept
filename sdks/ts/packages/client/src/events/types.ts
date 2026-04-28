@@ -17,6 +17,18 @@ export interface EventStreamTrait<T> {
 	subscribe(observer: EventObserver<T>): EventSubscriptionTrait;
 }
 
+/** Hot event producer. */
+export interface SubjectTrait<T> extends EventStreamTrait<T> {
+	next(value: T): void;
+	error(error: unknown): void;
+	complete(): void;
+}
+
+/** Hot event producer that replays recent values to late subscribers. */
+export interface ReplaySubjectTrait<T> extends SubjectTrait<T> {
+	readonly bufferSize: number;
+}
+
 // --- Event envelope ---
 
 export const EventSourceKind = {

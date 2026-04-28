@@ -21,6 +21,32 @@ SDK 仍处于 `0.x`，但 public-surface changes 必须保持有纪律。
 
 ## 当前迁移说明
 
+### Token-Set Event-Driven Auth Flow
+
+Packages：
+
+- `@securitydept/client/events`
+- `@securitydept/token-set-context-client/orchestration`
+- `@securitydept/token-set-context-client/registry`
+- `@securitydept/token-set-context-client-angular`
+- `@securitydept/token-set-context-client-react`
+
+变更：
+
+- Token-set client 现在暴露 `authEvents` 与 `ensureAuthForResource(options)`，作为 route/request/resume 的 canonical async barrier。
+- `ensureFreshAuthState()` 与 `ensureAuthorizationHeader()` 仍是 compatibility wrapper；新的 adapter 代码应显式传入 `route_guard`、`resume`、`http_interceptor` 或 `authorized_transport` 等 source。
+- Authorization-header event 可以包含 opaque temporary token handle descriptor，但不得包含 raw access、refresh 或 ID token value。
+
+迁移：
+
+- Route admission 与 resume recovery 优先使用 `ensureAuthForResource({ source, forceRefreshWhenDue: true })`。
+- Protected HTTP request 前优先使用 `ensureAuthForResource({ source, needsAuthorizationHeader: true, forceRefreshWhenDue: true })`。
+- 需要 lifecycle telemetry 时订阅 `authEvents`，不要从 redirect、throw error 或 raw token value 反推 auth flow state。
+
+理由：
+
+- 短 access-token lifetime 需要 restore、resume、route、interceptor、generic transport 与 React Query 共享同一个 refresh barrier，而不是继续堆 adapter-local freshness patch。
+
 ### Angular Token-Set Bearer Interceptor：`strictUrlMatch`
 
 Package：`@securitydept/token-set-context-client-angular`

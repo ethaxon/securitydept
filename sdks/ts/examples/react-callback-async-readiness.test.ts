@@ -23,9 +23,13 @@
 // callback main execution path itself now matches the Angular
 // `whenReady()` semantics.
 
-import type { ReadableSignalTrait } from "@securitydept/client";
-import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import { AuthSourceKind } from "@securitydept/token-set-context-client/orchestration";
+import { createSubject, type ReadableSignalTrait } from "@securitydept/client";
+import {
+	type AuthSnapshot,
+	AuthSourceKind,
+	EnsureAuthForResourceStatus,
+	TokenSetAuthFlowReason,
+} from "@securitydept/token-set-context-client/orchestration";
 import type {
 	OidcCallbackClient,
 	TokenSetReactClient,
@@ -83,6 +87,7 @@ function createMockClient(knobs: MockClientKnobs = {}): TokenSetReactClient {
 	const ctrl = createTestSignal<AuthSnapshot | null>(knobs.snapshot ?? null);
 	return {
 		state: ctrl.signal,
+		authEvents: createSubject(),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
 		handleCallback:
@@ -100,6 +105,22 @@ function createMockClient(knobs: MockClientKnobs = {}): TokenSetReactClient {
 		ensureAuthorizationHeader: vi.fn().mockImplementation(async () => {
 			const accessToken = ctrl.signal.get()?.tokens.accessToken;
 			return accessToken ? `Bearer ${accessToken}` : null;
+		}),
+		ensureAuthForResource: vi.fn().mockImplementation(async () => {
+			const snapshot = ctrl.signal.get();
+			if (snapshot) {
+				return {
+					status: EnsureAuthForResourceStatus.Authenticated,
+					snapshot,
+					freshness: "fresh" as const,
+				};
+			}
+			return {
+				status: EnsureAuthForResourceStatus.Unauthenticated,
+				snapshot: null,
+				authorizationHeader: null,
+				reason: TokenSetAuthFlowReason.NoSnapshot,
+			};
 		}),
 		refresh: vi.fn().mockResolvedValue(makeSnapshot("refreshed")),
 		clearState: vi.fn().mockResolvedValue(undefined),

@@ -65,7 +65,10 @@ import {
 	userInfoRequest,
 	validateAuthResponse,
 } from "oauth4webapi";
-import { BaseOidcModeClient } from "../orchestration/index";
+import {
+	BaseOidcModeClient,
+	TokenSetAuthFlowSource,
+} from "../orchestration/index";
 import { FrontendOidcModeCallbackErrorCode } from "./callback-error-codes";
 import type {
 	FrontendOidcModeClaimsCheckResult,
@@ -534,7 +537,9 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 						metadata,
 					};
 
-					await this._applySnapshot(snapshot);
+					await this._applySnapshot(snapshot, {
+						source: TokenSetAuthFlowSource.Callback,
+					});
 
 					this._runtime.logger?.log({
 						level: LogLevel.Info,
@@ -612,11 +617,18 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 					}
 
 					const newSnapshot: AuthStateSnapshot = {
-						tokens: this._tokenResultToTokenSnapshot(tokens),
+						tokens: this._tokenResultToTokenSnapshot(
+							tokens,
+							current.tokens.refreshMaterial,
+						),
 						metadata,
 					};
 
-					await this._applySnapshot(newSnapshot);
+					await this._applySnapshot(newSnapshot, {
+						...(this._currentRefreshAuthEventPayload() ?? {
+							source: TokenSetAuthFlowSource.ExplicitCall,
+						}),
+					});
 
 					this._runtime.logger?.log({
 						level: LogLevel.Info,
@@ -1023,11 +1035,14 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		}
 	}
 
-	private _tokenResultToTokenSnapshot(tokens: FrontendOidcModeTokenResult) {
+	private _tokenResultToTokenSnapshot(
+		tokens: FrontendOidcModeTokenResult,
+		previousRefreshMaterial?: string,
+	) {
 		return {
 			accessToken: tokens.accessToken,
 			idToken: tokens.idToken,
-			refreshMaterial: tokens.refreshToken,
+			refreshMaterial: tokens.refreshToken ?? previousRefreshMaterial,
 			accessTokenExpiresAt: tokens.expiresAt,
 		};
 	}

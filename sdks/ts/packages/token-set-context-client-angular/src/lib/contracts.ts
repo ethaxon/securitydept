@@ -1,3 +1,4 @@
+import type { TokenSetResumeReconciliationOptions } from "@securitydept/token-set-context-client/orchestration";
 import type {
 	ClientInitializationPriority,
 	TokenSetClientEntry as CoreTokenSetClientEntry,
@@ -61,6 +62,21 @@ export interface TokenSetClientEntry
 	 * the registry tracks initialization readiness automatically.
 	 */
 	clientFactory: () => TokenSetAngularClient | Promise<TokenSetAngularClient>;
+	/**
+	 * When true (default), adapter-managed browser clients install the token-set
+	 * page-resume reconciler during materialization.
+	 *
+	 * Disable only when the host intentionally owns browser lifecycle wiring for
+	 * this client and can prove an equivalent resume trigger path.
+	 *
+	 * @default true
+	 */
+	resumeReconciliation?: boolean;
+	/**
+	 * Browser lifecycle options forwarded to the default token-set resume
+	 * reconciler when `resumeReconciliation !== false`.
+	 */
+	resumeReconciliationOptions?: TokenSetResumeReconciliationOptions;
 	/**
 	 * Initialization priority. Defaults to `"primary"` (eager). Set to
 	 * `"lazy"` to defer clientFactory execution until the registry is asked

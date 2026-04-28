@@ -97,6 +97,9 @@ export function TokenSetAuthProvider({
 				ensureAccessTokenOf: (service) => service.ensureAccessToken(),
 				ensureAuthorizationHeaderOf: (service) =>
 					service.ensureAuthorizationHeader(),
+				ensureAuthForResourceOf: (service, options) =>
+					service.ensureAuthForResource(options),
+				authEventsOf: (service) => service.authEvents,
 			}),
 		[],
 	);

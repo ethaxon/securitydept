@@ -9,7 +9,10 @@ import {
 	createLinkedCancellationToken,
 	LogLevel,
 } from "@securitydept/client";
-import { BaseOidcModeClient } from "../orchestration/index";
+import {
+	BaseOidcModeClient,
+	TokenSetAuthFlowSource,
+} from "../orchestration/index";
 import type {
 	BackendOidcModeMetadataRedemptionResponse,
 	BackendOidcModeUserInfoResponse,
@@ -164,7 +167,9 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 						metadata,
 					};
 
-					await this._applySnapshot(snapshot);
+					await this._applySnapshot(snapshot, {
+						source: TokenSetAuthFlowSource.Callback,
+					});
 
 					this._runtime.logger?.log({
 						level: LogLevel.Info,
@@ -259,7 +264,9 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 						metadata,
 					};
 
-					await this._applySnapshot(snapshot);
+					await this._applySnapshot(snapshot, {
+						source: TokenSetAuthFlowSource.Callback,
+					});
 
 					this._runtime.logger?.log({
 						level: LogLevel.Info,

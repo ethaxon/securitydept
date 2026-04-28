@@ -16,6 +16,10 @@ import type {
 } from "@securitydept/client/auth-coordination";
 import { AUTH_PLANNER_HOST } from "@securitydept/client-angular";
 import {
+	EnsureAuthForResourceStatus,
+	TokenSetAuthFlowReason,
+} from "@securitydept/token-set-context-client/orchestration";
+import {
 	createFrontendOidcLoginRedirectHandler,
 	createTokenSetRouteAggregationGuard,
 	TokenSetAuthRegistry,
@@ -32,6 +36,12 @@ describe("Angular token-set route guard injection context", () => {
 		const service = {
 			isAuthenticated: () => false,
 			restorePromise: null,
+			ensureAuthForResource: vi.fn().mockResolvedValue({
+				status: EnsureAuthForResourceStatus.Unauthenticated,
+				snapshot: null,
+				authorizationHeader: null,
+				reason: TokenSetAuthFlowReason.NoSnapshot,
+			}),
 		};
 		const registry = {
 			clientKeyListForRequirement: () => ["confluence"],
@@ -96,6 +106,12 @@ describe("Angular token-set route guard injection context", () => {
 			client: { loginWithRedirect },
 			isAuthenticated: () => false,
 			restorePromise: null,
+			ensureAuthForResource: vi.fn().mockResolvedValue({
+				status: EnsureAuthForResourceStatus.Unauthenticated,
+				snapshot: null,
+				authorizationHeader: null,
+				reason: TokenSetAuthFlowReason.NoSnapshot,
+			}),
 		};
 		const registry = {
 			clientKeyListForRequirement: () => ["confluence"],

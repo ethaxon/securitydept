@@ -3,16 +3,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use bollard::{
-    Docker,
-    models::{Ipam, IpamConfig, NetworkCreateRequest},
-};
+use bollard::{Docker, models::NetworkCreateRequest, query_parameters::InspectNetworkOptions};
 use ipnet::IpNet;
 use securitydept_realip::{
     ProviderRegistry,
     config::{CustomProviderConfig, ProviderConfig, RefreshFailurePolicy},
 };
-use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
 
 fn unique_network_name() -> String {
     let suffix = SystemTime::now()
@@ -26,31 +22,28 @@ fn unique_network_name() -> String {
 async fn docker_provider_loads_configured_network_subnets() {
     let docker = Docker::connect_with_local_defaults().unwrap();
     let network_name = unique_network_name();
-    let expected_subnet: IpNet = "10.231.0.0/24".parse().unwrap();
 
     docker
         .create_network(NetworkCreateRequest {
             name: network_name.clone(),
             driver: Some("bridge".to_string()),
-            ipam: Some(Ipam {
-                config: Some(vec![IpamConfig {
-                    subnet: Some(expected_subnet.to_string()),
-                    ..Default::default()
-                }]),
-                ..Default::default()
-            }),
             ..Default::default()
         })
         .await
         .unwrap();
 
-    let container = GenericImage::new("alpine", "3.20")
-        .with_wait_for(WaitFor::seconds(1))
-        .with_cmd(["sh", "-c", "sleep 60"])
-        .with_network(network_name.clone())
-        .start()
+    let inspected_network = docker
+        .inspect_network(&network_name, None::<InspectNetworkOptions>)
         .await
         .unwrap();
+    let expected_subnets: Vec<IpNet> = inspected_network
+        .ipam
+        .into_iter()
+        .flat_map(|ipam| ipam.config.into_iter().flatten())
+        .filter_map(|config| config.subnet)
+        .map(|subnet| subnet.parse().unwrap())
+        .collect();
+    assert!(!expected_subnets.is_empty());
 
     let mut extra = BTreeMap::new();
     extra.insert(
@@ -71,8 +64,7 @@ async fn docker_provider_loads_configured_network_subnets() {
     let registry = ProviderRegistry::from_configs(&[config]).await.unwrap();
     let cidrs = registry.all_cidrs().await;
 
-    assert_eq!(cidrs, vec![expected_subnet]);
+    assert_eq!(cidrs, expected_subnets);
 
-    container.rm().await.unwrap();
     docker.remove_network(&network_name).await.unwrap();
 }

@@ -4,7 +4,7 @@ import {
 	BasicAuthContextService,
 	provideBasicAuthContext,
 } from "@securitydept/basic-auth-context-client-angular";
-import type { ReadableSignalTrait } from "@securitydept/client";
+import { createSubject, type ReadableSignalTrait } from "@securitydept/client";
 import {
 	bridgeToAngularSignal,
 	signalToObservable,
@@ -17,6 +17,8 @@ import {
 import {
 	type AuthSnapshot,
 	AuthSourceKind,
+	EnsureAuthForResourceStatus,
+	TokenSetAuthFlowReason,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
 	CallbackResumeService,
@@ -77,6 +79,7 @@ function createMockClient(
 	const stateCtrl = createTestSignal<AuthSnapshot | null>(initialState);
 	return {
 		state: stateCtrl.signal,
+		authEvents: createSubject(),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
 		authorizationHeader: vi.fn(() => {
@@ -91,11 +94,80 @@ function createMockClient(
 					? `Bearer ${stateCtrl.signal.get()?.tokens.accessToken}`
 					: null,
 			),
+		ensureAuthForResource: vi.fn().mockImplementation(async () => {
+			const snapshot = stateCtrl.signal.get();
+			if (snapshot) {
+				const accessToken = snapshot.tokens.accessToken;
+				return {
+					status: EnsureAuthForResourceStatus.Authenticated,
+					snapshot,
+					authorizationHeader: accessToken ? `Bearer ${accessToken}` : null,
+					freshness: "fresh" as const,
+				};
+			}
+			return {
+				status: EnsureAuthForResourceStatus.Unauthenticated,
+				snapshot: null,
+				authorizationHeader: null,
+				reason: TokenSetAuthFlowReason.NoSnapshot,
+			};
+		}),
 		handleCallback: vi.fn().mockResolvedValue({
 			snapshot: makeSnapshot("callback-tok"),
 		}),
 		_stateCtrl: stateCtrl as ReturnType<typeof createTestSignal>,
 	};
+}
+
+function createMockBrowserLifecycleTargets() {
+	return {
+		documentTarget: {
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+			visibilityState: "visible" as DocumentVisibilityState,
+		},
+		windowTarget: {
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+		},
+	};
+}
+
+function withMockBrowserLifecycleTargets<T>(
+	run: (targets: ReturnType<typeof createMockBrowserLifecycleTargets>) => T,
+): T {
+	const originalDocument = Object.getOwnPropertyDescriptor(
+		globalThis,
+		"document",
+	);
+	const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+	const targets = createMockBrowserLifecycleTargets();
+
+	Object.defineProperty(globalThis, "document", {
+		value: targets.documentTarget,
+		configurable: true,
+		writable: true,
+	});
+	Object.defineProperty(globalThis, "window", {
+		value: targets.windowTarget,
+		configurable: true,
+		writable: true,
+	});
+
+	try {
+		return run(targets);
+	} finally {
+		if (originalDocument) {
+			Object.defineProperty(globalThis, "document", originalDocument);
+		} else {
+			Reflect.deleteProperty(globalThis, "document");
+		}
+		if (originalWindow) {
+			Object.defineProperty(globalThis, "window", originalWindow);
+		} else {
+			Reflect.deleteProperty(globalThis, "window");
+		}
+	}
 }
 
 // ===========================================================================
@@ -361,6 +433,41 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 		expect(entries[0]?.[0]).toBe("a");
 		expect(entries[1]?.[0]).toBe("b");
 	});
+
+	it("installs page-resume reconciliation for registry-managed clients by default", () => {
+		withMockBrowserLifecycleTargets(({ documentTarget, windowTarget }) => {
+			const registry = new TokenSetAuthRegistry();
+			const client = createMockClient(makeSnapshot("main-token"));
+
+			registry.register({
+				key: "main",
+				clientFactory: () => client,
+			});
+
+			expect(documentTarget.addEventListener).toHaveBeenCalledTimes(1);
+			expect(windowTarget.addEventListener).toHaveBeenCalledTimes(3);
+
+			registry.dispose();
+			expect(documentTarget.removeEventListener).toHaveBeenCalledTimes(1);
+			expect(windowTarget.removeEventListener).toHaveBeenCalledTimes(3);
+		});
+	});
+
+	it("allows registry-managed clients to opt out of page-resume reconciliation", () => {
+		withMockBrowserLifecycleTargets(({ documentTarget, windowTarget }) => {
+			const registry = new TokenSetAuthRegistry();
+			const client = createMockClient(makeSnapshot("main-token"));
+
+			registry.register({
+				key: "main",
+				clientFactory: () => client,
+				resumeReconciliation: false,
+			});
+
+			expect(documentTarget.addEventListener).not.toHaveBeenCalled();
+			expect(windowTarget.addEventListener).not.toHaveBeenCalled();
+		});
+	});
 });
 
 // ===========================================================================
@@ -407,12 +514,14 @@ describe("Angular Integration — TokenSetAuthService", () => {
 		const registry = new TokenSetAuthRegistry();
 		const client1 = createMockClient();
 		const client2 = createMockClient();
+		const dispose1 = client1.dispose;
+		const dispose2 = client2.dispose;
 		registry.register({ key: "a", clientFactory: () => client1 });
 		registry.register({ key: "b", clientFactory: () => client2 });
 
 		registry.dispose();
-		expect(client1.dispose).toHaveBeenCalledOnce();
-		expect(client2.dispose).toHaveBeenCalledOnce();
+		expect(dispose1).toHaveBeenCalledOnce();
+		expect(dispose2).toHaveBeenCalledOnce();
 	});
 });
 
@@ -543,6 +652,7 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 		const mainState = createTestSignal<AuthSnapshot | null>(null);
 		const mainClient: OidcModeClient & OidcCallbackClient = {
 			state: mainState.signal,
+			authEvents: createSubject(),
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn().mockResolvedValue(null),
 			authorizationHeader: vi.fn(() => {
@@ -556,6 +666,24 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 				const accessToken = mainState.signal.get()?.tokens.accessToken;
 				return accessToken ? `Bearer ${accessToken}` : null;
 			}),
+			ensureAuthForResource: vi.fn().mockImplementation(async () => {
+				const snapshot = mainState.signal.get();
+				if (snapshot) {
+					const accessToken = snapshot.tokens.accessToken;
+					return {
+						status: EnsureAuthForResourceStatus.Authenticated,
+						snapshot,
+						authorizationHeader: accessToken ? `Bearer ${accessToken}` : null,
+						freshness: "fresh" as const,
+					};
+				}
+				return {
+					status: EnsureAuthForResourceStatus.Unauthenticated,
+					snapshot: null,
+					authorizationHeader: null,
+					reason: TokenSetAuthFlowReason.NoSnapshot,
+				};
+			}),
 			handleCallback: vi.fn().mockResolvedValue({
 				snapshot: makeSnapshot("main-after-login"),
 			}),
@@ -564,6 +692,7 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 		const adminState = createTestSignal<AuthSnapshot | null>(null);
 		const adminClient: OidcModeClient & OidcCallbackClient = {
 			state: adminState.signal,
+			authEvents: createSubject(),
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn().mockResolvedValue(null),
 			authorizationHeader: vi.fn(() => {
@@ -577,12 +706,32 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 				const accessToken = adminState.signal.get()?.tokens.accessToken;
 				return accessToken ? `Bearer ${accessToken}` : null;
 			}),
+			ensureAuthForResource: vi.fn().mockImplementation(async () => {
+				const snapshot = adminState.signal.get();
+				if (snapshot) {
+					const accessToken = snapshot.tokens.accessToken;
+					return {
+						status: EnsureAuthForResourceStatus.Authenticated,
+						snapshot,
+						authorizationHeader: accessToken ? `Bearer ${accessToken}` : null,
+						freshness: "fresh" as const,
+					};
+				}
+				return {
+					status: EnsureAuthForResourceStatus.Unauthenticated,
+					snapshot: null,
+					authorizationHeader: null,
+					reason: TokenSetAuthFlowReason.NoSnapshot,
+				};
+			}),
 			handleCallback: vi.fn().mockResolvedValue({
 				snapshot: makeSnapshot("admin-after-login"),
 			}),
 		};
 
 		// 2. Register multiple clients
+		const mainDispose = mainClient.dispose;
+		const adminDispose = adminClient.dispose;
 		const mainService = registry.register({
 			key: "main",
 			clientFactory: () => mainClient,
@@ -636,8 +785,8 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 
 		// 8. Explicit dispose triggers teardown for all registered clients.
 		registry.dispose();
-		expect(mainClient.dispose).toHaveBeenCalledOnce();
-		expect(adminClient.dispose).toHaveBeenCalledOnce();
+		expect(mainDispose).toHaveBeenCalledOnce();
+		expect(adminDispose).toHaveBeenCalledOnce();
 
 		sub.unsubscribe();
 	});

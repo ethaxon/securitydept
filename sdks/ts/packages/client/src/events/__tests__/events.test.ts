@@ -1,12 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { of } from "rxjs";
+import { describe, expect, it, vi } from "vitest";
 import {
+	concatMap,
 	createEventStream,
+	createReplaySubject,
+	createSubject,
+	debounceTime,
+	exhaustMap,
 	filter,
+	fromRxObservable,
 	map,
 	merge,
 	pipe,
+	shareReplay,
+	switchMap,
 	takeUntil,
+	toRxObservable,
+	withLatestFromSignal,
 } from "../../events/index";
+import { createSignal } from "../../signals";
 
 describe("createEventStream", () => {
 	it("should emit values to subscriber", () => {
@@ -123,5 +135,150 @@ describe("operators", () => {
 		const merged = merge(a, b);
 		merged.subscribe({ next: (v) => values.push(v) });
 		expect(values).toEqual(["a1", "b1"]);
+	});
+
+	it("switchMap should switch to the latest inner stream", () => {
+		const source = createSubject<number>();
+		const values: number[] = [];
+
+		pipe(
+			source,
+			switchMap((value) =>
+				createEventStream<number>((observer) => {
+					observer.next?.(value * 10);
+				}),
+			),
+		).subscribe({ next: (value) => values.push(value) });
+
+		source.next(1);
+		source.next(2);
+
+		expect(values).toEqual([10, 20]);
+	});
+
+	it("concatMap should preserve inner stream order", () => {
+		const values: number[] = [];
+		const source = createEventStream<number>((observer) => {
+			observer.next?.(1);
+			observer.next?.(2);
+			observer.complete?.();
+		});
+
+		pipe(
+			source,
+			concatMap((value) =>
+				createEventStream<number>((observer) => {
+					observer.next?.(value);
+					observer.next?.(value * 10);
+					observer.complete?.();
+				}),
+			),
+		).subscribe({ next: (value) => values.push(value) });
+
+		expect(values).toEqual([1, 10, 2, 20]);
+	});
+
+	it("exhaustMap should ignore new values while inner stream is active", () => {
+		const source = createSubject<number>();
+		const inner = createSubject<number>();
+		const values: number[] = [];
+
+		pipe(
+			source,
+			exhaustMap(() => inner),
+		).subscribe({ next: (value) => values.push(value) });
+
+		source.next(1);
+		source.next(2);
+		inner.next(10);
+		inner.complete();
+		source.next(3);
+
+		expect(values).toEqual([10]);
+	});
+
+	it("debounceTime should use RxJS scheduling semantics", () => {
+		vi.useFakeTimers();
+		try {
+			const source = createSubject<number>();
+			const values: number[] = [];
+			pipe(source, debounceTime(100)).subscribe({
+				next: (value) => values.push(value),
+			});
+
+			source.next(1);
+			source.next(2);
+			vi.advanceTimersByTime(100);
+
+			expect(values).toEqual([2]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("withLatestFromSignal should pair stream values with signal snapshots", () => {
+		const signal = createSignal("initial");
+		const source = createSubject<number>();
+		const values: Array<[number, string]> = [];
+
+		pipe(source, withLatestFromSignal(signal)).subscribe({
+			next: (value) => values.push(value),
+		});
+
+		source.next(1);
+		signal.set("updated");
+		source.next(2);
+
+		expect(values).toEqual([
+			[1, "initial"],
+			[2, "updated"],
+		]);
+	});
+});
+
+describe("subjects and RxJS interop", () => {
+	it("createSubject should expose a hot event producer", () => {
+		const subject = createSubject<number>();
+		const values: number[] = [];
+
+		subject.next(1);
+		subject.subscribe({ next: (value) => values.push(value) });
+		subject.next(2);
+
+		expect(values).toEqual([2]);
+	});
+
+	it("createReplaySubject should replay recent values to late subscribers", () => {
+		const subject = createReplaySubject<number>(2);
+		const values: number[] = [];
+
+		subject.next(1);
+		subject.next(2);
+		subject.next(3);
+		subject.subscribe({ next: (value) => values.push(value) });
+
+		expect(subject.bufferSize).toBe(2);
+		expect(values).toEqual([2, 3]);
+	});
+
+	it("fromRxObservable should wrap RxJS observables", () => {
+		const values: number[] = [];
+		fromRxObservable(of(1, 2, 3)).subscribe({
+			next: (value) => values.push(value),
+		});
+
+		expect(values).toEqual([1, 2, 3]);
+	});
+
+	it("toRxObservable should expose streams to RxJS operators", () => {
+		const source = createSubject<number>();
+		const values: number[] = [];
+		toRxObservable(pipe(source, shareReplay(1))).subscribe((value) =>
+			values.push(value),
+		);
+
+		source.next(42);
+
+		expect(values).toEqual([42]);
 	});
 });

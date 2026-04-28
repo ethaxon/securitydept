@@ -33,18 +33,32 @@ export type {
 	EventSource,
 	EventStreamTrait,
 	EventSubscriptionTrait,
+	ReplaySubjectTrait,
 	RuntimeEventEnvelope,
+	SubjectTrait,
 } from "./events/index";
 export {
+	concatMap,
 	createEventStream,
+	createReplaySubject,
+	createSubject,
+	debounceTime,
 	EventSourceKind,
+	exhaustMap,
 	filter,
 	finalize,
+	fromRxObservable,
 	map,
 	merge,
 	pipe,
+	share,
+	shareReplay,
+	switchMap,
 	takeUntil,
 	tap,
+	throttleTime,
+	toRxObservable,
+	withLatestFromSignal,
 } from "./events/index";
 // --- Identity ---
 export type {

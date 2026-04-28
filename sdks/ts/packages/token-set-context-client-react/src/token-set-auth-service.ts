@@ -7,12 +7,16 @@
 //
 // Stability: provisional (new in iteration 110)
 
+import type { EventStreamTrait } from "@securitydept/client";
 import {
 	type AuthSnapshot,
+	type EnsureAuthForResourceOptions,
+	type EnsureAuthForResourceResult,
 	type EnsureAuthorizationHeaderOptions,
 	type EnsureFreshAuthStateOptions,
 	getTokenFreshness,
 	TokenFreshnessState,
+	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
 import type { TokenSetReactClient } from "./contracts";
 
@@ -25,10 +29,12 @@ import type { TokenSetReactClient } from "./contracts";
 export class TokenSetAuthService {
 	readonly client: TokenSetReactClient;
 	readonly restorePromise: Promise<AuthSnapshot | null> | null;
+	readonly authEvents: EventStreamTrait<TokenSetAuthEvent>;
 	private disposed = false;
 
 	constructor(client: TokenSetReactClient, autoRestore: boolean) {
 		this.client = client;
+		this.authEvents = client.authEvents;
 		this.restorePromise = autoRestore ? client.restorePersistedState() : null;
 	}
 
@@ -58,6 +64,12 @@ export class TokenSetAuthService {
 		options?: EnsureFreshAuthStateOptions,
 	): Promise<AuthSnapshot | null> {
 		return await this.client.ensureFreshAuthState(options);
+	}
+
+	async ensureAuthForResource(
+		options?: EnsureAuthForResourceOptions,
+	): Promise<EnsureAuthForResourceResult> {
+		return await this.client.ensureAuthForResource(options);
 	}
 
 	async ensureAccessToken(

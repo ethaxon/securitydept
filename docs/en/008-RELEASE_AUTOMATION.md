@@ -76,6 +76,7 @@ Behavioral rules:
 - the GitHub Actions npm publish job uses npm trusted publishing via GitHub OIDC and does not inject a long-lived `NPM_TOKEN`; both the workflow and the local publish entrypoint now pass `--provenance` explicitly so provenance does not depend on implicit defaults.
 - `crates publish --allow-dirty` exists only for local blocked packaging loops where the working tree is intentionally dirty; it is not part of CI publish flows.
 - the default `crates publish --mode=package` gate packages all publishable workspace crates in one `cargo package --workspace` invocation. This is required for prerelease internal dependencies, because Cargo verifies later crates against the temporary packaged registry instead of looking only at crates.io for versions that have not been published yet.
+- `crates publish --mode=package` and `crates publish --mode=publish` use Cargo's default package/publish verification behavior. They do not pass `--release`; the verification compile therefore uses the dev/debug target directory and `crates-release` restores the Tests workflow debug cache read-only, not the Docker release-profile cache.
 - `crates publish --mode=publish` queries crates.io before each crate upload and skips versions that are already present, so rerunning after a partial publish does not fail on duplicate uploads.
 - `temp/release/crates/package-report.json` is reserved for the real package gate without `--allow-blocked` and without `--allow-dirty`; blocked diagnostics must write to a separate report such as `temp/release/crates/blocked-package-report.json`.
 - the GitHub Actions crates publish job uses crates.io trusted publishing by exchanging the GitHub OIDC token through `rust-lang/crates-io-auth-action@v1`, then passes the short-lived token to `cargo publish`; it does not read a repository-stored `CARGO_REGISTRY_TOKEN` secret.
@@ -128,7 +129,14 @@ Cache and artifact rules:
 - Rust cache modes are also explicit. A job that uses the shared key as `read-write` must be the only writer in that topology; downstream jobs use `read-only` restore or artifacts.
 - Debug CI topology lives directly in `.github/workflows/tests.yml`; `release.yml` depends on the successful `Tests` run instead of repeating the same debug verification graph.
 - Rust shared keys are stable branch/profile scopes such as `securitydept-rust-${runner.os}-${branch}-debug` and `securitydept-rust-${runner.os}-${branch}-release`. Do not embed `hashFiles(...)` manually in workflow `shared-key` values; `Swatinem/rust-cache` already adds its own Rust-environment hash for Cargo manifests, lockfiles, toolchains, and relevant env vars, and it can restore from previous lockfile versions.
-- `tests.yml` owns the debug Rust cache prime job and prebuilds `cargo build --workspace --all-features --all-targets` for clippy, tests, and E2E prebuild. `release.yml` owns a separate release-profile cache prime job that prebuilds `cargo build --workspace --all-features --release --all-targets` for runtime artifact builds. This is the current practice-approved provisional optimization and depends on the unique-writer topology; its wall-clock benefit still needs a reproducible local workflow benchmark before further tuning.
+- Rust cache ownership is split by profile and workflow source:
+
+	| Cache key profile | Read-write owner | Consumers | Notes |
+	| --- | --- | --- | --- |
+	| `securitydept-rust-${runner.os}-${cache_scope}-debug` | the Tests workflow `rust-debug-cache-prime` job | clippy, Rust tests, E2E prebuild, and `release.yml` `crates-release` read-only restore | owned by the debug CI topology; release runs triggered by successful Tests reuse the same `cache_scope`; manual release dispatch can restore a previous matching cache but does not create a release-local writer |
+	| `securitydept-rust-${runner.os}-${cache_scope}-release` in `release.yml` | `docker-release` when `publish_docker=true` | runtime binary builds inside the same `docker-release` job | only Docker consumes release-profile artifacts today, so the writer lives in the single consuming job; split out a prime job only if future release-profile consumers need the same cache |
+
+	Each row has exactly one read-write owner for its cache key. Jobs outside that owner restore read-only or do not touch the key. This is the current practice-approved provisional optimization and depends on the unique-writer topology; its wall-clock benefit still needs a reproducible local workflow benchmark before further tuning.
 - Docker buildx cache is scoped only to Docker layer caching. The runtime release scope no longer attempts to cache cargo or pnpm builds because those happen before Docker.
 - already-published skip behavior remains owned by `release-cli npm publish` and `release-cli crates publish`, so partial release reruns continue instead of failing on duplicate npm package or crate versions.
 
@@ -143,7 +151,7 @@ This keeps one implementation of:
 
 Recommended local sequence before an actual publish:
 
-1. `mise exec --command "just release-metadata-sync"`
+1. `mise exec --command "just fix-release-metadata"`
 2. `mise exec --command "just release-version-check"`
 3. `mise exec --command "just release-npm-dry-run"`
 4. `mise exec --command "just release-crates-package"`

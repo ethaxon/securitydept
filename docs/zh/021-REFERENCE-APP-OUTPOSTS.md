@@ -13,9 +13,13 @@
 - Callback route 由 SDK `TokenSetCallbackComponent` 承担。
 - `secureRouteRoot()` 承载 provider-neutral requirement metadata 与 next-action policy。
 - `provideTokenSetAuth(...)` 注册 `Confluence` client，并使用 `providerFamily: "authentik"`、`callbackPath: "/auth/callback"` 与 Confluence API endpoint 的 URL patterns。
+- 对 registry-managed browser client，`provideTokenSetAuth(...)` 现在也拥有默认 page-resume reconciliation；`outposts` 不需要为了 resume recovery 再手动包一层 `createFrontendOidcModeClient(...)`。
 - `provideTokenSetBearerInterceptor({ strictUrlMatch: true })` 将 bearer injection 限制到命中已注册 `urlPatterns` 的 URL，不再对 unmatched URL 使用 single-client fallback。
+- 短 access-token lifetime 预期通过 SDK freshness barriers 恢复：browser resume reconciliation、Angular route guard freshness 与 request-time `ensureAuthForResource({ source: "http_interceptor", needsAuthorizationHeader: true })` 都会在存在 refresh material 时先尝试 refresh，再决定是否登录跳转或注入 bearer。
+- 真实浏览器诊断可通过 `?sd-auth-events=1` 开启脱敏 auth-event 采集；开启后 `outposts-web` 会暴露 `window.__OUTPOSTS_AUTH_DIAGNOSTICS__.events`，其中包含 event type、flow source、client key、freshness、是否存在 refresh material、reason、outcome、refresh barrier id 与脱敏 error summary。
 - Downstream focused tests 锁住 callback path preservation、provider-neutral route metadata、bearer injection boundaries 与 redirect preservation。
 - `confluence` service 既有 backend tests 锁住 issuer/JWKS/audience/scope 行为，包括 optional-audience 与 missing-scope rejection。
+- Linked-package tests/build 只能证明本地 SDK contract wiring，不能替代真实 Authentik browser/Network run。真实 run 仍需要可访问的 `outposts-web` 页面和已认证 Authentik session，用于记录 localStorage refresh material、access-token expiry、resume refresh、route admission 与首个 protected API request 行为。
 
 ## 为什么这个案例重要
 
@@ -37,7 +41,8 @@
 3. Provider-neutral route requirements 与 callback preservation。
 4. 不向第三方 URL 泄露 token 的 strict bearer-header injection。
 5. Backend-side audience/scope/issuer validation。
-6. 真实 adopter glue 中出现的候选 SDK ergonomics 缺口。
+6. 五分钟 access-token 行为：从 sleep/hidden tab 返回、进入 protected route、首个 Confluence API request 时，如果有可用 refresh material，应先 refresh，而不是发送 expired bearer 或过早 redirect。
+7. 真实 adopter glue 中出现的候选 SDK ergonomics 缺口。
 
 ## 不应该把这个案例验证成什么
 
@@ -61,6 +66,9 @@
 
 - Angular bearer injection 已拥有显式 `BearerInterceptorOptions.strictUrlMatch` 选项。
 - 多 backend 或存在 third-party traffic 的 Angular host 应启用 `strictUrlMatch: true`。
+- Browser token-set client 默认挂载 resume reconciliation，Angular `provideTokenSetAuth(...)` 也会把这个默认行为应用到 registry-managed browser client。如果 `outposts` 针对某个 client 本地关闭这个 hook，就必须安装等价的 `visibilitychange`/`pageshow`/`focus`/`online` freshness barrier。
+- Angular route 与 request handling 应保持在 canonical `ensureAuthForResource()` 路径；app-local route 或 bearer 代码不应重新拼装 `ensureFreshAuthState()` / `ensureAuthorizationHeader()` fallback chain。
+- Authentik 配置必须让 browser-owned token-set client 拿到并保留 refresh material：请求/允许 `offline_access`，并设置 refresh-token rotation/lifetime，使短 access token 能在正常 tab resume、route 与 request flow 中续期。
 - SDK 应为 keyed token-set state projection helper 保留空间，但当前 `outposts` `AuthService` 仍只是单 adopter 样本，不是 SDK API。
 - Framework route adapter 应保持 provider-neutral，只表达 requirements，而不表达 provider SDK 细节。
 

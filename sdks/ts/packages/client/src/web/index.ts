@@ -22,6 +22,19 @@ export type {
 	FromStorageEventOptions,
 } from "./input-sources";
 export { fromAbortSignal, fromStorageEvent } from "./input-sources";
+// --- Visibility lifecycle hardening ---
+export type {
+	CreatePageResumeReconcilerOptions,
+	PageResumeCallback,
+	PageResumeDocumentTarget,
+	PageResumeEvent,
+	PageResumeReconciler,
+	PageResumeWindowTarget,
+} from "./page-resume-reconciler";
+export {
+	createPageResumeReconciler,
+	PageResumeTriggerKind,
+} from "./page-resume-reconciler";
 // --- Popup shared infrastructure ---
 export type {
 	PopupFeaturesOptions,
@@ -41,7 +54,6 @@ export type { CreateWebRuntimeOptions } from "./runtime";
 export { createWebRuntime } from "./runtime";
 export type { FromVisibilityChangeOptions } from "./visibility";
 export { fromVisibilityChange, VisibilityState } from "./visibility";
-// --- Visibility lifecycle hardening ---
 export type {
 	CreateVisibilityReconcilerOptions,
 	ReconcileCallback,

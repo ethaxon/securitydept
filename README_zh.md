@@ -153,7 +153,9 @@ just setup
 ```bash
 just dev-all
 just lint
-just test
+just unittest
+just integration
+just e2e
 just build-docs
 ```
 

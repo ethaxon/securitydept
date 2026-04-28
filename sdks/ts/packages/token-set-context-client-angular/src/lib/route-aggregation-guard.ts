@@ -19,7 +19,10 @@ import {
 	AUTH_PLANNER_HOST,
 	extractFullRouteRequirements,
 } from "@securitydept/client-angular";
-import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
+import {
+	type AuthSnapshot,
+	TokenSetAuthFlowSource,
+} from "@securitydept/token-set-context-client/orchestration";
 import { firstValueFrom, from, switchMap, take } from "rxjs";
 import type { UnauthenticatedEntry } from "./guard-types";
 import type { ClientMeta, ClientQueryOptions } from "./token-set-auth-registry";
@@ -487,11 +490,21 @@ export function createTokenSetRouteAggregationGuard(
 		async function awaitAuthMaterial(): Promise<void> {
 			await Promise.all(pendingRestores);
 			const freshnessBarriers = deduped
-				.flatMap((r) => r.entries)
-				.map(({ service }) =>
-					typeof service.ensureFreshAuthState === "function"
-						? service.ensureFreshAuthState({ forceRefreshWhenDue: true })
-						: Promise.resolve(null),
+				.flatMap((r) =>
+					r.entries.map((entry) => ({
+						...entry,
+						requirement: r.requirement,
+					})),
+				)
+				.map(({ service, clientKey, meta, requirement }) =>
+					service.ensureAuthForResource({
+						source: TokenSetAuthFlowSource.RouteGuard,
+						clientKey,
+						requirement: { id: requirement.id, kind: requirement.kind },
+						providerFamily: meta.providerFamily,
+						url: state.url,
+						forceRefreshWhenDue: true,
+					}),
 				);
 			await Promise.all(freshnessBarriers);
 		}

@@ -1,14 +1,18 @@
 import { signal, type WritableSignal } from "@angular/core";
+import type { EventStreamTrait } from "@securitydept/client";
 import {
 	bridgeToAngularSignal,
 	signalToObservable,
 } from "@securitydept/client-angular";
 import {
 	type AuthSnapshot,
+	type EnsureAuthForResourceOptions,
+	type EnsureAuthForResourceResult,
 	type EnsureAuthorizationHeaderOptions,
 	type EnsureFreshAuthStateOptions,
 	getTokenFreshness,
 	TokenFreshnessState,
+	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
 import type { Observable } from "rxjs";
 import type { TokenSetAngularClient } from "./contracts";
@@ -34,6 +38,7 @@ export class TokenSetAuthService {
 	readonly authState$: Observable<AuthSnapshot | null>;
 	/** Promise that resolves when initial state restore completes (or null if skipped). */
 	readonly restorePromise: Promise<AuthSnapshot | null> | null;
+	readonly authEvents: EventStreamTrait<TokenSetAuthEvent>;
 
 	private readonly cleanup: () => void;
 	private disposed = false;
@@ -46,6 +51,7 @@ export class TokenSetAuthService {
 		this.authState = signal<AuthSnapshot | null>(null);
 		this.cleanup = bridgeToAngularSignal(client.state, this.authState);
 		this.authState$ = signalToObservable(client.state);
+		this.authEvents = client.authEvents;
 		this.restorePromise = autoRestore ? client.restorePersistedState() : null;
 	}
 
@@ -67,6 +73,12 @@ export class TokenSetAuthService {
 		options?: EnsureFreshAuthStateOptions,
 	): Promise<AuthSnapshot | null> {
 		return await this.client.ensureFreshAuthState(options);
+	}
+
+	async ensureAuthForResource(
+		options?: EnsureAuthForResourceOptions,
+	): Promise<EnsureAuthForResourceResult> {
+		return await this.client.ensureAuthForResource(options);
 	}
 
 	async ensureAccessToken(

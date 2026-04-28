@@ -13,6 +13,7 @@ import {
 } from "@securitydept/client";
 import type {
 	AsyncBearerHeaderProvider,
+	AuthForResourceProvider,
 	BearerHeaderProvider,
 } from "../orchestration/index";
 import { createAuthorizedTransport } from "../orchestration/index";
@@ -21,11 +22,14 @@ import { FrontendOidcModeContextSource } from "./types";
 /** @see {@link BearerHeaderProvider} */
 export type AuthorizationHeaderProviderTrait =
 	| BearerHeaderProvider
-	| AsyncBearerHeaderProvider;
+	| AsyncBearerHeaderProvider
+	| AuthForResourceProvider;
 
 export interface CreateFrontendOidcModeAuthorizedTransportOptions {
 	transport: HttpTransport;
 	requireAuthorization?: boolean;
+	clientKey?: string;
+	logicalClientId?: string;
 }
 
 /**

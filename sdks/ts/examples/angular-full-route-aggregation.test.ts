@@ -27,7 +27,7 @@ import {
 	Router,
 	type RouterStateSnapshot,
 } from "@angular/router";
-import type { ReadableSignalTrait } from "@securitydept/client";
+import { createSubject, type ReadableSignalTrait } from "@securitydept/client";
 import {
 	type AuthGuardClientOption,
 	createPlannerHost,
@@ -41,6 +41,10 @@ import {
 	ROUTE_REQUIREMENTS_DATA_KEY,
 	withRouteRequirements,
 } from "@securitydept/client-angular";
+import {
+	EnsureAuthForResourceStatus,
+	TokenSetAuthFlowSource,
+} from "@securitydept/token-set-context-client/orchestration";
 import {
 	type CreateTokenSetRouteAggregationGuardOptions,
 	createTokenSetRouteAggregationGuard,
@@ -96,14 +100,90 @@ function createMockClient(
 	const { signal } = createTestSignal(snap);
 	return {
 		state: signal,
+		authEvents: createSubject(),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
 		authorizationHeader: vi.fn(() => (snap ? "Bearer tok" : null)),
+		ensureAuthForResource: vi.fn().mockResolvedValue(
+			snap
+				? {
+						status: EnsureAuthForResourceStatus.Authenticated,
+						snapshot: snap,
+						freshness: "fresh",
+					}
+				: {
+						status: EnsureAuthForResourceStatus.Unauthenticated,
+						snapshot: null,
+						authorizationHeader: null,
+						reason: "no_snapshot",
+					},
+		),
 		ensureFreshAuthState: vi.fn().mockResolvedValue(snap),
 		ensureAuthorizationHeader: vi
 			.fn()
 			.mockResolvedValue(snap ? "Bearer tok" : null),
 		handleCallback: vi.fn().mockResolvedValue({ snapshot: snap }),
+	};
+}
+
+function createRouteFreshnessMockClient(options: {
+	initialExpiresAt: number;
+	refreshMaterial?: string;
+	refreshResult: "fresh" | "unauthenticated";
+}): OidcModeClient & OidcCallbackClient {
+	const initial = {
+		tokens: {
+			accessToken: "expired-token",
+			idToken: "id",
+			accessTokenExpiresAt: new Date(options.initialExpiresAt).toISOString(),
+			refreshMaterial: options.refreshMaterial,
+		},
+		metadata: { source: { kind: "oidc_authorization_code" as const } },
+	};
+	const refreshed = {
+		tokens: {
+			accessToken: "fresh-token",
+			idToken: "id",
+			accessTokenExpiresAt: new Date(Date.now() + 3600_000).toISOString(),
+			refreshMaterial: options.refreshMaterial,
+		},
+		metadata: { source: { kind: "oidc_authorization_code" as const } },
+	};
+	const { signal, set } = createTestSignal<typeof initial | null>(initial);
+
+	return {
+		state: signal,
+		authEvents: createSubject(),
+		dispose: vi.fn(),
+		restorePersistedState: vi.fn().mockResolvedValue(initial),
+		authorizationHeader: vi.fn(() => null),
+		ensureAuthForResource: vi.fn().mockImplementation(async () => {
+			if (options.refreshResult === "fresh") {
+				set(refreshed);
+				return {
+					status: EnsureAuthForResourceStatus.Authenticated,
+					snapshot: refreshed,
+					freshness: "fresh",
+				};
+			}
+			set(null);
+			return {
+				status: EnsureAuthForResourceStatus.Unauthenticated,
+				snapshot: null,
+				authorizationHeader: null,
+				reason: "refresh_failed",
+			};
+		}),
+		ensureFreshAuthState: vi.fn().mockImplementation(async () => {
+			if (options.refreshResult === "fresh") {
+				set(refreshed);
+				return refreshed;
+			}
+			set(null);
+			return null;
+		}),
+		ensureAuthorizationHeader: vi.fn().mockResolvedValue(null),
+		handleCallback: vi.fn().mockResolvedValue({ snapshot: initial }),
 	};
 }
 
@@ -822,5 +902,157 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 		expect(result).toBe(true);
 		expect(financeEvaluate).toHaveBeenCalledTimes(1);
 		expect(defaultEvaluate).not.toHaveBeenCalled();
+	});
+
+	it("canActivateChild refreshes expired token material before allowing protected route entry", async () => {
+		const registry = new TokenSetAuthRegistry();
+		const client = createRouteFreshnessMockClient({
+			initialExpiresAt: Date.now() - 1_000,
+			refreshMaterial: "refresh-token",
+			refreshResult: "fresh",
+		});
+		const onUnauthenticated = vi.fn(() => "/login/confluence");
+
+		registry.register({
+			key: "confluence",
+			clientFactory: () => client,
+			requirementKind: "frontend_oidc",
+			autoRestore: false,
+		});
+
+		const root = secureRouteRoot(
+			"workspace",
+			{
+				requirements: [{ id: "confluence-oidc", kind: "frontend_oidc" }],
+				requirementPolicies: {
+					"confluence-oidc": {
+						selector: { clientKey: "confluence" },
+						onUnauthenticated,
+					},
+				},
+			},
+			{ children: [secureRoute("confluence", { requirements: [] }, {})] },
+		);
+		const childGuard = root.canActivateChild?.[0] as CanActivateChildFn;
+		const leaf = buildRouteChainFromRoutes([root, root.children?.[0] as Route]);
+
+		const result = await invokeGuard(childGuard, leaf, [
+			{ provide: TokenSetAuthRegistry, useValue: registry },
+			{ provide: AUTH_PLANNER_HOST, useValue: createPlannerHost() },
+			{ provide: Router, useValue: createMockRouter() },
+		]);
+
+		expect(result).toBe(true);
+		expect(client.ensureAuthForResource).toHaveBeenCalledWith(
+			expect.objectContaining({
+				clientKey: "confluence",
+				forceRefreshWhenDue: true,
+				requirement: { id: "confluence-oidc", kind: "frontend_oidc" },
+				source: TokenSetAuthFlowSource.RouteGuard,
+				url: "/target",
+			}),
+		);
+		expect(onUnauthenticated).not.toHaveBeenCalled();
+	});
+
+	it("canActivateChild runs unauthenticated handler when refresh material cannot recover the route", async () => {
+		const registry = new TokenSetAuthRegistry();
+		const client = createRouteFreshnessMockClient({
+			initialExpiresAt: Date.now() - 1_000,
+			refreshMaterial: "refresh-token",
+			refreshResult: "unauthenticated",
+		});
+		const onUnauthenticated = vi.fn(() => "/login/confluence");
+
+		registry.register({
+			key: "confluence",
+			clientFactory: () => client,
+			requirementKind: "frontend_oidc",
+			autoRestore: false,
+		});
+
+		const root = secureRouteRoot(
+			"workspace",
+			{
+				requirements: [{ id: "confluence-oidc", kind: "frontend_oidc" }],
+				requirementPolicies: {
+					"confluence-oidc": {
+						selector: { clientKey: "confluence" },
+						onUnauthenticated,
+					},
+				},
+			},
+			{ children: [secureRoute("confluence", { requirements: [] }, {})] },
+		);
+		const childGuard = root.canActivateChild?.[0] as CanActivateChildFn;
+		const leaf = buildRouteChainFromRoutes([root, root.children?.[0] as Route]);
+
+		const result = await invokeGuard(childGuard, leaf, [
+			{ provide: TokenSetAuthRegistry, useValue: registry },
+			{ provide: AUTH_PLANNER_HOST, useValue: createPlannerHost() },
+			{ provide: Router, useValue: createMockRouter() },
+		]);
+
+		expect(String(result)).toBe("/login/confluence");
+		expect(client.ensureAuthForResource).toHaveBeenCalledWith(
+			expect.objectContaining({
+				clientKey: "confluence",
+				forceRefreshWhenDue: true,
+				requirement: { id: "confluence-oidc", kind: "frontend_oidc" },
+				source: TokenSetAuthFlowSource.RouteGuard,
+				url: "/target",
+			}),
+		);
+		expect(onUnauthenticated).toHaveBeenCalledTimes(1);
+	});
+
+	it("canActivateChild does not admit expired access tokens without refresh recovery", async () => {
+		const registry = new TokenSetAuthRegistry();
+		const client = createRouteFreshnessMockClient({
+			initialExpiresAt: Date.now() - 1_000,
+			refreshResult: "unauthenticated",
+		});
+		const onUnauthenticated = vi.fn(() => false);
+
+		registry.register({
+			key: "confluence",
+			clientFactory: () => client,
+			requirementKind: "frontend_oidc",
+			autoRestore: false,
+		});
+
+		const root = secureRouteRoot(
+			"workspace",
+			{
+				requirements: [{ id: "confluence-oidc", kind: "frontend_oidc" }],
+				requirementPolicies: {
+					"confluence-oidc": {
+						selector: { clientKey: "confluence" },
+						onUnauthenticated,
+					},
+				},
+			},
+			{ children: [secureRoute("confluence", { requirements: [] }, {})] },
+		);
+		const childGuard = root.canActivateChild?.[0] as CanActivateChildFn;
+		const leaf = buildRouteChainFromRoutes([root, root.children?.[0] as Route]);
+
+		const result = await invokeGuard(childGuard, leaf, [
+			{ provide: TokenSetAuthRegistry, useValue: registry },
+			{ provide: AUTH_PLANNER_HOST, useValue: createPlannerHost() },
+			{ provide: Router, useValue: createMockRouter() },
+		]);
+
+		expect(result).toBe(false);
+		expect(client.ensureAuthForResource).toHaveBeenCalledWith(
+			expect.objectContaining({
+				clientKey: "confluence",
+				forceRefreshWhenDue: true,
+				requirement: { id: "confluence-oidc", kind: "frontend_oidc" },
+				source: TokenSetAuthFlowSource.RouteGuard,
+				url: "/target",
+			}),
+		);
+		expect(onUnauthenticated).toHaveBeenCalledTimes(1);
 	});
 });

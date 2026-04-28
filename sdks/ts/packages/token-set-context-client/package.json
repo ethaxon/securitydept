@@ -57,6 +57,11 @@
 			"monorepo-tsc": "./src/registry/index.ts",
 			"types": "./dist/registry/index.d.mts",
 			"import": "./dist/registry/index.mjs"
+		},
+		"./web-router": {
+			"monorepo-tsc": "./src/web-router/index.ts",
+			"types": "./dist/web-router/index.d.mts",
+			"import": "./dist/web-router/index.mjs"
 		}
 	},
 	"files": [

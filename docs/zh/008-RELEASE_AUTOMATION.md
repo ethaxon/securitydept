@@ -76,6 +76,7 @@ release channel 由版本号自动推断，而不是手工传参。
 - GitHub Actions 里的 npm publish job 使用 GitHub OIDC 走 npm trusted publishing，不再注入长期有效的 `NPM_TOKEN`；workflow 与本地正式发布入口都显式传 `--provenance`，避免 provenance 依赖隐含默认行为。
 - `crates publish --allow-dirty` 只用于本地 blocked packaging 循环，解决工作树故意脏状态下的 `cargo package` 校验；CI publish 流程不应使用它。
 - 默认的 `crates publish --mode=package` gate 会用一次 `cargo package --workspace` 打包所有 publishable workspace crates。这是 prerelease 内部依赖链所必需的，因为 Cargo 会在后续 crate 的校验阶段优先从临时打包 registry 解析刚刚打包的上游 crate，而不是只去 crates.io 查还没发布的新版本。
+- `crates publish --mode=package` 与 `crates publish --mode=publish` 使用 Cargo 默认的 package/publish verification 行为。它们不会传 `--release`；校验编译因此使用 dev/debug target 目录，`crates-release` 只读恢复 Tests workflow debug cache，而不是 Docker release-profile cache。
 - `crates publish --mode=publish` 在每个 crate upload 前都会先查询 crates.io，已经存在的版本会直接跳过，因此部分发布成功后可安全重跑。
 - `temp/release/crates/package-report.json` 只保留给非 `--allow-blocked`、非 `--allow-dirty` 的真实 package gate；blocked diagnostic 必须写入独立 report，例如 `temp/release/crates/blocked-package-report.json`。
 - GitHub Actions 里的 crates publish job 通过 `rust-lang/crates-io-auth-action@v1` 把 GitHub OIDC token 交换成短时 crates.io publish token，再传给 `cargo publish`；它不再读取仓库 secret 形式的 `CARGO_REGISTRY_TOKEN`。
@@ -128,7 +129,14 @@ Cache 与 artifact 规则：
 - Rust cache mode 同样必须显式。使用共享 key 的 read-write job 必须是该拓扑唯一 writer；后续 job 只能 read-only restore 或消费 artifact。
 - Debug CI 拓扑直接放在 `.github/workflows/tests.yml`；`release.yml` 依赖成功的 `Tests` run，不再重复同一套 debug verification graph。
 - Rust shared key 应该是稳定的 branch/profile scope，例如 `securitydept-rust-${runner.os}-${branch}-debug` 与 `securitydept-rust-${runner.os}-${branch}-release`。不要在 workflow 里手写 `hashFiles(...)` 塞进 `shared-key`；`Swatinem/rust-cache` 本身已经把 Cargo manifest、lockfile、toolchain 与相关 env var 的 Rust environment hash 纳入最终 key，并且会尝试从旧 lockfile 版本恢复。
-- `tests.yml` 负责 debug Rust cache prime，预热 `cargo build --workspace --all-features --all-targets`，供 clippy、tests 与 E2E prebuild 复用；`release.yml` 负责独立的 release profile cache prime，预热 `cargo build --workspace --all-features --release --all-targets`，供 runtime artifact build 复用。这是当前实践裁决下采用的暂定优化策略，并依赖唯一 writer 拓扑；其耗时收益仍需后续通过可复现的本地 workflow benchmark 证明后再继续调优。
+- Rust cache ownership 按 profile 与 workflow source 拆分：
+
+	| Cache key profile | Read-write owner | Consumers | 说明 |
+	| --- | --- | --- | --- |
+	| `securitydept-rust-${runner.os}-${cache_scope}-debug` | Tests workflow 的 `rust-debug-cache-prime` job | clippy、Rust tests、E2E prebuild，以及 `release.yml` 中 `crates-release` 的 read-only restore | 由 debug CI 拓扑拥有；成功 Tests 触发的 release 会复用同一个 `cache_scope`；manual release dispatch 可以 restore 既有匹配 cache，但不会在 release 内创建 debug writer |
+	| `securitydept-rust-${runner.os}-${cache_scope}-release` in `release.yml` | `docker-release`，仅在 `publish_docker=true` 时运行 | 同一个 `docker-release` job 内的 runtime binary build | 当前只有 Docker 消费 release-profile artifacts，因此 writer 放在唯一消费 job 内；只有未来出现多个 release-profile consumers 时才需要重新拆出 prime job |
+
+	每一行对应的 cache key 都只有一个 read-write owner。行外 job 只能 read-only restore 或不接触该 key。这是当前实践裁决下采用的暂定优化策略，并依赖唯一 writer 拓扑；其耗时收益仍需后续通过可复现的本地 workflow benchmark 证明后再继续调优。
 - Docker buildx cache 只用于 Docker layer cache。release runtime scope 不再尝试缓存 cargo 或 pnpm build，因为这些 build 已经在 Docker 外完成。
 - already-published skip 语义仍由 `release-cli npm publish` 与 `release-cli crates publish` 拥有，因此部分发布成功后重跑会继续剩余 package / crate，而不是因重复版本失败。
 
@@ -143,7 +151,7 @@ Cache 与 artifact 规则：
 
 建议在真正发布前按这个顺序跑本地检查：
 
-1. `mise exec --command "just release-metadata-sync"`
+1. `mise exec --command "just fix-release-metadata"`
 2. `mise exec --command "just release-version-check"`
 3. `mise exec --command "just release-npm-dry-run"`
 4. `mise exec --command "just release-crates-package"`

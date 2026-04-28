@@ -4,6 +4,11 @@ import {
 	ClientErrorKind,
 	UserRecovery,
 } from "@securitydept/client";
+import { TokenSetAuthFlowSource } from "./auth-events";
+import type {
+	EnsureAuthForResourceOptions,
+	EnsureAuthForResourceResult,
+} from "./base-client";
 
 const AUTH_TRANSPORT_SOURCE = "token-orchestration-transport";
 
@@ -22,9 +27,17 @@ export interface AsyncBearerHeaderProvider {
 	ensureAuthorizationHeader(): Promise<string | null>;
 }
 
+export interface AuthForResourceProvider {
+	ensureAuthForResource(
+		options?: EnsureAuthForResourceOptions,
+	): Promise<EnsureAuthForResourceResult>;
+}
+
 export interface CreateAuthorizedTransportOptions {
 	transport: HttpTransport;
 	requireAuthorization?: boolean;
+	clientKey?: string;
+	logicalClientId?: string;
 }
 
 /**
@@ -35,14 +48,21 @@ export interface CreateAuthorizedTransportOptions {
  * OIDC-mediated sealed flow or any specific OIDC protocol.
  */
 export function createAuthorizedTransport(
-	headerProvider: BearerHeaderProvider | AsyncBearerHeaderProvider,
+	headerProvider:
+		| BearerHeaderProvider
+		| AsyncBearerHeaderProvider
+		| AuthForResourceProvider,
 	options: CreateAuthorizedTransportOptions,
 ): HttpTransport {
 	const requireAuthorization = options.requireAuthorization ?? true;
 
 	return {
 		async execute(request: HttpRequest) {
-			const authorization = await resolveAuthorizationHeader(headerProvider);
+			const authorization = await resolveAuthorizationHeader(
+				headerProvider,
+				options,
+				request,
+			);
 			if (!authorization) {
 				if (!requireAuthorization) {
 					return options.transport.execute(request);
@@ -68,8 +88,25 @@ export function createAuthorizedTransport(
 }
 
 function resolveAuthorizationHeader(
-	headerProvider: BearerHeaderProvider | AsyncBearerHeaderProvider,
+	headerProvider:
+		| BearerHeaderProvider
+		| AsyncBearerHeaderProvider
+		| AuthForResourceProvider,
+	options: CreateAuthorizedTransportOptions,
+	request: HttpRequest,
 ): Promise<string | null> | string | null {
+	if ("ensureAuthForResource" in headerProvider) {
+		return headerProvider
+			.ensureAuthForResource({
+				source: TokenSetAuthFlowSource.AuthorizedTransport,
+				needsAuthorizationHeader: true,
+				forceRefreshWhenDue: true,
+				clientKey: options.clientKey,
+				logicalClientId: options.logicalClientId,
+				url: request.url,
+			})
+			.then((result) => result.authorizationHeader ?? null);
+	}
 	if ("ensureAuthorizationHeader" in headerProvider) {
 		return headerProvider.ensureAuthorizationHeader();
 	}

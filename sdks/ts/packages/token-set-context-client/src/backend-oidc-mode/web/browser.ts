@@ -26,6 +26,10 @@ import {
 	relayPopupCallback,
 	waitForPopupRelay,
 } from "@securitydept/client/web";
+import {
+	attachTokenSetResumeReconciliation,
+	type TokenSetResumeReconciliationOptions,
+} from "../../orchestration";
 import { BackendOidcModeClient } from "../client";
 import type { AuthStateSnapshot } from "../types";
 
@@ -153,6 +157,8 @@ export interface CreateBackendOidcModeBrowserClientOptions {
 	clock?: Clock;
 	logger?: LoggerTrait;
 	traceSink?: TraceEventSinkTrait;
+	resumeReconciliation?: boolean;
+	resumeReconciliationOptions?: TokenSetResumeReconciliationOptions;
 }
 
 export function createBackendOidcModeBrowserClient(
@@ -176,18 +182,24 @@ export function createBackendOidcModeBrowserClient(
 		},
 	});
 
-	return new BackendOidcModeClient(
+	return attachTokenSetResumeReconciliation(
+		new BackendOidcModeClient(
+			{
+				baseUrl: options.baseUrl ?? "",
+				defaultPostAuthRedirectUri: options.defaultPostAuthRedirectUri,
+				refreshWindowMs: options.refreshWindowMs,
+				persistentStateKey: options.persistentStateKey,
+				loginPath: options.loginPath,
+				refreshPath: options.refreshPath,
+				metadataRedeemPath: options.metadataRedeemPath,
+				userInfoPath: options.userInfoPath,
+			},
+			runtime,
+		),
 		{
-			baseUrl: options.baseUrl ?? "",
-			defaultPostAuthRedirectUri: options.defaultPostAuthRedirectUri,
-			refreshWindowMs: options.refreshWindowMs,
-			persistentStateKey: options.persistentStateKey,
-			loginPath: options.loginPath,
-			refreshPath: options.refreshPath,
-			metadataRedeemPath: options.metadataRedeemPath,
-			userInfoPath: options.userInfoPath,
+			resumeReconciliation: options.resumeReconciliation,
+			resumeReconciliationOptions: options.resumeReconciliationOptions,
 		},
-		runtime,
 	);
 }
 

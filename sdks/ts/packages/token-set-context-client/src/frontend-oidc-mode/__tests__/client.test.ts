@@ -6,6 +6,11 @@ import {
 } from "@securitydept/client";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	type TokenSetAuthEvent,
+	TokenSetAuthEventType,
+	TokenSetAuthFlowSource,
+} from "../../orchestration";
 import { FrontendOidcModeCallbackErrorCode } from "../callback-error-codes";
 import { FrontendOidcModeTraceEventType } from "../trace-events";
 
@@ -673,7 +678,7 @@ describe("FrontendOidcModeClient", () => {
 				accessToken: "seed-at",
 				idToken: "seed-idt",
 				refreshMaterial: "seed-rt",
-				accessTokenExpiresAt: "2026-01-01T00:05:00.000Z",
+				accessTokenExpiresAt: "2027-01-01T00:05:00.000Z",
 			},
 			metadata: {},
 		});
@@ -704,5 +709,98 @@ describe("FrontendOidcModeClient", () => {
 				}),
 			]),
 		);
+	});
+
+	it("attributes auth.authenticated to the refresh caller instead of callback", async () => {
+		const runtime = createRuntime({
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			sessionStore: createInMemoryRecordStore(),
+		});
+
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			runtime,
+		);
+		const events: TokenSetAuthEvent[] = [];
+		client.authEvents.subscribe({ next: (event) => events.push(event) });
+
+		client.restoreState({
+			tokens: {
+				accessToken: "seed-at",
+				idToken: "seed-idt",
+				refreshMaterial: "seed-rt",
+				accessTokenExpiresAt: "2020-01-01T00:05:00.000Z",
+			},
+			metadata: {},
+		});
+
+		await client.ensureAuthForResource({
+			source: TokenSetAuthFlowSource.RouteGuard,
+			forceRefreshWhenDue: true,
+		});
+
+		const authenticatedEvents = events.filter(
+			(event) => event.type === TokenSetAuthEventType.AuthAuthenticated,
+		);
+		const refreshAuthenticatedEvent =
+			authenticatedEvents[authenticatedEvents.length - 1];
+
+		expect(refreshAuthenticatedEvent?.payload).toEqual(
+			expect.objectContaining({
+				source: TokenSetAuthFlowSource.RouteGuard,
+				hasRefreshMaterial: true,
+			}),
+		);
+		expect(refreshAuthenticatedEvent?.payload.source).not.toBe(
+			TokenSetAuthFlowSource.Callback,
+		);
+	});
+
+	it("preserves existing refresh material when refresh responses omit refresh_token", async () => {
+		oauthMocks.processRefreshTokenResponse.mockResolvedValue({
+			access_token: "refresh-access-token",
+			expires_in: 300,
+		});
+
+		const runtime = createRuntime({
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			sessionStore: createInMemoryRecordStore(),
+		});
+
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			runtime,
+		);
+
+		client.restoreState({
+			tokens: {
+				accessToken: "seed-at",
+				idToken: "seed-idt",
+				refreshMaterial: "seed-rt",
+				accessTokenExpiresAt: "2026-01-01T00:05:00.000Z",
+			},
+			metadata: {},
+		});
+
+		const refreshed = await client.refresh();
+
+		expect(refreshed?.tokens.refreshMaterial).toBe("seed-rt");
+		expect(client.state.get()?.tokens.refreshMaterial).toBe("seed-rt");
 	});
 });

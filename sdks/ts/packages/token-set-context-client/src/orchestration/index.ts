@@ -18,7 +18,23 @@
 // Not a separate npm package — extraction path is clear if warranted later.
 
 export type {
+	CreateTokenSetAuthEventOptions,
+	TokenSetAuthErrorSummary,
+	TokenSetAuthEvent,
+	TokenSetAuthEventPayload,
+} from "./auth-events";
+export {
+	createTokenSetAuthEvent,
+	eventSourceForAuthFlow,
+	summarizeAuthError,
+	TokenSetAuthEventType,
+	TokenSetAuthFlowOutcome,
+	TokenSetAuthFlowReason,
+	TokenSetAuthFlowSource,
+} from "./auth-events";
+export type {
 	AsyncBearerHeaderProvider,
+	AuthForResourceProvider,
 	BearerHeaderProvider,
 	CreateAuthorizedTransportOptions,
 } from "./auth-transport";
@@ -26,12 +42,16 @@ export { createAuthorizedTransport } from "./auth-transport";
 // Base client: shared lifecycle infrastructure for mode-specific clients.
 export type {
 	BaseOidcModeClientOptions,
+	EnsureAuthForResourceOptions,
+	EnsureAuthForResourceRequirement,
+	EnsureAuthForResourceResult,
 	EnsureAuthorizationHeaderOptions,
 	EnsureFreshAuthStateOptions,
 } from "./base-client";
 export {
 	BaseOidcModeClient,
 	describeError,
+	EnsureAuthForResourceStatus,
 	StateRestoreSourceKind,
 } from "./base-client";
 // Controller: thin lifecycle layer that composes state + persistence + transport.
@@ -47,6 +67,26 @@ export type {
 	CreateAuthStatePersistenceOptions,
 } from "./persistence";
 export { createAuthStatePersistence } from "./persistence";
+export type {
+	AttachTokenSetResumeReconciliationOptions,
+	TokenSetResumeReconciliationClient,
+	TokenSetResumeReconciliationOptions,
+} from "./resume-reconciliation";
+export {
+	attachTokenSetResumeReconciliation,
+	createTokenSetResumeReconciler,
+	shouldReconcileTokenSetSnapshot,
+} from "./resume-reconciliation";
+export type {
+	CreateTokenHandleStoreOptions,
+	IssueTokenHandleOptions,
+	TokenHandleDescriptor,
+	TokenHandleStore,
+} from "./token-handle-store";
+export {
+	createTokenHandleStore,
+	TokenHandleKind,
+} from "./token-handle-store";
 export type { TokenFreshnessOptions } from "./token-ops";
 export {
 	bearerHeader,

@@ -4,10 +4,15 @@ import {
 	ClientError,
 	ClientErrorKind,
 	createSignal,
+	createSubject,
 	UserRecovery,
 } from "@securitydept/client";
 import { FrontendOidcModeCallbackErrorCode } from "@securitydept/token-set-context-client/frontend-oidc-mode";
-import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
+import {
+	type AuthSnapshot,
+	EnsureAuthForResourceStatus,
+	TokenSetAuthFlowReason,
+} from "@securitydept/token-set-context-client/orchestration";
 import {
 	TokenSetAuthProvider,
 	TokenSetCallbackComponent,
@@ -100,11 +105,28 @@ describe("TokenSetAuthProvider callback resume", () => {
 								callbackPath: "/auth/token-set/frontend-mode/callback",
 								clientFactory: () => ({
 									state,
+									authEvents: createSubject(),
 									dispose: vi.fn(),
 									restorePersistedState: vi.fn(async () => null),
 									handleCallback,
 									authorizeUrl: vi.fn(() => "/authorize"),
 									authorizationHeader: vi.fn(() => null),
+									ensureAuthForResource: vi.fn(async () => {
+										const snapshot = state.get();
+										if (snapshot) {
+											return {
+												status: EnsureAuthForResourceStatus.Authenticated,
+												snapshot,
+												freshness: "fresh" as const,
+											};
+										}
+										return {
+											status: EnsureAuthForResourceStatus.Unauthenticated,
+											snapshot: null,
+											authorizationHeader: null,
+											reason: TokenSetAuthFlowReason.NoSnapshot,
+										};
+									}),
 									ensureFreshAuthState: vi.fn(async () => state.get()),
 									ensureAuthorizationHeader: vi.fn(async () => null),
 									refresh: vi.fn(async () => null),
@@ -168,6 +190,7 @@ describe("TokenSetAuthProvider callback resume", () => {
 							callbackPath: "/auth/token-set/frontend-mode/callback",
 							clientFactory: () => ({
 								state: createSignal<AuthSnapshot | null>(null),
+								authEvents: createSubject(),
 								dispose: vi.fn(),
 								restorePersistedState: vi.fn(async () => null),
 								handleCallback: vi.fn(async () => {
@@ -175,6 +198,12 @@ describe("TokenSetAuthProvider callback resume", () => {
 								}),
 								authorizeUrl: vi.fn(() => "/authorize"),
 								authorizationHeader: vi.fn(() => null),
+								ensureAuthForResource: vi.fn(async () => ({
+									status: EnsureAuthForResourceStatus.Unauthenticated,
+									snapshot: null,
+									authorizationHeader: null,
+									reason: TokenSetAuthFlowReason.NoSnapshot,
+								})),
 								ensureFreshAuthState: vi.fn(async () => null),
 								ensureAuthorizationHeader: vi.fn(async () => null),
 								refresh: vi.fn(async () => null),

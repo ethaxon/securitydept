@@ -156,7 +156,9 @@ Common loops:
 just dev-server
 just dev-webui
 just lint
-just test
+just unittest
+just integration
+just e2e
 just build-docs
 ```
 

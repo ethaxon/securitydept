@@ -14,8 +14,13 @@ import type {
 	HttpTransport,
 	ReadableSignalTrait,
 } from "@securitydept/client";
-import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import { AuthSourceKind } from "@securitydept/token-set-context-client/orchestration";
+import { createSubject } from "@securitydept/client";
+import {
+	type AuthSnapshot,
+	AuthSourceKind,
+	EnsureAuthForResourceStatus,
+	TokenSetAuthFlowReason,
+} from "@securitydept/token-set-context-client/orchestration";
 import type { TokenSetReactClient } from "@securitydept/token-set-context-client-react";
 import {
 	ClientInitializationPriority,
@@ -32,7 +37,13 @@ import {
 	useTokenSetReadinessQuery,
 } from "@securitydept/token-set-context-client-react/react-query";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, createElement, type ReactElement, useEffect } from "react";
+import {
+	act,
+	createElement,
+	type ReactElement,
+	useEffect,
+	useRef,
+} from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -64,6 +75,17 @@ async function flush() {
 	});
 }
 
+function useRunOnce(effect: () => void | Promise<void>) {
+	const didRun = useRef(false);
+	useEffect(() => {
+		if (didRun.current) {
+			return;
+		}
+		didRun.current = true;
+		void effect();
+	}, [effect]);
+}
+
 async function waitForStatus(
 	view: { container: HTMLElement },
 	target: string,
@@ -75,6 +97,7 @@ async function waitForStatus(
 		}
 		await flush();
 	}
+	throw new Error(`Timed out waiting for status ${target}`);
 }
 
 async function waitForText(
@@ -89,6 +112,7 @@ async function waitForText(
 		}
 		await flush();
 	}
+	throw new Error(`Timed out waiting for text ${selector}=${target}`);
 }
 
 function createTestSignal<T>(initial: T): {
@@ -125,6 +149,7 @@ function createMockClient(
 	const ctrl = createTestSignal<AuthSnapshot | null>(initial);
 	return {
 		state: ctrl.signal,
+		authEvents: createSubject(),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
 		handleCallback: vi.fn().mockResolvedValue({ snapshot: makeSnapshot("cb") }),
@@ -137,6 +162,24 @@ function createMockClient(
 		ensureAuthorizationHeader: vi.fn().mockImplementation(async () => {
 			const accessToken = ctrl.signal.get()?.tokens.accessToken;
 			return accessToken ? `Bearer ${accessToken}` : null;
+		}),
+		ensureAuthForResource: vi.fn().mockImplementation(async () => {
+			const snapshot = ctrl.signal.get();
+			if (snapshot) {
+				const accessToken = snapshot.tokens.accessToken;
+				return {
+					status: EnsureAuthForResourceStatus.Authenticated,
+					snapshot,
+					authorizationHeader: accessToken ? `Bearer ${accessToken}` : null,
+					freshness: "fresh" as const,
+				};
+			}
+			return {
+				status: EnsureAuthForResourceStatus.Unauthenticated,
+				snapshot: null,
+				authorizationHeader: null,
+				reason: TokenSetAuthFlowReason.NoSnapshot,
+			};
 		}),
 		refresh: vi.fn().mockResolvedValue(makeSnapshot("refreshed")),
 		clearState: vi.fn().mockResolvedValue(undefined),
@@ -425,13 +468,14 @@ describe("react-query subpath — canonical token-set consumer surface", () => {
 			const mutation = useTokenSetCreateGroupMutation({
 				clientKey: "main",
 			});
-			useEffect(() => {
-				void mutation.mutateAsync({
-					name: "Operators",
-					entry_ids: ["entry-1"],
-					requestOptions: { transport: http.transport },
-				});
-			}, [mutation]);
+			useRunOnce(
+				() =>
+					void mutation.mutateAsync({
+						name: "Operators",
+						entry_ids: ["entry-1"],
+						requestOptions: { transport: http.transport },
+					}),
+			);
 			return createElement("span", { id: "status" }, mutation.status);
 		}
 
@@ -495,13 +539,14 @@ describe("react-query subpath — canonical token-set consumer surface", () => {
 			const mutation = useTokenSetCreateTokenEntryMutation({
 				clientKey: "main",
 			});
-			useEffect(() => {
-				void mutation.mutateAsync({
-					name: "Operators Token",
-					group_ids: ["group-1"],
-					requestOptions: { transport: http.transport },
-				});
-			}, [mutation]);
+			useRunOnce(
+				() =>
+					void mutation.mutateAsync({
+						name: "Operators Token",
+						group_ids: ["group-1"],
+						requestOptions: { transport: http.transport },
+					}),
+			);
 			return createElement("span", { id: "status" }, mutation.status);
 		}
 

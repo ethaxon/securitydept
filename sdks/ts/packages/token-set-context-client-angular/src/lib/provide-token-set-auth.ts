@@ -49,6 +49,11 @@ export interface ProvideTokenSetAuthOptions {
  * interceptors should use `registry.whenReady(key)` to await
  * materialization before accessing the service.
  *
+ * Adapter-managed browser clients also install token-set page-resume
+ * reconciliation by default during materialization. Set
+ * `resumeReconciliation: false` on an individual client entry only when the
+ * host intentionally owns equivalent browser lifecycle wiring.
+ *
  * @example
  * ```ts
  * import { provideTokenSetAuth } from "@securitydept/token-set-context-client-angular";
@@ -73,6 +78,9 @@ export interface ProvideTokenSetAuthOptions {
  *           },
  *           urlPatterns: ["/api/"],
  *           callbackPath: "/auth/callback",
+ *           // Optional: opt out only if the host already wires equivalent
+ *           // resume reconciliation for this browser client.
+ *           // resumeReconciliation: false,
  *         },
  *       ],
  *     }),

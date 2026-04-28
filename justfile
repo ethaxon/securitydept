@@ -90,17 +90,17 @@ fix-rs:
 fix-ts:
     pnpm lint-fix
 
-sync-docsite:
-    node docsite/scripts/sync-docsite-symlink.ts
+fix-docsite-symlink:
+    node docsite/scripts/fix-docsite-symlink.ts
 
-fix: fix-rs fix-ts sync-docsite release-metadata-sync
+fix-release-metadata:
+    just release-cli metadata sync
+
+fix: fix-rs fix-ts fix-docsite-symlink fix-release-metadata
 
 # Release automation and version control
 release-cli *args:
     node scripts/release-cli.ts {{args}}
-
-release-metadata-sync:
-    just release-cli metadata sync
 
 release-version-set version:
     just release-cli version set {{version}}
@@ -108,66 +108,69 @@ release-version-set version:
 release-version-check:
     just release-cli version check
 
-release-npm-dry-run:
-    pnpm lint
-    just typecheck-sdks
-    just test-sdks
+release-npm-dry-run: lint-ts build-sdks typecheck-sdks unittest-ts
     just release-cli npm publish --mode=dry-run --report=temp/release/npm/dry-run-report.json
 
-release-npm-publish:
-    pnpm lint
-    just typecheck-sdks
-    just test-sdks
+release-npm-publish: lint-ts build-sdks typecheck-sdks unittest-ts
     just release-cli npm publish --mode=publish --provenance --report=temp/release/npm/publish-report.json
 
-release-crates-package:
+release-crates-package: lint-rs unittest-rs integration-rs
     just release-cli crates publish --mode=package --report=temp/release/crates/package-report.json
 
-release-crates-package-blocked:
+release-crates-package-blocked: lint-rs unittest-rs integration-rs
     just release-cli crates publish --mode=package --allow-blocked --allow-dirty --report=temp/release/crates/blocked-package-report.json
 
-release-crates-publish:
+release-crates-publish: lint-rs unittest-rs integration-rs
     just release-cli crates publish --mode=publish --report=temp/release/crates/publish-report.json
 
-release-docker-metadata ref:
+release-docker-metadata ref: lint build typecheck unittest integration
     just release-cli docker publish --ref={{ref}}
 
-release-action-cli *args:
+action-cli *args:
     node scripts/actions-cli.ts {{args}}
 
 action-release-validate:
-    just release-action-cli release validate
+    just action-cli release validate
 
 action-release-dry-run *args:
-    just release-action-cli release dispatch --dry-run {{args}}
+    just action-cli release dispatch --dry-run {{args}}
 
 action-release-run *args:
-    just release-action-cli release dispatch {{args}}
+    just action-cli release dispatch {{args}}
 
 # Integration test prerequisites
 build-kube-test-helper:
     docker buildx build --load -t securitydept-realip-kube-integration-test-helper:v1 -f packages/realip/tests/fixtures/kube-helper/Dockerfile packages/realip/tests/fixtures/kube-helper
 
 # Test suites and verification loops
-test-rs: build-kube-test-helper
-    cargo test --workspace --all-features
+unittest-rs:
+    cargo test --workspace --all-features --lib --bins
+    cargo test --workspace --all-features --doc
 
-test-sdks: 
+integration-rs:
+    cargo test --workspace --test integration --all-features
+
+e2e-rs: build-kube-test-helper
+    cargo test --workspace --test e2e --all-features
+
+test-all-rs: unittest-rs integration-rs e2e-rs
+
+unittest-ts:
     cd sdks/ts && pnpm test
-
-test-webui:
     cd apps/webui && pnpm test
 
-test-ts:
-    just test-sdks
-    just test-webui
-
-test: test-rs test-ts
-
-e2e-webui:
+e2e-ts:
     cd apps/webui && pnpm run e2e
 
-e2e: e2e-webui
+test-all-ts: unittest-ts e2e-ts
+
+unittest: unittest-rs unittest-ts
+
+integration: integration-rs
+
+e2e: e2e-rs e2e-ts
+
+test-all: test-all-rs test-all-ts
 
 # Type checking and client iteration checks
 typecheck-sdks:
@@ -181,7 +184,6 @@ typecheck:
 
 verify-client-sdk-iteration:
     pnpm lint-fix
-    pnpm lint
     cd sdks/ts && pnpm build
     cd sdks/ts && pnpm typecheck
     cd sdks/ts && pnpm test
@@ -189,14 +191,9 @@ verify-client-sdk-iteration:
     cd apps/webui && pnpm typecheck
     pnpm -r --filter @securitydept/webui... build
 
-# Runtime helpers and one-off utilities
-run-server: build
-    cargo run --manifest-path apps/server/Cargo.toml --release
-
 # Generate an Argon2id password hash for config.toml basic_auth_context.users
 hash-password password="":
     @cargo run --manifest-path apps/server/Cargo.toml -q -- hash-password {{if password != "" { "--password " + password } else { "" } }}
-
 
 update-core-feature-gates:
     node scripts/update-core-feature-gates.ts

@@ -1,4 +1,25 @@
-import { createEventStream } from "./event-stream";
+import { merge as rxMerge } from "rxjs";
+import {
+	concatMap as rxConcatMap,
+	debounceTime as rxDebounceTime,
+	exhaustMap as rxExhaustMap,
+	filter as rxFilter,
+	finalize as rxFinalize,
+	map as rxMap,
+	share as rxShare,
+	shareReplay as rxShareReplay,
+	switchMap as rxSwitchMap,
+	takeUntil as rxTakeUntil,
+	tap as rxTap,
+	throttleTime as rxThrottleTime,
+	withLatestFrom as rxWithLatestFrom,
+} from "rxjs/operators";
+import type { ReadableSignalTrait } from "../signals";
+import {
+	createEventStream,
+	fromRxObservable,
+	toRxObservable,
+} from "./event-stream";
 import type { EventStreamTrait } from "./types";
 
 // --- Operator types ---
@@ -35,21 +56,7 @@ export function pipe(
 // --- map ---
 
 export function map<A, B>(fn: (value: A) => B): EventOperator<A, B> {
-	return (source) =>
-		createEventStream((observer) => {
-			const sub = source.subscribe({
-				next(value) {
-					observer.next?.(fn(value));
-				},
-				error(err) {
-					observer.error?.(err);
-				},
-				complete() {
-					observer.complete?.();
-				},
-			});
-			return () => sub.unsubscribe();
-		});
+	return (source) => fromRxObservable(toRxObservable(source).pipe(rxMap(fn)));
 }
 
 // --- filter ---
@@ -58,41 +65,13 @@ export function filter<A>(
 	predicate: (value: A) => boolean,
 ): EventOperator<A, A> {
 	return (source) =>
-		createEventStream((observer) => {
-			const sub = source.subscribe({
-				next(value) {
-					if (predicate(value)) observer.next?.(value);
-				},
-				error(err) {
-					observer.error?.(err);
-				},
-				complete() {
-					observer.complete?.();
-				},
-			});
-			return () => sub.unsubscribe();
-		});
+		fromRxObservable(toRxObservable(source).pipe(rxFilter(predicate)));
 }
 
 // --- tap ---
 
 export function tap<A>(fn: (value: A) => void): EventOperator<A, A> {
-	return (source) =>
-		createEventStream((observer) => {
-			const sub = source.subscribe({
-				next(value) {
-					fn(value);
-					observer.next?.(value);
-				},
-				error(err) {
-					observer.error?.(err);
-				},
-				complete() {
-					observer.complete?.();
-				},
-			});
-			return () => sub.unsubscribe();
-		});
+	return (source) => fromRxObservable(toRxObservable(source).pipe(rxTap(fn)));
 }
 
 // --- takeUntil ---
@@ -101,57 +80,16 @@ export function takeUntil<A>(
 	notifier: EventStreamTrait<unknown>,
 ): EventOperator<A, A> {
 	return (source) =>
-		createEventStream((observer) => {
-			const sourceSub = source.subscribe({
-				next(value) {
-					observer.next?.(value);
-				},
-				error(err) {
-					observer.error?.(err);
-				},
-				complete() {
-					observer.complete?.();
-				},
-			});
-
-			const notifierSub = notifier.subscribe({
-				next() {
-					observer.complete?.();
-					sourceSub.unsubscribe();
-					notifierSub.unsubscribe();
-				},
-			});
-
-			return () => {
-				sourceSub.unsubscribe();
-				notifierSub.unsubscribe();
-			};
-		});
+		fromRxObservable(
+			toRxObservable(source).pipe(rxTakeUntil(toRxObservable(notifier))),
+		);
 }
 
 // --- finalize ---
 
 export function finalize<A>(fn: () => void): EventOperator<A, A> {
 	return (source) =>
-		createEventStream((observer) => {
-			const sub = source.subscribe({
-				next(value) {
-					observer.next?.(value);
-				},
-				error(err) {
-					observer.error?.(err);
-					fn();
-				},
-				complete() {
-					observer.complete?.();
-					fn();
-				},
-			});
-			return () => {
-				sub.unsubscribe();
-				fn();
-			};
-		});
+		fromRxObservable(toRxObservable(source).pipe(rxFinalize(fn)));
 }
 
 // --- merge ---
@@ -159,28 +97,79 @@ export function finalize<A>(fn: () => void): EventOperator<A, A> {
 export function merge<A>(
 	...sources: EventStreamTrait<A>[]
 ): EventStreamTrait<A> {
-	return createEventStream((observer) => {
-		let completedCount = 0;
-		const subs = sources.map((source) =>
-			source.subscribe({
-				next(value) {
-					observer.next?.(value);
-				},
-				error(err) {
-					observer.error?.(err);
-				},
-				complete() {
-					completedCount++;
-					if (completedCount === sources.length) {
-						observer.complete?.();
-					}
-				},
-			}),
+	return fromRxObservable(rxMerge(...sources.map(toRxObservable)));
+}
+
+export function share<A>(): EventOperator<A, A> {
+	return (source) => fromRxObservable(toRxObservable(source).pipe(rxShare()));
+}
+
+export function shareReplay<A>(bufferSize = 1): EventOperator<A, A> {
+	return (source) =>
+		fromRxObservable(
+			toRxObservable(source).pipe(
+				rxShareReplay({ bufferSize, refCount: true }),
+			),
 		);
-		return () => {
-			for (const sub of subs) {
-				sub.unsubscribe();
-			}
-		};
-	});
+}
+
+export function switchMap<A, B>(
+	fn: (value: A) => EventStreamTrait<B>,
+): EventOperator<A, B> {
+	return (source) =>
+		fromRxObservable(
+			toRxObservable(source).pipe(
+				rxSwitchMap((value) => toRxObservable(fn(value))),
+			),
+		);
+}
+
+export function concatMap<A, B>(
+	fn: (value: A) => EventStreamTrait<B>,
+): EventOperator<A, B> {
+	return (source) =>
+		fromRxObservable(
+			toRxObservable(source).pipe(
+				rxConcatMap((value) => toRxObservable(fn(value))),
+			),
+		);
+}
+
+export function exhaustMap<A, B>(
+	fn: (value: A) => EventStreamTrait<B>,
+): EventOperator<A, B> {
+	return (source) =>
+		fromRxObservable(
+			toRxObservable(source).pipe(
+				rxExhaustMap((value) => toRxObservable(fn(value))),
+			),
+		);
+}
+
+export function debounceTime<A>(durationMs: number): EventOperator<A, A> {
+	return (source) =>
+		fromRxObservable(toRxObservable(source).pipe(rxDebounceTime(durationMs)));
+}
+
+export function throttleTime<A>(durationMs: number): EventOperator<A, A> {
+	return (source) =>
+		fromRxObservable(toRxObservable(source).pipe(rxThrottleTime(durationMs)));
+}
+
+export function withLatestFromSignal<A, B>(
+	signal: ReadableSignalTrait<B>,
+): EventOperator<A, [A, B]> {
+	return (source) =>
+		fromRxObservable(
+			toRxObservable(source).pipe(
+				rxWithLatestFrom(
+					toRxObservable(
+						createEventStream<B>((observer) => {
+							observer.next?.(signal.get());
+							return signal.subscribe(() => observer.next?.(signal.get()));
+						}),
+					),
+				),
+			),
+		);
 }

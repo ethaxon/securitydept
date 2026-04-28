@@ -48,6 +48,11 @@
 			"types": "./dist/web/index.d.mts",
 			"import": "./dist/web/index.mjs"
 		},
+		"./events": {
+			"monorepo-tsc": "./src/events/index.ts",
+			"types": "./dist/events/index.d.mts",
+			"import": "./dist/events/index.mjs"
+		},
 		"./auth-coordination": {
 			"monorepo-tsc": "./src/auth-coordination/index.ts",
 			"types": "./dist/auth-coordination/index.d.mts",
@@ -67,6 +72,7 @@
 		"typecheck": "tsc -b"
 	},
 	"dependencies": {
-		"@standard-schema/spec": "^1.0.0"
+		"@standard-schema/spec": "^1.0.0",
+		"rxjs": "^7.8.2"
 	}
 }

@@ -110,6 +110,18 @@
 					}
 				},
 				{
+					"exportKey": "./events",
+					"stability": "provisional",
+					"owner": "foundation",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Foundation event-stream contracts and RxJS-backed operator facade used by auth lifecycle telemetry. Exposes SecurityDept traits rather than requiring family packages to make RxJS their primary public contract.",
+					"evidence": ["packages/client/src/events/__tests__/events.test.ts"],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Event Primitives"
+					}
+				},
+				{
 					"exportKey": "./web-router",
 					"stability": "provisional",
 					"owner": "foundation",
@@ -381,6 +393,20 @@
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Shared Client Lifecycle Contract"
 					}
+				},
+				{
+					"exportKey": "./web-router",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Token-set-specific raw web route helper that creates AuthGuardClientOption entries whose unauthenticated handler first calls ensureAuthForResource({ source: raw_web_router, forceRefreshWhenDue: true }) before redirect/block fallback.",
+					"evidence": [
+						"packages/token-set-context-client/src/web-router/__tests__/token-set-web-router.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Framework Router Adapters"
+					}
 				}
 			]
 		},
@@ -487,6 +513,20 @@
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "React Query Integration"
+					}
+				},
+				{
+					"exportKey": "./tanstack-router",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Token-set-specific TanStack Router beforeLoad helper that wraps @securitydept/client-react/tanstack-router and calls registry.ensureAuthForResource({ source: tanstack_before_load, forceRefreshWhenDue: true }) for each route requirement before redirect/block fallback.",
+					"evidence": [
+						"packages/token-set-context-client-react/src/__tests__/tanstack-router.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Framework Router Adapters"
 					}
 				}
 			]

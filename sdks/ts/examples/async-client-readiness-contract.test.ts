@@ -17,9 +17,13 @@
  * call `registry.dispose()` manually (omitted here for brevity).
  */
 
-import type { ReadableSignalTrait } from "@securitydept/client";
+import { createSubject, type ReadableSignalTrait } from "@securitydept/client";
 import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import { AuthSourceKind } from "@securitydept/token-set-context-client/orchestration";
+import {
+	AuthSourceKind,
+	EnsureAuthForResourceStatus,
+	TokenSetAuthFlowReason,
+} from "@securitydept/token-set-context-client/orchestration";
 import {
 	createTokenSetBearerInterceptor,
 	type OidcCallbackClient,
@@ -71,14 +75,37 @@ function createMockClient(
 	const stateCtrl = createTestSignal<AuthSnapshot | null>(initialState);
 	return {
 		state: stateCtrl.signal,
+		authEvents: createSubject(),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
+		authorizationHeader: vi.fn(() => {
+			const accessToken = stateCtrl.signal.get()?.tokens?.accessToken;
+			return accessToken ? `Bearer ${accessToken}` : null;
+		}),
 		ensureFreshAuthState: vi
 			.fn()
 			.mockImplementation(async () => stateCtrl.signal.get()),
 		ensureAuthorizationHeader: vi.fn().mockImplementation(async () => {
 			const accessToken = stateCtrl.signal.get()?.tokens?.accessToken;
 			return accessToken ? `Bearer ${accessToken}` : null;
+		}),
+		ensureAuthForResource: vi.fn().mockImplementation(async () => {
+			const snapshot = stateCtrl.signal.get();
+			if (snapshot) {
+				const accessToken = snapshot.tokens.accessToken;
+				return {
+					status: EnsureAuthForResourceStatus.Authenticated,
+					snapshot,
+					authorizationHeader: accessToken ? `Bearer ${accessToken}` : null,
+					freshness: "fresh" as const,
+				};
+			}
+			return {
+				status: EnsureAuthForResourceStatus.Unauthenticated,
+				snapshot: null,
+				authorizationHeader: null,
+				reason: TokenSetAuthFlowReason.NoSnapshot,
+			};
 		}),
 		isAuthenticated: () => stateCtrl.signal.get() !== null,
 		accessToken: () => stateCtrl.signal.get()?.tokens?.accessToken ?? null,

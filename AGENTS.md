@@ -26,7 +26,7 @@ _Single source of truth for Agent identity, code standards, and project rules. S
 ### File Organization
 
 - **Docs**: [`README.md`](README.md) -> [`docs/`](docs/)
-- **Docs Site**: [`docsite/`](docsite/) is the VitePress source root. Keep source content in [`docs/en`](docs/en), [`docs/zh`](docs/zh), and root docs; maintain Git-compatible relative symlinks into `docsite/` via `docsite/scripts/sync-docsite-symlink.ts`. Do not copy source docs or restore a `docsite/.staged/` pipeline. The custom domain is `securitydept.ethaxon.com` with VitePress `base: "/"`. Docs site build/verification is independent from the main app build and should use `just build-docs`.
+- **Docs Site**: [`docsite/`](docsite/) is the VitePress source root. Keep source content in [`docs/en`](docs/en), [`docs/zh`](docs/zh), and root docs; maintain Git-compatible relative symlinks into `docsite/` via `docsite/scripts/fix-docsite-symlink.ts`. Do not copy source docs or restore a `docsite/.staged/` pipeline. The custom domain is `securitydept.ethaxon.com` with VitePress `base: "/"`. Docs site build/verification is independent from the main app build and should use `just build-docs`.
 - **Data**: [`data/`](data/)
 - **Temp**: [`temp/`](temp/) if agents need to create temp files, please use temp folder
 

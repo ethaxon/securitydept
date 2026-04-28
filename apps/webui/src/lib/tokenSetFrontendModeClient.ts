@@ -1,4 +1,5 @@
 import {
+	createEventStream,
 	createSignal,
 	createTraceTimelineStore,
 	readonlySignal,
@@ -155,6 +156,28 @@ async function ensureTokenSetFrontendModeClientSubscribed(): Promise<FrontendOid
 
 const tokenSetFrontendModeReactClient: TokenSetReactClient = {
 	state: readonlySignal(tokenSetFrontendModeStateSignal),
+	authEvents: createEventStream((observer) => {
+		let unsubscribed = false;
+		let subscription: { unsubscribe(): void } | null = null;
+
+		void ensureTokenSetFrontendModeClientSubscribed()
+			.then((client) => {
+				if (unsubscribed) {
+					return;
+				}
+				subscription = client.authEvents.subscribe(observer);
+			})
+			.catch((error) => {
+				if (!unsubscribed) {
+					observer.error?.(error);
+				}
+			});
+
+		return () => {
+			unsubscribed = true;
+			subscription?.unsubscribe();
+		};
+	}),
 	dispose() {
 		tokenSetFrontendModeStateUnsubscribe?.();
 		tokenSetFrontendModeStateUnsubscribe = null;
@@ -201,6 +224,12 @@ const tokenSetFrontendModeReactClient: TokenSetReactClient = {
 		const snapshot = await client.ensureFreshAuthState(options);
 		tokenSetFrontendModeStateSignal.set(client.state.get());
 		return snapshot;
+	},
+	async ensureAuthForResource(options) {
+		const client = await ensureTokenSetFrontendModeClientSubscribed();
+		const result = await client.ensureAuthForResource(options);
+		tokenSetFrontendModeStateSignal.set(client.state.get());
+		return result;
 	},
 	async ensureAuthorizationHeader(options) {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();

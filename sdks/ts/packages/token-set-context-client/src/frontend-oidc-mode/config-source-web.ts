@@ -30,6 +30,10 @@ import {
 	type FetchTransportOptions,
 } from "@securitydept/client/web";
 import {
+	attachTokenSetResumeReconciliation,
+	type TokenSetResumeReconciliationOptions,
+} from "../orchestration";
+import {
 	createFrontendOidcModeClient,
 	type FrontendOidcModeClient,
 } from "./client";
@@ -78,6 +82,8 @@ export interface CreateFrontendOidcModeBrowserClientOptions {
 	clock?: Clock;
 	logger?: LoggerTrait;
 	traceSink?: TraceEventSinkTrait;
+	resumeReconciliation?: boolean;
+	resumeReconciliationOptions?: TokenSetResumeReconciliationOptions;
 }
 
 export interface FrontendOidcModeBrowserClientMaterialization {
@@ -146,9 +152,16 @@ export async function createFrontendOidcModeBrowserClient(
 		sessionStore:
 			options.sessionStore ?? createSessionStorageStore(sessionStoragePrefix),
 	});
+	const client = attachTokenSetResumeReconciliation(
+		createFrontendOidcModeClient(parsed.value, runtime),
+		{
+			resumeReconciliation: options.resumeReconciliation,
+			resumeReconciliationOptions: options.resumeReconciliationOptions,
+		},
+	);
 
 	return {
-		client: createFrontendOidcModeClient(parsed.value, runtime),
+		client,
 		config: parsed.value,
 		resolvedProjection,
 		browserPersistentStorageKey: resolveFrontendOidcModeBrowserStorageKey(
@@ -286,7 +299,10 @@ export function persistedConfigSource(options: {
 			try {
 				const envelope = JSON.parse(raw) as PersistedConfigEnvelope;
 				if (!envelope.data) return null;
-				return { __data: envelope.data, __generatedAt: envelope.generatedAt };
+				return {
+					__data: envelope.data,
+					__generatedAt: envelope.generatedAt,
+				};
 			} catch {
 				return null;
 			}

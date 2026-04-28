@@ -30,6 +30,7 @@ export type {
 	ClientMeta,
 	ClientQueryOptions,
 	CreateTokenSetAuthRegistryOptions,
+	EnsureRegistryAuthForResourceOptions,
 	OidcCallbackClient,
 	OidcModeClient,
 	TokenSetClientEntry,

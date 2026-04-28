@@ -7,12 +7,18 @@
 // wrappers over the core registry; the lifecycle / readiness / discrimination
 // semantics live here.
 
-import type { ReadableSignalTrait } from "@securitydept/client";
+import type {
+	EventStreamTrait,
+	ReadableSignalTrait,
+} from "@securitydept/client";
 import type { ClientReadinessState } from "../frontend-oidc-mode/config-source";
 import type {
 	AuthSnapshot,
+	EnsureAuthForResourceOptions,
+	EnsureAuthForResourceResult,
 	EnsureAuthorizationHeaderOptions,
 	EnsureFreshAuthStateOptions,
+	TokenSetAuthEvent,
 } from "../orchestration";
 
 export type { ClientReadinessState };
@@ -27,9 +33,13 @@ export type { ClientReadinessState };
  */
 export interface OidcModeClient {
 	state: ReadableSignalTrait<AuthSnapshot | null>;
+	authEvents: EventStreamTrait<TokenSetAuthEvent>;
 	dispose(): void;
 	restorePersistedState(): Promise<AuthSnapshot | null>;
 	authorizationHeader(): string | null;
+	ensureAuthForResource(
+		options?: EnsureAuthForResourceOptions,
+	): Promise<EnsureAuthForResourceResult>;
 	ensureFreshAuthState(
 		options?: EnsureFreshAuthStateOptions,
 	): Promise<AuthSnapshot | null>;
@@ -179,6 +189,13 @@ export interface ClientFilter {
 
 export type ClientQueryOptions = ClientFilter | ClientFilter[];
 
+export interface EnsureRegistryAuthForResourceOptions
+	extends EnsureAuthForResourceOptions {
+	key?: string;
+	query?: ClientQueryOptions;
+	waitForReady?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Registry factory options
 // ---------------------------------------------------------------------------
@@ -211,6 +228,11 @@ export interface CreateTokenSetAuthRegistryOptions<TClient, TService> {
 	accessTokenOf?: (service: TService) => string | null;
 	ensureAccessTokenOf?: (service: TService) => Promise<string | null>;
 	ensureAuthorizationHeaderOf?: (service: TService) => Promise<string | null>;
+	ensureAuthForResourceOf?: (
+		service: TService,
+		options: EnsureAuthForResourceOptions,
+	) => Promise<EnsureAuthForResourceResult>;
+	authEventsOf?: (service: TService) => EventStreamTrait<TokenSetAuthEvent>;
 	/**
 	 * Custom idle scheduler for {@link TokenSetAuthRegistry.idleWarmup}.
 	 * Defaults to `requestIdleCallback` when available, `setTimeout(_, 0)`
