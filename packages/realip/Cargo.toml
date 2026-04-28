@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-realip"
-version = "0.2.0-beta.4"
+version = "0.2.0-beta.5"
 edition = "2024"
 authors = ["Zhou Yeheng <root@aitiotekt.com>"]
 description = "Real IP of SecurityDept, a layered authentication and authorization toolkit built as reusable Rust crates."

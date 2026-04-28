@@ -1,5 +1,5 @@
 [project]
-version = "0.2.0-beta.4"
+version = "0.2.0-beta.5"
 display_name = "SecurityDept"
 description = "SecurityDept is a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps."
 author = "Zhou Yeheng <root@aitiotekt.com>"

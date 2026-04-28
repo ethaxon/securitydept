@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-creds"
-version = "0.2.0-beta.4"
+version = "0.2.0-beta.5"
 edition = "2024"
 
 authors = ["Zhou Yeheng <root@aitiotekt.com>"]
@@ -21,7 +21,7 @@ jwe = ["jwt", "dep:josekit", "jwk"]
 rfc9068 = ["jwt", "jwk"]
 
 [dependencies]
-securitydept-utils = { version = "~0.2.0-beta.4", path = "../utils" }
+securitydept-utils = { version = "~0.2.0-beta.5", path = "../utils" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
