@@ -221,7 +221,7 @@ jobs:
 
       - name: Prepare kube test helper for e2e tests
         run: |
-          docker buildx build --platform=linux/amd64 --load -t securitydept-kube-test-helper:latest -f scripts/e2e-tests/kube-test-helper/Dockerfile --cache-from=type=gha --cache-to=type=gha,mode=max .
+          docker buildx build --platform=linux/amd64 --load -t securitydept-realip-kube-integration-test-helper:v1 -f packages/realip/tests/fixtures/kube-helper/Dockerfile --cache-from=type=gha,scope=kube-test-helper-linux-amd64 --cache-to=type=gha,mode=max,scope=kube-test-helper-linux-amd64 packages/realip/tests/fixtures/kube-helper
 
       - name: Run Rust e2e tests
         run: |

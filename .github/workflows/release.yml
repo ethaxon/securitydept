@@ -6,6 +6,9 @@ on:
             - Tests
         types:
             - completed
+        branches:
+            - release
+            - v*.*.*
     workflow_dispatch:
         inputs:
             source_ref:
@@ -49,7 +52,9 @@ env:
 jobs:
     release-plan:
         if: github.event_name == 'workflow_dispatch' ||
-            github.event.workflow_run.conclusion == 'success'
+            (github.event.workflow_run.conclusion == 'success' &&
+            (github.event.workflow_run.head_branch == 'release' ||
+            startsWith(github.event.workflow_run.head_branch || '', 'v')))
         runs-on: ubuntu-latest
         outputs:
             source_event: ${{ steps.plan.outputs.source_event }}
