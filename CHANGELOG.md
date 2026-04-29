@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0-beta.6]
+
+### Changed
+
+- Refined release automation so `tests.yml` remains the verification authority and dispatches `release.yml` after successful `release` branch runs, while `release.yml` itself stays on the `workflow_dispatch` entrypoint required by crates.io trusted publishing.
+- Bumped the workspace version to `0.2.0-beta.6` across Rust crates, TypeScript SDK packages, app manifests, lockfiles, and shared release metadata.
+- Updated the release automation authority docs to describe the post-Tests dispatch path, manual dispatch expectations, and the current cache ownership model.
+
+### Fixed
+
+- Fixed TypeScript token-set freshness handling for short-lived access tokens by recording `accessTokenIssuedAt`, capping refresh-window and clock-skew calculations relative to the token lifetime, and using the same timing model for timer scheduling.
+- Fixed browser-owned token-set recovery paths so restore, route entry, resume reconciliation, and protected requests do not immediately classify newly issued one-minute tokens as `refresh_due` or fall into redundant refresh races.
+
+## [0.2.0-beta.5]
+
+- Refactored github workflows and tests organization.
+
 ## [0.2.0-beta.4]
 
 ### Added

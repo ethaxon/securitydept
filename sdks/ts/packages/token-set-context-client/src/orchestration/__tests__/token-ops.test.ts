@@ -69,4 +69,22 @@ describe("token freshness operations", () => {
 		expect(freshBearerHeader(expired, OPTIONS)).toBeNull();
 		expect(shouldRefreshAccessToken(expired, OPTIONS)).toBe(true);
 	});
+
+	it("keeps short-lived newly issued tokens fresh by capping skew and refresh window", () => {
+		const shortLived = snapshot({
+			accessTokenIssuedAt: "2026-01-01T00:00:00Z",
+			accessTokenExpiresAt: "2026-01-01T00:01:00Z",
+			refreshMaterial: "rt",
+		});
+
+		expect(getTokenFreshness(shortLived, OPTIONS)).toBe(
+			TokenFreshnessState.Fresh,
+		);
+		expect(
+			getTokenFreshness(shortLived, { ...OPTIONS, now: NOW + 30_000 }),
+		).toBe(TokenFreshnessState.RefreshDue);
+		expect(
+			getTokenFreshness(shortLived, { ...OPTIONS, now: NOW + 50_000 }),
+		).toBe(TokenFreshnessState.Expired);
+	});
 });

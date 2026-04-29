@@ -1043,6 +1043,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			accessToken: tokens.accessToken,
 			idToken: tokens.idToken,
 			refreshMaterial: tokens.refreshToken ?? previousRefreshMaterial,
+			accessTokenIssuedAt: new Date(this._runtime.clock.now()).toISOString(),
 			accessTokenExpiresAt: tokens.expiresAt,
 		};
 	}

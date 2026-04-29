@@ -53,6 +53,7 @@ import {
 import {
 	freshBearerHeader,
 	getTokenFreshness,
+	resolveTokenFreshnessTiming,
 	shouldRefreshAccessToken,
 	TokenFreshnessState,
 } from "./token-ops";
@@ -642,8 +643,13 @@ export abstract class BaseOidcModeClient {
 			this._refreshThroughBarrier(this._timerAuthFlowPayload()).catch(() => {});
 			return;
 		}
-		const refreshAt = expiresAt - this._refreshWindowMs;
 		const now = this._runtime.clock.now();
+		const timing = resolveTokenFreshnessTiming(current, {
+			now,
+			clockSkewMs: DEFAULT_CLOCK_SKEW_MS,
+			refreshWindowMs: this._refreshWindowMs,
+		});
+		const refreshAt = timing.refreshAt;
 		const remainingMs = refreshAt - now;
 
 		if (remainingMs <= 0) {

@@ -16,6 +16,7 @@ export interface TokenSnapshot {
 	accessToken: string;
 	idToken?: string;
 	refreshMaterial?: string;
+	accessTokenIssuedAt?: string;
 	accessTokenExpiresAt?: string;
 }
 
@@ -29,6 +30,7 @@ export interface TokenDelta {
 	accessToken: string;
 	idToken?: string;
 	refreshMaterial?: string;
+	accessTokenIssuedAt?: string;
 	accessTokenExpiresAt?: string;
 }
 

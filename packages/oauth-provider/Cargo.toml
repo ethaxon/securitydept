@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-oauth-provider"
-version = "0.2.0-beta.5"
+version = "0.2.0-beta.6"
 edition = "2024"
 
 authors = ["Zhou Yeheng <root@aitiotekt.com>"]
@@ -13,7 +13,7 @@ readme = "README.md"
 keywords = ["auth","oauth","oidc","security","token"]
 categories = ["authentication","network-programming","web-programming"]
 [dependencies]
-securitydept-utils = { version = "~0.2.0-beta.5", path = "../utils" }
+securitydept-utils = { version = "~0.2.0-beta.6", path = "../utils" }
 openidconnect = { workspace = true }
 oauth2 = { workspace = true }
 serde = { workspace = true }

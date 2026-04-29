@@ -16,6 +16,14 @@ export interface TokenFreshnessOptions {
 	refreshWindowMs: number;
 }
 
+export interface TokenFreshnessTiming {
+	expiresAt: number;
+	clockSkewMs: number;
+	refreshWindowMs: number;
+	usableUntil: number;
+	refreshAt: number;
+}
+
 /**
  * Merge a token delta into an existing snapshot.
  *
@@ -34,6 +42,8 @@ export function mergeTokenDelta(
 		accessToken: delta.accessToken,
 		idToken: delta.idToken ?? snapshot.idToken,
 		refreshMaterial: delta.refreshMaterial ?? snapshot.refreshMaterial,
+		accessTokenIssuedAt:
+			delta.accessTokenIssuedAt ?? snapshot.accessTokenIssuedAt,
 		accessTokenExpiresAt:
 			delta.accessTokenExpiresAt ?? snapshot.accessTokenExpiresAt,
 	};
@@ -70,16 +80,51 @@ export function getTokenFreshness(
 		return TokenFreshnessState.Expired;
 	}
 
-	const usableUntil = expiresAt - options.clockSkewMs;
+	const timing = resolveTokenFreshnessTiming(snapshot, options);
+	const usableUntil = timing.usableUntil;
 	if (usableUntil <= options.now) {
 		return TokenFreshnessState.Expired;
 	}
 
-	if (usableUntil - options.refreshWindowMs <= options.now) {
+	if (timing.refreshAt <= options.now) {
 		return TokenFreshnessState.RefreshDue;
 	}
 
 	return TokenFreshnessState.Fresh;
+}
+
+export function resolveTokenFreshnessTiming(
+	snapshot: AuthSnapshot,
+	options: TokenFreshnessOptions,
+): TokenFreshnessTiming {
+	const expiresAt = new Date(
+		snapshot.tokens.accessTokenExpiresAt ?? "",
+	).getTime();
+	const issuedAt = new Date(
+		snapshot.tokens.accessTokenIssuedAt ?? "",
+	).getTime();
+
+	let clockSkewMs = options.clockSkewMs;
+	let refreshWindowMs = options.refreshWindowMs;
+	if (
+		Number.isFinite(issuedAt) &&
+		Number.isFinite(expiresAt) &&
+		expiresAt > issuedAt
+	) {
+		const lifetimeMs = expiresAt - issuedAt;
+		const shortTokenCapMs = Math.max(0, lifetimeMs / 4);
+		clockSkewMs = Math.min(clockSkewMs, shortTokenCapMs);
+		refreshWindowMs = Math.min(refreshWindowMs, shortTokenCapMs);
+	}
+
+	const usableUntil = expiresAt - clockSkewMs;
+	return {
+		expiresAt,
+		clockSkewMs,
+		refreshWindowMs,
+		usableUntil,
+		refreshAt: usableUntil - refreshWindowMs,
+	};
 }
 
 export function isAccessTokenUsable(

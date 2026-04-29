@@ -29,7 +29,7 @@ Non-authority:
 - TypeScript is the only active SDK productization track for `0.2.x`.
 - Framework adapters stay thin and consume shared core owners rather than becoming first owners of framework-neutral behavior.
 - Public surface changes move together with inventory, evidence, docs anchors, and migration ledger entries.
-- `0.2.0-beta.3` release preparation is packaging, documentation, downstream-adopter router correctness, and release readiness work; it does not add a new auth context.
+- The current `0.2.x` release-preparation line is packaging, documentation, downstream-adopter correctness, and release readiness work; it does not add a new auth context.
 
 ## Terminology and Naming
 
@@ -329,7 +329,7 @@ Freshness is owned by the token-set core, not by one framework adapter. `ensureA
 
 Browser-owned frontend/backend OIDC factories attach page-resume reconciliation by default. Angular `provideTokenSetAuth(...)` installs the same default for registry-managed browser clients, including `clientFactory` implementations that directly return `createFrontendOidcModeClient(...)`. On `visibilitychange` back to visible, `pageshow`, `focus`, and `online`, the client calls `ensureAuthForResource({ source: "resume", forceRefreshWhenDue: true })` and emits resume requested/skipped/completed/failed events. This is a recovery barrier, not an interactive login trigger: refresh failures clear or preserve auth state through the normal token-set client paths, and route/request handlers decide whether to start login. Set per-client `resumeReconciliation: false` only for hosts that install their own equivalent lifecycle hook; pass `resumeReconciliationOptions` to provide custom browser targets or throttling in tests.
 
-Short access-token lifetimes should be handled through SDK-owned barriers: persisted restore forces refresh when material is already in the refresh window, browser resume reconciles after hidden tabs/sleep/bfcache, Angular route aggregation waits for `restorePromise` and `ensureAuthForResource({ source: "route_guard", forceRefreshWhenDue: true })` before invoking unauthenticated handlers, and protected requests use `ensureAuthForResource({ source: "http_interceptor" | "authorized_transport", needsAuthorizationHeader: true, forceRefreshWhenDue: true })`. TanStack Router hosts should use `createTokenSetSecureBeforeLoad()` from `@securitydept/token-set-context-client-react/tanstack-router`; raw web hosts should use `createTokenSetWebRouteAuthCandidate()` from `@securitydept/token-set-context-client/web-router`. Both helpers call `ensureAuthForResource({ source: "tanstack_before_load" | "raw_web_router", forceRefreshWhenDue: true })` before redirect/block fallback.
+Short access-token lifetimes should be handled through SDK-owned barriers: persisted restore forces refresh when material is already in the refresh window, browser resume reconciles after hidden tabs/sleep/bfcache, Angular route aggregation waits for `restorePromise` and `ensureAuthForResource({ source: "route_guard", forceRefreshWhenDue: true })` before invoking unauthenticated handlers, and protected requests use `ensureAuthForResource({ source: "http_interceptor" | "authorized_transport", needsAuthorizationHeader: true, forceRefreshWhenDue: true })`. When `frontend-oidc-mode` or another token-set mode can stamp `accessTokenIssuedAt`, token freshness now caps refresh-window and clock-skew calculations relative to the token lifetime instead of applying a raw fixed window to every token. That keeps newly issued short-lived tokens fresh at issuance while still entering `refresh_due` early enough for restore, resume, route-entry, and request-time refresh recovery. TanStack Router hosts should use `createTokenSetSecureBeforeLoad()` from `@securitydept/token-set-context-client-react/tanstack-router`; raw web hosts should use `createTokenSetWebRouteAuthCandidate()` from `@securitydept/token-set-context-client/web-router`. Both helpers call `ensureAuthForResource({ source: "tanstack_before_load" | "raw_web_router", forceRefreshWhenDue: true })` before redirect/block fallback.
 
 If a downstream resource server reports `ExpiredSignature`, the rejection is correct: the frontend sent an expired JWT and the SDK/adopter must not inject that bearer. Diagnose whether the browser has refresh material before blaming the refresh barrier:
 
@@ -421,7 +421,7 @@ This is the token-set React consumer surface. It owns groups/entries read and wr
 
 ### Current Bundle / Code Split Judgment
 
-Bundle and code-splitting are engineering optimization topics, not public-contract blockers for the current `0.2.0-beta.3` line.
+Bundle and code-splitting are engineering optimization topics, not public-contract blockers for the current `0.2.x` line.
 
 ### Demo and OIDC Provider
 
