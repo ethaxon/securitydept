@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0]
+
+### Changed
+
+- Promoted SecurityDept from the `0.2.0-beta.*` prerelease line to the first stable `0.2.0` release across the Rust crates, TypeScript SDK packages, Docker image, and authority docs.
+- Normalized user-facing docs for the stable line by removing reader-facing beta anchors from the README, overview, and roadmap, while keeping precise release procedures in the release automation docs.
+- Kept the release automation contract centered on `tests.yml` verification, `release.yml` trusted publishing, and version-shape/channel inference owned by `release-cli`.
+
+### Fixed
+
+- Finalized the short-lived token refresh recovery path so browser restore, resume reconciliation, route entry, and protected requests refresh before redirecting or sending stale bearer material when refresh material exists.
+
 ## [0.2.0-beta.6]
 
 ### Changed

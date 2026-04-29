@@ -41,7 +41,7 @@ reference server 通过以下路径验证组合行为：
 
 ## 已知边界
 
-这些主题是真实需求，但不属于当前 beta product baseline：
+这些主题是真实需求，但不属于当前 stable product baseline：
 
 - mixed-custody token ownership
 - full BFF / server-side token-set ownership

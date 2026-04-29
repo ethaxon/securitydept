@@ -38,6 +38,8 @@ pub struct ResolvedClientIp {
 - Unit tests cover parser and IP normalization behavior.
 - Core integration tests cover `inline`, `local-file`, `remote-file`, and `command` providers with isolated components.
 - Containerized provider tests cover Docker and Kubernetes provider behavior through real local infrastructure when those tests are explicitly selected.
+- Docker-provider integration tests should derive expected bridge CIDRs from Docker network IPAM metadata instead of hardcoding host-specific subnets; this avoids pool-overlap failures on machines with different local Docker allocations.
+- Docker-provider assertions should stay minimal: if a test only needs Docker network IPAM metadata, do not start an extra helper container just to prove the network exists.
 
 Run focused provider tests with:
 

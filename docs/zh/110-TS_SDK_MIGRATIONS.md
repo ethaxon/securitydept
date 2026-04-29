@@ -161,7 +161,7 @@ Packages：
 
 ## 当前非目标
 
-这些不是当前 beta line 的迁移目标：
+这些不是当前 stable line 的迁移目标：
 
 - mixed-custody token ownership
 - full BFF / server-side token-set ownership

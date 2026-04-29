@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-session-context"
-version = "0.2.0-beta.6"
+version = "0.2.0"
 edition = "2024"
 
 authors = ["Zhou Yeheng <root@aitiotekt.com>"]
@@ -18,8 +18,8 @@ service = ["dep:securitydept-oidc-client"]
 [dependencies]
 humantime-serde = { workspace = true }
 http = { workspace = true }
-securitydept-oidc-client = { version = "~0.2.0-beta.6", path = "../oidc-client", optional = true }
-securitydept-utils = { version = "~0.2.0-beta.6", path = "../utils" }
+securitydept-oidc-client = { version = "~0.2.0", path = "../oidc-client", optional = true }
+securitydept-utils = { version = "~0.2.0", path = "../utils" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
@@ -31,4 +31,4 @@ url = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true }
 tower-sessions-memory-store = "0.15"
-securitydept-oidc-client = { version = "~0.2.0-beta.6", path = "../oidc-client" }
+securitydept-oidc-client = { version = "~0.2.0", path = "../oidc-client" }

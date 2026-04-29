@@ -17,9 +17,11 @@ The current downstream calibration line is:
 - `provideTokenSetBearerInterceptor({ strictUrlMatch: true })` bounds bearer injection to URLs matching registered `urlPatterns` and avoids the single-client fallback for unmatched URLs.
 - Short access-token lifetimes are expected to recover through SDK freshness barriers: browser resume reconciliation, Angular route guard freshness, and request-time `ensureAuthForResource({ source: "http_interceptor", needsAuthorizationHeader: true })` all try refresh before login redirect or bearer injection when refresh material exists.
 - Real browser diagnostics can enable sanitized auth-event capture with `?sd-auth-events=1`; `outposts-web` then exposes `window.__OUTPOSTS_AUTH_DIAGNOSTICS__.events` containing event type, flow source, client key, freshness, refresh-material presence, reason, outcome, refresh barrier id, and sanitized error summary.
+- `window.__OUTPOSTS_AUTH_DIAGNOSTICS__.inspect()` is the fastest downstream triage surface for page-reload regressions because it reports both the live registry/client auth snapshot summary and persisted `outposts.web.auth.*` localStorage entries.
 - Focused downstream tests lock callback path preservation, provider-neutral route metadata, bearer injection boundaries, and redirect preservation.
 - Existing backend tests in the `confluence` service lock issuer/JWKS/audience/scope behavior, including optional-audience and missing-scope rejection cases.
 - Linked-package tests/build prove the local SDK contract wiring, but they do not replace a true Authentik browser/Network run. That run still needs an active `outposts-web` page and authenticated Authentik session to record localStorage refresh material, access-token expiry, resume refresh, route admission, and first protected API request behavior.
+- During local cross-workspace verification, start the downstream environment in `outposts` with `just dev-confluence` first and `just dev-webui` second. After changing linked SecurityDept SDK packages, rebuild the affected package outputs and clear `outposts/.angular/cache` before restarting `dev-webui`, or Angular/Vite may keep serving stale linked artifacts.
 
 ## Why This Case Matters
 
@@ -95,6 +97,8 @@ This case should continue to use direct local workspace dependencies while SDK a
 
 - Rust: `path` dependencies to local SecurityDept crates
 - Node / pnpm: `link:` references to local SecurityDept TS packages
+
+When the downstream workspace links SecurityDept package roots or Angular `dist/` outputs directly, rebuild the changed SDK packages before browser verification. Local `link:` wiring alone is not enough to refresh already optimized Angular/Vite artifacts.
 
 ## Related Documents
 

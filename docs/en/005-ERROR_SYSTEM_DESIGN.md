@@ -2,6 +2,8 @@
 
 SecurityDept separates internal diagnostics from public error presentation. The goal is to keep logs useful without leaking provider, token, storage, or configuration details to browser and API consumers.
 
+Structured diagnosis is a separate contract from public error presentation. Secret-safe machine-readable auth-flow diagnosis belongs to `securitydept-utils::observability` and should be emitted for operators without being collapsed into adopter-facing error copy.
+
 ## Current Model
 
 The current model has three independent layers:
@@ -18,6 +20,8 @@ Shared types live in `securitydept-utils`:
 - `ServerErrorDescriptor`
 - `ServerErrorEnvelope`
 - `ToErrorPresentation`
+
+Related diagnosis vocabulary lives separately in `securitydept-utils::observability`, including `AuthFlowDiagnosis`, `DiagnosedResult`, shared `AuthFlowOperation` names such as `projection.config_fetch`, `oidc.callback`, `oidc.token_refresh`, `propagation.forward`, and `forward_auth.check`, plus newer server operations such as `dashboard_auth.check` and `creds_manage.group.*` / `creds_manage.entry.*`.
 
 Server responses rendered through the shared envelope use this shape:
 
@@ -47,6 +51,7 @@ The duplicated top-level `code` / `message` / `recovery` fields are the stable c
 - Promote user-meaningful lower-layer conditions into typed variants or typed reason enums before exposing them.
 - Public messages may be specific only when the condition is safe and actionable.
 - Internal logs should include the full error chain; public responses should include sanitized code, message, and recovery.
+- Structured diagnosis fields should stay machine-readable and secret-safe. Use them for logs and operator tooling; do not treat them as a shortcut for generating public browser/API copy.
 
 ## Recovery Vocabulary
 

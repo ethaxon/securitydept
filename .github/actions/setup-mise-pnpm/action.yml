@@ -1,6 +1,6 @@
 name: Setup mise and pnpm
-description: Install mise toolchains, restore pnpm store cache, and install pnpm
-  dependencies.
+description: Install mise toolchyamlains, restore pnpm store cache, and install
+  pnpm dependencies.
 
 inputs:
   working-directory:

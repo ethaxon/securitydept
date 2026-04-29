@@ -2,7 +2,7 @@
 
 This document is the map for the rest of the SecurityDept docs. The README is the repository landing page; this overview explains where each audience should go next and what the current artifact boundaries are.
 
-Current release line: `0.2.0-beta.3`.
+This overview tracks the current stable release line through the release automation and roadmap docs, while the package badges and release artifacts reflect the published version.
 
 ## Audience Paths
 
@@ -37,7 +37,7 @@ Use the reference app and Docker image when you need an executable baseline rath
 Use these docs when changing SecurityDept itself.
 
 - [002-FEATURES.md](002-FEATURES.md) tracks implemented vs planned capabilities.
-- [100-ROADMAP.md](100-ROADMAP.md) tracks current release state, beta readiness, and deferrals.
+- [100-ROADMAP.md](100-ROADMAP.md) tracks current release state and deferrals.
 - [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md) explains `securitydept-metadata.toml`, `release-cli`, just recipes, and publish workflows.
 
 ## Artifact Boundaries

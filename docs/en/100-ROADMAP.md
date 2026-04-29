@@ -1,40 +1,14 @@
 # Roadmap
 
-This roadmap is the current planning authority for SecurityDept. It describes the `0.2.0-beta.3` readiness line, the `0.2.x` backlog, and topics deferred to `0.3.0`.
+This roadmap is the current planning authority for SecurityDept. It describes the current stable release line, the `0.2.x` backlog, and topics deferred to `0.3.0`.
 
 It does not explain the full auth-context model or SDK package map. Use [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) for auth context / mode design, [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) for the TypeScript SDK adopter guide, and [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) for public-surface migration guidance.
 
 ## Current Release Target
 
-The current published baseline is `0.2.0-beta.3`.
+The current published baseline is the current stable line.
 
-This beta is not a new auth-context milestone. It is the current packaging, documentation, downstream-adopter router correctness, and release-readiness line for the reusable Rust crates, TypeScript SDK packages, Docker image, and static docs site.
-
-The repository goal is no longer to prove whether release execution is possible. It is to keep release automation, authority docs, and the published facts aligned so the next release run stays repeatable. The current release-pipeline hardening line keeps active automation to `docs.yml`, `tests.yml`, and one guarded `release.yml` workflow that owns npm, crates.io, and Docker publishing.
-
-## 0.2.0-beta.3 Release Record And Remaining Work
-
-The version authority has moved to `0.2.0-beta.3`. The following release-readiness facts must stay aligned before and after publish execution:
-
-- publishable Rust crate versions, metadata, dependency order, and the default `cargo package` report must align to `0.2.0-beta.3`
-- the root `[patch.crates-io] openidconnect` override is gone and the workspace is back on `openidconnect = "4"`
-- `apps/server` and `apps/cli` are explicitly `publish = false` application artifacts
-- publishable TypeScript SDK packages are on `0.2.0-beta.3` and internal utility packages remain private
-- npm and crates publish jobs in `release.yml` use GitHub OIDC trusted publishing
-- Angular and TanStack Router auth redirect helpers preserve attempted-route `postAuthRedirectUri` and avoid settling framework guard results after a full-page external redirect starts
-- token-set TypeScript SDK bearer injection is freshness-aware: expired access tokens are refreshed through a coalesced barrier before protected requests, or cleared/treated as unauthenticated instead of being sent downstream
-
-The remaining work is about keeping the next release execution repeatable, not about carrying forward alpha-era blockers:
-
-| Area | Current status | Required next step |
-|---|---|---|
-| Rust crates publish | `release.yml` now runs package and publish inside `crates-release` with the `crates-io-release` environment, OIDC trusted publishing, and already-published crate version skips | keep package/publish reports attached to release runs, trusted publisher binding aligned with `release.yml`, and `--allow-dirty` / `--allow-blocked` out of publish paths |
-| npm publish | `release.yml` now builds TypeScript SDK packages and publishes inside `npm-release` with the `npm-release` environment, OIDC trusted publishing, `--provenance`, and npm report artifacts | keep package-root publish semantics, trusted publisher binding aligned with `release.yml`, and publish reports attached to release runs |
-| Docker | image publish belongs to `release.yml`; runtime artifacts are built outside Docker and assembled through Debian-slim `Dockerfile.runtime` | keep runtime artifact paths, ABI/base image choice, tags, labels, and docs aligned |
-| Release workflow benchmark | release-profile cache prime is currently a practice-approved provisional optimization with a unique writer topology, not a completed wall-clock proof | connect `pretend-act` or an equivalent local workflow benchmark once it can produce reproducible measurements, then tune the release cache/build split with data |
-| Docs and roadmap authority | source docs now describe the current release and SDK facts | do not reintroduce historical blockers into current-status docs |
-| Docsite | `docsite/` is the VitePress source root and root content is linked in through minimal rewrite rules | keep link behavior in sync with source docs without reintroducing a staging pipeline |
-| Downstream Angular bearer freshness | `outposts` exposed the stale bearer failure mode where an expired JWT reached Confluence and was correctly rejected as `ExpiredSignature`; SDK core now owns freshness checks, refresh coalescing, and no-stale-header behavior for Angular/React/transport callers | keep outposts validation in the release evidence loop and treat any recurring `ExpiredSignature` through SDK bearer paths as a refresh-material or barrier regression |
+The detailed release execution record now lives in CHANGELOG.md and [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md). Keep this roadmap focused on the active release constraints that still matter on the stable line, plus future deferrals.
 
 ## 0.2.x Active Track
 
@@ -71,16 +45,16 @@ The active baseline excludes:
 
 The reusable Rust package line is the set of workspace library crates under `packages/*`. `apps/server` and `apps/cli` are release artifacts for build/image readiness, not crates.io library publish targets.
 
-The pre-beta `[patch.crates-io] openidconnect` packaging blocker is closed: the workspace is back on `openidconnect = "4"`. Future release execution still requires a real `cargo package` check for every publishable crate, without treating `--allow-dirty` or `--no-verify` as acceptable evidence.
+The historical `[patch.crates-io] openidconnect` packaging blocker is closed: the workspace is back on `openidconnect = "4"`. Future release execution still requires a real `cargo package` check for every publishable crate, without treating `--allow-dirty` or `--no-verify` as acceptable evidence.
 
 ## Docker Product Boundary
 
-The Docker image is a runtime artifact for the reference server plus web UI output. Beta readiness requires:
+The Docker image is a runtime artifact for the reference server plus web UI output. Current release expectations require:
 
 - toolchain versions aligned with `mise.toml` / `rust-toolchain.toml` or explicitly documented
 - web UI output copy path matching the real Vite build output
-- tag behavior where pre-release tags such as `v0.2.0-beta.3` do not publish `latest`
-- beta-acceptable labels, cache, provenance, and platform decisions
+ - tag behavior where pre-release tags such as `vX.Y.Z-beta.N` do not publish `latest`
+- release-acceptable labels, cache, provenance, and platform decisions
 
 ## Docs Product Boundary
 
@@ -101,7 +75,7 @@ The project docs should be read as:
 
 ## Deferred To 0.3.0
 
-These topics remain real, but they are outside the `0.2.0-beta.3` and `0.2.x` active release line:
+These topics remain real, but they are outside the active release line:
 
 - mixed-custody token ownership
 - stateful BFF / server-side token-set ownership

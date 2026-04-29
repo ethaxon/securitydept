@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-creds-manage"
-version = "0.2.0-beta.6"
+version = "0.2.0"
 edition = "2024"
 
 authors = ["Zhou Yeheng <root@aitiotekt.com>"]
@@ -16,8 +16,8 @@ categories = ["authentication","network-programming","web-programming"]
 migration = []
 
 [dependencies]
-securitydept-utils = { version = "~0.2.0-beta.6", path = "../utils" }
-securitydept-creds = { version = "~0.2.0-beta.6", path = "../creds" }
+securitydept-utils = { version = "~0.2.0", path = "../utils" }
+securitydept-creds = { version = "~0.2.0", path = "../creds" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }

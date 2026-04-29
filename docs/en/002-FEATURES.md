@@ -41,7 +41,7 @@ The reference server validates combined behavior through:
 
 ## Known Boundaries
 
-These topics are recognized but not part of the current beta product baseline:
+These topics are recognized but not part of the current stable product baseline:
 
 - mixed-custody token ownership
 - full BFF / server-side token-set ownership

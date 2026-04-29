@@ -17,9 +17,11 @@
 - `provideTokenSetBearerInterceptor({ strictUrlMatch: true })` 将 bearer injection 限制到命中已注册 `urlPatterns` 的 URL，不再对 unmatched URL 使用 single-client fallback。
 - 短 access-token lifetime 预期通过 SDK freshness barriers 恢复：browser resume reconciliation、Angular route guard freshness 与 request-time `ensureAuthForResource({ source: "http_interceptor", needsAuthorizationHeader: true })` 都会在存在 refresh material 时先尝试 refresh，再决定是否登录跳转或注入 bearer。
 - 真实浏览器诊断可通过 `?sd-auth-events=1` 开启脱敏 auth-event 采集；开启后 `outposts-web` 会暴露 `window.__OUTPOSTS_AUTH_DIAGNOSTICS__.events`，其中包含 event type、flow source、client key、freshness、是否存在 refresh material、reason、outcome、refresh barrier id 与脱敏 error summary。
+- `window.__OUTPOSTS_AUTH_DIAGNOSTICS__.inspect()` 是排查 page reload regression 最快的下游诊断面，因为它会同时报告 live registry/client auth snapshot summary 与持久化的 `outposts.web.auth.*` localStorage entries。
 - Downstream focused tests 锁住 callback path preservation、provider-neutral route metadata、bearer injection boundaries 与 redirect preservation。
 - `confluence` service 既有 backend tests 锁住 issuer/JWKS/audience/scope 行为，包括 optional-audience 与 missing-scope rejection。
 - Linked-package tests/build 只能证明本地 SDK contract wiring，不能替代真实 Authentik browser/Network run。真实 run 仍需要可访问的 `outposts-web` 页面和已认证 Authentik session，用于记录 localStorage refresh material、access-token expiry、resume refresh、route admission 与首个 protected API request 行为。
+- 本地 cross-workspace 验证时，应在 `outposts` 中先启动 `just dev-confluence`，再启动 `just dev-webui`。修改 linked 的 SecurityDept SDK package 后，还需要先重建对应 package 产物并清理 `outposts/.angular/cache`，再重启 `dev-webui`；否则 Angular/Vite 可能继续提供陈旧的 linked artifact。
 
 ## 为什么这个案例重要
 
@@ -95,6 +97,8 @@
 
 - Rust：使用指向本地 SecurityDept crates 的 `path` dependencies
 - Node / pnpm：使用指向本地 SecurityDept TS packages 的 `link:` references
+
+当 downstream workspace 直接链接 SecurityDept package root 或 Angular `dist/` 输出时，浏览器联调前仍必须重建被修改的 SDK packages。仅有本地 `link:` wiring 并不足以刷新已经被 Angular/Vite 预构建的产物。
 
 ## 相关文档
 

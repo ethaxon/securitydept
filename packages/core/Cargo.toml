@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-core"
-version = "0.2.0-beta.6"
+version = "0.2.0"
 edition = "2024"
 
 authors = ["Zhou Yeheng <root@aitiotekt.com>"]
@@ -225,16 +225,16 @@ token-set-context-axum-reverse-proxy-propagation-forwarder = [
 utils = ["dep:securitydept-utils"]
 
 [dependencies]
-securitydept-utils = { version = "~0.2.0-beta.6", path = "../utils", optional = true }
-securitydept-oauth-provider = { version = "~0.2.0-beta.6", path = "../oauth-provider", optional = true }
-securitydept-oidc-client = { version = "~0.2.0-beta.6", path = "../oidc-client", optional = true }
-securitydept-oauth-resource-server = { version = "~0.2.0-beta.6", path = "../oauth-resource-server", optional = true }
-securitydept-basic-auth-context = { version = "~0.2.0-beta.6", path = "../basic-auth-context", optional = true }
-securitydept-session-context = { version = "~0.2.0-beta.6", path = "../session-context", optional = true }
-securitydept-token-set-context = { version = "~0.2.0-beta.6", path = "../token-set-context", optional = true }
-securitydept-realip = { version = "~0.2.0-beta.6", path = "../realip", optional = true, default-features = false }
-securitydept-creds = { version = "~0.2.0-beta.6", path = "../creds", optional = true }
-securitydept-creds-manage = { version = "~0.2.0-beta.6", path = "../creds-manage", optional = true }
+securitydept-utils = { version = "~0.2.0", path = "../utils", optional = true }
+securitydept-oauth-provider = { version = "~0.2.0", path = "../oauth-provider", optional = true }
+securitydept-oidc-client = { version = "~0.2.0", path = "../oidc-client", optional = true }
+securitydept-oauth-resource-server = { version = "~0.2.0", path = "../oauth-resource-server", optional = true }
+securitydept-basic-auth-context = { version = "~0.2.0", path = "../basic-auth-context", optional = true }
+securitydept-session-context = { version = "~0.2.0", path = "../session-context", optional = true }
+securitydept-token-set-context = { version = "~0.2.0", path = "../token-set-context", optional = true }
+securitydept-realip = { version = "~0.2.0", path = "../realip", optional = true, default-features = false }
+securitydept-creds = { version = "~0.2.0", path = "../creds", optional = true }
+securitydept-creds-manage = { version = "~0.2.0", path = "../creds-manage", optional = true }
 openidconnect = { workspace = true, optional = true }
 oauth2 = { workspace = true, optional = true }
 jsonwebtoken = { workspace = true, optional = true }

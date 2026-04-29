@@ -10,6 +10,12 @@
 		"!override"
 	],
 	"yaml.schemas": {
+		"https://json.schemastore.org/github-workflow.json": [
+			".github/workflows/*.{yml,yaml}"
+		],
+		"https://json.schemastore.org/github-action.json": [
+			".github/actions/**/*.{yml,yaml}"
+		],
 		"https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json": [
 			"**/*docker-compose*.yml"
 		]

@@ -2,7 +2,7 @@
 
 本文是 SecurityDept 文档地图。README 是仓库入口页；本概览说明不同读者下一步应该看哪里，以及当前 artifact 边界是什么。
 
-当前 release line：`0.2.0-beta.3`。
+本概览通过 release automation 与 roadmap 文档跟踪当前 stable release line，而 package 徽章与 release artifacts 会反映已发布版本。
 
 ## 读者路径
 
@@ -37,7 +37,7 @@
 修改 SecurityDept 本身时，从这些文档进入。
 
 - [002-FEATURES.md](002-FEATURES.md) 跟踪 implemented vs planned capabilities。
-- [100-ROADMAP.md](100-ROADMAP.md) 跟踪当前 release 状态、beta readiness 与 deferrals。
+- [100-ROADMAP.md](100-ROADMAP.md) 跟踪当前 release 状态与 deferrals。
 - [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md) 解释 `securitydept-metadata.toml`、`release-cli`、just recipes 与 publish workflows。
 
 ## Artifact 边界

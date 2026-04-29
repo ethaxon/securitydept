@@ -51,13 +51,13 @@ release channel 由版本号自动推断，而不是手工传参。
 
 - `node scripts/release-cli.ts metadata sync`
 - `node scripts/release-cli.ts version check`
-- `node scripts/release-cli.ts version set 0.2.0-beta.3`
+- `node scripts/release-cli.ts version set X.Y.Z[-alpha.N|-beta.N]`
 - `node scripts/release-cli.ts npm publish --mode=dry-run --report=temp/release/npm/dry-run-report.json`
 - `node scripts/release-cli.ts npm publish --mode=publish --provenance --report=temp/release/npm/publish-report.json`
 - `node scripts/release-cli.ts crates publish --mode=package --report=temp/release/crates/package-report.json`
 - `node scripts/release-cli.ts crates publish --mode=package --allow-blocked --allow-dirty --report=temp/release/crates/blocked-package-report.json`
 - `node scripts/release-cli.ts crates publish --mode=publish --report=temp/release/crates/publish-report.json`
-- `node scripts/release-cli.ts docker publish --ref=refs/tags/v0.2.0-beta.3`
+- `node scripts/release-cli.ts docker publish --ref=refs/tags/vX.Y.Z[-alpha.N|-beta.N]`
 - `node scripts/release-cli.ts workflow tests-preflight --format=github-output`
 - `node scripts/release-cli.ts workflow release-plan --format=github-output`
 
@@ -94,7 +94,7 @@ release channel 由版本号自动推断，而不是手工传参。
 - 测试与校验
 - 工具型命令
 
-release 块里不再显式传 `beta` 标签。当前版本号本身已经携带阶段信息，因此 `just release-npm-dry-run`、`just release-npm-publish` 之类命令都应自动推断 channel。
+release 块里不再显式传 prerelease 标签。当前版本号本身已经携带阶段信息，因此 `just release-npm-dry-run`、`just release-npm-publish` 之类命令都应自动推断 channel。
 
 ## GitHub Actions 规则
 
@@ -155,11 +155,11 @@ Cache 与 artifact 规则：
 2. `mise exec --command "just release-version-check"`
 3. `mise exec --command "just release-npm-dry-run"`
 4. `mise exec --command "just release-crates-package"`
-5. `mise exec --command "just release-docker-metadata v0.2.0-beta.3"`
+5. `mise exec --command "just release-docker-metadata vX.Y.Z[-alpha.N|-beta.N]"`
 
 如果需要先推进版本：
 
-1. `mise exec --command "just release-version-set 0.2.0-beta.3"`
+1. `mise exec --command "just release-version-set X.Y.Z[-alpha.N|-beta.N]"`
 2. `mise exec --command "just release-version-check"`
 
 本地 workflow 模拟时，优先使用封装好的 `just action-release-validate`、`just action-release-dry-run`、`just action-release-run`，它们会调用 `scripts/actions-cli.ts`。真实本地 run 会创建临时 MockGithub 仓库，并通过 act-js 执行 `.github/workflows/release.yml`，因此 checkout 与 artifact 行为都交给本地 mock GitHub 环境处理。由于 act 会设置 `ACT=true`，wrapper 也会设置 `SECURITYDEPT_LOCAL_ACTIONS=true`，release publish jobs 只会执行本地 dry-run/package/build，不会推送到 npm、crates.io 或 GHCR。

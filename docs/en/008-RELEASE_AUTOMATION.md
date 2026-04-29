@@ -51,13 +51,13 @@ Primary commands:
 
 - `node scripts/release-cli.ts metadata sync`
 - `node scripts/release-cli.ts version check`
-- `node scripts/release-cli.ts version set 0.2.0-beta.3`
+- `node scripts/release-cli.ts version set X.Y.Z[-alpha.N|-beta.N]`
 - `node scripts/release-cli.ts npm publish --mode=dry-run --report=temp/release/npm/dry-run-report.json`
 - `node scripts/release-cli.ts npm publish --mode=publish --provenance --report=temp/release/npm/publish-report.json`
 - `node scripts/release-cli.ts crates publish --mode=package --report=temp/release/crates/package-report.json`
 - `node scripts/release-cli.ts crates publish --mode=package --allow-blocked --allow-dirty --report=temp/release/crates/blocked-package-report.json`
 - `node scripts/release-cli.ts crates publish --mode=publish --report=temp/release/crates/publish-report.json`
-- `node scripts/release-cli.ts docker publish --ref=refs/tags/v0.2.0-beta.3`
+- `node scripts/release-cli.ts docker publish --ref=refs/tags/vX.Y.Z[-alpha.N|-beta.N]`
 - `node scripts/release-cli.ts workflow tests-preflight --format=github-output`
 - `node scripts/release-cli.ts workflow release-plan --format=github-output`
 
@@ -94,7 +94,7 @@ Behavioral rules:
 - tests and verification
 - utilities
 
-The release block intentionally avoids explicit `beta` tags. The current version already carries the stage, so commands such as `just release-npm-dry-run` and `just release-npm-publish` should infer the correct channel automatically.
+The release block intentionally avoids explicit prerelease tags. The current version already carries the stage, so commands such as `just release-npm-dry-run` and `just release-npm-publish` should infer the correct channel automatically.
 
 ## GitHub Actions Rules
 
@@ -155,11 +155,11 @@ Recommended local sequence before an actual publish:
 2. `mise exec --command "just release-version-check"`
 3. `mise exec --command "just release-npm-dry-run"`
 4. `mise exec --command "just release-crates-package"`
-5. `mise exec --command "just release-docker-metadata v0.2.0-beta.3"`
+5. `mise exec --command "just release-docker-metadata vX.Y.Z[-alpha.N|-beta.N]"`
 
 If the version needs to move first:
 
-1. `mise exec --command "just release-version-set 0.2.0-beta.3"`
+1. `mise exec --command "just release-version-set X.Y.Z[-alpha.N|-beta.N]"`
 2. `mise exec --command "just release-version-check"`
 
 For local workflow simulation, prefer the `just` wrappers around `scripts/actions-cli.ts`: `just action-release-validate`, `just action-release-dry-run`, and `just action-release-run`. The real local run creates a temporary MockGithub repository and executes `.github/workflows/release.yml` through act-js, so checkout and artifact behavior are handled in the local mock GitHub environment. Because act sets `ACT=true` and the wrapper also sets `SECURITYDEPT_LOCAL_ACTIONS=true`, the release publish jobs perform only local dry-run/package/build work and never push to npm, crates.io, or GHCR.
