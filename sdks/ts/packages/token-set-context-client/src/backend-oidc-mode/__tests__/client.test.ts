@@ -326,17 +326,31 @@ describe("BackendOidcModeClient", () => {
 		await flushMicrotasks();
 
 		expect(refreshRequests).toBe(1);
+		const refreshStartedEvent = events.find(
+			(event) => event.type === TokenSetAuthEventType.AuthRefreshStarted,
+		);
+		expect(refreshStartedEvent).toEqual(
+			expect.objectContaining({
+				type: TokenSetAuthEventType.AuthRefreshStarted,
+				payload: expect.objectContaining({
+					source: TokenSetAuthFlowSource.Timer,
+					refreshBarrierId: expect.any(String),
+				}),
+			}),
+		);
+		const refreshBarrierId = refreshStartedEvent?.payload.refreshBarrierId;
 		expect(events).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
-					type: TokenSetAuthEventType.AuthRefreshStarted,
+					type: TokenSetAuthEventType.AuthRefreshJoined,
 					payload: expect.objectContaining({
+						source: TokenSetAuthFlowSource.RouteGuard,
 						clientKey: "confluence",
 						logicalClientId: "wiki-main",
 						providerFamily: "authentik",
 						requirementId: "confluence-oidc",
 						url: "/confluence",
-						refreshBarrierId: expect.any(String),
+						refreshBarrierId,
 					}),
 				}),
 				expect.objectContaining({
@@ -344,7 +358,7 @@ describe("BackendOidcModeClient", () => {
 					payload: expect.objectContaining({
 						source: TokenSetAuthFlowSource.HttpInterceptor,
 						url: "https://api.example.com/wiki/rest/api/content",
-						refreshBarrierId: expect.any(String),
+						refreshBarrierId,
 					}),
 				}),
 			]),
@@ -376,12 +390,8 @@ describe("BackendOidcModeClient", () => {
 				expect.objectContaining({
 					type: TokenSetAuthEventType.AuthRefreshSucceeded,
 					payload: expect.objectContaining({
-						clientKey: "confluence",
-						logicalClientId: "wiki-main",
-						providerFamily: "authentik",
-						requirementId: "confluence-oidc",
-						url: "/confluence",
-						refreshBarrierId: expect.any(String),
+						source: TokenSetAuthFlowSource.Timer,
+						refreshBarrierId,
 						hasRefreshMaterial: true,
 					}),
 				}),
