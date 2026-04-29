@@ -168,9 +168,7 @@ export function runReleasePlan(options: ReleasePlanOptions): void {
 		publishCrates: resolvePublishFlag(options.publishCrates, autoPublish),
 		publishDocker: resolvePublishFlag(options.publishDocker, autoPublish),
 		localRun,
-		cacheScope: source.sourceRef.startsWith("refs/tags/")
-			? options.releaseBranch
-			: deriveCacheScope(source.sourceRef, source.sourceRefName),
+		cacheScope: deriveCacheScope(source.sourceRef, source.sourceRefName),
 		releaseBranch: options.releaseBranch,
 	};
 
@@ -413,10 +411,20 @@ function isReleaseCandidateRef(ref: string): boolean {
 }
 
 function deriveCacheScope(ref: string, refName: string): string {
-	if (ref.startsWith("refs/tags/")) {
-		return "release";
+	if (ref.startsWith("refs/pull/")) {
+		return "pr-mainline";
 	}
-	return (refName.length > 0 ? refName : "unknown").replace(
+
+	if (
+		ref === "refs/heads/main" ||
+		ref === "refs/heads/master" ||
+		ref === "refs/heads/release" ||
+		ref.startsWith("refs/tags/")
+	) {
+		return "mainline";
+	}
+
+	return (refName.length > 0 ? refName : "adhoc").replace(
 		/[^A-Za-z0-9_.-]+/gu,
 		"-",
 	);

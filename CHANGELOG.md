@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Consolidated Rust test cache scopes into shared lanes so PRs, `main`, `release`, and tag-driven flows reuse bounded cache namespaces instead of per-branch or per-PR cache keys.
+- Updated the release automation documentation to describe the new cache-lane model and the matching read-write / read-only ownership split.
+- Kept the stable-release docs aligned with the current release line and removed reader-facing beta anchors from user-facing entry pages.
+
 ## [0.2.0]
 
 ### Changed

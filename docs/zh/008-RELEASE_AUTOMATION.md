@@ -128,12 +128,12 @@ Cache 与 artifact 规则：
 - pnpm cache mode 必须显式写成 `read-write`、`read-only` 或 `none`。稳定 restore key 是 `pnpm-store-${runner.os}-${hashFiles(lockfile)}`；同一个 workflow 拓扑中，同一 key 只能有一个 read-write owner。
 - Rust cache mode 同样必须显式。使用共享 key 的 read-write job 必须是该拓扑唯一 writer；后续 job 只能 read-only restore 或消费 artifact。
 - Debug CI 拓扑直接放在 `.github/workflows/tests.yml`；`release.yml` 由成功的 `Tests` run 调度，不再重复同一套 debug verification graph，也不使用 crates.io 不支持的 `workflow_run` 发布入口。
-- Rust shared key 应该是稳定的 branch/profile scope，例如 `securitydept-rust-${runner.os}-${branch}-debug` 与 `securitydept-rust-${runner.os}-${branch}-release`。不要在 workflow 里手写 `hashFiles(...)` 塞进 `shared-key`；`Swatinem/rust-cache` 本身已经把 Cargo manifest、lockfile、toolchain 与相关 env var 的 Rust environment hash 纳入最终 key，并且会尝试从旧 lockfile 版本恢复。
+- Rust shared key 应该是稳定的 lane/profile scope，例如 `securitydept-rust-${runner.os}-pr-mainline-debug`、`securitydept-rust-${runner.os}-mainline-debug` 与 `securitydept-rust-${runner.os}-release`。不要在 workflow 里手写 `hashFiles(...)` 塞进 `shared-key`；`Swatinem/rust-cache` 本身已经把 Cargo manifest、lockfile、toolchain 与相关 env var 的 Rust environment hash 纳入最终 key，并且会尝试从旧 lockfile 版本恢复。
 - Rust cache ownership 按 profile 与 workflow source 拆分：
 
 	| Cache key profile | Read-write owner | Consumers | 说明 |
 	| --- | --- | --- | --- |
-	| `securitydept-rust-${runner.os}-${cache_scope}-debug` | Tests workflow 的 `rust-debug-cache-prime` job | clippy、Rust tests、E2E prebuild，以及 `release.yml` 中 `crates-release` 的 read-only restore | 由 debug CI 拓扑拥有；成功 Tests dispatch 出来的 release 会复用同一个 `cache_scope`；manual release dispatch 可以 restore 既有匹配 cache，但不会在 release 内创建 debug writer |
+	| `securitydept-rust-${runner.os}-${cache_scope}-debug` | Tests workflow 的 `rust-debug-cache-prime` job | clippy、Rust tests、E2E prebuild，以及 `release.yml` 中 `crates-release` 的 read-only restore | 由 debug CI 拓扑拥有；`cache_scope` 会被刻意收敛成 `pr-mainline`、`mainline` 这类共享车道，而不是按 PR/branch 一条一个名字，从而把缓存预算保持在可控范围内，同时让 `main`、`release` 与 tag 驱动流程继续复用同一组 debug artifacts |
 	| `securitydept-rust-${runner.os}-${cache_scope}-release` in `release.yml` | `docker-release`，仅在 `publish_docker=true` 时运行 | 同一个 `docker-release` job 内的 runtime binary build | 当前只有 Docker 消费 release-profile artifacts，因此 writer 放在唯一消费 job 内；只有未来出现多个 release-profile consumers 时才需要重新拆出 prime job |
 
 	每一行对应的 cache key 都只有一个 read-write owner。行外 job 只能 read-only restore 或不接触该 key。这是当前实践裁决下采用的暂定优化策略，并依赖唯一 writer 拓扑；其耗时收益仍需后续通过可复现的本地 workflow benchmark 证明后再继续调优。
