@@ -2,9 +2,11 @@ set dotenv-load := true
 set windows-shell := ["pwsh.exe", "-NoLogo", "-ExecutionPolicy", "RemoteSigned", "-Command"]
 
 # Workspace bootstrap and shared environments
-setup: setup-docs
+setup:
+    mise install
     pnpm install
     cargo check --workspace --all-features
+    just setup-docs
 
 setup-docs:
     cd docsite && pnpm install

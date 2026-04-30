@@ -4,11 +4,12 @@ packages:
   - sdks/ts/packages/*
   - .agents/skills/playwright-skill
 
-onlyBuiltDependencies:
-  - "@j178/prek"
-  - '@kie/act-js'
-  - "@parcel/watcher"
-  - esbuild
+allowBuilds:
+  "@kie/act-js": true
+  "@parcel/watcher": true
+  "@j178/prek": true
+  esbuild: true
+
 overrides:
   # for tsdown peer dependency
   typescript: 6.0.2
