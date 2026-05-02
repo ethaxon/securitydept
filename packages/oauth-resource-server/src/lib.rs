@@ -16,4 +16,5 @@ pub use models::{
 // Re-export the remote-config struct so downstream crates can construct an
 // `OAuthResourceServerConfig` without adding a direct dep on oauth-provider.
 pub use securitydept_oauth_provider::OAuthProviderRemoteConfig;
+pub use securitydept_utils::secret::SecretString;
 pub use verifier::OAuthResourceServerVerifier;

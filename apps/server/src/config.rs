@@ -5,27 +5,40 @@ use figment::{
     providers::{Env, Format, Toml},
 };
 use securitydept_core::{
-    basic_auth_context::{BasicAuthContextConfig, BasicAuthZoneConfig},
+    basic_auth_context::{
+        BasicAuthContextConfig, BasicAuthContextConfigSource,
+        BasicAuthContextFixedPostAuthRedirectValidator,
+        BasicAuthContextFixedSingleZonePathValidator,
+        BasicAuthContextRejectZonePostAuthRedirectOverrideValidator, BasicAuthZoneConfig,
+        ResolvedBasicAuthContextConfig,
+    },
     creds::Argon2BasicAuthCred,
     creds_manage::CredsManageConfig,
     oidc::MokaPendingOauthStoreConfig,
     realip::RealIpResolveConfig,
-    session_context::SessionContextConfig,
+    session_context::{
+        ResolvedSessionContextConfig, SessionContextConfig, SessionContextConfigSource,
+        SessionContextFixedPostAuthRedirectValidator,
+    },
     token_set_context::{
         access_token_substrate::{
             AccessTokenSubstrateConfig, AccessTokenSubstrateConfigSource,
             ResolvedAccessTokenSubstrateConfig,
         },
         backend_oidc_mode::{
-            BackendOidcModeConfigSource, BackendOidcModeRedirectUriConfig,
-            MokaPendingAuthStateMetadataRedemptionConfig, PostAuthRedirectPolicy,
-            ResolvedBackendOidcModeConfig,
+            BackendOidcModeConfigSource, BackendOidcModeConfigValidationError,
+            BackendOidcModeConfigValidator, BackendOidcModeFixedRedirectUriValidator,
+            BackendOidcModeRedirectUriConfig, MokaPendingAuthStateMetadataRedemptionConfig,
+            PostAuthRedirectPolicy, ResolvedBackendOidcModeConfig,
         },
         cross_mode_config::{
             BackendOidcModeOverrideConfig, FrontendOidcModeOverrideConfig,
             TokenSetOidcSharedUnionConfig,
         },
-        frontend_oidc_mode::{FrontendOidcModeConfigSource, ResolvedFrontendOidcModeConfig},
+        frontend_oidc_mode::{
+            FrontendOidcModeConfigSource, FrontendOidcModeFixedRedirectUriValidator,
+            ResolvedFrontendOidcModeConfig,
+        },
         orchestration::OidcSharedConfig,
     },
     utils::{
@@ -60,6 +73,120 @@ pub type ServerResolvedOidcModeConfig = ResolvedBackendOidcModeConfig<
 
 /// Concrete type alias for the server's resolved frontend-oidc config.
 pub type ServerResolvedFrontendOidcModeConfig = ResolvedFrontendOidcModeConfig;
+
+pub(crate) const TOKEN_SET_BACKEND_MODE_CALLBACK_PATH: &str =
+    "/auth/token-set/backend-mode/callback";
+pub(crate) const TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH: &str =
+    "/auth/token-set/frontend-mode/callback";
+pub(crate) const SESSION_AUTH_CALLBACK_PATH: &str = "/auth/session/callback";
+
+#[derive(Debug, Clone)]
+struct ServerBackendOidcFixedPostAuthRedirectValidator {
+    fixed_post_auth_redirect: PostAuthRedirectPolicy,
+}
+
+impl ServerBackendOidcFixedPostAuthRedirectValidator {
+    fn new(fixed_post_auth_redirect: PostAuthRedirectPolicy) -> Self {
+        Self {
+            fixed_post_auth_redirect,
+        }
+    }
+}
+
+impl BackendOidcModeConfigValidator for ServerBackendOidcFixedPostAuthRedirectValidator {
+    fn validate_raw_backend_oidc_mode_config<PC, MC>(
+        &self,
+        config: &securitydept_core::token_set_context::backend_oidc_mode::BackendOidcModeConfig<
+            PC,
+            MC,
+        >,
+    ) -> Result<(), BackendOidcModeConfigValidationError>
+    where
+        PC: securitydept_core::oidc::PendingOauthStoreConfig,
+        MC: securitydept_core::token_set_context::backend_oidc_mode::PendingAuthStateMetadataRedemptionConfig,
+    {
+        if !is_default_post_auth_redirect_policy(&config.post_auth_redirect)
+            && !matches_fixed_post_auth_redirect_policy(
+                &config.post_auth_redirect,
+                &self.fixed_post_auth_redirect,
+            )
+        {
+            return Err(BackendOidcModeConfigValidationError::new(
+                "post_auth_redirect",
+                "fixed_post_auth_redirect_conflict",
+                "backend_oidc post_auth_redirect is fixed by the server and cannot be overridden",
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+fn server_session_post_auth_redirect() -> RedirectTargetConfig {
+    RedirectTargetConfig::dynamic_default_and_dynamic_targets(
+        "/",
+        [
+            RedirectTargetRule::Strict {
+                value: "/".to_string(),
+            },
+            RedirectTargetRule::Strict {
+                value: "/playground/session".to_string(),
+            },
+        ],
+    )
+}
+
+fn server_token_set_post_auth_redirect() -> PostAuthRedirectPolicy {
+    PostAuthRedirectPolicy::Resolved {
+        config: BackendOidcModeRedirectUriConfig::dynamic_default_and_dynamic_targets(
+            "/",
+            [
+                RedirectTargetRule::Strict {
+                    value: "/".to_string(),
+                },
+                RedirectTargetRule::Strict {
+                    value: "/playground/token-set/backend-mode".to_string(),
+                },
+            ],
+        ),
+    }
+}
+
+fn server_basic_auth_post_auth_redirect() -> RedirectTargetConfig {
+    RedirectTargetConfig::dynamic_default_and_dynamic_targets(
+        "/",
+        [
+            RedirectTargetRule::Strict {
+                value: "/".to_string(),
+            },
+            RedirectTargetRule::Strict {
+                value: "/playground/basic-auth".to_string(),
+            },
+        ],
+    )
+}
+
+fn is_default_post_auth_redirect_policy(policy: &PostAuthRedirectPolicy) -> bool {
+    matches!(policy, PostAuthRedirectPolicy::CallerValidated)
+}
+
+fn matches_fixed_post_auth_redirect_policy(
+    actual: &PostAuthRedirectPolicy,
+    expected: &PostAuthRedirectPolicy,
+) -> bool {
+    match (actual, expected) {
+        (PostAuthRedirectPolicy::CallerValidated, PostAuthRedirectPolicy::CallerValidated) => true,
+        (
+            PostAuthRedirectPolicy::Resolved {
+                config: actual_config,
+            },
+            PostAuthRedirectPolicy::Resolved {
+                config: expected_config,
+            },
+        ) => actual_config == expected_config,
+        _ => false,
+    }
+}
 
 /// Top-level configuration loaded from TOML file + environment variables.
 ///
@@ -185,142 +312,53 @@ impl ServerConfig {
             config.oidc = None;
         }
 
-        // Warn when redirect_url is set — each auth context (session, token-set)
-        // hardcodes its own callback path via redirect_url_override at runtime, so
-        // this field has no effect and will be silently ignored.
-        if config.oidc_client_union.oidc_client.redirect_url.is_some() {
-            tracing::warn!(
-                "oidc_client.redirect_url is set in config but has no effect for backend-mode: \
-                 each auth context (session → /auth/session/callback, token-set backend mode → \
-                 /auth/token-set/backend-mode/callback) uses a hardcoded redirect path. Remove \
-                 this field to silence this warning."
-            );
-        }
-
-        if config
-            .backend_oidc_override
-            .oidc_client
-            .redirect_url
-            .is_some()
-        {
-            tracing::warn!(
-                "backend_oidc_override.redirect_url is set in config but has no effect: token-set \
-                 backend mode uses a hardcoded callback path \
-                 (/auth/token-set/backend-mode/callback). Remove this field to silence this \
-                 warning."
-            );
-        }
-
-        let server_session_redirect = RedirectTargetConfig::dynamic_default_and_dynamic_targets(
-            "/",
-            [
-                RedirectTargetRule::Strict {
-                    value: "/".to_string(),
-                },
-                RedirectTargetRule::Strict {
-                    value: "/playground/session".to_string(),
-                },
-            ],
-        );
-        if config.session_context.post_auth_redirect != server_session_redirect {
-            tracing::warn!(
-                "session_context.post_auth_redirect is overridden to allowlist ['/', \
-                 '/playground/session']; remove this section to silence this warning."
-            );
-            config.session_context.post_auth_redirect = server_session_redirect;
-        }
-
-        // post_auth_redirect is forced to a Resolved policy with a strict
-        // allowlist. The SDK / login page supplies post_auth_redirect_uri
-        // as a query parameter; the runtime validates it against:
-        //   default: "/"  (dashboard)
-        //   allowed: "/", "/playground/token-set/backend-mode"
-        // Any other value falls back to "/".
-        let server_token_set_redirect = PostAuthRedirectPolicy::Resolved {
-            config: BackendOidcModeRedirectUriConfig::dynamic_default_and_dynamic_targets(
-                "/",
-                [
-                    RedirectTargetRule::Strict {
-                        value: "/".to_string(),
-                    },
-                    RedirectTargetRule::Strict {
-                        value: "/playground/token-set/backend-mode".to_string(),
-                    },
-                ],
-            ),
-        };
-        if !matches!(
-            config.backend_oidc_override.post_auth_redirect,
-            Some(PostAuthRedirectPolicy::Resolved { .. })
-        ) {
-            tracing::info!(
-                "backend_oidc_override.post_auth_redirect overridden to Resolved policy with \
-                 allowlist ['/', '/playground/token-set/backend-mode']"
-            );
-        }
-        config.backend_oidc_override.post_auth_redirect = Some(server_token_set_redirect);
-
-        if config.basic_auth_context.zones.is_empty() {
-            config
-                .basic_auth_context
-                .zones
-                .push(BasicAuthZoneConfig::default());
-        }
-
-        if config.basic_auth_context.zones.len() == 1 {
-            let zone = &mut config.basic_auth_context.zones[0];
-            let default_zone = BasicAuthZoneConfig::default();
-            if zone.zone_prefix != default_zone.zone_prefix
-                || zone.login_subpath != default_zone.login_subpath
-                || zone.logout_subpath != default_zone.logout_subpath
-            {
-                tracing::warn!(
-                    "basic_auth_context.zones[0] paths are fixed to: prefix='{}', login='{}', \
-                     logout='{}'; overriding user config",
-                    default_zone.zone_prefix,
-                    default_zone.login_subpath,
-                    default_zone.logout_subpath
-                );
-                zone.zone_prefix = default_zone.zone_prefix;
-                zone.login_subpath = default_zone.login_subpath;
-                zone.logout_subpath = default_zone.logout_subpath;
-            }
-        }
-
-        // Hardcode basic_auth_context.post_auth_redirect to a narrow allowlist.
-        // In the server+webui deployment, basic auth login may only return to
-        // the dashboard root or the dedicated basic-auth playground.
-        let server_basic_redirect = RedirectTargetConfig::dynamic_default_and_dynamic_targets(
-            "/",
-            [
-                RedirectTargetRule::Strict {
-                    value: "/".to_string(),
-                },
-                RedirectTargetRule::Strict {
-                    value: "/playground/basic-auth".to_string(),
-                },
-            ],
-        );
-        if config.basic_auth_context.post_auth_redirect != server_basic_redirect {
-            tracing::warn!(
-                "basic_auth_context.post_auth_redirect is overridden to allowlist ['/', \
-                 '/playground/basic-auth']: the server only redirects basic auth login to \
-                 approved first-party pages. Remove this section to silence this warning."
-            );
-            config.basic_auth_context.post_auth_redirect = server_basic_redirect;
-        }
-        for zone in &mut config.basic_auth_context.zones {
-            if zone.post_auth_redirect.is_some() {
-                tracing::warn!(
-                    "basic_auth_context.zones[].post_auth_redirect is ignored: the server uses \
-                     the global allowlist ['/', '/playground/basic-auth'] for basic auth login."
-                );
-                zone.post_auth_redirect = None;
-            }
-        }
-
         config.validate()?;
         Ok(config)
+    }
+
+    pub fn resolved_session_context_config(&self) -> ServerResult<ResolvedSessionContextConfig> {
+        let mut config = self.session_context.clone();
+        let fixed_post_auth_redirect = server_session_post_auth_redirect();
+
+        if config.post_auth_redirect == SessionContextConfig::default().post_auth_redirect {
+            config.post_auth_redirect = fixed_post_auth_redirect.clone();
+        }
+
+        config
+            .resolve_all_with_validator(&SessionContextFixedPostAuthRedirectValidator::new(
+                fixed_post_auth_redirect,
+            ))
+            .map_err(|e| ServerError::InvalidConfig {
+                message: e.to_string(),
+            })
+    }
+
+    pub fn resolved_basic_auth_context_config(
+        &self,
+    ) -> ServerResult<ResolvedBasicAuthContextConfig<Argon2BasicAuthCred>> {
+        let mut config = self.basic_auth_context.clone();
+        if config.zones.is_empty() {
+            config.zones.push(BasicAuthZoneConfig::default());
+        }
+
+        let fixed_post_auth_redirect = server_basic_auth_post_auth_redirect();
+        if config.post_auth_redirect
+            == BasicAuthContextConfig::<Argon2BasicAuthCred>::default().post_auth_redirect
+        {
+            config.post_auth_redirect = fixed_post_auth_redirect;
+        }
+
+        config
+            .resolve_all_with_validator(&(
+                BasicAuthContextFixedSingleZonePathValidator::new("/basic", "/login", "/logout"),
+                BasicAuthContextFixedPostAuthRedirectValidator::new(
+                    server_basic_auth_post_auth_redirect(),
+                ),
+                BasicAuthContextRejectZonePostAuthRedirectOverrideValidator,
+            ))
+            .map_err(|e| ServerError::InvalidConfig {
+                message: e.to_string(),
+            })
     }
 
     /// Resolve `[oidc]` shared defaults into validated backend-oidc config.
@@ -328,23 +366,34 @@ impl ServerConfig {
     /// Returns `None` when OIDC is disabled (no `[oidc]` section).
     ///
     /// Resolves only the OIDC mode sub-configs (oidc_client, runtime).
-    /// Resource-server resolution is handled separately by
     /// [`resolve_substrate`](Self::resolve_substrate).
     pub fn resolve_oidc(&self) -> ServerResult<Option<ServerResolvedOidcModeConfig>> {
         let Some(ref shared) = self.oidc else {
             return Ok(None);
         };
 
-        let backend_oidc = self
+        let mut backend_oidc = self
             .oidc_client_union
             .compose_backend_config(&self.backend_oidc_override);
+        let fixed_redirect =
+            BackendOidcModeFixedRedirectUriValidator::new(TOKEN_SET_BACKEND_MODE_CALLBACK_PATH);
+        let fixed_post_auth_redirect = ServerBackendOidcFixedPostAuthRedirectValidator::new(
+            server_token_set_post_auth_redirect(),
+        );
 
-        let resolved =
-            backend_oidc
-                .resolve_all(shared)
-                .map_err(|e| ServerError::InvalidConfig {
-                    message: format!("OIDC config resolution: {e}"),
-                })?;
+        if is_default_post_auth_redirect_policy(&backend_oidc.post_auth_redirect) {
+            backend_oidc.post_auth_redirect =
+                fixed_post_auth_redirect.fixed_post_auth_redirect.clone();
+        }
+
+        let resolved = backend_oidc
+            .resolve_all_with_validator(shared, &(&fixed_redirect, &fixed_post_auth_redirect))
+            .map_err(|e| ServerError::InvalidConfig {
+                message: format!("OIDC config resolution: {e}"),
+            })?;
+
+        let mut resolved = resolved;
+        resolved.oidc_client.redirect_url = fixed_redirect.redirect_url().to_string();
 
         Ok(Some(resolved))
     }
@@ -362,13 +411,17 @@ impl ServerConfig {
         let frontend_oidc = self
             .oidc_client_union
             .compose_frontend_config(&self.frontend_oidc_override);
+        let fixed_redirect =
+            FrontendOidcModeFixedRedirectUriValidator::new(TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH);
 
-        let resolved =
-            frontend_oidc
-                .resolve_all(shared)
-                .map_err(|e| ServerError::InvalidConfig {
-                    message: format!("frontend_oidc config resolution: {e}"),
-                })?;
+        let resolved = frontend_oidc
+            .resolve_all_with_validator(shared, &fixed_redirect)
+            .map_err(|e| ServerError::InvalidConfig {
+                message: format!("frontend_oidc config resolution: {e}"),
+            })?;
+
+        let mut resolved = resolved;
+        resolved.oidc_client.redirect_url = fixed_redirect.redirect_url().to_string();
 
         Ok(Some(resolved))
     }
@@ -392,19 +445,6 @@ impl ServerConfig {
     }
 
     fn validate(&self) -> ServerResult<()> {
-        if self.basic_auth_context.zones.len() != 1 {
-            return Err(ServerError::InvalidConfig {
-                message: "server currently requires exactly one basic_auth_context zone"
-                    .to_string(),
-            });
-        }
-        if self.basic_auth_context.zones[0].zone_prefix != "/basic" {
-            return Err(ServerError::InvalidConfig {
-                message: "server currently requires basic_auth_context.zones[0].zone_prefix to be \
-                          `/basic`"
-                    .to_string(),
-            });
-        }
         if self.basic_auth_context.real_ip_access.is_some() && self.real_ip_resolve.is_none() {
             return Err(ServerError::InvalidConfig {
                 message: "server.real_ip_resolve is required when \
@@ -412,13 +452,8 @@ impl ServerConfig {
                     .to_string(),
             });
         }
-        // runtime validation (including token_propagation) is deferred to
-        // resolve_oidc() which calls BackendOidcModeConfigSource::resolve_all().
-        self.basic_auth_context
-            .validate()
-            .map_err(|e| ServerError::InvalidConfig {
-                message: e.to_string(),
-            })?;
+        self.resolved_session_context_config()?;
+        self.resolved_basic_auth_context_config()?;
         if let Some(real_ip) = &self.real_ip_resolve {
             real_ip.validate().map_err(|e| ServerError::InvalidConfig {
                 message: e.to_string(),

@@ -4,11 +4,13 @@ use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use typed_builder::TypedBuilder;
 
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum RedirectTargetRule {
     Regex {
         #[serde(with = "serde_regex")]
+        #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
         value: Regex,
     },
     All,
@@ -32,6 +34,7 @@ impl PartialEq for RedirectTargetRule {
 
 impl Eq for RedirectTargetRule {}
 
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder)]
 pub struct RedirectTargetConfig {
     #[serde(default)]

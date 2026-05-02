@@ -120,6 +120,23 @@ Current relevant paths:
 - frontend-mode config projection: `/api/auth/token-set/frontend-mode/config`
 - frontend-mode browser callback route: owned by the host application / adapter integration
 
+## Rust Host Config Resolution
+
+Rust host applications should treat raw config, resolved config, and runtime construction as separate phases.
+
+- `XxxConfig` is the serde-facing shape used for files, environment overlays, and schema generation.
+- `XxxConfigSource` is the host extension point. It reads component fields and owns `resolve_*`, `resolve_all(...)`, and `resolve_all_with_validator(...)`.
+- `ResolvedXxxConfig` is the runtime-facing shape. Services and contexts consume resolved config through `from_resolved_config(...)` or mode-specific resolved constructors.
+- Validators express host deployment policy. Built-in fixed redirect validators reject user config that tries to override host-owned callback paths.
+
+This model applies to token-set backend/frontend OIDC mode, Basic Auth context, and session context. Host-only concepts stay outside the reusable config surface: source keys, frontend config endpoint paths, account binding, display metadata, and audit context belong in the adopting application wrapper.
+
+Secret-bearing Rust config fields use `SecretString`. Its `Debug` and ordinary serialization are redacted; runtime code must call `expose_secret()` explicitly where a provider client needs the raw value.
+
+`FrontendOidcModeConfigProjection` remains the SecurityDept-owned frontend-safe projection DTO. It does not include client secrets unless the unsafe frontend-client-secret capability is explicitly enabled. Hosts that need source keys or route paths should wrap the projection with their own DTO and `serde(flatten)` rather than adding host routing fields to SecurityDept mode config.
+
+`ResourceTokenPrincipal` is the host-facing projection for verified resource tokens. It exposes verified token facts such as subject, issuer, audiences, scopes, and authorized party; additional claims are filtered before projection so raw token material, authorization headers, passwords, and client/provider secret fields do not enter the safe claims map.
+
 ## Ownership Rules
 
 - Basic Auth `zone` belongs only to `basic-auth-context`.

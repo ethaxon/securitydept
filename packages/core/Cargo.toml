@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-core"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 edition = "2024"
 
 authors = ["Zhou Yeheng <root@aitiotekt.com>"]
@@ -49,6 +49,15 @@ full = [
     "token-set-context-recommend-propagation-forwarder",
     "token-set-context-axum-reverse-proxy-propagation-forwarder",
     "utils",
+]
+
+# Shared feature groups
+config-schema = [
+    "utils-config-schema",
+    "oauth-provider-config-schema",
+    "oidc-client-config-schema",
+    "oauth-resource-server-config-schema",
+    "token-set-context-config-schema",
 ]
 
 # Reexports
@@ -121,6 +130,11 @@ oauth-provider = [
     "reexport-openidconnect",
     "reexport-oauth2",
 ]
+oauth-provider-config-schema = [
+    "oauth-provider",
+    "securitydept-oauth-provider/config-schema",
+    "utils-config-schema",
+]
 
 # Oauth Resource Server
 oauth-resource-server = [
@@ -131,6 +145,12 @@ oauth-resource-server = [
     "utils",
     "reexport-openidconnect",
     "reexport-oauth2",
+]
+oauth-resource-server-config-schema = [
+    "oauth-resource-server",
+    "securitydept-oauth-resource-server/config-schema",
+    "utils-config-schema",
+    "oauth-provider-config-schema",
 ]
 oauth-resource-server-jwe = [
     "oauth-resource-server",
@@ -145,6 +165,12 @@ oidc-client = [
     "oauth-provider",
     "utils",
     "reexport-openidconnect",
+]
+oidc-client-config-schema = [
+    "oidc-client",
+    "securitydept-oidc-client/config-schema",
+    "utils-config-schema",
+    "oauth-provider-config-schema",
 ]
 oidc-client-recommend = [
     "oidc-client",
@@ -194,13 +220,23 @@ token-set-context = [
     "oauth-provider",
     "oidc-client",
     "oauth-resource-server",
+    "creds",
     "utils",
+    "reexport-openidconnect",
+]
+token-set-context-config-schema = [
+    "token-set-context",
+    "securitydept-token-set-context/config-schema",
+    "utils-config-schema",
+    "oauth-provider-config-schema",
+    "oidc-client-config-schema",
+    "oauth-resource-server-config-schema",
 ]
 token-set-context-recommend = [
     "token-set-context",
     "securitydept-token-set-context/recommend",
     "token-set-context-recommend-pending-store",
-    "token-set-context-axum-reverse-proxy-propagation-forwarder",
+    "token-set-context-recommend-propagation-forwarder",
 ]
 token-set-context-recommend-pending-store = [
     "token-set-context",
@@ -223,18 +259,22 @@ token-set-context-axum-reverse-proxy-propagation-forwarder = [
 
 # Utils
 utils = ["dep:securitydept-utils"]
+utils-config-schema = [
+    "utils",
+    "securitydept-utils/config-schema",
+]
 
 [dependencies]
-securitydept-utils = { version = "~0.2.0", path = "../utils", optional = true }
-securitydept-oauth-provider = { version = "~0.2.0", path = "../oauth-provider", optional = true }
-securitydept-oidc-client = { version = "~0.2.0", path = "../oidc-client", optional = true }
-securitydept-oauth-resource-server = { version = "~0.2.0", path = "../oauth-resource-server", optional = true }
-securitydept-basic-auth-context = { version = "~0.2.0", path = "../basic-auth-context", optional = true }
-securitydept-session-context = { version = "~0.2.0", path = "../session-context", optional = true }
-securitydept-token-set-context = { version = "~0.2.0", path = "../token-set-context", optional = true }
-securitydept-realip = { version = "~0.2.0", path = "../realip", optional = true, default-features = false }
-securitydept-creds = { version = "~0.2.0", path = "../creds", optional = true }
-securitydept-creds-manage = { version = "~0.2.0", path = "../creds-manage", optional = true }
+securitydept-utils = { version = "~0.3.0-beta.1", path = "../utils", optional = true }
+securitydept-oauth-provider = { version = "~0.3.0-beta.1", path = "../oauth-provider", optional = true }
+securitydept-oidc-client = { version = "~0.3.0-beta.1", path = "../oidc-client", optional = true }
+securitydept-oauth-resource-server = { version = "~0.3.0-beta.1", path = "../oauth-resource-server", optional = true }
+securitydept-basic-auth-context = { version = "~0.3.0-beta.1", path = "../basic-auth-context", optional = true }
+securitydept-session-context = { version = "~0.3.0-beta.1", path = "../session-context", optional = true }
+securitydept-token-set-context = { version = "~0.3.0-beta.1", path = "../token-set-context", optional = true }
+securitydept-realip = { version = "~0.3.0-beta.1", path = "../realip", optional = true, default-features = false }
+securitydept-creds = { version = "~0.3.0-beta.1", path = "../creds", optional = true }
+securitydept-creds-manage = { version = "~0.3.0-beta.1", path = "../creds-manage", optional = true }
 openidconnect = { workspace = true, optional = true }
 oauth2 = { workspace = true, optional = true }
 jsonwebtoken = { workspace = true, optional = true }

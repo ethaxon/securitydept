@@ -9,6 +9,7 @@ use super::propagation::TokenPropagatorConfig;
 // ---- Token propagation ----
 
 /// Simple discriminant for token propagation.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TokenPropagationKind {
@@ -26,6 +27,7 @@ pub enum TokenPropagationKind {
 ///
 /// This capability belongs to the `access_token_substrate` layer, not to any
 /// specific OIDC mode.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TokenPropagation {

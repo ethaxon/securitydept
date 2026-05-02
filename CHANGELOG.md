@@ -5,13 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0-beta.1]
+
+### Added
+
+- Added `SecretString` for redacted Rust config secrets, with explicit raw exposure and `config-schema` password/write-only hints.
+- Added validator-aware Rust host config resolution for token-set OIDC modes, Basic Auth context, and session context, including host-supplied fixed path validators and validator composition.
+- Added `redact`/`schemars`-backed config-schema coverage for Rust host config crates, including OIDC client and OAuth resource-server configs.
+- Added secret-safe `ResourceTokenPrincipal` projection for verified resource tokens.
 
 ### Changed
 
-- Consolidated Rust test cache scopes into shared lanes so PRs, `main`, `release`, and tag-driven flows reuse bounded cache namespaces instead of per-branch or per-PR cache keys.
-- Updated the release automation documentation to describe the new cache-lane model and the matching read-write / read-only ownership split.
-- Kept the stable-release docs aligned with the current release line and removed reader-facing beta anchors from user-facing entry pages.
+- Bumped release-managed Rust crates, TypeScript packages, apps, lockfiles, and shared metadata for `0.3.0-beta.1`.
+- Refactored Basic Auth and session context Rust config into the same `ConfigSource -> ResolvedConfig -> Service/Context` model used by token-set host config.
+- Split host config validators into dedicated modules and updated the reference server to construct services from resolved configs plus explicit validators.
+- Migrated OIDC/resource-server client secrets to `SecretString` and expanded related config/schema tests.
+- Updated Web UI e2e lifecycle cleanup, Rust test cache lane docs, and user-facing docs for the `0.3.x` release line.
+
+### Fixed
+
+- Fixed OAuth resource-server JWE config schema compilation.
+- Fixed OIDC config validation APIs so abstract config sources do not expose concrete fixed-redirect helpers or redirect override state.
 
 ## [0.2.0]
 

@@ -1,18 +1,18 @@
 # Roadmap
 
-This roadmap is the current planning authority for SecurityDept. It describes the current stable release line, the `0.2.x` backlog, and topics deferred to `0.3.0`.
+This roadmap is the current planning authority for SecurityDept. It describes the current `0.3.x` release line, active release constraints, and topics deferred beyond `0.3.x`.
 
 It does not explain the full auth-context model or SDK package map. Use [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) for auth context / mode design, [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) for the TypeScript SDK adopter guide, and [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) for public-surface migration guidance.
 
 ## Current Release Target
 
-The current published baseline is the current stable line.
+The current release baseline is the `0.3.x` line.
 
-The detailed release execution record now lives in CHANGELOG.md and [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md). Keep this roadmap focused on the active release constraints that still matter on the stable line, plus future deferrals.
+The detailed release execution record now lives in CHANGELOG.md and [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md). Keep this roadmap focused on active release constraints, plus future deferrals.
 
-## 0.2.x Active Track
+## 0.3.x Active Track
 
-The `0.2.x` line is about making the existing stack explainable, testable, and releasable:
+The `0.3.x` line is about making the existing stack explainable, testable, and releasable while allowing targeted breaking changes where they improve host ergonomics and long-term maintainability:
 
 1. Keep the TypeScript SDK freeze executable through `public-surface-inventory.json`, release-gate tests, evidence files, docs anchors, and `110` migration entries.
 2. Keep `apps/webui` as the primary in-repo reference app for browser, React, dashboard, route policy, shared error, diagnosis, and browser harness evidence.
@@ -22,7 +22,7 @@ The `0.2.x` line is about making the existing stack explainable, testable, and r
 
 ## TypeScript SDK Product Boundary
 
-TypeScript remains the only active SDK productization language for `0.2.x`.
+TypeScript remains the only active SDK productization language for `0.3.x`.
 
 The active baseline includes:
 
@@ -73,7 +73,7 @@ The project docs should be read as:
 - `100` roadmap and release blockers
 - `110` TS SDK migration guide
 
-## Deferred To 0.3.0
+## Deferred Beyond 0.3.x
 
 These topics remain real, but they are outside the active release line:
 

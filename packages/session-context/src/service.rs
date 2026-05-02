@@ -13,7 +13,7 @@ use tower_sessions::Session;
 use url::Url;
 
 use crate::{
-    SessionContext, SessionContextConfig, SessionContextError, SessionContextSession,
+    ResolvedSessionContextConfig, SessionContext, SessionContextError, SessionContextSession,
     SessionPrincipal,
 };
 
@@ -61,7 +61,7 @@ impl securitydept_utils::error::ToErrorPresentation for SessionAuthServiceError 
 ///
 /// Provides login, logout, and user_info operations using tower-sessions.
 pub trait SessionAuthServiceTrait {
-    fn session_context_config(&self) -> &SessionContextConfig;
+    fn session_context_config(&self) -> &ResolvedSessionContextConfig;
     fn login_diagnosed(
         &self,
         session: Session,
@@ -86,7 +86,8 @@ pub trait SessionAuthServiceTrait {
         &self,
         session: Session,
     ) -> impl Future<Output = DiagnosedResult<serde_json::Value, SessionAuthServiceError>> {
-        let handle = SessionContextSession::from_config(session, self.session_context_config());
+        let handle =
+            SessionContextSession::from_resolved_config(session, self.session_context_config());
 
         Box::pin(async move {
             let diagnosis = session_logout_diagnosis();
@@ -120,7 +121,8 @@ pub trait SessionAuthServiceTrait {
     ) -> impl Future<
         Output = DiagnosedResult<SessionContext<HashMap<String, Value>>, SessionAuthServiceError>,
     > {
-        let handle = SessionContextSession::from_config(session, self.session_context_config());
+        let handle =
+            SessionContextSession::from_resolved_config(session, self.session_context_config());
         Box::pin(async move {
             let diagnosis = session_user_info_diagnosis();
             match handle.require::<HashMap<String, Value>>().await {
@@ -161,7 +163,32 @@ pub trait SessionAuthServiceTrait {
 
 /// Development session auth service — creates a dev session without OIDC.
 pub struct DevSessionAuthService<'a> {
-    session_context_config: &'a SessionContextConfig,
+    session_context_config: &'a ResolvedSessionContextConfig,
+}
+
+pub const DEFAULT_OIDC_SESSION_CALLBACK_PATH: &str = "/auth/session/callback";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OidcSessionAuthServiceConfig {
+    callback_path: String,
+}
+
+impl OidcSessionAuthServiceConfig {
+    pub fn new(callback_path: impl Into<String>) -> Self {
+        Self {
+            callback_path: callback_path.into(),
+        }
+    }
+
+    pub fn callback_path(&self) -> &str {
+        &self.callback_path
+    }
+}
+
+impl Default for OidcSessionAuthServiceConfig {
+    fn default() -> Self {
+        Self::new(DEFAULT_OIDC_SESSION_CALLBACK_PATH)
+    }
 }
 
 const PENDING_POST_AUTH_REDIRECT_URI_KEY: &str = "post_auth_redirect_uri";
@@ -180,16 +207,14 @@ fn session_login_diagnosis(
 }
 
 fn session_callback_diagnosis(
+    callback_path: &str,
     external_base_url: &Url,
     search_params: &OidcCodeCallbackSearchParams,
 ) -> AuthFlowDiagnosis {
     AuthFlowDiagnosis::started(AuthFlowOperation::OIDC_CALLBACK)
         .field(AuthFlowDiagnosisField::AUTH_FAMILY, "session-context")
         .field(AuthFlowDiagnosisField::MODE, "oidc")
-        .field(
-            AuthFlowDiagnosisField::CALLBACK_PATH,
-            "/auth/session/callback",
-        )
+        .field(AuthFlowDiagnosisField::CALLBACK_PATH, callback_path)
         .field(
             AuthFlowDiagnosisField::EXTERNAL_BASE_URL,
             external_base_url.as_str(),
@@ -227,7 +252,7 @@ fn callback_post_auth_redirect_uri(
 
 impl<'a> DevSessionAuthService<'a> {
     pub fn new(
-        session_context_config: &'a SessionContextConfig,
+        session_context_config: &'a ResolvedSessionContextConfig,
     ) -> Result<Self, SessionAuthServiceError> {
         session_context_config
             .resolve_post_auth_redirect(None)
@@ -240,7 +265,7 @@ impl<'a> DevSessionAuthService<'a> {
 }
 
 impl<'a> SessionAuthServiceTrait for DevSessionAuthService<'a> {
-    fn session_context_config(&self) -> &SessionContextConfig {
+    fn session_context_config(&self) -> &ResolvedSessionContextConfig {
         self.session_context_config
     }
 
@@ -252,7 +277,8 @@ impl<'a> SessionAuthServiceTrait for DevSessionAuthService<'a> {
     ) -> DiagnosedResult<HttpResponse, SessionAuthServiceError> {
         let diagnosis = session_login_diagnosis("dev", requested_post_auth_redirect_uri)
             .field("oidc_enabled", false);
-        let handle = SessionContextSession::from_config(session, self.session_context_config);
+        let handle =
+            SessionContextSession::from_resolved_config(session, self.session_context_config);
         if let Err(source) = handle.cycle_id().await {
             return DiagnosedResult::failure(
                 diagnosis
@@ -325,7 +351,8 @@ where
     PS: PendingOauthStore,
 {
     oidc_client: Option<&'a OidcClient<PS>>,
-    session_context_config: &'a SessionContextConfig,
+    session_context_config: &'a ResolvedSessionContextConfig,
+    service_config: OidcSessionAuthServiceConfig,
 }
 
 impl<'a, P> OidcSessionAuthService<'a, P>
@@ -334,7 +361,19 @@ where
 {
     pub fn new(
         oidc_client: Option<&'a OidcClient<P>>,
-        session_context_config: &'a SessionContextConfig,
+        session_context_config: &'a ResolvedSessionContextConfig,
+    ) -> Result<Self, SessionAuthServiceError> {
+        Self::new_with_config(
+            oidc_client,
+            session_context_config,
+            OidcSessionAuthServiceConfig::default(),
+        )
+    }
+
+    pub fn new_with_config(
+        oidc_client: Option<&'a OidcClient<P>>,
+        session_context_config: &'a ResolvedSessionContextConfig,
+        service_config: OidcSessionAuthServiceConfig,
     ) -> Result<Self, SessionAuthServiceError> {
         session_context_config
             .resolve_post_auth_redirect(None)
@@ -343,6 +382,7 @@ where
         Ok(Self {
             oidc_client,
             session_context_config,
+            service_config,
         })
     }
 
@@ -363,9 +403,10 @@ where
         external_base_url: &Url,
         search_params: OidcCodeCallbackSearchParams,
     ) -> DiagnosedResult<HttpResponse, SessionAuthServiceError> {
+        let callback_path = self.service_config.callback_path();
         let Some(oidc) = self.oidc_client else {
             return DiagnosedResult::failure(
-                session_callback_diagnosis(external_base_url, &search_params)
+                session_callback_diagnosis(callback_path, external_base_url, &search_params)
                     .with_outcome(AuthFlowDiagnosisOutcome::Failed)
                     .field(AuthFlowDiagnosisField::REASON, "oidc_disabled"),
                 SessionAuthServiceError::OidcDisabled,
@@ -376,17 +417,14 @@ where
             .handle_code_callback_with_redirect_override_diagnosed(
                 search_params,
                 external_base_url,
-                Some("/auth/session/callback"),
+                Some(callback_path),
             )
             .await;
         let (callback_diagnosis, callback_result) = diagnosed.into_parts();
         let callback_diagnosis = callback_diagnosis
             .field(AuthFlowDiagnosisField::AUTH_FAMILY, "session-context")
             .field(AuthFlowDiagnosisField::MODE, "oidc")
-            .field(
-                AuthFlowDiagnosisField::CALLBACK_PATH,
-                "/auth/session/callback",
-            );
+            .field(AuthFlowDiagnosisField::CALLBACK_PATH, callback_path);
         let code_callback_result = match callback_result {
             Ok(result) => result,
             Err(source) => {
@@ -408,7 +446,8 @@ where
                 .to_string(),
         );
 
-        let handle = SessionContextSession::from_config(session, self.session_context_config);
+        let handle =
+            SessionContextSession::from_resolved_config(session, self.session_context_config);
         if let Err(source) = handle.cycle_id().await {
             return DiagnosedResult::failure(
                 callback_diagnosis
@@ -481,7 +520,7 @@ impl<'a, P> SessionAuthServiceTrait for OidcSessionAuthService<'a, P>
 where
     P: PendingOauthStore + Sync + Send,
 {
-    fn session_context_config(&self) -> &SessionContextConfig {
+    fn session_context_config(&self) -> &ResolvedSessionContextConfig {
         self.session_context_config
     }
 
@@ -492,6 +531,7 @@ where
         requested_post_auth_redirect_uri: Option<&str>,
     ) -> DiagnosedResult<HttpResponse, SessionAuthServiceError> {
         if let Some(oidc) = self.oidc_client {
+            let callback_path = self.service_config.callback_path();
             let diagnosis = session_login_diagnosis("oidc", requested_post_auth_redirect_uri)
                 .field("oidc_enabled", true);
             let extra_data = requested_post_auth_redirect_uri.map(|uri| {
@@ -504,7 +544,7 @@ where
             match oidc
                 .handle_code_authorize_with_redirect_override_and_extra_data(
                     external_base_url,
-                    Some("/auth/session/callback"),
+                    Some(callback_path),
                     extra_data,
                 )
                 .await
@@ -514,7 +554,7 @@ where
                     DiagnosedResult::success(
                         diagnosis
                             .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
-                            .field("redirect_path", "/auth/session/callback")
+                            .field("redirect_path", callback_path)
                             .field(
                                 "authorization_url_host",
                                 authorization_url.host_str().unwrap_or("unknown"),
@@ -572,7 +612,7 @@ mod tests {
     use url::Url;
 
     use super::*;
-    use crate::SessionContextConfig;
+    use crate::{ResolvedSessionContextConfig, SessionContextConfig, SessionContextConfigSource};
 
     /// Minimal in-memory PendingOauthStore for testing without the moka
     /// feature.
@@ -619,13 +659,18 @@ mod tests {
         Url::parse("https://auth.example.com").unwrap()
     }
 
+    fn resolved_config(config: SessionContextConfig) -> ResolvedSessionContextConfig {
+        SessionContextConfigSource::resolve_all(&config)
+            .expect("session context config should resolve")
+    }
+
     // -----------------------------------------------------------------------
     // DevSessionAuthService
     // -----------------------------------------------------------------------
 
     #[tokio::test]
     async fn dev_login_writes_session_and_redirects() {
-        let config = SessionContextConfig::default();
+        let config = resolved_config(SessionContextConfig::default());
         let service =
             DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
         let session = test_session();
@@ -640,7 +685,7 @@ mod tests {
         assert_eq!(response.status, http::StatusCode::FOUND);
 
         // Session should now contain the dev principal.
-        let handle = SessionContextSession::from_config(session, &config);
+        let handle = SessionContextSession::from_resolved_config(session, &config);
         let context = handle
             .get::<HashMap<String, serde_json::Value>>()
             .await
@@ -656,7 +701,7 @@ mod tests {
 
     #[tokio::test]
     async fn dev_login_redirects_to_requested_playground() {
-        let config = SessionContextConfig::builder()
+        let config = resolved_config(SessionContextConfig::builder()
             .post_auth_redirect(
                 securitydept_utils::redirect::RedirectTargetConfig::dynamic_default_and_dynamic_targets(
                     "/",
@@ -665,7 +710,7 @@ mod tests {
                     }],
                 ),
             )
-            .build();
+            .build());
         let service =
             DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
         let session = test_session();
@@ -688,7 +733,7 @@ mod tests {
 
     #[tokio::test]
     async fn dev_login_diagnosed_exposes_machine_readable_fields() {
-        let config = SessionContextConfig::builder()
+        let config = resolved_config(SessionContextConfig::builder()
             .post_auth_redirect(
                 securitydept_utils::redirect::RedirectTargetConfig::dynamic_default_and_dynamic_targets(
                     "/",
@@ -697,7 +742,7 @@ mod tests {
                     }],
                 ),
             )
-            .build();
+            .build());
         let service =
             DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
         let session = test_session();
@@ -730,7 +775,7 @@ mod tests {
 
     #[tokio::test]
     async fn dev_logout_flushes_session() {
-        let config = SessionContextConfig::default();
+        let config = resolved_config(SessionContextConfig::default());
         let service =
             DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
         let session = test_session();
@@ -743,7 +788,7 @@ mod tests {
             .expect("login should succeed");
 
         // Verify principal exists before logout.
-        let handle = SessionContextSession::from_config(session.clone(), &config);
+        let handle = SessionContextSession::from_resolved_config(session.clone(), &config);
         assert!(
             handle
                 .get::<HashMap<String, serde_json::Value>>()
@@ -759,7 +804,7 @@ mod tests {
 
         // After flush, a fresh read from the same session should find nothing
         // (since flush clears the entire session record from the store).
-        let handle_post = SessionContextSession::from_config(session, &config);
+        let handle_post = SessionContextSession::from_resolved_config(session, &config);
         let context_post = handle_post
             .get::<HashMap<String, serde_json::Value>>()
             .await
@@ -772,7 +817,7 @@ mod tests {
 
     #[tokio::test]
     async fn logout_diagnosed_reports_succeeded_outcome() {
-        let config = SessionContextConfig::default();
+        let config = resolved_config(SessionContextConfig::default());
         let service =
             DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
         let session = test_session();
@@ -799,7 +844,7 @@ mod tests {
 
     #[tokio::test]
     async fn dev_me_returns_context_after_login() {
-        let config = SessionContextConfig::default();
+        let config = resolved_config(SessionContextConfig::default());
         let service =
             DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
         let session = test_session();
@@ -829,7 +874,7 @@ mod tests {
 
     #[tokio::test]
     async fn user_info_diagnosed_rejects_missing_context() {
-        let config = SessionContextConfig::default();
+        let config = resolved_config(SessionContextConfig::default());
         let service =
             DevSessionAuthService::new(&config).expect("DevSessionAuthService should construct");
         let session = test_session();
@@ -850,7 +895,7 @@ mod tests {
 
     #[tokio::test]
     async fn oidc_callback_diagnosed_reports_machine_readable_failure_when_oidc_disabled() {
-        let config = SessionContextConfig::default();
+        let config = resolved_config(SessionContextConfig::default());
         let service = OidcSessionAuthService::<TestPendingOauthStore>::new(None, &config)
             .expect("OidcSessionAuthService should construct");
 
@@ -896,13 +941,41 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn oidc_service_config_controls_callback_path_diagnosis() {
+        let config = resolved_config(SessionContextConfig::default());
+        let service = OidcSessionAuthService::<TestPendingOauthStore>::new_with_config(
+            None,
+            &config,
+            OidcSessionAuthServiceConfig::new("/custom/session/callback"),
+        )
+        .expect("OidcSessionAuthService should construct");
+
+        let diagnosed = service
+            .callback_diagnosed(
+                test_session(),
+                &test_base_url(),
+                OidcCodeCallbackSearchParams {
+                    code: "abc".to_string(),
+                    state: Some("state-1".to_string()),
+                },
+            )
+            .await;
+
+        assert!(diagnosed.result().is_err());
+        assert_eq!(
+            diagnosed.diagnosis().fields[AuthFlowDiagnosisField::CALLBACK_PATH],
+            "/custom/session/callback"
+        );
+    }
+
     // -----------------------------------------------------------------------
     // OidcSessionAuthService (without OIDC client = dev fallback)
     // -----------------------------------------------------------------------
 
     #[tokio::test]
     async fn oidc_service_without_client_falls_back_to_dev() {
-        let config = SessionContextConfig::default();
+        let config = resolved_config(SessionContextConfig::default());
         let service = OidcSessionAuthService::<TestPendingOauthStore>::new(None, &config)
             .expect("OidcSessionAuthService should construct");
         let session = test_session();
@@ -926,7 +999,7 @@ mod tests {
 
     #[tokio::test]
     async fn oidc_service_logout_flushes_session() {
-        let config = SessionContextConfig::default();
+        let config = resolved_config(SessionContextConfig::default());
         let service = OidcSessionAuthService::<TestPendingOauthStore>::new(None, &config)
             .expect("OidcSessionAuthService should construct");
         let session = test_session();

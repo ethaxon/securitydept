@@ -101,6 +101,11 @@ pub struct BackendOidcModeAuthStateOptions {
 /// Note: `token_propagation` has been moved to
 /// [`AccessTokenSubstrateConfig`](crate::access_token_substrate::AccessTokenSubstrateConfig)
 /// as a substrate-level capability axis.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(
+    feature = "config-schema",
+    schemars(bound = "MC: schemars::JsonSchema")
+)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct BackendOidcModeRuntimeConfig<MC>
 where
@@ -273,9 +278,9 @@ where
         let refresh_material_protector: Arc<dyn RefreshMaterialProtector> = match &config
             .refresh_material_protection
         {
-            RefreshMaterialProtection::Sealed { master_key } => {
-                Arc::new(AeadRefreshMaterialProtector::from_master_key(master_key)?)
-            }
+            RefreshMaterialProtection::Sealed { master_key } => Arc::new(
+                AeadRefreshMaterialProtector::from_master_key(master_key.expose_secret())?,
+            ),
             RefreshMaterialProtection::Passthrough => Arc::new(PassthroughRefreshMaterialProtector),
         };
 

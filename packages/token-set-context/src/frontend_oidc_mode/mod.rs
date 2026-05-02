@@ -34,8 +34,9 @@ pub mod service;
 pub use capabilities::{FrontendOidcModeCapabilities, UnsafeFrontendClientSecret};
 // --- Public re-exports: config ---
 pub use config::{
-    FrontendOidcModeConfig, FrontendOidcModeConfigSource, NoPendingStoreConfig,
-    ResolvedFrontendOidcModeConfig,
+    FrontendOidcModeConfig, FrontendOidcModeConfigSource, FrontendOidcModeConfigValidationError,
+    FrontendOidcModeConfigValidator, FrontendOidcModeFixedRedirectUriValidator,
+    NoPendingStoreConfig, NoopFrontendOidcModeConfigValidator, ResolvedFrontendOidcModeConfig,
 };
 // --- Public re-exports: contracts ---
 pub use contracts::{FrontendOidcModeClaimsCheckScript, FrontendOidcModeConfigProjection};

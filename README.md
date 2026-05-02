@@ -6,7 +6,7 @@
 
 SecurityDept is a layered authentication and authorization toolkit. It ships as reusable Rust crates, TypeScript SDK packages, and reference applications that validate the same contracts in real server and browser deployments.
 
-This repo currently tracks the stable release line for packaging, documentation, release automation, and reference-app readiness for the existing auth stack. The live version badges above reflect the published packages.
+This repo currently tracks the active release line for packaging, documentation, release automation, and reference-app readiness for the existing auth stack. The live version badges above reflect the published packages.
 
 <p class="badges" align="center">
   <a href="https://www.npmjs.com/package/@securitydept/client"><img src="https://img.shields.io/npm/v/%40securitydept%2Fclient?logo=npm&label=npm" alt="npm"></a>
@@ -166,8 +166,8 @@ just build-docs
 
 - SecurityDept is not a single monolithic auth service; it is a layered stack of reusable crates, SDKs, and reference apps.
 - The long-term product auth-context surfaces are Basic Auth context, session context, and token-set context.
-- Higher-complexity token-set deployments such as mixed custody, BFF, and server-side token ownership are not part of the current stable contract unless documented in the SDK guide.
-- Historical status belongs outside user-facing docs; stable docs should describe current behavior or explicit future plans.
+- Higher-complexity token-set deployments such as mixed custody, BFF, and server-side token ownership are not part of the current release contract unless documented in the SDK guide.
+- Historical status belongs outside user-facing docs; docs should describe current behavior or explicit future plans.
 
 ## Docs Site
 

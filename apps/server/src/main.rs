@@ -146,7 +146,8 @@ async fn run_serve(config_arg: String) -> ServerResult<()> {
         .map(FrontendOidcModeRuntime::new)
         .map(Arc::new);
 
-    let session_context_config = config.session_context.clone();
+    let session_context_config = config.resolved_session_context_config()?;
+    let basic_auth_context_config = config.resolved_basic_auth_context_config()?;
     let session_context_store = MemoryStore::default();
     let real_ip_resolver = if let Some(real_ip_config) = config.real_ip_resolve.clone() {
         Some(Arc::new(
@@ -197,12 +198,13 @@ async fn run_serve(config_arg: String) -> ServerResult<()> {
         frontend_oidc_runtime,
         substrate_runtime,
         basic_auth_context: Arc::new(
-            BasicAuthContext::from_config(config.basic_auth_context.clone()).map_err(|e| {
+            BasicAuthContext::from_resolved_config(basic_auth_context_config).map_err(|e| {
                 crate::error::ServerError::InvalidConfig {
                     message: e.to_string(),
                 }
             })?,
         ),
+        session_context_config: Arc::new(session_context_config.clone()),
         real_ip_resolver,
         oidc_client,
         oauth_resource_server_verifier,

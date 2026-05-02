@@ -1,3 +1,4 @@
+use securitydept_utils::secret::{SecretString, deserialize_optional_secret_string};
 use serde::Deserialize;
 use serde_with::{NoneAsEmptyString, serde_as};
 
@@ -36,6 +37,7 @@ use crate::{OAuthProviderRemoteConfig, default_jwks_refresh_interval};
 /// be resolved separately from `OAuthProviderRemoteConfig`. They are exposed
 /// on this struct as optional fields and resolved through dedicated helpers.
 #[serde_as]
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct OidcSharedConfig {
     /// Shared provider connectivity settings (URL + interval fields).
@@ -47,17 +49,18 @@ pub struct OidcSharedConfig {
     /// same client identity against a single provider.
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub client_id: Option<String>,
 
     /// Optional confidential-client secret default. See `client_id`.
-    #[serde(default)]
-    #[serde_as(as = "NoneAsEmptyString")]
-    pub client_secret: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_secret_string")]
+    pub client_secret: Option<SecretString>,
 
     /// Shared required-scopes list. Applied when the local client config does
     /// not specify its own `required_scopes`.
     #[serde_as(as = "securitydept_utils::ser::CommaOrSpaceSeparated<String>")]
     #[serde(default)]
+    #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
     pub required_scopes: Vec<String>,
 }
 
@@ -106,10 +109,8 @@ impl OidcSharedConfig {
     }
 
     /// Resolve a local optional `client_secret` against the shared default.
-    pub fn resolve_client_secret(&self, local: Option<&str>) -> Option<String> {
-        local
-            .map(ToOwned::to_owned)
-            .or_else(|| self.client_secret.clone())
+    pub fn resolve_client_secret(&self, local: Option<&SecretString>) -> Option<SecretString> {
+        local.cloned().or_else(|| self.client_secret.clone())
     }
 
     /// Resolve a local `required_scopes` list against the shared default.
@@ -129,6 +130,8 @@ impl OidcSharedConfig {
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
+
+    use securitydept_utils::secret::SecretString;
 
     use super::OidcSharedConfig;
     use crate::OAuthProviderRemoteConfig;
@@ -264,23 +267,30 @@ mod tests {
     #[test]
     fn local_client_secret_takes_priority_over_shared() {
         let shared = OidcSharedConfig {
-            client_secret: Some("shared-secret".to_string()),
+            client_secret: Some(SecretString::from("shared-secret")),
             ..Default::default()
         };
+        let local = SecretString::from("local-secret");
 
-        let resolved = shared.resolve_client_secret(Some("local-secret"));
-        assert_eq!(resolved.as_deref(), Some("local-secret"));
+        let resolved = shared.resolve_client_secret(Some(&local));
+        assert_eq!(
+            resolved.as_ref().map(SecretString::expose_secret),
+            Some("local-secret")
+        );
     }
 
     #[test]
     fn shared_client_secret_fills_gap_when_local_is_absent() {
         let shared = OidcSharedConfig {
-            client_secret: Some("shared-secret".to_string()),
+            client_secret: Some(SecretString::from("shared-secret")),
             ..Default::default()
         };
 
         let resolved = shared.resolve_client_secret(None);
-        assert_eq!(resolved.as_deref(), Some("shared-secret"));
+        assert_eq!(
+            resolved.as_ref().map(SecretString::expose_secret),
+            Some("shared-secret")
+        );
     }
 
     #[test]
@@ -299,6 +309,12 @@ mod tests {
             Some("https://auth.example.com/.well-known/openid-configuration")
         );
         assert_eq!(config.client_id.as_deref(), Some("shared-app"));
-        assert_eq!(config.client_secret.as_deref(), Some("s3cr3t"));
+        assert_eq!(
+            config
+                .client_secret
+                .as_ref()
+                .map(SecretString::expose_secret),
+            Some("s3cr3t")
+        );
     }
 }

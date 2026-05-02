@@ -1,22 +1,15 @@
 use axum::{
     Extension, Json,
-    extract::Query,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
 use securitydept_core::utils::error::{ErrorPresentation, UserRecovery};
-use serde::Deserialize;
 
 use crate::{
     diagnosis::{RouteDiagnosisContext, log_route_diagnosis, log_route_diagnosis_error},
     error::{ServerError, ServerResult},
     state::ServerState,
 };
-
-#[derive(Debug, Deserialize, Default)]
-pub struct TokenSetFrontendModeConfigProjectionQuery {
-    pub redirect_uri: Option<String>,
-}
 
 fn frontend_oidc_projection_failed_error(source: &std::io::Error) -> ServerError {
     ServerError::route_presentation(
@@ -32,16 +25,13 @@ fn frontend_oidc_projection_failed_error(source: &std::io::Error) -> ServerError
 
 /// GET /api/auth/token-set/frontend-mode/config -- project frontend-owned OIDC
 /// config for the browser runtime.
-pub async fn config_projection(
-    Extension(state): Extension<ServerState>,
-    Query(query): Query<TokenSetFrontendModeConfigProjectionQuery>,
-) -> ServerResult<Response> {
+pub async fn config_projection(Extension(state): Extension<ServerState>) -> ServerResult<Response> {
     let diagnosed = state
         .frontend_oidc_mode_service()?
         .config_projection_with_diagnosis()
         .await;
     let diagnosis = diagnosed.diagnosis().clone();
-    let mut projection = diagnosed.into_result().map_err(|source| {
+    let projection = diagnosed.into_result().map_err(|source| {
         log_route_diagnosis_error(
             RouteDiagnosisContext {
                 route: "/api/auth/token-set/frontend-mode/config",
@@ -54,12 +44,6 @@ pub async fn config_projection(
         );
         frontend_oidc_projection_failed_error(&source)
     })?;
-
-    // The host may supply a runtime callback target so the browser-owned
-    // frontend mode completes on the real webui callback route.
-    if let Some(redirect_uri) = query.redirect_uri {
-        projection.redirect_url = redirect_uri;
-    }
 
     log_route_diagnosis(
         RouteDiagnosisContext {

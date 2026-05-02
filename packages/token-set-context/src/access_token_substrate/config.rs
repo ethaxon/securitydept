@@ -78,6 +78,7 @@ pub trait AccessTokenSubstrateConfigSource {
 /// unconfigured. Call
 /// [`resolve_all`](AccessTokenSubstrateConfigSource::resolve_all) with the OIDC
 /// shared defaults to produce a [`ResolvedAccessTokenSubstrateConfig`].
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct AccessTokenSubstrateConfig {
     /// OAuth resource-server verifier configuration.
@@ -120,6 +121,7 @@ pub struct ResolvedAccessTokenSubstrateConfig {
 mod tests {
     use securitydept_oauth_provider::{OAuthProviderRemoteConfig, OidcSharedConfig};
     use securitydept_oauth_resource_server::OAuthResourceServerIntrospectionConfig;
+    use securitydept_utils::secret::SecretString;
 
     use super::*;
 
@@ -133,7 +135,7 @@ mod tests {
                 ..Default::default()
             },
             client_id: Some("shared-app".to_string()),
-            client_secret: Some("shared-secret".to_string()),
+            client_secret: Some(SecretString::from("shared-secret")),
             ..Default::default()
         };
 

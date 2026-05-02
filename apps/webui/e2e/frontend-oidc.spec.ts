@@ -297,52 +297,56 @@ test.describe("frontend-mode browser callback", () => {
 		browser,
 	}) => {
 		const context = await browser.newContext();
-		const primaryPage = await context.newPage();
-		const followerPage = await context.newPage();
+		try {
+			const primaryPage = await context.newPage();
+			const followerPage = await context.newPage();
 
-		await followerPage.goto(frontendPlaygroundPath);
-		await expect(
-			followerPage.getByText(
-				"Waiting for another tab to update this frontend-mode client",
-			),
-		).toBeVisible();
+			await followerPage.goto(frontendPlaygroundPath);
+			await expect(
+				followerPage.getByText(
+					"Waiting for another tab to update this frontend-mode client",
+				),
+			).toBeVisible();
 
-		await completeFrontendModeLogin(primaryPage);
+			await completeFrontendModeLogin(primaryPage);
 
-		await expect(
-			followerPage.getByText(
-				"Another tab updated this frontend-mode client and this page reconciled the persisted snapshot",
-			),
-		).toBeVisible();
-		await expect(
-			followerPage.getByRole("button", { name: "Refresh tokens" }),
-		).toBeEnabled();
-		await expect(followerPage.getByText("has_access_token=true")).toBeVisible();
-		await expect(
-			followerPage
-				.locator('[data-trace-type="frontend_oidc.host.cross_tab.hydrated"]')
-				.first(),
-		).toBeVisible();
+			await expect(
+				followerPage.getByText(
+					"Another tab updated this frontend-mode client and this page reconciled the persisted snapshot",
+				),
+			).toBeVisible();
+			await expect(
+				followerPage.getByRole("button", { name: "Refresh tokens" }),
+			).toBeEnabled();
+			await expect(
+				followerPage.getByText("has_access_token=true"),
+			).toBeVisible();
+			await expect(
+				followerPage
+					.locator('[data-trace-type="frontend_oidc.host.cross_tab.hydrated"]')
+					.first(),
+			).toBeVisible();
 
-		await primaryPage
-			.getByRole("button", { name: "Forget frontend-mode state" })
-			.click();
+			await primaryPage
+				.getByRole("button", { name: "Forget frontend-mode state" })
+				.click();
 
-		await expect(
-			followerPage.getByText(
-				"Another tab cleared the persisted frontend-mode snapshot and this page dropped its in-memory state",
-			),
-		).toBeVisible();
-		await expect(
-			followerPage.getByText("has_access_token=false"),
-		).toBeVisible();
-		await expect(
-			followerPage
-				.locator('[data-trace-type="frontend_oidc.host.cross_tab.cleared"]')
-				.first(),
-		).toBeVisible();
-
-		await context.close();
+			await expect(
+				followerPage.getByText(
+					"Another tab cleared the persisted frontend-mode snapshot and this page dropped its in-memory state",
+				),
+			).toBeVisible();
+			await expect(
+				followerPage.getByText("has_access_token=false"),
+			).toBeVisible();
+			await expect(
+				followerPage
+					.locator('[data-trace-type="frontend_oidc.host.cross_tab.cleared"]')
+					.first(),
+			).toBeVisible();
+		} finally {
+			await context.close();
+		}
 	});
 
 	test("surfaces duplicate callback replay after the first callback is consumed", async ({

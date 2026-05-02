@@ -370,7 +370,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{BasicAuthContext, BasicAuthContextConfig, BasicAuthZoneConfig};
+    use crate::{
+        BasicAuthContext, BasicAuthContextConfig, BasicAuthContextConfigSource, BasicAuthZoneConfig,
+    };
 
     #[derive(Debug, Clone, Serialize, Deserialize, Default)]
     struct TestCred {
@@ -389,40 +391,46 @@ mod tests {
     }
 
     fn test_context() -> BasicAuthContext<TestCred> {
-        BasicAuthContext::from_config(
-            BasicAuthContextConfig::builder()
-                .creds(securitydept_creds::BasicAuthCredsConfig {
-                    users: vec![TestCred {
-                        username: "admin".to_string(),
-                        password: "secret".to_string(),
-                    }],
-                })
-                .zones(vec![BasicAuthZoneConfig::default()])
-                .build(),
+        let config = BasicAuthContextConfig::builder()
+            .creds(securitydept_creds::BasicAuthCredsConfig {
+                users: vec![TestCred {
+                    username: "admin".to_string(),
+                    password: "secret".to_string(),
+                }],
+            })
+            .zones(vec![BasicAuthZoneConfig::default()])
+            .build();
+
+        BasicAuthContext::from_resolved_config(
+            BasicAuthContextConfigSource::resolve_all(&config)
+                .expect("basic auth config should resolve"),
         )
         .expect("context should build")
     }
 
     fn test_context_with_dynamic_redirect() -> BasicAuthContext<TestCred> {
-        BasicAuthContext::from_config(
-            BasicAuthContextConfig::builder()
-                .creds(securitydept_creds::BasicAuthCredsConfig {
-                    users: vec![TestCred {
-                        username: "admin".to_string(),
-                        password: "secret".to_string(),
-                    }],
-                })
-                .zones(vec![BasicAuthZoneConfig::builder()
-                    .post_auth_redirect(
-                        securitydept_utils::redirect::RedirectTargetConfig::dynamic_default_and_dynamic_targets(
-                            "/",
-                            [securitydept_utils::redirect::RedirectTargetRule::Strict {
-                                value: "/console".to_string(),
-                            }],
-                        ),
-                    )
-                    .build()])
-                .build(),
+        let config = BasicAuthContextConfig::builder()
+            .creds(securitydept_creds::BasicAuthCredsConfig {
+                users: vec![TestCred {
+                    username: "admin".to_string(),
+                    password: "secret".to_string(),
+                }],
+            })
+            .zones(vec![BasicAuthZoneConfig::builder()
+                .post_auth_redirect(
+                    securitydept_utils::redirect::RedirectTargetConfig::dynamic_default_and_dynamic_targets(
+                        "/",
+                        [securitydept_utils::redirect::RedirectTargetRule::Strict {
+                            value: "/console".to_string(),
+                        }],
+                    ),
+                )
+                .build()])
+            .build();
+
+        BasicAuthContext::from_resolved_config(
+            BasicAuthContextConfigSource::resolve_all(&config)
+                .expect("basic auth config should resolve"),
         )
         .expect("context should build")
     }

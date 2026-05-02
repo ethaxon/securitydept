@@ -143,10 +143,11 @@ impl LiveKubeBackend {
 }
 
 async fn client_from_kubeconfig_path(provider_name: &str, path: &str) -> RealIpResult<Client> {
-    let kubeconfig = Kubeconfig::read_from(Path::new(path)).map_err(|error| RealIpError::ProviderLoad {
-        provider: provider_name.to_string(),
-        details: error.to_string(),
-    })?;
+    let kubeconfig =
+        Kubeconfig::read_from(Path::new(path)).map_err(|error| RealIpError::ProviderLoad {
+            provider: provider_name.to_string(),
+            details: error.to_string(),
+        })?;
     let config = Config::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions::default())
         .await
         .map_err(|error| RealIpError::ProviderLoad {

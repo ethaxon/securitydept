@@ -289,6 +289,40 @@ provider.use(async (ctx, next) => {
 	});
 });
 
-provider.listen(oidcProviderPort, "127.0.0.1", () => {
+const server = provider.listen(oidcProviderPort, "127.0.0.1", () => {
 	console.log(`SecurityDept E2E OIDC provider listening at ${oidcIssuerUrl}`);
+});
+
+let isShuttingDown = false;
+
+function closeServerAndExit(exitCode: number): void {
+	if (isShuttingDown) {
+		return;
+	}
+	isShuttingDown = true;
+
+	const forceExitTimer = setTimeout(() => {
+		process.exit(1);
+	}, 5_000);
+	forceExitTimer.unref();
+
+	server.close((error) => {
+		clearTimeout(forceExitTimer);
+		if (error) {
+			console.error("Failed to close OIDC provider server cleanly", error);
+			process.exit(1);
+			return;
+		}
+		process.exit(exitCode);
+	});
+}
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+	process.once(signal, () => {
+		closeServerAndExit(0);
+	});
+}
+
+process.once("beforeExit", () => {
+	closeServerAndExit(0);
 });

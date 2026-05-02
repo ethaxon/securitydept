@@ -35,6 +35,14 @@ pub async fn test_server_state_with_data(
         .join("config.example.toml");
     let mut config = ServerConfig::load(&config_path).expect("test config should load");
     config.server.webui_dir = None;
+    let session_context_config = Arc::new(
+        config
+            .resolved_session_context_config()
+            .expect("test session context config should resolve"),
+    );
+    let basic_auth_context_config = config
+        .resolved_basic_auth_context_config()
+        .expect("test basic-auth context config should resolve");
     let config = Arc::new(config);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -61,12 +69,13 @@ pub async fn test_server_state_with_data(
     let substrate_runtime = AccessTokenSubstrateRuntime::new(&TokenPropagation::Disabled)
         .expect("disabled substrate runtime should build");
     let basic_auth_context = Arc::new(
-        BasicAuthContext::<Argon2BasicAuthCred>::from_config(config.basic_auth_context.clone())
+        BasicAuthContext::<Argon2BasicAuthCred>::from_resolved_config(basic_auth_context_config)
             .expect("default basic-auth context should build"),
     );
 
     ServerState {
         config,
+        session_context_config,
         creds_manage_store,
         backend_oidc_runtime,
         frontend_oidc_runtime: None,

@@ -2,7 +2,10 @@ use openidconnect::core::CoreJwsSigningAlgorithm;
 use securitydept_oauth_provider::{
     OAuthProviderConfig, OAuthProviderOidcConfig, OAuthProviderRemoteConfig, OidcSharedConfig,
 };
-use securitydept_utils::ser::CommaOrSpaceSeparated;
+use securitydept_utils::{
+    secret::{SecretString, deserialize_optional_secret_string},
+    ser::CommaOrSpaceSeparated,
+};
 use serde::Deserialize;
 use serde_with::{NoneAsEmptyString, PickFirst, serde_as};
 
@@ -18,6 +21,11 @@ use crate::{OidcError, OidcResult, PendingOauthStoreConfig};
 /// Use [`OidcClientRawConfig::apply_shared_defaults`] when loading from a
 /// config source that also provides an `[oidc]` shared-defaults block.
 #[serde_as]
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(
+    feature = "config-schema",
+    schemars(bound = "PC: schemars::JsonSchema")
+)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct OidcClientConfig<PC>
 where
@@ -25,7 +33,7 @@ where
 {
     pub client_id: String,
     #[serde(default)]
-    pub client_secret: Option<String>,
+    pub client_secret: Option<SecretString>,
     /// Shared remote-provider connectivity settings.
     #[serde(flatten)]
     pub remote: OAuthProviderRemoteConfig,
@@ -34,6 +42,10 @@ where
     pub provider_oidc: OAuthProviderOidcConfig,
     #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
     #[serde(default = "default_scopes")]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "securitydept_utils::schema::StringOrVecString")
+    )]
     pub scopes: Vec<String>,
     /// Scopes that MUST be present in the token endpoint response.
     ///
@@ -43,6 +55,10 @@ where
     /// `[oidc].required_scopes`.
     #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
     #[serde(default)]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "securitydept_utils::schema::StringOrVecString")
+    )]
     pub required_scopes: Vec<String>,
     #[serde(default)]
     pub claims_check_script: Option<String>,
@@ -58,6 +74,7 @@ where
     /// Default interval to poll the device token endpoint if the provider
     /// doesn't specify one.
     #[serde(default = "default_device_poll_interval", with = "humantime_serde")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
     pub device_poll_interval: std::time::Duration,
 }
 
@@ -139,6 +156,11 @@ where
 /// Not shared (must stay in `[oidc_client]`):
 /// - `scopes`, `redirect_url`, `pkce_enabled`, `claims_check_script`
 #[serde_as]
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(
+    feature = "config-schema",
+    schemars(bound = "PC: schemars::JsonSchema")
+)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct OidcClientRawConfig<PC>
 where
@@ -147,11 +169,11 @@ where
     /// Local `client_id`. If absent, falls back to `[oidc].client_id`.
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub client_id: Option<String>,
     /// Local `client_secret`. If absent, falls back to `[oidc].client_secret`.
-    #[serde(default)]
-    #[serde_as(as = "NoneAsEmptyString")]
-    pub client_secret: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_secret_string")]
+    pub client_secret: Option<SecretString>,
     /// Local provider connectivity. URL fields fall back to `[oidc]` if absent.
     #[serde(flatten)]
     pub remote: OAuthProviderRemoteConfig,
@@ -160,11 +182,19 @@ where
     pub provider_oidc: OAuthProviderOidcConfig,
     #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
     #[serde(default = "default_scopes")]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "securitydept_utils::schema::StringOrVecString")
+    )]
     pub scopes: Vec<String>,
     /// Scopes that MUST be present in the token endpoint response.
     /// Falls back to `[oidc].required_scopes` when local is empty.
     #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
     #[serde(default)]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "securitydept_utils::schema::StringOrVecString")
+    )]
     pub required_scopes: Vec<String>,
     #[serde(default)]
     pub claims_check_script: Option<String>,
@@ -179,6 +209,7 @@ where
     #[serde(default, bound = "PC: PendingOauthStoreConfig")]
     pub pending_store: Option<PC>,
     #[serde(default = "default_device_poll_interval", with = "humantime_serde")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
     pub device_poll_interval: std::time::Duration,
 }
 
@@ -201,7 +232,7 @@ where
 
         Ok(OidcClientConfig {
             client_id: resolved_client_id,
-            client_secret: shared.resolve_client_secret(self.client_secret.as_deref()),
+            client_secret: shared.resolve_client_secret(self.client_secret.as_ref()),
             remote: shared.resolve_remote(&self.remote),
             provider_oidc: self.provider_oidc,
             scopes: self.scopes,
@@ -282,6 +313,7 @@ pub fn default_device_poll_interval() -> std::time::Duration {
 #[cfg(test)]
 mod tests {
     use securitydept_oauth_provider::{OAuthProviderRemoteConfig, OidcSharedConfig};
+    use securitydept_utils::secret::SecretString;
     use serde::Deserialize;
 
     use super::{OidcClientRawConfig, default_scopes};
@@ -304,6 +336,7 @@ mod tests {
                 ..Default::default()
             },
             client_id: Some("shared-app".to_string()),
+            client_secret: Some(SecretString::from("shared-secret")),
             ..Default::default()
         };
 
@@ -321,7 +354,13 @@ mod tests {
             config.client_id, "shared-app",
             "client_id should be inherited from [oidc]"
         );
-        assert!(config.client_secret.is_none());
+        assert_eq!(
+            config
+                .client_secret
+                .as_ref()
+                .map(SecretString::expose_secret),
+            Some("shared-secret")
+        );
     }
 
     #[test]

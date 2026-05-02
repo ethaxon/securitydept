@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-utils"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 edition = "2024"
 
 authors = ["Zhou Yeheng <root@aitiotekt.com>"]
@@ -10,8 +10,11 @@ repository = "https://github.com/ethaxon/securitydept"
 homepage = "https://securitydept.ethaxon.com/"
 documentation = "https://docs.rs/securitydept-utils"
 readme = "README.md"
-keywords = ["auth","oauth","oidc","security","token"]
-categories = ["authentication","network-programming","web-programming"]
+keywords = ["auth", "oauth", "oidc", "security", "token"]
+categories = ["authentication", "network-programming", "web-programming"]
+[features]
+config-schema = ["dep:schemars"]
+
 [dependencies]
 http = { workspace = true }
 regex = { workspace = true }
@@ -24,3 +27,5 @@ serde_with = { workspace = true }
 serde_json = { workspace = true }
 rfc7239 = { workspace = true }
 iri-string = { workspace = true }
+redact = { workspace = true }
+schemars = { workspace = true, optional = true }

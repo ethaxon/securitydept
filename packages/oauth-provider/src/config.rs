@@ -10,6 +10,7 @@ use crate::{OAuthProviderError, OAuthProviderResult};
 /// Shared provider connectivity settings used by both OIDC clients and
 /// resource-server verifiers.
 #[serde_as]
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct OAuthProviderRemoteConfig {
     /// OpenID Connect discovery document URL.
@@ -18,12 +19,15 @@ pub struct OAuthProviderRemoteConfig {
     /// it when `metadata_refresh_interval > 0`.
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub well_known_url: Option<String>,
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub issuer_url: Option<String>,
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub jwks_uri: Option<String>,
     /// Refresh interval for the discovery metadata cache.
     ///
@@ -32,11 +36,13 @@ pub struct OAuthProviderRemoteConfig {
         default = "default_metadata_refresh_interval",
         with = "humantime_serde"
     )]
+    #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
     pub metadata_refresh_interval: Duration,
     /// Refresh interval for the remote JWKS cache.
     ///
     /// Set to `0` to disable time-based JWKS refresh.
     #[serde(default = "default_jwks_refresh_interval", with = "humantime_serde")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
     pub jwks_refresh_interval: Duration,
 }
 
@@ -64,32 +70,51 @@ impl OAuthProviderRemoteConfig {
 
 /// OIDC-specific provider metadata overrides.
 #[serde_as]
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct OAuthProviderOidcConfig {
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub authorization_endpoint: Option<String>,
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub token_endpoint: Option<String>,
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub userinfo_endpoint: Option<String>,
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub introspection_endpoint: Option<String>,
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub revocation_endpoint: Option<String>,
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub device_authorization_endpoint: Option<String>,
     #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<CoreClientAuthMethod>, _)>>")]
     #[serde(default)]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "Option<securitydept_utils::schema::StringOrVecString>")
+    )]
     pub token_endpoint_auth_methods_supported: Option<Vec<CoreClientAuthMethod>>,
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "Option<securitydept_utils::schema::StringOrVecString>")
+    )]
     #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<CoreJwsSigningAlgorithm>, _)>>")]
     #[serde(default)]
     pub id_token_signing_alg_values_supported: Option<Vec<CoreJwsSigningAlgorithm>>,
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "Option<securitydept_utils::schema::StringOrVecString>")
+    )]
     #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<CoreJwsSigningAlgorithm>, _)>>")]
     #[serde(default)]
     pub userinfo_signing_alg_values_supported: Option<Vec<CoreJwsSigningAlgorithm>>,
@@ -97,6 +122,7 @@ pub struct OAuthProviderOidcConfig {
 
 /// Normalized provider runtime config.
 #[serde_as]
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct OAuthProviderConfig {
     #[serde(flatten)]

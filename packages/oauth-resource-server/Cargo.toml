@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-oauth-resource-server"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 edition = "2024"
 
 authors = ["Zhou Yeheng <root@aitiotekt.com>"]
@@ -10,20 +10,30 @@ repository = "https://github.com/ethaxon/securitydept"
 homepage = "https://securitydept.ethaxon.com/"
 documentation = "https://docs.rs/securitydept-oauth-resource-server"
 readme = "README.md"
-keywords = ["auth","oauth","oidc","security","token"]
-categories = ["authentication","network-programming","web-programming"]
+keywords = ["auth", "oauth", "oidc", "security", "token"]
+categories = ["authentication", "network-programming", "web-programming"]
 [features]
+config-schema = [
+    "dep:schemars",
+    "securitydept-utils/config-schema",
+    "securitydept-oauth-provider/config-schema",
+    "serde_with/schemars_1",
+]
 jwe = ["securitydept-creds/jwe", "dep:josekit"]
 
 [dependencies]
-securitydept-oauth-provider = { version = "~0.2.0", path = "../oauth-provider" }
-securitydept-creds = { version = "~0.2.0", path = "../creds", features = ["rfc9068", "oidc"] }
-securitydept-utils = { version = "~0.2.0", path = "../utils" }
+securitydept-oauth-provider = { version = "~0.3.0-beta.1", path = "../oauth-provider" }
+securitydept-creds = { version = "~0.3.0-beta.1", path = "../creds", features = [
+    "rfc9068",
+    "oidc",
+] }
+securitydept-utils = { version = "~0.3.0-beta.1", path = "../utils" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
+schemars = { workspace = true, optional = true }
 snafu = { workspace = true }
-tokio = { workspace = true, features = ["sync", "rt", "time", "fs"] }
+tokio = { workspace = true, features = ["sync", "rt", "time", "fs", "macros"] }
 tracing = { workspace = true }
 openidconnect = { workspace = true }
 oauth2 = { workspace = true }
@@ -31,3 +41,6 @@ chrono = { workspace = true }
 humantime-serde = { workspace = true }
 josekit = { workspace = true, optional = true }
 http = { workspace = true }
+
+[dev-dependencies]
+jsonwebtoken = { workspace = true }

@@ -1,7 +1,17 @@
+pub mod config;
 mod service;
 
 use std::sync::Arc;
 
+pub use config::{
+    BasicAuthContextConfig, BasicAuthContextConfigBuildError, BasicAuthContextConfigSource,
+    BasicAuthContextConfigValidationError, BasicAuthContextConfigValidator,
+    BasicAuthContextFixedPostAuthRedirectValidator, BasicAuthContextFixedSingleZonePathValidator,
+    BasicAuthContextRejectZonePostAuthRedirectOverrideValidator, BasicAuthZoneConfig,
+    NoopBasicAuthContextConfigValidator, ResolvedBasicAuthContextConfig,
+    ResolvedBasicAuthZoneConfig,
+};
+use config::{default_post_auth_redirect, default_realm};
 use http::StatusCode;
 use securitydept_creds::{BasicAuthCred, BasicAuthCredsConfig};
 use securitydept_realip::{RealIpAccessConfig, RealIpAccessManager, RealIpError, ResolvedClientIp};
@@ -12,100 +22,7 @@ use securitydept_utils::{
 use serde::{Deserialize, Serialize};
 pub use service::{BasicAuthContextService, BasicAuthContextServiceError};
 use snafu::Snafu;
-use typed_builder::TypedBuilder;
 use web_route::WebRoute;
-
-#[derive(Debug, Clone, Serialize, Deserialize, TypedBuilder)]
-pub struct BasicAuthZoneConfig {
-    #[builder(default = default_zone_prefix())]
-    #[serde(default = "default_zone_prefix")]
-    pub zone_prefix: String,
-    #[builder(default = default_login_subpath())]
-    #[serde(default = "default_login_subpath")]
-    pub login_subpath: String,
-    #[builder(default = default_logout_subpath())]
-    #[serde(default = "default_logout_subpath")]
-    pub logout_subpath: String,
-    #[builder(default, setter(strip_option))]
-    #[serde(default)]
-    pub realm: Option<String>,
-    #[serde(default)]
-    #[builder(default, setter(strip_option))]
-    pub post_auth_redirect: Option<RedirectTargetConfig>,
-}
-
-impl Default for BasicAuthZoneConfig {
-    fn default() -> Self {
-        Self {
-            zone_prefix: default_zone_prefix(),
-            login_subpath: default_login_subpath(),
-            logout_subpath: default_logout_subpath(),
-            realm: None,
-            post_auth_redirect: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TypedBuilder)]
-pub struct BasicAuthContextConfig<Creds>
-where
-    Creds: BasicAuthCred + Serialize + for<'a> Deserialize<'a>,
-{
-    #[serde(
-        flatten,
-        bound = "Creds: BasicAuthCred + Serialize + for<'a> Deserialize<'a>",
-        default = "BasicAuthCredsConfig::default"
-    )]
-    #[builder(default = BasicAuthCredsConfig::default())]
-    pub creds: BasicAuthCredsConfig<Creds>,
-    #[serde(default)]
-    #[builder(default, setter(strip_option))]
-    pub real_ip_access: Option<RealIpAccessConfig>,
-    #[serde(default)]
-    #[builder(default = Vec::new())]
-    pub zones: Vec<BasicAuthZoneConfig>,
-    #[serde(default)]
-    #[builder(default, setter(strip_option))]
-    pub realm: Option<String>,
-    #[serde(default = "default_post_auth_redirect")]
-    #[builder(default = default_post_auth_redirect())]
-    pub post_auth_redirect: RedirectTargetConfig,
-}
-
-impl<Creds> Default for BasicAuthContextConfig<Creds>
-where
-    Creds: BasicAuthCred + Serialize + for<'a> Deserialize<'a>,
-{
-    fn default() -> Self {
-        Self {
-            creds: BasicAuthCredsConfig::default(),
-            post_auth_redirect: default_post_auth_redirect(),
-            real_ip_access: None,
-            zones: Vec::new(),
-            realm: None,
-        }
-    }
-}
-
-fn default_zone_prefix() -> String {
-    "/basic".to_string()
-}
-
-fn default_login_subpath() -> String {
-    "/login".to_string()
-}
-
-fn default_logout_subpath() -> String {
-    "/logout".to_string()
-}
-
-fn default_post_auth_redirect() -> RedirectTargetConfig {
-    RedirectTargetConfig::strict_default("/")
-}
-
-fn default_realm() -> String {
-    "securitydept".to_string()
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BasicAuthProtocolResponseKind {
@@ -200,27 +117,13 @@ pub enum BasicAuthContextError {
 
 pub type BasicAuthContextResult<T> = Result<T, BasicAuthContextError>;
 
-impl<Creds> BasicAuthContextConfig<Creds>
-where
-    Creds: BasicAuthCred + Serialize + for<'a> Deserialize<'a>,
-{
-    pub fn validate(&self) -> BasicAuthContextResult<()> {
-        BasicAuthContext::from_config(self.clone()).map(|_| ())
-    }
-
-    pub fn ensure_real_ip_allowed(
-        &self,
-        resolved_client_ip: &ResolvedClientIp,
-    ) -> BasicAuthContextResult<()> {
-        BasicAuthContext::from_config(self.clone())?.ensure_real_ip_allowed(resolved_client_ip)
-    }
-}
-
 impl<Creds> BasicAuthContext<Creds>
 where
     Creds: BasicAuthCred + Serialize + for<'a> Deserialize<'a>,
 {
-    pub fn from_config(config: BasicAuthContextConfig<Creds>) -> BasicAuthContextResult<Self> {
+    pub fn from_resolved_config(
+        config: ResolvedBasicAuthContextConfig<Creds>,
+    ) -> BasicAuthContextResult<Self> {
         let post_auth_redirect_resolver = Arc::new(
             UriRelativeRedirectTargetResolver::from_config(config.post_auth_redirect.clone())
                 .map_err(|source| BasicAuthContextError::RedirectTarget { source })?,
@@ -233,7 +136,7 @@ where
             .map_err(|source| BasicAuthContextError::RealIp { source })?
             .map(Arc::new);
         let post_auth_redirect = Arc::new(config.post_auth_redirect.clone());
-        let realm = config.realm.unwrap_or_else(default_realm);
+        let realm = config.realm;
 
         let mut context = Self {
             creds: Arc::new(config.creds),
@@ -248,7 +151,7 @@ where
         context.zones = config
             .zones
             .into_iter()
-            .map(|zone| BasicAuthZone::from_context_config(zone, &context))
+            .map(BasicAuthZone::from_resolved_config)
             .collect::<BasicAuthContextResult<Vec<_>>>()?;
 
         Ok(context)
@@ -287,6 +190,25 @@ where
 }
 
 impl BasicAuthZone {
+    pub fn from_resolved_config(
+        config: ResolvedBasicAuthZoneConfig,
+    ) -> BasicAuthContextResult<Self> {
+        let post_auth_redirect_resolver = Arc::new(
+            UriRelativeRedirectTargetResolver::from_config(config.post_auth_redirect.clone())
+                .map_err(|source| BasicAuthContextError::RedirectTarget { source })?,
+        );
+        let zone_prefix = WebRoute::new(config.zone_prefix);
+
+        Ok(Self {
+            zone_prefix: zone_prefix.clone(),
+            login_path: zone_prefix.join(config.login_subpath),
+            logout_path: zone_prefix.join(config.logout_subpath),
+            post_auth_redirect: Arc::new(config.post_auth_redirect),
+            realm: config.realm,
+            post_auth_redirect_resolver,
+        })
+    }
+
     pub fn from_isolated_config(config: BasicAuthZoneConfig) -> BasicAuthContextResult<Self> {
         let post_auth_redirect = config
             .post_auth_redirect
@@ -595,13 +517,18 @@ mod tests {
 
     #[test]
     fn test_basic_auth_context_rejects_invalid_real_ip_access_config() {
-        let error = BasicAuthContextConfig::<TestCred>::builder()
+        let config = BasicAuthContextConfig::<TestCred>::builder()
             .real_ip_access(RealIpAccessConfig::default())
-            .build()
-            .validate()
+            .build();
+        let error = BasicAuthContextConfigSource::resolve_all(&config)
             .expect_err("empty real-ip access config should be rejected");
 
-        assert!(matches!(error, BasicAuthContextError::RealIp { .. }));
+        assert!(matches!(
+            error,
+            BasicAuthContextConfigBuildError::Context {
+                source: BasicAuthContextError::RealIp { .. }
+            }
+        ));
     }
 
     #[test]
@@ -621,14 +548,86 @@ mod tests {
             header_name: Some("x-forwarded-for".to_string()),
         };
 
-        config
+        let context = BasicAuthContext::from_resolved_config(
+            BasicAuthContextConfigSource::resolve_all(&config)
+                .expect("basic auth config should resolve"),
+        )
+        .expect("basic auth context should build");
+
+        context
             .ensure_real_ip_allowed(&resolved)
             .expect("resolved client IP should be allowed");
     }
 
     #[test]
+    fn fixed_single_zone_validator_rejects_non_matching_zone_paths() {
+        let config = BasicAuthContextConfig::<TestCred>::builder()
+            .zones(vec![
+                BasicAuthZoneConfig::builder()
+                    .zone_prefix("/internal-basic".to_string())
+                    .build(),
+            ])
+            .build();
+        let validator =
+            BasicAuthContextFixedSingleZonePathValidator::new("/basic", "/login", "/logout");
+
+        let error = BasicAuthContextConfigSource::resolve_all_with_validator(&config, &validator)
+            .expect_err("unexpected zone path should be rejected");
+
+        assert!(matches!(
+            error,
+            BasicAuthContextConfigBuildError::Validation { source }
+                if source.field_path == "zones[0].zone_prefix"
+                    && source.code == "fixed_zone_path_conflict"
+        ));
+    }
+
+    #[test]
+    fn fixed_post_auth_redirect_validator_rejects_override() {
+        let config = BasicAuthContextConfig::<TestCred>::builder()
+            .zones(vec![BasicAuthZoneConfig::default()])
+            .post_auth_redirect(RedirectTargetConfig::strict_default("/admin"))
+            .build();
+        let validator = BasicAuthContextFixedPostAuthRedirectValidator::new(
+            RedirectTargetConfig::strict_default("/"),
+        );
+
+        let error = BasicAuthContextConfigSource::resolve_all_with_validator(&config, &validator)
+            .expect_err("unexpected post_auth_redirect should be rejected");
+
+        assert!(matches!(
+            error,
+            BasicAuthContextConfigBuildError::Validation { source }
+                if source.field_path == "post_auth_redirect"
+                    && source.code == "fixed_post_auth_redirect_conflict"
+        ));
+    }
+
+    #[test]
+    fn zone_post_auth_redirect_override_validator_rejects_zone_override() {
+        let config = BasicAuthContextConfig::<TestCred>::builder()
+            .zones(vec![
+                BasicAuthZoneConfig::builder()
+                    .post_auth_redirect(RedirectTargetConfig::strict_default("/app"))
+                    .build(),
+            ])
+            .build();
+        let validator = BasicAuthContextRejectZonePostAuthRedirectOverrideValidator;
+
+        let error = BasicAuthContextConfigSource::resolve_all_with_validator(&config, &validator)
+            .expect_err("zone-level post_auth_redirect should be rejected");
+
+        assert!(matches!(
+            error,
+            BasicAuthContextConfigBuildError::Validation { source }
+                if source.field_path == "zones[0].post_auth_redirect"
+                    && source.code == "zone_post_auth_redirect_override_forbidden"
+        ));
+    }
+
+    #[test]
     fn test_basic_auth_context_builds_zones_with_global_defaults() {
-        let context = BasicAuthContextConfig::<TestCred>::builder()
+        let config = BasicAuthContextConfig::<TestCred>::builder()
             .realm("corp".to_string())
             .post_auth_redirect(RedirectTargetConfig::strict_default("/console"))
             .zones(vec![
@@ -637,7 +636,11 @@ mod tests {
                     .build(),
             ])
             .build();
-        let context = BasicAuthContext::from_config(context).expect("context should build");
+        let context = BasicAuthContext::from_resolved_config(
+            BasicAuthContextConfigSource::resolve_all(&config)
+                .expect("basic auth config should resolve"),
+        )
+        .expect("context should build");
 
         assert_eq!(context.realm, "corp");
         assert_eq!(context.zones.len(), 1);
@@ -652,14 +655,16 @@ mod tests {
 
     #[test]
     fn test_basic_auth_context_finds_zone_for_request_path() {
-        let context = BasicAuthContext::from_config(
-            BasicAuthContextConfig::<TestCred>::builder()
-                .zones(vec![
-                    BasicAuthZoneConfig::builder()
-                        .zone_prefix("/internal/basic".to_string())
-                        .build(),
-                ])
-                .build(),
+        let config = BasicAuthContextConfig::<TestCred>::builder()
+            .zones(vec![
+                BasicAuthZoneConfig::builder()
+                    .zone_prefix("/internal/basic".to_string())
+                    .build(),
+            ])
+            .build();
+        let context = BasicAuthContext::from_resolved_config(
+            BasicAuthContextConfigSource::resolve_all(&config)
+                .expect("basic auth config should resolve"),
         )
         .expect("context should build");
 

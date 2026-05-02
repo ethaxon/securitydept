@@ -17,6 +17,7 @@ use serde_with::{PickFirst, serde_as};
 use crate::{OAuthResourceServerError, OAuthResourceServerResult};
 
 #[serde_as]
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize)]
 pub struct OAuthResourceServerConfig {
     /// Shared remote-provider connectivity settings.
@@ -25,13 +26,22 @@ pub struct OAuthResourceServerConfig {
     /// Accepted `aud` values. Empty means audience validation is disabled.
     #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
     #[serde(default)]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "securitydept_utils::schema::StringOrVecString")
+    )]
     pub audiences: Vec<String>,
     /// Required scopes. Empty means no scope requirement is enforced.
     #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
     #[serde(default)]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "securitydept_utils::schema::StringOrVecString")
+    )]
     pub required_scopes: Vec<String>,
     /// Allowed clock skew when validating `exp` and `nbf`.
     #[serde(default = "default_clock_skew", with = "humantime_serde")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
     pub clock_skew: Duration,
     /// Optional opaque-token introspection configuration.
     ///
@@ -184,6 +194,7 @@ fn default_clock_skew() -> Duration {
 #[cfg(test)]
 mod tests {
     use securitydept_oauth_provider::{OAuthProviderRemoteConfig, OidcSharedConfig};
+    use securitydept_utils::secret::SecretString;
 
     #[cfg(feature = "jwe")]
     use super::OAuthResourceServerJweConfig;
@@ -345,7 +356,7 @@ mod tests {
                 ..Default::default()
             },
             client_id: Some("shared-app".to_string()),
-            client_secret: Some("shared-secret".to_string()),
+            client_secret: Some(SecretString::from("shared-secret")),
             ..Default::default()
         };
 
@@ -362,7 +373,10 @@ mod tests {
             "introspection.client_id should be inherited from [oidc]"
         );
         assert_eq!(
-            introspection.client_secret.as_deref(),
+            introspection
+                .client_secret
+                .as_ref()
+                .map(SecretString::expose_secret),
             Some("shared-secret"),
             "introspection.client_secret should be inherited from [oidc]"
         );
@@ -488,7 +502,7 @@ mod tests {
                 ..Default::default()
             },
             client_id: Some("shared-app".to_string()),
-            client_secret: Some("shared-secret".to_string()),
+            client_secret: Some(SecretString::from("shared-secret")),
             ..Default::default()
         };
 

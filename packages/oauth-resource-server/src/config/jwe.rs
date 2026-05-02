@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct OAuthResourceServerJweConfig {
     /// Path to a local JWKS file containing one or more private keys used to
@@ -38,5 +39,6 @@ pub struct OAuthResourceServerJweConfig {
     /// Poll interval for watching local JWE key files for key rotation.
     /// Set to `"0s"` to disable background watching.
     #[serde(default, with = "humantime_serde")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
     pub watch_interval: Duration,
 }

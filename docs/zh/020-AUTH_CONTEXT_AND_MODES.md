@@ -120,6 +120,23 @@ Post-auth redirects 不是 unchecked raw URLs。每个 context 都必须将 redi
 - frontend-mode config projection：`/api/auth/token-set/frontend-mode/config`
 - frontend-mode browser callback route：由 host application / adapter integration 拥有
 
+## Rust Host Config Resolution
+
+Rust host application 应把 raw config、resolved config 与 runtime construction 视为三个分离阶段。
+
+- `XxxConfig` 是 serde-facing shape，用于文件、环境变量 overlay 与 schema generation。
+- `XxxConfigSource` 是 host extension point。它读取 component fields，并拥有 `resolve_*`、`resolve_all(...)`、`resolve_all_with_validator(...)`。
+- `ResolvedXxxConfig` 是 runtime-facing shape。Services 与 contexts 通过 `from_resolved_config(...)` 或 mode-specific resolved constructors 消费 resolved config。
+- Validators 表达 host deployment policy。内置 fixed redirect validators 会拒绝用户配置覆盖 host-owned callback paths。
+
+该模型适用于 token-set backend/frontend OIDC mode、Basic Auth context 与 session context。Host-only concepts 不进入 reusable config surface：source key、frontend config endpoint path、account binding、display metadata 与 audit context 属于 adopter application wrapper。
+
+带 secret 的 Rust config fields 使用 `SecretString`。它的 `Debug` 与普通 serialization 都会 redacted；runtime code 只有在 provider client 需要 raw value 的位置才显式调用 `expose_secret()`。
+
+`FrontendOidcModeConfigProjection` 继续作为 SecurityDept-owned frontend-safe projection DTO。除非显式启用 unsafe frontend-client-secret capability，它不包含 client secret。Host 需要 source key 或 route path 时，应使用自己的 DTO 包住 projection 并通过 `serde(flatten)` 组合，而不是把 host routing fields 加进 SecurityDept mode config。
+
+`ResourceTokenPrincipal` 是 verified resource token 的 host-facing projection。它暴露 subject、issuer、audiences、scopes、authorized party 等已验证 token facts；additional claims 在 projection 前会被过滤，raw token material、authorization headers、passwords 与 client/provider secret fields 不会进入 safe claims map。
+
 ## Ownership Rules
 
 - Basic Auth `zone` 只属于 `basic-auth-context`。

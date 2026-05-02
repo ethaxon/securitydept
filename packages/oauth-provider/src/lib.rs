@@ -12,4 +12,5 @@ pub use config::{
 pub use error::{OAuthProviderError, OAuthProviderResult};
 pub use models::{ExtraProviderMetadata, OAuthProviderMetadata, ProviderMetadataWithExtra};
 pub use runtime::OAuthProviderRuntime;
+pub use securitydept_utils::secret::SecretString;
 pub use shared::OidcSharedConfig;

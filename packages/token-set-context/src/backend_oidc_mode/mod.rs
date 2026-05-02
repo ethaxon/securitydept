@@ -59,7 +59,9 @@ pub use capabilities::{
 };
 // --- Public re-exports: config ---
 pub use config::{
-    BackendOidcModeConfig, BackendOidcModeConfigSource, ResolvedBackendOidcModeConfig,
+    BackendOidcModeConfig, BackendOidcModeConfigSource, BackendOidcModeConfigValidationError,
+    BackendOidcModeConfigValidator, BackendOidcModeFixedRedirectUriValidator,
+    NoopBackendOidcModeConfigValidator, ResolvedBackendOidcModeConfig,
 };
 // --- Public re-exports: metadata redemption ---
 pub use metadata_redemption::{

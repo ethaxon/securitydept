@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 
 /// Controls how a validated upstream bearer token may be propagated downstream.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum BearerPropagationPolicy {
@@ -26,6 +27,7 @@ fn default_true() -> bool {
 }
 
 /// Server-side token propagation configuration.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder)]
 pub struct TokenPropagatorConfig {
     /// Default propagation policy applied by the server.
@@ -53,6 +55,7 @@ impl Default for TokenPropagatorConfig {
 }
 
 /// Allowlist and safety guards for downstream targets.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default, TypedBuilder)]
 pub struct PropagationDestinationPolicy {
     /// Stable service identities that may receive forwarded credentials.
@@ -77,6 +80,7 @@ pub struct PropagationDestinationPolicy {
 }
 
 /// Normalized scheme used for downstream propagation rules.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum PropagationScheme {
@@ -94,6 +98,7 @@ impl PropagationScheme {
 }
 
 /// A single downstream target allowlist rule.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AllowedPropagationTarget {
@@ -113,6 +118,7 @@ pub enum AllowedPropagationTarget {
     DomainRegex {
         scheme: PropagationScheme,
         #[serde(with = "serde_regex")]
+        #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
         domain_regex: Regex,
         port: u16,
     },
@@ -196,6 +202,7 @@ impl Eq for AllowedPropagationTarget {}
 
 /// Additional token constraints evaluated before a bearer token may be
 /// forwarded.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default, TypedBuilder)]
 pub struct PropagatedTokenValidationConfig {
     /// Allowed issuers for the upstream token source.

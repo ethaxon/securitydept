@@ -36,6 +36,8 @@ pub use securitydept_oidc_client::{
 pub enum BackendConfigError {
     OidcClient(securitydept_oidc_client::OidcError),
     ResourceServer(securitydept_oauth_resource_server::OAuthResourceServerError),
+    BackendOidcModeValidation(crate::backend_oidc_mode::BackendOidcModeConfigValidationError),
+    FrontendOidcModeValidation(crate::frontend_oidc_mode::FrontendOidcModeConfigValidationError),
     BackendOidcModeRuntime(crate::backend_oidc_mode::BackendOidcModeRuntimeError),
     TokenPropagation(crate::access_token_substrate::TokenPropagatorError),
 }
@@ -45,6 +47,8 @@ impl std::fmt::Display for BackendConfigError {
         match self {
             Self::OidcClient(e) => write!(f, "oidc_client config: {e}"),
             Self::ResourceServer(e) => write!(f, "oauth_resource_server config: {e}"),
+            Self::BackendOidcModeValidation(e) => write!(f, "backend_oidc validation: {e}"),
+            Self::FrontendOidcModeValidation(e) => write!(f, "frontend_oidc validation: {e}"),
             Self::BackendOidcModeRuntime(e) => write!(f, "backend_oidc_mode_runtime: {e}"),
             Self::TokenPropagation(e) => write!(f, "token_propagation config: {e}"),
         }
@@ -56,6 +60,8 @@ impl std::error::Error for BackendConfigError {
         match self {
             Self::OidcClient(e) => Some(e),
             Self::ResourceServer(e) => Some(e),
+            Self::BackendOidcModeValidation(e) => Some(e),
+            Self::FrontendOidcModeValidation(e) => Some(e),
             Self::BackendOidcModeRuntime(e) => Some(e),
             Self::TokenPropagation(e) => Some(e),
         }
@@ -77,5 +83,17 @@ impl From<securitydept_oauth_resource_server::OAuthResourceServerError> for Back
 impl From<crate::backend_oidc_mode::BackendOidcModeRuntimeError> for BackendConfigError {
     fn from(e: crate::backend_oidc_mode::BackendOidcModeRuntimeError) -> Self {
         Self::BackendOidcModeRuntime(e)
+    }
+}
+
+impl From<crate::backend_oidc_mode::BackendOidcModeConfigValidationError> for BackendConfigError {
+    fn from(e: crate::backend_oidc_mode::BackendOidcModeConfigValidationError) -> Self {
+        Self::BackendOidcModeValidation(e)
+    }
+}
+
+impl From<crate::frontend_oidc_mode::FrontendOidcModeConfigValidationError> for BackendConfigError {
+    fn from(e: crate::frontend_oidc_mode::FrontendOidcModeConfigValidationError) -> Self {
+        Self::FrontendOidcModeValidation(e)
     }
 }

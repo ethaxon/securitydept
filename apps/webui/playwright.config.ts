@@ -1,5 +1,6 @@
 import { defineConfig } from "@playwright/test";
 import { getConfiguredProjects } from "./e2e/support/browser-harness.ts";
+import { DetectionSource } from "./e2e/support/browser-harness-contract.ts";
 import {
 	oidcIssuerUrl,
 	serverBaseUrl,
@@ -11,7 +12,6 @@ const webuiDir = import.meta.dirname;
 const configuredProjects = getConfiguredProjects({
 	includeBlocked: process.env.PLAYWRIGHT_INCLUDE_BLOCKED_PROJECTS === "1",
 });
-const runHeaded = process.env.PLAYWRIGHT_HEADED === "1";
 
 export default defineConfig({
 	testDir: "./e2e",
@@ -23,7 +23,6 @@ export default defineConfig({
 	},
 	use: {
 		baseURL: webuiBaseUrl,
-		headless: !runHeaded,
 		trace: "retain-on-failure",
 		screenshot: "only-on-failure",
 		video: "retain-on-failure",
@@ -32,9 +31,11 @@ export default defineConfig({
 		name: project.browserName,
 		use: {
 			browserName: project.browserName,
-			launchOptions: project.executablePath
-				? { executablePath: project.executablePath }
-				: undefined,
+			launchOptions:
+				project.detectionSource === DetectionSource.SystemExecutable &&
+				project.executablePath
+					? { executablePath: project.executablePath }
+					: undefined,
 		},
 	})),
 	webServer: [

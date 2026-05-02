@@ -8,7 +8,9 @@ use securitydept_core::{
     creds_manage::store::CredsManageStore,
     oidc::{OidcClient, OidcError},
     realip::{RealIpResolver, ResolvedClientIp, TransportContext},
-    session_context::OidcSessionAuthService,
+    session_context::{
+        OidcSessionAuthService, OidcSessionAuthServiceConfig, ResolvedSessionContextConfig,
+    },
     token_set_context::{
         access_token_substrate::{
             AccessTokenSubstrateResourceService, AccessTokenSubstrateRuntime,
@@ -24,7 +26,7 @@ use securitydept_core::{
 use url::Url;
 
 use crate::{
-    config::ServerConfig,
+    config::{SESSION_AUTH_CALLBACK_PATH, ServerConfig, TOKEN_SET_BACKEND_MODE_CALLBACK_PATH},
     error::{ServerError, ServerResult},
 };
 
@@ -32,6 +34,7 @@ use crate::{
 #[derive(Clone)]
 pub struct ServerState {
     pub config: Arc<ServerConfig>,
+    pub session_context_config: Arc<ResolvedSessionContextConfig>,
     pub creds_manage_store: Arc<CredsManageStore>,
     pub backend_oidc_runtime:
         Arc<BackendOidcModeRuntime<MokaPendingAuthStateMetadataRedemptionStore>>,
@@ -50,8 +53,12 @@ pub struct ServerState {
 
 impl ServerState {
     pub fn session_auth_service(&self) -> OidcSessionAuthService<'_, MokaPendingOauthStore> {
-        OidcSessionAuthService::new(self.oidc_client.as_deref(), &self.config.session_context)
-            .expect("session auth service config must be valid")
+        OidcSessionAuthService::new_with_config(
+            self.oidc_client.as_deref(),
+            &self.session_context_config,
+            OidcSessionAuthServiceConfig::new(SESSION_AUTH_CALLBACK_PATH),
+        )
+        .expect("session auth service config must be valid")
     }
 
     pub fn basic_auth_context_service(&self) -> BasicAuthContextService<'_, Argon2BasicAuthCred> {
@@ -85,7 +92,7 @@ impl ServerState {
         Ok(BackendOidcModeAuthService::new(
             oidc,
             &self.backend_oidc_runtime,
-            "/auth/token-set/backend-mode/callback",
+            TOKEN_SET_BACKEND_MODE_CALLBACK_PATH,
         ))
     }
 

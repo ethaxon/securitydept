@@ -1,12 +1,12 @@
 # Client SDK Guide
 
-This guide is the adopter-facing authority for the current TypeScript SDK surface. It explains package boundaries, stable entry points, runtime responsibilities, and the `0.2.0` / `0.3.0` scope split.
+This guide is the adopter-facing authority for the current TypeScript SDK surface. It explains package boundaries, stable entry points, runtime responsibilities, and the current `0.3.x` scope boundary.
 
 It does not carry roadmap history or implementation chronology. Use [100-ROADMAP.md](100-ROADMAP.md) for release backlog and deferred work, [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) for public-surface migration decisions, and [021-REFERENCE-APP-OUTPOSTS.md](021-REFERENCE-APP-OUTPOSTS.md) for the downstream adopter case.
 
 ## Goal
 
-The SDK gives browser, React, Angular, and server-host adopters explicit auth-context entry points without turning reference-app glue into public API. The current baseline is browser-owned token-set auth plus thin basic-auth/session helpers; mixed-custody, BFF, and server-side token ownership remain outside the `0.2.0` line.
+The SDK gives browser, React, Angular, and server-host adopters explicit auth-context entry points without turning reference-app glue into public API. The current `0.3.x` baseline is browser-owned token-set auth plus thin basic-auth/session helpers; mixed-custody, BFF, and server-side token ownership remain outside the SDK baseline.
 
 ## Current Scope and Boundaries
 
@@ -26,10 +26,10 @@ Non-authority:
 
 ## Top-Level Decisions
 
-- TypeScript is the only active SDK productization track for `0.2.x`.
+- TypeScript is the only active SDK productization track for `0.3.x`.
 - Framework adapters stay thin and consume shared core owners rather than becoming first owners of framework-neutral behavior.
 - Public surface changes move together with inventory, evidence, docs anchors, and migration ledger entries.
-- The current `0.2.x` release-preparation line is packaging, documentation, downstream-adopter correctness, and release readiness work; it does not add a new auth context.
+- The current `0.3.x` release-preparation line is packaging, documentation, downstream-adopter correctness, and release readiness work; it does not add a new auth context.
 
 ## Terminology and Naming
 
@@ -137,7 +137,7 @@ Server-host adopters should use the dedicated `/server` helper entries for host-
 
 ### `token-set-context`
 
-Server-side token ownership, BFF, and mixed-custody are deferred to `0.3.0`. The current SDK baseline is browser-owned token-set.
+Server-side token ownership, BFF, and mixed-custody remain outside the current `0.3.x` SDK baseline. The current SDK baseline is browser-owned token-set.
 
 ## Error Model
 
@@ -260,7 +260,7 @@ TanStack Router's `createSecureBeforeLoad()` likewise passes an unauthenticated 
 
 ### token-set-context-client v1 Scope Baseline
 
-The current `0.2.0` baseline is browser-owned token-set with framework adapters, registry lifecycle, route orchestration, readiness, callback handling, reference-app proof, and downstream adopter calibration.
+The current `0.3.x` baseline is browser-owned token-set with framework adapters, registry lifecycle, route orchestration, readiness, callback handling, reference-app proof, and downstream adopter calibration.
 
 Outside the baseline: mixed-custody, BFF, server-side token ownership, heavier chooser UI, and non-TS SDK productization.
 
@@ -278,7 +278,7 @@ Outside the baseline: mixed-custody, BFF, server-side token ownership, heavier c
 1. Pick the auth context first.
 2. Pick browser, framework, or server-host entry second.
 3. Confirm whether the entry is stable, provisional, or experimental.
-4. Accept the current `0.2.0` / `0.3.0` boundary before depending on token-set behavior.
+4. Accept the current `0.3.x` boundary before depending on token-set behavior.
 
 ### Verified Environments / Host Assumptions
 
@@ -421,7 +421,7 @@ This is the token-set React consumer surface. It owns groups/entries read and wr
 
 ### Current Bundle / Code Split Judgment
 
-Bundle and code-splitting are engineering optimization topics, not public-contract blockers for the current `0.2.x` line.
+Bundle and code-splitting are engineering optimization topics, not public-contract blockers for the current `0.3.x` line.
 
 ### Demo and OIDC Provider
 
@@ -433,7 +433,7 @@ Demos explain contracts. Provider choice and demo pages do not define package bo
 - Do not let framework adapters pollute foundation packages.
 - Do not introduce import-time side effects or default global polyfills.
 - Do not productize reference-app or adopter glue as SDK API.
-- Do not move mixed-custody / BFF / server-side token ownership into the `0.2.0` baseline.
+- Do not move mixed-custody / BFF / server-side token ownership into the current SDK baseline.
 - Move public surface, docs, examples, inventory, and migration notes together.
 
 [English](007-CLIENT_SDK_GUIDE.md) | [中文](../zh/007-CLIENT_SDK_GUIDE.md)

@@ -65,6 +65,8 @@ rustls = "0.23"
 bollard = { version = "0.20", default-features = false }
 moka = "0.12"
 iri-string = "0.7.12"
+redact = { version = "0.1", features = ["serde"] }
+schemars = { version = "1", features = ["derive"] }
 
 [profile.dev.package.swc_core]
 rustflags = ["-Zhint-mostly-unused"]

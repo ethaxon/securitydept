@@ -20,3 +20,4 @@ pub use models::{
 pub use pending_store::{MokaPendingOauthStore, MokaPendingOauthStoreConfig};
 pub use pending_store::{PendingOauth, PendingOauthStore, PendingOauthStoreConfig};
 pub use securitydept_oauth_provider::{OAuthProviderConfig, OAuthProviderRuntime};
+pub use securitydept_utils::secret::SecretString;

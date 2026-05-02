@@ -9,6 +9,7 @@
 //
 // `Feature::kind()` bridges the two representations.
 
+use securitydept_utils::secret::SecretString;
 use serde::{Deserialize, Serialize};
 
 use super::redirect::BackendOidcModeRedirectUriConfig;
@@ -16,6 +17,7 @@ use super::redirect::BackendOidcModeRedirectUriConfig;
 // ---- Refresh material protection ----
 
 /// Simple discriminant for refresh-material protection.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RefreshMaterialProtectionKind {
@@ -31,6 +33,7 @@ pub enum RefreshMaterialProtectionKind {
 /// `Sealed` carries the `master_key` instead of scattering it as a sibling
 /// field — the type system guarantees the key is present when sealing is
 /// enabled.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RefreshMaterialProtection {
@@ -40,7 +43,7 @@ pub enum RefreshMaterialProtection {
     /// Refresh tokens are sealed (AEAD-encrypted) by the server.
     Sealed {
         /// The AEAD master key used for sealing and unsealing.
-        master_key: String,
+        master_key: SecretString,
     },
 }
 
@@ -55,7 +58,7 @@ impl RefreshMaterialProtection {
     /// Extract the master key reference when in `Sealed` mode.
     pub fn master_key(&self) -> Option<&str> {
         match self {
-            Self::Sealed { master_key } => Some(master_key),
+            Self::Sealed { master_key } => Some(master_key.expose_secret()),
             Self::Passthrough => None,
         }
     }
@@ -64,6 +67,7 @@ impl RefreshMaterialProtection {
 // ---- Metadata delivery ----
 
 /// Simple discriminant for metadata delivery.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum MetadataDeliveryKind {
@@ -78,6 +82,11 @@ pub enum MetadataDeliveryKind {
 ///
 /// `Redemption` carries the store configuration, eliminating the need for a
 /// separate config field.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(
+    feature = "config-schema",
+    schemars(bound = "MC: schemars::JsonSchema")
+)]
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum MetadataDelivery<MC> {
@@ -106,6 +115,7 @@ impl<MC> MetadataDelivery<MC> {
 // ---- Post-auth redirect policy ----
 
 /// Simple discriminant for post-auth redirect policy.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PostAuthRedirectPolicyKind {
@@ -120,6 +130,7 @@ pub enum PostAuthRedirectPolicyKind {
 ///
 /// `Resolved` carries the redirect policy configuration, ensuring the
 /// allowlist config is always present when the resolved policy is selected.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PostAuthRedirectPolicy {
@@ -154,6 +165,7 @@ impl PostAuthRedirectPolicy {
 ///
 /// User info is a baseline capability of every `backend-oidc` deployment and
 /// is not modelled as a separate axis.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackendOidcModeCapabilities {
     #[serde(default)]
@@ -191,6 +203,7 @@ impl BackendOidcModeCapabilities {
 }
 
 /// Named presets for common `backend-oidc` capability bundles.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BackendOidcModePreset {

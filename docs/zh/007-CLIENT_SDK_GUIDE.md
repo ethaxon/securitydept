@@ -1,12 +1,12 @@
 # Client SDK 开发指南
 
-本文是当前 TypeScript SDK surface 的 adopter-facing 权威文档，负责说明 package 边界、稳定入口、runtime 职责，以及 `0.2.0` / `0.3.0` 的范围分割。
+本文是当前 TypeScript SDK surface 的 adopter-facing 权威文档，负责说明 package 边界、稳定入口、runtime 职责，以及当前 `0.3.x` 范围边界。
 
 它不承载 roadmap 历史或实现流水账。release backlog 与延期事项见 [100-ROADMAP.md](100-ROADMAP.md)，public surface migration 裁决见 [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md)，真实下游 adopter 案例见 [021-REFERENCE-APP-OUTPOSTS.md](021-REFERENCE-APP-OUTPOSTS.md)。
 
 ## 目标
 
-SDK 为 browser、React、Angular 与 server-host adopter 提供显式 auth-context 入口，而不是把 reference app glue 产品化成 public API。当前 baseline 是 browser-owned token-set auth，加上 thin basic-auth/session helpers；mixed-custody、BFF、server-side token ownership 继续留在 `0.2.0` 范围之外。
+SDK 为 browser、React、Angular 与 server-host adopter 提供显式 auth-context 入口，而不是把 reference app glue 产品化成 public API。当前 `0.3.x` baseline 是 browser-owned token-set auth，加上 thin basic-auth/session helpers；mixed-custody、BFF、server-side token ownership 继续留在 SDK baseline 之外。
 
 ## 当前范围与边界
 
@@ -26,10 +26,10 @@ SDK 为 browser、React、Angular 与 server-host adopter 提供显式 auth-cont
 
 ## 顶层结论
 
-- TypeScript 是 `0.2.x` 唯一 active SDK productization track。
+- TypeScript 是 `0.3.x` 唯一 active SDK productization track。
 - Framework adapter 保持 thin，并消费 shared core owner，不成为 framework-neutral behavior 的首个 owner。
 - Public surface 变化必须同步 inventory、evidence、docs anchor 与 migration ledger。
-- 当前 `0.2.x` release-prep 主线仍是 packaging、documentation、downstream-adopter correctness 与 release readiness 工作，不新增 auth context。
+- 当前 `0.3.x` release-prep 主线仍是 packaging、documentation、downstream-adopter correctness 与 release readiness 工作，不新增 auth context。
 
 ## 术语与命名
 
@@ -137,7 +137,7 @@ Server-host adopter 应使用 dedicated `/server` helper entry 做 host-neutral 
 
 ### `token-set-context`
 
-Server-side token ownership、BFF 与 mixed-custody 延期到 `0.3.0`。当前 SDK baseline 是 browser-owned token-set。
+Server-side token ownership、BFF 与 mixed-custody 仍在当前 `0.3.x` SDK baseline 之外。当前 SDK baseline 是 browser-owned token-set。
 
 ## 错误模型
 
@@ -260,7 +260,7 @@ TanStack Router 的 `createSecureBeforeLoad()` 同样会向 unauthenticated hand
 
 ### token-set-context-client v1 Scope Baseline
 
-当前 `0.2.0` baseline 是 browser-owned token-set，包含 framework adapters、registry lifecycle、route orchestration、readiness、callback handling、reference-app proof 与 downstream adopter calibration。
+当前 `0.3.x` baseline 是 browser-owned token-set，包含 framework adapters、registry lifecycle、route orchestration、readiness、callback handling、reference-app proof 与 downstream adopter calibration。
 
 baseline 之外：mixed-custody、BFF、server-side token ownership、更重的 chooser UI、非 TS SDK 产品化。
 
@@ -278,7 +278,7 @@ baseline 之外：mixed-custody、BFF、server-side token ownership、更重的 
 1. 先选择 auth context。
 2. 再选择 browser、framework 或 server-host entry。
 3. 确认入口是 stable、provisional 还是 experimental。
-4. 在依赖 token-set behavior 前，先接受当前 `0.2.0` / `0.3.0` 边界。
+4. 在依赖 token-set behavior 前，先接受当前 `0.3.x` 边界。
 
 ### Verified Environments / Host Assumptions
 
@@ -421,7 +421,7 @@ Registry 拥有 `primary` / `lazy` initialization priority、`preload`、`whenRe
 
 ### 当前 Bundle / Code Split 判断
 
-Bundle/code-splitting 是工程优化议题，不是当前 `0.2.x` line 的 public-contract blocker。
+Bundle/code-splitting 是工程优化议题，不是当前 `0.3.x` line 的 public-contract blocker。
 
 ### Demo 与 OIDC Provider
 
@@ -433,7 +433,7 @@ Demo 用于解释 contract。Provider 选择与 demo 页面不定义 package bou
 - 不要让 framework adapter 反向污染 foundation package。
 - 不要引入 import-time side effect 或默认 global polyfill。
 - 不要把 reference-app 或 adopter glue 产品化为 SDK API。
-- 不要把 mixed-custody / BFF / server-side token ownership 移入 `0.2.0` baseline。
+- 不要把 mixed-custody / BFF / server-side token ownership 移入当前 SDK baseline。
 - 修改 public surface、docs、examples、inventory 与 migration notes 时必须一起移动。
 
 [English](../en/007-CLIENT_SDK_GUIDE.md) | [中文](007-CLIENT_SDK_GUIDE.md)

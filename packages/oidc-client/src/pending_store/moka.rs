@@ -9,10 +9,12 @@ use crate::{
 };
 
 /// Configuration for PendingOauthStore.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize)]
 pub struct MokaPendingOauthStoreConfig {
     /// Time-to-live for pending OAuth entries.
     #[serde(default = "default_ttl", with = "humantime_serde")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
     pub ttl: Duration,
     /// Maximum number of entries in the cache.
     #[serde(default = "default_max_capacity")]

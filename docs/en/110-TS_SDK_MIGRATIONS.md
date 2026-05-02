@@ -161,7 +161,7 @@ Migration:
 
 ## Current Non-Goals
 
-These are not migration targets in the current stable line:
+These are not migration targets in the current SDK baseline:
 
 - mixed-custody token ownership
 - full BFF / server-side token-set ownership

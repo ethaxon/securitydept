@@ -3790,6 +3790,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c8d0fd677905edcbeedbf2edb6494d676f0e98d54d5cf9bda0b061cb8fb8aba"
 
 [[package]]
+name = "redact"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcecefd225c2fb69914585a7a6f8878929feb316a7ecb61c07d79e361d46d8ac"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4165,8 +4174,21 @@ checksum = "a2b42f36aa1cd011945615b92222f6bf73c599a102a300334cd7f8dbeec726cc"
 dependencies = [
  "dyn-clone",
  "ref-cast",
+ "schemars_derive",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d115b50f4aaeea07e79c1912f645c7513d81715d0420f8bc77a18c6260b307f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals",
+ "syn",
 ]
 
 [[package]]
@@ -4229,7 +4251,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-basic-auth-context"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 dependencies = [
  "http",
  "securitydept-creds",
@@ -4243,7 +4265,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-cli"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 dependencies = [
  "clap",
  "figment",
@@ -4260,7 +4282,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-core"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 dependencies = [
  "josekit",
  "jsonwebtoken",
@@ -4280,7 +4302,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-creds"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -4302,7 +4324,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-creds-manage"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 dependencies = [
  "arc-swap",
  "atomic-write-file",
@@ -4326,11 +4348,12 @@ dependencies = [
 
 [[package]]
 name = "securitydept-oauth-provider"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 dependencies = [
  "humantime-serde",
  "oauth2",
  "openidconnect",
+ "schemars 1.2.1",
  "securitydept-utils",
  "serde",
  "serde_json",
@@ -4341,14 +4364,16 @@ dependencies = [
 
 [[package]]
 name = "securitydept-oauth-resource-server"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 dependencies = [
  "chrono",
  "http",
  "humantime-serde",
  "josekit",
+ "jsonwebtoken",
  "oauth2",
  "openidconnect",
+ "schemars 1.2.1",
  "securitydept-creds",
  "securitydept-oauth-provider",
  "securitydept-utils",
@@ -4362,7 +4387,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-oidc-client"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 dependencies = [
  "base64 0.22.1",
  "boa_engine",
@@ -4371,6 +4396,7 @@ dependencies = [
  "humantime-serde",
  "moka",
  "openidconnect",
+ "schemars 1.2.1",
  "securitydept-oauth-provider",
  "securitydept-utils",
  "serde",
@@ -4386,7 +4412,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-realip"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -4410,7 +4436,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-server"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 dependencies = [
  "axum",
  "chrono",
@@ -4436,7 +4462,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-session-context"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 dependencies = [
  "http",
  "humantime-serde",
@@ -4455,7 +4481,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-token-set-context"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 dependencies = [
  "axum",
  "axum-reverse-proxy",
@@ -4468,6 +4494,7 @@ dependencies = [
  "orion",
  "regex",
  "rustls",
+ "schemars 1.2.1",
  "securitydept-creds",
  "securitydept-oauth-provider",
  "securitydept-oauth-resource-server",
@@ -4487,12 +4514,14 @@ dependencies = [
 
 [[package]]
 name = "securitydept-utils"
-version = "0.2.0"
+version = "0.3.0-beta.1"
 dependencies = [
  "http",
  "iri-string",
+ "redact",
  "regex",
  "rfc7239",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "serde_regex",
@@ -4576,6 +4605,17 @@ name = "serde_derive"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "serde_derive_internals"
+version = "0.29.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -132,38 +132,48 @@ pub struct RouteErrorEntry {
 
 fn classify_diagnosis(method: &str, path: &str) -> (RouteDiagnosisPolicy, Option<&'static str>) {
     match (method, path) {
-        ("GET", "/api/health") | ("GET", "/health") => (RouteDiagnosisPolicy::CapabilityCatalog, None),
-
-        ("GET", "/auth/session/login") => {
-            (RouteDiagnosisPolicy::Diagnosed, Some(AuthFlowOperation::SESSION_LOGIN))
-        }
-        ("GET", "/auth/session/callback") => {
-            (RouteDiagnosisPolicy::Diagnosed, Some(AuthFlowOperation::OIDC_CALLBACK))
-        }
-        ("POST", "/auth/session/logout") => {
-            (RouteDiagnosisPolicy::Diagnosed, Some(AuthFlowOperation::SESSION_LOGOUT))
-        }
-        ("GET", "/auth/session/user-info") => {
-            (RouteDiagnosisPolicy::Diagnosed, Some(AuthFlowOperation::SESSION_USER_INFO))
+        ("GET", "/api/health") | ("GET", "/health") => {
+            (RouteDiagnosisPolicy::CapabilityCatalog, None)
         }
 
-        ("GET", "/auth/token-set/backend-mode/login") => {
-            (RouteDiagnosisPolicy::Diagnosed, Some(AuthFlowOperation::OIDC_AUTHORIZE))
-        }
+        ("GET", "/auth/session/login") => (
+            RouteDiagnosisPolicy::Diagnosed,
+            Some(AuthFlowOperation::SESSION_LOGIN),
+        ),
+        ("GET", "/auth/session/callback") => (
+            RouteDiagnosisPolicy::Diagnosed,
+            Some(AuthFlowOperation::OIDC_CALLBACK),
+        ),
+        ("POST", "/auth/session/logout") => (
+            RouteDiagnosisPolicy::Diagnosed,
+            Some(AuthFlowOperation::SESSION_LOGOUT),
+        ),
+        ("GET", "/auth/session/user-info") => (
+            RouteDiagnosisPolicy::Diagnosed,
+            Some(AuthFlowOperation::SESSION_USER_INFO),
+        ),
+
+        ("GET", "/auth/token-set/backend-mode/login") => (
+            RouteDiagnosisPolicy::Diagnosed,
+            Some(AuthFlowOperation::OIDC_AUTHORIZE),
+        ),
         ("GET", "/auth/token-set/backend-mode/callback")
-        | ("POST", "/auth/token-set/backend-mode/callback") => {
-            (RouteDiagnosisPolicy::Diagnosed, Some(AuthFlowOperation::OIDC_CALLBACK))
-        }
-        ("POST", "/auth/token-set/backend-mode/refresh") => {
-            (RouteDiagnosisPolicy::Diagnosed, Some(AuthFlowOperation::OIDC_TOKEN_REFRESH))
-        }
+        | ("POST", "/auth/token-set/backend-mode/callback") => (
+            RouteDiagnosisPolicy::Diagnosed,
+            Some(AuthFlowOperation::OIDC_CALLBACK),
+        ),
+        ("POST", "/auth/token-set/backend-mode/refresh") => (
+            RouteDiagnosisPolicy::Diagnosed,
+            Some(AuthFlowOperation::OIDC_TOKEN_REFRESH),
+        ),
         ("POST", "/auth/token-set/backend-mode/metadata/redeem") => (
             RouteDiagnosisPolicy::Diagnosed,
             Some(AuthFlowOperation::OIDC_METADATA_REDEEM),
         ),
-        ("POST", "/auth/token-set/backend-mode/user-info") => {
-            (RouteDiagnosisPolicy::Diagnosed, Some(AuthFlowOperation::OIDC_USER_INFO))
-        }
+        ("POST", "/auth/token-set/backend-mode/user-info") => (
+            RouteDiagnosisPolicy::Diagnosed,
+            Some(AuthFlowOperation::OIDC_USER_INFO),
+        ),
 
         ("GET", "/api/auth/token-set/frontend-mode/config") => (
             RouteDiagnosisPolicy::Diagnosed,
@@ -179,11 +189,12 @@ fn classify_diagnosis(method: &str, path: &str) -> (RouteDiagnosisPolicy, Option
             Some(AuthFlowOperation::BASIC_AUTH_LOGOUT),
         ),
 
-        ("GET", "/api/forwardauth/traefik/{group}")
-        | ("GET", "/api/forwardauth/nginx/{group}") => (
-            RouteDiagnosisPolicy::ProtocolException,
-            Some(AuthFlowOperation::FORWARD_AUTH_CHECK),
-        ),
+        ("GET", "/api/forwardauth/traefik/{group}") | ("GET", "/api/forwardauth/nginx/{group}") => {
+            (
+                RouteDiagnosisPolicy::ProtocolException,
+                Some(AuthFlowOperation::FORWARD_AUTH_CHECK),
+            )
+        }
 
         ("ANY", "/api/propagation/{*rest}") => (
             RouteDiagnosisPolicy::Diagnosed,
@@ -241,8 +252,9 @@ fn classify_error(method: &str, path: &str) -> RouteErrorPolicy {
         ("GET", "/api/health") | ("GET", "/health") => RouteErrorPolicy::CapabilityCatalog,
         ("GET", "/basic/login") => RouteErrorPolicy::ProtocolChallengeException,
         ("POST", "/basic/logout") => RouteErrorPolicy::ProtocolPoisonException,
-        ("GET", "/api/forwardauth/traefik/{group}")
-        | ("GET", "/api/forwardauth/nginx/{group}") => RouteErrorPolicy::ProtocolChallengeException,
+        ("GET", "/api/forwardauth/traefik/{group}") | ("GET", "/api/forwardauth/nginx/{group}") => {
+            RouteErrorPolicy::ProtocolChallengeException
+        }
         ("POST", "/auth/token-set/backend-mode/metadata/redeem") => {
             RouteErrorPolicy::BusinessNotFound
         }
@@ -417,9 +429,12 @@ mod tests {
                 RouteDiagnosisPolicy::Diagnosed
                 | RouteDiagnosisPolicy::MiddlewareDiagnosed
                 | RouteDiagnosisPolicy::ProtocolException => {
-                    let op = entry
-                        .operation
-                        .unwrap_or_else(|| panic!("policy {:?} requires an operation: {} {}", entry.policy, entry.method, entry.path));
+                    let op = entry.operation.unwrap_or_else(|| {
+                        panic!(
+                            "policy {:?} requires an operation: {} {}",
+                            entry.policy, entry.method, entry.path
+                        )
+                    });
                     assert!(
                         known.contains(&op),
                         "operation {op:?} for {} {} is not a published AuthFlowOperation constant",
@@ -427,8 +442,7 @@ mod tests {
                         entry.path,
                     );
                 }
-                RouteDiagnosisPolicy::CapabilityCatalog
-                | RouteDiagnosisPolicy::StaticFallback => {
+                RouteDiagnosisPolicy::CapabilityCatalog | RouteDiagnosisPolicy::StaticFallback => {
                     assert!(
                         entry.operation.is_none(),
                         "{:?} entries must not pretend to be an auth-flow operation: {} {}",
@@ -466,11 +480,17 @@ mod tests {
 
         let basic_login = find_diag(&entries, "GET", "/basic/login");
         assert_eq!(basic_login.policy, RouteDiagnosisPolicy::ProtocolException);
-        assert_eq!(basic_login.operation, Some(AuthFlowOperation::BASIC_AUTH_LOGIN));
+        assert_eq!(
+            basic_login.operation,
+            Some(AuthFlowOperation::BASIC_AUTH_LOGIN)
+        );
 
         let basic_logout = find_diag(&entries, "POST", "/basic/logout");
         assert_eq!(basic_logout.policy, RouteDiagnosisPolicy::ProtocolException);
-        assert_eq!(basic_logout.operation, Some(AuthFlowOperation::BASIC_AUTH_LOGOUT));
+        assert_eq!(
+            basic_logout.operation,
+            Some(AuthFlowOperation::BASIC_AUTH_LOGOUT)
+        );
 
         for path in [
             "/api/forwardauth/traefik/{group}",
@@ -652,7 +672,8 @@ mod tests {
             assert_eq!(
                 find_err(&entries, method, path).policy,
                 RouteErrorPolicy::BasicAuthMirrorUnauthorized,
-                "{method} {path} must be classified as Basic-Auth mirror unauthorized, not shared envelope",
+                "{method} {path} must be classified as Basic-Auth mirror unauthorized, not shared \
+                 envelope",
             );
         }
 
@@ -756,7 +777,8 @@ mod tests {
             .unwrap_or_default();
         assert!(
             !content_type.starts_with("application/json"),
-            "Basic-Auth logout poison must not be served as application/json envelope (got {content_type:?})",
+            "Basic-Auth logout poison must not be served as application/json envelope (got \
+             {content_type:?})",
         );
     }
 
@@ -823,8 +845,9 @@ mod tests {
         // (`BasicAuthMirrorUnauthorized`) to the live response shape so
         // a future routing change cannot quietly retrofit this path
         // back into the shared-envelope baseline.
-        use axum::extract::ConnectInfo;
         use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+        use axum::extract::ConnectInfo;
 
         let app = build_router(test_server_state("policy-basic-mirror").await);
         let mut request = Request::builder()
@@ -848,7 +871,8 @@ mod tests {
             .unwrap_or_default();
         assert!(
             !content_type.starts_with("application/json"),
-            "Basic-Auth mirror unauthorized must not be wrapped in shared envelope (got {content_type:?})",
+            "Basic-Auth mirror unauthorized must not be wrapped in shared envelope (got \
+             {content_type:?})",
         );
 
         let entries = route_error_policy(ApiCatalogCapabilities {

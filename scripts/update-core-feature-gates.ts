@@ -108,6 +108,19 @@ const STANDALONE_EXTERNAL_REEXPORTS = new Map<string, string>([
 ]);
 
 const EXCLUDED_FEATURE_PATTERNS = [/(?:^|[-_])test$/];
+const EXCLUDED_FROM_FULL_FEATURES = new Set(["config-schema"]);
+const EXTRA_CORE_FEATURES = [
+	{
+		name: "config-schema",
+		deps: [
+			"utils-config-schema",
+			"oauth-provider-config-schema",
+			"oidc-client-config-schema",
+			"oauth-resource-server-config-schema",
+			"token-set-context-config-schema",
+		],
+	},
+];
 
 function main() {
 	const corePackage = parseCargoPackage(CORE_MANIFEST_PATH);
@@ -382,6 +395,9 @@ function buildOrderedFeatureNames(): string[] {
 			if (shouldSkipFeature(featureName)) {
 				continue;
 			}
+			if (EXCLUDED_FROM_FULL_FEATURES.has(featureName)) {
+				continue;
+			}
 
 			ordered.push(`${item.feature}-${featureName}`);
 		}
@@ -404,6 +420,11 @@ function renderFeaturesSection(
 		"# Keep this in sync with all user-facing features below.",
 		"# IMPORTANT: Any new feature added to this crate must also be added to `full`.",
 		renderFeature("full", fullFeatureDeps),
+		"",
+		"# Shared feature groups",
+		...EXTRA_CORE_FEATURES.map((feature) =>
+			renderFeature(feature.name, feature.deps),
+		),
 		"",
 		"# Reexports",
 		renderFeature("reexport-oauth2", features.get("reexport-oauth2") ?? []),

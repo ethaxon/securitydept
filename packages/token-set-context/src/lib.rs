@@ -41,3 +41,5 @@ pub mod orchestration;
 
 #[cfg(test)]
 mod tests;
+
+pub use securitydept_utils::secret::SecretString;

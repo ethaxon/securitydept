@@ -2,7 +2,7 @@
 
 本文是 SecurityDept 文档地图。README 是仓库入口页；本概览说明不同读者下一步应该看哪里，以及当前 artifact 边界是什么。
 
-本概览通过 release automation 与 roadmap 文档跟踪当前 stable release line，而 package 徽章与 release artifacts 会反映已发布版本。
+本概览通过 release automation 与 roadmap 文档跟踪当前 release line，而 package 徽章与 release artifacts 会反映已发布版本。
 
 ## 读者路径
 

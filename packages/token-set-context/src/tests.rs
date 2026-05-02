@@ -8,6 +8,8 @@ use serde_json::json;
 use url::Url;
 
 #[cfg(feature = "moka-pending-store")]
+use crate::SecretString;
+#[cfg(feature = "moka-pending-store")]
 use crate::backend_oidc_mode::{
     BackendOidcModeRuntime, BackendOidcModeRuntimeConfig, BackendOidcModeRuntimeResult,
     MetadataRedemptionId, MokaPendingAuthStateMetadataRedemptionConfig,
@@ -153,7 +155,7 @@ fn mediated_context_config_rejects_empty_master_key_on_build() {
     let error = BackendOidcModeRuntime::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
         BackendOidcModeRuntimeConfig {
             refresh_material_protection: RefreshMaterialProtection::Sealed {
-                master_key: String::new(),
+                master_key: SecretString::from(String::new()),
             },
             ..Default::default()
         },
@@ -170,7 +172,7 @@ fn mediated_context_round_trips_refresh_token() -> BackendOidcModeRuntimeResult<
         BackendOidcModeRuntime::<MokaPendingAuthStateMetadataRedemptionStore>::from_config(
             BackendOidcModeRuntimeConfig {
                 refresh_material_protection: RefreshMaterialProtection::Sealed {
-                    master_key: "01234567890123456789012345678901".to_string(),
+                    master_key: SecretString::from("01234567890123456789012345678901"),
                 },
                 ..Default::default()
             },

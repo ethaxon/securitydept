@@ -1,19 +1,31 @@
+pub mod config;
 #[cfg(feature = "service")]
 mod service;
 
-use std::{collections::HashMap, time::Duration as StdDuration};
+use std::collections::HashMap;
+#[cfg(test)]
+use std::time::Duration as StdDuration;
 
+pub use config::{
+    NoopSessionContextConfigValidator, ResolvedSessionContextConfig, SessionContextConfig,
+    SessionContextConfigSource, SessionContextConfigValidationError,
+    SessionContextConfigValidationFailure, SessionContextConfigValidator,
+    SessionContextFixedPostAuthRedirectValidator,
+};
 use http::StatusCode;
+#[cfg(test)]
+use securitydept_utils::redirect::RedirectTargetConfig;
 use securitydept_utils::{
     error::{ErrorPresentation, ToErrorPresentation, UserRecovery},
     principal::AuthenticatedPrincipal,
-    redirect::{RedirectTargetConfig, RedirectTargetError, UriRelativeRedirectTargetResolver},
+    redirect::RedirectTargetError,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 #[cfg(feature = "service")]
 pub use service::{
-    DevSessionAuthService, OidcSessionAuthService, SessionAuthServiceError, SessionAuthServiceTrait,
+    DevSessionAuthService, OidcSessionAuthService, OidcSessionAuthServiceConfig,
+    SessionAuthServiceError, SessionAuthServiceTrait,
 };
 use snafu::Snafu;
 use tower_sessions::{
@@ -57,75 +69,8 @@ impl From<SessionCookieSameSite> for SameSite {
     }
 }
 
-#[derive(Debug, Clone, Serialize, serde::Deserialize, TypedBuilder)]
-pub struct SessionContextConfig {
-    #[builder(default = DEFAULT_COOKIE_NAME.to_string())]
-    #[serde(default = "default_cookie_name")]
-    pub cookie_name: String,
-    #[builder(default = DEFAULT_SESSION_CONTEXT_KEY.to_string())]
-    #[serde(default = "default_session_context_key")]
-    pub session_context_key: String,
-    #[builder(default = "/".to_string())]
-    #[serde(default = "default_cookie_path")]
-    pub cookie_path: String,
-    #[builder(default = true)]
-    #[serde(default = "default_true")]
-    pub http_only: bool,
-    #[builder(default = false)]
-    #[serde(default)]
-    pub secure: bool,
-    #[builder(default)]
-    #[serde(default)]
-    pub same_site: SessionCookieSameSite,
-    #[builder(default = Some(StdDuration::from_secs(86_400)))]
-    #[serde(default = "default_ttl", with = "humantime_serde::option")]
-    pub ttl: Option<StdDuration>,
-    #[builder(default = default_post_auth_redirect())]
-    #[serde(default = "default_post_auth_redirect")]
-    pub post_auth_redirect: RedirectTargetConfig,
-}
-
-fn default_cookie_name() -> String {
-    DEFAULT_COOKIE_NAME.to_string()
-}
-
-fn default_session_context_key() -> String {
-    DEFAULT_SESSION_CONTEXT_KEY.to_string()
-}
-
-fn default_cookie_path() -> String {
-    "/".to_string()
-}
-
-fn default_true() -> bool {
-    true
-}
-
-fn default_ttl() -> Option<StdDuration> {
-    Some(StdDuration::from_secs(86_400))
-}
-
-fn default_post_auth_redirect() -> RedirectTargetConfig {
-    RedirectTargetConfig::strict_default("/")
-}
-
-impl Default for SessionContextConfig {
-    fn default() -> Self {
-        Self {
-            cookie_name: default_cookie_name(),
-            session_context_key: default_session_context_key(),
-            cookie_path: default_cookie_path(),
-            http_only: default_true(),
-            secure: false,
-            same_site: SessionCookieSameSite::default(),
-            ttl: default_ttl(),
-            post_auth_redirect: default_post_auth_redirect(),
-        }
-    }
-}
-
 pub fn build_session_layer<Store>(
-    config: &SessionContextConfig,
+    config: &ResolvedSessionContextConfig,
     store: Store,
 ) -> SessionManagerLayer<Store>
 where
@@ -192,19 +137,6 @@ impl ToErrorPresentation for SessionContextError {
     }
 }
 
-impl SessionContextConfig {
-    pub fn resolve_post_auth_redirect(
-        &self,
-        requested_post_auth_redirect: Option<&str>,
-    ) -> SessionContextResult<String> {
-        UriRelativeRedirectTargetResolver::from_config(self.post_auth_redirect.clone())
-            .map_err(|source| SessionContextError::RedirectTarget { source })?
-            .resolve_redirect_target(requested_post_auth_redirect)
-            .map(|value| value.to_string())
-            .map_err(|source| SessionContextError::RedirectTarget { source })
-    }
-}
-
 #[derive(Clone)]
 pub struct SessionContextSession {
     session: Session,
@@ -225,7 +157,7 @@ impl SessionContextSession {
         Self::from(session)
     }
 
-    pub fn from_config(session: Session, config: &SessionContextConfig) -> Self {
+    pub fn from_resolved_config(session: Session, config: &ResolvedSessionContextConfig) -> Self {
         Self {
             session,
             session_context_key: config.session_context_key.clone(),
@@ -358,14 +290,17 @@ mod tests {
 
     #[test]
     fn test_post_auth_redirect_resolution() {
-        let config = SessionContextConfig::builder()
-            .post_auth_redirect(RedirectTargetConfig::dynamic_default_and_dynamic_targets(
-                "/",
-                [RedirectTargetRule::Strict {
-                    value: "/app".to_string(),
-                }],
-            ))
-            .build();
+        let config = SessionContextConfigSource::resolve_all(
+            &SessionContextConfig::builder()
+                .post_auth_redirect(RedirectTargetConfig::dynamic_default_and_dynamic_targets(
+                    "/",
+                    [RedirectTargetRule::Strict {
+                        value: "/app".to_string(),
+                    }],
+                ))
+                .build(),
+        )
+        .expect("session context config should resolve");
 
         assert_eq!(
             config
@@ -379,5 +314,25 @@ mod tests {
                 .expect("dynamic redirect should resolve"),
             "/app"
         );
+    }
+
+    #[test]
+    fn fixed_post_auth_redirect_validator_rejects_override() {
+        let config = SessionContextConfig::builder()
+            .post_auth_redirect(RedirectTargetConfig::strict_default("/admin"))
+            .build();
+        let validator = SessionContextFixedPostAuthRedirectValidator::new(
+            RedirectTargetConfig::strict_default("/"),
+        );
+
+        let error = SessionContextConfigSource::resolve_all_with_validator(&config, &validator)
+            .expect_err("unexpected session post_auth_redirect should be rejected");
+
+        assert!(matches!(
+            error,
+            SessionContextConfigValidationFailure::Validation { source }
+                if source.field_path == "post_auth_redirect"
+                    && source.code == "fixed_post_auth_redirect_conflict"
+        ));
     }
 }

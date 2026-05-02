@@ -11,9 +11,11 @@ use super::{
     SerializedPendingAuthStateMetadataRedemption,
 };
 
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MokaPendingAuthStateMetadataRedemptionConfig {
     #[serde(default = "default_metadata_redemption_ttl", with = "humantime_serde")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
     pub ttl: Duration,
     #[serde(default = "default_metadata_redemption_max_capacity")]
     pub max_capacity: u64,

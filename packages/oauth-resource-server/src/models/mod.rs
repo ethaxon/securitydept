@@ -132,6 +132,7 @@ where
         _ => unreachable!("unexpected structured token variant"),
     };
     let additional = claims.get_additional().cloned().unwrap_or_default();
+    let projected_claims = project_additional_claims(additional.clone());
     let audiences = claims
         .get_audience()
         .map(|audience| audience.iter().cloned().collect())
@@ -151,8 +152,69 @@ where
             .get("azp")
             .and_then(Value::as_str)
             .map(str::to_string),
-        claims: additional,
+        claims: projected_claims,
     }
+}
+
+fn project_additional_claims(additional: HashMap<String, Value>) -> HashMap<String, Value> {
+    additional
+        .into_iter()
+        .filter(|(key, _)| !is_sensitive_additional_claim_key(key))
+        .collect()
+}
+
+fn is_sensitive_additional_claim_key(key: &str) -> bool {
+    let tokens = claim_key_tokens(key);
+    if tokens.is_empty() {
+        return false;
+    }
+    let token_slices = tokens.iter().map(String::as_str).collect::<Vec<_>>();
+
+    if matches!(
+        token_slices.as_slice(),
+        ["access", "token"] | ["refresh", "token"] | ["id", "token"] | ["client", "secret"]
+    ) {
+        return true;
+    }
+
+    tokens.iter().any(|token| {
+        matches!(
+            token.as_str(),
+            "authorization" | "password" | "secret" | "scope" | "scp" | "azp"
+        )
+    })
+}
+
+fn claim_key_tokens(key: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+
+    for character in key.chars() {
+        if !character.is_ascii_alphanumeric() {
+            if !current.is_empty() {
+                tokens.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+
+        if character.is_ascii_uppercase()
+            && !current.is_empty()
+            && current
+                .chars()
+                .last()
+                .is_some_and(|last| last.is_ascii_lowercase())
+        {
+            tokens.push(std::mem::take(&mut current));
+        }
+
+        current.push(character.to_ascii_lowercase());
+    }
+
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+
+    tokens
 }
 
 fn value_as_scope_list(value: &Value) -> Vec<String> {
@@ -187,9 +249,15 @@ pub fn scope_contains_all(scope: Option<&Scope>, required_scopes: &[String]) -> 
 
 #[cfg(test)]
 mod tests {
-    use securitydept_creds::Scope;
+    use std::collections::HashMap;
 
-    use super::scope_contains_all;
+    use securitydept_creds::{CoreJwtClaims, JwtHeader, Scope, TokenData};
+    use serde_json::json;
+
+    use super::{
+        claim_key_tokens, is_sensitive_additional_claim_key, scope_contains_all,
+        structured_token_principal,
+    };
 
     #[test]
     fn scope_policy_accepts_required_scopes() {
@@ -206,5 +274,75 @@ mod tests {
         let scope: Scope = serde_json::from_str("\"read\"").expect("scope should parse");
 
         assert!(!scope_contains_all(Some(&scope), &["write".to_string()]));
+    }
+
+    #[test]
+    fn sensitive_claim_key_matching_is_case_insensitive_and_separator_agnostic() {
+        assert_eq!(claim_key_tokens("clientSecret"), vec!["client", "secret"]);
+        assert!(is_sensitive_additional_claim_key("access_token"));
+        assert!(is_sensitive_additional_claim_key("refreshToken"));
+        assert!(is_sensitive_additional_claim_key("id-token"));
+        assert!(is_sensitive_additional_claim_key("Authorization"));
+        assert!(is_sensitive_additional_claim_key("authorization_header"));
+        assert!(is_sensitive_additional_claim_key("client_secret"));
+        assert!(is_sensitive_additional_claim_key("client-secret"));
+        assert!(is_sensitive_additional_claim_key("provider_secret"));
+        assert!(!is_sensitive_additional_claim_key("scoped_feature"));
+        assert!(!is_sensitive_additional_claim_key("secretariat"));
+    }
+
+    #[test]
+    fn structured_token_principal_projects_only_safe_additional_claims() {
+        let mut additional = HashMap::new();
+        additional.insert("access_token".to_string(), json!("at-1"));
+        additional.insert("refreshToken".to_string(), json!("rt-1"));
+        additional.insert("id-token".to_string(), json!("id-1"));
+        additional.insert("Authorization".to_string(), json!("Bearer test"));
+        additional.insert("clientSecret".to_string(), json!("top-secret"));
+        additional.insert("provider_secret".to_string(), json!("nested-secret"));
+        additional.insert("password".to_string(), json!("p@ss"));
+        additional.insert("scope".to_string(), json!("read write"));
+        additional.insert("scp".to_string(), json!(["read", "write"]));
+        additional.insert("azp".to_string(), json!("webui-client"));
+        additional.insert("tenant".to_string(), json!("acme"));
+        additional.insert("feature_flags".to_string(), json!(["alpha"]));
+
+        let principal =
+            structured_token_principal(&TokenData::JWT(Box::new(jsonwebtoken::TokenData {
+                header: JwtHeader::default(),
+                claims: CoreJwtClaims {
+                    subject: Some("user-1".to_string()),
+                    issuer: Some("https://issuer.example.com".to_string()),
+                    audience: Some(
+                        serde_json::from_value(json!(["api", "web"]))
+                            .expect("audience should parse"),
+                    ),
+                    expiration_time: Some(1_234_567_890),
+                    not_before: None,
+                    additional,
+                },
+            })));
+
+        assert_eq!(principal.subject.as_deref(), Some("user-1"));
+        assert_eq!(principal.authorized_party.as_deref(), Some("webui-client"));
+        assert_eq!(
+            principal.scopes,
+            vec!["read".to_string(), "write".to_string()]
+        );
+        assert_eq!(principal.claims.get("tenant"), Some(&json!("acme")));
+        assert_eq!(
+            principal.claims.get("feature_flags"),
+            Some(&json!(["alpha"]))
+        );
+        assert!(!principal.claims.contains_key("access_token"));
+        assert!(!principal.claims.contains_key("refreshToken"));
+        assert!(!principal.claims.contains_key("id-token"));
+        assert!(!principal.claims.contains_key("Authorization"));
+        assert!(!principal.claims.contains_key("clientSecret"));
+        assert!(!principal.claims.contains_key("provider_secret"));
+        assert!(!principal.claims.contains_key("password"));
+        assert!(!principal.claims.contains_key("scope"));
+        assert!(!principal.claims.contains_key("scp"));
+        assert!(!principal.claims.contains_key("azp"));
     }
 }

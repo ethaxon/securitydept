@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-	detectBrowserCapabilities,
-	extractMissingSharedLibraryDetails,
-} from "../../e2e/support/browser-capability-detection.ts";
+import { detectBrowserCapabilities } from "../../e2e/support/browser-capability-detection.ts";
 import { buildExecutionBaselinePolicy } from "../../e2e/support/browser-execution-baseline-policy.ts";
 import {
-	BlockedReason,
 	BrowserAvailability,
 	ExecutionBaseline,
 	ExecutionBaselineRole,
@@ -23,9 +19,6 @@ describe("browser harness capability detection", () => {
 					: browserName === HarnessBrowserName.Webkit
 						? "/custom/runtime/webkit-entry"
 						: undefined,
-			probeWebkitRuntime: () => ({
-				availability: BrowserAvailability.Available,
-			}),
 		});
 
 		expect(capabilities).toEqual([
@@ -53,33 +46,18 @@ describe("browser harness capability detection", () => {
 		]);
 	});
 
-	it("derives missing host library details from runtime diagnostics", () => {
-		const blockedDetails = extractMissingSharedLibraryDetails(
-			"MiniBrowser: error while loading shared libraries: libicudata.so.74: cannot open shared object file: No such file or directory\n",
-		);
-
-		expect(blockedDetails).toBe(
-			"Missing host libraries observed from runtime probe: libicudata.so.74.",
-		);
-
+	it("treats detected managed webkit as available without runtime probing", () => {
 		const capabilities = detectBrowserCapabilities({
 			resolveManagedExecutablePath: (browserName) =>
 				browserName === HarnessBrowserName.Webkit
 					? "/custom/runtime/webkit-entry"
 					: undefined,
-			probeWebkitRuntime: () => ({
-				availability: BrowserAvailability.Blocked,
-				blockedReason: BlockedReason.HostDependenciesMissing,
-				blockedDetails,
-			}),
 		});
 
 		expect(capabilities[2]).toMatchObject({
 			browserName: HarnessBrowserName.Webkit,
-			availability: BrowserAvailability.Blocked,
-			blockedReason: BlockedReason.HostDependenciesMissing,
-			blockedDetails:
-				"Missing host libraries observed from runtime probe: libicudata.so.74.",
+			availability: BrowserAvailability.Available,
+			executablePath: "/custom/runtime/webkit-entry",
 		});
 	});
 

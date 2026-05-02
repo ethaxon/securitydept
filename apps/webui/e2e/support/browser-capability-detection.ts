@@ -1,8 +1,6 @@
-import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import {
-	BlockedReason,
 	BrowserAvailability,
 	DetectionSource,
 	ExecutionBaseline,
@@ -24,14 +22,6 @@ const browserExecutableOverrideEnv = {
 	[HarnessBrowserName.Webkit]: "SECURITYDEPT_PLAYWRIGHT_WEBKIT_EXECUTABLE_PATH",
 } as const satisfies Record<HarnessBrowserNameType, string>;
 
-export interface WebkitRuntimeProbeResult {
-	availability:
-		| typeof BrowserAvailability.Available
-		| typeof BrowserAvailability.Blocked;
-	blockedReason?: typeof BlockedReason.HostDependenciesMissing;
-	blockedDetails?: string;
-}
-
 export interface BrowserCapabilityDetectionAdapter {
 	env?: NodeJS.ProcessEnv;
 	fileExists?: (filePath: string) => boolean;
@@ -39,7 +29,6 @@ export interface BrowserCapabilityDetectionAdapter {
 	resolveManagedExecutablePath?: (
 		browserName: HarnessBrowserNameType,
 	) => string | undefined;
-	probeWebkitRuntime?: (executablePath: string) => WebkitRuntimeProbeResult;
 }
 
 export function detectExecutionBaseline(
@@ -48,46 +37,6 @@ export function detectExecutionBaseline(
 	return env.DISTROBOX_ENTER_PATH || env.CONTAINER_ID
 		? ExecutionBaseline.DistroboxHosted
 		: ExecutionBaseline.HostNative;
-}
-
-export function extractMissingSharedLibraryDetails(
-	stderr: string,
-): string | undefined {
-	if (!stderr.includes("error while loading shared libraries:")) {
-		return undefined;
-	}
-
-	const matches = stderr.match(/lib[^\s:]+\.so(?:\.\d+)*/g) ?? [];
-	const libraryNames = [...new Set(matches)];
-	if (libraryNames.length > 0) {
-		return `Missing host libraries observed from runtime probe: ${libraryNames.join(", ")}.`;
-	}
-
-	const firstLine = stderr.trim().split("\n")[0];
-	return firstLine.length > 0
-		? `Missing host libraries observed from runtime probe: ${firstLine}`
-		: "Missing host libraries observed from runtime probe.";
-}
-
-export function probeWebkitRuntime(
-	executablePath: string,
-): WebkitRuntimeProbeResult {
-	const result = spawnSync(executablePath, ["--version"], {
-		encoding: "utf8",
-		timeout: 3_000,
-	});
-	const blockedDetails = extractMissingSharedLibraryDetails(
-		result.stderr ?? "",
-	);
-	if (blockedDetails) {
-		return {
-			availability: BrowserAvailability.Blocked,
-			blockedReason: BlockedReason.HostDependenciesMissing,
-			blockedDetails,
-		};
-	}
-
-	return { availability: BrowserAvailability.Available };
 }
 
 function resolveExecutableOverride(
@@ -174,9 +123,6 @@ export function detectBrowserCapabilities(
 	const chromiumPath = resolveSystemChromiumExecutablePath();
 	const firefoxPath = resolveManagedExecutablePath(HarnessBrowserName.Firefox);
 	const webkitPath = resolveManagedExecutablePath(HarnessBrowserName.Webkit);
-	const webkitRuntimeProbe = webkitPath
-		? (adapter.probeWebkitRuntime ?? probeWebkitRuntime)(webkitPath)
-		: undefined;
 
 	return [
 		chromiumPath
@@ -208,23 +154,13 @@ export function detectBrowserCapabilities(
 					unavailableReason: UnavailableReason.ExecutableNotDetected,
 				},
 		webkitPath
-			? webkitRuntimeProbe?.availability === BrowserAvailability.Blocked
-				? {
-						browserName: HarnessBrowserName.Webkit,
-						availability: BrowserAvailability.Blocked,
-						executionBaseline,
-						executablePath: webkitPath,
-						detectionSource: DetectionSource.PlaywrightManaged,
-						blockedReason: webkitRuntimeProbe.blockedReason,
-						blockedDetails: webkitRuntimeProbe.blockedDetails,
-					}
-				: {
-						browserName: HarnessBrowserName.Webkit,
-						availability: BrowserAvailability.Available,
-						executionBaseline,
-						executablePath: webkitPath,
-						detectionSource: DetectionSource.PlaywrightManaged,
-					}
+			? {
+					browserName: HarnessBrowserName.Webkit,
+					availability: BrowserAvailability.Available,
+					executionBaseline,
+					executablePath: webkitPath,
+					detectionSource: DetectionSource.PlaywrightManaged,
+				}
 			: {
 					browserName: HarnessBrowserName.Webkit,
 					availability: BrowserAvailability.Unavailable,

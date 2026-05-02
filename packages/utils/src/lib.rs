@@ -4,4 +4,7 @@ pub mod http;
 pub mod observability;
 pub mod principal;
 pub mod redirect;
+#[cfg(feature = "config-schema")]
+pub mod schema;
+pub mod secret;
 pub mod ser;

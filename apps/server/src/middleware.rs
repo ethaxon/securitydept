@@ -242,7 +242,8 @@ pub async fn require_dashboard_auth(
     }
 
     if has_cookie_header {
-        let handle = SessionContextSession::from_config(session, &state.config.session_context);
+        let handle =
+            SessionContextSession::from_resolved_config(session, &state.session_context_config);
 
         match handle.get::<HashMap<String, Value>>().await {
             Ok(Some(_)) => {

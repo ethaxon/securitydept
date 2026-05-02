@@ -119,24 +119,27 @@ test.describe("basic-auth browser boundary", () => {
 
 		const errorPattern = challengeErrorPatterns[browserName] ?? /ERR_|NS_ERROR/;
 		const challengePage = await browser.newPage();
-		if (browserName === "webkit") {
-			const challengeResponse = await challengePage.goto(
-				`${basicAuthLoginPath}?post_auth_redirect_uri=%2Fplayground%2Fbasic-auth`,
-				{ waitUntil: "commit" },
-			);
-			expect(challengeResponse?.status()).toBe(401);
-			expect(challengeResponse?.headers()["www-authenticate"]).toContain(
-				'Basic realm="securitydept"',
-			);
-		} else {
-			await expect(
-				challengePage.goto(
+		try {
+			if (browserName === "webkit") {
+				const challengeResponse = await challengePage.goto(
 					`${basicAuthLoginPath}?post_auth_redirect_uri=%2Fplayground%2Fbasic-auth`,
 					{ waitUntil: "commit" },
-				),
-			).rejects.toThrow(errorPattern);
+				);
+				expect(challengeResponse?.status()).toBe(401);
+				expect(challengeResponse?.headers()["www-authenticate"]).toContain(
+					'Basic realm="securitydept"',
+				);
+			} else {
+				await expect(
+					challengePage.goto(
+						`${basicAuthLoginPath}?post_auth_redirect_uri=%2Fplayground%2Fbasic-auth`,
+						{ waitUntil: "commit" },
+					),
+				).rejects.toThrow(errorPattern);
+			}
+		} finally {
+			await challengePage.close();
 		}
-		await challengePage.close();
 		const logoutResult = await page.evaluate(async (logoutPath) => {
 			const response = await fetch(logoutPath, {
 				method: "POST",
@@ -191,46 +194,48 @@ test.describe("basic-auth browser boundary", () => {
 				),
 			},
 		});
-		const page = await context.newPage();
+		try {
+			const page = await context.newPage();
 
-		const initialProtectedResponse = await page.goto(
-			`${serverBaseUrl}/basic/api/entries`,
-		);
-		expect(initialProtectedResponse).not.toBeNull();
-		expect(initialProtectedResponse?.status()).toBe(200);
+			const initialProtectedResponse = await page.goto(
+				`${serverBaseUrl}/basic/api/entries`,
+			);
+			expect(initialProtectedResponse).not.toBeNull();
+			expect(initialProtectedResponse?.status()).toBe(200);
 
-		const logoutResult = await page.evaluate(async (logoutPath) => {
-			const response = await fetch(logoutPath, {
-				method: "POST",
-				headers: { Accept: "application/json" },
+			const logoutResult = await page.evaluate(async (logoutPath) => {
+				const response = await fetch(logoutPath, {
+					method: "POST",
+					headers: { Accept: "application/json" },
+				});
+				return {
+					status: response.status,
+					challenge: response.headers.get("WWW-Authenticate"),
+				};
+			}, basicAuthLogoutPath);
+
+			expect(logoutResult).toEqual({
+				status: 401,
+				challenge: null,
 			});
-			return {
-				status: response.status,
-				challenge: response.headers.get("WWW-Authenticate"),
-			};
-		}, basicAuthLogoutPath);
 
-		expect(logoutResult).toEqual({
-			status: 401,
-			challenge: null,
-		});
-
-		const postLogoutProtectedResult = await page.evaluate(async () => {
-			const response = await fetch("/basic/api/entries", {
-				method: "GET",
-				headers: { Accept: "application/json" },
+			const postLogoutProtectedResult = await page.evaluate(async () => {
+				const response = await fetch("/basic/api/entries", {
+					method: "GET",
+					headers: { Accept: "application/json" },
+				});
+				return {
+					status: response.status,
+					challenge: response.headers.get("WWW-Authenticate"),
+				};
 			});
-			return {
-				status: response.status,
-				challenge: response.headers.get("WWW-Authenticate"),
-			};
-		});
 
-		expect(postLogoutProtectedResult).toEqual({
-			status: 200,
-			challenge: null,
-		});
-
-		await context.close();
+			expect(postLogoutProtectedResult).toEqual({
+				status: 200,
+				challenge: null,
+			});
+		} finally {
+			await context.close();
+		}
 	});
 });

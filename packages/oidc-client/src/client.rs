@@ -1097,7 +1097,7 @@ where
             if let Some(client_secret) = self.config.client_secret.as_ref() {
                 params.push((
                     Cow::Borrowed("client_secret"),
-                    Cow::Owned(client_secret.clone()),
+                    Cow::Owned(client_secret.expose_secret().to_owned()),
                 ));
             }
         }
@@ -1121,7 +1121,7 @@ where
             let credentials = format!(
                 "{}:{}",
                 form_urlencode(&self.config.client_id),
-                form_urlencode(client_secret)
+                form_urlencode(client_secret.expose_secret())
             );
             let header_value = format!(
                 "Basic {}",
@@ -1306,7 +1306,7 @@ fn build_client(
     let client_secret = config
         .client_secret
         .as_ref()
-        .map(|value| ClientSecret::new(value.clone()));
+        .map(|value| ClientSecret::new(value.expose_secret().to_owned()));
 
     let introspection_endpoint = metadata
         .additional_metadata()

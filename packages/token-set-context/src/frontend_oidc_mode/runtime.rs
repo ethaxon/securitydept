@@ -112,6 +112,7 @@ impl FrontendOidcModeRuntime {
 #[cfg(test)]
 mod tests {
     use securitydept_oauth_provider::{OAuthProviderRemoteConfig, OidcSharedConfig};
+    use securitydept_utils::secret::SecretString;
 
     use super::*;
     use crate::frontend_oidc_mode::{
@@ -168,7 +169,7 @@ mod tests {
 
         let config = FrontendOidcModeConfig {
             oidc_client: securitydept_oidc_client::OidcClientRawConfig {
-                client_secret: Some("test-secret".to_string()),
+                client_secret: Some(SecretString::from("test-secret")),
                 ..Default::default()
             },
             capabilities: FrontendOidcModeCapabilities {

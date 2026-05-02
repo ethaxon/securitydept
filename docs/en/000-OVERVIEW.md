@@ -2,7 +2,7 @@
 
 This document is the map for the rest of the SecurityDept docs. The README is the repository landing page; this overview explains where each audience should go next and what the current artifact boundaries are.
 
-This overview tracks the current stable release line through the release automation and roadmap docs, while the package badges and release artifacts reflect the published version.
+This overview tracks the current release line through the release automation and roadmap docs, while the package badges and release artifacts reflect the published version.
 
 ## Audience Paths
 
@@ -96,7 +96,7 @@ Source docs live in `docs/en` and `docs/zh`. The VitePress site in `docsite/` sy
 ## Documentation Rules
 
 - User-facing docs describe current behavior or explicit future plans.
-- Historical implementation detail belongs outside stable docs.
+- Historical implementation detail belongs outside user-facing docs.
 - When README, overview, and a focused doc overlap, the focused doc owns the detailed contract.
 - English and Chinese docs should stay equivalent in meaning, with links pointing to the same-language folder when available.
 

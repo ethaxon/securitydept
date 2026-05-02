@@ -6,7 +6,10 @@ use securitydept_oidc_client::{
     OidcClientRawConfig, PendingOauthStoreConfig,
     config::{default_device_poll_interval, default_scopes},
 };
-use securitydept_utils::ser::CommaOrSpaceSeparated;
+use securitydept_utils::{
+    secret::{SecretString, deserialize_optional_secret_string},
+    ser::CommaOrSpaceSeparated,
+};
 use serde::Deserialize;
 use serde_with::{NoneAsEmptyString, PickFirst, serde_as};
 
@@ -22,15 +25,17 @@ use crate::{
 };
 
 #[serde_as]
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize)]
 pub struct TokenSetOidcSharedIntersectionConfig {
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub client_id: Option<String>,
 
     #[serde(default)]
-    #[serde_as(as = "NoneAsEmptyString")]
-    pub client_secret: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_secret_string")]
+    pub client_secret: Option<SecretString>,
 
     #[serde(default, flatten)]
     pub remote: OAuthProviderRemoteConfig,
@@ -40,10 +45,18 @@ pub struct TokenSetOidcSharedIntersectionConfig {
 
     #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
     #[serde(default = "default_scopes")]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "securitydept_utils::schema::StringOrVecString")
+    )]
     pub scopes: Vec<String>,
 
     #[serde_as(as = "PickFirst<(CommaOrSpaceSeparated<String>, _)>")]
     #[serde(default)]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "securitydept_utils::schema::StringOrVecString")
+    )]
     pub required_scopes: Vec<String>,
 
     #[serde(default)]
@@ -56,6 +69,7 @@ pub struct TokenSetOidcSharedIntersectionConfig {
     pub redirect_url: Option<String>,
 
     #[serde(default = "default_device_poll_interval", with = "humantime_serde")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
     pub device_poll_interval: Duration,
 }
 
@@ -171,6 +185,11 @@ where
     }
 }
 
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(
+    feature = "config-schema",
+    schemars(bound = "PC: schemars::JsonSchema, MC: schemars::JsonSchema")
+)]
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct TokenSetOidcSharedUnionConfig<PC, MC>
 where
@@ -275,24 +294,30 @@ where
 }
 
 #[serde_as]
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct OptionalOAuthProviderRemoteConfig {
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub well_known_url: Option<String>,
 
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub issuer_url: Option<String>,
 
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub jwks_uri: Option<String>,
 
     #[serde(default, with = "humantime_serde")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub metadata_refresh_interval: Option<Duration>,
 
     #[serde(default, with = "humantime_serde")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub jwks_refresh_interval: Option<Duration>,
 }
 
@@ -328,42 +353,61 @@ impl From<&OAuthProviderRemoteConfig> for OptionalOAuthProviderRemoteConfig {
 }
 
 #[serde_as]
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct OptionalOAuthProviderOidcConfig {
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub authorization_endpoint: Option<String>,
 
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub token_endpoint: Option<String>,
 
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub userinfo_endpoint: Option<String>,
 
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub introspection_endpoint: Option<String>,
 
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub revocation_endpoint: Option<String>,
 
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub device_authorization_endpoint: Option<String>,
 
     #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<CoreClientAuthMethod>, _)>>")]
     #[serde(default)]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "Option<securitydept_utils::schema::StringOrVecString>")
+    )]
     pub token_endpoint_auth_methods_supported: Option<Vec<CoreClientAuthMethod>>,
 
     #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<CoreJwsSigningAlgorithm>, _)>>")]
     #[serde(default)]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "Option<securitydept_utils::schema::StringOrVecString>")
+    )]
     pub id_token_signing_alg_values_supported: Option<Vec<CoreJwsSigningAlgorithm>>,
 
     #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<CoreJwsSigningAlgorithm>, _)>>")]
     #[serde(default)]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "Option<securitydept_utils::schema::StringOrVecString>")
+    )]
     pub userinfo_signing_alg_values_supported: Option<Vec<CoreJwsSigningAlgorithm>>,
 }
 
@@ -433,15 +477,17 @@ impl From<&OAuthProviderOidcConfig> for OptionalOAuthProviderOidcConfig {
 }
 
 #[serde_as]
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct OptionalTokenSetOidcSharedIntersectionConfig {
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub client_id: Option<String>,
 
     #[serde(default)]
-    #[serde_as(as = "NoneAsEmptyString")]
-    pub client_secret: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_secret_string")]
+    pub client_secret: Option<SecretString>,
 
     #[serde(default, flatten)]
     pub remote: OptionalOAuthProviderRemoteConfig,
@@ -451,10 +497,18 @@ pub struct OptionalTokenSetOidcSharedIntersectionConfig {
 
     #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<String>, _)>>")]
     #[serde(default)]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "Option<securitydept_utils::schema::StringOrVecString>")
+    )]
     pub scopes: Option<Vec<String>>,
 
     #[serde_as(as = "Option<PickFirst<(CommaOrSpaceSeparated<String>, _)>>")]
     #[serde(default)]
+    #[cfg_attr(
+        feature = "config-schema",
+        schemars(with = "Option<securitydept_utils::schema::StringOrVecString>")
+    )]
     pub required_scopes: Option<Vec<String>>,
 
     #[serde(default)]
@@ -467,6 +521,7 @@ pub struct OptionalTokenSetOidcSharedIntersectionConfig {
     pub redirect_url: Option<String>,
 
     #[serde(default, with = "humantime_serde")]
+    #[cfg_attr(feature = "config-schema", schemars(with = "Option<String>"))]
     pub device_poll_interval: Option<Duration>,
 }
 
@@ -490,6 +545,11 @@ where
     }
 }
 
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(
+    feature = "config-schema",
+    schemars(bound = "PC: schemars::JsonSchema, MC: schemars::JsonSchema")
+)]
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct BackendOidcModeOverrideConfig<PC, MC>
 where
@@ -515,6 +575,7 @@ where
     pub post_auth_redirect: Option<PostAuthRedirectPolicy>,
 }
 
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct FrontendOidcModeOverrideConfig {
     #[serde(default, flatten)]

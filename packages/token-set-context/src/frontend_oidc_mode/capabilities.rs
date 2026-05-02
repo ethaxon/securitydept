@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// When enabled, both the server (at startup) and the frontend client (at
 /// initialisation) should emit a prominent warning.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum UnsafeFrontendClientSecret {
@@ -69,6 +70,7 @@ impl UnsafeFrontendClientSecret {
 // ---------------------------------------------------------------------------
 
 /// All capability axes for `frontend-oidc` mode.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FrontendOidcModeCapabilities {
     /// Whether to expose `client_secret` to the frontend browser client.

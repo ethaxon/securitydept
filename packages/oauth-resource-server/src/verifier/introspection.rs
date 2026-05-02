@@ -1,4 +1,5 @@
 use oauth2::TokenIntrospectionResponse;
+use securitydept_utils::secret::SecretString;
 
 use crate::{
     OAuthResourceServerError, OAuthResourceServerIntrospectionConfig, OAuthResourceServerMetadata,
@@ -26,7 +27,10 @@ impl OAuthResourceServerVerifierIntrospection {
         let response = provider
             .introspect(
                 self.config.client_id.as_deref().unwrap_or_default(),
-                self.config.client_secret.as_deref(),
+                self.config
+                    .client_secret
+                    .as_ref()
+                    .map(SecretString::expose_secret),
                 token,
                 self.config.token_type_hint.as_deref(),
             )

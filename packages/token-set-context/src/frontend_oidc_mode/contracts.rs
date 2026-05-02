@@ -34,6 +34,7 @@ static FRONTEND_CLAIMS_CHECK_SCRIPT_CACHE: LazyLock<
 ///
 /// This is an extensible enum — future variants (e.g. a signed URL) can be
 /// added without breaking existing `Inline` consumers.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FrontendOidcModeClaimsCheckScript {
@@ -115,6 +116,7 @@ impl FrontendOidcModeClaimsCheckScript {
 /// The frontend OIDC client uses this to initialize its own `oauth4webapi`
 /// session — either via discovery (`well_known_url`) or via manual endpoint
 /// overrides.
+#[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FrontendOidcModeConfigProjection {
@@ -136,6 +138,7 @@ pub struct FrontendOidcModeConfigProjection {
         skip_serializing_if = "Duration::is_zero",
         with = "humantime_serde"
     )]
+    #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
     pub metadata_refresh_interval: Duration,
     /// How often the frontend should refresh the remote JWKS.
     /// `0` means no time-based refresh.
@@ -144,6 +147,7 @@ pub struct FrontendOidcModeConfigProjection {
         skip_serializing_if = "Duration::is_zero",
         with = "humantime_serde"
     )]
+    #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
     pub jwks_refresh_interval: Duration,
 
     // --- Provider OIDC endpoints (from OAuthProviderOidcConfig) ---
