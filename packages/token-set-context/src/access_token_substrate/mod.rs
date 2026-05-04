@@ -43,7 +43,8 @@ pub use capabilities::{TokenPropagation, TokenPropagationKind};
 // --- Config public re-exports ---
 pub use config::{
     AccessTokenSubstrateConfig, AccessTokenSubstrateConfigSource,
-    ResolvedAccessTokenSubstrateConfig,
+    AccessTokenSubstrateConfigValidationError, AccessTokenSubstrateConfigValidator,
+    NoopAccessTokenSubstrateConfigValidator, ResolvedAccessTokenSubstrateConfig,
 };
 // --- Axum concrete forwarder re-exports (feature-gated) ---
 #[cfg(feature = "axum-reverse-proxy-propagation-forwarder")]

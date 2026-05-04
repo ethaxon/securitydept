@@ -129,7 +129,7 @@ Rust host applications should treat raw config, resolved config, and runtime con
 - `ResolvedXxxConfig` is the runtime-facing shape. Services and contexts consume resolved config through `from_resolved_config(...)` or mode-specific resolved constructors.
 - Validators express host deployment policy. Built-in fixed redirect validators reject user config that tries to override host-owned callback paths.
 
-This model applies to token-set backend/frontend OIDC mode, Basic Auth context, and session context. Host-only concepts stay outside the reusable config surface: source keys, frontend config endpoint paths, account binding, display metadata, and audit context belong in the adopting application wrapper.
+This model applies to token-set backend/frontend OIDC mode, token-set access-token substrate, Basic Auth context, and session context. Host-only concepts stay outside the reusable config surface: source keys, frontend config endpoint paths, account binding, display metadata, and audit context belong in the adopting application wrapper.
 
 Secret-bearing Rust config fields use `SecretString`. Its `Debug` and ordinary serialization are redacted; runtime code must call `expose_secret()` explicitly where a provider client needs the raw value.
 

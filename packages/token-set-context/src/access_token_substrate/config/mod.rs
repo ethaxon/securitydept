@@ -5,6 +5,13 @@ use serde::Deserialize;
 use super::capabilities::TokenPropagation;
 use crate::orchestration::BackendConfigError;
 
+pub mod validator;
+
+pub use validator::{
+    AccessTokenSubstrateConfigValidationError, AccessTokenSubstrateConfigValidator,
+    NoopAccessTokenSubstrateConfigValidator,
+};
+
 // ---------------------------------------------------------------------------
 // Config source trait
 // ---------------------------------------------------------------------------
@@ -52,6 +59,26 @@ pub trait AccessTokenSubstrateConfigSource {
         &self,
         shared: Option<&OidcSharedConfig>,
     ) -> Result<ResolvedAccessTokenSubstrateConfig, BackendConfigError> {
+        let validator = NoopAccessTokenSubstrateConfigValidator;
+        self.resolve_all_with_validator(shared, &validator)
+    }
+
+    fn resolve_all_with_validator<V>(
+        &self,
+        shared: Option<&OidcSharedConfig>,
+        validator: &V,
+    ) -> Result<ResolvedAccessTokenSubstrateConfig, BackendConfigError>
+    where
+        V: AccessTokenSubstrateConfigValidator,
+    {
+        let raw_config = AccessTokenSubstrateConfig {
+            resource_server: self.resource_server_config().clone(),
+            token_propagation: self.token_propagation().clone(),
+        };
+        validator
+            .validate_raw_access_token_substrate_config(&raw_config)
+            .map_err(BackendConfigError::AccessTokenSubstrateValidation)?;
+
         let resource_server = if let Some(shared) = shared {
             self.resolve_resource_server(shared)?
         } else {
@@ -119,6 +146,11 @@ pub struct ResolvedAccessTokenSubstrateConfig {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
     use securitydept_oauth_provider::{OAuthProviderRemoteConfig, OidcSharedConfig};
     use securitydept_oauth_resource_server::OAuthResourceServerIntrospectionConfig;
     use securitydept_utils::secret::SecretString;
@@ -205,5 +237,75 @@ mod tests {
             resolved.token_propagation,
             TokenPropagation::Enabled { .. }
         ));
+    }
+
+    #[test]
+    fn resolve_all_with_validator_rejects_raw_config() {
+        struct RejectEnabledPropagation;
+
+        impl AccessTokenSubstrateConfigValidator for RejectEnabledPropagation {
+            fn validate_raw_access_token_substrate_config(
+                &self,
+                config: &AccessTokenSubstrateConfig,
+            ) -> Result<(), AccessTokenSubstrateConfigValidationError> {
+                if matches!(config.token_propagation, TokenPropagation::Enabled { .. }) {
+                    return Err(AccessTokenSubstrateConfigValidationError::new(
+                        "token_propagation",
+                        "disabled_by_host",
+                        "token propagation is disabled by the host",
+                    ));
+                }
+
+                Ok(())
+            }
+        }
+
+        use crate::access_token_substrate::propagation::TokenPropagatorConfig;
+
+        let raw = AccessTokenSubstrateConfig {
+            token_propagation: TokenPropagation::Enabled {
+                config: TokenPropagatorConfig::default(),
+            },
+            ..Default::default()
+        };
+
+        let error = raw
+            .resolve_all_with_validator(None, &RejectEnabledPropagation)
+            .expect_err("validator should reject enabled propagation");
+
+        assert!(matches!(
+            error,
+            BackendConfigError::AccessTokenSubstrateValidation(ref validation)
+                if validation.field_path == "token_propagation"
+                    && validation.code == "disabled_by_host"
+        ));
+    }
+
+    #[test]
+    fn resolve_all_with_validator_accepts_validator_composition() {
+        #[derive(Clone)]
+        struct CountValidator(Arc<AtomicUsize>);
+
+        impl AccessTokenSubstrateConfigValidator for CountValidator {
+            fn validate_raw_access_token_substrate_config(
+                &self,
+                _config: &AccessTokenSubstrateConfig,
+            ) -> Result<(), AccessTokenSubstrateConfigValidationError> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let validators = [
+            CountValidator(Arc::clone(&calls)),
+            CountValidator(Arc::clone(&calls)),
+        ];
+        let raw = AccessTokenSubstrateConfig::default();
+
+        raw.resolve_all_with_validator(None, &validators)
+            .expect("composed validators should pass");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 }

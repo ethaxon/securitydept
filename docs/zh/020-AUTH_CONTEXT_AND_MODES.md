@@ -129,7 +129,7 @@ Rust host application 应把 raw config、resolved config 与 runtime constructi
 - `ResolvedXxxConfig` 是 runtime-facing shape。Services 与 contexts 通过 `from_resolved_config(...)` 或 mode-specific resolved constructors 消费 resolved config。
 - Validators 表达 host deployment policy。内置 fixed redirect validators 会拒绝用户配置覆盖 host-owned callback paths。
 
-该模型适用于 token-set backend/frontend OIDC mode、Basic Auth context 与 session context。Host-only concepts 不进入 reusable config surface：source key、frontend config endpoint path、account binding、display metadata 与 audit context 属于 adopter application wrapper。
+该模型适用于 token-set backend/frontend OIDC mode、token-set access-token substrate、Basic Auth context 与 session context。Host-only concepts 不进入 reusable config surface：source key、frontend config endpoint path、account binding、display metadata 与 audit context 属于 adopter application wrapper。
 
 带 secret 的 Rust config fields 使用 `SecretString`。它的 `Debug` 与普通 serialization 都会 redacted；runtime code 只有在 provider client 需要 raw value 的位置才显式调用 `expose_secret()`。
 

@@ -4251,7 +4251,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-basic-auth-context"
-version = "0.3.0-beta.1"
+version = "0.3.0-beta.2"
 dependencies = [
  "http",
  "securitydept-creds",
@@ -4265,7 +4265,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-cli"
-version = "0.3.0-beta.1"
+version = "0.3.0-beta.2"
 dependencies = [
  "clap",
  "figment",
@@ -4282,7 +4282,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-core"
-version = "0.3.0-beta.1"
+version = "0.3.0-beta.2"
 dependencies = [
  "josekit",
  "jsonwebtoken",
@@ -4302,7 +4302,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-creds"
-version = "0.3.0-beta.1"
+version = "0.3.0-beta.2"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -4324,7 +4324,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-creds-manage"
-version = "0.3.0-beta.1"
+version = "0.3.0-beta.2"
 dependencies = [
  "arc-swap",
  "atomic-write-file",
@@ -4348,7 +4348,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-oauth-provider"
-version = "0.3.0-beta.1"
+version = "0.3.0-beta.2"
 dependencies = [
  "humantime-serde",
  "oauth2",
@@ -4364,7 +4364,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-oauth-resource-server"
-version = "0.3.0-beta.1"
+version = "0.3.0-beta.2"
 dependencies = [
  "chrono",
  "http",
@@ -4387,7 +4387,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-oidc-client"
-version = "0.3.0-beta.1"
+version = "0.3.0-beta.2"
 dependencies = [
  "base64 0.22.1",
  "boa_engine",
@@ -4412,7 +4412,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-realip"
-version = "0.3.0-beta.1"
+version = "0.3.0-beta.2"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -4436,7 +4436,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-server"
-version = "0.3.0-beta.1"
+version = "0.3.0-beta.2"
 dependencies = [
  "axum",
  "chrono",
@@ -4462,7 +4462,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-session-context"
-version = "0.3.0-beta.1"
+version = "0.3.0-beta.2"
 dependencies = [
  "http",
  "humantime-serde",
@@ -4481,7 +4481,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-token-set-context"
-version = "0.3.0-beta.1"
+version = "0.3.0-beta.2"
 dependencies = [
  "axum",
  "axum-reverse-proxy",
@@ -4514,7 +4514,7 @@ dependencies = [
 
 [[package]]
 name = "securitydept-utils"
-version = "0.3.0-beta.1"
+version = "0.3.0-beta.2"
 dependencies = [
  "http",
  "iri-string",

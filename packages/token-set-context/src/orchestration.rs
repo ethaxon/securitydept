@@ -36,6 +36,9 @@ pub use securitydept_oidc_client::{
 pub enum BackendConfigError {
     OidcClient(securitydept_oidc_client::OidcError),
     ResourceServer(securitydept_oauth_resource_server::OAuthResourceServerError),
+    AccessTokenSubstrateValidation(
+        crate::access_token_substrate::AccessTokenSubstrateConfigValidationError,
+    ),
     BackendOidcModeValidation(crate::backend_oidc_mode::BackendOidcModeConfigValidationError),
     FrontendOidcModeValidation(crate::frontend_oidc_mode::FrontendOidcModeConfigValidationError),
     BackendOidcModeRuntime(crate::backend_oidc_mode::BackendOidcModeRuntimeError),
@@ -47,6 +50,9 @@ impl std::fmt::Display for BackendConfigError {
         match self {
             Self::OidcClient(e) => write!(f, "oidc_client config: {e}"),
             Self::ResourceServer(e) => write!(f, "oauth_resource_server config: {e}"),
+            Self::AccessTokenSubstrateValidation(e) => {
+                write!(f, "access_token_substrate validation: {e}")
+            }
             Self::BackendOidcModeValidation(e) => write!(f, "backend_oidc validation: {e}"),
             Self::FrontendOidcModeValidation(e) => write!(f, "frontend_oidc validation: {e}"),
             Self::BackendOidcModeRuntime(e) => write!(f, "backend_oidc_mode_runtime: {e}"),
@@ -60,6 +66,7 @@ impl std::error::Error for BackendConfigError {
         match self {
             Self::OidcClient(e) => Some(e),
             Self::ResourceServer(e) => Some(e),
+            Self::AccessTokenSubstrateValidation(e) => Some(e),
             Self::BackendOidcModeValidation(e) => Some(e),
             Self::FrontendOidcModeValidation(e) => Some(e),
             Self::BackendOidcModeRuntime(e) => Some(e),
@@ -77,6 +84,14 @@ impl From<securitydept_oidc_client::OidcError> for BackendConfigError {
 impl From<securitydept_oauth_resource_server::OAuthResourceServerError> for BackendConfigError {
     fn from(e: securitydept_oauth_resource_server::OAuthResourceServerError) -> Self {
         Self::ResourceServer(e)
+    }
+}
+
+impl From<crate::access_token_substrate::AccessTokenSubstrateConfigValidationError>
+    for BackendConfigError
+{
+    fn from(e: crate::access_token_substrate::AccessTokenSubstrateConfigValidationError) -> Self {
+        Self::AccessTokenSubstrateValidation(e)
     }
 }
 

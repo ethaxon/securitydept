@@ -5,20 +5,30 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0-beta.2]
+
+### Added
+
+- Added validator-aware access-token substrate config resolution with `resolve_all_with_validator(...)`, validation errors, noop validator, and validator composition.
+
+### Changed
+
+- Split access-token substrate config into `config/mod.rs` and `config/validator.rs`, matching the other Rust host config modules.
+- Updated auth-context docs to include access-token substrate in the Rust host config resolution model.
+
 ## [0.3.0-beta.1]
 
 ### Added
 
 - Added `SecretString` for redacted Rust config secrets, with explicit raw exposure and `config-schema` password/write-only hints.
-- Added validator-aware Rust host config resolution for token-set OIDC modes, Basic Auth context, and session context, including host-supplied fixed path validators and validator composition.
+- Added validator-aware Rust host config resolution for token-set OIDC modes, access-token substrate, Basic Auth context, and session context, including host-supplied fixed path validators and validator composition.
 - Added `redact`/`schemars`-backed config-schema coverage for Rust host config crates, including OIDC client and OAuth resource-server configs.
 - Added secret-safe `ResourceTokenPrincipal` projection for verified resource tokens.
 
 ### Changed
 
-- Bumped release-managed Rust crates, TypeScript packages, apps, lockfiles, and shared metadata for `0.3.0-beta.1`.
 - Refactored Basic Auth and session context Rust config into the same `ConfigSource -> ResolvedConfig -> Service/Context` model used by token-set host config.
-- Split host config validators into dedicated modules and updated the reference server to construct services from resolved configs plus explicit validators.
+- Split host config validators, including access-token substrate validators, into dedicated modules and updated the reference server to construct services from resolved configs plus explicit validators.
 - Migrated OIDC/resource-server client secrets to `SecretString` and expanded related config/schema tests.
 - Updated Web UI e2e lifecycle cleanup, Rust test cache lane docs, and user-facing docs for the `0.3.x` release line.
 
