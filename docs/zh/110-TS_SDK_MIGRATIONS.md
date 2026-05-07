@@ -21,6 +21,38 @@ SDK 仍处于 `0.x`，但 public-surface changes 必须保持有纪律。
 
 ## 当前迁移说明
 
+### Client Environment 与 Backend-OIDC Web Host 边界
+
+Packages：
+
+- `@securitydept/client`
+- `@securitydept/client/web`
+- `@securitydept/token-set-context-client/backend-oidc-mode/web`
+
+变更：
+
+- Framework-neutral host capability resolution 现在由 client foundation 通过 typed `ClientEnvironment`、`WebClientEnvironment`、`PageClientEnvironment` 对象拥有。
+- `ClientRuntime` 仍是 core client 消费的 capability bundle；client environment 包含 canonical runtime，并可暴露同源 mirror 方便 helper 使用。
+- Web host preset 是面向 browser page、browser worker、service worker、browser-extension background 的显式 factory entry，不是 automatic host detection。
+- Context 与 adapter public helper 使用同一边界。Backend-OIDC web helper、basic-auth/session redirect helper，以及 framework adapter convenience helper 不得各自重复声明或猜测 transport/store/scheduler/clock/page dependencies。
+- Backend-OIDC web helper 按 host boundary 拆分：page-only helper 使用 page-explicit 命名；worker-safe helper 必须使用 host-injected environment/capability 或 restore-only 行为。
+
+迁移：
+
+- 在 host composition root 创建一个 environment，并把 `environment.runtime` 传给 core client。
+- Real page/tab/popup callback flow 使用 `createBrowserPageClientEnvironment(options)`。
+- Worker-like host 使用 `createBrowserWorkerClientEnvironment(options)`、`createServiceWorkerClientEnvironment(options)` 或 `createBrowserExtensionBackgroundClientEnvironment(options)`；需要 persistence/session store 时必须显式注入。
+- 不要在 service worker 或 extension background 中执行 page callback bootstrap。那里只运行 restore/token-state API；callback capture 只在 real page/popup document 中运行，或在测试中显式传入 fake page/callback-fragment capability。
+- 将 ambiguous page-global helper 名称迁移到已经改名的 page-explicit 名称，例如 `currentPageLocationAsPostAuthRedirectUri()`、`buildAuthorizeUrlReturningToCurrentPage()`、`bootstrapBackendOidcModePageClient()` 与 `captureBackendOidcModePageCallbackFragment()`。
+- 将既有 redirect/popup helper（`loginWithBackendOidcRedirect()`、`loginWithBackendOidcPopup()`、`relayBackendOidcPopupCallback()`）视为 page-only helper，虽然历史名称保持不变；测试或 host wrapper 中应传入显式 page capability（`PageLocationHistoryCapability`）或携带 page capability 的 `environment`。
+- 将会读取或写入 `window.location` 的 basic-auth/session `/web` redirect helper 视为 page helper；要么留在 real page context，要么注入显式 navigation capability。
+- Framework provider/DI registration function 可以持有完整 environment composition；普通 hook、guard、interceptor、service 或 convenience helper 不应各自接受一整套分散 dependency bag。
+- 不要通过 `globalThis.location` 推断 page capability；page helper 需要 `window.location` 与 `window.history.replaceState`。
+
+理由：
+
+- 非 client-bound helper 已经开始重复 dependency bag 并隐藏读取 `window.*` default。Typed client environment 在保持 core runtime 显式 wiring 的同时，为 helper 提供共享、可测试、按 host 划分的 capability boundary。
+
 ### Token-Set Event-Driven Auth Flow
 
 Packages：

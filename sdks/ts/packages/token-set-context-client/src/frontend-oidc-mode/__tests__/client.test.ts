@@ -69,7 +69,10 @@ vi.mock("oauth4webapi", () => ({
 	validateAuthResponse: oauthMocks.validateAuthResponse,
 }));
 
-import { FrontendOidcModeClient } from "../client";
+import {
+	FrontendOidcModeClient,
+	relayFrontendOidcPopupCallback,
+} from "../client";
 
 describe("FrontendOidcModeClient", () => {
 	beforeEach(() => {
@@ -557,6 +560,65 @@ describe("FrontendOidcModeClient", () => {
 		expect(
 			trace.ofType(FrontendOidcModeTraceEventType.CallbackSucceeded),
 		).toHaveLength(1);
+	});
+
+	it("fails page helpers without explicit environment instead of reading a global window", async () => {
+		const originalWindowDescriptor = Object.getOwnPropertyDescriptor(
+			globalThis,
+			"window",
+		);
+		let windowRead = false;
+
+		Object.defineProperty(globalThis, "window", {
+			configurable: true,
+			get() {
+				windowRead = true;
+				return {
+					location: {
+						href: "https://app.example.com/auth/callback?code=auth-code",
+						hash: "",
+					},
+				};
+			},
+		});
+
+		try {
+			const runtime = createRuntime({
+				transport: {
+					execute: vi.fn(async () => ({
+						status: 200,
+						headers: {},
+						body: null,
+					})),
+				},
+				sessionStore: createInMemoryRecordStore(),
+			});
+
+			const client = new FrontendOidcModeClient(
+				{
+					issuer: "https://auth.example.com",
+					clientId: "spa-client",
+					redirectUri: "https://app.example.com/auth/callback",
+					authorizationEndpoint: "https://auth.example.com/authorize",
+					tokenEndpoint: "https://auth.example.com/token",
+				},
+				runtime,
+			);
+
+			await expect(client.loginWithRedirect()).rejects.toThrow(
+				/createBrowserPageClientEnvironment/,
+			);
+			expect(() => relayFrontendOidcPopupCallback()).toThrow(
+				/createBrowserPageClientEnvironment/,
+			);
+			expect(windowRead).toBe(false);
+		} finally {
+			if (originalWindowDescriptor) {
+				Object.defineProperty(globalThis, "window", originalWindowDescriptor);
+			} else {
+				Reflect.deleteProperty(globalThis, "window");
+			}
+		}
 	});
 
 	it("records callback failure details as structured trace attributes", async () => {

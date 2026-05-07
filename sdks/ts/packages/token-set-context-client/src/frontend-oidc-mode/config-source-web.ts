@@ -20,13 +20,14 @@ import {
 	type RecordStore,
 	type Scheduler,
 	type TraceEventSinkTrait,
+	type WebClientEnvironment,
 } from "@securitydept/client";
 import {
 	createLocalStorageStore,
 	createSessionStorageStore,
 } from "@securitydept/client/persistence/web";
 import {
-	createWebRuntime,
+	createWebClientEnvironment,
 	type FetchTransportOptions,
 } from "@securitydept/client/web";
 import {
@@ -51,6 +52,9 @@ import type { FrontendOidcModeClientConfig } from "./types";
 const FRONTEND_OIDC_PERSISTENT_PREFIX =
 	"securitydept.web.frontend_oidc:persistent:";
 const FRONTEND_OIDC_SESSION_PREFIX = "securitydept.web.frontend_oidc:session:";
+const FRONTEND_OIDC_WEB_ENVIRONMENT_ERROR_MESSAGE =
+	"frontend-oidc browser materialization requires a browser web environment with origin and fetch.\n" +
+	"Create one with createFrontendOidcModeWebClientEnvironment(...).";
 
 export function resolveFrontendOidcModePersistentStateKey(
 	config: FrontendOidcModeClientConfig,
@@ -72,6 +76,20 @@ export interface CreateFrontendOidcModeBrowserClientOptions {
 	configEndpoint: string;
 	redirectUri: string;
 	defaultPostAuthRedirectUri?: string;
+	environment?: FrontendOidcModeWebClientEnvironment;
+	resumeReconciliation?: boolean;
+	resumeReconciliationOptions?: TokenSetResumeReconciliationOptions;
+}
+
+export interface FrontendOidcModeWebClientEnvironment
+	extends WebClientEnvironment {
+	origin: string;
+	fetch: typeof globalThis.fetch;
+	persistentStoragePrefix: string;
+}
+
+export interface CreateFrontendOidcModeWebClientEnvironmentOptions {
+	environment?: FrontendOidcModeWebClientEnvironment;
 	persistentStoragePrefix?: string;
 	sessionStoragePrefix?: string;
 	persistentStore?: RecordStore;
@@ -82,8 +100,8 @@ export interface CreateFrontendOidcModeBrowserClientOptions {
 	clock?: Clock;
 	logger?: LoggerTrait;
 	traceSink?: TraceEventSinkTrait;
-	resumeReconciliation?: boolean;
-	resumeReconciliationOptions?: TokenSetResumeReconciliationOptions;
+	origin?: string;
+	fetch?: typeof globalThis.fetch;
 }
 
 export interface FrontendOidcModeBrowserClientMaterialization {
@@ -93,6 +111,39 @@ export interface FrontendOidcModeBrowserClientMaterialization {
 	browserPersistentStorageKey: string;
 }
 
+export function createFrontendOidcModeWebClientEnvironment(
+	options: CreateFrontendOidcModeWebClientEnvironmentOptions = {},
+): FrontendOidcModeWebClientEnvironment {
+	if (options.environment) {
+		return options.environment;
+	}
+
+	const persistentStoragePrefix =
+		options.persistentStoragePrefix ?? FRONTEND_OIDC_PERSISTENT_PREFIX;
+	const sessionStoragePrefix =
+		options.sessionStoragePrefix ?? FRONTEND_OIDC_SESSION_PREFIX;
+	const environment = createWebClientEnvironment({
+		transport: options.transport,
+		fetchTransport: options.fetchTransport,
+		scheduler: options.scheduler,
+		clock: options.clock,
+		logger: options.logger,
+		traceSink: options.traceSink,
+		persistentStore:
+			options.persistentStore ??
+			createLocalStorageStore(persistentStoragePrefix),
+		sessionStore:
+			options.sessionStore ?? createSessionStorageStore(sessionStoragePrefix),
+	});
+
+	return {
+		...environment,
+		origin: options.origin ?? requireWindowOrigin(),
+		fetch: options.fetch ?? requireGlobalFetch(),
+		persistentStoragePrefix,
+	};
+}
+
 /**
  * Materialize a browser-owned frontend OIDC client from a projection endpoint
  * plus browser runtime capabilities.
@@ -100,12 +151,11 @@ export interface FrontendOidcModeBrowserClientMaterialization {
 export async function createFrontendOidcModeBrowserClient(
 	options: CreateFrontendOidcModeBrowserClientOptions,
 ): Promise<FrontendOidcModeBrowserClientMaterialization> {
-	const configEndpoint = new URL(
-		options.configEndpoint,
-		window.location.origin,
-	);
+	const environment =
+		options.environment ?? createFrontendOidcModeWebClientEnvironment();
+	const configEndpoint = new URL(options.configEndpoint, environment.origin);
 	configEndpoint.searchParams.set("redirect_uri", options.redirectUri);
-	const response = await fetch(configEndpoint.toString());
+	const response = await environment.fetch(configEndpoint.toString());
 	if (!response.ok) {
 		const body = await response.json().catch(() => undefined);
 		throw ClientError.fromHttpResponse(response.status, body);
@@ -135,25 +185,8 @@ export async function createFrontendOidcModeBrowserClient(
 		rawProjection: projection,
 	};
 
-	const persistentStoragePrefix =
-		options.persistentStoragePrefix ?? FRONTEND_OIDC_PERSISTENT_PREFIX;
-	const sessionStoragePrefix =
-		options.sessionStoragePrefix ?? FRONTEND_OIDC_SESSION_PREFIX;
-	const runtime = createWebRuntime({
-		transport: options.transport,
-		fetchTransport: options.fetchTransport,
-		scheduler: options.scheduler,
-		clock: options.clock,
-		logger: options.logger,
-		traceSink: options.traceSink,
-		persistentStore:
-			options.persistentStore ??
-			createLocalStorageStore(persistentStoragePrefix),
-		sessionStore:
-			options.sessionStore ?? createSessionStorageStore(sessionStoragePrefix),
-	});
 	const client = attachTokenSetResumeReconciliation(
-		createFrontendOidcModeClient(parsed.value, runtime),
+		createFrontendOidcModeClient(parsed.value, environment.runtime),
 		{
 			resumeReconciliation: options.resumeReconciliation,
 			resumeReconciliationOptions: options.resumeReconciliationOptions,
@@ -166,9 +199,34 @@ export async function createFrontendOidcModeBrowserClient(
 		resolvedProjection,
 		browserPersistentStorageKey: resolveFrontendOidcModeBrowserStorageKey(
 			parsed.value,
-			persistentStoragePrefix,
+			environment.persistentStoragePrefix,
 		),
 	};
+}
+
+function requireWindowOrigin(): string {
+	const windowLike = (globalThis as { window?: unknown }).window;
+	const location =
+		typeof windowLike === "object" && windowLike !== null
+			? (windowLike as { location?: unknown }).location
+			: undefined;
+	const origin =
+		typeof location === "object" && location !== null
+			? (location as { origin?: unknown }).origin
+			: undefined;
+	if (typeof origin !== "string" || origin.length === 0) {
+		throw new Error(FRONTEND_OIDC_WEB_ENVIRONMENT_ERROR_MESSAGE);
+	}
+
+	return origin;
+}
+
+function requireGlobalFetch(): typeof globalThis.fetch {
+	if (typeof globalThis.fetch !== "function") {
+		throw new Error(FRONTEND_OIDC_WEB_ENVIRONMENT_ERROR_MESSAGE);
+	}
+
+	return globalThis.fetch.bind(globalThis);
 }
 
 // ---------------------------------------------------------------------------

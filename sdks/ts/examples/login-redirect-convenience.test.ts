@@ -1,10 +1,14 @@
-import { createInMemoryRecordStore } from "@securitydept/client";
+import {
+	createInMemoryRecordStore,
+	type PageLocationCapability,
+} from "@securitydept/client";
 import { SessionContextClient } from "@securitydept/session-context-client";
 import type { LoginWithRedirectOptions } from "@securitydept/session-context-client/web";
 import { loginWithRedirect } from "@securitydept/session-context-client/web";
 import type { LoginWithBackendOidcRedirectOptions } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import {
-	createBackendOidcModeBrowserClient,
+	createBackendOidcModeWebClient,
+	createBackendOidcModeWebClientEnvironment,
 	loginWithBackendOidcRedirect,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { describe, expect, it, vi } from "vitest";
@@ -13,34 +17,16 @@ import { describe, expect, it, vi } from "vitest";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Create a mock `window.location`-like namespace and install it on the global
- * for the duration of a test assertion.  Restores the original afterward.
- */
-function withMockWindowLocation(fn: (mock: { href: string }) => void) {
-	const original = globalThis.window;
-	const locationMock = { href: "" };
-	globalThis.window = { location: locationMock } as unknown as Window &
-		typeof globalThis;
-	try {
-		fn(locationMock);
-	} finally {
-		globalThis.window = original as unknown as Window & typeof globalThis;
-	}
-}
-
-async function withMockWindowLocationAsync(
-	fn: (mock: { href: string }) => Promise<void>,
-) {
-	const original = globalThis.window;
-	const locationMock = { href: "" };
-	globalThis.window = { location: locationMock } as unknown as Window &
-		typeof globalThis;
-	try {
-		await fn(locationMock);
-	} finally {
-		globalThis.window = original as unknown as Window & typeof globalThis;
-	}
+function createPageLocationCapability(href: string): PageLocationCapability {
+	const url = new URL(href);
+	return {
+		location: {
+			href,
+			hash: url.hash,
+			pathname: url.pathname,
+			search: url.search,
+		},
+	};
 }
 
 // ===========================================================================
@@ -55,20 +41,18 @@ describe("session-context-client/web loginWithRedirect", () => {
 			{ sessionStore },
 		);
 
-		await withMockWindowLocationAsync(async (locationMock) => {
-			// Simulate a current page.
-			locationMock.href = "https://app.example.com/protected";
+		const environment = createPageLocationCapability(
+			"https://app.example.com/protected",
+		);
+		const options: LoginWithRedirectOptions = {
+			environment,
+			postAuthRedirectUri: "https://app.example.com/dashboard",
+		};
+		await loginWithRedirect(client, options);
 
-			const options: LoginWithRedirectOptions = {
-				postAuthRedirectUri: "https://app.example.com/dashboard",
-			};
-			await loginWithRedirect(client, options);
-
-			// Should navigate to the login URL.
-			expect(locationMock.href).toBe(
-				"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard",
-			);
-		});
+		expect(environment.location.href).toBe(
+			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard",
+		);
 
 		// Should have saved the pending redirect.
 		expect(await client.loadPendingLoginRedirect()).toBe(
@@ -83,16 +67,14 @@ describe("session-context-client/web loginWithRedirect", () => {
 			{ sessionStore },
 		);
 
-		await withMockWindowLocationAsync(async (locationMock) => {
-			locationMock.href = "https://app.example.com/current-page";
+		const environment = createPageLocationCapability(
+			"https://app.example.com/current-page",
+		);
+		await loginWithRedirect(client, { environment });
 
-			await loginWithRedirect(client);
-
-			// Should use current location as the redirect URI.
-			expect(locationMock.href).toBe(
-				"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fcurrent-page",
-			);
-		});
+		expect(environment.location.href).toBe(
+			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fcurrent-page",
+		);
 
 		// Pending redirect should contain the current page.
 		expect(await client.loadPendingLoginRedirect()).toBe(
@@ -110,26 +92,27 @@ describe("backend-oidc-mode/web loginWithBackendOidcRedirect", () => {
 		const persistentStore = createInMemoryRecordStore();
 		const sessionStore = createInMemoryRecordStore();
 
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
+			environment: createBackendOidcModeWebClientEnvironment({
+				persistentStore,
+				sessionStore,
+			}),
 			baseUrl: "https://auth.example.com",
 			defaultPostAuthRedirectUri: "https://app.example.com/callback",
-			persistentStore,
-			sessionStore,
 		});
 
-		withMockWindowLocation((locationMock) => {
-			locationMock.href = "https://app.example.com/page";
+		const environment = createPageLocationCapability(
+			"https://app.example.com/page",
+		);
+		const options: LoginWithBackendOidcRedirectOptions = {
+			environment,
+			postAuthRedirectUri: "https://app.example.com/return",
+		};
+		loginWithBackendOidcRedirect(client, options);
 
-			const options: LoginWithBackendOidcRedirectOptions = {
-				postAuthRedirectUri: "https://app.example.com/return",
-			};
-			loginWithBackendOidcRedirect(client, options);
-
-			// Should navigate to authorize URL with the explicit return URI.
-			expect(locationMock.href).toBe(
-				"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Freturn",
-			);
-		});
+		expect(environment.location.href).toBe(
+			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Freturn",
+		);
 
 		client.dispose();
 	});
@@ -138,28 +121,26 @@ describe("backend-oidc-mode/web loginWithBackendOidcRedirect", () => {
 		const persistentStore = createInMemoryRecordStore();
 		const sessionStore = createInMemoryRecordStore();
 
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
+			environment: createBackendOidcModeWebClientEnvironment({
+				persistentStore,
+				sessionStore,
+			}),
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
 		});
 
-		withMockWindowLocation((locationMock) => {
-			locationMock.href = "https://app.example.com/page#fragment";
+		const environment = createPageLocationCapability(
+			"https://app.example.com/page#fragment",
+		);
+		loginWithBackendOidcRedirect(client, { environment });
 
-			loginWithBackendOidcRedirect(client);
-
-			// Default behavior: currentLocationAsPostAuthRedirectUri strips hash.
-			// Then authorizeUrl uses it for post_auth_redirect_uri.
-			expect(locationMock.href).toContain(
-				"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=",
-			);
-			// The return URI should not contain the fragment.
-			const urlObj = new URL(locationMock.href);
-			const redirectUri = urlObj.searchParams.get("post_auth_redirect_uri");
-			expect(redirectUri).not.toContain("#fragment");
-			expect(redirectUri).toContain("https://app.example.com/page");
-		});
+		expect(environment.location.href).toContain(
+			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=",
+		);
+		const urlObj = new URL(environment.location.href);
+		const redirectUri = urlObj.searchParams.get("post_auth_redirect_uri");
+		expect(redirectUri).not.toContain("#fragment");
+		expect(redirectUri).toContain("https://app.example.com/page");
 
 		client.dispose();
 	});
@@ -207,31 +188,32 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 			runtime,
 		);
 
-		await withMockWindowLocationAsync(async (locationMock) => {
-			locationMock.href = "https://app.example.com/page";
+		const environment = createPageLocationCapability(
+			"https://app.example.com/page",
+		);
 
-			const options: FrontendOidcModeLoginWithRedirectOptions = {
-				postAuthRedirectUri: "https://app.example.com/after-login",
-				extraParams: { prompt: "consent" },
-			};
-			await client.loginWithRedirect(options);
+		const options: FrontendOidcModeLoginWithRedirectOptions = {
+			environment,
+			postAuthRedirectUri: "https://app.example.com/after-login",
+			extraParams: { prompt: "consent" },
+		};
+		await client.loginWithRedirect(options);
 
-			// Should have navigated to the authorization endpoint.
-			expect(locationMock.href).toContain(
-				"https://auth.example.com/oauth2/authorize",
-			);
-			expect(locationMock.href).toContain("client_id=spa-client");
-			expect(locationMock.href).toContain("prompt=consent");
-			expect(locationMock.href).toContain("code_challenge=");
+		// Should have navigated to the authorization endpoint.
+		expect(environment.location.href).toContain(
+			"https://auth.example.com/oauth2/authorize",
+		);
+		expect(environment.location.href).toContain("client_id=spa-client");
+		expect(environment.location.href).toContain("prompt=consent");
+		expect(environment.location.href).toContain("code_challenge=");
 
-			const authorizeUrl = new URL(locationMock.href);
-			const state = authorizeUrl.searchParams.get("state");
-			expect(state).toBeTruthy();
+		const authorizeUrl = new URL(environment.location.href);
+		const state = authorizeUrl.searchParams.get("state");
+		expect(state).toBeTruthy();
 
-			const pendingKey = `securitydept.frontend_oidc.pending:${state}`;
-			const pendingRaw = await sessionStore.get(pendingKey);
-			expect(pendingRaw).toBeTruthy();
-		});
+		const pendingKey = `securitydept.frontend_oidc.pending:${state}`;
+		const pendingRaw = await sessionStore.get(pendingKey);
+		expect(pendingRaw).toBeTruthy();
 
 		client.dispose();
 	});

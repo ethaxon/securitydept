@@ -7,11 +7,12 @@ import {
 import type { BackendOidcModeRefreshOptions } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	BackendOidcModeBootstrapSource,
-	type BootstrapBackendOidcModeClientOptions,
-	bootstrapBackendOidcModeClient,
+	type BootstrapBackendOidcModePageClientOptions,
+	bootstrapBackendOidcModePageClient,
 	type CreateBackendOidcModeCallbackFragmentStoreOptions,
-	createBackendOidcModeBrowserClient,
 	createBackendOidcModeCallbackFragmentStore,
+	createBackendOidcModeWebClient,
+	createBackendOidcModeWebClientEnvironment,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { describe, expect, it } from "vitest";
 
@@ -58,29 +59,33 @@ describe("external backend-oidc-mode browser scenario", () => {
 					},
 				}),
 			);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
+			environment: createBackendOidcModeWebClientEnvironment({
+				persistentStore,
+				sessionStore,
+				transport,
+				clock,
+				scheduler,
+			}),
 			baseUrl: "https://auth.example.com",
 			defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
-			persistentStore,
-			sessionStore,
-			transport,
-			clock,
-			scheduler,
 		});
 		const fragmentStoreOptions: CreateBackendOidcModeCallbackFragmentStoreOptions =
 			{ sessionStore };
 		const callbackFragmentStore =
 			createBackendOidcModeCallbackFragmentStore(fragmentStoreOptions);
 
-		const emptyBootstrapOptions: BootstrapBackendOidcModeClientOptions = {
-			location: {
-				href: "https://app.example.com/oidc-mediated",
-				hash: "",
+		const emptyBootstrapOptions: BootstrapBackendOidcModePageClientOptions = {
+			environment: {
+				location: {
+					href: "https://app.example.com/oidc-mediated",
+					hash: "",
+				},
+				history: createHistoryRecorder(),
+				callbackFragmentStore,
 			},
-			history: createHistoryRecorder(),
-			callbackFragmentStore,
 		};
-		const emptyBootstrap = await bootstrapBackendOidcModeClient(
+		const emptyBootstrap = await bootstrapBackendOidcModePageClient(
 			client,
 			emptyBootstrapOptions,
 		);
@@ -91,13 +96,15 @@ describe("external backend-oidc-mode browser scenario", () => {
 		});
 
 		const callbackHistory = createHistoryRecorder();
-		const callbackBootstrap = await bootstrapBackendOidcModeClient(client, {
-			location: {
-				href: "https://app.example.com/oidc-mediated?tab=demo#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
-				hash: "#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+		const callbackBootstrap = await bootstrapBackendOidcModePageClient(client, {
+			environment: {
+				location: {
+					href: "https://app.example.com/oidc-mediated?tab=demo#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+					hash: "#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+				},
+				history: callbackHistory,
+				callbackFragmentStore,
 			},
-			history: callbackHistory,
-			callbackFragmentStore,
 		});
 
 		expect(callbackBootstrap.source).toBe(

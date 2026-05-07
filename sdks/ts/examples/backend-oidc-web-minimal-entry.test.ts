@@ -10,10 +10,11 @@
 import { createInMemoryRecordStore } from "@securitydept/client";
 import {
 	BackendOidcModeBootstrapSource,
-	bootstrapBackendOidcModeClient,
-	buildAuthorizeUrlReturningToCurrent,
-	createBackendOidcModeBrowserClient,
+	bootstrapBackendOidcModePageClient,
+	buildAuthorizeUrlReturningToCurrentPage,
 	createBackendOidcModeCallbackFragmentStore,
+	createBackendOidcModeWebClient,
+	createBackendOidcModeWebClientEnvironment,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { describe, expect, it } from "vitest";
 
@@ -25,21 +26,23 @@ describe("backend-oidc-mode web minimal entry", () => {
 		// 1. Create the browser client with minimal config + runtime stubs.
 		//    In a real app, only baseUrl is required — stores and transport
 		//    default to browser-native implementations.
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
+			environment: createBackendOidcModeWebClientEnvironment({
+				persistentStore,
+				sessionStore,
+				transport: {
+					async execute() {
+						return { status: 500, headers: {}, body: null };
+					},
+				},
+				scheduler: {
+					setTimeout() {
+						return { cancel() {} };
+					},
+				},
+				clock: { now: () => Date.now() },
+			}),
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
-			transport: {
-				async execute() {
-					return { status: 500, headers: {}, body: null };
-				},
-			},
-			scheduler: {
-				setTimeout() {
-					return { cancel() {} };
-				},
-			},
-			clock: { now: () => Date.now() },
 		});
 
 		// 2. Bootstrap the client — checks for callback fragment and persisted state.
@@ -47,10 +50,12 @@ describe("backend-oidc-mode web minimal entry", () => {
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
 			sessionStore,
 		});
-		const result = await bootstrapBackendOidcModeClient(client, {
-			location: { href: "https://app.example.com/dashboard", hash: "" },
-			history: { replaceState() {} },
-			callbackFragmentStore,
+		const result = await bootstrapBackendOidcModePageClient(client, {
+			environment: {
+				location: { href: "https://app.example.com/dashboard", hash: "" },
+				history: { replaceState() {} },
+				callbackFragmentStore,
+			},
 		});
 
 		expect(result.source).toBe(BackendOidcModeBootstrapSource.Empty);
@@ -58,8 +63,10 @@ describe("backend-oidc-mode web minimal entry", () => {
 		expect(client.state.get()).toBeNull();
 
 		// 3. Build the authorize URL — the adopter redirects the browser here.
-		const authorizeUrl = buildAuthorizeUrlReturningToCurrent(client, {
-			href: "https://app.example.com/dashboard",
+		const authorizeUrl = buildAuthorizeUrlReturningToCurrentPage(client, {
+			environment: {
+				location: { href: "https://app.example.com/dashboard", hash: "" },
+			},
 		});
 
 		expect(authorizeUrl).toContain("https://auth.example.com");
@@ -69,21 +76,23 @@ describe("backend-oidc-mode web minimal entry", () => {
 	});
 
 	it("shows restoreState as an alternative to bootstrap for SSR-provided tokens", () => {
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
+			environment: createBackendOidcModeWebClientEnvironment({
+				persistentStore: createInMemoryRecordStore(),
+				sessionStore: createInMemoryRecordStore(),
+				transport: {
+					async execute() {
+						return { status: 500, headers: {}, body: null };
+					},
+				},
+				scheduler: {
+					setTimeout() {
+						return { cancel() {} };
+					},
+				},
+				clock: { now: () => Date.now() },
+			}),
 			baseUrl: "https://auth.example.com",
-			persistentStore: createInMemoryRecordStore(),
-			sessionStore: createInMemoryRecordStore(),
-			transport: {
-				async execute() {
-					return { status: 500, headers: {}, body: null };
-				},
-			},
-			scheduler: {
-				setTimeout() {
-					return { cancel() {} };
-				},
-			},
-			clock: { now: () => Date.now() },
 		});
 
 		// Restore state directly (e.g. from server-rendered bootstrap data).

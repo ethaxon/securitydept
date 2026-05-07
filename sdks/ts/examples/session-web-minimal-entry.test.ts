@@ -10,11 +10,26 @@
 // convenience baselines. An adopter reading this file should understand
 // "how do I start a session login from the browser?" in one glance.
 
-import { createInMemoryRecordStore } from "@securitydept/client";
+import {
+	createInMemoryRecordStore,
+	type PageLocationCapability,
+} from "@securitydept/client";
 import { SessionContextClient } from "@securitydept/session-context-client";
 import type { LoginWithRedirectOptions } from "@securitydept/session-context-client/web";
 import { loginWithRedirect } from "@securitydept/session-context-client/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+function createPageLocationEnvironment(href: string): PageLocationCapability {
+	const url = new URL(href);
+	return {
+		location: {
+			href,
+			hash: url.hash,
+			pathname: url.pathname,
+			search: url.search,
+		},
+	};
+}
 
 describe("session-context web minimal entry", () => {
 	afterEach(() => {
@@ -29,19 +44,19 @@ describe("session-context web minimal entry", () => {
 			{ sessionStore },
 		);
 
-		// 2. Stub the browser's window.location.
-		vi.stubGlobal("window", {
-			location: { href: "https://app.example.com/protected-page" },
-		});
+		const environment = createPageLocationEnvironment(
+			"https://app.example.com/protected-page",
+		);
 
 		// 3. Trigger login redirect with explicit options.
 		const options: LoginWithRedirectOptions = {
+			environment,
 			postAuthRedirectUri: "https://app.example.com/dashboard",
 		};
 		await loginWithRedirect(client, options);
 
 		// 4. Verify the browser navigated to the login URL.
-		expect(window.location.href).toBe(
+		expect(environment.location.href).toBe(
 			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard",
 		);
 
@@ -58,14 +73,13 @@ describe("session-context web minimal entry", () => {
 			{ sessionStore },
 		);
 
-		vi.stubGlobal("window", {
-			location: { href: "https://app.example.com/current-page" },
-		});
+		const environment = createPageLocationEnvironment(
+			"https://app.example.com/current-page",
+		);
 
-		// Omit options — loginWithRedirect defaults to window.location.href.
-		await loginWithRedirect(client);
+		await loginWithRedirect(client, { environment });
 
-		expect(window.location.href).toBe(
+		expect(environment.location.href).toBe(
 			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fcurrent-page",
 		);
 

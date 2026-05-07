@@ -3,7 +3,10 @@ import {
 	createInMemoryRecordStore,
 } from "@securitydept/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createFrontendOidcModeBrowserClient } from "../config-source-web";
+import {
+	createFrontendOidcModeBrowserClient,
+	createFrontendOidcModeWebClientEnvironment,
+} from "../config-source-web";
 
 function createJsonResponse(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), {
@@ -40,15 +43,18 @@ describe("frontend-oidc-mode browser materialization", () => {
 			});
 		});
 		vi.stubGlobal("fetch", fetchMock);
+		const environment = createFrontendOidcModeWebClientEnvironment({
+			persistentStoragePrefix: "apps.webui.token-set-frontend:persistent:",
+			persistentStore: createInMemoryRecordStore(),
+			sessionStore: createInMemoryRecordStore(),
+		});
 
 		const materialized = await createFrontendOidcModeBrowserClient({
 			configEndpoint: "/api/auth/token-set/frontend-mode/config",
 			redirectUri:
 				"https://app.example.com/auth/token-set/frontend-mode/callback",
 			defaultPostAuthRedirectUri: "/dashboard",
-			persistentStoragePrefix: "apps.webui.token-set-frontend:persistent:",
-			persistentStore: createInMemoryRecordStore(),
-			sessionStore: createInMemoryRecordStore(),
+			environment,
 		});
 
 		expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -91,12 +97,14 @@ describe("frontend-oidc-mode browser materialization", () => {
 				}),
 			),
 		);
+		const environment = createFrontendOidcModeWebClientEnvironment();
 
 		await expect(
 			createFrontendOidcModeBrowserClient({
 				configEndpoint: "/api/auth/token-set/frontend-mode/config",
 				redirectUri:
 					"https://app.example.com/auth/token-set/frontend-mode/callback",
+				environment,
 			}),
 		).rejects.toMatchObject({
 			name: "ClientError",

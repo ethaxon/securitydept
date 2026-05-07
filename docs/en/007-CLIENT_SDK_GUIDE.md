@@ -113,7 +113,30 @@ Scheduling, cancellation, abort interop, visibility, storage, and promise/signal
 
 ### Internal Dependency Injection
 
-DI is an adapter concern. Core packages expose explicit constructors/functions; Angular DI and React Context live in their adapter packages.
+Framework DI remains an adapter concern: Angular DI and React Context live in their adapter packages. Framework-neutral host capability resolution is a foundation concern. Core clients consume `ClientRuntime`; non-client-bound helpers consume explicit typed environment objects created by the host composition root.
+
+The canonical foundation model is:
+
+- `ClientRuntime` is the stable capability bundle used by core clients. It carries transport, scheduler, clock, logging/tracing, and persistence/session stores.
+- `ClientEnvironment` is the host composition environment that contains the canonical `runtime` and may mirror runtime capabilities for ergonomic helper use. Mirrors must come from the same `runtime`; hosts must not create runtime/environment pairs with conflicting capability sources.
+- `WebClientEnvironment` is the Web-capable client environment and does not imply a page document.
+- `PageClientEnvironment` extends the Web environment with page-only capabilities such as `window.location` and `window.history`.
+- Helpers should request the narrowest capability view they need, for example `Pick<WebClientEnvironment, "runtime">` or `PageLocationHistoryCapability`, rather than accepting the full environment by default.
+
+Do not model these objects as a DI container, service locator, provider tree, global singleton, or business config DSL. Auth-context configuration such as base URLs, source keys, account binding, and product routes remains in family config or host code, not in the foundation environment.
+
+Foundation Web presets are explicit composition templates, not automatic host detection:
+
+| Preset factory | Returns | Default page capabilities | Default Web storage | Intended host |
+|---|---|---:|---:|---|
+| `createBrowserPageClientEnvironment(options)` | `PageClientEnvironment` | yes | yes | real browser page, tab, or popup document |
+| `createBrowserWorkerClientEnvironment(options)` | `WebClientEnvironment` | no | no | dedicated/shared worker-style browser host |
+| `createServiceWorkerClientEnvironment(options)` | `WebClientEnvironment` | no | no | service worker |
+| `createBrowserExtensionBackgroundClientEnvironment(options)` | `WebClientEnvironment` | no | no | extension background or MV3 service-worker-style host |
+
+Preset names are public vocabulary for docs, trace/error context, and tests through `ClientEnvironmentPreset`. Do not use a string-driven `createEnvironmentFromPreset(name)` or global-shape detection to guess the host. Worker, service-worker, and extension-background presets must receive persistence/session stores explicitly when they need storage, and page-only helpers must fail fast when used outside a page environment.
+
+This rule applies beyond `@securitydept/client`: context packages and framework adapters must use the same boundary for public helpers. Any helper that reads host globals, performs page navigation, constructs client runtime, or owns transport/store/scheduler/clock wiring should accept a client environment or a narrow capability view. Provider, DI, and top-level adapter registration APIs may accept a full environment as composition roots; ordinary hooks, guards, interceptors, services, and convenience helpers should not each redeclare the full dependency bag.
 
 ## Context Client Design
 
@@ -295,6 +318,26 @@ Use `@securitydept/client` for shared primitives. It is not a product-level auth
 #### 2. Browser entry: `./backend-oidc-mode/web` owns browser glue
 
 Use `@securitydept/token-set-context-client/backend-oidc-mode/web` for backend-owned OIDC/token-set browser flows.
+
+This subpath is browser-host glue, not a promise that every Web-like runtime has page navigation. Use the foundation environment boundary before choosing helpers:
+
+- Browser client construction should take a `WebClientEnvironment` created at the host composition root. Do not pass transport, scheduler, clock, persistent store, and session store independently to every helper.
+- Worker-like hosts, service workers, and extension backgrounds may create/restore clients and run token-state APIs, but they must not run page callback capture by default.
+- Page-only helpers may read `window.location` / `window.history` only through `PageClientEnvironment`; their names or options must make the page boundary explicit, such as `currentPageLocationAsPostAuthRedirectUri`, `buildAuthorizeUrlReturningToCurrentPage`, `bootstrapBackendOidcModePageClient`, and `captureBackendOidcModePageCallbackFragment`. Existing redirect/popup helpers such as `loginWithBackendOidcRedirect`, `loginWithBackendOidcPopup`, and `relayBackendOidcPopupCallback` remain page-only and fail fast outside a page environment.
+- Host-injected callback helpers must receive a `BackendOidcModeWebClientEnvironment` or explicit page/callback-fragment capabilities. They must fail fast when a required capability is missing instead of falling through to `window is not defined` or stale URL parsing.
+
+Recommended host environments:
+
+| Host | Environment | Callback capture | Restore/token state | Storage defaults |
+|---|---|---:|---:|---|
+| browser page/tab/popup | `PageClientEnvironment` | yes | yes | page storage may be used |
+| browser worker | `WebClientEnvironment` | no by default | yes | explicit store only |
+| service worker | `WebClientEnvironment` | no by default | yes | explicit store only |
+| extension background | `WebClientEnvironment` | no by default | yes | explicit store only |
+
+Do not decide whether callback bootstrap is allowed by checking `globalThis.location`. A service worker or extension background may expose a location-like object without page history semantics. Page detection must validate page/document capabilities such as `window.location` and `window.history.replaceState`.
+
+The same page-boundary rule applies to basic-auth and session `/web` redirect helpers: redirect helpers that read or write `window.location` are page helpers. Worker-like hosts must pass explicit URL/navigation capabilities or keep redirect initiation in a real page context.
 
 #### 3. React entry: dedicated adapter packages own Provider and hook wiring
 

@@ -196,7 +196,7 @@ describe("backend-oidc-mode popup baseline", () => {
 
 		const promise = loginWithBackendOidcPopup(mockClient as never, {
 			popupCallbackUrl: "https://app.example.com/popup-callback",
-			callbackFragmentStore: explicitStore,
+			environment: { callbackFragmentStore: explicitStore },
 		});
 
 		// Relay the callback URL with a fragment.
@@ -238,6 +238,32 @@ describe("frontend-oidc-mode popup baseline", () => {
 		expect(typeof relayFrontendOidcPopupCallback).toBe("function");
 	});
 
+	it("relayFrontendOidcPopupCallback accepts explicit page location capability", () => {
+		const originalOpener = globalThis.opener;
+		const postMessage = vi.fn();
+		vi.stubGlobal("opener", { postMessage });
+
+		relayFrontendOidcPopupCallback({
+			environment: {
+				location: {
+					href: "https://app.example.com/popup-callback?code=abc&state=xyz",
+					hash: "",
+				},
+			},
+			targetOrigin: "https://app.example.com",
+		});
+
+		expect(postMessage).toHaveBeenCalledWith(
+			{
+				type: "securitydept:popup_callback",
+				payload: "https://app.example.com/popup-callback?code=abc&state=xyz",
+			},
+			"https://app.example.com",
+		);
+
+		globalThis.opener = originalOpener;
+	});
+
 	it("FrontendOidcModePopupLoginOptions type is importable (compile-time evidence)", () => {
 		const opts: FrontendOidcModePopupLoginOptions = {
 			popupCallbackUrl: "https://app.example.com/callback",
@@ -249,6 +275,7 @@ describe("frontend-oidc-mode popup baseline", () => {
 		// This test proves: popup authorize state is built → popup opens → relay is awaited → handleCallback is called.
 
 		const mockWin = { closed: false } as Window;
+		const popupOrigin = globalThis.location.origin;
 
 		vi.stubGlobal(
 			"open",
@@ -295,7 +322,7 @@ describe("frontend-oidc-mode popup baseline", () => {
 
 		// Simulate the popup callback page relaying the result.
 		messageHandler?.({
-			origin: window.location.origin,
+			origin: popupOrigin,
 			data: {
 				type: "securitydept:popup_callback",
 				payload:

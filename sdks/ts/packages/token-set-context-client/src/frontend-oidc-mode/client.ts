@@ -29,6 +29,7 @@ import type {
 	ClientRuntime,
 	KeyedEphemeralFlowStore,
 	OperationScope,
+	PageLocationCapability,
 } from "@securitydept/client";
 import {
 	ClientError,
@@ -40,6 +41,7 @@ import {
 	UserRecovery,
 } from "@securitydept/client";
 import {
+	assertResolveEnvironment,
 	openPopupWindow,
 	relayPopupCallback,
 	waitForPopupRelay,
@@ -102,6 +104,9 @@ const CONSUMED_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const TRACE_SCOPE = "frontend-oidc-mode";
 const TRACE_SOURCE = FrontendOidcModeContextSource.Client;
 const TRACE_PREFIX = "frontend_oidc";
+const FRONTEND_OIDC_PAGE_ENVIRONMENT_ERROR_MESSAGE =
+	"frontend-oidc browser page helpers require an explicit page environment.\n" +
+	"Create one in your composition root with createBrowserPageClientEnvironment(...).";
 
 interface FrontendOidcModeConsumedState {
 	consumedAt: number;
@@ -187,6 +192,8 @@ function parseDurationToMs(duration: string): number {
  * Options for {@link FrontendOidcModeClient.loginWithRedirect}.
  */
 export interface FrontendOidcModeLoginWithRedirectOptions {
+	/** Override the page location capability used for browser navigation. */
+	environment?: FrontendOidcModePageLocationCapability;
 	/**
 	 * Where to redirect the user after successful authentication.
 	 *
@@ -221,6 +228,9 @@ export interface FrontendOidcModePopupLoginOptions {
 	/** Maximum time in ms to wait for the popup relay (default: 120000). */
 	timeoutMs?: number;
 }
+
+export interface FrontendOidcModePageLocationCapability
+	extends PageLocationCapability {}
 
 /**
  * Browser-side OIDC client for frontend-oidc mode.
@@ -378,12 +388,16 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	async loginWithRedirect(
 		options: FrontendOidcModeLoginWithRedirectOptions = {},
 	): Promise<void> {
+		const environment = assertResolveEnvironment(
+			options.environment,
+			failMissingFrontendOidcPageEnvironment,
+		);
 		const url = await this.authorizeUrl(
 			options.postAuthRedirectUri,
 			options.extraParams,
 		);
 
-		window.location.href = url;
+		environment.location.href = url;
 	}
 
 	/**
@@ -1349,11 +1363,24 @@ export function createFrontendOidcModeClient(
  * </script>
  * ```
  */
-export function relayFrontendOidcPopupCallback(options?: {
+export interface RelayFrontendOidcPopupCallbackOptions {
 	targetOrigin?: string;
-}): void {
+	environment?: FrontendOidcModePageLocationCapability;
+}
+
+export function relayFrontendOidcPopupCallback(
+	options: RelayFrontendOidcPopupCallbackOptions = {},
+): void {
+	const environment = assertResolveEnvironment(
+		options.environment,
+		failMissingFrontendOidcPageEnvironment,
+	);
 	relayPopupCallback({
-		payload: window.location.href,
+		payload: environment.location.href,
 		targetOrigin: options?.targetOrigin,
 	});
+}
+
+function failMissingFrontendOidcPageEnvironment(): never {
+	throw new Error(FRONTEND_OIDC_PAGE_ENVIRONMENT_ERROR_MESSAGE);
 }

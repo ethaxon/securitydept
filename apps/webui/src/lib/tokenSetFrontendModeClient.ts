@@ -6,7 +6,10 @@ import {
 } from "@securitydept/client";
 import { createCrossTabSync, PopupErrorCode } from "@securitydept/client/web";
 import type { FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
-import { createFrontendOidcModeBrowserClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import {
+	createFrontendOidcModeBrowserClient,
+	createFrontendOidcModeWebClientEnvironment,
+} from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import type { TokenSetReactClient } from "@securitydept/token-set-context-client-react";
 import {
@@ -126,13 +129,16 @@ function ensureTokenSetFrontendModeCrossTabSync(
 
 async function createTokenSetFrontendModeClient(): Promise<FrontendOidcModeClient> {
 	const redirectUri = buildAbsoluteUrl(TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH);
+	const environment = createFrontendOidcModeWebClientEnvironment({
+		persistentStoragePrefix: TOKEN_SET_FRONTEND_PERSISTENT_PREFIX,
+		sessionStoragePrefix: TOKEN_SET_FRONTEND_SESSION_PREFIX,
+		traceSink: tokenSetFrontendModeTraceTimeline,
+	});
 	const materialized = await createFrontendOidcModeBrowserClient({
 		configEndpoint: TOKEN_SET_FRONTEND_MODE_CONFIG_PATH,
 		redirectUri,
 		defaultPostAuthRedirectUri: "/",
-		persistentStoragePrefix: TOKEN_SET_FRONTEND_PERSISTENT_PREFIX,
-		sessionStoragePrefix: TOKEN_SET_FRONTEND_SESSION_PREFIX,
-		traceSink: tokenSetFrontendModeTraceTimeline,
+		environment,
 	});
 	tokenSetFrontendModePersistentStorageKey =
 		materialized.browserPersistentStorageKey;

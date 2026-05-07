@@ -1,29 +1,44 @@
 // Backend OIDC Mode — Browser Adapter
 //
 // Canonical import path:
-//   import { createBackendOidcModeBrowserClient } from "@securitydept/token-set-context-client/backend-oidc-mode/web"
+//   import { createBackendOidcModeWebClient } from "@securitydept/token-set-context-client/backend-oidc-mode/web"
 
 export type {
 	BackendOidcModeBootstrapResult,
-	BootstrapBackendOidcModeClientOptions,
-	CaptureBackendOidcModeCallbackFragmentFromUrlOptions,
-	CreateBackendOidcModeBrowserClientOptions,
+	BackendOidcModeCallbackFragmentStoreCapability,
+	BackendOidcModePageCallbackCapability,
+	BackendOidcModePageClientEnvironment,
+	BackendOidcModePageLocationCapability,
+	BackendOidcModePopupLoginCapability,
+	BackendOidcModeWebClientEnvironment,
+	BootstrapBackendOidcModePageClientOptions,
+	BuildAuthorizeUrlReturningToCurrentPageOptions,
+	CaptureBackendOidcModeCallbackFragmentOptions,
+	CaptureBackendOidcModePageCallbackFragmentOptions,
 	CreateBackendOidcModeCallbackFragmentStoreOptions,
+	CreateBackendOidcModeWebClientEnvironmentOptions,
+	CreateBackendOidcModeWebClientOptions,
+	CurrentPageLocationAsPostAuthRedirectUriOptions,
 	LoginWithBackendOidcPopupOptions,
 	LoginWithBackendOidcRedirectOptions,
+	RelayBackendOidcPopupCallbackOptions,
 	ResetBackendOidcModeBrowserStateOptions,
 } from "./browser";
 export {
 	BackendOidcModeBootstrapSource,
-	bootstrapBackendOidcModeClient,
-	buildAuthorizeUrlReturningToCurrent,
-	captureBackendOidcModeCallbackFragmentFromUrl,
-	createBackendOidcModeBrowserClient,
+	bootstrapBackendOidcModeFromCallbackStore,
+	bootstrapBackendOidcModePageClient,
+	buildAuthorizeUrlReturningToCurrentPage,
+	captureBackendOidcModeCallbackFragment,
+	captureBackendOidcModePageCallbackFragment,
 	createBackendOidcModeCallbackFragmentStore,
-	currentLocationAsPostAuthRedirectUri,
+	createBackendOidcModeWebClient,
+	createBackendOidcModeWebClientEnvironment,
+	currentPageLocationAsPostAuthRedirectUri,
 	loginWithBackendOidcPopup,
 	loginWithBackendOidcRedirect,
 	relayBackendOidcPopupCallback,
 	resetBackendOidcModeBrowserState,
 	resolveBackendOidcModeCallbackFragmentKey,
+	restoreBackendOidcModeClient,
 } from "./browser";

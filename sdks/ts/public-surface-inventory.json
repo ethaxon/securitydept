@@ -75,11 +75,14 @@
 					"stability": "stable",
 					"owner": "foundation",
 					"changeDiscipline": "stable-deprecation-first",
-					"note": "Owns browser-native interop for the foundation cancellation baseline through both bridge directions: createAbortSignalBridge(token) for fetch-facing consumers and createCancellationTokenFromAbortSignal(signal) for browser/framework consumers that receive AbortSignal first. It also owns the browser-layer unified input-source helpers fromAbortSignal(), fromStorageEvent(), and fromVisibilityChange(), plus higher-level lifecycle helpers such as createCrossTabSync() and createVisibilityReconciler().",
+					"note": "Owns browser-native interop for the foundation cancellation baseline through both bridge directions: createAbortSignalBridge(token) for fetch-facing consumers and createCancellationTokenFromAbortSignal(signal) for browser/framework consumers that receive AbortSignal first. It also owns the browser-layer unified input-source helpers fromAbortSignal(), fromStorageEvent(), and fromVisibilityChange(), higher-level lifecycle helpers such as createCrossTabSync() and createVisibilityReconciler(), and the foundation Web client-environment boundary: ClientEnvironmentPreset, WebClientEnvironment, PageClientEnvironment, createWebClientEnvironment(), createBrowserPageClientEnvironment(), createBrowserWorkerClientEnvironment(), createServiceWorkerClientEnvironment(), createBrowserExtensionBackgroundClientEnvironment(), and requirePageClientEnvironment(). These factories are explicit presets, not automatic host detection or a DI container.",
 					"evidence": [
 						"examples/popup-login-baseline.test.ts",
 						"examples/scheduling-input-source-baseline.test.ts",
+						"examples/backend-oidc-worker-like-host.test.ts",
 						"packages/client/src/web/__tests__/cancellation.test.ts",
+						"packages/client/src/web/__tests__/client-environment.test.ts",
+						"packages/client/src/web/__tests__/client-environment-presets.test.ts",
 						"packages/client/src/web/__tests__/input-sources.test.ts",
 						"packages/client/src/web/__tests__/visibility.test.ts",
 						"packages/client/src/web/__tests__/visibility-reconciler.test.ts",
@@ -162,9 +165,11 @@
 					"stability": "provisional",
 					"owner": "basic-auth-context",
 					"changeDiscipline": "provisional-migration-required",
+					"note": "Owns basic-auth browser/page redirect helpers. performRedirect() and loginWithRedirect() use an `environment` option carrying PageLocationCapability when provided and otherwise resolve the foundation page location capability; worker-like hosts must keep redirect initiation in a real page context or inject explicit page/navigation capability.",
 					"evidence": [
 						"examples/basic-auth-web-minimal-entry.test.ts",
-						"examples/auth-context-discoverability-parity.test.ts"
+						"examples/auth-context-discoverability-parity.test.ts",
+						"packages/basic-auth-context-client/src/web/__tests__/adapter.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -238,9 +243,11 @@
 					"stability": "provisional",
 					"owner": "session-context",
 					"changeDiscipline": "provisional-migration-required",
+					"note": "Owns session browser/page redirect helpers. loginWithRedirect() uses an `environment` option carrying PageLocationCapability when provided and otherwise resolves the foundation page location capability, keeping redirect initiation out of worker-like restore-only hosts.",
 					"evidence": [
 						"examples/login-redirect-convenience.test.ts",
-						"examples/session-web-minimal-entry.test.ts"
+						"examples/session-web-minimal-entry.test.ts",
+						"packages/session-context-client/src/web/__tests__/adapter.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -275,7 +282,7 @@
 					"stability": "provisional",
 					"owner": "session-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React entry keeps auth-context config separate from runtime capabilities: SessionContextProvider({ config, transport, sessionStore }) treats config as session-context policy while transport/sessionStore remain capability wiring and the provider remains host glue.",
+					"note": "React entry keeps auth-context config separate from runtime capabilities: SessionContextProvider({ config, transport, sessionStore }) treats config as session-context policy while transport/sessionStore remain capability wiring and the provider remains host glue. The provider is the composition root; ordinary hooks consume the provider service and do not accept a full client environment.",
 					"evidence": [
 						"examples/session-context-react-minimal-entry.test.ts",
 						"packages/session-context-client-react/src/__tests__/adapter.test.ts",
@@ -318,10 +325,14 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
+					"note": "Owns backend-OIDC browser-host helpers within the existing /web subpath. The canonical browser composition path is createBackendOidcModeWebClientEnvironment() first, then createBackendOidcModeWebClient({ environment, ...config }). restoreBackendOidcModeClient() is worker-safe restore-only behavior; bootstrapBackendOidcModePageClient(), captureBackendOidcModePageCallbackFragment(), buildAuthorizeUrlReturningToCurrentPage(), currentPageLocationAsPostAuthRedirectUri(), loginWithBackendOidcRedirect(), loginWithBackendOidcPopup(), and relayBackendOidcPopupCallback() are page-boundary helpers. Page-oriented helpers now use options-object-first signatures with a typed `environment` field instead of positional page arguments or `pageEnvironment` option keys. Location-only helpers consume BackendOidcModePageLocationCapability; callback capture consumes BackendOidcModePageCallbackCapability; popup login consumes BackendOidcModePopupLoginCapability for callback-fragment storage. No ./backend-oidc-mode/page subpath or deprecated aliases are part of this surface.",
 					"evidence": [
 						"examples/backend-oidc-mode-browser-scenario.test.ts",
+						"examples/backend-oidc-worker-like-host.test.ts",
 						"examples/popup-login-baseline.test.ts",
-						"examples/backend-oidc-web-minimal-entry.test.ts"
+						"examples/backend-oidc-web-minimal-entry.test.ts",
+						"examples/backend-oidc-mode-subpath-contract.test.ts",
+						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/web.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -333,7 +344,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Includes the config projection source contract plus the current browser materialization owner: resolveConfigProjection(), networkConfigSource(), ConfigProjectionSourceKind, ClientReadinessState, createFrontendOidcModeBrowserClient(), resolveFrontendOidcModePersistentStateKey(), and resolveFrontendOidcModeBrowserStorageKey(). Iteration 108 added async clientFactory support. Iteration 120 tightened popup semantics so popupLogin() uses popupCallbackUrl as the real OAuth redirect_uri, supports an explicit postAuthRedirectUri for the opener, and is now proven by the apps/webui reference host via popup relay plus cross-tab lifecycle browser e2e. Iteration 121 adds FrontendOidcModeTraceEventType so popup / callback / refresh / user-info structured trace taxonomy is shared and adopter-visible rather than app-local. Iteration 122 adds describeFrontendOidcModeCallbackError() so callback-specific host-facing presentation/recovery mapping stays under the family owner while building on the shared client error presentation descriptor contract. Iteration 139 formalizes capability-first layering on the browser path: projection endpoint + redirectUri are bootstrap input, the resolved projection is auth-context config, runtime capability wiring stays explicit, and the reference app no longer owns fetch/parse/materialization assembly. Iteration 142 aligns frontend-mode user-info and metadata principal construction to the shared AuthenticatedPrincipal baseline and leaves app-facing display projection to shared helper-backed host code.",
+					"note": "Includes the config projection source contract plus the current browser materialization owner: resolveConfigProjection(), networkConfigSource(), ConfigProjectionSourceKind, ClientReadinessState, createFrontendOidcModeWebClientEnvironment(), createFrontendOidcModeBrowserClient(), resolveFrontendOidcModePersistentStateKey(), and resolveFrontendOidcModeBrowserStorageKey(). The canonical browser composition path is createFrontendOidcModeWebClientEnvironment() first, then createFrontendOidcModeBrowserClient({ environment, ...projectionInput }). Iteration 108 added async clientFactory support. Iteration 120 tightened popup semantics so popupLogin() uses popupCallbackUrl as the real OAuth redirect_uri, supports an explicit postAuthRedirectUri for the opener, and is now proven by the apps/webui reference host via popup relay plus cross-tab lifecycle browser e2e. Iteration 121 adds FrontendOidcModeTraceEventType so popup / callback / refresh / user-info structured trace taxonomy is shared and adopter-visible rather than app-local. Iteration 122 adds describeFrontendOidcModeCallbackError() so callback-specific host-facing presentation/recovery mapping stays under the family owner while building on the shared client error presentation descriptor contract. Iteration 139 formalizes capability-first layering on the browser path: projection endpoint + redirectUri are bootstrap input, the resolved projection is auth-context config, runtime capability wiring stays explicit, and the reference app no longer owns fetch/parse/materialization assembly. Iteration 142 aligns frontend-mode user-info and metadata principal construction to the shared AuthenticatedPrincipal baseline and leaves app-facing display projection to shared helper-backed host code.",
 					"evidence": [
 						"examples/scheduling-input-source-baseline.test.ts",
 						"examples/frontend-oidc-minimal-entry.test.ts",
@@ -444,7 +455,7 @@
 					"stability": "provisional",
 					"owner": "basic-auth-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Angular entry keeps provideBasicAuthContext({ config }) as auth-context config only; Angular DI owns host registration, while the service facade stays a thin wrapper over core zone/redirect helpers.",
+					"note": "Angular entry keeps provideBasicAuthContext({ config }) as auth-context config only; Angular DI owns host registration, while the service facade stays a thin wrapper over core zone/redirect helpers. Angular DI is the composition root; service methods do not become a second foundation environment API.",
 					"evidence": [
 						"examples/angular-integration-adapter.test.ts",
 						"packages/basic-auth-context-client-angular/src/lib/__tests__/service.test.ts"
@@ -471,7 +482,7 @@
 						"examples/angular-integration-adapter.test.ts",
 						"packages/session-context-client-angular/src/lib/__tests__/service.test.ts"
 					],
-					"note": "Iteration 137 aligns Angular with the canonical session browser-shell path from core and keeps low-level access on SessionContextService.client instead of duplicating core methods on the Angular facade. The layering stays explicit: SessionContextClient owns auth-context config, transport remains runtime capability wiring, and Angular DI owns host registration.",
+					"note": "Iteration 137 aligns Angular with the canonical session browser-shell path from core and keeps low-level access on SessionContextService.client instead of duplicating core methods on the Angular facade. The layering stays explicit: SessionContextClient owns auth-context config, transport remains runtime capability wiring, and Angular DI owns host registration. Angular DI is the composition root; service methods consume the registered client instead of accepting a full foundation environment.",
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Angular entry: thin DI wrappers preserve canonical owner boundaries"
@@ -490,7 +501,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Iteration 110 + 116 + 119 + 120 + 122 — React 19 productization, canonical keyed consumer-path closeout, browser-owned callback failure-path productization, frontend-mode popup/cross-tab host authority, and shared callback presentation descriptors. Adds TokenSetAuthProvider, useTokenSetAuthRegistry / useTokenSetAuthService / useTokenSetAuthState / useTokenSetAccessToken, useTokenSetCallbackResume, CallbackResumeErrorDetails, readCallbackResumeErrorDetails, TokenSetCallbackComponent (with a retained TokenSetCallbackOutlet compatibility alias), and the SDK-owned lower-level keyed accessor useTokenSetBackendOidcClient(clientKey) on top of the framework-neutral registry core (@securitydept/token-set-context-client/registry). In the current layering story, TokenSetAuthProvider owns host registration into the shared registry lifecycle; individual client entries still own auth-context config plus runtime capability composition. CallbackResumeErrorDetails now also carries a shared host-facing presentation descriptor so browser-owned callback hosts can render stable recovery guidance directly, and the canonical reference host proves that shared descriptor surface across callback, popup, and backend browser actions through apps/webui tests and browser e2e.",
+					"note": "Iteration 110 + 116 + 119 + 120 + 122 — React 19 productization, canonical keyed consumer-path closeout, browser-owned callback failure-path productization, frontend-mode popup/cross-tab host authority, and shared callback presentation descriptors. Adds TokenSetAuthProvider, useTokenSetAuthRegistry / useTokenSetAuthService / useTokenSetAuthState / useTokenSetAccessToken, useTokenSetCallbackResume, CallbackResumeErrorDetails, readCallbackResumeErrorDetails, TokenSetCallbackComponent (with a retained TokenSetCallbackOutlet compatibility alias), and the SDK-owned lower-level keyed accessor useTokenSetBackendOidcClient(clientKey) on top of the framework-neutral registry core (@securitydept/token-set-context-client/registry). In the current layering story, TokenSetAuthProvider owns host registration into the shared registry lifecycle; individual client entries still own auth-context config plus runtime capability composition. The provider may receive prebuilt clients/environments at the host composition root, but hooks and keyed accessors consume registry services and do not accept a full foundation environment. CallbackResumeErrorDetails now also carries a shared host-facing presentation descriptor so browser-owned callback hosts can render stable recovery guidance directly, and the canonical reference host proves that shared descriptor surface across callback, popup, and backend browser actions through apps/webui tests and browser e2e.",
 					"evidence": [
 						"packages/token-set-context-client-react/src/__tests__/token-set-auth-provider.test.tsx",
 						"packages/token-set-context-client-react/src/__tests__/adapter.test.ts",
@@ -542,7 +553,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Root export owns TokenSetAuthRegistry DI service, multi-client integration, bearer interceptor (BearerInterceptorOptions { strictUrlMatch?: boolean } + TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS InjectionToken; provideTokenSetBearerInterceptor(options?) and createTokenSetBearerInterceptor(registry, options?) accept the same options object — strictUrlMatch: true bounds bearer injection to URLs matching registered urlPatterns), callback resume, and the canonical Angular route-security builders. secureRouteRoot() / secureRoute() are the adopter-facing Angular Router path: child routes declare serializable requirement metadata only, root registers non-serializable runtime policy (planner hosts, requirementPolicies, handlers), and both canActivate + canActivateChild evaluate the full route chain in one pass. createTokenSetRouteAggregationGuard() remains the lower-level route-tree primitive. createTokenSetAuthGuard() has been removed from the package. Signal bridge utilities (bridgeToAngularSignal, signalToObservable) live in @securitydept/client-angular.",
+					"note": "Root export owns TokenSetAuthRegistry DI service, multi-client integration, bearer interceptor (BearerInterceptorOptions { strictUrlMatch?: boolean } + TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS InjectionToken; provideTokenSetBearerInterceptor(options?) and createTokenSetBearerInterceptor(registry, options?) accept the same options object — strictUrlMatch: true bounds bearer injection to URLs matching registered urlPatterns), callback resume, and the canonical Angular route-security builders. secureRouteRoot() / secureRoute() are the adopter-facing Angular Router path: child routes declare serializable requirement metadata only, root registers non-serializable runtime policy (planner hosts, requirementPolicies, handlers), and both canActivate + canActivateChild evaluate the full route chain in one pass. createTokenSetRouteAggregationGuard() remains the lower-level route-tree primitive. createTokenSetAuthGuard() has been removed from the package. Signal bridge utilities (bridgeToAngularSignal, signalToObservable) live in @securitydept/client-angular. Angular provider/DI registration is the composition root for registered clients/environments; guards, interceptors, and services consume registry/runtime services and do not each accept a full foundation environment.",
 					"evidence": [
 						"examples/angular-integration-adapter.test.ts",
 						"examples/angular-full-route-aggregation.test.ts"

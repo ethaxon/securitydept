@@ -163,3 +163,14 @@ export {
 	validateWithSchema,
 	validateWithSchemaSync,
 } from "./validation/index";
+export type {
+	ClientEnvironment,
+	CreateWebClientEnvironmentOptions,
+	PageClientEnvironment,
+	PageHistoryLike,
+	PageLocationCapability,
+	PageLocationHistoryCapability,
+	PageLocationLike,
+	WebClientEnvironment,
+} from "./web/client-environment";
+export { ClientEnvironmentPreset } from "./web/client-environment";

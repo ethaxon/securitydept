@@ -27,3 +27,4 @@ temp/*
 **/.angular-build
 **/dist-tsc
 **/test-results
+.gitnexus

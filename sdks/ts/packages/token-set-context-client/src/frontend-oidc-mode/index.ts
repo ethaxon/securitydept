@@ -25,7 +25,9 @@
 
 export type {
 	FrontendOidcModeLoginWithRedirectOptions,
+	FrontendOidcModePageLocationCapability,
 	FrontendOidcModePopupLoginOptions,
+	RelayFrontendOidcPopupCallbackOptions,
 } from "./client";
 export {
 	createFrontendOidcModeClient,
@@ -112,13 +114,16 @@ export {
 
 export type {
 	CreateFrontendOidcModeBrowserClientOptions,
+	CreateFrontendOidcModeWebClientEnvironmentOptions,
 	FrontendOidcModeBrowserClientMaterialization,
+	FrontendOidcModeWebClientEnvironment,
 	IdleRevalidationOptions,
 } from "./config-source-web";
 
 export {
 	bootstrapScriptSource,
 	createFrontendOidcModeBrowserClient,
+	createFrontendOidcModeWebClientEnvironment,
 	networkConfigSource,
 	persistConfigProjection,
 	persistedConfigSource,

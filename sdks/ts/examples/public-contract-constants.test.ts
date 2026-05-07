@@ -13,7 +13,11 @@ import {
 	BackendOidcModeContextSource,
 	BackendOidcModeStateRestoreSourceKind,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import { BackendOidcModeBootstrapSource } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+import {
+	BackendOidcModeBootstrapSource,
+	createBackendOidcModeWebClientEnvironment,
+	restoreBackendOidcModeClient,
+} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { describe, expect, it } from "vitest";
 
 describe("public contract constants", () => {
@@ -45,6 +49,8 @@ describe("public contract constants", () => {
 		expect(BackendOidcModeStateRestoreSourceKind.PersistentStore).toBe(
 			"persistent_store",
 		);
+		expect(typeof createBackendOidcModeWebClientEnvironment).toBe("function");
+		expect(typeof restoreBackendOidcModeClient).toBe("function");
 	});
 
 	it("keeps exported session vocabulary stable", () => {

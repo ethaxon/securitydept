@@ -10,16 +10,24 @@
 //
 // Stability: provisional
 
+import type { PageLocationCapability } from "@securitydept/client";
+import { assertResolveEnvironment } from "@securitydept/client/web";
 import type { SessionContextClient } from "../client";
+
+const SESSION_PAGE_ENVIRONMENT_ERROR_MESSAGE =
+	"session browser redirect helpers require an explicit page environment.\n" +
+	"Create one in your composition root with createBrowserPageClientEnvironment(...).";
 
 /**
  * Options for {@link loginWithRedirect}.
  */
 export interface LoginWithRedirectOptions {
+	environment?: PageLocationCapability;
+
 	/**
 	 * Where to redirect the user after successful authentication.
 	 *
-	 * When omitted, `window.location.href` is used as the return URI and
+	 * When omitted, `environment.location.href` is used as the return URI and
 	 * persisted via the client's pending-login-redirect store for post-auth
 	 * consumption.
 	 */
@@ -42,10 +50,18 @@ export async function loginWithRedirect(
 	client: SessionContextClient,
 	options: LoginWithRedirectOptions = {},
 ): Promise<void> {
+	const environment = assertResolveEnvironment(
+		options.environment,
+		failMissingPageEnvironment,
+	);
 	const postAuthRedirectUri =
-		options.postAuthRedirectUri ?? window.location.href;
+		options.postAuthRedirectUri ?? environment.location.href;
 
 	await client.savePendingLoginRedirect(postAuthRedirectUri);
 
-	window.location.href = client.loginUrl(postAuthRedirectUri);
+	environment.location.href = client.loginUrl(postAuthRedirectUri);
+}
+
+function failMissingPageEnvironment(): never {
+	throw new Error(SESSION_PAGE_ENVIRONMENT_ERROR_MESSAGE);
 }

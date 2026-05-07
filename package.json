@@ -26,7 +26,7 @@
 		"lint": "biome check",
 		"lint-fix": "biome check --write",
 		"release": "node scripts/release-cli.ts",
-		"typecheck": "tsc -b"
+		"typecheck": "tsc -b --force"
 	},
 	"devDependencies": {
 		"@angular/common": "^21.2.8",

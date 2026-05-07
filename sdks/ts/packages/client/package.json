@@ -69,7 +69,7 @@
 	],
 	"scripts": {
 		"build": "tsdown",
-		"typecheck": "tsc -b"
+		"typecheck": "tsc -b --force"
 	},
 	"dependencies": {
 		"@standard-schema/spec": "^1.0.0",

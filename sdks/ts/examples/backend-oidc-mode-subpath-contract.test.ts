@@ -14,7 +14,8 @@ import {
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	BackendOidcModeBootstrapSource,
-	bootstrapBackendOidcModeClient,
+	bootstrapBackendOidcModePageClient,
+	createBackendOidcModeWebClientEnvironment,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import {
 	BackendOidcModeContextProvider,
@@ -52,9 +53,11 @@ describe("backend-oidc-mode canonical subpath", () => {
 // ---------------------------------------------------------------------------
 
 describe("backend-oidc-mode/web canonical subpath", () => {
-	it("exports bootstrapBackendOidcModeClient from /backend-oidc-mode/web", () => {
-		expect(bootstrapBackendOidcModeClient).toBeDefined();
-		expect(typeof bootstrapBackendOidcModeClient).toBe("function");
+	it("exports page bootstrap and environment helpers from /backend-oidc-mode/web", () => {
+		expect(bootstrapBackendOidcModePageClient).toBeDefined();
+		expect(typeof bootstrapBackendOidcModePageClient).toBe("function");
+		expect(createBackendOidcModeWebClientEnvironment).toBeDefined();
+		expect(typeof createBackendOidcModeWebClientEnvironment).toBe("function");
 	});
 
 	it("exports BackendOidcModeBootstrapSource enum from /backend-oidc-mode/web", () => {

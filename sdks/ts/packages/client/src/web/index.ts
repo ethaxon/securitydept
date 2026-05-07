@@ -9,6 +9,38 @@ export {
 	createCancellationTokenFromAbortSignal,
 	normalizeAbortError,
 } from "./cancellation";
+// --- Web client environment presets ---
+export type {
+	ClientEnvironment,
+	CreateBrowserPageClientEnvironmentOptions,
+	CreateWebClientEnvironmentOptions,
+	PageClientEnvironment,
+	PageHistoryLike,
+	PageLocationCapability,
+	PageLocationHistoryCapability,
+	PageLocationLike,
+	RequirePageClientEnvironmentOptions,
+	WebClientEnvironment,
+} from "./client-environment";
+export {
+	assertPageLocationCapability,
+	assertPageLocationHistoryCapability,
+	assertResolveEnvironment,
+	assertResolveFromEnvironment,
+	ClientEnvironmentPreset,
+	createBrowserExtensionBackgroundClientEnvironment,
+	createBrowserPageClientEnvironment,
+	createBrowserWorkerClientEnvironment,
+	createServiceWorkerClientEnvironment,
+	createWebClientEnvironment,
+	readDefaultPageLocationCapability,
+	readDefaultPageLocationHistoryCapability,
+	readPageLocationCapability,
+	readPageLocationHistoryCapability,
+	requireDefaultPageLocationCapability,
+	requireDefaultPageLocationHistoryCapability,
+	requirePageClientEnvironment,
+} from "./client-environment";
 // --- Cross-tab state sync ---
 export type {
 	CreateCrossTabSyncOptions,

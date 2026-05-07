@@ -21,6 +21,38 @@ Rules:
 
 ## Current Migration Notes
 
+### Client Environment And Backend-OIDC Web Host Boundary
+
+Packages:
+
+- `@securitydept/client`
+- `@securitydept/client/web`
+- `@securitydept/token-set-context-client/backend-oidc-mode/web`
+
+Change:
+
+- Framework-neutral host capability resolution is now owned by the client foundation through typed `ClientEnvironment`, `WebClientEnvironment`, and `PageClientEnvironment` objects.
+- `ClientRuntime` remains the capability bundle consumed by core clients; client environments contain the canonical runtime and may expose same-source mirrors for helper ergonomics.
+- Web host presets are explicit factory entry points for browser page, browser worker, service worker, and browser-extension background hosts. They are not automatic host detection.
+- Context and adapter public helpers use the same boundary. Backend-OIDC web helpers, basic-auth/session redirect helpers, and framework adapter convenience helpers must not each redeclare or guess transport/store/scheduler/clock/page dependencies.
+- Backend-OIDC web helpers are split by host boundary: page-only helpers use page-explicit names, while worker-safe helpers require host-injected environment/capabilities or restore-only behavior.
+
+Migration:
+
+- Create one environment at the host composition root and pass `environment.runtime` to core clients.
+- Use `createBrowserPageClientEnvironment(options)` for real page/tab/popup callback flows.
+- Use `createBrowserWorkerClientEnvironment(options)`, `createServiceWorkerClientEnvironment(options)`, or `createBrowserExtensionBackgroundClientEnvironment(options)` for worker-like hosts; inject persistence/session stores explicitly when needed.
+- Do not call page callback bootstrap in service workers or extension backgrounds. Run restore/token-state APIs there, and run callback capture only in a real page/popup document or with explicit fake page/callback-fragment capabilities in tests.
+- Update ambiguous page-global helper names to page-explicit forms where the public name changed, such as `currentPageLocationAsPostAuthRedirectUri()`, `buildAuthorizeUrlReturningToCurrentPage()`, `bootstrapBackendOidcModePageClient()`, and `captureBackendOidcModePageCallbackFragment()`.
+- Treat existing redirect/popup helpers (`loginWithBackendOidcRedirect()`, `loginWithBackendOidcPopup()`, and `relayBackendOidcPopupCallback()`) as page-only helpers even though their historical names remain intact; pass explicit page capability (`PageLocationHistoryCapability`) or a page-bearing `environment` when testing or running in a host wrapper.
+- Treat basic-auth/session `/web` redirect helpers that read or write `window.location` as page helpers; keep them in a real page context or inject explicit navigation capabilities.
+- Let framework provider/DI registration functions own full environment composition. Do not make ordinary hooks, guards, interceptors, services, or convenience helpers each accept a full scattered dependency bag.
+- Do not infer page capability from `globalThis.location`; page helpers require `window.location` and `window.history.replaceState`.
+
+Justification:
+
+- Non-client-bound helpers had started to duplicate dependency bags and hidden `window.*` defaults. Typed client environments keep core runtime wiring explicit while giving helpers a shared, testable, host-scoped capability boundary.
+
 ### Token-Set Event-Driven Auth Flow
 
 Packages:

@@ -113,7 +113,30 @@ Scheduling、cancellation、abort interop、visibility、storage、promise/signa
 
 ### 依赖注入
 
-DI 属于 adapter concern。Core package 暴露显式 constructor/function；Angular DI 与 React Context 位于 adapter packages。
+Framework DI 仍属于 adapter concern：Angular DI 与 React Context 位于 adapter packages。Framework-neutral host capability resolution 属于 foundation concern。Core client 消费 `ClientRuntime`；不直接绑定 client 的 helper 消费由 host composition root 创建的显式 typed environment object。
+
+Canonical foundation model：
+
+- `ClientRuntime` 是 core client 使用的稳定 capability bundle，承载 transport、scheduler、clock、logging/tracing、persistent/session store。
+- `ClientEnvironment` 是宿主 composition environment，包含 canonical `runtime`，并可为了 helper ergonomics 镜像 runtime capability。镜像字段必须来自同一个 `runtime`；host 不得创建 capability source 相互冲突的 runtime/environment 组合。
+- `WebClientEnvironment` 表达 Web-capable client environment，但不意味着一定存在 page document。
+- `PageClientEnvironment` 在 Web environment 基础上表达 page-only capability，例如 `window.location` 与 `window.history`。
+- Helper 应索取最窄 capability view，例如 `Pick<WebClientEnvironment, "runtime">` 或 `PageLocationHistoryCapability`，而不是默认接受完整 environment。
+
+不要把这些对象设计成 DI container、service locator、provider tree、global singleton 或 business config DSL。`baseUrl`、`sourceKey`、account binding、product route 等 auth-context config 仍属于 family config 或 host code，不进入 foundation environment。
+
+Foundation Web preset 是显式 composition template，不是自动 host detection：
+
+| Preset factory | 返回 | 默认 page capability | 默认 Web storage | 目标 host |
+|---|---|---:|---:|---|
+| `createBrowserPageClientEnvironment(options)` | `PageClientEnvironment` | 是 | 是 | real browser page、tab 或 popup document |
+| `createBrowserWorkerClientEnvironment(options)` | `WebClientEnvironment` | 否 | 否 | dedicated/shared worker-style browser host |
+| `createServiceWorkerClientEnvironment(options)` | `WebClientEnvironment` | 否 | 否 | service worker |
+| `createBrowserExtensionBackgroundClientEnvironment(options)` | `WebClientEnvironment` | 否 | 否 | extension background 或 MV3 service-worker-style host |
+
+Preset 名称通过 `ClientEnvironmentPreset` 作为 docs、trace/error context 与 tests 的 public vocabulary。不要使用字符串驱动的 `createEnvironmentFromPreset(name)` 或 global-shape detection 猜测 host。Worker、service-worker 与 extension-background preset 需要 storage 时必须显式注入 persistent/session store；page-only helper 在非 page environment 中必须 fail-fast。
+
+该规则不只适用于 `@securitydept/client`：context package 与 framework adapter 的 public helper 也必须使用同一边界。任何会读取 host globals、执行 page navigation、构造 client runtime，或拥有 transport/store/scheduler/clock wiring 的 helper，都应接收 client environment 或窄 capability view。Provider、DI 与顶层 adapter registration API 可以作为 composition root 接收完整 environment；普通 hook、guard、interceptor、service 与 convenience helper 不应各自重复声明完整 dependency bag。
 
 ## Context Client 设计
 
@@ -295,6 +318,26 @@ Verified 表示已有 focused evidence、reference-app proof 或 downstream-adop
 #### 2. Browser 入口：`./backend-oidc-mode/web` 负责 browser glue
 
 使用 `@securitydept/token-set-context-client/backend-oidc-mode/web` 接入 backend-owned OIDC/token-set browser flows。
+
+该 subpath 是 browser-host glue，不表示所有 Web-like runtime 都具备 page navigation。选择 helper 前应先明确 foundation environment 边界：
+
+- Browser client construction 应接收由 host composition root 创建的 `WebClientEnvironment`。不要把 transport、scheduler、clock、persistent store、session store 分散传给每个 helper。
+- Worker-like host、service worker 与 extension background 可以创建/restore client，并运行 token-state API，但默认不得执行 page callback capture。
+- Page-only helper 只能通过 `PageClientEnvironment` 读取 `window.location` / `window.history`；名字或 options 必须明确 page 边界，例如 `currentPageLocationAsPostAuthRedirectUri`、`buildAuthorizeUrlReturningToCurrentPage`、`bootstrapBackendOidcModePageClient`、`captureBackendOidcModePageCallbackFragment`。既有 redirect/popup helper（例如 `loginWithBackendOidcRedirect`、`loginWithBackendOidcPopup`、`relayBackendOidcPopupCallback`）仍是 page-only helper，并在非 page environment 中 fail-fast。
+- Host-injected callback helper 必须接收 `BackendOidcModeWebClientEnvironment`，或显式 page/callback-fragment capability。缺少必要 capability 时必须 fail-fast，而不是落到 `window is not defined` 或 stale URL parsing。
+
+推荐 host environment：
+
+| Host | Environment | Callback capture | Restore/token state | Storage defaults |
+|---|---|---:|---:|---|
+| browser page/tab/popup | `PageClientEnvironment` | 是 | 是 | 可使用 page storage |
+| browser worker | `WebClientEnvironment` | 默认否 | 是 | 只能显式注入 store |
+| service worker | `WebClientEnvironment` | 默认否 | 是 | 只能显式注入 store |
+| extension background | `WebClientEnvironment` | 默认否 | 是 | 只能显式注入 store |
+
+不要通过检查 `globalThis.location` 决定是否允许 callback bootstrap。Service worker 或 extension background 可能暴露 location-like object，但没有 page history semantics。Page detection 必须验证 `window.location` 与 `window.history.replaceState` 等 page/document capability。
+
+同一 page-boundary 规则也适用于 basic-auth 与 session `/web` redirect helper：会读取或写入 `window.location` 的 redirect helper 是 page helper。Worker-like host 必须传入显式 URL/navigation capability，或把 redirect initiation 保留在 real page context 中。
 
 #### 3. React 入口：独立 adapter 包拥有 Provider 与 hook wiring
 

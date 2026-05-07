@@ -13,14 +13,18 @@ import {
 	createEphemeralFlowStore,
 	createJsonCodec,
 	FetchTransportRedirectKind,
+	type PageLocationCapability,
+	type PageLocationHistoryCapability,
 	UserRecovery,
+	type WebClientEnvironment,
 } from "@securitydept/client";
 import {
 	createLocalStorageStore,
 	createSessionStorageStore,
 } from "@securitydept/client/persistence/web";
 import {
-	createWebRuntime,
+	assertResolveEnvironment,
+	createWebClientEnvironment,
 	type FetchTransportOptions,
 	openPopupWindow,
 	relayPopupCallback,
@@ -36,6 +40,12 @@ import type { AuthStateSnapshot } from "../types";
 const BACKEND_OIDC_PERSISTENT_PREFIX = "securitydept.web.backend_oidc:";
 const BACKEND_OIDC_SESSION_PREFIX = "securitydept.web.backend_oidc:";
 const TOKEN_SET_CALLBACK_FRAGMENT_KEY = "pending_callback_fragment";
+const BACKEND_OIDC_PAGE_ENVIRONMENT_ERROR_MESSAGE =
+	"backend-oidc page helpers require an explicit page environment.\n" +
+	"Create one in your composition root with createBrowserPageClientEnvironment(...).";
+const BACKEND_OIDC_PAGE_CALLBACK_ENVIRONMENT_ERROR_MESSAGE =
+	"backend-oidc page callback helpers require an explicit page environment with callbackFragmentStore.\n" +
+	"Create one in your composition root with createBackendOidcModeWebClientEnvironment(...), then pair it with page location/history capabilities from createBrowserPageClientEnvironment(...).";
 
 /**
  * Returns the storage key used for the callback fragment ephemeral store.
@@ -77,68 +87,35 @@ export interface BackendOidcModeBootstrapResult {
 	snapshot: AuthStateSnapshot | null;
 }
 
-/**
- * Options for {@link createBackendOidcModeBrowserClient}.
- *
- * This interface exposes **every field** of {@link BackendOidcModeClientConfig}
- * so that browser adopters never need to fall back to the raw
- * `BackendOidcModeClient` constructor just to set a config value.
- *
- * In addition, it exposes browser-specific runtime wiring that the raw client
- * does not own:
- *
- * - `persistentStore` / `sessionStore` — browser storage adapters
- *   (defaults to `localStorage` / `sessionStorage` with an SDK-managed prefix)
- * - `transport` / `scheduler` / `clock` / `logger` / `traceSink` — runtime
- *   capabilities (defaults provided by `createWebRuntime`)
- * - `fetchTransport` — browser-native fetch transport configuration
- *   (only used when `transport` is **not** provided)
- *
- * **`transport` vs `fetchTransport` priority:**
- *
- * - When `transport` is provided, it is used as-is and `fetchTransport` is
- *   ignored.
- * - When `transport` is omitted, the entry creates a default `fetch`-based
- *   transport via `createWebRuntime`. In that path, `fetchTransport` options
- *   are merged with the SDK default (`redirect: "manual"`) so adopters can
- *   tune fetch behavior without replacing the entire transport.
- *
- * If you need full control over the `ClientRuntime`, construct
- * `BackendOidcModeClient` directly instead.
- */
-export interface CreateBackendOidcModeBrowserClientOptions {
-	// --- BackendOidcModeClientConfig fields (full parity) ---
+export interface BackendOidcModeWebClientEnvironment
+	extends WebClientEnvironment {
+	callbackFragmentStore: EphemeralFlowStore<string>;
+}
 
-	baseUrl?: string;
-	defaultPostAuthRedirectUri?: string;
-	refreshWindowMs?: number;
-	/**
-	 * Custom persistence key for persisted auth state.
-	 *
-	 * SDK default: `"securitydept.backend_oidc:v1:{baseUrl}"`.
-	 *
-	 * Pass a custom key when multiple independent backend-oidc integrations
-	 * share the same origin and must not collide in storage.
-	 *
-	 * To also isolate callback fragments, pass the same key to
-	 * {@link bootstrapBackendOidcModeClient} as `callbackFragmentKey` using
-	 * {@link resolveBackendOidcModeCallbackFragmentKey}.
-	 */
+export interface BackendOidcModePageClientEnvironment
+	extends BackendOidcModeWebClientEnvironment,
+		PageLocationHistoryCapability {}
+
+export interface BackendOidcModeCallbackFragmentStoreCapability {
+	callbackFragmentStore: EphemeralFlowStore<string>;
+}
+
+export interface BackendOidcModePageLocationCapability
+	extends PageLocationCapability {}
+
+export interface BackendOidcModePageCallbackCapability
+	extends BackendOidcModeCallbackFragmentStoreCapability,
+		PageLocationHistoryCapability {}
+
+export interface BackendOidcModePopupLoginCapability
+	extends BackendOidcModeCallbackFragmentStoreCapability {}
+
+export interface CreateBackendOidcModeWebClientEnvironmentOptions {
+	environment?: BackendOidcModeWebClientEnvironment;
 	persistentStateKey?: string;
-	/**
-	 * Path overrides for adopters whose backend uses a non-default route
-	 * family. For example, `securitydept-server` uses `/auth/token-set/*`
-	 * instead of the SDK defaults (`/auth/oidc/*`).
-	 */
-	loginPath?: string;
-	refreshPath?: string;
-	metadataRedeemPath?: string;
-	userInfoPath?: string;
-
-	// --- Browser runtime wiring (not part of BackendOidcModeClientConfig) ---
-
 	persistentStore?: RecordStore;
 	sessionStore?: RecordStore;
+	callbackFragmentStore?: EphemeralFlowStore<string>;
 	/**
 	 * Fully custom transport — replaces the default `fetch`-based transport.
 	 *
@@ -157,14 +134,60 @@ export interface CreateBackendOidcModeBrowserClientOptions {
 	clock?: Clock;
 	logger?: LoggerTrait;
 	traceSink?: TraceEventSinkTrait;
+}
+
+/**
+ * Options for {@link createBackendOidcModeWebClient}.
+ *
+ * This interface exposes **every field** of {@link BackendOidcModeClientConfig}
+ * so that browser adopters never need to fall back to the raw
+ * `BackendOidcModeClient` constructor just to set a config value.
+ * Browser runtime/stores must be composed ahead of time through
+ * {@link createBackendOidcModeWebClientEnvironment} and passed here as
+ * `environment`.
+ */
+export interface CreateBackendOidcModeWebClientOptions {
+	// --- BackendOidcModeClientConfig fields (full parity) ---
+
+	baseUrl?: string;
+	defaultPostAuthRedirectUri?: string;
+	refreshWindowMs?: number;
+	/**
+	 * Custom persistence key for persisted auth state.
+	 *
+	 * SDK default: `"securitydept.backend_oidc:v1:{baseUrl}"`.
+	 *
+	 * Pass a custom key when multiple independent backend-oidc integrations
+	 * share the same origin and must not collide in storage.
+	 *
+	 * To also isolate callback fragments, pass the same key to
+	 * {@link bootstrapBackendOidcModePageClient} as `callbackFragmentKey` using
+	 * {@link resolveBackendOidcModeCallbackFragmentKey}.
+	 */
+	persistentStateKey?: string;
+	/**
+	 * Path overrides for adopters whose backend uses a non-default route
+	 * family. For example, `securitydept-server` uses `/auth/token-set/*`
+	 * instead of the SDK defaults (`/auth/oidc/*`).
+	 */
+	loginPath?: string;
+	refreshPath?: string;
+	metadataRedeemPath?: string;
+	userInfoPath?: string;
+
+	environment: BackendOidcModeWebClientEnvironment;
 	resumeReconciliation?: boolean;
 	resumeReconciliationOptions?: TokenSetResumeReconciliationOptions;
 }
 
-export function createBackendOidcModeBrowserClient(
-	options: CreateBackendOidcModeBrowserClientOptions = {},
-): BackendOidcModeClient {
-	const runtime = createWebRuntime({
+export function createBackendOidcModeWebClientEnvironment(
+	options: CreateBackendOidcModeWebClientEnvironmentOptions = {},
+): BackendOidcModeWebClientEnvironment {
+	if (options.environment) {
+		return options.environment;
+	}
+
+	const environment = createWebClientEnvironment({
 		transport: options.transport,
 		scheduler: options.scheduler,
 		clock: options.clock,
@@ -182,6 +205,26 @@ export function createBackendOidcModeBrowserClient(
 		},
 	});
 
+	return {
+		...environment,
+		callbackFragmentStore:
+			options.callbackFragmentStore ??
+			createBackendOidcModeCallbackFragmentStore({
+				sessionStore: environment.runtime.sessionStore,
+				key: options.persistentStateKey
+					? resolveBackendOidcModeCallbackFragmentKey(
+							options.persistentStateKey,
+						)
+					: undefined,
+			}),
+	};
+}
+
+export function createBackendOidcModeWebClient(
+	options: CreateBackendOidcModeWebClientOptions,
+): BackendOidcModeClient {
+	const environment = options.environment;
+
 	return attachTokenSetResumeReconciliation(
 		new BackendOidcModeClient(
 			{
@@ -194,7 +237,7 @@ export function createBackendOidcModeBrowserClient(
 				metadataRedeemPath: options.metadataRedeemPath,
 				userInfoPath: options.userInfoPath,
 			},
-			runtime,
+			environment.runtime,
 		),
 		{
 			resumeReconciliation: options.resumeReconciliation,
@@ -227,47 +270,33 @@ export function createBackendOidcModeCallbackFragmentStore(
  * whichever page they are currently on.  The hash is stripped because
  * servers typically cannot relay fragment identifiers via 302 redirects.
  */
-export function currentLocationAsPostAuthRedirectUri(
-	location: Pick<LocationLike, "href"> = window.location,
+export interface CurrentPageLocationAsPostAuthRedirectUriOptions {
+	environment?: BackendOidcModePageLocationCapability;
+}
+
+export function currentPageLocationAsPostAuthRedirectUri(
+	options: CurrentPageLocationAsPostAuthRedirectUriOptions = {},
 ): string {
-	const url = new URL(location.href);
+	const environment = assertResolveEnvironment(
+		options.environment,
+		failMissingBackendOidcPageEnvironment,
+	);
+	const url = new URL(environment.location.href);
 	url.hash = "";
 	return url.toString();
 }
 
-export interface CaptureBackendOidcModeCallbackFragmentFromUrlOptions {
-	location?: LocationLike;
-	history?: HistoryLike;
-	callbackFragmentStore?: EphemeralFlowStore<string>;
-	/**
-	 * Storage key for the callback fragment ephemeral store.
-	 *
-	 * Only used when `callbackFragmentStore` is not explicitly supplied.
-	 * Use {@link resolveBackendOidcModeCallbackFragmentKey} to derive a
-	 * namespaced key from `persistentStateKey`.
-	 */
-	callbackFragmentKey?: string;
-	/**
-	 * Session store to back the default callback fragment store.
-	 *
-	 * Only used when `callbackFragmentStore` is not explicitly supplied.
-	 * Should be the same store passed to {@link createBackendOidcModeBrowserClient}
-	 * as `sessionStore`.
-	 */
-	sessionStore?: RecordStore;
+export interface CaptureBackendOidcModeCallbackFragmentOptions {
+	environment: BackendOidcModePageCallbackCapability;
 }
 
-export async function captureBackendOidcModeCallbackFragmentFromUrl(
-	options: CaptureBackendOidcModeCallbackFragmentFromUrlOptions = {},
+export async function captureBackendOidcModeCallbackFragment(
+	options: CaptureBackendOidcModeCallbackFragmentOptions,
 ): Promise<string | null> {
-	const location = options.location ?? window.location;
-	const history = options.history ?? window.history;
-	const callbackFragmentStore =
-		options.callbackFragmentStore ??
-		createBackendOidcModeCallbackFragmentStore({
-			sessionStore: options.sessionStore,
-			key: options.callbackFragmentKey,
-		});
+	const environment = options.environment;
+	const location = environment.location;
+	const history = environment.history;
+	const callbackFragmentStore = environment.callbackFragmentStore;
 	const fragment = location.hash.startsWith("#")
 		? location.hash.slice(1)
 		: location.hash;
@@ -283,48 +312,65 @@ export async function captureBackendOidcModeCallbackFragmentFromUrl(
 	return fragment;
 }
 
-export interface BootstrapBackendOidcModeClientOptions {
-	location?: LocationLike;
-	history?: HistoryLike;
-	callbackFragmentStore?: EphemeralFlowStore<string>;
-	/**
-	 * Storage key for the callback fragment ephemeral store.
-	 *
-	 * Only used when `callbackFragmentStore` is not explicitly supplied.
-	 * Multiple backend-oidc integrations sharing a session store should
-	 * each pass a distinct key — use
-	 * {@link resolveBackendOidcModeCallbackFragmentKey} to derive one from
-	 * the same `persistentStateKey` used in
-	 * {@link createBackendOidcModeBrowserClient}.
-	 */
-	callbackFragmentKey?: string;
-	/**
-	 * Session store to back the default callback fragment store.
-	 *
-	 * Only used when `callbackFragmentStore` is not explicitly supplied.
-	 * Should be the same store passed to {@link createBackendOidcModeBrowserClient}
-	 * as `sessionStore`.
-	 */
-	sessionStore?: RecordStore;
+export interface CaptureBackendOidcModePageCallbackFragmentOptions {
+	environment?: BackendOidcModePageCallbackCapability;
 }
 
-export async function bootstrapBackendOidcModeClient(
-	client: BackendOidcModeClient,
-	options: BootstrapBackendOidcModeClientOptions = {},
-): Promise<BackendOidcModeBootstrapResult> {
-	const callbackFragmentStore =
-		options.callbackFragmentStore ??
-		createBackendOidcModeCallbackFragmentStore({
-			sessionStore: options.sessionStore,
-			key: options.callbackFragmentKey,
-		});
+export async function captureBackendOidcModePageCallbackFragment(
+	options: CaptureBackendOidcModePageCallbackFragmentOptions = {},
+): Promise<string | null> {
+	return captureBackendOidcModeCallbackFragment({
+		environment: assertResolveEnvironment(
+			options.environment,
+			failMissingBackendOidcPageCallbackEnvironment,
+		),
+	});
+}
 
-	await captureBackendOidcModeCallbackFragmentFromUrl({
-		location: options.location,
-		history: options.history,
-		callbackFragmentStore,
+export interface BootstrapBackendOidcModePageClientOptions {
+	environment?: BackendOidcModePageCallbackCapability;
+}
+
+export async function bootstrapBackendOidcModePageClient(
+	client: BackendOidcModeClient,
+	options: BootstrapBackendOidcModePageClientOptions = {},
+): Promise<BackendOidcModeBootstrapResult> {
+	const environment = assertResolveEnvironment(
+		options.environment,
+		failMissingBackendOidcPageCallbackEnvironment,
+	);
+
+	await captureBackendOidcModePageCallbackFragment({
+		environment,
 	});
 
+	return bootstrapBackendOidcModeFromCallbackStore(
+		client,
+		environment.callbackFragmentStore,
+	);
+}
+
+export async function restoreBackendOidcModeClient(
+	client: BackendOidcModeClient,
+): Promise<BackendOidcModeBootstrapResult> {
+	const restored = await client.restorePersistedState();
+	if (restored) {
+		return {
+			source: BackendOidcModeBootstrapSource.Restore,
+			snapshot: restored,
+		};
+	}
+
+	return {
+		source: BackendOidcModeBootstrapSource.Empty,
+		snapshot: null,
+	};
+}
+
+export async function bootstrapBackendOidcModeFromCallbackStore(
+	client: BackendOidcModeClient,
+	callbackFragmentStore: EphemeralFlowStore<string>,
+): Promise<BackendOidcModeBootstrapResult> {
 	const pendingFragment = await callbackFragmentStore.load();
 	if (pendingFragment) {
 		try {
@@ -342,18 +388,7 @@ export async function bootstrapBackendOidcModeClient(
 		}
 	}
 
-	const restored = await client.restorePersistedState();
-	if (restored) {
-		return {
-			source: BackendOidcModeBootstrapSource.Restore,
-			snapshot: restored,
-		};
-	}
-
-	return {
-		source: BackendOidcModeBootstrapSource.Empty,
-		snapshot: null,
-	};
+	return restoreBackendOidcModeClient(client);
 }
 
 /**
@@ -364,11 +399,15 @@ export async function bootstrapBackendOidcModeClient(
  * If the redirect target is known statically, prefer `client.authorizeUrl()`
  * with an explicit path instead.
  */
-export function buildAuthorizeUrlReturningToCurrent(
+export interface BuildAuthorizeUrlReturningToCurrentPageOptions {
+	environment?: BackendOidcModePageLocationCapability;
+}
+
+export function buildAuthorizeUrlReturningToCurrentPage(
 	client: BackendOidcModeClient,
-	location: Pick<LocationLike, "href"> = window.location,
+	options: BuildAuthorizeUrlReturningToCurrentPageOptions = {},
 ): string {
-	return client.authorizeUrl(currentLocationAsPostAuthRedirectUri(location));
+	return client.authorizeUrl(currentPageLocationAsPostAuthRedirectUri(options));
 }
 
 /**
@@ -382,8 +421,8 @@ export interface LoginWithBackendOidcRedirectOptions {
 	 * used as the return URI.
 	 */
 	postAuthRedirectUri?: string;
-	/** Override the location used to derive the default return URI. */
-	location?: Pick<LocationLike, "href">;
+	/** Override the page environment used to derive the default return URI. */
+	environment?: BackendOidcModePageLocationCapability;
 }
 
 /**
@@ -397,12 +436,15 @@ export function loginWithBackendOidcRedirect(
 	client: BackendOidcModeClient,
 	options: LoginWithBackendOidcRedirectOptions = {},
 ): void {
-	const location = options.location ?? window.location;
+	const environment = assertResolveEnvironment(
+		options.environment,
+		failMissingBackendOidcPageEnvironment,
+	);
 	const postAuthRedirectUri =
 		options.postAuthRedirectUri ??
-		currentLocationAsPostAuthRedirectUri(location);
+		currentPageLocationAsPostAuthRedirectUri({ environment });
 
-	window.location.href = client.authorizeUrl(postAuthRedirectUri);
+	environment.location.href = client.authorizeUrl(postAuthRedirectUri);
 }
 
 // ---------------------------------------------------------------------------
@@ -426,30 +468,8 @@ export interface LoginWithBackendOidcPopupOptions {
 	popupHeight?: number;
 	/** Maximum time in ms to wait for the popup relay (default: 120000). */
 	timeoutMs?: number;
-	/**
-	 * Override the callback fragment store.
-	 *
-	 * When provided, this store is used directly. When omitted, a store is
-	 * constructed from `callbackFragmentKey` / `sessionStore` (or SDK defaults).
-	 *
-	 * For same-origin multi-integration scenarios, pass the same namespaced
-	 * store used in `createBackendOidcModeBrowserClient` / `bootstrapBackendOidcModeClient`.
-	 */
-	callbackFragmentStore?: EphemeralFlowStore<string>;
-	/**
-	 * Storage key for the callback fragment ephemeral store.
-	 *
-	 * Only used when `callbackFragmentStore` is not explicitly supplied.
-	 * Use {@link resolveBackendOidcModeCallbackFragmentKey} to derive a
-	 * namespaced key from `persistentStateKey`.
-	 */
-	callbackFragmentKey?: string;
-	/**
-	 * Override the session store used for the callback fragment.
-	 *
-	 * Only used when `callbackFragmentStore` is not explicitly supplied.
-	 */
-	sessionStore?: RecordStore;
+	/** Override the popup login environment, including callback fragment store. */
+	environment?: BackendOidcModePopupLoginCapability;
 }
 
 /**
@@ -496,16 +516,11 @@ export async function loginWithBackendOidcPopup(
 
 	// Resolve fragment store using the same priority as other browser helpers.
 	const fragmentStore =
-		options.callbackFragmentStore ??
-		createBackendOidcModeCallbackFragmentStore({
-			key: options.callbackFragmentKey,
-			sessionStore: options.sessionStore,
-		});
+		options.environment?.callbackFragmentStore ??
+		createBackendOidcModeCallbackFragmentStore();
 	await fragmentStore.save(hash.slice(1));
 
-	return bootstrapBackendOidcModeClient(client, {
-		callbackFragmentStore: fragmentStore,
-	});
+	return bootstrapBackendOidcModeFromCallbackStore(client, fragmentStore);
 }
 
 /**
@@ -522,11 +537,20 @@ export async function loginWithBackendOidcPopup(
  * </script>
  * ```
  */
-export function relayBackendOidcPopupCallback(options?: {
+export interface RelayBackendOidcPopupCallbackOptions {
 	targetOrigin?: string;
-}): void {
+	environment?: BackendOidcModePageLocationCapability;
+}
+
+export function relayBackendOidcPopupCallback(
+	options: RelayBackendOidcPopupCallbackOptions = {},
+): void {
+	const environment = assertResolveEnvironment(
+		options.environment,
+		failMissingBackendOidcPageEnvironment,
+	);
 	relayPopupCallback({
-		payload: window.location.href,
+		payload: environment.location.href,
 		targetOrigin: options?.targetOrigin,
 	});
 }
@@ -542,8 +566,8 @@ export function relayBackendOidcPopupCallback(options?: {
  *    fragment store when `callbackFragmentStore` is not supplied.  For
  *    same-origin multi-integration scenarios, pass the same namespaced key
  *    via {@link resolveBackendOidcModeCallbackFragmentKey} and the same
- *    `sessionStore` used in {@link createBackendOidcModeBrowserClient} /
- *    {@link bootstrapBackendOidcModeClient}.
+ *    `sessionStore` used in {@link createBackendOidcModeWebClient} /
+ *    {@link bootstrapBackendOidcModePageClient}.
  * 3. SDK defaults — global session store + default fragment key.
  */
 export interface ResetBackendOidcModeBrowserStateOptions {
@@ -560,7 +584,7 @@ export interface ResetBackendOidcModeBrowserStateOptions {
 	 * Session store to back the default callback fragment store.
 	 *
 	 * Only used when `callbackFragmentStore` is not explicitly supplied.
-	 * Should be the same store passed to {@link createBackendOidcModeBrowserClient}
+	 * Should be the same store passed to {@link createBackendOidcModeWebClient}
 	 * as `sessionStore`.
 	 */
 	sessionStore?: RecordStore;
@@ -578,6 +602,14 @@ export async function resetBackendOidcModeBrowserState(
 		});
 	await callbackFragmentStore.clear();
 	await client.clearState();
+}
+
+function failMissingBackendOidcPageEnvironment(): never {
+	throw new Error(BACKEND_OIDC_PAGE_ENVIRONMENT_ERROR_MESSAGE);
+}
+
+function failMissingBackendOidcPageCallbackEnvironment(): never {
+	throw new Error(BACKEND_OIDC_PAGE_CALLBACK_ENVIRONMENT_ERROR_MESSAGE);
 }
 
 function isCancelledClientError(error: unknown): boolean {

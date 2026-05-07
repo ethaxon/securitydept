@@ -1,39 +1,58 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PageLocationCapability } from "@securitydept/client";
+import { describe, expect, it, vi } from "vitest";
 import { BasicAuthContextClient } from "../../client";
 import { AuthGuardRedirectStatus, AuthGuardResultKind } from "../../types";
-import { performRedirect } from "../index";
+import { loginWithRedirect, performRedirect } from "../index";
+
+function createPageLocationCapability(href: string): PageLocationCapability {
+	const url = new URL(href);
+	return {
+		location: {
+			href,
+			hash: url.hash,
+			pathname: url.pathname,
+			search: url.search,
+		},
+	};
+}
 
 describe("basic-auth web adapter", () => {
-	afterEach(() => {
-		vi.unstubAllGlobals();
-	});
-
 	it("writes location.href when given a redirect result", () => {
-		vi.stubGlobal("location", { href: "https://app.example.com/current" });
+		const environment = createPageLocationCapability(
+			"https://app.example.com/current",
+		);
 
-		performRedirect({
-			kind: AuthGuardResultKind.Redirect,
-			status: AuthGuardRedirectStatus.Found,
-			location:
-				"https://auth.example.com/basic/login?post_auth_redirect_uri=%2Fbasic%2Fapi%2Fgroups",
-		});
+		performRedirect(
+			{
+				kind: AuthGuardResultKind.Redirect,
+				status: AuthGuardRedirectStatus.Found,
+				location:
+					"https://auth.example.com/basic/login?post_auth_redirect_uri=%2Fbasic%2Fapi%2Fgroups",
+			},
+			{ environment },
+		);
 
-		expect(globalThis.location.href).toBe(
+		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?post_auth_redirect_uri=%2Fbasic%2Fapi%2Fgroups",
 		);
 	});
 
 	it("does not redirect for non-redirect results", () => {
-		vi.stubGlobal("location", { href: "https://app.example.com/current" });
+		const environment = createPageLocationCapability(
+			"https://app.example.com/current",
+		);
 
-		performRedirect({
-			kind: AuthGuardResultKind.Ok,
-			value: {
-				location: "https://auth.example.com/should-not-run",
+		performRedirect(
+			{
+				kind: AuthGuardResultKind.Ok,
+				value: {
+					location: "https://auth.example.com/should-not-run",
+				},
 			},
-		});
+			{ environment },
+		);
 
-		expect(globalThis.location.href).toBe("https://app.example.com/current");
+		expect(environment.location.href).toBe("https://app.example.com/current");
 	});
 
 	it("consumes the root client's neutral redirect result without framework glue", () => {
@@ -43,12 +62,14 @@ describe("basic-auth web adapter", () => {
 		});
 		const result = client.handleUnauthorized("/basic/api/groups", 401);
 
-		vi.stubGlobal("location", { href: "https://app.example.com/current" });
+		const environment = createPageLocationCapability(
+			"https://app.example.com/current",
+		);
 
 		expect(result.kind).toBe(AuthGuardResultKind.Redirect);
-		performRedirect(result);
+		performRedirect(result, { environment });
 
-		expect(globalThis.location.href).toBe(
+		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?post_auth_redirect_uri=%2Fbasic%2Fapi%2Fgroups",
 		);
 	});
@@ -64,12 +85,14 @@ describe("basic-auth web adapter", () => {
 			401,
 		);
 
-		vi.stubGlobal("location", { href: "https://app.example.com/current" });
+		const environment = createPageLocationCapability(
+			"https://app.example.com/current",
+		);
 
 		expect(result.kind).toBe(AuthGuardResultKind.Redirect);
-		performRedirect(result);
+		performRedirect(result, { environment });
 
-		expect(globalThis.location.href).toBe(
+		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?return_to=%2Fbasic%2Fapi%2Fgroups%3Ftab%3Dmembers",
 		);
 	});
@@ -84,12 +107,14 @@ describe("basic-auth web adapter", () => {
 			401,
 		);
 
-		vi.stubGlobal("location", { href: "https://app.example.com/current" });
+		const environment = createPageLocationCapability(
+			"https://app.example.com/current",
+		);
 
 		expect(result.kind).toBe(AuthGuardResultKind.Redirect);
-		performRedirect(result);
+		performRedirect(result, { environment });
 
-		expect(globalThis.location.href).toBe(
+		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?post_auth_redirect_uri=%2Fbasic%2Fapi%2Fgroups%3Ftab%3Dmembers%23invite",
 		);
 	});
@@ -102,13 +127,63 @@ describe("basic-auth web adapter", () => {
 		});
 		const result = client.handleUnauthorized("/basic/api/groups#invite", 401);
 
-		vi.stubGlobal("location", { href: "https://app.example.com/current" });
+		const environment = createPageLocationCapability(
+			"https://app.example.com/current",
+		);
 
 		expect(result.kind).toBe(AuthGuardResultKind.Redirect);
-		performRedirect(result);
+		performRedirect(result, { environment });
 
-		expect(globalThis.location.href).toBe(
+		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?return_to=%2Fbasic%2Fapi%2Fgroups%23invite",
 		);
+	});
+
+	it("fails without explicit environment instead of reading a global window", () => {
+		const originalWindowDescriptor = Object.getOwnPropertyDescriptor(
+			globalThis,
+			"window",
+		);
+		let windowRead = false;
+
+		Object.defineProperty(globalThis, "window", {
+			configurable: true,
+			get() {
+				windowRead = true;
+				return {
+					location: {
+						href: "https://app.example.com/current",
+						hash: "",
+						pathname: "/basic/api/groups",
+					},
+				};
+			},
+		});
+
+		try {
+			const client = new BasicAuthContextClient({
+				baseUrl: "https://auth.example.com",
+				zones: [{ zonePrefix: "/basic" }],
+			});
+
+			expect(() => loginWithRedirect(client)).toThrow(
+				/createBrowserPageClientEnvironment/,
+			);
+			expect(() =>
+				performRedirect({
+					kind: AuthGuardResultKind.Redirect,
+					status: AuthGuardRedirectStatus.Found,
+					location: "https://auth.example.com/basic/login",
+				}),
+			).toThrow(/createBrowserPageClientEnvironment/);
+			expect(windowRead).toBe(false);
+		} finally {
+			vi.unstubAllGlobals();
+			if (originalWindowDescriptor) {
+				Object.defineProperty(globalThis, "window", originalWindowDescriptor);
+			} else {
+				Reflect.deleteProperty(globalThis, "window");
+			}
+		}
 	});
 });

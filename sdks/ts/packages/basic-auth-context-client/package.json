@@ -49,7 +49,7 @@
 	],
 	"scripts": {
 		"build": "tsdown",
-		"typecheck": "tsc -b"
+		"typecheck": "tsc -b --force"
 	},
 	"dependencies": {
 		"@securitydept/client": "workspace:*"

@@ -3,7 +3,20 @@ import {
 	BasicAuthContextClient,
 } from "@securitydept/basic-auth-context-client";
 import { performRedirect } from "@securitydept/basic-auth-context-client/web";
+import type { PageLocationCapability } from "@securitydept/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+function createPageLocationEnvironment(href: string): PageLocationCapability {
+	const url = new URL(href);
+	return {
+		location: {
+			href,
+			hash: url.hash,
+			pathname: url.pathname,
+			search: url.search,
+		},
+	};
+}
 
 describe("external basic-auth guard scenario", () => {
 	afterEach(() => {
@@ -25,10 +38,12 @@ describe("external basic-auth guard scenario", () => {
 		});
 		expect(inZone.kind).toBe(AuthGuardResultKind.Redirect);
 
-		vi.stubGlobal("location", { href: "https://app.example.com/current" });
-		performRedirect(inZone);
+		const environment = createPageLocationEnvironment(
+			"https://app.example.com/current",
+		);
+		performRedirect(inZone, { environment });
 
-		expect(globalThis.location.href).toBe(
+		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?post_auth_redirect_uri=%2Fbasic%2Fapi%2Fgroups",
 		);
 	});
@@ -58,10 +73,12 @@ describe("external basic-auth guard scenario", () => {
 		});
 		expect(inZone.kind).toBe(AuthGuardResultKind.Redirect);
 
-		vi.stubGlobal("location", { href: "https://app.example.com/current" });
-		performRedirect(inZone);
+		const environment = createPageLocationEnvironment(
+			"https://app.example.com/current",
+		);
+		performRedirect(inZone, { environment });
 
-		expect(globalThis.location.href).toBe(
+		expect(environment.location.href).toBe(
 			"https://auth.example.com/internal/basic/signin?return_to=%2Finternal%2Fbasic%2Freports%3Ftab%3Dmembers%23invite",
 		);
 	});

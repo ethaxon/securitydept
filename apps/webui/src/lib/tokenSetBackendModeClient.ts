@@ -10,9 +10,9 @@
 import { createTraceTimelineStore } from "@securitydept/client";
 import type { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
-	bootstrapBackendOidcModeClient,
-	createBackendOidcModeBrowserClient,
-	createBackendOidcModeCallbackFragmentStore,
+	bootstrapBackendOidcModePageClient,
+	createBackendOidcModeWebClient,
+	createBackendOidcModeWebClientEnvironment,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import type {
@@ -41,9 +41,14 @@ export const tokenSetBackendModeTraceTimeline = tokenSetBackendTraceTimeline;
 
 type WrappedTokenSetReactClient = TokenSetReactClient & BackendOidcModeClient;
 
-const tokenSetBackendModeClient = createBackendOidcModeBrowserClient({
+const tokenSetBackendModeEnvironment =
+	createBackendOidcModeWebClientEnvironment({
+		traceSink: tokenSetBackendModeTraceTimeline,
+	});
+
+const tokenSetBackendModeClient = createBackendOidcModeWebClient({
+	environment: tokenSetBackendModeEnvironment,
 	defaultPostAuthRedirectUri: "/",
-	traceSink: tokenSetBackendModeTraceTimeline,
 	// Override SDK defaults to match the reference app's backend-mode route
 	// family.
 	loginPath: TOKEN_SET_BACKEND_MODE_LOGIN_PATH,
@@ -55,10 +60,19 @@ const tokenSetBackendModeClient = createBackendOidcModeBrowserClient({
 let tokenSetBackendModeBootstrapPromise: Promise<AuthSnapshot | null> | null =
 	null;
 
+function createBackendModePageEnvironment() {
+	return {
+		location: globalThis.location,
+		history: globalThis.history,
+		callbackFragmentStore: tokenSetBackendModeEnvironment.callbackFragmentStore,
+	};
+}
+
 export async function ensureTokenSetBackendModeClientReady(): Promise<AuthSnapshot | null> {
 	if (!tokenSetBackendModeBootstrapPromise) {
-		tokenSetBackendModeBootstrapPromise = bootstrapBackendOidcModeClient(
+		tokenSetBackendModeBootstrapPromise = bootstrapBackendOidcModePageClient(
 			tokenSetBackendModeClient,
+			{ environment: createBackendModePageEnvironment() },
 		).then(() => tokenSetBackendModeClient.state.get());
 	}
 
@@ -72,7 +86,7 @@ export function getTokenSetBackendModeAuthSnapshot(): AuthSnapshot | null {
 export async function clearTokenSetBackendModeBrowserState(
 	client: TokenSetBackendOidcClient,
 ): Promise<void> {
-	await createBackendOidcModeCallbackFragmentStore().clear();
+	await tokenSetBackendModeEnvironment.callbackFragmentStore.clear();
 	await client.clearState();
 }
 

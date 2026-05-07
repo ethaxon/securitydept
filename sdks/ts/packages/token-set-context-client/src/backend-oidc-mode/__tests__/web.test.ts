@@ -10,14 +10,20 @@ import {
 	type Scheduler,
 	UserRecovery,
 } from "@securitydept/client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createBackendOidcModeAuthorizedTransport } from "../auth-transport";
 import {
 	BackendOidcModeBootstrapSource,
-	bootstrapBackendOidcModeClient,
-	captureBackendOidcModeCallbackFragmentFromUrl,
-	createBackendOidcModeBrowserClient,
+	type BackendOidcModePageCallbackCapability,
+	bootstrapBackendOidcModePageClient,
+	type CreateBackendOidcModeWebClientEnvironmentOptions,
+	type CreateBackendOidcModeWebClientOptions,
+	captureBackendOidcModeCallbackFragment,
 	createBackendOidcModeCallbackFragmentStore,
+	createBackendOidcModeWebClientEnvironment,
+	loginWithBackendOidcRedirect,
+	createBackendOidcModeWebClient as materializeBackendOidcModeWebClient,
+	relayBackendOidcPopupCallback,
 	resetBackendOidcModeBrowserState,
 	resolveBackendOidcModeCallbackFragmentKey,
 } from "../web/browser";
@@ -28,6 +34,24 @@ function createHistoryRecorder() {
 		replaceState(_data: unknown, _unused: string, url?: string) {
 			this.replacedUrl = url ?? "";
 		},
+	};
+}
+
+function createPageCallbackEnvironment(
+	href: string,
+	callbackFragmentStore: ReturnType<
+		typeof createBackendOidcModeCallbackFragmentStore
+	>,
+	history = createHistoryRecorder(),
+): BackendOidcModePageCallbackCapability {
+	const url = new URL(href);
+	return {
+		location: {
+			href,
+			hash: url.hash,
+		},
+		history,
+		callbackFragmentStore,
 	};
 }
 
@@ -43,6 +67,46 @@ const testScheduler: Scheduler = {
 	},
 };
 
+type BackendOidcModeTestClientOptions = Omit<
+	CreateBackendOidcModeWebClientOptions,
+	"environment"
+> &
+	CreateBackendOidcModeWebClientEnvironmentOptions;
+
+function createBackendOidcModeWebClient(
+	options: BackendOidcModeTestClientOptions,
+) {
+	const {
+		environment,
+		persistentStore,
+		sessionStore,
+		callbackFragmentStore,
+		transport,
+		fetchTransport,
+		scheduler,
+		clock,
+		logger,
+		traceSink,
+		...clientOptions
+	} = options;
+
+	return materializeBackendOidcModeWebClient({
+		...clientOptions,
+		environment: createBackendOidcModeWebClientEnvironment({
+			environment,
+			persistentStore,
+			sessionStore,
+			callbackFragmentStore,
+			transport,
+			fetchTransport,
+			scheduler,
+			clock,
+			logger,
+			traceSink,
+		}),
+	});
+}
+
 describe("token-set web helpers", () => {
 	it("captures callback fragments and clears only the URL hash from history", async () => {
 		const sessionStore = createInMemoryRecordStore();
@@ -51,13 +115,12 @@ describe("token-set web helpers", () => {
 		});
 		const history = createHistoryRecorder();
 
-		const fragment = await captureBackendOidcModeCallbackFragmentFromUrl({
-			location: {
-				href: "https://app.example.com/oidc-mediated?tab=demo#access_token=callback-at&id_token=callback-idt",
-				hash: "#access_token=callback-at&id_token=callback-idt",
-			},
-			history,
-			callbackFragmentStore,
+		const fragment = await captureBackendOidcModeCallbackFragment({
+			environment: createPageCallbackEnvironment(
+				"https://app.example.com/oidc-mediated?tab=demo#access_token=callback-at&id_token=callback-idt",
+				callbackFragmentStore,
+				history,
+			),
 		});
 
 		expect(fragment).toBe("access_token=callback-at&id_token=callback-idt");
@@ -68,14 +131,17 @@ describe("token-set web helpers", () => {
 	});
 
 	it("does not touch history when there is no callback fragment", async () => {
+		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
+			sessionStore: createInMemoryRecordStore(),
+		});
 		const history = createHistoryRecorder();
 
-		const fragment = await captureBackendOidcModeCallbackFragmentFromUrl({
-			location: {
-				href: "https://app.example.com/oidc-mediated?tab=demo",
-				hash: "",
-			},
-			history,
+		const fragment = await captureBackendOidcModeCallbackFragment({
+			environment: createPageCallbackEnvironment(
+				"https://app.example.com/oidc-mediated?tab=demo",
+				callbackFragmentStore,
+				history,
+			),
 		});
 
 		expect(fragment).toBeNull();
@@ -105,7 +171,7 @@ describe("token-set web helpers", () => {
 				throw new Error(`Unexpected request: ${request.method} ${request.url}`);
 			},
 		};
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -117,13 +183,11 @@ describe("token-set web helpers", () => {
 			sessionStore,
 		});
 
-		const result = await bootstrapBackendOidcModeClient(client, {
-			location: {
-				href: "https://app.example.com/oidc-mediated#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
-				hash: "#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
-			},
-			history: createHistoryRecorder(),
-			callbackFragmentStore,
+		const result = await bootstrapBackendOidcModePageClient(client, {
+			environment: createPageCallbackEnvironment(
+				"https://app.example.com/oidc-mediated#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+				callbackFragmentStore,
+			),
 		});
 
 		expect(result.source).toBe(BackendOidcModeBootstrapSource.Callback);
@@ -133,7 +197,7 @@ describe("token-set web helpers", () => {
 
 	it("retains callback fragments when bootstrap fails with a retryable error", async () => {
 		const sessionStore = createInMemoryRecordStore();
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			sessionStore,
 			persistentStore: createInMemoryRecordStore(),
 			transport: {
@@ -151,13 +215,11 @@ describe("token-set web helpers", () => {
 		});
 
 		await expect(
-			bootstrapBackendOidcModeClient(client, {
-				location: {
-					href: "https://app.example.com/oidc-mediated#access_token=callback-at&id_token=callback-idt&metadata_redemption_id=meta-1",
-					hash: "#access_token=callback-at&id_token=callback-idt&metadata_redemption_id=meta-1",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+			bootstrapBackendOidcModePageClient(client, {
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated#access_token=callback-at&id_token=callback-idt&metadata_redemption_id=meta-1",
+					callbackFragmentStore,
+				),
 			}),
 		).rejects.toMatchObject({
 			kind: ClientErrorKind.Server,
@@ -170,7 +232,7 @@ describe("token-set web helpers", () => {
 
 	it("clears callback fragments when bootstrap fails with a non-retryable error", async () => {
 		const sessionStore = createInMemoryRecordStore();
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			sessionStore,
 			persistentStore: createInMemoryRecordStore(),
 			transport: {
@@ -184,13 +246,11 @@ describe("token-set web helpers", () => {
 		});
 
 		await expect(
-			bootstrapBackendOidcModeClient(client, {
-				location: {
-					href: "https://app.example.com/oidc-mediated#refresh_token=callback-rt",
-					hash: "#refresh_token=callback-rt",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+			bootstrapBackendOidcModePageClient(client, {
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated#refresh_token=callback-rt",
+					callbackFragmentStore,
+				),
 			}),
 		).rejects.toMatchObject({
 			kind: ClientErrorKind.Protocol,
@@ -202,7 +262,7 @@ describe("token-set web helpers", () => {
 	it("resets browser state by clearing both callback fragments and persisted auth", async () => {
 		const persistentStore = createInMemoryRecordStore();
 		const sessionStore = createInMemoryRecordStore();
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -243,7 +303,7 @@ describe("token-set web helpers", () => {
 		expect(client.state.get()).toBeNull();
 		expect(await callbackFragmentStore.load()).toBeNull();
 
-		const restoredClient = createBackendOidcModeBrowserClient({
+		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -287,7 +347,7 @@ describe("token-set web helpers", () => {
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
 			sessionStore,
 		});
-		const firstClient = createBackendOidcModeBrowserClient({
+		const firstClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -297,19 +357,20 @@ describe("token-set web helpers", () => {
 			defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
 		});
 
-		const callbackResult = await bootstrapBackendOidcModeClient(firstClient, {
-			location: {
-				href: "https://app.example.com/oidc-mediated#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
-				hash: "#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+		const callbackResult = await bootstrapBackendOidcModePageClient(
+			firstClient,
+			{
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+					callbackFragmentStore,
+				),
 			},
-			history: createHistoryRecorder(),
-			callbackFragmentStore,
-		});
+		);
 
 		expect(callbackResult.source).toBe(BackendOidcModeBootstrapSource.Callback);
 		expect(await callbackFragmentStore.load()).toBeNull();
 
-		const restoredClient = createBackendOidcModeBrowserClient({
+		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -318,15 +379,13 @@ describe("token-set web helpers", () => {
 			scheduler: testScheduler,
 		});
 
-		const restoredResult = await bootstrapBackendOidcModeClient(
+		const restoredResult = await bootstrapBackendOidcModePageClient(
 			restoredClient,
 			{
-				location: {
-					href: "https://app.example.com/oidc-mediated",
-					hash: "",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated",
+					callbackFragmentStore,
+				),
 			},
 		);
 
@@ -340,7 +399,7 @@ describe("token-set web helpers", () => {
 			callbackFragmentStore,
 		});
 
-		const freshClient = createBackendOidcModeBrowserClient({
+		const freshClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -349,13 +408,11 @@ describe("token-set web helpers", () => {
 			scheduler: testScheduler,
 		});
 
-		const emptyResult = await bootstrapBackendOidcModeClient(freshClient, {
-			location: {
-				href: "https://app.example.com/oidc-mediated",
-				hash: "",
-			},
-			history: createHistoryRecorder(),
-			callbackFragmentStore,
+		const emptyResult = await bootstrapBackendOidcModePageClient(freshClient, {
+			environment: createPageCallbackEnvironment(
+				"https://app.example.com/oidc-mediated",
+				callbackFragmentStore,
+			),
 		});
 
 		expect(emptyResult).toEqual({
@@ -417,7 +474,7 @@ describe("token-set web helpers", () => {
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
 			sessionStore,
 		});
-		const oldClient = createBackendOidcModeBrowserClient({
+		const oldClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -431,7 +488,7 @@ describe("token-set web helpers", () => {
 		);
 		expect(oldClient.state.get()?.tokens.accessToken).toBe("old-at");
 
-		const bootstrapClient = createBackendOidcModeBrowserClient({
+		const bootstrapClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -440,15 +497,13 @@ describe("token-set web helpers", () => {
 			scheduler: testScheduler,
 		});
 
-		const callbackResult = await bootstrapBackendOidcModeClient(
+		const callbackResult = await bootstrapBackendOidcModePageClient(
 			bootstrapClient,
 			{
-				location: {
-					href: "https://app.example.com/oidc-mediated#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
-					hash: "#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
+					callbackFragmentStore,
+				),
 			},
 		);
 
@@ -460,7 +515,7 @@ describe("token-set web helpers", () => {
 		);
 		expect(await callbackFragmentStore.load()).toBeNull();
 
-		const restoredClient = createBackendOidcModeBrowserClient({
+		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -469,15 +524,13 @@ describe("token-set web helpers", () => {
 			scheduler: testScheduler,
 		});
 
-		const restoredResult = await bootstrapBackendOidcModeClient(
+		const restoredResult = await bootstrapBackendOidcModePageClient(
 			restoredClient,
 			{
-				location: {
-					href: "https://app.example.com/oidc-mediated",
-					hash: "",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated",
+					callbackFragmentStore,
+				),
 			},
 		);
 
@@ -550,7 +603,7 @@ describe("token-set web helpers", () => {
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
 			sessionStore,
 		});
-		const oldClient = createBackendOidcModeBrowserClient({
+		const oldClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -563,7 +616,7 @@ describe("token-set web helpers", () => {
 			"access_token=old-at&id_token=old-idt&refresh_token=old-rt&metadata_redemption_id=meta-old",
 		);
 
-		const retryingClient = createBackendOidcModeBrowserClient({
+		const retryingClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -573,13 +626,11 @@ describe("token-set web helpers", () => {
 		});
 
 		await expect(
-			bootstrapBackendOidcModeClient(retryingClient, {
-				location: {
-					href: "https://app.example.com/oidc-mediated#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
-					hash: "#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+			bootstrapBackendOidcModePageClient(retryingClient, {
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
+					callbackFragmentStore,
+				),
 			}),
 		).rejects.toMatchObject({
 			kind: ClientErrorKind.Server,
@@ -591,15 +642,13 @@ describe("token-set web helpers", () => {
 		);
 		expect(retryingClient.state.get()).toBeNull();
 
-		const recoveredResult = await bootstrapBackendOidcModeClient(
+		const recoveredResult = await bootstrapBackendOidcModePageClient(
 			retryingClient,
 			{
-				location: {
-					href: "https://app.example.com/oidc-mediated",
-					hash: "",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated",
+					callbackFragmentStore,
+				),
 			},
 		);
 
@@ -612,7 +661,7 @@ describe("token-set web helpers", () => {
 		);
 		expect(await callbackFragmentStore.load()).toBeNull();
 
-		const restoredClient = createBackendOidcModeBrowserClient({
+		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -621,15 +670,13 @@ describe("token-set web helpers", () => {
 			scheduler: testScheduler,
 		});
 
-		const restoredResult = await bootstrapBackendOidcModeClient(
+		const restoredResult = await bootstrapBackendOidcModePageClient(
 			restoredClient,
 			{
-				location: {
-					href: "https://app.example.com/oidc-mediated",
-					hash: "",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated",
+					callbackFragmentStore,
+				),
 			},
 		);
 
@@ -685,7 +732,7 @@ describe("token-set web helpers", () => {
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
 			sessionStore,
 		});
-		const oldClient = createBackendOidcModeBrowserClient({
+		const oldClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -699,7 +746,7 @@ describe("token-set web helpers", () => {
 		);
 		expect(oldClient.state.get()?.tokens.accessToken).toBe("old-at");
 
-		const failingClient = createBackendOidcModeBrowserClient({
+		const failingClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -709,13 +756,11 @@ describe("token-set web helpers", () => {
 		});
 
 		await expect(
-			bootstrapBackendOidcModeClient(failingClient, {
-				location: {
-					href: "https://app.example.com/oidc-mediated#access_token=bad-at&id_token=bad-idt&refresh_token=bad-rt&metadata_redemption_id=meta-bad",
-					hash: "#access_token=bad-at&id_token=bad-idt&refresh_token=bad-rt&metadata_redemption_id=meta-bad",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+			bootstrapBackendOidcModePageClient(failingClient, {
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated#access_token=bad-at&id_token=bad-idt&refresh_token=bad-rt&metadata_redemption_id=meta-bad",
+					callbackFragmentStore,
+				),
 			}),
 		).rejects.toMatchObject({
 			kind: ClientErrorKind.Protocol,
@@ -725,7 +770,7 @@ describe("token-set web helpers", () => {
 		expect(await callbackFragmentStore.load()).toBeNull();
 		expect(failingClient.state.get()).toBeNull();
 
-		const restoredClient = createBackendOidcModeBrowserClient({
+		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -734,15 +779,13 @@ describe("token-set web helpers", () => {
 			scheduler: testScheduler,
 		});
 
-		const restoredResult = await bootstrapBackendOidcModeClient(
+		const restoredResult = await bootstrapBackendOidcModePageClient(
 			restoredClient,
 			{
-				location: {
-					href: "https://app.example.com/oidc-mediated",
-					hash: "",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated",
+					callbackFragmentStore,
+				),
 			},
 		);
 
@@ -796,15 +839,13 @@ describe("token-set web helpers", () => {
 		);
 
 		const history = createHistoryRecorder();
-		const capturedFragment =
-			await captureBackendOidcModeCallbackFragmentFromUrl({
-				location: {
-					href: "https://app.example.com/oidc-mediated?tab=members#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
-					hash: "#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
-				},
-				history,
+		const capturedFragment = await captureBackendOidcModeCallbackFragment({
+			environment: createPageCallbackEnvironment(
+				"https://app.example.com/oidc-mediated?tab=members#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
 				callbackFragmentStore,
-			});
+				history,
+			),
+		});
 
 		expect(capturedFragment).toBe(
 			"access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
@@ -814,7 +855,7 @@ describe("token-set web helpers", () => {
 		);
 		expect(history.replacedUrl).toBe("/oidc-mediated?tab=members");
 
-		const bootstrapClient = createBackendOidcModeBrowserClient({
+		const bootstrapClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -823,15 +864,13 @@ describe("token-set web helpers", () => {
 			scheduler: testScheduler,
 		});
 
-		const callbackResult = await bootstrapBackendOidcModeClient(
+		const callbackResult = await bootstrapBackendOidcModePageClient(
 			bootstrapClient,
 			{
-				location: {
-					href: "https://app.example.com/oidc-mediated?tab=members",
-					hash: "",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated?tab=members",
+					callbackFragmentStore,
+				),
 			},
 		);
 
@@ -842,7 +881,7 @@ describe("token-set web helpers", () => {
 		);
 		expect(await callbackFragmentStore.load()).toBeNull();
 
-		const restoredClient = createBackendOidcModeBrowserClient({
+		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -851,15 +890,13 @@ describe("token-set web helpers", () => {
 			scheduler: testScheduler,
 		});
 
-		const restoredResult = await bootstrapBackendOidcModeClient(
+		const restoredResult = await bootstrapBackendOidcModePageClient(
 			restoredClient,
 			{
-				location: {
-					href: "https://app.example.com/oidc-mediated?tab=members",
-					hash: "",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated?tab=members",
+					callbackFragmentStore,
+				),
 			},
 		);
 
@@ -912,7 +949,7 @@ describe("token-set web helpers", () => {
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
 			sessionStore,
 		});
-		const retryingClient = createBackendOidcModeBrowserClient({
+		const retryingClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -922,13 +959,11 @@ describe("token-set web helpers", () => {
 		});
 
 		await expect(
-			bootstrapBackendOidcModeClient(retryingClient, {
-				location: {
-					href: "https://app.example.com/oidc-mediated#access_token=retry-at&id_token=retry-idt&refresh_token=retry-rt&metadata_redemption_id=meta-retry",
-					hash: "#access_token=retry-at&id_token=retry-idt&refresh_token=retry-rt&metadata_redemption_id=meta-retry",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+			bootstrapBackendOidcModePageClient(retryingClient, {
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated#access_token=retry-at&id_token=retry-idt&refresh_token=retry-rt&metadata_redemption_id=meta-retry",
+					callbackFragmentStore,
+				),
 			}),
 		).rejects.toMatchObject({
 			kind: ClientErrorKind.Server,
@@ -940,15 +975,14 @@ describe("token-set web helpers", () => {
 		);
 
 		const history = createHistoryRecorder();
-		const recoveredResult = await bootstrapBackendOidcModeClient(
+		const recoveredResult = await bootstrapBackendOidcModePageClient(
 			retryingClient,
 			{
-				location: {
-					href: "https://app.example.com/oidc-mediated?tab=members#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
-					hash: "#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
-				},
-				history,
-				callbackFragmentStore,
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated?tab=members#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
+					callbackFragmentStore,
+					history,
+				),
 			},
 		);
 
@@ -962,7 +996,7 @@ describe("token-set web helpers", () => {
 		);
 		expect(await callbackFragmentStore.load()).toBeNull();
 
-		const restoredClient = createBackendOidcModeBrowserClient({
+		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -971,15 +1005,13 @@ describe("token-set web helpers", () => {
 			scheduler: testScheduler,
 		});
 
-		const restoredResult = await bootstrapBackendOidcModeClient(
+		const restoredResult = await bootstrapBackendOidcModePageClient(
 			restoredClient,
 			{
-				location: {
-					href: "https://app.example.com/oidc-mediated?tab=members",
-					hash: "",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated?tab=members",
+					callbackFragmentStore,
+				),
 			},
 		);
 
@@ -1029,7 +1061,7 @@ describe("token-set web helpers", () => {
 			"access_token=old-at&id_token=old-idt&refresh_token=old-rt&metadata_redemption_id=meta-old",
 		);
 
-		const bootstrapClient = createBackendOidcModeBrowserClient({
+		const bootstrapClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -1038,15 +1070,13 @@ describe("token-set web helpers", () => {
 			scheduler: testScheduler,
 		});
 
-		const callbackResult = await bootstrapBackendOidcModeClient(
+		const callbackResult = await bootstrapBackendOidcModePageClient(
 			bootstrapClient,
 			{
-				location: {
-					href: "https://app.example.com/oidc-mediated?tab=members#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
-					hash: "#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/oidc-mediated?tab=members#access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
+					callbackFragmentStore,
+				),
 			},
 		);
 
@@ -1061,7 +1091,7 @@ describe("token-set web helpers", () => {
 		expect(bootstrapClient.state.get()).toBeNull();
 		expect(await callbackFragmentStore.load()).toBeNull();
 
-		const freshClient = createBackendOidcModeBrowserClient({
+		const freshClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStore,
 			sessionStore,
@@ -1070,13 +1100,11 @@ describe("token-set web helpers", () => {
 			scheduler: testScheduler,
 		});
 
-		const emptyResult = await bootstrapBackendOidcModeClient(freshClient, {
-			location: {
-				href: "https://app.example.com/oidc-mediated?tab=members",
-				hash: "",
-			},
-			history: createHistoryRecorder(),
-			callbackFragmentStore,
+		const emptyResult = await bootstrapBackendOidcModePageClient(freshClient, {
+			environment: createPageCallbackEnvironment(
+				"https://app.example.com/oidc-mediated?tab=members",
+				callbackFragmentStore,
+			),
 		});
 
 		expect(emptyResult).toEqual({
@@ -1176,7 +1204,7 @@ describe("token-set web helpers", () => {
 		};
 
 		// Client A: uses a custom persistentStateKey
-		const clientA = createBackendOidcModeBrowserClient({
+		const clientA = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-a",
 			persistentStore,
@@ -1192,7 +1220,7 @@ describe("token-set web helpers", () => {
 		expect(clientA.state.get()?.tokens.accessToken).toBe("a-at");
 
 		// Client B: uses a different persistentStateKey on the same store
-		const clientB = createBackendOidcModeBrowserClient({
+		const clientB = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-b",
 			persistentStore,
@@ -1207,7 +1235,7 @@ describe("token-set web helpers", () => {
 		expect(restoredB).toBeNull();
 
 		// Client C: uses the same key as A — must see A's state
-		const clientC = createBackendOidcModeBrowserClient({
+		const clientC = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-a",
 			persistentStore,
@@ -1223,8 +1251,8 @@ describe("token-set web helpers", () => {
 
 	it("isolates callback fragments via callbackFragmentKey in the default bootstrap path", async () => {
 		// Two integrations share a single in-memory session store (same origin scenario).
-		// Each passes callbackFragmentKey to bootstrapBackendOidcModeClient so the
-		// default fragment store is namespaced — no manual store construction required.
+		// Each constructs an explicit namespaced callback-fragment store and passes it
+		// through the unified page callback environment.
 		const sharedPersistentStore = createInMemoryRecordStore();
 		const sharedSessionStore = createInMemoryRecordStore();
 
@@ -1249,7 +1277,7 @@ describe("token-set web helpers", () => {
 		const keyB = resolveBackendOidcModeCallbackFragmentKey("tenant-b");
 		expect(keyA).not.toBe(keyB);
 
-		const clientA = createBackendOidcModeBrowserClient({
+		const clientA = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-a",
 			persistentStore: sharedPersistentStore,
@@ -1261,19 +1289,20 @@ describe("token-set web helpers", () => {
 
 		// Integration A bootstraps with a callback fragment in the URL
 		// callbackFragmentKey is wired directly into the default store — no manual store needed
-		const resultA = await bootstrapBackendOidcModeClient(clientA, {
-			location: {
-				href: "https://app.example.com/#access_token=a-at&id_token=a-idt&refresh_token=a-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-a",
-				hash: "#access_token=a-at&id_token=a-idt&refresh_token=a-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-a",
-			},
-			history: createHistoryRecorder(),
+		const callbackFragmentStoreA = createBackendOidcModeCallbackFragmentStore({
 			sessionStore: sharedSessionStore,
-			callbackFragmentKey: keyA,
+			key: keyA,
+		});
+		const resultA = await bootstrapBackendOidcModePageClient(clientA, {
+			environment: createPageCallbackEnvironment(
+				"https://app.example.com/#access_token=a-at&id_token=a-idt&refresh_token=a-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-a",
+				callbackFragmentStoreA,
+			),
 		});
 		expect(resultA.source).toBe(BackendOidcModeBootstrapSource.Callback);
 		expect(resultA.snapshot?.tokens.accessToken).toBe("a-at");
 
-		const clientB = createBackendOidcModeBrowserClient({
+		const clientB = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-b",
 			persistentStore: sharedPersistentStore,
@@ -1284,14 +1313,15 @@ describe("token-set web helpers", () => {
 		});
 
 		// Integration B bootstraps on a plain URL — should see Empty, not A's callback
-		const resultB = await bootstrapBackendOidcModeClient(clientB, {
-			location: {
-				href: "https://app.example.com/",
-				hash: "",
-			},
-			history: createHistoryRecorder(),
+		const callbackFragmentStoreB = createBackendOidcModeCallbackFragmentStore({
 			sessionStore: sharedSessionStore,
-			callbackFragmentKey: keyB,
+			key: keyB,
+		});
+		const resultB = await bootstrapBackendOidcModePageClient(clientB, {
+			environment: createPageCallbackEnvironment(
+				"https://app.example.com/",
+				callbackFragmentStoreB,
+			),
 		});
 		// B must not see A's fragment — correct isolation means Empty, not Callback
 		expect(resultB.source).toBe(BackendOidcModeBootstrapSource.Empty);
@@ -1326,7 +1356,7 @@ describe("token-set web helpers", () => {
 			},
 		};
 
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -1372,7 +1402,7 @@ describe("token-set web helpers", () => {
 		};
 
 		try {
-			const client = createBackendOidcModeBrowserClient({
+			const client = createBackendOidcModeWebClient({
 				persistentStore: createInMemoryRecordStore(),
 				sessionStore: createInMemoryRecordStore(),
 				clock: testClock,
@@ -1413,7 +1443,7 @@ describe("token-set web helpers", () => {
 		};
 
 		try {
-			const client = createBackendOidcModeBrowserClient({
+			const client = createBackendOidcModeWebClient({
 				persistentStore: createInMemoryRecordStore(),
 				sessionStore: createInMemoryRecordStore(),
 				clock: testClock,
@@ -1455,7 +1485,7 @@ describe("token-set web helpers", () => {
 			},
 		};
 
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore: createInMemoryRecordStore(),
 			sessionStore: createInMemoryRecordStore(),
 			clock: testClock,
@@ -1494,7 +1524,7 @@ describe("token-set web helpers", () => {
 		await storeB.save("access_token=b-at&id_token=b-idt");
 
 		// Reset only integration A using the convenience path
-		const clientA = createBackendOidcModeBrowserClient({
+		const clientA = createBackendOidcModeWebClient({
 			persistentStateKey: "tenant-a",
 			persistentStore: createInMemoryRecordStore(),
 			sessionStore: sharedSessionStore,
@@ -1531,7 +1561,7 @@ describe("token-set web helpers", () => {
 		});
 		await otherStore.save("access_token=other-at&id_token=other-idt");
 
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore: createInMemoryRecordStore(),
 			sessionStore,
 			transport: {
@@ -1553,5 +1583,56 @@ describe("token-set web helpers", () => {
 		expect(await otherStore.load()).toBe(
 			"access_token=other-at&id_token=other-idt",
 		);
+	});
+
+	it("fails page helpers without explicit environment instead of reading a global window", async () => {
+		const client = createBackendOidcModeWebClient({
+			persistentStore: createInMemoryRecordStore(),
+			sessionStore: createInMemoryRecordStore(),
+			transport: {
+				async execute(): Promise<HttpResponse> {
+					throw new Error("transport should not be called");
+				},
+			},
+		});
+		const originalWindowDescriptor = Object.getOwnPropertyDescriptor(
+			globalThis,
+			"window",
+		);
+		let windowRead = false;
+
+		Object.defineProperty(globalThis, "window", {
+			configurable: true,
+			get() {
+				windowRead = true;
+				return {
+					location: {
+						href: "https://app.example.com/oidc-mediated#fragment",
+						hash: "#fragment",
+					},
+					history: { replaceState() {} },
+				};
+			},
+		});
+
+		try {
+			expect(() => loginWithBackendOidcRedirect(client)).toThrow(
+				/createBrowserPageClientEnvironment/,
+			);
+			expect(() => relayBackendOidcPopupCallback()).toThrow(
+				/createBrowserPageClientEnvironment/,
+			);
+			await expect(bootstrapBackendOidcModePageClient(client)).rejects.toThrow(
+				/createBackendOidcModeWebClientEnvironment/,
+			);
+			expect(windowRead).toBe(false);
+		} finally {
+			vi.unstubAllGlobals();
+			if (originalWindowDescriptor) {
+				Object.defineProperty(globalThis, "window", originalWindowDescriptor);
+			} else {
+				Reflect.deleteProperty(globalThis, "window");
+			}
+		}
 	});
 });

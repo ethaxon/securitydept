@@ -12,6 +12,7 @@ import {
 } from "@securitydept/basic-auth-context-client";
 import type { LoginWithRedirectOptions as BasicAuthLoginOptions } from "@securitydept/basic-auth-context-client/web";
 import { loginWithRedirect as basicAuthLoginWithRedirect } from "@securitydept/basic-auth-context-client/web";
+import type { PageLocationCapability } from "@securitydept/client";
 import type {
 	SessionContextClientConfig,
 	SessionInfo,
@@ -19,6 +20,18 @@ import type {
 import type { LoginWithRedirectOptions as SessionLoginOptions } from "@securitydept/session-context-client/web";
 import type { SessionContextValue } from "@securitydept/session-context-client-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+function createPageLocationEnvironment(href: string): PageLocationCapability {
+	const url = new URL(href);
+	return {
+		location: {
+			href,
+			hash: url.hash,
+			pathname: url.pathname,
+			search: url.search,
+		},
+	};
+}
 
 // ---------------------------------------------------------------------------
 // A. basic-auth-context-client/web: LoginWithRedirectOptions + loginWithRedirect
@@ -39,29 +52,27 @@ describe("basic-auth ./web discoverability: named options contract + convenience
 	});
 
 	it("loginWithRedirect performs zone-resolved browser redirect", () => {
-		vi.stubGlobal("location", {
-			pathname: "/basic/api/groups",
-			href: "https://app.example.com/basic/api/groups",
-		});
+		const environment = createPageLocationEnvironment(
+			"https://app.example.com/basic/api/groups",
+		);
 
 		const client = new BasicAuthContextClient({
 			baseUrl: "https://auth.example.com",
 			zones: [{ zonePrefix: "/basic" }],
 		});
 
-		const result = basicAuthLoginWithRedirect(client);
+		const result = basicAuthLoginWithRedirect(client, { environment });
 
 		expect(result).toBe(true);
-		expect(globalThis.location.href).toBe(
+		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fbasic%2Fapi%2Fgroups",
 		);
 	});
 
 	it("loginWithRedirect accepts explicit options for path and redirect", () => {
-		vi.stubGlobal("location", {
-			pathname: "/other",
-			href: "https://app.example.com/other",
-		});
+		const environment = createPageLocationEnvironment(
+			"https://app.example.com/other",
+		);
 
 		const client = new BasicAuthContextClient({
 			baseUrl: "https://auth.example.com",
@@ -69,22 +80,22 @@ describe("basic-auth ./web discoverability: named options contract + convenience
 		});
 
 		const options: BasicAuthLoginOptions = {
+			environment,
 			currentPath: "/basic/admin",
 			postAuthRedirectUri: "https://app.example.com/basic/admin",
 		};
 		const result = basicAuthLoginWithRedirect(client, options);
 
 		expect(result).toBe(true);
-		expect(globalThis.location.href).toBe(
+		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fbasic%2Fadmin",
 		);
 	});
 
 	it("loginWithRedirect returns false when path is outside all zones", () => {
-		vi.stubGlobal("location", {
-			pathname: "/public",
-			href: "https://app.example.com/public",
-		});
+		const environment = createPageLocationEnvironment(
+			"https://app.example.com/public",
+		);
 
 		const client = new BasicAuthContextClient({
 			baseUrl: "https://auth.example.com",
@@ -92,12 +103,12 @@ describe("basic-auth ./web discoverability: named options contract + convenience
 		});
 
 		const result = basicAuthLoginWithRedirect(client, {
+			environment,
 			currentPath: "/public",
 		});
 
 		expect(result).toBe(false);
-		// location should not have been changed
-		expect(globalThis.location.href).toBe("https://app.example.com/public");
+		expect(environment.location.href).toBe("https://app.example.com/public");
 	});
 });
 

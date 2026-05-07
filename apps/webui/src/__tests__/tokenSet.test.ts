@@ -14,9 +14,12 @@ import {
 } from "@securitydept/test-utils";
 import {
 	BackendOidcModeBootstrapSource,
-	bootstrapBackendOidcModeClient,
-	createBackendOidcModeBrowserClient,
+	bootstrapBackendOidcModePageClient,
+	type CreateBackendOidcModeWebClientEnvironmentOptions,
+	type CreateBackendOidcModeWebClientOptions,
 	createBackendOidcModeCallbackFragmentStore,
+	createBackendOidcModeWebClientEnvironment,
+	createBackendOidcModeWebClient as materializeBackendOidcModeWebClient,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { describe, expect, it, vi } from "vitest";
 import { AuthEntryKind } from "../api/entries";
@@ -25,6 +28,7 @@ import {
 	createBasicEntryWithTokenSet,
 	createGroupWithTokenSet,
 	createTokenEntryWithTokenSet,
+	DEFAULT_PROPAGATION_FORWARDER_CONFIG_SNIPPET,
 	DEFAULT_PROPAGATION_HEADER_NAME,
 	DEFAULT_PROPAGATION_PROBE_PATH,
 	listEntriesWithTokenSet,
@@ -87,6 +91,46 @@ function createTokenSetTransport() {
 			},
 		}),
 	);
+}
+
+type BackendOidcModeTestClientOptions = Omit<
+	CreateBackendOidcModeWebClientOptions,
+	"environment"
+> &
+	CreateBackendOidcModeWebClientEnvironmentOptions;
+
+function createBackendOidcModeWebClient(
+	options: BackendOidcModeTestClientOptions,
+) {
+	const {
+		environment,
+		persistentStore,
+		sessionStore,
+		callbackFragmentStore,
+		transport,
+		fetchTransport,
+		scheduler,
+		clock,
+		logger,
+		traceSink,
+		...clientOptions
+	} = options;
+
+	return materializeBackendOidcModeWebClient({
+		...clientOptions,
+		environment: createBackendOidcModeWebClientEnvironment({
+			environment,
+			persistentStore,
+			sessionStore,
+			callbackFragmentStore,
+			transport,
+			fetchTransport,
+			scheduler,
+			clock,
+			logger,
+			traceSink,
+		}),
+	});
 }
 
 describe("token-set browser flow", () => {
@@ -177,7 +221,7 @@ describe("token-set browser flow", () => {
 		const transport = createTokenSetTransport();
 		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
 		const scheduler = new FakeScheduler(clock);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -190,13 +234,15 @@ describe("token-set browser flow", () => {
 		});
 		const history = createHistoryRecorder();
 
-		const result = await bootstrapBackendOidcModeClient(client, {
-			location: {
-				href: "https://app.example.com/token-set#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
-				hash: "#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+		const result = await bootstrapBackendOidcModePageClient(client, {
+			environment: {
+				location: {
+					href: "https://app.example.com/token-set#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+					hash: "#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+				},
+				history,
+				callbackFragmentStore,
 			},
-			history,
-			callbackFragmentStore,
 		});
 
 		expect(result.source).toBe(BackendOidcModeBootstrapSource.Callback);
@@ -213,7 +259,7 @@ describe("token-set browser flow", () => {
 		const transport = createTokenSetTransport();
 		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
 		const scheduler = new FakeScheduler(clock);
-		const seedingClient = createBackendOidcModeBrowserClient({
+		const seedingClient = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -227,7 +273,7 @@ describe("token-set browser flow", () => {
 		);
 		seedingClient.dispose();
 
-		const restoringClient = createBackendOidcModeBrowserClient({
+		const restoringClient = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -236,15 +282,17 @@ describe("token-set browser flow", () => {
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 		});
 
-		const result = await bootstrapBackendOidcModeClient(restoringClient, {
-			location: {
-				href: "https://app.example.com/token-set",
-				hash: "",
+		const result = await bootstrapBackendOidcModePageClient(restoringClient, {
+			environment: {
+				location: {
+					href: "https://app.example.com/token-set",
+					hash: "",
+				},
+				history: createHistoryRecorder(),
+				callbackFragmentStore: createBackendOidcModeCallbackFragmentStore({
+					sessionStore,
+				}),
 			},
-			history: createHistoryRecorder(),
-			callbackFragmentStore: createBackendOidcModeCallbackFragmentStore({
-				sessionStore,
-			}),
 		});
 
 		expect(result.source).toBe("restore");
@@ -276,7 +324,7 @@ describe("token-set browser flow", () => {
 				}),
 		);
 
-		const firstClient = createBackendOidcModeBrowserClient({
+		const firstClient = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -285,13 +333,15 @@ describe("token-set browser flow", () => {
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 		});
 
-		const firstBootstrap = bootstrapBackendOidcModeClient(firstClient, {
-			location: {
-				href: "https://app.example.com/token-set#access_token=late-at&id_token=late-idt&refresh_token=late-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-3",
-				hash: "#access_token=late-at&id_token=late-idt&refresh_token=late-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-3",
+		const firstBootstrap = bootstrapBackendOidcModePageClient(firstClient, {
+			environment: {
+				location: {
+					href: "https://app.example.com/token-set#access_token=late-at&id_token=late-idt&refresh_token=late-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-3",
+					hash: "#access_token=late-at&id_token=late-idt&refresh_token=late-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-3",
+				},
+				history,
+				callbackFragmentStore,
 			},
-			history,
-			callbackFragmentStore,
 		});
 		const firstBootstrapExpectation = expect(
 			firstBootstrap,
@@ -340,7 +390,7 @@ describe("token-set browser flow", () => {
 			}),
 		);
 
-		const secondClient = createBackendOidcModeBrowserClient({
+		const secondClient = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -348,13 +398,15 @@ describe("token-set browser flow", () => {
 			scheduler,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 		});
-		const retried = await bootstrapBackendOidcModeClient(secondClient, {
-			location: {
-				href: "https://app.example.com/token-set",
-				hash: "",
+		const retried = await bootstrapBackendOidcModePageClient(secondClient, {
+			environment: {
+				location: {
+					href: "https://app.example.com/token-set",
+					hash: "",
+				},
+				history: createHistoryRecorder(),
+				callbackFragmentStore,
 			},
-			history: createHistoryRecorder(),
-			callbackFragmentStore,
 		});
 
 		expect(retried.source).toBe(BackendOidcModeBootstrapSource.Callback);
@@ -381,7 +433,7 @@ describe("token-set browser flow", () => {
 			}),
 		);
 
-		const firstClient = createBackendOidcModeBrowserClient({
+		const firstClient = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -391,13 +443,15 @@ describe("token-set browser flow", () => {
 		});
 
 		await expect(
-			bootstrapBackendOidcModeClient(firstClient, {
-				location: {
-					href: "https://app.example.com/token-set#access_token=retry-at&id_token=retry-idt&refresh_token=retry-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-5",
-					hash: "#access_token=retry-at&id_token=retry-idt&refresh_token=retry-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-5",
+			bootstrapBackendOidcModePageClient(firstClient, {
+				environment: {
+					location: {
+						href: "https://app.example.com/token-set#access_token=retry-at&id_token=retry-idt&refresh_token=retry-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-5",
+						hash: "#access_token=retry-at&id_token=retry-idt&refresh_token=retry-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-5",
+					},
+					history: createHistoryRecorder(),
+					callbackFragmentStore,
 				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore,
 			}),
 		).rejects.toMatchObject({
 			kind: ClientErrorKind.Server,
@@ -423,7 +477,7 @@ describe("token-set browser flow", () => {
 			}),
 		);
 
-		const secondClient = createBackendOidcModeBrowserClient({
+		const secondClient = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -431,13 +485,15 @@ describe("token-set browser flow", () => {
 			scheduler,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 		});
-		const retried = await bootstrapBackendOidcModeClient(secondClient, {
-			location: {
-				href: "https://app.example.com/token-set",
-				hash: "",
+		const retried = await bootstrapBackendOidcModePageClient(secondClient, {
+			environment: {
+				location: {
+					href: "https://app.example.com/token-set",
+					hash: "",
+				},
+				history: createHistoryRecorder(),
+				callbackFragmentStore,
 			},
-			history: createHistoryRecorder(),
-			callbackFragmentStore,
 		});
 
 		expect(retried.source).toBe(BackendOidcModeBootstrapSource.Callback);
@@ -470,7 +526,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -522,7 +578,7 @@ describe("token-set browser flow", () => {
 					};
 				},
 			);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -584,7 +640,7 @@ describe("token-set browser flow", () => {
 					};
 				},
 			);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -674,7 +730,7 @@ describe("token-set browser flow", () => {
 					};
 				},
 			);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -787,7 +843,7 @@ describe("token-set browser flow", () => {
 					};
 				},
 			);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -922,7 +978,7 @@ describe("token-set browser flow", () => {
 					};
 				},
 			);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -1001,7 +1057,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -1051,7 +1107,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -1095,7 +1151,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -1145,7 +1201,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -1214,7 +1270,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -1288,7 +1344,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -1352,7 +1408,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -1444,7 +1500,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
 			persistentStore,
 			sessionStore,
 			transport,
@@ -1480,16 +1536,7 @@ describe("token-set browser flow", () => {
 				"The current environment does not expose `/api/propagation/*`, so the dashboard bearer and propagation directive reached a valid route shape but no mounted forwarder.",
 			configStatus:
 				"The checked-in server config currently omits a usable propagation-forwarder setup. Mount `[propagation_forwarder]` and allow the downstream origin under `[token_set_context.token_propagation.destination_policy]` before expecting real forwarding behavior.",
-			recommendedConfigSnippet: `[token_set_context.token_propagation]
-default_policy = "validate_then_forward"
-
-[token_set_context.token_propagation.destination_policy]
-allowed_targets = [
-  { kind = "exact_origin", scheme = "http", hostname = "localhost", port = 7021 },
-]
-
-[propagation_forwarder]
-proxy_path = "/api/propagation"`,
+			recommendedConfigSnippet: DEFAULT_PROPAGATION_FORWARDER_CONFIG_SNIPPET,
 		});
 	});
 

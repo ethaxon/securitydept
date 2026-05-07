@@ -2,8 +2,9 @@ import { createRuntime } from "@securitydept/client";
 import { createWebRuntime } from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
 import {
-	buildAuthorizeUrlReturningToCurrent,
-	createBackendOidcModeBrowserClient,
+	buildAuthorizeUrlReturningToCurrentPage,
+	createBackendOidcModeWebClient,
+	createBackendOidcModeWebClientEnvironment,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { describe, expect, it, vi } from "vitest";
 
@@ -39,35 +40,45 @@ describe("minimal entry points", () => {
 	});
 
 	it("supports a browser-oriented token-set entry path", () => {
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
+			environment: createBackendOidcModeWebClientEnvironment({
+				transport: {
+					execute: vi.fn(async () => ({
+						status: 200,
+						headers: {},
+						body: null,
+					})),
+				},
+				persistentStore: {
+					async get() {
+						return null;
+					},
+					async set() {},
+					async remove() {},
+				},
+				sessionStore: {
+					async get() {
+						return null;
+					},
+					async take() {
+						return null;
+					},
+					async set() {},
+					async remove() {},
+				},
+			}),
 			baseUrl: "https://auth.example.com",
 			defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
-			transport: {
-				execute: vi.fn(async () => ({
-					status: 200,
-					headers: {},
-					body: null,
-				})),
-			},
-			persistentStore: {
-				async get() {
-					return null;
-				},
-				async set() {},
-				async remove() {},
-			},
-			sessionStore: {
-				async get() {
-					return null;
-				},
-				async set() {},
-				async remove() {},
-			},
 		});
 
 		expect(
-			buildAuthorizeUrlReturningToCurrent(client, {
-				href: "https://app.example.com/oidc-mediated#callback",
+			buildAuthorizeUrlReturningToCurrentPage(client, {
+				environment: {
+					location: {
+						href: "https://app.example.com/oidc-mediated#callback",
+						hash: "#callback",
+					},
+				},
 			}),
 		).toBe(
 			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Foidc-mediated",
@@ -78,38 +89,48 @@ describe("minimal entry points", () => {
 		// securitydept-server uses /auth/token-set/* instead of the SDK
 		// default /auth/oidc/*. Adopters must be able to pass these overrides
 		// through the browser convenience entry.
-		const client = createBackendOidcModeBrowserClient({
+		const client = createBackendOidcModeWebClient({
+			environment: createBackendOidcModeWebClientEnvironment({
+				transport: {
+					execute: vi.fn(async () => ({
+						status: 200,
+						headers: {},
+						body: null,
+					})),
+				},
+				persistentStore: {
+					async get() {
+						return null;
+					},
+					async set() {},
+					async remove() {},
+				},
+				sessionStore: {
+					async get() {
+						return null;
+					},
+					async take() {
+						return null;
+					},
+					async set() {},
+					async remove() {},
+				},
+			}),
 			baseUrl: "https://auth.example.com",
 			loginPath: "/auth/token-set/login",
 			refreshPath: "/auth/token-set/refresh",
 			metadataRedeemPath: "/auth/token-set/metadata/redeem",
 			userInfoPath: "/auth/token-set/user-info",
-			transport: {
-				execute: vi.fn(async () => ({
-					status: 200,
-					headers: {},
-					body: null,
-				})),
-			},
-			persistentStore: {
-				async get() {
-					return null;
-				},
-				async set() {},
-				async remove() {},
-			},
-			sessionStore: {
-				async get() {
-					return null;
-				},
-				async set() {},
-				async remove() {},
-			},
 		});
 
 		expect(
-			buildAuthorizeUrlReturningToCurrent(client, {
-				href: "https://app.example.com/dashboard",
+			buildAuthorizeUrlReturningToCurrentPage(client, {
+				environment: {
+					location: {
+						href: "https://app.example.com/dashboard",
+						hash: "",
+					},
+				},
 			}),
 		).toBe(
 			"https://auth.example.com/auth/token-set/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard",

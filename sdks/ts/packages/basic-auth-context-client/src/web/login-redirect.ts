@@ -9,23 +9,31 @@
 //
 // Stability: provisional
 
+import type { PageLocationCapability } from "@securitydept/client";
+import { assertResolveEnvironment } from "@securitydept/client/web";
 import type { BasicAuthContextClient } from "../client";
+
+const BASIC_AUTH_PAGE_ENVIRONMENT_ERROR_MESSAGE =
+	"basic-auth browser redirect helpers require an explicit page environment.\n" +
+	"Create one in your composition root with createBrowserPageClientEnvironment(...).";
 
 /**
  * Options for {@link loginWithRedirect}.
  */
 export interface LoginWithRedirectOptions {
+	environment?: PageLocationCapability;
+
 	/**
 	 * The current request path to resolve the target zone.
 	 *
-	 * When omitted, `window.location.pathname` is used.
+	 * When omitted, `environment.location.pathname` is used.
 	 */
 	currentPath?: string;
 
 	/**
 	 * Where to redirect the user after successful authentication.
 	 *
-	 * When omitted, `window.location.href` is used as the return URI.
+	 * When omitted, `environment.location.href` is used as the return URI.
 	 */
 	postAuthRedirectUri?: string;
 }
@@ -49,14 +57,25 @@ export function loginWithRedirect(
 	client: BasicAuthContextClient,
 	options: LoginWithRedirectOptions = {},
 ): boolean {
-	const currentPath = options.currentPath ?? window.location.pathname;
+	const environment = assertResolveEnvironment(
+		options.environment,
+		failMissingPageEnvironment,
+	);
+	const currentPath =
+		options.currentPath ??
+		environment.location.pathname ??
+		new URL(environment.location.href).pathname;
 	const zone = client.zoneForPath(currentPath);
 	if (!zone) {
 		return false;
 	}
 
 	const postAuthRedirectUri =
-		options.postAuthRedirectUri ?? window.location.href;
-	window.location.href = client.loginUrl(zone, postAuthRedirectUri);
+		options.postAuthRedirectUri ?? environment.location.href;
+	environment.location.href = client.loginUrl(zone, postAuthRedirectUri);
 	return true;
+}
+
+function failMissingPageEnvironment(): never {
+	throw new Error(BASIC_AUTH_PAGE_ENVIRONMENT_ERROR_MESSAGE);
 }
