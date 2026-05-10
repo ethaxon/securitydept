@@ -6,6 +6,7 @@ import {
 	createBrowserPageClientEnvironment,
 	createBrowserWorkerClientEnvironment,
 	createServiceWorkerClientEnvironment,
+	deriveClientEnvironment,
 } from "../client-environment";
 
 function createTransport() {
@@ -16,7 +17,7 @@ function createTransport() {
 	};
 }
 
-function createRuntimeOptions() {
+function createClientEnvironmentOptions() {
 	return {
 		transport: createTransport(),
 		persistentStore: createInMemoryRecordStore(),
@@ -34,15 +35,30 @@ describe("client environment presets", () => {
 			history: { replaceState() {} },
 		};
 		const environment = createBrowserPageClientEnvironment({
-			...createRuntimeOptions(),
+			...createClientEnvironmentOptions(),
 			pageCapability,
 		});
 
 		expect(environment.preset).toBe(ClientEnvironmentPreset.BrowserPage);
 		expect(environment.location).toBe(pageCapability.location);
 		expect(environment.history).toBe(pageCapability.history);
-		expect(environment.runtime.persistentStore).toBeDefined();
-		expect(environment.runtime.sessionStore).toBeDefined();
+		expect(environment.persistentStore).toBeDefined();
+		expect(environment.sessionStore).toBeDefined();
+	});
+
+	it("derives client environment from flattened environment fields", () => {
+		const environment = createBrowserWorkerClientEnvironment(
+			createClientEnvironmentOptions(),
+		);
+		const canonicalTransport = createTransport();
+		const inconsistentEnvironment = {
+			...environment,
+			transport: canonicalTransport,
+		};
+
+		const clientEnvironment = deriveClientEnvironment(inconsistentEnvironment);
+
+		expect(clientEnvironment.transport).toBe(canonicalTransport);
 	});
 
 	it("does not infer browser page from worker-like global location", () => {
@@ -52,19 +68,23 @@ describe("client environment presets", () => {
 		});
 
 		expect(() =>
-			createBrowserPageClientEnvironment(createRuntimeOptions()),
+			createBrowserPageClientEnvironment(createClientEnvironmentOptions()),
 		).toThrow(/extension background or service worker hosts/);
 
 		vi.unstubAllGlobals();
 	});
 
 	it("keeps worker, service worker, and extension background presets page-free", () => {
-		const worker = createBrowserWorkerClientEnvironment(createRuntimeOptions());
+		const worker = createBrowserWorkerClientEnvironment(
+			createClientEnvironmentOptions(),
+		);
 		const serviceWorker = createServiceWorkerClientEnvironment(
-			createRuntimeOptions(),
+			createClientEnvironmentOptions(),
 		);
 		const extensionBackground =
-			createBrowserExtensionBackgroundClientEnvironment(createRuntimeOptions());
+			createBrowserExtensionBackgroundClientEnvironment(
+				createClientEnvironmentOptions(),
+			);
 
 		expect(worker.preset).toBe(ClientEnvironmentPreset.BrowserWorker);
 		expect(serviceWorker.preset).toBe(ClientEnvironmentPreset.ServiceWorker);

@@ -1,4 +1,4 @@
-// @securitydept/client/web-router — raw web router subpath (iteration 110)
+// @securitydept/client/web-router — raw web router subpath
 //
 // Canonical import:
 //   import {
@@ -11,7 +11,7 @@
 // selection rules, and `web-router.ts` for route matching / planner-host
 // integration.
 //
-// Stability: provisional (new in iteration 110)
+// Stability: provisional
 
 export type {
 	CreateHistoryAdapterOptions,

@@ -9,12 +9,17 @@
 //
 // Stability: provisional (React adapter)
 
-import type { HttpTransport, RecordStore } from "@securitydept/client";
+import type { WebClientEnvironment } from "@securitydept/client";
 import type {
 	SessionContextClientConfig,
+	SessionContextControllerState,
 	SessionInfo,
 } from "@securitydept/session-context-client";
-import { SessionContextClient } from "@securitydept/session-context-client";
+import {
+	SessionContextClient,
+	SessionContextController,
+	SessionContextControllerStatus,
+} from "@securitydept/session-context-client";
 import {
 	createContext,
 	type ReactNode,
@@ -22,11 +27,15 @@ import {
 	useContext,
 	useEffect,
 	useMemo,
-	useState,
+	useSyncExternalStore,
 } from "react";
 
-export type { SessionContextClientConfig, SessionInfo };
-export { SessionContextClient };
+export type {
+	SessionContextClientConfig,
+	SessionContextControllerState,
+	SessionInfo,
+};
+export { SessionContextClient, SessionContextController };
 
 /** Value exposed by the session context React provider. */
 export interface SessionContextValue {
@@ -36,8 +45,10 @@ export interface SessionContextValue {
 	session: SessionInfo | null;
 	/** Whether the initial session probe is in progress. */
 	loading: boolean;
+	/** Full framework-neutral controller state. */
+	state: SessionContextControllerState;
 	/** Trigger a re-fetch of the session info. */
-	refresh: () => void;
+	refresh: () => Promise<SessionInfo | null>;
 	/** Persist the intended post-auth redirect. */
 	rememberPostAuthRedirect: (postAuthRedirectUri: string) => Promise<void>;
 	/** Clear any pending post-auth redirect. */
@@ -48,72 +59,109 @@ export interface SessionContextValue {
 	logout: () => Promise<void>;
 }
 
-const SessionContext = createContext<SessionContextValue | null>(null);
+interface SessionControllerContextValue {
+	controller: SessionContextController;
+	initialRefresh: boolean;
+}
+
+const SessionControllerContext =
+	createContext<SessionControllerContextValue | null>(null);
 
 export interface SessionContextProviderProps {
 	/** Auth-context config only (baseUrl and path policy). */
-	config: SessionContextClientConfig;
-	/** Runtime/foundation capability wiring for HTTP. */
-	transport: HttpTransport;
-	/** Runtime/foundation persistence capability for browser session glue. */
-	sessionStore?: RecordStore;
+	config?: SessionContextClientConfig;
+	/** Framework composition-root environment for transport and session state. */
+	environment?: WebClientEnvironment;
+	/** Host-created framework-neutral controller. */
+	controller?: SessionContextController;
+	/** Explicitly start an initial session probe from the adapter. */
+	initialRefresh?: boolean;
 	/** React host glue only. */
 	children: ReactNode;
 }
 
 export function SessionContextProvider({
 	config,
-	transport,
-	sessionStore,
+	environment,
+	controller,
+	initialRefresh = false,
 	children,
 }: SessionContextProviderProps) {
-	const client = useMemo(
-		() => new SessionContextClient(config, { sessionStore }),
-		[config, sessionStore],
-	);
-	const [session, setSession] = useState<SessionInfo | null>(null);
-	const [loading, setLoading] = useState(true);
-	const [tick, setTick] = useState(0);
-
-	const refresh = useCallback(() => setTick((t) => t + 1), []);
-	const rememberPostAuthRedirect = useCallback(
-		async (postAuthRedirectUri: string) => {
-			await client.rememberPostAuthRedirect(postAuthRedirectUri);
-		},
-		[client],
-	);
-	const clearPostAuthRedirect = useCallback(async () => {
-		await client.clearPostAuthRedirect();
-	}, [client]);
-	const resolveLoginUrl = useCallback(async () => {
-		return await client.resolveLoginUrl();
-	}, [client]);
-	const logout = useCallback(async () => {
-		await client.logoutAndClearPendingLoginRedirect(transport);
-		setSession(null);
-		setLoading(false);
-	}, [client, transport]);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: tick is used to force a refresh
-	useEffect(() => {
-		let cancelled = false;
-		setLoading(true);
-		client.fetchUserInfo(transport).then((result) => {
-			if (!cancelled) {
-				setSession(result);
-				setLoading(false);
-			}
+	const resolvedController = useMemo(() => {
+		if (controller) {
+			return controller;
+		}
+		if (!config || !environment) {
+			throw new Error(
+				"SessionContextProvider requires either controller or both config and environment.",
+			);
+		}
+		return new SessionContextController({
+			client: new SessionContextClient(config, {
+				sessionStore: environment.sessionStore,
+			}),
+			transport: environment.transport,
 		});
-		return () => {
-			cancelled = true;
-		};
-	}, [client, transport, tick]);
+	}, [config, controller, environment]);
 
-	const value = useMemo(
+	useEffect(() => {
+		if (initialRefresh) {
+			resolvedController.refresh().catch(() => {});
+		}
+	}, [initialRefresh, resolvedController]);
+
+	const contextValue = useMemo(
+		() => ({ controller: resolvedController, initialRefresh }),
+		[resolvedController, initialRefresh],
+	);
+
+	return (
+		<SessionControllerContext.Provider value={contextValue}>
+			{children}
+		</SessionControllerContext.Provider>
+	);
+}
+
+/** Access the session context from React. */
+export function useSessionContext(): SessionContextValue {
+	const context = useContext(SessionControllerContext);
+	if (!context) {
+		throw new Error(
+			"useSessionContext must be used inside <SessionContextProvider>",
+		);
+	}
+	const { controller, initialRefresh } = context;
+
+	const state = useSyncExternalStore(
+		useCallback((listener) => controller.subscribe(listener), [controller]),
+		useCallback(() => controller.getState(), [controller]),
+		useCallback(() => controller.getState(), [controller]),
+	);
+	const refresh = useCallback(() => controller.refresh(), [controller]);
+	const rememberPostAuthRedirect = useCallback(
+		(postAuthRedirectUri: string) =>
+			controller.rememberPostAuthRedirect(postAuthRedirectUri),
+		[controller],
+	);
+	const clearPostAuthRedirect = useCallback(
+		() => controller.clearPostAuthRedirect(),
+		[controller],
+	);
+	const resolveLoginUrl = useCallback(
+		() => controller.resolveLoginUrl(),
+		[controller],
+	);
+	const logout = useCallback(() => controller.logout(), [controller]);
+
+	return useMemo(
 		() => ({
-			client,
-			session,
-			loading,
+			client: controller.client,
+			session: state.session,
+			loading:
+				state.status === SessionContextControllerStatus.Loading ||
+				(initialRefresh &&
+					state.status === SessionContextControllerStatus.Idle),
+			state,
 			refresh,
 			rememberPostAuthRedirect,
 			clearPostAuthRedirect,
@@ -121,9 +169,9 @@ export function SessionContextProvider({
 			logout,
 		}),
 		[
-			client,
-			session,
-			loading,
+			controller,
+			initialRefresh,
+			state,
 			refresh,
 			rememberPostAuthRedirect,
 			clearPostAuthRedirect,
@@ -131,21 +179,6 @@ export function SessionContextProvider({
 			logout,
 		],
 	);
-
-	return (
-		<SessionContext.Provider value={value}>{children}</SessionContext.Provider>
-	);
-}
-
-/** Access the session context from React. */
-export function useSessionContext(): SessionContextValue {
-	const ctx = useContext(SessionContext);
-	if (!ctx) {
-		throw new Error(
-			"useSessionContext must be used inside <SessionContextProvider>",
-		);
-	}
-	return ctx;
 }
 
 /** Convenience hook to get just the session principal. */

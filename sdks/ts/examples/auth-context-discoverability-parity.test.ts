@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-// Auth-context discoverability parity evidence — iteration 89
+// Auth-context discoverability parity evidence.
 //
 // Validates that basic-auth-context-client and session-context-client
 // expose discoverable named contracts from their canonical subpaths,
@@ -125,9 +125,10 @@ describe("session ./react discoverability: SessionContextValue named contract", 
 		// Build a mock value that satisfies the contract to prove type-level access.
 		const mockValue: AssertValue = {
 			client: {} as AssertValue["client"],
+			state: { status: "loading", session: null, error: null },
 			session: null,
 			loading: true,
-			refresh: () => {},
+			refresh: async () => null,
 			rememberPostAuthRedirect: async () => {},
 			clearPostAuthRedirect: async () => {},
 			resolveLoginUrl: async () => "/auth/session/login",
@@ -145,9 +146,10 @@ describe("session ./react discoverability: SessionContextValue named contract", 
 
 		const value: SessionContextValue = {
 			client: {} as SessionContextValue["client"],
+			state: { status: "authenticated", session: sessionInfo, error: null },
 			session: sessionInfo,
 			loading: false,
-			refresh: () => {},
+			refresh: async () => sessionInfo,
 			rememberPostAuthRedirect: async () => {},
 			clearPostAuthRedirect: async () => {},
 			resolveLoginUrl: async () => "/auth/session/login",

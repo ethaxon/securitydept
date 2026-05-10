@@ -52,8 +52,9 @@ The historical `[patch.crates-io] openidconnect` packaging blocker is closed: th
 The Docker image is a runtime artifact for the reference server plus web UI output. Current release expectations require:
 
 - toolchain versions aligned with `mise.toml` / `rust-toolchain.toml` or explicitly documented
+- runtime image assembly through `Dockerfile.runtime` from prebuilt server, CLI, and web UI artifacts
 - web UI output copy path matching the real Vite build output
- - tag behavior where pre-release tags such as `vX.Y.Z-beta.N` do not publish `latest`
+- tag behavior where pre-release tags such as `vX.Y.Z-beta.N` do not publish `latest`
 - release-acceptable labels, cache, provenance, and platform decisions
 
 ## Docs Product Boundary
@@ -72,6 +73,8 @@ The project docs should be read as:
 - `021` downstream reference case
 - `100` roadmap and release blockers
 - `110` TS SDK migration guide
+
+Local test infrastructure docs live with the capability they validate: real-IP Docker/Kubernetes provider test behavior is documented in `006`, while release workflow behavior stays in `008`.
 
 ## Deferred Beyond 0.3.x
 

@@ -6,6 +6,9 @@ const forbiddenFallbacks = [
 	"requireDefaultPageLocationHistoryCapability(",
 	"requirePageClientEnvironment(",
 	"createDefaultBackendOidcModePageCallbackCapability(",
+	"options.environment ?? createFrontendOidcModeWebClientEnvironment(",
+	"?? createFrontendOidcModeWebClientEnvironment(",
+	"?? createBackendOidcModeCallbackFragmentStore(",
 ];
 
 const guardedHelperFiles = [
@@ -27,6 +30,10 @@ const guardedHelperFiles = [
 	),
 	new URL(
 		"../../../../token-set-context-client/src/frontend-oidc-mode/client.ts",
+		import.meta.url,
+	),
+	new URL(
+		"../../../../token-set-context-client/src/frontend-oidc-mode/config-source-web.ts",
 		import.meta.url,
 	),
 ];

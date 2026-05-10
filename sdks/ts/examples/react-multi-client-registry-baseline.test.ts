@@ -2,7 +2,7 @@
 
 // React multi-client registry / provider / hooks baseline
 //
-// Iteration 110 evidence: proves the React adapter has reached Angular-parity
+// React multi-client registry evidence: proves the React adapter has reached Angular parity
 // for multi-client token-set auth. A single React tree hosts the
 // `TokenSetAuthProvider`, registers multiple OIDC clients (including an
 // async / lazy one), and a nested component consumes each client's auth
@@ -97,7 +97,6 @@ function createMockClient(
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
 		handleCallback: vi.fn().mockResolvedValue({ snapshot: makeSnapshot("cb") }),
-		authorizeUrl: vi.fn().mockReturnValue("/auth/token-set/login"),
 		authorizationHeader() {
 			const accessToken = ctrl.signal.get()?.tokens.accessToken;
 			return accessToken ? `Bearer ${accessToken}` : null;
@@ -123,8 +122,7 @@ function createMockClient(
 				reason: TokenSetAuthFlowReason.NoSnapshot,
 			};
 		}),
-		refresh: vi.fn().mockResolvedValue(makeSnapshot("refreshed")),
-		clearState: vi.fn().mockResolvedValue(undefined),
+		loginWithRedirect: vi.fn().mockResolvedValue(undefined),
 	};
 	return [client, ctrl.set];
 }
@@ -133,7 +131,7 @@ function createMockClient(
 // Evidence tests
 // ---------------------------------------------------------------------------
 
-describe("React multi-client registry baseline (iteration 110)", () => {
+describe("React multi-client registry baseline", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
 		delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })

@@ -129,7 +129,7 @@ services:
 
 启动后，reference app 会暴露在 `http://localhost:7021`。
 
-Docker image 由 `Docker Build` workflow 构建，并通过 `scripts/release-cli.ts docker publish` 统一生成 tags；详见 [Release Automation](docs/zh/008-RELEASE_AUTOMATION.md)。
+Release Docker image 由预先构建好的 server、CLI 与 web UI artifact 通过 `Dockerfile.runtime` 组装，并由 `scripts/release-cli.ts docker publish` 统一生成 tags；详见 [Release Automation](docs/zh/008-RELEASE_AUTOMATION.md)。
 
 ## 开发本仓库
 
@@ -145,19 +145,25 @@ Docker image 由 `Docker Build` workflow 构建，并通过 `scripts/release-cli
 本地初始化：
 
 ```bash
-just setup
+mise install
+pnpm install
+just setup-docs
 ```
 
 常用循环：
 
 ```bash
-just dev-all
+just dev-server
+just dev-webui
 just lint
 just unittest
 just integration
 just e2e
+just test-all
 just build-docs
 ```
+
+根 `justfile` 通过 `import` 拆分到 `justfiles/` 下的主题文件；被 import 的 recipe 仍从仓库根目录执行。Kubernetes Rust e2e 资源由 `scripts/test-cli.ts` 管理，使用带 `securitydept.test=true` 标签的可复用本地 Docker/kind/k3d 资源，并提供显式清理 recipe。
 
 ## 项目边界
 

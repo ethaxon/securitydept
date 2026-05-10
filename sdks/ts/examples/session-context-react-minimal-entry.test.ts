@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { createInMemoryRecordStore } from "@securitydept/client";
+import { createWebClientEnvironment } from "@securitydept/client/web";
 import {
 	SessionContextProvider,
 	type SessionContextProviderProps,
@@ -56,10 +58,8 @@ describe("session-context react minimal entry", () => {
 				status: 200,
 				headers: {},
 				body: {
-					principal: {
-						subject: "session-user-1",
-						displayName: "Alice",
-					},
+					subject: "session-user-1",
+					display_name: "Alice",
 				},
 			})),
 		};
@@ -71,7 +71,11 @@ describe("session-context react minimal entry", () => {
 
 		const providerProps = {
 			config: { baseUrl: "https://auth.example.com" },
-			transport,
+			environment: createWebClientEnvironment({
+				transport,
+				sessionStore: createInMemoryRecordStore(),
+			}),
+			initialRefresh: true,
 		} satisfies Omit<SessionContextProviderProps, "children">;
 
 		const view = render(

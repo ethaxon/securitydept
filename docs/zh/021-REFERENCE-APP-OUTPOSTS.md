@@ -13,6 +13,7 @@
 - Callback route 由 SDK `TokenSetCallbackComponent` 承担。
 - `secureRouteRoot()` 承载 provider-neutral requirement metadata 与 next-action policy。
 - `provideTokenSetAuth(...)` 注册 `Confluence` client，并使用 `providerFamily: "authentik"`、`callbackPath: "/auth/callback"` 与 Confluence API endpoint 的 URL patterns。
+- Route-login integration 使用共享的 `OidcRedirectLoginClient.loginWithRedirect({ environment, postAuthRedirectUri })` contract，并应从稳定的 `ClientEnvironmentService` / `providePageClientEnvironment({ environment })` source 获取 page capability，而不是在每次 guard 中创建 page factory。
 - 对 registry-managed browser client，`provideTokenSetAuth(...)` 现在也拥有默认 page-resume reconciliation；`outposts` 不需要为了 resume recovery 再手动包一层 `createFrontendOidcModeClient(...)`。
 - `provideTokenSetBearerInterceptor({ strictUrlMatch: true })` 将 bearer injection 限制到命中已注册 `urlPatterns` 的 URL，不再对 unmatched URL 使用 single-client fallback。
 - 短 access-token lifetime 预期通过 SDK freshness barriers 恢复：browser resume reconciliation、Angular route guard freshness 与 request-time `ensureAuthForResource({ source: "http_interceptor", needsAuthorizationHeader: true })` 都会在存在 refresh material 时先尝试 refresh，再决定是否登录跳转或注入 bearer。
@@ -22,6 +23,18 @@
 - `confluence` service 既有 backend tests 锁住 issuer/JWKS/audience/scope 行为，包括 optional-audience 与 missing-scope rejection。
 - Linked-package tests/build 只能证明本地 SDK contract wiring，不能替代真实 Authentik browser/Network run。真实 run 仍需要可访问的 `outposts-web` 页面和已认证 Authentik session，用于记录 localStorage refresh material、access-token expiry、resume refresh、route admission 与首个 protected API request 行为。
 - 本地 cross-workspace 验证时，应在 `outposts` 中先启动 `just dev-confluence`，再启动 `just dev-webui`。修改 linked 的 SecurityDept SDK package 后，还需要先重建对应 package 产物并清理 `outposts/.angular/cache`，再重启 `dev-webui`；否则 Angular/Vite 可能继续提供陈旧的 linked artifact。
+- 对本地 cross-workspace 联调，应使用 pnpm `link:` dependency，而不是 overrides。普通 TS package 可以继续 link 到 package root，但 Angular `ng-packagr` package 应 link 到构建后的 `dist/` 输出，而不是 workspace root。一个可复用的下游配置模式是：
+
+```json
+{
+	"@securitydept/client": "link:../securitydept/sdks/ts/packages/client",
+	"@securitydept/client-angular": "link:../securitydept/sdks/ts/packages/client-angular/dist",
+	"@securitydept/token-set-context-client": "link:../securitydept/sdks/ts/packages/token-set-context-client",
+	"@securitydept/token-set-context-client-angular": "link:../securitydept/sdks/ts/packages/token-set-context-client-angular/dist"
+}
+```
+
+- 经验教训：如果把 Angular package root 直接 link 给 downstream，实际消费到的是 monorepo package manifest 与本地 Angular 类型安装路径，而不是面向 consumer 的 `ngc` / `ng-packagr` 产物。这就是本地 linked downstream 验证里 `Route` 双类型宇宙回归的典型触发条件。
 
 ## 为什么这个案例重要
 
@@ -99,6 +112,8 @@
 - Node / pnpm：使用指向本地 SecurityDept TS packages 的 `link:` references
 
 当 downstream workspace 直接链接 SecurityDept package root 或 Angular `dist/` 输出时，浏览器联调前仍必须重建被修改的 SDK packages。仅有本地 `link:` wiring 并不足以刷新已经被 Angular/Vite 预构建的产物。
+
+如果 downstream 还会独立运行 Angular builder 之外的 TypeScript 检查，也要让其 Angular patch 版本与 SecurityDept SDK 当前工具链保持一致，并按当前 workspace manifest 一起升级核心 Angular framework packages、`@angular-devkit/*`、CLI、compiler 与相关 build tooling，然后再运行 `tsc`、`nx test` 或 `nx build`。
 
 ## 相关文档
 

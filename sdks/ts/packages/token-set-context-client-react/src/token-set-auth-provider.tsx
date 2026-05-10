@@ -10,15 +10,16 @@
 //     TokenSetCallbackOutlet,
 //   } from "@securitydept/token-set-context-client-react";
 //
-// Iteration 110: mirrors the Angular `provideTokenSetAuth` surface using React
+// Mirrors the Angular `provideTokenSetAuth` surface using React
 // 19 primitives. Adopters can register N token-set clients in a single tree;
 // hooks key into the registry to retrieve the right `TokenSetAuthService`.
 //
-// Stability: provisional (new in iteration 110)
+// Stability: provisional
 
 import {
 	type TokenSetAuthRegistry as CoreTokenSetAuthRegistry,
 	createTokenSetAuthRegistry,
+	TokenSetCallbackResumeController,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	createContext,
@@ -37,7 +38,6 @@ import type {
 	TokenSetReactClient,
 } from "./contracts";
 import { TokenSetAuthService } from "./token-set-auth-service";
-import { disposeCallbackResumeCache } from "./token-set-callback";
 
 // ---------------------------------------------------------------------------
 // Registry context
@@ -49,6 +49,10 @@ export type ReactRegistry = CoreTokenSetAuthRegistry<
 >;
 
 const TokenSetAuthRegistryContext = createContext<ReactRegistry | null>(null);
+const TokenSetCallbackResumeControllerContext =
+	createContext<TokenSetCallbackResumeController<TokenSetAuthService> | null>(
+		null,
+	);
 
 // ---------------------------------------------------------------------------
 // Provider
@@ -103,6 +107,14 @@ export function TokenSetAuthProvider({
 			}),
 		[],
 	);
+	const callbackResumeController = useMemo(
+		() =>
+			new TokenSetCallbackResumeController<TokenSetAuthService>({
+				registry,
+				getCallbackClient: (service) => service.client,
+			}),
+		[registry],
+	);
 	const registeredRef = useRef(false);
 	const mountCountRef = useRef(0);
 
@@ -136,16 +148,20 @@ export function TokenSetAuthProvider({
 			}
 			queueMicrotask(() => {
 				if (mountCountRef.current <= 0) {
-					disposeCallbackResumeCache(registry);
+					callbackResumeController.dispose();
 					registry.dispose();
 				}
 			});
 		};
-	}, [registry, idleWarmup]);
+	}, [registry, callbackResumeController, idleWarmup]);
 
 	return (
 		<TokenSetAuthRegistryContext.Provider value={registry}>
-			{children}
+			<TokenSetCallbackResumeControllerContext.Provider
+				value={callbackResumeController}
+			>
+				{children}
+			</TokenSetCallbackResumeControllerContext.Provider>
 		</TokenSetAuthRegistryContext.Provider>
 	);
 }
@@ -163,6 +179,16 @@ export function useTokenSetAuthRegistry(): ReactRegistry {
 		);
 	}
 	return registry;
+}
+
+export function useTokenSetCallbackResumeController(): TokenSetCallbackResumeController<TokenSetAuthService> {
+	const controller = useContext(TokenSetCallbackResumeControllerContext);
+	if (!controller) {
+		throw new Error(
+			"useTokenSetCallbackResumeController must be used inside <TokenSetAuthProvider>",
+		);
+	}
+	return controller;
 }
 
 /**
@@ -190,7 +216,22 @@ export function useTokenSetBackendOidcClient(
 ): TokenSetBackendOidcClient {
 	const service = useTokenSetAuthService(key);
 	useDebugValue(`TokenSetBackendOidcClient(${key})`);
+	if (!isTokenSetBackendOidcClient(service.client)) {
+		throw new Error(
+			`useTokenSetBackendOidcClient(${key}) requires a backend-specific token-set client with authorizeUrl(), refresh(), and clearState().`,
+		);
+	}
 	return service.client;
+}
+
+function isTokenSetBackendOidcClient(
+	client: TokenSetReactClient,
+): client is TokenSetBackendOidcClient {
+	return (
+		typeof (client as { authorizeUrl?: unknown }).authorizeUrl === "function" &&
+		typeof (client as { refresh?: unknown }).refresh === "function" &&
+		typeof (client as { clearState?: unknown }).clearState === "function"
+	);
 }
 
 /**

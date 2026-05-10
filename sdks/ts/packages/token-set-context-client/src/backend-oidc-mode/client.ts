@@ -1,6 +1,6 @@
 import type {
 	CancellationTokenTrait,
-	ClientRuntime,
+	ClientEnvironment,
 	OperationScope,
 } from "@securitydept/client";
 import {
@@ -62,7 +62,7 @@ export interface BackendOidcModeMetadataRedemptionOptions {
  * - Metadata redemption
  * - In-memory auth state signal
  * - Deadline-based refresh scheduling
- * - Runtime-backed trace and persistence integration
+ * - Environment-backed trace and persistence integration
  * - Bearer header construction
  */
 export class BackendOidcModeClient extends BaseOidcModeClient {
@@ -73,18 +73,21 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	private readonly _userInfoPath: string;
 	private readonly _defaultPostAuthRedirectUri?: string;
 
-	constructor(config: BackendOidcModeClientConfig, runtime: ClientRuntime) {
+	constructor(
+		config: BackendOidcModeClientConfig,
+		environment: ClientEnvironment,
+	) {
 		const baseUrl = config.baseUrl.replace(/\/+$/, "");
 		super({
-			runtime,
+			environment,
 			refreshWindowMs: config.refreshWindowMs ?? DEFAULT_REFRESH_WINDOW_MS,
 			traceScope: TRACE_SCOPE,
 			traceSource: TRACE_SOURCE,
 			tracePrefix: TRACE_PREFIX,
 			clientName: "BackendOidcModeClient",
-			persistence: runtime.persistentStore
+			persistence: environment.persistentStore
 				? {
-						store: runtime.persistentStore,
+						store: environment.persistentStore,
 						key:
 							config.persistentStateKey ??
 							`${DEFAULT_PERSISTENCE_KEY_PREFIX}:v1:${baseUrl}`,
@@ -171,7 +174,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 						source: TokenSetAuthFlowSource.Callback,
 					});
 
-					this._runtime.logger?.log({
+					this._environment.logger?.log({
 						level: LogLevel.Info,
 						message: "Auth state initialized from callback",
 						scope: TRACE_SCOPE,
@@ -268,7 +271,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 						source: TokenSetAuthFlowSource.Callback,
 					});
 
-					this._runtime.logger?.log({
+					this._environment.logger?.log({
 						level: LogLevel.Info,
 						message: "Auth state initialized from callback body",
 						scope: TRACE_SCOPE,
@@ -334,7 +337,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				try {
 					this._throwIfNotOperational();
 
-					const response = await this._runtime.transport.execute({
+					const response = await this._environment.transport.execute({
 						url: this._baseUrl + this._refreshPath,
 						method: "POST",
 						headers: { "content-type": "application/json" },
@@ -388,7 +391,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 						this._stateSignal.set(newSnapshot);
 						this._scheduleRefresh();
 
-						this._runtime.logger?.log({
+						this._environment.logger?.log({
 							level: LogLevel.Info,
 							message: "Token refreshed successfully",
 							scope: TRACE_SCOPE,
@@ -501,7 +504,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				};
 			} catch {
 				// Best-effort: a failed userInfo call should not break the auth flow.
-				this._runtime.logger?.log({
+				this._environment.logger?.log({
 					level: LogLevel.Warn,
 					message:
 						"userInfo fallback failed; proceeding without principal metadata",
@@ -529,7 +532,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		try {
 			this._throwIfNotOperational();
 
-			const response = await this._runtime.transport.execute({
+			const response = await this._environment.transport.execute({
 				url: this._baseUrl + this._metadataRedeemPath,
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -662,7 +665,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		idToken?: string,
 		options?: { cancellationToken?: CancellationTokenTrait },
 	): Promise<BackendOidcModeUserInfoResponse> {
-		const response = await this._runtime.transport.execute({
+		const response = await this._environment.transport.execute({
 			url: this._baseUrl + this._userInfoPath,
 			method: "POST",
 			headers: {

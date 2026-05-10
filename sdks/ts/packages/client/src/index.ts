@@ -107,8 +107,11 @@ export {
 	createKeyedEphemeralFlowStore,
 } from "./persistence/index";
 // --- Runtime ---
-export type { ClientRuntime, CreateRuntimeOptions } from "./runtime/index";
-export { createRuntime } from "./runtime/index";
+export type {
+	ClientEnvironment,
+	CreateClientEnvironmentOptions,
+} from "./runtime/index";
+export { createClientEnvironment } from "./runtime/index";
 // --- Scheduling ---
 export type {
 	CancelableHandle as SchedulerCancelableHandle,
@@ -164,7 +167,6 @@ export {
 	validateWithSchemaSync,
 } from "./validation/index";
 export type {
-	ClientEnvironment,
 	CreateWebClientEnvironmentOptions,
 	PageClientEnvironment,
 	PageHistoryLike,

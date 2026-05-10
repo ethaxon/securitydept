@@ -34,8 +34,8 @@ export { ClientInitializationPriority } from "@securitydept/token-set-context-cl
 // TokenSetAuthRegistry — thin Angular DI wrapper around the framework-neutral
 // core at @securitydept/token-set-context-client/registry
 //
-// Iteration 110: the Angular registry used to own all multi-client state
-// directly. It now delegates to a `createTokenSetAuthRegistry()` core and
+// The Angular registry delegates multi-client state to a
+// `createTokenSetAuthRegistry()` core and
 // supplies Angular-idiomatic glue:
 //   - Injectable scope (root or provider-level)
 //   - DestroyRef-bound dispose (envelopes `coreRegistry.dispose()`)
@@ -95,7 +95,7 @@ export class TokenSetAuthRegistry {
 	/**
 	 * Register a client entry. Supports sync / async / lazy priority.
 	 *
-	 * Iteration 110 change: the second `destroyRef` argument is no longer
+	 * The second `destroyRef` argument is no longer
 	 * required — the registry pulls its own `DestroyRef` via injection and
 	 * binds teardown once per Angular scope.
 	 */
@@ -131,7 +131,7 @@ export class TokenSetAuthRegistry {
 	}
 
 	// --------------------------------------------------------------------------
-	// Pass-through API (backwards-compatible with iteration 109 surface)
+	// Pass-through API for the earlier wrapper surface
 	// --------------------------------------------------------------------------
 
 	isReady(key: string): boolean {

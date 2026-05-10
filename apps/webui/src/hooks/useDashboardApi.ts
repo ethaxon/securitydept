@@ -2,8 +2,9 @@ import { useSessionContext } from "@securitydept/session-context-client-react";
 import type { AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	type TokenSetBackendOidcClient,
+	type TokenSetReactClient,
+	useTokenSetAuthService,
 	useTokenSetAuthState,
-	useTokenSetBackendOidcClient,
 } from "@securitydept/token-set-context-client-react";
 import {
 	tokenSetQueryKeys,
@@ -58,8 +59,18 @@ interface DashboardRuntime {
 	mode: AuthContextMode;
 	tokenSetClientKey: string;
 	tokenSetState: AuthStateSnapshot | null;
-	tokenSetClient: TokenSetBackendOidcClient;
+	tokenSetClient: TokenSetReactClient;
 	tokenSetAuthenticated: boolean;
+}
+
+function isTokenSetBackendOidcClient(
+	client: TokenSetReactClient,
+): client is TokenSetBackendOidcClient {
+	return (
+		typeof (client as { authorizeUrl?: unknown }).authorizeUrl === "function" &&
+		typeof (client as { refresh?: unknown }).refresh === "function" &&
+		typeof (client as { clearState?: unknown }).clearState === "function"
+	);
 }
 
 export function useAuthContextMode(): AuthContextMode {
@@ -74,14 +85,14 @@ export function useDashboardRuntime(): DashboardRuntime {
 	const mode = useAuthContextMode();
 	const tokenSetClientKey =
 		resolveTokenSetClientKey(mode) ?? TOKEN_SET_BACKEND_MODE_CLIENT_KEY;
-	const tokenSetClient = useTokenSetBackendOidcClient(tokenSetClientKey);
+	const tokenSetService = useTokenSetAuthService(tokenSetClientKey);
 	const tokenSetState = useTokenSetAuthState(tokenSetClientKey);
 
 	return {
 		mode,
 		tokenSetClientKey,
 		tokenSetState,
-		tokenSetClient,
+		tokenSetClient: tokenSetService.client,
 		tokenSetAuthenticated: Boolean(tokenSetState?.tokens.accessToken),
 	};
 }
@@ -349,6 +360,12 @@ export function useDashboardLogout() {
 		mutationKey: ["dashboard", "logout", "token-set"],
 		mutationFn: async () => {
 			if (mode === AuthContextMode.TokenSetBackend) {
+				if (!isTokenSetBackendOidcClient(tokenSetClient)) {
+					throw new Error(
+						"Backend token-set logout requires a backend OIDC client.",
+					);
+				}
+
 				await clearTokenSetBackendModeBrowserState(tokenSetClient);
 				return;
 			}

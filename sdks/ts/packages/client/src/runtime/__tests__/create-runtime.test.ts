@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { createRuntime } from "../create-runtime";
+import { createClientEnvironment } from "../create-runtime";
 
-describe("createRuntime()", () => {
+describe("createClientEnvironment()", () => {
 	it("fills non-host defaults while requiring explicit transport", async () => {
 		const transport = {
 			execute: vi.fn(async () => ({ status: 204, headers: {} })),
 		};
 
-		const runtime = createRuntime({ transport });
+		const runtime = createClientEnvironment({ transport });
 
 		expect(runtime.transport).toBe(transport);
 		expect(runtime.scheduler).toBeDefined();

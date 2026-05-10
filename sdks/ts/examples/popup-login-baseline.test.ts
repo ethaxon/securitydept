@@ -18,9 +18,28 @@ import {
 import {
 	FrontendOidcModeClient,
 	type FrontendOidcModePopupLoginOptions,
+	type RelayFrontendOidcPopupCallbackOptions,
 	relayFrontendOidcPopupCallback,
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { describe, expect, it, vi } from "vitest";
+
+function createExplicitCallbackFragmentStore() {
+	const savedFragments: string[] = [];
+	return {
+		store: {
+			save: vi.fn(async (value: string) => {
+				savedFragments.push(value);
+			}),
+			load: vi.fn(async () => savedFragments[0] ?? null),
+			consume: vi.fn(async () => {
+				const value = savedFragments.shift();
+				return value ?? null;
+			}),
+			clear: vi.fn(async () => {}),
+		},
+		savedFragments,
+	};
+}
 
 // ===========================================================================
 // 1. Shared popup infrastructure — error semantics
@@ -79,10 +98,12 @@ describe("backend-oidc-mode popup baseline", () => {
 			authorizeUrl: (returnUri: string) =>
 				`https://auth.example.com/authorize?return_uri=${encodeURIComponent(returnUri)}`,
 		};
+		const { store } = createExplicitCallbackFragmentStore();
 
 		try {
 			await loginWithBackendOidcPopup(mockClient as never, {
 				popupCallbackUrl: "https://app.example.com/callback",
+				environment: { callbackFragmentStore: store },
 			});
 			expect.fail("Should have thrown");
 		} catch (err) {
@@ -120,9 +141,11 @@ describe("backend-oidc-mode popup baseline", () => {
 			authorizeUrl: (returnUri: string) =>
 				`https://auth.example.com/authorize?return_uri=${encodeURIComponent(returnUri)}`,
 		};
+		const { store } = createExplicitCallbackFragmentStore();
 
 		const promise = loginWithBackendOidcPopup(mockClient as never, {
 			popupCallbackUrl: "https://app.example.com/popup-callback",
+			environment: { callbackFragmentStore: store },
 		});
 
 		// Simulate the popup callback page relaying the result.
@@ -180,19 +203,8 @@ describe("backend-oidc-mode popup baseline", () => {
 				`https://auth.example.com/authorize?return_uri=${encodeURIComponent(returnUri)}`,
 		};
 
-		// Create an explicit fragment store that records what was saved.
-		const savedFragments: string[] = [];
-		const explicitStore = {
-			save: vi.fn(async (value: string) => {
-				savedFragments.push(value);
-			}),
-			load: vi.fn(async () => savedFragments[0] ?? null),
-			consume: vi.fn(async () => {
-				const val = savedFragments.shift();
-				return val ?? null;
-			}),
-			clear: vi.fn(async () => {}),
-		};
+		const { store: explicitStore, savedFragments } =
+			createExplicitCallbackFragmentStore();
 
 		const promise = loginWithBackendOidcPopup(mockClient as never, {
 			popupCallbackUrl: "https://app.example.com/popup-callback",
@@ -239,6 +251,13 @@ describe("frontend-oidc-mode popup baseline", () => {
 	});
 
 	it("relayFrontendOidcPopupCallback accepts explicit page location capability", () => {
+		const invalidOptions = {
+			targetOrigin: "https://app.example.com",
+		};
+		// @ts-expect-error popup relay requires explicit page environment.
+		const _invalid: RelayFrontendOidcPopupCallbackOptions = invalidOptions;
+		void _invalid;
+
 		const originalOpener = globalThis.opener;
 		const postMessage = vi.fn();
 		vi.stubGlobal("opener", { postMessage });
@@ -298,7 +317,7 @@ describe("frontend-oidc-mode popup baseline", () => {
 
 		// Create a minimal mock that extends FrontendOidcModeClient's prototype shape.
 		const mockClient = Object.create(FrontendOidcModeClient.prototype);
-		mockClient._runtime = {
+		mockClient._environment = {
 			clock: { now: () => Date.now() },
 			traceSink: { record: vi.fn() },
 		};

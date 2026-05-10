@@ -197,7 +197,7 @@ export interface FrontendOidcModeClientConfig {
 	refreshWindowMs?: number;
 
 	/**
-	 * Key used with `runtime.persistentStore` for persisted auth state.
+	 * Key used with `environment.persistentStore` for persisted auth state.
 	 * When not set, a default key is derived from the issuer + clientId.
 	 */
 	persistentStateKey?: string;

@@ -17,7 +17,7 @@
 					"stability": "stable",
 					"owner": "foundation",
 					"changeDiscipline": "stable-deprecation-first",
-					"note": "Owns the current shared cancellation/resource-release baseline, the formal foundation-layer unified input-source helpers, the structured-observation baseline, the shared authenticated-principal baseline, and the dual-layer error bridge: DisposableTrait, CancellationTokenTrait, CancellationTokenSourceTrait, createCancellationTokenSource(), and createLinkedCancellationToken() formalize cooperative cancellation plus owner-side release via dispose(); timer(), interval(), scheduleAt(), fromEventPattern(), fromSignal(), and fromPromise() are the current scheduler/input primitives above raw runtime capabilities; TraceEvent, TraceEventSinkTrait, createTraceTimelineStore() / TraceTimelineStore, createOperationTracer(), and OperationTraceEventType now formalize the machine-readable trace sink plus operation-correlation story; AuthenticatedPrincipal, normalizeAuthenticatedPrincipal(), normalizeAuthenticatedPrincipalWire(), and projectAuthenticatedPrincipal() now formalize the shared human-principal contract and host-facing projection baseline consumed by session/token-set families; ErrorPresentationDescriptor / ErrorPresentationTone / readErrorPresentationDescriptor() remain the host-facing presentation and recovery bridge built on runtime errors.",
+					"note": "Owns the current shared cancellation/resource-release baseline, the formal foundation-layer unified input-source helpers, the structured-observation baseline, the shared authenticated-principal baseline, and the dual-layer error bridge: DisposableTrait, CancellationTokenTrait, CancellationTokenSourceTrait, createCancellationTokenSource(), and createLinkedCancellationToken() formalize cooperative cancellation plus owner-side release via dispose(); timer(), interval(), scheduleAt(), fromEventPattern(), fromSignal(), and fromPromise() are the current scheduler/input primitives above raw environment capabilities; TraceEvent, TraceEventSinkTrait, createTraceTimelineStore() / TraceTimelineStore, createOperationTracer(), and OperationTraceEventType now formalize the machine-readable trace sink plus operation-correlation story; AuthenticatedPrincipal, normalizeAuthenticatedPrincipal(), normalizeAuthenticatedPrincipalWire(), and projectAuthenticatedPrincipal() now formalize the shared human-principal contract and host-facing projection baseline consumed by session/token-set families; ErrorPresentationDescriptor / ErrorPresentationTone / readErrorPresentationDescriptor() remain the host-facing presentation and recovery bridge built on runtime errors.",
 					"evidence": [
 						"examples/minimal-entry-points.test.ts",
 						"examples/scheduling-input-source-baseline.test.ts",
@@ -75,7 +75,7 @@
 					"stability": "stable",
 					"owner": "foundation",
 					"changeDiscipline": "stable-deprecation-first",
-					"note": "Owns browser-native interop for the foundation cancellation baseline through both bridge directions: createAbortSignalBridge(token) for fetch-facing consumers and createCancellationTokenFromAbortSignal(signal) for browser/framework consumers that receive AbortSignal first. It also owns the browser-layer unified input-source helpers fromAbortSignal(), fromStorageEvent(), and fromVisibilityChange(), higher-level lifecycle helpers such as createCrossTabSync() and createVisibilityReconciler(), and the foundation Web client-environment boundary: ClientEnvironmentPreset, WebClientEnvironment, PageClientEnvironment, createWebClientEnvironment(), createBrowserPageClientEnvironment(), createBrowserWorkerClientEnvironment(), createServiceWorkerClientEnvironment(), createBrowserExtensionBackgroundClientEnvironment(), and requirePageClientEnvironment(). These factories are explicit presets, not automatic host detection or a DI container.",
+					"note": "Owns browser-native interop for the foundation cancellation baseline through both bridge directions: createAbortSignalBridge(token) for fetch-facing consumers and createCancellationTokenFromAbortSignal(signal) for browser/framework consumers that receive AbortSignal first. It also owns the browser-layer unified input-source helpers fromAbortSignal(), fromStorageEvent(), and fromVisibilityChange(), higher-level lifecycle helpers such as createCrossTabSync() and createVisibilityReconciler(), and the foundation Web client-environment boundary: ClientEnvironmentPreset, WebClientEnvironment, PageClientEnvironment, createWebClientEnvironment(), createBrowserPageClientEnvironment(), createBrowserWorkerClientEnvironment(), createServiceWorkerClientEnvironment(), createBrowserExtensionBackgroundClientEnvironment(), requirePageClientEnvironment(), deriveClientEnvironment(), and ClientEnvironmentService. Canonical adopter-facing access is now the flattened environment shape (`environment.transport`, `environment.sessionStore`, and peers). ClientEnvironmentService is the reusable host-scoped layered resolver: resolve*() coalesces async materialization, read*() provides Suspense-compatible reads, and provider/injector scope owns lifecycle instead of JS module-cache singletons. These factories are explicit presets, not automatic host detection or a DI container.",
 					"evidence": [
 						"examples/popup-login-baseline.test.ts",
 						"examples/scheduling-input-source-baseline.test.ts",
@@ -83,6 +83,7 @@
 						"packages/client/src/web/__tests__/cancellation.test.ts",
 						"packages/client/src/web/__tests__/client-environment.test.ts",
 						"packages/client/src/web/__tests__/client-environment-presets.test.ts",
+						"packages/client/src/web/__tests__/environment-service.test.ts",
 						"packages/client/src/web/__tests__/input-sources.test.ts",
 						"packages/client/src/web/__tests__/visibility.test.ts",
 						"packages/client/src/web/__tests__/visibility-reconciler.test.ts",
@@ -101,7 +102,7 @@
 					"stability": "provisional",
 					"owner": "foundation",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Canonical owner of shared auth requirement orchestration primitives (RequirementPlanner, RouteRequirementOrchestrator). Moved from @securitydept/token-set-context-client/orchestration in iteration 102. Kind is an opaque string; each auth-context defines its own named constants.",
+					"note": "Canonical owner of shared auth requirement orchestration primitives (RequirementPlanner, RouteRequirementOrchestrator). Consolidates the shared auth-coordination surface that was previously hosted under @securitydept/token-set-context-client/orchestration. Kind is an opaque string; each auth-context defines its own named constants.",
 					"evidence": [
 						"examples/multi-requirement-orchestration.test.ts",
 						"examples/route-orchestration-baseline.test.ts",
@@ -129,7 +130,7 @@
 					"stability": "provisional",
 					"owner": "foundation",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Iteration 110 — raw Web router/security baseline. Navigation API first with History API + popstate fallback. Pre-commit intercept wires PlannerHost requirement evaluation into both backends so non-framework (Web Components / Lit / vanilla) adopters have a canonical router/security path aligned with Angular and TanStack Router.",
+					"note": "Owns the raw Web router/security baseline. Navigation API first with History API + popstate fallback. Pre-commit intercept wires PlannerHost requirement evaluation into both backends so non-framework (Web Components / Lit / vanilla) adopters have a canonical router/security path aligned with Angular and TanStack Router.",
 					"evidence": [
 						"examples/web-router-navigation-api.test.ts",
 						"examples/web-router-history-fallback.test.ts"
@@ -204,7 +205,7 @@
 					"stability": "provisional",
 					"owner": "basic-auth-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React entry keeps the layering explicit: BasicAuthContextProvider({ config }) takes auth-context config only, while the provider itself is host glue and does not introduce a separate runtime capability layer.",
+					"note": "React entry keeps the layering explicit: BasicAuthContextProvider({ config }) takes auth-context config only, while the provider itself is host glue and does not introduce a separate environment capability layer.",
 					"evidence": [
 						"examples/basic-auth-react-minimal-entry.test.ts",
 						"../../apps/webui/src/routes/Login.tsx",
@@ -230,9 +231,10 @@
 					"evidence": [
 						"examples/session-context-scenario.test.ts",
 						"examples/ssr-server-host-baseline.test.ts",
-						"packages/session-context-client/src/__tests__/client.test.ts"
+						"packages/session-context-client/src/__tests__/client.test.ts",
+						"packages/session-context-client/src/__tests__/controller.test.ts"
 					],
-					"note": "Iteration 137 promotes framework-neutral browser-shell convenience into core: rememberPostAuthRedirect(), clearPostAuthRedirect(), resolveLoginUrl(), and logoutAndClearPendingLoginRedirect(). Iteration 142 aligns the user-info principal contract to the shared AuthenticatedPrincipal baseline from @securitydept/client, so stable subject/issuer/claims semantics no longer live in a narrower session-only owner.",
+					"note": "Owns framework-neutral browser-shell convenience in core: rememberPostAuthRedirect(), clearPostAuthRedirect(), resolveLoginUrl(), and logoutAndClearPendingLoginRedirect(). The user-info principal contract aligns to the shared AuthenticatedPrincipal baseline from @securitydept/client, so stable subject/issuer/claims semantics no longer live in a narrower session-only owner. SessionContextController is the framework-neutral state owner for user-info refresh, logout cleanup, and redirect helpers; React and Angular adapters bridge this controller instead of owning parallel fetch state machines.",
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "`session-context-client`"
@@ -282,7 +284,7 @@
 					"stability": "provisional",
 					"owner": "session-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React entry keeps auth-context config separate from runtime capabilities: SessionContextProvider({ config, transport, sessionStore }) treats config as session-context policy while transport/sessionStore remain capability wiring and the provider remains host glue. The provider is the composition root; ordinary hooks consume the provider service and do not accept a full client environment.",
+					"note": "React entry is environment-first and controller-bridged at the composition root: SessionContextProvider({ config, environment, initialRefresh }) can create SessionContextController from one flattened WebClientEnvironment, or hosts can pass an external controller when they own lifecycle. Hooks bridge controller state with useSyncExternalStore and do not own user-info fetch or logout state machines.",
 					"evidence": [
 						"examples/session-context-react-minimal-entry.test.ts",
 						"packages/session-context-client-react/src/__tests__/adapter.test.ts",
@@ -307,7 +309,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Owns token-set backend-mode route/client contracts. Iteration 142 keeps backend user-info transport as a family DTO but aligns its semantic authenticated-principal parsing/output to the shared AuthenticatedPrincipal baseline from @securitydept/client instead of a parallel family-local owner.",
+					"note": "Owns token-set backend-mode route/client contracts. Backend user-info transport remains a family DTO while its semantic authenticated-principal parsing/output aligns to the shared AuthenticatedPrincipal baseline from @securitydept/client instead of a parallel family-local owner.",
 					"evidence": [
 						"examples/backend-oidc-mode-subpath-contract.test.ts",
 						"examples/oidc-client-wrapper-contract.test.ts",
@@ -325,7 +327,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Owns backend-OIDC browser-host helpers within the existing /web subpath. The canonical browser composition path is createBackendOidcModeWebClientEnvironment() first, then createBackendOidcModeWebClient({ environment, ...config }). restoreBackendOidcModeClient() is worker-safe restore-only behavior; bootstrapBackendOidcModePageClient(), captureBackendOidcModePageCallbackFragment(), buildAuthorizeUrlReturningToCurrentPage(), currentPageLocationAsPostAuthRedirectUri(), loginWithBackendOidcRedirect(), loginWithBackendOidcPopup(), and relayBackendOidcPopupCallback() are page-boundary helpers. Page-oriented helpers now use options-object-first signatures with a typed `environment` field instead of positional page arguments or `pageEnvironment` option keys. Location-only helpers consume BackendOidcModePageLocationCapability; callback capture consumes BackendOidcModePageCallbackCapability; popup login consumes BackendOidcModePopupLoginCapability for callback-fragment storage. No ./backend-oidc-mode/page subpath or deprecated aliases are part of this surface.",
+					"note": "Owns backend-OIDC browser-host helpers within the existing /web subpath. The canonical browser composition path is createBackendOidcModeWebClientEnvironment() first, then createBackendOidcModeWebClient({ environment, ...config }). Materialized backend web clients now expose the shared OIDC redirect-login surface loginWithRedirect({ environment, postAuthRedirectUri }); loginWithBackendOidcRedirect() remains the legacy/convenience alias. restoreBackendOidcModeClient() is worker-safe restore-only behavior; bootstrapBackendOidcModePageClient(), captureBackendOidcModePageCallbackFragment(), buildAuthorizeUrlReturningToCurrentPage(), currentPageLocationAsPostAuthRedirectUri(), loginWithBackendOidcPopup(), and relayBackendOidcPopupCallback() are page-boundary helpers. Page-oriented helpers now use options-object-first signatures with a typed `environment` field instead of positional page arguments or `pageEnvironment` option keys. Location-only helpers consume BackendOidcModePageLocationCapability; callback capture consumes BackendOidcModePageCallbackCapability; popup login consumes BackendOidcModePopupLoginCapability for callback-fragment storage; resetBackendOidcModeBrowserState() requires an explicit callbackFragmentStore and no longer constructs a global session-store-backed fragment store. No ./backend-oidc-mode/page subpath or deprecated aliases are part of this surface.",
 					"evidence": [
 						"examples/backend-oidc-mode-browser-scenario.test.ts",
 						"examples/backend-oidc-worker-like-host.test.ts",
@@ -344,7 +346,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Includes the config projection source contract plus the current browser materialization owner: resolveConfigProjection(), networkConfigSource(), ConfigProjectionSourceKind, ClientReadinessState, createFrontendOidcModeWebClientEnvironment(), createFrontendOidcModeBrowserClient(), resolveFrontendOidcModePersistentStateKey(), and resolveFrontendOidcModeBrowserStorageKey(). The canonical browser composition path is createFrontendOidcModeWebClientEnvironment() first, then createFrontendOidcModeBrowserClient({ environment, ...projectionInput }). Iteration 108 added async clientFactory support. Iteration 120 tightened popup semantics so popupLogin() uses popupCallbackUrl as the real OAuth redirect_uri, supports an explicit postAuthRedirectUri for the opener, and is now proven by the apps/webui reference host via popup relay plus cross-tab lifecycle browser e2e. Iteration 121 adds FrontendOidcModeTraceEventType so popup / callback / refresh / user-info structured trace taxonomy is shared and adopter-visible rather than app-local. Iteration 122 adds describeFrontendOidcModeCallbackError() so callback-specific host-facing presentation/recovery mapping stays under the family owner while building on the shared client error presentation descriptor contract. Iteration 139 formalizes capability-first layering on the browser path: projection endpoint + redirectUri are bootstrap input, the resolved projection is auth-context config, runtime capability wiring stays explicit, and the reference app no longer owns fetch/parse/materialization assembly. Iteration 142 aligns frontend-mode user-info and metadata principal construction to the shared AuthenticatedPrincipal baseline and leaves app-facing display projection to shared helper-backed host code.",
+					"note": "Includes the config projection source contract plus the current browser materialization owner: resolveConfigProjection(), networkConfigSource(), ConfigProjectionSourceKind, ClientReadinessState, createFrontendOidcModeWebClientEnvironment(), createFrontendOidcModeBrowserClient(), resolveFrontendOidcModePersistentStateKey(), and resolveFrontendOidcModeBrowserStorageKey(). The canonical browser composition path is createFrontendOidcModeWebClientEnvironment() first, then createFrontendOidcModeBrowserClient({ environment, ...projectionInput }); the materializer requires that explicit environment and does not create default store/fetch/origin dependency fallbacks. Async clientFactory support remains part of the browser contract. popupLogin() uses popupCallbackUrl as the real OAuth redirect_uri, supports an explicit postAuthRedirectUri for the opener, and is proven by the apps/webui reference host via popup relay plus cross-tab lifecycle browser e2e. FrontendOidcModeTraceEventType keeps popup / callback / refresh / user-info structured trace taxonomy shared and adopter-visible rather than app-local. describeFrontendOidcModeCallbackError() keeps callback-specific host-facing presentation/recovery mapping under the family owner while building on the shared client error presentation descriptor contract. Capability-first layering on the browser path keeps projection endpoint + redirectUri as bootstrap input, the resolved projection as auth-context config, and environment capability wiring explicit. Frontend-mode user-info and metadata principal construction aligns to the shared AuthenticatedPrincipal baseline, with app-facing display projection left to shared helper-backed host code.",
 					"evidence": [
 						"examples/scheduling-input-source-baseline.test.ts",
 						"examples/frontend-oidc-minimal-entry.test.ts",
@@ -366,7 +368,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Token-set-specific orchestration layer: auth-transport, base-client, controller, persistence, token-ops, types. RequirementPlanner and RouteRequirementOrchestrator have been migrated to @securitydept/client/auth-coordination (iteration 102). Iteration 142 aligns AuthPrincipal to the shared AuthenticatedPrincipal baseline while keeping resource-token facts and substrate ownership outside this human-principal contract.",
+					"note": "Token-set-specific orchestration layer: auth-transport, base-client, controller, persistence, token-ops, types. RequirementPlanner and RouteRequirementOrchestrator are hosted by @securitydept/client/auth-coordination. AuthPrincipal aligns to the shared AuthenticatedPrincipal baseline while keeping resource-token facts and substrate ownership outside this human-principal contract.",
 					"evidence": [
 						"examples/token-orchestration-subpath.test.ts",
 						"examples/token-orchestration-contract.test.ts",
@@ -393,12 +395,14 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Iteration 110 + 116 review-2 — framework-neutral multi-client token-set auth registry core. Owns keyed storage, readiness tracking (not_initialized → initializing → ready | failed), priority=primary|lazy lifecycle, preload / whenReady / idleWarmup verbs, multi-axis discrimination (urlPatterns, callbackPath, requirementKind, providerFamily), and the shared managed OIDC client contracts (`OidcModeClient`, `OidcCallbackClient`). Angular and React adapters now wrap this shared contract owner thinly instead of redefining it locally.",
+					"note": "Framework-neutral multi-client token-set auth registry core. Owns keyed storage, readiness tracking (not_initialized → initializing → ready | failed), priority=primary|lazy lifecycle, preload / whenReady / idleWarmup verbs, multi-axis discrimination (urlPatterns, callbackPath, requirementKind, providerFamily), the shared managed OIDC client contracts (`OidcModeClient`, `OidcCallbackClient`), the shared generic callback failure presenter `describeTokenSetCallbackError()`, the callback resume error reader `readTokenSetCallbackResumeErrorDetails()`, and `TokenSetCallbackResumeController` as the shared callback resume state machine. Angular and React adapters wrap this shared contract owner thinly instead of redefining it locally; mode-specific callback copy remains an explicit override owned by the caller or mode package.",
 					"evidence": [
 						"examples/multi-client-lazy-init-contract.test.ts",
 						"examples/async-client-readiness-contract.test.ts",
 						"examples/angular-integration-adapter.test.ts",
-						"examples/react-multi-client-registry-baseline.test.ts"
+						"examples/react-multi-client-registry-baseline.test.ts",
+						"packages/token-set-context-client/src/registry/__tests__/error-presentation.test.ts",
+						"packages/token-set-context-client/src/registry/__tests__/callback-resume-controller.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -431,7 +435,7 @@
 					"stability": "experimental",
 					"owner": "foundation",
 					"changeDiscipline": "experimental-fast-break",
-					"note": "Owns focused test observation helpers for the current browser/SDK baseline: FakeClock, FakeScheduler, FakeTransport, and InMemoryTraceCollector. Iteration 141 adds operation-level trace observation through ofOperation(), operationLifecycle(), and assertOperationLifecycle() so tests do not need ad hoc operationId filters.",
+					"note": "Owns focused test observation helpers for the current browser/SDK baseline: FakeClock, FakeScheduler, FakeTransport, and InMemoryTraceCollector. Operation-level trace observation through ofOperation(), operationLifecycle(), and assertOperationLifecycle() keeps tests from needing ad hoc operationId filters.",
 					"evidence": [
 						"packages/test-utils/src/__tests__/in-memory-trace-collector.test.ts",
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client.test.ts",
@@ -482,7 +486,7 @@
 						"examples/angular-integration-adapter.test.ts",
 						"packages/session-context-client-angular/src/lib/__tests__/service.test.ts"
 					],
-					"note": "Iteration 137 aligns Angular with the canonical session browser-shell path from core and keeps low-level access on SessionContextService.client instead of duplicating core methods on the Angular facade. The layering stays explicit: SessionContextClient owns auth-context config, transport remains runtime capability wiring, and Angular DI owns host registration. Angular DI is the composition root; service methods consume the registered client instead of accepting a full foundation environment.",
+					"note": "The Angular session adapter is environment-first at the composition root: provideSessionContext({ config, environment }) reads transport and sessionStore from one flattened WebClientEnvironment instead of exposing transport/sessionStore as the canonical provider shape. SessionContextService bridges SessionContextController, exposes state via Angular signal/Observable helpers, and makes initial user-info probing explicit through initialRefresh or service.refresh(). Low-level access still stays on SessionContextService.client; Angular DI remains the composition root and service methods consume the registered controller wiring instead of accepting a second foundation environment API.",
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Angular entry: thin DI wrappers preserve canonical owner boundaries"
@@ -501,9 +505,10 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Iteration 110 + 116 + 119 + 120 + 122 — React 19 productization, canonical keyed consumer-path closeout, browser-owned callback failure-path productization, frontend-mode popup/cross-tab host authority, and shared callback presentation descriptors. Adds TokenSetAuthProvider, useTokenSetAuthRegistry / useTokenSetAuthService / useTokenSetAuthState / useTokenSetAccessToken, useTokenSetCallbackResume, CallbackResumeErrorDetails, readCallbackResumeErrorDetails, TokenSetCallbackComponent (with a retained TokenSetCallbackOutlet compatibility alias), and the SDK-owned lower-level keyed accessor useTokenSetBackendOidcClient(clientKey) on top of the framework-neutral registry core (@securitydept/token-set-context-client/registry). In the current layering story, TokenSetAuthProvider owns host registration into the shared registry lifecycle; individual client entries still own auth-context config plus runtime capability composition. The provider may receive prebuilt clients/environments at the host composition root, but hooks and keyed accessors consume registry services and do not accept a full foundation environment. CallbackResumeErrorDetails now also carries a shared host-facing presentation descriptor so browser-owned callback hosts can render stable recovery guidance directly, and the canonical reference host proves that shared descriptor surface across callback, popup, and backend browser actions through apps/webui tests and browser e2e.",
+					"note": "React 19 productized token-set adapter with canonical keyed consumer-path closeout, browser-owned callback failure-path productization, frontend-mode popup/cross-tab host authority, shared callback presentation descriptors, adapter environment-boundary closeout, shared OIDC redirect-login contract alignment, callback presenter layering cleanup, and callback resume controller bridge. Adds TokenSetAuthProvider, useTokenSetAuthRegistry / useTokenSetAuthService / useTokenSetAuthState / useTokenSetAccessToken, useTokenSetCallbackResume, CallbackResumeErrorDetails, readCallbackResumeErrorDetails, TokenSetCallbackComponent (with a retained TokenSetCallbackOutlet compatibility alias), and the SDK-owned lower-level keyed accessor useTokenSetBackendOidcClient(clientKey) on top of the framework-neutral registry core (@securitydept/token-set-context-client/registry). React-side backend client contracts now include the shared OidcRedirectLoginClient surface for browser-host route login. TokenSetAuthProvider owns registry registration plus the shared TokenSetCallbackResumeController lifecycle; entry clientFactory functions remain the composition root for auth-context config plus environment composition. The legacy single-client BackendOidcModeContextProvider is now environment-first and accepts BackendOidcModeWebClientEnvironment instead of a raw dependency/capability bag. useTokenSetCallbackResume({ getCurrentUrl, describeError }) keeps current-URL and mode-specific callback copy as explicit host overrides while bridging the shared controller and error details from the registry core.",
 					"evidence": [
 						"packages/token-set-context-client-react/src/__tests__/token-set-auth-provider.test.tsx",
+						"packages/token-set-context-client-react/src/__tests__/token-set-callback-import-boundary.test.ts",
 						"packages/token-set-context-client-react/src/__tests__/adapter.test.ts",
 						"examples/backend-oidc-react-minimal-entry.test.ts",
 						"examples/react-multi-client-registry-baseline.test.ts",
@@ -519,8 +524,11 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Iteration 115 + 116 — canonical token-set React Query consumer surface for groups / entries read and write workflows (not a separate package). @tanstack/react-query is an optional peer dependency. Auth lifecycle ownership still stays in the token-set / client-react family; the subpath owns query-key extensions, token-set management entity contracts, post-mutation invalidation for the canonical groups / entries flows, and the adopter-facing canonical path is now keyed-only (`clientKey`) instead of requiring explicit `client` passing.",
-					"evidence": ["examples/react-query-integration-evidence.test.ts"],
+					"note": "Canonical token-set React Query consumer surface for groups / entries read and write workflows (not a separate package). @tanstack/react-query is an optional peer dependency. Auth lifecycle ownership still stays in the token-set / client-react family; the subpath owns query-key extensions, token-set management entity contracts, post-mutation invalidation for the canonical groups / entries flows, and the adopter-facing canonical path is keyed-only (`clientKey`) plus optional requestOptions transport override. The module-level fetch transport is request-level convenience only and does not own auth lifecycle, refresh, or persistence state.",
+					"evidence": [
+						"examples/react-query-integration-evidence.test.ts",
+						"packages/token-set-context-client-react/src/__tests__/react-query.test.tsx"
+					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "React Query Integration"
@@ -553,10 +561,13 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Root export owns TokenSetAuthRegistry DI service, multi-client integration, bearer interceptor (BearerInterceptorOptions { strictUrlMatch?: boolean } + TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS InjectionToken; provideTokenSetBearerInterceptor(options?) and createTokenSetBearerInterceptor(registry, options?) accept the same options object — strictUrlMatch: true bounds bearer injection to URLs matching registered urlPatterns), callback resume, and the canonical Angular route-security builders. secureRouteRoot() / secureRoute() are the adopter-facing Angular Router path: child routes declare serializable requirement metadata only, root registers non-serializable runtime policy (planner hosts, requirementPolicies, handlers), and both canActivate + canActivateChild evaluate the full route chain in one pass. createTokenSetRouteAggregationGuard() remains the lower-level route-tree primitive. createTokenSetAuthGuard() has been removed from the package. Signal bridge utilities (bridgeToAngularSignal, signalToObservable) live in @securitydept/client-angular. Angular provider/DI registration is the composition root for registered clients/environments; guards, interceptors, and services consume registry/runtime services and do not each accept a full foundation environment.",
+					"note": "Root export owns TokenSetAuthRegistry DI service, multi-client integration, bearer interceptor (BearerInterceptorOptions { strictUrlMatch?: boolean } + TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS InjectionToken; provideTokenSetBearerInterceptor(options?) and createTokenSetBearerInterceptor(registry, options?) accept the same options object — strictUrlMatch: true bounds bearer injection to URLs matching registered urlPatterns), callback resume, and the canonical Angular route-security builders. secureRouteRoot() / secureRoute() are the adopter-facing Angular Router path: child routes declare serializable requirement metadata only, root registers non-serializable runtime policy (planner hosts, requirementPolicies, handlers), and both canActivate + canActivateChild evaluate the full route chain in one pass. createTokenSetRouteAggregationGuard() remains the lower-level route-tree primitive and passes attemptedUrl from Angular router state rather than from page globals. createTokenSetOidcLoginRedirectHandler() is the page redirect helper layered on top of that route context, targeting the shared OidcRedirectLoginClient contract. Its public key remains `environment`, and the canonical path is providePageClientEnvironment({ environment }) from @securitydept/client-angular. The helper awaits that source inside the guard flow before calling `loginWithRedirect()`. CallbackResumeService now bridges TokenSetCallbackResumeController and exposes component-free resume(url) state through Angular signals / observables; TokenSetCallbackComponent remains a page-only drop-in convenience over that service, with current URL from TOKEN_SET_CALLBACK_CURRENT_URL and host policy through TOKEN_SET_CALLBACK_COMPONENT_OPTIONS (`fallbackUrl`, `errorRedirectUrl`, `onError`). Signal bridge utilities and the canonical page-environment bridge live in @securitydept/client-angular. Angular provider/DI registration is the composition root for registered clients/environments; guards, interceptors, and services consume shared registry and controller services and do not each accept a full foundation environment.",
 					"evidence": [
 						"examples/angular-integration-adapter.test.ts",
-						"examples/angular-full-route-aggregation.test.ts"
+						"examples/angular-full-route-aggregation.test.ts",
+						"examples/angular-guard-injection-context.test.ts",
+						"packages/token-set-context-client-angular/src/lib/__tests__/token-set-callback.component.test.ts",
+						"packages/token-set-context-client-angular/src/lib/__tests__/route-aggregation-guard.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -576,11 +587,14 @@
 					"stability": "provisional",
 					"owner": "shared-framework",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React planner-host integration: AuthPlannerHostProvider, useAuthPlannerHost, AuthRequirementsClientSetProvider, useEffectiveClientSet. Provides React Context glue for the shared PlannerHost contract from @securitydept/client/auth-coordination. Canonical import: @securitydept/client-react.",
-					"evidence": ["examples/react-planner-host-baseline.test.ts"],
+					"note": "Shared React framework bridge for both route coordination and environment ownership. Root exports still include planner-host integration (AuthPlannerHostProvider, useAuthPlannerHost, AuthRequirementsClientSetProvider, useEffectiveClientSet) for the shared PlannerHost contract from @securitydept/client/auth-coordination, and now also include the canonical React environment-service bridge: ClientEnvironmentServiceProvider, useClientEnvironmentService, useClientEnvironment, useWebClientEnvironment, and usePageClientEnvironment. The provider owns one scoped ClientEnvironmentService instance per React composition root; render-time page capability goes through Suspense-compatible `usePageClientEnvironment()`, while command/event flows use `useClientEnvironmentService().resolvePageEnvironment()`.",
+					"evidence": [
+						"examples/react-planner-host-baseline.test.ts",
+						"packages/client-react/src/__tests__/environment-service.test.tsx"
+					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Auth Coordination"
+						"heading": "React entry: dedicated adapter packages own Provider and hook wiring"
 					}
 				},
 				{
@@ -588,7 +602,7 @@
 					"stability": "provisional",
 					"owner": "shared-framework",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Canonical owner of TanStack React Router route-security contract, aligned with Angular's @securitydept/client-angular route metadata contract. Canonical adopter-facing entry (Iteration 107 Review1 fix): createSecureBeforeLoad() — a beforeLoad-compatible factory that wires root-level runtime policy into TanStack Router execution semantics (throws redirect or RouteSecurityBlockedError). Child routes use withTanStackRouteRequirements() for serializable staticData declaration only. Lower-level building blocks: extractTanStackRouteRequirements (full-route aggregation with merge/replace/inherit), createTanStackRouteSecurityPolicy (headless evaluator), projectTanStackRouteMatches, createTanStackRouteActivator.",
+					"note": "Canonical owner of TanStack React Router route-security contract, aligned with Angular's @securitydept/client-angular route metadata contract. Canonical adopter-facing entry: createSecureBeforeLoad() — a beforeLoad-compatible factory that wires root-level runtime policy into TanStack Router execution semantics (throws redirect or RouteSecurityBlockedError). Child routes use withTanStackRouteRequirements() for serializable staticData declaration only. Lower-level building blocks: extractTanStackRouteRequirements (full-route aggregation with merge/replace/inherit), createTanStackRouteSecurityPolicy (headless evaluator), projectTanStackRouteMatches, createTanStackRouteActivator.",
 					"evidence": [
 						"examples/tanstack-react-router-adapter.test.ts",
 						"examples/tanstack-route-security-contract.test.ts"
@@ -611,10 +625,11 @@
 					"stability": "provisional",
 					"owner": "shared-framework",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Canonical owner of Angular framework bridge utilities. Provides: AuthRouteAdapter (projection from ActivatedRouteSnapshot to RouteMatchNode[]), PlannerHost DI wiring (provideAuthPlannerHost, AUTH_PLANNER_HOST, injectPlannerHost), route-metadata helpers (withRouteRequirements, extractFullRouteRequirements, ROUTE_REQUIREMENTS_DATA_KEY, ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY, resolveEffectiveRequirements), signal/Observable bridge utilities (bridgeToAngularSignal, signalToObservable — generic, not token-set-specific), and provideRouteScopedRequirements (lower-level non-router DI-scope helper). ReadableSignalTrait from @securitydept/client is the canonical signal contract.",
+					"note": "Canonical owner of Angular framework bridge utilities. Provides: AuthRouteAdapter (projection from ActivatedRouteSnapshot to RouteMatchNode[]), PlannerHost DI wiring (provideAuthPlannerHost, AUTH_PLANNER_HOST, injectPlannerHost), route-metadata helpers (withRouteRequirements, extractFullRouteRequirements, ROUTE_REQUIREMENTS_DATA_KEY, ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY, resolveEffectiveRequirements), canonical page-environment DI bridge utilities (providePageClientEnvironment, PAGE_CLIENT_ENVIRONMENT, PageClientEnvironmentService, PageClientEnvironmentResolver, PageClientEnvironmentSource), signal/Observable bridge utilities (bridgeToAngularSignal, signalToObservable — generic, not token-set-specific), and provideRouteScopedRequirements (lower-level non-router DI-scope helper). ReadableSignalTrait from @securitydept/client is the canonical signal contract.",
 					"evidence": [
 						"examples/angular-router-adapter.test.ts",
-						"examples/angular-full-route-aggregation.test.ts"
+						"examples/angular-full-route-aggregation.test.ts",
+						"packages/client-angular/src/lib/__tests__/page-environment.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",

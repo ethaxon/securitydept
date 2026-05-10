@@ -4,7 +4,12 @@ import {
 	BasicAuthContextService,
 	provideBasicAuthContext,
 } from "@securitydept/basic-auth-context-client-angular";
-import { createSubject, type ReadableSignalTrait } from "@securitydept/client";
+import {
+	createSubject,
+	type HttpTransport,
+	type ReadableSignalTrait,
+} from "@securitydept/client";
+import { createWebClientEnvironment } from "@securitydept/client/web";
 import {
 	bridgeToAngularSignal,
 	signalToObservable,
@@ -218,9 +223,15 @@ describe("Angular Integration — Angular-native DI surface", () => {
 	it("provideSessionContext returns Angular Provider array", () => {
 		const providers = provideSessionContext({
 			config: { baseUrl: "/api" },
-			transport: {
-				request: vi.fn().mockResolvedValue({ status: 200, data: null }),
-			} as unknown as Parameters<typeof provideSessionContext>[0]["transport"],
+			environment: createWebClientEnvironment({
+				transport: {
+					execute: vi.fn(async () => ({
+						status: 200,
+						headers: {},
+						body: null,
+					})),
+				} satisfies HttpTransport,
+			}),
 		});
 		expect(Array.isArray(providers)).toBe(true);
 		expect(providers.length).toBeGreaterThanOrEqual(1);
@@ -792,7 +803,7 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 	});
 });
 // ===========================================================================
-// 9. Requirement kind / provider family mapping (REVIEW4 Blocker 4)
+// 9. Requirement kind / provider family mapping regression coverage
 // ===========================================================================
 
 describe("Angular Integration — RequirementKind / ProviderFamily mapping", () => {

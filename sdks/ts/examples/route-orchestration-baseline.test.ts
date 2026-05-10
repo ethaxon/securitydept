@@ -11,7 +11,7 @@
 //   8. onPendingRequirement callback fires on activation and after resolution
 //
 // Canonical import: @securitydept/client/auth-coordination
-// (moved from @securitydept/token-set-context-client/orchestration in iteration 102)
+// (consolidated from @securitydept/token-set-context-client/orchestration)
 
 import {
 	createRouteRequirementOrchestrator,

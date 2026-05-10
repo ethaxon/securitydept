@@ -98,7 +98,7 @@ export interface BackendOidcModeClientConfig {
 	userInfoPath?: string;
 	/** Buffer before expiry to trigger refresh, in ms (default: 60000 = 1 minute). */
 	refreshWindowMs?: number;
-	/** Optional key used with `runtime.persistentStore` for persisted auth state. */
+	/** Optional key used with `environment.persistentStore` for persisted auth state. */
 	persistentStateKey?: string;
 	/** Optional default redirect URI reused by authorize/refresh browser flows. */
 	defaultPostAuthRedirectUri?: string;

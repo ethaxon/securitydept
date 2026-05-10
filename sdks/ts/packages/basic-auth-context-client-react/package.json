@@ -1,6 +1,6 @@
 {
 	"name": "@securitydept/basic-auth-context-client-react",
-	"version": "0.3.0-beta.2",
+	"version": "0.3.0-beta.3",
 	"description": "Basic Auth Context Client React of the SecurityDept TypeScript SDK, a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps.",
 	"author": "Zhou Yeheng <root@aitiotekt.com>",
 	"license": "MIT",
@@ -46,5 +46,8 @@
 	},
 	"peerDependencies": {
 		"react": ">=19.0.0"
+	},
+	"devDependencies": {
+		"react": "catalog:"
 	}
 }

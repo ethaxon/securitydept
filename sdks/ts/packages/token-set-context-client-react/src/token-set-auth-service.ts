@@ -5,7 +5,7 @@
 // instead we expose an external-store `subscribe`/`getSnapshot` pair so hooks
 // can use `useSyncExternalStore` directly.
 //
-// Stability: provisional (new in iteration 110)
+// Stability: provisional
 
 import type { EventStreamTrait } from "@securitydept/client";
 import {

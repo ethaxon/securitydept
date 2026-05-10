@@ -15,14 +15,22 @@
 //   - Multi-axis discrimination (urlPatterns / callbackPath /
 //     requirementKind / providerFamily) with AND / OR filter queries
 //
-// Stability: provisional (shared registry surface introduced in iteration 110)
+// Stability: provisional (shared registry surface)
 
 // Re-export ClientReadinessState (both the const-enum value and its type).
 export { ClientReadinessState } from "../frontend-oidc-mode/config-source";
 export {
+	TokenSetCallbackResumeController,
+	TokenSetCallbackResumeStatus,
+} from "./callback-resume-controller";
+export {
 	createTokenSetAuthRegistry,
 	TokenSetAuthRegistry,
 } from "./client-registry";
+export {
+	describeTokenSetCallbackError,
+	readTokenSetCallbackResumeErrorDetails,
+} from "./error-presentation";
 export { isOidcCallback } from "./oidc-callback-url";
 export type {
 	ClientFilter,
@@ -33,6 +41,19 @@ export type {
 	EnsureRegistryAuthForResourceOptions,
 	OidcCallbackClient,
 	OidcModeClient,
+	OidcRedirectLoginClient,
+	OidcRedirectLoginOptions,
+	ReadTokenSetCallbackResumeErrorDetailsOptions,
+	TokenSetCallbackErrorDetails,
+	TokenSetCallbackErrorPresentationContext,
+	TokenSetCallbackErrorPresenter,
+	TokenSetCallbackResumeControllerOptions,
+	TokenSetCallbackResumeErrorDetails,
+	TokenSetCallbackResumeOptions,
+	TokenSetCallbackResumeRegistry,
+	TokenSetCallbackResumeResult,
+	TokenSetCallbackResumeState,
+	TokenSetCallbackResumeStatus as TokenSetCallbackResumeStatusType,
 	TokenSetClientEntry,
 } from "./types";
 export { ClientInitializationPriority } from "./types";

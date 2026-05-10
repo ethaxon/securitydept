@@ -3,5 +3,5 @@
 # shuttle upwards and fall back to the konobangu root directory after being excluded by the upper layer
 packages: []
 
-onlyBuiltDependencies:
-  - esbuild
+allowBuilds:
+  esbuild: true

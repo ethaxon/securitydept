@@ -1,7 +1,7 @@
 import {
 	ClientErrorKind,
+	createClientEnvironment,
 	createInMemoryRecordStore,
-	createRuntime,
 	OperationTraceEventType,
 } from "@securitydept/client";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
@@ -130,7 +130,7 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("normalizes raw userInfo into the shared authenticated principal contract", async () => {
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -170,7 +170,7 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("rejects raw userInfo payloads without a stable subject", async () => {
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -203,7 +203,7 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("does not pass an empty codeVerifier when pkce is disabled", async () => {
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -242,7 +242,7 @@ describe("FrontendOidcModeClient", () => {
 			.mockReturnValueOnce("nonce-b");
 
 		const sessionStore = createInMemoryRecordStore();
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -291,7 +291,7 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("rejects duplicate callbacks after a state has already been consumed", async () => {
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -325,7 +325,7 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("rejects callbacks whose state was never started in this browser", async () => {
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -355,7 +355,7 @@ describe("FrontendOidcModeClient", () => {
 
 	it("rejects callbacks whose pending state has expired", async () => {
 		const sessionStore = createInMemoryRecordStore();
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -400,7 +400,7 @@ describe("FrontendOidcModeClient", () => {
 
 	it("rejects callbacks whose pending state belongs to another frontend client", async () => {
 		const sessionStore = createInMemoryRecordStore();
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -448,7 +448,7 @@ describe("FrontendOidcModeClient", () => {
 			new Error("token exchange failed"),
 		);
 
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -491,7 +491,7 @@ describe("FrontendOidcModeClient", () => {
 			token_endpoint: "http://localhost:4710/token",
 		});
 
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -527,7 +527,7 @@ describe("FrontendOidcModeClient", () => {
 
 	it("records popup relay trace events for the browser-owned popup path", async () => {
 		const trace = new InMemoryTraceCollector();
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -583,7 +583,7 @@ describe("FrontendOidcModeClient", () => {
 		});
 
 		try {
-			const runtime = createRuntime({
+			const runtime = createClientEnvironment({
 				transport: {
 					execute: vi.fn(async () => ({
 						status: 200,
@@ -605,10 +605,16 @@ describe("FrontendOidcModeClient", () => {
 				runtime,
 			);
 
-			await expect(client.loginWithRedirect()).rejects.toThrow(
+			await expect(
+				client.loginWithRedirect(undefined as never),
+			).rejects.toThrow(/createBrowserPageClientEnvironment/);
+			await expect(client.loginWithRedirect({} as never)).rejects.toThrow(
 				/createBrowserPageClientEnvironment/,
 			);
-			expect(() => relayFrontendOidcPopupCallback()).toThrow(
+			expect(() => relayFrontendOidcPopupCallback(undefined as never)).toThrow(
+				/createBrowserPageClientEnvironment/,
+			);
+			expect(() => relayFrontendOidcPopupCallback({} as never)).toThrow(
 				/createBrowserPageClientEnvironment/,
 			);
 			expect(windowRead).toBe(false);
@@ -623,7 +629,7 @@ describe("FrontendOidcModeClient", () => {
 
 	it("records callback failure details as structured trace attributes", async () => {
 		const trace = new InMemoryTraceCollector();
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -664,7 +670,7 @@ describe("FrontendOidcModeClient", () => {
 
 	it("correlates callback lifecycle events with frontend callback traces", async () => {
 		const trace = new InMemoryTraceCollector();
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -716,7 +722,7 @@ describe("FrontendOidcModeClient", () => {
 
 	it("correlates refresh lifecycle events with frontend refresh traces", async () => {
 		const trace = new InMemoryTraceCollector();
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -774,7 +780,7 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("attributes auth.authenticated to the refresh caller instead of callback", async () => {
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
@@ -832,7 +838,7 @@ describe("FrontendOidcModeClient", () => {
 			expires_in: 300,
 		});
 
-		const runtime = createRuntime({
+		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},

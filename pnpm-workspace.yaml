@@ -4,12 +4,26 @@ packages:
   - sdks/ts/packages/*
   - .agents/skills/playwright-skill
 
+catalog:
+  "@angular/common": ^21.2.12
+  "@angular/compiler": ^21.2.12
+  "@angular/compiler-cli": ^21.2.12
+  "@angular/core": ^21.2.12
+  "@angular/router": ^21.2.12
+  "@tanstack/react-query": ^5.100.10
+  "@tanstack/react-router": ^1.169.2
+  react: ^19.2.6
+  react-dom: ^19.2.6
+
 allowBuilds:
   "@kie/act-js": true
   "@parcel/watcher": true
   "@j178/prek": true
   esbuild: true
+  cpu-features: true
+  protobufjs: true
+  ssh2: true
 
 overrides:
   # for tsdown peer dependency
-  typescript: 6.0.2
+  typescript: 6.0.3

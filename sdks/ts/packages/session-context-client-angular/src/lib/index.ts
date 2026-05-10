@@ -11,17 +11,26 @@
 // Stability: provisional (framework adapter)
 
 import {
+	type DestroyRef,
 	Injectable,
 	InjectionToken,
 	type Provider,
 	signal,
+	type WritableSignal,
 } from "@angular/core";
-import type { HttpTransport, RecordStore } from "@securitydept/client";
+import type { HttpTransport, WebClientEnvironment } from "@securitydept/client";
+import {
+	bridgeToAngularSignal,
+	signalToObservable,
+} from "@securitydept/client-angular";
 import {
 	SessionContextClient,
 	type SessionContextClientConfig,
+	SessionContextController,
+	type SessionContextControllerState,
 	type SessionInfo,
 } from "@securitydept/session-context-client";
+import type { Observable } from "rxjs";
 
 // ---------------------------------------------------------------------------
 // InjectionTokens
@@ -41,6 +50,9 @@ export const SESSION_CONTEXT_TRANSPORT = new InjectionToken<HttpTransport>(
 	"SESSION_CONTEXT_TRANSPORT",
 );
 
+export const SESSION_CONTEXT_CONTROLLER =
+	new InjectionToken<SessionContextController>("SESSION_CONTEXT_CONTROLLER");
+
 // ---------------------------------------------------------------------------
 // Service facade
 // ---------------------------------------------------------------------------
@@ -48,7 +60,7 @@ export const SESSION_CONTEXT_TRANSPORT = new InjectionToken<HttpTransport>(
 /**
  * Angular service facade for `SessionContextClient`.
  *
- * Provides Angular signal-based state, auto-probe on construction,
+ * Provides Angular signal-based state over the framework-neutral controller
  * and convenience methods. The canonical browser-shell path is
  * `rememberPostAuthRedirect()` + `resolveLoginUrl()` + `logout()`.
  * Low-level escape hatches stay on `auth.client`, not on the Angular service
@@ -64,33 +76,49 @@ export const SESSION_CONTEXT_TRANSPORT = new InjectionToken<HttpTransport>(
  */
 @Injectable()
 export class SessionContextService {
+	/** Full controller state as an Angular signal. */
+	readonly state: WritableSignal<SessionContextControllerState>;
+	readonly state$: Observable<SessionContextControllerState>;
 	/** Current session info as an Angular signal. */
-	readonly session = signal<SessionInfo | null>(null);
-	/** Whether the initial session probe is in progress. */
-	readonly loading = signal(true);
+	readonly session: WritableSignal<SessionInfo | null>;
+	/** Whether a session probe is in progress. */
+	readonly loading: WritableSignal<boolean>;
+	readonly error: WritableSignal<unknown | null>;
+
+	private readonly cleanup: () => void;
 
 	constructor(
-		/** The underlying SDK client instance. */
-		readonly client: SessionContextClient,
-		private readonly transport: HttpTransport,
+		/** Framework-neutral controller owner. */
+		readonly controller: SessionContextController,
+		destroyRef?: DestroyRef,
 	) {
-		// Auto-probe session on construction.
-		this.refresh();
+		const initialState = controller.getState();
+		this.state = signal<SessionContextControllerState>(initialState);
+		this.state$ = signalToObservable(controller.state);
+		this.session = signal<SessionInfo | null>(initialState.session);
+		this.loading = signal(initialState.status === "loading");
+		this.error = signal<unknown | null>(initialState.error);
+		this.cleanup = bridgeToAngularSignal(controller.state, this.state);
+		const unsubscribe = controller.subscribe(() => {
+			const next = controller.getState();
+			this.session.set(next.session);
+			this.loading.set(next.status === "loading");
+			this.error.set(next.error);
+		});
+		destroyRef?.onDestroy(() => {
+			this.cleanup();
+			unsubscribe();
+		});
+	}
+
+	/** The underlying SDK client instance. */
+	get client(): SessionContextClient {
+		return this.controller.client;
 	}
 
 	/** Re-fetch session info from the server. */
-	refresh(): void {
-		this.loading.set(true);
-		this.client
-			.fetchUserInfo(this.transport)
-			.then((result) => {
-				this.session.set(result);
-				this.loading.set(false);
-			})
-			.catch(() => {
-				this.session.set(null);
-				this.loading.set(false);
-			});
+	async refresh(): Promise<SessionInfo | null> {
+		return await this.controller.refresh();
 	}
 
 	/** Check whether a session exists. Derived from the session signal. */
@@ -100,24 +128,22 @@ export class SessionContextService {
 
 	/** Save a pending login redirect using the canonical browser-shell vocabulary. */
 	async rememberPostAuthRedirect(uri: string): Promise<void> {
-		return this.client.rememberPostAuthRedirect(uri);
+		return this.controller.rememberPostAuthRedirect(uri);
 	}
 
 	/** Clear any pending post-auth redirect intent. */
 	async clearPostAuthRedirect(): Promise<void> {
-		return this.client.clearPostAuthRedirect();
+		return this.controller.clearPostAuthRedirect();
 	}
 
 	/** Resolve the next login URL by consuming any pending redirect intent. */
 	async resolveLoginUrl(): Promise<string> {
-		return this.client.resolveLoginUrl();
+		return this.controller.resolveLoginUrl();
 	}
 
 	/** Execute logout and clear any stale pending redirect intent. */
 	async logout(): Promise<void> {
-		await this.client.logoutAndClearPendingLoginRedirect(this.transport);
-		this.session.set(null);
-		this.loading.set(false);
+		await this.controller.logout();
 	}
 }
 
@@ -130,9 +156,10 @@ export class SessionContextService {
  */
 export interface ProvideSessionContextOptions {
 	config: SessionContextClientConfig;
-	/** HTTP transport for /user-info probing. */
-	transport: HttpTransport;
-	sessionStore?: RecordStore;
+	/** Framework composition-root environment for transport and session state. */
+	environment: WebClientEnvironment;
+	/** Explicitly start an initial session probe from the provider. */
+	initialRefresh?: boolean;
 }
 
 /**
@@ -146,7 +173,7 @@ export interface ProvideSessionContextOptions {
  *   providers: [
  *     provideSessionContext({
  *       config: { baseUrl: "/api" },
- *       transport: myTransport,
+ *       environment: myEnvironment,
  *     }),
  *   ],
  * };
@@ -156,22 +183,33 @@ export function provideSessionContext(
 	options: ProvideSessionContextOptions,
 ): Provider[] {
 	const client = new SessionContextClient(options.config, {
-		sessionStore: options.sessionStore,
+		sessionStore: options.environment.sessionStore,
 	});
+	const controller = new SessionContextController({
+		client,
+		transport: options.environment.transport,
+	});
+	if (options.initialRefresh) {
+		controller.refresh().catch(() => {});
+	}
 	return [
 		{
 			provide: SESSION_CONTEXT_CLIENT,
 			useValue: client,
 		},
 		{
+			provide: SESSION_CONTEXT_CONTROLLER,
+			useValue: controller,
+		},
+		{
 			provide: SESSION_CONTEXT_TRANSPORT,
-			useValue: options.transport,
+			useValue: options.environment.transport,
 		},
 		{
 			provide: SessionContextService,
-			deps: [SESSION_CONTEXT_CLIENT, SESSION_CONTEXT_TRANSPORT],
-			useFactory: (c: SessionContextClient, t: HttpTransport) =>
-				new SessionContextService(c, t),
+			deps: [SESSION_CONTEXT_CONTROLLER],
+			useFactory: (controller: SessionContextController) =>
+				new SessionContextService(controller),
 		},
 	];
 }

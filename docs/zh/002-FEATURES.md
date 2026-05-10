@@ -12,9 +12,9 @@
 | Basic Auth context | 已实现 Basic Auth zones、challenge / login / logout metadata、post-auth redirects、optional real-IP access policy、server integration，以及 browser / React / Angular helpers。 | `securitydept-basic-auth-context`、`@securitydept/basic-auth-context-client*` |
 | Session context | 已实现 cookie-session context、normalized principal、OIDC session service、dev-session service、server integration，以及 browser / React / Angular helpers。 | `securitydept-session-context`、`@securitydept/session-context-client*` |
 | Token-set context | 已实现 frontend/backend OIDC mode contracts、backend-mode routes、frontend-mode config projection、access-token substrate、bearer propagation、route orchestration、React / Angular adapters 与 reference-app dogfooding。 | `securitydept-token-set-context`、`@securitydept/token-set-context-client*` |
-| Real-IP resolution | 已实现 trusted provider/source model，覆盖 forwarded headers、PROXY protocol、local / remote / command / Docker / Kubernetes provider sources，并集成到 reference-server Basic Auth policy。 | `securitydept-realip` |
+| Real-IP resolution | 已实现 trusted provider/source model，覆盖 forwarded headers、PROXY protocol、local / remote / command / Docker / Kubernetes provider sources，集成到 reference-server Basic Auth policy，并为本地 provider tests 管理带标签的可复用资源。 | `securitydept-realip`、`scripts/test-cli.ts` |
 | Credential management | 已实现本地 Basic Auth 与 static-token storage，支持 lock-free reads、atomic writes、debounced watching 与 self-write detection。 | `securitydept-creds-manage`、`apps/cli`、`apps/server` |
-| Reference apps | 已实现 Axum server、React web UI、playground/reference routes、management API auth branching、bearer propagation 与 Docker image build path。 | `apps/server`、`apps/webui`、`Dockerfile` |
+| Reference apps | 已实现 Axum server、React web UI、playground/reference routes、management API auth branching、bearer propagation，以及从预构建 runtime artifacts 组装 release Docker image 的路径。 | `apps/server`、`apps/webui`、`Dockerfile.runtime` |
 | TypeScript SDK release surface | 已实现 shared client foundation、Basic Auth、session、token-set、React、Angular integration 的 publishable npm package families。 | `sdks/ts/packages/*`、`public-surface-inventory.json` |
 
 ## 当前 Auth-Context Baseline

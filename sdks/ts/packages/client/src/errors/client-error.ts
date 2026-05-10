@@ -188,7 +188,7 @@ export class ClientError extends Error {
 		const source =
 			status >= 500
 				? ClientErrorSource.Server
-				: ClientErrorSource.ClientRuntime;
+				: ClientErrorSource.ClientEnvironment;
 
 		// If the server returned a structured error body, preserve it
 		// but keep the status-derived kind/source.

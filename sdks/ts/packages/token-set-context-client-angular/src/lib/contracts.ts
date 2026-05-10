@@ -4,13 +4,20 @@ import type {
 	TokenSetClientEntry as CoreTokenSetClientEntry,
 	OidcCallbackClient,
 	OidcModeClient,
+	OidcRedirectLoginClient,
+	OidcRedirectLoginOptions,
 } from "@securitydept/token-set-context-client/registry";
 
 // ============================================================================
 // 2. Client contracts
 // ============================================================================
 
-export type { OidcCallbackClient, OidcModeClient };
+export type {
+	OidcCallbackClient,
+	OidcModeClient,
+	OidcRedirectLoginClient,
+	OidcRedirectLoginOptions,
+};
 
 export type TokenSetAngularClient = OidcModeClient & OidcCallbackClient;
 

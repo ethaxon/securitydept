@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-// Web Router full-route aggregation evidence — iteration 110 review-1 fix
+// Web Router full-route aggregation contract evidence.
 //
 // Proves that `@securitydept/client/web-router` now ships the same contract
 // depth the Angular / TanStack adapters already offer:
@@ -20,7 +20,7 @@
 //    logging / telemetry.
 //
 // Previously the router only evaluated `match.route.requirements` — so
-// Finding 2 of the iteration 110 review-1 document applied.
+// Confirms nested route metadata is aggregated and applied.
 
 import {
 	createPlannerHost,

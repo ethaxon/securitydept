@@ -21,6 +21,7 @@ import {
 	captureBackendOidcModeCallbackFragment,
 	createBackendOidcModeCallbackFragmentStore,
 	createBackendOidcModeWebClientEnvironment,
+	loginWithBackendOidcPopup,
 	loginWithBackendOidcRedirect,
 	createBackendOidcModeWebClient as materializeBackendOidcModeWebClient,
 	relayBackendOidcPopupCallback,
@@ -1504,7 +1505,7 @@ describe("token-set web helpers", () => {
 		expect(requests[0]?.url).toContain("/metadata/redeem");
 	});
 
-	it("resets namespaced callback fragments via callbackFragmentKey and sessionStore convenience path", async () => {
+	it("resets namespaced callback fragments through an explicit fragment store", async () => {
 		const sharedSessionStore = createInMemoryRecordStore();
 		const keyA = resolveBackendOidcModeCallbackFragmentKey("tenant-a");
 		const keyB = resolveBackendOidcModeCallbackFragmentKey("tenant-b");
@@ -1523,7 +1524,7 @@ describe("token-set web helpers", () => {
 		});
 		await storeB.save("access_token=b-at&id_token=b-idt");
 
-		// Reset only integration A using the convenience path
+		// Reset only integration A using the host-composed fragment store.
 		const clientA = createBackendOidcModeWebClient({
 			persistentStateKey: "tenant-a",
 			persistentStore: createInMemoryRecordStore(),
@@ -1536,8 +1537,7 @@ describe("token-set web helpers", () => {
 		});
 
 		await resetBackendOidcModeBrowserState(clientA, {
-			sessionStore: sharedSessionStore,
-			callbackFragmentKey: keyA,
+			callbackFragmentStore: storeA,
 		});
 
 		// Integration A's fragment must be cleared
@@ -1546,7 +1546,7 @@ describe("token-set web helpers", () => {
 		expect(await storeB.load()).toBe("access_token=b-at&id_token=b-idt");
 	});
 
-	it("prefers callbackFragmentStore over callbackFragmentKey/sessionStore in reset", async () => {
+	it("reset requires an explicit callbackFragmentStore and leaves unrelated stores untouched", async () => {
 		const sessionStore = createInMemoryRecordStore();
 		const explicitStore = createBackendOidcModeCallbackFragmentStore({
 			sessionStore,
@@ -1571,17 +1571,57 @@ describe("token-set web helpers", () => {
 			},
 		});
 
-		// callbackFragmentStore takes priority — only explicit-key is cleared
 		await resetBackendOidcModeBrowserState(client, {
 			callbackFragmentStore: explicitStore,
-			// These should be ignored because callbackFragmentStore is present
-			callbackFragmentKey: "other-key",
-			sessionStore,
 		});
 
 		expect(await explicitStore.load()).toBeNull();
 		expect(await otherStore.load()).toBe(
 			"access_token=other-at&id_token=other-idt",
+		);
+
+		await expect(
+			resetBackendOidcModeBrowserState(client, {} as never),
+		).rejects.toThrow(/callbackFragmentStore/);
+	});
+
+	it("materialized backend web clients and the compatibility helper share the same redirect navigation path", async () => {
+		const client = createBackendOidcModeWebClient({
+			persistentStore: createInMemoryRecordStore(),
+			sessionStore: createInMemoryRecordStore(),
+			baseUrl: "https://auth.example.com",
+		});
+		const sharedEnvironment = {
+			location: {
+				href: "https://app.example.com/page",
+				hash: "",
+				pathname: "/page",
+				search: "",
+			},
+		};
+		const compatibilityEnvironment = {
+			location: {
+				href: "https://app.example.com/other-page",
+				hash: "",
+				pathname: "/other-page",
+				search: "",
+			},
+		};
+
+		await client.loginWithRedirect({
+			environment: sharedEnvironment,
+			postAuthRedirectUri: "https://app.example.com/return",
+		});
+		loginWithBackendOidcRedirect(client, {
+			environment: compatibilityEnvironment,
+			postAuthRedirectUri: "https://app.example.com/return",
+		});
+
+		expect(sharedEnvironment.location.href).toBe(
+			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Freturn",
+		);
+		expect(compatibilityEnvironment.location.href).toBe(
+			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Freturn",
 		);
 	});
 
@@ -1619,6 +1659,14 @@ describe("token-set web helpers", () => {
 			expect(() => loginWithBackendOidcRedirect(client)).toThrow(
 				/createBrowserPageClientEnvironment/,
 			);
+			await expect(
+				loginWithBackendOidcPopup(
+					client as never,
+					{
+						popupCallbackUrl: "https://app.example.com/popup-callback",
+					} as never,
+				),
+			).rejects.toThrow(/callbackFragmentStore/);
 			expect(() => relayBackendOidcPopupCallback()).toThrow(
 				/createBrowserPageClientEnvironment/,
 			);

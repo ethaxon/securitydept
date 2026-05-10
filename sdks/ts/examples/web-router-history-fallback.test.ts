@@ -2,7 +2,7 @@
 
 // Web Router — History API fallback path evidence
 //
-// Iteration 110 evidence: when `window.navigation` is absent the router
+// Evidence: when `window.navigation` is absent the router
 // must fall back to the classic History API + popstate + anchor-click
 // capture. Same external contract, different wire.
 //

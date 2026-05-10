@@ -6,12 +6,8 @@ import type {
 	HttpTransport,
 } from "@securitydept/client";
 import { createInMemoryRecordStore } from "@securitydept/client";
-import {
-	SessionContextProvider,
-	type SessionContextProviderProps,
-	useSessionContext,
-	useSessionPrincipal,
-} from "@securitydept/session-context-client-react";
+import { createWebClientEnvironment } from "@securitydept/client/web";
+import { SessionContextClient } from "@securitydept/session-context-client";
 import {
 	act,
 	createElement,
@@ -22,6 +18,13 @@ import {
 } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+	SessionContextController,
+	SessionContextProvider,
+	type SessionContextProviderProps,
+	useSessionContext,
+	useSessionPrincipal,
+} from "../index";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
@@ -87,6 +90,16 @@ function createTrackedTransport(
 	};
 }
 
+function createTestEnvironment(options: {
+	transport: HttpTransport;
+	sessionStore?: ReturnType<typeof createInMemoryRecordStore>;
+}) {
+	return createWebClientEnvironment({
+		transport: options.transport,
+		sessionStore: options.sessionStore,
+	});
+}
+
 describe("session-context react adapter", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
@@ -124,8 +137,11 @@ describe("session-context react adapter", () => {
 
 		const providerProps = {
 			config: { baseUrl: "https://auth.example.com" },
-			transport,
-			sessionStore: createInMemoryRecordStore(),
+			environment: createTestEnvironment({
+				transport,
+				sessionStore: createInMemoryRecordStore(),
+			}),
+			initialRefresh: true,
 		} satisfies Omit<SessionContextProviderProps, "children">;
 
 		const view = render(
@@ -137,7 +153,7 @@ describe("session-context react adapter", () => {
 		);
 
 		expect(view.container.textContent).toBe("loading:none");
-		expect(observed).toEqual(["loading:none"]);
+		expect(observed).toEqual(["loading:none", "loading:none"]);
 
 		await act(async () => {
 			firstResponse.resolve({
@@ -152,7 +168,7 @@ describe("session-context react adapter", () => {
 		});
 
 		expect(view.container.textContent).toBe("ready:Alice");
-		expect(observed).toEqual(["loading:none", "ready:Alice"]);
+		expect(observed).toEqual(["loading:none", "loading:none", "ready:Alice"]);
 		expect(refresh).not.toBeNull();
 
 		act(() => {
@@ -175,6 +191,7 @@ describe("session-context react adapter", () => {
 
 		expect(view.container.textContent).toBe("ready:Bob");
 		expect(observed).toEqual([
+			"loading:none",
 			"loading:none",
 			"ready:Alice",
 			"loading:Alice",
@@ -223,8 +240,8 @@ describe("session-context react adapter", () => {
 
 		const providerProps = {
 			config: { baseUrl: "https://auth.example.com" },
-			transport,
-			sessionStore,
+			environment: createTestEnvironment({ transport, sessionStore }),
+			initialRefresh: true,
 		} satisfies Omit<SessionContextProviderProps, "children">;
 
 		const view = render(
@@ -293,7 +310,8 @@ describe("session-context react adapter", () => {
 
 		const providerProps = {
 			config: { baseUrl: "https://auth.example.com" },
-			transport,
+			environment: createTestEnvironment({ transport }),
+			initialRefresh: true,
 		} satisfies Omit<SessionContextProviderProps, "children">;
 
 		const view = render(
@@ -358,7 +376,8 @@ describe("session-context react adapter", () => {
 
 		const initialProps = {
 			config: { baseUrl: "https://alpha.example.com" },
-			transport: firstTransport,
+			environment: createTestEnvironment({ transport: firstTransport }),
+			initialRefresh: true,
 		} satisfies Omit<SessionContextProviderProps, "children">;
 
 		const view = render(
@@ -378,7 +397,8 @@ describe("session-context react adapter", () => {
 
 		const reconfiguredProps = {
 			config: { baseUrl: "https://beta.example.com" },
-			transport: secondTransport,
+			environment: createTestEnvironment({ transport: secondTransport }),
+			initialRefresh: true,
 		} satisfies Omit<SessionContextProviderProps, "children">;
 
 		view.rerender(
@@ -425,17 +445,13 @@ describe("session-context react adapter", () => {
 		view.unmount();
 	});
 
-	it("keeps the current StrictMode fetch lifecycle and drops stale remount results", async () => {
+	it("coalesces StrictMode initial refresh replay through the controller", async () => {
 		(
 			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 		).IS_REACT_ACT_ENVIRONMENT = true;
 		const firstResponse = createDeferredResponse();
-		const secondResponse = createDeferredResponse();
 		const requests: HttpRequest[] = [];
-		const transport = createTrackedTransport(requests, [
-			firstResponse,
-			secondResponse,
-		]);
+		const transport = createTrackedTransport(requests, [firstResponse]);
 		const observed: string[] = [];
 
 		function Probe() {
@@ -457,8 +473,11 @@ describe("session-context react adapter", () => {
 
 		const providerProps = {
 			config: { baseUrl: "https://auth.example.com" },
-			transport,
-			sessionStore: createInMemoryRecordStore(),
+			environment: createTestEnvironment({
+				transport,
+				sessionStore: createInMemoryRecordStore(),
+			}),
+			initialRefresh: true,
 		} satisfies Omit<SessionContextProviderProps, "children">;
 
 		const view = render(
@@ -474,11 +493,8 @@ describe("session-context react adapter", () => {
 		);
 
 		expect(view.container.textContent).toBe("loading:none");
-		expect(requests).toHaveLength(2);
+		expect(requests).toHaveLength(1);
 		expect(requests).toEqual([
-			expect.objectContaining({
-				url: "https://auth.example.com/auth/session/user-info",
-			}),
 			expect.objectContaining({
 				url: "https://auth.example.com/auth/session/user-info",
 			}),
@@ -486,27 +502,12 @@ describe("session-context react adapter", () => {
 		expect(observed).toEqual(["loading:none", "loading:none"]);
 
 		await act(async () => {
-			secondResponse.resolve({
+			firstResponse.resolve({
 				status: 200,
 				headers: {},
 				body: {
 					subject: "session-user-current",
 					display_name: "Current Alice",
-				},
-			});
-			await secondResponse.promise;
-		});
-
-		expect(view.container.textContent).toBe("ready:Current Alice");
-		expect(observed.at(-1)).toBe("ready:Current Alice");
-
-		await act(async () => {
-			firstResponse.resolve({
-				status: 200,
-				headers: {},
-				body: {
-					subject: "session-user-stale",
-					display_name: "Stale Alice",
 				},
 			});
 			await firstResponse.promise;
@@ -515,6 +516,50 @@ describe("session-context react adapter", () => {
 		expect(view.container.textContent).toBe("ready:Current Alice");
 		expect(observed.at(-1)).toBe("ready:Current Alice");
 
+		view.unmount();
+	});
+
+	it("allows hosts to provide an external controller", async () => {
+		(
+			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+		).IS_REACT_ACT_ENVIRONMENT = true;
+		const response = createDeferredResponse();
+		const transport = createQueuedTransport([response]);
+		const controller = new SessionContextController({
+			client: new SessionContextClient({ baseUrl: "https://auth.example.com" }),
+			transport,
+		});
+
+		function Probe() {
+			const { refresh, session } = useSessionContext();
+			useEffect(() => {
+				void refresh();
+			}, [refresh]);
+			return createElement(
+				"output",
+				null,
+				session?.principal.displayName ?? "none",
+			);
+		}
+
+		const view = render(
+			createElement(
+				SessionContextProvider,
+				{ controller } as SessionContextProviderProps,
+				createElement(Probe),
+			),
+		);
+
+		await act(async () => {
+			response.resolve({
+				status: 200,
+				headers: {},
+				body: { subject: "session-user-4", display_name: "Dana" },
+			});
+			await response.promise;
+		});
+
+		expect(view.container.textContent).toBe("Dana");
 		view.unmount();
 	});
 });

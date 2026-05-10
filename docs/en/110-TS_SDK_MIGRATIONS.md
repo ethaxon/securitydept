@@ -32,26 +32,29 @@ Packages:
 Change:
 
 - Framework-neutral host capability resolution is now owned by the client foundation through typed `ClientEnvironment`, `WebClientEnvironment`, and `PageClientEnvironment` objects.
-- `ClientRuntime` remains the capability bundle consumed by core clients; client environments contain the canonical runtime and may expose same-source mirrors for helper ergonomics.
+- The historical `ClientRuntime` naming has been retired in favor of `ClientEnvironment`. Core client constructor dependencies are environments, not a second runtime layer. Canonical access is `environment.transport`, `environment.sessionStore`, and peers.
 - Web host presets are explicit factory entry points for browser page, browser worker, service worker, and browser-extension background hosts. They are not automatic host detection.
 - Context and adapter public helpers use the same boundary. Backend-OIDC web helpers, basic-auth/session redirect helpers, and framework adapter convenience helpers must not each redeclare or guess transport/store/scheduler/clock/page dependencies.
 - Backend-OIDC web helpers are split by host boundary: page-only helpers use page-explicit names, while worker-safe helpers require host-injected environment/capabilities or restore-only behavior.
 
 Migration:
 
-- Create one environment at the host composition root and pass `environment.runtime` to core clients.
+- Create one environment at the host composition root and pass the environment object itself through providers/adapters. Do not teach adopters to read `environment.runtime`; update direct `ClientRuntime` / `createRuntime()` / `createWebRuntime()` / `deriveClientRuntime()` usage to `ClientEnvironment`, `createClientEnvironment()`, `createWebClientEnvironment()`, or `deriveClientEnvironment()`.
+- Keep public option keys named `environment` even when the value is page-scoped or async-resolved. Do not introduce `pageEnvironment` as a parallel key; the type communicates the page requirement.
 - Use `createBrowserPageClientEnvironment(options)` for real page/tab/popup callback flows.
 - Use `createBrowserWorkerClientEnvironment(options)`, `createServiceWorkerClientEnvironment(options)`, or `createBrowserExtensionBackgroundClientEnvironment(options)` for worker-like hosts; inject persistence/session stores explicitly when needed.
 - Do not call page callback bootstrap in service workers or extension backgrounds. Run restore/token-state APIs there, and run callback capture only in a real page/popup document or with explicit fake page/callback-fragment capabilities in tests.
 - Update ambiguous page-global helper names to page-explicit forms where the public name changed, such as `currentPageLocationAsPostAuthRedirectUri()`, `buildAuthorizeUrlReturningToCurrentPage()`, `bootstrapBackendOidcModePageClient()`, and `captureBackendOidcModePageCallbackFragment()`.
-- Treat existing redirect/popup helpers (`loginWithBackendOidcRedirect()`, `loginWithBackendOidcPopup()`, and `relayBackendOidcPopupCallback()`) as page-only helpers even though their historical names remain intact; pass explicit page capability (`PageLocationHistoryCapability`) or a page-bearing `environment` when testing or running in a host wrapper.
+- Treat existing redirect/popup helpers (`loginWithBackendOidcRedirect()`, `loginWithBackendOidcPopup()`, and `relayBackendOidcPopupCallback()`) as page-only helpers even though their historical names remain intact; pass explicit page capability (`PageLocationHistoryCapability`) or a page-bearing `environment` when testing or running in a host wrapper. The canonical shared token-set OIDC browser contract is now `loginWithRedirect({ environment, postAuthRedirectUri })` on `OidcRedirectLoginClient`; backend web clients materialized through `createBackendOidcModeWebClient(...)` expose that method while `loginWithBackendOidcRedirect()` remains the compatibility/convenience wrapper. Popup login also requires an explicit callback-fragment capability, and browser-state reset requires an explicit `callbackFragmentStore`.
+- For frontend-mode browser materialization, create `createFrontendOidcModeWebClientEnvironment(...)` at the host composition root and pass it to `createFrontendOidcModeBrowserClient({ environment, ... })`; the materializer no longer creates a default environment when `environment` is omitted.
+- When browser/page environment ownership must stay stable across framework routes or commands, create a provider/injector-scoped `ClientEnvironmentService` and use `await service.resolvePageEnvironment()` for command/event flows or `service.readPageEnvironment()` for Suspense-compatible render paths instead of inventing app-local module singletons.
 - Treat basic-auth/session `/web` redirect helpers that read or write `window.location` as page helpers; keep them in a real page context or inject explicit navigation capabilities.
 - Let framework provider/DI registration functions own full environment composition. Do not make ordinary hooks, guards, interceptors, services, or convenience helpers each accept a full scattered dependency bag.
 - Do not infer page capability from `globalThis.location`; page helpers require `window.location` and `window.history.replaceState`.
 
 Justification:
 
-- Non-client-bound helpers had started to duplicate dependency bags and hidden `window.*` defaults. Typed client environments keep core runtime wiring explicit while giving helpers a shared, testable, host-scoped capability boundary.
+- Non-client-bound helpers had started to duplicate dependency bags and hidden `window.*` defaults. Typed client environments keep core dependency wiring explicit while giving helpers a shared, testable, host-scoped capability boundary.
 
 ### Token-Set Event-Driven Auth Flow
 
@@ -150,6 +153,34 @@ Migration:
 - Import React Query helpers from the `./react-query` subpath.
 - Do not depend on `apps/webui/src/hooks/*` as public API.
 - Keep TanStack Query as an optional peer dependency in hosts that import the subpath.
+- Treat `requestOptions.transport` as a resource-request override only; auth lifecycle and authorization-header ownership still stay with the token-set client service.
+
+### Framework Adapter Environment Boundaries
+
+Packages:
+
+- `@securitydept/client-react`
+- `@securitydept/session-context-client-react`
+- `@securitydept/session-context-client-angular`
+- `@securitydept/token-set-context-client-react`
+- `@securitydept/token-set-context-client-angular`
+
+Change:
+
+- `@securitydept/client-react` now owns the canonical React environment-service bridge: `ClientEnvironmentServiceProvider`, `useClientEnvironmentService()`, `useClientEnvironment()`, `useWebClientEnvironment()`, and `usePageClientEnvironment()`.
+- `SessionContextProvider` and `provideSessionContext` bridge `SessionContextController`, the framework-neutral state/flow owner for user-info refresh, logout cleanup, and redirect helpers. They still accept `environment: WebClientEnvironment`, but initial user-info probing is explicit through `initialRefresh`; hosts may pass an already-created `controller` to the React provider when they own lifecycle directly.
+- The legacy single-client `BackendOidcModeContextProvider` now accepts `environment: BackendOidcModeWebClientEnvironment` and materializes its browser client through `createBackendOidcModeWebClient(...)` instead of a raw dependency/capability bag.
+- Angular `createTokenSetOidcLoginRedirectHandler()` is now the route-login helper. It still uses `environment` as the only public key, but the value is now a stable page-environment source that Angular DI provides through `providePageClientEnvironment({ environment })` from `@securitydept/client-angular`. The helper targets the shared `OidcRedirectLoginClient` contract and awaits that source inside the guard flow before calling `loginWithRedirect()`.
+- Angular `CallbackResumeService` and React `useTokenSetCallbackResume({ getCurrentUrl, describeError })` now bridge the shared `TokenSetCallbackResumeController` from `@securitydept/token-set-context-client/registry`. Angular `TokenSetCallbackComponent` remains page-only convenience over that service, with injectable current URL and host policy tokens.
+
+Migration:
+
+- Build browser environments at the framework composition root, then pass those environment objects into the provider entrypoints.
+- Opt session adapters into initial probing with `initialRefresh` when an app relied on the old provider/service construction side effect, or call `controller.refresh()` / `service.refresh()` explicitly from the host-owned lifecycle.
+- For React render paths that need page capability, wrap the route/app tree with `ClientEnvironmentServiceProvider({ service })`, read page capability with `usePageClientEnvironment()` under Suspense plus an error boundary, and keep command/event flows on `useClientEnvironmentService().resolvePageEnvironment()`.
+- For Angular frontend-oidc route redirects, provide one stable page-environment source from the composition root with `providePageClientEnvironment({ environment })`, where `environment` is usually a provider-scoped `ClientEnvironmentService` or another inject-safe stable resolver.
+- For Angular callback routes, override `TOKEN_SET_CALLBACK_CURRENT_URL` when `window.location.href` is not the right source of truth, and override `TOKEN_SET_CALLBACK_COMPONENT_OPTIONS` when the host needs non-default fallback navigation or centralized error logging.
+- For custom callback orchestration, call `CallbackResumeService.resume(url)` or the React hook with `getCurrentUrl` / `describeError` instead of reintroducing page-global fallback logic or mode-specific copy into ordinary helpers. `CallbackResumeService.handleCallback(url)` remains only a compatibility wrapper.
 
 ### Route Security And Matched Route Chains
 

@@ -26,7 +26,7 @@
 
 import type {
 	CancelableHandle,
-	ClientRuntime,
+	ClientEnvironment,
 	KeyedEphemeralFlowStore,
 	OperationScope,
 	PageLocationCapability,
@@ -71,6 +71,7 @@ import {
 	BaseOidcModeClient,
 	TokenSetAuthFlowSource,
 } from "../orchestration/index";
+import type { OidcRedirectLoginOptions } from "../registry/types";
 import { FrontendOidcModeCallbackErrorCode } from "./callback-error-codes";
 import type {
 	FrontendOidcModeClaimsCheckResult,
@@ -191,16 +192,10 @@ function parseDurationToMs(duration: string): number {
 /**
  * Options for {@link FrontendOidcModeClient.loginWithRedirect}.
  */
-export interface FrontendOidcModeLoginWithRedirectOptions {
+export interface FrontendOidcModeLoginWithRedirectOptions
+	extends OidcRedirectLoginOptions {
 	/** Override the page location capability used for browser navigation. */
-	environment?: FrontendOidcModePageLocationCapability;
-	/**
-	 * Where to redirect the user after successful authentication.
-	 *
-	 * When omitted, the client's `defaultPostAuthRedirectUri` from config
-	 * is used.
-	 */
-	postAuthRedirectUri?: string;
+	environment: FrontendOidcModePageLocationCapability;
 	/** Extra query parameters to append to the authorization URL. */
 	extraParams?: Record<string, string>;
 }
@@ -211,7 +206,8 @@ export interface FrontendOidcModeLoginWithRedirectOptions {
 export interface FrontendOidcModePopupLoginOptions {
 	/**
 	 * The popup callback URL. This page should call
-	 * `relayFrontendOidcPopupCallback()` to relay the result back.
+	 * `relayFrontendOidcPopupCallback({ environment: createBrowserPageClientEnvironment() })`
+	 * to relay the result back.
 	 */
 	popupCallbackUrl: string;
 	/**
@@ -260,17 +256,20 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	// --- Metadata refresh ---
 	private _metadataRefreshHandle: CancelableHandle | null = null;
 
-	constructor(config: FrontendOidcModeClientConfig, runtime: ClientRuntime) {
+	constructor(
+		config: FrontendOidcModeClientConfig,
+		environment: ClientEnvironment,
+	) {
 		super({
-			runtime,
+			environment,
 			refreshWindowMs: config.refreshWindowMs ?? DEFAULT_REFRESH_WINDOW_MS,
 			traceScope: TRACE_SCOPE,
 			traceSource: TRACE_SOURCE,
 			tracePrefix: TRACE_PREFIX,
 			clientName: "FrontendOidcModeClient",
-			persistence: runtime.persistentStore
+			persistence: environment.persistentStore
 				? {
-						store: runtime.persistentStore,
+						store: environment.persistentStore,
 						key:
 							config.persistentStateKey ??
 							`${DEFAULT_PERSISTENCE_KEY_PREFIX}:v1:${config.issuer}:${config.clientId}`,
@@ -287,15 +286,15 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			? ClientSecretPost(config.clientSecret)
 			: ClientNone();
 
-		if (runtime.sessionStore) {
+		if (environment.sessionStore) {
 			this._pendingStore =
 				createKeyedEphemeralFlowStore<FrontendOidcModePendingState>({
-					store: runtime.sessionStore,
+					store: environment.sessionStore,
 					keyPrefix: PENDING_STATE_KEY_PREFIX,
 				});
 			this._consumedStateStore =
 				createKeyedEphemeralFlowStore<FrontendOidcModeConsumedState>({
-					store: runtime.sessionStore,
+					store: environment.sessionStore,
 					keyPrefix: CONSUMED_STATE_KEY_PREFIX,
 				});
 		}
@@ -361,7 +360,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 				redirectUri: effectiveRedirectUri,
 				nonce: result.nonce,
 				postAuthRedirectUri: effectivePostAuthRedirectUri,
-				createdAt: this._runtime.clock.now(),
+				createdAt: this._environment.clock.now(),
 			});
 
 			this._recordTrace(FrontendOidcModeTraceEventType.AuthorizeSucceeded, {
@@ -386,15 +385,15 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * for initiating frontend-oidc login in a browser context.
 	 */
 	async loginWithRedirect(
-		options: FrontendOidcModeLoginWithRedirectOptions = {},
+		options: FrontendOidcModeLoginWithRedirectOptions,
 	): Promise<void> {
 		const environment = assertResolveEnvironment(
-			options.environment,
+			options?.environment,
 			failMissingFrontendOidcPageEnvironment,
 		);
 		const url = await this.authorizeUrl(
-			options.postAuthRedirectUri,
-			options.extraParams,
+			options?.postAuthRedirectUri,
+			options?.extraParams,
 		);
 
 		environment.location.href = url;
@@ -555,7 +554,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 						source: TokenSetAuthFlowSource.Callback,
 					});
 
-					this._runtime.logger?.log({
+					this._environment.logger?.log({
 						level: LogLevel.Info,
 						message: "Auth state initialized from OIDC callback",
 						scope: TRACE_SCOPE,
@@ -644,7 +643,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 						}),
 					});
 
-					this._runtime.logger?.log({
+					this._environment.logger?.log({
 						level: LogLevel.Info,
 						message: "Token refreshed successfully",
 						scope: TRACE_SCOPE,
@@ -1027,7 +1026,8 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		};
 
 		if (result.expires_in !== undefined) {
-			const expiresAtMs = this._runtime.clock.now() + result.expires_in * 1000;
+			const expiresAtMs =
+				this._environment.clock.now() + result.expires_in * 1000;
 			tokenResult.expiresAt = new Date(expiresAtMs).toISOString();
 		}
 
@@ -1057,7 +1057,9 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			accessToken: tokens.accessToken,
 			idToken: tokens.idToken,
 			refreshMaterial: tokens.refreshToken ?? previousRefreshMaterial,
-			accessTokenIssuedAt: new Date(this._runtime.clock.now()).toISOString(),
+			accessTokenIssuedAt: new Date(
+				this._environment.clock.now(),
+			).toISOString(),
 			accessTokenExpiresAt: tokens.expiresAt,
 		};
 	}
@@ -1079,7 +1081,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 				const userInfo = await this.fetchUserInfoRaw(tokens.accessToken);
 				userInfoClaims = userInfo.claims ?? null;
 			} catch {
-				this._runtime.logger?.log({
+				this._environment.logger?.log({
 					level: LogLevel.Warn,
 					message:
 						"Failed to fetch userInfo during claims check, continuing with id_token claims only",
@@ -1215,7 +1217,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			throw new ClientError({
 				kind: ClientErrorKind.Configuration,
 				message:
-					"FrontendOidcModeClient requires runtime.sessionStore for redirect-based flows",
+					"FrontendOidcModeClient requires environment.sessionStore for redirect-based flows",
 				code: "frontend_oidc.no_session_store",
 				source: TRACE_SCOPE,
 			});
@@ -1228,7 +1230,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			throw new ClientError({
 				kind: ClientErrorKind.Configuration,
 				message:
-					"FrontendOidcModeClient requires runtime.sessionStore for redirect-based flows",
+					"FrontendOidcModeClient requires environment.sessionStore for redirect-based flows",
 				code: "frontend_oidc.no_session_store",
 				source: TRACE_SCOPE,
 			});
@@ -1252,7 +1254,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			return consumedState ? { kind: "duplicate" } : { kind: "missing" };
 		}
 
-		if (this._runtime.clock.now() - pending.createdAt > PENDING_STATE_TTL_MS) {
+		if (
+			this._environment.clock.now() - pending.createdAt >
+			PENDING_STATE_TTL_MS
+		) {
 			return { kind: "stale", pending };
 		}
 
@@ -1262,7 +1267,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 	private async _markConsumedState(state: string): Promise<void> {
 		await this._requireConsumedStateStore().save(state, {
-			consumedAt: this._runtime.clock.now(),
+			consumedAt: this._environment.clock.now(),
 		});
 	}
 
@@ -1275,7 +1280,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		}
 
 		if (
-			this._runtime.clock.now() - consumedState.consumedAt >
+			this._environment.clock.now() - consumedState.consumedAt >
 			CONSUMED_STATE_TTL_MS
 		) {
 			await this._clearConsumedState(state);
@@ -1302,7 +1307,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		this._cancelMetadataRefresh();
 
 		this._metadataRefreshHandle = interval({
-			scheduler: this._runtime.scheduler,
+			scheduler: this._environment.scheduler,
 			periodMs: intervalMs,
 			callback: () => {
 				if (this._rootCancellation.token.isCancellationRequested) return;
@@ -1334,14 +1339,14 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 /**
  * Create a frontend OIDC mode client.
  *
- * Prefer `new FrontendOidcModeClient(config, runtime)` for consistency with
+ * Prefer `new FrontendOidcModeClient(config, environment)` for consistency with
  * `BackendOidcModeClient`.
  */
 export function createFrontendOidcModeClient(
 	config: FrontendOidcModeClientConfig,
-	runtime: ClientRuntime,
+	environment: ClientEnvironment,
 ): FrontendOidcModeClient {
-	return new FrontendOidcModeClient(config, runtime);
+	return new FrontendOidcModeClient(config, environment);
 }
 
 // ---------------------------------------------------------------------------
@@ -1358,21 +1363,24 @@ export function createFrontendOidcModeClient(
  * @example
  * ```html
  * <script type="module">
+ *   import { createBrowserPageClientEnvironment } from "@securitydept/client/web";
  *   import { relayFrontendOidcPopupCallback } from "@securitydept/token-set-context-client/frontend-oidc-mode";
- *   relayFrontendOidcPopupCallback();
+ *   relayFrontendOidcPopupCallback({
+ *     environment: createBrowserPageClientEnvironment(),
+ *   });
  * </script>
  * ```
  */
 export interface RelayFrontendOidcPopupCallbackOptions {
 	targetOrigin?: string;
-	environment?: FrontendOidcModePageLocationCapability;
+	environment: FrontendOidcModePageLocationCapability;
 }
 
 export function relayFrontendOidcPopupCallback(
-	options: RelayFrontendOidcPopupCallbackOptions = {},
+	options: RelayFrontendOidcPopupCallbackOptions,
 ): void {
 	const environment = assertResolveEnvironment(
-		options.environment,
+		options?.environment,
 		failMissingFrontendOidcPageEnvironment,
 	);
 	relayPopupCallback({

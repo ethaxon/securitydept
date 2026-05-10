@@ -10,26 +10,29 @@ import type {
 	TokenSetClientEntry as CoreTokenSetClientEntry,
 	OidcCallbackClient,
 	OidcModeClient,
+	OidcRedirectLoginClient,
+	OidcRedirectLoginOptions,
 } from "@securitydept/token-set-context-client/registry";
 
 // ============================================================================
 // Client contracts
 // ============================================================================
 
-export type { OidcCallbackClient, OidcModeClient };
+export type {
+	OidcCallbackClient,
+	OidcModeClient,
+	OidcRedirectLoginClient,
+	OidcRedirectLoginOptions,
+};
 
-export type TokenSetBackendOidcClient = Pick<
-	BackendOidcModeClient,
-	| "authorizeUrl"
-	| "authorizationHeader"
-	| "ensureAuthorizationHeader"
-	| "ensureFreshAuthState"
-	| "refresh"
-	| "clearState"
-> &
-	OidcCallbackClient;
+export type TokenSetOidcRedirectLoginClient = OidcRedirectLoginClient;
 
-export type TokenSetReactClient = OidcModeClient & TokenSetBackendOidcClient;
+export type TokenSetReactClient = OidcModeClient &
+	OidcCallbackClient &
+	OidcRedirectLoginClient;
+
+export type TokenSetBackendOidcClient = TokenSetReactClient &
+	Pick<BackendOidcModeClient, "authorizeUrl" | "refresh" | "clearState">;
 
 // ============================================================================
 // Multi-client registration

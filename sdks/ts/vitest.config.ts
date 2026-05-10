@@ -120,12 +120,9 @@ export default defineConfig({
 				),
 			},
 			{
-				// client-react root export — planner-host React Context integration
+				// client-react root export — planner-host plus environment-service React Context integration
 				find: "@securitydept/client-react",
-				replacement: path.join(
-					packagesDir,
-					"client-react/src/planner-host/index.tsx",
-				),
+				replacement: path.join(packagesDir, "client-react/src/index.ts"),
 			},
 			{
 				// token-set-context-client-react react-query subpath — MUST precede root alias

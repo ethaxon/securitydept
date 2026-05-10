@@ -38,14 +38,21 @@ pub struct ResolvedClientIp {
 - Unit tests cover parser and IP normalization behavior.
 - Core integration tests cover `inline`, `local-file`, `remote-file`, and `command` providers with isolated components.
 - Containerized provider tests cover Docker and Kubernetes provider behavior through real local infrastructure when those tests are explicitly selected.
+- Kubernetes e2e support is owned by `scripts/test-cli.ts`, not by shell logic in `justfile`. It builds or reuses labeled helper/runtime images, creates SecurityDept-prefixed kind/k3d resources, and exposes cleanup commands that remove only SecurityDept test artifacts.
 - Docker-provider integration tests should derive expected bridge CIDRs from Docker network IPAM metadata instead of hardcoding host-specific subnets; this avoids pool-overlap failures on machines with different local Docker allocations.
 - Docker-provider assertions should stay minimal: if a test only needs Docker network IPAM metadata, do not start an extra helper container just to prove the network exists.
 
-Run focused provider tests with:
+Run focused provider tests and local e2e loops with:
 
 ```bash
 cargo test -p securitydept-realip --test core_providers
+just e2e-rs
+just e2e-rs-hot
+just e2e-rs-isolated
+just clean-kube-test-artifacts
 ```
+
+`just e2e-rs` reuses labeled local clusters when possible but stops the reusable containers after the run. `just e2e-rs-hot` keeps them running for repeated fast loops. `just e2e-rs-isolated` creates disposable clusters for a stricter cleanup path.
 
 ---
 

@@ -96,7 +96,7 @@ function defaultIdleScheduler(callback: () => void): () => void {
  * ## Priority model
  *
  * - `priority: "primary"` (default): clientFactory runs eagerly at
- *   `register()` time (just like iteration 108's model).
+ *   `register()` time (matching the eager registration model).
  * - `priority: "lazy"`: the entry is recorded, metadata is indexed, but
  *   `clientFactory` does **not** run until `preload(key)` /
  *   `whenReady(key)` / `idleWarmup()` is called.

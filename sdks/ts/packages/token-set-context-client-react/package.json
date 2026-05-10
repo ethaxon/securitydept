@@ -1,6 +1,6 @@
 {
 	"name": "@securitydept/token-set-context-client-react",
-	"version": "0.3.0-beta.2",
+	"version": "0.3.0-beta.3",
 	"description": "Token Set Context Client React of the SecurityDept TypeScript SDK, a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps.",
 	"author": "Zhou Yeheng <root@aitiotekt.com>",
 	"license": "MIT",
@@ -66,6 +66,7 @@
 		}
 	},
 	"devDependencies": {
-		"@tanstack/react-query": "^5.90.2"
+		"@tanstack/react-query": "catalog:",
+		"react": "catalog:"
 	}
 }

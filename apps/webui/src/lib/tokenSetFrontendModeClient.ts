@@ -18,6 +18,7 @@ import {
 	TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
 	TOKEN_SET_FRONTEND_MODE_POPUP_CALLBACK_PATH,
 } from "@/lib/tokenSetConfig";
+import type { TokenSetFrontendModeEnvironmentService } from "@/lib/tokenSetFrontendModePageEnvironment";
 
 const TOKEN_SET_FRONTEND_PERSISTENT_PREFIX =
 	"securitydept.webui.token-set-frontend:persistent:";
@@ -61,6 +62,9 @@ const tokenSetFrontendModeCrossTabStatusSignal =
 export const tokenSetFrontendModeCrossTabStatus = readonlySignal(
 	tokenSetFrontendModeCrossTabStatusSignal,
 );
+
+type TokenSetFrontendModeReactClient = TokenSetReactClient &
+	Pick<FrontendOidcModeClient, "refresh" | "clearState">;
 
 function recordFrontendHostTrace(
 	type: string,
@@ -160,7 +164,7 @@ async function ensureTokenSetFrontendModeClientSubscribed(): Promise<FrontendOid
 	return client;
 }
 
-const tokenSetFrontendModeReactClient: TokenSetReactClient = {
+const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 	state: readonlySignal(tokenSetFrontendModeStateSignal),
 	authEvents: createEventStream((observer) => {
 		let unsubscribed = false;
@@ -215,10 +219,10 @@ const tokenSetFrontendModeReactClient: TokenSetReactClient = {
 		tokenSetFrontendModeStateSignal.set(client.state.get());
 		return result;
 	},
-	authorizeUrl() {
-		throw new Error(
-			"Token Set frontend mode requires the app-owned startTokenSetFrontendModeLogin() helper instead of the sync authorizeUrl() contract.",
-		);
+	async loginWithRedirect(options) {
+		const client = await ensureTokenSetFrontendModeClientSubscribed();
+		await client.loginWithRedirect(options);
+		tokenSetFrontendModeStateSignal.set(client.state.get());
 	},
 	authorizationHeader() {
 		const accessToken =
@@ -270,10 +274,14 @@ export async function ensureTokenSetFrontendModeClientReady(): Promise<AuthSnaps
 }
 
 export async function startTokenSetFrontendModeLogin(
+	environmentService: TokenSetFrontendModeEnvironmentService,
 	postAuthRedirectUri = "/",
 ): Promise<void> {
 	const client = await ensureTokenSetFrontendModeClientSubscribed();
-	await client.loginWithRedirect({ postAuthRedirectUri });
+	await client.loginWithRedirect({
+		postAuthRedirectUri,
+		environment: await environmentService.resolvePageEnvironment(),
+	});
 }
 
 export async function startTokenSetFrontendModePopupLogin(

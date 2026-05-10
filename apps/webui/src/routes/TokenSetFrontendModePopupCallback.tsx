@@ -1,17 +1,38 @@
 import { relayFrontendOidcPopupCallback } from "@securitydept/token-set-context-client/frontend-oidc-mode";
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
+import { useTokenSetFrontendModeEnvironmentService } from "@/lib/tokenSetFrontendModePageEnvironment";
 
 export function TokenSetFrontendModePopupCallbackPage() {
-	const relayedRef = useRef(false);
+	const environmentService = useTokenSetFrontendModeEnvironmentService();
+	const [relayError, setRelayError] = useState<unknown>(null);
+
+	if (relayError) {
+		throw relayError;
+	}
 
 	useEffect(() => {
-		if (relayedRef.current) {
-			return;
-		}
+		let active = true;
+		void environmentService
+			.resolvePageEnvironment()
+			.then((environment) => {
+				if (!active) {
+					return;
+				}
 
-		relayedRef.current = true;
-		relayFrontendOidcPopupCallback();
-	}, []);
+				relayFrontendOidcPopupCallback({ environment });
+			})
+			.catch((error) => {
+				if (!active) {
+					return;
+				}
+
+				setRelayError(error);
+			});
+
+		return () => {
+			active = false;
+		};
+	}, [environmentService]);
 
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-zinc-50 p-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">

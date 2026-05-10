@@ -12,6 +12,13 @@ export default defineConfig({
 				replacement: path.join(packagesDir, "client/src/web/index.ts"),
 			},
 			{
+				find: "@securitydept/client/auth-coordination",
+				replacement: path.join(
+					packagesDir,
+					"client/src/auth-coordination/index.ts",
+				),
+			},
+			{
 				find: "@securitydept/client/persistence/web",
 				replacement: path.join(
 					packagesDir,
@@ -23,8 +30,19 @@ export default defineConfig({
 				replacement: path.join(packagesDir, "client/src/persistence/index.ts"),
 			},
 			{
-				find: "@securitydept/client",
+				find: /^@securitydept\/client$/,
 				replacement: path.join(packagesDir, "client/src/index.ts"),
+			},
+			{
+				find: "@securitydept/client-react/tanstack-router",
+				replacement: path.join(
+					packagesDir,
+					"client-react/src/tanstack-router/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/client-react",
+				replacement: path.join(packagesDir, "client-react/src/index.ts"),
 			},
 			{
 				find: "@securitydept/session-context-client",

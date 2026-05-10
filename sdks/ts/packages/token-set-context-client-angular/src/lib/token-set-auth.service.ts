@@ -25,7 +25,7 @@ import type { TokenSetAngularClient } from "./contracts";
  * Per-client Angular service that bridges a single OIDC mode client to
  * Angular signals + RxJS.
  *
- * Iteration 110 change: lifecycle teardown is now explicit. Construct with
+ * Lifecycle teardown is explicit. Construct with
  * `new TokenSetAuthService(client, autoRestore)` and call `.dispose()` when
  * the service owner tears down. The shared registry core handles this
  * automatically — adopters that wire the service directly (rare) must call

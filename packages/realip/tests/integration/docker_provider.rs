@@ -1,5 +1,6 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
+    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -9,6 +10,49 @@ use securitydept_realip::{
     ProviderRegistry,
     config::{CustomProviderConfig, ProviderConfig, RefreshFailurePolicy},
 };
+
+const TEST_LABEL_KEY: &str = "securitydept.test";
+const TEST_LABEL_VALUE: &str = "true";
+const TEST_RESOURCE_LABEL_KEY: &str = "securitydept.test.resource";
+const TEST_RESOURCE_LABEL_VALUE: &str = "realip-docker-integration-network";
+
+struct DockerNetworkGuard {
+    name: String,
+    removed: bool,
+}
+
+impl DockerNetworkGuard {
+    fn new(name: String) -> Self {
+        Self {
+            name,
+            removed: false,
+        }
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    async fn remove(&mut self, docker: &Docker) -> Result<(), bollard::errors::Error> {
+        let result = docker.remove_network(&self.name).await;
+        if result.is_ok() {
+            self.removed = true;
+        }
+        result
+    }
+}
+
+impl Drop for DockerNetworkGuard {
+    fn drop(&mut self) {
+        if self.removed || !self.name.starts_with("securitydept-realip-test-") {
+            return;
+        }
+
+        let _ = Command::new("docker")
+            .args(["network", "rm", &self.name])
+            .output();
+    }
+}
 
 fn unique_network_name() -> String {
     let suffix = SystemTime::now()
@@ -31,24 +75,33 @@ async fn docker_provider_loads_configured_network_subnets() {
         Ok(docker) => docker,
         Err(error) => {
             eprintln!(
-                "skipping docker_provider_loads_configured_network_subnets: Docker is unavailable: {error}"
+                "skipping docker_provider_loads_configured_network_subnets: Docker is \
+                 unavailable: {error}"
             );
             return;
         }
     };
-    let network_name = unique_network_name();
+    let mut network = DockerNetworkGuard::new(unique_network_name());
 
     let create_network_result = docker
         .create_network(NetworkCreateRequest {
-            name: network_name.clone(),
+            name: network.name().to_string(),
             driver: Some("bridge".to_string()),
+            labels: Some(HashMap::from([
+                (TEST_LABEL_KEY.to_string(), TEST_LABEL_VALUE.to_string()),
+                (
+                    TEST_RESOURCE_LABEL_KEY.to_string(),
+                    TEST_RESOURCE_LABEL_VALUE.to_string(),
+                ),
+            ])),
             ..Default::default()
         })
         .await;
     if let Err(error) = create_network_result {
         if is_unsupported_docker_test_environment(&error) {
             eprintln!(
-                "skipping docker_provider_loads_configured_network_subnets: Docker bridge networking is unavailable in this environment: {error}"
+                "skipping docker_provider_loads_configured_network_subnets: Docker bridge \
+                 networking is unavailable in this environment: {error}"
             );
             return;
         }
@@ -57,7 +110,7 @@ async fn docker_provider_loads_configured_network_subnets() {
     }
 
     let inspected_network = docker
-        .inspect_network(&network_name, None::<InspectNetworkOptions>)
+        .inspect_network(network.name(), None::<InspectNetworkOptions>)
         .await
         .unwrap();
     let expected_subnets: Vec<IpNet> = inspected_network
@@ -72,7 +125,7 @@ async fn docker_provider_loads_configured_network_subnets() {
     let mut extra = BTreeMap::new();
     extra.insert(
         "networks".to_string(),
-        serde_json::json!([network_name.clone()]),
+        serde_json::json!([network.name().to_string()]),
     );
 
     let config = ProviderConfig::Custom(CustomProviderConfig {
@@ -90,5 +143,5 @@ async fn docker_provider_loads_configured_network_subnets() {
 
     assert_eq!(cidrs, expected_subnets);
 
-    docker.remove_network(&network_name).await.unwrap();
+    network.remove(&docker).await.unwrap();
 }

@@ -2,7 +2,7 @@
 
 // Web Router — Navigation API path evidence
 //
-// Iteration 110 evidence for @securitydept/client/web-router:
+// Evidence for @securitydept/client/web-router:
 // proves the Navigation API adapter drives the router end-to-end when
 // `window.navigation` is available, including pre-commit intercept,
 // `redirect()`, and the planner-host integration.

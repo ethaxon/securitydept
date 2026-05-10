@@ -1,5 +1,5 @@
-import { createRuntime } from "@securitydept/client";
-import { createWebRuntime } from "@securitydept/client/web";
+import { createClientEnvironment } from "@securitydept/client";
+import { createWebClientEnvironment } from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
 import {
 	buildAuthorizeUrlReturningToCurrentPage,
@@ -9,7 +9,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 describe("minimal entry points", () => {
-	it("keeps foundation usage explicit about runtime ownership", async () => {
+	it("keeps foundation usage explicit about environment ownership", async () => {
 		const transport = {
 			execute: vi.fn(async () => ({
 				status: 200,
@@ -23,12 +23,12 @@ describe("minimal entry points", () => {
 			})),
 		};
 
-		const runtime = createRuntime({ transport });
+		const environment = createClientEnvironment({ transport });
 		const client = new SessionContextClient({
 			baseUrl: "https://auth.example.com",
 		});
 
-		const session = await client.fetchUserInfo(runtime.transport);
+		const session = await client.fetchUserInfo(environment.transport);
 
 		expect(session?.principal.displayName).toBe("Alice");
 		expect(transport.execute).toHaveBeenCalledWith(
@@ -137,8 +137,8 @@ describe("minimal entry points", () => {
 		);
 	});
 
-	it("keeps browser convenience optional in the foundation runtime", () => {
-		const runtime = createWebRuntime({
+	it("keeps browser convenience optional in the foundation environment", () => {
+		const environment = createWebClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({
 					status: 204,
@@ -148,8 +148,8 @@ describe("minimal entry points", () => {
 			},
 		});
 
-		expect(typeof runtime.transport.execute).toBe("function");
-		expect(typeof runtime.scheduler.setTimeout).toBe("function");
+		expect(typeof environment.transport.execute).toBe("function");
+		expect(typeof environment.scheduler.setTimeout).toBe("function");
 	});
 
 	it("leaves SSR redirect assembly at the app boundary", () => {

@@ -3,26 +3,34 @@ import {
 	inject,
 	runInInjectionContext,
 } from "@angular/core";
-import type {
-	ActivatedRouteSnapshot,
-	CanActivateFn,
-	RouterStateSnapshot,
-	UrlTree,
+import {
+	type ActivatedRouteSnapshot,
+	type CanActivateFn,
+	Router,
+	type RouterStateSnapshot,
+	type UrlTree,
 } from "@angular/router";
-import { Router } from "@angular/router";
 import type {
 	AuthGuardClientOption,
 	AuthRequirement,
 	PlannerHost,
 } from "@securitydept/client/auth-coordination";
+import { assertResolveEnvironment } from "@securitydept/client/web";
 import {
 	AUTH_PLANNER_HOST,
 	extractFullRouteRequirements,
+	PAGE_CLIENT_ENVIRONMENT,
+	type PageClientEnvironmentSource,
+	resolvePageClientEnvironmentSource,
 } from "@securitydept/client-angular";
 import {
 	type AuthSnapshot,
 	TokenSetAuthFlowSource,
 } from "@securitydept/token-set-context-client/orchestration";
+import type {
+	OidcRedirectLoginClient,
+	OidcRedirectLoginOptions,
+} from "@securitydept/token-set-context-client/registry";
 import { firstValueFrom, from, switchMap, take } from "rxjs";
 import type { UnauthenticatedEntry } from "./guard-types";
 import type { ClientMeta, ClientQueryOptions } from "./token-set-auth-registry";
@@ -272,16 +280,30 @@ export interface CreateTokenSetRouteAggregationGuardOptions {
  * @example
  * ```ts
  * // routes.ts — declare requirements in route data
- * import { withRouteRequirements } from "@securitydept/client-angular";
+ * import { createBrowserPageClientEnvironment } from "@securitydept/client/web";
  * import {
- *   createFrontendOidcLoginRedirectHandler,
+ *   providePageClientEnvironment,
+ *   withRouteRequirements,
+ * } from "@securitydept/client-angular";
+ * import {
+ *   createTokenSetOidcLoginRedirectHandler,
  *   createTokenSetRouteAggregationGuard,
  * } from "@securitydept/token-set-context-client-angular";
+ *
+ * export const appConfig = {
+ *   providers: [
+ *     providePageClientEnvironment({
+ *       environment: createBrowserPageClientEnvironment(),
+ *     }),
+ *   ],
+ * };
  *
  * // Simple — kind-level handler
  * const guard = createTokenSetRouteAggregationGuard({
  *   requirementHandlers: {
- *     frontend_oidc: createFrontendOidcLoginRedirectHandler({ clientKey: "confluence" }),
+ *     frontend_oidc: createTokenSetOidcLoginRedirectHandler({
+ *       clientKey: "confluence",
+ *     }),
  *   },
  * });
  *
@@ -351,7 +373,6 @@ export function createTokenSetRouteAggregationGuard(
 			return true;
 		}
 
-		// ── Step 2: Map requirements → registry clients ──────────────────────
 		// Per-requirement policy may override the default kind→client mapping.
 		interface ResolvedRequirementEntry {
 			requirement: AuthRequirement;
@@ -359,17 +380,17 @@ export function createTokenSetRouteAggregationGuard(
 		}
 
 		const resolvedRequirements: ResolvedRequirementEntry[] = [];
-
 		for (const req of allRequirements) {
 			const policy = options.requirementPolicies?.[req.id];
 			let clientKeys: string[];
 
 			if (policy?.selector) {
-				// Policy provides an explicit selector — use it instead of kind mapping.
-				if (policy.selector.clientKey !== undefined) {
+				if (policy.selector.clientKey) {
 					clientKeys = [policy.selector.clientKey];
-				} else {
+				} else if (policy.selector.query) {
 					clientKeys = registry.clientKeysForOptions(policy.selector.query);
+				} else {
+					clientKeys = [];
 				}
 			} else {
 				// Default: resolve by requirement kind.
@@ -377,8 +398,8 @@ export function createTokenSetRouteAggregationGuard(
 			}
 
 			if (clientKeys.length === 0) {
-				// No client for this requirement — skip (lets non-token-set requirements
-				// coexist in the same route chain without breaking the guard).
+				// Unmapped requirement: leave it unresolved so other requirements can
+				// coexist in the same route chain without breaking the guard.
 				continue;
 			}
 
@@ -404,28 +425,30 @@ export function createTokenSetRouteAggregationGuard(
 		// ── Step 3: Build planner candidates ────────────────────────────────
 		// De-duplicate by requirementId (last declaration for the same id wins).
 		const seenIds = new Map<string, ResolvedRequirementEntry>();
-		for (const r of resolvedRequirements) {
-			seenIds.set(r.requirement.id, r);
+		for (const resolvedRequirement of resolvedRequirements) {
+			seenIds.set(resolvedRequirement.requirement.id, resolvedRequirement);
 		}
 		const deduped = [...seenIds.values()];
 
 		const candidates: Array<
 			AuthGuardClientOption & { _resolved: ResolvedRequirementEntry }
-		> = deduped.map((r) => ({
-			requirementId: r.requirement.id,
-			requirementKind: r.requirement.kind,
-			label: r.requirement.label,
-			attributes: r.requirement.attributes,
+		> = deduped.map((resolvedRequirement) => ({
+			requirementId: resolvedRequirement.requirement.id,
+			requirementKind: resolvedRequirement.requirement.kind,
+			label: resolvedRequirement.requirement.label,
+			attributes: resolvedRequirement.requirement.attributes,
 			checkAuthenticated: () =>
-				r.entries.every(({ service }) => service.isAuthenticated()),
+				resolvedRequirement.entries.every(({ service }) =>
+					service.isAuthenticated(),
+				),
 			onUnauthenticated: async (): Promise<boolean | string> => {
-				const failing = r.entries.filter(
+				const failing = resolvedRequirement.entries.filter(
 					({ service }) => !service.isAuthenticated(),
 				);
-				// Handler resolution: policy > kind handler > default
 				const handler =
-					options.requirementPolicies?.[r.requirement.id]?.onUnauthenticated ??
-					options.requirementHandlers?.[r.requirement.kind] ??
+					options.requirementPolicies?.[resolvedRequirement.requirement.id]
+						?.onUnauthenticated ??
+					options.requirementHandlers?.[resolvedRequirement.requirement.kind] ??
 					options.defaultOnUnauthenticated;
 
 				if (!handler) return false;
@@ -434,7 +457,7 @@ export function createTokenSetRouteAggregationGuard(
 					injector,
 					handler,
 					failing,
-					r.requirement,
+					resolvedRequirement.requirement,
 					handlerContext,
 				);
 				const resolved = await result;
@@ -442,7 +465,7 @@ export function createTokenSetRouteAggregationGuard(
 				if (typeof resolved === "boolean") return resolved;
 				return resolved.toString();
 			},
-			_resolved: r,
+			_resolved: resolvedRequirement,
 		}));
 
 		// ── Step 4: Single planner evaluation ───────────────────────────────
@@ -537,7 +560,7 @@ function runUnauthenticatedHandlerInContext(
 }
 
 /**
- * Build an Angular route-security handler that starts frontend-oidc login and
+ * Build an Angular route-security handler that starts OIDC redirect login and
  * records the attempted navigation URL as `postAuthRedirectUri`.
  *
  * Use this instead of reading `Router.url` inside a guard handler. During guard
@@ -548,27 +571,49 @@ function runUnauthenticatedHandlerInContext(
  * never settles. That keeps Angular from finalizing the rejected in-app
  * navigation while the page is already leaving for an external IdP.
  */
-export function createFrontendOidcLoginRedirectHandler(options?: {
+export interface CreateTokenSetOidcLoginRedirectHandlerOptions {
 	/**
 	 * Explicit client key. When omitted, the first failing registry entry is
 	 * used, which is the common one-client-per-requirement case.
 	 */
 	clientKey?: string;
 	/**
+	 * Optional stable page environment override.
+	 *
+	 * The canonical Angular path is to provide a provider-scoped
+	 * `ClientEnvironmentService`, or another stable resolver, once from the host
+	 * composition root with `providePageClientEnvironment(...)`, then let the
+	 * redirect helper resolve it from Angular DI. Use this override only when a
+	 * specific handler intentionally needs a different stable page environment
+	 * source.
+	 */
+	environment?: PageClientEnvironmentSource;
+	/**
 	 * Fallback used only when Angular does not provide a target URL.
 	 * @default "/"
 	 */
 	fallbackPostAuthRedirectUri?: string;
-}): TokenSetRouteUnauthenticatedHandler {
+}
+
+export function createTokenSetOidcLoginRedirectHandler(
+	options: CreateTokenSetOidcLoginRedirectHandlerOptions = {},
+): TokenSetRouteUnauthenticatedHandler {
 	return async (unauthenticated, _requirement, context) => {
 		const clientKey = options?.clientKey ?? unauthenticated[0]?.clientKey;
 		if (!clientKey) return false;
+		const environmentPromise = resolveOidcRouteEnvironment(
+			options?.environment,
+		);
 
 		const registry = inject(TokenSetAuthRegistry);
 		const service = await registry.whenReady(clientKey);
-		if (!isLoginWithRedirectClient(service.client)) return false;
+		if (!isLoginWithRedirectClient(service.client)) {
+			failMissingOidcRedirectLoginCapability(clientKey);
+		}
+		const environment = await environmentPromise;
 
 		await service.client.loginWithRedirect({
+			environment,
 			postAuthRedirectUri:
 				context.attemptedUrl || options?.fallbackPostAuthRedirectUri || "/",
 		});
@@ -582,13 +627,38 @@ function neverSettlingRedirectGuardResult(): Promise<never> {
 	});
 }
 
-interface LoginWithRedirectClient {
-	loginWithRedirect(options?: { postAuthRedirectUri?: string }): Promise<void>;
+function resolveOidcRouteEnvironment(
+	environmentOverride:
+		| CreateTokenSetOidcLoginRedirectHandlerOptions["environment"]
+		| undefined,
+): Promise<OidcRedirectLoginOptions["environment"]> {
+	return resolvePageClientEnvironmentSource(
+		assertResolveEnvironment(
+			environmentOverride ??
+				inject(PAGE_CLIENT_ENVIRONMENT, { optional: true }),
+			failMissingOidcRouteEnvironment,
+		),
+		failMissingOidcRouteEnvironment,
+	);
+}
+
+function failMissingOidcRouteEnvironment(): never {
+	throw new Error(
+		"createTokenSetOidcLoginRedirectHandler requires an explicit environment.\n" +
+			"Provide it once from the Angular composition root with providePageClientEnvironment({ environment }), where environment is a provider-scoped ClientEnvironmentService or another stable resolver.\n" +
+			"or pass a stable environment override with createTokenSetOidcLoginRedirectHandler({ environment: ... }).",
+	);
+}
+
+function failMissingOidcRedirectLoginCapability(clientKey: string): never {
+	throw new Error(
+		`createTokenSetOidcLoginRedirectHandler requires client key "${clientKey}" to implement OidcRedirectLoginClient.loginWithRedirect(options).`,
+	);
 }
 
 function isLoginWithRedirectClient(
 	client: unknown,
-): client is LoginWithRedirectClient {
+): client is OidcRedirectLoginClient {
 	return (
 		typeof client === "object" &&
 		client !== null &&

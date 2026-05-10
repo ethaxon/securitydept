@@ -9,6 +9,7 @@
 // backend-OIDC auth state in React?" in one glance.
 
 import { createInMemoryRecordStore } from "@securitydept/client";
+import { createBackendOidcModeWebClientEnvironment } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import type { BackendOidcModeContextProviderProps } from "@securitydept/token-set-context-client-react";
 import {
 	BackendOidcModeContextProvider,
@@ -51,22 +52,23 @@ function ProviderEntry(
 	);
 }
 
-// Minimal runtime stubs — just enough to construct a client.
-const minimalRuntime = {
-	transport: {
-		async execute() {
-			return { status: 500, headers: {}, body: null };
+function createMinimalEnvironment() {
+	return createBackendOidcModeWebClientEnvironment({
+		transport: {
+			async execute() {
+				return { status: 500, headers: {}, body: null };
+			},
 		},
-	},
-	scheduler: {
-		setTimeout() {
-			return { cancel() {} };
+		scheduler: {
+			setTimeout() {
+				return { cancel() {} };
+			},
 		},
-	},
-	clock: { now: () => Date.now() },
-	persistentStore: createInMemoryRecordStore(),
-	sessionStore: createInMemoryRecordStore(),
-};
+		clock: { now: () => Date.now() },
+		persistentStore: createInMemoryRecordStore(),
+		sessionStore: createInMemoryRecordStore(),
+	});
+}
 
 describe("backend-oidc-mode react minimal entry", () => {
 	afterEach(() => {
@@ -99,7 +101,7 @@ describe("backend-oidc-mode react minimal entry", () => {
 				ProviderEntry,
 				{
 					config: { baseUrl: "https://auth.example.com" },
-					...minimalRuntime,
+					environment: createMinimalEnvironment(),
 				} satisfies Omit<BackendOidcModeContextProviderProps, "children">,
 				createElement(AuthBadge),
 			),
@@ -132,7 +134,7 @@ describe("backend-oidc-mode react minimal entry", () => {
 				ProviderEntry,
 				{
 					config: { baseUrl: "https://auth.example.com" },
-					...minimalRuntime,
+					environment: createMinimalEnvironment(),
 				} satisfies Omit<BackendOidcModeContextProviderProps, "children">,
 				createElement(ContextProbe),
 			),

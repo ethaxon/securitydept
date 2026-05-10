@@ -12,6 +12,7 @@ import {
 	TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
 } from "@/lib/tokenSetConfig";
 import { startTokenSetFrontendModeLogin } from "@/lib/tokenSetFrontendModeClient";
+import { useTokenSetFrontendModeEnvironmentService } from "@/lib/tokenSetFrontendModePageEnvironment";
 
 /**
  * Login chooser — three real auth-context entry points, plus a Playgrounds
@@ -21,6 +22,8 @@ export function LoginPage() {
 	const [sessionHref, setSessionHref] = useState("/auth/session/login");
 	const [frontendModeBusy, setFrontendModeBusy] = useState(false);
 	const { resolveLoginUrl } = useSessionContext();
+	const tokenSetFrontendModeEnvironmentService =
+		useTokenSetFrontendModeEnvironmentService();
 	const basicAuthClient = useBasicAuthContext();
 	const tokenSetBackendModeClient = useTokenSetBackendOidcClient(
 		TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
@@ -98,7 +101,9 @@ export function LoginPage() {
 							onClick={() => {
 								setAuthContextMode(AuthContextMode.TokenSetFrontend);
 								setFrontendModeBusy(true);
-								void startTokenSetFrontendModeLogin().finally(() => {
+								void startTokenSetFrontendModeLogin(
+									tokenSetFrontendModeEnvironmentService,
+								).finally(() => {
 									setFrontendModeBusy(false);
 								});
 							}}

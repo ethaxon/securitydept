@@ -17,7 +17,7 @@
 import type {
 	CancelableHandle,
 	CancellationTokenSourceTrait,
-	ClientRuntime,
+	ClientEnvironment,
 	EventStreamTrait,
 	OperationScope,
 	ReadableSignalTrait,
@@ -87,7 +87,7 @@ export type StateRestoreSourceKind =
 // ---------------------------------------------------------------------------
 
 export interface BaseOidcModeClientOptions {
-	runtime: ClientRuntime;
+	environment: ClientEnvironment;
 	/** Milliseconds before token expiry to trigger refresh. */
 	refreshWindowMs: number;
 	/** Trace scope string (e.g. "token-set-context" / "frontend-oidc-mode"). */
@@ -187,8 +187,8 @@ export type EnsureAuthForResourceResult =
  * Subclasses implement `refresh()` and optionally override `_onDispose()`.
  */
 export abstract class BaseOidcModeClient {
-	// --- Runtime & config ---
-	protected readonly _runtime: ClientRuntime;
+	// --- Environment & config ---
+	protected readonly _environment: ClientEnvironment;
 	protected readonly _refreshWindowMs: number;
 	protected readonly _traceScope: string;
 	protected readonly _traceSource: string;
@@ -219,7 +219,7 @@ export abstract class BaseOidcModeClient {
 	readonly authEvents: EventStreamTrait<TokenSetAuthEvent>;
 
 	protected constructor(options: BaseOidcModeClientOptions) {
-		this._runtime = options.runtime;
+		this._environment = options.environment;
 		this._refreshWindowMs = options.refreshWindowMs;
 		this._traceScope = options.traceScope;
 		this._traceSource = options.traceSource;
@@ -233,7 +233,7 @@ export abstract class BaseOidcModeClient {
 						persistence: {
 							store: options.persistence.store,
 							key: options.persistence.key,
-							now: () => this._runtime.clock.now(),
+							now: () => this._environment.clock.now(),
 						},
 					}
 				: {},
@@ -242,7 +242,7 @@ export abstract class BaseOidcModeClient {
 		this.state = readonlySignal(this._stateSignal);
 		this.authEvents = this._authEventSubject;
 		this._tokenHandles = createTokenHandleStore({
-			now: () => this._runtime.clock.now(),
+			now: () => this._environment.clock.now(),
 		});
 	}
 
@@ -271,7 +271,7 @@ export abstract class BaseOidcModeClient {
 		});
 	}
 
-	/** Restore auth state from `runtime.persistentStore` when available. */
+	/** Restore auth state from `environment.persistentStore` when available. */
 	async restorePersistedState(): Promise<AuthSnapshot | null> {
 		this._throwIfNotOperational();
 
@@ -292,7 +292,7 @@ export abstract class BaseOidcModeClient {
 				await this._authMaterial.persistence.clear();
 				cleared = true;
 			} catch (clearError) {
-				this._runtime.logger?.log({
+				this._environment.logger?.log({
 					level: LogLevel.Warn,
 					message: `Failed to clear invalid persisted ${this._traceScope} state`,
 					scope: this._traceScope,
@@ -301,7 +301,7 @@ export abstract class BaseOidcModeClient {
 				});
 			}
 
-			this._runtime.logger?.log({
+			this._environment.logger?.log({
 				level: LogLevel.Warn,
 				message: `Discarded invalid persisted ${this._traceScope} state`,
 				scope: this._traceScope,
@@ -643,7 +643,7 @@ export abstract class BaseOidcModeClient {
 			this._refreshThroughBarrier(this._timerAuthFlowPayload()).catch(() => {});
 			return;
 		}
-		const now = this._runtime.clock.now();
+		const now = this._environment.clock.now();
 		const timing = resolveTokenFreshnessTiming(current, {
 			now,
 			clockSkewMs: DEFAULT_CLOCK_SKEW_MS,
@@ -668,32 +668,37 @@ export abstract class BaseOidcModeClient {
 			segmented: delayMs < remainingMs,
 		});
 
-		this._refreshHandle = this._runtime.scheduler.setTimeout(delayMs, () => {
-			if (this._rootCancellation.token.isCancellationRequested) {
-				return;
-			}
+		this._refreshHandle = this._environment.scheduler.setTimeout(
+			delayMs,
+			() => {
+				if (this._rootCancellation.token.isCancellationRequested) {
+					return;
+				}
 
-			const nextRemainingMs = refreshAt - this._runtime.clock.now();
-			this._recordTrace(`${this._tracePrefix}.refresh.fired`, {
-				trigger:
-					nextRemainingMs > 0
-						? RefreshTriggerKind.Slice
-						: RefreshTriggerKind.Deadline,
-				remainingMs: Math.max(0, nextRemainingMs),
-			});
+				const nextRemainingMs = refreshAt - this._environment.clock.now();
+				this._recordTrace(`${this._tracePrefix}.refresh.fired`, {
+					trigger:
+						nextRemainingMs > 0
+							? RefreshTriggerKind.Slice
+							: RefreshTriggerKind.Deadline,
+					remainingMs: Math.max(0, nextRemainingMs),
+				});
 
-			if (nextRemainingMs > 0) {
-				this._scheduleRefresh();
-				return;
-			}
+				if (nextRemainingMs > 0) {
+					this._scheduleRefresh();
+					return;
+				}
 
-			this._refreshThroughBarrier(this._timerAuthFlowPayload()).catch(() => {});
-		});
+				this._refreshThroughBarrier(this._timerAuthFlowPayload()).catch(
+					() => {},
+				);
+			},
+		);
 	}
 
 	private _freshnessOptions(options: EnsureFreshAuthStateOptions = {}) {
 		return {
-			now: options.now ?? this._runtime.clock.now(),
+			now: options.now ?? this._environment.clock.now(),
 			clockSkewMs: options.clockSkewMs ?? DEFAULT_CLOCK_SKEW_MS,
 			refreshWindowMs: options.refreshWindowMs ?? this._refreshWindowMs,
 		};
@@ -842,7 +847,7 @@ export abstract class BaseOidcModeClient {
 			createTokenSetAuthEvent({
 				id: `${this._tracePrefix}.auth.${++this._authEventSequence}`,
 				type,
-				at: this._runtime.clock.now(),
+				at: this._environment.clock.now(),
 				payload,
 			}),
 		);
@@ -922,7 +927,7 @@ export abstract class BaseOidcModeClient {
 				try {
 					await this.clearState({ clearPersisted: true });
 				} catch (clearError) {
-					this._runtime.logger?.log({
+					this._environment.logger?.log({
 						level: LogLevel.Warn,
 						message: `Failed to clear ${this._traceScope} state after refresh failure`,
 						scope: this._traceScope,
@@ -972,7 +977,7 @@ export abstract class BaseOidcModeClient {
 		attributes: Record<string, unknown> | undefined,
 		execute: (operation: OperationScope | undefined) => Promise<T>,
 	): Promise<T> {
-		const operation = this._runtime.operationTracer?.startOperation(
+		const operation = this._environment.operationTracer?.startOperation(
 			name,
 			attributes,
 		);
@@ -993,9 +998,9 @@ export abstract class BaseOidcModeClient {
 		attributes?: Record<string, unknown>,
 		operation?: OperationScope,
 	): void {
-		this._runtime.traceSink?.record({
+		this._environment.traceSink?.record({
 			type,
-			at: this._runtime.clock.now(),
+			at: this._environment.clock.now(),
 			scope: this._traceScope,
 			operationId: operation?.id,
 			source: this._traceSource,

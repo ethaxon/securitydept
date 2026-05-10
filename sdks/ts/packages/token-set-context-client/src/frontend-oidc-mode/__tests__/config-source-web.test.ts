@@ -112,4 +112,57 @@ describe("frontend-oidc-mode browser materialization", () => {
 			code: "frontend_oidc.config_projection_failed",
 		});
 	});
+
+	it("fails without an explicit environment without reading browser globals", async () => {
+		const originalWindowDescriptor = Object.getOwnPropertyDescriptor(
+			globalThis,
+			"window",
+		);
+		const originalFetchDescriptor = Object.getOwnPropertyDescriptor(
+			globalThis,
+			"fetch",
+		);
+		let windowRead = false;
+		let fetchRead = false;
+
+		Object.defineProperty(globalThis, "window", {
+			configurable: true,
+			get() {
+				windowRead = true;
+				return {
+					location: { origin: "https://implicit.example.com" },
+				};
+			},
+		});
+		Object.defineProperty(globalThis, "fetch", {
+			configurable: true,
+			get() {
+				fetchRead = true;
+				return vi.fn();
+			},
+		});
+
+		try {
+			await expect(
+				createFrontendOidcModeBrowserClient({
+					configEndpoint: "/api/auth/token-set/frontend-mode/config",
+					redirectUri:
+						"https://app.example.com/auth/token-set/frontend-mode/callback",
+				} as never),
+			).rejects.toThrow(/createFrontendOidcModeWebClientEnvironment/);
+			expect(windowRead).toBe(false);
+			expect(fetchRead).toBe(false);
+		} finally {
+			if (originalWindowDescriptor) {
+				Object.defineProperty(globalThis, "window", originalWindowDescriptor);
+			} else {
+				Reflect.deleteProperty(globalThis, "window");
+			}
+			if (originalFetchDescriptor) {
+				Object.defineProperty(globalThis, "fetch", originalFetchDescriptor);
+			} else {
+				Reflect.deleteProperty(globalThis, "fetch");
+			}
+		}
+	});
 });

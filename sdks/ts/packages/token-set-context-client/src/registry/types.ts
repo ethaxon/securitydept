@@ -9,6 +9,7 @@
 
 import type {
 	EventStreamTrait,
+	PageLocationCapability,
 	ReadableSignalTrait,
 } from "@securitydept/client";
 import type { ClientReadinessState } from "../frontend-oidc-mode/config-source";
@@ -21,6 +22,21 @@ import type {
 	TokenSetAuthEvent,
 } from "../orchestration";
 
+export type {
+	TokenSetCallbackResumeControllerOptions,
+	TokenSetCallbackResumeOptions,
+	TokenSetCallbackResumeRegistry,
+	TokenSetCallbackResumeResult,
+	TokenSetCallbackResumeState,
+	TokenSetCallbackResumeStatus,
+} from "./callback-resume-controller";
+export type {
+	ReadTokenSetCallbackResumeErrorDetailsOptions,
+	TokenSetCallbackErrorDetails,
+	TokenSetCallbackErrorPresentationContext,
+	TokenSetCallbackErrorPresenter,
+	TokenSetCallbackResumeErrorDetails,
+} from "./error-presentation";
 export type { ClientReadinessState };
 
 // ---------------------------------------------------------------------------
@@ -46,6 +62,29 @@ export interface OidcModeClient {
 	ensureAuthorizationHeader(
 		options?: EnsureAuthorizationHeaderOptions,
 	): Promise<string | null>;
+}
+
+/**
+ * Framework-neutral browser redirect-login options shared by frontend and
+ * backend OIDC flows.
+ */
+export interface OidcRedirectLoginOptions {
+	/** Explicit page navigation capability used to start the browser redirect. */
+	environment: PageLocationCapability;
+	/**
+	 * Where to redirect the user after successful authentication.
+	 *
+	 * When omitted, the client-specific default is used.
+	 */
+	postAuthRedirectUri?: string;
+}
+
+/**
+ * Framework-neutral contract for a managed OIDC client that can start an
+ * external browser redirect login flow.
+ */
+export interface OidcRedirectLoginClient {
+	loginWithRedirect(options: OidcRedirectLoginOptions): Promise<void>;
 }
 
 /**

@@ -14,13 +14,24 @@ import type {
 	PlannerHost,
 	PlannerHostResult,
 } from "@securitydept/client/auth-coordination";
-import { AUTH_PLANNER_HOST } from "@securitydept/client-angular";
+import {
+	ClientEnvironmentService,
+	createBrowserPageClientEnvironment,
+	createWebClientEnvironment,
+	deriveClientEnvironment,
+	type PageClientEnvironment,
+	type WebClientEnvironment,
+} from "@securitydept/client/web";
+import {
+	AUTH_PLANNER_HOST,
+	providePageClientEnvironment,
+} from "@securitydept/client-angular";
 import {
 	EnsureAuthForResourceStatus,
 	TokenSetAuthFlowReason,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	createFrontendOidcLoginRedirectHandler,
+	createTokenSetOidcLoginRedirectHandler,
 	createTokenSetRouteAggregationGuard,
 	TokenSetAuthRegistry,
 } from "@securitydept/token-set-context-client-angular";
@@ -28,6 +39,54 @@ import { describe, expect, it, vi } from "vitest";
 
 const TEST_AUTH_ACTION = new InjectionToken<() => void>("TEST_AUTH_ACTION");
 const NULL_ENVIRONMENT_INJECTOR = null as unknown as EnvironmentInjector;
+
+function createTransport() {
+	return {
+		execute: vi.fn(async () => ({
+			status: 200,
+			headers: {},
+			body: null,
+		})),
+	};
+}
+
+function createScheduler() {
+	return {
+		setTimeout() {
+			return { cancel() {} };
+		},
+	};
+}
+
+function createAngularPageEnvironmentService() {
+	const createPageEnvironment = vi.fn(
+		(webEnvironment: WebClientEnvironment): PageClientEnvironment =>
+			createBrowserPageClientEnvironment({
+				pageCapability: {
+					location: {
+						href: "https://app.example.com/current",
+						hash: "",
+						pathname: "/current",
+						search: "",
+					},
+					history: {
+						replaceState() {},
+					},
+				},
+				...deriveClientEnvironment(webEnvironment),
+			}),
+	);
+
+	return new ClientEnvironmentService({
+		createClientEnvironment: () =>
+			createWebClientEnvironment({
+				transport: createTransport(),
+				scheduler: createScheduler(),
+				clock: { now: () => Date.now() },
+			}),
+		createPageEnvironment,
+	});
+}
 
 describe("Angular token-set route guard injection context", () => {
 	it("runs unauthenticated handlers in the captured injector after async planner work", async () => {
@@ -100,8 +159,9 @@ describe("Angular token-set route guard injection context", () => {
 		injector.destroy();
 	});
 
-	it("uses the attempted router state URL for frontend OIDC login redirects", async () => {
+	it("uses the attempted router state URL for OIDC login redirects", async () => {
 		const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
+		const environmentService = createAngularPageEnvironmentService();
 		const service = {
 			client: { loginWithRedirect },
 			isAuthenticated: () => false,
@@ -134,6 +194,7 @@ describe("Angular token-set route guard injection context", () => {
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TokenSetAuthRegistry, useValue: registry },
+				providePageClientEnvironment({ environment: environmentService }),
 				{
 					provide: Router,
 					useValue: { parseUrl: (value: string) => ({ redirectedTo: value }) },
@@ -142,9 +203,10 @@ describe("Angular token-set route guard injection context", () => {
 			],
 			NULL_ENVIRONMENT_INJECTOR,
 		);
+
 		const guard = createTokenSetRouteAggregationGuard({
 			requirementHandlers: {
-				frontend_oidc: createFrontendOidcLoginRedirectHandler({
+				frontend_oidc: createTokenSetOidcLoginRedirectHandler({
 					clientKey: "confluence",
 				}),
 			},
@@ -159,7 +221,9 @@ describe("Angular token-set route guard injection context", () => {
 		Promise.resolve(guardResult).then(settled, settled);
 
 		await flushMicrotasks();
+		const environment = await environmentService.resolvePageEnvironment();
 		expect(loginWithRedirect).toHaveBeenCalledWith({
+			environment,
 			postAuthRedirectUri: "/confluence/spaces/abc?tab=pages",
 		});
 		expect(settled).not.toHaveBeenCalled();

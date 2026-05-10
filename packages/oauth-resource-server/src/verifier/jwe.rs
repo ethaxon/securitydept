@@ -179,6 +179,7 @@ fn apply_pem_metadata_overrides(mut jwk: Jwk, config: &OAuthResourceServerJweCon
 mod tests {
     use std::{
         path::PathBuf,
+        sync::atomic::{AtomicU64, Ordering},
         time::{SystemTime, UNIX_EPOCH},
     };
 
@@ -191,12 +192,18 @@ mod tests {
     };
     use crate::OAuthResourceServerJweConfig;
 
+    static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
+
     fn temp_path(suffix: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("time should be monotonic")
             .as_nanos();
-        std::env::temp_dir().join(format!("securitydept-oauth-rs-{nanos}.{suffix}"))
+        let process_id = std::process::id();
+        let counter = TEMP_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "securitydept-oauth-rs-{process_id}-{nanos}-{counter}.{suffix}"
+        ))
     }
 
     #[tokio::test]

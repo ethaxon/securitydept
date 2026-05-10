@@ -17,8 +17,8 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 RUN cargo build --release
 
-FROM node:24-alpine AS webui-builder
-RUN npm install -g pnpm@10.33.0
+FROM node:26-alpine AS webui-builder
+RUN npm install -g pnpm@11.0.9
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 WORKDIR /app

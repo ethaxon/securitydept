@@ -1,4 +1,4 @@
-// Iteration 149 (Task Pack C): runtime-safe browser harness report model.
+// Runtime-safe browser harness report model.
 //
 // This module is the runtime-side authority for "what browser-owned auth-flow
 // evidence does this workspace currently publish". It is intentionally:
@@ -238,7 +238,7 @@ export function summarizeWorkspaceReport(
 
 /**
  * Aggregate any number of synthetic workspace reports into a single
- * cross-workspace summary. Iteration 149 only ships a single live workspace
+ * cross-workspace summary. The current UI only ships a single live workspace
  * (`apps/webui`); this aggregator exists so a future `outposts` (or any
  * additional repo-local) workspace report can be merged without changing
  * the per-workspace contract.

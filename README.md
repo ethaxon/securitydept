@@ -129,7 +129,7 @@ services:
 
 The reference app is then exposed on `http://localhost:7021`.
 
-The Docker image is built by the `Docker Build` workflow and tagged through `scripts/release-cli.ts docker publish`; see [Release Automation](docs/en/008-RELEASE_AUTOMATION.md).
+The release Docker image is assembled from prebuilt server, CLI, and web UI artifacts through `Dockerfile.runtime` and tagged by `scripts/release-cli.ts docker publish`; see [Release Automation](docs/en/008-RELEASE_AUTOMATION.md).
 
 ## Develop This Repository
 
@@ -159,8 +159,11 @@ just lint
 just unittest
 just integration
 just e2e
+just test-all
 just build-docs
 ```
+
+The root `justfile` imports topic files under `justfiles/`; imported recipes still run from the repository root. Kubernetes-backed Rust e2e resources are managed through `scripts/test-cli.ts`, with reusable labeled local Docker/kind/k3d resources and explicit cleanup recipes.
 
 ## Project Boundaries
 

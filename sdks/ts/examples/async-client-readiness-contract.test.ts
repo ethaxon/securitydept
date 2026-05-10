@@ -11,7 +11,7 @@
  *   - interceptor has explicit not-yet-ready semantics (passthrough without token when initializing)
  *   - interceptor attaches token once client is ready
  *
- * Iteration 110 update: `register(entry)` no longer takes a `DestroyRef`
+ * Current contract: `register(entry)` no longer takes a `DestroyRef`
  * second argument. The Angular registry binds `DestroyRef.onDestroy` via
  * injection at construction time; unit tests that instantiate directly
  * call `registry.dispose()` manually (omitted here for brevity).

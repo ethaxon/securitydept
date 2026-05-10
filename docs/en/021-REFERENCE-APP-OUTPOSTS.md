@@ -13,6 +13,7 @@ The current downstream calibration line is:
 - The callback route is served by the SDK `TokenSetCallbackComponent`.
 - `secureRouteRoot()` carries provider-neutral requirement metadata and next-action policy.
 - `provideTokenSetAuth(...)` registers the `Confluence` client with `providerFamily: "authentik"`, `callbackPath: "/auth/callback"`, and URL patterns for the Confluence API endpoint.
+- Route-login integration uses the shared `OidcRedirectLoginClient.loginWithRedirect({ environment, postAuthRedirectUri })` contract and should receive page capability from a stable `ClientEnvironmentService` / `providePageClientEnvironment({ environment })` source rather than a per-guard page factory.
 - For registry-managed browser clients, `provideTokenSetAuth(...)` now owns default page-resume reconciliation as well; `outposts` does not need to manually wrap `createFrontendOidcModeClient(...)` just to get resume recovery.
 - `provideTokenSetBearerInterceptor({ strictUrlMatch: true })` bounds bearer injection to URLs matching registered `urlPatterns` and avoids the single-client fallback for unmatched URLs.
 - Short access-token lifetimes are expected to recover through SDK freshness barriers: browser resume reconciliation, Angular route guard freshness, and request-time `ensureAuthForResource({ source: "http_interceptor", needsAuthorizationHeader: true })` all try refresh before login redirect or bearer injection when refresh material exists.
@@ -22,6 +23,18 @@ The current downstream calibration line is:
 - Existing backend tests in the `confluence` service lock issuer/JWKS/audience/scope behavior, including optional-audience and missing-scope rejection cases.
 - Linked-package tests/build prove the local SDK contract wiring, but they do not replace a true Authentik browser/Network run. That run still needs an active `outposts-web` page and authenticated Authentik session to record localStorage refresh material, access-token expiry, resume refresh, route admission, and first protected API request behavior.
 - During local cross-workspace verification, start the downstream environment in `outposts` with `just dev-confluence` first and `just dev-webui` second. After changing linked SecurityDept SDK packages, rebuild the affected package outputs and clear `outposts/.angular/cache` before restarting `dev-webui`, or Angular/Vite may keep serving stale linked artifacts.
+- For local cross-workspace verification, use pnpm `link:` dependencies rather than overrides. Plain TS packages may link to package roots, but Angular `ng-packagr` packages should link to their built `dist/` outputs instead of the workspace roots. A representative downstream pattern is:
+
+```json
+{
+	"@securitydept/client": "link:../securitydept/sdks/ts/packages/client",
+	"@securitydept/client-angular": "link:../securitydept/sdks/ts/packages/client-angular/dist",
+	"@securitydept/token-set-context-client": "link:../securitydept/sdks/ts/packages/token-set-context-client",
+	"@securitydept/token-set-context-client-angular": "link:../securitydept/sdks/ts/packages/token-set-context-client-angular/dist"
+}
+```
+
+- Linking Angular package roots points the adopter at monorepo manifests and local Angular type installs, not the consumer-shaped `ngc` / `ng-packagr` output. That is the failure mode behind local `Route` double-type-universe regressions during linked downstream verification.
 
 ## Why This Case Matters
 
@@ -99,6 +112,8 @@ This case should continue to use direct local workspace dependencies while SDK a
 - Node / pnpm: `link:` references to local SecurityDept TS packages
 
 When the downstream workspace links SecurityDept package roots or Angular `dist/` outputs directly, rebuild the changed SDK packages before browser verification. Local `link:` wiring alone is not enough to refresh already optimized Angular/Vite artifacts.
+
+If the downstream workspace also runs standalone TypeScript checks outside the Angular builder, keep its Angular patch versions aligned with the current SecurityDept SDK toolchain line declared in the workspace manifests. Align the core Angular framework packages together with matching `@angular-devkit/*`, CLI, compiler, and related build tooling before re-running `tsc`, `nx test`, or `nx build`.
 
 ## Related Documents
 

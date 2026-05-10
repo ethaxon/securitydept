@@ -31,6 +31,7 @@ import {
 	tokenSetFrontendModeCrossTabStatus,
 	tokenSetFrontendModeTraceTimeline,
 } from "@/lib/tokenSetFrontendModeClient";
+import { useTokenSetFrontendModeEnvironmentService } from "@/lib/tokenSetFrontendModePageEnvironment";
 import { TraceTimelineSection } from "@/routes/tokenSetFrontendMode/TraceTimelineSection";
 
 function renderTokenPreview(value: string | undefined): string {
@@ -47,6 +48,7 @@ function renderTokenPreview(value: string | undefined): string {
 
 export function TokenSetFrontendModePlaygroundPage() {
 	const state = useTokenSetAuthState(TOKEN_SET_FRONTEND_MODE_CLIENT_KEY);
+	const environmentService = useTokenSetFrontendModeEnvironmentService();
 	const traceEvents = useSyncExternalStore(
 		(listener) => tokenSetFrontendModeTraceTimeline.subscribe(listener),
 		() => tokenSetFrontendModeTraceTimeline.get(),
@@ -91,6 +93,7 @@ export function TokenSetFrontendModePlaygroundPage() {
 		setAuthContextMode(AuthContextMode.TokenSetFrontend);
 		try {
 			await startTokenSetFrontendModeLogin(
+				environmentService,
 				TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
 			);
 		} catch (loginError) {

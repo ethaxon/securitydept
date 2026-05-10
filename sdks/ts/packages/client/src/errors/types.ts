@@ -79,7 +79,7 @@ export type ClientErrorKind =
 export const ClientErrorSource = {
 	Transport: "transport",
 	Server: "server",
-	ClientRuntime: "client_runtime",
+	ClientEnvironment: "client_environment",
 } as const;
 
 export type ClientErrorSource =

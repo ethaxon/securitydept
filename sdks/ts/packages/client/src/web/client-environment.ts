@@ -2,9 +2,11 @@ import {
 	createLocalStorageStore,
 	createSessionStorageStore,
 } from "../persistence/web";
-import type { ClientRuntime } from "../runtime/types";
+import type { ClientEnvironment as FoundationClientEnvironment } from "../runtime/types";
 import type { FetchTransportOptions } from "../transport/fetch-transport";
-import { createWebRuntime } from "./runtime";
+import { createWebClientEnvironmentDependencies } from "./runtime";
+
+export type { ClientEnvironment } from "../runtime/types";
 
 export const ClientEnvironmentPreset = {
 	BrowserPage: "browser_page",
@@ -15,12 +17,9 @@ export const ClientEnvironmentPreset = {
 export type ClientEnvironmentPreset =
 	(typeof ClientEnvironmentPreset)[keyof typeof ClientEnvironmentPreset];
 
-export interface ClientEnvironment {
-	runtime: ClientRuntime;
+export interface WebClientEnvironment extends FoundationClientEnvironment {
 	preset?: ClientEnvironmentPreset;
 }
-
-export type WebClientEnvironment = ClientEnvironment;
 
 export interface PageLocationLike {
 	href: string;
@@ -46,10 +45,9 @@ export interface PageClientEnvironment
 		PageLocationHistoryCapability {}
 
 export interface CreateWebClientEnvironmentOptions
-	extends Partial<Omit<ClientRuntime, "transport">> {
-	transport?: ClientRuntime["transport"];
+	extends Partial<Omit<FoundationClientEnvironment, "transport">> {
+	transport?: FoundationClientEnvironment["transport"];
 	fetchTransport?: FetchTransportOptions;
-	runtime?: ClientRuntime;
 	preset?: ClientEnvironmentPreset;
 }
 
@@ -86,10 +84,27 @@ const BROWSER_SESSION_PREFIX = "securitydept.web.client:";
 export function createWebClientEnvironment(
 	options: CreateWebClientEnvironmentOptions = {},
 ): WebClientEnvironment {
-	const { runtime, preset, ...runtimeOptions } = options;
+	const { preset, ...environmentOptions } = options;
+	const resolvedEnvironment =
+		createWebClientEnvironmentDependencies(environmentOptions);
 	return {
+		...resolvedEnvironment,
 		preset,
-		runtime: runtime ?? createWebRuntime(runtimeOptions),
+	};
+}
+
+export function deriveClientEnvironment(
+	environment: FoundationClientEnvironment,
+): FoundationClientEnvironment {
+	return {
+		transport: environment.transport,
+		scheduler: environment.scheduler,
+		clock: environment.clock,
+		logger: environment.logger,
+		traceSink: environment.traceSink,
+		operationTracer: environment.operationTracer,
+		persistentStore: environment.persistentStore,
+		sessionStore: environment.sessionStore,
 	};
 }
 
@@ -305,7 +320,7 @@ function normalizeRequirePageClientEnvironmentOptions(
 		return {};
 	}
 
-	if ("runtime" in environmentOrOptions) {
+	if ("transport" in environmentOrOptions) {
 		return { environment: environmentOrOptions };
 	}
 
@@ -344,10 +359,6 @@ function failMissingPageLocationHistoryCapability(): never {
 function withDefaultBrowserStores<
 	TOptions extends CreateWebClientEnvironmentOptions,
 >(options: TOptions): TOptions {
-	if (options.runtime) {
-		return options;
-	}
-
 	return {
 		...options,
 		persistentStore:

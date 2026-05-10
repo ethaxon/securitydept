@@ -1,6 +1,6 @@
 import type {
 	CancellationTokenTrait,
-	ClientRuntime,
+	ClientEnvironment,
 	EphemeralFlowStore,
 	HttpTransport,
 } from "@securitydept/client";
@@ -41,7 +41,7 @@ export class SessionContextClient {
 
 	constructor(
 		config: SessionContextClientConfig,
-		runtime: Pick<ClientRuntime, "sessionStore"> = {},
+		environment: Pick<ClientEnvironment, "sessionStore"> = {},
 	) {
 		this._baseUrl = config.baseUrl.replace(/\/+$/, "");
 		this._loginPath = config.loginPath ?? DEFAULT_LOGIN_PATH;
@@ -52,9 +52,9 @@ export class SessionContextClient {
 		this._loginRedirectStateKey =
 			config.loginRedirectStateKey ??
 			`${DEFAULT_LOGIN_REDIRECT_STATE_KEY}:${this._baseUrl || "relative"}`;
-		this._pendingLoginRedirectStore = runtime.sessionStore
+		this._pendingLoginRedirectStore = environment.sessionStore
 			? createEphemeralFlowStore<string>({
-					store: runtime.sessionStore,
+					store: environment.sessionStore,
 					key: this._loginRedirectStateKey,
 					codec: {
 						encode(value) {

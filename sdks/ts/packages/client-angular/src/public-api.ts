@@ -2,6 +2,7 @@
  * Public API Surface of @securitydept/client-angular
  */
 
+export * from "./lib/page-environment";
 export * from "./lib/planner-host";
 export * from "./lib/route-requirements";
 export * from "./lib/router";

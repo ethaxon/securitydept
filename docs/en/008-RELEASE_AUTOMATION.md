@@ -84,7 +84,7 @@ Behavioral rules:
 
 ## Just Recipes
 
-`justfile` is grouped by topic so local entrypoints remain predictable:
+The root `justfile` imports topic modules from `justfiles/*.just` so local entrypoints remain predictable while the file stays readable:
 
 - bootstrap and environment setup
 - local development
@@ -94,7 +94,18 @@ Behavioral rules:
 - tests and verification
 - utilities
 
+Imported recipes still execute from the root justfile working directory. Complex cross-platform behavior belongs in TypeScript CLIs or library modules, not in large shell blocks inside the just recipes.
+
 The release block intentionally avoids explicit prerelease tags. The current version already carries the stage, so commands such as `just release-npm-dry-run` and `just release-npm-publish` should infer the correct channel automatically.
+
+Rust Kubernetes e2e helpers are routed through `scripts/test-cli.ts kube ...`, backed by `scripts/lib/kube-test-resources.ts` and `scripts/lib/kube-test-runner.ts`. The CLI uses Dockerode for Docker resource management, applies `securitydept.test=true` labels to SecurityDept-owned local test resources, and provides:
+
+- `just ensure-kube-test-helper`
+- `just e2e-rs`
+- `just e2e-rs-hot`
+- `just e2e-rs-isolated`
+- `just clean-kube-test-artifacts`
+- `just clean-kube-test-images`
 
 ## GitHub Actions Rules
 
@@ -162,27 +173,26 @@ If the version needs to move first:
 1. `mise exec --command "just release-version-set X.Y.Z[-alpha.N|-beta.N]"`
 2. `mise exec --command "just release-version-check"`
 
-For local workflow simulation, prefer the `just` wrappers around `scripts/actions-cli.ts`: `just action-release-validate`, `just action-release-dry-run`, and `just action-release-run`. The real local run creates a temporary MockGithub repository and executes `.github/workflows/release.yml` through act-js, so checkout and artifact behavior are handled in the local mock GitHub environment. Because act sets `ACT=true` and the wrapper also sets `SECURITYDEPT_LOCAL_ACTIONS=true`, the release publish jobs perform only local dry-run/package/build work and never push to npm, crates.io, or GHCR.
+For local workflow simulation, prefer the `just` wrappers around `scripts/actions-cli.ts`: `just action-release-validate` and `just action-release-dry-run`. `just action-release-run` is temporarily disabled while the project replaces the removed act-js integration with the planned local workflow runner. Release publish jobs must still use local dry-run/package/build paths for local simulation and must not push to npm, crates.io, or GHCR.
 
 Example validation commands:
 
 ```bash
 just action-release-validate
 just action-release-dry-run
-just action-release-run publish_npm=false publish_crates=false publish_docker=true
 ```
 
 The action recipes accept both CLI-style flags such as `--publish-npm=false` and just-friendly shorthand such as `publish_npm=false`.
 Publish toggles default to `false`, matching `release.yml` manual dispatch defaults; opt in per channel when local package/build simulation is needed.
 
-`act -n` does not execute `release-plan`, so jobs whose `if` condition depends on `needs.release-plan.outputs.*` may not expand in dry-run mode. A real local `act workflow_dispatch` run receives `local_run=true` from `release-plan` and follows the local dry-run/package/no-push branches.
+`act -n` does not execute `release-plan`, so jobs whose `if` condition depends on `needs.release-plan.outputs.*` may not expand in dry-run mode. Full local workflow execution is intentionally unavailable until the replacement local runner is integrated.
 
 ## Maintenance Expectations
 
 When release rules change:
 
 - update `release-cli` first
-- update workflows and `justfile` to call into that logic instead of duplicating it
+- update workflows, `justfile`, and `justfiles/*.just` to call into that logic instead of duplicating it
 - update this document and the summary rule in [AGENTS.md](../../AGENTS.md)
 
 Do not add new release channels, ad hoc workflow-only tag rules, or manual per-command dist-tag flags without updating the shared release policy.

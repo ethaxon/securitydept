@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-// React callback / resume async-readiness evidence — iteration 110 review-1 fix
+// React callback / resume async-readiness evidence.
 //
 // Proves the three properties the review asked for:
 //
@@ -96,7 +96,6 @@ function createMockClient(knobs: MockClientKnobs = {}): TokenSetReactClient {
 				snapshot: makeSnapshot("cb-token"),
 				postAuthRedirectUri: "/home",
 			}),
-		authorizeUrl: vi.fn().mockReturnValue("/auth/token-set/login"),
 		authorizationHeader() {
 			const accessToken = ctrl.signal.get()?.tokens.accessToken;
 			return accessToken ? `Bearer ${accessToken}` : null;
@@ -122,8 +121,7 @@ function createMockClient(knobs: MockClientKnobs = {}): TokenSetReactClient {
 				reason: TokenSetAuthFlowReason.NoSnapshot,
 			};
 		}),
-		refresh: vi.fn().mockResolvedValue(makeSnapshot("refreshed")),
-		clearState: vi.fn().mockResolvedValue(undefined),
+		loginWithRedirect: vi.fn().mockResolvedValue(undefined),
 	};
 }
 

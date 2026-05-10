@@ -1,6 +1,6 @@
 import type {
 	CancelableHandle,
-	ClientRuntime,
+	ClientEnvironment,
 	HttpRequest,
 	HttpResponse,
 	HttpTransport,
@@ -118,14 +118,14 @@ function createTestRuntime(
 	options?: {
 		now?: number;
 		traceSink?: TraceEventSinkTrait;
-		persistentStore?: ClientRuntime["persistentStore"];
+		persistentStore?: ClientEnvironment["persistentStore"];
 	},
 ) {
 	const clock = new TestClock(
 		options?.now ?? Date.parse("2026-01-01T00:00:00Z"),
 	);
 	const scheduler = new TestScheduler(clock);
-	const runtime: ClientRuntime = {
+	const runtime: ClientEnvironment = {
 		transport,
 		scheduler,
 		clock,

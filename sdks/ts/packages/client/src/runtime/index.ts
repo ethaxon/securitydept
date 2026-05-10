@@ -1,3 +1,3 @@
-export type { CreateRuntimeOptions } from "./create-runtime";
-export { createRuntime } from "./create-runtime";
-export type { ClientRuntime } from "./types";
+export type { CreateClientEnvironmentOptions } from "./create-runtime";
+export { createClientEnvironment } from "./create-runtime";
+export type { ClientEnvironment } from "./types";

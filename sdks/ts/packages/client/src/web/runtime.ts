@@ -1,25 +1,25 @@
-import { createRuntime } from "../runtime/create-runtime";
-import type { ClientRuntime } from "../runtime/types";
+import { createClientEnvironment } from "../runtime/create-runtime";
+import type { ClientEnvironment } from "../runtime/types";
 import {
 	createFetchTransport,
 	type FetchTransportOptions,
 } from "../transport/fetch-transport";
 
-export interface CreateWebRuntimeOptions
-	extends Partial<Omit<ClientRuntime, "transport">> {
-	transport?: ClientRuntime["transport"];
+export interface CreateWebClientEnvironmentDependenciesOptions
+	extends Partial<Omit<ClientEnvironment, "transport">> {
+	transport?: ClientEnvironment["transport"];
 	fetchTransport?: FetchTransportOptions;
 }
 
 /**
- * Create a `ClientRuntime` for browser/Web-capable environments.
+ * Create a `ClientEnvironment` for browser/Web-capable environments.
  */
-export function createWebRuntime(
-	overrides: CreateWebRuntimeOptions = {},
-): ClientRuntime {
-	const { fetchTransport, transport, ...runtime } = overrides;
-	return createRuntime({
-		...runtime,
+export function createWebClientEnvironmentDependencies(
+	overrides: CreateWebClientEnvironmentDependenciesOptions = {},
+): ClientEnvironment {
+	const { fetchTransport, transport, ...environment } = overrides;
+	return createClientEnvironment({
+		...environment,
 		transport: transport ?? createFetchTransport(fetchTransport),
 	});
 }

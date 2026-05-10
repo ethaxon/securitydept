@@ -12,7 +12,7 @@
 // higher-level `createWebRouter` factory does not need to branch on which
 // backend is active — tests can also target either path deterministically.
 //
-// Stability: provisional (new in iteration 110)
+// Stability: provisional
 
 // ---------------------------------------------------------------------------
 // Shared types

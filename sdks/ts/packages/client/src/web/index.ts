@@ -33,6 +33,7 @@ export {
 	createBrowserWorkerClientEnvironment,
 	createServiceWorkerClientEnvironment,
 	createWebClientEnvironment,
+	deriveClientEnvironment,
 	readDefaultPageLocationCapability,
 	readDefaultPageLocationHistoryCapability,
 	readPageLocationCapability,
@@ -48,6 +49,8 @@ export type {
 	CrossTabSyncCallback,
 } from "./cross-tab-sync";
 export { createCrossTabSync } from "./cross-tab-sync";
+export type { ClientEnvironmentServiceOptions } from "./environment-service";
+export { ClientEnvironmentService } from "./environment-service";
 // --- Browser input adapters ---
 export type {
 	FromAbortSignalOptions,
@@ -82,8 +85,6 @@ export {
 	relayPopupCallback,
 	waitForPopupRelay,
 } from "./popup";
-export type { CreateWebRuntimeOptions } from "./runtime";
-export { createWebRuntime } from "./runtime";
 export type { FromVisibilityChangeOptions } from "./visibility";
 export { fromVisibilityChange, VisibilityState } from "./visibility";
 export type {

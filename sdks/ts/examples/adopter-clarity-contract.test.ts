@@ -293,7 +293,7 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		],
 	},
 	{
-		// Angular full-route aggregation guard (Iteration 106 canonical pattern).
+		// Angular full-route aggregation guard canonical pattern.
 		// Backs MinimalEntry for @securitydept/client-angular and
 		// @securitydept/token-set-context-client-angular.
 		// Proves: withRouteRequirements declaration, extractFullRouteRequirements
@@ -319,7 +319,7 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		],
 	},
 	{
-		// TanStack Router route-security contract (Iteration 107).
+		// TanStack Router route-security contract.
 		// Backs MinimalEntry for @securitydept/client-react/tanstack-router.
 		// Proves: withTanStackRouteRequirements declaration, merge/replace/inherit
 		// composition, extractTanStackRouteRequirements aggregation,

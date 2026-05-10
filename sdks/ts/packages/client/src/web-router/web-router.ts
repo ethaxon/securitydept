@@ -4,7 +4,7 @@
 // or History API fallback) with planner-host integration for declarative,
 // auth-aware route guards.
 //
-// Iteration 110 review-1 fix: the router now supports a nested route tree
+// The router supports a nested route tree
 // with full-route requirement aggregation (inherit / merge / replace
 // composition) so that parent + child + sibling security declarations are
 // combined into a single candidate set before the planner-host runs — the
@@ -12,7 +12,7 @@
 // Router adapter. Flat declarations remain supported: a route without
 // `children` behaves exactly as before.
 //
-// Stability: provisional (new in iteration 110)
+// Stability: provisional
 
 import type {
 	AuthGuardClientOption,

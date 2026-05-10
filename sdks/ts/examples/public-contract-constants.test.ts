@@ -25,7 +25,7 @@ describe("public contract constants", () => {
 		expect(ClientErrorKind.Cancelled).toBe("cancelled");
 		expect(ClientErrorKind.Unauthenticated).toBe("unauthenticated");
 		expect(ClientErrorSource.Transport).toBe("transport");
-		expect(ClientErrorSource.ClientRuntime).toBe("client_runtime");
+		expect(ClientErrorSource.ClientEnvironment).toBe("client_environment");
 		expect(UserRecovery.Reauthenticate).toBe("reauthenticate");
 		expect(UserRecovery.Retry).toBe("retry");
 	});

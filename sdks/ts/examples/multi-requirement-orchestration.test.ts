@@ -4,7 +4,7 @@
 // a real multi-requirement flow: session → backend-oidc → custom.
 //
 // Canonical import: @securitydept/client/auth-coordination
-// (moved from @securitydept/token-set-context-client/orchestration in iteration 102)
+// (consolidated from @securitydept/token-set-context-client/orchestration)
 
 import type {
 	PlanStatus as PlanStatusType,

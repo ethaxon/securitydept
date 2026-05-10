@@ -84,7 +84,7 @@ release channel 由版本号自动推断，而不是手工传参。
 
 ## Just Recipes
 
-`justfile` 按功能主题分组，保证本地入口稳定可读：
+根 `justfile` 通过 `justfiles/*.just` 导入主题模块，使本地入口保持稳定，同时避免单个文件继续膨胀：
 
 - bootstrap 与环境初始化
 - 本地开发
@@ -94,7 +94,18 @@ release channel 由版本号自动推断，而不是手工传参。
 - 测试与校验
 - 工具型命令
 
+被 import 的 recipe 仍从根 justfile 的工作目录执行。复杂跨平台行为应放在 TypeScript CLI 或 library module 中，不应在 just recipe 里堆大段 shell。
+
 release 块里不再显式传 prerelease 标签。当前版本号本身已经携带阶段信息，因此 `just release-npm-dry-run`、`just release-npm-publish` 之类命令都应自动推断 channel。
+
+Rust Kubernetes e2e helpers 通过 `scripts/test-cli.ts kube ...` 进入，底层由 `scripts/lib/kube-test-resources.ts` 与 `scripts/lib/kube-test-runner.ts` 承担。CLI 使用 Dockerode 管理 Docker resources，对 SecurityDept 自有本地测试资源打 `securitydept.test=true` 标签，并提供：
+
+- `just ensure-kube-test-helper`
+- `just e2e-rs`
+- `just e2e-rs-hot`
+- `just e2e-rs-isolated`
+- `just clean-kube-test-artifacts`
+- `just clean-kube-test-images`
 
 ## GitHub Actions 规则
 
@@ -162,27 +173,26 @@ Cache 与 artifact 规则：
 1. `mise exec --command "just release-version-set X.Y.Z[-alpha.N|-beta.N]"`
 2. `mise exec --command "just release-version-check"`
 
-本地 workflow 模拟时，优先使用封装好的 `just action-release-validate`、`just action-release-dry-run`、`just action-release-run`，它们会调用 `scripts/actions-cli.ts`。真实本地 run 会创建临时 MockGithub 仓库，并通过 act-js 执行 `.github/workflows/release.yml`，因此 checkout 与 artifact 行为都交给本地 mock GitHub 环境处理。由于 act 会设置 `ACT=true`，wrapper 也会设置 `SECURITYDEPT_LOCAL_ACTIONS=true`，release publish jobs 只会执行本地 dry-run/package/build，不会推送到 npm、crates.io 或 GHCR。
+本地 workflow 模拟时，优先使用封装好的 `just action-release-validate` 和 `just action-release-dry-run`，它们会调用 `scripts/actions-cli.ts`。`just action-release-run` 在移除 act-js 集成后暂时禁用，等待后续接入新的本地 workflow runner。Release publish jobs 的本地模拟仍必须走 dry-run/package/build 路径，不能推送到 npm、crates.io 或 GHCR。
 
 示例验证命令：
 
 ```bash
 just action-release-validate
 just action-release-dry-run
-just action-release-run publish_npm=false publish_crates=false publish_docker=true
 ```
 
 action recipes 同时支持 `--publish-npm=false` 这类 CLI 风格参数，以及 `publish_npm=false` 这类更适合 just 的简写参数。
 Publish toggles 默认值是 `false`，与 `release.yml` manual dispatch 默认值一致；需要本地模拟某个 channel 的 package/build 时再显式开启。
 
-`act -n` 不会真实执行 `release-plan`，因此依赖 `needs.release-plan.outputs.*` 的 jobs 在 dry-run 模式下可能不会展开。真实本地 `act workflow_dispatch` run 会从 `release-plan` 得到 `local_run=true`，并进入本地 dry-run/package/no-push 分支。
+`act -n` 不会真实执行 `release-plan`，因此依赖 `needs.release-plan.outputs.*` 的 jobs 在 dry-run 模式下可能不会展开。完整本地 workflow 执行会在替代 runner 接入后恢复。
 
 ## 维护要求
 
 当 release 规则发生变化时：
 
 - 先改 `release-cli`
-- 再改 workflow 和 `justfile`，让它们调用共享逻辑，而不是重新抄一份规则
+- 再改 workflow、`justfile` 与 `justfiles/*.just`，让它们调用共享逻辑，而不是重新抄一份规则
 - 最后同步更新本文档和 [AGENTS.md](../../AGENTS.md) 中的摘要规则
 
 不要新增新的 release channel、仅在 workflow 内生效的 tag 规则，或手工的 per-command dist-tag 参数，除非同步修改共享 release policy。

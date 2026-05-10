@@ -9,20 +9,17 @@
 //
 // Stability: provisional (React adapter)
 
-import type {
-	Clock,
-	HttpTransport,
-	LoggerTrait,
-	RecordStore,
-	Scheduler,
-	TraceEventSinkTrait,
-} from "@securitydept/client";
 import { fromSignal } from "@securitydept/client";
 import type {
 	AuthStateSnapshot,
 	BackendOidcModeClientConfig,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import {
+	type BackendOidcModeWebClientEnvironment,
+	createBackendOidcModeWebClient,
+} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+import type { TokenSetResumeReconciliationOptions } from "@securitydept/token-set-context-client/orchestration";
 import {
 	createContext,
 	type ReactNode,
@@ -42,12 +39,15 @@ export {
 	type ClientQueryOptions,
 	type ClientReadinessState,
 } from "@securitydept/token-set-context-client/registry";
-// Multi-client registry-based productization (iteration 110).
+// Multi-client registry-based adapter surface.
 export type {
 	OidcCallbackClient,
 	OidcModeClient,
+	OidcRedirectLoginClient,
+	OidcRedirectLoginOptions,
 	TokenSetBackendOidcClient,
 	TokenSetClientEntry,
+	TokenSetOidcRedirectLoginClient,
 	TokenSetReactClient,
 } from "./contracts";
 export {
@@ -58,6 +58,7 @@ export {
 	useTokenSetAuthService,
 	useTokenSetAuthState,
 	useTokenSetBackendOidcClient,
+	useTokenSetCallbackResumeController,
 } from "./token-set-auth-provider";
 export { TokenSetAuthService } from "./token-set-auth-service";
 export {
@@ -92,16 +93,11 @@ const BackendOidcModeContext =
 export interface BackendOidcModeContextProviderProps {
 	/** Auth-context config only (issuer/baseUrl/endpoints/redirect policy). */
 	config: BackendOidcModeClientConfig;
-	/** Runtime/foundation capability wiring for HTTP. */
-	transport: HttpTransport;
-	/** Runtime/foundation scheduling capability. */
-	scheduler: Scheduler;
-	/** Runtime/foundation clock capability. */
-	clock: Clock;
-	logger?: LoggerTrait;
-	traceSink?: TraceEventSinkTrait;
-	persistentStore?: RecordStore;
-	sessionStore?: RecordStore;
+	/** Framework composition-root environment for backend-oidc browser runtime. */
+	environment: BackendOidcModeWebClientEnvironment;
+	/** Override resume reconciliation installation when parity with old provider is needed. */
+	resumeReconciliation?: boolean;
+	resumeReconciliationOptions?: TokenSetResumeReconciliationOptions;
 	/** React host glue only. */
 	children: ReactNode;
 }
@@ -113,36 +109,20 @@ export interface BackendOidcModeContextProviderProps {
  */
 export function BackendOidcModeContextProvider({
 	config,
-	transport,
-	scheduler,
-	clock,
-	logger,
-	traceSink,
-	persistentStore,
-	sessionStore,
+	environment,
+	resumeReconciliation,
+	resumeReconciliationOptions,
 	children,
 }: BackendOidcModeContextProviderProps) {
 	const client = useMemo(
 		() =>
-			new BackendOidcModeClient(config, {
-				transport,
-				scheduler,
-				clock,
-				logger,
-				traceSink,
-				persistentStore,
-				sessionStore,
+			createBackendOidcModeWebClient({
+				...config,
+				environment,
+				resumeReconciliation,
+				resumeReconciliationOptions,
 			}),
-		[
-			config,
-			transport,
-			scheduler,
-			clock,
-			logger,
-			traceSink,
-			persistentStore,
-			sessionStore,
-		],
+		[config, environment, resumeReconciliation, resumeReconciliationOptions],
 	);
 	const lifecycleMountsRef = useRef(new Map<BackendOidcModeClient, number>());
 

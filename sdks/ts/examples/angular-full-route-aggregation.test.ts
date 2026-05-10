@@ -1,6 +1,6 @@
 // Angular full-route aggregation guard — evidence test
 //
-// Proves the canonical Angular Router auth pattern (Iteration 106):
+// Proves the canonical Angular Router auth pattern:
 //   1. Requirements declared in route data (withRouteRequirements)
 //   2. Guard walks pathFromRoot once (extractFullRouteRequirements)
 //   3. All requirements aggregated from parent + child route segments

@@ -1,5 +1,23 @@
-import { Injectable, inject } from "@angular/core";
+import {
+	DestroyRef,
+	Injectable,
+	inject,
+	signal,
+	type WritableSignal,
+} from "@angular/core";
+import {
+	bridgeToAngularSignal,
+	signalToObservable,
+} from "@securitydept/client-angular";
 import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
+import {
+	TokenSetCallbackResumeController,
+	type TokenSetCallbackResumeOptions,
+	type TokenSetCallbackResumeResult,
+	type TokenSetCallbackResumeState,
+} from "@securitydept/token-set-context-client/registry";
+import type { Observable } from "rxjs";
+import type { TokenSetAuthService } from "./token-set-auth.service";
 import { TokenSetAuthRegistry } from "./token-set-auth-registry";
 
 /**
@@ -29,6 +47,26 @@ import { TokenSetAuthRegistry } from "./token-set-auth-registry";
 @Injectable()
 export class CallbackResumeService {
 	private readonly registry = inject(TokenSetAuthRegistry);
+	private readonly destroyRef = inject(DestroyRef, { optional: true });
+	private readonly controller =
+		new TokenSetCallbackResumeController<TokenSetAuthService>({
+			registry: this.registry.core,
+			getCallbackClient: (service) => service.client,
+		});
+	readonly state: WritableSignal<TokenSetCallbackResumeState> = signal(
+		this.controller.getState(),
+	);
+	readonly state$: Observable<TokenSetCallbackResumeState> = signalToObservable(
+		this.controller.state,
+	);
+
+	constructor() {
+		const cleanup = bridgeToAngularSignal(this.controller.state, this.state);
+		this.destroyRef?.onDestroy(() => {
+			cleanup();
+			this.controller.dispose();
+		});
+	}
 
 	/**
 	 * Check whether a URL is an OIDC authorization callback for any registered
@@ -43,7 +81,29 @@ export class CallbackResumeService {
 	 *   contains an `code` or `error` query parameter.
 	 */
 	isCallback(url: string): boolean {
-		return this.registry.clientKeyForCallback(url) !== undefined;
+		return this.controller.isCallback(url);
+	}
+
+	getState(): TokenSetCallbackResumeState {
+		return this.controller.getState();
+	}
+
+	resume(
+		options: TokenSetCallbackResumeOptions,
+	): Promise<TokenSetCallbackResumeResult>;
+	resume(
+		callbackUrl: string,
+		explicitClientKey?: string,
+	): Promise<TokenSetCallbackResumeResult>;
+	resume(
+		optionsOrCallbackUrl: TokenSetCallbackResumeOptions | string,
+		explicitClientKey?: string,
+	): Promise<TokenSetCallbackResumeResult> {
+		return this.controller.resume(
+			typeof optionsOrCallbackUrl === "string"
+				? { currentUrl: optionsOrCallbackUrl, clientKey: explicitClientKey }
+				: optionsOrCallbackUrl,
+		);
 	}
 
 	/**
@@ -67,26 +127,9 @@ export class CallbackResumeService {
 		/** The URL to navigate to after a successful callback. */
 		resumeUrl: string;
 	}> {
-		// Determine which client this callback is for.
-		const clientKey =
-			explicitClientKey ?? this.registry.clientKeyForCallback(callbackUrl);
-		if (!clientKey) {
-			throw new Error(
-				`[CallbackResumeService] Cannot determine which client this callback belongs to. ` +
-					`URL: ${callbackUrl}. Register callbackPath in the client entry.`,
-			);
-		}
-
-		// Use whenReady() — not require() — so that if the client's async
-		// clientFactory is still in-flight when the callback page first loads,
-		// we wait for it to materialize rather than throwing.
-		const service = await this.registry.whenReady(clientKey);
-		const result = await service.client.handleCallback(callbackUrl);
-
-		// postAuthRedirectUri is recovered from the core client's pending state,
-		// which was stored by authorizeUrl() when loginWithRedirect() was called.
+		const result = await this.resume(callbackUrl, explicitClientKey);
 		return {
-			clientKey,
+			clientKey: result.clientKey,
 			snapshot: result.snapshot,
 			resumeUrl: result.postAuthRedirectUri ?? "/",
 		};

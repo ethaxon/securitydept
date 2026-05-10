@@ -13,7 +13,7 @@
 //     custom requirement kinds
 //
 // Owner decision: moved from @securitydept/token-set-context-client/orchestration
-// to @securitydept/client in iteration 102. The token-set package retains a
+// to @securitydept/client. The token-set package retains a
 // thin provisional compat re-export under the old subpath, scheduled for
 // removal in a future release.
 //

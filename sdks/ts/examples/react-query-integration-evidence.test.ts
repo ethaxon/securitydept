@@ -2,7 +2,7 @@
 
 // React-Query subpath integration evidence
 //
-// Iteration 115 evidence: proves the token-set React Query subpath now owns
+// React Query integration evidence: proves the token-set React Query subpath owns
 // the canonical read/write consumer surface for groups and entries while
 // still remaining a consumer of the token-set registry/runtime authority.
 // Per manager ruling: no standalone package; the subpath lives under the
@@ -15,6 +15,7 @@ import type {
 	ReadableSignalTrait,
 } from "@securitydept/client";
 import { createSubject } from "@securitydept/client";
+import type { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	type AuthSnapshot,
 	AuthSourceKind,
@@ -153,7 +154,6 @@ function createMockClient(
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
 		handleCallback: vi.fn().mockResolvedValue({ snapshot: makeSnapshot("cb") }),
-		authorizeUrl: vi.fn().mockReturnValue("/auth/token-set/login"),
 		authorizationHeader() {
 			const accessToken = ctrl.signal.get()?.tokens.accessToken;
 			return accessToken ? `Bearer ${accessToken}` : null;
@@ -181,6 +181,17 @@ function createMockClient(
 				reason: TokenSetAuthFlowReason.NoSnapshot,
 			};
 		}),
+		loginWithRedirect: vi.fn().mockResolvedValue(undefined),
+	};
+}
+
+function createMockBackendClient(
+	initial: AuthSnapshot | null = null,
+): TokenSetReactClient &
+	Pick<BackendOidcModeClient, "authorizeUrl" | "refresh" | "clearState"> {
+	return {
+		...createMockClient(initial),
+		authorizeUrl: vi.fn().mockReturnValue("/auth/token-set/login"),
 		refresh: vi.fn().mockResolvedValue(makeSnapshot("refreshed")),
 		clearState: vi.fn().mockResolvedValue(undefined),
 	};
@@ -337,7 +348,7 @@ describe("react-query subpath — canonical token-set consumer surface", () => {
 			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 		).IS_REACT_ACT_ENVIRONMENT = true;
 
-		const client = createMockClient(makeSnapshot("abc123"));
+		const client = createMockBackendClient(makeSnapshot("abc123"));
 		const qc = new QueryClient({
 			defaultOptions: { queries: { retry: false } },
 		});
@@ -400,7 +411,7 @@ describe("react-query subpath — canonical token-set consumer surface", () => {
 			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 		).IS_REACT_ACT_ENVIRONMENT = true;
 
-		const client = createMockClient(makeSnapshot("abc123"));
+		const client = createMockBackendClient(makeSnapshot("abc123"));
 		const http = createRecordingTransport();
 		http.respond("GET", "/api/groups", 200, [
 			{ id: "group-1", name: "Operators" },
@@ -584,7 +595,7 @@ describe("react-query subpath — canonical token-set consumer surface", () => {
 			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 		).IS_REACT_ACT_ENVIRONMENT = true;
 
-		const client = createMockClient(makeSnapshot("abc123"));
+		const client = createMockBackendClient(makeSnapshot("abc123"));
 
 		function Probe() {
 			const keyedClient = useTokenSetBackendOidcClient("main");

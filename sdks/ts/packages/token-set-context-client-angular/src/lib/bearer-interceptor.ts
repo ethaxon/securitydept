@@ -22,7 +22,7 @@ import { TokenSetAuthRegistry } from "./token-set-auth-registry";
 /**
  * Adopter-tunable behaviour for the token-set bearer interceptor.
  *
- * Iteration 150 (review 1) lifted `strictUrlMatch` out of the implicit
+ * `strictUrlMatch` is an explicit option instead of living on the implicit
  * single-client convenience path into an explicit option, so multi-backend
  * adopters can guarantee that bearer tokens never leak outside the URL
  * patterns they registered with `provideTokenSetAuth({ clients: [...] })`.

@@ -8,15 +8,15 @@ import type { Clock, Scheduler } from "../scheduling/types";
 import type { HttpTransport } from "../transport/types";
 
 /**
- * Runtime capability bundle — injected into auth context clients
- * via explicit wiring at composition root.
+ * Client dependency environment injected into auth context clients
+ * via explicit wiring at the composition root.
  *
  * All capabilities are optional except `transport`.
  * Missing capabilities use no-op defaults where applicable.
- * `createRuntime()` is a convenience helper for common setups;
+ * `createClientEnvironment()` is a convenience helper for common setups;
  * callers can also wire this interface directly.
  */
-export interface ClientRuntime {
+export interface ClientEnvironment {
 	transport: HttpTransport;
 	scheduler: Scheduler;
 	clock: Clock;

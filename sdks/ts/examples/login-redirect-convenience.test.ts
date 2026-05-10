@@ -197,6 +197,12 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 			postAuthRedirectUri: "https://app.example.com/after-login",
 			extraParams: { prompt: "consent" },
 		};
+		const invalidOptions = {
+			postAuthRedirectUri: "https://app.example.com/after-login",
+		};
+		// @ts-expect-error frontend-oidc redirect helpers require explicit page environment.
+		const _invalid: FrontendOidcModeLoginWithRedirectOptions = invalidOptions;
+		void _invalid;
 		await client.loginWithRedirect(options);
 
 		// Should have navigated to the authorization endpoint.

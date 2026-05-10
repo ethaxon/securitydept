@@ -1,16 +1,15 @@
 // @securitydept/token-set-context-client-react/react-query
 //
 // Subpath exposing optional React Query integration helpers. This module
-// lives under the main React package (per the iteration 110 constraint:
-// "no standalone @securitydept/...-react-query package — sub-path +
-// devDependencies + optional peerDependencies").
+// lives under the main React package as a subpath rather than a standalone
+// @securitydept/...-react-query package.
 //
 // Adopters must install `@tanstack/react-query` themselves — it is declared
 // as an optional peer dependency. If the peer is missing, importing this
 // subpath resolves fine (we only use its types), but invoking the helpers
 // at runtime without a QueryClient will throw.
 //
-// Stability: provisional (new in iteration 110)
+// Stability: provisional
 
 import type {
 	CancellationTokenTrait,
@@ -35,7 +34,7 @@ import { useMemo } from "react";
 import {
 	useTokenSetAccessToken,
 	useTokenSetAuthRegistry,
-	useTokenSetBackendOidcClient,
+	useTokenSetAuthService,
 } from "../token-set-auth-provider";
 import type { TokenSetAuthService } from "../token-set-auth-service";
 
@@ -167,6 +166,9 @@ export interface DeleteEntryMutationVariables {
 	requestOptions?: TokenSetMutationRequestOptions;
 }
 
+// Request-level convenience transport only. Auth state ownership stays on the
+// token-set client service; callers may override this transport per request
+// without changing the client runtime or persistence environment.
 const tokenSetApiTransport = createFetchTransport({
 	redirect: FetchTransportRedirectKind.Follow,
 });
@@ -265,8 +267,6 @@ export function useTokenSetAuthorizationHeader(clientKey: string): {
 	enabled: boolean;
 	authorization: string | null;
 } {
-	// This throws if not ready — callers can use useTokenSetReadinessQuery first.
-	useTokenSetBackendOidcClient(clientKey);
 	const accessToken = useTokenSetAccessToken(clientKey);
 
 	return useMemo(
@@ -590,13 +590,13 @@ async function deleteEntryWithTokenSet(
 
 export function useTokenSetGroupsQuery(options: TokenSetScopedHookOptions) {
 	const { enabled } = useTokenSetAuthorizationHeader(options.clientKey);
-	const client = useTokenSetBackendOidcClient(options.clientKey);
+	const service = useTokenSetAuthService(options.clientKey);
 
 	return useQuery<Group[], Error>({
 		queryKey: tokenSetQueryKeys.groups(options.clientKey),
 		queryFn: ({ signal }) =>
 			listGroupsWithTokenSet(
-				client,
+				service,
 				mergeRequestOptions(options.requestOptions, { abortSignal: signal }),
 			),
 		enabled: isQueryEnabled(options, enabled),
@@ -606,13 +606,13 @@ export function useTokenSetGroupsQuery(options: TokenSetScopedHookOptions) {
 
 export function useTokenSetGroupQuery(options: TokenSetGroupQueryOptions) {
 	const { enabled } = useTokenSetAuthorizationHeader(options.clientKey);
-	const client = useTokenSetBackendOidcClient(options.clientKey);
+	const service = useTokenSetAuthService(options.clientKey);
 
 	return useQuery<Group, Error>({
 		queryKey: tokenSetQueryKeys.group(options.clientKey, options.groupId),
 		queryFn: ({ signal }) =>
 			getGroupWithTokenSet(
-				client,
+				service,
 				options.groupId,
 				mergeRequestOptions(options.requestOptions, { abortSignal: signal }),
 			),
@@ -623,13 +623,13 @@ export function useTokenSetGroupQuery(options: TokenSetGroupQueryOptions) {
 
 export function useTokenSetEntriesQuery(options: TokenSetScopedHookOptions) {
 	const { enabled } = useTokenSetAuthorizationHeader(options.clientKey);
-	const client = useTokenSetBackendOidcClient(options.clientKey);
+	const service = useTokenSetAuthService(options.clientKey);
 
 	return useQuery<AuthEntry[], Error>({
 		queryKey: tokenSetQueryKeys.entries(options.clientKey),
 		queryFn: ({ signal }) =>
 			listEntriesWithTokenSet(
-				client,
+				service,
 				mergeRequestOptions(options.requestOptions, { abortSignal: signal }),
 			),
 		enabled: isQueryEnabled(options, enabled),
@@ -639,13 +639,13 @@ export function useTokenSetEntriesQuery(options: TokenSetScopedHookOptions) {
 
 export function useTokenSetEntryQuery(options: TokenSetEntryQueryOptions) {
 	const { enabled } = useTokenSetAuthorizationHeader(options.clientKey);
-	const client = useTokenSetBackendOidcClient(options.clientKey);
+	const service = useTokenSetAuthService(options.clientKey);
 
 	return useQuery<AuthEntry, Error>({
 		queryKey: tokenSetQueryKeys.entry(options.clientKey, options.entryId),
 		queryFn: ({ signal }) =>
 			getEntryWithTokenSet(
-				client,
+				service,
 				options.entryId,
 				mergeRequestOptions(options.requestOptions, { abortSignal: signal }),
 			),
@@ -658,12 +658,12 @@ export function useTokenSetCreateGroupMutation(
 	options: TokenSetMutationHookOptions,
 ): UseMutationResult<Group, Error, CreateGroupMutationVariables> {
 	const queryClient = useQueryClient();
-	const client = useTokenSetBackendOidcClient(options.clientKey);
+	const service = useTokenSetAuthService(options.clientKey);
 
 	return useMutation<Group, Error, CreateGroupMutationVariables>({
 		mutationFn: ({ requestOptions, ...request }) =>
 			createGroupWithTokenSet(
-				client,
+				service,
 				request,
 				mergeRequestOptions(options.requestOptions, requestOptions),
 			),
@@ -682,12 +682,12 @@ export function useTokenSetUpdateGroupMutation(
 	options: TokenSetMutationHookOptions,
 ): UseMutationResult<Group, Error, UpdateGroupMutationVariables> {
 	const queryClient = useQueryClient();
-	const client = useTokenSetBackendOidcClient(options.clientKey);
+	const service = useTokenSetAuthService(options.clientKey);
 
 	return useMutation<Group, Error, UpdateGroupMutationVariables>({
 		mutationFn: ({ id, requestOptions, ...request }) =>
 			updateGroupWithTokenSet(
-				client,
+				service,
 				id,
 				request,
 				mergeRequestOptions(options.requestOptions, requestOptions),
@@ -710,12 +710,12 @@ export function useTokenSetDeleteGroupMutation(
 	options: TokenSetMutationHookOptions,
 ): UseMutationResult<void, Error, DeleteGroupMutationVariables> {
 	const queryClient = useQueryClient();
-	const client = useTokenSetBackendOidcClient(options.clientKey);
+	const service = useTokenSetAuthService(options.clientKey);
 
 	return useMutation<void, Error, DeleteGroupMutationVariables>({
 		mutationFn: ({ groupId, requestOptions }) =>
 			deleteGroupWithTokenSet(
-				client,
+				service,
 				groupId,
 				mergeRequestOptions(options.requestOptions, requestOptions),
 			),
@@ -741,7 +741,7 @@ export function useTokenSetCreateBasicEntryMutation(
 	CreateBasicEntryMutationVariables
 > {
 	const queryClient = useQueryClient();
-	const client = useTokenSetBackendOidcClient(options.clientKey);
+	const service = useTokenSetAuthService(options.clientKey);
 
 	return useMutation<
 		CreateBasicEntryResponse,
@@ -750,7 +750,7 @@ export function useTokenSetCreateBasicEntryMutation(
 	>({
 		mutationFn: ({ requestOptions, ...request }) =>
 			createBasicEntryWithTokenSet(
-				client,
+				service,
 				request,
 				mergeRequestOptions(options.requestOptions, requestOptions),
 			),
@@ -770,7 +770,7 @@ export function useTokenSetCreateTokenEntryMutation(
 	CreateTokenEntryMutationVariables
 > {
 	const queryClient = useQueryClient();
-	const client = useTokenSetBackendOidcClient(options.clientKey);
+	const service = useTokenSetAuthService(options.clientKey);
 
 	return useMutation<
 		CreateTokenResponse,
@@ -779,7 +779,7 @@ export function useTokenSetCreateTokenEntryMutation(
 	>({
 		mutationFn: ({ requestOptions, ...request }) =>
 			createTokenEntryWithTokenSet(
-				client,
+				service,
 				request,
 				mergeRequestOptions(options.requestOptions, requestOptions),
 			),
@@ -795,12 +795,12 @@ export function useTokenSetUpdateEntryMutation(
 	options: TokenSetMutationHookOptions,
 ): UseMutationResult<AuthEntry, Error, UpdateEntryMutationVariables> {
 	const queryClient = useQueryClient();
-	const client = useTokenSetBackendOidcClient(options.clientKey);
+	const service = useTokenSetAuthService(options.clientKey);
 
 	return useMutation<AuthEntry, Error, UpdateEntryMutationVariables>({
 		mutationFn: ({ id, requestOptions, ...request }) =>
 			updateEntryWithTokenSet(
-				client,
+				service,
 				id,
 				request,
 				mergeRequestOptions(options.requestOptions, requestOptions),
@@ -820,12 +820,12 @@ export function useTokenSetDeleteEntryMutation(
 	options: TokenSetMutationHookOptions,
 ): UseMutationResult<void, Error, DeleteEntryMutationVariables> {
 	const queryClient = useQueryClient();
-	const client = useTokenSetBackendOidcClient(options.clientKey);
+	const service = useTokenSetAuthService(options.clientKey);
 
 	return useMutation<void, Error, DeleteEntryMutationVariables>({
 		mutationFn: ({ entryId, requestOptions }) =>
 			deleteEntryWithTokenSet(
-				client,
+				service,
 				entryId,
 				mergeRequestOptions(options.requestOptions, requestOptions),
 			),

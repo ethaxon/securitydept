@@ -1,6 +1,6 @@
 //! Mounted-route diagnosis & error policy authority.
 //!
-//! Iteration 149 (Task Pack A + B): owns a single, testable mapping from each
+//! Owns a single, testable mapping from each
 //! mounted route family to:
 //!
 //! 1. a [`RouteDiagnosisPolicy`] explaining who is responsible for emitting
@@ -835,7 +835,7 @@ mod tests {
 
     #[tokio::test]
     async fn basic_auth_mirror_without_credentials_returns_plain_protocol_401_not_envelope() {
-        // Live-router regression for Finding 1 (iteration 149 review 1):
+        // Live-router regression coverage:
         // /basic/api/* is gated by the Basic-Auth boundary middleware. A
         // request with no Authorization header must be short-circuited
         // by the middleware as a plain Basic-Auth protocol 401 (no

@@ -10,6 +10,7 @@ export type {
 	BackendOidcModePageClientEnvironment,
 	BackendOidcModePageLocationCapability,
 	BackendOidcModePopupLoginCapability,
+	BackendOidcModeWebClient,
 	BackendOidcModeWebClientEnvironment,
 	BootstrapBackendOidcModePageClientOptions,
 	BuildAuthorizeUrlReturningToCurrentPageOptions,

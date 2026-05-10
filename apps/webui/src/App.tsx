@@ -42,7 +42,7 @@ import { basicAuthContextConfig } from "@/lib/basicAuthContext";
 import {
 	sessionContextClient,
 	sessionContextConfig,
-	sessionContextSessionStore,
+	sessionContextEnvironment,
 	sessionContextTransport,
 } from "@/lib/sessionContext";
 import { useThemePreference } from "@/lib/theme";
@@ -62,6 +62,7 @@ import {
 	ensureTokenSetFrontendModeClientReady,
 	tokenSetFrontendModeClientFactory,
 } from "@/lib/tokenSetFrontendModeClient";
+import { TokenSetFrontendModeEnvironmentProvider } from "@/lib/tokenSetFrontendModePageEnvironment";
 import { DashboardPage } from "@/routes/Dashboard";
 import { EntriesPage } from "@/routes/Entries";
 import { EntryCreatePage } from "@/routes/EntryCreate";
@@ -397,18 +398,21 @@ function TokenSetFrontendModePlaygroundRoutePage() {
 }
 
 function TokenSetFrontendCallbackRoutePage() {
-	const state = useTokenSetCallbackResume();
+	const state = useTokenSetCallbackResume({
+		describeError: ({ errorDetails }) =>
+			describeFrontendOidcModeCallbackError(errorDetails, {
+				recoveryLinks: {
+					restart_flow: TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
+				},
+				recoveryLabels: {
+					restart_flow: "Return to frontend-mode playground",
+				},
+			}),
+	});
 	const handledResolvedRef = useRef(false);
 	const failurePresentation =
-		state.status === CallbackResumeStatus.Error && state.errorDetails
-			? describeFrontendOidcModeCallbackError(state.errorDetails, {
-					recoveryLinks: {
-						restart_flow: TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
-					},
-					recoveryLabels: {
-						restart_flow: "Return to frontend-mode playground",
-					},
-				})
+		state.status === CallbackResumeStatus.Error
+			? (state.errorDetails?.presentation ?? null)
 			: null;
 
 	useEffect(() => {
@@ -518,12 +522,14 @@ export function App() {
 			<BasicAuthContextProvider config={basicAuthContextConfig}>
 				<SessionContextProvider
 					config={sessionContextConfig}
-					transport={sessionContextTransport}
-					sessionStore={sessionContextSessionStore}
+					environment={sessionContextEnvironment}
+					initialRefresh
 				>
-					<TokenSetAuthProvider clients={tokenSetClients}>
-						<RouterProvider router={router} />
-					</TokenSetAuthProvider>
+					<TokenSetFrontendModeEnvironmentProvider>
+						<TokenSetAuthProvider clients={tokenSetClients}>
+							<RouterProvider router={router} />
+						</TokenSetAuthProvider>
+					</TokenSetFrontendModeEnvironmentProvider>
 				</SessionContextProvider>
 			</BasicAuthContextProvider>
 		</QueryClientProvider>

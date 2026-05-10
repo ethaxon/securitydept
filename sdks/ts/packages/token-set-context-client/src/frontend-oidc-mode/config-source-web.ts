@@ -28,6 +28,7 @@ import {
 } from "@securitydept/client/persistence/web";
 import {
 	createWebClientEnvironment,
+	deriveClientEnvironment,
 	type FetchTransportOptions,
 } from "@securitydept/client/web";
 import {
@@ -76,7 +77,7 @@ export interface CreateFrontendOidcModeBrowserClientOptions {
 	configEndpoint: string;
 	redirectUri: string;
 	defaultPostAuthRedirectUri?: string;
-	environment?: FrontendOidcModeWebClientEnvironment;
+	environment: FrontendOidcModeWebClientEnvironment;
 	resumeReconciliation?: boolean;
 	resumeReconciliationOptions?: TokenSetResumeReconciliationOptions;
 }
@@ -151,8 +152,11 @@ export function createFrontendOidcModeWebClientEnvironment(
 export async function createFrontendOidcModeBrowserClient(
 	options: CreateFrontendOidcModeBrowserClientOptions,
 ): Promise<FrontendOidcModeBrowserClientMaterialization> {
-	const environment =
-		options.environment ?? createFrontendOidcModeWebClientEnvironment();
+	const environment = options.environment;
+	if (!environment) {
+		throw new Error(FRONTEND_OIDC_WEB_ENVIRONMENT_ERROR_MESSAGE);
+	}
+
 	const configEndpoint = new URL(options.configEndpoint, environment.origin);
 	configEndpoint.searchParams.set("redirect_uri", options.redirectUri);
 	const response = await environment.fetch(configEndpoint.toString());
@@ -186,7 +190,10 @@ export async function createFrontendOidcModeBrowserClient(
 	};
 
 	const client = attachTokenSetResumeReconciliation(
-		createFrontendOidcModeClient(parsed.value, environment.runtime),
+		createFrontendOidcModeClient(
+			parsed.value,
+			deriveClientEnvironment(environment),
+		),
 		{
 			resumeReconciliation: options.resumeReconciliation,
 			resumeReconciliationOptions: options.resumeReconciliationOptions,

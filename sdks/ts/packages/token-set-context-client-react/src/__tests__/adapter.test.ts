@@ -2,6 +2,7 @@
 
 import { createInMemoryRecordStore } from "@securitydept/client";
 import type { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { createBackendOidcModeWebClientEnvironment } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import {
 	BackendOidcModeContextProvider,
 	type BackendOidcModeContextProviderProps,
@@ -49,6 +50,37 @@ async function flushMicrotasks() {
 	});
 }
 
+function createTestEnvironment(options?: {
+	persistentStore?: ReturnType<typeof createInMemoryRecordStore>;
+	sessionStore?: ReturnType<typeof createInMemoryRecordStore>;
+}) {
+	return createBackendOidcModeWebClientEnvironment({
+		transport: {
+			async execute() {
+				return {
+					status: 500,
+					headers: {},
+					body: null,
+				};
+			},
+		},
+		scheduler: {
+			setTimeout() {
+				return {
+					cancel() {},
+				};
+			},
+		},
+		clock: {
+			now() {
+				return Date.parse("2026-01-01T00:00:00Z");
+			},
+		},
+		persistentStore: options?.persistentStore,
+		sessionStore: options?.sessionStore,
+	});
+}
+
 describe("token-set react adapter", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
@@ -77,29 +109,10 @@ describe("token-set react adapter", () => {
 
 		const providerProps: BackendOidcModeContextProviderProps = {
 			config: { baseUrl: "https://auth.example.com" },
-			transport: {
-				async execute() {
-					return {
-						status: 500,
-						headers: {},
-						body: null,
-					};
-				},
-			},
-			scheduler: {
-				setTimeout() {
-					return {
-						cancel() {},
-					};
-				},
-			},
-			clock: {
-				now() {
-					return Date.parse("2026-01-01T00:00:00Z");
-				},
-			},
-			persistentStore: createInMemoryRecordStore(),
-			sessionStore: createInMemoryRecordStore(),
+			environment: createTestEnvironment({
+				persistentStore: createInMemoryRecordStore(),
+				sessionStore: createInMemoryRecordStore(),
+			}),
 			children: createElement(Probe),
 		};
 
@@ -168,29 +181,10 @@ describe("token-set react adapter", () => {
 		const secondStore = createInMemoryRecordStore();
 		const firstProps: BackendOidcModeContextProviderProps = {
 			config: { baseUrl: "https://alpha.example.com" },
-			transport: {
-				async execute() {
-					return {
-						status: 500,
-						headers: {},
-						body: null,
-					};
-				},
-			},
-			scheduler: {
-				setTimeout() {
-					return {
-						cancel() {},
-					};
-				},
-			},
-			clock: {
-				now() {
-					return Date.parse("2026-01-01T00:00:00Z");
-				},
-			},
-			persistentStore: firstStore,
-			sessionStore: firstStore,
+			environment: createTestEnvironment({
+				persistentStore: firstStore,
+				sessionStore: firstStore,
+			}),
 			children: createElement(Probe),
 		};
 
@@ -219,8 +213,10 @@ describe("token-set react adapter", () => {
 		const secondProps: BackendOidcModeContextProviderProps = {
 			...firstProps,
 			config: { baseUrl: "https://beta.example.com" },
-			persistentStore: secondStore,
-			sessionStore: secondStore,
+			environment: createTestEnvironment({
+				persistentStore: secondStore,
+				sessionStore: secondStore,
+			}),
 		};
 
 		view.rerender(createElement(BackendOidcModeContextProvider, secondProps));
@@ -292,29 +288,10 @@ describe("token-set react adapter", () => {
 
 		const providerProps: BackendOidcModeContextProviderProps = {
 			config: { baseUrl: "https://auth.example.com" },
-			transport: {
-				async execute() {
-					return {
-						status: 500,
-						headers: {},
-						body: null,
-					};
-				},
-			},
-			scheduler: {
-				setTimeout() {
-					return {
-						cancel() {},
-					};
-				},
-			},
-			clock: {
-				now() {
-					return Date.parse("2026-01-01T00:00:00Z");
-				},
-			},
-			persistentStore: createInMemoryRecordStore(),
-			sessionStore: createInMemoryRecordStore(),
+			environment: createTestEnvironment({
+				persistentStore: createInMemoryRecordStore(),
+				sessionStore: createInMemoryRecordStore(),
+			}),
 			children: createElement(Probe),
 		};
 

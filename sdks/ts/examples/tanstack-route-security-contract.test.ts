@@ -1,7 +1,7 @@
 // TanStack React Router route-security contract evidence test
 //
-// Proves the canonical TanStack Router route-security pattern (Iteration 107),
-// aligned with the Angular Router contract from Iteration 106:
+// Proves the canonical TanStack Router route-security pattern,
+// aligned with the Angular Router contract:
 //
 //   1. Route metadata declaration: withTanStackRouteRequirements()
 //   2. Full-route composition: extractTanStackRouteRequirements() with

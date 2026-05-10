@@ -1,6 +1,6 @@
 // Multi-client lazy initialization / idle prefetch contract evidence
 //
-// Iteration 110 evidence: the shared registry core at
+// Shared registry core evidence:
 // `@securitydept/token-set-context-client/registry` codifies the
 // primary-vs-lazy client lifecycle. This test proves the contract at the
 // framework-neutral layer so Angular / React / raw-Web hosts share a

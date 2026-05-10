@@ -7,13 +7,70 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-### Changed
+## [0.3.0-beta.3]
+
+### Added
 
 - Added TypeScript SDK client-environment presets for browser page, browser worker, service worker, and browser-extension background hosts, with page capability resolution that fails fast outside real page/tab/popup documents.
+- Added `ClientEnvironmentService`, React environment-service hooks, and Angular page-environment DI bridge support for provider/injector-scoped environment ownership, async materialization, and Suspense-compatible render reads.
+- Added `SessionContextController` and `TokenSetCallbackResumeController` as framework-neutral state owners for session user-info refresh/logout and token-set callback resume orchestration.
+- Added a cross-platform `scripts/test-cli.ts kube ...` entry with Dockerode-backed Kubernetes test image/resource management, labeled SecurityDept test resources, hot/reusable/isolated Rust e2e lanes, and explicit cleanup recipes.
+
+### Changed
+
 - Split backend-OIDC `/web` helpers around Web environment, page callback bootstrap, host-injected callback capture, and worker-safe restore-only flows; basic-auth and session `/web` redirects now consume the same page-environment boundary.
+- Changed session React/Angular providers and the legacy single-client backend-OIDC React provider to environment-first composition roots, so canonical provider APIs now consume shared environment objects instead of long-lived transport/store capability bags.
+- Added a canonical Angular page-environment DI bridge in `@securitydept/client-angular` and moved shared callback failure presentation into `@securitydept/token-set-context-client/registry` so host- or mode-specific copy is injected explicitly.
+- Changed the Angular token-set callback component to use injectable current-URL and host-policy tokens, and clarified that React callback hooks plus React Query request helpers keep page URL, callback presentation, and transport overrides at the page/request boundary rather than owning auth flow state.
+- Changed React and Angular session/token-set callback adapters into leaf bridges over core controllers; session initial probing is now explicit via `initialRefresh` or host-owned refresh calls.
+- Changed token-set OIDC route-login surfaces to converge on the shared `OidcRedirectLoginClient.loginWithRedirect({ environment, postAuthRedirectUri })` contract across frontend OIDC, backend OIDC web clients, and Angular route helpers.
+- Changed the root `justfile` into topic imports under `justfiles/`, preserving existing recipe names while keeping complex cross-platform test behavior in TypeScript CLI modules.
 - Consolidated Rust test cache scopes into shared lanes so PRs, `main`, `release`, and tag-driven flows reuse bounded cache namespaces instead of per-branch or per-PR cache keys.
 - Updated the release automation documentation to describe the new cache-lane model and the matching read-write / read-only ownership split.
 - Kept the stable-release docs aligned with the current release line and removed reader-facing beta anchors from user-facing entry pages.
+- Bumped release-managed Rust crates, TypeScript packages, apps, lockfiles, and shared metadata for `0.3.0-beta.3`.
+
+### Removed
+
+- Removed the broken `act-js` local workflow runner dependency path; local workflow simulation currently supports validation and dry-run/package/build behavior while the replacement runner is pending.
+
+### Fixed
+
+- Fixed Real-IP Docker/Kubernetes provider test cleanup and reuse behavior so SecurityDept-owned containers, networks, volumes, and images are labeled or name-prefixed and can be cleaned without targeting unrelated local Docker resources.
+- Fixed Kubernetes provider readiness behavior for reusable kind/k3d loops by waiting through host-side Kubernetes checks and default ServiceAccount availability before creating provider test Pods.
+
+## [0.3.0-beta.2]
+
+### Added
+
+- Added validator-aware access-token substrate config resolution with `resolve_all_with_validator(...)`, validation errors, noop validator, and validator composition.
+
+### Changed
+
+- Split access-token substrate config into `config/mod.rs` and `config/validator.rs`, matching the other Rust host config modules.
+- Updated auth-context docs to include access-token substrate in the Rust host config resolution model.
+
+## [0.3.0-beta.1]
+
+### Added
+
+- Added `SecretString` for redacted Rust config secrets, with explicit raw exposure and `config-schema` password/write-only hints.
+- Added validator-aware Rust host config resolution for token-set OIDC modes, Basic Auth context, and session context, including host-supplied fixed path validators and validator composition.
+- Added `redact`/`schemars`-backed config-schema coverage for Rust host config crates, including OIDC client and OAuth resource-server configs.
+- Added secret-safe `ResourceTokenPrincipal` projection for verified resource tokens.
+
+### Changed
+
+- Bumped release-managed Rust crates, TypeScript packages, apps, lockfiles, and shared metadata for `0.3.0-beta.1`.
+- Refactored Basic Auth and session context Rust config into the same `ConfigSource -> ResolvedConfig -> Service/Context` model used by token-set host config.
+- Split host config validators into dedicated modules and updated the reference server to construct services from resolved configs plus explicit validators.
+- Migrated OIDC/resource-server client secrets to `SecretString` and expanded related config/schema tests.
+- Updated Web UI e2e lifecycle cleanup, Rust test cache lane docs, and user-facing docs for the `0.3.x` release line.
+
+### Fixed
+
+- Fixed OAuth resource-server JWE config schema compilation.
+- Fixed OIDC config validation APIs so abstract config sources do not expose concrete fixed-redirect helpers or redirect override state.
 
 ## [0.2.0]
 

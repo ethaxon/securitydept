@@ -31,6 +31,6 @@ export interface SessionContextClientConfig {
 	userInfoPath?: string;
 	/** Name of the query parameter for post-auth redirect (default: "post_auth_redirect_uri"). */
 	postAuthRedirectParam?: string;
-	/** Optional key used with `runtime.sessionStore` for pending login redirect state. */
+	/** Optional key used with `environment.sessionStore` for pending login redirect state. */
 	loginRedirectStateKey?: string;
 }
