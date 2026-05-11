@@ -74,8 +74,31 @@ fn unique_name(prefix: &str) -> String {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_millis();
-    format!("{prefix}{millis}")
+        .as_millis() as u64;
+    format!("{prefix}{}", base36(millis))
+}
+
+fn base36(mut value: u64) -> String {
+    const DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    if value == 0 {
+        return "0".to_string();
+    }
+
+    let mut encoded = Vec::new();
+    while value > 0 {
+        encoded.push(DIGITS[(value % 36) as usize] as char);
+        value /= 36;
+    }
+    encoded.iter().rev().collect()
+}
+
+#[test]
+fn k3d_cluster_name_stays_within_provider_limit() {
+    let name = unique_name(TEST_K3D_CLUSTER_PREFIX);
+    assert!(
+        name.len() <= 32,
+        "k3d cluster name '{name}' must stay within the 32 character provider limit"
+    );
 }
 
 fn reserve_local_port() -> u16 {
