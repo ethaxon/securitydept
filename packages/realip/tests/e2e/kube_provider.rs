@@ -4,6 +4,7 @@ use std::{
     net::TcpListener,
     path::{Path, PathBuf},
     process::Command,
+    sync::Mutex,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -44,6 +45,8 @@ const KEEP_CLUSTERS_RUNNING_ENV: &str = "SECURITYDEPT_REALIP_E2E_KEEP_CLUSTERS_R
 const REUSE_CLUSTERS_ENV: &str = "SECURITYDEPT_REALIP_E2E_REUSE_CLUSTERS";
 const REUSABLE_KIND_CLUSTER_NAME: &str = "securitydept-test-kind-reuse";
 const REUSABLE_K3D_CLUSTER_NAME: &str = "securitydept-test-k3d-reuse";
+
+static KUBE_TEST_IMAGE_PREPARE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Copy)]
 enum ClusterFlavor {
@@ -124,6 +127,35 @@ fn docker_stdout(args: &[&str]) -> anyhow::Result<String> {
     String::from_utf8(output.stdout).map_err(anyhow::Error::from)
 }
 
+fn repository_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("realip crate should be under packages/realip")
+        .to_path_buf()
+}
+
+fn image_exists(image_ref: &str) -> bool {
+    docker_stdout(&["image", "inspect", image_ref]).is_ok()
+}
+
+fn ensure_kube_test_images_built() -> anyhow::Result<()> {
+    let repo_root = repository_root();
+    let status = Command::new("node")
+        .args(["scripts/test-cli.ts", "kube", "ensure-helper"])
+        .current_dir(&repo_root)
+        .status()?;
+    if !status.success() {
+        anyhow::bail!(
+            "kube test image preparation failed with status {}. Run `node scripts/test-cli.ts \
+             kube ensure-helper` from '{}' for details.",
+            status,
+            repo_root.display()
+        );
+    }
+    Ok(())
+}
+
 fn ensure_helper_image_ready() -> anyhow::Result<()> {
     let server_os = docker_stdout(&["version", "--format", "{{.Server.Os}}"])?;
     if server_os.trim() != "linux" {
@@ -135,22 +167,21 @@ fn ensure_helper_image_ready() -> anyhow::Result<()> {
     }
 
     let image_ref = helper_image_ref();
-    if let Err(error) = docker_stdout(&["image", "inspect", &image_ref]) {
-        anyhow::bail!(
-            "required helper image '{}' is missing. Build it first with `just \
-             build-kube-test-helper`. {}",
-            image_ref,
-            error
-        );
+    if !image_exists(&image_ref) || !image_exists(KIND_NODE_IMAGE) || !image_exists(K3S_IMAGE) {
+        let _guard = KUBE_TEST_IMAGE_PREPARE_LOCK
+            .lock()
+            .expect("kube test image preparation lock should not be poisoned");
+        if !image_exists(&image_ref) || !image_exists(KIND_NODE_IMAGE) || !image_exists(K3S_IMAGE) {
+            ensure_kube_test_images_built()?;
+        }
     }
 
-    for image_ref in [KIND_NODE_IMAGE, K3S_IMAGE] {
-        if let Err(error) = docker_stdout(&["image", "inspect", image_ref]) {
+    for image_ref in [image_ref.as_str(), KIND_NODE_IMAGE, K3S_IMAGE] {
+        if !image_exists(image_ref) {
             anyhow::bail!(
-                "required runtime image '{}' is missing. Build it first with `just \
-                 build-kube-test-helper`. {}",
-                image_ref,
-                error
+                "required kube test image '{}' is missing after automatic preparation. Run `node \
+                 scripts/test-cli.ts kube ensure-helper` from the repository root for details.",
+                image_ref
             );
         }
     }

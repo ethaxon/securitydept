@@ -216,16 +216,36 @@ jobs:
             needs.preflight.outputs.cache_scope }}-debug
           cache-mode: read-only
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+      - name: Restore kube test image cache
+        id: kube-test-image-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/securitydept-kube-test-images.tar
+          key: kube-test-images-${{ runner.os }}-${{ hashFiles('packages/realip/tests/fixtures/kube-helper/Dockerfile', 'packages/realip/tests/e2e/kube_provider.rs', 'scripts/lib/kube-test-resources.ts') }}
 
-      - name: Prepare kube test helper for e2e tests
-        run: |
-          docker buildx build --platform=linux/amd64 --load -t securitydept-realip-kube-integration-test-helper:v1 -f packages/realip/tests/fixtures/kube-helper/Dockerfile --cache-from=type=gha,scope=kube-test-helper-linux-amd64 --cache-to=type=gha,mode=max,scope=kube-test-helper-linux-amd64 packages/realip/tests/fixtures/kube-helper
+      - name: Load cached kube test images
+        if: steps.kube-test-image-cache.outputs.cache-hit == 'true'
+        run: docker load --input /tmp/securitydept-kube-test-images.tar
 
       - name: Run Rust e2e tests
         run: |
           mise exec --command "cargo test --workspace --test e2e --all-features"
+
+      - name: Export kube test image cache
+        if: steps.kube-test-image-cache.outputs.cache-hit != 'true'
+        run: |
+          docker save \
+            --output /tmp/securitydept-kube-test-images.tar \
+            securitydept-test/kindest-node:v1.31.2 \
+            securitydept-test/rancher-k3s:v1.31.4-k3s1 \
+            securitydept-realip-kube-integration-test-helper:v1
+
+      - name: Save kube test image cache
+        if: steps.kube-test-image-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/securitydept-kube-test-images.tar
+          key: ${{ steps.kube-test-image-cache.outputs.cache-primary-key }}
 
   ts-tests-e2e:
     if: needs.preflight.outputs.run_tests == 'true'

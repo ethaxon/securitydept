@@ -13,6 +13,15 @@ const configuredProjects = getConfiguredProjects({
 	includeBlocked: process.env.PLAYWRIGHT_INCLUDE_BLOCKED_PROJECTS === "1",
 });
 
+if (configuredProjects.length === 0) {
+	throw new Error(
+		[
+			"WebUI e2e tests require at least one available Playwright browser project, but none were detected.",
+			"Run `just setup-playwright` to install Playwright-managed browsers, or set SECURITYDEPT_PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH / SECURITYDEPT_PLAYWRIGHT_FIREFOX_EXECUTABLE_PATH / SECURITYDEPT_PLAYWRIGHT_WEBKIT_EXECUTABLE_PATH to a valid browser executable.",
+		].join(" "),
+	);
+}
+
 export default defineConfig({
 	testDir: "./e2e",
 	fullyParallel: false,

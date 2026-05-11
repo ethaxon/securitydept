@@ -22,13 +22,13 @@ unittest-rs:
 integration-rs:
     cargo test --workspace --test integration --all-features
 
-e2e-rs: ensure-kube-test-helper
+e2e-rs:
     node scripts/test-cli.ts kube run-e2e-rs
 
-e2e-rs-hot: ensure-kube-test-helper
+e2e-rs-hot:
     node scripts/test-cli.ts kube run-e2e-rs --keep-clusters-running
 
-e2e-rs-isolated: ensure-kube-test-helper
+e2e-rs-isolated:
     node scripts/test-cli.ts kube run-e2e-rs --reuse-clusters=false
 
 test-all-rs: unittest-rs integration-rs e2e-rs

@@ -41,6 +41,7 @@ let tokenSetFrontendModePersistentStorageKey: string | null = null;
 let tokenSetFrontendModeCrossTabSync: ReturnType<
 	typeof createCrossTabSync
 > | null = null;
+let lastObservedFrontendModeAccessToken = false;
 
 export const tokenSetFrontendModeTraceTimeline = createTraceTimelineStore();
 
@@ -79,6 +80,41 @@ function recordFrontendHostTrace(
 	});
 }
 
+function updateFrontendModeCrossTabStatus(
+	lastEvent: FrontendModeCrossTabStatus["lastEvent"],
+	hasAccessToken: boolean,
+): void {
+	const nextCount =
+		tokenSetFrontendModeCrossTabStatusSignal.get().syncCount + 1;
+	tokenSetFrontendModeCrossTabStatusSignal.set({
+		syncCount: nextCount,
+		lastEvent,
+		hasAccessToken,
+		updatedAt: Date.now(),
+	});
+	recordFrontendHostTrace(
+		lastEvent === "hydrated"
+			? FrontendHostTraceEventType.CrossTabHydrated
+			: FrontendHostTraceEventType.CrossTabCleared,
+		{
+			hasAccessToken,
+			syncCount: nextCount,
+		},
+	);
+}
+
+function reconcileFrontendModeCrossTabStatus(
+	snapshot: AuthSnapshot | null,
+): void {
+	const hasAccessToken = Boolean(snapshot?.tokens.accessToken);
+	if (hasAccessToken && !lastObservedFrontendModeAccessToken) {
+		updateFrontendModeCrossTabStatus("hydrated", true);
+	} else if (!hasAccessToken && lastObservedFrontendModeAccessToken) {
+		updateFrontendModeCrossTabStatus("cleared", false);
+	}
+	lastObservedFrontendModeAccessToken = hasAccessToken;
+}
+
 function buildAbsoluteUrl(path: string): string {
 	return new URL(path, window.location.origin).toString();
 }
@@ -97,35 +133,15 @@ function ensureTokenSetFrontendModeCrossTabSync(
 		key: tokenSetFrontendModePersistentStorageKey,
 		onSync: ({ newValue }) => {
 			void (async () => {
-				const nextCount =
-					tokenSetFrontendModeCrossTabStatusSignal.get().syncCount + 1;
-
 				if (newValue === null) {
 					await client.clearState({ clearPersisted: false });
-					tokenSetFrontendModeCrossTabStatusSignal.set({
-						syncCount: nextCount,
-						lastEvent: "cleared",
-						hasAccessToken: false,
-						updatedAt: Date.now(),
-					});
-					recordFrontendHostTrace(FrontendHostTraceEventType.CrossTabCleared, {
-						hasAccessToken: false,
-						syncCount: nextCount,
-					});
+					lastObservedFrontendModeAccessToken = false;
+					updateFrontendModeCrossTabStatus("cleared", false);
 					return;
 				}
 
 				const snapshot = await client.restorePersistedState();
-				tokenSetFrontendModeCrossTabStatusSignal.set({
-					syncCount: nextCount,
-					lastEvent: "hydrated",
-					hasAccessToken: Boolean(snapshot?.tokens.accessToken),
-					updatedAt: Date.now(),
-				});
-				recordFrontendHostTrace(FrontendHostTraceEventType.CrossTabHydrated, {
-					hasAccessToken: Boolean(snapshot?.tokens.accessToken),
-					syncCount: nextCount,
-				});
+				reconcileFrontendModeCrossTabStatus(snapshot);
 			})();
 		},
 	});
@@ -157,7 +173,9 @@ async function ensureTokenSetFrontendModeClientSubscribed(): Promise<FrontendOid
 	if (!tokenSetFrontendModeStateUnsubscribe) {
 		tokenSetFrontendModeStateSignal.set(client.state.get());
 		tokenSetFrontendModeStateUnsubscribe = client.state.subscribe(() => {
-			tokenSetFrontendModeStateSignal.set(client.state.get());
+			const snapshot = client.state.get();
+			tokenSetFrontendModeStateSignal.set(snapshot);
+			reconcileFrontendModeCrossTabStatus(snapshot);
 		});
 	}
 
@@ -200,6 +218,7 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 			hasAccessToken: false,
 			updatedAt: null,
 		});
+		lastObservedFrontendModeAccessToken = false;
 		const clientPromise = tokenSetFrontendModeClientPromise;
 		tokenSetFrontendModeClientPromise = null;
 		tokenSetFrontendModePersistentStorageKey = null;
@@ -211,6 +230,7 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
 		const snapshot = await client.restorePersistedState();
 		tokenSetFrontendModeStateSignal.set(client.state.get());
+		reconcileFrontendModeCrossTabStatus(snapshot);
 		return snapshot;
 	},
 	async handleCallback(callbackUrl) {
@@ -251,6 +271,7 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
 		const snapshot = await client.refresh();
 		tokenSetFrontendModeStateSignal.set(client.state.get());
+		reconcileFrontendModeCrossTabStatus(snapshot);
 		return snapshot;
 	},
 	async clearState() {
@@ -270,7 +291,10 @@ export async function getTokenSetFrontendModeClient(): Promise<FrontendOidcModeC
 
 export async function ensureTokenSetFrontendModeClientReady(): Promise<AuthSnapshot | null> {
 	const client = await ensureTokenSetFrontendModeClientSubscribed();
-	return await client.restorePersistedState();
+	const snapshot = await client.restorePersistedState();
+	tokenSetFrontendModeStateSignal.set(client.state.get());
+	reconcileFrontendModeCrossTabStatus(snapshot);
+	return snapshot;
 }
 
 export async function startTokenSetFrontendModeLogin(
@@ -297,12 +321,7 @@ export async function startTokenSetFrontendModePopupLogin(
 	const snapshot = client.state.get();
 	tokenSetFrontendModeStateSignal.set(snapshot);
 	if (snapshot?.tokens.accessToken) {
-		tokenSetFrontendModeCrossTabStatusSignal.set({
-			syncCount: tokenSetFrontendModeCrossTabStatusSignal.get().syncCount,
-			lastEvent: "hydrated",
-			hasAccessToken: true,
-			updatedAt: Date.now(),
-		});
+		reconcileFrontendModeCrossTabStatus(snapshot);
 	}
 }
 
