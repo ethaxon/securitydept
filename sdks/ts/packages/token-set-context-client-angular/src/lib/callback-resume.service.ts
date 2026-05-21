@@ -5,10 +5,8 @@ import {
 	signal,
 	type WritableSignal,
 } from "@angular/core";
-import {
-	bridgeToAngularSignal,
-	signalToObservable,
-} from "@securitydept/client-angular";
+import { toRxObservable } from "@securitydept/client/rx";
+import { bridgeToAngularSignal } from "@securitydept/client-angular";
 import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import {
 	TokenSetCallbackResumeController,
@@ -17,8 +15,8 @@ import {
 	type TokenSetCallbackResumeState,
 } from "@securitydept/token-set-context-client/registry";
 import type { Observable } from "rxjs";
+import { TokenSetAuthRegistry } from "./token-set-auth.registry";
 import type { TokenSetAuthService } from "./token-set-auth.service";
-import { TokenSetAuthRegistry } from "./token-set-auth-registry";
 
 /**
  * Angular-native service for handling OIDC redirect callbacks,
@@ -54,9 +52,9 @@ export class CallbackResumeService {
 			getCallbackClient: (service) => service.client,
 		});
 	readonly state: WritableSignal<TokenSetCallbackResumeState> = signal(
-		this.controller.getState(),
+		this.controller.state.get(),
 	);
-	readonly state$: Observable<TokenSetCallbackResumeState> = signalToObservable(
+	readonly state$: Observable<TokenSetCallbackResumeState> = toRxObservable(
 		this.controller.state,
 	);
 
@@ -82,10 +80,6 @@ export class CallbackResumeService {
 	 */
 	isCallback(url: string): boolean {
 		return this.controller.isCallback(url);
-	}
-
-	getState(): TokenSetCallbackResumeState {
-		return this.controller.getState();
 	}
 
 	resume(

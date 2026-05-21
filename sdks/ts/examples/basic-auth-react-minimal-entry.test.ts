@@ -1,20 +1,19 @@
 // @vitest-environment jsdom
 
-// Basic-auth React minimal entry — standalone adopter-facing evidence
-//
-// This test proves the standalone React entry path for basic-auth-context,
-// exercising the canonical import surface from
-// @securitydept/basic-auth-context-client/react.
-//
-// An adopter reading this file should understand "how do I wire up
-// basic-auth zone awareness in React?" in one glance.
-
-import type { BasicAuthContextProviderProps } from "@securitydept/basic-auth-context-client-react";
+import type {
+	BasicAuthContextClient,
+	BasicAuthContextClientConfig,
+} from "@securitydept/basic-auth-context-client";
 import {
-	BasicAuthContextProvider,
-	useBasicAuthContext,
+	BASIC_AUTH_CONTEXT_CLIENT,
+	createBasicAuthContextClient,
+	provideBasicAuthContextClient,
 } from "@securitydept/basic-auth-context-client-react";
-import { act, createElement, type ReactElement, type ReactNode } from "react";
+import {
+	SecuritydeptProvider,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
+import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -38,33 +37,20 @@ function render(element: ReactElement) {
 	};
 }
 
-function ProviderEntry(
-	props: Omit<BasicAuthContextProviderProps, "children"> & {
-		children?: ReactNode;
-	},
-) {
-	return createElement(
-		BasicAuthContextProvider,
-		props as unknown as BasicAuthContextProviderProps,
-	);
+function createClient(
+	config: BasicAuthContextClientConfig,
+): BasicAuthContextClient {
+	return createBasicAuthContextClient(config);
 }
 
 describe("basic-auth react minimal entry", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
-		delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
-			.IS_REACT_ACT_ENVIRONMENT;
 	});
 
-	it("shows the standalone React entry path: provider wiring → hook → zone-aware contract", () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-
-		// 1. A consumer component that uses the React hook to access the
-		//    zone-aware client and render a zone check result.
+	it("shows the minimal injector path for consuming zone-aware basic-auth state in React", () => {
 		function ZoneStatus() {
-			const client = useBasicAuthContext();
+			const client = useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT);
 			const zone = client.zoneForPath("/api/resource");
 			return createElement(
 				"output",
@@ -73,33 +59,30 @@ describe("basic-auth react minimal entry", () => {
 			);
 		}
 
-		// 2. Wire up the provider with a minimal config.
 		const view = render(
 			createElement(
-				ProviderEntry,
+				SecuritydeptProvider,
 				{
-					config: {
-						baseUrl: "https://auth.example.com",
-						zones: [{ zonePrefix: "/api" }],
-					},
-				} satisfies Omit<BasicAuthContextProviderProps, "children">,
+					providers: [
+						provideBasicAuthContextClient(
+							createClient({
+								baseUrl: "https://auth.example.com",
+								zones: [{ zonePrefix: "/api" }],
+							}),
+						),
+					],
+				},
 				createElement(ZoneStatus),
 			),
 		);
 
-		// 3. Verify the consumer can read zone-aware state via the hook.
 		expect(view.container.textContent).toBe("zone:/api");
-
 		view.unmount();
 	});
 
-	it("shows the handleUnauthorized contract usage from React context", () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-
+	it("shows the handleUnauthorized contract through the injected client", () => {
 		function AuthGuard() {
-			const client = useBasicAuthContext();
+			const client = useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT);
 			const result = client.handleUnauthorized("/api/data", 401);
 			return createElement(
 				"output",
@@ -110,23 +93,25 @@ describe("basic-auth react minimal entry", () => {
 
 		const view = render(
 			createElement(
-				ProviderEntry,
+				SecuritydeptProvider,
 				{
-					config: {
-						baseUrl: "https://auth.example.com",
-						zones: [{ zonePrefix: "/api" }],
-					},
-				} satisfies Omit<BasicAuthContextProviderProps, "children">,
+					providers: [
+						provideBasicAuthContextClient(
+							createClient({
+								baseUrl: "https://auth.example.com",
+								zones: [{ zonePrefix: "/api" }],
+							}),
+						),
+					],
+				},
 				createElement(AuthGuard),
 			),
 		);
 
-		// The 401 for /api/data should produce a redirect to the zone's login URL.
 		expect(view.container.textContent).toContain("redirect:");
 		expect(view.container.textContent).toContain(
 			"https://auth.example.com/api/login",
 		);
-
 		view.unmount();
 	});
 });

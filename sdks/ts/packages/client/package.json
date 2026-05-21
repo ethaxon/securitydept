@@ -1,6 +1,6 @@
 {
 	"name": "@securitydept/client",
-	"version": "0.3.0-beta.3",
+	"version": "0.3.0-beta.4",
 	"description": "Client of the SecurityDept TypeScript SDK, a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps.",
 	"author": "Zhou Yeheng <root@aitiotekt.com>",
 	"license": "MIT",
@@ -53,6 +53,16 @@
 			"types": "./dist/events/index.d.mts",
 			"import": "./dist/events/index.mjs"
 		},
+		"./injection": {
+			"monorepo-tsc": "./src/injection/index.ts",
+			"types": "./dist/injection/index.d.mts",
+			"import": "./dist/injection/index.mjs"
+		},
+		"./rx": {
+			"monorepo-tsc": "./src/rx/index.ts",
+			"types": "./dist/rx/index.d.mts",
+			"import": "./dist/rx/index.mjs"
+		},
 		"./auth-coordination": {
 			"monorepo-tsc": "./src/auth-coordination/index.ts",
 			"types": "./dist/auth-coordination/index.d.mts",
@@ -73,6 +83,7 @@
 	},
 	"dependencies": {
 		"@standard-schema/spec": "^1.0.0",
+		"injection-js": "^2.6.1",
 		"rxjs": "^7.8.2"
 	}
 }

@@ -3,11 +3,16 @@
 import { createInMemoryRecordStore } from "@securitydept/client";
 import { createWebClientEnvironment } from "@securitydept/client/web";
 import {
-	SessionContextProvider,
-	type SessionContextProviderProps,
-	useSessionPrincipal,
+	SecuritydeptProvider,
+	useReadableSignal,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
+import {
+	createSessionContextController,
+	provideSessionContextController,
+	SESSION_CONTEXT_CONTROLLER,
 } from "@securitydept/session-context-client-react";
-import { act, createElement, type ReactElement, type ReactNode } from "react";
+import { act, createElement, type ReactElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -30,18 +35,6 @@ function render(element: ReactElement) {
 		},
 	};
 }
-
-function SessionProviderEntry(
-	props: Omit<SessionContextProviderProps, "children"> & {
-		children?: ReactNode;
-	},
-) {
-	return createElement(
-		SessionContextProvider,
-		props as unknown as SessionContextProviderProps,
-	);
-}
-
 describe("session-context react minimal entry", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
@@ -63,25 +56,32 @@ describe("session-context react minimal entry", () => {
 				},
 			})),
 		};
-
-		function SessionBadge() {
-			const principal = useSessionPrincipal();
-			return createElement("output", null, principal?.displayName ?? "guest");
-		}
-
-		const providerProps = {
+		const controller = createSessionContextController({
 			config: { baseUrl: "https://auth.example.com" },
 			environment: createWebClientEnvironment({
 				transport,
 				sessionStore: createInMemoryRecordStore(),
 			}),
-			initialRefresh: true,
-		} satisfies Omit<SessionContextProviderProps, "children">;
+		});
+
+		function SessionBadge() {
+			const sessionController = useSecuritydeptContext().get(
+				SESSION_CONTEXT_CONTROLLER,
+			);
+			const state = useReadableSignal(sessionController.state);
+
+			useEffect(() => {
+				void sessionController.refresh();
+			}, [sessionController]);
+
+			const principal = state.session?.principal ?? null;
+			return createElement("output", null, principal?.displayName ?? "guest");
+		}
 
 		const view = render(
 			createElement(
-				SessionProviderEntry,
-				providerProps,
+				SecuritydeptProvider,
+				{ providers: provideSessionContextController(controller) },
 				createElement(SessionBadge),
 			),
 		);

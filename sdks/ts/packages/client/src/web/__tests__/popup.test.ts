@@ -11,7 +11,7 @@ import {
 	PopupErrorCode,
 	relayPopupCallback,
 	waitForPopupRelay,
-} from "../popup";
+} from "../popup/popup";
 
 describe("popup shared infrastructure", () => {
 	describe("computePopupFeatures", () => {

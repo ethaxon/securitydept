@@ -5,8 +5,8 @@ import {
 	isAccessTokenUsable,
 	shouldRefreshAccessToken,
 	TokenFreshnessState,
-} from "../token-ops";
-import type { AuthSnapshot } from "../types";
+} from "../token/token-ops";
+import type { AuthSnapshot } from "../token/types";
 
 const NOW = Date.parse("2026-01-01T00:00:00Z");
 const OPTIONS = {

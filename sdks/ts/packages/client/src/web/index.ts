@@ -1,14 +1,9 @@
-export type { FetchTransportOptions } from "../transport/fetch-transport";
-export {
-	createFetchTransport,
-	FetchTransportRedirectKind,
-} from "../transport/fetch-transport";
-export type { AbortSignalBridge } from "./cancellation";
+export type { AbortSignalBridge } from "./cancellation/abort-signal";
 export {
 	createAbortSignalBridge,
 	createCancellationTokenFromAbortSignal,
 	normalizeAbortError,
-} from "./cancellation";
+} from "./cancellation/abort-signal";
 // --- Web client environment presets ---
 export type {
 	ClientEnvironment,
@@ -21,7 +16,7 @@ export type {
 	PageLocationLike,
 	RequirePageClientEnvironmentOptions,
 	WebClientEnvironment,
-} from "./client-environment";
+} from "./environment/client-environment";
 export {
 	assertPageLocationCapability,
 	assertPageLocationHistoryCapability,
@@ -41,22 +36,17 @@ export {
 	requireDefaultPageLocationCapability,
 	requireDefaultPageLocationHistoryCapability,
 	requirePageClientEnvironment,
-} from "./client-environment";
-// --- Cross-tab state sync ---
-export type {
-	CreateCrossTabSyncOptions,
-	CrossTabSync,
-	CrossTabSyncCallback,
-} from "./cross-tab-sync";
-export { createCrossTabSync } from "./cross-tab-sync";
-export type { ClientEnvironmentServiceOptions } from "./environment-service";
-export { ClientEnvironmentService } from "./environment-service";
+} from "./environment/client-environment";
+export type { ClientEnvironmentServiceOptions } from "./environment/environment-service";
+export { ClientEnvironmentService } from "./environment/environment-service";
 // --- Browser input adapters ---
 export type {
 	FromAbortSignalOptions,
 	FromStorageEventOptions,
-} from "./input-sources";
-export { fromAbortSignal, fromStorageEvent } from "./input-sources";
+} from "./events/input-sources";
+export { fromAbortSignal, fromStorageEvent } from "./events/input-sources";
+export type { FromVisibilityChangeOptions } from "./events/visibility";
+export { fromVisibilityChange, VisibilityState } from "./events/visibility";
 // --- Visibility lifecycle hardening ---
 export type {
 	CreatePageResumeReconcilerOptions,
@@ -65,11 +55,17 @@ export type {
 	PageResumeEvent,
 	PageResumeReconciler,
 	PageResumeWindowTarget,
-} from "./page-resume-reconciler";
+} from "./lifecycle/page-resume-reconciler";
 export {
 	createPageResumeReconciler,
 	PageResumeTriggerKind,
-} from "./page-resume-reconciler";
+} from "./lifecycle/page-resume-reconciler";
+export type {
+	CreateVisibilityReconcilerOptions,
+	ReconcileCallback,
+	VisibilityReconciler,
+} from "./lifecycle/visibility-reconciler";
+export { createVisibilityReconciler } from "./lifecycle/visibility-reconciler";
 // --- Popup shared infrastructure ---
 export type {
 	PopupFeaturesOptions,
@@ -77,19 +73,24 @@ export type {
 	PopupWindowHandle,
 	RelayPopupCallbackOptions,
 	WaitForPopupRelayOptions,
-} from "./popup";
+} from "./popup/popup";
 export {
 	computePopupFeatures,
 	openPopupWindow,
 	PopupErrorCode,
 	relayPopupCallback,
 	waitForPopupRelay,
-} from "./popup";
-export type { FromVisibilityChangeOptions } from "./visibility";
-export { fromVisibilityChange, VisibilityState } from "./visibility";
+} from "./popup/popup";
+// --- Cross-tab state sync ---
 export type {
-	CreateVisibilityReconcilerOptions,
-	ReconcileCallback,
-	VisibilityReconciler,
-} from "./visibility-reconciler";
-export { createVisibilityReconciler } from "./visibility-reconciler";
+	CreateCrossTabSyncOptions,
+	CrossTabSync,
+	CrossTabSyncCallback,
+} from "./sync/cross-tab-sync";
+export { createCrossTabSync } from "./sync/cross-tab-sync";
+export type { FetchTransportOptions } from "./transport/fetch-transport";
+export {
+	createFetchTransport,
+	FetchTransportRedirectKind,
+} from "./transport/fetch-transport";
+export { isLoopbackHttpUrl, transformScriptForBrowser } from "./utils/helpers";

@@ -4,7 +4,7 @@ import {
 	parseBackendOidcModeCallbackFragment,
 	parseBackendOidcModeRefreshFragment,
 	refreshReturnsToTokenDelta,
-} from "../parsers";
+} from "../contracts/parsers";
 
 describe("parseBackendOidcModeCallbackFragment", () => {
 	it("should parse a full callback fragment", () => {

@@ -4,7 +4,7 @@
 // Tests for fromVisibilityChange adapter.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fromVisibilityChange, VisibilityState } from "../visibility";
+import { fromVisibilityChange, VisibilityState } from "../events/visibility";
 
 describe("fromVisibilityChange", () => {
 	afterEach(() => {

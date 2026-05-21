@@ -4,8 +4,8 @@ import {
 	attachTokenSetResumeReconciliation,
 	createTokenSetResumeReconciler,
 	shouldReconcileTokenSetSnapshot,
-} from "../resume-reconciliation";
-import type { AuthSnapshot } from "../types";
+} from "../state/resume-reconciliation";
+import type { AuthSnapshot } from "../token/types";
 
 function createSnapshot(options: {
 	accessTokenExpiresAt: number;

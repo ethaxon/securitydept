@@ -1,188 +1,70 @@
-// Session Context Client — React adapter
+// Session Context Client — injector tokens and provider factories
 //
 // Canonical import path:
 //   import { ... } from "@securitydept/session-context-client-react"
 //
-// Provides React context / hooks for integrating SessionContextClient in a
-// React application.  The core client lives in @securitydept/session-context-client;
-// this package supplies the React-specific binding layer only.
+// Provides injector tokens and plain factories for integrating
+// SessionContextClient and SessionContextController. React trees compose
+// these through SecuritydeptProvider; no domain-specific React Context is
+// created here.
 //
 // Stability: provisional (React adapter)
 
 import type { WebClientEnvironment } from "@securitydept/client";
+import {
+	SecuritydeptInjectionToken,
+	type SecuritydeptProvider,
+} from "@securitydept/client/injection";
 import type {
 	SessionContextClientConfig,
-	SessionContextControllerState,
 	SessionInfo,
 } from "@securitydept/session-context-client";
 import {
 	SessionContextClient,
 	SessionContextController,
-	SessionContextControllerStatus,
 } from "@securitydept/session-context-client";
-import {
-	createContext,
-	type ReactNode,
-	useCallback,
-	useContext,
-	useEffect,
-	useMemo,
-	useSyncExternalStore,
-} from "react";
 
-export type {
-	SessionContextClientConfig,
-	SessionContextControllerState,
-	SessionInfo,
-};
+export type { SessionContextClientConfig, SessionInfo };
 export { SessionContextClient, SessionContextController };
 
-/** Value exposed by the session context React provider. */
-export interface SessionContextValue {
-	/** The underlying SessionContextClient instance. */
-	client: SessionContextClient;
-	/** Current session info, or null if unauthenticated / not yet loaded. */
-	session: SessionInfo | null;
-	/** Whether the initial session probe is in progress. */
-	loading: boolean;
-	/** Full framework-neutral controller state. */
-	state: SessionContextControllerState;
-	/** Trigger a re-fetch of the session info. */
-	refresh: () => Promise<SessionInfo | null>;
-	/** Persist the intended post-auth redirect. */
-	rememberPostAuthRedirect: (postAuthRedirectUri: string) => Promise<void>;
-	/** Clear any pending post-auth redirect. */
-	clearPostAuthRedirect: () => Promise<void>;
-	/** Resolve the current login URL from any pending redirect intent. */
-	resolveLoginUrl: () => Promise<string>;
-	/** Execute logout through the configured transport and clear local redirect intent. */
-	logout: () => Promise<void>;
+export const SESSION_CONTEXT_CLIENT =
+	new SecuritydeptInjectionToken<SessionContextClient>(
+		"SESSION_CONTEXT_CLIENT",
+	);
+
+export const SESSION_CONTEXT_CONTROLLER =
+	new SecuritydeptInjectionToken<SessionContextController>(
+		"SESSION_CONTEXT_CONTROLLER",
+	);
+
+export interface CreateSessionContextControllerOptions {
+	config: SessionContextClientConfig;
+	environment: WebClientEnvironment;
 }
 
-interface SessionControllerContextValue {
-	controller: SessionContextController;
-	initialRefresh: boolean;
-}
-
-const SessionControllerContext =
-	createContext<SessionControllerContextValue | null>(null);
-
-export interface SessionContextProviderProps {
-	/** Auth-context config only (baseUrl and path policy). */
-	config?: SessionContextClientConfig;
-	/** Framework composition-root environment for transport and session state. */
-	environment?: WebClientEnvironment;
-	/** Host-created framework-neutral controller. */
-	controller?: SessionContextController;
-	/** Explicitly start an initial session probe from the adapter. */
-	initialRefresh?: boolean;
-	/** React host glue only. */
-	children: ReactNode;
-}
-
-export function SessionContextProvider({
+export function createSessionContextController({
 	config,
 	environment,
-	controller,
-	initialRefresh = false,
-	children,
-}: SessionContextProviderProps) {
-	const resolvedController = useMemo(() => {
-		if (controller) {
-			return controller;
-		}
-		if (!config || !environment) {
-			throw new Error(
-				"SessionContextProvider requires either controller or both config and environment.",
-			);
-		}
-		return new SessionContextController({
-			client: new SessionContextClient(config, {
-				sessionStore: environment.sessionStore,
-			}),
-			transport: environment.transport,
-		});
-	}, [config, controller, environment]);
-
-	useEffect(() => {
-		if (initialRefresh) {
-			resolvedController.refresh().catch(() => {});
-		}
-	}, [initialRefresh, resolvedController]);
-
-	const contextValue = useMemo(
-		() => ({ controller: resolvedController, initialRefresh }),
-		[resolvedController, initialRefresh],
-	);
-
-	return (
-		<SessionControllerContext.Provider value={contextValue}>
-			{children}
-		</SessionControllerContext.Provider>
-	);
-}
-
-/** Access the session context from React. */
-export function useSessionContext(): SessionContextValue {
-	const context = useContext(SessionControllerContext);
-	if (!context) {
-		throw new Error(
-			"useSessionContext must be used inside <SessionContextProvider>",
-		);
-	}
-	const { controller, initialRefresh } = context;
-
-	const state = useSyncExternalStore(
-		useCallback((listener) => controller.subscribe(listener), [controller]),
-		useCallback(() => controller.getState(), [controller]),
-		useCallback(() => controller.getState(), [controller]),
-	);
-	const refresh = useCallback(() => controller.refresh(), [controller]);
-	const rememberPostAuthRedirect = useCallback(
-		(postAuthRedirectUri: string) =>
-			controller.rememberPostAuthRedirect(postAuthRedirectUri),
-		[controller],
-	);
-	const clearPostAuthRedirect = useCallback(
-		() => controller.clearPostAuthRedirect(),
-		[controller],
-	);
-	const resolveLoginUrl = useCallback(
-		() => controller.resolveLoginUrl(),
-		[controller],
-	);
-	const logout = useCallback(() => controller.logout(), [controller]);
-
-	return useMemo(
-		() => ({
-			client: controller.client,
-			session: state.session,
-			loading:
-				state.status === SessionContextControllerStatus.Loading ||
-				(initialRefresh &&
-					state.status === SessionContextControllerStatus.Idle),
-			state,
-			refresh,
-			rememberPostAuthRedirect,
-			clearPostAuthRedirect,
-			resolveLoginUrl,
-			logout,
+}: CreateSessionContextControllerOptions): SessionContextController {
+	return new SessionContextController({
+		client: new SessionContextClient(config, {
+			sessionStore: environment.sessionStore,
 		}),
-		[
-			controller,
-			initialRefresh,
-			state,
-			refresh,
-			rememberPostAuthRedirect,
-			clearPostAuthRedirect,
-			resolveLoginUrl,
-			logout,
-		],
-	);
+		transport: environment.transport,
+	});
 }
 
-/** Convenience hook to get just the session principal. */
-export function useSessionPrincipal() {
-	const { session } = useSessionContext();
-	return session?.principal ?? null;
+export function provideSessionContextController(
+	controller: SessionContextController,
+): readonly SecuritydeptProvider[] {
+	return [
+		{
+			provide: SESSION_CONTEXT_CONTROLLER,
+			useValue: controller,
+		},
+		{
+			provide: SESSION_CONTEXT_CLIENT,
+			useValue: controller.client,
+		},
+	];
 }

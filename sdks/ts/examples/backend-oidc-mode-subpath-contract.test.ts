@@ -1,7 +1,8 @@
 // Backend OIDC Mode — Canonical Subpath Contract Evidence
 //
-// This test proves that the canonical /backend-oidc-mode subpath family works
-// correctly with all three entry points (root, web, react).
+// This test proves that backend-OIDC adopters still get the expected public
+// entry points after the React surface moved to the unified injector/runtime
+// model.
 //
 // Section A: /backend-oidc-mode canonical entry
 // Section B: /backend-oidc-mode/web canonical entry
@@ -18,10 +19,13 @@ import {
 	createBackendOidcModeWebClientEnvironment,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import {
-	BackendOidcModeContextProvider,
-	useAccessToken,
-	useAuthState,
-	useBackendOidcModeContext,
+	provideTokenSetAuthRegistry,
+	provideTokenSetCallbackResumeController,
+	BackendOidcModeClient as ReactBackendOidcModeClient,
+	TOKEN_SET_AUTH_REGISTRY,
+	TOKEN_SET_CALLBACK_RESUME_CONTROLLER,
+	TokenSetCallbackComponent,
+	useTokenSetCallbackResume,
 } from "@securitydept/token-set-context-client-react";
 import { describe, expect, it } from "vitest";
 
@@ -71,17 +75,21 @@ describe("backend-oidc-mode/web canonical subpath", () => {
 // ---------------------------------------------------------------------------
 
 describe("backend-oidc-mode/react canonical subpath", () => {
-	it("exports React hooks from /backend-oidc-mode/react", () => {
-		expect(useAccessToken).toBeDefined();
-		expect(typeof useAccessToken).toBe("function");
-		expect(useAuthState).toBeDefined();
-		expect(typeof useAuthState).toBe("function");
-		expect(useBackendOidcModeContext).toBeDefined();
-		expect(typeof useBackendOidcModeContext).toBe("function");
+	it("exports backend-OIDC client types and composition helpers from the React root entry", () => {
+		expect(ReactBackendOidcModeClient).toBeDefined();
+		expect(typeof ReactBackendOidcModeClient).toBe("function");
+		expect(provideTokenSetAuthRegistry).toBeDefined();
+		expect(typeof provideTokenSetAuthRegistry).toBe("function");
+		expect(provideTokenSetCallbackResumeController).toBeDefined();
+		expect(typeof provideTokenSetCallbackResumeController).toBe("function");
+		expect(useTokenSetCallbackResume).toBeDefined();
+		expect(typeof useTokenSetCallbackResume).toBe("function");
 	});
 
-	it("exports BackendOidcModeContextProvider from /backend-oidc-mode/react", () => {
-		expect(BackendOidcModeContextProvider).toBeDefined();
-		expect(typeof BackendOidcModeContextProvider).toBe("function");
+	it("exports injector tokens instead of a domain-specific React provider", () => {
+		expect(TOKEN_SET_AUTH_REGISTRY).toBeDefined();
+		expect(TOKEN_SET_CALLBACK_RESUME_CONTROLLER).toBeDefined();
+		expect(TokenSetCallbackComponent).toBeDefined();
+		expect(typeof TokenSetCallbackComponent).toBe("function");
 	});
 });

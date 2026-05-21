@@ -5,7 +5,7 @@ import {
 	readDefaultPageLocationHistoryCapability,
 	requireDefaultPageLocationHistoryCapability,
 	requirePageClientEnvironment,
-} from "../client-environment";
+} from "../environment/client-environment";
 
 function createTransport() {
 	return {

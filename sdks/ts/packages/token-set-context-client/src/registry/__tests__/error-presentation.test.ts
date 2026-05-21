@@ -1,6 +1,6 @@
 import { UserRecovery } from "@securitydept/client";
 import { describe, expect, it } from "vitest";
-import { describeTokenSetCallbackError } from "../error-presentation";
+import { describeTokenSetCallbackError } from "../presentation/error-presentation";
 
 describe("describeTokenSetCallbackError", () => {
 	it("falls back to a shared token-set callback descriptor", () => {

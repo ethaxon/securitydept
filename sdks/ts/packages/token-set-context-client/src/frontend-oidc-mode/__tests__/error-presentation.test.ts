@@ -1,7 +1,7 @@
 import { UserRecovery } from "@securitydept/client";
 import { describe, expect, it } from "vitest";
-import { FrontendOidcModeCallbackErrorCode } from "../callback-error-codes";
-import { describeFrontendOidcModeCallbackError } from "../error-presentation";
+import { FrontendOidcModeCallbackErrorCode } from "../errors/callback-error-codes";
+import { describeFrontendOidcModeCallbackError } from "../errors/error-presentation";
 
 function createCallbackError(code: string) {
 	return {

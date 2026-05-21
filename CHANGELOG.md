@@ -7,6 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Unified the TypeScript SDK React dependency model around `@securitydept/client/injection` and the single `SecuritydeptContext` / `SecuritydeptProvider` / `useSecuritydeptContext()` bridge in `@securitydept/client-react`, removing domain-specific React Context/Provider surfaces from the basic-auth, session, and token-set React packages.
+- Rewrote the React example evidence, Web UI helper naming, and the TypeScript SDK docs/inventory to reflect injector-first composition, explicit token/provider-factory usage, and callback/query flows that no longer depend on hidden token-set React context.
+
+## [0.3.0-beta.4]
+
+### Changed
+
+- Formalized the TypeScript token-set registry dynamic lifecycle across the shared core, Angular adapter, and React adapter with canonical `unregister()` / `resetMaterialization()` verbs, registered-vs-ready snapshot APIs, and race-safe stale materialization invalidation semantics; aligned the SDK example, migration guide, and public-surface inventory with the new contract while keeping `reset()` as a compatibility alias for unregister.
+- Promoted the TypeScript token-set registry and per-client auth service to shared core signal-state owners (`state`, `getState()`, `subscribe()`), moved token-set service lifecycle/restore logic out of the React and Angular adapters, and added `@securitydept/client/rx` as the canonical RxJS bridge for SDK signals and event streams.
+
 ## [0.3.0-beta.3]
 
 ### Added

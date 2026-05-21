@@ -1,7 +1,7 @@
 import type { HttpRequest, HttpTransport } from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
-import { createAuthMaterialController } from "../controller";
-import { type AuthSnapshot, AuthSourceKind } from "../types";
+import { createAuthMaterialController } from "../state/controller";
+import { type AuthSnapshot, AuthSourceKind } from "../token/types";
 
 function makeSnapshot(accessTokenExpiresAt: string): AuthSnapshot {
 	return {

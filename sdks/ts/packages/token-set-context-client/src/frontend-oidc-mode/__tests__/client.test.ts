@@ -11,8 +11,8 @@ import {
 	TokenSetAuthEventType,
 	TokenSetAuthFlowSource,
 } from "../../orchestration";
-import { FrontendOidcModeCallbackErrorCode } from "../callback-error-codes";
-import { FrontendOidcModeTraceEventType } from "../trace-events";
+import { FrontendOidcModeCallbackErrorCode } from "../errors/callback-error-codes";
+import { FrontendOidcModeTraceEventType } from "../runtime/trace-events";
 
 const webMocks = vi.hoisted(() => ({
 	openPopupWindow: vi.fn(),
@@ -72,7 +72,7 @@ vi.mock("oauth4webapi", () => ({
 import {
 	FrontendOidcModeClient,
 	relayFrontendOidcPopupCallback,
-} from "../client";
+} from "../runtime/client";
 
 describe("FrontendOidcModeClient", () => {
 	beforeEach(() => {

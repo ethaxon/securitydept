@@ -2,7 +2,7 @@
 //
 // This module creates a singleton BackendOidcModeClient wrapped as a
 // TokenSetReactClient
-// for use with TokenSetAuthProvider and route-level auth checks. The wrapper
+// for use with the token-set auth runtime and route-level auth checks. The wrapper
 // delegates all methods to the underlying BackendOidcModeClient, adapting only
 // the two methods whose signatures differ from the TokenSetReactClient contract
 // (restorePersistedState, handleCallback).
@@ -149,13 +149,13 @@ const reactTokenSetBackendModeClient = wrapAsTokenSetReactClient(
 // ---------------------------------------------------------------------------
 
 /**
- * Factory for the TokenSetAuthProvider registry entry.
+ * Factory for the token-set auth runtime registry entry.
  *
  * Creates the BackendOidcModeClient (with browser defaults and the shared
  * trace timeline) and wraps it as a TokenSetReactClient via Proxy. The
  * resulting
  * client is accessed exclusively through the service returned by
- * useTokenSetAuthService().
+ * injector.get(TOKEN_SET_AUTH_REGISTRY).require(key).
  */
 export function tokenSetBackendModeClientFactory(): TokenSetReactClient {
 	return reactTokenSetBackendModeClient;

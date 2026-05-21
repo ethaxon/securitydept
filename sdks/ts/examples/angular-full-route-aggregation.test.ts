@@ -456,6 +456,7 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 		// "session" client — authenticated
 		registry.register({
 			key: "session",
+			autoRestore: false,
 			clientFactory: () => createMockClient(true),
 			requirementKind: "session",
 		});
@@ -463,6 +464,7 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 		// "confluence" client — NOT authenticated
 		registry.register({
 			key: "confluence",
+			autoRestore: false,
 			clientFactory: () => createMockClient(false),
 			requirementKind: "frontend_oidc",
 		});
@@ -502,7 +504,7 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 					requirementId: req.id,
 					requirementKind: req.kind,
 					checkAuthenticated: () =>
-						keys.every((k) => registry.require(k).isAuthenticated()),
+						keys.every((k) => registry.require(k).isAuthenticated.get()),
 					onUnauthenticated: () => false as boolean,
 				},
 			];
@@ -523,11 +525,13 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 		// Both clients authenticated
 		registry.register({
 			key: "session",
+			autoRestore: false,
 			clientFactory: () => createMockClient(true),
 			requirementKind: "session",
 		});
 		registry.register({
 			key: "confluence",
+			autoRestore: false,
 			clientFactory: () => createMockClient(true),
 			requirementKind: "frontend_oidc",
 		});
@@ -557,7 +561,7 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 					requirementId: req.id,
 					requirementKind: req.kind,
 					checkAuthenticated: () =>
-						keys.every((k) => registry.require(k).isAuthenticated()),
+						keys.every((k) => registry.require(k).isAuthenticated.get()),
 					onUnauthenticated: () => false as boolean,
 				},
 			];

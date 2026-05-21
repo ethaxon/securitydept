@@ -1,25 +1,14 @@
-import { useSessionContext } from "@securitydept/session-context-client-react";
+import {
+	useReadableSignal,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
+import { SESSION_CONTEXT_CONTROLLER } from "@securitydept/session-context-client-react";
 import type { AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
-	type TokenSetBackendOidcClient,
+	TOKEN_SET_AUTH_REGISTRY,
 	type TokenSetReactClient,
-	useTokenSetAuthService,
-	useTokenSetAuthState,
 } from "@securitydept/token-set-context-client-react";
-import {
-	tokenSetQueryKeys,
-	useTokenSetCreateBasicEntryMutation,
-	useTokenSetCreateGroupMutation,
-	useTokenSetCreateTokenEntryMutation,
-	useTokenSetDeleteEntryMutation,
-	useTokenSetDeleteGroupMutation,
-	useTokenSetEntriesQuery,
-	useTokenSetEntryQuery,
-	useTokenSetGroupQuery,
-	useTokenSetGroupsQuery,
-	useTokenSetUpdateEntryMutation,
-	useTokenSetUpdateGroupMutation,
-} from "@securitydept/token-set-context-client-react/react-query";
+import { tokenSetQueryKeys } from "@securitydept/token-set-context-client-react/react-query";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import {
@@ -38,6 +27,19 @@ import {
 	useUpdateGroup,
 } from "@/api/groups";
 import {
+	useTokenSetCreateBasicEntryMutation,
+	useTokenSetCreateGroupMutation,
+	useTokenSetCreateTokenEntryMutation,
+	useTokenSetDeleteEntryMutation,
+	useTokenSetDeleteGroupMutation,
+	useTokenSetEntriesQuery,
+	useTokenSetEntryQuery,
+	useTokenSetGroupQuery,
+	useTokenSetGroupsQuery,
+	useTokenSetUpdateEntryMutation,
+	useTokenSetUpdateGroupMutation,
+} from "@/api/tokenSet";
+import {
 	AuthContextMode,
 	clearAuthContextMode,
 	isTokenSetAuthContextMode,
@@ -47,6 +49,7 @@ import {
 } from "@/lib/authContext";
 import { projectDashboardUser } from "@/lib/dashboardPrincipal";
 import { clearTokenSetBackendModeBrowserState } from "@/lib/tokenSetBackendModeClient";
+import { assertTokenSetBackendOidcClient } from "@/lib/tokenSetClientAssertions";
 import { TOKEN_SET_BACKEND_MODE_CLIENT_KEY } from "@/lib/tokenSetConfig";
 import { clearTokenSetFrontendModeBrowserState } from "@/lib/tokenSetFrontendModeClient";
 
@@ -63,14 +66,28 @@ interface DashboardRuntime {
 	tokenSetAuthenticated: boolean;
 }
 
-function isTokenSetBackendOidcClient(
-	client: TokenSetReactClient,
-): client is TokenSetBackendOidcClient {
-	return (
-		typeof (client as { authorizeUrl?: unknown }).authorizeUrl === "function" &&
-		typeof (client as { refresh?: unknown }).refresh === "function" &&
-		typeof (client as { clearState?: unknown }).clearState === "function"
-	);
+function useDashboardSessionController() {
+	return useSecuritydeptContext().get(SESSION_CONTEXT_CONTROLLER);
+}
+
+function useDashboardSessionState() {
+	const controller = useDashboardSessionController();
+	const state = useReadableSignal(controller.state);
+
+	return { controller, state };
+}
+
+function useDashboardTokenSetService(clientKey: string) {
+	return useSecuritydeptContext()
+		.get(TOKEN_SET_AUTH_REGISTRY)
+		.require(clientKey);
+}
+
+function useDashboardTokenSetSnapshot(
+	clientKey: string,
+): AuthStateSnapshot | null {
+	return useReadableSignal(useDashboardTokenSetService(clientKey).state)
+		.snapshot as AuthStateSnapshot | null;
 }
 
 export function useAuthContextMode(): AuthContextMode {
@@ -85,8 +102,8 @@ export function useDashboardRuntime(): DashboardRuntime {
 	const mode = useAuthContextMode();
 	const tokenSetClientKey =
 		resolveTokenSetClientKey(mode) ?? TOKEN_SET_BACKEND_MODE_CLIENT_KEY;
-	const tokenSetService = useTokenSetAuthService(tokenSetClientKey);
-	const tokenSetState = useTokenSetAuthState(tokenSetClientKey);
+	const tokenSetService = useDashboardTokenSetService(tokenSetClientKey);
+	const tokenSetState = useDashboardTokenSetSnapshot(tokenSetClientKey);
 
 	return {
 		mode,
@@ -112,11 +129,13 @@ export function useDashboardAccessNotice(): DashboardNotice | null {
 }
 
 export function useDashboardGroupsQuery() {
+	const injector = useSecuritydeptContext();
 	const { mode, tokenSetClientKey } = useDashboardRuntime();
 	const sessionQuery = useGroups({
 		enabled: mode === AuthContextMode.Session || mode === AuthContextMode.Basic,
 	});
 	const tokenSetQuery = useTokenSetGroupsQuery({
+		injector,
 		clientKey: tokenSetClientKey,
 		enabled: isTokenSetAuthContextMode(mode),
 	});
@@ -129,11 +148,13 @@ export function useDashboardGroupsQuery() {
 }
 
 export function useDashboardGroupQuery(groupId: string) {
+	const injector = useSecuritydeptContext();
 	const { mode, tokenSetClientKey } = useDashboardRuntime();
 	const sessionQuery = useGroup(groupId, {
 		enabled: mode === AuthContextMode.Session || mode === AuthContextMode.Basic,
 	});
 	const tokenSetQuery = useTokenSetGroupQuery({
+		injector,
 		clientKey: tokenSetClientKey,
 		groupId,
 		enabled: isTokenSetAuthContextMode(mode),
@@ -147,11 +168,13 @@ export function useDashboardGroupQuery(groupId: string) {
 }
 
 export function useDashboardEntriesQuery() {
+	const injector = useSecuritydeptContext();
 	const { mode, tokenSetClientKey } = useDashboardRuntime();
 	const sessionQuery = useEntries({
 		enabled: mode === AuthContextMode.Session || mode === AuthContextMode.Basic,
 	});
 	const tokenSetQuery = useTokenSetEntriesQuery({
+		injector,
 		clientKey: tokenSetClientKey,
 		enabled: isTokenSetAuthContextMode(mode),
 	});
@@ -164,11 +187,13 @@ export function useDashboardEntriesQuery() {
 }
 
 export function useDashboardEntryQuery(entryId: string) {
+	const injector = useSecuritydeptContext();
 	const { mode, tokenSetClientKey } = useDashboardRuntime();
 	const sessionQuery = useEntry(entryId, {
 		enabled: mode === AuthContextMode.Session || mode === AuthContextMode.Basic,
 	});
 	const tokenSetQuery = useTokenSetEntryQuery({
+		injector,
 		clientKey: tokenSetClientKey,
 		entryId,
 		enabled: isTokenSetAuthContextMode(mode),
@@ -182,9 +207,11 @@ export function useDashboardEntryQuery(entryId: string) {
 }
 
 export function useDashboardCreateGroupMutation() {
+	const injector = useSecuritydeptContext();
 	const { mode, tokenSetClientKey } = useDashboardRuntime();
 	const sessionMutation = useCreateGroup();
 	const tokenSetMutation = useTokenSetCreateGroupMutation({
+		injector,
 		clientKey: tokenSetClientKey,
 	});
 
@@ -196,9 +223,11 @@ export function useDashboardCreateGroupMutation() {
 }
 
 export function useDashboardUpdateGroupMutation() {
+	const injector = useSecuritydeptContext();
 	const { mode, tokenSetClientKey } = useDashboardRuntime();
 	const sessionMutation = useUpdateGroup();
 	const tokenSetMutation = useTokenSetUpdateGroupMutation({
+		injector,
 		clientKey: tokenSetClientKey,
 	});
 
@@ -210,9 +239,11 @@ export function useDashboardUpdateGroupMutation() {
 }
 
 export function useDashboardDeleteGroupMutation() {
+	const injector = useSecuritydeptContext();
 	const { mode, tokenSetClientKey } = useDashboardRuntime();
 	const sessionMutation = useDeleteGroup();
 	const tokenSetMutation = useTokenSetDeleteGroupMutation({
+		injector,
 		clientKey: tokenSetClientKey,
 	});
 
@@ -230,9 +261,11 @@ export function useDashboardDeleteGroupMutation() {
 }
 
 export function useDashboardCreateBasicEntryMutation() {
+	const injector = useSecuritydeptContext();
 	const { mode, tokenSetClientKey } = useDashboardRuntime();
 	const sessionMutation = useCreateBasicEntry();
 	const tokenSetMutation = useTokenSetCreateBasicEntryMutation({
+		injector,
 		clientKey: tokenSetClientKey,
 	});
 
@@ -244,9 +277,11 @@ export function useDashboardCreateBasicEntryMutation() {
 }
 
 export function useDashboardCreateTokenEntryMutation() {
+	const injector = useSecuritydeptContext();
 	const { mode, tokenSetClientKey } = useDashboardRuntime();
 	const sessionMutation = useCreateTokenEntry();
 	const tokenSetMutation = useTokenSetCreateTokenEntryMutation({
+		injector,
 		clientKey: tokenSetClientKey,
 	});
 
@@ -258,9 +293,11 @@ export function useDashboardCreateTokenEntryMutation() {
 }
 
 export function useDashboardUpdateEntryMutation() {
+	const injector = useSecuritydeptContext();
 	const { mode, tokenSetClientKey } = useDashboardRuntime();
 	const sessionMutation = useUpdateEntry();
 	const tokenSetMutation = useTokenSetUpdateEntryMutation({
+		injector,
 		clientKey: tokenSetClientKey,
 	});
 
@@ -272,9 +309,11 @@ export function useDashboardUpdateEntryMutation() {
 }
 
 export function useDashboardDeleteEntryMutation() {
+	const injector = useSecuritydeptContext();
 	const { mode, tokenSetClientKey } = useDashboardRuntime();
 	const sessionMutation = useDeleteEntry();
 	const tokenSetMutation = useTokenSetDeleteEntryMutation({
+		injector,
 		clientKey: tokenSetClientKey,
 	});
 
@@ -293,7 +332,9 @@ export function useDashboardDeleteEntryMutation() {
 
 export function useDashboardCurrentUser() {
 	const { mode, tokenSetClient, tokenSetState } = useDashboardRuntime();
-	const { loading: sessionLoading, session } = useSessionContext();
+	const { state: sessionState } = useDashboardSessionState();
+	const sessionLoading = sessionState.status === "loading";
+	const session = sessionState.session;
 
 	if (mode === AuthContextMode.Session) {
 		if (!session) {
@@ -340,7 +381,7 @@ export function useDashboardCurrentUser() {
 
 export function useDashboardLogout() {
 	const { mode, tokenSetClient, tokenSetClientKey } = useDashboardRuntime();
-	const { logout: logoutCurrentSession } = useSessionContext();
+	const { controller: sessionController } = useDashboardSessionState();
 	const queryClient = useQueryClient();
 
 	const redirectToLogin = () => {
@@ -350,7 +391,7 @@ export function useDashboardLogout() {
 
 	const sessionLogoutMutation = useMutation({
 		mutationKey: ["dashboard", "logout", "session"],
-		mutationFn: logoutCurrentSession,
+		mutationFn: () => sessionController.logout(),
 		onSuccess: () => {
 			redirectToLogin();
 		},
@@ -360,11 +401,10 @@ export function useDashboardLogout() {
 		mutationKey: ["dashboard", "logout", "token-set"],
 		mutationFn: async () => {
 			if (mode === AuthContextMode.TokenSetBackend) {
-				if (!isTokenSetBackendOidcClient(tokenSetClient)) {
-					throw new Error(
-						"Backend token-set logout requires a backend OIDC client.",
-					);
-				}
+				assertTokenSetBackendOidcClient(
+					tokenSetClient,
+					"Backend token-set logout",
+				);
 
 				await clearTokenSetBackendModeBrowserState(tokenSetClient);
 				return;

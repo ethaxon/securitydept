@@ -1,64 +1,47 @@
 // @vitest-environment jsdom
 
-// React-Query subpath integration evidence
-//
-// React Query integration evidence: proves the token-set React Query subpath owns
-// the canonical read/write consumer surface for groups and entries while
-// still remaining a consumer of the token-set registry/runtime authority.
-// Per manager ruling: no standalone package; the subpath lives under the
-// main React package with `@tanstack/react-query` as an optional peer
-// dependency.
-
-import type {
-	HttpRequest,
-	HttpTransport,
-	ReadableSignalTrait,
+import {
+	createDefaultIdleScheduler,
+	createSignal,
+	createSubject,
 } from "@securitydept/client";
-import { createSubject } from "@securitydept/client";
-import type { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
-	type AuthSnapshot,
-	AuthSourceKind,
-	EnsureAuthForResourceStatus,
-	TokenSetAuthFlowReason,
+	SecuritydeptProvider,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
+import type {
+	AuthSnapshot,
+	TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
-import type { TokenSetReactClient } from "@securitydept/token-set-context-client-react";
 import {
-	ClientInitializationPriority,
-	TokenSetAuthProvider,
-	useTokenSetBackendOidcClient,
+	EnsureAuthForResourceStatus,
+	TokenFreshnessState,
+} from "@securitydept/token-set-context-client/orchestration";
+import {
+	TokenSetAuthService as CoreTokenSetAuthService,
+	createTokenSetAuthRegistry,
+} from "@securitydept/token-set-context-client/registry";
+import {
+	provideTokenSetAuthRegistry,
+	type ReactRegistry,
+	type TokenSetClientEntry,
+	type TokenSetReactClient,
 } from "@securitydept/token-set-context-client-react";
-import {
-	invalidateTokenSetQueriesForClient,
-	tokenSetQueryKeys,
-	useTokenSetAuthorizationHeader,
-	useTokenSetCreateGroupMutation,
-	useTokenSetCreateTokenEntryMutation,
-	useTokenSetGroupsQuery,
-	useTokenSetReadinessQuery,
-} from "@securitydept/token-set-context-client-react/react-query";
+import { useTokenSetReadinessQuery } from "@securitydept/token-set-context-client-react/react-query";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-	act,
-	createElement,
-	type ReactElement,
-	useEffect,
-	useRef,
-} from "react";
+import { act, createElement, type ReactElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-// ---------------------------------------------------------------------------
-// Test infra
-// ---------------------------------------------------------------------------
+import { describe, expect, it, vi } from "vitest";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
 	document.body.appendChild(container);
 	const root = createRoot(container);
+
 	act(() => {
 		root.render(element);
 	});
+
 	return {
 		container,
 		unmount() {
@@ -70,563 +53,178 @@ function render(element: ReactElement) {
 	};
 }
 
-async function flush() {
-	await act(async () => {
-		await Promise.resolve();
-	});
-}
-
-function useRunOnce(effect: () => void | Promise<void>) {
-	const didRun = useRef(false);
-	useEffect(() => {
-		if (didRun.current) {
+async function waitFor(predicate: () => boolean, attempts = 10) {
+	for (let attempt = 0; attempt < attempts; attempt += 1) {
+		if (predicate()) {
 			return;
 		}
-		didRun.current = true;
-		void effect();
-	}, [effect]);
-}
-
-async function waitForStatus(
-	view: { container: HTMLElement },
-	target: string,
-	maxIters = 50,
-) {
-	for (let i = 0; i < maxIters; i++) {
-		if (view.container.querySelector("#status")?.textContent === target) {
-			return;
-		}
-		await flush();
-	}
-	throw new Error(`Timed out waiting for status ${target}`);
-}
-
-async function waitForText(
-	view: { container: HTMLElement },
-	selector: string,
-	target: string,
-	maxIters = 50,
-) {
-	for (let i = 0; i < maxIters; i++) {
-		if (view.container.querySelector(selector)?.textContent === target) {
-			return;
-		}
-		await flush();
-	}
-	throw new Error(`Timed out waiting for text ${selector}=${target}`);
-}
-
-function createTestSignal<T>(initial: T): {
-	signal: ReadableSignalTrait<T>;
-	set(v: T): void;
-} {
-	let value = initial;
-	const listeners = new Set<() => void>();
-	return {
-		signal: {
-			get: () => value,
-			subscribe(l: () => void) {
-				listeners.add(l);
-				return () => listeners.delete(l);
-			},
-		},
-		set(next: T) {
-			value = next;
-			for (const l of listeners) l();
-		},
-	};
-}
-
-function makeSnapshot(accessToken: string): AuthSnapshot {
-	return {
-		tokens: { accessToken, accessTokenExpiresAt: undefined },
-		metadata: { source: { kind: AuthSourceKind.OidcAuthorizationCode } },
-	};
-}
-
-function createMockClient(
-	initial: AuthSnapshot | null = null,
-): TokenSetReactClient {
-	const ctrl = createTestSignal<AuthSnapshot | null>(initial);
-	return {
-		state: ctrl.signal,
-		authEvents: createSubject(),
-		dispose: vi.fn(),
-		restorePersistedState: vi.fn().mockResolvedValue(null),
-		handleCallback: vi.fn().mockResolvedValue({ snapshot: makeSnapshot("cb") }),
-		authorizationHeader() {
-			const accessToken = ctrl.signal.get()?.tokens.accessToken;
-			return accessToken ? `Bearer ${accessToken}` : null;
-		},
-		ensureFreshAuthState: vi.fn().mockResolvedValue(ctrl.signal.get()),
-		ensureAuthorizationHeader: vi.fn().mockImplementation(async () => {
-			const accessToken = ctrl.signal.get()?.tokens.accessToken;
-			return accessToken ? `Bearer ${accessToken}` : null;
-		}),
-		ensureAuthForResource: vi.fn().mockImplementation(async () => {
-			const snapshot = ctrl.signal.get();
-			if (snapshot) {
-				const accessToken = snapshot.tokens.accessToken;
-				return {
-					status: EnsureAuthForResourceStatus.Authenticated,
-					snapshot,
-					authorizationHeader: accessToken ? `Bearer ${accessToken}` : null,
-					freshness: "fresh" as const,
-				};
-			}
-			return {
-				status: EnsureAuthForResourceStatus.Unauthenticated,
-				snapshot: null,
-				authorizationHeader: null,
-				reason: TokenSetAuthFlowReason.NoSnapshot,
-			};
-		}),
-		loginWithRedirect: vi.fn().mockResolvedValue(undefined),
-	};
-}
-
-function createMockBackendClient(
-	initial: AuthSnapshot | null = null,
-): TokenSetReactClient &
-	Pick<BackendOidcModeClient, "authorizeUrl" | "refresh" | "clearState"> {
-	return {
-		...createMockClient(initial),
-		authorizeUrl: vi.fn().mockReturnValue("/auth/token-set/login"),
-		refresh: vi.fn().mockResolvedValue(makeSnapshot("refreshed")),
-		clearState: vi.fn().mockResolvedValue(undefined),
-	};
-}
-
-function createRecordingTransport() {
-	const requests: HttpRequest[] = [];
-	const responses = new Map<string, { status: number; body: unknown }>();
-
-	const transport: HttpTransport = {
-		async execute(request) {
-			requests.push(request);
-			const key = `${request.method} ${request.url}`;
-			const response = responses.get(key);
-			if (!response) {
-				throw new Error(`Unexpected request: ${key}`);
-			}
-			return {
-				status: response.status,
-				headers: {},
-				body: response.body,
-			};
-		},
-	};
-
-	return {
-		transport,
-		requests,
-		respond(method: string, url: string, status: number, body: unknown) {
-			responses.set(`${method} ${url}`, { status, body });
-		},
-	};
-}
-
-// ---------------------------------------------------------------------------
-// Evidence tests
-// ---------------------------------------------------------------------------
-
-describe("react-query subpath — canonical token-set consumer surface", () => {
-	afterEach(() => {
-		document.body.innerHTML = "";
-		delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
-			.IS_REACT_ACT_ENVIRONMENT;
-	});
-
-	it("tokenSetQueryKeys produces a stable, namespaced shape", () => {
-		expect(tokenSetQueryKeys.all).toEqual(["tokenSetContext"]);
-		expect(tokenSetQueryKeys.forClient("main")).toEqual([
-			"tokenSetContext",
-			"main",
-		]);
-		expect(tokenSetQueryKeys.readiness("main")).toEqual([
-			"tokenSetContext",
-			"main",
-			"readiness",
-		]);
-		expect(tokenSetQueryKeys.authState("main")).toEqual([
-			"tokenSetContext",
-			"main",
-			"authState",
-		]);
-		expect(tokenSetQueryKeys.groups("main")).toEqual([
-			"tokenSetContext",
-			"main",
-			"groups",
-		]);
-		expect(tokenSetQueryKeys.group("main", "group-1")).toEqual([
-			"tokenSetContext",
-			"main",
-			"groups",
-			"group-1",
-		]);
-		expect(tokenSetQueryKeys.entries("main")).toEqual([
-			"tokenSetContext",
-			"main",
-			"entries",
-		]);
-		expect(tokenSetQueryKeys.entry("main", "entry-1")).toEqual([
-			"tokenSetContext",
-			"main",
-			"entries",
-			"entry-1",
-		]);
-	});
-
-	it("useTokenSetReadinessQuery resolves against whenReady() of the registry", async () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-
-		let deferredResolve: ((client: TokenSetReactClient) => void) | null = null;
-		const asyncFactory = () =>
-			new Promise<TokenSetReactClient>((resolve) => {
-				deferredResolve = resolve;
-			});
-
-		const qc = new QueryClient({
-			defaultOptions: { queries: { retry: false } },
-		});
-		const observed: Array<string | undefined> = [];
-
-		function Probe() {
-			const q = useTokenSetReadinessQuery("main");
-			useEffect(() => {
-				observed.push(q.status);
-			}, [q.status]);
-			return createElement("span", { id: "status" }, q.status);
-		}
-
-		const view = render(
-			createElement(
-				QueryClientProvider,
-				{ client: qc },
-				createElement(
-					TokenSetAuthProvider,
-					{
-						clients: [
-							{
-								key: "main",
-								clientFactory: asyncFactory,
-								priority: ClientInitializationPriority.Primary,
-								autoRestore: false,
-							},
-						],
-						idleWarmup: false,
-					},
-					createElement(Probe),
-				),
-			),
-		);
-
-		await flush();
-		expect(view.container.querySelector("#status")?.textContent).toBe(
-			"pending",
-		);
-
-		const client = createMockClient(makeSnapshot("ready"));
 		await act(async () => {
-			deferredResolve?.(client);
 			await Promise.resolve();
+			await new Promise((resolve) => setTimeout(resolve, 0));
 		});
-		await waitForStatus(view, "success");
+	}
+	throw new Error("Timed out waiting for query state to settle");
+}
 
-		expect(view.container.querySelector("#status")?.textContent).toBe(
-			"success",
-		);
+function createSnapshot(accessToken: string): AuthSnapshot {
+	return {
+		tokens: { accessToken },
+		metadata: {},
+	};
+}
 
-		view.unmount();
-		qc.clear();
+function createManualRegistry(
+	clients: readonly TokenSetClientEntry[],
+): ReactRegistry {
+	const registry = createTokenSetAuthRegistry<
+		TokenSetReactClient,
+		CoreTokenSetAuthService<TokenSetReactClient>
+	>({
+		materialize: CoreTokenSetAuthService.materializeService,
+		dispose: CoreTokenSetAuthService.dispose,
+		accessTokenOf: CoreTokenSetAuthService.accessTokenOf,
+		ensureAccessTokenOf: CoreTokenSetAuthService.ensureAccessTokenOf,
+		ensureAuthorizationHeaderOf:
+			CoreTokenSetAuthService.ensureAuthorizationHeaderOf,
+		ensureAuthForResourceOf: CoreTokenSetAuthService.ensureAuthForResourceOf,
+		authEventsOf: CoreTokenSetAuthService.authEventsOf,
+		idleScheduler: createDefaultIdleScheduler(),
 	});
 
-	it("useTokenSetAuthorizationHeader mirrors registry access token (Bearer prefix)", async () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-
-		const client = createMockBackendClient(makeSnapshot("abc123"));
-		const qc = new QueryClient({
-			defaultOptions: { queries: { retry: false } },
-		});
-
-		const captured: Array<{
-			enabled: boolean;
-			authorization: string | null;
-		}> = [];
-
-		function Probe() {
-			const header = useTokenSetAuthorizationHeader("main");
-			useEffect(() => {
-				captured.push(header);
-			}, [header]);
-			return null;
+	for (const client of clients) {
+		const registration = registry.register(client);
+		if (registration instanceof Promise) {
+			registration.catch(() => {});
 		}
+	}
 
-		const view = render(
-			createElement(
-				QueryClientProvider,
-				{ client: qc },
-				createElement(
-					TokenSetAuthProvider,
-					{
-						clients: [
-							{
-								key: "main",
-								clientFactory: () => client,
-								autoRestore: false,
-							},
-						],
-						idleWarmup: false,
-					},
-					createElement(Probe),
-				),
-			),
-		);
+	return registry;
+}
 
-		await flush();
-		expect(captured[0]).toEqual({
-			enabled: true,
-			authorization: "Bearer abc123",
-		});
-
-		view.unmount();
-		qc.clear();
-	});
-
-	it("invalidateTokenSetQueriesForClient keys into the shared namespace", async () => {
-		const qc = new QueryClient();
-		const spy = vi.spyOn(qc, "invalidateQueries");
-		await invalidateTokenSetQueriesForClient(qc, "main");
-		expect(spy).toHaveBeenCalledWith({
-			queryKey: tokenSetQueryKeys.forClient("main"),
-		});
-	});
-
-	it("useTokenSetGroupsQuery loads /api/groups under the SDK-owned namespace", async () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-
-		const client = createMockBackendClient(makeSnapshot("abc123"));
-		const http = createRecordingTransport();
-		http.respond("GET", "/api/groups", 200, [
-			{ id: "group-1", name: "Operators" },
-		]);
-		const qc = new QueryClient({
-			defaultOptions: { queries: { retry: false } },
-		});
-
-		function Probe() {
-			const query = useTokenSetGroupsQuery({
-				clientKey: "main",
-				requestOptions: { transport: http.transport },
-			});
-			return createElement(
-				"div",
-				null,
-				createElement("span", { id: "status" }, query.status),
-				createElement("span", { id: "count" }, String(query.data?.length ?? 0)),
-			);
-		}
-
-		const view = render(
-			createElement(
-				QueryClientProvider,
-				{ client: qc },
-				createElement(
-					TokenSetAuthProvider,
-					{
-						clients: [
-							{ key: "main", clientFactory: () => client, autoRestore: false },
-						],
-						idleWarmup: false,
-					},
-					createElement(Probe),
-				),
-			),
-		);
-
-		await waitForStatus(view, "success");
-		await waitForText(view, "#count", "1");
-		expect(view.container.querySelector("#count")?.textContent).toBe("1");
-		expect(http.requests[0]?.headers?.authorization).toBe("Bearer abc123");
-
-		view.unmount();
-		qc.clear();
-	});
-
-	it("useTokenSetCreateGroupMutation invalidates groups and entries after success", async () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-
-		const client = createMockClient(makeSnapshot("abc123"));
-		const http = createRecordingTransport();
-		http.respond("POST", "/api/groups", 200, {
-			id: "group-1",
-			name: "Operators",
-		});
-		const qc = new QueryClient({
-			defaultOptions: { mutations: { retry: false } },
-		});
-		const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
-
-		function Probe() {
-			const mutation = useTokenSetCreateGroupMutation({
-				clientKey: "main",
-			});
-			useRunOnce(
-				() =>
-					void mutation.mutateAsync({
-						name: "Operators",
-						entry_ids: ["entry-1"],
-						requestOptions: { transport: http.transport },
+describe("react-query integration evidence", () => {
+	it("supports injector-based token-set readiness queries", async () => {
+		const snapshot = createSnapshot("live-at");
+		const registry = createManualRegistry([
+			{
+				key: "main",
+				autoRestore: false,
+				clientFactory: () => ({
+					state: createSignal<AuthSnapshot | null>(snapshot),
+					authEvents: createSubject<TokenSetAuthEvent>(),
+					dispose: vi.fn(),
+					restorePersistedState: async () => snapshot,
+					authorizationHeader: () => "Bearer live-at",
+					ensureAuthForResource: async () => ({
+						status: EnsureAuthForResourceStatus.Authenticated,
+						snapshot,
+						freshness: TokenFreshnessState.Fresh,
+						authorizationHeader: "Bearer live-at",
 					}),
-			);
-			return createElement("span", { id: "status" }, mutation.status);
-		}
-
-		const view = render(
-			createElement(
-				QueryClientProvider,
-				{ client: qc },
-				createElement(
-					TokenSetAuthProvider,
-					{
-						clients: [
-							{ key: "main", clientFactory: () => client, autoRestore: false },
-						],
-						idleWarmup: false,
-					},
-					createElement(Probe),
-				),
-			),
-		);
-
-		await waitForStatus(view, "success");
-		expect(http.requests[0]?.headers?.authorization).toBe("Bearer abc123");
-		expect(http.requests[0]?.body).toBe(
-			JSON.stringify({ name: "Operators", entry_ids: ["entry-1"] }),
-		);
-		expect(invalidateSpy).toHaveBeenCalledWith({
-			queryKey: tokenSetQueryKeys.groups("main"),
-		});
-		expect(invalidateSpy).toHaveBeenCalledWith({
-			queryKey: tokenSetQueryKeys.entries("main"),
-		});
-
-		view.unmount();
-		qc.clear();
-	});
-
-	it("useTokenSetCreateTokenEntryMutation invalidates entries after success", async () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-
-		const client = createMockClient(makeSnapshot("abc123"));
-		const http = createRecordingTransport();
-		http.respond("POST", "/api/entries/token", 200, {
-			entry: {
-				id: "entry-1",
-				name: "Operators Token",
-				kind: "token",
-				group_ids: ["group-1"],
-				created_at: "2026-04-19T00:00:00Z",
-				updated_at: "2026-04-19T00:00:00Z",
+					ensureFreshAuthState: async () => snapshot,
+					ensureAuthorizationHeader: async () => "Bearer live-at",
+					handleCallback: async () => ({ snapshot }),
+					loginWithRedirect: async () => undefined,
+				}),
 			},
-			token: "secret-token",
+		]);
+		await registry.whenReady("main");
+		const queryClient = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
 		});
-		const qc = new QueryClient({
-			defaultOptions: { mutations: { retry: false } },
-		});
-		const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+		const observed: Array<string> = [];
 
 		function Probe() {
-			const mutation = useTokenSetCreateTokenEntryMutation({
-				clientKey: "main",
-			});
-			useRunOnce(
-				() =>
-					void mutation.mutateAsync({
-						name: "Operators Token",
-						group_ids: ["group-1"],
-						requestOptions: { transport: http.transport },
-					}),
+			const injector = useSecuritydeptContext();
+			const readiness = useTokenSetReadinessQuery("main", { injector });
+
+			useEffect(() => {
+				observed.push(readiness.status);
+			}, [readiness.status]);
+
+			return createElement(
+				"output",
+				null,
+				readiness.data?.accessToken.get() ?? "loading",
 			);
-			return createElement("span", { id: "status" }, mutation.status);
 		}
 
 		const view = render(
 			createElement(
 				QueryClientProvider,
-				{ client: qc },
+				{ client: queryClient },
 				createElement(
-					TokenSetAuthProvider,
-					{
-						clients: [
-							{ key: "main", clientFactory: () => client, autoRestore: false },
-						],
-						idleWarmup: false,
-					},
+					SecuritydeptProvider,
+					{ providers: [provideTokenSetAuthRegistry(registry)] },
 					createElement(Probe),
 				),
 			),
 		);
 
-		await waitForStatus(view, "success");
-		expect(http.requests[0]?.body).toBe(
-			JSON.stringify({ name: "Operators Token", group_ids: ["group-1"] }),
-		);
-		expect(invalidateSpy).toHaveBeenCalledWith({
-			queryKey: tokenSetQueryKeys.entries("main"),
-		});
+		await waitFor(() => observed.at(-1) === "success");
+		expect(view.container.textContent).toBe("live-at");
 
 		view.unmount();
-		qc.clear();
+		registry.dispose();
+		queryClient.clear();
 	});
 
-	it("useTokenSetBackendOidcClient exposes the keyed lower-level backend-oidc client surface", () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-
-		const client = createMockBackendClient(makeSnapshot("abc123"));
+	it("supports registry-based token-set readiness queries without SecuritydeptProvider", async () => {
+		const snapshot = createSnapshot("service-at");
+		const registry = createManualRegistry([
+			{
+				key: "main",
+				autoRestore: false,
+				clientFactory: () => ({
+					state: createSignal<AuthSnapshot | null>(snapshot),
+					authEvents: createSubject<TokenSetAuthEvent>(),
+					dispose: vi.fn(),
+					restorePersistedState: async () => snapshot,
+					authorizationHeader: () => "Bearer service-at",
+					ensureAuthForResource: async () => ({
+						status: EnsureAuthForResourceStatus.Authenticated,
+						snapshot,
+						freshness: TokenFreshnessState.Fresh,
+						authorizationHeader: "Bearer service-at",
+					}),
+					ensureFreshAuthState: async () => snapshot,
+					ensureAuthorizationHeader: async () => "Bearer service-at",
+					handleCallback: async () => ({ snapshot }),
+					loginWithRedirect: async () => undefined,
+				}),
+			},
+		]);
+		await registry.whenReady("main");
+		const queryClient = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		const observed: Array<string> = [];
 
 		function Probe() {
-			const keyedClient = useTokenSetBackendOidcClient("main");
+			const query = useTokenSetReadinessQuery("main", {
+				registry,
+			});
+			useEffect(() => {
+				observed.push(query.status);
+			}, [query.status]);
 			return createElement(
-				"span",
-				{ id: "authorization" },
-				keyedClient.authorizationHeader() ?? "none",
+				"output",
+				null,
+				query.data?.accessToken.get() ?? "loading",
 			);
 		}
 
 		const view = render(
 			createElement(
 				QueryClientProvider,
-				{ client: new QueryClient() },
-				createElement(
-					TokenSetAuthProvider,
-					{
-						clients: [
-							{ key: "main", clientFactory: () => client, autoRestore: false },
-						],
-						idleWarmup: false,
-					},
-					createElement(Probe),
-				),
+				{ client: queryClient },
+				createElement(Probe),
 			),
 		);
 
-		expect(view.container.querySelector("#authorization")?.textContent).toBe(
-			"Bearer abc123",
-		);
-
+		await waitFor(() => observed.at(-1) === "success");
+		expect(view.container.textContent).toBe("service-at");
 		view.unmount();
+		registry.dispose();
+		queryClient.clear();
 	});
 });

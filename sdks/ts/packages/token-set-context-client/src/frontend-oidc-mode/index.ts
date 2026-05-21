@@ -28,18 +28,18 @@ export type {
 	FrontendOidcModePageLocationCapability,
 	FrontendOidcModePopupLoginOptions,
 	RelayFrontendOidcPopupCallbackOptions,
-} from "./client";
+} from "./runtime/client";
 export {
 	createFrontendOidcModeClient,
 	FrontendOidcModeClient,
 	relayFrontendOidcPopupCallback,
-} from "./client";
+} from "./runtime/client";
 
 // --- Types: config, protocol, lifecycle ---
 
-export { FrontendOidcModeCallbackErrorCode } from "./callback-error-codes";
-export { describeFrontendOidcModeCallbackError } from "./error-presentation";
-export { FrontendOidcModeTraceEventType } from "./trace-events";
+export { FrontendOidcModeCallbackErrorCode } from "./errors/callback-error-codes";
+export { describeFrontendOidcModeCallbackError } from "./errors/error-presentation";
+export { FrontendOidcModeTraceEventType } from "./runtime/trace-events";
 export type {
 	FrontendOidcModeAuthorizeParams,
 	FrontendOidcModeAuthorizeResult,
@@ -47,7 +47,7 @@ export type {
 	FrontendOidcModeClientConfig,
 	FrontendOidcModePendingState,
 	FrontendOidcModeTokenResult,
-} from "./types";
+} from "./runtime/types";
 
 // --- Types: orchestration re-exports (mode-qualified aliases) ---
 
@@ -59,12 +59,12 @@ export type {
 	AuthStateSnapshot as FrontendOidcModeAuthStateSnapshot,
 	AuthTokenDelta as FrontendOidcModeAuthTokenDelta,
 	AuthTokenSnapshot as FrontendOidcModeAuthTokenSnapshot,
-} from "./types";
+} from "./runtime/types";
 
 export {
 	FrontendOidcModeContextSource,
 	FrontendOidcModeStateRestoreSourceKind,
-} from "./types";
+} from "./runtime/types";
 
 // --- Cross-boundary contracts (aligned with Rust FrontendOidcMode*) ---
 
@@ -75,7 +75,7 @@ export type {
 	FrontendOidcModeClaimsCheckSuccessResult,
 	FrontendOidcModeConfigProjection,
 	FrontendOidcModeUserInfoResponse,
-} from "./contracts";
+} from "./contracts/contracts";
 
 // --- Adapters: projection → client config, result → orchestration ---
 
@@ -85,12 +85,12 @@ export {
 	parseConfigProjection,
 	tokenResultToAuthSnapshot,
 	validateConfigProjection,
-} from "./contracts";
+} from "./contracts/contracts";
 
 // --- Authorized transport ---
 
-export type { CreateFrontendOidcModeAuthorizedTransportOptions } from "./auth-transport";
-export { createFrontendOidcModeAuthorizedTransport } from "./auth-transport";
+export type { CreateFrontendOidcModeAuthorizedTransportOptions } from "./transport/auth-transport";
+export { createFrontendOidcModeAuthorizedTransport } from "./transport/auth-transport";
 
 // --- Config projection source contract (core — no web runtime assumptions) ---
 
@@ -102,13 +102,13 @@ export type {
 	ConfigProjectionSourcePersisted,
 	PersistedConfigEnvelope,
 	ResolvedConfigProjection,
-} from "./config-source";
+} from "./config/config-source";
 
 export {
 	ClientReadinessState,
 	ConfigProjectionSourceKind,
 	resolveConfigProjection,
-} from "./config-source";
+} from "./config/config-source";
 
 // --- Config projection web/browser runtime helpers ---
 
@@ -118,7 +118,7 @@ export type {
 	FrontendOidcModeBrowserClientMaterialization,
 	FrontendOidcModeWebClientEnvironment,
 	IdleRevalidationOptions,
-} from "./config-source-web";
+} from "./config/config-source-web";
 
 export {
 	bootstrapScriptSource,
@@ -130,4 +130,4 @@ export {
 	resolveFrontendOidcModeBrowserStorageKey,
 	resolveFrontendOidcModePersistentStateKey,
 	scheduleIdleRevalidation,
-} from "./config-source-web";
+} from "./config/config-source-web";

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCancellationTokenSource } from "../../cancellation/cancellation-token";
 import { ClientError } from "../../errors/client-error";
-import { createFetchTransport } from "../fetch-transport";
+import { createFetchTransport } from "../../web/transport/fetch-transport";
 
 describe("createFetchTransport()", () => {
 	afterEach(() => {

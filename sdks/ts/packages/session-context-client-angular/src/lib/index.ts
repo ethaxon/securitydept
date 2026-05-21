@@ -19,10 +19,8 @@ import {
 	type WritableSignal,
 } from "@angular/core";
 import type { HttpTransport, WebClientEnvironment } from "@securitydept/client";
-import {
-	bridgeToAngularSignal,
-	signalToObservable,
-} from "@securitydept/client-angular";
+import { toRxObservable } from "@securitydept/client/rx";
+import { bridgeToAngularSignal } from "@securitydept/client-angular";
 import {
 	SessionContextClient,
 	type SessionContextClientConfig,
@@ -92,15 +90,15 @@ export class SessionContextService {
 		readonly controller: SessionContextController,
 		destroyRef?: DestroyRef,
 	) {
-		const initialState = controller.getState();
+		const initialState = controller.state.get();
 		this.state = signal<SessionContextControllerState>(initialState);
-		this.state$ = signalToObservable(controller.state);
+		this.state$ = toRxObservable(controller.state);
 		this.session = signal<SessionInfo | null>(initialState.session);
 		this.loading = signal(initialState.status === "loading");
 		this.error = signal<unknown | null>(initialState.error);
 		this.cleanup = bridgeToAngularSignal(controller.state, this.state);
-		const unsubscribe = controller.subscribe(() => {
-			const next = controller.getState();
+		const unsubscribe = controller.state.subscribe(() => {
+			const next = controller.state.get();
 			this.session.set(next.session);
 			this.loading.set(next.status === "loading");
 			this.error.set(next.error);

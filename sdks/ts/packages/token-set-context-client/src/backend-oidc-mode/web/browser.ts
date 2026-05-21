@@ -12,7 +12,6 @@ import {
 	ClientErrorKind,
 	createEphemeralFlowStore,
 	createJsonCodec,
-	FetchTransportRedirectKind,
 	type PageLocationCapability,
 	type PageLocationHistoryCapability,
 	UserRecovery,
@@ -27,6 +26,7 @@ import {
 	createWebClientEnvironment,
 	deriveClientEnvironment,
 	type FetchTransportOptions,
+	FetchTransportRedirectKind,
 	openPopupWindow,
 	relayPopupCallback,
 	waitForPopupRelay,
@@ -38,9 +38,9 @@ import {
 import type {
 	OidcRedirectLoginClient,
 	OidcRedirectLoginOptions,
-} from "../../registry/types";
-import { BackendOidcModeClient } from "../client";
-import type { AuthStateSnapshot } from "../types";
+} from "../../registry/contracts/types";
+import { BackendOidcModeClient } from "../runtime/client";
+import type { AuthStateSnapshot } from "../runtime/types";
 
 const BACKEND_OIDC_PERSISTENT_PREFIX = "securitydept.web.backend_oidc:";
 const BACKEND_OIDC_SESSION_PREFIX = "securitydept.web.backend_oidc:";

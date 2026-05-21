@@ -3,7 +3,13 @@ import {
 	readErrorPresentationDescriptor,
 	UserRecovery,
 } from "@securitydept/client";
-import { useTokenSetAuthState } from "@securitydept/token-set-context-client-react";
+import {
+	CLIENT_ENVIRONMENT_SERVICE,
+	useReadableSignal,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
+import type { AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { Link } from "@tanstack/react-router";
 import {
 	ArrowRight,
@@ -31,7 +37,6 @@ import {
 	tokenSetFrontendModeCrossTabStatus,
 	tokenSetFrontendModeTraceTimeline,
 } from "@/lib/tokenSetFrontendModeClient";
-import { useTokenSetFrontendModeEnvironmentService } from "@/lib/tokenSetFrontendModePageEnvironment";
 import { TraceTimelineSection } from "@/routes/tokenSetFrontendMode/TraceTimelineSection";
 
 function renderTokenPreview(value: string | undefined): string {
@@ -47,8 +52,13 @@ function renderTokenPreview(value: string | undefined): string {
 }
 
 export function TokenSetFrontendModePlaygroundPage() {
-	const state = useTokenSetAuthState(TOKEN_SET_FRONTEND_MODE_CLIENT_KEY);
-	const environmentService = useTokenSetFrontendModeEnvironmentService();
+	const injector = useSecuritydeptContext();
+	const state = useReadableSignal(
+		injector
+			.get(TOKEN_SET_AUTH_REGISTRY)
+			.require(TOKEN_SET_FRONTEND_MODE_CLIENT_KEY).state,
+	).snapshot as AuthStateSnapshot | null;
+	const environmentService = injector.get(CLIENT_ENVIRONMENT_SERVICE);
 	const traceEvents = useSyncExternalStore(
 		(listener) => tokenSetFrontendModeTraceTimeline.subscribe(listener),
 		() => tokenSetFrontendModeTraceTimeline.get(),

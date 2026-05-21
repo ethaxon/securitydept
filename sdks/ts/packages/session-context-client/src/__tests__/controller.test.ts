@@ -42,7 +42,7 @@ describe("SessionContextController", () => {
 			transport: createQueuedTransport([]),
 		});
 
-		expect(runtime.getState()).toEqual({
+		expect(runtime.state.get()).toEqual({
 			status: SessionContextControllerStatus.Idle,
 			session: null,
 			error: null,
@@ -56,10 +56,10 @@ describe("SessionContextController", () => {
 			transport: createQueuedTransport([response.promise]),
 		});
 		const observed: string[] = [];
-		runtime.subscribe(() => observed.push(runtime.getState().status));
+		runtime.state.subscribe(() => observed.push(runtime.state.get().status));
 
 		const pending = runtime.refresh();
-		expect(runtime.getState()).toMatchObject({
+		expect(runtime.state.get()).toMatchObject({
 			status: SessionContextControllerStatus.Loading,
 		});
 
@@ -72,7 +72,7 @@ describe("SessionContextController", () => {
 		await expect(pending).resolves.toMatchObject({
 			principal: { subject: "session-user-1", displayName: "Alice" },
 		});
-		expect(runtime.getState()).toMatchObject({
+		expect(runtime.state.get()).toMatchObject({
 			status: SessionContextControllerStatus.Authenticated,
 			error: null,
 		});
@@ -90,7 +90,7 @@ describe("SessionContextController", () => {
 		});
 
 		await expect(runtime.refresh()).rejects.toBe(failure);
-		expect(runtime.getState()).toEqual({
+		expect(runtime.state.get()).toEqual({
 			status: SessionContextControllerStatus.Error,
 			session: null,
 			error: failure,
@@ -122,7 +122,7 @@ describe("SessionContextController", () => {
 			}),
 		);
 		expect(await client.loadPendingLoginRedirect()).toBeNull();
-		expect(runtime.getState()).toEqual({
+		expect(runtime.state.get()).toEqual({
 			status: SessionContextControllerStatus.Unauthenticated,
 			session: null,
 			error: null,
@@ -147,7 +147,7 @@ describe("SessionContextController", () => {
 		});
 
 		await expect(first).resolves.toBeNull();
-		expect(runtime.getState()).toMatchObject({
+		expect(runtime.state.get()).toMatchObject({
 			status: SessionContextControllerStatus.Unauthenticated,
 		});
 	});

@@ -1,4 +1,5 @@
 export { createDefaultClock } from "./default-clock";
+export { createDefaultIdleScheduler } from "./default-idle-scheduler";
 export { createDefaultScheduler } from "./default-scheduler";
 export type {
 	FromEventPatternOptions,
@@ -16,6 +17,7 @@ export {
 	fromSignal,
 	interval,
 	PromiseSettlementKind,
+	parseDurationToMs,
 	scheduleAt,
 	timer,
 } from "./helpers";

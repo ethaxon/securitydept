@@ -1,4 +1,8 @@
-import { useSessionContext } from "@securitydept/session-context-client-react";
+import {
+	useReadableSignal,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
+import { SESSION_CONTEXT_CONTROLLER } from "@securitydept/session-context-client-react";
 import { useMutation } from "@tanstack/react-query";
 import { ExternalLink, LogIn, LogOut, Shield, Waypoints } from "lucide-react";
 import { useSyncExternalStore } from "react";
@@ -36,22 +40,20 @@ function StatusCard({
 }
 
 export function SessionPlaygroundPage() {
+	const sessionController = useSecuritydeptContext().get(
+		SESSION_CONTEXT_CONTROLLER,
+	);
+	const sessionState = useReadableSignal(sessionController.state);
 	const rawMode = useSyncExternalStore(
 		subscribeAuthContextMode,
 		getAuthContextMode,
 		getAuthContextMode,
 	);
-	const {
-		client,
-		loading,
-		logout: logoutCurrentSession,
-		session,
-	} = useSessionContext();
-	const loginHref = client.loginUrl("/playground/session");
+	const loginHref = sessionController.client.loginUrl("/playground/session");
 
 	const logout = useMutation({
 		mutationKey: ["playground", "session", "logout"],
-		mutationFn: logoutCurrentSession,
+		mutationFn: () => sessionController.logout(),
 		onSuccess: () => {
 			clearAuthContextMode();
 			window.location.href = "/playground/session";
@@ -63,12 +65,13 @@ export function SessionPlaygroundPage() {
 		window.location.href = loginHref;
 	};
 
-	const principal = session?.principal;
-	const authStatus = loading
-		? "Checking"
-		: principal
-			? "Authenticated"
-			: "Unauthenticated";
+	const principal = sessionState.session?.principal;
+	const authStatus =
+		sessionState.status === "loading"
+			? "Checking"
+			: principal
+				? "Authenticated"
+				: "Unauthenticated";
 	const callbackStatus = rawMode === AuthContextMode.Session ? "Armed" : "Idle";
 
 	return (

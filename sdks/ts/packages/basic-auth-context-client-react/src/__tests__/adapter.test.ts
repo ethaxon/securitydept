@@ -2,10 +2,14 @@
 
 import { AuthGuardResultKind } from "@securitydept/basic-auth-context-client";
 import {
-	BasicAuthContextProvider,
-	type BasicAuthContextProviderProps,
-	useBasicAuthContext,
+	BASIC_AUTH_CONTEXT_CLIENT,
+	createBasicAuthContextClient,
+	provideBasicAuthContextClient,
 } from "@securitydept/basic-auth-context-client-react";
+import {
+	SecuritydeptProvider,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
 import { act, createElement, type ReactElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
@@ -42,14 +46,15 @@ describe("basic-auth react adapter", () => {
 			.IS_REACT_ACT_ENVIRONMENT;
 	});
 
-	it("provides a zone-aware client through context and updates when config changes", () => {
+	it("provides a zone-aware client through SecuritydeptProvider and updates when client changes", () => {
 		(
 			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 		).IS_REACT_ACT_ENVIRONMENT = true;
 		const observed: string[] = [];
 
 		function Probe() {
-			const client = useBasicAuthContext();
+			const injector = useSecuritydeptContext();
+			const client = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
 			const zone = client.zoneForPath("/basic/api/groups");
 			const redirect = client.handleUnauthorized("/basic/api/groups", 401);
 
@@ -74,17 +79,15 @@ describe("basic-auth react adapter", () => {
 			);
 		}
 
-		const providerProps = {
-			config: {
-				baseUrl: "https://auth.example.com",
-				zones: [{ zonePrefix: "/basic" }],
-			},
-		} satisfies Omit<BasicAuthContextProviderProps, "children">;
+		const initialClient = createBasicAuthContextClient({
+			baseUrl: "https://auth.example.com",
+			zones: [{ zonePrefix: "/basic" }],
+		});
 
 		const view = render(
 			createElement(
-				BasicAuthContextProvider,
-				providerProps as BasicAuthContextProviderProps,
+				SecuritydeptProvider,
+				{ providers: [provideBasicAuthContextClient(initialClient)] },
 				createElement(Probe),
 			),
 		);
@@ -92,17 +95,15 @@ describe("basic-auth react adapter", () => {
 		expect(view.container.textContent).toBe("/basic|/basic/login|redirect");
 		expect(observed).toEqual(["/basic|/basic/login|redirect"]);
 
-		const updatedProviderProps = {
-			config: {
-				baseUrl: "https://auth.example.com",
-				zones: [{ zonePrefix: "/internal/basic", loginSubpath: "/signin" }],
-			},
-		} satisfies Omit<BasicAuthContextProviderProps, "children">;
+		const updatedClient = createBasicAuthContextClient({
+			baseUrl: "https://auth.example.com",
+			zones: [{ zonePrefix: "/internal/basic", loginSubpath: "/signin" }],
+		});
 
 		view.rerender(
 			createElement(
-				BasicAuthContextProvider,
-				updatedProviderProps as BasicAuthContextProviderProps,
+				SecuritydeptProvider,
+				{ providers: [provideBasicAuthContextClient(updatedClient)] },
 				createElement(Probe),
 			),
 		);
@@ -116,28 +117,14 @@ describe("basic-auth react adapter", () => {
 		view.unmount();
 	});
 
-	it("throws when the hook is used outside its provider", () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-
-		function BrokenProbe() {
-			const client = useBasicAuthContext();
-			return createElement("output", null, client.zones.length);
-		}
-
-		expect(() => render(createElement(BrokenProbe))).toThrow(
-			"useBasicAuthContext must be used inside <BasicAuthContextProvider>",
-		);
-	});
-
-	it("keeps redirect results framework-neutral inside React integration", () => {
+	it("keeps redirect results framework-neutral inside SecuritydeptProvider integration", () => {
 		(
 			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 		).IS_REACT_ACT_ENVIRONMENT = true;
 
 		function Probe() {
-			const client = useBasicAuthContext();
+			const injector = useSecuritydeptContext();
+			const client = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
 			const result = client.handleUnauthorized("/basic/api/groups", 401);
 
 			return createElement(
@@ -147,17 +134,15 @@ describe("basic-auth react adapter", () => {
 			);
 		}
 
-		const providerProps = {
-			config: {
-				baseUrl: "https://auth.example.com",
-				zones: [{ zonePrefix: "/basic" }],
-			},
-		} satisfies Omit<BasicAuthContextProviderProps, "children">;
+		const client = createBasicAuthContextClient({
+			baseUrl: "https://auth.example.com",
+			zones: [{ zonePrefix: "/basic" }],
+		});
 
 		const view = render(
 			createElement(
-				BasicAuthContextProvider,
-				providerProps as BasicAuthContextProviderProps,
+				SecuritydeptProvider,
+				{ providers: [provideBasicAuthContextClient(client)] },
 				createElement(Probe),
 			),
 		);

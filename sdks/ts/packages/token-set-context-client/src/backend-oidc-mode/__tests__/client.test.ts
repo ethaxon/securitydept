@@ -21,7 +21,7 @@ import {
 	TokenSetAuthEventType,
 	TokenSetAuthFlowSource,
 } from "../../orchestration";
-import { BackendOidcModeClient } from "../client";
+import { BackendOidcModeClient } from "../runtime/client";
 
 const BASE_URL = "https://api.example.com";
 const DEFAULT_PERSISTENCE_KEY =

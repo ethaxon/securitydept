@@ -21,6 +21,47 @@ Rules:
 
 ## Current Migration Notes
 
+### Unified Injector And Single React Context
+
+Packages:
+
+- `@securitydept/client/injection`
+- `@securitydept/client-react`
+- `@securitydept/basic-auth-context-client-react`
+- `@securitydept/session-context-client-react`
+- `@securitydept/token-set-context-client-react`
+
+Change:
+
+- `@securitydept/client/injection` now owns the framework-neutral DI authority. `SecuritydeptInjectorTrait` is the minimal read-side contract and only expresses `get()`; `SecuritydeptInjector` is the SDK runtime/facade that owns provider resolution, parent inheritance, overrides, and `has()` diagnostics.
+- React now has exactly one SDK Context: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()` in `@securitydept/client-react`.
+- React domain packages no longer export `BasicAuthContextProvider`, `SessionContextProvider`, `BackendOidcModeContextProvider`, `TokenSetAuthProvider`, `useBasicAuthContext()`, `useSessionContext()`, `useBackendOidcModeContext()`, `useTokenSetAuthRegistry()`, and similar domain-specific Context / Provider / keyed state helpers.
+- React domain packages now export injection tokens, provider factories, plain factories, and explicit callback/component bridges. State reading is unified around `useReadableSignal(...)`.
+
+Migration:
+
+- Wrap React subtrees with `SecuritydeptProvider`; pass a ready-made `injector`, or derive a child injector from `providers` / `parentInjector`.
+- Replace `XxxContextProvider` / `useXxxContext()` with `useSecuritydeptContext().get(TOKEN)`.
+- Replace `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` with `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` followed by `useReadableSignal(registry.require(key).state)` or `useReadableSignal(registry.state)`.
+- Replace basic-auth / session provider-first composition with `create*()` + `provide*()`. For token-set multi-client React composition, register `provideTokenSetAuthRegistry({ clients })` and add `provideTokenSetCallbackResumeController(registry)` only when the host explicitly needs callback resume wiring.
+
+### Token-Set React Registry Composition
+
+Package:
+
+- `@securitydept/token-set-context-client-react`
+
+Change:
+
+- `createTokenSetAuthRuntime()` and `provideTokenSetAuthRuntime()` are removed.
+- The React token-set adapter no longer blesses one fixed runtime bundle that couples registry ownership, callback resume controller ownership, idle warmup, and disposal.
+
+Migration:
+
+- For ordinary React hosts, register `provideTokenSetAuthRegistry({ clients })`.
+- If the host needs callback resume, compose it explicitly with `provideTokenSetCallbackResumeController(registry)` after choosing how the registry instance should be owned.
+- If the host needs manual readiness, manual disposal, or custom warmup policy, create and own the registry/controller directly instead of depending on an SDK-owned runtime object.
+
 ### Client Environment And Backend-OIDC Web Host Boundary
 
 Packages:
@@ -145,15 +186,15 @@ Package: `@securitydept/token-set-context-client-react/react-query`
 Change:
 
 - React Query integration is a subpath of the React package, not a standalone package.
-- Read and write helpers are SDK-owned where they represent reusable token-set groups / entries behavior.
-- App-specific mutation composition remains app glue.
+- The SDK-owned surface is limited to readiness queries, token-set-aware query-key namespacing, and invalidation glue.
+- Resource domain models and groups/entries CRUD hooks remain app-local or adopter-local code.
 
 Migration:
 
 - Import React Query helpers from the `./react-query` subpath.
-- Do not depend on `apps/webui/src/hooks/*` as public API.
+- Build app-specific resource hooks in the host app instead of expecting a token-set CRUD SDK surface.
 - Keep TanStack Query as an optional peer dependency in hosts that import the subpath.
-- Treat `requestOptions.transport` as a resource-request override only; auth lifecycle and authorization-header ownership still stay with the token-set client service.
+- Use SDK query-key prefixes and readiness helpers to compose host-owned query trees that should invalidate on token-set lifecycle changes.
 
 ### Framework Adapter Environment Boundaries
 
@@ -167,20 +208,20 @@ Packages:
 
 Change:
 
-- `@securitydept/client-react` now owns the canonical React environment-service bridge: `ClientEnvironmentServiceProvider`, `useClientEnvironmentService()`, `useClientEnvironment()`, `useWebClientEnvironment()`, and `usePageClientEnvironment()`.
-- `SessionContextProvider` and `provideSessionContext` bridge `SessionContextController`, the framework-neutral state/flow owner for user-info refresh, logout cleanup, and redirect helpers. They still accept `environment: WebClientEnvironment`, but initial user-info probing is explicit through `initialRefresh`; hosts may pass an already-created `controller` to the React provider when they own lifecycle directly.
-- The legacy single-client `BackendOidcModeContextProvider` now accepts `environment: BackendOidcModeWebClientEnvironment` and materializes its browser client through `createBackendOidcModeWebClient(...)` instead of a raw dependency/capability bag.
+- `@securitydept/client-react` now owns the canonical React injector bridge: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()`, plus the context-free `useReadableSignal()` / `useEventStream()` bridge.
+- `client-react/environment-service` and `planner-host` now export injection tokens and provider factories only, for example `CLIENT_ENVIRONMENT_SERVICE` + `provideClientEnvironmentService()` and `AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`.
+- The basic-auth / session / token-set React adapters no longer own domain-specific Provider / Context hooks. They export tokens, plain factories, provider factories, and explicit callback/component bridges. Token-set multi-client composition is now explicit registry/controller wiring instead of an SDK-owned runtime bundle.
 - Angular `createTokenSetOidcLoginRedirectHandler()` is now the route-login helper. It still uses `environment` as the only public key, but the value is now a stable page-environment source that Angular DI provides through `providePageClientEnvironment({ environment })` from `@securitydept/client-angular`. The helper targets the shared `OidcRedirectLoginClient` contract and awaits that source inside the guard flow before calling `loginWithRedirect()`.
 - Angular `CallbackResumeService` and React `useTokenSetCallbackResume({ getCurrentUrl, describeError })` now bridge the shared `TokenSetCallbackResumeController` from `@securitydept/token-set-context-client/registry`. Angular `TokenSetCallbackComponent` remains page-only convenience over that service, with injectable current URL and host policy tokens.
 
 Migration:
 
-- Build browser environments at the framework composition root, then pass those environment objects into the provider entrypoints.
-- Opt session adapters into initial probing with `initialRefresh` when an app relied on the old provider/service construction side effect, or call `controller.refresh()` / `service.refresh()` explicitly from the host-owned lifecycle.
-- For React render paths that need page capability, wrap the route/app tree with `ClientEnvironmentServiceProvider({ service })`, read page capability with `usePageClientEnvironment()` under Suspense plus an error boundary, and keep command/event flows on `useClientEnvironmentService().resolvePageEnvironment()`.
+- Build browser environments at the framework composition root, then register those dependencies through `SecuritydeptProvider` plus provider factories.
+- Opt session adapters into initial probing by explicitly creating `SessionContextController` and calling `controller.refresh()` from the host-owned lifecycle when needed.
+- For React code that needs an environment service, register it with `provideClientEnvironmentService()` and read it later through `useSecuritydeptContext().get(CLIENT_ENVIRONMENT_SERVICE)`; keep page capability explicit through service `resolvePageEnvironment()` / `readPageEnvironment()` calls or explicit props.
 - For Angular frontend-oidc route redirects, provide one stable page-environment source from the composition root with `providePageClientEnvironment({ environment })`, where `environment` is usually a provider-scoped `ClientEnvironmentService` or another inject-safe stable resolver.
 - For Angular callback routes, override `TOKEN_SET_CALLBACK_CURRENT_URL` when `window.location.href` is not the right source of truth, and override `TOKEN_SET_CALLBACK_COMPONENT_OPTIONS` when the host needs non-default fallback navigation or centralized error logging.
-- For custom callback orchestration, call `CallbackResumeService.resume(url)` or the React hook with `getCurrentUrl` / `describeError` instead of reintroducing page-global fallback logic or mode-specific copy into ordinary helpers. `CallbackResumeService.handleCallback(url)` remains only a compatibility wrapper.
+- For custom callback orchestration, call `CallbackResumeService.resume(url)` or the React hook with explicit `controller` / `injector` / `getCurrentUrl` / `describeError` instead of reintroducing page-global fallback logic or mode-specific copy into ordinary helpers. `CallbackResumeService.handleCallback(url)` remains only a compatibility wrapper.
 
 ### Route Security And Matched Route Chains
 
@@ -221,6 +262,100 @@ Migration:
 - Register token-set clients before callback routes consume state.
 - Use the framework callback components / guards where available.
 - Route failure UI through structured code and recovery data.
+
+### Token-Set Registry Dynamic Lifecycle Semantics
+
+Packages:
+
+- `@securitydept/token-set-context-client/registry`
+- `@securitydept/token-set-context-client-react`
+- `@securitydept/token-set-context-client-angular`
+
+Change:
+
+- Canonical registry lifecycle verbs are now `register(entry)`, `unregister(key)`, `resetMaterialization(key)`, and `dispose()`.
+- The registry now exposes separate configured-vs-materialized observability: `has()` / `registeredKeys()` / `registeredEntriesSnapshot()` / `registeredMetaSnapshot()` describe registered entries, while `readyKeys()` / `readyEntriesSnapshot()` describe materialized services.
+- The React token-set composition root is now `createTokenSetAuthRuntime({ clients })` + `provideTokenSetAuthRuntime(runtime)`; runtime add/remove/reset flows should use the injected registry instance rather than `TokenSetAuthProvider` or hidden lookup hooks. Angular `TokenSetAuthRegistry` now exposes the same lifecycle verbs and registered/ready snapshots as the shared core.
+
+Migration:
+
+- Replace old `reset(key)` calls that meant “remove this client registration” with `unregister(key)`.
+- Replace old retry/recreate flows that re-register the same key after failure with `resetMaterialization(key)` followed by `whenReady(key)`.
+- For management UIs or diagnostics, use the registered snapshots for configured rows and the ready snapshots for live service state; do not treat ready-only keys as the source of truth for configured clients.
+- In React hosts, do not expect prop changes to reconcile the token-set runtime automatically. Use `useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` or a retained runtime/registry reference for runtime lifecycle changes.
+
+Justification:
+
+- The old `reset(key)` wording mixed two different operations: removing a registration and invalidating one materialized service instance. Splitting the verbs makes async invalidation race-safe, keeps stale materialization from repopulating removed state, and gives hosts an explicit registered-vs-ready management surface.
+
+### Token-Set Core Signal State And Canonical Rx Bridge
+
+Packages:
+
+- `@securitydept/client/rx`
+- `@securitydept/client-angular`
+- `@securitydept/token-set-context-client/registry`
+- `@securitydept/token-set-context-client-react`
+- `@securitydept/token-set-context-client-angular`
+
+Change:
+
+- `TokenSetAuthRegistry.state`, `getState()`, and `subscribe()` are now the canonical topology/readiness observation surface. Snapshot helpers remain, but they are synchronous convenience over `state.get()`.
+- `TokenSetAuthService` now lives under `@securitydept/token-set-context-client/registry` as the shared per-client auth material owner. Its `state` owns snapshot, derived token material, freshness, restore lifecycle, and disposed state.
+- React and Angular adapters no longer own separate business-state implementations for token freshness, access-token derivation, or auto-restore. React hooks and Angular bridges read the shared core service/registry state instead.
+- `@securitydept/client/rx` is now the canonical RxJS bridge for both `ReadableSignalTrait` and `EventStreamTrait`. `signalToObservable` is no longer exported from `@securitydept/client-angular`; Angular keeps `bridgeToAngularSignal()` only.
+
+Migration:
+
+- Observe registry topology and readiness through `registry.state`, `registry.getState()`, or `registry.subscribe()`; use `registeredKeys()` / `readyKeys()` / snapshot helpers only as synchronous convenience.
+- If host code depended on adapter-local token-set service state machines, migrate that logic to the shared `TokenSetAuthService` contract from `@securitydept/token-set-context-client/registry` and treat React/Angular service wrappers as host bridges.
+- Replace `import { signalToObservable } from "@securitydept/client-angular"` with `import { toRxObservable } from "@securitydept/client/rx"`.
+- In React hosts that need aggregate registry reactivity, use `useReadableSignal(registry.state)` instead of maintaining an app-local mirror store for registered/ready keys.
+
+Justification:
+
+- This keeps framework-neutral core signal state as the single authority, removes duplicated adapter-local state machines, and makes the RxJS bridge framework-neutral instead of Angular-owned.
+
+### Token-Set Registry Explicit Service Wiring
+
+Packages:
+
+- `@securitydept/token-set-context-client/registry`
+- `@securitydept/token-set-context-client-react`
+- `@securitydept/token-set-context-client-angular`
+
+Change:
+
+- `CreateTokenSetAuthRegistryOptions` is now explicit-only. `dispose`, `accessTokenOf`, `ensureAccessTokenOf`, `ensureAuthorizationHeaderOf`, `ensureAuthForResourceOf`, `authEventsOf`, and `idleScheduler` are required instead of optional.
+- `createTokenSetOidcAuthRegistry(...)` no longer performs shape-based fallback wiring. Callers must provide `materializeService` and every other registry capability mapping explicitly.
+- `TokenSetAuthService` now exposes same-name static helpers for the canonical OIDC-backed wiring path: `materializeService`, `dispose`, `accessTokenOf`, `ensureAccessTokenOf`, `ensureAuthorizationHeaderOf`, `ensureAuthForResourceOf`, and `authEventsOf`.
+
+Migration:
+
+- When constructing `createTokenSetAuthRegistry(...)`, always pass a complete option object even in tests or single-client hosts.
+- When constructing `createTokenSetOidcAuthRegistry(...)`, stop relying on omitted options to infer service capabilities from runtime shape.
+- For the shared core `TokenSetAuthService`, prefer the static helpers directly:
+
+```ts
+const registry = createTokenSetOidcAuthRegistry({
+	materializeService: TokenSetAuthService.materializeService,
+	dispose: TokenSetAuthService.dispose,
+	accessTokenOf: TokenSetAuthService.accessTokenOf,
+	ensureAccessTokenOf: TokenSetAuthService.ensureAccessTokenOf,
+	ensureAuthorizationHeaderOf:
+		TokenSetAuthService.ensureAuthorizationHeaderOf,
+	ensureAuthForResourceOf: TokenSetAuthService.ensureAuthForResourceOf,
+	authEventsOf: TokenSetAuthService.authEventsOf,
+	idleScheduler: (callback) => {
+		const handle = setTimeout(callback, 0);
+		return () => clearTimeout(handle);
+	},
+});
+```
+
+Justification:
+
+- Hidden shape checks made registry behavior depend on what methods happened to exist on a service instance at runtime. Requiring every mapping up front makes the contract auditable, avoids silent capability drift, and keeps adapter wiring obvious at the call site.
 
 ## Current Non-Goals
 

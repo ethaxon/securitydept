@@ -4,7 +4,7 @@
 // Tests for the cross-tab / visibility lifecycle hardening baseline.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createVisibilityReconciler } from "../visibility-reconciler";
+import { createVisibilityReconciler } from "../lifecycle/visibility-reconciler";
 
 function createMockDocument(initialState: DocumentVisibilityState = "visible") {
 	let handler: (() => void) | undefined;

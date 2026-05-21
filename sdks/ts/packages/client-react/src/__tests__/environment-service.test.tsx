@@ -9,9 +9,10 @@ import {
 	type WebClientEnvironment,
 } from "@securitydept/client/web";
 import {
-	ClientEnvironmentServiceProvider,
-	useClientEnvironmentService,
-	usePageClientEnvironment,
+	CLIENT_ENVIRONMENT_SERVICE,
+	provideClientEnvironmentService,
+	SecuritydeptProvider,
+	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
 	act,
@@ -166,15 +167,17 @@ describe("client-react environment-service adapter", () => {
 		let observedService: unknown;
 
 		function Probe() {
-			observedService = useClientEnvironmentService();
-			const environment = usePageClientEnvironment();
+			const injector = useSecuritydeptContext();
+			const resolvedService = injector.get(CLIENT_ENVIRONMENT_SERVICE);
+			observedService = resolvedService;
+			const environment = resolvedService.readPageEnvironment();
 			return createElement("div", null, environment.location.href);
 		}
 
 		const view = render(
 			createElement(
-				ClientEnvironmentServiceProvider,
-				{ service },
+				SecuritydeptProvider,
+				{ providers: [provideClientEnvironmentService(service)] },
 				createElement(
 					Suspense,
 					{ fallback: createElement("div", null, "loading") },
@@ -217,7 +220,8 @@ describe("client-react environment-service adapter", () => {
 		const onError = vi.fn();
 
 		function Probe() {
-			usePageClientEnvironment();
+			const injector = useSecuritydeptContext();
+			injector.get(CLIENT_ENVIRONMENT_SERVICE).readPageEnvironment();
 			return createElement("div", null, "ready");
 		}
 
@@ -230,8 +234,8 @@ describe("client-react environment-service adapter", () => {
 						createElement("div", null, (error as Error).message),
 				},
 				createElement(
-					ClientEnvironmentServiceProvider,
-					{ service },
+					SecuritydeptProvider,
+					{ providers: [provideClientEnvironmentService(service)] },
 					createElement(
 						Suspense,
 						{ fallback: createElement("div", null, "loading") },

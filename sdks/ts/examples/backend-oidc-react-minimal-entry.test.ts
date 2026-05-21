@@ -1,25 +1,38 @@
 // @vitest-environment jsdom
 
-// Backend OIDC mode React minimal entry — standalone adopter-facing evidence
-//
-// This test proves the standalone React entry path for
-// @securitydept/token-set-context-client/backend-oidc-mode/react.
-//
-// An adopter reading this file should understand "how do I wire up
-// backend-OIDC auth state in React?" in one glance.
-
-import { createInMemoryRecordStore } from "@securitydept/client";
-import { createBackendOidcModeWebClientEnvironment } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
-import type { BackendOidcModeContextProviderProps } from "@securitydept/token-set-context-client-react";
 import {
-	BackendOidcModeContextProvider,
-	useAccessToken,
-	useAuthState,
-	useBackendOidcModeContext,
+	createDefaultIdleScheduler,
+	createSignal,
+	createSubject,
+} from "@securitydept/client";
+import {
+	SecuritydeptProvider,
+	useReadableSignal,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
+import type {
+	AuthSnapshot,
+	TokenSetAuthEvent,
+} from "@securitydept/token-set-context-client/orchestration";
+import {
+	EnsureAuthForResourceStatus,
+	TokenFreshnessState,
+	TokenSetAuthFlowReason,
+} from "@securitydept/token-set-context-client/orchestration";
+import {
+	TokenSetAuthService as CoreTokenSetAuthService,
+	createTokenSetAuthRegistry,
+} from "@securitydept/token-set-context-client/registry";
+import {
+	provideTokenSetAuthRegistry,
+	type ReactRegistry,
+	TOKEN_SET_AUTH_REGISTRY,
+	type TokenSetBackendOidcClient,
+	type TokenSetClientEntry,
 } from "@securitydept/token-set-context-client-react";
-import { act, createElement, type ReactElement, type ReactNode } from "react";
+import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
@@ -41,107 +54,165 @@ function render(element: ReactElement) {
 	};
 }
 
-function ProviderEntry(
-	props: Omit<BackendOidcModeContextProviderProps, "children"> & {
-		children?: ReactNode;
-	},
-) {
-	return createElement(
-		BackendOidcModeContextProvider,
-		props as unknown as BackendOidcModeContextProviderProps,
-	);
+function createSnapshot(accessToken: string): AuthSnapshot {
+	return {
+		tokens: { accessToken },
+		metadata: {},
+	};
 }
 
-function createMinimalEnvironment() {
-	return createBackendOidcModeWebClientEnvironment({
-		transport: {
-			async execute() {
-				return { status: 500, headers: {}, body: null };
-			},
+function createBackendClient(
+	snapshot: AuthSnapshot,
+): TokenSetBackendOidcClient {
+	const state = createSignal<AuthSnapshot | null>(snapshot);
+	return {
+		state,
+		authEvents: createSubject<TokenSetAuthEvent>(),
+		dispose: vi.fn(() => state.set(null)),
+		restorePersistedState: async () => state.get(),
+		authorizationHeader: () =>
+			`Bearer ${state.get()?.tokens.accessToken ?? ""}`,
+		ensureAuthForResource: async () => {
+			const currentSnapshot = state.get();
+			if (!currentSnapshot) {
+				return {
+					status: EnsureAuthForResourceStatus.Unauthenticated,
+					snapshot: null,
+					authorizationHeader: null,
+					reason: TokenSetAuthFlowReason.NoSnapshot,
+				};
+			}
+
+			return {
+				status: EnsureAuthForResourceStatus.Authenticated,
+				snapshot: currentSnapshot,
+				freshness: TokenFreshnessState.Fresh,
+				authorizationHeader: `Bearer ${currentSnapshot.tokens.accessToken}`,
+			};
 		},
-		scheduler: {
-			setTimeout() {
-				return { cancel() {} };
-			},
+		ensureFreshAuthState: async () => state.get(),
+		ensureAuthorizationHeader: async () =>
+			`Bearer ${snapshot.tokens.accessToken}`,
+		handleCallback: async () => ({ snapshot }),
+		loginWithRedirect: async () => undefined,
+		authorizeUrl: () => "/authorize",
+		refresh: async () => snapshot,
+		clearState: async () => {
+			state.set(null);
 		},
-		clock: { now: () => Date.now() },
-		persistentStore: createInMemoryRecordStore(),
-		sessionStore: createInMemoryRecordStore(),
+	};
+}
+
+type BackendClientEntry = Omit<TokenSetClientEntry, "clientFactory"> & {
+	clientFactory: () =>
+		| TokenSetBackendOidcClient
+		| Promise<TokenSetBackendOidcClient>;
+};
+
+function createManualRegistry(
+	clients: readonly BackendClientEntry[],
+): ReactRegistry {
+	const registry = createTokenSetAuthRegistry<
+		TokenSetBackendOidcClient,
+		CoreTokenSetAuthService<TokenSetBackendOidcClient>
+	>({
+		materialize: CoreTokenSetAuthService.materializeService,
+		dispose: CoreTokenSetAuthService.dispose,
+		accessTokenOf: CoreTokenSetAuthService.accessTokenOf,
+		ensureAccessTokenOf: CoreTokenSetAuthService.ensureAccessTokenOf,
+		ensureAuthorizationHeaderOf:
+			CoreTokenSetAuthService.ensureAuthorizationHeaderOf,
+		ensureAuthForResourceOf: CoreTokenSetAuthService.ensureAuthForResourceOf,
+		authEventsOf: CoreTokenSetAuthService.authEventsOf,
+		idleScheduler: createDefaultIdleScheduler(),
 	});
+
+	for (const client of clients) {
+		const registration = registry.register(client);
+		if (registration instanceof Promise) {
+			registration.catch(() => {});
+		}
+	}
+
+	return registry;
 }
 
-describe("backend-oidc-mode react minimal entry", () => {
+describe("backend-oidc react minimal entry", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
-		delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
-			.IS_REACT_ACT_ENVIRONMENT;
 	});
 
-	it("shows the standalone React entry path: provider → hook → auth state consumption", () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
+	it("shows the minimal injector path for consuming backend-OIDC auth state in React", async () => {
+		const registry = createManualRegistry([
+			{
+				key: "main",
+				autoRestore: false,
+				clientFactory: () => createBackendClient(createSnapshot("backend-at")),
+			},
+		]);
+		await registry.whenReady("main");
 
-		// 1. A consumer that reads auth state via the convenience hooks.
 		function AuthBadge() {
-			const authState = useAuthState();
-			const accessToken = useAccessToken();
+			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
+			const snapshot = useReadableSignal(
+				registry.require("main").state,
+			).snapshot;
 			return createElement(
 				"output",
 				null,
-				accessToken
-					? `token:${accessToken}`
-					: `unauthenticated(state:${authState === null ? "null" : "present"})`,
+				snapshot ? `token:${snapshot.tokens.accessToken}` : "unauthenticated",
 			);
 		}
 
-		// 2. Wire up the provider with minimal config + runtime.
 		const view = render(
 			createElement(
-				ProviderEntry,
-				{
-					config: { baseUrl: "https://auth.example.com" },
-					environment: createMinimalEnvironment(),
-				} satisfies Omit<BackendOidcModeContextProviderProps, "children">,
+				SecuritydeptProvider,
+				{ providers: [provideTokenSetAuthRegistry(registry)] },
 				createElement(AuthBadge),
 			),
 		);
 
-		// 3. Initially no auth state — renders "unauthenticated".
-		expect(view.container.textContent).toBe("unauthenticated(state:null)");
-
+		expect(view.container.textContent).toBe("token:backend-at");
 		view.unmount();
+		registry.dispose();
 	});
 
-	it("shows the full context hook usage: access to client and state", () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
+	it("shows advanced client access through the keyed registry service", async () => {
+		const registry = createManualRegistry([
+			{
+				key: "main",
+				autoRestore: false,
+				clientFactory: () => createBackendClient(createSnapshot("backend-at")),
+			},
+		]);
+		await registry.whenReady("main");
 
-		function ContextProbe() {
-			const { client, state } = useBackendOidcModeContext();
-			// The client is accessible for advanced operations (e.g. restoreState).
-			// The state is the current auth snapshot (null when unauthenticated).
+		function ClientProbe() {
+			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
+			const client = registry.require("main").client;
+			if (
+				!("authorizeUrl" in client) ||
+				typeof client.authorizeUrl !== "function"
+			) {
+				throw new Error("Expected backend-specific client surface");
+			}
 			return createElement(
 				"output",
 				null,
-				`client:${client ? "yes" : "no"},state:${state ? "active" : "empty"}`,
+				(client as TokenSetBackendOidcClient).authorizeUrl(),
 			);
 		}
 
 		const view = render(
 			createElement(
-				ProviderEntry,
-				{
-					config: { baseUrl: "https://auth.example.com" },
-					environment: createMinimalEnvironment(),
-				} satisfies Omit<BackendOidcModeContextProviderProps, "children">,
-				createElement(ContextProbe),
+				SecuritydeptProvider,
+				{ providers: [provideTokenSetAuthRegistry(registry)] },
+				createElement(ClientProbe),
 			),
 		);
 
-		expect(view.container.textContent).toBe("client:yes,state:empty");
-
+		expect(view.container.textContent).toBe("/authorize");
 		view.unmount();
+		registry.dispose();
 	});
 });

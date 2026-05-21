@@ -9,22 +9,15 @@ import {
 	readErrorPresentationDescriptor,
 	UserRecovery,
 } from "@securitydept/client";
+import {
+	useReadableSignal,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
 import type { AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import type { BackendOidcModeBootstrapSource as BackendOidcModeBootstrapSourceType } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { BackendOidcModeBootstrapSource } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
-import {
-	useTokenSetAuthService,
-	useTokenSetAuthState,
-	useTokenSetBackendOidcClient,
-} from "@securitydept/token-set-context-client-react";
-import {
-	tokenSetQueryKeys,
-	useTokenSetCreateBasicEntryMutation,
-	useTokenSetCreateGroupMutation,
-	useTokenSetCreateTokenEntryMutation,
-	useTokenSetEntriesQuery,
-	useTokenSetGroupsQuery,
-} from "@securitydept/token-set-context-client-react/react-query";
+import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
+import { tokenSetQueryKeys } from "@securitydept/token-set-context-client-react/react-query";
 import { useQueryClient } from "@tanstack/react-query";
 import {
 	useCallback,
@@ -44,6 +37,12 @@ import {
 	probeForwardAuthWithBasicEntry,
 	probeForwardAuthWithEntryToken,
 	probePropagationRouteWithTokenSet,
+	tokenSetDashboardQueryKeys,
+	useTokenSetCreateBasicEntryMutation,
+	useTokenSetCreateGroupMutation,
+	useTokenSetCreateTokenEntryMutation,
+	useTokenSetEntriesQuery,
+	useTokenSetGroupsQuery,
 } from "@/api/tokenSet";
 import { ErrorPresentationCallout } from "@/components/common/ErrorPresentationCallout";
 import { Layout } from "@/components/layout/Layout";
@@ -57,6 +56,7 @@ import {
 	clearTokenSetBackendModeBrowserState,
 	tokenSetBackendModeTraceTimeline,
 } from "@/lib/tokenSetBackendModeClient";
+import { assertTokenSetBackendOidcClient } from "@/lib/tokenSetClientAssertions";
 import {
 	TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	TOKEN_SET_BACKEND_MODE_PLAYGROUND_PATH,
@@ -320,22 +320,23 @@ function readMutationStatusText(status: MutationStatus, label: string): string {
 }
 
 export function TokenSetBackendModePlaygroundPage() {
+	const injector = useSecuritydeptContext();
+	const registry = injector.get(TOKEN_SET_AUTH_REGISTRY);
 	const traceTimeline = tokenSetBackendModeTraceTimeline;
 	const recordAppTrace = useMemo(
 		() => createTokenSetBackendHostTraceRecorder(traceTimeline),
 		[],
 	);
 
-	// --- React canonical consumer path ---
-	// State subscription via canonical hook (replaces manual useSyncExternalStore).
-	// Lower-level backend-oidc access via SDK-owned keyed hook.
-	const service = useTokenSetAuthService(TOKEN_SET_BACKEND_MODE_CLIENT_KEY);
-	const state = useTokenSetAuthState(
-		TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
-	) as AuthStateSnapshot | null;
-	const client = useTokenSetBackendOidcClient(
-		TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+	const service = registry.require(TOKEN_SET_BACKEND_MODE_CLIENT_KEY);
+	const state = useReadableSignal(service.state)
+		.snapshot as AuthStateSnapshot | null;
+	const client = service.client;
+	assertTokenSetBackendOidcClient(
+		client,
+		`TokenSetBackendModePlaygroundPage client ${TOKEN_SET_BACKEND_MODE_CLIENT_KEY}`,
 	);
+	const backendClient = client;
 
 	const traceEvents = useSyncExternalStore(
 		(listener) => traceTimeline.subscribe(listener),
@@ -362,21 +363,26 @@ export function TokenSetBackendModePlaygroundPage() {
 	// --- React Query read paths (replaces imperative loadGroups / loadEntries) ---
 	const queryClient = useQueryClient();
 	const groupsQuery = useTokenSetGroupsQuery({
+		injector,
 		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	});
 	const entriesQuery = useTokenSetEntriesQuery({
+		injector,
 		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	});
 	const protectedGroups = groupsQuery.data ?? [];
 
 	// --- React Query mutation paths ---
 	const createGroupMutation = useTokenSetCreateGroupMutation({
+		injector,
 		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	});
 	const createTokenEntryMutation = useTokenSetCreateTokenEntryMutation({
+		injector,
 		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	});
 	const createBasicEntryMutation = useTokenSetCreateBasicEntryMutation({
+		injector,
 		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	});
 	const protectedEntries = entriesQuery.data ?? [];
@@ -508,7 +514,7 @@ export function TokenSetBackendModePlaygroundPage() {
 		setBusyAction(BusyActionKind.Refresh);
 		setActionError(null);
 		try {
-			await client.refresh();
+			await backendClient.refresh();
 		} catch (error) {
 			setActionError(
 				readErrorPresentationDescriptor(error, {
@@ -535,7 +541,7 @@ export function TokenSetBackendModePlaygroundPage() {
 		propagationRequestRef.current = null;
 
 		try {
-			await clearTokenSetBackendModeBrowserState(client);
+			await clearTokenSetBackendModeBrowserState(backendClient);
 			if (getAuthContextMode() === AuthContextMode.TokenSetBackend) {
 				clearAuthContextMode();
 			}
@@ -1403,7 +1409,7 @@ export function TokenSetBackendModePlaygroundPage() {
 								type="button"
 								onClick={() =>
 									void queryClient.cancelQueries({
-										queryKey: tokenSetQueryKeys.groups(
+										queryKey: tokenSetDashboardQueryKeys.groups(
 											TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 										),
 									})
@@ -1640,7 +1646,7 @@ export function TokenSetBackendModePlaygroundPage() {
 								type="button"
 								onClick={() =>
 									void queryClient.cancelQueries({
-										queryKey: tokenSetQueryKeys.entries(
+										queryKey: tokenSetDashboardQueryKeys.entries(
 											TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 										),
 									})

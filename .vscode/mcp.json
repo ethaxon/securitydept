@@ -2,7 +2,7 @@
 	"servers": {
 		"gitnexus": {
 			"command": "npx",
-			"args": ["-y", "gitnexus@^1.6.4", "analyze"]
+			"args": ["-y", "gitnexus@^1.6.5", "analyze"]
 		}
 	}
 }

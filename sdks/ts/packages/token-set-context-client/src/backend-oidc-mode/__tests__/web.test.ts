@@ -11,7 +11,7 @@ import {
 	UserRecovery,
 } from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
-import { createBackendOidcModeAuthorizedTransport } from "../auth-transport";
+import { createBackendOidcModeAuthorizedTransport } from "../transport/auth-transport";
 import {
 	BackendOidcModeBootstrapSource,
 	type BackendOidcModePageCallbackCapability,

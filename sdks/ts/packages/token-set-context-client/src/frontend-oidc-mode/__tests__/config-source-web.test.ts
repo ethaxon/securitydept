@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	createFrontendOidcModeBrowserClient,
 	createFrontendOidcModeWebClientEnvironment,
-} from "../config-source-web";
+} from "../config/config-source-web";
 
 function createJsonResponse(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), {

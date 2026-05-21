@@ -33,8 +33,8 @@ import type {
 } from "@securitydept/token-set-context-client/registry";
 import { firstValueFrom, from, switchMap, take } from "rxjs";
 import type { UnauthenticatedEntry } from "./guard-types";
-import type { ClientMeta, ClientQueryOptions } from "./token-set-auth-registry";
-import { TokenSetAuthRegistry } from "./token-set-auth-registry";
+import type { ClientMeta, ClientQueryOptions } from "./token-set-auth.registry";
+import { TokenSetAuthRegistry } from "./token-set-auth.registry";
 
 // ============================================================================
 // Guard factory — createTokenSetRouteAggregationGuard() [LOWER-LEVEL ADVANCED]
@@ -439,11 +439,11 @@ export function createTokenSetRouteAggregationGuard(
 			attributes: resolvedRequirement.requirement.attributes,
 			checkAuthenticated: () =>
 				resolvedRequirement.entries.every(({ service }) =>
-					service.isAuthenticated(),
+					readServiceAuthentication(service),
 				),
 			onUnauthenticated: async (): Promise<boolean | string> => {
 				const failing = resolvedRequirement.entries.filter(
-					({ service }) => !service.isAuthenticated(),
+					({ service }) => !readServiceAuthentication(service),
 				);
 				const handler =
 					options.requirementPolicies?.[resolvedRequirement.requirement.id]
@@ -479,7 +479,7 @@ export function createTokenSetRouteAggregationGuard(
 					_resolved: ResolvedRequirementEntry;
 				};
 				const failing = candidate._resolved.entries.filter(
-					({ service }) => !service.isAuthenticated(),
+					({ service }) => !readServiceAuthentication(service),
 				);
 				// Handler resolution: policy > kind handler > default
 				const handler =
@@ -545,6 +545,23 @@ export function createTokenSetRouteAggregationGuard(
 			),
 		);
 	};
+}
+
+function readServiceAuthentication(service: {
+	isAuthenticated: unknown;
+}): boolean {
+	if (
+		typeof service.isAuthenticated === "object" &&
+		service.isAuthenticated !== null &&
+		"get" in service.isAuthenticated &&
+		typeof service.isAuthenticated.get === "function"
+	) {
+		return service.isAuthenticated.get() as boolean;
+	}
+	if (typeof service.isAuthenticated === "function") {
+		return service.isAuthenticated();
+	}
+	return Boolean(service.isAuthenticated);
 }
 
 function runUnauthenticatedHandlerInContext(

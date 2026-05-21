@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 
-import type {
-	HttpRequest,
-	HttpResponse,
-	HttpTransport,
-} from "@securitydept/client";
 import { createSignal, createSubject } from "@securitydept/client";
+import {
+	SecuritydeptProvider,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
 import {
 	type AuthSnapshot,
 	EnsureAuthForResourceStatus,
@@ -15,8 +14,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement, type ReactElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useTokenSetGroupsQuery } from "../react-query/index";
-import { TokenSetAuthProvider } from "../token-set-auth-provider";
+import { provideTokenSetAuthRegistry } from "../index";
+import {
+	invalidateTokenSetQueriesForClient,
+	tokenSetQueryKeys,
+	useTokenSetReadinessQuery,
+} from "../react-query/index";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
@@ -56,114 +59,96 @@ describe("token-set react-query helpers", () => {
 		document.body.innerHTML = "";
 	});
 
-	it("uses requestOptions.transport while preserving authorization from the token-set client", async () => {
+	it("resolves readiness through SecuritydeptProvider", async () => {
 		(
 			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 		).IS_REACT_ACT_ENVIRONMENT = true;
-		const requests: HttpRequest[] = [];
-		const transport: HttpTransport = {
-			async execute(request: HttpRequest): Promise<HttpResponse> {
-				requests.push(request);
-				return {
-					status: 200,
-					headers: {},
-					body: [{ id: "group-1", name: "Admins" }],
-				};
-			},
-		};
 		const queryClient = new QueryClient({
 			defaultOptions: {
 				queries: { retry: false },
 			},
 		});
-		const observed: Array<{
-			status: string;
-			data: Array<{ id: string; name: string }> | undefined;
-		}> = [];
+		const observed: string[] = [];
 
 		function Probe() {
-			const query = useTokenSetGroupsQuery({
-				clientKey: "frontend",
-				requestOptions: {
-					baseUrl: "https://api.example.com",
-					transport,
-				},
-			});
+			const injector = useSecuritydeptContext();
+			const query = useTokenSetReadinessQuery("frontend", { injector });
 
 			useEffect(() => {
-				observed.push({
-					status: query.status,
-					data: query.data,
-				});
-			}, [query.status, query.data]);
+				observed.push(query.status);
+			}, [query.status]);
 
-			return null;
+			return createElement(
+				"output",
+				null,
+				query.data?.accessToken.get() ?? "loading",
+			);
 		}
 
 		const snapshot: AuthSnapshot = {
 			tokens: { accessToken: "live-at" },
 			metadata: {},
 		};
+		const providers = [
+			provideTokenSetAuthRegistry({
+				clients: [
+					{
+						key: "frontend",
+						autoRestore: false,
+						clientFactory: () => ({
+							state: createSignal<AuthSnapshot | null>(snapshot),
+							authEvents: createSubject(),
+							dispose: vi.fn(),
+							restorePersistedState: vi.fn(async () => snapshot),
+							handleCallback: vi.fn(async () => ({ snapshot })),
+							authorizationHeader: vi.fn(() => "Bearer live-at"),
+							ensureAuthForResource: vi.fn(async () => ({
+								status: EnsureAuthForResourceStatus.Authenticated,
+								snapshot,
+								freshness: TokenFreshnessState.Fresh,
+								authorizationHeader: "Bearer live-at",
+							})),
+							ensureFreshAuthState: vi.fn(async () => snapshot),
+							ensureAuthorizationHeader: vi.fn(async () => "Bearer live-at"),
+							refresh: vi.fn(async () => snapshot),
+							clearState: vi.fn(async () => {}),
+							loginWithRedirect: vi.fn(async () => undefined),
+						}),
+					},
+				],
+			}),
+		];
 
 		const view = render(
 			createElement(
 				QueryClientProvider,
 				{ client: queryClient },
 				createElement(
-					TokenSetAuthProvider,
-					{
-						idleWarmup: false,
-						clients: [
-							{
-								key: "frontend",
-								autoRestore: false,
-								clientFactory: () => ({
-									state: createSignal<AuthSnapshot | null>(snapshot),
-									authEvents: createSubject(),
-									dispose: vi.fn(),
-									restorePersistedState: vi.fn(async () => snapshot),
-									handleCallback: vi.fn(async () => ({ snapshot })),
-									authorizeUrl: vi.fn(() => "/authorize"),
-									authorizationHeader: vi.fn(() => "Bearer live-at"),
-									ensureAuthForResource: vi.fn(async () => ({
-										status: EnsureAuthForResourceStatus.Authenticated,
-										snapshot,
-										freshness: TokenFreshnessState.Fresh,
-										authorizationHeader: "Bearer live-at",
-									})),
-									ensureFreshAuthState: vi.fn(async () => snapshot),
-									ensureAuthorizationHeader: vi.fn(
-										async () => "Bearer live-at",
-									),
-									refresh: vi.fn(async () => snapshot),
-									clearState: vi.fn(async () => {}),
-									loginWithRedirect: vi.fn(async () => undefined),
-								}),
-							},
-						],
-					},
+					SecuritydeptProvider,
+					{ providers },
 					createElement(Probe),
 				),
 			),
 		);
 
-		await waitFor(() => observed.at(-1)?.status === "success");
+		await waitFor(() => observed.at(-1) === "success");
+		expect(view.container.textContent).toBe("live-at");
 
-		expect(requests).toHaveLength(1);
-		expect(requests[0]).toEqual(
-			expect.objectContaining({
-				url: "https://api.example.com/api/groups",
-				headers: expect.objectContaining({
-					authorization: "Bearer live-at",
-				}),
-			}),
-		);
-		expect(observed.at(-1)).toEqual({
-			status: "success",
-			data: [{ id: "group-1", name: "Admins" }],
+		await act(async () => {
+			view.unmount();
+			await Promise.resolve();
 		});
-
-		view.unmount();
 		queryClient.clear();
+	});
+
+	it("invalidates the full token-set client namespace", async () => {
+		const queryClient = new QueryClient();
+		const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+
+		await invalidateTokenSetQueriesForClient(queryClient, "frontend");
+
+		expect(invalidateQueries).toHaveBeenCalledWith({
+			queryKey: tokenSetQueryKeys.forClient("frontend"),
+		});
 	});
 });

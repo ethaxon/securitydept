@@ -7,7 +7,15 @@ import type {
 } from "@securitydept/client";
 import { createInMemoryRecordStore } from "@securitydept/client";
 import { createWebClientEnvironment } from "@securitydept/client/web";
-import { SessionContextClient } from "@securitydept/session-context-client";
+import {
+	SecuritydeptProvider,
+	useReadableSignal,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
+import {
+	SessionContextClient,
+	SessionContextControllerStatus,
+} from "@securitydept/session-context-client";
 import {
 	act,
 	createElement,
@@ -19,11 +27,10 @@ import {
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	createSessionContextController,
+	provideSessionContextController,
+	SESSION_CONTEXT_CONTROLLER,
 	SessionContextController,
-	SessionContextProvider,
-	type SessionContextProviderProps,
-	useSessionContext,
-	useSessionPrincipal,
 } from "../index";
 
 function render(element: ReactElement) {
@@ -107,7 +114,7 @@ describe("session-context react adapter", () => {
 			.IS_REACT_ACT_ENVIRONMENT;
 	});
 
-	it("syncs provider fetch state into hooks and supports refresh without app glue", async () => {
+	it("syncs controller state through SecuritydeptProvider and supports refresh without app glue", async () => {
 		(
 			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 		).IS_REACT_ACT_ENVIRONMENT = true;
@@ -116,44 +123,50 @@ describe("session-context react adapter", () => {
 		const transport = createQueuedTransport([firstResponse, secondResponse]);
 		const observed: string[] = [];
 		let refresh: (() => void) | null = null;
-
-		function Probe() {
-			const value = useSessionContext();
-			const principal = useSessionPrincipal();
-
-			useEffect(() => {
-				refresh = value.refresh;
-				observed.push(
-					`${value.loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
-				);
-			}, [principal?.displayName, value]);
-
-			return createElement(
-				"output",
-				null,
-				`${value.loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
-			);
-		}
-
-		const providerProps = {
+		const controller = createSessionContextController({
 			config: { baseUrl: "https://auth.example.com" },
 			environment: createTestEnvironment({
 				transport,
 				sessionStore: createInMemoryRecordStore(),
 			}),
-			initialRefresh: true,
-		} satisfies Omit<SessionContextProviderProps, "children">;
+		});
+
+		function Probe() {
+			const injector = useSecuritydeptContext();
+			const resolvedController = injector.get(SESSION_CONTEXT_CONTROLLER);
+			const state = useReadableSignal(resolvedController.state);
+			const principal = state.session?.principal ?? null;
+
+			useEffect(() => {
+				refresh = () => {
+					void resolvedController.refresh();
+				};
+				observed.push(
+					`${state.status === SessionContextControllerStatus.Loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
+				);
+			}, [principal?.displayName, resolvedController, state]);
+
+			return createElement(
+				"output",
+				null,
+				`${state.status === SessionContextControllerStatus.Loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
+			);
+		}
 
 		const view = render(
 			createElement(
-				SessionContextProvider,
-				providerProps as SessionContextProviderProps,
+				SecuritydeptProvider,
+				{ providers: provideSessionContextController(controller) },
 				createElement(Probe),
 			),
 		);
 
+		act(() => {
+			void controller.refresh();
+		});
+
 		expect(view.container.textContent).toBe("loading:none");
-		expect(observed).toEqual(["loading:none", "loading:none"]);
+		expect(observed).toEqual(["ready:none", "loading:none"]);
 
 		await act(async () => {
 			firstResponse.resolve({
@@ -168,7 +181,7 @@ describe("session-context react adapter", () => {
 		});
 
 		expect(view.container.textContent).toBe("ready:Alice");
-		expect(observed).toEqual(["loading:none", "loading:none", "ready:Alice"]);
+		expect(observed).toEqual(["ready:none", "loading:none", "ready:Alice"]);
 		expect(refresh).not.toBeNull();
 
 		act(() => {
@@ -191,7 +204,7 @@ describe("session-context react adapter", () => {
 
 		expect(view.container.textContent).toBe("ready:Bob");
 		expect(observed).toEqual([
-			"loading:none",
+			"ready:none",
 			"loading:none",
 			"ready:Alice",
 			"loading:Alice",
@@ -201,7 +214,7 @@ describe("session-context react adapter", () => {
 		view.unmount();
 	});
 
-	it("exposes login redirect helpers and transport-bound logout through the provider value", async () => {
+	it("exposes login redirect helpers and transport-bound logout through the controller token", async () => {
 		(
 			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 		).IS_REACT_ACT_ENVIRONMENT = true;
@@ -214,43 +227,52 @@ describe("session-context react adapter", () => {
 		]);
 		const sessionStore = createInMemoryRecordStore();
 		const observed: string[] = [];
+		const controller = createSessionContextController({
+			config: { baseUrl: "https://auth.example.com" },
+			environment: createTestEnvironment({ transport, sessionStore }),
+		});
 
 		function Probe() {
-			const value = useSessionContext();
+			const injector = useSecuritydeptContext();
+			const resolvedController = injector.get(SESSION_CONTEXT_CONTROLLER);
+			const state = useReadableSignal(resolvedController.state);
 			const didRun = useRef(false);
 
 			useEffect(() => {
-				if (!value.loading && !didRun.current) {
+				if (
+					state.status !== SessionContextControllerStatus.Loading &&
+					!didRun.current
+				) {
 					didRun.current = true;
 					void (async () => {
-						await value.rememberPostAuthRedirect("/entries?tab=all");
-						observed.push(await value.resolveLoginUrl());
-						await value.logout();
-						observed.push(await value.resolveLoginUrl());
+						await resolvedController.rememberPostAuthRedirect(
+							"/entries?tab=all",
+						);
+						observed.push(await resolvedController.resolveLoginUrl());
+						await resolvedController.logout();
+						observed.push(await resolvedController.resolveLoginUrl());
 					})();
 				}
-			}, [value]);
+			}, [resolvedController, state]);
 
 			return createElement(
 				"output",
 				null,
-				`${value.loading ? "loading" : "ready"}:${value.session?.principal.displayName ?? "none"}`,
+				`${state.status === SessionContextControllerStatus.Loading ? "loading" : "ready"}:${state.session?.principal.displayName ?? "none"}`,
 			);
 		}
 
-		const providerProps = {
-			config: { baseUrl: "https://auth.example.com" },
-			environment: createTestEnvironment({ transport, sessionStore }),
-			initialRefresh: true,
-		} satisfies Omit<SessionContextProviderProps, "children">;
-
 		const view = render(
 			createElement(
-				SessionContextProvider,
-				providerProps as SessionContextProviderProps,
+				SecuritydeptProvider,
+				{ providers: provideSessionContextController(controller) },
 				createElement(Probe),
 			),
 		);
+
+		act(() => {
+			void controller.refresh();
+		});
 
 		await act(async () => {
 			firstResponse.resolve({
@@ -294,35 +316,39 @@ describe("session-context react adapter", () => {
 		const pendingResponse = createDeferredResponse();
 		const transport = createQueuedTransport([pendingResponse]);
 		const observed: string[] = [];
+		const controller = createSessionContextController({
+			config: { baseUrl: "https://auth.example.com" },
+			environment: createTestEnvironment({ transport }),
+		});
 
 		function Probe() {
-			const { loading } = useSessionContext();
-			const principal = useSessionPrincipal();
+			const injector = useSecuritydeptContext();
+			const resolvedController = injector.get(SESSION_CONTEXT_CONTROLLER);
+			const state = useReadableSignal(resolvedController.state);
+			const principal = state.session?.principal ?? null;
 
 			useEffect(() => {
 				observed.push(
-					`${loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
+					`${state.status === SessionContextControllerStatus.Loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
 				);
-			}, [loading, principal?.displayName]);
+			}, [principal?.displayName, state]);
 
 			return null;
 		}
 
-		const providerProps = {
-			config: { baseUrl: "https://auth.example.com" },
-			environment: createTestEnvironment({ transport }),
-			initialRefresh: true,
-		} satisfies Omit<SessionContextProviderProps, "children">;
-
 		const view = render(
 			createElement(
-				SessionContextProvider,
-				providerProps as SessionContextProviderProps,
+				SecuritydeptProvider,
+				{ providers: provideSessionContextController(controller) },
 				createElement(Probe),
 			),
 		);
 
-		expect(observed).toEqual(["loading:none"]);
+		act(() => {
+			void controller.refresh();
+		});
+
+		expect(observed).toEqual(["ready:none", "loading:none"]);
 
 		view.unmount();
 
@@ -338,7 +364,7 @@ describe("session-context react adapter", () => {
 			await pendingResponse.promise;
 		});
 
-		expect(observed).toEqual(["loading:none"]);
+		expect(observed).toEqual(["ready:none", "loading:none"]);
 	});
 
 	it("realigns to the new provider lifecycle and drops stale results after reconfigure", async () => {
@@ -356,37 +382,45 @@ describe("session-context react adapter", () => {
 			secondResponse,
 		]);
 		const observed: string[] = [];
+		const firstController = createSessionContextController({
+			config: { baseUrl: "https://alpha.example.com" },
+			environment: createTestEnvironment({ transport: firstTransport }),
+		});
+		const secondController = createSessionContextController({
+			config: { baseUrl: "https://beta.example.com" },
+			environment: createTestEnvironment({ transport: secondTransport }),
+		});
 
 		function Probe() {
-			const { loading } = useSessionContext();
-			const principal = useSessionPrincipal();
+			const injector = useSecuritydeptContext();
+			const controller = injector.get(SESSION_CONTEXT_CONTROLLER);
+			const state = useReadableSignal(controller.state);
+			const principal = state.session?.principal ?? null;
 
 			useEffect(() => {
 				observed.push(
-					`${loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
+					`${state.status === SessionContextControllerStatus.Loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
 				);
-			}, [loading, principal?.displayName]);
+			}, [principal?.displayName, state]);
 
 			return createElement(
 				"output",
 				null,
-				`${loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
+				`${state.status === SessionContextControllerStatus.Loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
 			);
 		}
 
-		const initialProps = {
-			config: { baseUrl: "https://alpha.example.com" },
-			environment: createTestEnvironment({ transport: firstTransport }),
-			initialRefresh: true,
-		} satisfies Omit<SessionContextProviderProps, "children">;
-
 		const view = render(
 			createElement(
-				SessionContextProvider,
-				initialProps as SessionContextProviderProps,
+				SecuritydeptProvider,
+				{ providers: provideSessionContextController(firstController) },
 				createElement(Probe),
 			),
 		);
+
+		act(() => {
+			void firstController.refresh();
+		});
 
 		expect(view.container.textContent).toBe("loading:none");
 		expect(firstRequests).toEqual([
@@ -395,19 +429,17 @@ describe("session-context react adapter", () => {
 			}),
 		]);
 
-		const reconfiguredProps = {
-			config: { baseUrl: "https://beta.example.com" },
-			environment: createTestEnvironment({ transport: secondTransport }),
-			initialRefresh: true,
-		} satisfies Omit<SessionContextProviderProps, "children">;
-
 		view.rerender(
 			createElement(
-				SessionContextProvider,
-				reconfiguredProps as SessionContextProviderProps,
+				SecuritydeptProvider,
+				{ providers: provideSessionContextController(secondController) },
 				createElement(Probe),
 			),
 		);
+
+		act(() => {
+			void secondController.refresh();
+		});
 
 		expect(view.container.textContent).toBe("loading:none");
 		expect(secondRequests).toEqual([
@@ -440,7 +472,13 @@ describe("session-context react adapter", () => {
 		});
 
 		expect(view.container.textContent).toBe("ready:none");
-		expect(observed).toEqual(["loading:none", "ready:none"]);
+		expect(observed).toEqual([
+			"ready:none",
+			"loading:none",
+			"ready:none",
+			"loading:none",
+			"ready:none",
+		]);
 
 		view.unmount();
 	});
@@ -453,40 +491,43 @@ describe("session-context react adapter", () => {
 		const requests: HttpRequest[] = [];
 		const transport = createTrackedTransport(requests, [firstResponse]);
 		const observed: string[] = [];
-
-		function Probe() {
-			const { loading } = useSessionContext();
-			const principal = useSessionPrincipal();
-
-			useEffect(() => {
-				observed.push(
-					`${loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
-				);
-			}, [loading, principal?.displayName]);
-
-			return createElement(
-				"output",
-				null,
-				`${loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
-			);
-		}
-
-		const providerProps = {
+		const controller = createSessionContextController({
 			config: { baseUrl: "https://auth.example.com" },
 			environment: createTestEnvironment({
 				transport,
 				sessionStore: createInMemoryRecordStore(),
 			}),
-			initialRefresh: true,
-		} satisfies Omit<SessionContextProviderProps, "children">;
+		});
+
+		function Probe() {
+			const injector = useSecuritydeptContext();
+			const resolvedController = injector.get(SESSION_CONTEXT_CONTROLLER);
+			const state = useReadableSignal(resolvedController.state);
+			const principal = state.session?.principal ?? null;
+
+			useEffect(() => {
+				observed.push(
+					`${state.status === SessionContextControllerStatus.Loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
+				);
+				if (state.status === SessionContextControllerStatus.Idle) {
+					void resolvedController.refresh();
+				}
+			}, [principal?.displayName, resolvedController, state]);
+
+			return createElement(
+				"output",
+				null,
+				`${state.status === SessionContextControllerStatus.Loading ? "loading" : "ready"}:${principal?.displayName ?? "none"}`,
+			);
+		}
 
 		const view = render(
 			createElement(
 				StrictMode,
 				null,
 				createElement(
-					SessionContextProvider,
-					providerProps as SessionContextProviderProps,
+					SecuritydeptProvider,
+					{ providers: provideSessionContextController(controller) },
 					createElement(Probe),
 				),
 			),
@@ -499,7 +540,7 @@ describe("session-context react adapter", () => {
 				url: "https://auth.example.com/auth/session/user-info",
 			}),
 		]);
-		expect(observed).toEqual(["loading:none", "loading:none"]);
+		expect(observed).toContain("loading:none");
 
 		await act(async () => {
 			firstResponse.resolve({
@@ -526,26 +567,32 @@ describe("session-context react adapter", () => {
 		const response = createDeferredResponse();
 		const transport = createQueuedTransport([response]);
 		const controller = new SessionContextController({
-			client: new SessionContextClient({ baseUrl: "https://auth.example.com" }),
+			client: new SessionContextClient({
+				baseUrl: "https://auth.example.com",
+			}),
 			transport,
 		});
 
 		function Probe() {
-			const { refresh, session } = useSessionContext();
+			const injector = useSecuritydeptContext();
+			const resolvedController = injector.get(SESSION_CONTEXT_CONTROLLER);
+			const state = useReadableSignal(resolvedController.state);
 			useEffect(() => {
-				void refresh();
-			}, [refresh]);
+				if (state.status === SessionContextControllerStatus.Idle) {
+					void resolvedController.refresh();
+				}
+			}, [resolvedController, state.status]);
 			return createElement(
 				"output",
 				null,
-				session?.principal.displayName ?? "none",
+				state.session?.principal.displayName ?? "none",
 			);
 		}
 
 		const view = render(
 			createElement(
-				SessionContextProvider,
-				{ controller } as SessionContextProviderProps,
+				SecuritydeptProvider,
+				{ providers: provideSessionContextController(controller) },
 				createElement(Probe),
 			),
 		);

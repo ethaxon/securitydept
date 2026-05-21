@@ -3,12 +3,30 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	TokenSetCallbackResumeController,
 	TokenSetCallbackResumeStatus,
-} from "../callback-resume-controller";
-import { createTokenSetAuthRegistry } from "../client-registry";
+} from "../controller/callback-resume-controller";
+import { createTokenSetAuthRegistry } from "../core/client-registry";
+
+const TEST_IDLE_SCHEDULER = (callback: () => void): (() => void) => {
+	const handle = setTimeout(callback, 0);
+	return () => clearTimeout(handle);
+};
 
 function createRegistry(handleCallback = vi.fn()) {
 	const registry = createTokenSetAuthRegistry<unknown, { client: never }>({
 		materialize: (client) => ({ client: client as never }),
+		dispose: () => undefined,
+		accessTokenOf: () => null,
+		ensureAccessTokenOf: async () => null,
+		ensureAuthorizationHeaderOf: async () => null,
+		ensureAuthForResourceOf: async () => {
+			throw new Error(
+				"ensureAuthForResourceOf should not be called in this test",
+			);
+		},
+		authEventsOf: () => ({
+			subscribe: () => ({ unsubscribe() {} }),
+		}),
+		idleScheduler: TEST_IDLE_SCHEDULER,
 	});
 	registry.register({
 		key: "frontend",
@@ -39,7 +57,7 @@ describe("TokenSetCallbackResumeController", () => {
 			clientKey: "frontend",
 			postAuthRedirectUri: "/home",
 		});
-		expect(controller.getState()).toMatchObject({
+		expect(controller.state.get()).toMatchObject({
 			status: TokenSetCallbackResumeStatus.Resolved,
 			clientKey: "frontend",
 		});
@@ -74,7 +92,7 @@ describe("TokenSetCallbackResumeController", () => {
 			}),
 		).rejects.toBe(callbackError);
 
-		expect(controller.getState()).toMatchObject({
+		expect(controller.state.get()).toMatchObject({
 			status: TokenSetCallbackResumeStatus.Error,
 			error: callbackError,
 			errorDetails: {
@@ -124,14 +142,14 @@ describe("TokenSetCallbackResumeController", () => {
 			"https://app.example.com/auth/token-set/callback?code=abc&state=def";
 
 		await controller.resume({ currentUrl });
-		const settledState = controller.getState();
+		const settledState = controller.state.get();
 		controller.dispose();
 
 		await expect(controller.resume({ currentUrl })).rejects.toThrow(
 			/controller has been disposed/,
 		);
 
-		expect(controller.getState()).toBe(settledState);
+		expect(controller.state.get()).toBe(settledState);
 		expect(whenReady).toHaveBeenCalledTimes(1);
 		expect(handleCallback).toHaveBeenCalledTimes(1);
 	});
@@ -150,10 +168,10 @@ describe("TokenSetCallbackResumeController", () => {
 			currentUrl:
 				"https://app.example.com/auth/token-set/callback?code=abc&state=def",
 		});
-		const settledState = controller.getState();
+		const settledState = controller.state.get();
 		controller.dispose();
 		controller.reset();
 
-		expect(controller.getState()).toBe(settledState);
+		expect(controller.state.get()).toBe(settledState);
 	});
 });

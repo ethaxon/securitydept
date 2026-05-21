@@ -1,32 +1,43 @@
-import { useBasicAuthContext } from "@securitydept/basic-auth-context-client-react";
-import { useSessionContext } from "@securitydept/session-context-client-react";
-import { useTokenSetBackendOidcClient } from "@securitydept/token-set-context-client-react";
+import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client-react";
+import {
+	CLIENT_ENVIRONMENT_SERVICE,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
+import { SESSION_CONTEXT_CONTROLLER } from "@securitydept/session-context-client-react";
+import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { FlaskConical, KeyRound, Lock, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppIcon } from "@/components/common/AppIcon";
 import { Header } from "@/components/layout/Header";
 import { AuthContextMode, setAuthContextMode } from "@/lib/authContext";
+import { assertTokenSetBackendOidcClient } from "@/lib/tokenSetClientAssertions";
 import {
 	TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	TOKEN_SET_BACKEND_MODE_PLAYGROUND_PATH,
 	TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
 } from "@/lib/tokenSetConfig";
 import { startTokenSetFrontendModeLogin } from "@/lib/tokenSetFrontendModeClient";
-import { useTokenSetFrontendModeEnvironmentService } from "@/lib/tokenSetFrontendModePageEnvironment";
 
 /**
  * Login chooser — three real auth-context entry points, plus a Playgrounds
  * section for developer tooling routes.
  */
 export function LoginPage() {
+	const injector = useSecuritydeptContext();
 	const [sessionHref, setSessionHref] = useState("/auth/session/login");
 	const [frontendModeBusy, setFrontendModeBusy] = useState(false);
-	const { resolveLoginUrl } = useSessionContext();
-	const tokenSetFrontendModeEnvironmentService =
-		useTokenSetFrontendModeEnvironmentService();
-	const basicAuthClient = useBasicAuthContext();
-	const tokenSetBackendModeClient = useTokenSetBackendOidcClient(
-		TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+	const sessionController = injector.get(SESSION_CONTEXT_CONTROLLER);
+	const tokenSetFrontendModeEnvironmentService = injector.get(
+		CLIENT_ENVIRONMENT_SERVICE,
+	);
+	const basicAuthClient = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
+	const tokenSetBackendModeService = injector
+		.get(TOKEN_SET_AUTH_REGISTRY)
+		.require(TOKEN_SET_BACKEND_MODE_CLIENT_KEY);
+	const tokenSetBackendModeClient = tokenSetBackendModeService.client;
+	assertTokenSetBackendOidcClient(
+		tokenSetBackendModeClient,
+		`LoginPage token-set client ${TOKEN_SET_BACKEND_MODE_CLIENT_KEY}`,
 	);
 	const tokenSetBackendModeHref = tokenSetBackendModeClient.authorizeUrl();
 	const basicAuthHref =
@@ -34,7 +45,7 @@ export function LoginPage() {
 
 	useEffect(() => {
 		let cancelled = false;
-		void resolveLoginUrl().then((href) => {
+		void sessionController.resolveLoginUrl().then((href) => {
 			if (!cancelled) {
 				setSessionHref(href);
 			}
@@ -43,7 +54,7 @@ export function LoginPage() {
 		return () => {
 			cancelled = true;
 		};
-	}, [resolveLoginUrl]);
+	}, [sessionController]);
 
 	return (
 		<div className="flex min-h-screen flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">

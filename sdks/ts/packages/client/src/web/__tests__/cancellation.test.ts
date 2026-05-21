@@ -4,7 +4,7 @@ import { ClientErrorKind } from "../../errors/types";
 import {
 	createAbortSignalBridge,
 	createCancellationTokenFromAbortSignal,
-} from "../cancellation";
+} from "../cancellation/abort-signal";
 
 describe("web cancellation bridge", () => {
 	it("bridges foundation cancellation into AbortSignal for fetch-facing consumers", () => {

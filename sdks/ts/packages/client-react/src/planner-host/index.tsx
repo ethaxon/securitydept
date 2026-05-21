@@ -1,13 +1,11 @@
-// React planner-host integration — Context-based planner provider / lookup
+// React planner-host integration — injector tokens and plain factories
 //
 // Canonical import path:
-//   import { AuthPlannerHostProvider, useAuthPlannerHost, ... } from "@securitydept/client-react"
+//   import { AUTH_PLANNER_HOST, provideAuthPlannerHost, ... } from "@securitydept/client-react"
 //
-// Provides React Context glue for the shared planner-host contract:
-//   - AuthPlannerHostProvider: provides a PlannerHost at a React tree scope
-//   - useAuthPlannerHost(): hook to look up the nearest PlannerHost (fail-fast)
-//   - AuthRequirementsClientSetProvider: provides scoped requirement client sets
-//   - useEffectiveClientSet(): resolves the current scope's effective client set
+// Provides injection tokens and injector/plain factories for the shared
+// planner-host contract. React trees compose these through SecuritydeptProvider;
+// no domain-specific React Context is created here.
 //
 // Architecture boundary:
 //   - Does NOT own the planner-host contract (that lives in @securitydept/client)
@@ -26,16 +24,18 @@ import {
 	createPlannerHost,
 	resolveEffectiveClientSet,
 } from "@securitydept/client/auth-coordination";
-import { createContext, type ReactNode, useContext, useMemo } from "react";
+import {
+	SecuritydeptInjectionToken,
+	SecuritydeptInjector,
+	type SecuritydeptInjectorTrait,
+	type SecuritydeptProvider,
+} from "@securitydept/client/injection";
 
-// ---------------------------------------------------------------------------
-// PlannerHost context
-// ---------------------------------------------------------------------------
+export const AUTH_PLANNER_HOST = new SecuritydeptInjectionToken<PlannerHost>(
+	"AUTH_PLANNER_HOST",
+);
 
-const PlannerHostContext = createContext<PlannerHost | null>(null);
-
-/** Props for {@link AuthPlannerHostProvider}. */
-export interface AuthPlannerHostProviderProps {
+export interface ProvideAuthPlannerHostOptions {
 	/**
 	 * Custom candidate selection strategy.
 	 * @see {@link CandidateSelector}
@@ -47,121 +47,45 @@ export interface AuthPlannerHostProviderProps {
 	 * If provided, `selectCandidate` is ignored.
 	 */
 	plannerHost?: PlannerHost;
-
-	children: ReactNode;
 }
 
-/**
- * Provide a {@link PlannerHost} at the current React tree scope.
- *
- * Use at the app level or at feature-route boundaries to establish
- * planner-host scopes. Child components inherit the nearest provider.
- *
- * @example
- * ```tsx
- * // App-level (default sequential strategy)
- * <AuthPlannerHostProvider>
- *   <App />
- * </AuthPlannerHostProvider>
- *
- * // Feature-route with custom chooser
- * <AuthPlannerHostProvider selectCandidate={showChooser}>
- *   <FeatureRoutes />
- * </AuthPlannerHostProvider>
- * ```
- */
-export function AuthPlannerHostProvider({
+export function provideAuthPlannerHost({
 	selectCandidate,
 	plannerHost,
-	children,
-}: AuthPlannerHostProviderProps) {
-	const host = useMemo(() => {
-		if (plannerHost) return plannerHost;
-		return createPlannerHost(selectCandidate ? { selectCandidate } : undefined);
-	}, [plannerHost, selectCandidate]);
-
-	return (
-		<PlannerHostContext.Provider value={host}>
-			{children}
-		</PlannerHostContext.Provider>
-	);
+}: ProvideAuthPlannerHostOptions = {}): SecuritydeptProvider<PlannerHost> {
+	return {
+		provide: AUTH_PLANNER_HOST,
+		useValue:
+			plannerHost ??
+			createPlannerHost(selectCandidate ? { selectCandidate } : undefined),
+	};
 }
 
-/**
- * Look up the nearest {@link PlannerHost} from the React Context tree.
- *
- * Throws an explicit error if no provider is found, preventing
- * silent fallback behavior.
- */
-export function useAuthPlannerHost(): PlannerHost {
-	const host = useContext(PlannerHostContext);
-	if (!host) {
-		throw new Error(
-			"[useAuthPlannerHost] No AuthPlannerHostProvider found in the component tree. " +
-				"Wrap your app or route with <AuthPlannerHostProvider>.",
-		);
-	}
-	return host;
-}
-
-// ---------------------------------------------------------------------------
-// Requirements client set context
-// ---------------------------------------------------------------------------
-
-const RequirementsClientSetContext = createContext<
+export const AUTH_REQUIREMENTS_CLIENT_SET = new SecuritydeptInjectionToken<
 	readonly AuthGuardClientOption[]
->([]);
+>("AUTH_REQUIREMENTS_CLIENT_SET");
 
-/** Props for {@link AuthRequirementsClientSetProvider}. */
-export interface AuthRequirementsClientSetProviderProps {
-	/** The scoped set to provide at this level. */
-	scopedSet: ScopedRequirementsClientSet;
-	children: ReactNode;
+export function provideRequirementsClientSet(
+	options: readonly AuthGuardClientOption[],
+): SecuritydeptProvider<readonly AuthGuardClientOption[]> {
+	return {
+		provide: AUTH_REQUIREMENTS_CLIENT_SET,
+		useValue: [...options],
+	};
 }
 
-/**
- * Provide a {@link ScopedRequirementsClientSet} at the current React tree scope.
- *
- * Automatically resolves the effective client set by composing with the
- * parent scope's options according to the declared composition strategy.
- *
- * @example
- * ```tsx
- * // Feature route: merge OIDC requirement with parent's session requirement
- * <AuthRequirementsClientSetProvider
- *   scopedSet={{
- *     composition: RequirementsClientSetComposition.Merge,
- *     options: [oidcClientOption],
- *   }}
- * >
- *   <ProtectedFeature />
- * </AuthRequirementsClientSetProvider>
- * ```
- */
-export function AuthRequirementsClientSetProvider({
-	scopedSet,
-	children,
-}: AuthRequirementsClientSetProviderProps) {
-	const parentOptions = useContext(RequirementsClientSetContext);
-	const effective = useMemo(
-		() => resolveEffectiveClientSet(parentOptions, scopedSet),
-		[parentOptions, scopedSet],
-	);
-
-	return (
-		<RequirementsClientSetContext.Provider value={effective}>
-			{children}
-		</RequirementsClientSetContext.Provider>
-	);
-}
-
-/**
- * Get the effective requirements client set for the current React tree scope.
- *
- * Returns the resolved options after applying all parent/child composition.
- */
-export function useEffectiveClientSet(): readonly AuthGuardClientOption[] {
-	return useContext(RequirementsClientSetContext);
+export function createRequirementsClientSetInjector(
+	parentInjector: SecuritydeptInjectorTrait,
+	scopedSet: ScopedRequirementsClientSet,
+): SecuritydeptInjector {
+	return SecuritydeptInjector.fromParentInjector(parentInjector, [
+		provideRequirementsClientSet(
+			resolveEffectiveClientSet(
+				parentInjector.get(AUTH_REQUIREMENTS_CLIENT_SET, []),
+				scopedSet,
+			),
+		),
+	]);
 }
 
 // Re-export composition constant for consumer convenience

@@ -1,9 +1,14 @@
+import {
+	CLIENT_ENVIRONMENT_SERVICE,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
 import { relayFrontendOidcPopupCallback } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { useEffect, useState } from "react";
-import { useTokenSetFrontendModeEnvironmentService } from "@/lib/tokenSetFrontendModePageEnvironment";
 
 export function TokenSetFrontendModePopupCallbackPage() {
-	const environmentService = useTokenSetFrontendModeEnvironmentService();
+	const environmentService = useSecuritydeptContext().get(
+		CLIENT_ENVIRONMENT_SERVICE,
+	);
 	const [relayError, setRelayError] = useState<unknown>(null);
 
 	if (relayError) {

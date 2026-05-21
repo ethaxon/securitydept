@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest";
-import { fromAbortSignal, fromStorageEvent } from "../input-sources";
+import { fromAbortSignal, fromStorageEvent } from "../events/input-sources";
 
 describe("web input-source helpers", () => {
 	it("subscribes to AbortSignal abort events", () => {

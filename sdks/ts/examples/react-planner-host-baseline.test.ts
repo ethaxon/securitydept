@@ -17,13 +17,13 @@ import {
 	RequirementsClientSetComposition,
 	resolveEffectiveClientSet,
 } from "@securitydept/client/auth-coordination";
+import { SecuritydeptInjector } from "@securitydept/client/injection";
 import {
-	AuthPlannerHostProvider,
-	type AuthPlannerHostProviderProps,
-	AuthRequirementsClientSetProvider,
-	type AuthRequirementsClientSetProviderProps,
-	useAuthPlannerHost,
-	useEffectiveClientSet,
+	AUTH_PLANNER_HOST,
+	AUTH_REQUIREMENTS_CLIENT_SET,
+	createRequirementsClientSetInjector,
+	provideAuthPlannerHost,
+	provideRequirementsClientSet,
 } from "@securitydept/client-react";
 import { describe, expect, it } from "vitest";
 
@@ -32,36 +32,12 @@ import { describe, expect, it } from "vitest";
 // ---------------------------------------------------------------------------
 
 describe("@securitydept/client-react root export — canonical shape", () => {
-	it("exports AuthPlannerHostProvider component", () => {
-		expect(typeof AuthPlannerHostProvider).toBe("function");
-	});
-
-	it("exports useAuthPlannerHost hook", () => {
-		expect(typeof useAuthPlannerHost).toBe("function");
-	});
-
-	it("exports AuthRequirementsClientSetProvider component", () => {
-		expect(typeof AuthRequirementsClientSetProvider).toBe("function");
-	});
-
-	it("exports useEffectiveClientSet hook", () => {
-		expect(typeof useEffectiveClientSet).toBe("function");
-	});
-
-	it("providers accept required prop shapes (TypeScript contract)", () => {
-		// Verify the prop types are correct at the TypeScript level.
-		const _hostProps: AuthPlannerHostProviderProps = {
-			children: null,
-		};
-		const _setProps: AuthRequirementsClientSetProviderProps = {
-			children: null,
-			scopedSet: {
-				composition: RequirementsClientSetComposition.Inherit,
-				options: [],
-			},
-		};
-		expect(_hostProps).toBeDefined();
-		expect(_setProps).toBeDefined();
+	it("exports planner-host injection tokens and plain factories", () => {
+		expect(AUTH_PLANNER_HOST).toBeDefined();
+		expect(AUTH_REQUIREMENTS_CLIENT_SET).toBeDefined();
+		expect(typeof provideAuthPlannerHost).toBe("function");
+		expect(typeof provideRequirementsClientSet).toBe("function");
+		expect(typeof createRequirementsClientSetInjector).toBe("function");
 	});
 });
 
@@ -69,23 +45,26 @@ describe("@securitydept/client-react root export — canonical shape", () => {
 // PlannerHost created via provider — contract verification
 // ---------------------------------------------------------------------------
 
-describe("AuthPlannerHostProvider — planner-host lifecycle", () => {
+describe("planner-host injector factories", () => {
 	it("creates a planner-host with default sequential strategy", () => {
-		// Providers create planner-hosts; we verify the shared contract directly.
-		const host = createPlannerHost();
+		const injector = SecuritydeptInjector.resolveAndCreate([
+			provideAuthPlannerHost(),
+		]);
+		const host = injector.get(AUTH_PLANNER_HOST);
 		expect(typeof host.evaluate).toBe("function");
 	});
 
-	it("planner-host with custom selector passed as prop is honored", async () => {
-		// A custom selector can be passed to the provider via selectCandidate prop.
-		// Verify the selector is actually called during evaluate().
+	it("planner-host with custom selector factory option is honored", async () => {
 		let selectorCalled = false;
-		const host = createPlannerHost({
-			selectCandidate: (candidates) => {
-				selectorCalled = true;
-				return candidates[0];
-			},
-		});
+		const injector = SecuritydeptInjector.resolveAndCreate([
+			provideAuthPlannerHost({
+				selectCandidate: (candidates) => {
+					selectorCalled = true;
+					return candidates[0];
+				},
+			}),
+		]);
+		const host = injector.get(AUTH_PLANNER_HOST);
 
 		const unauthenticatedOpt: AuthGuardClientOption = {
 			requirementId: "oidc",
@@ -128,10 +107,10 @@ describe("AuthPlannerHostProvider — planner-host lifecycle", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Requirements client set composition — React Context semantics
+// Requirements client set composition — injector layering semantics
 // ---------------------------------------------------------------------------
 
-describe("resolveEffectiveClientSet — React Context composition semantics", () => {
+describe("createRequirementsClientSetInjector — composition semantics", () => {
 	const sessionOpt: AuthGuardClientOption = {
 		requirementId: "session",
 		requirementKind: "session",
@@ -146,26 +125,38 @@ describe("resolveEffectiveClientSet — React Context composition semantics", ()
 	};
 
 	it("inherit — passes parent options unchanged", () => {
-		const result = resolveEffectiveClientSet([sessionOpt], {
+		const parentInjector = SecuritydeptInjector.resolveAndCreate([
+			provideRequirementsClientSet([sessionOpt]),
+		]);
+		const childInjector = createRequirementsClientSetInjector(parentInjector, {
 			composition: RequirementsClientSetComposition.Inherit,
 			options: [oidcOpt],
 		});
+		const result = childInjector.get(AUTH_REQUIREMENTS_CLIENT_SET);
 		expect(result.map((o) => o.requirementId)).toEqual(["session"]);
 	});
 
 	it("merge — appends child options to parent", () => {
-		const result = resolveEffectiveClientSet([sessionOpt], {
+		const parentInjector = SecuritydeptInjector.resolveAndCreate([
+			provideRequirementsClientSet([sessionOpt]),
+		]);
+		const childInjector = createRequirementsClientSetInjector(parentInjector, {
 			composition: RequirementsClientSetComposition.Merge,
 			options: [oidcOpt],
 		});
+		const result = childInjector.get(AUTH_REQUIREMENTS_CLIENT_SET);
 		expect(result.map((o) => o.requirementId)).toEqual(["session", "oidc"]);
 	});
 
 	it("replace — discards parent, uses child only", () => {
-		const result = resolveEffectiveClientSet([sessionOpt], {
+		const parentInjector = SecuritydeptInjector.resolveAndCreate([
+			provideRequirementsClientSet([sessionOpt]),
+		]);
+		const childInjector = createRequirementsClientSetInjector(parentInjector, {
 			composition: RequirementsClientSetComposition.Replace,
 			options: [oidcOpt],
 		});
+		const result = childInjector.get(AUTH_REQUIREMENTS_CLIENT_SET);
 		expect(result.map((o) => o.requirementId)).toEqual(["oidc"]);
 	});
 });
@@ -197,7 +188,10 @@ describe("planner-host integration — multi-scope scenario", () => {
 			options: [featureOidcOpt],
 		});
 
-		const host = createPlannerHost();
+		const injector = SecuritydeptInjector.resolveAndCreate([
+			provideAuthPlannerHost(),
+		]);
+		const host = injector.get(AUTH_PLANNER_HOST);
 		const result = await host.evaluate(effective);
 
 		expect(result.allAuthenticated).toBe(false);
@@ -224,7 +218,10 @@ describe("planner-host integration — multi-scope scenario", () => {
 			options: [publicOpt],
 		});
 
-		const host = createPlannerHost();
+		const injector = SecuritydeptInjector.resolveAndCreate([
+			provideAuthPlannerHost(),
+		]);
+		const host = injector.get(AUTH_PLANNER_HOST);
 		const result = await host.evaluate(effective);
 
 		// Parent's strict requirement is replaced — only public-route matters
@@ -249,16 +246,19 @@ describe("planner-host integration — multi-scope scenario", () => {
 			attributes: { priority: 1 },
 		};
 
-		const host = createPlannerHost({
-			selectCandidate: async (candidates) => {
-				await Promise.resolve(); // simulate async dialog delay
-				return [...candidates].sort(
-					(a, b) =>
-						((b.attributes?.priority as number) ?? 0) -
-						((a.attributes?.priority as number) ?? 0),
-				)[0];
-			},
-		});
+		const injector = SecuritydeptInjector.resolveAndCreate([
+			provideAuthPlannerHost({
+				selectCandidate: async (candidates) => {
+					await Promise.resolve();
+					return [...candidates].sort(
+						(a, b) =>
+							((b.attributes?.priority as number) ?? 0) -
+							((a.attributes?.priority as number) ?? 0),
+					)[0];
+				},
+			}),
+		]);
+		const host = injector.get(AUTH_PLANNER_HOST);
 
 		const result = await host.evaluate([lowPriority, highPriority]);
 		expect(result.pendingCandidate?.requirementId).toBe("high");

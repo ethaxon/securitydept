@@ -29,11 +29,11 @@ const guardedHelperFiles = [
 		import.meta.url,
 	),
 	new URL(
-		"../../../../token-set-context-client/src/frontend-oidc-mode/client.ts",
+		"../../../../token-set-context-client/src/frontend-oidc-mode/runtime/client.ts",
 		import.meta.url,
 	),
 	new URL(
-		"../../../../token-set-context-client/src/frontend-oidc-mode/config-source-web.ts",
+		"../../../../token-set-context-client/src/frontend-oidc-mode/config/config-source-web.ts",
 		import.meta.url,
 	),
 ];

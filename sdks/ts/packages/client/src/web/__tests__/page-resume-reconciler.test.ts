@@ -4,7 +4,7 @@ import {
 	type PageResumeDocumentTarget,
 	PageResumeTriggerKind,
 	type PageResumeWindowTarget,
-} from "../page-resume-reconciler";
+} from "../lifecycle/page-resume-reconciler";
 
 function createMockDocument(
 	initialState: DocumentVisibilityState = "visible",

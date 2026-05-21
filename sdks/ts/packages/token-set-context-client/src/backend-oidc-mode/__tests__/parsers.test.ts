@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBackendOidcModeUserInfoBody } from "../parsers";
+import { parseBackendOidcModeUserInfoBody } from "../contracts/parsers";
 
 describe("parseBackendOidcModeUserInfoBody", () => {
 	it("normalizes the shared authenticated principal contract from snake_case wire fields", () => {

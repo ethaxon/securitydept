@@ -2,7 +2,7 @@ import { defineConfig } from "tsdown";
 
 export default defineConfig({
 	entry: {
-		// React context provider + hooks (backend-oidc-mode + multi-client registry).
+		// Root token-set React adapter surface.
 		index: "./src/index.tsx",
 		// Optional React Query subpath (peer: @tanstack/react-query).
 		"react-query/index": "./src/react-query/index.ts",

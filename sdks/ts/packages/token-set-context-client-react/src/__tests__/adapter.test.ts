@@ -1,21 +1,36 @@
 // @vitest-environment jsdom
 
-import { createInMemoryRecordStore } from "@securitydept/client";
-import type { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import { createBackendOidcModeWebClientEnvironment } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import {
-	BackendOidcModeContextProvider,
-	type BackendOidcModeContextProviderProps,
-	useAccessToken,
-	useBackendOidcModeContext,
+	createDefaultIdleScheduler,
+	createSignal,
+	createSubject,
+} from "@securitydept/client";
+import {
+	SecuritydeptProvider,
+	useReadableSignal,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
+import type {
+	AuthSnapshot,
+	TokenSetAuthEvent,
+} from "@securitydept/token-set-context-client/orchestration";
+import {
+	EnsureAuthForResourceStatus,
+	TokenFreshnessState,
+	TokenSetAuthFlowReason,
+} from "@securitydept/token-set-context-client/orchestration";
+import {
+	TokenSetAuthService as CoreTokenSetAuthService,
+	createTokenSetAuthRegistry,
+} from "@securitydept/token-set-context-client/registry";
+import {
+	provideTokenSetAuthRegistry,
+	type ReactRegistry,
+	TOKEN_SET_AUTH_REGISTRY,
+	type TokenSetClientEntry,
+	type TokenSetReactClient,
 } from "@securitydept/token-set-context-client-react";
-import {
-	act,
-	createElement,
-	type ReactElement,
-	StrictMode,
-	useEffect,
-} from "react";
+import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -30,11 +45,6 @@ function render(element: ReactElement) {
 
 	return {
 		container,
-		rerender(nextElement: ReactElement) {
-			act(() => {
-				root.render(nextElement);
-			});
-		},
 		unmount() {
 			act(() => {
 				root.unmount();
@@ -44,348 +54,203 @@ function render(element: ReactElement) {
 	};
 }
 
-async function flushMicrotasks() {
-	await act(async () => {
-		await Promise.resolve();
-	});
+function createSnapshot(accessToken: string): AuthSnapshot {
+	return {
+		tokens: { accessToken },
+		metadata: {},
+	};
 }
 
-function createTestEnvironment(options?: {
-	persistentStore?: ReturnType<typeof createInMemoryRecordStore>;
-	sessionStore?: ReturnType<typeof createInMemoryRecordStore>;
-}) {
-	return createBackendOidcModeWebClientEnvironment({
-		transport: {
-			async execute() {
-				return {
-					status: 500,
-					headers: {},
-					body: null,
-				};
+function ensureAuthResult(snapshot: AuthSnapshot | null) {
+	if (!snapshot) {
+		return {
+			status: EnsureAuthForResourceStatus.Unauthenticated,
+			snapshot: null,
+			authorizationHeader: null,
+			reason: TokenSetAuthFlowReason.NoSnapshot,
+		};
+	}
+
+	return {
+		status: EnsureAuthForResourceStatus.Authenticated,
+		snapshot,
+		freshness: TokenFreshnessState.Fresh,
+		authorizationHeader: `Bearer ${snapshot.tokens.accessToken}`,
+	};
+}
+
+function createRegistryOptions(accessToken: string) {
+	const state = createSignal<AuthSnapshot | null>(createSnapshot(accessToken));
+	return {
+		state,
+		clients: [
+			{
+				key: "main",
+				autoRestore: false,
+				clientFactory: () => ({
+					state,
+					authEvents: createSubject<TokenSetAuthEvent>(),
+					dispose: () => state.set(null),
+					restorePersistedState: async () => state.get(),
+					authorizationHeader: () =>
+						`Bearer ${state.get()?.tokens.accessToken ?? ""}`,
+					ensureAuthForResource: async () => ensureAuthResult(state.get()),
+					ensureFreshAuthState: async () => state.get(),
+					ensureAuthorizationHeader: async () =>
+						state.get()?.tokens.accessToken
+							? `Bearer ${state.get()?.tokens.accessToken}`
+							: null,
+					handleCallback: async () => ({
+						snapshot: createSnapshot(accessToken),
+					}),
+					loginWithRedirect: async () => undefined,
+				}),
 			},
-		},
-		scheduler: {
-			setTimeout() {
-				return {
-					cancel() {},
-				};
-			},
-		},
-		clock: {
-			now() {
-				return Date.parse("2026-01-01T00:00:00Z");
-			},
-		},
-		persistentStore: options?.persistentStore,
-		sessionStore: options?.sessionStore,
+		] satisfies readonly TokenSetClientEntry[],
+	};
+}
+
+function createManualRegistry(
+	clients: readonly TokenSetClientEntry[],
+): ReactRegistry {
+	const registry = createTokenSetAuthRegistry<
+		TokenSetReactClient,
+		CoreTokenSetAuthService<TokenSetReactClient>
+	>({
+		materialize: CoreTokenSetAuthService.materializeService,
+		dispose: CoreTokenSetAuthService.dispose,
+		accessTokenOf: CoreTokenSetAuthService.accessTokenOf,
+		ensureAccessTokenOf: CoreTokenSetAuthService.ensureAccessTokenOf,
+		ensureAuthorizationHeaderOf:
+			CoreTokenSetAuthService.ensureAuthorizationHeaderOf,
+		ensureAuthForResourceOf: CoreTokenSetAuthService.ensureAuthForResourceOf,
+		authEventsOf: CoreTokenSetAuthService.authEventsOf,
+		idleScheduler: createDefaultIdleScheduler(),
 	});
+
+	for (const client of clients) {
+		const registration = registry.register(client);
+		if (registration instanceof Promise) {
+			registration.catch(() => {});
+		}
+	}
+
+	return registry;
 }
 
 describe("token-set react adapter", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
-		delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
-			.IS_REACT_ACT_ENVIRONMENT;
 	});
 
-	it("syncs signal updates into React and disposes the client on unmount", async () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-		const observedTokens: Array<string | null> = [];
-		let exposedClient: BackendOidcModeClient | null = null;
+	it("reads registry-backed auth state through SecuritydeptProvider", async () => {
+		const { clients, state } = createRegistryOptions("main-at");
 
 		function Probe() {
-			const { client } = useBackendOidcModeContext();
-			const accessToken = useAccessToken();
-
-			useEffect(() => {
-				exposedClient = client;
-				observedTokens.push(accessToken);
-			}, [client, accessToken]);
-
-			return createElement("output", null, accessToken ?? "empty");
-		}
-
-		const providerProps: BackendOidcModeContextProviderProps = {
-			config: { baseUrl: "https://auth.example.com" },
-			environment: createTestEnvironment({
-				persistentStore: createInMemoryRecordStore(),
-				sessionStore: createInMemoryRecordStore(),
-			}),
-			children: createElement(Probe),
-		};
-
-		const view = render(
-			createElement(BackendOidcModeContextProvider, providerProps),
-		);
-
-		expect(view.container.textContent).toBe("empty");
-		expect(observedTokens).toEqual([null]);
-		expect(exposedClient).not.toBeNull();
-
-		act(() => {
-			exposedClient?.restoreState({
-				tokens: {
-					accessToken: "live-at",
-					refreshMaterial: "live-rt",
-				},
-				metadata: {},
-			});
-		});
-
-		expect(view.container.textContent).toBe("live-at");
-		expect(observedTokens).toEqual([null, "live-at"]);
-
-		if (!exposedClient) {
-			throw new Error("Expected probe to expose a token-set client");
-		}
-		const client: BackendOidcModeClient = exposedClient;
-
-		view.unmount();
-		await flushMicrotasks();
-
-		expect(client.state.get()).toBeNull();
-		expect(() =>
-			client.restoreState({
-				tokens: {
-					accessToken: "after-unmount",
-				},
-				metadata: {},
-			}),
-		).toThrow(/cancel/i);
-	});
-
-	it("disposes the old client and isolates subscriptions after provider reconfigure", async () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-		const observedTokens: Array<string | null> = [];
-		const exposedClients: BackendOidcModeClient[] = [];
-
-		function Probe() {
-			const { client } = useBackendOidcModeContext();
-			const accessToken = useAccessToken();
-
-			useEffect(() => {
-				if (!exposedClients.includes(client)) {
-					exposedClients.push(client);
-				}
-				observedTokens.push(accessToken);
-			}, [client, accessToken]);
-
-			return createElement("output", null, accessToken ?? "empty");
-		}
-
-		const firstStore = createInMemoryRecordStore();
-		const secondStore = createInMemoryRecordStore();
-		const firstProps: BackendOidcModeContextProviderProps = {
-			config: { baseUrl: "https://alpha.example.com" },
-			environment: createTestEnvironment({
-				persistentStore: firstStore,
-				sessionStore: firstStore,
-			}),
-			children: createElement(Probe),
-		};
-
-		const view = render(
-			createElement(BackendOidcModeContextProvider, firstProps),
-		);
-
-		expect(view.container.textContent).toBe("empty");
-		expect(observedTokens).toEqual([null]);
-		expect(exposedClients).toHaveLength(1);
-
-		const firstClient = exposedClients[0];
-		act(() => {
-			firstClient?.restoreState({
-				tokens: {
-					accessToken: "alpha-at",
-					refreshMaterial: "alpha-rt",
-				},
-				metadata: {},
-			});
-		});
-
-		expect(view.container.textContent).toBe("alpha-at");
-		expect(observedTokens).toEqual([null, "alpha-at"]);
-
-		const secondProps: BackendOidcModeContextProviderProps = {
-			...firstProps,
-			config: { baseUrl: "https://beta.example.com" },
-			environment: createTestEnvironment({
-				persistentStore: secondStore,
-				sessionStore: secondStore,
-			}),
-		};
-
-		view.rerender(createElement(BackendOidcModeContextProvider, secondProps));
-		await flushMicrotasks();
-
-		expect(exposedClients).toHaveLength(2);
-		expect(view.container.textContent).toBe("empty");
-		expect(observedTokens).toEqual([null, "alpha-at", null]);
-
-		if (!firstClient) {
-			throw new Error(
-				"Expected the first provider lifecycle to expose a client",
-			);
-		}
-
-		expect(firstClient.state.get()).toBeNull();
-		expect(() =>
-			firstClient.restoreState({
-				tokens: {
-					accessToken: "stale-at",
-				},
-				metadata: {},
-			}),
-		).toThrow(/cancel/i);
-		expect(view.container.textContent).toBe("empty");
-
-		const secondClient = exposedClients[1];
-		if (!secondClient) {
-			throw new Error("Expected the reconfigured provider to expose a client");
-		}
-		expect(secondClient).not.toBe(firstClient);
-
-		act(() => {
-			secondClient.restoreState({
-				tokens: {
-					accessToken: "beta-at",
-					refreshMaterial: "beta-rt",
-				},
-				metadata: {},
-			});
-		});
-
-		expect(view.container.textContent).toBe("beta-at");
-		expect(observedTokens).toEqual([null, "alpha-at", null, "beta-at"]);
-
-		view.unmount();
-	});
-
-	it("keeps the current client alive across StrictMode remounts without stale subscriptions", async () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-		const observedTokens: Array<string | null> = [];
-		const exposedClients: BackendOidcModeClient[] = [];
-
-		function Probe() {
-			const { client } = useBackendOidcModeContext();
-			const accessToken = useAccessToken();
-
-			useEffect(() => {
-				if (!exposedClients.includes(client)) {
-					exposedClients.push(client);
-				}
-				observedTokens.push(accessToken);
-			}, [client, accessToken]);
-
-			return createElement("output", null, accessToken ?? "empty");
-		}
-
-		const providerProps: BackendOidcModeContextProviderProps = {
-			config: { baseUrl: "https://auth.example.com" },
-			environment: createTestEnvironment({
-				persistentStore: createInMemoryRecordStore(),
-				sessionStore: createInMemoryRecordStore(),
-			}),
-			children: createElement(Probe),
-		};
-
-		const strictProvider = (showProvider: boolean) =>
-			createElement(
-				StrictMode,
+			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
+			const service = registry.require("main");
+			const authState = useReadableSignal(service.state);
+			return createElement(
+				"output",
 				null,
-				showProvider
-					? createElement(BackendOidcModeContextProvider, providerProps)
-					: null,
+				authState.snapshot?.tokens.accessToken ?? "empty",
 			);
-
-		const view = render(strictProvider(true));
-
-		expect(view.container.textContent).toBe("empty");
-		expect(exposedClients.length).toBeGreaterThanOrEqual(1);
-		expect(observedTokens.length).toBeGreaterThanOrEqual(2);
-		expect(observedTokens.every((token) => token === null)).toBe(true);
-
-		const firstClient = exposedClients[0];
-		if (!firstClient) {
-			throw new Error("Expected initial StrictMode render to expose a client");
 		}
 
-		view.rerender(strictProvider(false));
-		await flushMicrotasks();
+		const view = render(
+			createElement(
+				SecuritydeptProvider,
+				{ providers: [provideTokenSetAuthRegistry({ clients })] },
+				createElement(Probe),
+			),
+		);
 
-		expect(firstClient.state.get()).toBeNull();
-		expect(() =>
-			firstClient.restoreState({
-				tokens: {
-					accessToken: "stale-at",
+		expect(view.container.textContent).toBe("main-at");
+
+		act(() => {
+			state.set(createSnapshot("updated-at"));
+		});
+
+		expect(view.container.textContent).toBe("updated-at");
+
+		await act(async () => {
+			view.unmount();
+			await Promise.resolve();
+		});
+		expect(state.get()).toBeNull();
+	});
+
+	it("supports nested injector overrides for token-set registries", async () => {
+		const parent = createRegistryOptions("parent-at");
+		const child = createRegistryOptions("child-at");
+
+		function Probe({ label }: { label: string }) {
+			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
+			const service = registry.require("main");
+			const authState = useReadableSignal(service.state);
+			return createElement(
+				"output",
+				null,
+				`${label}:${authState.snapshot?.tokens.accessToken ?? "empty"}`,
+			);
+		}
+
+		const view = render(
+			createElement(
+				SecuritydeptProvider,
+				{
+					providers: [provideTokenSetAuthRegistry({ clients: parent.clients })],
 				},
-				metadata: {},
-			}),
-		).toThrow(/cancel/i);
-		expect(view.container.textContent).toBe("");
-
-		view.rerender(strictProvider(true));
-		await flushMicrotasks();
-
-		expect(observedTokens.every((token) => token === null)).toBe(true);
-		expect(exposedClients.some((client) => client !== firstClient)).toBe(true);
-		let activeClient: BackendOidcModeClient | null = null;
-		for (const candidate of exposedClients) {
-			try {
-				act(() => {
-					candidate.restoreState({
-						tokens: {
-							accessToken: "live-at",
-							refreshMaterial: "live-rt",
-						},
-						metadata: {},
-					});
-				});
-				activeClient = candidate;
-				break;
-			} catch {}
-		}
-
-		if (!activeClient) {
-			throw new Error(
-				"Expected one StrictMode lifecycle client to remain active",
-			);
-		}
-		expect(view.container.textContent).toBe("live-at");
-		expect(observedTokens.at(-1)).toBe("live-at");
-
-		for (const staleClient of exposedClients) {
-			if (staleClient === activeClient) {
-				continue;
-			}
-			expect(staleClient.state.get()).toBeNull();
-			expect(() =>
-				staleClient.restoreState({
-					tokens: {
-						accessToken: "stale-at",
+				createElement(Probe, { label: "parent" }),
+				createElement(
+					SecuritydeptProvider,
+					{
+						providers: [
+							provideTokenSetAuthRegistry({ clients: child.clients }),
+						],
 					},
-					metadata: {},
-				}),
-			).toThrow(/cancel/i);
+					createElement(Probe, { label: "child" }),
+				),
+			),
+		);
+
+		expect(view.container.textContent).toBe("parent:parent-atchild:child-at");
+
+		await act(async () => {
+			view.unmount();
+			await Promise.resolve();
+		});
+		expect(parent.state.get()).toBeNull();
+		expect(child.state.get()).toBeNull();
+	});
+
+	it("treats manual registry ownership as advanced usage that requires explicit dispose", async () => {
+		const { clients, state } = createRegistryOptions("manual-at");
+		const registry = createManualRegistry(clients);
+		await registry.whenReady("main");
+
+		function Probe() {
+			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
+			return createElement(
+				"output",
+				null,
+				registry.require("main").accessToken.get(),
+			);
 		}
 
-		view.unmount();
-		await flushMicrotasks();
+		const view = render(
+			createElement(
+				SecuritydeptProvider,
+				{ providers: [provideTokenSetAuthRegistry(registry)] },
+				createElement(Probe),
+			),
+		);
 
-		expect(activeClient.state.get()).toBeNull();
-		expect(() =>
-			activeClient.restoreState({
-				tokens: {
-					accessToken: "after-unmount",
-				},
-				metadata: {},
-			}),
-		).toThrow(/cancel/i);
+		expect(view.container.textContent).toBe("manual-at");
+		view.unmount();
+		expect(state.get()?.tokens.accessToken).toBe("manual-at");
+
+		registry.dispose();
+		expect(state.get()).toBeNull();
 	});
 });

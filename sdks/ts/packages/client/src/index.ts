@@ -11,6 +11,12 @@ export {
 	createCancellationTokenSource,
 	createLinkedCancellationToken,
 } from "./cancellation/index";
+// --- Environment ---
+export type {
+	ClientEnvironment,
+	CreateClientEnvironmentOptions,
+} from "./environment/index";
+export { createClientEnvironment } from "./environment/index";
 // --- Errors ---
 export type {
 	ErrorPresentation,
@@ -106,12 +112,6 @@ export {
 	createJsonCodec,
 	createKeyedEphemeralFlowStore,
 } from "./persistence/index";
-// --- Runtime ---
-export type {
-	ClientEnvironment,
-	CreateClientEnvironmentOptions,
-} from "./runtime/index";
-export { createClientEnvironment } from "./runtime/index";
 // --- Scheduling ---
 export type {
 	CancelableHandle as SchedulerCancelableHandle,
@@ -128,12 +128,14 @@ export type {
 } from "./scheduling/index";
 export {
 	createDefaultClock,
+	createDefaultIdleScheduler,
 	createDefaultScheduler,
 	fromEventPattern,
 	fromPromise,
 	fromSignal,
 	interval,
 	PromiseSettlementKind,
+	parseDurationToMs,
 	scheduleAt,
 	timer,
 } from "./scheduling/index";
@@ -154,7 +156,6 @@ export type {
 	HttpResponse,
 	HttpTransport,
 } from "./transport/index";
-export { FetchTransportRedirectKind } from "./transport/index";
 // --- Validation ---
 export type {
 	ValidationFailure,
@@ -174,5 +175,5 @@ export type {
 	PageLocationHistoryCapability,
 	PageLocationLike,
 	WebClientEnvironment,
-} from "./web/client-environment";
-export { ClientEnvironmentPreset } from "./web/client-environment";
+} from "./web/environment/client-environment";
+export { ClientEnvironmentPreset } from "./web/environment/client-environment";

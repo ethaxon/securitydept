@@ -1,8 +1,8 @@
-import { FetchTransportRedirectKind } from "@securitydept/client";
 import { createSessionStorageStore } from "@securitydept/client/persistence/web";
 import {
 	createFetchTransport,
 	createWebClientEnvironment,
+	FetchTransportRedirectKind,
 } from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
 

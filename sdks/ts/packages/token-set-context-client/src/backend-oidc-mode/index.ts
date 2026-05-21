@@ -15,13 +15,13 @@
 
 // --- Capability axes ---
 
-export type { BackendOidcModeCapabilities } from "./contracts";
+export type { BackendOidcModeCapabilities } from "./contracts/contracts";
 export {
 	BackendOidcModePreset,
 	MetadataDelivery,
 	PostAuthRedirectPolicy,
 	RefreshMaterialProtection,
-} from "./contracts";
+} from "./contracts/contracts";
 
 // --- Contract types ---
 
@@ -36,7 +36,7 @@ export type {
 	BackendOidcModeRefreshReturns,
 	BackendOidcModeUserInfoRequest,
 	BackendOidcModeUserInfoResponse,
-} from "./contracts";
+} from "./contracts/contracts";
 
 // --- Response body parsers ---
 
@@ -45,14 +45,14 @@ export {
 	parseBackendOidcModeCallbackFragment,
 	parseBackendOidcModeRefreshBody,
 	parseBackendOidcModeRefreshFragment,
-} from "./parsers";
+} from "./contracts/parsers";
 
 // --- Orchestration adapters ---
 
 export {
 	callbackReturnsToTokenSnapshot as callbackFragmentToTokenSnapshot,
 	refreshReturnsToTokenDelta as refreshFragmentToTokenDelta,
-} from "./parsers";
+} from "./contracts/parsers";
 
 // --- Client ---
 
@@ -60,8 +60,8 @@ export type {
 	BackendOidcModeFetchUserInfoOptions,
 	BackendOidcModeMetadataRedemptionOptions,
 	BackendOidcModeRefreshOptions,
-} from "./client";
-export { BackendOidcModeClient } from "./client";
+} from "./runtime/client";
+export { BackendOidcModeClient } from "./runtime/client";
 
 // --- Client types ---
 
@@ -72,17 +72,17 @@ export type {
 	AuthStateDelta,
 	AuthStateSnapshot,
 	BackendOidcModeClientConfig,
-} from "./types";
+} from "./runtime/types";
 export {
 	AuthenticationSourceKind,
 	BackendOidcModeContextSource,
 	BackendOidcModeStateRestoreSourceKind,
-} from "./types";
+} from "./runtime/types";
 
 // --- Authorized transport ---
 
 export type {
 	AuthorizationHeaderProviderTrait,
 	CreateBackendOidcModeAuthorizedTransportOptions,
-} from "./auth-transport";
-export { createBackendOidcModeAuthorizedTransport } from "./auth-transport";
+} from "./transport/auth-transport";
+export { createBackendOidcModeAuthorizedTransport } from "./transport/auth-transport";

@@ -9,19 +9,12 @@ import {
 	ClientErrorKind,
 	UserRecovery,
 } from "@securitydept/client";
-import type {
-	AsyncBearerHeaderProvider,
-	AuthForResourceProvider,
-	BearerHeaderProvider,
-} from "../orchestration/index";
-import { createAuthorizedTransport } from "../orchestration/index";
-import { BackendOidcModeContextSource } from "./types";
 
-/** @see {@link BearerHeaderProvider} */
-export type AuthorizationHeaderProviderTrait =
-	| BearerHeaderProvider
-	| AsyncBearerHeaderProvider
-	| AuthForResourceProvider;
+export type { AuthorizationHeaderProviderTrait } from "../orchestration/index";
+
+import type { AuthorizationHeaderProviderTrait } from "../orchestration/index";
+import { createRemappingAuthorizedTransport } from "../orchestration/index";
+import { BackendOidcModeContextSource } from "./runtime/types";
 
 export interface CreateBackendOidcModeAuthorizedTransportOptions {
 	transport: HttpTransport;
@@ -40,17 +33,10 @@ export function createBackendOidcModeAuthorizedTransport(
 	authorizationProvider: AuthorizationHeaderProviderTrait,
 	options: CreateBackendOidcModeAuthorizedTransportOptions,
 ): HttpTransport {
-	const base = createAuthorizedTransport(authorizationProvider, options);
-
-	return {
-		async execute(request) {
-			try {
-				return await base.execute(request);
-			} catch (cause) {
-				throw remapAuthError(cause);
-			}
-		},
-	};
+	return createRemappingAuthorizedTransport(authorizationProvider, {
+		...options,
+		remapError: remapAuthError,
+	});
 }
 
 function remapAuthError(cause: unknown): unknown {

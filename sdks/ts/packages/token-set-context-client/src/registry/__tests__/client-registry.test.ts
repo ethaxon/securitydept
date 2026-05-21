@@ -10,8 +10,8 @@ import {
 	TokenSetAuthFlowOutcome,
 	TokenSetAuthFlowSource,
 } from "../../orchestration";
-import { createTokenSetAuthRegistry } from "../client-registry";
-import { ClientInitializationPriority } from "../types";
+import { ClientInitializationPriority } from "../contracts/types";
+import { createTokenSetAuthRegistry } from "../core/client-registry";
 
 interface TestService {
 	authEvents: ReturnType<typeof createSubject<TokenSetAuthEvent>>;
@@ -19,6 +19,11 @@ interface TestService {
 		options?: EnsureAuthForResourceOptions,
 	) => Promise<EnsureAuthForResourceResult>;
 }
+
+const TEST_IDLE_SCHEDULER = (callback: () => void): (() => void) => {
+	const handle = setTimeout(callback, 0);
+	return () => clearTimeout(handle);
+};
 
 function createAuthenticatedResult(): EnsureAuthForResourceResult {
 	return {
@@ -52,6 +57,14 @@ describe("TokenSetAuthRegistry auth flow", () => {
 		const factory = vi.fn().mockResolvedValue(service);
 		const registry = createTokenSetAuthRegistry<TestService, TestService>({
 			materialize: (client) => client,
+			dispose: () => undefined,
+			accessTokenOf: () => null,
+			ensureAccessTokenOf: async () => null,
+			ensureAuthorizationHeaderOf: async () => null,
+			ensureAuthForResourceOf: async (service, options) =>
+				await service.ensureAuthForResource(options),
+			authEventsOf: (service) => service.authEvents,
+			idleScheduler: TEST_IDLE_SCHEDULER,
 		});
 
 		registry.register({
@@ -79,6 +92,14 @@ describe("TokenSetAuthRegistry auth flow", () => {
 		const factory = vi.fn().mockResolvedValue(createService());
 		const registry = createTokenSetAuthRegistry<TestService, TestService>({
 			materialize: (client) => client,
+			dispose: () => undefined,
+			accessTokenOf: () => null,
+			ensureAccessTokenOf: async () => null,
+			ensureAuthorizationHeaderOf: async () => null,
+			ensureAuthForResourceOf: async (service, options) =>
+				await service.ensureAuthForResource(options),
+			authEventsOf: (service) => service.authEvents,
+			idleScheduler: TEST_IDLE_SCHEDULER,
 		});
 
 		registry.register({
@@ -100,6 +121,14 @@ describe("TokenSetAuthRegistry auth flow", () => {
 		const service = createService();
 		const registry = createTokenSetAuthRegistry<TestService, TestService>({
 			materialize: (client) => client,
+			dispose: () => undefined,
+			accessTokenOf: () => null,
+			ensureAccessTokenOf: async () => null,
+			ensureAuthorizationHeaderOf: async () => null,
+			ensureAuthForResourceOf: async (service, options) =>
+				await service.ensureAuthForResource(options),
+			authEventsOf: (service) => service.authEvents,
+			idleScheduler: TEST_IDLE_SCHEDULER,
 		});
 		const events: TokenSetAuthEvent[] = [];
 		registry.authEvents.subscribe({ next: (event) => events.push(event) });

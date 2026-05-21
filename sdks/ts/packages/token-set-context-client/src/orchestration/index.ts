@@ -17,28 +17,6 @@
 // Stability: provisional (additive, freezing-in-progress; not yet promoted to stable).
 // Not a separate npm package — extraction path is clear if warranted later.
 
-export type {
-	CreateTokenSetAuthEventOptions,
-	TokenSetAuthErrorSummary,
-	TokenSetAuthEvent,
-	TokenSetAuthEventPayload,
-} from "./auth-events";
-export {
-	createTokenSetAuthEvent,
-	eventSourceForAuthFlow,
-	summarizeAuthError,
-	TokenSetAuthEventType,
-	TokenSetAuthFlowOutcome,
-	TokenSetAuthFlowReason,
-	TokenSetAuthFlowSource,
-} from "./auth-events";
-export type {
-	AsyncBearerHeaderProvider,
-	AuthForResourceProvider,
-	BearerHeaderProvider,
-	CreateAuthorizedTransportOptions,
-} from "./auth-transport";
-export { createAuthorizedTransport } from "./auth-transport";
 // Base client: shared lifecycle infrastructure for mode-specific clients.
 export type {
 	BaseOidcModeClientOptions,
@@ -47,47 +25,62 @@ export type {
 	EnsureAuthForResourceResult,
 	EnsureAuthorizationHeaderOptions,
 	EnsureFreshAuthStateOptions,
-} from "./base-client";
+} from "./client/base-client";
 export {
 	BaseOidcModeClient,
 	describeError,
 	EnsureAuthForResourceStatus,
 	StateRestoreSourceKind,
-} from "./base-client";
+} from "./client/base-client";
+export type {
+	CreateTokenSetAuthEventOptions,
+	TokenSetAuthErrorSummary,
+	TokenSetAuthEvent,
+	TokenSetAuthEventPayload,
+} from "./events/auth-events";
+export {
+	createTokenSetAuthEvent,
+	eventSourceForAuthFlow,
+	summarizeAuthError,
+	TokenSetAuthEventType,
+	TokenSetAuthFlowOutcome,
+	TokenSetAuthFlowReason,
+	TokenSetAuthFlowSource,
+} from "./events/auth-events";
 // Controller: thin lifecycle layer that composes state + persistence + transport.
 export type {
 	ApplyDeltaOptions,
 	AuthMaterialController,
 	AuthMaterialState,
 	CreateAuthMaterialControllerOptions,
-} from "./controller";
-export { createAuthMaterialController } from "./controller";
+} from "./state/controller";
+export { createAuthMaterialController } from "./state/controller";
 export type {
 	AuthStatePersistence,
 	CreateAuthStatePersistenceOptions,
-} from "./persistence";
-export { createAuthStatePersistence } from "./persistence";
+} from "./state/persistence";
+export { createAuthStatePersistence } from "./state/persistence";
 export type {
 	AttachTokenSetResumeReconciliationOptions,
 	TokenSetResumeReconciliationClient,
 	TokenSetResumeReconciliationOptions,
-} from "./resume-reconciliation";
+} from "./state/resume-reconciliation";
 export {
 	attachTokenSetResumeReconciliation,
 	createTokenSetResumeReconciler,
 	shouldReconcileTokenSetSnapshot,
-} from "./resume-reconciliation";
+} from "./state/resume-reconciliation";
 export type {
 	CreateTokenHandleStoreOptions,
 	IssueTokenHandleOptions,
 	TokenHandleDescriptor,
 	TokenHandleStore,
-} from "./token-handle-store";
+} from "./token/token-handle-store";
 export {
 	createTokenHandleStore,
 	TokenHandleKind,
-} from "./token-handle-store";
-export type { TokenFreshnessOptions } from "./token-ops";
+} from "./token/token-handle-store";
+export type { TokenFreshnessOptions } from "./token/token-ops";
 export {
 	bearerHeader,
 	freshBearerHeader,
@@ -96,7 +89,7 @@ export {
 	mergeTokenDelta,
 	shouldRefreshAccessToken,
 	TokenFreshnessState,
-} from "./token-ops";
+} from "./token/token-ops";
 export type {
 	AuthDelta,
 	AuthMetadataDelta,
@@ -106,5 +99,17 @@ export type {
 	AuthSource,
 	TokenDelta,
 	TokenSnapshot,
-} from "./types";
-export { AuthSourceKind } from "./types";
+} from "./token/types";
+export { AuthSourceKind } from "./token/types";
+export type {
+	AsyncBearerHeaderProvider,
+	AuthForResourceProvider,
+	AuthorizationHeaderProviderTrait,
+	BearerHeaderProvider,
+	CreateAuthorizedTransportOptions,
+	CreateRemappingAuthorizedTransportOptions,
+} from "./transport/auth-transport";
+export {
+	createAuthorizedTransport,
+	createRemappingAuthorizedTransport,
+} from "./transport/auth-transport";

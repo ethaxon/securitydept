@@ -32,7 +32,7 @@
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client.test.ts",
 						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/client.test.ts",
 						"packages/token-set-context-client-react/src/__tests__/adapter.test.ts",
-						"packages/token-set-context-client-react/src/__tests__/token-set-auth-provider.test.tsx",
+						"packages/token-set-context-client-react/src/__tests__/injection.test.tsx",
 						"../../apps/webui/src/lib/__tests__/dashboardPrincipal.test.ts",
 						"../../apps/webui/src/routes/tokenSetFrontendMode/__tests__/traceTimelineSection.test.ts",
 						"../../apps/webui/src/routes/tokenSetBackendMode/__tests__/traceTimelineSection.test.ts",
@@ -89,7 +89,7 @@
 						"packages/client/src/web/__tests__/visibility-reconciler.test.ts",
 						"examples/visibility-hardening-baseline.test.ts",
 						"examples/cross-tab-sync-baseline.test.ts",
-						"packages/token-set-context-client-react/src/__tests__/token-set-auth-provider.test.tsx",
+						"packages/token-set-context-client-react/src/__tests__/injection.test.tsx",
 						"../../apps/webui/src/__tests__/tokenSet.test.ts"
 					],
 					"docsAnchor": {
@@ -123,6 +123,39 @@
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Event Primitives"
+					}
+				},
+				{
+					"exportKey": "./injection",
+					"stability": "provisional",
+					"owner": "foundation",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Framework-neutral dependency injection authority. `SecuritydeptInjectorTrait` is the minimal read-side contract (`get()` only) shared by consumers, React Context, and adapter integrations; `SecuritydeptInjector` is the SDK facade that owns provider resolution, parent inheritance, explicit overrides, and side-effect-free `has()` checks without exposing raw injection-js runtime types as the canonical public shape. The subpath also re-exports typed `inject()` / `runInInjectionContext()` helpers and the Angular-style `SecuritydeptDestroyRef` lifecycle token for framework adapters such as React hosts.",
+					"evidence": [
+						"packages/client/src/injection/__tests__/injector.test.ts",
+						"packages/client/src/environment/__tests__/workspace-contract.test.ts",
+						"../../apps/webui/src/App.tsx",
+						"../../apps/webui/src/routes/Login.tsx"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Unified Dependency Injection"
+					}
+				},
+				{
+					"exportKey": "./rx",
+					"stability": "provisional",
+					"owner": "foundation",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Canonical framework-neutral RxJS bridge for SecurityDept event streams and signals. Exposes `toRxObservable(source)` for both EventStreamTrait and ReadableSignalTrait, plus `fromRxObservable(observable)` for the reverse bridge. `@securitydept/client/events` remains the event/operator surface; `@securitydept/client-angular` keeps Angular-native writable-signal bridging only.",
+					"evidence": [
+						"packages/client/src/rx/__tests__/rx.test.ts",
+						"examples/angular-integration-adapter.test.ts",
+						"packages/token-set-context-client-angular/src/lib/__tests__/token-set-auth.service.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Shared Client Lifecycle Contract"
 					}
 				},
 				{
@@ -205,15 +238,16 @@
 					"stability": "provisional",
 					"owner": "basic-auth-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React entry keeps the layering explicit: BasicAuthContextProvider({ config }) takes auth-context config only, while the provider itself is host glue and does not introduce a separate environment capability layer.",
+					"note": "React entry is injector-first: it exports `BASIC_AUTH_CONTEXT_CLIENT`, `createBasicAuthContextClient()`, and `provideBasicAuthContextClient()` so hosts compose the client through `SecuritydeptProvider`. No domain-specific React Context, Provider component, or `useBasicAuthContext()` lookup hook remains in the public surface.",
 					"evidence": [
 						"examples/basic-auth-react-minimal-entry.test.ts",
+						"packages/basic-auth-context-client-react/src/__tests__/adapter.test.ts",
 						"../../apps/webui/src/routes/Login.tsx",
 						"../../apps/webui/src/routes/BasicAuthPlayground.tsx"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "React entry: dedicated adapter packages own Provider and hook wiring"
+						"heading": "React entry: one SDK context plus injector factories"
 					}
 				}
 			]
@@ -284,7 +318,7 @@
 					"stability": "provisional",
 					"owner": "session-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React entry is environment-first and controller-bridged at the composition root: SessionContextProvider({ config, environment, initialRefresh }) can create SessionContextController from one flattened WebClientEnvironment, or hosts can pass an external controller when they own lifecycle. Hooks bridge controller state with useSyncExternalStore and do not own user-info fetch or logout state machines.",
+					"note": "React entry is injector-first and controller-bridged: it exports `SESSION_CONTEXT_CLIENT`, `SESSION_CONTEXT_CONTROLLER`, `createSessionContextController()`, and `provideSessionContextController()` so hosts compose session dependencies through `SecuritydeptProvider`. No `SessionContextProvider` or `useSessionContext()` public surface remains.",
 					"evidence": [
 						"examples/session-context-react-minimal-entry.test.ts",
 						"packages/session-context-client-react/src/__tests__/adapter.test.ts",
@@ -294,7 +328,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "React entry: dedicated adapter packages own Provider and hook wiring"
+						"heading": "React entry: one SDK context plus injector factories"
 					}
 				}
 			]
@@ -395,12 +429,14 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Framework-neutral multi-client token-set auth registry core. Owns keyed storage, readiness tracking (not_initialized → initializing → ready | failed), priority=primary|lazy lifecycle, preload / whenReady / idleWarmup verbs, multi-axis discrimination (urlPatterns, callbackPath, requirementKind, providerFamily), the shared managed OIDC client contracts (`OidcModeClient`, `OidcCallbackClient`), the shared generic callback failure presenter `describeTokenSetCallbackError()`, the callback resume error reader `readTokenSetCallbackResumeErrorDetails()`, and `TokenSetCallbackResumeController` as the shared callback resume state machine. Angular and React adapters wrap this shared contract owner thinly instead of redefining it locally; mode-specific callback copy remains an explicit override owned by the caller or mode package.",
+					"note": "Framework-neutral multi-client token-set auth registry core. Owns keyed storage, readiness tracking (not_initialized → initializing → ready | failed), canonical lifecycle verbs (`register(entry)`, `unregister(key)`, `resetMaterialization(key)`, `dispose()`), priority=primary|lazy lifecycle, preload / whenReady / idleWarmup, and the reactive registry topology/readiness authority through `state`. `registeredKeys()` / `readyKeys()` plus the registered/ready snapshot helpers are synchronous convenience over that state signal. The same subpath now also owns the shared `TokenSetAuthService<TClient extends OidcModeClient>` state owner plus `createTokenSetOidcAuthRegistry()` so React and Angular adapters bridge one core service/registry contract instead of redefining freshness, access-token, or restore state locally. The subpath also keeps multi-axis discrimination (urlPatterns, callbackPath, requirementKind, providerFamily), lifecycle-safe invalidation errors for stale async materialization, the shared managed OIDC client contracts (`OidcModeClient`, `OidcCallbackClient`), the shared generic callback failure presenter `describeTokenSetCallbackError()`, the callback resume error reader `readTokenSetCallbackResumeErrorDetails()`, and `TokenSetCallbackResumeController` as the shared callback resume state machine. Mode-specific callback copy remains an explicit override owned by the caller or mode package.",
 					"evidence": [
 						"examples/multi-client-lazy-init-contract.test.ts",
 						"examples/async-client-readiness-contract.test.ts",
 						"examples/angular-integration-adapter.test.ts",
 						"examples/react-multi-client-registry-baseline.test.ts",
+						"packages/token-set-context-client/src/registry/__tests__/client-registry-lifecycle.test.ts",
+						"packages/token-set-context-client/src/registry/__tests__/token-set-auth-service.test.ts",
 						"packages/token-set-context-client/src/registry/__tests__/error-presentation.test.ts",
 						"packages/token-set-context-client/src/registry/__tests__/callback-resume-controller.test.ts"
 					],
@@ -505,18 +541,22 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React 19 productized token-set adapter with canonical keyed consumer-path closeout, browser-owned callback failure-path productization, frontend-mode popup/cross-tab host authority, shared callback presentation descriptors, adapter environment-boundary closeout, shared OIDC redirect-login contract alignment, callback presenter layering cleanup, and callback resume controller bridge. Adds TokenSetAuthProvider, useTokenSetAuthRegistry / useTokenSetAuthService / useTokenSetAuthState / useTokenSetAccessToken, useTokenSetCallbackResume, CallbackResumeErrorDetails, readCallbackResumeErrorDetails, TokenSetCallbackComponent (with a retained TokenSetCallbackOutlet compatibility alias), and the SDK-owned lower-level keyed accessor useTokenSetBackendOidcClient(clientKey) on top of the framework-neutral registry core (@securitydept/token-set-context-client/registry). React-side backend client contracts now include the shared OidcRedirectLoginClient surface for browser-host route login. TokenSetAuthProvider owns registry registration plus the shared TokenSetCallbackResumeController lifecycle; entry clientFactory functions remain the composition root for auth-context config plus environment composition. The legacy single-client BackendOidcModeContextProvider is now environment-first and accepts BackendOidcModeWebClientEnvironment instead of a raw dependency/capability bag. useTokenSetCallbackResume({ getCurrentUrl, describeError }) keeps current-URL and mode-specific callback copy as explicit host overrides while bridging the shared controller and error details from the registry core.",
+					"note": "React token-set adapter is now injector-first. The root export owns explicit provider factories (`provideTokenSetAuthRegistry()`, `provideTokenSetCallbackResumeController()`), callback bridges (`useTokenSetCallbackResume()`, `TokenSetCallbackComponent`), and React-specific type re-exports on top of the framework-neutral registry core. Ordinary provider composition is scope-owned: `provide...` factories create registry/controller instances inside the current injection context and let `SecuritydeptDestroyRef` own teardown. Advanced hosts that need manual readiness, manual disposal, or custom warmup policy must create and own the registry/controller explicitly before value-providing them. Keyed auth state is read through `useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` plus `useReadableSignal(service.state)` or through explicit props; no `TokenSetAuthProvider`, fixed runtime bundle, hidden registry/service lookup hook, keyed state hook, or backend-client context helper remains in the public surface.",
 					"evidence": [
-						"packages/token-set-context-client-react/src/__tests__/token-set-auth-provider.test.tsx",
-						"packages/token-set-context-client-react/src/__tests__/token-set-callback-import-boundary.test.ts",
 						"packages/token-set-context-client-react/src/__tests__/adapter.test.ts",
+						"packages/token-set-context-client-react/src/__tests__/injection.test.tsx",
+						"packages/token-set-context-client-react/src/__tests__/react-query.test.tsx",
+						"packages/token-set-context-client-react/src/__tests__/tanstack-router.test.ts",
+						"packages/token-set-context-client-react/src/__tests__/token-set-callback-import-boundary.test.ts",
 						"examples/backend-oidc-react-minimal-entry.test.ts",
 						"examples/react-multi-client-registry-baseline.test.ts",
+						"examples/react-callback-async-readiness.test.ts",
+						"examples/react-query-integration-evidence.test.ts",
 						"../../apps/webui/e2e/frontend-oidc.spec.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Framework Router Adapters"
+						"heading": "React entry: one SDK context plus injector factories"
 					}
 				},
 				{
@@ -524,7 +564,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Canonical token-set React Query consumer surface for groups / entries read and write workflows (not a separate package). @tanstack/react-query is an optional peer dependency. Auth lifecycle ownership still stays in the token-set / client-react family; the subpath owns query-key extensions, token-set management entity contracts, post-mutation invalidation for the canonical groups / entries flows, and the adopter-facing canonical path is keyed-only (`clientKey`) plus optional requestOptions transport override. The module-level fetch transport is request-level convenience only and does not own auth lifecycle, refresh, or persistence state.",
+					"note": "Canonical token-set React Query integration surface (not a separate package). `@tanstack/react-query` is an optional peer dependency. This subpath owns cache-key namespacing, readiness queries over registry materialization, and namespace invalidation glue for token-set-aware consumers. Reference-app resource domain models, CRUD transport logic, and groups/entries mutations remain app-local or adopter-local code rather than SDK public surface.",
 					"evidence": [
 						"examples/react-query-integration-evidence.test.ts",
 						"packages/token-set-context-client-react/src/__tests__/react-query.test.tsx"
@@ -561,11 +601,13 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Root export owns TokenSetAuthRegistry DI service, multi-client integration, bearer interceptor (BearerInterceptorOptions { strictUrlMatch?: boolean } + TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS InjectionToken; provideTokenSetBearerInterceptor(options?) and createTokenSetBearerInterceptor(registry, options?) accept the same options object — strictUrlMatch: true bounds bearer injection to URLs matching registered urlPatterns), callback resume, and the canonical Angular route-security builders. secureRouteRoot() / secureRoute() are the adopter-facing Angular Router path: child routes declare serializable requirement metadata only, root registers non-serializable runtime policy (planner hosts, requirementPolicies, handlers), and both canActivate + canActivateChild evaluate the full route chain in one pass. createTokenSetRouteAggregationGuard() remains the lower-level route-tree primitive and passes attemptedUrl from Angular router state rather than from page globals. createTokenSetOidcLoginRedirectHandler() is the page redirect helper layered on top of that route context, targeting the shared OidcRedirectLoginClient contract. Its public key remains `environment`, and the canonical path is providePageClientEnvironment({ environment }) from @securitydept/client-angular. The helper awaits that source inside the guard flow before calling `loginWithRedirect()`. CallbackResumeService now bridges TokenSetCallbackResumeController and exposes component-free resume(url) state through Angular signals / observables; TokenSetCallbackComponent remains a page-only drop-in convenience over that service, with current URL from TOKEN_SET_CALLBACK_CURRENT_URL and host policy through TOKEN_SET_CALLBACK_COMPONENT_OPTIONS (`fallbackUrl`, `errorRedirectUrl`, `onError`). Signal bridge utilities and the canonical page-environment bridge live in @securitydept/client-angular. Angular provider/DI registration is the composition root for registered clients/environments; guards, interceptors, and services consume shared registry and controller services and do not each accept a full foundation environment.",
+					"note": "Root export owns TokenSetAuthRegistry DI service, multi-client integration, bearer interceptor (BearerInterceptorOptions { strictUrlMatch?: boolean } + TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS InjectionToken; provideTokenSetBearerInterceptor(options?) and createTokenSetBearerInterceptor(registry, options?) accept the same options object — strictUrlMatch: true bounds bearer injection to URLs matching registered urlPatterns), callback resume, and the canonical Angular route-security builders. TokenSetAuthRegistry is now a thin DI wrapper over the shared `createTokenSetOidcAuthRegistry()` lifecycle owner and exposes the same canonical verbs plus signal-state authority as the core: `register(entry)`, `unregister(key)`, `resetMaterialization(key)`, `dispose()`, `state`, registered snapshots, and ready snapshots. Angular `TokenSetAuthService` is now a bridge over the shared core `TokenSetAuthService`, adding Angular-native signal/Observable views without reimplementing token freshness, access-token derivation, or restore state. secureRouteRoot() / secureRoute() are the adopter-facing Angular Router path: child routes declare serializable requirement metadata only, root registers non-serializable runtime policy (planner hosts, requirementPolicies, handlers), and both canActivate + canActivateChild evaluate the full route chain in one pass. createTokenSetRouteAggregationGuard() remains the lower-level route-tree primitive and passes attemptedUrl from Angular router state rather than from page globals. createTokenSetOidcLoginRedirectHandler() is the page redirect helper layered on top of that route context, targeting the shared OidcRedirectLoginClient contract. Its public key remains `environment`, and the canonical path is providePageClientEnvironment({ environment }) from @securitydept/client-angular. The helper awaits that source inside the guard flow before calling `loginWithRedirect()`. CallbackResumeService now bridges TokenSetCallbackResumeController and exposes component-free resume(url) state through Angular signals / observables; the canonical signal/event-to-RxJS bridge now lives in `@securitydept/client/rx`, while `@securitydept/client-angular` keeps Angular-specific writable-signal bridging.",
 					"evidence": [
 						"examples/angular-integration-adapter.test.ts",
 						"examples/angular-full-route-aggregation.test.ts",
 						"examples/angular-guard-injection-context.test.ts",
+						"packages/token-set-context-client-angular/src/lib/__tests__/token-set-auth.registry.test.ts",
+						"packages/token-set-context-client-angular/src/lib/__tests__/token-set-auth.service.test.ts",
 						"packages/token-set-context-client-angular/src/lib/__tests__/token-set-callback.component.test.ts",
 						"packages/token-set-context-client-angular/src/lib/__tests__/route-aggregation-guard.test.ts"
 					],
@@ -587,14 +629,16 @@
 					"stability": "provisional",
 					"owner": "shared-framework",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Shared React framework bridge for both route coordination and environment ownership. Root exports still include planner-host integration (AuthPlannerHostProvider, useAuthPlannerHost, AuthRequirementsClientSetProvider, useEffectiveClientSet) for the shared PlannerHost contract from @securitydept/client/auth-coordination, and now also include the canonical React environment-service bridge: ClientEnvironmentServiceProvider, useClientEnvironmentService, useClientEnvironment, useWebClientEnvironment, and usePageClientEnvironment. The provider owns one scoped ClientEnvironmentService instance per React composition root; render-time page capability goes through Suspense-compatible `usePageClientEnvironment()`, while command/event flows use `useClientEnvironmentService().resolvePageEnvironment()`.",
+					"note": "Shared React framework bridge with the only SDK-owned React Context. Root exports include `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()` for injector access, the context-free signal/event bridge `useReadableSignal()` and `useEventStream()`, and shared dependency tokens/provider factories such as `CLIENT_ENVIRONMENT_SERVICE` / `provideClientEnvironmentService()` and `AUTH_PLANNER_HOST` / `provideAuthPlannerHost()`. Domain packages compose through this injector bridge instead of publishing additional React Context/Provider APIs.",
 					"evidence": [
 						"examples/react-planner-host-baseline.test.ts",
-						"packages/client-react/src/__tests__/environment-service.test.tsx"
+						"packages/client-react/src/__tests__/environment-service.test.tsx",
+						"packages/client-react/src/__tests__/injection.test.tsx",
+						"../../apps/webui/src/App.tsx"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "React entry: dedicated adapter packages own Provider and hook wiring"
+						"heading": "React entry: one SDK context plus injector factories"
 					}
 				},
 				{
@@ -625,7 +669,7 @@
 					"stability": "provisional",
 					"owner": "shared-framework",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Canonical owner of Angular framework bridge utilities. Provides: AuthRouteAdapter (projection from ActivatedRouteSnapshot to RouteMatchNode[]), PlannerHost DI wiring (provideAuthPlannerHost, AUTH_PLANNER_HOST, injectPlannerHost), route-metadata helpers (withRouteRequirements, extractFullRouteRequirements, ROUTE_REQUIREMENTS_DATA_KEY, ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY, resolveEffectiveRequirements), canonical page-environment DI bridge utilities (providePageClientEnvironment, PAGE_CLIENT_ENVIRONMENT, PageClientEnvironmentService, PageClientEnvironmentResolver, PageClientEnvironmentSource), signal/Observable bridge utilities (bridgeToAngularSignal, signalToObservable — generic, not token-set-specific), and provideRouteScopedRequirements (lower-level non-router DI-scope helper). ReadableSignalTrait from @securitydept/client is the canonical signal contract.",
+					"note": "Canonical owner of Angular framework bridge utilities. Provides: AuthRouteAdapter (projection from ActivatedRouteSnapshot to RouteMatchNode[]), PlannerHost DI wiring (provideAuthPlannerHost, AUTH_PLANNER_HOST, injectPlannerHost), route-metadata helpers (withRouteRequirements, extractFullRouteRequirements, ROUTE_REQUIREMENTS_DATA_KEY, ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY, resolveEffectiveRequirements), canonical page-environment DI bridge utilities (providePageClientEnvironment, PAGE_CLIENT_ENVIRONMENT, PageClientEnvironmentService, PageClientEnvironmentResolver, PageClientEnvironmentSource), the Angular writable-signal bridge `bridgeToAngularSignal()`, and provideRouteScopedRequirements (lower-level non-router DI-scope helper). Framework-neutral RxJS bridging for ReadableSignalTrait/EventStreamTrait now lives in `@securitydept/client/rx`, so `@securitydept/client-angular` no longer owns a generic `signalToObservable()` public API. ReadableSignalTrait from @securitydept/client remains the canonical signal contract.",
 					"evidence": [
 						"examples/angular-router-adapter.test.ts",
 						"examples/angular-full-route-aggregation.test.ts",

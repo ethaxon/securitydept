@@ -9,11 +9,9 @@ import {
 	type HttpTransport,
 	type ReadableSignalTrait,
 } from "@securitydept/client";
+import { toRxObservable } from "@securitydept/client/rx";
 import { createWebClientEnvironment } from "@securitydept/client/web";
-import {
-	bridgeToAngularSignal,
-	signalToObservable,
-} from "@securitydept/client-angular";
+import { bridgeToAngularSignal } from "@securitydept/client-angular";
 import {
 	provideSessionContext,
 	SESSION_CONTEXT_CLIENT,
@@ -28,7 +26,6 @@ import {
 import {
 	CallbackResumeService,
 	createTokenSetBearerInterceptor,
-	isOidcCallback,
 	type OidcCallbackClient,
 	type OidcModeClient,
 	provideTokenSetAuth,
@@ -106,7 +103,9 @@ function createMockClient(
 				return {
 					status: EnsureAuthForResourceStatus.Authenticated,
 					snapshot,
-					authorizationHeader: accessToken ? `Bearer ${accessToken}` : null,
+					authorizationHeader: accessToken
+						? `Bearer ${accessToken}`
+						: undefined,
 					freshness: "fresh" as const,
 				};
 			}
@@ -310,16 +309,16 @@ describe("Angular Integration — Signal Bridge with real Angular signal", () =>
 describe("Angular Integration — RxJS Observable Bridge", () => {
 	it("returns a real RxJS Observable", () => {
 		const { signal } = createTestSignal("initial");
-		const obs$ = signalToObservable(signal);
+		const obs$ = toRxObservable(signal);
 		expect(obs$).toBeInstanceOf(Observable);
 	});
 
 	it("emits current value and subsequent changes", () => {
 		const { signal, set } = createTestSignal(0);
-		const obs$ = signalToObservable(signal);
+		const obs$ = toRxObservable(signal);
 
 		const values: number[] = [];
-		const sub = obs$.subscribe((v) => values.push(v));
+		const sub = obs$.subscribe((value: number) => values.push(value));
 
 		set(1);
 		set(2);
@@ -330,10 +329,10 @@ describe("Angular Integration — RxJS Observable Bridge", () => {
 
 	it("stops emitting after unsubscribe", () => {
 		const { signal, set } = createTestSignal("a");
-		const obs$ = signalToObservable(signal);
+		const obs$ = toRxObservable(signal);
 
 		const values: string[] = [];
-		const sub = obs$.subscribe((v) => values.push(v));
+		const sub = obs$.subscribe((value: string) => values.push(value));
 
 		set("b");
 		sub.unsubscribe();
@@ -360,7 +359,7 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 			clientFactory: () => createMockClient(),
 		});
 
-		expect(registry.keys()).toEqual(["main", "admin"]);
+		expect(registry.readyKeys()).toEqual(["main", "admin"]);
 		expect(registry.get("main")).toBeInstanceOf(TokenSetAuthService);
 		expect(registry.get("admin")).toBeInstanceOf(TokenSetAuthService);
 		expect(registry.get("unknown")).toBeUndefined();
@@ -433,13 +432,13 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 		expect(registry.accessToken("main")).toBeNull();
 	});
 
-	it("entries() returns all registered [key, service] pairs", () => {
+	it("readyEntriesSnapshot() returns all registered [key, service] pairs", () => {
 		const registry = new TokenSetAuthRegistry();
 
 		registry.register({ key: "a", clientFactory: () => createMockClient() });
 		registry.register({ key: "b", clientFactory: () => createMockClient() });
 
-		const entries = registry.entries();
+		const entries = registry.readyEntriesSnapshot();
 		expect(entries).toHaveLength(2);
 		expect(entries[0]?.[0]).toBe("a");
 		expect(entries[1]?.[0]).toBe("b");
@@ -491,8 +490,8 @@ describe("Angular Integration — TokenSetAuthService", () => {
 		const service = new TokenSetAuthService(client, true);
 
 		expect(service.authState()).toBeNull();
-		expect(service.isAuthenticated()).toBe(false);
-		expect(service.accessToken()).toBeNull();
+		expect(service.isAuthenticated.get()).toBe(false);
+		expect(service.accessToken.get()).toBeNull();
 		expect(service.authState$).toBeInstanceOf(Observable);
 	});
 
@@ -757,8 +756,8 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 		});
 
 		// 3. Verify initial state
-		expect(mainService.isAuthenticated()).toBe(false);
-		expect(adminService.isAuthenticated()).toBe(false);
+		expect(mainService.isAuthenticated.get()).toBe(false);
+		expect(adminService.isAuthenticated.get()).toBe(false);
 
 		// 4. Observable tracking
 		const mainStates: boolean[] = [];
@@ -770,8 +769,8 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 		// 5. Simulate main client login
 		mainState.set(makeSnapshot("main-tok"));
 		expect(mainStates).toEqual([false, true]);
-		expect(mainService.isAuthenticated()).toBe(true);
-		expect(mainService.accessToken()).toBe("main-tok");
+		expect(mainService.isAuthenticated.get()).toBe(true);
+		expect(mainService.accessToken.get()).toBe("main-tok");
 
 		// 6. Interceptor uses correct token per URL
 		const interceptor = createTokenSetBearerInterceptor(registry);
@@ -1055,6 +1054,7 @@ import {
 	AUTH_REQUIREMENTS_CLIENT_SET,
 	provideRouteScopedRequirements,
 } from "@securitydept/client-angular";
+import { isOidcCallback } from "@securitydept/token-set-context-client/registry";
 
 describe("Angular nested-scope requirements composition — contract evidence", () => {
 	// Shared fixture candidates

@@ -13,12 +13,14 @@ import {
 import type { LoginWithRedirectOptions as BasicAuthLoginOptions } from "@securitydept/basic-auth-context-client/web";
 import { loginWithRedirect as basicAuthLoginWithRedirect } from "@securitydept/basic-auth-context-client/web";
 import type { PageLocationCapability } from "@securitydept/client";
+import { createInMemoryRecordStore } from "@securitydept/client";
+import { createWebClientEnvironment } from "@securitydept/client/web";
 import type {
 	SessionContextClientConfig,
 	SessionInfo,
 } from "@securitydept/session-context-client";
 import type { LoginWithRedirectOptions as SessionLoginOptions } from "@securitydept/session-context-client/web";
-import type { SessionContextValue } from "@securitydept/session-context-client-react";
+import type { CreateSessionContextControllerOptions } from "@securitydept/session-context-client-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function createPageLocationEnvironment(href: string): PageLocationCapability {
@@ -113,51 +115,43 @@ describe("basic-auth ./web discoverability: named options contract + convenience
 });
 
 // ---------------------------------------------------------------------------
-// B. session-context-client/react: SessionContextValue is now exported
+// B. session-context-client/react: injector-first named contract discoverability
 // ---------------------------------------------------------------------------
 
-describe("session ./react discoverability: SessionContextValue named contract", () => {
-	it("SessionContextValue is importable as a named type from ./react", () => {
-		// Type-level evidence: the context value contract is directly importable.
-		// This allows adopters to type custom hooks that depend on the session context.
-		type AssertValue = SessionContextValue;
-
-		// Build a mock value that satisfies the contract to prove type-level access.
-		const mockValue: AssertValue = {
-			client: {} as AssertValue["client"],
-			state: { status: "loading", session: null, error: null },
-			session: null,
-			loading: true,
-			refresh: async () => null,
-			rememberPostAuthRedirect: async () => {},
-			clearPostAuthRedirect: async () => {},
-			resolveLoginUrl: async () => "/auth/session/login",
-			logout: async () => {},
+describe("session ./react discoverability: injector-first named contracts", () => {
+	it("CreateSessionContextControllerOptions is importable as a named type from ./react", () => {
+		const options: CreateSessionContextControllerOptions = {
+			config: {
+				baseUrl: "https://auth.example.com",
+			},
+			environment: createWebClientEnvironment({
+				transport:
+					{} as CreateSessionContextControllerOptions["environment"]["transport"],
+				sessionStore: createInMemoryRecordStore(),
+			}),
 		};
 
-		expect(mockValue.loading).toBe(true);
-		expect(mockValue.session).toBeNull();
+		expect(options.config.baseUrl).toBe("https://auth.example.com");
 	});
 
-	it("SessionContextValue has expected shape with session info", () => {
+	it("session root contracts still compose with SessionInfo shape", () => {
 		const sessionInfo: SessionInfo = {
 			principal: { subject: "session-user-1", displayName: "Alice" },
 		};
 
-		const value: SessionContextValue = {
-			client: {} as SessionContextValue["client"],
-			state: { status: "authenticated", session: sessionInfo, error: null },
-			session: sessionInfo,
-			loading: false,
-			refresh: async () => sessionInfo,
-			rememberPostAuthRedirect: async () => {},
-			clearPostAuthRedirect: async () => {},
-			resolveLoginUrl: async () => "/auth/session/login",
-			logout: async () => {},
+		const options: CreateSessionContextControllerOptions = {
+			config: {
+				baseUrl: "https://auth.example.com",
+			},
+			environment: createWebClientEnvironment({
+				transport:
+					{} as CreateSessionContextControllerOptions["environment"]["transport"],
+				sessionStore: createInMemoryRecordStore(),
+			}),
 		};
 
-		expect(value.session?.principal.displayName).toBe("Alice");
-		expect(value.loading).toBe(false);
+		expect(sessionInfo.principal.displayName).toBe("Alice");
+		expect(options.config.baseUrl).toBeTruthy();
 	});
 });
 

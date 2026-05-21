@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createTokenHandleStore, TokenHandleKind } from "../token-handle-store";
+import {
+	createTokenHandleStore,
+	TokenHandleKind,
+} from "../token/token-handle-store";
 
 describe("createTokenHandleStore", () => {
 	it("issues opaque handles without exposing token values", () => {

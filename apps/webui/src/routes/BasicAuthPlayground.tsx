@@ -2,7 +2,8 @@ import {
 	BasicAuthBoundaryKind as BasicAuthBoundaryKinds,
 	readBasicAuthBoundaryKind,
 } from "@securitydept/basic-auth-context-client";
-import { useBasicAuthContext } from "@securitydept/basic-auth-context-client-react";
+import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client-react";
+import { useSecuritydeptContext } from "@securitydept/client-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ExternalLink, Lock, LogIn, LogOut, ShieldAlert } from "lucide-react";
 import { useSyncExternalStore } from "react";
@@ -142,7 +143,9 @@ function readObservedBoundarySummary(
 }
 
 export function BasicAuthPlaygroundPage() {
-	const basicAuthClient = useBasicAuthContext();
+	const basicAuthClient = useSecuritydeptContext().get(
+		BASIC_AUTH_CONTEXT_CLIENT,
+	);
 	const rawMode = useSyncExternalStore(
 		subscribeAuthContextMode,
 		getAuthContextMode,

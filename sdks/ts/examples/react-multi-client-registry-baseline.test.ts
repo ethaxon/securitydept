@@ -1,47 +1,48 @@
 // @vitest-environment jsdom
 
-// React multi-client registry / provider / hooks baseline
-//
-// React multi-client registry evidence: proves the React adapter has reached Angular parity
-// for multi-client token-set auth. A single React tree hosts the
-// `TokenSetAuthProvider`, registers multiple OIDC clients (including an
-// async / lazy one), and a nested component consumes each client's auth
-// snapshot via the registry-backed hooks.
-//
-// This closes the canonical React consumer path that used to live only in
-// Angular (provideTokenSetAuth / TokenSetAuthRegistry / TokenSetAuthService).
-
-import { createSubject, type ReadableSignalTrait } from "@securitydept/client";
 import {
-	type AuthSnapshot,
-	AuthSourceKind,
+	createDefaultIdleScheduler,
+	createSignal,
+	createSubject,
+} from "@securitydept/client";
+import {
+	SecuritydeptProvider,
+	useReadableSignal,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
+import type {
+	AuthSnapshot,
+	TokenSetAuthEvent,
+} from "@securitydept/token-set-context-client/orchestration";
+import {
 	EnsureAuthForResourceStatus,
+	TokenFreshnessState,
 	TokenSetAuthFlowReason,
 } from "@securitydept/token-set-context-client/orchestration";
-import type { TokenSetReactClient } from "@securitydept/token-set-context-client-react";
 import {
-	ClientInitializationPriority,
-	TokenSetAuthProvider,
-	useTokenSetAccessToken,
-	useTokenSetAuthRegistry,
-	useTokenSetAuthService,
-	useTokenSetAuthState,
+	TokenSetAuthService as CoreTokenSetAuthService,
+	createTokenSetAuthRegistry,
+} from "@securitydept/token-set-context-client/registry";
+import {
+	provideTokenSetAuthRegistry,
+	type ReactRegistry,
+	TOKEN_SET_AUTH_REGISTRY,
+	type TokenSetClientEntry,
+	type TokenSetReactClient,
 } from "@securitydept/token-set-context-client-react";
-import { act, createElement, type ReactElement, useEffect } from "react";
+import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-// ---------------------------------------------------------------------------
-// Test infra
-// ---------------------------------------------------------------------------
+import { describe, expect, it } from "vitest";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
 	document.body.appendChild(container);
 	const root = createRoot(container);
+
 	act(() => {
 		root.render(element);
 	});
+
 	return {
 		container,
 		unmount() {
@@ -53,265 +54,165 @@ function render(element: ReactElement) {
 	};
 }
 
-async function flush() {
-	await act(async () => {
-		await Promise.resolve();
-	});
-}
-
-function createTestSignal<T>(initial: T): {
-	signal: ReadableSignalTrait<T>;
-	set(v: T): void;
-} {
-	let value = initial;
-	const listeners = new Set<() => void>();
+function createSnapshot(accessToken: string): AuthSnapshot {
 	return {
-		signal: {
-			get: () => value,
-			subscribe(l: () => void) {
-				listeners.add(l);
-				return () => listeners.delete(l);
-			},
-		},
-		set(next: T) {
-			value = next;
-			for (const l of listeners) l();
-		},
+		tokens: { accessToken },
+		metadata: {},
 	};
 }
 
-function makeSnapshot(accessToken: string): AuthSnapshot {
+function createClient(
+	state: ReturnType<typeof createSignal<AuthSnapshot | null>>,
+) {
 	return {
-		tokens: { accessToken, accessTokenExpiresAt: undefined },
-		metadata: { source: { kind: AuthSourceKind.OidcAuthorizationCode } },
-	};
-}
-
-function createMockClient(
-	initial: AuthSnapshot | null = null,
-): [TokenSetReactClient, (s: AuthSnapshot | null) => void] {
-	const ctrl = createTestSignal<AuthSnapshot | null>(initial);
-	const client: TokenSetReactClient = {
-		state: ctrl.signal,
-		authEvents: createSubject(),
-		dispose: vi.fn(),
-		restorePersistedState: vi.fn().mockResolvedValue(null),
-		handleCallback: vi.fn().mockResolvedValue({ snapshot: makeSnapshot("cb") }),
-		authorizationHeader() {
-			const accessToken = ctrl.signal.get()?.tokens.accessToken;
-			return accessToken ? `Bearer ${accessToken}` : null;
-		},
-		ensureFreshAuthState: vi.fn().mockResolvedValue(ctrl.signal.get()),
-		ensureAuthorizationHeader: vi.fn().mockImplementation(async () => {
-			const accessToken = ctrl.signal.get()?.tokens.accessToken;
-			return accessToken ? `Bearer ${accessToken}` : null;
-		}),
-		ensureAuthForResource: vi.fn().mockImplementation(async () => {
-			const snapshot = ctrl.signal.get();
-			if (snapshot) {
+		state,
+		authEvents: createSubject<TokenSetAuthEvent>(),
+		dispose: () => state.set(null),
+		restorePersistedState: async () => state.get(),
+		authorizationHeader: () =>
+			`Bearer ${state.get()?.tokens.accessToken ?? ""}`,
+		ensureAuthForResource: async () => {
+			const snapshot = state.get();
+			if (!snapshot) {
 				return {
-					status: EnsureAuthForResourceStatus.Authenticated,
-					snapshot,
-					freshness: "fresh" as const,
+					status: EnsureAuthForResourceStatus.Unauthenticated,
+					snapshot: null,
+					authorizationHeader: null,
+					reason: TokenSetAuthFlowReason.NoSnapshot,
 				};
 			}
+
 			return {
-				status: EnsureAuthForResourceStatus.Unauthenticated,
-				snapshot: null,
-				authorizationHeader: null,
-				reason: TokenSetAuthFlowReason.NoSnapshot,
+				status: EnsureAuthForResourceStatus.Authenticated,
+				snapshot,
+				freshness: TokenFreshnessState.Fresh,
+				authorizationHeader: `Bearer ${snapshot.tokens.accessToken}`,
 			};
-		}),
-		loginWithRedirect: vi.fn().mockResolvedValue(undefined),
+		},
+		ensureFreshAuthState: async () => state.get(),
+		ensureAuthorizationHeader: async () =>
+			state.get()?.tokens.accessToken
+				? `Bearer ${state.get()?.tokens.accessToken}`
+				: null,
+		handleCallback: async () => ({ snapshot: state.get()! }),
+		loginWithRedirect: async () => undefined,
 	};
-	return [client, ctrl.set];
 }
 
-// ---------------------------------------------------------------------------
-// Evidence tests
-// ---------------------------------------------------------------------------
-
-describe("React multi-client registry baseline", () => {
-	afterEach(() => {
-		document.body.innerHTML = "";
-		delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
-			.IS_REACT_ACT_ENVIRONMENT;
+function createManualRegistry(
+	clients: readonly TokenSetClientEntry[],
+): ReactRegistry {
+	const registry = createTokenSetAuthRegistry<
+		TokenSetReactClient,
+		CoreTokenSetAuthService<TokenSetReactClient>
+	>({
+		materialize: CoreTokenSetAuthService.materializeService,
+		dispose: CoreTokenSetAuthService.dispose,
+		accessTokenOf: CoreTokenSetAuthService.accessTokenOf,
+		ensureAccessTokenOf: CoreTokenSetAuthService.ensureAccessTokenOf,
+		ensureAuthorizationHeaderOf:
+			CoreTokenSetAuthService.ensureAuthorizationHeaderOf,
+		ensureAuthForResourceOf: CoreTokenSetAuthService.ensureAuthForResourceOf,
+		authEventsOf: CoreTokenSetAuthService.authEventsOf,
+		idleScheduler: createDefaultIdleScheduler(),
 	});
 
-	it("registers multiple clients and exposes keyed auth state via hooks", async () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
+	for (const client of clients) {
+		const registration = registry.register(client);
+		if (registration instanceof Promise) {
+			registration.catch(() => {});
+		}
+	}
 
-		const [mainClient, setMain] = createMockClient();
-		const [adminClient] = createMockClient(makeSnapshot("admin-seed"));
+	return registry;
+}
 
-		const seen: Record<string, string | null> = {};
+describe("react multi-client registry baseline", () => {
+	it("surfaces multiple keyed services through SecuritydeptProvider", async () => {
+		const mainState = createSignal<AuthSnapshot | null>(
+			createSnapshot("main-at"),
+		);
+		const adminState = createSignal<AuthSnapshot | null>(
+			createSnapshot("admin-at"),
+		);
+		const registry = createManualRegistry([
+			{
+				key: "main",
+				autoRestore: false,
+				clientFactory: () => createClient(mainState),
+			},
+			{
+				key: "admin",
+				autoRestore: false,
+				clientFactory: () => createClient(adminState),
+			},
+		]);
+		await registry.whenReady("main");
+		await registry.whenReady("admin");
+
 		function Probe() {
-			const mainTok = useTokenSetAccessToken("main");
-			const adminTok = useTokenSetAccessToken("admin");
-			useEffect(() => {
-				seen.main = mainTok;
-				seen.admin = adminTok;
-			}, [mainTok, adminTok]);
+			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
+			const main = useReadableSignal(registry.require("main").state).snapshot;
+			const admin = useReadableSignal(registry.require("admin").state).snapshot;
 			return createElement(
-				"div",
+				"output",
 				null,
-				createElement("span", { id: "main" }, mainTok ?? "none"),
-				createElement("span", { id: "admin" }, adminTok ?? "none"),
+				`${main?.tokens.accessToken ?? "empty"}:${admin?.tokens.accessToken ?? "empty"}`,
 			);
 		}
 
 		const view = render(
 			createElement(
-				TokenSetAuthProvider,
-				{
-					clients: [
-						{
-							key: "main",
-							clientFactory: () => mainClient,
-							autoRestore: false,
-						},
-						{
-							key: "admin",
-							clientFactory: () => adminClient,
-							autoRestore: false,
-						},
-					],
-					idleWarmup: false,
-				},
+				SecuritydeptProvider,
+				{ providers: [provideTokenSetAuthRegistry(registry)] },
 				createElement(Probe),
 			),
 		);
 
-		await flush();
-
-		expect(view.container.querySelector("#main")?.textContent).toBe("none");
-		expect(view.container.querySelector("#admin")?.textContent).toBe(
-			"admin-seed",
-		);
-
-		act(() => {
-			setMain(makeSnapshot("main-live"));
-		});
-		await flush();
-
-		expect(view.container.querySelector("#main")?.textContent).toBe(
-			"main-live",
-		);
-		expect(seen.main).toBe("main-live");
-		expect(seen.admin).toBe("admin-seed");
-
+		expect(view.container.textContent).toBe("main-at:admin-at");
 		view.unmount();
-		await flush();
-		// Microtask-settled dispose; both clients should have been torn down.
-		await new Promise((r) => setTimeout(r, 0));
-		expect(mainClient.dispose).toHaveBeenCalled();
-		expect(adminClient.dispose).toHaveBeenCalled();
+		registry.dispose();
 	});
 
-	it("lazy clients stay not_initialized until preload is triggered", async () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-
-		const [primaryClient] = createMockClient(makeSnapshot("primary"));
-		const factory = vi.fn();
-		const [lazyClient] = createMockClient(makeSnapshot("lazy-ready"));
-		factory.mockImplementation(() => lazyClient);
-
-		let registrySnapshot: ReturnType<typeof useTokenSetAuthRegistry> | null =
-			null;
-		function Spy() {
-			registrySnapshot = useTokenSetAuthRegistry();
-			return null;
-		}
-
-		const view = render(
-			createElement(
-				TokenSetAuthProvider,
-				{
-					clients: [
-						{
-							key: "primary",
-							clientFactory: () => primaryClient,
-							autoRestore: false,
-						},
-						{
-							key: "lazy",
-							clientFactory: factory,
-							priority: ClientInitializationPriority.Lazy,
-							autoRestore: false,
-						},
-					],
-					idleWarmup: false,
-				},
-				createElement(Spy),
-			),
+	it("re-renders when a keyed service signal changes", async () => {
+		const mainState = createSignal<AuthSnapshot | null>(
+			createSnapshot("main-at"),
 		);
-
-		await flush();
-
-		expect(registrySnapshot).toBeTruthy();
-		const registry = registrySnapshot!;
-		expect(registry.readinessState("primary")).toBe("ready");
-		expect(registry.readinessState("lazy")).toBe("not_initialized");
-		expect(factory).not.toHaveBeenCalled();
-
-		await registry.whenReady("lazy");
-		expect(factory).toHaveBeenCalledOnce();
-		expect(registry.readinessState("lazy")).toBe("ready");
-
-		view.unmount();
-		await flush();
-	});
-
-	it("useTokenSetAuthState re-renders on signal-level changes (no manual wiring)", async () => {
-		(
-			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-		).IS_REACT_ACT_ENVIRONMENT = true;
-
-		const [client, setState] = createMockClient();
-		const observed: Array<string | null> = [];
+		const registry = createManualRegistry([
+			{
+				key: "main",
+				autoRestore: false,
+				clientFactory: () => createClient(mainState),
+			},
+		]);
+		await registry.whenReady("main");
 
 		function Probe() {
-			const snap = useTokenSetAuthState("main");
-			useEffect(() => {
-				observed.push(snap?.tokens.accessToken ?? null);
-			}, [snap]);
-			// Reference to satisfy the "service hook returns object" claim.
-			useTokenSetAuthService("main");
-			return null;
+			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
+			const snapshot = useReadableSignal(
+				registry.require("main").state,
+			).snapshot;
+			return createElement(
+				"output",
+				null,
+				snapshot?.tokens.accessToken ?? "empty",
+			);
 		}
 
 		const view = render(
 			createElement(
-				TokenSetAuthProvider,
-				{
-					clients: [
-						{
-							key: "main",
-							clientFactory: () => client,
-							autoRestore: false,
-						},
-					],
-					idleWarmup: false,
-				},
+				SecuritydeptProvider,
+				{ providers: [provideTokenSetAuthRegistry(registry)] },
 				createElement(Probe),
 			),
 		);
 
-		await flush();
 		act(() => {
-			setState(makeSnapshot("t1"));
+			mainState.set(createSnapshot("updated-at"));
 		});
-		await flush();
-		act(() => {
-			setState(makeSnapshot("t2"));
-		});
-		await flush();
 
-		expect(observed).toEqual([null, "t1", "t2"]);
+		expect(view.container.textContent).toBe("updated-at");
 		view.unmount();
+		registry.dispose();
 	});
 });

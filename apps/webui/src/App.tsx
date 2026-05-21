@@ -1,14 +1,29 @@
-import { BasicAuthContextProvider } from "@securitydept/basic-auth-context-client-react";
+import {
+	createBasicAuthContextClient,
+	provideBasicAuthContextClient,
+} from "@securitydept/basic-auth-context-client-react";
+import { SecuritydeptInjector } from "@securitydept/client/injection";
+import {
+	provideClientEnvironmentService,
+	SecuritydeptProvider,
+	useSecuritydeptContext,
+} from "@securitydept/client-react";
 import {
 	type AuthRequirement,
 	createSecureBeforeLoad,
 	withTanStackRouteRequirements,
 } from "@securitydept/client-react/tanstack-router";
-import { SessionContextProvider } from "@securitydept/session-context-client-react";
+import {
+	createSessionContextController,
+	provideSessionContextController,
+} from "@securitydept/session-context-client-react";
 import { describeFrontendOidcModeCallbackError } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
 	CallbackResumeStatus,
-	TokenSetAuthProvider,
+	provideTokenSetAuthRegistry,
+	provideTokenSetCallbackResumeController,
+	TOKEN_SET_AUTH_REGISTRY,
+	TOKEN_SET_CALLBACK_RESUME_CONTROLLER,
 	useTokenSetCallbackResume,
 } from "@securitydept/token-set-context-client-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -62,7 +77,6 @@ import {
 	ensureTokenSetFrontendModeClientReady,
 	tokenSetFrontendModeClientFactory,
 } from "@/lib/tokenSetFrontendModeClient";
-import { TokenSetFrontendModeEnvironmentProvider } from "@/lib/tokenSetFrontendModePageEnvironment";
 import { DashboardPage } from "@/routes/Dashboard";
 import { EntriesPage } from "@/routes/Entries";
 import { EntryCreatePage } from "@/routes/EntryCreate";
@@ -398,7 +412,12 @@ function TokenSetFrontendModePlaygroundRoutePage() {
 }
 
 function TokenSetFrontendCallbackRoutePage() {
+	const controller = useSecuritydeptContext().get(
+		TOKEN_SET_CALLBACK_RESUME_CONTROLLER,
+	);
 	const state = useTokenSetCallbackResume({
+		controller,
+		getCurrentUrl: () => window.location.href,
 		describeError: ({ errorDetails }) =>
 			describeFrontendOidcModeCallbackError(errorDetails, {
 				recoveryLinks: {
@@ -502,6 +521,18 @@ function RootShell() {
 }
 
 export function App() {
+	const basicAuthClient = useMemo(
+		() => createBasicAuthContextClient(basicAuthContextConfig),
+		[],
+	);
+	const sessionController = useMemo(
+		() =>
+			createSessionContextController({
+				config: sessionContextConfig,
+				environment: sessionContextEnvironment,
+			}),
+		[],
+	);
 	const tokenSetClients = useMemo(
 		() => [
 			{
@@ -516,22 +547,40 @@ export function App() {
 		],
 		[],
 	);
+	const tokenSetRegistry = useMemo(
+		() =>
+			SecuritydeptInjector.resolveAndCreate([
+				provideTokenSetAuthRegistry({ clients: tokenSetClients }),
+			]).get(TOKEN_SET_AUTH_REGISTRY),
+		[tokenSetClients],
+	);
+	const rootInjector = useMemo(
+		() =>
+			SecuritydeptInjector.resolveAndCreate([
+				provideBasicAuthContextClient(basicAuthClient),
+				...provideSessionContextController(sessionController),
+				provideClientEnvironmentService(),
+				provideTokenSetAuthRegistry(tokenSetRegistry),
+				provideTokenSetCallbackResumeController(tokenSetRegistry),
+			]),
+		[basicAuthClient, sessionController, tokenSetRegistry],
+	);
+
+	useEffect(() => {
+		void sessionController.refresh().catch(() => {});
+		const tokenSetRegistry = rootInjector.get(TOKEN_SET_AUTH_REGISTRY);
+		const cancelWarmup = tokenSetRegistry.idleWarmup();
+
+		return () => {
+			cancelWarmup?.();
+		};
+	}, [rootInjector, sessionController]);
 
 	return (
 		<QueryClientProvider client={queryClient}>
-			<BasicAuthContextProvider config={basicAuthContextConfig}>
-				<SessionContextProvider
-					config={sessionContextConfig}
-					environment={sessionContextEnvironment}
-					initialRefresh
-				>
-					<TokenSetFrontendModeEnvironmentProvider>
-						<TokenSetAuthProvider clients={tokenSetClients}>
-							<RouterProvider router={router} />
-						</TokenSetAuthProvider>
-					</TokenSetFrontendModeEnvironmentProvider>
-				</SessionContextProvider>
-			</BasicAuthContextProvider>
+			<SecuritydeptProvider injector={rootInjector}>
+				<RouterProvider router={router} />
+			</SecuritydeptProvider>
 		</QueryClientProvider>
 	);
 }

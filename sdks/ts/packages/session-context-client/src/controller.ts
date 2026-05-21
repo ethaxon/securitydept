@@ -48,14 +48,6 @@ export class SessionContextController {
 		this.state = readonlySignal(this.stateSignal);
 	}
 
-	getState(): SessionContextControllerState {
-		return this.stateSignal.get();
-	}
-
-	subscribe(listener: () => void): () => void {
-		return this.stateSignal.subscribe(listener);
-	}
-
 	refresh(): Promise<SessionInfo | null> {
 		if (this.disposed) {
 			return Promise.resolve(this.stateSignal.get().session);

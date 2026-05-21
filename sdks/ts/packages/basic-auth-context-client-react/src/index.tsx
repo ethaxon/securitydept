@@ -1,50 +1,40 @@
-// Basic Auth Context Client — React adapter
+// Basic Auth Context Client — injector tokens and provider factories
 //
 // Canonical import path:
 //   import { ... } from "@securitydept/basic-auth-context-client-react"
 //
-// Provides React context / hooks for integrating BasicAuthContextClient in a
-// React application.  The core client lives in @securitydept/basic-auth-context-client;
-// this package supplies the React-specific binding layer only.
+// Provides injector tokens and plain factories for integrating
+// BasicAuthContextClient. React trees compose these through
+// SecuritydeptProvider; no domain-specific React Context is created here.
 //
 // Stability: provisional (React adapter)
 
 import type { BasicAuthContextClientConfig } from "@securitydept/basic-auth-context-client";
 import { BasicAuthContextClient } from "@securitydept/basic-auth-context-client";
-import { createContext, type ReactNode, useContext, useMemo } from "react";
+import {
+	SecuritydeptInjectionToken,
+	type SecuritydeptProvider,
+} from "@securitydept/client/injection";
 
 export type { BasicAuthContextClientConfig };
 export { BasicAuthContextClient };
 
-const BasicAuthContext = createContext<BasicAuthContextClient | null>(null);
-
-export interface BasicAuthContextProviderProps {
-	/** Auth-context config only (baseUrl, zones, redirect policy). */
-	config: BasicAuthContextClientConfig;
-	/** React host glue only; runtime capability wiring does not live here. */
-	children: ReactNode;
-}
-
-export function BasicAuthContextProvider({
-	config,
-	children,
-}: BasicAuthContextProviderProps) {
-	const client = useMemo(() => new BasicAuthContextClient(config), [config]);
-
-	return (
-		<BasicAuthContext.Provider value={client}>
-			{children}
-		</BasicAuthContext.Provider>
+export const BASIC_AUTH_CONTEXT_CLIENT =
+	new SecuritydeptInjectionToken<BasicAuthContextClient>(
+		"BASIC_AUTH_CONTEXT_CLIENT",
 	);
+
+export function createBasicAuthContextClient(
+	config: BasicAuthContextClientConfig,
+): BasicAuthContextClient {
+	return new BasicAuthContextClient(config);
 }
 
-/** Access the `BasicAuthContextClient` from React context. */
-export function useBasicAuthContext(): BasicAuthContextClient {
-	const ctx = useContext(BasicAuthContext);
-	if (!ctx) {
-		throw new Error(
-			"useBasicAuthContext must be used inside <BasicAuthContextProvider>",
-		);
-	}
-	return ctx;
+export function provideBasicAuthContextClient(
+	client: BasicAuthContextClient,
+): SecuritydeptProvider<BasicAuthContextClient> {
+	return {
+		provide: BASIC_AUTH_CONTEXT_CLIENT,
+		useValue: client,
+	};
 }

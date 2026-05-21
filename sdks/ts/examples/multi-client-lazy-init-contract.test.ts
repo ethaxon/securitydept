@@ -12,8 +12,9 @@
 //   - `preload(key)` / `whenReady(key)` trigger the same transition
 //   - `idleWarmup()` enumerates all lazy+uninitialized keys and schedules
 //     their preload via a pluggable idle scheduler
-//   - failure paths: async factory rejection marks `failed`; `reset(key)`
-//     allows re-registration
+//   - failure paths: async factory rejection marks `failed`;
+//     `resetMaterialization(key)` retries without dropping registration,
+//     while `unregister(key)` removes the key entirely
 
 import {
 	ClientInitializationPriority,
@@ -30,6 +31,11 @@ interface FakeService {
 	accessToken: string | null;
 }
 
+const TEST_IDLE_SCHEDULER = (callback: () => void): (() => void) => {
+	const handle = setTimeout(callback, 0);
+	return () => clearTimeout(handle);
+};
+
 function makeRegistry(idleScheduler?: (cb: () => void) => () => void) {
 	return createTokenSetAuthRegistry<FakeClient, FakeService>({
 		materialize: (client) => ({
@@ -41,7 +47,18 @@ function makeRegistry(idleScheduler?: (cb: () => void) => () => void) {
 			service.disposed = true;
 		},
 		accessTokenOf: (service) => service.accessToken,
-		idleScheduler,
+		ensureAccessTokenOf: async (service) => service.accessToken,
+		ensureAuthorizationHeaderOf: async (service) =>
+			service.accessToken ? `Bearer ${service.accessToken}` : null,
+		ensureAuthForResourceOf: async () => {
+			throw new Error(
+				"ensureAuthForResourceOf should not be called in this test",
+			);
+		},
+		authEventsOf: () => ({
+			subscribe: () => ({ unsubscribe() {} }),
+		}),
+		idleScheduler: idleScheduler ?? TEST_IDLE_SCHEDULER,
 	});
 }
 
@@ -150,7 +167,7 @@ describe("Multi-client lazy init contract (framework-neutral)", () => {
 		registry.dispose();
 	});
 
-	it("async factory rejection is observable via readinessState=failed and recoverable via reset()", async () => {
+	it("async factory rejection is observable via readinessState=failed and recoverable via resetMaterialization()", async () => {
 		const registry = makeRegistry();
 		let failFirst = true;
 		registry.register({
@@ -166,17 +183,18 @@ describe("Multi-client lazy init contract (framework-neutral)", () => {
 		});
 		await expect(registry.whenReady("flaky")).rejects.toThrow(/boom/);
 		expect(registry.readinessState("flaky")).toBe("failed");
+		expect(registry.registeredKeys()).toEqual(["flaky"]);
+		expect(registry.readyKeys()).toEqual([]);
 
-		registry.reset("flaky");
+		registry.resetMaterialization("flaky");
+		expect(registry.has("flaky")).toBe(true);
 		expect(registry.readinessState("flaky")).toBe("not_initialized");
 
-		registry.register({
-			key: "flaky",
-			clientFactory: async () => ({ name: "flaky" }),
-			priority: ClientInitializationPriority.Primary,
-		});
 		const svc = await registry.whenReady("flaky");
 		expect(svc.client.name).toBe("flaky");
+		expect(registry.readyKeys()).toEqual(["flaky"]);
+		expect(registry.unregister("flaky")).toBe(true);
+		expect(registry.has("flaky")).toBe(false);
 		registry.dispose();
 	});
 
@@ -196,6 +214,6 @@ describe("Multi-client lazy init contract (framework-neutral)", () => {
 		registry.dispose();
 		expect(svcA.disposed).toBe(true);
 		expect(svcB.disposed).toBe(true);
-		expect(registry.keys()).toEqual([]);
+		expect(registry.readyKeys()).toEqual([]);
 	});
 });

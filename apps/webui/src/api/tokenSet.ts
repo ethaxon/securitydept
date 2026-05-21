@@ -2,20 +2,27 @@ import type {
 	CancellationTokenTrait,
 	HttpTransport,
 } from "@securitydept/client";
-import {
-	ClientError,
-	ClientErrorKind,
-	FetchTransportRedirectKind,
-} from "@securitydept/client";
+import { ClientError, ClientErrorKind } from "@securitydept/client";
+import type { SecuritydeptInjectorTrait } from "@securitydept/client/injection";
 import {
 	createCancellationTokenFromAbortSignal,
 	createFetchTransport,
+	FetchTransportRedirectKind,
 } from "@securitydept/client/web";
+import { useReadableSignal } from "@securitydept/client-react";
 import type { AuthorizationHeaderProviderTrait } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	BackendOidcModeContextSource,
 	createBackendOidcModeAuthorizedTransport,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import type {
+	TokenSetAuthService as CoreTokenSetAuthService,
+	ReactRegistry,
+	TokenSetReactClient,
+} from "@securitydept/token-set-context-client-react";
+import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
+import { tokenSetQueryKeys } from "@securitydept/token-set-context-client-react/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
 	AuthEntry,
 	CreateBasicEntryResponse,
@@ -26,6 +33,9 @@ import type { Group } from "./groups";
 const tokenSetApiTransport = createFetchTransport({
 	redirect: FetchTransportRedirectKind.Follow,
 });
+
+type TokenSetAuthService = CoreTokenSetAuthService<TokenSetReactClient>;
+
 export const DEFAULT_PROPAGATION_HEADER_NAME = "x-securitydept-propagation";
 export const DEFAULT_PROPAGATION_PROBE_PATH = "/api/propagation/api/health";
 export const DEFAULT_PROPAGATION_FORWARDER_CONFIG_SNIPPET = `[token_set_context.token_propagation]
@@ -46,6 +56,54 @@ export interface TokenSetApiRequestOptions {
 	/** Web AbortSignal — bridged to CancellationTokenTrait for React Query compatibility. */
 	abortSignal?: AbortSignal;
 }
+
+export type TokenSetQueryRequestOptions = Omit<
+	TokenSetApiRequestOptions,
+	"cancellationToken" | "abortSignal"
+>;
+
+export type TokenSetMutationRequestOptions = Omit<
+	TokenSetApiRequestOptions,
+	"abortSignal"
+>;
+
+export interface TokenSetScopedHookOptions {
+	clientKey: string;
+	injector?: SecuritydeptInjectorTrait;
+	registry?: ReactRegistry;
+	service?: TokenSetAuthService;
+	enabled?: boolean;
+	requestOptions?: TokenSetQueryRequestOptions;
+}
+
+export interface TokenSetGroupQueryOptions extends TokenSetScopedHookOptions {
+	groupId: string;
+}
+
+export interface TokenSetEntryQueryOptions extends TokenSetScopedHookOptions {
+	entryId: string;
+}
+
+export interface TokenSetMutationHookOptions {
+	clientKey: string;
+	injector?: SecuritydeptInjectorTrait;
+	registry?: ReactRegistry;
+	service?: TokenSetAuthService;
+	requestOptions?: TokenSetQueryRequestOptions;
+}
+
+export const tokenSetDashboardQueryKeys = {
+	forClient: (clientKey: string) =>
+		[...tokenSetQueryKeys.forClient(clientKey), "dashboard"] as const,
+	groups: (clientKey: string) =>
+		[...tokenSetDashboardQueryKeys.forClient(clientKey), "groups"] as const,
+	group: (clientKey: string, groupId: string) =>
+		[...tokenSetDashboardQueryKeys.groups(clientKey), groupId] as const,
+	entries: (clientKey: string) =>
+		[...tokenSetDashboardQueryKeys.forClient(clientKey), "entries"] as const,
+	entry: (clientKey: string, entryId: string) =>
+		[...tokenSetDashboardQueryKeys.entries(clientKey), entryId] as const,
+} as const;
 
 export interface ForwardAuthBoundaryProbeResult {
 	status: number;
@@ -132,6 +190,356 @@ function resolveCancellationToken(
 ): CancellationTokenTrait | undefined {
 	if (options.cancellationToken) return options.cancellationToken;
 	return createCancellationTokenFromAbortSignal(options.abortSignal);
+}
+
+function resolveTokenSetRegistry(options: {
+	clientKey: string;
+	injector?: SecuritydeptInjectorTrait;
+	registry?: ReactRegistry;
+}): ReactRegistry {
+	if (options.registry) {
+		return options.registry;
+	}
+
+	if (options.injector) {
+		return options.injector.get(TOKEN_SET_AUTH_REGISTRY);
+	}
+
+	throw new Error(
+		`[webui token-set api] ${options.clientKey} requires an explicit registry or injector.`,
+	);
+}
+
+function resolveTokenSetService(options: {
+	clientKey: string;
+	injector?: SecuritydeptInjectorTrait;
+	registry?: ReactRegistry;
+	service?: TokenSetAuthService;
+}): TokenSetAuthService {
+	if (options.service) {
+		return options.service;
+	}
+
+	return resolveTokenSetRegistry(options).require(options.clientKey);
+}
+
+function useResolvedTokenSetService(options: {
+	clientKey: string;
+	injector?: SecuritydeptInjectorTrait;
+	registry?: ReactRegistry;
+	service?: TokenSetAuthService;
+}): { enabled: boolean; service: TokenSetAuthService } {
+	const service = resolveTokenSetService(options);
+	const state = useReadableSignal(service.state);
+	return {
+		enabled: state.snapshot?.tokens.accessToken != null,
+		service,
+	};
+}
+
+function mergeRequestOptions(
+	defaults: TokenSetQueryRequestOptions | undefined,
+	overrides: TokenSetApiRequestOptions = {},
+): TokenSetApiRequestOptions {
+	return {
+		...defaults,
+		...overrides,
+	};
+}
+
+function isQueryEnabled(options: { enabled?: boolean }, authEnabled: boolean) {
+	return (options.enabled ?? true) && authEnabled;
+}
+
+export function useTokenSetGroupsQuery(options: TokenSetScopedHookOptions) {
+	const { enabled, service } = useResolvedTokenSetService(options);
+
+	return useQuery({
+		queryKey: tokenSetDashboardQueryKeys.groups(options.clientKey),
+		queryFn: ({ signal }) =>
+			listGroupsWithTokenSet(
+				service,
+				mergeRequestOptions(options.requestOptions, { abortSignal: signal }),
+			),
+		enabled: isQueryEnabled(options, enabled),
+		refetchOnWindowFocus: false,
+	});
+}
+
+export function useTokenSetGroupQuery(options: TokenSetGroupQueryOptions) {
+	const { enabled, service } = useResolvedTokenSetService(options);
+
+	return useQuery({
+		queryKey: tokenSetDashboardQueryKeys.group(
+			options.clientKey,
+			options.groupId,
+		),
+		queryFn: ({ signal }) =>
+			getGroupWithTokenSet(
+				service,
+				options.groupId,
+				mergeRequestOptions(options.requestOptions, { abortSignal: signal }),
+			),
+		enabled: Boolean(options.groupId) && isQueryEnabled(options, enabled),
+		refetchOnWindowFocus: false,
+	});
+}
+
+export function useTokenSetEntriesQuery(options: TokenSetScopedHookOptions) {
+	const { enabled, service } = useResolvedTokenSetService(options);
+
+	return useQuery({
+		queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
+		queryFn: ({ signal }) =>
+			listEntriesWithTokenSet(
+				service,
+				mergeRequestOptions(options.requestOptions, { abortSignal: signal }),
+			),
+		enabled: isQueryEnabled(options, enabled),
+		refetchOnWindowFocus: false,
+	});
+}
+
+export function useTokenSetEntryQuery(options: TokenSetEntryQueryOptions) {
+	const { enabled, service } = useResolvedTokenSetService(options);
+
+	return useQuery({
+		queryKey: tokenSetDashboardQueryKeys.entry(
+			options.clientKey,
+			options.entryId,
+		),
+		queryFn: ({ signal }) =>
+			getEntryWithTokenSet(
+				service,
+				options.entryId,
+				mergeRequestOptions(options.requestOptions, { abortSignal: signal }),
+			),
+		enabled: Boolean(options.entryId) && isQueryEnabled(options, enabled),
+		refetchOnWindowFocus: false,
+	});
+}
+
+export function useTokenSetCreateGroupMutation(
+	options: TokenSetMutationHookOptions,
+) {
+	const queryClient = useQueryClient();
+	const service = resolveTokenSetService(options);
+
+	return useMutation({
+		mutationFn: ({
+			requestOptions,
+			...request
+		}: CreateGroupWithTokenSetRequest & {
+			requestOptions?: TokenSetMutationRequestOptions;
+		}) =>
+			createGroupWithTokenSet(
+				service,
+				request,
+				mergeRequestOptions(options.requestOptions, requestOptions),
+			),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetDashboardQueryKeys.groups(options.clientKey),
+			});
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
+			});
+		},
+	});
+}
+
+export function useTokenSetUpdateGroupMutation(
+	options: TokenSetMutationHookOptions,
+) {
+	const queryClient = useQueryClient();
+	const service = resolveTokenSetService(options);
+
+	return useMutation({
+		mutationFn: ({
+			id,
+			requestOptions,
+			...request
+		}: UpdateGroupWithTokenSetRequest & {
+			id: string;
+			requestOptions?: TokenSetMutationRequestOptions;
+		}) =>
+			updateGroupWithTokenSet(
+				service,
+				id,
+				request,
+				mergeRequestOptions(options.requestOptions, requestOptions),
+			),
+		onSuccess: async (_, variables) => {
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetDashboardQueryKeys.groups(options.clientKey),
+			});
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
+			});
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetDashboardQueryKeys.group(
+					options.clientKey,
+					variables.id,
+				),
+			});
+		},
+	});
+}
+
+export function useTokenSetDeleteGroupMutation(
+	options: TokenSetMutationHookOptions,
+) {
+	const queryClient = useQueryClient();
+	const service = resolveTokenSetService(options);
+
+	return useMutation({
+		mutationFn: ({
+			groupId,
+			requestOptions,
+		}: {
+			groupId: string;
+			requestOptions?: TokenSetMutationRequestOptions;
+		}) =>
+			deleteGroupWithTokenSet(
+				service,
+				groupId,
+				mergeRequestOptions(options.requestOptions, requestOptions),
+			),
+		onSuccess: async (_, variables) => {
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetDashboardQueryKeys.groups(options.clientKey),
+			});
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
+			});
+			await queryClient.removeQueries({
+				queryKey: tokenSetDashboardQueryKeys.group(
+					options.clientKey,
+					variables.groupId,
+				),
+			});
+		},
+	});
+}
+
+export function useTokenSetCreateBasicEntryMutation(
+	options: TokenSetMutationHookOptions,
+) {
+	const queryClient = useQueryClient();
+	const service = resolveTokenSetService(options);
+
+	return useMutation({
+		mutationFn: ({
+			requestOptions,
+			...request
+		}: CreateBasicEntryWithTokenSetRequest & {
+			requestOptions?: TokenSetMutationRequestOptions;
+		}) =>
+			createBasicEntryWithTokenSet(
+				service,
+				request,
+				mergeRequestOptions(options.requestOptions, requestOptions),
+			),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
+			});
+		},
+	});
+}
+
+export function useTokenSetCreateTokenEntryMutation(
+	options: TokenSetMutationHookOptions,
+) {
+	const queryClient = useQueryClient();
+	const service = resolveTokenSetService(options);
+
+	return useMutation({
+		mutationFn: ({
+			requestOptions,
+			...request
+		}: CreateTokenEntryWithTokenSetRequest & {
+			requestOptions?: TokenSetMutationRequestOptions;
+		}) =>
+			createTokenEntryWithTokenSet(
+				service,
+				request,
+				mergeRequestOptions(options.requestOptions, requestOptions),
+			),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
+			});
+		},
+	});
+}
+
+export function useTokenSetUpdateEntryMutation(
+	options: TokenSetMutationHookOptions,
+) {
+	const queryClient = useQueryClient();
+	const service = resolveTokenSetService(options);
+
+	return useMutation({
+		mutationFn: ({
+			id,
+			requestOptions,
+			...request
+		}: UpdateEntryWithTokenSetRequest & {
+			id: string;
+			requestOptions?: TokenSetMutationRequestOptions;
+		}) =>
+			updateEntryWithTokenSet(
+				service,
+				id,
+				request,
+				mergeRequestOptions(options.requestOptions, requestOptions),
+			),
+		onSuccess: async (_, variables) => {
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
+			});
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetDashboardQueryKeys.entry(
+					options.clientKey,
+					variables.id,
+				),
+			});
+		},
+	});
+}
+
+export function useTokenSetDeleteEntryMutation(
+	options: TokenSetMutationHookOptions,
+) {
+	const queryClient = useQueryClient();
+	const service = resolveTokenSetService(options);
+
+	return useMutation({
+		mutationFn: ({
+			entryId,
+			requestOptions,
+		}: {
+			entryId: string;
+			requestOptions?: TokenSetMutationRequestOptions;
+		}) =>
+			deleteEntryWithTokenSet(
+				service,
+				entryId,
+				mergeRequestOptions(options.requestOptions, requestOptions),
+			),
+		onSuccess: async (_, variables) => {
+			await queryClient.invalidateQueries({
+				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
+			});
+			await queryClient.removeQueries({
+				queryKey: tokenSetDashboardQueryKeys.entry(
+					options.clientKey,
+					variables.entryId,
+				),
+			});
+		},
+	});
 }
 
 export async function listGroupsWithTokenSet(

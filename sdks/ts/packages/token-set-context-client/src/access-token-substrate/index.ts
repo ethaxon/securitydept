@@ -12,9 +12,9 @@
 
 // --- Substrate capability vocabulary ---
 
-export type { TokenPropagation as TokenPropagationType } from "./contracts";
-export { TokenPropagation } from "./contracts";
+export type { TokenPropagation as TokenPropagationType } from "./contracts/contracts";
+export { TokenPropagation } from "./contracts/contracts";
 
 // --- Substrate integration info ---
 
-export type { AccessTokenSubstrateIntegrationInfo } from "./contracts";
+export type { AccessTokenSubstrateIntegrationInfo } from "./contracts/contracts";

@@ -11,39 +11,33 @@
 //   - Registration with sync-or-async clientFactory
 //   - Readiness tracking (ClientReadinessState state machine)
 //   - Priority-aware materialization (primary eager / lazy idle warmup)
-//   - preload / whenReady / idleWarmup / reset lifecycle verbs
+//   - preload / whenReady / idleWarmup / unregister / resetMaterialization
+//     lifecycle verbs
 //   - Multi-axis discrimination (urlPatterns / callbackPath /
 //     requirementKind / providerFamily) with AND / OR filter queries
 //
 // Stability: provisional (shared registry surface)
 
 // Re-export ClientReadinessState (both the const-enum value and its type).
-export { ClientReadinessState } from "../frontend-oidc-mode/config-source";
-export {
-	TokenSetCallbackResumeController,
-	TokenSetCallbackResumeStatus,
-} from "./callback-resume-controller";
-export {
-	createTokenSetAuthRegistry,
-	TokenSetAuthRegistry,
-} from "./client-registry";
-export {
-	describeTokenSetCallbackError,
-	readTokenSetCallbackResumeErrorDetails,
-} from "./error-presentation";
-export { isOidcCallback } from "./oidc-callback-url";
+export { ClientReadinessState } from "../frontend-oidc-mode/config/config-source";
 export type {
 	ClientFilter,
 	ClientKeySelector,
 	ClientMeta,
 	ClientQueryOptions,
 	CreateTokenSetAuthRegistryOptions,
+	CreateTokenSetOidcAuthRegistryOptions,
 	EnsureRegistryAuthForResourceOptions,
 	OidcCallbackClient,
 	OidcModeClient,
 	OidcRedirectLoginClient,
 	OidcRedirectLoginOptions,
 	ReadTokenSetCallbackResumeErrorDetailsOptions,
+	TokenSetAuthRegistryEntryState,
+	TokenSetAuthRegistryLifecycleErrorCode as TokenSetAuthRegistryLifecycleErrorCodeType,
+	TokenSetAuthRegistryState,
+	TokenSetAuthServiceRestoreStatus as TokenSetAuthServiceRestoreStatusType,
+	TokenSetAuthServiceState,
 	TokenSetCallbackErrorDetails,
 	TokenSetCallbackErrorPresentationContext,
 	TokenSetCallbackErrorPresenter,
@@ -55,5 +49,25 @@ export type {
 	TokenSetCallbackResumeState,
 	TokenSetCallbackResumeStatus as TokenSetCallbackResumeStatusType,
 	TokenSetClientEntry,
-} from "./types";
-export { ClientInitializationPriority } from "./types";
+} from "./contracts/types";
+export {
+	ClientInitializationPriority,
+	TokenSetAuthRegistryLifecycleError,
+	TokenSetAuthRegistryLifecycleErrorCode,
+	TokenSetAuthServiceRestoreStatus,
+} from "./contracts/types";
+export {
+	TokenSetCallbackResumeController,
+	TokenSetCallbackResumeStatus,
+} from "./controller/callback-resume-controller";
+export {
+	createTokenSetAuthRegistry,
+	createTokenSetOidcAuthRegistry,
+	TokenSetAuthRegistry,
+} from "./core/client-registry";
+export { isOidcCallback } from "./core/oidc-callback-url";
+export { TokenSetAuthService } from "./core/service";
+export {
+	describeTokenSetCallbackError,
+	readTokenSetCallbackResumeErrorDetails,
+} from "./presentation/error-presentation";

@@ -13,7 +13,7 @@ import {
 } from "@angular/core";
 import { TokenSetAuthFlowSource } from "@securitydept/token-set-context-client/orchestration";
 import { from, type Observable, switchMap } from "rxjs";
-import { TokenSetAuthRegistry } from "./token-set-auth-registry";
+import { TokenSetAuthRegistry } from "./token-set-auth.registry";
 
 // ============================================================================
 // 7. Class-based HTTP interceptor + provider factory

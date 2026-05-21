@@ -1,18 +1,13 @@
+import { useReadableSignal } from "@securitydept/client-react";
 import {
 	readTokenSetCallbackResumeErrorDetails,
 	type TokenSetCallbackErrorPresenter,
+	type TokenSetCallbackResumeController,
 	type TokenSetCallbackResumeErrorDetails,
 	type TokenSetCallbackResumeState,
 	TokenSetCallbackResumeStatus,
 } from "@securitydept/token-set-context-client/registry";
-import {
-	type ReactNode,
-	useCallback,
-	useEffect,
-	useRef,
-	useSyncExternalStore,
-} from "react";
-import { useTokenSetCallbackResumeController } from "./token-set-auth-provider";
+import { type ReactNode, useEffect, useRef } from "react";
 
 export type CallbackResumeErrorDetails = TokenSetCallbackResumeErrorDetails;
 
@@ -29,8 +24,9 @@ export function readCallbackResumeErrorDetails(
 	return readTokenSetCallbackResumeErrorDetails(error, options);
 }
 
-export interface UseTokenSetCallbackResumeOptions {
-	getCurrentUrl?: () => string | undefined;
+export interface UseTokenSetCallbackResumeOptions<TService> {
+	controller: TokenSetCallbackResumeController<TService>;
+	getCurrentUrl?: () => string | null | undefined;
 	describeError?: TokenSetCallbackErrorPresenter;
 }
 
@@ -40,22 +36,15 @@ export type CallbackResumeStatus =
 
 export type CallbackResumeState = TokenSetCallbackResumeState;
 
-export function useTokenSetCallbackResume(
-	options: UseTokenSetCallbackResumeOptions = {},
+export function useTokenSetCallbackResume<TService>(
+	options: UseTokenSetCallbackResumeOptions<TService>,
 ): CallbackResumeState {
-	const controller = useTokenSetCallbackResumeController();
 	const { describeError, getCurrentUrl } = options;
+	const { controller } = options;
 	const describeErrorRef = useRef(describeError);
 	describeErrorRef.current = describeError;
-	const currentUrl =
-		getCurrentUrl?.() ??
-		(typeof window !== "undefined" ? window.location.href : undefined);
-
-	const state = useSyncExternalStore(
-		useCallback((listener) => controller.subscribe(listener), [controller]),
-		useCallback(() => controller.getState(), [controller]),
-		useCallback(() => controller.getState(), [controller]),
-	);
+	const currentUrl = getCurrentUrl?.() ?? null;
+	const state = useReadableSignal(controller.state);
 
 	useEffect(() => {
 		if (!currentUrl || !controller.isCallback(currentUrl)) {
@@ -74,10 +63,11 @@ export function useTokenSetCallbackResume(
 	return state;
 }
 
-export interface TokenSetCallbackComponentProps {
+export interface TokenSetCallbackComponentProps<TService> {
+	controller: TokenSetCallbackResumeController<TService>;
 	pending?: ReactNode;
 	fallback?: ReactNode;
-	getCurrentUrl?: () => string | undefined;
+	getCurrentUrl?: () => string | null | undefined;
 	describeError?: TokenSetCallbackErrorPresenter;
 	onResolved?: (result: {
 		clientKey: string;
@@ -86,15 +76,17 @@ export interface TokenSetCallbackComponentProps {
 	onError?: (error: unknown) => void;
 }
 
-export function TokenSetCallbackComponent({
+export function TokenSetCallbackComponent<TService>({
+	controller,
 	pending,
 	fallback,
 	getCurrentUrl,
 	describeError,
 	onResolved,
 	onError,
-}: TokenSetCallbackComponentProps): ReactNode {
+}: TokenSetCallbackComponentProps<TService>): ReactNode {
 	const state = useTokenSetCallbackResume({
+		controller,
 		getCurrentUrl,
 		describeError,
 	});

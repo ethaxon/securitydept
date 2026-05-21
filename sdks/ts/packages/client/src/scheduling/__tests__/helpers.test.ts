@@ -5,14 +5,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSignal } from "../../signals/signal";
 import {
+	createDefaultIdleScheduler,
 	fromEventPattern,
 	fromPromise,
 	fromSignal,
 	interval,
 	PromiseSettlementKind,
+	parseDurationToMs,
 	scheduleAt,
 	timer,
-} from "../helpers";
+} from "../index";
 import type { Clock, Scheduler } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -66,6 +68,42 @@ function createTestClock(
 		},
 	};
 }
+
+describe("createDefaultIdleScheduler", () => {
+	it("falls back to setTimeout when requestIdleCallback is unavailable", () => {
+		const originalRic = (
+			globalThis as { requestIdleCallback?: (cb: () => void) => number }
+		).requestIdleCallback;
+		const originalCic = (
+			globalThis as { cancelIdleCallback?: (h: number) => void }
+		).cancelIdleCallback;
+		const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+		const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+		(
+			globalThis as { requestIdleCallback?: (cb: () => void) => number }
+		).requestIdleCallback = undefined;
+		(
+			globalThis as { cancelIdleCallback?: (h: number) => void }
+		).cancelIdleCallback = undefined;
+
+		const callback = vi.fn();
+		const scheduleIdle = createDefaultIdleScheduler();
+		const cancel = scheduleIdle(callback);
+
+		expect(setTimeoutSpy).toHaveBeenCalledWith(callback, 0);
+		cancel();
+		expect(clearTimeoutSpy).toHaveBeenCalled();
+
+		setTimeoutSpy.mockRestore();
+		clearTimeoutSpy.mockRestore();
+		(
+			globalThis as { requestIdleCallback?: (cb: () => void) => number }
+		).requestIdleCallback = originalRic;
+		(
+			globalThis as { cancelIdleCallback?: (h: number) => void }
+		).cancelIdleCallback = originalCic;
+	});
+});
 
 // ---------------------------------------------------------------------------
 // timer
@@ -208,6 +246,24 @@ describe("scheduleAt", () => {
 		handle.cancel();
 		scheduler.flush();
 		expect(callback).not.toHaveBeenCalled();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// parseDurationToMs
+// ---------------------------------------------------------------------------
+
+describe("parseDurationToMs", () => {
+	it("parses supported duration suffixes into milliseconds", () => {
+		expect(parseDurationToMs("150ms")).toBe(150);
+		expect(parseDurationToMs("2s")).toBe(2000);
+		expect(parseDurationToMs("1.5m")).toBe(90_000);
+		expect(parseDurationToMs("1h")).toBe(3_600_000);
+	});
+
+	it("returns zero for unsupported duration strings", () => {
+		expect(parseDurationToMs("10d")).toBe(0);
+		expect(parseDurationToMs("never")).toBe(0);
 	});
 });
 
