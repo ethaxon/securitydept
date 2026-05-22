@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createCancellationTokenSource } from "../../cancellation/cancellation-token";
 import { ClientError } from "../../errors/client-error";
+import { describeError } from "../../errors/error-attributes";
 import { readErrorPresentationDescriptor } from "../../errors/presentation-descriptor";
 import {
 	ClientErrorKind,
@@ -167,6 +168,36 @@ describe("ClientError", () => {
 				href: null,
 			},
 		});
+	});
+});
+
+describe("describeError", () => {
+	it("describes ClientError with stable machine fields", () => {
+		expect(
+			describeError(
+				new ClientError({
+					kind: ClientErrorKind.Unauthenticated,
+					code: "authentication_required",
+					message: "Login required",
+					recovery: UserRecovery.Reauthenticate,
+				}),
+			),
+		).toEqual({
+			errorKind: ClientErrorKind.Unauthenticated,
+			errorCode: "authentication_required",
+			recovery: UserRecovery.Reauthenticate,
+		});
+	});
+
+	it("describes native Error values", () => {
+		expect(describeError(new TypeError("Wrong type"))).toEqual({
+			errorName: "TypeError",
+			errorMessage: "Wrong type",
+		});
+	});
+
+	it("describes unknown thrown values", () => {
+		expect(describeError("bad")).toEqual({ errorValue: "bad" });
 	});
 });
 

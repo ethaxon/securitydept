@@ -1,10 +1,8 @@
 import type { EventSource, RuntimeEventEnvelope } from "@securitydept/client";
 import { EventSourceKind } from "@securitydept/client";
-import type { TokenHandleDescriptor } from "../token/token-handle-store";
 import type { TokenFreshnessState } from "../token/token-ops";
 
 export const TokenSetAuthEventType = {
-	AuthResourceRequested: "auth.resource.requested",
 	AuthMaterialRestoreStarted: "auth.material.restore.started",
 	AuthMaterialRestored: "auth.material.restored",
 	AuthMaterialRestoreFailed: "auth.material.restore.failed",
@@ -17,14 +15,11 @@ export const TokenSetAuthEventType = {
 	AuthMaterialCleared: "auth.material.cleared",
 	AuthAuthenticated: "auth.authenticated",
 	AuthUnauthenticated: "auth.unauthenticated",
-	AuthorizationHeaderRequested: "auth.authorization_header.requested",
-	AuthorizationHeaderResolved: "auth.authorization_header.resolved",
-	AuthorizationHeaderUnavailable: "auth.authorization_header.unavailable",
 	AuthRedirectRequired: "auth.redirect.required",
-	ResumeReconcileRequested: "auth.resume_reconcile.requested",
-	ResumeReconcileSkipped: "auth.resume_reconcile.skipped",
-	ResumeReconcileCompleted: "auth.resume_reconcile.completed",
-	ResumeReconcileFailed: "auth.resume_reconcile.failed",
+	AuthCheckRequested: "auth.check.requested",
+	AuthCheckSkipped: "auth.check.skipped",
+	AuthCheckCompleted: "auth.check.completed",
+	AuthCheckFailed: "auth.check.failed",
 } as const;
 
 export type TokenSetAuthEventType =
@@ -51,8 +46,6 @@ export type TokenSetAuthFlowSource =
 export const TokenSetAuthFlowOutcome = {
 	Authenticated: "authenticated",
 	Unauthenticated: "unauthenticated",
-	HeaderResolved: "authorization_header_resolved",
-	HeaderUnavailable: "authorization_header_unavailable",
 	Skipped: "skipped",
 	Failed: "failed",
 } as const;
@@ -97,9 +90,9 @@ export interface TokenSetAuthEventPayload {
 	hasRefreshMaterial?: boolean;
 	outcome?: TokenSetAuthFlowOutcome;
 	reason?: TokenSetAuthFlowReason;
+	authCheckReason?: string;
 	errorSummary?: TokenSetAuthErrorSummary;
 	persisted?: boolean;
-	tokenHandle?: TokenHandleDescriptor;
 	refreshBarrierId?: string;
 }
 

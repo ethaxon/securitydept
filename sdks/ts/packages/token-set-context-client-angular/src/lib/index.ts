@@ -6,7 +6,7 @@
 // Multi-client-first Angular-native adapter surface:
 //   - Keyed client registration via provideTokenSetAuth()
 //   - Multi-client lookup via TokenSetAuthRegistry
-//   - Per-client TokenSetAuthService with signal + RxJS bridge
+//   - Per-client mode client replay signals with RxJS bridge support
 //   - Multi-client bearer interceptor (functional + class-based)
 //   - provideTokenSetBearerInterceptor() for NgModule HTTP_INTERCEPTORS setup
 //   - OIDC callback resume with client key discrimination
@@ -34,6 +34,5 @@ export * from "./provide-token-set-auth";
 export * from "./route-aggregation-guard";
 export * from "./secure-routes";
 export * from "./token-set-auth.registry";
-export * from "./token-set-auth.service";
 export * from "./token-set-callback.component";
 export * from "./tokens";

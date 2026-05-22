@@ -504,15 +504,13 @@ describe("TanStack route-security — createSecureBeforeLoad (execution glue)", 
 		expect(() => securedBeforeLoad(ctx)).not.toThrow();
 	});
 
-	it("waits for async freshness checks before allowing navigation", async () => {
-		const ensureFreshAuthState = vi.fn().mockResolvedValue({
+	it("waits for async auth state reads before allowing navigation", async () => {
+		const readAuthSnapshot = vi.fn().mockResolvedValue({
 			tokens: { accessToken: "fresh-after-refresh" },
 		});
 		const securedBeforeLoad = createSecureBeforeLoad({
 			checkAuthenticated: async () => {
-				const snapshot = await ensureFreshAuthState({
-					forceRefreshWhenDue: true,
-				});
+				const snapshot = await readAuthSnapshot();
 				return snapshot !== null;
 			},
 		});
@@ -531,18 +529,14 @@ describe("TanStack route-security — createSecureBeforeLoad (execution glue)", 
 		await expect(
 			Promise.resolve(securedBeforeLoad(ctx)),
 		).resolves.toBeUndefined();
-		expect(ensureFreshAuthState).toHaveBeenCalledWith({
-			forceRefreshWhenDue: true,
-		});
+		expect(readAuthSnapshot).toHaveBeenCalledWith();
 	});
 
-	it("runs unauthenticated handler after async freshness check fails", async () => {
-		const ensureFreshAuthState = vi.fn().mockResolvedValue(null);
+	it("runs unauthenticated handler after async auth state read fails", async () => {
+		const readAuthSnapshot = vi.fn().mockResolvedValue(null);
 		const securedBeforeLoad = createSecureBeforeLoad({
 			checkAuthenticated: async () => {
-				const snapshot = await ensureFreshAuthState({
-					forceRefreshWhenDue: true,
-				});
+				const snapshot = await readAuthSnapshot();
 				return snapshot !== null;
 			},
 			defaultOnUnauthenticated: () => false,
@@ -562,9 +556,7 @@ describe("TanStack route-security — createSecureBeforeLoad (execution glue)", 
 		await expect(
 			Promise.resolve(securedBeforeLoad(ctx)),
 		).rejects.toBeInstanceOf(RouteSecurityBlockedError);
-		expect(ensureFreshAuthState).toHaveBeenCalledWith({
-			forceRefreshWhenDue: true,
-		});
+		expect(readAuthSnapshot).toHaveBeenCalledWith();
 	});
 
 	it("throws redirect when handler returns a string path", () => {

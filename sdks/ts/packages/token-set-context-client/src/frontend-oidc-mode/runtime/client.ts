@@ -552,83 +552,85 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * and claims check is re-run. Otherwise, existing metadata is preserved.
 	 */
 	async refresh(): Promise<AuthStateSnapshot | null> {
-		const current = this._authMaterial.snapshot;
-		if (!current?.tokens.refreshMaterial) {
-			return null;
-		}
-		const refreshMaterial = current.tokens.refreshMaterial;
+		return await this._trackRefreshOperation(async () => {
+			const current = this._authMaterial.snapshot;
+			if (!current?.tokens.refreshMaterial) {
+				return null;
+			}
+			const refreshMaterial = current.tokens.refreshMaterial;
 
-		return await this._runOperation(
-			"frontend_oidc.refresh",
-			{
-				flow: "refresh",
-				hasIdToken: current.tokens.idToken !== undefined,
-			},
-			async (operation) => {
-				this._recordTrace(
-					FrontendOidcModeTraceEventType.RefreshStarted,
-					{
-						hasIdToken: current.tokens.idToken !== undefined,
-					},
-					operation,
-				);
-
-				try {
-					this._throwIfNotOperational();
-
-					await this._ensureAuthServer(operation);
-					const tokens = await this.refreshTokens(refreshMaterial);
-
-					this._throwIfNotOperational();
-
-					let metadata: AuthStateMetadataSnapshot;
-					if (tokens.idToken) {
-						metadata = await this._performClaimsCheck(tokens);
-					} else {
-						metadata = current.metadata;
-					}
-
-					const newSnapshot: AuthStateSnapshot = {
-						tokens: this._tokenResultToTokenSnapshot(
-							tokens,
-							current.tokens.refreshMaterial,
-						),
-						metadata,
-					};
-
-					await this._applySnapshot(newSnapshot, {
-						...(this._currentRefreshAuthEventPayload() ?? {
-							source: TokenSetAuthFlowSource.ExplicitCall,
-						}),
-					});
-
-					this._environment.logger?.log({
-						level: LogLevel.Info,
-						message: "Token refreshed successfully",
-						scope: TRACE_SCOPE,
-					});
-
+			return await this._runOperation(
+				"frontend_oidc.refresh",
+				{
+					flow: "refresh",
+					hasIdToken: current.tokens.idToken !== undefined,
+				},
+				async (operation) => {
 					this._recordTrace(
-						FrontendOidcModeTraceEventType.RefreshSucceeded,
+						FrontendOidcModeTraceEventType.RefreshStarted,
 						{
-							newIdToken: tokens.idToken !== undefined,
-							persisted: this._authMaterial.persistence !== null,
+							hasIdToken: current.tokens.idToken !== undefined,
 						},
 						operation,
 					);
 
-					return newSnapshot;
-				} catch (error) {
-					this._recordFailureTrace(
-						FrontendOidcModeTraceEventType.RefreshFailed,
-						error,
-						undefined,
-						operation,
-					);
-					throw error;
-				}
-			},
-		);
+					try {
+						this._throwIfNotOperational();
+
+						await this._ensureAuthServer(operation);
+						const tokens = await this.refreshTokens(refreshMaterial);
+
+						this._throwIfNotOperational();
+
+						let metadata: AuthStateMetadataSnapshot;
+						if (tokens.idToken) {
+							metadata = await this._performClaimsCheck(tokens);
+						} else {
+							metadata = current.metadata;
+						}
+
+						const newSnapshot: AuthStateSnapshot = {
+							tokens: this._tokenResultToTokenSnapshot(
+								tokens,
+								current.tokens.refreshMaterial,
+							),
+							metadata,
+						};
+
+						await this._applySnapshot(newSnapshot, {
+							...(this._currentRefreshAuthEventPayload() ?? {
+								source: TokenSetAuthFlowSource.ExplicitCall,
+							}),
+						});
+
+						this._environment.logger?.log({
+							level: LogLevel.Info,
+							message: "Token refreshed successfully",
+							scope: TRACE_SCOPE,
+						});
+
+						this._recordTrace(
+							FrontendOidcModeTraceEventType.RefreshSucceeded,
+							{
+								newIdToken: tokens.idToken !== undefined,
+								persisted: this._authMaterial.persistence !== null,
+							},
+							operation,
+						);
+
+						return newSnapshot;
+					} catch (error) {
+						this._recordFailureTrace(
+							FrontendOidcModeTraceEventType.RefreshFailed,
+							error,
+							undefined,
+							operation,
+						);
+						throw error;
+					}
+				},
+			);
+		});
 	}
 
 	/**

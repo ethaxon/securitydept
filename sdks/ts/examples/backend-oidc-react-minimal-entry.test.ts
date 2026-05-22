@@ -1,10 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-	createDefaultIdleScheduler,
-	createSignal,
-	createSubject,
-} from "@securitydept/client";
+import { createSignal, createSubject } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useReadableSignal,
@@ -14,25 +10,19 @@ import type {
 	AuthSnapshot,
 	TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
-import {
-	EnsureAuthForResourceStatus,
-	TokenFreshnessState,
-	TokenSetAuthFlowReason,
-} from "@securitydept/token-set-context-client/orchestration";
-import {
-	TokenSetAuthService as CoreTokenSetAuthService,
-	createTokenSetAuthRegistry,
-} from "@securitydept/token-set-context-client/registry";
+import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
 	type ReactRegistry,
 	TOKEN_SET_AUTH_REGISTRY,
 	type TokenSetBackendOidcClient,
 	type TokenSetClientEntry,
+	type TokenSetReactClient,
 } from "@securitydept/token-set-context-client-react";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
@@ -65,40 +55,25 @@ function createBackendClient(
 	snapshot: AuthSnapshot,
 ): TokenSetBackendOidcClient {
 	const state = createSignal<AuthSnapshot | null>(snapshot);
+	const reactive = createTestTokenSetReactiveFields(snapshot);
+	state.subscribe(() => reactive.emitSnapshot(state.get()));
 	return {
-		state,
+		...reactive.fields,
 		authEvents: createSubject<TokenSetAuthEvent>(),
-		dispose: vi.fn(() => state.set(null)),
+		addAuthCheckTriggerSource: () => ({ unsubscribe: () => undefined }),
+		start: async () => undefined,
+		dispose: vi.fn(() => {
+			state.set(null);
+			reactive.emitSnapshot(null);
+		}),
 		restorePersistedState: async () => state.get(),
-		authorizationHeader: () =>
-			`Bearer ${state.get()?.tokens.accessToken ?? ""}`,
-		ensureAuthForResource: async () => {
-			const currentSnapshot = state.get();
-			if (!currentSnapshot) {
-				return {
-					status: EnsureAuthForResourceStatus.Unauthenticated,
-					snapshot: null,
-					authorizationHeader: null,
-					reason: TokenSetAuthFlowReason.NoSnapshot,
-				};
-			}
-
-			return {
-				status: EnsureAuthForResourceStatus.Authenticated,
-				snapshot: currentSnapshot,
-				freshness: TokenFreshnessState.Fresh,
-				authorizationHeader: `Bearer ${currentSnapshot.tokens.accessToken}`,
-			};
-		},
-		ensureFreshAuthState: async () => state.get(),
-		ensureAuthorizationHeader: async () =>
-			`Bearer ${snapshot.tokens.accessToken}`,
 		handleCallback: async () => ({ snapshot }),
 		loginWithRedirect: async () => undefined,
 		authorizeUrl: () => "/authorize",
 		refresh: async () => snapshot,
 		clearState: async () => {
 			state.set(null);
+			reactive.emitSnapshot(null);
 		},
 	};
 }
@@ -112,20 +87,7 @@ type BackendClientEntry = Omit<TokenSetClientEntry, "clientFactory"> & {
 function createManualRegistry(
 	clients: readonly BackendClientEntry[],
 ): ReactRegistry {
-	const registry = createTokenSetAuthRegistry<
-		TokenSetBackendOidcClient,
-		CoreTokenSetAuthService<TokenSetBackendOidcClient>
-	>({
-		materialize: CoreTokenSetAuthService.materializeService,
-		dispose: CoreTokenSetAuthService.dispose,
-		accessTokenOf: CoreTokenSetAuthService.accessTokenOf,
-		ensureAccessTokenOf: CoreTokenSetAuthService.ensureAccessTokenOf,
-		ensureAuthorizationHeaderOf:
-			CoreTokenSetAuthService.ensureAuthorizationHeaderOf,
-		ensureAuthForResourceOf: CoreTokenSetAuthService.ensureAuthForResourceOf,
-		authEventsOf: CoreTokenSetAuthService.authEventsOf,
-		idleScheduler: createDefaultIdleScheduler(),
-	});
+	const registry = createTokenSetOidcAuthRegistry<TokenSetBackendOidcClient>();
 
 	for (const client of clients) {
 		const registration = registry.register(client);
@@ -146,7 +108,6 @@ describe("backend-oidc react minimal entry", () => {
 		const registry = createManualRegistry([
 			{
 				key: "main",
-				autoRestore: false,
 				clientFactory: () => createBackendClient(createSnapshot("backend-at")),
 			},
 		]);
@@ -154,13 +115,20 @@ describe("backend-oidc react minimal entry", () => {
 
 		function AuthBadge() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const snapshot = useReadableSignal(
-				registry.require("main").state,
-			).snapshot;
+			const clientSlot = useReadableSignal(registry.clientSignalFor("main"));
+			return clientSlot.kind === "value"
+				? createElement(AuthBadgeForClient, { client: clientSlot.value })
+				: createElement("output", null, "unauthenticated");
+		}
+
+		function AuthBadgeForClient({ client }: { client: TokenSetReactClient }) {
+			const snapshot = useReadableSignal(client.authSnapshot);
 			return createElement(
 				"output",
 				null,
-				snapshot ? `token:${snapshot.tokens.accessToken}` : "unauthenticated",
+				snapshot.kind === "value" && snapshot.value
+					? `token:${snapshot.value.tokens.accessToken}`
+					: "unauthenticated",
 			);
 		}
 
@@ -181,7 +149,6 @@ describe("backend-oidc react minimal entry", () => {
 		const registry = createManualRegistry([
 			{
 				key: "main",
-				autoRestore: false,
 				clientFactory: () => createBackendClient(createSnapshot("backend-at")),
 			},
 		]);
@@ -189,7 +156,11 @@ describe("backend-oidc react minimal entry", () => {
 
 		function ClientProbe() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const client = registry.require("main").client;
+			const clientSlot = useReadableSignal(registry.clientSignalFor("main"));
+			if (clientSlot.kind !== "value") {
+				return createElement("output", null, "empty");
+			}
+			const client = clientSlot.value;
 			if (
 				!("authorizeUrl" in client) ||
 				typeof client.authorizeUrl !== "function"

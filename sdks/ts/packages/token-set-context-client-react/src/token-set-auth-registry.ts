@@ -20,15 +20,13 @@ import {
 } from "@securitydept/client/injection";
 import {
 	TokenSetAuthRegistry as CoreTokenSetAuthRegistry,
-	TokenSetAuthService as CoreTokenSetAuthService,
+	createTokenSetOidcAuthRegistry,
 } from "@securitydept/token-set-context-client/registry";
 import type { TokenSetClientEntry, TokenSetReactClient } from "./contracts";
 
-type ReactTokenSetAuthService = CoreTokenSetAuthService<TokenSetReactClient>;
-
 export type ReactRegistry = CoreTokenSetAuthRegistry<
 	TokenSetReactClient,
-	ReactTokenSetAuthService
+	TokenSetReactClient
 >;
 
 export const TOKEN_SET_AUTH_REGISTRY =
@@ -36,30 +34,6 @@ export const TOKEN_SET_AUTH_REGISTRY =
 
 export interface ProvideTokenSetAuthRegistryOptions {
 	clients: readonly TokenSetClientEntry[];
-}
-
-class ReactTokenSetAuthRegistry extends CoreTokenSetAuthRegistry<
-	TokenSetReactClient,
-	ReactTokenSetAuthService
-> {
-	constructor({ clients }: ProvideTokenSetAuthRegistryOptions) {
-		super({
-			materialize: CoreTokenSetAuthService.materializeService,
-			dispose: CoreTokenSetAuthService.dispose,
-			accessTokenOf: CoreTokenSetAuthService.accessTokenOf,
-			ensureAccessTokenOf: CoreTokenSetAuthService.ensureAccessTokenOf,
-			ensureAuthorizationHeaderOf:
-				CoreTokenSetAuthService.ensureAuthorizationHeaderOf,
-			ensureAuthForResourceOf: CoreTokenSetAuthService.ensureAuthForResourceOf,
-			authEventsOf: CoreTokenSetAuthService.authEventsOf,
-			idleScheduler: createDefaultIdleScheduler(),
-		});
-
-		tryInjectInInjectionContext(SecuritydeptDestroyRef, {
-			optional: true,
-		})?.onDestroy(() => this.dispose());
-		registerTokenSetClients(this, clients);
-	}
 }
 
 export function provideTokenSetAuthRegistry(
@@ -80,8 +54,21 @@ export function provideTokenSetAuthRegistry(
 
 	return {
 		provide: TOKEN_SET_AUTH_REGISTRY,
-		useFactory: () => new ReactTokenSetAuthRegistry(input),
+		useFactory: () => createReactTokenSetAuthRegistry(input),
 	};
+}
+
+function createReactTokenSetAuthRegistry({
+	clients,
+}: ProvideTokenSetAuthRegistryOptions): ReactRegistry {
+	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>({
+		idleScheduler: createDefaultIdleScheduler(),
+	});
+	tryInjectInInjectionContext(SecuritydeptDestroyRef, {
+		optional: true,
+	})?.onDestroy(() => registry.dispose());
+	registerTokenSetClients(registry, clients);
+	return registry;
 }
 
 function registerTokenSetClients(

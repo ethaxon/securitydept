@@ -1,13 +1,17 @@
 // @vitest-environment jsdom
 
-import { createSignal, createSubject } from "@securitydept/client";
+import {
+	createReplaySignal,
+	createSignal,
+	createSubject,
+} from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
+	AuthCheckStatus,
 	type AuthSnapshot,
-	EnsureAuthForResourceStatus,
 	TokenFreshnessState,
 } from "@securitydept/token-set-context-client/orchestration";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -81,7 +85,12 @@ describe("token-set react-query helpers", () => {
 			return createElement(
 				"output",
 				null,
-				query.data?.accessToken.get() ?? "loading",
+				(() => {
+					const slot = query.data?.authSnapshot.get();
+					return slot?.kind === "value"
+						? (slot.value?.tokens.accessToken ?? "loading")
+						: "loading";
+				})(),
 			);
 		}
 
@@ -89,27 +98,47 @@ describe("token-set react-query helpers", () => {
 			tokens: { accessToken: "live-at" },
 			metadata: {},
 		};
+		const authSnapshot = createReplaySignal<AuthSnapshot | null>();
+		authSnapshot.emit(snapshot);
+		const isAuthenticated = createReplaySignal<boolean>();
+		isAuthenticated.emit(true);
+		const authorizationHeaderValue = createReplaySignal<string | undefined>();
+		authorizationHeaderValue.emit("Bearer live-at");
+		const authDetermined = createReplaySignal<true>();
+		authDetermined.emit(true);
+		const lastAuthError = createSignal<unknown | undefined>(undefined);
 		const providers = [
 			provideTokenSetAuthRegistry({
 				clients: [
 					{
 						key: "frontend",
-						autoRestore: false,
 						clientFactory: () => ({
 							state: createSignal<AuthSnapshot | null>(snapshot),
+							authDetermined,
+							authSnapshot,
+							isAuthenticated,
+							authorizationHeaderValue,
+							lastAuthError,
+							authOperations: {
+								restorePending: createSignal(false),
+								refreshPending: createSignal(false),
+								clearPending: createSignal(false),
+								loginPending: createSignal(false),
+							},
 							authEvents: createSubject(),
+							addAuthCheckTriggerSource: vi.fn(() => ({
+								unsubscribe: vi.fn(),
+							})),
+							start: vi.fn(async () => undefined),
 							dispose: vi.fn(),
 							restorePersistedState: vi.fn(async () => snapshot),
 							handleCallback: vi.fn(async () => ({ snapshot })),
-							authorizationHeader: vi.fn(() => "Bearer live-at"),
-							ensureAuthForResource: vi.fn(async () => ({
-								status: EnsureAuthForResourceStatus.Authenticated,
+							authCheck: vi.fn(async () => ({
+								status: AuthCheckStatus.Authenticated,
 								snapshot,
 								freshness: TokenFreshnessState.Fresh,
 								authorizationHeader: "Bearer live-at",
 							})),
-							ensureFreshAuthState: vi.fn(async () => snapshot),
-							ensureAuthorizationHeader: vi.fn(async () => "Bearer live-at"),
 							refresh: vi.fn(async () => snapshot),
 							clearState: vi.fn(async () => {}),
 							loginWithRedirect: vi.fn(async () => undefined),

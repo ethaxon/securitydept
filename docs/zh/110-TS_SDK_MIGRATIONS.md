@@ -14,7 +14,7 @@ SDK 仍处于 `0.x`，但 public-surface changes 必须保持有纪律。
 
 规则：
 
-- `public-surface-inventory.json` 是 package/subpath stability 与 evidence 的 machine-readable authority。
+- `public-surface-inventory.json` 是 package/subpath stability 与证据记录的 machine-readable authority。
 - 本文是 adopter-readable migration companion。
 - 非 experimental breaking changes 必须同时更新 inventory 与本指南。
 - Additive changes 如果需要 adopter 主动启用更安全行为，也应记录在这里。
@@ -42,7 +42,7 @@ Packages：
 
 - 用 `SecuritydeptProvider` 包住 React subtree；可以传入已有 `injector`，也可以通过 `providers` / `parentInjector` 派生 child injector。
 - 将 `XxxContextProvider` / `useXxxContext()` 迁移为 `useSecuritydeptContext().get(TOKEN)`。
-- 将 `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` 迁移为 `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)`，再配合 `useReadableSignal(registry.require(key).state)` 或 `useReadableSignal(registry.state)`。
+- 将 `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` 迁移为 `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)`，再配合 `useReadableSignal(registry.clientSignalFor(key))` 读取返回 client 的 replay channels。需要观察 registry topology 时使用 `useReadableSignal(registry.state)`。
 - 将 basic-auth / session 的 provider-first 组合迁移为 `create*()` + `provide*()`；token-set 多客户端 React 组合改为注册 `provideTokenSetAuthRegistry({ clients })`，只有在 host 明确需要 callback resume wiring 时才额外组合 `provideTokenSetCallbackResumeController(registry)`。
 
 ### Token-Set React Registry Composition
@@ -109,19 +109,22 @@ Packages：
 
 变更：
 
-- Token-set client 现在暴露 `authEvents` 与 `ensureAuthForResource(options)`，作为 route/request/resume 的 canonical async barrier。
-- `ensureFreshAuthState()` 与 `ensureAuthorizationHeader()` 仍是 compatibility wrapper；新的 adapter 代码应显式传入 `route_guard`、`resume`、`http_interceptor` 或 `authorized_transport` 等 source。
-- Authorization-header event 可以包含 opaque temporary token handle descriptor，但不得包含 raw access、refresh 或 ID token value。
+- Token-set client 现在以 replay channels 作为 canonical consumer API：`authDetermined`、`authSnapshot`、`isAuthenticated` 与 `authorizationHeaderValue`。
+- 旧命令式 helper `ensureAuthForResource()`、`ensureFreshAuthState()`、`ensureAuthorizationHeader()`，以及 registry-level `ensureAccessToken()` / `ensureAuthorizationHeader()` / `ensureAuthForResource()` 已移除。
+- `authCheck(options?)` 保留为唯一高级维护入口，只服务少数显式触发一次串行 auth check 的场景；它不是 route guard、transport、interceptor 或 UI 的读取路径。
+- Auth lifecycle event 不暴露 raw access、refresh 或 ID token value。Authorization-header availability 由 authenticated snapshot 与 header projection 表达，不再使用独立 header terminal event。
 
 迁移：
 
-- Route admission 与 resume recovery 优先使用 `ensureAuthForResource({ source, forceRefreshWhenDue: true })`。
-- Protected HTTP request 前优先使用 `ensureAuthForResource({ source, needsAuthorizationHeader: true, forceRefreshWhenDue: true })`。
+- 首屏 readiness 使用 `authDetermined.whenValue()`。
+- 稳定 UI 读取 `authSnapshot`；route guard 与 router adapter 等待 `isAuthenticated.whenValue()`。
+- HTTP transport 与 interceptor 等待 `authorizationHeaderValue.whenValue()`，再根据 `requireAuthorization` / fallback 策略处理 `undefined`。
+- 使用 `registry.whenReady(key?)` 或 `registry.clientSignalFor(key?)` 获取已 start 的 client；不要在 host code 中重新添加 registry-level token sugar。
 - 需要 lifecycle telemetry 时订阅 `authEvents`，不要从 redirect、throw error 或 raw token value 反推 auth flow state。
 
 理由：
 
-- 短 access-token lifetime 需要 restore、resume、route、interceptor、generic transport 与 React Query 共享同一个 refresh barrier，而不是继续堆 adapter-local freshness patch。
+- 将 consumer read 与显式 maintenance 拆开，避免 route/interceptor 读取产生副作用，让 lazy registry lifecycle 更明确，也避免所有 UI 切面被迫通过一个复合命令式状态机。
 
 ### Angular Token-Set Bearer Interceptor：`strictUrlMatch`
 
@@ -170,7 +173,7 @@ Package：`@securitydept/client`
 
 变更：
 
-- shared client foundation 拥有 reference apps 和 adapters 使用的 operation correlation primitives 与 error-presentation reader helpers。
+- shared client foundation 拥有参考应用和 adapters 使用的 operation correlation primitives 与 error-presentation reader helpers。
 - Host UI 应消费稳定 `code` / `recovery` data，而不是解析 raw message text。
 
 迁移：
@@ -274,24 +277,25 @@ Packages：
 变更：
 
 - Canonical registry lifecycle verb 现在是 `register(entry)`、`unregister(key)`、`resetMaterialization(key)` 与 `dispose()`。
-- Registry 现在把 configured 与 materialized observability 显式拆开：`has()` / `registeredKeys()` / `registeredEntriesSnapshot()` / `registeredMetaSnapshot()` 描述已注册 entry，`readyKeys()` / `readyEntriesSnapshot()` 描述已 materialize service。
-- React token-set composition root 现在是 `createTokenSetAuthRuntime({ clients })` + `provideTokenSetAuthRuntime(runtime)`；运行期 add/remove/reset flow 应通过注入后的 registry 实例完成，不再依赖 `TokenSetAuthProvider` 或隐藏 lookup hook。Angular `TokenSetAuthRegistry` 现在暴露与 shared core 对齐的 lifecycle verb 和 registered/ready snapshot。
+- Registry 现在把 configured 与 ready observability 显式拆开：`has()` / `registeredKeys()` / `registeredEntriesSnapshot()` / `registeredMetaSnapshot()` 描述已注册 entry，`readyKeys()` 描述已经完成 materialization 与 `start()` lifecycle 的 client。
+- React token-set composition 现在改为 registry-first：在 composition root 注册 `provideTokenSetAuthRegistry(...)`，只有确实需要 callback resume handling 时才额外注册 `provideTokenSetCallbackResumeController(...)`，运行期 add/remove/reset flow 通过注入后的 registry 实例完成，不再依赖 `TokenSetAuthProvider` 或隐藏 lookup hook。Angular `TokenSetAuthRegistry` 现在暴露与 shared core 对齐的 lifecycle verb、registered snapshots、ready keys 与 `clientSignalFor()` 获取能力。
 
 迁移：
 
 - 将历史上表示“移除此 client registration”的 `reset(key)` 调用替换为 `unregister(key)`。
 - 将失败后通过重新注册同一个 key 来重试/重建的流程替换为 `resetMaterialization(key)` 后再调用 `whenReady(key)`。
-- 对 management UI 或 diagnosis，使用 registered snapshot 作为配置态真值，使用 ready snapshot 表示 live service state；不要再把 ready-only key 当作所有已配置 client 的来源。
-- 在 React host 中，不要期待 prop 变化自动 reconcile token-set runtime。运行期 lifecycle 变更应通过 `useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` 或持有的 runtime/registry 引用完成。
+- 对 management UI 或 diagnosis，使用 registered snapshot 作为配置态真值，使用 `readyKeys()` 表示已启动 client membership，并通过 `clientSignalFor(key)` / `whenReady(key)` 访问 live client；不要再把 ready-only key 当作所有已配置 client 的来源。
+- 在 React host 中，不要期待 prop 变化自动 reconcile token-set registration。运行期 lifecycle 变更应通过 `useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` 或其它持有的 registry 引用完成。
 
 理由：
 
 - 旧的 `reset(key)` 语义把“移除注册”和“使单个已 materialize service 失效”混在了一起。拆分 verb 后，可以让异步失效流程 race-safe，避免 stale materialization 回填已移除状态，也为 host 提供明确的 registered-vs-ready management surface。
 
-### Token-Set Core Signal State 与 Canonical Rx Bridge
+### Token-Set Client Replay State 与 Registry Client Materialization
 
 Packages：
 
+- `@securitydept/client`
 - `@securitydept/client/rx`
 - `@securitydept/client-angular`
 - `@securitydept/token-set-context-client/registry`
@@ -301,61 +305,28 @@ Packages：
 变更：
 
 - `TokenSetAuthRegistry.state`、`getState()` 与 `subscribe()` 现在是 canonical 的 topology/readiness observation surface。各类 snapshot helper 仍保留，但只是 `state.get()` 的同步 convenience。
-- `TokenSetAuthService` 现在位于 `@securitydept/token-set-context-client/registry`，成为共享的 per-client auth material owner。它的 `state` 拥有 snapshot、派生 token material、freshness、restore lifecycle 与 disposed state。
-- React 与 Angular adapter 不再各自维护 token freshness、access-token derivation 或 auto-restore 的业务状态实现。React hooks 与 Angular bridge 现在都读取 shared core service/registry state。
+- `@securitydept/client` 新增 replay signal primitives：`createReplaySignal()`、`createComputedReplaySignal()`、`createAndThenComputedReplaySignal()`、`readonlyReplaySignal()`、`isReplaySignalTrait()` 与 `ReplaySignalSlot<T>`。
+- `ReadableReplaySignalTrait` 使用 `get()` 做类型安全的同步 slot 读取，并使用 `whenValue({ cancellationToken })` 做可取消的异步 value 等待。旧的同步 `value()` / `requireValue()` convenience method 不进入 public replay signal contract，因为它们无法区分 empty 与 `value(undefined)`。
+- Registry-managed OIDC mode client 现在暴露 canonical per-client auth channels：`authDetermined`、`authSnapshot`、`isAuthenticated`、`authorizationHeaderValue` 是 replay channels；`lastAuthError` 与 `authOperations.*Pending` 是 plain signals。
+- `TokenSetAuthService` 已从 token-set registry、React 与 Angular public surface 中移除。默认 `createTokenSetOidcAuthRegistry()` materialize mode client 本身，因此 `registry.whenReady()`、`registry.clientSignalFor()`、React Query readiness 与 Angular registry lookup 都返回 client。
+- Registry-managed client 现在是显式启动的长期运行状态机。直接创建 client 默认不启动；只有 direct creation path 需要立即运行时才传 `autoStart: true`。Registry entry 不接受 `autoStart` 或 `autoRestore`；registry 负责 materialize client，并通过 start hook 调用 `client.start()`。
+- `registry.whenReady()` 与 `registry.clientSignalFor()` 只有在恰好注册了一个 client 时才允许省略 key。省略 key 的调用会等待 lazy materialization 与 `start()` 完成，而不是只检查已经 ready 的 client。
+- React 与 Angular adapter 不再各自维护 token freshness、access-token derivation 或 auto-restore 的业务状态实现。它们读取 mode client replay channels，只做 host integration。
 - `@securitydept/client/rx` 现在是 `ReadableSignalTrait` 与 `EventStreamTrait` 的 canonical RxJS bridge。`signalToObservable` 不再由 `@securitydept/client-angular` 导出；Angular package 只保留 `bridgeToAngularSignal()`。
 
 迁移：
 
-- 通过 `registry.state`、`registry.getState()` 或 `registry.subscribe()` 观察 registry topology 与 readiness；`registeredKeys()` / `readyKeys()` / snapshot helper 只作为同步 convenience 使用。
-- 如果宿主代码依赖 adapter-local 的 token-set service 状态机，应迁移到 `@securitydept/token-set-context-client/registry` 的共享 `TokenSetAuthService` contract，并把 React/Angular service wrapper 视为 host bridge。
+- 通过 `registry.state`、`registry.getState()` 或 `registry.subscribe()` 观察 registry topology 与 readiness；`registeredKeys()` / `readyKeys()` / registered snapshot helper 只作为同步 convenience 使用。
+- 如果宿主代码依赖 adapter-local token-set service 状态机或 `TokenSetAuthService`，请直接迁移到 mode client channels：首屏 readiness 使用 `authDetermined`，稳定 UI 使用 `authSnapshot`，route guard 使用 `isAuthenticated`，HTTP 使用 `authorizationHeaderValue`，按钮锁定使用 `authOperations.*Pending`。
+- 将 `registry.require(key).client` 这类同步 service-wrapper access 替换为 async setup 中的 `await registry.whenReady(key)`，或 reactive host 中的 `useReadableSignal(registry.clientSignalFor(key))`。
+- Multi-client host 应向 `whenReady(key)` 与 `clientSignalFor(key)` 传入显式 registry key。只有真实 single-client host 才继续使用省略 key 的写法。
 - 将 `import { signalToObservable } from "@securitydept/client-angular"` 替换为 `import { toRxObservable } from "@securitydept/client/rx"`。
-- 在需要 aggregate registry reactivity 的 React host 中，使用 `useReadableSignal(registry.state)`，不要再维护 app-local 的 registered/ready mirror store。
+- Angular host 如需 RxJS auth state，应调用 `toRxObservable(client.authSnapshot)` 或其它 client replay signal。Replay signal observable 在首值前不会发出值，并会向 late subscriber replay 最后一个值。
+- 在需要 aggregate registry reactivity 的 React host 中，使用 `useReadableSignal(registry.state)`，不要再维护 app-local 的 registered/ready mirror store。Per-client auth 应读取 client replay signals，而不是创建 service hook。
 
 理由：
 
-- 这样可以把 framework-neutral core signal state 固定为单一权威，删除重复的 adapter-local 状态机，并让 RxJS bridge 从 Angular-owned 收口为 framework-neutral 公共能力。
-
-### Token-Set Registry 显式 Service Wiring
-
-Packages：
-
-- `@securitydept/token-set-context-client/registry`
-- `@securitydept/token-set-context-client-react`
-- `@securitydept/token-set-context-client-angular`
-
-变更：
-
-- `CreateTokenSetAuthRegistryOptions` 现在变为 explicit-only。`dispose`、`accessTokenOf`、`ensureAccessTokenOf`、`ensureAuthorizationHeaderOf`、`ensureAuthForResourceOf`、`authEventsOf` 与 `idleScheduler` 不再可选，而是必传。
-- `createTokenSetOidcAuthRegistry(...)` 不再根据 service 的运行时 shape 自动补齐 wiring。调用方必须显式提供 `materializeService` 以及其它所有 registry capability mapping。
-- `TokenSetAuthService` 现在提供与这些 option 同名的静态 helper，作为 canonical OIDC wiring 入口：`materializeService`、`dispose`、`accessTokenOf`、`ensureAccessTokenOf`、`ensureAuthorizationHeaderOf`、`ensureAuthForResourceOf`、`authEventsOf`。
-
-迁移：
-
-- 构造 `createTokenSetAuthRegistry(...)` 时，即使在测试或 single-client host 中，也要传完整 option object。
-- 构造 `createTokenSetOidcAuthRegistry(...)` 时，不要再依赖“省略某些 option 让 runtime 根据 service shape 自动推断 capability”的旧行为。
-- 对共享 core `TokenSetAuthService`，优先直接使用这些静态 helper：
-
-```ts
-const registry = createTokenSetOidcAuthRegistry({
-	materializeService: TokenSetAuthService.materializeService,
-	dispose: TokenSetAuthService.dispose,
-	accessTokenOf: TokenSetAuthService.accessTokenOf,
-	ensureAccessTokenOf: TokenSetAuthService.ensureAccessTokenOf,
-	ensureAuthorizationHeaderOf:
-		TokenSetAuthService.ensureAuthorizationHeaderOf,
-	ensureAuthForResourceOf: TokenSetAuthService.ensureAuthForResourceOf,
-	authEventsOf: TokenSetAuthService.authEventsOf,
-	idleScheduler: (callback) => {
-		const handle = setTimeout(callback, 0);
-		return () => clearTimeout(handle);
-	},
-});
-```
-
-理由：
-
-- 隐式 shape check 会让 registry 行为取决于 service instance 在 runtime 恰好带了哪些方法。把所有 mapping 改为 upfront 显式传入后，contract 更可审计，也能避免 capability 默默漂移，并让 adapter wiring 在调用点保持直观。
+- 这样可以让 mode client 成为 per-client auth 的单一权威，删除重复的 adapter-local/service 状态机，避免把不相关 UI 状态压成单一 phase enum，并让 RxJS bridge 从 Angular-owned 收口为 framework-neutral 公共能力。
 
 ## 当前非目标
 
@@ -390,7 +361,7 @@ Package: `@securitydept/example`
 - Why the break is necessary.
 ```
 
-同时更新 `sdks/ts/public-surface-inventory.json` 以及证明新 contract 的 focused evidence tests。
+同时更新 `sdks/ts/public-surface-inventory.json` 以及证明新 contract 的聚焦型验证测试。
 
 ---
 

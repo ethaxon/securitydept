@@ -1,10 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-	createDefaultIdleScheduler,
-	createSignal,
-	createSubject,
-} from "@securitydept/client";
+import { createSignal, createSubject } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useSecuritydeptContext,
@@ -13,14 +9,7 @@ import type {
 	AuthSnapshot,
 	TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
-import {
-	EnsureAuthForResourceStatus,
-	TokenFreshnessState,
-} from "@securitydept/token-set-context-client/orchestration";
-import {
-	TokenSetAuthService as CoreTokenSetAuthService,
-	createTokenSetAuthRegistry,
-} from "@securitydept/token-set-context-client/registry";
+import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
 	type ReactRegistry,
@@ -32,6 +21,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement, type ReactElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
+import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
@@ -76,20 +66,7 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 function createManualRegistry(
 	clients: readonly TokenSetClientEntry[],
 ): ReactRegistry {
-	const registry = createTokenSetAuthRegistry<
-		TokenSetReactClient,
-		CoreTokenSetAuthService<TokenSetReactClient>
-	>({
-		materialize: CoreTokenSetAuthService.materializeService,
-		dispose: CoreTokenSetAuthService.dispose,
-		accessTokenOf: CoreTokenSetAuthService.accessTokenOf,
-		ensureAccessTokenOf: CoreTokenSetAuthService.ensureAccessTokenOf,
-		ensureAuthorizationHeaderOf:
-			CoreTokenSetAuthService.ensureAuthorizationHeaderOf,
-		ensureAuthForResourceOf: CoreTokenSetAuthService.ensureAuthForResourceOf,
-		authEventsOf: CoreTokenSetAuthService.authEventsOf,
-		idleScheduler: createDefaultIdleScheduler(),
-	});
+	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>();
 
 	for (const client of clients) {
 		const registration = registry.register(client);
@@ -104,24 +81,18 @@ function createManualRegistry(
 describe("react-query integration evidence", () => {
 	it("supports injector-based token-set readiness queries", async () => {
 		const snapshot = createSnapshot("live-at");
+		const reactive = createTestTokenSetReactiveFields(snapshot);
 		const registry = createManualRegistry([
 			{
 				key: "main",
-				autoRestore: false,
 				clientFactory: () => ({
 					state: createSignal<AuthSnapshot | null>(snapshot),
+					...reactive.fields,
 					authEvents: createSubject<TokenSetAuthEvent>(),
+					addAuthCheckTriggerSource: () => ({ unsubscribe: () => undefined }),
+					start: async () => undefined,
 					dispose: vi.fn(),
 					restorePersistedState: async () => snapshot,
-					authorizationHeader: () => "Bearer live-at",
-					ensureAuthForResource: async () => ({
-						status: EnsureAuthForResourceStatus.Authenticated,
-						snapshot,
-						freshness: TokenFreshnessState.Fresh,
-						authorizationHeader: "Bearer live-at",
-					}),
-					ensureFreshAuthState: async () => snapshot,
-					ensureAuthorizationHeader: async () => "Bearer live-at",
 					handleCallback: async () => ({ snapshot }),
 					loginWithRedirect: async () => undefined,
 				}),
@@ -144,7 +115,12 @@ describe("react-query integration evidence", () => {
 			return createElement(
 				"output",
 				null,
-				readiness.data?.accessToken.get() ?? "loading",
+				(() => {
+					const slot = readiness.data?.authSnapshot.get();
+					return slot?.kind === "value"
+						? (slot.value?.tokens.accessToken ?? "loading")
+						: "loading";
+				})(),
 			);
 		}
 
@@ -169,25 +145,19 @@ describe("react-query integration evidence", () => {
 	});
 
 	it("supports registry-based token-set readiness queries without SecuritydeptProvider", async () => {
-		const snapshot = createSnapshot("service-at");
+		const snapshot = createSnapshot("client-at");
+		const reactive = createTestTokenSetReactiveFields(snapshot);
 		const registry = createManualRegistry([
 			{
 				key: "main",
-				autoRestore: false,
 				clientFactory: () => ({
 					state: createSignal<AuthSnapshot | null>(snapshot),
+					...reactive.fields,
 					authEvents: createSubject<TokenSetAuthEvent>(),
+					addAuthCheckTriggerSource: () => ({ unsubscribe: () => undefined }),
+					start: async () => undefined,
 					dispose: vi.fn(),
 					restorePersistedState: async () => snapshot,
-					authorizationHeader: () => "Bearer service-at",
-					ensureAuthForResource: async () => ({
-						status: EnsureAuthForResourceStatus.Authenticated,
-						snapshot,
-						freshness: TokenFreshnessState.Fresh,
-						authorizationHeader: "Bearer service-at",
-					}),
-					ensureFreshAuthState: async () => snapshot,
-					ensureAuthorizationHeader: async () => "Bearer service-at",
 					handleCallback: async () => ({ snapshot }),
 					loginWithRedirect: async () => undefined,
 				}),
@@ -209,7 +179,12 @@ describe("react-query integration evidence", () => {
 			return createElement(
 				"output",
 				null,
-				query.data?.accessToken.get() ?? "loading",
+				(() => {
+					const slot = query.data?.authSnapshot.get();
+					return slot?.kind === "value"
+						? (slot.value?.tokens.accessToken ?? "loading")
+						: "loading";
+				})(),
 			);
 		}
 
@@ -222,7 +197,7 @@ describe("react-query integration evidence", () => {
 		);
 
 		await waitFor(() => observed.at(-1) === "success");
-		expect(view.container.textContent).toBe("service-at");
+		expect(view.container.textContent).toBe("client-at");
 		view.unmount();
 		registry.dispose();
 		queryClient.clear();

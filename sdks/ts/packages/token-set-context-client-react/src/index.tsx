@@ -43,7 +43,6 @@ export {
 	type ReactRegistry,
 	TOKEN_SET_AUTH_REGISTRY,
 } from "./token-set-auth-registry";
-export { TokenSetAuthService } from "./token-set-auth-service";
 export {
 	type CallbackResumeErrorDetails,
 	type CallbackResumeState,

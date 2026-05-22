@@ -27,7 +27,6 @@ export type {
 	ClientQueryOptions,
 	CreateTokenSetAuthRegistryOptions,
 	CreateTokenSetOidcAuthRegistryOptions,
-	EnsureRegistryAuthForResourceOptions,
 	OidcCallbackClient,
 	OidcModeClient,
 	OidcRedirectLoginClient,
@@ -36,8 +35,6 @@ export type {
 	TokenSetAuthRegistryEntryState,
 	TokenSetAuthRegistryLifecycleErrorCode as TokenSetAuthRegistryLifecycleErrorCodeType,
 	TokenSetAuthRegistryState,
-	TokenSetAuthServiceRestoreStatus as TokenSetAuthServiceRestoreStatusType,
-	TokenSetAuthServiceState,
 	TokenSetCallbackErrorDetails,
 	TokenSetCallbackErrorPresentationContext,
 	TokenSetCallbackErrorPresenter,
@@ -54,7 +51,6 @@ export {
 	ClientInitializationPriority,
 	TokenSetAuthRegistryLifecycleError,
 	TokenSetAuthRegistryLifecycleErrorCode,
-	TokenSetAuthServiceRestoreStatus,
 } from "./contracts/types";
 export {
 	TokenSetCallbackResumeController,
@@ -66,7 +62,6 @@ export {
 	TokenSetAuthRegistry,
 } from "./core/client-registry";
 export { isOidcCallback } from "./core/oidc-callback-url";
-export { TokenSetAuthService } from "./core/service";
 export {
 	describeTokenSetCallbackError,
 	readTokenSetCallbackResumeErrorDetails,

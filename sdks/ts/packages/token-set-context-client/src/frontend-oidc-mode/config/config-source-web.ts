@@ -32,8 +32,9 @@ import {
 	type FetchTransportOptions,
 } from "@securitydept/client/web";
 import {
-	attachTokenSetResumeReconciliation,
-	type TokenSetResumeReconciliationOptions,
+	attachPageResumeAuthCheckTriggerSource,
+	type PageResumeAuthCheckOptions,
+	type TokenSetAuthCheckTriggerSource,
 } from "../../orchestration";
 import { parseConfigProjection } from "../contracts/contracts";
 import {
@@ -78,8 +79,9 @@ export interface CreateFrontendOidcModeBrowserClientOptions {
 	redirectUri: string;
 	defaultPostAuthRedirectUri?: string;
 	environment: FrontendOidcModeWebClientEnvironment;
-	resumeReconciliation?: boolean;
-	resumeReconciliationOptions?: TokenSetResumeReconciliationOptions;
+	pageResumeAuthCheck?: boolean;
+	pageResumeAuthCheckOptions?: PageResumeAuthCheckOptions;
+	authCheckTriggerSources?: readonly TokenSetAuthCheckTriggerSource[];
 }
 
 export interface FrontendOidcModeWebClientEnvironment
@@ -189,14 +191,15 @@ export async function createFrontendOidcModeBrowserClient(
 		rawProjection: projection,
 	};
 
-	const client = attachTokenSetResumeReconciliation(
+	const client = attachPageResumeAuthCheckTriggerSource(
 		createFrontendOidcModeClient(
 			parsed.value,
 			deriveClientEnvironment(environment),
 		),
 		{
-			resumeReconciliation: options.resumeReconciliation,
-			resumeReconciliationOptions: options.resumeReconciliationOptions,
+			pageResumeAuthCheck: options.pageResumeAuthCheck,
+			pageResumeAuthCheckOptions: options.pageResumeAuthCheckOptions,
+			authCheckTriggerSources: options.authCheckTriggerSources,
 		},
 	);
 

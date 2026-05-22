@@ -1,10 +1,10 @@
 # Release 自动化
 
-本文是 SecurityDept release 自动化的详细权威文档，用于展开 [AGENTS.md](../../AGENTS.md) 中的精简规则，并定义本地 release 命令、版本约束与 GitHub workflow 的预期行为。
+本文是 SecurityDept release 自动化的操作参考文档，用于展开 [AGENTS.md](../../AGENTS.md) 中的精简规则，并定义本地 release 命令、版本约束与 GitHub workflow 的预期行为。
 
 ## 适用范围
 
-release authority 只分成两层：
+只有两项已提交入库的权威来源定义 release 行为：
 
 - [`securitydept-metadata.toml`](../../securitydept-metadata.toml) 是项目版本与 release-managed manifest 集合的唯一事实源。
 - [`scripts/release-cli.ts`](../../scripts/release-cli.ts) 是版本变更、npm 发布、crates 发布与 Docker tag 计算的唯一支持入口。
@@ -38,12 +38,9 @@ release channel 由版本号自动推断，而不是手工传参。
 | `X.Y.Z-beta.N` | release-candidate 阶段 | `rc` | `rc` |
 | `X.Y.Z` | 稳定发布 | `latest` | `latest`、`release` |
 
-这样选择的原因是：
+说明：
 
-- `latest` 是 npm 与容器生态里最标准的稳定版本约定。
-- `nightly` 能明确表达 alpha 构建仍处于快速变动阶段，不应作为默认消费版本。
-- `rc` 比直接暴露 `beta` 更贴近对外发布语义，能告诉下游这是预发布但已经进入 release 验证阶段。
-- 稳定容器镜像额外附带 `release`，方便人类在部署脚本中显式引用稳定别名，同时 `latest` 仍保留默认生态语义。
+`latest` 仍是 npm 与容器生态最标准的稳定版本约定。`nightly` 能明确表达 alpha 轨道不应作为默认消费版本。`rc` 比直接暴露 `beta` 更贴近对外发布语义。稳定容器镜像额外附带 `release`，方便人类在部署脚本中显式引用稳定别名，同时 `latest` 仍保留默认生态语义。
 
 ## Release CLI 命令
 
@@ -113,7 +110,8 @@ release 相关 workflow 必须遵循：
 
 - active workflow 入口只保留 `.github/workflows/docs.yml`、`.github/workflows/tests.yml` 和 `.github/workflows/release.yml`。
 - `tests.yml` 拥有仓库验证。它在 `main`、`release`、`v*.*.*` tag、指向 `main` 的 pull request 与 manual dispatch 上运行，并上传 `tests-workflow-report`，方便 release run 按源 SHA 审计。`release` 分支 push 的 Tests 全部成功后，由 `tests.yml` 使用 `workflow_dispatch` 调度 `.github/workflows/release.yml`，并把 source ref/SHA 与 publish toggles 显式传入。
-- `release.yml` 是唯一 release/build/publish authority。它只通过 `workflow_dispatch` 进入，原因是 crates.io trusted publishing 不支持 `workflow_run` 触发事件；自动发布路径也必须经由 Tests 成功后的 dispatch，而不是直接从 `workflow_run` 请求 OIDC。
+- `release.yml` 是唯一 release/build/publish 入口，且只通过 `workflow_dispatch` 进入。
+- 背景说明：crates.io trusted publishing 不支持 `workflow_run` 触发事件，因此自动发布路径必须在 `tests.yml` 成功后 dispatch `release.yml`，而不是直接从 `workflow_run` 请求 OIDC。
 - `release.yml` 拥有 source publish gate：它通过 `release-cli workflow release-plan` 解析 source，运行 `release-cli version check`，比较 checked-in version 与 expected tag，并在任何 publish job 运行前校验 tag 或 `release` 分支 source lineage。
 - `release` 分支 publish 是当前自动发布主路径。它的 expected tag policy 是 `create-after-publish`：`release-plan` 与 `validate-release-ref` 会报告 expected tag 状态，发布前允许 expected tag 缺失；如果 expected tag 已存在，则必须已经指向所选 source SHA，否则发布前失败。
 - 所有被选择的 publish jobs 成功后，`release-tag` job 会为 `release` 分支 source 创建并推送 expected `vX.Y.Z[-alpha.N|-beta.N]` tag。在 release 分支路径中，tag 是发布结果与审计锚点；如需针对 tag 或其它 source 进行审计/重跑，必须手动 dispatch `release.yml` 并让同一 release gate 通过。
@@ -133,7 +131,7 @@ release 相关 workflow 必须遵循：
 - Docker tag 仍由 `release-cli docker publish --format=github-output` 计算，再传给 `docker/build-push-action`。当 source 是 `refs/heads/release` 时，Docker tag 计算使用 `refs/tags/<expected-tag>`，因此 release 分支发布也会产出版本与 channel tags（`vX.Y.Z...`、`vX.Y`、`vX`、`rc` / `nightly` / `latest`）以及不可变的 `sha-*` tag。
 - 单独的 npm、crates、Docker 与 common-CI workflow 不再是 active release entrypoint。后续若重新引入，必须同步更新本文档并明确迁移 trusted-publisher binding。
 
-Cache 与 artifact 规则：
+## Cache 与 Artifact 规则
 
 - pnpm 与 Rust setup/cache 行为由 `.github/actions/` 下的 repo-local composite actions 拥有。
 - pnpm cache mode 必须显式写成 `read-write`、`read-only` 或 `none`。稳定 restore key 是 `pnpm-store-${runner.os}-${hashFiles(lockfile)}`；同一个 workflow 拓扑中，同一 key 只能有一个 read-write owner。

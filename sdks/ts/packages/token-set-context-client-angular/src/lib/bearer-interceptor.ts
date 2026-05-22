@@ -11,7 +11,6 @@ import {
 	inject,
 	type Provider,
 } from "@angular/core";
-import { TokenSetAuthFlowSource } from "@securitydept/token-set-context-client/orchestration";
 import { from, type Observable, switchMap } from "rxjs";
 import { TokenSetAuthRegistry } from "./token-set-auth.registry";
 
@@ -34,8 +33,8 @@ export interface BearerInterceptorOptions {
 	 * matching client receive no `Authorization` header even when a token is
 	 * available elsewhere in the registry.
 	 *
-	 * When `false` (default, single-client convenience), the interceptor
-	 * falls back to `registry.accessToken()` for unmatched URLs — useful only
+	 * When `false` (default, single-client convenience), unmatched URLs are
+	 * resolved through the registry's async auth barrier. This is useful only
 	 * when the host issues all HTTP traffic to one already-known backend.
 	 *
 	 * Adopters with more than one backend, more than one OIDC audience, or
@@ -87,14 +86,8 @@ export class TokenSetBearerInterceptor implements HttpInterceptor {
 		next: HttpHandler,
 	): Observable<HttpEvent<unknown>> {
 		const key = this.registry.clientKeyForUrl(req.url);
-		// When a client key matches but the client is still initializing
-		// (async clientFactory not yet resolved), registry.get() returns
-		// undefined. This is an explicit design decision: interceptors do NOT
-		// block the HTTP request waiting for client initialization.
-		// Responsibility for "ensure client is ready before making requests"
-		// belongs to route guards (which use whenReady() to await readiness).
-		// A not-yet-ready client correctly produces no token → request proceeds
-		// without Authorization header.
+		// Registry readiness means "materialized and started"; the interceptor
+		// consumes the client's replayed authorization-header state.
 		return from(
 			resolveAuthorizationForRequest(this.registry, req.url, key, {
 				strictUrlMatch: this.options.strictUrlMatch,
@@ -182,8 +175,8 @@ export function provideTokenSetBearerInterceptor(
  * headers, selecting the correct token from the multi-client registry
  * based on URL pattern matching.
  *
- * If no URL pattern matches, falls back to the first available token
- * (single-client convenience).
+ * If no URL pattern matches, unmatched-URL behaviour is governed by
+ * {@link BearerInterceptorOptions.strictUrlMatch}.
  *
  * ## Async client readiness
  *
@@ -215,9 +208,9 @@ export function provideTokenSetBearerInterceptor(
  * based on URL pattern matching.
  *
  * If no URL pattern matches, the unmatched-URL behaviour is governed by
- * {@link BearerInterceptorOptions.strictUrlMatch}: the default falls back
- * to `registry.accessToken()` (single-client convenience), while
- * `strictUrlMatch: true` returns no token, ensuring bearer headers are
+ * {@link BearerInterceptorOptions.strictUrlMatch}: the default resolves
+ * through the registry's async auth barrier for single-client convenience,
+ * while `strictUrlMatch: true` returns no token, ensuring bearer headers are
  * never injected for URLs outside the registered patterns.
  *
  * ## Async client readiness
@@ -257,10 +250,8 @@ export function createTokenSetBearerInterceptor(
 	): Observable<unknown> => {
 		// Try URL-pattern-based client selection first.
 		const key = registry.clientKeyForUrl(req.url);
-		// Explicit not-yet-ready semantics: if the client exists in metadata
-		// (via clientKeyForUrl) but registry.get() returns undefined because the
-		// async clientFactory has not resolved yet, the request proceeds without
-		// a token. See class-based interceptor above for full rationale.
+		// Registry readiness means "materialized and started"; the interceptor
+		// consumes the client's replayed authorization-header state.
 		return from(
 			resolveAuthorizationForRequest(registry, req.url, key, options),
 		).pipe(
@@ -278,7 +269,7 @@ export function createTokenSetBearerInterceptor(
 
 async function resolveAuthorizationForRequest(
 	registry: TokenSetAuthRegistry,
-	url: string,
+	_url: string,
 	key: string | undefined,
 	options: BearerInterceptorOptions,
 ): Promise<string | null> {
@@ -286,13 +277,7 @@ async function resolveAuthorizationForRequest(
 		return null;
 	}
 
-	const result = await registry.ensureAuthForResource({
-		key,
-		waitForReady: false,
-		source: TokenSetAuthFlowSource.HttpInterceptor,
-		needsAuthorizationHeader: true,
-		forceRefreshWhenDue: true,
-		url,
-	});
-	return result?.authorizationHeader ?? null;
+	const client = await registry.whenReady(key);
+	const header = await client.authorizationHeaderValue.whenValue();
+	return header ?? null;
 }

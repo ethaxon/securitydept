@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
 import {
-	createDefaultIdleScheduler,
+	createReplaySignal,
 	createSignal,
 	createSubject,
 } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
+	useReadableSignal,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import type {
@@ -14,14 +15,11 @@ import type {
 	TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	EnsureAuthForResourceStatus,
+	AuthCheckStatus,
 	TokenFreshnessState,
 	TokenSetAuthFlowReason,
 } from "@securitydept/token-set-context-client/orchestration";
-import {
-	TokenSetAuthService as CoreTokenSetAuthService,
-	createTokenSetAuthRegistry,
-} from "@securitydept/token-set-context-client/registry";
+import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
 	provideTokenSetCallbackResumeController,
@@ -62,10 +60,10 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 	};
 }
 
-function ensureAuthResult(snapshot: AuthSnapshot | null) {
+function authCheckResult(snapshot: AuthSnapshot | null) {
 	if (!snapshot) {
 		return {
-			status: EnsureAuthForResourceStatus.Unauthenticated,
+			status: AuthCheckStatus.Unauthenticated,
 			snapshot: null,
 			authorizationHeader: null,
 			reason: TokenSetAuthFlowReason.NoSnapshot,
@@ -73,7 +71,7 @@ function ensureAuthResult(snapshot: AuthSnapshot | null) {
 	}
 
 	return {
-		status: EnsureAuthForResourceStatus.Authenticated,
+		status: AuthCheckStatus.Authenticated,
 		snapshot,
 		freshness: TokenFreshnessState.Fresh,
 		authorizationHeader: "Bearer main-at",
@@ -83,20 +81,7 @@ function ensureAuthResult(snapshot: AuthSnapshot | null) {
 function createManualRegistry(
 	clients: readonly TokenSetClientEntry[],
 ): ReactRegistry {
-	const registry = createTokenSetAuthRegistry<
-		TokenSetReactClient,
-		CoreTokenSetAuthService<TokenSetReactClient>
-	>({
-		materialize: CoreTokenSetAuthService.materializeService,
-		dispose: CoreTokenSetAuthService.dispose,
-		accessTokenOf: CoreTokenSetAuthService.accessTokenOf,
-		ensureAccessTokenOf: CoreTokenSetAuthService.ensureAccessTokenOf,
-		ensureAuthorizationHeaderOf:
-			CoreTokenSetAuthService.ensureAuthorizationHeaderOf,
-		ensureAuthForResourceOf: CoreTokenSetAuthService.ensureAuthForResourceOf,
-		authEventsOf: CoreTokenSetAuthService.authEventsOf,
-		idleScheduler: createDefaultIdleScheduler(),
-	});
+	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>();
 
 	for (const client of clients) {
 		const registration = registry.register(client);
@@ -115,19 +100,37 @@ describe("token-set injector factories", () => {
 
 	it("exposes registry and callback-controller tokens through explicit SecuritydeptProvider composition", async () => {
 		const state = createSignal<AuthSnapshot | null>(createSnapshot("main-at"));
+		const authSnapshot = createReplaySignal<AuthSnapshot | null>();
+		authSnapshot.emit(state.get());
+		const isAuthenticated = createReplaySignal<boolean>();
+		isAuthenticated.emit(true);
+		const authorizationHeaderValue = createReplaySignal<string | undefined>();
+		authorizationHeaderValue.emit("Bearer main-at");
+		const authDetermined = createReplaySignal<true>();
+		authDetermined.emit(true);
+		const lastAuthError = createSignal<unknown | undefined>(undefined);
 		const registry = createManualRegistry([
 			{
 				key: "main",
-				autoRestore: false,
 				clientFactory: () => ({
 					state,
+					authDetermined,
+					authSnapshot,
+					isAuthenticated,
+					authorizationHeaderValue,
+					lastAuthError,
+					authOperations: {
+						restorePending: createSignal(false),
+						refreshPending: createSignal(false),
+						clearPending: createSignal(false),
+						loginPending: createSignal(false),
+					},
 					authEvents: createSubject<TokenSetAuthEvent>(),
+					addAuthCheckTriggerSource: () => ({ unsubscribe: () => undefined }),
+					start: async () => undefined,
 					dispose: () => state.set(null),
 					restorePersistedState: async () => state.get(),
-					authorizationHeader: () => "Bearer main-at",
-					ensureAuthForResource: async () => ensureAuthResult(state.get()),
-					ensureFreshAuthState: async () => state.get(),
-					ensureAuthorizationHeader: async () => "Bearer main-at",
+					authCheck: async () => authCheckResult(state.get()),
 					handleCallback: async () => ({
 						snapshot: createSnapshot("main-at"),
 					}),
@@ -144,16 +147,24 @@ describe("token-set injector factories", () => {
 			const injector = useSecuritydeptContext();
 			const registry = injector.get(TOKEN_SET_AUTH_REGISTRY);
 			const controller = injector.get(TOKEN_SET_CALLBACK_RESUME_CONTROLLER);
+			const clientSlot = useReadableSignal(registry.clientSignalFor("main"));
+			const slot =
+				clientSlot.kind === "value"
+					? clientSlot.value.authSnapshot.get()
+					: { kind: "empty" as const };
 			return createElement(
 				"output",
 				null,
-				`${registry.require("main").accessToken.get() ?? "empty"}:${controller.state.get().status}`,
+				`${slot.kind === "value" ? (slot.value?.tokens.accessToken ?? "empty") : "empty"}:${controller.state.get().status}`,
 			);
 		}
 
 		const view = render(
 			createElement(SecuritydeptProvider, { providers }, createElement(Probe)),
 		);
+		await act(async () => {
+			await Promise.resolve();
+		});
 
 		expect(view.container.textContent).toContain("main-at");
 		await act(async () => {

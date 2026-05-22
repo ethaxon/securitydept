@@ -9,18 +9,19 @@
 
 import type {
 	EventStreamTrait,
+	EventSubscriptionTrait,
 	PageLocationCapability,
+	ReadableReplaySignalTrait,
 	ReadableSignalTrait,
 } from "@securitydept/client";
 import type { ClientReadinessState } from "../../frontend-oidc-mode/config/config-source";
 import type {
+	AuthCheckOptions,
+	AuthCheckResult,
 	AuthSnapshot,
-	EnsureAuthForResourceOptions,
-	EnsureAuthForResourceResult,
-	EnsureAuthorizationHeaderOptions,
-	EnsureFreshAuthStateOptions,
-	TokenFreshnessState,
+	TokenSetAuthCheckTriggerSource,
 	TokenSetAuthEvent,
+	TokenSetAuthOperationSignals,
 } from "../../orchestration";
 
 export type {
@@ -49,20 +50,20 @@ export type { ClientReadinessState };
  * token-set registry family.
  */
 export interface OidcModeClient {
-	state: ReadableSignalTrait<AuthSnapshot | null>;
+	authDetermined: ReadableReplaySignalTrait<true>;
+	authSnapshot: ReadableReplaySignalTrait<AuthSnapshot | null>;
+	isAuthenticated: ReadableReplaySignalTrait<boolean>;
+	authorizationHeaderValue: ReadableReplaySignalTrait<string | undefined>;
+	lastAuthError: ReadableSignalTrait<unknown | undefined>;
+	authOperations: TokenSetAuthOperationSignals;
 	authEvents: EventStreamTrait<TokenSetAuthEvent>;
+	start(): Promise<void>;
+	addAuthCheckTriggerSource(
+		source: TokenSetAuthCheckTriggerSource,
+	): EventSubscriptionTrait;
+	authCheck(options?: AuthCheckOptions): Promise<AuthCheckResult>;
 	dispose(): void;
 	restorePersistedState(): Promise<AuthSnapshot | null>;
-	authorizationHeader(): string | null;
-	ensureAuthForResource(
-		options?: EnsureAuthForResourceOptions,
-	): Promise<EnsureAuthForResourceResult>;
-	ensureFreshAuthState(
-		options?: EnsureFreshAuthStateOptions,
-	): Promise<AuthSnapshot | null>;
-	ensureAuthorizationHeader(
-		options?: EnsureAuthorizationHeaderOptions,
-	): Promise<string | null>;
 }
 
 /**
@@ -153,17 +154,6 @@ export interface TokenSetClientEntry<TClient> {
 	 * @default "primary"
 	 */
 	priority?: ClientInitializationPriority;
-	/**
-	 * Whether the registry should invoke `service.restorePersistedState()`
-	 * (or whatever the adapter's equivalent is) immediately after
-	 * materialization.
-	 *
-	 * The core registry forwards this into the `materialize` callback via
-	 * the entry; adapters decide what "auto-restore" means.
-	 *
-	 * @default true
-	 */
-	autoRestore?: boolean;
 	/**
 	 * URL patterns this client's bearer token should be applied to.
 	 * Used by interceptors to select the correct client by request URL.
@@ -299,34 +289,6 @@ export interface ClientFilter {
 
 export type ClientQueryOptions = ClientFilter | ClientFilter[];
 
-export interface EnsureRegistryAuthForResourceOptions
-	extends EnsureAuthForResourceOptions {
-	key?: string;
-	query?: ClientQueryOptions;
-	waitForReady?: boolean;
-}
-
-export const TokenSetAuthServiceRestoreStatus = {
-	Skipped: "skipped",
-	Restoring: "restoring",
-	Restored: "restored",
-	Failed: "failed",
-} as const;
-
-export type TokenSetAuthServiceRestoreStatus =
-	(typeof TokenSetAuthServiceRestoreStatus)[keyof typeof TokenSetAuthServiceRestoreStatus];
-
-export interface TokenSetAuthServiceState {
-	readonly snapshot: AuthSnapshot | null;
-	readonly accessToken: string | null;
-	readonly authorizationHeader: string | null;
-	readonly isAuthenticated: boolean;
-	readonly freshness: TokenFreshnessState;
-	readonly restoreStatus: TokenSetAuthServiceRestoreStatus;
-	readonly restoreError: unknown | null;
-	readonly disposed: boolean;
-}
-
 // ---------------------------------------------------------------------------
 // Registry factory options
 // ---------------------------------------------------------------------------
@@ -340,30 +302,31 @@ export interface TokenSetAuthServiceState {
  */
 export interface CreateTokenSetAuthRegistryOptions<TClient, TService> {
 	/**
-	 * Wrap a freshly-materialized client into the framework-idiomatic
-	 * service object stored in the registry and returned from `get()`.
+	 * Convert a freshly-materialized client into the object stored in the
+	 * registry and returned from `whenReady()` / `clientSignalFor()`.
 	 */
 	materialize: (
 		client: TClient,
 		entry: TokenSetClientEntry<TClient>,
 	) => TService;
 	/**
-	 * Dispose a previously-materialized service. Called from
+	 * Dispose a previously-materialized object. Called from
 	 * `registry.dispose()`, `registry.unregister(key)`, and
 	 * `registry.resetMaterialization(key)`.
 	 */
 	dispose: (service: TService) => void;
 	/**
-	 * Extract an access token from a materialized service. Enables the
-	 * `registry.accessToken(key?)` convenience for interceptors.
+	 * Start the materialized object before the registry marks it ready.
+	 *
+	 * Generic registries default this to a no-op. OIDC registry wiring uses
+	 * it to call `client.start()` so registry readiness means materialized and
+	 * started.
 	 */
-	accessTokenOf: (service: TService) => string | null;
-	ensureAccessTokenOf: (service: TService) => Promise<string | null>;
-	ensureAuthorizationHeaderOf: (service: TService) => Promise<string | null>;
-	ensureAuthForResourceOf: (
+	start?: (
+		client: TClient,
 		service: TService,
-		options: EnsureAuthForResourceOptions,
-	) => Promise<EnsureAuthForResourceResult>;
+		entry: TokenSetClientEntry<TClient>,
+	) => Promise<void> | void;
 	authEventsOf: (service: TService) => EventStreamTrait<TokenSetAuthEvent>;
 	/**
 	 * Custom idle scheduler for {@link TokenSetAuthRegistry.idleWarmup}.
@@ -373,15 +336,9 @@ export interface CreateTokenSetAuthRegistryOptions<TClient, TService> {
 	idleScheduler: (callback: () => void) => () => void;
 }
 
-export interface CreateTokenSetOidcAuthRegistryOptions<
-	TClient extends OidcModeClient,
-	TService,
-> extends Omit<
-		CreateTokenSetAuthRegistryOptions<TClient, TService>,
-		"materialize"
-	> {
-	materializeService: (
-		client: TClient,
-		entry: TokenSetClientEntry<TClient>,
-	) => TService;
+export interface CreateTokenSetOidcAuthRegistryOptions {
+	/**
+	 * Custom idle scheduler for {@link TokenSetAuthRegistry.idleWarmup}.
+	 */
+	idleScheduler?: (callback: () => void) => () => void;
 }

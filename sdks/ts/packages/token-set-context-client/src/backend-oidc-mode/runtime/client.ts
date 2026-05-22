@@ -314,117 +314,121 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	async refresh(
 		options?: BackendOidcModeRefreshOptions,
 	): Promise<AuthStateSnapshot | null> {
-		const current = this._authMaterial.snapshot;
-		if (!current?.tokens.refreshMaterial) {
-			return null;
-		}
+		return await this._trackRefreshOperation(async () => {
+			const current = this._authMaterial.snapshot;
+			if (!current?.tokens.refreshMaterial) {
+				return null;
+			}
 
-		return await this._runOperation(
-			"backend_oidc.refresh",
-			{
-				flow: "refresh",
-				hasIdToken: current.tokens.idToken !== undefined,
-			},
-			async (operation) => {
-				this._recordTrace(
-					"backend_oidc.refresh.started",
-					{
-						hasIdToken: current.tokens.idToken !== undefined,
-					},
-					operation,
-				);
+			return await this._runOperation(
+				"backend_oidc.refresh",
+				{
+					flow: "refresh",
+					hasIdToken: current.tokens.idToken !== undefined,
+				},
+				async (operation) => {
+					this._recordTrace(
+						"backend_oidc.refresh.started",
+						{
+							hasIdToken: current.tokens.idToken !== undefined,
+						},
+						operation,
+					);
 
-				try {
-					this._throwIfNotOperational();
+					try {
+						this._throwIfNotOperational();
 
-					const response = await this._environment.transport.execute({
-						url: this._baseUrl + this._refreshPath,
-						method: "POST",
-						headers: { "content-type": "application/json" },
-						body: JSON.stringify({
-							refresh_token: current.tokens.refreshMaterial,
-							post_auth_redirect_uri: this._defaultPostAuthRedirectUri,
-							id_token: current.tokens.idToken,
-							current_metadata_snapshot: current.metadata,
-						}),
-						cancellationToken: createLinkedCancellationToken(
-							...(options?.cancellationToken
-								? [this._rootCancellation.token, options.cancellationToken]
-								: [this._rootCancellation.token]),
-						),
-					});
-
-					this._throwIfNotOperational();
-
-					if (response.status === 200 && response.body) {
-						const refreshBody = parseBackendOidcModeRefreshBody(
-							response.body as Record<string, unknown>,
-						);
-						if (!refreshBody) {
-							throw new ClientError({
-								kind: ClientErrorKind.Protocol,
-								message: "Refresh response body missing access_token",
-								code: "backend_oidc.refresh.missing_access_token",
-								source: TRACE_SCOPE,
-							});
-						}
-
-						const metadata = await this._resolveMetadata(
-							{
-								inlineMetadata: refreshBody.metadata
-									? { ...current.metadata, ...refreshBody.metadata }
-									: undefined,
-								metadataRedemptionId: refreshBody.metadataRedemptionId,
-								baseMetadata: current.metadata,
-								accessToken: refreshBody.accessToken,
-								idToken: refreshBody.idToken ?? current.tokens.idToken,
-							},
-							operation,
-						);
+						const response = await this._environment.transport.execute({
+							url: this._baseUrl + this._refreshPath,
+							method: "POST",
+							headers: { "content-type": "application/json" },
+							body: JSON.stringify({
+								refresh_token: current.tokens.refreshMaterial,
+								post_auth_redirect_uri: this._defaultPostAuthRedirectUri,
+								id_token: current.tokens.idToken,
+								current_metadata_snapshot: current.metadata,
+							}),
+							cancellationToken: createLinkedCancellationToken(
+								...(options?.cancellationToken
+									? [this._rootCancellation.token, options.cancellationToken]
+									: [this._rootCancellation.token]),
+							),
+						});
 
 						this._throwIfNotOperational();
 
-						const newSnapshot = await this._authMaterial.applyDelta(
-							refreshReturnsToTokenDelta(refreshBody),
-							{ metadata },
-						);
-						this._stateSignal.set(newSnapshot);
-						this._scheduleRefresh();
+						if (response.status === 200 && response.body) {
+							const refreshBody = parseBackendOidcModeRefreshBody(
+								response.body as Record<string, unknown>,
+							);
+							if (!refreshBody) {
+								throw new ClientError({
+									kind: ClientErrorKind.Protocol,
+									message: "Refresh response body missing access_token",
+									code: "backend_oidc.refresh.missing_access_token",
+									source: TRACE_SCOPE,
+								});
+							}
 
-						this._environment.logger?.log({
-							level: LogLevel.Info,
-							message: "Token refreshed successfully",
-							scope: TRACE_SCOPE,
-						});
+							const metadata = await this._resolveMetadata(
+								{
+									inlineMetadata: refreshBody.metadata
+										? { ...current.metadata, ...refreshBody.metadata }
+										: undefined,
+									metadataRedemptionId: refreshBody.metadataRedemptionId,
+									baseMetadata: current.metadata,
+									accessToken: refreshBody.accessToken,
+									idToken: refreshBody.idToken ?? current.tokens.idToken,
+								},
+								operation,
+							);
 
-						this._recordTrace(
-							"backend_oidc.refresh.succeeded",
-							{
-								hasMetadataRedemption:
-									refreshBody.metadataRedemptionId !== undefined,
-								hasInlineMetadata: refreshBody.metadata !== undefined,
-								hasUserInfoFallback:
-									!refreshBody.metadata && !refreshBody.metadataRedemptionId,
-								persisted: this._authMaterial.persistence !== null,
-							},
+							this._throwIfNotOperational();
+
+							const newSnapshot = await this._authMaterial.applyDelta(
+								refreshReturnsToTokenDelta(refreshBody),
+								{ metadata },
+							);
+							this._emitAuthDetermination({
+								material: { kind: "current", snapshot: newSnapshot },
+								refreshScheduling: { kind: "schedule" },
+							});
+
+							this._environment.logger?.log({
+								level: LogLevel.Info,
+								message: "Token refreshed successfully",
+								scope: TRACE_SCOPE,
+							});
+
+							this._recordTrace(
+								"backend_oidc.refresh.succeeded",
+								{
+									hasMetadataRedemption:
+										refreshBody.metadataRedemptionId !== undefined,
+									hasInlineMetadata: refreshBody.metadata !== undefined,
+									hasUserInfoFallback:
+										!refreshBody.metadata && !refreshBody.metadataRedemptionId,
+									persisted: this._authMaterial.persistence !== null,
+								},
+								operation,
+							);
+
+							return newSnapshot;
+						}
+
+						throw ClientError.fromHttpResponse(response.status, response.body);
+					} catch (error) {
+						this._recordFailureTrace(
+							"backend_oidc.refresh.failed",
+							error,
+							undefined,
 							operation,
 						);
-
-						return newSnapshot;
+						throw error;
 					}
-
-					throw ClientError.fromHttpResponse(response.status, response.body);
-				} catch (error) {
-					this._recordFailureTrace(
-						"backend_oidc.refresh.failed",
-						error,
-						undefined,
-						operation,
-					);
-					throw error;
-				}
-			},
-		);
+				},
+			);
+		});
 	}
 
 	/**

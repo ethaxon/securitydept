@@ -29,6 +29,17 @@ import {
 	resolveBackendOidcModeCallbackFragmentKey,
 } from "../web/browser";
 
+function expectReplayValue<T>(signal: {
+	get(): { kind: "empty" } | { kind: "value"; value: T };
+}): T {
+	const slot = signal.get();
+	expect(slot.kind).toBe("value");
+	if (slot.kind !== "value") {
+		throw new Error("Expected replay signal value.");
+	}
+	return slot.value;
+}
+
 function createHistoryRecorder() {
 	return {
 		replacedUrl: "" as string,
@@ -301,7 +312,7 @@ describe("token-set web helpers", () => {
 
 		await resetBackendOidcModeBrowserState(client, { callbackFragmentStore });
 
-		expect(client.state.get()).toBeNull();
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 		expect(await callbackFragmentStore.load()).toBeNull();
 
 		const restoredClient = createBackendOidcModeWebClient({
@@ -392,9 +403,10 @@ describe("token-set web helpers", () => {
 
 		expect(restoredResult.source).toBe(BackendOidcModeBootstrapSource.Restore);
 		expect(restoredResult.snapshot?.tokens.accessToken).toBe("callback-at");
-		expect(restoredClient.state.get()?.metadata.principal?.displayName).toBe(
-			"Alice",
-		);
+		expect(
+			expectReplayValue(restoredClient.authSnapshot)?.metadata.principal
+				?.displayName,
+		).toBe("Alice");
 
 		await resetBackendOidcModeBrowserState(restoredClient, {
 			callbackFragmentStore,
@@ -420,7 +432,7 @@ describe("token-set web helpers", () => {
 			source: BackendOidcModeBootstrapSource.Empty,
 			snapshot: null,
 		});
-		expect(freshClient.state.get()).toBeNull();
+		expect(expectReplayValue(freshClient.authSnapshot)).toBeNull();
 		expect(await callbackFragmentStore.load()).toBeNull();
 	});
 
@@ -487,7 +499,9 @@ describe("token-set web helpers", () => {
 		await oldClient.handleCallback(
 			"access_token=old-at&id_token=old-idt&refresh_token=old-rt&metadata_redemption_id=meta-old",
 		);
-		expect(oldClient.state.get()?.tokens.accessToken).toBe("old-at");
+		expect(expectReplayValue(oldClient.authSnapshot)?.tokens.accessToken).toBe(
+			"old-at",
+		);
 
 		const bootstrapClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
@@ -510,10 +524,13 @@ describe("token-set web helpers", () => {
 
 		expect(callbackResult.source).toBe(BackendOidcModeBootstrapSource.Callback);
 		expect(callbackResult.snapshot?.tokens.accessToken).toBe("new-at");
-		expect(bootstrapClient.state.get()?.tokens.accessToken).toBe("new-at");
-		expect(bootstrapClient.state.get()?.metadata.principal?.displayName).toBe(
-			"New Alice",
-		);
+		expect(
+			expectReplayValue(bootstrapClient.authSnapshot)?.tokens.accessToken,
+		).toBe("new-at");
+		expect(
+			expectReplayValue(bootstrapClient.authSnapshot)?.metadata.principal
+				?.displayName,
+		).toBe("New Alice");
 		expect(await callbackFragmentStore.load()).toBeNull();
 
 		const restoredClient = createBackendOidcModeWebClient({
@@ -538,9 +555,10 @@ describe("token-set web helpers", () => {
 		expect(restoredResult.source).toBe(BackendOidcModeBootstrapSource.Restore);
 		expect(restoredResult.snapshot?.tokens.accessToken).toBe("new-at");
 		expect(restoredResult.snapshot?.tokens.accessToken).not.toBe("old-at");
-		expect(restoredClient.state.get()?.metadata.principal?.displayName).toBe(
-			"New Alice",
-		);
+		expect(
+			expectReplayValue(restoredClient.authSnapshot)?.metadata.principal
+				?.displayName,
+		).toBe("New Alice");
 	});
 
 	it("keeps callback retry precedence over persisted auth until a later retry succeeds", async () => {
@@ -641,7 +659,7 @@ describe("token-set web helpers", () => {
 		expect(await callbackFragmentStore.load()).toBe(
 			"access_token=new-at&id_token=new-idt&refresh_token=new-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-new",
 		);
-		expect(retryingClient.state.get()).toBeNull();
+		expect(retryingClient.authSnapshot.hasValue()).toBe(false);
 
 		const recoveredResult = await bootstrapBackendOidcModePageClient(
 			retryingClient,
@@ -657,9 +675,10 @@ describe("token-set web helpers", () => {
 			BackendOidcModeBootstrapSource.Callback,
 		);
 		expect(recoveredResult.snapshot?.tokens.accessToken).toBe("new-at");
-		expect(retryingClient.state.get()?.metadata.principal?.displayName).toBe(
-			"New Alice",
-		);
+		expect(
+			expectReplayValue(retryingClient.authSnapshot)?.metadata.principal
+				?.displayName,
+		).toBe("New Alice");
 		expect(await callbackFragmentStore.load()).toBeNull();
 
 		const restoredClient = createBackendOidcModeWebClient({
@@ -745,7 +764,9 @@ describe("token-set web helpers", () => {
 		await oldClient.handleCallback(
 			"access_token=old-at&id_token=old-idt&refresh_token=old-rt&metadata_redemption_id=meta-old",
 		);
-		expect(oldClient.state.get()?.tokens.accessToken).toBe("old-at");
+		expect(expectReplayValue(oldClient.authSnapshot)?.tokens.accessToken).toBe(
+			"old-at",
+		);
 
 		const failingClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
@@ -769,7 +790,7 @@ describe("token-set web helpers", () => {
 		});
 
 		expect(await callbackFragmentStore.load()).toBeNull();
-		expect(failingClient.state.get()).toBeNull();
+		expect(failingClient.authSnapshot.hasValue()).toBe(false);
 
 		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
@@ -792,9 +813,10 @@ describe("token-set web helpers", () => {
 
 		expect(restoredResult.source).toBe(BackendOidcModeBootstrapSource.Restore);
 		expect(restoredResult.snapshot?.tokens.accessToken).toBe("old-at");
-		expect(restoredClient.state.get()?.metadata.principal?.displayName).toBe(
-			"Old Alice",
-		);
+		expect(
+			expectReplayValue(restoredClient.authSnapshot)?.metadata.principal
+				?.displayName,
+		).toBe("Old Alice");
 		expect(restoredResult.snapshot?.tokens.accessToken).not.toBe("bad-at");
 	});
 
@@ -877,9 +899,10 @@ describe("token-set web helpers", () => {
 
 		expect(callbackResult.source).toBe(BackendOidcModeBootstrapSource.Callback);
 		expect(callbackResult.snapshot?.tokens.accessToken).toBe("new-at");
-		expect(bootstrapClient.state.get()?.metadata.principal?.displayName).toBe(
-			"Newest Alice",
-		);
+		expect(
+			expectReplayValue(bootstrapClient.authSnapshot)?.metadata.principal
+				?.displayName,
+		).toBe("Newest Alice");
 		expect(await callbackFragmentStore.load()).toBeNull();
 
 		const restoredClient = createBackendOidcModeWebClient({
@@ -992,9 +1015,10 @@ describe("token-set web helpers", () => {
 			BackendOidcModeBootstrapSource.Callback,
 		);
 		expect(recoveredResult.snapshot?.tokens.accessToken).toBe("new-at");
-		expect(retryingClient.state.get()?.metadata.principal?.displayName).toBe(
-			"Newest Alice",
-		);
+		expect(
+			expectReplayValue(retryingClient.authSnapshot)?.metadata.principal
+				?.displayName,
+		).toBe("Newest Alice");
 		expect(await callbackFragmentStore.load()).toBeNull();
 
 		const restoredClient = createBackendOidcModeWebClient({
@@ -1089,7 +1113,7 @@ describe("token-set web helpers", () => {
 			callbackFragmentStore,
 		});
 
-		expect(bootstrapClient.state.get()).toBeNull();
+		expect(expectReplayValue(bootstrapClient.authSnapshot)).toBeNull();
 		expect(await callbackFragmentStore.load()).toBeNull();
 
 		const freshClient = createBackendOidcModeWebClient({
@@ -1112,7 +1136,7 @@ describe("token-set web helpers", () => {
 			source: BackendOidcModeBootstrapSource.Empty,
 			snapshot: null,
 		});
-		expect(freshClient.state.get()).toBeNull();
+		expect(expectReplayValue(freshClient.authSnapshot)).toBeNull();
 	});
 
 	it("injects the current bearer and forwards cancellation tokens", async () => {
@@ -1218,7 +1242,9 @@ describe("token-set web helpers", () => {
 		await clientA.handleCallback(
 			"access_token=a-at&id_token=a-idt&refresh_token=a-rt&metadata_redemption_id=meta-a",
 		);
-		expect(clientA.state.get()?.tokens.accessToken).toBe("a-at");
+		expect(expectReplayValue(clientA.authSnapshot)?.tokens.accessToken).toBe(
+			"a-at",
+		);
 
 		// Client B: uses a different persistentStateKey on the same store
 		const clientB = createBackendOidcModeWebClient({

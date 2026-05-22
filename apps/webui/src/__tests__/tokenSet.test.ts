@@ -541,7 +541,10 @@ describe("token-set browser flow", () => {
 		);
 		await client.refresh();
 
-		expect(client.state.get()?.tokens.accessToken).toBe("refreshed-at");
+		const slot = client.authSnapshot.get();
+		expect(slot.kind === "value" ? slot.value?.tokens.accessToken : null).toBe(
+			"refreshed-at",
+		);
 	});
 
 	it("loads groups through the real business path with the refreshed token-set bearer", async () => {

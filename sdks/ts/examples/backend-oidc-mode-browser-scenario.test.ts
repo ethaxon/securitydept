@@ -16,6 +16,17 @@ import {
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { describe, expect, it } from "vitest";
 
+function expectReplayValue<T>(signal: {
+	get(): { kind: "empty" } | { kind: "value"; value: T };
+}): T {
+	const slot = signal.get();
+	expect(slot.kind).toBe("value");
+	if (slot.kind !== "value") {
+		throw new Error("Expected replay signal value.");
+	}
+	return slot.value;
+}
+
 function createHistoryRecorder() {
 	return {
 		replacedUrl: "" as string,
@@ -115,17 +126,21 @@ describe("external backend-oidc-mode browser scenario", () => {
 			"Alice",
 		);
 		expect(callbackHistory.replacedUrl).toBe("/oidc-mediated?tab=demo");
-		expect(client.authorizationHeader()).toBe("Bearer callback-at");
+		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
+			"Bearer callback-at",
+		);
 
 		const refreshOptions: BackendOidcModeRefreshOptions = {};
 		const refreshed = await client.refresh(refreshOptions);
 
 		expect(refreshed?.tokens.accessToken).toBe("refreshed-at");
 		expect(refreshed?.tokens.refreshMaterial).toBe("refreshed-rt");
-		expect(client.state.get()?.tokens.accessToken).toBe("refreshed-at");
+		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+			"refreshed-at",
+		);
 
 		client.dispose();
 
-		expect(client.state.get()).toBeNull();
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 	});
 });

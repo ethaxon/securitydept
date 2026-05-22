@@ -1,5 +1,9 @@
-import { createSubject } from "@securitydept/client";
+import {
+	createSubject,
+	type ReadableReplaySignalTrait,
+} from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
+import { ClientReadinessState } from "../../frontend-oidc-mode/config/config-source";
 import type { TokenSetAuthEvent } from "../../orchestration";
 import {
 	ClientInitializationPriority,
@@ -29,10 +33,6 @@ const TEST_IDLE_SCHEDULER = (callback: () => void): (() => void) => {
 	return () => clearTimeout(handle);
 };
 
-async function failEnsureAuthForResource(): Promise<never> {
-	throw new Error("ensureAuthForResourceOf should not be called in this test");
-}
-
 function createDeferred<T>() {
 	let resolve!: (value: T | PromiseLike<T>) => void;
 	let reject!: (reason?: unknown) => void;
@@ -51,7 +51,18 @@ function createClient(name: string): FakeClient {
 	};
 }
 
-function createRegistry() {
+function expectReplayValue<T>(signal: ReadableReplaySignalTrait<T>): T {
+	const slot = signal.get();
+	expect(slot.kind).toBe("value");
+	if (slot.kind !== "value") {
+		throw new Error("Expected replay signal value.");
+	}
+	return slot.value;
+}
+
+function createRegistry(options?: {
+	start?: (client: FakeClient, service: FakeService) => Promise<void> | void;
+}) {
 	return createTokenSetAuthRegistry<FakeClient, FakeService>({
 		materialize: (client) => ({
 			client,
@@ -64,16 +75,90 @@ function createRegistry() {
 			service.disposeCount += 1;
 			service.client.dispose();
 		},
-		accessTokenOf: () => null,
-		ensureAccessTokenOf: async () => null,
-		ensureAuthorizationHeaderOf: async () => null,
-		ensureAuthForResourceOf: failEnsureAuthForResource,
+		start: options?.start,
 		authEventsOf: (service) => service.authEvents,
 		idleScheduler: TEST_IDLE_SCHEDULER,
 	});
 }
 
 describe("TokenSetAuthRegistry lifecycle", () => {
+	it("runs the start hook before ready state and clientSignalFor emission", async () => {
+		const start = vi.fn(async () => undefined);
+		const registry = createRegistry({ start });
+		const factory = vi.fn<() => FakeClient>(() => createClient("lazy"));
+
+		registry.register({
+			key: "lazy",
+			priority: ClientInitializationPriority.Lazy,
+			clientFactory: factory,
+		});
+
+		expect(factory).not.toHaveBeenCalled();
+		const signal = registry.clientSignalFor("lazy");
+		expect(signal.hasValue()).toBe(false);
+
+		const ready = registry.clientSignalFor("lazy").whenValue();
+		const service = await ready;
+
+		expect(factory).toHaveBeenCalledTimes(1);
+		expect(start).toHaveBeenCalledWith(
+			service.client,
+			service,
+			expect.anything(),
+		);
+		expect(expectReplayValue(signal)).toBe(service);
+		expect(registry.readyKeys()).toEqual(["lazy"]);
+		registry.dispose();
+	});
+
+	it("keeps clientSignalFor empty and records failure when start fails", async () => {
+		const startError = new Error("start failed");
+		const registry = createRegistry({
+			start: async () => {
+				throw startError;
+			},
+		});
+		registry.register({
+			key: "lazy",
+			priority: ClientInitializationPriority.Lazy,
+			clientFactory: () => createClient("lazy"),
+		});
+		const signal = registry.clientSignalFor("lazy");
+
+		await expect(registry.whenReady("lazy")).rejects.toBe(startError);
+
+		expect(signal.hasValue()).toBe(false);
+		expect(registry.readinessState("lazy")).toBe(ClientReadinessState.Failed);
+		expect(registry.state.get().entries[0]?.lifecycleError).toBe(startError);
+		registry.dispose();
+	});
+
+	it("clears but reuses clientSignalFor across resetMaterialization", async () => {
+		const registry = createRegistry();
+		const factory = vi
+			.fn<() => FakeClient>()
+			.mockReturnValueOnce(createClient("first"))
+			.mockReturnValueOnce(createClient("second"));
+		registry.register({
+			key: "lazy",
+			priority: ClientInitializationPriority.Lazy,
+			clientFactory: factory,
+		});
+		const signal = registry.clientSignalFor("lazy");
+		const first = await signal.whenValue();
+		expect(first.client.name).toBe("first");
+
+		registry.resetMaterialization("lazy");
+		expect(signal.hasValue()).toBe(false);
+
+		const secondPromise = signal.whenValue();
+		await registry.whenReady("lazy");
+		const second = await secondPromise;
+		expect(second.client.name).toBe("second");
+		expect(second).not.toBe(first);
+		registry.dispose();
+	});
+
 	it("unregister() disposes ready services, drops indexes, stops auth events, and allows re-register", () => {
 		const registry = createRegistry();
 		const events: TokenSetAuthEvent[] = [];
@@ -192,6 +277,48 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 		registry.dispose();
 	});
 
+	it("whenReady() without a key materializes the sole registered lazy client", async () => {
+		const registry = createRegistry();
+		const factory = vi.fn<() => FakeClient>(() => createClient("only"));
+
+		registry.register({
+			key: "only",
+			priority: ClientInitializationPriority.Lazy,
+			clientFactory: factory,
+		});
+
+		const service = await registry.whenReady();
+		expect(service.client.name).toBe("only");
+		expect(factory).toHaveBeenCalledTimes(1);
+		expect(registry.readyKeys()).toEqual(["only"]);
+		registry.dispose();
+	});
+
+	it("whenReady() without a key rejects ambiguous or empty registries", async () => {
+		const empty = createRegistry();
+		await expect(empty.whenReady()).rejects.toThrow(
+			"requires one registered client, but no clients are registered",
+		);
+
+		const multi = createRegistry();
+		multi.register({
+			key: "first",
+			priority: ClientInitializationPriority.Lazy,
+			clientFactory: () => createClient("first"),
+		});
+		multi.register({
+			key: "second",
+			priority: ClientInitializationPriority.Lazy,
+			clientFactory: () => createClient("second"),
+		});
+
+		await expect(multi.whenReady()).rejects.toThrow(
+			"without a key is only valid for a single registered client",
+		);
+		empty.dispose();
+		multi.dispose();
+	});
+
 	it("rejects stale async materialization after unregister() and best-effort disposes the stale service", async () => {
 		const deferred = createDeferred<FakeClient>();
 		let materializeCount = 0;
@@ -211,10 +338,6 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 				service.disposed = true;
 				service.disposeCount += 1;
 			},
-			accessTokenOf: () => null,
-			ensureAccessTokenOf: async () => null,
-			ensureAuthorizationHeaderOf: async () => null,
-			ensureAuthForResourceOf: failEnsureAuthForResource,
 			authEventsOf: (service) => service.authEvents,
 			idleScheduler: TEST_IDLE_SCHEDULER,
 		});
@@ -239,7 +362,7 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 		});
 		expect(materializeCount).toBe(0);
 		expect(materializedService).toBeUndefined();
-		expect(registry.get("async")).toBeUndefined();
+		expect(registry.isReady("async")).toBe(false);
 		expect(registry.readyKeys()).toEqual([]);
 		registry.dispose();
 	});
@@ -261,10 +384,6 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 				service.disposeCount += 1;
 				service.client.dispose();
 			},
-			accessTokenOf: () => null,
-			ensureAccessTokenOf: async () => null,
-			ensureAuthorizationHeaderOf: async () => null,
-			ensureAuthForResourceOf: failEnsureAuthForResource,
 			authEventsOf: (service) => service.authEvents,
 			idleScheduler: TEST_IDLE_SCHEDULER,
 		});
@@ -320,10 +439,6 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 				service.disposed = true;
 				service.disposeCount += 1;
 			},
-			accessTokenOf: () => null,
-			ensureAccessTokenOf: async () => null,
-			ensureAuthorizationHeaderOf: async () => null,
-			ensureAuthForResourceOf: failEnsureAuthForResource,
 			authEventsOf: (service) => service.authEvents,
 			idleScheduler: TEST_IDLE_SCHEDULER,
 		});
@@ -384,7 +499,7 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 		registry.dispose();
 	});
 
-	it("exposes registered snapshots independently from ready snapshots", async () => {
+	it("exposes registered snapshots independently from ready keys", async () => {
 		const registry = createRegistry();
 		registry.register({
 			key: "lazy",
@@ -415,8 +530,7 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 			registry.registeredEntriesSnapshot()[0]?.[1].callbackPath,
 		).toBeUndefined();
 		expect(registry.metaFor("lazy")?.providerFamily).toBe("docs");
-		expect(registry.readyEntriesSnapshot()).toHaveLength(1);
-		expect(registry.readyEntriesSnapshot()).toHaveLength(1);
+		expect(registry.readyKeys()).toHaveLength(1);
 		expect(registry.registeredKeys()).toEqual(
 			registry.state.get().registeredKeys,
 		);

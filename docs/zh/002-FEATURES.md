@@ -11,11 +11,11 @@
 | OAuth resource server | 已实现 JWT、JWE、不透明 token 的 bearer verification，并支持 issuer / audience / scope policy。 | `securitydept-oauth-resource-server`、`securitydept-oauth-provider` |
 | Basic Auth context | 已实现 Basic Auth zones、challenge / login / logout metadata、post-auth redirects、optional real-IP access policy、server integration，以及 browser / React / Angular helpers。 | `securitydept-basic-auth-context`、`@securitydept/basic-auth-context-client*` |
 | Session context | 已实现 cookie-session context、normalized principal、OIDC session service、dev-session service、server integration，以及 browser / React / Angular helpers。 | `securitydept-session-context`、`@securitydept/session-context-client*` |
-| Token-set context | 已实现 frontend/backend OIDC mode contracts、backend-mode routes、frontend-mode config projection、access-token substrate、bearer propagation、route orchestration、React / Angular adapters 与 reference-app dogfooding。 | `securitydept-token-set-context`、`@securitydept/token-set-context-client*` |
+| Token-set context | 已实现 frontend/backend OIDC mode contracts、backend-mode routes、frontend-mode config projection、access-token substrate、bearer propagation、route orchestration、React / Angular adapters 与仓库内 dogfooding。 | `securitydept-token-set-context`、`@securitydept/token-set-context-client*` |
 | Real-IP resolution | 已实现 trusted provider/source model，覆盖 forwarded headers、PROXY protocol、local / remote / command / Docker / Kubernetes provider sources，集成到 reference-server Basic Auth policy，并为本地 provider tests 管理带标签的可复用资源。 | `securitydept-realip`、`scripts/test-cli.ts` |
 | Credential management | 已实现本地 Basic Auth 与 static-token storage，支持 lock-free reads、atomic writes、debounced watching 与 self-write detection。 | `securitydept-creds-manage`、`apps/cli`、`apps/server` |
-| Reference apps | 已实现 Axum server、React web UI、playground/reference routes、management API auth branching、bearer propagation，以及从预构建 runtime artifacts 组装 release Docker image 的路径。 | `apps/server`、`apps/webui`、`Dockerfile.runtime` |
-| TypeScript SDK release surface | 已实现 shared client foundation、Basic Auth、session、token-set、React、Angular integration 的 publishable npm package families。 | `sdks/ts/packages/*`、`public-surface-inventory.json` |
+| Reference runtime 与 apps | 已实现 Axum server、React web UI、playground/reference routes、management API auth branching、bearer propagation，以及从预构建 runtime artifacts 组装 release Docker image 的路径。 | `apps/server`、`apps/webui`、`Dockerfile.runtime` |
+| TypeScript SDK public surface | 已实现 shared client foundation、Basic Auth、session、token-set、React、Angular integration 的 publishable npm package families。 | `sdks/ts/packages/*`、`public-surface-inventory.json` |
 
 ## 当前 Auth-Context Baseline
 
@@ -25,11 +25,11 @@ SecurityDept 当前将这些视为产品化 auth-context surfaces：
 - Session context：backend-owned session state 与 HTTP-only cookie flow。
 - Token-set context：browser / backend OIDC mode contracts，加上 access-token substrate 与 framework adapters。
 
-Token-set 有意比 Basic Auth 和 session 更丰富。Basic Auth 与 session 必须保持 discoverable 和 tested，但除非重复 adopter evidence 证明需要，否则不应膨胀成平行的大型 frontend runtime。
+Token-set 有意比 Basic Auth 和 session 更丰富。Basic Auth 与 session 必须保持 discoverable 和 tested，但除非持续的下游使用证明确有必要，否则不应膨胀成平行的大型 frontend runtime。
 
 ## Reference Server Behavior
 
-reference server 通过以下路径验证组合行为：
+参考服务端通过以下路径验证组合行为：
 
 - `/api/*` dashboard APIs，按 bearer-first、session-second、Basic Auth fallback 顺序授权。
 - `/basic/*` Basic Auth dashboard zone，以及 `/basic/api/*` Basic Auth-protected management API mirror。
@@ -41,7 +41,7 @@ reference server 通过以下路径验证组合行为：
 
 ## 已知边界
 
-这些主题是真实需求，但不属于当前 product baseline：
+这些主题是真实需求，但不属于当前基线：
 
 - mixed-custody token ownership
 - full BFF / server-side token-set ownership

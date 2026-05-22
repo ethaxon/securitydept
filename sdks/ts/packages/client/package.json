@@ -63,6 +63,11 @@
 			"types": "./dist/rx/index.d.mts",
 			"import": "./dist/rx/index.mjs"
 		},
+		"./struct": {
+			"monorepo-tsc": "./src/struct/index.ts",
+			"types": "./dist/struct/index.d.mts",
+			"import": "./dist/struct/index.mjs"
+		},
 		"./auth-coordination": {
 			"monorepo-tsc": "./src/auth-coordination/index.ts",
 			"types": "./dist/auth-coordination/index.d.mts",
@@ -84,6 +89,7 @@
 	"dependencies": {
 		"@standard-schema/spec": "^1.0.0",
 		"injection-js": "^2.6.1",
+		"mnemonist": "^0.40.4",
 		"rxjs": "^7.8.2"
 	}
 }

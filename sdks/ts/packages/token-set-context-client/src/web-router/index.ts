@@ -1,18 +1,9 @@
 import type { AuthGuardClientOption } from "@securitydept/client/auth-coordination";
-import {
-	type EnsureAuthForResourceResult,
-	EnsureAuthForResourceStatus,
-	TokenSetAuthFlowSource,
-} from "../orchestration";
-import type {
-	ClientQueryOptions,
-	EnsureRegistryAuthForResourceOptions,
-} from "../registry";
+import type { ClientQueryOptions, OidcModeClient } from "../registry";
 
 export interface TokenSetWebRouterAuthRegistry {
-	ensureAuthForResource(
-		options?: EnsureRegistryAuthForResourceOptions,
-	): Promise<EnsureAuthForResourceResult | null>;
+	whenReady(key?: string): Promise<OidcModeClient>;
+	clientKeysForOptions(options: ClientQueryOptions): string[];
 }
 
 export interface TokenSetWebRouterClientSelector {
@@ -46,19 +37,9 @@ export function createTokenSetWebRouteAuthCandidate(
 		checkAuthenticated: () =>
 			options.checkAuthenticated?.() ?? lastEnsureAuthenticated,
 		onUnauthenticated: async () => {
-			const result = await options.registry.ensureAuthForResource({
-				key: options.key,
-				query: options.query,
-				source: TokenSetAuthFlowSource.RawWebRouter,
-				requirement: {
-					id: options.requirementId,
-					kind: options.requirementKind,
-				},
-				providerFamily: options.providerFamily,
-				url: resolveRouteUrl(options.url),
-				forceRefreshWhenDue: true,
-			});
-			lastEnsureAuthenticated = isAuthenticatedResourceResult(result);
+			const client = await resolveRouterClient(options);
+			lastEnsureAuthenticated =
+				client !== null && (await client.isAuthenticated.whenValue());
 			if (lastEnsureAuthenticated) {
 				return true;
 			}
@@ -67,18 +48,22 @@ export function createTokenSetWebRouteAuthCandidate(
 	};
 }
 
-function isAuthenticatedResourceResult(
-	result: EnsureAuthForResourceResult | null,
-): boolean {
-	return (
-		result?.status === EnsureAuthForResourceStatus.Authenticated ||
-		result?.status === EnsureAuthForResourceStatus.AuthorizationHeaderResolved
-	);
-}
-
-function resolveRouteUrl(
-	url: CreateTokenSetWebRouteAuthCandidateOptions["url"],
-): string | undefined {
-	const value = typeof url === "function" ? url() : url;
-	return value instanceof URL ? value.href : value;
+async function resolveRouterClient(
+	options: CreateTokenSetWebRouteAuthCandidateOptions,
+): Promise<OidcModeClient | null> {
+	if (options.key) {
+		return await options.registry.whenReady(options.key);
+	}
+	const query = options.query ?? {
+		requirementKind: options.requirementKind,
+		providerFamily: options.providerFamily,
+	};
+	const keys = options.registry.clientKeysForOptions(query);
+	if (keys.length === 0) {
+		return null;
+	}
+	if (keys.length > 1) {
+		return null;
+	}
+	return await options.registry.whenReady(keys[0]);
 }

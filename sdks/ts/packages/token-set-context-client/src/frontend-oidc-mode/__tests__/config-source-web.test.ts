@@ -72,7 +72,7 @@ describe("frontend-oidc-mode browser materialization", () => {
 			sourceKind: "network",
 			generatedAt: 123,
 		});
-		expect(materialized.client.state.get()).toBeNull();
+		expect(materialized.client.authSnapshot.hasValue()).toBe(false);
 	});
 
 	it("preserves config projection error envelopes as ClientError", async () => {

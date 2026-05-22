@@ -73,14 +73,15 @@ export async function ensureTokenSetBackendModeClientReady(): Promise<AuthSnapsh
 		tokenSetBackendModeBootstrapPromise = bootstrapBackendOidcModePageClient(
 			tokenSetBackendModeClient,
 			{ environment: createBackendModePageEnvironment() },
-		).then(() => tokenSetBackendModeClient.state.get());
+		).then(() => getTokenSetBackendModeAuthSnapshot());
 	}
 
 	return await tokenSetBackendModeBootstrapPromise;
 }
 
 export function getTokenSetBackendModeAuthSnapshot(): AuthSnapshot | null {
-	return tokenSetBackendModeClient.state.get();
+	const slot = tokenSetBackendModeClient.authSnapshot.get();
+	return slot.kind === "value" ? slot.value : null;
 }
 
 export async function clearTokenSetBackendModeBrowserState(
@@ -99,8 +100,8 @@ export async function clearTokenSetBackendModeBrowserState(
  * preserving full access to the BackendOidcModeClient surface.
  *
  * The wrapper is built via Proxy so every property/method of the underlying
- * client remains accessible at runtime through `service.client`. Only the
- * two contract-divergent methods are overridden:
+ * client remains accessible at runtime through the registered client object.
+ * Only the two contract-divergent methods are overridden:
  *
  * - `restorePersistedState()` runs the full browser bootstrap
  *   (fragment capture → handleCallback → persistent restore)

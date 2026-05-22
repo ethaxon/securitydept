@@ -1,5 +1,7 @@
 // --- Signal trait types ---
 
+import type { CancellationTokenTrait } from "../cancellation/types";
+
 /**
  * Read-only signal interface.
  * Semantics align with TC39 Signals proposal, but uses an SDK-owned thin protocol
@@ -30,3 +32,26 @@ export interface WritableSignalTrait<T> extends ReadableSignalTrait<T> {
  * other signals automatically.
  */
 export interface ComputedSignalTrait<T> extends ReadableSignalTrait<T> {}
+
+export type ReplaySignalSlot<T> =
+	| { kind: "empty" }
+	| { kind: "value"; value: T };
+
+export interface ReplaySignalWhenValueOptions {
+	cancellationToken?: CancellationTokenTrait;
+}
+
+export interface ReadableReplaySignalTrait<T>
+	extends ReadableSignalTrait<ReplaySignalSlot<T>> {
+	hasValue(): boolean;
+	whenValue(options?: ReplaySignalWhenValueOptions): Promise<T>;
+}
+
+export interface ComputedReplaySignalTrait<T>
+	extends ReadableReplaySignalTrait<T> {}
+
+export interface WritableReplaySignalTrait<T>
+	extends ReadableReplaySignalTrait<T> {
+	emit(value: T): void;
+	clear(): void;
+}

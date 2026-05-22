@@ -1,21 +1,24 @@
 // @vitest-environment jsdom
 
-import { createSignal, createSubject } from "@securitydept/client";
 import {
+	createReplaySignal,
+	createSignal,
+	createSubject,
+} from "@securitydept/client";
+import {
+	AuthCheckStatus,
 	type AuthSnapshot,
-	EnsureAuthForResourceStatus,
 	type TokenSetAuthEvent,
 	TokenSetAuthFlowReason,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
 	createTokenSetOidcAuthRegistry,
-	type OidcCallbackClient,
-	TokenSetAuthService,
 	TokenSetCallbackResumeController,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	CallbackResumeStatus,
 	TokenSetCallbackComponent,
+	type TokenSetReactClient,
 	useTokenSetCallbackResume,
 } from "@securitydept/token-set-context-client-react";
 import { act, createElement, type ReactElement, useEffect } from "react";
@@ -61,24 +64,26 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 }
 
 function createControllerFixture() {
-	const registry = createTokenSetOidcAuthRegistry({
-		materializeService: TokenSetAuthService.materializeService,
-		dispose: TokenSetAuthService.dispose,
-		accessTokenOf: TokenSetAuthService.accessTokenOf,
-		ensureAccessTokenOf: TokenSetAuthService.ensureAccessTokenOf,
-		ensureAuthorizationHeaderOf:
-			TokenSetAuthService.ensureAuthorizationHeaderOf,
-		ensureAuthForResourceOf: TokenSetAuthService.ensureAuthForResourceOf,
-		authEventsOf: TokenSetAuthService.authEventsOf,
+	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>({
 		idleScheduler: (callback) => {
 			const handle = setTimeout(callback, 0);
 			return () => clearTimeout(handle);
 		},
 	});
 	const state = createSignal<AuthSnapshot | null>(null);
+	const authSnapshot = createReplaySignal<AuthSnapshot | null>();
+	const isAuthenticated = createReplaySignal<boolean>();
+	const authorizationHeaderValue = createReplaySignal<string | undefined>();
+	const authDetermined = createReplaySignal<true>();
+	const lastAuthError = createSignal<unknown | undefined>(undefined);
 	const handleCallback = vi.fn(async () => {
 		const snapshot = createSnapshot("callback-token");
 		state.set(snapshot);
+		authSnapshot.emit(snapshot);
+		isAuthenticated.emit(true);
+		authorizationHeaderValue.emit("Bearer callback-token");
+		authDetermined.emit(true);
+		lastAuthError.set(undefined);
 		return {
 			snapshot,
 			postAuthRedirectUri: "/after-login",
@@ -88,22 +93,31 @@ function createControllerFixture() {
 	registry.register({
 		key: "frontend",
 		callbackPath: "/oidc/callback",
-		autoRestore: false,
 		clientFactory: () => ({
 			state,
+			authDetermined,
+			authSnapshot,
+			isAuthenticated,
+			authorizationHeaderValue,
+			lastAuthError,
+			authOperations: {
+				restorePending: createSignal(false),
+				refreshPending: createSignal(false),
+				clearPending: createSignal(false),
+				loginPending: createSignal(false),
+			},
 			authEvents: createSubject<TokenSetAuthEvent>(),
+			addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			start: vi.fn(async () => undefined),
 			dispose: vi.fn(() => undefined),
 			restorePersistedState: vi.fn(async () => null),
 			handleCallback,
-			authorizationHeader: vi.fn(() => null),
-			ensureAuthForResource: vi.fn(async () => ({
-				status: EnsureAuthForResourceStatus.Unauthenticated,
+			authCheck: vi.fn(async () => ({
+				status: AuthCheckStatus.Unauthenticated,
 				snapshot: null,
 				authorizationHeader: null,
 				reason: TokenSetAuthFlowReason.NoSnapshot,
 			})),
-			ensureFreshAuthState: vi.fn(async () => state.get()),
-			ensureAuthorizationHeader: vi.fn(async () => null),
 			loginWithRedirect: vi.fn(async () => undefined),
 		}),
 	});
@@ -111,8 +125,7 @@ function createControllerFixture() {
 	return {
 		controller: new TokenSetCallbackResumeController({
 			registry,
-			getCallbackClient: (service) =>
-				service.client as unknown as OidcCallbackClient,
+			getCallbackClient: (client) => client,
 		}),
 		handleCallback,
 		cleanup() {

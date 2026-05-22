@@ -143,7 +143,7 @@ Rust host application 应把 raw config、resolved config 与 runtime constructi
 - `mode` 只属于 `token-set-context`。
 - Session context 不是 token-set mode。
 - Route-facing services 位于 owning crates，不位于共享 auth-runtime aggregation layer。
-- App-specific chooser UI、product copy 与 business routes 属于 adopter 或 reference apps，不属于 SDK core。
+- App-specific chooser UI、product copy 与 business routes 属于 adopter 或参考应用，不属于 SDK core。
 
 ---
 

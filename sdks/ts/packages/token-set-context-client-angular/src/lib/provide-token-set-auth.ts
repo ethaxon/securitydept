@@ -37,9 +37,9 @@ export interface ProvideTokenSetAuthOptions {
 /**
  * Create Angular providers for the multi-client token-set auth integration.
  *
- * Registers all services into Angular DI so adopters can directly inject
+ * Registers all Angular integration services into DI so adopters can inject
  * `TokenSetAuthRegistry`, `CallbackResumeService`, and look up individual
- * `TokenSetAuthService` instances by key.
+ * token-set clients by key.
  *
  * ## Async client initialization
  *
@@ -47,11 +47,11 @@ export interface ProvideTokenSetAuthOptions {
  * needs to fetch a config projection from a backend endpoint), the
  * registry tracks its initialization state automatically. Guards and
  * interceptors should use `registry.whenReady(key)` to await
- * materialization before accessing the service.
+ * materialization before accessing the client.
  *
  * Adapter-managed browser clients also install token-set page-resume
  * reconciliation by default during materialization. Set
- * `resumeReconciliation: false` on an individual client entry only when the
+ * `pageResumeAuthCheck: false` on an individual client entry only when the
  * host intentionally owns equivalent browser lifecycle wiring.
  *
  * @example
@@ -80,7 +80,7 @@ export interface ProvideTokenSetAuthOptions {
  *           callbackPath: "/auth/callback",
  *           // Optional: opt out only if the host already wires equivalent
  *           // resume reconciliation for this browser client.
- *           // resumeReconciliation: false,
+ *           // pageResumeAuthCheck: false,
  *         },
  *       ],
  *     }),

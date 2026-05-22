@@ -19,15 +19,21 @@ export type {
 export { createClientEnvironment } from "./environment/index";
 // --- Errors ---
 export type {
+	ClientErrorAttributes,
+	ClientErrorRecovery,
+	ErrorAttributes,
 	ErrorPresentation,
 	ErrorPresentationActionDescriptor,
 	ErrorPresentationDescriptor,
+	NativeErrorAttributes,
 	ReadErrorPresentationDescriptorOptions,
+	UnknownErrorAttributes,
 } from "./errors/index";
 export {
 	ClientError,
 	ClientErrorKind,
 	ClientErrorSource,
+	describeError,
 	ErrorPresentationTone,
 	readErrorPresentationDescriptor,
 	UserRecovery,
@@ -53,7 +59,6 @@ export {
 	exhaustMap,
 	filter,
 	finalize,
-	fromRxObservable,
 	map,
 	merge,
 	pipe,
@@ -63,7 +68,6 @@ export {
 	takeUntil,
 	tap,
 	throttleTime,
-	toRxObservable,
 	withLatestFromSignal,
 } from "./events/index";
 // --- Identity ---
@@ -112,6 +116,7 @@ export {
 	createJsonCodec,
 	createKeyedEphemeralFlowStore,
 } from "./persistence/index";
+export { fromRxObservable, toRxObservable } from "./rx/index";
 // --- Scheduling ---
 export type {
 	CancelableHandle as SchedulerCancelableHandle,
@@ -141,15 +146,31 @@ export {
 } from "./scheduling/index";
 // --- Signals ---
 export type {
+	ComputedReplaySignalTrait,
 	ComputedSignalTrait,
+	ReadableReplaySignalTrait,
 	ReadableSignalTrait,
+	ReplaySignalSlot,
+	ReplaySignalWhenValueOptions,
+	WritableReplaySignalTrait,
 	WritableSignalTrait,
 } from "./signals/index";
 export {
+	createAndThenComputedReplaySignal,
 	createComputed,
+	createComputedReplaySignal,
+	createReplaySignal,
 	createSignal,
+	isReplaySignalTrait,
+	readonlyReplaySignal,
 	readonlySignal,
 } from "./signals/index";
+// --- Struct ---
+export type {
+	OnDemandTaskQueueOptions,
+	OnDemandTaskQueueTaskEnvelope,
+} from "./struct/index";
+export { OnDemandTaskQueue } from "./struct/index";
 // --- Transport ---
 export type {
 	HttpRequest,

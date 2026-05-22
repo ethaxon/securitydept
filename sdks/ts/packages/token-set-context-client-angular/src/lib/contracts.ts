@@ -1,4 +1,7 @@
-import type { TokenSetResumeReconciliationOptions } from "@securitydept/token-set-context-client/orchestration";
+import type {
+	PageResumeAuthCheckOptions,
+	TokenSetAuthCheckTriggerSource,
+} from "@securitydept/token-set-context-client/orchestration";
 import type {
 	ClientInitializationPriority,
 	TokenSetClientEntry as CoreTokenSetClientEntry,
@@ -71,19 +74,23 @@ export interface TokenSetClientEntry
 	clientFactory: () => TokenSetAngularClient | Promise<TokenSetAngularClient>;
 	/**
 	 * When true (default), adapter-managed browser clients install the token-set
-	 * page-resume reconciler during materialization.
+	 * page-resume auth-check trigger during materialization.
 	 *
 	 * Disable only when the host intentionally owns browser lifecycle wiring for
 	 * this client and can prove an equivalent resume trigger path.
 	 *
 	 * @default true
 	 */
-	resumeReconciliation?: boolean;
+	pageResumeAuthCheck?: boolean;
 	/**
-	 * Browser lifecycle options forwarded to the default token-set resume
-	 * reconciler when `resumeReconciliation !== false`.
+	 * Browser lifecycle options forwarded to the default token-set page-resume
+	 * auth-check trigger when `pageResumeAuthCheck !== false`.
 	 */
-	resumeReconciliationOptions?: TokenSetResumeReconciliationOptions;
+	pageResumeAuthCheckOptions?: PageResumeAuthCheckOptions;
+	/**
+	 * Additional auth-check trigger streams installed on the client.
+	 */
+	authCheckTriggerSources?: readonly TokenSetAuthCheckTriggerSource[];
 	/**
 	 * Initialization priority. Defaults to `"primary"` (eager). Set to
 	 * `"lazy"` to defer clientFactory execution until the registry is asked

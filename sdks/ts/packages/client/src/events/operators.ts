@@ -14,12 +14,9 @@ import {
 	throttleTime as rxThrottleTime,
 	withLatestFrom as rxWithLatestFrom,
 } from "rxjs/operators";
+import { fromRxObservable, toRxObservable } from "../rx";
 import type { ReadableSignalTrait } from "../signals";
-import {
-	createEventStream,
-	fromRxObservable,
-	toRxObservable,
-} from "./event-stream";
+import { createEventStream } from "./event-stream";
 import type { EventStreamTrait } from "./types";
 
 // --- Operator types ---

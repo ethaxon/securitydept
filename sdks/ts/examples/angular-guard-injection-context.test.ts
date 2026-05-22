@@ -10,6 +10,7 @@ import type {
 	RouterStateSnapshot,
 } from "@angular/router";
 import { Router } from "@angular/router";
+import { createSignal, createSubject } from "@securitydept/client";
 import type {
 	PlannerHost,
 	PlannerHostResult,
@@ -27,15 +28,12 @@ import {
 	providePageClientEnvironment,
 } from "@securitydept/client-angular";
 import {
-	EnsureAuthForResourceStatus,
-	TokenSetAuthFlowReason,
-} from "@securitydept/token-set-context-client/orchestration";
-import {
 	createTokenSetOidcLoginRedirectHandler,
 	createTokenSetRouteAggregationGuard,
 	TokenSetAuthRegistry,
 } from "@securitydept/token-set-context-client-angular";
 import { describe, expect, it, vi } from "vitest";
+import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 
 const TEST_AUTH_ACTION = new InjectionToken<() => void>("TEST_AUTH_ACTION");
 const NULL_ENVIRONMENT_INJECTOR = null as unknown as EnvironmentInjector;
@@ -92,19 +90,21 @@ describe("Angular token-set route guard injection context", () => {
 	it("runs unauthenticated handlers in the captured injector after async planner work", async () => {
 		let actionCalls = 0;
 		let attemptedUrl: string | undefined;
-		const service = {
-			isAuthenticated: () => false,
-			restorePromise: null,
-			ensureAuthForResource: vi.fn().mockResolvedValue({
-				status: EnsureAuthForResourceStatus.Unauthenticated,
-				snapshot: null,
-				authorizationHeader: null,
-				reason: TokenSetAuthFlowReason.NoSnapshot,
-			}),
+		const reactive = createTestTokenSetReactiveFields(null);
+		const client = {
+			state: createSignal(null),
+			...reactive.fields,
+			authEvents: createSubject(),
+			addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			start: vi.fn(async () => undefined),
+			dispose: vi.fn(),
+			restorePersistedState: vi.fn(async () => null),
+			handleCallback: vi.fn(),
+			loginWithRedirect: vi.fn(),
 		};
 		const registry = {
 			clientKeyListForRequirement: () => ["confluence"],
-			whenReady: async () => service,
+			whenReady: async () => client,
 			metaFor: () => ({
 				key: "confluence",
 				requirementKind: "frontend_oidc",
@@ -162,20 +162,21 @@ describe("Angular token-set route guard injection context", () => {
 	it("uses the attempted router state URL for OIDC login redirects", async () => {
 		const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
 		const environmentService = createAngularPageEnvironmentService();
-		const service = {
-			client: { loginWithRedirect },
-			isAuthenticated: () => false,
-			restorePromise: null,
-			ensureAuthForResource: vi.fn().mockResolvedValue({
-				status: EnsureAuthForResourceStatus.Unauthenticated,
-				snapshot: null,
-				authorizationHeader: null,
-				reason: TokenSetAuthFlowReason.NoSnapshot,
-			}),
+		const reactive = createTestTokenSetReactiveFields(null);
+		const client = {
+			state: createSignal(null),
+			...reactive.fields,
+			authEvents: createSubject(),
+			addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			start: vi.fn(async () => undefined),
+			dispose: vi.fn(),
+			restorePersistedState: vi.fn(async () => null),
+			handleCallback: vi.fn(),
+			loginWithRedirect,
 		};
 		const registry = {
 			clientKeyListForRequirement: () => ["confluence"],
-			whenReady: async () => service,
+			whenReady: async () => client,
 			metaFor: () => ({
 				key: "confluence",
 				requirementKind: "frontend_oidc",

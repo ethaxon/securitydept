@@ -32,8 +32,9 @@ import {
 	waitForPopupRelay,
 } from "@securitydept/client/web";
 import {
-	attachTokenSetResumeReconciliation,
-	type TokenSetResumeReconciliationOptions,
+	attachPageResumeAuthCheckTriggerSource,
+	type PageResumeAuthCheckOptions,
+	type TokenSetAuthCheckTriggerSource,
 } from "../../orchestration";
 import type {
 	OidcRedirectLoginClient,
@@ -187,8 +188,9 @@ export interface CreateBackendOidcModeWebClientOptions {
 	userInfoPath?: string;
 
 	environment: BackendOidcModeWebClientEnvironment;
-	resumeReconciliation?: boolean;
-	resumeReconciliationOptions?: TokenSetResumeReconciliationOptions;
+	pageResumeAuthCheck?: boolean;
+	pageResumeAuthCheckOptions?: PageResumeAuthCheckOptions;
+	authCheckTriggerSources?: readonly TokenSetAuthCheckTriggerSource[];
 }
 
 export interface BackendOidcModeWebClient
@@ -241,7 +243,7 @@ export function createBackendOidcModeWebClient(
 	const environment = options.environment;
 
 	return attachBackendOidcRedirectLogin(
-		attachTokenSetResumeReconciliation(
+		attachPageResumeAuthCheckTriggerSource(
 			new BackendOidcModeClient(
 				{
 					baseUrl: options.baseUrl ?? "",
@@ -256,8 +258,9 @@ export function createBackendOidcModeWebClient(
 				deriveClientEnvironment(environment),
 			),
 			{
-				resumeReconciliation: options.resumeReconciliation,
-				resumeReconciliationOptions: options.resumeReconciliationOptions,
+				pageResumeAuthCheck: options.pageResumeAuthCheck,
+				pageResumeAuthCheckOptions: options.pageResumeAuthCheckOptions,
+				authCheckTriggerSources: options.authCheckTriggerSources,
 			},
 		),
 	);

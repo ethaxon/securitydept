@@ -1,6 +1,7 @@
 import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client-react";
 import {
 	CLIENT_ENVIRONMENT_SERVICE,
+	useReadableSignal,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import { SESSION_CONTEXT_CONTROLLER } from "@securitydept/session-context-client-react";
@@ -31,15 +32,23 @@ export function LoginPage() {
 		CLIENT_ENVIRONMENT_SERVICE,
 	);
 	const basicAuthClient = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
-	const tokenSetBackendModeService = injector
-		.get(TOKEN_SET_AUTH_REGISTRY)
-		.require(TOKEN_SET_BACKEND_MODE_CLIENT_KEY);
-	const tokenSetBackendModeClient = tokenSetBackendModeService.client;
-	assertTokenSetBackendOidcClient(
-		tokenSetBackendModeClient,
-		`LoginPage token-set client ${TOKEN_SET_BACKEND_MODE_CLIENT_KEY}`,
+	const tokenSetBackendModeClientSlot = useReadableSignal(
+		injector
+			.get(TOKEN_SET_AUTH_REGISTRY)
+			.clientSignalFor(TOKEN_SET_BACKEND_MODE_CLIENT_KEY),
 	);
-	const tokenSetBackendModeHref = tokenSetBackendModeClient.authorizeUrl();
+	const tokenSetBackendModeClient =
+		tokenSetBackendModeClientSlot.kind === "value"
+			? tokenSetBackendModeClientSlot.value
+			: null;
+	if (tokenSetBackendModeClient) {
+		assertTokenSetBackendOidcClient(
+			tokenSetBackendModeClient,
+			`LoginPage token-set client ${TOKEN_SET_BACKEND_MODE_CLIENT_KEY}`,
+		);
+	}
+	const tokenSetBackendModeHref =
+		tokenSetBackendModeClient?.authorizeUrl() ?? "#";
 	const basicAuthHref =
 		basicAuthClient.loginUrlForZonePrefix("/basic") ?? "/basic/login";
 

@@ -15,6 +15,17 @@ import {
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { describe, expect, it } from "vitest";
 
+function expectReplayValue<T>(signal: {
+	get(): { kind: "empty" } | { kind: "value"; value: T };
+}): T {
+	const slot = signal.get();
+	expect(slot.kind).toBe("value");
+	if (slot.kind !== "value") {
+		throw new Error("Expected replay signal value.");
+	}
+	return slot.value;
+}
+
 // Minimal runtime stubs — just enough to construct a client.
 // In a real app, these come from the @securitydept/client runtime layer.
 const minimalRuntime = {
@@ -51,9 +62,9 @@ describe("frontend-oidc-mode minimal entry", () => {
 		const client = createFrontendOidcModeClient(minimalConfig, minimalRuntime);
 		expect(client).toBeInstanceOf(FrontendOidcModeClient);
 
-		// 2. Initially unauthenticated: state is null, no auth header.
-		expect(client.state.get()).toBeNull();
-		expect(client.authorizationHeader()).toBeNull();
+		// 2. Initially undetermined: replay auth snapshot is empty, no auth header.
+		expect(client.authSnapshot.hasValue()).toBe(false);
+		expect(client.authorizationHeaderValue.hasValue()).toBe(false);
 
 		// 3. Restore state (e.g. from SSR bootstrap or persisted storage).
 		client.restoreState({
@@ -65,25 +76,25 @@ describe("frontend-oidc-mode minimal entry", () => {
 		});
 
 		// 4. Now authenticated: state reflects tokens, auth header is set.
-		const state = client.state.get();
+		const state = expectReplayValue(client.authSnapshot);
 		expect(state).not.toBeNull();
 		expect(state?.tokens.accessToken).toBe("eyJhbGci.example.access-token");
 
-		const authHeader = client.authorizationHeader();
+		const authHeader = expectReplayValue(client.authorizationHeaderValue);
 		expect(authHeader).toBe("Bearer eyJhbGci.example.access-token");
 
 		// 5. Clean up.
 		client.dispose();
-		expect(client.state.get()).toBeNull();
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 	});
 
 	it("shows the config type import and client state signal subscription", () => {
 		const client = createFrontendOidcModeClient(minimalConfig, minimalRuntime);
 
-		// Subscribe to state changes via the signal.
+		// Subscribe to auth snapshot changes via the replay signal.
 		const observed: Array<string | null> = [];
-		const unsubscribe = client.state.subscribe(() => {
-			const snapshot = client.state.get();
+		const unsubscribe = client.authSnapshot.subscribe(() => {
+			const snapshot = expectReplayValue(client.authSnapshot);
 			observed.push(snapshot?.tokens.accessToken ?? null);
 		});
 

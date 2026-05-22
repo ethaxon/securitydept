@@ -46,15 +46,6 @@ function makeRegistry(idleScheduler?: (cb: () => void) => () => void) {
 		dispose: (service) => {
 			service.disposed = true;
 		},
-		accessTokenOf: (service) => service.accessToken,
-		ensureAccessTokenOf: async (service) => service.accessToken,
-		ensureAuthorizationHeaderOf: async (service) =>
-			service.accessToken ? `Bearer ${service.accessToken}` : null,
-		ensureAuthForResourceOf: async () => {
-			throw new Error(
-				"ensureAuthForResourceOf should not be called in this test",
-			);
-		},
 		authEventsOf: () => ({
 			subscribe: () => ({ unsubscribe() {} }),
 		}),
@@ -88,7 +79,7 @@ describe("Multi-client lazy init contract (framework-neutral)", () => {
 		expect(registered).toBeUndefined();
 		expect(factory).not.toHaveBeenCalled();
 		expect(registry.readinessState("lazy")).toBe("not_initialized");
-		expect(registry.get("lazy")).toBeUndefined();
+		expect(registry.isReady("lazy")).toBe(false);
 
 		const service = await registry.whenReady("lazy");
 		expect(factory).toHaveBeenCalledOnce();
@@ -209,8 +200,7 @@ describe("Multi-client lazy init contract (framework-neutral)", () => {
 			clientFactory: () => ({ name: "b" }),
 			priority: ClientInitializationPriority.Lazy,
 		});
-		await registry.whenReady("b");
-		const svcB = registry.get("b") as FakeService;
+		const svcB = await registry.whenReady("b");
 		registry.dispose();
 		expect(svcA.disposed).toBe(true);
 		expect(svcB.disposed).toBe(true);

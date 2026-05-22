@@ -34,7 +34,7 @@ export interface CreateFrontendOidcModeAuthorizedTransportOptions {
  * Typical usage:
  * ```ts
  * const authorizedTransport = createFrontendOidcModeAuthorizedTransport(
- *     client,   // FrontendOidcModeClient implements ensureAuthorizationHeader()
+ *     client,   // FrontendOidcModeClient exposes authorizationHeaderValue
  *     { transport: fetchTransport },
  * );
  * ```

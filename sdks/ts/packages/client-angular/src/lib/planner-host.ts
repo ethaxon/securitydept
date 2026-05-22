@@ -191,7 +191,11 @@ export const AUTH_REQUIREMENTS_CLIENT_SET = new InjectionToken<
  *         options: [{
  *           requirementId: "oidc",
  *           requirementKind: "frontend_oidc",
- *           checkAuthenticated: () => registry.require(clientKey).isAuthenticated(),
+ *           checkAuthenticated: async () => {
+ *             const client = await registry.whenReady(clientKey);
+ *             const slot = client.isAuthenticated.get();
+ *             return slot.kind === "value" ? slot.value : false;
+ *           },
  *           onUnauthenticated: () => { authService.redirectToLogin(clientKey).subscribe(); return false; },
  *         }],
  *       };

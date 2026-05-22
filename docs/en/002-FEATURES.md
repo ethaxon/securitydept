@@ -11,11 +11,11 @@ This document summarizes current SecurityDept capabilities. Use [001-ARCHITECTUR
 | OAuth resource server | Implemented bearer verification for JWT, JWE, and opaque tokens with issuer / audience / scope policy. | `securitydept-oauth-resource-server`, `securitydept-oauth-provider` |
 | Basic Auth context | Implemented Basic Auth zones, challenge / login / logout metadata, post-auth redirects, optional real-IP access policy, server integration, and browser / React / Angular helpers. | `securitydept-basic-auth-context`, `@securitydept/basic-auth-context-client*` |
 | Session context | Implemented cookie-session context, normalized principal, OIDC session service, dev-session service, server integration, and browser / React / Angular helpers. | `securitydept-session-context`, `@securitydept/session-context-client*` |
-| Token-set context | Implemented frontend/backend OIDC mode contracts, backend-mode routes, frontend-mode config projection, access-token substrate, bearer propagation, route orchestration, React / Angular adapters, and reference-app dogfooding. | `securitydept-token-set-context`, `@securitydept/token-set-context-client*` |
+| Token-set context | Implemented frontend/backend OIDC mode contracts, backend-mode routes, frontend-mode config projection, access-token substrate, bearer propagation, route orchestration, React / Angular adapters, and in-repo dogfooding. | `securitydept-token-set-context`, `@securitydept/token-set-context-client*` |
 | Real-IP resolution | Implemented trusted provider/source model for forwarded headers, PROXY protocol, local / remote / command / Docker / Kubernetes provider sources, reference-server Basic Auth policy integration, and labeled local provider-test resources. | `securitydept-realip`, `scripts/test-cli.ts` |
 | Credential management | Implemented local Basic Auth and static-token storage with lock-free reads, atomic writes, debounced watching, and self-write detection. | `securitydept-creds-manage`, `apps/cli`, `apps/server` |
-| Reference apps | Implemented Axum server, React web UI, playground/reference routes, management API auth branching, bearer propagation, and release Docker image assembly from prebuilt runtime artifacts. | `apps/server`, `apps/webui`, `Dockerfile.runtime` |
-| TypeScript SDK release surface | Implemented publishable npm package families for shared client foundation, Basic Auth, session, token-set, React, and Angular integration. | `sdks/ts/packages/*`, `public-surface-inventory.json` |
+| Reference runtime and apps | Implemented Axum server, React web UI, playground/reference routes, management API auth branching, bearer propagation, and release Docker image assembly from prebuilt runtime artifacts. | `apps/server`, `apps/webui`, `Dockerfile.runtime` |
+| TypeScript SDK public surface | Implemented publishable npm package families for shared client foundation, Basic Auth, session, token-set, React, and Angular integration. | `sdks/ts/packages/*`, `public-surface-inventory.json` |
 
 ## Current Auth-Context Baseline
 
@@ -25,7 +25,7 @@ SecurityDept currently treats these as the product auth-context surfaces:
 - Session context: backend-owned session state with HTTP-only cookie flow.
 - Token-set context: browser / backend OIDC mode contracts with access-token substrate and framework adapters.
 
-Token-set is intentionally richer than Basic Auth and session. Basic Auth and session should remain discoverable and tested, but they should not grow into parallel large frontend runtimes unless repeated adopter evidence proves the need.
+Token-set is intentionally richer than Basic Auth and session. Basic Auth and session should remain discoverable and tested, but they should not grow into parallel large frontend runtimes unless repeated downstream use proves the need.
 
 ## Reference Server Behavior
 
@@ -41,7 +41,7 @@ The reference server validates combined behavior through:
 
 ## Known Boundaries
 
-These topics are recognized but not part of the current product baseline:
+These topics are recognized but not part of the current baseline:
 
 - mixed-custody token ownership
 - full BFF / server-side token-set ownership

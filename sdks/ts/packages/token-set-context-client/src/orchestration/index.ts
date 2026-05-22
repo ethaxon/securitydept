@@ -17,19 +17,24 @@
 // Stability: provisional (additive, freezing-in-progress; not yet promoted to stable).
 // Not a separate npm package — extraction path is clear if warranted later.
 
+export type {
+	ClientErrorAttributes,
+	ClientErrorRecovery,
+	ErrorAttributes,
+	NativeErrorAttributes,
+	UnknownErrorAttributes,
+} from "@securitydept/client";
+export { describeError } from "@securitydept/client";
 // Base client: shared lifecycle infrastructure for mode-specific clients.
 export type {
+	AuthCheckOptions,
+	AuthCheckResult,
 	BaseOidcModeClientOptions,
-	EnsureAuthForResourceOptions,
-	EnsureAuthForResourceRequirement,
-	EnsureAuthForResourceResult,
-	EnsureAuthorizationHeaderOptions,
-	EnsureFreshAuthStateOptions,
+	TokenSetAuthOperationSignals,
 } from "./client/base-client";
 export {
+	AuthCheckStatus,
 	BaseOidcModeClient,
-	describeError,
-	EnsureAuthForResourceStatus,
 	StateRestoreSourceKind,
 } from "./client/base-client";
 export type {
@@ -47,6 +52,17 @@ export {
 	TokenSetAuthFlowReason,
 	TokenSetAuthFlowSource,
 } from "./events/auth-events";
+export type {
+	AttachPageResumeAuthCheckTriggerSourceOptions,
+	PageResumeAuthCheckOptions,
+	TokenSetAuthCheckTriggerClient,
+	TokenSetAuthCheckTriggerEvent,
+	TokenSetAuthCheckTriggerSource,
+} from "./state/auth-check-triggers";
+export {
+	attachPageResumeAuthCheckTriggerSource,
+	createPageResumeAuthCheckTriggerSource,
+} from "./state/auth-check-triggers";
 // Controller: thin lifecycle layer that composes state + persistence + transport.
 export type {
 	ApplyDeltaOptions,
@@ -60,16 +76,6 @@ export type {
 	CreateAuthStatePersistenceOptions,
 } from "./state/persistence";
 export { createAuthStatePersistence } from "./state/persistence";
-export type {
-	AttachTokenSetResumeReconciliationOptions,
-	TokenSetResumeReconciliationClient,
-	TokenSetResumeReconciliationOptions,
-} from "./state/resume-reconciliation";
-export {
-	attachTokenSetResumeReconciliation,
-	createTokenSetResumeReconciler,
-	shouldReconcileTokenSetSnapshot,
-} from "./state/resume-reconciliation";
 export type {
 	CreateTokenHandleStoreOptions,
 	IssueTokenHandleOptions,
@@ -102,12 +108,11 @@ export type {
 } from "./token/types";
 export { AuthSourceKind } from "./token/types";
 export type {
-	AsyncBearerHeaderProvider,
-	AuthForResourceProvider,
 	AuthorizationHeaderProviderTrait,
 	BearerHeaderProvider,
 	CreateAuthorizedTransportOptions,
 	CreateRemappingAuthorizedTransportOptions,
+	ReplayBearerHeaderProvider,
 } from "./transport/auth-transport";
 export {
 	createAuthorizedTransport,

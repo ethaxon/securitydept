@@ -2,8 +2,8 @@ export {
 	createEventStream,
 	createReplaySubject,
 	createSubject,
-	fromRxObservable,
-	toRxObservable,
+	fromEventRxObservable,
+	toEventRxObservable,
 } from "./event-stream";
 export {
 	concatMap,

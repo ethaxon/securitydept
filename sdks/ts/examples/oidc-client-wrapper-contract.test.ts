@@ -22,6 +22,17 @@ import type {
 import { FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { describe, expect, it, vi } from "vitest";
 
+function expectReplayValue<T>(signal: {
+	get(): { kind: "empty" } | { kind: "value"; value: T };
+}): T {
+	const slot = signal.get();
+	expect(slot.kind).toBe("value");
+	if (slot.kind !== "value") {
+		throw new Error("Expected replay signal value.");
+	}
+	return slot.value;
+}
+
 // Minimal runtime stub for tests that don't make real requests
 function createTestRuntime() {
 	const sessionStore = createInMemoryRecordStore();
@@ -158,7 +169,7 @@ describe("FrontendOidcModeClient / token result shape contract", () => {
 // ---------------------------------------------------------------------------
 
 describe("FrontendOidcModeClient / lifecycle", () => {
-	it("exposes a state signal initialized to null", () => {
+	it("exposes an initially empty auth snapshot replay signal", () => {
 		const client = new FrontendOidcModeClient(
 			{
 				issuer: "https://auth.example.com",
@@ -168,10 +179,10 @@ describe("FrontendOidcModeClient / lifecycle", () => {
 			createTestRuntime(),
 		);
 
-		expect(client.state.get()).toBeNull();
+		expect(client.authSnapshot.hasValue()).toBe(false);
 	});
 
-	it("state becomes null after dispose", () => {
+	it("auth snapshot becomes null after dispose", () => {
 		const client = new FrontendOidcModeClient(
 			{
 				issuer: "https://auth.example.com",
@@ -182,7 +193,7 @@ describe("FrontendOidcModeClient / lifecycle", () => {
 		);
 
 		client.dispose();
-		expect(client.state.get()).toBeNull();
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 	});
 
 	it("throws on operations after dispose", () => {
@@ -214,7 +225,7 @@ describe("FrontendOidcModeClient / lifecycle", () => {
 			createTestRuntime(),
 		);
 
-		expect(client.authorizationHeader()).toBeNull();
+		expect(client.authorizationHeaderValue.hasValue()).toBe(false);
 	});
 });
 

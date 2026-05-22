@@ -23,15 +23,12 @@ import {
 	type PageClientEnvironmentSource,
 	resolvePageClientEnvironmentSource,
 } from "@securitydept/client-angular";
-import {
-	type AuthSnapshot,
-	TokenSetAuthFlowSource,
-} from "@securitydept/token-set-context-client/orchestration";
 import type {
 	OidcRedirectLoginClient,
 	OidcRedirectLoginOptions,
 } from "@securitydept/token-set-context-client/registry";
 import { firstValueFrom, from, switchMap, take } from "rxjs";
+import type { TokenSetAngularClient } from "./contracts";
 import type { UnauthenticatedEntry } from "./guard-types";
 import type { ClientMeta, ClientQueryOptions } from "./token-set-auth.registry";
 import { TokenSetAuthRegistry } from "./token-set-auth.registry";
@@ -409,7 +406,7 @@ export function createTokenSetRouteAggregationGuard(
 					// async clientFactory is still in-flight when the guard first
 					// fires, we block here until it materializes rather than
 					// crashing or silently bypassing auth.
-					service: await registry.whenReady(key),
+					client: await registry.whenReady(key),
 					clientKey: key,
 					meta: registry.metaFor(key) as ClientMeta,
 				})),
@@ -438,12 +435,12 @@ export function createTokenSetRouteAggregationGuard(
 			label: resolvedRequirement.requirement.label,
 			attributes: resolvedRequirement.requirement.attributes,
 			checkAuthenticated: () =>
-				resolvedRequirement.entries.every(({ service }) =>
-					readServiceAuthentication(service),
+				resolvedRequirement.entries.every(({ client }) =>
+					readClientAuthentication(client),
 				),
 			onUnauthenticated: async (): Promise<boolean | string> => {
 				const failing = resolvedRequirement.entries.filter(
-					({ service }) => !readServiceAuthentication(service),
+					({ client }) => !readClientAuthentication(client),
 				);
 				const handler =
 					options.requirementPolicies?.[resolvedRequirement.requirement.id]
@@ -479,7 +476,7 @@ export function createTokenSetRouteAggregationGuard(
 					_resolved: ResolvedRequirementEntry;
 				};
 				const failing = candidate._resolved.entries.filter(
-					({ service }) => !readServiceAuthentication(service),
+					({ client }) => !readClientAuthentication(client),
 				);
 				// Handler resolution: policy > kind handler > default
 				const handler =
@@ -505,31 +502,12 @@ export function createTokenSetRouteAggregationGuard(
 			return false;
 		};
 
-		// ── Restore-aware: wait for all pending restores ─────────────────────
-		const pendingRestores = deduped
+		// ── Restore-aware: wait for pending initial auth determination ───────
+		const pendingAuthDeterminations = deduped
 			.flatMap((r) => r.entries)
-			.map(({ service }) => service.restorePromise)
-			.filter((p): p is Promise<AuthSnapshot | null> => p !== null);
+			.map(({ client }) => waitForInitialAuthDetermination(client));
 		async function awaitAuthMaterial(): Promise<void> {
-			await Promise.all(pendingRestores);
-			const freshnessBarriers = deduped
-				.flatMap((r) =>
-					r.entries.map((entry) => ({
-						...entry,
-						requirement: r.requirement,
-					})),
-				)
-				.map(({ service, clientKey, meta, requirement }) =>
-					service.ensureAuthForResource({
-						source: TokenSetAuthFlowSource.RouteGuard,
-						clientKey,
-						requirement: { id: requirement.id, kind: requirement.kind },
-						providerFamily: meta.providerFamily,
-						url: state.url,
-						forceRefreshWhenDue: true,
-					}),
-				);
-			await Promise.all(freshnessBarriers);
+			await Promise.all(pendingAuthDeterminations);
 		}
 
 		if (deduped.every((r) => r.entries.length === 0)) {
@@ -547,21 +525,46 @@ export function createTokenSetRouteAggregationGuard(
 	};
 }
 
-function readServiceAuthentication(service: {
+function readAuthenticationChannel(source: {
 	isAuthenticated: unknown;
 }): boolean {
 	if (
-		typeof service.isAuthenticated === "object" &&
-		service.isAuthenticated !== null &&
-		"get" in service.isAuthenticated &&
-		typeof service.isAuthenticated.get === "function"
+		typeof source.isAuthenticated === "object" &&
+		source.isAuthenticated !== null &&
+		"get" in source.isAuthenticated &&
+		typeof source.isAuthenticated.get === "function"
 	) {
-		return service.isAuthenticated.get() as boolean;
+		const value = source.isAuthenticated.get();
+		if (
+			typeof value === "object" &&
+			value !== null &&
+			"kind" in value &&
+			(value.kind === "empty" || value.kind === "value")
+		) {
+			if (value.kind === "empty") return false;
+			if (!("value" in value)) return false;
+			return Boolean(value.value);
+		}
+		return Boolean(value);
 	}
-	if (typeof service.isAuthenticated === "function") {
-		return service.isAuthenticated();
+	if (typeof source.isAuthenticated === "function") {
+		return source.isAuthenticated();
 	}
-	return Boolean(service.isAuthenticated);
+	return Boolean(source.isAuthenticated);
+}
+
+function readClientAuthentication(
+	client: Pick<TokenSetAngularClient, "isAuthenticated">,
+): boolean {
+	return readAuthenticationChannel(client);
+}
+
+async function waitForInitialAuthDetermination(
+	client: TokenSetAngularClient,
+): Promise<void> {
+	if (client.authDetermined.hasValue()) return;
+	if (!client.authOperations.restorePending.get()) return;
+	await client.authDetermined.whenValue();
 }
 
 function runUnauthenticatedHandlerInContext(
@@ -623,13 +626,13 @@ export function createTokenSetOidcLoginRedirectHandler(
 		);
 
 		const registry = inject(TokenSetAuthRegistry);
-		const service = await registry.whenReady(clientKey);
-		if (!isLoginWithRedirectClient(service.client)) {
+		const client = await registry.whenReady(clientKey);
+		if (!isLoginWithRedirectClient(client)) {
 			failMissingOidcRedirectLoginCapability(clientKey);
 		}
 		const environment = await environmentPromise;
 
-		await service.client.loginWithRedirect({
+		await client.loginWithRedirect({
 			environment,
 			postAuthRedirectUri:
 				context.attemptedUrl || options?.fallbackPostAuthRedirectUri || "/",

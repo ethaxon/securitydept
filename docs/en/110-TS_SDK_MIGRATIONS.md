@@ -42,7 +42,7 @@ Migration:
 
 - Wrap React subtrees with `SecuritydeptProvider`; pass a ready-made `injector`, or derive a child injector from `providers` / `parentInjector`.
 - Replace `XxxContextProvider` / `useXxxContext()` with `useSecuritydeptContext().get(TOKEN)`.
-- Replace `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` with `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` followed by `useReadableSignal(registry.require(key).state)` or `useReadableSignal(registry.state)`.
+- Replace `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` with `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` followed by `useReadableSignal(registry.clientSignalFor(key))`, then read the returned client's replay channels. For aggregate registry topology, use `useReadableSignal(registry.state)`.
 - Replace basic-auth / session provider-first composition with `create*()` + `provide*()`. For token-set multi-client React composition, register `provideTokenSetAuthRegistry({ clients })` and add `provideTokenSetCallbackResumeController(registry)` only when the host explicitly needs callback resume wiring.
 
 ### Token-Set React Registry Composition
@@ -109,19 +109,22 @@ Packages:
 
 Change:
 
-- Token-set clients now expose `authEvents` and `ensureAuthForResource(options)` as the canonical async route/request/resume barrier.
-- `ensureFreshAuthState()` and `ensureAuthorizationHeader()` remain compatibility wrappers, but new adapter code should pass an explicit source such as `route_guard`, `resume`, `http_interceptor`, or `authorized_transport`.
-- Authorization-header events may include an opaque temporary token handle descriptor. They must not include raw access, refresh, or ID token values.
+- Token-set clients now expose replay channels as the canonical consumer API: `authDetermined`, `authSnapshot`, `isAuthenticated`, and `authorizationHeaderValue`.
+- The old imperative helpers `ensureAuthForResource()`, `ensureFreshAuthState()`, `ensureAuthorizationHeader()`, and registry-level `ensureAccessToken()` / `ensureAuthorizationHeader()` / `ensureAuthForResource()` have been removed.
+- `authCheck(options?)` remains as the single advanced maintenance entry for callers that explicitly want to trigger one serialized auth check; it is not the route guard, transport, interceptor, or UI read path.
+- Auth lifecycle events do not expose raw access, refresh, or ID token values. Authorization-header availability is represented by the authenticated snapshot and header projection, not by separate header terminal events.
 
 Migration:
 
-- Prefer `ensureAuthForResource({ source, forceRefreshWhenDue: true })` for route admission and resume recovery.
-- Prefer `ensureAuthForResource({ source, needsAuthorizationHeader: true, forceRefreshWhenDue: true })` before protected HTTP requests.
+- First-screen readiness should wait for `authDetermined.whenValue()`.
+- Stable UI should read `authSnapshot`; route guards and router adapters should wait for `isAuthenticated.whenValue()`.
+- HTTP transports and interceptors should wait for `authorizationHeaderValue.whenValue()` and treat `undefined` according to their `requireAuthorization` / fallback policy.
+- Use `registry.whenReady(key?)` or `registry.clientSignalFor(key?)` to acquire a started client; do not add registry-level token sugar in host code.
 - Subscribe to `authEvents` for lifecycle telemetry instead of inferring auth flow state from redirects, thrown errors, or raw token values.
 
 Justification:
 
-- Short access-token lifetimes need one shared refresh barrier across restore, resume, routes, interceptors, generic transports, and React Query instead of adapter-local freshness patches.
+- Splitting consumer reads from explicit maintenance avoids route/interceptor side effects, makes lazy registry lifecycle explicit, and keeps UI slices independent instead of forcing every consumer through one composite imperative state machine.
 
 ### Angular Token-Set Bearer Interceptor: `strictUrlMatch`
 
@@ -274,24 +277,25 @@ Packages:
 Change:
 
 - Canonical registry lifecycle verbs are now `register(entry)`, `unregister(key)`, `resetMaterialization(key)`, and `dispose()`.
-- The registry now exposes separate configured-vs-materialized observability: `has()` / `registeredKeys()` / `registeredEntriesSnapshot()` / `registeredMetaSnapshot()` describe registered entries, while `readyKeys()` / `readyEntriesSnapshot()` describe materialized services.
-- The React token-set composition root is now `createTokenSetAuthRuntime({ clients })` + `provideTokenSetAuthRuntime(runtime)`; runtime add/remove/reset flows should use the injected registry instance rather than `TokenSetAuthProvider` or hidden lookup hooks. Angular `TokenSetAuthRegistry` now exposes the same lifecycle verbs and registered/ready snapshots as the shared core.
+- The registry now exposes separate configured-vs-ready observability: `has()` / `registeredKeys()` / `registeredEntriesSnapshot()` / `registeredMetaSnapshot()` describe registered entries, while `readyKeys()` describes clients whose materialization and `start()` lifecycle have completed.
+- React token-set composition is now registry-first: register `provideTokenSetAuthRegistry(...)` at the composition root, add `provideTokenSetCallbackResumeController(...)` only when callback resume handling is needed, and perform add/remove/reset flows through the injected registry instance rather than `TokenSetAuthProvider` or hidden lookup hooks. Angular `TokenSetAuthRegistry` now exposes the same lifecycle verbs, registered snapshots, ready keys, and `clientSignalFor()` acquisition as the shared core.
 
 Migration:
 
 - Replace old `reset(key)` calls that meant “remove this client registration” with `unregister(key)`.
 - Replace old retry/recreate flows that re-register the same key after failure with `resetMaterialization(key)` followed by `whenReady(key)`.
-- For management UIs or diagnostics, use the registered snapshots for configured rows and the ready snapshots for live service state; do not treat ready-only keys as the source of truth for configured clients.
-- In React hosts, do not expect prop changes to reconcile the token-set runtime automatically. Use `useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` or a retained runtime/registry reference for runtime lifecycle changes.
+- For management UIs or diagnostics, use the registered snapshots for configured rows, `readyKeys()` for started-client membership, and `clientSignalFor(key)` / `whenReady(key)` for live client access; do not treat ready-only keys as the source of truth for configured clients.
+- In React hosts, do not expect prop changes to reconcile token-set registration automatically. Use `useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` or another retained registry reference for runtime lifecycle changes.
 
 Justification:
 
 - The old `reset(key)` wording mixed two different operations: removing a registration and invalidating one materialized service instance. Splitting the verbs makes async invalidation race-safe, keeps stale materialization from repopulating removed state, and gives hosts an explicit registered-vs-ready management surface.
 
-### Token-Set Core Signal State And Canonical Rx Bridge
+### Token-Set Client Replay State And Registry Client Materialization
 
 Packages:
 
+- `@securitydept/client`
 - `@securitydept/client/rx`
 - `@securitydept/client-angular`
 - `@securitydept/token-set-context-client/registry`
@@ -301,61 +305,28 @@ Packages:
 Change:
 
 - `TokenSetAuthRegistry.state`, `getState()`, and `subscribe()` are now the canonical topology/readiness observation surface. Snapshot helpers remain, but they are synchronous convenience over `state.get()`.
-- `TokenSetAuthService` now lives under `@securitydept/token-set-context-client/registry` as the shared per-client auth material owner. Its `state` owns snapshot, derived token material, freshness, restore lifecycle, and disposed state.
-- React and Angular adapters no longer own separate business-state implementations for token freshness, access-token derivation, or auto-restore. React hooks and Angular bridges read the shared core service/registry state instead.
+- `@securitydept/client` now provides replay signal primitives: `createReplaySignal()`, `createComputedReplaySignal()`, `createAndThenComputedReplaySignal()`, `readonlyReplaySignal()`, `isReplaySignalTrait()`, and `ReplaySignalSlot<T>`.
+- `ReadableReplaySignalTrait` uses `get()` for type-safe synchronous slot reads and `whenValue({ cancellationToken })` for cancellable asynchronous value waits. The previous synchronous `value()` / `requireValue()` convenience methods are intentionally not part of the public replay signal contract because they cannot distinguish empty from `value(undefined)`.
+- Registry-managed OIDC mode clients now expose canonical per-client auth channels: replay channels for `authDetermined`, `authSnapshot`, `isAuthenticated`, and `authorizationHeaderValue`; plain signals for `lastAuthError` and `authOperations.*Pending`.
+- `TokenSetAuthService` has been removed from the public token-set registry, React, and Angular surfaces. The default `createTokenSetOidcAuthRegistry()` materializes the mode client itself, so `registry.whenReady()`, `registry.clientSignalFor()`, React Query readiness, and Angular registry lookups return clients.
+- Registry-managed clients are explicit long-running state machines. Direct client creation defaults to not started; pass `autoStart: true` only for direct creation paths that should start immediately. Registry entries do not accept `autoStart` or `autoRestore`; the registry materializes clients and calls `client.start()` through its start hook.
+- `registry.whenReady()` and `registry.clientSignalFor()` may omit the key only when exactly one client is registered. Omitted-key calls wait for lazy materialization and `start()` completion instead of only inspecting ready clients.
+- React and Angular adapters no longer own separate business-state implementations for token freshness, access-token derivation, or auto-restore. They read the mode client replay channels and only perform host integration.
 - `@securitydept/client/rx` is now the canonical RxJS bridge for both `ReadableSignalTrait` and `EventStreamTrait`. `signalToObservable` is no longer exported from `@securitydept/client-angular`; Angular keeps `bridgeToAngularSignal()` only.
 
 Migration:
 
-- Observe registry topology and readiness through `registry.state`, `registry.getState()`, or `registry.subscribe()`; use `registeredKeys()` / `readyKeys()` / snapshot helpers only as synchronous convenience.
-- If host code depended on adapter-local token-set service state machines, migrate that logic to the shared `TokenSetAuthService` contract from `@securitydept/token-set-context-client/registry` and treat React/Angular service wrappers as host bridges.
+- Observe registry topology and readiness through `registry.state`, `registry.getState()`, or `registry.subscribe()`; use `registeredKeys()` / `readyKeys()` / registered snapshot helpers only as synchronous convenience.
+- If host code depended on adapter-local token-set service state machines or `TokenSetAuthService`, migrate to the mode client channels directly: first-screen readiness uses `authDetermined`, stable UI uses `authSnapshot`, route guards use `isAuthenticated`, HTTP uses `authorizationHeaderValue`, and button locks use `authOperations.*Pending`.
+- Replace synchronous service-wrapper access such as `registry.require(key).client` with `await registry.whenReady(key)` in async setup, or `useReadableSignal(registry.clientSignalFor(key))` in reactive hosts.
+- In multi-client hosts, pass an explicit registry key to `whenReady(key)` and `clientSignalFor(key)`. Keep omitted-key usage only for true single-client hosts.
 - Replace `import { signalToObservable } from "@securitydept/client-angular"` with `import { toRxObservable } from "@securitydept/client/rx"`.
-- In React hosts that need aggregate registry reactivity, use `useReadableSignal(registry.state)` instead of maintaining an app-local mirror store for registered/ready keys.
+- In Angular hosts that need RxJS values for auth state, call `toRxObservable(client.authSnapshot)` or another client replay signal. Replay signal observables do not emit before the first value and replay the last value to late subscribers.
+- In React hosts that need aggregate registry reactivity, use `useReadableSignal(registry.state)` instead of maintaining an app-local mirror store for registered/ready keys. For per-client auth, read the client replay signals instead of creating service hooks.
 
 Justification:
 
-- This keeps framework-neutral core signal state as the single authority, removes duplicated adapter-local state machines, and makes the RxJS bridge framework-neutral instead of Angular-owned.
-
-### Token-Set Registry Explicit Service Wiring
-
-Packages:
-
-- `@securitydept/token-set-context-client/registry`
-- `@securitydept/token-set-context-client-react`
-- `@securitydept/token-set-context-client-angular`
-
-Change:
-
-- `CreateTokenSetAuthRegistryOptions` is now explicit-only. `dispose`, `accessTokenOf`, `ensureAccessTokenOf`, `ensureAuthorizationHeaderOf`, `ensureAuthForResourceOf`, `authEventsOf`, and `idleScheduler` are required instead of optional.
-- `createTokenSetOidcAuthRegistry(...)` no longer performs shape-based fallback wiring. Callers must provide `materializeService` and every other registry capability mapping explicitly.
-- `TokenSetAuthService` now exposes same-name static helpers for the canonical OIDC-backed wiring path: `materializeService`, `dispose`, `accessTokenOf`, `ensureAccessTokenOf`, `ensureAuthorizationHeaderOf`, `ensureAuthForResourceOf`, and `authEventsOf`.
-
-Migration:
-
-- When constructing `createTokenSetAuthRegistry(...)`, always pass a complete option object even in tests or single-client hosts.
-- When constructing `createTokenSetOidcAuthRegistry(...)`, stop relying on omitted options to infer service capabilities from runtime shape.
-- For the shared core `TokenSetAuthService`, prefer the static helpers directly:
-
-```ts
-const registry = createTokenSetOidcAuthRegistry({
-	materializeService: TokenSetAuthService.materializeService,
-	dispose: TokenSetAuthService.dispose,
-	accessTokenOf: TokenSetAuthService.accessTokenOf,
-	ensureAccessTokenOf: TokenSetAuthService.ensureAccessTokenOf,
-	ensureAuthorizationHeaderOf:
-		TokenSetAuthService.ensureAuthorizationHeaderOf,
-	ensureAuthForResourceOf: TokenSetAuthService.ensureAuthForResourceOf,
-	authEventsOf: TokenSetAuthService.authEventsOf,
-	idleScheduler: (callback) => {
-		const handle = setTimeout(callback, 0);
-		return () => clearTimeout(handle);
-	},
-});
-```
-
-Justification:
-
-- Hidden shape checks made registry behavior depend on what methods happened to exist on a service instance at runtime. Requiring every mapping up front makes the contract auditable, avoids silent capability drift, and keeps adapter wiring obvious at the call site.
+- This keeps the mode client as the single per-client auth authority, removes duplicated adapter-local/service state machines, avoids compressing unrelated UI states into one phase enum, and makes the RxJS bridge framework-neutral instead of Angular-owned.
 
 ## Current Non-Goals
 

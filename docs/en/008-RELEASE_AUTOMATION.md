@@ -1,10 +1,10 @@
 # Release Automation
 
-This document is the detailed authority for SecurityDept release automation. It expands the short rules in [AGENTS.md](../../AGENTS.md) and defines how local release commands, versioning, and GitHub workflows are expected to behave.
+This document is the operational reference for SecurityDept release automation. It expands the short rules in [AGENTS.md](../../AGENTS.md) and defines how local release commands, versioning, and GitHub workflows are expected to behave.
 
 ## Scope
 
-The release authority is split into two layers only:
+Only two checked-in authorities define release behavior:
 
 - [`securitydept-metadata.toml`](../../securitydept-metadata.toml) is the checked-in source of truth for the project version and the set of release-managed manifests.
 - [`scripts/release-cli.ts`](../../scripts/release-cli.ts) is the only supported entrypoint for version changes, npm publishing, crates publishing, and Docker tag calculation.
@@ -38,12 +38,9 @@ Release channels are inferred from the version, not passed manually.
 | `X.Y.Z-beta.N` | release-candidate track | `rc` | `rc` |
 | `X.Y.Z` | stable | `latest` | `latest`, `release` |
 
-Rationale:
+Notes:
 
-- `latest` is the standard stable npm/container convention.
-- `nightly` is a clear signal that alpha builds are still fast-moving and not for default consumption.
-- `rc` is a better external signal than `beta` for publish channels because it tells downstream users the build is pre-release but intended for release validation.
-- stable container images also publish `release` as an explicit stable alias for human-facing deployment references, while `latest` remains the default ecosystem convention.
+`latest` remains the standard stable npm/container convention. `nightly` makes the alpha track visibly non-default. `rc` communicates release-validation intent more clearly than exposing `beta` as the publish channel. Stable container images also publish `release` as an explicit human-facing alias while `latest` remains the default ecosystem convention.
 
 ## Release CLI Commands
 
@@ -113,7 +110,8 @@ Release-related workflows must follow these rules:
 
 - active workflow entrypoints are limited to `.github/workflows/docs.yml`, `.github/workflows/tests.yml`, and `.github/workflows/release.yml`.
 - `tests.yml` owns repository verification. It runs on `main`, `release`, `v*.*.*` tags, pull requests to `main`, and manual dispatch. It writes `tests-workflow-report` so release runs can be audited against the source SHA they depend on. After every successful `release` branch push run, `tests.yml` dispatches `.github/workflows/release.yml` through `workflow_dispatch` with explicit source ref/SHA and publish toggles.
-- `release.yml` is the only release/build/publish authority. It only starts through `workflow_dispatch` because crates.io trusted publishing does not support the `workflow_run` trigger event; the automated path must therefore be a post-Tests dispatch instead of requesting OIDC from `workflow_run`.
+- `release.yml` is the only release/build/publish entrypoint. It starts through `workflow_dispatch` only.
+- Background: crates.io trusted publishing does not support the `workflow_run` trigger event, so the automated path must dispatch `release.yml` after a successful `tests.yml` run instead of requesting OIDC from `workflow_run`.
 - `release.yml` owns the source publish gate: it resolves the source with `release-cli workflow release-plan`, runs `release-cli version check`, compares the checked-in version to the expected tag, and verifies tag or `release` branch source lineage before any publish job can run.
 - `release` branch publish is the primary automated path. Its expected tag policy is `create-after-publish`: `release-plan` and `validate-release-ref` report the expected tag status, a missing expected tag is allowed before publish, and an existing expected tag must already point to the selected source SHA or the release fails before publishing.
 - After all selected publish jobs succeed, the `release-tag` job creates and pushes the expected `vX.Y.Z[-alpha.N|-beta.N]` tag for `release` branch sources. On the release branch path, the tag is the release result and audit anchor; auditing or retrying a tag or another source requires manually dispatching `release.yml` and passing the same release gate.
@@ -133,7 +131,7 @@ Release-related workflows must follow these rules:
 - Docker tag calculation still comes from `release-cli docker publish --format=github-output` and feeds the resulting tags/labels directly into `docker/build-push-action`. When the source is `refs/heads/release`, Docker tag calculation uses `refs/tags/<expected-tag>` so release-branch publishes also produce the version and channel tags (`vX.Y.Z...`, `vX.Y`, `vX`, `rc` / `nightly` / `latest`) plus the immutable `sha-*` tag.
 - standalone npm, crates, Docker, and common-CI workflows are not active release entrypoints. Reintroducing one requires updating this document and moving trusted-publisher bindings deliberately.
 
-Cache and artifact rules:
+## Cache And Artifact Rules
 
 - pnpm and Rust setup/cache behavior is owned by repo-local composite actions under `.github/actions/`.
 - pnpm cache modes are explicit: `read-write`, `read-only`, and `none`. The stable restore key is `pnpm-store-${runner.os}-${hashFiles(lockfile)}`; only one job in a workflow topology may be the read-write owner for that key.

@@ -1,10 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-	createDefaultIdleScheduler,
-	createSignal,
-	createSubject,
-} from "@securitydept/client";
+import { createSignal, createSubject } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useReadableSignal,
@@ -14,15 +10,7 @@ import type {
 	AuthSnapshot,
 	TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
-import {
-	EnsureAuthForResourceStatus,
-	TokenFreshnessState,
-	TokenSetAuthFlowReason,
-} from "@securitydept/token-set-context-client/orchestration";
-import {
-	TokenSetAuthService as CoreTokenSetAuthService,
-	createTokenSetAuthRegistry,
-} from "@securitydept/token-set-context-client/registry";
+import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
 	type ReactRegistry,
@@ -33,6 +21,7 @@ import {
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
+import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
@@ -64,36 +53,18 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 function createClient(
 	state: ReturnType<typeof createSignal<AuthSnapshot | null>>,
 ) {
+	const reactive = createTestTokenSetReactiveFields(state.get());
+	state.subscribe(() => reactive.emitSnapshot(state.get()));
 	return {
-		state,
+		...reactive.fields,
 		authEvents: createSubject<TokenSetAuthEvent>(),
-		dispose: () => state.set(null),
-		restorePersistedState: async () => state.get(),
-		authorizationHeader: () =>
-			`Bearer ${state.get()?.tokens.accessToken ?? ""}`,
-		ensureAuthForResource: async () => {
-			const snapshot = state.get();
-			if (!snapshot) {
-				return {
-					status: EnsureAuthForResourceStatus.Unauthenticated,
-					snapshot: null,
-					authorizationHeader: null,
-					reason: TokenSetAuthFlowReason.NoSnapshot,
-				};
-			}
-
-			return {
-				status: EnsureAuthForResourceStatus.Authenticated,
-				snapshot,
-				freshness: TokenFreshnessState.Fresh,
-				authorizationHeader: `Bearer ${snapshot.tokens.accessToken}`,
-			};
+		addAuthCheckTriggerSource: () => ({ unsubscribe: () => undefined }),
+		start: async () => undefined,
+		dispose: () => {
+			state.set(null);
+			reactive.emitSnapshot(null);
 		},
-		ensureFreshAuthState: async () => state.get(),
-		ensureAuthorizationHeader: async () =>
-			state.get()?.tokens.accessToken
-				? `Bearer ${state.get()?.tokens.accessToken}`
-				: null,
+		restorePersistedState: async () => state.get(),
 		handleCallback: async () => ({ snapshot: state.get()! }),
 		loginWithRedirect: async () => undefined,
 	};
@@ -102,20 +73,7 @@ function createClient(
 function createManualRegistry(
 	clients: readonly TokenSetClientEntry[],
 ): ReactRegistry {
-	const registry = createTokenSetAuthRegistry<
-		TokenSetReactClient,
-		CoreTokenSetAuthService<TokenSetReactClient>
-	>({
-		materialize: CoreTokenSetAuthService.materializeService,
-		dispose: CoreTokenSetAuthService.dispose,
-		accessTokenOf: CoreTokenSetAuthService.accessTokenOf,
-		ensureAccessTokenOf: CoreTokenSetAuthService.ensureAccessTokenOf,
-		ensureAuthorizationHeaderOf:
-			CoreTokenSetAuthService.ensureAuthorizationHeaderOf,
-		ensureAuthForResourceOf: CoreTokenSetAuthService.ensureAuthForResourceOf,
-		authEventsOf: CoreTokenSetAuthService.authEventsOf,
-		idleScheduler: createDefaultIdleScheduler(),
-	});
+	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>();
 
 	for (const client of clients) {
 		const registration = registry.register(client);
@@ -128,7 +86,7 @@ function createManualRegistry(
 }
 
 describe("react multi-client registry baseline", () => {
-	it("surfaces multiple keyed services through SecuritydeptProvider", async () => {
+	it("surfaces multiple keyed clients through SecuritydeptProvider", async () => {
 		const mainState = createSignal<AuthSnapshot | null>(
 			createSnapshot("main-at"),
 		);
@@ -138,12 +96,10 @@ describe("react multi-client registry baseline", () => {
 		const registry = createManualRegistry([
 			{
 				key: "main",
-				autoRestore: false,
 				clientFactory: () => createClient(mainState),
 			},
 			{
 				key: "admin",
-				autoRestore: false,
 				clientFactory: () => createClient(adminState),
 			},
 		]);
@@ -152,12 +108,37 @@ describe("react multi-client registry baseline", () => {
 
 		function Probe() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const main = useReadableSignal(registry.require("main").state).snapshot;
-			const admin = useReadableSignal(registry.require("admin").state).snapshot;
+			const mainClient = useReadableSignal(registry.clientSignalFor("main"));
+			const adminClient = useReadableSignal(registry.clientSignalFor("admin"));
+			return mainClient.kind === "value" && adminClient.kind === "value"
+				? createElement(MultiClientProbe, {
+						mainClient: mainClient.value,
+						adminClient: adminClient.value,
+					})
+				: createElement("output", null, "empty:empty");
+		}
+
+		function MultiClientProbe({
+			mainClient,
+			adminClient,
+		}: {
+			mainClient: TokenSetReactClient;
+			adminClient: TokenSetReactClient;
+		}) {
+			const main = useReadableSignal(mainClient.authSnapshot);
+			const admin = useReadableSignal(adminClient.authSnapshot);
 			return createElement(
 				"output",
 				null,
-				`${main?.tokens.accessToken ?? "empty"}:${admin?.tokens.accessToken ?? "empty"}`,
+				`${
+					main.kind === "value"
+						? (main.value?.tokens.accessToken ?? "empty")
+						: "empty"
+				}:${
+					admin.kind === "value"
+						? (admin.value?.tokens.accessToken ?? "empty")
+						: "empty"
+				}`,
 			);
 		}
 
@@ -174,14 +155,13 @@ describe("react multi-client registry baseline", () => {
 		registry.dispose();
 	});
 
-	it("re-renders when a keyed service signal changes", async () => {
+	it("re-renders when a keyed client signal changes", async () => {
 		const mainState = createSignal<AuthSnapshot | null>(
 			createSnapshot("main-at"),
 		);
 		const registry = createManualRegistry([
 			{
 				key: "main",
-				autoRestore: false,
 				clientFactory: () => createClient(mainState),
 			},
 		]);
@@ -189,13 +169,20 @@ describe("react multi-client registry baseline", () => {
 
 		function Probe() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const snapshot = useReadableSignal(
-				registry.require("main").state,
-			).snapshot;
+			const clientSlot = useReadableSignal(registry.clientSignalFor("main"));
+			return clientSlot.kind === "value"
+				? createElement(SingleClientProbe, { client: clientSlot.value })
+				: createElement("output", null, "empty");
+		}
+
+		function SingleClientProbe({ client }: { client: TokenSetReactClient }) {
+			const snapshot = useReadableSignal(client.authSnapshot);
 			return createElement(
 				"output",
 				null,
-				snapshot?.tokens.accessToken ?? "empty",
+				snapshot.kind === "value"
+					? (snapshot.value?.tokens.accessToken ?? "empty")
+					: "empty",
 			);
 		}
 

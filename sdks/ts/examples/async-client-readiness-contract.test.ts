@@ -8,8 +8,7 @@
  *   - get() returns undefined while initializing (no silent sync assumption)
  *   - whenReady() resolves after factory completes
  *   - metadata lookup (urlPatterns, callbackPath) works while still initializing
- *   - interceptor has explicit not-yet-ready semantics (passthrough without token when initializing)
- *   - interceptor attaches token once client is ready
+ *   - interceptor waits for registry readiness before attaching a token
  *
  * Current contract: `register(entry)` no longer takes a `DestroyRef`
  * second argument. The Angular registry binds `DestroyRef.onDestroy` via
@@ -19,11 +18,7 @@
 
 import { createSubject, type ReadableSignalTrait } from "@securitydept/client";
 import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import {
-	AuthSourceKind,
-	EnsureAuthForResourceStatus,
-	TokenSetAuthFlowReason,
-} from "@securitydept/token-set-context-client/orchestration";
+import { AuthSourceKind } from "@securitydept/token-set-context-client/orchestration";
 import {
 	createTokenSetBearerInterceptor,
 	type OidcCallbackClient,
@@ -32,6 +27,7 @@ import {
 } from "@securitydept/token-set-context-client-angular";
 import { firstValueFrom, from } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
+import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 
 // ---------------------------------------------------------------------------
 // Shared helpers — mirrors angular-integration-adapter.test.ts pattern
@@ -73,42 +69,15 @@ function createMockClient(
 	initialState: AuthSnapshot | null = null,
 ): OidcModeClient & OidcCallbackClient {
 	const stateCtrl = createTestSignal<AuthSnapshot | null>(initialState);
+	const reactive = createTestTokenSetReactiveFields(initialState);
 	return {
 		state: stateCtrl.signal,
+		...reactive.fields,
 		authEvents: createSubject(),
+		addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		start: vi.fn(async () => undefined),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
-		authorizationHeader: vi.fn(() => {
-			const accessToken = stateCtrl.signal.get()?.tokens?.accessToken;
-			return accessToken ? `Bearer ${accessToken}` : null;
-		}),
-		ensureFreshAuthState: vi
-			.fn()
-			.mockImplementation(async () => stateCtrl.signal.get()),
-		ensureAuthorizationHeader: vi.fn().mockImplementation(async () => {
-			const accessToken = stateCtrl.signal.get()?.tokens?.accessToken;
-			return accessToken ? `Bearer ${accessToken}` : null;
-		}),
-		ensureAuthForResource: vi.fn().mockImplementation(async () => {
-			const snapshot = stateCtrl.signal.get();
-			if (snapshot) {
-				const accessToken = snapshot.tokens.accessToken;
-				return {
-					status: EnsureAuthForResourceStatus.Authenticated,
-					snapshot,
-					authorizationHeader: accessToken ? `Bearer ${accessToken}` : null,
-					freshness: "fresh" as const,
-				};
-			}
-			return {
-				status: EnsureAuthForResourceStatus.Unauthenticated,
-				snapshot: null,
-				authorizationHeader: null,
-				reason: TokenSetAuthFlowReason.NoSnapshot,
-			};
-		}),
-		isAuthenticated: () => stateCtrl.signal.get() !== null,
-		accessToken: () => stateCtrl.signal.get()?.tokens?.accessToken ?? null,
 		handleCallback: vi.fn().mockResolvedValue({
 			snapshot: makeSnapshot("tok-callback"),
 			postAuthRedirectUri: "/dashboard",
@@ -128,7 +97,6 @@ function makeSyncEntry(key: string, accessToken: string | null = null) {
 		clientFactory: () => client,
 		urlPatterns: [`/api/${key}/`],
 		callbackPath: `/auth/${key}/callback`,
-		autoRestore: false as const,
 	};
 }
 
@@ -149,7 +117,6 @@ function makeAsyncEntry(
 			),
 		urlPatterns: [`/api/${key}/`],
 		callbackPath: `/auth/${key}/callback`,
-		autoRestore: false as const,
 	};
 }
 
@@ -167,14 +134,13 @@ describe("TokenSetAuthRegistry — async clientFactory readiness lifecycle", () 
 
 		expect(registry.readinessState("main")).toBe("initializing");
 		expect(registry.isReady("main")).toBe(false);
-		// get() must return undefined while still initializing — no sync bypass
-		expect(registry.get("main")).toBeUndefined();
+		expect(registry.clientSignalFor("main").get()).toEqual({ kind: "empty" });
 
 		await registry.whenReady("main");
 
 		expect(registry.readinessState("main")).toBe("ready");
 		expect(registry.isReady("main")).toBe(true);
-		expect(registry.get("main")).toBeDefined();
+		expect(registry.clientSignalFor("main").get().kind).toBe("value");
 	});
 
 	it("whenReady resolves immediately for sync clientFactory", async () => {
@@ -202,21 +168,20 @@ describe("TokenSetAuthRegistry — async clientFactory readiness lifecycle", () 
 });
 
 // ---------------------------------------------------------------------------
-// 2. Interceptor — explicit not-yet-ready semantics
+// 2. Interceptor — registry readiness semantics
 // ---------------------------------------------------------------------------
 
-describe("createTokenSetBearerInterceptor — async client not-yet-ready semantics", () => {
-	it("passes through without Authorization header when client is still initializing", async () => {
+describe("createTokenSetBearerInterceptor — async client readiness semantics", () => {
+	it("waits for an initializing client and attaches Authorization header", async () => {
 		const registry = new TokenSetAuthRegistry();
-		// Async with long delay — still initializing when interceptor runs
-		registry.register(makeAsyncEntry("main", 200) as never);
+		registry.register(makeAsyncEntry("main", 20, "ready-tok") as never);
 
 		const interceptor = createTokenSetBearerInterceptor(registry);
-		let cloned = false;
+		let capturedHeader: string | undefined;
 		const req = {
 			url: "/api/main/data",
-			clone: (_u: { setHeaders?: Record<string, string> }) => {
-				cloned = true;
+			clone: (u: { setHeaders?: Record<string, string> }) => {
+				capturedHeader = u.setHeaders?.Authorization;
 				return req;
 			},
 		};
@@ -224,14 +189,8 @@ describe("createTokenSetBearerInterceptor — async client not-yet-ready semanti
 
 		await firstValueFrom(interceptor(req, next) as ReturnType<typeof from>);
 
-		// Explicit design: no Authorization header emitted — not-yet-ready passthrough
-		expect(cloned).toBe(false);
+		expect(capturedHeader).toBe("Bearer ready-tok");
 		expect(next).toHaveBeenCalledWith(req);
-
-		// Confirm it was indeed still initializing at call time
-		// (registry transitions fully asynchronously so state is still "initializing" or "ready"
-		//  depending on timing — but the key assertion is that no header was set)
-		expect(registry.get("main")).toBeUndefined();
 	});
 
 	it("attaches Authorization header once client is ready and has a token", async () => {
@@ -259,8 +218,8 @@ describe("createTokenSetBearerInterceptor — async client not-yet-ready semanti
 
 	it("passes through without header for URL not matching any registered pattern (no fallback token)", async () => {
 		const registry = new TokenSetAuthRegistry();
-		// Client is ready but has no token (null state) — so even the fallback
-		// registry.accessToken() returns null → no Authorization header
+		// Client is ready but has no token (null state) — so the unmatched
+		// single-client auth barrier returns no Authorization header.
 		registry.register(makeSyncEntry("main", null) as never);
 		await registry.whenReady("main");
 

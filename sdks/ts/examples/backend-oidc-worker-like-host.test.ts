@@ -11,6 +11,17 @@ import {
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { describe, expect, it, vi } from "vitest";
 
+function expectReplayValue<T>(signal: {
+	get(): { kind: "empty" } | { kind: "value"; value: T };
+}): T {
+	const slot = signal.get();
+	expect(slot.kind).toBe("value");
+	if (slot.kind !== "value") {
+		throw new Error("Expected replay signal value.");
+	}
+	return slot.value;
+}
+
 function createScheduler() {
 	return {
 		setTimeout() {
@@ -92,9 +103,10 @@ describe("backend-oidc worker-like host boundary", () => {
 
 		expect(result.source).toBe(BackendOidcModeBootstrapSource.Restore);
 		expect(result.snapshot?.tokens.accessToken).toBe("worker-at");
-		expect(restoreClient.state.get()?.metadata.principal?.displayName).toBe(
-			"Worker User",
-		);
+		expect(
+			expectReplayValue(restoreClient.authSnapshot)?.metadata.principal
+				?.displayName,
+		).toBe("Worker User");
 	});
 
 	it("captures callback fragments only with explicit host-injected page capabilities", async () => {

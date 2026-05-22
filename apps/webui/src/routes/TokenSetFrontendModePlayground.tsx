@@ -53,11 +53,22 @@ function renderTokenPreview(value: string | undefined): string {
 
 export function TokenSetFrontendModePlaygroundPage() {
 	const injector = useSecuritydeptContext();
-	const state = useReadableSignal(
-		injector
-			.get(TOKEN_SET_AUTH_REGISTRY)
-			.require(TOKEN_SET_FRONTEND_MODE_CLIENT_KEY).state,
-	).snapshot as AuthStateSnapshot | null;
+	const frontendClientSlot = injector
+		.get(TOKEN_SET_AUTH_REGISTRY)
+		.clientSignalFor(TOKEN_SET_FRONTEND_MODE_CLIENT_KEY)
+		.get();
+	if (frontendClientSlot.kind !== "value") {
+		throw new Error(
+			`Token-set frontend mode client ${TOKEN_SET_FRONTEND_MODE_CLIENT_KEY} is not ready.`,
+		);
+	}
+	const authSnapshotSlot = useReadableSignal(
+		frontendClientSlot.value.authSnapshot,
+	);
+	const state =
+		authSnapshotSlot.kind === "value"
+			? (authSnapshotSlot.value as AuthStateSnapshot | null)
+			: null;
 	const environmentService = injector.get(CLIENT_ENVIRONMENT_SERVICE);
 	const traceEvents = useSyncExternalStore(
 		(listener) => tokenSetFrontendModeTraceTimeline.subscribe(listener),

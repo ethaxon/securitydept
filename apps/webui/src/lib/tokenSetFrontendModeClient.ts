@@ -1,7 +1,10 @@
 import {
+	createAndThenComputedReplaySignal,
 	createEventStream,
+	createReplaySignal,
 	createSignal,
 	createTraceTimelineStore,
+	readonlyReplaySignal,
 	readonlySignal,
 } from "@securitydept/client";
 import { createCrossTabSync, PopupErrorCode } from "@securitydept/client/web";
@@ -35,7 +38,17 @@ export const FrontendHostTraceEventType = {
 
 let tokenSetFrontendModeClientPromise: Promise<FrontendOidcModeClient> | null =
 	null;
-const tokenSetFrontendModeStateSignal = createSignal<AuthSnapshot | null>(null);
+const tokenSetFrontendModeAuthSnapshotSignal =
+	createReplaySignal<AuthSnapshot | null>();
+const tokenSetFrontendModeLastAuthErrorSignal = createSignal<
+	unknown | undefined
+>(undefined);
+const tokenSetFrontendModeAuthOperationSignals = {
+	restorePending: createSignal(false),
+	refreshPending: createSignal(false),
+	clearPending: createSignal(false),
+	loginPending: createSignal(false),
+};
 let tokenSetFrontendModeStateUnsubscribe: (() => void) | null = null;
 let tokenSetFrontendModePersistentStorageKey: string | null = null;
 let tokenSetFrontendModeCrossTabSync: ReturnType<
@@ -119,6 +132,57 @@ function buildAbsoluteUrl(path: string): string {
 	return new URL(path, window.location.origin).toString();
 }
 
+function readFrontendModeSnapshot(): AuthSnapshot | null {
+	const slot = tokenSetFrontendModeAuthSnapshotSignal.get();
+	return slot.kind === "value" ? slot.value : null;
+}
+
+function mirrorFrontendModeClientSignals(
+	client: FrontendOidcModeClient,
+): () => void {
+	const syncSnapshot = () => {
+		const slot = client.authSnapshot.get();
+		if (slot.kind === "value") {
+			tokenSetFrontendModeAuthSnapshotSignal.emit(slot.value);
+			reconcileFrontendModeCrossTabStatus(slot.value);
+		} else {
+			tokenSetFrontendModeAuthSnapshotSignal.clear();
+		}
+	};
+	const syncLastError = () => {
+		tokenSetFrontendModeLastAuthErrorSignal.set(client.lastAuthError.get());
+	};
+	const syncOperation =
+		(key: keyof typeof tokenSetFrontendModeAuthOperationSignals) => () => {
+			tokenSetFrontendModeAuthOperationSignals[key].set(
+				client.authOperations[key].get(),
+			);
+		};
+
+	syncSnapshot();
+	syncLastError();
+	for (const key of Object.keys(
+		tokenSetFrontendModeAuthOperationSignals,
+	) as Array<keyof typeof tokenSetFrontendModeAuthOperationSignals>) {
+		syncOperation(key)();
+	}
+
+	const unsubscribes = [
+		client.authSnapshot.subscribe(syncSnapshot),
+		client.lastAuthError.subscribe(syncLastError),
+		...(
+			Object.keys(tokenSetFrontendModeAuthOperationSignals) as Array<
+				keyof typeof tokenSetFrontendModeAuthOperationSignals
+			>
+		).map((key) => client.authOperations[key].subscribe(syncOperation(key))),
+	];
+	return () => {
+		for (const unsubscribe of unsubscribes) {
+			unsubscribe();
+		}
+	};
+}
+
 function ensureTokenSetFrontendModeCrossTabSync(
 	client: FrontendOidcModeClient,
 ): void {
@@ -171,19 +235,50 @@ async function ensureTokenSetFrontendModeClientSubscribed(): Promise<FrontendOid
 	ensureTokenSetFrontendModeCrossTabSync(client);
 
 	if (!tokenSetFrontendModeStateUnsubscribe) {
-		tokenSetFrontendModeStateSignal.set(client.state.get());
-		tokenSetFrontendModeStateUnsubscribe = client.state.subscribe(() => {
-			const snapshot = client.state.get();
-			tokenSetFrontendModeStateSignal.set(snapshot);
-			reconcileFrontendModeCrossTabStatus(snapshot);
-		});
+		tokenSetFrontendModeStateUnsubscribe =
+			mirrorFrontendModeClientSignals(client);
 	}
 
 	return client;
 }
 
 const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
-	state: readonlySignal(tokenSetFrontendModeStateSignal),
+	authDetermined: createAndThenComputedReplaySignal(
+		tokenSetFrontendModeAuthSnapshotSignal,
+		() => ({ kind: "value", value: true }),
+	),
+	authSnapshot: readonlyReplaySignal(tokenSetFrontendModeAuthSnapshotSignal),
+	isAuthenticated: createAndThenComputedReplaySignal(
+		tokenSetFrontendModeAuthSnapshotSignal,
+		(snapshot) => ({
+			kind: "value",
+			value: Boolean(snapshot?.tokens.accessToken),
+		}),
+	),
+	authorizationHeaderValue: createAndThenComputedReplaySignal(
+		tokenSetFrontendModeAuthSnapshotSignal,
+		(snapshot) => ({
+			kind: "value",
+			value: snapshot?.tokens.accessToken
+				? `Bearer ${snapshot.tokens.accessToken}`
+				: undefined,
+		}),
+	),
+	lastAuthError: readonlySignal(tokenSetFrontendModeLastAuthErrorSignal),
+	authOperations: {
+		restorePending: readonlySignal(
+			tokenSetFrontendModeAuthOperationSignals.restorePending,
+		),
+		refreshPending: readonlySignal(
+			tokenSetFrontendModeAuthOperationSignals.refreshPending,
+		),
+		clearPending: readonlySignal(
+			tokenSetFrontendModeAuthOperationSignals.clearPending,
+		),
+		loginPending: readonlySignal(
+			tokenSetFrontendModeAuthOperationSignals.loginPending,
+		),
+	},
 	authEvents: createEventStream((observer) => {
 		let unsubscribed = false;
 		let subscription: { unsubscribe(): void } | null = null;
@@ -206,12 +301,43 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 			subscription?.unsubscribe();
 		};
 	}),
+	addAuthCheckTriggerSource(source) {
+		let unsubscribed = false;
+		let subscription: { unsubscribe(): void } | null = null;
+		void ensureTokenSetFrontendModeClientSubscribed()
+			.then((client) => {
+				if (unsubscribed) {
+					return;
+				}
+				subscription = client.addAuthCheckTriggerSource(source);
+			})
+			.catch((error) => {
+				tokenSetFrontendModeLastAuthErrorSignal.set(error);
+			});
+
+		return {
+			unsubscribe() {
+				unsubscribed = true;
+				subscription?.unsubscribe();
+			},
+		};
+	},
+	async start() {
+		const client = await ensureTokenSetFrontendModeClientSubscribed();
+		await client.start();
+	},
+	async authCheck(options) {
+		const client = await ensureTokenSetFrontendModeClientSubscribed();
+		const result = await client.authCheck(options);
+		reconcileFrontendModeCrossTabStatus(result.snapshot);
+		return result;
+	},
 	dispose() {
 		tokenSetFrontendModeStateUnsubscribe?.();
 		tokenSetFrontendModeStateUnsubscribe = null;
 		tokenSetFrontendModeCrossTabSync?.dispose();
 		tokenSetFrontendModeCrossTabSync = null;
-		tokenSetFrontendModeStateSignal.set(null);
+		tokenSetFrontendModeAuthSnapshotSignal.clear();
 		tokenSetFrontendModeCrossTabStatusSignal.set({
 			syncCount: 0,
 			lastEvent: "idle",
@@ -229,55 +355,27 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 	async restorePersistedState() {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
 		const snapshot = await client.restorePersistedState();
-		tokenSetFrontendModeStateSignal.set(client.state.get());
 		reconcileFrontendModeCrossTabStatus(snapshot);
 		return snapshot;
 	},
 	async handleCallback(callbackUrl) {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
 		const result = await client.handleCallback(callbackUrl);
-		tokenSetFrontendModeStateSignal.set(client.state.get());
 		return result;
 	},
 	async loginWithRedirect(options) {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
 		await client.loginWithRedirect(options);
-		tokenSetFrontendModeStateSignal.set(client.state.get());
-	},
-	authorizationHeader() {
-		const accessToken =
-			tokenSetFrontendModeStateSignal.get()?.tokens.accessToken;
-		return accessToken ? `Bearer ${accessToken}` : null;
-	},
-	async ensureFreshAuthState(options) {
-		const client = await ensureTokenSetFrontendModeClientSubscribed();
-		const snapshot = await client.ensureFreshAuthState(options);
-		tokenSetFrontendModeStateSignal.set(client.state.get());
-		return snapshot;
-	},
-	async ensureAuthForResource(options) {
-		const client = await ensureTokenSetFrontendModeClientSubscribed();
-		const result = await client.ensureAuthForResource(options);
-		tokenSetFrontendModeStateSignal.set(client.state.get());
-		return result;
-	},
-	async ensureAuthorizationHeader(options) {
-		const client = await ensureTokenSetFrontendModeClientSubscribed();
-		const authorization = await client.ensureAuthorizationHeader(options);
-		tokenSetFrontendModeStateSignal.set(client.state.get());
-		return authorization;
 	},
 	async refresh() {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
 		const snapshot = await client.refresh();
-		tokenSetFrontendModeStateSignal.set(client.state.get());
 		reconcileFrontendModeCrossTabStatus(snapshot);
 		return snapshot;
 	},
 	async clearState() {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
 		await client.clearState();
-		tokenSetFrontendModeStateSignal.set(client.state.get());
 	},
 };
 
@@ -292,7 +390,6 @@ export async function getTokenSetFrontendModeClient(): Promise<FrontendOidcModeC
 export async function ensureTokenSetFrontendModeClientReady(): Promise<AuthSnapshot | null> {
 	const client = await ensureTokenSetFrontendModeClientSubscribed();
 	const snapshot = await client.restorePersistedState();
-	tokenSetFrontendModeStateSignal.set(client.state.get());
 	reconcileFrontendModeCrossTabStatus(snapshot);
 	return snapshot;
 }
@@ -318,8 +415,7 @@ export async function startTokenSetFrontendModePopupLogin(
 		),
 		postAuthRedirectUri,
 	});
-	const snapshot = client.state.get();
-	tokenSetFrontendModeStateSignal.set(snapshot);
+	const snapshot = readFrontendModeSnapshot();
 	if (snapshot?.tokens.accessToken) {
 		reconcileFrontendModeCrossTabStatus(snapshot);
 	}

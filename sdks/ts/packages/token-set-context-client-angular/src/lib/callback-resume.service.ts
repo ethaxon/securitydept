@@ -15,8 +15,8 @@ import {
 	type TokenSetCallbackResumeState,
 } from "@securitydept/token-set-context-client/registry";
 import type { Observable } from "rxjs";
+import type { TokenSetAngularClient } from "./contracts";
 import { TokenSetAuthRegistry } from "./token-set-auth.registry";
-import type { TokenSetAuthService } from "./token-set-auth.service";
 
 /**
  * Angular-native service for handling OIDC redirect callbacks,
@@ -47,9 +47,9 @@ export class CallbackResumeService {
 	private readonly registry = inject(TokenSetAuthRegistry);
 	private readonly destroyRef = inject(DestroyRef, { optional: true });
 	private readonly controller =
-		new TokenSetCallbackResumeController<TokenSetAuthService>({
+		new TokenSetCallbackResumeController<TokenSetAngularClient>({
 			registry: this.registry.core,
-			getCallbackClient: (service) => service.client,
+			getCallbackClient: (client) => client,
 		});
 	readonly state: WritableSignal<TokenSetCallbackResumeState> = signal(
 		this.controller.state.get(),

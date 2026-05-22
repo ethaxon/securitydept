@@ -18,6 +18,17 @@ import {
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { describe, expect, it } from "vitest";
 
+function expectReplayValue<T>(signal: {
+	get(): { kind: "empty" } | { kind: "value"; value: T };
+}): T {
+	const slot = signal.get();
+	expect(slot.kind).toBe("value");
+	if (slot.kind !== "value") {
+		throw new Error("Expected replay signal value.");
+	}
+	return slot.value;
+}
+
 describe("backend-oidc-mode web minimal entry", () => {
 	it("shows the standalone browser entry path: create client → bootstrap → authorize URL", async () => {
 		const persistentStore = createInMemoryRecordStore();
@@ -60,7 +71,7 @@ describe("backend-oidc-mode web minimal entry", () => {
 
 		expect(result.source).toBe(BackendOidcModeBootstrapSource.Empty);
 		expect(result.snapshot).toBeNull();
-		expect(client.state.get()).toBeNull();
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 
 		// 3. Build the authorize URL — the adopter redirects the browser here.
 		const authorizeUrl = buildAuthorizeUrlReturningToCurrentPage(client, {
@@ -104,8 +115,12 @@ describe("backend-oidc-mode web minimal entry", () => {
 			metadata: {},
 		});
 
-		expect(client.state.get()?.tokens.accessToken).toBe("ssr-at");
-		expect(client.authorizationHeader()).toBe("Bearer ssr-at");
+		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+			"ssr-at",
+		);
+		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
+			"Bearer ssr-at",
+		);
 
 		client.dispose();
 	});

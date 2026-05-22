@@ -4,20 +4,15 @@ import {
 	type SecuritydeptProvider,
 	tryInjectInInjectionContext,
 } from "@securitydept/client/injection";
-import {
-	type TokenSetAuthService as CoreTokenSetAuthService,
-	TokenSetCallbackResumeController as CoreTokenSetCallbackResumeController,
-} from "@securitydept/token-set-context-client/registry";
+import { TokenSetCallbackResumeController as CoreTokenSetCallbackResumeController } from "@securitydept/token-set-context-client/registry";
 import type { TokenSetReactClient } from "./contracts";
 import type { ReactRegistry } from "./token-set-auth-registry";
 
-type ReactTokenSetAuthService = CoreTokenSetAuthService<TokenSetReactClient>;
-
-export class ReactTokenSetCallbackResumeController extends CoreTokenSetCallbackResumeController<ReactTokenSetAuthService> {
+export class ReactTokenSetCallbackResumeController extends CoreTokenSetCallbackResumeController<TokenSetReactClient> {
 	constructor(registry: ReactRegistry) {
 		super({
 			registry,
-			getCallbackClient: (service) => service.client,
+			getCallbackClient: (client) => client,
 		});
 
 		tryInjectInInjectionContext(SecuritydeptDestroyRef, {

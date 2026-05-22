@@ -1,3 +1,4 @@
+import { describeError } from "../errors/index";
 import type { Clock } from "../scheduling/types";
 import type {
 	LoggerTrait,
@@ -133,21 +134,4 @@ export function createOperationTracer(
 			);
 		},
 	};
-}
-
-function describeError(error: unknown): Record<string, unknown> {
-	if (
-		typeof error === "object" &&
-		error !== null &&
-		"name" in error &&
-		"message" in error
-	) {
-		const genericError = error as Pick<Error, "name" | "message">;
-		return {
-			errorName: genericError.name,
-			errorMessage: genericError.message,
-		};
-	}
-
-	return { errorValue: String(error) };
 }

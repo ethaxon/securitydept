@@ -93,7 +93,7 @@ Crate：`securitydept-creds-manage`
 
 Applications：
 
-- `apps/server`：Axum reference server
+- `apps/server`：Axum 参考服务端
 - `apps/webui`：React reference UI
 - `apps/cli`：local credential-management CLI
 
@@ -115,7 +115,7 @@ Reference applications 用于证明组合行为；它们不是 reusable crates �
 
 ## Server Route Boundary
 
-reference server dashboard API 当前按以下顺序尝试认证：
+参考服务端 dashboard API 当前按以下顺序尝试认证：
 
 1. 存在 `Authorization: Bearer ...` header 时使用 bearer access token
 2. cookie session

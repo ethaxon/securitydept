@@ -39,6 +39,7 @@ const CONTRACTS: PackageContract[] = [
 			"./events",
 			"./injection",
 			"./rx",
+			"./struct",
 			"./auth-coordination",
 			"./web-router",
 		],

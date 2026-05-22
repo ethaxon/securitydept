@@ -18,19 +18,20 @@
 //     callback supplied by the adapter)
 
 import {
+	createDefaultIdleScheduler,
+	createReplaySignal,
 	createSignal,
 	createSubject,
 	type EventStreamTrait,
 	type EventSubscriptionTrait,
+	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
+	readonlyReplaySignal,
 	readonlySignal,
+	type WritableReplaySignalTrait,
 } from "@securitydept/client";
 import { ClientReadinessState } from "../../frontend-oidc-mode/config/config-source";
-import type {
-	EnsureAuthForResourceOptions,
-	EnsureAuthForResourceResult,
-	TokenSetAuthEvent,
-} from "../../orchestration";
+import type { TokenSetAuthEvent } from "../../orchestration";
 import {
 	type ClientFilter,
 	ClientInitializationPriority,
@@ -39,7 +40,6 @@ import {
 	type ClientQueryOptions,
 	type CreateTokenSetAuthRegistryOptions,
 	type CreateTokenSetOidcAuthRegistryOptions,
-	type EnsureRegistryAuthForResourceOptions,
 	type OidcModeClient,
 	type TokenSetAuthRegistryEntryState,
 	TokenSetAuthRegistryLifecycleError,
@@ -48,7 +48,6 @@ import {
 	type TokenSetClientEntry,
 } from "../contracts/types";
 import { isOidcCallback } from "./oidc-callback-url";
-import type { TokenSetAuthService } from "./service";
 
 // ---------------------------------------------------------------------------
 // Pending registration — tracks async clientFactory lifecycle
@@ -74,8 +73,8 @@ interface RegistrationRecord<TClient> {
  *
  * Instantiated by framework adapters (Angular's `TokenSetAuthRegistry` DI
  * wrapper, React's provider-scoped token-set runtime factories). The adapter supplies a
- * `materialize` callback that wraps a raw `OidcModeClient` in a
- * framework-idiomatic service.
+ * `materialize` callback when it needs a custom materialized object. The
+ * default OIDC wiring stores the mode client itself.
  *
  * ## Lifecycle states (per key)
  *
@@ -85,7 +84,7 @@ interface RegistrationRecord<TClient> {
  *                ├──> ready            (materialization succeeded)
  *                └──> failed           (materialization rejected)
  *
- *   preload(key) / whenReady(key) / idleWarmup()
+ *   preload(key) / whenReady(key?) / idleWarmup()
  *                 trigger transitions from not_initialized → initializing
  * ```
  *
@@ -95,12 +94,12 @@ interface RegistrationRecord<TClient> {
  *   `register()` time (matching the eager registration model).
  * - `priority: "lazy"`: the entry is recorded, metadata is indexed, but
  *   `clientFactory` does **not** run until `preload(key)` /
- *   `whenReady(key)` / `idleWarmup()` is called.
+ *   `whenReady(key?)` / `idleWarmup()` is called.
  *
  * ## Thread-safety
  *
  * The registry is single-threaded (JS event loop). Concurrent
- * `whenReady(key)` / `preload(key)` calls during `initializing` state
+ * `whenReady(key?)` / `preload(key)` calls during `initializing` state
  * return the same pending promise.
  */
 export class TokenSetAuthRegistry<TClient, TService> {
@@ -109,17 +108,11 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		entry: TokenSetClientEntry<TClient>,
 	) => TService;
 	private readonly _dispose: (service: TService) => void;
-	private readonly _accessTokenOf: (service: TService) => string | null;
-	private readonly _ensureAccessTokenOf: (
+	private readonly _start: (
+		client: TClient,
 		service: TService,
-	) => Promise<string | null>;
-	private readonly _ensureAuthorizationHeaderOf: (
-		service: TService,
-	) => Promise<string | null>;
-	private readonly _ensureAuthForResourceOf: (
-		service: TService,
-		options: EnsureAuthForResourceOptions,
-	) => Promise<EnsureAuthForResourceResult>;
+		entry: TokenSetClientEntry<TClient>,
+	) => Promise<void> | void;
 	private readonly _authEventsOf: (
 		service: TService,
 	) => EventStreamTrait<TokenSetAuthEvent>;
@@ -136,7 +129,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 	});
 	readonly state: ReadableSignalTrait<TokenSetAuthRegistryState<TClient>>;
 
-	// Materialized services (after clientFactory resolves)
+	// Materialized objects (after clientFactory resolves).
 	private readonly services = new Map<string, TService>();
 	// Raw registration entries (kept so we can re-run clientFactory for lazy
 	// clients and reset()).
@@ -162,15 +155,16 @@ export class TokenSetAuthRegistry<TClient, TService> {
 	>();
 	private readonly lifecycleErrors = new Map<string, unknown | null>();
 	private readonly failedMaterializations = new Map<string, unknown>();
+	private readonly clientSignals = new Map<
+		string,
+		WritableReplaySignalTrait<TService>
+	>();
 	private generationCounter = 0;
 
 	constructor(options: CreateTokenSetAuthRegistryOptions<TClient, TService>) {
 		this.materialize = options.materialize;
 		this._dispose = options.dispose;
-		this._accessTokenOf = options.accessTokenOf;
-		this._ensureAccessTokenOf = options.ensureAccessTokenOf;
-		this._ensureAuthorizationHeaderOf = options.ensureAuthorizationHeaderOf;
-		this._ensureAuthForResourceOf = options.ensureAuthForResourceOf;
+		this._start = options.start ?? (() => undefined);
 		this._authEventsOf = options.authEventsOf;
 		this.idleScheduler = options.idleScheduler;
 		this.state = readonlySignal(this.stateSignal);
@@ -187,7 +181,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 	 *   the service synchronously if the factory is sync, or a Promise if
 	 *   the factory is async.
 	 * - `priority: "lazy"`: record the entry only. Returns `undefined`.
-	 *   Call `whenReady(key)` / `preload(key)` to materialize later.
+	 *   Call `whenReady(key?)` / `preload(key)` to materialize later.
 	 *
 	 * @throws If `entry.key` is already registered.
 	 */
@@ -274,26 +268,18 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		if (clientOrPromise instanceof Promise) {
 			let pendingEntry!: PendingRegistration<TService>;
 			const promise = clientOrPromise.then(
-				(client) => {
+				async (client) => {
 					try {
-						const service = this.materializeCurrentRecord(
+						return await this.materializeAndStartCurrentRecord(
 							client,
 							record,
 							pendingEntry,
 						);
-
-						this.pendingRegistrations.delete(entry.key);
-						this.services.set(entry.key, service);
-						this.attachAuthEvents(entry.key, service);
-						pendingEntry.state = ClientReadinessState.Ready;
-						this.lifecycleErrors.set(entry.key, null);
-						this.failedMaterializations.delete(entry.key);
-						this.refreshState();
-						return service;
 					} catch (error) {
 						if (!pendingEntry.invalidationError) {
 							pendingEntry.state = ClientReadinessState.Failed;
 							this.lifecycleErrors.set(entry.key, error);
+							this.failedMaterializations.set(entry.key, error);
 							this.refreshState();
 						}
 						throw error;
@@ -305,6 +291,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 					}
 					pendingEntry.state = ClientReadinessState.Failed;
 					this.lifecycleErrors.set(entry.key, error);
+					this.failedMaterializations.set(entry.key, error);
 					this.refreshState();
 					throw error;
 				},
@@ -318,15 +305,45 @@ export class TokenSetAuthRegistry<TClient, TService> {
 			return promise;
 		}
 
+		let service: TService | undefined;
 		try {
-			const service = this.materializeCurrentRecord(clientOrPromise, record);
-			this.services.set(entry.key, service);
-			this.attachAuthEvents(entry.key, service);
-			this.lifecycleErrors.set(entry.key, null);
-			this.failedMaterializations.delete(entry.key);
-			this.refreshState();
-			return service;
+			service = this.materializeCurrentRecord(clientOrPromise, record);
+			const started = this.startCurrentRecord(clientOrPromise, service, record);
+			if (started instanceof Promise) {
+				const readyService = service;
+				let pendingEntry!: PendingRegistration<TService>;
+				const promise = started
+					.then(() =>
+						this.markCurrentRecordReady(
+							record.entry.key,
+							readyService,
+							record,
+							pendingEntry,
+						),
+					)
+					.catch((error) => {
+						this.disposeService(readyService);
+						if (!pendingEntry.invalidationError) {
+							pendingEntry.state = ClientReadinessState.Failed;
+							this.lifecycleErrors.set(entry.key, error);
+							this.failedMaterializations.set(entry.key, error);
+							this.refreshState();
+						}
+						throw pendingEntry.invalidationError ?? error;
+					});
+				pendingEntry = {
+					promise,
+					state: ClientReadinessState.Initializing,
+				};
+				this.pendingRegistrations.set(entry.key, pendingEntry);
+				this.refreshState();
+				return promise;
+			}
+			return this.markCurrentRecordReady(record.entry.key, service, record);
 		} catch (error) {
+			if (service !== undefined) {
+				this.disposeService(service);
+			}
 			this.recordFailedMaterialization(entry.key, error);
 			throw error;
 		}
@@ -363,6 +380,68 @@ export class TokenSetAuthRegistry<TClient, TService> {
 			throw postMaterializeStaleError;
 		}
 
+		return service;
+	}
+
+	private async materializeAndStartCurrentRecord(
+		client: TClient,
+		record: RegistrationRecord<TClient>,
+		pending: PendingRegistration<TService>,
+	): Promise<TService> {
+		const service = this.materializeCurrentRecord(client, record, pending);
+		try {
+			await this.startCurrentRecord(client, service, record, pending);
+			return this.markCurrentRecordReady(
+				record.entry.key,
+				service,
+				record,
+				pending,
+			);
+		} catch (error) {
+			this.disposeService(service);
+			throw error;
+		}
+	}
+
+	private startCurrentRecord(
+		client: TClient,
+		service: TService,
+		record: RegistrationRecord<TClient>,
+		pending?: PendingRegistration<TService>,
+	): Promise<void> | void {
+		const staleError = this.resolveStaleLifecycleError(
+			record.entry.key,
+			record,
+			pending,
+		);
+		if (staleError) {
+			throw staleError;
+		}
+		return this._start(client, service, record.entry);
+	}
+
+	private markCurrentRecordReady(
+		key: string,
+		service: TService,
+		record: RegistrationRecord<TClient>,
+		pending?: PendingRegistration<TService>,
+	): TService {
+		const staleError = this.resolveStaleLifecycleError(key, record, pending);
+		if (staleError) {
+			this.disposeService(service);
+			throw staleError;
+		}
+
+		this.pendingRegistrations.delete(key);
+		this.services.set(key, service);
+		this.attachAuthEvents(key, service);
+		this.clientSignalForExistingKey(key).emit(service);
+		if (pending) {
+			pending.state = ClientReadinessState.Ready;
+		}
+		this.lifecycleErrors.set(key, null);
+		this.failedMaterializations.delete(key);
+		this.refreshState();
 		return service;
 	}
 
@@ -408,7 +487,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 	// Readiness API
 	// -------------------------------------------------------------------
 
-	/** True when `get(key)` would return a service. */
+	/** True when `whenReady(key)` can return a started service immediately. */
 	isReady(key: string): boolean {
 		return this.services.has(key);
 	}
@@ -431,25 +510,31 @@ export class TokenSetAuthRegistry<TClient, TService> {
 	}
 
 	/**
-	 * Await materialization for a key. Triggers materialization if the key
-	 * was registered lazy and hasn't been preloaded yet. Rejects if the key
-	 * is unregistered or the factory fails.
+	 * Await materialization for a key. When `key` is omitted, exactly one
+	 * registered client must exist. Triggers materialization if the resolved
+	 * key was registered lazy and hasn't been preloaded yet. Rejects if the
+	 * key is unregistered or the factory fails.
 	 */
-	async whenReady(key: string): Promise<TService> {
-		const existing = this.services.get(key);
+	async whenReady(key?: string): Promise<TService> {
+		const resolvedKey = this.resolveRegisteredKeyForSingleClientOperation(
+			key,
+			"whenReady",
+		);
+
+		const existing = this.services.get(resolvedKey);
 		if (existing) return existing;
 
-		const pending = this.pendingRegistrations.get(key);
+		const pending = this.pendingRegistrations.get(resolvedKey);
 		if (pending) return pending.promise;
 
-		if (this.failedMaterializations.has(key)) {
-			throw this.failedMaterializations.get(key);
+		if (this.failedMaterializations.has(resolvedKey)) {
+			throw this.failedMaterializations.get(resolvedKey);
 		}
 
-		const record = this.entries.get(key);
+		const record = this.entries.get(resolvedKey);
 		if (!record) {
 			throw new Error(
-				`[TokenSetAuthRegistry] No client registered for key "${key}". ` +
+				`[TokenSetAuthRegistry] No client registered for key "${resolvedKey}". ` +
 					`Available keys: ${[...this.entries.keys()].join(", ")}`,
 			);
 		}
@@ -524,6 +609,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		this.clearReadyService(key);
 		this.failedMaterializations.delete(key);
 		this.lifecycleErrors.delete(key);
+		this.clearClientSignal(key, { deleteSignal: true });
 		this.entries.delete(key);
 		this.metas.delete(key);
 		this.callbackPaths.delete(key);
@@ -567,6 +653,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		this.clearReadyService(key);
 		this.failedMaterializations.delete(key);
 		this.lifecycleErrors.set(key, null);
+		this.clearClientSignal(key, { deleteSignal: false });
 		this.refreshState();
 		return true;
 	}
@@ -587,6 +674,16 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		this.detachAuthEvents(key);
 		if (service !== undefined) {
 			this.disposeService(service);
+		}
+	}
+
+	private clearClientSignal(
+		key: string,
+		options: { deleteSignal: boolean },
+	): void {
+		this.clientSignals.get(key)?.clear();
+		if (options.deleteSignal) {
+			this.clientSignals.delete(key);
 		}
 	}
 
@@ -676,36 +773,35 @@ export class TokenSetAuthRegistry<TClient, TService> {
 	// Lookup API
 	// -------------------------------------------------------------------
 
-	get(key: string): TService | undefined {
-		return this.services.get(key);
+	clientSignalFor(key?: string): ReadableReplaySignalTrait<TService> {
+		const resolvedKey = this.resolveRegisteredKeyForSingleClientOperation(
+			key,
+			"clientSignalFor",
+		);
+		const signal = this.clientSignalForExistingKey(resolvedKey);
+		this.whenReady(resolvedKey).catch(() => {
+			// Failure is reflected through registry readiness/lifecycleError.
+		});
+		return readonlyReplaySignal(signal);
+	}
+
+	private clientSignalForExistingKey(
+		key: string,
+	): WritableReplaySignalTrait<TService> {
+		let signal = this.clientSignals.get(key);
+		if (!signal) {
+			signal = createReplaySignal<TService>();
+			this.clientSignals.set(key, signal);
+		}
+		return signal;
 	}
 
 	has(key: string): boolean {
 		return this.entries.has(key);
 	}
 
-	require(key: string): TService {
-		const service = this.services.get(key);
-		if (!service) {
-			throw new Error(
-				`[TokenSetAuthRegistry] No client registered for key "${key}" (and ready). ` +
-					`Available keys: ${[...this.services.keys()].join(", ")}`,
-			);
-		}
-		return service;
-	}
-
 	readyKeys(): string[] {
 		return [...this.state.get().readyKeys];
-	}
-
-	readyEntriesSnapshot(): Array<[string, TService]> {
-		return this.readyKeys()
-			.map((key) => {
-				const service = this.services.get(key);
-				return service ? ([key, service] as [string, TService]) : undefined;
-			})
-			.filter((entry): entry is [string, TService] => entry !== undefined);
 	}
 
 	registeredKeys(): string[] {
@@ -858,34 +954,6 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		return undefined;
 	}
 
-	requireForRequirement(
-		requirementKind: string,
-		selector?: ClientKeySelector,
-	): TService {
-		const key = this.clientKeyForRequirement(requirementKind, selector);
-		if (!key) {
-			throw new Error(
-				`[TokenSetAuthRegistry] No client registered for requirementKind "${requirementKind}". ` +
-					`Registered kinds: ${[...this.requirementKindMap.keys()].join(", ")}`,
-			);
-		}
-		return this.require(key);
-	}
-
-	requireForProviderFamily(
-		providerFamily: string,
-		selector?: ClientKeySelector,
-	): TService {
-		const key = this.clientKeyForProviderFamily(providerFamily, selector);
-		if (!key) {
-			throw new Error(
-				`[TokenSetAuthRegistry] No client registered for providerFamily "${providerFamily}". ` +
-					`Registered families: ${[...this.providerFamilyMap.keys()].join(", ")}`,
-			);
-		}
-		return this.require(key);
-	}
-
 	// -------------------------------------------------------------------
 	// Composite queries (ClientFilter — AND; ClientQueryOptions — OR-of-AND)
 	// -------------------------------------------------------------------
@@ -951,106 +1019,25 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		return [...this.clientKeyGenForOptions(options)];
 	}
 
-	// -------------------------------------------------------------------
-	// Access-token sugar (opt-in via accessTokenOf option)
-	// -------------------------------------------------------------------
+	private resolveRegisteredKeyForSingleClientOperation(
+		key: string | undefined,
+		methodName: string,
+	): string {
+		if (key !== undefined) return key;
 
-	/**
-	 * Get the current access token for a key (or the first available token
-	 * across all clients when no key is given).
-	 *
-	 * Returns `null` when:
-	 *   - No key is registered
-	 *   - The matching client is not yet ready (initializing / lazy)
-	 *   - No `accessTokenOf` option was supplied at construction time
-	 */
-	accessToken(key?: string): string | null {
-		if (key) {
-			const service = this.services.get(key);
-			return service ? this._accessTokenOf(service) : null;
-		}
-		for (const service of this.services.values()) {
-			const token = this._accessTokenOf(service);
-			if (token) return token;
-		}
-		return null;
-	}
-
-	async ensureAccessToken(key?: string): Promise<string | null> {
-		if (key) {
-			const service = this.services.get(key);
-			return service ? await this._ensureAccessTokenOf(service) : null;
-		}
-		const services = [...this.services.values()];
-		if (services.length > 1) {
+		const keys = [...this.entries.keys()];
+		if (keys.length === 0) {
 			throw new Error(
-				"[TokenSetAuthRegistry] ensureAccessToken() without a key is only valid for a single ready client.",
+				`[TokenSetAuthRegistry] ${methodName}() without a key requires one registered client, but no clients are registered.`,
 			);
 		}
-		const [service] = services;
-		return service ? await this._ensureAccessTokenOf(service) : null;
-	}
-
-	async ensureAuthorizationHeader(key?: string): Promise<string | null> {
-		if (key) {
-			const service = this.services.get(key);
-			return service ? await this._ensureAuthorizationHeaderOf(service) : null;
-		}
-		const services = [...this.services.values()];
-		if (services.length > 1) {
-			throw new Error(
-				"[TokenSetAuthRegistry] ensureAuthorizationHeader() without a key is only valid for a single ready client.",
-			);
-		}
-		const [service] = services;
-		return service ? await this._ensureAuthorizationHeaderOf(service) : null;
-	}
-
-	async ensureAuthForResource(
-		options: EnsureRegistryAuthForResourceOptions = {},
-	): Promise<EnsureAuthForResourceResult | null> {
-		const resolvedKey = this.resolveEnsureAuthKey(options);
-		if (!resolvedKey) return null;
-
-		const service =
-			options.waitForReady === false
-				? this.services.get(resolvedKey)
-				: await this.whenReady(resolvedKey);
-		if (!service) return null;
-
-		const {
-			key: _key,
-			query: _query,
-			waitForReady: _waitForReady,
-			...flow
-		} = options;
-		return this.ensureAuthForResourceOf(service, {
-			...flow,
-			clientKey: flow.clientKey ?? resolvedKey,
-		});
-	}
-
-	private resolveEnsureAuthKey(
-		options: EnsureRegistryAuthForResourceOptions,
-	): string | undefined {
-		if (options.key) return options.key;
-
-		const keys = options.query
-			? this.clientKeysForOptions(options.query)
-			: [...this.entries.keys()];
 		if (keys.length > 1) {
 			throw new Error(
-				"[TokenSetAuthRegistry] ensureAuthForResource() without a key is only valid for a single registered client.",
+				`[TokenSetAuthRegistry] ${methodName}() without a key is only valid for a single registered client.`,
 			);
 		}
-		return keys[0];
-	}
-
-	private async ensureAuthForResourceOf(
-		service: TService,
-		options: EnsureAuthForResourceOptions,
-	): Promise<EnsureAuthForResourceResult | null> {
-		return await this._ensureAuthForResourceOf(service, options);
+		const [resolvedKey] = keys;
+		return resolvedKey;
 	}
 
 	private attachAuthEvents(key: string, service: TService): void {
@@ -1093,31 +1080,38 @@ export function createTokenSetAuthRegistry<TClient, TService>(
 	return new TokenSetAuthRegistry<TClient, TService>(options);
 }
 export function createTokenSetOidcAuthRegistry<TClient extends OidcModeClient>(
-	options: CreateTokenSetOidcAuthRegistryOptions<
-		TClient,
-		TokenSetAuthService<TClient>
-	>,
-): TokenSetAuthRegistry<TClient, TokenSetAuthService<TClient>>;
-export function createTokenSetOidcAuthRegistry<
-	TClient extends OidcModeClient,
-	TService,
->(
-	options: CreateTokenSetOidcAuthRegistryOptions<TClient, TService>,
-): TokenSetAuthRegistry<TClient, TService>;
-export function createTokenSetOidcAuthRegistry<
-	TClient extends OidcModeClient,
-	TService,
->(
-	options: CreateTokenSetOidcAuthRegistryOptions<TClient, TService>,
-): TokenSetAuthRegistry<TClient, TService> {
-	return createTokenSetAuthRegistry<TClient, TService>({
-		materialize: options.materializeService,
-		dispose: options.dispose,
-		accessTokenOf: options.accessTokenOf,
-		ensureAccessTokenOf: options.ensureAccessTokenOf,
-		ensureAuthorizationHeaderOf: options.ensureAuthorizationHeaderOf,
-		ensureAuthForResourceOf: options.ensureAuthForResourceOf,
-		authEventsOf: options.authEventsOf,
-		idleScheduler: options.idleScheduler,
+	options: CreateTokenSetOidcAuthRegistryOptions = {},
+): TokenSetAuthRegistry<TClient, TClient> {
+	return createTokenSetAuthRegistry<TClient, TClient>({
+		materialize: materializeOidcClient,
+		dispose: disposeOidcClient,
+		start: startOidcClient,
+		authEventsOf: authEventsOfOidcClient,
+		idleScheduler: options.idleScheduler ?? createDefaultIdleScheduler(),
 	});
+}
+
+function materializeOidcClient<TClient extends OidcModeClient>(
+	client: TClient,
+	_entry: TokenSetClientEntry<TClient>,
+): TClient {
+	return client;
+}
+
+async function startOidcClient<TClient extends OidcModeClient>(
+	client: TClient,
+): Promise<void> {
+	await client.start();
+}
+
+function disposeOidcClient<TClient extends OidcModeClient>(
+	client: TClient,
+): void {
+	client.dispose();
+}
+
+function authEventsOfOidcClient<TClient extends OidcModeClient>(
+	client: TClient,
+): EventStreamTrait<TokenSetAuthEvent> {
+	return client.authEvents;
 }

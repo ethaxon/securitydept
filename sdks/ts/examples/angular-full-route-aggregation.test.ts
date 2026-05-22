@@ -27,7 +27,11 @@ import {
 	Router,
 	type RouterStateSnapshot,
 } from "@angular/router";
-import { createSubject, type ReadableSignalTrait } from "@securitydept/client";
+import {
+	createSubject,
+	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
+} from "@securitydept/client";
 import {
 	type AuthGuardClientOption,
 	createPlannerHost,
@@ -41,10 +45,7 @@ import {
 	ROUTE_REQUIREMENTS_DATA_KEY,
 	withRouteRequirements,
 } from "@securitydept/client-angular";
-import {
-	EnsureAuthForResourceStatus,
-	TokenSetAuthFlowSource,
-} from "@securitydept/token-set-context-client/orchestration";
+import { AuthCheckStatus } from "@securitydept/token-set-context-client/orchestration";
 import {
 	type CreateTokenSetRouteAggregationGuardOptions,
 	createTokenSetRouteAggregationGuard,
@@ -58,6 +59,7 @@ import {
 } from "@securitydept/token-set-context-client-angular";
 import { firstValueFrom, isObservable } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
+import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 
 // ---------------------------------------------------------------------------
 // Test helpers (minimal stubs — no DI needed)
@@ -84,6 +86,23 @@ function createTestSignal<T>(initial: T): {
 	};
 }
 
+function readReplayBoolean(
+	signal: ReadableReplaySignalTrait<boolean>,
+): boolean {
+	const slot = signal.get();
+	return slot.kind === "value" ? slot.value : false;
+}
+
+function readRegistryClientAuthenticated(
+	registry: TokenSetAuthRegistry,
+	key: string,
+): boolean {
+	const slot = registry.clientSignalFor(key).get();
+	return slot.kind === "value"
+		? readReplayBoolean(slot.value.isAuthenticated)
+		: false;
+}
+
 function createMockClient(
 	authenticated: boolean,
 ): OidcModeClient & OidcCallbackClient {
@@ -97,31 +116,14 @@ function createMockClient(
 				metadata: { source: { kind: "oidc_authorization_code" as const } },
 			}
 		: null;
-	const { signal } = createTestSignal(snap);
+	const reactive = createTestTokenSetReactiveFields(snap);
 	return {
-		state: signal,
+		...reactive.fields,
 		authEvents: createSubject(),
+		addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		start: vi.fn(async () => undefined),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
-		authorizationHeader: vi.fn(() => (snap ? "Bearer tok" : null)),
-		ensureAuthForResource: vi.fn().mockResolvedValue(
-			snap
-				? {
-						status: EnsureAuthForResourceStatus.Authenticated,
-						snapshot: snap,
-						freshness: "fresh",
-					}
-				: {
-						status: EnsureAuthForResourceStatus.Unauthenticated,
-						snapshot: null,
-						authorizationHeader: null,
-						reason: "no_snapshot",
-					},
-		),
-		ensureFreshAuthState: vi.fn().mockResolvedValue(snap),
-		ensureAuthorizationHeader: vi
-			.fn()
-			.mockResolvedValue(snap ? "Bearer tok" : null),
 		handleCallback: vi.fn().mockResolvedValue({ snapshot: snap }),
 	};
 }
@@ -149,40 +151,39 @@ function createRouteFreshnessMockClient(options: {
 		},
 		metadata: { source: { kind: "oidc_authorization_code" as const } },
 	};
-	const { signal, set } = createTestSignal<typeof initial | null>(initial);
+	const { set } = createTestSignal<typeof initial | null>(
+		options.refreshResult === "fresh" ? refreshed : null,
+	);
+	const reactive = createTestTokenSetReactiveFields(
+		options.refreshResult === "fresh" ? refreshed : null,
+	);
 
 	return {
-		state: signal,
+		...reactive.fields,
 		authEvents: createSubject(),
+		addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		start: vi.fn(async () => undefined),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(initial),
-		authorizationHeader: vi.fn(() => null),
-		ensureAuthForResource: vi.fn().mockImplementation(async () => {
+		authCheck: vi.fn().mockImplementation(async () => {
 			if (options.refreshResult === "fresh") {
 				set(refreshed);
+				reactive.emitSnapshot(refreshed);
 				return {
-					status: EnsureAuthForResourceStatus.Authenticated,
+					status: AuthCheckStatus.Authenticated,
 					snapshot: refreshed,
 					freshness: "fresh",
 				};
 			}
 			set(null);
+			reactive.emitSnapshot(null);
 			return {
-				status: EnsureAuthForResourceStatus.Unauthenticated,
+				status: AuthCheckStatus.Unauthenticated,
 				snapshot: null,
 				authorizationHeader: null,
 				reason: "refresh_failed",
 			};
 		}),
-		ensureFreshAuthState: vi.fn().mockImplementation(async () => {
-			if (options.refreshResult === "fresh") {
-				set(refreshed);
-				return refreshed;
-			}
-			set(null);
-			return null;
-		}),
-		ensureAuthorizationHeader: vi.fn().mockResolvedValue(null),
 		handleCallback: vi.fn().mockResolvedValue({ snapshot: initial }),
 	};
 }
@@ -456,7 +457,6 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 		// "session" client — authenticated
 		registry.register({
 			key: "session",
-			autoRestore: false,
 			clientFactory: () => createMockClient(true),
 			requirementKind: "session",
 		});
@@ -464,10 +464,11 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 		// "confluence" client — NOT authenticated
 		registry.register({
 			key: "confluence",
-			autoRestore: false,
 			clientFactory: () => createMockClient(false),
 			requirementKind: "frontend_oidc",
 		});
+		await registry.whenReady("session");
+		await registry.whenReady("confluence");
 
 		// Build a leaf route that aggregates parent + child requirements
 		const leaf = buildRouteChain([
@@ -504,7 +505,7 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 					requirementId: req.id,
 					requirementKind: req.kind,
 					checkAuthenticated: () =>
-						keys.every((k) => registry.require(k).isAuthenticated.get()),
+						keys.every((k) => readRegistryClientAuthenticated(registry, k)),
 					onUnauthenticated: () => false as boolean,
 				},
 			];
@@ -525,16 +526,16 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 		// Both clients authenticated
 		registry.register({
 			key: "session",
-			autoRestore: false,
 			clientFactory: () => createMockClient(true),
 			requirementKind: "session",
 		});
 		registry.register({
 			key: "confluence",
-			autoRestore: false,
 			clientFactory: () => createMockClient(true),
 			requirementKind: "frontend_oidc",
 		});
+		await registry.whenReady("session");
+		await registry.whenReady("confluence");
 
 		const leaf = buildRouteChain([
 			{},
@@ -561,7 +562,7 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 					requirementId: req.id,
 					requirementKind: req.kind,
 					checkAuthenticated: () =>
-						keys.every((k) => registry.require(k).isAuthenticated.get()),
+						keys.every((k) => readRegistryClientAuthenticated(registry, k)),
 					onUnauthenticated: () => false as boolean,
 				},
 			];
@@ -921,7 +922,6 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 			key: "confluence",
 			clientFactory: () => client,
 			requirementKind: "frontend_oidc",
-			autoRestore: false,
 		});
 
 		const root = secureRouteRoot(
@@ -947,15 +947,7 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 		]);
 
 		expect(result).toBe(true);
-		expect(client.ensureAuthForResource).toHaveBeenCalledWith(
-			expect.objectContaining({
-				clientKey: "confluence",
-				forceRefreshWhenDue: true,
-				requirement: { id: "confluence-oidc", kind: "frontend_oidc" },
-				source: TokenSetAuthFlowSource.RouteGuard,
-				url: "/target",
-			}),
-		);
+		expect(readReplayBoolean(client.isAuthenticated)).toBe(true);
 		expect(onUnauthenticated).not.toHaveBeenCalled();
 	});
 
@@ -972,7 +964,6 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 			key: "confluence",
 			clientFactory: () => client,
 			requirementKind: "frontend_oidc",
-			autoRestore: false,
 		});
 
 		const root = secureRouteRoot(
@@ -998,15 +989,7 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 		]);
 
 		expect(String(result)).toBe("/login/confluence");
-		expect(client.ensureAuthForResource).toHaveBeenCalledWith(
-			expect.objectContaining({
-				clientKey: "confluence",
-				forceRefreshWhenDue: true,
-				requirement: { id: "confluence-oidc", kind: "frontend_oidc" },
-				source: TokenSetAuthFlowSource.RouteGuard,
-				url: "/target",
-			}),
-		);
+		expect(readReplayBoolean(client.isAuthenticated)).toBe(false);
 		expect(onUnauthenticated).toHaveBeenCalledTimes(1);
 	});
 
@@ -1022,7 +1005,6 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 			key: "confluence",
 			clientFactory: () => client,
 			requirementKind: "frontend_oidc",
-			autoRestore: false,
 		});
 
 		const root = secureRouteRoot(
@@ -1048,15 +1030,7 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 		]);
 
 		expect(result).toBe(false);
-		expect(client.ensureAuthForResource).toHaveBeenCalledWith(
-			expect.objectContaining({
-				clientKey: "confluence",
-				forceRefreshWhenDue: true,
-				requirement: { id: "confluence-oidc", kind: "frontend_oidc" },
-				source: TokenSetAuthFlowSource.RouteGuard,
-				url: "/target",
-			}),
-		);
+		expect(readReplayBoolean(client.isAuthenticated)).toBe(false);
 		expect(onUnauthenticated).toHaveBeenCalledTimes(1);
 	});
 });

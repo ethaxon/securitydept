@@ -17,7 +17,7 @@
 					"stability": "stable",
 					"owner": "foundation",
 					"changeDiscipline": "stable-deprecation-first",
-					"note": "Owns the current shared cancellation/resource-release baseline, the formal foundation-layer unified input-source helpers, the structured-observation baseline, the shared authenticated-principal baseline, and the dual-layer error bridge: DisposableTrait, CancellationTokenTrait, CancellationTokenSourceTrait, createCancellationTokenSource(), and createLinkedCancellationToken() formalize cooperative cancellation plus owner-side release via dispose(); timer(), interval(), scheduleAt(), fromEventPattern(), fromSignal(), and fromPromise() are the current scheduler/input primitives above raw environment capabilities; TraceEvent, TraceEventSinkTrait, createTraceTimelineStore() / TraceTimelineStore, createOperationTracer(), and OperationTraceEventType now formalize the machine-readable trace sink plus operation-correlation story; AuthenticatedPrincipal, normalizeAuthenticatedPrincipal(), normalizeAuthenticatedPrincipalWire(), and projectAuthenticatedPrincipal() now formalize the shared human-principal contract and host-facing projection baseline consumed by session/token-set families; ErrorPresentationDescriptor / ErrorPresentationTone / readErrorPresentationDescriptor() remain the host-facing presentation and recovery bridge built on runtime errors.",
+					"note": "Owns the current shared cancellation/resource-release baseline, the formal foundation-layer unified input-source helpers, the structured-observation baseline, replay signal primitive, shared authenticated-principal baseline, and the dual-layer error bridge: DisposableTrait, CancellationTokenTrait, CancellationTokenSourceTrait, createCancellationTokenSource(), and createLinkedCancellationToken() formalize cooperative cancellation plus owner-side release via dispose(); timer(), interval(), scheduleAt(), fromEventPattern(), fromSignal(), and fromPromise() are the current scheduler/input primitives above raw environment capabilities; ReadableReplaySignalTrait / WritableReplaySignalTrait / ComputedReplaySignalTrait, ReplaySignalSlot<T>, ReplaySignalWhenValueOptions, createReplaySignal(), createComputedReplaySignal(), createAndThenComputedReplaySignal(), readonlyReplaySignal(), and isReplaySignalTrait() formalize last-available channels that start empty, replay only emitted values, use get() for synchronous slot reads, and use cancellable whenValue() for asynchronous value waits; TraceEvent, TraceEventSinkTrait, createTraceTimelineStore() / TraceTimelineStore, createOperationTracer(), and OperationTraceEventType now formalize the machine-readable trace sink plus operation-correlation story; AuthenticatedPrincipal, normalizeAuthenticatedPrincipal(), normalizeAuthenticatedPrincipalWire(), and projectAuthenticatedPrincipal() now formalize the shared human-principal contract and host-facing projection baseline consumed by session/token-set families; ErrorPresentationDescriptor / ErrorPresentationTone / readErrorPresentationDescriptor(), ErrorAttributes, and describeError() remain the host-facing presentation, recovery, and structured error-attribute bridge built on runtime errors.",
 					"evidence": [
 						"examples/minimal-entry-points.test.ts",
 						"examples/scheduling-input-source-baseline.test.ts",
@@ -27,6 +27,7 @@
 						"packages/client/src/logging/__tests__/operation-tracer.test.ts",
 						"packages/client/src/logging/__tests__/trace-timeline-store.test.ts",
 						"packages/client/src/scheduling/__tests__/helpers.test.ts",
+						"packages/client/src/signals/__tests__/signals.test.ts",
 						"packages/session-context-client/src/__tests__/client.test.ts",
 						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/parsers.test.ts",
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client.test.ts",
@@ -147,11 +148,26 @@
 					"stability": "provisional",
 					"owner": "foundation",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Canonical framework-neutral RxJS bridge for SecurityDept event streams and signals. Exposes `toRxObservable(source)` for both EventStreamTrait and ReadableSignalTrait, plus `fromRxObservable(observable)` for the reverse bridge. `@securitydept/client/events` remains the event/operator surface; `@securitydept/client-angular` keeps Angular-native writable-signal bridging only.",
+					"note": "Canonical framework-neutral RxJS bridge for SecurityDept event streams and signals. Exposes `toRxObservable(source)` for EventStreamTrait, ReadableSignalTrait, and ReadableReplaySignalTrait, plus `fromRxObservable(observable)` for the reverse bridge. Replay signals do not emit initial empty slots and replay only the last emitted value to late subscribers. `@securitydept/client/events` remains the event/operator surface; `@securitydept/client-angular` keeps Angular-native writable-signal bridging only.",
 					"evidence": [
 						"packages/client/src/rx/__tests__/rx.test.ts",
 						"examples/angular-integration-adapter.test.ts",
-						"packages/token-set-context-client-angular/src/lib/__tests__/token-set-auth.service.test.ts"
+						"packages/token-set-context-client-angular/src/lib/__tests__/token-set-auth.registry.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Shared Client Lifecycle Contract"
+					}
+				},
+				{
+					"exportKey": "./struct",
+					"stability": "provisional",
+					"owner": "foundation",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Foundation shared structural utilities for SDK internals and advanced adapters. OnDemandTaskQueue owns the reusable async on-demand FIFO runner used by token-set auth-check scheduling so family packages do not reimplement queue fields, run-loop state, or pending-task rejection semantics.",
+					"evidence": [
+						"packages/client/src/struct/__tests__/task-queue.test.ts",
+						"packages/token-set-context-client/src/orchestration/client/__tests__/base-oidc-mode-client-auth-signals.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -429,14 +445,14 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Framework-neutral multi-client token-set auth registry core. Owns keyed storage, readiness tracking (not_initialized → initializing → ready | failed), canonical lifecycle verbs (`register(entry)`, `unregister(key)`, `resetMaterialization(key)`, `dispose()`), priority=primary|lazy lifecycle, preload / whenReady / idleWarmup, and the reactive registry topology/readiness authority through `state`. `registeredKeys()` / `readyKeys()` plus the registered/ready snapshot helpers are synchronous convenience over that state signal. The same subpath now also owns the shared `TokenSetAuthService<TClient extends OidcModeClient>` state owner plus `createTokenSetOidcAuthRegistry()` so React and Angular adapters bridge one core service/registry contract instead of redefining freshness, access-token, or restore state locally. The subpath also keeps multi-axis discrimination (urlPatterns, callbackPath, requirementKind, providerFamily), lifecycle-safe invalidation errors for stale async materialization, the shared managed OIDC client contracts (`OidcModeClient`, `OidcCallbackClient`), the shared generic callback failure presenter `describeTokenSetCallbackError()`, the callback resume error reader `readTokenSetCallbackResumeErrorDetails()`, and `TokenSetCallbackResumeController` as the shared callback resume state machine. Mode-specific callback copy remains an explicit override owned by the caller or mode package.",
+					"note": "Framework-neutral multi-client token-set auth registry core. Owns keyed storage, readiness tracking (not_initialized → initializing → ready | failed), canonical lifecycle verbs (`register(entry)`, `unregister(key)`, `resetMaterialization(key)`, `dispose()`), priority=primary|lazy lifecycle, preload / whenReady / idleWarmup, and the reactive registry topology/readiness authority through `state`. Omitted-key `whenReady()` and `clientSignalFor()` are single-registered-client conveniences; multi-client hosts must pass an explicit key. `whenReady()` waits for lazy materialization and registry-managed `client.start()` completion. `clientSignalFor(key?)` is the canonical reactive client acquisition API and triggers lazy materialization/start when called; the returned replay signal remains empty until a started client is ready. `registeredKeys()` / `readyKeys()` plus registered snapshot helpers are synchronous convenience over the registry state signal. `createTokenSetOidcAuthRegistry()` now uses the mode client itself as the materialized object; per-client auth state lives on OIDC mode client channels rather than on a service wrapper: replay signals for `authDetermined`, `authSnapshot`, `isAuthenticated`, and `authorizationHeaderValue`, plus plain signals for `lastAuthError` and `authOperations`. Advanced maintenance uses `client.authCheck(options)`; leaf consumers use replay signals instead of registry-level ensure sugar. The subpath also keeps multi-axis discrimination (urlPatterns, callbackPath, requirementKind, providerFamily), lifecycle-safe invalidation errors for stale async materialization, the shared managed OIDC client contracts (`OidcModeClient`, `OidcCallbackClient`), the shared generic callback failure presenter `describeTokenSetCallbackError()`, the callback resume error reader `readTokenSetCallbackResumeErrorDetails()`, and `TokenSetCallbackResumeController` as the shared callback resume state machine. Mode-specific callback copy remains an explicit override owned by the caller or mode package.",
 					"evidence": [
 						"examples/multi-client-lazy-init-contract.test.ts",
 						"examples/async-client-readiness-contract.test.ts",
 						"examples/angular-integration-adapter.test.ts",
 						"examples/react-multi-client-registry-baseline.test.ts",
 						"packages/token-set-context-client/src/registry/__tests__/client-registry-lifecycle.test.ts",
-						"packages/token-set-context-client/src/registry/__tests__/token-set-auth-service.test.ts",
+						"packages/token-set-context-client/src/orchestration/client/__tests__/base-oidc-mode-client-auth-signals.test.ts",
 						"packages/token-set-context-client/src/registry/__tests__/error-presentation.test.ts",
 						"packages/token-set-context-client/src/registry/__tests__/callback-resume-controller.test.ts"
 					],
@@ -450,7 +466,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Token-set-specific raw web route helper that creates AuthGuardClientOption entries whose unauthenticated handler first calls ensureAuthForResource({ source: raw_web_router, forceRefreshWhenDue: true }) before redirect/block fallback.",
+					"note": "Token-set-specific raw web route helper that creates AuthGuardClientOption entries whose unauthenticated handler waits for the selected client's `isAuthenticated` replay signal before redirect/block fallback.",
 					"evidence": [
 						"packages/token-set-context-client/src/web-router/__tests__/token-set-web-router.test.ts"
 					],
@@ -579,7 +595,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Token-set-specific TanStack Router beforeLoad helper that wraps @securitydept/client-react/tanstack-router and calls registry.ensureAuthForResource({ source: tanstack_before_load, forceRefreshWhenDue: true }) for each route requirement before redirect/block fallback.",
+					"note": "Token-set-specific TanStack Router beforeLoad helper that wraps @securitydept/client-react/tanstack-router and waits for the selected client's `isAuthenticated` replay signal for each route requirement before redirect/block fallback.",
 					"evidence": [
 						"packages/token-set-context-client-react/src/__tests__/tanstack-router.test.ts"
 					],
@@ -601,13 +617,12 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Root export owns TokenSetAuthRegistry DI service, multi-client integration, bearer interceptor (BearerInterceptorOptions { strictUrlMatch?: boolean } + TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS InjectionToken; provideTokenSetBearerInterceptor(options?) and createTokenSetBearerInterceptor(registry, options?) accept the same options object — strictUrlMatch: true bounds bearer injection to URLs matching registered urlPatterns), callback resume, and the canonical Angular route-security builders. TokenSetAuthRegistry is now a thin DI wrapper over the shared `createTokenSetOidcAuthRegistry()` lifecycle owner and exposes the same canonical verbs plus signal-state authority as the core: `register(entry)`, `unregister(key)`, `resetMaterialization(key)`, `dispose()`, `state`, registered snapshots, and ready snapshots. Angular `TokenSetAuthService` is now a bridge over the shared core `TokenSetAuthService`, adding Angular-native signal/Observable views without reimplementing token freshness, access-token derivation, or restore state. secureRouteRoot() / secureRoute() are the adopter-facing Angular Router path: child routes declare serializable requirement metadata only, root registers non-serializable runtime policy (planner hosts, requirementPolicies, handlers), and both canActivate + canActivateChild evaluate the full route chain in one pass. createTokenSetRouteAggregationGuard() remains the lower-level route-tree primitive and passes attemptedUrl from Angular router state rather than from page globals. createTokenSetOidcLoginRedirectHandler() is the page redirect helper layered on top of that route context, targeting the shared OidcRedirectLoginClient contract. Its public key remains `environment`, and the canonical path is providePageClientEnvironment({ environment }) from @securitydept/client-angular. The helper awaits that source inside the guard flow before calling `loginWithRedirect()`. CallbackResumeService now bridges TokenSetCallbackResumeController and exposes component-free resume(url) state through Angular signals / observables; the canonical signal/event-to-RxJS bridge now lives in `@securitydept/client/rx`, while `@securitydept/client-angular` keeps Angular-specific writable-signal bridging.",
+					"note": "Root export owns TokenSetAuthRegistry DI service, multi-client integration, bearer interceptor (BearerInterceptorOptions { strictUrlMatch?: boolean } + TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS InjectionToken; provideTokenSetBearerInterceptor(options?) and createTokenSetBearerInterceptor(registry, options?) accept the same options object — strictUrlMatch: true bounds bearer injection to URLs matching registered urlPatterns), callback resume, and the canonical Angular route-security builders. TokenSetAuthRegistry is now a thin DI wrapper over the shared `createTokenSetOidcAuthRegistry()` lifecycle owner and exposes the same canonical verbs plus signal-state authority as the core: `register(entry)`, `unregister(key)`, `resetMaterialization(key)`, `dispose()`, `state`, registered snapshots, ready keys, and `clientSignalFor()`. Registry methods materialize and return mode clients; Angular-specific code should bridge client replay signals (`authSnapshot`, `isAuthenticated`, `authorizationHeaderValue`, `authOperations`) with `@securitydept/client/rx` or `bridgeToAngularSignal()` when needed rather than using a per-client service wrapper. secureRouteRoot() / secureRoute() are the adopter-facing Angular Router path: child routes declare serializable requirement metadata only, root registers non-serializable runtime policy (planner hosts, requirementPolicies, handlers), and both canActivate + canActivateChild evaluate the full route chain in one pass. createTokenSetRouteAggregationGuard() remains the lower-level route-tree primitive and passes attemptedUrl from Angular router state rather than from page globals. createTokenSetOidcLoginRedirectHandler() is the page redirect helper layered on top of that route context, targeting the shared OidcRedirectLoginClient contract. Its public key remains `environment`, and the canonical path is providePageClientEnvironment({ environment }) from @securitydept/client-angular. The helper awaits that source inside the guard flow before calling `loginWithRedirect()`. CallbackResumeService now bridges TokenSetCallbackResumeController and exposes component-free resume(url) state through Angular signals / observables; the canonical signal/event-to-RxJS bridge now lives in `@securitydept/client/rx`, while `@securitydept/client-angular` keeps Angular-specific writable-signal bridging.",
 					"evidence": [
 						"examples/angular-integration-adapter.test.ts",
 						"examples/angular-full-route-aggregation.test.ts",
 						"examples/angular-guard-injection-context.test.ts",
 						"packages/token-set-context-client-angular/src/lib/__tests__/token-set-auth.registry.test.ts",
-						"packages/token-set-context-client-angular/src/lib/__tests__/token-set-auth.service.test.ts",
 						"packages/token-set-context-client-angular/src/lib/__tests__/token-set-callback.component.test.ts",
 						"packages/token-set-context-client-angular/src/lib/__tests__/route-aggregation-guard.test.ts"
 					],

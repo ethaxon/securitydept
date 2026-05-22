@@ -10,7 +10,13 @@ import {
 	Router,
 	type RouterStateSnapshot,
 } from "@angular/router";
-import { createInMemoryRecordStore } from "@securitydept/client";
+import {
+	createInMemoryRecordStore,
+	createReplaySignal,
+	createSignal,
+	createSubject,
+} from "@securitydept/client";
+import type { AuthGuardClientOption } from "@securitydept/client/auth-coordination";
 import {
 	ClientEnvironmentService,
 	createBrowserPageClientEnvironment,
@@ -25,15 +31,15 @@ import {
 	createBackendOidcModeWebClientEnvironment,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import {
-	EnsureAuthForResourceStatus,
+	AuthCheckStatus,
 	TokenSetAuthFlowReason,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
 	type CreateTokenSetRouteAggregationGuardOptions,
 	createTokenSetOidcLoginRedirectHandler,
 	createTokenSetRouteAggregationGuard,
+	type TokenSetAngularClient,
 	TokenSetAuthRegistry,
-	type TokenSetAuthService,
 	type TokenSetRouteUnauthenticatedContext,
 } from "@securitydept/token-set-context-client-angular";
 import { describe, expect, it, vi } from "vitest";
@@ -111,25 +117,55 @@ describe("createTokenSetRouteAggregationGuard", () => {
 			},
 		);
 		const plannerHost = {
-			evaluate: vi.fn(async (candidates) => ({
-				allAuthenticated: false,
-				pendingCandidate: candidates[0],
-				unauthenticatedCandidates: candidates,
-			})),
+			evaluate: vi.fn(async (candidates: AuthGuardClientOption[]) => {
+				const unauthenticated = candidates.filter(
+					(candidate) => !candidate.checkAuthenticated(),
+				);
+				return {
+					allAuthenticated: unauthenticated.length === 0,
+					pendingCandidate: unauthenticated[0] ?? null,
+					unauthenticatedCandidates: unauthenticated,
+				};
+			}),
 		} as NonNullable<CreateTokenSetRouteAggregationGuardOptions["plannerHost"]>;
-		const service = {
-			isAuthenticated: vi.fn(() => false),
-			restorePromise: null,
-			ensureAuthForResource: vi.fn(async () => ({
-				status: EnsureAuthForResourceStatus.Unauthenticated,
+		const isAuthenticated = createReplaySignal<boolean>();
+		const authDetermined = createReplaySignal<true>();
+		authDetermined.emit(true);
+		const authSnapshot = createReplaySignal<null>();
+		authSnapshot.emit(null);
+		const authorizationHeaderValue = createReplaySignal<string | undefined>();
+		authorizationHeaderValue.emit(undefined);
+		const lastAuthError = createSignal<unknown | undefined>(undefined);
+		const client = {
+			state: createSignal(null),
+			authDetermined,
+			authSnapshot,
+			isAuthenticated,
+			authorizationHeaderValue,
+			lastAuthError,
+			authOperations: {
+				restorePending: createSignal(false),
+				refreshPending: createSignal(false),
+				clearPending: createSignal(false),
+				loginPending: createSignal(false),
+			},
+			authEvents: createSubject(),
+			addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			start: vi.fn(async () => undefined),
+			dispose: vi.fn(),
+			restorePersistedState: vi.fn(async () => null),
+			authCheck: vi.fn(async () => ({
+				status: AuthCheckStatus.Unauthenticated,
 				snapshot: null,
 				authorizationHeader: null,
 				reason: TokenSetAuthFlowReason.NoSnapshot,
 			})),
-		} as unknown as TokenSetAuthService;
+			handleCallback: vi.fn(),
+			loginWithRedirect: vi.fn(),
+		} as unknown as TokenSetAngularClient;
 		const registry = {
 			clientKeyListForRequirement: vi.fn(() => ["frontend"]),
-			whenReady: vi.fn(async () => service),
+			whenReady: vi.fn(async () => client),
 			metaFor: vi.fn(() => ({
 				clientKey: "frontend",
 				urlPatterns: [],
@@ -193,9 +229,7 @@ describe("createTokenSetRouteAggregationGuard", () => {
 		const { service: environmentService } =
 			createAngularPageEnvironmentService();
 		const registry = {
-			whenReady: vi.fn(async () => ({
-				client: { loginWithRedirect },
-			})),
+			whenReady: vi.fn(async () => ({ loginWithRedirect })),
 		} as unknown as Pick<TokenSetAuthRegistry, "whenReady">;
 		const injector = createEnvironmentInjector(
 			[
@@ -245,9 +279,7 @@ describe("createTokenSetRouteAggregationGuard", () => {
 		);
 		let windowRead = false;
 		const registry = {
-			whenReady: vi.fn(async () => ({
-				client: { loginWithRedirect },
-			})),
+			whenReady: vi.fn(async () => ({ loginWithRedirect })),
 		} as unknown as Pick<TokenSetAuthRegistry, "whenReady">;
 		const injector = createEnvironmentInjector(
 			[
@@ -339,9 +371,7 @@ describe("createTokenSetRouteAggregationGuard", () => {
 		});
 		const loginWithRedirect = vi.spyOn(backendClient, "loginWithRedirect");
 		const registry = {
-			whenReady: vi.fn(async () => ({
-				client: backendClient,
-			})),
+			whenReady: vi.fn(async () => backendClient),
 		} as unknown as Pick<TokenSetAuthRegistry, "whenReady">;
 		const injector = createEnvironmentInjector(
 			[
@@ -386,9 +416,7 @@ describe("createTokenSetRouteAggregationGuard", () => {
 		const { service: environmentService } =
 			createAngularPageEnvironmentService();
 		const registry = {
-			whenReady: vi.fn(async () => ({
-				client: {},
-			})),
+			whenReady: vi.fn(async () => ({})),
 		} as unknown as Pick<TokenSetAuthRegistry, "whenReady">;
 		const injector = createEnvironmentInjector(
 			[
@@ -430,9 +458,7 @@ describe("createTokenSetRouteAggregationGuard", () => {
 		const { service: environmentService } =
 			createAngularPageEnvironmentService();
 		const registry = {
-			whenReady: vi.fn(async () => ({
-				client: { loginWithRedirect },
-			})),
+			whenReady: vi.fn(async () => ({ loginWithRedirect })),
 		} as unknown as Pick<TokenSetAuthRegistry, "whenReady">;
 		const injector = createEnvironmentInjector(
 			[

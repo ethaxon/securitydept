@@ -23,7 +23,7 @@ type RxBackedEventStream<T> = EventStreamTrait<T> & {
 export function createEventStream<T>(
 	producer: (observer: EventObserver<T>) => (() => void) | void,
 ): EventStreamTrait<T> {
-	return fromRxObservable(
+	return fromEventRxObservable(
 		new Observable<T>((subscriber) => {
 			const teardown = producer({
 				next: (value) => subscriber.next(value),
@@ -44,7 +44,9 @@ export function createReplaySubject<T>(bufferSize = 1): ReplaySubjectTrait<T> {
 	return Object.assign(subject, { bufferSize });
 }
 
-export function toRxObservable<T>(stream: EventStreamTrait<T>): Observable<T> {
+export function toEventRxObservable<T>(
+	stream: EventStreamTrait<T>,
+): Observable<T> {
 	const maybeBacked = stream as Partial<RxBackedEventStream<T>>;
 	if (maybeBacked[RX_OBSERVABLE]) {
 		return maybeBacked[RX_OBSERVABLE];
@@ -60,7 +62,7 @@ export function toRxObservable<T>(stream: EventStreamTrait<T>): Observable<T> {
 	});
 }
 
-export function fromRxObservable<T>(
+export function fromEventRxObservable<T>(
 	observable: Observable<T>,
 ): EventStreamTrait<T> {
 	return {
@@ -77,7 +79,7 @@ export function fromRxObservable<T>(
 }
 
 function wrapSubject<T>(subject: Subject<T>): SubjectTrait<T> {
-	return Object.assign(fromRxObservable(subject.asObservable()), {
+	return Object.assign(fromEventRxObservable(subject.asObservable()), {
 		next: (value: T) => subject.next(value),
 		error: (error: unknown) => subject.error(error),
 		complete: () => subject.complete(),

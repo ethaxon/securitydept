@@ -4,10 +4,14 @@ import {
 	runInInjectionContext,
 } from "@angular/core";
 import { Router } from "@angular/router";
-import { createSignal, createSubject } from "@securitydept/client";
 import {
+	createReplaySignal,
+	createSignal,
+	createSubject,
+} from "@securitydept/client";
+import {
+	AuthCheckStatus,
 	type AuthSnapshot,
-	EnsureAuthForResourceStatus,
 	TokenSetAuthFlowReason,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
@@ -204,6 +208,11 @@ describe("TokenSetCallbackComponent", () => {
 			snapshot: { tokens: { accessToken: "live-at" }, metadata: {} },
 			postAuthRedirectUri: "/after-callback",
 		}));
+		const authDetermined = createReplaySignal<true>();
+		const authSnapshot = createReplaySignal<AuthSnapshot | null>();
+		const isAuthenticated = createReplaySignal<boolean>();
+		const authorizationHeaderValue = createReplaySignal<string | undefined>();
+		const lastAuthError = createSignal<unknown | undefined>(undefined);
 		const injector = createEnvironmentInjector(
 			[TokenSetAuthRegistry, CallbackResumeService],
 			Injector.NULL as never,
@@ -218,19 +227,29 @@ describe("TokenSetCallbackComponent", () => {
 				callbackPath: "/auth/token-set/callback",
 				clientFactory: () => ({
 					state: createSignal<AuthSnapshot | null>(null),
+					authDetermined,
+					authSnapshot,
+					isAuthenticated,
+					authorizationHeaderValue,
+					lastAuthError,
+					authOperations: {
+						restorePending: createSignal(false),
+						refreshPending: createSignal(false),
+						clearPending: createSignal(false),
+						loginPending: createSignal(false),
+					},
 					authEvents: createSubject(),
+					addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+					start: vi.fn(async () => undefined),
 					dispose: vi.fn(),
 					restorePersistedState: vi.fn(async () => null),
 					handleCallback,
-					authorizationHeader: vi.fn(() => null),
-					ensureAuthForResource: vi.fn(async () => ({
-						status: EnsureAuthForResourceStatus.Unauthenticated,
+					authCheck: vi.fn(async () => ({
+						status: AuthCheckStatus.Unauthenticated,
 						snapshot: null,
 						authorizationHeader: null,
 						reason: TokenSetAuthFlowReason.NoSnapshot,
 					})),
-					ensureFreshAuthState: vi.fn(async () => null),
-					ensureAuthorizationHeader: vi.fn(async () => null),
 					loginWithRedirect: vi.fn(async () => undefined),
 				}),
 			});

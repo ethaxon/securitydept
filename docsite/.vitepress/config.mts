@@ -163,6 +163,9 @@ function rewriteHref(
 	if (resolved === "README_zh.md") return map("/zh/");
 	if (resolved === "AGENTS.md") return map(`${langPrefix}/agents`);
 	if (/^LICENSE(\.md)?$/i.test(resolved)) return map(`${langPrefix}/license`);
+	if (/^CHANGELOG(\.md)?$/i.test(resolved)) {
+		return map(`${REPO_URL}/blob/main/CHANGELOG.md`);
+	}
 
 	const repoDocs = resolved.match(/^docs\/(en|zh)\/([^/]+)\.md$/i);
 	if (repoDocs) {

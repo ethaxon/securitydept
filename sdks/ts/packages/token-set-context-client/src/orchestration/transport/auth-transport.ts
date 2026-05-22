@@ -1,14 +1,13 @@
-import type { HttpRequest, HttpTransport } from "@securitydept/client";
+import type {
+	HttpRequest,
+	HttpTransport,
+	ReadableReplaySignalTrait,
+} from "@securitydept/client";
 import {
 	ClientError,
 	ClientErrorKind,
 	UserRecovery,
 } from "@securitydept/client";
-import type {
-	EnsureAuthForResourceOptions,
-	EnsureAuthForResourceResult,
-} from "../client/base-client";
-import { TokenSetAuthFlowSource } from "../events/auth-events";
 
 const AUTH_TRANSPORT_SOURCE = "token-orchestration-transport";
 
@@ -19,24 +18,16 @@ const AUTH_TRANSPORT_SOURCE = "token-orchestration-transport";
  * the token was obtained.
  */
 export interface BearerHeaderProvider {
-	/** Raw synchronous projection. Prefer ensureAuthorizationHeader when available. */
 	authorizationHeader(): string | null;
 }
 
-export interface AsyncBearerHeaderProvider {
-	ensureAuthorizationHeader(): Promise<string | null>;
-}
-
-export interface AuthForResourceProvider {
-	ensureAuthForResource(
-		options?: EnsureAuthForResourceOptions,
-	): Promise<EnsureAuthForResourceResult>;
+export interface ReplayBearerHeaderProvider {
+	authorizationHeaderValue: ReadableReplaySignalTrait<string | undefined>;
 }
 
 export type AuthorizationHeaderProviderTrait =
 	| BearerHeaderProvider
-	| AsyncBearerHeaderProvider
-	| AuthForResourceProvider;
+	| ReplayBearerHeaderProvider;
 
 export interface CreateAuthorizedTransportOptions {
 	transport: HttpTransport;
@@ -113,23 +104,13 @@ export function createRemappingAuthorizedTransport(
 
 function resolveAuthorizationHeader(
 	headerProvider: AuthorizationHeaderProviderTrait,
-	options: CreateAuthorizedTransportOptions,
-	request: HttpRequest,
+	_options: CreateAuthorizedTransportOptions,
+	_request: HttpRequest,
 ): Promise<string | null> | string | null {
-	if ("ensureAuthForResource" in headerProvider) {
-		return headerProvider
-			.ensureAuthForResource({
-				source: TokenSetAuthFlowSource.AuthorizedTransport,
-				needsAuthorizationHeader: true,
-				forceRefreshWhenDue: true,
-				clientKey: options.clientKey,
-				logicalClientId: options.logicalClientId,
-				url: request.url,
-			})
-			.then((result) => result.authorizationHeader ?? null);
-	}
-	if ("ensureAuthorizationHeader" in headerProvider) {
-		return headerProvider.ensureAuthorizationHeader();
+	if ("authorizationHeaderValue" in headerProvider) {
+		return headerProvider.authorizationHeaderValue
+			.whenValue()
+			.then((header) => header ?? null);
 	}
 	return headerProvider.authorizationHeader();
 }

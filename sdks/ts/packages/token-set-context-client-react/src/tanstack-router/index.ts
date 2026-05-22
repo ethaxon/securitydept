@@ -4,20 +4,14 @@ import {
 	createSecureBeforeLoad,
 	type SecureBeforeLoadContext,
 } from "@securitydept/client-react/tanstack-router";
-import {
-	type EnsureAuthForResourceResult,
-	EnsureAuthForResourceStatus,
-	TokenSetAuthFlowSource,
-} from "@securitydept/token-set-context-client/orchestration";
 import type {
 	ClientQueryOptions,
-	EnsureRegistryAuthForResourceOptions,
+	OidcModeClient,
 } from "@securitydept/token-set-context-client/registry";
 
 export interface TokenSetTanStackAuthRegistry {
-	ensureAuthForResource(
-		options?: EnsureRegistryAuthForResourceOptions,
-	): Promise<EnsureAuthForResourceResult | null>;
+	whenReady(key?: string): Promise<OidcModeClient>;
+	clientKeysForOptions(options: ClientQueryOptions): string[];
 }
 
 export interface TokenSetTanStackClientSelector {
@@ -54,16 +48,8 @@ async function ensureTanStackRequirement(
 	const selector =
 		options.resolveClient?.(requirement, context) ??
 		defaultClientSelector(requirement);
-	const result = await options.registry.ensureAuthForResource({
-		key: selector?.key,
-		query: selector?.query,
-		source: TokenSetAuthFlowSource.TanStackBeforeLoad,
-		requirement: { id: requirement.id, kind: requirement.kind },
-		providerFamily: selector?.providerFamily,
-		url: context.location.href,
-		forceRefreshWhenDue: true,
-	});
-	return isAuthenticatedResourceResult(result);
+	const client = await resolveTanStackClient(options.registry, selector);
+	return client !== null && (await client.isAuthenticated.whenValue());
 }
 
 function defaultClientSelector(
@@ -89,11 +75,21 @@ function defaultClientSelector(
 	};
 }
 
-function isAuthenticatedResourceResult(
-	result: EnsureAuthForResourceResult | null,
-): boolean {
-	return (
-		result?.status === EnsureAuthForResourceStatus.Authenticated ||
-		result?.status === EnsureAuthForResourceStatus.AuthorizationHeaderResolved
-	);
+async function resolveTanStackClient(
+	registry: TokenSetTanStackAuthRegistry,
+	selector: TokenSetTanStackClientSelector | undefined,
+): Promise<OidcModeClient | null> {
+	if (selector?.key) {
+		return await registry.whenReady(selector.key);
+	}
+	const keys = selector?.query
+		? registry.clientKeysForOptions(selector.query)
+		: [];
+	if (keys.length === 0) {
+		return null;
+	}
+	if (keys.length > 1) {
+		return null;
+	}
+	return await registry.whenReady(keys[0]);
 }

@@ -328,10 +328,25 @@ export function TokenSetBackendModePlaygroundPage() {
 		[],
 	);
 
-	const service = registry.require(TOKEN_SET_BACKEND_MODE_CLIENT_KEY);
-	const state = useReadableSignal(service.state)
-		.snapshot as AuthStateSnapshot | null;
-	const client = service.client;
+	const clientSlot = registry
+		.clientSignalFor(TOKEN_SET_BACKEND_MODE_CLIENT_KEY)
+		.get();
+	if (clientSlot.kind !== "value") {
+		throw new Error(
+			`Token-set backend mode client ${TOKEN_SET_BACKEND_MODE_CLIENT_KEY} is not ready.`,
+		);
+	}
+	const client = clientSlot.value;
+	const authSnapshotSlot = useReadableSignal(client.authSnapshot);
+	const state =
+		authSnapshotSlot.kind === "value"
+			? (authSnapshotSlot.value as AuthStateSnapshot | null)
+			: null;
+	const authDeterminedSlot = useReadableSignal(client.authDetermined);
+	const authorizationHeaderSlot = useReadableSignal(
+		client.authorizationHeaderValue,
+	);
+	const lastAuthError = useReadableSignal(client.lastAuthError);
 	assertTokenSetBackendOidcClient(
 		client,
 		`TokenSetBackendModePlaygroundPage client ${TOKEN_SET_BACKEND_MODE_CLIENT_KEY}`,
@@ -463,52 +478,37 @@ export function TokenSetBackendModePlaygroundPage() {
 		}
 	}, [state?.tokens.accessToken]);
 
-	// Bootstrap readiness — driven by the provider's auto-restore.
-	// The service.restorePromise tracks the full browser bootstrap
-	// (fragment capture + callback + persistent restore), so we just
-	// await it and update the page-local bootstrap status.
 	useEffect(() => {
-		let active = true;
-
-		const restorePromise = service.restorePromise;
-		if (restorePromise) {
-			void restorePromise
-				.then((snapshot) => {
-					if (!active) return;
-					setBootstrap({
-						kind: BootstrapStatusKind.Ready,
-						source: snapshot
-							? (BackendOidcModeBootstrapSource.Restore as BackendOidcModeBootstrapSourceType)
-							: (BackendOidcModeBootstrapSource.Empty as BackendOidcModeBootstrapSourceType),
-					});
-				})
-				.catch((error: unknown) => {
-					if (!active) return;
-					setBootstrap({
-						kind: BootstrapStatusKind.Error,
-						message:
-							error instanceof Error
-								? error.message
-								: "Token-set bootstrap failed",
-					});
-				});
-		} else {
-			// No restore promise means auto-restore is disabled or already done.
-			setBootstrap({
-				kind: BootstrapStatusKind.Ready,
-				source: state
-					? (BackendOidcModeBootstrapSource.Restore as BackendOidcModeBootstrapSourceType)
-					: (BackendOidcModeBootstrapSource.Empty as BackendOidcModeBootstrapSourceType),
-			});
+		if (authDeterminedSlot.kind === "empty") {
+			return;
 		}
 
+		if (lastAuthError !== undefined) {
+			setBootstrap({
+				kind: BootstrapStatusKind.Error,
+				message:
+					lastAuthError instanceof Error
+						? lastAuthError.message
+						: "Token-set bootstrap failed",
+			});
+			return;
+		}
+
+		setBootstrap({
+			kind: BootstrapStatusKind.Ready,
+			source: state
+				? (BackendOidcModeBootstrapSource.Restore as BackendOidcModeBootstrapSourceType)
+				: (BackendOidcModeBootstrapSource.Empty as BackendOidcModeBootstrapSourceType),
+		});
+	}, [authDeterminedSlot, lastAuthError, state]);
+
+	useEffect(() => {
 		return () => {
-			active = false;
 			forwardAuthRequestRef.current = null;
 			propagationRequestRef.current = null;
 			// Client lifecycle is now owned by the provider — no manual dispose.
 		};
-	}, [service, state]);
+	}, []);
 
 	async function handleRefresh() {
 		setBusyAction(BusyActionKind.Refresh);
@@ -1363,7 +1363,11 @@ export function TokenSetBackendModePlaygroundPage() {
 							</div>
 							<CollapsibleTokenCell
 								label="Authorization Header"
-								value={client.authorizationHeader()}
+								value={
+									authorizationHeaderSlot.kind === "value"
+										? authorizationHeaderSlot.value
+										: undefined
+								}
 							/>
 						</div>
 					</section>

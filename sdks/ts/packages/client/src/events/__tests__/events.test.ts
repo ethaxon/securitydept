@@ -8,16 +8,15 @@ import {
 	debounceTime,
 	exhaustMap,
 	filter,
-	fromRxObservable,
 	map,
 	merge,
 	pipe,
 	shareReplay,
 	switchMap,
 	takeUntil,
-	toRxObservable,
 	withLatestFromSignal,
 } from "../../events/index";
+import { fromRxObservable, toRxObservable } from "../../rx";
 import { createSignal } from "../../signals";
 
 describe("createEventStream", () => {

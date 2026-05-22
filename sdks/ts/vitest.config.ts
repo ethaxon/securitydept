@@ -23,6 +23,10 @@ export default defineConfig({
 				replacement: path.join(packagesDir, "client/src/rx/index.ts"),
 			},
 			{
+				find: "@securitydept/client/struct",
+				replacement: path.join(packagesDir, "client/src/struct/index.ts"),
+			},
+			{
 				find: "@securitydept/client/persistence/web",
 				replacement: path.join(
 					packagesDir,

@@ -4,6 +4,7 @@ import type {
 	HttpRequest,
 	HttpResponse,
 	HttpTransport,
+	ReadableReplaySignalTrait,
 	TraceEvent,
 	TraceEventSinkTrait,
 } from "@securitydept/client";
@@ -16,7 +17,7 @@ import { createFetchTransport } from "@securitydept/client/web";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-	EnsureAuthForResourceStatus,
+	AuthCheckStatus,
 	type TokenSetAuthEvent,
 	TokenSetAuthEventType,
 	TokenSetAuthFlowSource,
@@ -26,6 +27,15 @@ import { BackendOidcModeClient } from "../runtime/client";
 const BASE_URL = "https://api.example.com";
 const DEFAULT_PERSISTENCE_KEY =
 	"securitydept.backend_oidc:v1:https://api.example.com";
+
+function expectReplayValue<T>(signal: ReadableReplaySignalTrait<T>): T {
+	const slot = signal.get();
+	expect(slot.kind).toBe("value");
+	if (slot.kind !== "value") {
+		throw new Error("Expected replay signal value.");
+	}
+	return slot.value;
+}
 
 class TestClock {
 	constructor(private _now: number) {}
@@ -172,12 +182,21 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		const result = await client.refresh();
+		const refreshPromise = client.refresh();
+		expect(client.authOperations.refreshPending.get()).toBe(true);
+		const result = await refreshPromise;
 
 		expect(result).not.toBeNull();
 		expect(result?.tokens.accessToken).toBe("new-at");
 		expect(result?.tokens.refreshMaterial).toBe("new-rt");
 		expect(result?.tokens.accessTokenExpiresAt).toBe("2026-12-31T00:00:00Z");
+		expect(client.authOperations.refreshPending.get()).toBe(false);
+		expect(expectReplayValue(client.authSnapshot)).toBe(result);
+		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
+			"Bearer new-at",
+		);
+		expect(expectReplayValue(client.isAuthenticated)).toBe(true);
+		expect(client.lastAuthError.get()).toBeUndefined();
 	});
 
 	it("throws when a refresh response body is missing access_token", async () => {
@@ -194,7 +213,11 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		await expect(client.refresh()).rejects.toThrow(/missing access_token/i);
+		const refreshPromise = client.refresh();
+		expect(client.authOperations.refreshPending.get()).toBe(true);
+		await expect(refreshPromise).rejects.toThrow(/missing access_token/i);
+		expect(client.authOperations.refreshPending.get()).toBe(false);
+		expect(client.lastAuthError.get()).toBeInstanceOf(Error);
 	});
 
 	it("does not project an expired token as an authorization header", async () => {
@@ -214,12 +237,13 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		expect(client.authorizationHeader()).toBeNull();
-		expect(await client.ensureAuthorizationHeader()).toBeNull();
-		expect(client.state.get()).toBeNull();
+		expect(expectReplayValue(client.authorizationHeaderValue)).toBeUndefined();
+		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+			"expired-at",
+		);
 	});
 
-	it("coalesces concurrent fresh authorization requests through one refresh", async () => {
+	it("coalesces concurrent manual auth checks through one refresh", async () => {
 		const refreshResponse = createDeferred<HttpResponse>();
 		let refreshRequests = 0;
 		const transport = createTestTransport((request) => {
@@ -248,8 +272,8 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		const firstHeader = client.ensureAuthorizationHeader();
-		const secondHeader = client.ensureAuthorizationHeader();
+		const firstCheck = client.authCheck({ forceRefreshWhenDue: true });
+		const secondCheck = client.authCheck({ forceRefreshWhenDue: true });
 		await flushMicrotasks();
 
 		expect(refreshRequests).toBe(1);
@@ -263,12 +287,22 @@ describe("BackendOidcModeClient", () => {
 			},
 		});
 
-		await expect(firstHeader).resolves.toBe("Bearer fresh-at");
-		await expect(secondHeader).resolves.toBe("Bearer fresh-at");
+		await expect(firstCheck).resolves.toEqual(
+			expect.objectContaining({
+				status: AuthCheckStatus.Authenticated,
+				authorizationHeader: "Bearer fresh-at",
+			}),
+		);
+		await expect(secondCheck).resolves.toEqual(
+			expect.objectContaining({
+				status: AuthCheckStatus.Authenticated,
+				authorizationHeader: "Bearer fresh-at",
+			}),
+		);
 		expect(refreshRequests).toBe(1);
 	});
 
-	it("emits contextual refresh lifecycle events when callers join a refresh barrier", async () => {
+	it("emits refresh lifecycle events for manual auth checks", async () => {
 		const refreshResponse = createDeferred<HttpResponse>();
 		let refreshRequests = 0;
 		const transport = createTestTransport((request) => {
@@ -304,23 +338,8 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		const routeAdmission = client.ensureAuthForResource({
-			source: TokenSetAuthFlowSource.RouteGuard,
-			clientKey: "confluence",
-			logicalClientId: "wiki-main",
-			providerFamily: "authentik",
-			requirement: { id: "confluence-oidc", kind: "frontend_oidc" },
-			url: "/confluence",
-			forceRefreshWhenDue: true,
-		});
-		const protectedRequest = client.ensureAuthForResource({
-			source: TokenSetAuthFlowSource.HttpInterceptor,
-			clientKey: "confluence",
-			logicalClientId: "wiki-main",
-			providerFamily: "authentik",
-			requirement: { id: "confluence-oidc", kind: "frontend_oidc" },
-			url: "https://api.example.com/wiki/rest/api/content",
-			needsAuthorizationHeader: true,
+		const authCheck = client.authCheck({
+			reason: "manual_route_check",
 			forceRefreshWhenDue: true,
 		});
 		await flushMicrotasks();
@@ -333,36 +352,12 @@ describe("BackendOidcModeClient", () => {
 			expect.objectContaining({
 				type: TokenSetAuthEventType.AuthRefreshStarted,
 				payload: expect.objectContaining({
-					source: TokenSetAuthFlowSource.Timer,
+					source: TokenSetAuthFlowSource.ExplicitCall,
 					refreshBarrierId: expect.any(String),
 				}),
 			}),
 		);
 		const refreshBarrierId = refreshStartedEvent?.payload.refreshBarrierId;
-		expect(events).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					type: TokenSetAuthEventType.AuthRefreshJoined,
-					payload: expect.objectContaining({
-						source: TokenSetAuthFlowSource.RouteGuard,
-						clientKey: "confluence",
-						logicalClientId: "wiki-main",
-						providerFamily: "authentik",
-						requirementId: "confluence-oidc",
-						url: "/confluence",
-						refreshBarrierId,
-					}),
-				}),
-				expect.objectContaining({
-					type: TokenSetAuthEventType.AuthRefreshJoined,
-					payload: expect.objectContaining({
-						source: TokenSetAuthFlowSource.HttpInterceptor,
-						url: "https://api.example.com/wiki/rest/api/content",
-						refreshBarrierId,
-					}),
-				}),
-			]),
-		);
 
 		refreshResponse.resolve({
 			status: 200,
@@ -374,14 +369,9 @@ describe("BackendOidcModeClient", () => {
 			},
 		});
 
-		await expect(routeAdmission).resolves.toEqual(
+		await expect(authCheck).resolves.toEqual(
 			expect.objectContaining({
-				status: EnsureAuthForResourceStatus.Authenticated,
-			}),
-		);
-		await expect(protectedRequest).resolves.toEqual(
-			expect.objectContaining({
-				status: EnsureAuthForResourceStatus.AuthorizationHeaderResolved,
+				status: AuthCheckStatus.Authenticated,
 				authorizationHeader: "Bearer fresh-at",
 			}),
 		);
@@ -390,7 +380,7 @@ describe("BackendOidcModeClient", () => {
 				expect.objectContaining({
 					type: TokenSetAuthEventType.AuthRefreshSucceeded,
 					payload: expect.objectContaining({
-						source: TokenSetAuthFlowSource.Timer,
+						source: TokenSetAuthFlowSource.ExplicitCall,
 						refreshBarrierId,
 						hasRefreshMaterial: true,
 					}),
@@ -400,7 +390,7 @@ describe("BackendOidcModeClient", () => {
 		expect(refreshRequests).toBe(1);
 	});
 
-	it("emits authorization header events with opaque token handles", async () => {
+	it("returns authorization headers without emitting raw token events", async () => {
 		const transport = createTestTransport(() => ({
 			status: 500,
 			headers: {},
@@ -420,23 +410,12 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		const result = await client.ensureAuthForResource({
-			source: TokenSetAuthFlowSource.AuthorizedTransport,
-			needsAuthorizationHeader: true,
+		const result = await client.authCheck({
 			forceRefreshWhenDue: true,
-			clientKey: "confluence",
 		});
 
-		expect(result.status).toBe(
-			EnsureAuthForResourceStatus.AuthorizationHeaderResolved,
-		);
-		if (
-			result.status !== EnsureAuthForResourceStatus.AuthorizationHeaderResolved
-		) {
-			throw new Error("Expected an authorization header result");
-		}
+		expect(result.status).toBe(AuthCheckStatus.Authenticated);
 		expect(result.authorizationHeader).toBe("Bearer fresh-at");
-		expect(result.tokenHandle?.clientKey).toBe("confluence");
 
 		const serializedEvents = JSON.stringify(events);
 		expect(serializedEvents).not.toContain("fresh-at");
@@ -444,12 +423,7 @@ describe("BackendOidcModeClient", () => {
 		expect(events).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
-					type: TokenSetAuthEventType.AuthorizationHeaderResolved,
-					payload: expect.objectContaining({
-						tokenHandle: expect.objectContaining({
-							clientKey: "confluence",
-						}),
-					}),
+					type: TokenSetAuthEventType.AuthAuthenticated,
 				}),
 			]),
 		);
@@ -473,8 +447,9 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		expect(await client.ensureAuthorizationHeader()).toBeNull();
-		expect(client.state.get()).toBeNull();
+		const result = await client.authCheck({ forceRefreshWhenDue: true });
+		expect(result.status).toBe(AuthCheckStatus.Unauthenticated);
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 	});
 
 	it("persists callback state, supports explicit restore, and only clears on explicit clear", async () => {
@@ -590,7 +565,7 @@ describe("BackendOidcModeClient", () => {
 
 		await expect(client.restorePersistedState()).resolves.toBeNull();
 
-		expect(client.state.get()).toBeNull();
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 		expect(await persistentStore.get(DEFAULT_PERSISTENCE_KEY)).toBeNull();
 		expect(trace.events.map((event) => event.type)).toContain(
 			"backend_oidc.state.restore_discarded",
@@ -653,7 +628,7 @@ describe("BackendOidcModeClient", () => {
 		client.dispose();
 
 		expect(scheduler.pendingCount).toBe(0);
-		expect(client.state.get()).toBeNull();
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 
 		deferred.resolve({
 			status: 200,
@@ -669,7 +644,7 @@ describe("BackendOidcModeClient", () => {
 			name: "ClientError",
 			kind: "cancelled",
 		});
-		expect(client.state.get()).toBeNull();
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 	});
 
 	it("aborts in-flight fetch transport requests when disposed", async () => {
@@ -704,7 +679,7 @@ describe("BackendOidcModeClient", () => {
 			code: "backend_oidc.client_disposed",
 		});
 		expect(scheduler.pendingCount).toBe(0);
-		expect(client.state.get()).toBeNull();
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 	});
 
@@ -796,11 +771,11 @@ describe("BackendOidcModeClient", () => {
 
 		scheduler.advanceAndFlush(30_000);
 		await flushMicrotasks();
+		await flushMicrotasks();
 
 		expect(trace.events.map((event) => event.type)).toEqual(
 			expect.arrayContaining([
 				"backend_oidc.state.restored",
-				"backend_oidc.refresh.scheduled",
 				"backend_oidc.refresh.fired",
 				"backend_oidc.refresh.started",
 				"backend_oidc.metadata_redemption.started",

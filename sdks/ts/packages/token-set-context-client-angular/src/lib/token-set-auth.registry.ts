@@ -1,15 +1,12 @@
 import { DestroyRef, Injectable, inject } from "@angular/core";
 import type {
 	EventStreamTrait,
+	ReadableReplaySignalTrait,
 	ReadableSignalTrait,
 } from "@securitydept/client";
-import { createDefaultIdleScheduler } from "@securitydept/client";
 import type { ClientReadinessState } from "@securitydept/token-set-context-client/frontend-oidc-mode";
-import type {
-	EnsureAuthForResourceResult,
-	TokenSetAuthEvent,
-} from "@securitydept/token-set-context-client/orchestration";
-import { attachTokenSetResumeReconciliation } from "@securitydept/token-set-context-client/orchestration";
+import type { TokenSetAuthEvent } from "@securitydept/token-set-context-client/orchestration";
+import { attachPageResumeAuthCheckTriggerSource } from "@securitydept/token-set-context-client/orchestration";
 import {
 	type ClientFilter,
 	type ClientKeySelector,
@@ -18,11 +15,9 @@ import {
 	type TokenSetAuthRegistry as CoreTokenSetAuthRegistry,
 	type TokenSetClientEntry as CoreTokenSetClientEntry,
 	createTokenSetOidcAuthRegistry,
-	type EnsureRegistryAuthForResourceOptions,
 	type TokenSetAuthRegistryState,
 } from "@securitydept/token-set-context-client/registry";
 import type { TokenSetAngularClient, TokenSetClientEntry } from "./contracts";
-import { TokenSetAuthService } from "./token-set-auth.service";
 
 // Re-export core registry types so existing adopter imports from
 // @securitydept/token-set-context-client-angular keep working.
@@ -31,7 +26,6 @@ export type {
 	ClientKeySelector,
 	ClientMeta,
 	ClientQueryOptions,
-	EnsureRegistryAuthForResourceOptions,
 } from "@securitydept/token-set-context-client/registry";
 export { ClientInitializationPriority } from "@securitydept/token-set-context-client/registry";
 
@@ -45,7 +39,7 @@ export { ClientInitializationPriority } from "@securitydept/token-set-context-cl
 //   - Injectable scope (root or provider-level)
 //   - DestroyRef-bound dispose (envelopes `coreRegistry.dispose()`)
 //   - register() wraps raw clientFactory with Angular resume reconciliation
-//   - Materialize callback remains the shared TokenSetAuthService core
+//   - The materialized object is the mode client itself
 // ============================================================================
 
 type AngularClient = TokenSetAngularClient;
@@ -58,26 +52,12 @@ export class TokenSetAuthRegistry {
 	 * (`CallbackResumeService`, `bearer-interceptor`) can query the core
 	 * directly when they don't need Angular-specific behaviour.
 	 */
-	readonly core: CoreTokenSetAuthRegistry<AngularClient, TokenSetAuthService>;
+	readonly core: CoreTokenSetAuthRegistry<AngularClient, AngularClient>;
 	readonly authEvents: EventStreamTrait<TokenSetAuthEvent>;
 	readonly state: ReadableSignalTrait<TokenSetAuthRegistryState<AngularClient>>;
 
 	constructor() {
-		this.core = createTokenSetOidcAuthRegistry<
-			AngularClient,
-			TokenSetAuthService
-		>({
-			materializeService: (client, entry) =>
-				new TokenSetAuthService(client, entry.autoRestore ?? true),
-			dispose: TokenSetAuthService.dispose,
-			accessTokenOf: TokenSetAuthService.accessTokenOf,
-			ensureAccessTokenOf: TokenSetAuthService.ensureAccessTokenOf,
-			ensureAuthorizationHeaderOf:
-				TokenSetAuthService.ensureAuthorizationHeaderOf,
-			ensureAuthForResourceOf: TokenSetAuthService.ensureAuthForResourceOf,
-			authEventsOf: TokenSetAuthService.authEventsOf,
-			idleScheduler: createDefaultIdleScheduler(),
-		});
+		this.core = createTokenSetOidcAuthRegistry<AngularClient>();
 		this.authEvents = this.core.authEvents;
 		this.state = this.core.state;
 		// Try to bind core.dispose() to the current injection context's
@@ -105,19 +85,19 @@ export class TokenSetAuthRegistry {
 			priority?: "primary" | "lazy";
 			clientFactory: () => AngularClient;
 		},
-	): TokenSetAuthService;
+	): AngularClient;
 	register(
 		entry: TokenSetClientEntry & {
 			priority?: "primary" | "lazy";
 			clientFactory: () => Promise<AngularClient>;
 		},
-	): Promise<TokenSetAuthService>;
+	): Promise<AngularClient>;
 	register(
 		entry: TokenSetClientEntry,
-	): TokenSetAuthService | Promise<TokenSetAuthService> | undefined;
+	): AngularClient | Promise<AngularClient> | undefined;
 	register(
 		entry: TokenSetClientEntry,
-	): TokenSetAuthService | Promise<TokenSetAuthService> | undefined {
+	): AngularClient | Promise<AngularClient> | undefined {
 		return this.core.register(this.toCoreEntry(entry));
 	}
 
@@ -143,7 +123,7 @@ export class TokenSetAuthRegistry {
 		return this.core.readinessState(key);
 	}
 
-	async whenReady(key: string): Promise<TokenSetAuthService> {
+	async whenReady(key?: string): Promise<AngularClient> {
 		return this.core.whenReady(key);
 	}
 
@@ -151,7 +131,7 @@ export class TokenSetAuthRegistry {
 	 * Preload a lazy client without throwing on rejection. Callers are
 	 * expected to attach `.catch` handlers for fire-and-forget usage.
 	 */
-	preload(key: string): Promise<TokenSetAuthService> {
+	preload(key: string): Promise<AngularClient> {
 		return this.core.preload(key);
 	}
 
@@ -179,20 +159,12 @@ export class TokenSetAuthRegistry {
 		return this.core.metaFor(clientKey);
 	}
 
-	get(key: string): TokenSetAuthService | undefined {
-		return this.core.get(key);
-	}
-
-	require(key: string): TokenSetAuthService {
-		return this.core.require(key);
+	clientSignalFor(key?: string): ReadableReplaySignalTrait<AngularClient> {
+		return this.core.clientSignalFor(key);
 	}
 
 	readyKeys(): string[] {
 		return this.core.readyKeys();
-	}
-
-	readyEntriesSnapshot(): Array<[string, TokenSetAuthService]> {
-		return this.core.readyEntriesSnapshot();
 	}
 
 	registeredKeys(): string[] {
@@ -275,20 +247,6 @@ export class TokenSetAuthRegistry {
 		return this.core.clientKeyForProviderFamily(providerFamily, selector);
 	}
 
-	requireForRequirement(
-		requirementKind: string,
-		selector?: ClientKeySelector,
-	): TokenSetAuthService {
-		return this.core.requireForRequirement(requirementKind, selector);
-	}
-
-	requireForProviderFamily(
-		providerFamily: string,
-		selector?: ClientKeySelector,
-	): TokenSetAuthService {
-		return this.core.requireForProviderFamily(providerFamily, selector);
-	}
-
 	*clientKeyGenForFilter(
 		filter: ClientFilter,
 	): Generator<string, void, unknown> {
@@ -303,24 +261,6 @@ export class TokenSetAuthRegistry {
 
 	clientKeysForOptions(options: ClientQueryOptions): string[] {
 		return this.core.clientKeysForOptions(options);
-	}
-
-	accessToken(key?: string): string | null {
-		return this.core.accessToken(key);
-	}
-
-	async ensureAccessToken(key?: string): Promise<string | null> {
-		return await this.core.ensureAccessToken(key);
-	}
-
-	async ensureAuthorizationHeader(key?: string): Promise<string | null> {
-		return await this.core.ensureAuthorizationHeader(key);
-	}
-
-	async ensureAuthForResource(
-		options: EnsureRegistryAuthForResourceOptions = {},
-	): Promise<EnsureAuthForResourceResult | null> {
-		return await this.core.ensureAuthForResource(options);
 	}
 
 	private toCoreEntry(
@@ -338,16 +278,18 @@ export class TokenSetAuthRegistry {
 		const clientOrPromise = entry.clientFactory();
 		if (clientOrPromise instanceof Promise) {
 			return clientOrPromise.then((client) =>
-				attachTokenSetResumeReconciliation(client, {
-					resumeReconciliation: entry.resumeReconciliation,
-					resumeReconciliationOptions: entry.resumeReconciliationOptions,
+				attachPageResumeAuthCheckTriggerSource(client, {
+					pageResumeAuthCheck: entry.pageResumeAuthCheck,
+					pageResumeAuthCheckOptions: entry.pageResumeAuthCheckOptions,
+					authCheckTriggerSources: entry.authCheckTriggerSources,
 				}),
 			);
 		}
 
-		return attachTokenSetResumeReconciliation(clientOrPromise, {
-			resumeReconciliation: entry.resumeReconciliation,
-			resumeReconciliationOptions: entry.resumeReconciliationOptions,
+		return attachPageResumeAuthCheckTriggerSource(clientOrPromise, {
+			pageResumeAuthCheck: entry.pageResumeAuthCheck,
+			pageResumeAuthCheckOptions: entry.pageResumeAuthCheckOptions,
+			authCheckTriggerSources: entry.authCheckTriggerSources,
 		});
 	}
 }

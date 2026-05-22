@@ -7,6 +7,7 @@ import {
 import {
 	createSubject,
 	type HttpTransport,
+	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
 } from "@securitydept/client";
 import { toRxObservable } from "@securitydept/client/rx";
@@ -20,8 +21,6 @@ import {
 import {
 	type AuthSnapshot,
 	AuthSourceKind,
-	EnsureAuthForResourceStatus,
-	TokenSetAuthFlowReason,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
 	CallbackResumeService,
@@ -31,14 +30,26 @@ import {
 	provideTokenSetAuth,
 	TOKEN_SET_AUTH_REGISTRY,
 	TokenSetAuthRegistry,
-	TokenSetAuthService,
 } from "@securitydept/token-set-context-client-angular";
 import { firstValueFrom, Observable, of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
+import {
+	authCheckResultForSnapshot,
+	createTestTokenSetReactiveFields,
+} from "./test-token-set-client";
 
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
+
+function expectReplayValue<T>(signal: ReadableReplaySignalTrait<T>): T {
+	const slot = signal.get();
+	expect(slot.kind).toBe("value");
+	if (slot.kind !== "value") {
+		throw new Error("Expected replay signal value.");
+	}
+	return slot.value;
+}
 
 function createTestSignal<T>(initial: T): {
 	signal: ReadableSignalTrait<T>;
@@ -79,43 +90,19 @@ function createMockClient(
 ): OidcModeClient &
 	OidcCallbackClient & { _stateCtrl: ReturnType<typeof createTestSignal> } {
 	const stateCtrl = createTestSignal<AuthSnapshot | null>(initialState);
+	const reactive = createTestTokenSetReactiveFields(initialState);
 	return {
-		state: stateCtrl.signal,
+		...reactive.fields,
 		authEvents: createSubject(),
+		addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		start: vi.fn(async () => undefined),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
-		authorizationHeader: vi.fn(() => {
-			const accessToken = stateCtrl.signal.get()?.tokens.accessToken;
-			return accessToken ? `Bearer ${accessToken}` : null;
-		}),
-		ensureFreshAuthState: vi.fn().mockResolvedValue(stateCtrl.signal.get()),
-		ensureAuthorizationHeader: vi
+		authCheck: vi
 			.fn()
-			.mockResolvedValue(
-				stateCtrl.signal.get()?.tokens.accessToken
-					? `Bearer ${stateCtrl.signal.get()?.tokens.accessToken}`
-					: null,
+			.mockImplementation(async () =>
+				authCheckResultForSnapshot(stateCtrl.signal.get()),
 			),
-		ensureAuthForResource: vi.fn().mockImplementation(async () => {
-			const snapshot = stateCtrl.signal.get();
-			if (snapshot) {
-				const accessToken = snapshot.tokens.accessToken;
-				return {
-					status: EnsureAuthForResourceStatus.Authenticated,
-					snapshot,
-					authorizationHeader: accessToken
-						? `Bearer ${accessToken}`
-						: undefined,
-					freshness: "fresh" as const,
-				};
-			}
-			return {
-				status: EnsureAuthForResourceStatus.Unauthenticated,
-				snapshot: null,
-				authorizationHeader: null,
-				reason: TokenSetAuthFlowReason.NoSnapshot,
-			};
-		}),
 		handleCallback: vi.fn().mockResolvedValue({
 			snapshot: makeSnapshot("callback-tok"),
 		}),
@@ -158,9 +145,7 @@ function withMockBrowserLifecycleTargets<T>(
 		writable: true,
 	});
 
-	try {
-		return run(targets);
-	} finally {
+	const restore = () => {
 		if (originalDocument) {
 			Object.defineProperty(globalThis, "document", originalDocument);
 		} else {
@@ -171,6 +156,18 @@ function withMockBrowserLifecycleTargets<T>(
 		} else {
 			Reflect.deleteProperty(globalThis, "window");
 		}
+	};
+
+	try {
+		const result = run(targets);
+		if (result instanceof Promise) {
+			return result.finally(restore) as T;
+		}
+		restore();
+		return result;
+	} catch (error) {
+		restore();
+		throw error;
 	}
 }
 
@@ -234,11 +231,6 @@ describe("Angular Integration — Angular-native DI surface", () => {
 		});
 		expect(Array.isArray(providers)).toBe(true);
 		expect(providers.length).toBeGreaterThanOrEqual(1);
-	});
-
-	it("TokenSetAuthService class is defined as an Injectable contract", () => {
-		expect(TokenSetAuthService).toBeDefined();
-		expect(typeof TokenSetAuthService).toBe("function");
 	});
 
 	it("TokenSetAuthRegistry class is defined as an Injectable contract", () => {
@@ -347,27 +339,30 @@ describe("Angular Integration — RxJS Observable Bridge", () => {
 // ===========================================================================
 
 describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
-	it("registers multiple clients and looks up by key", () => {
+	it("registers multiple clients and looks up by key", async () => {
 		const registry = new TokenSetAuthRegistry();
+		const mainClient = createMockClient();
+		const adminClient = createMockClient();
 
 		registry.register({
 			key: "main",
-			clientFactory: () => createMockClient(),
+			clientFactory: () => mainClient,
 		});
 		registry.register({
 			key: "admin",
-			clientFactory: () => createMockClient(),
+			clientFactory: () => adminClient,
 		});
 
-		expect(registry.readyKeys()).toEqual(["main", "admin"]);
-		expect(registry.get("main")).toBeInstanceOf(TokenSetAuthService);
-		expect(registry.get("admin")).toBeInstanceOf(TokenSetAuthService);
-		expect(registry.get("unknown")).toBeUndefined();
+		await expect(registry.whenReady("main")).resolves.toBe(mainClient);
+		await expect(registry.whenReady("admin")).resolves.toBe(adminClient);
+		await expect(registry.whenReady("unknown")).rejects.toThrow(
+			/No client registered for key "unknown"/,
+		);
 	});
 
-	it("require() throws for missing key with helpful message", () => {
+	it("whenReady() throws for missing key with helpful message", async () => {
 		const registry = new TokenSetAuthRegistry();
-		expect(() => registry.require("missing")).toThrow(
+		await expect(registry.whenReady("missing")).rejects.toThrow(
 			/No client registered for key "missing"/,
 		);
 	});
@@ -416,7 +411,7 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 		).toBeUndefined();
 	});
 
-	it("accessToken() picks the first available token across clients", () => {
+	it("reads explicit ready clients through replay signals", async () => {
 		const registry = new TokenSetAuthRegistry();
 
 		const client1 = createMockClient(null);
@@ -425,27 +420,32 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 		registry.register({ key: "main", clientFactory: () => client1 });
 		registry.register({ key: "admin", clientFactory: () => client2 });
 
-		// Without key — first non-null token wins.
-		expect(registry.accessToken()).toBe("admin-tok");
-		// With explicit key.
-		expect(registry.accessToken("admin")).toBe("admin-tok");
-		expect(registry.accessToken("main")).toBeNull();
+		await expect(
+			(await registry.whenReady("admin")).authSnapshot.whenValue(),
+		).resolves.toMatchObject({
+			tokens: { accessToken: "admin-tok" },
+		});
+		await expect(
+			(await registry.whenReady("main")).authSnapshot.whenValue(),
+		).resolves.toBeNull();
+		await expect(registry.whenReady()).rejects.toThrow(
+			"without a key is only valid for a single registered client",
+		);
 	});
 
-	it("readyEntriesSnapshot() returns all registered [key, service] pairs", () => {
+	it("readyKeys() returns all started client keys", async () => {
 		const registry = new TokenSetAuthRegistry();
 
 		registry.register({ key: "a", clientFactory: () => createMockClient() });
 		registry.register({ key: "b", clientFactory: () => createMockClient() });
 
-		const entries = registry.readyEntriesSnapshot();
-		expect(entries).toHaveLength(2);
-		expect(entries[0]?.[0]).toBe("a");
-		expect(entries[1]?.[0]).toBe("b");
+		await registry.whenReady("a");
+		await registry.whenReady("b");
+		expect(registry.readyKeys()).toEqual(["a", "b"]);
 	});
 
-	it("installs page-resume reconciliation for registry-managed clients by default", () => {
-		withMockBrowserLifecycleTargets(({ documentTarget, windowTarget }) => {
+	it("installs page-resume auth-check trigger sources for registry-managed clients by default", async () => {
+		await withMockBrowserLifecycleTargets(async () => {
 			const registry = new TokenSetAuthRegistry();
 			const client = createMockClient(makeSnapshot("main-token"));
 
@@ -453,17 +453,14 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 				key: "main",
 				clientFactory: () => client,
 			});
+			await registry.whenReady("main");
 
-			expect(documentTarget.addEventListener).toHaveBeenCalledTimes(1);
-			expect(windowTarget.addEventListener).toHaveBeenCalledTimes(3);
-
+			expect(client.addAuthCheckTriggerSource).toHaveBeenCalledTimes(1);
 			registry.dispose();
-			expect(documentTarget.removeEventListener).toHaveBeenCalledTimes(1);
-			expect(windowTarget.removeEventListener).toHaveBeenCalledTimes(3);
 		});
 	});
 
-	it("allows registry-managed clients to opt out of page-resume reconciliation", () => {
+	it("allows registry-managed clients to opt out of page-resume auth-check triggers", () => {
 		withMockBrowserLifecycleTargets(({ documentTarget, windowTarget }) => {
 			const registry = new TokenSetAuthRegistry();
 			const client = createMockClient(makeSnapshot("main-token"));
@@ -471,9 +468,10 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 			registry.register({
 				key: "main",
 				clientFactory: () => client,
-				resumeReconciliation: false,
+				pageResumeAuthCheck: false,
 			});
 
+			expect(client.addAuthCheckTriggerSource).not.toHaveBeenCalled();
 			expect(documentTarget.addEventListener).not.toHaveBeenCalled();
 			expect(windowTarget.addEventListener).not.toHaveBeenCalled();
 		});
@@ -481,46 +479,11 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 });
 
 // ===========================================================================
-// 5. TokenSetAuthService unit tests
+// 5. Registry-managed client lifecycle
 // ===========================================================================
 
-describe("Angular Integration — TokenSetAuthService", () => {
-	it("bridges state to Angular signal and RxJS Observable", () => {
-		const client = createMockClient();
-		const service = new TokenSetAuthService(client, true);
-
-		expect(service.authState()).toBeNull();
-		expect(service.isAuthenticated.get()).toBe(false);
-		expect(service.accessToken.get()).toBeNull();
-		expect(service.authState$).toBeInstanceOf(Observable);
-	});
-
-	it("auto-restores state when autoRestore is true", () => {
-		const client = createMockClient();
-		const service = new TokenSetAuthService(client, true);
-
-		expect(client.restorePersistedState).toHaveBeenCalledOnce();
-		expect(service.restorePromise).toBeDefined();
-	});
-
-	it("skips restore when autoRestore is false", () => {
-		const client = createMockClient();
-		const service = new TokenSetAuthService(client, false);
-
-		expect(client.restorePersistedState).not.toHaveBeenCalled();
-		expect(service.restorePromise).toBeNull();
-	});
-
-	it("disposes client on explicit dispose()", () => {
-		const client = createMockClient();
-		const service = new TokenSetAuthService(client, false);
-
-		expect(client.dispose).not.toHaveBeenCalled();
-		service.dispose();
-		expect(client.dispose).toHaveBeenCalledOnce();
-	});
-
-	it("registry.dispose() propagates to all materialized services", () => {
+describe("Angular Integration — registry-managed clients", () => {
+	it("registry.dispose() propagates to all materialized services", async () => {
 		const registry = new TokenSetAuthRegistry();
 		const client1 = createMockClient();
 		const client2 = createMockClient();
@@ -528,6 +491,8 @@ describe("Angular Integration — TokenSetAuthService", () => {
 		const dispose2 = client2.dispose;
 		registry.register({ key: "a", clientFactory: () => client1 });
 		registry.register({ key: "b", clientFactory: () => client2 });
+		await registry.whenReady("a");
+		await registry.whenReady("b");
 
 		registry.dispose();
 		expect(dispose1).toHaveBeenCalledOnce();
@@ -660,80 +625,38 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 		const registry = new TokenSetAuthRegistry();
 
 		const mainState = createTestSignal<AuthSnapshot | null>(null);
+		const mainReactive = createTestTokenSetReactiveFields(null);
 		const mainClient: OidcModeClient & OidcCallbackClient = {
-			state: mainState.signal,
+			...mainReactive.fields,
 			authEvents: createSubject(),
+			addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn().mockResolvedValue(null),
-			authorizationHeader: vi.fn(() => {
-				const accessToken = mainState.signal.get()?.tokens.accessToken;
-				return accessToken ? `Bearer ${accessToken}` : null;
-			}),
-			ensureFreshAuthState: vi
+			authCheck: vi
 				.fn()
-				.mockImplementation(async () => mainState.signal.get()),
-			ensureAuthorizationHeader: vi.fn().mockImplementation(async () => {
-				const accessToken = mainState.signal.get()?.tokens.accessToken;
-				return accessToken ? `Bearer ${accessToken}` : null;
-			}),
-			ensureAuthForResource: vi.fn().mockImplementation(async () => {
-				const snapshot = mainState.signal.get();
-				if (snapshot) {
-					const accessToken = snapshot.tokens.accessToken;
-					return {
-						status: EnsureAuthForResourceStatus.Authenticated,
-						snapshot,
-						authorizationHeader: accessToken ? `Bearer ${accessToken}` : null,
-						freshness: "fresh" as const,
-					};
-				}
-				return {
-					status: EnsureAuthForResourceStatus.Unauthenticated,
-					snapshot: null,
-					authorizationHeader: null,
-					reason: TokenSetAuthFlowReason.NoSnapshot,
-				};
-			}),
+				.mockImplementation(async () =>
+					authCheckResultForSnapshot(mainState.signal.get()),
+				),
 			handleCallback: vi.fn().mockResolvedValue({
 				snapshot: makeSnapshot("main-after-login"),
 			}),
 		};
 
 		const adminState = createTestSignal<AuthSnapshot | null>(null);
+		const adminReactive = createTestTokenSetReactiveFields(null);
 		const adminClient: OidcModeClient & OidcCallbackClient = {
-			state: adminState.signal,
+			...adminReactive.fields,
 			authEvents: createSubject(),
+			addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn().mockResolvedValue(null),
-			authorizationHeader: vi.fn(() => {
-				const accessToken = adminState.signal.get()?.tokens.accessToken;
-				return accessToken ? `Bearer ${accessToken}` : null;
-			}),
-			ensureFreshAuthState: vi
+			authCheck: vi
 				.fn()
-				.mockImplementation(async () => adminState.signal.get()),
-			ensureAuthorizationHeader: vi.fn().mockImplementation(async () => {
-				const accessToken = adminState.signal.get()?.tokens.accessToken;
-				return accessToken ? `Bearer ${accessToken}` : null;
-			}),
-			ensureAuthForResource: vi.fn().mockImplementation(async () => {
-				const snapshot = adminState.signal.get();
-				if (snapshot) {
-					const accessToken = snapshot.tokens.accessToken;
-					return {
-						status: EnsureAuthForResourceStatus.Authenticated,
-						snapshot,
-						authorizationHeader: accessToken ? `Bearer ${accessToken}` : null,
-						freshness: "fresh" as const,
-					};
-				}
-				return {
-					status: EnsureAuthForResourceStatus.Unauthenticated,
-					snapshot: null,
-					authorizationHeader: null,
-					reason: TokenSetAuthFlowReason.NoSnapshot,
-				};
-			}),
+				.mockImplementation(async () =>
+					authCheckResultForSnapshot(adminState.signal.get()),
+				),
 			handleCallback: vi.fn().mockResolvedValue({
 				snapshot: makeSnapshot("admin-after-login"),
 			}),
@@ -742,35 +665,43 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 		// 2. Register multiple clients
 		const mainDispose = mainClient.dispose;
 		const adminDispose = adminClient.dispose;
-		const mainService = registry.register({
+		registry.register({
 			key: "main",
 			clientFactory: () => mainClient,
 			urlPatterns: ["/api/"],
 			callbackPath: "/auth/callback",
 		});
-		const adminService = registry.register({
+		registry.register({
 			key: "admin",
 			clientFactory: () => adminClient,
 			urlPatterns: ["/admin-api/"],
 			callbackPath: "/admin/callback",
 		});
+		const mainRegisteredClient = await registry.whenReady("main");
+		const adminRegisteredClient = await registry.whenReady("admin");
 
 		// 3. Verify initial state
-		expect(mainService.isAuthenticated.get()).toBe(false);
-		expect(adminService.isAuthenticated.get()).toBe(false);
+		expect(expectReplayValue(mainRegisteredClient.isAuthenticated)).toBe(false);
+		expect(expectReplayValue(adminRegisteredClient.isAuthenticated)).toBe(
+			false,
+		);
 
 		// 4. Observable tracking
 		const mainStates: boolean[] = [];
-		const sub = mainService.authState$.subscribe((snap) =>
-			mainStates.push(snap !== null),
+		const sub = toRxObservable(mainRegisteredClient.authSnapshot).subscribe(
+			(snap) => mainStates.push(snap !== null),
 		);
 		expect(mainStates).toEqual([false]);
 
 		// 5. Simulate main client login
-		mainState.set(makeSnapshot("main-tok"));
+		const mainSnapshot = makeSnapshot("main-tok");
+		mainState.set(mainSnapshot);
+		mainReactive.emitSnapshot(mainSnapshot);
 		expect(mainStates).toEqual([false, true]);
-		expect(mainService.isAuthenticated.get()).toBe(true);
-		expect(mainService.accessToken.get()).toBe("main-tok");
+		expect(expectReplayValue(mainRegisteredClient.isAuthenticated)).toBe(true);
+		expect(
+			expectReplayValue(mainRegisteredClient.authSnapshot)?.tokens.accessToken,
+		).toBe("main-tok");
 
 		// 6. Interceptor uses correct token per URL
 		const interceptor = createTokenSetBearerInterceptor(registry);
@@ -825,21 +756,18 @@ describe("Angular Integration — RequirementKind / ProviderFamily mapping", () 
 		expect(registry.clientKeyForRequirement("session")).toBeUndefined();
 	});
 
-	it("requireForRequirement returns the service and throws for missing kind", () => {
+	it("clientKeyForRequirement returns the key for a registered kind", () => {
 		const registry = new TokenSetAuthRegistry();
+		const client = createMockClient();
 
 		registry.register({
 			key: "main",
-			clientFactory: () => createMockClient(),
+			clientFactory: () => client,
 			requirementKind: "backend_oidc",
 		});
 
-		expect(registry.requireForRequirement("backend_oidc")).toBeInstanceOf(
-			TokenSetAuthService,
-		);
-		expect(() => registry.requireForRequirement("unknown_kind")).toThrow(
-			/No client registered for requirementKind "unknown_kind"/,
-		);
+		expect(registry.clientKeyForRequirement("backend_oidc")).toBe("main");
+		expect(registry.clientKeyForRequirement("unknown_kind")).toBeUndefined();
 	});
 
 	it("clientKeyForProviderFamily resolves to registered client key", () => {
@@ -863,29 +791,29 @@ describe("Angular Integration — RequirementKind / ProviderFamily mapping", () 
 		expect(registry.clientKeyForProviderFamily("github")).toBeUndefined();
 	});
 
-	it("requireForProviderFamily returns the service and throws for missing family", () => {
+	it("clientKeyForProviderFamily returns the key for a registered family", () => {
 		const registry = new TokenSetAuthRegistry();
+		const client = createMockClient();
 
 		registry.register({
 			key: "internal",
-			clientFactory: () => createMockClient(),
+			clientFactory: () => client,
 			providerFamily: "internal-sso",
 		});
 
-		expect(registry.requireForProviderFamily("internal-sso")).toBeInstanceOf(
-			TokenSetAuthService,
+		expect(registry.clientKeyForProviderFamily("internal-sso")).toBe(
+			"internal",
 		);
-		expect(() => registry.requireForProviderFamily("github")).toThrow(
-			/No client registered for providerFamily "github"/,
-		);
+		expect(registry.clientKeyForProviderFamily("github")).toBeUndefined();
 	});
 
-	it("requirementKind and providerFamily can coexist on the same entry", () => {
+	it("requirementKind and providerFamily can coexist on the same entry", async () => {
 		const registry = new TokenSetAuthRegistry();
+		const primaryClient = createMockClient();
 
 		registry.register({
 			key: "primary",
-			clientFactory: () => createMockClient(),
+			clientFactory: () => primaryClient,
 			requirementKind: "backend_oidc",
 			providerFamily: "company-sso",
 		});
@@ -893,7 +821,7 @@ describe("Angular Integration — RequirementKind / ProviderFamily mapping", () 
 		// Both axes resolve to the same client key.
 		expect(registry.clientKeyForRequirement("backend_oidc")).toBe("primary");
 		expect(registry.clientKeyForProviderFamily("company-sso")).toBe("primary");
-		expect(registry.require("primary")).toBeInstanceOf(TokenSetAuthService);
+		await expect(registry.whenReady("primary")).resolves.toBe(primaryClient);
 	});
 });
 

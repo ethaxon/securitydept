@@ -1,7 +1,11 @@
-import { createSignal, createSubject } from "@securitydept/client";
 import {
+	createReplaySignal,
+	createSignal,
+	createSubject,
+} from "@securitydept/client";
+import {
+	AuthCheckStatus,
 	type AuthSnapshot,
-	EnsureAuthForResourceStatus,
 	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
@@ -13,30 +17,58 @@ import {
 import { firstValueFrom, of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 
+function expectReplayValue<T>(signal: {
+	get(): { kind: "empty" } | { kind: "value"; value: T };
+}): T {
+	const slot = signal.get();
+	expect(slot.kind).toBe("value");
+	if (slot.kind !== "value") {
+		throw new Error("Expected replay signal value.");
+	}
+	return slot.value;
+}
+
 function createAngularClient(
 	name: string,
 	authorizationHeader: string,
 	disposeSpy: () => void = vi.fn<() => void>(() => undefined),
 ): TokenSetAngularClient {
-	const state = createSignal<AuthSnapshot | null>(null);
+	const authDetermined = createReplaySignal<true>();
+	authDetermined.emit(true);
+	const authSnapshot = createReplaySignal<AuthSnapshot | null>();
+	authSnapshot.emit({ tokens: { accessToken: `${name}-at` }, metadata: {} });
+	const isAuthenticated = createReplaySignal<boolean>();
+	isAuthenticated.emit(true);
+	const authorizationHeaderValue = createReplaySignal<string | undefined>();
+	authorizationHeaderValue.emit(authorizationHeader);
+	const lastAuthError = createSignal<unknown | undefined>(undefined);
 	return {
-		state,
+		authDetermined,
+		authSnapshot,
+		isAuthenticated,
+		authorizationHeaderValue,
+		lastAuthError,
+		authOperations: {
+			restorePending: createSignal(false),
+			refreshPending: createSignal(false),
+			clearPending: createSignal(false),
+			loginPending: createSignal(false),
+		},
 		authEvents: createSubject<TokenSetAuthEvent>(),
+		addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		start: vi.fn(async () => undefined),
 		dispose: disposeSpy,
 		restorePersistedState: vi.fn(async () => null),
 		handleCallback: vi.fn(async () => ({
 			snapshot: { tokens: { accessToken: `${name}-at` }, metadata: {} },
 			postAuthRedirectUri: "/after-login",
 		})),
-		authorizationHeader: vi.fn(() => authorizationHeader),
-		ensureAuthForResource: vi.fn(async () => ({
-			status: EnsureAuthForResourceStatus.Authenticated,
+		authCheck: vi.fn(async () => ({
+			status: AuthCheckStatus.Authenticated,
 			snapshot: { tokens: { accessToken: `${name}-at` }, metadata: {} },
 			freshness: "fresh" as const,
 			authorizationHeader,
 		})),
-		ensureFreshAuthState: vi.fn(async () => state.get()),
-		ensureAuthorizationHeader: vi.fn(async () => authorizationHeader),
 	};
 }
 
@@ -67,8 +99,10 @@ describe("TokenSetAuthRegistry (Angular wrapper)", () => {
 		expect(registry.registeredKeys()).toEqual(["workspace"]);
 		expect(registry.readyKeys()).toEqual([]);
 
-		const firstService = await registry.whenReady("workspace");
-		expect(firstService.client.authorizationHeader()).toBe("Bearer first");
+		const firstClient = await registry.whenReady("workspace");
+		expect(expectReplayValue(firstClient.authorizationHeaderValue)).toBe(
+			"Bearer first",
+		);
 		expect(registry.readyKeys()).toEqual(["workspace"]);
 
 		expect(registry.resetMaterialization("workspace")).toBe(true);
@@ -80,9 +114,11 @@ describe("TokenSetAuthRegistry (Angular wrapper)", () => {
 			"workspace",
 		]);
 
-		const secondService = await registry.whenReady("workspace");
-		expect(secondService).not.toBe(firstService);
-		expect(secondService.client.authorizationHeader()).toBe("Bearer second");
+		const secondClient = await registry.whenReady("workspace");
+		expect(secondClient).not.toBe(firstClient);
+		expect(expectReplayValue(secondClient.authorizationHeaderValue)).toBe(
+			"Bearer second",
+		);
 		expect(factory).toHaveBeenCalledTimes(2);
 
 		expect(registry.unregister("workspace")).toBe(true);

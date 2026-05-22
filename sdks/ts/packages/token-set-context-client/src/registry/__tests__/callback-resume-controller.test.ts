@@ -15,14 +15,6 @@ function createRegistry(handleCallback = vi.fn()) {
 	const registry = createTokenSetAuthRegistry<unknown, { client: never }>({
 		materialize: (client) => ({ client: client as never }),
 		dispose: () => undefined,
-		accessTokenOf: () => null,
-		ensureAccessTokenOf: async () => null,
-		ensureAuthorizationHeaderOf: async () => null,
-		ensureAuthForResourceOf: async () => {
-			throw new Error(
-				"ensureAuthForResourceOf should not be called in this test",
-			);
-		},
 		authEventsOf: () => ({
 			subscribe: () => ({ unsubscribe() {} }),
 		}),

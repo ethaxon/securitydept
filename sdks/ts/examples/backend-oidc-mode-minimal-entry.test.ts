@@ -18,6 +18,17 @@ import {
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it } from "vitest";
 
+function expectReplayValue<T>(signal: {
+	get(): { kind: "empty" } | { kind: "value"; value: T };
+}): T {
+	const slot = signal.get();
+	expect(slot.kind).toBe("value");
+	if (slot.kind !== "value") {
+		throw new Error("Expected replay signal value.");
+	}
+	return slot.value;
+}
+
 // Minimal runtime stubs — just enough to construct a client.
 const minimalRuntime = {
 	transport: {
@@ -45,9 +56,9 @@ describe("backend-oidc-mode root minimal entry", () => {
 		// 2. Construct the client directly from the root subpath.
 		const client = new BackendOidcModeClient(config, minimalRuntime);
 
-		// 3. Initially unauthenticated.
-		expect(client.state.get()).toBeNull();
-		expect(client.authorizationHeader()).toBeNull();
+		// 3. Initially undetermined.
+		expect(client.authSnapshot.hasValue()).toBe(false);
+		expect(client.authorizationHeaderValue.hasValue()).toBe(false);
 
 		// 4. Restore state (e.g. from backend bootstrap or SSR injection).
 		client.restoreState({
@@ -59,8 +70,12 @@ describe("backend-oidc-mode root minimal entry", () => {
 		});
 
 		// 5. Now authenticated.
-		expect(client.state.get()?.tokens.accessToken).toBe("example-at");
-		expect(client.authorizationHeader()).toBe("Bearer example-at");
+		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+			"example-at",
+		);
+		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
+			"Bearer example-at",
+		);
 
 		client.dispose();
 	});

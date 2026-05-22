@@ -30,6 +30,17 @@ vi.mock("@securitydept/client/web", async () => {
 	};
 });
 
+function expectReplayValue<T>(signal: {
+	get(): { kind: "empty" } | { kind: "value"; value: T };
+}): T {
+	const slot = signal.get();
+	expect(slot.kind).toBe("value");
+	if (slot.kind !== "value") {
+		throw new Error("Expected replay signal value.");
+	}
+	return slot.value;
+}
+
 const oauthMocks = vi.hoisted(() => ({
 	allowInsecureRequests: Symbol("allowInsecureRequests"),
 	authorizationCodeGrantRequest: vi.fn(),
@@ -779,7 +790,7 @@ describe("FrontendOidcModeClient", () => {
 		);
 	});
 
-	it("attributes auth.authenticated to the refresh caller instead of callback", async () => {
+	it("attributes auth.authenticated to explicit auth checks instead of callback", async () => {
 		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
@@ -810,8 +821,7 @@ describe("FrontendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		await client.ensureAuthForResource({
-			source: TokenSetAuthFlowSource.RouteGuard,
+		await client.authCheck({
 			forceRefreshWhenDue: true,
 		});
 
@@ -823,7 +833,7 @@ describe("FrontendOidcModeClient", () => {
 
 		expect(refreshAuthenticatedEvent?.payload).toEqual(
 			expect.objectContaining({
-				source: TokenSetAuthFlowSource.RouteGuard,
+				source: TokenSetAuthFlowSource.ExplicitCall,
 				hasRefreshMaterial: true,
 			}),
 		);
@@ -869,6 +879,8 @@ describe("FrontendOidcModeClient", () => {
 		const refreshed = await client.refresh();
 
 		expect(refreshed?.tokens.refreshMaterial).toBe("seed-rt");
-		expect(client.state.get()?.tokens.refreshMaterial).toBe("seed-rt");
+		expect(expectReplayValue(client.authSnapshot)?.tokens.refreshMaterial).toBe(
+			"seed-rt",
+		);
 	});
 });

@@ -1,26 +1,28 @@
 # Roadmap
 
-This roadmap is the current planning authority for SecurityDept. It describes the current `0.3.x` release line, active release constraints, and topics deferred beyond `0.3.x`.
+This roadmap defines the active `0.3.x` product scope for SecurityDept and the topics deferred beyond that line.
 
-It does not explain the full auth-context model or SDK package map. Use [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) for auth context / mode design, [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) for the TypeScript SDK adopter guide, and [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) for public-surface migration guidance.
+It does not restate release procedure, SDK package maps, or migration chronology. Use [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md) for publish workflow, [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) for TypeScript SDK contracts, [020-AUTH_CONTEXT_AND_MODES.md](020-AUTH_CONTEXT_AND_MODES.md) for auth-context design, and [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) for public-surface changes.
 
 ## Current Release Target
 
-The current release baseline is the `0.3.x` line.
+The active release target is the `0.3.x` line.
 
-The detailed release execution record now lives in CHANGELOG.md and [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md). Keep this roadmap focused on active release constraints, plus future deferrals.
+Use [CHANGELOG](../../CHANGELOG.md) for executed release history and [008-RELEASE_AUTOMATION.md](008-RELEASE_AUTOMATION.md) for the operational publish rules. This roadmap stays focused on active scope, release constraints, and future deferrals.
 
-## 0.3.x Active Track
+## 0.3.x Priorities
 
-The `0.3.x` line is about making the existing stack explainable, testable, and releasable while allowing targeted breaking changes where they improve host ergonomics and long-term maintainability:
+The `0.3.x` line is about making the existing stack explainable, testable, and releasable while allowing targeted breaking changes that improve host ergonomics and long-term maintainability:
 
-1. Keep the TypeScript SDK freeze executable through `public-surface-inventory.json`, release-gate tests, evidence files, docs anchors, and `110` migration entries.
-2. Keep `apps/webui` as the primary in-repo reference app for browser, React, dashboard, route policy, shared error, diagnosis, and browser harness evidence.
-3. Keep `outposts` as a downstream adopter calibration case for Angular hosting, backend-driven config projection, strict bearer injection, callback preservation, and provider-neutral route metadata.
-4. Complete release packaging readiness for Rust crates, npm packages, Docker images, and docs site without adding auth features.
-5. Preserve the current auth-context parity baseline: basic-auth and session remain intentionally thinner than token-set, but their entry paths must stay discoverable and tested.
+1. Keep the TypeScript SDK public surface explicit and enforceable through `public-surface-inventory.json`, release-gate tests, docs anchors, and `110` migration entries.
+2. Keep `apps/webui` as the primary in-repo executable proof surface for browser, React, route policy, error handling, and browser-harness evidence.
+3. Keep `outposts` as a supplementary downstream calibration case for Angular hosting, backend-driven config projection, strict bearer injection, callback preservation, and provider-neutral route metadata.
+4. Complete release packaging readiness for Rust crates, npm packages, Docker images, and the docs site without expanding the auth feature set.
+5. Preserve the current auth-context parity baseline: basic-auth and session stay intentionally thinner than token-set, but their entry paths must remain discoverable and tested.
 
-## TypeScript SDK Product Boundary
+## Product Boundaries
+
+### TypeScript SDK
 
 TypeScript remains the only active SDK productization language for `0.3.x`.
 
@@ -30,8 +32,8 @@ The active baseline includes:
 - stable root basic-auth and session clients
 - provisional browser/server/framework adapters
 - provisional browser-owned token-set modes, registry, orchestration, and React Query integration
-- real reference proof from `apps/webui`
-- real downstream proof from `outposts`
+- real in-repo proof from `apps/webui`
+- focused downstream calibration from `outposts`
 
 The active baseline excludes:
 
@@ -41,40 +43,34 @@ The active baseline excludes:
 - reference-app business API wrappers
 - non-TS SDK productization
 
-## Rust Product Boundary
+### Rust Libraries
 
-The reusable Rust package line is the set of workspace library crates under `packages/*`. `apps/server` and `apps/cli` are release artifacts for build/image readiness, not crates.io library publish targets.
+The reusable Rust package line is the set of workspace library crates under `packages/*`. `apps/server` and `apps/cli` are release artifacts for runtime and image readiness, not crates.io library publish targets.
 
-The historical `[patch.crates-io] openidconnect` packaging blocker is closed: the workspace is back on `openidconnect = "4"`. Future release execution still requires a real `cargo package` check for every publishable crate, without treating `--allow-dirty` or `--no-verify` as acceptable evidence.
+Release readiness still requires a real `cargo package` check for every publishable crate. `--allow-dirty` and `--no-verify` are not release evidence.
 
-## Docker Product Boundary
+### Runtime And Docker
 
 The Docker image is a runtime artifact for the reference server plus web UI output. Current release expectations require:
 
 - toolchain versions aligned with `mise.toml` / `rust-toolchain.toml` or explicitly documented
 - runtime image assembly through `Dockerfile.runtime` from prebuilt server, CLI, and web UI artifacts
-- web UI output copy path matching the real Vite build output
-- tag behavior where pre-release tags such as `vX.Y.Z-beta.N` do not publish `latest`
+- web UI output copy paths matching the real Vite build output
+- tag behavior where prerelease tags such as `vX.Y.Z-beta.N` do not publish `latest`
 - release-acceptable labels, cache, provenance, and platform decisions
 
-## Docs Product Boundary
+### Docs
 
-`docs/en` and `docs/zh` remain source docs. `docsite/` is the VitePress source root; it should expose `docsite/docs` as a symlink to `docs/` and keep only the root README / LICENSE entry pages linked rather than copied.
+`docs/en` and `docs/zh` remain the source docs. `docsite/` is the VitePress render layer and should expose the source docs through symlinks rather than a second content pipeline.
 
-The project docs should be read as:
+Document ownership is intentionally split:
 
-- `000` overview and doc index
-- `001` architecture and crate boundaries
-- `002` capability matrix
-- `005` error system design
-- `006` real-IP strategy
-- `007` client SDK adopter guide and public-surface snapshot
-- `020` auth context / mode design
-- `021` downstream reference case
-- `100` roadmap and release blockers
-- `110` TS SDK migration guide
-
-Local test infrastructure docs live with the capability they validate: real-IP Docker/Kubernetes provider test behavior is documented in `006`, while release workflow behavior stays in `008`.
+- README and `000` for entry/navigation
+- `007` for SDK contracts
+- `008` for release rules
+- `100` for active scope and deferrals
+- `110` for migration history
+- [CHANGELOG](../../CHANGELOG.md) for executed release history
 
 ## Deferred Beyond 0.3.x
 

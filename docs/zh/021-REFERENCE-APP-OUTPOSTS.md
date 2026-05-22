@@ -1,29 +1,76 @@
 # Outposts 参考案例
 
-`~/workspace/outposts` 是 SecurityDept TypeScript SDK 当前的 downstream adopter calibration case。它补充 `apps/webui`，但不替代 `apps/webui`。
+`~/workspace/outposts` 是 SecurityDept TypeScript SDK 当前的下游校准案例。它补充 `apps/webui`，但不替代仓库内参考应用。
 
-`apps/webui` 仍是仓库内第一优先级 reference app 与 release-gate 证据面。`outposts` 的价值在于它是真实 consuming workspace，拥有自己的 Angular host、backend service、route table 与部署约束。
+由于 `outposts` 是仓库外 workspace，本文记录的是校准结果与集成压力，而不是一个可以完全公开复现的测试计划。`apps/webui` 仍是仓库内第一优先级 release-gate proof surface。
 
-## 当前状态
+## 这个案例当前证明了什么
 
-当前下游 calibration line 是：
+当前校准线证明了：
 
-- `outposts-web -> confluence` 已改为消费 SecurityDept Angular/token-set packages，不再使用 `angular-auth-oidc-client`。
-- `angular-auth-oidc-client` 已从 downstream package manifest 移除。
+- `outposts-web -> confluence` 已改为消费 SecurityDept Angular/token-set packages，不再依赖 `angular-auth-oidc-client`。
 - Callback route 由 SDK `TokenSetCallbackComponent` 承担。
 - `secureRouteRoot()` 承载 provider-neutral requirement metadata 与 next-action policy。
-- `provideTokenSetAuth(...)` 注册 `Confluence` client，并使用 `providerFamily: "authentik"`、`callbackPath: "/auth/callback"` 与 Confluence API endpoint 的 URL patterns。
-- Route-login integration 使用共享的 `OidcRedirectLoginClient.loginWithRedirect({ environment, postAuthRedirectUri })` contract，并应从稳定的 `ClientEnvironmentService` / `providePageClientEnvironment({ environment })` source 获取 page capability，而不是在每次 guard 中创建 page factory。
-- 对 registry-managed browser client，`provideTokenSetAuth(...)` 现在也拥有默认 page-resume reconciliation；`outposts` 不需要为了 resume recovery 再手动包一层 `createFrontendOidcModeClient(...)`。
-- `provideTokenSetBearerInterceptor({ strictUrlMatch: true })` 将 bearer injection 限制到命中已注册 `urlPatterns` 的 URL，不再对 unmatched URL 使用 single-client fallback。
-- 短 access-token lifetime 预期通过 SDK freshness barriers 恢复：browser resume reconciliation、Angular route guard freshness 与 request-time `ensureAuthForResource({ source: "http_interceptor", needsAuthorizationHeader: true })` 都会在存在 refresh material 时先尝试 refresh，再决定是否登录跳转或注入 bearer。
-- 真实浏览器诊断可通过 `?sd-auth-events=1` 开启脱敏 auth-event 采集；开启后 `outposts-web` 会暴露 `window.__OUTPOSTS_AUTH_DIAGNOSTICS__.events`，其中包含 event type、flow source、client key、freshness、是否存在 refresh material、reason、outcome、refresh barrier id 与脱敏 error summary。
-- `window.__OUTPOSTS_AUTH_DIAGNOSTICS__.inspect()` 是排查 page reload regression 最快的下游诊断面，因为它会同时报告 live registry/client auth snapshot summary 与持久化的 `outposts.web.auth.*` localStorage entries。
-- Downstream focused tests 锁住 callback path preservation、provider-neutral route metadata、bearer injection boundaries 与 redirect preservation。
-- `confluence` service 既有 backend tests 锁住 issuer/JWKS/audience/scope 行为，包括 optional-audience 与 missing-scope rejection。
-- Linked-package tests/build 只能证明本地 SDK contract wiring，不能替代真实 Authentik browser/Network run。真实 run 仍需要可访问的 `outposts-web` 页面和已认证 Authentik session，用于记录 localStorage refresh material、access-token expiry、resume refresh、route admission 与首个 protected API request 行为。
-- 本地 cross-workspace 验证时，应在 `outposts` 中先启动 `just dev-confluence`，再启动 `just dev-webui`。修改 linked 的 SecurityDept SDK package 后，还需要先重建对应 package 产物并清理 `outposts/.angular/cache`，再重启 `dev-webui`；否则 Angular/Vite 可能继续提供陈旧的 linked artifact。
-- 对本地 cross-workspace 联调，应使用 pnpm `link:` dependency，而不是 overrides。普通 TS package 可以继续 link 到 package root，但 Angular `ng-packagr` package 应 link 到构建后的 `dist/` 输出，而不是 workspace root。一个可复用的下游配置模式是：
+- `provideTokenSetAuth(...)` 为 `Confluence` client 显式注册 `providerFamily`、`callbackPath` 与 `urlPatterns`。
+- Route-login integration 使用共享的 `OidcRedirectLoginClient.loginWithRedirect({ environment, postAuthRedirectUri })` contract，并应从稳定的 environment service 获取 page capability，而不是在每次 guard 中创建 page factory。
+- 对 registry-managed browser client，`provideTokenSetAuth(...)` 已默认拥有 page-resume reconciliation；adopter 不需要为了 resume recovery 再额外包一层 client。
+- `provideTokenSetBearerInterceptor({ strictUrlMatch: true })` 可以把 bearer injection 限制到已注册 URL，不再对 unmatched URL 使用 single-client fallback。
+- 短 access-token lifetime 应通过 SDK freshness barriers 恢复，而不是在存在 refresh material 时直接 redirect 或发送过期 bearer。
+- Focused downstream tests 已锁住 callback preservation、provider-neutral route metadata、bearer injection boundaries 与 redirect preservation。
+
+真实浏览器诊断和本地 Authentik 运行仍然有价值，但它们是校准证据，不替代仓库内 release gates。
+
+## 为什么这个案例重要
+
+`outposts` 有价值，是因为它施加了单一仓库内参考应用不足以完全覆盖的 host 压力：
+
+- 一个 frontend host 未来可能管理多个 backend token families
+- 某些 route area 可能要求多个 app 的资格
+- host 拥有 user-choice flow、silent/interactive acquisition decision 与 product copy
+- backend 仍需要 provider-neutral bearer/OIDC validation
+
+这种压力能够暴露 SDK primitive 到底可复用，还是只是贴着某个参考应用形状写出来的局部解。
+
+## 它如何影响 SDK 设计
+
+这个案例当前强化了以下设计结论：
+
+- Angular bearer injection 应保留显式 `strictUrlMatch` 路径，多 backend 或存在 third-party traffic 的 host 应启用它。
+- Angular route 与 request handling 应消费 canonical replay channels：route guard 等待 `isAuthenticated`，interceptor 等待 `authorizationHeaderValue`。adopter-local 代码不应自行重拼命令式 freshness 或 bearer fallback chain。
+- Browser token-set client 应默认保留 resume reconciliation；如果 adopter 明确关闭，就必须补上等价的 freshness barrier。
+- Authentik 或等价 provider 配置必须让 browser-owned token-set client 拿到并保留 refresh material，包括 `offline_access` 和可用的 refresh-token lifetime/rotation。
+- SDK 可以在重复 adopter pressure 被证实时提升 headless primitive，但单个 adopter 的 `AuthService` 仍只是样例，不是 public SDK API。
+
+## 这个案例不证明什么
+
+这个案例不证明：
+
+- SDK 已经内建 multi-requirement chooser UI
+- SDK 拥有 product route table、page copy 或 toast behavior
+- adopter-local `AuthService` 应被复制进 SDK
+- `outposts` 替代 `apps/webui` 成为 primary release gate
+- cross-repository browser automation 属于当前产品线
+
+正确分工保持不变：
+
+- 当重复 adopter pressure 证明某个 headless primitive 稳定时，SecurityDept 才提升它。
+- Adopter 拥有 product UX、business routes 与 local glue。
+- `apps/webui` 继续作为仓库内首要 executable proof surface。
+
+## 本地跨工作区验证约束
+
+在 SDK 与 adopter 边界继续演化期间，这个案例仍依赖直接本地 workspace dependencies：
+
+- Rust：使用指向本地 SecurityDept crates 的 `path` dependencies
+- Node / pnpm：使用指向本地 SecurityDept TS packages 的 `link:` references
+
+推荐本地顺序：
+
+1. 在 `outposts` 中先启动 `just dev-confluence`，再启动 `just dev-webui`。
+2. 修改 linked 的 SecurityDept SDK package 后，先重建对应 package outputs。
+3. 重启 downstream web UI 前清理 `outposts/.angular/cache`，否则 Angular/Vite 可能继续提供陈旧的 linked artifact。
+
+对本地 cross-workspace 验证，应使用 pnpm `link:` dependency，而不是 overrides。普通 TS package 可以继续 link 到 package root，但 Angular `ng-packagr` package 应 link 到构建后的 `dist/` 输出，而不是 workspace root。一个可复用的下游配置模式是：
 
 ```json
 {
@@ -34,86 +81,9 @@
 }
 ```
 
-- 经验教训：如果把 Angular package root 直接 link 给 downstream，实际消费到的是 monorepo package manifest 与本地 Angular 类型安装路径，而不是面向 consumer 的 `ngc` / `ng-packagr` 产物。这就是本地 linked downstream 验证里 `Route` 双类型宇宙回归的典型触发条件。
+如果把 Angular package root 直接 link 给 downstream，实际消费到的是 monorepo manifest 与本地 Angular 类型安装路径，而不是面向 consumer 的 `ngc` / `ng-packagr` 产物。这就是本地 linked downstream 验证里 `Route` 双类型宇宙回归的典型触发条件。
 
-## 为什么这个案例重要
-
-`outposts` 是有价值的 calibration case，因为它代表一个可能不止一个 backend service 的 host：
-
-- 一个 frontend host 未来可能管理多个 backend token families
-- 某些 route area 可能要求多个 app 的资格
-- host 拥有 user-choice flow、silent/interactive acquisition decision 与 product copy
-- backend 仍需要 provider-neutral bearer/OIDC validation
-
-这种压力能暴露 SDK primitive 到底可复用，还是只是按仓库内 reference app 形状写出的局部解。
-
-## 这个案例应该验证什么
-
-近期验证范围：
-
-1. 通过 SecurityDept packages 完成 Angular host integration。
-2. 通过 `link:` / `path` dependencies 验证 backend-driven config projection 与本地多 workspace 开发。
-3. Provider-neutral route requirements 与 callback preservation。
-4. 不向第三方 URL 泄露 token 的 strict bearer-header injection。
-5. Backend-side audience/scope/issuer validation。
-6. 五分钟 access-token 行为：从 sleep/hidden tab 返回、进入 protected route、首个 Confluence API request 时，如果有可用 refresh material，应先 refresh，而不是发送 expired bearer 或过早 redirect。
-7. 真实 adopter glue 中出现的候选 SDK ergonomics 缺口。
-
-## 不应该把这个案例验证成什么
-
-这个案例不证明：
-
-- SDK 已经内建 multi-requirement chooser UI
-- SDK 拥有 product route table、page copy 或 toast behavior
-- `outposts` app-local `AuthService` 应被复制进 SDK
-- `outposts` 替代 `apps/webui` 成为 primary release gate
-- cross-repository browser automation 属于当前产品线
-
-正确分工是：
-
-- 当重复 adopter pressure 证明某个 headless primitive 稳定时，SecurityDept 可以将其提升。
-- Adopter 拥有 product UX、business routes 与 local glue。
-- `apps/webui` 保持仓库内 primary reference app 与 release evidence owner。
-
-## 对 SDK 设计的直接影响
-
-当前影响：
-
-- Angular bearer injection 已拥有显式 `BearerInterceptorOptions.strictUrlMatch` 选项。
-- 多 backend 或存在 third-party traffic 的 Angular host 应启用 `strictUrlMatch: true`。
-- Browser token-set client 默认挂载 resume reconciliation，Angular `provideTokenSetAuth(...)` 也会把这个默认行为应用到 registry-managed browser client。如果 `outposts` 针对某个 client 本地关闭这个 hook，就必须安装等价的 `visibilitychange`/`pageshow`/`focus`/`online` freshness barrier。
-- Angular route 与 request handling 应保持在 canonical `ensureAuthForResource()` 路径；app-local route 或 bearer 代码不应重新拼装 `ensureFreshAuthState()` / `ensureAuthorizationHeader()` fallback chain。
-- Authentik 配置必须让 browser-owned token-set client 拿到并保留 refresh material：请求/允许 `offline_access`，并设置 refresh-token rotation/lifetime，使短 access token 能在正常 tab resume、route 与 request flow 中续期。
-- SDK 应为 keyed token-set state projection helper 保留空间，但当前 `outposts` `AuthService` 仍只是单 adopter 样本，不是 SDK API。
-- Framework route adapter 应保持 provider-neutral，只表达 requirements，而不表达 provider SDK 细节。
-
-## 近期计划
-
-将这个案例作为证据与 backlog input：
-
-1. 继续把当前单 `Confluence` path 锁定为 downstream proof。
-2. 不因为一个 downstream host 的本地 glue 就新增 SDK capability。
-3. 只有当 ergonomics 在多个 adopter，或同时在 `apps/webui` 与 `outposts` 中重复出现时，才记录为更高优先级候选。
-4. 对任何 multi-backend 或 third-party traffic 的 Angular adopter，继续推荐 strict bearer injection。
-
-## 中期计划
-
-下一条有价值的 adopter evidence 是 `outposts` 中出现第二个 backend 或第二个 route requirement。这会验证当前 route-orchestration primitive 在 multi-requirement 压力下是否仍然顺手。
-
-## 长期计划
-
-保持 `outposts` 作为真实 feedback surface，而不是第二个仓库内 demo。它的价值在于可以与 reference app 不同，并暴露真实 host 约束。
-
-## 本地联动开发约束
-
-在 SDK 与 adopter 边界共同演化期间，这个案例应继续使用直接本地 workspace dependencies：
-
-- Rust：使用指向本地 SecurityDept crates 的 `path` dependencies
-- Node / pnpm：使用指向本地 SecurityDept TS packages 的 `link:` references
-
-当 downstream workspace 直接链接 SecurityDept package root 或 Angular `dist/` 输出时，浏览器联调前仍必须重建被修改的 SDK packages。仅有本地 `link:` wiring 并不足以刷新已经被 Angular/Vite 预构建的产物。
-
-如果 downstream 还会独立运行 Angular builder 之外的 TypeScript 检查，也要让其 Angular patch 版本与 SecurityDept SDK 当前工具链保持一致，并按当前 workspace manifest 一起升级核心 Angular framework packages、`@angular-devkit/*`、CLI、compiler 与相关 build tooling，然后再运行 `tsc`、`nx test` 或 `nx build`。
+如果 downstream 还会独立运行 Angular builder 之外的 TypeScript 检查，也要在重新运行 `tsc`、`nx test` 或 `nx build` 前，让其 Angular patch 版本继续与当前 SecurityDept SDK 工具链线保持一致。
 
 ## 相关文档
 

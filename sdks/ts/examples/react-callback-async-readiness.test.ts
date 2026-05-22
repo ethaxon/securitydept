@@ -1,10 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-	createDefaultIdleScheduler,
-	createSignal,
-	createSubject,
-} from "@securitydept/client";
+import { createSignal, createSubject } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useSecuritydeptContext,
@@ -13,14 +9,7 @@ import type {
 	AuthSnapshot,
 	TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
-import {
-	EnsureAuthForResourceStatus,
-	TokenSetAuthFlowReason,
-} from "@securitydept/token-set-context-client/orchestration";
-import {
-	TokenSetAuthService as CoreTokenSetAuthService,
-	createTokenSetAuthRegistry,
-} from "@securitydept/token-set-context-client/registry";
+import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
 import {
 	CallbackResumeStatus,
 	provideTokenSetAuthRegistry,
@@ -34,6 +23,7 @@ import {
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
+import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
@@ -65,20 +55,7 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 function createManualRegistry(
 	clients: readonly TokenSetClientEntry[],
 ): ReactRegistry {
-	const registry = createTokenSetAuthRegistry<
-		TokenSetReactClient,
-		CoreTokenSetAuthService<TokenSetReactClient>
-	>({
-		materialize: CoreTokenSetAuthService.materializeService,
-		dispose: CoreTokenSetAuthService.dispose,
-		accessTokenOf: CoreTokenSetAuthService.accessTokenOf,
-		ensureAccessTokenOf: CoreTokenSetAuthService.ensureAccessTokenOf,
-		ensureAuthorizationHeaderOf:
-			CoreTokenSetAuthService.ensureAuthorizationHeaderOf,
-		ensureAuthForResourceOf: CoreTokenSetAuthService.ensureAuthForResourceOf,
-		authEventsOf: CoreTokenSetAuthService.authEventsOf,
-		idleScheduler: createDefaultIdleScheduler(),
-	});
+	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>();
 
 	for (const client of clients) {
 		const registration = registry.register(client);
@@ -93,28 +70,26 @@ function createManualRegistry(
 describe("react callback async readiness", () => {
 	it("resumes callback from a controller resolved through SecuritydeptProvider", async () => {
 		const state = createSignal<AuthSnapshot | null>(null);
+		const reactive = createTestTokenSetReactiveFields(null);
 		const registry = createManualRegistry([
 			{
 				key: "frontend",
 				callbackPath: "/oidc/callback",
-				autoRestore: false,
 				clientFactory: async () => ({
 					state,
+					...reactive.fields,
 					authEvents: createSubject<TokenSetAuthEvent>(),
-					dispose: () => state.set(null),
+					addAuthCheckTriggerSource: () => ({ unsubscribe: () => undefined }),
+					start: async () => undefined,
+					dispose: () => {
+						state.set(null);
+						reactive.emitSnapshot(null);
+					},
 					restorePersistedState: async () => state.get(),
-					authorizationHeader: () => null,
-					ensureAuthForResource: async () => ({
-						status: EnsureAuthForResourceStatus.Unauthenticated,
-						snapshot: null,
-						authorizationHeader: null,
-						reason: TokenSetAuthFlowReason.NoSnapshot,
-					}),
-					ensureFreshAuthState: async () => state.get(),
-					ensureAuthorizationHeader: async () => null,
 					handleCallback: async () => {
 						const snapshot = createSnapshot("callback-at");
 						state.set(snapshot);
+						reactive.emitSnapshot(snapshot);
 						return { snapshot, postAuthRedirectUri: "/after-login" };
 					},
 					loginWithRedirect: async () => undefined,

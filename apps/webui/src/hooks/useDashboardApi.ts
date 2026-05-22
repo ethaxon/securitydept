@@ -1,3 +1,7 @@
+import type {
+	ReadableSignalTrait,
+	ReplaySignalSlot,
+} from "@securitydept/client";
 import {
 	useReadableSignal,
 	useSecuritydeptContext,
@@ -62,9 +66,16 @@ interface DashboardRuntime {
 	mode: AuthContextMode;
 	tokenSetClientKey: string;
 	tokenSetState: AuthStateSnapshot | null;
-	tokenSetClient: TokenSetReactClient;
+	tokenSetClient: TokenSetReactClient | null;
 	tokenSetAuthenticated: boolean;
 }
+
+const EMPTY_TOKEN_SET_AUTH_SNAPSHOT_SIGNAL: ReadableSignalTrait<
+	ReplaySignalSlot<AuthStateSnapshot | null>
+> = {
+	get: () => ({ kind: "value", value: null }),
+	subscribe: () => () => {},
+};
 
 function useDashboardSessionController() {
 	return useSecuritydeptContext().get(SESSION_CONTEXT_CONTROLLER);
@@ -77,17 +88,23 @@ function useDashboardSessionState() {
 	return { controller, state };
 }
 
-function useDashboardTokenSetService(clientKey: string) {
-	return useSecuritydeptContext()
-		.get(TOKEN_SET_AUTH_REGISTRY)
-		.require(clientKey);
+function useDashboardTokenSetClient(
+	clientKey: string,
+): TokenSetReactClient | null {
+	const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
+	const slot = useReadableSignal(registry.clientSignalFor(clientKey));
+	return slot.kind === "value" ? slot.value : null;
 }
 
 function useDashboardTokenSetSnapshot(
-	clientKey: string,
+	client: TokenSetReactClient | null,
 ): AuthStateSnapshot | null {
-	return useReadableSignal(useDashboardTokenSetService(clientKey).state)
-		.snapshot as AuthStateSnapshot | null;
+	const slot = useReadableSignal(
+		client?.authSnapshot ?? EMPTY_TOKEN_SET_AUTH_SNAPSHOT_SIGNAL,
+	);
+	return slot.kind === "value"
+		? (slot.value as AuthStateSnapshot | null)
+		: null;
 }
 
 export function useAuthContextMode(): AuthContextMode {
@@ -102,14 +119,14 @@ export function useDashboardRuntime(): DashboardRuntime {
 	const mode = useAuthContextMode();
 	const tokenSetClientKey =
 		resolveTokenSetClientKey(mode) ?? TOKEN_SET_BACKEND_MODE_CLIENT_KEY;
-	const tokenSetService = useDashboardTokenSetService(tokenSetClientKey);
-	const tokenSetState = useDashboardTokenSetSnapshot(tokenSetClientKey);
+	const tokenSetClient = useDashboardTokenSetClient(tokenSetClientKey);
+	const tokenSetState = useDashboardTokenSetSnapshot(tokenSetClient);
 
 	return {
 		mode,
 		tokenSetClientKey,
 		tokenSetState,
-		tokenSetClient: tokenSetService.client,
+		tokenSetClient,
 		tokenSetAuthenticated: Boolean(tokenSetState?.tokens.accessToken),
 	};
 }
@@ -401,6 +418,9 @@ export function useDashboardLogout() {
 		mutationKey: ["dashboard", "logout", "token-set"],
 		mutationFn: async () => {
 			if (mode === AuthContextMode.TokenSetBackend) {
+				if (!tokenSetClient) {
+					throw new Error("Backend token-set logout requires a ready client.");
+				}
 				assertTokenSetBackendOidcClient(
 					tokenSetClient,
 					"Backend token-set logout",

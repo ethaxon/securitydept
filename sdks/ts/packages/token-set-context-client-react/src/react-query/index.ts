@@ -24,13 +24,10 @@ import {
 	type ReactRegistry,
 	TOKEN_SET_AUTH_REGISTRY,
 } from "../token-set-auth-registry";
-import type { TokenSetAuthService as CoreTokenSetAuthService } from "../token-set-auth-service";
-
-type TokenSetAuthService = CoreTokenSetAuthService<TokenSetReactClient>;
 
 export interface TokenSetReadinessQueryHookOptions
 	extends Omit<
-		UseQueryOptions<TokenSetAuthService, Error, TokenSetAuthService, QueryKey>,
+		UseQueryOptions<TokenSetReactClient, Error, TokenSetReactClient, QueryKey>,
 		"queryKey" | "queryFn"
 	> {
 	injector?: SecuritydeptInjectorTrait;
@@ -71,19 +68,19 @@ export const tokenSetQueryKeys = {
  * a route or suspense boundary on async client materialization (primary
  * async or lazy-preloaded clients).
  *
- * The query resolves with the materialized `TokenSetAuthService` and stays
+ * The query resolves with the materialized token-set client and stays
  * in `"success"` state as long as the client remains registered.
  */
 export function useTokenSetReadinessQuery(
 	clientKey: string,
 	options?: TokenSetReadinessQueryHookOptions,
-): UseQueryResult<TokenSetAuthService, Error> {
+): UseQueryResult<TokenSetReactClient, Error> {
 	const registry = resolveTokenSetRegistry({
 		clientKey,
 		injector: options?.injector,
 		registry: options?.registry,
 	});
-	return useQuery<TokenSetAuthService, Error, TokenSetAuthService, QueryKey>({
+	return useQuery<TokenSetReactClient, Error, TokenSetReactClient, QueryKey>({
 		queryKey: tokenSetQueryKeys.readiness(clientKey),
 		queryFn: async () => registry.whenReady(clientKey),
 		staleTime: Number.POSITIVE_INFINITY,

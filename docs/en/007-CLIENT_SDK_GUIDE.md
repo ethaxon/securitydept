@@ -1,6 +1,6 @@
 # Client SDK Guide
 
-This guide is the adopter-facing authority for the current TypeScript SDK surface. It explains package boundaries, stable entry points, environment/controller responsibilities, and the current `0.3.x` scope boundary.
+This guide is the adopter-facing reference for the current TypeScript SDK surface. It explains package boundaries, stable entry points, environment/controller responsibilities, and the current `0.3.x` scope boundary.
 
 It does not carry roadmap history or implementation chronology. Use [100-ROADMAP.md](100-ROADMAP.md) for release backlog and deferred work, [110-TS_SDK_MIGRATIONS.md](110-TS_SDK_MIGRATIONS.md) for public-surface migration decisions, and [021-REFERENCE-APP-OUTPOSTS.md](021-REFERENCE-APP-OUTPOSTS.md) for the downstream adopter case.
 
@@ -10,7 +10,7 @@ The SDK gives browser, React, Angular, and server-host adopters explicit auth-co
 
 ## Current Scope and Boundaries
 
-Current authority:
+What the SDK owns:
 
 - `@securitydept/client` owns foundation environment primitives, persistence, cancellation, tracing, and shared auth coordination.
 - `@securitydept/basic-auth-context-client` and `@securitydept/session-context-client` own thin auth-context helpers for browser and server hosts.
@@ -18,17 +18,17 @@ Current authority:
 - `@securitydept/client-react` / `@securitydept/client-angular` own shared framework-router glue; `@securitydept/client-react` additionally owns the only SDK React Context and the shared signal/event bridge.
 - Context-specific React / Angular packages bridge their family contracts; React packages now export injection tokens, provider factories, and explicit callback/component helpers instead of domain-specific React Context / Provider / `useXxxContext()` APIs.
 
-Non-authority:
+What stays outside the SDK:
 
 - `apps/webui/src/api/*`, pages, copy, route tables, and diagnostics UI are reference-app glue.
-- `~/workspace/outposts` is downstream calibration evidence, not an SDK API template.
+- `~/workspace/outposts` is a downstream calibration case, not an SDK API template.
 - provider choice, chooser UI, product flow semantics, and app-local failure copy remain adopter responsibilities.
 
 ## Top-Level Decisions
 
 - TypeScript is the only active SDK productization track for `0.3.x`.
 - Framework adapters stay thin and consume shared core owners rather than becoming first owners of framework-neutral behavior.
-- Public surface changes move together with inventory, evidence, docs anchors, and migration ledger entries.
+- Public surface changes move together with the inventory, focused verification tests, docs anchors, and migration ledger entries.
 - The current `0.3.x` release-preparation line is packaging, documentation, downstream-adopter correctness, and release readiness work; it does not add a new auth context.
 
 ## Terminology and Naming
@@ -48,7 +48,7 @@ Naming rule: dependency objects use `Environment` or a narrower `Capability` suf
 
 ## Packaging Style
 
-Packages are small, explicit, and side-effect-light. Root exports carry stable family contracts where possible. `/web`, `/server`, framework, and router subpaths carry host-specific glue and remain provisional until wider evidence exists.
+Packages are small, explicit, and side-effect-light. Root exports carry stable family contracts where possible. `/web`, `/server`, framework, and router subpaths carry host-specific glue and remain provisional until the host matrix and verification coverage are broader.
 
 ## Recommended Repository Layout
 
@@ -227,7 +227,7 @@ The canonical meaning is now:
 
 ### Current Contract Snapshot
 
-The table below is the current TS SDK public-surface authority snapshot. It must remain aligned with `public-surface-inventory.json`.
+The table below is the current TS SDK public-surface snapshot. It must remain aligned with `public-surface-inventory.json`.
 
 | Surface | Stability | Owner | Change discipline |
 |---|---|---|---|
@@ -280,7 +280,7 @@ The table below is the current TS SDK public-surface authority snapshot. It must
 - Framework router glue belongs to shared framework adapters.
 - Browser token-lifecycle glue belongs to the token-set family.
 - App-local business API wrappers are not SDK public surface.
-- Reference apps provide evidence; they do not define package ownership by themselves.
+- Reference apps prove real usage patterns; they do not define package ownership by themselves.
 
 #### token-set-context-client Frontend Subpath / Abstraction Split
 
@@ -290,9 +290,9 @@ Frontend adopters should reason in layers: foundation coordination, token-set mo
 
 `frontend-oidc-mode` owns projection-source precedence, validation, freshness, restore, and revalidation. `createFrontendOidcModeBrowserClient()` owns browser materialization from an explicit `FrontendOidcModeWebClientEnvironment`; the host owns config endpoint wiring, environment creation, and page routes.
 
-#### Reference-App Host Evidence (`apps/webui` / `apps/server`)
+#### Reference-App Baseline (`apps/webui` / `apps/server`)
 
-`apps/webui` and `apps/server` prove the current reference-app baseline: backend-mode and frontend-mode host splits, keyed callback/readiness, React Query token-set management flows, route security, dashboard bearer access, browser harness reporting, and shared error/diagnosis consumption.
+`apps/webui` and `apps/server` define the current in-repo baseline: backend-mode and frontend-mode host splits, keyed callback/readiness, React Query token-set management flows, route security, dashboard bearer access, browser harness reporting, and shared error/diagnosis consumption.
 
 The reference app should prove canonical SDK usage directly. `apps/webui` now reads SDK dependencies through `useSecuritydeptContext().get(TOKEN)`, `useReadableSignal(...)`, and explicit assertion/helpers local to each feature instead of hiding those reads behind a shared app-local facade.
 
@@ -311,7 +311,7 @@ TanStack Router's `createSecureBeforeLoad()` likewise passes an unauthenticated 
 
 ### token-set-context-client v1 Scope Baseline
 
-The current `0.3.x` baseline is browser-owned token-set with framework adapters, registry lifecycle, route orchestration, readiness, callback handling, reference-app proof, and downstream adopter calibration.
+The current `0.3.x` baseline is browser-owned token-set with framework adapters, registry lifecycle, route orchestration, readiness, callback handling, in-repo proof, and downstream calibration.
 
 Outside the baseline: mixed-custody, BFF, server-side token ownership, heavier chooser UI, and non-TS SDK productization.
 
@@ -333,9 +333,9 @@ Outside the baseline: mixed-custody, BFF, server-side token ownership, heavier c
 
 ### Verified Environments / Host Assumptions
 
-Verified means focused evidence, reference-app proof, or downstream-adopter proof exists. It does not mean broad coverage across every host.
+Verified means focused verification, in-repo proof, or downstream calibration exists. It does not mean broad coverage across every host.
 
-Current evidence covers Node/browser foundation behavior, React 19, Angular, TanStack Router, raw Web Router, `apps/webui`, and `outposts`. Host support should be described through ECMAScript requirements, adapter capabilities, and real evidence.
+Current verification covers Node/browser foundation behavior, React 19, Angular, TanStack Router, raw Web Router, `apps/webui`, and `outposts`. Host support should be described through ECMAScript requirements, adapter capabilities, and direct verification.
 
 ### Minimal Entry Paths
 
@@ -382,7 +382,7 @@ React composition still follows the three-layer model: auth-context config, inje
 - `provideClientEnvironmentService()` and the planner-host factories (`AUTH_PLANNER_HOST`, `provideAuthPlannerHost()`, `AUTH_REQUIREMENTS_CLIENT_SET`, `provideRequirementsClientSet()`) register shared dependencies into the injector. They do not introduce additional domain-specific Providers or Context hooks.
 - `@securitydept/basic-auth-context-client-react` exports `BASIC_AUTH_CONTEXT_CLIENT`, `createBasicAuthContextClient()`, and `provideBasicAuthContextClient()`. React code reads the client through `useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT)`.
 - `@securitydept/session-context-client-react` exports `SESSION_CONTEXT_CLIENT`, `SESSION_CONTEXT_CONTROLLER`, `createSessionContextController()`, and `provideSessionContextController()`. React code reads controller/client through `useSecuritydeptContext().get(...)` and reads state through `useReadableSignal(controller.state)`.
-- `@securitydept/token-set-context-client-react` exports `createTokenSetAuthRuntime()`, `provideTokenSetAuthRuntime()`, `TOKEN_SET_AUTH_REGISTRY`, `TOKEN_SET_CALLBACK_RESUME_CONTROLLER`, `useTokenSetCallbackResume()`, and `TokenSetCallbackComponent`. The canonical keyed auth-state path is `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` followed by `useReadableSignal(registry.require("main").state)`.
+- `@securitydept/token-set-context-client-react` exports `provideTokenSetAuthRegistry()`, `TOKEN_SET_AUTH_REGISTRY`, `provideTokenSetCallbackResumeController()`, `TOKEN_SET_CALLBACK_RESUME_CONTROLLER`, `useTokenSetCallbackResume()`, and `TokenSetCallbackComponent`. There is no separate token-set runtime wrapper anymore. The canonical keyed auth-state path is `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` followed by `useReadableSignal(registry.clientSignalFor("main"))`, then reading the returned client's replay channels such as `authSnapshot` or `isAuthenticated`.
 - `useTokenSetCallbackResume({ controller, injector, getCurrentUrl, describeError })` is the explicit callback bridge over the shared `TokenSetCallbackResumeController`. An explicit `controller` or `injector` wins; when no current URL is available the hook stays idle instead of forcing callback handling. Default failure presentation comes from `readCallbackResumeErrorDetails()` in `@securitydept/token-set-context-client/registry`; mode-specific copy belongs in an explicit `describeError` override owned by the host or adapter.
 
 #### 4. Angular entry: thin DI wrappers preserve canonical owner boundaries
@@ -401,17 +401,17 @@ Layering rules:
 - `provideTokenSetAuth({ clients, idleWarmup })`: Angular host registration; each client entry still owns auth-context config and environment composition.
 - `providePageClientEnvironment({ environment })`: canonical Angular DI bridge for page-scoped capability resolution. The canonical value is a provider-scoped `ClientEnvironmentService` or another inject-safe stable resolver that can await page capability; passing a synchronous page environment object is only the already-materialized host-owned case.
 - `CallbackResumeService` wraps the shared `TokenSetCallbackResumeController` and exposes component-free `resume(url)` state through Angular signals / observables. `TokenSetCallbackComponent` is only a page-only convenience component on top of that service; custom hosts, SSR-like tests, or shell adapters can override URL/policy tokens or call `CallbackResumeService.resume(url)` directly. `handleCallback(url)` remains a compatibility wrapper.
-- `provideTokenSetBearerInterceptor(options?)` / `createTokenSetBearerInterceptor(registry, options?)`: freshness-aware bearer-header injection using the SDK options-object API form. Before adding `Authorization`, the interceptor calls the shared refresh barrier. An expired token with refresh material is refreshed before the protected request proceeds; an expired token without usable refresh material produces no stale bearer and the auth state is cleared. `BearerInterceptorOptions.strictUrlMatch` controls unmatched URL behavior:
-  - default `strictUrlMatch: false`: keeps the single-client convenience fallback that injects `registry.accessToken()` for unmatched URLs; use only when the host calls exactly one registered backend.
+- `provideTokenSetBearerInterceptor(options?)` / `createTokenSetBearerInterceptor(registry, options?)`: bearer-header injection using the SDK options-object API form. Before adding `Authorization`, the interceptor waits for the selected client's `authorizationHeaderValue` replay signal. It does not trigger refresh or auth checks; client `start()`, refresh timers, page-resume auth-check triggers, or explicit `authCheck()` own maintenance. `BearerInterceptorOptions.strictUrlMatch` controls unmatched URL behavior:
+  - default `strictUrlMatch: false`: keeps the single-client convenience fallback by waiting for the only registered client's `authorizationHeaderValue`; use only when the host calls exactly one registered backend.
   - `strictUrlMatch: true`: unmatched URLs receive no `Authorization` header.
   - multi-backend, multi-audience, or third-party-traffic Angular adopters MUST use `strictUrlMatch: true`.
   - `TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS` is exported for advanced DI/test overrides.
 
-Freshness is owned by the token-set core, not by one framework adapter. `ensureAuthForResource(options)` is the canonical async barrier for route entry, resume reconciliation, authorized transports, interceptors, and React Query requests. It emits domain auth events, shares the coalesced refresh barrier, and can return an `Authorization` header plus an opaque temporary token handle. Event payloads must not contain raw access, refresh, or ID token values; token handles are only descriptors that can be resolved by the owning in-memory store while valid. `authorizationHeader()` remains a synchronous fresh-or-null projection, while `ensureAuthorizationHeader()` is a compatibility wrapper over the canonical resource barrier. `AuthMaterialController` has no protocol-level refresh capability, so its `authorizationHeader` and `createTransport()` use fresh-or-null projection: expired or invalid-expiry material returns `null`, and `requireAuthorization: true` raises unauthenticated instead of sending a stale bearer. `registry.accessToken()` remains a sync convenience and returns `null` for expired material; use `registry.ensureAuthForResource({ key, needsAuthorizationHeader: true })`, `registry.ensureAccessToken(key)`, or `registry.ensureAuthorizationHeader(key)` when a request must wait for refresh. Calling async registry helpers without a key is only valid when exactly one matching client is registered or ready, depending on the helper.
+Freshness is owned by the token-set core, not by one framework adapter. Consumer code reads replay channels: first-screen readiness uses `authDetermined`, stable UI uses `authSnapshot`, route guards use `isAuthenticated`, and transports/interceptors use `authorizationHeaderValue`. `authCheck(options?)` is the only explicit maintenance command and should be reserved for advanced callers that intentionally trigger one serialized check. Event payloads must not contain raw access, refresh, or ID token values. Header availability does not have a separate event/status lifecycle: usable bearer projection is part of the authenticated snapshot, while missing bearer material remains unauthenticated or an undefined header projection. Mode clients do not expose synchronous bearer convenience APIs, and registry token sugar is not part of the public model. Use `registry.whenReady(key?)` or `registry.clientSignalFor(key?)` to acquire a started client, then consume that client's replay signals.
 
-Browser-owned frontend/backend OIDC factories attach page-resume reconciliation by default. Angular `provideTokenSetAuth(...)` installs the same default for registry-managed browser clients, including `clientFactory` implementations that directly return `createFrontendOidcModeClient(...)`. On `visibilitychange` back to visible, `pageshow`, `focus`, and `online`, the client calls `ensureAuthForResource({ source: "resume", forceRefreshWhenDue: true })` and emits resume requested/skipped/completed/failed events. This is a recovery barrier, not an interactive login trigger: refresh failures clear or preserve auth state through the normal token-set client paths, and route/request handlers decide whether to start login. Set per-client `resumeReconciliation: false` only for hosts that install their own equivalent lifecycle hook; pass `resumeReconciliationOptions` to provide custom browser targets or throttling in tests.
+Browser-owned frontend/backend OIDC factories attach a page-resume auth-check trigger by default. Angular `provideTokenSetAuth(...)` installs the same default for registry-managed browser clients, including `clientFactory` implementations that directly return `createFrontendOidcModeClient(...)`. On `visibilitychange` back to visible, `pageshow`, `focus`, and `online`, the page source emits an auth-check trigger; the client then runs the same queued auth-check pipeline used by restore and refresh timers and emits `auth.check.*` events with `authCheckReason: "page_resume"`. This is a recovery barrier, not an interactive login trigger: refresh failures clear or preserve auth state through the normal token-set client paths, and route/request handlers decide whether to start login. Set per-client `pageResumeAuthCheck: false` only for hosts that install their own equivalent trigger source; pass `pageResumeAuthCheckOptions` to provide custom browser targets or throttling in tests.
 
-Short access-token lifetimes should be handled through SDK-owned barriers: persisted restore forces refresh when material is already in the refresh window, browser resume reconciles after hidden tabs/sleep/bfcache, Angular route aggregation waits for `restorePromise` and `ensureAuthForResource({ source: "route_guard", forceRefreshWhenDue: true })` before invoking unauthenticated handlers, and protected requests use `ensureAuthForResource({ source: "http_interceptor" | "authorized_transport", needsAuthorizationHeader: true, forceRefreshWhenDue: true })`. When `frontend-oidc-mode` or another token-set mode can stamp `accessTokenIssuedAt`, token freshness now caps refresh-window and clock-skew calculations relative to the token lifetime instead of applying a raw fixed window to every token. That keeps newly issued short-lived tokens fresh at issuance while still entering `refresh_due` early enough for restore, resume, route-entry, and request-time refresh recovery. TanStack Router hosts should use `createTokenSetSecureBeforeLoad()` from `@securitydept/token-set-context-client-react/tanstack-router`; raw web hosts should use `createTokenSetWebRouteAuthCandidate()` from `@securitydept/token-set-context-client/web-router`. Both helpers call `ensureAuthForResource({ source: "tanstack_before_load" | "raw_web_router", forceRefreshWhenDue: true })` before redirect/block fallback.
+Short access-token lifetimes should be handled by the running client state machine: persisted restore performs the initial auth check, refresh timers schedule later checks, and browser resume emits auth-check triggers after hidden tabs, system sleep, or bfcache return. Angular route aggregation waits for pending initial auth determination, then reads `isAuthenticated`; protected requests wait for `authorizationHeaderValue`. When `frontend-oidc-mode` or another token-set mode can stamp `accessTokenIssuedAt`, token freshness caps refresh-window and clock-skew calculations relative to the token lifetime instead of applying a raw fixed window to every token. That keeps newly issued short-lived tokens fresh at issuance while still entering `refresh_due` early enough for restore, resume, and scheduled maintenance. TanStack Router hosts should use `createTokenSetSecureBeforeLoad()` from `@securitydept/token-set-context-client-react/tanstack-router`; raw web hosts should use `createTokenSetWebRouteAuthCandidate()` from `@securitydept/token-set-context-client/web-router`. Both helpers wait for the selected client's `isAuthenticated` replay signal before redirect/block fallback.
 
 If a downstream resource server reports `ExpiredSignature`, the rejection is correct: the frontend sent an expired JWT and the SDK/adopter must not inject that bearer. Diagnose whether the browser has refresh material before blaming the refresh barrier:
 
@@ -446,7 +446,7 @@ Do not import `/web` subpaths into server-hosted code.
 
 ### Provisional Adapter Maintenance Standard
 
-`./web`, `./server`, and framework packages are maintained at a stricter provisional bar: stable boundaries, safe import-time behavior, ordinary usage without reference-app glue, focused evidence, real dogfooding, and accurate verified-environment claims.
+`./web`, `./server`, and framework packages are maintained at a stricter provisional bar: stable boundaries, safe import-time behavior, ordinary usage without reference-app glue, focused verification, real dogfooding, and accurate verified-environment claims.
 
 #### Provisional Adapter Promotion Checklist
 
@@ -455,7 +455,7 @@ Do not import `/web` subpaths into server-hosted code.
 | capability boundary is stable | no owner reshuffle across a sustained release window |
 | minimal entry is clear | explainable without a full reference page |
 | ordinary usage is mature | no app-local glue dependency |
-| focused evidence is complete | lifecycle, regression, and import-contract guardrails exist |
+| focused verification is complete | lifecycle, regression, and import-contract guardrails exist |
 | verified environments are explicit | host validation is not overstated |
 
 #### Current Promotion Readiness (snapshot, not roadmap)
@@ -484,11 +484,11 @@ The raw Web Router baseline is for non-framework hosts. It uses Navigation API f
 
 The registry owns `register(entry)`, `unregister(key)`, `resetMaterialization(key)`, `dispose()`, `primary` / `lazy` initialization priority, `preload`, `whenReady`, `idleWarmup`, keyed lookup aligned with callback/readiness behavior, and the shared generic callback failure presenter `describeTokenSetCallbackError()`. React and Angular adapters consume this shared core, while mode-specific copy such as `describeFrontendOidcModeCallbackError()` stays under the mode owner and must be injected explicitly.
 
-The contract now treats `registered` and `ready` as distinct observability surfaces. Use `has()`, `registeredKeys()`, `registeredEntriesSnapshot()`, and `registeredMetaSnapshot()` to inspect configured clients, and `readyKeys()` / `readyEntriesSnapshot()` to inspect materialized services only. Removal and rematerialization now use the canonical verbs `unregister(key)` and `resetMaterialization(key)` directly.
+The contract now treats `registered` and `ready` as distinct observability surfaces. Use `has()`, `registeredKeys()`, `registeredEntriesSnapshot()`, and `registeredMetaSnapshot()` to inspect configured clients, and `readyKeys()` to inspect clients whose materialization and `start()` lifecycle have completed. Removal and rematerialization now use the canonical verbs `unregister(key)` and `resetMaterialization(key)` directly.
 
-The registry is now also the reactive topology/readiness authority. Observe it through `state: ReadableSignalTrait<TokenSetAuthRegistryState<TClient>>`, `getState()`, or `subscribe()`. The snapshot helpers remain available, but they are synchronous convenience over `state.get()` rather than a parallel state source. Promises such as `whenReady()` and `preload()` are action-completion handles, not the canonical observation path.
+The registry is now also the reactive topology/readiness authority. Observe it through `state: ReadableSignalTrait<TokenSetAuthRegistryState<TClient>>`, `getState()`, or `subscribe()`. Registered snapshot helpers remain available, but they are synchronous convenience over `state.get()` rather than a parallel state source. `clientSignalFor(key?)` is the canonical reactive client acquisition API and triggers lazy materialization/start when called. Promises such as `whenReady()` and `preload()` are action-completion handles, not the canonical observation path.
 
-Per-client token-set auth material is now owned by the same shared core through `TokenSetAuthService<TClient extends OidcModeClient>` under the `./registry` subpath. `TokenSetAuthService.state: ReadableSignalTrait<TokenSetAuthServiceState>` owns the current snapshot, derived access token / authorization header, token freshness, restore status, restore error, and disposed state. React and Angular adapters are now thin bridges over that core service instead of each owning a duplicate freshness, access-token, or auto-restore state machine. `authEvents` remains auth-domain telemetry only; registry topology and readiness changes are observed through registry/service `state`.
+Per-client token-set auth material is owned by the mode client itself. Every registry-managed OIDC mode client exposes separate auth channels: replay signals for `authDetermined` (first determination), `authSnapshot` (last determined snapshot or `null`), `isAuthenticated` (guard truth), and `authorizationHeaderValue` (bearer projection); plain signals for `lastAuthError` (latest determination/operation error register) and `authOperations.*Pending` (local operation locks). `authSnapshot` is the authoritative auth-material replay source; `authDetermined`, `isAuthenticated`, and `authorizationHeaderValue` are derived replay projections rather than manually synchronized state. Directly created clients start only after `start()` unless `autoStart: true` is explicitly passed. Registry-managed clients never use entry-level `autoStart` or `autoRestore`; registry readiness means the client has been materialized and `start()` has completed. The default `createTokenSetOidcAuthRegistry()` materializes the client itself, so React Query readiness and Angular registry lookups return clients rather than per-client service wrappers. `authEvents` remains auth-domain telemetry only; registry topology and readiness changes are observed through registry `state`.
 
 The canonical RxJS bridge now lives at `@securitydept/client/rx`. Use `toRxObservable(source)` for either `EventStreamTrait` or `ReadableSignalTrait`, and `fromRxObservable(observable)` for the reverse bridge. `@securitydept/client-angular` still owns `bridgeToAngularSignal()` because writable Angular signal bridging is framework-specific, but signal-to-RxJS interop is no longer Angular-owned.
 
@@ -496,16 +496,16 @@ The canonical RxJS bridge now lives at `@securitydept/client/rx`. Use `toRxObser
 
 **Subpath**: `@securitydept/token-set-context-client-react/react-query`
 
-This is the token-set React Query integration surface. It owns cache-key namespace helpers, readiness queries over registry materialization, and canonical invalidation for token-set-aware query trees. It is not the login, refresh, lifecycle, or reference-app resource authority.
+This is the token-set React Query integration surface. It owns cache-key namespace helpers, readiness queries over registry materialization, and canonical invalidation for token-set-aware query trees. It is not the login, refresh, lifecycle, or reference-app resource API.
 
-Groups/entries domain models, CRUD request assembly, and reference-app TanStack hooks stay app-local or adopter-local. Hosts should compose those resource queries on top of SDK token-set services or registry readiness rather than importing a productized business API from the SDK.
+Groups/entries domain models, CRUD request assembly, and reference-app TanStack hooks stay app-local or adopter-local. Hosts should compose those resource queries on top of SDK token-set clients or registry readiness rather than importing a productized business API from the SDK.
 
 ## Examples and Reference Implementations
 
 ### Primary Real Reference Apps
 
 - `apps/server`: auth, propagation, route composition, server error/diagnosis proof.
-- `apps/webui`: React/browser/multi-context auth shell, token-set reference page, dashboard, browser harness report, and SDK dogfooding proof.
+- `apps/webui`: React/browser/multi-context auth shell, token-set reference page, dashboard, browser harness report, and SDK dogfooding coverage.
 
 ### Downstream Reference Case: Outposts
 
@@ -519,7 +519,7 @@ Bundle and code-splitting are engineering optimization topics, not public-contra
 
 ### Demo and OIDC Provider
 
-Demos explain contracts. Provider choice and demo pages do not define package boundaries or replace focused evidence.
+Demos explain contracts. Provider choice and demo pages do not define package boundaries or replace focused verification.
 
 ## Requirements for Future Developers and AI Agents
 
