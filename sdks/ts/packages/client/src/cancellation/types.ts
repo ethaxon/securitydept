@@ -1,10 +1,4 @@
 // --- Cancellation and disposal ---
-
-/** Disposable resource handle. */
-export interface DisposableTrait {
-	dispose(): void;
-}
-
 /** Cancelable operation handle. */
 export interface CancelableHandle {
 	cancel(): void;
@@ -14,12 +8,12 @@ export interface CancelableHandle {
 export interface CancellationTokenTrait {
 	readonly isCancellationRequested: boolean;
 	readonly reason?: unknown;
-	onCancellationRequested(listener: (reason: unknown) => void): DisposableTrait;
+	onCancellationRequested(listener: (reason: unknown) => void): Disposable;
 	throwIfCancellationRequested(): void;
 }
 
 /** Cancellation source — producer-side control. */
-export interface CancellationTokenSourceTrait extends DisposableTrait {
+export interface CancellationTokenSourceTrait extends Disposable {
 	readonly token: CancellationTokenTrait;
 	cancel(reason?: unknown): void;
 }

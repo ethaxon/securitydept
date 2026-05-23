@@ -61,10 +61,25 @@ let tokenSetBackendModeBootstrapPromise: Promise<AuthSnapshot | null> | null =
 	null;
 
 function createBackendModePageEnvironment() {
+	const location = globalThis.location;
+	const history = globalThis.history;
 	return {
-		location: globalThis.location,
-		history: globalThis.history,
 		callbackFragmentStore: tokenSetBackendModeEnvironment.callbackFragmentStore,
+		currentUrl() {
+			return new URL(location.href);
+		},
+		async navigate(request: {
+			url: string | URL;
+			mode: "push" | "replace" | "external";
+		}) {
+			const target =
+				typeof request.url === "string" ? request.url : request.url.toString();
+			if (request.mode === "replace") {
+				history.replaceState(undefined, "", target);
+				return;
+			}
+			location.assign(target);
+		},
 	};
 }
 
@@ -103,8 +118,7 @@ export async function clearTokenSetBackendModeBrowserState(
  * client remains accessible at runtime through the registered client object.
  * Only the two contract-divergent methods are overridden:
  *
- * - `restorePersistedState()` runs the full browser bootstrap
- *   (fragment capture → handleCallback → persistent restore)
+ * - `restorePersistedState()` remains a manual persistence re-sync command
  * - `handleCallback(url)` extracts the URL fragment and delegates
  */
 function wrapAsTokenSetReactClient(
@@ -112,7 +126,7 @@ function wrapAsTokenSetReactClient(
 ): WrappedTokenSetReactClient {
 	const overrides: Partial<TokenSetReactClient> = {
 		async restorePersistedState(): Promise<AuthSnapshot | null> {
-			return await ensureTokenSetBackendModeClientReady();
+			return await client.restorePersistedState();
 		},
 
 		async handleCallback(

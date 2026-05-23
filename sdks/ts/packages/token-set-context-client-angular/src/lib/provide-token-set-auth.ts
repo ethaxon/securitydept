@@ -49,10 +49,9 @@ export interface ProvideTokenSetAuthOptions {
  * interceptors should use `registry.whenReady(key)` to await
  * materialization before accessing the client.
  *
- * Adapter-managed browser clients also install token-set page-resume
- * reconciliation by default during materialization. Set
- * `pageResumeAuthCheck: false` on an individual client entry only when the
- * host intentionally owns equivalent browser lifecycle wiring.
+ * The Angular registry does not patch clients with browser lifecycle triggers.
+ * Configure page-resume auth checks when constructing the client, using
+ * `authCheck.triggerSources.pageResume`.
  *
  * @example
  * ```ts
@@ -78,9 +77,6 @@ export interface ProvideTokenSetAuthOptions {
  *           },
  *           urlPatterns: ["/api/"],
  *           callbackPath: "/auth/callback",
- *           // Optional: opt out only if the host already wires equivalent
- *           // resume reconciliation for this browser client.
- *           // pageResumeAuthCheck: false,
  *         },
  *       ],
  *     }),

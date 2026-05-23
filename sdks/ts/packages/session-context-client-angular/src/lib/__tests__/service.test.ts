@@ -1,10 +1,9 @@
 import type {
+	ExternalTransportTrait,
 	HttpRequest,
 	HttpResponse,
-	HttpTransport,
 } from "@securitydept/client";
 import { createInMemoryRecordStore } from "@securitydept/client";
-import { createWebClientEnvironment } from "@securitydept/client/web";
 import {
 	SessionContextClient,
 	SessionContextController,
@@ -14,10 +13,11 @@ import {
 	SessionContextService,
 } from "@securitydept/session-context-client-angular";
 import { describe, expect, it } from "vitest";
+import { createEnvironmentForTest } from "../../../../client/src/test";
 
 function createTestTransport(
 	handler: (request: HttpRequest) => HttpResponse,
-): HttpTransport {
+): ExternalTransportTrait {
 	return {
 		async execute(request: HttpRequest) {
 			return handler(request);
@@ -45,9 +45,12 @@ describe("SessionContextService", () => {
 		});
 		const client = new SessionContextClient(
 			{ baseUrl: "https://auth.example.com" },
-			{ sessionStore: createInMemoryRecordStore() },
+			{ sessionStorage: createInMemoryRecordStore() },
 		);
-		const controller = new SessionContextController({ client, transport });
+		const controller = new SessionContextController({
+			client,
+			externalTransport: transport,
+		});
 		const service = new SessionContextService(controller);
 		expect(service.client.loginUrl("/manual")).toBe(
 			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=%2Fmanual",
@@ -98,10 +101,10 @@ describe("SessionContextService", () => {
 				body: {},
 			};
 		});
-		const sessionStore = createInMemoryRecordStore();
-		const environment = createWebClientEnvironment({
+		const sessionStorage = createInMemoryRecordStore();
+		const environment = createEnvironmentForTest({
 			transport,
-			sessionStore,
+			sessionStorage,
 		});
 
 		const providers = provideSessionContext({
@@ -146,7 +149,8 @@ describe("SessionContextService", () => {
 
 		const client = clientProvider.useValue as SessionContextClient;
 		const controller = controllerProvider.useValue as SessionContextController;
-		const providedTransport = transportProvider.useValue as HttpTransport;
+		const providedTransport =
+			transportProvider.useValue as ExternalTransportTrait;
 		const service = serviceProvider.useFactory(
 			controller,
 		) as SessionContextService;
@@ -173,7 +177,7 @@ describe("SessionContextService", () => {
 		}));
 		const controller = new SessionContextController({
 			client: new SessionContextClient({ baseUrl: "https://auth.example.com" }),
-			transport,
+			externalTransport: transport,
 		});
 		const service = new SessionContextService(controller);
 		const observed: string[] = [];

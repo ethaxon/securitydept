@@ -1,6 +1,6 @@
 import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client-react";
 import {
-	CLIENT_ENVIRONMENT_SERVICE,
+	CLIENT_ENVIRONMENT,
 	useReadableSignal,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
@@ -28,9 +28,7 @@ export function LoginPage() {
 	const [sessionHref, setSessionHref] = useState("/auth/session/login");
 	const [frontendModeBusy, setFrontendModeBusy] = useState(false);
 	const sessionController = injector.get(SESSION_CONTEXT_CONTROLLER);
-	const tokenSetFrontendModeEnvironmentService = injector.get(
-		CLIENT_ENVIRONMENT_SERVICE,
-	);
+	const tokenSetFrontendModeEnvironment = injector.get(CLIENT_ENVIRONMENT);
 	const basicAuthClient = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
 	const tokenSetBackendModeClientSlot = useReadableSignal(
 		injector
@@ -122,7 +120,7 @@ export function LoginPage() {
 								setAuthContextMode(AuthContextMode.TokenSetFrontend);
 								setFrontendModeBusy(true);
 								void startTokenSetFrontendModeLogin(
-									tokenSetFrontendModeEnvironmentService,
+									tokenSetFrontendModeEnvironment,
 								).finally(() => {
 									setFrontendModeBusy(false);
 								});

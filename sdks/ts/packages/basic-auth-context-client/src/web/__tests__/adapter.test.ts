@@ -1,28 +1,33 @@
-import type { PageLocationCapability } from "@securitydept/client";
+import type { RouterTrait } from "@securitydept/client";
+import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { describe, expect, it, vi } from "vitest";
 import { BasicAuthContextClient } from "../../client";
 import { AuthGuardRedirectStatus, AuthGuardResultKind } from "../../types";
 import { loginWithRedirect, performRedirect } from "../index";
 
-function createPageLocationCapability(href: string): PageLocationCapability {
+function createPageLocationCapability(href: string): RouterTrait & {
+	location: { href: string; hash: string; pathname: string; search: string };
+} {
 	const url = new URL(href);
+	const location = {
+		href,
+		hash: url.hash,
+		pathname: url.pathname,
+		search: url.search,
+	};
 	return {
-		location: {
-			href,
-			hash: url.hash,
-			pathname: url.pathname,
-			search: url.search,
-		},
+		...createRouterForNativeWeb({ location }),
+		location,
 	};
 }
 
 describe("basic-auth web adapter", () => {
-	it("writes location.href when given a redirect result", () => {
+	it("writes location.href when given a redirect result", async () => {
 		const environment = createPageLocationCapability(
 			"https://app.example.com/current",
 		);
 
-		performRedirect(
+		await performRedirect(
 			{
 				kind: AuthGuardResultKind.Redirect,
 				status: AuthGuardRedirectStatus.Found,
@@ -37,12 +42,12 @@ describe("basic-auth web adapter", () => {
 		);
 	});
 
-	it("does not redirect for non-redirect results", () => {
+	it("does not redirect for non-redirect results", async () => {
 		const environment = createPageLocationCapability(
 			"https://app.example.com/current",
 		);
 
-		performRedirect(
+		await performRedirect(
 			{
 				kind: AuthGuardResultKind.Ok,
 				value: {
@@ -55,7 +60,7 @@ describe("basic-auth web adapter", () => {
 		expect(environment.location.href).toBe("https://app.example.com/current");
 	});
 
-	it("consumes the root client's neutral redirect result without framework glue", () => {
+	it("consumes the root client's neutral redirect result without framework glue", async () => {
 		const client = new BasicAuthContextClient({
 			baseUrl: "https://auth.example.com",
 			zones: [{ zonePrefix: "/basic" }],
@@ -67,14 +72,14 @@ describe("basic-auth web adapter", () => {
 		);
 
 		expect(result.kind).toBe(AuthGuardResultKind.Redirect);
-		performRedirect(result, { environment });
+		await performRedirect(result, { environment });
 
 		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?post_auth_redirect_uri=%2Fbasic%2Fapi%2Fgroups",
 		);
 	});
 
-	it("preserves query-bearing route context when consuming a host-provided redirect result", () => {
+	it("preserves query-bearing route context when consuming a host-provided redirect result", async () => {
 		const client = new BasicAuthContextClient({
 			baseUrl: "https://auth.example.com",
 			postAuthRedirectParam: "return_to",
@@ -90,14 +95,14 @@ describe("basic-auth web adapter", () => {
 		);
 
 		expect(result.kind).toBe(AuthGuardResultKind.Redirect);
-		performRedirect(result, { environment });
+		await performRedirect(result, { environment });
 
 		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?return_to=%2Fbasic%2Fapi%2Fgroups%3Ftab%3Dmembers",
 		);
 	});
 
-	it("preserves query-and-hash-bearing route context when consuming a host-provided redirect result", () => {
+	it("preserves query-and-hash-bearing route context when consuming a host-provided redirect result", async () => {
 		const client = new BasicAuthContextClient({
 			baseUrl: "https://auth.example.com",
 			zones: [{ zonePrefix: "/basic" }],
@@ -112,14 +117,14 @@ describe("basic-auth web adapter", () => {
 		);
 
 		expect(result.kind).toBe(AuthGuardResultKind.Redirect);
-		performRedirect(result, { environment });
+		await performRedirect(result, { environment });
 
 		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?post_auth_redirect_uri=%2Fbasic%2Fapi%2Fgroups%3Ftab%3Dmembers%23invite",
 		);
 	});
 
-	it("preserves hash-bearing route context when a custom redirect param is configured", () => {
+	it("preserves hash-bearing route context when a custom redirect param is configured", async () => {
 		const client = new BasicAuthContextClient({
 			baseUrl: "https://auth.example.com",
 			postAuthRedirectParam: "return_to",
@@ -132,14 +137,14 @@ describe("basic-auth web adapter", () => {
 		);
 
 		expect(result.kind).toBe(AuthGuardResultKind.Redirect);
-		performRedirect(result, { environment });
+		await performRedirect(result, { environment });
 
 		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?return_to=%2Fbasic%2Fapi%2Fgroups%23invite",
 		);
 	});
 
-	it("fails without explicit environment instead of reading a global window", () => {
+	it("fails without explicit environment instead of reading a global window", async () => {
 		const originalWindowDescriptor = Object.getOwnPropertyDescriptor(
 			globalThis,
 			"window",
@@ -166,16 +171,16 @@ describe("basic-auth web adapter", () => {
 				zones: [{ zonePrefix: "/basic" }],
 			});
 
-			expect(() => loginWithRedirect(client)).toThrow(
-				/createBrowserPageClientEnvironment/,
+			await expect(loginWithRedirect(client)).rejects.toThrow(
+				/createEnvironmentForNativeWeb/,
 			);
-			expect(() =>
+			await expect(
 				performRedirect({
 					kind: AuthGuardResultKind.Redirect,
 					status: AuthGuardRedirectStatus.Found,
 					location: "https://auth.example.com/basic/login",
 				}),
-			).toThrow(/createBrowserPageClientEnvironment/);
+			).rejects.toThrow(/createEnvironmentForNativeWeb/);
 			expect(windowRead).toBe(false);
 		} finally {
 			vi.unstubAllGlobals();

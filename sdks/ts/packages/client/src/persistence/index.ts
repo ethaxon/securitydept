@@ -11,7 +11,7 @@ export type {
 	EphemeralFlowStore,
 	KeyedEphemeralFlowStore,
 	PersistentAuthStore,
-	RecordStore,
 	RecoverableStateStore,
+	StorageTrait,
 	StoredEnvelope,
 } from "./types";

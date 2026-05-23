@@ -79,7 +79,8 @@ describe("react callback async readiness", () => {
 					state,
 					...reactive.fields,
 					authEvents: createSubject<TokenSetAuthEvent>(),
-					addAuthCheckTriggerSource: () => ({ unsubscribe: () => undefined }),
+					addWorkflowSource: () => ({ unsubscribe: () => undefined }),
+					removeWorkflowSource: () => false,
 					start: async () => undefined,
 					dispose: () => {
 						state.set(null);

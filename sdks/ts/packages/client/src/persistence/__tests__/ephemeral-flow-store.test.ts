@@ -4,7 +4,7 @@ import {
 	createKeyedEphemeralFlowStore,
 } from "../ephemeral-flow-store";
 import { createInMemoryRecordStore } from "../memory-store";
-import type { RecordStore } from "../types";
+import type { StorageTrait } from "../types";
 
 describe("createEphemeralFlowStore()", () => {
 	it("loads, consumes, and clears one-time flow state", async () => {
@@ -45,7 +45,7 @@ describe("createEphemeralFlowStore()", () => {
 	});
 
 	it("uses record-store take for unkeyed consume", async () => {
-		const store: RecordStore = {
+		const store: StorageTrait = {
 			get: vi.fn(async () => null),
 			set: vi.fn(async () => {}),
 			take: vi.fn(async () => JSON.stringify("fragment-atomic")),
@@ -63,7 +63,7 @@ describe("createEphemeralFlowStore()", () => {
 	});
 
 	it("uses record-store take for keyed consume", async () => {
-		const store: RecordStore = {
+		const store: StorageTrait = {
 			get: vi.fn(async () => null),
 			set: vi.fn(async () => {}),
 			take: vi.fn(async () => JSON.stringify("fragment-atomic")),

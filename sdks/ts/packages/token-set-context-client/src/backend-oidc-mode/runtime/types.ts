@@ -3,6 +3,7 @@
 // Token material / metadata / snapshot / delta types are re-exported from the
 // orchestration layer. Mode-specific constants and config types live here.
 
+import type { AuthWorkflowRuntimeOptions } from "../../orchestration/client/workflows/source";
 import type {
 	AuthDelta as _AuthDelta,
 	AuthMetadataDelta as _AuthMetadataDelta,
@@ -98,8 +99,10 @@ export interface BackendOidcModeClientConfig {
 	userInfoPath?: string;
 	/** Buffer before expiry to trigger refresh, in ms (default: 60000 = 1 minute). */
 	refreshWindowMs?: number;
-	/** Optional key used with `environment.persistentStore` for persisted auth state. */
+	/** Optional key used with `environment.persistentStorage` for persisted auth state. */
 	persistentStateKey?: string;
 	/** Optional default redirect URI reused by authorize/refresh browser flows. */
 	defaultPostAuthRedirectUri?: string;
+	/** Long-running auth workflow source configuration. */
+	authCheck?: AuthWorkflowRuntimeOptions;
 }

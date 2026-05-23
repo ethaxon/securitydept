@@ -63,7 +63,7 @@ function authCheckResult(snapshot: AuthSnapshot | null) {
 		return {
 			status: AuthCheckStatus.Unauthenticated,
 			snapshot: null,
-			authorizationHeader: null,
+			authorizationHeader: undefined,
 			reason: TokenSetAuthFlowReason.NoSnapshot,
 		};
 	}
@@ -79,19 +79,19 @@ function authCheckResult(snapshot: AuthSnapshot | null) {
 function createRegistryOptions(accessToken: string) {
 	const state = createSignal<AuthSnapshot | null>(createSnapshot(accessToken));
 	const authSnapshot = createReplaySignal<AuthSnapshot | null>();
-	authSnapshot.emit(state.get());
+	authSnapshot.setValue(state.get());
 	const isAuthenticated = createReplaySignal<boolean>();
-	isAuthenticated.emit(true);
+	isAuthenticated.setValue(true);
 	const authorizationHeaderValue = createReplaySignal<string | undefined>();
-	authorizationHeaderValue.emit(`Bearer ${accessToken}`);
+	authorizationHeaderValue.setValue(`Bearer ${accessToken}`);
 	const authDetermined = createReplaySignal<true>();
-	authDetermined.emit(true);
+	authDetermined.setValue(true);
 	const lastAuthError = createSignal<unknown | undefined>(undefined);
 	state.subscribe(() => {
 		const snapshot = state.get();
-		authSnapshot.emit(snapshot);
-		isAuthenticated.emit(Boolean(snapshot?.tokens.accessToken));
-		authorizationHeaderValue.emit(
+		authSnapshot.setValue(snapshot);
+		isAuthenticated.setValue(Boolean(snapshot?.tokens.accessToken));
+		authorizationHeaderValue.setValue(
 			snapshot?.tokens.accessToken
 				? `Bearer ${snapshot.tokens.accessToken}`
 				: undefined,
@@ -115,7 +115,8 @@ function createRegistryOptions(accessToken: string) {
 						loginPending: createSignal(false),
 					},
 					authEvents: createSubject<TokenSetAuthEvent>(),
-					addAuthCheckTriggerSource: () => ({ unsubscribe: () => undefined }),
+					addWorkflowSource: () => ({ unsubscribe: () => undefined }),
+					removeWorkflowSource: () => false,
 					start: async () => undefined,
 					dispose: () => state.set(null),
 					restorePersistedState: async () => state.get(),

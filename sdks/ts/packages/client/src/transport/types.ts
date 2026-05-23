@@ -18,7 +18,18 @@ export interface HttpResponse {
 	body?: unknown;
 }
 
-/** Transport protocol — decoupled from any specific HTTP client. */
-export interface HttpTransport {
+/** Neutral request executor trait. */
+export interface BaseTransportTrait {
 	execute(request: HttpRequest): Promise<HttpResponse>;
 }
+
+/**
+ * External transport protocol — auth/runtime bootstrap and protocol traffic.
+ */
+export interface ExternalTransportTrait extends BaseTransportTrait {}
+
+/**
+ * Managed transport protocol — higher-level resource traffic that may be
+ * decorated by auth-aware wrappers.
+ */
+export interface ManagedTransportTrait extends BaseTransportTrait {}

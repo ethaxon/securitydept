@@ -1,7 +1,7 @@
 import type {
+	ExternalTransportTrait,
 	HttpRequest,
 	HttpResponse,
-	HttpTransport,
 } from "@securitydept/client";
 import { createInMemoryRecordStore } from "@securitydept/client";
 import { describe, expect, it } from "vitest";
@@ -23,7 +23,7 @@ function createDeferred<T>() {
 
 function createQueuedTransport(
 	queue: Array<Promise<HttpResponse>>,
-): HttpTransport {
+): ExternalTransportTrait {
 	return {
 		async execute(_request: HttpRequest) {
 			const next = queue.shift();
@@ -39,7 +39,7 @@ describe("SessionContextController", () => {
 	it("starts in idle state without probing the network", () => {
 		const runtime = new SessionContextController({
 			client: new SessionContextClient({ baseUrl: "https://auth.example.com" }),
-			transport: createQueuedTransport([]),
+			externalTransport: createQueuedTransport([]),
 		});
 
 		expect(runtime.state.get()).toEqual({
@@ -53,7 +53,7 @@ describe("SessionContextController", () => {
 		const response = createDeferred<HttpResponse>();
 		const runtime = new SessionContextController({
 			client: new SessionContextClient({ baseUrl: "https://auth.example.com" }),
-			transport: createQueuedTransport([response.promise]),
+			externalTransport: createQueuedTransport([response.promise]),
 		});
 		const observed: string[] = [];
 		runtime.state.subscribe(() => observed.push(runtime.state.get().status));
@@ -86,7 +86,7 @@ describe("SessionContextController", () => {
 		const failure = new Error("network unavailable");
 		const runtime = new SessionContextController({
 			client: new SessionContextClient({ baseUrl: "https://auth.example.com" }),
-			transport: createQueuedTransport([Promise.reject(failure)]),
+			externalTransport: createQueuedTransport([Promise.reject(failure)]),
 		});
 
 		await expect(runtime.refresh()).rejects.toBe(failure);
@@ -99,8 +99,8 @@ describe("SessionContextController", () => {
 
 	it("logout clears pending redirect and enters unauthenticated state", async () => {
 		const requests: HttpRequest[] = [];
-		const sessionStore = createInMemoryRecordStore();
-		const transport: HttpTransport = {
+		const sessionStorage = createInMemoryRecordStore();
+		const externalTransport: ExternalTransportTrait = {
 			async execute(request) {
 				requests.push(request);
 				return { status: 200, headers: {}, body: {} };
@@ -108,9 +108,12 @@ describe("SessionContextController", () => {
 		};
 		const client = new SessionContextClient(
 			{ baseUrl: "https://auth.example.com" },
-			{ sessionStore },
+			{ sessionStorage },
 		);
-		const runtime = new SessionContextController({ client, transport });
+		const runtime = new SessionContextController({
+			client,
+			externalTransport,
+		});
 
 		await runtime.rememberPostAuthRedirect("/entries");
 		await runtime.logout();
@@ -133,7 +136,7 @@ describe("SessionContextController", () => {
 		const response = createDeferred<HttpResponse>();
 		const runtime = new SessionContextController({
 			client: new SessionContextClient({ baseUrl: "https://auth.example.com" }),
-			transport: createQueuedTransport([response.promise]),
+			externalTransport: createQueuedTransport([response.promise]),
 		});
 
 		const first = runtime.refresh();

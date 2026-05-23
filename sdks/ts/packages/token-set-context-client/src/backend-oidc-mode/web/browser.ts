@@ -1,40 +1,33 @@
 import type {
-	Clock,
+	BaseTransportTrait,
 	EphemeralFlowStore,
-	HttpTransport,
+	FoundationEnvironment,
 	LoggerTrait,
-	RecordStore,
-	Scheduler,
+	PageLifecycleTrait,
+	PopupTrait,
+	RouterTrait,
+	StorageTrait,
+	TimeTrait,
 	TraceEventSinkTrait,
 } from "@securitydept/client";
 import {
 	ClientError,
 	ClientErrorKind,
+	createClientEnvironment,
 	createEphemeralFlowStore,
+	createExternalTransportForFetch,
 	createJsonCodec,
-	type PageLocationCapability,
-	type PageLocationHistoryCapability,
+	FetchTransportRedirectKind,
 	UserRecovery,
-	type WebClientEnvironment,
 } from "@securitydept/client";
 import {
 	createLocalStorageStore,
 	createSessionStorageStore,
 } from "@securitydept/client/persistence/web";
-import {
-	assertResolveEnvironment,
-	createWebClientEnvironment,
-	deriveClientEnvironment,
-	type FetchTransportOptions,
-	FetchTransportRedirectKind,
-	openPopupWindow,
-	relayPopupCallback,
-	waitForPopupRelay,
-} from "@securitydept/client/web";
-import {
-	attachPageResumeAuthCheckTriggerSource,
-	type PageResumeAuthCheckOptions,
-	type TokenSetAuthCheckTriggerSource,
+import { assertResolveEnvironment } from "@securitydept/client/web";
+import type {
+	AuthWorkflowRuntimeOptions,
+	PageResumeWorkflowSourceOptions,
 } from "../../orchestration";
 import type {
 	OidcRedirectLoginClient,
@@ -51,10 +44,10 @@ const BACKEND_OIDC_REDIRECT_LOGIN_ATTACHED = Symbol(
 );
 const BACKEND_OIDC_PAGE_ENVIRONMENT_ERROR_MESSAGE =
 	"backend-oidc page helpers require an explicit page environment.\n" +
-	"Create one in your composition root with createBrowserPageClientEnvironment(...).";
+	"Create one in your composition root with createEnvironmentForNativeWeb(...).";
 const BACKEND_OIDC_PAGE_CALLBACK_ENVIRONMENT_ERROR_MESSAGE =
 	"backend-oidc page callback helpers require an explicit page environment with callbackFragmentStore.\n" +
-	"Create one in your composition root with createBackendOidcModeWebClientEnvironment(...), then pair it with page location/history capabilities from createBrowserPageClientEnvironment(...).";
+	"Create one in your composition root with createBackendOidcModeWebClientEnvironment(...), then pair it with createEnvironmentForNativeWeb(...).";
 const BACKEND_OIDC_CALLBACK_FRAGMENT_STORE_ERROR_MESSAGE =
 	"backend-oidc popup/reset helpers require an explicit callbackFragmentStore capability.\n" +
 	"Create one in your composition root with createBackendOidcModeWebClientEnvironment(...), then pass environment or callbackFragmentStore to the helper.";
@@ -100,50 +93,38 @@ export interface BackendOidcModeBootstrapResult {
 }
 
 export interface BackendOidcModeWebClientEnvironment
-	extends WebClientEnvironment {
+	extends FoundationEnvironment {
 	callbackFragmentStore: EphemeralFlowStore<string>;
 }
 
 export interface BackendOidcModePageClientEnvironment
 	extends BackendOidcModeWebClientEnvironment,
-		PageLocationHistoryCapability {}
+		RouterTrait {}
 
 export interface BackendOidcModeCallbackFragmentStoreCapability {
 	callbackFragmentStore: EphemeralFlowStore<string>;
 }
 
-export interface BackendOidcModePageLocationCapability
-	extends PageLocationCapability {}
+export interface BackendOidcModePageRouterCapability extends RouterTrait {}
 
 export interface BackendOidcModePageCallbackCapability
 	extends BackendOidcModeCallbackFragmentStoreCapability,
-		PageLocationHistoryCapability {}
+		RouterTrait {}
 
 export interface BackendOidcModePopupLoginCapability
-	extends BackendOidcModeCallbackFragmentStoreCapability {}
+	extends BackendOidcModeCallbackFragmentStoreCapability {
+	popup: PopupTrait;
+}
 
 export interface CreateBackendOidcModeWebClientEnvironmentOptions {
 	environment?: BackendOidcModeWebClientEnvironment;
 	persistentStateKey?: string;
-	persistentStore?: RecordStore;
-	sessionStore?: RecordStore;
+	persistentStorage?: StorageTrait;
+	sessionStorage?: StorageTrait;
 	callbackFragmentStore?: EphemeralFlowStore<string>;
-	/**
-	 * Fully custom transport — replaces the default `fetch`-based transport.
-	 *
-	 * When provided, `fetchTransport` is ignored.
-	 */
-	transport?: HttpTransport;
-	/**
-	 * Configuration for the default browser `fetch` transport.
-	 *
-	 * Only used when `transport` is **not** provided. Fields are merged with
-	 * the SDK default (`redirect: "manual"`), so callers only need to specify
-	 * the overrides they care about.
-	 */
-	fetchTransport?: FetchTransportOptions;
-	scheduler?: Scheduler;
-	clock?: Clock;
+	transport?: BaseTransportTrait;
+	time?: TimeTrait;
+	pageLifecycle?: PageLifecycleTrait;
 	logger?: LoggerTrait;
 	traceSink?: TraceEventSinkTrait;
 }
@@ -188,9 +169,7 @@ export interface CreateBackendOidcModeWebClientOptions {
 	userInfoPath?: string;
 
 	environment: BackendOidcModeWebClientEnvironment;
-	pageResumeAuthCheck?: boolean;
-	pageResumeAuthCheckOptions?: PageResumeAuthCheckOptions;
-	authCheckTriggerSources?: readonly TokenSetAuthCheckTriggerSource[];
+	authCheck?: AuthWorkflowRuntimeOptions;
 }
 
 export interface BackendOidcModeWebClient
@@ -204,22 +183,27 @@ export function createBackendOidcModeWebClientEnvironment(
 		return options.environment;
 	}
 
-	const environment = createWebClientEnvironment({
-		transport: options.transport,
-		scheduler: options.scheduler,
-		clock: options.clock,
-		logger: options.logger,
-		traceSink: options.traceSink,
-		persistentStore:
-			options.persistentStore ??
+	const environment = createClientEnvironment({
+		transport:
+			options.transport ??
+			createExternalTransportForFetch({
+				redirect: FetchTransportRedirectKind.Manual,
+			}),
+		time: options.time,
+		pageLifecycle: options.pageLifecycle,
+		telemetry:
+			options.logger || options.traceSink
+				? {
+						logger: options.logger,
+						traceSink: options.traceSink,
+					}
+				: undefined,
+		persistentStorage:
+			options.persistentStorage ??
 			createLocalStorageStore(BACKEND_OIDC_PERSISTENT_PREFIX),
-		sessionStore:
-			options.sessionStore ??
+		sessionStorage:
+			options.sessionStorage ??
 			createSessionStorageStore(BACKEND_OIDC_SESSION_PREFIX),
-		fetchTransport: {
-			redirect: FetchTransportRedirectKind.Manual,
-			...options.fetchTransport,
-		},
 	});
 
 	return {
@@ -227,7 +211,7 @@ export function createBackendOidcModeWebClientEnvironment(
 		callbackFragmentStore:
 			options.callbackFragmentStore ??
 			createBackendOidcModeCallbackFragmentStore({
-				sessionStore: environment.sessionStore,
+				sessionStorage: environment.sessionStorage,
 				key: options.persistentStateKey
 					? resolveBackendOidcModeCallbackFragmentKey(
 							options.persistentStateKey,
@@ -243,27 +227,44 @@ export function createBackendOidcModeWebClient(
 	const environment = options.environment;
 
 	return attachBackendOidcRedirectLogin(
-		attachPageResumeAuthCheckTriggerSource(
-			new BackendOidcModeClient(
-				{
-					baseUrl: options.baseUrl ?? "",
-					defaultPostAuthRedirectUri: options.defaultPostAuthRedirectUri,
-					refreshWindowMs: options.refreshWindowMs,
-					persistentStateKey: options.persistentStateKey,
-					loginPath: options.loginPath,
-					refreshPath: options.refreshPath,
-					metadataRedeemPath: options.metadataRedeemPath,
-					userInfoPath: options.userInfoPath,
-				},
-				deriveClientEnvironment(environment),
-			),
+		new BackendOidcModeClient(
 			{
-				pageResumeAuthCheck: options.pageResumeAuthCheck,
-				pageResumeAuthCheckOptions: options.pageResumeAuthCheckOptions,
-				authCheckTriggerSources: options.authCheckTriggerSources,
+				baseUrl: options.baseUrl ?? "",
+				defaultPostAuthRedirectUri: options.defaultPostAuthRedirectUri,
+				refreshWindowMs: options.refreshWindowMs,
+				persistentStateKey: options.persistentStateKey,
+				loginPath: options.loginPath,
+				refreshPath: options.refreshPath,
+				metadataRedeemPath: options.metadataRedeemPath,
+				userInfoPath: options.userInfoPath,
+				authCheck: resolveWebAuthWorkflowRuntimeOptions(
+					options.authCheck,
+					environment,
+				),
 			},
+			environment,
 		),
 	);
+}
+
+function resolveWebAuthWorkflowRuntimeOptions(
+	options: AuthWorkflowRuntimeOptions | undefined,
+	environment: BackendOidcModeWebClientEnvironment,
+): AuthWorkflowRuntimeOptions {
+	const pageResume = options?.sources?.pageResume ?? {
+		kind: "bundle" as const,
+		options: {
+			pageLifecycle: environment.pageLifecycle ?? null,
+			now: () => environment.time.now(),
+		} satisfies PageResumeWorkflowSourceOptions,
+	};
+	return {
+		...options,
+		sources: {
+			...options?.sources,
+			pageResume,
+		},
+	};
 }
 
 function attachBackendOidcRedirectLogin<TClient extends BackendOidcModeClient>(
@@ -298,7 +299,7 @@ function attachBackendOidcRedirectLogin<TClient extends BackendOidcModeClient>(
 }
 
 export interface CreateBackendOidcModeCallbackFragmentStoreOptions {
-	sessionStore?: RecordStore;
+	sessionStorage?: StorageTrait;
 	key?: string;
 }
 
@@ -307,7 +308,7 @@ export function createBackendOidcModeCallbackFragmentStore(
 ): EphemeralFlowStore<string> {
 	return createEphemeralFlowStore<string>({
 		store:
-			options.sessionStore ??
+			options.sessionStorage ??
 			createSessionStorageStore(BACKEND_OIDC_SESSION_PREFIX),
 		key: options.key ?? TOKEN_SET_CALLBACK_FRAGMENT_KEY,
 		codec: createJsonCodec<string>(),
@@ -322,7 +323,7 @@ export function createBackendOidcModeCallbackFragmentStore(
  * servers typically cannot relay fragment identifiers via 302 redirects.
  */
 export interface CurrentPageLocationAsPostAuthRedirectUriOptions {
-	environment?: BackendOidcModePageLocationCapability;
+	environment?: BackendOidcModePageRouterCapability;
 }
 
 export function currentPageLocationAsPostAuthRedirectUri(
@@ -332,7 +333,11 @@ export function currentPageLocationAsPostAuthRedirectUri(
 		options.environment,
 		failMissingBackendOidcPageEnvironment,
 	);
-	const url = new URL(environment.location.href);
+	const currentUrl = environment.currentUrl();
+	if (!currentUrl) {
+		throw new Error("Backend OIDC page router cannot resolve current URL.");
+	}
+	const url = new URL(currentUrl);
 	url.hash = "";
 	return url.toString();
 }
@@ -345,21 +350,26 @@ export async function captureBackendOidcModeCallbackFragment(
 	options: CaptureBackendOidcModeCallbackFragmentOptions,
 ): Promise<string | null> {
 	const environment = options.environment;
-	const location = environment.location;
-	const history = environment.history;
 	const callbackFragmentStore = environment.callbackFragmentStore;
-	const fragment = location.hash.startsWith("#")
-		? location.hash.slice(1)
-		: location.hash;
+	const currentUrl = environment.currentUrl();
+	const hash = currentUrl?.hash ?? "";
+	const fragment = hash.startsWith("#") ? hash.slice(1) : hash;
 
 	if (!fragment) {
 		return null;
 	}
 
 	await callbackFragmentStore.save(fragment);
-	const url = new URL(location.href);
+	if (!currentUrl) {
+		return fragment;
+	}
+	const url = new URL(currentUrl);
 	url.hash = "";
-	history.replaceState(null, "", `${url.pathname}${url.search}`);
+	await environment.navigate({
+		url: `${url.pathname}${url.search}`,
+		intent: "callback_cleanup",
+		mode: "replace",
+	});
 	return fragment;
 }
 
@@ -404,7 +414,8 @@ export async function bootstrapBackendOidcModePageClient(
 export async function restoreBackendOidcModeClient(
 	client: BackendOidcModeClient,
 ): Promise<BackendOidcModeBootstrapResult> {
-	const restored = await client.restorePersistedState();
+	await client.start();
+	const restored = await client.authSnapshot.whenValue();
 	if (restored) {
 		return {
 			source: BackendOidcModeBootstrapSource.Restore,
@@ -451,7 +462,7 @@ export async function bootstrapBackendOidcModeFromCallbackStore(
  * with an explicit path instead.
  */
 export interface BuildAuthorizeUrlReturningToCurrentPageOptions {
-	environment?: BackendOidcModePageLocationCapability;
+	environment?: BackendOidcModePageRouterCapability;
 }
 
 export function buildAuthorizeUrlReturningToCurrentPage(
@@ -464,13 +475,15 @@ export function buildAuthorizeUrlReturningToCurrentPage(
 function redirectToBackendOidcLogin(
 	client: BackendOidcModeClient,
 	options: {
-		environment: BackendOidcModePageLocationCapability;
+		environment: BackendOidcModePageRouterCapability;
 		postAuthRedirectUri: string;
 	},
 ): void {
-	options.environment.location.href = client.authorizeUrl(
-		options.postAuthRedirectUri,
-	);
+	void options.environment.navigate({
+		url: client.authorizeUrl(options.postAuthRedirectUri),
+		intent: "auth_redirect",
+		mode: "external",
+	});
 }
 
 /**
@@ -486,7 +499,7 @@ export interface LoginWithBackendOidcRedirectOptions
 	 */
 	postAuthRedirectUri?: string;
 	/** Override the page environment used to derive the default return URI. */
-	environment?: BackendOidcModePageLocationCapability;
+	environment?: BackendOidcModePageRouterCapability;
 }
 
 /**
@@ -564,13 +577,13 @@ export async function loginWithBackendOidcPopup(
 	);
 	const authorizeUrl = client.authorizeUrl(options.popupCallbackUrl);
 
-	const popup = openPopupWindow(authorizeUrl, {
+	const popup = environment.popup.open(authorizeUrl, {
 		width: options.popupWidth,
 		height: options.popupHeight,
 	});
 
 	// Wait for the popup callback page to relay the callback URL.
-	const callbackUrl = await waitForPopupRelay({
+	const callbackUrl = await environment.popup.waitForRelay({
 		popup,
 		timeoutMs: options.timeoutMs,
 	});
@@ -610,7 +623,7 @@ export async function loginWithBackendOidcPopup(
  */
 export interface RelayBackendOidcPopupCallbackOptions {
 	targetOrigin?: string;
-	environment?: BackendOidcModePageLocationCapability;
+	environment?: Pick<FoundationEnvironment, "popup" | "router">;
 }
 
 export function relayBackendOidcPopupCallback(
@@ -620,8 +633,8 @@ export function relayBackendOidcPopupCallback(
 		options.environment,
 		failMissingBackendOidcPageEnvironment,
 	);
-	relayPopupCallback({
-		payload: environment.location.href,
+	environment.popup?.relayCallback({
+		payload: environment.router?.currentUrl()?.toString(),
 		targetOrigin: options?.targetOrigin,
 	});
 }

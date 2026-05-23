@@ -1,5 +1,5 @@
 import { createClientEnvironment } from "@securitydept/client";
-import { createWebClientEnvironment } from "@securitydept/client/web";
+import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
 import {
 	buildAuthorizeUrlReturningToCurrentPage,
@@ -23,7 +23,9 @@ describe("minimal entry points", () => {
 			})),
 		};
 
-		const environment = createClientEnvironment({ transport });
+		const environment = createClientEnvironment({
+			transport: transport,
+		});
 		const client = new SessionContextClient({
 			baseUrl: "https://auth.example.com",
 		});
@@ -49,14 +51,14 @@ describe("minimal entry points", () => {
 						body: null,
 					})),
 				},
-				persistentStore: {
+				persistentStorage: {
 					async get() {
 						return null;
 					},
 					async set() {},
 					async remove() {},
 				},
-				sessionStore: {
+				sessionStorage: {
 					async get() {
 						return null;
 					},
@@ -73,12 +75,12 @@ describe("minimal entry points", () => {
 
 		expect(
 			buildAuthorizeUrlReturningToCurrentPage(client, {
-				environment: {
+				environment: createRouterForNativeWeb({
 					location: {
 						href: "https://app.example.com/oidc-mediated#callback",
 						hash: "#callback",
 					},
-				},
+				}),
 			}),
 		).toBe(
 			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Foidc-mediated",
@@ -98,14 +100,14 @@ describe("minimal entry points", () => {
 						body: null,
 					})),
 				},
-				persistentStore: {
+				persistentStorage: {
 					async get() {
 						return null;
 					},
 					async set() {},
 					async remove() {},
 				},
-				sessionStore: {
+				sessionStorage: {
 					async get() {
 						return null;
 					},
@@ -125,12 +127,12 @@ describe("minimal entry points", () => {
 
 		expect(
 			buildAuthorizeUrlReturningToCurrentPage(client, {
-				environment: {
+				environment: createRouterForNativeWeb({
 					location: {
 						href: "https://app.example.com/dashboard",
 						hash: "",
 					},
-				},
+				}),
 			}),
 		).toBe(
 			"https://auth.example.com/auth/token-set/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard",
@@ -138,7 +140,7 @@ describe("minimal entry points", () => {
 	});
 
 	it("keeps browser convenience optional in the foundation environment", () => {
-		const environment = createWebClientEnvironment({
+		const environment = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({
 					status: 204,
@@ -149,7 +151,8 @@ describe("minimal entry points", () => {
 		});
 
 		expect(typeof environment.transport.execute).toBe("function");
-		expect(typeof environment.scheduler.setTimeout).toBe("function");
+		expect(typeof environment.time.setTimeout).toBe("function");
+		expect(typeof environment.time.clearTimeout).toBe("function");
 	});
 
 	it("leaves SSR redirect assembly at the app boundary", () => {

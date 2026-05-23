@@ -1,7 +1,7 @@
 import type {
+	ExternalTransportTrait,
 	HttpRequest,
 	HttpResponse,
-	HttpTransport,
 } from "@securitydept/client";
 
 interface FakeRoute {
@@ -13,7 +13,7 @@ interface FakeRoute {
  * Fake HTTP transport for testing.
  * Responses are configured via `on()` — matched in registration order.
  */
-export class FakeTransport implements HttpTransport {
+export class FakeTransport implements ExternalTransportTrait {
 	private readonly _routes: FakeRoute[] = [];
 	private readonly _history: HttpRequest[] = [];
 	private _fallback: HttpResponse = {

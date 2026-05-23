@@ -4,7 +4,7 @@ import {
 } from "@securitydept/basic-auth-context-client-react";
 import { SecuritydeptInjector } from "@securitydept/client/injection";
 import {
-	provideClientEnvironmentService,
+	provideClientEnvironment,
 	SecuritydeptProvider,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
@@ -77,6 +77,7 @@ import {
 	ensureTokenSetFrontendModeClientReady,
 	tokenSetFrontendModeClientFactory,
 } from "@/lib/tokenSetFrontendModeClient";
+import { createTokenSetFrontendModePageEnvironment } from "@/lib/tokenSetFrontendModePageEnvironment";
 import { DashboardPage } from "@/routes/Dashboard";
 import { EntriesPage } from "@/routes/Entries";
 import { EntryCreatePage } from "@/routes/EntryCreate";
@@ -554,16 +555,25 @@ export function App() {
 			]).get(TOKEN_SET_AUTH_REGISTRY),
 		[tokenSetClients],
 	);
+	const tokenSetFrontendModePageEnvironment = useMemo(
+		() => createTokenSetFrontendModePageEnvironment(),
+		[],
+	);
 	const rootInjector = useMemo(
 		() =>
 			SecuritydeptInjector.resolveAndCreate([
 				provideBasicAuthContextClient(basicAuthClient),
 				...provideSessionContextController(sessionController),
-				provideClientEnvironmentService(),
+				provideClientEnvironment(tokenSetFrontendModePageEnvironment),
 				provideTokenSetAuthRegistry(tokenSetRegistry),
 				provideTokenSetCallbackResumeController(tokenSetRegistry),
 			]),
-		[basicAuthClient, sessionController, tokenSetRegistry],
+		[
+			basicAuthClient,
+			sessionController,
+			tokenSetFrontendModePageEnvironment,
+			tokenSetRegistry,
+		],
 	);
 
 	useEffect(() => {

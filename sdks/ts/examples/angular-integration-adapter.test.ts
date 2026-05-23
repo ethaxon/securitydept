@@ -5,13 +5,13 @@ import {
 	provideBasicAuthContext,
 } from "@securitydept/basic-auth-context-client-angular";
 import {
+	createClientEnvironment,
 	createSubject,
-	type HttpTransport,
+	type ExternalTransportTrait,
 	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
 } from "@securitydept/client";
 import { toRxObservable } from "@securitydept/client/rx";
-import { createWebClientEnvironment } from "@securitydept/client/web";
 import { bridgeToAngularSignal } from "@securitydept/client-angular";
 import {
 	provideSessionContext,
@@ -94,7 +94,8 @@ function createMockClient(
 	return {
 		...reactive.fields,
 		authEvents: createSubject(),
-		addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		removeWorkflowSource: vi.fn(() => false),
 		start: vi.fn(async () => undefined),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
@@ -219,14 +220,14 @@ describe("Angular Integration — Angular-native DI surface", () => {
 	it("provideSessionContext returns Angular Provider array", () => {
 		const providers = provideSessionContext({
 			config: { baseUrl: "/api" },
-			environment: createWebClientEnvironment({
+			environment: createClientEnvironment({
 				transport: {
 					execute: vi.fn(async () => ({
 						status: 200,
 						headers: {},
 						body: null,
 					})),
-				} satisfies HttpTransport,
+				} satisfies ExternalTransportTrait,
 			}),
 		});
 		expect(Array.isArray(providers)).toBe(true);
@@ -417,8 +418,14 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 		const client1 = createMockClient(null);
 		const client2 = createMockClient(makeSnapshot("admin-tok"));
 
-		registry.register({ key: "main", clientFactory: () => client1 });
-		registry.register({ key: "admin", clientFactory: () => client2 });
+		registry.register({
+			key: "main",
+			clientFactory: () => client1,
+		});
+		registry.register({
+			key: "admin",
+			clientFactory: () => client2,
+		});
 
 		await expect(
 			(await registry.whenReady("admin")).authSnapshot.whenValue(),
@@ -436,31 +443,41 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 	it("readyKeys() returns all started client keys", async () => {
 		const registry = new TokenSetAuthRegistry();
 
-		registry.register({ key: "a", clientFactory: () => createMockClient() });
-		registry.register({ key: "b", clientFactory: () => createMockClient() });
+		registry.register({
+			key: "a",
+			clientFactory: () => createMockClient(),
+		});
+		registry.register({
+			key: "b",
+			clientFactory: () => createMockClient(),
+		});
 
 		await registry.whenReady("a");
 		await registry.whenReady("b");
 		expect(registry.readyKeys()).toEqual(["a", "b"]);
 	});
 
-	it("installs page-resume auth-check trigger sources for registry-managed clients by default", async () => {
-		await withMockBrowserLifecycleTargets(async () => {
-			const registry = new TokenSetAuthRegistry();
-			const client = createMockClient(makeSnapshot("main-token"));
+	it("does not patch registry-managed clients with page-resume trigger sources", async () => {
+		await withMockBrowserLifecycleTargets(
+			async ({ documentTarget, windowTarget }) => {
+				const registry = new TokenSetAuthRegistry();
+				const client = createMockClient(makeSnapshot("main-token"));
 
-			registry.register({
-				key: "main",
-				clientFactory: () => client,
-			});
-			await registry.whenReady("main");
+				registry.register({
+					key: "main",
+					clientFactory: () => client,
+				});
+				await registry.whenReady("main");
 
-			expect(client.addAuthCheckTriggerSource).toHaveBeenCalledTimes(1);
-			registry.dispose();
-		});
+				expect(client.addWorkflowSource).not.toHaveBeenCalled();
+				expect(documentTarget.addEventListener).not.toHaveBeenCalled();
+				expect(windowTarget.addEventListener).not.toHaveBeenCalled();
+				registry.dispose();
+			},
+		);
 	});
 
-	it("allows registry-managed clients to opt out of page-resume auth-check triggers", () => {
+	it("allows registry-managed clients to opt out of page-resume workflow triggers", () => {
 		withMockBrowserLifecycleTargets(({ documentTarget, windowTarget }) => {
 			const registry = new TokenSetAuthRegistry();
 			const client = createMockClient(makeSnapshot("main-token"));
@@ -468,10 +485,9 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 			registry.register({
 				key: "main",
 				clientFactory: () => client,
-				pageResumeAuthCheck: false,
 			});
 
-			expect(client.addAuthCheckTriggerSource).not.toHaveBeenCalled();
+			expect(client.addWorkflowSource).not.toHaveBeenCalled();
 			expect(documentTarget.addEventListener).not.toHaveBeenCalled();
 			expect(windowTarget.addEventListener).not.toHaveBeenCalled();
 		});
@@ -489,8 +505,14 @@ describe("Angular Integration — registry-managed clients", () => {
 		const client2 = createMockClient();
 		const dispose1 = client1.dispose;
 		const dispose2 = client2.dispose;
-		registry.register({ key: "a", clientFactory: () => client1 });
-		registry.register({ key: "b", clientFactory: () => client2 });
+		registry.register({
+			key: "a",
+			clientFactory: () => client1,
+		});
+		registry.register({
+			key: "b",
+			clientFactory: () => client2,
+		});
 		await registry.whenReady("a");
 		await registry.whenReady("b");
 
@@ -629,7 +651,8 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 		const mainClient: OidcModeClient & OidcCallbackClient = {
 			...mainReactive.fields,
 			authEvents: createSubject(),
-			addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn().mockResolvedValue(null),
@@ -648,7 +671,8 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 		const adminClient: OidcModeClient & OidcCallbackClient = {
 			...adminReactive.fields,
 			authEvents: createSubject(),
-			addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn().mockResolvedValue(null),

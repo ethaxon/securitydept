@@ -1,11 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { createClientEnvironment } from "../../environment/create";
 import { createInMemoryRecordStore } from "../../persistence";
-import {
-	createWebClientEnvironment,
-	readDefaultPageLocationHistoryCapability,
-	requireDefaultPageLocationHistoryCapability,
-	requirePageClientEnvironment,
-} from "../environment/client-environment";
+import { createEnvironmentForNativeWeb } from "../environment/environment";
 
 function createTransport() {
 	return {
@@ -15,111 +11,50 @@ function createTransport() {
 	};
 }
 
-describe("client environment page resolver", () => {
-	it("does not treat a global location without window history as a page", () => {
-		vi.stubGlobal("location", {
-			href: "https://worker.example.com/callback#fragment",
-			hash: "#fragment",
-		});
-
-		expect(readDefaultPageLocationHistoryCapability()).toBeNull();
-		expect(() => requireDefaultPageLocationHistoryCapability()).toThrow(
-			/extension background or service worker hosts/,
-		);
-
-		vi.unstubAllGlobals();
-	});
-
+describe("client environment page capability boundary", () => {
 	it("accepts explicit fake page capabilities", () => {
-		const pageCapability = {
+		const nativeWebPage = {
 			location: {
 				href: "https://app.example.com/callback#fragment",
 				hash: "#fragment",
 			},
 			history: { replaceState() {} },
 		};
-		const environment = createWebClientEnvironment({
+
+		const environment = createEnvironmentForNativeWeb({
 			transport: createTransport(),
-			persistentStore: createInMemoryRecordStore(),
-			sessionStore: createInMemoryRecordStore(),
+			persistentStorage: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
+			location: nativeWebPage.location,
+			history: nativeWebPage.history,
 		});
 
-		expect(
-			requirePageClientEnvironment({
-				environment,
-				pageCapability,
-			}).location,
-		).toBe(pageCapability.location);
-		expect(
-			requirePageClientEnvironment({
-				environment,
-				pageCapability,
-			}).history,
-		).toBe(pageCapability.history);
+		expect(environment.router.currentUrl()?.toString()).toBe(
+			nativeWebPage.location.href,
+		);
 	});
 
-	it("fails without explicit environment and does not read global window", () => {
-		const originalWindowDescriptor = Object.getOwnPropertyDescriptor(
-			globalThis,
-			"window",
-		);
-		let windowRead = false;
-
-		Object.defineProperty(globalThis, "window", {
-			configurable: true,
-			get() {
-				windowRead = true;
-				return {
-					location: {
-						href: "https://app.example.com/callback#fragment",
-						hash: "#fragment",
-					},
-					history: { replaceState() {} },
-				};
-			},
+	it("keeps foundation environments page-free", () => {
+		const environment = createClientEnvironment({
+			transport: createTransport(),
+			persistentStorage: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 		});
 
-		try {
-			expect(() => requirePageClientEnvironment()).toThrow(
-				/createBrowserPageClientEnvironment/,
-			);
-			expect(windowRead).toBe(false);
-		} finally {
-			if (originalWindowDescriptor) {
-				Object.defineProperty(globalThis, "window", originalWindowDescriptor);
-			} else {
-				Reflect.deleteProperty(globalThis, "window");
-			}
-		}
+		expect("location" in environment).toBe(false);
+		expect("history" in environment).toBe(false);
 	});
 
 	it("reports missing explicit page capability fields", () => {
-		const environment = createWebClientEnvironment({
-			transport: createTransport(),
-		});
-
 		expect(() =>
-			requirePageClientEnvironment({
-				environment,
-				pageCapability: {
-					location: {
-						href: "https://app.example.com/callback#fragment",
-						hash: "#fragment",
-					},
-				} as never,
+			createEnvironmentForNativeWeb({
+				transport: createTransport(),
+				location: {
+					href: "https://app.example.com/callback#fragment",
+					hash: "#fragment",
+				},
+				history: undefined as never,
 			}),
-		).toThrow(/pageCapability must include location.href/);
-	});
-
-	it("reports missing page location and history on explicit environments", () => {
-		const environment = createWebClientEnvironment({
-			transport: createTransport(),
-		});
-
-		expect(() =>
-			requirePageClientEnvironment({
-				environment,
-			}),
-		).toThrow(/explicit page environment with location and history/);
+		).toThrow(/nativeWeb must include location.href/);
 	});
 });

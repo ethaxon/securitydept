@@ -10,6 +10,7 @@
 //
 // Stability: provisional (mode-aligned surface)
 
+import type { AuthWorkflowRuntimeOptions } from "../../orchestration/client/workflows/source";
 import type {
 	AuthDelta as _AuthDelta,
 	AuthMetadataDelta as _AuthMetadataDelta,
@@ -169,6 +170,8 @@ export interface FrontendOidcModeClientConfig {
 
 	/** How often to refresh the remote JWKS (human-readable duration, e.g. "5m"). */
 	jwksRefreshInterval?: string;
+	/** Long-running auth workflow source configuration. */
+	authCheck?: AuthWorkflowRuntimeOptions;
 
 	/**
 	 * Supported token endpoint authentication methods override.
@@ -197,7 +200,7 @@ export interface FrontendOidcModeClientConfig {
 	refreshWindowMs?: number;
 
 	/**
-	 * Key used with `environment.persistentStore` for persisted auth state.
+	 * Key used with `environment.persistentStorage` for persisted auth state.
 	 * When not set, a default key is derived from the issuer + clientId.
 	 */
 	persistentStateKey?: string;
@@ -211,14 +214,14 @@ export interface FrontendOidcModeClientConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Pending OAuth State (stored in sessionStore for redirect flows)
+// Pending OAuth State (stored in sessionStorage for redirect flows)
 // ---------------------------------------------------------------------------
 
 /**
- * Transient state stored in sessionStore during the authorization redirect.
+ * Transient state stored in sessionStorage during the authorization redirect.
  *
  * When the user clicks "login", the client generates PKCE + nonce + state,
- * stores them in sessionStore keyed by `state`, then redirects. On callback,
+ * stores them in sessionStorage keyed by `state`, then redirects. On callback,
  * the client retrieves this state to complete the code exchange.
  */
 export interface FrontendOidcModePendingState {

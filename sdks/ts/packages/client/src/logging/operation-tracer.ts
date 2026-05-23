@@ -1,5 +1,7 @@
 import { describeError } from "../errors/index";
-import type { Clock } from "../scheduling/types";
+import type { TimeTrait } from "../scheduling/types";
+import { createSpan } from "../span/span";
+import type { SpanContextHostTrait, SpanTrait } from "../span/types";
 import type {
 	LoggerTrait,
 	OperationScope,
@@ -11,13 +13,14 @@ import { LogLevel, OperationTraceEventType } from "./types";
 export interface CreateOperationTracerOptions {
 	traceSink?: TraceEventSinkTrait;
 	logger?: LoggerTrait;
-	clock?: Clock;
+	time?: Pick<TimeTrait, "now">;
 	scope?: string;
 	source?: string;
 	idFactory?: () => string;
+	spanContext?: SpanContextHostTrait;
 }
 
-const defaultClock: Clock = {
+const defaultTime: Pick<TimeTrait, "now"> = {
 	now: () => Date.now(),
 };
 
@@ -32,16 +35,16 @@ class DefaultOperationScope implements OperationScope {
 	private _ended = false;
 
 	constructor(
+		private readonly _span: SpanTrait,
 		private readonly _name: string,
-		private readonly _clock: Clock,
+		private readonly _time: Pick<TimeTrait, "now">,
 		private readonly _traceSink: TraceEventSinkTrait | undefined,
 		private readonly _logger: LoggerTrait | undefined,
 		private readonly _scope: string | undefined,
 		private readonly _source: string | undefined,
-		idFactory: () => string,
 		attributes?: Record<string, unknown>,
 	) {
-		this.id = idFactory();
+		this.id = this._span.id;
 		this._attributes = { ...(attributes ?? {}) };
 		this._recordTrace(OperationTraceEventType.Started, {
 			operationName: this._name,
@@ -60,10 +63,12 @@ class DefaultOperationScope implements OperationScope {
 
 	setAttribute(key: string, value: unknown): void {
 		this._attributes[key] = value;
+		this._span.addAttributes({ [key]: value });
 	}
 
 	recordError(error: unknown, attributes?: Record<string, unknown>): void {
 		const errorAttributes = describeError(error);
+		this._span.recordError(error);
 		this._recordTrace(OperationTraceEventType.Error, {
 			operationName: this._name,
 			...this._attributes,
@@ -82,7 +87,7 @@ class DefaultOperationScope implements OperationScope {
 				...(attributes ?? {}),
 			},
 			error,
-			at: this._clock.now(),
+			at: this._time.now(),
 		});
 	}
 
@@ -92,6 +97,7 @@ class DefaultOperationScope implements OperationScope {
 		}
 
 		this._ended = true;
+		this._span.end(attributes);
 		this._recordTrace(OperationTraceEventType.Ended, {
 			operationName: this._name,
 			...this._attributes,
@@ -105,10 +111,12 @@ class DefaultOperationScope implements OperationScope {
 	): void {
 		this._traceSink?.record({
 			type,
-			at: this._clock.now(),
+			at: this._time.now(),
 			scope: this._scope,
 			source: this._source,
 			operationId: this.id,
+			spanId: this._span.id,
+			parentSpanId: this._span.parentId,
 			attributes,
 		});
 	}
@@ -117,19 +125,23 @@ class DefaultOperationScope implements OperationScope {
 export function createOperationTracer(
 	options: CreateOperationTracerOptions = {},
 ): OperationTracerTrait {
-	const clock = options.clock ?? defaultClock;
+	const time = options.time ?? defaultTime;
 	const idFactory = options.idFactory ?? createDefaultOperationId;
 
 	return {
 		startOperation(name, attributes) {
+			const parentSpan = options.spanContext?.currentSpan();
+			const span =
+				parentSpan?.fork({ idFactory, attributes }) ??
+				createSpan({ idFactory, attributes });
 			return new DefaultOperationScope(
+				span,
 				name,
-				clock,
+				time,
 				options.traceSink,
 				options.logger,
 				options.scope,
 				options.source,
-				idFactory,
 				attributes,
 			);
 		},

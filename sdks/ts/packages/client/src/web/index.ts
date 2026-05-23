@@ -6,66 +6,55 @@ export {
 } from "./cancellation/abort-signal";
 // --- Web client environment presets ---
 export type {
-	ClientEnvironment,
-	CreateBrowserPageClientEnvironmentOptions,
-	CreateWebClientEnvironmentOptions,
-	PageClientEnvironment,
-	PageHistoryLike,
-	PageLocationCapability,
-	PageLocationHistoryCapability,
-	PageLocationLike,
-	RequirePageClientEnvironmentOptions,
-	WebClientEnvironment,
-} from "./environment/client-environment";
+	CreateEnvironmentForNativeWebOptions,
+	FoundationEnvironment,
+	NativeWebEnvironment,
+} from "./environment/environment";
 export {
-	assertPageLocationCapability,
-	assertPageLocationHistoryCapability,
 	assertResolveEnvironment,
-	assertResolveFromEnvironment,
-	ClientEnvironmentPreset,
-	createBrowserExtensionBackgroundClientEnvironment,
-	createBrowserPageClientEnvironment,
-	createBrowserWorkerClientEnvironment,
-	createServiceWorkerClientEnvironment,
-	createWebClientEnvironment,
-	deriveClientEnvironment,
-	readDefaultPageLocationCapability,
-	readDefaultPageLocationHistoryCapability,
-	readPageLocationCapability,
-	readPageLocationHistoryCapability,
-	requireDefaultPageLocationCapability,
-	requireDefaultPageLocationHistoryCapability,
-	requirePageClientEnvironment,
-} from "./environment/client-environment";
-export type { ClientEnvironmentServiceOptions } from "./environment/environment-service";
-export { ClientEnvironmentService } from "./environment/environment-service";
-// --- Browser input adapters ---
+	createEnvironmentForNativeWeb,
+} from "./environment/environment";
+export type { CreatePageLifecycleForNativeWebOptions } from "./environment/page-lifecycle";
+export { createPageLifecycleForNativeWeb } from "./environment/page-lifecycle";
+export type { CreatePopupForNativeWebOptions } from "./environment/popup";
+export { createPopupForNativeWeb } from "./environment/popup";
 export type {
-	FromAbortSignalOptions,
+	CreateRouterForNativeWebOptions,
+	CreateRouterForTestOptions,
+	NativeWebHistoryLike,
+	NativeWebLocationLike,
+	NativeWebNavigationLike,
+	NativeWebWindowLike,
+} from "./environment/router";
+export {
+	createRouterForNativeWeb,
+	createRouterForTest,
+} from "./environment/router";
+export type {
+	CreateStorageForNativeWebOptions,
+	NativeWebStorageLike,
+} from "./environment/storage";
+export {
+	createPersistentStorageForNativeWeb,
+	createSessionStorageForNativeWeb,
+	createStorageForNativeWeb,
+} from "./environment/storage";
+// --- Browser event sources ---
+export type {
+	CreatePageResumeSourceOptions,
 	FromStorageEventOptions,
-} from "./events/input-sources";
-export { fromAbortSignal, fromStorageEvent } from "./events/input-sources";
-export type { FromVisibilityChangeOptions } from "./events/visibility";
-export { fromVisibilityChange, VisibilityState } from "./events/visibility";
-// --- Visibility lifecycle hardening ---
-export type {
-	CreatePageResumeReconcilerOptions,
-	PageResumeCallback,
 	PageResumeDocumentTarget,
 	PageResumeEvent,
-	PageResumeReconciler,
 	PageResumeWindowTarget,
-} from "./lifecycle/page-resume-reconciler";
+	StorageEventTarget,
+} from "./events";
+
 export {
-	createPageResumeReconciler,
+	createPageResumeSource,
+	fromStorageEvent,
 	PageResumeTriggerKind,
-} from "./lifecycle/page-resume-reconciler";
-export type {
-	CreateVisibilityReconcilerOptions,
-	ReconcileCallback,
-	VisibilityReconciler,
-} from "./lifecycle/visibility-reconciler";
-export { createVisibilityReconciler } from "./lifecycle/visibility-reconciler";
+} from "./events";
+
 // --- Popup shared infrastructure ---
 export type {
 	PopupFeaturesOptions,
@@ -88,9 +77,5 @@ export type {
 	CrossTabSyncCallback,
 } from "./sync/cross-tab-sync";
 export { createCrossTabSync } from "./sync/cross-tab-sync";
-export type { FetchTransportOptions } from "./transport/fetch-transport";
-export {
-	createFetchTransport,
-	FetchTransportRedirectKind,
-} from "./transport/fetch-transport";
-export { isLoopbackHttpUrl, transformScriptForBrowser } from "./utils/helpers";
+export { isLoopbackHttpUrl } from "./utils/network";
+export { transformScriptForBrowser } from "./utils/scripts";

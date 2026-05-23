@@ -3,17 +3,17 @@ import type {
 	Codec,
 	EphemeralFlowStore,
 	KeyedEphemeralFlowStore,
-	RecordStore,
+	StorageTrait,
 } from "./types";
 
 export interface CreateEphemeralFlowStoreOptions<T> {
-	store: RecordStore;
+	store: StorageTrait;
 	key: string;
 	codec?: Codec<T>;
 }
 
 export interface CreateKeyedEphemeralFlowStoreOptions<T> {
-	store: RecordStore;
+	store: StorageTrait;
 	keyPrefix: string;
 	codec?: Codec<T>;
 }
@@ -23,11 +23,11 @@ function resolveStorageKey(keyPrefix: string, key: string): string {
 }
 
 function requireRecordStoreTake(
-	store: RecordStore,
-): NonNullable<RecordStore["take"]> {
+	store: StorageTrait,
+): NonNullable<StorageTrait["take"]> {
 	if (!store.take) {
 		throw new Error(
-			"Ephemeral flow stores require RecordStore.take() for atomic single-consume semantics",
+			"Ephemeral flow stores require StorageTrait.take() for atomic single-consume semantics",
 		);
 	}
 
@@ -35,7 +35,7 @@ function requireRecordStoreTake(
 }
 
 /**
- * Create a typed ephemeral flow-state store backed by a low-level `RecordStore`.
+ * Create a typed ephemeral flow-state store backed by a low-level `StorageTrait`.
  *
  * Intended for short-lived browser/session coordination state such as pending
  * redirects or callback fragments.
@@ -74,7 +74,7 @@ export function createEphemeralFlowStore<T>(
 
 /**
  * Create a typed keyed ephemeral flow-state store backed by a low-level
- * `RecordStore`.
+ * `StorageTrait`.
  *
  * Intended for short-lived browser/session coordination state where multiple
  * pending records must coexist and be consumed independently.

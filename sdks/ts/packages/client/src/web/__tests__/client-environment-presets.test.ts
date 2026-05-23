@@ -1,13 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createInMemoryRecordStore } from "../../persistence";
 import {
-	ClientEnvironmentPreset,
-	createBrowserExtensionBackgroundClientEnvironment,
-	createBrowserPageClientEnvironment,
-	createBrowserWorkerClientEnvironment,
-	createServiceWorkerClientEnvironment,
-	deriveClientEnvironment,
-} from "../environment/client-environment";
+	createEnvironmentForNativeWeb,
+	type FoundationEnvironment,
+	type NativeWebEnvironment,
+} from "../environment/environment";
 
 function createTransport() {
 	return {
@@ -20,79 +17,40 @@ function createTransport() {
 function createClientEnvironmentOptions() {
 	return {
 		transport: createTransport(),
-		persistentStore: createInMemoryRecordStore(),
-		sessionStore: createInMemoryRecordStore(),
+		persistentStorage: createInMemoryRecordStore(),
+		sessionStorage: createInMemoryRecordStore(),
 	};
 }
 
-describe("client environment presets", () => {
-	it("creates an explicit browser page preset with page capabilities", () => {
-		const pageCapability = {
+describe("client environment factory shape", () => {
+	it("creates a native web environment as a typed superset of foundation environments", () => {
+		const nativeWebPage = {
 			location: {
 				href: "https://app.example.com/dashboard",
 				hash: "",
 			},
 			history: { replaceState() {} },
 		};
-		const environment = createBrowserPageClientEnvironment({
+		const environment = createEnvironmentForNativeWeb({
 			...createClientEnvironmentOptions(),
-			pageCapability,
+			location: nativeWebPage.location,
+			history: nativeWebPage.history,
 		});
 
-		expect(environment.preset).toBe(ClientEnvironmentPreset.BrowserPage);
-		expect(environment.location).toBe(pageCapability.location);
-		expect(environment.history).toBe(pageCapability.history);
-		expect(environment.persistentStore).toBeDefined();
-		expect(environment.sessionStore).toBeDefined();
-	});
+		const asNativeWeb: NativeWebEnvironment = environment;
+		const asFoundation: FoundationEnvironment = environment;
 
-	it("derives client environment from flattened environment fields", () => {
-		const environment = createBrowserWorkerClientEnvironment(
-			createClientEnvironmentOptions(),
+		expect(asNativeWeb.router.currentUrl()?.toString()).toBe(
+			nativeWebPage.location.href,
 		);
-		const canonicalTransport = createTransport();
-		const inconsistentEnvironment = {
-			...environment,
-			transport: canonicalTransport,
-		};
-
-		const clientEnvironment = deriveClientEnvironment(inconsistentEnvironment);
-
-		expect(clientEnvironment.transport).toBe(canonicalTransport);
+		expect(asFoundation.transport).toBe(environment.transport);
+		expect(environment.persistentStorage).toBeDefined();
+		expect(environment.sessionStorage).toBeDefined();
 	});
 
-	it("does not infer browser page from worker-like global location", () => {
-		vi.stubGlobal("location", {
-			href: "https://worker.example.com/background#fragment",
-			hash: "#fragment",
-		});
-
+	it("requires native web page capabilities instead of creating page-free native web environments", () => {
 		expect(() =>
-			createBrowserPageClientEnvironment(createClientEnvironmentOptions()),
-		).toThrow(/extension background or service worker hosts/);
-
-		vi.unstubAllGlobals();
-	});
-
-	it("keeps worker, service worker, and extension background presets page-free", () => {
-		const worker = createBrowserWorkerClientEnvironment(
-			createClientEnvironmentOptions(),
-		);
-		const serviceWorker = createServiceWorkerClientEnvironment(
-			createClientEnvironmentOptions(),
-		);
-		const extensionBackground =
-			createBrowserExtensionBackgroundClientEnvironment(
-				createClientEnvironmentOptions(),
-			);
-
-		expect(worker.preset).toBe(ClientEnvironmentPreset.BrowserWorker);
-		expect(serviceWorker.preset).toBe(ClientEnvironmentPreset.ServiceWorker);
-		expect(extensionBackground.preset).toBe(
-			ClientEnvironmentPreset.BrowserExtensionBackground,
-		);
-		expect("pageCapability" in worker).toBe(false);
-		expect("pageCapability" in serviceWorker).toBe(false);
-		expect("pageCapability" in extensionBackground).toBe(false);
+			createEnvironmentForNativeWeb(createClientEnvironmentOptions()),
+		).toThrow(/nativeWeb must include location.href/);
 	});
 });

@@ -1,23 +1,25 @@
 // Backend OIDC Mode — authorized transport wrapper.
 //
-// Wraps the generic createAuthorizedTransport from the orchestration layer,
+// Wraps the generic createAuthorizedTransport from @securitydept/client,
 // remapping error codes to the backend-oidc namespace.
 
-import type { HttpTransport } from "@securitydept/client";
+import type {
+	BaseTransportTrait,
+	ManagedTransportTrait,
+} from "@securitydept/client";
 import {
+	type AuthorizationHeaderProviderTrait,
 	ClientError,
 	ClientErrorKind,
+	createRemappingAuthorizedTransport,
 	UserRecovery,
 } from "@securitydept/client";
-
-export type { AuthorizationHeaderProviderTrait } from "../../orchestration/index";
-
-import type { AuthorizationHeaderProviderTrait } from "../../orchestration/index";
-import { createRemappingAuthorizedTransport } from "../../orchestration/index";
 import { BackendOidcModeContextSource } from "../runtime/types";
 
+export type { AuthorizationHeaderProviderTrait };
+
 export interface CreateBackendOidcModeAuthorizedTransportOptions {
-	transport: HttpTransport;
+	baseTransport: BaseTransportTrait;
 	requireAuthorization?: boolean;
 	clientKey?: string;
 	logicalClientId?: string;
@@ -32,7 +34,7 @@ export interface CreateBackendOidcModeAuthorizedTransportOptions {
 export function createBackendOidcModeAuthorizedTransport(
 	authorizationProvider: AuthorizationHeaderProviderTrait,
 	options: CreateBackendOidcModeAuthorizedTransportOptions,
-): HttpTransport {
+): ManagedTransportTrait {
 	return createRemappingAuthorizedTransport(authorizationProvider, {
 		...options,
 		remapError: remapAuthError,
@@ -44,7 +46,7 @@ function remapAuthError(cause: unknown): unknown {
 		return cause;
 	}
 
-	if (cause.code === "token_orchestration.authorization.unavailable") {
+	if (cause.code === "client.authorization.unavailable") {
 		return new ClientError({
 			kind: cause.kind ?? ClientErrorKind.Unauthenticated,
 			code: "backend_oidc.authorization.unavailable",

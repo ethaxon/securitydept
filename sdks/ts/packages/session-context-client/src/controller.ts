@@ -1,6 +1,6 @@
 import {
 	createSignal,
-	type HttpTransport,
+	type ExternalTransportTrait,
 	type ReadableSignalTrait,
 	readonlySignal,
 } from "@securitydept/client";
@@ -26,14 +26,14 @@ export interface SessionContextControllerState {
 
 export interface SessionContextControllerOptions {
 	client: SessionContextClient;
-	transport: HttpTransport;
+	externalTransport: ExternalTransportTrait;
 }
 
 export class SessionContextController {
 	readonly client: SessionContextClient;
 	readonly state: ReadableSignalTrait<SessionContextControllerState>;
 
-	private readonly transport: HttpTransport;
+	private readonly externalTransport: ExternalTransportTrait;
 	private readonly stateSignal = createSignal<SessionContextControllerState>({
 		status: SessionContextControllerStatus.Idle,
 		session: null,
@@ -44,7 +44,7 @@ export class SessionContextController {
 
 	constructor(options: SessionContextControllerOptions) {
 		this.client = options.client;
-		this.transport = options.transport;
+		this.externalTransport = options.externalTransport;
 		this.state = readonlySignal(this.stateSignal);
 	}
 
@@ -63,7 +63,7 @@ export class SessionContextController {
 		});
 
 		this.refreshPromise = this.client
-			.fetchUserInfo(this.transport)
+			.fetchUserInfo(this.externalTransport)
 			.then((session) => {
 				if (!this.disposed) {
 					this.stateSignal.set({
@@ -112,7 +112,9 @@ export class SessionContextController {
 			error: null,
 		});
 		try {
-			await this.client.logoutAndClearPendingLoginRedirect(this.transport);
+			await this.client.logoutAndClearPendingLoginRedirect(
+				this.externalTransport,
+			);
 			if (!this.disposed) {
 				this.stateSignal.set({
 					status: SessionContextControllerStatus.Unauthenticated,

@@ -6,7 +6,7 @@ export {
 	isReplaySignalTrait,
 	readonlyReplaySignal,
 } from "./replay-signal";
-export { createSignal, readonlySignal } from "./signal";
+export { createSignal, isSignalTrait, readonlySignal } from "./signal";
 export type {
 	ComputedReplaySignalTrait,
 	ComputedSignalTrait,

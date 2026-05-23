@@ -72,30 +72,57 @@ Packages：
 
 变更：
 
-- Framework-neutral host capability resolution 现在由 client foundation 通过 typed `ClientEnvironment`、`WebClientEnvironment`、`PageClientEnvironment` 对象拥有。
-- 历史 `ClientRuntime` 命名已收口为 `ClientEnvironment`。Core client constructor 依赖属于 environment，不是第二层 runtime。Canonical path 是 `environment.transport`、`environment.sessionStore` 等顶层字段。
-- Web host preset 是面向 browser page、browser worker、service worker、browser-extension background 的显式 factory entry，不是 automatic host detection。
-- Context 与 adapter public helper 使用同一边界。Backend-OIDC web helper、basic-auth/session redirect helper，以及 framework adapter convenience helper 不得各自重复声明或猜测 transport/store/scheduler/clock/page dependencies。
+- Framework-neutral host capability resolution 现在由 client foundation 通过 typed `FoundationEnvironment`、`NativeWebEnvironment`、`WebExtCoreEnvironment` 以及相关 host 特化对象拥有。
+- 历史 `ClientRuntime` 命名已收口为 environment terminology。Core client constructor 依赖属于 environment，不是第二层 runtime。Canonical path 是 `environment.transport`、`environment.sessionStorage` 等顶层字段。
+- Web host environment factory 是显式 composition entry，不是 automatic host detection，也不再暴露仅用于 preset 区分的 worker/service-worker/extension-background wrapper。
+- Context 与 adapter public helper 使用同一边界。Backend-OIDC web helper、basic-auth/session redirect helper，以及 framework adapter convenience helper 不得各自重复声明或猜测 transport/store/time/page dependencies。
 - Backend-OIDC web helper 按 host boundary 拆分：page-only helper 使用 page-explicit 命名；worker-safe helper 必须使用 host-injected environment/capability 或 restore-only 行为。
 
 迁移：
 
-- 在 host composition root 创建一个 environment，并把 environment object 本身沿 provider/adapter 传递。不要让 adopter 读取 `environment.runtime`；直接使用 `ClientRuntime` / `createRuntime()` / `createWebRuntime()` / `deriveClientRuntime()` 的代码应迁移到 `ClientEnvironment`、`createClientEnvironment()`、`createWebClientEnvironment()` 或 `deriveClientEnvironment()`。
+- 在 host composition root 创建一个 environment，并把 environment object 本身沿 provider/adapter 传递。不要让 adopter 读取 `environment.runtime`；直接使用历史 runtime/derive helper 的代码应迁移到 `FoundationEnvironment`、`createClientEnvironment()`、`createEnvironmentForNativeWeb()` 或直接传递结构化 environment。
 - 即使值是 page-scoped 或异步解析的，public option key 也继续叫 `environment`。不要引入 `pageEnvironment` 作为并行 key；是否需要 page capability 由类型表达。
-- Real page/tab/popup callback flow 使用 `createBrowserPageClientEnvironment(options)`。
-- Worker-like host 使用 `createBrowserWorkerClientEnvironment(options)`、`createServiceWorkerClientEnvironment(options)` 或 `createBrowserExtensionBackgroundClientEnvironment(options)`；需要 persistence/session store 时必须显式注入。
+- Real page/tab/popup callback flow 使用 `createEnvironmentForNativeWeb({ location, history, ...options })`；page capability 作为顶层 host input 显式传入，且必须来自 host composition root。
+- Worker-like host 不使用 `createEnvironmentForNativeWeb()`；应使用 `createClientEnvironment()` 或更具体的 host factory，并显式注入 persistence/session store。
 - 不要在 service worker 或 extension background 中执行 page callback bootstrap。那里只运行 restore/token-state API；callback capture 只在 real page/popup document 中运行，或在测试中显式传入 fake page/callback-fragment capability。
 - 将 ambiguous page-global helper 名称迁移到已经改名的 page-explicit 名称，例如 `currentPageLocationAsPostAuthRedirectUri()`、`buildAuthorizeUrlReturningToCurrentPage()`、`bootstrapBackendOidcModePageClient()` 与 `captureBackendOidcModePageCallbackFragment()`。
-- 将既有 redirect/popup helper（`loginWithBackendOidcRedirect()`、`loginWithBackendOidcPopup()`、`relayBackendOidcPopupCallback()`）视为 page-only helper，虽然历史名称保持不变；测试或 host wrapper 中应传入显式 page capability（`PageLocationHistoryCapability`）或携带 page capability 的 `environment`。现在 canonical 的共享 token-set OIDC 浏览器 contract 是 `OidcRedirectLoginClient` 上的 `loginWithRedirect({ environment, postAuthRedirectUri })`；通过 `createBackendOidcModeWebClient(...)` materialize 的 backend web client 会暴露这个方法，而 `loginWithBackendOidcRedirect()` 退回为兼容/convenience wrapper。Popup login 还要求显式 callback-fragment capability，browser-state reset 要求显式 `callbackFragmentStore`。
+- 将既有 redirect/popup helper（`loginWithBackendOidcRedirect()`、`loginWithBackendOidcPopup()`、`relayBackendOidcPopupCallback()`）视为 page-only helper，虽然历史名称保持不变；测试或 host wrapper 中应传入显式 `RouterTrait` / `PopupTrait` 或携带 page capability 的 `environment`。现在 canonical 的共享 token-set OIDC 浏览器 contract 是 `OidcRedirectLoginClient` 上的 `loginWithRedirect({ environment, postAuthRedirectUri })`；通过 `createBackendOidcModeWebClient(...)` materialize 的 backend web client 会暴露这个方法，而 `loginWithBackendOidcRedirect()` 退回为兼容/convenience wrapper。Popup login 还要求显式 callback-fragment capability，browser-state reset 要求显式 `callbackFragmentStore`。
 - Frontend-mode browser materialization 应在 host composition root 创建 `createFrontendOidcModeWebClientEnvironment(...)`，再传给 `createFrontendOidcModeBrowserClient({ environment, ... })`；materializer 不再在缺少 `environment` 时创建默认 environment。
-- 当 browser/page environment ownership 需要在 framework route 或 command 之间保持稳定时，应创建 provider/injector-scoped `ClientEnvironmentService`，并在 command/event flow 中使用 `await service.resolvePageEnvironment()`，在 Suspense-compatible render path 中使用 `service.readPageEnvironment()`，而不是继续发明 app-local module singleton。
-- 将会读取或写入 `window.location` 的 basic-auth/session `/web` redirect helper 视为 page helper；要么留在 real page context，要么注入显式 navigation capability。
+- 当 browser/page environment ownership 需要在 framework route 或 command 之间保持稳定时，应在 composition root 创建一个 host-owned `NativeWebEnvironment` object 并注入该对象。不要继续发明 app-local module singleton 或 SDK-local lazy environment resolver。
+- 将 basic-auth/session `/web` redirect helper 视为 page navigation helper；要么留在 real page context，要么注入显式 `RouterTrait`。
 - Framework provider/DI registration function 可以持有完整 environment composition；普通 hook、guard、interceptor、service 或 convenience helper 不应各自接受一整套分散 dependency bag。
-- 不要通过 `globalThis.location` 推断 page capability；page helper 需要 `window.location` 与 `window.history.replaceState`。
+- 不要通过 `globalThis.location` 推断 page capability；core helper 消费行为 trait。原始 `window.location` 与 `window.history` 只出现在显式 native-web adapter 输入中。
 
 理由：
 
 - 非 client-bound helper 已经开始重复 dependency bag 并隐藏读取 `window.*` default。Typed client environment 在保持 core dependency wiring 显式的同时，为 helper 提供共享、可测试、按 host 划分的 capability boundary。
+
+### TimeTrait 与 EventStream 时间源
+
+Package：
+
+- `@securitydept/client`
+
+变更：
+
+- `FoundationEnvironment` 现在承载单一 `time: TimeTrait` capability，不再拆成 `clock` 与 `scheduler` 字段。Idle work 是独立的可选 `idleCallback: IdleCallbackTrait` capability。
+- `createDefaultTimeConfig()` 取代 `createDefaultClock()` 与 `createDefaultScheduler()`。
+- `createDefaultIdleScheduler()` 与 registry `idleScheduler` wiring 已移除。Registry idle warmup 只有在 host 显式提供 `environment.idleCallback` 时才会运行。
+- `timer()`、`interval()` 与 `scheduleAt()` callback helper 已移除。使用 `fromTimeout()`、`fromInterval()` 与 `fromScheduleAt()` EventStream source。
+- `fromEventPattern()`、`fromSignal()` 与 `fromPromise()` 是 EventStream source helper；不再接收 callback option，也不再返回 scheduling-local `Subscription`。
+
+迁移：
+
+- 将 `{ clock, scheduler }` environment wiring 改为 `{ time }`；只有当 host 明确启用 registry idle warmup 时才传入带 `environment.idleCallback` 的 host-owned `{ environment }`。工具级 idle revalidation helper 仍消费显式窄 capability。
+- Registry 管理的 token-set entry 现在会通过 `clientFactory(environment)` 接收同一个 registry-owned environment。Client 构造应从该参数取能力，不应读取 module global 或继续传递分散的子 capability。
+- 将直接 callback timer handle 改为 `const sub = fromTimeout({ time, delayMs }).subscribe({ next })`，清理时调用 `sub.unsubscribe()`。
+- 将重复 callback 调度改为 `fromInterval({ time, periodMs }).subscribe({ next })`。
+- 将 `fromEventPattern({ ..., callback })` 改为 `fromEventPattern({ ... }).subscribe({ next })`。
+- 测试中需要 deterministic `now()`、timer queue、flush 与 pending-count 断言时使用 `FakeTimeConfig`。
+
+理由：
+
+- 旧 scheduler abstraction 只是 host timer wrapper，没有表达 priority、execution context、queue 或 RxJS-style scheduling。将 timer 表达成 EventStream source，可以让 refresh timer、page-resume trigger 与其它 input source 收敛到同一个 subscription model。
 
 ### Token-Set Event-Driven Auth Flow
 
@@ -212,17 +239,17 @@ Packages：
 变更：
 
 - `@securitydept/client-react` 现在拥有 canonical React injector bridge：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`，以及 context-free `useReadableSignal()` / `useEventStream()`。
-- `client-react/environment-service` 与 `planner-host` 现在只导出 injection token 与 provider factory：例如 `CLIENT_ENVIRONMENT_SERVICE` + `provideClientEnvironmentService()`，`AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`。
+- `client-react` environment 与 `planner-host` helper 现在只导出 injection token 与 provider factory：例如 `CLIENT_ENVIRONMENT` + `provideClientEnvironment(environment)`，`AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`。
 - `basic-auth` / `session` / `token-set` React adapter 不再拥有 domain-specific Provider / Context hook；它们导出 token、plain factory、provider factory，以及显式 callback/component bridge。token-set 多客户端组合现在改为显式 registry/controller wiring，而不是 SDK 预设 runtime bundle。
-- Angular `createTokenSetOidcLoginRedirectHandler()` 现在是 route-login helper。它的 public key 仍然只叫 `environment`，但这个值现在表示稳定的 page-environment source；Angular DI 应通过 `@securitydept/client-angular` 的 `providePageClientEnvironment({ environment })` 提供该 source。helper 面向共享的 `OidcRedirectLoginClient` contract，并会在 guard flow 中 await 最终 page capability 后再调用 `loginWithRedirect()`。
+- Angular `createTokenSetOidcLoginRedirectHandler()` 现在是 route-login helper。它的 public key 仍然只叫 `environment`，但这个值现在表示稳定的 native-web-environment source；Angular DI 应通过 `@securitydept/client-angular` 的 `provideNativeWebEnvironment({ environment })` 提供该 source。helper 面向共享的 `OidcRedirectLoginClient` contract，并会在 guard flow 中 await 最终 capability 后再调用 `loginWithRedirect()`。
 - Angular `CallbackResumeService` 与 React `useTokenSetCallbackResume({ getCurrentUrl, describeError })` 现在桥接 `@securitydept/token-set-context-client/registry` 的 shared `TokenSetCallbackResumeController`。Angular `TokenSetCallbackComponent` 仍是该 service 之上的 page-only convenience，并继续使用 injectable current URL 与 host policy tokens。
 
 迁移：
 
 - 在 framework composition root 构建 browser environment，再通过 `SecuritydeptProvider` + provider factory 把这些 dependency 注册到 injector 中。
 - 如果 app 依赖旧的 provider/service construction 副作用来探测 session，应显式创建 `SessionContextController`，并在 host-owned lifecycle 中调用 `controller.refresh()`。
-- 对 React render path，如需 environment service，应通过 `provideClientEnvironmentService()` 注册，再在 leaf 代码中用 `useSecuritydeptContext().get(CLIENT_ENVIRONMENT_SERVICE)` 读取；需要 page capability 的地方继续显式调用 service 的 `resolvePageEnvironment()` / `readPageEnvironment()` 或直接传入 capability。
-- 对 Angular frontend-oidc route redirect，应在 composition root 通过 `providePageClientEnvironment({ environment })` 提供一个稳定的 page-environment source，其中 `environment` 通常是 provider-scoped `ClientEnvironmentService` 或另一个 inject-safe 稳定 resolver。
+- 对 React 代码，如需 page environment capability，应通过 `provideClientEnvironment(environment)` 注册 host-owned object，再在 leaf 代码中用 `useSecuritydeptContext().get(CLIENT_ENVIRONMENT)` 读取。
+- 对 Angular frontend-oidc route redirect，应在 composition root 通过 `provideNativeWebEnvironment({ environment })` 提供 host-owned native web environment object。
 - 对 Angular callback route，在 SSR-like test 或 custom shell 中 override `TOKEN_SET_CALLBACK_CURRENT_URL`，当 host 需要非默认 fallback navigation 或集中错误记录时，再 override `TOKEN_SET_CALLBACK_COMPONENT_OPTIONS`。
 - 对 custom callback orchestration，调用 `CallbackResumeService.resume(url)` 或带显式 `controller` / `injector` / `getCurrentUrl` / `describeError` 的 React hook，而不是在普通 helper 里重新引入 page-global fallback 逻辑或 mode-specific copy。`CallbackResumeService.handleCallback(url)` 仅作为 compatibility wrapper 保留。
 

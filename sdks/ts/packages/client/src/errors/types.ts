@@ -62,12 +62,12 @@ export const ClientErrorKind = {
 	Presentation: "presentation",
 	Validation: "validation",
 	Storage: "storage",
-	Scheduler: "scheduler",
 	Configuration: "configuration",
 	Unauthenticated: "unauthenticated",
 	Unauthorized: "unauthorized",
 	RedirectRequired: "redirect_required",
 	Cancelled: "cancelled",
+	Unreachable: "unreachable",
 	Timeout: "timeout",
 	Internal: "internal",
 } as const;

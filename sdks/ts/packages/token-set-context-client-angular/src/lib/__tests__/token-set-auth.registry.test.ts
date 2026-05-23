@@ -34,13 +34,16 @@ function createAngularClient(
 	disposeSpy: () => void = vi.fn<() => void>(() => undefined),
 ): TokenSetAngularClient {
 	const authDetermined = createReplaySignal<true>();
-	authDetermined.emit(true);
+	authDetermined.setValue(true);
 	const authSnapshot = createReplaySignal<AuthSnapshot | null>();
-	authSnapshot.emit({ tokens: { accessToken: `${name}-at` }, metadata: {} });
+	authSnapshot.setValue({
+		tokens: { accessToken: `${name}-at` },
+		metadata: {},
+	});
 	const isAuthenticated = createReplaySignal<boolean>();
-	isAuthenticated.emit(true);
+	isAuthenticated.setValue(true);
 	const authorizationHeaderValue = createReplaySignal<string | undefined>();
-	authorizationHeaderValue.emit(authorizationHeader);
+	authorizationHeaderValue.setValue(authorizationHeader);
 	const lastAuthError = createSignal<unknown | undefined>(undefined);
 	return {
 		authDetermined,
@@ -55,7 +58,8 @@ function createAngularClient(
 			loginPending: createSignal(false),
 		},
 		authEvents: createSubject<TokenSetAuthEvent>(),
-		addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		removeWorkflowSource: vi.fn(() => false),
 		start: vi.fn(async () => undefined),
 		dispose: disposeSpy,
 		restorePersistedState: vi.fn(async () => null),

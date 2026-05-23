@@ -1,13 +1,14 @@
 // --- Signal trait types ---
 
 import type { CancellationTokenTrait } from "../cancellation/types";
+import type { InteropObservableTrait } from "../compat";
 
 /**
  * Read-only signal interface.
  * Semantics align with TC39 Signals proposal, but uses an SDK-owned thin protocol
  * to avoid coupling to any specific polyfill or standard implementation.
  */
-export interface ReadableSignalTrait<T> {
+export interface ReadableSignalTrait<T> extends InteropObservableTrait<T> {
 	/** Return the current snapshot value. */
 	get(): T;
 	/**
@@ -42,7 +43,11 @@ export interface ReplaySignalWhenValueOptions {
 }
 
 export interface ReadableReplaySignalTrait<T>
-	extends ReadableSignalTrait<ReplaySignalSlot<T>> {
+	extends Omit<
+			ReadableSignalTrait<ReplaySignalSlot<T>>,
+			typeof Symbol.observable
+		>,
+		InteropObservableTrait<T> {
 	hasValue(): boolean;
 	whenValue(options?: ReplaySignalWhenValueOptions): Promise<T>;
 }
@@ -52,6 +57,5 @@ export interface ComputedReplaySignalTrait<T>
 
 export interface WritableReplaySignalTrait<T>
 	extends ReadableReplaySignalTrait<T> {
-	emit(value: T): void;
-	clear(): void;
+	setValue(value: T): void;
 }

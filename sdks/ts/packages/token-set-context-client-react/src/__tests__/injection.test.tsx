@@ -65,7 +65,7 @@ function authCheckResult(snapshot: AuthSnapshot | null) {
 		return {
 			status: AuthCheckStatus.Unauthenticated,
 			snapshot: null,
-			authorizationHeader: null,
+			authorizationHeader: undefined,
 			reason: TokenSetAuthFlowReason.NoSnapshot,
 		};
 	}
@@ -101,13 +101,13 @@ describe("token-set injector factories", () => {
 	it("exposes registry and callback-controller tokens through explicit SecuritydeptProvider composition", async () => {
 		const state = createSignal<AuthSnapshot | null>(createSnapshot("main-at"));
 		const authSnapshot = createReplaySignal<AuthSnapshot | null>();
-		authSnapshot.emit(state.get());
+		authSnapshot.setValue(state.get());
 		const isAuthenticated = createReplaySignal<boolean>();
-		isAuthenticated.emit(true);
+		isAuthenticated.setValue(true);
 		const authorizationHeaderValue = createReplaySignal<string | undefined>();
-		authorizationHeaderValue.emit("Bearer main-at");
+		authorizationHeaderValue.setValue("Bearer main-at");
 		const authDetermined = createReplaySignal<true>();
-		authDetermined.emit(true);
+		authDetermined.setValue(true);
 		const lastAuthError = createSignal<unknown | undefined>(undefined);
 		const registry = createManualRegistry([
 			{
@@ -126,7 +126,8 @@ describe("token-set injector factories", () => {
 						loginPending: createSignal(false),
 					},
 					authEvents: createSubject<TokenSetAuthEvent>(),
-					addAuthCheckTriggerSource: () => ({ unsubscribe: () => undefined }),
+					addWorkflowSource: () => ({ unsubscribe: () => undefined }),
+					removeWorkflowSource: () => false,
 					start: async () => undefined,
 					dispose: () => state.set(null),
 					restorePersistedState: async () => state.get(),

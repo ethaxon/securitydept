@@ -9,7 +9,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type TokenSetAuthEvent,
 	TokenSetAuthEventType,
-	TokenSetAuthFlowSource,
 } from "../../orchestration";
 import { FrontendOidcModeCallbackErrorCode } from "../errors/callback-error-codes";
 import { FrontendOidcModeTraceEventType } from "../runtime/trace-events";
@@ -29,6 +28,14 @@ vi.mock("@securitydept/client/web", async () => {
 		waitForPopupRelay: webMocks.waitForPopupRelay,
 	};
 });
+
+function createMockPopupTrait() {
+	return {
+		open: webMocks.openPopupWindow,
+		waitForRelay: webMocks.waitForPopupRelay,
+		relayCallback: webMocks.relayPopupCallback,
+	};
+}
 
 function expectReplayValue<T>(signal: {
 	get(): { kind: "empty" } | { kind: "value"; value: T };
@@ -145,7 +152,7 @@ describe("FrontendOidcModeClient", () => {
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -185,7 +192,7 @@ describe("FrontendOidcModeClient", () => {
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -218,7 +225,7 @@ describe("FrontendOidcModeClient", () => {
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -252,12 +259,12 @@ describe("FrontendOidcModeClient", () => {
 			.mockReturnValueOnce("state-b")
 			.mockReturnValueOnce("nonce-b");
 
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore,
+			sessionStorage,
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -275,10 +282,10 @@ describe("FrontendOidcModeClient", () => {
 		await client.authorizeUrl("/after-b");
 
 		await expect(
-			sessionStore.get("securitydept.frontend_oidc.pending:state-a"),
+			sessionStorage.get("securitydept.frontend_oidc.pending:state-a"),
 		).resolves.not.toBeNull();
 		await expect(
-			sessionStore.get("securitydept.frontend_oidc.pending:state-b"),
+			sessionStorage.get("securitydept.frontend_oidc.pending:state-b"),
 		).resolves.not.toBeNull();
 
 		await expect(
@@ -288,10 +295,10 @@ describe("FrontendOidcModeClient", () => {
 		).resolves.toMatchObject({ postAuthRedirectUri: "/after-a" });
 
 		await expect(
-			sessionStore.get("securitydept.frontend_oidc.pending:state-a"),
+			sessionStorage.get("securitydept.frontend_oidc.pending:state-a"),
 		).resolves.toBeNull();
 		await expect(
-			sessionStore.get("securitydept.frontend_oidc.pending:state-b"),
+			sessionStorage.get("securitydept.frontend_oidc.pending:state-b"),
 		).resolves.not.toBeNull();
 
 		await expect(
@@ -306,7 +313,7 @@ describe("FrontendOidcModeClient", () => {
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -340,7 +347,7 @@ describe("FrontendOidcModeClient", () => {
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -365,12 +372,12 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("rejects callbacks whose pending state has expired", async () => {
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore,
+			sessionStorage,
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -384,7 +391,7 @@ describe("FrontendOidcModeClient", () => {
 			runtime,
 		);
 
-		await sessionStore.set(
+		await sessionStorage.set(
 			"securitydept.frontend_oidc.pending:state-stale",
 			JSON.stringify({
 				codeVerifier: "code-verifier",
@@ -410,12 +417,12 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("rejects callbacks whose pending state belongs to another frontend client", async () => {
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const runtime = createClientEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore,
+			sessionStorage,
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -429,7 +436,7 @@ describe("FrontendOidcModeClient", () => {
 			runtime,
 		);
 
-		await sessionStore.set(
+		await sessionStorage.set(
 			"securitydept.frontend_oidc.pending:state-mismatch",
 			JSON.stringify({
 				codeVerifier: "code-verifier",
@@ -463,7 +470,7 @@ describe("FrontendOidcModeClient", () => {
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -506,7 +513,7 @@ describe("FrontendOidcModeClient", () => {
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -542,8 +549,9 @@ describe("FrontendOidcModeClient", () => {
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore: createInMemoryRecordStore(),
-			traceSink: trace,
+			sessionStorage: createInMemoryRecordStore(),
+			telemetry: { traceSink: trace },
+			popup: createMockPopupTrait(),
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -602,7 +610,7 @@ describe("FrontendOidcModeClient", () => {
 						body: null,
 					})),
 				},
-				sessionStore: createInMemoryRecordStore(),
+				sessionStorage: createInMemoryRecordStore(),
 			});
 
 			const client = new FrontendOidcModeClient(
@@ -618,15 +626,15 @@ describe("FrontendOidcModeClient", () => {
 
 			await expect(
 				client.loginWithRedirect(undefined as never),
-			).rejects.toThrow(/createBrowserPageClientEnvironment/);
+			).rejects.toThrow(/createEnvironmentForNativeWeb/);
 			await expect(client.loginWithRedirect({} as never)).rejects.toThrow(
-				/createBrowserPageClientEnvironment/,
+				/createEnvironmentForNativeWeb/,
 			);
 			expect(() => relayFrontendOidcPopupCallback(undefined as never)).toThrow(
-				/createBrowserPageClientEnvironment/,
+				/createEnvironmentForNativeWeb/,
 			);
 			expect(() => relayFrontendOidcPopupCallback({} as never)).toThrow(
-				/createBrowserPageClientEnvironment/,
+				/createEnvironmentForNativeWeb/,
 			);
 			expect(windowRead).toBe(false);
 		} finally {
@@ -644,8 +652,8 @@ describe("FrontendOidcModeClient", () => {
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore: createInMemoryRecordStore(),
-			traceSink: trace,
+			sessionStorage: createInMemoryRecordStore(),
+			telemetry: { traceSink: trace },
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -685,8 +693,8 @@ describe("FrontendOidcModeClient", () => {
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore: createInMemoryRecordStore(),
-			traceSink: trace,
+			sessionStorage: createInMemoryRecordStore(),
+			telemetry: { traceSink: trace },
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -737,8 +745,8 @@ describe("FrontendOidcModeClient", () => {
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore: createInMemoryRecordStore(),
-			traceSink: trace,
+			sessionStorage: createInMemoryRecordStore(),
+			telemetry: { traceSink: trace },
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -762,7 +770,7 @@ describe("FrontendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		await client.refresh();
+		await client.refreshState();
 
 		const refreshStarted = trace.ofType(
 			FrontendOidcModeTraceEventType.RefreshStarted,
@@ -795,7 +803,7 @@ describe("FrontendOidcModeClient", () => {
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -821,9 +829,7 @@ describe("FrontendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		await client.authCheck({
-			forceRefreshWhenDue: true,
-		});
+		await client.authCheck();
 
 		const authenticatedEvents = events.filter(
 			(event) => event.type === TokenSetAuthEventType.AuthAuthenticated,
@@ -833,12 +839,8 @@ describe("FrontendOidcModeClient", () => {
 
 		expect(refreshAuthenticatedEvent?.payload).toEqual(
 			expect.objectContaining({
-				source: TokenSetAuthFlowSource.ExplicitCall,
 				hasRefreshMaterial: true,
 			}),
-		);
-		expect(refreshAuthenticatedEvent?.payload.source).not.toBe(
-			TokenSetAuthFlowSource.Callback,
 		);
 	});
 
@@ -852,7 +854,7 @@ describe("FrontendOidcModeClient", () => {
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
-			sessionStore: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -876,7 +878,7 @@ describe("FrontendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		const refreshed = await client.refresh();
+		const refreshed = await client.refreshState();
 
 		expect(refreshed?.tokens.refreshMaterial).toBe("seed-rt");
 		expect(expectReplayValue(client.authSnapshot)?.tokens.refreshMaterial).toBe(

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
 	freshBearerHeader,
-	getTokenFreshness,
+	getTokenFreshnessFromAccessTokenMetadata,
 	isAccessTokenUsable,
 	shouldRefreshAccessToken,
 	TokenFreshnessState,
-} from "../token/token-ops";
+} from "../token/ops";
 import type { AuthSnapshot } from "../token/types";
 
 const NOW = Date.parse("2026-01-01T00:00:00Z");
@@ -28,28 +28,28 @@ function snapshot(options: Partial<AuthSnapshot["tokens"]>): AuthSnapshot {
 describe("token freshness operations", () => {
 	it("classifies fresh, refresh-due, expired, no-expiry, and invalid expiry tokens", () => {
 		expect(
-			getTokenFreshness(
+			getTokenFreshnessFromAccessTokenMetadata(
 				snapshot({ accessTokenExpiresAt: "2026-01-01T00:05:00Z" }),
 				OPTIONS,
 			),
 		).toBe(TokenFreshnessState.Fresh);
 		expect(
-			getTokenFreshness(
+			getTokenFreshnessFromAccessTokenMetadata(
 				snapshot({ accessTokenExpiresAt: "2026-01-01T00:01:20Z" }),
 				OPTIONS,
 			),
 		).toBe(TokenFreshnessState.RefreshDue);
 		expect(
-			getTokenFreshness(
+			getTokenFreshnessFromAccessTokenMetadata(
 				snapshot({ accessTokenExpiresAt: "2025-12-31T23:59:59Z" }),
 				OPTIONS,
 			),
 		).toBe(TokenFreshnessState.Expired);
-		expect(getTokenFreshness(snapshot({}), OPTIONS)).toBe(
-			TokenFreshnessState.NoExpiry,
-		);
 		expect(
-			getTokenFreshness(
+			getTokenFreshnessFromAccessTokenMetadata(snapshot({}), OPTIONS),
+		).toBe(TokenFreshnessState.NoExpiry);
+		expect(
+			getTokenFreshnessFromAccessTokenMetadata(
 				snapshot({ accessTokenExpiresAt: "not-a-date" }),
 				OPTIONS,
 			),
@@ -77,14 +77,20 @@ describe("token freshness operations", () => {
 			refreshMaterial: "rt",
 		});
 
-		expect(getTokenFreshness(shortLived, OPTIONS)).toBe(
+		expect(getTokenFreshnessFromAccessTokenMetadata(shortLived, OPTIONS)).toBe(
 			TokenFreshnessState.Fresh,
 		);
 		expect(
-			getTokenFreshness(shortLived, { ...OPTIONS, now: NOW + 30_000 }),
+			getTokenFreshnessFromAccessTokenMetadata(shortLived, {
+				...OPTIONS,
+				now: NOW + 30_000,
+			}),
 		).toBe(TokenFreshnessState.RefreshDue);
 		expect(
-			getTokenFreshness(shortLived, { ...OPTIONS, now: NOW + 50_000 }),
+			getTokenFreshnessFromAccessTokenMetadata(shortLived, {
+				...OPTIONS,
+				now: NOW + 50_000,
+			}),
 		).toBe(TokenFreshnessState.Expired);
 	});
 });

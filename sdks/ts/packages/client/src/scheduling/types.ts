@@ -1,17 +1,19 @@
-// --- Scheduling and clock abstractions ---
+// --- Time capability abstraction ---
 
-/** Wall clock abstraction — injectable for testing. */
-export interface Clock {
+export interface TimestampProviderTrait {
 	/** Return current epoch milliseconds. */
 	now(): number;
 }
 
-/** Cancelable scheduled task handle. */
-export interface CancelableHandle {
-	cancel(): void;
+/** Injectable time capability for host timers and deterministic tests. */
+export interface TimeTrait extends TimestampProviderTrait {
+	/** Return current epoch milliseconds. */
+	setTimeout(handler: () => void, delayMs: number): unknown;
+	clearTimeout(handle: unknown): void;
 }
 
-/** Scheduler abstraction — decoupled from platform timers. */
-export interface Scheduler {
-	setTimeout(delayMs: number, fn: () => void): CancelableHandle;
+/** Injectable idle-callback capability for hosts that explicitly support it. */
+export interface IdleCallbackTrait {
+	requestIdleCallback(callback: () => void): unknown;
+	cancelIdleCallback(handle: unknown): void;
 }

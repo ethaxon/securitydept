@@ -35,8 +35,8 @@ What stays outside the SDK:
 
 - **auth context**: a deployment-oriented family such as basic-auth, session, or token-set.
 - **mode**: a concrete operating shape inside an auth context, such as `frontend-oidc` or `backend-oidc`.
-- **environment**: a host composition-root dependency object. It carries transport, stores, clock, scheduler, logging/tracing, and host capabilities such as page location/history. Core client constructor dependencies are also an environment; they are not a separate runtime object.
-- **capability**: the narrowest structural view a helper needs from an environment or host object, such as `PageLocationCapability` or `PageLocationHistoryCapability`.
+- **environment**: a host composition-root dependency object. It carries behavior traits such as `ExternalTransportTrait`, `TimeTrait`, optional `IdleCallbackTrait`, `StorageTrait`, `TelemetryTrait`, `RouterTrait`, `PageLifecycleTrait`, and `PopupTrait`. Core client constructor dependencies are also an environment; they are not a separate runtime object.
+- **capability / trait**: the narrowest behavior contract a helper needs from an environment or host adapter, such as `RouterTrait` for auth navigation. Raw host objects such as `window`, `document`, `location`, and `history` are adapter inputs, not core environment fields.
 - **client**: a protocol/domain object that performs auth, session, OIDC, token, or resource operations.
 - **registry**: a multi-client owner for registration, readiness/lazy lifecycle, keyed lookup, URL/callback discrimination, and route/resource orchestration.
 - **controller**: a framework-neutral state-machine or flow-orchestration owner. It owns state/signals, in-flight coalescing/dedupe, disposal, and commands such as `resume()`, `refresh()`, or `logout()`.
@@ -98,7 +98,7 @@ Transport is always injected or selected by the host. SDK packages must not assu
 
 ### Persistence
 
-`@securitydept/client/persistence` owns `RecordStore` semantics, including single-consume callback state through `take()`. `@securitydept/client/persistence/web` owns browser persistence adapters.
+`@securitydept/client/persistence` owns `StorageTrait` semantics, including single-consume callback state through `take()`. `@securitydept/client/persistence/web` owns browser persistence adapters.
 
 ### Auth Coordination
 
@@ -116,7 +116,7 @@ Do not flatten these into one global config DSL for the current baseline.
 
 ### Scheduling and Unified Input Sources
 
-Scheduling, cancellation, abort interop, visibility, storage, and promise/signal helpers live in foundation and web subpaths. They are shared primitives, not a stream DSL.
+Scheduling, cancellation, abort interop, storage, page lifecycle, and promise/signal helpers live in foundation and web subpaths. Browser lifecycle behavior is exposed as explicit EventStream sources that consume host-provided capabilities; SDK helpers must not discover `window` or `document` implicitly.
 
 ### Unified Dependency Injection
 
@@ -124,23 +124,24 @@ Scheduling, cancellation, abort interop, visibility, storage, and promise/signal
 
 React is allowed exactly one SDK Context, all in `@securitydept/client-react`: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()`. Domain React packages no longer create their own public Context/Provider/`useXxxContext()` surface. They export injection tokens, provider factories, explicit callback/component bridges, and signal/event helpers that compose with `useReadableSignal()` and `useEventStream()`.
 
-Angular DI remains an adapter concern. Framework-neutral host capability resolution remains a foundation concern. Core clients still consume `ClientEnvironment`; non-client-bound helpers still consume explicit typed environment objects or narrower capability views created by the host composition root.
+Angular DI remains an adapter concern. Framework-neutral host capability resolution remains a foundation concern. Core clients still consume `FoundationEnvironment`; non-client-bound helpers still consume explicit typed environment objects or narrower capability views created by the host composition root.
 
 The canonical foundation model is:
 
-- `ClientEnvironment` is the flattened foundation client dependency environment. It directly carries transport, scheduler, clock, logging/tracing, and persistence/session stores. Historical `ClientRuntime` naming is retired and not canonical vocabulary.
-- `WebClientEnvironment` is the Web-capable client environment and does not imply a page document.
-- `PageClientEnvironment` extends the Web environment with page-only capabilities such as `window.location` and `window.history`.
-- Helpers should request the narrowest capability view they need, for example `Pick<WebClientEnvironment, "transport" | "sessionStore">` or `PageLocationHistoryCapability`, rather than accepting the full environment by default.
-- `environment.runtime`, `ClientRuntime`, `createRuntime()`, `createWebRuntime()`, and `deriveClientRuntime()` are retired naming artifacts. New public API and documentation must use Environment names such as `ClientEnvironment`, `createClientEnvironment()`, or `deriveClientEnvironment()`.
+- `FoundationEnvironment` is the flattened foundation client dependency environment. It directly carries `transport`, `time`, optional `idleCallback`, `persistentStorage`, `sessionStorage`, `telemetry`, `router`, `pageLifecycle`, and `popup`. Historical `ClientRuntime` naming is retired and not canonical vocabulary.
+- `NativeWebEnvironment` is the canonical browser page environment. It extends the foundation environment with host-owned page capabilities such as `router`, `PageLifecycleTrait`, and `PopupTrait`; it does not expose `window.location` or `window.history`, and it no longer mirrors router methods at the top level.
+- `WebExtCoreEnvironment` is the shared extension-core environment above the foundation layer. `WebExtBackgroundEnvironment` is the background-script specialization, and `WebExtPageEnvironment` combines extension-core capabilities with `NativeWebEnvironment`.
+- `ServiceWorkerEnvironment` is the service-worker specialization above the foundation layer.
+- Helpers should request the narrowest behavior trait they need, for example `RouterTrait`, `PopupTrait`, or `Pick<FoundationEnvironment, "transport" | "sessionStorage">`, rather than accepting the full environment by default.
+- `environment.runtime` and historical runtime/derive helper names are retired naming artifacts. New public API and documentation must use Environment names such as `FoundationEnvironment`, `createClientEnvironment()`, or direct structural `FoundationEnvironment` / `NativeWebEnvironment` passing.
 - Public option keys that carry environment-like dependency sources should stay named `environment`; the required capability is expressed by the type, not by introducing parallel keys such as `pageEnvironment`.
 
 Conceptual split:
 
 | Concept | Owns | Does not own | Naming |
 |---|---|---|---|
-| Environment | host dependencies and capabilities | business lifecycle state machine | `ClientEnvironment`, `WebClientEnvironment`, `PageClientEnvironment` |
-| Capability | minimal structural dependency view | unrelated host dependencies | `PageLocationCapability` |
+| Environment | host dependencies and capabilities | business lifecycle state machine | `FoundationEnvironment`, `NativeWebEnvironment`, `WebExtCoreEnvironment` |
+| Trait | minimal behavior dependency view | unrelated host dependencies | `RouterTrait`, `StorageTrait`, `PopupTrait` |
 | Client | protocol/domain operations | framework lifecycle or DI | `SessionContextClient`, `BackendOidcModeClient` |
 | Registry | multi-client registration/readiness/discrimination | UI policy or framework state | `TokenSetAuthRegistry` |
 | Controller | framework-neutral flow/state orchestration | framework DI facade or product UI | `TokenSetCallbackResumeController`, `SessionContextController` |
@@ -148,20 +149,21 @@ Conceptual split:
 
 Do not model these objects as a DI container, service locator, provider tree, global singleton, or business config DSL. Auth-context configuration such as base URLs, source keys, account binding, and product routes remains in family config or host code, not in the foundation environment.
 
-Foundation Web presets are explicit composition templates, not automatic host detection:
+### Foundation Web environment factories
 
-| Preset factory | Returns | Default page capabilities | Default Web storage | Intended host |
+Foundation Web environment factories are explicit composition helpers, not automatic host detection:
+
+| Factory | Returns | Page capabilities | Default Web storage | Intended host |
 |---|---|---:|---:|---|
-| `createBrowserPageClientEnvironment(options)` | `PageClientEnvironment` | yes | yes | real browser page, tab, or popup document |
-| `createBrowserWorkerClientEnvironment(options)` | `WebClientEnvironment` | no | no | dedicated/shared worker-style browser host |
-| `createServiceWorkerClientEnvironment(options)` | `WebClientEnvironment` | no | no | service worker |
-| `createBrowserExtensionBackgroundClientEnvironment(options)` | `WebClientEnvironment` | no | no | extension background or MV3 service-worker-style host |
+| `createEnvironmentForNativeWeb({ location, history, ...options })` | `NativeWebEnvironment` | host adapter only | yes | real browser page, tab, or popup document |
+| `createEnvironmentForWebExtBackgroundScript(options)` | `WebExtBackgroundEnvironment` | no | extension storage when supplied | extension background scripts |
+| `createEnvironmentForTest(options)` | `FoundationEnvironment` | no | in-memory test storage by default | deterministic tests |
 
-Preset names are public vocabulary for docs, trace/error context, and tests through `ClientEnvironmentPreset`. Do not use a string-driven `createEnvironmentFromPreset(name)` or global-shape detection to guess the host. Worker, service-worker, and extension-background presets must receive persistence/session stores explicitly when they need storage, and page-only helpers must fail fast when used outside a page environment.
+Do not use a string-driven `createEnvironmentFromPreset(name)`, preset-only wrapper factories, or global-shape detection to guess the host. Core clients never read `window`, `document`, `location`, or `history`; only explicitly named host adapters such as `createRouterForNativeWeb()`, `createPageLifecycleForNativeWeb()`, `createPopupForNativeWeb()`, and `createEnvironmentForNativeWeb()` may read native globals when the caller does not provide the host objects. `NativeWeb` means a normal browser page host with native navigation/location/history capabilities; worker-like hosts should use `createClientEnvironment()` or a more specific host factory.
 
-When a host needs stable layered environment ownership across routes, commands, or framework adapters, use `ClientEnvironmentService` from `@securitydept/client/web` as the reusable foundation resolver. `resolveClientEnvironment()` / `resolveWebEnvironment()` / `resolvePageEnvironment()` coalesce concurrent async materialization, while `read*()` exposes Suspense-compatible render-time reads by throwing the shared pending promise or cached error. In React, the canonical bridge is no longer a dedicated environment Provider; instead, register `provideClientEnvironmentService()` through `SecuritydeptProvider` and read the same service later through `useSecuritydeptContext().get(CLIENT_ENVIRONMENT_SERVICE)` or explicit props. In Angular, the canonical DI bridge remains `providePageClientEnvironment({ environment })` from `@securitydept/client-angular`. Service instances belong to the framework composition root (injector or another host-owned scope), not to JS module-cache singletons.
+When a host needs browser-page capabilities across routes, commands, or framework adapters, create one explicit `NativeWebEnvironment` at the composition root and pass that object through the framework bridge. In React, register it through `provideClientEnvironment(environment)` and read it later with `useSecuritydeptContext().get(CLIENT_ENVIRONMENT)`. In Angular, provide the same object with `provideNativeWebEnvironment({ environment })`. The SDK does not expose a separate layered environment resolver: `NativeWebEnvironment` structurally covers the foundation `FoundationEnvironment`, and `WebExtPageEnvironment` structurally combines `WebExtCoreEnvironment` plus `NativeWebEnvironment`.
 
-This rule applies beyond `@securitydept/client`: context packages and framework adapters must use the same boundary for public helpers. Any helper that reads host globals, performs page navigation, constructs a client, or owns transport/store/scheduler/clock wiring should accept a client environment or a narrow capability view. Provider, DI, and top-level adapter registration APIs may accept a full environment as composition roots; ordinary hooks, guards, interceptors, services, and convenience helpers should not each redeclare the full dependency bag.
+This rule applies beyond `@securitydept/client`: context packages and framework adapters must use the same boundary for public helpers. Any helper that reads host globals, performs page navigation, constructs a client, or owns transport/store/time wiring should accept a client environment or a narrow capability view. Provider, DI, and top-level adapter registration APIs may accept a full environment as composition roots; ordinary hooks, guards, interceptors, services, and convenience helpers should not each redeclare the full dependency bag.
 
 ## Context Client Design
 
@@ -193,7 +195,7 @@ SDK errors expose machine-facing codes and host-facing recovery hints where rele
 
 ## Cancellation and Disposal
 
-`@securitydept/client/web` owns browser cancellation interop, including AbortSignal bridges. Long-lived hosts should wire cancellation and disposal explicitly.
+`@securitydept/client` owns the WHATWG-aligned AbortSignal event bridge and foundation-to-AbortSignal bridge, while `@securitydept/client/web` keeps the native-web `AbortSignal -> CancellationTokenTrait` convenience bridge. Long-lived hosts should wire cancellation and disposal explicitly.
 
 ## Logging, Tracing, and Testing
 
@@ -305,7 +307,7 @@ Framework router adapters are owned by:
 
 Canonical semantics: full matched-route chain aggregation, `inherit` / `merge` / `replace`, child-route serializable metadata, root-level runtime policy, and no product chooser UI in the SDK.
 
-Angular token-set route handlers receive a route unauthenticated context with `attemptedUrl`. Use that value when starting OIDC redirect login so the attempted navigation is recorded as `postAuthRedirectUri`. The canonical Angular path is to provide one provider-scoped environment source from the composition root with `providePageClientEnvironment({ environment })`, where `environment` is typically a stable `ClientEnvironmentService` or another inject-safe resolver owned by Angular DI, then call `createTokenSetOidcLoginRedirectHandler({ ... })` without re-creating page capability in every guard path. The shared contract is `OidcRedirectLoginClient` plus `OidcRedirectLoginOptions` from `@securitydept/token-set-context-client/registry`; Angular, React/TanStack, `FrontendOidcModeClient`, and backend-oidc web clients all target that capability instead of a mode-qualified helper. The helper keeps `environment` as its public key, but that key now represents a stable page-environment source that the guard awaits inside the same async flow as registry lookup; use an already-materialized page environment object only when the host intentionally owns synchronous page capability. Do not read Angular `Router.url` for this value inside a guard handler, because the attempted navigation has not been committed yet. A handler that has started a full-page external redirect should not resolve to `false`; the SDK helper returns a never-settling guard result after starting the redirect so Angular does not finalize an in-app navigation cancel while the page is leaving.
+Angular token-set route handlers receive a route unauthenticated context with `attemptedUrl`. Use that value when starting OIDC redirect login so the attempted navigation is recorded as `postAuthRedirectUri`. The canonical Angular path is to provide the host-owned native web environment object from the composition root with `provideNativeWebEnvironment({ environment })`, then call `createTokenSetOidcLoginRedirectHandler({ ... })` without re-creating page capability in every guard path. The shared contract is `OidcRedirectLoginClient` plus `OidcRedirectLoginOptions` from `@securitydept/token-set-context-client/registry`; Angular, React/TanStack, `FrontendOidcModeClient`, and backend-oidc web clients all target that capability instead of a mode-qualified helper. Do not read Angular `Router.url` for this value inside a guard handler, because the attempted navigation has not been committed yet. A handler that has started a full-page external redirect should not resolve to `false`; the SDK helper returns a never-settling guard result after starting the redirect so Angular does not finalize an in-app navigation cancel while the page is leaving.
 
 TanStack Router's `createSecureBeforeLoad()` likewise passes an unauthenticated handler context with `attemptedUrl`. React/TanStack adopters that start a full-page external auth redirect should use `createExternalRedirectBeforeLoadHandler()`, call their login client inside the callback, and pass `context.attemptedUrl` as `postAuthRedirectUri`. Do not infer the target page from `window.location`; while `beforeLoad` is running, the current document URL may still be the previously committed route.
 
@@ -349,19 +351,19 @@ Use `@securitydept/token-set-context-client/backend-oidc-mode/web` for backend-o
 
 This subpath is browser-host glue, not a promise that every Web-like runtime has page navigation. Use the foundation environment boundary before choosing helpers:
 
-- Browser client construction should take a `WebClientEnvironment` created at the host composition root. Do not pass transport, scheduler, clock, persistent store, and session store independently to every helper.
+- Browser client construction should take a host-owned `FoundationEnvironment` or `NativeWebEnvironment`, depending on whether page capabilities are required. Do not pass transport, time, persistent store, and session store independently to every helper.
 - Worker-like hosts, service workers, and extension backgrounds may create/restore clients and run token-state APIs, but they must not run page callback capture by default.
-- Page-only helpers may read `window.location` / `window.history` only through `PageClientEnvironment`; their names or options must make the page boundary explicit, such as `currentPageLocationAsPostAuthRedirectUri`, `buildAuthorizeUrlReturningToCurrentPage`, `bootstrapBackendOidcModePageClient`, and `captureBackendOidcModePageCallbackFragment`. For token-set OIDC login, the shared browser entry is `loginWithRedirect({ environment, postAuthRedirectUri })` on an `OidcRedirectLoginClient`: `FrontendOidcModeClient` satisfies that contract directly, and `createBackendOidcModeWebClient(...)` materializes the same method while `loginWithBackendOidcRedirect(...)` remains a legacy/convenience alias. Popup helpers such as `loginWithBackendOidcPopup` and `relayBackendOidcPopupCallback` remain page-only and fail fast outside an explicit environment.
+- Page-only helpers may read `window.location` / `window.history` only through `NativeWebEnvironment`; their names or options must make the page boundary explicit, such as `currentPageLocationAsPostAuthRedirectUri`, `buildAuthorizeUrlReturningToCurrentPage`, `bootstrapBackendOidcModePageClient`, and `captureBackendOidcModePageCallbackFragment`. For token-set OIDC login, the shared browser entry is `loginWithRedirect({ environment, postAuthRedirectUri })` on an `OidcRedirectLoginClient`: `FrontendOidcModeClient` satisfies that contract directly, and `createBackendOidcModeWebClient(...)` materializes the same method while `loginWithBackendOidcRedirect(...)` remains a legacy/convenience alias. Popup helpers such as `loginWithBackendOidcPopup` and `relayBackendOidcPopupCallback` remain page-only and fail fast outside an explicit environment.
 - Host-injected callback helpers must receive a `BackendOidcModeWebClientEnvironment` or explicit page/callback-fragment capabilities. `loginWithBackendOidcPopup()` requires `BackendOidcModePopupLoginCapability`, and `resetBackendOidcModeBrowserState()` requires an explicit `callbackFragmentStore`; ordinary helpers do not construct global session-storage-backed fragment stores. They must fail fast when a required capability is missing instead of falling through to `window is not defined` or stale URL parsing.
 
 Recommended host environments:
 
 | Host | Environment | Callback capture | Restore/token state | Storage defaults |
 |---|---|---:|---:|---|
-| browser page/tab/popup | `PageClientEnvironment` | yes | yes | page storage may be used |
-| browser worker | `WebClientEnvironment` | no by default | yes | explicit store only |
-| service worker | `WebClientEnvironment` | no by default | yes | explicit store only |
-| extension background | `WebClientEnvironment` | no by default | yes | explicit store only |
+| browser page/tab/popup | `NativeWebEnvironment` | yes | yes | page storage may be used |
+| browser worker | `FoundationEnvironment` | no by default | yes | explicit store only |
+| service worker | `ServiceWorkerEnvironment` | no by default | yes | explicit store only |
+| extension background | `WebExtBackgroundEnvironment` | no by default | yes | explicit store only |
 
 Do not decide whether callback bootstrap is allowed by checking `globalThis.location`. A service worker or extension background may expose a location-like object without page history semantics. Page detection must validate page/document capabilities such as `window.location` and `window.history.replaceState`.
 
@@ -379,7 +381,7 @@ Use:
 React composition still follows the three-layer model: auth-context config, injector providers/factories, and host registration glue.
 
 - `@securitydept/client-react` owns the only SDK React Context: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()`. It also owns the context-free signal/event bridge `useReadableSignal()` and `useEventStream()`.
-- `provideClientEnvironmentService()` and the planner-host factories (`AUTH_PLANNER_HOST`, `provideAuthPlannerHost()`, `AUTH_REQUIREMENTS_CLIENT_SET`, `provideRequirementsClientSet()`) register shared dependencies into the injector. They do not introduce additional domain-specific Providers or Context hooks.
+- `provideClientEnvironment(environment)` and the planner-host factories (`AUTH_PLANNER_HOST`, `provideAuthPlannerHost()`, `AUTH_REQUIREMENTS_CLIENT_SET`, `provideRequirementsClientSet()`) register shared dependencies into the injector. They do not introduce additional domain-specific Providers or Context hooks.
 - `@securitydept/basic-auth-context-client-react` exports `BASIC_AUTH_CONTEXT_CLIENT`, `createBasicAuthContextClient()`, and `provideBasicAuthContextClient()`. React code reads the client through `useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT)`.
 - `@securitydept/session-context-client-react` exports `SESSION_CONTEXT_CLIENT`, `SESSION_CONTEXT_CONTROLLER`, `createSessionContextController()`, and `provideSessionContextController()`. React code reads controller/client through `useSecuritydeptContext().get(...)` and reads state through `useReadableSignal(controller.state)`.
 - `@securitydept/token-set-context-client-react` exports `provideTokenSetAuthRegistry()`, `TOKEN_SET_AUTH_REGISTRY`, `provideTokenSetCallbackResumeController()`, `TOKEN_SET_CALLBACK_RESUME_CONTROLLER`, `useTokenSetCallbackResume()`, and `TokenSetCallbackComponent`. There is no separate token-set runtime wrapper anymore. The canonical keyed auth-state path is `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` followed by `useReadableSignal(registry.clientSignalFor("main"))`, then reading the returned client's replay channels such as `authSnapshot` or `isAuthenticated`.
@@ -396,10 +398,10 @@ Use:
 Layering rules:
 
 - `provideBasicAuthContext({ config })`: auth-context config only.
-- `provideSessionContext({ config, environment, initialRefresh })`: adapter leaf over `SessionContextController`; Angular DI reads `environment.transport` and `environment.sessionStore` from the same `WebClientEnvironment` and registers the controller. Service construction does not auto-probe user-info unless `initialRefresh` is explicit.
+- `provideSessionContext({ config, environment, initialRefresh })`: adapter leaf over `SessionContextController`; Angular DI reads `environment.transport` and `environment.sessionStorage` from the same `FoundationEnvironment` and registers the controller. Service construction does not auto-probe user-info unless `initialRefresh` is explicit.
 - `SessionContextService`: signal / observable facade over the controller. Low-level auth-context behavior remains on `SessionContextService.client`.
 - `provideTokenSetAuth({ clients, idleWarmup })`: Angular host registration; each client entry still owns auth-context config and environment composition.
-- `providePageClientEnvironment({ environment })`: canonical Angular DI bridge for page-scoped capability resolution. The canonical value is a provider-scoped `ClientEnvironmentService` or another inject-safe stable resolver that can await page capability; passing a synchronous page environment object is only the already-materialized host-owned case.
+- `provideNativeWebEnvironment({ environment })`: canonical Angular DI bridge for native-web-scoped capability injection. The canonical value is the host-owned `NativeWebEnvironment` object.
 - `CallbackResumeService` wraps the shared `TokenSetCallbackResumeController` and exposes component-free `resume(url)` state through Angular signals / observables. `TokenSetCallbackComponent` is only a page-only convenience component on top of that service; custom hosts, SSR-like tests, or shell adapters can override URL/policy tokens or call `CallbackResumeService.resume(url)` directly. `handleCallback(url)` remains a compatibility wrapper.
 - `provideTokenSetBearerInterceptor(options?)` / `createTokenSetBearerInterceptor(registry, options?)`: bearer-header injection using the SDK options-object API form. Before adding `Authorization`, the interceptor waits for the selected client's `authorizationHeaderValue` replay signal. It does not trigger refresh or auth checks; client `start()`, refresh timers, page-resume auth-check triggers, or explicit `authCheck()` own maintenance. `BearerInterceptorOptions.strictUrlMatch` controls unmatched URL behavior:
   - default `strictUrlMatch: false`: keeps the single-client convenience fallback by waiting for the only registered client's `authorizationHeaderValue`; use only when the host calls exactly one registered backend.
@@ -409,7 +411,7 @@ Layering rules:
 
 Freshness is owned by the token-set core, not by one framework adapter. Consumer code reads replay channels: first-screen readiness uses `authDetermined`, stable UI uses `authSnapshot`, route guards use `isAuthenticated`, and transports/interceptors use `authorizationHeaderValue`. `authCheck(options?)` is the only explicit maintenance command and should be reserved for advanced callers that intentionally trigger one serialized check. Event payloads must not contain raw access, refresh, or ID token values. Header availability does not have a separate event/status lifecycle: usable bearer projection is part of the authenticated snapshot, while missing bearer material remains unauthenticated or an undefined header projection. Mode clients do not expose synchronous bearer convenience APIs, and registry token sugar is not part of the public model. Use `registry.whenReady(key?)` or `registry.clientSignalFor(key?)` to acquire a started client, then consume that client's replay signals.
 
-Browser-owned frontend/backend OIDC factories attach a page-resume auth-check trigger by default. Angular `provideTokenSetAuth(...)` installs the same default for registry-managed browser clients, including `clientFactory` implementations that directly return `createFrontendOidcModeClient(...)`. On `visibilitychange` back to visible, `pageshow`, `focus`, and `online`, the page source emits an auth-check trigger; the client then runs the same queued auth-check pipeline used by restore and refresh timers and emits `auth.check.*` events with `authCheckReason: "page_resume"`. This is a recovery barrier, not an interactive login trigger: refresh failures clear or preserve auth state through the normal token-set client paths, and route/request handlers decide whether to start login. Set per-client `pageResumeAuthCheck: false` only for hosts that install their own equivalent trigger source; pass `pageResumeAuthCheckOptions` to provide custom browser targets or throttling in tests.
+Browser-owned frontend/backend OIDC factories configure page-resume auth-check through the client runtime option `authCheck.triggerSources.pageResume`. The bundled source only consumes the host-owned `PageLifecycleTrait.resume` event stream; it never accepts or discovers raw `document` or `window` targets in token-set orchestration. Angular registry entries no longer patch clients with page-resume triggers during materialization: Angular hosts should construct the client with the desired `authCheck.triggerSources` configuration in `clientFactory(environment)`. On `visibilitychange` back to visible, `pageshow`, `focus`, and `online`, the page source emits a pure EventStream auth-check trigger. The client-owned dispatcher submits trigger events into the serialized auth-check runner; restore and explicit `authCheck()` use command gateways for their promise-returning semantics, while the refresh timer is another trigger source derived from `authSnapshot`. Completed checks emit `auth.check.*` events with `authCheckReason: "page_resume"`. This is a recovery barrier, not an interactive login trigger: refresh failures clear or preserve auth state through the normal token-set client paths, and route/request handlers decide whether to start login.
 
 Short access-token lifetimes should be handled by the running client state machine: persisted restore performs the initial auth check, refresh timers schedule later checks, and browser resume emits auth-check triggers after hidden tabs, system sleep, or bfcache return. Angular route aggregation waits for pending initial auth determination, then reads `isAuthenticated`; protected requests wait for `authorizationHeaderValue`. When `frontend-oidc-mode` or another token-set mode can stamp `accessTokenIssuedAt`, token freshness caps refresh-window and clock-skew calculations relative to the token lifetime instead of applying a raw fixed window to every token. That keeps newly issued short-lived tokens fresh at issuance while still entering `refresh_due` early enough for restore, resume, and scheduled maintenance. TanStack Router hosts should use `createTokenSetSecureBeforeLoad()` from `@securitydept/token-set-context-client-react/tanstack-router`; raw web hosts should use `createTokenSetWebRouteAuthCandidate()` from `@securitydept/token-set-context-client/web-router`. Both helpers wait for the selected client's `isAuthenticated` replay signal before redirect/block fallback.
 

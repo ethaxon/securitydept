@@ -42,16 +42,16 @@ describe("@securitydept/client/rx", () => {
 		});
 
 		expect(values).toEqual([]);
-		signal.emit("ready");
+		signal.setValue("ready");
 		subscription.unsubscribe();
-		signal.emit("ignored");
+		signal.setValue("ignored");
 
 		expect(values).toEqual(["ready"]);
 	});
 
 	it("toRxObservable(replaySignal) replays last emitted value to late subscribers", () => {
 		const signal = createReplaySignal<string>();
-		signal.emit("ready");
+		signal.setValue("ready");
 		const values: string[] = [];
 
 		toRxObservable(signal).subscribe((value) => {
@@ -72,8 +72,8 @@ describe("@securitydept/client/rx", () => {
 		toRxObservable(doubled).subscribe((value) => {
 			values.push(value);
 		});
-		source.emit(2);
-		source.emit(4);
+		source.setValue(2);
+		source.setValue(4);
 
 		expect(values).toEqual([4, 8]);
 	});

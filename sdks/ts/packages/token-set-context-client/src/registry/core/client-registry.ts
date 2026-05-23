@@ -18,12 +18,12 @@
 //     callback supplied by the adapter)
 
 import {
-	createDefaultIdleScheduler,
 	createReplaySignal,
 	createSignal,
 	createSubject,
 	type EventStreamTrait,
 	type EventSubscriptionTrait,
+	type FoundationEnvironment,
 	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
 	readonlyReplaySignal,
@@ -116,7 +116,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 	private readonly _authEventsOf: (
 		service: TService,
 	) => EventStreamTrait<TokenSetAuthEvent>;
-	private readonly idleScheduler: (callback: () => void) => () => void;
+	private readonly environment: FoundationEnvironment | undefined;
 	private readonly authEventSubject = createSubject<TokenSetAuthEvent>();
 	readonly authEvents: EventStreamTrait<TokenSetAuthEvent> =
 		this.authEventSubject;
@@ -166,7 +166,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		this._dispose = options.dispose;
 		this._start = options.start ?? (() => undefined);
 		this._authEventsOf = options.authEventsOf;
-		this.idleScheduler = options.idleScheduler;
+		this.environment = options.environment;
 		this.state = readonlySignal(this.stateSignal);
 	}
 
@@ -259,7 +259,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 
 		let clientOrPromise: TClient | Promise<TClient>;
 		try {
-			clientOrPromise = entry.clientFactory();
+			clientOrPromise = entry.clientFactory(this.environment);
 		} catch (error) {
 			this.recordFailedMaterialization(entry.key, error);
 			throw error;
@@ -435,7 +435,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		this.pendingRegistrations.delete(key);
 		this.services.set(key, service);
 		this.attachAuthEvents(key, service);
-		this.clientSignalForExistingKey(key).emit(service);
+		this.clientSignalForExistingKey(key).setValue(service);
 		if (pending) {
 			pending.state = ClientReadinessState.Ready;
 		}
@@ -564,10 +564,14 @@ export class TokenSetAuthRegistry<TClient, TService> {
 	 * Schedule `preload()` for every registered key whose priority is
 	 * `"lazy"` and whose current readiness is `"not_initialized"`.
 	 *
-	 * Uses `requestIdleCallback` when available, `setTimeout(0)` otherwise.
-	 * Returns a cancel function that aborts pending (not-yet-fired) warmups.
+	 * Requires an explicit idle-callback capability. Returns a cancel function
+	 * that aborts pending (not-yet-fired) warmups.
 	 */
 	idleWarmup(): () => void {
+		const idleCallback = this.environment?.idleCallback;
+		if (!idleCallback) {
+			return () => {};
+		}
 		const cancels: Array<() => void> = [];
 		for (const [key, record] of this.entries) {
 			if (
@@ -579,12 +583,12 @@ export class TokenSetAuthRegistry<TClient, TService> {
 			if (this.readinessState(key) !== ClientReadinessState.NotInitialized) {
 				continue;
 			}
-			const cancel = this.idleScheduler(() => {
+			const handle = idleCallback.requestIdleCallback(() => {
 				this.preload(key).catch(() => {
 					// Swallow: callers who care use whenReady() instead.
 				});
 			});
-			cancels.push(cancel);
+			cancels.push(() => idleCallback.cancelIdleCallback(handle));
 		}
 		return () => {
 			for (const cancel of cancels) cancel();
@@ -1087,7 +1091,7 @@ export function createTokenSetOidcAuthRegistry<TClient extends OidcModeClient>(
 		dispose: disposeOidcClient,
 		start: startOidcClient,
 		authEventsOf: authEventsOfOidcClient,
-		idleScheduler: options.idleScheduler ?? createDefaultIdleScheduler(),
+		environment: options.environment,
 	});
 }
 

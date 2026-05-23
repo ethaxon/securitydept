@@ -5,7 +5,7 @@ import { createTokenSetWebRouteAuthCandidate } from "../index";
 describe("createTokenSetWebRouteAuthCandidate", () => {
 	it("waits for token-set auth truth before raw web unauthenticated action", async () => {
 		const isAuthenticated = createReplaySignal<boolean>();
-		isAuthenticated.emit(true);
+		isAuthenticated.setValue(true);
 		const whenReady = vi.fn().mockResolvedValue({ isAuthenticated });
 		const onUnauthenticated = vi.fn(() => "/login");
 

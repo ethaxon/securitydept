@@ -1,12 +1,12 @@
 import { DestroyRef, Injectable, inject } from "@angular/core";
 import type {
 	EventStreamTrait,
+	FoundationEnvironment,
 	ReadableReplaySignalTrait,
 	ReadableSignalTrait,
 } from "@securitydept/client";
 import type { ClientReadinessState } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import type { TokenSetAuthEvent } from "@securitydept/token-set-context-client/orchestration";
-import { attachPageResumeAuthCheckTriggerSource } from "@securitydept/token-set-context-client/orchestration";
 import {
 	type ClientFilter,
 	type ClientKeySelector,
@@ -83,13 +83,17 @@ export class TokenSetAuthRegistry {
 	register(
 		entry: TokenSetClientEntry & {
 			priority?: "primary" | "lazy";
-			clientFactory: () => AngularClient;
+			clientFactory: (
+				environment: FoundationEnvironment | undefined,
+			) => AngularClient;
 		},
 	): AngularClient;
 	register(
 		entry: TokenSetClientEntry & {
 			priority?: "primary" | "lazy";
-			clientFactory: () => Promise<AngularClient>;
+			clientFactory: (
+				environment: FoundationEnvironment | undefined,
+			) => Promise<AngularClient>;
 		},
 	): Promise<AngularClient>;
 	register(
@@ -137,7 +141,8 @@ export class TokenSetAuthRegistry {
 
 	/**
 	 * Schedule preload for every lazy+not-initialized client using
-	 * `requestIdleCallback` / `setTimeout` fallback.
+	 * the core registry's explicit idle callback capability. If no idle
+	 * capability was configured, this is a no-op.
 	 */
 	idleWarmup(): () => void {
 		return this.core.idleWarmup();
@@ -268,28 +273,15 @@ export class TokenSetAuthRegistry {
 	): CoreTokenSetClientEntry<AngularClient> {
 		return {
 			...entry,
-			clientFactory: () => this.materializeClient(entry),
+			clientFactory: (environment) =>
+				this.materializeClient(entry, environment),
 		};
 	}
 
 	private materializeClient(
 		entry: TokenSetClientEntry,
+		environment: FoundationEnvironment | undefined,
 	): AngularClient | Promise<AngularClient> {
-		const clientOrPromise = entry.clientFactory();
-		if (clientOrPromise instanceof Promise) {
-			return clientOrPromise.then((client) =>
-				attachPageResumeAuthCheckTriggerSource(client, {
-					pageResumeAuthCheck: entry.pageResumeAuthCheck,
-					pageResumeAuthCheckOptions: entry.pageResumeAuthCheckOptions,
-					authCheckTriggerSources: entry.authCheckTriggerSources,
-				}),
-			);
-		}
-
-		return attachPageResumeAuthCheckTriggerSource(clientOrPromise, {
-			pageResumeAuthCheck: entry.pageResumeAuthCheck,
-			pageResumeAuthCheckOptions: entry.pageResumeAuthCheckOptions,
-			authCheckTriggerSources: entry.authCheckTriggerSources,
-		});
+		return entry.clientFactory(environment);
 	}
 }

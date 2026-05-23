@@ -19,9 +19,8 @@ import { assertResolveEnvironment } from "@securitydept/client/web";
 import {
 	AUTH_PLANNER_HOST,
 	extractFullRouteRequirements,
-	PAGE_CLIENT_ENVIRONMENT,
-	type PageClientEnvironmentSource,
-	resolvePageClientEnvironmentSource,
+	NATIVE_WEB_ENVIRONMENT,
+	type NativeWebEnvironmentValue,
 } from "@securitydept/client-angular";
 import type {
 	OidcRedirectLoginClient,
@@ -277,9 +276,9 @@ export interface CreateTokenSetRouteAggregationGuardOptions {
  * @example
  * ```ts
  * // routes.ts — declare requirements in route data
- * import { createBrowserPageClientEnvironment } from "@securitydept/client/web";
+ * import { createEnvironmentForNativeWeb } from "@securitydept/client/web";
  * import {
- *   providePageClientEnvironment,
+ *   provideNativeWebEnvironment,
  *   withRouteRequirements,
  * } from "@securitydept/client-angular";
  * import {
@@ -289,8 +288,8 @@ export interface CreateTokenSetRouteAggregationGuardOptions {
  *
  * export const appConfig = {
  *   providers: [
- *     providePageClientEnvironment({
- *       environment: createBrowserPageClientEnvironment(),
+ *     provideNativeWebEnvironment({
+ *       environment: createEnvironmentForNativeWeb({ location, history }),
  *     }),
  *   ],
  * };
@@ -598,16 +597,15 @@ export interface CreateTokenSetOidcLoginRedirectHandlerOptions {
 	 */
 	clientKey?: string;
 	/**
-	 * Optional stable page environment override.
+	 * Optional stable native web environment override.
 	 *
-	 * The canonical Angular path is to provide a provider-scoped
-	 * `ClientEnvironmentService`, or another stable resolver, once from the host
-	 * composition root with `providePageClientEnvironment(...)`, then let the
-	 * redirect helper resolve it from Angular DI. Use this override only when a
-	 * specific handler intentionally needs a different stable page environment
-	 * source.
+	 * The canonical Angular path is to provide the host-owned native web
+	 * environment once from the composition root with
+	 * `provideNativeWebEnvironment(...)`.
+	 * Use this override only when a specific handler intentionally needs a
+	 * different native web environment.
 	 */
-	environment?: PageClientEnvironmentSource;
+	environment?: NativeWebEnvironmentValue;
 	/**
 	 * Fallback used only when Angular does not provide a target URL.
 	 * @default "/"
@@ -621,17 +619,13 @@ export function createTokenSetOidcLoginRedirectHandler(
 	return async (unauthenticated, _requirement, context) => {
 		const clientKey = options?.clientKey ?? unauthenticated[0]?.clientKey;
 		if (!clientKey) return false;
-		const environmentPromise = resolveOidcRouteEnvironment(
-			options?.environment,
-		);
+		const environment = resolveOidcRouteEnvironment(options?.environment);
 
 		const registry = inject(TokenSetAuthRegistry);
 		const client = await registry.whenReady(clientKey);
 		if (!isLoginWithRedirectClient(client)) {
 			failMissingOidcRedirectLoginCapability(clientKey);
 		}
-		const environment = await environmentPromise;
-
 		await client.loginWithRedirect({
 			environment,
 			postAuthRedirectUri:
@@ -651,21 +645,18 @@ function resolveOidcRouteEnvironment(
 	environmentOverride:
 		| CreateTokenSetOidcLoginRedirectHandlerOptions["environment"]
 		| undefined,
-): Promise<OidcRedirectLoginOptions["environment"]> {
-	return resolvePageClientEnvironmentSource(
-		assertResolveEnvironment(
-			environmentOverride ??
-				inject(PAGE_CLIENT_ENVIRONMENT, { optional: true }),
-			failMissingOidcRouteEnvironment,
-		),
+): OidcRedirectLoginOptions["environment"] {
+	const environment = assertResolveEnvironment(
+		environmentOverride ?? inject(NATIVE_WEB_ENVIRONMENT, { optional: true }),
 		failMissingOidcRouteEnvironment,
 	);
+	return environment.router;
 }
 
 function failMissingOidcRouteEnvironment(): never {
 	throw new Error(
 		"createTokenSetOidcLoginRedirectHandler requires an explicit environment.\n" +
-			"Provide it once from the Angular composition root with providePageClientEnvironment({ environment }), where environment is a provider-scoped ClientEnvironmentService or another stable resolver.\n" +
+			"Provide the host-owned native web environment once from the Angular composition root with provideNativeWebEnvironment({ environment }).\n" +
 			"or pass a stable environment override with createTokenSetOidcLoginRedirectHandler({ environment: ... }).",
 	);
 }

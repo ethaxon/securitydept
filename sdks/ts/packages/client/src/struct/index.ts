@@ -1,3 +1,13 @@
+export {
+	createOnceAsyncLockCallable,
+	OnceAsyncLock,
+	OnceAsyncLockCallable,
+	OnceAsyncLockError,
+	OnceAsyncLockInit,
+	OnceAsyncLockRunning,
+	OnceAsyncLockState,
+	OnceAsyncLockSuccess,
+} from "./async-lock";
 export type {
 	OnDemandTaskQueueOptions,
 	OnDemandTaskQueueTaskEnvelope,

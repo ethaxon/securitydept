@@ -1,4 +1,6 @@
-import { createSignal } from "./signal";
+import { BehaviorSubject, filter, map, type Subscription } from "rxjs";
+import { isInteropObservableTrait, SYMBOL_OBSERVABLE } from "../compat";
+import { createEventStream } from "../events";
 import type {
 	ComputedReplaySignalTrait,
 	ReadableReplaySignalTrait,
@@ -10,15 +12,65 @@ import type {
 const EMPTY_REPLAY_SIGNAL_SLOT = { kind: "empty" } as const;
 
 export function createReplaySignal<T>(): WritableReplaySignalTrait<T> {
-	const signal = createSignal<ReplaySignalSlot<T>>(EMPTY_REPLAY_SIGNAL_SLOT);
+	const subject = new BehaviorSubject<ReplaySignalSlot<T>>(
+		EMPTY_REPLAY_SIGNAL_SLOT,
+	);
 
 	return {
-		...createReadableReplaySignalView(signal),
-		emit(value) {
-			signal.set({ kind: "value", value });
+		get: () => subject.getValue(),
+		subscribe: (listener) => {
+			const unsubscribe = subject.subscribe(listener);
+			return () => unsubscribe.unsubscribe();
 		},
-		clear() {
-			signal.set(EMPTY_REPLAY_SIGNAL_SLOT);
+		hasValue: () => subject.getValue().kind === "value",
+		whenValue: (options) => {
+			const slot = subject.getValue();
+			if (slot.kind === "value") {
+				return Promise.resolve(slot.value);
+			}
+
+			const cancellationToken = options?.cancellationToken;
+			if (cancellationToken?.isCancellationRequested) {
+				return Promise.reject(readCancellationError(cancellationToken));
+			}
+
+			return new Promise<T>((resolve, reject) => {
+				let subscription: Subscription | undefined;
+				let disposeCancellation: (() => void) | undefined;
+
+				const cleanup = () => {
+					subscription?.unsubscribe();
+					subscription = undefined;
+					disposeCancellation?.();
+					disposeCancellation = undefined;
+				};
+
+				const resolveIfValue = () => {
+					const nextSlot = subject.getValue();
+					if (nextSlot.kind === "value") {
+						cleanup();
+						resolve(nextSlot.value);
+					}
+				};
+
+				subscription = subject.subscribe(resolveIfValue);
+				disposeCancellation = cancellationToken?.onCancellationRequested(() => {
+					cleanup();
+					reject(readCancellationError(cancellationToken));
+				})[Symbol.dispose];
+				resolveIfValue();
+			});
+		},
+		[SYMBOL_OBSERVABLE]: () => {
+			return subject.pipe(
+				filter(
+					(slot): slot is { kind: "value"; value: T } => slot.kind === "value",
+				),
+				map((slot) => slot.value),
+			);
+		},
+		setValue(value) {
+			subject.next({ kind: "value", value });
 		},
 	};
 }
@@ -26,7 +78,13 @@ export function createReplaySignal<T>(): WritableReplaySignalTrait<T> {
 export function readonlyReplaySignal<T>(
 	signal: WritableReplaySignalTrait<T>,
 ): ReadableReplaySignalTrait<T> {
-	return createReadableReplaySignalView(signal);
+	return {
+		get: () => signal.get(),
+		subscribe: (listener) => signal.subscribe(listener),
+		hasValue: () => signal.hasValue(),
+		whenValue: (options) => signal.whenValue(options),
+		[SYMBOL_OBSERVABLE]: () => signal[SYMBOL_OBSERVABLE](),
+	};
 }
 
 export function createComputedReplaySignal<T>(
@@ -75,16 +133,18 @@ export function createAndThenComputedReplaySignal<T, U>(
 	}, [source]);
 }
 
-function createReadableReplaySignalView<T>(signal: {
-	get(): ReplaySignalSlot<T>;
-	subscribe(listener: () => void): () => void;
-}): ReadableReplaySignalTrait<T> {
-	return {
-		get: () => signal.get(),
-		subscribe: (listener) => signal.subscribe(listener),
-		hasValue: () => signal.get().kind === "value",
+function createReadableReplaySignalView<T>(
+	signalLike: Omit<
+		ReadableSignalTrait<ReplaySignalSlot<T>>,
+		typeof Symbol.observable
+	>,
+): ReadableReplaySignalTrait<T> {
+	const signal: Omit<ReadableReplaySignalTrait<T>, typeof Symbol.observable> = {
+		get: () => signalLike.get(),
+		subscribe: (listener) => signalLike.subscribe(listener),
+		hasValue: () => signalLike.get().kind === "value",
 		whenValue: (options) => {
-			const slot = signal.get();
+			const slot = signalLike.get();
 			if (slot.kind === "value") {
 				return Promise.resolve(slot.value);
 			}
@@ -106,22 +166,43 @@ function createReadableReplaySignalView<T>(signal: {
 				};
 
 				const resolveIfValue = () => {
-					const nextSlot = signal.get();
+					const nextSlot = signalLike.get();
 					if (nextSlot.kind === "value") {
 						cleanup();
 						resolve(nextSlot.value);
 					}
 				};
 
-				unsubscribe = signal.subscribe(resolveIfValue);
+				unsubscribe = signalLike.subscribe(resolveIfValue);
 				disposeCancellation = cancellationToken?.onCancellationRequested(() => {
 					cleanup();
 					reject(readCancellationError(cancellationToken));
-				}).dispose;
+				})[Symbol.dispose];
 				resolveIfValue();
 			});
 		},
 	};
+
+	return Object.assign(signal, {
+		[SYMBOL_OBSERVABLE]: () => {
+			return createEventStream((observer) => {
+				const ifPresentEmit = () => {
+					const slot = signalLike.get();
+					if (slot.kind === "value") {
+						observer.next(slot.value);
+					}
+				};
+				ifPresentEmit();
+				const unsubscribe = signalLike.subscribe(() => {
+					ifPresentEmit();
+				});
+				return () => {
+					unsubscribe();
+					observer.complete();
+				};
+			});
+		},
+	});
 }
 
 function readCancellationError(cancellationToken: {
@@ -149,6 +230,7 @@ export function isReplaySignalTrait<T>(
 		"hasValue" in value &&
 		typeof value.hasValue === "function" &&
 		"whenValue" in value &&
-		typeof value.whenValue === "function"
+		typeof value.whenValue === "function" &&
+		isInteropObservableTrait(value)
 	);
 }

@@ -1,6 +1,10 @@
-import type { EventSource, RuntimeEventEnvelope } from "@securitydept/client";
+import type { RuntimeEventEnvelope } from "@securitydept/client";
 import { EventSourceKind } from "@securitydept/client";
-import type { TokenFreshnessState } from "../token/token-ops";
+import type { TokenFreshnessTiming } from "../token/freshness";
+import type {
+	TokenSetAuthFlowOutcome,
+	TokenSetAuthFlowReason,
+} from "../vocabulary/auth-flow";
 
 export const TokenSetAuthEventType = {
 	AuthMaterialRestoreStarted: "auth.material.restore.started",
@@ -8,7 +12,6 @@ export const TokenSetAuthEventType = {
 	AuthMaterialRestoreFailed: "auth.material.restore.failed",
 	AuthRefreshRequired: "auth.refresh.required",
 	AuthRefreshSkipped: "auth.refresh.skipped",
-	AuthRefreshJoined: "auth.refresh.joined",
 	AuthRefreshStarted: "auth.refresh.started",
 	AuthRefreshSucceeded: "auth.refresh.succeeded",
 	AuthRefreshFailed: "auth.refresh.failed",
@@ -25,52 +28,6 @@ export const TokenSetAuthEventType = {
 export type TokenSetAuthEventType =
 	(typeof TokenSetAuthEventType)[keyof typeof TokenSetAuthEventType];
 
-export const TokenSetAuthFlowSource = {
-	Restore: "restore",
-	Resume: "resume",
-	RouteGuard: "route_guard",
-	HttpInterceptor: "http_interceptor",
-	AuthorizedTransport: "authorized_transport",
-	ReactQuery: "react_query",
-	TanStackBeforeLoad: "tanstack_before_load",
-	RawWebRouter: "raw_web_router",
-	ExplicitCall: "explicit_call",
-	Timer: "timer",
-	Callback: "callback",
-	Manual: "manual",
-} as const;
-
-export type TokenSetAuthFlowSource =
-	(typeof TokenSetAuthFlowSource)[keyof typeof TokenSetAuthFlowSource];
-
-export const TokenSetAuthFlowOutcome = {
-	Authenticated: "authenticated",
-	Unauthenticated: "unauthenticated",
-	Skipped: "skipped",
-	Failed: "failed",
-} as const;
-
-export type TokenSetAuthFlowOutcome =
-	(typeof TokenSetAuthFlowOutcome)[keyof typeof TokenSetAuthFlowOutcome];
-
-export const TokenSetAuthFlowReason = {
-	NoSnapshot: "no_snapshot",
-	Fresh: "fresh",
-	NoExpiry: "no_expiry",
-	RefreshDue: "refresh_due",
-	Expired: "expired",
-	NoRefreshMaterial: "no_refresh_material",
-	BackgroundRefresh: "background_refresh",
-	RefreshBarrierJoined: "refresh_barrier_joined",
-	RefreshSucceeded: "refresh_succeeded",
-	RefreshFailed: "refresh_failed",
-	Cleared: "cleared",
-	Disposed: "disposed",
-} as const;
-
-export type TokenSetAuthFlowReason =
-	(typeof TokenSetAuthFlowReason)[keyof typeof TokenSetAuthFlowReason];
-
 export interface TokenSetAuthErrorSummary {
 	message?: string;
 	errorKind?: string;
@@ -81,19 +38,17 @@ export interface TokenSetAuthErrorSummary {
 export interface TokenSetAuthEventPayload {
 	clientKey?: string;
 	logicalClientId?: string;
-	source: TokenSetAuthFlowSource;
 	requirementId?: string;
 	requirementKind?: string;
 	providerFamily?: string;
 	url?: string;
-	freshness?: TokenFreshnessState;
+	freshness?: TokenFreshnessTiming;
 	hasRefreshMaterial?: boolean;
 	outcome?: TokenSetAuthFlowOutcome;
 	reason?: TokenSetAuthFlowReason;
 	authCheckReason?: string;
 	errorSummary?: TokenSetAuthErrorSummary;
 	persisted?: boolean;
-	refreshBarrierId?: string;
 }
 
 export type TokenSetAuthEvent = RuntimeEventEnvelope<
@@ -115,33 +70,12 @@ export function createTokenSetAuthEvent(
 		id: options.id,
 		type: options.type,
 		at: options.at,
-		source: eventSourceForAuthFlow(options.payload.source),
+		source: {
+			kind: EventSourceKind.System,
+			subsystem: "token-set-auth",
+		},
 		payload: options.payload,
 	};
-}
-
-export function eventSourceForAuthFlow(
-	source: TokenSetAuthFlowSource,
-): EventSource {
-	switch (source) {
-		case TokenSetAuthFlowSource.Timer:
-			return { kind: EventSourceKind.Timer, timer: "token-set-auth" };
-		case TokenSetAuthFlowSource.HttpInterceptor:
-		case TokenSetAuthFlowSource.AuthorizedTransport:
-		case TokenSetAuthFlowSource.ReactQuery:
-			return { kind: EventSourceKind.Http, requestId: source };
-		case TokenSetAuthFlowSource.RouteGuard:
-		case TokenSetAuthFlowSource.TanStackBeforeLoad:
-		case TokenSetAuthFlowSource.RawWebRouter:
-			return { kind: EventSourceKind.Framework, name: source };
-		case TokenSetAuthFlowSource.Restore:
-			return { kind: EventSourceKind.Storage, operation: "restore" };
-		case TokenSetAuthFlowSource.Manual:
-		case TokenSetAuthFlowSource.Callback:
-			return { kind: EventSourceKind.User, actor: source };
-		default:
-			return { kind: EventSourceKind.System, subsystem: source };
-	}
 }
 
 export function summarizeAuthError(error: unknown): TokenSetAuthErrorSummary {

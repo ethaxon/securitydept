@@ -12,22 +12,27 @@
 
 import {
 	createInMemoryRecordStore,
-	type PageLocationCapability,
+	type RouterTrait,
 } from "@securitydept/client";
+import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
 import type { LoginWithRedirectOptions } from "@securitydept/session-context-client/web";
 import { loginWithRedirect } from "@securitydept/session-context-client/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-function createPageLocationEnvironment(href: string): PageLocationCapability {
+function createPageLocationEnvironment(href: string): RouterTrait & {
+	location: { href: string; hash: string; pathname: string; search: string };
+} {
 	const url = new URL(href);
+	const location = {
+		href,
+		hash: url.hash,
+		pathname: url.pathname,
+		search: url.search,
+	};
 	return {
-		location: {
-			href,
-			hash: url.hash,
-			pathname: url.pathname,
-			search: url.search,
-		},
+		...createRouterForNativeWeb({ location }),
+		location,
 	};
 }
 
@@ -38,10 +43,10 @@ describe("session-context web minimal entry", () => {
 
 	it("shows the standalone browser entry path: loginWithRedirect saves intent and navigates", async () => {
 		// 1. Create a session client with an in-memory store for pending redirect.
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const client = new SessionContextClient(
 			{ baseUrl: "https://auth.example.com" },
-			{ sessionStore },
+			{ sessionStorage },
 		);
 
 		const environment = createPageLocationEnvironment(
@@ -67,10 +72,10 @@ describe("session-context web minimal entry", () => {
 	});
 
 	it("shows the default-options path: uses window.location.href when postAuthRedirectUri is omitted", async () => {
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const client = new SessionContextClient(
 			{ baseUrl: "https://auth.example.com" },
-			{ sessionStore },
+			{ sessionStorage },
 		);
 
 		const environment = createPageLocationEnvironment(

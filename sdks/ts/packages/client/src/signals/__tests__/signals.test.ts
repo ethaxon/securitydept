@@ -77,7 +77,7 @@ describe("createReplaySignal", () => {
 		signal.subscribe(() => {
 			notified += 1;
 		});
-		signal.emit("ready");
+		signal.setValue("ready");
 
 		expect(notified).toBe(1);
 		expect(signal.get()).toEqual({ kind: "value", value: "ready" });
@@ -89,7 +89,7 @@ describe("createReplaySignal", () => {
 		const signal = createReplaySignal<string>();
 		const pending = signal.whenValue();
 
-		signal.emit("ready");
+		signal.setValue("ready");
 
 		await expect(pending).resolves.toBe("ready");
 	});
@@ -109,7 +109,7 @@ describe("createReplaySignal", () => {
 	it("creates readonly replay signal views", async () => {
 		const writable = createReplaySignal<number>();
 		const readonly = readonlyReplaySignal(writable);
-		writable.emit(1);
+		writable.setValue(1);
 
 		await expect(readonly.whenValue()).resolves.toBe(1);
 		expect("emit" in readonly).toBe(false);
@@ -130,7 +130,7 @@ describe("createComputedReplaySignal", () => {
 		expect(doubled.hasValue()).toBe(false);
 		expect(doubled.get()).toEqual({ kind: "empty" });
 
-		source.emit(21);
+		source.setValue(21);
 
 		expect(doubled.hasValue()).toBe(true);
 		await expect(doubled.whenValue()).resolves.toBe(42);
@@ -151,7 +151,7 @@ describe("createComputedReplaySignal", () => {
 			notified += 1;
 		});
 
-		source.emit("ready");
+		source.setValue("ready");
 
 		expect(notified).toBe(1);
 		expect(upper.get()).toEqual({ kind: "value", value: "READY" });
@@ -168,7 +168,7 @@ describe("createAndThenComputedReplaySignal", () => {
 
 		expect(doubled.get()).toEqual({ kind: "empty" });
 
-		source.emit(21);
+		source.setValue(21);
 
 		await expect(doubled.whenValue()).resolves.toBe(42);
 	});
@@ -179,10 +179,10 @@ describe("createAndThenComputedReplaySignal", () => {
 			value % 2 === 0 ? { kind: "value", value } : { kind: "empty" },
 		);
 
-		source.emit(1);
+		source.setValue(1);
 		expect(evenOnly.get()).toEqual({ kind: "empty" });
 
-		source.emit(2);
+		source.setValue(2);
 		await expect(evenOnly.whenValue()).resolves.toBe(2);
 	});
 });

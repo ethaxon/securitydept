@@ -23,16 +23,16 @@ export function createTestTokenSetReactiveFields(
 	const lastAuthError = createSignal<unknown | undefined>(undefined);
 
 	const emitSnapshot = (snapshot: AuthSnapshot | null): void => {
-		authSnapshot.emit(snapshot);
-		authorizationHeaderValue.emit(bearerHeaderForSnapshot(snapshot));
-		isAuthenticated.emit(bearerHeaderForSnapshot(snapshot) !== undefined);
+		authSnapshot.setValue(snapshot);
+		authorizationHeaderValue.setValue(bearerHeaderForSnapshot(snapshot));
+		isAuthenticated.setValue(bearerHeaderForSnapshot(snapshot) !== undefined);
 		lastAuthError.set(undefined);
-		authDetermined.emit(true);
+		authDetermined.setValue(true);
 	};
 
 	const emitError = (error: unknown): void => {
 		lastAuthError.set(error);
-		authDetermined.emit(true);
+		authDetermined.setValue(true);
 	};
 
 	emitSnapshot(initialSnapshot);
@@ -67,7 +67,7 @@ export function authCheckResultForSnapshot(snapshot: AuthSnapshot | null) {
 		return {
 			status: AuthCheckStatus.Unauthenticated,
 			snapshot: null,
-			authorizationHeader: null,
+			authorizationHeader: undefined,
 			reason: TokenSetAuthFlowReason.NoSnapshot,
 		} as const;
 	}

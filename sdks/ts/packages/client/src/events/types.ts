@@ -1,32 +1,29 @@
 // --- Event system trait types ---
+import { isInteropObservableTrait, type SubscriptionTrait } from "../compat";
 
 /** Subscription handle with explicit unsubscribe. */
-export interface EventSubscriptionTrait {
-	unsubscribe(): void;
-}
+export type EventSubscriptionTrait = SubscriptionTrait;
 
 /** Observer for event streams — mirrors the Observable observer pattern. */
-export interface EventObserver<T> {
-	next?(value: T): void;
-	error?(error: unknown): void;
-	complete?(): void;
-}
-
-/** Read-only event stream — lazy push-based sequence. */
-export interface EventStreamTrait<T> {
-	subscribe(observer: EventObserver<T>): EventSubscriptionTrait;
-}
-
-/** Hot event producer. */
-export interface SubjectTrait<T> extends EventStreamTrait<T> {
+export interface EventObserverTrait<T> {
 	next(value: T): void;
 	error(error: unknown): void;
 	complete(): void;
 }
 
-/** Hot event producer that replays recent values to late subscribers. */
-export interface ReplaySubjectTrait<T> extends SubjectTrait<T> {
-	readonly bufferSize: number;
+/** Read-only event stream — lazy push-based sequence. */
+export interface EventStreamTrait<T> {
+	subscribe(observer: Partial<EventObserverTrait<T>>): EventSubscriptionTrait;
+	[Symbol.observable](): {
+		subscribe(observer: Partial<EventObserverTrait<T>>): EventSubscriptionTrait;
+	};
+}
+
+/** Hot event producer. */
+export interface EventSubjectTrait<T> extends EventStreamTrait<T> {
+	next(value: T): void;
+	error(error: unknown): void;
+	complete(): void;
 }
 
 // --- Event envelope ---
@@ -57,4 +54,19 @@ export interface RuntimeEventEnvelope<TType extends string, TPayload> {
 	at: number;
 	source: EventSource;
 	payload: TPayload;
+}
+
+export type EventOperatorFunction<T, R> = (
+	stream: EventStreamTrait<T>,
+) => EventStreamTrait<R>;
+
+export function isEventStreamTrait(
+	value: unknown,
+): value is EventStreamTrait<unknown> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		typeof (value as EventStreamTrait<unknown>).subscribe === "function" &&
+		isInteropObservableTrait(value)
+	);
 }

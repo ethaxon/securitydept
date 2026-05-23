@@ -10,24 +10,24 @@
 //
 // Stability: provisional
 
-import type { PageLocationCapability } from "@securitydept/client";
+import type { RouterTrait } from "@securitydept/client";
 import { assertResolveEnvironment } from "@securitydept/client/web";
 import type { SessionContextClient } from "../client";
 
 const SESSION_PAGE_ENVIRONMENT_ERROR_MESSAGE =
 	"session browser redirect helpers require an explicit page environment.\n" +
-	"Create one in your composition root with createBrowserPageClientEnvironment(...).";
+	"Create one in your composition root with createEnvironmentForNativeWeb(...).";
 
 /**
  * Options for {@link loginWithRedirect}.
  */
 export interface LoginWithRedirectOptions {
-	environment?: PageLocationCapability;
+	environment?: RouterTrait;
 
 	/**
 	 * Where to redirect the user after successful authentication.
 	 *
-	 * When omitted, `environment.location.href` is used as the return URI and
+	 * When omitted, `environment.currentUrl()` is used as the return URI and
 	 * persisted via the client's pending-login-redirect store for post-auth
 	 * consumption.
 	 */
@@ -55,11 +55,15 @@ export async function loginWithRedirect(
 		failMissingPageEnvironment,
 	);
 	const postAuthRedirectUri =
-		options.postAuthRedirectUri ?? environment.location.href;
+		options.postAuthRedirectUri ?? environment.currentUrl()?.toString() ?? "/";
 
 	await client.savePendingLoginRedirect(postAuthRedirectUri);
 
-	environment.location.href = client.loginUrl(postAuthRedirectUri);
+	await environment.navigate({
+		url: client.loginUrl(postAuthRedirectUri),
+		intent: "auth_redirect",
+		mode: "external",
+	});
 }
 
 function failMissingPageEnvironment(): never {

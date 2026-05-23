@@ -1,15 +1,15 @@
 import {
 	ClientErrorKind,
-	type Clock,
 	createCancellationTokenSource,
 	createInMemoryRecordStore,
 	type HttpRequest,
 	type HttpResponse,
 	type LogEntry,
 	LogLevel,
-	type Scheduler,
+	type TimeTrait,
 	UserRecovery,
 } from "@securitydept/client";
+import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { describe, expect, it, vi } from "vitest";
 import { createBackendOidcModeAuthorizedTransport } from "../transport/auth-transport";
 import {
@@ -57,46 +57,41 @@ function createPageCallbackEnvironment(
 	history = createHistoryRecorder(),
 ): BackendOidcModePageCallbackCapability {
 	const url = new URL(href);
+	const location = {
+		href,
+		hash: url.hash,
+	};
 	return {
-		location: {
-			href,
-			hash: url.hash,
-		},
-		history,
+		...createRouterForNativeWeb({ location, history }),
 		callbackFragmentStore,
 	};
 }
 
-const testClock: Clock = {
+const testTime: TimeTrait = {
 	now: () => Date.parse("2026-01-01T00:00:00Z"),
-};
-
-const testScheduler: Scheduler = {
-	setTimeout() {
-		return {
-			cancel() {},
-		};
-	},
+	setTimeout: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
+	clearTimeout: (handle) =>
+		globalThis.clearTimeout(handle as ReturnType<typeof globalThis.setTimeout>),
 };
 
 type BackendOidcModeTestClientOptions = Omit<
 	CreateBackendOidcModeWebClientOptions,
 	"environment"
 > &
-	CreateBackendOidcModeWebClientEnvironmentOptions;
+	CreateBackendOidcModeWebClientEnvironmentOptions & {
+		transport?: CreateBackendOidcModeWebClientEnvironmentOptions["transport"];
+	};
 
 function createBackendOidcModeWebClient(
 	options: BackendOidcModeTestClientOptions,
 ) {
 	const {
 		environment,
-		persistentStore,
-		sessionStore,
+		persistentStorage,
+		sessionStorage,
 		callbackFragmentStore,
 		transport,
-		fetchTransport,
-		scheduler,
-		clock,
+		time,
 		logger,
 		traceSink,
 		...clientOptions
@@ -106,13 +101,11 @@ function createBackendOidcModeWebClient(
 		...clientOptions,
 		environment: createBackendOidcModeWebClientEnvironment({
 			environment,
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			callbackFragmentStore,
 			transport,
-			fetchTransport,
-			scheduler,
-			clock,
+			time,
 			logger,
 			traceSink,
 		}),
@@ -121,9 +114,9 @@ function createBackendOidcModeWebClient(
 
 describe("token-set web helpers", () => {
 	it("captures callback fragments and clears only the URL hash from history", async () => {
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 		const history = createHistoryRecorder();
 
@@ -144,7 +137,7 @@ describe("token-set web helpers", () => {
 
 	it("does not touch history when there is no callback fragment", async () => {
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 		});
 		const history = createHistoryRecorder();
 
@@ -161,8 +154,8 @@ describe("token-set web helpers", () => {
 	});
 
 	it("bootstraps browser client state from a callback fragment", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const transport = {
 			async execute(request: HttpRequest): Promise<HttpResponse> {
 				if (request.url.endsWith("/metadata/redeem")) {
@@ -184,15 +177,14 @@ describe("token-set web helpers", () => {
 			},
 		};
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 			defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
 		});
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 
 		const result = await bootstrapBackendOidcModePageClient(client, {
@@ -208,10 +200,10 @@ describe("token-set web helpers", () => {
 	});
 
 	it("retains callback fragments when bootstrap fails with a retryable error", async () => {
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const client = createBackendOidcModeWebClient({
-			sessionStore,
-			persistentStore: createInMemoryRecordStore(),
+			sessionStorage,
+			persistentStorage: createInMemoryRecordStore(),
 			transport: {
 				async execute(): Promise<HttpResponse> {
 					return {
@@ -223,7 +215,7 @@ describe("token-set web helpers", () => {
 			},
 		});
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 
 		await expect(
@@ -243,10 +235,10 @@ describe("token-set web helpers", () => {
 	});
 
 	it("clears callback fragments when bootstrap fails with a non-retryable error", async () => {
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const client = createBackendOidcModeWebClient({
-			sessionStore,
-			persistentStore: createInMemoryRecordStore(),
+			sessionStorage,
+			persistentStorage: createInMemoryRecordStore(),
 			transport: {
 				async execute(): Promise<HttpResponse> {
 					throw new Error("transport should not be called");
@@ -254,7 +246,7 @@ describe("token-set web helpers", () => {
 			},
 		});
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 
 		await expect(
@@ -272,12 +264,12 @@ describe("token-set web helpers", () => {
 	});
 
 	it("resets browser state by clearing both callback fragments and persisted auth", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const client = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport: {
 				async execute(request: HttpRequest): Promise<HttpResponse> {
 					if (request.url.endsWith("/metadata/redeem")) {
@@ -302,7 +294,7 @@ describe("token-set web helpers", () => {
 			},
 		});
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 
 		await client.handleCallback(
@@ -317,8 +309,8 @@ describe("token-set web helpers", () => {
 
 		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport: {
 				async execute(): Promise<HttpResponse> {
 					return {
@@ -334,8 +326,8 @@ describe("token-set web helpers", () => {
 	});
 
 	it("restores persisted auth across fresh browser clients sharing the same stores", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const transport = {
 			async execute(request: HttpRequest): Promise<HttpResponse> {
 				if (request.url.endsWith("/metadata/redeem")) {
@@ -357,15 +349,14 @@ describe("token-set web helpers", () => {
 			},
 		};
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 		const firstClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 			defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
 		});
 
@@ -384,11 +375,10 @@ describe("token-set web helpers", () => {
 
 		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		const restoredResult = await bootstrapBackendOidcModePageClient(
@@ -414,11 +404,10 @@ describe("token-set web helpers", () => {
 
 		const freshClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		const emptyResult = await bootstrapBackendOidcModePageClient(freshClient, {
@@ -437,8 +426,8 @@ describe("token-set web helpers", () => {
 	});
 
 	it("prefers a pending callback fragment over persisted auth and replaces the old state", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const transport = {
 			async execute(request: HttpRequest): Promise<HttpResponse> {
 				if (request.url.endsWith("/metadata/redeem")) {
@@ -485,15 +474,14 @@ describe("token-set web helpers", () => {
 			},
 		};
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 		const oldClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		await oldClient.handleCallback(
@@ -505,11 +493,10 @@ describe("token-set web helpers", () => {
 
 		const bootstrapClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		const callbackResult = await bootstrapBackendOidcModePageClient(
@@ -535,11 +522,10 @@ describe("token-set web helpers", () => {
 
 		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		const restoredResult = await bootstrapBackendOidcModePageClient(
@@ -562,8 +548,8 @@ describe("token-set web helpers", () => {
 	});
 
 	it("keeps callback retry precedence over persisted auth until a later retry succeeds", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		let newRedemptionAttempts = 0;
 		const transport = {
 			async execute(request: HttpRequest): Promise<HttpResponse> {
@@ -620,15 +606,14 @@ describe("token-set web helpers", () => {
 			},
 		};
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 		const oldClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		await oldClient.handleCallback(
@@ -637,11 +622,10 @@ describe("token-set web helpers", () => {
 
 		const retryingClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		await expect(
@@ -683,11 +667,10 @@ describe("token-set web helpers", () => {
 
 		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		const restoredResult = await bootstrapBackendOidcModePageClient(
@@ -706,8 +689,8 @@ describe("token-set web helpers", () => {
 	});
 
 	it("clears non-retryable callback precedence and only restores old state on a later fresh bootstrap", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const transport = {
 			async execute(request: HttpRequest): Promise<HttpResponse> {
 				if (request.url.endsWith("/metadata/redeem")) {
@@ -750,15 +733,14 @@ describe("token-set web helpers", () => {
 			},
 		};
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 		const oldClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		await oldClient.handleCallback(
@@ -770,11 +752,10 @@ describe("token-set web helpers", () => {
 
 		const failingClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		await expect(
@@ -794,11 +775,10 @@ describe("token-set web helpers", () => {
 
 		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		const restoredResult = await bootstrapBackendOidcModePageClient(
@@ -821,8 +801,8 @@ describe("token-set web helpers", () => {
 	});
 
 	it("replaces a retained pending fragment with the latest URL callback before bootstrap", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const transport = {
 			async execute(request: HttpRequest): Promise<HttpResponse> {
 				if (request.url.endsWith("/metadata/redeem")) {
@@ -854,7 +834,7 @@ describe("token-set web helpers", () => {
 			},
 		};
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 
 		await callbackFragmentStore.save(
@@ -880,11 +860,10 @@ describe("token-set web helpers", () => {
 
 		const bootstrapClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		const callbackResult = await bootstrapBackendOidcModePageClient(
@@ -907,11 +886,10 @@ describe("token-set web helpers", () => {
 
 		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		const restoredResult = await bootstrapBackendOidcModePageClient(
@@ -930,8 +908,8 @@ describe("token-set web helpers", () => {
 	});
 
 	it("replaces a retry-retained pending fragment with the latest URL callback before recovery bootstrap", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const transport = {
 			async execute(request: HttpRequest): Promise<HttpResponse> {
 				if (request.url.endsWith("/metadata/redeem")) {
@@ -971,15 +949,14 @@ describe("token-set web helpers", () => {
 			},
 		};
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 		const retryingClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		await expect(
@@ -1023,11 +1000,10 @@ describe("token-set web helpers", () => {
 
 		const restoredClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		const restoredResult = await bootstrapBackendOidcModePageClient(
@@ -1046,8 +1022,8 @@ describe("token-set web helpers", () => {
 	});
 
 	it("returns to empty after reset clears a latest-callback replacement state", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const transport = {
 			async execute(request: HttpRequest): Promise<HttpResponse> {
 				if (request.url.endsWith("/metadata/redeem")) {
@@ -1079,7 +1055,7 @@ describe("token-set web helpers", () => {
 			},
 		};
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 
 		await callbackFragmentStore.save(
@@ -1088,11 +1064,10 @@ describe("token-set web helpers", () => {
 
 		const bootstrapClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		const callbackResult = await bootstrapBackendOidcModePageClient(
@@ -1118,11 +1093,10 @@ describe("token-set web helpers", () => {
 
 		const freshClient = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		const emptyResult = await bootstrapBackendOidcModePageClient(freshClient, {
@@ -1147,7 +1121,7 @@ describe("token-set web helpers", () => {
 				authorizationHeader: () => "Bearer token-set-at",
 			},
 			{
-				transport: {
+				baseTransport: {
 					async execute(request: HttpRequest): Promise<HttpResponse> {
 						requests.push(request);
 						return {
@@ -1180,7 +1154,7 @@ describe("token-set web helpers", () => {
 				authorizationHeader: () => null,
 			},
 			{
-				transport: {
+				baseTransport: {
 					async execute(): Promise<HttpResponse> {
 						return {
 							status: 200,
@@ -1205,8 +1179,8 @@ describe("token-set web helpers", () => {
 	});
 
 	it("forwards persistentStateKey through the browser entry to isolate persisted state", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const transport = {
 			async execute(request: HttpRequest): Promise<HttpResponse> {
 				if (request.url.endsWith("/metadata/redeem")) {
@@ -1232,11 +1206,10 @@ describe("token-set web helpers", () => {
 		const clientA = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-a",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		await clientA.handleCallback(
@@ -1250,11 +1223,10 @@ describe("token-set web helpers", () => {
 		const clientB = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-b",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		// Client B must NOT see Client A's state
@@ -1265,11 +1237,10 @@ describe("token-set web helpers", () => {
 		const clientC = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-a",
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		const restoredC = await clientC.restorePersistedState();
@@ -1307,17 +1278,16 @@ describe("token-set web helpers", () => {
 		const clientA = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-a",
-			persistentStore: sharedPersistentStore,
-			sessionStore: sharedSessionStore,
+			persistentStorage: sharedPersistentStore,
+			sessionStorage: sharedSessionStore,
 			transport: makeTransport("alice"),
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		// Integration A bootstraps with a callback fragment in the URL
 		// callbackFragmentKey is wired directly into the default store — no manual store needed
 		const callbackFragmentStoreA = createBackendOidcModeCallbackFragmentStore({
-			sessionStore: sharedSessionStore,
+			sessionStorage: sharedSessionStore,
 			key: keyA,
 		});
 		const resultA = await bootstrapBackendOidcModePageClient(clientA, {
@@ -1332,16 +1302,15 @@ describe("token-set web helpers", () => {
 		const clientB = createBackendOidcModeWebClient({
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-b",
-			persistentStore: sharedPersistentStore,
-			sessionStore: sharedSessionStore,
+			persistentStorage: sharedPersistentStore,
+			sessionStorage: sharedSessionStore,
 			transport: makeTransport("bob"),
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 		});
 
 		// Integration B bootstraps on a plain URL — should see Empty, not A's callback
 		const callbackFragmentStoreB = createBackendOidcModeCallbackFragmentStore({
-			sessionStore: sharedSessionStore,
+			sessionStorage: sharedSessionStore,
 			key: keyB,
 		});
 		const resultB = await bootstrapBackendOidcModePageClient(clientB, {
@@ -1360,8 +1329,8 @@ describe("token-set web helpers", () => {
 				logEntries.push(entry);
 			},
 		};
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const transport = {
 			async execute(request: HttpRequest): Promise<HttpResponse> {
 				if (request.url.endsWith("/metadata/redeem")) {
@@ -1384,11 +1353,10 @@ describe("token-set web helpers", () => {
 		};
 
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock: testClock,
-			scheduler: testScheduler,
+			time: testTime,
 			logger,
 		});
 
@@ -1407,7 +1375,7 @@ describe("token-set web helpers", () => {
 		);
 	});
 
-	it("uses redirect: manual by default when no transport or fetchTransport is provided", async () => {
+	it("uses redirect: manual by default when no custom external transport is provided", async () => {
 		const capturedInits: RequestInit[] = [];
 		const originalFetch = globalThis.fetch;
 		globalThis.fetch = async (
@@ -1430,10 +1398,9 @@ describe("token-set web helpers", () => {
 
 		try {
 			const client = createBackendOidcModeWebClient({
-				persistentStore: createInMemoryRecordStore(),
-				sessionStore: createInMemoryRecordStore(),
-				clock: testClock,
-				scheduler: testScheduler,
+				persistentStorage: createInMemoryRecordStore(),
+				sessionStorage: createInMemoryRecordStore(),
+				time: testTime,
 			});
 
 			await client.handleCallback(
@@ -1448,50 +1415,7 @@ describe("token-set web helpers", () => {
 		}
 	});
 
-	it("forwards fetchTransport options to the default fetch transport", async () => {
-		const capturedInits: RequestInit[] = [];
-		const originalFetch = globalThis.fetch;
-		globalThis.fetch = async (
-			_input: RequestInfo | URL,
-			init?: RequestInit,
-		) => {
-			capturedInits.push(init ?? {});
-			return new Response(
-				JSON.stringify({
-					metadata: {
-						principal: { subject: "user-1", displayName: "Alice" },
-					},
-				}),
-				{
-					status: 200,
-					headers: { "content-type": "application/json" },
-				},
-			);
-		};
-
-		try {
-			const client = createBackendOidcModeWebClient({
-				persistentStore: createInMemoryRecordStore(),
-				sessionStore: createInMemoryRecordStore(),
-				clock: testClock,
-				scheduler: testScheduler,
-				// Override the SDK default redirect: "manual" → "follow"
-				fetchTransport: { redirect: "follow" },
-			});
-
-			await client.handleCallback(
-				"access_token=at&id_token=idt&metadata_redemption_id=meta-1",
-			);
-
-			// fetchTransport overrides the default — redirect must be "follow"
-			expect(capturedInits.length).toBeGreaterThanOrEqual(1);
-			expect(capturedInits[0]?.redirect).toBe("follow");
-		} finally {
-			globalThis.fetch = originalFetch;
-		}
-	});
-
-	it("ignores fetchTransport when a custom transport is provided", async () => {
+	it("uses a custom external transport when provided", async () => {
 		const requests: HttpRequest[] = [];
 		const customTransport = {
 			async execute(request: HttpRequest): Promise<HttpResponse> {
@@ -1513,13 +1437,10 @@ describe("token-set web helpers", () => {
 		};
 
 		const client = createBackendOidcModeWebClient({
-			persistentStore: createInMemoryRecordStore(),
-			sessionStore: createInMemoryRecordStore(),
-			clock: testClock,
-			scheduler: testScheduler,
+			persistentStorage: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
+			time: testTime,
 			transport: customTransport,
-			// This should be completely ignored because transport is present.
-			fetchTransport: { redirect: "follow" },
 		});
 
 		await client.handleCallback(
@@ -1538,14 +1459,14 @@ describe("token-set web helpers", () => {
 
 		// Seed a callback fragment for integration A
 		const storeA = createBackendOidcModeCallbackFragmentStore({
-			sessionStore: sharedSessionStore,
+			sessionStorage: sharedSessionStore,
 			key: keyA,
 		});
 		await storeA.save("access_token=a-at&id_token=a-idt");
 
 		// Seed a callback fragment for integration B
 		const storeB = createBackendOidcModeCallbackFragmentStore({
-			sessionStore: sharedSessionStore,
+			sessionStorage: sharedSessionStore,
 			key: keyB,
 		});
 		await storeB.save("access_token=b-at&id_token=b-idt");
@@ -1553,8 +1474,8 @@ describe("token-set web helpers", () => {
 		// Reset only integration A using the host-composed fragment store.
 		const clientA = createBackendOidcModeWebClient({
 			persistentStateKey: "tenant-a",
-			persistentStore: createInMemoryRecordStore(),
-			sessionStore: sharedSessionStore,
+			persistentStorage: createInMemoryRecordStore(),
+			sessionStorage: sharedSessionStore,
 			transport: {
 				async execute(): Promise<HttpResponse> {
 					throw new Error("should not be called");
@@ -1573,23 +1494,23 @@ describe("token-set web helpers", () => {
 	});
 
 	it("reset requires an explicit callbackFragmentStore and leaves unrelated stores untouched", async () => {
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const explicitStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 			key: "explicit-key",
 		});
 		await explicitStore.save("access_token=explicit-at&id_token=explicit-idt");
 
 		// Also seed a fragment under a different key
 		const otherStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 			key: "other-key",
 		});
 		await otherStore.save("access_token=other-at&id_token=other-idt");
 
 		const client = createBackendOidcModeWebClient({
-			persistentStore: createInMemoryRecordStore(),
-			sessionStore,
+			persistentStorage: createInMemoryRecordStore(),
+			sessionStorage,
 			transport: {
 				async execute(): Promise<HttpResponse> {
 					throw new Error("should not be called");
@@ -1613,27 +1534,28 @@ describe("token-set web helpers", () => {
 
 	it("materialized backend web clients and the compatibility helper share the same redirect navigation path", async () => {
 		const client = createBackendOidcModeWebClient({
-			persistentStore: createInMemoryRecordStore(),
-			sessionStore: createInMemoryRecordStore(),
+			persistentStorage: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 			baseUrl: "https://auth.example.com",
 		});
-		const sharedEnvironment = {
-			location: {
-				href: "https://app.example.com/page",
-				hash: "",
-				pathname: "/page",
-				search: "",
-			},
+		const sharedLocation = {
+			href: "https://app.example.com/page",
+			hash: "",
+			pathname: "/page",
+			search: "",
 		};
-		const compatibilityEnvironment = {
-			location: {
-				href: "https://app.example.com/other-page",
-				hash: "",
-				pathname: "/other-page",
-				search: "",
-			},
+		const sharedEnvironment = createRouterForNativeWeb({
+			location: sharedLocation,
+		});
+		const compatibilityLocation = {
+			href: "https://app.example.com/other-page",
+			hash: "",
+			pathname: "/other-page",
+			search: "",
 		};
-
+		const compatibilityEnvironment = createRouterForNativeWeb({
+			location: compatibilityLocation,
+		});
 		await client.loginWithRedirect({
 			environment: sharedEnvironment,
 			postAuthRedirectUri: "https://app.example.com/return",
@@ -1643,18 +1565,18 @@ describe("token-set web helpers", () => {
 			postAuthRedirectUri: "https://app.example.com/return",
 		});
 
-		expect(sharedEnvironment.location.href).toBe(
+		expect(sharedLocation.href).toBe(
 			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Freturn",
 		);
-		expect(compatibilityEnvironment.location.href).toBe(
+		expect(compatibilityLocation.href).toBe(
 			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Freturn",
 		);
 	});
 
 	it("fails page helpers without explicit environment instead of reading a global window", async () => {
 		const client = createBackendOidcModeWebClient({
-			persistentStore: createInMemoryRecordStore(),
-			sessionStore: createInMemoryRecordStore(),
+			persistentStorage: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 			transport: {
 				async execute(): Promise<HttpResponse> {
 					throw new Error("transport should not be called");
@@ -1683,7 +1605,7 @@ describe("token-set web helpers", () => {
 
 		try {
 			expect(() => loginWithBackendOidcRedirect(client)).toThrow(
-				/createBrowserPageClientEnvironment/,
+				/createEnvironmentForNativeWeb/,
 			);
 			await expect(
 				loginWithBackendOidcPopup(
@@ -1694,7 +1616,7 @@ describe("token-set web helpers", () => {
 				),
 			).rejects.toThrow(/callbackFragmentStore/);
 			expect(() => relayBackendOidcPopupCallback()).toThrow(
-				/createBrowserPageClientEnvironment/,
+				/createEnvironmentForNativeWeb/,
 			);
 			await expect(bootstrapBackendOidcModePageClient(client)).rejects.toThrow(
 				/createBackendOidcModeWebClientEnvironment/,

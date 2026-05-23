@@ -7,6 +7,8 @@
 
 import { ClientError, ClientErrorKind } from "@securitydept/client";
 import {
+	createPopupForNativeWeb,
+	createRouterForNativeWeb,
 	openPopupWindow,
 	PopupErrorCode,
 	relayPopupCallback,
@@ -103,7 +105,10 @@ describe("backend-oidc-mode popup baseline", () => {
 		try {
 			await loginWithBackendOidcPopup(mockClient as never, {
 				popupCallbackUrl: "https://app.example.com/callback",
-				environment: { callbackFragmentStore: store },
+				environment: {
+					callbackFragmentStore: store,
+					popup: createPopupForNativeWeb(),
+				},
 			});
 			expect.fail("Should have thrown");
 		} catch (err) {
@@ -145,7 +150,10 @@ describe("backend-oidc-mode popup baseline", () => {
 
 		const promise = loginWithBackendOidcPopup(mockClient as never, {
 			popupCallbackUrl: "https://app.example.com/popup-callback",
-			environment: { callbackFragmentStore: store },
+			environment: {
+				callbackFragmentStore: store,
+				popup: createPopupForNativeWeb(),
+			},
 		});
 
 		// Simulate the popup callback page relaying the result.
@@ -208,7 +216,10 @@ describe("backend-oidc-mode popup baseline", () => {
 
 		const promise = loginWithBackendOidcPopup(mockClient as never, {
 			popupCallbackUrl: "https://app.example.com/popup-callback",
-			environment: { callbackFragmentStore: explicitStore },
+			environment: {
+				callbackFragmentStore: explicitStore,
+				popup: createPopupForNativeWeb(),
+			},
 		});
 
 		// Relay the callback URL with a fragment.
@@ -264,10 +275,13 @@ describe("frontend-oidc-mode popup baseline", () => {
 
 		relayFrontendOidcPopupCallback({
 			environment: {
-				location: {
-					href: "https://app.example.com/popup-callback?code=abc&state=xyz",
-					hash: "",
-				},
+				router: createRouterForNativeWeb({
+					location: {
+						href: "https://app.example.com/popup-callback?code=abc&state=xyz",
+						hash: "",
+					},
+				}),
+				popup: createPopupForNativeWeb(),
 			},
 			targetOrigin: "https://app.example.com",
 		});
@@ -318,8 +332,9 @@ describe("frontend-oidc-mode popup baseline", () => {
 		// Create a minimal mock that extends FrontendOidcModeClient's prototype shape.
 		const mockClient = Object.create(FrontendOidcModeClient.prototype);
 		mockClient._environment = {
-			clock: { now: () => Date.now() },
+			time: { now: () => Date.now() },
 			traceSink: { record: vi.fn() },
+			popup: createPopupForNativeWeb(),
 		};
 		mockClient._authorizeUrlWithState = vi
 			.fn()

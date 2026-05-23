@@ -9,31 +9,31 @@
 //
 // Stability: provisional
 
-import type { PageLocationCapability } from "@securitydept/client";
+import type { RouterTrait } from "@securitydept/client";
 import { assertResolveEnvironment } from "@securitydept/client/web";
 import type { BasicAuthContextClient } from "../client";
 
 const BASIC_AUTH_PAGE_ENVIRONMENT_ERROR_MESSAGE =
 	"basic-auth browser redirect helpers require an explicit page environment.\n" +
-	"Create one in your composition root with createBrowserPageClientEnvironment(...).";
+	"Create one in your composition root with createEnvironmentForNativeWeb(...).";
 
 /**
  * Options for {@link loginWithRedirect}.
  */
 export interface LoginWithRedirectOptions {
-	environment?: PageLocationCapability;
+	environment?: RouterTrait;
 
 	/**
 	 * The current request path to resolve the target zone.
 	 *
-	 * When omitted, `environment.location.pathname` is used.
+	 * When omitted, `environment.currentUrl()` is used.
 	 */
 	currentPath?: string;
 
 	/**
 	 * Where to redirect the user after successful authentication.
 	 *
-	 * When omitted, `environment.location.href` is used as the return URI.
+	 * When omitted, `environment.currentUrl()` is used as the return URI.
 	 */
 	postAuthRedirectUri?: string;
 }
@@ -53,26 +53,28 @@ export interface LoginWithRedirectOptions {
  * `BasicAuthContextClient`) to keep browser-specific side-effects out
  * of the host-neutral client contract.
  */
-export function loginWithRedirect(
+export async function loginWithRedirect(
 	client: BasicAuthContextClient,
 	options: LoginWithRedirectOptions = {},
-): boolean {
+): Promise<boolean> {
 	const environment = assertResolveEnvironment(
 		options.environment,
 		failMissingPageEnvironment,
 	);
-	const currentPath =
-		options.currentPath ??
-		environment.location.pathname ??
-		new URL(environment.location.href).pathname;
+	const currentUrl = environment.currentUrl();
+	const currentPath = options.currentPath ?? currentUrl?.pathname ?? "/";
 	const zone = client.zoneForPath(currentPath);
 	if (!zone) {
 		return false;
 	}
 
 	const postAuthRedirectUri =
-		options.postAuthRedirectUri ?? environment.location.href;
-	environment.location.href = client.loginUrl(zone, postAuthRedirectUri);
+		options.postAuthRedirectUri ?? currentUrl?.toString() ?? "/";
+	await environment.navigate({
+		url: client.loginUrl(zone, postAuthRedirectUri),
+		intent: "auth_redirect",
+		mode: "external",
+	});
 	return true;
 }
 

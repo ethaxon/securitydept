@@ -18,7 +18,10 @@ import {
 	signal,
 	type WritableSignal,
 } from "@angular/core";
-import type { HttpTransport, WebClientEnvironment } from "@securitydept/client";
+import type {
+	ExternalTransportTrait,
+	FoundationEnvironment,
+} from "@securitydept/client";
 import { toRxObservable } from "@securitydept/client/rx";
 import { bridgeToAngularSignal } from "@securitydept/client-angular";
 import {
@@ -44,9 +47,8 @@ export const SESSION_CONTEXT_CLIENT = new InjectionToken<SessionContextClient>(
 /**
  * Angular `InjectionToken` for the HTTP transport used by session context.
  */
-export const SESSION_CONTEXT_TRANSPORT = new InjectionToken<HttpTransport>(
-	"SESSION_CONTEXT_TRANSPORT",
-);
+export const SESSION_CONTEXT_TRANSPORT =
+	new InjectionToken<ExternalTransportTrait>("SESSION_CONTEXT_TRANSPORT");
 
 export const SESSION_CONTEXT_CONTROLLER =
 	new InjectionToken<SessionContextController>("SESSION_CONTEXT_CONTROLLER");
@@ -155,7 +157,7 @@ export class SessionContextService {
 export interface ProvideSessionContextOptions {
 	config: SessionContextClientConfig;
 	/** Framework composition-root environment for transport and session state. */
-	environment: WebClientEnvironment;
+	environment: FoundationEnvironment;
 	/** Explicitly start an initial session probe from the provider. */
 	initialRefresh?: boolean;
 }
@@ -181,11 +183,11 @@ export function provideSessionContext(
 	options: ProvideSessionContextOptions,
 ): Provider[] {
 	const client = new SessionContextClient(options.config, {
-		sessionStore: options.environment.sessionStore,
+		sessionStorage: options.environment.sessionStorage,
 	});
 	const controller = new SessionContextController({
 		client,
-		transport: options.environment.transport,
+		externalTransport: options.environment.transport,
 	});
 	if (options.initialRefresh) {
 		controller.refresh().catch(() => {});

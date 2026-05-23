@@ -1,7 +1,4 @@
-import type {
-	PageResumeAuthCheckOptions,
-	TokenSetAuthCheckTriggerSource,
-} from "@securitydept/token-set-context-client/orchestration";
+import type { FoundationEnvironment } from "@securitydept/client";
 import type {
 	ClientInitializationPriority,
 	TokenSetClientEntry as CoreTokenSetClientEntry,
@@ -59,11 +56,10 @@ export type TokenSetAngularClient = OidcModeClient & OidcCallbackClient;
  *     → this client. Useful when multiple clients share the same kind but differ
  *     by provider / audience.
  */
-export interface TokenSetClientEntry
-	extends Omit<
-		CoreTokenSetClientEntry<TokenSetAngularClient>,
-		"clientFactory"
-	> {
+type TokenSetClientEntryBase = Omit<
+	CoreTokenSetClientEntry<TokenSetAngularClient>,
+	"clientFactory"
+> & {
 	/**
 	 * Factory that creates the OIDC mode client.
 	 *
@@ -71,30 +67,15 @@ export interface TokenSetClientEntry
 	 * (async config projection resolution). When a Promise is returned,
 	 * the registry tracks initialization readiness automatically.
 	 */
-	clientFactory: () => TokenSetAngularClient | Promise<TokenSetAngularClient>;
-	/**
-	 * When true (default), adapter-managed browser clients install the token-set
-	 * page-resume auth-check trigger during materialization.
-	 *
-	 * Disable only when the host intentionally owns browser lifecycle wiring for
-	 * this client and can prove an equivalent resume trigger path.
-	 *
-	 * @default true
-	 */
-	pageResumeAuthCheck?: boolean;
-	/**
-	 * Browser lifecycle options forwarded to the default token-set page-resume
-	 * auth-check trigger when `pageResumeAuthCheck !== false`.
-	 */
-	pageResumeAuthCheckOptions?: PageResumeAuthCheckOptions;
-	/**
-	 * Additional auth-check trigger streams installed on the client.
-	 */
-	authCheckTriggerSources?: readonly TokenSetAuthCheckTriggerSource[];
+	clientFactory: (
+		environment: FoundationEnvironment | undefined,
+	) => TokenSetAngularClient | Promise<TokenSetAngularClient>;
 	/**
 	 * Initialization priority. Defaults to `"primary"` (eager). Set to
 	 * `"lazy"` to defer clientFactory execution until the registry is asked
 	 * for this key via `whenReady(key)` / `preload(key)` / `idleWarmup()`.
 	 */
 	priority?: ClientInitializationPriority;
-}
+};
+
+export type TokenSetClientEntry = TokenSetClientEntryBase;

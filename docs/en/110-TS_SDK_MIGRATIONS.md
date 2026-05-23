@@ -72,30 +72,57 @@ Packages:
 
 Change:
 
-- Framework-neutral host capability resolution is now owned by the client foundation through typed `ClientEnvironment`, `WebClientEnvironment`, and `PageClientEnvironment` objects.
-- The historical `ClientRuntime` naming has been retired in favor of `ClientEnvironment`. Core client constructor dependencies are environments, not a second runtime layer. Canonical access is `environment.transport`, `environment.sessionStore`, and peers.
-- Web host presets are explicit factory entry points for browser page, browser worker, service worker, and browser-extension background hosts. They are not automatic host detection.
-- Context and adapter public helpers use the same boundary. Backend-OIDC web helpers, basic-auth/session redirect helpers, and framework adapter convenience helpers must not each redeclare or guess transport/store/scheduler/clock/page dependencies.
+- Framework-neutral host capability resolution is now owned by the client foundation through typed `FoundationEnvironment`, `NativeWebEnvironment`, `WebExtCoreEnvironment`, and related host specializations.
+- The historical `ClientRuntime` naming has been retired in favor of environment terminology. Core client constructor dependencies are environments, not a second runtime layer. Canonical access is `environment.transport`, `environment.sessionStorage`, and peers.
+- Web host environment factories are explicit composition entry points. They are not automatic host detection and no longer expose preset-only worker/service-worker/extension-background wrappers.
+- Context and adapter public helpers use the same boundary. Backend-OIDC web helpers, basic-auth/session redirect helpers, and framework adapter convenience helpers must not each redeclare or guess transport/store/time/page dependencies.
 - Backend-OIDC web helpers are split by host boundary: page-only helpers use page-explicit names, while worker-safe helpers require host-injected environment/capabilities or restore-only behavior.
 
 Migration:
 
-- Create one environment at the host composition root and pass the environment object itself through providers/adapters. Do not teach adopters to read `environment.runtime`; update direct `ClientRuntime` / `createRuntime()` / `createWebRuntime()` / `deriveClientRuntime()` usage to `ClientEnvironment`, `createClientEnvironment()`, `createWebClientEnvironment()`, or `deriveClientEnvironment()`.
+- Create one environment at the host composition root and pass the environment object itself through providers/adapters. Do not teach adopters to read `environment.runtime`; update direct historical runtime/derive helper usage to `FoundationEnvironment`, `createClientEnvironment()`, `createEnvironmentForNativeWeb()`, or direct structural environment passing.
 - Keep public option keys named `environment` even when the value is page-scoped or async-resolved. Do not introduce `pageEnvironment` as a parallel key; the type communicates the page requirement.
-- Use `createBrowserPageClientEnvironment(options)` for real page/tab/popup callback flows.
-- Use `createBrowserWorkerClientEnvironment(options)`, `createServiceWorkerClientEnvironment(options)`, or `createBrowserExtensionBackgroundClientEnvironment(options)` for worker-like hosts; inject persistence/session stores explicitly when needed.
+- Use `createEnvironmentForNativeWeb({ location, history, ...options })` for real page/tab/popup callback flows; page capabilities are explicit top-level host inputs and must come from the host composition root.
+- Do not use `createEnvironmentForNativeWeb()` for worker-like hosts. Compose those with `createClientEnvironment()` or a more specific host factory, then inject persistence/session stores explicitly when needed.
 - Do not call page callback bootstrap in service workers or extension backgrounds. Run restore/token-state APIs there, and run callback capture only in a real page/popup document or with explicit fake page/callback-fragment capabilities in tests.
 - Update ambiguous page-global helper names to page-explicit forms where the public name changed, such as `currentPageLocationAsPostAuthRedirectUri()`, `buildAuthorizeUrlReturningToCurrentPage()`, `bootstrapBackendOidcModePageClient()`, and `captureBackendOidcModePageCallbackFragment()`.
-- Treat existing redirect/popup helpers (`loginWithBackendOidcRedirect()`, `loginWithBackendOidcPopup()`, and `relayBackendOidcPopupCallback()`) as page-only helpers even though their historical names remain intact; pass explicit page capability (`PageLocationHistoryCapability`) or a page-bearing `environment` when testing or running in a host wrapper. The canonical shared token-set OIDC browser contract is now `loginWithRedirect({ environment, postAuthRedirectUri })` on `OidcRedirectLoginClient`; backend web clients materialized through `createBackendOidcModeWebClient(...)` expose that method while `loginWithBackendOidcRedirect()` remains the compatibility/convenience wrapper. Popup login also requires an explicit callback-fragment capability, and browser-state reset requires an explicit `callbackFragmentStore`.
+- Treat existing redirect/popup helpers (`loginWithBackendOidcRedirect()`, `loginWithBackendOidcPopup()`, and `relayBackendOidcPopupCallback()`) as page-only helpers even though their historical names remain intact; pass an explicit `RouterTrait`/`PopupTrait` or a page-bearing `environment` when testing or running in a host wrapper. The canonical shared token-set OIDC browser contract is now `loginWithRedirect({ environment, postAuthRedirectUri })` on `OidcRedirectLoginClient`; backend web clients materialized through `createBackendOidcModeWebClient(...)` expose that method while `loginWithBackendOidcRedirect()` remains the compatibility/convenience wrapper. Popup login also requires an explicit callback-fragment capability, and browser-state reset requires an explicit `callbackFragmentStore`.
 - For frontend-mode browser materialization, create `createFrontendOidcModeWebClientEnvironment(...)` at the host composition root and pass it to `createFrontendOidcModeBrowserClient({ environment, ... })`; the materializer no longer creates a default environment when `environment` is omitted.
-- When browser/page environment ownership must stay stable across framework routes or commands, create a provider/injector-scoped `ClientEnvironmentService` and use `await service.resolvePageEnvironment()` for command/event flows or `service.readPageEnvironment()` for Suspense-compatible render paths instead of inventing app-local module singletons.
-- Treat basic-auth/session `/web` redirect helpers that read or write `window.location` as page helpers; keep them in a real page context or inject explicit navigation capabilities.
+- When browser/page environment ownership must stay stable across framework routes or commands, create one host-owned `NativeWebEnvironment` at the composition root and inject that object. Do not invent app-local module singletons or SDK-local lazy environment resolvers.
+- Treat basic-auth/session `/web` redirect helpers as page navigation helpers; keep them in a real page context or inject an explicit `RouterTrait`.
 - Let framework provider/DI registration functions own full environment composition. Do not make ordinary hooks, guards, interceptors, services, or convenience helpers each accept a full scattered dependency bag.
-- Do not infer page capability from `globalThis.location`; page helpers require `window.location` and `window.history.replaceState`.
+- Do not infer page capability from `globalThis.location`; core helpers consume behavior traits. Raw `window.location` and `window.history` only appear in explicit native-web adapter inputs.
 
 Justification:
 
 - Non-client-bound helpers had started to duplicate dependency bags and hidden `window.*` defaults. Typed client environments keep core dependency wiring explicit while giving helpers a shared, testable, host-scoped capability boundary.
+
+### TimeTrait And EventStream Time Sources
+
+Package:
+
+- `@securitydept/client`
+
+Change:
+
+- `FoundationEnvironment` now carries one `time: TimeTrait` capability instead of separate `clock` and `scheduler` fields. Idle work is a separate optional `idleCallback: IdleCallbackTrait` capability.
+- `createDefaultTimeConfig()` replaces `createDefaultClock()` and `createDefaultScheduler()`.
+- `createDefaultIdleScheduler()` and registry `idleScheduler` wiring are removed. Registry idle warmup now runs only when the host provides `environment.idleCallback`.
+- `timer()`, `interval()`, and `scheduleAt()` callback helpers are removed. Use `fromTimeout()`, `fromInterval()`, and `fromScheduleAt()` EventStream sources.
+- `fromEventPattern()`, `fromSignal()`, and `fromPromise()` are EventStream source helpers. They no longer accept callback options or return a scheduling-local `Subscription`.
+
+Migration:
+
+- Replace `{ clock, scheduler }` environment wiring with `{ time }`; pass a host-owned `{ environment }` whose `environment.idleCallback` is set only when the host intentionally enables registry idle warmup. Tool-level idle revalidation helpers still consume explicit narrow capabilities.
+- Registry-managed token-set entries now receive that same registry-owned environment as `clientFactory(environment)`. Build clients from this argument instead of reaching for module globals or passing scattered sub-capabilities.
+- Replace direct callback timer handles with `const sub = fromTimeout({ time, delayMs }).subscribe({ next })` and call `sub.unsubscribe()` for cleanup.
+- Replace recurring callback scheduling with `fromInterval({ time, periodMs }).subscribe({ next })`.
+- Replace `fromEventPattern({ ..., callback })` with `fromEventPattern({ ... }).subscribe({ next })`.
+- Use `FakeTimeConfig` in tests when deterministic `now()`, timer queueing, flushing, and pending-count assertions are needed.
+
+Justification:
+
+- The former scheduler abstraction only wrapped host timers and did not model priority, execution context, queues, or RxJS-style scheduling. Treating timers as EventStream sources aligns refresh timers, page-resume triggers, and other input sources under one subscription model.
 
 ### Token-Set Event-Driven Auth Flow
 
@@ -212,17 +239,17 @@ Packages:
 Change:
 
 - `@securitydept/client-react` now owns the canonical React injector bridge: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()`, plus the context-free `useReadableSignal()` / `useEventStream()` bridge.
-- `client-react/environment-service` and `planner-host` now export injection tokens and provider factories only, for example `CLIENT_ENVIRONMENT_SERVICE` + `provideClientEnvironmentService()` and `AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`.
+- `client-react` environment and planner-host helpers now export injection tokens and provider factories only, for example `CLIENT_ENVIRONMENT` + `provideClientEnvironment(environment)` and `AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`.
 - The basic-auth / session / token-set React adapters no longer own domain-specific Provider / Context hooks. They export tokens, plain factories, provider factories, and explicit callback/component bridges. Token-set multi-client composition is now explicit registry/controller wiring instead of an SDK-owned runtime bundle.
-- Angular `createTokenSetOidcLoginRedirectHandler()` is now the route-login helper. It still uses `environment` as the only public key, but the value is now a stable page-environment source that Angular DI provides through `providePageClientEnvironment({ environment })` from `@securitydept/client-angular`. The helper targets the shared `OidcRedirectLoginClient` contract and awaits that source inside the guard flow before calling `loginWithRedirect()`.
+- Angular `createTokenSetOidcLoginRedirectHandler()` is now the route-login helper. It still uses `environment` as the only public key, but the value is now a stable native-web-environment source that Angular DI provides through `provideNativeWebEnvironment({ environment })` from `@securitydept/client-angular`. The helper targets the shared `OidcRedirectLoginClient` contract and awaits that source inside the guard flow before calling `loginWithRedirect()`.
 - Angular `CallbackResumeService` and React `useTokenSetCallbackResume({ getCurrentUrl, describeError })` now bridge the shared `TokenSetCallbackResumeController` from `@securitydept/token-set-context-client/registry`. Angular `TokenSetCallbackComponent` remains page-only convenience over that service, with injectable current URL and host policy tokens.
 
 Migration:
 
 - Build browser environments at the framework composition root, then register those dependencies through `SecuritydeptProvider` plus provider factories.
 - Opt session adapters into initial probing by explicitly creating `SessionContextController` and calling `controller.refresh()` from the host-owned lifecycle when needed.
-- For React code that needs an environment service, register it with `provideClientEnvironmentService()` and read it later through `useSecuritydeptContext().get(CLIENT_ENVIRONMENT_SERVICE)`; keep page capability explicit through service `resolvePageEnvironment()` / `readPageEnvironment()` calls or explicit props.
-- For Angular frontend-oidc route redirects, provide one stable page-environment source from the composition root with `providePageClientEnvironment({ environment })`, where `environment` is usually a provider-scoped `ClientEnvironmentService` or another inject-safe stable resolver.
+- For React code that needs page environment capability, register the host-owned object with `provideClientEnvironment(environment)` and read it later through `useSecuritydeptContext().get(CLIENT_ENVIRONMENT)`.
+- For Angular frontend-oidc route redirects, provide the host-owned native web environment object from the composition root with `provideNativeWebEnvironment({ environment })`.
 - For Angular callback routes, override `TOKEN_SET_CALLBACK_CURRENT_URL` when `window.location.href` is not the right source of truth, and override `TOKEN_SET_CALLBACK_COMPONENT_OPTIONS` when the host needs non-default fallback navigation or centralized error logging.
 - For custom callback orchestration, call `CallbackResumeService.resume(url)` or the React hook with explicit `controller` / `injector` / `getCurrentUrl` / `describeError` instead of reintroducing page-global fallback logic or mode-specific copy into ordinary helpers. `CallbackResumeService.handleCallback(url)` remains only a compatibility wrapper.
 

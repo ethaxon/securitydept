@@ -1,43 +1,64 @@
-import { createOperationTracer } from "../logging/operation-tracer";
-import { createDefaultClock } from "../scheduling/default-clock";
-import { createDefaultScheduler } from "../scheduling/default-scheduler";
-import type { HttpTransport } from "../transport/types";
-import type { ClientEnvironment } from "./types";
+import type { StorageTrait } from "../persistence/types";
+import type { IdleCallbackTrait } from "../scheduling/types";
+import type { SpanContextHostTrait } from "../span/types";
+import { createTelemetryForStd, createTimeForStd } from "../std/index";
+import type { BaseTransportTrait } from "../transport/types";
+import type {
+	FoundationEnvironment,
+	PageLifecycleTrait,
+	PopupTrait,
+	RouterTrait,
+	TelemetryTrait,
+} from "./types";
+import type { EnvironmentValidators } from "./validators";
 
-export interface CreateClientEnvironmentOptions
-	extends Partial<Omit<ClientEnvironment, "transport">> {
-	transport: HttpTransport;
+export interface CreateClientEnvironmentOptions {
+	transport: BaseTransportTrait;
+	time?: FoundationEnvironment["time"];
+	idleCallback?: IdleCallbackTrait;
+	persistentStorage?: StorageTrait;
+	sessionStorage?: StorageTrait;
+	spanContext?: SpanContextHostTrait;
+	telemetry?: TelemetryTrait;
+	router?: RouterTrait;
+	pageLifecycle?: PageLifecycleTrait;
+	popup?: PopupTrait;
+	validators?: EnvironmentValidators;
 }
 
 /**
- * Create a `ClientEnvironment` with non-host-specific defaults filled in for
+ * Create a `FoundationEnvironment` with non-host-specific defaults filled in for
  * convenience.
  *
- * Host-specific capabilities such as browser `fetch` should be supplied
- * explicitly or composed via adapter-specific helpers such as
- * `@securitydept/client/web`.
+ * Base runtime capabilities should be supplied explicitly or composed via
+ * canonical helpers such as `createExternalTransportForFetch()` and
+ * `createTimeForStd()`. Host-specific traits still belong to explicit host
+ * adapters such as `@securitydept/client/web`.
  */
 export function createClientEnvironment(
 	overrides: CreateClientEnvironmentOptions,
-): ClientEnvironment {
-	const clock = overrides.clock ?? createDefaultClock();
-	const traceSink = overrides.traceSink;
-	const logger = overrides.logger;
+): FoundationEnvironment {
+	const time =
+		overrides.time ??
+		createTimeForStd({
+			validators: overrides.validators,
+		});
 
 	return {
 		transport: overrides.transport,
-		scheduler: overrides.scheduler ?? createDefaultScheduler(),
-		clock,
-		logger,
-		traceSink,
-		operationTracer:
-			overrides.operationTracer ??
-			createOperationTracer({
-				clock,
-				logger,
-				traceSink,
-			}),
-		persistentStore: overrides.persistentStore,
-		sessionStore: overrides.sessionStore,
+		time,
+		idleCallback: overrides.idleCallback,
+		persistentStorage: overrides.persistentStorage,
+		sessionStorage: overrides.sessionStorage,
+		spanContext: overrides.spanContext,
+		telemetry: createTelemetryForStd({
+			...overrides.telemetry,
+			spanContext: overrides.spanContext,
+			time,
+			validators: overrides.validators,
+		}),
+		router: overrides.router,
+		pageLifecycle: overrides.pageLifecycle,
+		popup: overrides.popup,
 	};
 }

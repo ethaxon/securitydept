@@ -6,10 +6,12 @@ import {
 	createReplaySubject,
 	createSubject,
 	debounceTime,
+	EMPTY,
 	exhaustMap,
 	filter,
 	map,
 	merge,
+	NEVER,
 	pipe,
 	shareReplay,
 	switchMap,
@@ -20,6 +22,40 @@ import { fromRxObservable, toRxObservable } from "../../rx";
 import { createSignal } from "../../signals";
 
 describe("createEventStream", () => {
+	it("EMPTY should complete immediately without values", () => {
+		let nextCount = 0;
+		let completed = false;
+
+		EMPTY.subscribe({
+			next: () => {
+				nextCount += 1;
+			},
+			complete: () => {
+				completed = true;
+			},
+		});
+
+		expect(nextCount).toBe(0);
+		expect(completed).toBe(true);
+	});
+
+	it("NEVER should stay idle until unsubscribed", () => {
+		const next = vi.fn();
+		let completed = false;
+
+		const subscription = NEVER.subscribe({
+			next,
+			complete: () => {
+				completed = true;
+			},
+		});
+
+		subscription.unsubscribe();
+
+		expect(next).not.toHaveBeenCalled();
+		expect(completed).toBe(false);
+	});
+
 	it("should emit values to subscriber", () => {
 		const values: number[] = [];
 		const stream = createEventStream<number>((observer) => {

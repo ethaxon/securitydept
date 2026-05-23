@@ -11,7 +11,7 @@
 // No domain-specific React Context or provider components are defined here.
 // Stability: provisional
 
-import { createDefaultIdleScheduler } from "@securitydept/client";
+import type { FoundationEnvironment } from "@securitydept/client";
 import {
 	SecuritydeptDestroyRef,
 	SecuritydeptInjectionToken,
@@ -34,6 +34,7 @@ export const TOKEN_SET_AUTH_REGISTRY =
 
 export interface ProvideTokenSetAuthRegistryOptions {
 	clients: readonly TokenSetClientEntry[];
+	environment?: FoundationEnvironment;
 }
 
 export function provideTokenSetAuthRegistry(
@@ -60,9 +61,10 @@ export function provideTokenSetAuthRegistry(
 
 function createReactTokenSetAuthRegistry({
 	clients,
+	environment,
 }: ProvideTokenSetAuthRegistryOptions): ReactRegistry {
 	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>({
-		idleScheduler: createDefaultIdleScheduler(),
+		environment,
 	});
 	tryInjectInInjectionContext(SecuritydeptDestroyRef, {
 		optional: true,

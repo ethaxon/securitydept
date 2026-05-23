@@ -498,7 +498,7 @@ export function parseConfigProjection(
  * Convert a browser OIDC token result into an orchestration `AuthSnapshot`.
  *
  * This is the formal bridge from the frontend-oidc-mode browser runtime
- * into the shared orchestration substrate (AuthMaterialController).
+ * into the shared orchestration substrate.
  */
 export function tokenResultToAuthSnapshot(
 	result: FrontendOidcModeTokenResult,

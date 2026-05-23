@@ -1,10 +1,8 @@
-import type { Clock } from "@securitydept/client";
-
 /**
  * Fake clock for deterministic time control in tests.
  * Time starts at the provided initial value and only advances via `advance()`.
  */
-export class FakeClock implements Clock {
+export class FakeClock {
 	private _now: number;
 
 	constructor(initial = 0) {

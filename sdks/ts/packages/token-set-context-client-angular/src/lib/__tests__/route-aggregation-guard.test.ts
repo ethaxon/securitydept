@@ -1,8 +1,6 @@
 import {
 	createEnvironmentInjector,
-	InjectionToken,
 	Injector,
-	inject,
 	runInInjectionContext,
 } from "@angular/core";
 import {
@@ -18,14 +16,10 @@ import {
 } from "@securitydept/client";
 import type { AuthGuardClientOption } from "@securitydept/client/auth-coordination";
 import {
-	ClientEnvironmentService,
-	createBrowserPageClientEnvironment,
-	createWebClientEnvironment,
-	deriveClientEnvironment,
-	type PageClientEnvironment,
-	type WebClientEnvironment,
+	createEnvironmentForNativeWeb,
+	type NativeWebEnvironment,
 } from "@securitydept/client/web";
-import { providePageClientEnvironment } from "@securitydept/client-angular";
+import { provideNativeWebEnvironment } from "@securitydept/client-angular";
 import {
 	createBackendOidcModeWebClient,
 	createBackendOidcModeWebClientEnvironment,
@@ -54,48 +48,43 @@ function createTransport() {
 	};
 }
 
-function createScheduler() {
+function createTime() {
 	return {
-		setTimeout() {
-			return { cancel() {} };
-		},
+		now: () => Date.now(),
+		setTimeout: (callback: () => void, delayMs: number) =>
+			globalThis.setTimeout(callback, delayMs),
+		clearTimeout: (handle: unknown) =>
+			globalThis.clearTimeout(
+				handle as ReturnType<typeof globalThis.setTimeout>,
+			),
 	};
 }
 
-function createAngularPageEnvironmentService() {
-	const createClientEnvironment = vi.fn(() =>
-		createWebClientEnvironment({
-			transport: createTransport(),
-			scheduler: createScheduler(),
-			clock: { now: () => Date.now() },
-		}),
-	);
-	const createPageEnvironment = vi.fn(
-		(webEnvironment: WebClientEnvironment): PageClientEnvironment =>
-			createBrowserPageClientEnvironment({
-				pageCapability: {
-					location: {
-						href: "https://app.example.com/current",
-						hash: "",
-						pathname: "/current",
-						search: "",
-					},
-					history: {
-						replaceState() {},
-					},
-				},
-				...deriveClientEnvironment(webEnvironment),
-			}),
-	);
-
-	return {
-		service: new ClientEnvironmentService({
-			createClientEnvironment,
-			createPageEnvironment,
-		}),
-		createClientEnvironment,
-		createPageEnvironment,
+function createAngularPageEnvironment(): NativeWebEnvironment {
+	const location = {
+		href: "https://app.example.com/current",
+		hash: "",
+		pathname: "/current",
+		search: "",
 	};
+
+	return createEnvironmentForNativeWeb({
+		transport: createTransport(),
+		time: createTime(),
+		location,
+		history: {
+			pushState(_data: unknown, _unused: string, url?: string | URL | null) {
+				if (url) {
+					location.href = new URL(url, location.href).toString();
+				}
+			},
+			replaceState(_data: unknown, _unused: string, url?: string | URL | null) {
+				if (url) {
+					location.href = new URL(url, location.href).toString();
+				}
+			},
+		},
+	});
 }
 
 async function flushMicrotasks() {
@@ -130,11 +119,11 @@ describe("createTokenSetRouteAggregationGuard", () => {
 		} as NonNullable<CreateTokenSetRouteAggregationGuardOptions["plannerHost"]>;
 		const isAuthenticated = createReplaySignal<boolean>();
 		const authDetermined = createReplaySignal<true>();
-		authDetermined.emit(true);
+		authDetermined.setValue(true);
 		const authSnapshot = createReplaySignal<null>();
-		authSnapshot.emit(null);
+		authSnapshot.setValue(null);
 		const authorizationHeaderValue = createReplaySignal<string | undefined>();
-		authorizationHeaderValue.emit(undefined);
+		authorizationHeaderValue.setValue(undefined);
 		const lastAuthError = createSignal<unknown | undefined>(undefined);
 		const client = {
 			state: createSignal(null),
@@ -150,14 +139,15 @@ describe("createTokenSetRouteAggregationGuard", () => {
 				loginPending: createSignal(false),
 			},
 			authEvents: createSubject(),
-			addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn(async () => null),
 			authCheck: vi.fn(async () => ({
 				status: AuthCheckStatus.Unauthenticated,
 				snapshot: null,
-				authorizationHeader: null,
+				authorizationHeader: undefined,
 				reason: TokenSetAuthFlowReason.NoSnapshot,
 			})),
 			handleCallback: vi.fn(),
@@ -226,15 +216,14 @@ describe("createTokenSetRouteAggregationGuard", () => {
 
 	it("OIDC redirect handlers resolve the canonical foundation page environment provider", async () => {
 		const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
-		const { service: environmentService } =
-			createAngularPageEnvironmentService();
+		const environment = createAngularPageEnvironment();
 		const registry = {
 			whenReady: vi.fn(async () => ({ loginWithRedirect })),
 		} as unknown as Pick<TokenSetAuthRegistry, "whenReady">;
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TokenSetAuthRegistry, useValue: registry },
-				providePageClientEnvironment({ environment: environmentService }),
+				provideNativeWebEnvironment({ environment }),
 			],
 			Injector.NULL as never,
 		);
@@ -255,9 +244,8 @@ describe("createTokenSetRouteAggregationGuard", () => {
 			Promise.resolve(pendingResult).then(settled, settled);
 
 			await flushMicrotasks();
-			const environment = await environmentService.resolvePageEnvironment();
 			expect(loginWithRedirect).toHaveBeenCalledWith({
-				environment,
+				environment: environment.router,
 				postAuthRedirectUri: "/workspace/wiki?from=guard",
 			});
 			expect(settled).not.toHaveBeenCalled();
@@ -268,11 +256,7 @@ describe("createTokenSetRouteAggregationGuard", () => {
 
 	it("OIDC redirect handlers resolve a stable DI environment without reading ambient window", async () => {
 		const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
-		const {
-			service: environmentService,
-			createClientEnvironment,
-			createPageEnvironment,
-		} = createAngularPageEnvironmentService();
+		const environment = createAngularPageEnvironment();
 		const originalWindowDescriptor = Object.getOwnPropertyDescriptor(
 			globalThis,
 			"window",
@@ -284,7 +268,7 @@ describe("createTokenSetRouteAggregationGuard", () => {
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TokenSetAuthRegistry, useValue: registry },
-				providePageClientEnvironment({ environment: environmentService }),
+				provideNativeWebEnvironment({ environment }),
 			],
 			Injector.NULL as never,
 		);
@@ -330,23 +314,20 @@ describe("createTokenSetRouteAggregationGuard", () => {
 			Promise.resolve(secondPendingResult).then(settled, settled);
 
 			await flushMicrotasks();
-			const environment = await environmentService.resolvePageEnvironment();
 			expect(loginWithRedirect).toHaveBeenCalledWith({
-				environment,
+				environment: environment.router,
 				postAuthRedirectUri: "/workspace/wiki?from=guard",
 			});
 			expect(loginWithRedirect).toHaveBeenNthCalledWith(2, {
-				environment,
+				environment: environment.router,
 				postAuthRedirectUri: "/workspace/wiki?from=guard",
 			});
 			expect(loginWithRedirect.mock.calls[0]?.[0].environment).toBe(
-				environment,
+				environment.router,
 			);
 			expect(loginWithRedirect.mock.calls[1]?.[0].environment).toBe(
-				environment,
+				environment.router,
 			);
-			expect(createClientEnvironment).toHaveBeenCalledTimes(1);
-			expect(createPageEnvironment).toHaveBeenCalledTimes(1);
 			expect(windowRead).toBe(false);
 			expect(settled).not.toHaveBeenCalled();
 		} finally {
@@ -360,12 +341,11 @@ describe("createTokenSetRouteAggregationGuard", () => {
 	});
 
 	it("OIDC redirect handlers also drive backend web clients through the shared redirect-login contract", async () => {
-		const { service: environmentService } =
-			createAngularPageEnvironmentService();
+		const environment = createAngularPageEnvironment();
 		const backendClient = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
-				persistentStore: createInMemoryRecordStore(),
-				sessionStore: createInMemoryRecordStore(),
+				persistentStorage: createInMemoryRecordStore(),
+				sessionStorage: createInMemoryRecordStore(),
 			}),
 			baseUrl: "https://auth.example.com",
 		});
@@ -376,7 +356,7 @@ describe("createTokenSetRouteAggregationGuard", () => {
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TokenSetAuthRegistry, useValue: registry },
-				providePageClientEnvironment({ environment: environmentService }),
+				provideNativeWebEnvironment({ environment }),
 			],
 			Injector.NULL as never,
 		);
@@ -397,12 +377,11 @@ describe("createTokenSetRouteAggregationGuard", () => {
 			Promise.resolve(pendingResult).then(settled, settled);
 
 			await flushMicrotasks();
-			const environment = await environmentService.resolvePageEnvironment();
 			expect(loginWithRedirect).toHaveBeenCalledWith({
-				environment,
+				environment: environment.router,
 				postAuthRedirectUri: "/workspace/wiki?from=guard",
 			});
-			expect(environment.location.href).toBe(
+			expect(environment.router.currentUrl()?.toString()).toBe(
 				"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=%2Fworkspace%2Fwiki%3Ffrom%3Dguard",
 			);
 			expect(settled).not.toHaveBeenCalled();
@@ -413,15 +392,14 @@ describe("createTokenSetRouteAggregationGuard", () => {
 	});
 
 	it("OIDC redirect handlers fail fast when the registered client lacks shared redirect-login capability", async () => {
-		const { service: environmentService } =
-			createAngularPageEnvironmentService();
+		const environment = createAngularPageEnvironment();
 		const registry = {
 			whenReady: vi.fn(async () => ({})),
 		} as unknown as Pick<TokenSetAuthRegistry, "whenReady">;
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TokenSetAuthRegistry, useValue: registry },
-				providePageClientEnvironment({ environment: environmentService }),
+				provideNativeWebEnvironment({ environment }),
 			],
 			Injector.NULL as never,
 		);
@@ -444,59 +422,6 @@ describe("createTokenSetRouteAggregationGuard", () => {
 			).rejects.toThrow(
 				/createTokenSetOidcLoginRedirectHandler.*client key "frontend".*OidcRedirectLoginClient\.loginWithRedirect/,
 			);
-		} finally {
-			injector.destroy();
-		}
-	});
-
-	it("OIDC redirect handlers can resolve the environment through an Angular inject()-based provider without NG0203", async () => {
-		const TEST_PAGE_ENVIRONMENT_SERVICE =
-			new InjectionToken<ClientEnvironmentService>(
-				"TEST_PAGE_ENVIRONMENT_SERVICE",
-			);
-		const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
-		const { service: environmentService } =
-			createAngularPageEnvironmentService();
-		const registry = {
-			whenReady: vi.fn(async () => ({ loginWithRedirect })),
-		} as unknown as Pick<TokenSetAuthRegistry, "whenReady">;
-		const injector = createEnvironmentInjector(
-			[
-				{ provide: TokenSetAuthRegistry, useValue: registry },
-				{
-					provide: TEST_PAGE_ENVIRONMENT_SERVICE,
-					useValue: environmentService,
-				},
-				providePageClientEnvironment({
-					environment: () =>
-						inject(TEST_PAGE_ENVIRONMENT_SERVICE).resolvePageEnvironment(),
-				}),
-			],
-			Injector.NULL as never,
-		);
-
-		try {
-			const pendingResult = runInInjectionContext(injector, () =>
-				createTokenSetOidcLoginRedirectHandler({ clientKey: "frontend" })(
-					[] as never,
-					{ id: "frontend", kind: "frontend_oidc" },
-					{
-						route: {} as ActivatedRouteSnapshot,
-						state: { url: "/workspace/wiki?from=guard" } as RouterStateSnapshot,
-						attemptedUrl: "/workspace/wiki?from=guard",
-					},
-				),
-			);
-
-			await flushMicrotasks();
-			const environment = await environmentService.resolvePageEnvironment();
-			expect(loginWithRedirect).toHaveBeenCalledWith({
-				environment,
-				postAuthRedirectUri: "/workspace/wiki?from=guard",
-			});
-			await expect(
-				Promise.race([pendingResult, Promise.resolve("pending")]),
-			).resolves.toBe("pending");
 		} finally {
 			injector.destroy();
 		}

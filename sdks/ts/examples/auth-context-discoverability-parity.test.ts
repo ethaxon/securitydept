@@ -12,9 +12,12 @@ import {
 } from "@securitydept/basic-auth-context-client";
 import type { LoginWithRedirectOptions as BasicAuthLoginOptions } from "@securitydept/basic-auth-context-client/web";
 import { loginWithRedirect as basicAuthLoginWithRedirect } from "@securitydept/basic-auth-context-client/web";
-import type { PageLocationCapability } from "@securitydept/client";
-import { createInMemoryRecordStore } from "@securitydept/client";
-import { createWebClientEnvironment } from "@securitydept/client/web";
+import type { RouterTrait } from "@securitydept/client";
+import {
+	createClientEnvironment,
+	createInMemoryRecordStore,
+} from "@securitydept/client";
+import { createRouterForNativeWeb } from "@securitydept/client/web";
 import type {
 	SessionContextClientConfig,
 	SessionInfo,
@@ -23,15 +26,19 @@ import type { LoginWithRedirectOptions as SessionLoginOptions } from "@securityd
 import type { CreateSessionContextControllerOptions } from "@securitydept/session-context-client-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-function createPageLocationEnvironment(href: string): PageLocationCapability {
+function createPageLocationEnvironment(href: string): RouterTrait & {
+	location: { href: string; hash: string; pathname: string; search: string };
+} {
 	const url = new URL(href);
+	const location = {
+		href,
+		hash: url.hash,
+		pathname: url.pathname,
+		search: url.search,
+	};
 	return {
-		location: {
-			href,
-			hash: url.hash,
-			pathname: url.pathname,
-			search: url.search,
-		},
+		...createRouterForNativeWeb({ location }),
+		location,
 	};
 }
 
@@ -53,7 +60,7 @@ describe("basic-auth ./web discoverability: named options contract + convenience
 		expect(options.currentPath).toBe("/basic/api/groups");
 	});
 
-	it("loginWithRedirect performs zone-resolved browser redirect", () => {
+	it("loginWithRedirect performs zone-resolved browser redirect", async () => {
 		const environment = createPageLocationEnvironment(
 			"https://app.example.com/basic/api/groups",
 		);
@@ -63,7 +70,7 @@ describe("basic-auth ./web discoverability: named options contract + convenience
 			zones: [{ zonePrefix: "/basic" }],
 		});
 
-		const result = basicAuthLoginWithRedirect(client, { environment });
+		const result = await basicAuthLoginWithRedirect(client, { environment });
 
 		expect(result).toBe(true);
 		expect(environment.location.href).toBe(
@@ -71,7 +78,7 @@ describe("basic-auth ./web discoverability: named options contract + convenience
 		);
 	});
 
-	it("loginWithRedirect accepts explicit options for path and redirect", () => {
+	it("loginWithRedirect accepts explicit options for path and redirect", async () => {
 		const environment = createPageLocationEnvironment(
 			"https://app.example.com/other",
 		);
@@ -86,7 +93,7 @@ describe("basic-auth ./web discoverability: named options contract + convenience
 			currentPath: "/basic/admin",
 			postAuthRedirectUri: "https://app.example.com/basic/admin",
 		};
-		const result = basicAuthLoginWithRedirect(client, options);
+		const result = await basicAuthLoginWithRedirect(client, options);
 
 		expect(result).toBe(true);
 		expect(environment.location.href).toBe(
@@ -94,7 +101,7 @@ describe("basic-auth ./web discoverability: named options contract + convenience
 		);
 	});
 
-	it("loginWithRedirect returns false when path is outside all zones", () => {
+	it("loginWithRedirect returns false when path is outside all zones", async () => {
 		const environment = createPageLocationEnvironment(
 			"https://app.example.com/public",
 		);
@@ -104,7 +111,7 @@ describe("basic-auth ./web discoverability: named options contract + convenience
 			zones: [{ zonePrefix: "/basic" }],
 		});
 
-		const result = basicAuthLoginWithRedirect(client, {
+		const result = await basicAuthLoginWithRedirect(client, {
 			environment,
 			currentPath: "/public",
 		});
@@ -124,10 +131,10 @@ describe("session ./react discoverability: injector-first named contracts", () =
 			config: {
 				baseUrl: "https://auth.example.com",
 			},
-			environment: createWebClientEnvironment({
+			environment: createClientEnvironment({
 				transport:
 					{} as CreateSessionContextControllerOptions["environment"]["transport"],
-				sessionStore: createInMemoryRecordStore(),
+				sessionStorage: createInMemoryRecordStore(),
 			}),
 		};
 
@@ -143,10 +150,10 @@ describe("session ./react discoverability: injector-first named contracts", () =
 			config: {
 				baseUrl: "https://auth.example.com",
 			},
-			environment: createWebClientEnvironment({
+			environment: createClientEnvironment({
 				transport:
 					{} as CreateSessionContextControllerOptions["environment"]["transport"],
-				sessionStore: createInMemoryRecordStore(),
+				sessionStorage: createInMemoryRecordStore(),
 			}),
 		};
 

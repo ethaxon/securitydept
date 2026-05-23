@@ -1,7 +1,8 @@
 import {
 	createInMemoryRecordStore,
-	type PageLocationCapability,
+	type RouterTrait,
 } from "@securitydept/client";
+import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
 import type { LoginWithRedirectOptions } from "@securitydept/session-context-client/web";
 import { loginWithRedirect } from "@securitydept/session-context-client/web";
@@ -17,15 +18,26 @@ import { describe, expect, it, vi } from "vitest";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createPageLocationCapability(href: string): PageLocationCapability {
+function createPageLocationCapability(href: string): RouterTrait & {
+	location: {
+		href: string;
+		hash: string;
+		pathname: string;
+		search: string;
+	};
+} {
 	const url = new URL(href);
-	return {
+	const capability = {
 		location: {
 			href,
 			hash: url.hash,
 			pathname: url.pathname,
 			search: url.search,
 		},
+	};
+	return {
+		...capability,
+		...createRouterForNativeWeb(capability),
 	};
 }
 
@@ -35,10 +47,10 @@ function createPageLocationCapability(href: string): PageLocationCapability {
 
 describe("session-context-client/web loginWithRedirect", () => {
 	it("saves the pending redirect URI and navigates to the login URL", async () => {
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const client = new SessionContextClient(
 			{ baseUrl: "https://auth.example.com" },
-			{ sessionStore },
+			{ sessionStorage },
 		);
 
 		const environment = createPageLocationCapability(
@@ -61,10 +73,10 @@ describe("session-context-client/web loginWithRedirect", () => {
 	});
 
 	it("defaults postAuthRedirectUri to window.location.href when omitted", async () => {
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const client = new SessionContextClient(
 			{ baseUrl: "https://auth.example.com" },
-			{ sessionStore },
+			{ sessionStorage },
 		);
 
 		const environment = createPageLocationCapability(
@@ -89,13 +101,13 @@ describe("session-context-client/web loginWithRedirect", () => {
 
 describe("backend-oidc-mode/web loginWithBackendOidcRedirect", () => {
 	it("resolves authorize URL from client and navigates the window", () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 
 		const client = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
-				persistentStore,
-				sessionStore,
+				persistentStorage,
+				sessionStorage,
 			}),
 			baseUrl: "https://auth.example.com",
 			defaultPostAuthRedirectUri: "https://app.example.com/callback",
@@ -118,13 +130,13 @@ describe("backend-oidc-mode/web loginWithBackendOidcRedirect", () => {
 	});
 
 	it("derives return URI from location when postAuthRedirectUri is omitted", () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 
 		const client = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
-				persistentStore,
-				sessionStore,
+				persistentStorage,
+				sessionStorage,
 			}),
 			baseUrl: "https://auth.example.com",
 		});
@@ -152,7 +164,7 @@ describe("backend-oidc-mode/web loginWithBackendOidcRedirect", () => {
 
 describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 	it("builds the authorize URL, stores pending state, and navigates the browser", async () => {
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const runtime = {
 			transport: {
 				execute: vi.fn(async () => ({
@@ -161,13 +173,18 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 					body: null,
 				})),
 			},
-			scheduler: {
-				setTimeout: vi.fn((_ms: number, _cb: () => void) => ({
-					cancel: vi.fn(),
-				})),
+			time: {
+				now: () => Date.now(),
+				setTimeout: vi.fn((callback: () => void, delayMs: number) =>
+					globalThis.setTimeout(callback, delayMs),
+				),
+				clearTimeout: vi.fn((handle: unknown) =>
+					globalThis.clearTimeout(
+						handle as ReturnType<typeof globalThis.setTimeout>,
+					),
+				),
 			},
-			clock: { now: () => Date.now() },
-			sessionStore,
+			sessionStorage,
 		};
 
 		const { FrontendOidcModeClient } = await import(
@@ -218,7 +235,7 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 		expect(state).toBeTruthy();
 
 		const pendingKey = `securitydept.frontend_oidc.pending:${state}`;
-		const pendingRaw = await sessionStore.get(pendingKey);
+		const pendingRaw = await sessionStorage.get(pendingKey);
 		expect(pendingRaw).toBeTruthy();
 
 		client.dispose();

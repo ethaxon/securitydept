@@ -25,7 +25,7 @@ describe("session server minimal entry", () => {
 		// 2. Create a server helper.
 		const options: CreateSessionServerHelperOptions = {
 			config: { baseUrl: "https://auth.example.com" },
-			transport,
+			externalTransport: transport,
 		};
 		const helper = createSessionServerHelper(options);
 
@@ -70,7 +70,7 @@ describe("session server minimal entry", () => {
 
 		const helper = createSessionServerHelper({
 			config: { baseUrl: "https://auth.example.com" },
-			transport,
+			externalTransport: transport,
 		});
 
 		const session = await helper.fetchUserInfo({
@@ -85,7 +85,7 @@ describe("session server minimal entry", () => {
 	it("shows logoutUrl for server-side URL generation", () => {
 		const helper = createSessionServerHelper({
 			config: { baseUrl: "https://auth.example.com" },
-			transport: { execute: vi.fn() },
+			externalTransport: { execute: vi.fn() },
 		});
 
 		const logoutUrl = helper.logoutUrl();

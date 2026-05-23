@@ -35,7 +35,7 @@ function expectReplayValue<T>(signal: {
 
 // Minimal runtime stub for tests that don't make real requests
 function createTestRuntime() {
-	const sessionStore = createInMemoryRecordStore();
+	const sessionStorage = createInMemoryRecordStore();
 
 	return {
 		transport: {
@@ -45,15 +45,18 @@ function createTestRuntime() {
 				body: null,
 			})),
 		},
-		scheduler: {
-			setTimeout: vi.fn((_ms: number, _cb: () => void) => ({
-				cancel: vi.fn(),
-			})),
-		},
-		clock: {
+		time: {
 			now: () => Date.now(),
+			setTimeout: vi.fn((callback: () => void, delayMs: number) =>
+				globalThis.setTimeout(callback, delayMs),
+			),
+			clearTimeout: vi.fn((handle: unknown) =>
+				globalThis.clearTimeout(
+					handle as ReturnType<typeof globalThis.setTimeout>,
+				),
+			),
 		},
-		sessionStore,
+		sessionStorage,
 	};
 }
 

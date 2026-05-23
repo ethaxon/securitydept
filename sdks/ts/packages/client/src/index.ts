@@ -5,18 +5,37 @@ export type {
 	CancelableHandle,
 	CancellationTokenSourceTrait,
 	CancellationTokenTrait,
-	DisposableTrait,
 } from "./cancellation/index";
 export {
 	createCancellationTokenSource,
 	createLinkedCancellationToken,
+	isCancellationTokenTrait,
 } from "./cancellation/index";
+export {
+	type InteropObservableTrait,
+	isInteropObservableTrait,
+	type ObserverTrait,
+	type SubscribableTrait,
+	type SubscriptionTrait,
+	SYMBOL_OBSERVABLE,
+} from "./compat";
 // --- Environment ---
 export type {
-	ClientEnvironment,
 	CreateClientEnvironmentOptions,
+	EnvironmentValidators,
+	FoundationEnvironment,
+	PageLifecycleTrait,
+	PopupTrait,
+	RouterNavigationRequest,
+	RouterTrait,
+	SecuritydeptEnvTraitInputValidator,
+	ServiceWorkerEnvironment,
+	TelemetryTrait,
 } from "./environment/index";
-export { createClientEnvironment } from "./environment/index";
+export {
+	createClientEnvironment,
+	validateEnvTraitInput,
+} from "./environment/index";
 // --- Errors ---
 export type {
 	ClientErrorAttributes,
@@ -40,36 +59,24 @@ export {
 } from "./errors/index";
 // --- Events ---
 export type {
-	EventObserver,
-	EventOperator,
+	EventObserverTrait,
+	EventOperatorFunction,
 	EventSource,
 	EventStreamTrait,
+	EventSubjectTrait,
 	EventSubscriptionTrait,
-	ReplaySubjectTrait,
 	RuntimeEventEnvelope,
-	SubjectTrait,
-} from "./events/index";
+	ToEventStreamInput,
+} from "./events";
 export {
-	concatMap,
+	createEmptyEventStream,
+	createEventReplaySubject,
 	createEventStream,
-	createReplaySubject,
-	createSubject,
-	debounceTime,
+	createEventSubject,
+	createNeverEventStream,
 	EventSourceKind,
-	exhaustMap,
-	filter,
-	finalize,
-	map,
-	merge,
-	pipe,
-	share,
-	shareReplay,
-	switchMap,
-	takeUntil,
-	tap,
-	throttleTime,
-	withLatestFromSignal,
-} from "./events/index";
+	toEventStream,
+} from "./events";
 // --- Identity ---
 export type {
 	AuthenticatedPrincipal,
@@ -91,7 +98,7 @@ export type {
 	TraceEventSinkTrait,
 	TraceTimelineEntry,
 	TraceTimelineStore,
-} from "./logging/index";
+} from "./logging";
 export {
 	createConsoleLogger,
 	createNoopLogger,
@@ -99,51 +106,35 @@ export {
 	createTraceTimelineStore,
 	LogLevel,
 	OperationTraceEventType,
-} from "./logging/index";
+} from "./logging";
 // --- Persistence ---
 export type {
 	Codec,
 	EphemeralFlowStore,
 	KeyedEphemeralFlowStore,
 	PersistentAuthStore,
-	RecordStore,
 	RecoverableStateStore,
+	StorageTrait,
 	StoredEnvelope,
-} from "./persistence/index";
+} from "./persistence";
 export {
 	createEphemeralFlowStore,
 	createInMemoryRecordStore,
 	createJsonCodec,
 	createKeyedEphemeralFlowStore,
-} from "./persistence/index";
-export { fromRxObservable, toRxObservable } from "./rx/index";
+} from "./persistence";
+export {
+	eventStreamToObservable,
+	observableToEventStream,
+	signalToObservable,
+} from "./rx";
 // --- Scheduling ---
 export type {
-	CancelableHandle as SchedulerCancelableHandle,
-	Clock,
-	FromEventPatternOptions,
-	FromPromiseOptions,
-	FromSignalOptions,
-	IntervalOptions,
-	PromiseSettlement,
-	ScheduleAtOptions,
-	Scheduler,
-	Subscription,
-	TimerOptions,
+	IdleCallbackTrait,
+	TimestampProviderTrait,
+	TimeTrait,
 } from "./scheduling/index";
-export {
-	createDefaultClock,
-	createDefaultIdleScheduler,
-	createDefaultScheduler,
-	fromEventPattern,
-	fromPromise,
-	fromSignal,
-	interval,
-	PromiseSettlementKind,
-	parseDurationToMs,
-	scheduleAt,
-	timer,
-} from "./scheduling/index";
+export { createDefaultTimeConfig, parseDurationToMs } from "./scheduling/index";
 // --- Signals ---
 export type {
 	ComputedReplaySignalTrait,
@@ -165,6 +156,30 @@ export {
 	readonlyReplaySignal,
 	readonlySignal,
 } from "./signals/index";
+// --- Span ---
+export type {
+	CreateSpanOptions,
+	ForkSpanOptions,
+	SpanContextHostTrait,
+	SpanTrait,
+} from "./span/index";
+export {
+	createSpan,
+	createSpanContextHost,
+	createSpanContextHostForNodeLike,
+	createSpanContextHostForTest,
+	createSpanContextHostForWeb,
+} from "./span/index";
+export type {
+	CreateExternalTransportForFetchOptions,
+	CreateTimeForStdOptions,
+} from "./std/index";
+export {
+	createExternalTransportForFetch,
+	createTelemetryForStd,
+	createTimeForStd,
+	FetchTransportRedirectKind,
+} from "./std/index";
 // --- Struct ---
 export type {
 	OnDemandTaskQueueOptions,
@@ -173,9 +188,20 @@ export type {
 export { OnDemandTaskQueue } from "./struct/index";
 // --- Transport ---
 export type {
+	AuthorizationHeaderProviderTrait,
+	BaseTransportTrait,
+	BearerHeaderProvider,
+	CreateAuthorizedTransportOptions,
+	CreateRemappingAuthorizedTransportOptions,
+	ExternalTransportTrait,
 	HttpRequest,
 	HttpResponse,
-	HttpTransport,
+	ManagedTransportTrait,
+	ReplayBearerHeaderProvider,
+} from "./transport/index";
+export {
+	createAuthorizedTransport,
+	createRemappingAuthorizedTransport,
 } from "./transport/index";
 // --- Validation ---
 export type {
@@ -189,12 +215,6 @@ export {
 	validateWithSchemaSync,
 } from "./validation/index";
 export type {
-	CreateWebClientEnvironmentOptions,
-	PageClientEnvironment,
-	PageHistoryLike,
-	PageLocationCapability,
-	PageLocationHistoryCapability,
-	PageLocationLike,
-	WebClientEnvironment,
-} from "./web/environment/client-environment";
-export { ClientEnvironmentPreset } from "./web/environment/client-environment";
+	CreateEnvironmentForNativeWebOptions,
+	NativeWebEnvironment,
+} from "./web/environment/environment";

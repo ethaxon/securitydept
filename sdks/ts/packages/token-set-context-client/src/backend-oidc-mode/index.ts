@@ -59,7 +59,6 @@ export {
 export type {
 	BackendOidcModeFetchUserInfoOptions,
 	BackendOidcModeMetadataRedemptionOptions,
-	BackendOidcModeRefreshOptions,
 } from "./runtime/client";
 export { BackendOidcModeClient } from "./runtime/client";
 

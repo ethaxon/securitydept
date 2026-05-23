@@ -1,7 +1,7 @@
 import type {
+	ExternalTransportTrait,
 	HttpRequest,
 	HttpResponse,
-	HttpTransport,
 } from "@securitydept/client";
 import {
 	ClientError,
@@ -14,7 +14,7 @@ import { SessionContextSource } from "../types";
 
 function createTestTransport(
 	handler: (request: HttpRequest) => HttpResponse,
-): HttpTransport {
+): ExternalTransportTrait {
 	return {
 		async execute(request: HttpRequest) {
 			return handler(request);
@@ -182,13 +182,13 @@ describe("SessionContextClient", () => {
 		expect(requests[1]?.cancellationToken).toBe(cancellationToken);
 	});
 
-	it("stores and clears pending login redirect state in sessionStore", async () => {
-		const sessionStore = createInMemoryRecordStore();
+	it("stores and clears pending login redirect state in sessionStorage", async () => {
+		const sessionStorage = createInMemoryRecordStore();
 		const client = new SessionContextClient(
 			{
 				baseUrl: "https://api.example.com",
 			},
-			{ sessionStore },
+			{ sessionStorage },
 		);
 
 		await client.savePendingLoginRedirect("/entries?tab=all");
@@ -198,13 +198,13 @@ describe("SessionContextClient", () => {
 		expect(await client.loadPendingLoginRedirect()).toBeNull();
 	});
 
-	it("consumes pending login redirect state from sessionStore", async () => {
-		const sessionStore = createInMemoryRecordStore();
+	it("consumes pending login redirect state from sessionStorage", async () => {
+		const sessionStorage = createInMemoryRecordStore();
 		const client = new SessionContextClient(
 			{
 				baseUrl: "https://api.example.com",
 			},
-			{ sessionStore },
+			{ sessionStorage },
 		);
 
 		await client.savePendingLoginRedirect("/groups");
@@ -214,12 +214,12 @@ describe("SessionContextClient", () => {
 	});
 
 	it("resolves the login URL by consuming pending redirect intent", async () => {
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const client = new SessionContextClient(
 			{
 				baseUrl: "https://api.example.com",
 			},
-			{ sessionStore },
+			{ sessionStorage },
 		);
 
 		await client.rememberPostAuthRedirect("/entries?tab=all");
@@ -234,7 +234,7 @@ describe("SessionContextClient", () => {
 	});
 
 	it("executes logout and clears pending redirect intent in one canonical convenience", async () => {
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const requests: HttpRequest[] = [];
 		const transport = createTestTransport((request) => {
 			requests.push(request);
@@ -248,7 +248,7 @@ describe("SessionContextClient", () => {
 			{
 				baseUrl: "https://api.example.com",
 			},
-			{ sessionStore },
+			{ sessionStorage },
 		);
 
 		await client.rememberPostAuthRedirect("/entries/new");

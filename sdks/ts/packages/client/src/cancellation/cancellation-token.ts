@@ -1,18 +1,25 @@
+import { filter, map, type Observable, take } from "rxjs";
+import { BehaviorSubject } from "rxjs/internal/BehaviorSubject";
+import {
+	type InteropObservableTrait,
+	isInteropObservableTrait,
+	SYMBOL_OBSERVABLE,
+} from "../compat";
 import { ClientError } from "../errors/client-error";
 import { ClientErrorKind } from "../errors/types";
 import type {
 	CancellationTokenSourceTrait,
 	CancellationTokenTrait,
-	DisposableTrait,
 } from "./types";
 
-class CancellationToken implements CancellationTokenTrait {
-	private _isCancelled = false;
+class CancellationToken
+	implements CancellationTokenTrait, InteropObservableTrait<unknown>
+{
+	private _isCancelled = new BehaviorSubject(false);
 	private _reason: unknown;
-	private readonly _listeners = new Set<(reason: unknown) => void>();
 
 	get isCancellationRequested(): boolean {
-		return this._isCancelled;
+		return this._isCancelled.getValue();
 	}
 
 	get reason(): unknown {
@@ -21,27 +28,21 @@ class CancellationToken implements CancellationTokenTrait {
 
 	/** @internal — called by `CancellationTokenSource`. */
 	_cancel(reason: unknown): void {
-		if (this._isCancelled) return;
-		this._isCancelled = true;
+		const isCancelled = this._isCancelled.getValue();
+		if (isCancelled) return;
 		this._reason = reason;
-		for (const listener of this._listeners) {
-			listener(reason);
-		}
-		this._listeners.clear();
+		this._isCancelled.next(true);
+		this._isCancelled.complete();
 	}
 
-	onCancellationRequested(
-		listener: (reason: unknown) => void,
-	): DisposableTrait {
-		if (this._isCancelled) {
-			// Already cancelled — invoke immediately.
+	onCancellationRequested(listener: (reason: unknown) => void): Disposable {
+		const subscription = this._asObservable().subscribe(() => {
 			listener(this._reason);
-			return { dispose() {} };
-		}
-		this._listeners.add(listener);
+		});
+
 		return {
-			dispose: () => {
-				this._listeners.delete(listener);
+			[Symbol.dispose]: () => {
+				subscription.unsubscribe();
 			},
 		};
 	}
@@ -54,6 +55,18 @@ class CancellationToken implements CancellationTokenTrait {
 				cause: this._reason,
 			});
 		}
+	}
+
+	private _asObservable(): Observable<unknown> {
+		return this._isCancelled.pipe(
+			filter((isCancelled) => !!isCancelled),
+			take(1),
+			map(() => this._reason),
+		);
+	}
+
+	[SYMBOL_OBSERVABLE]() {
+		return this._asObservable();
 	}
 }
 
@@ -71,7 +84,7 @@ export function createCancellationTokenSource(): CancellationTokenSourceTrait {
 		cancel(reason?: unknown) {
 			if (!disposed) ct._cancel(reason);
 		},
-		dispose() {
+		[Symbol.dispose]() {
 			if (!disposed) {
 				disposed = true;
 				ct._cancel(
@@ -83,4 +96,20 @@ export function createCancellationTokenSource(): CancellationTokenSourceTrait {
 			}
 		},
 	};
+}
+
+export function isCancellationTokenTrait(
+	obj: unknown,
+): obj is CancellationTokenTrait {
+	return (
+		typeof obj === "object" &&
+		obj !== null &&
+		typeof (obj as CancellationTokenTrait).isCancellationRequested ===
+			"boolean" &&
+		typeof (obj as CancellationTokenTrait).onCancellationRequested ===
+			"function" &&
+		typeof (obj as CancellationTokenTrait).throwIfCancellationRequested ===
+			"function" &&
+		isInteropObservableTrait(obj)
+	);
 }

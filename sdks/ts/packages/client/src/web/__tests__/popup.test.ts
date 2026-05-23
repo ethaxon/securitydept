@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClientError, ClientErrorKind } from "../../errors/index";
+import { createPopupForNativeWeb } from "../environment/popup";
 import {
 	computePopupFeatures,
 	openPopupWindow,
@@ -14,6 +15,27 @@ import {
 } from "../popup/popup";
 
 describe("popup shared infrastructure", () => {
+	describe("createPopupForNativeWeb", () => {
+		it("validates only the resolved input instead of re-reading globalThis.open", () => {
+			vi.stubGlobal("open", () => ({}));
+
+			try {
+				createPopupForNativeWeb({
+					window: {},
+				});
+				expect.fail("Expected popup validation to fail");
+			} catch (error) {
+				expect(error).toBeInstanceOf(ClientError);
+				expect((error as ClientError).kind).toBe(ClientErrorKind.Configuration);
+				expect((error as ClientError).message).toMatch(
+					/createPopupForNativeWeb could not validate popup\./,
+				);
+			}
+
+			vi.unstubAllGlobals();
+		});
+	});
+
 	describe("computePopupFeatures", () => {
 		it("returns a centered features string with defaults", () => {
 			// Mock window dimensions.

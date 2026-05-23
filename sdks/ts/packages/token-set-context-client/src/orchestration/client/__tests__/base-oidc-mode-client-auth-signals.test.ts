@@ -1,23 +1,27 @@
 import {
+	type ClientError,
+	ClientErrorKind,
 	createClientEnvironment,
 	createInMemoryRecordStore,
-	type HttpTransport,
+	createSubject,
+	type ExternalTransportTrait,
 	type ReadableReplaySignalTrait,
-	type RecordStore,
+	type StorageTrait,
 } from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
-import {
-	TokenSetAuthEventType,
-	TokenSetAuthFlowOutcome,
-	TokenSetAuthFlowSource,
-} from "../../events/auth-events";
+import { TokenSetAuthEventType } from "../../events/auth-events";
 import type { AuthSnapshot } from "../../token/types";
+import { TokenSetAuthFlowOutcome } from "../../vocabulary/auth-flow";
 import {
 	BaseOidcModeClient,
 	type BaseOidcModeClientOptions,
 } from "../base-client";
+import type {
+	AuthWorkflowSource,
+	TokenSetAuthWorkflowTriggerData,
+} from "../workflows/source";
 
-const TEST_TRANSPORT: HttpTransport = {
+const TEST_TRANSPORT: ExternalTransportTrait = {
 	execute: vi.fn(),
 };
 
@@ -28,6 +32,12 @@ function expectReplayValue<T>(signal: ReadableReplaySignalTrait<T>): T {
 		throw new Error("Expected replay signal value.");
 	}
 	return slot.value;
+}
+
+async function flushMicrotasks(): Promise<void> {
+	for (let index = 0; index < 6; index += 1) {
+		await Promise.resolve();
+	}
 }
 
 function createAuthSnapshot(
@@ -49,17 +59,28 @@ function createAuthSnapshot(
 	};
 }
 
-function createOptions(store?: RecordStore): BaseOidcModeClientOptions {
+function createNamedWorkflowSource(name: string): AuthWorkflowSource & {
+	next(value: TokenSetAuthWorkflowTriggerData): void;
+} {
+	const subject = createSubject<TokenSetAuthWorkflowTriggerData>();
+	return Object.assign(subject, { name });
+}
+
+function createOptions(
+	store?: StorageTrait,
+	options?: Pick<BaseOidcModeClientOptions, "authCheck">,
+): BaseOidcModeClientOptions {
 	return {
 		environment: createClientEnvironment({
 			transport: TEST_TRANSPORT,
-			persistentStore: store,
+			persistentStorage: store,
 		}),
 		refreshWindowMs: 0,
 		traceScope: "test-token-set",
 		traceSource: "test-token-set-client",
 		tracePrefix: "test_token_set",
 		clientName: "TestOidcModeClient",
+		refresh: options?.refresh,
 		persistence: store ? { store, key: "test-auth" } : undefined,
 	};
 }
@@ -77,16 +98,16 @@ class TestOidcModeClient extends BaseOidcModeClient {
 
 	async applyTestSnapshot(snapshot: AuthSnapshot): Promise<void> {
 		await this._applySnapshot(snapshot, {
-			source: TokenSetAuthFlowSource.ExplicitCall,
 			outcome: TokenSetAuthFlowOutcome.Authenticated,
 		});
+		await flushMicrotasks();
 	}
 
 	setLoginPending(pending: boolean): void {
 		this._authOperationSignals.loginPending.set(pending);
 	}
 
-	async refresh(): Promise<AuthSnapshot | null> {
+	protected async _refreshAuthSnapshot(): Promise<AuthSnapshot | null> {
 		return await this.refreshImpl();
 	}
 }
@@ -127,22 +148,15 @@ describe("BaseOidcModeClient auth replay signals", () => {
 
 	it("reuses the same pending start lifecycle", async () => {
 		const client = new TestOidcModeClient();
-		let resolveRestore!: () => void;
-		const restoreStarted = new Promise<AuthSnapshot | null>((resolve) => {
-			resolveRestore = () => resolve(null);
-		});
-		const restoreSpy = vi
-			.spyOn(client, "restorePersistedState")
-			.mockReturnValue(restoreStarted);
 
 		const firstStart = client.start();
 		const secondStart = client.start();
 		expect(secondStart).toBe(firstStart);
-		resolveRestore();
 		await firstStart;
 
 		await client.start();
-		expect(restoreSpy).toHaveBeenCalledTimes(1);
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+		expect(expectReplayValue(client.isAuthenticated)).toBe(false);
 	});
 
 	it("emits independent auth channels when state is restored manually", () => {
@@ -181,6 +195,15 @@ describe("BaseOidcModeClient auth replay signals", () => {
 		expect(observedSnapshots).toEqual([snapshot]);
 	});
 
+	it("rejects manual persisted restore when persistence is unavailable", async () => {
+		const client = new TestOidcModeClient();
+
+		await expect(client.restorePersistedState()).rejects.toMatchObject({
+			kind: ClientErrorKind.Configuration,
+			code: "auth_restore.persistence_unavailable",
+		} satisfies Partial<ClientError>);
+	});
+
 	it("emits null auth channels when persisted restore finds no snapshot", async () => {
 		const store = createInMemoryRecordStore();
 		const client = new TestOidcModeClient(createOptions(store));
@@ -213,6 +236,67 @@ describe("BaseOidcModeClient auth replay signals", () => {
 		);
 	});
 
+	it("still completes a stable restore when restore-completed trigger wiring is disabled", async () => {
+		const store = createInMemoryRecordStore();
+		const seedClient = new TestOidcModeClient(createOptions(store));
+		const snapshot = createAuthSnapshot("persisted-token");
+		await seedClient.applyTestSnapshot(snapshot);
+
+		const restoredClient = new TestOidcModeClient(
+			createOptions(store, {
+				refresh: {
+					triggerSources: {
+						restoreCompleted: false,
+					},
+				},
+			}),
+		);
+		await expect(restoredClient.restorePersistedState()).resolves.toEqual(
+			snapshot,
+		);
+
+		expect(expectReplayValue(restoredClient.authSnapshot)).toEqual(snapshot);
+		expect(expectReplayValue(restoredClient.isAuthenticated)).toBe(true);
+	});
+
+	it("throws when the manual workflow trigger is disabled", async () => {
+		const client = new TestOidcModeClient(
+			createOptions(undefined, {
+				refresh: {
+					triggerSources: {
+						refreshManual: false,
+					},
+				},
+			}),
+		);
+
+		await expect(client.authCheck()).rejects.toMatchObject({
+			kind: ClientErrorKind.Configuration,
+			code: "auth_check.manual_trigger_disabled",
+		} satisfies Partial<ClientError>);
+	});
+
+	it("runs auth workflows from configured custom workflow sources", async () => {
+		const source = createNamedWorkflowSource("custom_test");
+		const client = new TestOidcModeClient(
+			createOptions(undefined, {
+				refresh: {
+					triggerSources: {
+						custom: {
+							test: source,
+						},
+					},
+				},
+			}),
+		);
+
+		source.next({});
+		await client.authDetermined.whenValue();
+
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+		expect(expectReplayValue(client.isAuthenticated)).toBe(false);
+	});
+
 	it("checks and refreshes persisted candidates before publishing a determined snapshot", async () => {
 		const store = createInMemoryRecordStore();
 		const expired = createAuthSnapshot("stale-persisted-token", {
@@ -241,7 +325,6 @@ describe("BaseOidcModeClient auth replay signals", () => {
 			observedTokens.push(slot.value?.tokens.accessToken ?? null);
 		});
 		restoredClient.setRefreshImpl(async () => {
-			await restoredClient.applyTestSnapshot(refreshed);
 			return refreshed;
 		});
 
@@ -267,6 +350,16 @@ describe("BaseOidcModeClient auth replay signals", () => {
 		expect(client.authOperations.restorePending.get()).toBe(false);
 	});
 
+	it("still determines unauthenticated state on start without persistence", async () => {
+		const client = new TestOidcModeClient();
+
+		await client.start();
+
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+		expect(expectReplayValue(client.isAuthenticated)).toBe(false);
+		expect(expectReplayValue(client.authorizationHeaderValue)).toBeUndefined();
+	});
+
 	it("updates auth channels and pending state through refresh", async () => {
 		const client = new TestOidcModeClient();
 		const expired = createAuthSnapshot("expired-token", {
@@ -282,14 +375,11 @@ describe("BaseOidcModeClient auth replay signals", () => {
 		});
 		client.setRefreshImpl(async () => {
 			await refreshStarted;
-			await client.applyTestSnapshot(refreshed);
 			return refreshed;
 		});
 		client.restoreState(expired);
 
-		const authCheckPromise = client.authCheck({
-			forceRefreshWhenDue: true,
-		});
+		const authCheckPromise = client.authCheck();
 		expect(client.authOperations.refreshPending.get()).toBe(true);
 		resolveRefresh();
 
@@ -304,6 +394,56 @@ describe("BaseOidcModeClient auth replay signals", () => {
 		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
 			"Bearer refreshed-token",
 		);
+	});
+
+	it("can manually re-sync a newly persisted snapshot after start", async () => {
+		const store = createInMemoryRecordStore();
+		const client = new TestOidcModeClient(createOptions(store));
+
+		await client.start();
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+
+		const seedClient = new TestOidcModeClient(createOptions(store));
+		const snapshot = createAuthSnapshot("cross-tab-token");
+		await seedClient.applyTestSnapshot(snapshot);
+
+		await expect(client.restorePersistedState()).resolves.toEqual(snapshot);
+		expect(expectReplayValue(client.authSnapshot)).toEqual(snapshot);
+		expect(expectReplayValue(client.isAuthenticated)).toBe(true);
+	});
+
+	it("can manually re-sync a replacement persisted snapshot after start", async () => {
+		const store = createInMemoryRecordStore();
+		const oldSnapshot = createAuthSnapshot("old-token");
+		const newSnapshot = createAuthSnapshot("new-token");
+		const seedClient = new TestOidcModeClient(createOptions(store));
+		await seedClient.applyTestSnapshot(oldSnapshot);
+
+		const client = new TestOidcModeClient(createOptions(store));
+		await client.start();
+		expect(expectReplayValue(client.authSnapshot)).toEqual(oldSnapshot);
+
+		await seedClient.applyTestSnapshot(newSnapshot);
+
+		await expect(client.restorePersistedState()).resolves.toEqual(newSnapshot);
+		expect(expectReplayValue(client.authSnapshot)).toEqual(newSnapshot);
+	});
+
+	it("can manually re-sync a cleared persisted snapshot after start", async () => {
+		const store = createInMemoryRecordStore();
+		const seedClient = new TestOidcModeClient(createOptions(store));
+		const snapshot = createAuthSnapshot("stale-token");
+		await seedClient.applyTestSnapshot(snapshot);
+
+		const client = new TestOidcModeClient(createOptions(store));
+		await client.start();
+		expect(expectReplayValue(client.authSnapshot)).toEqual(snapshot);
+
+		await seedClient.clearPersistedState();
+
+		await expect(client.restorePersistedState()).resolves.toBeNull();
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+		expect(expectReplayValue(client.isAuthenticated)).toBe(false);
 	});
 
 	it("clears auth channels and exposes operation pending signals", async () => {

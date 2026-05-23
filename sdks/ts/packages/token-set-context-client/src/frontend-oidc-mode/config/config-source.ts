@@ -78,7 +78,7 @@ export interface ResolvedConfigProjection {
 // ---------------------------------------------------------------------------
 
 /**
- * Envelope stored in a `RecordStore` for persisted config projections.
+ * Envelope stored in a `StorageTrait` for persisted config projections.
  *
  * Used by persistence runtime helpers to serialize/deserialize projections
  * through generic key-value stores.

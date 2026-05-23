@@ -4,6 +4,7 @@ import {
 	createReplaySignal,
 	createSignal,
 	createSubject,
+	type FoundationEnvironment,
 } from "@securitydept/client";
 import {
 	AuthCheckStatus,
@@ -64,11 +65,22 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 }
 
 function createControllerFixture() {
-	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>({
-		idleScheduler: (callback) => {
-			const handle = setTimeout(callback, 0);
-			return () => clearTimeout(handle);
+	const environment: FoundationEnvironment = {
+		transport: { execute: async () => ({ status: 204, headers: {} }) },
+		time: {
+			now: () => Date.now(),
+			setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+			clearTimeout: (handle) =>
+				clearTimeout(handle as ReturnType<typeof setTimeout>),
 		},
+		idleCallback: {
+			requestIdleCallback: (callback) => setTimeout(callback, 0),
+			cancelIdleCallback: (handle) =>
+				clearTimeout(handle as ReturnType<typeof setTimeout>),
+		},
+	};
+	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>({
+		environment,
 	});
 	const state = createSignal<AuthSnapshot | null>(null);
 	const authSnapshot = createReplaySignal<AuthSnapshot | null>();
@@ -79,10 +91,10 @@ function createControllerFixture() {
 	const handleCallback = vi.fn(async () => {
 		const snapshot = createSnapshot("callback-token");
 		state.set(snapshot);
-		authSnapshot.emit(snapshot);
-		isAuthenticated.emit(true);
-		authorizationHeaderValue.emit("Bearer callback-token");
-		authDetermined.emit(true);
+		authSnapshot.setValue(snapshot);
+		isAuthenticated.setValue(true);
+		authorizationHeaderValue.setValue("Bearer callback-token");
+		authDetermined.setValue(true);
 		lastAuthError.set(undefined);
 		return {
 			snapshot,
@@ -107,7 +119,8 @@ function createControllerFixture() {
 				loginPending: createSignal(false),
 			},
 			authEvents: createSubject<TokenSetAuthEvent>(),
-			addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(() => undefined),
 			restorePersistedState: vi.fn(async () => null),
@@ -115,7 +128,7 @@ function createControllerFixture() {
 			authCheck: vi.fn(async () => ({
 				status: AuthCheckStatus.Unauthenticated,
 				snapshot: null,
-				authorizationHeader: null,
+				authorizationHeader: undefined,
 				reason: TokenSetAuthFlowReason.NoSnapshot,
 			})),
 			loginWithRedirect: vi.fn(async () => undefined),

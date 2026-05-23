@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { TokenSetFrontendModeEnvironmentService } from "@/lib/tokenSetFrontendModePageEnvironment";
+import { createTokenSetFrontendModePageEnvironment } from "@/lib/tokenSetFrontendModePageEnvironment";
 
 function stubPageWindow(): void {
 	vi.stubGlobal("window", {
@@ -15,54 +15,27 @@ function stubPageWindow(): void {
 	});
 }
 
-describe("TokenSetFrontendModeEnvironmentService", () => {
-	it("resolves stable client, web, and page environments per service instance", async () => {
+describe("createTokenSetFrontendModePageEnvironment", () => {
+	it("creates a page environment from the host page capability", () => {
 		stubPageWindow();
 		try {
-			const service = new TokenSetFrontendModeEnvironmentService();
+			const environment = createTokenSetFrontendModePageEnvironment();
 
-			const clientEnvironment = await service.resolveClientEnvironment();
-			const webEnvironment = await service.resolveWebEnvironment();
-			const pageEnvironment = await service.resolvePageEnvironment();
-
-			expect(await service.resolveClientEnvironment()).toBe(clientEnvironment);
-			expect(await service.resolveWebEnvironment()).toBe(webEnvironment);
-			expect(await service.resolvePageEnvironment()).toBe(pageEnvironment);
-			expect(webEnvironment).toBe(clientEnvironment);
-			expect(pageEnvironment.transport).toBe(webEnvironment.transport);
-			expect(pageEnvironment.sessionStore).toBeDefined();
+			expect(environment.location.href).toBe(
+				"https://app.example.com/playground/token-set/frontend-mode",
+			);
+			expect(environment.transport).toBeDefined();
+			expect(environment.sessionStorage).toBeDefined();
 		} finally {
 			vi.unstubAllGlobals();
 		}
 	});
 
-	it("keeps SSR-like service instances isolated", async () => {
+	it("does not cache page environments behind a module singleton", () => {
 		stubPageWindow();
 		try {
-			const first = new TokenSetFrontendModeEnvironmentService();
-			const second = new TokenSetFrontendModeEnvironmentService();
-
-			expect(await first.resolveClientEnvironment()).not.toBe(
-				await second.resolveClientEnvironment(),
-			);
-			expect(await first.resolvePageEnvironment()).not.toBe(
-				await second.resolvePageEnvironment(),
-			);
-		} finally {
-			vi.unstubAllGlobals();
-		}
-	});
-
-	it("reset explicitly drops materialized environment layers", async () => {
-		stubPageWindow();
-		try {
-			const service = new TokenSetFrontendModeEnvironmentService();
-			const originalPageEnvironment = await service.resolvePageEnvironment();
-
-			service.reset();
-
-			expect(await service.resolvePageEnvironment()).not.toBe(
-				originalPageEnvironment,
+			expect(createTokenSetFrontendModePageEnvironment()).not.toBe(
+				createTokenSetFrontendModePageEnvironment(),
 			);
 		} finally {
 			vi.unstubAllGlobals();

@@ -23,7 +23,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- Added TypeScript SDK client-environment presets for browser page, browser worker, service worker, and browser-extension background hosts, with page capability resolution that fails fast outside real page/tab/popup documents.
+- Added TypeScript SDK environment presets for browser page, browser worker, service worker, and browser-extension background hosts, with page capability resolution that fails fast outside real page/tab/popup documents.
 - Added `ClientEnvironmentService`, React environment-service hooks, and Angular page-environment DI bridge support for provider/injector-scoped environment ownership, async materialization, and Suspense-compatible render reads.
 - Added `SessionContextController` and `TokenSetCallbackResumeController` as framework-neutral state owners for session user-info refresh/logout and token-set callback resume orchestration.
 - Added a cross-platform `scripts/test-cli.ts kube ...` entry with Dockerode-backed Kubernetes test image/resource management, labeled SecurityDept test resources, hot/reusable/isolated Rust e2e lanes, and explicit cleanup recipes.

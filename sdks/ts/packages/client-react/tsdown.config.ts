@@ -2,7 +2,7 @@ import { defineConfig } from "tsdown";
 
 export default defineConfig({
 	entry: {
-		// Root export — planner-host plus environment-service React helpers.
+		// Root export — injector, planner-host, and page environment helpers.
 		index: "./src/index.ts",
 		// TanStack React Router route adapter for auth-coordination.
 		"tanstack-router/index": "./src/tanstack-router/index.ts",

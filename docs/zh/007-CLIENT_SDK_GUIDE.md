@@ -35,8 +35,8 @@ SDK 拥有的内容：
 
 - **auth context**：basic-auth、session、token-set 等面向部署的 family。
 - **mode**：auth context 内的具体运行形态，例如 `frontend-oidc` 或 `backend-oidc`。
-- **environment**：host composition root 创建并传递的依赖对象。它承载 transport、store、clock、scheduler、logging/tracing，以及 page location/history 等 host capability。Core client constructor 依赖也属于 environment，不是另一层 runtime object。
-- **capability**：从 environment 或 host object 中抽出的最小结构视图，例如 `PageLocationCapability` 或 `PageLocationHistoryCapability`。
+- **environment**：host composition root 创建并传递的依赖对象。它承载 `ExternalTransportTrait`、`TimeTrait`、可选 `IdleCallbackTrait`、`StorageTrait`、`TelemetryTrait`、`RouterTrait`、`PageLifecycleTrait`、`PopupTrait` 等行为能力。Core client constructor 依赖也属于 environment，不是另一层 runtime object。
+- **capability / trait**：helper 需要的最窄行为契约，例如 auth navigation 使用 `RouterTrait`。`window`、`document`、`location`、`history` 等原始 host object 是 adapter 输入，不是 core environment 字段。
 - **client**：协议/领域行为对象，执行 auth、session、OIDC、token 或 resource 操作。
 - **registry**：多 client 的 registration、ready/lazy lifecycle、keyed lookup、URL/callback discrimination 与 route/resource orchestration owner。
 - **controller**：framework-neutral 的状态机/流程编排 owner，拥有 state/signal、in-flight coalescing/dedupe、dispose，以及 `resume()` / `refresh()` / `logout()` 等 command。
@@ -98,7 +98,7 @@ Transport 总是由 host 注入或选择。SDK package 不应假定全局 fetch 
 
 ### Persistence
 
-`@securitydept/client/persistence` 拥有 `RecordStore` 语义，包括通过 `take()` 完成 single-consume callback state。`@securitydept/client/persistence/web` 拥有 browser persistence adapters。
+`@securitydept/client/persistence` 拥有 `StorageTrait` 语义，包括通过 `take()` 完成 single-consume callback state。`@securitydept/client/persistence/web` 拥有 browser persistence adapters。
 
 ### Auth Coordination
 
@@ -116,7 +116,7 @@ Transport 总是由 host 注入或选择。SDK package 不应假定全局 fetch 
 
 ### 调度与统一输入源
 
-Scheduling、cancellation、abort interop、visibility、storage、promise/signal helper 位于 foundation 与 web subpath。它们是共享 primitive，不是 stream DSL。
+Scheduling、cancellation、abort interop、storage、page lifecycle、promise/signal helper 位于 foundation 与 web subpath。浏览器 lifecycle 行为通过显式 EventStream source 暴露，并消费 host 提供的 capability；SDK helper 不应隐式发现 `window` 或 `document`。
 
 ### 统一依赖注入
 
@@ -124,23 +124,24 @@ Scheduling、cancellation、abort interop、visibility、storage、promise/signa
 
 React 侧只允许一组 SDK Context，全部位于 `@securitydept/client-react`：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`。Domain React package 不再创建自己的 public Context/Provider/`useXxxContext()` surface，而是导出 injection token、provider factory、显式 callback/component bridge，以及可配合 `useReadableSignal()` / `useEventStream()` 的 signal/event bridge。
 
-Angular DI 仍属于 adapter concern；framework-neutral host capability resolution 仍属于 foundation concern。Core client 继续消费 `ClientEnvironment`；不直接绑定 client 的 helper 继续消费由 host composition root 创建的显式 typed environment object 或更窄 capability view。
+Angular DI 仍属于 adapter concern；framework-neutral host capability resolution 仍属于 foundation concern。Core client 继续消费 `FoundationEnvironment`；不直接绑定 client 的 helper 继续消费由 host composition root 创建的显式 typed environment object 或更窄 capability view。
 
 Canonical foundation model：
 
-- `ClientEnvironment` 是扁平的 foundation client dependency environment，直接承载 transport、scheduler、clock、logging/tracing、persistent/session store。历史 `ClientRuntime` 命名已退役，不是 canonical vocabulary。
-- `WebClientEnvironment` 表达 Web-capable client environment，但不意味着一定存在 page document。
-- `PageClientEnvironment` 在 Web environment 基础上表达 page-only capability，例如 `window.location` 与 `window.history`。
-- Helper 应索取最窄 capability view，例如 `Pick<WebClientEnvironment, "transport" | "sessionStore">` 或 `PageLocationHistoryCapability`，而不是默认接受完整 environment。
-- `environment.runtime`、`ClientRuntime`、`createRuntime()`、`createWebRuntime()`、`deriveClientRuntime()` 是已退役的历史命名。新的 public API 与文档必须使用 `ClientEnvironment`、`createClientEnvironment()`、`deriveClientEnvironment()` 等 Environment 命名。
+- `FoundationEnvironment` 是扁平的 foundation client dependency environment，直接承载 `transport`、`time`、可选 `idleCallback`、`persistentStorage`、`sessionStorage`、`telemetry`、`router`、`pageLifecycle` 与 `popup`。历史 `ClientRuntime` 命名已退役，不是 canonical vocabulary。
+- `NativeWebEnvironment` 是 canonical 的浏览器页面 environment，在 foundation 环境之上表达 `router`、`PageLifecycleTrait`、`PopupTrait` 等 host-owned page capability；它不暴露 `window.location` 或 `window.history`，也不再在顶层镜像 router 方法。
+- `WebExtCoreEnvironment` 是高于 foundation 层的共享 extension-core environment。`WebExtBackgroundEnvironment` 是 background-script 特化，`WebExtPageEnvironment` 则是 extension-core capability 与 `NativeWebEnvironment` 的组合。
+- `ServiceWorkerEnvironment` 是高于 foundation 层的 service-worker 特化。
+- Helper 应索取最窄行为 trait，例如 `RouterTrait`、`PopupTrait` 或 `Pick<FoundationEnvironment, "transport" | "sessionStorage">`，而不是默认接受完整 environment。
+- `environment.runtime` 以及历史 runtime/derive helper 命名是已退役的历史命名。新的 public API 与文档必须使用 `FoundationEnvironment`、`createClientEnvironment()`，或直接传递结构化覆盖关系中的 `FoundationEnvironment` / `NativeWebEnvironment`。
 - 承载 environment-like dependency source 的 public option key 应继续叫 `environment`；实际需要的 capability 由类型表达，不引入 `pageEnvironment` 这类并行 key。
 
 概念划分：
 
 | 概念 | 拥有 | 不拥有 | 命名 |
 |---|---|---|---|
-| Environment | host dependencies 与 capabilities | 业务 lifecycle state machine | `ClientEnvironment`、`WebClientEnvironment`、`PageClientEnvironment` |
-| Capability | 最小结构依赖视图 | 无关 host dependencies | `PageLocationCapability` |
+| Environment | host dependencies 与 capabilities | 业务 lifecycle state machine | `FoundationEnvironment`、`NativeWebEnvironment`、`WebExtCoreEnvironment` |
+| Trait | 最小行为依赖视图 | 无关 host dependencies | `RouterTrait`、`StorageTrait`、`PopupTrait` |
 | Client | 协议/领域操作 | framework lifecycle 或 DI | `SessionContextClient`、`BackendOidcModeClient` |
 | Registry | 多 client registration/readiness/discrimination | UI policy 或 framework state | `TokenSetAuthRegistry` |
 | Controller | framework-neutral flow/state orchestration | framework DI facade 或产品 UI | `TokenSetCallbackResumeController`、`SessionContextController` |
@@ -148,20 +149,21 @@ Canonical foundation model：
 
 不要把这些对象设计成 DI container、service locator、provider tree、global singleton 或 business config DSL。`baseUrl`、`sourceKey`、account binding、product route 等 auth-context config 仍属于 family config 或 host code，不进入 foundation environment。
 
-Foundation Web preset 是显式 composition template，不是自动 host detection：
+### Foundation Web environment factory
 
-| Preset factory | 返回 | 默认 page capability | 默认 Web storage | 目标 host |
+Foundation Web environment factory 是显式 composition helper，不是自动 host detection：
+
+| Factory | 返回 | Page capability | 默认 Web storage | 目标 host |
 |---|---|---:|---:|---|
-| `createBrowserPageClientEnvironment(options)` | `PageClientEnvironment` | 是 | 是 | real browser page、tab 或 popup document |
-| `createBrowserWorkerClientEnvironment(options)` | `WebClientEnvironment` | 否 | 否 | dedicated/shared worker-style browser host |
-| `createServiceWorkerClientEnvironment(options)` | `WebClientEnvironment` | 否 | 否 | service worker |
-| `createBrowserExtensionBackgroundClientEnvironment(options)` | `WebClientEnvironment` | 否 | 否 | extension background 或 MV3 service-worker-style host |
+| `createEnvironmentForNativeWeb({ location, history, ...options })` | `NativeWebEnvironment` | 仅 host adapter 内部 | 是 | real browser page、tab 或 popup document |
+| `createEnvironmentForWebExtBackgroundScript(options)` | `WebExtBackgroundEnvironment` | 否 | 显式传入 extension storage 时可用 | extension background script |
+| `createEnvironmentForTest(options)` | `FoundationEnvironment` | 否 | 默认 in-memory test storage | deterministic tests |
 
-Preset 名称通过 `ClientEnvironmentPreset` 作为 docs、trace/error context 与 tests 的 public vocabulary。不要使用字符串驱动的 `createEnvironmentFromPreset(name)` 或 global-shape detection 猜测 host。Worker、service-worker 与 extension-background preset 需要 storage 时必须显式注入 persistent/session store；page-only helper 在非 page environment 中必须 fail-fast。
+不要使用字符串驱动的 `createEnvironmentFromPreset(name)`、preset-only wrapper factory 或 global-shape detection 猜测 host。Core client 不读取 `window`、`document`、`location` 或 `history`；只有 `createRouterForNativeWeb()`、`createPageLifecycleForNativeWeb()`、`createPopupForNativeWeb()`、`createEnvironmentForNativeWeb()` 这类显式命名 host adapter 可以在调用者未传入 host object 时读取 native global。`NativeWeb` 表示具备 native navigation/location/history 能力的普通浏览器页面宿主；worker-like host 应使用 `createClientEnvironment()` 或更具体的 host factory。
 
-当 host 需要在 routes、commands 或 framework adapter 之间稳定拥有分层 environment 时，应使用 `@securitydept/client/web` 提供的 `ClientEnvironmentService` 作为可复用 foundation resolver。`resolveClientEnvironment()` / `resolveWebEnvironment()` / `resolvePageEnvironment()` 会对并发异步 materialization 做 coalesce，而 `read*()` 会通过抛出同一个 pending Promise 或缓存错误提供 Suspense-compatible render-time read。React 里的 canonical bridge 不再是单独的 environment Provider，而是通过 `SecuritydeptProvider` 注册 `provideClientEnvironmentService()`，随后在需要的 leaf 代码里通过 `useSecuritydeptContext().get(CLIENT_ENVIRONMENT_SERVICE)` 或显式 prop 读取同一个 service；Angular 里的 canonical DI bridge 仍是 `@securitydept/client-angular` 暴露的 `providePageClientEnvironment({ environment })`。Service instance 的生命周期属于 framework composition root（injector 或其他 host-owned scope），不属于 JS module-cache singleton。
+当 host 需要在 routes、commands 或 framework adapter 之间使用浏览器页面 capability 时，应在 composition root 创建一个显式的 `NativeWebEnvironment`，并通过 framework bridge 传递这个对象。React 侧通过 `provideClientEnvironment(environment)` 注册，再用 `useSecuritydeptContext().get(CLIENT_ENVIRONMENT)` 读取；Angular 侧通过 `provideNativeWebEnvironment({ environment })` 提供同一个对象。SDK 不再暴露单独的分层 environment resolver：`NativeWebEnvironment` 在类型上覆盖 foundation `FoundationEnvironment`，而 `WebExtPageEnvironment` 在结构上组合 `WebExtCoreEnvironment` 与 `NativeWebEnvironment`。
 
-该规则不只适用于 `@securitydept/client`：context package 与 framework adapter 的 public helper 也必须使用同一边界。任何会读取 host globals、执行 page navigation、构造 client，或拥有 transport/store/scheduler/clock wiring 的 helper，都应接收 client environment 或窄 capability view。Provider、DI 与顶层 adapter registration API 可以作为 composition root 接收完整 environment；普通 hook、guard、interceptor、service 与 convenience helper 不应各自重复声明完整 dependency bag。
+该规则不只适用于 `@securitydept/client`：context package 与 framework adapter 的 public helper 也必须使用同一边界。任何会读取 host globals、执行 page navigation、构造 client，或拥有 transport/store/time wiring 的 helper，都应接收 client environment 或窄 capability view。Provider、DI 与顶层 adapter registration API 可以作为 composition root 接收完整 environment；普通 hook、guard、interceptor、service 与 convenience helper 不应各自重复声明完整 dependency bag。
 
 ## Context Client 设计
 
@@ -193,7 +195,7 @@ SDK error 在需要时暴露 machine-facing code 与 host-facing recovery hint�
 
 ## Cancellation 与资源释放
 
-`@securitydept/client/web` 拥有 browser cancellation interop，包括 AbortSignal bridges。长生命周期 host 应显式接入 cancellation 与 disposal。
+`@securitydept/client` 拥有对 WHATWG AbortSignal 对齐的 event bridge 与 foundation-to-AbortSignal bridge，而 `@securitydept/client/web` 仅保留 native-web 的 `AbortSignal -> CancellationTokenTrait` convenience bridge。长生命周期 host 应显式接入 cancellation 与 disposal。
 
 ## Logging、Trace 与测试
 
@@ -305,7 +307,7 @@ Framework router adapter 由以下 package 拥有：
 
 Canonical semantics：完整 matched-route chain aggregation、`inherit` / `merge` / `replace`、child-route serializable metadata、root-level runtime policy，且 SDK 不内建产品 chooser UI。
 
-Angular token-set route handler 会收到包含 `attemptedUrl` 的 route unauthenticated context。启动 OIDC redirect login 时，应使用这个值，确保被拦截的目标导航被记录为 `postAuthRedirectUri`。Canonical Angular 路径是在 composition root 通过 `providePageClientEnvironment({ environment })` 提供一个 provider-scoped 的 environment source，其中 `environment` 通常是稳定的 `ClientEnvironmentService` 或另一个由 Angular DI 拥有的 inject-safe resolver，然后调用 `createTokenSetOidcLoginRedirectHandler({ ... })`，而不是在每个 guard 路径里重复创建 page capability。底层共享 contract 是 `@securitydept/token-set-context-client/registry` 中的 `OidcRedirectLoginClient` 与 `OidcRedirectLoginOptions`；Angular、React/TanStack、`FrontendOidcModeClient` 以及 backend-oidc web client 都应面向这层 capability，而不是某个 mode-specific helper。这个 helper 的 public key 仍然叫 `environment`，但它现在代表的是可 await 的稳定 page-environment source；只有当宿主明确拥有同步 page capability 时，才直接传已经 materialize 完成的 page environment object。不要在 guard handler 内读取 Angular `Router.url` 作为回跳目标，因为此时 attempted navigation 尚未提交。已经启动整页外部 redirect 的 handler 不应再 resolve 为 `false`；SDK helper 会在启动 redirect 后返回永不 settle 的 guard result，避免 Angular 在页面离开前完成一次 in-app navigation cancel。
+Angular token-set route handler 会收到包含 `attemptedUrl` 的 route unauthenticated context。启动 OIDC redirect login 时，应使用这个值，确保被拦截的目标导航被记录为 `postAuthRedirectUri`。Canonical Angular 路径是在 composition root 通过 `provideNativeWebEnvironment({ environment })` 提供 host-owned native web environment object，然后调用 `createTokenSetOidcLoginRedirectHandler({ ... })`，而不是在每个 guard 路径里重复创建 page capability。底层共享 contract 是 `@securitydept/token-set-context-client/registry` 中的 `OidcRedirectLoginClient` 与 `OidcRedirectLoginOptions`；Angular、React/TanStack、`FrontendOidcModeClient` 以及 backend-oidc web client 都应面向这层 capability，而不是某个 mode-specific helper。不要在 guard handler 内读取 Angular `Router.url` 作为回跳目标，因为此时 attempted navigation 尚未提交。已经启动整页外部 redirect 的 handler 不应再 resolve 为 `false`；SDK helper 会在启动 redirect 后返回永不 settle 的 guard result，避免 Angular 在页面离开前完成一次 in-app navigation cancel。
 
 TanStack Router 的 `createSecureBeforeLoad()` 同样会向 unauthenticated handler 传入包含 `attemptedUrl` 的 context。对会发起整页外部 auth redirect 的 React/TanStack adopter，应使用 `createExternalRedirectBeforeLoadHandler()`，在 callback 中调用自己的 login client，并用 `context.attemptedUrl` 作为 `postAuthRedirectUri`。不要从 `window.location` 推断目标页；beforeLoad 执行时当前 document URL 也可能仍是旧路由。
 
@@ -349,19 +351,19 @@ Verified 表示已有聚焦型验证、仓库内 proof 或下游校准；不代�
 
 该 subpath 是 browser-host glue，不表示所有 Web-like runtime 都具备 page navigation。选择 helper 前应先明确 foundation environment 边界：
 
-- Browser client construction 应接收由 host composition root 创建的 `WebClientEnvironment`。不要把 transport、scheduler、clock、persistent store、session store 分散传给每个 helper。
+- Browser client construction 应接收 host-owned `FoundationEnvironment` 或 `NativeWebEnvironment`，取决于是否需要 page capability。不要把 transport、time、persistent store、session store 分散传给每个 helper。
 - Worker-like host、service worker 与 extension background 可以创建/restore client，并运行 token-state API，但默认不得执行 page callback capture。
-- Page-only helper 只能通过 `PageClientEnvironment` 读取 `window.location` / `window.history`；名字或 options 必须明确 page 边界，例如 `currentPageLocationAsPostAuthRedirectUri`、`buildAuthorizeUrlReturningToCurrentPage`、`bootstrapBackendOidcModePageClient`、`captureBackendOidcModePageCallbackFragment`。对 token-set OIDC login 而言，共享的浏览器入口是 `OidcRedirectLoginClient` 上的 `loginWithRedirect({ environment, postAuthRedirectUri })`：`FrontendOidcModeClient` 直接满足该 contract，`createBackendOidcModeWebClient(...)` 也会 materialize 同名方法，而 `loginWithBackendOidcRedirect()` 退回为 legacy/convenience alias。`loginWithBackendOidcPopup()` 与 `relayBackendOidcPopupCallback()` 等 popup helper 仍是 page-only helper，并在缺少显式 environment 时 fail-fast。
+- Page-only helper 只能通过 `NativeWebEnvironment` 读取 `window.location` / `window.history`；名字或 options 必须明确 page 边界，例如 `currentPageLocationAsPostAuthRedirectUri`、`buildAuthorizeUrlReturningToCurrentPage`、`bootstrapBackendOidcModePageClient`、`captureBackendOidcModePageCallbackFragment`。对 token-set OIDC login 而言，共享的浏览器入口是 `OidcRedirectLoginClient` 上的 `loginWithRedirect({ environment, postAuthRedirectUri })`：`FrontendOidcModeClient` 直接满足该 contract，`createBackendOidcModeWebClient(...)` 也会 materialize 同名方法，而 `loginWithBackendOidcRedirect()` 退回为 legacy/convenience alias。`loginWithBackendOidcPopup()` 与 `relayBackendOidcPopupCallback()` 等 popup helper 仍是 page-only helper，并在缺少显式 environment 时 fail-fast。
 - Host-injected callback helper 必须接收 `BackendOidcModeWebClientEnvironment`，或显式 page/callback-fragment capability。`loginWithBackendOidcPopup()` 要求 `BackendOidcModePopupLoginCapability`，`resetBackendOidcModeBrowserState()` 要求显式 `callbackFragmentStore`；普通 helper 不会构造基于 global session storage 的 fragment store。缺少必要 capability 时必须 fail-fast，而不是落到 `window is not defined` 或 stale URL parsing。
 
 推荐 host environment：
 
 | Host | Environment | Callback capture | Restore/token state | Storage defaults |
 |---|---|---:|---:|---|
-| browser page/tab/popup | `PageClientEnvironment` | 是 | 是 | 可使用 page storage |
-| browser worker | `WebClientEnvironment` | 默认否 | 是 | 只能显式注入 store |
-| service worker | `WebClientEnvironment` | 默认否 | 是 | 只能显式注入 store |
-| extension background | `WebClientEnvironment` | 默认否 | 是 | 只能显式注入 store |
+| browser page/tab/popup | `NativeWebEnvironment` | 是 | 是 | 可使用 page storage |
+| browser worker | `FoundationEnvironment` | 默认否 | 是 | 只能显式注入 store |
+| service worker | `ServiceWorkerEnvironment` | 默认否 | 是 | 只能显式注入 store |
+| extension background | `WebExtBackgroundEnvironment` | 默认否 | 是 | 只能显式注入 store |
 
 不要通过检查 `globalThis.location` 决定是否允许 callback bootstrap。Service worker 或 extension background 可能暴露 location-like object，但没有 page history semantics。Page detection 必须验证 `window.location` 与 `window.history.replaceState` 等 page/document capability。
 
@@ -379,7 +381,7 @@ Verified 表示已有聚焦型验证、仓库内 proof 或下游校准；不代�
 React composition 仍服从三层模型：auth-context config、injector provider/factory、host registration glue。
 
 - `@securitydept/client-react` 拥有唯一 SDK React Context：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`。它同时提供 context-free signal/event bridge：`useReadableSignal()` 与 `useEventStream()`。
-- `provideClientEnvironmentService()` 与 planner-host 相关 factory（`AUTH_PLANNER_HOST`、`provideAuthPlannerHost()`、`AUTH_REQUIREMENTS_CLIENT_SET`、`provideRequirementsClientSet()`）把 shared dependency 注册进 injector；它们不再引入额外的 domain-specific Provider 或 Context hook。
+- `provideClientEnvironment(environment)` 与 planner-host 相关 factory（`AUTH_PLANNER_HOST`、`provideAuthPlannerHost()`、`AUTH_REQUIREMENTS_CLIENT_SET`、`provideRequirementsClientSet()`）把 shared dependency 注册进 injector；它们不再引入额外的 domain-specific Provider 或 Context hook。
 - `@securitydept/basic-auth-context-client-react` 导出 `BASIC_AUTH_CONTEXT_CLIENT`、`createBasicAuthContextClient()`、`provideBasicAuthContextClient()`。React 代码通过 `useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT)` 读取 client。
 - `@securitydept/session-context-client-react` 导出 `SESSION_CONTEXT_CLIENT`、`SESSION_CONTEXT_CONTROLLER`、`createSessionContextController()`、`provideSessionContextController()`。React 代码通过 `useSecuritydeptContext().get(...)` 读取 controller/client，并通过 `useReadableSignal(controller.state)` 读取状态。
 - `@securitydept/token-set-context-client-react` 导出 `provideTokenSetAuthRegistry()`、`TOKEN_SET_AUTH_REGISTRY`、`provideTokenSetCallbackResumeController()`、`TOKEN_SET_CALLBACK_RESUME_CONTROLLER`、`useTokenSetCallbackResume()`、`TokenSetCallbackComponent`。已经不再存在单独的 token-set runtime wrapper。读取 keyed auth state 的 canonical 方式是 `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)`，然后 `useReadableSignal(registry.clientSignalFor("main"))`，再读取返回 client 的 `authSnapshot`、`isAuthenticated` 等 replay channels。
@@ -396,10 +398,10 @@ React composition 仍服从三层模型：auth-context config、injector provide
 Layering rules：
 
 - `provideBasicAuthContext({ config })`：仅 auth-context config。
-- `provideSessionContext({ config, environment, initialRefresh })`：`SessionContextController` 之上的 adapter leaf；Angular DI 从同一个 `WebClientEnvironment` 读取 `environment.transport` 与 `environment.sessionStore` 并注册 controller。除非显式设置 `initialRefresh`，service construction 不自动探测 user-info。
+- `provideSessionContext({ config, environment, initialRefresh })`：`SessionContextController` 之上的 adapter leaf；Angular DI 从同一个 `FoundationEnvironment` 读取 `environment.transport` 与 `environment.sessionStorage` 并注册 controller。除非显式设置 `initialRefresh`，service construction 不自动探测 user-info。
 - `SessionContextService`：controller 之上的 signal / observable facade。低层 auth-context behavior 仍在 `SessionContextService.client`。
 - `provideTokenSetAuth({ clients, idleWarmup })`：Angular host registration；每个 client entry 仍拥有 auth-context config 与 environment composition。
-- `providePageClientEnvironment({ environment })`：page-scoped capability resolution 的 canonical Angular DI bridge。canonical value 是 provider-scoped `ClientEnvironmentService` 或另一个 inject-safe 稳定 resolver，可以在 guard flow 中 await 出 page capability；传同步 page environment object 只表示宿主已自行 materialize 的场景。
+- `provideNativeWebEnvironment({ environment })`：native-web-scoped capability injection 的 canonical Angular DI bridge。canonical value 是 host-owned `NativeWebEnvironment` object。
 - `CallbackResumeService` 包装 shared `TokenSetCallbackResumeController`，并通过 Angular signals / observables 暴露 component-free 的 `resume(url)` state。`TokenSetCallbackComponent` 只是该 service 之上的 page-only convenience component；custom host、SSR-like test 或 shell adapter 可以 override URL/policy tokens，或直接调用 `CallbackResumeService.resume(url)`。`handleCallback(url)` 仍作为兼容 wrapper 保留。
 - `provideTokenSetBearerInterceptor(options?)` / `createTokenSetBearerInterceptor(registry, options?)`：使用 SDK options-object API 形式的 bearer-header injection。注入 `Authorization` 前，interceptor 等待选中 client 的 `authorizationHeaderValue` replay signal。它不触发 refresh 或 auth check；client `start()`、refresh timer、page-resume auth-check trigger 或显式 `authCheck()` 负责维护。`BearerInterceptorOptions.strictUrlMatch` 控制 unmatched URL behavior：
   - 默认 `strictUrlMatch: false`：保留 single-client convenience fallback，等待唯一 registered client 的 `authorizationHeaderValue`；仅当 host 只调用一个 registered backend 时使用。
@@ -409,7 +411,7 @@ Layering rules：
 
 Freshness 由 token-set core 拥有，而不是由某个 framework adapter 单独修补。Consumer code 读取 replay channels：首屏 readiness 使用 `authDetermined`，稳定 UI 使用 `authSnapshot`，route guard 使用 `isAuthenticated`，transport/interceptor 使用 `authorizationHeaderValue`。`authCheck(options?)` 是唯一显式 maintenance command，只应留给有意触发一次串行检查的高级调用者。Event payload 不得包含 raw access、refresh 或 ID token value。Header availability 不再拥有独立 event/status lifecycle：可用 bearer projection 归属于 authenticated snapshot，缺失 bearer material 则表现为 unauthenticated 或 undefined header projection。Mode client 不再暴露同步 bearer convenience API，registry token sugar 也不属于公开模型。使用 `registry.whenReady(key?)` 或 `registry.clientSignalFor(key?)` 获取已 start 的 client，然后消费该 client 的 replay signals。
 
-Browser-owned frontend/backend OIDC factory 现在默认挂载 page-resume auth-check trigger。Angular `provideTokenSetAuth(...)` 也会为 registry-managed browser client 默认安装同一层保护，包括那些在 `clientFactory` 中直接返回 `createFrontendOidcModeClient(...)` 的接法。浏览器从 hidden 回到 visible、`pageshow`、`focus` 或 `online` 时，page source 会发出 auth-check trigger；client 随后走和 restore、refresh timer 相同的 queued auth-check pipeline，并发出带 `authCheckReason: "page_resume"` 的 `auth.check.*` events。这是恢复 barrier，不是交互式 login trigger：refresh 失败会沿 token-set client 的正常路径清理或保留状态，是否启动登录仍由 route/request handler 决定。只有 host 已经安装等价 trigger source 时才对单个 client 设置 `pageResumeAuthCheck: false`；测试或特殊 host 可以通过 `pageResumeAuthCheckOptions` 传入自定义 browser target 或 throttle。
+Browser-owned frontend/backend OIDC factory 通过 client runtime option `authCheck.triggerSources.pageResume` 配置 page-resume auth-check。bundled source 只消费 host-owned `PageLifecycleTrait.resume` event stream；token-set orchestration 不再接收或探测原始 `document` / `window` target。Angular registry entry 不再在 materialization 阶段 patch client 安装 page-resume trigger：Angular host 应在 `clientFactory(environment)` 内构造 client 时传入所需的 `authCheck.triggerSources` 配置。浏览器从 hidden 回到 visible、`pageshow`、`focus` 或 `online` 时，page source 只发出纯 EventStream auth-check trigger。client-owned dispatcher 负责将 trigger event 提交给串行 auth-check runner；restore 与显式 `authCheck()` 因为需要 promise-returning 语义而使用 command gateway，refresh timer 则是从 `authSnapshot` 派生的另一个 trigger source。完成的检查会发出带 `authCheckReason: "page_resume"` 的 `auth.check.*` events。这是恢复 barrier，不是交互式 login trigger：refresh 失败会沿 token-set client 的正常路径清理或保留状态，是否启动登录仍由 route/request handler 决定。
 
 短 access-token lifetime 应由持续运行的 client state machine 处理：persisted restore 执行初始 auth check，refresh timer 调度后续检查，browser resume 在 hidden tab、系统 sleep、bfcache 返回后发出 auth-check trigger。Angular route aggregation 等待 pending initial auth determination，然后读取 `isAuthenticated`；protected request 等待 `authorizationHeaderValue`。当 `frontend-oidc-mode` 或其它 token-set mode 能记录 `accessTokenIssuedAt` 时，token freshness 会按 token lifetime 动态收窄 refresh window 与 clock skew，而不是对所有 token 生硬套用固定窗口。这样短生命周期 token 在刚签发时仍保持 `fresh`，但又会足够早地进入 `refresh_due`，以支撑 restore、resume 与 scheduled maintenance。TanStack Router host 应使用 `@securitydept/token-set-context-client-react/tanstack-router` 的 `createTokenSetSecureBeforeLoad()`；raw web host 应使用 `@securitydept/token-set-context-client/web-router` 的 `createTokenSetWebRouteAuthCandidate()`。两个 helper 都会在 redirect/block fallback 前等待选中 client 的 `isAuthenticated` replay signal。
 

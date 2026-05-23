@@ -35,7 +35,7 @@ describe("createSessionServerHelper", () => {
 
 			const helper = createSessionServerHelper({
 				config: { baseUrl: "https://auth.example.com" },
-				transport,
+				externalTransport: transport,
 			});
 
 			const session = await helper.fetchUserInfo({
@@ -55,7 +55,7 @@ describe("createSessionServerHelper", () => {
 
 			const helper = createSessionServerHelper({
 				config: { baseUrl: "https://auth.example.com" },
-				transport,
+				externalTransport: transport,
 			});
 
 			const session = await helper.fetchUserInfo({
@@ -74,7 +74,7 @@ describe("createSessionServerHelper", () => {
 			}));
 			const helper = createSessionServerHelper({
 				config: { baseUrl: "https://auth.example.com" },
-				transport,
+				externalTransport: transport,
 			});
 
 			const url = helper.loginUrl("/protected/page");
@@ -90,7 +90,7 @@ describe("createSessionServerHelper", () => {
 			}));
 			const helper = createSessionServerHelper({
 				config: { baseUrl: "https://auth.example.com" },
-				transport,
+				externalTransport: transport,
 			});
 
 			const url = helper.loginUrl();
@@ -106,7 +106,7 @@ describe("createSessionServerHelper", () => {
 			}));
 			const helper = createSessionServerHelper({
 				config: { baseUrl: "https://auth.example.com" },
-				transport,
+				externalTransport: transport,
 			});
 
 			const url = helper.logoutUrl();
@@ -122,7 +122,7 @@ describe("createSessionServerHelper", () => {
 			}));
 			const helper = createSessionServerHelper({
 				config: { baseUrl: "https://auth.example.com" },
-				transport,
+				externalTransport: transport,
 			});
 
 			expect(helper.client).toBeDefined();

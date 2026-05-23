@@ -1,18 +1,16 @@
 import type {
 	CancellationTokenTrait,
-	HttpTransport,
+	ExternalTransportTrait,
 } from "@securitydept/client";
 import {
 	ClientError,
 	ClientErrorKind,
+	createExternalTransportForFetch,
 	createReplaySignal,
+	FetchTransportRedirectKind,
 } from "@securitydept/client";
 import type { SecuritydeptInjectorTrait } from "@securitydept/client/injection";
-import {
-	createCancellationTokenFromAbortSignal,
-	createFetchTransport,
-	FetchTransportRedirectKind,
-} from "@securitydept/client/web";
+import { createCancellationTokenFromAbortSignal } from "@securitydept/client/web";
 import { useReadableSignal } from "@securitydept/client-react";
 import type { AuthorizationHeaderProviderTrait } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
@@ -34,7 +32,7 @@ import type {
 } from "./entries";
 import type { Group } from "./groups";
 
-const tokenSetApiTransport = createFetchTransport({
+const tokenSetApiTransport = createExternalTransportForFetch({
 	redirect: FetchTransportRedirectKind.Follow,
 });
 const emptyAuthorizationHeaderSignal = createReplaySignal<string | undefined>();
@@ -54,7 +52,7 @@ proxy_path = "/api/propagation"`;
 
 export interface TokenSetApiRequestOptions {
 	baseUrl?: string;
-	transport?: HttpTransport;
+	transport?: ExternalTransportTrait;
 	cancellationToken?: CancellationTokenTrait;
 	/** Web AbortSignal — bridged to CancellationTokenTrait for React Query compatibility. */
 	abortSignal?: AbortSignal;
@@ -182,9 +180,9 @@ function encodeBasicAuthorization(username: string, password: string): string {
 function createAuthorizedTokenSetApiTransport(
 	client: AuthorizationHeaderProviderTrait,
 	options: TokenSetApiRequestOptions,
-): HttpTransport {
+): ExternalTransportTrait {
 	return createBackendOidcModeAuthorizedTransport(client, {
-		transport: options.transport ?? tokenSetApiTransport,
+		baseTransport: options.transport ?? tokenSetApiTransport,
 	});
 }
 

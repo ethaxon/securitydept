@@ -40,7 +40,7 @@ export function createLinkedCancellationToken(
 
 	// Clean up all subscriptions once the linked token fires.
 	linked.token.onCancellationRequested(() => {
-		for (const sub of subscriptions) sub.dispose();
+		for (const sub of subscriptions) sub[Symbol.dispose]();
 	});
 
 	return linked.token;

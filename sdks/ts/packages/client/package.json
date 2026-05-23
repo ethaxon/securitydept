@@ -48,6 +48,11 @@
 			"types": "./dist/web/index.d.mts",
 			"import": "./dist/web/index.mjs"
 		},
+		"./webext": {
+			"monorepo-tsc": "./src/webext/index.ts",
+			"types": "./dist/webext/index.d.mts",
+			"import": "./dist/webext/index.mjs"
+		},
 		"./events": {
 			"monorepo-tsc": "./src/events/index.ts",
 			"types": "./dist/events/index.d.mts",
@@ -72,6 +77,11 @@
 			"monorepo-tsc": "./src/auth-coordination/index.ts",
 			"types": "./dist/auth-coordination/index.d.mts",
 			"import": "./dist/auth-coordination/index.mjs"
+		},
+		"./test": {
+			"monorepo-tsc": "./src/test/index.ts",
+			"types": "./dist/test/index.d.mts",
+			"import": "./dist/test/index.mjs"
 		},
 		"./web-router": {
 			"monorepo-tsc": "./src/web-router/index.ts",

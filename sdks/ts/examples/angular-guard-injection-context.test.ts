@@ -16,16 +16,12 @@ import type {
 	PlannerHostResult,
 } from "@securitydept/client/auth-coordination";
 import {
-	ClientEnvironmentService,
-	createBrowserPageClientEnvironment,
-	createWebClientEnvironment,
-	deriveClientEnvironment,
-	type PageClientEnvironment,
-	type WebClientEnvironment,
+	createEnvironmentForNativeWeb,
+	type NativeWebEnvironment,
 } from "@securitydept/client/web";
 import {
 	AUTH_PLANNER_HOST,
-	providePageClientEnvironment,
+	provideNativeWebEnvironment,
 } from "@securitydept/client-angular";
 import {
 	createTokenSetOidcLoginRedirectHandler,
@@ -48,41 +44,31 @@ function createTransport() {
 	};
 }
 
-function createScheduler() {
+function createTime() {
 	return {
-		setTimeout() {
-			return { cancel() {} };
-		},
+		now: () => Date.now(),
+		setTimeout: (callback: () => void, delayMs: number) =>
+			globalThis.setTimeout(callback, delayMs),
+		clearTimeout: (handle: unknown) =>
+			globalThis.clearTimeout(
+				handle as ReturnType<typeof globalThis.setTimeout>,
+			),
 	};
 }
 
-function createAngularPageEnvironmentService() {
-	const createPageEnvironment = vi.fn(
-		(webEnvironment: WebClientEnvironment): PageClientEnvironment =>
-			createBrowserPageClientEnvironment({
-				pageCapability: {
-					location: {
-						href: "https://app.example.com/current",
-						hash: "",
-						pathname: "/current",
-						search: "",
-					},
-					history: {
-						replaceState() {},
-					},
-				},
-				...deriveClientEnvironment(webEnvironment),
-			}),
-	);
-
-	return new ClientEnvironmentService({
-		createClientEnvironment: () =>
-			createWebClientEnvironment({
-				transport: createTransport(),
-				scheduler: createScheduler(),
-				clock: { now: () => Date.now() },
-			}),
-		createPageEnvironment,
+function createAngularPageEnvironment(): NativeWebEnvironment {
+	return createEnvironmentForNativeWeb({
+		transport: createTransport(),
+		time: createTime(),
+		location: {
+			href: "https://app.example.com/current",
+			hash: "",
+			pathname: "/current",
+			search: "",
+		},
+		history: {
+			replaceState() {},
+		},
 	});
 }
 
@@ -95,7 +81,8 @@ describe("Angular token-set route guard injection context", () => {
 			state: createSignal(null),
 			...reactive.fields,
 			authEvents: createSubject(),
-			addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn(async () => null),
@@ -161,13 +148,14 @@ describe("Angular token-set route guard injection context", () => {
 
 	it("uses the attempted router state URL for OIDC login redirects", async () => {
 		const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
-		const environmentService = createAngularPageEnvironmentService();
+		const environment = createAngularPageEnvironment();
 		const reactive = createTestTokenSetReactiveFields(null);
 		const client = {
 			state: createSignal(null),
 			...reactive.fields,
 			authEvents: createSubject(),
-			addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn(async () => null),
@@ -195,7 +183,7 @@ describe("Angular token-set route guard injection context", () => {
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TokenSetAuthRegistry, useValue: registry },
-				providePageClientEnvironment({ environment: environmentService }),
+				provideNativeWebEnvironment({ environment }),
 				{
 					provide: Router,
 					useValue: { parseUrl: (value: string) => ({ redirectedTo: value }) },
@@ -222,9 +210,8 @@ describe("Angular token-set route guard injection context", () => {
 		Promise.resolve(guardResult).then(settled, settled);
 
 		await flushMicrotasks();
-		const environment = await environmentService.resolvePageEnvironment();
 		expect(loginWithRedirect).toHaveBeenCalledWith({
-			environment,
+			environment: environment.router,
 			postAuthRedirectUri: "/confluence/spaces/abc?tab=pages",
 		});
 		expect(settled).not.toHaveBeenCalled();

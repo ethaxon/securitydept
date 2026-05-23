@@ -1,11 +1,13 @@
-import { createSubject } from "@securitydept/client";
+import {
+	createSubject,
+	type FoundationEnvironment,
+} from "@securitydept/client";
 import { describe, expect, it } from "vitest";
 import {
 	createTokenSetAuthEvent,
 	type TokenSetAuthEvent,
 	TokenSetAuthEventType,
 	TokenSetAuthFlowOutcome,
-	TokenSetAuthFlowSource,
 } from "../../orchestration";
 import { createTokenSetAuthRegistry } from "../core/client-registry";
 
@@ -13,9 +15,20 @@ interface TestService {
 	authEvents: ReturnType<typeof createSubject<TokenSetAuthEvent>>;
 }
 
-const TEST_IDLE_SCHEDULER = (callback: () => void): (() => void) => {
-	const handle = setTimeout(callback, 0);
-	return () => clearTimeout(handle);
+const TEST_IDLE_CALLBACK = {
+	requestIdleCallback: (callback: () => void) => setTimeout(callback, 0),
+	cancelIdleCallback: (handle: unknown) =>
+		clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+const TEST_ENVIRONMENT: FoundationEnvironment = {
+	transport: { execute: async () => ({ status: 204, headers: {} }) },
+	time: {
+		now: () => Date.now(),
+		setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+		clearTimeout: (handle) =>
+			clearTimeout(handle as ReturnType<typeof setTimeout>),
+	},
+	idleCallback: TEST_IDLE_CALLBACK,
 };
 
 function createService(): TestService {
@@ -31,7 +44,7 @@ describe("TokenSetAuthRegistry auth flow", () => {
 			materialize: (client) => client,
 			dispose: () => undefined,
 			authEventsOf: (service) => service.authEvents,
-			idleScheduler: TEST_IDLE_SCHEDULER,
+			environment: TEST_ENVIRONMENT,
 		});
 		const events: TokenSetAuthEvent[] = [];
 		registry.authEvents.subscribe({ next: (event) => events.push(event) });
@@ -46,7 +59,6 @@ describe("TokenSetAuthRegistry auth flow", () => {
 				type: TokenSetAuthEventType.AuthAuthenticated,
 				at: 1,
 				payload: {
-					source: TokenSetAuthFlowSource.RouteGuard,
 					outcome: TokenSetAuthFlowOutcome.Authenticated,
 				},
 			}),
@@ -58,5 +70,26 @@ describe("TokenSetAuthRegistry auth flow", () => {
 				payload: expect.objectContaining({ clientKey: "confluence" }),
 			}),
 		]);
+	});
+
+	it("passes the registry environment to clientFactory", () => {
+		const service = createService();
+		let receivedEnvironment: FoundationEnvironment | undefined;
+		const registry = createTokenSetAuthRegistry<TestService, TestService>({
+			materialize: (client) => client,
+			dispose: () => undefined,
+			authEventsOf: (service) => service.authEvents,
+			environment: TEST_ENVIRONMENT,
+		});
+
+		registry.register({
+			key: "main",
+			clientFactory: (environment) => {
+				receivedEnvironment = environment;
+				return service;
+			},
+		});
+
+		expect(receivedEnvironment).toBe(TEST_ENVIRONMENT);
 	});
 });

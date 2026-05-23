@@ -33,7 +33,7 @@ function createBeforeLoadContext() {
 describe("createTokenSetSecureBeforeLoad", () => {
 	it("waits for token-set auth truth before invoking unauthenticated redirect", async () => {
 		const isAuthenticated = createReplaySignal<boolean>();
-		isAuthenticated.emit(true);
+		isAuthenticated.setValue(true);
 		const whenReady = vi.fn().mockResolvedValue({ isAuthenticated });
 		const defaultOnUnauthenticated = vi.fn(() => "/login");
 		const redirect = vi.fn((opts: { to: string }) => {

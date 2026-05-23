@@ -1,5 +1,6 @@
 import {
 	createSubject,
+	type FoundationEnvironment,
 	type ReadableReplaySignalTrait,
 } from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
@@ -28,9 +29,20 @@ interface FakeService {
 	disposeCount: number;
 }
 
-const TEST_IDLE_SCHEDULER = (callback: () => void): (() => void) => {
-	const handle = setTimeout(callback, 0);
-	return () => clearTimeout(handle);
+const TEST_IDLE_CALLBACK = {
+	requestIdleCallback: (callback: () => void) => setTimeout(callback, 0),
+	cancelIdleCallback: (handle: unknown) =>
+		clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+const TEST_ENVIRONMENT: FoundationEnvironment = {
+	transport: { execute: async () => ({ status: 204, headers: {} }) },
+	time: {
+		now: () => Date.now(),
+		setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+		clearTimeout: (handle) =>
+			clearTimeout(handle as ReturnType<typeof setTimeout>),
+	},
+	idleCallback: TEST_IDLE_CALLBACK,
 };
 
 function createDeferred<T>() {
@@ -77,7 +89,7 @@ function createRegistry(options?: {
 		},
 		start: options?.start,
 		authEventsOf: (service) => service.authEvents,
-		idleScheduler: TEST_IDLE_SCHEDULER,
+		environment: TEST_ENVIRONMENT,
 	});
 }
 
@@ -200,7 +212,7 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 			type: "auth.authenticated",
 			at: 1,
 			source: { kind: "framework", name: "vitest" },
-			payload: { source: "route_guard", outcome: "authenticated" },
+			payload: { outcome: "authenticated" },
 		});
 		expect(events).toEqual([]);
 
@@ -339,7 +351,7 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 				service.disposeCount += 1;
 			},
 			authEventsOf: (service) => service.authEvents,
-			idleScheduler: TEST_IDLE_SCHEDULER,
+			environment: TEST_ENVIRONMENT,
 		});
 
 		registry.register({
@@ -385,7 +397,7 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 				service.client.dispose();
 			},
 			authEventsOf: (service) => service.authEvents,
-			idleScheduler: TEST_IDLE_SCHEDULER,
+			environment: TEST_ENVIRONMENT,
 		});
 		const first = createDeferred<FakeClient>();
 		const second = createDeferred<FakeClient>();
@@ -440,7 +452,7 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 				service.disposeCount += 1;
 			},
 			authEventsOf: (service) => service.authEvents,
-			idleScheduler: TEST_IDLE_SCHEDULER,
+			environment: TEST_ENVIRONMENT,
 		});
 
 		let thrown: unknown;

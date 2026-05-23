@@ -3,18 +3,23 @@ import {
 	BasicAuthContextClient,
 } from "@securitydept/basic-auth-context-client";
 import { performRedirect } from "@securitydept/basic-auth-context-client/web";
-import type { PageLocationCapability } from "@securitydept/client";
+import type { RouterTrait } from "@securitydept/client";
+import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-function createPageLocationEnvironment(href: string): PageLocationCapability {
+function createPageLocationEnvironment(href: string): RouterTrait & {
+	location: { href: string; hash: string; pathname: string; search: string };
+} {
 	const url = new URL(href);
+	const location = {
+		href,
+		hash: url.hash,
+		pathname: url.pathname,
+		search: url.search,
+	};
 	return {
-		location: {
-			href,
-			hash: url.hash,
-			pathname: url.pathname,
-			search: url.search,
-		},
+		...createRouterForNativeWeb({ location }),
+		location,
 	};
 }
 
@@ -23,7 +28,7 @@ describe("external basic-auth guard scenario", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("lets consumers distinguish zone hits from misses and consume redirects explicitly", () => {
+	it("lets consumers distinguish zone hits from misses and consume redirects explicitly", async () => {
 		const client = new BasicAuthContextClient({
 			baseUrl: "https://auth.example.com",
 			zones: [{ zonePrefix: "/basic" }],
@@ -41,14 +46,14 @@ describe("external basic-auth guard scenario", () => {
 		const environment = createPageLocationEnvironment(
 			"https://app.example.com/current",
 		);
-		performRedirect(inZone, { environment });
+		await performRedirect(inZone, { environment });
 
 		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?post_auth_redirect_uri=%2Fbasic%2Fapi%2Fgroups",
 		);
 	});
 
-	it("lets consumers keep out-of-zone misses separate while consuming a multi-zone redirect contract explicitly", () => {
+	it("lets consumers keep out-of-zone misses separate while consuming a multi-zone redirect contract explicitly", async () => {
 		const client = new BasicAuthContextClient({
 			baseUrl: "https://auth.example.com",
 			postAuthRedirectParam: "return_to",
@@ -76,7 +81,7 @@ describe("external basic-auth guard scenario", () => {
 		const environment = createPageLocationEnvironment(
 			"https://app.example.com/current",
 		);
-		performRedirect(inZone, { environment });
+		await performRedirect(inZone, { environment });
 
 		expect(environment.location.href).toBe(
 			"https://auth.example.com/internal/basic/signin?return_to=%2Finternal%2Fbasic%2Freports%3Ftab%3Dmembers%23invite",

@@ -1,8 +1,8 @@
 import type {
 	CancellationTokenTrait,
-	ClientEnvironment,
 	EphemeralFlowStore,
-	HttpTransport,
+	ExternalTransportTrait,
+	FoundationEnvironment,
 } from "@securitydept/client";
 import {
 	ClientError,
@@ -41,7 +41,7 @@ export class SessionContextClient {
 
 	constructor(
 		config: SessionContextClientConfig,
-		environment: Pick<ClientEnvironment, "sessionStore"> = {},
+		environment: Pick<FoundationEnvironment, "sessionStorage"> = {},
 	) {
 		this._baseUrl = config.baseUrl.replace(/\/+$/, "");
 		this._loginPath = config.loginPath ?? DEFAULT_LOGIN_PATH;
@@ -52,9 +52,9 @@ export class SessionContextClient {
 		this._loginRedirectStateKey =
 			config.loginRedirectStateKey ??
 			`${DEFAULT_LOGIN_REDIRECT_STATE_KEY}:${this._baseUrl || "relative"}`;
-		this._pendingLoginRedirectStore = environment.sessionStore
+		this._pendingLoginRedirectStore = environment.sessionStorage
 			? createEphemeralFlowStore<string>({
-					store: environment.sessionStore,
+					store: environment.sessionStorage,
 					key: this._loginRedirectStateKey,
 					codec: {
 						encode(value) {
@@ -90,7 +90,7 @@ export class SessionContextClient {
 		await this.savePendingLoginRedirect(postAuthRedirectUri);
 	}
 
-	/** Save the pending post-auth redirect in `sessionStore` when available. */
+	/** Save the pending post-auth redirect in `sessionStorage` when available. */
 	async savePendingLoginRedirect(postAuthRedirectUri: string): Promise<void> {
 		if (!this._pendingLoginRedirectStore) {
 			return;
@@ -99,7 +99,7 @@ export class SessionContextClient {
 		await this._pendingLoginRedirectStore.save(postAuthRedirectUri);
 	}
 
-	/** Load the pending post-auth redirect from `sessionStore`. */
+	/** Load the pending post-auth redirect from `sessionStorage`. */
 	async loadPendingLoginRedirect(): Promise<string | null> {
 		if (!this._pendingLoginRedirectStore) {
 			return null;
@@ -108,7 +108,7 @@ export class SessionContextClient {
 		return await this._pendingLoginRedirectStore.load();
 	}
 
-	/** Load and consume the pending post-auth redirect from `sessionStore`. */
+	/** Load and consume the pending post-auth redirect from `sessionStorage`. */
 	async consumePendingLoginRedirect(): Promise<string | null> {
 		if (!this._pendingLoginRedirectStore) {
 			return null;
@@ -116,7 +116,7 @@ export class SessionContextClient {
 		return await this._pendingLoginRedirectStore.consume();
 	}
 
-	/** Clear the pending post-auth redirect from `sessionStore`. */
+	/** Clear the pending post-auth redirect from `sessionStorage`. */
 	async clearPendingLoginRedirect(): Promise<void> {
 		if (!this._pendingLoginRedirectStore) {
 			return;
@@ -144,10 +144,10 @@ export class SessionContextClient {
 	 * server failures from unauthenticated state.
 	 */
 	async fetchUserInfo(
-		transport: HttpTransport,
+		externalTransport: ExternalTransportTrait,
 		cancellationToken?: CancellationTokenTrait,
 	): Promise<SessionInfo | null> {
-		const response = await transport.execute({
+		const response = await externalTransport.execute({
 			url: this._baseUrl + this._userInfoPath,
 			method: "GET",
 			headers: {},
@@ -168,19 +168,19 @@ export class SessionContextClient {
 
 	/** Check whether a session exists on the server. */
 	async isAuthenticated(
-		transport: HttpTransport,
+		externalTransport: ExternalTransportTrait,
 		cancellationToken?: CancellationTokenTrait,
 	): Promise<boolean> {
-		const me = await this.fetchUserInfo(transport, cancellationToken);
+		const me = await this.fetchUserInfo(externalTransport, cancellationToken);
 		return me !== null;
 	}
 
 	/** Execute logout against the configured session logout endpoint. */
 	async logout(
-		transport: HttpTransport,
+		externalTransport: ExternalTransportTrait,
 		cancellationToken?: CancellationTokenTrait,
 	): Promise<void> {
-		const response = await transport.execute({
+		const response = await externalTransport.execute({
 			url: this.logoutUrl(),
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -197,10 +197,10 @@ export class SessionContextClient {
 
 	/** Execute logout and clear any stale post-auth redirect intent in one canonical step. */
 	async logoutAndClearPendingLoginRedirect(
-		transport: HttpTransport,
+		externalTransport: ExternalTransportTrait,
 		cancellationToken?: CancellationTokenTrait,
 	): Promise<void> {
-		await this.logout(transport, cancellationToken);
+		await this.logout(externalTransport, cancellationToken);
 		await this.clearPendingLoginRedirect();
 	}
 }

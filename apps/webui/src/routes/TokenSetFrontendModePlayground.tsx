@@ -4,7 +4,7 @@ import {
 	UserRecovery,
 } from "@securitydept/client";
 import {
-	CLIENT_ENVIRONMENT_SERVICE,
+	CLIENT_ENVIRONMENT,
 	useReadableSignal,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
@@ -69,7 +69,7 @@ export function TokenSetFrontendModePlaygroundPage() {
 		authSnapshotSlot.kind === "value"
 			? (authSnapshotSlot.value as AuthStateSnapshot | null)
 			: null;
-	const environmentService = injector.get(CLIENT_ENVIRONMENT_SERVICE);
+	const environment = injector.get(CLIENT_ENVIRONMENT);
 	const traceEvents = useSyncExternalStore(
 		(listener) => tokenSetFrontendModeTraceTimeline.subscribe(listener),
 		() => tokenSetFrontendModeTraceTimeline.get(),
@@ -114,7 +114,7 @@ export function TokenSetFrontendModePlaygroundPage() {
 		setAuthContextMode(AuthContextMode.TokenSetFrontend);
 		try {
 			await startTokenSetFrontendModeLogin(
-				environmentService,
+				environment,
 				TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
 			);
 		} catch (loginError) {

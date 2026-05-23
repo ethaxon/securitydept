@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest";
-import { fromAbortSignal, fromStorageEvent } from "../events/input-sources";
+import { fromAbortSignal } from "../../events";
+import { fromStorageEvent } from "../events/from-storage";
 
 describe("web input-source helpers", () => {
 	it("subscribes to AbortSignal abort events", () => {
@@ -10,8 +11,7 @@ describe("web input-source helpers", () => {
 
 		fromAbortSignal({
 			signal: controller.signal,
-			callback,
-		});
+		}).subscribe({ next: callback });
 		controller.abort("query-cancelled");
 
 		expect(callback).toHaveBeenCalledOnce();
@@ -25,9 +25,8 @@ describe("web input-source helpers", () => {
 
 		fromAbortSignal({
 			signal: controller.signal,
-			callback,
 			emitIfAborted: true,
-		});
+		}).subscribe({ next: callback });
 
 		expect(callback).toHaveBeenCalledOnce();
 		expect(callback).toHaveBeenCalledWith("already-aborted");
@@ -39,8 +38,7 @@ describe("web input-source helpers", () => {
 
 		const subscription = fromAbortSignal({
 			signal: controller.signal,
-			callback,
-		});
+		}).subscribe({ next: callback });
 		subscription.unsubscribe();
 		controller.abort("ignored");
 
@@ -59,9 +57,8 @@ describe("web input-source helpers", () => {
 		};
 
 		fromStorageEvent({
-			target,
-			callback,
-		});
+			storageEventTarget: target,
+		}).subscribe({ next: callback });
 		handler?.(
 			new StorageEvent("storage", {
 				key: "securitydept.auth",
@@ -85,9 +82,8 @@ describe("web input-source helpers", () => {
 		};
 
 		const subscription = fromStorageEvent({
-			target,
-			callback,
-		});
+			storageEventTarget: target,
+		}).subscribe({ next: callback });
 		subscription.unsubscribe();
 
 		expect(removeEventListener).toHaveBeenCalledWith(

@@ -1,5 +1,8 @@
-import { createInMemoryRecordStore } from "@securitydept/client";
-import { createBrowserExtensionBackgroundClientEnvironment } from "@securitydept/client/web";
+import {
+	createClientEnvironment,
+	createInMemoryRecordStore,
+} from "@securitydept/client";
+import { createRouterForNativeWeb } from "@securitydept/client/web";
 import {
 	BackendOidcModeBootstrapSource,
 	bootstrapBackendOidcModePageClient,
@@ -22,11 +25,15 @@ function expectReplayValue<T>(signal: {
 	return slot.value;
 }
 
-function createScheduler() {
+function createTime() {
 	return {
-		setTimeout() {
-			return { cancel() {} };
-		},
+		now: () => Date.parse("2026-01-01T00:00:00Z"),
+		setTimeout: (callback: () => void, delayMs: number) =>
+			globalThis.setTimeout(callback, delayMs),
+		clearTimeout: (handle: unknown) =>
+			globalThis.clearTimeout(
+				handle as ReturnType<typeof globalThis.setTimeout>,
+			),
 	};
 }
 
@@ -56,19 +63,18 @@ describe("backend-oidc worker-like host boundary", () => {
 			hash: "#access_token=at",
 		});
 
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 		const client = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
-				persistentStore,
-				sessionStore,
+				persistentStorage,
+				sessionStorage,
 				callbackFragmentStore,
 				transport: createMetadataTransport(),
-				scheduler: createScheduler(),
-				clock: { now: () => Date.parse("2026-01-01T00:00:00Z") },
+				time: createTime(),
 			}),
 		});
 
@@ -80,17 +86,16 @@ describe("backend-oidc worker-like host boundary", () => {
 	});
 
 	it("restores persisted token state without running page callback capture", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const baseEnvironment = createBrowserExtensionBackgroundClientEnvironment({
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const baseEnvironment = createClientEnvironment({
 			transport: createMetadataTransport(),
-			persistentStore,
-			sessionStore,
-			scheduler: createScheduler(),
-			clock: { now: () => Date.parse("2026-01-01T00:00:00Z") },
+			persistentStorage,
+			sessionStorage,
+			time: createTime(),
 		});
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 		const environment = { ...baseEnvironment, callbackFragmentStore };
 		const callbackClient = createBackendOidcModeWebClient({ environment });
@@ -111,7 +116,7 @@ describe("backend-oidc worker-like host boundary", () => {
 
 	it("captures callback fragments only with explicit host-injected page capabilities", async () => {
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 		});
 		const history = {
 			replacedUrl: "",
@@ -122,11 +127,13 @@ describe("backend-oidc worker-like host boundary", () => {
 
 		const fragment = await captureBackendOidcModeCallbackFragment({
 			environment: {
-				location: {
-					href: "https://app.example.com/popup#access_token=popup-at&id_token=popup-idt",
-					hash: "#access_token=popup-at&id_token=popup-idt",
-				},
-				history,
+				...createRouterForNativeWeb({
+					location: {
+						href: "https://app.example.com/popup#access_token=popup-at&id_token=popup-idt",
+						hash: "#access_token=popup-at&id_token=popup-idt",
+					},
+					history,
+				}),
 				callbackFragmentStore,
 			},
 		});

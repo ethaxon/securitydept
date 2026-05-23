@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { isLoopbackHttpUrl, transformScriptForBrowser } from "../utils/helpers";
+import { isLoopbackHttpUrl } from "../utils/network";
+import { transformScriptForBrowser } from "../utils/scripts";
 
 describe("isLoopbackHttpUrl", () => {
 	it("accepts loopback http URLs", () => {

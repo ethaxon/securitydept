@@ -1,29 +1,33 @@
-import type { PageLocationCapability } from "@securitydept/client";
+import type { RouterTrait } from "@securitydept/client";
 import { assertResolveEnvironment } from "@securitydept/client/web";
 import type { AuthGuardResult } from "../types";
 import { AuthGuardResultKind } from "../types";
 
 const BASIC_AUTH_PAGE_ENVIRONMENT_ERROR_MESSAGE =
 	"basic-auth browser redirect helpers require an explicit page environment.\n" +
-	"Create one in your composition root with createBrowserPageClientEnvironment(...).";
+	"Create one in your composition root with createEnvironmentForNativeWeb(...).";
 
 export interface PerformRedirectOptions {
-	environment?: PageLocationCapability;
+	environment?: RouterTrait;
 }
 
 /**
  * Perform a browser redirect for an `AuthGuardResult` that requires redirection.
  */
-export function performRedirect(
+export async function performRedirect(
 	result: AuthGuardResult<unknown>,
 	options: PerformRedirectOptions = {},
-): void {
+): Promise<void> {
 	if (result.kind === AuthGuardResultKind.Redirect) {
 		const environment = assertResolveEnvironment(
 			options.environment,
 			failMissingPageEnvironment,
 		);
-		environment.location.href = result.location;
+		await environment.navigate({
+			url: result.location,
+			intent: "auth_redirect",
+			mode: "external",
+		});
 	}
 }
 

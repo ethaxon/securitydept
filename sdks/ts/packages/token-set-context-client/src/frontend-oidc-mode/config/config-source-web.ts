@@ -13,28 +13,25 @@
 // factories without pulling in browser assumptions.
 
 import {
+	type BaseTransportTrait,
 	ClientError,
-	type Clock,
-	type HttpTransport,
+	createClientEnvironment,
+	createExternalTransportForFetch,
+	type FoundationEnvironment,
+	type IdleCallbackTrait,
 	type LoggerTrait,
-	type RecordStore,
-	type Scheduler,
+	type PageLifecycleTrait,
+	type StorageTrait,
+	type TimeTrait,
 	type TraceEventSinkTrait,
-	type WebClientEnvironment,
 } from "@securitydept/client";
 import {
 	createLocalStorageStore,
 	createSessionStorageStore,
 } from "@securitydept/client/persistence/web";
-import {
-	createWebClientEnvironment,
-	deriveClientEnvironment,
-	type FetchTransportOptions,
-} from "@securitydept/client/web";
-import {
-	attachPageResumeAuthCheckTriggerSource,
-	type PageResumeAuthCheckOptions,
-	type TokenSetAuthCheckTriggerSource,
+import type {
+	AuthWorkflowRuntimeOptions,
+	PageResumeWorkflowSourceOptions,
 } from "../../orchestration";
 import { parseConfigProjection } from "../contracts/contracts";
 import {
@@ -79,13 +76,11 @@ export interface CreateFrontendOidcModeBrowserClientOptions {
 	redirectUri: string;
 	defaultPostAuthRedirectUri?: string;
 	environment: FrontendOidcModeWebClientEnvironment;
-	pageResumeAuthCheck?: boolean;
-	pageResumeAuthCheckOptions?: PageResumeAuthCheckOptions;
-	authCheckTriggerSources?: readonly TokenSetAuthCheckTriggerSource[];
+	authCheck?: AuthWorkflowRuntimeOptions;
 }
 
 export interface FrontendOidcModeWebClientEnvironment
-	extends WebClientEnvironment {
+	extends FoundationEnvironment {
 	origin: string;
 	fetch: typeof globalThis.fetch;
 	persistentStoragePrefix: string;
@@ -95,12 +90,12 @@ export interface CreateFrontendOidcModeWebClientEnvironmentOptions {
 	environment?: FrontendOidcModeWebClientEnvironment;
 	persistentStoragePrefix?: string;
 	sessionStoragePrefix?: string;
-	persistentStore?: RecordStore;
-	sessionStore?: RecordStore;
-	transport?: HttpTransport;
-	fetchTransport?: FetchTransportOptions;
-	scheduler?: Scheduler;
-	clock?: Clock;
+	persistentStorage?: StorageTrait;
+	sessionStorage?: StorageTrait;
+	transport?: BaseTransportTrait;
+	time?: TimeTrait;
+	idleCallback?: IdleCallbackTrait;
+	pageLifecycle?: PageLifecycleTrait;
 	logger?: LoggerTrait;
 	traceSink?: TraceEventSinkTrait;
 	origin?: string;
@@ -125,18 +120,23 @@ export function createFrontendOidcModeWebClientEnvironment(
 		options.persistentStoragePrefix ?? FRONTEND_OIDC_PERSISTENT_PREFIX;
 	const sessionStoragePrefix =
 		options.sessionStoragePrefix ?? FRONTEND_OIDC_SESSION_PREFIX;
-	const environment = createWebClientEnvironment({
-		transport: options.transport,
-		fetchTransport: options.fetchTransport,
-		scheduler: options.scheduler,
-		clock: options.clock,
-		logger: options.logger,
-		traceSink: options.traceSink,
-		persistentStore:
-			options.persistentStore ??
+	const environment = createClientEnvironment({
+		transport: options.transport ?? createExternalTransportForFetch(),
+		time: options.time,
+		idleCallback: options.idleCallback,
+		pageLifecycle: options.pageLifecycle,
+		telemetry:
+			options.logger || options.traceSink
+				? {
+						logger: options.logger,
+						traceSink: options.traceSink,
+					}
+				: undefined,
+		persistentStorage:
+			options.persistentStorage ??
 			createLocalStorageStore(persistentStoragePrefix),
-		sessionStore:
-			options.sessionStore ?? createSessionStorageStore(sessionStoragePrefix),
+		sessionStorage:
+			options.sessionStorage ?? createSessionStorageStore(sessionStoragePrefix),
 	});
 
 	return {
@@ -191,16 +191,15 @@ export async function createFrontendOidcModeBrowserClient(
 		rawProjection: projection,
 	};
 
-	const client = attachPageResumeAuthCheckTriggerSource(
-		createFrontendOidcModeClient(
-			parsed.value,
-			deriveClientEnvironment(environment),
-		),
+	const client = createFrontendOidcModeClient(
 		{
-			pageResumeAuthCheck: options.pageResumeAuthCheck,
-			pageResumeAuthCheckOptions: options.pageResumeAuthCheckOptions,
-			authCheckTriggerSources: options.authCheckTriggerSources,
+			...parsed.value,
+			authCheck: resolveWebAuthWorkflowRuntimeOptions(
+				options.authCheck,
+				environment,
+			),
 		},
+		environment,
 	);
 
 	return {
@@ -211,6 +210,26 @@ export async function createFrontendOidcModeBrowserClient(
 			parsed.value,
 			environment.persistentStoragePrefix,
 		),
+	};
+}
+
+function resolveWebAuthWorkflowRuntimeOptions(
+	options: AuthWorkflowRuntimeOptions | undefined,
+	environment: FrontendOidcModeWebClientEnvironment,
+): AuthWorkflowRuntimeOptions {
+	const pageResume = options?.sources?.pageResume ?? {
+		kind: "bundle" as const,
+		options: {
+			pageLifecycle: environment.pageLifecycle ?? null,
+			now: () => environment.time.now(),
+		} satisfies PageResumeWorkflowSourceOptions,
+	};
+	return {
+		...options,
+		sources: {
+			...options?.sources,
+			pageResume,
+		},
 	};
 }
 
@@ -335,23 +354,23 @@ export function bootstrapScriptSource(options: {
 }
 
 // ---------------------------------------------------------------------------
-// Persisted source: read from abstract RecordStore
+// Persisted source: read from abstract StorageTrait
 // ---------------------------------------------------------------------------
 
 /**
- * Create a persisted config source that reads from an abstract RecordStore.
+ * Create a persisted config source that reads from an abstract StorageTrait.
  *
  * The persisted source stores config projections as JSON envelopes
  * containing both the raw projection data and the authoritative `generatedAt`
  * timestamp from the backend.
  *
- * @param options.store - Abstract RecordStore (e.g. from `createLocalStorageStore`)
+ * @param options.store - Abstract StorageTrait (e.g. from `createLocalStorageStore`)
  * @param options.storageKey - Key within the store
  * @param options.redirectUri - OIDC callback redirect URI override
  * @param options.defaultPostAuthRedirectUri - App-level default redirect after auth
  */
 export function persistedConfigSource(options: {
-	store: RecordStore;
+	store: StorageTrait;
 	storageKey: string;
 	redirectUri?: string;
 	defaultPostAuthRedirectUri?: string;
@@ -385,22 +404,22 @@ export function persistedConfigSource(options: {
 }
 
 // ---------------------------------------------------------------------------
-// Persist resolved config to abstract RecordStore
+// Persist resolved config to abstract StorageTrait
 // ---------------------------------------------------------------------------
 
 /**
- * Persist a resolved config projection to an abstract RecordStore.
+ * Persist a resolved config projection to an abstract StorageTrait.
  *
  * Stores the raw projection data and its authoritative `generatedAt` so that
  * `persistedConfigSource` can restore it on next boot and revalidation can
  * check freshness against the projection's own generation time.
  *
- * @param store - Abstract RecordStore to write to
+ * @param store - Abstract StorageTrait to write to
  * @param storageKey - Key within the store
  * @param resolved - The resolved config projection (must include `rawProjection`)
  */
 export async function persistConfigProjection(
-	store: RecordStore,
+	store: StorageTrait,
 	storageKey: string,
 	resolved: ResolvedConfigProjection,
 ): Promise<void> {
@@ -425,9 +444,18 @@ export interface IdleRevalidationOptions {
 	 */
 	networkSource: ConfigProjectionSourceNetwork;
 	/**
-	 * Abstract RecordStore to persist revalidated config to.
+	 * Explicit time capability used for freshness checks and persisted metadata.
 	 */
-	store: RecordStore;
+	time: TimeTrait;
+	/**
+	 * Optional idle callback capability. If absent, no idle revalidation is
+	 * scheduled.
+	 */
+	idleCallback?: IdleCallbackTrait;
+	/**
+	 * Abstract StorageTrait to persist revalidated config to.
+	 */
+	store: StorageTrait;
 	/**
 	 * Storage key for persisted config.
 	 */
@@ -439,7 +467,7 @@ export interface IdleRevalidationOptions {
 	maxAge?: number;
 	/**
 	 * Authoritative projection `generatedAt` timestamp (epoch-ms).
-	 * If absent or if `Date.now() - generatedAt > maxAge`, revalidation fires.
+	 * If absent or if `time.now() - generatedAt > maxAge`, revalidation fires.
 	 */
 	generatedAt?: number;
 	/**
@@ -452,8 +480,8 @@ export interface IdleRevalidationOptions {
  * Schedule idle-time revalidation of a config projection.
  *
  * Only triggers a network fetch if the current projection is stale
- * (`generatedAt + maxAge < now`). Uses `requestIdleCallback` when available,
- * falling back to `setTimeout(..., 1000)`.
+ * (`generatedAt + maxAge < now`) and an explicit idle callback capability was
+ * provided.
  *
  * On success: writes the fresh projection to the store.
  * On failure: silently retains the existing cache (no disruption).
@@ -466,6 +494,8 @@ export function scheduleIdleRevalidation(
 ): (() => void) | undefined {
 	const {
 		networkSource,
+		time,
+		idleCallback,
 		store,
 		storageKey,
 		maxAge = 300_000,
@@ -474,10 +504,19 @@ export function scheduleIdleRevalidation(
 	} = options;
 
 	// Skip if source is still fresh based on authoritative generation time
-	if (generatedAt !== undefined && Date.now() - generatedAt <= maxAge) {
+	const now = time.now();
+	if (generatedAt !== undefined && now - generatedAt <= maxAge) {
 		logger?.(
 			"info",
-			`Config projection still fresh (generated ${Math.round((Date.now() - generatedAt) / 1000)}s ago, maxAge=${maxAge / 1000}s). Skipping idle revalidation.`,
+			`Config projection still fresh (generated ${Math.round((now - generatedAt) / 1000)}s ago, maxAge=${maxAge / 1000}s). Skipping idle revalidation.`,
+		);
+		return undefined;
+	}
+
+	if (!idleCallback) {
+		logger?.(
+			"info",
+			"Idle callback capability not provided. Skipping idle revalidation.",
 		);
 		return undefined;
 	}
@@ -487,7 +526,7 @@ export function scheduleIdleRevalidation(
 			const raw = await networkSource.fetch();
 			// Extract generatedAt from the fresh projection for the envelope
 			const freshGeneratedAt =
-				extractGeneratedAtFromProjection(raw) ?? Date.now();
+				extractGeneratedAtFromProjection(raw) ?? time.now();
 			const envelope: PersistedConfigEnvelope = {
 				data: raw,
 				generatedAt: freshGeneratedAt,
@@ -506,17 +545,10 @@ export function scheduleIdleRevalidation(
 		}
 	};
 
-	// Schedule via requestIdleCallback or setTimeout fallback
-	if (typeof globalThis.requestIdleCallback === "function") {
-		const id = globalThis.requestIdleCallback(() => {
-			void doRevalidate();
-		});
-		return () => globalThis.cancelIdleCallback(id);
-	}
-	const id = globalThis.setTimeout(() => {
+	const id = idleCallback.requestIdleCallback(() => {
 		void doRevalidate();
-	}, 1000);
-	return () => globalThis.clearTimeout(id);
+	});
+	return () => idleCallback.cancelIdleCallback(id);
 }
 
 // ---------------------------------------------------------------------------

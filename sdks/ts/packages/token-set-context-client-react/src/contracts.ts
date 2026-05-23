@@ -4,6 +4,7 @@
 // exchange the same duck-typed OIDC client surface when registering against
 // the shared `TokenSetAuthRegistry` core.
 
+import type { FoundationEnvironment } from "@securitydept/client";
 import type { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import type {
 	ClientInitializationPriority,
@@ -47,7 +48,9 @@ export interface TokenSetClientEntry
 	/**
 	 * Factory returning the OIDC client. Supports sync / async.
 	 */
-	clientFactory: () => TokenSetReactClient | Promise<TokenSetReactClient>;
+	clientFactory: (
+		environment: FoundationEnvironment | undefined,
+	) => TokenSetReactClient | Promise<TokenSetReactClient>;
 	/**
 	 * Optional initialization priority (primary | lazy).
 	 */

@@ -60,7 +60,8 @@ function createBackendClient(
 	return {
 		...reactive.fields,
 		authEvents: createSubject<TokenSetAuthEvent>(),
-		addAuthCheckTriggerSource: () => ({ unsubscribe: () => undefined }),
+		addWorkflowSource: () => ({ unsubscribe: () => undefined }),
+		removeWorkflowSource: () => false,
 		start: async () => undefined,
 		dispose: vi.fn(() => {
 			state.set(null);
@@ -70,7 +71,7 @@ function createBackendClient(
 		handleCallback: async () => ({ snapshot }),
 		loginWithRedirect: async () => undefined,
 		authorizeUrl: () => "/authorize",
-		refresh: async () => snapshot,
+		refreshState: async () => snapshot,
 		clearState: async () => {
 			state.set(null);
 			reactive.emitSnapshot(null);

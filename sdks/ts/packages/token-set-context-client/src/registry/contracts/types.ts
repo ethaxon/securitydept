@@ -10,18 +10,19 @@
 import type {
 	EventStreamTrait,
 	EventSubscriptionTrait,
-	PageLocationCapability,
+	FoundationEnvironment,
 	ReadableReplaySignalTrait,
 	ReadableSignalTrait,
+	RouterTrait,
 } from "@securitydept/client";
 import type { ClientReadinessState } from "../../frontend-oidc-mode/config/config-source";
 import type {
 	AuthCheckOptions,
 	AuthCheckResult,
 	AuthSnapshot,
-	TokenSetAuthCheckTriggerSource,
 	TokenSetAuthEvent,
 	TokenSetAuthOperationSignals,
+	TokenSetAuthWorkflowSource,
 } from "../../orchestration";
 
 export type {
@@ -58,11 +59,11 @@ export interface OidcModeClient {
 	authOperations: TokenSetAuthOperationSignals;
 	authEvents: EventStreamTrait<TokenSetAuthEvent>;
 	start(): Promise<void>;
-	addAuthCheckTriggerSource(
-		source: TokenSetAuthCheckTriggerSource,
-	): EventSubscriptionTrait;
+	addWorkflowSource(source: TokenSetAuthWorkflowSource): EventSubscriptionTrait;
+	removeWorkflowSource(source: TokenSetAuthWorkflowSource): boolean;
 	authCheck(options?: AuthCheckOptions): Promise<AuthCheckResult>;
 	dispose(): void;
+	/** Manual persistence re-sync. Initial readiness should prefer start()/whenReady(). */
 	restorePersistedState(): Promise<AuthSnapshot | null>;
 }
 
@@ -72,7 +73,7 @@ export interface OidcModeClient {
  */
 export interface OidcRedirectLoginOptions {
 	/** Explicit page navigation capability used to start the browser redirect. */
-	environment: PageLocationCapability;
+	environment: RouterTrait;
 	/**
 	 * Where to redirect the user after successful authentication.
 	 *
@@ -148,7 +149,9 @@ export interface TokenSetClientEntry<TClient> {
 	 * Async factories are the common case when the client needs to fetch
 	 * a config projection from the backend before it can be instantiated.
 	 */
-	clientFactory: () => TClient | Promise<TClient>;
+	clientFactory: (
+		environment: FoundationEnvironment | undefined,
+	) => TClient | Promise<TClient>;
 	/**
 	 * Initialization priority.
 	 * @default "primary"
@@ -329,16 +332,20 @@ export interface CreateTokenSetAuthRegistryOptions<TClient, TService> {
 	) => Promise<void> | void;
 	authEventsOf: (service: TService) => EventStreamTrait<TokenSetAuthEvent>;
 	/**
-	 * Custom idle scheduler for {@link TokenSetAuthRegistry.idleWarmup}.
-	 * Defaults to `requestIdleCallback` when available, `setTimeout(_, 0)`
-	 * otherwise. Returns a cancel function.
+	 * Client environment owned by the registry composition root.
+	 *
+	 * The registry reads lifecycle capabilities from this object, such as
+	 * `environment.idleCallback` for {@link TokenSetAuthRegistry.idleWarmup}.
 	 */
-	idleScheduler: (callback: () => void) => () => void;
+	environment?: FoundationEnvironment;
 }
 
 export interface CreateTokenSetOidcAuthRegistryOptions {
 	/**
-	 * Custom idle scheduler for {@link TokenSetAuthRegistry.idleWarmup}.
+	 * Client environment owned by the registry composition root.
+	 *
+	 * The OIDC registry reads lifecycle capabilities from this object, such as
+	 * `environment.idleCallback` for {@link TokenSetAuthRegistry.idleWarmup}.
 	 */
-	idleScheduler?: (callback: () => void) => () => void;
+	environment?: FoundationEnvironment;
 }

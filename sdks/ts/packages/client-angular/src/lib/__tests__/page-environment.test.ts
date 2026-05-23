@@ -1,22 +1,16 @@
 import {
 	createEnvironmentInjector,
-	InjectionToken,
 	Injector,
 	inject,
 	runInInjectionContext,
 } from "@angular/core";
 import {
-	ClientEnvironmentService,
-	createBrowserPageClientEnvironment,
-	createWebClientEnvironment,
-	deriveClientEnvironment,
-	type PageClientEnvironment,
-	type WebClientEnvironment,
+	createEnvironmentForNativeWeb,
+	type NativeWebEnvironment,
 } from "@securitydept/client/web";
 import {
-	PAGE_CLIENT_ENVIRONMENT,
-	providePageClientEnvironment,
-	resolvePageClientEnvironmentSource,
+	NATIVE_WEB_ENVIRONMENT,
+	provideNativeWebEnvironment,
 } from "@securitydept/client-angular";
 import { describe, expect, it, vi } from "vitest";
 
@@ -30,164 +24,70 @@ function createTransport() {
 	};
 }
 
-function createScheduler() {
+function createTime() {
 	return {
-		setTimeout() {
-			return { cancel() {} };
-		},
+		now: () => Date.now(),
+		setTimeout: (callback: () => void, delayMs: number) =>
+			globalThis.setTimeout(callback, delayMs),
+		clearTimeout: (handle: unknown) =>
+			globalThis.clearTimeout(
+				handle as ReturnType<typeof globalThis.setTimeout>,
+			),
 	};
 }
 
-function createPageEnvironment(): PageClientEnvironment {
-	const webEnvironment = createWebClientEnvironment({
+function createNativeWebEnvironment(): NativeWebEnvironment {
+	return createEnvironmentForNativeWeb({
 		transport: createTransport(),
-		scheduler: createScheduler(),
-		clock: { now: () => Date.now() },
-	});
-
-	return createBrowserPageClientEnvironment({
-		pageCapability: {
-			location: {
-				href: "https://app.example.com/current",
-				hash: "",
-				pathname: "/current",
-				search: "",
-			},
-			history: {
-				replaceState() {},
-			},
+		time: createTime(),
+		location: {
+			href: "https://app.example.com/current",
+			hash: "",
+			pathname: "/current",
+			search: "",
 		},
-		...deriveClientEnvironment(webEnvironment),
+		history: {
+			replaceState() {},
+		},
 	});
 }
 
-function createPageEnvironmentService() {
-	return new ClientEnvironmentService({
-		createClientEnvironment: (): WebClientEnvironment =>
-			createWebClientEnvironment({
-				transport: createTransport(),
-				scheduler: createScheduler(),
-				clock: { now: () => Date.now() },
-			}),
-		createPageEnvironment: (webEnvironment) =>
-			createBrowserPageClientEnvironment({
-				pageCapability: {
-					location: {
-						href: "https://app.example.com/current",
-						hash: "",
-						pathname: "/current",
-						search: "",
-					},
-					history: {
-						replaceState() {},
-					},
-				},
-				...deriveClientEnvironment(webEnvironment),
-			}),
-	});
-}
-
-describe("client-angular page environment bridge", () => {
-	it("resolves an already-materialized page environment source", async () => {
-		const environment = createPageEnvironment();
+describe("client-angular native web environment bridge", () => {
+	it("provides the host-owned native web environment object", () => {
+		const environment = createNativeWebEnvironment();
 		const injector = createEnvironmentInjector(
-			[providePageClientEnvironment({ environment })],
+			[provideNativeWebEnvironment({ environment })],
 			Injector.NULL as never,
 		);
 
 		try {
-			await expect(
+			expect(
 				runInInjectionContext(injector, () =>
-					resolvePageClientEnvironmentSource(
-						inject(PAGE_CLIENT_ENVIRONMENT, { optional: true }) ?? undefined,
-						() => {
-							throw new Error("missing page environment");
-						},
-					),
+					inject(NATIVE_WEB_ENVIRONMENT, { optional: true }),
 				),
-			).resolves.toBe(environment);
+			).toBe(environment);
 		} finally {
 			injector.destroy();
 		}
 	});
 
-	it("resolves a provider-scoped ClientEnvironmentService source", async () => {
-		const environmentService = createPageEnvironmentService();
-		const injector = createEnvironmentInjector(
-			[providePageClientEnvironment({ environment: environmentService })],
-			Injector.NULL as never,
-		);
-
-		try {
-			const environment = await runInInjectionContext(injector, () =>
-				resolvePageClientEnvironmentSource(
-					inject(PAGE_CLIENT_ENVIRONMENT, { optional: true }) ?? undefined,
-					() => {
-						throw new Error("missing page environment");
-					},
-				),
-			);
-			expect(environment).toBe(
-				await environmentService.resolvePageEnvironment(),
-			);
-		} finally {
-			injector.destroy();
-		}
-	});
-
-	it("resolves an inject-safe resolver source", async () => {
-		const TEST_PAGE_ENVIRONMENT_SERVICE =
-			new InjectionToken<ClientEnvironmentService>(
-				"TEST_PAGE_ENVIRONMENT_SERVICE",
-			);
-		const environmentService = createPageEnvironmentService();
-		const injector = createEnvironmentInjector(
-			[
-				{
-					provide: TEST_PAGE_ENVIRONMENT_SERVICE,
-					useValue: environmentService,
-				},
-				providePageClientEnvironment({
-					environment: () =>
-						inject(TEST_PAGE_ENVIRONMENT_SERVICE).resolvePageEnvironment(),
-				}),
-			],
-			Injector.NULL as never,
-		);
-
-		try {
-			const environment = await runInInjectionContext(injector, () =>
-				resolvePageClientEnvironmentSource(
-					inject(PAGE_CLIENT_ENVIRONMENT, { optional: true }) ?? undefined,
-					() => {
-						throw new Error("missing page environment");
-					},
-				),
-			);
-			expect(environment).toBe(
-				await environmentService.resolvePageEnvironment(),
-			);
-		} finally {
-			injector.destroy();
-		}
-	});
-
-	it("fails fast when no page environment source is provided", () => {
+	it("fails fast when no native web environment is provided", () => {
 		const injector = createEnvironmentInjector([], Injector.NULL as never);
 
 		try {
 			expect(() =>
-				runInInjectionContext(injector, () =>
-					resolvePageClientEnvironmentSource(
-						inject(PAGE_CLIENT_ENVIRONMENT, { optional: true }) ?? undefined,
-						() => {
-							throw new Error(
-								"Provide it once from the Angular composition root with providePageClientEnvironment({ environment }).",
-							);
-						},
-					),
-				),
-			).toThrow(/providePageClientEnvironment/);
+				runInInjectionContext(injector, () => {
+					const environment = inject(NATIVE_WEB_ENVIRONMENT, {
+						optional: true,
+					});
+					if (!environment) {
+						throw new Error(
+							"Provide it once from the Angular composition root with provideNativeWebEnvironment({ environment }).",
+						);
+					}
+					return environment;
+				}),
+			).toThrow(/provideNativeWebEnvironment/);
 		} finally {
 			injector.destroy();
 		}

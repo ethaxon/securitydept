@@ -38,6 +38,8 @@ export interface TraceEvent {
 	at: number;
 	scope?: string;
 	operationId?: string;
+	spanId?: string;
+	parentSpanId?: string;
 	source?: string;
 	attributes?: Record<string, unknown>;
 }

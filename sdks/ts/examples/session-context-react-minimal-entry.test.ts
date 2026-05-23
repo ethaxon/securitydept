@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
-import { createInMemoryRecordStore } from "@securitydept/client";
-import { createWebClientEnvironment } from "@securitydept/client/web";
+import {
+	createClientEnvironment,
+	createInMemoryRecordStore,
+} from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useReadableSignal,
@@ -58,9 +60,9 @@ describe("session-context react minimal entry", () => {
 		};
 		const controller = createSessionContextController({
 			config: { baseUrl: "https://auth.example.com" },
-			environment: createWebClientEnvironment({
-				transport,
-				sessionStore: createInMemoryRecordStore(),
+			environment: createClientEnvironment({
+				transport: transport,
+				sessionStorage: createInMemoryRecordStore(),
 			}),
 		});
 

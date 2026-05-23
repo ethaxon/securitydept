@@ -25,7 +25,7 @@
 
 export type {
 	FrontendOidcModeLoginWithRedirectOptions,
-	FrontendOidcModePageLocationCapability,
+	FrontendOidcModePageRouterCapability,
 	FrontendOidcModePopupLoginOptions,
 	RelayFrontendOidcPopupCallbackOptions,
 } from "./runtime/client";

@@ -9,7 +9,7 @@
 //   - The helper creates a cookie-forwarding transport wrapper
 //   - fetchUserInfo, login URL, logout URL are all server-host-safe
 
-import type { HttpTransport } from "@securitydept/client";
+import type { ExternalTransportTrait } from "@securitydept/client";
 import { SessionContextClient } from "../client";
 import type { SessionContextClientConfig, SessionInfo } from "../types";
 
@@ -42,7 +42,7 @@ export interface CreateSessionServerHelperOptions {
 	 * The helper wraps this transport to inject forwarded headers.
 	 * Typically a simple `fetch`-based transport.
 	 */
-	transport: HttpTransport;
+	externalTransport: ExternalTransportTrait;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ export interface SessionServerHelper {
  * ```ts
  * const helper = createSessionServerHelper({
  *   config: { baseUrl: "https://auth.example.com" },
- *   transport: fetchTransport, // your HTTP transport
+ *   externalTransport: httpTransport, // your HTTP transport
  * });
  *
  * // In a server request handler:
@@ -97,7 +97,7 @@ export function createSessionServerHelper(
 	options: CreateSessionServerHelperOptions,
 ): SessionServerHelper {
 	const client = new SessionContextClient(options.config);
-	const baseTransport = options.transport;
+	const baseTransport = options.externalTransport;
 
 	return {
 		client,
@@ -106,7 +106,7 @@ export function createSessionServerHelper(
 			context: ServerRequestContext,
 		): Promise<SessionInfo | null> {
 			// Create a forwarding transport that injects the request headers.
-			const forwardingTransport: HttpTransport = {
+			const forwardingTransport: ExternalTransportTrait = {
 				async execute(request) {
 					return baseTransport.execute({
 						...request,

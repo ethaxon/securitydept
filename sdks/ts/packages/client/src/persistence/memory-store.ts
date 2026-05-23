@@ -1,7 +1,7 @@
-import type { RecordStore } from "./types";
+import type { StorageTrait } from "./types";
 
-/** In-memory `RecordStore` — useful for tests and SSR. */
-export function createInMemoryRecordStore(): RecordStore {
+/** In-memory `StorageTrait` — useful for tests and SSR. */
+export function createInMemoryRecordStore(): StorageTrait {
 	const store = new Map<string, string>();
 
 	return {

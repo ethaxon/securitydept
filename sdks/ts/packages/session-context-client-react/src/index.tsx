@@ -10,7 +10,7 @@
 //
 // Stability: provisional (React adapter)
 
-import type { WebClientEnvironment } from "@securitydept/client";
+import type { FoundationEnvironment } from "@securitydept/client";
 import {
 	SecuritydeptInjectionToken,
 	type SecuritydeptProvider,
@@ -39,7 +39,7 @@ export const SESSION_CONTEXT_CONTROLLER =
 
 export interface CreateSessionContextControllerOptions {
 	config: SessionContextClientConfig;
-	environment: WebClientEnvironment;
+	environment: FoundationEnvironment;
 }
 
 export function createSessionContextController({
@@ -48,9 +48,9 @@ export function createSessionContextController({
 }: CreateSessionContextControllerOptions): SessionContextController {
 	return new SessionContextController({
 		client: new SessionContextClient(config, {
-			sessionStore: environment.sessionStore,
+			sessionStorage: environment.sessionStorage,
 		}),
-		transport: environment.transport,
+		externalTransport: environment.transport,
 	});
 }
 

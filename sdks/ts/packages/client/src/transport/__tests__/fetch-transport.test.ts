@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCancellationTokenSource } from "../../cancellation/cancellation-token";
 import { ClientError } from "../../errors/client-error";
-import { createFetchTransport } from "../../web/transport/fetch-transport";
+import { createExternalTransportForFetch } from "../../std/transport";
 
-describe("createFetchTransport()", () => {
+describe("createExternalTransportForFetch()", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
 	});
 
 	it("aborts fetch requests when the cancellation token is cancelled", async () => {
 		const cancellation = createCancellationTokenSource();
-		const transport = createFetchTransport();
+		const transport = createExternalTransportForFetch();
 		const fetchSpy = vi.fn((_input: string, init?: RequestInit) => {
 			const signal = init?.signal;
 			return new Promise<Response>((_resolve, reject) => {

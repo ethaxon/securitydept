@@ -239,7 +239,8 @@ describe("TokenSetCallbackComponent", () => {
 						loginPending: createSignal(false),
 					},
 					authEvents: createSubject(),
-					addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+					addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+					removeWorkflowSource: vi.fn(() => false),
 					start: vi.fn(async () => undefined),
 					dispose: vi.fn(),
 					restorePersistedState: vi.fn(async () => null),
@@ -247,7 +248,7 @@ describe("TokenSetCallbackComponent", () => {
 					authCheck: vi.fn(async () => ({
 						status: AuthCheckStatus.Unauthenticated,
 						snapshot: null,
-						authorizationHeader: null,
+						authorizationHeader: undefined,
 						reason: TokenSetAuthFlowReason.NoSnapshot,
 					})),
 					loginWithRedirect: vi.fn(async () => undefined),

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 describe("external session context scenario", () => {
 	it("supports login URL construction, session fetch, and logout without app glue", async () => {
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const transport = new FakeTransport()
 			.on(
 				(request) =>
@@ -31,7 +31,7 @@ describe("external session context scenario", () => {
 			);
 		const client = new SessionContextClient(
 			{ baseUrl: "https://auth.example.com" },
-			{ sessionStore },
+			{ sessionStorage },
 		);
 
 		await client.savePendingLoginRedirect("https://app.example.com/dashboard");

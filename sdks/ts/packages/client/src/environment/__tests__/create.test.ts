@@ -7,10 +7,13 @@ describe("createClientEnvironment()", () => {
 			execute: vi.fn(async () => ({ status: 204, headers: {} })),
 		};
 
-		const environment = createClientEnvironment({ transport });
+		const environment = createClientEnvironment({
+			transport,
+		});
 
 		expect(environment.transport).toBe(transport);
-		expect(environment.scheduler).toBeDefined();
-		expect(environment.clock.now()).toBeTypeOf("number");
+		expect(environment.time.now()).toBeTypeOf("number");
+		expect(typeof environment.time.setTimeout).toBe("function");
+		expect(typeof environment.time.clearTimeout).toBe("function");
 	});
 });

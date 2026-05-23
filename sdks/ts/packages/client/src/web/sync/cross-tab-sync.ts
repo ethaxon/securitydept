@@ -1,4 +1,7 @@
-import { fromStorageEvent } from "../events/input-sources";
+import {
+	fromStorageEvent,
+	type StorageEventTarget,
+} from "../events/from-storage";
 
 // Cross-tab auth state sync — minimal baseline using storage events
 //
@@ -15,7 +18,7 @@ import { fromStorageEvent } from "../events/input-sources";
 // Architecture boundary:
 //   - This module does NOT own the persistence store.
 //   - It only listens for cross-tab mutations and notifies via callback.
-//   - The adopter wires this to their AuthMaterialController.
+//   - The adopter wires this to their auth state owner.
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,14 +40,7 @@ export interface CreateCrossTabSyncOptions {
 	/** Called when another tab modifies the watched key. */
 	onSync: CrossTabSyncCallback;
 
-	/**
-	 * Override the window target (primarily for testing).
-	 * Defaults to `globalThis`.
-	 */
-	target?: {
-		addEventListener(type: string, listener: EventListener): void;
-		removeEventListener(type: string, listener: EventListener): void;
-	};
+	storageEventTarget: StorageEventTarget;
 }
 
 /** Handle returned by {@link createCrossTabSync}. */
@@ -69,13 +65,14 @@ export interface CrossTabSync {
  * ```ts
  * const sync = createCrossTabSync({
  *   key: "auth:v1",
+ *   storageEventTarget: window,
  *   onSync: ({ newValue }) => {
  *     if (newValue) {
  *       // Another tab updated auth state — reconcile
- *       controller.restoreFromPersistence();
+ *       client.restorePersistedState();
  *     } else {
  *       // Another tab cleared auth state — log out
- *       controller.clearState({ clearPersisted: false });
+ *       controller.clearState({ persistPolicy: "skip" });
  *     }
  *   },
  * });
@@ -86,11 +83,11 @@ export interface CrossTabSync {
 export function createCrossTabSync(
 	options: CreateCrossTabSyncOptions,
 ): CrossTabSync {
-	const target = options.target ?? globalThis;
 	let syncCount = 0;
 	const subscription = fromStorageEvent({
-		target,
-		callback: (storageEvent) => {
+		storageEventTarget: options.storageEventTarget,
+	}).subscribe({
+		next: (storageEvent) => {
 			// Only react to changes on our watched key.
 			if (storageEvent.key !== options.key) {
 				return;

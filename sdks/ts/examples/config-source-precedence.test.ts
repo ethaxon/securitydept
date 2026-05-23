@@ -7,11 +7,15 @@
  * And the idle revalidation freshness contract:
  *   - Only stale sources trigger revalidation (based on projection generatedAt)
  *   - Fresh sources skip revalidation
- *   - Revalidation success writes back through RecordStore
+ *   - Revalidation success writes back through StorageTrait
  *   - Revalidation failure retains existing cache
  */
 
-import type { RecordStore } from "@securitydept/client";
+import type {
+	IdleCallbackTrait,
+	StorageTrait,
+	TimeTrait,
+} from "@securitydept/client";
 import {
 	bootstrapScriptSource,
 	networkConfigSource,
@@ -28,6 +32,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // ---------------------------------------------------------------------------
 
 const TEST_BOOTSTRAP_KEY = "__TEST_CONFIG__";
+const TEST_TIME: TimeTrait = {
+	now: () => Date.now(),
+	setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+	clearTimeout: (handle) =>
+		clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+const TEST_IDLE_CALLBACK: IdleCallbackTrait = {
+	requestIdleCallback: (callback) => setTimeout(callback, 0),
+	cancelIdleCallback: (handle) =>
+		clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
 
 /** Minimal valid projection payload matching FrontendOidcModeConfigProjection. */
 function makeProjection(clientId = "test-client", generatedAt = Date.now()) {
@@ -42,8 +57,8 @@ function makeProjection(clientId = "test-client", generatedAt = Date.now()) {
 	};
 }
 
-/** In-memory RecordStore for testing (mirrors createInMemoryRecordStore). */
-function createTestStore(): RecordStore & {
+/** In-memory StorageTrait for testing (mirrors createInMemoryRecordStore). */
+function createTestStore(): StorageTrait & {
 	_data: Map<string, string>;
 } {
 	const data = new Map<string, string>();
@@ -206,11 +221,11 @@ describe("Config projection source precedence", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. persistConfigProjection — writeback through RecordStore
+// 2. persistConfigProjection — writeback through StorageTrait
 // ---------------------------------------------------------------------------
 
 describe("persistConfigProjection", () => {
-	it("writes resolved projection to RecordStore with generatedAt", async () => {
+	it("writes resolved projection to StorageTrait with generatedAt", async () => {
 		const store = createTestStore();
 		const genAt = Date.now() - 5000;
 		const resolved: ResolvedConfigProjection = {
@@ -265,6 +280,8 @@ describe("scheduleIdleRevalidation", () => {
 				apiEndpoint: "https://api.example.com/api",
 				redirectUri: "https://app.example.com/auth/callback",
 			}),
+			time: TEST_TIME,
+			idleCallback: TEST_IDLE_CALLBACK,
 			store,
 			storageKey: "projection",
 			maxAge: 300_000, // 5 minutes
@@ -291,6 +308,8 @@ describe("scheduleIdleRevalidation", () => {
 					redirectUri: "https://app.example.com/auth/callback",
 				},
 			},
+			time: TEST_TIME,
+			idleCallback: TEST_IDLE_CALLBACK,
 			store,
 			storageKey: "projection",
 			maxAge: 300_000,
@@ -328,6 +347,8 @@ describe("scheduleIdleRevalidation", () => {
 					redirectUri: "https://app.example.com/auth/callback",
 				},
 			},
+			time: TEST_TIME,
+			idleCallback: TEST_IDLE_CALLBACK,
 			store,
 			storageKey: "projection",
 			maxAge: 300_000,
@@ -359,6 +380,8 @@ describe("scheduleIdleRevalidation", () => {
 					redirectUri: "https://app.example.com/auth/callback",
 				},
 			},
+			time: TEST_TIME,
+			idleCallback: TEST_IDLE_CALLBACK,
 			store,
 			storageKey: "projection",
 			maxAge: 300_000,

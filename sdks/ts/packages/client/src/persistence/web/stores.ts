@@ -1,10 +1,10 @@
-import type { RecordStore } from "../types";
+import type { StorageTrait } from "../types";
 
 /**
- * `RecordStore` backed by `localStorage`.
+ * `StorageTrait` backed by `localStorage`.
  * @param prefix Optional key prefix to isolate the keyspace.
  */
-export function createLocalStorageStore(prefix = ""): RecordStore {
+export function createLocalStorageStore(prefix = ""): StorageTrait {
 	return {
 		async get(key: string): Promise<string | null> {
 			return globalThis.localStorage.getItem(prefix + key);
@@ -27,10 +27,10 @@ export function createLocalStorageStore(prefix = ""): RecordStore {
 }
 
 /**
- * `RecordStore` backed by `sessionStorage`.
+ * `StorageTrait` backed by `sessionStorage`.
  * @param prefix Optional key prefix to isolate the keyspace.
  */
-export function createSessionStorageStore(prefix = ""): RecordStore {
+export function createSessionStorageStore(prefix = ""): StorageTrait {
 	return {
 		async get(key: string): Promise<string | null> {
 			return globalThis.sessionStorage.getItem(prefix + key);

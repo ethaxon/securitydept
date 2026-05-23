@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { createSpan } from "../../span/span";
+import { createSpanContextHostForTest } from "../../span/test";
 import { createOperationTracer } from "../operation-tracer";
 import { OperationTraceEventType, type TraceEvent } from "../types";
 
@@ -6,7 +8,7 @@ describe("operation tracer", () => {
 	it("records started, event, error, and ended lifecycle entries with one operation id", () => {
 		const events: TraceEvent[] = [];
 		const tracer = createOperationTracer({
-			clock: { now: () => Date.parse("2026-01-01T00:00:00Z") },
+			time: { now: () => Date.parse("2026-01-01T00:00:00Z") },
 			idFactory: () => "op_fixed",
 			traceSink: {
 				record(event) {
@@ -72,5 +74,35 @@ describe("operation tracer", () => {
 				}),
 			}),
 		);
+	});
+
+	it("forks spans from the current span context", async () => {
+		const events: TraceEvent[] = [];
+		const spanContext = createSpanContextHostForTest();
+		const rootSpan = createSpan({
+			idFactory: () => "span_root",
+		});
+		const tracer = createOperationTracer({
+			time: { now: () => Date.parse("2026-01-01T00:00:00Z") },
+			idFactory: () => "op_child",
+			spanContext,
+			traceSink: {
+				record(event) {
+					events.push(event);
+				},
+			},
+		});
+
+		await spanContext.runWithSpan(rootSpan, async () => {
+			const operation = tracer.startOperation("token.refresh");
+			operation.end({ result: "ok" });
+		});
+
+		expect(events[0]).toMatchObject({
+			type: OperationTraceEventType.Started,
+			operationId: "op_child",
+			spanId: "op_child",
+			parentSpanId: "span_root",
+		});
 	});
 });

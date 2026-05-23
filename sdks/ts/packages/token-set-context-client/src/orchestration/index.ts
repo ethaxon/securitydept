@@ -27,16 +27,26 @@ export type {
 export { describeError } from "@securitydept/client";
 // Base client: shared lifecycle infrastructure for mode-specific clients.
 export type {
-	AuthCheckOptions,
-	AuthCheckResult,
 	BaseOidcModeClientOptions,
 	TokenSetAuthOperationSignals,
 } from "./client/base-client";
 export {
 	AuthCheckStatus,
 	BaseOidcModeClient,
+	PersistPolicy,
 	StateRestoreSourceKind,
 } from "./client/base-client";
+export type {
+	AuthWorkflowRuntimeOptions,
+	AuthWorkflowSource as TokenSetAuthWorkflowSource,
+	AuthWorkflowSourcesOptions,
+	BuiltinAuthWorkflowSourceOption as BuiltinWorkflowSourceOption,
+	PageResumeWorkflowSourceOptions,
+} from "./client/workflows/source";
+export {
+	createPageResumeWorkflowSource,
+	createRefreshTimerWorkflowSource,
+} from "./client/workflows/source";
 export type {
 	CreateTokenSetAuthEventOptions,
 	TokenSetAuthErrorSummary,
@@ -45,37 +55,21 @@ export type {
 } from "./events/auth-events";
 export {
 	createTokenSetAuthEvent,
-	eventSourceForAuthFlow,
 	summarizeAuthError,
 	TokenSetAuthEventType,
-	TokenSetAuthFlowOutcome,
-	TokenSetAuthFlowReason,
-	TokenSetAuthFlowSource,
 } from "./events/auth-events";
 export type {
-	AttachPageResumeAuthCheckTriggerSourceOptions,
-	PageResumeAuthCheckOptions,
-	TokenSetAuthCheckTriggerClient,
-	TokenSetAuthCheckTriggerEvent,
-	TokenSetAuthCheckTriggerSource,
-} from "./state/auth-check-triggers";
+	CreateTokenSetPersistenceEventOptions,
+	TokenSetPersistenceEvent,
+	TokenSetPersistenceEventPayload,
+} from "./events/persistence-events";
 export {
-	attachPageResumeAuthCheckTriggerSource,
-	createPageResumeAuthCheckTriggerSource,
-} from "./state/auth-check-triggers";
-// Controller: thin lifecycle layer that composes state + persistence + transport.
-export type {
-	ApplyDeltaOptions,
-	AuthMaterialController,
-	AuthMaterialState,
-	CreateAuthMaterialControllerOptions,
-} from "./state/controller";
-export { createAuthMaterialController } from "./state/controller";
-export type {
-	AuthStatePersistence,
-	CreateAuthStatePersistenceOptions,
-} from "./state/persistence";
-export { createAuthStatePersistence } from "./state/persistence";
+	createTokenSetPersistenceEvent,
+	TokenSetPersistenceAction,
+	TokenSetPersistenceEventType,
+	TokenSetPersistenceReason,
+} from "./events/persistence-events";
+export { mergeTokenDelta } from "./token/ops";
 export type {
 	CreateTokenHandleStoreOptions,
 	IssueTokenHandleOptions,
@@ -86,16 +80,6 @@ export {
 	createTokenHandleStore,
 	TokenHandleKind,
 } from "./token/token-handle-store";
-export type { TokenFreshnessOptions } from "./token/token-ops";
-export {
-	bearerHeader,
-	freshBearerHeader,
-	getTokenFreshness,
-	isAccessTokenUsable,
-	mergeTokenDelta,
-	shouldRefreshAccessToken,
-	TokenFreshnessState,
-} from "./token/token-ops";
 export type {
 	AuthDelta,
 	AuthMetadataDelta,
@@ -107,14 +91,3 @@ export type {
 	TokenSnapshot,
 } from "./token/types";
 export { AuthSourceKind } from "./token/types";
-export type {
-	AuthorizationHeaderProviderTrait,
-	BearerHeaderProvider,
-	CreateAuthorizedTransportOptions,
-	CreateRemappingAuthorizedTransportOptions,
-	ReplayBearerHeaderProvider,
-} from "./transport/auth-transport";
-export {
-	createAuthorizedTransport,
-	createRemappingAuthorizedTransport,
-} from "./transport/auth-transport";

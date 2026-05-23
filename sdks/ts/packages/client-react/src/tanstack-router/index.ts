@@ -38,6 +38,12 @@
 // Stability: provisional
 
 import type {
+	EnvironmentValidators,
+	RouterNavigationRequest,
+	RouterTrait,
+} from "@securitydept/client";
+import { validateEnvTraitInput } from "@securitydept/client";
+import type {
 	AuthRequirement,
 	RouteMatchNode,
 } from "@securitydept/client/auth-coordination";
@@ -45,6 +51,63 @@ import { RequirementsClientSetComposition } from "@securitydept/client/auth-coor
 import type { AnyRoute, RegisteredRouter } from "@tanstack/react-router";
 
 export type { AuthRequirement, RouteMatchNode };
+
+export interface TanStackRouterNavigationLike {
+	state?: {
+		location?: {
+			href?: string;
+			pathname?: string;
+			search?: string;
+			hash?: string;
+		};
+	};
+	navigate(options: {
+		to: string;
+		replace?: boolean;
+		state?: unknown;
+	}): unknown | Promise<unknown>;
+}
+
+export interface CreateRouterForTanstackRouterOptions {
+	router: TanStackRouterNavigationLike;
+	validators?: Pick<EnvironmentValidators, "router">;
+}
+
+export function createRouterForTanstackRouter(
+	options: CreateRouterForTanstackRouterOptions,
+): RouterTrait {
+	validateEnvTraitInput({
+		traitName: "router",
+		hostAdapter: "createRouterForTanstackRouter",
+		value: options.router,
+		validator: options.validators?.router,
+		bundleValidate: (value) =>
+			typeof (value as TanStackRouterNavigationLike).navigate === "function",
+	});
+	const router: RouterTrait = {
+		currentUrl() {
+			const location = options.router.state?.location;
+			if (!location) {
+				return null;
+			}
+			const href =
+				location.href ??
+				`${location.pathname ?? "/"}${location.search ?? ""}${location.hash ?? ""}`;
+			return new URL(href, "http://localhost");
+		},
+		canNavigate() {
+			return true;
+		},
+		async navigate(request: RouterNavigationRequest) {
+			await options.router.navigate({
+				to: request.url.toString(),
+				replace: request.mode === "replace",
+				state: request.state,
+			});
+		},
+	};
+	return router;
+}
 
 // ---------------------------------------------------------------------------
 // Route match shape

@@ -7,11 +7,7 @@ import {
 	readErrorPresentationDescriptor,
 	UserRecovery,
 } from "@securitydept/client";
-import {
-	FakeClock,
-	FakeScheduler,
-	FakeTransport,
-} from "@securitydept/test-utils";
+import { FakeTimeConfig, FakeTransport } from "@securitydept/test-utils";
 import {
 	BackendOidcModeBootstrapSource,
 	bootstrapBackendOidcModePageClient,
@@ -75,6 +71,36 @@ function createHistoryRecorder() {
 	};
 }
 
+function createPageCallbackEnvironment(
+	href: string,
+	callbackFragmentStore: {
+		load(): Promise<string | null>;
+		save(value: string): Promise<void>;
+		clear(): Promise<void>;
+	},
+	history = createHistoryRecorder(),
+) {
+	const location = new URL(href);
+	return {
+		callbackFragmentStore,
+		currentUrl() {
+			return new URL(location.toString());
+		},
+		async navigate(request: {
+			url: string | URL;
+			mode: "replace" | "push" | "external";
+		}) {
+			const target =
+				typeof request.url === "string" ? request.url : request.url.toString();
+			if (request.mode === "replace") {
+				history.replaceState(undefined, "", target);
+			}
+			location.hash = "";
+		},
+		history,
+	};
+}
+
 function createTokenSetTransport() {
 	return new FakeTransport().on(
 		(request) => request.url.endsWith("/metadata/redeem"),
@@ -97,20 +123,20 @@ type BackendOidcModeTestClientOptions = Omit<
 	CreateBackendOidcModeWebClientOptions,
 	"environment"
 > &
-	CreateBackendOidcModeWebClientEnvironmentOptions;
+	CreateBackendOidcModeWebClientEnvironmentOptions & {
+		transport?: CreateBackendOidcModeWebClientEnvironmentOptions["transport"];
+	};
 
 function createBackendOidcModeWebClient(
 	options: BackendOidcModeTestClientOptions,
 ) {
 	const {
 		environment,
-		persistentStore,
-		sessionStore,
+		persistentStorage,
+		sessionStorage,
 		callbackFragmentStore,
 		transport,
-		fetchTransport,
-		scheduler,
-		clock,
+		time,
 		logger,
 		traceSink,
 		...clientOptions
@@ -120,13 +146,11 @@ function createBackendOidcModeWebClient(
 		...clientOptions,
 		environment: createBackendOidcModeWebClientEnvironment({
 			environment,
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			callbackFragmentStore,
 			transport,
-			fetchTransport,
-			scheduler,
-			clock,
+			time,
 			logger,
 			traceSink,
 		}),
@@ -216,33 +240,28 @@ describe("token-set browser flow", () => {
 	});
 
 	it("captures callback fragments, clears the URL hash, and initializes client state", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const transport = createTokenSetTransport();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 		});
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 		const history = createHistoryRecorder();
 
 		const result = await bootstrapBackendOidcModePageClient(client, {
-			environment: {
-				location: {
-					href: "https://app.example.com/token-set#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
-					hash: "#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
-				},
-				history,
+			environment: createPageCallbackEnvironment(
+				"https://app.example.com/token-set#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
 				callbackFragmentStore,
-			},
+				history,
+			),
 		});
 
 		expect(result.source).toBe(BackendOidcModeBootstrapSource.Callback);
@@ -250,21 +269,19 @@ describe("token-set browser flow", () => {
 		expect(result.snapshot?.metadata.principal?.displayName).toBe("Alice");
 		expect(await callbackFragmentStore.load()).toBeNull();
 		expect(history.replacedUrl).toBe("/token-set");
-		expect(scheduler.pendingCount).toBe(1);
+		expect(time.pendingCount).toBe(1);
 	});
 
 	it("restores persisted token-set state when no callback fragment is pending", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const transport = createTokenSetTransport();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const seedingClient = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 		});
 
@@ -274,25 +291,20 @@ describe("token-set browser flow", () => {
 		seedingClient.dispose();
 
 		const restoringClient = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 		});
 
 		const result = await bootstrapBackendOidcModePageClient(restoringClient, {
-			environment: {
-				location: {
-					href: "https://app.example.com/token-set",
-					hash: "",
-				},
-				history: createHistoryRecorder(),
-				callbackFragmentStore: createBackendOidcModeCallbackFragmentStore({
-					sessionStore,
+			environment: createPageCallbackEnvironment(
+				"https://app.example.com/token-set",
+				createBackendOidcModeCallbackFragmentStore({
+					sessionStorage,
 				}),
-			},
+			),
 		});
 
 		expect(result.source).toBe("restore");
@@ -300,12 +312,11 @@ describe("token-set browser flow", () => {
 	});
 
 	it("keeps callback flow-state across cancellation and retries it on the next mount", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 		const history = createHistoryRecorder();
 
@@ -325,23 +336,19 @@ describe("token-set browser flow", () => {
 		);
 
 		const firstClient = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 		});
 
 		const firstBootstrap = bootstrapBackendOidcModePageClient(firstClient, {
-			environment: {
-				location: {
-					href: "https://app.example.com/token-set#access_token=late-at&id_token=late-idt&refresh_token=late-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-3",
-					hash: "#access_token=late-at&id_token=late-idt&refresh_token=late-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-3",
-				},
-				history,
+			environment: createPageCallbackEnvironment(
+				"https://app.example.com/token-set#access_token=late-at&id_token=late-idt&refresh_token=late-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-3",
 				callbackFragmentStore,
-			},
+				history,
+			),
 		});
 		const firstBootstrapExpectation = expect(
 			firstBootstrap,
@@ -391,22 +398,17 @@ describe("token-set browser flow", () => {
 		);
 
 		const secondClient = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 		});
 		const retried = await bootstrapBackendOidcModePageClient(secondClient, {
-			environment: {
-				location: {
-					href: "https://app.example.com/token-set",
-					hash: "",
-				},
-				history: createHistoryRecorder(),
+			environment: createPageCallbackEnvironment(
+				"https://app.example.com/token-set",
 				callbackFragmentStore,
-			},
+			),
 		});
 
 		expect(retried.source).toBe(BackendOidcModeBootstrapSource.Callback);
@@ -415,12 +417,11 @@ describe("token-set browser flow", () => {
 	});
 
 	it("keeps callback flow-state across retryable callback failures and retries it on the next mount", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 		const transport = new FakeTransport().on(
 			(request) => request.url.endsWith("/metadata/redeem"),
@@ -434,24 +435,19 @@ describe("token-set browser flow", () => {
 		);
 
 		const firstClient = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 		});
 
 		await expect(
 			bootstrapBackendOidcModePageClient(firstClient, {
-				environment: {
-					location: {
-						href: "https://app.example.com/token-set#access_token=retry-at&id_token=retry-idt&refresh_token=retry-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-5",
-						hash: "#access_token=retry-at&id_token=retry-idt&refresh_token=retry-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-5",
-					},
-					history: createHistoryRecorder(),
+				environment: createPageCallbackEnvironment(
+					"https://app.example.com/token-set#access_token=retry-at&id_token=retry-idt&refresh_token=retry-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-5",
 					callbackFragmentStore,
-				},
+				),
 			}),
 		).rejects.toMatchObject({
 			kind: ClientErrorKind.Server,
@@ -478,22 +474,17 @@ describe("token-set browser flow", () => {
 		);
 
 		const secondClient = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 		});
 		const retried = await bootstrapBackendOidcModePageClient(secondClient, {
-			environment: {
-				location: {
-					href: "https://app.example.com/token-set",
-					hash: "",
-				},
-				history: createHistoryRecorder(),
+			environment: createPageCallbackEnvironment(
+				"https://app.example.com/token-set",
 				callbackFragmentStore,
-			},
+			),
 		});
 
 		expect(retried.source).toBe(BackendOidcModeBootstrapSource.Callback);
@@ -503,10 +494,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("propagates redirect and current metadata into refresh requests", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const transport = createTokenSetTransport().on(
 			(request) => request.url.endsWith("/refresh"),
 			(request) => {
@@ -527,11 +517,10 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 			refreshWindowMs: 60_000,
 		});
@@ -548,10 +537,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("loads groups through the real business path with the refreshed token-set bearer", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const transport = createTokenSetTransport()
 			.on(
 				(request) => request.url.endsWith("/refresh"),
@@ -582,11 +570,10 @@ describe("token-set browser flow", () => {
 				},
 			);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 			refreshWindowMs: 60_000,
 		});
@@ -606,10 +593,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("loads entries through a second business path with the refreshed token-set bearer", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const transport = createTokenSetTransport()
 			.on(
 				(request) => request.url.endsWith("/refresh"),
@@ -644,11 +630,10 @@ describe("token-set browser flow", () => {
 				},
 			);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 			refreshWindowMs: 60_000,
 		});
@@ -672,10 +657,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("creates a token entry with the refreshed bearer and can reload entries afterward", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const transport = createTokenSetTransport()
 			.on(
 				(request) => request.url.endsWith("/refresh"),
@@ -734,11 +718,10 @@ describe("token-set browser flow", () => {
 				},
 			);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 			refreshWindowMs: 60_000,
 		});
@@ -784,10 +767,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("creates a basic entry with the refreshed bearer and can reload entries afterward", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const transport = createTokenSetTransport()
 			.on(
 				(request) => request.url.endsWith("/refresh"),
@@ -847,11 +829,10 @@ describe("token-set browser flow", () => {
 				},
 			);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 			refreshWindowMs: 60_000,
 		});
@@ -900,10 +881,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("creates a group with the refreshed bearer and can reload groups and entries afterward", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const transport = createTokenSetTransport()
 			.on(
 				(request) => request.url.endsWith("/refresh"),
@@ -982,11 +962,10 @@ describe("token-set browser flow", () => {
 				},
 			);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 			refreshWindowMs: 60_000,
 		});
@@ -1042,10 +1021,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("forwards cancellation and refuses to load groups without a token-set bearer", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const cancellation = createCancellationTokenSource();
 		let seenCancellationToken = false;
 		const transport = new FakeTransport().on(
@@ -1061,12 +1039,12 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 		});
+		await client.start();
 
 		await expect(
 			listGroupsWithTokenSet(client, {
@@ -1088,10 +1066,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("bridges AbortSignal into the token-set request cancellation contract through the shared web helper", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const controller = new AbortController();
 		let seenCancelledState = false;
 		let seenReason: unknown;
@@ -1111,11 +1088,10 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 		});
 
 		await client.handleCallback(
@@ -1136,10 +1112,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("forwards cancellation and refuses to load entries without a token-set bearer", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const cancellation = createCancellationTokenSource();
 		let seenCancellationToken = false;
 		const transport = new FakeTransport().on(
@@ -1155,12 +1130,12 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 		});
+		await client.start();
 
 		await expect(
 			listEntriesWithTokenSet(client, {
@@ -1182,10 +1157,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("forwards cancellation and preserves structured failure details for token entry mutation", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const cancellation = createCancellationTokenSource();
 		let seenCancellationToken = false;
 		const transport = new FakeTransport().on(
@@ -1205,12 +1179,12 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 		});
+		await client.start();
 
 		await expect(
 			createTokenEntryWithTokenSet(
@@ -1251,10 +1225,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("forwards cancellation and preserves structured failure details for basic entry mutation", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const cancellation = createCancellationTokenSource();
 		let seenCancellationToken = false;
 		const transport = new FakeTransport().on(
@@ -1274,12 +1247,12 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 		});
+		await client.start();
 
 		await expect(
 			createBasicEntryWithTokenSet(
@@ -1324,10 +1297,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("forwards cancellation and preserves structured failure details for group mutation", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const cancellation = createCancellationTokenSource();
 		let seenCancellationToken = false;
 		const transport = new FakeTransport().on(
@@ -1348,12 +1320,12 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 		});
+		await client.start();
 
 		await expect(
 			createGroupWithTokenSet(
@@ -1394,10 +1366,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("probes the forward-auth boundary without treating 401 as a transport failure", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const transport = createTokenSetTransport().on(
 			(request) => request.url.endsWith("/api/forwardauth/traefik/Admins"),
 			(request) => {
@@ -1412,11 +1383,10 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 		});
 
 		await client.handleCallback(
@@ -1483,10 +1453,9 @@ describe("token-set browser flow", () => {
 	});
 
 	it("probes the propagation route with dashboard bearer and explicit directive", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const transport = createTokenSetTransport().on(
 			(request) => request.url.endsWith(DEFAULT_PROPAGATION_PROBE_PATH),
 			(request) => {
@@ -1504,11 +1473,10 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
-			persistentStore,
-			sessionStore,
+			persistentStorage,
+			sessionStorage,
 			transport,
-			clock,
-			scheduler,
+			time,
 		});
 
 		await client.handleCallback(

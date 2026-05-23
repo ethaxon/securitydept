@@ -1,10 +1,6 @@
 import { createInMemoryRecordStore } from "@securitydept/client";
-import {
-	FakeClock,
-	FakeScheduler,
-	FakeTransport,
-} from "@securitydept/test-utils";
-import type { BackendOidcModeRefreshOptions } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { createRouterForNativeWeb } from "@securitydept/client/web";
+import { FakeTimeConfig, FakeTransport } from "@securitydept/test-utils";
 import {
 	BackendOidcModeBootstrapSource,
 	type BootstrapBackendOidcModePageClientOptions,
@@ -38,10 +34,9 @@ function createHistoryRecorder() {
 
 describe("external backend-oidc-mode browser scenario", () => {
 	it("supports bootstrap, callback handling, refresh, and disposal from browser-facing entry points", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
-		const clock = new FakeClock(Date.parse("2026-01-01T00:00:00Z"));
-		const scheduler = new FakeScheduler(clock);
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const transport = new FakeTransport()
 			.on(
 				(request) => request.url.endsWith("/metadata/redeem"),
@@ -72,27 +67,28 @@ describe("external backend-oidc-mode browser scenario", () => {
 			);
 		const client = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
-				persistentStore,
-				sessionStore,
-				transport,
-				clock,
-				scheduler,
+				persistentStorage,
+				sessionStorage,
+				transport: transport,
+				time,
 			}),
 			baseUrl: "https://auth.example.com",
 			defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
 		});
 		const fragmentStoreOptions: CreateBackendOidcModeCallbackFragmentStoreOptions =
-			{ sessionStore };
+			{ sessionStorage };
 		const callbackFragmentStore =
 			createBackendOidcModeCallbackFragmentStore(fragmentStoreOptions);
 
 		const emptyBootstrapOptions: BootstrapBackendOidcModePageClientOptions = {
 			environment: {
-				location: {
-					href: "https://app.example.com/oidc-mediated",
-					hash: "",
-				},
-				history: createHistoryRecorder(),
+				...createRouterForNativeWeb({
+					location: {
+						href: "https://app.example.com/oidc-mediated",
+						hash: "",
+					},
+					history: createHistoryRecorder(),
+				}),
 				callbackFragmentStore,
 			},
 		};
@@ -109,11 +105,13 @@ describe("external backend-oidc-mode browser scenario", () => {
 		const callbackHistory = createHistoryRecorder();
 		const callbackBootstrap = await bootstrapBackendOidcModePageClient(client, {
 			environment: {
-				location: {
-					href: "https://app.example.com/oidc-mediated?tab=demo#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
-					hash: "#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
-				},
-				history: callbackHistory,
+				...createRouterForNativeWeb({
+					location: {
+						href: "https://app.example.com/oidc-mediated?tab=demo#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+						hash: "#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+					},
+					history: callbackHistory,
+				}),
 				callbackFragmentStore,
 			},
 		});
@@ -130,8 +128,7 @@ describe("external backend-oidc-mode browser scenario", () => {
 			"Bearer callback-at",
 		);
 
-		const refreshOptions: BackendOidcModeRefreshOptions = {};
-		const refreshed = await client.refresh(refreshOptions);
+		const refreshed = await client.refreshState();
 
 		expect(refreshed?.tokens.accessToken).toBe("refreshed-at");
 		expect(refreshed?.tokens.refreshMaterial).toBe("refreshed-rt");

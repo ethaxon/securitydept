@@ -73,7 +73,7 @@ describe("session server helper — server-host flow with cookie forwarding", ()
 
 		const helper = createSessionServerHelper({
 			config: { baseUrl: "https://auth.example.com" },
-			transport,
+			externalTransport: transport,
 		});
 
 		// Simulate: server extracts cookies from incoming request.
@@ -94,7 +94,7 @@ describe("session server helper — server-host flow with cookie forwarding", ()
 
 		const helper = createSessionServerHelper({
 			config: { baseUrl: "https://auth.example.com" },
-			transport,
+			externalTransport: transport,
 		});
 
 		const session = await helper.fetchUserInfo({ headers: {} });

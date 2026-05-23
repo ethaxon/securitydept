@@ -1,3 +1,4 @@
+import { createEventStream, SYMBOL_OBSERVABLE } from "..";
 import type { ComputedSignalTrait, ReadableSignalTrait } from "./types";
 
 /**
@@ -33,7 +34,7 @@ export function createComputed<T>(
 		dep.subscribe(markDirty);
 	}
 
-	return {
+	const signal = {
 		get() {
 			if (dirty) {
 				cached = compute();
@@ -48,4 +49,19 @@ export function createComputed<T>(
 			};
 		},
 	};
+
+	return Object.assign(signal, {
+		[SYMBOL_OBSERVABLE]() {
+			return createEventStream((observer) => {
+				observer.next(signal.get());
+				const unsubscribe = signal.subscribe(() => {
+					observer.next(signal.get());
+				});
+				return () => {
+					unsubscribe();
+					observer.complete();
+				};
+			});
+		},
+	});
 }

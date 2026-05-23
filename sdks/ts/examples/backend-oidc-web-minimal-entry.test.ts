@@ -8,6 +8,7 @@
 // the full browser scenario or popup baseline tests.
 
 import { createInMemoryRecordStore } from "@securitydept/client";
+import { createRouterForNativeWeb } from "@securitydept/client/web";
 import {
 	BackendOidcModeBootstrapSource,
 	bootstrapBackendOidcModePageClient,
@@ -31,27 +32,30 @@ function expectReplayValue<T>(signal: {
 
 describe("backend-oidc-mode web minimal entry", () => {
 	it("shows the standalone browser entry path: create client → bootstrap → authorize URL", async () => {
-		const persistentStore = createInMemoryRecordStore();
-		const sessionStore = createInMemoryRecordStore();
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 
 		// 1. Create the browser client with minimal config + runtime stubs.
 		//    In a real app, only baseUrl is required — stores and transport
 		//    default to browser-native implementations.
 		const client = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
-				persistentStore,
-				sessionStore,
+				persistentStorage,
+				sessionStorage,
 				transport: {
 					async execute() {
 						return { status: 500, headers: {}, body: null };
 					},
 				},
-				scheduler: {
-					setTimeout() {
-						return { cancel() {} };
-					},
+				time: {
+					now: () => Date.now(),
+					setTimeout: (callback: () => void, delayMs: number) =>
+						globalThis.setTimeout(callback, delayMs),
+					clearTimeout: (handle: unknown) =>
+						globalThis.clearTimeout(
+							handle as ReturnType<typeof globalThis.setTimeout>,
+						),
 				},
-				clock: { now: () => Date.now() },
 			}),
 			baseUrl: "https://auth.example.com",
 		});
@@ -59,12 +63,14 @@ describe("backend-oidc-mode web minimal entry", () => {
 		// 2. Bootstrap the client — checks for callback fragment and persisted state.
 		//    With no fragment and no prior state, bootstrap returns Empty.
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStore,
+			sessionStorage,
 		});
 		const result = await bootstrapBackendOidcModePageClient(client, {
 			environment: {
-				location: { href: "https://app.example.com/dashboard", hash: "" },
-				history: { replaceState() {} },
+				...createRouterForNativeWeb({
+					location: { href: "https://app.example.com/dashboard", hash: "" },
+					history: { replaceState() {} },
+				}),
 				callbackFragmentStore,
 			},
 		});
@@ -75,9 +81,9 @@ describe("backend-oidc-mode web minimal entry", () => {
 
 		// 3. Build the authorize URL — the adopter redirects the browser here.
 		const authorizeUrl = buildAuthorizeUrlReturningToCurrentPage(client, {
-			environment: {
+			environment: createRouterForNativeWeb({
 				location: { href: "https://app.example.com/dashboard", hash: "" },
-			},
+			}),
 		});
 
 		expect(authorizeUrl).toContain("https://auth.example.com");
@@ -89,19 +95,22 @@ describe("backend-oidc-mode web minimal entry", () => {
 	it("shows restoreState as an alternative to bootstrap for SSR-provided tokens", () => {
 		const client = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
-				persistentStore: createInMemoryRecordStore(),
-				sessionStore: createInMemoryRecordStore(),
+				persistentStorage: createInMemoryRecordStore(),
+				sessionStorage: createInMemoryRecordStore(),
 				transport: {
 					async execute() {
 						return { status: 500, headers: {}, body: null };
 					},
 				},
-				scheduler: {
-					setTimeout() {
-						return { cancel() {} };
-					},
+				time: {
+					now: () => Date.now(),
+					setTimeout: (callback: () => void, delayMs: number) =>
+						globalThis.setTimeout(callback, delayMs),
+					clearTimeout: (handle: unknown) =>
+						globalThis.clearTimeout(
+							handle as ReturnType<typeof globalThis.setTimeout>,
+						),
 				},
-				clock: { now: () => Date.now() },
 			}),
 			baseUrl: "https://auth.example.com",
 		});

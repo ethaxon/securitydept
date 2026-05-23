@@ -45,8 +45,8 @@ describe("frontend-oidc-mode browser materialization", () => {
 		vi.stubGlobal("fetch", fetchMock);
 		const environment = createFrontendOidcModeWebClientEnvironment({
 			persistentStoragePrefix: "apps.webui.token-set-frontend:persistent:",
-			persistentStore: createInMemoryRecordStore(),
-			sessionStore: createInMemoryRecordStore(),
+			persistentStorage: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
 		});
 
 		const materialized = await createFrontendOidcModeBrowserClient({

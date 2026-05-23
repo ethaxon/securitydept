@@ -58,7 +58,8 @@ function createClient(
 	return {
 		...reactive.fields,
 		authEvents: createSubject<TokenSetAuthEvent>(),
-		addAuthCheckTriggerSource: () => ({ unsubscribe: () => undefined }),
+		addWorkflowSource: () => ({ unsubscribe: () => undefined }),
+		removeWorkflowSource: () => false,
 		start: async () => undefined,
 		dispose: () => {
 			state.set(null);

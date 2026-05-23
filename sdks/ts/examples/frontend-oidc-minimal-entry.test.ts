@@ -34,14 +34,17 @@ const minimalRuntime = {
 			return { status: 500, headers: {}, body: null };
 		},
 	},
-	scheduler: {
-		setTimeout() {
-			return { cancel() {} };
-		},
+	time: {
+		now: () => Date.now(),
+		setTimeout: (callback: () => void, delayMs: number) =>
+			globalThis.setTimeout(callback, delayMs),
+		clearTimeout: (handle: unknown) =>
+			globalThis.clearTimeout(
+				handle as ReturnType<typeof globalThis.setTimeout>,
+			),
 	},
-	clock: { now: () => Date.now() },
-	persistentStore: createInMemoryRecordStore(),
-	sessionStore: createInMemoryRecordStore(),
+	persistentStorage: createInMemoryRecordStore(),
+	sessionStorage: createInMemoryRecordStore(),
 };
 
 // Minimal OIDC config — enough to construct the client without discovery.

@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 
 import type {
+	ExternalTransportTrait,
 	HttpRequest,
 	HttpResponse,
-	HttpTransport,
 } from "@securitydept/client";
-import { createInMemoryRecordStore } from "@securitydept/client";
-import { createWebClientEnvironment } from "@securitydept/client/web";
+import {
+	createClientEnvironment,
+	createInMemoryRecordStore,
+} from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useReadableSignal,
@@ -69,7 +71,7 @@ function createDeferredResponse() {
 
 function createQueuedTransport(
 	queuedResponses: Array<ReturnType<typeof createDeferredResponse>>,
-): HttpTransport {
+): ExternalTransportTrait {
 	return {
 		async execute(_request: HttpRequest) {
 			const next = queuedResponses.shift();
@@ -84,7 +86,7 @@ function createQueuedTransport(
 function createTrackedTransport(
 	requests: HttpRequest[],
 	queuedResponses: Array<ReturnType<typeof createDeferredResponse>>,
-): HttpTransport {
+): ExternalTransportTrait {
 	return {
 		async execute(request: HttpRequest) {
 			requests.push(request);
@@ -98,12 +100,12 @@ function createTrackedTransport(
 }
 
 function createTestEnvironment(options: {
-	transport: HttpTransport;
-	sessionStore?: ReturnType<typeof createInMemoryRecordStore>;
+	externalTransport: ExternalTransportTrait;
+	sessionStorage?: ReturnType<typeof createInMemoryRecordStore>;
 }) {
-	return createWebClientEnvironment({
-		transport: options.transport,
-		sessionStore: options.sessionStore,
+	return createClientEnvironment({
+		transport: options.externalTransport,
+		sessionStorage: options.sessionStorage,
 	});
 }
 
@@ -126,8 +128,8 @@ describe("session-context react adapter", () => {
 		const controller = createSessionContextController({
 			config: { baseUrl: "https://auth.example.com" },
 			environment: createTestEnvironment({
-				transport,
-				sessionStore: createInMemoryRecordStore(),
+				externalTransport: transport,
+				sessionStorage: createInMemoryRecordStore(),
 			}),
 		});
 
@@ -225,11 +227,14 @@ describe("session-context react adapter", () => {
 			firstResponse,
 			logoutResponse,
 		]);
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const observed: string[] = [];
 		const controller = createSessionContextController({
 			config: { baseUrl: "https://auth.example.com" },
-			environment: createTestEnvironment({ transport, sessionStore }),
+			environment: createTestEnvironment({
+				externalTransport: transport,
+				sessionStorage,
+			}),
 		});
 
 		function Probe() {
@@ -318,7 +323,9 @@ describe("session-context react adapter", () => {
 		const observed: string[] = [];
 		const controller = createSessionContextController({
 			config: { baseUrl: "https://auth.example.com" },
-			environment: createTestEnvironment({ transport }),
+			environment: createTestEnvironment({
+				externalTransport: transport,
+			}),
 		});
 
 		function Probe() {
@@ -384,11 +391,13 @@ describe("session-context react adapter", () => {
 		const observed: string[] = [];
 		const firstController = createSessionContextController({
 			config: { baseUrl: "https://alpha.example.com" },
-			environment: createTestEnvironment({ transport: firstTransport }),
+			environment: createTestEnvironment({ externalTransport: firstTransport }),
 		});
 		const secondController = createSessionContextController({
 			config: { baseUrl: "https://beta.example.com" },
-			environment: createTestEnvironment({ transport: secondTransport }),
+			environment: createTestEnvironment({
+				externalTransport: secondTransport,
+			}),
 		});
 
 		function Probe() {
@@ -494,8 +503,8 @@ describe("session-context react adapter", () => {
 		const controller = createSessionContextController({
 			config: { baseUrl: "https://auth.example.com" },
 			environment: createTestEnvironment({
-				transport,
-				sessionStore: createInMemoryRecordStore(),
+				externalTransport: transport,
+				sessionStorage: createInMemoryRecordStore(),
 			}),
 		});
 
@@ -570,7 +579,7 @@ describe("session-context react adapter", () => {
 			client: new SessionContextClient({
 				baseUrl: "https://auth.example.com",
 			}),
-			transport,
+			externalTransport: transport,
 		});
 
 		function Probe() {

@@ -177,14 +177,6 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		],
 	},
 	{
-		// This example backs MinimalEntry for the AuthMaterialController lifecycle
-		// layer. It proves the controller is usable for protocol-agnostic token
-		// material (OIDC and backend-issued scenarios).
-		// Not VerifiedEnvironments — proves contract usability, not host capability.
-		path: "examples/auth-material-controller-contract.test.ts",
-		layers: [EvidenceSemanticLayer.MinimalEntry],
-	},
-	{
 		// This example backs MinimalEntry for the frontend pure OIDC client
 		// pillar (oauth4webapi wrapper). It proves the wrapper's config vocabulary,
 		// error boundaries, and orchestration handoff shape.
@@ -231,20 +223,6 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 			EvidenceSemanticLayer.MinimalEntry,
 			EvidenceSemanticLayer.PromotionReadiness,
 		],
-	},
-	{
-		// Visibility lifecycle hardening baseline.
-		// Proves reconciler composability with AuthMaterialController
-		// and throttle behavior on tab re-activation.
-		path: "examples/visibility-hardening-baseline.test.ts",
-		layers: [EvidenceSemanticLayer.PromotionReadiness],
-	},
-	{
-		// Cross-tab state sync baseline.
-		// Proves key-based storage event listening, filtering,
-		// and composability with AuthMaterialController.
-		path: "examples/cross-tab-sync-baseline.test.ts",
-		layers: [EvidenceSemanticLayer.PromotionReadiness],
 	},
 	{
 		// Route orchestration baseline with matched route chain.

@@ -1,7 +1,7 @@
 // --- Persistence abstractions ---
 
-/** Low-level key-value record store. */
-export interface RecordStore {
+/** Low-level key-value storage trait. */
+export interface StorageTrait {
 	get(key: string): Promise<string | null>;
 	set(key: string, value: string): Promise<void>;
 	/**

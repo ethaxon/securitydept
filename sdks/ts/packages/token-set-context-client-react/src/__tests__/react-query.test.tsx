@@ -99,13 +99,13 @@ describe("token-set react-query helpers", () => {
 			metadata: {},
 		};
 		const authSnapshot = createReplaySignal<AuthSnapshot | null>();
-		authSnapshot.emit(snapshot);
+		authSnapshot.setValue(snapshot);
 		const isAuthenticated = createReplaySignal<boolean>();
-		isAuthenticated.emit(true);
+		isAuthenticated.setValue(true);
 		const authorizationHeaderValue = createReplaySignal<string | undefined>();
-		authorizationHeaderValue.emit("Bearer live-at");
+		authorizationHeaderValue.setValue("Bearer live-at");
 		const authDetermined = createReplaySignal<true>();
-		authDetermined.emit(true);
+		authDetermined.setValue(true);
 		const lastAuthError = createSignal<unknown | undefined>(undefined);
 		const providers = [
 			provideTokenSetAuthRegistry({
@@ -126,9 +126,10 @@ describe("token-set react-query helpers", () => {
 								loginPending: createSignal(false),
 							},
 							authEvents: createSubject(),
-							addAuthCheckTriggerSource: vi.fn(() => ({
+							addWorkflowSource: vi.fn(() => ({
 								unsubscribe: vi.fn(),
 							})),
+							removeWorkflowSource: vi.fn(() => false),
 							start: vi.fn(async () => undefined),
 							dispose: vi.fn(),
 							restorePersistedState: vi.fn(async () => snapshot),

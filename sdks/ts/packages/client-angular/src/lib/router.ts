@@ -19,6 +19,12 @@
 import { Injectable } from "@angular/core";
 import type { ActivatedRouteSnapshot } from "@angular/router";
 import type {
+	EnvironmentValidators,
+	RouterNavigationRequest,
+	RouterTrait,
+} from "@securitydept/client";
+import { validateEnvTraitInput } from "@securitydept/client";
+import type {
 	AuthRequirement,
 	RouteMatchNode,
 } from "@securitydept/client/auth-coordination";
@@ -39,6 +45,50 @@ export interface AuthRouteAdapterOptions {
 
 /** Default key for auth requirements in Angular route `data`. */
 export const DEFAULT_ROUTE_REQUIREMENTS_KEY = "authRequirements";
+
+export interface AngularRouterNavigationLike {
+	url?: string;
+	navigateByUrl(
+		url: string,
+		options?: { replaceUrl?: boolean; state?: unknown },
+	): Promise<boolean> | boolean;
+}
+
+export interface CreateRouterForAngularRouterOptions {
+	router: AngularRouterNavigationLike;
+	currentUrl?: string | URL | null;
+	validators?: Pick<EnvironmentValidators, "router">;
+}
+
+export function createRouterForAngularRouter(
+	options: CreateRouterForAngularRouterOptions,
+): RouterTrait {
+	validateEnvTraitInput({
+		traitName: "router",
+		hostAdapter: "createRouterForAngularRouter",
+		value: options.router,
+		validator: options.validators?.router,
+		bundleValidate: (value) =>
+			typeof (value as AngularRouterNavigationLike).navigateByUrl ===
+			"function",
+	});
+	const router: RouterTrait = {
+		currentUrl() {
+			const url = options.currentUrl ?? options.router.url;
+			return url ? new URL(url.toString(), "http://localhost") : null;
+		},
+		canNavigate() {
+			return true;
+		},
+		async navigate(request: RouterNavigationRequest) {
+			await options.router.navigateByUrl(request.url.toString(), {
+				replaceUrl: request.mode === "replace",
+				state: request.state,
+			});
+		},
+	};
+	return router;
+}
 
 // ---------------------------------------------------------------------------
 // Guard adapter result

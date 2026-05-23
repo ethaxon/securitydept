@@ -8,7 +8,7 @@ export type {
 	BackendOidcModeCallbackFragmentStoreCapability,
 	BackendOidcModePageCallbackCapability,
 	BackendOidcModePageClientEnvironment,
-	BackendOidcModePageLocationCapability,
+	BackendOidcModePageRouterCapability,
 	BackendOidcModePopupLoginCapability,
 	BackendOidcModeWebClient,
 	BackendOidcModeWebClientEnvironment,

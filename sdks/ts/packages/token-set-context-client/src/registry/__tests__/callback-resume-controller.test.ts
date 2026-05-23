@@ -1,4 +1,4 @@
-import { UserRecovery } from "@securitydept/client";
+import { type FoundationEnvironment, UserRecovery } from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
 import {
 	TokenSetCallbackResumeController,
@@ -6,9 +6,20 @@ import {
 } from "../controller/callback-resume-controller";
 import { createTokenSetAuthRegistry } from "../core/client-registry";
 
-const TEST_IDLE_SCHEDULER = (callback: () => void): (() => void) => {
-	const handle = setTimeout(callback, 0);
-	return () => clearTimeout(handle);
+const TEST_IDLE_CALLBACK = {
+	requestIdleCallback: (callback: () => void) => setTimeout(callback, 0),
+	cancelIdleCallback: (handle: unknown) =>
+		clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+const TEST_ENVIRONMENT: FoundationEnvironment = {
+	transport: { execute: async () => ({ status: 204, headers: {} }) },
+	time: {
+		now: () => Date.now(),
+		setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+		clearTimeout: (handle) =>
+			clearTimeout(handle as ReturnType<typeof setTimeout>),
+	},
+	idleCallback: TEST_IDLE_CALLBACK,
 };
 
 function createRegistry(handleCallback = vi.fn()) {
@@ -18,7 +29,7 @@ function createRegistry(handleCallback = vi.fn()) {
 		authEventsOf: () => ({
 			subscribe: () => ({ unsubscribe() {} }),
 		}),
-		idleScheduler: TEST_IDLE_SCHEDULER,
+		environment: TEST_ENVIRONMENT,
 	});
 	registry.register({
 		key: "frontend",

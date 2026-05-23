@@ -11,11 +11,15 @@
 //   - `priority: "lazy"` clients stay not_initialized until asked
 //   - `preload(key)` / `whenReady(key)` trigger the same transition
 //   - `idleWarmup()` enumerates all lazy+uninitialized keys and schedules
-//     their preload via a pluggable idle scheduler
+//     their preload via a pluggable idle-callback capability
 //   - failure paths: async factory rejection marks `failed`;
 //     `resetMaterialization(key)` retries without dropping registration,
 //     while `unregister(key)` removes the key entirely
 
+import type {
+	FoundationEnvironment,
+	IdleCallbackTrait,
+} from "@securitydept/client";
 import {
 	ClientInitializationPriority,
 	createTokenSetAuthRegistry,
@@ -31,12 +35,23 @@ interface FakeService {
 	accessToken: string | null;
 }
 
-const TEST_IDLE_SCHEDULER = (callback: () => void): (() => void) => {
-	const handle = setTimeout(callback, 0);
-	return () => clearTimeout(handle);
+const TEST_IDLE_CALLBACK: IdleCallbackTrait = {
+	requestIdleCallback: (callback) => setTimeout(callback, 0),
+	cancelIdleCallback: (handle) =>
+		clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+const TEST_ENVIRONMENT: FoundationEnvironment = {
+	transport: { execute: async () => ({ status: 204, headers: {} }) },
+	time: {
+		now: () => Date.now(),
+		setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+		clearTimeout: (handle) =>
+			clearTimeout(handle as ReturnType<typeof setTimeout>),
+	},
+	idleCallback: TEST_IDLE_CALLBACK,
 };
 
-function makeRegistry(idleScheduler?: (cb: () => void) => () => void) {
+function makeRegistry(environment: FoundationEnvironment = TEST_ENVIRONMENT) {
 	return createTokenSetAuthRegistry<FakeClient, FakeService>({
 		materialize: (client) => ({
 			client,
@@ -49,7 +64,7 @@ function makeRegistry(idleScheduler?: (cb: () => void) => () => void) {
 		authEventsOf: () => ({
 			subscribe: () => ({ unsubscribe() {} }),
 		}),
-		idleScheduler: idleScheduler ?? TEST_IDLE_SCHEDULER,
+		environment,
 	});
 }
 
@@ -106,11 +121,17 @@ describe("Multi-client lazy init contract (framework-neutral)", () => {
 
 	it("idleWarmup schedules preload for every lazy+not_initialized key", async () => {
 		const scheduledCallbacks: Array<() => void> = [];
-		const idleScheduler = (cb: () => void) => {
-			scheduledCallbacks.push(cb);
-			return () => {};
+		const environment: FoundationEnvironment = {
+			...TEST_ENVIRONMENT,
+			idleCallback: {
+				requestIdleCallback: (callback) => {
+					scheduledCallbacks.push(callback);
+					return callback;
+				},
+				cancelIdleCallback: () => {},
+			},
 		};
-		const registry = makeRegistry(idleScheduler);
+		const registry = makeRegistry(environment);
 		registry.register({
 			key: "p",
 			clientFactory: () => ({ name: "p" }),
@@ -142,9 +163,15 @@ describe("Multi-client lazy init contract (framework-neutral)", () => {
 
 	it("idleWarmup is a no-op for already-materialized lazy clients", async () => {
 		const scheduledCallbacks: Array<() => void> = [];
-		const registry = makeRegistry((cb) => {
-			scheduledCallbacks.push(cb);
-			return () => {};
+		const registry = makeRegistry({
+			...TEST_ENVIRONMENT,
+			idleCallback: {
+				requestIdleCallback: (callback) => {
+					scheduledCallbacks.push(callback);
+					return callback;
+				},
+				cancelIdleCallback: () => {},
+			},
 		});
 		registry.register({
 			key: "lazy",

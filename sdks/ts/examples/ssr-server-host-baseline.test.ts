@@ -174,7 +174,7 @@ describe("backend-oidc-mode SSR / server-host contract", () => {
 			"@securitydept/token-set-context-client/backend-oidc-mode"
 		);
 
-		const sessionStore = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
 		const client = new BackendOidcModeClient(
 			{
 				baseUrl: "https://auth.example.com",
@@ -188,13 +188,16 @@ describe("backend-oidc-mode SSR / server-host contract", () => {
 						body: null,
 					}),
 				},
-				scheduler: {
-					setTimeout: (_ms: number, _cb: () => void) => ({
-						cancel: () => {},
-					}),
+				time: {
+					now: () => Date.now(),
+					setTimeout: (callback: () => void, delayMs: number) =>
+						globalThis.setTimeout(callback, delayMs),
+					clearTimeout: (handle: unknown) =>
+						globalThis.clearTimeout(
+							handle as ReturnType<typeof globalThis.setTimeout>,
+						),
 				},
-				clock: { now: () => Date.now() },
-				persistentStore: sessionStore,
+				persistentStorage: sessionStorage,
 			},
 		);
 

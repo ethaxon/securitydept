@@ -120,7 +120,8 @@ function createMockClient(
 	return {
 		...reactive.fields,
 		authEvents: createSubject(),
-		addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		removeWorkflowSource: vi.fn(() => false),
 		start: vi.fn(async () => undefined),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
@@ -161,7 +162,8 @@ function createRouteFreshnessMockClient(options: {
 	return {
 		...reactive.fields,
 		authEvents: createSubject(),
-		addAuthCheckTriggerSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		removeWorkflowSource: vi.fn(() => false),
 		start: vi.fn(async () => undefined),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(initial),
@@ -180,7 +182,7 @@ function createRouteFreshnessMockClient(options: {
 			return {
 				status: AuthCheckStatus.Unauthenticated,
 				snapshot: null,
-				authorizationHeader: null,
+				authorizationHeader: undefined,
 				reason: "refresh_failed",
 			};
 		}),

@@ -1,3 +1,5 @@
+import { BehaviorSubject } from "rxjs";
+import { isInteropObservableTrait, SYMBOL_OBSERVABLE } from "../compat";
 import type { ReadableSignalTrait, WritableSignalTrait } from "./types";
 
 /**
@@ -5,25 +7,21 @@ import type { ReadableSignalTrait, WritableSignalTrait } from "./types";
  * Snapshot-first: values are immutable snapshots, mutations go through `set()`.
  */
 export function createSignal<T>(initial: T): WritableSignalTrait<T> {
-	let current = initial;
-	const listeners = new Set<() => void>();
+	const current = new BehaviorSubject(initial);
 
 	return {
 		get() {
-			return current;
+			return current.getValue();
 		},
 		set(value: T) {
-			if (Object.is(current, value)) return;
-			current = value;
-			for (const listener of listeners) {
-				listener();
-			}
+			current.next(value);
 		},
 		subscribe(listener: () => void): () => void {
-			listeners.add(listener);
-			return () => {
-				listeners.delete(listener);
-			};
+			const subscription = current.subscribe(listener);
+			return () => subscription.unsubscribe();
+		},
+		[SYMBOL_OBSERVABLE]() {
+			return current.asObservable();
 		},
 	};
 }
@@ -37,5 +35,16 @@ export function readonlySignal<T>(
 	return {
 		get: () => signal.get(),
 		subscribe: (listener) => signal.subscribe(listener),
+		[SYMBOL_OBSERVABLE]: () => signal[SYMBOL_OBSERVABLE](),
 	};
+}
+
+export function isSignalTrait<T>(obj: unknown): obj is ReadableSignalTrait<T> {
+	return (
+		typeof obj === "object" &&
+		obj !== null &&
+		typeof (obj as ReadableSignalTrait<T>).get === "function" &&
+		typeof (obj as ReadableSignalTrait<T>).subscribe === "function" &&
+		isInteropObservableTrait(obj)
+	);
 }

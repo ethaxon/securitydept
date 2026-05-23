@@ -52,8 +52,9 @@ export function subscribeAuthContextMode(listener: () => void): () => void {
 	}
 
 	const storageSubscription = fromStorageEvent({
-		target: window,
-		callback: (event) => {
+		storageEventTarget: window,
+	}).subscribe({
+		next: (event) => {
 			if (event.key === null || event.key === STORAGE_KEY) {
 				listener();
 			}
@@ -72,7 +73,8 @@ export function subscribeAuthContextMode(listener: () => void): () => void {
 				handler as EventListener,
 			);
 		},
-		callback: () => {
+	}).subscribe({
+		next: () => {
 			listener();
 		},
 	});

@@ -1,25 +1,27 @@
 // Frontend OIDC Mode — authorized transport wrapper.
 //
-// Wraps the generic createAuthorizedTransport from the orchestration layer,
+// Wraps the generic createAuthorizedTransport from @securitydept/client,
 // remapping error codes to the frontend-oidc namespace.
 //
 // Symmetric counterpart of backend-oidc-mode/auth-transport.ts.
 
-import type { HttpTransport } from "@securitydept/client";
+import type {
+	BaseTransportTrait,
+	ManagedTransportTrait,
+} from "@securitydept/client";
 import {
+	type AuthorizationHeaderProviderTrait,
 	ClientError,
 	ClientErrorKind,
+	createRemappingAuthorizedTransport,
 	UserRecovery,
 } from "@securitydept/client";
-
-export type { AuthorizationHeaderProviderTrait } from "../../orchestration/index";
-
-import type { AuthorizationHeaderProviderTrait } from "../../orchestration/index";
-import { createRemappingAuthorizedTransport } from "../../orchestration/index";
 import { FrontendOidcModeContextSource } from "../runtime/types";
 
+export type { AuthorizationHeaderProviderTrait };
+
 export interface CreateFrontendOidcModeAuthorizedTransportOptions {
-	transport: HttpTransport;
+	baseTransport: BaseTransportTrait;
 	requireAuthorization?: boolean;
 	clientKey?: string;
 	logicalClientId?: string;
@@ -35,14 +37,14 @@ export interface CreateFrontendOidcModeAuthorizedTransportOptions {
  * ```ts
  * const authorizedTransport = createFrontendOidcModeAuthorizedTransport(
  *     client,   // FrontendOidcModeClient exposes authorizationHeaderValue
- *     { transport: fetchTransport },
+ *     { baseTransport },
  * );
  * ```
  */
 export function createFrontendOidcModeAuthorizedTransport(
 	authorizationProvider: AuthorizationHeaderProviderTrait,
 	options: CreateFrontendOidcModeAuthorizedTransportOptions,
-): HttpTransport {
+): ManagedTransportTrait {
 	return createRemappingAuthorizedTransport(authorizationProvider, {
 		...options,
 		remapError: remapAuthError,
@@ -54,7 +56,7 @@ function remapAuthError(cause: unknown): unknown {
 		return cause;
 	}
 
-	if (cause.code === "token_orchestration.authorization.unavailable") {
+	if (cause.code === "client.authorization.unavailable") {
 		return new ClientError({
 			kind: cause.kind ?? ClientErrorKind.Unauthenticated,
 			code: "frontend_oidc.authorization.unavailable",
