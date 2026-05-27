@@ -3,7 +3,7 @@ import {
 	BasicAuthContextClient,
 } from "@securitydept/basic-auth-context-client";
 import { performRedirect } from "@securitydept/basic-auth-context-client/web";
-import type { RouterTrait } from "@securitydept/client";
+import { type RouterTrait } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

@@ -27,11 +27,11 @@
 //
 // Stability: provisional
 
-import type { ActivatedRouteSnapshot } from "@angular/router";
+import { type ActivatedRouteSnapshot } from "@angular/router";
 import {
 	type AuthRequirement,
 	RequirementsClientSetComposition,
-} from "@securitydept/client/auth-coordination";
+} from "@securitydept/client";
 import { DEFAULT_ROUTE_REQUIREMENTS_KEY } from "./router";
 
 // ---------------------------------------------------------------------------

@@ -1,30 +1,44 @@
 import {
-	createExternalTransportForFetch,
+	createBaseTransportForStdFetch,
+	createRootSpan,
+	createTracing,
 	FetchTransportRedirectKind,
 } from "@securitydept/client";
-import { createSessionStorageStore } from "@securitydept/client/persistence/web";
-import { createEnvironmentForNativeWeb } from "@securitydept/client/web";
+import {
+	createEnvironmentForNativeWeb,
+	createSessionStorageForNativeWeb,
+} from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
 
 export const sessionContextConfig = {
 	baseUrl: "",
 } as const;
 
-export const sessionContextSessionStore = createSessionStorageStore(
-	"securitydept.webui.auth:",
-);
+export const sessionContextSessionStore =
+	createSessionStorageForNativeWeb({
+		prefix: "securitydept.webui.auth:",
+	}) ?? failMissingSessionStorage();
 
-export const sessionContextTransport = createExternalTransportForFetch({
+export const sessionContextTransport = createBaseTransportForStdFetch({
 	redirect: FetchTransportRedirectKind.Follow,
 });
 
 export const sessionContextEnvironment = createEnvironmentForNativeWeb({
 	transport: sessionContextTransport,
 	sessionStorage: sessionContextSessionStore,
-	location: window.location,
-	history: window.history,
-	document,
-	window,
+	span: createRootSpan(),
+	tracing: createTracing(),
+	routerForNativeWebCreateOptions: {
+		location: window.location,
+		history: window.history,
+	},
+	pageLifecycleForNativeWebCreateOptions: {
+		document,
+		window,
+	},
+	popupForNativeWebCreateOptions: {
+		window,
+	},
 });
 
 export const sessionContextClient = new SessionContextClient(
@@ -33,3 +47,7 @@ export const sessionContextClient = new SessionContextClient(
 		sessionStorage: sessionContextSessionStore,
 	},
 );
+
+function failMissingSessionStorage(): never {
+	throw new Error("WebUI session context requires browser sessionStorage.");
+}

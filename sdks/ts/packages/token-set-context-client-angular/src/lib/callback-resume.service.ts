@@ -5,17 +5,17 @@ import {
 	signal,
 	type WritableSignal,
 } from "@angular/core";
-import { toRxObservable } from "@securitydept/client/rx";
+import { signalToObservable } from "@securitydept/client/rx";
 import { bridgeToAngularSignal } from "@securitydept/client-angular";
-import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
+import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import {
 	TokenSetCallbackResumeController,
 	type TokenSetCallbackResumeOptions,
 	type TokenSetCallbackResumeResult,
 	type TokenSetCallbackResumeState,
 } from "@securitydept/token-set-context-client/registry";
-import type { Observable } from "rxjs";
-import type { TokenSetAngularClient } from "./contracts";
+import { type Observable } from "rxjs";
+import { type TokenSetAngularClient } from "./contracts";
 import { TokenSetAuthRegistry } from "./token-set-auth.registry";
 
 /**
@@ -54,7 +54,7 @@ export class CallbackResumeService {
 	readonly state: WritableSignal<TokenSetCallbackResumeState> = signal(
 		this.controller.state.get(),
 	);
-	readonly state$: Observable<TokenSetCallbackResumeState> = toRxObservable(
+	readonly state$: Observable<TokenSetCallbackResumeState> = signalToObservable(
 		this.controller.state,
 	);
 

@@ -10,20 +10,24 @@ import {
 	BasicAuthContextClient,
 	type BasicAuthContextClientConfig,
 } from "@securitydept/basic-auth-context-client";
-import type { LoginWithRedirectOptions as BasicAuthLoginOptions } from "@securitydept/basic-auth-context-client/web";
-import { loginWithRedirect as basicAuthLoginWithRedirect } from "@securitydept/basic-auth-context-client/web";
-import type { RouterTrait } from "@securitydept/client";
 import {
-	createClientEnvironment,
+	type LoginWithRedirectOptions as BasicAuthLoginOptions,
+	loginWithRedirect as basicAuthLoginWithRedirect,
+} from "@securitydept/basic-auth-context-client/web";
+import {
+	createFoundationEnvironment,
 	createInMemoryRecordStore,
+	createRootSpan,
+	createTracing,
+	type RouterTrait,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
-import type {
-	SessionContextClientConfig,
-	SessionInfo,
+import {
+	type SessionContextClientConfig,
+	type SessionInfo,
 } from "@securitydept/session-context-client";
-import type { LoginWithRedirectOptions as SessionLoginOptions } from "@securitydept/session-context-client/web";
-import type { CreateSessionContextControllerOptions } from "@securitydept/session-context-client-react";
+import { type LoginWithRedirectOptions as SessionLoginOptions } from "@securitydept/session-context-client/web";
+import { type CreateSessionContextControllerOptions } from "@securitydept/session-context-client-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function createPageLocationEnvironment(href: string): RouterTrait & {
@@ -131,10 +135,12 @@ describe("session ./react discoverability: injector-first named contracts", () =
 			config: {
 				baseUrl: "https://auth.example.com",
 			},
-			environment: createClientEnvironment({
+			environment: createFoundationEnvironment({
 				transport:
 					{} as CreateSessionContextControllerOptions["environment"]["transport"],
 				sessionStorage: createInMemoryRecordStore(),
+				span: createRootSpan(),
+				tracing: createTracing(),
 			}),
 		};
 
@@ -150,10 +156,12 @@ describe("session ./react discoverability: injector-first named contracts", () =
 			config: {
 				baseUrl: "https://auth.example.com",
 			},
-			environment: createClientEnvironment({
+			environment: createFoundationEnvironment({
 				transport:
 					{} as CreateSessionContextControllerOptions["environment"]["transport"],
 				sessionStorage: createInMemoryRecordStore(),
+				span: createRootSpan(),
+				tracing: createTracing(),
 			}),
 		};
 

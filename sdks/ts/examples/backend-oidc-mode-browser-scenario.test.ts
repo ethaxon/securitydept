@@ -1,4 +1,8 @@
-import { createInMemoryRecordStore } from "@securitydept/client";
+import {
+	createInMemoryRecordStore,
+	createRootSpan,
+	createTracing,
+} from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { FakeTimeConfig, FakeTransport } from "@securitydept/test-utils";
 import {
@@ -67,6 +71,8 @@ describe("external backend-oidc-mode browser scenario", () => {
 			);
 		const client = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
 				persistentStorage,
 				sessionStorage,
 				transport: transport,
@@ -90,6 +96,7 @@ describe("external backend-oidc-mode browser scenario", () => {
 					history: createHistoryRecorder(),
 				}),
 				callbackFragmentStore,
+				time,
 			},
 		};
 		const emptyBootstrap = await bootstrapBackendOidcModePageClient(
@@ -113,6 +120,7 @@ describe("external backend-oidc-mode browser scenario", () => {
 					history: callbackHistory,
 				}),
 				callbackFragmentStore,
+				time,
 			},
 		});
 

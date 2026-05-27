@@ -1,4 +1,4 @@
-import type { AuthenticatedPrincipal } from "@securitydept/client";
+import { type AuthenticatedPrincipal } from "@securitydept/client";
 
 // --- Session Context Client types ---
 

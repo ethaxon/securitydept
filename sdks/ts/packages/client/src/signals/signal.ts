@@ -1,6 +1,6 @@
-import { BehaviorSubject } from "rxjs";
+import { BehaviorSubject, skip } from "rxjs";
 import { isInteropObservableTrait, SYMBOL_OBSERVABLE } from "../compat";
-import type { ReadableSignalTrait, WritableSignalTrait } from "./types";
+import { type ReadableSignalTrait, type WritableSignalTrait } from "./types";
 
 /**
  * Minimal writable signal implementation.
@@ -8,16 +8,22 @@ import type { ReadableSignalTrait, WritableSignalTrait } from "./types";
  */
 export function createSignal<T>(initial: T): WritableSignalTrait<T> {
 	const current = new BehaviorSubject(initial);
+	const changes = current.pipe(skip(1));
 
 	return {
 		get() {
 			return current.getValue();
 		},
 		set(value: T) {
+			if (Object.is(current.getValue(), value)) {
+				return;
+			}
 			current.next(value);
 		},
 		subscribe(listener: () => void): () => void {
-			const subscription = current.subscribe(listener);
+			const subscription = changes.subscribe(() => {
+				listener();
+			});
 			return () => subscription.unsubscribe();
 		},
 		[SYMBOL_OBSERVABLE]() {

@@ -24,7 +24,9 @@ export { createAsyncSchedulerWithTimestampProvider } from "./environment";
 export {
 	eventOperatorFunctionToRx,
 	eventStreamToObservable,
+	eventSubjectToSubject,
 	observableToEventStream,
 	rxOperatorFunctionToEvent,
 	signalToObservable,
+	subjectToEventSubject,
 } from "./interop";

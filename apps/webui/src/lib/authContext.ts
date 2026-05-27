@@ -1,5 +1,5 @@
-import { fromEventPattern } from "@securitydept/client";
 import { fromStorageEvent } from "@securitydept/client/web";
+import { fromEventPattern } from "rxjs";
 import {
 	TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	TOKEN_SET_FRONTEND_MODE_CLIENT_KEY,
@@ -60,20 +60,20 @@ export function subscribeAuthContextMode(listener: () => void): () => void {
 			}
 		},
 	});
-	const changeSubscription = fromEventPattern<Event>({
-		addHandler: (handler) => {
+	const changeSubscription = fromEventPattern<Event>(
+		(handler) => {
 			window.addEventListener(
 				AUTH_CONTEXT_CHANGE_EVENT,
 				handler as EventListener,
 			);
 		},
-		removeHandler: (handler) => {
+		(handler) => {
 			window.removeEventListener(
 				AUTH_CONTEXT_CHANGE_EVENT,
 				handler as EventListener,
 			);
 		},
-	}).subscribe({
+	).subscribe({
 		next: () => {
 			listener();
 		},

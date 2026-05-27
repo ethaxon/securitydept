@@ -5,6 +5,7 @@ import {
 	PageResumeTriggerKind,
 	type PageResumeWindowTarget,
 } from "../events/page-resume";
+import { createPageLifecycleForNativeWeb } from "../page";
 
 function createMockDocument(
 	initialState: DocumentVisibilityState = "visible",
@@ -108,5 +109,48 @@ describe("createPageResumeSource", () => {
 
 		expect(doc.removeEventListener).toHaveBeenCalledTimes(1);
 		expect(win.removeEventListener).toHaveBeenCalledTimes(3);
+	});
+});
+
+describe("createPageLifecycleForNativeWeb", () => {
+	it("returns null when explicit native web page targets are unavailable", () => {
+		expect(
+			createPageLifecycleForNativeWeb({
+				document: null,
+				window: null,
+			}),
+		).toBeNull();
+	});
+
+	it("returns null when global native web page targets are unavailable", () => {
+		expect(createPageLifecycleForNativeWeb()).toBeNull();
+	});
+
+	it("creates a page lifecycle trait from valid native web page targets", () => {
+		const doc = createMockDocument("visible");
+		const pageLifecycle = createPageLifecycleForNativeWeb({
+			document: doc,
+			window: null,
+		});
+		const events: unknown[] = [];
+
+		expect(pageLifecycle).not.toBeNull();
+		const subscription = pageLifecycle?.resume.subscribe({
+			next: (event) => events.push(event),
+		});
+		doc.simulateChange("hidden");
+		doc.simulateChange("visible");
+
+		subscription?.unsubscribe();
+		expect(events).toEqual([{ trigger: PageResumeTriggerKind.Visibility }]);
+	});
+
+	it("throws when native web page targets look present but fail the contract", () => {
+		expect(() =>
+			createPageLifecycleForNativeWeb({
+				document: { addEventListener() {} } as never,
+				window: null,
+			}),
+		).toThrow(/createPageLifecycleForNativeWeb could not validate/);
 	});
 });

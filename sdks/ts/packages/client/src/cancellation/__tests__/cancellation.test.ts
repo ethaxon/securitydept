@@ -5,14 +5,26 @@ import { createCancellationTokenSource } from "../cancellation-token";
 import { createLinkedCancellationToken } from "../linked-cancellation-token";
 
 describe("cancellation baseline", () => {
-	it("treats dispose() as resource release plus cancellation for the owned token", () => {
+	it("does not throw before cancellation and throws after cancellation", () => {
+		const source = createCancellationTokenSource();
+
+		expect(() => source.token.throwIfCancellationRequested()).not.toThrow();
+
+		source.cancel("stop");
+
+		expect(() => source.token.throwIfCancellationRequested()).toThrow(
+			/Operation was cancelled/,
+		);
+	});
+
+	it("treats Symbol.dispose as resource release plus cancellation for the owned token", () => {
 		const source = createCancellationTokenSource();
 		const seenReasons: unknown[] = [];
 		source.token.onCancellationRequested((reason) => {
 			seenReasons.push(reason);
 		});
 
-		source.dispose();
+		source[Symbol.dispose]();
 
 		expect(source.token.isCancellationRequested).toBe(true);
 		expect(seenReasons).toHaveLength(1);

@@ -9,9 +9,9 @@
 //   - The helper creates a cookie-forwarding transport wrapper
 //   - fetchUserInfo, login URL, logout URL are all server-host-safe
 
-import type { ExternalTransportTrait } from "@securitydept/client";
+import { type ExternalTransportTrait } from "@securitydept/client";
 import { SessionContextClient } from "../client";
-import type { SessionContextClientConfig, SessionInfo } from "../types";
+import { type SessionContextClientConfig, type SessionInfo } from "../types";
 
 // ---------------------------------------------------------------------------
 // Server request context

@@ -59,8 +59,8 @@ export {
 export type {
 	BackendOidcModeFetchUserInfoOptions,
 	BackendOidcModeMetadataRedemptionOptions,
-} from "./runtime/client";
-export { BackendOidcModeClient } from "./runtime/client";
+} from "./client/client";
+export { BackendOidcModeClient } from "./client/client";
 
 // --- Client types ---
 
@@ -71,12 +71,12 @@ export type {
 	AuthStateDelta,
 	AuthStateSnapshot,
 	BackendOidcModeClientConfig,
-} from "./runtime/types";
+} from "./client/types";
 export {
 	AuthenticationSourceKind,
 	BackendOidcModeContextSource,
 	BackendOidcModeStateRestoreSourceKind,
-} from "./runtime/types";
+} from "./client/types";
 
 // --- Authorized transport ---
 
@@ -84,4 +84,4 @@ export type {
 	AuthorizationHeaderProviderTrait,
 	CreateBackendOidcModeAuthorizedTransportOptions,
 } from "./transport/auth-transport";
-export { createBackendOidcModeAuthorizedTransport } from "./transport/auth-transport";
+export { createBackendOidcModeAuthorizedTransportFromBase } from "./transport/auth-transport";

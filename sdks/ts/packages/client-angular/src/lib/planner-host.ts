@@ -22,17 +22,15 @@ import {
 	inject,
 	makeEnvironmentProviders,
 } from "@angular/core";
-import type {
-	AuthGuardClientOption,
-	CandidateSelector,
-	CreatePlannerHostOptions,
-	PlannerHost,
-	ScopedRequirementsClientSet,
-} from "@securitydept/client/auth-coordination";
 import {
+	type AuthGuardClientOption,
+	type CandidateSelector,
+	type CreatePlannerHostOptions,
 	createPlannerHost,
+	type PlannerHost,
 	resolveEffectiveClientSet,
-} from "@securitydept/client/auth-coordination";
+	type ScopedRequirementsClientSet,
+} from "@securitydept/client";
 
 // ---------------------------------------------------------------------------
 // PlannerHost injection token

@@ -2,6 +2,9 @@ import {
 	ClientErrorKind,
 	createCancellationTokenSource,
 	createInMemoryRecordStore,
+	createRootSpan,
+	createTracing,
+	type EphemeralFlowStore,
 	type HttpRequest,
 	type HttpResponse,
 	readErrorPresentationDescriptor,
@@ -73,18 +76,19 @@ function createHistoryRecorder() {
 
 function createPageCallbackEnvironment(
 	href: string,
-	callbackFragmentStore: {
-		load(): Promise<string | null>;
-		save(value: string): Promise<void>;
-		clear(): Promise<void>;
-	},
+	callbackFragmentStore: EphemeralFlowStore<string>,
 	history = createHistoryRecorder(),
+	time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z")),
 ) {
 	const location = new URL(href);
 	return {
 		callbackFragmentStore,
+		time,
 		currentUrl() {
 			return new URL(location.toString());
+		},
+		canNavigate() {
+			return true;
 		},
 		async navigate(request: {
 			url: string | URL;
@@ -123,8 +127,9 @@ type BackendOidcModeTestClientOptions = Omit<
 	CreateBackendOidcModeWebClientOptions,
 	"environment"
 > &
-	CreateBackendOidcModeWebClientEnvironmentOptions & {
+	Omit<CreateBackendOidcModeWebClientEnvironmentOptions, "tracing"> & {
 		transport?: CreateBackendOidcModeWebClientEnvironmentOptions["transport"];
+		tracing?: CreateBackendOidcModeWebClientEnvironmentOptions["tracing"];
 	};
 
 function createBackendOidcModeWebClient(
@@ -136,9 +141,9 @@ function createBackendOidcModeWebClient(
 		sessionStorage,
 		callbackFragmentStore,
 		transport,
+		span,
 		time,
-		logger,
-		traceSink,
+		tracing,
 		...clientOptions
 	} = options;
 
@@ -150,9 +155,9 @@ function createBackendOidcModeWebClient(
 			sessionStorage,
 			callbackFragmentStore,
 			transport,
+			span,
 			time,
-			logger,
-			traceSink,
+			tracing: tracing ?? createTracing(),
 		}),
 	});
 }
@@ -245,6 +250,7 @@ describe("token-set browser flow", () => {
 		const transport = createTokenSetTransport();
 		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -278,6 +284,7 @@ describe("token-set browser flow", () => {
 		const transport = createTokenSetTransport();
 		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
 		const seedingClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -291,6 +298,7 @@ describe("token-set browser flow", () => {
 		seedingClient.dispose();
 
 		const restoringClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -336,6 +344,7 @@ describe("token-set browser flow", () => {
 		);
 
 		const firstClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -398,6 +407,7 @@ describe("token-set browser flow", () => {
 		);
 
 		const secondClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -435,6 +445,7 @@ describe("token-set browser flow", () => {
 		);
 
 		const firstClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -474,6 +485,7 @@ describe("token-set browser flow", () => {
 		);
 
 		const secondClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -517,6 +529,7 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -528,7 +541,7 @@ describe("token-set browser flow", () => {
 		await client.handleCallback(
 			"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-4",
 		);
-		await client.refresh();
+		await client.refreshState();
 
 		const slot = client.authSnapshot.get();
 		expect(slot.kind === "value" ? slot.value?.tokens.accessToken : null).toBe(
@@ -570,6 +583,7 @@ describe("token-set browser flow", () => {
 				},
 			);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -581,7 +595,7 @@ describe("token-set browser flow", () => {
 		await client.handleCallback(
 			"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-6",
 		);
-		await client.refresh();
+		await client.refreshState();
 		await expect(
 			listGroupsWithTokenSet(client, { transport }),
 		).resolves.toEqual([
@@ -630,6 +644,7 @@ describe("token-set browser flow", () => {
 				},
 			);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -641,7 +656,7 @@ describe("token-set browser flow", () => {
 		await client.handleCallback(
 			"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-7",
 		);
-		await client.refresh();
+		await client.refreshState();
 		await expect(
 			listEntriesWithTokenSet(client, { transport }),
 		).resolves.toEqual([
@@ -718,6 +733,7 @@ describe("token-set browser flow", () => {
 				},
 			);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -729,7 +745,7 @@ describe("token-set browser flow", () => {
 		await client.handleCallback(
 			"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-8",
 		);
-		await client.refresh();
+		await client.refreshState();
 
 		await expect(
 			createTokenEntryWithTokenSet(
@@ -829,6 +845,7 @@ describe("token-set browser flow", () => {
 				},
 			);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -840,7 +857,7 @@ describe("token-set browser flow", () => {
 		await client.handleCallback(
 			"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-9",
 		);
-		await client.refresh();
+		await client.refreshState();
 
 		await expect(
 			createBasicEntryWithTokenSet(
@@ -962,6 +979,7 @@ describe("token-set browser flow", () => {
 				},
 			);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -973,7 +991,7 @@ describe("token-set browser flow", () => {
 		await client.handleCallback(
 			"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-10",
 		);
-		await client.refresh();
+		await client.refreshState();
 
 		await expect(
 			createGroupWithTokenSet(
@@ -1039,6 +1057,7 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -1088,6 +1107,7 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -1130,6 +1150,7 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -1179,6 +1200,7 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -1247,6 +1269,7 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -1320,6 +1343,7 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -1383,6 +1407,7 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -1473,6 +1498,7 @@ describe("token-set browser flow", () => {
 			},
 		);
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,

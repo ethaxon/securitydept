@@ -1,4 +1,4 @@
-import type { RouterTrait } from "@securitydept/client";
+import { type RouterTrait } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { describe, expect, it, vi } from "vitest";
 import { BasicAuthContextClient } from "../../client";

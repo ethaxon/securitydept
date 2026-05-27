@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import type {
-	BasicAuthContextClient,
-	BasicAuthContextClientConfig,
+import {
+	type BasicAuthContextClient,
+	type BasicAuthContextClientConfig,
 } from "@securitydept/basic-auth-context-client";
 import {
 	BASIC_AUTH_CONTEXT_CLIENT,

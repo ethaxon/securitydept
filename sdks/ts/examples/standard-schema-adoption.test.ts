@@ -7,7 +7,6 @@
 //   2. frontend-oidc-mode: config projection cross-boundary validation
 
 import {
-	createSchema,
 	validateWithSchema,
 	validateWithSchemaSync,
 } from "@securitydept/client";
@@ -20,6 +19,8 @@ import {
 	parseConfigProjection,
 	validateConfigProjection,
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import { type StandardSchemaV1 } from "@standard-schema/spec";
+import { type as defineType } from "arktype";
 import { describe, expect, it } from "vitest";
 
 // ===========================================================================
@@ -27,23 +28,9 @@ import { describe, expect, it } from "vitest";
 // ===========================================================================
 
 describe("foundation @standard-schema validation", () => {
-	it("createSchema produces a StandardSchemaV1-compatible schema usable with validateWithSchema", async () => {
-		const schema = createSchema<{ id: number }>({
-			validate(input: unknown) {
-				if (
-					typeof input === "object" &&
-					input !== null &&
-					"id" in input &&
-					typeof (input as { id: unknown }).id === "number"
-				) {
-					return {
-						value: { id: (input as { id: number }).id },
-					};
-				}
-				return {
-					issues: [{ message: "Expected { id: number }" }],
-				};
-			},
+	it("explicit schemas remain usable with validateWithSchema", async () => {
+		const schema: StandardSchemaV1<unknown, { id: number }> = defineType({
+			id: "number",
 		});
 
 		const success = await validateWithSchema(schema, { id: 42 });

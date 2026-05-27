@@ -2,7 +2,7 @@ import {
 	createBasicAuthContextClient,
 	provideBasicAuthContextClient,
 } from "@securitydept/basic-auth-context-client-react";
-import { SecuritydeptInjector } from "@securitydept/client/injection";
+import { SecuritydeptInjector } from "@securitydept/client";
 import {
 	provideClientEnvironment,
 	SecuritydeptProvider,

@@ -1,9 +1,9 @@
 import { from } from "rxjs";
-import type { InteropObservableTrait } from "../compat";
+import { type InteropObservableTrait } from "../compat";
 import { observableToEventStream } from "../rx";
-import type {
-	ReadableReplaySignalTrait,
-	ReadableSignalTrait,
+import {
+	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
 } from "../signals/types";
 import { type EventStreamTrait, isEventStreamTrait } from "./types";
 

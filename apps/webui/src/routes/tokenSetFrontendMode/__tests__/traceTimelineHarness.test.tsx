@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 
-import { createTraceTimelineStore } from "@securitydept/client";
+import {
+	createRootSpan,
+	createTraceTimelineStore,
+	TracingLevel,
+} from "@securitydept/client";
 import { act, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	FrontendHostTraceEventType,
-	TOKEN_SET_FRONTEND_HOST_TRACE_SCOPE,
-	TOKEN_SET_FRONTEND_HOST_TRACE_SOURCE,
+	TOKEN_SET_FRONTEND_HOST_TRACE_TARGET,
 } from "@/lib/tokenSetFrontendModeClient";
 import { TraceTimelineSection } from "../TraceTimelineSection";
 
@@ -45,6 +48,9 @@ describe("frontend trace timeline harness", () => {
 
 	it("wires sdk trace, frontend host trace, and clear interaction through the live store", async () => {
 		const timeline = createTraceTimelineStore();
+		const rootSpan = createRootSpan({ idFactory: () => "root" });
+		const sdkSpan = rootSpan.fork({ idFactory: () => "sdk_frontend_1" });
+		const hostSpan = rootSpan.fork({ idFactory: () => "host_frontend_1" });
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const root = createRoot(container);
@@ -59,22 +65,24 @@ describe("frontend trace timeline harness", () => {
 
 		await act(async () => {
 			timeline.record({
-				type: "token_set.callback.failed",
+				name: "token_set.callback.failed",
 				at: Date.parse("2026-01-01T00:00:00Z"),
-				scope: "token-set-context",
-				source: "token_set_context_client",
-				attributes: {
+				target: "token-set-context",
+				span: sdkSpan,
+				level: TracingLevel.Error,
+				fields: {
 					errorKind: "server",
 					errorCode: "metadata_unavailable",
 					recovery: "retry",
 				},
 			});
 			timeline.record({
-				type: FrontendHostTraceEventType.CrossTabCleared,
+				name: FrontendHostTraceEventType.CrossTabCleared,
 				at: Date.parse("2026-01-01T00:00:01Z"),
-				scope: TOKEN_SET_FRONTEND_HOST_TRACE_SCOPE,
-				source: TOKEN_SET_FRONTEND_HOST_TRACE_SOURCE,
-				attributes: {
+				target: TOKEN_SET_FRONTEND_HOST_TRACE_TARGET,
+				span: hostSpan,
+				level: TracingLevel.Info,
+				fields: {
 					hasAccessToken: false,
 					syncCount: 4,
 				},
@@ -84,7 +92,7 @@ describe("frontend trace timeline harness", () => {
 		expect(container.textContent).toContain("SDK Lifecycle");
 		expect(container.textContent).toContain("Host Adoption");
 		expect(container.textContent).toContain(
-			TOKEN_SET_FRONTEND_HOST_TRACE_SCOPE,
+			TOKEN_SET_FRONTEND_HOST_TRACE_TARGET,
 		);
 		expect(container.textContent).toContain("callback.failed");
 		expect(container.textContent).toContain("cross_tab.cleared");

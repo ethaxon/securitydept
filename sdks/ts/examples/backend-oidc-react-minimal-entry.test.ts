@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 
-import { createSignal, createSubject } from "@securitydept/client";
+import { createEventSubject, createSignal } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
-	useReadableSignal,
+	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import type {
-	AuthSnapshot,
-	TokenSetAuthEvent,
+import {
+	type AuthSnapshot,
+	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
 import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
 import {
@@ -59,7 +59,7 @@ function createBackendClient(
 	state.subscribe(() => reactive.emitSnapshot(state.get()));
 	return {
 		...reactive.fields,
-		authEvents: createSubject<TokenSetAuthEvent>(),
+		authEvents: createEventSubject<TokenSetAuthEvent>(),
 		addWorkflowSource: () => ({ unsubscribe: () => undefined }),
 		removeWorkflowSource: () => false,
 		start: async () => undefined,
@@ -116,20 +116,18 @@ describe("backend-oidc react minimal entry", () => {
 
 		function AuthBadge() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const clientSlot = useReadableSignal(registry.clientSignalFor("main"));
-			return clientSlot.kind === "value"
-				? createElement(AuthBadgeForClient, { client: clientSlot.value })
-				: createElement("output", null, "unauthenticated");
+			const client = useReplaySignalValue(registry.clientSignalFor("main"));
+			return createElement(AuthBadgeForClient, { client });
 		}
 
 		function AuthBadgeForClient({ client }: { client: TokenSetReactClient }) {
-			const snapshot = useReadableSignal(client.authSnapshot);
+			const snapshot = useReplaySignalValue(client.authSnapshot, {
+				initialValue: null,
+			});
 			return createElement(
 				"output",
 				null,
-				snapshot.kind === "value" && snapshot.value
-					? `token:${snapshot.value.tokens.accessToken}`
-					: "unauthenticated",
+				snapshot ? `token:${snapshot.tokens.accessToken}` : "unauthenticated",
 			);
 		}
 
@@ -157,11 +155,7 @@ describe("backend-oidc react minimal entry", () => {
 
 		function ClientProbe() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const clientSlot = useReadableSignal(registry.clientSignalFor("main"));
-			if (clientSlot.kind !== "value") {
-				return createElement("output", null, "empty");
-			}
-			const client = clientSlot.value;
+			const client = useReplaySignalValue(registry.clientSignalFor("main"));
 			if (
 				!("authorizeUrl" in client) ||
 				typeof client.authorizeUrl !== "function"

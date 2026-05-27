@@ -1,5 +1,8 @@
-import type { TokenSetAuthEventPayload, TokenSetAuthEventType } from "../..";
-import type { AuthSnapshot } from "../../token/types";
+import {
+	type TokenSetAuthEventPayload,
+	type TokenSetAuthEventType,
+} from "../../events/auth-events";
+import { type AuthSnapshot } from "../../token/types";
 
 export const AuthDeterminationKind = {
 	Authenticated: "authenticated",
@@ -40,10 +43,12 @@ export const PersistPolicy = {
 
 export type PersistPolicy = (typeof PersistPolicy)[keyof typeof PersistPolicy];
 
-export interface AuthDeterminationEvent {
-	type: TokenSetAuthEventType;
-	payload: TokenSetAuthEventPayload;
-}
+export type AuthDeterminationEvent = {
+	[K in TokenSetAuthEventType]: {
+		type: K;
+		payload: TokenSetAuthEventPayload<K>;
+	};
+}[TokenSetAuthEventType];
 
 export interface AuthDeterminationTrace {
 	type: string;

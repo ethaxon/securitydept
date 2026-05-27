@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 
-import { createSignal, createSubject } from "@securitydept/client";
+import { createEventSubject, createSignal } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
-	useReadableSignal,
+	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import type {
-	AuthSnapshot,
-	TokenSetAuthEvent,
+import {
+	type AuthSnapshot,
+	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
 import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
 import {
@@ -57,7 +57,7 @@ function createClient(
 	state.subscribe(() => reactive.emitSnapshot(state.get()));
 	return {
 		...reactive.fields,
-		authEvents: createSubject<TokenSetAuthEvent>(),
+		authEvents: createEventSubject<TokenSetAuthEvent>(),
 		addWorkflowSource: () => ({ unsubscribe: () => undefined }),
 		removeWorkflowSource: () => false,
 		start: async () => undefined,
@@ -109,14 +109,14 @@ describe("react multi-client registry baseline", () => {
 
 		function Probe() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const mainClient = useReadableSignal(registry.clientSignalFor("main"));
-			const adminClient = useReadableSignal(registry.clientSignalFor("admin"));
-			return mainClient.kind === "value" && adminClient.kind === "value"
-				? createElement(MultiClientProbe, {
-						mainClient: mainClient.value,
-						adminClient: adminClient.value,
-					})
-				: createElement("output", null, "empty:empty");
+			const mainClient = useReplaySignalValue(registry.clientSignalFor("main"));
+			const adminClient = useReplaySignalValue(
+				registry.clientSignalFor("admin"),
+			);
+			return createElement(MultiClientProbe, {
+				mainClient,
+				adminClient,
+			});
 		}
 
 		function MultiClientProbe({
@@ -126,20 +126,16 @@ describe("react multi-client registry baseline", () => {
 			mainClient: TokenSetReactClient;
 			adminClient: TokenSetReactClient;
 		}) {
-			const main = useReadableSignal(mainClient.authSnapshot);
-			const admin = useReadableSignal(adminClient.authSnapshot);
+			const main = useReplaySignalValue(mainClient.authSnapshot, {
+				initialValue: null,
+			});
+			const admin = useReplaySignalValue(adminClient.authSnapshot, {
+				initialValue: null,
+			});
 			return createElement(
 				"output",
 				null,
-				`${
-					main.kind === "value"
-						? (main.value?.tokens.accessToken ?? "empty")
-						: "empty"
-				}:${
-					admin.kind === "value"
-						? (admin.value?.tokens.accessToken ?? "empty")
-						: "empty"
-				}`,
+				`${main?.tokens.accessToken ?? "empty"}:${admin?.tokens.accessToken ?? "empty"}`,
 			);
 		}
 
@@ -170,20 +166,18 @@ describe("react multi-client registry baseline", () => {
 
 		function Probe() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const clientSlot = useReadableSignal(registry.clientSignalFor("main"));
-			return clientSlot.kind === "value"
-				? createElement(SingleClientProbe, { client: clientSlot.value })
-				: createElement("output", null, "empty");
+			const client = useReplaySignalValue(registry.clientSignalFor("main"));
+			return createElement(SingleClientProbe, { client });
 		}
 
 		function SingleClientProbe({ client }: { client: TokenSetReactClient }) {
-			const snapshot = useReadableSignal(client.authSnapshot);
+			const snapshot = useReplaySignalValue(client.authSnapshot, {
+				initialValue: null,
+			});
 			return createElement(
 				"output",
 				null,
-				snapshot.kind === "value"
-					? (snapshot.value?.tokens.accessToken ?? "empty")
-					: "empty",
+				snapshot?.tokens.accessToken ?? "empty",
 			);
 		}
 

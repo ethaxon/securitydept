@@ -1,11 +1,13 @@
 import {
+	createRootSpan,
 	createTraceTimelineStore,
 	OperationTraceEventType,
+	TracingLevel,
 } from "@securitydept/client";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { TOKEN_SET_BACKEND_HOST_TRACE_SCOPE } from "../appTrace";
+import { TOKEN_SET_BACKEND_HOST_TRACE_TARGET } from "../appTrace";
 import { TraceTimelineSection } from "../TraceTimelineSection";
 
 function renderTimeline(events = createTraceTimelineStore().get()): string {
@@ -28,45 +30,50 @@ describe("trace timeline section", () => {
 
 	it("renders sdk and app traces with readable badges and survives clear", () => {
 		const timeline = createTraceTimelineStore();
+		const rootSpan = createRootSpan({ idFactory: () => "root" });
+		const operationSpan = rootSpan.fork({ idFactory: () => "op_backend_1" });
+		const hostSpan = rootSpan.fork({ idFactory: () => "host_backend_1" });
 
 		timeline.record({
-			type: OperationTraceEventType.Started,
+			name: OperationTraceEventType.Started,
 			at: Date.parse("2026-01-01T00:00:00Z") - 1,
-			scope: "backend-oidc-mode",
-			source: "backend_oidc_mode_client",
-			operationId: "op_backend_1",
-			attributes: {
+			target: "backend-oidc-mode",
+			span: operationSpan,
+			level: TracingLevel.Info,
+			fields: {
 				operationName: "backend_oidc.refresh",
 			},
 		});
 
 		timeline.record({
-			type: "token_set.callback.started",
+			name: "token_set.callback.started",
 			at: Date.parse("2026-01-01T00:00:00Z"),
-			scope: "token-set-context",
-			source: "token_set_context_client",
-			operationId: "op_backend_1",
-			attributes: {
+			target: "token-set-context",
+			span: operationSpan,
+			level: TracingLevel.Info,
+			fields: {
 				stage: "callback",
 			},
 		});
 		timeline.record({
-			type: "token_set.app.entries.load.failed",
+			name: "token_set.app.entries.load.failed",
 			at: Date.parse("2026-01-01T00:00:01Z"),
-			scope: TOKEN_SET_BACKEND_HOST_TRACE_SCOPE,
-			source: "webui.token-set-backend",
-			attributes: {
+			target: TOKEN_SET_BACKEND_HOST_TRACE_TARGET,
+			span: hostSpan,
+			level: TracingLevel.Error,
+			fields: {
 				path: "/api/entries",
 				code: "token_set.authorization.unavailable",
 				recovery: "reauthenticate",
 			},
 		});
 		timeline.record({
-			type: "token_set.app.propagation_probe.cancel_requested",
+			name: "token_set.app.propagation_probe.cancel_requested",
 			at: Date.parse("2026-01-01T00:00:02Z"),
-			scope: TOKEN_SET_BACKEND_HOST_TRACE_SCOPE,
-			source: "webui.token-set-backend",
-			attributes: {
+			target: TOKEN_SET_BACKEND_HOST_TRACE_TARGET,
+			span: hostSpan,
+			level: TracingLevel.Info,
+			fields: {
 				path: "/api/propagation/api/health",
 				reason: "superseded",
 			},
@@ -80,7 +87,7 @@ describe("trace timeline section", () => {
 		expect(markup).toContain("Structured Trace Timeline");
 		expect(markup).toContain("Operation: op_backend_1");
 		expect(markup).toContain("operation: backend_oidc.refresh");
-		expect(markup).toContain(TOKEN_SET_BACKEND_HOST_TRACE_SCOPE);
+		expect(markup).toContain(TOKEN_SET_BACKEND_HOST_TRACE_TARGET);
 		expect(markup).toContain("Failed");
 		expect(markup).toContain("Superseded");
 		expect(markup).toContain("/api/entries");

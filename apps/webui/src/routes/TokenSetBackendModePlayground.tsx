@@ -1,21 +1,22 @@
-import type {
-	CancellationTokenSourceTrait,
-	ErrorPresentationDescriptor,
-	UserRecovery as UserRecoveryType,
-} from "@securitydept/client";
 import {
+	type CancellationTokenSourceTrait,
 	ClientErrorKind,
 	createCancellationTokenSource,
+	type ErrorPresentationDescriptor,
 	readErrorPresentationDescriptor,
 	UserRecovery,
+	type UserRecovery as UserRecoveryType,
 } from "@securitydept/client";
 import {
 	useReadableSignal,
+	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import type { AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import type { BackendOidcModeBootstrapSource as BackendOidcModeBootstrapSourceType } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
-import { BackendOidcModeBootstrapSource } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+import { type AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import {
+	BackendOidcModeBootstrapSource,
+	type BackendOidcModeBootstrapSource as BackendOidcModeBootstrapSourceType,
+} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { tokenSetQueryKeys } from "@securitydept/token-set-context-client-react/react-query";
 import { useQueryClient } from "@tanstack/react-query";
@@ -27,8 +28,8 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
-import type { AuthEntry, CreateTokenResponse } from "@/api/entries";
-import type { Group } from "@/api/groups";
+import { type AuthEntry, type CreateTokenResponse } from "@/api/entries";
+import { type Group } from "@/api/groups";
 import {
 	assessPropagationProbeResult,
 	DEFAULT_PROPAGATION_FORWARDER_CONFIG_SNIPPET,
@@ -54,7 +55,9 @@ import {
 } from "@/lib/authContext";
 import {
 	clearTokenSetBackendModeBrowserState,
+	tokenSetBackendModeHostSpan,
 	tokenSetBackendModeTraceTimeline,
+	tokenSetBackendModeTracing,
 } from "@/lib/tokenSetBackendModeClient";
 import { assertTokenSetBackendOidcClient } from "@/lib/tokenSetClientAssertions";
 import {
@@ -63,7 +66,7 @@ import {
 } from "@/lib/tokenSetConfig";
 import {
 	createTokenSetBackendHostTraceRecorder,
-	readTokenSetTraceErrorAttributes,
+	readTokenSetTraceErrorFields,
 } from "@/routes/tokenSetBackendMode/appTrace";
 import { TraceTimelineSection } from "@/routes/tokenSetBackendMode/TraceTimelineSection";
 
@@ -324,7 +327,11 @@ export function TokenSetBackendModePlaygroundPage() {
 	const registry = injector.get(TOKEN_SET_AUTH_REGISTRY);
 	const traceTimeline = tokenSetBackendModeTraceTimeline;
 	const recordAppTrace = useMemo(
-		() => createTokenSetBackendHostTraceRecorder(traceTimeline),
+		() =>
+			createTokenSetBackendHostTraceRecorder(
+				tokenSetBackendModeTracing,
+				tokenSetBackendModeHostSpan,
+			),
 		[],
 	);
 
@@ -337,14 +344,17 @@ export function TokenSetBackendModePlaygroundPage() {
 		);
 	}
 	const client = clientSlot.value;
-	const authSnapshotSlot = useReadableSignal(client.authSnapshot);
-	const state =
-		authSnapshotSlot.kind === "value"
-			? (authSnapshotSlot.value as AuthStateSnapshot | null)
-			: null;
-	const authDeterminedSlot = useReadableSignal(client.authDetermined);
-	const authorizationHeaderSlot = useReadableSignal(
+	const state = useReplaySignalValue(client.authSnapshot, {
+		initialValue: null,
+	}) as AuthStateSnapshot | null;
+	const authDeterminedSlot = useSyncExternalStore(
+		(listener) => client.authDetermined.subscribe(listener),
+		() => client.authDetermined.get(),
+		() => client.authDetermined.get(),
+	);
+	const authorizationHeader = useReplaySignalValue(
 		client.authorizationHeaderValue,
+		{ initialValue: undefined },
 	);
 	const lastAuthError = useReadableSignal(client.lastAuthError);
 	assertTokenSetBackendOidcClient(
@@ -514,7 +524,7 @@ export function TokenSetBackendModePlaygroundPage() {
 		setBusyAction(BusyActionKind.Refresh);
 		setActionError(null);
 		try {
-			await backendClient.refresh();
+			await backendClient.refreshState();
 		} catch (error) {
 			setActionError(
 				readErrorPresentationDescriptor(error, {
@@ -634,7 +644,7 @@ export function TokenSetBackendModePlaygroundPage() {
 		} catch (error) {
 			recordAppTrace("token_set.app.groups.create.failed", {
 				groupName: newGroupName.trim(),
-				...readTokenSetTraceErrorAttributes(
+				...readTokenSetTraceErrorFields(
 					error,
 					"Failed to create group via token-set",
 				),
@@ -724,7 +734,7 @@ export function TokenSetBackendModePlaygroundPage() {
 				entryName: newTokenEntryName.trim(),
 				groupId: selectedGroup.id,
 				groupName: selectedGroup.name,
-				...readTokenSetTraceErrorAttributes(
+				...readTokenSetTraceErrorFields(
 					error,
 					"Failed to create token entry via token-set",
 				),
@@ -834,7 +844,7 @@ export function TokenSetBackendModePlaygroundPage() {
 				entryName: newBasicEntryName.trim(),
 				groupId: selectedGroup.id,
 				groupName: selectedGroup.name,
-				...readTokenSetTraceErrorAttributes(
+				...readTokenSetTraceErrorFields(
 					error,
 					"Failed to create basic entry via token-set",
 				),
@@ -936,7 +946,7 @@ export function TokenSetBackendModePlaygroundPage() {
 			});
 			recordAppTrace("token_set.app.forward_auth.dashboard.failed", {
 				groupName,
-				...readTokenSetTraceErrorAttributes(
+				...readTokenSetTraceErrorFields(
 					error,
 					"Failed to probe forward-auth with dashboard bearer",
 				),
@@ -1049,7 +1059,7 @@ export function TokenSetBackendModePlaygroundPage() {
 			recordAppTrace("token_set.app.forward_auth.token_entry.failed", {
 				groupName,
 				entryName: latestGeneratedEntry.entry.name,
-				...readTokenSetTraceErrorAttributes(
+				...readTokenSetTraceErrorFields(
 					error,
 					"Failed to probe forward-auth with generated token entry",
 				),
@@ -1160,7 +1170,7 @@ export function TokenSetBackendModePlaygroundPage() {
 			recordAppTrace("token_set.app.forward_auth.basic_entry.failed", {
 				groupName: latestBasicEntryCredential.groupName,
 				entryName: latestBasicEntryCredential.entry.name,
-				...readTokenSetTraceErrorAttributes(
+				...readTokenSetTraceErrorFields(
 					error,
 					"Failed to probe forward-auth with generated basic entry",
 				),
@@ -1238,7 +1248,7 @@ export function TokenSetBackendModePlaygroundPage() {
 			});
 			recordAppTrace("token_set.app.propagation_probe.failed", {
 				path: propagationPath,
-				...readTokenSetTraceErrorAttributes(
+				...readTokenSetTraceErrorFields(
 					error,
 					"Failed to probe propagation route",
 				),
@@ -1363,11 +1373,7 @@ export function TokenSetBackendModePlaygroundPage() {
 							</div>
 							<CollapsibleTokenCell
 								label="Authorization Header"
-								value={
-									authorizationHeaderSlot.kind === "value"
-										? authorizationHeaderSlot.value
-										: undefined
-								}
+								value={authorizationHeader}
 							/>
 						</div>
 					</section>

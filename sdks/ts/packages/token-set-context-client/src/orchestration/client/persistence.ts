@@ -1,6 +1,10 @@
-import type { StorageTrait, TimeTrait } from "@securitydept/client";
-import { ClientError, ClientErrorKind } from "@securitydept/client";
-import type { AuthSnapshot } from "../token/types";
+import {
+	ClientError,
+	ClientErrorKind,
+	type StorageTrait,
+	type TimeTrait,
+} from "@securitydept/client";
+import { type AuthSnapshot } from "../token/types";
 
 const STATE_VERSION = 1;
 const PERSISTENCE_SOURCE = "token-orchestration-persistence";

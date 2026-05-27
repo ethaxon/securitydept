@@ -33,22 +33,22 @@
 //   - withTanStackRouteRequirements()       ↔  secureRoute() / withRouteRequirements()
 //   - extractTanStackRouteRequirements()    ↔  extractFullRouteRequirements()
 //   - createTanStackRouteSecurityPolicy()   ↔  createTokenSetRouteAggregationGuard()
-//   - Both share RequirementsClientSetComposition from @securitydept/client/auth-coordination
+//   - Both share RequirementsClientSetComposition from @securitydept/client
 //
 // Stability: provisional
 
-import type {
-	EnvironmentValidators,
-	RouterNavigationRequest,
-	RouterTrait,
+import {
+	type AuthRequirement,
+	type EnvironmentValidators,
+	RequirementsClientSetComposition,
+	type RouteMatchNode,
+	type RouterNavigationRequest,
+	type RouterTrait,
+	throwValidationClientError,
+	validateTraitInput,
 } from "@securitydept/client";
-import { validateEnvTraitInput } from "@securitydept/client";
-import type {
-	AuthRequirement,
-	RouteMatchNode,
-} from "@securitydept/client/auth-coordination";
-import { RequirementsClientSetComposition } from "@securitydept/client/auth-coordination";
-import type { AnyRoute, RegisteredRouter } from "@tanstack/react-router";
+import { type AnyRoute, type RegisteredRouter } from "@tanstack/react-router";
+import { type as defineType } from "arktype";
 
 export type { AuthRequirement, RouteMatchNode };
 
@@ -73,16 +73,25 @@ export interface CreateRouterForTanstackRouterOptions {
 	validators?: Pick<EnvironmentValidators, "router">;
 }
 
+const TanStackRouterNavigationLikeSchema = defineType({
+	navigate: "Function",
+});
+
 export function createRouterForTanstackRouter(
 	options: CreateRouterForTanstackRouterOptions,
 ): RouterTrait {
-	validateEnvTraitInput({
-		traitName: "router",
-		hostAdapter: "createRouterForTanstackRouter",
+	validateTraitInput({
 		value: options.router,
+		bundledSchema: TanStackRouterNavigationLikeSchema,
 		validator: options.validators?.router,
-		bundleValidate: (value) =>
-			typeof (value as TanStackRouterNavigationLike).navigate === "function",
+		onInvalid: (failure) =>
+			throwValidationClientError({
+				code: "client_react.router.invalid_router",
+				source: "client-react",
+				messagePrefix:
+					"createRouterForTanstackRouter could not validate router",
+				failure,
+			}),
 	});
 	const router: RouterTrait = {
 		currentUrl() {
@@ -94,9 +103,6 @@ export function createRouterForTanstackRouter(
 				location.href ??
 				`${location.pathname ?? "/"}${location.search ?? ""}${location.hash ?? ""}`;
 			return new URL(href, "http://localhost");
-		},
-		canNavigate() {
-			return true;
 		},
 		async navigate(request: RouterNavigationRequest) {
 			await options.router.navigate({

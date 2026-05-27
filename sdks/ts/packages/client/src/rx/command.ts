@@ -269,11 +269,25 @@ export async function dispatchCommandLocallyToPromise<
 			defaultValue: [],
 		},
 	);
+	if (data === undefined) {
+		throw new ClientError({
+			kind: ClientErrorKind.Configuration,
+			message:
+				"the executor configuration of dispatchCommandLocallyToPromise should produce a valid data response.",
+		});
+	}
 	if (!isCommandDataResponse(data)) {
 		throw new ClientError({
 			kind: ClientErrorKind.Configuration,
 			message:
 				"the executor configuration of dispatchCommandLocallyToPromise should produce a valid data response.",
+		});
+	}
+	if (terminal === undefined) {
+		throw new ClientError({
+			kind: ClientErrorKind.Unreachable,
+			message:
+				"the execution of dispatchCommandLocallyToPromise must produce a valid terminal response.",
 		});
 	}
 	if (!isCommandTerminalResponse(terminal)) {
@@ -300,11 +314,25 @@ export async function dispatchCommandByIdToPromise<
 			defaultValue: [],
 		},
 	);
+	if (data === undefined) {
+		throw new ClientError({
+			kind: ClientErrorKind.Configuration,
+			message:
+				"the executor configuration of dispatchCommandLocallyToPromise should produce a valid data response.",
+		});
+	}
 	if (!isCommandDataResponse(data)) {
 		throw new ClientError({
 			kind: ClientErrorKind.Configuration,
 			message:
 				"the executor configuration of dispatchCommandLocallyToPromise should produce a valid data response.",
+		});
+	}
+	if (terminal === undefined) {
+		throw new ClientError({
+			kind: ClientErrorKind.Unreachable,
+			message:
+				"the execution of dispatchCommandLocallyToPromise must produce a valid terminal response.",
 		});
 	}
 	if (!isCommandTerminalResponse(terminal)) {

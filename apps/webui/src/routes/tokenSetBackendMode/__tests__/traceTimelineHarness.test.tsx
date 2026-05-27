@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
 
-import { createTraceTimelineStore } from "@securitydept/client";
+import {
+	createRootSpan,
+	createTraceTimelineStore,
+	createTracing,
+	TracingLevel,
+} from "@securitydept/client";
 import { act, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	createTokenSetBackendHostTraceRecorder,
-	TOKEN_SET_BACKEND_HOST_TRACE_SCOPE,
+	TOKEN_SET_BACKEND_HOST_TRACE_TARGET,
 } from "../appTrace";
 import { TraceTimelineSection } from "../TraceTimelineSection";
 
@@ -44,7 +49,14 @@ describe("trace timeline harness", () => {
 
 	it("wires sdk trace, app trace, and clear interaction through the live store", async () => {
 		const timeline = createTraceTimelineStore();
-		const recordAppTrace = createTokenSetBackendHostTraceRecorder(timeline);
+		const tracing = createTracing({ subscribers: [timeline] });
+		const rootSpan = createRootSpan({ idFactory: () => "root" });
+		const sdkSpan = rootSpan.fork({ idFactory: () => "sdk_backend_1" });
+		const hostSpan = rootSpan.fork({ idFactory: () => "host_backend_1" });
+		const recordAppTrace = createTokenSetBackendHostTraceRecorder(
+			tracing,
+			hostSpan,
+		);
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const root = createRoot(container);
@@ -58,12 +70,13 @@ describe("trace timeline harness", () => {
 		);
 
 		await act(async () => {
-			timeline.record({
-				type: "token_set.callback.failed",
+			tracing.record({
+				name: "token_set.callback.failed",
 				at: Date.parse("2026-01-01T00:00:00Z"),
-				scope: "token-set-context",
-				source: "token_set_context_client",
-				attributes: {
+				target: "token-set-context",
+				span: sdkSpan,
+				level: TracingLevel.Error,
+				fields: {
 					errorKind: "server",
 					errorCode: "metadata_unavailable",
 					recovery: "retry",
@@ -82,7 +95,9 @@ describe("trace timeline harness", () => {
 
 		expect(container.textContent).toContain("SDK Lifecycle");
 		expect(container.textContent).toContain("App Trace");
-		expect(container.textContent).toContain(TOKEN_SET_BACKEND_HOST_TRACE_SCOPE);
+		expect(container.textContent).toContain(
+			TOKEN_SET_BACKEND_HOST_TRACE_TARGET,
+		);
 		expect(container.textContent).toContain("callback.failed");
 		expect(container.textContent).toContain("entries.load.failed");
 		expect(container.textContent).toContain("code: metadata_unavailable");

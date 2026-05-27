@@ -42,4 +42,5 @@ export {
 	resetBackendOidcModeBrowserState,
 	resolveBackendOidcModeCallbackFragmentKey,
 	restoreBackendOidcModeClient,
+	TokenSetPopupRelayErrorCode,
 } from "./browser";

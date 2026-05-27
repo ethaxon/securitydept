@@ -11,10 +11,10 @@
  *   - Revalidation failure retains existing cache
  */
 
-import type {
-	IdleCallbackTrait,
-	StorageTrait,
-	TimeTrait,
+import {
+	type IdleCallbackTrait,
+	type StorageTrait,
+	type TimeTrait,
 } from "@securitydept/client";
 import {
 	bootstrapScriptSource,
@@ -273,7 +273,6 @@ describe("scheduleIdleRevalidation", () => {
 
 	it("skips revalidation when projection is still fresh", () => {
 		const store = createTestStore();
-		const logger = vi.fn();
 
 		const cancel = scheduleIdleRevalidation({
 			networkSource: networkConfigSource({
@@ -286,14 +285,9 @@ describe("scheduleIdleRevalidation", () => {
 			storageKey: "projection",
 			maxAge: 300_000, // 5 minutes
 			generatedAt: Date.now() - 60_000, // generated 1 minute ago — fresh
-			logger,
 		});
 
 		expect(cancel).toBeUndefined();
-		expect(logger).toHaveBeenCalledWith(
-			"info",
-			expect.stringContaining("Skipping idle revalidation"),
-		);
 	});
 
 	it("fires revalidation when projection is stale", async () => {
@@ -337,7 +331,6 @@ describe("scheduleIdleRevalidation", () => {
 		);
 
 		const fetchFn = vi.fn().mockRejectedValue(new Error("Network error"));
-		const logger = vi.fn();
 
 		scheduleIdleRevalidation({
 			networkSource: {
@@ -353,7 +346,6 @@ describe("scheduleIdleRevalidation", () => {
 			storageKey: "projection",
 			maxAge: 300_000,
 			generatedAt: Date.now() - 600_000, // stale
-			logger,
 		});
 
 		await vi.advanceTimersByTimeAsync(2000);
@@ -361,11 +353,6 @@ describe("scheduleIdleRevalidation", () => {
 		const raw = await store.get("projection");
 		const envelope = JSON.parse(raw!);
 		expect(envelope.data.clientId).toBe("old-cached");
-
-		expect(logger).toHaveBeenCalledWith(
-			"warn",
-			expect.stringContaining("retaining cached config"),
-		);
 	});
 
 	it("fires revalidation when generatedAt is absent", async () => {

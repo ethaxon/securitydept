@@ -1,4 +1,4 @@
-import type { IncomingMessage } from "node:http";
+import { type IncomingMessage } from "node:http";
 import path from "node:path";
 
 import { renderTemplateFile } from "@securitydept/e2e-utils";

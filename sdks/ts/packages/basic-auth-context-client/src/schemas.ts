@@ -1,10 +1,10 @@
 // basic-auth-context-client — config validation schema
 //
-// Uses @standard-schema via the foundation createSchema helper to validate
+// Uses explicit StandardSchemaV1 validation to validate
 // BasicAuthContextClientConfig at the cross-boundary entry point.
 
-import { createSchema } from "@securitydept/client";
-import type { BasicAuthContextClientConfig } from "./types";
+import { type StandardSchemaV1 } from "@standard-schema/spec";
+import { type BasicAuthContextClientConfig } from "./types";
 
 function isNonEmptyString(v: unknown): v is string {
 	return typeof v === "string" && v.length > 0;
@@ -53,9 +53,11 @@ function validateZoneConfig(input: unknown, index: number) {
  *   - each zone has a non-empty `zonePrefix`
  *   - optional fields have correct types when provided
  */
-export const BasicAuthContextClientConfigSchema =
-	createSchema<BasicAuthContextClientConfig>({
-		validate(input) {
+export const BasicAuthContextClientConfigSchema = {
+	"~standard": {
+		version: 1,
+		vendor: "securitydept-basic-auth-context-client",
+		validate(input: unknown) {
 			const issues: Array<{ message: string }> = [];
 
 			if (!isObject(input)) {
@@ -94,4 +96,5 @@ export const BasicAuthContextClientConfigSchema =
 
 			return { value: input as unknown as BasicAuthContextClientConfig };
 		},
-	});
+	},
+} satisfies StandardSchemaV1<unknown, BasicAuthContextClientConfig>;

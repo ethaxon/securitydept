@@ -1,5 +1,6 @@
 export type { AbortSignalBridge } from "./abort-signal";
 export {
-	createAbortSignalBridge,
+	abortSignalToCancellationToken,
+	cancellationTokenToAbortSignal,
 	normalizeAbortError,
 } from "./abort-signal";

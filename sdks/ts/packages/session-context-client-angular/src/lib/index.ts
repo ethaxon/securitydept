@@ -18,12 +18,12 @@ import {
 	signal,
 	type WritableSignal,
 } from "@angular/core";
-import type {
-	ExternalTransportTrait,
-	FoundationEnvironment,
+import {
+	type ExternalTransportTrait,
+	type FoundationEnvironment,
+	type ReadableSignalTrait,
 } from "@securitydept/client";
-import { toRxObservable } from "@securitydept/client/rx";
-import { bridgeToAngularSignal } from "@securitydept/client-angular";
+import { signalToObservable } from "@securitydept/client/rx";
 import {
 	SessionContextClient,
 	type SessionContextClientConfig,
@@ -31,7 +31,17 @@ import {
 	type SessionContextControllerState,
 	type SessionInfo,
 } from "@securitydept/session-context-client";
-import type { Observable } from "rxjs";
+import { type Observable } from "rxjs";
+
+function bridgeToAngularSignal<T>(
+	source: ReadableSignalTrait<T>,
+	target: WritableSignal<T>,
+): () => void {
+	target.set(source.get());
+	return source.subscribe(() => {
+		target.set(source.get());
+	});
+}
 
 // ---------------------------------------------------------------------------
 // InjectionTokens
@@ -94,7 +104,7 @@ export class SessionContextService {
 	) {
 		const initialState = controller.state.get();
 		this.state = signal<SessionContextControllerState>(initialState);
-		this.state$ = toRxObservable(controller.state);
+		this.state$ = signalToObservable(controller.state);
 		this.session = signal<SessionInfo | null>(initialState.session);
 		this.loading = signal(initialState.status === "loading");
 		this.error = signal<unknown | null>(initialState.error);

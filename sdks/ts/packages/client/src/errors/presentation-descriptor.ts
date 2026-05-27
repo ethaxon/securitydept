@@ -40,18 +40,6 @@ const POPUP_PRESENTATIONS = {
 			"The popup window was closed before the OIDC provider returned a callback. Start the login flow again to continue.",
 		tone: ErrorPresentationTone.Warning,
 	},
-	"popup.relay_timeout": {
-		title: "Popup relay timed out",
-		description:
-			"The popup callback never relayed back to the opener before the timeout window expired.",
-		tone: ErrorPresentationTone.Warning,
-	},
-	"popup.relay_error": {
-		title: "Popup relay failed",
-		description:
-			"The popup callback page returned an error instead of a callback payload.",
-		tone: ErrorPresentationTone.Danger,
-	},
 } as const;
 
 export function readErrorPresentationDescriptor(

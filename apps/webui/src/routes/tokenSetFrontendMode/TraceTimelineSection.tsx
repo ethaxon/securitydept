@@ -1,6 +1,6 @@
-import type { TraceTimelineEntry } from "@securitydept/client";
+import { type TraceTimelineEntry } from "@securitydept/client";
 import {
-	formatTraceAttributes,
+	formatTraceFields,
 	readTraceBadgeClassName,
 	readTraceDisplayType,
 	readTraceDomainBadge,
@@ -27,10 +27,10 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 						Structured Trace Timeline
 					</h2>
 					<p className="mt-1 max-w-4xl text-sm text-zinc-500 dark:text-zinc-400">
-						This reference view consumes the shared SDK trace sink directly. It
-						covers popup lifecycle, callback outcomes, refresh, and the
-						host-owned cross-tab adoption events wired into the same structured
-						timeline.
+						This reference view consumes the shared SDK tracing runtime
+						directly. It covers popup lifecycle, callback outcomes, refresh, and
+						the host-owned cross-tab adoption events wired into the same
+						structured timeline.
 					</p>
 				</div>
 				<button
@@ -52,8 +52,8 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 					return (
 						<div
 							key={event.id}
-							data-trace-type={event.type}
-							data-trace-operation-id={event.operationId}
+							data-trace-name={event.name}
+							data-trace-operation-id={event.span.id}
 							className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
 						>
 							<div className="flex flex-wrap items-start justify-between gap-3">
@@ -62,7 +62,7 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 										{readTraceDisplayType(event)}
 									</p>
 									<p className="mt-1 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-										{event.type}
+										{event.name}
 									</p>
 									<div className="mt-2 flex flex-wrap gap-2">
 										<span
@@ -83,28 +83,21 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 											{summary}
 										</p>
 									)}
-									{event.operationId && (
-										<p className="mt-2 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-											Operation: {event.operationId}
-										</p>
-									)}
+									<p className="mt-2 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
+										Operation: {event.span.id}
+									</p>
 									<p className="mt-2 text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-										{event.scope ?? "unknown scope"}
+										{event.target}
 									</p>
 								</div>
 								<div className="text-right">
 									<p className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
 										{event.recordedAtIso}
 									</p>
-									{event.source && (
-										<p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-											Source: {event.source}
-										</p>
-									)}
 								</div>
 							</div>
 							<pre className="mt-3 overflow-x-auto rounded-lg bg-zinc-950 p-3 text-xs text-zinc-100">
-								{formatTraceAttributes(event)}
+								{formatTraceFields(event)}
 							</pre>
 						</div>
 					);

@@ -1,6 +1,8 @@
-import type { RuntimeEventEnvelope } from "@securitydept/client";
-import { EventSourceKind } from "@securitydept/client";
-import type { TokenSetAuthErrorSummary } from "./auth-events";
+import {
+	EventSourceKind,
+	type RuntimeEventEnvelope,
+} from "@securitydept/client";
+import { type TokenSetAuthErrorSummary } from "./auth-events";
 
 export const TokenSetPersistenceEventType = {
 	PersistenceSyncStarted: "persistence.sync.started",
@@ -33,7 +35,7 @@ export type TokenSetPersistenceReason =
 	(typeof TokenSetPersistenceReason)[keyof typeof TokenSetPersistenceReason];
 
 export interface TokenSetPersistenceEventPayload {
-	logicalClientId?: string;
+	id?: string;
 	action: TokenSetPersistenceAction;
 	reason?: TokenSetPersistenceReason;
 	errorSummary?: TokenSetAuthErrorSummary;

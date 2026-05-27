@@ -1,4 +1,4 @@
-import type { TokenDelta, TokenSnapshot } from "./types";
+import { type TokenDelta, type TokenSnapshot } from "./types";
 
 /**
  * Merge a token delta into an existing snapshot.

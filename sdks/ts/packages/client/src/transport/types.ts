@@ -1,4 +1,6 @@
-import type { CancellationTokenTrait } from "../cancellation/types";
+import { type as defineType } from "arktype";
+import { type CancellationTokenTrait } from "../cancellation/types";
+import { SecuritydeptInjectionToken } from "../injection";
 
 // --- Transport abstraction ---
 
@@ -22,6 +24,13 @@ export interface HttpResponse {
 export interface BaseTransportTrait {
 	execute(request: HttpRequest): Promise<HttpResponse>;
 }
+
+export const BaseTransportTraitSchema = defineType({
+	execute: "Function",
+});
+
+export const TRANSPORT_TRAIT_TOKEN =
+	new SecuritydeptInjectionToken<BaseTransportTrait>("TRANSPORT_TRAIT_TOKEN");
 
 /**
  * External transport protocol — auth/runtime bootstrap and protocol traffic.

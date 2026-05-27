@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createInMemoryRecordStore } from "../../persistence";
+import { createInMemoryRecordStore } from "../../storage";
 import {
 	createEnvironmentForNativeWeb,
 	type FoundationEnvironment,
 	type NativeWebEnvironment,
-} from "../environment/environment";
+} from "../environment";
 
 function createTransport() {
 	return {
@@ -33,8 +33,10 @@ describe("client environment factory shape", () => {
 		};
 		const environment = createEnvironmentForNativeWeb({
 			...createClientEnvironmentOptions(),
-			location: nativeWebPage.location,
-			history: nativeWebPage.history,
+			routerForNativeWebCreateOptions: {
+				location: nativeWebPage.location,
+				history: nativeWebPage.history,
+			},
 		});
 
 		const asNativeWeb: NativeWebEnvironment = environment;
@@ -51,6 +53,6 @@ describe("client environment factory shape", () => {
 	it("requires native web page capabilities instead of creating page-free native web environments", () => {
 		expect(() =>
 			createEnvironmentForNativeWeb(createClientEnvironmentOptions()),
-		).toThrow(/nativeWeb must include location.href/);
+		).toThrow(/createRouterForNativeWeb could not validate router/);
 	});
 });

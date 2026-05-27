@@ -35,7 +35,7 @@ What stays outside the SDK:
 
 - **auth context**: a deployment-oriented family such as basic-auth, session, or token-set.
 - **mode**: a concrete operating shape inside an auth context, such as `frontend-oidc` or `backend-oidc`.
-- **environment**: a host composition-root dependency object. It carries behavior traits such as `ExternalTransportTrait`, `TimeTrait`, optional `IdleCallbackTrait`, `StorageTrait`, `TelemetryTrait`, `RouterTrait`, `PageLifecycleTrait`, and `PopupTrait`. Core client constructor dependencies are also an environment; they are not a separate runtime object.
+- **environment**: a host composition-root dependency object. It carries behavior traits such as `BaseTransportTrait`, `TimeTrait`, a required root `SpanTrait`, a required `TracingTrait`, optional `IdleCallbackTrait`, `StorageTrait`, `RouterTrait`, `PageLifecycleTrait`, and `PopupTrait`. Core client constructor dependencies are also an environment; they are not a separate runtime object.
 - **capability / trait**: the narrowest behavior contract a helper needs from an environment or host adapter, such as `RouterTrait` for auth navigation. Raw host objects such as `window`, `document`, `location`, and `history` are adapter inputs, not core environment fields.
 - **client**: a protocol/domain object that performs auth, session, OIDC, token, or resource operations.
 - **registry**: a multi-client owner for registration, readiness/lazy lifecycle, keyed lookup, URL/callback discrimination, and route/resource orchestration.
@@ -90,19 +90,19 @@ State primitives are explicit, host-owned, and framework-neutral. Framework adap
 
 Events should describe machine-facing lifecycle facts. User-facing presentation belongs to the host.
 
-`@securitydept/client/events` exposes the foundation event-stream traits and operator facade used by token-set lifecycle telemetry. Family packages should emit SecurityDept event traits as their public contract; RxJS is an implementation and interop detail, not the shape adapters must expose.
+`@securitydept/client` exposes the foundation event-stream traits and operator facade used by token-set lifecycle telemetry. Family packages should emit SecurityDept event traits as their public contract; RxJS is an implementation and interop detail, not the shape adapters must expose.
 
 ### Transport
 
-Transport is always injected or selected by the host. SDK packages must not assume a global fetch policy beyond the documented browser/server entry.
+Transport is layered explicitly. Foundation environments carry `BaseTransportTrait`; protocol/bootstrap consumers may derive `ExternalTransportTrait` from a base transport, and higher-level resource traffic may derive `ManagedTransportTrait` through wrappers such as `createAuthorizedTransportFromBase(...)`. The std fetch adapter is `createBaseTransportForStdFetch(...)`, and host creators should rely on foundation transport resolution instead of each creating their own fetch transport.
 
 ### Persistence
 
-`@securitydept/client/persistence` owns `StorageTrait` semantics, including single-consume callback state through `take()`. `@securitydept/client/persistence/web` owns browser persistence adapters.
+`@securitydept/client` owns `StorageTrait` semantics, including single-consume callback state through `take()`. `@securitydept/client/persistence/web` owns browser persistence adapters.
 
 ### Auth Coordination
 
-`@securitydept/client/auth-coordination` owns planner-host and requirement orchestration primitives. It is headless: it may decide required actions, but it does not own chooser UI, route copy, or product flow semantics.
+`@securitydept/client` owns planner-host and requirement orchestration primitives. They are headless: they may decide required actions, but they do not own chooser UI, route copy, or product flow semantics.
 
 ### Configuration
 
@@ -120,7 +120,7 @@ Scheduling, cancellation, abort interop, storage, page lifecycle, and promise/si
 
 ### Unified Dependency Injection
 
-`@securitydept/client/injection` is now the framework-neutral DI authority. `SecuritydeptInjectorTrait` is the minimal read-side contract and only expresses `get()`; consumers, React Context, and third-party injector adapters work against that duck type. `SecuritydeptInjector` is the SDK runtime/facade that owns `resolveAndCreate()`, `fromParentInjector()`, explicit provider resolution, parent inheritance, overrides, and side-effect-free `has()` diagnostics.
+`@securitydept/client` is now the framework-neutral DI authority. `SecuritydeptInjectorTrait` is the minimal read-side contract and only expresses `get()`; consumers, React Context, and third-party injector adapters work against that duck type. `SecuritydeptInjector` is the SDK runtime/facade that owns `resolveAndCreate()`, `fromParentInjector()`, explicit provider resolution, parent inheritance, overrides, and side-effect-free `has()` diagnostics.
 
 React is allowed exactly one SDK Context, all in `@securitydept/client-react`: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()`. Domain React packages no longer create their own public Context/Provider/`useXxxContext()` surface. They export injection tokens, provider factories, explicit callback/component bridges, and signal/event helpers that compose with `useReadableSignal()` and `useEventStream()`.
 
@@ -128,12 +128,12 @@ Angular DI remains an adapter concern. Framework-neutral host capability resolut
 
 The canonical foundation model is:
 
-- `FoundationEnvironment` is the flattened foundation client dependency environment. It directly carries `transport`, `time`, optional `idleCallback`, `persistentStorage`, `sessionStorage`, `telemetry`, `router`, `pageLifecycle`, and `popup`. Historical `ClientRuntime` naming is retired and not canonical vocabulary.
+- `FoundationEnvironment` is the flattened foundation client dependency environment. It directly carries `transport`, `time`, a required root `span`, a required `tracing`, optional `idleCallback`, `persistentStorage`, `sessionStorage`, `router`, `pageLifecycle`, and `popup`. Historical `ClientRuntime` naming is retired and not canonical vocabulary.
 - `NativeWebEnvironment` is the canonical browser page environment. It extends the foundation environment with host-owned page capabilities such as `router`, `PageLifecycleTrait`, and `PopupTrait`; it does not expose `window.location` or `window.history`, and it no longer mirrors router methods at the top level.
 - `WebExtCoreEnvironment` is the shared extension-core environment above the foundation layer. `WebExtBackgroundEnvironment` is the background-script specialization, and `WebExtPageEnvironment` combines extension-core capabilities with `NativeWebEnvironment`.
 - `ServiceWorkerEnvironment` is the service-worker specialization above the foundation layer.
 - Helpers should request the narrowest behavior trait they need, for example `RouterTrait`, `PopupTrait`, or `Pick<FoundationEnvironment, "transport" | "sessionStorage">`, rather than accepting the full environment by default.
-- `environment.runtime` and historical runtime/derive helper names are retired naming artifacts. New public API and documentation must use Environment names such as `FoundationEnvironment`, `createClientEnvironment()`, or direct structural `FoundationEnvironment` / `NativeWebEnvironment` passing.
+- `environment.runtime` and historical runtime/derive helper names are retired naming artifacts. New public API and documentation must use Environment names such as `FoundationEnvironment`, `createFoundationEnvironment()`, or direct structural `FoundationEnvironment` / `NativeWebEnvironment` passing.
 - Public option keys that carry environment-like dependency sources should stay named `environment`; the required capability is expressed by the type, not by introducing parallel keys such as `pageEnvironment`.
 
 Conceptual split:
@@ -157,9 +157,8 @@ Foundation Web environment factories are explicit composition helpers, not autom
 |---|---|---:|---:|---|
 | `createEnvironmentForNativeWeb({ location, history, ...options })` | `NativeWebEnvironment` | host adapter only | yes | real browser page, tab, or popup document |
 | `createEnvironmentForWebExtBackgroundScript(options)` | `WebExtBackgroundEnvironment` | no | extension storage when supplied | extension background scripts |
-| `createEnvironmentForTest(options)` | `FoundationEnvironment` | no | in-memory test storage by default | deterministic tests |
 
-Do not use a string-driven `createEnvironmentFromPreset(name)`, preset-only wrapper factories, or global-shape detection to guess the host. Core clients never read `window`, `document`, `location`, or `history`; only explicitly named host adapters such as `createRouterForNativeWeb()`, `createPageLifecycleForNativeWeb()`, `createPopupForNativeWeb()`, and `createEnvironmentForNativeWeb()` may read native globals when the caller does not provide the host objects. `NativeWeb` means a normal browser page host with native navigation/location/history capabilities; worker-like hosts should use `createClientEnvironment()` or a more specific host factory.
+Do not use a string-driven `createEnvironmentFromPreset(name)`, preset-only wrapper factories, or global-shape detection to guess the host. Core clients never read `window`, `document`, `location`, or `history`; only explicitly named host adapters such as `createRouterForNativeWeb()`, `createPageLifecycleForNativeWeb()`, `createPopupForNativeWeb()`, and `createEnvironmentForNativeWeb()` may read native globals when the caller does not provide the host objects. `NativeWeb` means a normal browser page host with native navigation/location/history capabilities; worker-like hosts should use `createFoundationEnvironment()` or a more specific host factory.
 
 When a host needs browser-page capabilities across routes, commands, or framework adapters, create one explicit `NativeWebEnvironment` at the composition root and pass that object through the framework bridge. In React, register it through `provideClientEnvironment(environment)` and read it later with `useSecuritydeptContext().get(CLIENT_ENVIRONMENT)`. In Angular, provide the same object with `provideNativeWebEnvironment({ environment })`. The SDK does not expose a separate layered environment resolver: `NativeWebEnvironment` structurally covers the foundation `FoundationEnvironment`, and `WebExtPageEnvironment` structurally combines `WebExtCoreEnvironment` plus `NativeWebEnvironment`.
 
@@ -199,7 +198,18 @@ SDK errors expose machine-facing codes and host-facing recovery hints where rele
 
 ## Logging, Tracing, and Testing
 
-`@securitydept/client` owns the minimal trace event and operation-correlation primitives used by SDK flows. `@securitydept/test-utils` remains experimental and is not a current beta npm publish target.
+`@securitydept/client` owns the minimal tracing runtime, event, and subscriber primitives used by SDK flows. `@securitydept/test-utils` remains experimental and is not a current beta npm publish target.
+
+Span correlation and operation lifecycle use different contracts:
+
+- `SpanTrait` is an explicit correlation/context node. It owns identity, parent linkage, readonly attributes, and `fork()`. It is not a tracing backend and does not expose a public `end()` contract, because current JavaScript/TypeScript cannot guarantee deterministic caller-side disposal.
+- `TracingTrait` is the canonical tracing runtime contract. It owns `record(event)` plus a hot, non-replay `events` stream that downstream subscribers consume.
+- `OperationSpanTrait extends SpanTrait` and is the canonical operation-lifecycle primitive. `runOperation(...)` forks one child span, passes that operation span to `execute(span)`, and uses that same span for structured lifecycle correlation.
+- `TracingEvent` carries `name`, `at`, `span`, `level`, `target`, and optional `fields`. SDK lifecycle events correlate through `event.span.id` / `event.span.parent?.id`; the SDK no longer snapshots `operationId`, `spanId`, or `parentSpanId` onto the event shape.
+- `TracingSubscriberTrait` is a pure sink with `record(event)`. Console/timeline/test collectors live at this layer and can be attached through `createTracing({ subscribers })`.
+- `runOperation({ environment, span, name, target, fields, execute })` is the canonical structured lifecycle helper for `operation.started` / `operation.error` / `operation.ended` emission. It combines `time`, `tracing`, and an explicit parent span in one explicit call shape, but it is not itself a foundation host capability.
+- `defineInstrumentMethodDecorator(...)` is the stage-3 class-method decorator ergonomics over the same helper. It does not introduce a second tracing model, and adopters do not need decorators to use the tracing baseline.
+- Span propagation follows an explicit ownership model: environments hold root spans, registries/clients/methods fork child spans as needed, and SDK code does not depend on ambient current-span state, ambient current-operation state, or `runWithSpan()`-style implicit context.
 
 ## Build, Compatibility, and Side Effects
 
@@ -234,11 +244,8 @@ The table below is the current TS SDK public-surface snapshot. It must remain al
 | Surface | Stability | Owner | Change discipline |
 |---|---|---|---|
 | `@securitydept/client` | `stable` | `foundation` | `stable-deprecation-first` |
-| `@securitydept/client/persistence` | `stable` | `foundation` | `stable-deprecation-first` |
 | `@securitydept/client/persistence/web` | `stable` | `foundation` | `stable-deprecation-first` |
 | `@securitydept/client/web` | `stable` | `foundation` | `stable-deprecation-first` |
-| `@securitydept/client/auth-coordination` | `provisional` | `foundation` | `provisional-migration-required` |
-| `@securitydept/client/web-router` | `provisional` | `foundation` | `provisional-migration-required` |
 | `@securitydept/basic-auth-context-client` | `stable` | `basic-auth-context` | `stable-deprecation-first` |
 | `@securitydept/basic-auth-context-client/web` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
 | `@securitydept/basic-auth-context-client/server` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
@@ -247,8 +254,6 @@ The table below is the current TS SDK public-surface snapshot. It must remain al
 | `@securitydept/session-context-client/web` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client/server` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client-react` | `provisional` | `session-context` | `provisional-migration-required` |
-| `@securitydept/client/events` | `provisional` | `foundation` | `provisional-migration-required` |
-| `@securitydept/client/injection` | `provisional` | `foundation` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/backend-oidc-mode` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/backend-oidc-mode/web` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/frontend-oidc-mode` | `provisional` | `token-set-context` | `provisional-migration-required` |
@@ -411,7 +416,7 @@ Layering rules:
 
 Freshness is owned by the token-set core, not by one framework adapter. Consumer code reads replay channels: first-screen readiness uses `authDetermined`, stable UI uses `authSnapshot`, route guards use `isAuthenticated`, and transports/interceptors use `authorizationHeaderValue`. `authCheck(options?)` is the only explicit maintenance command and should be reserved for advanced callers that intentionally trigger one serialized check. Event payloads must not contain raw access, refresh, or ID token values. Header availability does not have a separate event/status lifecycle: usable bearer projection is part of the authenticated snapshot, while missing bearer material remains unauthenticated or an undefined header projection. Mode clients do not expose synchronous bearer convenience APIs, and registry token sugar is not part of the public model. Use `registry.whenReady(key?)` or `registry.clientSignalFor(key?)` to acquire a started client, then consume that client's replay signals.
 
-Browser-owned frontend/backend OIDC factories configure page-resume auth-check through the client runtime option `authCheck.triggerSources.pageResume`. The bundled source only consumes the host-owned `PageLifecycleTrait.resume` event stream; it never accepts or discovers raw `document` or `window` targets in token-set orchestration. Angular registry entries no longer patch clients with page-resume triggers during materialization: Angular hosts should construct the client with the desired `authCheck.triggerSources` configuration in `clientFactory(environment)`. On `visibilitychange` back to visible, `pageshow`, `focus`, and `online`, the page source emits a pure EventStream auth-check trigger. The client-owned dispatcher submits trigger events into the serialized auth-check runner; restore and explicit `authCheck()` use command gateways for their promise-returning semantics, while the refresh timer is another trigger source derived from `authSnapshot`. Completed checks emit `auth.check.*` events with `authCheckReason: "page_resume"`. This is a recovery barrier, not an interactive login trigger: refresh failures clear or preserve auth state through the normal token-set client paths, and route/request handlers decide whether to start login.
+Browser-owned frontend/backend OIDC factories configure page-resume auth-check through the client runtime option `authCheck.triggerSources.pageResume`. The bundled source only consumes the host-owned `PageLifecycleTrait.resume` event stream; it never accepts or discovers raw `document` or `window` targets in token-set orchestration. Angular registry entries no longer patch clients with page-resume triggers during materialization: Angular hosts should construct the client with the desired `authCheck.triggerSources` configuration in `clientFactory(environment)`. On `visibilitychange` back to visible, `pageshow`, `focus`, and `online`, the page source emits a pure EventStream auth-check trigger. The client-owned dispatcher submits trigger events into the serialized auth-check runner; restore and explicit `authCheck()` use command gateways for their promise-returning semantics, while the refresh timer is another trigger source derived from `authSnapshot`. A completed check projects its outcome through the typed terminal auth events (`auth.authenticated` / `auth.unauthenticated`); the triggering reason (such as page resume) lives in local orchestration trace attributes rather than a payload field on the auth event. This is a recovery barrier, not an interactive login trigger: refresh failures clear or preserve auth state through the normal token-set client paths, and route/request handlers decide whether to start login.
 
 Short access-token lifetimes should be handled by the running client state machine: persisted restore performs the initial auth check, refresh timers schedule later checks, and browser resume emits auth-check triggers after hidden tabs, system sleep, or bfcache return. Angular route aggregation waits for pending initial auth determination, then reads `isAuthenticated`; protected requests wait for `authorizationHeaderValue`. When `frontend-oidc-mode` or another token-set mode can stamp `accessTokenIssuedAt`, token freshness caps refresh-window and clock-skew calculations relative to the token lifetime instead of applying a raw fixed window to every token. That keeps newly issued short-lived tokens fresh at issuance while still entering `refresh_due` early enough for restore, resume, and scheduled maintenance. TanStack Router hosts should use `createTokenSetSecureBeforeLoad()` from `@securitydept/token-set-context-client-react/tanstack-router`; raw web hosts should use `createTokenSetWebRouteAuthCandidate()` from `@securitydept/token-set-context-client/web-router`. Both helpers wait for the selected client's `isAuthenticated` replay signal before redirect/block fallback.
 
@@ -465,20 +470,12 @@ Do not import `/web` subpaths into server-hosted code.
 | Adapter / Surface | Current judgment |
 |---|---|
 | `@securitydept/client/web` | stable foundation-owned browser helper surface |
-| `@securitydept/client/auth-coordination` | provisional; planner-host and matched-route-chain contract established |
-| `@securitydept/client/web-router` | provisional; raw Web baseline established |
 | `basic-auth-context-client/web` | provisional; thin browser convenience established |
 | `session-context-client/web` | provisional; login redirect convenience established |
 | `basic-auth-context-client/server` / `session-context-client/server` | provisional; SSR/server-host baseline established |
 | `*-react` / `*-angular` adapter family | provisional; real reference-app/downstream proof exists, broad host matrix does not |
 | `@securitydept/token-set-context-client/frontend-oidc-mode` | provisional; keyed pending-state and single-consume callback semantics formalized |
 | `token-set-context-client-react/react-query` | provisional; canonical token-set readiness/invalidation glue path established |
-
-## Raw Web Router Baseline
-
-**Subpath**: `@securitydept/client/web-router`
-
-The raw Web Router baseline is for non-framework hosts. It uses Navigation API first, History API fallback, and one planner-host submission per full matched-route chain.
 
 ## Shared Client Lifecycle Contract
 

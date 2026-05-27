@@ -9,11 +9,11 @@
 //
 // Stability: provisional (React adapter)
 
-import type {
-	AuthStateSnapshot,
-	BackendOidcModeClientConfig,
+import {
+	type AuthStateSnapshot,
+	BackendOidcModeClient,
+	type BackendOidcModeClientConfig,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 
 export {
 	type ClientFilter,

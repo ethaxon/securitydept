@@ -1,6 +1,6 @@
 // Shared auth route orchestrator — headless router integration baseline
 //
-// Canonical location: @securitydept/client/auth-coordination
+// Canonical public export: @securitydept/client
 //
 // Provides a minimal, framework-agnostic glue layer between route-level auth
 // requirements and the RequirementPlanner, driven by a matched route chain
@@ -27,13 +27,14 @@
 // token-set material, OIDC protocol details, or any framework specifics.
 // Canonical owner is @securitydept/client.
 
-import type {
-	AuthRequirement,
-	PlanSnapshot,
-	RequirementPlanner,
-	RequirementResolution,
+import {
+	type AuthRequirement,
+	createRequirementPlanner,
+	type PlanSnapshot,
+	PlanStatus,
+	type RequirementPlanner,
+	type RequirementResolution,
 } from "./requirement-planner";
-import { createRequirementPlanner, PlanStatus } from "./requirement-planner";
 
 // ---------------------------------------------------------------------------
 // Route match node types

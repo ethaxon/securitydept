@@ -28,15 +28,12 @@ import {
 	type RouterStateSnapshot,
 } from "@angular/router";
 import {
-	createSubject,
-	type ReadableReplaySignalTrait,
-	type ReadableSignalTrait,
-} from "@securitydept/client";
-import {
 	type AuthGuardClientOption,
+	createEventSubject,
 	createPlannerHost,
+	type ReadableReplaySignalTrait,
 	RequirementsClientSetComposition,
-} from "@securitydept/client/auth-coordination";
+} from "@securitydept/client";
 import {
 	AUTH_PLANNER_HOST,
 	DEFAULT_ROUTE_REQUIREMENTS_KEY,
@@ -45,7 +42,6 @@ import {
 	ROUTE_REQUIREMENTS_DATA_KEY,
 	withRouteRequirements,
 } from "@securitydept/client-angular";
-import { AuthCheckStatus } from "@securitydept/token-set-context-client/orchestration";
 import {
 	type CreateTokenSetRouteAggregationGuardOptions,
 	createTokenSetRouteAggregationGuard,
@@ -64,27 +60,6 @@ import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 // ---------------------------------------------------------------------------
 // Test helpers (minimal stubs — no DI needed)
 // ---------------------------------------------------------------------------
-
-function createTestSignal<T>(initial: T): {
-	signal: ReadableSignalTrait<T>;
-	set(value: T): void;
-} {
-	let value = initial;
-	const listeners = new Set<() => void>();
-	return {
-		signal: {
-			get: () => value,
-			subscribe(listener: () => void) {
-				listeners.add(listener);
-				return () => listeners.delete(listener);
-			},
-		},
-		set(newValue: T) {
-			value = newValue;
-			for (const l of listeners) l();
-		},
-	};
-}
 
 function readReplayBoolean(
 	signal: ReadableReplaySignalTrait<boolean>,
@@ -119,7 +94,7 @@ function createMockClient(
 	const reactive = createTestTokenSetReactiveFields(snap);
 	return {
 		...reactive.fields,
-		authEvents: createSubject(),
+		authEvents: createEventSubject(),
 		addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 		removeWorkflowSource: vi.fn(() => false),
 		start: vi.fn(async () => undefined),
@@ -152,40 +127,18 @@ function createRouteFreshnessMockClient(options: {
 		},
 		metadata: { source: { kind: "oidc_authorization_code" as const } },
 	};
-	const { set } = createTestSignal<typeof initial | null>(
-		options.refreshResult === "fresh" ? refreshed : null,
-	);
 	const reactive = createTestTokenSetReactiveFields(
 		options.refreshResult === "fresh" ? refreshed : null,
 	);
 
 	return {
 		...reactive.fields,
-		authEvents: createSubject(),
+		authEvents: createEventSubject(),
 		addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 		removeWorkflowSource: vi.fn(() => false),
 		start: vi.fn(async () => undefined),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(initial),
-		authCheck: vi.fn().mockImplementation(async () => {
-			if (options.refreshResult === "fresh") {
-				set(refreshed);
-				reactive.emitSnapshot(refreshed);
-				return {
-					status: AuthCheckStatus.Authenticated,
-					snapshot: refreshed,
-					freshness: "fresh",
-				};
-			}
-			set(null);
-			reactive.emitSnapshot(null);
-			return {
-				status: AuthCheckStatus.Unauthenticated,
-				snapshot: null,
-				authorizationHeader: undefined,
-				reason: "refresh_failed",
-			};
-		}),
 		handleCallback: vi.fn().mockResolvedValue({ snapshot: initial }),
 	};
 }
@@ -495,7 +448,7 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 
 		// Build candidates the same way the guard does (map kind → registry clients)
 		const { createPlannerHost: createPlannerHostFn } = await import(
-			"@securitydept/client/auth-coordination"
+			"@securitydept/client"
 		);
 		const plannerHost = createPlannerHostFn();
 

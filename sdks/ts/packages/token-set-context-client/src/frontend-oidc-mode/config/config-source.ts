@@ -15,8 +15,8 @@
 //
 // Stability: provisional (mode-aligned surface)
 
+import { type FrontendOidcModeClientConfig } from "../client/types";
 import { parseConfigProjection } from "../contracts/contracts";
-import type { FrontendOidcModeClientConfig } from "../runtime/types";
 
 // ---------------------------------------------------------------------------
 // Config projection source identity
@@ -26,7 +26,7 @@ import type { FrontendOidcModeClientConfig } from "../runtime/types";
  * Discriminated source identity for a resolved config projection.
  *
  * Tracks where the projection came from so higher layers (caching,
- * revalidation, telemetry) can make informed decisions.
+ * revalidation, tracing) can make informed decisions.
  */
 export const ConfigProjectionSourceKind = {
 	/** Projection was provided inline at registration time (static config). */
@@ -230,27 +230,14 @@ export type ClientReadinessState =
  */
 export async function resolveConfigProjection(
 	sources: readonly ConfigProjectionSource[],
-	logger?: (level: "info" | "warn" | "error", message: string) => void,
 ): Promise<ResolvedConfigProjection> {
 	for (const source of sources) {
 		try {
 			const result = await resolveOneSource(source);
 			if (result !== null) {
-				logger?.(
-					"info",
-					`Config projection resolved from source: ${source.kind}`,
-				);
 				return result;
 			}
-			logger?.(
-				"info",
-				`Config projection source "${source.kind}" returned null, trying next`,
-			);
-		} catch (error) {
-			logger?.(
-				"warn",
-				`Config projection source "${source.kind}" failed: ${error instanceof Error ? error.message : String(error)}`,
-			);
+		} catch {
 			// Continue to next source
 		}
 	}

@@ -17,17 +17,17 @@
 // Stability: provisional
 
 import { Injectable } from "@angular/core";
-import type { ActivatedRouteSnapshot } from "@angular/router";
-import type {
-	EnvironmentValidators,
-	RouterNavigationRequest,
-	RouterTrait,
+import { type ActivatedRouteSnapshot } from "@angular/router";
+import {
+	type AuthRequirement,
+	type EnvironmentValidators,
+	type RouteMatchNode,
+	type RouterNavigationRequest,
+	type RouterTrait,
+	throwValidationClientError,
+	validateTraitInput,
 } from "@securitydept/client";
-import { validateEnvTraitInput } from "@securitydept/client";
-import type {
-	AuthRequirement,
-	RouteMatchNode,
-} from "@securitydept/client/auth-coordination";
+import { type as defineType } from "arktype";
 
 // ---------------------------------------------------------------------------
 // Projection options
@@ -60,25 +60,29 @@ export interface CreateRouterForAngularRouterOptions {
 	validators?: Pick<EnvironmentValidators, "router">;
 }
 
+const AngularRouterNavigationLikeSchema = defineType({
+	navigateByUrl: "Function",
+});
+
 export function createRouterForAngularRouter(
 	options: CreateRouterForAngularRouterOptions,
 ): RouterTrait {
-	validateEnvTraitInput({
-		traitName: "router",
-		hostAdapter: "createRouterForAngularRouter",
+	validateTraitInput({
 		value: options.router,
+		bundledSchema: AngularRouterNavigationLikeSchema,
 		validator: options.validators?.router,
-		bundleValidate: (value) =>
-			typeof (value as AngularRouterNavigationLike).navigateByUrl ===
-			"function",
+		onInvalid: (failure) =>
+			throwValidationClientError({
+				code: "client_angular.router.invalid_router",
+				source: "client-angular",
+				messagePrefix: "createRouterForAngularRouter could not validate router",
+				failure,
+			}),
 	});
 	const router: RouterTrait = {
 		currentUrl() {
 			const url = options.currentUrl ?? options.router.url;
 			return url ? new URL(url.toString(), "http://localhost") : null;
-		},
-		canNavigate() {
-			return true;
 		},
 		async navigate(request: RouterNavigationRequest) {
 			await options.router.navigateByUrl(request.url.toString(), {

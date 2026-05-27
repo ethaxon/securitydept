@@ -6,9 +6,10 @@ export type {
 	ReplayBearerHeaderProvider,
 } from "./auth-transport";
 export {
-	createAuthorizedTransport,
-	createRemappingAuthorizedTransport,
+	createAuthorizedTransportFromBase,
+	createRemappingAuthorizedTransportFromBase,
 } from "./auth-transport";
+export { createExternalTransportFromBase } from "./external-transport";
 export type {
 	BaseTransportTrait,
 	ExternalTransportTrait,
@@ -16,3 +17,4 @@ export type {
 	HttpResponse,
 	ManagedTransportTrait,
 } from "./types";
+export { TRANSPORT_TRAIT_TOKEN } from "./types";

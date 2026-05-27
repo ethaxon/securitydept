@@ -1,27 +1,15 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { type StandardSchemaV1 } from "@standard-schema/spec";
+import { type as defineType } from "arktype";
 import { describe, expect, it } from "vitest";
 import {
-	createSchema,
+	validateTraitInput,
 	validateWithSchema,
 	validateWithSchemaSync,
 } from "../../validation/index";
 
 describe("foundation validation baseline", () => {
-	// A minimal schema for testing — no external library needed.
-	const nameSchema = createSchema<{ name: string }>({
-		validate(input: unknown) {
-			if (
-				typeof input === "object" &&
-				input !== null &&
-				"name" in input &&
-				typeof (input as { name: unknown }).name === "string"
-			) {
-				return { value: { name: (input as { name: string }).name } };
-			}
-			return {
-				issues: [{ message: "Expected object with string 'name'" }],
-			};
-		},
+	const nameSchema = defineType({
+		name: "string",
 	});
 
 	describe("validateWithSchema (async)", () => {
@@ -44,9 +32,7 @@ describe("foundation validation baseline", () => {
 			expect(result.success).toBe(false);
 			if (!result.success) {
 				expect(result.issues).toHaveLength(1);
-				expect(result.issues[0]?.message).toBe(
-					"Expected object with string 'name'",
-				);
+				expect(result.issues[0]?.message).toContain("name");
 			}
 		});
 
@@ -79,16 +65,6 @@ describe("foundation validation baseline", () => {
 		});
 	});
 
-	describe("createSchema", () => {
-		it("creates a StandardSchemaV1-compatible schema", () => {
-			const schema: StandardSchemaV1<unknown, { name: string }> = nameSchema;
-
-			expect(schema["~standard"].version).toBe(1);
-			expect(schema["~standard"].vendor).toBe("securitydept");
-			expect(typeof schema["~standard"].validate).toBe("function");
-		});
-	});
-
 	describe("interoperability", () => {
 		it("accepts any StandardSchemaV1-compatible schema", async () => {
 			// Simulate a schema from an external library (e.g. zod).
@@ -115,6 +91,63 @@ describe("foundation validation baseline", () => {
 
 			const failure = await validateWithSchema(externalSchema, 123);
 			expect(failure.success).toBe(false);
+		});
+
+		it("normalizes arktype failures into StandardSchema issues", async () => {
+			const schema = defineType("string");
+			const result = await validateWithSchema(schema, 123);
+
+			expect(result.success).toBe(false);
+			if (!result.success) {
+				expect(result.issues.length).toBeGreaterThan(0);
+				expect(typeof result.issues[0]?.message).toBe("string");
+			}
+		});
+	});
+
+	describe("trait input validation", () => {
+		it("accepts schema-validated inputs", () => {
+			expect(() =>
+				validateTraitInput({
+					value: { ok: true },
+					bundledSchema: defineType({
+						ok: "true",
+					}),
+					onInvalid() {
+						throw new Error("invalid");
+					},
+				}),
+			).not.toThrow();
+		});
+
+		it("uses onInvalid for rejected schema inputs", () => {
+			expect(() =>
+				validateTraitInput({
+					value: { ok: false },
+					bundledSchema: defineType({
+						ok: "true",
+					}),
+					onInvalid(failure) {
+						expect(failure.issues.length).toBeGreaterThan(0);
+						throw new Error("invalid");
+					},
+				}),
+			).toThrow("invalid");
+		});
+
+		it("skips optional validation when value is undefined", () => {
+			expect(() =>
+				validateTraitInput({
+					value: undefined,
+					bundledSchema: defineType({
+						ok: "true",
+					}),
+					optional: true,
+					onInvalid() {
+						throw new Error("invalid");
+					},
+				}),
+			).not.toThrow();
 		});
 	});
 });

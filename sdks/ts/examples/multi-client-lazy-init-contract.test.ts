@@ -16,9 +16,11 @@
 //     `resetMaterialization(key)` retries without dropping registration,
 //     while `unregister(key)` removes the key entirely
 
-import type {
-	FoundationEnvironment,
-	IdleCallbackTrait,
+import {
+	createFoundationEnvironment,
+	createNeverEventStream,
+	type FoundationEnvironment,
+	type IdleCallbackTrait,
 } from "@securitydept/client";
 import {
 	ClientInitializationPriority,
@@ -40,7 +42,7 @@ const TEST_IDLE_CALLBACK: IdleCallbackTrait = {
 	cancelIdleCallback: (handle) =>
 		clearTimeout(handle as ReturnType<typeof setTimeout>),
 };
-const TEST_ENVIRONMENT: FoundationEnvironment = {
+const TEST_ENVIRONMENT = createFoundationEnvironment({
 	transport: { execute: async () => ({ status: 204, headers: {} }) },
 	time: {
 		now: () => Date.now(),
@@ -49,7 +51,7 @@ const TEST_ENVIRONMENT: FoundationEnvironment = {
 			clearTimeout(handle as ReturnType<typeof setTimeout>),
 	},
 	idleCallback: TEST_IDLE_CALLBACK,
-};
+});
 
 function makeRegistry(environment: FoundationEnvironment = TEST_ENVIRONMENT) {
 	return createTokenSetAuthRegistry<FakeClient, FakeService>({
@@ -61,9 +63,7 @@ function makeRegistry(environment: FoundationEnvironment = TEST_ENVIRONMENT) {
 		dispose: (service) => {
 			service.disposed = true;
 		},
-		authEventsOf: () => ({
-			subscribe: () => ({ unsubscribe() {} }),
-		}),
+		authEventsOf: () => createNeverEventStream(),
 		environment,
 	});
 }
@@ -121,8 +121,11 @@ describe("Multi-client lazy init contract (framework-neutral)", () => {
 
 	it("idleWarmup schedules preload for every lazy+not_initialized key", async () => {
 		const scheduledCallbacks: Array<() => void> = [];
-		const environment: FoundationEnvironment = {
-			...TEST_ENVIRONMENT,
+		const environment = createFoundationEnvironment({
+			transport: TEST_ENVIRONMENT.transport,
+			time: TEST_ENVIRONMENT.time,
+			span: TEST_ENVIRONMENT.span,
+			tracing: TEST_ENVIRONMENT.tracing,
 			idleCallback: {
 				requestIdleCallback: (callback) => {
 					scheduledCallbacks.push(callback);
@@ -130,7 +133,7 @@ describe("Multi-client lazy init contract (framework-neutral)", () => {
 				},
 				cancelIdleCallback: () => {},
 			},
-		};
+		});
 		const registry = makeRegistry(environment);
 		registry.register({
 			key: "p",

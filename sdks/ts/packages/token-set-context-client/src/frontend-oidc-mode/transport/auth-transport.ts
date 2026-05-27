@@ -1,22 +1,20 @@
 // Frontend OIDC Mode — authorized transport wrapper.
 //
-// Wraps the generic createAuthorizedTransport from @securitydept/client,
+// Wraps the generic createAuthorizedTransportFromBase from @securitydept/client,
 // remapping error codes to the frontend-oidc namespace.
 //
 // Symmetric counterpart of backend-oidc-mode/auth-transport.ts.
 
-import type {
-	BaseTransportTrait,
-	ManagedTransportTrait,
-} from "@securitydept/client";
 import {
 	type AuthorizationHeaderProviderTrait,
+	type BaseTransportTrait,
 	ClientError,
 	ClientErrorKind,
-	createRemappingAuthorizedTransport,
+	createRemappingAuthorizedTransportFromBase,
+	type ManagedTransportTrait,
 	UserRecovery,
 } from "@securitydept/client";
-import { FrontendOidcModeContextSource } from "../runtime/types";
+import { FrontendOidcModeContextSource } from "../client/types";
 
 export type { AuthorizationHeaderProviderTrait };
 
@@ -24,7 +22,7 @@ export interface CreateFrontendOidcModeAuthorizedTransportOptions {
 	baseTransport: BaseTransportTrait;
 	requireAuthorization?: boolean;
 	clientKey?: string;
-	logicalClientId?: string;
+	id?: string;
 }
 
 /**
@@ -35,17 +33,17 @@ export interface CreateFrontendOidcModeAuthorizedTransportOptions {
  *
  * Typical usage:
  * ```ts
- * const authorizedTransport = createFrontendOidcModeAuthorizedTransport(
+ * const authorizedTransport = createFrontendOidcModeAuthorizedTransportFromBase(
  *     client,   // FrontendOidcModeClient exposes authorizationHeaderValue
  *     { baseTransport },
  * );
  * ```
  */
-export function createFrontendOidcModeAuthorizedTransport(
+export function createFrontendOidcModeAuthorizedTransportFromBase(
 	authorizationProvider: AuthorizationHeaderProviderTrait,
 	options: CreateFrontendOidcModeAuthorizedTransportOptions,
 ): ManagedTransportTrait {
-	return createRemappingAuthorizedTransport(authorizationProvider, {
+	return createRemappingAuthorizedTransportFromBase(authorizationProvider, {
 		...options,
 		remapError: remapAuthError,
 	});

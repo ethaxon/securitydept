@@ -11,18 +11,21 @@
 // No domain-specific React Context or provider components are defined here.
 // Stability: provisional
 
-import type { FoundationEnvironment } from "@securitydept/client";
 import {
+	type FoundationEnvironment,
 	SecuritydeptDestroyRef,
 	SecuritydeptInjectionToken,
 	type SecuritydeptProvider,
 	tryInjectInInjectionContext,
-} from "@securitydept/client/injection";
+} from "@securitydept/client";
 import {
 	TokenSetAuthRegistry as CoreTokenSetAuthRegistry,
 	createTokenSetOidcAuthRegistry,
 } from "@securitydept/token-set-context-client/registry";
-import type { TokenSetClientEntry, TokenSetReactClient } from "./contracts";
+import {
+	type TokenSetClientEntry,
+	type TokenSetReactClient,
+} from "./contracts";
 
 export type ReactRegistry = CoreTokenSetAuthRegistry<
 	TokenSetReactClient,

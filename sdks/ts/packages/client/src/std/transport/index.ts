@@ -1,5 +1,5 @@
-export type { CreateExternalTransportForFetchOptions } from "./external-transport";
+export type { BaseTransportForStdFetchCreateOptions } from "./base-transport";
 export {
-	createExternalTransportForFetch,
+	createBaseTransportForStdFetch,
 	FetchTransportRedirectKind,
-} from "./external-transport";
+} from "./base-transport";

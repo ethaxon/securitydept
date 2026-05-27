@@ -1,19 +1,15 @@
 // @vitest-environment jsdom
 
 import {
+	createEventSubject,
 	createReplaySignal,
 	createSignal,
-	createSubject,
 } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import {
-	AuthCheckStatus,
-	type AuthSnapshot,
-	TokenFreshnessState,
-} from "@securitydept/token-set-context-client/orchestration";
+import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement, type ReactElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
@@ -125,7 +121,7 @@ describe("token-set react-query helpers", () => {
 								clearPending: createSignal(false),
 								loginPending: createSignal(false),
 							},
-							authEvents: createSubject(),
+							authEvents: createEventSubject(),
 							addWorkflowSource: vi.fn(() => ({
 								unsubscribe: vi.fn(),
 							})),
@@ -134,12 +130,6 @@ describe("token-set react-query helpers", () => {
 							dispose: vi.fn(),
 							restorePersistedState: vi.fn(async () => snapshot),
 							handleCallback: vi.fn(async () => ({ snapshot })),
-							authCheck: vi.fn(async () => ({
-								status: AuthCheckStatus.Authenticated,
-								snapshot,
-								freshness: TokenFreshnessState.Fresh,
-								authorizationHeader: "Bearer live-at",
-							})),
 							refresh: vi.fn(async () => snapshot),
 							clearState: vi.fn(async () => {}),
 							loginWithRedirect: vi.fn(async () => undefined),

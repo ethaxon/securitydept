@@ -5,16 +5,19 @@ import {
 	inject,
 	runInInjectionContext,
 } from "@angular/core";
-import type {
-	ActivatedRouteSnapshot,
-	RouterStateSnapshot,
+import {
+	type ActivatedRouteSnapshot,
+	Router,
+	type RouterStateSnapshot,
 } from "@angular/router";
-import { Router } from "@angular/router";
-import { createSignal, createSubject } from "@securitydept/client";
-import type {
-	PlannerHost,
-	PlannerHostResult,
-} from "@securitydept/client/auth-coordination";
+import {
+	createEventSubject,
+	createRootSpan,
+	createSignal,
+	createTracing,
+	type PlannerHost,
+	type PlannerHostResult,
+} from "@securitydept/client";
 import {
 	createEnvironmentForNativeWeb,
 	type NativeWebEnvironment,
@@ -60,14 +63,18 @@ function createAngularPageEnvironment(): NativeWebEnvironment {
 	return createEnvironmentForNativeWeb({
 		transport: createTransport(),
 		time: createTime(),
-		location: {
-			href: "https://app.example.com/current",
-			hash: "",
-			pathname: "/current",
-			search: "",
-		},
-		history: {
-			replaceState() {},
+		span: createRootSpan(),
+		tracing: createTracing(),
+		routerForNativeWebCreateOptions: {
+			location: {
+				href: "https://app.example.com/current",
+				hash: "",
+				pathname: "/current",
+				search: "",
+			},
+			history: {
+				replaceState() {},
+			},
 		},
 	});
 }
@@ -80,7 +87,7 @@ describe("Angular token-set route guard injection context", () => {
 		const client = {
 			state: createSignal(null),
 			...reactive.fields,
-			authEvents: createSubject(),
+			authEvents: createEventSubject(),
 			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
@@ -153,7 +160,7 @@ describe("Angular token-set route guard injection context", () => {
 		const client = {
 			state: createSignal(null),
 			...reactive.fields,
-			authEvents: createSubject(),
+			authEvents: createEventSubject(),
 			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),

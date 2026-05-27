@@ -1,12 +1,18 @@
-import { BehaviorSubject, filter, map, type Subscription } from "rxjs";
+import {
+	BehaviorSubject,
+	filter,
+	map,
+	Observable,
+	type Subscription,
+	skip,
+} from "rxjs";
 import { isInteropObservableTrait, SYMBOL_OBSERVABLE } from "../compat";
-import { createEventStream } from "../events";
-import type {
-	ComputedReplaySignalTrait,
-	ReadableReplaySignalTrait,
-	ReadableSignalTrait,
-	ReplaySignalSlot,
-	WritableReplaySignalTrait,
+import {
+	type ComputedReplaySignalTrait,
+	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
+	type ReplaySignalSlot,
+	type WritableReplaySignalTrait,
 } from "./types";
 
 const EMPTY_REPLAY_SIGNAL_SLOT = { kind: "empty" } as const;
@@ -15,11 +21,20 @@ export function createReplaySignal<T>(): WritableReplaySignalTrait<T> {
 	const subject = new BehaviorSubject<ReplaySignalSlot<T>>(
 		EMPTY_REPLAY_SIGNAL_SLOT,
 	);
+	const changes = subject.pipe(skip(1));
+	const valueObservable = subject.pipe(
+		filter(
+			(slot): slot is { kind: "value"; value: T } => slot.kind === "value",
+		),
+		map((slot) => slot.value),
+	);
 
 	return {
 		get: () => subject.getValue(),
 		subscribe: (listener) => {
-			const unsubscribe = subject.subscribe(listener);
+			const unsubscribe = changes.subscribe(() => {
+				listener();
+			});
 			return () => unsubscribe.unsubscribe();
 		},
 		hasValue: () => subject.getValue().kind === "value",
@@ -57,18 +72,11 @@ export function createReplaySignal<T>(): WritableReplaySignalTrait<T> {
 				disposeCancellation = cancellationToken?.onCancellationRequested(() => {
 					cleanup();
 					reject(readCancellationError(cancellationToken));
-				})[Symbol.dispose];
+				}).dispose;
 				resolveIfValue();
 			});
 		},
-		[SYMBOL_OBSERVABLE]: () => {
-			return subject.pipe(
-				filter(
-					(slot): slot is { kind: "value"; value: T } => slot.kind === "value",
-				),
-				map((slot) => slot.value),
-			);
-		},
+		[SYMBOL_OBSERVABLE]: () => valueObservable,
 		setValue(value) {
 			subject.next({ kind: "value", value });
 		},
@@ -177,7 +185,7 @@ function createReadableReplaySignalView<T>(
 				disposeCancellation = cancellationToken?.onCancellationRequested(() => {
 					cleanup();
 					reject(readCancellationError(cancellationToken));
-				})[Symbol.dispose];
+				}).dispose;
 				resolveIfValue();
 			});
 		},
@@ -185,20 +193,20 @@ function createReadableReplaySignalView<T>(
 
 	return Object.assign(signal, {
 		[SYMBOL_OBSERVABLE]: () => {
-			return createEventStream((observer) => {
-				const ifPresentEmit = () => {
+			return new Observable<T>((subscriber) => {
+				const emitIfPresent = () => {
 					const slot = signalLike.get();
 					if (slot.kind === "value") {
-						observer.next(slot.value);
+						subscriber.next(slot.value);
 					}
 				};
-				ifPresentEmit();
+				emitIfPresent();
 				const unsubscribe = signalLike.subscribe(() => {
-					ifPresentEmit();
+					emitIfPresent();
 				});
 				return () => {
 					unsubscribe();
-					observer.complete();
+					subscriber.complete();
 				};
 			});
 		},

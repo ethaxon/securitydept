@@ -1,15 +1,20 @@
 import {
+	createFoundationEnvironment,
 	createInMemoryRecordStore,
+	createRootSpan,
+	createTracing,
 	type RouterTrait,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
-import type { LoginWithRedirectOptions } from "@securitydept/session-context-client/web";
-import { loginWithRedirect } from "@securitydept/session-context-client/web";
-import type { LoginWithBackendOidcRedirectOptions } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+import {
+	type LoginWithRedirectOptions,
+	loginWithRedirect,
+} from "@securitydept/session-context-client/web";
 import {
 	createBackendOidcModeWebClient,
 	createBackendOidcModeWebClientEnvironment,
+	type LoginWithBackendOidcRedirectOptions,
 	loginWithBackendOidcRedirect,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import { describe, expect, it, vi } from "vitest";
@@ -106,6 +111,8 @@ describe("backend-oidc-mode/web loginWithBackendOidcRedirect", () => {
 
 		const client = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
 				persistentStorage,
 				sessionStorage,
 			}),
@@ -135,6 +142,8 @@ describe("backend-oidc-mode/web loginWithBackendOidcRedirect", () => {
 
 		const client = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
 				persistentStorage,
 				sessionStorage,
 			}),
@@ -165,7 +174,7 @@ describe("backend-oidc-mode/web loginWithBackendOidcRedirect", () => {
 describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 	it("builds the authorize URL, stores pending state, and navigates the browser", async () => {
 		const sessionStorage = createInMemoryRecordStore();
-		const runtime = {
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({
 					status: 200,
@@ -185,7 +194,7 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 				),
 			},
 			sessionStorage,
-		};
+		});
 
 		const { FrontendOidcModeClient } = await import(
 			"@securitydept/token-set-context-client/frontend-oidc-mode"

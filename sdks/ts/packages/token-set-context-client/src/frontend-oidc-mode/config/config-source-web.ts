@@ -13,40 +13,39 @@
 // factories without pulling in browser assumptions.
 
 import {
+	type BaseTransportForStdFetchCreateOptions,
 	type BaseTransportTrait,
 	ClientError,
-	createClientEnvironment,
-	createExternalTransportForFetch,
+	ClientErrorKind,
+	createFoundationEnvironment,
 	type FoundationEnvironment,
 	type IdleCallbackTrait,
-	type LoggerTrait,
 	type PageLifecycleTrait,
+	type SpanTrait,
 	type StorageTrait,
 	type TimeTrait,
-	type TraceEventSinkTrait,
+	type TracingTrait,
+	UserRecovery,
 } from "@securitydept/client";
 import {
-	createLocalStorageStore,
-	createSessionStorageStore,
-} from "@securitydept/client/persistence/web";
-import type {
-	AuthWorkflowRuntimeOptions,
-	PageResumeWorkflowSourceOptions,
-} from "../../orchestration";
-import { parseConfigProjection } from "../contracts/contracts";
+	createPersistentStorageForNativeWeb,
+	createSessionStorageForNativeWeb,
+} from "@securitydept/client/web";
+import { type AuthWorkflowRuntimeOptions } from "../../orchestration";
 import {
 	createFrontendOidcModeClient,
 	type FrontendOidcModeClient,
-} from "../runtime/client";
-import type { FrontendOidcModeClientConfig } from "../runtime/types";
-import type {
-	ConfigProjectionSourceBootstrapScript,
-	ConfigProjectionSourceNetwork,
-	ConfigProjectionSourcePersisted,
-	PersistedConfigEnvelope,
-	ResolvedConfigProjection,
+} from "../client/client";
+import { type FrontendOidcModeClientConfig } from "../client/types";
+import { parseConfigProjection } from "../contracts/contracts";
+import {
+	type ConfigProjectionSourceBootstrapScript,
+	ConfigProjectionSourceKind,
+	type ConfigProjectionSourceNetwork,
+	type ConfigProjectionSourcePersisted,
+	type PersistedConfigEnvelope,
+	type ResolvedConfigProjection,
 } from "./config-source";
-import { ConfigProjectionSourceKind } from "./config-source";
 
 const FRONTEND_OIDC_PERSISTENT_PREFIX =
 	"securitydept.web.frontend_oidc:persistent:";
@@ -93,11 +92,12 @@ export interface CreateFrontendOidcModeWebClientEnvironmentOptions {
 	persistentStorage?: StorageTrait;
 	sessionStorage?: StorageTrait;
 	transport?: BaseTransportTrait;
+	transportForStdFetchCreateOptions?: BaseTransportForStdFetchCreateOptions;
+	span: SpanTrait;
 	time?: TimeTrait;
 	idleCallback?: IdleCallbackTrait;
 	pageLifecycle?: PageLifecycleTrait;
-	logger?: LoggerTrait;
-	traceSink?: TraceEventSinkTrait;
+	tracing: TracingTrait;
 	origin?: string;
 	fetch?: typeof globalThis.fetch;
 }
@@ -110,7 +110,7 @@ export interface FrontendOidcModeBrowserClientMaterialization {
 }
 
 export function createFrontendOidcModeWebClientEnvironment(
-	options: CreateFrontendOidcModeWebClientEnvironmentOptions = {},
+	options: CreateFrontendOidcModeWebClientEnvironmentOptions,
 ): FrontendOidcModeWebClientEnvironment {
 	if (options.environment) {
 		return options.environment;
@@ -120,23 +120,31 @@ export function createFrontendOidcModeWebClientEnvironment(
 		options.persistentStoragePrefix ?? FRONTEND_OIDC_PERSISTENT_PREFIX;
 	const sessionStoragePrefix =
 		options.sessionStoragePrefix ?? FRONTEND_OIDC_SESSION_PREFIX;
-	const environment = createClientEnvironment({
-		transport: options.transport ?? createExternalTransportForFetch(),
+	const environment = createFoundationEnvironment({
+		transport: options.transport,
+		transportForStdFetchCreateOptions:
+			options.transportForStdFetchCreateOptions,
+		span: options.span,
 		time: options.time,
 		idleCallback: options.idleCallback,
 		pageLifecycle: options.pageLifecycle,
-		telemetry:
-			options.logger || options.traceSink
-				? {
-						logger: options.logger,
-						traceSink: options.traceSink,
-					}
-				: undefined,
+		tracing: options.tracing,
 		persistentStorage:
 			options.persistentStorage ??
-			createLocalStorageStore(persistentStoragePrefix),
+			requireFrontendOidcWebStorage(
+				createPersistentStorageForNativeWeb({
+					prefix: persistentStoragePrefix,
+				}),
+				"localStorage",
+			),
 		sessionStorage:
-			options.sessionStorage ?? createSessionStorageStore(sessionStoragePrefix),
+			options.sessionStorage ??
+			requireFrontendOidcWebStorage(
+				createSessionStorageForNativeWeb({
+					prefix: sessionStoragePrefix,
+				}),
+				"sessionStorage",
+			),
 	});
 
 	return {
@@ -217,13 +225,8 @@ function resolveWebAuthWorkflowRuntimeOptions(
 	options: AuthWorkflowRuntimeOptions | undefined,
 	environment: FrontendOidcModeWebClientEnvironment,
 ): AuthWorkflowRuntimeOptions {
-	const pageResume = options?.sources?.pageResume ?? {
-		kind: "bundle" as const,
-		options: {
-			pageLifecycle: environment.pageLifecycle ?? null,
-			now: () => environment.time.now(),
-		} satisfies PageResumeWorkflowSourceOptions,
-	};
+	void environment;
+	const pageResume = options?.sources?.pageResume ?? ("bundle" as const);
 	return {
 		...options,
 		sources: {
@@ -231,6 +234,22 @@ function resolveWebAuthWorkflowRuntimeOptions(
 			pageResume,
 		},
 	};
+}
+
+function requireFrontendOidcWebStorage(
+	storage: StorageTrait | null,
+	hostName: "localStorage" | "sessionStorage",
+): StorageTrait {
+	if (storage !== null) {
+		return storage;
+	}
+	throw new ClientError({
+		kind: ClientErrorKind.Configuration,
+		code: "frontend_oidc.web.storage_unavailable",
+		message: `Frontend OIDC browser materialization requires globalThis.${hostName}.`,
+		recovery: UserRecovery.RestartFlow,
+		source: "frontend-oidc-mode",
+	});
 }
 
 function requireWindowOrigin(): string {
@@ -364,7 +383,7 @@ export function bootstrapScriptSource(options: {
  * containing both the raw projection data and the authoritative `generatedAt`
  * timestamp from the backend.
  *
- * @param options.store - Abstract StorageTrait (e.g. from `createLocalStorageStore`)
+ * @param options.store - Abstract StorageTrait (e.g. from `createPersistentStorageForNativeWeb`)
  * @param options.storageKey - Key within the store
  * @param options.redirectUri - OIDC callback redirect URI override
  * @param options.defaultPostAuthRedirectUri - App-level default redirect after auth
@@ -470,10 +489,6 @@ export interface IdleRevalidationOptions {
 	 * If absent or if `time.now() - generatedAt > maxAge`, revalidation fires.
 	 */
 	generatedAt?: number;
-	/**
-	 * Diagnostic logger.
-	 */
-	logger?: (level: "info" | "warn" | "error", message: string) => void;
 }
 
 /**
@@ -500,24 +515,15 @@ export function scheduleIdleRevalidation(
 		storageKey,
 		maxAge = 300_000,
 		generatedAt,
-		logger,
 	} = options;
 
 	// Skip if source is still fresh based on authoritative generation time
 	const now = time.now();
 	if (generatedAt !== undefined && now - generatedAt <= maxAge) {
-		logger?.(
-			"info",
-			`Config projection still fresh (generated ${Math.round((now - generatedAt) / 1000)}s ago, maxAge=${maxAge / 1000}s). Skipping idle revalidation.`,
-		);
 		return undefined;
 	}
 
 	if (!idleCallback) {
-		logger?.(
-			"info",
-			"Idle callback capability not provided. Skipping idle revalidation.",
-		);
 		return undefined;
 	}
 
@@ -532,15 +538,7 @@ export function scheduleIdleRevalidation(
 				generatedAt: freshGeneratedAt,
 			};
 			await store.set(storageKey, JSON.stringify(envelope));
-			logger?.(
-				"info",
-				`Idle revalidation succeeded — persisted fresh config (generatedAt: ${freshGeneratedAt})`,
-			);
-		} catch (error) {
-			logger?.(
-				"warn",
-				`Idle revalidation failed — retaining cached config: ${error instanceof Error ? error.message : String(error)}`,
-			);
+		} catch {
 			// Silently retain existing cache
 		}
 	};

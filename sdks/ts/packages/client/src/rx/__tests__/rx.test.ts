@@ -1,20 +1,29 @@
-import { Observable, of } from "rxjs";
+import { Observable, of, Subject } from "rxjs";
 import { describe, expect, it } from "vitest";
 import {
 	createAndThenComputedReplaySignal,
+	createEventSubject,
 	createReplaySignal,
 	createSignal,
-	createSubject,
+	SYMBOL_OBSERVABLE,
 } from "../../index";
-import { fromRxObservable, toRxObservable } from "../index";
+import {
+	eventStreamToObservable,
+	eventSubjectToSubject,
+	observableToEventStream,
+	signalToObservable,
+	subjectToEventSubject,
+} from "../index";
 
 describe("@securitydept/client/rx", () => {
 	it("toRxObservable(signal) emits immediately and tracks updates until unsubscribe", () => {
 		const signal = createSignal("initial");
 		const values: string[] = [];
-		const subscription = toRxObservable(signal).subscribe((value) => {
-			values.push(value);
-		});
+		const subscription = signalToObservable(signal).subscribe(
+			(value: string) => {
+				values.push(value);
+			},
+		);
 
 		signal.set("next");
 		subscription.unsubscribe();
@@ -24,10 +33,12 @@ describe("@securitydept/client/rx", () => {
 	});
 
 	it("toRxObservable(eventStream) preserves event-stream semantics", () => {
-		const source = createSubject<number>();
+		const source = createEventSubject<number>();
 		const values: number[] = [];
 
-		toRxObservable(source).subscribe((value) => values.push(value));
+		eventStreamToObservable(source).subscribe((value: number) =>
+			values.push(value),
+		);
 		source.next(1);
 		source.next(2);
 
@@ -37,7 +48,9 @@ describe("@securitydept/client/rx", () => {
 	it("toRxObservable(replaySignal) waits for the first emitted value", () => {
 		const signal = createReplaySignal<string>();
 		const values: string[] = [];
-		const subscription = toRxObservable(signal).subscribe((value) => {
+		const subscription = eventStreamToObservable(
+			signal[SYMBOL_OBSERVABLE](),
+		).subscribe((value: string) => {
 			values.push(value);
 		});
 
@@ -54,9 +67,11 @@ describe("@securitydept/client/rx", () => {
 		signal.setValue("ready");
 		const values: string[] = [];
 
-		toRxObservable(signal).subscribe((value) => {
-			values.push(value);
-		});
+		eventStreamToObservable(signal[SYMBOL_OBSERVABLE]()).subscribe(
+			(value: string) => {
+				values.push(value);
+			},
+		);
 
 		expect(values).toEqual(["ready"]);
 	});
@@ -69,9 +84,11 @@ describe("@securitydept/client/rx", () => {
 		}));
 		const values: number[] = [];
 
-		toRxObservable(doubled).subscribe((value) => {
-			values.push(value);
-		});
+		eventStreamToObservable(doubled[SYMBOL_OBSERVABLE]()).subscribe(
+			(value: number) => {
+				values.push(value);
+			},
+		);
 		source.setValue(2);
 		source.setValue(4);
 
@@ -81,8 +98,8 @@ describe("@securitydept/client/rx", () => {
 	it("fromRxObservable wraps RxJS observables", () => {
 		const values: number[] = [];
 
-		fromRxObservable(of(1, 2, 3)).subscribe({
-			next: (value) => values.push(value),
+		observableToEventStream(of(1, 2, 3)).subscribe({
+			next: (value: number) => values.push(value),
 		});
 
 		expect(values).toEqual([1, 2, 3]);
@@ -90,15 +107,39 @@ describe("@securitydept/client/rx", () => {
 
 	it("fromRxObservable supports live observables", () => {
 		const values: number[] = [];
-		const stream = fromRxObservable(
+		const stream = observableToEventStream(
 			new Observable<number>((subscriber) => {
 				subscriber.next(7);
 				return () => undefined;
 			}),
 		);
 
-		stream.subscribe({ next: (value) => values.push(value) });
+		stream.subscribe({ next: (value: number) => values.push(value) });
 
 		expect(values).toEqual([7]);
+	});
+
+	it("subjectToEventSubject exposes a RxJS subject as an event subject", () => {
+		const source = new Subject<number>();
+		const subject = subjectToEventSubject(source);
+		const values: number[] = [];
+
+		subject.subscribe({ next: (value) => values.push(value) });
+		subject.next(1);
+		source.next(2);
+
+		expect(values).toEqual([1, 2]);
+	});
+
+	it("eventSubjectToSubject bridges an event subject to a RxJS subject", () => {
+		const source = createEventSubject<number>();
+		const subject = eventSubjectToSubject(source);
+		const values: number[] = [];
+
+		subject.subscribe((value) => values.push(value));
+		subject.next(1);
+		source.next(2);
+
+		expect(values).toEqual([1, 2]);
 	});
 });

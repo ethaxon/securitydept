@@ -1,7 +1,7 @@
 import {
 	createRouteRequirementOrchestrator,
 	ResolutionStatus,
-} from "@securitydept/client/auth-coordination";
+} from "@securitydept/client";
 import {
 	createTanStackRouteActivator,
 	DEFAULT_REQUIREMENTS_KEY,

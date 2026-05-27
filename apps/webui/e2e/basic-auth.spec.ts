@@ -12,7 +12,7 @@ import {
 	VerifiedScenarioId,
 	VerifiedStatus,
 } from "./support/browser-harness.ts";
-import type { HarnessBrowserName } from "./support/browser-harness-contract.ts";
+import { type HarnessBrowserName } from "./support/browser-harness-contract.ts";
 import {
 	basicAuthLoginPath,
 	basicAuthLogoutPath,

@@ -1,4 +1,4 @@
-import type { ErrorPresentationDescriptor } from "@securitydept/client";
+import { type ErrorPresentationDescriptor } from "@securitydept/client";
 
 interface ErrorPresentationCalloutProps {
 	descriptor: ErrorPresentationDescriptor;

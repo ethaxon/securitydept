@@ -1,4 +1,4 @@
-import type { TimeTrait } from "@securitydept/client";
+import { type TimeTrait } from "@securitydept/client";
 import { FakeClock } from "./fake-clock";
 
 interface ScheduledTask {

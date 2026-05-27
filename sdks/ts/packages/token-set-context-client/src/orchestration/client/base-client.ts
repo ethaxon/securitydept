@@ -11,58 +11,72 @@
 // Planner modules are intentionally kept pure and closed:
 // they return only final candidates and never enqueue follow-up tasks.
 
-import type {
-	CancellationTokenSourceTrait,
-	EventStreamTrait,
-	FoundationEnvironment,
-	OperationScope,
-	ReadableReplaySignalTrait,
-	ReadableSignalTrait,
-	SpanTrait,
-	StorageTrait,
-	WritableSignalTrait,
-} from "@securitydept/client";
 import {
+	type CancellationTokenSourceTrait,
 	ClientError,
 	ClientErrorKind,
 	createAndThenComputedReplaySignal,
 	createCancellationTokenSource,
 	createEventReplaySubject,
 	createEventSubject,
+	createOnceAsyncLockCallable,
 	createReplaySignal,
 	createSignal,
-	createSpan,
+	type DisposableTrait,
+	defineInstrumentMethodDecorator,
 	describeError,
+	type EventStreamTrait,
+	type FoundationEnvironment,
+	type OperationSpanTrait,
+	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
 	readonlyReplaySignal,
 	readonlySignal,
+	type SpanTrait,
+	SYMBOL_DISPOSE,
+	type WritableSignalTrait,
 } from "@securitydept/client";
 import {
 	type Command,
 	type CommandResponse,
 	concatCommand,
 	dispatchCommandLocallyToPromise,
+	signalToObservable,
 } from "@securitydept/client/rx";
-import { createOnceAsyncLockCallable } from "@securitydept/client/struct";
 import { from, merge, takeUntil, withLatestFrom } from "rxjs";
-import type { Disposable } from "vitest/optional-runtime-types.js";
+import { v7 as uuidv7 } from "uuid";
 import {
 	createTokenSetAuthEvent,
+	summarizeAuthError,
 	type TokenSetAuthEvent,
 	type TokenSetAuthEventPayload,
 	TokenSetAuthEventType,
 } from "../events/auth-events";
-
-import type {
-	TokenFreshnessOptions,
-	TokenFreshnessTiming,
+import {
+	type TokenFreshnessOptions,
+	TokenFreshnessState,
+	type TokenFreshnessTiming,
 } from "../token/freshness";
 import { bearerHeader } from "../token/ops";
-import type { AuthSnapshot } from "../token/types";
-import type { AuthSnapshotPersistenceOptions } from "./persistence";
+import { type AuthSnapshot } from "../token/types";
+import {
+	type AuthSnapshotPersistenceOptions,
+	clearPersistedAuthSnapshot,
+	savePersistedAuthSnapshot,
+} from "./persistence";
+import {
+	type BaseOidcModeClientOptions,
+	type TokenSetAuthOperationSignals,
+} from "./types";
 import {
 	type AuthDeterminationCommit,
+	type AuthDeterminationEvent,
+	AuthDeterminationKind,
 	PersistPolicy,
 } from "./workflows/commit";
+
+export { PersistPolicy } from "./workflows/commit";
+
 import { type PlanClearRequest, planClear } from "./workflows/plan/clear";
 import {
 	type FetchRefreshedSnapshot,
@@ -76,42 +90,27 @@ import {
 	planRestore,
 	planRestorePersisted,
 } from "./workflows/plan/restore";
-import {
-	type CreatePageResumeWorkflowSourceOptions,
-	PageResumeWorkflowSource,
-} from "./workflows/source/page-resume";
-import {
-	type CreateRefreshTimerWorkflowSourceOptions,
-	RefreshTimerWorkflowSource,
-} from "./workflows/source/refresh-timer";
-import type { BuiltinAuthWorkflowSourceConfig } from "./workflows/source/types";
+import { PageResumeWorkflowSource } from "./workflows/source/page-resume";
+import { RefreshTimerWorkflowSource } from "./workflows/source/refresh-timer";
+import { TokenSetOrchestrationTraceEvent } from "./workflows/trace-events";
 
-export interface BaseOidcModeClientOptions {
-	environment: FoundationEnvironment;
-	refresh?: Partial<{
-		tokenFreshness?: Partial<TokenFreshnessOptions>;
-		sources: {
-			[RefreshTimerWorkflowSource.name]?: BuiltinAuthWorkflowSourceConfig<
-				Partial<CreateRefreshTimerWorkflowSourceOptions>
-			>;
-			[PageResumeWorkflowSource.name]?: BuiltinAuthWorkflowSourceConfig<
-				Partial<CreatePageResumeWorkflowSourceOptions>
-			>;
-		};
-	}>;
-	traceScope: string;
-	traceSource: string;
-	tracePrefix: string;
-	clientName: string;
-	logicalClientId?: string;
-	persistence?: {
-		store: StorageTrait;
-		key: string;
-	};
-	autoStart?: boolean;
-}
+const instrumentWorkflowMethod = defineInstrumentMethodDecorator<
+	[workflow: string],
+	BaseOidcModeClient
+>(
+	({ factoryArgs: [workflow] }) =>
+		function (this: BaseOidcModeClient) {
+			return {
+				environment: this.environment,
+				span: this.span,
+				name: `${this._tracePrefix}.${workflow}`,
+				fields: { workflow },
+				target: this._traceTarget,
+			};
+		},
+);
 
-export abstract class BaseOidcModeClient implements Disposable {
+export abstract class BaseOidcModeClient implements DisposableTrait {
 	static defaultFreshnessOptions: TokenFreshnessOptions = {
 		clockSkewMs: 60 * 1000,
 		refreshWindowMs: 5 * 60 * 1000,
@@ -119,12 +118,11 @@ export abstract class BaseOidcModeClient implements Disposable {
 
 	protected readonly _environment: FoundationEnvironment;
 	protected readonly _freshnessOptions: TokenFreshnessOptions;
-	protected readonly _traceScope: string;
-	protected readonly _traceSource: string;
+	protected readonly _traceTarget: string;
 	protected readonly _tracePrefix: string;
 	protected readonly _clientName: string;
-	protected readonly _logicalClientId: string | undefined;
 	protected readonly _persistence: AuthSnapshotPersistenceOptions | null;
+	protected readonly _span: SpanTrait;
 	protected readonly _authSnapshotSignal =
 		createReplaySignal<AuthSnapshot | null>();
 
@@ -180,12 +178,7 @@ export abstract class BaseOidcModeClient implements Disposable {
 	>;
 	readonly lastAuthError: ReadableSignalTrait<unknown | undefined> =
 		readonlySignal(this._lastAuthErrorSignal);
-	readonly authOperations: {
-		readonly restorePending: ReadableSignalTrait<boolean>;
-		readonly refreshPending: ReadableSignalTrait<boolean>;
-		readonly clearPending: ReadableSignalTrait<boolean>;
-		readonly loginPending: ReadableSignalTrait<boolean>;
-	} = {
+	readonly authOperations: TokenSetAuthOperationSignals = {
 		restorePending: readonlySignal(this._authOperationSignals.restorePending),
 		refreshPending: readonlySignal(this._authOperationSignals.refreshPending),
 		clearPending: readonlySignal(this._authOperationSignals.clearPending),
@@ -195,14 +188,28 @@ export abstract class BaseOidcModeClient implements Disposable {
 		this._authEventSubject;
 	readonly refreshTimerWorkflowSource: RefreshTimerWorkflowSource;
 	readonly pageResumeWorkflowSource: PageResumeWorkflowSource;
+	readonly id: string;
+
+	protected get environment(): FoundationEnvironment {
+		return this._environment;
+	}
+
+	protected get span(): SpanTrait {
+		return this._span;
+	}
 
 	protected constructor(options: BaseOidcModeClientOptions) {
 		this._environment = options.environment;
-		this._traceScope = options.traceScope;
-		this._traceSource = options.traceSource;
+		this._traceTarget = options.traceTarget;
 		this._tracePrefix = options.tracePrefix;
 		this._clientName = options.clientName;
-		this._logicalClientId = options.logicalClientId;
+		this.id = options.id ?? uuidv7();
+		this._span = options.environment.span.fork({
+			attributes: {
+				clientName: options.clientName,
+				id: this.id,
+			},
+		});
 		this._freshnessOptions = Object.assign(
 			{},
 			BaseOidcModeClient.defaultFreshnessOptions,
@@ -238,6 +245,13 @@ export abstract class BaseOidcModeClient implements Disposable {
 				time: options.environment.time,
 				freshnessOptions: this._freshnessOptions,
 				authSnapshot: this.authSnapshot,
+				recordTrace: (type, attributes) => {
+					this._recordTrace(
+						`${this._tracePrefix}.${RefreshTimerWorkflowSource.name}.${type}`,
+						attributes,
+						this._span,
+					);
+				},
 			},
 			options.refresh?.sources?.[RefreshTimerWorkflowSource.name],
 		);
@@ -246,13 +260,20 @@ export abstract class BaseOidcModeClient implements Disposable {
 			{
 				pageLifecycle: options.environment.pageLifecycle,
 				time: options.environment.time,
+				recordTrace: (type, attributes) => {
+					this._recordTrace(
+						`${this._tracePrefix}.${PageResumeWorkflowSource.name}.${type}`,
+						attributes,
+						this._span,
+					);
+				},
 			},
 			options.refresh?.sources?.[PageResumeWorkflowSource.name],
 		);
 
 		merge(
-			this.pageResumeWorkflowSource.eventStream,
-			this.refreshTimerWorkflowSource.eventStream,
+			from(this.pageResumeWorkflowSource.eventStream),
+			from(this.refreshTimerWorkflowSource.eventStream),
 		)
 			.pipe(takeUntil(this._destroyed))
 			.subscribe(() => {
@@ -260,7 +281,10 @@ export abstract class BaseOidcModeClient implements Disposable {
 			});
 
 		from(this.refreshWorkflowSubject)
-			.pipe(withLatestFrom(this.authSnapshot), takeUntil(this._destroyed))
+			.pipe(
+				withLatestFrom(signalToObservable(this.authSnapshot)),
+				takeUntil(this._destroyed),
+			)
 			.subscribe(([_, snapshot]) => {
 				this._refreshState({
 					snapshot: snapshot,
@@ -269,10 +293,7 @@ export abstract class BaseOidcModeClient implements Disposable {
 			});
 
 		from(this.planRefreshRequest)
-			.pipe(
-				concatCommand((request) => planRefresh(request.payload)),
-				takeUntil(this._destroyed),
-			)
+			.pipe(concatCommand((request) => planRefresh(request.payload)))
 			.subscribe(this.planRefreshResponse);
 
 		if (options.autoStart === true) {
@@ -297,7 +318,7 @@ export abstract class BaseOidcModeClient implements Disposable {
 				message:
 					"restorePersistedState() requires configured persistence for this client.",
 				code: "auth_restore.persistence_unavailable",
-				source: this._traceScope,
+				source: this._traceTarget,
 			});
 		}
 		return await this._restorePersistedState({
@@ -321,135 +342,364 @@ export abstract class BaseOidcModeClient implements Disposable {
 		});
 	}
 
-	private _createRefreshFetcher(): FetchRefreshedSnapshot {
+	protected async _applySnapshot(
+		snapshot: AuthSnapshot,
+		options: { persistPolicy?: PersistPolicy } = {},
+		span?: SpanTrait,
+	): Promise<AuthSnapshot> {
+		this._throwIfNotOperational();
+		return await this._commitDetermination(
+			{
+				candidate: {
+					kind: AuthDeterminationKind.Authenticated,
+					snapshot,
+				},
+				persistPolicy: options.persistPolicy ?? PersistPolicy.FollowClient,
+				events: [
+					{
+						type: TokenSetAuthEventType.AuthAuthenticated,
+						payload: this._authIdentity(),
+					},
+				],
+				result: snapshot,
+			},
+			span,
+		);
+	}
+
+	private _createRefreshFetcher(
+		operationSpan?: SpanTrait,
+	): FetchRefreshedSnapshot {
 		return async (snapshot, freshnessTiming) => {
-			this._emitAuthEvent(TokenSetAuthEventType.AuthRefreshRequired, {});
+			const hasRefreshMaterial = snapshot.tokens.refreshMaterial != null;
+			this._emitAuthEvent(TokenSetAuthEventType.AuthRefreshRequired, {
+				...this._authIdentity(),
+				freshness: freshnessTiming,
+				hasRefreshMaterial,
+			});
 			try {
 				this._authOperationSignals.refreshPending.set(true);
-				this._emitAuthEvent(TokenSetAuthEventType.AuthRefreshStarted, {});
-				return await this._refreshAuthSnapshot(snapshot, freshnessTiming);
+				this._emitAuthEvent(TokenSetAuthEventType.AuthRefreshStarted, {
+					...this._authIdentity(),
+					freshness: freshnessTiming,
+					hasRefreshMaterial,
+				});
+				const refreshed = await this._refreshAuthSnapshot(
+					snapshot,
+					freshnessTiming,
+					operationSpan,
+				);
+				return refreshed;
 			} finally {
 				this._authOperationSignals.refreshPending.set(false);
 			}
 		};
 	}
 
-	protected async _refreshState(request: {
-		snapshot: AuthSnapshot | null;
-		freshnessOptions: TokenFreshnessOptions;
-	}): Promise<AuthSnapshot | null> {
+	@instrumentWorkflowMethod("refresh")
+	protected async _refreshState(
+		request: {
+			snapshot: AuthSnapshot | null;
+			freshnessOptions: TokenFreshnessOptions;
+		},
+		operationSpan?: OperationSpanTrait,
+	): Promise<AuthSnapshot | null> {
 		this._throwIfNotOperational();
 		try {
 			this._authOperationSignals.refreshPending.set(true);
 			const currentSnapshot = await this._authSnapshotSignal.whenValue();
-			if (currentSnapshot) {
-				const refreshPlan = await this._planRefreshInQueue({
-					snapshot: currentSnapshot,
-					freshnessOptions: request.freshnessOptions,
-				});
-				return this._commitDetermination({
-					candidate: refreshPlan,
-					persistPolicy: PersistPolicy.FollowClient,
-					events: [],
-					result: refreshPlan.snapshot ?? null,
-				});
-			} else {
+			if (!currentSnapshot) {
 				return currentSnapshot;
 			}
+			const refreshPlan = await this._planRefreshInQueue(
+				{
+					snapshot: currentSnapshot,
+					freshnessOptions: request.freshnessOptions,
+				},
+				operationSpan,
+			);
+			if (refreshPlan.kind === AuthDeterminationKind.Failed) {
+				return this._commitDetermination(
+					{
+						candidate: refreshPlan,
+						persistPolicy: PersistPolicy.FollowClient,
+						events: [
+							...this._buildRefreshLifecycleEvents(
+								currentSnapshot,
+								refreshPlan,
+							),
+							{
+								type: TokenSetAuthEventType.AuthUnauthenticated,
+								payload: this._authIdentity(),
+							},
+						],
+						result: null,
+						trace: {
+							type: this._traceType(
+								TokenSetOrchestrationTraceEvent.RefreshFailed,
+							),
+						},
+						traceError: refreshPlan.error,
+					},
+					operationSpan,
+				);
+			}
+			return this._commitDetermination(
+				{
+					candidate: refreshPlan,
+					persistPolicy: PersistPolicy.FollowClient,
+					events: [
+						...this._buildRefreshLifecycleEvents(currentSnapshot, refreshPlan),
+						refreshPlan.kind === AuthDeterminationKind.Authenticated
+							? {
+									type: TokenSetAuthEventType.AuthAuthenticated,
+									payload: this._authIdentity(),
+								}
+							: {
+									type: TokenSetAuthEventType.AuthUnauthenticated,
+									payload: this._authIdentity(),
+								},
+					],
+					result: refreshPlan.snapshot ?? null,
+					trace: {
+						type: this._traceType(
+							TokenSetOrchestrationTraceEvent.RefreshCommitted,
+						),
+					},
+				},
+				operationSpan,
+			);
 		} finally {
 			this._authOperationSignals.refreshPending.set(false);
 		}
 	}
 
-	protected async _clearState(request: PlanClearRequest): Promise<null> {
+	@instrumentWorkflowMethod("clear")
+	protected async _clearState(
+		request: PlanClearRequest,
+		operationSpan?: OperationSpanTrait,
+	): Promise<null> {
 		this._throwIfNotOperational();
 		this._authOperationSignals.clearPending.set(true);
 		try {
 			const clearPlan = await planClear(request);
-			return await this._commitDetermination({
-				candidate: clearPlan,
-				persistPolicy: PersistPolicy.FollowClient,
-				events: [
-					{
-						type: TokenSetAuthEventType.AuthMaterialCleared,
-						payload: {},
+			return await this._commitDetermination(
+				{
+					candidate: clearPlan,
+					persistPolicy: PersistPolicy.FollowClient,
+					events: [
+						{
+							type: TokenSetAuthEventType.AuthMaterialCleared,
+							payload: this._authIdentity(),
+						},
+					],
+					result: null,
+					trace: {
+						type: this._traceType(TokenSetOrchestrationTraceEvent.StateCleared),
 					},
-				],
-				result: null,
-				trace: {
-					type: `${this._tracePrefix}.state.cleared`,
-					attributes: {},
 				},
-			});
+				operationSpan,
+			);
 		} finally {
 			this._authOperationSignals.clearPending.set(false);
 		}
 	}
 
+	@instrumentWorkflowMethod("restore")
 	protected async _restoreState(
 		request: PlanRestoreRequest,
+		operationSpan?: OperationSpanTrait,
 	): Promise<AuthSnapshot> {
 		this._throwIfNotOperational();
-		this._authOperationSignals.restorePending.set(false);
+		this._authOperationSignals.restorePending.set(true);
 		try {
 			const restorePlan = await planRestore(request);
-			return await this._commitDetermination({
-				candidate: restorePlan,
-				persistPolicy: PersistPolicy.Skip,
-				events: [
-					{
-						type: TokenSetAuthEventType.AuthMaterialRestored,
-						payload: {},
+			return await this._commitDetermination(
+				{
+					candidate: restorePlan,
+					persistPolicy: PersistPolicy.Skip,
+					events: [
+						{
+							type: TokenSetAuthEventType.AuthMaterialRestored,
+							payload: this._authIdentity(),
+						},
+						{
+							type: TokenSetAuthEventType.AuthAuthenticated,
+							payload: this._authIdentity(),
+						},
+					],
+					result: restorePlan.snapshot,
+					trace: {
+						type: this._traceType(
+							TokenSetOrchestrationTraceEvent.StateRestored,
+						),
 					},
-					{
-						type: TokenSetAuthEventType.AuthAuthenticated,
-						payload: {},
-					},
-				],
-				result: restorePlan.snapshot,
-				trace: {
-					type: `${this._tracePrefix}.state.restored`,
-					attributes: {},
 				},
-			});
+				operationSpan,
+			);
 		} finally {
 			this._authOperationSignals.restorePending.set(false);
 		}
 	}
 
+	@instrumentWorkflowMethod("restore.persisted")
 	protected async _restorePersistedState(
 		request: PlanRestorePersistedRequest,
+		operationSpan?: OperationSpanTrait,
 	): Promise<AuthSnapshot | null> {
 		this._throwIfNotOperational();
 		this._emitAuthEvent(TokenSetAuthEventType.AuthMaterialRestoreStarted, {
+			...this._authIdentity(),
 			persisted: true,
 		});
+		this._recordTrace(
+			this._traceType(TokenSetOrchestrationTraceEvent.PersistedRestoreStarted),
+			undefined,
+			operationSpan ?? this._span,
+		);
 		try {
 			this._authOperationSignals.restorePending.set(true);
 			const restorePlan = await planRestorePersisted(request);
-			if (restorePlan.snapshot) {
-				const refreshPlan = await this._planRefreshInQueue({
+			if (restorePlan.kind === AuthDeterminationKind.Failed) {
+				return this._commitDetermination(
+					{
+						candidate: restorePlan,
+						persistPolicy: PersistPolicy.FollowClient,
+						events: [
+							{
+								type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
+								payload: {
+									...this._authIdentity(),
+									persisted: true,
+									errorSummary: summarizeAuthError(restorePlan.error),
+								},
+							},
+						],
+						result: null,
+						trace: {
+							type: this._traceType(
+								TokenSetOrchestrationTraceEvent.PersistedRestoreFailed,
+							),
+						},
+						traceError: restorePlan.error,
+					},
+					operationSpan,
+				);
+			}
+			if (restorePlan.kind === AuthDeterminationKind.Unauthenticated) {
+				return this._commitDetermination(
+					{
+						candidate: restorePlan,
+						persistPolicy: PersistPolicy.FollowClient,
+						events: [
+							{
+								type: TokenSetAuthEventType.AuthUnauthenticated,
+								payload: this._authIdentity(),
+							},
+						],
+						result: null,
+						trace: {
+							type: this._traceType(
+								TokenSetOrchestrationTraceEvent.PersistedRestoreLoaded,
+							),
+						},
+					},
+					operationSpan,
+				);
+			}
+			// A persisted snapshot was loaded; reconcile its freshness before
+			// committing the restored determination.
+			const refreshPlan = await this._planRefreshInQueue(
+				{
 					snapshot: restorePlan.snapshot,
 					freshnessOptions: request.freshnessOptions,
-				});
-				return this._commitDetermination({
+				},
+				operationSpan,
+			);
+			if (refreshPlan.kind === AuthDeterminationKind.Failed) {
+				return this._commitDetermination(
+					{
+						candidate: refreshPlan,
+						persistPolicy: PersistPolicy.FollowClient,
+						events: [
+							...this._buildRefreshLifecycleEvents(
+								restorePlan.snapshot,
+								refreshPlan,
+							),
+							{
+								type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
+								payload: {
+									...this._authIdentity(),
+									persisted: true,
+									errorSummary: summarizeAuthError(refreshPlan.error),
+								},
+							},
+						],
+						result: null,
+						trace: {
+							type: this._traceType(
+								TokenSetOrchestrationTraceEvent.PersistedRestoreFailed,
+							),
+						},
+						traceError: refreshPlan.error,
+					},
+					operationSpan,
+				);
+			}
+			if (refreshPlan.kind === AuthDeterminationKind.Authenticated) {
+				return this._commitDetermination(
+					{
+						candidate: refreshPlan,
+						persistPolicy: PersistPolicy.FollowClient,
+						events: [
+							...this._buildRefreshLifecycleEvents(
+								restorePlan.snapshot,
+								refreshPlan,
+							),
+							{
+								type: TokenSetAuthEventType.AuthMaterialRestored,
+								payload: { ...this._authIdentity(), persisted: true },
+							},
+							{
+								type: TokenSetAuthEventType.AuthAuthenticated,
+								payload: this._authIdentity(),
+							},
+						],
+						result: refreshPlan.snapshot,
+						trace: {
+							type: this._traceType(
+								TokenSetOrchestrationTraceEvent.PersistedRestoreLoaded,
+							),
+						},
+					},
+					operationSpan,
+				);
+			}
+			// Persisted snapshot loaded but the refresh determination found it is
+			// no longer usable.
+			return this._commitDetermination(
+				{
 					candidate: refreshPlan,
 					persistPolicy: PersistPolicy.FollowClient,
 					events: [
-						// TODO
-					],
-					result: refreshPlan.snapshot ?? null,
-				});
-			} else {
-				return this._commitDetermination({
-					candidate: restorePlan,
-					persistPolicy: PersistPolicy.FollowClient,
-					events: [
-						// TODO
+						...this._buildRefreshLifecycleEvents(
+							restorePlan.snapshot,
+							refreshPlan,
+						),
+						{
+							type: TokenSetAuthEventType.AuthUnauthenticated,
+							payload: this._authIdentity(),
+						},
 					],
 					result: null,
-				});
-			}
+					trace: {
+						type: this._traceType(
+							TokenSetOrchestrationTraceEvent.PersistedRestoreLoaded,
+						),
+					},
+				},
+				operationSpan,
+			);
 		} finally {
 			this._authOperationSignals.restorePending.set(false);
 		}
@@ -457,6 +707,7 @@ export abstract class BaseOidcModeClient implements Disposable {
 
 	private async _planRefreshInQueue(
 		request: Omit<PlanRefreshRequest, "fetchRefreshedSnapshot" | "time">,
+		operationSpan?: SpanTrait,
 	): Promise<PlanRefreshResponse> {
 		const refreshedPlan = await dispatchCommandLocallyToPromise({
 			requestStream: this.planRefreshRequest,
@@ -464,13 +715,14 @@ export abstract class BaseOidcModeClient implements Disposable {
 			payload: {
 				snapshot: request.snapshot,
 				freshnessOptions: request.freshnessOptions,
-				fetchRefreshedSnapshot: this._createRefreshFetcher(),
+				time: this._environment.time,
+				fetchRefreshedSnapshot: this._createRefreshFetcher(operationSpan),
 			},
 		});
 		return refreshedPlan.data;
 	}
 
-	[Symbol.dispose](): void {
+	dispose(): void {
 		if (this._disposed) {
 			return;
 		}
@@ -482,15 +734,24 @@ export abstract class BaseOidcModeClient implements Disposable {
 				kind: ClientErrorKind.Cancelled,
 				code: `${this._tracePrefix}.client_disposed`,
 				message: `${this._clientName} was disposed`,
-				source: this._traceScope,
+				source: this._traceTarget,
 			}),
 		);
-		this._recordTrace(`${this._tracePrefix}.disposed`);
+		this._recordTrace(
+			this._traceType(TokenSetOrchestrationTraceEvent.Disposed),
+			undefined,
+			this._span,
+		);
+	}
+
+	[SYMBOL_DISPOSE](): void {
+		this.dispose();
 	}
 
 	protected abstract _refreshAuthSnapshot(
 		authSnapshot: AuthSnapshot,
 		freshnessTiming: TokenFreshnessTiming,
+		operationSpan?: SpanTrait,
 	): Promise<AuthSnapshot | null>;
 
 	protected _onDispose(): void {
@@ -503,9 +764,11 @@ export abstract class BaseOidcModeClient implements Disposable {
 
 	private async _commitDetermination<TResult>(
 		commit: AuthDeterminationCommit<TResult>,
+		span?: SpanTrait,
 	): Promise<TResult> {
 		this._authSnapshotSignal.setValue(commit.candidate.snapshot ?? null);
 		this._lastAuthErrorSignal.set(commit.candidate.error);
+		await this._syncPersistence(commit);
 		for (const event of commit.events ?? []) {
 			this._emitAuthEvent(event.type, event.payload);
 		}
@@ -515,17 +778,48 @@ export abstract class BaseOidcModeClient implements Disposable {
 					commit.trace.type,
 					commit.traceError,
 					commit.trace.attributes,
+					span ?? this._span,
 				);
 			} else {
-				this._recordTrace(commit.trace.type, commit.trace.attributes);
+				this._recordTrace(
+					commit.trace.type,
+					commit.trace.attributes,
+					span ?? this._span,
+				);
 			}
 		}
 		return commit.result;
 	}
 
-	private _emitAuthEvent(
-		type: TokenSetAuthEventType,
-		payload: TokenSetAuthEventPayload,
+	private async _syncPersistence<TResult>(
+		commit: AuthDeterminationCommit<TResult>,
+	): Promise<void> {
+		if (
+			commit.persistPolicy !== PersistPolicy.FollowClient ||
+			this._persistence === null
+		) {
+			return;
+		}
+
+		try {
+			if (commit.candidate.snapshot) {
+				await savePersistedAuthSnapshot(
+					this._persistence,
+					commit.candidate.snapshot,
+				);
+			} else {
+				await clearPersistedAuthSnapshot(this._persistence);
+			}
+		} catch (error) {
+			if (commit.candidate.error === undefined) {
+				this._lastAuthErrorSignal.set(error);
+			}
+		}
+	}
+
+	private _emitAuthEvent<TType extends TokenSetAuthEventType>(
+		type: TType,
+		payload: TokenSetAuthEventPayload<TType>,
 	): void {
 		this._authEventSubject.next(
 			createTokenSetAuthEvent({
@@ -537,75 +831,88 @@ export abstract class BaseOidcModeClient implements Disposable {
 		);
 	}
 
-	private _forkWorkflowSpan(
-		attributes?: Record<string, unknown>,
-	): SpanTrait | undefined {
-		const spanContext = this._environment.spanContext;
-		if (!spanContext) {
-			return undefined;
+	private _authIdentity(): TokenSetAuthEventPayload<
+		typeof TokenSetAuthEventType.AuthAuthenticated
+	> {
+		return { id: this.id };
+	}
+
+	private _buildRefreshLifecycleEvents(
+		snapshotBeforeRefresh: AuthSnapshot,
+		refreshPlan: PlanRefreshResponse,
+	): AuthDeterminationEvent[] {
+		const events: AuthDeterminationEvent[] = [];
+		if (this._didRunRefreshProtocol(snapshotBeforeRefresh, refreshPlan)) {
+			if (refreshPlan.kind === AuthDeterminationKind.Authenticated) {
+				events.push({
+					type: TokenSetAuthEventType.AuthRefreshSucceeded,
+					payload: {
+						...this._authIdentity(),
+						freshness: refreshPlan.freshness,
+						hasRefreshMaterial: true,
+					},
+				});
+			}
+			if (refreshPlan.kind === AuthDeterminationKind.Failed) {
+				events.push({
+					type: TokenSetAuthEventType.AuthRefreshFailed,
+					payload: {
+						...this._authIdentity(),
+						freshness: refreshPlan.freshness,
+						hasRefreshMaterial: true,
+						errorSummary: summarizeAuthError(refreshPlan.error),
+					},
+				});
+			}
 		}
-		const currentSpan = spanContext.currentSpan();
+		return events;
+	}
+
+	private _didRunRefreshProtocol(
+		snapshotBeforeRefresh: AuthSnapshot,
+		refreshPlan: PlanRefreshResponse,
+	): boolean {
 		return (
-			currentSpan?.fork({ attributes }) ??
-			createSpan({
-				attributes,
-			})
+			snapshotBeforeRefresh.tokens.refreshMaterial != null &&
+			refreshPlan.freshness.state !== TokenFreshnessState.Fresh &&
+			refreshPlan.freshness.state !== TokenFreshnessState.NoExpiry
 		);
 	}
 
-	protected async _runOperation<T>(
-		name: string,
-		attributes: Record<string, unknown> | undefined,
-		execute: (operation: OperationScope | undefined) => Promise<T>,
-	): Promise<T> {
-		const operation =
-			this._environment.telemetry?.operationTracer?.startOperation(
-				name,
-				attributes,
-			);
-
-		try {
-			const result = await execute(operation);
-			operation?.end({ outcome: "succeeded" });
-			return result;
-		} catch (error) {
-			operation?.recordError(error);
-			operation?.end({ outcome: "failed" });
-			throw error;
-		}
+	private _traceType(event: TokenSetOrchestrationTraceEvent): string {
+		return `${this._tracePrefix}.${event}`;
 	}
 
 	protected _recordTrace(
-		type: string,
-		attributes?: Record<string, unknown>,
-		operation?: OperationScope,
+		name: string,
+		fields: Record<string, unknown> | undefined,
+		span: SpanTrait,
+		level: "info" | "error" = "info",
 	): void {
-		const currentSpan = this._environment.spanContext?.currentSpan();
-		this._environment.telemetry?.traceSink?.record({
-			type,
+		this._environment.tracing.record({
+			name,
 			at: this._environment.time.now(),
-			scope: this._traceScope,
-			operationId: operation?.id,
-			spanId: currentSpan?.id,
-			parentSpanId: currentSpan?.parentId,
-			source: this._traceSource,
-			attributes,
+			target: this._traceTarget,
+			span,
+			level,
+			fields,
 		});
 	}
 
 	protected _recordFailureTrace(
-		type: string,
+		name: string,
 		error: unknown,
-		attributes?: Record<string, unknown>,
-		operation?: OperationScope,
+		fields: Record<string, unknown> | undefined,
+		span: SpanTrait,
 	): void {
 		this._recordTrace(
-			type,
+			name,
 			{
-				...attributes,
+				...fields,
 				...describeError(error),
 			},
-			operation,
+			span,
+			"error",
 		);
 	}
 }

@@ -5,7 +5,7 @@ import {
 	provideEnvironmentInitializer,
 } from "@angular/core";
 import { CallbackResumeService } from "./callback-resume.service";
-import type { TokenSetClientEntry } from "./contracts";
+import { type TokenSetClientEntry } from "./contracts";
 import { TokenSetAuthRegistry } from "./token-set-auth.registry";
 import { TOKEN_SET_AUTH_REGISTRY } from "./tokens";
 

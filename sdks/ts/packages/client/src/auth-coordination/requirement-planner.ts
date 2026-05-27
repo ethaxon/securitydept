@@ -1,6 +1,6 @@
 // Shared auth requirement planner — headless multi-requirement coordination
 //
-// Canonical location: @securitydept/client/auth-coordination
+// Canonical public export: @securitydept/client
 //
 // Provides a mode-agnostic, framework-agnostic primitive for expressing
 // multi-requirement / multi-auth-context orchestration flows.
@@ -136,7 +136,7 @@ export interface CreateRequirementPlannerOptions {
  *
  * @example
  * ```ts
- * import { createRequirementPlanner, PlanStatus, ResolutionStatus } from "@securitydept/client/auth-coordination";
+ * import { createRequirementPlanner, PlanStatus, ResolutionStatus } from "@securitydept/client";
  *
  * const planner = createRequirementPlanner({
  *   requirements: [

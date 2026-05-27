@@ -7,7 +7,7 @@ import {
 } from "@tanstack/react-table";
 import { Pencil, Trash2 } from "lucide-react";
 import { useMemo } from "react";
-import type { Group } from "@/api/groups";
+import { type Group } from "@/api/groups";
 import { useDashboardDeleteGroupMutation } from "@/hooks/useDashboardApi";
 
 export function GroupTable({ groups }: { groups: Group[] }) {

@@ -156,7 +156,7 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		layers: [EvidenceSemanticLayer.MinimalEntry],
 	},
 	{
-		// MinimalEntry evidence for @securitydept/client/auth-coordination.
+		// MinimalEntry evidence for @securitydept/client root export.
 		// Proves the canonical import path, multi-requirement planner usage with
 		// opaque string kinds, sequential progression, and reset contract.
 		// Not VerifiedEnvironments — proves adopter contract, not host capability.
@@ -228,7 +228,7 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		// Route orchestration baseline with matched route chain.
 		// Proves parent requirement inheritance, child append,
 		// shared-prefix preservation, and chooser decision tracking.
-		// Backs MinimalEntry for @securitydept/client/auth-coordination
+		// Backs MinimalEntry for @securitydept/client root export
 		// (route-level orchestrator adopter contract).
 		path: "examples/route-orchestration-baseline.test.ts",
 		layers: [

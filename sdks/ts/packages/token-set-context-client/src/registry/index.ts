@@ -33,6 +33,7 @@ export type {
 	OidcRedirectLoginOptions,
 	ReadTokenSetCallbackResumeErrorDetailsOptions,
 	TokenSetAuthRegistryEntryState,
+	TokenSetAuthRegistryEvent,
 	TokenSetAuthRegistryLifecycleErrorCode as TokenSetAuthRegistryLifecycleErrorCodeType,
 	TokenSetAuthRegistryState,
 	TokenSetCallbackErrorDetails,

@@ -1,16 +1,14 @@
 // @vitest-environment jsdom
 
 import {
+	createEventSubject,
+	createFoundationEnvironment,
 	createReplaySignal,
 	createSignal,
-	createSubject,
-	type FoundationEnvironment,
 } from "@securitydept/client";
 import {
-	AuthCheckStatus,
 	type AuthSnapshot,
 	type TokenSetAuthEvent,
-	TokenSetAuthFlowReason,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
 	createTokenSetOidcAuthRegistry,
@@ -65,7 +63,7 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 }
 
 function createControllerFixture() {
-	const environment: FoundationEnvironment = {
+	const environment = createFoundationEnvironment({
 		transport: { execute: async () => ({ status: 204, headers: {} }) },
 		time: {
 			now: () => Date.now(),
@@ -78,7 +76,7 @@ function createControllerFixture() {
 			cancelIdleCallback: (handle) =>
 				clearTimeout(handle as ReturnType<typeof setTimeout>),
 		},
-	};
+	});
 	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>({
 		environment,
 	});
@@ -118,19 +116,13 @@ function createControllerFixture() {
 				clearPending: createSignal(false),
 				loginPending: createSignal(false),
 			},
-			authEvents: createSubject<TokenSetAuthEvent>(),
+			authEvents: createEventSubject<TokenSetAuthEvent>(),
 			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(() => undefined),
 			restorePersistedState: vi.fn(async () => null),
 			handleCallback,
-			authCheck: vi.fn(async () => ({
-				status: AuthCheckStatus.Unauthenticated,
-				snapshot: null,
-				authorizationHeader: undefined,
-				reason: TokenSetAuthFlowReason.NoSnapshot,
-			})),
 			loginWithRedirect: vi.fn(async () => undefined),
 		}),
 	});

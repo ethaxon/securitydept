@@ -1,13 +1,10 @@
 // @vitest-environment jsdom
 
-import type {
-	ExternalTransportTrait,
-	HttpRequest,
-	HttpResponse,
-} from "@securitydept/client";
 import {
-	createClientEnvironment,
 	createInMemoryRecordStore,
+	type ExternalTransportTrait,
+	type HttpRequest,
+	type HttpResponse,
 } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
@@ -28,6 +25,7 @@ import {
 } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
+import { createEnvironmentForTest } from "../../../client/src/test";
 import {
 	createSessionContextController,
 	provideSessionContextController,
@@ -103,7 +101,7 @@ function createTestEnvironment(options: {
 	externalTransport: ExternalTransportTrait;
 	sessionStorage?: ReturnType<typeof createInMemoryRecordStore>;
 }) {
-	return createClientEnvironment({
+	return createEnvironmentForTest({
 		transport: options.externalTransport,
 		sessionStorage: options.sessionStorage,
 	});

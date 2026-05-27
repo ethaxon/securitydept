@@ -8,8 +8,11 @@
 // These helpers produce redirect instructions the host can act on.
 
 import { BasicAuthContextClient } from "../client";
-import type { AuthGuardResult, BasicAuthContextClientConfig } from "../types";
-import { AuthGuardResultKind } from "../types";
+import {
+	type AuthGuardResult,
+	AuthGuardResultKind,
+	type BasicAuthContextClientConfig,
+} from "../types";
 
 // ---------------------------------------------------------------------------
 // Server request context

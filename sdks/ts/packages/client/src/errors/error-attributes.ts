@@ -1,5 +1,5 @@
 import { ClientError } from "./client-error";
-import type { ClientErrorKind, UserRecovery } from "./types";
+import { type ClientErrorKind, type UserRecovery } from "./types";
 
 export type ClientErrorRecovery = UserRecovery;
 

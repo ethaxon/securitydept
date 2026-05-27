@@ -7,11 +7,11 @@
 // and is wired as an Angular Injectable, but can be instantiated directly in
 // headless unit tests since it has no constructor dependencies.
 
-import type { ActivatedRouteSnapshot } from "@angular/router";
+import { type ActivatedRouteSnapshot } from "@angular/router";
 import {
 	createRouteRequirementOrchestrator,
 	ResolutionStatus,
-} from "@securitydept/client/auth-coordination";
+} from "@securitydept/client";
 import { AuthRouteAdapter } from "@securitydept/client-angular";
 import { describe, expect, it, vi } from "vitest";
 

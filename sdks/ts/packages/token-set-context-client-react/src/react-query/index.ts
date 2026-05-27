@@ -11,15 +11,15 @@
 //
 // Stability: provisional
 
-import type { SecuritydeptInjectorTrait } from "@securitydept/client/injection";
-import type {
-	QueryClient,
-	QueryKey,
-	UseQueryOptions,
-	UseQueryResult,
+import { type SecuritydeptInjectorTrait } from "@securitydept/client";
+import {
+	type QueryClient,
+	type QueryKey,
+	type UseQueryOptions,
+	type UseQueryResult,
+	useQuery,
 } from "@tanstack/react-query";
-import { useQuery } from "@tanstack/react-query";
-import type { TokenSetReactClient } from "../contracts";
+import { type TokenSetReactClient } from "../contracts";
 import {
 	type ReactRegistry,
 	TOKEN_SET_AUTH_REGISTRY,

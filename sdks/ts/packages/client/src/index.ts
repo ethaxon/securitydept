@@ -1,191 +1,298 @@
 // @securitydept/client — Foundation public API
-
-// --- Cancellation ---
-export type {
-	CancelableHandle,
-	CancellationTokenSourceTrait,
-	CancellationTokenTrait,
-} from "./cancellation/index";
+// --- Auth Coordination ---
 export {
+	type AuthGuardClientOption,
+	type AuthRequirement,
+	type CandidateSelector,
+	type ChooserDecision,
+	type CreatePlannerHostOptions,
+	type CreateRequirementPlannerOptions,
+	type CreateRouteRequirementOrchestratorOptions,
+	createPlannerHost,
+	createRequirementPlanner,
+	createRouteRequirementOrchestrator,
+	type PlannerHost,
+	type PlannerHostResult,
+	type PlanSnapshot,
+	PlanStatus,
+	type RequirementPlanner,
+	RequirementPlannerError,
+	type RequirementResolution,
+	type RequirementsClientSet,
+	RequirementsClientSetComposition,
+	ResolutionStatus,
+	type RouteMatchNode,
+	type RouteOrchestrationSnapshot,
+	type RouteRequirementOrchestrator,
+	resolveEffectiveClientSet,
+	type ScopedRequirementsClientSet,
+} from "./auth-coordination";
+// --- Cancellation ---
+export {
+	type CancelableHandle,
+	type CancellationTokenSourceTrait,
+	type CancellationTokenTrait,
 	createCancellationTokenSource,
 	createLinkedCancellationToken,
 	isCancellationTokenTrait,
-} from "./cancellation/index";
+} from "./cancellation";
+// --- Compat ---
 export {
+	type AsyncDisposableTrait,
+	type DisposableTrait,
 	type InteropObservableTrait,
 	isInteropObservableTrait,
 	type ObserverTrait,
 	type SubscribableTrait,
 	type SubscriptionTrait,
+	SYMBOL_ASYNC_DISPOSE,
+	SYMBOL_DISPOSE,
 	SYMBOL_OBSERVABLE,
 } from "./compat";
 // --- Environment ---
-export type {
-	CreateClientEnvironmentOptions,
-	EnvironmentValidators,
-	FoundationEnvironment,
-	PageLifecycleTrait,
-	PopupTrait,
-	RouterNavigationRequest,
-	RouterTrait,
-	SecuritydeptEnvTraitInputValidator,
-	ServiceWorkerEnvironment,
-	TelemetryTrait,
-} from "./environment/index";
 export {
-	createClientEnvironment,
-	validateEnvTraitInput,
-} from "./environment/index";
+	type CreateFoundationEnvironmentOptions,
+	createFoundationEnvironment,
+	type EnvironmentValidators,
+	FOUNDATION_ENVIRONMENT_TOKEN,
+	type FoundationEnvironment,
+	type ServiceWorkerEnvironment,
+} from "./environment";
 // --- Errors ---
-export type {
-	ClientErrorAttributes,
-	ClientErrorRecovery,
-	ErrorAttributes,
-	ErrorPresentation,
-	ErrorPresentationActionDescriptor,
-	ErrorPresentationDescriptor,
-	NativeErrorAttributes,
-	ReadErrorPresentationDescriptorOptions,
-	UnknownErrorAttributes,
-} from "./errors/index";
 export {
 	ClientError,
+	type ClientErrorAttributes,
 	ClientErrorKind,
+	type ClientErrorRecovery,
 	ClientErrorSource,
 	describeError,
+	type ErrorAttributes,
+	type ErrorPresentation,
+	type ErrorPresentationActionDescriptor,
+	type ErrorPresentationDescriptor,
 	ErrorPresentationTone,
+	type NativeErrorAttributes,
+	type ReadErrorPresentationDescriptorOptions,
 	readErrorPresentationDescriptor,
+	type UnknownErrorAttributes,
 	UserRecovery,
-} from "./errors/index";
+} from "./errors";
 // --- Events ---
-export type {
-	EventObserverTrait,
-	EventOperatorFunction,
-	EventSource,
-	EventStreamTrait,
-	EventSubjectTrait,
-	EventSubscriptionTrait,
-	RuntimeEventEnvelope,
-	ToEventStreamInput,
-} from "./events";
 export {
+	abortSignalToEventStream,
 	createEmptyEventStream,
 	createEventReplaySubject,
 	createEventStream,
 	createEventSubject,
 	createNeverEventStream,
+	type EventObserverTrait,
+	type EventOperatorFunction,
+	type EventSource,
 	EventSourceKind,
+	type EventStreamTrait,
+	type EventSubjectTrait,
+	type EventSubscriptionTrait,
+	type RuntimeEventEnvelope,
+	type ToEventStreamInput,
 	toEventStream,
 } from "./events";
 // --- Identity ---
-export type {
-	AuthenticatedPrincipal,
-	ProjectAuthenticatedPrincipalOptions,
-} from "./identity/index";
 export {
+	type AuthenticatedPrincipal,
 	normalizeAuthenticatedPrincipal,
 	normalizeAuthenticatedPrincipalWire,
+	type ProjectAuthenticatedPrincipalOptions,
 	projectAuthenticatedPrincipal,
-} from "./identity/index";
-// --- Logging ---
+} from "./identity";
+// --- Injection ---
+export {
+	createProviderIfTokenMissing,
+	createSecuritydeptDestroyRef,
+	getSecuritydeptProviderToken,
+	INJECTOR_TOKEN,
+	inject,
+	notMissingProvider,
+	runInInjectionContext,
+	SecurityDeptOptional,
+	type SecuritydeptAbstractType,
+	type SecuritydeptClassProvider,
+	type SecuritydeptDependencyDescriptor,
+	type SecuritydeptDependencyToken,
+	SecuritydeptDestroyRef,
+	type SecuritydeptExistingProvider,
+	type SecuritydeptFactoryProvider,
+	SecuritydeptInjectionToken,
+	type SecuritydeptInjectOptions,
+	SecuritydeptInjector,
+	type SecuritydeptInjectorTrait,
+	type SecuritydeptProvider,
+	type SecuritydeptTypeProvider,
+	type SecuritydeptValueProvider,
+	tryInjectInInjectionContext,
+	type WithTraitDeps,
+} from "./injection";
+// --- Page ---
+export {
+	PAGE_LIFECYCLE_TRAIT_TOKEN,
+	type PageLifecycleTrait,
+} from "./page";
+// --- Popup ---
+export {
+	type CreatePopupClientSessionOptions,
+	type CreatePopupServerSessionOptions,
+	POPUP_TRAIT_TOKEN,
+	type PopupAttachFailure,
+	PopupAttachFailureReason,
+	type PopupAttachResult,
+	type PopupAttachSuccess,
+	PopupClientWindowHandle,
+	PopupClientWindowHandleTrait,
+	PopupErrorCode,
+	PopupMessageChannelTrait,
+	PopupOpenOptions,
+	PopupServerWindowHandle,
+	PopupServerWindowHandleTrait,
+	PopupTrait,
+	PopupWindowHandleTrait,
+} from "./popup";
+// --- Protocol ---
+export {
+	type CreateJsonRpcClientOptions,
+	type CreateJsonRpcServerAndClientOptions,
+	type CreateJsonRpcServerOptions,
+	createJsonRpcClient,
+	createJsonRpcServer,
+	createJsonRpcServerAndClient,
+	type JsonRpcClientTrait,
+	type JsonRpcErrorPayload,
+	type JsonRpcErrorResponseMessage,
+	type JsonRpcId,
+	type JsonRpcMessage,
+	type JsonRpcNotificationEvent,
+	type JsonRpcNotificationMessage,
+	type JsonRpcRequestEvent,
+	type JsonRpcRequestMessage,
+	type JsonRpcRequestOptions,
+	type JsonRpcServerAndClientTrait,
+	type JsonRpcServerTrait,
+	type JsonRpcSuccessResponseMessage,
+} from "./protocol/json-rpc";
+// --- Router ---
 export type {
-	CreateOperationTracerOptions,
-	LogEntry,
-	LoggerTrait,
-	OperationScope,
-	OperationTracerTrait,
-	TraceEvent,
-	TraceEventSinkTrait,
-	TraceTimelineEntry,
-	TraceTimelineStore,
-} from "./logging";
+	GuardedRouterTrait,
+	RouterBeforeLoad,
+	RouterGuardContext,
+	RouterGuardDecision,
+	RouterNavigationRequest,
+	RouterTrait,
+} from "./router";
 export {
-	createConsoleLogger,
-	createNoopLogger,
-	createOperationTracer,
-	createTraceTimelineStore,
-	LogLevel,
-	OperationTraceEventType,
-} from "./logging";
-// --- Persistence ---
-export type {
-	Codec,
-	EphemeralFlowStore,
-	KeyedEphemeralFlowStore,
-	PersistentAuthStore,
-	RecoverableStateStore,
-	StorageTrait,
-	StoredEnvelope,
-} from "./persistence";
-export {
-	createEphemeralFlowStore,
-	createInMemoryRecordStore,
-	createJsonCodec,
-	createKeyedEphemeralFlowStore,
-} from "./persistence";
-export {
-	eventStreamToObservable,
-	observableToEventStream,
-	signalToObservable,
-} from "./rx";
+	ROUTER_TRAIT_TOKEN,
+	RouterGuardDecisionKind,
+	RouterGuardPhase,
+} from "./router";
 // --- Scheduling ---
-export type {
-	IdleCallbackTrait,
-	TimestampProviderTrait,
-	TimeTrait,
-} from "./scheduling/index";
-export { createDefaultTimeConfig, parseDurationToMs } from "./scheduling/index";
-// --- Signals ---
-export type {
-	ComputedReplaySignalTrait,
-	ComputedSignalTrait,
-	ReadableReplaySignalTrait,
-	ReadableSignalTrait,
-	ReplaySignalSlot,
-	ReplaySignalWhenValueOptions,
-	WritableReplaySignalTrait,
-	WritableSignalTrait,
-} from "./signals/index";
 export {
+	createDefaultTimeConfig,
+	IDLE_CALLBACK_TRAIT_TOKEN,
+	type IdleCallbackTrait,
+	parseDurationToMs,
+	TIME_TRAIT_TOKEN,
+	type TimestampProviderTrait,
+	type TimeTrait,
+} from "./scheduling";
+// --- Signals ---
+export {
+	type ComputedReplaySignalTrait,
+	type ComputedSignalTrait,
 	createAndThenComputedReplaySignal,
 	createComputed,
 	createComputedReplaySignal,
 	createReplaySignal,
 	createSignal,
 	isReplaySignalTrait,
+	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
+	type ReplaySignalSlot,
+	type ReplaySignalWhenValueOptions,
 	readonlyReplaySignal,
 	readonlySignal,
-} from "./signals/index";
+	type WritableReplaySignalTrait,
+	type WritableSignalTrait,
+} from "./signals";
 // --- Span ---
-export type {
-	CreateSpanOptions,
-	ForkSpanOptions,
-	SpanContextHostTrait,
-	SpanTrait,
-} from "./span/index";
 export {
-	createSpan,
-	createSpanContextHost,
-	createSpanContextHostForNodeLike,
-	createSpanContextHostForTest,
-	createSpanContextHostForWeb,
-} from "./span/index";
+	createRootSpan,
+	type OperationSpanTrait,
+	SPAN_TRAIT_TOKEN,
+	type SpanCreateOptions,
+	type SpanTrait,
+} from "./span";
+// --- Std ---
 export type {
-	CreateExternalTransportForFetchOptions,
-	CreateTimeForStdOptions,
-} from "./std/index";
+	BaseTransportForStdFetchCreateOptions,
+	TimeForStdCreateOptions,
+} from "./std";
 export {
-	createExternalTransportForFetch,
-	createTelemetryForStd,
+	abortSignalToCancellationToken,
+	cancellationTokenToAbortSignal,
+	createBaseTransportForStdFetch,
 	createTimeForStd,
 	FetchTransportRedirectKind,
-} from "./std/index";
-// --- Struct ---
-export type {
-	OnDemandTaskQueueOptions,
-	OnDemandTaskQueueTaskEnvelope,
-} from "./struct/index";
-export { OnDemandTaskQueue } from "./struct/index";
+	normalizeAbortError,
+} from "./std";
+// --- Storage ---
+export {
+	type Codec,
+	createEphemeralFlowStore,
+	createInMemoryRecordStore,
+	createJsonCodec,
+	createKeyedEphemeralFlowStore,
+	type EphemeralFlowStore,
+	type KeyedEphemeralFlowStore,
+	PERSISTENT_STORAGE_TRAIT_TOKEN,
+	type PersistentAuthStore,
+	type RecoverableStateStore,
+	SESSION_STORAGE_TRAIT_TOKEN,
+	type StorageTrait,
+	type StoredEnvelope,
+} from "./storage";
+// --- Structs ---
+export {
+	createOnceAsyncLockCallable,
+	type OnceAsyncLock,
+	type OnceAsyncLockCallable,
+	type OnceAsyncLockError,
+	type OnceAsyncLockInit,
+	type OnceAsyncLockRunning,
+	OnceAsyncLockState,
+	type OnceAsyncLockSuccess,
+} from "./struct";
+// --- Tracing ---
+export {
+	createConsoleTracingSubscriber,
+	createTraceTimelineStore,
+	createTracing,
+	type DefineInstrumentMethodDecoratorContext,
+	type DefineInstrumentMethodDecoratorFactory,
+	defineInstrumentMethodDecorator,
+	type InstrumentMethodResolvedOptions,
+	type InstrumentMethodThisContext,
+	type InstrumentMethodThisResolver,
+	OperationTraceEventType,
+	type RunOperationEnvironment,
+	type RunOperationOptions,
+	type RunOperationOptionsBase,
+	runOperation,
+	TRACING_TRAIT_TOKEN,
+	type TraceTimelineEntry,
+	type TraceTimelineStore,
+	type TracingCreateOptions,
+	type TracingEvent,
+	TracingLevel,
+	type TracingSubscriberTrait,
+	type TracingTrait,
+} from "./tracing";
 // --- Transport ---
 export type {
 	AuthorizationHeaderProviderTrait,
@@ -198,23 +305,24 @@ export type {
 	HttpResponse,
 	ManagedTransportTrait,
 	ReplayBearerHeaderProvider,
-} from "./transport/index";
+} from "./transport";
 export {
-	createAuthorizedTransport,
-	createRemappingAuthorizedTransport,
-} from "./transport/index";
+	createAuthorizedTransportFromBase,
+	createExternalTransportFromBase,
+	createRemappingAuthorizedTransportFromBase,
+	TRANSPORT_TRAIT_TOKEN,
+} from "./transport";
 // --- Validation ---
-export type {
-	ValidationFailure,
-	ValidationResult,
-	ValidationSuccess,
-} from "./validation/index";
 export {
-	createSchema,
+	formatValidationFailure,
+	type TraitInputValidator,
+	throwValidationClientError,
+	type ValidateTraitInputOptions,
+	type ValidationFailure,
+	type ValidationResult,
+	type ValidationSuccess,
+	validateTraitInput,
 	validateWithSchema,
 	validateWithSchemaSync,
-} from "./validation/index";
-export type {
-	CreateEnvironmentForNativeWebOptions,
-	NativeWebEnvironment,
-} from "./web/environment/environment";
+	type WithTraitInputValidator,
+} from "./validation";

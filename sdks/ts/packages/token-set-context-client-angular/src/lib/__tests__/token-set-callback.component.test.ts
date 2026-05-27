@@ -5,15 +5,11 @@ import {
 } from "@angular/core";
 import { Router } from "@angular/router";
 import {
+	createEventSubject,
 	createReplaySignal,
 	createSignal,
-	createSubject,
 } from "@securitydept/client";
-import {
-	AuthCheckStatus,
-	type AuthSnapshot,
-	TokenSetAuthFlowReason,
-} from "@securitydept/token-set-context-client/orchestration";
+import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import {
 	CallbackResumeService,
 	TOKEN_SET_CALLBACK_COMPONENT_OPTIONS,
@@ -238,19 +234,13 @@ describe("TokenSetCallbackComponent", () => {
 						clearPending: createSignal(false),
 						loginPending: createSignal(false),
 					},
-					authEvents: createSubject(),
+					authEvents: createEventSubject(),
 					addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 					removeWorkflowSource: vi.fn(() => false),
 					start: vi.fn(async () => undefined),
 					dispose: vi.fn(),
 					restorePersistedState: vi.fn(async () => null),
 					handleCallback,
-					authCheck: vi.fn(async () => ({
-						status: AuthCheckStatus.Unauthenticated,
-						snapshot: null,
-						authorizationHeader: undefined,
-						reason: TokenSetAuthFlowReason.NoSnapshot,
-					})),
 					loginWithRedirect: vi.fn(async () => undefined),
 				}),
 			});

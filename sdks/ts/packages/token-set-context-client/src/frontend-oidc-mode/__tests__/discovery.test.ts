@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildIssuerDiscoveryCandidates,
 	resolveDiscoveryIssuerCompatibility,
-} from "../runtime/discovery";
+} from "../client/discovery";
 
 describe("frontend oidc discovery compatibility", () => {
 	it("adds a trailing-slash issuer candidate for path-based issuers", () => {

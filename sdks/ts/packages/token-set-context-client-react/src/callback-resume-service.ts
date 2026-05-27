@@ -3,10 +3,10 @@ import {
 	SecuritydeptInjectionToken,
 	type SecuritydeptProvider,
 	tryInjectInInjectionContext,
-} from "@securitydept/client/injection";
+} from "@securitydept/client";
 import { TokenSetCallbackResumeController as CoreTokenSetCallbackResumeController } from "@securitydept/token-set-context-client/registry";
-import type { TokenSetReactClient } from "./contracts";
-import type { ReactRegistry } from "./token-set-auth-registry";
+import { type TokenSetReactClient } from "./contracts";
+import { type ReactRegistry } from "./token-set-auth-registry";
 
 export class ReactTokenSetCallbackResumeController extends CoreTokenSetCallbackResumeController<TokenSetReactClient> {
 	constructor(registry: ReactRegistry) {

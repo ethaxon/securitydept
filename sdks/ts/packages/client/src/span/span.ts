@@ -1,47 +1,74 @@
-import type { CreateSpanOptions, ForkSpanOptions, SpanTrait } from "./types";
+import { v7 as uuidv7 } from "uuid";
+import {
+	type TraitInputValidator,
+	throwValidationClientError,
+	validateTraitInput,
+	type WithTraitInputValidator,
+} from "../validation";
+import {
+	type SpanCreateOptions,
+	SpanCreateOptionsSchema,
+	type SpanTrait,
+} from "./types";
 
 function createDefaultSpanId(): string {
-	return `span_${Math.random().toString(36).slice(2, 10)}`;
+	return uuidv7();
 }
 
 class DefaultSpan implements SpanTrait {
 	readonly id: string;
-	readonly parentId: string | undefined;
+	readonly parent: SpanTrait | undefined;
+	readonly attributes: Readonly<Record<string, unknown>>;
+	private readonly _idFactory: () => string;
 
-	private _ended = false;
-	private readonly _attributes: Record<string, unknown>;
-
-	constructor(options: CreateSpanOptions = {}) {
-		this.id = (options.idFactory ?? createDefaultSpanId)();
-		this.parentId = options.parentSpan?.id;
-		this._attributes = { ...(options.attributes ?? {}) };
+	private constructor(
+		parent: SpanTrait | undefined,
+		idFactory: () => string,
+		attributes: Readonly<Record<string, unknown>>,
+	) {
+		this._idFactory = idFactory;
+		this.id = idFactory();
+		this.parent = parent;
+		this.attributes = attributes;
 	}
 
-	fork(options: ForkSpanOptions = {}): SpanTrait {
-		return createSpan({
-			parentSpan: this,
-			idFactory: options.idFactory,
-			attributes: options.attributes,
-		});
+	static root(options: SpanCreateOptions = {}): SpanTrait {
+		return new DefaultSpan(
+			undefined,
+			options.idFactory ?? createDefaultSpanId,
+			Object.freeze({ ...(options.attributes ?? {}) }),
+		);
 	}
 
-	addAttributes(attributes: Record<string, unknown>): void {
-		Object.assign(this._attributes, attributes);
-	}
-
-	recordError(error: unknown): void {
-		void error;
-	}
-
-	end(outcome?: Record<string, unknown>): void {
-		if (this._ended) {
-			return;
-		}
-		this._ended = true;
-		void outcome;
+	fork(options: SpanCreateOptions = {}): SpanTrait {
+		return new DefaultSpan(
+			this,
+			options.idFactory ?? this._idFactory,
+			Object.freeze({ ...(options.attributes ?? {}) }),
+		);
 	}
 }
 
-export function createSpan(options: CreateSpanOptions = {}): SpanTrait {
-	return new DefaultSpan(options);
+export function createRootSpan(
+	options: SpanCreateOptions &
+		WithTraitInputValidator<TraitInputValidator> = {},
+): SpanTrait {
+	const { validators, ...resolvedOptions } = options;
+	const resolvedCreateOptions = {
+		idFactory: resolvedOptions.idFactory ?? createDefaultSpanId,
+		attributes: resolvedOptions.attributes ?? {},
+	};
+	validateTraitInput({
+		value: resolvedCreateOptions,
+		bundledSchema: SpanCreateOptionsSchema,
+		validator: validators,
+		onInvalid: (failure) =>
+			throwValidationClientError({
+				code: "span.invalid_options",
+				source: "span",
+				messagePrefix: "createRootSpan could not validate spanCreateOptions",
+				failure,
+			}),
+	});
+	return DefaultSpan.root(resolvedCreateOptions);
 }

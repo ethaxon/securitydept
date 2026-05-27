@@ -1,17 +1,15 @@
 import { validateWithSchemaSync } from "@securitydept/client";
 import { BasicAuthContextClientConfigSchema } from "./schemas";
-import type {
-	AuthGuardResult,
-	BasicAuthBoundaryKind,
-	BasicAuthBoundaryObservation,
-	BasicAuthContextClientConfig,
-	BasicAuthZoneConfig,
-	ResolvedBasicAuthZone,
-} from "./types";
 import {
 	AuthGuardRedirectStatus,
+	type AuthGuardResult,
 	AuthGuardResultKind,
+	type BasicAuthBoundaryKind,
 	BasicAuthBoundaryKind as BasicAuthBoundaryKindValues,
+	type BasicAuthBoundaryObservation,
+	type BasicAuthContextClientConfig,
+	type BasicAuthZoneConfig,
+	type ResolvedBasicAuthZone,
 } from "./types";
 
 const DEFAULT_LOGIN_SUBPATH = "/login";

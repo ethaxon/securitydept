@@ -1,12 +1,10 @@
-import type {
-	SecuritydeptProvider as SecuritydeptDependencyProvider,
-	SecuritydeptInjectorTrait,
-} from "@securitydept/client/injection";
 import {
 	createSecuritydeptDestroyRef,
+	type SecuritydeptProvider as SecuritydeptDependencyProvider,
 	SecuritydeptDestroyRef,
 	SecuritydeptInjector,
-} from "@securitydept/client/injection";
+	type SecuritydeptInjectorTrait,
+} from "@securitydept/client";
 import {
 	createContext,
 	type ReactNode,

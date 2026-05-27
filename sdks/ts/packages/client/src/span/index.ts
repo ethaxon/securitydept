@@ -1,11 +1,7 @@
-export { createSpanContextHost } from "./context-host";
-export { createSpanContextHostForNodeLike } from "./node-like";
-export { createSpan } from "./span";
-export { createSpanContextHostForTest } from "./test";
+export { createRootSpan } from "./span";
 export type {
-	CreateSpanOptions,
-	ForkSpanOptions,
-	SpanContextHostTrait,
+	OperationSpanTrait,
+	SpanCreateOptions,
 	SpanTrait,
 } from "./types";
-export { createSpanContextHostForWeb } from "./web";
+export { SPAN_TRAIT_TOKEN } from "./types";

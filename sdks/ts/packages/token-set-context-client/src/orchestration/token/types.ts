@@ -1,4 +1,4 @@
-import type { AuthenticatedPrincipal } from "@securitydept/client";
+import { type AuthenticatedPrincipal } from "@securitydept/client";
 
 // --- Generic Token Orchestration types ---
 // These types describe token material shape, snapshot/delta semantics,

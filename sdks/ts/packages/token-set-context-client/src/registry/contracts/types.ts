@@ -7,22 +7,22 @@
 // wrappers over the core registry; the lifecycle / readiness / discrimination
 // semantics live here.
 
-import type {
-	EventStreamTrait,
-	EventSubscriptionTrait,
-	FoundationEnvironment,
-	ReadableReplaySignalTrait,
-	ReadableSignalTrait,
-	RouterTrait,
+import {
+	type EventStreamTrait,
+	type EventSubscriptionTrait,
+	type FoundationEnvironment,
+	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
+	type RouterTrait,
 } from "@securitydept/client";
-import type { ClientReadinessState } from "../../frontend-oidc-mode/config/config-source";
-import type {
-	AuthCheckOptions,
-	AuthCheckResult,
-	AuthSnapshot,
-	TokenSetAuthEvent,
-	TokenSetAuthOperationSignals,
-	TokenSetAuthWorkflowSource,
+import { type ClientReadinessState } from "../../frontend-oidc-mode/config/config-source";
+import {
+	type AuthSnapshot,
+	type TokenSetAuthEvent,
+	type TokenSetAuthEventPayload,
+	type TokenSetAuthEventType,
+	type TokenSetAuthOperationSignals,
+	type TokenSetAuthWorkflowSource,
 } from "../../orchestration";
 
 export type {
@@ -41,6 +41,14 @@ export type {
 	TokenSetCallbackResumeErrorDetails,
 } from "../presentation/error-presentation";
 export type { ClientReadinessState };
+
+export type TokenSetAuthRegistryEvent<
+	TType extends TokenSetAuthEventType = TokenSetAuthEventType,
+> = Omit<TokenSetAuthEvent<TType>, "payload"> & {
+	payload: TokenSetAuthEventPayload<TType> & {
+		id: string;
+	};
+};
 
 // ---------------------------------------------------------------------------
 // Shared managed OIDC client contracts
@@ -61,7 +69,6 @@ export interface OidcModeClient {
 	start(): Promise<void>;
 	addWorkflowSource(source: TokenSetAuthWorkflowSource): EventSubscriptionTrait;
 	removeWorkflowSource(source: TokenSetAuthWorkflowSource): boolean;
-	authCheck(options?: AuthCheckOptions): Promise<AuthCheckResult>;
 	dispose(): void;
 	/** Manual persistence re-sync. Initial readiness should prefer start()/whenReady(). */
 	restorePersistedState(): Promise<AuthSnapshot | null>;

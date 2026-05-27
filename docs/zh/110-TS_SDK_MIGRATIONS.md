@@ -21,11 +21,30 @@ SDK 仍处于 `0.x`，但 public-surface changes 必须保持有纪律。
 
 ## 当前迁移说明
 
+### Token-set Auth Event Payload Map
+
+涉及包：
+
+- `@securitydept/token-set-context-client/orchestration`
+
+变更：
+
+- 松散的 `TokenSetAuthEventPayload` 字段包被替换为按事件类型索引的 `TokenSetAuthEventPayloadMap`。`TokenSetAuthEvent<TType>` 现在是 `RuntimeEventEnvelope<TType, TokenSetAuthEventPayloadMap[TType]>`，`createTokenSetAuthEvent()` 改为泛型工厂，其 `payload` 由事件 `type` 约束。
+- `freshness` 与 `hasRefreshMaterial` 只存在于 refresh 专属 payload（`AuthRefreshRequired` / `AuthRefreshStarted` / `AuthRefreshSucceeded` / `AuthRefreshFailed`）。终态事件（`AuthAuthenticated` / `AuthUnauthenticated` / `AuthMaterialCleared`）只携带最小的身份 payload。
+- client 标识只通过可选的 `id` 字段表达，不再保留通用弱约束字段包。
+- 删除 `AuthCheck*` 事件族以及 `TokenSetAuthFlowOutcome` / `TokenSetAuthFlowReason` / `authCheckReason` 词表。结果由事件类型本身表达，触发原因等上下文记录在局部 orchestration trace attributes 中，而不是事件 payload 字段。
+
+迁移：
+
+- 把对 `event.payload.outcome` / `event.payload.reason` / `event.payload.authCheckReason` 的读取改为基于 `event.type` 判断（例如 `event.type === TokenSetAuthEventType.AuthAuthenticated`）。
+- 只有在收窄到 refresh 事件类型后才读取 `freshness` / `hasRefreshMaterial`。
+- 把 `event.payload.clientKey` / `event.payload.logicalClientId` 改为 `event.payload.id`。
+
 ### 统一 Injector 与唯一 React Context
 
 Packages：
 
-- `@securitydept/client/injection`
+- `@securitydept/client`
 - `@securitydept/client-react`
 - `@securitydept/basic-auth-context-client-react`
 - `@securitydept/session-context-client-react`
@@ -33,7 +52,7 @@ Packages：
 
 变更：
 
-- `@securitydept/client/injection` 现在拥有 framework-neutral DI authority：`SecuritydeptInjectorTrait` 是读取侧最小 contract，只表达 `get()`；`SecuritydeptInjector` 是 SDK runtime/facade，负责 provider 解析、parent 继承、override 与 `has()` 诊断。
+- `@securitydept/client` 现在拥有 framework-neutral DI authority：`SecuritydeptInjectorTrait` 是读取侧最小 contract，只表达 `get()`；`SecuritydeptInjector` 是 SDK runtime/facade，负责 provider 解析、parent 继承、override 与 `has()` 诊断。
 - React 侧现在只有一组 SDK Context：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`，全部位于 `@securitydept/client-react`。
 - React domain package 不再导出 `BasicAuthContextProvider`、`SessionContextProvider`、`BackendOidcModeContextProvider`、`TokenSetAuthProvider`、`useBasicAuthContext()`、`useSessionContext()`、`useBackendOidcModeContext()`、`useTokenSetAuthRegistry()` 等 domain-specific Context / Provider / keyed state helper。
 - React domain package 改为导出 injection token、provider factory、plain factory 与显式 callback/component bridge。状态读取统一通过 `useReadableSignal(...)` 完成。
@@ -80,10 +99,10 @@ Packages：
 
 迁移：
 
-- 在 host composition root 创建一个 environment，并把 environment object 本身沿 provider/adapter 传递。不要让 adopter 读取 `environment.runtime`；直接使用历史 runtime/derive helper 的代码应迁移到 `FoundationEnvironment`、`createClientEnvironment()`、`createEnvironmentForNativeWeb()` 或直接传递结构化 environment。
+- 在 host composition root 创建一个 environment，并把 environment object 本身沿 provider/adapter 传递。不要让 adopter 读取 `environment.runtime`；直接使用历史 runtime/derive helper 的代码应迁移到 `FoundationEnvironment`、`createFoundationEnvironment()`、`createEnvironmentForNativeWeb()` 或直接传递结构化 environment。
 - 即使值是 page-scoped 或异步解析的，public option key 也继续叫 `environment`。不要引入 `pageEnvironment` 作为并行 key；是否需要 page capability 由类型表达。
 - Real page/tab/popup callback flow 使用 `createEnvironmentForNativeWeb({ location, history, ...options })`；page capability 作为顶层 host input 显式传入，且必须来自 host composition root。
-- Worker-like host 不使用 `createEnvironmentForNativeWeb()`；应使用 `createClientEnvironment()` 或更具体的 host factory，并显式注入 persistence/session store。
+- Worker-like host 不使用 `createEnvironmentForNativeWeb()`；应使用 `createFoundationEnvironment()` 或更具体的 host factory，并显式注入 persistence/session store。
 - 不要在 service worker 或 extension background 中执行 page callback bootstrap。那里只运行 restore/token-state API；callback capture 只在 real page/popup document 中运行，或在测试中显式传入 fake page/callback-fragment capability。
 - 将 ambiguous page-global helper 名称迁移到已经改名的 page-explicit 名称，例如 `currentPageLocationAsPostAuthRedirectUri()`、`buildAuthorizeUrlReturningToCurrentPage()`、`bootstrapBackendOidcModePageClient()` 与 `captureBackendOidcModePageCallbackFragment()`。
 - 将既有 redirect/popup helper（`loginWithBackendOidcRedirect()`、`loginWithBackendOidcPopup()`、`relayBackendOidcPopupCallback()`）视为 page-only helper，虽然历史名称保持不变；测试或 host wrapper 中应传入显式 `RouterTrait` / `PopupTrait` 或携带 page capability 的 `environment`。现在 canonical 的共享 token-set OIDC 浏览器 contract 是 `OidcRedirectLoginClient` 上的 `loginWithRedirect({ environment, postAuthRedirectUri })`；通过 `createBackendOidcModeWebClient(...)` materialize 的 backend web client 会暴露这个方法，而 `loginWithBackendOidcRedirect()` 退回为兼容/convenience wrapper。Popup login 还要求显式 callback-fragment capability，browser-state reset 要求显式 `callbackFragmentStore`。
@@ -108,16 +127,16 @@ Package：
 - `FoundationEnvironment` 现在承载单一 `time: TimeTrait` capability，不再拆成 `clock` 与 `scheduler` 字段。Idle work 是独立的可选 `idleCallback: IdleCallbackTrait` capability。
 - `createDefaultTimeConfig()` 取代 `createDefaultClock()` 与 `createDefaultScheduler()`。
 - `createDefaultIdleScheduler()` 与 registry `idleScheduler` wiring 已移除。Registry idle warmup 只有在 host 显式提供 `environment.idleCallback` 时才会运行。
-- `timer()`、`interval()` 与 `scheduleAt()` callback helper 已移除。使用 `fromTimeout()`、`fromInterval()` 与 `fromScheduleAt()` EventStream source。
-- `fromEventPattern()`、`fromSignal()` 与 `fromPromise()` 是 EventStream source helper；不再接收 callback option，也不再返回 scheduling-local `Subscription`。
+- `timer()`、`interval()`、`scheduleAt()`、`fromTimeout()`、`fromInterval()`、`fromScheduleAt()`、`fromEventPattern()`、`fromSignal()` 与 `fromPromise()` 已从 `@securitydept/client` 移除。
+- SDK 仍然对外暴露 `EventStreamTrait` / `EventSubjectTrait` 作为公共响应式原语，但通用 source 构造改为直接使用 RxJS；当需要由 host-owned `TimeTrait` 驱动调度时，使用 `@securitydept/client/rx` 中的 `createAsyncSchedulerWithTimestampProvider(...)`。
 
 迁移：
 
 - 将 `{ clock, scheduler }` environment wiring 改为 `{ time }`；只有当 host 明确启用 registry idle warmup 时才传入带 `environment.idleCallback` 的 host-owned `{ environment }`。工具级 idle revalidation helper 仍消费显式窄 capability。
 - Registry 管理的 token-set entry 现在会通过 `clientFactory(environment)` 接收同一个 registry-owned environment。Client 构造应从该参数取能力，不应读取 module global 或继续传递分散的子 capability。
-- 将直接 callback timer handle 改为 `const sub = fromTimeout({ time, delayMs }).subscribe({ next })`，清理时调用 `sub.unsubscribe()`。
-- 将重复 callback 调度改为 `fromInterval({ time, periodMs }).subscribe({ next })`。
-- 将 `fromEventPattern({ ..., callback })` 改为 `fromEventPattern({ ... }).subscribe({ next })`。
+- 将直接 callback timer handle 改为 `timer(delayMs, createAsyncSchedulerWithTimestampProvider(time)).subscribe(...)`。
+- 将重复 callback 调度改为 `interval(periodMs, createAsyncSchedulerWithTimestampProvider(time)).subscribe(...)`。
+- 原先依赖 `fromEventPattern({ ..., callback })` 风格 SDK helper 的场景，改为直接使用 `rxjs` 的 `fromEventPattern(...)`、`from(Promise.resolve(...))` 或 `new Observable(...)`；只有在跨越 SecurityDept trait 边界时才再桥接回 `EventStreamTrait`。
 - 测试中需要 deterministic `now()`、timer queue、flush 与 pending-count 断言时使用 `FakeTimeConfig`。
 
 理由：
@@ -128,7 +147,7 @@ Package：
 
 Packages：
 
-- `@securitydept/client/events`
+- `@securitydept/client`
 - `@securitydept/token-set-context-client/orchestration`
 - `@securitydept/token-set-context-client/registry`
 - `@securitydept/token-set-context-client-angular`

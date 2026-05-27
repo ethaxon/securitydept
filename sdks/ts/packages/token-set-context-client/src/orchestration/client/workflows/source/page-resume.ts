@@ -1,17 +1,16 @@
 import {
 	createNeverEventStream,
 	type EventStreamTrait,
+	type PageLifecycleTrait,
+	type TimeTrait,
+} from "@securitydept/client";
+import {
+	createAsyncSchedulerWithTimestampProvider,
 	eventStreamToObservable,
 	observableToEventStream,
-	type PageLifecycleTrait,
-	type TimestampProviderTrait,
-} from "@securitydept/client";
-import { createAsyncSchedulerWithTimestampProvider } from "@securitydept/client/rx";
-import type {
-	FoundationEnvironment,
-	PageResumeEvent,
-} from "@securitydept/client/web";
-import { throttleTime } from "rxjs";
+} from "@securitydept/client/rx";
+import { type PageResumeEvent } from "@securitydept/client/web";
+import { tap, throttleTime } from "rxjs";
 import {
 	type BuiltinAuthWorkflowSourceConfig,
 	normalizeBuiltinAuthWorkflowSourceConfig,
@@ -25,10 +24,21 @@ export interface CreatePageResumeWorkflowSourceEnv {
 	pageLifecycle:
 		| Pick<PageLifecycleTrait<PageResumeEvent>, "resume">
 		| undefined;
-	time: TimestampProviderTrait;
+	time: TimeTrait;
+	recordTrace?: (
+		type: PageResumeWorkflowSourceTraceEventType,
+		attributes?: Record<string, unknown>,
+	) => void;
 }
 
 export type PageResumeWorkflowSourceEvent = PageResumeEvent;
+
+export const PageResumeWorkflowSourceTraceEventType = {
+	Fired: "fired",
+} as const;
+
+export type PageResumeWorkflowSourceTraceEventType =
+	(typeof PageResumeWorkflowSourceTraceEventType)[keyof typeof PageResumeWorkflowSourceTraceEventType];
 
 export class PageResumeWorkflowSource {
 	static readonly name = "pageResume";
@@ -54,6 +64,12 @@ export class PageResumeWorkflowSource {
 					throttleMs,
 					createAsyncSchedulerWithTimestampProvider(options.time),
 				),
+				tap((event) => {
+					options.recordTrace?.(PageResumeWorkflowSourceTraceEventType.Fired, {
+						trigger: event.trigger,
+						persisted: event.persisted,
+					});
+				}),
 			),
 		);
 	}
@@ -73,6 +89,7 @@ export class PageResumeWorkflowSource {
 				normalizedConfig.kind === "bundle" ? env.pageLifecycle : undefined,
 			time: env.time,
 			throttleMs: normalizedConfig.options.throttleMs,
+			recordTrace: env.recordTrace,
 		});
 	}
 }

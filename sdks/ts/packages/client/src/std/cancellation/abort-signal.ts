@@ -1,27 +1,84 @@
-import type {
-	CancellationTokenTrait,
-	DisposableTrait,
-} from "../../cancellation/types";
+import { type CancellationTokenTrait } from "../../cancellation";
+import { type DisposableTrait, SYMBOL_DISPOSE } from "../../compat";
 import { ClientError } from "../../errors/client-error";
 import { ClientErrorKind, ClientErrorSource } from "../../errors/types";
+import { abortSignalToEventStream } from "../events";
 
-export interface AbortSignalBridge {
+/**
+ * Bridge a web `AbortSignal` back into the foundation cancellation contract.
+ *
+ * This is the canonical consumer-side path for browser hosts that receive an
+ * `AbortSignal` from framework/runtime APIs (for example React Query queryFns)
+ * but need to call SDK surfaces that accept `CancellationTokenTrait`.
+ */
+export function abortSignalToCancellationToken(
+	signal: AbortSignal,
+): CancellationTokenTrait;
+export function abortSignalToCancellationToken(signal?: undefined): undefined;
+export function abortSignalToCancellationToken(
+	signal?: AbortSignal,
+): CancellationTokenTrait | undefined;
+export function abortSignalToCancellationToken(
+	signal?: AbortSignal,
+): CancellationTokenTrait | undefined {
+	if (!signal) {
+		return undefined;
+	}
+
+	return {
+		get isCancellationRequested() {
+			return signal.aborted;
+		},
+		get reason() {
+			return signal.reason;
+		},
+		onCancellationRequested(listener: (reason: unknown) => void) {
+			const subscription = abortSignalToEventStream(signal).subscribe({
+				next: listener,
+			});
+			return {
+				dispose() {
+					subscription.unsubscribe();
+				},
+				[SYMBOL_DISPOSE]: () => {
+					subscription.unsubscribe();
+				},
+			};
+		},
+		throwIfCancellationRequested() {
+			if (signal.aborted) {
+				throw new ClientError({
+					kind: ClientErrorKind.Cancelled,
+					message: "Request was cancelled via AbortSignal",
+					code: "client.cancelled",
+					source: ClientErrorSource.Transport,
+					cause: signal.reason,
+				});
+			}
+		},
+	};
+}
+
+export interface AbortSignalBridge extends DisposableTrait {
 	signal?: AbortSignal;
-	dispose(): void;
 }
 
 /**
  * Bridge foundation cancellation to `AbortSignal` without exposing
  * `AbortSignal` in core contracts.
  */
-export function createAbortSignalBridge(
+export function cancellationTokenToAbortSignal(
+	token: CancellationTokenTrait,
+): AbortSignalBridge;
+export function cancellationTokenToAbortSignal(token?: undefined): undefined;
+export function cancellationTokenToAbortSignal(
 	token?: CancellationTokenTrait,
-): AbortSignalBridge {
+): AbortSignalBridge | undefined;
+export function cancellationTokenToAbortSignal(
+	token?: CancellationTokenTrait,
+): AbortSignalBridge | undefined {
 	if (!token) {
-		return {
-			signal: undefined,
-			dispose() {},
-		};
+		return undefined;
 	}
 
 	const controller = new AbortController();
@@ -35,12 +92,17 @@ export function createAbortSignalBridge(
 		controller.abort(token.reason);
 	}
 
+	const dispose = () => {
+		if (subscription) {
+			subscription.dispose();
+			subscription = null;
+		}
+	};
+
 	return {
 		signal: controller.signal,
-		dispose() {
-			subscription?.dispose();
-			subscription = null;
-		},
+		dispose,
+		[SYMBOL_DISPOSE]: dispose,
 	};
 }
 

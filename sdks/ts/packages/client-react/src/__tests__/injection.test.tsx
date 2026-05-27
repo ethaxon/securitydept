@@ -5,7 +5,7 @@ import {
 	SecuritydeptInjectionToken,
 	SecuritydeptInjector,
 	type SecuritydeptInjectorTrait,
-} from "@securitydept/client/injection";
+} from "@securitydept/client";
 import { act, Component, createElement, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";

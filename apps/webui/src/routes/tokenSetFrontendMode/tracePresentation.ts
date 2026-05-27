@@ -1,5 +1,4 @@
-import type { TraceTimelineEntry } from "@securitydept/client";
-import { UserRecovery } from "@securitydept/client";
+import { type TraceTimelineEntry, UserRecovery } from "@securitydept/client";
 
 export const TraceBadgeTone = {
 	Neutral: "neutral",
@@ -27,7 +26,7 @@ const OUTCOME_BADGES: Record<string, TraceBadge> = {
 };
 
 export function readTraceDomainBadge(entry: TraceTimelineEntry): TraceBadge {
-	if (entry.type.startsWith("operation.")) {
+	if (entry.name.startsWith("operation.")) {
 		return {
 			label: "Operation Lifecycle",
 			tone: TraceBadgeTone.Neutral,
@@ -35,8 +34,8 @@ export function readTraceDomainBadge(entry: TraceTimelineEntry): TraceBadge {
 	}
 
 	if (
-		entry.type.startsWith("frontend_oidc.host.") ||
-		entry.scope === "apps.webui.token-set-frontend"
+		entry.name.startsWith("frontend_oidc.host.") ||
+		entry.target === "apps.webui.token-set-frontend"
 	) {
 		return {
 			label: "Host Adoption",
@@ -53,7 +52,7 @@ export function readTraceDomainBadge(entry: TraceTimelineEntry): TraceBadge {
 export function readTraceOutcomeBadge(
 	entry: TraceTimelineEntry,
 ): TraceBadge | null {
-	const suffix = entry.type.split(".").at(-1);
+	const suffix = entry.name.split(".").at(-1);
 	if (!suffix) {
 		return null;
 	}
@@ -62,46 +61,47 @@ export function readTraceOutcomeBadge(
 }
 
 export function readTraceDisplayType(entry: TraceTimelineEntry): string {
-	if (entry.type.startsWith("operation.")) {
-		return entry.type.slice("operation.".length);
+	if (entry.name.startsWith("operation.")) {
+		return entry.name.slice("operation.".length);
 	}
 
-	if (entry.type.startsWith("frontend_oidc.")) {
-		return entry.type.slice("frontend_oidc.".length);
+	if (entry.name.startsWith("frontend_oidc.")) {
+		return entry.name.slice("frontend_oidc.".length);
 	}
 
-	return entry.type;
+	return entry.name;
 }
 
 export function readTraceSummary(entry: TraceTimelineEntry): string | null {
-	const attributes = entry.attributes ?? {};
-	const fields: string[] = [];
+	const metadata = entry.fields ?? {};
+	const parts: string[] = [];
 
-	appendStringField(fields, attributes.popupCallbackUrl);
-	appendStringField(fields, attributes.operationName, "operation");
-	appendStringField(fields, attributes.eventType, "event");
-	appendStringField(fields, attributes.configuredIssuer);
-	appendStringField(fields, attributes.resolvedIssuer);
-	appendStringField(fields, attributes.state, "state");
-	appendStringField(fields, attributes.reason, "reason");
-	appendStringField(fields, attributes.errorCode, "code");
-	appendStringField(fields, attributes.code, "code");
-	appendStringField(fields, attributes.recovery, "recovery");
-	appendBooleanField(fields, attributes.persisted, "persisted");
-	appendBooleanField(fields, attributes.hasClaimsCheck, "claims_check");
-	appendBooleanField(fields, attributes.newIdToken, "new_id_token");
-	appendBooleanField(fields, attributes.hasAccessToken, "has_access_token");
-	appendNumberField(fields, attributes.syncCount, "sync_count");
+	appendStringField(parts, entry.target);
+	appendStringField(parts, metadata.popupCallbackUrl);
+	appendStringField(parts, metadata.operationName, "operation");
+	appendStringField(parts, metadata.eventName, "event");
+	appendStringField(parts, metadata.configuredIssuer);
+	appendStringField(parts, metadata.resolvedIssuer);
+	appendStringField(parts, metadata.state, "state");
+	appendStringField(parts, metadata.reason, "reason");
+	appendStringField(parts, metadata.errorCode, "code");
+	appendStringField(parts, metadata.code, "code");
+	appendStringField(parts, metadata.recovery, "recovery");
+	appendBooleanField(parts, metadata.persisted, "persisted");
+	appendBooleanField(parts, metadata.hasClaimsCheck, "claims_check");
+	appendBooleanField(parts, metadata.newIdToken, "new_id_token");
+	appendBooleanField(parts, metadata.hasAccessToken, "has_access_token");
+	appendNumberField(parts, metadata.syncCount, "sync_count");
 
-	return fields.length > 0 ? fields.join(" · ") : null;
+	return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-export function formatTraceAttributes(entry: TraceTimelineEntry): string {
-	if (!entry.attributes || Object.keys(entry.attributes).length === 0) {
+export function formatTraceFields(entry: TraceTimelineEntry): string {
+	if (!entry.fields || Object.keys(entry.fields).length === 0) {
 		return "{}";
 	}
 
-	return JSON.stringify(entry.attributes, null, 2);
+	return JSON.stringify(entry.fields, null, 2);
 }
 
 export function readTraceBadgeClassName(tone: TraceBadgeTone): string {

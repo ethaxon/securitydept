@@ -10,7 +10,7 @@
 // and authorized transport — all without any OIDC-mediated sealed flow semantics.
 //
 // NOTE: The shared auth requirement orchestration primitives (requirement planner,
-// route orchestrator) have moved to @securitydept/client/auth-coordination.
+// route orchestrator) have moved to @securitydept/client.
 // Migration: see docs/en/110-TS_SDK_MIGRATIONS.md
 //
 // Current status: PUBLIC subpath within token-set-context-client (same npm package).
@@ -25,17 +25,13 @@ export type {
 	UnknownErrorAttributes,
 } from "@securitydept/client";
 export { describeError } from "@securitydept/client";
+export { BaseOidcModeClient, PersistPolicy } from "./client/base-client";
 // Base client: shared lifecycle infrastructure for mode-specific clients.
 export type {
 	BaseOidcModeClientOptions,
 	TokenSetAuthOperationSignals,
-} from "./client/base-client";
-export {
-	AuthCheckStatus,
-	BaseOidcModeClient,
-	PersistPolicy,
-	StateRestoreSourceKind,
-} from "./client/base-client";
+} from "./client/types";
+export { StateRestoreSourceKind } from "./client/types";
 export type {
 	AuthWorkflowRuntimeOptions,
 	AuthWorkflowSource as TokenSetAuthWorkflowSource,
@@ -52,6 +48,8 @@ export type {
 	TokenSetAuthErrorSummary,
 	TokenSetAuthEvent,
 	TokenSetAuthEventPayload,
+	TokenSetAuthEventPayloadBase,
+	TokenSetAuthRefreshEventPayload,
 } from "./events/auth-events";
 export {
 	createTokenSetAuthEvent,
@@ -69,6 +67,7 @@ export {
 	TokenSetPersistenceEventType,
 	TokenSetPersistenceReason,
 } from "./events/persistence-events";
+export * from "./token/freshness";
 export { mergeTokenDelta } from "./token/ops";
 export type {
 	CreateTokenHandleStoreOptions,

@@ -2,10 +2,11 @@ import {
 	normalizeAuthenticatedPrincipalWire,
 	validateWithSchemaSync,
 } from "@securitydept/client";
-import type {
-	BackendOidcModeCallbackReturns,
-	BackendOidcModeRefreshReturns,
-	BackendOidcModeUserInfoResponse,
+import { type TokenDelta, type TokenSnapshot } from "../../orchestration";
+import {
+	type BackendOidcModeCallbackReturns,
+	type BackendOidcModeRefreshReturns,
+	type BackendOidcModeUserInfoResponse,
 } from "./contracts";
 import {
 	BackendOidcModeCallbackBodySchema,
@@ -123,7 +124,7 @@ export function parseBackendOidcModeRefreshBody(
  */
 export function callbackReturnsToTokenSnapshot(
 	body: BackendOidcModeCallbackReturns,
-): import("../../orchestration/token/types").TokenSnapshot {
+): TokenSnapshot {
 	return {
 		accessToken: body.accessToken,
 		idToken: body.idToken,
@@ -137,7 +138,7 @@ export function callbackReturnsToTokenSnapshot(
  */
 export function refreshReturnsToTokenDelta(
 	body: BackendOidcModeRefreshReturns,
-): import("../../orchestration/token/types").TokenDelta {
+): TokenDelta {
 	return {
 		accessToken: body.accessToken,
 		idToken: body.idToken,

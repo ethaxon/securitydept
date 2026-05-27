@@ -1,3 +1,4 @@
+import { type as defineType } from "arktype";
 // --- Event system trait types ---
 import { isInteropObservableTrait, type SubscriptionTrait } from "../compat";
 
@@ -18,6 +19,10 @@ export interface EventStreamTrait<T> {
 		subscribe(observer: Partial<EventObserverTrait<T>>): EventSubscriptionTrait;
 	};
 }
+
+export const EventStreamTraitSchema = defineType({
+	subscribe: "Function",
+});
 
 /** Hot event producer. */
 export interface EventSubjectTrait<T> extends EventStreamTrait<T> {

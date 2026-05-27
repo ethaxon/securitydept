@@ -5,13 +5,16 @@ import {
 	provideBasicAuthContext,
 } from "@securitydept/basic-auth-context-client-angular";
 import {
-	createClientEnvironment,
-	createSubject,
+	createEventSubject,
+	createFoundationEnvironment,
+	createRootSpan,
+	createSignal,
+	createTracing,
 	type ExternalTransportTrait,
 	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
 } from "@securitydept/client";
-import { toRxObservable } from "@securitydept/client/rx";
+import { signalToObservable } from "@securitydept/client/rx";
 import { bridgeToAngularSignal } from "@securitydept/client-angular";
 import {
 	provideSessionContext,
@@ -33,10 +36,7 @@ import {
 } from "@securitydept/token-set-context-client-angular";
 import { firstValueFrom, Observable, of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
-import {
-	authCheckResultForSnapshot,
-	createTestTokenSetReactiveFields,
-} from "./test-token-set-client";
+import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -55,19 +55,11 @@ function createTestSignal<T>(initial: T): {
 	signal: ReadableSignalTrait<T>;
 	set(value: T): void;
 } {
-	let value = initial;
-	const listeners = new Set<() => void>();
+	const signal = createSignal(initial);
 	return {
-		signal: {
-			get: () => value,
-			subscribe(listener: () => void) {
-				listeners.add(listener);
-				return () => listeners.delete(listener);
-			},
-		},
+		signal,
 		set(newValue: T) {
-			value = newValue;
-			for (const l of listeners) l();
+			signal.set(newValue);
 		},
 	};
 }
@@ -93,17 +85,12 @@ function createMockClient(
 	const reactive = createTestTokenSetReactiveFields(initialState);
 	return {
 		...reactive.fields,
-		authEvents: createSubject(),
+		authEvents: createEventSubject(),
 		addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 		removeWorkflowSource: vi.fn(() => false),
 		start: vi.fn(async () => undefined),
 		dispose: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
-		authCheck: vi
-			.fn()
-			.mockImplementation(async () =>
-				authCheckResultForSnapshot(stateCtrl.signal.get()),
-			),
 		handleCallback: vi.fn().mockResolvedValue({
 			snapshot: makeSnapshot("callback-tok"),
 		}),
@@ -220,7 +207,7 @@ describe("Angular Integration — Angular-native DI surface", () => {
 	it("provideSessionContext returns Angular Provider array", () => {
 		const providers = provideSessionContext({
 			config: { baseUrl: "/api" },
-			environment: createClientEnvironment({
+			environment: createFoundationEnvironment({
 				transport: {
 					execute: vi.fn(async () => ({
 						status: 200,
@@ -228,6 +215,8 @@ describe("Angular Integration — Angular-native DI surface", () => {
 						body: null,
 					})),
 				} satisfies ExternalTransportTrait,
+				span: createRootSpan(),
+				tracing: createTracing(),
 			}),
 		});
 		expect(Array.isArray(providers)).toBe(true);
@@ -302,13 +291,13 @@ describe("Angular Integration — Signal Bridge with real Angular signal", () =>
 describe("Angular Integration — RxJS Observable Bridge", () => {
 	it("returns a real RxJS Observable", () => {
 		const { signal } = createTestSignal("initial");
-		const obs$ = toRxObservable(signal);
+		const obs$ = signalToObservable(signal);
 		expect(obs$).toBeInstanceOf(Observable);
 	});
 
 	it("emits current value and subsequent changes", () => {
 		const { signal, set } = createTestSignal(0);
-		const obs$ = toRxObservable(signal);
+		const obs$ = signalToObservable(signal);
 
 		const values: number[] = [];
 		const sub = obs$.subscribe((value: number) => values.push(value));
@@ -322,7 +311,7 @@ describe("Angular Integration — RxJS Observable Bridge", () => {
 
 	it("stops emitting after unsubscribe", () => {
 		const { signal, set } = createTestSignal("a");
-		const obs$ = toRxObservable(signal);
+		const obs$ = signalToObservable(signal);
 
 		const values: string[] = [];
 		const sub = obs$.subscribe((value: string) => values.push(value));
@@ -650,37 +639,26 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 		const mainReactive = createTestTokenSetReactiveFields(null);
 		const mainClient: OidcModeClient & OidcCallbackClient = {
 			...mainReactive.fields,
-			authEvents: createSubject(),
+			authEvents: createEventSubject(),
 			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn().mockResolvedValue(null),
-			authCheck: vi
-				.fn()
-				.mockImplementation(async () =>
-					authCheckResultForSnapshot(mainState.signal.get()),
-				),
 			handleCallback: vi.fn().mockResolvedValue({
 				snapshot: makeSnapshot("main-after-login"),
 			}),
 		};
 
-		const adminState = createTestSignal<AuthSnapshot | null>(null);
 		const adminReactive = createTestTokenSetReactiveFields(null);
 		const adminClient: OidcModeClient & OidcCallbackClient = {
 			...adminReactive.fields,
-			authEvents: createSubject(),
+			authEvents: createEventSubject(),
 			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn().mockResolvedValue(null),
-			authCheck: vi
-				.fn()
-				.mockImplementation(async () =>
-					authCheckResultForSnapshot(adminState.signal.get()),
-				),
 			handleCallback: vi.fn().mockResolvedValue({
 				snapshot: makeSnapshot("admin-after-login"),
 			}),
@@ -712,7 +690,7 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 
 		// 4. Observable tracking
 		const mainStates: boolean[] = [];
-		const sub = toRxObservable(mainRegisteredClient.authSnapshot).subscribe(
+		const sub = signalToObservable(mainRegisteredClient.authSnapshot).subscribe(
 			(snap) => mainStates.push(snap !== null),
 		);
 		expect(mainStates).toEqual([false]);
@@ -857,7 +835,7 @@ describe("Angular Integration — RequirementKind / ProviderFamily mapping", () 
 // query) and per-requirement onUnauthenticated handler.
 // ===========================================================================
 
-import { createPlannerHost } from "@securitydept/client/auth-coordination";
+import { createPlannerHost } from "@securitydept/client";
 import {
 	type ClientFilter,
 	type ClientMeta,
@@ -1001,7 +979,7 @@ import {
 	type AuthGuardClientOption,
 	RequirementsClientSetComposition,
 	resolveEffectiveClientSet,
-} from "@securitydept/client/auth-coordination";
+} from "@securitydept/client";
 import {
 	AUTH_REQUIREMENTS_CLIENT_SET,
 	provideRouteScopedRequirements,
@@ -1167,9 +1145,7 @@ describe("Angular nested-scope requirements composition — contract evidence", 
 
 		// Run through planner to verify it selects the first unauthenticated
 		// in declaration order (session is authenticated, oidc is not → planner picks oidc)
-		const { createPlannerHost } = await import(
-			"@securitydept/client/auth-coordination"
-		);
+		const { createPlannerHost } = await import("@securitydept/client");
 		const host = createPlannerHost();
 		const result = await host.evaluate(finalCandidates);
 

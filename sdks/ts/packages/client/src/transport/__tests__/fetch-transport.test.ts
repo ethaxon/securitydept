@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCancellationTokenSource } from "../../cancellation/cancellation-token";
 import { ClientError } from "../../errors/client-error";
-import { createExternalTransportForFetch } from "../../std/transport";
+import { createBaseTransportForStdFetch } from "../../std/transport";
+import { createExternalTransportFromBase } from "../external-transport";
 
-describe("createExternalTransportForFetch()", () => {
+describe("createBaseTransportForStdFetch()", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
 	});
 
 	it("aborts fetch requests when the cancellation token is cancelled", async () => {
 		const cancellation = createCancellationTokenSource();
-		const transport = createExternalTransportForFetch();
 		const fetchSpy = vi.fn((_input: string, init?: RequestInit) => {
 			const signal = init?.signal;
 			return new Promise<Response>((_resolve, reject) => {
@@ -19,7 +19,9 @@ describe("createExternalTransportForFetch()", () => {
 				});
 			});
 		});
-		vi.stubGlobal("fetch", fetchSpy);
+		const transport = createBaseTransportForStdFetch({
+			fetch: fetchSpy as typeof fetch,
+		});
 
 		const requestPromise = transport.execute({
 			url: "https://api.example.com/resource",
@@ -43,6 +45,14 @@ describe("createExternalTransportForFetch()", () => {
 			code: "test.fetch_cancelled",
 		});
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("derives external transport without wrapping runtime behavior", () => {
+		const baseTransport = createBaseTransportForStdFetch({
+			fetch: vi.fn(),
+		});
+
+		expect(createExternalTransportFromBase(baseTransport)).toBe(baseTransport);
 	});
 });
 

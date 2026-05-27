@@ -1,9 +1,5 @@
 import { createReplaySignal, createSignal } from "@securitydept/client";
-import {
-	AuthCheckStatus,
-	type AuthSnapshot,
-	TokenSetAuthFlowReason,
-} from "@securitydept/token-set-context-client/orchestration";
+import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 
 export function bearerHeaderForSnapshot(
 	snapshot: AuthSnapshot | null,
@@ -50,31 +46,8 @@ export function createTestTokenSetReactiveFields(
 				clearPending: createSignal(false),
 				loginPending: createSignal(false),
 			},
-			authCheck: async () => {
-				const slot = authSnapshot.get();
-				return authCheckResultForSnapshot(
-					slot.kind === "value" ? slot.value : null,
-				);
-			},
 		},
 		emitSnapshot,
 		emitError,
 	};
-}
-
-export function authCheckResultForSnapshot(snapshot: AuthSnapshot | null) {
-	if (!snapshot) {
-		return {
-			status: AuthCheckStatus.Unauthenticated,
-			snapshot: null,
-			authorizationHeader: undefined,
-			reason: TokenSetAuthFlowReason.NoSnapshot,
-		} as const;
-	}
-	return {
-		status: AuthCheckStatus.Authenticated,
-		snapshot,
-		freshness: "fresh",
-		authorizationHeader: bearerHeaderForSnapshot(snapshot),
-	} as const;
 }

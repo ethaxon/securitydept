@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 
 import {
-	createClientEnvironment,
+	createFoundationEnvironment,
 	createInMemoryRecordStore,
+	createRootSpan,
+	createTracing,
 } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
@@ -60,9 +62,11 @@ describe("session-context react minimal entry", () => {
 		};
 		const controller = createSessionContextController({
 			config: { baseUrl: "https://auth.example.com" },
-			environment: createClientEnvironment({
+			environment: createFoundationEnvironment({
 				transport: transport,
 				sessionStorage: createInMemoryRecordStore(),
+				span: createRootSpan(),
+				tracing: createTracing(),
 			}),
 		});
 

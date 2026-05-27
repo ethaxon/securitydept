@@ -1,15 +1,17 @@
 import { filter, map, type Observable, take } from "rxjs";
 import { BehaviorSubject } from "rxjs/internal/BehaviorSubject";
 import {
+	type DisposableTrait,
 	type InteropObservableTrait,
 	isInteropObservableTrait,
+	SYMBOL_DISPOSE,
 	SYMBOL_OBSERVABLE,
 } from "../compat";
 import { ClientError } from "../errors/client-error";
 import { ClientErrorKind } from "../errors/types";
-import type {
-	CancellationTokenSourceTrait,
-	CancellationTokenTrait,
+import {
+	type CancellationTokenSourceTrait,
+	type CancellationTokenTrait,
 } from "./types";
 
 class CancellationToken
@@ -35,20 +37,25 @@ class CancellationToken
 		this._isCancelled.complete();
 	}
 
-	onCancellationRequested(listener: (reason: unknown) => void): Disposable {
+	onCancellationRequested(
+		listener: (reason: unknown) => void,
+	): DisposableTrait {
 		const subscription = this._asObservable().subscribe(() => {
 			listener(this._reason);
 		});
 
 		return {
-			[Symbol.dispose]: () => {
+			dispose() {
+				subscription.unsubscribe();
+			},
+			[SYMBOL_DISPOSE]: () => {
 				subscription.unsubscribe();
 			},
 		};
 	}
 
 	throwIfCancellationRequested(): void {
-		if (this._isCancelled) {
+		if (this._isCancelled.getValue()) {
 			throw new ClientError({
 				kind: ClientErrorKind.Cancelled,
 				message: "Operation was cancelled",
@@ -77,6 +84,18 @@ export function createCancellationTokenSource(): CancellationTokenSourceTrait {
 	const ct = new CancellationToken();
 	let disposed = false;
 
+	const dispose = () => {
+		if (!disposed) {
+			disposed = true;
+			ct._cancel(
+				new ClientError({
+					kind: ClientErrorKind.Cancelled,
+					message: "Disposed",
+				}),
+			);
+		}
+	};
+
 	return {
 		get token(): CancellationTokenTrait {
 			return ct;
@@ -84,16 +103,9 @@ export function createCancellationTokenSource(): CancellationTokenSourceTrait {
 		cancel(reason?: unknown) {
 			if (!disposed) ct._cancel(reason);
 		},
-		[Symbol.dispose]() {
-			if (!disposed) {
-				disposed = true;
-				ct._cancel(
-					new ClientError({
-						kind: ClientErrorKind.Cancelled,
-						message: "Disposed",
-					}),
-				);
-			}
+		dispose,
+		[SYMBOL_DISPOSE]() {
+			dispose();
 		},
 	};
 }

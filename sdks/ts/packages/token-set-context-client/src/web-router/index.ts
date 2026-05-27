@@ -1,5 +1,5 @@
-import type { AuthGuardClientOption } from "@securitydept/client/auth-coordination";
-import type { ClientQueryOptions, OidcModeClient } from "../registry";
+import { type AuthGuardClientOption } from "@securitydept/client";
+import { type ClientQueryOptions, type OidcModeClient } from "../registry";
 
 export interface TokenSetWebRouterAuthRegistry {
 	whenReady(key?: string): Promise<OidcModeClient>;

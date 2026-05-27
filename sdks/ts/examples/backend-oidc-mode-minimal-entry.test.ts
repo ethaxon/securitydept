@@ -10,10 +10,13 @@
 // state management, parsers, and authorized transport. Browser-specific
 // glue lives in /web, React-specific in /react.
 
-import { createInMemoryRecordStore } from "@securitydept/client";
-import type { BackendOidcModeClientConfig } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import {
+	createFoundationEnvironment,
+	createInMemoryRecordStore,
+} from "@securitydept/client";
 import {
 	BackendOidcModeClient,
+	type BackendOidcModeClientConfig,
 	parseBackendOidcModeCallbackFragment,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it } from "vitest";
@@ -30,7 +33,7 @@ function expectReplayValue<T>(signal: {
 }
 
 // Minimal runtime stubs — just enough to construct a client.
-const minimalRuntime = {
+const minimalRuntime = createFoundationEnvironment({
 	transport: {
 		async execute() {
 			return { status: 500, headers: {}, body: null };
@@ -47,7 +50,7 @@ const minimalRuntime = {
 	},
 	persistentStorage: createInMemoryRecordStore(),
 	sessionStorage: createInMemoryRecordStore(),
-};
+});
 
 describe("backend-oidc-mode root minimal entry", () => {
 	it("shows the standalone root entry path: construct → restoreState → state + auth header", () => {

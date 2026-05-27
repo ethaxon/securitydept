@@ -4,15 +4,15 @@
 // exchange the same duck-typed OIDC client surface when registering against
 // the shared `TokenSetAuthRegistry` core.
 
-import type { FoundationEnvironment } from "@securitydept/client";
-import type { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import type {
-	ClientInitializationPriority,
-	TokenSetClientEntry as CoreTokenSetClientEntry,
-	OidcCallbackClient,
-	OidcModeClient,
-	OidcRedirectLoginClient,
-	OidcRedirectLoginOptions,
+import { type FoundationEnvironment } from "@securitydept/client";
+import { type BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import {
+	type ClientInitializationPriority,
+	type TokenSetClientEntry as CoreTokenSetClientEntry,
+	type OidcCallbackClient,
+	type OidcModeClient,
+	type OidcRedirectLoginClient,
+	type OidcRedirectLoginOptions,
 } from "@securitydept/token-set-context-client/registry";
 
 // ============================================================================
@@ -33,7 +33,7 @@ export type TokenSetReactClient = OidcModeClient &
 	OidcRedirectLoginClient;
 
 export type TokenSetBackendOidcClient = TokenSetReactClient &
-	Pick<BackendOidcModeClient, "authorizeUrl" | "refresh" | "clearState">;
+	Pick<BackendOidcModeClient, "authorizeUrl" | "refreshState" | "clearState">;
 
 // ============================================================================
 // Multi-client registration

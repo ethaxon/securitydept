@@ -2,16 +2,16 @@ import {
 	ClientErrorKind,
 	createCancellationTokenSource,
 	createInMemoryRecordStore,
+	createRootSpan,
+	createTracing,
 	type HttpRequest,
 	type HttpResponse,
-	type LogEntry,
-	LogLevel,
 	type TimeTrait,
 	UserRecovery,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { describe, expect, it, vi } from "vitest";
-import { createBackendOidcModeAuthorizedTransport } from "../transport/auth-transport";
+import { createBackendOidcModeAuthorizedTransportFromBase } from "../transport/auth-transport";
 import {
 	BackendOidcModeBootstrapSource,
 	type BackendOidcModePageCallbackCapability,
@@ -64,6 +64,7 @@ function createPageCallbackEnvironment(
 	return {
 		...createRouterForNativeWeb({ location, history }),
 		callbackFragmentStore,
+		time: testTime,
 	};
 }
 
@@ -78,8 +79,9 @@ type BackendOidcModeTestClientOptions = Omit<
 	CreateBackendOidcModeWebClientOptions,
 	"environment"
 > &
-	CreateBackendOidcModeWebClientEnvironmentOptions & {
+	Omit<CreateBackendOidcModeWebClientEnvironmentOptions, "tracing"> & {
 		transport?: CreateBackendOidcModeWebClientEnvironmentOptions["transport"];
+		tracing?: CreateBackendOidcModeWebClientEnvironmentOptions["tracing"];
 	};
 
 function createBackendOidcModeWebClient(
@@ -91,9 +93,9 @@ function createBackendOidcModeWebClient(
 		sessionStorage,
 		callbackFragmentStore,
 		transport,
+		span,
 		time,
-		logger,
-		traceSink,
+		tracing,
 		...clientOptions
 	} = options;
 
@@ -105,9 +107,9 @@ function createBackendOidcModeWebClient(
 			sessionStorage,
 			callbackFragmentStore,
 			transport,
+			span,
 			time,
-			logger,
-			traceSink,
+			tracing: tracing ?? createTracing(),
 		}),
 	});
 }
@@ -177,6 +179,7 @@ describe("token-set web helpers", () => {
 			},
 		};
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
@@ -202,6 +205,7 @@ describe("token-set web helpers", () => {
 	it("retains callback fragments when bootstrap fails with a retryable error", async () => {
 		const sessionStorage = createInMemoryRecordStore();
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			sessionStorage,
 			persistentStorage: createInMemoryRecordStore(),
 			transport: {
@@ -237,6 +241,7 @@ describe("token-set web helpers", () => {
 	it("clears callback fragments when bootstrap fails with a non-retryable error", async () => {
 		const sessionStorage = createInMemoryRecordStore();
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			sessionStorage,
 			persistentStorage: createInMemoryRecordStore(),
 			transport: {
@@ -267,6 +272,7 @@ describe("token-set web helpers", () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -308,6 +314,7 @@ describe("token-set web helpers", () => {
 		expect(await callbackFragmentStore.load()).toBeNull();
 
 		const restoredClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -352,6 +359,7 @@ describe("token-set web helpers", () => {
 			sessionStorage,
 		});
 		const firstClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -374,6 +382,7 @@ describe("token-set web helpers", () => {
 		expect(await callbackFragmentStore.load()).toBeNull();
 
 		const restoredClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -403,6 +412,7 @@ describe("token-set web helpers", () => {
 		});
 
 		const freshClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -477,6 +487,7 @@ describe("token-set web helpers", () => {
 			sessionStorage,
 		});
 		const oldClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -492,6 +503,7 @@ describe("token-set web helpers", () => {
 		);
 
 		const bootstrapClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -521,6 +533,7 @@ describe("token-set web helpers", () => {
 		expect(await callbackFragmentStore.load()).toBeNull();
 
 		const restoredClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -609,6 +622,7 @@ describe("token-set web helpers", () => {
 			sessionStorage,
 		});
 		const oldClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -621,6 +635,7 @@ describe("token-set web helpers", () => {
 		);
 
 		const retryingClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -666,6 +681,7 @@ describe("token-set web helpers", () => {
 		expect(await callbackFragmentStore.load()).toBeNull();
 
 		const restoredClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -736,6 +752,7 @@ describe("token-set web helpers", () => {
 			sessionStorage,
 		});
 		const oldClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -751,6 +768,7 @@ describe("token-set web helpers", () => {
 		);
 
 		const failingClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -774,6 +792,7 @@ describe("token-set web helpers", () => {
 		expect(failingClient.authSnapshot.hasValue()).toBe(false);
 
 		const restoredClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -859,6 +878,7 @@ describe("token-set web helpers", () => {
 		expect(history.replacedUrl).toBe("/oidc-mediated?tab=members");
 
 		const bootstrapClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -885,6 +905,7 @@ describe("token-set web helpers", () => {
 		expect(await callbackFragmentStore.load()).toBeNull();
 
 		const restoredClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -952,6 +973,7 @@ describe("token-set web helpers", () => {
 			sessionStorage,
 		});
 		const retryingClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -999,6 +1021,7 @@ describe("token-set web helpers", () => {
 		expect(await callbackFragmentStore.load()).toBeNull();
 
 		const restoredClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -1063,6 +1086,7 @@ describe("token-set web helpers", () => {
 		);
 
 		const bootstrapClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -1092,6 +1116,7 @@ describe("token-set web helpers", () => {
 		expect(await callbackFragmentStore.load()).toBeNull();
 
 		const freshClient = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStorage,
 			sessionStorage,
@@ -1116,7 +1141,7 @@ describe("token-set web helpers", () => {
 	it("injects the current bearer and forwards cancellation tokens", async () => {
 		const cancellation = createCancellationTokenSource();
 		const requests: HttpRequest[] = [];
-		const transport = createBackendOidcModeAuthorizedTransport(
+		const transport = createBackendOidcModeAuthorizedTransportFromBase(
 			{
 				authorizationHeader: () => "Bearer token-set-at",
 			},
@@ -1149,7 +1174,7 @@ describe("token-set web helpers", () => {
 	});
 
 	it("refuses to fall back when token-set authorization is unavailable", async () => {
-		const transport = createBackendOidcModeAuthorizedTransport(
+		const transport = createBackendOidcModeAuthorizedTransportFromBase(
 			{
 				authorizationHeader: () => null,
 			},
@@ -1204,6 +1229,7 @@ describe("token-set web helpers", () => {
 
 		// Client A: uses a custom persistentStateKey
 		const clientA = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-a",
 			persistentStorage,
@@ -1221,6 +1247,7 @@ describe("token-set web helpers", () => {
 
 		// Client B: uses a different persistentStateKey on the same store
 		const clientB = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-b",
 			persistentStorage,
@@ -1235,6 +1262,7 @@ describe("token-set web helpers", () => {
 
 		// Client C: uses the same key as A — must see A's state
 		const clientC = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-a",
 			persistentStorage,
@@ -1276,6 +1304,7 @@ describe("token-set web helpers", () => {
 		expect(keyA).not.toBe(keyB);
 
 		const clientA = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-a",
 			persistentStorage: sharedPersistentStore,
@@ -1300,6 +1329,7 @@ describe("token-set web helpers", () => {
 		expect(resultA.snapshot?.tokens.accessToken).toBe("a-at");
 
 		const clientB = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			baseUrl: "https://auth.example.com",
 			persistentStateKey: "tenant-b",
 			persistentStorage: sharedPersistentStore,
@@ -1322,59 +1352,6 @@ describe("token-set web helpers", () => {
 		// B must not see A's fragment — correct isolation means Empty, not Callback
 		expect(resultB.source).toBe(BackendOidcModeBootstrapSource.Empty);
 	});
-	it("forwards logger through the browser entry and invokes it during real client behavior", async () => {
-		const logEntries: LogEntry[] = [];
-		const logger = {
-			log(entry: LogEntry): void {
-				logEntries.push(entry);
-			},
-		};
-		const persistentStorage = createInMemoryRecordStore();
-		const sessionStorage = createInMemoryRecordStore();
-		const transport = {
-			async execute(request: HttpRequest): Promise<HttpResponse> {
-				if (request.url.endsWith("/metadata/redeem")) {
-					return {
-						status: 200,
-						headers: {},
-						body: {
-							metadata: {
-								principal: {
-									subject: "user-1",
-									displayName: "Alice",
-								},
-							},
-						},
-					};
-				}
-
-				throw new Error(`Unexpected request: ${request.method} ${request.url}`);
-			},
-		};
-
-		const client = createBackendOidcModeWebClient({
-			persistentStorage,
-			sessionStorage,
-			transport,
-			time: testTime,
-			logger,
-		});
-
-		await client.handleCallback(
-			"access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&metadata_redemption_id=meta-1",
-		);
-
-		// The logger must have been called at least once with an Info-level
-		// entry scoped to backend-oidc-mode during the callback lifecycle.
-		const infoEntries = logEntries.filter(
-			(e) => e.level === LogLevel.Info && e.scope === "backend-oidc-mode",
-		);
-		expect(infoEntries.length).toBeGreaterThanOrEqual(1);
-		expect(infoEntries[0]?.message).toBe(
-			"Auth state initialized from callback",
-		);
-	});
-
 	it("uses redirect: manual by default when no custom external transport is provided", async () => {
 		const capturedInits: RequestInit[] = [];
 		const originalFetch = globalThis.fetch;
@@ -1398,6 +1375,7 @@ describe("token-set web helpers", () => {
 
 		try {
 			const client = createBackendOidcModeWebClient({
+				span: createRootSpan(),
 				persistentStorage: createInMemoryRecordStore(),
 				sessionStorage: createInMemoryRecordStore(),
 				time: testTime,
@@ -1437,6 +1415,7 @@ describe("token-set web helpers", () => {
 		};
 
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage: createInMemoryRecordStore(),
 			sessionStorage: createInMemoryRecordStore(),
 			time: testTime,
@@ -1473,6 +1452,7 @@ describe("token-set web helpers", () => {
 
 		// Reset only integration A using the host-composed fragment store.
 		const clientA = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStateKey: "tenant-a",
 			persistentStorage: createInMemoryRecordStore(),
 			sessionStorage: sharedSessionStore,
@@ -1509,6 +1489,7 @@ describe("token-set web helpers", () => {
 		await otherStore.save("access_token=other-at&id_token=other-idt");
 
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage: createInMemoryRecordStore(),
 			sessionStorage,
 			transport: {
@@ -1534,6 +1515,7 @@ describe("token-set web helpers", () => {
 
 	it("materialized backend web clients and the compatibility helper share the same redirect navigation path", async () => {
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage: createInMemoryRecordStore(),
 			sessionStorage: createInMemoryRecordStore(),
 			baseUrl: "https://auth.example.com",
@@ -1575,6 +1557,7 @@ describe("token-set web helpers", () => {
 
 	it("fails page helpers without explicit environment instead of reading a global window", async () => {
 		const client = createBackendOidcModeWebClient({
+			span: createRootSpan(),
 			persistentStorage: createInMemoryRecordStore(),
 			sessionStorage: createInMemoryRecordStore(),
 			transport: {

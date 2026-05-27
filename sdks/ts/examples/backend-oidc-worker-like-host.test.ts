@@ -1,6 +1,8 @@
 import {
-	createClientEnvironment,
+	createFoundationEnvironment,
 	createInMemoryRecordStore,
+	createRootSpan,
+	createTracing,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import {
@@ -70,6 +72,8 @@ describe("backend-oidc worker-like host boundary", () => {
 		});
 		const client = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
 				persistentStorage,
 				sessionStorage,
 				callbackFragmentStore,
@@ -88,11 +92,13 @@ describe("backend-oidc worker-like host boundary", () => {
 	it("restores persisted token state without running page callback capture", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const baseEnvironment = createClientEnvironment({
+		const baseEnvironment = createFoundationEnvironment({
 			transport: createMetadataTransport(),
 			persistentStorage,
 			sessionStorage,
 			time: createTime(),
+			span: createRootSpan(),
+			tracing: createTracing(),
 		});
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
 			sessionStorage,
@@ -115,6 +121,7 @@ describe("backend-oidc worker-like host boundary", () => {
 	});
 
 	it("captures callback fragments only with explicit host-injected page capabilities", async () => {
+		const time = createTime();
 		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
 			sessionStorage: createInMemoryRecordStore(),
 		});
@@ -135,6 +142,7 @@ describe("backend-oidc worker-like host boundary", () => {
 					history,
 				}),
 				callbackFragmentStore,
+				time,
 			},
 		});
 

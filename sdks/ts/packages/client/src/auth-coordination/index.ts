@@ -1,6 +1,6 @@
 // Shared auth coordination — headless multi-requirement orchestration primitives
 //
-// Canonical subpath: @securitydept/client/auth-coordination
+// Canonical root export: @securitydept/client
 //
 // This module is the new canonical owner of the requirement planner and
 // route requirement orchestrator. These primitives are:

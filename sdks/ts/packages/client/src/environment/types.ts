@@ -1,90 +1,61 @@
-import type {
-	LoggerTrait,
-	OperationTracerTrait,
-	TraceEventSinkTrait,
-} from "../logging/types";
-import type { StorageTrait } from "../persistence/types";
-import type { IdleCallbackTrait, TimeTrait } from "../scheduling/types";
-import type { SpanContextHostTrait } from "../span/types";
-import type { BaseTransportTrait } from "../transport/types";
-
-export interface TelemetryTrait {
-	logger?: LoggerTrait;
-	traceSink?: TraceEventSinkTrait;
-	operationTracer?: OperationTracerTrait;
-}
-
-export interface PageLifecycleTrait<TResumeEvent = unknown> {
-	resume: import("../events/types").EventStreamTrait<TResumeEvent>;
-}
-
-export interface RouterNavigationRequest {
-	url: string | URL;
-	intent:
-		| "auth_redirect"
-		| "post_auth_redirect"
-		| "callback_cleanup"
-		| "external_open";
-	mode: "push" | "replace" | "external";
-	state?: unknown;
-}
-
-export interface RouterTrait {
-	currentUrl(): URL | null;
-	canNavigate(request: RouterNavigationRequest): boolean | Promise<boolean>;
-	navigate(request: RouterNavigationRequest): void | Promise<void>;
-}
-
-export interface PopupOpenOptions {
-	target?: string;
-	width?: number;
-	height?: number;
-}
-
-export interface PopupWindowTrait {
-	closed: boolean;
-	close(): void;
-}
-
-export interface PopupWindowHandleTrait {
-	window: PopupWindowTrait;
-}
-
-export interface PopupTrait {
-	open(url: string, options?: PopupOpenOptions): PopupWindowHandleTrait;
-	waitForRelay(options: {
-		popup: PopupWindowHandleTrait;
-		timeoutMs?: number;
-		expectedOrigin?: string;
-		pollIntervalMs?: number;
-	}): Promise<string>;
-	relayCallback(options: {
-		payload?: string;
-		error?: string;
-		targetOrigin?: string;
-	}): void;
-}
+import {
+	SecuritydeptInjectionToken,
+	type SecuritydeptInjector,
+} from "../injection";
+import { type PageLifecycleTrait } from "../page";
+import { type PopupTrait } from "../popup";
+import { type RouterTrait } from "../router";
+import { type IdleCallbackTrait, type TimeTrait } from "../scheduling/types";
+import { type SpanTrait } from "../span/types";
+import { type StorageTrait } from "../storage/types";
+import { type TracingTrait } from "../tracing/types";
+import { type BaseTransportTrait } from "../transport/types";
+import { type TraitInputValidator } from "../validation";
 
 /**
  * Foundation dependency environment injected into client-side auth runtimes
  * via explicit wiring at the composition root.
  *
- * All capabilities are optional except `transport`.
- * Missing capabilities use no-op defaults where applicable.
- * `createClientEnvironment()` is a convenience helper for common setups;
- * callers can also wire this interface directly.
+ * `transport`, `time`, `span`, and `tracing` are the required baseline
+ * capabilities. Optional page/router/popup/storage traits stay explicit.
+ * Raw host-material inputs such as `window`, `location`, or browser storage
+ * handles are intentionally outside this contract and should be resolved by
+ * host-specific creators before a `FoundationEnvironment` is assembled.
  */
 export interface FoundationEnvironment {
+	injector: SecuritydeptInjector;
 	transport: BaseTransportTrait;
 	time: TimeTrait;
 	idleCallback?: IdleCallbackTrait;
 	persistentStorage?: StorageTrait;
 	sessionStorage?: StorageTrait;
-	spanContext?: SpanContextHostTrait;
-	telemetry?: TelemetryTrait;
+	span: SpanTrait;
+	tracing: TracingTrait;
 	router?: RouterTrait;
 	pageLifecycle?: PageLifecycleTrait;
 	popup?: PopupTrait;
 }
 
 export interface ServiceWorkerEnvironment extends FoundationEnvironment {}
+
+export const FOUNDATION_ENVIRONMENT_TOKEN =
+	new SecuritydeptInjectionToken<FoundationEnvironment>(
+		"FOUNDATION_ENVIRONMENT_TOKEN",
+	);
+
+export interface EnvironmentValidators {
+	transport?: TraitInputValidator;
+	transportForStdFetchCreateOptions?: TraitInputValidator;
+	time?: TraitInputValidator;
+	timeForStdCreateOptions?: TraitInputValidator;
+	idleCallback?: TraitInputValidator;
+	persistentStorage?: TraitInputValidator;
+	sessionStorage?: TraitInputValidator;
+	span?: TraitInputValidator;
+	spanCreateOptions?: TraitInputValidator;
+	tracing?: TraitInputValidator;
+	tracingCreateOptions?: TraitInputValidator;
+	router?: TraitInputValidator;
+	pageLifecycle?: TraitInputValidator;
+	popup?: TraitInputValidator;
+}

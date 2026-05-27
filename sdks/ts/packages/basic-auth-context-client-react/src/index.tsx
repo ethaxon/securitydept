@@ -9,12 +9,14 @@
 //
 // Stability: provisional (React adapter)
 
-import type { BasicAuthContextClientConfig } from "@securitydept/basic-auth-context-client";
-import { BasicAuthContextClient } from "@securitydept/basic-auth-context-client";
+import {
+	BasicAuthContextClient,
+	type BasicAuthContextClientConfig,
+} from "@securitydept/basic-auth-context-client";
 import {
 	SecuritydeptInjectionToken,
 	type SecuritydeptProvider,
-} from "@securitydept/client/injection";
+} from "@securitydept/client";
 
 export type { BasicAuthContextClientConfig };
 export { BasicAuthContextClient };

@@ -22,7 +22,10 @@ import {
 	AuthGuardResultKind,
 	BasicAuthContextClient,
 } from "@securitydept/basic-auth-context-client";
-import { createInMemoryRecordStore } from "@securitydept/client";
+import {
+	createFoundationEnvironment,
+	createInMemoryRecordStore,
+} from "@securitydept/client";
 import { SessionContextClient } from "@securitydept/session-context-client";
 import { FakeTransport } from "@securitydept/test-utils";
 import { describe, expect, it } from "vitest";
@@ -180,7 +183,7 @@ describe("backend-oidc-mode SSR / server-host contract", () => {
 				baseUrl: "https://auth.example.com",
 				defaultPostAuthRedirectUri: "https://app.example.com/callback",
 			},
-			{
+			createFoundationEnvironment({
 				transport: {
 					execute: async () => ({
 						status: 200,
@@ -198,7 +201,7 @@ describe("backend-oidc-mode SSR / server-host contract", () => {
 						),
 				},
 				persistentStorage: sessionStorage,
-			},
+			}),
 		);
 
 		const authorizeTarget = client.authorizeUrl(

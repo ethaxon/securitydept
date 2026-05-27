@@ -1,12 +1,10 @@
-import type {
-	ExternalTransportTrait,
-	HttpRequest,
-	HttpResponse,
-} from "@securitydept/client";
 import {
 	ClientError,
 	ClientErrorKind,
 	createInMemoryRecordStore,
+	type ExternalTransportTrait,
+	type HttpRequest,
+	type HttpResponse,
 } from "@securitydept/client";
 import { describe, expect, it } from "vitest";
 import { SessionContextClient } from "../client";

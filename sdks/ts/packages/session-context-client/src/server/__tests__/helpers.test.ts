@@ -1,6 +1,6 @@
 // Server helper — focused unit tests for session-context-client
 
-import type { HttpRequest, HttpResponse } from "@securitydept/client";
+import { type HttpRequest, type HttpResponse } from "@securitydept/client";
 import { describe, expect, it } from "vitest";
 import { createSessionServerHelper } from "../helpers";
 

@@ -1,10 +1,10 @@
 import { ClientError } from "../errors/client-error";
 import { ClientErrorKind, UserRecovery } from "../errors/types";
-import type { ReadableReplaySignalTrait } from "../signals/types";
-import type {
-	BaseTransportTrait,
-	HttpRequest,
-	ManagedTransportTrait,
+import { type ReadableReplaySignalTrait } from "../signals/types";
+import {
+	type BaseTransportTrait,
+	type HttpRequest,
+	type ManagedTransportTrait,
 } from "./types";
 
 const AUTH_TRANSPORT_SOURCE = "client-transport";
@@ -25,7 +25,7 @@ export interface CreateAuthorizedTransportOptions {
 	baseTransport: BaseTransportTrait;
 	requireAuthorization?: boolean;
 	clientKey?: string;
-	logicalClientId?: string;
+	id?: string;
 }
 
 export interface CreateRemappingAuthorizedTransportOptions
@@ -33,7 +33,7 @@ export interface CreateRemappingAuthorizedTransportOptions
 	remapError: (cause: unknown) => unknown;
 }
 
-export function createAuthorizedTransport(
+export function createAuthorizedTransportFromBase(
 	headerProvider: AuthorizationHeaderProviderTrait,
 	options: CreateAuthorizedTransportOptions,
 ): ManagedTransportTrait {
@@ -66,11 +66,11 @@ export function createAuthorizedTransport(
 	};
 }
 
-export function createRemappingAuthorizedTransport(
+export function createRemappingAuthorizedTransportFromBase(
 	headerProvider: AuthorizationHeaderProviderTrait,
 	options: CreateRemappingAuthorizedTransportOptions,
 ): ManagedTransportTrait {
-	const base = createAuthorizedTransport(headerProvider, options);
+	const base = createAuthorizedTransportFromBase(headerProvider, options);
 
 	return {
 		async execute(request: HttpRequest) {

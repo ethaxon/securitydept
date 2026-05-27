@@ -1,10 +1,9 @@
 import {
+	createEventSubject,
 	createReplaySignal,
 	createSignal,
-	createSubject,
 } from "@securitydept/client";
 import {
-	AuthCheckStatus,
 	type AuthSnapshot,
 	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
@@ -57,7 +56,7 @@ function createAngularClient(
 			clearPending: createSignal(false),
 			loginPending: createSignal(false),
 		},
-		authEvents: createSubject<TokenSetAuthEvent>(),
+		authEvents: createEventSubject<TokenSetAuthEvent>(),
 		addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 		removeWorkflowSource: vi.fn(() => false),
 		start: vi.fn(async () => undefined),
@@ -66,12 +65,6 @@ function createAngularClient(
 		handleCallback: vi.fn(async () => ({
 			snapshot: { tokens: { accessToken: `${name}-at` }, metadata: {} },
 			postAuthRedirectUri: "/after-login",
-		})),
-		authCheck: vi.fn(async () => ({
-			status: AuthCheckStatus.Authenticated,
-			snapshot: { tokens: { accessToken: `${name}-at` }, metadata: {} },
-			freshness: "fresh" as const,
-			authorizationHeader,
 		})),
 	};
 }

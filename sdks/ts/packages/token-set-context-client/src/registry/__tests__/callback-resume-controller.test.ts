@@ -1,4 +1,9 @@
-import { type FoundationEnvironment, UserRecovery } from "@securitydept/client";
+import {
+	createEmptyEventStream,
+	createFoundationEnvironment,
+	type FoundationEnvironment,
+	UserRecovery,
+} from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
 import {
 	TokenSetCallbackResumeController,
@@ -11,7 +16,7 @@ const TEST_IDLE_CALLBACK = {
 	cancelIdleCallback: (handle: unknown) =>
 		clearTimeout(handle as ReturnType<typeof setTimeout>),
 };
-const TEST_ENVIRONMENT: FoundationEnvironment = {
+const TEST_ENVIRONMENT: FoundationEnvironment = createFoundationEnvironment({
 	transport: { execute: async () => ({ status: 204, headers: {} }) },
 	time: {
 		now: () => Date.now(),
@@ -20,15 +25,13 @@ const TEST_ENVIRONMENT: FoundationEnvironment = {
 			clearTimeout(handle as ReturnType<typeof setTimeout>),
 	},
 	idleCallback: TEST_IDLE_CALLBACK,
-};
+});
 
 function createRegistry(handleCallback = vi.fn()) {
 	const registry = createTokenSetAuthRegistry<unknown, { client: never }>({
 		materialize: (client) => ({ client: client as never }),
 		dispose: () => undefined,
-		authEventsOf: () => ({
-			subscribe: () => ({ unsubscribe() {} }),
-		}),
+		authEventsOf: () => createEmptyEventStream(),
 		environment: TEST_ENVIRONMENT,
 	});
 	registry.register({

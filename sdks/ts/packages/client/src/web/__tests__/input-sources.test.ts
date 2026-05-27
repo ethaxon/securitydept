@@ -1,17 +1,16 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest";
-import { fromAbortSignal } from "../../events";
+import { abortSignalToEventStream } from "../../events";
 import { fromStorageEvent } from "../events/from-storage";
+import { createCrossTabSync } from "../sync/cross-tab-sync";
 
 describe("web input-source helpers", () => {
 	it("subscribes to AbortSignal abort events", () => {
 		const controller = new AbortController();
 		const callback = vi.fn();
 
-		fromAbortSignal({
-			signal: controller.signal,
-		}).subscribe({ next: callback });
+		abortSignalToEventStream(controller.signal).subscribe({ next: callback });
 		controller.abort("query-cancelled");
 
 		expect(callback).toHaveBeenCalledOnce();
@@ -23,10 +22,7 @@ describe("web input-source helpers", () => {
 		const callback = vi.fn();
 		controller.abort("already-aborted");
 
-		fromAbortSignal({
-			signal: controller.signal,
-			emitIfAborted: true,
-		}).subscribe({ next: callback });
+		abortSignalToEventStream(controller.signal).subscribe({ next: callback });
 
 		expect(callback).toHaveBeenCalledOnce();
 		expect(callback).toHaveBeenCalledWith("already-aborted");
@@ -36,9 +32,9 @@ describe("web input-source helpers", () => {
 		const controller = new AbortController();
 		const callback = vi.fn();
 
-		const subscription = fromAbortSignal({
-			signal: controller.signal,
-		}).subscribe({ next: callback });
+		const subscription = abortSignalToEventStream(controller.signal).subscribe({
+			next: callback,
+		});
 		subscription.unsubscribe();
 		controller.abort("ignored");
 
@@ -91,5 +87,41 @@ describe("web input-source helpers", () => {
 			expect.any(Function),
 		);
 		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it("emits cross-tab sync events for the watched storage key", () => {
+		const callback = vi.fn();
+		let handler: ((event: StorageEvent) => void) | undefined;
+
+		const target = {
+			addEventListener: (_type: string, listener: EventListener) => {
+				handler = listener as (event: StorageEvent) => void;
+			},
+			removeEventListener: vi.fn(),
+		};
+
+		createCrossTabSync({
+			key: "securitydept.auth",
+			storageEventTarget: target,
+		}).subscribe({ next: callback });
+		handler?.(
+			new StorageEvent("storage", {
+				key: "unrelated",
+				newValue: "ignored",
+			}),
+		);
+		handler?.(
+			new StorageEvent("storage", {
+				key: "securitydept.auth",
+				oldValue: "old",
+				newValue: "new",
+			}),
+		);
+
+		expect(callback).toHaveBeenCalledOnce();
+		expect(callback).toHaveBeenCalledWith({
+			oldValue: "old",
+			newValue: "new",
+		});
 	});
 });

@@ -2,20 +2,30 @@ import {
 	createAndThenComputedReplaySignal,
 	createEventStream,
 	createReplaySignal,
+	createRootSpan,
 	createSignal,
 	createTraceTimelineStore,
+	createTracing,
+	type EventSubscriptionTrait,
 	readonlyReplaySignal,
 	readonlySignal,
+	TracingLevel,
 } from "@securitydept/client";
-import type { NativeWebEnvironment } from "@securitydept/client/web";
-import { createCrossTabSync, PopupErrorCode } from "@securitydept/client/web";
-import type { FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import {
+	createCrossTabSync,
+	type NativeWebEnvironment,
+} from "@securitydept/client/web";
 import {
 	createFrontendOidcModeBrowserClient,
 	createFrontendOidcModeWebClientEnvironment,
+	type FrontendOidcModeClient,
+	TokenSetPopupRelayErrorCode,
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
-import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import type { TokenSetReactClient } from "@securitydept/token-set-context-client-react";
+import {
+	type AuthSnapshot,
+	type TokenSetAuthWorkflowSource,
+} from "@securitydept/token-set-context-client/orchestration";
+import { type TokenSetReactClient } from "@securitydept/token-set-context-client-react";
 import {
 	TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH,
 	TOKEN_SET_FRONTEND_MODE_CONFIG_PATH,
@@ -27,14 +37,21 @@ const TOKEN_SET_FRONTEND_PERSISTENT_PREFIX =
 	"securitydept.webui.token-set-frontend:persistent:";
 const TOKEN_SET_FRONTEND_SESSION_PREFIX =
 	"securitydept.webui.token-set-frontend:session:";
-export const TOKEN_SET_FRONTEND_HOST_TRACE_SCOPE =
+export const TOKEN_SET_FRONTEND_HOST_TRACE_TARGET =
 	"apps.webui.token-set-frontend";
-export const TOKEN_SET_FRONTEND_HOST_TRACE_SOURCE = "webui.token-set-frontend";
 
 export const FrontendHostTraceEventType = {
 	CrossTabHydrated: "frontend_oidc.host.cross_tab.hydrated",
 	CrossTabCleared: "frontend_oidc.host.cross_tab.cleared",
 } as const;
+
+const tokenSetFrontendModeRootSpan = createRootSpan();
+const tokenSetFrontendModeHostSpan = tokenSetFrontendModeRootSpan.fork({
+	attributes: {
+		target: TOKEN_SET_FRONTEND_HOST_TRACE_TARGET,
+		role: "host",
+	},
+});
 
 let tokenSetFrontendModeClientPromise: Promise<FrontendOidcModeClient> | null =
 	null;
@@ -51,16 +68,17 @@ const tokenSetFrontendModeAuthOperationSignals = {
 };
 let tokenSetFrontendModeStateUnsubscribe: (() => void) | null = null;
 let tokenSetFrontendModePersistentStorageKey: string | null = null;
-let tokenSetFrontendModeCrossTabSync: ReturnType<
-	typeof createCrossTabSync
-> | null = null;
+let tokenSetFrontendModeCrossTabSync: EventSubscriptionTrait | null = null;
 const tokenSetFrontendModeAuthCheckTriggerSubscriptions = new Map<
-	Parameters<FrontendOidcModeClient["addWorkflowSource"]>[0],
+	TokenSetAuthWorkflowSource,
 	{ unsubscribe(): void }
 >();
 let lastObservedFrontendModeAccessToken = false;
 
 export const tokenSetFrontendModeTraceTimeline = createTraceTimelineStore();
+export const tokenSetFrontendModeTracing = createTracing({
+	subscribers: [tokenSetFrontendModeTraceTimeline],
+});
 
 type FrontendModeCrossTabStatus = {
 	syncCount: number;
@@ -81,19 +99,22 @@ export const tokenSetFrontendModeCrossTabStatus = readonlySignal(
 	tokenSetFrontendModeCrossTabStatusSignal,
 );
 
-type TokenSetFrontendModeReactClient = TokenSetReactClient &
-	Pick<FrontendOidcModeClient, "refresh" | "clearState">;
+type TokenSetFrontendModeReactClient = TokenSetReactClient & {
+	refresh(): Promise<AuthSnapshot | null>;
+	clearState(): Promise<void>;
+};
 
 function recordFrontendHostTrace(
-	type: string,
-	attributes?: Record<string, unknown>,
+	name: string,
+	fields?: Record<string, unknown>,
 ): void {
-	tokenSetFrontendModeTraceTimeline.record({
-		type,
+	tokenSetFrontendModeTracing.record({
+		name,
 		at: Date.now(),
-		scope: TOKEN_SET_FRONTEND_HOST_TRACE_SCOPE,
-		source: TOKEN_SET_FRONTEND_HOST_TRACE_SOURCE,
-		attributes,
+		target: TOKEN_SET_FRONTEND_HOST_TRACE_TARGET,
+		span: tokenSetFrontendModeHostSpan,
+		level: TracingLevel.Info,
+		fields,
 	});
 }
 
@@ -147,10 +168,10 @@ function mirrorFrontendModeClientSignals(
 	const syncSnapshot = () => {
 		const slot = client.authSnapshot.get();
 		if (slot.kind === "value") {
-			tokenSetFrontendModeAuthSnapshotSignal.emit(slot.value);
+			tokenSetFrontendModeAuthSnapshotSignal.setValue(slot.value);
 			reconcileFrontendModeCrossTabStatus(slot.value);
 		} else {
-			tokenSetFrontendModeAuthSnapshotSignal.clear();
+			tokenSetFrontendModeAuthSnapshotSignal.setValue(null);
 		}
 	};
 	const syncLastError = () => {
@@ -200,7 +221,8 @@ function ensureTokenSetFrontendModeCrossTabSync(
 	tokenSetFrontendModeCrossTabSync = createCrossTabSync({
 		key: tokenSetFrontendModePersistentStorageKey,
 		storageEventTarget: window,
-		onSync: ({ newValue }) => {
+	}).subscribe({
+		next: ({ newValue }) => {
 			void (async () => {
 				if (newValue === null) {
 					await client.clearState({ persistPolicy: "skip" });
@@ -216,12 +238,13 @@ function ensureTokenSetFrontendModeCrossTabSync(
 	});
 }
 
-async function createTokenSetFrontendModeClient(): Promise<FrontendOidcModeClient> {
+async function createTokenSetFrontendModeRawClient(): Promise<FrontendOidcModeClient> {
 	const redirectUri = buildAbsoluteUrl(TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH);
 	const environment = createFrontendOidcModeWebClientEnvironment({
 		persistentStoragePrefix: TOKEN_SET_FRONTEND_PERSISTENT_PREFIX,
 		sessionStoragePrefix: TOKEN_SET_FRONTEND_SESSION_PREFIX,
-		traceSink: tokenSetFrontendModeTraceTimeline,
+		span: tokenSetFrontendModeRootSpan,
+		tracing: tokenSetFrontendModeTracing,
 	});
 	const materialized = await createFrontendOidcModeBrowserClient({
 		configEndpoint: TOKEN_SET_FRONTEND_MODE_CONFIG_PATH,
@@ -235,8 +258,16 @@ async function createTokenSetFrontendModeClient(): Promise<FrontendOidcModeClien
 	return materialized.client;
 }
 
+async function getTokenSetFrontendModeRawClient(): Promise<FrontendOidcModeClient> {
+	if (!tokenSetFrontendModeClientPromise) {
+		tokenSetFrontendModeClientPromise = createTokenSetFrontendModeRawClient();
+	}
+
+	return await tokenSetFrontendModeClientPromise;
+}
+
 async function ensureTokenSetFrontendModeClientSubscribed(): Promise<FrontendOidcModeClient> {
-	const client = await getTokenSetFrontendModeClient();
+	const client = await getTokenSetFrontendModeRawClient();
 	ensureTokenSetFrontendModeCrossTabSync(client);
 
 	if (!tokenSetFrontendModeStateUnsubscribe) {
@@ -307,12 +338,8 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 		};
 	}),
 	addWorkflowSource(source) {
-		let unsubscribed = false;
-		let subscription: { unsubscribe(): void } | null = null;
 		const outerSubscription = {
 			unsubscribe() {
-				unsubscribed = true;
-				subscription?.unsubscribe();
 				if (
 					tokenSetFrontendModeAuthCheckTriggerSubscriptions.get(source) ===
 					outerSubscription
@@ -326,17 +353,6 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 			source,
 			outerSubscription,
 		);
-		void ensureTokenSetFrontendModeClientSubscribed()
-			.then((client) => {
-				if (unsubscribed) {
-					return;
-				}
-				subscription = client.addWorkflowSource(source);
-			})
-			.catch((error) => {
-				tokenSetFrontendModeLastAuthErrorSignal.set(error);
-			});
-
 		return outerSubscription;
 	},
 	removeWorkflowSource(source) {
@@ -350,29 +366,16 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 		if (!clientPromise) {
 			return false;
 		}
-		void clientPromise
-			.then((client) => {
-				client.removeWorkflowSource(source);
-			})
-			.catch((error) => {
-				tokenSetFrontendModeLastAuthErrorSignal.set(error);
-			});
 		return true;
 	},
 	async start() {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
 		await client.start();
 	},
-	async authCheck(options) {
-		const client = await ensureTokenSetFrontendModeClientSubscribed();
-		const result = await client.authCheck(options);
-		reconcileFrontendModeCrossTabStatus(result.snapshot);
-		return result;
-	},
 	dispose() {
 		tokenSetFrontendModeStateUnsubscribe?.();
 		tokenSetFrontendModeStateUnsubscribe = null;
-		tokenSetFrontendModeCrossTabSync?.dispose();
+		tokenSetFrontendModeCrossTabSync?.unsubscribe();
 		tokenSetFrontendModeCrossTabSync = null;
 		for (const subscription of [
 			...tokenSetFrontendModeAuthCheckTriggerSubscriptions.values(),
@@ -380,7 +383,7 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 			subscription.unsubscribe();
 		}
 		tokenSetFrontendModeAuthCheckTriggerSubscriptions.clear();
-		tokenSetFrontendModeAuthSnapshotSignal.clear();
+		tokenSetFrontendModeAuthSnapshotSignal.setValue(null);
 		tokenSetFrontendModeCrossTabStatusSignal.set({
 			syncCount: 0,
 			lastEvent: "idle",
@@ -412,7 +415,7 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 	},
 	async refresh() {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
-		const snapshot = await client.refresh();
+		const snapshot = await client.refreshState();
 		reconcileFrontendModeCrossTabStatus(snapshot);
 		return snapshot;
 	},
@@ -422,12 +425,9 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 	},
 };
 
-export async function getTokenSetFrontendModeClient(): Promise<FrontendOidcModeClient> {
-	if (!tokenSetFrontendModeClientPromise) {
-		tokenSetFrontendModeClientPromise = createTokenSetFrontendModeClient();
-	}
-
-	return await tokenSetFrontendModeClientPromise;
+export async function getTokenSetFrontendModeClient(): Promise<TokenSetFrontendModeReactClient> {
+	await ensureTokenSetFrontendModeClientSubscribed();
+	return tokenSetFrontendModeReactClient;
 }
 
 export async function ensureTokenSetFrontendModeClientReady(): Promise<AuthSnapshot | null> {
@@ -443,9 +443,14 @@ export async function startTokenSetFrontendModeLogin(
 	postAuthRedirectUri = "/",
 ): Promise<void> {
 	const client = await ensureTokenSetFrontendModeClientSubscribed();
+	if (!environment.router) {
+		throw new Error(
+			"startTokenSetFrontendModeLogin requires a NativeWebEnvironment with router.",
+		);
+	}
 	await client.loginWithRedirect({
 		postAuthRedirectUri,
-		environment,
+		environment: environment.router,
 	});
 }
 
@@ -477,7 +482,7 @@ export function isTokenSetFrontendPopupError(error: unknown): error is Error & {
 	return typeof error === "object" && error !== null && "code" in error;
 }
 
-export { PopupErrorCode };
+export { TokenSetPopupRelayErrorCode };
 
 export function tokenSetFrontendModeClientFactory(): TokenSetReactClient {
 	return tokenSetFrontendModeReactClient;

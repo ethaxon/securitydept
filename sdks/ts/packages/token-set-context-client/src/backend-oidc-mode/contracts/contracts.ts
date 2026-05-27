@@ -3,10 +3,10 @@
 // These types define the canonical frontend-facing contract for consuming a
 // backend-oidc deployment, regardless of the active preset (pure / mediated).
 
-import type { AuthenticatedPrincipal } from "@securitydept/client";
-import type {
-	AuthMetadataDelta,
-	AuthMetadataSnapshot,
+import { type AuthenticatedPrincipal } from "@securitydept/client";
+import {
+	type AuthMetadataDelta,
+	type AuthMetadataSnapshot,
 } from "../../orchestration/token/types";
 
 // ---------------------------------------------------------------------------

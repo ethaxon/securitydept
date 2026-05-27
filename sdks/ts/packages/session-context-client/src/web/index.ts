@@ -10,9 +10,8 @@
 //
 // Stability: provisional
 
-import type { RouterTrait } from "@securitydept/client";
-import { assertResolveEnvironment } from "@securitydept/client/web";
-import type { SessionContextClient } from "../client";
+import { type RouterTrait } from "@securitydept/client";
+import { type SessionContextClient } from "../client";
 
 const SESSION_PAGE_ENVIRONMENT_ERROR_MESSAGE =
 	"session browser redirect helpers require an explicit page environment.\n" +
@@ -50,10 +49,7 @@ export async function loginWithRedirect(
 	client: SessionContextClient,
 	options: LoginWithRedirectOptions = {},
 ): Promise<void> {
-	const environment = assertResolveEnvironment(
-		options.environment,
-		failMissingPageEnvironment,
-	);
+	const environment = options.environment ?? failMissingPageEnvironment();
 	const postAuthRedirectUri =
 		options.postAuthRedirectUri ?? environment.currentUrl()?.toString() ?? "/";
 

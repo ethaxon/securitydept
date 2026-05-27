@@ -1,3 +1,6 @@
+import { filter, map } from "rxjs";
+import { type EventStreamTrait } from "../../events";
+import { eventStreamToObservable, observableToEventStream } from "../../rx";
 import {
 	fromStorageEvent,
 	type StorageEventTarget,
@@ -10,45 +13,33 @@ import {
 // this listener detects the change and notifies the current tab so it can
 // reconcile its in-memory state.
 //
-// This is intentionally thin — it uses the browser `storage` event which
-// fires on OTHER tabs when localStorage is modified. The reconciliation
-// callback is the adopter's responsibility (e.g. re-read from persistence,
-// compare with in-memory state, and update).
+// This is intentionally thin — it adapts the browser `storage` event into an
+// event stream. The reconciliation subscriber is the adopter's responsibility
+// (e.g. re-read from persistence, compare with in-memory state, and update).
 //
 // Architecture boundary:
 //   - This module does NOT own the persistence store.
-//   - It only listens for cross-tab mutations and notifies via callback.
+//   - It only publishes cross-tab mutations as a stream.
 //   - The adopter wires this to their auth state owner.
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/** Callback invoked when a cross-tab storage change is detected for the watched key. */
-export type CrossTabSyncCallback = (event: {
+/** Event emitted when a cross-tab storage change is detected for the watched key. */
+export interface CrossTabSyncEvent {
 	/** The new value written by the other tab, or null if the key was removed. */
 	newValue: string | null;
 	/** The old value before the other tab's write. */
 	oldValue: string | null;
-}) => void;
+}
 
 /** Options for {@link createCrossTabSync}. */
 export interface CreateCrossTabSyncOptions {
 	/** The localStorage key to watch for cross-tab changes. */
 	key: string;
 
-	/** Called when another tab modifies the watched key. */
-	onSync: CrossTabSyncCallback;
-
 	storageEventTarget: StorageEventTarget;
-}
-
-/** Handle returned by {@link createCrossTabSync}. */
-export interface CrossTabSync {
-	/** Stop listening for cross-tab storage events. */
-	dispose(): void;
-	/** Number of times a sync event has been received. */
-	readonly syncCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,10 +54,11 @@ export interface CrossTabSync {
  *
  * @example
  * ```ts
- * const sync = createCrossTabSync({
+ * const subscription = createCrossTabSync({
  *   key: "auth:v1",
  *   storageEventTarget: window,
- *   onSync: ({ newValue }) => {
+ * }).subscribe({
+ *   next: ({ newValue }) => {
  *     if (newValue) {
  *       // Another tab updated auth state — reconcile
  *       client.restorePersistedState();
@@ -77,35 +69,23 @@ export interface CrossTabSync {
  *   },
  * });
  * // Later:
- * sync.dispose();
+ * subscription.unsubscribe();
  * ```
  */
 export function createCrossTabSync(
 	options: CreateCrossTabSyncOptions,
-): CrossTabSync {
-	let syncCount = 0;
-	const subscription = fromStorageEvent({
-		storageEventTarget: options.storageEventTarget,
-	}).subscribe({
-		next: (storageEvent) => {
-			// Only react to changes on our watched key.
-			if (storageEvent.key !== options.key) {
-				return;
-			}
-			syncCount++;
-			options.onSync({
+): EventStreamTrait<CrossTabSyncEvent> {
+	return observableToEventStream(
+		eventStreamToObservable(
+			fromStorageEvent({
+				storageEventTarget: options.storageEventTarget,
+			}),
+		).pipe(
+			filter((storageEvent) => storageEvent.key === options.key),
+			map((storageEvent) => ({
 				newValue: storageEvent.newValue,
 				oldValue: storageEvent.oldValue,
-			});
-		},
-	});
-
-	return {
-		dispose() {
-			subscription.unsubscribe();
-		},
-		get syncCount() {
-			return syncCount;
-		},
-	};
+			})),
+		),
+	);
 }

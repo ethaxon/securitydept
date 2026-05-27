@@ -1,38 +1,36 @@
-import type {
-	CancellationTokenTrait,
-	ExternalTransportTrait,
-} from "@securitydept/client";
 import {
+	abortSignalToCancellationToken,
+	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
-	createExternalTransportForFetch,
+	createBaseTransportForStdFetch,
 	createReplaySignal,
+	type ExternalTransportTrait,
 	FetchTransportRedirectKind,
+	type SecuritydeptInjectorTrait,
 } from "@securitydept/client";
-import type { SecuritydeptInjectorTrait } from "@securitydept/client/injection";
-import { createCancellationTokenFromAbortSignal } from "@securitydept/client/web";
-import { useReadableSignal } from "@securitydept/client-react";
-import type { AuthorizationHeaderProviderTrait } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { useReplaySignalValue } from "@securitydept/client-react";
 import {
+	type AuthorizationHeaderProviderTrait,
 	BackendOidcModeContextSource,
-	createBackendOidcModeAuthorizedTransport,
+	createBackendOidcModeAuthorizedTransportFromBase,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import type {
-	ReactRegistry,
-	TokenSetReactClient,
+import {
+	type ReactRegistry,
+	TOKEN_SET_AUTH_REGISTRY,
+	type TokenSetReactClient,
 } from "@securitydept/token-set-context-client-react";
-import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { tokenSetQueryKeys } from "@securitydept/token-set-context-client-react/react-query";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
-import type {
-	AuthEntry,
-	CreateBasicEntryResponse,
-	CreateTokenResponse,
+import { useMemo, useSyncExternalStore } from "react";
+import {
+	type AuthEntry,
+	type CreateBasicEntryResponse,
+	type CreateTokenResponse,
 } from "./entries";
-import type { Group } from "./groups";
+import { type Group } from "./groups";
 
-const tokenSetApiTransport = createExternalTransportForFetch({
+const tokenSetApiTransport = createBaseTransportForStdFetch({
 	redirect: FetchTransportRedirectKind.Follow,
 });
 const emptyAuthorizationHeaderSignal = createReplaySignal<string | undefined>();
@@ -181,7 +179,7 @@ function createAuthorizedTokenSetApiTransport(
 	client: AuthorizationHeaderProviderTrait,
 	options: TokenSetApiRequestOptions,
 ): ExternalTransportTrait {
-	return createBackendOidcModeAuthorizedTransport(client, {
+	return createBackendOidcModeAuthorizedTransportFromBase(client, {
 		baseTransport: options.transport ?? tokenSetApiTransport,
 	});
 }
@@ -190,7 +188,7 @@ function resolveCancellationToken(
 	options: TokenSetApiRequestOptions,
 ): CancellationTokenTrait | undefined {
 	if (options.cancellationToken) return options.cancellationToken;
-	return createCancellationTokenFromAbortSignal(options.abortSignal);
+	return abortSignalToCancellationToken(options.abortSignal);
 }
 
 function resolveTokenSetRegistry(options: {
@@ -233,26 +231,27 @@ function useResolvedTokenSetClient(options: {
 	const directClientSignal = useMemo(() => {
 		const signal = createReplaySignal<TokenSetReactClient>();
 		if (options.client) {
-			signal.emit(options.client);
+			signal.setValue(options.client);
 		}
 		return signal;
 	}, [options.client]);
-	const clientSlot = useReadableSignal(
-		options.client
-			? directClientSignal
-			: resolveTokenSetRegistry(options).clientSignalFor(options.clientKey),
+	const clientSource = options.client
+		? directClientSignal
+		: resolveTokenSetRegistry(options).clientSignalFor(options.clientKey);
+	const clientSlot = useSyncExternalStore(
+		(listener) => clientSource.subscribe(listener),
+		() => clientSource.get(),
+		() => clientSource.get(),
 	);
 	const client =
 		options.client ??
 		(clientSlot.kind === "value" ? clientSlot.value : undefined);
-	const authorizationHeaderSlot = useReadableSignal(
+	const authorizationHeader = useReplaySignalValue(
 		client?.authorizationHeaderValue ?? emptyAuthorizationHeaderSignal,
+		{ initialValue: undefined },
 	);
 	return {
-		enabled:
-			client !== undefined &&
-			authorizationHeaderSlot.kind === "value" &&
-			authorizationHeaderSlot.value !== undefined,
+		enabled: client !== undefined && authorizationHeader !== undefined,
 		client,
 	};
 }

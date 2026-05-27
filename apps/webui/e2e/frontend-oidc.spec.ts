@@ -16,7 +16,7 @@ import {
 	VerifiedScenarioId,
 	VerifiedStatus,
 } from "./support/browser-harness.ts";
-import type { HarnessBrowserName } from "./support/browser-harness-contract.ts";
+import { type HarnessBrowserName } from "./support/browser-harness-contract.ts";
 import { frontendPlaygroundPath } from "./support/constants.ts";
 import {
 	createFrontendModeCallbackUrl,

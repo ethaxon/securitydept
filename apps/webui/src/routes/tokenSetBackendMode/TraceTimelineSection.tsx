@@ -1,6 +1,6 @@
-import type { TraceTimelineEntry } from "@securitydept/client";
+import { type TraceTimelineEntry } from "@securitydept/client";
 import {
-	formatTraceAttributes,
+	formatTraceFields,
 	readTraceBadgeClassName,
 	readTraceDisplayType,
 	readTraceDomainBadge,
@@ -27,7 +27,7 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 						Structured Trace Timeline
 					</h2>
 					<p className="mt-1 max-w-4xl text-sm text-zinc-500 dark:text-zinc-400">
-						This reference view keeps the SDK trace sink and the backend
+						This reference view keeps the SDK tracing runtime and the backend
 						host-owned protected action, forward-auth, and propagation probes on
 						the same structured timeline. That combined trace is the primary
 						diagnosis surface for backend-mode callback, restore, refresh, and
@@ -55,7 +55,7 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 					return (
 						<div
 							key={event.id}
-							data-trace-operation-id={event.operationId}
+							data-trace-operation-id={event.span.id}
 							className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
 						>
 							<div className="flex flex-wrap items-start justify-between gap-3">
@@ -64,7 +64,7 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 										{readTraceDisplayType(event)}
 									</p>
 									<p className="mt-1 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-										{event.type}
+										{event.name}
 									</p>
 									<div className="mt-2 flex flex-wrap gap-2">
 										<span
@@ -85,28 +85,21 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 											{summary}
 										</p>
 									)}
-									{event.operationId && (
-										<p className="mt-2 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-											Operation: {event.operationId}
-										</p>
-									)}
+									<p className="mt-2 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
+										Operation: {event.span.id}
+									</p>
 									<p className="mt-2 text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-										{event.scope ?? "unknown scope"}
+										{event.target}
 									</p>
 								</div>
 								<div className="text-right">
 									<p className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
 										{event.recordedAtIso}
 									</p>
-									{event.source && (
-										<p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-											Source: {event.source}
-										</p>
-									)}
 								</div>
 							</div>
 							<pre className="mt-3 overflow-x-auto rounded-lg bg-zinc-950 p-3 text-xs text-zinc-100">
-								{formatTraceAttributes(event)}
+								{formatTraceFields(event)}
 							</pre>
 						</div>
 					);

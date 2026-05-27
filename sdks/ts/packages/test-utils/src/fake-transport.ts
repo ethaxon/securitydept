@@ -1,7 +1,7 @@
-import type {
-	ExternalTransportTrait,
-	HttpRequest,
-	HttpResponse,
+import {
+	type ExternalTransportTrait,
+	type HttpRequest,
+	type HttpResponse,
 } from "@securitydept/client";
 
 interface FakeRoute {

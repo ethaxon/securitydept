@@ -8,10 +8,10 @@
 // Section B: /backend-oidc-mode/web canonical entry
 // Section C: @securitydept/token-set-context-client-react canonical entry
 
-import type { BackendOidcModeClientConfig } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	AuthenticationSourceKind,
 	BackendOidcModeClient,
+	type BackendOidcModeClientConfig,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	BackendOidcModeBootstrapSource,

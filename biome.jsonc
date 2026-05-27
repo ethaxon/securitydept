@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.4.12/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
 	"vcs": {
 		"enabled": true,
 		"clientKind": "git",
@@ -16,6 +16,21 @@
 			"suspicious": {
 				"noConfusingVoidType": "off",
 				"noExplicitAny": "off"
+			},
+			"style": {
+				"useImportType": {
+					"level": "error",
+					"options": {
+						"style": "inlineType"
+					}
+				},
+				"useExportType": {
+					"level": "error",
+					"options": {
+						// todo: add in next version
+						// "style": "inlineType"
+					}
+				}
 			}
 		}
 	},

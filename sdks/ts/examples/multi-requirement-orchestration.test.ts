@@ -3,22 +3,20 @@
 // This file demonstrates that the headless orchestration primitive can drive
 // a real multi-requirement flow: session → backend-oidc → custom.
 //
-// Canonical import: @securitydept/client/auth-coordination
+// Canonical import: @securitydept/client
 // (consolidated from @securitydept/token-set-context-client/orchestration)
 
-import type {
-	PlanStatus as PlanStatusType,
-	ResolutionStatus as ResolutionStatusType,
-} from "@securitydept/client/auth-coordination";
 import {
 	createRequirementPlanner,
 	PlanStatus,
+	type PlanStatus as PlanStatusType,
 	RequirementPlannerError,
 	ResolutionStatus,
-} from "@securitydept/client/auth-coordination";
+	type ResolutionStatus as ResolutionStatusType,
+} from "@securitydept/client";
 import { describe, expect, it } from "vitest";
 
-// Type-level proof: named types are directly importable from the new canonical subpath.
+// Type-level proof: named types are directly importable from the canonical root export.
 const _statusProof: ResolutionStatusType = ResolutionStatus.Fulfilled;
 const _planProof: PlanStatusType = PlanStatus.Pending;
 void _statusProof;

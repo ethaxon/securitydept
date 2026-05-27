@@ -1,4 +1,5 @@
 import path from "node:path";
+import ts from "typescript";
 import { defineConfig } from "vitest/config";
 
 // Explicit aliases so vitest resolves internal workspace packages
@@ -6,14 +7,52 @@ import { defineConfig } from "vitest/config";
 const packagesDir = path.resolve(import.meta.dirname, "packages");
 const ciTestTimeoutMs = 15_000;
 const isCi = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
+const stage3DecoratorRoots = [
+	path.join(packagesDir, "client"),
+	path.join(packagesDir, "token-set-context-client"),
+];
+
+function createStage3DecoratorTransformPlugin() {
+	return {
+		name: "securitydept-stage3-decorators",
+		enforce: "pre" as const,
+		transform(code: string, id: string) {
+			const filePath = id.split("?", 1)[0];
+			if (!filePath.endsWith(".ts") && !filePath.endsWith(".tsx")) {
+				return null;
+			}
+			if (!stage3DecoratorRoots.some((root) => filePath.startsWith(root))) {
+				return null;
+			}
+			if (!/@[A-Za-z_$]/.test(code)) {
+				return null;
+			}
+			const result = ts.transpileModule(code, {
+				fileName: filePath,
+				compilerOptions: {
+					target: ts.ScriptTarget.ES2022,
+					module: ts.ModuleKind.ESNext,
+					moduleResolution: ts.ModuleResolutionKind.Bundler,
+					jsx: filePath.endsWith(".tsx")
+						? ts.JsxEmit.ReactJSX
+						: ts.JsxEmit.Preserve,
+					experimentalDecorators: false,
+					useDefineForClassFields: true,
+					sourceMap: true,
+				},
+			});
+			return {
+				code: result.outputText,
+				map: result.sourceMapText ? JSON.parse(result.sourceMapText) : null,
+			};
+		},
+	};
+}
 
 export default defineConfig({
+	plugins: [createStage3DecoratorTransformPlugin()],
 	resolve: {
 		alias: [
-			{
-				find: "@securitydept/client/injection",
-				replacement: path.join(packagesDir, "client/src/injection/index.ts"),
-			},
 			{
 				find: "@securitydept/client/web",
 				replacement: path.join(packagesDir, "client/src/web/index.ts"),
@@ -21,32 +60,6 @@ export default defineConfig({
 			{
 				find: "@securitydept/client/rx",
 				replacement: path.join(packagesDir, "client/src/rx/index.ts"),
-			},
-			{
-				find: "@securitydept/client/struct",
-				replacement: path.join(packagesDir, "client/src/struct/index.ts"),
-			},
-			{
-				find: "@securitydept/client/persistence/web",
-				replacement: path.join(
-					packagesDir,
-					"client/src/persistence/web/index.ts",
-				),
-			},
-			{
-				find: "@securitydept/client/persistence",
-				replacement: path.join(packagesDir, "client/src/persistence/index.ts"),
-			},
-			{
-				find: "@securitydept/client/auth-coordination",
-				replacement: path.join(
-					packagesDir,
-					"client/src/auth-coordination/index.ts",
-				),
-			},
-			{
-				find: "@securitydept/client/web-router",
-				replacement: path.join(packagesDir, "client/src/web-router/index.ts"),
 			},
 			{
 				find: "@securitydept/client",

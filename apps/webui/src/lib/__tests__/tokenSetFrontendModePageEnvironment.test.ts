@@ -21,7 +21,7 @@ describe("createTokenSetFrontendModePageEnvironment", () => {
 		try {
 			const environment = createTokenSetFrontendModePageEnvironment();
 
-			expect(environment.location.href).toBe(
+			expect(environment.router?.currentUrl()?.toString()).toBe(
 				"https://app.example.com/playground/token-set/frontend-mode",
 			);
 			expect(environment.transport).toBeDefined();

@@ -9,7 +9,8 @@
 //   - Individual SDK packages supply schemas that implement StandardSchemaV1
 //   - Consumers never need to know which validation library produced the schema
 
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { type StandardSchemaV1 } from "@standard-schema/spec";
+import { ClientError, ClientErrorKind, UserRecovery } from "../errors";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -43,6 +44,57 @@ export interface ValidationFailure {
  */
 export type ValidationResult<T> = ValidationSuccess<T> | ValidationFailure;
 
+export type TraitInputValidator = StandardSchemaV1<unknown, unknown>;
+
+export type TraitInputBundledSchema = StandardSchemaV1<unknown, unknown>;
+
+export interface WithTraitInputValidator<TValidator = TraitInputValidator> {
+	validators?: TValidator;
+}
+
+export interface ValidateTraitInputOptions {
+	value: unknown;
+	bundledSchema: TraitInputBundledSchema;
+	validator?: TraitInputValidator;
+	optional?: boolean;
+	onInvalid(failure: ValidationFailure): never;
+}
+
+export function formatValidationFailure(
+	failure: ValidationFailure | undefined,
+): string | null {
+	if (!failure) {
+		return null;
+	}
+	const summary = failure.issues
+		.map((issue) =>
+			issue.path && issue.path.length > 0
+				? `${issue.path.join(".")}: ${issue.message}`
+				: issue.message,
+		)
+		.join("; ");
+	return summary.length > 0 ? summary : null;
+}
+
+export function throwValidationClientError(options: {
+	code: string;
+	source: string;
+	messagePrefix: string;
+	failure?: ValidationFailure;
+}): never {
+	const issueSummary = formatValidationFailure(options.failure);
+	throw new ClientError({
+		kind: ClientErrorKind.Configuration,
+		code: options.code,
+		message: issueSummary
+			? `${options.messagePrefix}: ${issueSummary}.`
+			: `${options.messagePrefix}.`,
+		recovery: UserRecovery.RestartFlow,
+		source: options.source,
+		cause: options.failure?.issues,
+	});
+}
+
 // ---------------------------------------------------------------------------
 // Core validation function
 // ---------------------------------------------------------------------------
@@ -73,11 +125,9 @@ export async function validateWithSchema<I, O>(
 	input: unknown,
 ): Promise<ValidationResult<O>> {
 	const result = await schema["~standard"].validate(input);
-
 	if ("value" in result) {
 		return { success: true, value: result.value };
 	}
-
 	return { success: false, issues: result.issues };
 }
 
@@ -102,59 +152,20 @@ export function validateWithSchemaSync<I, O>(
 	if ("value" in result) {
 		return { success: true, value: result.value };
 	}
-
 	return { success: false, issues: result.issues };
 }
 
-// ---------------------------------------------------------------------------
-// Schema creation helper (minimal, vendor-neutral)
-// ---------------------------------------------------------------------------
-
-/**
- * Options for creating a foundation schema.
- */
-export interface CreateSchemaOptions<O> {
-	/** Validation function: returns typed output or returns issues. */
-	readonly validate: (
-		input: unknown,
-	) =>
-		| { readonly value: O }
-		| { readonly issues: ReadonlyArray<StandardSchemaV1.Issue> };
-}
-
-/**
- * Create a minimal `@standard-schema`-compatible schema without requiring
- * an external validation library.
- *
- * This is useful for SDK-internal schemas where pulling in zod/valibot
- * would be excessive. For adopter-facing schemas, prefer a real validation
- * library.
- *
- * @example
- * ```ts
- * import { createSchema, validateWithSchema } from "@securitydept/client";
- *
- * const NameSchema = createSchema<unknown, { name: string }>({
- *   validate(input) {
- *     if (typeof input === "object" && input !== null && "name" in input &&
- *         typeof (input as any).name === "string") {
- *       return { value: { name: (input as any).name } };
- *     }
- *     return { issues: [{ message: "Expected object with string 'name'" }] };
- *   },
- * });
- *
- * const result = await validateWithSchema(NameSchema, { name: "Alice" });
- * ```
- */
-export function createSchema<O>(
-	options: CreateSchemaOptions<O>,
-): StandardSchemaV1<unknown, O> {
-	return {
-		"~standard": {
-			version: 1,
-			vendor: "securitydept",
-			validate: options.validate,
-		},
-	};
+export function validateTraitInput(options: ValidateTraitInputOptions): void {
+	if (
+		options.optional === true &&
+		(options.value === undefined || options.value === null)
+	) {
+		return;
+	}
+	const validator = options.validator ?? options.bundledSchema;
+	const result = validateWithSchemaSync(validator, options.value);
+	if (result.success) {
+		return;
+	}
+	options.onInvalid(result);
 }

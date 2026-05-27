@@ -2,6 +2,7 @@
 	"compilerOptions": {
 		"ignoreDeprecations": "6.0",
 		"target": "ES2022",
+		"lib": ["ESNext", "DOM"],
 		"module": "ES2022",
 		"moduleResolution": "bundler",
 		"declaration": true,
@@ -12,19 +13,7 @@
 		"noImplicitOverride": true,
 		"noImplicitReturns": true,
 		"noFallthroughCasesInSwitch": true,
-		"forceConsistentCasingInFileNames": true,
-		"paths": {
-			"@securitydept/client": ["../client/dist/index.d.mts"],
-			"@securitydept/client/auth-coordination": [
-				"../client/dist/auth-coordination/index.d.mts"
-			],
-			"@securitydept/client-angular": [
-				"../client-angular/dist/types/securitydept-client-angular.d.ts"
-			],
-			"@securitydept/token-set-context-client/orchestration": [
-				"../token-set-context-client/dist/orchestration/index.d.mts"
-			]
-		}
+		"forceConsistentCasingInFileNames": true
 	},
 	"angularCompilerOptions": {
 		"compilationMode": "partial",

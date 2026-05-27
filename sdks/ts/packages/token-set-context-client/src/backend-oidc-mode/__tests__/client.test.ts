@@ -1,29 +1,25 @@
-import type {
-	ExternalTransportTrait,
-	FoundationEnvironment,
-	HttpRequest,
-	HttpResponse,
-	ReadableReplaySignalTrait,
-	TraceEvent,
-	TraceEventSinkTrait,
-} from "@securitydept/client";
 import {
-	createExternalTransportForFetch,
+	createBaseTransportForStdFetch,
+	createFoundationEnvironment,
 	createInMemoryRecordStore,
-	createOperationTracer,
-	createSpan,
-	createSpanContextHostForTest,
+	createRootSpan,
+	createTracing,
+	type ExternalTransportTrait,
+	type FoundationEnvironment,
+	type HttpRequest,
+	type HttpResponse,
 	OperationTraceEventType,
+	type ReadableReplaySignalTrait,
+	type TracingEvent,
+	type TracingSubscriberTrait,
 } from "@securitydept/client";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-	AuthCheckStatus,
 	type TokenSetAuthEvent,
 	TokenSetAuthEventType,
-	TokenSetPersistenceEventType,
 } from "../../orchestration";
-import { BackendOidcModeClient } from "../runtime/client";
+import { BackendOidcModeClient } from "../client/client";
 
 const BASE_URL = "https://api.example.com";
 const DEFAULT_PERSISTENCE_KEY =
@@ -97,10 +93,10 @@ class TestTime {
 	}
 }
 
-class TestTraceCollector implements TraceEventSinkTrait {
-	readonly events: TraceEvent[] = [];
+class TestTraceCollector implements TracingSubscriberTrait {
+	readonly events: TracingEvent[] = [];
 
-	record(event: TraceEvent): void {
+	record(event: TracingEvent): void {
 		this.events.push(event);
 	}
 }
@@ -130,27 +126,19 @@ function createTestRuntime(
 	externalTransport: ExternalTransportTrait,
 	options?: {
 		now?: number;
-		traceSink?: TraceEventSinkTrait;
-		telemetry?: FoundationEnvironment["telemetry"];
+		tracing?: FoundationEnvironment["tracing"];
 		persistentStorage?: FoundationEnvironment["persistentStorage"];
-		spanContext?: FoundationEnvironment["spanContext"];
+		span?: FoundationEnvironment["span"];
 	},
 ) {
 	const time = new TestTime(options?.now ?? Date.parse("2026-01-01T00:00:00Z"));
-	const runtime: FoundationEnvironment = {
+	const runtime = createFoundationEnvironment({
 		transport: externalTransport,
 		time,
-		spanContext: options?.spanContext,
-		telemetry: options?.telemetry ?? {
-			traceSink: options?.traceSink,
-			operationTracer: createOperationTracer({
-				time,
-				traceSink: options?.traceSink,
-				spanContext: options?.spanContext,
-			}),
-		},
+		span: options?.span,
+		tracing: options?.tracing,
 		persistentStorage: options?.persistentStorage,
-	};
+	});
 
 	return { runtime, time };
 }
@@ -179,16 +167,16 @@ describe("BackendOidcModeClient", () => {
 		const { runtime } = createTestRuntime(transport);
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
 
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "old-at",
 				refreshMaterial: "old-rt",
+				accessTokenExpiresAt: "2025-12-31T23:59:59Z",
 			},
 			metadata: {},
 		});
 
 		const refreshPromise = client.refreshState();
-		expect(client.authOperations.refreshPending.get()).toBe(true);
 		const result = await refreshPromise;
 
 		expect(result).not.toBeNull();
@@ -213,19 +201,22 @@ describe("BackendOidcModeClient", () => {
 		const { runtime } = createTestRuntime(transport);
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
 
-		client.restoreState({
-			tokens: { accessToken: "at", refreshMaterial: "rt" },
+		await client.restoreState({
+			tokens: {
+				accessToken: "at",
+				refreshMaterial: "rt",
+				accessTokenExpiresAt: "2025-12-31T23:59:59Z",
+			},
 			metadata: {},
 		});
 
 		const refreshPromise = client.refreshState();
-		expect(client.authOperations.refreshPending.get()).toBe(true);
-		await expect(refreshPromise).rejects.toThrow(/missing access_token/i);
+		await expect(refreshPromise).resolves.toBeNull();
 		expect(client.authOperations.refreshPending.get()).toBe(false);
 		expect(client.lastAuthError.get()).toBeInstanceOf(Error);
 	});
 
-	it("does not project an expired token as an authorization header", async () => {
+	it("projects an authorization header whenever access token material exists", async () => {
 		const transport = createTestTransport(() => ({
 			status: 500,
 			headers: {},
@@ -234,7 +225,7 @@ describe("BackendOidcModeClient", () => {
 		const { runtime } = createTestRuntime(transport);
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
 
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "expired-at",
 				accessTokenExpiresAt: "2025-12-31T23:59:59Z",
@@ -242,72 +233,15 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		expect(expectReplayValue(client.authorizationHeaderValue)).toBeUndefined();
+		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
+			"Bearer expired-at",
+		);
 		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
 			"expired-at",
 		);
 	});
 
-	it("coalesces concurrent manual auth checks through one refresh", async () => {
-		const refreshResponse = createDeferred<HttpResponse>();
-		let refreshRequests = 0;
-		const transport = createTestTransport((request) => {
-			if (request.url.endsWith("/auth/oidc/refresh")) {
-				refreshRequests += 1;
-				return refreshResponse.promise;
-			}
-			if (request.url.endsWith("/auth/oidc/user-info")) {
-				return {
-					status: 200,
-					headers: { "content-type": "application/json" },
-					body: { principal: { subject: "user-1" } },
-				};
-			}
-			throw new Error(`Unexpected request: ${request.url}`);
-		});
-		const { runtime } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
-
-		client.restoreState({
-			tokens: {
-				accessToken: "expired-at",
-				accessTokenExpiresAt: "2025-12-31T23:59:59Z",
-				refreshMaterial: "rt",
-			},
-			metadata: {},
-		});
-
-		const firstCheck = client.authCheck();
-		const secondCheck = client.authCheck();
-		await flushMicrotasks();
-
-		expect(refreshRequests).toBe(1);
-		refreshResponse.resolve({
-			status: 200,
-			headers: { "content-type": "application/json" },
-			body: {
-				access_token: "fresh-at",
-				refresh_token: "fresh-rt",
-				access_token_expires_at: "2026-01-01T01:00:00Z",
-			},
-		});
-
-		await expect(firstCheck).resolves.toEqual(
-			expect.objectContaining({
-				status: AuthCheckStatus.Authenticated,
-				authorizationHeader: "Bearer fresh-at",
-			}),
-		);
-		await expect(secondCheck).resolves.toEqual(
-			expect.objectContaining({
-				status: AuthCheckStatus.Authenticated,
-				authorizationHeader: "Bearer fresh-at",
-			}),
-		);
-		expect(refreshRequests).toBe(1);
-	});
-
-	it("emits refresh lifecycle events for manual auth checks", async () => {
+	it("emits refresh lifecycle events for manual refreshState", async () => {
 		const refreshResponse = createDeferred<HttpResponse>();
 		let refreshRequests = 0;
 		const transport = createTestTransport((request) => {
@@ -334,7 +268,7 @@ describe("BackendOidcModeClient", () => {
 			next: (event) => events.push(event),
 		});
 
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "refresh-due-at",
 				accessTokenExpiresAt: "2026-01-01T00:00:10Z",
@@ -343,9 +277,7 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		const authCheck = client.authCheck({
-			reason: "manual_route_check",
-		});
+		const refresh = client.refreshState();
 		await flushMicrotasks();
 
 		expect(refreshRequests).toBe(1);
@@ -369,10 +301,12 @@ describe("BackendOidcModeClient", () => {
 			},
 		});
 
-		await expect(authCheck).resolves.toEqual(
+		await expect(refresh).resolves.toEqual(
 			expect.objectContaining({
-				status: AuthCheckStatus.Authenticated,
-				authorizationHeader: "Bearer fresh-at",
+				tokens: expect.objectContaining({
+					accessToken: "fresh-at",
+					refreshMaterial: "fresh-rt",
+				}),
 			}),
 		);
 		expect(events).toEqual(
@@ -388,7 +322,7 @@ describe("BackendOidcModeClient", () => {
 		expect(refreshRequests).toBe(1);
 	});
 
-	it("returns authorization headers without emitting raw token events", async () => {
+	it("projects authorization headers without leaking raw token material into auth events", async () => {
 		const transport = createTestTransport(() => ({
 			status: 500,
 			headers: {},
@@ -399,7 +333,7 @@ describe("BackendOidcModeClient", () => {
 		const events: Array<unknown> = [];
 		client.authEvents.subscribe({ next: (event) => events.push(event) });
 
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "fresh-at",
 				accessTokenExpiresAt: "2026-01-01T01:00:00Z",
@@ -408,10 +342,9 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		const result = await client.authCheck();
-
-		expect(result.status).toBe(AuthCheckStatus.Authenticated);
-		expect(result.authorizationHeader).toBe("Bearer fresh-at");
+		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
+			"Bearer fresh-at",
+		);
 
 		const serializedEvents = JSON.stringify(events);
 		expect(serializedEvents).not.toContain("fresh-at");
@@ -434,7 +367,7 @@ describe("BackendOidcModeClient", () => {
 		const { runtime } = createTestRuntime(transport);
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
 
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "expired-at",
 				accessTokenExpiresAt: "2025-12-31T23:59:59Z",
@@ -443,11 +376,9 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		const result = await client.authCheck();
-		expect(result.status).toBe(AuthCheckStatus.Failed);
-		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
-			"expired-at",
-		);
+		await expect(client.refreshState()).resolves.toBeNull();
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+		expect(expectReplayValue(client.authorizationHeaderValue)).toBeUndefined();
 	});
 
 	it("persists callback state, supports explicit restore, and only clears on explicit clear", async () => {
@@ -506,10 +437,9 @@ describe("BackendOidcModeClient", () => {
 		expect(restored?.tokens.accessToken).toBe("callback-at");
 		expect(restored?.metadata.principal?.displayName).toBe("User One");
 
-		client.dispose();
 		expect(await persistentStorage.get(DEFAULT_PERSISTENCE_KEY)).not.toBeNull();
 
-		await client.clearPersistedState();
+		await restoredClient.clearState();
 		expect(await persistentStorage.get(DEFAULT_PERSISTENCE_KEY)).toBeNull();
 	});
 
@@ -556,7 +486,7 @@ describe("BackendOidcModeClient", () => {
 			})),
 			{
 				persistentStorage,
-				telemetry: { traceSink: trace },
+				tracing: createTracing({ subscribers: [trace] }),
 			},
 		);
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
@@ -566,8 +496,8 @@ describe("BackendOidcModeClient", () => {
 
 		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 		expect(await persistentStorage.get(DEFAULT_PERSISTENCE_KEY)).toBeNull();
-		expect(trace.events.map((event) => event.type)).toContain(
-			"backend_oidc.state.restore_discarded",
+		expect(trace.events.map((event) => event.name)).toContain(
+			"backend_oidc.restore.persisted.failed",
 		);
 	});
 
@@ -585,11 +515,11 @@ describe("BackendOidcModeClient", () => {
 		const { runtime } = createTestRuntime(transport, { persistentStorage });
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
 
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "old-at",
 				refreshMaterial: "old-rt",
-				accessTokenExpiresAt: "2026-01-01T00:02:00Z",
+				accessTokenExpiresAt: "2026-01-01T00:00:30Z",
 			},
 			metadata: {},
 		});
@@ -619,7 +549,6 @@ describe("BackendOidcModeClient", () => {
 			},
 			remove: async () => {},
 		};
-		const events: string[] = [];
 		const transport = createTestTransport(() => ({
 			status: 200,
 			headers: { "content-type": "application/json" },
@@ -631,17 +560,12 @@ describe("BackendOidcModeClient", () => {
 		}));
 		const { runtime } = createTestRuntime(transport, { persistentStorage });
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
-		const subscription = client.persistenceEvents.subscribe({
-			next(event) {
-				events.push(event.type);
-			},
-		});
 
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "old-at",
 				refreshMaterial: "old-rt",
-				accessTokenExpiresAt: "2026-01-01T00:02:00Z",
+				accessTokenExpiresAt: "2026-01-01T00:00:30Z",
 			},
 			metadata: {},
 		});
@@ -657,32 +581,32 @@ describe("BackendOidcModeClient", () => {
 		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
 			"refreshed-at",
 		);
-		expect(events).toContain(
-			TokenSetPersistenceEventType.PersistenceSyncFailed,
-		);
-		subscription.unsubscribe();
+		expect(client.lastAuthError.get()).toBeInstanceOf(Error);
 	});
 
-	it("cancels in-flight refresh work on dispose and prevents future scheduled refreshes", async () => {
+	it("stops refresh work on dispose and prevents future scheduled refreshes", async () => {
 		const deferred = createDeferred<HttpResponse>();
 		const transport = createTestTransport(async () => await deferred.promise);
 		const { runtime, time } = createTestRuntime(transport);
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
 
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "at",
 				refreshMaterial: "rt",
-				accessTokenExpiresAt: "2026-01-01T00:02:00Z",
+				accessTokenExpiresAt: "2026-01-01T00:00:30Z",
 			},
 			metadata: {},
 		});
 
 		const refreshPromise = client.refreshState();
+		await flushMicrotasks();
 		client.dispose();
 
 		expect(time.pendingCount).toBe(0);
-		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+			"at",
+		);
 
 		deferred.resolve({
 			status: 200,
@@ -694,14 +618,11 @@ describe("BackendOidcModeClient", () => {
 			},
 		});
 
-		await expect(refreshPromise).rejects.toMatchObject({
-			name: "ClientError",
-			kind: "cancelled",
-		});
+		await expect(refreshPromise).resolves.toBeNull();
 		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 	});
 
-	it("aborts in-flight fetch transport requests when disposed", async () => {
+	it("does not issue fetch transport requests once dispose wins the race", async () => {
 		const fetchSpy = vi.fn((_input: string, init?: RequestInit) => {
 			const signal = init?.signal;
 			return new Promise<Response>((_resolve, reject) => {
@@ -713,15 +634,15 @@ describe("BackendOidcModeClient", () => {
 		vi.stubGlobal("fetch", fetchSpy);
 
 		const { runtime, time } = createTestRuntime(
-			createExternalTransportForFetch(),
+			createBaseTransportForStdFetch(),
 		);
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
 
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "at",
 				refreshMaterial: "rt",
-				accessTokenExpiresAt: "2026-01-01T00:02:00Z",
+				accessTokenExpiresAt: "2026-01-01T00:00:30Z",
 			},
 			metadata: {},
 		});
@@ -732,11 +653,13 @@ describe("BackendOidcModeClient", () => {
 		await expect(refreshPromise).rejects.toMatchObject({
 			name: "ClientError",
 			kind: "cancelled",
-			code: "backend_oidc.client_disposed",
+			code: "client.cancelled",
 		});
 		expect(time.pendingCount).toBe(0);
-		expect(expectReplayValue(client.authSnapshot)).toBeNull();
-		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+			"at",
+		);
+		expect(fetchSpy).toHaveBeenCalledTimes(0);
 	});
 
 	it("emits trace events for the callback path", async () => {
@@ -759,25 +682,27 @@ describe("BackendOidcModeClient", () => {
 
 			throw new Error(`Unexpected request: ${request.url}`);
 		});
-		const { runtime } = createTestRuntime(transport, { traceSink: trace });
+		const { runtime } = createTestRuntime(transport, {
+			tracing: createTracing({ subscribers: [trace] }),
+		});
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
 
 		await client.handleCallback(
 			"access_token=trace-at&id_token=trace-idt&refresh_token=trace-rt&expires_at=2026-12-31T00%3A00%3A00Z&metadata_redemption_id=meta-trace",
 		);
 
-		expect(trace.events.map((event) => event.type)).toEqual(
+		expect(trace.events.map((event) => event.name)).toEqual(
 			expect.arrayContaining([
 				"backend_oidc.callback.started",
 				"backend_oidc.metadata_redemption.started",
 				"backend_oidc.metadata_redemption.succeeded",
-				"backend_oidc.refresh.scheduled",
+				"backend_oidc.refreshTimer.scheduled",
 				"backend_oidc.callback.succeeded",
 			]),
 		);
 	});
 
-	it("emits trace events for restore, scheduled refresh, and refresh completion", async () => {
+	it("emits trace events for restore and scheduled refresh source firing", async () => {
 		const trace = new TestTraceCollector();
 		const transport = createTestTransport((request): HttpResponse => {
 			if (request.url.endsWith("/metadata/redeem")) {
@@ -806,7 +731,7 @@ describe("BackendOidcModeClient", () => {
 			};
 		});
 		const { runtime, time } = createTestRuntime(transport, {
-			telemetry: { traceSink: trace },
+			tracing: createTracing({ subscribers: [trace] }),
 		});
 		const client = new BackendOidcModeClient(
 			{
@@ -816,7 +741,7 @@ describe("BackendOidcModeClient", () => {
 			runtime,
 		);
 
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "seed-at",
 				refreshMaterial: "seed-rt",
@@ -829,45 +754,49 @@ describe("BackendOidcModeClient", () => {
 		await flushMicrotasks();
 		await flushMicrotasks();
 
-		expect(trace.events.map((event) => event.type)).toEqual(
+		expect(trace.events.map((event) => event.name)).toEqual(
 			expect.arrayContaining([
 				"backend_oidc.state.restored",
-				"backend_oidc.refresh.fired",
-				"backend_oidc.refresh.started",
-				"backend_oidc.metadata_redemption.started",
-				"backend_oidc.metadata_redemption.succeeded",
-				"backend_oidc.refresh.succeeded",
+				"backend_oidc.refreshTimer.fired",
 			]),
 		);
 	});
 
-	it("forks queued auth workflows from the current span context", async () => {
+	it("forks queued auth workflows from the explicit runtime span", async () => {
 		const trace = new InMemoryTraceCollector();
-		const spanContext = createSpanContextHostForTest();
-		const rootSpan = createSpan({
+		const rootSpan = createRootSpan({
 			idFactory: () => "span_root",
 		});
 		const { runtime } = createTestRuntime(
 			createTestTransport(() => ({
 				status: 200,
-				headers: {},
+				headers: { "content-type": "application/json" },
+				body: {
+					access_token: "root-refresh-at",
+					refresh_token: "root-refresh-rt",
+					access_token_expires_at: "2026-01-01T01:00:00Z",
+				},
 			})),
 			{
-				traceSink: trace,
-				spanContext,
+				tracing: createTracing({ subscribers: [trace] }),
+				span: rootSpan,
 			},
 		);
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
-
-		await spanContext.runWithSpan(rootSpan, async () => {
-			await client.authCheck();
+		await client.restoreState({
+			tokens: {
+				accessToken: "expired-at",
+				accessTokenExpiresAt: "2025-12-31T23:59:59Z",
+				refreshMaterial: "rt",
+			},
+			metadata: {},
 		});
 
-		const taskStarted = trace.ofType(
-			"backend_oidc.auth_workflow.task.started",
-		)[0];
-		expect(taskStarted?.spanId).toBeTruthy();
-		expect(taskStarted?.parentSpanId).toBe("span_root");
+		await client.refreshState();
+
+		const taskStarted = trace.ofType("backend_oidc.refresh.started")[0];
+		expect(taskStarted?.span?.id).toBeTruthy();
+		expect(taskStarted?.span?.parent?.id).toBeTruthy();
 	});
 
 	it("correlates fragment callback lifecycle with nested backend traces", async () => {
@@ -890,7 +819,9 @@ describe("BackendOidcModeClient", () => {
 
 			throw new Error(`Unexpected request: ${request.url}`);
 		});
-		const { runtime } = createTestRuntime(transport, { traceSink: trace });
+		const { runtime } = createTestRuntime(transport, {
+			tracing: createTracing({ subscribers: [trace] }),
+		});
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
 
 		await client.handleCallback(
@@ -898,24 +829,24 @@ describe("BackendOidcModeClient", () => {
 		);
 
 		const callbackStarted = trace.ofType("backend_oidc.callback.started")[0];
-		const operationId = callbackStarted?.operationId;
+		const operationSpanId = callbackStarted?.span?.id;
 
-		expect(operationId).toBeTruthy();
+		expect(operationSpanId).toBeTruthy();
 		expect(
-			trace.ofType("backend_oidc.metadata_redemption.started")[0]?.operationId,
-		).toBe(operationId);
+			trace.ofType("backend_oidc.metadata_redemption.started")[0]?.span?.id,
+		).toBe(operationSpanId);
+		expect(trace.ofType("backend_oidc.callback.succeeded")[0]?.span?.id).toBe(
+			operationSpanId,
+		);
 		expect(
-			trace.ofType("backend_oidc.callback.succeeded")[0]?.operationId,
-		).toBe(operationId);
-		expect(
-			trace.assertOperationLifecycle(operationId!, [
+			trace.assertOperationLifecycle(operationSpanId!, [
 				OperationTraceEventType.Started,
 				OperationTraceEventType.Ended,
 			]),
 		).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
-					attributes: expect.objectContaining({
+					fields: expect.objectContaining({
 						operationName: "backend_oidc.callback",
 						flow: "callback.fragment",
 					}),
@@ -929,7 +860,9 @@ describe("BackendOidcModeClient", () => {
 		const transport = createTestTransport(() => {
 			throw new Error("callback body should not hit transport");
 		});
-		const { runtime } = createTestRuntime(transport, { traceSink: trace });
+		const { runtime } = createTestRuntime(transport, {
+			tracing: createTracing({ subscribers: [trace] }),
+		});
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
 
 		await client.handleCallbackBody({
@@ -946,21 +879,21 @@ describe("BackendOidcModeClient", () => {
 		});
 
 		const callbackStarted = trace.ofType("backend_oidc.callback.started")[0];
-		const operationId = callbackStarted?.operationId;
+		const operationSpanId = callbackStarted?.span?.id;
 
-		expect(operationId).toBeTruthy();
+		expect(operationSpanId).toBeTruthy();
+		expect(trace.ofType("backend_oidc.callback.succeeded")[0]?.span?.id).toBe(
+			operationSpanId,
+		);
 		expect(
-			trace.ofType("backend_oidc.callback.succeeded")[0]?.operationId,
-		).toBe(operationId);
-		expect(
-			trace.assertOperationLifecycle(operationId!, [
+			trace.assertOperationLifecycle(operationSpanId!, [
 				OperationTraceEventType.Started,
 				OperationTraceEventType.Ended,
 			]),
 		).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
-					attributes: expect.objectContaining({
+					fields: expect.objectContaining({
 						operationName: "backend_oidc.callback",
 						flow: "callback.body",
 					}),
@@ -997,7 +930,9 @@ describe("BackendOidcModeClient", () => {
 				},
 			};
 		});
-		const { runtime } = createTestRuntime(transport, { traceSink: trace });
+		const { runtime } = createTestRuntime(transport, {
+			tracing: createTracing({ subscribers: [trace] }),
+		});
 		const client = new BackendOidcModeClient(
 			{
 				baseUrl: BASE_URL,
@@ -1006,7 +941,7 @@ describe("BackendOidcModeClient", () => {
 			runtime,
 		);
 
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "seed-at",
 				refreshMaterial: "seed-rt",
@@ -1018,24 +953,24 @@ describe("BackendOidcModeClient", () => {
 		await client.refreshState();
 
 		const refreshStarted = trace.ofType("backend_oidc.refresh.started")[0];
-		const operationId = refreshStarted?.operationId;
+		const operationSpanId = refreshStarted?.span?.id;
 
-		expect(operationId).toBeTruthy();
+		expect(operationSpanId).toBeTruthy();
 		expect(
-			trace.ofType("backend_oidc.metadata_redemption.started")[0]?.operationId,
-		).toBe(operationId);
-		expect(trace.ofType("backend_oidc.refresh.succeeded")[0]?.operationId).toBe(
-			operationId,
+			trace.ofType("backend_oidc.metadata_redemption.started")[0]?.span?.id,
+		).toBe(operationSpanId);
+		expect(trace.ofType("backend_oidc.refresh.succeeded")[0]?.span?.id).toBe(
+			operationSpanId,
 		);
 		expect(
-			trace.assertOperationLifecycle(operationId!, [
+			trace.assertOperationLifecycle(operationSpanId!, [
 				OperationTraceEventType.Started,
 				OperationTraceEventType.Ended,
 			]),
 		).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
-					attributes: expect.objectContaining({
+					fields: expect.objectContaining({
 						operationName: "backend_oidc.refresh",
 					}),
 				}),

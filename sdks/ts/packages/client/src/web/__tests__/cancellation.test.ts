@@ -2,14 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import { createCancellationTokenSource } from "../../cancellation/cancellation-token";
 import { ClientErrorKind } from "../../errors/types";
 import {
-	createAbortSignalBridge,
-	createCancellationTokenFromAbortSignal,
-} from "../cancellation/abort-signal";
+	abortSignalToCancellationToken,
+	cancellationTokenToAbortSignal,
+} from "../../std/cancellation";
 
 describe("web cancellation bridge", () => {
 	it("bridges foundation cancellation into AbortSignal for fetch-facing consumers", () => {
 		const source = createCancellationTokenSource();
-		const bridge = createAbortSignalBridge(source.token);
+		const bridge = cancellationTokenToAbortSignal(source.token);
 
 		expect(bridge.signal?.aborted).toBe(false);
 
@@ -21,7 +21,7 @@ describe("web cancellation bridge", () => {
 
 	it("stops forwarding foundation cancellation after bridge disposal", () => {
 		const source = createCancellationTokenSource();
-		const bridge = createAbortSignalBridge(source.token);
+		const bridge = cancellationTokenToAbortSignal(source.token);
 
 		bridge.dispose();
 		source.cancel("ignored-after-dispose");
@@ -31,7 +31,7 @@ describe("web cancellation bridge", () => {
 
 	it("bridges AbortSignal back into the foundation cancellation contract", () => {
 		const controller = new AbortController();
-		const token = createCancellationTokenFromAbortSignal(controller.signal);
+		const token = abortSignalToCancellationToken(controller.signal);
 		const listener = vi.fn();
 
 		token?.onCancellationRequested(listener);
@@ -56,7 +56,7 @@ describe("web cancellation bridge", () => {
 		const controller = new AbortController();
 		controller.abort("already-cancelled");
 
-		const token = createCancellationTokenFromAbortSignal(controller.signal);
+		const token = abortSignalToCancellationToken(controller.signal);
 		const listener = vi.fn();
 
 		token?.onCancellationRequested(listener);

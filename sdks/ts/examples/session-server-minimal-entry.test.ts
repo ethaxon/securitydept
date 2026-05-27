@@ -7,8 +7,10 @@
 // An adopter reading this file should understand "how do I use
 // session helpers in a server request handler?" in one glance.
 
-import type { CreateSessionServerHelperOptions } from "@securitydept/session-context-client/server";
-import { createSessionServerHelper } from "@securitydept/session-context-client/server";
+import {
+	type CreateSessionServerHelperOptions,
+	createSessionServerHelper,
+} from "@securitydept/session-context-client/server";
 import { describe, expect, it, vi } from "vitest";
 
 describe("session server minimal entry", () => {

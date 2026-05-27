@@ -1,3 +1,4 @@
+import { createRootSpan, createTracing } from "@securitydept/client";
 import {
 	createEnvironmentForNativeWeb,
 	type NativeWebEnvironment,
@@ -5,9 +6,18 @@ import {
 
 export function createTokenSetFrontendModePageEnvironment(): NativeWebEnvironment {
 	return createEnvironmentForNativeWeb({
-		location: window.location,
-		history: window.history,
-		document,
-		window,
+		span: createRootSpan(),
+		tracing: createTracing(),
+		routerForNativeWebCreateOptions: {
+			location: window.location,
+			history: window.history,
+		},
+		pageLifecycleForNativeWebCreateOptions: {
+			document,
+			window,
+		},
+		popupForNativeWebCreateOptions: {
+			window,
+		},
 	});
 }

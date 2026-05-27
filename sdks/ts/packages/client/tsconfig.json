@@ -3,7 +3,7 @@
 	"compilerOptions": {
 		"outDir": "./dist-tsc",
 		"rootDir": "./src",
-		"lib": ["ES2022", "DOM"]
+		"lib": ["ES2022", "DOM", "ESNext.Decorators"]
 	},
 	"include": ["src"],
 	"references": []

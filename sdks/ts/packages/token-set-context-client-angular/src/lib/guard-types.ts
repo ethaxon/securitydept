@@ -1,5 +1,5 @@
-import type { TokenSetAngularClient } from "./contracts";
-import type { ClientMeta } from "./token-set-auth.registry";
+import { type TokenSetAngularClient } from "./contracts";
+import { type ClientMeta } from "./token-set-auth.registry";
 
 /**
  * A failing entry returned to `onUnauthenticated` when one or more clients

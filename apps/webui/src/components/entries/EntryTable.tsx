@@ -8,7 +8,7 @@ import {
 import { Pencil, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 import { type AuthEntry, AuthEntryKind } from "@/api/entries";
-import type { Group } from "@/api/groups";
+import { type Group } from "@/api/groups";
 import { useDashboardDeleteEntryMutation } from "@/hooks/useDashboardApi";
 
 export function EntryTable({

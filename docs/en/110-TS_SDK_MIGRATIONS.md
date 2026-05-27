@@ -21,11 +21,30 @@ Rules:
 
 ## Current Migration Notes
 
+### Token-set Auth Event Payload Map
+
+Packages:
+
+- `@securitydept/token-set-context-client/orchestration`
+
+Change:
+
+- The loose `TokenSetAuthEventPayload` bag is replaced by a per-event-type `TokenSetAuthEventPayloadMap`. `TokenSetAuthEvent<TType>` is now `RuntimeEventEnvelope<TType, TokenSetAuthEventPayloadMap[TType]>`, and `createTokenSetAuthEvent()` is a generic factory whose `payload` is constrained by the event `type`.
+- `freshness` and `hasRefreshMaterial` exist only on the refresh-specific payload (`AuthRefreshRequired` / `AuthRefreshStarted` / `AuthRefreshSucceeded` / `AuthRefreshFailed`). Terminal events (`AuthAuthenticated` / `AuthUnauthenticated` / `AuthMaterialCleared`) carry only the minimal identity payload.
+- Client identity is expressed solely through the optional `id` field; there is no general loose-field bag.
+- The `AuthCheck*` event family and the `TokenSetAuthFlowOutcome` / `TokenSetAuthFlowReason` / `authCheckReason` vocabulary are removed. Outcomes are expressed by the event type itself, and triggering reason context lives in local orchestration trace attributes rather than an event payload field.
+
+Migration:
+
+- Replace any read of `event.payload.outcome` / `event.payload.reason` / `event.payload.authCheckReason` with a check on `event.type` (for example `event.type === TokenSetAuthEventType.AuthAuthenticated`).
+- Read `freshness` / `hasRefreshMaterial` only after narrowing to a refresh event type.
+- Replace `event.payload.clientKey` / `event.payload.logicalClientId` with `event.payload.id`.
+
 ### Unified Injector And Single React Context
 
 Packages:
 
-- `@securitydept/client/injection`
+- `@securitydept/client`
 - `@securitydept/client-react`
 - `@securitydept/basic-auth-context-client-react`
 - `@securitydept/session-context-client-react`
@@ -33,7 +52,7 @@ Packages:
 
 Change:
 
-- `@securitydept/client/injection` now owns the framework-neutral DI authority. `SecuritydeptInjectorTrait` is the minimal read-side contract and only expresses `get()`; `SecuritydeptInjector` is the SDK runtime/facade that owns provider resolution, parent inheritance, overrides, and `has()` diagnostics.
+- `@securitydept/client` now owns the framework-neutral DI authority. `SecuritydeptInjectorTrait` is the minimal read-side contract and only expresses `get()`; `SecuritydeptInjector` is the SDK runtime/facade that owns provider resolution, parent inheritance, overrides, and `has()` diagnostics.
 - React now has exactly one SDK Context: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()` in `@securitydept/client-react`.
 - React domain packages no longer export `BasicAuthContextProvider`, `SessionContextProvider`, `BackendOidcModeContextProvider`, `TokenSetAuthProvider`, `useBasicAuthContext()`, `useSessionContext()`, `useBackendOidcModeContext()`, `useTokenSetAuthRegistry()`, and similar domain-specific Context / Provider / keyed state helpers.
 - React domain packages now export injection tokens, provider factories, plain factories, and explicit callback/component bridges. State reading is unified around `useReadableSignal(...)`.
@@ -80,10 +99,10 @@ Change:
 
 Migration:
 
-- Create one environment at the host composition root and pass the environment object itself through providers/adapters. Do not teach adopters to read `environment.runtime`; update direct historical runtime/derive helper usage to `FoundationEnvironment`, `createClientEnvironment()`, `createEnvironmentForNativeWeb()`, or direct structural environment passing.
+- Create one environment at the host composition root and pass the environment object itself through providers/adapters. Do not teach adopters to read `environment.runtime`; update direct historical runtime/derive helper usage to `FoundationEnvironment`, `createFoundationEnvironment()`, `createEnvironmentForNativeWeb()`, or direct structural environment passing.
 - Keep public option keys named `environment` even when the value is page-scoped or async-resolved. Do not introduce `pageEnvironment` as a parallel key; the type communicates the page requirement.
 - Use `createEnvironmentForNativeWeb({ location, history, ...options })` for real page/tab/popup callback flows; page capabilities are explicit top-level host inputs and must come from the host composition root.
-- Do not use `createEnvironmentForNativeWeb()` for worker-like hosts. Compose those with `createClientEnvironment()` or a more specific host factory, then inject persistence/session stores explicitly when needed.
+- Do not use `createEnvironmentForNativeWeb()` for worker-like hosts. Compose those with `createFoundationEnvironment()` or a more specific host factory, then inject persistence/session stores explicitly when needed.
 - Do not call page callback bootstrap in service workers or extension backgrounds. Run restore/token-state APIs there, and run callback capture only in a real page/popup document or with explicit fake page/callback-fragment capabilities in tests.
 - Update ambiguous page-global helper names to page-explicit forms where the public name changed, such as `currentPageLocationAsPostAuthRedirectUri()`, `buildAuthorizeUrlReturningToCurrentPage()`, `bootstrapBackendOidcModePageClient()`, and `captureBackendOidcModePageCallbackFragment()`.
 - Treat existing redirect/popup helpers (`loginWithBackendOidcRedirect()`, `loginWithBackendOidcPopup()`, and `relayBackendOidcPopupCallback()`) as page-only helpers even though their historical names remain intact; pass an explicit `RouterTrait`/`PopupTrait` or a page-bearing `environment` when testing or running in a host wrapper. The canonical shared token-set OIDC browser contract is now `loginWithRedirect({ environment, postAuthRedirectUri })` on `OidcRedirectLoginClient`; backend web clients materialized through `createBackendOidcModeWebClient(...)` expose that method while `loginWithBackendOidcRedirect()` remains the compatibility/convenience wrapper. Popup login also requires an explicit callback-fragment capability, and browser-state reset requires an explicit `callbackFragmentStore`.
@@ -108,16 +127,16 @@ Change:
 - `FoundationEnvironment` now carries one `time: TimeTrait` capability instead of separate `clock` and `scheduler` fields. Idle work is a separate optional `idleCallback: IdleCallbackTrait` capability.
 - `createDefaultTimeConfig()` replaces `createDefaultClock()` and `createDefaultScheduler()`.
 - `createDefaultIdleScheduler()` and registry `idleScheduler` wiring are removed. Registry idle warmup now runs only when the host provides `environment.idleCallback`.
-- `timer()`, `interval()`, and `scheduleAt()` callback helpers are removed. Use `fromTimeout()`, `fromInterval()`, and `fromScheduleAt()` EventStream sources.
-- `fromEventPattern()`, `fromSignal()`, and `fromPromise()` are EventStream source helpers. They no longer accept callback options or return a scheduling-local `Subscription`.
+- `timer()`, `interval()`, `scheduleAt()`, `fromTimeout()`, `fromInterval()`, `fromScheduleAt()`, `fromEventPattern()`, `fromSignal()`, and `fromPromise()` are removed from `@securitydept/client`.
+- The SDK still exposes `EventStreamTrait` / `EventSubjectTrait` as its public reactive primitives, but generic source construction now belongs to direct RxJS usage plus the `@securitydept/client/rx` bridge and `createAsyncSchedulerWithTimestampProvider(...)` when host-owned `TimeTrait` must drive scheduling.
 
 Migration:
 
 - Replace `{ clock, scheduler }` environment wiring with `{ time }`; pass a host-owned `{ environment }` whose `environment.idleCallback` is set only when the host intentionally enables registry idle warmup. Tool-level idle revalidation helpers still consume explicit narrow capabilities.
 - Registry-managed token-set entries now receive that same registry-owned environment as `clientFactory(environment)`. Build clients from this argument instead of reaching for module globals or passing scattered sub-capabilities.
-- Replace direct callback timer handles with `const sub = fromTimeout({ time, delayMs }).subscribe({ next })` and call `sub.unsubscribe()` for cleanup.
-- Replace recurring callback scheduling with `fromInterval({ time, periodMs }).subscribe({ next })`.
-- Replace `fromEventPattern({ ..., callback })` with `fromEventPattern({ ... }).subscribe({ next })`.
+- Replace direct callback timer handles with `timer(delayMs, createAsyncSchedulerWithTimestampProvider(time)).subscribe(...)`.
+- Replace recurring callback scheduling with `interval(periodMs, createAsyncSchedulerWithTimestampProvider(time)).subscribe(...)`.
+- Replace `fromEventPattern({ ..., callback })` style SDK helpers with direct `rxjs` sources such as `fromEventPattern(...)`, `from(Promise.resolve(...))`, or `new Observable(...)`, then bridge back to `EventStreamTrait` only when a SecurityDept trait boundary is required.
 - Use `FakeTimeConfig` in tests when deterministic `now()`, timer queueing, flushing, and pending-count assertions are needed.
 
 Justification:
@@ -128,7 +147,7 @@ Justification:
 
 Packages:
 
-- `@securitydept/client/events`
+- `@securitydept/client`
 - `@securitydept/token-set-context-client/orchestration`
 - `@securitydept/token-set-context-client/registry`
 - `@securitydept/token-set-context-client-angular`

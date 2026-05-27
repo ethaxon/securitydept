@@ -1,17 +1,18 @@
 export type { AbortSignalBridge } from "./cancellation";
 export {
-	createAbortSignalBridge,
+	abortSignalToCancellationToken,
+	cancellationTokenToAbortSignal,
 	normalizeAbortError,
 } from "./cancellation";
+export type { AbortSignalStdSource } from "./events";
+export { abortSignalToEventStream } from "./events";
 export type {
-	CreateTelemetryForStdOptions,
-	CreateTimeForStdOptions,
-} from "./environment";
-export { createTelemetryForStd, createTimeForStd } from "./environment";
-export type { AbortSignalSource, FromAbortSignalOptions } from "./events";
-export { fromAbortSignal } from "./events";
-export type { CreateExternalTransportForFetchOptions } from "./transport";
+	TimeForStdCreateOptions,
+	TimeTraitStdHost as StdTimeHost,
+} from "./time";
+export { createTimeForStd } from "./time";
+export type { BaseTransportForStdFetchCreateOptions } from "./transport";
 export {
-	createExternalTransportForFetch,
+	createBaseTransportForStdFetch,
 	FetchTransportRedirectKind,
 } from "./transport";

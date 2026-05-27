@@ -33,16 +33,6 @@
 			"types": "./dist/index.d.mts",
 			"import": "./dist/index.mjs"
 		},
-		"./persistence": {
-			"monorepo-tsc": "./src/persistence/index.ts",
-			"types": "./dist/persistence/index.d.mts",
-			"import": "./dist/persistence/index.mjs"
-		},
-		"./persistence/web": {
-			"monorepo-tsc": "./src/persistence/web/index.ts",
-			"types": "./dist/persistence/web/index.d.mts",
-			"import": "./dist/persistence/web/index.mjs"
-		},
 		"./web": {
 			"monorepo-tsc": "./src/web/index.ts",
 			"types": "./dist/web/index.d.mts",
@@ -53,40 +43,10 @@
 			"types": "./dist/webext/index.d.mts",
 			"import": "./dist/webext/index.mjs"
 		},
-		"./events": {
-			"monorepo-tsc": "./src/events/index.ts",
-			"types": "./dist/events/index.d.mts",
-			"import": "./dist/events/index.mjs"
-		},
-		"./injection": {
-			"monorepo-tsc": "./src/injection/index.ts",
-			"types": "./dist/injection/index.d.mts",
-			"import": "./dist/injection/index.mjs"
-		},
 		"./rx": {
 			"monorepo-tsc": "./src/rx/index.ts",
 			"types": "./dist/rx/index.d.mts",
 			"import": "./dist/rx/index.mjs"
-		},
-		"./struct": {
-			"monorepo-tsc": "./src/struct/index.ts",
-			"types": "./dist/struct/index.d.mts",
-			"import": "./dist/struct/index.mjs"
-		},
-		"./auth-coordination": {
-			"monorepo-tsc": "./src/auth-coordination/index.ts",
-			"types": "./dist/auth-coordination/index.d.mts",
-			"import": "./dist/auth-coordination/index.mjs"
-		},
-		"./test": {
-			"monorepo-tsc": "./src/test/index.ts",
-			"types": "./dist/test/index.d.mts",
-			"import": "./dist/test/index.mjs"
-		},
-		"./web-router": {
-			"monorepo-tsc": "./src/web-router/index.ts",
-			"types": "./dist/web-router/index.d.mts",
-			"import": "./dist/web-router/index.mjs"
 		}
 	},
 	"files": [
@@ -98,8 +58,10 @@
 	},
 	"dependencies": {
 		"@standard-schema/spec": "^1.0.0",
+		"arktype": "^2.2.0",
 		"injection-js": "^2.6.1",
 		"mnemonist": "^0.40.4",
-		"rxjs": "^7.8.2"
+		"rxjs": "^7.8.2",
+		"uuid": "^14.0.1"
 	}
 }

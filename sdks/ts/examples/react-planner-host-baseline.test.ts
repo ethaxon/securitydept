@@ -16,8 +16,8 @@ import {
 	createPlannerHost,
 	RequirementsClientSetComposition,
 	resolveEffectiveClientSet,
-} from "@securitydept/client/auth-coordination";
-import { SecuritydeptInjector } from "@securitydept/client/injection";
+	SecuritydeptInjector,
+} from "@securitydept/client";
 import {
 	AUTH_PLANNER_HOST,
 	AUTH_REQUIREMENTS_CLIENT_SET,

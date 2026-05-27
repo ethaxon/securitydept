@@ -1,5 +1,5 @@
-import type { TimeTrait } from "@securitydept/client";
-import type { AuthSnapshot } from "../../../token/types";
+import { type TimeTrait } from "@securitydept/client";
+import { type AuthSnapshot } from "../../../token/types";
 import {
 	type AuthSnapshotPersistenceOptions,
 	loadPersistedAuthSnapshot,
@@ -9,7 +9,7 @@ import {
 	type AuthDeterminationCandidate,
 	AuthDeterminationKind,
 } from "../commit";
-import type { PlanRefreshFreshnessOptions } from "./refresh";
+import { type PlanRefreshFreshnessOptions } from "./refresh";
 
 export interface PlanRestoreRequest {
 	snapshot: AuthSnapshot;

@@ -1,39 +1,66 @@
 import {
 	ClientErrorKind,
-	createClientEnvironment,
+	createEventSubject,
 	createInMemoryRecordStore,
+	createRootSpan,
+	createSignal,
+	createTracing,
 	OperationTraceEventType,
+	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createEnvironmentForTest as createFoundationEnvironment } from "../../../../client/src/test";
 import {
 	type TokenSetAuthEvent,
 	TokenSetAuthEventType,
 } from "../../orchestration";
+import { FrontendOidcModeTraceEventType } from "../client/trace-events";
 import { FrontendOidcModeCallbackErrorCode } from "../errors/callback-error-codes";
-import { FrontendOidcModeTraceEventType } from "../runtime/trace-events";
 
-const webMocks = vi.hoisted(() => ({
-	openPopupWindow: vi.fn(),
-	relayPopupCallback: vi.fn(),
-	waitForPopupRelay: vi.fn(),
+const popupMocks = vi.hoisted(() => ({
+	open: vi.fn(),
 }));
 
-vi.mock("@securitydept/client/web", async () => {
-	const actual = await vi.importActual<object>("@securitydept/client/web");
+const popupRelayMocks = vi.hoisted(() => ({
+	relayTokenSetPopupCallback: vi.fn(),
+	waitForTokenSetPopupRelay: vi.fn(),
+}));
+
+vi.mock("../../popup/relay", async () => {
+	const actual = await vi.importActual<object>("../../popup/relay");
 	return {
 		...actual,
-		openPopupWindow: webMocks.openPopupWindow,
-		relayPopupCallback: webMocks.relayPopupCallback,
-		waitForPopupRelay: webMocks.waitForPopupRelay,
+		relayTokenSetPopupCallback: popupRelayMocks.relayTokenSetPopupCallback,
+		waitForTokenSetPopupRelay: popupRelayMocks.waitForTokenSetPopupRelay,
 	};
 });
 
 function createMockPopupTrait() {
+	const onNotification = createEventSubject();
+	const onRequest = createEventSubject();
+	const outgoing = createEventSubject();
+	const incoming = createEventSubject();
+
 	return {
-		open: webMocks.openPopupWindow,
-		waitForRelay: webMocks.waitForPopupRelay,
-		relayCallback: webMocks.relayPopupCallback,
+		open: popupMocks.open,
+		attach: vi.fn(() => ({
+			kind: "success" as const,
+			handle: {
+				onNotification,
+				onRequest,
+				failure: createSignal(null),
+				isActive: createSignal(false),
+				notify: vi.fn(async () => undefined),
+				close: vi.fn(),
+				messaging: {
+					outgoing,
+					incoming,
+				},
+				dispose: vi.fn(),
+				[SYMBOL_DISPOSE]: vi.fn(),
+			},
+		})),
 	};
 }
 
@@ -76,13 +103,11 @@ vi.mock("oauth4webapi", () => ({
 	generateRandomState: oauthMocks.generateRandomState,
 	nopkce: oauthMocks.nopkce,
 	None: vi.fn(() => ({ type: "none" })),
-	openPopupWindow: vi.fn(),
 	processAuthorizationCodeResponse: oauthMocks.processAuthorizationCodeResponse,
 	processDiscoveryResponse: oauthMocks.processDiscoveryResponse,
 	processRefreshTokenResponse: oauthMocks.processRefreshTokenResponse,
 	processUserInfoResponse: oauthMocks.processUserInfoResponse,
 	refreshTokenGrantRequest: oauthMocks.refreshTokenGrantRequest,
-	relayPopupCallback: vi.fn(),
 	userInfoRequest: oauthMocks.userInfoRequest,
 	validateAuthResponse: oauthMocks.validateAuthResponse,
 }));
@@ -90,7 +115,7 @@ vi.mock("oauth4webapi", () => ({
 import {
 	FrontendOidcModeClient,
 	relayFrontendOidcPopupCallback,
-} from "../runtime/client";
+} from "../client/client";
 
 describe("FrontendOidcModeClient", () => {
 	beforeEach(() => {
@@ -106,9 +131,9 @@ describe("FrontendOidcModeClient", () => {
 		oauthMocks.refreshTokenGrantRequest.mockReset();
 		oauthMocks.userInfoRequest.mockReset();
 		oauthMocks.validateAuthResponse.mockReset();
-		webMocks.openPopupWindow.mockReset();
-		webMocks.relayPopupCallback.mockReset();
-		webMocks.waitForPopupRelay.mockReset();
+		popupMocks.open.mockReset();
+		popupRelayMocks.relayTokenSetPopupCallback.mockReset();
+		popupRelayMocks.waitForTokenSetPopupRelay.mockReset();
 
 		oauthMocks.generateRandomState
 			.mockReturnValueOnce("state-value")
@@ -133,11 +158,10 @@ describe("FrontendOidcModeClient", () => {
 			refresh_token: "refresh-token-next",
 			expires_in: 300,
 		});
-		webMocks.openPopupWindow.mockReturnValue({
+		popupMocks.open.mockReturnValue({
 			close: vi.fn(),
-			window: { closed: false },
 		});
-		webMocks.waitForPopupRelay.mockResolvedValue(
+		popupRelayMocks.waitForTokenSetPopupRelay.mockResolvedValue(
 			"https://app.example.com/auth/popup-callback?code=auth-code&state=state-value",
 		);
 		oauthMocks.processDiscoveryResponse.mockReturnValue({
@@ -148,10 +172,11 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("normalizes raw userInfo into the shared authenticated principal contract", async () => {
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
@@ -188,10 +213,11 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("rejects raw userInfo payloads without a stable subject", async () => {
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
@@ -221,10 +247,11 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("does not pass an empty codeVerifier when pkce is disabled", async () => {
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
@@ -260,10 +287,11 @@ describe("FrontendOidcModeClient", () => {
 			.mockReturnValueOnce("nonce-b");
 
 		const sessionStorage = createInMemoryRecordStore();
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage,
 		});
 
@@ -309,10 +337,11 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("rejects duplicate callbacks after a state has already been consumed", async () => {
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
@@ -343,10 +372,11 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("rejects callbacks whose state was never started in this browser", async () => {
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
@@ -373,10 +403,11 @@ describe("FrontendOidcModeClient", () => {
 
 	it("rejects callbacks whose pending state has expired", async () => {
 		const sessionStorage = createInMemoryRecordStore();
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage,
 		});
 
@@ -418,10 +449,11 @@ describe("FrontendOidcModeClient", () => {
 
 	it("rejects callbacks whose pending state belongs to another frontend client", async () => {
 		const sessionStorage = createInMemoryRecordStore();
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage,
 		});
 
@@ -466,10 +498,11 @@ describe("FrontendOidcModeClient", () => {
 			new Error("token exchange failed"),
 		);
 
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
@@ -509,10 +542,11 @@ describe("FrontendOidcModeClient", () => {
 			token_endpoint: "http://localhost:4710/token",
 		});
 
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
@@ -545,12 +579,13 @@ describe("FrontendOidcModeClient", () => {
 
 	it("records popup relay trace events for the browser-owned popup path", async () => {
 		const trace = new InMemoryTraceCollector();
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage: createInMemoryRecordStore(),
-			telemetry: { traceSink: trace },
+			tracing: createTracing({ subscribers: [trace] }),
 			popup: createMockPopupTrait(),
 		});
 
@@ -602,7 +637,7 @@ describe("FrontendOidcModeClient", () => {
 		});
 
 		try {
-			const runtime = createClientEnvironment({
+			const runtime = createFoundationEnvironment({
 				transport: {
 					execute: vi.fn(async () => ({
 						status: 200,
@@ -610,6 +645,7 @@ describe("FrontendOidcModeClient", () => {
 						body: null,
 					})),
 				},
+				span: createRootSpan(),
 				sessionStorage: createInMemoryRecordStore(),
 			});
 
@@ -648,12 +684,13 @@ describe("FrontendOidcModeClient", () => {
 
 	it("records callback failure details as structured trace attributes", async () => {
 		const trace = new InMemoryTraceCollector();
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage: createInMemoryRecordStore(),
-			telemetry: { traceSink: trace },
+			tracing: createTracing({ subscribers: [trace] }),
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -678,7 +715,7 @@ describe("FrontendOidcModeClient", () => {
 		expect(trace.ofType(FrontendOidcModeTraceEventType.CallbackFailed)).toEqual(
 			[
 				expect.objectContaining({
-					attributes: expect.objectContaining({
+					fields: expect.objectContaining({
 						errorCode: FrontendOidcModeCallbackErrorCode.UnknownState,
 						recovery: "restart_flow",
 					}),
@@ -689,12 +726,13 @@ describe("FrontendOidcModeClient", () => {
 
 	it("correlates callback lifecycle events with frontend callback traces", async () => {
 		const trace = new InMemoryTraceCollector();
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage: createInMemoryRecordStore(),
-			telemetry: { traceSink: trace },
+			tracing: createTracing({ subscribers: [trace] }),
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -719,19 +757,19 @@ describe("FrontendOidcModeClient", () => {
 		const callbackSucceeded = trace.ofType(
 			FrontendOidcModeTraceEventType.CallbackSucceeded,
 		)[0];
-		const operationId = callbackStarted?.operationId;
+		const operationSpanId = callbackStarted?.span?.id;
 
-		expect(operationId).toBeTruthy();
-		expect(callbackSucceeded?.operationId).toBe(operationId);
+		expect(operationSpanId).toBeTruthy();
+		expect(callbackSucceeded?.span?.id).toBe(operationSpanId);
 		expect(
-			trace.assertOperationLifecycle(operationId!, [
+			trace.assertOperationLifecycle(operationSpanId!, [
 				OperationTraceEventType.Started,
 				OperationTraceEventType.Ended,
 			]),
 		).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
-					attributes: expect.objectContaining({
+					fields: expect.objectContaining({
 						operationName: "frontend_oidc.callback",
 					}),
 				}),
@@ -741,12 +779,13 @@ describe("FrontendOidcModeClient", () => {
 
 	it("correlates refresh lifecycle events with frontend refresh traces", async () => {
 		const trace = new InMemoryTraceCollector();
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage: createInMemoryRecordStore(),
-			telemetry: { traceSink: trace },
+			tracing: createTracing({ subscribers: [trace] }),
 		});
 
 		const client = new FrontendOidcModeClient(
@@ -760,12 +799,12 @@ describe("FrontendOidcModeClient", () => {
 			runtime,
 		);
 
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "seed-at",
 				idToken: "seed-idt",
 				refreshMaterial: "seed-rt",
-				accessTokenExpiresAt: "2027-01-01T00:05:00.000Z",
+				accessTokenExpiresAt: "2020-01-01T00:05:00.000Z",
 			},
 			metadata: {},
 		});
@@ -778,19 +817,19 @@ describe("FrontendOidcModeClient", () => {
 		const refreshSucceeded = trace.ofType(
 			FrontendOidcModeTraceEventType.RefreshSucceeded,
 		)[0];
-		const operationId = refreshStarted?.operationId;
+		const operationSpanId = refreshStarted?.span?.id;
 
-		expect(operationId).toBeTruthy();
-		expect(refreshSucceeded?.operationId).toBe(operationId);
+		expect(operationSpanId).toBeTruthy();
+		expect(refreshSucceeded?.span?.id).toBe(operationSpanId);
 		expect(
-			trace.assertOperationLifecycle(operationId!, [
+			trace.assertOperationLifecycle(operationSpanId!, [
 				OperationTraceEventType.Started,
 				OperationTraceEventType.Ended,
 			]),
 		).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
-					attributes: expect.objectContaining({
+					fields: expect.objectContaining({
 						operationName: "frontend_oidc.refresh",
 					}),
 				}),
@@ -798,11 +837,12 @@ describe("FrontendOidcModeClient", () => {
 		);
 	});
 
-	it("attributes auth.authenticated to explicit auth checks instead of callback", async () => {
-		const runtime = createClientEnvironment({
+	it("emits callback auth.authenticated with minimal terminal payload", async () => {
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
@@ -819,28 +859,23 @@ describe("FrontendOidcModeClient", () => {
 		const events: TokenSetAuthEvent[] = [];
 		client.authEvents.subscribe({ next: (event) => events.push(event) });
 
-		client.restoreState({
-			tokens: {
-				accessToken: "seed-at",
-				idToken: "seed-idt",
-				refreshMaterial: "seed-rt",
-				accessTokenExpiresAt: "2020-01-01T00:05:00.000Z",
-			},
-			metadata: {},
-		});
-
-		await client.authCheck();
+		await client.authorizeUrl("/after-login");
+		await client.handleCallback(
+			"https://app.example.com/auth/callback?code=auth-code&state=state-value",
+		);
 
 		const authenticatedEvents = events.filter(
 			(event) => event.type === TokenSetAuthEventType.AuthAuthenticated,
 		);
-		const refreshAuthenticatedEvent =
+		const callbackAuthenticatedEvent =
 			authenticatedEvents[authenticatedEvents.length - 1];
 
-		expect(refreshAuthenticatedEvent?.payload).toEqual(
-			expect.objectContaining({
-				hasRefreshMaterial: true,
-			}),
+		expect(callbackAuthenticatedEvent?.payload).toEqual({
+			id: expect.any(String),
+		});
+		expect(callbackAuthenticatedEvent?.payload).not.toHaveProperty("freshness");
+		expect(callbackAuthenticatedEvent?.payload).not.toHaveProperty(
+			"hasRefreshMaterial",
 		);
 	});
 
@@ -850,10 +885,11 @@ describe("FrontendOidcModeClient", () => {
 			expires_in: 300,
 		});
 
-		const runtime = createClientEnvironment({
+		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
+			span: createRootSpan(),
 			sessionStorage: createInMemoryRecordStore(),
 		});
 

@@ -1,4 +1,8 @@
-import { createClientEnvironment } from "@securitydept/client";
+import {
+	createFoundationEnvironment,
+	createRootSpan,
+	createTracing,
+} from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
 import {
@@ -23,8 +27,10 @@ describe("minimal entry points", () => {
 			})),
 		};
 
-		const environment = createClientEnvironment({
+		const environment = createFoundationEnvironment({
 			transport: transport,
+			span: createRootSpan(),
+			tracing: createTracing(),
 		});
 		const client = new SessionContextClient({
 			baseUrl: "https://auth.example.com",
@@ -44,6 +50,8 @@ describe("minimal entry points", () => {
 	it("supports a browser-oriented token-set entry path", () => {
 		const client = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
 				transport: {
 					execute: vi.fn(async () => ({
 						status: 200,
@@ -93,6 +101,8 @@ describe("minimal entry points", () => {
 		// through the browser convenience entry.
 		const client = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
 				transport: {
 					execute: vi.fn(async () => ({
 						status: 200,
@@ -140,7 +150,7 @@ describe("minimal entry points", () => {
 	});
 
 	it("keeps browser convenience optional in the foundation environment", () => {
-		const environment = createClientEnvironment({
+		const environment = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({
 					status: 204,
@@ -148,6 +158,8 @@ describe("minimal entry points", () => {
 					body: null,
 				})),
 			},
+			span: createRootSpan(),
+			tracing: createTracing(),
 		});
 
 		expect(typeof environment.transport.execute).toBe("function");

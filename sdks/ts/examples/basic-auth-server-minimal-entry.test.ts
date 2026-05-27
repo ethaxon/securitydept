@@ -7,11 +7,11 @@
 // An adopter reading this file should understand "how do I use
 // basic-auth zone helpers in a server request handler?" in one glance.
 
-import type {
-	CreateBasicAuthServerHelperOptions,
-	ServerRedirectInstruction,
+import {
+	type CreateBasicAuthServerHelperOptions,
+	createBasicAuthServerHelper,
+	type ServerRedirectInstruction,
 } from "@securitydept/basic-auth-context-client/server";
-import { createBasicAuthServerHelper } from "@securitydept/basic-auth-context-client/server";
 import { describe, expect, it } from "vitest";
 
 describe("basic-auth server minimal entry", () => {

@@ -1,4 +1,4 @@
-import type { TokenSnapshot } from "./types";
+import { type TokenSnapshot } from "./types";
 
 export interface TokenFreshnessOptions {
 	clockSkewMs: number;

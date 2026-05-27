@@ -1,6 +1,6 @@
 // Shared planner-host — route-scoped auth coordination host layer
 //
-// Canonical location: @securitydept/client/auth-coordination
+// Canonical public export: @securitydept/client
 //
 // Provides the host-layer contract for multi-requirement auth guards:
 //   - AuthGuardClientOption: a single requirement candidate with its
@@ -290,7 +290,7 @@ function defaultSelectCandidate(
  *
  * @example
  * ```ts
- * import { createPlannerHost } from "@securitydept/client/auth-coordination";
+ * import { createPlannerHost } from "@securitydept/client";
  *
  * // Default sequential strategy (sync selector, wrapped in Promise)
  * const host = createPlannerHost();

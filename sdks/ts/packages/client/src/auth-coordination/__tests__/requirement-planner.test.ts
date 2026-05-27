@@ -2,7 +2,7 @@
 //
 // Tests for the headless multi-requirement orchestration planner.
 // Migrated to import from the new canonical owner:
-//   @securitydept/client/auth-coordination
+//   @securitydept/client
 
 import { describe, expect, it } from "vitest";
 import {

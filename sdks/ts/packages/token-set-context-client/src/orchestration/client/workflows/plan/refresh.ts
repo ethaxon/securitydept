@@ -1,10 +1,10 @@
-import type { TimeTrait } from "@securitydept/client";
+import { type TimeTrait } from "@securitydept/client";
 import {
 	getAccessTokenFreshnessTiming,
 	TokenFreshnessState,
 	type TokenFreshnessTiming,
 } from "../../../token/freshness";
-import type { AuthSnapshot } from "../../../token/types";
+import { type AuthSnapshot } from "../../../token/types";
 import {
 	type AuthDeterminationCandidate,
 	AuthDeterminationKind,

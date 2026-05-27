@@ -14,22 +14,18 @@
 //
 // Stability: provisional
 
-import type {
-	AuthGuardClientOption,
-	CandidateSelector,
-	PlannerHost,
-	ScopedRequirementsClientSet,
-} from "@securitydept/client/auth-coordination";
 import {
+	type AuthGuardClientOption,
+	type CandidateSelector,
 	createPlannerHost,
+	type PlannerHost,
 	resolveEffectiveClientSet,
-} from "@securitydept/client/auth-coordination";
-import {
+	type ScopedRequirementsClientSet,
 	SecuritydeptInjectionToken,
 	SecuritydeptInjector,
 	type SecuritydeptInjectorTrait,
 	type SecuritydeptProvider,
-} from "@securitydept/client/injection";
+} from "@securitydept/client";
 
 export const AUTH_PLANNER_HOST = new SecuritydeptInjectionToken<PlannerHost>(
 	"AUTH_PLANNER_HOST",

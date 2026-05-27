@@ -1,19 +1,25 @@
-import { ClientError, type TraceEventSinkTrait } from "@securitydept/client";
+import {
+	ClientError,
+	type SpanTrait,
+	TracingLevel,
+	type TracingTrait,
+} from "@securitydept/client";
 
-export const TOKEN_SET_BACKEND_HOST_TRACE_SCOPE =
+export const TOKEN_SET_BACKEND_HOST_TRACE_TARGET =
 	"apps.webui.token-set-backend";
-export const TOKEN_SET_BACKEND_HOST_TRACE_SOURCE = "webui.token-set-backend";
 
 export function createTokenSetBackendHostTraceRecorder(
-	traceSink: TraceEventSinkTrait,
-): (type: string, attributes?: Record<string, unknown>) => void {
-	return (type: string, attributes?: Record<string, unknown>) => {
-		traceSink.record({
-			type,
+	tracing: TracingTrait,
+	span: SpanTrait,
+): (name: string, fields?: Record<string, unknown>) => void {
+	return (name: string, fields?: Record<string, unknown>) => {
+		tracing.record({
+			name,
 			at: Date.now(),
-			scope: TOKEN_SET_BACKEND_HOST_TRACE_SCOPE,
-			source: TOKEN_SET_BACKEND_HOST_TRACE_SOURCE,
-			attributes,
+			target: TOKEN_SET_BACKEND_HOST_TRACE_TARGET,
+			span,
+			level: TracingLevel.Info,
+			fields,
 		});
 	};
 }
@@ -21,7 +27,7 @@ export function createTokenSetBackendHostTraceRecorder(
 export const createTokenSetAppTraceRecorder =
 	createTokenSetBackendHostTraceRecorder;
 
-export function readTokenSetTraceErrorAttributes(
+export function readTokenSetTraceErrorFields(
 	error: unknown,
 	fallback: string,
 ): Record<string, unknown> {

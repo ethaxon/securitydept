@@ -4,15 +4,13 @@ import {
 	inject,
 	runInInjectionContext,
 } from "@angular/core";
-import {
-	createEnvironmentForNativeWeb,
-	type NativeWebEnvironment,
-} from "@securitydept/client/web";
+import { type NativeWebEnvironment } from "@securitydept/client/web";
 import {
 	NATIVE_WEB_ENVIRONMENT,
 	provideNativeWebEnvironment,
 } from "@securitydept/client-angular";
 import { describe, expect, it, vi } from "vitest";
+import { createEnvironmentForNativeWebTest } from "../../../../client/src/test";
 
 function createTransport() {
 	return {
@@ -37,17 +35,19 @@ function createTime() {
 }
 
 function createNativeWebEnvironment(): NativeWebEnvironment {
-	return createEnvironmentForNativeWeb({
+	return createEnvironmentForNativeWebTest({
 		transport: createTransport(),
 		time: createTime(),
-		location: {
-			href: "https://app.example.com/current",
-			hash: "",
-			pathname: "/current",
-			search: "",
-		},
-		history: {
-			replaceState() {},
+		routerForNativeWebCreateOptions: {
+			location: {
+				href: "https://app.example.com/current",
+				hash: "",
+				pathname: "/current",
+				search: "",
+			},
+			history: {
+				replaceState() {},
+			},
 		},
 	});
 }

@@ -10,13 +10,13 @@
 //   7. Route deactivation / reset
 //   8. onPendingRequirement callback fires on activation and after resolution
 //
-// Canonical import: @securitydept/client/auth-coordination
+// Canonical import: @securitydept/client
 // (consolidated from @securitydept/token-set-context-client/orchestration)
 
 import {
 	createRouteRequirementOrchestrator,
 	ResolutionStatus,
-} from "@securitydept/client/auth-coordination";
+} from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
 
 describe("route requirement orchestrator (matched-route-chain)", () => {

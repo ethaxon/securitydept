@@ -1,6 +1,8 @@
 import {
 	ClientErrorKind,
 	createInMemoryRecordStore,
+	createRootSpan,
+	createTracing,
 } from "@securitydept/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -44,9 +46,11 @@ describe("frontend-oidc-mode browser materialization", () => {
 		});
 		vi.stubGlobal("fetch", fetchMock);
 		const environment = createFrontendOidcModeWebClientEnvironment({
+			span: createRootSpan(),
 			persistentStoragePrefix: "apps.webui.token-set-frontend:persistent:",
 			persistentStorage: createInMemoryRecordStore(),
 			sessionStorage: createInMemoryRecordStore(),
+			tracing: createTracing(),
 		});
 
 		const materialized = await createFrontendOidcModeBrowserClient({
@@ -97,7 +101,12 @@ describe("frontend-oidc-mode browser materialization", () => {
 				}),
 			),
 		);
-		const environment = createFrontendOidcModeWebClientEnvironment();
+		const environment = createFrontendOidcModeWebClientEnvironment({
+			span: createRootSpan(),
+			persistentStorage: createInMemoryRecordStore(),
+			sessionStorage: createInMemoryRecordStore(),
+			tracing: createTracing(),
+		});
 
 		await expect(
 			createFrontendOidcModeBrowserClient({

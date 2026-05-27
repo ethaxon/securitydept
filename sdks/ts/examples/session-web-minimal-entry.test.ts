@@ -16,8 +16,10 @@ import {
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
-import type { LoginWithRedirectOptions } from "@securitydept/session-context-client/web";
-import { loginWithRedirect } from "@securitydept/session-context-client/web";
+import {
+	type LoginWithRedirectOptions,
+	loginWithRedirect,
+} from "@securitydept/session-context-client/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function createPageLocationEnvironment(href: string): RouterTrait & {

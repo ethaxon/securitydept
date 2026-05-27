@@ -7,7 +7,11 @@
 // backend-oidc in the browser?" in one glance — without needing to read
 // the full browser scenario or popup baseline tests.
 
-import { createInMemoryRecordStore } from "@securitydept/client";
+import {
+	createInMemoryRecordStore,
+	createRootSpan,
+	createTracing,
+} from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import {
 	BackendOidcModeBootstrapSource,
@@ -34,29 +38,33 @@ describe("backend-oidc-mode web minimal entry", () => {
 	it("shows the standalone browser entry path: create client → bootstrap → authorize URL", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
+		const time = {
+			now: () => Date.now(),
+			setTimeout: (callback: () => void, delayMs: number) =>
+				globalThis.setTimeout(callback, delayMs),
+			clearTimeout: (handle: unknown) =>
+				globalThis.clearTimeout(
+					handle as ReturnType<typeof globalThis.setTimeout>,
+				),
+		};
+		const environment = createBackendOidcModeWebClientEnvironment({
+			span: createRootSpan(),
+			tracing: createTracing(),
+			persistentStorage,
+			sessionStorage,
+			transport: {
+				async execute() {
+					return { status: 500, headers: {}, body: null };
+				},
+			},
+			time,
+		});
 
 		// 1. Create the browser client with minimal config + runtime stubs.
 		//    In a real app, only baseUrl is required — stores and transport
 		//    default to browser-native implementations.
 		const client = createBackendOidcModeWebClient({
-			environment: createBackendOidcModeWebClientEnvironment({
-				persistentStorage,
-				sessionStorage,
-				transport: {
-					async execute() {
-						return { status: 500, headers: {}, body: null };
-					},
-				},
-				time: {
-					now: () => Date.now(),
-					setTimeout: (callback: () => void, delayMs: number) =>
-						globalThis.setTimeout(callback, delayMs),
-					clearTimeout: (handle: unknown) =>
-						globalThis.clearTimeout(
-							handle as ReturnType<typeof globalThis.setTimeout>,
-						),
-				},
-			}),
+			environment,
 			baseUrl: "https://auth.example.com",
 		});
 
@@ -72,6 +80,7 @@ describe("backend-oidc-mode web minimal entry", () => {
 					history: { replaceState() {} },
 				}),
 				callbackFragmentStore,
+				time,
 			},
 		});
 
@@ -95,6 +104,8 @@ describe("backend-oidc-mode web minimal entry", () => {
 	it("shows restoreState as an alternative to bootstrap for SSR-provided tokens", () => {
 		const client = createBackendOidcModeWebClient({
 			environment: createBackendOidcModeWebClientEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
 				persistentStorage: createInMemoryRecordStore(),
 				sessionStorage: createInMemoryRecordStore(),
 				transport: {

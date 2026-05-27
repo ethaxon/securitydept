@@ -1,4 +1,4 @@
-import type { TimeTrait } from "./types";
+import { type TimeTrait } from "./types";
 
 export function createDefaultTimeConfig(): TimeTrait {
 	return {

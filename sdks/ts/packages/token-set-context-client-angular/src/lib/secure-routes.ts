@@ -1,20 +1,20 @@
-import type {
-	ActivatedRouteSnapshot,
-	CanActivateChildFn,
-	Route,
-	RouterStateSnapshot,
+import {
+	type ActivatedRouteSnapshot,
+	type CanActivateChildFn,
+	type Route,
+	type RouterStateSnapshot,
 } from "@angular/router";
-import type {
-	AuthRequirement,
-	PlannerHost,
-	RequirementsClientSetComposition,
-} from "@securitydept/client/auth-coordination";
+import {
+	type AuthRequirement,
+	type PlannerHost,
+	type RequirementsClientSetComposition,
+} from "@securitydept/client";
 import { withRouteRequirements } from "@securitydept/client-angular";
-import type {
-	CreateTokenSetRouteAggregationGuardOptions,
-	TokenSetRequirementPolicy,
+import {
+	type CreateTokenSetRouteAggregationGuardOptions,
+	createTokenSetRouteAggregationGuard,
+	type TokenSetRequirementPolicy,
 } from "./route-aggregation-guard";
-import { createTokenSetRouteAggregationGuard } from "./route-aggregation-guard";
 
 /**
  * Route data key for choosing a planner-host registered at the route root.

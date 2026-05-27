@@ -15,7 +15,7 @@ import {
 	useDashboardGroupsQuery,
 	useDashboardUpdateEntryMutation,
 } from "@/hooks/useDashboardApi";
-import type { EntrySearch } from "@/routes/entrySearch";
+import { type EntrySearch } from "@/routes/entrySearch";
 
 const EntryFormMode = {
 	Create: "create",

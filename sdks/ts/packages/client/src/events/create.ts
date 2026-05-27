@@ -1,9 +1,9 @@
-import { Observable, ReplaySubject, Subject } from "rxjs";
-import { SYMBOL_OBSERVABLE } from "../compat";
-import type {
-	EventObserverTrait,
-	EventStreamTrait,
-	EventSubjectTrait,
+import { EMPTY, NEVER, Observable, ReplaySubject, Subject } from "rxjs";
+import { observableToEventStream, subjectToEventSubject } from "../rx/interop";
+import {
+	type EventObserverTrait,
+	type EventStreamTrait,
+	type EventSubjectTrait,
 } from "./types";
 
 /**
@@ -16,48 +16,23 @@ import type {
 export function createEventStream<T>(
 	producer: (observer: EventObserverTrait<T>) => (() => void) | void,
 ): EventStreamTrait<T> {
-	const observable = new Observable<T>(producer);
-	return Object.assign(new Observable<T>(producer), {
-		[SYMBOL_OBSERVABLE]() {
-			return observable;
-		},
-	});
+	return observableToEventStream(new Observable<T>(producer));
 }
 
 export function createEventSubject<T>(): EventSubjectTrait<T> {
-	const subject = new Subject<T>();
-	return Object.assign(subject, {
-		[SYMBOL_OBSERVABLE]() {
-			return subject;
-		},
-	});
+	return subjectToEventSubject(new Subject<T>());
 }
 
 export function createEventReplaySubject<T>(
 	bufferSize = Infinity,
 ): EventSubjectTrait<T> {
-	const subject = new ReplaySubject<T>(bufferSize);
-	return Object.assign(subject, {
-		[SYMBOL_OBSERVABLE]() {
-			return subject;
-		},
-	});
+	return subjectToEventSubject(new ReplaySubject<T>(bufferSize));
 }
 
 export function createEmptyEventStream<T>(): EventStreamTrait<T> {
-	const observable = new Observable<T>();
-	return Object.assign(observable, {
-		[SYMBOL_OBSERVABLE]() {
-			return observable;
-		},
-	});
+	return observableToEventStream(EMPTY);
 }
 
 export function createNeverEventStream<T>(): EventStreamTrait<T> {
-	const observable = new Observable<T>();
-	return Object.assign(observable, {
-		[SYMBOL_OBSERVABLE]() {
-			return observable;
-		},
-	});
+	return observableToEventStream(NEVER);
 }

@@ -13,8 +13,8 @@
 //
 // Stability: provisional (framework adapter)
 
-import type { WritableSignal } from "@angular/core";
-import type { ReadableSignalTrait } from "@securitydept/client";
+import { type WritableSignal } from "@angular/core";
+import { type ReadableSignalTrait } from "@securitydept/client";
 
 /**
  * Bridge an SDK `ReadableSignalTrait` to an Angular writable signal.

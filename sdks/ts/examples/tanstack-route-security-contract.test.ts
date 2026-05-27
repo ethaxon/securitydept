@@ -929,7 +929,7 @@ describe("TanStack route-security — Angular parity", () => {
 
 	it("composition enum values are shared with Angular", () => {
 		// Both frameworks import RequirementsClientSetComposition from
-		// @securitydept/client/auth-coordination — same values
+		// @securitydept/client root export — same values
 		expect(RequirementsClientSetComposition.Merge).toBeDefined();
 		expect(RequirementsClientSetComposition.Replace).toBeDefined();
 		expect(RequirementsClientSetComposition.Inherit).toBeDefined();

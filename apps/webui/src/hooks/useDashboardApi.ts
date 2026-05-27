@@ -1,13 +1,11 @@
-import type {
-	ReadableSignalTrait,
-	ReplaySignalSlot,
-} from "@securitydept/client";
+import { createReplaySignal } from "@securitydept/client";
 import {
 	useReadableSignal,
+	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import { SESSION_CONTEXT_CONTROLLER } from "@securitydept/session-context-client-react";
-import type { AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { type AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	TOKEN_SET_AUTH_REGISTRY,
 	type TokenSetReactClient,
@@ -70,12 +68,8 @@ interface DashboardRuntime {
 	tokenSetAuthenticated: boolean;
 }
 
-const EMPTY_TOKEN_SET_AUTH_SNAPSHOT_SIGNAL: ReadableSignalTrait<
-	ReplaySignalSlot<AuthStateSnapshot | null>
-> = {
-	get: () => ({ kind: "value", value: null }),
-	subscribe: () => () => {},
-};
+const EMPTY_TOKEN_SET_AUTH_SNAPSHOT_SIGNAL =
+	createReplaySignal<AuthStateSnapshot | null>();
 
 function useDashboardSessionController() {
 	return useSecuritydeptContext().get(SESSION_CONTEXT_CONTROLLER);
@@ -92,19 +86,22 @@ function useDashboardTokenSetClient(
 	clientKey: string,
 ): TokenSetReactClient | null {
 	const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-	const slot = useReadableSignal(registry.clientSignalFor(clientKey));
+	const signal = registry.clientSignalFor(clientKey);
+	const slot = useSyncExternalStore(
+		(listener) => signal.subscribe(listener),
+		() => signal.get(),
+		() => signal.get(),
+	);
 	return slot.kind === "value" ? slot.value : null;
 }
 
 function useDashboardTokenSetSnapshot(
 	client: TokenSetReactClient | null,
 ): AuthStateSnapshot | null {
-	const slot = useReadableSignal(
+	return useReplaySignalValue(
 		client?.authSnapshot ?? EMPTY_TOKEN_SET_AUTH_SNAPSHOT_SIGNAL,
+		{ initialValue: null },
 	);
-	return slot.kind === "value"
-		? (slot.value as AuthStateSnapshot | null)
-		: null;
 }
 
 export function useAuthContextMode(): AuthContextMode {

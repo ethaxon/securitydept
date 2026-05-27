@@ -10,18 +10,16 @@
 //
 // Stability: provisional (React adapter)
 
-import type { FoundationEnvironment } from "@securitydept/client";
 import {
+	type FoundationEnvironment,
 	SecuritydeptInjectionToken,
 	type SecuritydeptProvider,
-} from "@securitydept/client/injection";
-import type {
-	SessionContextClientConfig,
-	SessionInfo,
-} from "@securitydept/session-context-client";
+} from "@securitydept/client";
 import {
 	SessionContextClient,
+	type SessionContextClientConfig,
 	SessionContextController,
+	type SessionInfo,
 } from "@securitydept/session-context-client";
 
 export type { SessionContextClientConfig, SessionInfo };

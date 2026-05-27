@@ -12,24 +12,6 @@ export default defineConfig({
 				replacement: path.join(packagesDir, "client/src/web/index.ts"),
 			},
 			{
-				find: "@securitydept/client/auth-coordination",
-				replacement: path.join(
-					packagesDir,
-					"client/src/auth-coordination/index.ts",
-				),
-			},
-			{
-				find: "@securitydept/client/persistence/web",
-				replacement: path.join(
-					packagesDir,
-					"client/src/persistence/web/index.ts",
-				),
-			},
-			{
-				find: "@securitydept/client/persistence",
-				replacement: path.join(packagesDir, "client/src/persistence/index.ts"),
-			},
-			{
 				find: /^@securitydept\/client$/,
 				replacement: path.join(packagesDir, "client/src/index.ts"),
 			},

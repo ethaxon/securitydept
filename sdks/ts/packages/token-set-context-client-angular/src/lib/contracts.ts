@@ -1,11 +1,11 @@
-import type { FoundationEnvironment } from "@securitydept/client";
-import type {
-	ClientInitializationPriority,
-	TokenSetClientEntry as CoreTokenSetClientEntry,
-	OidcCallbackClient,
-	OidcModeClient,
-	OidcRedirectLoginClient,
-	OidcRedirectLoginOptions,
+import { type FoundationEnvironment } from "@securitydept/client";
+import {
+	type ClientInitializationPriority,
+	type TokenSetClientEntry as CoreTokenSetClientEntry,
+	type OidcCallbackClient,
+	type OidcModeClient,
+	type OidcRedirectLoginClient,
+	type OidcRedirectLoginOptions,
 } from "@securitydept/token-set-context-client/registry";
 
 // ============================================================================

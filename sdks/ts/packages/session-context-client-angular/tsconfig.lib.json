@@ -2,6 +2,7 @@
 	"compilerOptions": {
 		"ignoreDeprecations": "6.0",
 		"target": "ES2022",
+		"lib": ["ESNext", "DOM"],
 		"module": "ES2022",
 		"moduleResolution": "bundler",
 		"declaration": true,
@@ -12,13 +13,7 @@
 		"noImplicitOverride": true,
 		"noImplicitReturns": true,
 		"noFallthroughCasesInSwitch": true,
-		"forceConsistentCasingInFileNames": true,
-		"paths": {
-			"@securitydept/client": ["../client/dist/index.d.mts"],
-			"@securitydept/session-context-client": [
-				"../session-context-client/dist/index.d.mts"
-			]
-		}
+		"forceConsistentCasingInFileNames": true
 	},
 	"angularCompilerOptions": {
 		"compilationMode": "partial",

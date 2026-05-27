@@ -1,5 +1,4 @@
-import type { TraceTimelineEntry } from "@securitydept/client";
-import { UserRecovery } from "@securitydept/client";
+import { type TraceTimelineEntry, UserRecovery } from "@securitydept/client";
 
 export const TraceBadgeTone = {
 	Neutral: "neutral",
@@ -30,7 +29,7 @@ const OUTCOME_BADGES: Record<string, TraceBadge> = {
 };
 
 export function readTraceDomainBadge(entry: TraceTimelineEntry): TraceBadge {
-	if (entry.type.startsWith("operation.")) {
+	if (entry.name.startsWith("operation.")) {
 		return {
 			label: "Operation Lifecycle",
 			tone: TraceBadgeTone.Neutral,
@@ -38,8 +37,8 @@ export function readTraceDomainBadge(entry: TraceTimelineEntry): TraceBadge {
 	}
 
 	if (
-		entry.type.startsWith("token_set.app.") ||
-		entry.scope === "apps.webui.token-set"
+		entry.name.startsWith("token_set.app.") ||
+		entry.target === "apps.webui.token-set-backend"
 	) {
 		return {
 			label: "App Trace",
@@ -56,7 +55,7 @@ export function readTraceDomainBadge(entry: TraceTimelineEntry): TraceBadge {
 export function readTraceOutcomeBadge(
 	entry: TraceTimelineEntry,
 ): TraceBadge | null {
-	const suffix = entry.type.split(".").at(-1);
+	const suffix = entry.name.split(".").at(-1);
 	if (!suffix) {
 		return null;
 	}
@@ -65,49 +64,50 @@ export function readTraceOutcomeBadge(
 }
 
 export function readTraceDisplayType(entry: TraceTimelineEntry): string {
-	if (entry.type.startsWith("operation.")) {
-		return entry.type.slice("operation.".length);
+	if (entry.name.startsWith("operation.")) {
+		return entry.name.slice("operation.".length);
 	}
 
-	if (entry.type.startsWith("token_set.app.")) {
-		return entry.type.slice("token_set.app.".length);
+	if (entry.name.startsWith("token_set.app.")) {
+		return entry.name.slice("token_set.app.".length);
 	}
 
-	if (entry.type.startsWith("token_set.")) {
-		return entry.type.slice("token_set.".length);
+	if (entry.name.startsWith("token_set.")) {
+		return entry.name.slice("token_set.".length);
 	}
 
-	return entry.type;
+	return entry.name;
 }
 
 export function readTraceSummary(entry: TraceTimelineEntry): string | null {
-	const attributes = entry.attributes ?? {};
-	const fields: string[] = [];
+	const metadata = entry.fields ?? {};
+	const parts: string[] = [];
 
-	appendStringField(fields, attributes.path);
-	appendPrefixedField(fields, attributes.operationName, "operation");
-	appendPrefixedField(fields, attributes.eventType, "event");
-	appendStringField(fields, attributes.groupName);
-	appendStringField(fields, attributes.entryName);
-	appendStringField(fields, attributes.configStatus);
-	appendStringField(fields, attributes.reason);
-	appendNumberField(fields, attributes.count, "count");
-	appendNumberField(fields, attributes.status, "status");
-	appendPrefixedField(fields, attributes.kind, "kind");
-	appendPrefixedField(fields, attributes.errorKind, "kind");
-	appendPrefixedField(fields, attributes.code, "code");
-	appendPrefixedField(fields, attributes.errorCode, "code");
-	appendPrefixedField(fields, attributes.recovery, "recovery");
+	appendStringField(parts, entry.target);
+	appendStringField(parts, metadata.path);
+	appendPrefixedField(parts, metadata.operationName, "operation");
+	appendPrefixedField(parts, metadata.eventName, "event");
+	appendStringField(parts, metadata.groupName);
+	appendStringField(parts, metadata.entryName);
+	appendStringField(parts, metadata.configStatus);
+	appendStringField(parts, metadata.reason);
+	appendNumberField(parts, metadata.count, "count");
+	appendNumberField(parts, metadata.status, "status");
+	appendPrefixedField(parts, metadata.kind, "kind");
+	appendPrefixedField(parts, metadata.errorKind, "kind");
+	appendPrefixedField(parts, metadata.code, "code");
+	appendPrefixedField(parts, metadata.errorCode, "code");
+	appendPrefixedField(parts, metadata.recovery, "recovery");
 
-	return fields.length > 0 ? fields.join(" · ") : null;
+	return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-export function formatTraceAttributes(entry: TraceTimelineEntry): string {
-	if (!entry.attributes || Object.keys(entry.attributes).length === 0) {
+export function formatTraceFields(entry: TraceTimelineEntry): string {
+	if (!entry.fields || Object.keys(entry.fields).length === 0) {
 		return "{}";
 	}
 
-	return JSON.stringify(entry.attributes, null, 2);
+	return JSON.stringify(entry.fields, null, 2);
 }
 
 export function readTraceBadgeClassName(tone: TraceBadgeTone): string {

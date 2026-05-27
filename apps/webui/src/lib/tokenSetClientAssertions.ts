@@ -1,6 +1,6 @@
-import type {
-	TokenSetBackendOidcClient,
-	TokenSetReactClient,
+import {
+	type TokenSetBackendOidcClient,
+	type TokenSetReactClient,
 } from "@securitydept/token-set-context-client-react";
 
 export function isTokenSetBackendOidcClient(
@@ -8,7 +8,7 @@ export function isTokenSetBackendOidcClient(
 ): client is TokenSetBackendOidcClient {
 	return (
 		typeof (client as { authorizeUrl?: unknown }).authorizeUrl === "function" &&
-		typeof (client as { refresh?: unknown }).refresh === "function" &&
+		typeof (client as { refreshState?: unknown }).refreshState === "function" &&
 		typeof (client as { clearState?: unknown }).clearState === "function"
 	);
 }

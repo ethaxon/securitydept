@@ -23,23 +23,22 @@
 
 // --- Browser runtime ---
 
+export { TokenSetPopupRelayErrorCode } from "../popup/relay";
 export type {
 	FrontendOidcModeLoginWithRedirectOptions,
 	FrontendOidcModePageRouterCapability,
 	FrontendOidcModePopupLoginOptions,
 	RelayFrontendOidcPopupCallbackOptions,
-} from "./runtime/client";
+} from "./client/client";
 export {
 	createFrontendOidcModeClient,
 	FrontendOidcModeClient,
 	relayFrontendOidcPopupCallback,
-} from "./runtime/client";
+} from "./client/client";
 
 // --- Types: config, protocol, lifecycle ---
 
-export { FrontendOidcModeCallbackErrorCode } from "./errors/callback-error-codes";
-export { describeFrontendOidcModeCallbackError } from "./errors/error-presentation";
-export { FrontendOidcModeTraceEventType } from "./runtime/trace-events";
+export { FrontendOidcModeTraceEventType } from "./client/trace-events";
 export type {
 	FrontendOidcModeAuthorizeParams,
 	FrontendOidcModeAuthorizeResult,
@@ -47,7 +46,9 @@ export type {
 	FrontendOidcModeClientConfig,
 	FrontendOidcModePendingState,
 	FrontendOidcModeTokenResult,
-} from "./runtime/types";
+} from "./client/types";
+export { FrontendOidcModeCallbackErrorCode } from "./errors/callback-error-codes";
+export { describeFrontendOidcModeCallbackError } from "./errors/error-presentation";
 
 // --- Types: orchestration re-exports (mode-qualified aliases) ---
 
@@ -59,12 +60,12 @@ export type {
 	AuthStateSnapshot as FrontendOidcModeAuthStateSnapshot,
 	AuthTokenDelta as FrontendOidcModeAuthTokenDelta,
 	AuthTokenSnapshot as FrontendOidcModeAuthTokenSnapshot,
-} from "./runtime/types";
+} from "./client/types";
 
 export {
 	FrontendOidcModeContextSource,
 	FrontendOidcModeStateRestoreSourceKind,
-} from "./runtime/types";
+} from "./client/types";
 
 // --- Cross-boundary contracts (aligned with Rust FrontendOidcMode*) ---
 
@@ -90,7 +91,7 @@ export {
 // --- Authorized transport ---
 
 export type { CreateFrontendOidcModeAuthorizedTransportOptions } from "./transport/auth-transport";
-export { createFrontendOidcModeAuthorizedTransport } from "./transport/auth-transport";
+export { createFrontendOidcModeAuthorizedTransportFromBase } from "./transport/auth-transport";
 
 // --- Config projection source contract (core — no web runtime assumptions) ---
 

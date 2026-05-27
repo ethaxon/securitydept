@@ -3,8 +3,8 @@ import {
 	type ReadableSignalTrait,
 	readonlySignal,
 } from "@securitydept/client";
-import type { AuthSnapshot } from "../../orchestration";
-import type { OidcCallbackClient } from "../contracts/types";
+import { type AuthSnapshot } from "../../orchestration";
+import { type OidcCallbackClient } from "../contracts/types";
 import {
 	readTokenSetCallbackResumeErrorDetails,
 	type TokenSetCallbackErrorPresenter,

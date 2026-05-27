@@ -12,12 +12,7 @@
 		"noImplicitOverride": true,
 		"noImplicitReturns": true,
 		"noFallthroughCasesInSwitch": true,
-		"forceConsistentCasingInFileNames": true,
-		"paths": {
-			"@securitydept/basic-auth-context-client": [
-				"../basic-auth-context-client/dist/index.d.mts"
-			]
-		}
+		"forceConsistentCasingInFileNames": true
 	},
 	"angularCompilerOptions": {
 		"compilationMode": "partial",

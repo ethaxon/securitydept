@@ -16,9 +16,15 @@
  * call `registry.dispose()` manually (omitted here for brevity).
  */
 
-import { createSubject, type ReadableSignalTrait } from "@securitydept/client";
-import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import { AuthSourceKind } from "@securitydept/token-set-context-client/orchestration";
+import {
+	createEventSubject,
+	createSignal,
+	type ReadableSignalTrait,
+} from "@securitydept/client";
+import {
+	type AuthSnapshot,
+	AuthSourceKind,
+} from "@securitydept/token-set-context-client/orchestration";
 import {
 	createTokenSetBearerInterceptor,
 	type OidcCallbackClient,
@@ -37,19 +43,11 @@ function createTestSignal<T>(initial: T): {
 	signal: ReadableSignalTrait<T>;
 	set(value: T): void;
 } {
-	let value = initial;
-	const listeners = new Set<() => void>();
+	const signal = createSignal(initial);
 	return {
-		signal: {
-			get: () => value,
-			subscribe(listener: () => void) {
-				listeners.add(listener);
-				return () => listeners.delete(listener);
-			},
-		},
+		signal,
 		set(newValue: T) {
-			value = newValue;
-			for (const l of listeners) l();
+			signal.set(newValue);
 		},
 	};
 }
@@ -73,7 +71,7 @@ function createMockClient(
 	return {
 		state: stateCtrl.signal,
 		...reactive.fields,
-		authEvents: createSubject(),
+		authEvents: createEventSubject(),
 		addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 		removeWorkflowSource: vi.fn(() => false),
 		start: vi.fn(async () => undefined),

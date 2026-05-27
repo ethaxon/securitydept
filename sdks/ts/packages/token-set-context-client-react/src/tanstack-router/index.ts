@@ -1,12 +1,12 @@
-import type { AuthRequirement } from "@securitydept/client/auth-coordination";
+import { type AuthRequirement } from "@securitydept/client";
 import {
 	type CreateSecureBeforeLoadOptions,
 	createSecureBeforeLoad,
 	type SecureBeforeLoadContext,
 } from "@securitydept/client-react/tanstack-router";
-import type {
-	ClientQueryOptions,
-	OidcModeClient,
+import {
+	type ClientQueryOptions,
+	type OidcModeClient,
 } from "@securitydept/token-set-context-client/registry";
 
 export interface TokenSetTanStackAuthRegistry {

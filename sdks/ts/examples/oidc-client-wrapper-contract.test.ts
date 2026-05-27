@@ -14,12 +14,15 @@
 // protocol steps (discovery, token exchange) need a real server, so we test
 // the wrapper's structural guarantees and error boundaries.
 
-import { createInMemoryRecordStore } from "@securitydept/client";
-import type {
-	FrontendOidcModeClientConfig,
-	FrontendOidcModeTokenResult,
+import {
+	createFoundationEnvironment,
+	createInMemoryRecordStore,
+} from "@securitydept/client";
+import {
+	FrontendOidcModeClient,
+	type FrontendOidcModeClientConfig,
+	type FrontendOidcModeTokenResult,
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
-import { FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { describe, expect, it, vi } from "vitest";
 
 function expectReplayValue<T>(signal: {
@@ -37,7 +40,7 @@ function expectReplayValue<T>(signal: {
 function createTestRuntime() {
 	const sessionStorage = createInMemoryRecordStore();
 
-	return {
+	return createFoundationEnvironment({
 		transport: {
 			execute: vi.fn(async () => ({
 				status: 200,
@@ -57,7 +60,7 @@ function createTestRuntime() {
 			),
 		},
 		sessionStorage,
-	};
+	});
 }
 
 // ---------------------------------------------------------------------------

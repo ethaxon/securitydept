@@ -18,9 +18,9 @@
 //     callback supplied by the adapter)
 
 import {
+	createEventSubject,
 	createReplaySignal,
 	createSignal,
-	createSubject,
 	type EventStreamTrait,
 	type EventSubscriptionTrait,
 	type FoundationEnvironment,
@@ -31,7 +31,10 @@ import {
 	type WritableReplaySignalTrait,
 } from "@securitydept/client";
 import { ClientReadinessState } from "../../frontend-oidc-mode/config/config-source";
-import type { TokenSetAuthEvent } from "../../orchestration";
+import {
+	type TokenSetAuthEvent,
+	type TokenSetAuthEventType,
+} from "../../orchestration";
 import {
 	type ClientFilter,
 	ClientInitializationPriority,
@@ -42,6 +45,7 @@ import {
 	type CreateTokenSetOidcAuthRegistryOptions,
 	type OidcModeClient,
 	type TokenSetAuthRegistryEntryState,
+	type TokenSetAuthRegistryEvent,
 	TokenSetAuthRegistryLifecycleError,
 	TokenSetAuthRegistryLifecycleErrorCode,
 	type TokenSetAuthRegistryState,
@@ -117,8 +121,9 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		service: TService,
 	) => EventStreamTrait<TokenSetAuthEvent>;
 	private readonly environment: FoundationEnvironment | undefined;
-	private readonly authEventSubject = createSubject<TokenSetAuthEvent>();
-	readonly authEvents: EventStreamTrait<TokenSetAuthEvent> =
+	private readonly authEventSubject =
+		createEventSubject<TokenSetAuthRegistryEvent>();
+	readonly authEvents: EventStreamTrait<TokenSetAuthRegistryEvent> =
 		this.authEventSubject;
 	private readonly stateSignal = createSignal<
 		TokenSetAuthRegistryState<TClient>
@@ -685,10 +690,11 @@ export class TokenSetAuthRegistry<TClient, TService> {
 		key: string,
 		options: { deleteSignal: boolean },
 	): void {
-		this.clientSignals.get(key)?.clear();
 		if (options.deleteSignal) {
 			this.clientSignals.delete(key);
+			return;
 		}
+		this.clientSignals.set(key, createReplaySignal<TService>());
 	}
 
 	private refreshState(): void {
@@ -1053,13 +1059,7 @@ export class TokenSetAuthRegistry<TClient, TService> {
 			key,
 			stream.subscribe({
 				next: (event) => {
-					this.authEventSubject.next({
-						...event,
-						payload: {
-							...event.payload,
-							clientKey: event.payload.clientKey ?? key,
-						},
-					});
+					this.authEventSubject.next(this.aggregateAuthEvent(key, event));
 				},
 			}),
 		);
@@ -1072,6 +1072,19 @@ export class TokenSetAuthRegistry<TClient, TService> {
 
 	private authEventsOf(service: TService): EventStreamTrait<TokenSetAuthEvent> {
 		return this._authEventsOf(service);
+	}
+
+	private aggregateAuthEvent<TType extends TokenSetAuthEventType>(
+		key: string,
+		event: TokenSetAuthEvent<TType>,
+	): TokenSetAuthRegistryEvent<TType> {
+		return {
+			...event,
+			payload: {
+				...event.payload,
+				id: event.payload.id ?? key,
+			},
+		} as TokenSetAuthRegistryEvent<TType>;
 	}
 }
 

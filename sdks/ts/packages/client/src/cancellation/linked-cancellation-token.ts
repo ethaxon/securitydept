@@ -1,5 +1,5 @@
 import { createCancellationTokenSource } from "./cancellation-token";
-import type { CancellationTokenTrait } from "./types";
+import { type CancellationTokenTrait } from "./types";
 
 /**
  * Create a cancellation token that fires when ANY of the given source tokens
@@ -40,7 +40,7 @@ export function createLinkedCancellationToken(
 
 	// Clean up all subscriptions once the linked token fires.
 	linked.token.onCancellationRequested(() => {
-		for (const sub of subscriptions) sub[Symbol.dispose]();
+		for (const sub of subscriptions) sub.dispose();
 	});
 
 	return linked.token;

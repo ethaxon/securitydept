@@ -5,10 +5,10 @@ import {
 } from "@securitydept/client";
 import {
 	CLIENT_ENVIRONMENT,
-	useReadableSignal,
+	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import type { AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { type AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -62,13 +62,9 @@ export function TokenSetFrontendModePlaygroundPage() {
 			`Token-set frontend mode client ${TOKEN_SET_FRONTEND_MODE_CLIENT_KEY} is not ready.`,
 		);
 	}
-	const authSnapshotSlot = useReadableSignal(
-		frontendClientSlot.value.authSnapshot,
-	);
-	const state =
-		authSnapshotSlot.kind === "value"
-			? (authSnapshotSlot.value as AuthStateSnapshot | null)
-			: null;
+	const state = useReplaySignalValue(frontendClientSlot.value.authSnapshot, {
+		initialValue: null,
+	}) as AuthStateSnapshot | null;
 	const environment = injector.get(CLIENT_ENVIRONMENT);
 	const traceEvents = useSyncExternalStore(
 		(listener) => tokenSetFrontendModeTraceTimeline.subscribe(listener),

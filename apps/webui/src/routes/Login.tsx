@@ -1,13 +1,12 @@
 import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client-react";
 import {
 	CLIENT_ENVIRONMENT,
-	useReadableSignal,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import { SESSION_CONTEXT_CONTROLLER } from "@securitydept/session-context-client-react";
 import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { FlaskConical, KeyRound, Lock, Shield } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { AppIcon } from "@/components/common/AppIcon";
 import { Header } from "@/components/layout/Header";
 import { AuthContextMode, setAuthContextMode } from "@/lib/authContext";
@@ -30,10 +29,14 @@ export function LoginPage() {
 	const sessionController = injector.get(SESSION_CONTEXT_CONTROLLER);
 	const tokenSetFrontendModeEnvironment = injector.get(CLIENT_ENVIRONMENT);
 	const basicAuthClient = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
-	const tokenSetBackendModeClientSlot = useReadableSignal(
-		injector
-			.get(TOKEN_SET_AUTH_REGISTRY)
-			.clientSignalFor(TOKEN_SET_BACKEND_MODE_CLIENT_KEY),
+	const tokenSetBackendRegistry = injector.get(TOKEN_SET_AUTH_REGISTRY);
+	const tokenSetBackendSignal = tokenSetBackendRegistry.clientSignalFor(
+		TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+	);
+	const tokenSetBackendModeClientSlot = useSyncExternalStore(
+		(listener) => tokenSetBackendSignal.subscribe(listener),
+		() => tokenSetBackendSignal.get(),
+		() => tokenSetBackendSignal.get(),
 	);
 	const tokenSetBackendModeClient =
 		tokenSetBackendModeClientSlot.kind === "value"

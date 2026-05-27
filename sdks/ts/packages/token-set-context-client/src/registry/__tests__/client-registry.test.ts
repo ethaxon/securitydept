@@ -1,5 +1,6 @@
 import {
-	createSubject,
+	createEventSubject,
+	createFoundationEnvironment,
 	type FoundationEnvironment,
 } from "@securitydept/client";
 import { describe, expect, it } from "vitest";
@@ -7,12 +8,12 @@ import {
 	createTokenSetAuthEvent,
 	type TokenSetAuthEvent,
 	TokenSetAuthEventType,
-	TokenSetAuthFlowOutcome,
 } from "../../orchestration";
+import { type TokenSetAuthRegistryEvent } from "../contracts/types";
 import { createTokenSetAuthRegistry } from "../core/client-registry";
 
 interface TestService {
-	authEvents: ReturnType<typeof createSubject<TokenSetAuthEvent>>;
+	authEvents: ReturnType<typeof createEventSubject<TokenSetAuthEvent>>;
 }
 
 const TEST_IDLE_CALLBACK = {
@@ -20,7 +21,7 @@ const TEST_IDLE_CALLBACK = {
 	cancelIdleCallback: (handle: unknown) =>
 		clearTimeout(handle as ReturnType<typeof setTimeout>),
 };
-const TEST_ENVIRONMENT: FoundationEnvironment = {
+const TEST_ENVIRONMENT: FoundationEnvironment = createFoundationEnvironment({
 	transport: { execute: async () => ({ status: 204, headers: {} }) },
 	time: {
 		now: () => Date.now(),
@@ -29,11 +30,11 @@ const TEST_ENVIRONMENT: FoundationEnvironment = {
 			clearTimeout(handle as ReturnType<typeof setTimeout>),
 	},
 	idleCallback: TEST_IDLE_CALLBACK,
-};
+});
 
 function createService(): TestService {
 	return {
-		authEvents: createSubject<TokenSetAuthEvent>(),
+		authEvents: createEventSubject<TokenSetAuthEvent>(),
 	};
 }
 
@@ -46,7 +47,7 @@ describe("TokenSetAuthRegistry auth flow", () => {
 			authEventsOf: (service) => service.authEvents,
 			environment: TEST_ENVIRONMENT,
 		});
-		const events: TokenSetAuthEvent[] = [];
+		const events: TokenSetAuthRegistryEvent[] = [];
 		registry.authEvents.subscribe({ next: (event) => events.push(event) });
 
 		registry.register({
@@ -58,16 +59,14 @@ describe("TokenSetAuthRegistry auth flow", () => {
 				id: "event-1",
 				type: TokenSetAuthEventType.AuthAuthenticated,
 				at: 1,
-				payload: {
-					outcome: TokenSetAuthFlowOutcome.Authenticated,
-				},
+				payload: {},
 			}),
 		);
 
 		expect(events).toEqual([
 			expect.objectContaining({
 				id: "event-1",
-				payload: expect.objectContaining({ clientKey: "confluence" }),
+				payload: expect.objectContaining({ id: "confluence" }),
 			}),
 		]);
 	});

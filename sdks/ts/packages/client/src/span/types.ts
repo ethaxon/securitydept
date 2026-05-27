@@ -1,23 +1,41 @@
-export interface ForkSpanOptions {
+import { type as defineType } from "arktype";
+import { SecuritydeptInjectionToken } from "../injection";
+import {
+	type TraitInputValidator,
+	type WithTraitInputValidator,
+} from "../validation";
+
+export interface SpanCreateOptions {
 	idFactory?: () => string;
 	attributes?: Record<string, unknown>;
 }
 
-export interface CreateSpanOptions extends ForkSpanOptions {
-	parentSpan?: SpanTrait;
-}
+export const SpanCreateOptionsSchema = defineType({
+	idFactory: "Function",
+	attributes: "object",
+});
 
 export interface SpanTrait {
 	readonly id: string;
-	readonly parentId?: string;
-	fork(options?: ForkSpanOptions): SpanTrait;
-	addAttributes(attributes: Record<string, unknown>): void;
-	recordError(error: unknown): void;
-	end(outcome?: Record<string, unknown>): void;
+	readonly parent?: SpanTrait;
+	readonly attributes: Readonly<Record<string, unknown>>;
+	fork(
+		options?: SpanCreateOptions & WithTraitInputValidator<TraitInputValidator>,
+	): SpanTrait;
 }
 
-export interface SpanContextHostTrait {
-	currentSpan(): SpanTrait | undefined;
-	runWithSpan<T>(span: SpanTrait, fn: () => T): T;
-	runWithSpan<T>(span: SpanTrait, fn: () => Promise<T>): Promise<T>;
+export const SpanTraitSchema = defineType({
+	id: "string",
+	fork: "Function",
+	attributes: "object",
+});
+
+export const SPAN_TRAIT_TOKEN = new SecuritydeptInjectionToken<SpanTrait>(
+	"SPAN_TRAIT_TOKEN",
+);
+
+export interface OperationSpanTrait extends SpanTrait {
+	addEvent(type: string, attributes?: Record<string, unknown>): void;
+	setAttribute(key: string, value: unknown): void;
+	recordError(error: unknown, attributes?: Record<string, unknown>): void;
 }

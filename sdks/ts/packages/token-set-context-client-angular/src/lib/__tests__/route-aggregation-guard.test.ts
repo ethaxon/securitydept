@@ -9,25 +9,20 @@ import {
 	type RouterStateSnapshot,
 } from "@angular/router";
 import {
+	type AuthGuardClientOption,
+	createEventSubject,
 	createInMemoryRecordStore,
 	createReplaySignal,
+	createRootSpan,
 	createSignal,
-	createSubject,
+	createTracing,
 } from "@securitydept/client";
-import type { AuthGuardClientOption } from "@securitydept/client/auth-coordination";
-import {
-	createEnvironmentForNativeWeb,
-	type NativeWebEnvironment,
-} from "@securitydept/client/web";
+import { type NativeWebEnvironment } from "@securitydept/client/web";
 import { provideNativeWebEnvironment } from "@securitydept/client-angular";
 import {
 	createBackendOidcModeWebClient,
 	createBackendOidcModeWebClientEnvironment,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
-import {
-	AuthCheckStatus,
-	TokenSetAuthFlowReason,
-} from "@securitydept/token-set-context-client/orchestration";
 import {
 	type CreateTokenSetRouteAggregationGuardOptions,
 	createTokenSetOidcLoginRedirectHandler,
@@ -37,6 +32,7 @@ import {
 	type TokenSetRouteUnauthenticatedContext,
 } from "@securitydept/token-set-context-client-angular";
 import { describe, expect, it, vi } from "vitest";
+import { createEnvironmentForNativeWebTest } from "../../../../client/src/test";
 
 function createTransport() {
 	return {
@@ -68,20 +64,26 @@ function createAngularPageEnvironment(): NativeWebEnvironment {
 		search: "",
 	};
 
-	return createEnvironmentForNativeWeb({
+	return createEnvironmentForNativeWebTest({
 		transport: createTransport(),
 		time: createTime(),
-		location,
-		history: {
-			pushState(_data: unknown, _unused: string, url?: string | URL | null) {
-				if (url) {
-					location.href = new URL(url, location.href).toString();
-				}
-			},
-			replaceState(_data: unknown, _unused: string, url?: string | URL | null) {
-				if (url) {
-					location.href = new URL(url, location.href).toString();
-				}
+		routerForNativeWebCreateOptions: {
+			location,
+			history: {
+				pushState(_data: unknown, _unused: string, url?: string | URL | null) {
+					if (url) {
+						location.href = new URL(url, location.href).toString();
+					}
+				},
+				replaceState(
+					_data: unknown,
+					_unused: string,
+					url?: string | URL | null,
+				) {
+					if (url) {
+						location.href = new URL(url, location.href).toString();
+					}
+				},
 			},
 		},
 	});
@@ -138,18 +140,12 @@ describe("createTokenSetRouteAggregationGuard", () => {
 				clearPending: createSignal(false),
 				loginPending: createSignal(false),
 			},
-			authEvents: createSubject(),
+			authEvents: createEventSubject(),
 			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
 			restorePersistedState: vi.fn(async () => null),
-			authCheck: vi.fn(async () => ({
-				status: AuthCheckStatus.Unauthenticated,
-				snapshot: null,
-				authorizationHeader: undefined,
-				reason: TokenSetAuthFlowReason.NoSnapshot,
-			})),
 			handleCallback: vi.fn(),
 			loginWithRedirect: vi.fn(),
 		} as unknown as TokenSetAngularClient;
@@ -346,6 +342,8 @@ describe("createTokenSetRouteAggregationGuard", () => {
 			environment: createBackendOidcModeWebClientEnvironment({
 				persistentStorage: createInMemoryRecordStore(),
 				sessionStorage: createInMemoryRecordStore(),
+				span: createRootSpan(),
+				tracing: createTracing(),
 			}),
 			baseUrl: "https://auth.example.com",
 		});

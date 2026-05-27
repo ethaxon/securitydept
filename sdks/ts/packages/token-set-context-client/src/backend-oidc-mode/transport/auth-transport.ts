@@ -1,20 +1,18 @@
 // Backend OIDC Mode — authorized transport wrapper.
 //
-// Wraps the generic createAuthorizedTransport from @securitydept/client,
+// Wraps the generic createAuthorizedTransportFromBase from @securitydept/client,
 // remapping error codes to the backend-oidc namespace.
 
-import type {
-	BaseTransportTrait,
-	ManagedTransportTrait,
-} from "@securitydept/client";
 import {
 	type AuthorizationHeaderProviderTrait,
+	type BaseTransportTrait,
 	ClientError,
 	ClientErrorKind,
-	createRemappingAuthorizedTransport,
+	createRemappingAuthorizedTransportFromBase,
+	type ManagedTransportTrait,
 	UserRecovery,
 } from "@securitydept/client";
-import { BackendOidcModeContextSource } from "../runtime/types";
+import { BackendOidcModeContextSource } from "../client/types";
 
 export type { AuthorizationHeaderProviderTrait };
 
@@ -22,7 +20,7 @@ export interface CreateBackendOidcModeAuthorizedTransportOptions {
 	baseTransport: BaseTransportTrait;
 	requireAuthorization?: boolean;
 	clientKey?: string;
-	logicalClientId?: string;
+	id?: string;
 }
 
 /**
@@ -31,11 +29,11 @@ export interface CreateBackendOidcModeAuthorizedTransportOptions {
  * Delegates the generic bearer-injection logic to the orchestration layer,
  * then re-maps the unavailability error to the token-set namespace.
  */
-export function createBackendOidcModeAuthorizedTransport(
+export function createBackendOidcModeAuthorizedTransportFromBase(
 	authorizationProvider: AuthorizationHeaderProviderTrait,
 	options: CreateBackendOidcModeAuthorizedTransportOptions,
 ): ManagedTransportTrait {
-	return createRemappingAuthorizedTransport(authorizationProvider, {
+	return createRemappingAuthorizedTransportFromBase(authorizationProvider, {
 		...options,
 		remapError: remapAuthError,
 	});

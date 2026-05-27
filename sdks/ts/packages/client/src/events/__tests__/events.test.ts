@@ -1,10 +1,5 @@
-import { of } from "rxjs";
-import { describe, expect, it, vi } from "vitest";
 import {
 	concatMap,
-	createEventStream,
-	createReplaySubject,
-	createSubject,
 	debounceTime,
 	EMPTY,
 	exhaustMap,
@@ -12,13 +7,23 @@ import {
 	map,
 	merge,
 	NEVER,
-	pipe,
+	of,
 	shareReplay,
 	switchMap,
 	takeUntil,
-	withLatestFromSignal,
+	withLatestFrom,
+} from "rxjs";
+import { describe, expect, it, vi } from "vitest";
+import {
+	createEventReplaySubject,
+	createEventStream,
+	createEventSubject,
 } from "../../events/index";
-import { fromRxObservable, toRxObservable } from "../../rx";
+import {
+	eventStreamToObservable,
+	observableToEventStream,
+	signalToObservable,
+} from "../../rx";
 import { createSignal } from "../../signals";
 
 describe("createEventStream", () => {
@@ -99,11 +104,10 @@ describe("operators", () => {
 			observer.next?.(2);
 			observer.complete?.();
 		});
-		const doubled = pipe(
-			source,
-			map((x) => x * 2),
+		const doubled = eventStreamToObservable(source).pipe(
+			map((x: number) => x * 2),
 		);
-		doubled.subscribe({ next: (v) => values.push(v) });
+		doubled.subscribe({ next: (v: number) => values.push(v) });
 		expect(values).toEqual([2, 4]);
 	});
 
@@ -115,11 +119,10 @@ describe("operators", () => {
 			observer.next?.(3);
 			observer.complete?.();
 		});
-		const even = pipe(
-			source,
-			filter((x) => x % 2 === 0),
+		const even = eventStreamToObservable(source).pipe(
+			filter((x: number) => x % 2 === 0),
 		);
-		even.subscribe({ next: (v) => values.push(v) });
+		even.subscribe({ next: (v: number) => values.push(v) });
 		expect(values).toEqual([2]);
 	});
 
@@ -138,9 +141,11 @@ describe("operators", () => {
 			notifierObserver = observer;
 		});
 
-		const limited = pipe(source, takeUntil(notifier));
+		const limited = eventStreamToObservable(source).pipe(
+			takeUntil(eventStreamToObservable(notifier)),
+		);
 		limited.subscribe({
-			next: (v) => values.push(v),
+			next: (v: number) => values.push(v),
 			complete: () => {
 				completed = true;
 			},
@@ -167,23 +172,29 @@ describe("operators", () => {
 			observer.next?.("b1");
 			observer.complete?.();
 		});
-		const merged = merge(a, b);
-		merged.subscribe({ next: (v) => values.push(v) });
+		const merged = merge(
+			eventStreamToObservable(a),
+			eventStreamToObservable(b),
+		);
+		merged.subscribe({ next: (v: string) => values.push(v) });
 		expect(values).toEqual(["a1", "b1"]);
 	});
 
 	it("switchMap should switch to the latest inner stream", () => {
-		const source = createSubject<number>();
+		const source = createEventSubject<number>();
 		const values: number[] = [];
 
-		pipe(
-			source,
-			switchMap((value) =>
-				createEventStream<number>((observer) => {
-					observer.next?.(value * 10);
-				}),
-			),
-		).subscribe({ next: (value) => values.push(value) });
+		eventStreamToObservable(source)
+			.pipe(
+				switchMap((value) =>
+					eventStreamToObservable(
+						createEventStream<number>((observer) => {
+							observer.next?.(value * 10);
+						}),
+					),
+				),
+			)
+			.subscribe({ next: (value: number) => values.push(value) });
 
 		source.next(1);
 		source.next(2);
@@ -199,29 +210,31 @@ describe("operators", () => {
 			observer.complete?.();
 		});
 
-		pipe(
-			source,
-			concatMap((value) =>
-				createEventStream<number>((observer) => {
-					observer.next?.(value);
-					observer.next?.(value * 10);
-					observer.complete?.();
-				}),
-			),
-		).subscribe({ next: (value) => values.push(value) });
+		eventStreamToObservable(source)
+			.pipe(
+				concatMap((value) =>
+					eventStreamToObservable(
+						createEventStream<number>((observer) => {
+							observer.next?.(value);
+							observer.next?.(value * 10);
+							observer.complete?.();
+						}),
+					),
+				),
+			)
+			.subscribe({ next: (value: number) => values.push(value) });
 
 		expect(values).toEqual([1, 10, 2, 20]);
 	});
 
 	it("exhaustMap should ignore new values while inner stream is active", () => {
-		const source = createSubject<number>();
-		const inner = createSubject<number>();
+		const source = createEventSubject<number>();
+		const inner = createEventSubject<number>();
 		const values: number[] = [];
 
-		pipe(
-			source,
-			exhaustMap(() => inner),
-		).subscribe({ next: (value) => values.push(value) });
+		eventStreamToObservable(source)
+			.pipe(exhaustMap(() => eventStreamToObservable(inner)))
+			.subscribe({ next: (value: number) => values.push(value) });
 
 		source.next(1);
 		source.next(2);
@@ -235,11 +248,13 @@ describe("operators", () => {
 	it("debounceTime should use RxJS scheduling semantics", () => {
 		vi.useFakeTimers();
 		try {
-			const source = createSubject<number>();
+			const source = createEventSubject<number>();
 			const values: number[] = [];
-			pipe(source, debounceTime(100)).subscribe({
-				next: (value) => values.push(value),
-			});
+			eventStreamToObservable(source)
+				.pipe(debounceTime(100))
+				.subscribe({
+					next: (value: number) => values.push(value),
+				});
 
 			source.next(1);
 			source.next(2);
@@ -253,12 +268,14 @@ describe("operators", () => {
 
 	it("withLatestFromSignal should pair stream values with signal snapshots", () => {
 		const signal = createSignal("initial");
-		const source = createSubject<number>();
+		const source = createEventSubject<number>();
 		const values: Array<[number, string]> = [];
 
-		pipe(source, withLatestFromSignal(signal)).subscribe({
-			next: (value) => values.push(value),
-		});
+		eventStreamToObservable(source)
+			.pipe(withLatestFrom(signalToObservable(signal)))
+			.subscribe({
+				next: (value: [number, string]) => values.push(value),
+			});
 
 		source.next(1);
 		signal.set("updated");
@@ -273,7 +290,7 @@ describe("operators", () => {
 
 describe("subjects and RxJS interop", () => {
 	it("createSubject should expose a hot event producer", () => {
-		const subject = createSubject<number>();
+		const subject = createEventSubject<number>();
 		const values: number[] = [];
 
 		subject.next(1);
@@ -284,7 +301,7 @@ describe("subjects and RxJS interop", () => {
 	});
 
 	it("createReplaySubject should replay recent values to late subscribers", () => {
-		const subject = createReplaySubject<number>(2);
+		const subject = createEventReplaySubject<number>(2);
 		const values: number[] = [];
 
 		subject.next(1);
@@ -292,25 +309,24 @@ describe("subjects and RxJS interop", () => {
 		subject.next(3);
 		subject.subscribe({ next: (value) => values.push(value) });
 
-		expect(subject.bufferSize).toBe(2);
 		expect(values).toEqual([2, 3]);
 	});
 
 	it("fromRxObservable should wrap RxJS observables", () => {
 		const values: number[] = [];
-		fromRxObservable(of(1, 2, 3)).subscribe({
-			next: (value) => values.push(value),
+		observableToEventStream(of(1, 2, 3)).subscribe({
+			next: (value: number) => values.push(value),
 		});
 
 		expect(values).toEqual([1, 2, 3]);
 	});
 
 	it("toRxObservable should expose streams to RxJS operators", () => {
-		const source = createSubject<number>();
+		const source = createEventSubject<number>();
 		const values: number[] = [];
-		toRxObservable(pipe(source, shareReplay(1))).subscribe((value) =>
-			values.push(value),
-		);
+		eventStreamToObservable(source)
+			.pipe(shareReplay(1))
+			.subscribe((value: number) => values.push(value));
 
 		source.next(42);
 

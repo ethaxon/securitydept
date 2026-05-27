@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 
-import { createSignal, createSubject } from "@securitydept/client";
+import { createEventSubject, createSignal } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import type {
-	AuthSnapshot,
-	TokenSetAuthEvent,
+import {
+	type AuthSnapshot,
+	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
 import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
 import {
@@ -78,7 +78,7 @@ describe("react callback async readiness", () => {
 				clientFactory: async () => ({
 					state,
 					...reactive.fields,
-					authEvents: createSubject<TokenSetAuthEvent>(),
+					authEvents: createEventSubject<TokenSetAuthEvent>(),
 					addWorkflowSource: () => ({ unsubscribe: () => undefined }),
 					removeWorkflowSource: () => false,
 					start: async () => undefined,

@@ -7,17 +7,21 @@
 // the two methods whose signatures differ from the TokenSetReactClient contract
 // (restorePersistedState, handleCallback).
 
-import { createTraceTimelineStore } from "@securitydept/client";
-import type { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import {
+	createRootSpan,
+	createTraceTimelineStore,
+	createTracing,
+} from "@securitydept/client";
+import { type BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	bootstrapBackendOidcModePageClient,
 	createBackendOidcModeWebClient,
 	createBackendOidcModeWebClientEnvironment,
 } from "@securitydept/token-set-context-client/backend-oidc-mode/web";
-import type { AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import type {
-	TokenSetBackendOidcClient,
-	TokenSetReactClient,
+import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
+import {
+	type TokenSetBackendOidcClient,
+	type TokenSetReactClient,
 } from "@securitydept/token-set-context-client-react";
 import {
 	TOKEN_SET_BACKEND_MODE_LOGIN_PATH,
@@ -38,12 +42,24 @@ import {
 export const tokenSetBackendTraceTimeline = createTraceTimelineStore();
 
 export const tokenSetBackendModeTraceTimeline = tokenSetBackendTraceTimeline;
+export const tokenSetBackendModeTracing = createTracing({
+	subscribers: [tokenSetBackendTraceTimeline],
+});
+
+const tokenSetBackendModeRootSpan = createRootSpan();
+export const tokenSetBackendModeHostSpan = tokenSetBackendModeRootSpan.fork({
+	attributes: {
+		target: "apps.webui.token-set-backend",
+		role: "host",
+	},
+});
 
 type WrappedTokenSetReactClient = TokenSetReactClient & BackendOidcModeClient;
 
 const tokenSetBackendModeEnvironment =
 	createBackendOidcModeWebClientEnvironment({
-		traceSink: tokenSetBackendModeTraceTimeline,
+		span: tokenSetBackendModeRootSpan,
+		tracing: tokenSetBackendModeTracing,
 	});
 
 const tokenSetBackendModeClient = createBackendOidcModeWebClient({
@@ -65,8 +81,12 @@ function createBackendModePageEnvironment() {
 	const history = globalThis.history;
 	return {
 		callbackFragmentStore: tokenSetBackendModeEnvironment.callbackFragmentStore,
+		time: tokenSetBackendModeEnvironment.time,
 		currentUrl() {
 			return new URL(location.href);
+		},
+		canNavigate() {
+			return true;
 		},
 		async navigate(request: {
 			url: string | URL;

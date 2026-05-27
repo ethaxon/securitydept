@@ -1,23 +1,18 @@
 // @vitest-environment jsdom
 
 import {
+	createEventSubject,
 	createReplaySignal,
 	createSignal,
-	createSubject,
 } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
-	useReadableSignal,
+	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import type {
-	AuthSnapshot,
-	TokenSetAuthEvent,
-} from "@securitydept/token-set-context-client/orchestration";
 import {
-	AuthCheckStatus,
-	TokenFreshnessState,
-	TokenSetAuthFlowReason,
+	type AuthSnapshot,
+	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
 import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
 import {
@@ -55,24 +50,6 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 	return {
 		tokens: { accessToken },
 		metadata: {},
-	};
-}
-
-function authCheckResult(snapshot: AuthSnapshot | null) {
-	if (!snapshot) {
-		return {
-			status: AuthCheckStatus.Unauthenticated,
-			snapshot: null,
-			authorizationHeader: undefined,
-			reason: TokenSetAuthFlowReason.NoSnapshot,
-		};
-	}
-
-	return {
-		status: AuthCheckStatus.Authenticated,
-		snapshot,
-		freshness: TokenFreshnessState.Fresh,
-		authorizationHeader: `Bearer ${snapshot.tokens.accessToken}`,
 	};
 }
 
@@ -114,13 +91,12 @@ function createRegistryOptions(accessToken: string) {
 						clearPending: createSignal(false),
 						loginPending: createSignal(false),
 					},
-					authEvents: createSubject<TokenSetAuthEvent>(),
+					authEvents: createEventSubject<TokenSetAuthEvent>(),
 					addWorkflowSource: () => ({ unsubscribe: () => undefined }),
 					removeWorkflowSource: () => false,
 					start: async () => undefined,
 					dispose: () => state.set(null),
 					restorePersistedState: async () => state.get(),
-					authCheck: async () => authCheckResult(state.get()),
 					handleCallback: async () => ({
 						snapshot: createSnapshot(accessToken),
 					}),
@@ -156,20 +132,18 @@ describe("token-set react adapter", () => {
 
 		function Probe() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const clientSlot = useReadableSignal(registry.clientSignalFor("main"));
-			return clientSlot.kind === "value"
-				? createElement(ClientStateProbe, { client: clientSlot.value })
-				: createElement("output", null, "empty");
+			const client = useReplaySignalValue(registry.clientSignalFor("main"));
+			return createElement(ClientStateProbe, { client });
 		}
 
 		function ClientStateProbe({ client }: { client: TokenSetReactClient }) {
-			const authState = useReadableSignal(client.authSnapshot);
+			const authState = useReplaySignalValue(client.authSnapshot, {
+				initialValue: null,
+			});
 			return createElement(
 				"output",
 				null,
-				authState.kind === "value"
-					? (authState.value?.tokens.accessToken ?? "empty")
-					: "empty",
+				authState?.tokens.accessToken ?? "empty",
 			);
 		}
 
@@ -205,13 +179,11 @@ describe("token-set react adapter", () => {
 
 		function Probe({ label }: { label: string }) {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const clientSlot = useReadableSignal(registry.clientSignalFor("main"));
-			return clientSlot.kind === "value"
-				? createElement(LabeledClientStateProbe, {
-						client: clientSlot.value,
-						label,
-					})
-				: createElement("output", null, `${label}:empty`);
+			const client = useReplaySignalValue(registry.clientSignalFor("main"));
+			return createElement(LabeledClientStateProbe, {
+				client,
+				label,
+			});
 		}
 
 		function LabeledClientStateProbe({
@@ -221,15 +193,13 @@ describe("token-set react adapter", () => {
 			client: TokenSetReactClient;
 			label: string;
 		}) {
-			const authState = useReadableSignal(client.authSnapshot);
+			const authState = useReplaySignalValue(client.authSnapshot, {
+				initialValue: null,
+			});
 			return createElement(
 				"output",
 				null,
-				`${label}:${
-					authState.kind === "value"
-						? (authState.value?.tokens.accessToken ?? "empty")
-						: "empty"
-				}`,
+				`${label}:${authState?.tokens.accessToken ?? "empty"}`,
 			);
 		}
 
@@ -272,17 +242,14 @@ describe("token-set react adapter", () => {
 
 		function Probe() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const clientSlot = useReadableSignal(registry.clientSignalFor("main"));
-			const slot =
-				clientSlot.kind === "value"
-					? clientSlot.value.authSnapshot.get()
-					: { kind: "empty" as const };
+			const client = useReplaySignalValue(registry.clientSignalFor("main"));
+			const snapshot = useReplaySignalValue(client.authSnapshot, {
+				initialValue: null,
+			});
 			return createElement(
 				"output",
 				null,
-				slot.kind === "value"
-					? (slot.value?.tokens.accessToken ?? "empty")
-					: "empty",
+				snapshot?.tokens.accessToken ?? "empty",
 			);
 		}
 

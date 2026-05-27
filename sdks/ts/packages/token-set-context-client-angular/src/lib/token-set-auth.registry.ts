@@ -1,12 +1,11 @@
 import { DestroyRef, Injectable, inject } from "@angular/core";
-import type {
-	EventStreamTrait,
-	FoundationEnvironment,
-	ReadableReplaySignalTrait,
-	ReadableSignalTrait,
+import {
+	type EventStreamTrait,
+	type FoundationEnvironment,
+	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
 } from "@securitydept/client";
-import type { ClientReadinessState } from "@securitydept/token-set-context-client/frontend-oidc-mode";
-import type { TokenSetAuthEvent } from "@securitydept/token-set-context-client/orchestration";
+import { type ClientReadinessState } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
 	type ClientFilter,
 	type ClientKeySelector,
@@ -15,9 +14,13 @@ import {
 	type TokenSetAuthRegistry as CoreTokenSetAuthRegistry,
 	type TokenSetClientEntry as CoreTokenSetClientEntry,
 	createTokenSetOidcAuthRegistry,
+	type TokenSetAuthRegistryEvent,
 	type TokenSetAuthRegistryState,
 } from "@securitydept/token-set-context-client/registry";
-import type { TokenSetAngularClient, TokenSetClientEntry } from "./contracts";
+import {
+	type TokenSetAngularClient,
+	type TokenSetClientEntry,
+} from "./contracts";
 
 // Re-export core registry types so existing adopter imports from
 // @securitydept/token-set-context-client-angular keep working.
@@ -53,7 +56,7 @@ export class TokenSetAuthRegistry {
 	 * directly when they don't need Angular-specific behaviour.
 	 */
 	readonly core: CoreTokenSetAuthRegistry<AngularClient, AngularClient>;
-	readonly authEvents: EventStreamTrait<TokenSetAuthEvent>;
+	readonly authEvents: EventStreamTrait<TokenSetAuthRegistryEvent>;
 	readonly state: ReadableSignalTrait<TokenSetAuthRegistryState<AngularClient>>;
 
 	constructor() {

@@ -10,27 +10,29 @@ import {
 	type RouterStateSnapshot,
 	type UrlTree,
 } from "@angular/router";
-import type {
-	AuthGuardClientOption,
-	AuthRequirement,
-	PlannerHost,
-} from "@securitydept/client/auth-coordination";
-import { assertResolveEnvironment } from "@securitydept/client/web";
+import {
+	type AuthGuardClientOption,
+	type AuthRequirement,
+	type PlannerHost,
+} from "@securitydept/client";
 import {
 	AUTH_PLANNER_HOST,
 	extractFullRouteRequirements,
 	NATIVE_WEB_ENVIRONMENT,
 	type NativeWebEnvironmentValue,
 } from "@securitydept/client-angular";
-import type {
-	OidcRedirectLoginClient,
-	OidcRedirectLoginOptions,
+import {
+	type OidcRedirectLoginClient,
+	type OidcRedirectLoginOptions,
 } from "@securitydept/token-set-context-client/registry";
 import { firstValueFrom, from, switchMap, take } from "rxjs";
-import type { TokenSetAngularClient } from "./contracts";
-import type { UnauthenticatedEntry } from "./guard-types";
-import type { ClientMeta, ClientQueryOptions } from "./token-set-auth.registry";
-import { TokenSetAuthRegistry } from "./token-set-auth.registry";
+import { type TokenSetAngularClient } from "./contracts";
+import { type UnauthenticatedEntry } from "./guard-types";
+import {
+	type ClientMeta,
+	type ClientQueryOptions,
+	TokenSetAuthRegistry,
+} from "./token-set-auth.registry";
 
 // ============================================================================
 // Guard factory — createTokenSetRouteAggregationGuard() [LOWER-LEVEL ADVANCED]
@@ -646,10 +648,10 @@ function resolveOidcRouteEnvironment(
 		| CreateTokenSetOidcLoginRedirectHandlerOptions["environment"]
 		| undefined,
 ): OidcRedirectLoginOptions["environment"] {
-	const environment = assertResolveEnvironment(
-		environmentOverride ?? inject(NATIVE_WEB_ENVIRONMENT, { optional: true }),
-		failMissingOidcRouteEnvironment,
-	);
+	const environment =
+		environmentOverride ??
+		inject(NATIVE_WEB_ENVIRONMENT, { optional: true }) ??
+		failMissingOidcRouteEnvironment();
 	return environment.router;
 }
 

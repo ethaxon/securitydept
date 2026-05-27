@@ -9,9 +9,8 @@
 //
 // Stability: provisional
 
-import type { RouterTrait } from "@securitydept/client";
-import { assertResolveEnvironment } from "@securitydept/client/web";
-import type { BasicAuthContextClient } from "../client";
+import { type RouterTrait } from "@securitydept/client";
+import { type BasicAuthContextClient } from "../client";
 
 const BASIC_AUTH_PAGE_ENVIRONMENT_ERROR_MESSAGE =
 	"basic-auth browser redirect helpers require an explicit page environment.\n" +
@@ -57,10 +56,7 @@ export async function loginWithRedirect(
 	client: BasicAuthContextClient,
 	options: LoginWithRedirectOptions = {},
 ): Promise<boolean> {
-	const environment = assertResolveEnvironment(
-		options.environment,
-		failMissingPageEnvironment,
-	);
+	const environment = options.environment ?? failMissingPageEnvironment();
 	const currentUrl = environment.currentUrl();
 	const currentPath = options.currentPath ?? currentUrl?.pathname ?? "/";
 	const zone = client.zoneForPath(currentPath);

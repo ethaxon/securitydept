@@ -1,12 +1,12 @@
 // Backend OIDC Mode — response body schemas
 //
-// Uses @standard-schema via the foundation createSchema helper to validate
+// Uses explicit StandardSchemaV1 validation to validate
 // callback and refresh JSON response bodies at the cross-boundary entry point.
 
-import { createSchema } from "@securitydept/client";
-import type {
-	BackendOidcModeCallbackReturns,
-	BackendOidcModeRefreshReturns,
+import { type StandardSchemaV1 } from "@standard-schema/spec";
+import {
+	type BackendOidcModeCallbackReturns,
+	type BackendOidcModeRefreshReturns,
 } from "./contracts";
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -39,9 +39,14 @@ function checkOptionalString(
  *   - `id_token` is a string (required)
  *   - optional fields have correct types when present (fail on wrong type)
  */
-export const BackendOidcModeCallbackBodySchema =
-	createSchema<BackendOidcModeCallbackReturns>({
-		validate(input) {
+export const BackendOidcModeCallbackBodySchema: StandardSchemaV1<
+	unknown,
+	BackendOidcModeCallbackReturns
+> = {
+	"~standard": {
+		version: 1,
+		vendor: "securitydept-token-set-context-client",
+		validate(input: unknown) {
 			if (!isObject(input)) {
 				return { issues: [{ message: "Expected an object" }] };
 			}
@@ -85,7 +90,8 @@ export const BackendOidcModeCallbackBodySchema =
 				},
 			};
 		},
-	});
+	},
+};
 
 /**
  * Schema for validating BackendOidcModeRefreshReturns from a raw JSON body.
@@ -94,9 +100,14 @@ export const BackendOidcModeCallbackBodySchema =
  *   - `access_token` is a string (required)
  *   - optional fields have correct types when present (fail on wrong type)
  */
-export const BackendOidcModeRefreshBodySchema =
-	createSchema<BackendOidcModeRefreshReturns>({
-		validate(input) {
+export const BackendOidcModeRefreshBodySchema: StandardSchemaV1<
+	unknown,
+	BackendOidcModeRefreshReturns
+> = {
+	"~standard": {
+		version: 1,
+		vendor: "securitydept-token-set-context-client",
+		validate(input: unknown) {
 			if (!isObject(input)) {
 				return { issues: [{ message: "Expected an object" }] };
 			}
@@ -138,4 +149,5 @@ export const BackendOidcModeRefreshBodySchema =
 				},
 			};
 		},
-	});
+	},
+};

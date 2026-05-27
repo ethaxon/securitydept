@@ -17,15 +17,14 @@
 					"stability": "stable",
 					"owner": "foundation",
 					"changeDiscipline": "stable-deprecation-first",
-					"note": "Owns the current shared cancellation/resource-release baseline, the formal foundation-layer unified input-source helpers, the structured-observation baseline, replay signal primitive, shared authenticated-principal baseline, and the dual-layer error bridge: DisposableTrait, CancellationTokenTrait, CancellationTokenSourceTrait, createCancellationTokenSource(), and createLinkedCancellationToken() formalize cooperative cancellation plus owner-side release via dispose(); TimeTrait / createDefaultTimeConfig() formalize the low-level injectable time capability, IdleCallbackTrait formalizes optional host-owned idle callback capability, while fromTimeout(), fromInterval(), fromScheduleAt(), fromEventPattern(), fromSignal(), and fromPromise() are EventStream primitives above raw host capabilities; ReadableReplaySignalTrait / WritableReplaySignalTrait / ComputedReplaySignalTrait, ReplaySignalSlot<T>, ReplaySignalWhenValueOptions, createReplaySignal(), createComputedReplaySignal(), createAndThenComputedReplaySignal(), readonlyReplaySignal(), and isReplaySignalTrait() formalize last-available channels that start empty, replay only emitted values, use get() for synchronous slot reads, and use cancellable whenValue() for asynchronous value waits; TraceEvent, TraceEventSinkTrait, createTraceTimelineStore() / TraceTimelineStore, createOperationTracer(), and OperationTraceEventType now formalize the machine-readable trace sink plus operation-correlation story; AuthenticatedPrincipal, normalizeAuthenticatedPrincipal(), normalizeAuthenticatedPrincipalWire(), and projectAuthenticatedPrincipal() now formalize the shared human-principal contract and host-facing projection baseline consumed by session/token-set families; ErrorPresentationDescriptor / ErrorPresentationTone / readErrorPresentationDescriptor(), ErrorAttributes, and describeError() remain the host-facing presentation, recovery, and structured error-attribute bridge built on runtime errors.",
+					"note": "Owns the current shared cancellation/resource-release baseline, the tracing runtime/subscriber baseline, replay signal primitive, shared authenticated-principal baseline, framework-neutral dependency injection, headless auth-coordination primitives, shared storage contracts, structural utilities, and the dual-layer error bridge: DisposableTrait, CancellationTokenTrait, CancellationTokenSourceTrait, createCancellationTokenSource(), and createLinkedCancellationToken() formalize cooperative cancellation plus owner-side release via dispose(); TimeTrait / createDefaultTimeConfig() formalize the low-level injectable time capability, while IdleCallbackTrait formalizes optional host-owned idle callback capability and EventStreamTrait / EventSubjectTrait remain the SDK-owned reactive primitives even though generic source construction now lives in direct RxJS usage plus the `@securitydept/client/rx` bridge; ReadableReplaySignalTrait / WritableReplaySignalTrait / ComputedReplaySignalTrait, ReplaySignalSlot<T>, ReplaySignalWhenValueOptions, createReplaySignal(), createComputedReplaySignal(), createAndThenComputedReplaySignal(), readonlyReplaySignal(), and isReplaySignalTrait() formalize last-available channels that start empty, replay only emitted values, use get() for synchronous slot reads, and use cancellable whenValue() for asynchronous value waits; SecuritydeptInjectorTrait / SecuritydeptInjector formalize the framework-neutral DI surface, while RequirementPlanner / PlannerHost / RouteRequirementOrchestrator formalize shared auth coordination without a separate core subpath; FoundationEnvironment now treats a root span and tracing runtime as required baseline capabilities, while TracingTrait, createTracing(), TracingEvent, TracingSubscriberTrait, runOperation(), defineInstrumentMethodDecorator(), createTraceTimelineStore() / TraceTimelineStore, and OperationTraceEventType formalize the structured tracing baseline and operation-correlation story; AuthenticatedPrincipal, normalizeAuthenticatedPrincipal(), normalizeAuthenticatedPrincipalWire(), and projectAuthenticatedPrincipal() now formalize the shared human-principal contract and host-facing projection baseline consumed by session/token-set families; ErrorPresentationDescriptor / ErrorPresentationTone / readErrorPresentationDescriptor(), ErrorAttributes, and describeError() remain the host-facing presentation, recovery, and structured error-attribute bridge built on runtime errors.",
 					"evidence": [
 						"examples/minimal-entry-points.test.ts",
-						"examples/scheduling-input-source-baseline.test.ts",
 						"packages/client/src/cancellation/__tests__/cancellation.test.ts",
 						"packages/client/src/errors/__tests__/errors.test.ts",
 						"packages/client/src/identity/__tests__/principal.test.ts",
-						"packages/client/src/logging/__tests__/operation-tracer.test.ts",
-						"packages/client/src/logging/__tests__/trace-timeline-store.test.ts",
+						"packages/client/src/tracing/__tests__/operation-tracer.test.ts",
+						"packages/client/src/tracing/subscriber/__tests__/trace-timeline-store.test.ts",
 						"packages/client/src/scheduling/__tests__/helpers.test.ts",
 						"packages/client/src/signals/__tests__/signals.test.ts",
 						"packages/session-context-client/src/__tests__/client.test.ts",
@@ -45,30 +44,14 @@
 					}
 				},
 				{
-					"exportKey": "./persistence",
-					"stability": "stable",
-					"owner": "foundation",
-					"changeDiscipline": "stable-deprecation-first",
-					"note": "Owns the low-level persistence contracts used by browser login/callback flows, including the StorageTrait atomic take capability and the keyed ephemeral flow-store helpers that formalise single-consume redirect state.",
-					"evidence": [
-						"examples/standard-schema-adoption.test.ts",
-						"packages/client/src/persistence/__tests__/ephemeral-flow-store.test.ts",
-						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client.test.ts"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Persistence"
-					}
-				},
-				{
-					"exportKey": "./persistence/web",
+					"exportKey": "./storage/web",
 					"stability": "stable",
 					"owner": "foundation",
 					"changeDiscipline": "stable-deprecation-first",
 					"evidence": ["examples/minimal-entry-points.test.ts"],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Persistence"
+						"heading": "Storage"
 					}
 				},
 				{
@@ -76,17 +59,16 @@
 					"stability": "stable",
 					"owner": "foundation",
 					"changeDiscipline": "stable-deprecation-first",
-					"note": "Owns native Web host adapters and browser-native interop that still depends on page/storage/document concepts: createCancellationTokenFromAbortSignal(signal), fromStorageEvent, page lifecycle EventStream source createPageResumeSource, higher-level lifecycle helper createCrossTabSync, native Web host adapters createRouterForNativeWeb(), createPageLifecycleForNativeWeb(), createPopupForNativeWeb(), createEnvironmentForNativeWeb(), and the foundation Web environment boundary centered on `FoundationEnvironment` and `NativeWebEnvironment`. Canonical adopter-facing access is the flattened environment trait object shape (`environment.externalTransport`, `environment.sessionStorage`, `environment.router`, `environment.pageLifecycle`, `environment.popup`, and peers). Raw location/history host objects are adapter inputs only, not core environment fields. Host capabilities are explicit and are not automatic host detection or a DI container.",
+					"note": "Owns native Web host adapters and browser-native interop that still depends on page/storage/document concepts: abortSignalToCancellationToken(signal), fromStorageEvent, page lifecycle EventStream source createPageResumeSource, higher-level lifecycle helper createCrossTabSync, native Web host adapters createRouterForNativeWeb(), createPageLifecycleForNativeWeb(), createPopupForNativeWeb(), createEnvironmentForNativeWeb(), and the foundation Web environment boundary centered on `FoundationEnvironment` and `NativeWebEnvironment`. Canonical adopter-facing access is the flattened environment trait object shape (`environment.transport`, `environment.sessionStorage`, `environment.router`, `environment.pageLifecycle`, `environment.popup`, and peers). Raw location/history host objects are adapter inputs only, not core environment fields. Host capabilities are explicit and are not automatic host detection or a DI container.",
 					"evidence": [
 						"examples/popup-login-baseline.test.ts",
-						"examples/scheduling-input-source-baseline.test.ts",
 						"examples/backend-oidc-worker-like-host.test.ts",
 						"packages/client/src/web/__tests__/cancellation.test.ts",
-						"packages/client/src/web/__tests__/environment.test.ts",
-						"packages/client/src/web/__tests__/environment-presets.test.ts",
+						"packages/client/src/web/__tests__/client-environment.test.ts",
+						"packages/client/src/web/__tests__/client-environment-presets.test.ts",
+						"packages/client/src/web/__tests__/environment-boundary-contract.test.ts",
 						"packages/client/src/web/__tests__/input-sources.test.ts",
 						"packages/client/src/web/__tests__/page-resume.test.ts",
-						"examples/cross-tab-sync-baseline.test.ts",
 						"packages/token-set-context-client-react/src/__tests__/injection.test.tsx",
 						"../../apps/webui/src/__tests__/tokenSet.test.ts"
 					],
@@ -108,56 +90,11 @@
 					}
 				},
 				{
-					"exportKey": "./auth-coordination",
-					"stability": "provisional",
-					"owner": "foundation",
-					"changeDiscipline": "provisional-migration-required",
-					"note": "Canonical owner of shared auth requirement orchestration primitives (RequirementPlanner, RouteRequirementOrchestrator). Consolidates the shared auth-coordination surface that was previously hosted under @securitydept/token-set-context-client/orchestration. Kind is an opaque string; each auth-context defines its own named constants.",
-					"evidence": [
-						"examples/multi-requirement-orchestration.test.ts",
-						"examples/route-orchestration-baseline.test.ts",
-						"packages/client/src/auth-coordination/__tests__/requirement-planner.test.ts"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Auth Coordination"
-					}
-				},
-				{
-					"exportKey": "./events",
-					"stability": "provisional",
-					"owner": "foundation",
-					"changeDiscipline": "provisional-migration-required",
-					"note": "Foundation event-stream contracts and RxJS-backed operator facade used by auth lifecycle telemetry. Exposes SecurityDept traits rather than requiring family packages to make RxJS their primary public contract.",
-					"evidence": ["packages/client/src/events/__tests__/events.test.ts"],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Event Primitives"
-					}
-				},
-				{
-					"exportKey": "./injection",
-					"stability": "provisional",
-					"owner": "foundation",
-					"changeDiscipline": "provisional-migration-required",
-					"note": "Framework-neutral dependency injection authority. `SecuritydeptInjectorTrait` is the minimal read-side contract (`get()` only) shared by consumers, React Context, and adapter integrations; `SecuritydeptInjector` is the SDK facade that owns provider resolution, parent inheritance, explicit overrides, and side-effect-free `has()` checks without exposing raw injection-js runtime types as the canonical public shape. The subpath also re-exports typed `inject()` / `runInInjectionContext()` helpers and the Angular-style `SecuritydeptDestroyRef` lifecycle token for framework adapters such as React hosts.",
-					"evidence": [
-						"packages/client/src/injection/__tests__/injector.test.ts",
-						"packages/client/src/environment/__tests__/workspace-contract.test.ts",
-						"../../apps/webui/src/App.tsx",
-						"../../apps/webui/src/routes/Login.tsx"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Unified Dependency Injection"
-					}
-				},
-				{
 					"exportKey": "./rx",
 					"stability": "provisional",
 					"owner": "foundation",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Canonical framework-neutral RxJS bridge for SecurityDept event streams and signals. Exposes `toRxObservable(source)` for EventStreamTrait, ReadableSignalTrait, and ReadableReplaySignalTrait, plus `fromRxObservable(observable)` for the reverse bridge. Replay signals do not emit initial empty slots and replay only the last emitted value to late subscribers. `@securitydept/client/events` remains the event/operator surface; `@securitydept/client-angular` keeps Angular-native writable-signal bridging only.",
+					"note": "Canonical framework-neutral RxJS bridge for SecurityDept event streams and signals. Exposes `toRxObservable(source)` for EventStreamTrait, ReadableSignalTrait, and ReadableReplaySignalTrait, plus `fromRxObservable(observable)` for the reverse bridge. Replay signals do not emit initial empty slots and replay only the last emitted value to late subscribers. `@securitydept/client` remains the event/operator surface; `@securitydept/client-angular` keeps Angular-native writable-signal bridging only.",
 					"evidence": [
 						"packages/client/src/rx/__tests__/rx.test.ts",
 						"examples/angular-integration-adapter.test.ts",
@@ -166,36 +103,6 @@
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Shared Client Lifecycle Contract"
-					}
-				},
-				{
-					"exportKey": "./struct",
-					"stability": "provisional",
-					"owner": "foundation",
-					"changeDiscipline": "provisional-migration-required",
-					"note": "Foundation shared structural utilities for SDK internals and advanced adapters. OnDemandTaskQueue owns the reusable async on-demand FIFO runner used by token-set auth-check scheduling so family packages do not reimplement queue fields, run-loop state, or pending-task rejection semantics.",
-					"evidence": [
-						"packages/client/src/struct/__tests__/task-queue.test.ts",
-						"packages/token-set-context-client/src/orchestration/client/__tests__/base-oidc-mode-client-auth-signals.test.ts"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Shared Client Lifecycle Contract"
-					}
-				},
-				{
-					"exportKey": "./web-router",
-					"stability": "provisional",
-					"owner": "foundation",
-					"changeDiscipline": "provisional-migration-required",
-					"note": "Owns the raw Web router/security baseline. Navigation API first with History API + popstate fallback. Pre-commit intercept wires PlannerHost requirement evaluation into both backends so non-framework (Web Components / Lit / vanilla) adopters have a canonical router/security path aligned with Angular and TanStack Router.",
-					"evidence": [
-						"examples/web-router-navigation-api.test.ts",
-						"examples/web-router-history-fallback.test.ts"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Raw Web Router Baseline"
 					}
 				}
 			]
@@ -427,11 +334,11 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Token-set-specific orchestration layer: auth-transport, base-client, auth-check trigger event sources, persistence, token-ops, types. Auth-check sources are pure EventStream producers; client-owned dispatcher/gateway code submits events into the auth-check runner. RequirementPlanner and RouteRequirementOrchestrator are hosted by @securitydept/client/auth-coordination. AuthPrincipal aligns to the shared AuthenticatedPrincipal baseline while keeping resource-token facts and substrate ownership outside this human-principal contract.",
+					"note": "Token-set-specific orchestration layer: auth-transport, base-client, auth-check trigger event sources, persistence, token-ops, types. Auth-check sources are pure EventStream producers; client-owned dispatcher/gateway code submits events into the auth-check runner. RequirementPlanner and RouteRequirementOrchestrator are hosted by @securitydept/client. AuthPrincipal aligns to the shared AuthenticatedPrincipal baseline while keeping resource-token facts and substrate ownership outside this human-principal contract.",
 					"evidence": [
-						"examples/token-orchestration-subpath.test.ts",
-						"examples/token-orchestration-contract.test.ts",
-						"examples/auth-material-controller-contract.test.ts"
+						"packages/token-set-context-client/src/orchestration/client/__tests__/base-oidc-mode-client-auth-signals.test.ts",
+						"packages/token-set-context-client/src/orchestration/__tests__/workflow-sources.test.ts",
+						"packages/token-set-context-client/src/orchestration/__tests__/token-ops.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -547,7 +454,7 @@
 						"examples/angular-integration-adapter.test.ts",
 						"packages/session-context-client-angular/src/lib/__tests__/service.test.ts"
 					],
-					"note": "The Angular session adapter is environment-first at the composition root: provideSessionContext({ config, environment }) reads externalTransport and sessionStorage from one flattened FoundationEnvironment instead of exposing transport/sessionStorage as the canonical provider shape. SessionContextService bridges SessionContextController, exposes state via Angular signal/Observable helpers, and makes initial user-info probing explicit through initialRefresh or service.refresh(). Low-level access still stays on SessionContextService.client; Angular DI remains the composition root and service methods consume the registered controller wiring instead of accepting a second foundation environment API.",
+					"note": "The Angular session adapter is environment-first at the composition root: provideSessionContext({ config, environment }) reads transport and sessionStorage from one flattened FoundationEnvironment instead of exposing transport/sessionStorage as the canonical provider shape. SessionContextService bridges SessionContextController, exposes state via Angular signal/Observable helpers, and makes initial user-info probing explicit through initialRefresh or service.refresh(). Low-level access still stays on SessionContextService.client; Angular DI remains the composition root and service methods consume the registered controller wiring instead of accepting a second foundation environment API.",
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Angular entry: thin DI wrappers preserve canonical owner boundaries"

@@ -4,8 +4,8 @@ import {
 	type ReadableSignalTrait,
 	readonlySignal,
 } from "@securitydept/client";
-import type { SessionContextClient } from "./client";
-import type { SessionInfo } from "./types";
+import { type SessionContextClient } from "./client";
+import { type SessionInfo } from "./types";
 
 export const SessionContextControllerStatus = {
 	Idle: "idle",

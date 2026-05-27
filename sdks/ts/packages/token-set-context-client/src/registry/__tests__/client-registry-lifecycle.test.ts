@@ -1,13 +1,15 @@
 import {
-	createSubject,
+	createEventSubject,
+	createFoundationEnvironment,
 	type FoundationEnvironment,
 	type ReadableReplaySignalTrait,
 } from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
 import { ClientReadinessState } from "../../frontend-oidc-mode/config/config-source";
-import type { TokenSetAuthEvent } from "../../orchestration";
+import { type TokenSetAuthEvent } from "../../orchestration";
 import {
 	ClientInitializationPriority,
+	type TokenSetAuthRegistryEvent,
 	TokenSetAuthRegistryLifecycleError,
 	TokenSetAuthRegistryLifecycleErrorCode,
 } from "../contracts/types";
@@ -18,13 +20,13 @@ import {
 
 interface FakeClient {
 	readonly name: string;
-	authEvents: ReturnType<typeof createSubject<TokenSetAuthEvent>>;
+	authEvents: ReturnType<typeof createEventSubject<TokenSetAuthEvent>>;
 	dispose: () => void;
 }
 
 interface FakeService {
 	readonly client: FakeClient;
-	readonly authEvents: ReturnType<typeof createSubject<TokenSetAuthEvent>>;
+	readonly authEvents: ReturnType<typeof createEventSubject<TokenSetAuthEvent>>;
 	disposed: boolean;
 	disposeCount: number;
 }
@@ -34,7 +36,7 @@ const TEST_IDLE_CALLBACK = {
 	cancelIdleCallback: (handle: unknown) =>
 		clearTimeout(handle as ReturnType<typeof setTimeout>),
 };
-const TEST_ENVIRONMENT: FoundationEnvironment = {
+const TEST_ENVIRONMENT: FoundationEnvironment = createFoundationEnvironment({
 	transport: { execute: async () => ({ status: 204, headers: {} }) },
 	time: {
 		now: () => Date.now(),
@@ -43,7 +45,7 @@ const TEST_ENVIRONMENT: FoundationEnvironment = {
 			clearTimeout(handle as ReturnType<typeof setTimeout>),
 	},
 	idleCallback: TEST_IDLE_CALLBACK,
-};
+});
 
 function createDeferred<T>() {
 	let resolve!: (value: T | PromiseLike<T>) => void;
@@ -58,7 +60,7 @@ function createDeferred<T>() {
 function createClient(name: string): FakeClient {
 	return {
 		name,
-		authEvents: createSubject<TokenSetAuthEvent>(),
+		authEvents: createEventSubject<TokenSetAuthEvent>(),
 		dispose: vi.fn<() => void>(() => undefined),
 	};
 }
@@ -161,9 +163,10 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 		expect(first.client.name).toBe("first");
 
 		registry.resetMaterialization("lazy");
-		expect(signal.hasValue()).toBe(false);
+		const refreshedSignal = registry.clientSignalFor("lazy");
+		expect(refreshedSignal).not.toBe(signal);
 
-		const secondPromise = signal.whenValue();
+		const secondPromise = refreshedSignal.whenValue();
 		await registry.whenReady("lazy");
 		const second = await secondPromise;
 		expect(second.client.name).toBe("second");
@@ -173,7 +176,7 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 
 	it("unregister() disposes ready services, drops indexes, stops auth events, and allows re-register", () => {
 		const registry = createRegistry();
-		const events: TokenSetAuthEvent[] = [];
+		const events: TokenSetAuthRegistryEvent[] = [];
 		registry.authEvents.subscribe({ next: (event) => events.push(event) });
 
 		const service = registry.register({
@@ -212,7 +215,7 @@ describe("TokenSetAuthRegistry lifecycle", () => {
 			type: "auth.authenticated",
 			at: 1,
 			source: { kind: "framework", name: "vitest" },
-			payload: { outcome: "authenticated" },
+			payload: {},
 		});
 		expect(events).toEqual([]);
 

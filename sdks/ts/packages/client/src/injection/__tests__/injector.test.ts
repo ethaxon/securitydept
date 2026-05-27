@@ -1,7 +1,9 @@
 import { ReflectiveInjector } from "injection-js";
-import { describe, expect, expectTypeOf, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+	createProviderIfTokenMissing,
 	createSecuritydeptDestroyRef,
+	INJECTOR_TOKEN,
 	inject,
 	runInInjectionContext,
 	type SecuritydeptDependencyToken,
@@ -18,9 +20,6 @@ const LOGGER_TOKEN = new SecuritydeptInjectionToken<Logger>("LOGGER_TOKEN");
 const FACTORY_TOKEN = new SecuritydeptInjectionToken<string>("FACTORY_TOKEN");
 const ALIAS_TOKEN = new SecuritydeptInjectionToken<string>("ALIAS_TOKEN");
 const OPTIONAL_TOKEN = new SecuritydeptInjectionToken<string>("OPTIONAL_TOKEN");
-const SIDE_EFFECT_TOKEN = new SecuritydeptInjectionToken<string>(
-	"SIDE_EFFECT_TOKEN",
-);
 
 class Logger {
 	constructor(
@@ -36,6 +35,12 @@ describe("SecuritydeptInjector", () => {
 		]);
 
 		expect(injector.get(MESSAGE_TOKEN)).toBe("hello");
+	});
+
+	it("provides INJECTOR_TOKEN as the concrete SecuritydeptInjector instance", () => {
+		const injector = SecuritydeptInjector.resolveAndCreate([]);
+
+		expect(injector.get(INJECTOR_TOKEN)).toBe(injector);
 	});
 
 	it("resolves class providers with explicit deps", () => {
@@ -138,37 +143,6 @@ describe("SecuritydeptInjector", () => {
 		expect(() => injector.get(OPTIONAL_TOKEN)).toThrowError(
 			"[SecuritydeptInjector] No provider found for Token OPTIONAL_TOKEN.",
 		);
-	});
-
-	it("tracks has() for child, parent, and unknown tokens without instantiating providers", () => {
-		let sideEffects = 0;
-		const parent = SecuritydeptInjector.resolveAndCreate([
-			{ provide: MESSAGE_TOKEN, useValue: "parent" },
-		]);
-		const child = SecuritydeptInjector.fromParentInjector(parent, [
-			{
-				provide: SIDE_EFFECT_TOKEN,
-				useFactory: () => {
-					sideEffects += 1;
-					return "created";
-				},
-			},
-		]);
-
-		expect(child.has(SIDE_EFFECT_TOKEN)).toBe(true);
-		expect(child.has(MESSAGE_TOKEN)).toBe(true);
-		expect(child.has(OPTIONAL_TOKEN)).toBe(false);
-		expect(sideEffects).toBe(0);
-	});
-
-	it("keeps has() out of the minimal trait contract", () => {
-		type TraitHasHas = SecuritydeptInjectorTrait extends {
-			has: (...args: never[]) => unknown;
-		}
-			? true
-			: false;
-
-		expectTypeOf<TraitHasHas>().toEqualTypeOf<false>();
 	});
 
 	it("supports injection-js compatible inject() inside runInInjectionContext()", () => {
@@ -277,5 +251,36 @@ describe("SecuritydeptInjector", () => {
 		expect(destroyRef.destroyed).toBe(true);
 		expect(callback).not.toHaveBeenCalled();
 		expect(trigger).toHaveBeenCalledTimes(1);
+	});
+
+	it("creates providers only when the token is missing", () => {
+		const createProvider = vi.fn(() => ({
+			provide: MESSAGE_TOKEN,
+			useValue: "created",
+		}));
+
+		expect(
+			createProviderIfTokenMissing(new Set(), MESSAGE_TOKEN, createProvider),
+		).toEqual({
+			provide: MESSAGE_TOKEN,
+			useValue: "created",
+		});
+		expect(createProvider).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not create providers when the token already exists", () => {
+		const createProvider = vi.fn(() => ({
+			provide: MESSAGE_TOKEN,
+			useValue: "created",
+		}));
+
+		expect(
+			createProviderIfTokenMissing(
+				new Set([MESSAGE_TOKEN]),
+				MESSAGE_TOKEN,
+				createProvider,
+			),
+		).toBeNull();
+		expect(createProvider).not.toHaveBeenCalled();
 	});
 });

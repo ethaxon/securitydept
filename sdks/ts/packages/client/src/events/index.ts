@@ -1,3 +1,5 @@
+export type { AbortSignalStdSource } from "../std/events";
+export { abortSignalToEventStream } from "../std/events";
 export {
 	createEmptyEventStream,
 	createEventReplaySubject,

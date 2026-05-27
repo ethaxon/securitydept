@@ -1,5 +1,6 @@
-import { createEventStream, SYMBOL_OBSERVABLE } from "..";
-import type { ComputedSignalTrait, ReadableSignalTrait } from "./types";
+import { Observable, Subject } from "rxjs";
+import { SYMBOL_OBSERVABLE } from "../compat";
+import { type ComputedSignalTrait, type ReadableSignalTrait } from "./types";
 
 /**
  * Create a computed signal that derives its value from other signals.
@@ -18,14 +19,12 @@ export function createComputed<T>(
 ): ComputedSignalTrait<T> {
 	let cached: T | undefined;
 	let dirty = true;
-	const listeners = new Set<() => void>();
+	const changes = new Subject<void>();
 
 	const markDirty = () => {
 		if (!dirty) {
 			dirty = true;
-			for (const listener of listeners) {
-				listener();
-			}
+			changes.next();
 		}
 	};
 
@@ -43,23 +42,25 @@ export function createComputed<T>(
 			return cached as T;
 		},
 		subscribe(listener: () => void): () => void {
-			listeners.add(listener);
+			const subscription = changes.subscribe(() => {
+				listener();
+			});
 			return () => {
-				listeners.delete(listener);
+				subscription.unsubscribe();
 			};
 		},
 	};
 
 	return Object.assign(signal, {
 		[SYMBOL_OBSERVABLE]() {
-			return createEventStream((observer) => {
-				observer.next(signal.get());
+			return new Observable<T>((subscriber) => {
+				subscriber.next(signal.get());
 				const unsubscribe = signal.subscribe(() => {
-					observer.next(signal.get());
+					subscriber.next(signal.get());
 				});
 				return () => {
 					unsubscribe();
-					observer.complete();
+					subscriber.complete();
 				};
 			});
 		},

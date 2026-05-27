@@ -1,7 +1,7 @@
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { Save, Users } from "lucide-react";
-import type { Group } from "@/api/groups";
+import { type Group } from "@/api/groups";
 import { AuthModeNotice } from "@/components/auth/AuthModeNotice";
 import {
 	useDashboardAccessNotice,

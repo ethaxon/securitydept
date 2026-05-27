@@ -1,5 +1,5 @@
 import { InjectionToken, type Provider } from "@angular/core";
-import type { NativeWebEnvironment } from "@securitydept/client/web";
+import { type NativeWebEnvironment } from "@securitydept/client/web";
 
 export type NativeWebEnvironmentValue = NativeWebEnvironment;
 

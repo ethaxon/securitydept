@@ -1,9 +1,9 @@
-import type {
-	ExternalTransportTrait,
-	HttpRequest,
-	HttpResponse,
+import {
+	createInMemoryRecordStore,
+	type ExternalTransportTrait,
+	type HttpRequest,
+	type HttpResponse,
 } from "@securitydept/client";
-import { createInMemoryRecordStore } from "@securitydept/client";
 import {
 	SessionContextClient,
 	SessionContextController,

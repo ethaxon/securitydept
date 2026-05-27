@@ -16,8 +16,10 @@
 //   /orchestration          — token lifecycle management (controller, planner)
 //   /backend-oidc-mode      — backend-oidc specific client + contracts
 
-import type { AccessTokenSubstrateIntegrationInfo } from "@securitydept/token-set-context-client/access-token-substrate";
-import { TokenPropagation } from "@securitydept/token-set-context-client/access-token-substrate";
+import {
+	type AccessTokenSubstrateIntegrationInfo,
+	TokenPropagation,
+} from "@securitydept/token-set-context-client/access-token-substrate";
 import { describe, expect, it } from "vitest";
 
 describe("access-token-substrate minimal entry", () => {

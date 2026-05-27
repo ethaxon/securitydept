@@ -15,13 +15,13 @@
 
 import {
 	type AuthenticatedPrincipal,
-	createSchema,
 	validateWithSchemaSync,
 } from "@securitydept/client";
-import type {
-	FrontendOidcModeClientConfig,
-	FrontendOidcModeTokenResult,
-} from "../runtime/types";
+import { type StandardSchemaV1 } from "@standard-schema/spec";
+import {
+	type FrontendOidcModeClientConfig,
+	type FrontendOidcModeTokenResult,
+} from "../client/types";
 
 // ---------------------------------------------------------------------------
 // Claims check script (aligned with Rust FrontendOidcModeClaimsCheckScript)
@@ -291,8 +291,13 @@ function validateStringArrayField(
  * Validates required fields (`clientId`, `redirectUrl`) and checks
  * structural correctness of the configuration projection.
  */
-export const FrontendOidcModeConfigProjectionSchema =
-	createSchema<FrontendOidcModeConfigProjection>({
+export const FrontendOidcModeConfigProjectionSchema: StandardSchemaV1<
+	unknown,
+	FrontendOidcModeConfigProjection
+> = {
+	"~standard": {
+		version: 1,
+		vendor: "securitydept-token-set-context-client",
 		validate(input: unknown) {
 			if (typeof input !== "object" || input === null) {
 				return {
@@ -434,7 +439,8 @@ export const FrontendOidcModeConfigProjectionSchema =
 
 			return { value: projection };
 		},
-	});
+	},
+};
 
 /**
  * Validate raw input against `FrontendOidcModeConfigProjectionSchema`.

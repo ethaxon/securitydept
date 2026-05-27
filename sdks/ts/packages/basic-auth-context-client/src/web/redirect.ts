@@ -1,7 +1,5 @@
-import type { RouterTrait } from "@securitydept/client";
-import { assertResolveEnvironment } from "@securitydept/client/web";
-import type { AuthGuardResult } from "../types";
-import { AuthGuardResultKind } from "../types";
+import { type RouterTrait } from "@securitydept/client";
+import { type AuthGuardResult, AuthGuardResultKind } from "../types";
 
 const BASIC_AUTH_PAGE_ENVIRONMENT_ERROR_MESSAGE =
 	"basic-auth browser redirect helpers require an explicit page environment.\n" +
@@ -19,10 +17,7 @@ export async function performRedirect(
 	options: PerformRedirectOptions = {},
 ): Promise<void> {
 	if (result.kind === AuthGuardResultKind.Redirect) {
-		const environment = assertResolveEnvironment(
-			options.environment,
-			failMissingPageEnvironment,
-		);
+		const environment = options.environment ?? failMissingPageEnvironment();
 		await environment.navigate({
 			url: result.location,
 			intent: "auth_redirect",

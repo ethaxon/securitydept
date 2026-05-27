@@ -1,7 +1,7 @@
 // --- Signal trait types ---
 
-import type { CancellationTokenTrait } from "../cancellation/types";
-import type { InteropObservableTrait } from "../compat";
+import { type CancellationTokenTrait } from "../cancellation/types";
+import { type InteropObservableTrait } from "../compat";
 
 /**
  * Read-only signal interface.

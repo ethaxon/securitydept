@@ -7,11 +7,14 @@
 // frontend-oidc-mode?" in one glance — without needing to read the
 // oidc-client-wrapper-contract comparison notes.
 
-import { createInMemoryRecordStore } from "@securitydept/client";
-import type { FrontendOidcModeClientConfig } from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import {
+	createFoundationEnvironment,
+	createInMemoryRecordStore,
+} from "@securitydept/client";
 import {
 	createFrontendOidcModeClient,
 	FrontendOidcModeClient,
+	type FrontendOidcModeClientConfig,
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { describe, expect, it } from "vitest";
 
@@ -28,7 +31,7 @@ function expectReplayValue<T>(signal: {
 
 // Minimal runtime stubs — just enough to construct a client.
 // In a real app, these come from the @securitydept/client runtime layer.
-const minimalRuntime = {
+const minimalRuntime = createFoundationEnvironment({
 	transport: {
 		async execute() {
 			return { status: 500, headers: {}, body: null };
@@ -45,7 +48,7 @@ const minimalRuntime = {
 	},
 	persistentStorage: createInMemoryRecordStore(),
 	sessionStorage: createInMemoryRecordStore(),
-};
+});
 
 // Minimal OIDC config — enough to construct the client without discovery.
 // In a real app, issuer/clientId/redirectUri come from app config or
