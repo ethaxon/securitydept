@@ -4,6 +4,7 @@ import {
 	createEventSubject,
 	createReplaySignal,
 	createSignal,
+	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
@@ -103,6 +104,7 @@ describe("token-set react-query helpers", () => {
 		const authDetermined = createReplaySignal<true>();
 		authDetermined.setValue(true);
 		const lastAuthError = createSignal<unknown | undefined>(undefined);
+		const dispose = vi.fn();
 		const providers = [
 			provideTokenSetAuthRegistry({
 				clients: [
@@ -127,12 +129,14 @@ describe("token-set react-query helpers", () => {
 							})),
 							removeWorkflowSource: vi.fn(() => false),
 							start: vi.fn(async () => undefined),
-							dispose: vi.fn(),
+							dispose,
+							[SYMBOL_DISPOSE]: dispose,
 							restorePersistedState: vi.fn(async () => snapshot),
 							handleCallback: vi.fn(async () => ({ snapshot })),
 							refresh: vi.fn(async () => snapshot),
 							clearState: vi.fn(async () => {}),
 							loginWithRedirect: vi.fn(async () => undefined),
+							loginWithPopup: vi.fn(async () => ({ snapshot })),
 						}),
 					},
 				],

@@ -21,15 +21,11 @@ import {
 	NATIVE_WEB_ENVIRONMENT,
 	type NativeWebEnvironmentValue,
 } from "@securitydept/client-angular";
-import {
-	type OidcRedirectLoginClient,
-	type OidcRedirectLoginOptions,
-} from "@securitydept/token-set-context-client/registry";
+import { type OidcRedirectLoginOptions } from "@securitydept/token-set-context-client/orchestration";
 import { firstValueFrom, from, switchMap, take } from "rxjs";
 import { type TokenSetAngularClient } from "./contracts";
 import { type UnauthenticatedEntry } from "./guard-types";
 import {
-	type ClientMeta,
 	type ClientQueryOptions,
 	TokenSetAuthRegistry,
 } from "./token-set-auth.registry";
@@ -128,7 +124,7 @@ export interface TokenSetRequirementPolicy {
 	 * Override the default kind→client registry lookup for this requirement.
 	 *
 	 * When omitted, the guard resolves clients via
-	 * `registry.clientKeyListForRequirement(requirement.kind)`.
+	 * `registry.clientRecordGenForQuery({ requirementKind })`.
 	 */
 	selector?: TokenSetClientSelector;
 
@@ -267,7 +263,7 @@ export interface CreateTokenSetRouteAggregationGuardOptions {
  * **Client resolution order** for a requirement:
  * 1. `requirementPolicies[requirement.id].selector.clientKey` — single explicit key
  * 2. `requirementPolicies[requirement.id].selector.query` — composite query
- * 3. `registry.clientKeyListForRequirement(requirement.kind)` — default mapping
+ * 3. `registry.clientRecordGenForQuery({ requirementKind })` — default mapping
  *
  * This model enables:
  *   - One-pass requirement collection (no per-segment DI scope accumulation)
@@ -380,37 +376,49 @@ export function createTokenSetRouteAggregationGuard(
 		const resolvedRequirements: ResolvedRequirementEntry[] = [];
 		for (const req of allRequirements) {
 			const policy = options.requirementPolicies?.[req.id];
-			let clientKeys: string[];
+			let clientRecords: ReturnType<TokenSetAuthRegistry["clientRecordFor"]>[];
 
 			if (policy?.selector) {
 				if (policy.selector.clientKey) {
-					clientKeys = [policy.selector.clientKey];
+					const record = registry.clientRecordOptionFor(
+						policy.selector.clientKey,
+					);
+					clientRecords = record ? [record] : [];
 				} else if (policy.selector.query) {
-					clientKeys = registry.clientKeysForOptions(policy.selector.query);
+					clientRecords = [
+						...registry.clientRecordGenForQuery(policy.selector.query),
+					];
 				} else {
-					clientKeys = [];
+					clientRecords = [];
 				}
 			} else {
 				// Default: resolve by requirement kind.
-				clientKeys = registry.clientKeyListForRequirement(req.kind);
+				clientRecords = [
+					...registry.clientRecordGenForQuery({
+						requirementKind: req.kind,
+					}),
+				];
 			}
 
-			if (clientKeys.length === 0) {
+			if (clientRecords.length === 0) {
 				// Unmapped requirement: leave it unresolved so other requirements can
 				// coexist in the same route chain without breaking the guard.
 				continue;
 			}
 
 			const entries: UnauthenticatedEntry[] = await Promise.all(
-				clientKeys.map(async (key) => ({
-					// Use whenReady() — not require() — so that if the client's
-					// async clientFactory is still in-flight when the guard first
-					// fires, we block here until it materializes rather than
-					// crashing or silently bypassing auth.
-					client: await registry.whenReady(key),
-					clientKey: key,
-					meta: registry.metaFor(key) as ClientMeta,
-				})),
+				clientRecords.map(async (recordSignal) => {
+					const record = recordSignal.get();
+					return {
+						// Use initialize() — not a synchronous read — so that if the client's
+						// async clientFactory is still in-flight when the guard first
+						// fires, we block here until it materializes rather than
+						// crashing or silently bypassing auth.
+						client: await registry.initialize(record.meta.clientKey),
+						clientKey: record.meta.clientKey,
+						meta: record.meta,
+					};
+				}),
 			);
 
 			resolvedRequirements.push({ requirement: req, entries });
@@ -449,7 +457,9 @@ export function createTokenSetRouteAggregationGuard(
 					options.requirementHandlers?.[resolvedRequirement.requirement.kind] ??
 					options.defaultOnUnauthenticated;
 
-				if (!handler) return false;
+				if (!handler) {
+					return false;
+				}
 
 				const result = runUnauthenticatedHandlerInContext(
 					injector,
@@ -459,8 +469,12 @@ export function createTokenSetRouteAggregationGuard(
 					handlerContext,
 				);
 				const resolved = await result;
-				if (typeof resolved === "string") return resolved;
-				if (typeof resolved === "boolean") return resolved;
+				if (typeof resolved === "string") {
+					return resolved;
+				}
+				if (typeof resolved === "boolean") {
+					return resolved;
+				}
 				return resolved.toString();
 			},
 			_resolved: resolvedRequirement,
@@ -470,7 +484,9 @@ export function createTokenSetRouteAggregationGuard(
 		const decide = async (): Promise<boolean | UrlTree> => {
 			const result = await plannerHost.evaluate(candidates);
 
-			if (result.allAuthenticated) return true;
+			if (result.allAuthenticated) {
+				return true;
+			}
 
 			if (result.pendingCandidate) {
 				const candidate = result.pendingCandidate as AuthGuardClientOption & {
@@ -486,7 +502,9 @@ export function createTokenSetRouteAggregationGuard(
 					options.requirementHandlers?.[candidate._resolved.requirement.kind] ??
 					options.defaultOnUnauthenticated;
 
-				if (!handler) return false;
+				if (!handler) {
+					return false;
+				}
 
 				const action = await runUnauthenticatedHandlerInContext(
 					injector,
@@ -495,8 +513,12 @@ export function createTokenSetRouteAggregationGuard(
 					candidate._resolved.requirement,
 					handlerContext,
 				);
-				if (typeof action === "string") return router.parseUrl(action);
-				if (typeof action === "boolean") return action;
+				if (typeof action === "string") {
+					return router.parseUrl(action);
+				}
+				if (typeof action === "boolean") {
+					return action;
+				}
 				return action;
 			}
 
@@ -542,8 +564,12 @@ function readAuthenticationChannel(source: {
 			"kind" in value &&
 			(value.kind === "empty" || value.kind === "value")
 		) {
-			if (value.kind === "empty") return false;
-			if (!("value" in value)) return false;
+			if (value.kind === "empty") {
+				return false;
+			}
+			if (!("value" in value)) {
+				return false;
+			}
 			return Boolean(value.value);
 		}
 		return Boolean(value);
@@ -563,8 +589,12 @@ function readClientAuthentication(
 async function waitForInitialAuthDetermination(
 	client: TokenSetAngularClient,
 ): Promise<void> {
-	if (client.authDetermined.hasValue()) return;
-	if (!client.authOperations.restorePending.get()) return;
+	if (client.authDetermined.hasValue()) {
+		return;
+	}
+	if (!client.authOperations.restorePending.get()) {
+		return;
+	}
 	await client.authDetermined.whenValue();
 }
 
@@ -620,16 +650,17 @@ export function createTokenSetOidcLoginRedirectHandler(
 ): TokenSetRouteUnauthenticatedHandler {
 	return async (unauthenticated, _requirement, context) => {
 		const clientKey = options?.clientKey ?? unauthenticated[0]?.clientKey;
-		if (!clientKey) return false;
-		const environment = resolveOidcRouteEnvironment(options?.environment);
+		if (!clientKey) {
+			return false;
+		}
+		resolveOidcRouteEnvironment(options?.environment);
 
 		const registry = inject(TokenSetAuthRegistry);
-		const client = await registry.whenReady(clientKey);
+		const client = await registry.initialize(clientKey);
 		if (!isLoginWithRedirectClient(client)) {
 			failMissingOidcRedirectLoginCapability(clientKey);
 		}
 		await client.loginWithRedirect({
-			environment,
 			postAuthRedirectUri:
 				context.attemptedUrl || options?.fallbackPostAuthRedirectUri || "/",
 		});
@@ -647,12 +678,14 @@ function resolveOidcRouteEnvironment(
 	environmentOverride:
 		| CreateTokenSetOidcLoginRedirectHandlerOptions["environment"]
 		| undefined,
-): OidcRedirectLoginOptions["environment"] {
+): void {
 	const environment =
 		environmentOverride ??
 		inject(NATIVE_WEB_ENVIRONMENT, { optional: true }) ??
 		failMissingOidcRouteEnvironment();
-	return environment.router;
+	if (!environment.router) {
+		failMissingOidcRouteEnvironment();
+	}
 }
 
 function failMissingOidcRouteEnvironment(): never {
@@ -665,13 +698,13 @@ function failMissingOidcRouteEnvironment(): never {
 
 function failMissingOidcRedirectLoginCapability(clientKey: string): never {
 	throw new Error(
-		`createTokenSetOidcLoginRedirectHandler requires client key "${clientKey}" to implement OidcRedirectLoginClient.loginWithRedirect(options).`,
+		`createTokenSetOidcLoginRedirectHandler requires client key "${clientKey}" to implement loginWithRedirect(options).`,
 	);
 }
 
-function isLoginWithRedirectClient(
-	client: unknown,
-): client is OidcRedirectLoginClient {
+function isLoginWithRedirectClient(client: unknown): client is {
+	loginWithRedirect(options?: OidcRedirectLoginOptions): Promise<void>;
+} {
 	return (
 		typeof client === "object" &&
 		client !== null &&

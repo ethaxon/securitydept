@@ -142,7 +142,9 @@ const securedBeforeLoad = createSecureBeforeLoad({
 		throw redirect(opts);
 	},
 	checkAuthenticated: (req: AuthRequirement) => {
-		if (req.kind === "dashboard") return dashboardAuthenticated;
+		if (req.kind === "dashboard") {
+			return dashboardAuthenticated;
+		}
 		return false;
 	},
 	// /login is the stable primary entry for unauthenticated users.
@@ -578,12 +580,6 @@ export function App() {
 
 	useEffect(() => {
 		void sessionController.refresh().catch(() => {});
-		const tokenSetRegistry = rootInjector.get(TOKEN_SET_AUTH_REGISTRY);
-		const cancelWarmup = tokenSetRegistry.idleWarmup();
-
-		return () => {
-			cancelWarmup?.();
-		};
 	}, [rootInjector, sessionController]);
 
 	return (

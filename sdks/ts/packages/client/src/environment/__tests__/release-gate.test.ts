@@ -73,7 +73,9 @@ function loadInventory(): Inventory {
  * like `#### 4. SSR / ...` gracefully.
  */
 function hasHeading(filePath: string, heading: string): boolean {
-	if (!fs.existsSync(filePath)) return false;
+	if (!fs.existsSync(filePath)) {
+		return false;
+	}
 	const lines = fs.readFileSync(filePath, "utf8").split("\n");
 	return lines.some((line) => /^#{1,6}\s/.test(line) && line.includes(heading));
 }
@@ -217,7 +219,9 @@ describe("release-gate: public-surface inventory validation", () => {
 
 		for (const pkg of inventory.packages) {
 			for (const subpath of pkg.subpaths) {
-				if (!subpath.docsAnchor) continue;
+				if (!subpath.docsAnchor) {
+					continue;
+				}
 
 				const absPath = path.join(docsRoot, "en", subpath.docsAnchor.file);
 				if (!fs.existsSync(absPath)) {
@@ -243,7 +247,9 @@ describe("release-gate: public-surface inventory validation", () => {
 
 		for (const pkg of inventory.packages) {
 			for (const subpath of pkg.subpaths) {
-				if (!subpath.docsAnchor) continue;
+				if (!subpath.docsAnchor) {
+					continue;
+				}
 
 				const zhPath = path.join(docsRoot, "zh", subpath.docsAnchor.file);
 				if (!fs.existsSync(zhPath)) {
@@ -263,13 +269,19 @@ describe("release-gate: public-surface inventory validation", () => {
 
 		for (const pkg of inventory.packages) {
 			for (const subpath of pkg.subpaths) {
-				if (!subpath.docsAnchor) continue;
-				if (checkedFiles.has(subpath.docsAnchor.file)) continue;
+				if (!subpath.docsAnchor) {
+					continue;
+				}
+				if (checkedFiles.has(subpath.docsAnchor.file)) {
+					continue;
+				}
 				checkedFiles.add(subpath.docsAnchor.file);
 
 				const enPath = path.join(docsRoot, "en", subpath.docsAnchor.file);
 				const zhPath = path.join(docsRoot, "zh", subpath.docsAnchor.file);
-				if (!fs.existsSync(enPath) || !fs.existsSync(zhPath)) continue;
+				if (!fs.existsSync(enPath) || !fs.existsSync(zhPath)) {
+					continue;
+				}
 
 				const enHeadings = countHeadings(enPath);
 				const zhHeadings = countHeadings(zhPath);
@@ -331,7 +343,9 @@ describe("release-gate: public-surface inventory validation", () => {
 				);
 				const match = content.match(pattern);
 
-				if (!match) continue; // Not in the stability table — skip.
+				if (!match) {
+					continue; // Not in the stability table — skip.
+				}
 
 				const docsStability = match[1];
 				if (docsStability !== subpath.stability) {
@@ -350,7 +364,9 @@ describe("release-gate: public-surface inventory validation", () => {
 
 		for (const pkg of inventory.packages) {
 			for (const subpath of pkg.subpaths) {
-				if (subpath.stability === "experimental") continue;
+				if (subpath.stability === "experimental") {
+					continue;
+				}
 				if (subpath.evidence.length === 0) {
 					lacking.push(
 						`${pkg.name} ${subpath.exportKey}: non-experimental subpath has no evidence`,
@@ -367,7 +383,9 @@ describe("release-gate: public-surface inventory validation", () => {
 
 		for (const pkg of inventory.packages) {
 			for (const subpath of pkg.subpaths) {
-				if (subpath.stability === "experimental") continue;
+				if (subpath.stability === "experimental") {
+					continue;
+				}
 				if (!subpath.docsAnchor) {
 					lacking.push(
 						`${pkg.name} ${subpath.exportKey}: non-experimental subpath has no docs anchor`,

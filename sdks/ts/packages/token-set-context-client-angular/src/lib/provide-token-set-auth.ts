@@ -21,17 +21,6 @@ export interface ProvideTokenSetAuthOptions {
 	 * owns host registration, readiness wiring, and lifecycle.
 	 */
 	clients: TokenSetClientEntry[];
-	/**
-	 * When true (default), schedule `registry.idleWarmup()` during Angular
-	 * environment initialization so `priority: "lazy"` clients get
-	 * preloaded in the browser's idle callback.
-	 *
-	 * Disable for tests that want deterministic, manual materialization
-	 * control.
-	 *
-	 * @default true
-	 */
-	idleWarmup?: boolean;
 }
 
 /**
@@ -46,17 +35,17 @@ export interface ProvideTokenSetAuthOptions {
  * When a client's `clientFactory` returns a `Promise` (e.g. because it
  * needs to fetch a config projection from a backend endpoint), the
  * registry tracks its initialization state automatically. Guards and
- * interceptors should use `registry.whenReady(key)` to await
+ * interceptors should use `registry.initialize(key)` to await
  * materialization before accessing the client.
  *
  * The Angular registry does not patch clients with browser lifecycle triggers.
  * Configure page-resume auth checks when constructing the client, using
- * `authCheck.triggerSources.pageResume`.
+ * `refresh.sources.pageResume`.
  *
  * @example
  * ```ts
  * import { provideTokenSetAuth } from "@securitydept/token-set-context-client-angular";
- * import { resolveConfigProjection, networkConfigSource, createFrontendOidcModeClient }
+ * import { resolveConfigProjection, networkConfigSource, FrontendOidcModeClient }
  *   from "@securitydept/token-set-context-client/frontend-oidc-mode";
  *
  * export const appConfig = {
@@ -73,7 +62,7 @@ export interface ProvideTokenSetAuthOptions {
  *                 redirectUri: `${location.origin}/auth/callback`,
  *               }),
  *             ]);
- *             return createFrontendOidcModeClient(resolved.config, runtime);
+ *             return new FrontendOidcModeClient(resolved.config, runtime);
  *           },
  *           urlPatterns: ["/api/"],
  *           callbackPath: "/auth/callback",
@@ -96,18 +85,11 @@ export function provideTokenSetAuth(
 		// Eagerly register all client entries during environment initialization.
 		// provideEnvironmentInitializer runs in injection context, so inject() works.
 		// Note: async clientFactories create promises that the registry tracks;
-		// the initializer does not block Angular bootstrap on them (guards/interceptors
-		// use registry.whenReady() instead).
+		// the initializer does not block Angular bootstrap on them.
 		provideEnvironmentInitializer(() => {
 			const registry = inject(TokenSetAuthRegistry);
 			for (const entry of options.clients) {
 				registry.register(entry);
-			}
-			if (options.idleWarmup !== false) {
-				// Kick off idle-time preload for any lazy clients. The cancel
-				// handle is intentionally discarded — teardown happens through
-				// the registry's own DestroyRef binding at dispose time.
-				registry.idleWarmup();
 			}
 		}),
 		// Token for direct registry access.

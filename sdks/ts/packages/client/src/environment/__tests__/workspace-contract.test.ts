@@ -68,12 +68,10 @@ const CONTRACTS: PackageContract[] = [
 		name: "@securitydept/token-set-context-client",
 		exportKeys: [
 			"./backend-oidc-mode",
-			"./backend-oidc-mode/web",
 			"./frontend-oidc-mode",
 			"./orchestration",
 			"./access-token-substrate",
 			"./registry",
-			"./web-router",
 		],
 		hasReactPeer: false,
 		experimental: false,

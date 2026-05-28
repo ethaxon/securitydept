@@ -1,35 +1,15 @@
-import { BehaviorSubject, skip } from "rxjs";
+import { BehaviorSubject } from "rxjs";
 import { isInteropObservableTrait, SYMBOL_OBSERVABLE } from "../compat";
+import { behaviorSubjectToSignal } from "../rx/interop";
 import { type ReadableSignalTrait, type WritableSignalTrait } from "./types";
 
 /**
  * Minimal writable signal implementation.
- * Snapshot-first: values are immutable snapshots, mutations go through `set()`.
+ * `set()` always publishes a write. Equality-based suppression belongs in
+ * higher-level operators, not in the base signal primitive.
  */
 export function createSignal<T>(initial: T): WritableSignalTrait<T> {
-	const current = new BehaviorSubject(initial);
-	const changes = current.pipe(skip(1));
-
-	return {
-		get() {
-			return current.getValue();
-		},
-		set(value: T) {
-			if (Object.is(current.getValue(), value)) {
-				return;
-			}
-			current.next(value);
-		},
-		subscribe(listener: () => void): () => void {
-			const subscription = changes.subscribe(() => {
-				listener();
-			});
-			return () => subscription.unsubscribe();
-		},
-		[SYMBOL_OBSERVABLE]() {
-			return current.asObservable();
-		},
-	};
+	return behaviorSubjectToSignal(() => new BehaviorSubject(initial));
 }
 
 /**

@@ -1,21 +1,18 @@
 import { DestroyRef, Injectable, inject } from "@angular/core";
 import {
 	type EventStreamTrait,
-	type FoundationEnvironment,
 	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
 } from "@securitydept/client";
-import { type ClientReadinessState } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
-	type ClientFilter,
-	type ClientKeySelector,
-	type ClientMeta,
+	ClientInitializationMode,
 	type ClientQueryOptions,
-	type TokenSetAuthRegistry as CoreTokenSetAuthRegistry,
-	type TokenSetClientEntry as CoreTokenSetClientEntry,
-	createTokenSetOidcAuthRegistry,
-	type TokenSetAuthRegistryEvent,
-	type TokenSetAuthRegistryState,
+	type ClientRecord,
+	type ClientRecordView,
+	type ClientRegistryEvent,
+	type ClientRegistry as CoreClientRegistry,
+	type ClientRegistryEntry as CoreClientRegistryEntry,
+	createClientRegistry,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	type TokenSetAngularClient,
@@ -26,23 +23,21 @@ import {
 // @securitydept/token-set-context-client-angular keep working.
 export type {
 	ClientFilter,
-	ClientKeySelector,
 	ClientMeta,
 	ClientQueryOptions,
+	ClientSelector,
 } from "@securitydept/token-set-context-client/registry";
-export { ClientInitializationPriority } from "@securitydept/token-set-context-client/registry";
+export { ClientInitializationMode } from "@securitydept/token-set-context-client/registry";
 
 // ============================================================================
 // TokenSetAuthRegistry — thin Angular DI wrapper around the framework-neutral
-// core at @securitydept/token-set-context-client/registry
+// ClientRegistry core at @securitydept/token-set-context-client/registry.
 //
-// The Angular registry delegates multi-client state to a
-// `createTokenSetOidcAuthRegistry()` core and
+// The Angular registry delegates client lifecycle state to ClientRegistry and
 // supplies Angular-idiomatic glue:
 //   - Injectable scope (root or provider-level)
-//   - DestroyRef-bound dispose (envelopes `coreRegistry.dispose()`)
-//   - register() wraps raw clientFactory with Angular resume reconciliation
-//   - The materialized object is the mode client itself
+//   - DestroyRef-bound dispose
+//   - TokenSetAngularClient registration helpers
 // ============================================================================
 
 type AngularClient = TokenSetAngularClient;
@@ -55,14 +50,18 @@ export class TokenSetAuthRegistry {
 	 * (`CallbackResumeService`, `bearer-interceptor`) can query the core
 	 * directly when they don't need Angular-specific behaviour.
 	 */
-	readonly core: CoreTokenSetAuthRegistry<AngularClient, AngularClient>;
-	readonly authEvents: EventStreamTrait<TokenSetAuthRegistryEvent>;
-	readonly state: ReadableSignalTrait<TokenSetAuthRegistryState<AngularClient>>;
+	readonly core: CoreClientRegistry<AngularClient>;
+	readonly events: EventStreamTrait<ClientRegistryEvent<AngularClient>>;
+	readonly entries: ReadableSignalTrait<
+		readonly ClientRecordView<AngularClient>[]
+	>;
 
 	constructor() {
-		this.core = createTokenSetOidcAuthRegistry<AngularClient>();
-		this.authEvents = this.core.authEvents;
-		this.state = this.core.state;
+		this.core = createClientRegistry<AngularClient>({
+			environment: {},
+		});
+		this.events = this.core.events;
+		this.entries = this.core.entries;
 		// Try to bind core.dispose() to the current injection context's
 		// DestroyRef. Registry is typically constructed via DI (where this
 		// always succeeds); pure unit tests instantiate directly and must
@@ -83,29 +82,8 @@ export class TokenSetAuthRegistry {
 	 * required — the registry pulls its own `DestroyRef` via injection and
 	 * binds teardown once per Angular scope.
 	 */
-	register(
-		entry: TokenSetClientEntry & {
-			priority?: "primary" | "lazy";
-			clientFactory: (
-				environment: FoundationEnvironment | undefined,
-			) => AngularClient;
-		},
-	): AngularClient;
-	register(
-		entry: TokenSetClientEntry & {
-			priority?: "primary" | "lazy";
-			clientFactory: (
-				environment: FoundationEnvironment | undefined,
-			) => Promise<AngularClient>;
-		},
-	): Promise<AngularClient>;
-	register(
-		entry: TokenSetClientEntry,
-	): AngularClient | Promise<AngularClient> | undefined;
-	register(
-		entry: TokenSetClientEntry,
-	): AngularClient | Promise<AngularClient> | undefined {
-		return this.core.register(this.toCoreEntry(entry));
+	register(entry: TokenSetClientEntry): void {
+		this.core.register(this.toCoreEntry(entry));
 	}
 
 	/**
@@ -122,33 +100,8 @@ export class TokenSetAuthRegistry {
 	// Pass-through API for the earlier wrapper surface
 	// --------------------------------------------------------------------------
 
-	isReady(key: string): boolean {
-		return this.core.isReady(key);
-	}
-
-	readinessState(key: string): ClientReadinessState {
-		return this.core.readinessState(key);
-	}
-
-	async whenReady(key?: string): Promise<AngularClient> {
-		return this.core.whenReady(key);
-	}
-
-	/**
-	 * Preload a lazy client without throwing on rejection. Callers are
-	 * expected to attach `.catch` handlers for fire-and-forget usage.
-	 */
-	preload(key: string): Promise<AngularClient> {
-		return this.core.preload(key);
-	}
-
-	/**
-	 * Schedule preload for every lazy+not-initialized client using
-	 * the core registry's explicit idle callback capability. If no idle
-	 * capability was configured, this is a no-op.
-	 */
-	idleWarmup(): () => void {
-		return this.core.idleWarmup();
+	async initialize(key: string): Promise<AngularClient> {
+		return this.core.initialize(key);
 	}
 
 	has(key: string): boolean {
@@ -159,132 +112,72 @@ export class TokenSetAuthRegistry {
 		return this.core.unregister(key);
 	}
 
-	resetMaterialization(key: string): boolean {
-		return this.core.resetMaterialization(key);
-	}
-
-	metaFor(clientKey: string): ClientMeta | undefined {
-		return this.core.metaFor(clientKey);
-	}
-
-	clientSignalFor(key?: string): ReadableReplaySignalTrait<AngularClient> {
+	clientSignalFor(key: string): ReadableReplaySignalTrait<AngularClient> {
 		return this.core.clientSignalFor(key);
 	}
 
-	readyKeys(): string[] {
-		return this.core.readyKeys();
+	clientRecordFor(
+		key: string,
+	): ReadableSignalTrait<ClientRecord<AngularClient>> {
+		return this.core.clientRecordFor(key);
 	}
 
-	registeredKeys(): string[] {
-		return this.core.registeredKeys();
-	}
-
-	registeredEntriesSnapshot(): Array<[string, TokenSetClientEntry]> {
-		return this.core.registeredEntriesSnapshot() as Array<
-			[string, TokenSetClientEntry]
-		>;
-	}
-
-	registeredMetaSnapshot(): ClientMeta[] {
-		return this.core.registeredMetaSnapshot();
+	clientRecordOptionFor(
+		key: string,
+	): ReadableSignalTrait<ClientRecord<AngularClient>> | undefined {
+		return this.core.clientRecordOptionFor(key);
 	}
 
 	// ---- URL / callback / requirement / provider-family discrimination -----
 
-	*clientKeyGenForUrl(url: string): Generator<string, void, unknown> {
-		yield* this.core.clientKeyGenForUrl(url);
+	*clientRecordGenForQuery(
+		query: ClientQueryOptions,
+	): Generator<
+		ReadableSignalTrait<ClientRecord<AngularClient>>,
+		void,
+		unknown
+	> {
+		yield* this.core.clientRecordGenForQuery(query);
 	}
 
-	*clientKeyGenForCallback(url: string): Generator<string, void, unknown> {
-		yield* this.core.clientKeyGenForCallback(url);
+	clientRecordForQuery(
+		query: ClientQueryOptions,
+	): ReadableSignalTrait<ClientRecord<AngularClient>> | undefined {
+		return this.core.clientRecordForQuery(query);
 	}
 
-	*clientKeyGenForRequirement(
-		requirementKind: string,
-	): Generator<string, void, unknown> {
-		yield* this.core.clientKeyGenForRequirement(requirementKind);
+	*clientSignalGenForQuery(
+		query: ClientQueryOptions,
+	): Generator<ReadableReplaySignalTrait<AngularClient>, void, unknown> {
+		yield* this.core.clientSignalGenForQuery(query);
 	}
 
-	*clientKeyGenForProviderFamily(
-		providerFamily: string,
-	): Generator<string, void, unknown> {
-		yield* this.core.clientKeyGenForProviderFamily(providerFamily);
-	}
-
-	clientKeyListForUrl(url: string): string[] {
-		return this.core.clientKeyListForUrl(url);
-	}
-
-	clientKeyListForCallback(url: string): string[] {
-		return this.core.clientKeyListForCallback(url);
-	}
-
-	clientKeyListForRequirement(requirementKind: string): string[] {
-		return this.core.clientKeyListForRequirement(requirementKind);
-	}
-
-	clientKeyListForProviderFamily(providerFamily: string): string[] {
-		return this.core.clientKeyListForProviderFamily(providerFamily);
-	}
-
-	clientKeyForUrl(
-		url: string,
-		selector?: ClientKeySelector,
-	): string | undefined {
-		return this.core.clientKeyForUrl(url, selector);
-	}
-
-	clientKeyForCallback(
-		url: string,
-		selector?: ClientKeySelector,
-	): string | undefined {
-		return this.core.clientKeyForCallback(url, selector);
-	}
-
-	clientKeyForRequirement(
-		requirementKind: string,
-		selector?: ClientKeySelector,
-	): string | undefined {
-		return this.core.clientKeyForRequirement(requirementKind, selector);
-	}
-
-	clientKeyForProviderFamily(
-		providerFamily: string,
-		selector?: ClientKeySelector,
-	): string | undefined {
-		return this.core.clientKeyForProviderFamily(providerFamily, selector);
-	}
-
-	*clientKeyGenForFilter(
-		filter: ClientFilter,
-	): Generator<string, void, unknown> {
-		yield* this.core.clientKeyGenForFilter(filter);
-	}
-
-	*clientKeyGenForOptions(
-		options: ClientQueryOptions,
-	): Generator<string, void, unknown> {
-		yield* this.core.clientKeyGenForOptions(options);
-	}
-
-	clientKeysForOptions(options: ClientQueryOptions): string[] {
-		return this.core.clientKeysForOptions(options);
+	clientSignalForQuery(
+		query: ClientQueryOptions,
+	): ReadableReplaySignalTrait<AngularClient> | undefined {
+		return this.core.clientSignalForQuery(query);
 	}
 
 	private toCoreEntry(
 		entry: TokenSetClientEntry,
-	): CoreTokenSetClientEntry<AngularClient> {
+	): CoreClientRegistryEntry<AngularClient> {
 		return {
-			...entry,
-			clientFactory: (environment) =>
-				this.materializeClient(entry, environment),
+			clientFactory: () => this.materializeClient(entry),
+			meta: {
+				clientKey: entry.key,
+				urlPatterns: entry.urlPatterns ?? [],
+				callbackPath: entry.callbackPath,
+				requirementKind: entry.requirementKind,
+				providerFamily: entry.providerFamily,
+				initialization:
+					entry.initialization ?? ClientInitializationMode.Immediate,
+			},
 		};
 	}
 
 	private materializeClient(
 		entry: TokenSetClientEntry,
-		environment: FoundationEnvironment | undefined,
 	): AngularClient | Promise<AngularClient> {
-		return entry.clientFactory(environment);
+		return entry.clientFactory();
 	}
 }

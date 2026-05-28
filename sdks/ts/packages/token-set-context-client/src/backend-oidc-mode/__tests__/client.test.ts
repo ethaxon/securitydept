@@ -20,10 +20,15 @@ import {
 	TokenSetAuthEventType,
 } from "../../orchestration";
 import { BackendOidcModeClient } from "../client/client";
+import {
+	BackendOidcModeComposedTraceEventType,
+	BackendOidcModeOperationEventName,
+	BackendOidcModeTraceOperationName,
+} from "../client/trace-events";
 
 const BASE_URL = "https://api.example.com";
 const DEFAULT_PERSISTENCE_KEY =
-	"securitydept.backend_oidc:v1:https://api.example.com";
+	BackendOidcModeClient.resolveDefaultPersistenceKey(BASE_URL);
 
 function expectReplayValue<T>(signal: ReadableReplaySignalTrait<T>): T {
 	const slot = signal.get();
@@ -32,6 +37,15 @@ function expectReplayValue<T>(signal: ReadableReplaySignalTrait<T>): T {
 		throw new Error("Expected replay signal value.");
 	}
 	return slot.value;
+}
+
+function callbackParameters(fragment: string): Record<string, string> {
+	const parameters = new URLSearchParams(fragment);
+	const result: Record<string, string> = {};
+	parameters.forEach((value, key) => {
+		result[key] = value;
+	});
+	return result;
 }
 
 class TestTime {
@@ -260,7 +274,10 @@ describe("BackendOidcModeClient", () => {
 		});
 		const { runtime } = createTestRuntime(transport);
 		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL, refreshWindowMs: 0 },
+			{
+				baseUrl: BASE_URL,
+				refresh: { tokenFreshness: { refreshWindowMs: 0 } },
+			},
 			runtime,
 		);
 		const events: TokenSetAuthEvent[] = [];
@@ -405,7 +422,9 @@ describe("BackendOidcModeClient", () => {
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
 
 		const snapshot = await client.handleCallback(
-			"access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-12-31T00%3A00%3A00Z&metadata_redemption_id=meta-1",
+			callbackParameters(
+				"access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&access_token_expires_at=2026-12-31T00%3A00%3A00Z&metadata_redemption_id=meta-1",
+			),
 		);
 		const raw = await persistentStorage.get(DEFAULT_PERSISTENCE_KEY);
 
@@ -497,7 +516,7 @@ describe("BackendOidcModeClient", () => {
 		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 		expect(await persistentStorage.get(DEFAULT_PERSISTENCE_KEY)).toBeNull();
 		expect(trace.events.map((event) => event.name)).toContain(
-			"backend_oidc.restore.persisted.failed",
+			BackendOidcModeComposedTraceEventType.PersistedRestoreFailed,
 		);
 	});
 
@@ -688,16 +707,27 @@ describe("BackendOidcModeClient", () => {
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
 
 		await client.handleCallback(
-			"access_token=trace-at&id_token=trace-idt&refresh_token=trace-rt&expires_at=2026-12-31T00%3A00%3A00Z&metadata_redemption_id=meta-trace",
+			callbackParameters(
+				"access_token=trace-at&id_token=trace-idt&refresh_token=trace-rt&access_token_expires_at=2026-12-31T00%3A00%3A00Z&metadata_redemption_id=meta-trace",
+			),
 		);
 
 		expect(trace.events.map((event) => event.name)).toEqual(
 			expect.arrayContaining([
-				"backend_oidc.callback.started",
-				"backend_oidc.metadata_redemption.started",
-				"backend_oidc.metadata_redemption.succeeded",
-				"backend_oidc.refreshTimer.scheduled",
-				"backend_oidc.callback.succeeded",
+				OperationTraceEventType.Started,
+				OperationTraceEventType.Event,
+				BackendOidcModeComposedTraceEventType.RefreshTimerScheduled,
+				OperationTraceEventType.Ended,
+			]),
+		);
+		expect(
+			trace.events
+				.filter((event) => event.name === OperationTraceEventType.Event)
+				.map((event) => event.fields?.eventName),
+		).toEqual(
+			expect.arrayContaining([
+				BackendOidcModeOperationEventName.MetadataRedemptionStarted,
+				BackendOidcModeOperationEventName.MetadataRedemptionSucceeded,
 			]),
 		);
 	});
@@ -736,7 +766,7 @@ describe("BackendOidcModeClient", () => {
 		const client = new BackendOidcModeClient(
 			{
 				baseUrl: BASE_URL,
-				refreshWindowMs: 60_000,
+				refresh: { tokenFreshness: { refreshWindowMs: 60_000 } },
 			},
 			runtime,
 		);
@@ -756,8 +786,8 @@ describe("BackendOidcModeClient", () => {
 
 		expect(trace.events.map((event) => event.name)).toEqual(
 			expect.arrayContaining([
-				"backend_oidc.state.restored",
-				"backend_oidc.refreshTimer.fired",
+				BackendOidcModeComposedTraceEventType.StateRestored,
+				BackendOidcModeComposedTraceEventType.RefreshTimerFired,
 			]),
 		);
 	});
@@ -794,7 +824,13 @@ describe("BackendOidcModeClient", () => {
 
 		await client.refreshState();
 
-		const taskStarted = trace.ofType("backend_oidc.refresh.started")[0];
+		const taskStarted = trace
+			.ofType(OperationTraceEventType.Started)
+			.find(
+				(event) =>
+					event.fields?.operationName ===
+					BackendOidcModeTraceOperationName.Refresh,
+			);
 		expect(taskStarted?.span?.id).toBeTruthy();
 		expect(taskStarted?.span?.parent?.id).toBeTruthy();
 	});
@@ -825,29 +861,52 @@ describe("BackendOidcModeClient", () => {
 		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
 
 		await client.handleCallback(
-			"access_token=trace-at&id_token=trace-idt&refresh_token=trace-rt&expires_at=2026-12-31T00%3A00%3A00Z&metadata_redemption_id=meta-op",
+			callbackParameters(
+				"access_token=trace-at&id_token=trace-idt&refresh_token=trace-rt&access_token_expires_at=2026-12-31T00%3A00%3A00Z&metadata_redemption_id=meta-op",
+			),
 		);
 
-		const callbackStarted = trace.ofType("backend_oidc.callback.started")[0];
+		const callbackStarted = trace
+			.ofType(OperationTraceEventType.Started)
+			.find(
+				(event) =>
+					event.fields?.operationName ===
+					BackendOidcModeTraceOperationName.Callback,
+			);
 		const operationSpanId = callbackStarted?.span?.id;
 
 		expect(operationSpanId).toBeTruthy();
 		expect(
-			trace.ofType("backend_oidc.metadata_redemption.started")[0]?.span?.id,
+			trace
+				.ofType(OperationTraceEventType.Event)
+				.find(
+					(event) =>
+						event.fields?.eventName ===
+						BackendOidcModeOperationEventName.MetadataRedemptionStarted,
+				)?.span?.id,
 		).toBe(operationSpanId);
-		expect(trace.ofType("backend_oidc.callback.succeeded")[0]?.span?.id).toBe(
-			operationSpanId,
-		);
+		expect(
+			trace
+				.ofType(OperationTraceEventType.Ended)
+				.find(
+					(event) =>
+						event.fields?.operationName ===
+							BackendOidcModeTraceOperationName.Callback &&
+						event.fields?.outcome === "succeeded",
+				)?.span?.id,
+		).toBe(operationSpanId);
 		expect(
 			trace.assertOperationLifecycle(operationSpanId!, [
 				OperationTraceEventType.Started,
+				OperationTraceEventType.Event,
+				OperationTraceEventType.Event,
 				OperationTraceEventType.Ended,
 			]),
 		).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
 					fields: expect.objectContaining({
-						operationName: "backend_oidc.callback",
+						operationName: BackendOidcModeTraceOperationName.Callback,
 						flow: "callback.fragment",
 					}),
 				}),
@@ -878,23 +937,38 @@ describe("BackendOidcModeClient", () => {
 			},
 		});
 
-		const callbackStarted = trace.ofType("backend_oidc.callback.started")[0];
+		const callbackStarted = trace
+			.ofType(OperationTraceEventType.Started)
+			.find(
+				(event) =>
+					event.fields?.operationName ===
+					BackendOidcModeTraceOperationName.Callback,
+			);
 		const operationSpanId = callbackStarted?.span?.id;
 
 		expect(operationSpanId).toBeTruthy();
-		expect(trace.ofType("backend_oidc.callback.succeeded")[0]?.span?.id).toBe(
-			operationSpanId,
-		);
+		expect(
+			trace
+				.ofType(OperationTraceEventType.Ended)
+				.find(
+					(event) =>
+						event.fields?.operationName ===
+							BackendOidcModeTraceOperationName.Callback &&
+						event.fields?.outcome === "succeeded",
+				)?.span?.id,
+		).toBe(operationSpanId);
 		expect(
 			trace.assertOperationLifecycle(operationSpanId!, [
 				OperationTraceEventType.Started,
+				OperationTraceEventType.Event,
+				OperationTraceEventType.Event,
 				OperationTraceEventType.Ended,
 			]),
 		).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
 					fields: expect.objectContaining({
-						operationName: "backend_oidc.callback",
+						operationName: BackendOidcModeTraceOperationName.Callback,
 						flow: "callback.body",
 					}),
 				}),
@@ -936,7 +1010,7 @@ describe("BackendOidcModeClient", () => {
 		const client = new BackendOidcModeClient(
 			{
 				baseUrl: BASE_URL,
-				refreshWindowMs: 60_000,
+				refresh: { tokenFreshness: { refreshWindowMs: 60_000 } },
 			},
 			runtime,
 		);
@@ -952,16 +1026,35 @@ describe("BackendOidcModeClient", () => {
 
 		await client.refreshState();
 
-		const refreshStarted = trace.ofType("backend_oidc.refresh.started")[0];
+		const refreshStarted = trace
+			.ofType(OperationTraceEventType.Started)
+			.find(
+				(event) =>
+					event.fields?.operationName ===
+					BackendOidcModeTraceOperationName.Refresh,
+			);
 		const operationSpanId = refreshStarted?.span?.id;
 
 		expect(operationSpanId).toBeTruthy();
 		expect(
-			trace.ofType("backend_oidc.metadata_redemption.started")[0]?.span?.id,
+			trace
+				.ofType(OperationTraceEventType.Event)
+				.find(
+					(event) =>
+						event.fields?.eventName ===
+						BackendOidcModeOperationEventName.MetadataRedemptionStarted,
+				)?.span?.id,
 		).toBe(operationSpanId);
-		expect(trace.ofType("backend_oidc.refresh.succeeded")[0]?.span?.id).toBe(
-			operationSpanId,
-		);
+		expect(
+			trace
+				.ofType(OperationTraceEventType.Ended)
+				.find(
+					(event) =>
+						event.fields?.operationName ===
+							BackendOidcModeTraceOperationName.Refresh &&
+						event.fields?.outcome === "succeeded",
+				)?.span?.id,
+		).toBe(operationSpanId);
 		expect(
 			trace.assertOperationLifecycle(operationSpanId!, [
 				OperationTraceEventType.Started,
@@ -971,7 +1064,7 @@ describe("BackendOidcModeClient", () => {
 			expect.arrayContaining([
 				expect.objectContaining({
 					fields: expect.objectContaining({
-						operationName: "backend_oidc.refresh",
+						operationName: BackendOidcModeTraceOperationName.Refresh,
 					}),
 				}),
 			]),

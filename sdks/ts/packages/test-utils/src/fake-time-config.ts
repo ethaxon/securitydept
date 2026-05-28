@@ -39,8 +39,12 @@ export class FakeTimeConfig extends FakeClock implements TimeTrait {
 
 		for (const task of ready) {
 			const index = this._tasks.indexOf(task);
-			if (index !== -1) this._tasks.splice(index, 1);
-			if (!task.cancelled) task.fn();
+			if (index !== -1) {
+				this._tasks.splice(index, 1);
+			}
+			if (!task.cancelled) {
+				task.fn();
+			}
 		}
 	}
 

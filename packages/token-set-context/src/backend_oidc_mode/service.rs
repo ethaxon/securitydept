@@ -1,5 +1,6 @@
 use securitydept_oidc_client::{OidcClient, OidcCodeCallbackSearchParams, PendingOauthStore};
 use securitydept_utils::{
+    compat_fragment::append_or_replace_compat_fragment,
     http::HttpResponse,
     observability::{
         AuthFlowDiagnosis, AuthFlowDiagnosisField, AuthFlowDiagnosisOutcome, AuthFlowOperation,
@@ -282,8 +283,8 @@ where
         }
     }
 
-    /// Handle the OIDC code callback and redirect with the token set in
-    /// the URL fragment.
+    /// Handle the OIDC code callback and redirect with the token set in a
+    /// securitydept compat fragment.
     ///
     /// When `post_auth_redirect_policy = resolved`, the redirect URI is
     /// supplied by the runtime's resolver. When `caller_validated`, the
@@ -302,7 +303,7 @@ where
             caller_post_auth_redirect_uri,
         )?;
         let mut url = redirect_url.clone();
-        url.set_fragment(Some(&qs));
+        append_or_replace_compat_fragment(&mut url, &qs);
         Ok(HttpResponse::found(url.as_str()))
     }
 
@@ -388,7 +389,8 @@ where
             .await
     }
 
-    /// Refresh tokens and redirect with the delta in the URL fragment.
+    /// Refresh tokens and redirect with the delta in a securitydept compat
+    /// fragment.
     ///
     /// Suitable for browser navigation flows. For programmatic/silent refresh
     /// via `fetch()`, use [`refresh_body_return`](Self::refresh_body_return).
@@ -406,7 +408,7 @@ where
             caller_post_auth_redirect_uri,
         )?;
         let mut url = redirect_url.clone();
-        url.set_fragment(Some(&qs));
+        append_or_replace_compat_fragment(&mut url, &qs);
         Ok(HttpResponse::found(url.as_str()))
     }
 

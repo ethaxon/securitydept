@@ -18,6 +18,10 @@
 				"noExplicitAny": "off"
 			},
 			"style": {
+				"useBlockStatements": {
+					"level": "error",
+					"fix": "safe"
+				},
 				"useImportType": {
 					"level": "error",
 					"options": {

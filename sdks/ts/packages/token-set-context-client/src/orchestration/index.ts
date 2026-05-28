@@ -28,7 +28,14 @@ export { describeError } from "@securitydept/client";
 export { BaseOidcModeClient, PersistPolicy } from "./client/base-client";
 // Base client: shared lifecycle infrastructure for mode-specific clients.
 export type {
+	BaseOidcModeClientDefaultOptions,
 	BaseOidcModeClientOptions,
+	OidcAuthorizedTransportOptions,
+	OidcAuthorizedTransportProvider,
+	OidcModeClientConfigBase,
+	OidcPopupLoginOptions,
+	OidcPopupLoginResult,
+	OidcRedirectLoginOptions,
 	TokenSetAuthOperationSignals,
 } from "./client/types";
 export { StateRestoreSourceKind } from "./client/types";
@@ -49,6 +56,8 @@ export type {
 	TokenSetAuthEvent,
 	TokenSetAuthEventPayload,
 	TokenSetAuthEventPayloadBase,
+	TokenSetAuthEventPayloadBuilder,
+	TokenSetAuthEventPayloadInput,
 	TokenSetAuthRefreshEventPayload,
 } from "./events/auth-events";
 export {
@@ -56,29 +65,8 @@ export {
 	summarizeAuthError,
 	TokenSetAuthEventType,
 } from "./events/auth-events";
-export type {
-	CreateTokenSetPersistenceEventOptions,
-	TokenSetPersistenceEvent,
-	TokenSetPersistenceEventPayload,
-} from "./events/persistence-events";
-export {
-	createTokenSetPersistenceEvent,
-	TokenSetPersistenceAction,
-	TokenSetPersistenceEventType,
-	TokenSetPersistenceReason,
-} from "./events/persistence-events";
 export * from "./token/freshness";
 export { mergeTokenDelta } from "./token/ops";
-export type {
-	CreateTokenHandleStoreOptions,
-	IssueTokenHandleOptions,
-	TokenHandleDescriptor,
-	TokenHandleStore,
-} from "./token/token-handle-store";
-export {
-	createTokenHandleStore,
-	TokenHandleKind,
-} from "./token/token-handle-store";
 export type {
 	AuthDelta,
 	AuthMetadataDelta,

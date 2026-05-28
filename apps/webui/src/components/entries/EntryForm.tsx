@@ -56,7 +56,9 @@ export function EntryForm({ mode, entry, initial }: EntryFormProps) {
 		},
 		onSubmit: async ({ value }) => {
 			if (isEdit) {
-				if (!entry) return;
+				if (!entry) {
+					return;
+				}
 				await updateEntry.mutateAsync({
 					id: entry.id,
 					name: value.name,

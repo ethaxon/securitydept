@@ -1,5 +1,6 @@
 import { type as defineType } from "arktype";
 import { describe, expect, it } from "vitest";
+import { SYMBOL_DISPOSE } from "../../compat";
 import { createFoundationEnvironment } from "../../environment/create";
 import { createRootSpan } from "../../span";
 import { createTracing } from "../create";
@@ -75,6 +76,40 @@ describe("createTracing", () => {
 		]);
 	});
 
+	it("disposes automatically wired subscribers", () => {
+		const recorded: TracingEvent[] = [];
+		const tracing = createTracing({
+			subscribers: [
+				{
+					record(event: TracingEvent) {
+						recorded.push(event);
+					},
+				},
+			],
+		});
+		const span = createRootSpan({ idFactory: () => "dispose_span" });
+
+		tracing.record({
+			name: "operation.started",
+			at: 1,
+			target: "test",
+			level: TracingLevel.Info,
+			span,
+		});
+		tracing[SYMBOL_DISPOSE]();
+		tracing.record({
+			name: "operation.ended",
+			at: 2,
+			target: "test",
+			level: TracingLevel.Info,
+			span,
+		});
+
+		expect(recorded).toEqual([
+			expect.objectContaining({ name: "operation.started" }),
+		]);
+	});
+
 	it("uses caller-provided validators for tracing constructor options", () => {
 		expect(() =>
 			createTracing({
@@ -115,6 +150,55 @@ function createRecordingEnvironment(events: TracingEvent[]) {
 }
 
 describe("runOperation", () => {
+	it("uses the parent span id factory by default", () => {
+		const events: TracingEvent[] = [];
+		let nextId = 0;
+		const environment = createFoundationEnvironment({
+			transport: {
+				async execute() {
+					throw new Error("unexpected transport call");
+				},
+			},
+			span: createRootSpan({
+				idFactory() {
+					nextId += 1;
+					return `span_${nextId.toString()}`;
+				},
+			}),
+			tracing: createTracing({
+				subscribers: [
+					{
+						record(event: TracingEvent) {
+							events.push(event);
+						},
+					},
+				],
+			}),
+			time: {
+				now: () => Date.parse("2026-01-01T00:00:00Z"),
+				setTimeout() {
+					throw new Error(
+						"createRecordingEnvironment.setTimeout() is not used.",
+					);
+				},
+				clearTimeout() {},
+			},
+		});
+
+		runOperation({
+			environment,
+			span: environment.span,
+			name: "frontend_oidc.default_id",
+			target: "frontend-oidc-mode",
+			execute: () => undefined,
+		});
+
+		expect(events[0]?.span).toMatchObject({
+			id: "span_2",
+			parent: expect.objectContaining({ id: "span_1" }),
+		});
+	});
+
 	it("records lifecycle events on one forked operation span", () => {
 		const events: TracingEvent[] = [];
 		const environment = createRecordingEnvironment(events);
@@ -127,7 +211,7 @@ describe("runOperation", () => {
 			fields: { flow: "callback" },
 			idFactory: () => "op_fixed",
 			execute: (span) => {
-				span.setAttribute("mode", "frontend");
+				span.setAttributes({ mode: "frontend" });
 				span.addEvent("pending.state.loaded", { state: "s1" });
 				span.recordError(new Error("boom"), { phase: "exchange" });
 			},

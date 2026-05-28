@@ -4,6 +4,7 @@ import {
 	createEventSubject,
 	createReplaySignal,
 	createSignal,
+	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
@@ -14,7 +15,11 @@ import {
 	type AuthSnapshot,
 	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
-import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
+import {
+	ClientInitializationMode,
+	type ClientRegistryEntry as CoreClientRegistryEntry,
+	createClientRegistry,
+} from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
 	provideTokenSetCallbackResumeController,
@@ -58,16 +63,32 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 function createManualRegistry(
 	clients: readonly TokenSetClientEntry[],
 ): ReactRegistry {
-	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>();
+	const registry = createClientRegistry<TokenSetReactClient>({
+		environment: {},
+	});
 
 	for (const client of clients) {
-		const registration = registry.register(client);
-		if (registration instanceof Promise) {
-			registration.catch(() => {});
-		}
+		registry.register(toCoreEntry(client));
 	}
 
 	return registry;
+}
+
+function toCoreEntry(
+	entry: TokenSetClientEntry,
+): CoreClientRegistryEntry<TokenSetReactClient> {
+	return {
+		clientFactory: entry.clientFactory,
+		meta: {
+			clientKey: entry.key,
+			urlPatterns: entry.urlPatterns ?? [],
+			callbackPath: entry.callbackPath,
+			requirementKind: entry.requirementKind,
+			providerFamily: entry.providerFamily,
+			initialization:
+				entry.initialization ?? ClientInitializationMode.Immediate,
+		},
+	};
 }
 
 describe("token-set injector factories", () => {
@@ -107,11 +128,15 @@ describe("token-set injector factories", () => {
 					removeWorkflowSource: () => false,
 					start: async () => undefined,
 					dispose: () => state.set(null),
+					[SYMBOL_DISPOSE]: () => state.set(null),
 					restorePersistedState: async () => state.get(),
 					handleCallback: async () => ({
 						snapshot: createSnapshot("main-at"),
 					}),
 					loginWithRedirect: async () => undefined,
+					loginWithPopup: async () => ({
+						snapshot: createSnapshot("main-at"),
+					}),
 				}),
 			},
 		]);
@@ -131,7 +156,7 @@ describe("token-set injector factories", () => {
 			return createElement(
 				"output",
 				null,
-				`${snapshot?.tokens.accessToken ?? "empty"}:${controller.state.get().status}`,
+				`${snapshot?.tokens.accessToken ?? "empty"}:${controller.state.get().state}`,
 			);
 		}
 

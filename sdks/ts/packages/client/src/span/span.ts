@@ -6,22 +6,28 @@ import {
 	type WithTraitInputValidator,
 } from "../validation";
 import {
+	type MutableSpanCreateOptions,
+	type MutableSpanTrait,
 	type SpanCreateOptions,
 	SpanCreateOptionsSchema,
 	type SpanTrait,
 } from "./types";
 
 function createDefaultSpanId(): string {
-	return uuidv7();
+	return `span_${uuidv7()}`;
 }
 
-class DefaultSpan implements SpanTrait {
+class DefaultSpan implements MutableSpanTrait {
 	readonly id: string;
 	readonly parent: SpanTrait | undefined;
-	readonly attributes: Readonly<Record<string, unknown>>;
-	private readonly _idFactory: () => string;
+	protected _attributes: Readonly<Record<string, unknown>>;
+	protected readonly _idFactory: () => string;
 
-	private constructor(
+	get attributes() {
+		return this._attributes;
+	}
+
+	protected constructor(
 		parent: SpanTrait | undefined,
 		idFactory: () => string,
 		attributes: Readonly<Record<string, unknown>>,
@@ -29,7 +35,7 @@ class DefaultSpan implements SpanTrait {
 		this._idFactory = idFactory;
 		this.id = idFactory();
 		this.parent = parent;
-		this.attributes = attributes;
+		this._attributes = attributes;
 	}
 
 	static root(options: SpanCreateOptions = {}): SpanTrait {
@@ -40,12 +46,20 @@ class DefaultSpan implements SpanTrait {
 		);
 	}
 
-	fork(options: SpanCreateOptions = {}): SpanTrait {
+	fork(options: MutableSpanCreateOptions): MutableSpanTrait;
+	fork(options?: SpanCreateOptions): SpanTrait;
+	fork(
+		options: SpanCreateOptions | MutableSpanCreateOptions = {},
+	): SpanTrait | MutableSpanTrait {
 		return new DefaultSpan(
 			this,
 			options.idFactory ?? this._idFactory,
-			Object.freeze({ ...(options.attributes ?? {}) }),
+			Object.freeze({ ...options.attributes }),
 		);
+	}
+
+	setAttributes(attributes: Record<string, unknown>): void {
+		this._attributes = Object.freeze({ ...this._attributes, ...attributes });
 	}
 }
 

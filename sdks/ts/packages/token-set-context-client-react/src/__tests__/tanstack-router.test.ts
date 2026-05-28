@@ -1,4 +1,4 @@
-import { createReplaySignal } from "@securitydept/client";
+import { createReplaySignal, createSignal } from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
 import { createTokenSetSecureBeforeLoad } from "../tanstack-router";
 
@@ -34,7 +34,7 @@ describe("createTokenSetSecureBeforeLoad", () => {
 	it("waits for token-set auth truth before invoking unauthenticated redirect", async () => {
 		const isAuthenticated = createReplaySignal<boolean>();
 		isAuthenticated.setValue(true);
-		const whenReady = vi.fn().mockResolvedValue({ isAuthenticated });
+		const initialize = vi.fn().mockResolvedValue({ isAuthenticated });
 		const defaultOnUnauthenticated = vi.fn(() => "/login");
 		const redirect = vi.fn((opts: { to: string }) => {
 			throw new Error(`redirected to ${opts.to}`);
@@ -42,8 +42,12 @@ describe("createTokenSetSecureBeforeLoad", () => {
 
 		const beforeLoad = createTokenSetSecureBeforeLoad({
 			registry: {
-				whenReady,
-				clientKeysForOptions: () => ["confluence"],
+				initialize,
+				clientRecordGenForQuery: function* () {
+					yield createSignal({
+						meta: { clientKey: "confluence" },
+					} as never);
+				},
 			},
 			redirect,
 			defaultOnUnauthenticated,
@@ -52,7 +56,7 @@ describe("createTokenSetSecureBeforeLoad", () => {
 		await expect(
 			beforeLoad(createBeforeLoadContext()),
 		).resolves.toBeUndefined();
-		expect(whenReady).toHaveBeenCalledWith("confluence");
+		expect(initialize).toHaveBeenCalledWith("confluence");
 		expect(defaultOnUnauthenticated).not.toHaveBeenCalled();
 		expect(redirect).not.toHaveBeenCalled();
 	});

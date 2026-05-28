@@ -42,7 +42,7 @@ export type OnceAsyncLockCallable<
 	E = unknown,
 > = F &
 	OnceAsyncLock<Awaited<ReturnType<F>>, E> &
-	ReadableSignalTrait<F & OnceAsyncLock<Awaited<ReturnType<F>>, E>>;
+	ReadableSignalTrait<OnceAsyncLock<Awaited<ReturnType<F>>, E>>;
 
 export function createOnceAsyncLockCallable<
 	F extends (...args: any[]) => PromiseLike<any>,
@@ -71,6 +71,7 @@ export function createOnceAsyncLockCallable<
 			resolvePromise = res;
 			rejectPromise = rej;
 		});
+		promise.catch(() => undefined);
 
 		internalStateSignal.set({ state: OnceAsyncLockState.Running, promise });
 

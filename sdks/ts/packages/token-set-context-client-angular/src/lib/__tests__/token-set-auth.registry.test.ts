@@ -7,8 +7,9 @@ import {
 	type AuthSnapshot,
 	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
+import { ClientRegistryEntryStatus } from "@securitydept/token-set-context-client/registry";
 import {
-	ClientInitializationPriority,
+	ClientInitializationMode,
 	createTokenSetBearerInterceptor,
 	type TokenSetAngularClient,
 	TokenSetAuthRegistry,
@@ -62,15 +63,15 @@ function createAngularClient(
 		start: vi.fn(async () => undefined),
 		dispose: disposeSpy,
 		restorePersistedState: vi.fn(async () => null),
-		handleCallback: vi.fn(async () => ({
+		loginWithRedirect: vi.fn(async () => undefined),
+		loginWithPopup: vi.fn(async () => ({
 			snapshot: { tokens: { accessToken: `${name}-at` }, metadata: {} },
-			postAuthRedirectUri: "/after-login",
 		})),
 	};
 }
 
 describe("TokenSetAuthRegistry (Angular wrapper)", () => {
-	it("bridges unregister/resetMaterialization/registered snapshots to the core lifecycle", async () => {
+	it("bridges initialize/unregister/registered snapshots to the core lifecycle", async () => {
 		const registry = new TokenSetAuthRegistry();
 		const firstDispose = vi.fn();
 		const secondDispose = vi.fn();
@@ -85,7 +86,7 @@ describe("TokenSetAuthRegistry (Angular wrapper)", () => {
 
 		registry.register({
 			key: "workspace",
-			priority: ClientInitializationPriority.Lazy,
+			initialization: ClientInitializationMode.Lazy,
 			clientFactory: factory,
 			urlPatterns: ["https://api.example.com"],
 			requirementKind: "workspace_oidc",
@@ -93,25 +94,50 @@ describe("TokenSetAuthRegistry (Angular wrapper)", () => {
 		});
 
 		expect(registry.has("workspace")).toBe(true);
-		expect(registry.registeredKeys()).toEqual(["workspace"]);
-		expect(registry.readyKeys()).toEqual([]);
+		expect(registry.entries.get()).toMatchObject([
+			{
+				meta: { clientKey: "workspace" },
+				status: ClientRegistryEntryStatus.Registered,
+			},
+		]);
 
-		const firstClient = await registry.whenReady("workspace");
+		const firstClient = await registry.initialize("workspace");
 		expect(expectReplayValue(firstClient.authorizationHeaderValue)).toBe(
 			"Bearer first",
 		);
-		expect(registry.readyKeys()).toEqual(["workspace"]);
-
-		expect(registry.resetMaterialization("workspace")).toBe(true);
-		expect(firstDispose).toHaveBeenCalledTimes(1);
-		expect(registry.has("workspace")).toBe(true);
-		expect(registry.registeredKeys()).toEqual(["workspace"]);
-		expect(registry.readyKeys()).toEqual([]);
-		expect(registry.clientKeyListForRequirement("workspace_oidc")).toEqual([
-			"workspace",
+		expect(registry.entries.get()).toMatchObject([
+			{
+				meta: { clientKey: "workspace" },
+				status: ClientRegistryEntryStatus.Ready,
+			},
 		]);
 
-		const secondClient = await registry.whenReady("workspace");
+		expect(registry.unregister("workspace")).toBe(true);
+		expect(firstDispose).toHaveBeenCalledTimes(1);
+		expect(registry.has("workspace")).toBe(false);
+		registry.register({
+			key: "workspace",
+			initialization: ClientInitializationMode.Lazy,
+			clientFactory: factory,
+			urlPatterns: ["https://api.example.com"],
+			requirementKind: "workspace_oidc",
+			providerFamily: "internal",
+		});
+		expect(registry.entries.get()).toMatchObject([
+			{
+				meta: { clientKey: "workspace" },
+				status: ClientRegistryEntryStatus.Registered,
+			},
+		]);
+		expect(
+			[
+				...registry.clientRecordGenForQuery({
+					requirementKind: "workspace_oidc",
+				}),
+			].map((record) => record.get().meta.clientKey),
+		).toEqual(["workspace"]);
+
+		const secondClient = await registry.initialize("workspace");
 		expect(secondClient).not.toBe(firstClient);
 		expect(expectReplayValue(secondClient.authorizationHeaderValue)).toBe(
 			"Bearer second",
@@ -122,10 +148,9 @@ describe("TokenSetAuthRegistry (Angular wrapper)", () => {
 		expect(secondDispose).toHaveBeenCalledTimes(1);
 		expect(registry.unregister("workspace")).toBe(false);
 		expect(registry.has("workspace")).toBe(false);
-		expect(registry.registeredKeys()).toEqual([]);
-		expect(registry.registeredEntriesSnapshot()).toEqual([]);
-		expect(registry.registeredMetaSnapshot()).toEqual([]);
+		expect(registry.entries.get()).toEqual([]);
 		registry.dispose();
+		expect(registry.entries.get()).toEqual([]);
 	});
 
 	it("interceptor does not use a stale service after unregister()", async () => {

@@ -1,4 +1,5 @@
 import { type as defineType } from "arktype";
+import { type DisposableTrait } from "../compat";
 import { type EventStreamTrait, EventStreamTraitSchema } from "../events/types";
 import { SecuritydeptInjectionToken } from "../injection";
 import { type SpanTrait } from "../span/types";
@@ -33,13 +34,14 @@ export interface TracingEvent {
 	fields?: Record<string, unknown>;
 }
 
-export interface TracingTrait {
+export interface TracingTrait extends DisposableTrait {
 	record(event: TracingEvent): void;
 	readonly events: EventStreamTrait<TracingEvent>;
 }
 
 export const TracingTraitSchema = defineType({
 	record: "Function",
+	dispose: "Function",
 	events: EventStreamTraitSchema,
 });
 

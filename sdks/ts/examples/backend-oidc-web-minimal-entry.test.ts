@@ -1,26 +1,20 @@
-// Backend OIDC mode browser (web) minimal entry — standalone adopter-facing evidence
+// Backend OIDC mode browser minimal entry — standalone adopter-facing evidence
 //
-// This test proves the standalone browser entry path for
-// @securitydept/token-set-context-client/backend-oidc-mode/web.
+// This test proves the browser composition path using FoundationEnvironment
+// and BackendOidcModeClient directly.
 //
 // An adopter reading this file should understand "how do I start with
 // backend-oidc in the browser?" in one glance — without needing to read
 // the full browser scenario or popup baseline tests.
 
 import {
+	createFoundationEnvironment,
 	createInMemoryRecordStore,
 	createRootSpan,
 	createTracing,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
-import {
-	BackendOidcModeBootstrapSource,
-	bootstrapBackendOidcModePageClient,
-	buildAuthorizeUrlReturningToCurrentPage,
-	createBackendOidcModeCallbackFragmentStore,
-	createBackendOidcModeWebClient,
-	createBackendOidcModeWebClientEnvironment,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it } from "vitest";
 
 function expectReplayValue<T>(signal: {
@@ -47,7 +41,7 @@ describe("backend-oidc-mode web minimal entry", () => {
 					handle as ReturnType<typeof globalThis.setTimeout>,
 				),
 		};
-		const environment = createBackendOidcModeWebClientEnvironment({
+		const environment = createFoundationEnvironment({
 			span: createRootSpan(),
 			tracing: createTracing(),
 			persistentStorage,
@@ -63,37 +57,23 @@ describe("backend-oidc-mode web minimal entry", () => {
 		// 1. Create the browser client with minimal config + runtime stubs.
 		//    In a real app, only baseUrl is required — stores and transport
 		//    default to browser-native implementations.
-		const client = createBackendOidcModeWebClient({
+		const client = new BackendOidcModeClient(
+			{ baseUrl: "https://auth.example.com" },
 			environment,
-			baseUrl: "https://auth.example.com",
-		});
+		);
 
-		// 2. Bootstrap the client — checks for callback fragment and persisted state.
-		//    With no fragment and no prior state, bootstrap returns Empty.
-		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStorage,
-		});
-		const result = await bootstrapBackendOidcModePageClient(client, {
-			environment: {
-				...createRouterForNativeWeb({
-					location: { href: "https://app.example.com/dashboard", hash: "" },
-					history: { replaceState() {} },
-				}),
-				callbackFragmentStore,
-				time,
-			},
-		});
+		// 2. Start the client. With no callback fragment and no prior state,
+		//    startup resolves to null and updates authSnapshot.
+		const result = await client.start();
 
-		expect(result.source).toBe(BackendOidcModeBootstrapSource.Empty);
-		expect(result.snapshot).toBeNull();
+		expect(result).toBeNull();
 		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 
 		// 3. Build the authorize URL — the adopter redirects the browser here.
-		const authorizeUrl = buildAuthorizeUrlReturningToCurrentPage(client, {
-			environment: createRouterForNativeWeb({
-				location: { href: "https://app.example.com/dashboard", hash: "" },
-			}),
+		const router = createRouterForNativeWeb({
+			location: { href: "https://app.example.com/dashboard", hash: "" },
 		});
+		const authorizeUrl = client.authorizeUrl(router.currentUrl()?.toString());
 
 		expect(authorizeUrl).toContain("https://auth.example.com");
 		expect(authorizeUrl).toContain("post_auth_redirect_uri=");
@@ -101,9 +81,10 @@ describe("backend-oidc-mode web minimal entry", () => {
 		client.dispose();
 	});
 
-	it("shows restoreState as an alternative to bootstrap for SSR-provided tokens", () => {
-		const client = createBackendOidcModeWebClient({
-			environment: createBackendOidcModeWebClientEnvironment({
+	it("shows restoreState as an alternative to bootstrap for SSR-provided tokens", async () => {
+		const client = new BackendOidcModeClient(
+			{ baseUrl: "https://auth.example.com" },
+			createFoundationEnvironment({
 				span: createRootSpan(),
 				tracing: createTracing(),
 				persistentStorage: createInMemoryRecordStore(),
@@ -123,11 +104,10 @@ describe("backend-oidc-mode web minimal entry", () => {
 						),
 				},
 			}),
-			baseUrl: "https://auth.example.com",
-		});
+		);
 
 		// Restore state directly (e.g. from server-rendered bootstrap data).
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "ssr-at",
 				refreshMaterial: "ssr-rt",

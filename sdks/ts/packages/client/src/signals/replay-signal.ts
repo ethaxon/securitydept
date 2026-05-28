@@ -46,7 +46,7 @@ export function createReplaySignal<T>(): WritableReplaySignalTrait<T> {
 
 			const cancellationToken = options?.cancellationToken;
 			if (cancellationToken?.isCancellationRequested) {
-				return Promise.reject(readCancellationError(cancellationToken));
+				return Promise.reject(cancellationToken.readCancellationError());
 			}
 
 			return new Promise<T>((resolve, reject) => {
@@ -71,7 +71,7 @@ export function createReplaySignal<T>(): WritableReplaySignalTrait<T> {
 				subscription = subject.subscribe(resolveIfValue);
 				disposeCancellation = cancellationToken?.onCancellationRequested(() => {
 					cleanup();
-					reject(readCancellationError(cancellationToken));
+					reject(cancellationToken.readCancellationError());
 				}).dispose;
 				resolveIfValue();
 			});
@@ -159,7 +159,7 @@ function createReadableReplaySignalView<T>(
 
 			const cancellationToken = options?.cancellationToken;
 			if (cancellationToken?.isCancellationRequested) {
-				return Promise.reject(readCancellationError(cancellationToken));
+				return Promise.reject(cancellationToken.readCancellationError());
 			}
 
 			return new Promise<T>((resolve, reject) => {
@@ -184,7 +184,7 @@ function createReadableReplaySignalView<T>(
 				unsubscribe = signalLike.subscribe(resolveIfValue);
 				disposeCancellation = cancellationToken?.onCancellationRequested(() => {
 					cleanup();
-					reject(readCancellationError(cancellationToken));
+					reject(cancellationToken.readCancellationError());
 				}).dispose;
 				resolveIfValue();
 			});
@@ -211,18 +211,6 @@ function createReadableReplaySignalView<T>(
 			});
 		},
 	});
-}
-
-function readCancellationError(cancellationToken: {
-	throwIfCancellationRequested(): void;
-	reason?: unknown;
-}): unknown {
-	try {
-		cancellationToken.throwIfCancellationRequested();
-	} catch (error) {
-		return error;
-	}
-	return cancellationToken.reason;
 }
 
 export function isReplaySignalTrait<T>(

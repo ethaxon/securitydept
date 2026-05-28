@@ -16,7 +16,7 @@
 // Stability: provisional (mode-aligned surface)
 
 import { type FrontendOidcModeClientConfig } from "../client/types";
-import { parseConfigProjection } from "../contracts/contracts";
+import { parseConfigProjection } from "../contracts/parsers";
 
 // ---------------------------------------------------------------------------
 // Config projection source identity
@@ -50,7 +50,7 @@ export type ConfigProjectionSourceKind =
  * A resolved config projection paired with its source identity.
  */
 export interface ResolvedConfigProjection {
-	/** The resolved client config, ready for `createFrontendOidcModeClient`. */
+	/** The resolved client config, ready for `new FrontendOidcModeClient`. */
 	config: FrontendOidcModeClientConfig;
 	/** Where this projection came from. */
 	sourceKind: ConfigProjectionSourceKind;
@@ -175,31 +175,6 @@ export interface ConfigProjectionSourceBootstrapScript {
 }
 
 // ---------------------------------------------------------------------------
-// Client readiness state
-// ---------------------------------------------------------------------------
-
-/**
- * Readiness state for a client whose config is resolved asynchronously.
- *
- * This is used by adapters (Angular, React) to express whether the client
- * has materialized and is ready for use by guards, interceptors, and
- * callback handlers.
- */
-export const ClientReadinessState = {
-	/** Client registration is declared but config has not been resolved. */
-	NotInitialized: "not_initialized",
-	/** Config source resolution is in progress. */
-	Initializing: "initializing",
-	/** Config resolved and client materialized — ready for use. */
-	Ready: "ready",
-	/** Config resolution failed. */
-	Failed: "failed",
-} as const;
-
-export type ClientReadinessState =
-	(typeof ClientReadinessState)[keyof typeof ClientReadinessState];
-
-// ---------------------------------------------------------------------------
 // Config projection source resolution
 // ---------------------------------------------------------------------------
 
@@ -225,7 +200,7 @@ export type ClientReadinessState =
  *   { kind: "bootstrap_script", read: () => window.__OIDC_CONFIG__ },
  *   { kind: "network", fetch: () => fetch("/api/auth/config?...").then(r => r.json()) },
  * ]);
- * const client = createFrontendOidcModeClient(resolved.config, runtime);
+ * const client = new FrontendOidcModeClient(resolved.config, runtime);
  * ```
  */
 export async function resolveConfigProjection(
@@ -274,7 +249,9 @@ async function resolveOneSource(
 
 		case ConfigProjectionSourceKind.Persisted: {
 			const raw = await source.restore();
-			if (raw === null || raw === undefined) return null;
+			if (raw === null || raw === undefined) {
+				return null;
+			}
 			const unwrapped = unwrapEnvelope(raw);
 			const result = parseAndWrap(
 				unwrapped.data,
@@ -291,7 +268,9 @@ async function resolveOneSource(
 
 		case ConfigProjectionSourceKind.BootstrapScript: {
 			const raw = source.read();
-			if (raw === null || raw === undefined) return null;
+			if (raw === null || raw === undefined) {
+				return null;
+			}
 			const unwrapped = unwrapEnvelope(raw);
 			const result = parseAndWrap(
 				unwrapped.data,

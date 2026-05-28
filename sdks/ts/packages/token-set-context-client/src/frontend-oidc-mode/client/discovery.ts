@@ -10,7 +10,9 @@
 
 export function buildIssuerDiscoveryCandidates(issuer: string): string[] {
 	const trimmedIssuer = issuer.trim();
-	if (!trimmedIssuer) return [issuer];
+	if (!trimmedIssuer) {
+		return [issuer];
+	}
 
 	let parsedIssuer: URL;
 	try {

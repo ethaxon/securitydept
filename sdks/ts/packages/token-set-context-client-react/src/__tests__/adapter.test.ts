@@ -4,6 +4,7 @@ import {
 	createEventSubject,
 	createReplaySignal,
 	createSignal,
+	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
@@ -14,7 +15,11 @@ import {
 	type AuthSnapshot,
 	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
-import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
+import {
+	ClientInitializationMode,
+	type ClientRegistryEntry as CoreClientRegistryEntry,
+	createClientRegistry,
+} from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
 	type ReactRegistry,
@@ -96,11 +101,15 @@ function createRegistryOptions(accessToken: string) {
 					removeWorkflowSource: () => false,
 					start: async () => undefined,
 					dispose: () => state.set(null),
+					[SYMBOL_DISPOSE]: () => state.set(null),
 					restorePersistedState: async () => state.get(),
 					handleCallback: async () => ({
 						snapshot: createSnapshot(accessToken),
 					}),
 					loginWithRedirect: async () => undefined,
+					loginWithPopup: async () => ({
+						snapshot: createSnapshot(accessToken),
+					}),
 				}),
 			},
 		] satisfies readonly TokenSetClientEntry[],
@@ -110,16 +119,32 @@ function createRegistryOptions(accessToken: string) {
 function createManualRegistry(
 	clients: readonly TokenSetClientEntry[],
 ): ReactRegistry {
-	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>();
+	const registry = createClientRegistry<TokenSetReactClient>({
+		environment: {},
+	});
 
 	for (const client of clients) {
-		const registration = registry.register(client);
-		if (registration instanceof Promise) {
-			registration.catch(() => {});
-		}
+		registry.register(toCoreEntry(client));
 	}
 
 	return registry;
+}
+
+function toCoreEntry(
+	entry: TokenSetClientEntry,
+): CoreClientRegistryEntry<TokenSetReactClient> {
+	return {
+		clientFactory: entry.clientFactory,
+		meta: {
+			clientKey: entry.key,
+			urlPatterns: entry.urlPatterns ?? [],
+			callbackPath: entry.callbackPath,
+			requirementKind: entry.requirementKind,
+			providerFamily: entry.providerFamily,
+			initialization:
+				entry.initialization ?? ClientInitializationMode.Immediate,
+		},
+	};
 }
 
 describe("token-set react adapter", () => {
@@ -238,7 +263,7 @@ describe("token-set react adapter", () => {
 	it("treats manual registry ownership as advanced usage that requires explicit dispose", async () => {
 		const { clients, state } = createRegistryOptions("manual-at");
 		const registry = createManualRegistry(clients);
-		await registry.whenReady("main");
+		await registry.initialize("main");
 
 		function Probe() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);

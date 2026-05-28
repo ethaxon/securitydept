@@ -17,7 +17,7 @@ import {
 import {
 	BackendOidcModeClient,
 	type BackendOidcModeClientConfig,
-	parseBackendOidcModeCallbackFragment,
+	parseBackendOidcModeCallbackPayload,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it } from "vitest";
 
@@ -86,13 +86,15 @@ describe("backend-oidc-mode root minimal entry", () => {
 		client.dispose();
 	});
 
-	it("shows the callback fragment parser for host-neutral callback processing", () => {
+	it("shows the callback payload parser for host-neutral callback processing", () => {
 		// The root subpath also exports protocol parsers for host-neutral
 		// callback/refresh handling — no browser environment needed.
-		const fragment =
-			"access_token=parsed-at&id_token=parsed-idt&refresh_token=parsed-rt&expires_at=2026-01-01T00%3A05%3A00Z";
-
-		const parsed = parseBackendOidcModeCallbackFragment(fragment);
+		const parsed = parseBackendOidcModeCallbackPayload({
+			access_token: "parsed-at",
+			id_token: "parsed-idt",
+			refresh_token: "parsed-rt",
+			access_token_expires_at: "2026-01-01T00:05:00Z",
+		});
 
 		expect(parsed).not.toBeNull();
 		expect(parsed?.accessToken).toBe("parsed-at");

@@ -21,7 +21,7 @@ describe("InMemoryTraceCollector", () => {
 			target: "trace-test",
 		});
 		collector.record({
-			name: "frontend_oidc.callback.started",
+			name: "domain.callback.started",
 			at: 2,
 			span: op1,
 			level: TracingLevel.Info,

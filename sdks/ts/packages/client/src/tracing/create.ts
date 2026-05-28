@@ -1,5 +1,10 @@
 import { type as defineType } from "arktype";
-import { createEventSubject, type EventStreamTrait } from "../events";
+import { SYMBOL_DISPOSE } from "../compat";
+import {
+	createEventSubject,
+	type EventStreamTrait,
+	type EventSubscriptionTrait,
+} from "../events";
 import {
 	type TraitInputValidator,
 	throwValidationClientError,
@@ -41,13 +46,16 @@ export function createTracing(
 	});
 	const subject = createEventSubject<TracingEvent>();
 	const events: EventStreamTrait<TracingEvent> = subject;
+	const subscriptions: EventSubscriptionTrait[] = [];
 
 	for (const subscriber of resolvedCreateOptions.subscribers) {
-		events.subscribe({
-			next(event) {
-				subscriber.record(event);
-			},
-		});
+		subscriptions.push(
+			events.subscribe({
+				next(event) {
+					subscriber.record(event);
+				},
+			}),
+		);
 	}
 
 	return {
@@ -55,5 +63,13 @@ export function createTracing(
 			subject.next(event);
 		},
 		events,
+		dispose() {
+			for (const subscription of subscriptions.splice(0)) {
+				subscription.unsubscribe();
+			}
+		},
+		[SYMBOL_DISPOSE]() {
+			this.dispose();
+		},
 	};
 }

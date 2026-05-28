@@ -73,6 +73,7 @@
 	},
 	"dependencies": {
 		"arktype": "^2.2.0",
+		"es-toolkit": "^1.49.0",
 		"mnemonist": "^0.40.4",
 		"uuid": "^14.0.1"
 	}

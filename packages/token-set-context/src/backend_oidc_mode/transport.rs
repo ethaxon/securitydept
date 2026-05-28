@@ -67,8 +67,8 @@ pub struct BackendOidcModeRefreshPayload {
 
 /// Token material returned from the backend-oidc callback flow.
 ///
-/// Dual-mode delivery: browser redirect flows embed this as a URL fragment
-/// (`to_fragment_query_string`); programmatic flows serialize it as a JSON
+/// Dual-mode delivery: browser redirect flows embed this query string inside
+/// a securitydept compat fragment; programmatic flows serialize it as a JSON
 /// response body (`to_response_body`).
 ///
 /// `id_token` is always present in a callback (authorization code flow always
@@ -134,9 +134,7 @@ impl BackendOidcModeCallbackReturns {
         }
     }
 
-    /// Serialize as a URL-encoded query-string for a fragment redirect.
-    ///
-    /// The result is suitable for use as `url.set_fragment(Some(&qs))`.
+    /// Serialize as a URL-encoded query-string for a compat fragment redirect.
     pub fn to_fragment_query_string(&self) -> String {
         let mut s = form_urlencoded::Serializer::new(String::new());
         s.append_pair("access_token", &self.access_token);
@@ -145,7 +143,7 @@ impl BackendOidcModeCallbackReturns {
             s.append_pair("refresh_token", rm.expose());
         }
         if let Some(ref expires) = self.access_token_expires_at {
-            s.append_pair("expires_at", &expires.to_rfc3339());
+            s.append_pair("access_token_expires_at", &expires.to_rfc3339());
         }
         if let Some(ref mrid) = self.metadata_redemption_id {
             s.append_pair("metadata_redemption_id", mrid.expose());
@@ -168,8 +166,8 @@ impl BackendOidcModeCallbackReturns {
 
 /// Token delta returned from the backend-oidc refresh flow.
 ///
-/// Dual-mode delivery: browser redirect flows embed this as a URL fragment
-/// (`to_fragment_query_string`); programmatic/silent refresh flows serialize
+/// Dual-mode delivery: browser redirect flows embed this query string inside
+/// a securitydept compat fragment; programmatic/silent refresh flows serialize
 /// it as a JSON response body (`to_response_body`).
 ///
 /// `id_token` is optional because a refresh may or may not yield a new one.
@@ -235,7 +233,7 @@ impl BackendOidcModeRefreshReturns {
         }
     }
 
-    /// Serialize as a URL-encoded query-string for a fragment redirect.
+    /// Serialize as a URL-encoded query-string for a compat fragment redirect.
     pub fn to_fragment_query_string(&self) -> String {
         let mut s = form_urlencoded::Serializer::new(String::new());
         s.append_pair("access_token", &self.access_token);
@@ -246,7 +244,7 @@ impl BackendOidcModeRefreshReturns {
             s.append_pair("refresh_token", rm.expose());
         }
         if let Some(ref expires) = self.access_token_expires_at {
-            s.append_pair("expires_at", &expires.to_rfc3339());
+            s.append_pair("access_token_expires_at", &expires.to_rfc3339());
         }
         if let Some(ref mrid) = self.metadata_redemption_id {
             s.append_pair("metadata_redemption_id", mrid.expose());

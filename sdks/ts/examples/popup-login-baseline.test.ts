@@ -15,19 +15,19 @@ import {
 	type TimeTrait,
 } from "@securitydept/client";
 import {
+	createEnvironmentForNativeWeb,
 	createPopupForNativeWeb,
 	createRouterForNativeWeb,
 } from "@securitydept/client/web";
 import {
-	loginWithBackendOidcPopup,
-	relayBackendOidcPopupCallback,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+	BackendOidcModeClient,
+	relayTokenSetPopupCallbackFromEnvironment as relayBackendPopupCallbackFromEnvironment,
+} from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	FrontendOidcModeClient,
-	type FrontendOidcModePopupLoginOptions,
-	type RelayFrontendOidcPopupCallbackOptions,
-	relayFrontendOidcPopupCallback,
+	relayTokenSetPopupCallbackFromEnvironment as relayFrontendPopupCallbackFromEnvironment,
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import { type OidcPopupLoginOptions } from "@securitydept/token-set-context-client/orchestration";
 import { describe, expect, it, vi } from "vitest";
 
 function createBrowserTime(): TimeTrait {
@@ -38,24 +38,6 @@ function createBrowserTime(): TimeTrait {
 			globalThis.clearTimeout(
 				handle as ReturnType<typeof globalThis.setTimeout>,
 			),
-	};
-}
-
-function createExplicitCallbackFragmentStore() {
-	const savedFragments: string[] = [];
-	return {
-		store: {
-			save: vi.fn(async (value: string) => {
-				savedFragments.push(value);
-			}),
-			load: vi.fn(async () => savedFragments[0] ?? null),
-			consume: vi.fn(async () => {
-				const value = savedFragments.shift();
-				return value ?? null;
-			}),
-			clear: vi.fn(async () => {}),
-		},
-		savedFragments,
 	};
 }
 
@@ -107,15 +89,17 @@ describe("popup shared infra — error semantics", () => {
 // ===========================================================================
 
 describe("backend-oidc-mode popup baseline", () => {
-	it("loginWithBackendOidcPopup is a function (export shape)", () => {
-		expect(typeof loginWithBackendOidcPopup).toBe("function");
+	it("BackendOidcModeClient has loginWithPopup method", () => {
+		expect(typeof BackendOidcModeClient.prototype.loginWithPopup).toBe(
+			"function",
+		);
 	});
 
-	it("relayBackendOidcPopupCallback is a function (export shape)", () => {
-		expect(typeof relayBackendOidcPopupCallback).toBe("function");
+	it("relayTokenSetPopupCallbackFromEnvironment is exported from /backend-oidc-mode", () => {
+		expect(typeof relayBackendPopupCallbackFromEnvironment).toBe("function");
 	});
 
-	it("loginWithBackendOidcPopup rejects with popup.blocked when popup is blocked", async () => {
+	it("BackendOidcModeClient.loginWithPopup rejects with popup.blocked when popup is blocked", async () => {
 		const time = createBrowserTime();
 		vi.stubGlobal("open", () => null);
 		vi.stubGlobal("screenX", 0);
@@ -123,20 +107,23 @@ describe("backend-oidc-mode popup baseline", () => {
 		vi.stubGlobal("innerWidth", 1000);
 		vi.stubGlobal("innerHeight", 800);
 
-		const mockClient = {
+		const mockClient = Object.create(BackendOidcModeClient.prototype);
+		Object.assign(mockClient, {
+			_config: {
+				baseUrl: "https://app.example.com",
+			},
+			_environment: {
+				popup: requirePopup(createPopupForNativeWeb({ time })),
+				time,
+			},
 			authorizeUrl: (returnUri: string) =>
 				`https://auth.example.com/authorize?return_uri=${encodeURIComponent(returnUri)}`,
-		};
-		const { store } = createExplicitCallbackFragmentStore();
+			_handleCallback: vi.fn(async () => ({ tokens: {}, metadata: {} })),
+		});
 
 		try {
-			await loginWithBackendOidcPopup(mockClient as never, {
+			await mockClient.loginWithPopup({
 				popupCallbackUrl: "https://app.example.com/callback",
-				environment: {
-					callbackFragmentStore: store,
-					popup: requirePopup(createPopupForNativeWeb({ time })),
-					time,
-				},
 			});
 			expect.fail("Should have thrown");
 		} catch (err) {
@@ -147,7 +134,7 @@ describe("backend-oidc-mode popup baseline", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("loginWithBackendOidcPopup happy path: relay fragment reaches bootstrap pipeline", async () => {
+	it("BackendOidcModeClient.loginWithPopup happy path: relay fragment reaches bootstrap pipeline", async () => {
 		// This test proves the full chain: popup open → relay → fragment extraction → bootstrap.
 		const time = createBrowserTime();
 
@@ -169,25 +156,29 @@ describe("backend-oidc-mode popup baseline", () => {
 		vi.stubGlobal(
 			"addEventListener",
 			(type: string, handler: EventListener) => {
-				if (type === "message")
+				if (type === "message") {
 					messageHandler = handler as unknown as (event: MessageEvent) => void;
+				}
 			},
 		);
 		vi.stubGlobal("removeEventListener", vi.fn());
 
-		const mockClient = {
-			authorizeUrl: (returnUri: string) =>
-				`https://auth.example.com/authorize?return_uri=${encodeURIComponent(returnUri)}`,
-		};
-		const { store } = createExplicitCallbackFragmentStore();
-
-		const promise = loginWithBackendOidcPopup(mockClient as never, {
-			popupCallbackUrl: "https://app.example.com/popup-callback",
-			environment: {
-				callbackFragmentStore: store,
+		const mockClient = Object.create(BackendOidcModeClient.prototype);
+		Object.assign(mockClient, {
+			_config: {
+				baseUrl: "https://app.example.com",
+			},
+			_environment: {
 				popup: requirePopup(createPopupForNativeWeb({ time })),
 				time,
 			},
+			authorizeUrl: (returnUri: string) =>
+				`https://auth.example.com/authorize?return_uri=${encodeURIComponent(returnUri)}`,
+			_handleCallback: vi.fn(async () => ({ tokens: {}, metadata: {} })),
+		});
+
+		const promise = mockClient.loginWithPopup({
+			popupCallbackUrl: "https://app.example.com/popup-callback",
 		});
 
 		// Simulate the popup callback page relaying the result.
@@ -198,7 +189,7 @@ describe("backend-oidc-mode popup baseline", () => {
 				method: "securitydept.token_set.popup.callback",
 				params: {
 					payload:
-						"https://app.example.com/popup-callback#access_token=at123&id_token=idt456",
+						"https://app.example.com/popup-callback#securitydept=v1&access_token=at123&id_token=idt456",
 				},
 			},
 			source: mockWin,
@@ -219,10 +210,7 @@ describe("backend-oidc-mode popup baseline", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("loginWithBackendOidcPopup uses explicit callbackFragmentStore (namespacing proof)", async () => {
-		// Behavioral evidence: when `callbackFragmentStore` is provided,
-		// the popup path saves the fragment to THAT store — proving it does
-		// not fall back to the default global key.
+	it("BackendOidcModeClient.loginWithPopup passes relayed callback fragments to handleCallback", async () => {
 		const time = createBrowserTime();
 
 		const mockWin = {
@@ -243,27 +231,29 @@ describe("backend-oidc-mode popup baseline", () => {
 		vi.stubGlobal(
 			"addEventListener",
 			(type: string, handler: EventListener) => {
-				if (type === "message")
+				if (type === "message") {
 					messageHandler = handler as unknown as (event: MessageEvent) => void;
+				}
 			},
 		);
 		vi.stubGlobal("removeEventListener", vi.fn());
 
-		const mockClient = {
-			authorizeUrl: (returnUri: string) =>
-				`https://auth.example.com/authorize?return_uri=${encodeURIComponent(returnUri)}`,
-		};
-
-		const { store: explicitStore, savedFragments } =
-			createExplicitCallbackFragmentStore();
-
-		const promise = loginWithBackendOidcPopup(mockClient as never, {
-			popupCallbackUrl: "https://app.example.com/popup-callback",
-			environment: {
-				callbackFragmentStore: explicitStore,
+		const mockClient = Object.create(BackendOidcModeClient.prototype);
+		Object.assign(mockClient, {
+			_config: {
+				baseUrl: "https://app.example.com",
+			},
+			_environment: {
 				popup: requirePopup(createPopupForNativeWeb({ time })),
 				time,
 			},
+			authorizeUrl: (returnUri: string) =>
+				`https://auth.example.com/authorize?return_uri=${encodeURIComponent(returnUri)}`,
+			_handleCallback: vi.fn(async () => ({ tokens: {}, metadata: {} })),
+		});
+
+		const promise = mockClient.loginWithPopup({
+			popupCallbackUrl: "https://app.example.com/popup-callback",
 		});
 
 		// Relay the callback URL with a fragment.
@@ -274,7 +264,7 @@ describe("backend-oidc-mode popup baseline", () => {
 				method: "securitydept.token_set.popup.callback",
 				params: {
 					payload:
-						"https://app.example.com/popup-callback#access_token=ns_token&id_token=ns_idt",
+						"https://app.example.com/popup-callback#securitydept=v1&access_token=ns_token&id_token=ns_idt",
 				},
 			},
 			source: mockWin,
@@ -286,11 +276,16 @@ describe("backend-oidc-mode popup baseline", () => {
 			// Bootstrap may fail in test env — that's OK.
 		}
 
-		// The key assertion: the explicit store received the fragment.
-		expect(explicitStore.save).toHaveBeenCalledWith(
-			"access_token=ns_token&id_token=ns_idt",
+		expect(
+			(
+				mockClient as unknown as {
+					_handleCallback: ReturnType<typeof vi.fn>;
+				}
+			)._handleCallback,
+		).toHaveBeenCalledWith(
+			{ access_token: "ns_token", id_token: "ns_idt" },
+			undefined,
 		);
-		expect(savedFragments).toEqual(["access_token=ns_token&id_token=ns_idt"]);
 
 		vi.unstubAllGlobals();
 	});
@@ -301,28 +296,34 @@ describe("backend-oidc-mode popup baseline", () => {
 // ===========================================================================
 
 describe("frontend-oidc-mode popup baseline", () => {
-	it("FrontendOidcModeClient has popupLogin method", () => {
-		expect(typeof FrontendOidcModeClient.prototype.popupLogin).toBe("function");
+	it("FrontendOidcModeClient has loginWithPopup method", () => {
+		expect(typeof FrontendOidcModeClient.prototype.loginWithPopup).toBe(
+			"function",
+		);
 	});
 
-	it("relayFrontendOidcPopupCallback is a function (export shape)", () => {
-		expect(typeof relayFrontendOidcPopupCallback).toBe("function");
+	it("relayTokenSetPopupCallbackFromEnvironment is exported from /frontend-oidc-mode", () => {
+		expect(typeof relayFrontendPopupCallbackFromEnvironment).toBe("function");
 	});
 
-	it("relayFrontendOidcPopupCallback accepts explicit page location capability", () => {
+	it("relayTokenSetPopupCallbackFromEnvironment accepts explicit page environment", async () => {
 		const time = createBrowserTime();
-		const invalidOptions = {};
-		// @ts-expect-error popup relay requires explicit page environment.
-		const _invalid: RelayFrontendOidcPopupCallbackOptions = invalidOptions;
-		void _invalid;
+		await relayFrontendPopupCallbackFromEnvironment(undefined as never);
 
 		const originalOpener = globalThis.opener;
 		const postMessage = vi.fn();
 		vi.stubGlobal("opener", { postMessage });
 
-		relayFrontendOidcPopupCallback({
-			environment: {
+		await relayFrontendPopupCallbackFromEnvironment(
+			createEnvironmentForNativeWeb({
+				transport: {
+					async execute() {
+						return { status: 500, headers: {}, body: null };
+					},
+				},
 				time,
+				span: createRootSpan(),
+				tracing: createTracing(),
 				popup: requirePopup(
 					createPopupForNativeWeb({
 						time,
@@ -347,8 +348,8 @@ describe("frontend-oidc-mode popup baseline", () => {
 						hash: "",
 					},
 				}),
-			},
-		});
+			}),
+		);
 
 		expect(postMessage.mock.calls).toContainEqual([
 			expect.objectContaining({
@@ -365,14 +366,14 @@ describe("frontend-oidc-mode popup baseline", () => {
 		globalThis.opener = originalOpener;
 	});
 
-	it("FrontendOidcModePopupLoginOptions type is importable (compile-time evidence)", () => {
-		const opts: FrontendOidcModePopupLoginOptions = {
+	it("OidcPopupLoginOptions type is importable (compile-time evidence)", () => {
+		const opts: OidcPopupLoginOptions = {
 			popupCallbackUrl: "https://app.example.com/callback",
 		};
 		expect(opts.popupCallbackUrl).toBe("https://app.example.com/callback");
 	});
 
-	it("popupLogin builds popup authorize state and opens popup, then relays to handleCallback", async () => {
+	it("loginWithPopup builds popup authorize state and opens popup, then relays to handleCallback", async () => {
 		// This test proves: popup authorize state is built → popup opens → relay is awaited → handleCallback is called.
 		const time = createBrowserTime();
 
@@ -396,8 +397,9 @@ describe("frontend-oidc-mode popup baseline", () => {
 		vi.stubGlobal(
 			"addEventListener",
 			(type: string, handler: EventListener) => {
-				if (type === "message")
+				if (type === "message") {
 					messageHandler = handler as unknown as (event: MessageEvent) => void;
+				}
 			},
 		);
 		vi.stubGlobal("removeEventListener", vi.fn());
@@ -436,6 +438,10 @@ describe("frontend-oidc-mode popup baseline", () => {
 				}),
 			),
 		};
+		mockClient._tracingOptions = {
+			target: "frontend-oidc-mode",
+			prefix: "frontend_oidc",
+		};
 		mockClient._authorizeUrlWithState = vi
 			.fn()
 			.mockResolvedValue(
@@ -445,9 +451,11 @@ describe("frontend-oidc-mode popup baseline", () => {
 			source: "callback",
 			snapshot: { tokens: { accessToken: "at" } },
 		};
-		mockClient.handleCallback = vi.fn().mockResolvedValue(handleCallbackResult);
+		mockClient._handleCallback = vi
+			.fn()
+			.mockResolvedValue(handleCallbackResult);
 
-		const promise = mockClient.popupLogin({
+		const promise = mockClient.loginWithPopup({
 			popupCallbackUrl: "https://app.example.com/popup-callback",
 		});
 
@@ -472,18 +480,17 @@ describe("frontend-oidc-mode popup baseline", () => {
 
 		// Verify popup authorize state was built with the popup callback URL.
 		expect(mockClient._authorizeUrlWithState).toHaveBeenCalledWith({
-			postAuthRedirectUri: undefined,
 			redirectUri: "https://app.example.com/popup-callback",
-			extraParams: undefined,
 		});
 
-		// Verify handleCallback was called with the relayed callback URL.
-		expect(mockClient.handleCallback).toHaveBeenCalledWith(
+		// Verify callback processing received the relayed callback URL.
+		expect(mockClient._handleCallback).toHaveBeenCalledWith(
 			"https://app.example.com/popup-callback?code=authcode123&state=abc",
+			undefined,
 		);
 
-		// Verify the result is from handleCallback.
-		expect(result).toBe(handleCallbackResult);
+		// Popup login exposes only the auth snapshot; parent navigation stays with the opener.
+		expect(result).toEqual({ snapshot: handleCallbackResult.snapshot });
 
 		vi.unstubAllGlobals();
 	});

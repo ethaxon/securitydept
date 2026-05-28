@@ -146,16 +146,25 @@ export {
 	type PopupAttachResult,
 	type PopupAttachSuccess,
 	PopupClientWindowHandle,
-	PopupClientWindowHandleTrait,
+	type PopupClientWindowHandleTrait,
 	PopupErrorCode,
-	PopupMessageChannelTrait,
-	PopupOpenOptions,
+	type PopupMessageChannelTrait,
+	type PopupOpenOptions,
 	PopupServerWindowHandle,
-	PopupServerWindowHandleTrait,
-	PopupTrait,
-	PopupWindowHandleTrait,
+	type PopupServerWindowHandleTrait,
+	type PopupTrait,
+	type PopupWindowHandleTrait,
 } from "./popup";
 // --- Protocol ---
+export {
+	type AppendOrReplaceCompatFragmentOptions,
+	appendOrReplaceCompatFragment,
+	type CompatFragment,
+	isCompatFragmentBlock,
+	parseCompatFragment,
+	removeCompatFragment,
+	SECURITYDEPT_COMPAT_FRAGMENT_VERSION,
+} from "./protocol/compat-fragment";
 export {
 	type CreateJsonRpcClientOptions,
 	type CreateJsonRpcServerAndClientOptions,
@@ -177,6 +186,12 @@ export {
 	type JsonRpcServerTrait,
 	type JsonRpcSuccessResponseMessage,
 } from "./protocol/json-rpc";
+export {
+	type DecodeJwtPayloadOptions,
+	decodeJwtPayload,
+	type JwtAudienceClaim,
+	type JwtClaimsSet,
+} from "./protocol/jwt";
 // --- Router ---
 export type {
 	GuardedRouterTrait,
@@ -190,6 +205,7 @@ export {
 	ROUTER_TRAIT_TOKEN,
 	RouterGuardDecisionKind,
 	RouterGuardPhase,
+	takeCompatFragmentFromRouter,
 } from "./router";
 // --- Scheduling ---
 export {
@@ -310,6 +326,7 @@ export {
 	createAuthorizedTransportFromBase,
 	createExternalTransportFromBase,
 	createRemappingAuthorizedTransportFromBase,
+	isLoopbackHttpUrl,
 	TRANSPORT_TRAIT_TOKEN,
 } from "./transport";
 // --- Validation ---

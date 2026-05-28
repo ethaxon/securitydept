@@ -12,7 +12,6 @@ import {
 	createInMemoryRecordStore,
 } from "@securitydept/client";
 import {
-	createFrontendOidcModeClient,
 	FrontendOidcModeClient,
 	type FrontendOidcModeClientConfig,
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
@@ -64,8 +63,8 @@ const minimalConfig: FrontendOidcModeClientConfig = {
 
 describe("frontend-oidc-mode minimal entry", () => {
 	it("shows the standalone entry path: construct → restoreState → read auth state + authorization header", () => {
-		// 1. Create client via factory or constructor.
-		const client = createFrontendOidcModeClient(minimalConfig, minimalRuntime);
+		// 1. Create client via constructor.
+		const client = new FrontendOidcModeClient(minimalConfig, minimalRuntime);
 		expect(client).toBeInstanceOf(FrontendOidcModeClient);
 
 		// 2. Initially undetermined: replay auth snapshot is empty, no auth header.
@@ -95,7 +94,7 @@ describe("frontend-oidc-mode minimal entry", () => {
 	});
 
 	it("shows the config type import and client state signal subscription", () => {
-		const client = createFrontendOidcModeClient(minimalConfig, minimalRuntime);
+		const client = new FrontendOidcModeClient(minimalConfig, minimalRuntime);
 
 		// Subscribe to auth snapshot changes via the replay signal.
 		const observed: Array<string | null> = [];

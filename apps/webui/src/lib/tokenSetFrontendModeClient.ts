@@ -29,7 +29,6 @@ import { type TokenSetReactClient } from "@securitydept/token-set-context-client
 import {
 	TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH,
 	TOKEN_SET_FRONTEND_MODE_CONFIG_PATH,
-	TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
 	TOKEN_SET_FRONTEND_MODE_POPUP_CALLBACK_PATH,
 } from "@/lib/tokenSetConfig";
 
@@ -404,14 +403,13 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 		reconcileFrontendModeCrossTabStatus(snapshot);
 		return snapshot;
 	},
-	async handleCallback(callbackUrl) {
-		const client = await ensureTokenSetFrontendModeClientSubscribed();
-		const result = await client.handleCallback(callbackUrl);
-		return result;
-	},
 	async loginWithRedirect(options) {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
 		await client.loginWithRedirect(options);
+	},
+	async loginWithPopup(options) {
+		const client = await ensureTokenSetFrontendModeClientSubscribed();
+		return await client.loginWithPopup(options);
 	},
 	async refresh() {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
@@ -450,19 +448,15 @@ export async function startTokenSetFrontendModeLogin(
 	}
 	await client.loginWithRedirect({
 		postAuthRedirectUri,
-		environment: environment.router,
 	});
 }
 
-export async function startTokenSetFrontendModePopupLogin(
-	postAuthRedirectUri = TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
-): Promise<void> {
+export async function startTokenSetFrontendModePopupLogin(): Promise<void> {
 	const client = await ensureTokenSetFrontendModeClientSubscribed();
-	await client.popupLogin({
+	await client.loginWithPopup({
 		popupCallbackUrl: buildAbsoluteUrl(
 			TOKEN_SET_FRONTEND_MODE_POPUP_CALLBACK_PATH,
 		),
-		postAuthRedirectUri,
 	});
 	const snapshot = readFrontendModeSnapshot();
 	if (snapshot?.tokens.accessToken) {

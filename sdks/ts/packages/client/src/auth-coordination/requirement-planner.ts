@@ -217,7 +217,9 @@ export function createRequirementPlanner(
 			const next = findNextPending();
 			const resolutions: RequirementResolution[] = [];
 			for (const s of states) {
-				if (s.resolution !== null) resolutions.push({ ...s.resolution });
+				if (s.resolution !== null) {
+					resolutions.push({ ...s.resolution });
+				}
 			}
 			return {
 				status: next === null ? PlanStatus.Settled : PlanStatus.Pending,

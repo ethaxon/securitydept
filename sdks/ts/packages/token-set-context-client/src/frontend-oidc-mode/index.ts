@@ -23,49 +23,31 @@
 
 // --- Browser runtime ---
 
-export { TokenSetPopupRelayErrorCode } from "../popup/relay";
-export type {
-	FrontendOidcModeLoginWithRedirectOptions,
-	FrontendOidcModePageRouterCapability,
-	FrontendOidcModePopupLoginOptions,
-	RelayFrontendOidcPopupCallbackOptions,
-} from "./client/client";
 export {
-	createFrontendOidcModeClient,
-	FrontendOidcModeClient,
-	relayFrontendOidcPopupCallback,
-} from "./client/client";
+	relayTokenSetPopupCallbackFromEnvironment,
+	TokenSetPopupRelayErrorCode,
+} from "../orchestration/client/popup/relay";
+export { FrontendOidcModeClient } from "./client/client";
+export type { FrontendOidcModeClientDefaultOptions } from "./client/types";
 
 // --- Types: config, protocol, lifecycle ---
 
-export { FrontendOidcModeTraceEventType } from "./client/trace-events";
+export {
+	FrontendOidcModeOperationEventName,
+	FrontendOidcModeTraceEventType,
+	FrontendOidcModeTraceOperationName,
+} from "./client/trace-events";
 export type {
-	FrontendOidcModeAuthorizeParams,
 	FrontendOidcModeAuthorizeResult,
 	FrontendOidcModeCallbackResult,
 	FrontendOidcModeClientConfig,
 	FrontendOidcModePendingState,
 	FrontendOidcModeTokenResult,
+	ResolvedFrontendOidcModeClientConfig,
 } from "./client/types";
+export { FrontendOidcModeContextSource } from "./client/types";
 export { FrontendOidcModeCallbackErrorCode } from "./errors/callback-error-codes";
 export { describeFrontendOidcModeCallbackError } from "./errors/error-presentation";
-
-// --- Types: orchestration re-exports (mode-qualified aliases) ---
-
-export type {
-	AuthenticatedPrincipal as FrontendOidcModeAuthenticatedPrincipal,
-	AuthenticationSource as FrontendOidcModeAuthenticationSource,
-	AuthStateDelta as FrontendOidcModeAuthStateDelta,
-	AuthStateMetadataSnapshot as FrontendOidcModeAuthStateMetadataSnapshot,
-	AuthStateSnapshot as FrontendOidcModeAuthStateSnapshot,
-	AuthTokenDelta as FrontendOidcModeAuthTokenDelta,
-	AuthTokenSnapshot as FrontendOidcModeAuthTokenSnapshot,
-} from "./client/types";
-
-export {
-	FrontendOidcModeContextSource,
-	FrontendOidcModeStateRestoreSourceKind,
-} from "./client/types";
 
 // --- Cross-boundary contracts (aligned with Rust FrontendOidcMode*) ---
 
@@ -80,18 +62,13 @@ export type {
 
 // --- Adapters: projection → client config, result → orchestration ---
 
+export { configProjectionToClientConfig } from "./contracts/contracts";
 export {
-	configProjectionToClientConfig,
-	FrontendOidcModeConfigProjectionSchema,
 	parseConfigProjection,
 	tokenResultToAuthSnapshot,
 	validateConfigProjection,
-} from "./contracts/contracts";
-
-// --- Authorized transport ---
-
-export type { CreateFrontendOidcModeAuthorizedTransportOptions } from "./transport/auth-transport";
-export { createFrontendOidcModeAuthorizedTransportFromBase } from "./transport/auth-transport";
+} from "./contracts/parsers";
+export { FrontendOidcModeConfigProjectionSchema } from "./contracts/schemas";
 
 // --- Config projection source contract (core — no web runtime assumptions) ---
 
@@ -106,7 +83,6 @@ export type {
 } from "./config/config-source";
 
 export {
-	ClientReadinessState,
 	ConfigProjectionSourceKind,
 	resolveConfigProjection,
 } from "./config/config-source";

@@ -5,11 +5,7 @@ import {
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { SessionContextClient } from "@securitydept/session-context-client";
-import {
-	buildAuthorizeUrlReturningToCurrentPage,
-	createBackendOidcModeWebClient,
-	createBackendOidcModeWebClientEnvironment,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it, vi } from "vitest";
 
 describe("minimal entry points", () => {
@@ -48,8 +44,12 @@ describe("minimal entry points", () => {
 	});
 
 	it("supports a browser-oriented token-set entry path", () => {
-		const client = createBackendOidcModeWebClient({
-			environment: createBackendOidcModeWebClientEnvironment({
+		const client = new BackendOidcModeClient(
+			{
+				baseUrl: "https://auth.example.com",
+				defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
+			},
+			createFoundationEnvironment({
 				span: createRootSpan(),
 				tracing: createTracing(),
 				transport: {
@@ -77,21 +77,16 @@ describe("minimal entry points", () => {
 					async remove() {},
 				},
 			}),
-			baseUrl: "https://auth.example.com",
-			defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
+		);
+		const router = createRouterForNativeWeb({
+			location: {
+				href: "https://app.example.com/oidc-mediated#callback",
+				hash: "#callback",
+			},
 		});
 
-		expect(
-			buildAuthorizeUrlReturningToCurrentPage(client, {
-				environment: createRouterForNativeWeb({
-					location: {
-						href: "https://app.example.com/oidc-mediated#callback",
-						hash: "#callback",
-					},
-				}),
-			}),
-		).toBe(
-			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Foidc-mediated",
+		expect(client.authorizeUrl(router.currentUrl()?.toString())).toBe(
+			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Foidc-mediated%23callback",
 		);
 	});
 
@@ -99,8 +94,15 @@ describe("minimal entry points", () => {
 		// securitydept-server uses /auth/token-set/* instead of the SDK
 		// default /auth/oidc/*. Adopters must be able to pass these overrides
 		// through the browser convenience entry.
-		const client = createBackendOidcModeWebClient({
-			environment: createBackendOidcModeWebClientEnvironment({
+		const client = new BackendOidcModeClient(
+			{
+				baseUrl: "https://auth.example.com",
+				loginPath: "/auth/token-set/login",
+				refreshPath: "/auth/token-set/refresh",
+				metadataRedeemPath: "/auth/token-set/metadata/redeem",
+				userInfoPath: "/auth/token-set/user-info",
+			},
+			createFoundationEnvironment({
 				span: createRootSpan(),
 				tracing: createTracing(),
 				transport: {
@@ -128,23 +130,15 @@ describe("minimal entry points", () => {
 					async remove() {},
 				},
 			}),
-			baseUrl: "https://auth.example.com",
-			loginPath: "/auth/token-set/login",
-			refreshPath: "/auth/token-set/refresh",
-			metadataRedeemPath: "/auth/token-set/metadata/redeem",
-			userInfoPath: "/auth/token-set/user-info",
+		);
+		const router = createRouterForNativeWeb({
+			location: {
+				href: "https://app.example.com/dashboard",
+				hash: "",
+			},
 		});
 
-		expect(
-			buildAuthorizeUrlReturningToCurrentPage(client, {
-				environment: createRouterForNativeWeb({
-					location: {
-						href: "https://app.example.com/dashboard",
-						hash: "",
-					},
-				}),
-			}),
-		).toBe(
+		expect(client.authorizeUrl(router.currentUrl()?.toString())).toBe(
 			"https://auth.example.com/auth/token-set/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard",
 		);
 	});

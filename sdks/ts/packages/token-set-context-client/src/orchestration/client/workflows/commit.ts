@@ -1,5 +1,5 @@
 import {
-	type TokenSetAuthEventPayload,
+	type TokenSetAuthEventPayloadInput,
 	type TokenSetAuthEventType,
 } from "../../events/auth-events";
 import { type AuthSnapshot } from "../../token/types";
@@ -46,7 +46,7 @@ export type PersistPolicy = (typeof PersistPolicy)[keyof typeof PersistPolicy];
 export type AuthDeterminationEvent = {
 	[K in TokenSetAuthEventType]: {
 		type: K;
-		payload: TokenSetAuthEventPayload<K>;
+		payload: Omit<TokenSetAuthEventPayloadInput<K>, "type">;
 	};
 }[TokenSetAuthEventType];
 

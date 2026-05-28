@@ -47,7 +47,9 @@ export function GroupForm({ mode, group }: GroupFormProps) {
 		onSubmit: async ({ value }) => {
 			const entryIds = sortedUnique(value.entry_ids);
 			if (isEdit) {
-				if (!group) return;
+				if (!group) {
+					return;
+				}
 				await updateGroup.mutateAsync({
 					id: group.id,
 					name: value.name,

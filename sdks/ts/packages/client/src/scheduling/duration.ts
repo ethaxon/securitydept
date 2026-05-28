@@ -4,7 +4,9 @@
  */
 export function parseDurationToMs(duration: string): number {
 	const match = duration.match(/^(\d+(?:\.\d+)?)\s*(s|ms|m|h)$/);
-	if (!match) return 0;
+	if (!match) {
+		return 0;
+	}
 	const value = Number(match[1]);
 
 	switch (match[2]) {

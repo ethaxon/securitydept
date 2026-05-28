@@ -1,13 +1,10 @@
 import { type as defineType } from "arktype";
 import { SecuritydeptInjectionToken } from "../injection";
-import {
-	type TraitInputValidator,
-	type WithTraitInputValidator,
-} from "../validation";
 
 export interface SpanCreateOptions {
 	idFactory?: () => string;
 	attributes?: Record<string, unknown>;
+	mutable?: false;
 }
 
 export const SpanCreateOptionsSchema = defineType({
@@ -15,13 +12,24 @@ export const SpanCreateOptionsSchema = defineType({
 	attributes: "object",
 });
 
+export interface MutableSpanCreateOptions
+	extends Omit<SpanCreateOptions, "mutable"> {
+	mutable: true;
+}
+
 export interface SpanTrait {
 	readonly id: string;
 	readonly parent?: SpanTrait;
 	readonly attributes: Readonly<Record<string, unknown>>;
+	fork(options: MutableSpanCreateOptions): MutableSpanTrait;
+	fork(options?: SpanCreateOptions): SpanTrait;
 	fork(
-		options?: SpanCreateOptions & WithTraitInputValidator<TraitInputValidator>,
-	): SpanTrait;
+		options?: SpanCreateOptions | MutableSpanCreateOptions,
+	): SpanTrait | MutableSpanTrait;
+}
+
+export interface MutableSpanTrait extends SpanTrait {
+	setAttributes(attributes: Record<string, unknown>): void;
 }
 
 export const SpanTraitSchema = defineType({
@@ -34,8 +42,7 @@ export const SPAN_TRAIT_TOKEN = new SecuritydeptInjectionToken<SpanTrait>(
 	"SPAN_TRAIT_TOKEN",
 );
 
-export interface OperationSpanTrait extends SpanTrait {
+export interface OperationSpanTrait extends MutableSpanTrait {
 	addEvent(type: string, attributes?: Record<string, unknown>): void;
-	setAttribute(key: string, value: unknown): void;
 	recordError(error: unknown, attributes?: Record<string, unknown>): void;
 }

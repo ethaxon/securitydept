@@ -11,12 +11,7 @@ import {
 	type LoginWithRedirectOptions,
 	loginWithRedirect,
 } from "@securitydept/session-context-client/web";
-import {
-	createBackendOidcModeWebClient,
-	createBackendOidcModeWebClientEnvironment,
-	type LoginWithBackendOidcRedirectOptions,
-	loginWithBackendOidcRedirect,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -101,33 +96,34 @@ describe("session-context-client/web loginWithRedirect", () => {
 });
 
 // ===========================================================================
-// 2. backend-oidc-mode/web — loginWithBackendOidcRedirect
+// 2. backend-oidc-mode — BackendOidcModeClient.loginWithRedirect()
 // ===========================================================================
 
-describe("backend-oidc-mode/web loginWithBackendOidcRedirect", () => {
-	it("resolves authorize URL from client and navigates the window", () => {
+describe("backend-oidc-mode BackendOidcModeClient.loginWithRedirect", () => {
+	it("resolves authorize URL from client and navigates through its router", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
+		const environment = createPageLocationCapability(
+			"https://app.example.com/page",
+		);
 
-		const client = createBackendOidcModeWebClient({
-			environment: createBackendOidcModeWebClientEnvironment({
+		const client = new BackendOidcModeClient(
+			{
+				baseUrl: "https://auth.example.com",
+				defaultPostAuthRedirectUri: "https://app.example.com/callback",
+			},
+			createFoundationEnvironment({
 				span: createRootSpan(),
 				tracing: createTracing(),
 				persistentStorage,
 				sessionStorage,
+				router: environment,
 			}),
-			baseUrl: "https://auth.example.com",
-			defaultPostAuthRedirectUri: "https://app.example.com/callback",
-		});
-
-		const environment = createPageLocationCapability(
-			"https://app.example.com/page",
 		);
-		const options: LoginWithBackendOidcRedirectOptions = {
-			environment,
+
+		await client.loginWithRedirect({
 			postAuthRedirectUri: "https://app.example.com/return",
-		};
-		loginWithBackendOidcRedirect(client, options);
+		});
 
 		expect(environment.location.href).toBe(
 			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Freturn",
@@ -136,32 +132,32 @@ describe("backend-oidc-mode/web loginWithBackendOidcRedirect", () => {
 		client.dispose();
 	});
 
-	it("derives return URI from location when postAuthRedirectUri is omitted", () => {
+	it("uses the client default return URI when postAuthRedirectUri is omitted", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
+		const environment = createPageLocationCapability(
+			"https://app.example.com/page#fragment",
+		);
 
-		const client = createBackendOidcModeWebClient({
-			environment: createBackendOidcModeWebClientEnvironment({
+		const client = new BackendOidcModeClient(
+			{
+				baseUrl: "https://auth.example.com",
+				defaultPostAuthRedirectUri: "https://app.example.com/default",
+			},
+			createFoundationEnvironment({
 				span: createRootSpan(),
 				tracing: createTracing(),
 				persistentStorage,
 				sessionStorage,
+				router: environment,
 			}),
-			baseUrl: "https://auth.example.com",
-		});
-
-		const environment = createPageLocationCapability(
-			"https://app.example.com/page#fragment",
 		);
-		loginWithBackendOidcRedirect(client, { environment });
 
-		expect(environment.location.href).toContain(
-			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=",
+		await client.loginWithRedirect();
+
+		expect(environment.location.href).toBe(
+			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdefault",
 		);
-		const urlObj = new URL(environment.location.href);
-		const redirectUri = urlObj.searchParams.get("post_auth_redirect_uri");
-		expect(redirectUri).not.toContain("#fragment");
-		expect(redirectUri).toContain("https://app.example.com/page");
 
 		client.dispose();
 	});
@@ -174,6 +170,9 @@ describe("backend-oidc-mode/web loginWithBackendOidcRedirect", () => {
 describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 	it("builds the authorize URL, stores pending state, and navigates the browser", async () => {
 		const sessionStorage = createInMemoryRecordStore();
+		const environment = createPageLocationCapability(
+			"https://app.example.com/page",
+		);
 		const runtime = createFoundationEnvironment({
 			transport: {
 				execute: vi.fn(async () => ({
@@ -194,13 +193,12 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 				),
 			},
 			sessionStorage,
+			router: environment,
 		});
 
 		const { FrontendOidcModeClient } = await import(
 			"@securitydept/token-set-context-client/frontend-oidc-mode"
 		);
-		type FrontendOidcModeLoginWithRedirectOptions =
-			import("@securitydept/token-set-context-client/frontend-oidc-mode").FrontendOidcModeLoginWithRedirectOptions;
 
 		const client = new FrontendOidcModeClient(
 			{
@@ -214,21 +212,9 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 			runtime,
 		);
 
-		const environment = createPageLocationCapability(
-			"https://app.example.com/page",
-		);
-
-		const options: FrontendOidcModeLoginWithRedirectOptions = {
-			environment,
-			postAuthRedirectUri: "https://app.example.com/after-login",
-			extraParams: { prompt: "consent" },
-		};
-		const invalidOptions = {
+		const options = {
 			postAuthRedirectUri: "https://app.example.com/after-login",
 		};
-		// @ts-expect-error frontend-oidc redirect helpers require explicit page environment.
-		const _invalid: FrontendOidcModeLoginWithRedirectOptions = invalidOptions;
-		void _invalid;
 		await client.loginWithRedirect(options);
 
 		// Should have navigated to the authorization endpoint.
@@ -236,7 +222,6 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 			"https://auth.example.com/oauth2/authorize",
 		);
 		expect(environment.location.href).toContain("client_id=spa-client");
-		expect(environment.location.href).toContain("prompt=consent");
 		expect(environment.location.href).toContain("code_challenge=");
 
 		const authorizeUrl = new URL(environment.location.href);

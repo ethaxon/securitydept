@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createRootSpan, TracingLevel } from "../../../index";
+import {
+	createRootSpan,
+	OperationTraceEventType,
+	TracingLevel,
+} from "../../../index";
 import { createTraceTimelineStore } from "../timeline-store";
 
 describe("trace timeline store", () => {
@@ -12,7 +16,7 @@ describe("trace timeline store", () => {
 		});
 
 		timeline.record({
-			name: "frontend_oidc.callback.started",
+			name: OperationTraceEventType.Started,
 			at: Date.parse("2026-01-01T00:00:00Z"),
 			target: "frontend-oidc-mode",
 			span,
@@ -26,7 +30,7 @@ describe("trace timeline store", () => {
 		expect(timeline.get()[0]).toMatchObject({
 			id: 1,
 			recordedAtIso: "2026-01-01T00:00:00.000Z",
-			name: "frontend_oidc.callback.started",
+			name: OperationTraceEventType.Started,
 			target: "frontend-oidc-mode",
 			span: expect.objectContaining({
 				id: "trace_root",

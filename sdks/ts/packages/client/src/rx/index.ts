@@ -22,11 +22,11 @@ export {
 } from "./command";
 export { createAsyncSchedulerWithTimestampProvider } from "./environment";
 export {
-	eventOperatorFunctionToRx,
+	behaviorSubjectToSignal,
 	eventStreamToObservable,
 	eventSubjectToSubject,
 	observableToEventStream,
-	rxOperatorFunctionToEvent,
+	observableToReplaySignal,
 	signalToObservable,
 	subjectToEventSubject,
 } from "./interop";

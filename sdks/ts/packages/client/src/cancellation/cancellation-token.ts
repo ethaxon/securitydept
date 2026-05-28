@@ -31,7 +31,9 @@ class CancellationToken
 	/** @internal — called by `CancellationTokenSource`. */
 	_cancel(reason: unknown): void {
 		const isCancelled = this._isCancelled.getValue();
-		if (isCancelled) return;
+		if (isCancelled) {
+			return;
+		}
 		this._reason = reason;
 		this._isCancelled.next(true);
 		this._isCancelled.complete();
@@ -62,6 +64,15 @@ class CancellationToken
 				cause: this._reason,
 			});
 		}
+	}
+
+	readCancellationError(): unknown {
+		try {
+			this.throwIfCancellationRequested();
+		} catch (error) {
+			return error;
+		}
+		return this._reason;
 	}
 
 	private _asObservable(): Observable<unknown> {
@@ -101,7 +112,9 @@ export function createCancellationTokenSource(): CancellationTokenSourceTrait {
 			return ct;
 		},
 		cancel(reason?: unknown) {
-			if (!disposed) ct._cancel(reason);
+			if (!disposed) {
+				ct._cancel(reason);
+			}
 		},
 		dispose,
 		[SYMBOL_DISPOSE]() {
@@ -119,6 +132,8 @@ export function isCancellationTokenTrait(
 		typeof (obj as CancellationTokenTrait).isCancellationRequested ===
 			"boolean" &&
 		typeof (obj as CancellationTokenTrait).onCancellationRequested ===
+			"function" &&
+		typeof (obj as CancellationTokenTrait).readCancellationError ===
 			"function" &&
 		typeof (obj as CancellationTokenTrait).throwIfCancellationRequested ===
 			"function" &&

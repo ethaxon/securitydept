@@ -2,21 +2,14 @@ import {
 	CLIENT_ENVIRONMENT,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import { relayFrontendOidcPopupCallback } from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import { relayTokenSetPopupCallbackFromEnvironment } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { useEffect } from "react";
 
 export function TokenSetFrontendModePopupCallbackPage() {
 	const environment = useSecuritydeptContext().get(CLIENT_ENVIRONMENT);
 
 	useEffect(() => {
-		let active = true;
-		if (active) {
-			relayFrontendOidcPopupCallback({ environment });
-		}
-
-		return () => {
-			active = false;
-		};
+		void relayTokenSetPopupCallbackFromEnvironment(environment);
 	}, [environment]);
 
 	return (

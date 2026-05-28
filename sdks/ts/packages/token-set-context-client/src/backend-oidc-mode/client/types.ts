@@ -1,50 +1,13 @@
 // Backend OIDC Mode — client-specific types
 //
-// Token material / metadata / snapshot / delta types are re-exported from the
-// orchestration layer. Mode-specific constants and config types live here.
+// Mode-specific constants and config types live here. Shared token/auth
+// material types are exported from the orchestration layer.
 
-import { type AuthWorkflowRuntimeOptions } from "../../orchestration/client/workflows/source";
+import { type CancellationTokenTrait } from "@securitydept/client";
 import {
-	type AuthDelta as _AuthDelta,
-	type AuthMetadataDelta as _AuthMetadataDelta,
-	type AuthMetadataSnapshot as _AuthMetadataSnapshot,
-	type AuthPrincipal as _AuthPrincipal,
-	type AuthSnapshot as _AuthSnapshot,
-	type AuthSource as _AuthSource,
-	AuthSourceKind as _AuthSourceKind,
-	type TokenDelta as _TokenDelta,
-	type TokenSnapshot as _TokenSnapshot,
-} from "../../orchestration/token/types";
-
-// --- Orchestration re-exports ---
-
-/** @see {@link _AuthSourceKind} */
-export const AuthenticationSourceKind = _AuthSourceKind;
-export type AuthenticationSourceKind = _AuthSourceKind;
-
-/** @see {@link _AuthSource} */
-export type AuthenticationSource = _AuthSource;
-
-/** @see {@link _AuthPrincipal} */
-export type AuthenticatedPrincipal = _AuthPrincipal;
-
-/** @see {@link _TokenSnapshot} */
-export type AuthTokenSnapshot = _TokenSnapshot;
-
-/** @see {@link _TokenDelta} */
-export type AuthTokenDelta = _TokenDelta;
-
-/** @see {@link _AuthMetadataSnapshot} */
-export type AuthStateMetadataSnapshot = _AuthMetadataSnapshot;
-
-/** @see {@link _AuthMetadataDelta} */
-export type AuthStateMetadataDelta = _AuthMetadataDelta;
-
-/** @see {@link _AuthSnapshot} */
-export type AuthStateSnapshot = _AuthSnapshot;
-
-/** @see {@link _AuthDelta} */
-export type AuthStateDelta = _AuthDelta;
+	type BaseOidcModeClientDefaultOptions,
+	type OidcModeClientConfigBase,
+} from "../../orchestration/client/types";
 
 // --- Mode-specific constants ---
 
@@ -56,17 +19,9 @@ export const BackendOidcModeContextSource = {
 export type BackendOidcModeContextSource =
 	(typeof BackendOidcModeContextSource)[keyof typeof BackendOidcModeContextSource];
 
-export const BackendOidcModeStateRestoreSourceKind = {
-	Manual: "manual",
-	PersistentStore: "persistent_store",
-} as const;
-
-export type BackendOidcModeStateRestoreSourceKind =
-	(typeof BackendOidcModeStateRestoreSourceKind)[keyof typeof BackendOidcModeStateRestoreSourceKind];
-
 // --- Mode-specific config ---
 
-export interface BackendOidcModeClientConfig {
+export interface BackendOidcModeClientConfig extends OidcModeClientConfigBase {
 	/** Base URL of the backend server that runs the OIDC flow. */
 	baseUrl: string;
 	/**
@@ -97,12 +52,32 @@ export interface BackendOidcModeClientConfig {
 	 * SDK default: `"/auth/oidc/user-info"`.
 	 */
 	userInfoPath?: string;
-	/** Buffer before expiry to trigger refresh, in ms (default: 60000 = 1 minute). */
-	refreshWindowMs?: number;
-	/** Optional key used with `environment.persistentStorage` for persisted auth state. */
-	persistentStateKey?: string;
 	/** Optional default redirect URI reused by authorize/refresh browser flows. */
 	defaultPostAuthRedirectUri?: string;
-	/** Long-running auth workflow source configuration. */
-	authCheck?: AuthWorkflowRuntimeOptions;
+}
+
+export interface BackendOidcModeFetchUserInfoOptions {
+	cancellationToken?: CancellationTokenTrait;
+}
+
+export interface BackendOidcModeMetadataRedemptionOptions {
+	cancellationToken?: CancellationTokenTrait;
+}
+
+export interface BackendOidcModeClientDefaultOptions
+	extends BaseOidcModeClientDefaultOptions {
+	loginPath: string;
+	refreshPath: string;
+	metadataRedeemPath: string;
+	userInfoPath: string;
+	persistenceKeyPrefix: string;
+}
+
+export interface ResolvedBackendOidcModeClientConfig
+	extends BackendOidcModeClientConfig {
+	baseUrl: string;
+	loginPath: string;
+	refreshPath: string;
+	metadataRedeemPath: string;
+	userInfoPath: string;
 }

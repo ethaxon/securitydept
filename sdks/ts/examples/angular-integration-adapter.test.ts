@@ -13,6 +13,7 @@ import {
 	type ExternalTransportTrait,
 	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
+	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import { signalToObservable } from "@securitydept/client/rx";
 import { bridgeToAngularSignal } from "@securitydept/client-angular";
@@ -28,10 +29,9 @@ import {
 import {
 	CallbackResumeService,
 	createTokenSetBearerInterceptor,
-	type OidcCallbackClient,
-	type OidcModeClient,
 	provideTokenSetAuth,
 	TOKEN_SET_AUTH_REGISTRY,
+	type TokenSetAngularClient,
 	TokenSetAuthRegistry,
 } from "@securitydept/token-set-context-client-angular";
 import { firstValueFrom, Observable, of } from "rxjs";
@@ -77,10 +77,18 @@ function makeSnapshot(accessToken: string): AuthSnapshot {
 	};
 }
 
+interface ExampleCallbackClient {
+	handleCallback(currentUrl: string): Promise<{
+		snapshot: AuthSnapshot | null;
+		postAuthRedirectUri?: string;
+	}>;
+}
+
+type ExampleClient = TokenSetAngularClient & ExampleCallbackClient;
+
 function createMockClient(
 	initialState: AuthSnapshot | null = null,
-): OidcModeClient &
-	OidcCallbackClient & { _stateCtrl: ReturnType<typeof createTestSignal> } {
+): ExampleClient & { _stateCtrl: ReturnType<typeof createTestSignal> } {
 	const stateCtrl = createTestSignal<AuthSnapshot | null>(initialState);
 	const reactive = createTestTokenSetReactiveFields(initialState);
 	return {
@@ -90,7 +98,12 @@ function createMockClient(
 		removeWorkflowSource: vi.fn(() => false),
 		start: vi.fn(async () => undefined),
 		dispose: vi.fn(),
+		[SYMBOL_DISPOSE]: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
+		loginWithRedirect: vi.fn(async () => undefined),
+		loginWithPopup: vi.fn(async () => ({
+			snapshot: makeSnapshot("popup-tok"),
+		})),
 		handleCallback: vi.fn().mockResolvedValue({
 			snapshot: makeSnapshot("callback-tok"),
 		}),
@@ -343,21 +356,21 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 			clientFactory: () => adminClient,
 		});
 
-		await expect(registry.whenReady("main")).resolves.toBe(mainClient);
-		await expect(registry.whenReady("admin")).resolves.toBe(adminClient);
-		await expect(registry.whenReady("unknown")).rejects.toThrow(
+		await expect(registry.initialize("main")).resolves.toBe(mainClient);
+		await expect(registry.initialize("admin")).resolves.toBe(adminClient);
+		await expect(registry.initialize("unknown")).rejects.toThrow(
 			/No client registered for key "unknown"/,
 		);
 	});
 
-	it("whenReady() throws for missing key with helpful message", async () => {
+	it("initialize() throws for missing key with helpful message", async () => {
 		const registry = new TokenSetAuthRegistry();
-		await expect(registry.whenReady("missing")).rejects.toThrow(
+		await expect(registry.initialize("missing")).rejects.toThrow(
 			/No client registered for key "missing"/,
 		);
 	});
 
-	it("clientKeyForUrl matches URL patterns", () => {
+	it("clientRecordForQuery matches URL patterns", () => {
 		const registry = new TokenSetAuthRegistry();
 
 		registry.register({
@@ -371,12 +384,20 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 			urlPatterns: [/^\/admin-api\//],
 		});
 
-		expect(registry.clientKeyForUrl("/api/users")).toBe("api");
-		expect(registry.clientKeyForUrl("/admin-api/settings")).toBe("admin");
-		expect(registry.clientKeyForUrl("/public/page")).toBeUndefined();
+		expect(
+			registry.clientRecordForQuery({ url: "/api/users" })?.get().meta
+				.clientKey,
+		).toBe("api");
+		expect(
+			registry.clientRecordForQuery({ url: "/admin-api/settings" })?.get().meta
+				.clientKey,
+		).toBe("admin");
+		expect(
+			registry.clientRecordForQuery({ url: "/public/page" }),
+		).toBeUndefined();
 	});
 
-	it("clientKeyForCallback matches registered callback paths", () => {
+	it("clientRecordForQuery matches registered callback paths", () => {
 		const registry = new TokenSetAuthRegistry();
 
 		registry.register({
@@ -391,13 +412,23 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 		});
 
 		expect(
-			registry.clientKeyForCallback("https://app.test/auth/callback?code=abc"),
+			registry
+				.clientRecordForQuery({
+					callbackUrl: "https://app.test/auth/callback?code=abc",
+				})
+				?.get().meta.clientKey,
 		).toBe("main");
 		expect(
-			registry.clientKeyForCallback("https://app.test/admin/callback?code=xyz"),
+			registry
+				.clientRecordForQuery({
+					callbackUrl: "https://app.test/admin/callback?code=xyz",
+				})
+				?.get().meta.clientKey,
 		).toBe("admin");
 		expect(
-			registry.clientKeyForCallback("https://app.test/dashboard"),
+			registry.clientRecordForQuery({
+				callbackUrl: "https://app.test/dashboard",
+			}),
 		).toBeUndefined();
 	});
 
@@ -417,19 +448,16 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 		});
 
 		await expect(
-			(await registry.whenReady("admin")).authSnapshot.whenValue(),
+			(await registry.initialize("admin")).authSnapshot.whenValue(),
 		).resolves.toMatchObject({
 			tokens: { accessToken: "admin-tok" },
 		});
 		await expect(
-			(await registry.whenReady("main")).authSnapshot.whenValue(),
+			(await registry.initialize("main")).authSnapshot.whenValue(),
 		).resolves.toBeNull();
-		await expect(registry.whenReady()).rejects.toThrow(
-			"without a key is only valid for a single registered client",
-		);
 	});
 
-	it("readyKeys() returns all started client keys", async () => {
+	it("entries exposes all ready client records", async () => {
 		const registry = new TokenSetAuthRegistry();
 
 		registry.register({
@@ -441,9 +469,12 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 			clientFactory: () => createMockClient(),
 		});
 
-		await registry.whenReady("a");
-		await registry.whenReady("b");
-		expect(registry.readyKeys()).toEqual(["a", "b"]);
+		await registry.initialize("a");
+		await registry.initialize("b");
+		expect(registry.entries.get()).toMatchObject([
+			{ key: "a", status: "ready" },
+			{ key: "b", status: "ready" },
+		]);
 	});
 
 	it("does not patch registry-managed clients with page-resume trigger sources", async () => {
@@ -456,7 +487,7 @@ describe("Angular Integration — TokenSetAuthRegistry (multi-client)", () => {
 					key: "main",
 					clientFactory: () => client,
 				});
-				await registry.whenReady("main");
+				await registry.initialize("main");
 
 				expect(client.addWorkflowSource).not.toHaveBeenCalled();
 				expect(documentTarget.addEventListener).not.toHaveBeenCalled();
@@ -502,8 +533,8 @@ describe("Angular Integration — registry-managed clients", () => {
 			key: "b",
 			clientFactory: () => client2,
 		});
-		await registry.whenReady("a");
-		await registry.whenReady("b");
+		await registry.initialize("a");
+		await registry.initialize("b");
 
 		registry.dispose();
 		expect(dispose1).toHaveBeenCalledOnce();
@@ -516,10 +547,10 @@ describe("Angular Integration — registry-managed clients", () => {
 // ===========================================================================
 
 describe("Angular Integration — Callback Helpers", () => {
-	describe("isOidcCallback", () => {
+	describe("matchesCallbackPath", () => {
 		it("returns true for callback URL with code", () => {
 			expect(
-				isOidcCallback({
+				matchesCallbackPath({
 					currentUrl:
 						"https://app.example.com/auth/callback?code=abc&state=xyz",
 					callbackPath: "/auth/callback",
@@ -529,7 +560,7 @@ describe("Angular Integration — Callback Helpers", () => {
 
 		it("returns false for non-callback URL", () => {
 			expect(
-				isOidcCallback({
+				matchesCallbackPath({
 					currentUrl: "https://app.example.com/dashboard",
 					callbackPath: "/auth/callback",
 				}),
@@ -637,28 +668,38 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 
 		const mainState = createTestSignal<AuthSnapshot | null>(null);
 		const mainReactive = createTestTokenSetReactiveFields(null);
-		const mainClient: OidcModeClient & OidcCallbackClient = {
+		const mainClient: ExampleClient = {
 			...mainReactive.fields,
 			authEvents: createEventSubject(),
 			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
+			[SYMBOL_DISPOSE]: vi.fn(),
 			restorePersistedState: vi.fn().mockResolvedValue(null),
+			loginWithRedirect: vi.fn(async () => undefined),
+			loginWithPopup: vi.fn(async () => ({
+				snapshot: makeSnapshot("main-after-login"),
+			})),
 			handleCallback: vi.fn().mockResolvedValue({
 				snapshot: makeSnapshot("main-after-login"),
 			}),
 		};
 
 		const adminReactive = createTestTokenSetReactiveFields(null);
-		const adminClient: OidcModeClient & OidcCallbackClient = {
+		const adminClient: ExampleClient = {
 			...adminReactive.fields,
 			authEvents: createEventSubject(),
 			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
 			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
+			[SYMBOL_DISPOSE]: vi.fn(),
 			restorePersistedState: vi.fn().mockResolvedValue(null),
+			loginWithRedirect: vi.fn(async () => undefined),
+			loginWithPopup: vi.fn(async () => ({
+				snapshot: makeSnapshot("admin-after-login"),
+			})),
 			handleCallback: vi.fn().mockResolvedValue({
 				snapshot: makeSnapshot("admin-after-login"),
 			}),
@@ -679,8 +720,8 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 			urlPatterns: ["/admin-api/"],
 			callbackPath: "/admin/callback",
 		});
-		const mainRegisteredClient = await registry.whenReady("main");
-		const adminRegisteredClient = await registry.whenReady("admin");
+		const mainRegisteredClient = await registry.initialize("main");
+		const adminRegisteredClient = await registry.initialize("admin");
 
 		// 3. Verify initial state
 		expect(expectReplayValue(mainRegisteredClient.isAuthenticated)).toBe(false);
@@ -720,10 +761,18 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 
 		// 7. Callback discrimination
 		expect(
-			registry.clientKeyForCallback("https://app.test/auth/callback?code=abc"),
+			registry
+				.clientRecordForQuery({
+					callbackUrl: "https://app.test/auth/callback?code=abc",
+				})
+				?.get().meta.clientKey,
 		).toBe("main");
 		expect(
-			registry.clientKeyForCallback("https://app.test/admin/callback?code=xyz"),
+			registry
+				.clientRecordForQuery({
+					callbackUrl: "https://app.test/admin/callback?code=xyz",
+				})
+				?.get().meta.clientKey,
 		).toBe("admin");
 
 		// 8. Explicit dispose triggers teardown for all registered clients.
@@ -739,7 +788,7 @@ describe("Angular Integration — E2E Multi-client Architecture Proof", () => {
 // ===========================================================================
 
 describe("Angular Integration — RequirementKind / ProviderFamily mapping", () => {
-	it("clientKeyForRequirement resolves to registered client key", () => {
+	it("clientRecordForQuery resolves requirement kind to registered record", () => {
 		const registry = new TokenSetAuthRegistry();
 
 		registry.register({
@@ -753,12 +802,20 @@ describe("Angular Integration — RequirementKind / ProviderFamily mapping", () 
 			requirementKind: "frontend_oidc",
 		});
 
-		expect(registry.clientKeyForRequirement("backend_oidc")).toBe("main");
-		expect(registry.clientKeyForRequirement("frontend_oidc")).toBe("admin");
-		expect(registry.clientKeyForRequirement("session")).toBeUndefined();
+		expect(
+			registry.clientRecordForQuery({ requirementKind: "backend_oidc" })?.get()
+				.meta.clientKey,
+		).toBe("main");
+		expect(
+			registry.clientRecordForQuery({ requirementKind: "frontend_oidc" })?.get()
+				.meta.clientKey,
+		).toBe("admin");
+		expect(
+			registry.clientRecordForQuery({ requirementKind: "session" }),
+		).toBeUndefined();
 	});
 
-	it("clientKeyForRequirement returns the key for a registered kind", () => {
+	it("clientRecordForQuery returns the record for a registered kind", () => {
 		const registry = new TokenSetAuthRegistry();
 		const client = createMockClient();
 
@@ -768,11 +825,16 @@ describe("Angular Integration — RequirementKind / ProviderFamily mapping", () 
 			requirementKind: "backend_oidc",
 		});
 
-		expect(registry.clientKeyForRequirement("backend_oidc")).toBe("main");
-		expect(registry.clientKeyForRequirement("unknown_kind")).toBeUndefined();
+		expect(
+			registry.clientRecordForQuery({ requirementKind: "backend_oidc" })?.get()
+				.meta.clientKey,
+		).toBe("main");
+		expect(
+			registry.clientRecordForQuery({ requirementKind: "unknown_kind" }),
+		).toBeUndefined();
 	});
 
-	it("clientKeyForProviderFamily resolves to registered client key", () => {
+	it("clientRecordForQuery resolves provider family to registered record", () => {
 		const registry = new TokenSetAuthRegistry();
 
 		registry.register({
@@ -786,14 +848,20 @@ describe("Angular Integration — RequirementKind / ProviderFamily mapping", () 
 			providerFamily: "internal-sso",
 		});
 
-		expect(registry.clientKeyForProviderFamily("google")).toBe("google");
-		expect(registry.clientKeyForProviderFamily("internal-sso")).toBe(
-			"internal",
-		);
-		expect(registry.clientKeyForProviderFamily("github")).toBeUndefined();
+		expect(
+			registry.clientRecordForQuery({ providerFamily: "google" })?.get().meta
+				.clientKey,
+		).toBe("google");
+		expect(
+			registry.clientRecordForQuery({ providerFamily: "internal-sso" })?.get()
+				.meta.clientKey,
+		).toBe("internal");
+		expect(
+			registry.clientRecordForQuery({ providerFamily: "github" }),
+		).toBeUndefined();
 	});
 
-	it("clientKeyForProviderFamily returns the key for a registered family", () => {
+	it("clientRecordForQuery returns the record for a registered family", () => {
 		const registry = new TokenSetAuthRegistry();
 		const client = createMockClient();
 
@@ -803,10 +871,13 @@ describe("Angular Integration — RequirementKind / ProviderFamily mapping", () 
 			providerFamily: "internal-sso",
 		});
 
-		expect(registry.clientKeyForProviderFamily("internal-sso")).toBe(
-			"internal",
-		);
-		expect(registry.clientKeyForProviderFamily("github")).toBeUndefined();
+		expect(
+			registry.clientRecordForQuery({ providerFamily: "internal-sso" })?.get()
+				.meta.clientKey,
+		).toBe("internal");
+		expect(
+			registry.clientRecordForQuery({ providerFamily: "github" }),
+		).toBeUndefined();
 	});
 
 	it("requirementKind and providerFamily can coexist on the same entry", async () => {
@@ -821,9 +892,15 @@ describe("Angular Integration — RequirementKind / ProviderFamily mapping", () 
 		});
 
 		// Both axes resolve to the same client key.
-		expect(registry.clientKeyForRequirement("backend_oidc")).toBe("primary");
-		expect(registry.clientKeyForProviderFamily("company-sso")).toBe("primary");
-		await expect(registry.whenReady("primary")).resolves.toBe(primaryClient);
+		expect(
+			registry.clientRecordForQuery({ requirementKind: "backend_oidc" })?.get()
+				.meta.clientKey,
+		).toBe("primary");
+		expect(
+			registry.clientRecordForQuery({ providerFamily: "company-sso" })?.get()
+				.meta.clientKey,
+		).toBe("primary");
+		await expect(registry.initialize("primary")).resolves.toBe(primaryClient);
 	});
 });
 
@@ -956,7 +1033,7 @@ describe("Angular Integration — createTokenSetRouteAggregationGuard requiremen
 			callbackPath: "/auth/callback",
 			requirementKind: "frontend_oidc",
 			providerFamily: "authentik",
-			priority: "primary",
+			initialization: "immediate",
 		};
 		expect(meta.clientKey).toBe("main");
 	});
@@ -984,7 +1061,7 @@ import {
 	AUTH_REQUIREMENTS_CLIENT_SET,
 	provideRouteScopedRequirements,
 } from "@securitydept/client-angular";
-import { isOidcCallback } from "@securitydept/token-set-context-client/registry";
+import { matchesCallbackPath } from "@securitydept/token-set-context-client/registry";
 
 describe("Angular nested-scope requirements composition — contract evidence", () => {
 	// Shared fixture candidates

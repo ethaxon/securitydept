@@ -98,7 +98,9 @@ function normalizePath(path: string): string {
 }
 
 function resolveSourcePath(filePath: string): string {
-	if (!filePath) return "";
+	if (!filePath) {
+		return "";
+	}
 	const sourcePath = isAbsolute(filePath)
 		? filePath
 		: resolve(DOCSITE_ROOT, filePath);
@@ -114,14 +116,20 @@ function resolveRepoRelativePath(
 	filePath: string,
 	hrefPath: string,
 ): string | null {
-	if (!filePath || !hrefPath || hrefPath.startsWith("/")) return null;
+	if (!filePath || !hrefPath || hrefPath.startsWith("/")) {
+		return null;
+	}
 
 	const sourcePath = resolveSourcePath(filePath);
-	if (!sourcePath) return null;
+	if (!sourcePath) {
+		return null;
+	}
 
 	const targetPath = resolve(dirname(sourcePath), hrefPath);
 	const repoRelativePath = relative(REPO_ROOT, targetPath);
-	if (!repoRelativePath) return null;
+	if (!repoRelativePath) {
+		return null;
+	}
 	if (repoRelativePath.startsWith("..") || isAbsolute(repoRelativePath)) {
 		return null;
 	}
@@ -151,7 +159,9 @@ function rewriteHref(
 	const path = pathEndIdx === -1 ? href : href.slice(0, pathEndIdx);
 	const suffix = pathEndIdx === -1 ? "" : href.slice(pathEndIdx);
 
-	if (!path || path.startsWith("/")) return href;
+	if (!path || path.startsWith("/")) {
+		return href;
+	}
 
 	const normalized = normalizePath(path).replace(/^\.\//, "");
 	const repoRelativePath = resolveRepoRelativePath(filePath, path);
@@ -159,10 +169,18 @@ function rewriteHref(
 	const langPrefix = lang === "en" ? "" : "/zh";
 	const map = (target: string) => `${target}${suffix}`;
 
-	if (resolved === "README.md") return map("/");
-	if (resolved === "README_zh.md") return map("/zh/");
-	if (resolved === "AGENTS.md") return map(`${langPrefix}/agents`);
-	if (/^LICENSE(\.md)?$/i.test(resolved)) return map(`${langPrefix}/license`);
+	if (resolved === "README.md") {
+		return map("/");
+	}
+	if (resolved === "README_zh.md") {
+		return map("/zh/");
+	}
+	if (resolved === "AGENTS.md") {
+		return map(`${langPrefix}/agents`);
+	}
+	if (/^LICENSE(\.md)?$/i.test(resolved)) {
+		return map(`${langPrefix}/license`);
+	}
 	if (/^CHANGELOG(\.md)?$/i.test(resolved)) {
 		return map(`${REPO_URL}/blob/main/CHANGELOG.md`);
 	}
@@ -182,10 +200,14 @@ function rewriteHref(
 	}
 
 	const assets = resolved.match(/^(?:\.\.\/)*assets\/icons\/(.+)$/i);
-	if (assets) return map(`/${assets[1]}`);
+	if (assets) {
+		return map(`/${assets[1]}`);
+	}
 
 	const localDoc = resolved.match(/^([^/]+)\.md$/i);
-	if (localDoc) return map(`${langPrefix}/docs/${localDoc[1]}`);
+	if (localDoc) {
+		return map(`${langPrefix}/docs/${localDoc[1]}`);
+	}
 
 	if (
 		repoRelativePath &&
@@ -200,7 +222,9 @@ function rewriteHref(
 
 function detectLang(filePath: string): "en" | "zh" {
 	const p = filePath.replace(/\\/g, "/");
-	if (/\/zh\//.test(p) || /\/README_zh\.md$/i.test(p)) return "zh";
+	if (/\/zh\//.test(p) || /\/README_zh\.md$/i.test(p)) {
+		return "zh";
+	}
 	return "en";
 }
 

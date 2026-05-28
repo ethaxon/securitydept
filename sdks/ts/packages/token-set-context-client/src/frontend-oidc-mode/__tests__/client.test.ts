@@ -15,7 +15,7 @@ import {
 	type TokenSetAuthEvent,
 	TokenSetAuthEventType,
 } from "../../orchestration";
-import { FrontendOidcModeTraceEventType } from "../client/trace-events";
+import { FrontendOidcModeOperationEventName } from "../client/trace-events";
 import { FrontendOidcModeCallbackErrorCode } from "../errors/callback-error-codes";
 
 const popupMocks = vi.hoisted(() => ({
@@ -27,8 +27,10 @@ const popupRelayMocks = vi.hoisted(() => ({
 	waitForTokenSetPopupRelay: vi.fn(),
 }));
 
-vi.mock("../../popup/relay", async () => {
-	const actual = await vi.importActual<object>("../../popup/relay");
+vi.mock("../../orchestration/client/popup/relay", async () => {
+	const actual = await vi.importActual<object>(
+		"../../orchestration/client/popup/relay",
+	);
 	return {
 		...actual,
 		relayTokenSetPopupCallback: popupRelayMocks.relayTokenSetPopupCallback,
@@ -112,10 +114,7 @@ vi.mock("oauth4webapi", () => ({
 	validateAuthResponse: oauthMocks.validateAuthResponse,
 }));
 
-import {
-	FrontendOidcModeClient,
-	relayFrontendOidcPopupCallback,
-} from "../client/client";
+import { FrontendOidcModeClient } from "../client/client";
 
 describe("FrontendOidcModeClient", () => {
 	beforeEach(() => {
@@ -600,19 +599,36 @@ describe("FrontendOidcModeClient", () => {
 			runtime,
 		);
 
-		await client.popupLogin({
+		await client.loginWithPopup({
 			popupCallbackUrl: "https://app.example.com/auth/popup-callback",
-			postAuthRedirectUri: "/playground/token-set/frontend-mode",
 		});
 
 		expect(
-			trace.ofType(FrontendOidcModeTraceEventType.PopupOpened),
+			trace
+				.ofType(OperationTraceEventType.Event)
+				.filter(
+					(event) =>
+						event.fields?.eventName ===
+						FrontendOidcModeOperationEventName.PopupOpened,
+				),
 		).toHaveLength(1);
 		expect(
-			trace.ofType(FrontendOidcModeTraceEventType.PopupRelaySucceeded),
+			trace
+				.ofType(OperationTraceEventType.Event)
+				.filter(
+					(event) =>
+						event.fields?.eventName ===
+						FrontendOidcModeOperationEventName.PopupRelaySucceeded,
+				),
 		).toHaveLength(1);
 		expect(
-			trace.ofType(FrontendOidcModeTraceEventType.CallbackSucceeded),
+			trace
+				.ofType(OperationTraceEventType.Ended)
+				.filter(
+					(event) =>
+						event.fields?.operationName === "frontend_oidc.callback" &&
+						event.fields?.outcome === "succeeded",
+				),
 		).toHaveLength(1);
 	});
 
@@ -660,18 +676,12 @@ describe("FrontendOidcModeClient", () => {
 				runtime,
 			);
 
-			await expect(
-				client.loginWithRedirect(undefined as never),
-			).rejects.toThrow(/createEnvironmentForNativeWeb/);
-			await expect(client.loginWithRedirect({} as never)).rejects.toThrow(
-				/createEnvironmentForNativeWeb/,
-			);
-			expect(() => relayFrontendOidcPopupCallback(undefined as never)).toThrow(
-				/createEnvironmentForNativeWeb/,
-			);
-			expect(() => relayFrontendOidcPopupCallback({} as never)).toThrow(
-				/createEnvironmentForNativeWeb/,
-			);
+			await expect(client.loginWithRedirect()).rejects.toMatchObject({
+				code: "frontend_oidc.redirect.router_unavailable",
+			});
+			await expect(client.loginWithRedirect({})).rejects.toMatchObject({
+				code: "frontend_oidc.redirect.router_unavailable",
+			});
 			expect(windowRead).toBe(false);
 		} finally {
 			if (originalWindowDescriptor) {
@@ -712,16 +722,20 @@ describe("FrontendOidcModeClient", () => {
 			code: FrontendOidcModeCallbackErrorCode.UnknownState,
 		});
 
-		expect(trace.ofType(FrontendOidcModeTraceEventType.CallbackFailed)).toEqual(
-			[
-				expect.objectContaining({
-					fields: expect.objectContaining({
-						errorCode: FrontendOidcModeCallbackErrorCode.UnknownState,
-						recovery: "restart_flow",
-					}),
+		expect(
+			trace
+				.ofType(OperationTraceEventType.Error)
+				.filter(
+					(event) => event.fields?.operationName === "frontend_oidc.callback",
+				),
+		).toEqual([
+			expect.objectContaining({
+				fields: expect.objectContaining({
+					errorCode: FrontendOidcModeCallbackErrorCode.UnknownState,
+					recovery: "restart_flow",
 				}),
-			],
-		);
+			}),
+		]);
 	});
 
 	it("correlates callback lifecycle events with frontend callback traces", async () => {
@@ -751,12 +765,18 @@ describe("FrontendOidcModeClient", () => {
 			"https://app.example.com/auth/callback?code=auth-code&state=state-value",
 		);
 
-		const callbackStarted = trace.ofType(
-			FrontendOidcModeTraceEventType.CallbackStarted,
-		)[0];
-		const callbackSucceeded = trace.ofType(
-			FrontendOidcModeTraceEventType.CallbackSucceeded,
-		)[0];
+		const callbackStarted = trace
+			.ofType(OperationTraceEventType.Started)
+			.find(
+				(event) => event.fields?.operationName === "frontend_oidc.callback",
+			);
+		const callbackSucceeded = trace
+			.ofType(OperationTraceEventType.Ended)
+			.find(
+				(event) =>
+					event.fields?.operationName === "frontend_oidc.callback" &&
+					event.fields?.outcome === "succeeded",
+			);
 		const operationSpanId = callbackStarted?.span?.id;
 
 		expect(operationSpanId).toBeTruthy();
@@ -811,12 +831,16 @@ describe("FrontendOidcModeClient", () => {
 
 		await client.refreshState();
 
-		const refreshStarted = trace.ofType(
-			FrontendOidcModeTraceEventType.RefreshStarted,
-		)[0];
-		const refreshSucceeded = trace.ofType(
-			FrontendOidcModeTraceEventType.RefreshSucceeded,
-		)[0];
+		const refreshStarted = trace
+			.ofType(OperationTraceEventType.Started)
+			.find((event) => event.fields?.operationName === "frontend_oidc.refresh");
+		const refreshSucceeded = trace
+			.ofType(OperationTraceEventType.Ended)
+			.find(
+				(event) =>
+					event.fields?.operationName === "frontend_oidc.refresh" &&
+					event.fields?.outcome === "succeeded",
+			);
 		const operationSpanId = refreshStarted?.span?.id;
 
 		expect(operationSpanId).toBeTruthy();
@@ -871,7 +895,8 @@ describe("FrontendOidcModeClient", () => {
 			authenticatedEvents[authenticatedEvents.length - 1];
 
 		expect(callbackAuthenticatedEvent?.payload).toEqual({
-			id: expect.any(String),
+			type: TokenSetAuthEventType.AuthAuthenticated,
+			client: { id: expect.any(String) },
 		});
 		expect(callbackAuthenticatedEvent?.payload).not.toHaveProperty("freshness");
 		expect(callbackAuthenticatedEvent?.payload).not.toHaveProperty(

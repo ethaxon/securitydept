@@ -6,35 +6,46 @@ import {
 	defineInstrumentMethodDecorator,
 	type FoundationEnvironment,
 	type OperationSpanTrait,
-	type SpanTrait,
+	parseCompatFragment,
+	UserRecovery,
 } from "@securitydept/client";
-import { BaseOidcModeClient } from "../../orchestration/index";
+import { waitForTokenSetPopupRelay } from "../../orchestration/client/popup/relay";
+import {
+	BaseOidcModeClient,
+	type OidcPopupLoginOptions,
+	type OidcPopupLoginResult,
+	type OidcRedirectLoginOptions,
+} from "../../orchestration/index";
 import { type TokenFreshnessTiming } from "../../orchestration/token/freshness";
 import { mergeTokenDelta } from "../../orchestration/token/ops";
+import {
+	type AuthMetadataSnapshot,
+	type AuthSnapshot,
+} from "../../orchestration/token/types";
 import {
 	type BackendOidcModeMetadataRedemptionResponse,
 	type BackendOidcModeUserInfoResponse,
 } from "../contracts/contracts";
 import {
 	callbackReturnsToTokenSnapshot,
-	parseBackendOidcModeCallbackBody,
-	parseBackendOidcModeCallbackFragment,
-	parseBackendOidcModeRefreshBody,
+	parseBackendOidcModeCallbackPayload,
+	parseBackendOidcModeRefreshPayload,
 	parseBackendOidcModeUserInfoBody,
 	refreshReturnsToTokenDelta,
 } from "../contracts/parsers";
 import {
-	type AuthStateMetadataSnapshot,
-	type AuthStateSnapshot,
+	BackendOidcModeOperationEventName,
+	BackendOidcModeTraceEventType,
+	BackendOidcModeTraceOperationName,
+} from "./trace-events";
+import {
 	type BackendOidcModeClientConfig,
+	type BackendOidcModeClientDefaultOptions,
+	type BackendOidcModeFetchUserInfoOptions,
+	type BackendOidcModeMetadataRedemptionOptions,
+	type ResolvedBackendOidcModeClientConfig,
 } from "./types";
 
-const DEFAULT_LOGIN_PATH = "/auth/oidc/login";
-const DEFAULT_REFRESH_PATH = "/auth/oidc/refresh";
-const DEFAULT_METADATA_REDEEM_PATH = "/auth/oidc/metadata/redeem";
-const DEFAULT_USER_INFO_PATH = "/auth/oidc/user-info";
-const DEFAULT_REFRESH_WINDOW_MS = 60_000;
-const DEFAULT_PERSISTENCE_KEY_PREFIX = "securitydept.backend_oidc";
 const TRACE_TARGET = "backend-oidc-mode";
 const TRACE_PREFIX = "backend_oidc";
 
@@ -58,14 +69,6 @@ const instrumentBackendMethod = defineInstrumentMethodDecorator<
 		},
 );
 
-export interface BackendOidcModeFetchUserInfoOptions {
-	cancellationToken?: CancellationTokenTrait;
-}
-
-export interface BackendOidcModeMetadataRedemptionOptions {
-	cancellationToken?: CancellationTokenTrait;
-}
-
 /**
  * Backend OIDC Mode Client.
  *
@@ -78,12 +81,21 @@ export interface BackendOidcModeMetadataRedemptionOptions {
  * - Bearer header construction
  */
 export class BackendOidcModeClient extends BaseOidcModeClient {
-	private readonly _baseUrl: string;
-	private readonly _loginPath: string;
-	private readonly _refreshPath: string;
-	private readonly _metadataRedeemPath: string;
-	private readonly _userInfoPath: string;
-	private readonly _defaultPostAuthRedirectUri?: string;
+	static override defaultOptions = {
+		...BaseOidcModeClient.defaultOptions,
+		loginPath: "/auth/oidc/login",
+		refreshPath: "/auth/oidc/refresh",
+		metadataRedeemPath: "/auth/oidc/metadata/redeem",
+		userInfoPath: "/auth/oidc/user-info",
+		persistenceKeyPrefix: "securitydept.backend_oidc",
+	} as const satisfies BackendOidcModeClientDefaultOptions;
+
+	static resolveDefaultPersistenceKey(baseUrl: string): string {
+		const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+		return `${BackendOidcModeClient.defaultOptions.persistenceKeyPrefix}:v1:${normalizedBaseUrl}`;
+	}
+
+	private readonly _config: ResolvedBackendOidcModeClientConfig;
 
 	constructor(
 		config: BackendOidcModeClientConfig,
@@ -92,39 +104,49 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		const baseUrl = config.baseUrl.replace(/\/+$/, "");
 		super({
 			environment,
-			traceTarget: TRACE_TARGET,
-			tracePrefix: TRACE_PREFIX,
-			clientName: "BackendOidcModeClient",
-			refresh: {
-				...config.authCheck,
-				tokenFreshness: {
-					refreshWindowMs: config.refreshWindowMs ?? DEFAULT_REFRESH_WINDOW_MS,
-				},
+			tracing: {
+				target: TRACE_TARGET,
+				prefix: TRACE_PREFIX,
 			},
+			id: config.id,
+			autoStart: config.autoStart,
+			refresh: config.refresh,
 			persistence: environment.persistentStorage
 				? {
 						store: environment.persistentStorage,
 						key:
-							config.persistentStateKey ??
-							`${DEFAULT_PERSISTENCE_KEY_PREFIX}:v1:${baseUrl}`,
+							config.persistence?.key ??
+							BackendOidcModeClient.resolveDefaultPersistenceKey(baseUrl),
 					}
 				: undefined,
 		});
 
-		this._baseUrl = baseUrl;
-		this._loginPath = config.loginPath ?? DEFAULT_LOGIN_PATH;
-		this._refreshPath = config.refreshPath ?? DEFAULT_REFRESH_PATH;
-		this._metadataRedeemPath =
-			config.metadataRedeemPath ?? DEFAULT_METADATA_REDEEM_PATH;
-		this._userInfoPath = config.userInfoPath ?? DEFAULT_USER_INFO_PATH;
-		this._defaultPostAuthRedirectUri = config.defaultPostAuthRedirectUri;
+		this._config = {
+			...config,
+			baseUrl,
+			loginPath:
+				config.loginPath ?? BackendOidcModeClient.defaultOptions.loginPath,
+			refreshPath:
+				config.refreshPath ?? BackendOidcModeClient.defaultOptions.refreshPath,
+			metadataRedeemPath:
+				config.metadataRedeemPath ??
+				BackendOidcModeClient.defaultOptions.metadataRedeemPath,
+			userInfoPath:
+				config.userInfoPath ??
+				BackendOidcModeClient.defaultOptions.userInfoPath,
+		};
+	}
+
+	/** The resolved configuration. */
+	get config(): Readonly<ResolvedBackendOidcModeClientConfig> {
+		return this._config;
 	}
 
 	/** Build the login/authorize URL with optional post-auth redirect. */
 	authorizeUrl(postAuthRedirectUri?: string): string {
-		const base = this._baseUrl + this._loginPath;
+		const base = this._config.baseUrl + this._config.loginPath;
 		const effectiveRedirectUri =
-			postAuthRedirectUri ?? this._defaultPostAuthRedirectUri;
+			postAuthRedirectUri ?? this._config.defaultPostAuthRedirectUri;
 		if (effectiveRedirectUri) {
 			const params = new URLSearchParams({
 				post_auth_redirect_uri: effectiveRedirectUri,
@@ -134,84 +156,165 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		return base;
 	}
 
+	async loginWithRedirect(
+		options: OidcRedirectLoginOptions = {},
+	): Promise<void> {
+		return await this._loginWithRedirect(options);
+	}
+
+	@instrumentBackendMethod(BackendOidcModeTraceOperationName.LoginRedirect)
+	private async _loginWithRedirect(
+		options: OidcRedirectLoginOptions,
+		operationSpan?: OperationSpanTrait,
+	): Promise<void> {
+		operationSpan?.setAttributes({
+			hasPostAuthRedirectUri: options.postAuthRedirectUri !== undefined,
+		});
+		const router = this._environment.router;
+		if (!router) {
+			throw new ClientError({
+				kind: ClientErrorKind.Configuration,
+				code: "backend_oidc.redirect.router_unavailable",
+				message: "Backend OIDC redirect login requires environment.router.",
+				source: TRACE_TARGET,
+			});
+		}
+		await router.navigate({
+			url: this.authorizeUrl(options.postAuthRedirectUri),
+			intent: "auth_redirect",
+			mode: "external",
+		});
+		operationSpan?.setAttributes({ navigationMode: "external" });
+	}
+
+	@instrumentBackendMethod(BackendOidcModeTraceOperationName.LoginPopup)
+	async loginWithPopup(
+		options: OidcPopupLoginOptions,
+		operationSpan?: OperationSpanTrait,
+	): Promise<OidcPopupLoginResult> {
+		operationSpan?.setAttributes({
+			popupCallbackUrl: options.popupCallbackUrl,
+		});
+		const popup = this._environment.popup;
+		if (!popup) {
+			throw new ClientError({
+				kind: ClientErrorKind.Configuration,
+				code: "backend_oidc.popup.capability_missing",
+				message: "Backend OIDC popup login requires environment.popup.",
+				source: TRACE_TARGET,
+				recovery: UserRecovery.RestartFlow,
+			});
+		}
+
+		const popupCallbackUrl = new URL(
+			options.popupCallbackUrl,
+			this._config.baseUrl,
+		);
+		const popupWindow = popup.open(
+			this.authorizeUrl(options.popupCallbackUrl),
+			{
+				expectedOrigin: popupCallbackUrl.origin,
+				width: options.popupWidth,
+				height: options.popupHeight,
+			},
+		);
+		operationSpan?.addEvent(BackendOidcModeOperationEventName.PopupOpened, {
+			popupCallbackUrl: options.popupCallbackUrl,
+		});
+
+		const callbackUrl = await waitForTokenSetPopupRelay({
+			popup: popupWindow,
+			time: this._environment.time,
+			timeoutMs: options.timeoutMs,
+		});
+		operationSpan?.addEvent(
+			BackendOidcModeOperationEventName.PopupRelaySucceeded,
+			{
+				popupCallbackUrl: options.popupCallbackUrl,
+			},
+		);
+		const compatFragment = parseCompatFragment(new URL(callbackUrl));
+		if (!compatFragment) {
+			throw new ClientError({
+				kind: ClientErrorKind.Protocol,
+				code: "backend_oidc.popup.no_fragment",
+				message: "Popup callback URL has no compat fragment to process.",
+				source: TRACE_TARGET,
+			});
+		}
+
+		return {
+			snapshot: await this._handleCallback(
+				compatFragment.parameters,
+				operationSpan,
+			),
+		};
+	}
+
 	/**
-	 * Handle a callback fragment from a redirect (fragment-redirect flow).
+	 * Handle a parsed callback compat fragment from a redirect flow.
 	 *
 	 * Parses tokens, redeems metadata if a redemption ID is present, persists
 	 * state, and updates the auth signal. Inline metadata (from
 	 * `callback_body_return` servers) is used directly, skipping redemption.
 	 */
-	@instrumentBackendMethod("backend_oidc.callback", {
+	@instrumentBackendMethod(BackendOidcModeTraceOperationName.Callback, {
 		flow: "callback.fragment",
 	})
 	async handleCallback(
-		fragment: string,
+		parsedCompatFragment: Record<string, unknown>,
 		operationSpan?: OperationSpanTrait,
-	): Promise<AuthStateSnapshot> {
-		this._recordTrace(
-			"backend_oidc.callback.started",
-			undefined,
-			operationSpan ?? this.span,
+	): Promise<AuthSnapshot> {
+		return await this._handleCallback(parsedCompatFragment, operationSpan);
+	}
+
+	private async _handleCallback(
+		parsedCompatFragment: Record<string, unknown>,
+		operationSpan?: OperationSpanTrait,
+	): Promise<AuthSnapshot> {
+		this._throwIfNotOperational();
+
+		const callbackFragment =
+			parseBackendOidcModeCallbackPayload(parsedCompatFragment);
+		if (!callbackFragment) {
+			throw new ClientError({
+				kind: ClientErrorKind.Protocol,
+				message: "Callback fragment missing access_token or id_token",
+				code: "callback.missing_access_token",
+				source: TRACE_TARGET,
+			});
+		}
+
+		const tokenSnapshot = callbackReturnsToTokenSnapshot(callbackFragment);
+		const metadata = await this._resolveMetadata(
+			{
+				inlineMetadata: callbackFragment.metadata,
+				metadataRedemptionId: callbackFragment.metadataRedemptionId,
+				baseMetadata: {},
+				accessToken: tokenSnapshot.accessToken,
+				idToken: tokenSnapshot.idToken,
+			},
+			operationSpan,
 		);
 
-		try {
-			this._throwIfNotOperational();
+		this._throwIfNotOperational();
 
-			const callbackFragment = parseBackendOidcModeCallbackFragment(fragment);
-			if (!callbackFragment) {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					message: "Callback fragment missing access_token or id_token",
-					code: "callback.missing_access_token",
-					source: TRACE_TARGET,
-				});
-			}
+		const snapshot: AuthSnapshot = {
+			tokens: tokenSnapshot,
+			metadata,
+		};
 
-			const tokenSnapshot = callbackReturnsToTokenSnapshot(callbackFragment);
-			const metadata = await this._resolveMetadata(
-				{
-					inlineMetadata: callbackFragment.metadata,
-					metadataRedemptionId: callbackFragment.metadataRedemptionId,
-					baseMetadata: {},
-					accessToken: tokenSnapshot.accessToken,
-					idToken: tokenSnapshot.idToken,
-				},
-				operationSpan,
-			);
+		await this._applySnapshot(snapshot, {}, operationSpan);
+		operationSpan?.setAttributes({
+			hasMetadataRedemption:
+				callbackFragment.metadataRedemptionId !== undefined,
+			hasInlineMetadata: callbackFragment.metadata !== undefined,
+			hasUserInfoFallback:
+				!callbackFragment.metadata && !callbackFragment.metadataRedemptionId,
+			persisted: this._persistence !== null,
+		});
 
-			this._throwIfNotOperational();
-
-			const snapshot: AuthStateSnapshot = {
-				tokens: tokenSnapshot,
-				metadata,
-			};
-
-			await this._applySnapshot(snapshot, {}, operationSpan);
-
-			this._recordTrace(
-				"backend_oidc.callback.succeeded",
-				{
-					hasMetadataRedemption:
-						callbackFragment.metadataRedemptionId !== undefined,
-					hasInlineMetadata: callbackFragment.metadata !== undefined,
-					hasUserInfoFallback:
-						!callbackFragment.metadata &&
-						!callbackFragment.metadataRedemptionId,
-					persisted: this._persistence !== null,
-				},
-				operationSpan ?? this.span,
-			);
-
-			return snapshot;
-		} catch (error) {
-			this._recordFailureTrace(
-				"backend_oidc.callback.failed",
-				error,
-				undefined,
-				operationSpan ?? this.span,
-			);
-			throw error;
-		}
+		return snapshot;
 	}
 
 	/**
@@ -227,76 +330,54 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	 * receives the JSON body directly (e.g. in a single-page app that POSTs
 	 * the code to the backend and reads the 200 OK response).
 	 */
-	@instrumentBackendMethod("backend_oidc.callback", {
+	@instrumentBackendMethod(BackendOidcModeTraceOperationName.Callback, {
 		flow: "callback.body",
 	})
 	async handleCallbackBody(
 		body: Record<string, unknown>,
 		operationSpan?: OperationSpanTrait,
-	): Promise<AuthStateSnapshot> {
-		this._recordTrace(
-			"backend_oidc.callback.started",
-			undefined,
-			operationSpan ?? this.span,
+	): Promise<AuthSnapshot> {
+		this._throwIfNotOperational();
+
+		const callbackBody = parseBackendOidcModeCallbackPayload(body);
+		if (!callbackBody) {
+			throw new ClientError({
+				kind: ClientErrorKind.Protocol,
+				message: "Callback response body missing access_token or id_token",
+				code: "backend_oidc.callback.missing_access_token",
+				source: TRACE_TARGET,
+			});
+		}
+
+		const cbTokenSnapshot = callbackReturnsToTokenSnapshot(callbackBody);
+		const metadata = await this._resolveMetadata(
+			{
+				inlineMetadata: callbackBody.metadata,
+				metadataRedemptionId: callbackBody.metadataRedemptionId,
+				baseMetadata: {},
+				accessToken: cbTokenSnapshot.accessToken,
+				idToken: cbTokenSnapshot.idToken,
+			},
+			operationSpan,
 		);
 
-		try {
-			this._throwIfNotOperational();
+		this._throwIfNotOperational();
 
-			const callbackBody = parseBackendOidcModeCallbackBody(body);
-			if (!callbackBody) {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					message: "Callback response body missing access_token or id_token",
-					code: "backend_oidc.callback.missing_access_token",
-					source: TRACE_TARGET,
-				});
-			}
+		const snapshot: AuthSnapshot = {
+			tokens: cbTokenSnapshot,
+			metadata,
+		};
 
-			const cbTokenSnapshot = callbackReturnsToTokenSnapshot(callbackBody);
-			const metadata = await this._resolveMetadata(
-				{
-					inlineMetadata: callbackBody.metadata,
-					metadataRedemptionId: callbackBody.metadataRedemptionId,
-					baseMetadata: {},
-					accessToken: cbTokenSnapshot.accessToken,
-					idToken: cbTokenSnapshot.idToken,
-				},
-				operationSpan,
-			);
+		await this._applySnapshot(snapshot, {}, operationSpan);
+		operationSpan?.setAttributes({
+			hasMetadataRedemption: callbackBody.metadataRedemptionId !== undefined,
+			hasInlineMetadata: callbackBody.metadata !== undefined,
+			hasUserInfoFallback:
+				!callbackBody.metadata && !callbackBody.metadataRedemptionId,
+			persisted: this._persistence !== null,
+		});
 
-			this._throwIfNotOperational();
-
-			const snapshot: AuthStateSnapshot = {
-				tokens: cbTokenSnapshot,
-				metadata,
-			};
-
-			await this._applySnapshot(snapshot, {}, operationSpan);
-
-			this._recordTrace(
-				"backend_oidc.callback.succeeded",
-				{
-					hasMetadataRedemption:
-						callbackBody.metadataRedemptionId !== undefined,
-					hasInlineMetadata: callbackBody.metadata !== undefined,
-					hasUserInfoFallback:
-						!callbackBody.metadata && !callbackBody.metadataRedemptionId,
-					persisted: this._persistence !== null,
-				},
-				operationSpan ?? this.span,
-			);
-
-			return snapshot;
-		} catch (error) {
-			this._recordFailureTrace(
-				"backend_oidc.callback.failed",
-				error,
-				undefined,
-				operationSpan ?? this.span,
-			);
-			throw error;
-		}
+		return snapshot;
 	}
 
 	/**
@@ -307,7 +388,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	 * 302 → fragment pattern that fetch() cannot follow across domains.
 	 */
 	@instrumentBackendMethod(
-		"backend_oidc.refresh",
+		BackendOidcModeTraceOperationName.Refresh,
 		function (this: BackendOidcModeClient) {
 			const snapshotSlot = this.authSnapshot.get();
 			const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
@@ -318,106 +399,83 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		},
 	)
 	protected async _refreshAuthSnapshot(
-		_currentSnapshot: AuthStateSnapshot,
+		_currentSnapshot: AuthSnapshot,
 		_freshnessTiming: TokenFreshnessTiming,
 		operationSpan?: OperationSpanTrait,
-	): Promise<AuthStateSnapshot | null> {
+	): Promise<AuthSnapshot | null> {
 		const snapshotSlot = this._authSnapshotSignal.get();
 		const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
 		if (!current?.tokens.refreshMaterial) {
 			return null;
 		}
 
-		this._recordTrace(
-			"backend_oidc.refresh.started",
-			{
-				hasIdToken: current.tokens.idToken !== undefined,
-			},
-			operationSpan ?? this.span,
-		);
+		this._throwIfNotOperational();
 
-		try {
-			this._throwIfNotOperational();
+		const response = await this._environment.transport.execute({
+			url: this._config.baseUrl + this._config.refreshPath,
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				refresh_token: current.tokens.refreshMaterial,
+				post_auth_redirect_uri: this._config.defaultPostAuthRedirectUri,
+				id_token: current.tokens.idToken,
+				current_metadata_snapshot: current.metadata,
+			}),
+			cancellationToken: createLinkedCancellationToken(
+				this._rootCancellation.token,
+			),
+		});
 
-			const response = await this._environment.transport.execute({
-				url: this._baseUrl + this._refreshPath,
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					refresh_token: current.tokens.refreshMaterial,
-					post_auth_redirect_uri: this._defaultPostAuthRedirectUri,
-					id_token: current.tokens.idToken,
-					current_metadata_snapshot: current.metadata,
-				}),
-				cancellationToken: createLinkedCancellationToken(
-					this._rootCancellation.token,
-				),
-			});
+		this._throwIfNotOperational();
 
-			this._throwIfNotOperational();
-
-			if (response.status === 200 && response.body) {
-				const refreshBody = parseBackendOidcModeRefreshBody(
-					response.body as Record<string, unknown>,
-				);
-				if (!refreshBody) {
-					throw new ClientError({
-						kind: ClientErrorKind.Protocol,
-						message: "Refresh response body missing access_token",
-						code: "backend_oidc.refresh.missing_access_token",
-						source: TRACE_TARGET,
-					});
-				}
-
-				const metadata = await this._resolveMetadata(
-					{
-						inlineMetadata: refreshBody.metadata
-							? { ...current.metadata, ...refreshBody.metadata }
-							: undefined,
-						metadataRedemptionId: refreshBody.metadataRedemptionId,
-						baseMetadata: current.metadata,
-						accessToken: refreshBody.accessToken,
-						idToken: refreshBody.idToken ?? current.tokens.idToken,
-					},
-					operationSpan,
-				);
-
-				this._throwIfNotOperational();
-
-				const newSnapshot: AuthStateSnapshot = {
-					tokens: mergeTokenDelta(
-						current.tokens,
-						refreshReturnsToTokenDelta(refreshBody),
-					),
-					metadata,
-				};
-
-				this._recordTrace(
-					"backend_oidc.refresh.succeeded",
-					{
-						hasMetadataRedemption:
-							refreshBody.metadataRedemptionId !== undefined,
-						hasInlineMetadata: refreshBody.metadata !== undefined,
-						hasUserInfoFallback:
-							!refreshBody.metadata && !refreshBody.metadataRedemptionId,
-						persisted: this._persistence !== null,
-					},
-					operationSpan ?? this.span,
-				);
-
-				return newSnapshot;
+		if (response.status === 200 && response.body) {
+			const refreshBody = parseBackendOidcModeRefreshPayload(
+				response.body as Record<string, unknown>,
+			);
+			if (!refreshBody) {
+				throw new ClientError({
+					kind: ClientErrorKind.Protocol,
+					message: "Refresh response body missing access_token",
+					code: "backend_oidc.refresh.missing_access_token",
+					source: TRACE_TARGET,
+				});
 			}
 
-			throw ClientError.fromHttpResponse(response.status, response.body);
-		} catch (error) {
-			this._recordFailureTrace(
-				"backend_oidc.refresh.failed",
-				error,
-				undefined,
-				operationSpan ?? this.span,
+			const metadata = await this._resolveMetadata(
+				{
+					inlineMetadata: refreshBody.metadata
+						? { ...current.metadata, ...refreshBody.metadata }
+						: undefined,
+					metadataRedemptionId: refreshBody.metadataRedemptionId,
+					baseMetadata: current.metadata,
+					accessToken: refreshBody.accessToken,
+					idToken: refreshBody.idToken ?? current.tokens.idToken,
+				},
+				operationSpan,
 			);
-			throw error;
+
+			this._throwIfNotOperational();
+
+			const newSnapshot: AuthSnapshot = {
+				tokens: mergeTokenDelta(
+					current.tokens,
+					refreshReturnsToTokenDelta(refreshBody),
+				),
+				metadata,
+			};
+
+			operationSpan?.setAttributes({
+				hasMetadataRedemption: refreshBody.metadataRedemptionId !== undefined,
+				hasInlineMetadata: refreshBody.metadata !== undefined,
+				hasUserInfoFallback:
+					!refreshBody.metadata && !refreshBody.metadataRedemptionId,
+				persisted: this._persistence !== null,
+			});
+
+			return newSnapshot;
 		}
+
+		throw ClientError.fromHttpResponse(response.status, response.body);
 	}
 
 	/**
@@ -436,18 +494,18 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	private async _resolveMetadata(
 		opts: {
 			/** Already-resolved inline metadata (skip all network calls). */
-			inlineMetadata?: AuthStateMetadataSnapshot;
+			inlineMetadata?: AuthMetadataSnapshot;
 			/** One-time redemption ID from the response body. */
 			metadataRedemptionId?: string;
 			/** Starting metadata to merge into (e.g. current snapshot for refresh). */
-			baseMetadata: AuthStateMetadataSnapshot;
+			baseMetadata: AuthMetadataSnapshot;
 			/** Access token to use for the userInfo fallback. */
 			accessToken: string;
 			/** ID token to include in the userInfo request body. */
 			idToken?: string;
 		},
-		span?: SpanTrait,
-	): Promise<AuthStateMetadataSnapshot> {
+		span?: OperationSpanTrait,
+	): Promise<AuthMetadataSnapshot> {
 		const {
 			inlineMetadata,
 			metadataRedemptionId,
@@ -469,7 +527,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				span,
 			);
 			if (redeemed) {
-				return redeemed.metadata as AuthStateMetadataSnapshot;
+				return redeemed.metadata as AuthMetadataSnapshot;
 			}
 		}
 
@@ -479,11 +537,10 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		// inline/redemption only on the first login.
 		if (!baseMetadata.principal) {
 			try {
-				const userInfo = await this._fetchUserInfo(
+				const userInfo = await this._fetchUserInfoRaw(
 					accessToken,
 					idToken,
 					undefined,
-					span,
 				);
 				return {
 					...baseMetadata,
@@ -497,7 +554,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				};
 			} catch (error) {
 				this._recordFailureTrace(
-					"backend_oidc.user_info.fallback_failed",
+					BackendOidcModeTraceEventType.UserInfoFallbackFailed,
 					error,
 					undefined,
 					span ?? this.span,
@@ -510,72 +567,57 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 
 	private async _redeemMetadata(
 		redemptionId: string,
-		options?: BackendOidcModeMetadataRedemptionOptions,
-		span?: SpanTrait,
+		options: BackendOidcModeMetadataRedemptionOptions | undefined,
+		span?: OperationSpanTrait,
 	): Promise<BackendOidcModeMetadataRedemptionResponse | null> {
-		this._recordTrace(
-			"backend_oidc.metadata_redemption.started",
+		span?.addEvent(
+			BackendOidcModeOperationEventName.MetadataRedemptionStarted,
 			{
 				redemptionId,
 			},
-			span ?? this.span,
 		);
 
-		try {
-			this._throwIfNotOperational();
+		this._throwIfNotOperational();
 
-			const response = await this._environment.transport.execute({
-				url: this._baseUrl + this._metadataRedeemPath,
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					metadata_redemption_id: redemptionId,
-				}),
-				cancellationToken: createLinkedCancellationToken(
-					...(options?.cancellationToken
-						? [this._rootCancellation.token, options.cancellationToken]
-						: [this._rootCancellation.token]),
-				),
-			});
+		const response = await this._environment.transport.execute({
+			url: this._config.baseUrl + this._config.metadataRedeemPath,
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				metadata_redemption_id: redemptionId,
+			}),
+			cancellationToken: createLinkedCancellationToken(
+				...(options?.cancellationToken
+					? [this._rootCancellation.token, options.cancellationToken]
+					: [this._rootCancellation.token]),
+			),
+		});
 
-			this._throwIfNotOperational();
+		this._throwIfNotOperational();
 
-			if (response.status === 200 && response.body) {
-				this._recordTrace(
-					"backend_oidc.metadata_redemption.succeeded",
-					{
-						redemptionId,
-						found: true,
-					},
-					span ?? this.span,
-				);
-				return response.body as BackendOidcModeMetadataRedemptionResponse;
-			}
-
-			if (response.status === 404) {
-				this._recordTrace(
-					"backend_oidc.metadata_redemption.succeeded",
-					{
-						redemptionId,
-						found: false,
-					},
-					span ?? this.span,
-				);
-				return null;
-			}
-
-			throw ClientError.fromHttpResponse(response.status, response.body);
-		} catch (error) {
-			this._recordFailureTrace(
-				"backend_oidc.metadata_redemption.failed",
-				error,
+		if (response.status === 200 && response.body) {
+			span?.addEvent(
+				BackendOidcModeOperationEventName.MetadataRedemptionSucceeded,
 				{
 					redemptionId,
+					found: true,
 				},
-				span ?? this.span,
 			);
-			throw error;
+			return response.body as BackendOidcModeMetadataRedemptionResponse;
 		}
+
+		if (response.status === 404) {
+			span?.addEvent(
+				BackendOidcModeOperationEventName.MetadataRedemptionSucceeded,
+				{
+					redemptionId,
+					found: false,
+				},
+			);
+			return null;
+		}
+
+		throw ClientError.fromHttpResponse(response.status, response.body);
 	}
 
 	/** Redeem metadata from the server by redemption ID. */
@@ -583,7 +625,16 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		redemptionId: string,
 		options?: BackendOidcModeMetadataRedemptionOptions,
 	): Promise<BackendOidcModeMetadataRedemptionResponse | null> {
-		return await this._redeemMetadata(redemptionId, options);
+		return await this._redeemMetadataOperation(redemptionId, options);
+	}
+
+	@instrumentBackendMethod(BackendOidcModeTraceOperationName.MetadataRedemption)
+	private async _redeemMetadataOperation(
+		redemptionId: string,
+		options: BackendOidcModeMetadataRedemptionOptions | undefined,
+		operationSpan?: OperationSpanTrait,
+	): Promise<BackendOidcModeMetadataRedemptionResponse | null> {
+		return await this._redeemMetadata(redemptionId, options, operationSpan);
 	}
 
 	/**
@@ -595,10 +646,22 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	async fetchUserInfo(
 		options?: BackendOidcModeFetchUserInfoOptions,
 	): Promise<BackendOidcModeUserInfoResponse> {
+		return await this._fetchUserInfoFromCurrentState(options);
+	}
+
+	@instrumentBackendMethod(BackendOidcModeTraceOperationName.UserInfo)
+	private async _fetchUserInfoFromCurrentState(
+		options: BackendOidcModeFetchUserInfoOptions | undefined,
+		operationSpan?: OperationSpanTrait,
+	): Promise<BackendOidcModeUserInfoResponse> {
 		this._throwIfNotOperational();
 
 		const snapshotSlot = this._authSnapshotSignal.get();
 		const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
+		operationSpan?.setAttributes({
+			hasAccessToken: current?.tokens.accessToken !== undefined,
+			hasIdToken: current?.tokens.idToken !== undefined,
+		});
 		if (!current?.tokens.accessToken || !current.tokens.idToken) {
 			throw new ClientError({
 				kind: ClientErrorKind.Unauthenticated,
@@ -608,47 +671,11 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			});
 		}
 
-		return await this._fetchUserInfo(
+		return await this._fetchUserInfoRaw(
 			current.tokens.accessToken,
 			current.tokens.idToken,
 			options,
 		);
-	}
-
-	private async _fetchUserInfo(
-		accessToken: string,
-		idToken?: string,
-		options?: { cancellationToken?: CancellationTokenTrait },
-		span?: SpanTrait,
-	): Promise<BackendOidcModeUserInfoResponse> {
-		this._recordTrace(
-			"backend_oidc.user_info.started",
-			undefined,
-			span ?? this.span,
-		);
-
-		try {
-			const result = await this._fetchUserInfoRaw(
-				accessToken,
-				idToken,
-				options,
-			);
-
-			this._recordTrace(
-				"backend_oidc.user_info.succeeded",
-				undefined,
-				span ?? this.span,
-			);
-			return result;
-		} catch (error) {
-			this._recordFailureTrace(
-				"backend_oidc.user_info.failed",
-				error,
-				undefined,
-				span ?? this.span,
-			);
-			throw error;
-		}
 	}
 
 	/**
@@ -663,7 +690,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		options?: { cancellationToken?: CancellationTokenTrait },
 	): Promise<BackendOidcModeUserInfoResponse> {
 		const response = await this._environment.transport.execute({
-			url: this._baseUrl + this._userInfoPath,
+			url: this._config.baseUrl + this._config.userInfoPath,
 			method: "POST",
 			headers: {
 				"content-type": "application/json",

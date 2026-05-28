@@ -8,7 +8,7 @@ import {
 	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import { type AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { type AuthSnapshot as AuthStateSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -124,9 +124,7 @@ export function TokenSetFrontendModePlaygroundPage() {
 		setError(null);
 		setAuthContextMode(AuthContextMode.TokenSetFrontend);
 		try {
-			await startTokenSetFrontendModePopupLogin(
-				TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
-			);
+			await startTokenSetFrontendModePopupLogin();
 		} catch (popupError) {
 			setError(describeHostError(popupError));
 		} finally {

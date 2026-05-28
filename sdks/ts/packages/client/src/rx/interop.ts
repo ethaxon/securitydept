@@ -1,25 +1,119 @@
 import {
+	BehaviorSubject,
+	filter,
 	isObservable,
+	map,
 	Observable,
-	type OperatorFunction,
 	Subject,
 	type Subscribable,
+	type Subscription,
+	skip,
 } from "rxjs";
 import { SYMBOL_OBSERVABLE } from "../compat";
-import {
-	type EventOperatorFunction,
-	type EventStreamTrait,
-	type EventSubjectTrait,
-} from "../events";
+import { type EventStreamTrait, type EventSubjectTrait } from "../events";
 import {
 	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
-} from "../signals";
+	type ReplaySignalSlot,
+	type WritableSignalTrait,
+} from "../signals/types";
+
+const EMPTY_REPLAY_SIGNAL_SLOT = { kind: "empty" } as const;
 
 export function signalToObservable<T>(
 	signal: ReadableSignalTrait<T> | ReadableReplaySignalTrait<T>,
 ): Observable<T> {
 	return eventStreamToObservable(signal[SYMBOL_OBSERVABLE]());
+}
+
+export function behaviorSubjectToSignal<T>(
+	createSubject: () => BehaviorSubject<T>,
+): WritableSignalTrait<T> {
+	const subject = createSubject();
+	return {
+		get: () => subject.getValue(),
+		set: (value) => {
+			subject.next(value);
+		},
+		subscribe(listener) {
+			const subscription = subject.pipe(skip(1)).subscribe(() => {
+				listener();
+			});
+			return () => {
+				subscription.unsubscribe();
+			};
+		},
+		[SYMBOL_OBSERVABLE]: () => subject.asObservable(),
+	};
+}
+
+export function observableToReplaySignal<T>(
+	source: Observable<T>,
+): ReadableReplaySignalTrait<T> {
+	const subject = new BehaviorSubject<ReplaySignalSlot<T>>(
+		EMPTY_REPLAY_SIGNAL_SLOT,
+	);
+	source.subscribe((value) => {
+		subject.next({ kind: "value", value });
+	});
+	const valueObservable = subject.pipe(
+		filter(
+			(slot): slot is { kind: "value"; value: T } => slot.kind === "value",
+		),
+		map((slot) => slot.value),
+	);
+
+	return {
+		get: () => subject.getValue(),
+		subscribe(listener) {
+			const subscription = subject.pipe(skip(1)).subscribe(() => {
+				listener();
+			});
+			return () => {
+				subscription.unsubscribe();
+			};
+		},
+		hasValue: () => subject.getValue().kind === "value",
+		whenValue(options) {
+			const slot = subject.getValue();
+			if (slot.kind === "value") {
+				return Promise.resolve(slot.value);
+			}
+
+			const cancellationToken = options?.cancellationToken;
+			if (cancellationToken?.isCancellationRequested) {
+				return Promise.reject(cancellationToken.readCancellationError());
+			}
+
+			return new Promise<T>((resolve, reject) => {
+				let subscription: Subscription | undefined;
+				let disposeCancellation: (() => void) | undefined;
+
+				const cleanup = () => {
+					subscription?.unsubscribe();
+					subscription = undefined;
+					disposeCancellation?.();
+					disposeCancellation = undefined;
+				};
+
+				const resolveIfValue = () => {
+					const nextSlot = subject.getValue();
+					if (nextSlot.kind === "value") {
+						cleanup();
+						resolve(nextSlot.value);
+					}
+				};
+
+				subscription = subject.subscribe(resolveIfValue);
+				disposeCancellation = cancellationToken?.onCancellationRequested(() => {
+					cleanup();
+					reject(cancellationToken.readCancellationError());
+				}).dispose;
+				resolveIfValue();
+			});
+		},
+		[SYMBOL_OBSERVABLE]: () => valueObservable,
+	};
 }
 
 export function observableToEventStream<T>(
@@ -96,18 +190,4 @@ export function eventSubjectToSubject<T>(
 			unsubscribe();
 		},
 	});
-}
-
-export function eventOperatorFunctionToRx<T, R>(
-	op: EventOperatorFunction<T, R>,
-): OperatorFunction<T, R> {
-	return (source) =>
-		eventStreamToObservable(op(observableToEventStream(source)));
-}
-
-export function rxOperatorFunctionToEvent<T, R>(
-	op: OperatorFunction<T, R>,
-): EventOperatorFunction<T, R> {
-	return (stream) =>
-		observableToEventStream(op(eventStreamToObservable(stream)));
 }

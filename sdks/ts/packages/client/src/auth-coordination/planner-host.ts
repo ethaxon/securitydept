@@ -336,7 +336,9 @@ export function createPlannerHost(
 			// The planner enforces sequential discipline: we must resolve in order.
 			for (const candidate of candidates) {
 				const snap = planner.snapshot();
-				if (snap.status === PlanStatus.Settled) break;
+				if (snap.status === PlanStatus.Settled) {
+					break;
+				}
 
 				// Resolve the planner's current nextPending if it's authenticated.
 				// Only advance the planner for requirements that are currently pending

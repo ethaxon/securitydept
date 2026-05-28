@@ -33,6 +33,7 @@ import {
 	createPlannerHost,
 	type ReadableReplaySignalTrait,
 	RequirementsClientSetComposition,
+	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import {
 	AUTH_PLANNER_HOST,
@@ -42,14 +43,14 @@ import {
 	ROUTE_REQUIREMENTS_DATA_KEY,
 	withRouteRequirements,
 } from "@securitydept/client-angular";
+import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import {
 	type CreateTokenSetRouteAggregationGuardOptions,
 	createTokenSetRouteAggregationGuard,
-	type OidcCallbackClient,
-	type OidcModeClient,
 	secureRoute,
 	secureRouteRoot,
 	TOKEN_SET_ROUTE_PLANNER_HOST_KEY_DATA_KEY,
+	type TokenSetAngularClient,
 	TokenSetAuthRegistry,
 	type UnauthenticatedEntry,
 } from "@securitydept/token-set-context-client-angular";
@@ -60,6 +61,15 @@ import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 // ---------------------------------------------------------------------------
 // Test helpers (minimal stubs — no DI needed)
 // ---------------------------------------------------------------------------
+
+interface ExampleCallbackClient {
+	handleCallback(currentUrl: string): Promise<{
+		snapshot: AuthSnapshot | null;
+		postAuthRedirectUri?: string;
+	}>;
+}
+
+type ExampleClient = TokenSetAngularClient & ExampleCallbackClient;
 
 function readReplayBoolean(
 	signal: ReadableReplaySignalTrait<boolean>,
@@ -78,9 +88,7 @@ function readRegistryClientAuthenticated(
 		: false;
 }
 
-function createMockClient(
-	authenticated: boolean,
-): OidcModeClient & OidcCallbackClient {
+function createMockClient(authenticated: boolean): ExampleClient {
 	const snap = authenticated
 		? {
 				tokens: {
@@ -99,7 +107,10 @@ function createMockClient(
 		removeWorkflowSource: vi.fn(() => false),
 		start: vi.fn(async () => undefined),
 		dispose: vi.fn(),
+		[SYMBOL_DISPOSE]: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(null),
+		loginWithRedirect: vi.fn(async () => undefined),
+		loginWithPopup: vi.fn(async () => ({ snapshot: snap! })),
 		handleCallback: vi.fn().mockResolvedValue({ snapshot: snap }),
 	};
 }
@@ -108,7 +119,7 @@ function createRouteFreshnessMockClient(options: {
 	initialExpiresAt: number;
 	refreshMaterial?: string;
 	refreshResult: "fresh" | "unauthenticated";
-}): OidcModeClient & OidcCallbackClient {
+}): ExampleClient {
 	const initial = {
 		tokens: {
 			accessToken: "expired-token",
@@ -138,7 +149,10 @@ function createRouteFreshnessMockClient(options: {
 		removeWorkflowSource: vi.fn(() => false),
 		start: vi.fn(async () => undefined),
 		dispose: vi.fn(),
+		[SYMBOL_DISPOSE]: vi.fn(),
 		restorePersistedState: vi.fn().mockResolvedValue(initial),
+		loginWithRedirect: vi.fn(async () => undefined),
+		loginWithPopup: vi.fn(async () => ({ snapshot: initial })),
 		handleCallback: vi.fn().mockResolvedValue({ snapshot: initial }),
 	};
 }
@@ -187,7 +201,9 @@ function buildRouteChain(
 	}
 
 	const leaf = snapshots[snapshots.length - 1];
-	if (!leaf) throw new Error("buildRouteChain: segments must not be empty");
+	if (!leaf) {
+		throw new Error("buildRouteChain: segments must not be empty");
+	}
 	return leaf;
 }
 
@@ -422,8 +438,8 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 			clientFactory: () => createMockClient(false),
 			requirementKind: "frontend_oidc",
 		});
-		await registry.whenReady("session");
-		await registry.whenReady("confluence");
+		await registry.initialize("session");
+		await registry.initialize("confluence");
 
 		// Build a leaf route that aggregates parent + child requirements
 		const leaf = buildRouteChain([
@@ -453,8 +469,14 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 		const plannerHost = createPlannerHostFn();
 
 		const candidates = allReqs.flatMap((req) => {
-			const keys = registry.clientKeyListForRequirement(req.kind);
-			if (keys.length === 0) return [];
+			const keys = [
+				...registry.clientRecordGenForQuery({
+					requirementKind: req.kind,
+				}),
+			].map((record) => record.get().meta.clientKey);
+			if (keys.length === 0) {
+				return [];
+			}
 			return [
 				{
 					requirementId: req.id,
@@ -489,8 +511,8 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 			clientFactory: () => createMockClient(true),
 			requirementKind: "frontend_oidc",
 		});
-		await registry.whenReady("session");
-		await registry.whenReady("confluence");
+		await registry.initialize("session");
+		await registry.initialize("confluence");
 
 		const leaf = buildRouteChain([
 			{},
@@ -510,8 +532,14 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 		const plannerHost = createPlannerHost();
 
 		const candidates = allReqs.flatMap((req) => {
-			const keys = registry.clientKeyListForRequirement(req.kind);
-			if (keys.length === 0) return [];
+			const keys = [
+				...registry.clientRecordGenForQuery({
+					requirementKind: req.kind,
+				}),
+			].map((record) => record.get().meta.clientKey);
+			if (keys.length === 0) {
+				return [];
+			}
 			return [
 				{
 					requirementId: req.id,

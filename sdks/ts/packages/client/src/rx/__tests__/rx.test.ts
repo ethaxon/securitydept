@@ -1,16 +1,20 @@
-import { Observable, of, Subject } from "rxjs";
+import { BehaviorSubject, Observable, of, Subject } from "rxjs";
 import { describe, expect, it } from "vitest";
 import {
+	ClientErrorKind,
 	createAndThenComputedReplaySignal,
+	createCancellationTokenSource,
 	createEventSubject,
 	createReplaySignal,
 	createSignal,
 	SYMBOL_OBSERVABLE,
 } from "../../index";
 import {
+	behaviorSubjectToSignal,
 	eventStreamToObservable,
 	eventSubjectToSubject,
 	observableToEventStream,
+	observableToReplaySignal,
 	signalToObservable,
 	subjectToEventSubject,
 } from "../index";
@@ -117,6 +121,51 @@ describe("@securitydept/client/rx", () => {
 		stream.subscribe({ next: (value: number) => values.push(value) });
 
 		expect(values).toEqual([7]);
+	});
+
+	it("behaviorSubjectToSignal exposes a behavior subject as a writable signal", () => {
+		const subject = new BehaviorSubject("initial");
+		const signal = behaviorSubjectToSignal(() => subject);
+		const notifications: string[] = [];
+
+		signal.subscribe(() => {
+			notifications.push(signal.get());
+		});
+		signal.set("initial");
+		subject.next("next");
+
+		expect(signal.get()).toBe("next");
+		expect(notifications).toEqual(["initial", "next"]);
+	});
+
+	it("observableToReplaySignal exposes replay signal semantics over values", async () => {
+		const source = new Subject<string>();
+		const signal = observableToReplaySignal(source);
+		const values: string[] = [];
+
+		eventStreamToObservable(signal[SYMBOL_OBSERVABLE]()).subscribe((value) => {
+			values.push(value);
+		});
+		const pending = signal.whenValue();
+		source.next("ready");
+
+		await expect(pending).resolves.toBe("ready");
+		expect(signal.get()).toEqual({ kind: "value", value: "ready" });
+		expect(signal.hasValue()).toBe(true);
+		expect(values).toEqual(["ready"]);
+	});
+
+	it("observableToReplaySignal supports cancellation while empty", async () => {
+		const source = new Subject<string>();
+		const signal = observableToReplaySignal(source);
+		const cancellation = createCancellationTokenSource();
+		const pending = signal.whenValue({ cancellationToken: cancellation.token });
+
+		cancellation.cancel("stop");
+
+		await expect(pending).rejects.toMatchObject({
+			kind: ClientErrorKind.Cancelled,
+		});
 	});
 
 	it("subjectToEventSubject exposes a RxJS subject as an event subject", () => {

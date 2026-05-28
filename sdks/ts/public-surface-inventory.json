@@ -275,36 +275,22 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Owns token-set backend-mode route/client contracts. Backend user-info transport remains a family DTO while its semantic authenticated-principal parsing/output aligns to the shared AuthenticatedPrincipal baseline from @securitydept/client instead of a parallel family-local owner.",
+					"note": "Owns token-set backend-mode route/client contracts, browser login helpers, and popup callback relay exports. BackendOidcModeClient construction is direct: adopters create a FoundationEnvironment through the appropriate host creator, then call new BackendOidcModeClient(config, environment). Materialized backend clients expose loginWithRedirect({ postAuthRedirectUri }) and loginWithPopup({ popupCallbackUrl }); page navigation is held by the client environment's router. relayTokenSetPopupCallbackFromEnvironment() and TokenSetPopupRelayErrorCode are exported from this subpath alongside BackendOidcModeTraceEventType. Backend user-info transport remains a family DTO while its semantic authenticated-principal parsing/output aligns to the shared AuthenticatedPrincipal baseline from @securitydept/client instead of a parallel family-local owner.",
 					"evidence": [
 						"examples/backend-oidc-mode-subpath-contract.test.ts",
 						"examples/oidc-client-wrapper-contract.test.ts",
 						"examples/backend-oidc-mode-minimal-entry.test.ts",
-						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/parsers.test.ts",
-						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/client.test.ts"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Current Contract Snapshot"
-					}
-				},
-				{
-					"exportKey": "./backend-oidc-mode/web",
-					"stability": "provisional",
-					"owner": "token-set-context",
-					"changeDiscipline": "provisional-migration-required",
-					"note": "Owns backend-OIDC browser-host helpers within the existing /web subpath. The canonical browser composition path is createBackendOidcModeWebClientEnvironment() first, then createBackendOidcModeWebClient({ environment, ...config }). Materialized backend web clients now expose the shared OIDC redirect-login surface loginWithRedirect({ environment, postAuthRedirectUri }); loginWithBackendOidcRedirect() remains the legacy/convenience alias. restoreBackendOidcModeClient() is worker-safe restore-only behavior; bootstrapBackendOidcModePageClient(), captureBackendOidcModePageCallbackFragment(), buildAuthorizeUrlReturningToCurrentPage(), currentPageLocationAsPostAuthRedirectUri(), loginWithBackendOidcPopup(), and relayBackendOidcPopupCallback() are page-boundary helpers. Page-oriented helpers now use options-object-first signatures with a typed `environment` field instead of positional page arguments or `pageEnvironment` option keys. Location-only helpers consume BackendOidcModePageRouterCapability; callback capture consumes BackendOidcModePageCallbackCapability; popup login consumes BackendOidcModePopupLoginCapability for callback-fragment storage; resetBackendOidcModeBrowserState() requires an explicit callbackFragmentStore and no longer constructs a global session-store-backed fragment store. No ./backend-oidc-mode/page subpath or deprecated aliases are part of this surface.",
-					"evidence": [
 						"examples/backend-oidc-mode-browser-scenario.test.ts",
 						"examples/backend-oidc-worker-like-host.test.ts",
 						"examples/popup-login-baseline.test.ts",
 						"examples/backend-oidc-web-minimal-entry.test.ts",
-						"examples/backend-oidc-mode-subpath-contract.test.ts",
+						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/parsers.test.ts",
+						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/client.test.ts",
 						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/web.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Browser entry: `./backend-oidc-mode/web` owns browser glue"
+						"heading": "Browser entry: backend OIDC client"
 					}
 				},
 				{
@@ -312,7 +298,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Includes the config projection source contract plus the current browser materialization owner: resolveConfigProjection(), networkConfigSource(), ConfigProjectionSourceKind, ClientReadinessState, createFrontendOidcModeWebClientEnvironment(), createFrontendOidcModeBrowserClient(), resolveFrontendOidcModePersistentStateKey(), and resolveFrontendOidcModeBrowserStorageKey(). The canonical browser composition path is createFrontendOidcModeWebClientEnvironment() first, then createFrontendOidcModeBrowserClient({ environment, ...projectionInput }); the materializer requires that explicit environment and does not create default store/fetch/origin dependency fallbacks. Async clientFactory(environment) support remains part of the browser contract, with registry-owned environment passed to client factories instead of scattered sub-capabilities. popupLogin() uses popupCallbackUrl as the real OAuth redirect_uri, supports an explicit postAuthRedirectUri for the opener, and is proven by the apps/webui reference host via popup relay plus cross-tab lifecycle browser e2e. FrontendOidcModeTraceEventType keeps popup / callback / refresh / user-info structured trace taxonomy shared and adopter-visible rather than app-local. describeFrontendOidcModeCallbackError() keeps callback-specific host-facing presentation/recovery mapping under the family owner while building on the shared client error presentation descriptor contract. Capability-first layering on the browser path keeps projection endpoint + redirectUri as bootstrap input, the resolved projection as auth-context config, and environment capability wiring explicit. Frontend-mode user-info and metadata principal construction aligns to the shared AuthenticatedPrincipal baseline, with app-facing display projection left to shared helper-backed host code.",
+					"note": "Includes the config projection source contract plus the current browser materialization owner: resolveConfigProjection(), networkConfigSource(), ConfigProjectionSourceKind, ClientReadinessState, createFrontendOidcModeWebClientEnvironment(), createFrontendOidcModeBrowserClient(), resolveFrontendOidcModePersistentStateKey(), and resolveFrontendOidcModeBrowserStorageKey(). The canonical browser composition path is createFrontendOidcModeWebClientEnvironment() first, then createFrontendOidcModeBrowserClient({ environment, ...projectionInput }); the materializer requires that explicit environment and does not create default store/fetch/origin dependency fallbacks. Async clientFactory(environment) support remains part of the browser contract, with registry-owned environment passed to client factories instead of scattered sub-capabilities. loginWithPopup() uses popupCallbackUrl as the real OAuth redirect_uri, supports an explicit postAuthRedirectUri for the opener, and is proven by the apps/webui reference host via popup relay plus cross-tab lifecycle browser e2e. FrontendOidcModeTraceEventType keeps popup / callback / refresh / user-info structured trace taxonomy shared and adopter-visible rather than app-local. describeFrontendOidcModeCallbackError() keeps callback-specific host-facing presentation/recovery mapping under the family owner while building on the shared client error presentation descriptor contract. Capability-first layering on the browser path keeps projection endpoint + redirectUri as bootstrap input, the resolved projection as auth-context config, and environment capability wiring explicit. Frontend-mode user-info and metadata principal construction aligns to the shared AuthenticatedPrincipal baseline, with app-facing display projection left to shared helper-backed host code.",
 					"evidence": [
 						"examples/scheduling-input-source-baseline.test.ts",
 						"examples/frontend-oidc-minimal-entry.test.ts",
@@ -334,7 +320,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Token-set-specific orchestration layer: auth-transport, base-client, auth-check trigger event sources, persistence, token-ops, types. Auth-check sources are pure EventStream producers; client-owned dispatcher/gateway code submits events into the auth-check runner. RequirementPlanner and RouteRequirementOrchestrator are hosted by @securitydept/client. AuthPrincipal aligns to the shared AuthenticatedPrincipal baseline while keeping resource-token facts and substrate ownership outside this human-principal contract.",
+					"note": "Token-set-specific orchestration layer: base-client, auth-check trigger event sources, persistence, token-ops, types. Base OIDC clients expose authorizedTransport() from their own environment transport and authorization header signal instead of mode-specific auth-transport wrappers. Auth-check sources are pure EventStream producers; client-owned dispatcher/gateway code submits events into the auth-check runner. RequirementPlanner and RouteRequirementOrchestrator are hosted by @securitydept/client. AuthPrincipal aligns to the shared AuthenticatedPrincipal baseline while keeping resource-token facts and substrate ownership outside this human-principal contract.",
 					"evidence": [
 						"packages/token-set-context-client/src/orchestration/client/__tests__/base-oidc-mode-client-auth-signals.test.ts",
 						"packages/token-set-context-client/src/orchestration/__tests__/workflow-sources.test.ts",
@@ -375,20 +361,6 @@
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Shared Client Lifecycle Contract"
-					}
-				},
-				{
-					"exportKey": "./web-router",
-					"stability": "provisional",
-					"owner": "token-set-context",
-					"changeDiscipline": "provisional-migration-required",
-					"note": "Token-set-specific raw web route helper that creates AuthGuardClientOption entries whose unauthenticated handler waits for the selected client's `isAuthenticated` replay signal before redirect/block fallback.",
-					"evidence": [
-						"packages/token-set-context-client/src/web-router/__tests__/token-set-web-router.test.ts"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Framework Router Adapters"
 					}
 				}
 			]
@@ -533,7 +505,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Root export owns TokenSetAuthRegistry DI service, multi-client integration, bearer interceptor (BearerInterceptorOptions { strictUrlMatch?: boolean } + TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS InjectionToken; provideTokenSetBearerInterceptor(options?) and createTokenSetBearerInterceptor(registry, options?) accept the same options object — strictUrlMatch: true bounds bearer injection to URLs matching registered urlPatterns), callback resume, and the canonical Angular route-security builders. TokenSetAuthRegistry is now a thin DI wrapper over the shared `createTokenSetOidcAuthRegistry()` lifecycle owner and exposes the same canonical verbs plus signal-state authority as the core: `register(entry)`, `unregister(key)`, `resetMaterialization(key)`, `dispose()`, `state`, registered snapshots, ready keys, and `clientSignalFor()`. Registry methods materialize and return mode clients; Angular-specific code should bridge client replay signals (`authSnapshot`, `isAuthenticated`, `authorizationHeaderValue`, `authOperations`) with `@securitydept/client/rx` or `bridgeToAngularSignal()` when needed rather than using a per-client service wrapper. secureRouteRoot() / secureRoute() are the adopter-facing Angular Router path: child routes declare serializable requirement metadata only, root registers non-serializable runtime policy (planner hosts, requirementPolicies, handlers), and both canActivate + canActivateChild evaluate the full route chain in one pass. createTokenSetRouteAggregationGuard() remains the lower-level route-tree primitive and passes attemptedUrl from Angular router state rather than from page globals. createTokenSetOidcLoginRedirectHandler() is the page redirect helper layered on top of that route context, targeting the shared OidcRedirectLoginClient contract. Its public key remains `environment`, and the canonical path is provideNativeWebEnvironment({ environment }) from @securitydept/client-angular. The helper awaits that source inside the guard flow before calling `loginWithRedirect()`. CallbackResumeService now bridges TokenSetCallbackResumeController and exposes component-free resume(url) state through Angular signals / observables; the canonical signal/event-to-RxJS bridge now lives in `@securitydept/client/rx`, while `@securitydept/client-angular` keeps Angular-specific writable-signal bridging.",
+					"note": "Root export owns TokenSetAuthRegistry DI service, multi-client integration, bearer interceptor (BearerInterceptorOptions { strictUrlMatch?: boolean } + TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS InjectionToken; provideTokenSetBearerInterceptor(options?) and createTokenSetBearerInterceptor(registry, options?) accept the same options object — strictUrlMatch: true bounds bearer injection to URLs matching registered urlPatterns), callback resume, and the canonical Angular route-security builders. TokenSetAuthRegistry is now a thin DI wrapper over the shared `createTokenSetOidcAuthRegistry()` lifecycle owner and exposes the same canonical verbs plus signal-state authority as the core: `register(entry)`, `unregister(key)`, `resetMaterialization(key)`, `dispose()`, `state`, registered snapshots, ready keys, and `clientSignalFor()`. Registry methods materialize and return mode clients; Angular-specific code should bridge client replay signals (`authSnapshot`, `isAuthenticated`, `authorizationHeaderValue`, `authOperations`) with `@securitydept/client/rx` or `bridgeToAngularSignal()` when needed rather than using a per-client service wrapper. secureRouteRoot() / secureRoute() are the adopter-facing Angular Router path: child routes declare serializable requirement metadata only, root registers non-serializable runtime policy (planner hosts, requirementPolicies, handlers), and both canActivate + canActivateChild evaluate the full route chain in one pass. createTokenSetRouteAggregationGuard() remains the lower-level route-tree primitive and passes attemptedUrl from Angular router state rather than from page globals. createTokenSetOidcLoginRedirectHandler() is the page redirect helper layered on top of that route context, targeting `BaseOidcModeClient.loginWithRedirect()`. Its public key remains `environment`, and the canonical path is provideNativeWebEnvironment({ environment }) from @securitydept/client-angular. The helper awaits that source inside the guard flow before calling `loginWithRedirect()`. CallbackResumeService now bridges TokenSetCallbackResumeController and exposes component-free resume(url) state through Angular signals / observables; the canonical signal/event-to-RxJS bridge now lives in `@securitydept/client/rx`, while `@securitydept/client-angular` keeps Angular-specific writable-signal bridging.",
 					"evidence": [
 						"examples/angular-integration-adapter.test.ts",
 						"examples/angular-full-route-aggregation.test.ts",

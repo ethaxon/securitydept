@@ -18,3 +18,4 @@ export type {
 	ManagedTransportTrait,
 } from "./types";
 export { TRANSPORT_TRAIT_TOKEN } from "./types";
+export { isLoopbackHttpUrl } from "./url";

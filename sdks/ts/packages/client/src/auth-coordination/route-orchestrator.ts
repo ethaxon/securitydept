@@ -154,7 +154,9 @@ function mergeChainRequirements(
 	for (const node of chain) {
 		for (const req of node.requirements) {
 			// Deduplicate by requirement ID — later (child) definitions win.
-			if (seenIds.has(req.id)) continue;
+			if (seenIds.has(req.id)) {
+				continue;
+			}
 			seenIds.add(req.id);
 			merged.push(req);
 		}
@@ -172,8 +174,12 @@ function sharedPrefixLength(
 ): number {
 	const limit = Math.min(oldReqs.length, newReqs.length);
 	for (let i = 0; i < limit; i++) {
-		if (oldReqs[i].id !== newReqs[i].id || oldReqs[i].kind !== newReqs[i].kind)
+		if (
+			oldReqs[i].id !== newReqs[i].id ||
+			oldReqs[i].kind !== newReqs[i].kind
+		) {
 			return i;
+		}
 	}
 	return limit;
 }
@@ -192,7 +198,9 @@ export function createRouteRequirementOrchestrator(
 	let currentMergedReqs: AuthRequirement[] = [];
 
 	function emitPendingIfNeeded(): void {
-		if (!planner || !options.onPendingRequirement) return;
+		if (!planner || !options.onPendingRequirement) {
+			return;
+		}
 		const snap = planner.snapshot();
 		if (snap.nextPending) {
 			options.onPendingRequirement(snap.nextPending);
@@ -200,7 +208,9 @@ export function createRouteRequirementOrchestrator(
 	}
 
 	function emitSettledIfNeeded(): void {
-		if (!planner || !activeRouteId || !options.onSettled) return;
+		if (!planner || !activeRouteId || !options.onSettled) {
+			return;
+		}
 		const snap = planner.snapshot();
 		if (snap.status === PlanStatus.Settled) {
 			options.onSettled(activeRouteId, snap.resolutions);

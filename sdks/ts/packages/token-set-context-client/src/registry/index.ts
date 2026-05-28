@@ -1,69 +1,63 @@
-// Shared token-set auth registry — canonical subpath entry
+// Client registry — canonical subpath entry.
 //
-// Canonical import path:
-//   import { ... } from "@securitydept/token-set-context-client/registry"
-//
-// This subpath exports a framework-neutral registry core that both the
-// Angular adapter (@securitydept/token-set-context-client-angular) and the
-// React adapter (@securitydept/token-set-context-client-react) build on.
-//
-// The registry is responsible for multi-client:
-//   - Registration with sync-or-async clientFactory
-//   - Readiness tracking (ClientReadinessState state machine)
-//   - Priority-aware materialization (primary eager / lazy idle warmup)
-//   - preload / whenReady / idleWarmup / unregister / resetMaterialization
-//     lifecycle verbs
-//   - Multi-axis discrimination (urlPatterns / callbackPath /
-//     requirementKind / providerFamily) with AND / OR filter queries
-//
-// Stability: provisional (shared registry surface)
+// The registry is a framework-neutral lifecycle container for keyed clients.
+// It owns initialization scheduling, disposal, lookup metadata, state signals,
+// and lifecycle events. It does not own token-set auth semantics.
 
-// Re-export ClientReadinessState (both the const-enum value and its type).
-export { ClientReadinessState } from "../frontend-oidc-mode/config/config-source";
 export type {
 	ClientFilter,
-	ClientKeySelector,
-	ClientMeta,
 	ClientQueryOptions,
-	CreateTokenSetAuthRegistryOptions,
-	CreateTokenSetOidcAuthRegistryOptions,
-	OidcCallbackClient,
-	OidcModeClient,
-	OidcRedirectLoginClient,
-	OidcRedirectLoginOptions,
-	ReadTokenSetCallbackResumeErrorDetailsOptions,
-	TokenSetAuthRegistryEntryState,
-	TokenSetAuthRegistryEvent,
-	TokenSetAuthRegistryLifecycleErrorCode as TokenSetAuthRegistryLifecycleErrorCodeType,
-	TokenSetAuthRegistryState,
-	TokenSetCallbackErrorDetails,
-	TokenSetCallbackErrorPresentationContext,
-	TokenSetCallbackErrorPresenter,
-	TokenSetCallbackResumeControllerOptions,
-	TokenSetCallbackResumeErrorDetails,
-	TokenSetCallbackResumeOptions,
-	TokenSetCallbackResumeRegistry,
-	TokenSetCallbackResumeResult,
-	TokenSetCallbackResumeState,
-	TokenSetCallbackResumeStatus as TokenSetCallbackResumeStatusType,
-	TokenSetClientEntry,
+	ClientSelector,
+} from "./contracts/query";
+export {
+	matchesCallbackPath,
+	matchesQuery,
+	matchesUrl,
+} from "./contracts/query";
+export type {
+	ClientDisposedRecordView,
+	ClientFailedRecordView,
+	ClientInitializingRecordView,
+	ClientMeta,
+	ClientReadyRecordView,
+	ClientRecordView,
+	ClientRecordViewBase,
+	ClientRegisteredRecordView,
+	ClientRegistryEntry,
+	ClientRegistryEvent,
+	ClientRegistryEventType,
+	CreateClientRegistryOptions,
 } from "./contracts/types";
 export {
-	ClientInitializationPriority,
-	TokenSetAuthRegistryLifecycleError,
-	TokenSetAuthRegistryLifecycleErrorCode,
+	ClientInitializationMode,
+	ClientRegistryEntryStatus,
 } from "./contracts/types";
+export type {
+	BackendOidcModeCallbackHandle,
+	BackendOidcModeCallbackInput,
+	BackendOidcModeCallbackOptions,
+	BackendOidcModeCallbackResult,
+	BackendOidcModeCallbackState,
+} from "./controller/backend-mode-callback-controller";
+export { BackendOidcModeCallbackController } from "./controller/backend-mode-callback-controller";
+export type {
+	FrontendOidcModeCallbackHandle,
+	FrontendOidcModeCallbackInput,
+	FrontendOidcModeCallbackOptions,
+	FrontendOidcModeCallbackResult,
+	FrontendOidcModeCallbackState,
+	ReadFrontendOidcModeCallbackErrorPresentationOptions,
+} from "./controller/frontend-mode-callback-controller";
 export {
-	TokenSetCallbackResumeController,
-	TokenSetCallbackResumeStatus,
-} from "./controller/callback-resume-controller";
+	FrontendOidcModeCallbackController,
+	readFrontendOidcModeCallbackErrorPresentation,
+} from "./controller/frontend-mode-callback-controller";
+export { ClientRecord } from "./core/client-record";
 export {
-	createTokenSetAuthRegistry,
-	createTokenSetOidcAuthRegistry,
-	TokenSetAuthRegistry,
+	ClientRegistry,
+	createClientRegistry,
 } from "./core/client-registry";
-export { isOidcCallback } from "./core/oidc-callback-url";
 export {
-	describeTokenSetCallbackError,
-	readTokenSetCallbackResumeErrorDetails,
-} from "./presentation/error-presentation";
+	ClientRegistryError,
+	ClientRegistryErrorCode,
+} from "./core/error";

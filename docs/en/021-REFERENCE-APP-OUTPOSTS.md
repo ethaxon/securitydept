@@ -12,7 +12,7 @@ The current calibration line demonstrates that:
 - The callback route is served by the SDK `TokenSetCallbackComponent`.
 - `secureRouteRoot()` carries provider-neutral requirement metadata and next-action policy.
 - `provideTokenSetAuth(...)` registers the `Confluence` client with explicit `providerFamily`, `callbackPath`, and `urlPatterns`.
-- Route-login integration uses the shared `OidcRedirectLoginClient.loginWithRedirect({ environment, postAuthRedirectUri })` contract and should source page capability from a stable environment service rather than a per-guard page factory.
+- Route-login integration uses `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })`; the client should already carry a stable page router through its environment rather than receiving a per-call page factory.
 - Registry-managed browser clients now get default page-resume reconciliation through `provideTokenSetAuth(...)`; the adopter does not need a separate wrapper just to recover resume behavior.
 - `provideTokenSetBearerInterceptor({ strictUrlMatch: true })` constrains bearer injection to registered URLs and avoids single-client fallback for unmatched URLs.
 - Short access-token lifetimes are expected to recover through SDK freshness barriers before redirect or bearer injection when refresh material exists.

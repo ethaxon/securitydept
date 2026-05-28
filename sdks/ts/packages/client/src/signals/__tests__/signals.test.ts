@@ -34,14 +34,14 @@ describe("createSignal", () => {
 		expect(notified).toBe(true);
 	});
 
-	it("should not notify on same value (Object.is)", () => {
+	it("should notify on every set, including same-value writes", () => {
 		const signal = createSignal(1);
 		let count = 0;
 		signal.subscribe(() => {
 			count++;
 		});
 		signal.set(1);
-		expect(count).toBe(0);
+		expect(count).toBe(1);
 	});
 
 	it("should support unsubscribe", () => {

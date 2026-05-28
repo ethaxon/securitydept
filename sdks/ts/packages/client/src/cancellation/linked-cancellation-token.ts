@@ -30,7 +30,9 @@ export function createLinkedCancellationToken(
 
 	// Fast-path: return the first already-cancelled source immediately.
 	for (const source of sources) {
-		if (source.isCancellationRequested) return source;
+		if (source.isCancellationRequested) {
+			return source;
+		}
 	}
 
 	const linked = createCancellationTokenSource();
@@ -40,7 +42,9 @@ export function createLinkedCancellationToken(
 
 	// Clean up all subscriptions once the linked token fires.
 	linked.token.onCancellationRequested(() => {
-		for (const sub of subscriptions) sub.dispose();
+		for (const sub of subscriptions) {
+			sub.dispose();
+		}
 	});
 
 	return linked.token;

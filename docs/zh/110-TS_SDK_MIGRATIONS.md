@@ -87,7 +87,6 @@ Packages：
 
 - `@securitydept/client`
 - `@securitydept/client/web`
-- `@securitydept/token-set-context-client/backend-oidc-mode/web`
 
 变更：
 
@@ -95,7 +94,7 @@ Packages：
 - 历史 `ClientRuntime` 命名已收口为 environment terminology。Core client constructor 依赖属于 environment，不是第二层 runtime。Canonical path 是 `environment.transport`、`environment.sessionStorage` 等顶层字段。
 - Web host environment factory 是显式 composition entry，不是 automatic host detection，也不再暴露仅用于 preset 区分的 worker/service-worker/extension-background wrapper。
 - Context 与 adapter public helper 使用同一边界。Backend-OIDC web helper、basic-auth/session redirect helper，以及 framework adapter convenience helper 不得各自重复声明或猜测 transport/store/time/page dependencies。
-- Backend-OIDC web helper 按 host boundary 拆分：page-only helper 使用 page-explicit 命名；worker-safe helper 必须使用 host-injected environment/capability 或 restore-only 行为。
+- Backend-OIDC web helper 按 host boundary 拆分：page-only helper 使用 page-explicit 命名；worker-safe startup 使用 host-injected environment/capability，并通过 `client.start()`、`autoStart`、registry orchestration 和 auth signals 完成。
 
 迁移：
 
@@ -103,9 +102,9 @@ Packages：
 - 即使值是 page-scoped 或异步解析的，public option key 也继续叫 `environment`。不要引入 `pageEnvironment` 作为并行 key；是否需要 page capability 由类型表达。
 - Real page/tab/popup callback flow 使用 `createEnvironmentForNativeWeb({ location, history, ...options })`；page capability 作为顶层 host input 显式传入，且必须来自 host composition root。
 - Worker-like host 不使用 `createEnvironmentForNativeWeb()`；应使用 `createFoundationEnvironment()` 或更具体的 host factory，并显式注入 persistence/session store。
-- 不要在 service worker 或 extension background 中执行 page callback bootstrap。那里只运行 restore/token-state API；callback capture 只在 real page/popup document 中运行，或在测试中显式传入 fake page/callback-fragment capability。
-- 将 ambiguous page-global helper 名称迁移到已经改名的 page-explicit 名称，例如 `currentPageLocationAsPostAuthRedirectUri()`、`buildAuthorizeUrlReturningToCurrentPage()`、`bootstrapBackendOidcModePageClient()` 与 `captureBackendOidcModePageCallbackFragment()`。
-- 将既有 redirect/popup helper（`loginWithBackendOidcRedirect()`、`loginWithBackendOidcPopup()`、`relayBackendOidcPopupCallback()`）视为 page-only helper，虽然历史名称保持不变；测试或 host wrapper 中应传入显式 `RouterTrait` / `PopupTrait` 或携带 page capability 的 `environment`。现在 canonical 的共享 token-set OIDC 浏览器 contract 是 `OidcRedirectLoginClient` 上的 `loginWithRedirect({ environment, postAuthRedirectUri })`；通过 `createBackendOidcModeWebClient(...)` materialize 的 backend web client 会暴露这个方法，而 `loginWithBackendOidcRedirect()` 退回为兼容/convenience wrapper。Popup login 还要求显式 callback-fragment capability，browser-state reset 要求显式 `callbackFragmentStore`。
+- 不要在 service worker 或 extension background 中消费 callback fragment。那里只运行 restore/token-state API；callback fragment 只应在 real page/popup document 中消费，或在测试中显式传入 fake `RouterTrait`。
+- 将 ambiguous page-global helper usage 迁移到显式 page 形式：用 `client.authorizeUrl(environment.router.currentUrl()?.toString())` 或 `client.loginWithRedirect({ postAuthRedirectUri })` 构造 return URL；Backend OIDC callback page 使用 `takeCompatFragmentFromRouter(router)` 后接 `client.handleCallback(fragment)`。Backend OIDC fragment redirect 使用 securitydept compat fragment 协议，并保留既有 hash-router fragment。
+- 将 `relayTokenSetPopupCallbackFromEnvironment()` 等 popup callback relay helper 视为 page-only helper；测试或 host wrapper 中应传入携带 page capability 的 `environment`。从 `@securitydept/token-set-context-client/backend-oidc-mode` 或 `@securitydept/token-set-context-client/frontend-oidc-mode` 导入；已删除的 `@securitydept/token-set-context-client/backend-oidc-mode/web` 子路径只是转发层。现在 canonical 的共享 token-set OIDC 浏览器 login contract 是 `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })` 和 `BaseOidcModeClient.loginWithPopup({ popupCallbackUrl })`；client 通过 environment 持有 page navigation 和 popup capability。Backend / frontend mode client 都直接暴露这些方法。Backend OIDC 不再持有隐藏的 callback-fragment flow state；重试或延迟 callback handling 必须由应用代码显式实现。
 - Frontend-mode browser materialization 应在 host composition root 创建 `createFrontendOidcModeWebClientEnvironment(...)`，再传给 `createFrontendOidcModeBrowserClient({ environment, ... })`；materializer 不再在缺少 `environment` 时创建默认 environment。
 - 当 browser/page environment ownership 需要在 framework route 或 command 之间保持稳定时，应在 composition root 创建一个 host-owned `NativeWebEnvironment` object 并注入该对象。不要继续发明 app-local module singleton 或 SDK-local lazy environment resolver。
 - 将 basic-auth/session `/web` redirect helper 视为 page navigation helper；要么留在 real page context，要么注入显式 `RouterTrait`。
@@ -260,7 +259,7 @@ Packages：
 - `@securitydept/client-react` 现在拥有 canonical React injector bridge：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`，以及 context-free `useReadableSignal()` / `useEventStream()`。
 - `client-react` environment 与 `planner-host` helper 现在只导出 injection token 与 provider factory：例如 `CLIENT_ENVIRONMENT` + `provideClientEnvironment(environment)`，`AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`。
 - `basic-auth` / `session` / `token-set` React adapter 不再拥有 domain-specific Provider / Context hook；它们导出 token、plain factory、provider factory，以及显式 callback/component bridge。token-set 多客户端组合现在改为显式 registry/controller wiring，而不是 SDK 预设 runtime bundle。
-- Angular `createTokenSetOidcLoginRedirectHandler()` 现在是 route-login helper。它的 public key 仍然只叫 `environment`，但这个值现在表示稳定的 native-web-environment source；Angular DI 应通过 `@securitydept/client-angular` 的 `provideNativeWebEnvironment({ environment })` 提供该 source。helper 面向共享的 `OidcRedirectLoginClient` contract，并会在 guard flow 中 await 最终 capability 后再调用 `loginWithRedirect()`。
+- Angular `createTokenSetOidcLoginRedirectHandler()` 现在是 route-login helper。它的 public key 仍然只叫 `environment`，但这个值现在表示稳定的 native-web-environment source；Angular DI 应通过 `@securitydept/client-angular` 的 `provideNativeWebEnvironment({ environment })` 提供该 source。helper 面向 `BaseOidcModeClient.loginWithRedirect()`，并会在 guard flow 中 await 最终 capability 后再调用它。
 - Angular `CallbackResumeService` 与 React `useTokenSetCallbackResume({ getCurrentUrl, describeError })` 现在桥接 `@securitydept/token-set-context-client/registry` 的 shared `TokenSetCallbackResumeController`。Angular `TokenSetCallbackComponent` 仍是该 service 之上的 page-only convenience，并继续使用 injectable current URL 与 host policy tokens。
 
 迁移：

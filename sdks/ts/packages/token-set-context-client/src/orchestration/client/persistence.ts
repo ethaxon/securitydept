@@ -1,9 +1,13 @@
 import {
 	ClientError,
 	ClientErrorKind,
+	formatValidationFailure,
 	type StorageTrait,
-	type TimeTrait,
+	type TimestampProviderTrait,
+	type ValidationFailure,
+	validateWithSchemaSync,
 } from "@securitydept/client";
+import { type as defineType } from "arktype";
 import { type AuthSnapshot } from "../token/types";
 
 const STATE_VERSION = 1;
@@ -15,10 +19,27 @@ interface StoredStateEnvelope {
 	value: AuthSnapshot;
 }
 
+const AuthSnapshotSchema = defineType({
+	tokens: {
+		accessToken: "string",
+		"idToken?": "string",
+		"refreshMaterial?": "string",
+		"accessTokenIssuedAt?": "string",
+		"accessTokenExpiresAt?": "string",
+	},
+	metadata: "object",
+});
+
+const StoredStateEnvelopeShapeSchema = defineType({
+	version: "number",
+	"storedAt?": "number",
+	value: "unknown",
+});
+
 export interface AuthSnapshotPersistenceOptions {
 	store: StorageTrait;
 	key: string;
-	time: Pick<TimeTrait, "now">;
+	time: TimestampProviderTrait;
 }
 
 export async function loadPersistedAuthSnapshot(
@@ -76,21 +97,19 @@ function parseEnvelope(raw: string, now: () => number): StoredStateEnvelope {
 		});
 	}
 
-	if (
-		!parsed ||
-		typeof parsed !== "object" ||
-		!("version" in parsed) ||
-		!("value" in parsed)
-	) {
-		throw new ClientError({
-			kind: ClientErrorKind.Protocol,
+	const envelopeShapeResult = validateWithSchemaSync(
+		StoredStateEnvelopeShapeSchema,
+		parsed,
+	);
+	if (!envelopeShapeResult.success) {
+		throwPersistenceValidationError({
 			code: "token_orchestration.persistence.invalid_envelope",
-			message: "Persisted auth state has an invalid envelope",
-			source: PERSISTENCE_SOURCE,
+			messagePrefix: "Persisted auth state has an invalid envelope",
+			failure: envelopeShapeResult,
 		});
 	}
 
-	const envelope = parsed as Partial<StoredStateEnvelope>;
+	const envelope = envelopeShapeResult.value;
 
 	if (envelope.version !== STATE_VERSION) {
 		throw new ClientError({
@@ -101,36 +120,38 @@ function parseEnvelope(raw: string, now: () => number): StoredStateEnvelope {
 		});
 	}
 
-	if (!isAuthSnapshot(envelope.value)) {
-		throw new ClientError({
-			kind: ClientErrorKind.Protocol,
+	const authSnapshotResult = validateWithSchemaSync(
+		AuthSnapshotSchema,
+		envelope.value,
+	);
+	if (!authSnapshotResult.success) {
+		throwPersistenceValidationError({
 			code: "token_orchestration.persistence.invalid_snapshot",
-			message: "Persisted auth state payload is invalid",
-			source: PERSISTENCE_SOURCE,
+			messagePrefix: "Persisted auth state payload is invalid",
+			failure: authSnapshotResult,
 		});
 	}
 
 	return {
 		version: STATE_VERSION,
-		storedAt: typeof envelope.storedAt === "number" ? envelope.storedAt : now(),
-		value: envelope.value,
+		storedAt: envelope.storedAt ?? now(),
+		value: authSnapshotResult.value,
 	};
 }
 
-function isAuthSnapshot(value: unknown): value is AuthSnapshot {
-	if (!value || typeof value !== "object") {
-		return false;
-	}
-
-	const snapshot = value as Partial<AuthSnapshot>;
-	const tokens = snapshot.tokens as Partial<AuthSnapshot["tokens"]> | undefined;
-	const metadata = snapshot.metadata;
-
-	return (
-		!!tokens &&
-		typeof tokens === "object" &&
-		typeof tokens.accessToken === "string" &&
-		!!metadata &&
-		typeof metadata === "object"
-	);
+function throwPersistenceValidationError(options: {
+	code: string;
+	messagePrefix: string;
+	failure: ValidationFailure;
+}): never {
+	const issueSummary = formatValidationFailure(options.failure);
+	throw new ClientError({
+		kind: ClientErrorKind.Protocol,
+		code: options.code,
+		message: issueSummary
+			? `${options.messagePrefix}: ${issueSummary}.`
+			: `${options.messagePrefix}.`,
+		source: PERSISTENCE_SOURCE,
+		cause: options.failure.issues,
+	});
 }

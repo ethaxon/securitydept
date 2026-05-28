@@ -255,12 +255,10 @@ Package 应保持 import-safe 与 side-effect-light。Registration side effect �
 | `@securitydept/session-context-client/server` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client-react` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/backend-oidc-mode` | `provisional` | `token-set-context` | `provisional-migration-required` |
-| `@securitydept/token-set-context-client/backend-oidc-mode/web` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/frontend-oidc-mode` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/orchestration` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/access-token-substrate` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/registry` | `provisional` | `token-set-context` | `provisional-migration-required` |
-| `@securitydept/token-set-context-client/web-router` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/test-utils` | `experimental` | `foundation` | `experimental-fast-break` |
 | `@securitydept/basic-auth-context-client-angular` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client-angular` | `provisional` | `session-context` | `provisional-migration-required` |
@@ -274,13 +272,11 @@ Package 应保持 import-safe 与 side-effect-light。Registration side effect �
 
 #### token-set-context-client Subpath Family 阅读方式
 
-- `/backend-oidc-mode`：platform-neutral client/service/token-material entry。
-- `/backend-oidc-mode/web`：browser redirect、callback、storage 与 bootstrap glue。
+- `/backend-oidc-mode`：platform-neutral client/service/token-material entry，以及 browser login 与 popup callback relay helper。
 - `/frontend-oidc-mode`：browser-owned OIDC client mode 与 config projection materialization。
 - `/orchestration`：protocol-agnostic token lifecycle 与 route requirement primitives。
 - `/access-token-substrate`：access-token propagation vocabulary 与 substrate contract。
 - `/registry`：shared multi-client lifecycle core。
-- `/web-router`：token-set-specific raw Web Router helper，会在 redirect/block fallback 前调用 canonical auth barrier。
 
 #### Capability Boundary Rules
 
@@ -312,7 +308,7 @@ Framework router adapter 由以下 package 拥有：
 
 Canonical semantics：完整 matched-route chain aggregation、`inherit` / `merge` / `replace`、child-route serializable metadata、root-level runtime policy，且 SDK 不内建产品 chooser UI。
 
-Angular token-set route handler 会收到包含 `attemptedUrl` 的 route unauthenticated context。启动 OIDC redirect login 时，应使用这个值，确保被拦截的目标导航被记录为 `postAuthRedirectUri`。Canonical Angular 路径是在 composition root 通过 `provideNativeWebEnvironment({ environment })` 提供 host-owned native web environment object，然后调用 `createTokenSetOidcLoginRedirectHandler({ ... })`，而不是在每个 guard 路径里重复创建 page capability。底层共享 contract 是 `@securitydept/token-set-context-client/registry` 中的 `OidcRedirectLoginClient` 与 `OidcRedirectLoginOptions`；Angular、React/TanStack、`FrontendOidcModeClient` 以及 backend-oidc web client 都应面向这层 capability，而不是某个 mode-specific helper。不要在 guard handler 内读取 Angular `Router.url` 作为回跳目标，因为此时 attempted navigation 尚未提交。已经启动整页外部 redirect 的 handler 不应再 resolve 为 `false`；SDK helper 会在启动 redirect 后返回永不 settle 的 guard result，避免 Angular 在页面离开前完成一次 in-app navigation cancel。
+Angular token-set route handler 会收到包含 `attemptedUrl` 的 route unauthenticated context。启动 OIDC redirect login 时，应使用这个值，确保被拦截的目标导航被记录为 `postAuthRedirectUri`。Canonical Angular 路径是在 composition root 通过 `provideNativeWebEnvironment({ environment })` 提供 host-owned native web environment object，然后调用 `createTokenSetOidcLoginRedirectHandler({ ... })`，而不是在每个 guard 路径里重复创建 page capability。底层共享 contract 是 `BaseOidcModeClient.loginWithRedirect(options)` 与 `@securitydept/token-set-context-client/registry` 中的 `OidcRedirectLoginOptions`；Angular、React/TanStack、`FrontendOidcModeClient` 以及 backend-oidc web client 都应面向这层 capability，而不是某个 mode-specific helper。不要在 guard handler 内读取 Angular `Router.url` 作为回跳目标，因为此时 attempted navigation 尚未提交。已经启动整页外部 redirect 的 handler 不应再 resolve 为 `false`；SDK helper 会在启动 redirect 后返回永不 settle 的 guard result，避免 Angular 在页面离开前完成一次 in-app navigation cancel。
 
 TanStack Router 的 `createSecureBeforeLoad()` 同样会向 unauthenticated handler 传入包含 `attemptedUrl` 的 context。对会发起整页外部 auth redirect 的 React/TanStack adopter，应使用 `createExternalRedirectBeforeLoadHandler()`，在 callback 中调用自己的 login client，并用 `context.attemptedUrl` 作为 `postAuthRedirectUri`。不要从 `window.location` 推断目标页；beforeLoad 执行时当前 document URL 也可能仍是旧路由。
 
@@ -350,16 +346,16 @@ Verified 表示已有聚焦型验证、仓库内 proof 或下游校准；不代�
 
 使用 `@securitydept/client` 获取 shared primitives。它不是产品级 auth shell。
 
-#### 2. Browser 入口：`./backend-oidc-mode/web` 负责 browser glue
+#### 2. Browser 入口：backend OIDC client
 
-使用 `@securitydept/token-set-context-client/backend-oidc-mode/web` 接入 backend-owned OIDC/token-set browser flows。
+使用 `@securitydept/token-set-context-client/backend-oidc-mode` 导出的 `BackendOidcModeClient`、`relayTokenSetPopupCallbackFromEnvironment` 和 `TokenSetPopupRelayErrorCode`，并传入 host-owned `FoundationEnvironment` 或 `NativeWebEnvironment`。
 
 该 subpath 是 browser-host glue，不表示所有 Web-like runtime 都具备 page navigation。选择 helper 前应先明确 foundation environment 边界：
 
-- Browser client construction 应接收 host-owned `FoundationEnvironment` 或 `NativeWebEnvironment`，取决于是否需要 page capability。不要把 transport、time、persistent store、session store 分散传给每个 helper。
+- Browser client construction 应使用 `new BackendOidcModeClient(config, environment)`；`environment` 由 host 通过 `createFoundationEnvironment(...)`、`createEnvironmentForNativeWeb(...)` 或其它显式 host creator 创建。不要把 transport、time、persistent store、session store 分散传给每个 helper。
 - Worker-like host、service worker 与 extension background 可以创建/restore client，并运行 token-state API，但默认不得执行 page callback capture。
-- Page-only helper 只能通过 `NativeWebEnvironment` 读取 `window.location` / `window.history`；名字或 options 必须明确 page 边界，例如 `currentPageLocationAsPostAuthRedirectUri`、`buildAuthorizeUrlReturningToCurrentPage`、`bootstrapBackendOidcModePageClient`、`captureBackendOidcModePageCallbackFragment`。对 token-set OIDC login 而言，共享的浏览器入口是 `OidcRedirectLoginClient` 上的 `loginWithRedirect({ environment, postAuthRedirectUri })`：`FrontendOidcModeClient` 直接满足该 contract，`createBackendOidcModeWebClient(...)` 也会 materialize 同名方法，而 `loginWithBackendOidcRedirect()` 退回为 legacy/convenience alias。`loginWithBackendOidcPopup()` 与 `relayBackendOidcPopupCallback()` 等 popup helper 仍是 page-only helper，并在缺少显式 environment 时 fail-fast。
-- Host-injected callback helper 必须接收 `BackendOidcModeWebClientEnvironment`，或显式 page/callback-fragment capability。`loginWithBackendOidcPopup()` 要求 `BackendOidcModePopupLoginCapability`，`resetBackendOidcModeBrowserState()` 要求显式 `callbackFragmentStore`；普通 helper 不会构造基于 global session storage 的 fragment store。缺少必要 capability 时必须 fail-fast，而不是落到 `window is not defined` 或 stale URL parsing。
+- Page-only helper 只能通过 `NativeWebEnvironment` 读取 `window.location` / `window.history`；return URL 构造应留在应用边界显式完成，例如 `client.authorizeUrl(environment.router.currentUrl()?.toString())` 或 `client.loginWithRedirect({ postAuthRedirectUri })`。Backend OIDC callback page 应使用 `takeCompatFragmentFromRouter(router)`，再把返回的 compat payload 直接传给 `client.handleCallback(fragment)`。Backend OIDC fragment redirect 使用 securitydept compat fragment 协议，因此 `postAuthRedirectUri` 中的 hash-router path 会被保留。对 token-set OIDC login 而言，共享的浏览器入口是 `BaseOidcModeClient` 上的 `loginWithRedirect({ postAuthRedirectUri })` 和 `loginWithPopup({ popupCallbackUrl })`；client 自身必须通过 environment 持有 page router / popup capability。`FrontendOidcModeClient` 和 `BackendOidcModeClient` 都直接实现这些方法。`relayTokenSetPopupCallbackFromEnvironment()` 仍是 page-only helper，并要求显式传入 `environment`。
+- Backend OIDC 不维护隐藏的 callback fragment store。重试或延迟处理 callback 是应用层策略：要么在处理成功前把 fragment 留在 URL 中，要么由应用代码显式持久化。缺少必要 capability 时必须 fail-fast，而不是落到 `window is not defined` 或 stale URL parsing。
 
 推荐 host environment：
 
@@ -418,7 +414,7 @@ Freshness 由 token-set core 拥有，而不是由某个 framework adapter 单�
 
 Browser-owned frontend/backend OIDC factory 通过 client runtime option `authCheck.triggerSources.pageResume` 配置 page-resume auth-check。bundled source 只消费 host-owned `PageLifecycleTrait.resume` event stream；token-set orchestration 不再接收或探测原始 `document` / `window` target。Angular registry entry 不再在 materialization 阶段 patch client 安装 page-resume trigger：Angular host 应在 `clientFactory(environment)` 内构造 client 时传入所需的 `authCheck.triggerSources` 配置。浏览器从 hidden 回到 visible、`pageshow`、`focus` 或 `online` 时，page source 只发出纯 EventStream auth-check trigger。client-owned dispatcher 负责将 trigger event 提交给串行 auth-check runner；restore 与显式 `authCheck()` 因为需要 promise-returning 语义而使用 command gateway，refresh timer 则是从 `authSnapshot` 派生的另一个 trigger source。完成的检查会通过强类型的终态 auth event（`auth.authenticated` / `auth.unauthenticated`）投影其结果；触发原因（例如 page resume）记录在局部 orchestration trace attributes 中，而不是 auth event 的 payload 字段上。这是恢复 barrier，不是交互式 login trigger：refresh 失败会沿 token-set client 的正常路径清理或保留状态，是否启动登录仍由 route/request handler 决定。
 
-短 access-token lifetime 应由持续运行的 client state machine 处理：persisted restore 执行初始 auth check，refresh timer 调度后续检查，browser resume 在 hidden tab、系统 sleep、bfcache 返回后发出 auth-check trigger。Angular route aggregation 等待 pending initial auth determination，然后读取 `isAuthenticated`；protected request 等待 `authorizationHeaderValue`。当 `frontend-oidc-mode` 或其它 token-set mode 能记录 `accessTokenIssuedAt` 时，token freshness 会按 token lifetime 动态收窄 refresh window 与 clock skew，而不是对所有 token 生硬套用固定窗口。这样短生命周期 token 在刚签发时仍保持 `fresh`，但又会足够早地进入 `refresh_due`，以支撑 restore、resume 与 scheduled maintenance。TanStack Router host 应使用 `@securitydept/token-set-context-client-react/tanstack-router` 的 `createTokenSetSecureBeforeLoad()`；raw web host 应使用 `@securitydept/token-set-context-client/web-router` 的 `createTokenSetWebRouteAuthCandidate()`。两个 helper 都会在 redirect/block fallback 前等待选中 client 的 `isAuthenticated` replay signal。
+短 access-token lifetime 应由持续运行的 client state machine 处理：persisted restore 执行初始 auth check，refresh timer 调度后续检查，browser resume 在 hidden tab、系统 sleep、bfcache 返回后发出 auth-check trigger。Angular route aggregation 等待 pending initial auth determination，然后读取 `isAuthenticated`；protected request 等待 `authorizationHeaderValue`。当 `frontend-oidc-mode` 或其它 token-set mode 能记录 `accessTokenIssuedAt` 时，token freshness 会按 token lifetime 动态收窄 refresh window 与 clock skew，而不是对所有 token 生硬套用固定窗口。这样短生命周期 token 在刚签发时仍保持 `fresh`，但又会足够早地进入 `refresh_due`，以支撑 restore、resume 与 scheduled maintenance。TanStack Router host 应使用 `@securitydept/token-set-context-client-react/tanstack-router` 的 `createTokenSetSecureBeforeLoad()`；非框架 browser host 应将 shared guarded-router primitives 与选中 token-set client 的 `isAuthenticated` replay signal 组合，在 redirect/block fallback 前完成认证判断。
 
 如果 downstream resource server 返回 `ExpiredSignature`，正确归因是后端拒绝正常：前端确实发送了过期 JWT，SDK/adopter 不应注入这个 bearer。先用下面片段诊断浏览器里是否有 refresh material，再判断是 IdP 未下发 refresh token，还是 refresh barrier 没有生效：
 

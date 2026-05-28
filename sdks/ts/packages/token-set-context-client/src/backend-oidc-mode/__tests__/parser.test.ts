@@ -1,17 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
 	callbackReturnsToTokenSnapshot,
-	parseBackendOidcModeCallbackFragment,
-	parseBackendOidcModeRefreshFragment,
+	parseBackendOidcModeCallbackPayload,
+	parseBackendOidcModeRefreshPayload,
 	refreshReturnsToTokenDelta,
 } from "../contracts/parsers";
 
-describe("parseBackendOidcModeCallbackFragment", () => {
-	it("should parse a full callback fragment", () => {
-		const fragment =
-			"access_token=abc123&refresh_token=rt456&id_token=idt789&expires_at=2026-01-01T00%3A00%3A00Z&metadata_redemption_id=mr001";
-
-		const result = parseBackendOidcModeCallbackFragment(fragment);
+describe("parseBackendOidcModeCallbackPayload", () => {
+	it("should parse a full callback payload", () => {
+		const result = parseBackendOidcModeCallbackPayload({
+			access_token: "abc123",
+			refresh_token: "rt456",
+			id_token: "idt789",
+			access_token_expires_at: "2026-01-01T00:00:00Z",
+			metadata_redemption_id: "mr001",
+		});
 
 		expect(result).not.toBeNull();
 		expect(result!.accessToken).toBe("abc123");
@@ -21,28 +24,23 @@ describe("parseBackendOidcModeCallbackFragment", () => {
 		expect(result!.metadataRedemptionId).toBe("mr001");
 	});
 
-	it("should handle fragment with leading #", () => {
-		const result = parseBackendOidcModeCallbackFragment(
-			"#access_token=tok&id_token=idt",
-		);
-		expect(result?.accessToken).toBe("tok");
-		expect(result?.idToken).toBe("idt");
-	});
-
 	it("should return null when access_token is missing", () => {
-		const result = parseBackendOidcModeCallbackFragment("id_token=idt");
+		const result = parseBackendOidcModeCallbackPayload({ id_token: "idt" });
 		expect(result).toBeNull();
 	});
 
 	it("should return null when id_token is missing", () => {
-		const result = parseBackendOidcModeCallbackFragment("access_token=tok");
+		const result = parseBackendOidcModeCallbackPayload({
+			access_token: "tok",
+		});
 		expect(result).toBeNull();
 	});
 
-	it("should handle fragment without optional fields", () => {
-		const result = parseBackendOidcModeCallbackFragment(
-			"access_token=tok&id_token=idt",
-		);
+	it("should handle payload without optional fields", () => {
+		const result = parseBackendOidcModeCallbackPayload({
+			access_token: "tok",
+			id_token: "idt",
+		});
 		expect(result?.accessToken).toBe("tok");
 		expect(result?.refreshToken).toBeUndefined();
 		expect(result?.expiresAt).toBeUndefined();
@@ -50,12 +48,15 @@ describe("parseBackendOidcModeCallbackFragment", () => {
 	});
 });
 
-describe("parseBackendOidcModeRefreshFragment", () => {
-	it("should parse a full refresh fragment", () => {
-		const fragment =
-			"access_token=at2&refresh_token=rt2&id_token=idt2&expires_at=2026-02-01T00%3A00%3A00Z&metadata_redemption_id=mr002";
-
-		const result = parseBackendOidcModeRefreshFragment(fragment);
+describe("parseBackendOidcModeRefreshPayload", () => {
+	it("should parse a full refresh payload", () => {
+		const result = parseBackendOidcModeRefreshPayload({
+			access_token: "at2",
+			refresh_token: "rt2",
+			id_token: "idt2",
+			access_token_expires_at: "2026-02-01T00:00:00Z",
+			metadata_redemption_id: "mr002",
+		});
 
 		expect(result).not.toBeNull();
 		expect(result!.accessToken).toBe("at2");
@@ -66,12 +67,14 @@ describe("parseBackendOidcModeRefreshFragment", () => {
 	});
 
 	it("should return null when access_token is missing", () => {
-		const result = parseBackendOidcModeRefreshFragment("refresh_token=rt");
+		const result = parseBackendOidcModeRefreshPayload({
+			refresh_token: "rt",
+		});
 		expect(result).toBeNull();
 	});
 
 	it("should handle refresh without optional fields", () => {
-		const result = parseBackendOidcModeRefreshFragment("access_token=at");
+		const result = parseBackendOidcModeRefreshPayload({ access_token: "at" });
 		expect(result?.accessToken).toBe("at");
 		expect(result?.idToken).toBeUndefined();
 		expect(result?.metadataRedemptionId).toBeUndefined();

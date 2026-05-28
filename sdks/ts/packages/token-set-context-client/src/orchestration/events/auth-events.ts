@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/complexity/noBannedTypes: enable for event payload builders */
 import {
 	EventSourceKind,
 	type RuntimeEventEnvelope,
@@ -27,207 +28,139 @@ export interface TokenSetAuthErrorSummary {
 	recovery?: string;
 }
 
-// Minimal identity context every auth event may carry. Intentionally limited to
-// stable, externally meaningful identifiers; do not re-accumulate weakly-typed
-// global fields on this base.
+// Minimal client identity context carried by every auth event. Keep the
+// identity namespaced so event-specific payload fields cannot collide with it.
 export interface TokenSetAuthEventPayloadBase {
-	id?: string;
+	client: {
+		id: string;
+	};
 }
+
+export type TokenSetAuthEventPayloadBuilder<
+	TType extends TokenSetAuthEventType,
+	TExtra extends Record<string, unknown> = {},
+> = {
+	type: TType;
+} & TExtra &
+	TokenSetAuthEventPayloadBase;
 
 // Refresh decision / lifecycle events are the only surface that projects token
 // freshness timing and refresh-material presence. `freshness` originates from
 // the refresh planner / refresh fetcher boundary and is never re-derived on the
 // host, so it is always present on these events.
-export interface TokenSetAuthRefreshEventPayload
-	extends TokenSetAuthEventPayloadBase {
-	freshness: TokenFreshnessTiming;
-	hasRefreshMaterial: boolean;
-}
 
-type AuthMaterialRestoreStartedEvent = RuntimeEventEnvelope<
+export type TokenSetAuthRefreshEventPayload<
+	TType extends TokenSetAuthEventType,
+	TExtra extends Record<string, unknown> = {},
+> = TokenSetAuthEventPayloadBuilder<
+	TType,
+	{
+		freshness: TokenFreshnessTiming;
+		hasRefreshMaterial: boolean;
+	} & TExtra
+>;
+
+type AuthMaterialRestoreStartedEventPayload = TokenSetAuthEventPayloadBuilder<
 	typeof TokenSetAuthEventType.AuthMaterialRestoreStarted,
-	TokenSetAuthEventPayloadBase & {
+	{
 		persisted: true;
 	}
 >;
 
-type AuthMaterialRestoredEvent = RuntimeEventEnvelope<
+type AuthMaterialRestoredEventPayload = TokenSetAuthEventPayloadBuilder<
 	typeof TokenSetAuthEventType.AuthMaterialRestored,
-	TokenSetAuthEventPayloadBase & {
+	{
 		persisted?: true;
 	}
 >;
 
-type AuthMaterialRestoreFailedEvent = RuntimeEventEnvelope<
+type AuthMaterialRestoreFailedEventPayload = TokenSetAuthEventPayloadBuilder<
 	typeof TokenSetAuthEventType.AuthMaterialRestoreFailed,
-	TokenSetAuthEventPayloadBase & {
+	{
 		persisted: true;
 		errorSummary: TokenSetAuthErrorSummary;
 	}
 >;
 
-type AuthRefreshRequiredEvent = RuntimeEventEnvelope<
-	typeof TokenSetAuthEventType.AuthRefreshRequired,
-	TokenSetAuthRefreshEventPayload
+type AuthRefreshRequiredEventPayload = TokenSetAuthRefreshEventPayload<
+	typeof TokenSetAuthEventType.AuthRefreshRequired
 >;
 
-type AuthRefreshStartedEvent = RuntimeEventEnvelope<
-	typeof TokenSetAuthEventType.AuthRefreshStarted,
-	TokenSetAuthRefreshEventPayload
+type AuthRefreshStartedEventPayload = TokenSetAuthRefreshEventPayload<
+	typeof TokenSetAuthEventType.AuthRefreshStarted
 >;
 
-type AuthRefreshSucceededEvent = RuntimeEventEnvelope<
-	typeof TokenSetAuthEventType.AuthRefreshSucceeded,
-	TokenSetAuthRefreshEventPayload
+type AuthRefreshSucceededEventPayload = TokenSetAuthRefreshEventPayload<
+	typeof TokenSetAuthEventType.AuthRefreshSucceeded
 >;
 
-type AuthRefreshFailedEvent = RuntimeEventEnvelope<
+type AuthRefreshFailedEventPayload = TokenSetAuthRefreshEventPayload<
 	typeof TokenSetAuthEventType.AuthRefreshFailed,
-	TokenSetAuthRefreshEventPayload & {
+	{
 		errorSummary: TokenSetAuthErrorSummary;
 	}
 >;
 
-type AuthMaterialClearedEvent = RuntimeEventEnvelope<
-	typeof TokenSetAuthEventType.AuthMaterialCleared,
-	TokenSetAuthEventPayloadBase
+type AuthMaterialClearedEventPayload = TokenSetAuthEventPayloadBuilder<
+	typeof TokenSetAuthEventType.AuthMaterialCleared
 >;
 
-type AuthAuthenticatedEvent = RuntimeEventEnvelope<
-	typeof TokenSetAuthEventType.AuthAuthenticated,
-	TokenSetAuthEventPayloadBase
+type AuthAuthenticatedEventPayload = TokenSetAuthEventPayloadBuilder<
+	typeof TokenSetAuthEventType.AuthAuthenticated
 >;
 
-type AuthUnauthenticatedEvent = RuntimeEventEnvelope<
-	typeof TokenSetAuthEventType.AuthUnauthenticated,
-	TokenSetAuthEventPayloadBase
+type AuthUnauthenticatedEventPayload = TokenSetAuthEventPayloadBuilder<
+	typeof TokenSetAuthEventType.AuthUnauthenticated
 >;
 
-type AnyTokenSetAuthEvent =
-	| AuthMaterialRestoreStartedEvent
-	| AuthMaterialRestoredEvent
-	| AuthMaterialRestoreFailedEvent
-	| AuthRefreshRequiredEvent
-	| AuthRefreshStartedEvent
-	| AuthRefreshSucceededEvent
-	| AuthRefreshFailedEvent
-	| AuthMaterialClearedEvent
-	| AuthAuthenticatedEvent
-	| AuthUnauthenticatedEvent;
+export type TokenSetAuthEventPayload =
+	| AuthMaterialRestoreStartedEventPayload
+	| AuthMaterialRestoredEventPayload
+	| AuthMaterialRestoreFailedEventPayload
+	| AuthRefreshRequiredEventPayload
+	| AuthRefreshStartedEventPayload
+	| AuthRefreshSucceededEventPayload
+	| AuthRefreshFailedEventPayload
+	| AuthMaterialClearedEventPayload
+	| AuthAuthenticatedEventPayload
+	| AuthUnauthenticatedEventPayload;
+
+export type TokenSetAuthEventPayloadInput<
+	TType extends TokenSetAuthEventType = TokenSetAuthEventType,
+> = {
+	[K in TType]: Omit<Extract<TokenSetAuthEventPayload, { type: K }>, "client">;
+}[TType];
 
 export type TokenSetAuthEvent<
-	TType extends TokenSetAuthEventType = TokenSetAuthEventType,
-> = Extract<AnyTokenSetAuthEvent, { type: TType }>;
-
-export type TokenSetAuthEventPayload<TType extends TokenSetAuthEventType> =
-	TokenSetAuthEvent<TType>["payload"];
+	TPayload extends TokenSetAuthEventPayload = TokenSetAuthEventPayload,
+> = RuntimeEventEnvelope<TPayload["type"], TPayload>;
 
 export interface CreateTokenSetAuthEventOptions<
-	TType extends TokenSetAuthEventType,
+	TPayload extends TokenSetAuthEventPayload,
 > {
 	id: string;
-	type: TType;
+	type: TPayload["type"];
 	at: number;
-	payload: TokenSetAuthEventPayload<TType>;
+	payload: TPayload;
 }
 
-type AnyCreateTokenSetAuthEventOptions = {
-	[K in TokenSetAuthEventType]: CreateTokenSetAuthEventOptions<K>;
-}[TokenSetAuthEventType];
-
-export function createTokenSetAuthEvent<TType extends TokenSetAuthEventType>(
-	options: CreateTokenSetAuthEventOptions<TType>,
-): TokenSetAuthEvent<TType>;
-export function createTokenSetAuthEvent(
-	options: AnyCreateTokenSetAuthEventOptions,
-): AnyTokenSetAuthEvent {
+export function createTokenSetAuthEvent<
+	TPayload extends TokenSetAuthEventPayload,
+>(
+	options: CreateTokenSetAuthEventOptions<TPayload>,
+): TokenSetAuthEvent<TPayload> {
 	const source = {
 		kind: EventSourceKind.System,
 		subsystem: "token-set-auth",
 	} as const;
 
-	switch (options.type) {
-		case TokenSetAuthEventType.AuthMaterialRestoreStarted:
-			return {
-				id: options.id,
-				type: options.type,
-				at: options.at,
-				source,
-				payload: options.payload,
-			};
-		case TokenSetAuthEventType.AuthMaterialRestored:
-			return {
-				id: options.id,
-				type: options.type,
-				at: options.at,
-				source,
-				payload: options.payload,
-			};
-		case TokenSetAuthEventType.AuthMaterialRestoreFailed:
-			return {
-				id: options.id,
-				type: options.type,
-				at: options.at,
-				source,
-				payload: options.payload,
-			};
-		case TokenSetAuthEventType.AuthRefreshRequired:
-			return {
-				id: options.id,
-				type: options.type,
-				at: options.at,
-				source,
-				payload: options.payload,
-			};
-		case TokenSetAuthEventType.AuthRefreshStarted:
-			return {
-				id: options.id,
-				type: options.type,
-				at: options.at,
-				source,
-				payload: options.payload,
-			};
-		case TokenSetAuthEventType.AuthRefreshSucceeded:
-			return {
-				id: options.id,
-				type: options.type,
-				at: options.at,
-				source,
-				payload: options.payload,
-			};
-		case TokenSetAuthEventType.AuthRefreshFailed:
-			return {
-				id: options.id,
-				type: options.type,
-				at: options.at,
-				source,
-				payload: options.payload,
-			};
-		case TokenSetAuthEventType.AuthMaterialCleared:
-			return {
-				id: options.id,
-				type: options.type,
-				at: options.at,
-				source,
-				payload: options.payload,
-			};
-		case TokenSetAuthEventType.AuthAuthenticated:
-			return {
-				id: options.id,
-				type: options.type,
-				at: options.at,
-				source,
-				payload: options.payload,
-			};
-		case TokenSetAuthEventType.AuthUnauthenticated:
-			return {
-				id: options.id,
-				type: options.type,
-				at: options.at,
-				source,
-				payload: options.payload,
-			};
-	}
+	return {
+		id: options.id,
+		type: options.type,
+		at: options.at,
+		source,
+		payload: options.payload,
+	};
 }
 
 export function summarizeAuthError(error: unknown): TokenSetAuthErrorSummary {

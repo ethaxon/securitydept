@@ -31,13 +31,10 @@ import {
 	createPersistentStorageForNativeWeb,
 	createSessionStorageForNativeWeb,
 } from "@securitydept/client/web";
-import { type AuthWorkflowRuntimeOptions } from "../../orchestration";
-import {
-	createFrontendOidcModeClient,
-	type FrontendOidcModeClient,
-} from "../client/client";
+import { type OidcModeClientConfigBase } from "../../orchestration/client/types";
+import { FrontendOidcModeClient } from "../client/client";
 import { type FrontendOidcModeClientConfig } from "../client/types";
-import { parseConfigProjection } from "../contracts/contracts";
+import { parseConfigProjection } from "../contracts/parsers";
 import {
 	type ConfigProjectionSourceBootstrapScript,
 	ConfigProjectionSourceKind,
@@ -58,8 +55,8 @@ export function resolveFrontendOidcModePersistentStateKey(
 	config: FrontendOidcModeClientConfig,
 ): string {
 	return (
-		config.persistentStateKey ??
-		`securitydept.frontend_oidc:v1:${config.issuer}:${config.clientId}`
+		config.persistence?.key ??
+		FrontendOidcModeClient.resolveDefaultPersistenceKey(config)
 	);
 }
 
@@ -75,7 +72,7 @@ export interface CreateFrontendOidcModeBrowserClientOptions {
 	redirectUri: string;
 	defaultPostAuthRedirectUri?: string;
 	environment: FrontendOidcModeWebClientEnvironment;
-	authCheck?: AuthWorkflowRuntimeOptions;
+	refresh?: OidcModeClientConfigBase["refresh"];
 }
 
 export interface FrontendOidcModeWebClientEnvironment
@@ -199,13 +196,16 @@ export async function createFrontendOidcModeBrowserClient(
 		rawProjection: projection,
 	};
 
-	const client = createFrontendOidcModeClient(
+	const client = new FrontendOidcModeClient(
 		{
 			...parsed.value,
-			authCheck: resolveWebAuthWorkflowRuntimeOptions(
-				options.authCheck,
-				environment,
-			),
+			refresh: {
+				...options.refresh,
+				sources: {
+					...options.refresh?.sources,
+					pageResume: options.refresh?.sources?.pageResume ?? "bundle",
+				},
+			},
 		},
 		environment,
 	);
@@ -218,21 +218,6 @@ export async function createFrontendOidcModeBrowserClient(
 			parsed.value,
 			environment.persistentStoragePrefix,
 		),
-	};
-}
-
-function resolveWebAuthWorkflowRuntimeOptions(
-	options: AuthWorkflowRuntimeOptions | undefined,
-	environment: FrontendOidcModeWebClientEnvironment,
-): AuthWorkflowRuntimeOptions {
-	void environment;
-	const pageResume = options?.sources?.pageResume ?? ("bundle" as const);
-	return {
-		...options,
-		sources: {
-			...options?.sources,
-			pageResume,
-		},
 	};
 }
 
@@ -355,10 +340,14 @@ export function bootstrapScriptSource(options: {
 		kind: ConfigProjectionSourceKind.BootstrapScript,
 		read: () => {
 			const global = (globalThis as Record<string, unknown>)[globalKey];
-			if (global == null || typeof global !== "object") return null;
+			if (global == null || typeof global !== "object") {
+				return null;
+			}
 			const container = global as Record<string, unknown>;
 			const projection = container[projectionField];
-			if (projection == null) return null;
+			if (projection == null) {
+				return null;
+			}
 			// Carry authoritative generatedAt from projection itself
 			const generatedAt = extractGeneratedAtFromProjection(projection);
 			return { __data: projection, __generatedAt: generatedAt };
@@ -401,10 +390,14 @@ export function persistedConfigSource(options: {
 		kind: ConfigProjectionSourceKind.Persisted,
 		restore: async () => {
 			const raw = await store.get(storageKey);
-			if (raw === null) return null;
+			if (raw === null) {
+				return null;
+			}
 			try {
 				const envelope = JSON.parse(raw) as PersistedConfigEnvelope;
-				if (!envelope.data) return null;
+				if (!envelope.data) {
+					return null;
+				}
 				return {
 					__data: envelope.data,
 					__generatedAt: envelope.generatedAt,
@@ -442,7 +435,9 @@ export async function persistConfigProjection(
 	storageKey: string,
 	resolved: ResolvedConfigProjection,
 ): Promise<void> {
-	if (resolved.rawProjection === undefined) return;
+	if (resolved.rawProjection === undefined) {
+		return;
+	}
 	const envelope: PersistedConfigEnvelope = {
 		data: resolved.rawProjection,
 		generatedAt: resolved.generatedAt ?? 0,

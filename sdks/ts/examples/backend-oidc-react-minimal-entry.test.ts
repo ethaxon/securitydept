@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 
-import { createEventSubject, createSignal } from "@securitydept/client";
+import {
+	createEventSubject,
+	createSignal,
+	SYMBOL_DISPOSE,
+} from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useReplaySignalValue,
@@ -10,7 +14,11 @@ import {
 	type AuthSnapshot,
 	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
-import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
+import {
+	ClientInitializationMode,
+	type ClientRegistryEntry,
+	createClientRegistry,
+} from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
 	type ReactRegistry,
@@ -56,6 +64,10 @@ function createBackendClient(
 ): TokenSetBackendOidcClient {
 	const state = createSignal<AuthSnapshot | null>(snapshot);
 	const reactive = createTestTokenSetReactiveFields(snapshot);
+	const dispose = vi.fn(() => {
+		state.set(null);
+		reactive.emitSnapshot(null);
+	});
 	state.subscribe(() => reactive.emitSnapshot(state.get()));
 	return {
 		...reactive.fields,
@@ -63,13 +75,11 @@ function createBackendClient(
 		addWorkflowSource: () => ({ unsubscribe: () => undefined }),
 		removeWorkflowSource: () => false,
 		start: async () => undefined,
-		dispose: vi.fn(() => {
-			state.set(null);
-			reactive.emitSnapshot(null);
-		}),
+		dispose,
+		[SYMBOL_DISPOSE]: dispose,
 		restorePersistedState: async () => state.get(),
-		handleCallback: async () => ({ snapshot }),
 		loginWithRedirect: async () => undefined,
+		loginWithPopup: async () => ({ snapshot }),
 		authorizeUrl: () => "/authorize",
 		refreshState: async () => snapshot,
 		clearState: async () => {
@@ -88,16 +98,32 @@ type BackendClientEntry = Omit<TokenSetClientEntry, "clientFactory"> & {
 function createManualRegistry(
 	clients: readonly BackendClientEntry[],
 ): ReactRegistry {
-	const registry = createTokenSetOidcAuthRegistry<TokenSetBackendOidcClient>();
+	const registry = createClientRegistry<TokenSetBackendOidcClient>({
+		environment: {},
+	});
 
 	for (const client of clients) {
-		const registration = registry.register(client);
-		if (registration instanceof Promise) {
-			registration.catch(() => {});
-		}
+		registry.register(toCoreEntry(client));
 	}
 
 	return registry;
+}
+
+function toCoreEntry(
+	entry: BackendClientEntry,
+): ClientRegistryEntry<TokenSetBackendOidcClient> {
+	return {
+		clientFactory: entry.clientFactory,
+		meta: {
+			clientKey: entry.key,
+			urlPatterns: entry.urlPatterns ?? [],
+			callbackPath: entry.callbackPath,
+			requirementKind: entry.requirementKind,
+			providerFamily: entry.providerFamily,
+			initialization:
+				entry.initialization ?? ClientInitializationMode.Immediate,
+		},
+	};
 }
 
 describe("backend-oidc react minimal entry", () => {
@@ -112,7 +138,7 @@ describe("backend-oidc react minimal entry", () => {
 				clientFactory: () => createBackendClient(createSnapshot("backend-at")),
 			},
 		]);
-		await registry.whenReady("main");
+		await registry.initialize("main");
 
 		function AuthBadge() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
@@ -151,7 +177,7 @@ describe("backend-oidc react minimal entry", () => {
 				clientFactory: () => createBackendClient(createSnapshot("backend-at")),
 			},
 		]);
-		await registry.whenReady("main");
+		await registry.initialize("main");
 
 		function ClientProbe() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);

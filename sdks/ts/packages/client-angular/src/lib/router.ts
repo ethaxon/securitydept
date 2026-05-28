@@ -203,9 +203,13 @@ export class AuthRouteAdapter {
 	}
 
 	private resolveRouteId(segment: ActivatedRouteSnapshot): string {
-		if (!segment.routeConfig) return "__root__";
+		if (!segment.routeConfig) {
+			return "__root__";
+		}
 		const path = segment.routeConfig.path;
-		if (path === undefined || path === null || path === "") return "__index__";
+		if (path === undefined || path === null || path === "") {
+			return "__index__";
+		}
 		return path;
 	}
 }

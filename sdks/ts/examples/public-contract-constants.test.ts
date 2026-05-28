@@ -9,15 +9,13 @@ import {
 } from "@securitydept/client";
 import { SessionContextSource } from "@securitydept/session-context-client";
 import {
-	AuthenticationSourceKind,
+	BackendOidcModeClient,
 	BackendOidcModeContextSource,
-	BackendOidcModeStateRestoreSourceKind,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
-	BackendOidcModeBootstrapSource,
-	createBackendOidcModeWebClientEnvironment,
-	restoreBackendOidcModeClient,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+	AuthSourceKind,
+	StateRestoreSourceKind,
+} from "@securitydept/token-set-context-client/orchestration";
 import { describe, expect, it } from "vitest";
 
 describe("public contract constants", () => {
@@ -38,19 +36,14 @@ describe("public contract constants", () => {
 	});
 
 	it("keeps exported token-set vocabulary stable", () => {
-		expect(AuthenticationSourceKind.RefreshToken).toBe("refresh_token");
-		expect(BackendOidcModeBootstrapSource.Callback).toBe("callback");
-		expect(BackendOidcModeBootstrapSource.Restore).toBe("restore");
+		expect(AuthSourceKind.RefreshToken).toBe("refresh_token");
 		expect(BackendOidcModeContextSource.Client).toBe(
 			"backend_oidc_mode_client",
 		);
 		expect(BackendOidcModeContextSource.Persistence).toBe("backend-oidc-mode");
-		expect(BackendOidcModeStateRestoreSourceKind.Manual).toBe("manual");
-		expect(BackendOidcModeStateRestoreSourceKind.PersistentStore).toBe(
-			"persistent_store",
-		);
-		expect(typeof createBackendOidcModeWebClientEnvironment).toBe("function");
-		expect(typeof restoreBackendOidcModeClient).toBe("function");
+		expect(StateRestoreSourceKind.Manual).toBe("manual");
+		expect(StateRestoreSourceKind.PersistentStore).toBe("persistent_store");
+		expect(typeof BackendOidcModeClient).toBe("function");
 	});
 
 	it("keeps exported session vocabulary stable", () => {

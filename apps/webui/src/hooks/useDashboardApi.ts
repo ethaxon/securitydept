@@ -5,7 +5,7 @@ import {
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import { SESSION_CONTEXT_CONTROLLER } from "@securitydept/session-context-client-react";
-import { type AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { type AuthSnapshot as AuthStateSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import {
 	TOKEN_SET_AUTH_REGISTRY,
 	type TokenSetReactClient,

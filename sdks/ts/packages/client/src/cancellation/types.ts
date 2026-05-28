@@ -12,6 +12,7 @@ export interface CancellationTokenTrait {
 	readonly isCancellationRequested: boolean;
 	readonly reason?: unknown;
 	onCancellationRequested(listener: (reason: unknown) => void): DisposableTrait;
+	readCancellationError(): unknown;
 	throwIfCancellationRequested(): void;
 }
 

@@ -1,61 +1,65 @@
+import {
+	type ErrorPresentationDescriptor,
+	OnceAsyncLockState,
+} from "@securitydept/client";
 import { useReadableSignal } from "@securitydept/client-react";
 import {
-	readTokenSetCallbackResumeErrorDetails,
-	type TokenSetCallbackErrorPresenter,
-	type TokenSetCallbackResumeController,
-	type TokenSetCallbackResumeErrorDetails,
-	type TokenSetCallbackResumeState,
-	TokenSetCallbackResumeStatus,
+	type FrontendOidcModeCallbackState,
+	type ReadFrontendOidcModeCallbackErrorPresentationOptions,
+	readFrontendOidcModeCallbackErrorPresentation,
 } from "@securitydept/token-set-context-client/registry";
 import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactTokenSetCallbackResumeController } from "./callback-resume-service";
 
-export type CallbackResumeErrorDetails = TokenSetCallbackResumeErrorDetails;
+export type CallbackResumeErrorDetails = ErrorPresentationDescriptor;
 
-export interface ReadCallbackResumeErrorDetailsOptions {
-	clientKey?: string | null;
-	currentUrl?: string;
-	describeError?: TokenSetCallbackErrorPresenter;
-}
+export type ReadCallbackResumeErrorDetailsOptions =
+	ReadFrontendOidcModeCallbackErrorPresentationOptions;
 
 export function readCallbackResumeErrorDetails(
 	error: unknown,
 	options: ReadCallbackResumeErrorDetailsOptions = {},
 ): CallbackResumeErrorDetails {
-	return readTokenSetCallbackResumeErrorDetails(error, options);
+	return readFrontendOidcModeCallbackErrorPresentation(error, options);
 }
 
-export interface UseTokenSetCallbackResumeOptions<TService> {
-	controller: TokenSetCallbackResumeController<TService>;
+export interface UseTokenSetCallbackResumeOptions {
+	controller: ReactTokenSetCallbackResumeController;
 	getCurrentUrl?: () => string | null | undefined;
-	describeError?: TokenSetCallbackErrorPresenter;
+	describeError?: (
+		error: unknown,
+		options?: ReadCallbackResumeErrorDetailsOptions,
+	) => ErrorPresentationDescriptor;
 }
 
-export const CallbackResumeStatus = TokenSetCallbackResumeStatus;
+export const CallbackResumeStatus = {
+	Idle: OnceAsyncLockState.Init,
+	Pending: OnceAsyncLockState.Running,
+	Resolved: OnceAsyncLockState.Success,
+	Error: OnceAsyncLockState.Error,
+} as const;
 export type CallbackResumeStatus =
 	(typeof CallbackResumeStatus)[keyof typeof CallbackResumeStatus];
 
-export type CallbackResumeState = TokenSetCallbackResumeState;
+export type CallbackResumeState = FrontendOidcModeCallbackState;
 
-export function useTokenSetCallbackResume<TService>(
-	options: UseTokenSetCallbackResumeOptions<TService>,
+export function useTokenSetCallbackResume(
+	options: UseTokenSetCallbackResumeOptions,
 ): CallbackResumeState {
-	const { describeError, getCurrentUrl } = options;
+	const { getCurrentUrl } = options;
 	const { controller } = options;
-	const describeErrorRef = useRef(describeError);
-	describeErrorRef.current = describeError;
 	const currentUrl = getCurrentUrl?.() ?? null;
 	const state = useReadableSignal(controller.state);
 
 	useEffect(() => {
-		if (!currentUrl || !controller.isCallback(currentUrl)) {
+		if (!currentUrl || !controller.isCallback({ currentUrl })) {
 			controller.reset();
 			return;
 		}
 
 		controller
-			.resume({
+			.handle({
 				currentUrl,
-				describeError: describeErrorRef.current,
 			})
 			.catch(() => {});
 	}, [controller, currentUrl]);
@@ -63,12 +67,15 @@ export function useTokenSetCallbackResume<TService>(
 	return state;
 }
 
-export interface TokenSetCallbackComponentProps<TService> {
-	controller: TokenSetCallbackResumeController<TService>;
+export interface TokenSetCallbackComponentProps {
+	controller: ReactTokenSetCallbackResumeController;
 	pending?: ReactNode;
 	fallback?: ReactNode;
 	getCurrentUrl?: () => string | null | undefined;
-	describeError?: TokenSetCallbackErrorPresenter;
+	describeError?: (
+		error: unknown,
+		options?: ReadCallbackResumeErrorDetailsOptions,
+	) => ErrorPresentationDescriptor;
 	onResolved?: (result: {
 		clientKey: string;
 		postAuthRedirectUri: string | undefined;
@@ -76,7 +83,7 @@ export interface TokenSetCallbackComponentProps<TService> {
 	onError?: (error: unknown) => void;
 }
 
-export function TokenSetCallbackComponent<TService>({
+export function TokenSetCallbackComponent({
 	controller,
 	pending,
 	fallback,
@@ -84,7 +91,7 @@ export function TokenSetCallbackComponent<TService>({
 	describeError,
 	onResolved,
 	onError,
-}: TokenSetCallbackComponentProps<TService>): ReactNode {
+}: TokenSetCallbackComponentProps): ReactNode {
 	const state = useTokenSetCallbackResume({
 		controller,
 		getCurrentUrl,
@@ -95,29 +102,29 @@ export function TokenSetCallbackComponent<TService>({
 
 	useEffect(() => {
 		if (
-			state.status === CallbackResumeStatus.Resolved &&
-			state.clientKey &&
+			state.state === CallbackResumeStatus.Resolved &&
+			"data" in state &&
 			!resolvedRef.current
 		) {
 			resolvedRef.current = true;
 			onResolved?.({
-				clientKey: state.clientKey,
-				postAuthRedirectUri: state.result?.postAuthRedirectUri,
+				clientKey: state.data.clientRecord.meta.clientKey,
+				postAuthRedirectUri: state.data.postAuthRedirectUri,
 			});
 		}
-		if (state.status === CallbackResumeStatus.Error && !erroredRef.current) {
+		if (state.state === CallbackResumeStatus.Error && !erroredRef.current) {
 			erroredRef.current = true;
 			onError?.(state.error);
 		}
 	}, [state, onResolved, onError]);
 
-	if (state.status === CallbackResumeStatus.Pending) {
+	if (state.state === CallbackResumeStatus.Pending) {
 		return pending ?? null;
 	}
-	if (state.status === CallbackResumeStatus.Idle) {
+	if (state.state === CallbackResumeStatus.Idle) {
 		return fallback ?? null;
 	}
-	if (state.status === CallbackResumeStatus.Error) {
+	if (state.state === CallbackResumeStatus.Error) {
 		return fallback ?? null;
 	}
 	return null;

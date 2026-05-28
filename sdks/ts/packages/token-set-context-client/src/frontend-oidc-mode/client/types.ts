@@ -10,50 +10,11 @@
 //
 // Stability: provisional (mode-aligned surface)
 
-import { type AuthWorkflowRuntimeOptions } from "../../orchestration/client/workflows/source";
 import {
-	type AuthDelta as _AuthDelta,
-	type AuthMetadataDelta as _AuthMetadataDelta,
-	type AuthMetadataSnapshot as _AuthMetadataSnapshot,
-	type AuthPrincipal as _AuthPrincipal,
-	type AuthSnapshot as _AuthSnapshot,
-	type AuthSource as _AuthSource,
-	AuthSourceKind as _AuthSourceKind,
-	type TokenDelta as _TokenDelta,
-	type TokenSnapshot as _TokenSnapshot,
-} from "../../orchestration/token/types";
-
-// ---------------------------------------------------------------------------
-// Orchestration re-exports (mode-qualified aliases)
-// ---------------------------------------------------------------------------
-
-/** @see {@link _AuthSourceKind} */
-export const AuthenticationSourceKind = _AuthSourceKind;
-export type AuthenticationSourceKind = _AuthSourceKind;
-
-/** @see {@link _AuthSource} */
-export type AuthenticationSource = _AuthSource;
-
-/** @see {@link _AuthPrincipal} */
-export type AuthenticatedPrincipal = _AuthPrincipal;
-
-/** @see {@link _TokenSnapshot} */
-export type AuthTokenSnapshot = _TokenSnapshot;
-
-/** @see {@link _TokenDelta} */
-export type AuthTokenDelta = _TokenDelta;
-
-/** @see {@link _AuthMetadataSnapshot} */
-export type AuthStateMetadataSnapshot = _AuthMetadataSnapshot;
-
-/** @see {@link _AuthMetadataDelta} */
-export type AuthStateMetadataDelta = _AuthMetadataDelta;
-
-/** @see {@link _AuthSnapshot} */
-export type AuthStateSnapshot = _AuthSnapshot;
-
-/** @see {@link _AuthDelta} */
-export type AuthStateDelta = _AuthDelta;
+	type BaseOidcModeClientDefaultOptions,
+	type OidcModeClientConfigBase,
+} from "../../orchestration/client/types";
+import { type AuthSnapshot } from "../../orchestration/token/types";
 
 // ---------------------------------------------------------------------------
 // Mode-specific constants
@@ -65,14 +26,6 @@ export const FrontendOidcModeContextSource = {
 
 export type FrontendOidcModeContextSource =
 	(typeof FrontendOidcModeContextSource)[keyof typeof FrontendOidcModeContextSource];
-
-export const FrontendOidcModeStateRestoreSourceKind = {
-	Manual: "manual",
-	PersistentStore: "persistent_store",
-} as const;
-
-export type FrontendOidcModeStateRestoreSourceKind =
-	(typeof FrontendOidcModeStateRestoreSourceKind)[keyof typeof FrontendOidcModeStateRestoreSourceKind];
 
 // ---------------------------------------------------------------------------
 // OIDC Client Configuration
@@ -88,7 +41,7 @@ export type FrontendOidcModeStateRestoreSourceKind =
  * Most protocol fields map 1:1 from `FrontendOidcModeConfigProjection` via the
  * `configProjectionToClientConfig()` adapter.
  */
-export interface FrontendOidcModeClientConfig {
+export interface FrontendOidcModeClientConfig extends OidcModeClientConfigBase {
 	// --- Provider identity ---
 
 	/** The OIDC provider's issuer URL (must match the `iss` in discovery). */
@@ -170,8 +123,6 @@ export interface FrontendOidcModeClientConfig {
 
 	/** How often to refresh the remote JWKS (human-readable duration, e.g. "5m"). */
 	jwksRefreshInterval?: string;
-	/** Long-running auth workflow source configuration. */
-	authCheck?: AuthWorkflowRuntimeOptions;
 
 	/**
 	 * Supported token endpoint authentication methods override.
@@ -191,26 +142,27 @@ export interface FrontendOidcModeClientConfig {
 	 */
 	userinfoSigningAlgValuesSupported?: string[];
 
-	// --- Lifecycle control ---
-
-	/**
-	 * Buffer before access token expiry to trigger auto-refresh, in ms.
-	 * Defaults to `60_000` (1 minute).
-	 */
-	refreshWindowMs?: number;
-
-	/**
-	 * Key used with `environment.persistentStorage` for persisted auth state.
-	 * When not set, a default key is derived from the issuer + clientId.
-	 */
-	persistentStateKey?: string;
-
 	/**
 	 * Default URI to redirect the user to after callback processing.
 	 * This is an app-level concept, not an OAuth parameter.
 	 * Can be overridden per `authorizeUrl()` call.
 	 */
 	defaultPostAuthRedirectUri?: string;
+}
+
+export interface ResolvedFrontendOidcModeClientConfig
+	extends FrontendOidcModeClientConfig {
+	scopes: string[];
+	pkceEnabled: boolean;
+}
+
+export interface FrontendOidcModeClientDefaultOptions
+	extends BaseOidcModeClientDefaultOptions {
+	persistenceKeyPrefix: string;
+	pendingStateKeyPrefix: string;
+	consumedStateKeyPrefix: string;
+	pendingStateTtlMs: number;
+	consumedStateTtlMs: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -243,16 +195,6 @@ export interface FrontendOidcModePendingState {
 	postAuthRedirectUri?: string;
 	/** Timestamp (ms) when this pending state was created. TTL enforcement. */
 	createdAt: number;
-}
-
-// ---------------------------------------------------------------------------
-// Authorize Request (low-level)
-// ---------------------------------------------------------------------------
-
-/** Parameters for building an authorization URL (low-level). */
-export interface FrontendOidcModeAuthorizeParams {
-	/** Additional OAuth parameters to include (e.g. login_hint, prompt). */
-	extraParams?: Record<string, string>;
 }
 
 /** The result of building an authorization request (low-level). */
@@ -302,7 +244,7 @@ export interface FrontendOidcModeTokenResult {
  */
 export interface FrontendOidcModeCallbackResult {
 	/** The auth state snapshot, already persisted and reflected in `state` signal. */
-	snapshot: AuthStateSnapshot;
+	snapshot: AuthSnapshot;
 	/** The app-level redirect URI from `authorizeUrl()`, if any. */
 	postAuthRedirectUri?: string;
 }

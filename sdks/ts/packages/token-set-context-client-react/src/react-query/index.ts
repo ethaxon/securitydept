@@ -64,7 +64,7 @@ export const tokenSetQueryKeys = {
 // ---------------------------------------------------------------------------
 
 /**
- * React Query hook wrapping `registry.whenReady(key)`. Useful for gating
+ * React Query hook wrapping `registry.initialize(key)`. Useful for gating
  * a route or suspense boundary on async client materialization (primary
  * async or lazy-preloaded clients).
  *
@@ -82,7 +82,7 @@ export function useTokenSetReadinessQuery(
 	});
 	return useQuery<TokenSetReactClient, Error, TokenSetReactClient, QueryKey>({
 		queryKey: tokenSetQueryKeys.readiness(clientKey),
-		queryFn: async () => registry.whenReady(clientKey),
+		queryFn: async () => registry.initialize(clientKey),
 		staleTime: Number.POSITIVE_INFINITY,
 		...options,
 	});

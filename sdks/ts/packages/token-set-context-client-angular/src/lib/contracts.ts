@@ -1,25 +1,41 @@
-import { type FoundationEnvironment } from "@securitydept/client";
 import {
-	type ClientInitializationPriority,
-	type TokenSetClientEntry as CoreTokenSetClientEntry,
-	type OidcCallbackClient,
-	type OidcModeClient,
-	type OidcRedirectLoginClient,
+	type DisposableTrait,
+	type EventStreamTrait,
+	type EventSubscriptionTrait,
+	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
+} from "@securitydept/client";
+import {
+	type AuthSnapshot,
+	type OidcPopupLoginOptions,
+	type OidcPopupLoginResult,
 	type OidcRedirectLoginOptions,
-} from "@securitydept/token-set-context-client/registry";
+	type TokenSetAuthEvent,
+	type TokenSetAuthOperationSignals,
+	type TokenSetAuthWorkflowSource,
+} from "@securitydept/token-set-context-client/orchestration";
+import { type ClientInitializationMode } from "@securitydept/token-set-context-client/registry";
 
 // ============================================================================
 // 2. Client contracts
 // ============================================================================
 
-export type {
-	OidcCallbackClient,
-	OidcModeClient,
-	OidcRedirectLoginClient,
-	OidcRedirectLoginOptions,
-};
-
-export type TokenSetAngularClient = OidcModeClient & OidcCallbackClient;
+export interface TokenSetAngularClient extends DisposableTrait {
+	authDetermined: ReadableReplaySignalTrait<true>;
+	authSnapshot: ReadableReplaySignalTrait<AuthSnapshot | null>;
+	isAuthenticated: ReadableReplaySignalTrait<boolean>;
+	authorizationHeaderValue: ReadableReplaySignalTrait<string | undefined>;
+	lastAuthError: ReadableSignalTrait<unknown | undefined>;
+	authOperations: TokenSetAuthOperationSignals;
+	authEvents: EventStreamTrait<TokenSetAuthEvent>;
+	start(): Promise<unknown>;
+	addWorkflowSource(source: TokenSetAuthWorkflowSource): EventSubscriptionTrait;
+	removeWorkflowSource(source: TokenSetAuthWorkflowSource): boolean;
+	dispose(): void;
+	restorePersistedState(): Promise<unknown>;
+	loginWithRedirect(options?: OidcRedirectLoginOptions): Promise<void>;
+	loginWithPopup(options: OidcPopupLoginOptions): Promise<OidcPopupLoginResult>;
+}
 
 // ============================================================================
 // 3. Multi-client registration
@@ -36,17 +52,16 @@ export type TokenSetAngularClient = OidcModeClient & OidcCallbackClient;
  *
  * `clientFactory` supports both synchronous and asynchronous materialization:
  *
- * - **Sync** (`() => OidcModeClient`): The client config is available at
- *   registration time. Classic inline config or pre-resolved projections.
+ * - **Sync** (`() => TokenSetAngularClient`): The client config is available
+ *   at registration time. Classic inline config or pre-resolved projections.
  *
- * - **Async** (`() => Promise<OidcModeClient>`): The client config must be
- *   resolved asynchronously (e.g. fetched from a backend config projection
- *   endpoint). The registry tracks readiness state and provides `whenReady()`
- *   for guards/interceptors that need to wait.
+ * - **Async** (`() => Promise<TokenSetAngularClient>`): The client config must
+ *   be resolved asynchronously (e.g. fetched from a backend config projection
+ *   endpoint). The registry tracks lifecycle state and provides
+ *   `initialize()` for guards/interceptors that need to wait.
  *
- * When `clientFactory` returns a Promise, the registry enters
- * `ClientReadinessState.Initializing` for this key and transitions to
- * `Ready` or `Failed` when the promise settles.
+ * When `clientFactory` returns a Promise, the registry marks this key as
+ * initializing and transitions to ready or failed when the promise settles.
  *
  * Two additional discrimination axes are supported:
  *   - `requirementKind`: maps a RequirementKind (or custom string) → this client.
@@ -56,10 +71,11 @@ export type TokenSetAngularClient = OidcModeClient & OidcCallbackClient;
  *     → this client. Useful when multiple clients share the same kind but differ
  *     by provider / audience.
  */
-type TokenSetClientEntryBase = Omit<
-	CoreTokenSetClientEntry<TokenSetAngularClient>,
-	"clientFactory"
-> & {
+export interface TokenSetClientEntry {
+	/**
+	 * Client registry key.
+	 */
+	key: string;
 	/**
 	 * Factory that creates the OIDC mode client.
 	 *
@@ -67,15 +83,14 @@ type TokenSetClientEntryBase = Omit<
 	 * (async config projection resolution). When a Promise is returned,
 	 * the registry tracks initialization readiness automatically.
 	 */
-	clientFactory: (
-		environment: FoundationEnvironment | undefined,
-	) => TokenSetAngularClient | Promise<TokenSetAngularClient>;
+	clientFactory: () => TokenSetAngularClient | Promise<TokenSetAngularClient>;
 	/**
-	 * Initialization priority. Defaults to `"primary"` (eager). Set to
-	 * `"lazy"` to defer clientFactory execution until the registry is asked
-	 * for this key via `whenReady(key)` / `preload(key)` / `idleWarmup()`.
+	 * Initialization mode. Defaults to `"immediate"`. Set to `"lazy"` to defer
+	 * clientFactory execution until `initialize(key)` is called.
 	 */
-	priority?: ClientInitializationPriority;
-};
-
-export type TokenSetClientEntry = TokenSetClientEntryBase;
+	initialization?: ClientInitializationMode;
+	urlPatterns?: ReadonlyArray<string | RegExp | ((url: string) => boolean)>;
+	callbackPath?: string;
+	requirementKind?: string;
+	providerFamily?: string;
+}

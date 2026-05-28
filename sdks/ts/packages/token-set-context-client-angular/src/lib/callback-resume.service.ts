@@ -5,17 +5,22 @@ import {
 	signal,
 	type WritableSignal,
 } from "@angular/core";
+import {
+	createOnceAsyncLockCallable,
+	createSignal,
+	type DisposableTrait,
+} from "@securitydept/client";
 import { signalToObservable } from "@securitydept/client/rx";
 import { bridgeToAngularSignal } from "@securitydept/client-angular";
 import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import {
-	TokenSetCallbackResumeController,
-	type TokenSetCallbackResumeOptions,
-	type TokenSetCallbackResumeResult,
-	type TokenSetCallbackResumeState,
+	type ClientRegistry as CoreClientRegistry,
+	FrontendOidcModeCallbackController,
+	type FrontendOidcModeCallbackInput,
+	type FrontendOidcModeCallbackResult,
+	type FrontendOidcModeCallbackState,
 } from "@securitydept/token-set-context-client/registry";
 import { type Observable } from "rxjs";
-import { type TokenSetAngularClient } from "./contracts";
 import { TokenSetAuthRegistry } from "./token-set-auth.registry";
 
 /**
@@ -46,23 +51,20 @@ import { TokenSetAuthRegistry } from "./token-set-auth.registry";
 export class CallbackResumeService {
 	private readonly registry = inject(TokenSetAuthRegistry);
 	private readonly destroyRef = inject(DestroyRef, { optional: true });
-	private readonly controller =
-		new TokenSetCallbackResumeController<TokenSetAngularClient>({
-			registry: this.registry.core,
-			getCallbackClient: (client) => client,
-		});
-	readonly state: WritableSignal<TokenSetCallbackResumeState> = signal(
-		this.controller.state.get(),
+	private readonly stateSignal = createSignal<FrontendOidcModeCallbackState>(
+		createIdleCallbackLock(),
 	);
-	readonly state$: Observable<TokenSetCallbackResumeState> = signalToObservable(
-		this.controller.state,
+	readonly state: WritableSignal<FrontendOidcModeCallbackState> = signal(
+		this.stateSignal.get(),
 	);
+	readonly state$: Observable<FrontendOidcModeCallbackState> =
+		signalToObservable(this.stateSignal);
 
 	constructor() {
-		const cleanup = bridgeToAngularSignal(this.controller.state, this.state);
+		const cleanup = bridgeToAngularSignal(this.stateSignal, this.state);
 		this.destroyRef?.onDestroy(() => {
 			cleanup();
-			this.controller.dispose();
+			this.reset();
 		});
 	}
 
@@ -70,7 +72,7 @@ export class CallbackResumeService {
 	 * Check whether a URL is an OIDC authorization callback for any registered
 	 * client in this registry.
 	 *
-	 * This is a convenience wrapper over `clientKeyForCallback()`. Use it for
+	 * This is a convenience wrapper over callback-url record lookup. Use it for
 	 * programmatic early-exit guards (e.g. in a service constructor) before
 	 * calling `handleCallback()`.
 	 *
@@ -79,25 +81,35 @@ export class CallbackResumeService {
 	 *   contains an `code` or `error` query parameter.
 	 */
 	isCallback(url: string): boolean {
-		return this.controller.isCallback(url);
+		return this.createController({ currentUrl: url }).isCallback();
 	}
 
 	resume(
-		options: TokenSetCallbackResumeOptions,
-	): Promise<TokenSetCallbackResumeResult>;
+		options: FrontendOidcModeCallbackInput,
+	): Promise<FrontendOidcModeCallbackResult>;
 	resume(
 		callbackUrl: string,
 		explicitClientKey?: string,
-	): Promise<TokenSetCallbackResumeResult>;
+	): Promise<FrontendOidcModeCallbackResult>;
 	resume(
-		optionsOrCallbackUrl: TokenSetCallbackResumeOptions | string,
+		optionsOrCallbackUrl: FrontendOidcModeCallbackInput | string,
 		explicitClientKey?: string,
-	): Promise<TokenSetCallbackResumeResult> {
-		return this.controller.resume(
+	): Promise<FrontendOidcModeCallbackResult> {
+		const controller = this.createController(
 			typeof optionsOrCallbackUrl === "string"
-				? { currentUrl: optionsOrCallbackUrl, clientKey: explicitClientKey }
+				? {
+						currentUrl: optionsOrCallbackUrl,
+						clientQuery: explicitClientKey
+							? { clientKey: explicitClientKey }
+							: undefined,
+					}
 				: optionsOrCallbackUrl,
 		);
+		const unsubscribe = controller.state.subscribe(() => {
+			this.stateSignal.set(controller.state.get());
+		});
+		this.stateSignal.set(controller.state.get());
+		return controller.handle().finally(unsubscribe);
 	}
 
 	/**
@@ -123,9 +135,30 @@ export class CallbackResumeService {
 	}> {
 		const result = await this.resume(callbackUrl, explicitClientKey);
 		return {
-			clientKey: result.clientKey,
+			clientKey: result.clientRecord.meta.clientKey,
 			snapshot: result.snapshot,
 			resumeUrl: result.postAuthRedirectUri ?? "/",
 		};
 	}
+
+	reset(): void {
+		this.stateSignal.set(createIdleCallbackLock());
+	}
+
+	private createController(
+		options: FrontendOidcModeCallbackInput,
+	): FrontendOidcModeCallbackController {
+		return new FrontendOidcModeCallbackController({
+			registry: this.registry
+				.core as unknown as CoreClientRegistry<DisposableTrait>,
+			currentUrl: options.currentUrl,
+			clientQuery: options.clientQuery,
+		});
+	}
+}
+
+function createIdleCallbackLock(): FrontendOidcModeCallbackState {
+	return createOnceAsyncLockCallable(async () => {
+		throw new Error("[CallbackResumeService] No callback has been started.");
+	});
 }

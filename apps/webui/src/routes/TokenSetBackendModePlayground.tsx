@@ -12,11 +12,7 @@ import {
 	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import { type AuthStateSnapshot } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import {
-	BackendOidcModeBootstrapSource,
-	type BackendOidcModeBootstrapSource as BackendOidcModeBootstrapSourceType,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+import { type AuthSnapshot as AuthStateSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { tokenSetQueryKeys } from "@securitydept/token-set-context-client-react/react-query";
 import { useQueryClient } from "@tanstack/react-query";
@@ -76,11 +72,18 @@ const BootstrapStatusKind = {
 	Error: "error",
 } as const;
 
+const BackendModeStartupSource = {
+	Restore: "restore",
+	Empty: "empty",
+} as const;
+type BackendModeStartupSource =
+	(typeof BackendModeStartupSource)[keyof typeof BackendModeStartupSource];
+
 type BootstrapStatus =
 	| { kind: typeof BootstrapStatusKind.Booting }
 	| {
 			kind: typeof BootstrapStatusKind.Ready;
-			source: BackendOidcModeBootstrapSourceType;
+			source: BackendModeStartupSource;
 	  }
 	| { kind: typeof BootstrapStatusKind.Error; message: string };
 
@@ -507,8 +510,8 @@ export function TokenSetBackendModePlaygroundPage() {
 		setBootstrap({
 			kind: BootstrapStatusKind.Ready,
 			source: state
-				? (BackendOidcModeBootstrapSource.Restore as BackendOidcModeBootstrapSourceType)
-				: (BackendOidcModeBootstrapSource.Empty as BackendOidcModeBootstrapSourceType),
+				? BackendModeStartupSource.Restore
+				: BackendModeStartupSource.Empty,
 		});
 	}, [authDeterminedSlot, lastAuthError, state]);
 
@@ -557,7 +560,7 @@ export function TokenSetBackendModePlaygroundPage() {
 			}
 			setBootstrap({
 				kind: BootstrapStatusKind.Ready,
-				source: BackendOidcModeBootstrapSource.Empty,
+				source: BackendModeStartupSource.Empty,
 			});
 			// Reset React Query caches — removes cached data and resets to initial state.
 			void queryClient.resetQueries({

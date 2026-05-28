@@ -87,7 +87,6 @@ Packages:
 
 - `@securitydept/client`
 - `@securitydept/client/web`
-- `@securitydept/token-set-context-client/backend-oidc-mode/web`
 
 Change:
 
@@ -95,7 +94,7 @@ Change:
 - The historical `ClientRuntime` naming has been retired in favor of environment terminology. Core client constructor dependencies are environments, not a second runtime layer. Canonical access is `environment.transport`, `environment.sessionStorage`, and peers.
 - Web host environment factories are explicit composition entry points. They are not automatic host detection and no longer expose preset-only worker/service-worker/extension-background wrappers.
 - Context and adapter public helpers use the same boundary. Backend-OIDC web helpers, basic-auth/session redirect helpers, and framework adapter convenience helpers must not each redeclare or guess transport/store/time/page dependencies.
-- Backend-OIDC web helpers are split by host boundary: page-only helpers use page-explicit names, while worker-safe helpers require host-injected environment/capabilities or restore-only behavior.
+- Backend-OIDC web helpers are split by host boundary: page-only helpers use page-explicit names, while worker-safe startup uses host-injected environment/capabilities plus `client.start()`, `autoStart`, registry orchestration, and auth signals.
 
 Migration:
 
@@ -103,9 +102,9 @@ Migration:
 - Keep public option keys named `environment` even when the value is page-scoped or async-resolved. Do not introduce `pageEnvironment` as a parallel key; the type communicates the page requirement.
 - Use `createEnvironmentForNativeWeb({ location, history, ...options })` for real page/tab/popup callback flows; page capabilities are explicit top-level host inputs and must come from the host composition root.
 - Do not use `createEnvironmentForNativeWeb()` for worker-like hosts. Compose those with `createFoundationEnvironment()` or a more specific host factory, then inject persistence/session stores explicitly when needed.
-- Do not call page callback bootstrap in service workers or extension backgrounds. Run restore/token-state APIs there, and run callback capture only in a real page/popup document or with explicit fake page/callback-fragment capabilities in tests.
-- Update ambiguous page-global helper names to page-explicit forms where the public name changed, such as `currentPageLocationAsPostAuthRedirectUri()`, `buildAuthorizeUrlReturningToCurrentPage()`, `bootstrapBackendOidcModePageClient()`, and `captureBackendOidcModePageCallbackFragment()`.
-- Treat existing redirect/popup helpers (`loginWithBackendOidcRedirect()`, `loginWithBackendOidcPopup()`, and `relayBackendOidcPopupCallback()`) as page-only helpers even though their historical names remain intact; pass an explicit `RouterTrait`/`PopupTrait` or a page-bearing `environment` when testing or running in a host wrapper. The canonical shared token-set OIDC browser contract is now `loginWithRedirect({ environment, postAuthRedirectUri })` on `OidcRedirectLoginClient`; backend web clients materialized through `createBackendOidcModeWebClient(...)` expose that method while `loginWithBackendOidcRedirect()` remains the compatibility/convenience wrapper. Popup login also requires an explicit callback-fragment capability, and browser-state reset requires an explicit `callbackFragmentStore`.
+- Do not run callback fragment consumption in service workers or extension backgrounds. Run restore/token-state APIs there, and consume callback fragments only in a real page/popup document or with an explicit fake `RouterTrait` in tests.
+- Update ambiguous page-global helper usage to explicit page forms: use `client.authorizeUrl(environment.router.currentUrl()?.toString())` or `client.loginWithRedirect({ postAuthRedirectUri })` for return-URL construction, and use `takeCompatFragmentFromRouter(router)` followed by `client.handleCallback(fragment)` for backend OIDC callback pages. Backend OIDC fragment redirects use the securitydept compat fragment protocol and preserve existing hash-router fragments.
+- Treat popup callback relay helpers such as `relayTokenSetPopupCallbackFromEnvironment()` as page-only helpers; pass a page-bearing `environment` when testing or running in a host wrapper. Import them from `@securitydept/token-set-context-client/backend-oidc-mode` or `@securitydept/token-set-context-client/frontend-oidc-mode`; the removed `@securitydept/token-set-context-client/backend-oidc-mode/web` subpath was only a forwarder. The canonical shared token-set OIDC browser login contracts are `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })` and `BaseOidcModeClient.loginWithPopup({ popupCallbackUrl })`; the client carries page navigation and popup capability through its environment. Backend and frontend mode clients expose those methods directly. Backend OIDC no longer owns hidden callback-fragment flow state; retry or delayed callback handling must be explicit application code.
 - For frontend-mode browser materialization, create `createFrontendOidcModeWebClientEnvironment(...)` at the host composition root and pass it to `createFrontendOidcModeBrowserClient({ environment, ... })`; the materializer no longer creates a default environment when `environment` is omitted.
 - When browser/page environment ownership must stay stable across framework routes or commands, create one host-owned `NativeWebEnvironment` at the composition root and inject that object. Do not invent app-local module singletons or SDK-local lazy environment resolvers.
 - Treat basic-auth/session `/web` redirect helpers as page navigation helpers; keep them in a real page context or inject an explicit `RouterTrait`.
@@ -260,7 +259,7 @@ Change:
 - `@securitydept/client-react` now owns the canonical React injector bridge: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()`, plus the context-free `useReadableSignal()` / `useEventStream()` bridge.
 - `client-react` environment and planner-host helpers now export injection tokens and provider factories only, for example `CLIENT_ENVIRONMENT` + `provideClientEnvironment(environment)` and `AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`.
 - The basic-auth / session / token-set React adapters no longer own domain-specific Provider / Context hooks. They export tokens, plain factories, provider factories, and explicit callback/component bridges. Token-set multi-client composition is now explicit registry/controller wiring instead of an SDK-owned runtime bundle.
-- Angular `createTokenSetOidcLoginRedirectHandler()` is now the route-login helper. It still uses `environment` as the only public key, but the value is now a stable native-web-environment source that Angular DI provides through `provideNativeWebEnvironment({ environment })` from `@securitydept/client-angular`. The helper targets the shared `OidcRedirectLoginClient` contract and awaits that source inside the guard flow before calling `loginWithRedirect()`.
+- Angular `createTokenSetOidcLoginRedirectHandler()` is now the route-login helper. It still uses `environment` as the only public key, but the value is now a stable native-web-environment source that Angular DI provides through `provideNativeWebEnvironment({ environment })` from `@securitydept/client-angular`. The helper targets `BaseOidcModeClient.loginWithRedirect()` and awaits that source inside the guard flow before calling it.
 - Angular `CallbackResumeService` and React `useTokenSetCallbackResume({ getCurrentUrl, describeError })` now bridge the shared `TokenSetCallbackResumeController` from `@securitydept/token-set-context-client/registry`. Angular `TokenSetCallbackComponent` remains page-only convenience over that service, with injectable current URL and host policy tokens.
 
 Migration:

@@ -83,7 +83,7 @@ export interface BackendOidcModeRefreshPayload {
 	refreshToken: string;
 	postAuthRedirectUri?: string;
 	idToken?: string;
-	currentMetadataSnapshot?: import("../../orchestration/token/types").AuthMetadataSnapshot;
+	currentMetadataSnapshot?: AuthMetadataSnapshot;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,9 +139,7 @@ export interface BackendOidcModeMetadataRedemptionRequest {
 }
 
 export interface BackendOidcModeMetadataRedemptionResponse {
-	metadata:
-		| import("../../orchestration/token/types").AuthMetadataSnapshot
-		| import("../../orchestration/token/types").AuthMetadataDelta;
+	metadata: AuthMetadataSnapshot | AuthMetadataDelta;
 }
 
 // ---------------------------------------------------------------------------

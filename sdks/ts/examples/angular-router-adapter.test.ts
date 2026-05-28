@@ -60,7 +60,9 @@ function buildRouteChain(
 	}
 
 	const leaf = snapshots[snapshots.length - 1];
-	if (!leaf) throw new Error("buildRouteChain: segments must not be empty");
+	if (!leaf) {
+		throw new Error("buildRouteChain: segments must not be empty");
+	}
 	return leaf;
 }
 

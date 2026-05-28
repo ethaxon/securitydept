@@ -1,183 +1,202 @@
 import {
-	createEmptyEventStream,
-	createFoundationEnvironment,
-	type FoundationEnvironment,
-	UserRecovery,
+	type DisposableTrait,
+	OnceAsyncLockState,
+	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
-import {
-	TokenSetCallbackResumeController,
-	TokenSetCallbackResumeStatus,
-} from "../controller/callback-resume-controller";
-import { createTokenSetAuthRegistry } from "../core/client-registry";
+import { BackendOidcModeClient } from "../../backend-oidc-mode";
+import { FrontendOidcModeClient } from "../../frontend-oidc-mode";
+import { BackendOidcModeCallbackController } from "../controller/backend-mode-callback-controller";
+import { FrontendOidcModeCallbackController } from "../controller/frontend-mode-callback-controller";
+import { createClientRegistry } from "../core/client-registry";
+import { ClientRegistryError, ClientRegistryErrorCode } from "../core/error";
 
-const TEST_IDLE_CALLBACK = {
-	requestIdleCallback: (callback: () => void) => setTimeout(callback, 0),
-	cancelIdleCallback: (handle: unknown) =>
-		clearTimeout(handle as ReturnType<typeof setTimeout>),
-};
-const TEST_ENVIRONMENT: FoundationEnvironment = createFoundationEnvironment({
-	transport: { execute: async () => ({ status: 204, headers: {} }) },
-	time: {
-		now: () => Date.now(),
-		setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
-		clearTimeout: (handle) =>
-			clearTimeout(handle as ReturnType<typeof setTimeout>),
-	},
-	idleCallback: TEST_IDLE_CALLBACK,
-});
-
-function createRegistry(handleCallback = vi.fn()) {
-	const registry = createTokenSetAuthRegistry<unknown, { client: never }>({
-		materialize: (client) => ({ client: client as never }),
-		dispose: () => undefined,
-		authEventsOf: () => createEmptyEventStream(),
-		environment: TEST_ENVIRONMENT,
-	});
+function createRegistry(
+	handleCallback = vi.fn(),
+): ReturnType<typeof createClientRegistry<DisposableTrait>> {
+	const registry = createClientRegistry<DisposableTrait>({ environment: {} });
+	const dispose = vi.fn();
+	const client = {
+		handleCallback,
+		dispose,
+		[SYMBOL_DISPOSE]: dispose,
+	};
+	Object.setPrototypeOf(client, FrontendOidcModeClient.prototype);
 	registry.register({
-		key: "frontend",
-		callbackPath: "/auth/token-set/callback",
-		clientFactory: () => ({ handleCallback }),
+		clientFactory: () => client,
+		meta: {
+			clientKey: "frontend",
+			urlPatterns: [],
+			callbackPath: "/auth/token-set/callback",
+			requirementKind: undefined,
+			providerFamily: undefined,
+			initialization: "immediate",
+		},
 	});
 	return registry;
 }
 
-describe("TokenSetCallbackResumeController", () => {
-	it("resumes a callback through the registered client", async () => {
+function createBackendRegistry(
+	handleCallback = vi.fn(),
+): ReturnType<typeof createClientRegistry<DisposableTrait>> {
+	const registry = createClientRegistry<DisposableTrait>({ environment: {} });
+	const dispose = vi.fn();
+	const client = {
+		handleCallback,
+		dispose,
+		[SYMBOL_DISPOSE]: dispose,
+	};
+	Object.setPrototypeOf(client, BackendOidcModeClient.prototype);
+	registry.register({
+		clientFactory: () => client,
+		meta: {
+			clientKey: "backend",
+			urlPatterns: [],
+			callbackPath: undefined,
+			requirementKind: undefined,
+			providerFamily: undefined,
+			initialization: "immediate",
+		},
+	});
+	return registry;
+}
+
+describe("FrontendOidcModeCallbackController", () => {
+	it("handles a callback through the matched frontend client", async () => {
 		const handleCallback = vi.fn(async () => ({
 			snapshot: { tokens: { accessToken: "live-at" }, metadata: {} },
 			postAuthRedirectUri: "/home",
 		}));
-		const registry = createRegistry(handleCallback);
-		const controller = new TokenSetCallbackResumeController({
-			registry,
-			getCallbackClient: (service) => service.client,
+		const controller = new FrontendOidcModeCallbackController({
+			registry: createRegistry(handleCallback),
+			currentUrl:
+				"https://app.example.com/auth/token-set/callback?code=abc&state=def",
 		});
 
-		await expect(
-			controller.resume({
-				currentUrl:
-					"https://app.example.com/auth/token-set/callback?code=abc&state=def",
-			}),
-		).resolves.toMatchObject({
-			clientKey: "frontend",
+		await expect(controller.handle()).resolves.toMatchObject({
+			clientRecord: { meta: { clientKey: "frontend" } },
 			postAuthRedirectUri: "/home",
 		});
 		expect(controller.state.get()).toMatchObject({
-			status: TokenSetCallbackResumeStatus.Resolved,
-			clientKey: "frontend",
+			state: OnceAsyncLockState.Success,
+			data: { clientRecord: { meta: { clientKey: "frontend" } } },
 		});
 		expect(handleCallback).toHaveBeenCalledTimes(1);
 	});
 
-	it("records failure details with a shared presenter", async () => {
+	it("uses clientQuery as the callback query override path", async () => {
+		const handleCallback = vi.fn(async () => ({
+			snapshot: { tokens: { accessToken: "live-at" }, metadata: {} },
+			postAuthRedirectUri: "/home",
+		}));
+		const controller = new FrontendOidcModeCallbackController({
+			registry: createRegistry(handleCallback),
+			currentUrl: "https://app.example.com/not-callback?code=abc&state=def",
+			clientQuery: {
+				clientKey: "frontend",
+				callbackUrl:
+					"https://app.example.com/auth/token-set/callback?code=abc&state=def",
+			},
+		});
+
+		await expect(controller.handle()).resolves.toMatchObject({
+			clientRecord: { meta: { clientKey: "frontend" } },
+		});
+	});
+
+	it("records the failed state when callback handling fails", async () => {
 		const callbackError = new Error("callback failed");
 		const handleCallback = vi.fn(async () => {
 			throw callbackError;
 		});
-		const describeError = vi.fn(({ errorDetails, clientKey }) => ({
-			code: errorDetails.code,
-			kind: errorDetails.kind,
-			title: `Callback failed for ${clientKey}`,
-			description: errorDetails.message,
-			recovery: UserRecovery.RestartFlow,
-			retryable: false,
-			tone: "warning" as const,
-			primaryAction: null,
-		}));
-		const controller = new TokenSetCallbackResumeController({
+		const controller = new FrontendOidcModeCallbackController({
 			registry: createRegistry(handleCallback),
-			getCallbackClient: (service) => service.client,
+			currentUrl:
+				"https://app.example.com/auth/token-set/callback?error=access_denied",
 		});
 
-		await expect(
-			controller.resume({
-				currentUrl:
-					"https://app.example.com/auth/token-set/callback?error=access_denied",
-				describeError,
-			}),
-		).rejects.toBe(callbackError);
+		await expect(controller.handle()).rejects.toBe(callbackError);
 
 		expect(controller.state.get()).toMatchObject({
-			status: TokenSetCallbackResumeStatus.Error,
+			state: OnceAsyncLockState.Error,
 			error: callbackError,
-			errorDetails: {
-				presentation: { title: "Callback failed for frontend" },
-			},
 		});
 	});
 
-	it("dedupes the same callback URL until reset", async () => {
-		const deferred = Promise.resolve({
-			snapshot: { tokens: { accessToken: "live-at" }, metadata: {} },
-			postAuthRedirectUri: "/home",
+	it("uses structured errors when no frontend callback client matches", async () => {
+		const controller = new FrontendOidcModeCallbackController({
+			registry: createRegistry(),
+			currentUrl: "https://app.example.com/not-callback?code=abc",
 		});
-		const handleCallback = vi.fn(() => deferred);
-		const controller = new TokenSetCallbackResumeController({
-			registry: createRegistry(handleCallback),
-			getCallbackClient: (service) => service.client,
+
+		await expect(controller.handle()).rejects.toMatchObject({
+			name: "ClientRegistryError",
+			code: ClientRegistryErrorCode.CallbackClientNotFound,
 		});
-		const currentUrl =
-			"https://app.example.com/auth/token-set/callback?code=abc&state=def";
-
-		const first = controller.resume({ currentUrl });
-		const second = controller.resume({ currentUrl });
-
-		expect(second).toBe(first);
-		await first;
-		await controller.resume({ currentUrl });
-		expect(handleCallback).toHaveBeenCalledTimes(1);
-
-		controller.reset();
-		await controller.resume({ currentUrl });
-		expect(handleCallback).toHaveBeenCalledTimes(2);
+		expect(controller.state.get()).toMatchObject({
+			state: OnceAsyncLockState.Error,
+			error: expect.any(ClientRegistryError),
+		});
 	});
+});
 
-	it("rejects resume after dispose without changing state or touching the registry", async () => {
+describe("BackendOidcModeCallbackController", () => {
+	it("handles a callback through the matched backend client", async () => {
 		const handleCallback = vi.fn(async () => ({
-			snapshot: { tokens: { accessToken: "live-at" }, metadata: {} },
-			postAuthRedirectUri: "/home",
+			tokens: { accessToken: "live-at" },
+			metadata: {},
 		}));
-		const registry = createRegistry(handleCallback);
-		const whenReady = vi.spyOn(registry, "whenReady");
-		const controller = new TokenSetCallbackResumeController({
-			registry,
-			getCallbackClient: (service) => service.client,
+		const controller = new BackendOidcModeCallbackController({
+			registry: createBackendRegistry(handleCallback),
+			clientQuery: { clientKey: "backend" },
+			payload: { id_token: "id-token" },
 		});
-		const currentUrl =
-			"https://app.example.com/auth/token-set/callback?code=abc&state=def";
 
-		await controller.resume({ currentUrl });
-		const settledState = controller.state.get();
-		controller.dispose();
-
-		await expect(controller.resume({ currentUrl })).rejects.toThrow(
-			/controller has been disposed/,
-		);
-
-		expect(controller.state.get()).toBe(settledState);
-		expect(whenReady).toHaveBeenCalledTimes(1);
-		expect(handleCallback).toHaveBeenCalledTimes(1);
+		await expect(controller.handle()).resolves.toMatchObject({
+			clientRecord: { meta: { clientKey: "backend" } },
+			snapshot: { tokens: { accessToken: "live-at" } },
+		});
+		expect(controller.state.get()).toMatchObject({
+			state: OnceAsyncLockState.Success,
+			data: { clientRecord: { meta: { clientKey: "backend" } } },
+		});
+		expect(handleCallback).toHaveBeenCalledWith({ id_token: "id-token" });
 	});
 
-	it("keeps reset after dispose as a no-op", async () => {
-		const handleCallback = vi.fn(async () => ({
-			snapshot: { tokens: { accessToken: "live-at" }, metadata: {} },
-			postAuthRedirectUri: "/home",
-		}));
-		const controller = new TokenSetCallbackResumeController({
-			registry: createRegistry(handleCallback),
-			getCallbackClient: (service) => service.client,
+	it("records the failed state when backend callback handling fails", async () => {
+		const callbackError = new Error("backend callback failed");
+		const handleCallback = vi.fn(async () => {
+			throw callbackError;
+		});
+		const controller = new BackendOidcModeCallbackController({
+			registry: createBackendRegistry(handleCallback),
+			clientQuery: { clientKey: "backend" },
+			payload: { error: "access_denied" },
 		});
 
-		await controller.resume({
-			currentUrl:
-				"https://app.example.com/auth/token-set/callback?code=abc&state=def",
-		});
-		const settledState = controller.state.get();
-		controller.dispose();
-		controller.reset();
+		await expect(controller.handle()).rejects.toBe(callbackError);
 
-		expect(controller.state.get()).toBe(settledState);
+		expect(controller.state.get()).toMatchObject({
+			state: OnceAsyncLockState.Error,
+			error: callbackError,
+		});
+	});
+
+	it("uses structured errors when the matched backend client has the wrong mode", async () => {
+		const controller = new BackendOidcModeCallbackController({
+			registry: createRegistry(),
+			clientQuery: { clientKey: "frontend" },
+			payload: { id_token: "id-token" },
+		});
+
+		await expect(controller.handle()).rejects.toMatchObject({
+			name: "ClientRegistryError",
+			code: ClientRegistryErrorCode.CallbackClientModeMismatch,
+			clientKey: "frontend",
+		});
+		expect(controller.state.get()).toMatchObject({
+			state: OnceAsyncLockState.Error,
+			error: expect.any(ClientRegistryError),
+		});
 	});
 });

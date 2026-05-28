@@ -62,5 +62,3 @@ export type {
 	CrossTabSyncEvent,
 } from "./sync/cross-tab-sync";
 export { createCrossTabSync } from "./sync/cross-tab-sync";
-export { isLoopbackHttpUrl } from "./utils/network";
-export { transformScriptForBrowser } from "./utils/scripts";

@@ -12,8 +12,8 @@ export interface ReadableSignalTrait<T> extends InteropObservableTrait<T> {
 	/** Return the current snapshot value. */
 	get(): T;
 	/**
-	 * Subscribe to value changes.
-	 * The listener is called whenever the value changes (not on subscribe).
+	 * Subscribe to writes.
+	 * The listener is called whenever `set()` publishes a value (not on subscribe).
 	 * @returns An unsubscribe function.
 	 */
 	subscribe(listener: () => void): () => void;

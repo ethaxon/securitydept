@@ -85,11 +85,11 @@ export class TokenSetBearerInterceptor implements HttpInterceptor {
 		req: HttpRequest<unknown>,
 		next: HttpHandler,
 	): Observable<HttpEvent<unknown>> {
-		const key = this.registry.clientKeyForUrl(req.url);
+		const record = this.registry.clientRecordForQuery({ url: req.url });
 		// Registry readiness means "materialized and started"; the interceptor
 		// consumes the client's replayed authorization-header state.
 		return from(
-			resolveAuthorizationForRequest(this.registry, req.url, key, {
+			resolveAuthorizationForRequest(this.registry, record, {
 				strictUrlMatch: this.options.strictUrlMatch,
 			}),
 		).pipe(
@@ -186,7 +186,7 @@ export function provideTokenSetBearerInterceptor(
  *
  * This is intentional: blocking HTTP for client initialization would deadlock
  * apps that make HTTP requests during initialization itself. Route guards
- * (which use `registry.whenReady()`) are the correct place to enforce
+ * (which use `registry.initialize()`) are the correct place to enforce
  * "client must be ready before user reaches this route".
  *
  * For NgModule-style apps using `HTTP_INTERCEPTORS`, use
@@ -221,7 +221,7 @@ export function provideTokenSetBearerInterceptor(
  *
  * This is intentional: blocking HTTP for client initialization would deadlock
  * apps that make HTTP requests during initialization itself. Route guards
- * (which use `registry.whenReady()`) are the correct place to enforce
+ * (which use `registry.initialize()`) are the correct place to enforce
  * "client must be ready before user reaches this route".
  *
  * For NgModule-style apps using `HTTP_INTERCEPTORS`, use
@@ -249,12 +249,10 @@ export function createTokenSetBearerInterceptor(
 		next: (req: unknown) => Observable<unknown>,
 	): Observable<unknown> => {
 		// Try URL-pattern-based client selection first.
-		const key = registry.clientKeyForUrl(req.url);
+		const record = registry.clientRecordForQuery({ url: req.url });
 		// Registry readiness means "materialized and started"; the interceptor
 		// consumes the client's replayed authorization-header state.
-		return from(
-			resolveAuthorizationForRequest(registry, req.url, key, options),
-		).pipe(
+		return from(resolveAuthorizationForRequest(registry, record, options)).pipe(
 			switchMap((authorization) => {
 				if (!authorization) {
 					return next(req);
@@ -269,15 +267,17 @@ export function createTokenSetBearerInterceptor(
 
 async function resolveAuthorizationForRequest(
 	registry: TokenSetAuthRegistry,
-	_url: string,
-	key: string | undefined,
+	record: ReturnType<TokenSetAuthRegistry["clientRecordForQuery"]>,
 	options: BearerInterceptorOptions,
 ): Promise<string | null> {
-	if (!key && options.strictUrlMatch) {
+	if (!record && options.strictUrlMatch) {
+		return null;
+	}
+	if (!record) {
 		return null;
 	}
 
-	const client = await registry.whenReady(key);
+	const client = await registry.initialize(record.get().meta.clientKey);
 	const header = await client.authorizationHeaderValue.whenValue();
 	return header ?? null;
 }

@@ -1,19 +1,13 @@
 import {
+	createFoundationEnvironment,
 	createInMemoryRecordStore,
 	createRootSpan,
 	createTracing,
+	takeCompatFragmentFromRouter,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { FakeTimeConfig, FakeTransport } from "@securitydept/test-utils";
-import {
-	BackendOidcModeBootstrapSource,
-	type BootstrapBackendOidcModePageClientOptions,
-	bootstrapBackendOidcModePageClient,
-	type CreateBackendOidcModeCallbackFragmentStoreOptions,
-	createBackendOidcModeCallbackFragmentStore,
-	createBackendOidcModeWebClient,
-	createBackendOidcModeWebClientEnvironment,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it } from "vitest";
 
 function expectReplayValue<T>(signal: {
@@ -69,8 +63,12 @@ describe("external backend-oidc-mode browser scenario", () => {
 					},
 				}),
 			);
-		const client = createBackendOidcModeWebClient({
-			environment: createBackendOidcModeWebClientEnvironment({
+		const client = new BackendOidcModeClient(
+			{
+				baseUrl: "https://auth.example.com",
+				defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
+			},
+			createFoundationEnvironment({
 				span: createRootSpan(),
 				tracing: createTracing(),
 				persistentStorage,
@@ -78,64 +76,35 @@ describe("external backend-oidc-mode browser scenario", () => {
 				transport: transport,
 				time,
 			}),
-			baseUrl: "https://auth.example.com",
-			defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
-		});
-		const fragmentStoreOptions: CreateBackendOidcModeCallbackFragmentStoreOptions =
-			{ sessionStorage };
-		const callbackFragmentStore =
-			createBackendOidcModeCallbackFragmentStore(fragmentStoreOptions);
-
-		const emptyBootstrapOptions: BootstrapBackendOidcModePageClientOptions = {
-			environment: {
-				...createRouterForNativeWeb({
-					location: {
-						href: "https://app.example.com/oidc-mediated",
-						hash: "",
-					},
-					history: createHistoryRecorder(),
-				}),
-				callbackFragmentStore,
-				time,
-			},
-		};
-		const emptyBootstrap = await bootstrapBackendOidcModePageClient(
-			client,
-			emptyBootstrapOptions,
 		);
+		const emptySnapshot = await client.start();
 
-		expect(emptyBootstrap).toEqual({
-			source: BackendOidcModeBootstrapSource.Empty,
-			snapshot: null,
-		});
+		expect(emptySnapshot).toBeNull();
 
 		const callbackHistory = createHistoryRecorder();
-		const callbackBootstrap = await bootstrapBackendOidcModePageClient(client, {
-			environment: {
-				...createRouterForNativeWeb({
-					location: {
-						href: "https://app.example.com/oidc-mediated?tab=demo#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
-						hash: "#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
-					},
-					history: callbackHistory,
-				}),
-				callbackFragmentStore,
-				time,
-			},
-		});
+		const callbackFragment = await takeCompatFragmentFromRouter(
+			createRouterForNativeWeb({
+				location: {
+					href: "https://app.example.com/oidc-mediated?tab=demo#/route#securitydept=v1&access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+					hash: "#/route#securitydept=v1&access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+				},
+				history: callbackHistory,
+			}),
+		);
+		const callbackSnapshot = await client.handleCallback(
+			callbackFragment?.parameters ?? {},
+		);
 
-		expect(callbackBootstrap.source).toBe(
-			BackendOidcModeBootstrapSource.Callback,
+		expect(callbackSnapshot.tokens.accessToken).toBe("callback-at");
+		expect(callbackSnapshot.metadata.principal?.displayName).toBe("Alice");
+		expect(callbackHistory.replacedUrl).toBe(
+			"https://app.example.com/oidc-mediated?tab=demo",
 		);
-		expect(callbackBootstrap.snapshot?.tokens.accessToken).toBe("callback-at");
-		expect(callbackBootstrap.snapshot?.metadata.principal?.displayName).toBe(
-			"Alice",
-		);
-		expect(callbackHistory.replacedUrl).toBe("/oidc-mediated?tab=demo");
 		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
 			"Bearer callback-at",
 		);
 
+		time.advance(5 * 60_000);
 		const refreshed = await client.refreshState();
 
 		expect(refreshed?.tokens.accessToken).toBe("refreshed-at");
@@ -145,7 +114,5 @@ describe("external backend-oidc-mode browser scenario", () => {
 		);
 
 		client.dispose();
-
-		expect(expectReplayValue(client.authSnapshot)).toBeNull();
 	});
 });

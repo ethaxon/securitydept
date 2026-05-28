@@ -242,6 +242,9 @@ describe("TokenSetCallbackComponent", () => {
 					restorePersistedState: vi.fn(async () => null),
 					handleCallback,
 					loginWithRedirect: vi.fn(async () => undefined),
+					loginWithPopup: vi.fn(async () => ({
+						snapshot: { tokens: { accessToken: "popup-at" }, metadata: {} },
+					})),
 				}),
 			});
 			const service = runInInjectionContext(injector, () =>
@@ -249,7 +252,7 @@ describe("TokenSetCallbackComponent", () => {
 			);
 			const observed: string[] = [];
 			const subscription = service.state$.subscribe((state) => {
-				observed.push(state.status);
+				observed.push(state.state);
 			});
 
 			await expect(
@@ -257,7 +260,7 @@ describe("TokenSetCallbackComponent", () => {
 					"https://app.example.com/auth/token-set/callback?code=abc&state=def",
 				),
 			).resolves.toMatchObject({
-				clientKey: "frontend",
+				clientRecord: { meta: { clientKey: "frontend" } },
 				postAuthRedirectUri: "/after-callback",
 			});
 

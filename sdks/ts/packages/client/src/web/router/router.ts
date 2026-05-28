@@ -108,7 +108,17 @@ export function createRouterForNativeWeb(
 	options: RouterForNativeWebCreateOptions &
 		WithTraitInputValidator<Pick<EnvironmentValidators, "router">> = {},
 ): RouterTrait {
-	return new NativeWebRouter(resolveRouterForNativeWebCreateOptions(options));
+	const router = new NativeWebRouter(
+		resolveRouterForNativeWebCreateOptions(options),
+	);
+	return {
+		currentUrl() {
+			return router.currentUrl();
+		},
+		navigate(request) {
+			return router.navigate(request);
+		},
+	};
 }
 
 export class NativeWebRouter implements RouterTrait {

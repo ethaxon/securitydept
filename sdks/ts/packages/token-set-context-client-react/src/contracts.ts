@@ -1,36 +1,48 @@
 // React adapter contracts
 //
 // Mirrors the Angular adapter's `contracts.ts` so both framework adapters
-// exchange the same duck-typed OIDC client surface when registering against
-// the shared `TokenSetAuthRegistry` core.
+// exchange the same concrete OIDC client surface when registering against
+// the shared client registry core.
 
-import { type FoundationEnvironment } from "@securitydept/client";
+import {
+	type DisposableTrait,
+	type EventStreamTrait,
+	type EventSubscriptionTrait,
+	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
+} from "@securitydept/client";
 import { type BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
-	type ClientInitializationPriority,
-	type TokenSetClientEntry as CoreTokenSetClientEntry,
-	type OidcCallbackClient,
-	type OidcModeClient,
-	type OidcRedirectLoginClient,
+	type AuthSnapshot,
+	type OidcPopupLoginOptions,
+	type OidcPopupLoginResult,
 	type OidcRedirectLoginOptions,
-} from "@securitydept/token-set-context-client/registry";
+	type TokenSetAuthEvent,
+	type TokenSetAuthOperationSignals,
+	type TokenSetAuthWorkflowSource,
+} from "@securitydept/token-set-context-client/orchestration";
+import { type ClientInitializationMode } from "@securitydept/token-set-context-client/registry";
 
 // ============================================================================
 // Client contracts
 // ============================================================================
 
-export type {
-	OidcCallbackClient,
-	OidcModeClient,
-	OidcRedirectLoginClient,
-	OidcRedirectLoginOptions,
-};
-
-export type TokenSetOidcRedirectLoginClient = OidcRedirectLoginClient;
-
-export type TokenSetReactClient = OidcModeClient &
-	OidcCallbackClient &
-	OidcRedirectLoginClient;
+export interface TokenSetReactClient extends DisposableTrait {
+	authDetermined: ReadableReplaySignalTrait<true>;
+	authSnapshot: ReadableReplaySignalTrait<AuthSnapshot | null>;
+	isAuthenticated: ReadableReplaySignalTrait<boolean>;
+	authorizationHeaderValue: ReadableReplaySignalTrait<string | undefined>;
+	lastAuthError: ReadableSignalTrait<unknown | undefined>;
+	authOperations: TokenSetAuthOperationSignals;
+	authEvents: EventStreamTrait<TokenSetAuthEvent>;
+	start(): Promise<unknown>;
+	addWorkflowSource(source: TokenSetAuthWorkflowSource): EventSubscriptionTrait;
+	removeWorkflowSource(source: TokenSetAuthWorkflowSource): boolean;
+	dispose(): void;
+	restorePersistedState(): Promise<unknown>;
+	loginWithRedirect(options?: OidcRedirectLoginOptions): Promise<void>;
+	loginWithPopup(options: OidcPopupLoginOptions): Promise<OidcPopupLoginResult>;
+}
 
 export type TokenSetBackendOidcClient = TokenSetReactClient &
 	Pick<BackendOidcModeClient, "authorizeUrl" | "refreshState" | "clearState">;
@@ -43,16 +55,21 @@ export type TokenSetBackendOidcClient = TokenSetReactClient &
  * React-side client entry. Pre-specialized to `TokenSetReactClient` so
  * adopters don't need to supply the type argument.
  */
-export interface TokenSetClientEntry
-	extends Omit<CoreTokenSetClientEntry<TokenSetReactClient>, "clientFactory"> {
+export interface TokenSetClientEntry {
+	/**
+	 * Client registry key.
+	 */
+	key: string;
 	/**
 	 * Factory returning the OIDC client. Supports sync / async.
 	 */
-	clientFactory: (
-		environment: FoundationEnvironment | undefined,
-	) => TokenSetReactClient | Promise<TokenSetReactClient>;
+	clientFactory: () => TokenSetReactClient | Promise<TokenSetReactClient>;
 	/**
-	 * Optional initialization priority (primary | lazy).
+	 * Optional initialization mode.
 	 */
-	priority?: ClientInitializationPriority;
+	initialization?: ClientInitializationMode;
+	urlPatterns?: ReadonlyArray<string | RegExp | ((url: string) => boolean)>;
+	callbackPath?: string;
+	requirementKind?: string;
+	providerFamily?: string;
 }

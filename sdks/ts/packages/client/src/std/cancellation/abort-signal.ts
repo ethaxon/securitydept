@@ -56,6 +56,14 @@ export function abortSignalToCancellationToken(
 				});
 			}
 		},
+		readCancellationError() {
+			try {
+				this.throwIfCancellationRequested();
+			} catch (error) {
+				return error;
+			}
+			return signal.reason;
+		},
 	};
 }
 

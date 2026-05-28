@@ -5,19 +5,14 @@
 // model.
 //
 // Section A: /backend-oidc-mode canonical entry
-// Section B: /backend-oidc-mode/web canonical entry
+// Section B: popup relay helpers on /backend-oidc-mode
 // Section C: @securitydept/token-set-context-client-react canonical entry
 
 import {
-	AuthenticationSourceKind,
 	BackendOidcModeClient,
 	type BackendOidcModeClientConfig,
+	relayTokenSetPopupCallbackFromEnvironment,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import {
-	BackendOidcModeBootstrapSource,
-	bootstrapBackendOidcModePageClient,
-	createBackendOidcModeWebClientEnvironment,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
 import {
 	provideTokenSetAuthRegistry,
 	provideTokenSetCallbackResumeController,
@@ -39,11 +34,6 @@ describe("backend-oidc-mode canonical subpath", () => {
 		expect(typeof BackendOidcModeClient).toBe("function");
 	});
 
-	it("exports AuthenticationSourceKind enum from /backend-oidc-mode", () => {
-		expect(AuthenticationSourceKind).toBeDefined();
-		expect(AuthenticationSourceKind.OidcAuthorizationCode).toBeDefined();
-	});
-
 	it("BackendOidcModeClientConfig type is usable from /backend-oidc-mode", () => {
 		const config: BackendOidcModeClientConfig = {
 			baseUrl: "https://api.example.com",
@@ -53,20 +43,13 @@ describe("backend-oidc-mode canonical subpath", () => {
 });
 
 // ---------------------------------------------------------------------------
-// B. /backend-oidc-mode/web canonical entry
+// B. popup relay helpers on /backend-oidc-mode
 // ---------------------------------------------------------------------------
 
-describe("backend-oidc-mode/web canonical subpath", () => {
-	it("exports page bootstrap and environment helpers from /backend-oidc-mode/web", () => {
-		expect(bootstrapBackendOidcModePageClient).toBeDefined();
-		expect(typeof bootstrapBackendOidcModePageClient).toBe("function");
-		expect(createBackendOidcModeWebClientEnvironment).toBeDefined();
-		expect(typeof createBackendOidcModeWebClientEnvironment).toBe("function");
-	});
-
-	it("exports BackendOidcModeBootstrapSource enum from /backend-oidc-mode/web", () => {
-		expect(BackendOidcModeBootstrapSource).toBeDefined();
-		expect(typeof BackendOidcModeBootstrapSource).toBe("object");
+describe("backend-oidc-mode popup relay exports", () => {
+	it("exports relayTokenSetPopupCallbackFromEnvironment from /backend-oidc-mode", () => {
+		expect(relayTokenSetPopupCallbackFromEnvironment).toBeDefined();
+		expect(typeof relayTokenSetPopupCallbackFromEnvironment).toBe("function");
 	});
 });
 

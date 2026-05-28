@@ -11,18 +11,12 @@ import {
 import {
 	type AuthGuardClientOption,
 	createEventSubject,
-	createInMemoryRecordStore,
 	createReplaySignal,
-	createRootSpan,
 	createSignal,
-	createTracing,
 } from "@securitydept/client";
 import { type NativeWebEnvironment } from "@securitydept/client/web";
 import { provideNativeWebEnvironment } from "@securitydept/client-angular";
-import {
-	createBackendOidcModeWebClient,
-	createBackendOidcModeWebClientEnvironment,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	type CreateTokenSetRouteAggregationGuardOptions,
 	createTokenSetOidcLoginRedirectHandler,
@@ -150,19 +144,34 @@ describe("createTokenSetRouteAggregationGuard", () => {
 			loginWithRedirect: vi.fn(),
 		} as unknown as TokenSetAngularClient;
 		const registry = {
-			clientKeyListForRequirement: vi.fn(() => ["frontend"]),
-			whenReady: vi.fn(async () => client),
-			metaFor: vi.fn(() => ({
-				clientKey: "frontend",
-				urlPatterns: [],
-				callbackPath: "/auth/token-set/callback",
-				requirementKind: "frontend_oidc",
-				providerFamily: "authentik",
-				priority: "primary",
-			})),
+			clientRecordGenForQuery: vi.fn(function* () {
+				yield createSignal({
+					meta: {
+						clientKey: "frontend",
+						urlPatterns: [],
+						callbackPath: "/auth/token-set/callback",
+						requirementKind: "frontend_oidc",
+						providerFamily: "authentik",
+						initialization: "immediate",
+					},
+				});
+			}),
+			initialize: vi.fn(async () => client),
+			clientRecordFor: vi.fn(() =>
+				createSignal({
+					meta: {
+						clientKey: "frontend",
+						urlPatterns: [],
+						callbackPath: "/auth/token-set/callback",
+						requirementKind: "frontend_oidc",
+						providerFamily: "authentik",
+						initialization: "immediate",
+					},
+				}),
+			),
 		} as unknown as Pick<
 			TokenSetAuthRegistry,
-			"clientKeyListForRequirement" | "whenReady" | "metaFor"
+			"clientRecordGenForQuery" | "initialize" | "clientRecordFor"
 		>;
 		const injector = createEnvironmentInjector(
 			[
@@ -214,8 +223,8 @@ describe("createTokenSetRouteAggregationGuard", () => {
 		const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
 		const environment = createAngularPageEnvironment();
 		const registry = {
-			whenReady: vi.fn(async () => ({ loginWithRedirect })),
-		} as unknown as Pick<TokenSetAuthRegistry, "whenReady">;
+			initialize: vi.fn(async () => ({ loginWithRedirect })),
+		} as unknown as Pick<TokenSetAuthRegistry, "initialize">;
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TokenSetAuthRegistry, useValue: registry },
@@ -241,7 +250,6 @@ describe("createTokenSetRouteAggregationGuard", () => {
 
 			await flushMicrotasks();
 			expect(loginWithRedirect).toHaveBeenCalledWith({
-				environment: environment.router,
 				postAuthRedirectUri: "/workspace/wiki?from=guard",
 			});
 			expect(settled).not.toHaveBeenCalled();
@@ -259,8 +267,8 @@ describe("createTokenSetRouteAggregationGuard", () => {
 		);
 		let windowRead = false;
 		const registry = {
-			whenReady: vi.fn(async () => ({ loginWithRedirect })),
-		} as unknown as Pick<TokenSetAuthRegistry, "whenReady">;
+			initialize: vi.fn(async () => ({ loginWithRedirect })),
+		} as unknown as Pick<TokenSetAuthRegistry, "initialize">;
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TokenSetAuthRegistry, useValue: registry },
@@ -311,19 +319,11 @@ describe("createTokenSetRouteAggregationGuard", () => {
 
 			await flushMicrotasks();
 			expect(loginWithRedirect).toHaveBeenCalledWith({
-				environment: environment.router,
 				postAuthRedirectUri: "/workspace/wiki?from=guard",
 			});
 			expect(loginWithRedirect).toHaveBeenNthCalledWith(2, {
-				environment: environment.router,
 				postAuthRedirectUri: "/workspace/wiki?from=guard",
 			});
-			expect(loginWithRedirect.mock.calls[0]?.[0].environment).toBe(
-				environment.router,
-			);
-			expect(loginWithRedirect.mock.calls[1]?.[0].environment).toBe(
-				environment.router,
-			);
 			expect(windowRead).toBe(false);
 			expect(settled).not.toHaveBeenCalled();
 		} finally {
@@ -338,19 +338,14 @@ describe("createTokenSetRouteAggregationGuard", () => {
 
 	it("OIDC redirect handlers also drive backend web clients through the shared redirect-login contract", async () => {
 		const environment = createAngularPageEnvironment();
-		const backendClient = createBackendOidcModeWebClient({
-			environment: createBackendOidcModeWebClientEnvironment({
-				persistentStorage: createInMemoryRecordStore(),
-				sessionStorage: createInMemoryRecordStore(),
-				span: createRootSpan(),
-				tracing: createTracing(),
-			}),
-			baseUrl: "https://auth.example.com",
-		});
+		const backendClient = new BackendOidcModeClient(
+			{ baseUrl: "https://auth.example.com" },
+			environment,
+		);
 		const loginWithRedirect = vi.spyOn(backendClient, "loginWithRedirect");
 		const registry = {
-			whenReady: vi.fn(async () => backendClient),
-		} as unknown as Pick<TokenSetAuthRegistry, "whenReady">;
+			initialize: vi.fn(async () => backendClient),
+		} as unknown as Pick<TokenSetAuthRegistry, "initialize">;
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TokenSetAuthRegistry, useValue: registry },
@@ -376,7 +371,6 @@ describe("createTokenSetRouteAggregationGuard", () => {
 
 			await flushMicrotasks();
 			expect(loginWithRedirect).toHaveBeenCalledWith({
-				environment: environment.router,
 				postAuthRedirectUri: "/workspace/wiki?from=guard",
 			});
 			expect(environment.router.currentUrl()?.toString()).toBe(
@@ -392,8 +386,8 @@ describe("createTokenSetRouteAggregationGuard", () => {
 	it("OIDC redirect handlers fail fast when the registered client lacks shared redirect-login capability", async () => {
 		const environment = createAngularPageEnvironment();
 		const registry = {
-			whenReady: vi.fn(async () => ({})),
-		} as unknown as Pick<TokenSetAuthRegistry, "whenReady">;
+			initialize: vi.fn(async () => ({})),
+		} as unknown as Pick<TokenSetAuthRegistry, "initialize">;
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TokenSetAuthRegistry, useValue: registry },
@@ -418,7 +412,7 @@ describe("createTokenSetRouteAggregationGuard", () => {
 					),
 				),
 			).rejects.toThrow(
-				/createTokenSetOidcLoginRedirectHandler.*client key "frontend".*OidcRedirectLoginClient\.loginWithRedirect/,
+				/createTokenSetOidcLoginRedirectHandler.*client key "frontend".*loginWithRedirect/,
 			);
 		} finally {
 			injector.destroy();

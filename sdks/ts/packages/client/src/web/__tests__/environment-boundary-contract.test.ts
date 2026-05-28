@@ -2,10 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const forbiddenFallbacks = [
-	"createDefaultBackendOidcModePageCallbackCapability(",
 	"options.environment ?? createFrontendOidcModeWebClientEnvironment(",
 	"?? createFrontendOidcModeWebClientEnvironment(",
-	"?? createBackendOidcModeCallbackFragmentStore(",
 ];
 
 const guardedHelperFiles = [
@@ -22,7 +20,7 @@ const guardedHelperFiles = [
 		import.meta.url,
 	),
 	new URL(
-		"../../../../token-set-context-client/src/backend-oidc-mode/web/browser.ts",
+		"../../../../token-set-context-client/src/orchestration/client/popup/relay.ts",
 		import.meta.url,
 	),
 	new URL(

@@ -1,25 +1,20 @@
 import {
 	ClientErrorKind,
+	type CreateFoundationEnvironmentOptions,
 	createCancellationTokenSource,
+	createFoundationEnvironment,
 	createInMemoryRecordStore,
 	createRootSpan,
 	createTracing,
-	type EphemeralFlowStore,
-	type HttpRequest,
-	type HttpResponse,
 	readErrorPresentationDescriptor,
+	takeCompatFragmentFromRouter,
 	UserRecovery,
 } from "@securitydept/client";
 import { FakeTimeConfig, FakeTransport } from "@securitydept/test-utils";
 import {
-	BackendOidcModeBootstrapSource,
-	bootstrapBackendOidcModePageClient,
-	type CreateBackendOidcModeWebClientEnvironmentOptions,
-	type CreateBackendOidcModeWebClientOptions,
-	createBackendOidcModeCallbackFragmentStore,
-	createBackendOidcModeWebClientEnvironment,
-	createBackendOidcModeWebClient as materializeBackendOidcModeWebClient,
-} from "@securitydept/token-set-context-client/backend-oidc-mode/web";
+	BackendOidcModeClient,
+	type BackendOidcModeClientConfig,
+} from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it, vi } from "vitest";
 import { AuthEntryKind } from "../api/entries";
 import {
@@ -65,6 +60,15 @@ function createJsonResponse(status: number, body: unknown): Response {
 	});
 }
 
+function callbackParameters(fragment: string): Record<string, string> {
+	const parameters = new URLSearchParams(fragment);
+	const result: Record<string, string> = {};
+	parameters.forEach((value, key) => {
+		result[key] = value;
+	});
+	return result;
+}
+
 function createHistoryRecorder() {
 	return {
 		replacedUrl: "" as string,
@@ -76,13 +80,18 @@ function createHistoryRecorder() {
 
 function createPageCallbackEnvironment(
 	href: string,
-	callbackFragmentStore: EphemeralFlowStore<string>,
-	history = createHistoryRecorder(),
+	_storeOrHistory?: unknown,
+	maybeHistory = createHistoryRecorder(),
 	time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z")),
 ) {
+	const history =
+		typeof _storeOrHistory === "object" &&
+		_storeOrHistory !== null &&
+		"replaceState" in _storeOrHistory
+			? (_storeOrHistory as ReturnType<typeof createHistoryRecorder>)
+			: maybeHistory;
 	const location = new URL(href);
 	return {
-		callbackFragmentStore,
 		time,
 		currentUrl() {
 			return new URL(location.toString());
@@ -124,42 +133,59 @@ function createTokenSetTransport() {
 }
 
 type BackendOidcModeTestClientOptions = Omit<
-	CreateBackendOidcModeWebClientOptions,
-	"environment"
-> &
-	Omit<CreateBackendOidcModeWebClientEnvironmentOptions, "tracing"> & {
-		transport?: CreateBackendOidcModeWebClientEnvironmentOptions["transport"];
-		tracing?: CreateBackendOidcModeWebClientEnvironmentOptions["tracing"];
-	};
+	BackendOidcModeClientConfig,
+	"baseUrl"
+> & {
+	baseUrl?: string;
+} & CreateFoundationEnvironmentOptions;
 
-function createBackendOidcModeWebClient(
+function createBackendOidcModeTestClient(
 	options: BackendOidcModeTestClientOptions,
 ) {
 	const {
-		environment,
-		persistentStorage,
-		sessionStorage,
-		callbackFragmentStore,
-		transport,
-		span,
-		time,
+		baseUrl,
+		defaultPostAuthRedirectUri,
+		refresh,
+		persistence,
+		id,
+		autoStart,
+		loginPath,
+		refreshPath,
+		metadataRedeemPath,
+		userInfoPath,
 		tracing,
-		...clientOptions
+		...environmentOptions
 	} = options;
 
-	return materializeBackendOidcModeWebClient({
-		...clientOptions,
-		environment: createBackendOidcModeWebClientEnvironment({
-			environment,
-			persistentStorage,
-			sessionStorage,
-			callbackFragmentStore,
-			transport,
-			span,
-			time,
+	return new BackendOidcModeClient(
+		{
+			baseUrl: baseUrl ?? "",
+			defaultPostAuthRedirectUri,
+			refresh,
+			persistence,
+			id,
+			autoStart,
+			loginPath,
+			refreshPath,
+			metadataRedeemPath,
+			userInfoPath,
+		},
+		createFoundationEnvironment({
+			...environmentOptions,
 			tracing: tracing ?? createTracing(),
 		}),
-	});
+	);
+}
+
+async function startBackendClientFromPage(
+	client: ReturnType<typeof createBackendOidcModeTestClient>,
+	options: { environment: ReturnType<typeof createPageCallbackEnvironment> },
+) {
+	const fragment = await takeCompatFragmentFromRouter(options.environment);
+	if (fragment) {
+		return await client.handleCallback(fragment.parameters);
+	}
+	return await client.start();
 }
 
 describe("token-set browser flow", () => {
@@ -244,12 +270,12 @@ describe("token-set browser flow", () => {
 		});
 	});
 
-	it("captures callback fragments, clears the URL hash, and initializes client state", async () => {
+	it("captures compat fragments, preserves route hash, and initializes client state", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
 		const transport = createTokenSetTransport();
 		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
@@ -257,24 +283,18 @@ describe("token-set browser flow", () => {
 			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 		});
-		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStorage,
-		});
 		const history = createHistoryRecorder();
 
-		const result = await bootstrapBackendOidcModePageClient(client, {
+		const result = await startBackendClientFromPage(client, {
 			environment: createPageCallbackEnvironment(
-				"https://app.example.com/token-set#access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
-				callbackFragmentStore,
+				"https://app.example.com/token-set#/route#securitydept=v1&access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
 				history,
 			),
 		});
 
-		expect(result.source).toBe(BackendOidcModeBootstrapSource.Callback);
-		expect(result.snapshot?.tokens.accessToken).toBe("callback-at");
-		expect(result.snapshot?.metadata.principal?.displayName).toBe("Alice");
-		expect(await callbackFragmentStore.load()).toBeNull();
-		expect(history.replacedUrl).toBe("/token-set");
+		expect(result?.tokens.accessToken).toBe("callback-at");
+		expect(result?.metadata.principal?.displayName).toBe("Alice");
+		expect(history.replacedUrl).toBe("/token-set#/route");
 		expect(time.pendingCount).toBe(1);
 	});
 
@@ -283,7 +303,7 @@ describe("token-set browser flow", () => {
 		const sessionStorage = createInMemoryRecordStore();
 		const transport = createTokenSetTransport();
 		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
-		const seedingClient = createBackendOidcModeWebClient({
+		const seedingClient = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
@@ -293,11 +313,13 @@ describe("token-set browser flow", () => {
 		});
 
 		await seedingClient.handleCallback(
-			"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-2",
+			callbackParameters(
+				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-2",
+			),
 		);
 		seedingClient.dispose();
 
-		const restoringClient = createBackendOidcModeWebClient({
+		const restoringClient = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
@@ -306,203 +328,13 @@ describe("token-set browser flow", () => {
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
 		});
 
-		const result = await bootstrapBackendOidcModePageClient(restoringClient, {
+		const result = await startBackendClientFromPage(restoringClient, {
 			environment: createPageCallbackEnvironment(
 				"https://app.example.com/token-set",
-				createBackendOidcModeCallbackFragmentStore({
-					sessionStorage,
-				}),
 			),
 		});
 
-		expect(result.source).toBe("restore");
-		expect(result.snapshot?.tokens.accessToken).toBe("seed-at");
-	});
-
-	it("keeps callback flow-state across cancellation and retries it on the next mount", async () => {
-		const persistentStorage = createInMemoryRecordStore();
-		const sessionStorage = createInMemoryRecordStore();
-		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
-		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStorage,
-		});
-		const history = createHistoryRecorder();
-
-		let resolveMetadata: ((response: HttpResponse) => void) | null = null;
-		let notifyMetadataRequestStarted: (() => void) | null = null;
-		const metadataRequestStarted = new Promise<void>((resolve) => {
-			notifyMetadataRequestStarted = resolve;
-		});
-		const transport = new FakeTransport().on(
-			(request: HttpRequest) => request.url.endsWith("/metadata/redeem"),
-			() =>
-				new Promise<HttpResponse>((resolve) => {
-					resolveMetadata = resolve;
-					notifyMetadataRequestStarted?.();
-					notifyMetadataRequestStarted = null;
-				}),
-		);
-
-		const firstClient = createBackendOidcModeWebClient({
-			span: createRootSpan(),
-			persistentStorage,
-			sessionStorage,
-			transport,
-			time,
-			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
-		});
-
-		const firstBootstrap = bootstrapBackendOidcModePageClient(firstClient, {
-			environment: createPageCallbackEnvironment(
-				"https://app.example.com/token-set#access_token=late-at&id_token=late-idt&refresh_token=late-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-3",
-				callbackFragmentStore,
-				history,
-			),
-		});
-		const firstBootstrapExpectation = expect(
-			firstBootstrap,
-		).rejects.toMatchObject({
-			kind: ClientErrorKind.Cancelled,
-		});
-
-		await metadataRequestStarted;
-		firstClient.dispose();
-		const pendingMetadataResolver = resolveMetadata as unknown as (
-			response: HttpResponse,
-		) => void;
-		if (!pendingMetadataResolver) {
-			throw new Error("Expected pending metadata resolver to be registered");
-		}
-		pendingMetadataResolver({
-			status: 200,
-			headers: {},
-			body: {
-				metadata: {
-					principal: {
-						subject: "user-2",
-						displayName: "Bob",
-					},
-				},
-			},
-		});
-
-		await firstBootstrapExpectation;
-		expect(await callbackFragmentStore.load()).toContain("late-at");
-
-		transport.reset();
-		transport.on(
-			(request) => request.url.endsWith("/metadata/redeem"),
-			() => ({
-				status: 200,
-				headers: {},
-				body: {
-					metadata: {
-						principal: {
-							subject: "user-2",
-							displayName: "Bob",
-						},
-					},
-				},
-			}),
-		);
-
-		const secondClient = createBackendOidcModeWebClient({
-			span: createRootSpan(),
-			persistentStorage,
-			sessionStorage,
-			transport,
-			time,
-			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
-		});
-		const retried = await bootstrapBackendOidcModePageClient(secondClient, {
-			environment: createPageCallbackEnvironment(
-				"https://app.example.com/token-set",
-				callbackFragmentStore,
-			),
-		});
-
-		expect(retried.source).toBe(BackendOidcModeBootstrapSource.Callback);
-		expect(retried.snapshot?.tokens.accessToken).toBe("late-at");
-		expect(await callbackFragmentStore.load()).toBeNull();
-	});
-
-	it("keeps callback flow-state across retryable callback failures and retries it on the next mount", async () => {
-		const persistentStorage = createInMemoryRecordStore();
-		const sessionStorage = createInMemoryRecordStore();
-		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
-		const callbackFragmentStore = createBackendOidcModeCallbackFragmentStore({
-			sessionStorage,
-		});
-		const transport = new FakeTransport().on(
-			(request) => request.url.endsWith("/metadata/redeem"),
-			() => ({
-				status: 503,
-				headers: {},
-				body: {
-					message: "metadata temporarily unavailable",
-				},
-			}),
-		);
-
-		const firstClient = createBackendOidcModeWebClient({
-			span: createRootSpan(),
-			persistentStorage,
-			sessionStorage,
-			transport,
-			time,
-			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
-		});
-
-		await expect(
-			bootstrapBackendOidcModePageClient(firstClient, {
-				environment: createPageCallbackEnvironment(
-					"https://app.example.com/token-set#access_token=retry-at&id_token=retry-idt&refresh_token=retry-rt&expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-5",
-					callbackFragmentStore,
-				),
-			}),
-		).rejects.toMatchObject({
-			kind: ClientErrorKind.Server,
-			retryable: true,
-			recovery: UserRecovery.Retry,
-		});
-		expect(await callbackFragmentStore.load()).toContain("retry-at");
-
-		transport.reset();
-		transport.on(
-			(request) => request.url.endsWith("/metadata/redeem"),
-			() => ({
-				status: 200,
-				headers: {},
-				body: {
-					metadata: {
-						principal: {
-							subject: "user-3",
-							displayName: "Carol",
-						},
-					},
-				},
-			}),
-		);
-
-		const secondClient = createBackendOidcModeWebClient({
-			span: createRootSpan(),
-			persistentStorage,
-			sessionStorage,
-			transport,
-			time,
-			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
-		});
-		const retried = await bootstrapBackendOidcModePageClient(secondClient, {
-			environment: createPageCallbackEnvironment(
-				"https://app.example.com/token-set",
-				callbackFragmentStore,
-			),
-		});
-
-		expect(retried.source).toBe(BackendOidcModeBootstrapSource.Callback);
-		expect(retried.snapshot?.tokens.accessToken).toBe("retry-at");
-		expect(retried.snapshot?.metadata.principal?.displayName).toBe("Carol");
-		expect(await callbackFragmentStore.load()).toBeNull();
+		expect(result?.tokens.accessToken).toBe("seed-at");
 	});
 
 	it("propagates redirect and current metadata into refresh requests", async () => {
@@ -528,18 +360,20 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
 			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
-			refreshWindowMs: 60_000,
+			refresh: { tokenFreshness: { refreshWindowMs: 60_000 } },
 		});
 
 		await client.handleCallback(
-			"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-4",
+			callbackParameters(
+				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-4",
+			),
 		);
 		await client.refreshState();
 
@@ -582,18 +416,20 @@ describe("token-set browser flow", () => {
 					};
 				},
 			);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
 			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
-			refreshWindowMs: 60_000,
+			refresh: { tokenFreshness: { refreshWindowMs: 60_000 } },
 		});
 
 		await client.handleCallback(
-			"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-6",
+			callbackParameters(
+				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-6",
+			),
 		);
 		await client.refreshState();
 		await expect(
@@ -643,18 +479,20 @@ describe("token-set browser flow", () => {
 					};
 				},
 			);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
 			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
-			refreshWindowMs: 60_000,
+			refresh: { tokenFreshness: { refreshWindowMs: 60_000 } },
 		});
 
 		await client.handleCallback(
-			"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-7",
+			callbackParameters(
+				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-7",
+			),
 		);
 		await client.refreshState();
 		await expect(
@@ -732,18 +570,20 @@ describe("token-set browser flow", () => {
 					};
 				},
 			);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
 			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
-			refreshWindowMs: 60_000,
+			refresh: { tokenFreshness: { refreshWindowMs: 60_000 } },
 		});
 
 		await client.handleCallback(
-			"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-8",
+			callbackParameters(
+				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-8",
+			),
 		);
 		await client.refreshState();
 
@@ -844,18 +684,20 @@ describe("token-set browser flow", () => {
 					};
 				},
 			);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
 			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
-			refreshWindowMs: 60_000,
+			refresh: { tokenFreshness: { refreshWindowMs: 60_000 } },
 		});
 
 		await client.handleCallback(
-			"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-9",
+			callbackParameters(
+				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-9",
+			),
 		);
 		await client.refreshState();
 
@@ -978,18 +820,20 @@ describe("token-set browser flow", () => {
 					};
 				},
 			);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
 			transport,
 			time,
 			defaultPostAuthRedirectUri: "https://app.example.com/token-set",
-			refreshWindowMs: 60_000,
+			refresh: { tokenFreshness: { refreshWindowMs: 60_000 } },
 		});
 
 		await client.handleCallback(
-			"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-10",
+			callbackParameters(
+				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-10",
+			),
 		);
 		await client.refreshState();
 
@@ -1056,7 +900,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
@@ -1075,7 +919,9 @@ describe("token-set browser flow", () => {
 		});
 
 		await client.handleCallback(
-			"access_token=token-at&id_token=token-idt&refresh_token=token-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			callbackParameters(
+				"access_token=token-at&id_token=token-idt&refresh_token=token-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			),
 		);
 		await listGroupsWithTokenSet(client, {
 			transport,
@@ -1106,7 +952,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
@@ -1115,7 +961,9 @@ describe("token-set browser flow", () => {
 		});
 
 		await client.handleCallback(
-			"access_token=abort-at&id_token=abort-idt&refresh_token=abort-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			callbackParameters(
+				"access_token=abort-at&id_token=abort-idt&refresh_token=abort-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			),
 		);
 
 		await expect(
@@ -1149,7 +997,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
@@ -1168,7 +1016,9 @@ describe("token-set browser flow", () => {
 		});
 
 		await client.handleCallback(
-			"access_token=entries-at&id_token=entries-idt&refresh_token=entries-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			callbackParameters(
+				"access_token=entries-at&id_token=entries-idt&refresh_token=entries-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			),
 		);
 		await listEntriesWithTokenSet(client, {
 			transport,
@@ -1199,7 +1049,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
@@ -1223,7 +1073,9 @@ describe("token-set browser flow", () => {
 		});
 
 		await client.handleCallback(
-			"access_token=mutation-at&id_token=mutation-idt&refresh_token=mutation-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			callbackParameters(
+				"access_token=mutation-at&id_token=mutation-idt&refresh_token=mutation-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			),
 		);
 
 		await expect(
@@ -1268,7 +1120,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
@@ -1294,7 +1146,9 @@ describe("token-set browser flow", () => {
 		});
 
 		await client.handleCallback(
-			"access_token=basic-at&id_token=basic-idt&refresh_token=basic-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			callbackParameters(
+				"access_token=basic-at&id_token=basic-idt&refresh_token=basic-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			),
 		);
 
 		await expect(
@@ -1342,7 +1196,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
@@ -1366,7 +1220,9 @@ describe("token-set browser flow", () => {
 		});
 
 		await client.handleCallback(
-			"access_token=group-at&id_token=group-idt&refresh_token=group-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			callbackParameters(
+				"access_token=group-at&id_token=group-idt&refresh_token=group-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			),
 		);
 
 		await expect(
@@ -1406,7 +1262,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
@@ -1415,7 +1271,9 @@ describe("token-set browser flow", () => {
 		});
 
 		await client.handleCallback(
-			"access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			callbackParameters(
+				"access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			),
 		);
 
 		await expect(
@@ -1497,7 +1355,7 @@ describe("token-set browser flow", () => {
 				};
 			},
 		);
-		const client = createBackendOidcModeWebClient({
+		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
 			sessionStorage,
@@ -1506,7 +1364,9 @@ describe("token-set browser flow", () => {
 		});
 
 		await client.handleCallback(
-			"access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			callbackParameters(
+				"access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+			),
 		);
 
 		await expect(

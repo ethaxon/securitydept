@@ -1,5 +1,6 @@
 import {
 	abortSignalToCancellationToken,
+	type BaseTransportTrait,
 	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
@@ -7,14 +8,11 @@ import {
 	createReplaySignal,
 	type ExternalTransportTrait,
 	FetchTransportRedirectKind,
+	type ManagedTransportTrait,
 	type SecuritydeptInjectorTrait,
 } from "@securitydept/client";
 import { useReplaySignalValue } from "@securitydept/client-react";
-import {
-	type AuthorizationHeaderProviderTrait,
-	BackendOidcModeContextSource,
-	createBackendOidcModeAuthorizedTransportFromBase,
-} from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { BackendOidcModeContextSource } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	type ReactRegistry,
 	TOKEN_SET_AUTH_REGISTRY,
@@ -90,6 +88,15 @@ export interface TokenSetMutationHookOptions {
 	client?: TokenSetReactClient;
 	requestOptions?: TokenSetQueryRequestOptions;
 }
+
+export interface TokenSetApiAuthorizationClient {
+	authorizedTransport(options?: {
+		baseTransport?: BaseTransportTrait;
+		requireAuthorization?: boolean;
+	}): ManagedTransportTrait;
+}
+
+type TokenSetApiClient = TokenSetReactClient | TokenSetApiAuthorizationClient;
 
 export const tokenSetDashboardQueryKeys = {
 	forClient: (clientKey: string) =>
@@ -176,18 +183,37 @@ function encodeBasicAuthorization(username: string, password: string): string {
 }
 
 function createAuthorizedTokenSetApiTransport(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	options: TokenSetApiRequestOptions,
-): ExternalTransportTrait {
-	return createBackendOidcModeAuthorizedTransportFromBase(client, {
+): ManagedTransportTrait {
+	return requireAuthorizedTransportClient(client).authorizedTransport({
 		baseTransport: options.transport ?? tokenSetApiTransport,
+	});
+}
+
+function requireAuthorizedTransportClient(
+	client: TokenSetApiClient,
+): TokenSetApiAuthorizationClient {
+	if (
+		"authorizedTransport" in client &&
+		typeof client.authorizedTransport === "function"
+	) {
+		return client;
+	}
+	throw new ClientError({
+		kind: ClientErrorKind.Configuration,
+		message: "Token-set API calls require a client with authorizedTransport().",
+		code: "token_set_api.authorized_transport.unavailable",
+		source: BackendOidcModeContextSource.Client,
 	});
 }
 
 function resolveCancellationToken(
 	options: TokenSetApiRequestOptions,
 ): CancellationTokenTrait | undefined {
-	if (options.cancellationToken) return options.cancellationToken;
+	if (options.cancellationToken) {
+		return options.cancellationToken;
+	}
 	return abortSignalToCancellationToken(options.abortSignal);
 }
 
@@ -219,7 +245,7 @@ async function resolveTokenSetClient(options: {
 		return options.client;
 	}
 
-	return resolveTokenSetRegistry(options).whenReady(options.clientKey);
+	return resolveTokenSetRegistry(options).initialize(options.clientKey);
 }
 
 function useResolvedTokenSetClient(options: {
@@ -260,7 +286,9 @@ function requireTokenSetClient(
 	client: TokenSetReactClient | undefined,
 	clientKey: string,
 ): TokenSetReactClient {
-	if (client) return client;
+	if (client) {
+		return client;
+	}
 	throw new Error(
 		`[webui token-set api] ${clientKey} is not ready. Query execution should be disabled until clientSignalFor() emits.`,
 	);
@@ -565,7 +593,7 @@ export function useTokenSetDeleteEntryMutation(
 }
 
 export async function listGroupsWithTokenSet(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	options: TokenSetApiRequestOptions = {},
 ): Promise<Group[]> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
@@ -586,7 +614,7 @@ export async function listGroupsWithTokenSet(
 }
 
 export async function listEntriesWithTokenSet(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	options: TokenSetApiRequestOptions = {},
 ): Promise<AuthEntry[]> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
@@ -607,7 +635,7 @@ export async function listEntriesWithTokenSet(
 }
 
 export async function createTokenEntryWithTokenSet(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	request: CreateTokenEntryWithTokenSetRequest,
 	options: TokenSetApiRequestOptions = {},
 ): Promise<CreateTokenResponse> {
@@ -637,7 +665,7 @@ export async function createTokenEntryWithTokenSet(
 }
 
 export async function createBasicEntryWithTokenSet(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	request: CreateBasicEntryWithTokenSetRequest,
 	options: TokenSetApiRequestOptions = {},
 ): Promise<CreateBasicEntryResponse> {
@@ -666,7 +694,7 @@ export async function createBasicEntryWithTokenSet(
 }
 
 export async function createGroupWithTokenSet(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	request: CreateGroupWithTokenSetRequest,
 	options: TokenSetApiRequestOptions = {},
 ): Promise<Group> {
@@ -696,7 +724,7 @@ export async function createGroupWithTokenSet(
 }
 
 export async function getGroupWithTokenSet(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	groupId: string,
 	options: TokenSetApiRequestOptions = {},
 ): Promise<Group> {
@@ -724,7 +752,7 @@ export async function getGroupWithTokenSet(
 }
 
 export async function updateGroupWithTokenSet(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	groupId: string,
 	request: UpdateGroupWithTokenSetRequest,
 	options: TokenSetApiRequestOptions = {},
@@ -755,7 +783,7 @@ export async function updateGroupWithTokenSet(
 }
 
 export async function deleteGroupWithTokenSet(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	groupId: string,
 	options: TokenSetApiRequestOptions = {},
 ): Promise<void> {
@@ -780,7 +808,7 @@ export async function deleteGroupWithTokenSet(
 }
 
 export async function getEntryWithTokenSet(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	entryId: string,
 	options: TokenSetApiRequestOptions = {},
 ): Promise<AuthEntry> {
@@ -808,7 +836,7 @@ export async function getEntryWithTokenSet(
 }
 
 export async function updateEntryWithTokenSet(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	entryId: string,
 	request: UpdateEntryWithTokenSetRequest,
 	options: TokenSetApiRequestOptions = {},
@@ -839,7 +867,7 @@ export async function updateEntryWithTokenSet(
 }
 
 export async function deleteEntryWithTokenSet(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	entryId: string,
 	options: TokenSetApiRequestOptions = {},
 ): Promise<void> {
@@ -864,7 +892,7 @@ export async function deleteEntryWithTokenSet(
 }
 
 export async function probeForwardAuthBoundaryWithTokenSet(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	groupName: string,
 	options: TokenSetApiRequestOptions = {},
 ): Promise<ForwardAuthBoundaryProbeResult> {
@@ -966,7 +994,7 @@ export async function probeForwardAuthWithBasicEntry(
 }
 
 export async function probePropagationRouteWithTokenSet(
-	client: AuthorizationHeaderProviderTrait,
+	client: TokenSetApiClient,
 	directive: string,
 	options: TokenSetApiRequestOptions & { path?: string } = {},
 ): Promise<PropagationProbeResult> {

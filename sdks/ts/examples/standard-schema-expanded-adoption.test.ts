@@ -9,8 +9,8 @@ import {
 } from "@securitydept/basic-auth-context-client";
 import { validateWithSchemaSync } from "@securitydept/client";
 import {
-	parseBackendOidcModeCallbackBody,
-	parseBackendOidcModeRefreshBody,
+	parseBackendOidcModeCallbackPayload,
+	parseBackendOidcModeRefreshPayload,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it, vi } from "vitest";
 
@@ -97,9 +97,9 @@ describe("@standard-schema adoption: BasicAuthContextClientConfig", () => {
 // ---------------------------------------------------------------------------
 
 describe("@standard-schema adoption: BackendOidcMode body parsers", () => {
-	describe("parseBackendOidcModeCallbackBody", () => {
+	describe("parseBackendOidcModeCallbackPayload", () => {
 		it("parses a valid callback body", () => {
-			const result = parseBackendOidcModeCallbackBody({
+			const result = parseBackendOidcModeCallbackPayload({
 				access_token: "at-123",
 				id_token: "id-456",
 				refresh_token: "rt-789",
@@ -116,7 +116,7 @@ describe("@standard-schema adoption: BackendOidcMode body parsers", () => {
 		});
 
 		it("parses a minimal callback body (required fields only)", () => {
-			const result = parseBackendOidcModeCallbackBody({
+			const result = parseBackendOidcModeCallbackPayload({
 				access_token: "at-123",
 				id_token: "id-456",
 			});
@@ -128,21 +128,21 @@ describe("@standard-schema adoption: BackendOidcMode body parsers", () => {
 		});
 
 		it("returns null when access_token is missing", () => {
-			const result = parseBackendOidcModeCallbackBody({
+			const result = parseBackendOidcModeCallbackPayload({
 				id_token: "id-456",
 			});
 			expect(result).toBeNull();
 		});
 
 		it("returns null when id_token is missing", () => {
-			const result = parseBackendOidcModeCallbackBody({
+			const result = parseBackendOidcModeCallbackPayload({
 				access_token: "at-123",
 			});
 			expect(result).toBeNull();
 		});
 
 		it("returns null for non-string access_token", () => {
-			const result = parseBackendOidcModeCallbackBody({
+			const result = parseBackendOidcModeCallbackPayload({
 				access_token: 123,
 				id_token: "id-456",
 			});
@@ -150,7 +150,7 @@ describe("@standard-schema adoption: BackendOidcMode body parsers", () => {
 		});
 
 		it("returns null when optional refresh_token has wrong type", () => {
-			const result = parseBackendOidcModeCallbackBody({
+			const result = parseBackendOidcModeCallbackPayload({
 				access_token: "at-123",
 				id_token: "id-456",
 				refresh_token: 123,
@@ -159,7 +159,7 @@ describe("@standard-schema adoption: BackendOidcMode body parsers", () => {
 		});
 
 		it("returns null when optional access_token_expires_at has wrong type", () => {
-			const result = parseBackendOidcModeCallbackBody({
+			const result = parseBackendOidcModeCallbackPayload({
 				access_token: "at-123",
 				id_token: "id-456",
 				access_token_expires_at: false,
@@ -168,9 +168,9 @@ describe("@standard-schema adoption: BackendOidcMode body parsers", () => {
 		});
 	});
 
-	describe("parseBackendOidcModeRefreshBody", () => {
+	describe("parseBackendOidcModeRefreshPayload", () => {
 		it("parses a valid refresh body", () => {
-			const result = parseBackendOidcModeRefreshBody({
+			const result = parseBackendOidcModeRefreshPayload({
 				access_token: "at-new",
 				id_token: "id-new",
 				refresh_token: "rt-new",
@@ -185,7 +185,7 @@ describe("@standard-schema adoption: BackendOidcMode body parsers", () => {
 		});
 
 		it("parses a minimal refresh body", () => {
-			const result = parseBackendOidcModeRefreshBody({
+			const result = parseBackendOidcModeRefreshPayload({
 				access_token: "at-only",
 			});
 			expect(result).not.toBeNull();
@@ -195,14 +195,14 @@ describe("@standard-schema adoption: BackendOidcMode body parsers", () => {
 		});
 
 		it("returns null when access_token is missing", () => {
-			const result = parseBackendOidcModeRefreshBody({
+			const result = parseBackendOidcModeRefreshPayload({
 				id_token: "id-only",
 			});
 			expect(result).toBeNull();
 		});
 
 		it("returns null when optional refresh_token has wrong type", () => {
-			const result = parseBackendOidcModeRefreshBody({
+			const result = parseBackendOidcModeRefreshPayload({
 				access_token: "at-123",
 				refresh_token: { nested: true },
 			});

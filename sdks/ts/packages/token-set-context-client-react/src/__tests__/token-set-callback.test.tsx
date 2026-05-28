@@ -2,20 +2,22 @@
 
 import {
 	createEventSubject,
-	createFoundationEnvironment,
 	createReplaySignal,
 	createSignal,
+	SYMBOL_DISPOSE,
 } from "@securitydept/client";
+import { FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
 	type AuthSnapshot,
 	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	createTokenSetOidcAuthRegistry,
-	TokenSetCallbackResumeController,
+	ClientInitializationMode,
+	createClientRegistry,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	CallbackResumeStatus,
+	createTokenSetCallbackResumeController,
 	TokenSetCallbackComponent,
 	type TokenSetReactClient,
 	useTokenSetCallbackResume,
@@ -35,6 +37,11 @@ function render(element: ReactElement) {
 
 	return {
 		container,
+		rerender(nextElement: ReactElement) {
+			act(() => {
+				root.render(nextElement);
+			});
+		},
 		unmount() {
 			act(() => {
 				root.unmount();
@@ -63,22 +70,8 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 }
 
 function createControllerFixture() {
-	const environment = createFoundationEnvironment({
-		transport: { execute: async () => ({ status: 204, headers: {} }) },
-		time: {
-			now: () => Date.now(),
-			setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
-			clearTimeout: (handle) =>
-				clearTimeout(handle as ReturnType<typeof setTimeout>),
-		},
-		idleCallback: {
-			requestIdleCallback: (callback) => setTimeout(callback, 0),
-			cancelIdleCallback: (handle) =>
-				clearTimeout(handle as ReturnType<typeof setTimeout>),
-		},
-	});
-	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>({
-		environment,
+	const registry = createClientRegistry<TokenSetReactClient>({
+		environment: {},
 	});
 	const state = createSignal<AuthSnapshot | null>(null);
 	const authSnapshot = createReplaySignal<AuthSnapshot | null>();
@@ -86,6 +79,7 @@ function createControllerFixture() {
 	const authorizationHeaderValue = createReplaySignal<string | undefined>();
 	const authDetermined = createReplaySignal<true>();
 	const lastAuthError = createSignal<unknown | undefined>(undefined);
+	const dispose = vi.fn(() => undefined);
 	const handleCallback = vi.fn(async () => {
 		const snapshot = createSnapshot("callback-token");
 		state.set(snapshot);
@@ -100,38 +94,48 @@ function createControllerFixture() {
 		};
 	});
 
+	const client = {
+		state,
+		authDetermined,
+		authSnapshot,
+		isAuthenticated,
+		authorizationHeaderValue,
+		lastAuthError,
+		authOperations: {
+			restorePending: createSignal(false),
+			refreshPending: createSignal(false),
+			clearPending: createSignal(false),
+			loginPending: createSignal(false),
+		},
+		authEvents: createEventSubject<TokenSetAuthEvent>(),
+		addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+		removeWorkflowSource: vi.fn(() => false),
+		start: vi.fn(async () => undefined),
+		dispose,
+		[SYMBOL_DISPOSE]: dispose,
+		restorePersistedState: vi.fn(async () => null),
+		handleCallback,
+		loginWithRedirect: vi.fn(async () => undefined),
+		loginWithPopup: vi.fn(async () => ({
+			snapshot: createSnapshot("popup-at"),
+		})),
+	};
+	Object.setPrototypeOf(client, FrontendOidcModeClient.prototype);
+
 	registry.register({
-		key: "frontend",
-		callbackPath: "/oidc/callback",
-		clientFactory: () => ({
-			state,
-			authDetermined,
-			authSnapshot,
-			isAuthenticated,
-			authorizationHeaderValue,
-			lastAuthError,
-			authOperations: {
-				restorePending: createSignal(false),
-				refreshPending: createSignal(false),
-				clearPending: createSignal(false),
-				loginPending: createSignal(false),
-			},
-			authEvents: createEventSubject<TokenSetAuthEvent>(),
-			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
-			removeWorkflowSource: vi.fn(() => false),
-			start: vi.fn(async () => undefined),
-			dispose: vi.fn(() => undefined),
-			restorePersistedState: vi.fn(async () => null),
-			handleCallback,
-			loginWithRedirect: vi.fn(async () => undefined),
-		}),
+		clientFactory: () => client as TokenSetReactClient,
+		meta: {
+			clientKey: "frontend",
+			urlPatterns: [],
+			callbackPath: "/oidc/callback",
+			requirementKind: undefined,
+			providerFamily: undefined,
+			initialization: ClientInitializationMode.Immediate,
+		},
 	});
 
 	return {
-		controller: new TokenSetCallbackResumeController({
-			registry,
-			getCallbackClient: (client) => client,
-		}),
+		controller: createTokenSetCallbackResumeController(registry),
 		handleCallback,
 		cleanup() {
 			registry.dispose();
@@ -154,9 +158,9 @@ describe("token-set callback headless surface", () => {
 				getCurrentUrl: () => "http://localhost/oidc/callback?code=ok&state=s1",
 			});
 			useEffect(() => {
-				states.push(state.status);
-			}, [state.status]);
-			return createElement("div", null, state.status);
+				states.push(state.state);
+			}, [state.state]);
+			return createElement("div", null, state.state);
 		}
 
 		const view = render(createElement(Probe));
@@ -166,6 +170,52 @@ describe("token-set callback headless surface", () => {
 		expect(fixture.handleCallback).toHaveBeenCalledTimes(1);
 		expect(states).toContain(CallbackResumeStatus.Pending);
 		expect(states.at(-1)).toBe(CallbackResumeStatus.Resolved);
+
+		view.unmount();
+		fixture.cleanup();
+	});
+
+	it("keeps the React state binding alive after reset", async () => {
+		const fixture = createControllerFixture();
+		const states: string[] = [];
+		let currentUrl: string | null =
+			"http://localhost/oidc/callback?code=ok&state=s1";
+
+		function Probe() {
+			const state = useTokenSetCallbackResume({
+				controller: fixture.controller,
+				getCurrentUrl: () => currentUrl,
+			});
+			useEffect(() => {
+				states.push(state.state);
+			}, [state.state]);
+			return createElement("div", null, state.state);
+		}
+
+		const view = render(createElement(Probe));
+		await flushMicrotasks();
+
+		expect(view.container.textContent).toBe(CallbackResumeStatus.Resolved);
+
+		currentUrl = null;
+		view.rerender(createElement(Probe));
+		await flushMicrotasks();
+
+		expect(view.container.textContent).toBe(CallbackResumeStatus.Idle);
+
+		currentUrl = "http://localhost/oidc/callback?code=again&state=s2";
+		view.rerender(createElement(Probe));
+		await flushMicrotasks();
+
+		expect(view.container.textContent).toBe(CallbackResumeStatus.Resolved);
+		expect(fixture.handleCallback).toHaveBeenCalledTimes(2);
+		expect(states).toEqual(
+			expect.arrayContaining([
+				CallbackResumeStatus.Pending,
+				CallbackResumeStatus.Resolved,
+				CallbackResumeStatus.Idle,
+			]),
+		);
 
 		view.unmount();
 		fixture.cleanup();

@@ -47,7 +47,8 @@
 		"typecheck": "tsc -b --force"
 	},
 	"dependencies": {
-		"@securitydept/client": "workspace:*"
+		"@securitydept/client": "workspace:*",
+		"es-toolkit": "^1.49.0"
 	},
 	"peerDependencies": {
 		"react": ">=19.0.0",

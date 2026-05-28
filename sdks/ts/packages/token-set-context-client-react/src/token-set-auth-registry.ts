@@ -12,32 +12,29 @@
 // Stability: provisional
 
 import {
-	type FoundationEnvironment,
 	SecuritydeptDestroyRef,
 	SecuritydeptInjectionToken,
 	type SecuritydeptProvider,
 	tryInjectInInjectionContext,
 } from "@securitydept/client";
 import {
-	TokenSetAuthRegistry as CoreTokenSetAuthRegistry,
-	createTokenSetOidcAuthRegistry,
+	ClientInitializationMode,
+	ClientRegistry as CoreClientRegistry,
+	type ClientRegistryEntry as CoreClientRegistryEntry,
+	createClientRegistry,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	type TokenSetClientEntry,
 	type TokenSetReactClient,
 } from "./contracts";
 
-export type ReactRegistry = CoreTokenSetAuthRegistry<
-	TokenSetReactClient,
-	TokenSetReactClient
->;
+export type ReactRegistry = CoreClientRegistry<TokenSetReactClient>;
 
 export const TOKEN_SET_AUTH_REGISTRY =
 	new SecuritydeptInjectionToken<ReactRegistry>("TOKEN_SET_AUTH_REGISTRY");
 
 export interface ProvideTokenSetAuthRegistryOptions {
 	clients: readonly TokenSetClientEntry[];
-	environment?: FoundationEnvironment;
 }
 
 export function provideTokenSetAuthRegistry(
@@ -49,7 +46,7 @@ export function provideTokenSetAuthRegistry(
 export function provideTokenSetAuthRegistry(
 	input: ReactRegistry | ProvideTokenSetAuthRegistryOptions,
 ): SecuritydeptProvider<ReactRegistry> {
-	if (input instanceof CoreTokenSetAuthRegistry) {
+	if (input instanceof CoreClientRegistry) {
 		return {
 			provide: TOKEN_SET_AUTH_REGISTRY,
 			useValue: input,
@@ -64,10 +61,9 @@ export function provideTokenSetAuthRegistry(
 
 function createReactTokenSetAuthRegistry({
 	clients,
-	environment,
 }: ProvideTokenSetAuthRegistryOptions): ReactRegistry {
-	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>({
-		environment,
+	const registry = createClientRegistry<TokenSetReactClient>({
+		environment: {},
 	});
 	tryInjectInInjectionContext(SecuritydeptDestroyRef, {
 		optional: true,
@@ -81,9 +77,23 @@ function registerTokenSetClients(
 	clients: readonly TokenSetClientEntry[],
 ): void {
 	for (const entry of clients) {
-		const result = registry.register(entry);
-		if (result instanceof Promise) {
-			result.catch(() => {});
-		}
+		registry.register(toCoreEntry(entry));
 	}
+}
+
+function toCoreEntry(
+	entry: TokenSetClientEntry,
+): CoreClientRegistryEntry<TokenSetReactClient> {
+	return {
+		clientFactory: entry.clientFactory,
+		meta: {
+			clientKey: entry.key,
+			urlPatterns: entry.urlPatterns ?? [],
+			callbackPath: entry.callbackPath,
+			requirementKind: entry.requirementKind,
+			providerFamily: entry.providerFamily,
+			initialization:
+				entry.initialization ?? ClientInitializationMode.Immediate,
+		},
+	};
 }

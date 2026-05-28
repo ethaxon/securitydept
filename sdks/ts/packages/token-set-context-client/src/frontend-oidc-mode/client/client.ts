@@ -28,23 +28,19 @@ import {
 	ClientError,
 	ClientErrorKind,
 	createKeyedEphemeralFlowStore,
+	decodeJwtPayload,
 	defineInstrumentMethodDecorator,
 	type EventSubscriptionTrait,
 	type FoundationEnvironment,
+	isLoopbackHttpUrl,
 	type KeyedEphemeralFlowStore,
 	normalizeAuthenticatedPrincipal,
 	type OperationSpanTrait,
-	type PopupTrait,
 	parseDurationToMs,
-	type RouterTrait,
 	type SpanTrait,
 	UserRecovery,
 } from "@securitydept/client";
 import { createAsyncSchedulerWithTimestampProvider } from "@securitydept/client/rx";
-import {
-	isLoopbackHttpUrl,
-	transformScriptForBrowser,
-} from "@securitydept/client/web";
 import {
 	type AuthorizationServer,
 	allowInsecureRequests,
@@ -67,47 +63,47 @@ import {
 	validateAuthResponse,
 } from "oauth4webapi";
 import { interval } from "rxjs";
-import { BaseOidcModeClient } from "../../orchestration/index";
+import { waitForTokenSetPopupRelay } from "../../orchestration/client/popup/relay";
 import {
-	relayTokenSetPopupCallback,
-	waitForTokenSetPopupRelay,
-} from "../../popup/relay";
-import { type OidcRedirectLoginOptions } from "../../registry/contracts/types";
+	BaseOidcModeClient,
+	type OidcPopupLoginOptions,
+	type OidcPopupLoginResult,
+	type OidcRedirectLoginOptions,
+} from "../../orchestration/index";
+import {
+	type AuthMetadataSnapshot,
+	type AuthSnapshot,
+} from "../../orchestration/token/types";
 import {
 	type FrontendOidcModeClaimsCheckResult,
 	type FrontendOidcModeClaimsCheckScript,
 	type FrontendOidcModeUserInfoResponse,
 } from "../contracts/contracts";
+import { transformScriptForBrowser } from "../contracts/script-compat";
 import { FrontendOidcModeCallbackErrorCode } from "../errors/callback-error-codes";
 import { resolveDiscoveryIssuerCompatibility } from "./discovery";
-import { FrontendOidcModeTraceEventType } from "./trace-events";
 import {
-	type AuthStateMetadataSnapshot,
-	type AuthStateSnapshot,
-	type FrontendOidcModeAuthorizeParams,
+	FrontendOidcModeOperationEventName,
+	FrontendOidcModeTraceEventType,
+	FrontendOidcModeTraceOperationName,
+} from "./trace-events";
+import {
 	type FrontendOidcModeAuthorizeResult,
 	type FrontendOidcModeCallbackResult,
 	type FrontendOidcModeClientConfig,
+	type FrontendOidcModeClientDefaultOptions,
 	FrontendOidcModeContextSource,
 	type FrontendOidcModePendingState,
 	type FrontendOidcModeTokenResult,
+	type ResolvedFrontendOidcModeClientConfig,
 } from "./types";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_REFRESH_WINDOW_MS = 60_000;
-const DEFAULT_PERSISTENCE_KEY_PREFIX = "securitydept.frontend_oidc";
-const PENDING_STATE_KEY_PREFIX = "securitydept.frontend_oidc.pending";
-const CONSUMED_STATE_KEY_PREFIX = "securitydept.frontend_oidc.consumed";
-const PENDING_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const CONSUMED_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const TRACE_TARGET = "frontend-oidc-mode";
 const TRACE_PREFIX = "frontend_oidc";
-const FRONTEND_OIDC_PAGE_ENVIRONMENT_ERROR_MESSAGE =
-	"frontend-oidc browser page helpers require an explicit page environment.\n" +
-	"Create one in your composition root with createEnvironmentForNativeWeb(...).";
 
 type FrontendOperationFields =
 	| Record<string, unknown>
@@ -143,65 +139,9 @@ type PendingStateTakeResult =
 // Utilities
 // ---------------------------------------------------------------------------
 
-/**
- * Decode a JWT payload without signature verification.
- * oauth4webapi already validates the ID token during the token exchange;
- * this function only extracts the payload claims for claims-check evaluation.
- */
-function decodeJwtPayload(jwt: string): Record<string, unknown> {
-	const parts = jwt.split(".");
-	if (parts.length !== 3) {
-		throw new Error("Invalid JWT format: expected 3 parts");
-	}
-	const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-	const padded = base64 + "===".slice(0, (4 - (base64.length % 4)) % 4);
-	const binary = atob(padded);
-	const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-	const json = new TextDecoder().decode(bytes);
-	return JSON.parse(json);
-}
-
 // ---------------------------------------------------------------------------
 // FrontendOidcModeClient
 // ---------------------------------------------------------------------------
-
-/**
- * Options for {@link FrontendOidcModeClient.loginWithRedirect}.
- */
-export interface FrontendOidcModeLoginWithRedirectOptions
-	extends OidcRedirectLoginOptions {
-	/** Override the page location capability used for browser navigation. */
-	environment: RouterTrait;
-	/** Extra query parameters to append to the authorization URL. */
-	extraParams?: Record<string, string>;
-}
-
-/**
- * Options for {@link FrontendOidcModeClient.popupLogin}.
- */
-export interface FrontendOidcModePopupLoginOptions {
-	/**
-	 * The popup callback URL. This page should call
-	 * `relayFrontendOidcPopupCallback({ environment: createEnvironmentForNativeWeb({ routerForNativeWebCreateOptions: { location, history } }) })`
-	 * to relay the result back.
-	 */
-	popupCallbackUrl: string;
-	/**
-	 * Where the parent window should continue after the popup callback succeeds.
-	 * When omitted, the client's `defaultPostAuthRedirectUri` is used.
-	 */
-	postAuthRedirectUri?: string;
-	/** Extra query parameters to append to the authorization URL. */
-	extraParams?: Record<string, string>;
-	/** Popup window width in pixels (default: 500). */
-	popupWidth?: number;
-	/** Popup window height in pixels (default: 600). */
-	popupHeight?: number;
-	/** Maximum time in ms to wait for the popup relay (default: 120000). */
-	timeoutMs?: number;
-}
-
-export interface FrontendOidcModePageRouterCapability extends RouterTrait {}
 
 /**
  * Browser-side OIDC client for frontend-oidc mode.
@@ -210,10 +150,23 @@ export interface FrontendOidcModePageRouterCapability extends RouterTrait {}
  * + PKCE flow, automatic userInfo + claims check, and metadata refresh.
  */
 export class FrontendOidcModeClient extends BaseOidcModeClient {
+	static override defaultOptions = {
+		...BaseOidcModeClient.defaultOptions,
+		persistenceKeyPrefix: "securitydept.frontend_oidc",
+		pendingStateKeyPrefix: "securitydept.frontend_oidc.pending",
+		consumedStateKeyPrefix: "securitydept.frontend_oidc.consumed",
+		pendingStateTtlMs: 10 * 60 * 1000,
+		consumedStateTtlMs: 10 * 60 * 1000,
+	} as const satisfies FrontendOidcModeClientDefaultOptions;
+
+	static resolveDefaultPersistenceKey(
+		config: Pick<FrontendOidcModeClientConfig, "issuer" | "clientId">,
+	): string {
+		return `${FrontendOidcModeClient.defaultOptions.persistenceKeyPrefix}:v1:${config.issuer}:${config.clientId}`;
+	}
+
 	// --- Config ---
-	private readonly _config: FrontendOidcModeClientConfig;
-	private readonly _resolvedScopes: string[];
-	private readonly _pkceEnabled: boolean;
+	private readonly _config: ResolvedFrontendOidcModeClientConfig;
 
 	// --- oauth4webapi ---
 	private readonly _o4wClient: Client;
@@ -237,28 +190,28 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	) {
 		super({
 			environment,
-			traceTarget: TRACE_TARGET,
-			tracePrefix: TRACE_PREFIX,
-			clientName: "FrontendOidcModeClient",
-			refresh: {
-				...config.authCheck,
-				tokenFreshness: {
-					refreshWindowMs: config.refreshWindowMs ?? DEFAULT_REFRESH_WINDOW_MS,
-				},
+			tracing: {
+				target: TRACE_TARGET,
+				prefix: TRACE_PREFIX,
 			},
+			id: config.id,
+			autoStart: config.autoStart,
+			refresh: config.refresh,
 			persistence: environment.persistentStorage
 				? {
 						store: environment.persistentStorage,
 						key:
-							config.persistentStateKey ??
-							`${DEFAULT_PERSISTENCE_KEY_PREFIX}:v1:${config.issuer}:${config.clientId}`,
+							config.persistence?.key ??
+							FrontendOidcModeClient.resolveDefaultPersistenceKey(config),
 					}
 				: undefined,
 		});
 
-		this._config = config;
-		this._resolvedScopes = config.scopes ?? ["openid"];
-		this._pkceEnabled = config.pkceEnabled !== false;
+		this._config = {
+			...config,
+			scopes: config.scopes ?? ["openid"],
+			pkceEnabled: config.pkceEnabled ?? true,
+		};
 
 		this._o4wClient = { client_id: config.clientId };
 		this._clientAuth = config.clientSecret
@@ -269,18 +222,20 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			this._pendingStore =
 				createKeyedEphemeralFlowStore<FrontendOidcModePendingState>({
 					store: environment.sessionStorage,
-					keyPrefix: PENDING_STATE_KEY_PREFIX,
+					keyPrefix:
+						FrontendOidcModeClient.defaultOptions.pendingStateKeyPrefix,
 				});
 			this._consumedStateStore =
 				createKeyedEphemeralFlowStore<FrontendOidcModeConsumedState>({
 					store: environment.sessionStorage,
-					keyPrefix: CONSUMED_STATE_KEY_PREFIX,
+					keyPrefix:
+						FrontendOidcModeClient.defaultOptions.consumedStateKeyPrefix,
 				});
 		}
 	}
 
 	/** The resolved configuration. */
-	get config(): Readonly<FrontendOidcModeClientConfig> {
+	get config(): Readonly<ResolvedFrontendOidcModeClientConfig> {
 		return this._config;
 	}
 
@@ -299,71 +254,52 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * The consumer should redirect the browser to the returned URL.
 	 * On the callback page, call `handleCallback(callbackUrl)`.
 	 */
-	async authorizeUrl(
-		postAuthRedirectUri?: string,
-		extraParams?: Record<string, string>,
-	): Promise<string> {
+	async authorizeUrl(postAuthRedirectUri?: string): Promise<string> {
 		return await this._authorizeUrlWithState({
 			postAuthRedirectUri,
-			extraParams,
 		});
 	}
 
-	private async _authorizeUrlWithState(options: {
-		postAuthRedirectUri?: string;
-		redirectUri?: string;
-		extraParams?: Record<string, string>;
-	}): Promise<string> {
+	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.Authorize)
+	private async _authorizeUrlWithState(
+		options: {
+			postAuthRedirectUri?: string;
+			redirectUri?: string;
+		},
+		operationSpan?: OperationSpanTrait,
+	): Promise<string> {
 		this._throwIfNotOperational();
-		this._recordTrace(
-			FrontendOidcModeTraceEventType.AuthorizeStarted,
-			undefined,
-			this.span,
-		);
+		operationSpan?.setAttributes({
+			hasPostAuthRedirectUri:
+				options.postAuthRedirectUri !== undefined ||
+				this._config.defaultPostAuthRedirectUri !== undefined,
+		});
 
-		try {
-			await this._ensureAuthServer();
+		await this._ensureAuthServer(operationSpan);
 
-			const effectiveRedirectUri =
-				options.redirectUri ?? this._config.redirectUri;
-			const result = await this._buildAuthorizeUrl({
-				redirectUri: effectiveRedirectUri,
-				extraParams: options.extraParams,
-			});
+		const effectiveRedirectUri =
+			options.redirectUri ?? this._config.redirectUri;
+		const result = await this._buildAuthorizeUrl({
+			redirectUri: effectiveRedirectUri,
+		});
 
-			const effectivePostAuthRedirectUri =
-				options.postAuthRedirectUri ?? this._config.defaultPostAuthRedirectUri;
+		const effectivePostAuthRedirectUri =
+			options.postAuthRedirectUri ?? this._config.defaultPostAuthRedirectUri;
 
-			await this._savePendingState({
-				codeVerifier: result.codeVerifier,
-				state: result.state,
-				contextSource: FrontendOidcModeContextSource.Client,
-				issuer: this._config.issuer,
-				clientId: this._config.clientId,
-				redirectUri: effectiveRedirectUri,
-				nonce: result.nonce,
-				postAuthRedirectUri: effectivePostAuthRedirectUri,
-				createdAt: this._environment.time.now(),
-			});
+		await this._savePendingState({
+			codeVerifier: result.codeVerifier,
+			state: result.state,
+			contextSource: FrontendOidcModeContextSource.Client,
+			issuer: this._config.issuer,
+			clientId: this._config.clientId,
+			redirectUri: effectiveRedirectUri,
+			nonce: result.nonce,
+			postAuthRedirectUri: effectivePostAuthRedirectUri,
+			createdAt: this._environment.time.now(),
+		});
 
-			this._recordTrace(
-				FrontendOidcModeTraceEventType.AuthorizeSucceeded,
-				{
-					state: result.state,
-				},
-				this.span,
-			);
-
-			return result.redirectUrl;
-		} catch (error) {
-			this._recordFailureTrace(
-				FrontendOidcModeTraceEventType.AuthorizeFailed,
-				error,
-				undefined,
-				this.span,
-			);
-			throw error;
-		}
+		operationSpan?.setAttributes({ state: result.state });
+		return result.redirectUrl;
 	}
 
 	/**
@@ -374,20 +310,36 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * for initiating frontend-oidc login in a browser context.
 	 */
 	async loginWithRedirect(
-		options: FrontendOidcModeLoginWithRedirectOptions,
+		options: OidcRedirectLoginOptions = {},
 	): Promise<void> {
-		const environment =
-			options?.environment ?? failMissingFrontendOidcPageEnvironment();
-		const url = await this.authorizeUrl(
-			options?.postAuthRedirectUri,
-			options?.extraParams,
-		);
+		return await this._loginWithRedirect(options);
+	}
 
-		await environment.navigate({
+	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.LoginRedirect)
+	private async _loginWithRedirect(
+		options: OidcRedirectLoginOptions,
+		operationSpan?: OperationSpanTrait,
+	): Promise<void> {
+		operationSpan?.setAttributes({
+			hasPostAuthRedirectUri: options.postAuthRedirectUri !== undefined,
+		});
+		const router = this._environment.router;
+		if (!router) {
+			throw new ClientError({
+				kind: ClientErrorKind.Configuration,
+				code: "frontend_oidc.redirect.router_unavailable",
+				message: "Frontend OIDC redirect login requires environment.router.",
+				source: TRACE_TARGET,
+			});
+		}
+		const url = await this.authorizeUrl(options.postAuthRedirectUri);
+
+		await router.navigate({
 			url,
 			intent: "auth_redirect",
 			mode: "external",
 		});
+		operationSpan?.setAttributes({ navigationMode: "external" });
 	}
 
 	/**
@@ -399,9 +351,14 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 *
 	 * @returns The callback result from processing the authorization code.
 	 */
-	async popupLogin(
-		options: FrontendOidcModePopupLoginOptions,
-	): Promise<FrontendOidcModeCallbackResult> {
+	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.LoginPopup)
+	async loginWithPopup(
+		options: OidcPopupLoginOptions,
+		operationSpan?: OperationSpanTrait,
+	): Promise<OidcPopupLoginResult> {
+		operationSpan?.setAttributes({
+			popupCallbackUrl: options.popupCallbackUrl,
+		});
 		const popupCapability = this._environment.popup;
 		if (!popupCapability) {
 			throw new ClientError({
@@ -413,13 +370,11 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 				recovery: UserRecovery.RestartFlow,
 			});
 		}
-		const url = await this._authorizeUrlWithState({
-			postAuthRedirectUri: options.postAuthRedirectUri,
+		const popupAuthorizeUrl = await this._authorizeUrlWithState({
 			redirectUri: options.popupCallbackUrl,
-			extraParams: options.extraParams,
 		});
 
-		const popup = popupCapability.open(url, {
+		const popupHandle = popupCapability.open(popupAuthorizeUrl, {
 			expectedOrigin: new URL(
 				options.popupCallbackUrl,
 				this._config.redirectUri,
@@ -427,41 +382,25 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			width: options.popupWidth,
 			height: options.popupHeight,
 		});
-		this._recordTrace(
-			FrontendOidcModeTraceEventType.PopupOpened,
+		operationSpan?.addEvent(FrontendOidcModeOperationEventName.PopupOpened, {
+			popupCallbackUrl: options.popupCallbackUrl,
+		});
+
+		const callbackUrl = await waitForTokenSetPopupRelay({
+			popup: popupHandle,
+			time: this._environment.time,
+			timeoutMs: options.timeoutMs,
+		});
+
+		operationSpan?.addEvent(
+			FrontendOidcModeOperationEventName.PopupRelaySucceeded,
 			{
 				popupCallbackUrl: options.popupCallbackUrl,
 			},
-			this.span,
 		);
 
-		try {
-			const callbackUrl = await waitForTokenSetPopupRelay({
-				popup,
-				time: this._environment.time,
-				timeoutMs: options.timeoutMs,
-			});
-
-			this._recordTrace(
-				FrontendOidcModeTraceEventType.PopupRelaySucceeded,
-				{
-					popupCallbackUrl: options.popupCallbackUrl,
-				},
-				this.span,
-			);
-
-			return this.handleCallback(callbackUrl);
-		} catch (error) {
-			this._recordFailureTrace(
-				FrontendOidcModeTraceEventType.PopupRelayFailed,
-				error,
-				{
-					popupCallbackUrl: options.popupCallbackUrl,
-				},
-				this.span,
-			);
-			throw error;
-		}
+		const result = await this._handleCallback(callbackUrl, operationSpan);
+		return { snapshot: result.snapshot };
 	}
 
 	/**
@@ -470,129 +409,115 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * Restores pending state, exchanges code, fetches userInfo,
 	 * runs claims check, persists snapshot, and schedules refresh.
 	 */
-	@instrumentFrontendMethod("frontend_oidc.callback", {
+	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.Callback, {
 		flow: "callback",
 	})
 	async handleCallback(
 		callbackUrl: string,
 		operationSpan?: OperationSpanTrait,
 	): Promise<FrontendOidcModeCallbackResult> {
-		this._recordTrace(
-			FrontendOidcModeTraceEventType.CallbackStarted,
-			undefined,
+		return await this._handleCallback(callbackUrl, operationSpan);
+	}
+
+	private async _handleCallback(
+		callbackUrl: string,
+		operationSpan?: OperationSpanTrait,
+	): Promise<FrontendOidcModeCallbackResult> {
+		this._throwIfNotOperational();
+
+		const url = new URL(callbackUrl);
+		const state = url.searchParams.get("state");
+		if (!state) {
+			throw new ClientError({
+				kind: ClientErrorKind.Protocol,
+				message: "Callback URL missing state parameter",
+				code: FrontendOidcModeCallbackErrorCode.MissingState,
+				recovery: UserRecovery.RestartFlow,
+				source: TRACE_TARGET,
+			});
+		}
+
+		const pendingResult = await this._takePendingState(state);
+		if (pendingResult.kind === "missing") {
+			throw new ClientError({
+				kind: ClientErrorKind.Protocol,
+				message:
+					"No pending authorization state exists for this callback state",
+				code: FrontendOidcModeCallbackErrorCode.UnknownState,
+				recovery: UserRecovery.RestartFlow,
+				source: TRACE_TARGET,
+			});
+		}
+
+		if (pendingResult.kind === "duplicate") {
+			throw new ClientError({
+				kind: ClientErrorKind.Protocol,
+				message: "This callback state has already been consumed",
+				code: FrontendOidcModeCallbackErrorCode.DuplicateState,
+				recovery: UserRecovery.RestartFlow,
+				source: TRACE_TARGET,
+			});
+		}
+
+		if (pendingResult.kind === "stale") {
+			throw new ClientError({
+				kind: ClientErrorKind.Protocol,
+				message: "Pending authorization state expired before callback",
+				code: FrontendOidcModeCallbackErrorCode.PendingStale,
+				recovery: UserRecovery.RestartFlow,
+				source: TRACE_TARGET,
+			});
+		}
+
+		const pending = pendingResult.pending;
+		if (
+			pending.contextSource !== FrontendOidcModeContextSource.Client ||
+			pending.issuer !== this._config.issuer ||
+			pending.clientId !== this._config.clientId
+		) {
+			throw new ClientError({
+				kind: ClientErrorKind.Protocol,
+				message:
+					"Pending authorization state does not belong to this frontend OIDC client",
+				code: FrontendOidcModeCallbackErrorCode.PendingClientMismatch,
+				recovery: UserRecovery.RestartFlow,
+				source: TRACE_TARGET,
+			});
+		}
+
+		this._throwIfNotOperational();
+
+		await this._ensureAuthServer(operationSpan);
+		const tokens = await this.exchangeCode(
+			callbackUrl,
+			pending.codeVerifier,
+			pending.state,
+			pending.redirectUri,
+			pending.nonce,
+		);
+
+		this._throwIfNotOperational();
+
+		const metadata = await this._performClaimsCheck(
+			tokens,
 			operationSpan ?? this.span,
 		);
 
-		try {
-			this._throwIfNotOperational();
+		const snapshot: AuthSnapshot = {
+			tokens: this._tokenResultToTokenSnapshot(tokens),
+			metadata,
+		};
 
-			const url = new URL(callbackUrl);
-			const state = url.searchParams.get("state");
-			if (!state) {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					message: "Callback URL missing state parameter",
-					code: FrontendOidcModeCallbackErrorCode.MissingState,
-					recovery: UserRecovery.RestartFlow,
-					source: TRACE_TARGET,
-				});
-			}
+		await this._applySnapshot(snapshot, {}, operationSpan);
+		operationSpan?.setAttributes({
+			hasClaimsCheck: metadata.principal !== undefined,
+			persisted: this._persistence !== null,
+		});
 
-			const pendingResult = await this._takePendingState(state);
-			if (pendingResult.kind === "missing") {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					message:
-						"No pending authorization state exists for this callback state",
-					code: FrontendOidcModeCallbackErrorCode.UnknownState,
-					recovery: UserRecovery.RestartFlow,
-					source: TRACE_TARGET,
-				});
-			}
-
-			if (pendingResult.kind === "duplicate") {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					message: "This callback state has already been consumed",
-					code: FrontendOidcModeCallbackErrorCode.DuplicateState,
-					recovery: UserRecovery.RestartFlow,
-					source: TRACE_TARGET,
-				});
-			}
-
-			if (pendingResult.kind === "stale") {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					message: "Pending authorization state expired before callback",
-					code: FrontendOidcModeCallbackErrorCode.PendingStale,
-					recovery: UserRecovery.RestartFlow,
-					source: TRACE_TARGET,
-				});
-			}
-
-			const pending = pendingResult.pending;
-			if (
-				pending.contextSource !== FrontendOidcModeContextSource.Client ||
-				pending.issuer !== this._config.issuer ||
-				pending.clientId !== this._config.clientId
-			) {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					message:
-						"Pending authorization state does not belong to this frontend OIDC client",
-					code: FrontendOidcModeCallbackErrorCode.PendingClientMismatch,
-					recovery: UserRecovery.RestartFlow,
-					source: TRACE_TARGET,
-				});
-			}
-
-			this._throwIfNotOperational();
-
-			await this._ensureAuthServer(operationSpan);
-			const tokens = await this.exchangeCode(
-				callbackUrl,
-				pending.codeVerifier,
-				pending.state,
-				pending.redirectUri,
-				pending.nonce,
-			);
-
-			this._throwIfNotOperational();
-
-			const metadata = await this._performClaimsCheck(
-				tokens,
-				operationSpan ?? this.span,
-			);
-
-			const snapshot: AuthStateSnapshot = {
-				tokens: this._tokenResultToTokenSnapshot(tokens),
-				metadata,
-			};
-
-			await this._applySnapshot(snapshot, {}, operationSpan);
-
-			this._recordTrace(
-				FrontendOidcModeTraceEventType.CallbackSucceeded,
-				{
-					hasClaimsCheck: metadata.principal !== undefined,
-					persisted: this._persistence !== null,
-				},
-				operationSpan ?? this.span,
-			);
-
-			return {
-				snapshot,
-				postAuthRedirectUri: pending.postAuthRedirectUri,
-			};
-		} catch (error) {
-			this._recordFailureTrace(
-				FrontendOidcModeTraceEventType.CallbackFailed,
-				error,
-				undefined,
-				operationSpan ?? this.span,
-			);
-			throw error;
-		}
+		return {
+			snapshot,
+			postAuthRedirectUri: pending.postAuthRedirectUri,
+		};
 	}
 
 	/**
@@ -602,7 +527,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * and claims check is re-run. Otherwise, existing metadata is preserved.
 	 */
 	@instrumentFrontendMethod(
-		"frontend_oidc.refresh",
+		FrontendOidcModeTraceOperationName.Refresh,
 		function (this: FrontendOidcModeClient) {
 			const snapshotSlot = this.authSnapshot.get();
 			const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
@@ -613,10 +538,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		},
 	)
 	protected async _refreshAuthSnapshot(
-		_currentSnapshot: AuthStateSnapshot,
+		_currentSnapshot: AuthSnapshot,
 		_freshnessTiming: unknown,
 		operationSpan?: OperationSpanTrait,
-	): Promise<AuthStateSnapshot | null> {
+	): Promise<AuthSnapshot | null> {
 		const snapshotSlot = this._authSnapshotSignal.get();
 		const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
 		if (!current?.tokens.refreshMaterial) {
@@ -624,107 +549,75 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		}
 		const refreshMaterial = current.tokens.refreshMaterial;
 
-		this._recordTrace(
-			FrontendOidcModeTraceEventType.RefreshStarted,
-			{
-				hasIdToken: current.tokens.idToken !== undefined,
-			},
-			operationSpan ?? this.span,
-		);
+		this._throwIfNotOperational();
 
-		try {
-			this._throwIfNotOperational();
+		await this._ensureAuthServer(operationSpan);
+		const tokens = await this.refreshTokens(refreshMaterial);
 
-			await this._ensureAuthServer(operationSpan);
-			const tokens = await this.refreshTokens(refreshMaterial);
+		this._throwIfNotOperational();
 
-			this._throwIfNotOperational();
-
-			let metadata: AuthStateMetadataSnapshot;
-			if (tokens.idToken) {
-				metadata = await this._performClaimsCheck(
-					tokens,
-					operationSpan ?? this.span,
-				);
-			} else {
-				metadata = current.metadata;
-			}
-
-			const newSnapshot: AuthStateSnapshot = {
-				tokens: this._tokenResultToTokenSnapshot(
-					tokens,
-					current.tokens.refreshMaterial,
-				),
-				metadata,
-			};
-
-			this._recordTrace(
-				FrontendOidcModeTraceEventType.RefreshSucceeded,
-				{
-					newIdToken: tokens.idToken !== undefined,
-					persisted: this._persistence !== null,
-				},
+		let metadata: AuthMetadataSnapshot;
+		if (tokens.idToken) {
+			metadata = await this._performClaimsCheck(
+				tokens,
 				operationSpan ?? this.span,
 			);
-
-			return newSnapshot;
-		} catch (error) {
-			this._recordFailureTrace(
-				FrontendOidcModeTraceEventType.RefreshFailed,
-				error,
-				undefined,
-				operationSpan ?? this.span,
-			);
-			throw error;
+		} else {
+			metadata = current.metadata;
 		}
+
+		const newSnapshot: AuthSnapshot = {
+			tokens: this._tokenResultToTokenSnapshot(
+				tokens,
+				current.tokens.refreshMaterial,
+			),
+			metadata,
+		};
+
+		operationSpan?.setAttributes({
+			newIdToken: tokens.idToken !== undefined,
+			persisted: this._persistence !== null,
+		});
+
+		return newSnapshot;
 	}
 
 	/**
 	 * Fetch userInfo using the current auth state and run claims check.
 	 */
 	async fetchUserInfo(): Promise<FrontendOidcModeClaimsCheckResult> {
-		this._recordTrace(
-			FrontendOidcModeTraceEventType.UserInfoStarted,
-			undefined,
-			this.span,
-		);
+		return await this._fetchUserInfoFromCurrentState();
+	}
 
-		try {
-			this._throwIfNotOperational();
+	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.UserInfo)
+	private async _fetchUserInfoFromCurrentState(
+		operationSpan?: OperationSpanTrait,
+	): Promise<FrontendOidcModeClaimsCheckResult> {
+		this._throwIfNotOperational();
 
-			const snapshotSlot = this._authSnapshotSignal.get();
-			const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
-			if (!current?.tokens.accessToken || !current.tokens.idToken) {
-				throw new ClientError({
-					kind: ClientErrorKind.Unauthenticated,
-					message: "Cannot fetch user info without access_token and id_token",
-					code: "frontend_oidc.user_info.unauthenticated",
-					source: TRACE_TARGET,
-				});
-			}
-
-			await this._ensureAuthServer();
-			const userInfo = await this.fetchUserInfoRaw(current.tokens.accessToken);
-			const result = await this.checkClaims(
-				current.tokens.idToken,
-				userInfo.claims,
-			);
-
-			this._recordTrace(
-				FrontendOidcModeTraceEventType.UserInfoSucceeded,
-				undefined,
-				this.span,
-			);
-			return result;
-		} catch (error) {
-			this._recordFailureTrace(
-				FrontendOidcModeTraceEventType.UserInfoFailed,
-				error,
-				undefined,
-				this.span,
-			);
-			throw error;
+		const snapshotSlot = this._authSnapshotSignal.get();
+		const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
+		operationSpan?.setAttributes({
+			hasAccessToken: current?.tokens.accessToken !== undefined,
+			hasIdToken: current?.tokens.idToken !== undefined,
+		});
+		if (!current?.tokens.accessToken || !current.tokens.idToken) {
+			throw new ClientError({
+				kind: ClientErrorKind.Unauthenticated,
+				message: "Cannot fetch user info without access_token and id_token",
+				code: "frontend_oidc.user_info.unauthenticated",
+				source: TRACE_TARGET,
+			});
 		}
+
+		await this._ensureAuthServer(operationSpan);
+		const userInfo = await this.fetchUserInfoRaw(current.tokens.accessToken);
+		const result = await this.checkClaims(
+			current.tokens.idToken,
+			userInfo.claims,
+		);
+		operationSpan?.setAttributes({ hasClaimsCheck: true });
+		return result;
 	}
 
 	// =======================================================================
@@ -764,18 +657,14 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	}
 
 	/** Build an authorization URL with PKCE + nonce (low-level). */
-	async buildAuthorizeUrl(
-		params?: FrontendOidcModeAuthorizeParams,
-	): Promise<FrontendOidcModeAuthorizeResult> {
+	async buildAuthorizeUrl(): Promise<FrontendOidcModeAuthorizeResult> {
 		return await this._buildAuthorizeUrl({
 			redirectUri: this._config.redirectUri,
-			extraParams: params?.extraParams,
 		});
 	}
 
 	private async _buildAuthorizeUrl(options: {
 		redirectUri: string;
-		extraParams?: Record<string, string>;
 	}): Promise<FrontendOidcModeAuthorizeResult> {
 		const authServer = this._requireAuthServer("buildAuthorizeUrl");
 		if (!authServer.authorization_endpoint) {
@@ -790,22 +679,16 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		authUrl.searchParams.set("client_id", this._config.clientId);
 		authUrl.searchParams.set("redirect_uri", options.redirectUri);
 		authUrl.searchParams.set("response_type", "code");
-		authUrl.searchParams.set("scope", this._resolvedScopes.join(" "));
+		authUrl.searchParams.set("scope", this._config.scopes.join(" "));
 		authUrl.searchParams.set("state", state);
 		authUrl.searchParams.set("nonce", nonce);
 
 		let codeVerifier: string | undefined;
-		if (this._pkceEnabled) {
+		if (this._config.pkceEnabled) {
 			codeVerifier = generateRandomCodeVerifier();
 			const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
 			authUrl.searchParams.set("code_challenge", codeChallenge);
 			authUrl.searchParams.set("code_challenge_method", "S256");
-		}
-
-		if (options.extraParams) {
-			for (const [key, value] of Object.entries(options.extraParams)) {
-				authUrl.searchParams.set(key, value);
-			}
 		}
 
 		return { redirectUrl: authUrl.toString(), codeVerifier, state, nonce };
@@ -835,7 +718,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			this._clientAuth,
 			params,
 			redirectUri,
-			this._pkceEnabled ? (codeVerifier ?? nopkce) : nopkce,
+			this._config.pkceEnabled ? (codeVerifier ?? nopkce) : nopkce,
 			this._oauthRequestOptions(),
 		);
 
@@ -939,7 +822,9 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	// =======================================================================
 
 	private async _ensureAuthServer(span?: SpanTrait): Promise<void> {
-		if (this._authServer) return;
+		if (this._authServer) {
+			return;
+		}
 		if (this._canConstructManually()) {
 			this._authServer = this._constructManualAuthServer();
 			return;
@@ -1057,7 +942,9 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	}
 
 	private _validateRequiredScopes(grantedScopes: string[] | undefined): void {
-		if (!this._config.requiredScopes?.length) return;
+		if (!this._config.requiredScopes?.length) {
+			return;
+		}
 		const granted = new Set(grantedScopes ?? []);
 		const missing = this._config.requiredScopes.filter((s) => !granted.has(s));
 		if (missing.length > 0) {
@@ -1087,7 +974,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	private async _performClaimsCheck(
 		tokens: FrontendOidcModeTokenResult,
 		span: SpanTrait,
-	): Promise<AuthStateMetadataSnapshot> {
+	): Promise<AuthMetadataSnapshot> {
 		if (!tokens.idToken) {
 			return {};
 		}
@@ -1273,7 +1160,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 		if (
 			this._environment.time.now() - pending.createdAt >
-			PENDING_STATE_TTL_MS
+			FrontendOidcModeClient.defaultOptions.pendingStateTtlMs
 		) {
 			return { kind: "stale", pending };
 		}
@@ -1298,7 +1185,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 		if (
 			this._environment.time.now() - consumedState.consumedAt >
-			CONSUMED_STATE_TTL_MS
+			FrontendOidcModeClient.defaultOptions.consumedStateTtlMs
 		) {
 			await this._clearConsumedState(state);
 			return null;
@@ -1317,9 +1204,13 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 	private _scheduleMetadataRefresh(): void {
 		const intervalStr = this._config.metadataRefreshInterval;
-		if (!intervalStr) return;
+		if (!intervalStr) {
+			return;
+		}
 		const intervalMs = parseDurationToMs(intervalStr);
-		if (intervalMs <= 0) return;
+		if (intervalMs <= 0) {
+			return;
+		}
 
 		this._cancelMetadataRefresh();
 
@@ -1328,7 +1219,9 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			createAsyncSchedulerWithTimestampProvider(this._environment.time),
 		).subscribe({
 			next: () => {
-				if (this._rootCancellation.token.isCancellationRequested) return;
+				if (this._rootCancellation.token.isCancellationRequested) {
+					return;
+				}
 				this.discover(this.span)
 					.then(() => {
 						this._recordTrace(
@@ -1350,96 +1243,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	}
 
 	private _cancelMetadataRefresh(): void {
-		if (!this._metadataRefreshHandle) return;
+		if (!this._metadataRefreshHandle) {
+			return;
+		}
 		this._metadataRefreshHandle.unsubscribe();
 		this._metadataRefreshHandle = null;
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Factory function (backward-compatible)
-// ---------------------------------------------------------------------------
-
-/**
- * Create a frontend OIDC mode client.
- *
- * Prefer `new FrontendOidcModeClient(config, environment)` for consistency with
- * `BackendOidcModeClient`.
- */
-export function createFrontendOidcModeClient(
-	config: FrontendOidcModeClientConfig,
-	environment: FoundationEnvironment,
-): FrontendOidcModeClient {
-	return new FrontendOidcModeClient(config, environment);
-}
-
-// ---------------------------------------------------------------------------
-// Popup callback relay helper
-// ---------------------------------------------------------------------------
-
-/**
- * Relay the frontend-oidc popup callback result back to the opener window.
- *
- * Call this from the popup callback page. It posts the full callback URL
- * (including query parameters with code and state) back to the opener
- * and closes the popup.
- *
- * @example
- * ```html
- * <script type="module">
- *   import { createEnvironmentForNativeWeb } from "@securitydept/client/web";
- *   import { relayFrontendOidcPopupCallback } from "@securitydept/token-set-context-client/frontend-oidc-mode";
- *   relayFrontendOidcPopupCallback({
- *     environment: createEnvironmentForNativeWeb({
- *       routerForNativeWebCreateOptions: { location, history },
- *     }),
- *   });
- * </script>
- * ```
- */
-export interface RelayFrontendOidcPopupCallbackOptions {
-	environment: Pick<FoundationEnvironment, "time"> & {
-		popup?: PopupTrait | null;
-		router?: Pick<RouterTrait, "currentUrl"> | null;
-	};
-}
-
-export function relayFrontendOidcPopupCallback(
-	options: RelayFrontendOidcPopupCallbackOptions,
-): void {
-	const environment =
-		options?.environment ?? failMissingFrontendOidcPageEnvironment();
-	const attachedPopup = environment.popup?.attach();
-	if (!attachedPopup || attachedPopup.kind === "failure") {
-		throw (
-			attachedPopup?.error ??
-			new ClientError({
-				kind: ClientErrorKind.Configuration,
-				code: "frontend_oidc.popup.attach_unavailable",
-				message:
-					"Frontend OIDC popup callback relay requires environment.popup.attach().",
-				source: TRACE_TARGET,
-				recovery: UserRecovery.RestartFlow,
-			})
-		);
-	}
-	const callbackUrl = environment.router?.currentUrl()?.toString();
-	if (!callbackUrl) {
-		throw new ClientError({
-			kind: ClientErrorKind.Configuration,
-			code: "frontend_oidc.popup.callback_url_missing",
-			message:
-				"Frontend OIDC popup callback relay requires environment.router.currentUrl().",
-			source: TRACE_TARGET,
-			recovery: UserRecovery.RestartFlow,
-		});
-	}
-	relayTokenSetPopupCallback({
-		popup: attachedPopup.handle,
-		payload: callbackUrl,
-	});
-}
-
-function failMissingFrontendOidcPageEnvironment(): never {
-	throw new Error(FRONTEND_OIDC_PAGE_ENVIRONMENT_ERROR_MESSAGE);
 }

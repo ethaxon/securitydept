@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 
-import { createEventSubject, createSignal } from "@securitydept/client";
+import {
+	createEventSubject,
+	createSignal,
+	SYMBOL_DISPOSE,
+} from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useReplaySignalValue,
@@ -10,7 +14,11 @@ import {
 	type AuthSnapshot,
 	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
-import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
+import {
+	ClientInitializationMode,
+	type ClientRegistryEntry,
+	createClientRegistry,
+} from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
 	type ReactRegistry,
@@ -65,25 +73,45 @@ function createClient(
 			state.set(null);
 			reactive.emitSnapshot(null);
 		},
+		[SYMBOL_DISPOSE]: () => {
+			state.set(null);
+			reactive.emitSnapshot(null);
+		},
 		restorePersistedState: async () => state.get(),
-		handleCallback: async () => ({ snapshot: state.get()! }),
 		loginWithRedirect: async () => undefined,
+		loginWithPopup: async () => ({ snapshot: state.get()! }),
 	};
 }
 
 function createManualRegistry(
 	clients: readonly TokenSetClientEntry[],
 ): ReactRegistry {
-	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>();
+	const registry = createClientRegistry<TokenSetReactClient>({
+		environment: {},
+	});
 
 	for (const client of clients) {
-		const registration = registry.register(client);
-		if (registration instanceof Promise) {
-			registration.catch(() => {});
-		}
+		registry.register(toCoreEntry(client));
 	}
 
 	return registry;
+}
+
+function toCoreEntry(
+	entry: TokenSetClientEntry,
+): ClientRegistryEntry<TokenSetReactClient> {
+	return {
+		clientFactory: entry.clientFactory,
+		meta: {
+			clientKey: entry.key,
+			urlPatterns: entry.urlPatterns ?? [],
+			callbackPath: entry.callbackPath,
+			requirementKind: entry.requirementKind,
+			providerFamily: entry.providerFamily,
+			initialization:
+				entry.initialization ?? ClientInitializationMode.Immediate,
+		},
+	};
 }
 
 describe("react multi-client registry baseline", () => {
@@ -104,8 +132,8 @@ describe("react multi-client registry baseline", () => {
 				clientFactory: () => createClient(adminState),
 			},
 		]);
-		await registry.whenReady("main");
-		await registry.whenReady("admin");
+		await registry.initialize("main");
+		await registry.initialize("admin");
 
 		function Probe() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
@@ -162,7 +190,7 @@ describe("react multi-client registry baseline", () => {
 				clientFactory: () => createClient(mainState),
 			},
 		]);
-		await registry.whenReady("main");
+		await registry.initialize("main");
 
 		function Probe() {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);

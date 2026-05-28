@@ -66,7 +66,7 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		layers: [EvidenceSemanticLayer.VerifiedEnvironments],
 	},
 	{
-		// Standalone minimal-entry example for backend-oidc-mode/web.
+		// Standalone minimal-entry example for backend-oidc browser flows.
 		// Proves browser client creation, bootstrap, authorize URL,
 		// and SSR restoreState alternative.
 		path: "examples/backend-oidc-web-minimal-entry.test.ts",

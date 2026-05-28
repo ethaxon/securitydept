@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 
-import { createEventSubject, createSignal } from "@securitydept/client";
+import {
+	createEventSubject,
+	createSignal,
+	SYMBOL_DISPOSE,
+} from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useSecuritydeptContext,
@@ -9,7 +13,11 @@ import {
 	type AuthSnapshot,
 	type TokenSetAuthEvent,
 } from "@securitydept/token-set-context-client/orchestration";
-import { createTokenSetOidcAuthRegistry } from "@securitydept/token-set-context-client/registry";
+import {
+	ClientInitializationMode,
+	type ClientRegistryEntry,
+	createClientRegistry,
+} from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
 	type ReactRegistry,
@@ -66,16 +74,32 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 function createManualRegistry(
 	clients: readonly TokenSetClientEntry[],
 ): ReactRegistry {
-	const registry = createTokenSetOidcAuthRegistry<TokenSetReactClient>();
+	const registry = createClientRegistry<TokenSetReactClient>({
+		environment: {},
+	});
 
 	for (const client of clients) {
-		const registration = registry.register(client);
-		if (registration instanceof Promise) {
-			registration.catch(() => {});
-		}
+		registry.register(toCoreEntry(client));
 	}
 
 	return registry;
+}
+
+function toCoreEntry(
+	entry: TokenSetClientEntry,
+): ClientRegistryEntry<TokenSetReactClient> {
+	return {
+		clientFactory: entry.clientFactory,
+		meta: {
+			clientKey: entry.key,
+			urlPatterns: entry.urlPatterns ?? [],
+			callbackPath: entry.callbackPath,
+			requirementKind: entry.requirementKind,
+			providerFamily: entry.providerFamily,
+			initialization:
+				entry.initialization ?? ClientInitializationMode.Immediate,
+		},
+	};
 }
 
 describe("react-query integration evidence", () => {
@@ -93,13 +117,14 @@ describe("react-query integration evidence", () => {
 					removeWorkflowSource: () => false,
 					start: async () => undefined,
 					dispose: vi.fn(),
+					[SYMBOL_DISPOSE]: vi.fn(),
 					restorePersistedState: async () => snapshot,
-					handleCallback: async () => ({ snapshot }),
 					loginWithRedirect: async () => undefined,
+					loginWithPopup: async () => ({ snapshot }),
 				}),
 			},
 		]);
-		await registry.whenReady("main");
+		await registry.initialize("main");
 		const queryClient = new QueryClient({
 			defaultOptions: { queries: { retry: false } },
 		});
@@ -159,13 +184,14 @@ describe("react-query integration evidence", () => {
 					removeWorkflowSource: () => false,
 					start: async () => undefined,
 					dispose: vi.fn(),
+					[SYMBOL_DISPOSE]: vi.fn(),
 					restorePersistedState: async () => snapshot,
-					handleCallback: async () => ({ snapshot }),
 					loginWithRedirect: async () => undefined,
+					loginWithPopup: async () => ({ snapshot }),
 				}),
 			},
 		]);
-		await registry.whenReady("main");
+		await registry.initialize("main");
 		const queryClient = new QueryClient({
 			defaultOptions: { queries: { retry: false } },
 		});

@@ -30,7 +30,9 @@ describe("web extension environment adapters", () => {
 		const router = createRouterForWebExt({ browser });
 
 		expect(router).not.toBeNull();
-		if (!router) return;
+		if (!router) {
+			return;
+		}
 		expect(router.currentUrl()).toBeNull();
 		await router.navigate({
 			url: "https://example.com/login",
@@ -84,7 +86,9 @@ describe("web extension environment adapters", () => {
 		});
 
 		expect(storage).not.toBeNull();
-		if (!storage) return;
+		if (!storage) {
+			return;
+		}
 		await storage.set("token", "abc");
 		expect(data.get("test:token")).toBe("abc");
 		expect(await storage.take?.("token")).toBe("abc");

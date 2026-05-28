@@ -16,14 +16,18 @@ type ResolvedThemePreference =
 const THEME_STORAGE_KEY = "securitydept-theme";
 
 function getSystemTheme(): ResolvedThemePreference {
-	if (typeof window === "undefined") return ThemePreference.Light;
+	if (typeof window === "undefined") {
+		return ThemePreference.Light;
+	}
 	return window.matchMedia("(prefers-color-scheme: dark)").matches
 		? ThemePreference.Dark
 		: ThemePreference.Light;
 }
 
 function applyTheme(preference: ThemePreference) {
-	if (typeof document === "undefined") return;
+	if (typeof document === "undefined") {
+		return;
+	}
 	const root = document.documentElement;
 	const resolved =
 		preference === ThemePreference.System ? getSystemTheme() : preference;
@@ -32,7 +36,9 @@ function applyTheme(preference: ThemePreference) {
 }
 
 function readThemePreference(): ThemePreference {
-	if (typeof window === "undefined") return ThemePreference.System;
+	if (typeof window === "undefined") {
+		return ThemePreference.System;
+	}
 	try {
 		const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
 		if (Object.values(ThemePreference).includes(stored as ThemePreference)) {
@@ -45,7 +51,9 @@ function readThemePreference(): ThemePreference {
 }
 
 function persistThemePreference(preference: ThemePreference) {
-	if (typeof window === "undefined") return;
+	if (typeof window === "undefined") {
+		return;
+	}
 	try {
 		window.localStorage.setItem(THEME_STORAGE_KEY, preference);
 	} catch {

@@ -218,13 +218,6 @@ export default defineConfig({
 				),
 			},
 			{
-				find: "@securitydept/token-set-context-client/backend-oidc-mode/web",
-				replacement: path.join(
-					packagesDir,
-					"token-set-context-client/src/backend-oidc-mode/web/index.ts",
-				),
-			},
-			{
 				find: "@securitydept/token-set-context-client/backend-oidc-mode",
 				replacement: path.join(
 					packagesDir,

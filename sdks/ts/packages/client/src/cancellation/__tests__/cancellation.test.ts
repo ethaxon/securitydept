@@ -15,6 +15,10 @@ describe("cancellation baseline", () => {
 		expect(() => source.token.throwIfCancellationRequested()).toThrow(
 			/Operation was cancelled/,
 		);
+		expect(source.token.readCancellationError()).toMatchObject({
+			kind: ClientErrorKind.Cancelled,
+			message: "Operation was cancelled",
+		});
 	});
 
 	it("treats Symbol.dispose as resource release plus cancellation for the owned token", () => {

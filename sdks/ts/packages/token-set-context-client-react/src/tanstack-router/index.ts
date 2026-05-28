@@ -1,4 +1,7 @@
-import { type AuthRequirement } from "@securitydept/client";
+import {
+	type AuthRequirement,
+	type ReadableSignalTrait,
+} from "@securitydept/client";
 import {
 	type CreateSecureBeforeLoadOptions,
 	createSecureBeforeLoad,
@@ -6,12 +9,15 @@ import {
 } from "@securitydept/client-react/tanstack-router";
 import {
 	type ClientQueryOptions,
-	type OidcModeClient,
+	type ClientRecord,
 } from "@securitydept/token-set-context-client/registry";
+import { type TokenSetReactClient } from "../contracts";
 
 export interface TokenSetTanStackAuthRegistry {
-	whenReady(key?: string): Promise<OidcModeClient>;
-	clientKeysForOptions(options: ClientQueryOptions): string[];
+	initialize(key: string): Promise<TokenSetReactClient>;
+	clientRecordGenForQuery(
+		query: ClientQueryOptions,
+	): Generator<ReadableSignalTrait<ClientRecord<TokenSetReactClient>>, void>;
 }
 
 export interface TokenSetTanStackClientSelector {
@@ -78,18 +84,19 @@ function defaultClientSelector(
 async function resolveTanStackClient(
 	registry: TokenSetTanStackAuthRegistry,
 	selector: TokenSetTanStackClientSelector | undefined,
-): Promise<OidcModeClient | null> {
+): Promise<TokenSetReactClient | null> {
 	if (selector?.key) {
-		return await registry.whenReady(selector.key);
+		return await registry.initialize(selector.key);
 	}
-	const keys = selector?.query
-		? registry.clientKeysForOptions(selector.query)
+	const records = selector?.query
+		? [...registry.clientRecordGenForQuery(selector.query)]
 		: [];
-	if (keys.length === 0) {
+	if (records.length === 0) {
 		return null;
 	}
-	if (keys.length > 1) {
+	if (records.length > 1) {
 		return null;
 	}
-	return await registry.whenReady(keys[0]);
+	const record = records[0]?.get();
+	return record ? await registry.initialize(record.meta.clientKey) : null;
 }

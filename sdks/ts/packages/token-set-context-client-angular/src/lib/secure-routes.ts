@@ -186,7 +186,9 @@ function findNearestPlannerHostKey(
 	const chain = route.pathFromRoot ?? [route];
 	for (let index = chain.length - 1; index >= 0; index -= 1) {
 		const segment = chain[index];
-		if (!segment) continue;
+		if (!segment) {
+			continue;
+		}
 		const raw =
 			segment.data[TOKEN_SET_ROUTE_PLANNER_HOST_KEY_DATA_KEY] ??
 			segment.routeConfig?.data?.[TOKEN_SET_ROUTE_PLANNER_HOST_KEY_DATA_KEY];

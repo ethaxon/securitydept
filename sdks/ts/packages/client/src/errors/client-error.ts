@@ -45,7 +45,9 @@ function mapServerErrorKind(
 }
 
 function readServerErrorBody(body: unknown): ServerErrorBody | undefined {
-	if (!body || typeof body !== "object") return undefined;
+	if (!body || typeof body !== "object") {
+		return undefined;
+	}
 	const record = body as Record<string, unknown>;
 	const error =
 		record.error && typeof record.error === "object"

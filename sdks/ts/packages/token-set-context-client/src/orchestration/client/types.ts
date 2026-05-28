@@ -1,29 +1,60 @@
 import {
+	type BaseTransportTrait,
 	type FoundationEnvironment,
+	type ManagedTransportTrait,
 	type ReadableSignalTrait,
 	type StorageTrait,
 } from "@securitydept/client";
 import { type TokenFreshnessOptions } from "../token/freshness";
-import { type CreatePageResumeWorkflowSourceOptions } from "./workflows/source/page-resume";
-import { type CreateRefreshTimerWorkflowSourceOptions } from "./workflows/source/refresh-timer";
-import { type BuiltinAuthWorkflowSourceConfig } from "./workflows/source/types";
+import { type AuthSnapshot } from "../token/types";
+import { type AuthWorkflowRuntimeOptions } from "./workflows/source";
+
+export interface OidcRedirectLoginOptions {
+	/**
+	 * Where to redirect the user after successful authentication.
+	 *
+	 * When omitted, the client-specific default is used.
+	 */
+	postAuthRedirectUri?: string;
+}
+
+export interface OidcPopupLoginOptions {
+	/**
+	 * The popup callback URL. This page should relay the callback URL back to
+	 * the opener through the token-set popup relay helper for the selected mode.
+	 */
+	popupCallbackUrl: string;
+	/** Popup window width in pixels. */
+	popupWidth?: number;
+	/** Popup window height in pixels. */
+	popupHeight?: number;
+	/** Maximum time in ms to wait for the popup relay. */
+	timeoutMs?: number;
+}
+
+export interface OidcPopupLoginResult {
+	/** The auth state snapshot produced by the popup callback. */
+	snapshot: AuthSnapshot;
+}
+
+export interface BaseOidcModeClientTracingOptions {
+	target: string;
+	prefix: string;
+}
+
+export interface BaseOidcModeClientDefaultOptions {
+	tokenFreshness: TokenFreshnessOptions;
+}
+
+export interface OidcAuthorizedTransportOptions {
+	baseTransport?: BaseTransportTrait;
+	requireAuthorization?: boolean;
+}
 
 export interface BaseOidcModeClientOptions {
 	environment: FoundationEnvironment;
-	refresh?: Partial<{
-		tokenFreshness?: Partial<TokenFreshnessOptions>;
-		sources: {
-			refreshTimer?: BuiltinAuthWorkflowSourceConfig<
-				Partial<CreateRefreshTimerWorkflowSourceOptions>
-			>;
-			pageResume?: BuiltinAuthWorkflowSourceConfig<
-				Partial<CreatePageResumeWorkflowSourceOptions>
-			>;
-		};
-	}>;
-	traceTarget: string;
-	tracePrefix: string;
-	clientName: string;
+	refresh?: Partial<AuthWorkflowRuntimeOptions>;
+	tracing: BaseOidcModeClientTracingOptions;
 	id?: string;
 	persistence?: {
 		store: StorageTrait;
@@ -31,6 +62,22 @@ export interface BaseOidcModeClientOptions {
 	};
 	autoStart?: boolean;
 }
+
+/**
+ * Mode client config fields aligned with {@link BaseOidcModeClientOptions}.
+ *
+ * `environment` and `tracing` are supplied at construction time; persistence
+ * store is resolved from the environment while the config may override the key.
+ */
+export type OidcModeClientConfigBase = Omit<
+	BaseOidcModeClientOptions,
+	"environment" | "tracing" | "persistence"
+> & {
+	persistence?: Pick<
+		NonNullable<BaseOidcModeClientOptions["persistence"]>,
+		"key"
+	>;
+};
 
 export const StateRestoreSourceKind = {
 	Manual: "manual",
@@ -45,4 +92,10 @@ export interface TokenSetAuthOperationSignals {
 	readonly refreshPending: ReadableSignalTrait<boolean>;
 	readonly clearPending: ReadableSignalTrait<boolean>;
 	readonly loginPending: ReadableSignalTrait<boolean>;
+}
+
+export interface OidcAuthorizedTransportProvider {
+	authorizedTransport(
+		options?: OidcAuthorizedTransportOptions,
+	): ManagedTransportTrait;
 }

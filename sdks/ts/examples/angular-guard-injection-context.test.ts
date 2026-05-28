@@ -17,6 +17,7 @@ import {
 	createTracing,
 	type PlannerHost,
 	type PlannerHostResult,
+	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import {
 	createEnvironmentForNativeWeb,
@@ -92,17 +93,21 @@ describe("Angular token-set route guard injection context", () => {
 			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
+			[SYMBOL_DISPOSE]: vi.fn(),
 			restorePersistedState: vi.fn(async () => null),
 			handleCallback: vi.fn(),
 			loginWithRedirect: vi.fn(),
 		};
 		const registry = {
-			clientKeyListForRequirement: () => ["confluence"],
-			whenReady: async () => client,
-			metaFor: () => ({
-				key: "confluence",
-				requirementKind: "frontend_oidc",
-			}),
+			clientRecordGenForQuery: function* () {
+				yield createSignal({
+					meta: {
+						clientKey: "confluence",
+						requirementKind: "frontend_oidc",
+					},
+				});
+			},
+			initialize: async () => client,
 		};
 		const plannerHost: PlannerHost = {
 			async evaluate(candidates): Promise<PlannerHostResult> {
@@ -165,17 +170,21 @@ describe("Angular token-set route guard injection context", () => {
 			removeWorkflowSource: vi.fn(() => false),
 			start: vi.fn(async () => undefined),
 			dispose: vi.fn(),
+			[SYMBOL_DISPOSE]: vi.fn(),
 			restorePersistedState: vi.fn(async () => null),
 			handleCallback: vi.fn(),
 			loginWithRedirect,
 		};
 		const registry = {
-			clientKeyListForRequirement: () => ["confluence"],
-			whenReady: async () => client,
-			metaFor: () => ({
-				key: "confluence",
-				requirementKind: "frontend_oidc",
-			}),
+			clientRecordGenForQuery: function* () {
+				yield createSignal({
+					meta: {
+						clientKey: "confluence",
+						requirementKind: "frontend_oidc",
+					},
+				});
+			},
+			initialize: async () => client,
 		};
 		const plannerHost: PlannerHost = {
 			async evaluate(candidates): Promise<PlannerHostResult> {
@@ -218,7 +227,6 @@ describe("Angular token-set route guard injection context", () => {
 
 		await flushMicrotasks();
 		expect(loginWithRedirect).toHaveBeenCalledWith({
-			environment: environment.router,
 			postAuthRedirectUri: "/confluence/spaces/abc?tab=pages",
 		});
 		expect(settled).not.toHaveBeenCalled();

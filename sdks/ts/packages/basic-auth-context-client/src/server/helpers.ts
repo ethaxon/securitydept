@@ -137,13 +137,17 @@ export function createBasicAuthServerHelper(
 
 		loginUrlForPath(path: string): string | null {
 			const zone = client.zoneForPath(path);
-			if (!zone) return null;
+			if (!zone) {
+				return null;
+			}
 			return client.loginUrl(zone, path);
 		},
 
 		logoutUrlForPath(path: string): string | null {
 			const zone = client.zoneForPath(path);
-			if (!zone) return null;
+			if (!zone) {
+				return null;
+			}
 			return client.logoutUrl(zone);
 		},
 	};

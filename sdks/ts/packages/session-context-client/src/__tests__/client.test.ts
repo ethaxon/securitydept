@@ -1,6 +1,7 @@
 import {
 	ClientError,
 	ClientErrorKind,
+	createCancellationTokenSource,
 	createInMemoryRecordStore,
 	type ExternalTransportTrait,
 	type HttpRequest,
@@ -151,14 +152,7 @@ describe("SessionContextClient", () => {
 
 	it("forwards cancellation tokens through transport-bound session operations", async () => {
 		const requests: HttpRequest[] = [];
-		const cancellationToken = {
-			isCancellationRequested: false,
-			reason: undefined,
-			throwIfCancellationRequested() {},
-			onCancellationRequested() {
-				return { dispose() {} };
-			},
-		};
+		const cancellationToken = createCancellationTokenSource().token;
 		const transport = createTestTransport((request) => {
 			requests.push(request);
 			return {

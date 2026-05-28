@@ -49,6 +49,7 @@ import {
 } from "@securitydept/client";
 import { type AnyRoute, type RegisteredRouter } from "@tanstack/react-router";
 import { type as defineType } from "arktype";
+import { isPromise } from "es-toolkit/predicate";
 
 export type { AuthRequirement, RouteMatchNode };
 
@@ -772,7 +773,7 @@ export function createSecureBeforeLoad(
 			options,
 		);
 
-		if (isPromiseLike(result)) {
+		if (isPromise(result)) {
 			return result.then((resolved) =>
 				handleSecureBeforeLoadResult(resolved, options),
 			);
@@ -786,13 +787,17 @@ function handleSecureBeforeLoadResult(
 	result: TanStackRouteSecurityResult,
 	options: CreateSecureBeforeLoadOptions,
 ): void | Promise<void> {
-	if (result.allMet) return;
+	if (result.allMet) {
+		return;
+	}
 
 	const { action, pendingRequirement } = result;
 
-	if (!pendingRequirement) return;
+	if (!pendingRequirement) {
+		return;
+	}
 
-	if (isPromiseLike(action)) {
+	if (isPromise(action)) {
 		return action.then((resolved) =>
 			handleSecureBeforeLoadAction(
 				resolved,
@@ -887,9 +892,11 @@ function evaluateRouteSecurityMaybeAsync(
 
 	for (let index = 0; index < effectiveRequirements.length; index += 1) {
 		const requirement = effectiveRequirements[index];
-		if (!requirement) continue;
+		if (!requirement) {
+			continue;
+		}
 		const authenticated = checkAuthenticated(requirement);
-		if (isPromiseLike<boolean>(authenticated)) {
+		if (isPromise(authenticated)) {
 			return evaluateRouteSecurityFromAsyncCheck(
 				authenticated,
 				index,
@@ -941,7 +948,9 @@ async function evaluateRouteSecurityFromAsyncCheck(
 		index += 1
 	) {
 		const requirement = effectiveRequirements[index];
-		if (!requirement) continue;
+		if (!requirement) {
+			continue;
+		}
 		if (!(await checkAuthenticated(requirement))) {
 			return createTanStackUnauthenticatedResult(
 				requirement,
@@ -976,15 +985,6 @@ function handleSecureBeforeLoadAction(
 
 	// action is false or undefined — block navigation.
 	throw new RouteSecurityBlockedError(pendingRequirement, result);
-}
-
-function isPromiseLike<T>(value: unknown): value is Promise<T> {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		"then" in value &&
-		typeof value.then === "function"
-	);
 }
 
 function neverSettlingBeforeLoadResult(): Promise<never> {

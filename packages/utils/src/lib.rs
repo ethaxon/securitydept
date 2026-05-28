@@ -1,4 +1,6 @@
 pub mod base_url;
+#[path = "compat-fragment.rs"]
+pub mod compat_fragment;
 pub mod error;
 pub mod http;
 pub mod observability;

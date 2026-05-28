@@ -4,7 +4,6 @@ export default defineConfig({
 	entry: {
 		// backend-oidc mode — canonical unified surface.
 		"backend-oidc-mode/index": "./src/backend-oidc-mode/index.ts",
-		"backend-oidc-mode/web/index": "./src/backend-oidc-mode/web/index.ts",
 		// frontend-oidc mode — browser-native OIDC (wraps oauth4webapi).
 		"frontend-oidc-mode/index": "./src/frontend-oidc-mode/index.ts",
 		// Shared token-lifecycle substrate.
@@ -13,8 +12,6 @@ export default defineConfig({
 		"access-token-substrate/index": "./src/access-token-substrate/index.ts",
 		// Shared multi-client registry (framework-neutral).
 		"registry/index": "./src/registry/index.ts",
-		// Token-set-specific raw web router helpers.
-		"web-router/index": "./src/web-router/index.ts",
 	},
 	target: "es2022",
 	format: "esm",

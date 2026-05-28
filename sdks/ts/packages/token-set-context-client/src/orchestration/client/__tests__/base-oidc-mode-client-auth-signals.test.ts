@@ -69,9 +69,10 @@ function createOptions(options?: {
 						}
 					: undefined,
 		}),
-		traceTarget: "test-token-set",
-		tracePrefix: "test_token_set",
-		clientName: "TestOidcModeClient",
+		tracing: {
+			target: "test-token-set",
+			prefix: "test_token_set",
+		},
 		id: "test-client",
 		persistence: options?.store
 			? {
@@ -112,6 +113,12 @@ class TestOidcModeClient extends BaseOidcModeClient {
 		refreshImpl: (snapshot: AuthSnapshot) => Promise<AuthSnapshot | null>,
 	): void {
 		this.refreshImpl = refreshImpl;
+	}
+
+	async loginWithRedirect(): Promise<void> {}
+
+	async loginWithPopup(): Promise<never> {
+		throw new Error("not implemented");
 	}
 
 	get clientSpanId(): string {
@@ -162,6 +169,35 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		);
 	});
 
+	it("persists manual restore when requested", async () => {
+		const store = createInMemoryRecordStore();
+		const snapshot = createAuthSnapshot("manual-token");
+		const client = new TestOidcModeClient(createOptions({ store }));
+
+		await client.restoreState(snapshot, {
+			persistPolicy: PersistPolicy.FollowClient,
+		});
+
+		const restoredClient = new TestOidcModeClient(createOptions({ store }));
+		await expect(restoredClient.restorePersistedState()).resolves.toEqual(
+			snapshot,
+		);
+	});
+
+	it("honors clearState persistPolicy skip", async () => {
+		const store = createInMemoryRecordStore();
+		const snapshot = createAuthSnapshot("kept-token");
+		const client = new TestOidcModeClient(createOptions({ store }));
+		await client.applySnapshot(snapshot);
+
+		await client.clearState({ persistPolicy: PersistPolicy.Skip });
+
+		const restoredClient = new TestOidcModeClient(createOptions({ store }));
+		await expect(restoredClient.restorePersistedState()).resolves.toEqual(
+			snapshot,
+		);
+	});
+
 	it("emits typed persisted-restore events without leaking token material", async () => {
 		const store = createInMemoryRecordStore();
 		const snapshot = createAuthSnapshot("persisted-token");
@@ -177,7 +213,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 			next: (event) => {
 				events.push({
 					type: event.type,
-					payload: event.payload as Record<string, unknown>,
+					payload: event.payload as unknown as Record<string, unknown>,
 				});
 			},
 		});
@@ -190,15 +226,18 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 			TokenSetAuthEventType.AuthAuthenticated,
 		]);
 		expect(events[0]?.payload).toEqual({
-			id: "test-client",
+			type: TokenSetAuthEventType.AuthMaterialRestoreStarted,
+			client: { id: "test-client" },
 			persisted: true,
 		});
 		expect(events[1]?.payload).toEqual({
-			id: "test-client",
+			type: TokenSetAuthEventType.AuthMaterialRestored,
+			client: { id: "test-client" },
 			persisted: true,
 		});
 		expect(events[2]?.payload).toEqual({
-			id: "test-client",
+			type: TokenSetAuthEventType.AuthAuthenticated,
+			client: { id: "test-client" },
 		});
 		expect(JSON.stringify(events)).not.toContain("persisted-token");
 	});
@@ -215,7 +254,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 			next: (event) => {
 				events.push({
 					type: event.type,
-					payload: event.payload as Record<string, unknown>,
+					payload: event.payload as unknown as Record<string, unknown>,
 				});
 			},
 		});
@@ -228,7 +267,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		]);
 		expect(events[1]?.payload).toEqual(
 			expect.objectContaining({
-				id: "test-client",
+				client: { id: "test-client" },
 				persisted: true,
 				errorSummary: expect.objectContaining({
 					errorCode: "token_orchestration.persistence.invalid_json",
@@ -258,7 +297,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 			next: (event) => {
 				events.push({
 					type: event.type,
-					payload: event.payload as Record<string, unknown>,
+					payload: event.payload as unknown as Record<string, unknown>,
 				});
 			},
 		});
@@ -275,14 +314,15 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		for (const event of events.slice(0, 3)) {
 			expect(event.payload).toEqual(
 				expect.objectContaining({
-					id: "test-client",
+					client: { id: "test-client" },
 					hasRefreshMaterial: true,
 					freshness: expect.any(Object),
 				}),
 			);
 		}
 		expect(events[3]?.payload).toEqual({
-			id: "test-client",
+			type: TokenSetAuthEventType.AuthAuthenticated,
+			client: { id: "test-client" },
 		});
 		expect(JSON.stringify(events)).not.toContain("expired-token");
 		expect(JSON.stringify(events)).not.toContain("refreshed-token");
@@ -313,7 +353,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 			next: (event) => {
 				events.push({
 					type: event.type,
-					payload: event.payload as Record<string, unknown>,
+					payload: event.payload as unknown as Record<string, unknown>,
 				});
 			},
 		});
@@ -329,7 +369,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		]);
 		expect(events[2]?.payload).toEqual(
 			expect.objectContaining({
-				id: "test-client",
+				client: { id: "test-client" },
 				hasRefreshMaterial: true,
 				freshness: expect.any(Object),
 				errorSummary: expect.objectContaining({
@@ -338,7 +378,8 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 			}),
 		);
 		expect(events[3]?.payload).toEqual({
-			id: "test-client",
+			type: TokenSetAuthEventType.AuthUnauthenticated,
+			client: { id: "test-client" },
 		});
 		expect(
 			trace.events.find(
@@ -364,7 +405,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 			next: (event) => {
 				events.push({
 					type: event.type,
-					payload: event.payload as Record<string, unknown>,
+					payload: event.payload as unknown as Record<string, unknown>,
 				});
 			},
 		});

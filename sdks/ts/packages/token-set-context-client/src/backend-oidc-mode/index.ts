@@ -7,7 +7,6 @@
 // backend-oidc capability framework.
 //
 // Companion subpaths:
-//   @securitydept/token-set-context-client/backend-oidc-mode/web   — browser adapter
 //   @securitydept/token-set-context-client/backend-oidc-mode/react — React adapter
 //   @securitydept/token-set-context-client/orchestration           — shared token-lifecycle substrate
 //
@@ -41,10 +40,8 @@ export type {
 // --- Response body parsers ---
 
 export {
-	parseBackendOidcModeCallbackBody,
-	parseBackendOidcModeCallbackFragment,
-	parseBackendOidcModeRefreshBody,
-	parseBackendOidcModeRefreshFragment,
+	parseBackendOidcModeCallbackPayload,
+	parseBackendOidcModeRefreshPayload,
 } from "./contracts/parsers";
 
 // --- Orchestration adapters ---
@@ -56,32 +53,30 @@ export {
 
 // --- Client ---
 
+export {
+	relayTokenSetPopupCallbackFromEnvironment,
+	TokenSetPopupRelayErrorCode,
+} from "../orchestration/client/popup/relay";
+export { BackendOidcModeClient } from "./client/client";
 export type {
+	BackendOidcModeClientDefaultOptions,
 	BackendOidcModeFetchUserInfoOptions,
 	BackendOidcModeMetadataRedemptionOptions,
-} from "./client/client";
-export { BackendOidcModeClient } from "./client/client";
+} from "./client/types";
+
+// --- Client trace vocabulary ---
+
+export {
+	BackendOidcModeComposedTraceEventType,
+	BackendOidcModeOperationEventName,
+	BackendOidcModeTraceEventType,
+	BackendOidcModeTraceOperationName,
+} from "./client/trace-events";
 
 // --- Client types ---
 
 export type {
-	AuthenticatedPrincipal,
-	AuthenticationSource,
-	AuthenticationSourceKind as AuthenticationSourceKindType,
-	AuthStateDelta,
-	AuthStateSnapshot,
 	BackendOidcModeClientConfig,
+	ResolvedBackendOidcModeClientConfig,
 } from "./client/types";
-export {
-	AuthenticationSourceKind,
-	BackendOidcModeContextSource,
-	BackendOidcModeStateRestoreSourceKind,
-} from "./client/types";
-
-// --- Authorized transport ---
-
-export type {
-	AuthorizationHeaderProviderTrait,
-	CreateBackendOidcModeAuthorizedTransportOptions,
-} from "./transport/auth-transport";
-export { createBackendOidcModeAuthorizedTransportFromBase } from "./transport/auth-transport";
+export { BackendOidcModeContextSource } from "./client/types";
