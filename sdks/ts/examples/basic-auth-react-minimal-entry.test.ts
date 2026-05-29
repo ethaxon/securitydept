@@ -9,6 +9,7 @@ import {
 	createBasicAuthContextClient,
 	provideBasicAuthContextClient,
 } from "@securitydept/basic-auth-context-client-react";
+import { createFoundationEnvironment } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useSecuritydeptContext,
@@ -40,7 +41,16 @@ function render(element: ReactElement) {
 function createClient(
 	config: BasicAuthContextClientConfig,
 ): BasicAuthContextClient {
-	return createBasicAuthContextClient(config);
+	return createBasicAuthContextClient({
+		config,
+		environment: createFoundationEnvironment({
+			transport: {
+				async execute() {
+					throw new Error("Unexpected transport call.");
+				},
+			},
+		}),
+	});
 }
 
 describe("basic-auth react minimal entry", () => {

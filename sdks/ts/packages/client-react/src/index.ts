@@ -1,4 +1,4 @@
-export * from "./environment/index";
+export * from "./environment";
 export * from "./injection/index";
+export * from "./interop";
 export * from "./planner-host/index";
-export * from "./signal-event-bridge";

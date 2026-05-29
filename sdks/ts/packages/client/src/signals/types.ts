@@ -12,11 +12,11 @@ export interface ReadableSignalTrait<T> extends InteropObservableTrait<T> {
 	/** Return the current snapshot value. */
 	get(): T;
 	/**
-	 * Subscribe to writes.
-	 * The listener is called whenever `set()` publishes a value (not on subscribe).
+	 * Notify on writes.
+	 * The listener is called whenever `set()` publishes a value (not on registration).
 	 * @returns An unsubscribe function.
 	 */
-	subscribe(listener: () => void): () => void;
+	notify(listener: () => void): () => void;
 }
 
 /**
@@ -43,11 +43,9 @@ export interface ReplaySignalWhenValueOptions {
 }
 
 export interface ReadableReplaySignalTrait<T>
-	extends Omit<
-			ReadableSignalTrait<ReplaySignalSlot<T>>,
-			typeof Symbol.observable
-		>,
-		InteropObservableTrait<T> {
+	extends InteropObservableTrait<T> {
+	get(): ReplaySignalSlot<T>;
+	notify(listener: () => void): () => void;
 	hasValue(): boolean;
 	whenValue(options?: ReplaySignalWhenValueOptions): Promise<T>;
 }

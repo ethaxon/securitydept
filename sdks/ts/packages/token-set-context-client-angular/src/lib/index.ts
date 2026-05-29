@@ -14,12 +14,12 @@
 //   - TokenSetCallbackComponent standalone component (drop-in callback route)
 //   - Requirement/provider-family → client key mapping
 //   - secureRouteRoot() / secureRoute() — canonical Angular Router route-security
-//     builders: keep non-serializable runtime policy at the root, let child
-//     routes declare serializable requirement metadata only, and wire both
-//     canActivate + canActivateChild to the full-route aggregation guard.
-//   - createTokenSetRouteAggregationGuard() — lower-level advanced guard for
-//     direct route-tree evaluation when adopters intentionally bypass the route
-//     builder helpers.
+//     builders that delegate to the client-angular base helpers, normalize
+//     token-set requirement metadata, and mount the token-set behaviour host.
+//   - provideTokenSetRequirementPlannerHost() — provides the token-set
+//     RequirementPlannerHost behaviour to the client-angular guard pipeline.
+//   - createTokenSetCanActivate() / createTokenSetCanActivateChild() — token-set
+//     named guard factories over the client-angular base guards.
 //   - Signal/Observable bridge utilities live in @securitydept/client-angular
 //
 // Built by ng-packagr (APF / FESM2022). Decorators are fully supported.
@@ -29,9 +29,8 @@
 export * from "./bearer-interceptor";
 export * from "./callback-resume.service";
 export * from "./contracts";
-export * from "./guard-types";
+export * from "./planner-host";
 export * from "./provide-token-set-auth";
-export * from "./route-aggregation-guard";
 export * from "./secure-routes";
 export * from "./token-set-auth.registry";
 export * from "./token-set-callback.component";

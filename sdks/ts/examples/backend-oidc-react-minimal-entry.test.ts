@@ -68,7 +68,7 @@ function createBackendClient(
 		state.set(null);
 		reactive.emitSnapshot(null);
 	});
-	state.subscribe(() => reactive.emitSnapshot(state.get()));
+	state.notify(() => reactive.emitSnapshot(state.get()));
 	return {
 		...reactive.fields,
 		authEvents: createEventSubject<TokenSetAuthEvent>(),
@@ -79,6 +79,7 @@ function createBackendClient(
 		[SYMBOL_DISPOSE]: dispose,
 		restorePersistedState: async () => state.get(),
 		loginWithRedirect: async () => undefined,
+		logout: async () => undefined,
 		loginWithPopup: async () => ({ snapshot }),
 		authorizeUrl: () => "/authorize",
 		refreshState: async () => snapshot,

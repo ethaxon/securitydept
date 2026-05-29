@@ -1,5 +1,6 @@
 import { type CancellationTokenTrait } from "../cancellation";
 import { type DisposableTrait } from "../compat";
+import { type UriReferenceString, type UriString } from "../struct/uri-string";
 import { type RouterNavigationRequest, type RouterTrait } from "./router";
 
 export const RouterGuardDecisionKind = {
@@ -16,7 +17,7 @@ export type RouterGuardDecision =
 	| { kind: typeof RouterGuardDecisionKind.Block }
 	| {
 			kind: typeof RouterGuardDecisionKind.Redirect;
-			url: string | URL;
+			url: UriReferenceString;
 			mode?: "push" | "replace" | "external";
 			state?: unknown;
 	  };
@@ -31,8 +32,9 @@ export type RouterGuardPhase =
 
 export interface RouterGuardContext {
 	readonly phase: RouterGuardPhase;
-	readonly url: URL;
-	readonly currentUrl: URL | null;
+	readonly url: UriReferenceString;
+	readonly currentUrl: UriReferenceString | null;
+	readonly baseURI: UriString | null;
 	readonly request?: RouterNavigationRequest;
 	readonly cancellationToken?: CancellationTokenTrait;
 }

@@ -97,10 +97,6 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		layers: [EvidenceSemanticLayer.VerifiedEnvironments],
 	},
 	{
-		path: "packages/basic-auth-context-client/src/web/__tests__/adapter.test.ts",
-		layers: [EvidenceSemanticLayer.PromotionReadiness],
-	},
-	{
 		path: "packages/basic-auth-context-client/src/__tests__/client.test.ts",
 		layers: [EvidenceSemanticLayer.PromotionReadiness],
 	},
@@ -117,13 +113,6 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		layers: [
 			EvidenceSemanticLayer.PromotionReadiness,
 			EvidenceSemanticLayer.MinimalEntry,
-		],
-	},
-	{
-		path: "examples/basic-auth-web-minimal-entry.test.ts",
-		layers: [
-			EvidenceSemanticLayer.MinimalEntry,
-			EvidenceSemanticLayer.PromotionReadiness,
 		],
 	},
 	{
@@ -195,9 +184,9 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		],
 	},
 	{
-		// Standalone minimal-entry example for session-context-client/web.
-		// Proves the canonical browser import path for loginWithRedirect and
-		// the LoginWithRedirectOptions named contract.
+		// Standalone minimal-entry example for session-context-client browser usage.
+		// Proves environment-bound loginWithRedirect and the root
+		// SessionLoginWithRedirectOptions named contract.
 		path: "examples/session-web-minimal-entry.test.ts",
 		layers: [
 			EvidenceSemanticLayer.MinimalEntry,
@@ -205,19 +194,9 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		],
 	},
 	{
-		// Standalone minimal-entry example for basic-auth-context-client/server.
-		// Proves helper construction, handleUnauthorized redirect instruction,
-		// and loginUrlForPath/logoutUrlForPath usage.
-		path: "examples/basic-auth-server-minimal-entry.test.ts",
-		layers: [
-			EvidenceSemanticLayer.MinimalEntry,
-			EvidenceSemanticLayer.PromotionReadiness,
-		],
-	},
-	{
-		// Standalone minimal-entry example for session-context-client/server.
-		// Proves helper construction, fetchUserInfo with cookie forwarding,
-		// and loginUrl/logoutUrl generation.
+		// Standalone minimal-entry example for session-context-client on a server host.
+		// Proves @securitydept/client/server environment construction, refresh()
+		// with cookie forwarding, and loginUrl/logoutUrl generation.
 		path: "examples/session-server-minimal-entry.test.ts",
 		layers: [
 			EvidenceSemanticLayer.MinimalEntry,
@@ -274,9 +253,10 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		// Angular full-route aggregation guard canonical pattern.
 		// Backs MinimalEntry for @securitydept/client-angular and
 		// @securitydept/token-set-context-client-angular.
-		// Proves: withRouteRequirements declaration, extractFullRouteRequirements
-		// multi-level accumulation (parent + child), single-pass planner evaluation,
-		// and createTokenSetRouteAggregationGuard API shape.
+		// Proves: secureRoute/secureRouteRoot declaration, projectAngularRouteSegments
+		// multi-level accumulation (parent + child) via RouteCompositionRequirementPlanner,
+		// single-pass planner evaluation, and provideTokenSetRequirementPlannerHost /
+		// createTokenSetCanActivate API shape.
 		path: "examples/angular-full-route-aggregation.test.ts",
 		layers: [
 			EvidenceSemanticLayer.PromotionReadiness,

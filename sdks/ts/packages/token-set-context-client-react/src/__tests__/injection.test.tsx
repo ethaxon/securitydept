@@ -134,6 +134,7 @@ describe("token-set injector factories", () => {
 						snapshot: createSnapshot("main-at"),
 					}),
 					loginWithRedirect: async () => undefined,
+					logout: async () => undefined,
 					loginWithPopup: async () => ({
 						snapshot: createSnapshot("main-at"),
 					}),

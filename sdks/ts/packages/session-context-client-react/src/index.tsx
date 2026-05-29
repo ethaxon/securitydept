@@ -1,14 +1,4 @@
 // Session Context Client — injector tokens and provider factories
-//
-// Canonical import path:
-//   import { ... } from "@securitydept/session-context-client-react"
-//
-// Provides injector tokens and plain factories for integrating
-// SessionContextClient and SessionContextController. React trees compose
-// these through SecuritydeptProvider; no domain-specific React Context is
-// created here.
-//
-// Stability: provisional (React adapter)
 
 import {
 	type FoundationEnvironment,
@@ -18,51 +8,36 @@ import {
 import {
 	SessionContextClient,
 	type SessionContextClientConfig,
-	SessionContextController,
 	type SessionInfo,
 } from "@securitydept/session-context-client";
 
 export type { SessionContextClientConfig, SessionInfo };
-export { SessionContextClient, SessionContextController };
+export { SessionContextClient };
 
 export const SESSION_CONTEXT_CLIENT =
 	new SecuritydeptInjectionToken<SessionContextClient>(
 		"SESSION_CONTEXT_CLIENT",
 	);
 
-export const SESSION_CONTEXT_CONTROLLER =
-	new SecuritydeptInjectionToken<SessionContextController>(
-		"SESSION_CONTEXT_CONTROLLER",
-	);
-
-export interface CreateSessionContextControllerOptions {
+export interface CreateSessionContextClientOptions {
 	config: SessionContextClientConfig;
 	environment: FoundationEnvironment;
 }
 
-export function createSessionContextController({
+export function createSessionContextClient({
 	config,
 	environment,
-}: CreateSessionContextControllerOptions): SessionContextController {
-	return new SessionContextController({
-		client: new SessionContextClient(config, {
-			sessionStorage: environment.sessionStorage,
-		}),
-		externalTransport: environment.transport,
-	});
+}: CreateSessionContextClientOptions): SessionContextClient {
+	return new SessionContextClient(config, environment);
 }
 
-export function provideSessionContextController(
-	controller: SessionContextController,
+export function provideSessionContextClient(
+	client: SessionContextClient,
 ): readonly SecuritydeptProvider[] {
 	return [
 		{
-			provide: SESSION_CONTEXT_CONTROLLER,
-			useValue: controller,
-		},
-		{
 			provide: SESSION_CONTEXT_CLIENT,
-			useValue: controller.client,
+			useValue: client,
 		},
 	];
 }

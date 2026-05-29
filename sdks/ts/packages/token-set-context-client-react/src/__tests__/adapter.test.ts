@@ -69,7 +69,7 @@ function createRegistryOptions(accessToken: string) {
 	const authDetermined = createReplaySignal<true>();
 	authDetermined.setValue(true);
 	const lastAuthError = createSignal<unknown | undefined>(undefined);
-	state.subscribe(() => {
+	state.notify(() => {
 		const snapshot = state.get();
 		authSnapshot.setValue(snapshot);
 		isAuthenticated.setValue(Boolean(snapshot?.tokens.accessToken));
@@ -107,6 +107,7 @@ function createRegistryOptions(accessToken: string) {
 						snapshot: createSnapshot(accessToken),
 					}),
 					loginWithRedirect: async () => undefined,
+					logout: async () => undefined,
 					loginWithPopup: async () => ({
 						snapshot: createSnapshot(accessToken),
 					}),

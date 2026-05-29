@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
-	normalizeAuthenticatedPrincipal,
-	normalizeAuthenticatedPrincipalWire,
-	projectAuthenticatedPrincipal,
-} from "../principal";
+	parseIdentityPrincipal,
+	parseIdentityPrincipalWire,
+	projectIdentityPrincipal,
+} from "../parsers";
+import {
+	IdentityPrincipalSchema,
+	IdentityPrincipalWireSchema,
+} from "../schemas";
 
 describe("authenticated principal helpers", () => {
-	it("normalizes camelCase principal payloads", () => {
+	it("parses camelCase principal payloads", () => {
 		expect(
-			normalizeAuthenticatedPrincipal({
+			parseIdentityPrincipal({
 				subject: "user-1",
 				displayName: "Alice",
 				picture: "https://example.com/alice.png",
@@ -24,9 +28,9 @@ describe("authenticated principal helpers", () => {
 		});
 	});
 
-	it("normalizes snake_case wire payloads and falls back displayName to subject", () => {
+	it("parses snake_case wire payloads and falls back displayName to subject", () => {
 		expect(
-			normalizeAuthenticatedPrincipalWire({
+			parseIdentityPrincipalWire({
 				subject: "user-2",
 				display_name: "",
 				claims: { tenant: "acme" },
@@ -41,17 +45,48 @@ describe("authenticated principal helpers", () => {
 	});
 
 	it("rejects payloads without a stable subject", () => {
+		expect(() => parseIdentityPrincipal({ displayName: "No Subject" })).toThrow(
+			"Identity principal payload is invalid",
+		);
+		expect(() =>
+			parseIdentityPrincipalWire({ display_name: "No Subject" }),
+		).toThrow("Identity principal wire payload is invalid");
+	});
+
+	it("exposes standard schemas for nullable parser callers", () => {
 		expect(
-			normalizeAuthenticatedPrincipal({ displayName: "No Subject" }),
-		).toBeNull();
+			IdentityPrincipalSchema["~standard"].validate({
+				subject: "user-3",
+				displayName: "",
+			}),
+		).toEqual({
+			value: {
+				subject: "user-3",
+				displayName: "user-3",
+				picture: undefined,
+				issuer: undefined,
+				claims: undefined,
+			},
+		});
 		expect(
-			normalizeAuthenticatedPrincipalWire({ display_name: "No Subject" }),
-		).toBeNull();
+			IdentityPrincipalWireSchema["~standard"].validate({
+				subject: "user-4",
+				display_name: "Dana",
+			}),
+		).toEqual({
+			value: {
+				subject: "user-4",
+				displayName: "Dana",
+				picture: undefined,
+				issuer: undefined,
+				claims: undefined,
+			},
+		});
 	});
 
 	it("projects placeholder context principals when no authenticated principal is present", () => {
 		expect(
-			projectAuthenticatedPrincipal({
+			projectIdentityPrincipal({
 				fallbackDisplayName: "Basic auth context",
 				fallbackSubject: "context.basic-auth",
 			}),

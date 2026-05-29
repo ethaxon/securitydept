@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createFoundationEnvironment } from "../../environment/create";
 import { createInMemoryRecordStore } from "../../storage";
+import { UriReferenceString } from "../../struct/uri-string";
 import { createTimeForTest } from "../../test";
 import { createEnvironmentForNativeWeb } from "../environment";
 
@@ -12,7 +13,7 @@ function createTransport() {
 	};
 }
 
-describe("client environment page capability boundary", () => {
+describe("environment page capability boundary", () => {
 	it("accepts explicit fake page capabilities", () => {
 		const nativeWebPage = {
 			location: {
@@ -61,7 +62,7 @@ describe("client environment page capability boundary", () => {
 
 		await expect(
 			environment.router.navigate({
-				url: new URL("https://app.example.com/next"),
+				url: UriReferenceString.parse("https://app.example.com/next"),
 				intent: "post_auth_redirect",
 				mode: "push",
 			}),
@@ -168,6 +169,9 @@ describe("client environment page capability boundary", () => {
 				time: createTimeForTest(),
 				router: {
 					currentUrl() {
+						return null;
+					},
+					baseURI() {
 						return null;
 					},
 				} as never,

@@ -1,18 +1,22 @@
-// Angular planner-host integration — DI-based planner provider / lookup
+// Angular planner-host integration — DI-based RequirementPlannerHost wiring
 //
 // Canonical import path:
-//   import { AUTH_PLANNER_HOST, provideAuthPlannerHost, ... } from "@securitydept/client-angular"
+//   import {
+//     REQUIREMENT_PLANNER_HOST,
+//     provideRequirementPlannerHost,
+//     injectRequirementPlannerHost,
+//   } from "@securitydept/client-angular"
 //
-// Provides Angular DI glue for the shared planner-host contract:
-//   - InjectionToken for PlannerHost
-//   - Provider helpers for app / module / route scoped planners
-//   - InjectionToken + provider helpers for ScopedRequirementsClientSet
-//   - injectPlannerHost() convenience function with fail-fast
+// Maps Angular's hierarchical DI onto the SDK's `RequirementPlannerHost` parent
+// chain: each scope that calls `provideRequirementPlannerHost` builds a host
+// whose `parent` is the nearest ancestor host (looked up via `skipSelf`). Leaf
+// guards then resolve behaviour by walking that chain, mirroring route/DI
+// scoping without any framework coupling in the core.
 //
 // Architecture boundary:
 //   - Does NOT own the planner-host contract (that lives in @securitydept/client)
-//   - Does NOT carry token-set-specific mapping
-//   - Provides the Angular DI wiring for the shared contract
+//   - Does NOT carry token-set-specific mapping or policy
+//   - Provides only the Angular DI wiring for the shared contract
 //
 // Stability: provisional
 
@@ -23,209 +27,85 @@ import {
 	makeEnvironmentProviders,
 } from "@angular/core";
 import {
-	type AuthGuardClientOption,
-	type CandidateSelector,
-	type CreatePlannerHostOptions,
-	createPlannerHost,
-	type PlannerHost,
-	resolveEffectiveClientSet,
-	type ScopedRequirementsClientSet,
+	type RequirementBehaviour,
+	RequirementPlannerHost,
 } from "@securitydept/client";
 
-// ---------------------------------------------------------------------------
-// PlannerHost injection token
-// ---------------------------------------------------------------------------
-
 /**
- * DI token for the shared {@link PlannerHost}.
+ * DI token for the nearest {@link RequirementPlannerHost}.
  *
- * Provide at the app level via {@link provideAuthPlannerHost}.
- * Guards use {@link injectPlannerHost} to look up the nearest instance.
+ * Provide at app / route scope via {@link provideRequirementPlannerHost}.
+ * Guards read the nearest instance via {@link injectRequirementPlannerHost}.
  */
-export const AUTH_PLANNER_HOST = new InjectionToken<PlannerHost>(
-	"AUTH_PLANNER_HOST",
-);
+export const REQUIREMENT_PLANNER_HOST =
+	new InjectionToken<RequirementPlannerHost>("REQUIREMENT_PLANNER_HOST");
 
 /**
- * Options for {@link provideAuthPlannerHost}.
+ * A partial behaviour, or a factory that produces one inside an Angular
+ * injection context (so it may call `inject()` to resolve DI services).
  */
-export interface ProvideAuthPlannerHostOptions {
-	/**
-	 * Custom candidate selection strategy.
-	 * @see {@link CandidateSelector}
-	 */
-	selectCandidate?: CandidateSelector;
-}
+export type RequirementPlannerHostBehaviour =
+	| Partial<RequirementBehaviour>
+	| (() => Partial<RequirementBehaviour>);
 
 /**
- * Provide an {@link AUTH_PLANNER_HOST} at the current injector level.
+ * Provide a {@link RequirementPlannerHost} at the current injector scope.
  *
- * Use in app config, route providers, or NgModule providers to establish
- * a planner-host scope. Child routes inherit the nearest parent's planner.
+ * The host's `parent` is resolved from the nearest ancestor host via
+ * `skipSelf`, so nested route/module scopes compose into a behaviour chain
+ * that mirrors DI hierarchy. `behaviour` may be a factory to resolve DI
+ * services (e.g. a registry) at construction time.
  *
  * @example
  * ```ts
- * // app.config.ts — app-level planner (default sequential strategy)
- * export const appConfig: ApplicationConfig = {
- *   providers: [provideAuthPlannerHost()],
- * };
- *
- * // Feature route — override with custom async chooser strategy
- * {
- *   path: "admin",
- *   providers: [provideAuthPlannerHost({
- *     selectCandidate: async (candidates) => showAdminChooser(candidates),
- *   })],
- *   children: [...]
- * }
+ * // app.config.ts
+ * providers: [provideRequirementPlannerHost(() => ({
+ *   checkAuthenticated: (req) => inject(AuthService).isReady(req),
+ *   onUnauthenticated: (req) => `/login/${req.id}`,
+ * }))],
  * ```
  */
-export function provideAuthPlannerHost(
-	options?: ProvideAuthPlannerHostOptions,
-): EnvironmentProviders {
-	const plannerOptions: CreatePlannerHostOptions = {};
-	if (options?.selectCandidate) {
-		plannerOptions.selectCandidate = options.selectCandidate;
-	}
-	return makeEnvironmentProviders([
-		{ provide: AUTH_PLANNER_HOST, useValue: createPlannerHost(plannerOptions) },
-	]);
-}
-
-/**
- * Inject the nearest {@link PlannerHost} from the DI hierarchy.
- *
- * Throws an explicit error if no planner-host is provided, preventing
- * silent fallback behavior.
- *
- * @example
- * ```ts
- * const plannerHost = injectPlannerHost();
- * const result = await plannerHost.evaluate(candidates);
- * ```
- */
-export function injectPlannerHost(): PlannerHost {
-	const host = inject(AUTH_PLANNER_HOST, { optional: true });
-	if (!host) {
-		throw new Error(
-			"[injectPlannerHost] No AUTH_PLANNER_HOST found in the injector hierarchy. " +
-				"Use provideAuthPlannerHost() in your app config or route providers.",
-		);
-	}
-	return host;
-}
-
-// ---------------------------------------------------------------------------
-// Requirements client set injection token — stores the already-resolved
-// effective options for the current scope (parent + child composed).
-// ---------------------------------------------------------------------------
-
-/**
- * DI token for the effective requirements client set at the current scope.
- *
- * The value is always the **resolved** options after composing all ancestor
- * scopes — it is NOT the raw `ScopedRequirementsClientSet` declaration.
- *
- * Provide via {@link provideRouteScopedRequirements}.
- * Guards inject this token to get the effective scope requirements and then
- * merge their own declared candidates on top.
- */
-export const AUTH_REQUIREMENTS_CLIENT_SET = new InjectionToken<
-	readonly AuthGuardClientOption[]
->("AUTH_REQUIREMENTS_CLIENT_SET");
-
-/**
- * Provide a {@link ScopedRequirementsClientSet} at the current route/module scope.
- *
- * Internally, the provider resolves the effective client set by composing the
- * declared `scopedSet` with the parent scope's already-resolved options
- * (injected via `skipSelf: true`). The token value stored in DI is the
- * resolved `readonly AuthGuardClientOption[]`, not the raw declaration.
- *
- * This mirrors the React `AuthRequirementsClientSetProvider` semantics:
- * each level stores its resolved effective options, so children inherit
- * the composed result without re-resolving the full ancestor chain.
- *
- * The `scopedSet` argument may also be a **factory function** — it will be
- * called inside Angular's `useFactory` context, so `inject()` is valid.
- * Use this when the requirement options need DI-resolved services (e.g. a
- * token-set registry or a redirect service).
- *
- * @example
- * ```ts
- * // routes.ts — static declaration (no DI needed)
- * {
- *   path: "",
- *   providers: [
- *     provideRouteScopedRequirements({
- *       composition: RequirementsClientSetComposition.Replace,
- *       options: [sessionClientOption],
- *     }),
- *   ],
- * }
- *
- * // Feature route merges OIDC on top of the parent's session requirement
- * {
- *   path: "confluence",
- *   providers: [
- *     provideRouteScopedRequirements({
- *       composition: RequirementsClientSetComposition.Merge,
- *       options: [confluenceOidcClientOption],
- *     }),
- *   ],
- *   // Route-level DI scope only. Angular Router adopters should prefer
- *   // secureRouteRoot()/secureRoute() over direct guard wiring.
- * }
- *
- * // Factory form — use when options depend on injected services
- * {
- *   path: "protected",
- *   providers: [
- *     provideRouteScopedRequirements(() => {
- *       const registry = inject(TokenSetAuthRegistry);
- *       const authService = inject(AuthService);
- *       return {
- *         composition: RequirementsClientSetComposition.Replace,
- *         options: [{
- *           requirementId: "oidc",
- *           requirementKind: "frontend_oidc",
- *           checkAuthenticated: async () => {
- *             const client = await registry.whenReady(clientKey);
- *             const slot = client.isAuthenticated.get();
- *             return slot.kind === "value" ? slot.value : false;
- *           },
- *           onUnauthenticated: () => { authService.redirectToLogin(clientKey).subscribe(); return false; },
- *         }],
- *       };
- *     }),
- *   ],
- * }
- * ```
- */
-export function provideRouteScopedRequirements(
-	scopedSet: ScopedRequirementsClientSet | (() => ScopedRequirementsClientSet),
+export function provideRequirementPlannerHost(
+	behaviour: RequirementPlannerHostBehaviour,
 ): EnvironmentProviders {
 	return makeEnvironmentProviders([
 		{
-			provide: AUTH_REQUIREMENTS_CLIENT_SET,
-			useFactory: (): readonly AuthGuardClientOption[] => {
-				// Walk up to the nearest parent scope's already-resolved effective set.
-				// skipSelf: true ensures we don't read our own (not-yet-set) value.
-				const parentOptions: readonly AuthGuardClientOption[] =
-					inject(AUTH_REQUIREMENTS_CLIENT_SET, {
+			provide: REQUIREMENT_PLANNER_HOST,
+			useFactory: (): RequirementPlannerHost => {
+				// skipSelf avoids reading our own (not-yet-created) token value.
+				const parent =
+					inject(REQUIREMENT_PLANNER_HOST, {
 						optional: true,
 						skipSelf: true,
-					}) ?? [];
-				// Support factory form so callers can use inject() to resolve
-				// DI services (e.g. auth registry, redirect service) inside their
-				// option callbacks without bypassing this helper.
+					}) ?? undefined;
 				const resolved =
-					typeof scopedSet === "function" ? scopedSet() : scopedSet;
-				return resolveEffectiveClientSet(parentOptions, resolved);
+					typeof behaviour === "function" ? behaviour() : behaviour;
+				return RequirementPlannerHost.fromBehaviour(resolved, { parent });
 			},
 		},
 	]);
 }
 
-// Re-export composition helpers so consumers don't need a second import
-export { resolveEffectiveClientSet };
+/** Options for {@link injectRequirementPlannerHost}. */
+export interface InjectRequirementPlannerHostOptions {
+	/** Skip the current injector level (read the parent host). */
+	skipSelf?: boolean;
+}
+
+/**
+ * Inject the nearest {@link RequirementPlannerHost}, or `null` when none is
+ * provided in the current injector hierarchy.
+ *
+ * Returning `null` (rather than throwing) lets guards fall back to a
+ * self-managed root host with safe defaults.
+ */
+export function injectRequirementPlannerHost(
+	options?: InjectRequirementPlannerHostOptions,
+): RequirementPlannerHost | null {
+	return (
+		inject(REQUIREMENT_PLANNER_HOST, {
+			optional: true,
+			skipSelf: options?.skipSelf ?? false,
+		}) ?? null
+	);
+}

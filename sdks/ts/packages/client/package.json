@@ -43,6 +43,11 @@
 			"types": "./dist/webext/index.d.mts",
 			"import": "./dist/webext/index.mjs"
 		},
+		"./server": {
+			"monorepo-tsc": "./src/server/index.ts",
+			"types": "./dist/server/index.d.mts",
+			"import": "./dist/server/index.mjs"
+		},
 		"./rx": {
 			"monorepo-tsc": "./src/rx/index.ts",
 			"types": "./dist/rx/index.d.mts",

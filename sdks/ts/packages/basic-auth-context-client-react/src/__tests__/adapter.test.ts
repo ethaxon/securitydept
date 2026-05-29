@@ -6,6 +6,7 @@ import {
 	createBasicAuthContextClient,
 	provideBasicAuthContextClient,
 } from "@securitydept/basic-auth-context-client-react";
+import { createFoundationEnvironment } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useSecuritydeptContext,
@@ -40,6 +41,14 @@ function render(element: ReactElement) {
 }
 
 describe("basic-auth react adapter", () => {
+	const environment = createFoundationEnvironment({
+		transport: {
+			async execute() {
+				throw new Error("Unexpected transport call.");
+			},
+		},
+	});
+
 	afterEach(() => {
 		document.body.innerHTML = "";
 		delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -80,8 +89,11 @@ describe("basic-auth react adapter", () => {
 		}
 
 		const initialClient = createBasicAuthContextClient({
-			baseUrl: "https://auth.example.com",
-			zones: [{ zonePrefix: "/basic" }],
+			config: {
+				baseUrl: "https://auth.example.com",
+				zones: [{ zonePrefix: "/basic" }],
+			},
+			environment,
 		});
 
 		const view = render(
@@ -96,8 +108,11 @@ describe("basic-auth react adapter", () => {
 		expect(observed).toEqual(["/basic|/basic/login|redirect"]);
 
 		const updatedClient = createBasicAuthContextClient({
-			baseUrl: "https://auth.example.com",
-			zones: [{ zonePrefix: "/internal/basic", loginSubpath: "/signin" }],
+			config: {
+				baseUrl: "https://auth.example.com",
+				zones: [{ zonePrefix: "/internal/basic", loginSubpath: "/signin" }],
+			},
+			environment,
 		});
 
 		view.rerender(
@@ -135,8 +150,11 @@ describe("basic-auth react adapter", () => {
 		}
 
 		const client = createBasicAuthContextClient({
-			baseUrl: "https://auth.example.com",
-			zones: [{ zonePrefix: "/basic" }],
+			config: {
+				baseUrl: "https://auth.example.com",
+				zones: [{ zonePrefix: "/basic" }],
+			},
+			environment,
 		});
 
 		const view = render(

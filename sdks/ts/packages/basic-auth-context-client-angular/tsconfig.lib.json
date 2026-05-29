@@ -9,6 +9,7 @@
 		"inlineSources": true,
 		"outDir": "../../dist-tsc/lib",
 		"strict": true,
+		"skipLibCheck": true,
 		"noImplicitOverride": true,
 		"noImplicitReturns": true,
 		"noFallthroughCasesInSwitch": true,

@@ -42,10 +42,14 @@ export interface TokenSetReactClient extends DisposableTrait {
 	restorePersistedState(): Promise<unknown>;
 	loginWithRedirect(options?: OidcRedirectLoginOptions): Promise<void>;
 	loginWithPopup(options: OidcPopupLoginOptions): Promise<OidcPopupLoginResult>;
+	logout(): Promise<void>;
 }
 
 export type TokenSetBackendOidcClient = TokenSetReactClient &
-	Pick<BackendOidcModeClient, "authorizeUrl" | "refreshState" | "clearState">;
+	Pick<
+		BackendOidcModeClient,
+		"authorizeUrl" | "refreshState" | "clearState" | "logout"
+	>;
 
 // ============================================================================
 // Multi-client registration

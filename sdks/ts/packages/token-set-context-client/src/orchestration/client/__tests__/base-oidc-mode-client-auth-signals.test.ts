@@ -198,6 +198,19 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		);
 	});
 
+	it("logs out by clearing local and persisted token state", async () => {
+		const store = createInMemoryRecordStore();
+		const snapshot = createAuthSnapshot("logout-token");
+		const client = new TestOidcModeClient(createOptions({ store }));
+		await client.applySnapshot(snapshot);
+
+		await client.logout();
+
+		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+		const restoredClient = new TestOidcModeClient(createOptions({ store }));
+		await expect(restoredClient.restorePersistedState()).resolves.toBeNull();
+	});
+
 	it("emits typed persisted-restore events without leaking token material", async () => {
 		const store = createInMemoryRecordStore();
 		const snapshot = createAuthSnapshot("persisted-token");

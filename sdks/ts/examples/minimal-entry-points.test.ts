@@ -28,11 +28,14 @@ describe("minimal entry points", () => {
 			span: createRootSpan(),
 			tracing: createTracing(),
 		});
-		const client = new SessionContextClient({
-			baseUrl: "https://auth.example.com",
-		});
+		const client = new SessionContextClient(
+			{
+				baseUrl: "https://auth.example.com",
+			},
+			environment,
+		);
 
-		const session = await client.fetchUserInfo(environment.transport);
+		const session = await client.refresh();
 
 		expect(session?.principal.displayName).toBe("Alice");
 		expect(transport.execute).toHaveBeenCalledWith(
@@ -161,13 +164,25 @@ describe("minimal entry points", () => {
 		expect(typeof environment.time.clearTimeout).toBe("function");
 	});
 
-	it("leaves SSR redirect assembly at the app boundary", () => {
-		const sessionClient = new SessionContextClient({
-			baseUrl: "https://auth.example.com",
-		});
-
-		expect(sessionClient.loginUrl("https://app.example.com/protected")).toBe(
-			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fprotected",
+	it("leaves SSR redirect URL materialization outside SessionContextClient", () => {
+		const sessionClient = new SessionContextClient(
+			{
+				baseUrl: "https://auth.example.com",
+			},
+			createFoundationEnvironment({
+				transport: {
+					execute: vi.fn(async () => ({
+						status: 204,
+						headers: {},
+						body: null,
+					})),
+				},
+				span: createRootSpan(),
+				tracing: createTracing(),
+			}),
 		);
+
+		expect("loginUrl" in sessionClient).toBe(false);
+		expect("logoutUrl" in sessionClient).toBe(false);
 	});
 });

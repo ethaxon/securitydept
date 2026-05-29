@@ -8,7 +8,7 @@ import {
 	type UserRecovery as UserRecoveryType,
 } from "@securitydept/client";
 import {
-	useReadableSignal,
+	useReadableSignalValue,
 	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
@@ -351,7 +351,7 @@ export function TokenSetBackendModePlaygroundPage() {
 		initialValue: null,
 	}) as AuthStateSnapshot | null;
 	const authDeterminedSlot = useSyncExternalStore(
-		(listener) => client.authDetermined.subscribe(listener),
+		(listener) => client.authDetermined.notify(listener),
 		() => client.authDetermined.get(),
 		() => client.authDetermined.get(),
 	);
@@ -359,7 +359,7 @@ export function TokenSetBackendModePlaygroundPage() {
 		client.authorizationHeaderValue,
 		{ initialValue: undefined },
 	);
-	const lastAuthError = useReadableSignal(client.lastAuthError);
+	const lastAuthError = useReadableSignalValue(client.lastAuthError);
 	assertTokenSetBackendOidcClient(
 		client,
 		`TokenSetBackendModePlaygroundPage client ${TOKEN_SET_BACKEND_MODE_CLIENT_KEY}`,

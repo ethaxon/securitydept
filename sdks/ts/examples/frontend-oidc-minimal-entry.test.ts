@@ -98,7 +98,7 @@ describe("frontend-oidc-mode minimal entry", () => {
 
 		// Subscribe to auth snapshot changes via the replay signal.
 		const observed: Array<string | null> = [];
-		const unsubscribe = client.authSnapshot.subscribe(() => {
+		const unsubscribe = client.authSnapshot.notify(() => {
 			const snapshot = expectReplayValue(client.authSnapshot);
 			observed.push(snapshot?.tokens.accessToken ?? null);
 		});

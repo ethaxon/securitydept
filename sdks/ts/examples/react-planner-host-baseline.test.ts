@@ -68,7 +68,7 @@ describe("planner-host injector factories", () => {
 
 		const unauthenticatedOpt: AuthGuardClientOption = {
 			requirementId: "oidc",
-			requirementKind: "frontend_oidc",
+			attributes: { kind: "frontend_oidc" },
 			checkAuthenticated: () => false,
 			onUnauthenticated: () => "/login",
 		};
@@ -82,7 +82,7 @@ describe("planner-host injector factories", () => {
 		const result = await host.evaluate([
 			{
 				requirementId: "session",
-				requirementKind: "session",
+				attributes: { kind: "session" },
 				checkAuthenticated: () => true,
 				onUnauthenticated: () => false,
 			},
@@ -96,7 +96,7 @@ describe("planner-host injector factories", () => {
 		const result = await host.evaluate([
 			{
 				requirementId: "session",
-				requirementKind: "session",
+				attributes: { kind: "session" },
 				checkAuthenticated: () => false,
 				onUnauthenticated: () => "/login",
 			},
@@ -113,13 +113,13 @@ describe("planner-host injector factories", () => {
 describe("createRequirementsClientSetInjector — composition semantics", () => {
 	const sessionOpt: AuthGuardClientOption = {
 		requirementId: "session",
-		requirementKind: "session",
+		attributes: { kind: "session" },
 		checkAuthenticated: () => true,
 		onUnauthenticated: () => false,
 	};
 	const oidcOpt: AuthGuardClientOption = {
 		requirementId: "oidc",
-		requirementKind: "frontend_oidc",
+		attributes: { kind: "frontend_oidc" },
 		checkAuthenticated: () => false,
 		onUnauthenticated: () => "/login",
 	};
@@ -172,13 +172,13 @@ describe("planner-host integration — multi-scope scenario", () => {
 		// Expected: planner selects oidc as the pending candidate
 		const appSessionOpt: AuthGuardClientOption = {
 			requirementId: "app-session",
-			requirementKind: "session",
+			attributes: { kind: "session" },
 			checkAuthenticated: () => true,
 			onUnauthenticated: () => false,
 		};
 		const featureOidcOpt: AuthGuardClientOption = {
 			requirementId: "feature-oidc",
-			requirementKind: "frontend_oidc",
+			attributes: { kind: "frontend_oidc" },
 			checkAuthenticated: () => false,
 			onUnauthenticated: () => "/feature/login",
 		};
@@ -202,13 +202,13 @@ describe("planner-host integration — multi-scope scenario", () => {
 	it("evaluates replace composition — only child requirements matter", async () => {
 		const parentOpt: AuthGuardClientOption = {
 			requirementId: "parent-strict",
-			requirementKind: "backend_oidc",
+			attributes: { kind: "backend_oidc" },
 			checkAuthenticated: () => false, // would block if not replaced
 			onUnauthenticated: () => "/admin/login",
 		};
 		const publicOpt: AuthGuardClientOption = {
 			requirementId: "public-route",
-			requirementKind: "public",
+			attributes: { kind: "public" },
 			checkAuthenticated: () => true,
 			onUnauthenticated: () => false,
 		};
@@ -233,17 +233,15 @@ describe("planner-host integration — multi-scope scenario", () => {
 		// Simulates a chooser UI that picks based on priority metadata
 		const highPriority: AuthGuardClientOption = {
 			requirementId: "high",
-			requirementKind: "frontend_oidc",
+			attributes: { kind: "frontend_oidc", priority: 10 },
 			checkAuthenticated: () => false,
 			onUnauthenticated: () => "/high/login",
-			attributes: { priority: 10 },
 		};
 		const lowPriority: AuthGuardClientOption = {
 			requirementId: "low",
-			requirementKind: "backend_oidc",
+			attributes: { kind: "backend_oidc", priority: 1 },
 			checkAuthenticated: () => false,
 			onUnauthenticated: () => "/low/login",
-			attributes: { priority: 1 },
 		};
 
 		const injector = SecuritydeptInjector.resolveAndCreate([

@@ -31,7 +31,7 @@ export function createReplaySignal<T>(): WritableReplaySignalTrait<T> {
 
 	return {
 		get: () => subject.getValue(),
-		subscribe: (listener) => {
+		notify: (listener) => {
 			const unsubscribe = changes.subscribe(() => {
 				listener();
 			});
@@ -88,7 +88,7 @@ export function readonlyReplaySignal<T>(
 ): ReadableReplaySignalTrait<T> {
 	return {
 		get: () => signal.get(),
-		subscribe: (listener) => signal.subscribe(listener),
+		notify: (listener) => signal.notify(listener),
 		hasValue: () => signal.hasValue(),
 		whenValue: (options) => signal.whenValue(options),
 		[SYMBOL_OBSERVABLE]: () => signal[SYMBOL_OBSERVABLE](),
@@ -111,7 +111,7 @@ export function createComputedReplaySignal<T>(
 	};
 
 	for (const dep of deps) {
-		dep.subscribe(markDirty);
+		dep.notify(markDirty);
 	}
 
 	return createReadableReplaySignalView({
@@ -122,7 +122,7 @@ export function createComputedReplaySignal<T>(
 			}
 			return cached ?? { kind: "empty" };
 		},
-		subscribe(listener) {
+		notify(listener) {
 			listeners.add(listener);
 			return () => {
 				listeners.delete(listener);
@@ -142,14 +142,14 @@ export function createAndThenComputedReplaySignal<T, U>(
 }
 
 function createReadableReplaySignalView<T>(
-	signalLike: Omit<
-		ReadableSignalTrait<ReplaySignalSlot<T>>,
-		typeof Symbol.observable
-	>,
+	signalLike: Pick<ReadableSignalTrait<ReplaySignalSlot<T>>, "get" | "notify">,
 ): ReadableReplaySignalTrait<T> {
-	const signal: Omit<ReadableReplaySignalTrait<T>, typeof Symbol.observable> = {
+	const signal: Pick<
+		ReadableReplaySignalTrait<T>,
+		"get" | "hasValue" | "notify" | "whenValue"
+	> = {
 		get: () => signalLike.get(),
-		subscribe: (listener) => signalLike.subscribe(listener),
+		notify: (listener) => signalLike.notify(listener),
 		hasValue: () => signalLike.get().kind === "value",
 		whenValue: (options) => {
 			const slot = signalLike.get();
@@ -181,7 +181,7 @@ function createReadableReplaySignalView<T>(
 					}
 				};
 
-				unsubscribe = signalLike.subscribe(resolveIfValue);
+				unsubscribe = signalLike.notify(resolveIfValue);
 				disposeCancellation = cancellationToken?.onCancellationRequested(() => {
 					cleanup();
 					reject(cancellationToken.readCancellationError());
@@ -201,7 +201,7 @@ function createReadableReplaySignalView<T>(
 					}
 				};
 				emitIfPresent();
-				const unsubscribe = signalLike.subscribe(() => {
+				const unsubscribe = signalLike.notify(() => {
 					emitIfPresent();
 				});
 				return () => {
@@ -221,8 +221,8 @@ export function isReplaySignalTrait<T>(
 		value !== null &&
 		"get" in value &&
 		typeof value.get === "function" &&
-		"subscribe" in value &&
-		typeof value.subscribe === "function" &&
+		"notify" in value &&
+		typeof value.notify === "function" &&
 		"hasValue" in value &&
 		typeof value.hasValue === "function" &&
 		"whenValue" in value &&

@@ -1,202 +1,166 @@
+// Token-set secure route helpers — specialized over the client-angular base
+//
+// Canonical import path:
+//   import { secureRoute, secureRouteRoot }
+//     from "@securitydept/token-set-context-client-angular"
+//
+// Thin token-set specialization of the generic client-angular route helpers:
+//   - secureRoute / secureRouteRoot normalize token-set requirement inputs
+//     (kind -> attributes.requirementKind) and delegate to the base helpers.
+//   - secureRouteRoot additionally mounts provideTokenSetRequirementPlannerHost
+//     so the base guards resolve token-set behaviour through DI.
+//   - createTokenSetCanActivate / createTokenSetCanActivateChild are token-set
+//     named aliases over the base guard factories (host comes from DI).
+//
+// Stability: provisional
+
 import {
-	type ActivatedRouteSnapshot,
 	type CanActivateChildFn,
+	type CanActivateFn,
 	type Route,
-	type RouterStateSnapshot,
 } from "@angular/router";
 import {
 	type AuthRequirement,
-	type PlannerHost,
-	type RequirementsClientSetComposition,
+	createAuthRequirement,
+	type RequirementsComposition,
 } from "@securitydept/client";
-import { withRouteRequirements } from "@securitydept/client-angular";
 import {
-	type CreateTokenSetRouteAggregationGuardOptions,
-	createTokenSetRouteAggregationGuard,
+	secureRoute as baseSecureRoute,
+	secureRouteRoot as baseSecureRouteRoot,
+	createAngularCanActivate,
+	createAngularCanActivateChild,
+	type SecureRouteConfig,
+} from "@securitydept/client-angular";
+import {
+	type ProvideTokenSetRequirementPlannerHostOptions,
+	provideTokenSetRequirementPlannerHost,
+	TOKEN_SET_REQUIREMENT_KIND_ATTRIBUTE,
 	type TokenSetRequirementPolicy,
-} from "./route-aggregation-guard";
+} from "./planner-host";
+
+export type { TokenSetRequirementPolicy };
 
 /**
- * Route data key for choosing a planner-host registered at the route root.
- */
-export const TOKEN_SET_ROUTE_PLANNER_HOST_KEY_DATA_KEY =
-	"tokenSetPlannerHostKey";
-
-/**
- * Serializable route-level security declaration.
+ * Token-set requirement declaration for route metadata.
  *
- * This object is safe to embed in Angular route metadata. Non-serializable
- * runtime policy (planner host instances, callbacks, chooser implementations)
- * belongs in {@link SecureRouteRootSecurityOptions}.
+ * `kind` is stored under `attributes.requirementKind` so the token-set planner
+ * host can map it to registry clients.
  */
-export interface SecureRouteSecurityOptions {
-	/**
-	 * Requirements declared at this route segment.
-	 * @default []
-	 */
-	requirements?: AuthRequirement[];
+export interface TokenSetAuthRequirementInput {
+	/** Stable requirement id (matches `requirementPolicies` keys). */
+	id: string;
+	/** Token-set requirement kind (default registry mapping). */
+	kind?: string;
+	/** Human-readable label. */
+	label?: string;
+	/** Extra opaque attributes merged alongside `requirementKind`. */
+	attributes?: Record<string, unknown>;
+}
 
-	/**
-	 * How this segment composes with ancestor route requirements.
-	 * @default merge
-	 */
-	composition?: RequirementsClientSetComposition;
+/** Serializable token-set security declaration for a child route. */
+export interface TokenSetSecureRouteSecurityOptions {
+	/** Requirements declared at this route segment. */
+	requirements?: readonly TokenSetAuthRequirementInput[];
+	/** Composition strategy against ancestor requirements (default `merge`). */
+	composition?: RequirementsComposition;
+}
 
-	/**
-	 * Serializable lookup key for a planner-host provided by the root route.
-	 *
-	 * The nearest declared key on the active route chain wins.
-	 */
-	plannerHostKey?: string;
+/** Root-level token-set security: metadata plus behaviour policy. */
+export interface TokenSetSecureRouteRootSecurityOptions
+	extends TokenSetSecureRouteSecurityOptions,
+		ProvideTokenSetRequirementPlannerHostOptions {}
+
+function normalizeTokenSetRequirement(
+	input: TokenSetAuthRequirementInput,
+): AuthRequirement {
+	const attributes =
+		input.kind !== undefined
+			? {
+					...input.attributes,
+					[TOKEN_SET_REQUIREMENT_KIND_ATTRIBUTE]: input.kind,
+				}
+			: input.attributes;
+	return createAuthRequirement({
+		id: input.id,
+		label: input.label,
+		attributes,
+	});
+}
+
+function normalizeRequirements(
+	requirements: readonly TokenSetAuthRequirementInput[] | undefined,
+): AuthRequirement[] {
+	return (requirements ?? []).map(normalizeTokenSetRequirement);
 }
 
 /**
- * Root-level runtime policy for a secured route tree.
- *
- * Everything here is intentionally non-serializable and lives outside route
- * metadata. Child `secureRoute()` calls only reference these policies by
- * serializable keys / requirement ids.
+ * Create a token-set `CanActivateFn`. The behaviour host is resolved from DI
+ * (provided by {@link provideTokenSetRequirementPlannerHost}).
  */
-export interface SecureRouteRootSecurityOptions
-	extends SecureRouteSecurityOptions,
-		Omit<
-			CreateTokenSetRouteAggregationGuardOptions,
-			"plannerHost" | "plannerHostResolver"
-		> {
-	/**
-	 * Named planner-host instances available to the secured route tree.
-	 */
-	plannerHosts?: Record<string, PlannerHost>;
-
-	/**
-	 * Fallback planner-host key when no route segment declares one.
-	 */
-	defaultPlannerHostKey?: string;
+export function createTokenSetCanActivate(): CanActivateFn {
+	return createAngularCanActivate();
 }
 
-type SecureRouteOptions = Omit<Route, "path" | "data"> & {
-	data?: Record<string, unknown>;
-};
+/**
+ * Create a token-set `CanActivateChildFn`. The behaviour host is resolved from
+ * DI (provided by {@link provideTokenSetRequirementPlannerHost}).
+ */
+export function createTokenSetCanActivateChild(): CanActivateChildFn {
+	return createAngularCanActivateChild();
+}
 
 /**
- * Build a secured child route declaration.
- *
- * The returned route contains only serializable metadata:
- * requirements, composition strategy, planner-host lookup key, and any extra
- * route data the caller provides.
+ * Declare a secured child route. Writes token-set requirement metadata only —
+ * enforcement is owned by a guarded {@link secureRouteRoot} ancestor.
  */
 export function secureRoute(
 	path: string,
-	securityOptions: SecureRouteSecurityOptions = {},
-	routeOptions: SecureRouteOptions = {},
+	security: TokenSetSecureRouteSecurityOptions = {},
+	routeOptions?: SecureRouteConfig,
 ): Route {
-	const data = withRouteRequirements(securityOptions.requirements ?? [], {
-		composition: securityOptions.composition,
-		extra: {
-			...(routeOptions.data ?? {}),
-			...(securityOptions.plannerHostKey
-				? {
-						[TOKEN_SET_ROUTE_PLANNER_HOST_KEY_DATA_KEY]:
-							securityOptions.plannerHostKey,
-					}
-				: {}),
-		},
-	});
-
-	return {
-		...routeOptions,
+	return baseSecureRoute(
 		path,
-		data,
-	};
+		{
+			requirements: normalizeRequirements(security.requirements),
+			composition: security.composition,
+		},
+		routeOptions,
+	);
 }
 
 /**
- * Build a secured route-tree root.
- *
- * This is the canonical Angular adopter entry for token-set route security:
- * root-level runtime policy stays here, child routes use {@link secureRoute}
- * for serializable declarations only.
+ * Declare a guarded token-set route root. Delegates guard assembly to the
+ * client-angular base helper and mounts a token-set behaviour host provider so
+ * the base guards resolve registry-backed behaviour through DI.
  */
 export function secureRouteRoot(
 	path: string,
-	securityOptions: SecureRouteRootSecurityOptions = {},
-	routeOptions: SecureRouteOptions = {},
+	security: TokenSetSecureRouteRootSecurityOptions = {},
+	routeOptions?: SecureRouteConfig,
 ): Route {
-	const canActivate = createTokenSetRouteAggregationGuard({
-		requirementPolicies: securityOptions.requirementPolicies,
-		requirementHandlers: securityOptions.requirementHandlers,
-		defaultOnUnauthenticated: securityOptions.defaultOnUnauthenticated,
-		requirementsKey: securityOptions.requirementsKey,
-		plannerHostResolver: (route, state) =>
-			resolvePlannerHostForRoute(route, state, securityOptions),
-	});
-	const canActivateChild = createCanActivateChildAdapter(canActivate);
-	const baseRoute = secureRoute(path, securityOptions, routeOptions);
-
-	return {
-		...baseRoute,
-		canActivate: [canActivate, ...(routeOptions.canActivate ?? [])],
-		canActivateChild: [
-			canActivateChild,
-			...(routeOptions.canActivateChild ?? []),
-		],
-	};
+	const providers = [
+		...(routeOptions?.providers ?? []),
+		provideTokenSetRequirementPlannerHost({
+			requirementPolicies: security.requirementPolicies,
+			requirementHandlers: security.requirementHandlers,
+			defaultOnUnauthenticated: security.defaultOnUnauthenticated,
+		}),
+	];
+	return baseSecureRouteRoot(
+		path,
+		{
+			requirements: normalizeRequirements(security.requirements),
+			composition: security.composition,
+		},
+		{
+			...routeOptions,
+			providers,
+		},
+	);
 }
 
-/**
- * Alias with a token-set-specific name for callers who prefer explicit imports.
- */
+/** Token-set-named alias for {@link secureRoute}. */
 export const secureTokenSetRoute = secureRoute;
 
-/**
- * Alias with a token-set-specific name for callers who prefer explicit imports.
- */
+/** Token-set-named alias for {@link secureRouteRoot}. */
 export const secureTokenSetRouteRoot = secureRouteRoot;
-
-function createCanActivateChildAdapter(
-	canActivate: ReturnType<typeof createTokenSetRouteAggregationGuard>,
-): CanActivateChildFn {
-	return (childRoute, state) => canActivate(childRoute, state);
-}
-
-function resolvePlannerHostForRoute(
-	route: ActivatedRouteSnapshot,
-	_state: RouterStateSnapshot,
-	securityOptions: SecureRouteRootSecurityOptions,
-): PlannerHost | undefined {
-	const plannerHostKey =
-		findNearestPlannerHostKey(route) ?? securityOptions.defaultPlannerHostKey;
-
-	if (plannerHostKey) {
-		const resolved = securityOptions.plannerHosts?.[plannerHostKey];
-		if (!resolved) {
-			throw new Error(
-				`[secureRouteRoot] No planner host registered for key "${plannerHostKey}"`,
-			);
-		}
-		return resolved;
-	}
-
-	return undefined;
-}
-
-function findNearestPlannerHostKey(
-	route: ActivatedRouteSnapshot,
-): string | undefined {
-	const chain = route.pathFromRoot ?? [route];
-	for (let index = chain.length - 1; index >= 0; index -= 1) {
-		const segment = chain[index];
-		if (!segment) {
-			continue;
-		}
-		const raw =
-			segment.data[TOKEN_SET_ROUTE_PLANNER_HOST_KEY_DATA_KEY] ??
-			segment.routeConfig?.data?.[TOKEN_SET_ROUTE_PLANNER_HOST_KEY_DATA_KEY];
-		if (typeof raw === "string" && raw.length > 0) {
-			return raw;
-		}
-	}
-	return undefined;
-}
-
-export type { TokenSetRequirementPolicy };

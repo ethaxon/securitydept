@@ -21,6 +21,85 @@ SDK 仍处于 `0.x`，但 public-surface changes 必须保持有纪律。
 
 ## 当前迁移说明
 
+### Auth Coordination Planner Host 与 Planner 变体
+
+涉及包：
+
+- `@securitydept/client`
+
+变更：
+
+- auth-coordination 表面重构为三层：可序列化的 `contract`、非序列化的 `RequirementPlannerHost`，以及拥有 pipeline 的 planner 家族。
+- `RequirementPlannerHost.fromBehaviour(behaviour, { parent })` 承载 `checkAuthenticated` / `onUnauthenticated` / `selectCandidate`。各字段可选，沿 parent 链解析（就近优先；根部安全默认值：未认证 / 阻断 / 取第一个候选）。
+- `BaseRequirementPlanner` 拥有 pipeline：`buildPlan()`（步骤 0 — 绑定 host behaviour 并物化 `RequirementPlan`）、`checkUnauthenticatedCandidates(plan)`（步骤 1）、`runStep(plan)` / `runUntilSettled()`（步骤 2 循环）。各变体仅在 `buildPlan()` 内如何物化 requirements 上有差异：
+  - `StaticRequirementPlanner.fromRequirements(host, requirements)`
+  - `RouteCompositionRequirementPlanner.fromRootRoute(host, segments)` / `.fromActiveRoute(host, segments, previousPlanner, previousPlan)`（不可变切换；从 `previousPlan` 保留 shared-prefix resolutions）
+  - `MergeRequirementPlanner.fromPlanners(host, planners)`（按顺序拼接，不去重）
+- pipeline 在步骤 2 并发执行 `checkAuthenticated` 并把 requirement 划分为已解决 / 候选两类。不再有顺序前缀 auto-resolve；requirement 之间的次序或依赖必须在 `checkAuthenticated` 内部表达。
+- 手动跑 pipeline 时，先调用 `buildPlan()`。它一次性解析 host parent 链、捕获 behaviour 回调，并返回在下次 `buildPlan()` 前保持固定的 `RequirementPlan`。`runUntilSettled()` 会自动调用。
+- 直接删除、不保留别名：`createPlannerHost`、`PlannerHost`、`PlannerHostResult`、`CreatePlannerHostOptions`、`CandidateSelector`、`AuthGuardClientOption`、`materializeAuthGuardCandidates`、`MaterializeAuthGuardCandidatesOptions`、`RequirementPlanner`（旧 class，含 `nextPending`/`resolve`）、`RouteRequirementPlannerSession`、`RouteMatchNode`、`RouteRequirementSettledEvent`、`ChooserDecision`、`RequirementsClientSet`、`ScopedRequirementsClientSet`、`RequirementsClientSetComposition`、`resolveEffectiveClientSet`。
+
+迁移：
+
+- 把 `createPlannerHost({ selectCandidate })` + `materializeAuthGuardCandidates(...)` + `host.evaluate(candidates)` 替换为 `RequirementPlannerHost`、`buildPlan()`，以及 `checkUnauthenticatedCandidates(plan)` / `runStep(plan)` / `runUntilSettled()`。
+- 把 `RequirementsClientSetComposition` 替换为 `RequirementsComposition`，把 `resolveEffectiveClientSet` 替换为 `resolveEffectiveRequirements`。
+- 把 `RouteRequirementPlannerSession`（及其 `activateMatchedRoutes` / `resolve` / `ChooserDecision`）替换为 `RouteCompositionRequirementPlanner`（`RouteTreeSegment[]` 通过每段的 `composition` 字段携带组合策略）。
+- provider 级 chooser 应放在 `selectCandidate`；某个 requirement 内部的 provider 上下文应进入 `RequirementResolution` 或 requirement attributes，而不是单独的 decision 旁路。
+
+注意：Angular adapter 包（`@securitydept/client-angular`、`@securitydept/token-set-context-client-angular`）已完成迁移（见下方 Angular Route Subsystem Rewrite）。`@securitydept/client-react` 仍为后续项，在完成前无法对该表面通过 typecheck。
+
+### Angular Route Subsystem Rewrite
+
+涉及包：
+
+- `@securitydept/client-angular`
+- `@securitydept/token-set-context-client-angular`
+
+变更：
+
+- Angular 路由子系统在 `RequirementPlannerHost` / `RouteCompositionRequirementPlanner` 之上重建。`@securitydept/client-angular` 提供 token-set 无关的基础层；`@securitydept/token-set-context-client-angular` 提供基于 registry 的特化层并调用基础层。
+- `@securitydept/client-angular` 移除：`AuthRouteAdapter`、`createRouterForAngularRouter`（已改名）、`RouteGuardResult`；旧的 planner-host DI（`AUTH_PLANNER_HOST`、`provideAuthPlannerHost`、`injectPlannerHost`、`AUTH_REQUIREMENTS_CLIENT_SET`、`provideRouteScopedRequirements`、`resolveEffectiveClientSet`）；以及旧的 route-metadata helper（`withRouteRequirements`、`extractFullRouteRequirements`、`ROUTE_REQUIREMENTS_DATA_KEY`、`ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY`、`resolveEffectiveRequirements`）。
+- `@securitydept/client-angular` 新增：`createRouterForAngular(options)`（→ `RouterTrait`）；`projectAngularRouteSegments(leafRoute)`；DI planner-host 装配 `REQUIREMENT_PLANNER_HOST` + `provideRequirementPlannerHost(behaviourOrFactory)` + `injectRequirementPlannerHost()`（Angular DI 层级通过 `skipSelf` 映射为 host parent 链）；`createAngularCanActivate(options?)` / `createAngularCanActivateChild(options?)`；以及路由构造器 `secureRoute()`（仅元信息）/ `secureRouteRoot()`（元信息 + `canActivate` + `canActivateChild`，可选 `provideRequirementPlannerHost`）。路由元信息存储归 `@securitydept/client` 所有（`SECURITYDEPT_ROUTE_METADATA_KEY`、`readSecuritydeptRouteMetadata`、`writeSecuritydeptRouteMetadata`）。
+- `@securitydept/token-set-context-client-angular` 移除：`createTokenSetRouteAggregationGuard` 与 `guard-types` 模块（`UnauthenticatedEntry` 迁入 `planner-host`）。
+- `@securitydept/token-set-context-client-angular` 新增：`provideTokenSetRequirementPlannerHost(options?)`（把 token-set `RequirementBehaviour` 绑定到 `REQUIREMENT_PLANNER_HOST`——`checkAuthenticated` 经 `TokenSetAuthRegistry`，`onUnauthenticated` 经 `requirementPolicies` / `requirementHandlers` / `defaultOnUnauthenticated` 并在 `runInInjectionContext` 内执行）；`createTokenSetCanActivate()` / `createTokenSetCanActivateChild()`；token-set `secureRoute()` / `secureRouteRoot()`（把 `requirementKind` → `attributes.requirementKind` 规整后委托基础构造器），保留别名 `secureTokenSetRoute` / `secureTokenSetRouteRoot`。`createTokenSetOidcLoginRedirectHandler()` 保留；attempted URL 现从 Angular 路由导航状态（`Router.getCurrentNavigation()`）读取，而非页面全局。
+
+迁移：
+
+- 把 `createRouterForAngularRouter(...)` 替换为 `createRouterForAngular(...)`。
+- 把 `AuthRouteAdapter.projectRouteMatch(...)` + `extractFullRouteRequirements(...)` 替换为 `projectAngularRouteSegments(route)`，并喂给 `RouteCompositionRequirementPlanner.fromRootRoute(host, segments)`。
+- 把 `provideAuthPlannerHost()` / `AUTH_PLANNER_HOST` 替换为 `provideRequirementPlannerHost(behaviourOrFactory)` / `REQUIREMENT_PLANNER_HOST`；token-set 场景使用 `provideTokenSetRequirementPlannerHost(options?)`。
+- 把 `createTokenSetRouteAggregationGuard(...)` 替换为 `createTokenSetCanActivate()` / `createTokenSetCanActivateChild()`（host 经 DI 解析），或优先用 `secureRoute()` / `secureRouteRoot()` 声明路由。
+- 把 token-set requirement 的 `kind` 迁入 `attributes.requirementKind`（token-set 的 `secureRoute` helper 会自动完成）。
+
+### RouterTrait URI Reference 迁移
+
+涉及包：
+
+- `@securitydept/client`
+- `@securitydept/client/web`
+- `@securitydept/client/webext`
+- `@securitydept/client-angular`
+- `@securitydept/client-react/tanstack-router`
+- `@securitydept/session-context-client`
+- `@securitydept/basic-auth-context-client`
+- `@securitydept/token-set-context-client`
+
+变更：
+
+- `RouterTrait.currentUrl()` 现返回 `UriReferenceString | null`，不再返回 `URL | null`。SPA 适配器可直接暴露相对 in-app 路径（如 `/dashboard`），无需伪造绝对 URL。
+- `RouterTrait` 新增 `baseURI(): UriString | null`——语义对齐 `document.baseURI`，但由各 host 解析：浏览器页面用 `document.baseURI`；WebExt background 在可用时用 `browser.runtime.getURL('')`；适配器 create options 支持显式 `baseURI` 覆盖。
+- `RouterNavigationRequest.url`、`RouterGuardContext` 的 `url` / `currentUrl` 及 redirect 决策改为 `UriReferenceString`；`RouterGuardContext` 另增 `baseURI`。
+- 新增 helper：`coerceUriReferenceString`、`resolveUriReferenceToUrl`、`resolveUriReferenceWithRouter`（base 优先级：显式 → `router.baseURI()` → 绝对的 `currentUrl()`）。
+- `parseCompatFragment` / `takeCompatFragmentFromRouter` 支持 `UriReferenceString` 输入。
+
+迁移：
+
+- `environment.router.currentUrl()?.toString()` 仍可用于 OAuth 回跳 URI 与日志。
+- 自定义适配器中，用 `UriReferenceString.tryParse(relative)` 替代 `new URL(relative, sentinelBase)` 作为 `currentUrl`；需要原生 `URL` 时用 `resolveUriReferenceWithRouter(ref, router)`。
+- mock `RouterTrait` 须实现 `baseURI()`（无基座时返回 `null`）。
+- 从返回 string 的 client API 调用 `router.navigate({ url, ... })` 时，使用 `coerceUriReferenceString(string)`。
+- WebExt：经 `RouterForWebExtCreateOptions.browser.runtime` 传入 `runtime.getURL`，或在测试中显式设置 `baseURI`。
+
 ### Token-set Auth Event Payload Map
 
 涉及包：
@@ -55,13 +134,13 @@ Packages：
 - `@securitydept/client` 现在拥有 framework-neutral DI authority：`SecuritydeptInjectorTrait` 是读取侧最小 contract，只表达 `get()`；`SecuritydeptInjector` 是 SDK runtime/facade，负责 provider 解析、parent 继承、override 与 `has()` 诊断。
 - React 侧现在只有一组 SDK Context：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`，全部位于 `@securitydept/client-react`。
 - React domain package 不再导出 `BasicAuthContextProvider`、`SessionContextProvider`、`BackendOidcModeContextProvider`、`TokenSetAuthProvider`、`useBasicAuthContext()`、`useSessionContext()`、`useBackendOidcModeContext()`、`useTokenSetAuthRegistry()` 等 domain-specific Context / Provider / keyed state helper。
-- React domain package 改为导出 injection token、provider factory、plain factory 与显式 callback/component bridge。状态读取统一通过 `useReadableSignal(...)` 完成。
+- React domain package 改为导出 injection token、provider factory、plain factory 与显式 callback/component bridge。状态读取统一通过 `useReadableSignalValue(...)` 完成。
 
 迁移：
 
 - 用 `SecuritydeptProvider` 包住 React subtree；可以传入已有 `injector`，也可以通过 `providers` / `parentInjector` 派生 child injector。
 - 将 `XxxContextProvider` / `useXxxContext()` 迁移为 `useSecuritydeptContext().get(TOKEN)`。
-- 将 `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` 迁移为 `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)`，再配合 `useReadableSignal(registry.clientSignalFor(key))` 读取返回 client 的 replay channels。需要观察 registry topology 时使用 `useReadableSignal(registry.state)`。
+- 将 `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` 迁移为 `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)`，再配合 `useReadableSignalValue(registry.clientSignalFor(key))` 读取返回 client 的 replay channels。需要观察 registry topology 时使用 `useReadableSignalValue(registry.state)`。
 - 将 basic-auth / session 的 provider-first 组合迁移为 `create*()` + `provide*()`；token-set 多客户端 React 组合改为注册 `provideTokenSetAuthRegistry({ clients })`，只有在 host 明确需要 callback resume wiring 时才额外组合 `provideTokenSetCallbackResumeController(registry)`。
 
 ### Token-Set React Registry Composition
@@ -113,7 +192,7 @@ Packages：
 
 理由：
 
-- 非 client-bound helper 已经开始重复 dependency bag 并隐藏读取 `window.*` default。Typed client environment 在保持 core dependency wiring 显式的同时，为 helper 提供共享、可测试、按 host 划分的 capability boundary。
+- 非 client-bound helper 已经开始重复 dependency bag 并隐藏读取 `window.*` default。Typed environment 在保持 core dependency wiring 显式的同时，为 helper 提供共享、可测试、按 host 划分的 capability boundary。
 
 ### TimeTrait 与 EventStream 时间源
 
@@ -256,18 +335,18 @@ Packages：
 
 变更：
 
-- `@securitydept/client-react` 现在拥有 canonical React injector bridge：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`，以及 context-free `useReadableSignal()` / `useEventStream()`。
-- `client-react` environment 与 `planner-host` helper 现在只导出 injection token 与 provider factory：例如 `CLIENT_ENVIRONMENT` + `provideClientEnvironment(environment)`，`AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`。
+- `@securitydept/client-react` 现在拥有 canonical React injector bridge：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`，以及 context-free `useReadableSignalValue()`、`useReplaySignalValue()`、`useInteropObservable()` 与 `useEventStream()`。
+- `client-react` environment 与 `planner-host` helper 现在只导出 injection token 与 provider factory：例如 `ENVIRONMENT` + `provideEnvironment({ environment })`，`AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`。
 - `basic-auth` / `session` / `token-set` React adapter 不再拥有 domain-specific Provider / Context hook；它们导出 token、plain factory、provider factory，以及显式 callback/component bridge。token-set 多客户端组合现在改为显式 registry/controller wiring，而不是 SDK 预设 runtime bundle。
-- Angular `createTokenSetOidcLoginRedirectHandler()` 现在是 route-login helper。它的 public key 仍然只叫 `environment`，但这个值现在表示稳定的 native-web-environment source；Angular DI 应通过 `@securitydept/client-angular` 的 `provideNativeWebEnvironment({ environment })` 提供该 source。helper 面向 `BaseOidcModeClient.loginWithRedirect()`，并会在 guard flow 中 await 最终 capability 后再调用它。
+- Angular `createTokenSetOidcLoginRedirectHandler()` 现在是 route-login helper。它的 public key 仍然只叫 `environment`，但这个值现在表示稳定的 environment source；Angular DI 应通过 `@securitydept/client-angular` 的 `provideEnvironment({ environment })` 提供该 source。helper 面向 `BaseOidcModeClient.loginWithRedirect()`，并会在 guard flow 中 await 最终 capability 后再调用它。
 - Angular `CallbackResumeService` 与 React `useTokenSetCallbackResume({ getCurrentUrl, describeError })` 现在桥接 `@securitydept/token-set-context-client/registry` 的 shared `TokenSetCallbackResumeController`。Angular `TokenSetCallbackComponent` 仍是该 service 之上的 page-only convenience，并继续使用 injectable current URL 与 host policy tokens。
 
 迁移：
 
 - 在 framework composition root 构建 browser environment，再通过 `SecuritydeptProvider` + provider factory 把这些 dependency 注册到 injector 中。
 - 如果 app 依赖旧的 provider/service construction 副作用来探测 session，应显式创建 `SessionContextController`，并在 host-owned lifecycle 中调用 `controller.refresh()`。
-- 对 React 代码，如需 page environment capability，应通过 `provideClientEnvironment(environment)` 注册 host-owned object，再在 leaf 代码中用 `useSecuritydeptContext().get(CLIENT_ENVIRONMENT)` 读取。
-- 对 Angular frontend-oidc route redirect，应在 composition root 通过 `provideNativeWebEnvironment({ environment })` 提供 host-owned native web environment object。
+- 对 React 代码，如需 environment capability，应通过 `provideEnvironment({ environment })` 注册 host-owned object，再在 leaf 代码中用 `useSecuritydeptContext().get(ENVIRONMENT)` 读取。
+- 对 Angular frontend-oidc route redirect，应在 composition root 通过 `provideEnvironment({ environment })` 提供 host-owned environment object。
 - 对 Angular callback route，在 SSR-like test 或 custom shell 中 override `TOKEN_SET_CALLBACK_CURRENT_URL`，当 host 需要非默认 fallback navigation 或集中错误记录时，再 override `TOKEN_SET_CALLBACK_COMPONENT_OPTIONS`。
 - 对 custom callback orchestration，调用 `CallbackResumeService.resume(url)` 或带显式 `controller` / `injector` / `getCurrentUrl` / `describeError` 的 React hook，而不是在普通 helper 里重新引入 page-global fallback 逻辑或 mode-specific copy。`CallbackResumeService.handleCallback(url)` 仅作为 compatibility wrapper 保留。
 
@@ -357,17 +436,17 @@ Packages：
 - Registry-managed client 现在是显式启动的长期运行状态机。直接创建 client 默认不启动；只有 direct creation path 需要立即运行时才传 `autoStart: true`。Registry entry 不接受 `autoStart` 或 `autoRestore`；registry 负责 materialize client，并通过 start hook 调用 `client.start()`。
 - `registry.whenReady()` 与 `registry.clientSignalFor()` 只有在恰好注册了一个 client 时才允许省略 key。省略 key 的调用会等待 lazy materialization 与 `start()` 完成，而不是只检查已经 ready 的 client。
 - React 与 Angular adapter 不再各自维护 token freshness、access-token derivation 或 auto-restore 的业务状态实现。它们读取 mode client replay channels，只做 host integration。
-- `@securitydept/client/rx` 现在是 `ReadableSignalTrait` 与 `EventStreamTrait` 的 canonical RxJS bridge。`signalToObservable` 不再由 `@securitydept/client-angular` 导出；Angular package 只保留 `bridgeToAngularSignal()`。
+- `@securitydept/client/rx` 现在是 `ReadableSignalTrait` 与 `EventStreamTrait` 的 canonical RxJS bridge。`signalToObservable` 不再由 `@securitydept/client-angular` 导出；Angular adapter 应使用 `@securitydept/client-angular` 的 `toNgSignal(source)`。
 
 迁移：
 
-- 通过 `registry.state`、`registry.getState()` 或 `registry.subscribe()` 观察 registry topology 与 readiness；`registeredKeys()` / `readyKeys()` / registered snapshot helper 只作为同步 convenience 使用。
+- 通过 `registry.state`、`registry.getState()` 或 `registry.state.notify(listener)` 观察 registry topology 与 readiness；`registeredKeys()` / `readyKeys()` / registered snapshot helper 只作为同步 convenience 使用。
 - 如果宿主代码依赖 adapter-local token-set service 状态机或 `TokenSetAuthService`，请直接迁移到 mode client channels：首屏 readiness 使用 `authDetermined`，稳定 UI 使用 `authSnapshot`，route guard 使用 `isAuthenticated`，HTTP 使用 `authorizationHeaderValue`，按钮锁定使用 `authOperations.*Pending`。
-- 将 `registry.require(key).client` 这类同步 service-wrapper access 替换为 async setup 中的 `await registry.whenReady(key)`，或 reactive host 中的 `useReadableSignal(registry.clientSignalFor(key))`。
+- 将 `registry.require(key).client` 这类同步 service-wrapper access 替换为 async setup 中的 `await registry.whenReady(key)`，或 reactive host 中的 `useReadableSignalValue(registry.clientSignalFor(key))`。
 - Multi-client host 应向 `whenReady(key)` 与 `clientSignalFor(key)` 传入显式 registry key。只有真实 single-client host 才继续使用省略 key 的写法。
 - 将 `import { signalToObservable } from "@securitydept/client-angular"` 替换为 `import { toRxObservable } from "@securitydept/client/rx"`。
 - Angular host 如需 RxJS auth state，应调用 `toRxObservable(client.authSnapshot)` 或其它 client replay signal。Replay signal observable 在首值前不会发出值，并会向 late subscriber replay 最后一个值。
-- 在需要 aggregate registry reactivity 的 React host 中，使用 `useReadableSignal(registry.state)`，不要再维护 app-local 的 registered/ready mirror store。Per-client auth 应读取 client replay signals，而不是创建 service hook。
+- 在需要 aggregate registry reactivity 的 React host 中，使用 `useReadableSignalValue(registry.state)`，不要再维护 app-local 的 registered/ready mirror store。Per-client auth 应读取 client replay signals，而不是创建 service hook。
 
 理由：
 

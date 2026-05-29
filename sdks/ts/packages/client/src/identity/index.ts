@@ -1,9 +1,13 @@
 export type {
-	AuthenticatedPrincipal,
-	ProjectAuthenticatedPrincipalOptions,
-} from "./principal";
+	IdentityPrincipal,
+	ProjectIdentityPrincipalOptions,
+} from "./contracts";
 export {
-	normalizeAuthenticatedPrincipal,
-	normalizeAuthenticatedPrincipalWire,
-	projectAuthenticatedPrincipal,
-} from "./principal";
+	parseIdentityPrincipal,
+	parseIdentityPrincipalWire,
+	projectIdentityPrincipal,
+} from "./parsers";
+export {
+	IdentityPrincipalSchema,
+	IdentityPrincipalWireSchema,
+} from "./schemas";

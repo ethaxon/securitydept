@@ -1,15 +1,13 @@
+import { DestroyRef, Injector } from "@angular/core";
 import {
-	createInMemoryRecordStore,
-	type ExternalTransportTrait,
+	type BaseTransportTrait,
 	type HttpRequest,
 	type HttpResponse,
 } from "@securitydept/client";
-import {
-	SessionContextClient,
-	SessionContextController,
-} from "@securitydept/session-context-client";
+import { provideEnvironment } from "@securitydept/client-angular";
 import {
 	provideSessionContext,
+	SESSION_CONTEXT_CLIENT,
 	SessionContextService,
 } from "@securitydept/session-context-client-angular";
 import { describe, expect, it } from "vitest";
@@ -17,7 +15,7 @@ import { createEnvironmentForTest } from "../../../../client/src/test";
 
 function createTestTransport(
 	handler: (request: HttpRequest) => HttpResponse,
-): ExternalTransportTrait {
+): BaseTransportTrait {
 	return {
 		async execute(request: HttpRequest) {
 			return handler(request);
@@ -26,170 +24,105 @@ function createTestTransport(
 }
 
 describe("SessionContextService", () => {
-	it("reuses the shared session convenience story for redirect intent and logout cleanup", async () => {
+	it("bridges client signals and convenience methods", async () => {
 		const requests: HttpRequest[] = [];
-		const transport = createTestTransport((request) => {
-			requests.push(request);
-			if (request.url.endsWith("/user-info")) {
-				return {
-					status: 401,
-					headers: {},
-				};
-			}
-
-			return {
-				status: 200,
-				headers: {},
-				body: {},
-			};
+		const environment = createEnvironmentForTest({
+			transport: createTestTransport((request) => {
+				requests.push(request);
+				if (request.url.endsWith("/user-info")) {
+					return {
+						status: 200,
+						headers: {},
+						body: { subject: "session-user-1", display_name: "Alice" },
+					};
+				}
+				return { status: 200, headers: {}, body: {} };
+			}),
 		});
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			{ sessionStorage: createInMemoryRecordStore() },
-		);
-		const controller = new SessionContextController({
-			client,
-			externalTransport: transport,
+		const injector = Injector.create({
+			providers: [
+				provideEnvironment({ environment }),
+				{
+					provide: DestroyRef,
+					useValue: {
+						destroyed: false,
+						onDestroy() {
+							return () => {};
+						},
+					} satisfies DestroyRef,
+				},
+				...provideSessionContext({
+					config: { baseUrl: "https://auth.example.com" },
+				}),
+			],
 		});
-		const service = new SessionContextService(controller);
-		expect(service.client.loginUrl("/manual")).toBe(
-			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=%2Fmanual",
-		);
-		expect(requests).toEqual([]);
+		const service = injector.get(SessionContextService);
 
 		await service.refresh();
-		expect(requests).toContainEqual(
-			expect.objectContaining({
-				method: "GET",
-				url: "https://auth.example.com/auth/session/user-info",
+
+		expect(service.sessionInfo.get()).toEqual({
+			kind: "value",
+			value: expect.objectContaining({
+				principal: expect.objectContaining({ displayName: "Alice" }),
 			}),
-		);
+		});
+		expect(service.isAuthenticated.get()).toEqual({
+			kind: "value",
+			value: true,
+		});
 
-		await service.rememberPostAuthRedirect("/entries?tab=all");
-		expect(await service.resolveLoginUrl()).toBe(
-			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=%2Fentries%3Ftab%3Dall",
-		);
-
-		await service.rememberPostAuthRedirect("/entries/new");
 		await service.logout();
-
 		expect(requests).toContainEqual(
 			expect.objectContaining({
 				method: "POST",
 				url: "https://auth.example.com/auth/session/logout",
 			}),
 		);
-		expect(await service.client.loadPendingLoginRedirect()).toBeNull();
-		expect(service.session()).toBeNull();
-		expect(service.loading()).toBe(false);
+		expect(service.sessionInfo.get()).toEqual({ kind: "value", value: null });
 	});
 
-	it("provideSessionContext derives controller from one environment and supports explicit initial refresh", async () => {
+	it("provideSessionContext registers only the client and service", async () => {
 		const requests: HttpRequest[] = [];
-		const transport = createTestTransport((request) => {
-			requests.push(request);
-			if (request.url.endsWith("/user-info")) {
+		const environment = createEnvironmentForTest({
+			transport: createTestTransport((request) => {
+				requests.push(request);
 				return {
 					status: 401,
 					headers: {},
 				};
-			}
-
-			return {
-				status: 200,
-				headers: {},
-				body: {},
-			};
-		});
-		const sessionStorage = createInMemoryRecordStore();
-		const environment = createEnvironmentForTest({
-			transport,
-			sessionStorage,
+			}),
 		});
 
-		const providers = provideSessionContext({
-			config: { baseUrl: "https://auth.example.com" },
-			environment,
-			initialRefresh: true,
+		const injector = Injector.create({
+			providers: [
+				provideEnvironment({ environment }),
+				{
+					provide: DestroyRef,
+					useValue: {
+						destroyed: false,
+						onDestroy() {
+							return () => {};
+						},
+					} satisfies DestroyRef,
+				},
+				...provideSessionContext({
+					config: {
+						baseUrl: "https://auth.example.com",
+						autoStart: true,
+					},
+				}),
+			],
 		});
-		const [
-			clientProvider,
-			controllerProvider,
-			transportProvider,
-			serviceProvider,
-		] = providers;
-		if (
-			!clientProvider ||
-			typeof clientProvider !== "object" ||
-			!("useValue" in clientProvider)
-		) {
-			throw new Error("Expected client useValue provider");
-		}
-		if (
-			!controllerProvider ||
-			typeof controllerProvider !== "object" ||
-			!("useValue" in controllerProvider)
-		) {
-			throw new Error("Expected controller useValue provider");
-		}
-		if (
-			!transportProvider ||
-			typeof transportProvider !== "object" ||
-			!("useValue" in transportProvider)
-		) {
-			throw new Error("Expected transport useValue provider");
-		}
-		if (
-			!serviceProvider ||
-			typeof serviceProvider !== "object" ||
-			!("useFactory" in serviceProvider)
-		) {
-			throw new Error("Expected SessionContextService factory provider");
-		}
 
-		const client = clientProvider.useValue as SessionContextClient;
-		const controller = controllerProvider.useValue as SessionContextController;
-		const providedTransport =
-			transportProvider.useValue as ExternalTransportTrait;
-		const service = serviceProvider.useFactory(
-			controller,
-		) as SessionContextService;
+		const client = injector.get(SESSION_CONTEXT_CLIENT);
+		const service = injector.get(SessionContextService);
 
-		expect(providedTransport).toBe(environment.transport);
-		expect(controller.client).toBe(client);
-		await service.rememberPostAuthRedirect("/entries");
-		expect(await client.loadPendingLoginRedirect()).toBe("/entries");
-
-		await Promise.resolve();
-		await Promise.resolve();
+		await service.sessionInfo.whenValue();
+		expect(service).toBe(client);
 		expect(requests).toContainEqual(
 			expect.objectContaining({
 				url: "https://auth.example.com/auth/session/user-info",
 			}),
 		);
-	});
-
-	it("service refresh updates Angular signal and observable bridges", async () => {
-		const transport = createTestTransport(() => ({
-			status: 200,
-			headers: {},
-			body: { subject: "session-user-2", display_name: "Bob" },
-		}));
-		const controller = new SessionContextController({
-			client: new SessionContextClient({ baseUrl: "https://auth.example.com" }),
-			externalTransport: transport,
-		});
-		const service = new SessionContextService(controller);
-		const observed: string[] = [];
-		const subscription = service.state$.subscribe((state) => {
-			observed.push(state.status);
-		});
-
-		await service.refresh();
-
-		expect(service.session()?.principal.displayName).toBe("Bob");
-		expect(service.loading()).toBe(false);
-		expect(observed).toContain("authenticated");
-		subscription.unsubscribe();
 	});
 });

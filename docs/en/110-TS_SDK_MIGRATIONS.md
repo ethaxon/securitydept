@@ -21,6 +21,85 @@ Rules:
 
 ## Current Migration Notes
 
+### Auth Coordination Planner Host And Planner Variants
+
+Packages:
+
+- `@securitydept/client`
+
+Change:
+
+- The auth-coordination surface is rebuilt around three layers: a serializable `contract`, a non-serializable `RequirementPlannerHost`, and a planner family that owns the pipeline.
+- `RequirementPlannerHost.fromBehaviour(behaviour, { parent })` carries `checkAuthenticated` / `onUnauthenticated` / `selectCandidate`. Each field is optional and resolved through the parent chain (nearest definition wins; safe defaults at the root: unauthenticated / block / first-candidate).
+- `BaseRequirementPlanner` owns the pipeline: `buildPlan()` (step 0 — bind host behaviour and materialize a `RequirementPlan`), `checkUnauthenticatedCandidates(plan)` (step 1), `runStep(plan)` / `runUntilSettled()` (step 2 loop). Variants differ only in how requirements are materialized inside `buildPlan()`:
+  - `StaticRequirementPlanner.fromRequirements(host, requirements)`
+  - `RouteCompositionRequirementPlanner.fromRootRoute(host, segments)` / `.fromActiveRoute(host, segments, previousPlanner, previousPlan)` (immutable transition; preserves shared-prefix resolutions from `previousPlan`)
+  - `MergeRequirementPlanner.fromPlanners(host, planners)` (ordered concatenation, no dedupe)
+- The pipeline runs `checkAuthenticated` concurrently in step 2 and partitions into resolved / candidate sets. There is no sequential prefix auto-resolve; inter-requirement ordering or dependencies must be expressed inside `checkAuthenticated`.
+- Call `buildPlan()` at the start of each manual pipeline run. It resolves the host parent chain, captures behaviour callbacks once, and returns a `RequirementPlan` whose behaviour and requirement list stay fixed until the next `buildPlan()`. `runUntilSettled()` calls it automatically.
+- Removed without replacement aliases: `createPlannerHost`, `PlannerHost`, `PlannerHostResult`, `CreatePlannerHostOptions`, `CandidateSelector`, `AuthGuardClientOption`, `materializeAuthGuardCandidates`, `MaterializeAuthGuardCandidatesOptions`, `RequirementPlanner` (old class with `nextPending`/`resolve`), `RouteRequirementPlannerSession`, `RouteMatchNode`, `RouteRequirementSettledEvent`, `ChooserDecision`, `RequirementsClientSet`, `ScopedRequirementsClientSet`, `RequirementsClientSetComposition`, `resolveEffectiveClientSet`.
+
+Migration:
+
+- Replace `createPlannerHost({ selectCandidate })` + `materializeAuthGuardCandidates(...)` + `host.evaluate(candidates)` with a `RequirementPlannerHost`, `buildPlan()`, and `checkUnauthenticatedCandidates(plan)` / `runStep(plan)` / `runUntilSettled()`.
+- Replace `RequirementsClientSetComposition` with `RequirementsComposition` and `resolveEffectiveClientSet` with `resolveEffectiveRequirements`.
+- Replace `RouteRequirementPlannerSession` (and its `activateMatchedRoutes` / `resolve` / `ChooserDecision`) with `RouteCompositionRequirementPlanner` (`RouteTreeSegment[]` carries per-segment `composition`).
+- Provider-level chooser belongs in `selectCandidate`; per-requirement provider context belongs in `RequirementResolution` or the requirement attributes, not a separate decision bag.
+
+Note: the Angular adapter packages (`@securitydept/client-angular`, `@securitydept/token-set-context-client-angular`) are migrated (see Angular Route Subsystem Rewrite below). `@securitydept/client-react` remains a follow-up and will not typecheck against this surface until then.
+
+### Angular Route Subsystem Rewrite
+
+Packages:
+
+- `@securitydept/client-angular`
+- `@securitydept/token-set-context-client-angular`
+
+Change:
+
+- The Angular route subsystem is rebuilt on top of `RequirementPlannerHost` / `RouteCompositionRequirementPlanner`. `@securitydept/client-angular` owns the token-set-agnostic base layer; `@securitydept/token-set-context-client-angular` provides the registry-backed specialization that calls into it.
+- `@securitydept/client-angular` removals: `AuthRouteAdapter`, `createRouterForAngularRouter` (renamed), `RouteGuardResult`; the old planner-host DI (`AUTH_PLANNER_HOST`, `provideAuthPlannerHost`, `injectPlannerHost`, `AUTH_REQUIREMENTS_CLIENT_SET`, `provideRouteScopedRequirements`, `resolveEffectiveClientSet`); and the old route-metadata helpers (`withRouteRequirements`, `extractFullRouteRequirements`, `ROUTE_REQUIREMENTS_DATA_KEY`, `ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY`, `resolveEffectiveRequirements`).
+- `@securitydept/client-angular` additions: `createRouterForAngular(options)` (→ `RouterTrait`); `projectAngularRouteSegments(leafRoute)`; DI planner-host wiring `REQUIREMENT_PLANNER_HOST` + `provideRequirementPlannerHost(behaviourOrFactory)` + `injectRequirementPlannerHost()` (the Angular DI hierarchy maps to the host parent chain via `skipSelf`); `createAngularCanActivate(options?)` / `createAngularCanActivateChild(options?)`; and route builders `secureRoute()` (metadata only) / `secureRouteRoot()` (metadata + `canActivate` + `canActivateChild`, optional `provideRequirementPlannerHost`). Route metadata storage lives in `@securitydept/client` (`SECURITYDEPT_ROUTE_METADATA_KEY`, `readSecuritydeptRouteMetadata`, `writeSecuritydeptRouteMetadata`).
+- `@securitydept/token-set-context-client-angular` removals: `createTokenSetRouteAggregationGuard` and the `guard-types` module (`UnauthenticatedEntry` moved into `planner-host`).
+- `@securitydept/token-set-context-client-angular` additions: `provideTokenSetRequirementPlannerHost(options?)` (binds a token-set `RequirementBehaviour` to `REQUIREMENT_PLANNER_HOST` — `checkAuthenticated` via `TokenSetAuthRegistry`, `onUnauthenticated` via `requirementPolicies` / `requirementHandlers` / `defaultOnUnauthenticated` executed inside `runInInjectionContext`); `createTokenSetCanActivate()` / `createTokenSetCanActivateChild()`; token-set `secureRoute()` / `secureRouteRoot()` (normalize `requirementKind` → `attributes.requirementKind` and delegate to the base builders) with aliases `secureTokenSetRoute` / `secureTokenSetRouteRoot`. `createTokenSetOidcLoginRedirectHandler()` is retained; the attempted URL now comes from Angular router navigation state (`Router.getCurrentNavigation()`), not page globals.
+
+Migration:
+
+- Replace `createRouterForAngularRouter(...)` with `createRouterForAngular(...)`.
+- Replace `AuthRouteAdapter.projectRouteMatch(...)` + `extractFullRouteRequirements(...)` with `projectAngularRouteSegments(route)` feeding `RouteCompositionRequirementPlanner.fromRootRoute(host, segments)`.
+- Replace `provideAuthPlannerHost()` / `AUTH_PLANNER_HOST` with `provideRequirementPlannerHost(behaviourOrFactory)` / `REQUIREMENT_PLANNER_HOST`; for token-set, use `provideTokenSetRequirementPlannerHost(options?)`.
+- Replace `createTokenSetRouteAggregationGuard(...)` with `createTokenSetCanActivate()` / `createTokenSetCanActivateChild()` (host resolved through DI), or preferably declare routes with `secureRoute()` / `secureRouteRoot()`.
+- Move token-set requirement `kind` into `attributes.requirementKind` (the token-set `secureRoute` helpers do this automatically).
+
+### RouterTrait URI Reference Migration
+
+Packages:
+
+- `@securitydept/client`
+- `@securitydept/client/web`
+- `@securitydept/client/webext`
+- `@securitydept/client-angular`
+- `@securitydept/client-react/tanstack-router`
+- `@securitydept/session-context-client`
+- `@securitydept/basic-auth-context-client`
+- `@securitydept/token-set-context-client`
+
+Change:
+
+- `RouterTrait.currentUrl()` now returns `UriReferenceString | null` instead of `URL | null`. SPA adapters may expose relative in-app paths (`/dashboard`) without fabricating an absolute URL.
+- `RouterTrait` adds `baseURI(): UriString | null` — semantics align with `document.baseURI`, but each host resolves the value differently: browser pages use `document.baseURI`; WebExt background routers use `browser.runtime.getURL('')` when available; explicit `baseURI` overrides are supported on adapter create options.
+- `RouterNavigationRequest.url`, `RouterGuardContext.url` / `currentUrl`, and redirect decisions use `UriReferenceString`. `RouterGuardContext` also carries `baseURI`.
+- New helpers: `coerceUriReferenceString`, `resolveUriReferenceToUrl`, `resolveUriReferenceWithRouter` (base priority: explicit → `router.baseURI()` → absolute `currentUrl()`).
+- `parseCompatFragment` / `takeCompatFragmentFromRouter` accept `UriReferenceString` inputs.
+
+Migration:
+
+- `environment.router.currentUrl()?.toString()` remains valid for OAuth return URLs and logging.
+- Replace `new URL(relative, sentinelBase)` in custom adapters with `UriReferenceString.tryParse(relative)` for `currentUrl`, and `resolveUriReferenceWithRouter(ref, router)` when a native `URL` is required.
+- Mock `RouterTrait` implementations must implement `baseURI()` (return `null` when no base exists).
+- Pass `coerceUriReferenceString(string)` when calling `router.navigate({ url, ... })` from string-returning client APIs.
+- WebExt: pass `runtime.getURL` through `RouterForWebExtCreateOptions.browser.runtime` or set `baseURI` explicitly in tests.
+
 ### Token-set Auth Event Payload Map
 
 Packages:
@@ -55,13 +134,13 @@ Change:
 - `@securitydept/client` now owns the framework-neutral DI authority. `SecuritydeptInjectorTrait` is the minimal read-side contract and only expresses `get()`; `SecuritydeptInjector` is the SDK runtime/facade that owns provider resolution, parent inheritance, overrides, and `has()` diagnostics.
 - React now has exactly one SDK Context: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()` in `@securitydept/client-react`.
 - React domain packages no longer export `BasicAuthContextProvider`, `SessionContextProvider`, `BackendOidcModeContextProvider`, `TokenSetAuthProvider`, `useBasicAuthContext()`, `useSessionContext()`, `useBackendOidcModeContext()`, `useTokenSetAuthRegistry()`, and similar domain-specific Context / Provider / keyed state helpers.
-- React domain packages now export injection tokens, provider factories, plain factories, and explicit callback/component bridges. State reading is unified around `useReadableSignal(...)`.
+- React domain packages now export injection tokens, provider factories, plain factories, and explicit callback/component bridges. State reading is unified around `useReadableSignalValue(...)`.
 
 Migration:
 
 - Wrap React subtrees with `SecuritydeptProvider`; pass a ready-made `injector`, or derive a child injector from `providers` / `parentInjector`.
 - Replace `XxxContextProvider` / `useXxxContext()` with `useSecuritydeptContext().get(TOKEN)`.
-- Replace `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` with `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` followed by `useReadableSignal(registry.clientSignalFor(key))`, then read the returned client's replay channels. For aggregate registry topology, use `useReadableSignal(registry.state)`.
+- Replace `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` with `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` followed by `useReadableSignalValue(registry.clientSignalFor(key))`, then read the returned client's replay channels. For aggregate registry topology, use `useReadableSignalValue(registry.state)`.
 - Replace basic-auth / session provider-first composition with `create*()` + `provide*()`. For token-set multi-client React composition, register `provideTokenSetAuthRegistry({ clients })` and add `provideTokenSetCallbackResumeController(registry)` only when the host explicitly needs callback resume wiring.
 
 ### Token-Set React Registry Composition
@@ -113,7 +192,7 @@ Migration:
 
 Justification:
 
-- Non-client-bound helpers had started to duplicate dependency bags and hidden `window.*` defaults. Typed client environments keep core dependency wiring explicit while giving helpers a shared, testable, host-scoped capability boundary.
+- Non-client-bound helpers had started to duplicate dependency bags and hidden `window.*` defaults. Typed environments keep core dependency wiring explicit while giving helpers a shared, testable, host-scoped capability boundary.
 
 ### TimeTrait And EventStream Time Sources
 
@@ -256,18 +335,18 @@ Packages:
 
 Change:
 
-- `@securitydept/client-react` now owns the canonical React injector bridge: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()`, plus the context-free `useReadableSignal()` / `useEventStream()` bridge.
-- `client-react` environment and planner-host helpers now export injection tokens and provider factories only, for example `CLIENT_ENVIRONMENT` + `provideClientEnvironment(environment)` and `AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`.
+- `@securitydept/client-react` now owns the canonical React injector bridge: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()`, plus the context-free `useReadableSignalValue()`, `useReplaySignalValue()`, `useInteropObservable()`, and `useEventStream()` bridge.
+- `client-react` environment and planner-host helpers now export injection tokens and provider factories only, for example `ENVIRONMENT` + `provideEnvironment({ environment })` and `AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`.
 - The basic-auth / session / token-set React adapters no longer own domain-specific Provider / Context hooks. They export tokens, plain factories, provider factories, and explicit callback/component bridges. Token-set multi-client composition is now explicit registry/controller wiring instead of an SDK-owned runtime bundle.
-- Angular `createTokenSetOidcLoginRedirectHandler()` is now the route-login helper. It still uses `environment` as the only public key, but the value is now a stable native-web-environment source that Angular DI provides through `provideNativeWebEnvironment({ environment })` from `@securitydept/client-angular`. The helper targets `BaseOidcModeClient.loginWithRedirect()` and awaits that source inside the guard flow before calling it.
+- Angular `createTokenSetOidcLoginRedirectHandler()` is now the route-login helper. It still uses `environment` as the only public key, but the value is now a stable environment source that Angular DI provides through `provideEnvironment({ environment })` from `@securitydept/client-angular`. The helper targets `BaseOidcModeClient.loginWithRedirect()` and awaits that source inside the guard flow before calling it.
 - Angular `CallbackResumeService` and React `useTokenSetCallbackResume({ getCurrentUrl, describeError })` now bridge the shared `TokenSetCallbackResumeController` from `@securitydept/token-set-context-client/registry`. Angular `TokenSetCallbackComponent` remains page-only convenience over that service, with injectable current URL and host policy tokens.
 
 Migration:
 
 - Build browser environments at the framework composition root, then register those dependencies through `SecuritydeptProvider` plus provider factories.
 - Opt session adapters into initial probing by explicitly creating `SessionContextController` and calling `controller.refresh()` from the host-owned lifecycle when needed.
-- For React code that needs page environment capability, register the host-owned object with `provideClientEnvironment(environment)` and read it later through `useSecuritydeptContext().get(CLIENT_ENVIRONMENT)`.
-- For Angular frontend-oidc route redirects, provide the host-owned native web environment object from the composition root with `provideNativeWebEnvironment({ environment })`.
+- For React code that needs environment capability, register the host-owned object with `provideEnvironment({ environment })` and read it later through `useSecuritydeptContext().get(ENVIRONMENT)`.
+- For Angular frontend-oidc route redirects, provide the host-owned environment object from the composition root with `provideEnvironment({ environment })`.
 - For Angular callback routes, override `TOKEN_SET_CALLBACK_CURRENT_URL` when `window.location.href` is not the right source of truth, and override `TOKEN_SET_CALLBACK_COMPONENT_OPTIONS` when the host needs non-default fallback navigation or centralized error logging.
 - For custom callback orchestration, call `CallbackResumeService.resume(url)` or the React hook with explicit `controller` / `injector` / `getCurrentUrl` / `describeError` instead of reintroducing page-global fallback logic or mode-specific copy into ordinary helpers. `CallbackResumeService.handleCallback(url)` remains only a compatibility wrapper.
 
@@ -357,17 +436,17 @@ Change:
 - Registry-managed clients are explicit long-running state machines. Direct client creation defaults to not started; pass `autoStart: true` only for direct creation paths that should start immediately. Registry entries do not accept `autoStart` or `autoRestore`; the registry materializes clients and calls `client.start()` through its start hook.
 - `registry.whenReady()` and `registry.clientSignalFor()` may omit the key only when exactly one client is registered. Omitted-key calls wait for lazy materialization and `start()` completion instead of only inspecting ready clients.
 - React and Angular adapters no longer own separate business-state implementations for token freshness, access-token derivation, or auto-restore. They read the mode client replay channels and only perform host integration.
-- `@securitydept/client/rx` is now the canonical RxJS bridge for both `ReadableSignalTrait` and `EventStreamTrait`. `signalToObservable` is no longer exported from `@securitydept/client-angular`; Angular keeps `bridgeToAngularSignal()` only.
+- `@securitydept/client/rx` is now the canonical RxJS bridge for both `ReadableSignalTrait` and `EventStreamTrait`. `signalToObservable` is no longer exported from `@securitydept/client-angular`; Angular adapters should use `toNgSignal(source)` from `@securitydept/client-angular`.
 
 Migration:
 
-- Observe registry topology and readiness through `registry.state`, `registry.getState()`, or `registry.subscribe()`; use `registeredKeys()` / `readyKeys()` / registered snapshot helpers only as synchronous convenience.
+- Observe registry topology and readiness through `registry.state`, `registry.getState()`, or `registry.state.notify(listener)`; use `registeredKeys()` / `readyKeys()` / registered snapshot helpers only as synchronous convenience.
 - If host code depended on adapter-local token-set service state machines or `TokenSetAuthService`, migrate to the mode client channels directly: first-screen readiness uses `authDetermined`, stable UI uses `authSnapshot`, route guards use `isAuthenticated`, HTTP uses `authorizationHeaderValue`, and button locks use `authOperations.*Pending`.
-- Replace synchronous service-wrapper access such as `registry.require(key).client` with `await registry.whenReady(key)` in async setup, or `useReadableSignal(registry.clientSignalFor(key))` in reactive hosts.
+- Replace synchronous service-wrapper access such as `registry.require(key).client` with `await registry.whenReady(key)` in async setup, or `useReadableSignalValue(registry.clientSignalFor(key))` in reactive hosts.
 - In multi-client hosts, pass an explicit registry key to `whenReady(key)` and `clientSignalFor(key)`. Keep omitted-key usage only for true single-client hosts.
 - Replace `import { signalToObservable } from "@securitydept/client-angular"` with `import { toRxObservable } from "@securitydept/client/rx"`.
 - In Angular hosts that need RxJS values for auth state, call `toRxObservable(client.authSnapshot)` or another client replay signal. Replay signal observables do not emit before the first value and replay the last value to late subscribers.
-- In React hosts that need aggregate registry reactivity, use `useReadableSignal(registry.state)` instead of maintaining an app-local mirror store for registered/ready keys. For per-client auth, read the client replay signals instead of creating service hooks.
+- In React hosts that need aggregate registry reactivity, use `useReadableSignalValue(registry.state)` instead of maintaining an app-local mirror store for registered/ready keys. For per-client auth, read the client replay signals instead of creating service hooks.
 
 Justification:
 

@@ -62,7 +62,7 @@ function createClient(
 	state: ReturnType<typeof createSignal<AuthSnapshot | null>>,
 ) {
 	const reactive = createTestTokenSetReactiveFields(state.get());
-	state.subscribe(() => reactive.emitSnapshot(state.get()));
+	state.notify(() => reactive.emitSnapshot(state.get()));
 	return {
 		...reactive.fields,
 		authEvents: createEventSubject<TokenSetAuthEvent>(),
@@ -79,6 +79,7 @@ function createClient(
 		},
 		restorePersistedState: async () => state.get(),
 		loginWithRedirect: async () => undefined,
+		logout: async () => undefined,
 		loginWithPopup: async () => ({ snapshot: state.get()! }),
 	};
 }

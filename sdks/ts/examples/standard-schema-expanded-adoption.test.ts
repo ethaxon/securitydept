@@ -7,12 +7,15 @@ import {
 	BasicAuthContextClient,
 	BasicAuthContextClientConfigSchema,
 } from "@securitydept/basic-auth-context-client";
-import { validateWithSchemaSync } from "@securitydept/client";
+import {
+	createFoundationEnvironment,
+	validateWithSchemaSync,
+} from "@securitydept/client";
 import {
 	parseBackendOidcModeCallbackPayload,
 	parseBackendOidcModeRefreshPayload,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Task A: BasicAuthContextClientConfig schema adoption
@@ -71,24 +74,22 @@ describe("@standard-schema adoption: BasicAuthContextClientConfig", () => {
 		expect(result.success).toBe(false);
 	});
 
-	it("constructor warns on invalid config (deprecation-first)", () => {
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-		// Intentionally passing invalid config — should warn, not throw.
-		const client = new BasicAuthContextClient(
-			{} as unknown as Parameters<
-				typeof BasicAuthContextClient extends new (
-					config: infer C,
-				) => unknown
-					? (config: C) => void
-					: never
-			>[0],
-		);
-		expect(warnSpy).toHaveBeenCalledWith(
-			expect.stringContaining("Deprecated config shape detected"),
-		);
-		// Client should still construct, just with empty zones.
-		expect(client.zones).toEqual([]);
-		warnSpy.mockRestore();
+	it("constructor rejects invalid config", () => {
+		expect(
+			() =>
+				new BasicAuthContextClient(
+					{} as unknown as ConstructorParameters<
+						typeof BasicAuthContextClient
+					>[0],
+					createFoundationEnvironment({
+						transport: {
+							async execute() {
+								throw new Error("Unexpected transport call.");
+							},
+						},
+					}),
+				),
+		).toThrow(/BasicAuthContextClient could not validate config/);
 	});
 });
 

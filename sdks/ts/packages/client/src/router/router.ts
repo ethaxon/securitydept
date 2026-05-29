@@ -2,12 +2,12 @@ import { type as defineType } from "arktype";
 import { SecuritydeptInjectionToken } from "../injection";
 import {
 	type CompatFragment,
-	parseCompatFragment,
-	removeCompatFragment,
+	takeCompatFragment,
 } from "../protocol/compat-fragment";
+import { type UriReferenceString, type UriString } from "../struct/uri-string";
 
 export interface RouterNavigationRequest {
-	url: string | URL;
+	url: UriReferenceString;
 	intent:
 		| "auth_redirect"
 		| "post_auth_redirect"
@@ -18,7 +18,8 @@ export interface RouterNavigationRequest {
 }
 
 export interface RouterTrait {
-	currentUrl(): URL | null;
+	currentUrl(): UriReferenceString | null;
+	baseURI(): UriString | null;
 	navigate(request: RouterNavigationRequest): void | Promise<void>;
 }
 
@@ -31,16 +32,17 @@ export async function takeCompatFragmentFromRouter(
 		return null;
 	}
 
-	const compatFragment = parseCompatFragment(currentUrl);
+	const { compatFragment, url: cleanedUrl } = takeCompatFragment(
+		currentUrl,
+		(ref, hash) => ref.setHash(hash),
+	);
 
 	if (!compatFragment) {
 		return null;
 	}
 
-	const nextUrl = new URL(currentUrl);
-	removeCompatFragment(nextUrl);
 	await router.navigate({
-		url: nextUrl,
+		url: cleanedUrl,
 		intent: "callback_cleanup",
 		mode: "replace",
 	});
@@ -49,6 +51,7 @@ export async function takeCompatFragmentFromRouter(
 
 export const RouterTraitSchema = defineType({
 	currentUrl: "Function",
+	baseURI: "Function",
 	navigate: "Function",
 });
 

@@ -1,4 +1,4 @@
-// --- Web client environment presets ---
+// --- Web environment presets ---
 export type {
 	CreateEnvironmentForNativeWebOptions,
 	FoundationEnvironment,

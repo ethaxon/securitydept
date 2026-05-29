@@ -1,23 +1,52 @@
 import {
+	type BaseTransportTrait,
 	ClientError,
 	ClientErrorKind,
-	createCancellationTokenSource,
-	createInMemoryRecordStore,
-	type ExternalTransportTrait,
 	type HttpRequest,
 	type HttpResponse,
+	type RouterTrait,
+	type TracingEvent,
+	UriReferenceString,
+	UriString,
 } from "@securitydept/client";
 import { describe, expect, it } from "vitest";
+import { createEnvironmentForTest } from "../../../client/src/test";
 import { SessionContextClient } from "../client";
-import { SessionContextSource } from "../types";
+import { SessionContextEventType, SessionContextSource } from "../types";
 
 function createTestTransport(
 	handler: (request: HttpRequest) => HttpResponse,
-): ExternalTransportTrait {
+): BaseTransportTrait {
 	return {
 		async execute(request: HttpRequest) {
 			return handler(request);
 		},
+	};
+}
+
+function createTestRouter(url = "https://app.example.com/current"): {
+	router: RouterTrait;
+	navigations: HttpRequest[];
+} {
+	const navigations: HttpRequest[] = [];
+	return {
+		router: {
+			currentUrl() {
+				return UriReferenceString.parse(url);
+			},
+			baseURI() {
+				return UriString.parse(url);
+			},
+			navigate(request) {
+				navigations.push({
+					url: request.url.toString(),
+					method: request.mode,
+					headers: {},
+					body: request,
+				});
+			},
+		},
+		navigations,
 	};
 }
 
@@ -30,18 +59,19 @@ describe("SessionContextClient", () => {
 			issuer: "https://issuer.example.com",
 			claims: { role: "admin" },
 		};
+		const client = new SessionContextClient(
+			{ baseUrl: "https://api.example.com" },
+			createEnvironmentForTest({
+				transport: createTestTransport(() => ({
+					status: 200,
+					headers: {},
+					body: rustSessionUserInfoResponse,
+				})),
+			}),
+		);
 
-		const transport = createTestTransport(() => ({
-			status: 200,
-			headers: {},
-			body: rustSessionUserInfoResponse,
-		}));
+		const result = await client.refresh();
 
-		const client = new SessionContextClient({
-			baseUrl: "https://api.example.com",
-		});
-
-		const result = await client.fetchUserInfo(transport);
 		expect(result).toEqual({
 			principal: {
 				subject: rustSessionUserInfoResponse.subject,
@@ -51,74 +81,63 @@ describe("SessionContextClient", () => {
 				claims: rustSessionUserInfoResponse.claims,
 			},
 		});
+		expect(await client.sessionInfo.whenValue()).toEqual(result);
+		expect(await client.isAuthenticated.whenValue()).toBe(true);
 	});
 
-	it("returns null for 401 (unauthenticated)", async () => {
-		const transport = createTestTransport(() => ({
-			status: 401,
-			headers: {},
-		}));
+	it("commits unauthenticated state for 401 and 403", async () => {
+		for (const status of [401, 403]) {
+			const client = new SessionContextClient(
+				{ baseUrl: "https://api.example.com" },
+				createEnvironmentForTest({
+					transport: createTestTransport(() => ({
+						status,
+						headers: {},
+					})),
+				}),
+			);
 
-		const client = new SessionContextClient({
-			baseUrl: "https://api.example.com",
-		});
-
-		const result = await client.fetchUserInfo(transport);
-		expect(result).toBeNull();
-	});
-
-	it("returns null for 403 (forbidden)", async () => {
-		const transport = createTestTransport(() => ({
-			status: 403,
-			headers: {},
-		}));
-
-		const client = new SessionContextClient({
-			baseUrl: "https://api.example.com",
-		});
-
-		const result = await client.fetchUserInfo(transport);
-		expect(result).toBeNull();
-	});
-
-	it("throws ClientError for 500 (server error)", async () => {
-		const transport = createTestTransport(() => ({
-			status: 500,
-			headers: {},
-			body: { message: "Internal Server Error" },
-		}));
-
-		const client = new SessionContextClient({
-			baseUrl: "https://api.example.com",
-		});
-
-		try {
-			await client.fetchUserInfo(transport);
-			expect.fail("should have thrown");
-		} catch (err) {
-			expect(err).toBeInstanceOf(ClientError);
-			const ce = err as InstanceType<typeof ClientError>;
-			expect(ce.kind).toBe(ClientErrorKind.Server);
-			expect(ce.retryable).toBe(true);
+			await expect(client.refresh()).resolves.toBeNull();
+			expect(await client.sessionInfo.whenValue()).toBeNull();
+			expect(await client.isAuthenticated.whenValue()).toBe(false);
 		}
 	});
 
-	it("rejects the legacy session /auth/session/user-info payload without subject", async () => {
-		const transport = createTestTransport(() => ({
-			status: 200,
-			headers: {},
-			body: {
-				display_name: "Alice",
-				picture: "https://example.com/alice.png",
-				claims: { role: "admin" },
-			},
-		}));
+	it("records failures in lastSessionError", async () => {
+		const client = new SessionContextClient(
+			{ baseUrl: "https://api.example.com" },
+			createEnvironmentForTest({
+				transport: createTestTransport(() => ({
+					status: 500,
+					headers: {},
+					body: { message: "Internal Server Error" },
+				})),
+			}),
+		);
 
-		const client = new SessionContextClient({
-			baseUrl: "https://api.example.com",
+		await expect(client.refresh()).rejects.toBeInstanceOf(ClientError);
+		expect(client.lastSessionError.get()).toMatchObject({
+			kind: ClientErrorKind.Server,
 		});
+	});
 
-		await expect(client.fetchUserInfo(transport)).rejects.toMatchObject({
+	it("rejects the legacy session /auth/session/user-info payload without subject", async () => {
+		const client = new SessionContextClient(
+			{ baseUrl: "https://api.example.com" },
+			createEnvironmentForTest({
+				transport: createTestTransport(() => ({
+					status: 200,
+					headers: {},
+					body: {
+						display_name: "Alice",
+						picture: "https://example.com/alice.png",
+						claims: { role: "admin" },
+					},
+				})),
+			}),
+		);
+
+		await expect(client.refresh()).rejects.toMatchObject({
 			name: "ClientError",
 			kind: ClientErrorKind.Protocol,
 			code: "session.invalid_user_info_payload",
@@ -126,144 +145,111 @@ describe("SessionContextClient", () => {
 		});
 	});
 
-	it("executes logout against the configured endpoint", async () => {
+	it("executes logout against the configured endpoint and clears session", async () => {
 		const requests: HttpRequest[] = [];
-		const transport = createTestTransport((request) => {
-			requests.push(request);
-			return {
-				status: 200,
-				headers: {},
-				body: {},
-			};
-		});
+		const client = new SessionContextClient(
+			{ baseUrl: "https://api.example.com" },
+			createEnvironmentForTest({
+				transport: createTestTransport((request) => {
+					requests.push(request);
+					return {
+						status: 200,
+						headers: {},
+						body: {},
+					};
+				}),
+			}),
+		);
 
-		const client = new SessionContextClient({
-			baseUrl: "https://api.example.com",
-		});
-
-		await client.logout(transport);
+		await client.logout();
 
 		expect(requests).toHaveLength(1);
 		expect(requests[0]).toMatchObject({
 			url: "https://api.example.com/auth/session/logout",
 			method: "POST",
 		});
+		expect(await client.sessionInfo.whenValue()).toBeNull();
 	});
 
-	it("forwards cancellation tokens through transport-bound session operations", async () => {
-		const requests: HttpRequest[] = [];
-		const cancellationToken = createCancellationTokenSource().token;
-		const transport = createTestTransport((request) => {
-			requests.push(request);
-			return {
-				status: request.url.endsWith("/user-info") ? 401 : 200,
-				headers: {},
-				body: {},
-			};
+	it("loginWithRedirect navigates with an explicit post-auth redirect", async () => {
+		const { router, navigations } = createTestRouter(
+			"https://app.example.com/dashboard#state",
+		);
+		const client = new SessionContextClient(
+			{ baseUrl: "https://api.example.com" },
+			createEnvironmentForTest({
+				router,
+			}),
+		);
+
+		await client.loginWithRedirect({
+			postAuthRedirectUri: "https://app.example.com/dashboard#state",
 		});
 
-		const client = new SessionContextClient({
-			baseUrl: "https://api.example.com",
-		});
-
-		await client.fetchUserInfo(transport, cancellationToken);
-		await client.logout(transport, cancellationToken);
-
-		expect(requests).toHaveLength(2);
-		expect(requests[0]?.cancellationToken).toBe(cancellationToken);
-		expect(requests[1]?.cancellationToken).toBe(cancellationToken);
+		expect(navigations).toHaveLength(1);
+		expect(navigations[0]?.url).toBe(
+			"https://api.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard%23state",
+		);
 	});
 
-	it("stores and clears pending login redirect state in sessionStorage", async () => {
-		const sessionStorage = createInMemoryRecordStore();
+	it("loginWithRedirect does not infer post-auth redirect from router", async () => {
+		const { router, navigations } = createTestRouter(
+			"https://app.example.com/dashboard#state",
+		);
 		const client = new SessionContextClient(
-			{
-				baseUrl: "https://api.example.com",
-			},
-			{ sessionStorage },
+			{ baseUrl: "https://api.example.com" },
+			createEnvironmentForTest({ router }),
 		);
 
-		await client.savePendingLoginRedirect("/entries?tab=all");
-		expect(await client.loadPendingLoginRedirect()).toBe("/entries?tab=all");
+		await client.loginWithRedirect();
 
-		await client.clearPendingLoginRedirect();
-		expect(await client.loadPendingLoginRedirect()).toBeNull();
-	});
-
-	it("consumes pending login redirect state from sessionStorage", async () => {
-		const sessionStorage = createInMemoryRecordStore();
-		const client = new SessionContextClient(
-			{
-				baseUrl: "https://api.example.com",
-			},
-			{ sessionStorage },
-		);
-
-		await client.savePendingLoginRedirect("/groups");
-
-		expect(await client.consumePendingLoginRedirect()).toBe("/groups");
-		expect(await client.loadPendingLoginRedirect()).toBeNull();
-	});
-
-	it("resolves the login URL by consuming pending redirect intent", async () => {
-		const sessionStorage = createInMemoryRecordStore();
-		const client = new SessionContextClient(
-			{
-				baseUrl: "https://api.example.com",
-			},
-			{ sessionStorage },
-		);
-
-		await client.rememberPostAuthRedirect("/entries?tab=all");
-
-		expect(await client.resolveLoginUrl()).toBe(
-			"https://api.example.com/auth/session/login?post_auth_redirect_uri=%2Fentries%3Ftab%3Dall",
-		);
-		expect(await client.loadPendingLoginRedirect()).toBeNull();
-		expect(await client.resolveLoginUrl()).toBe(
+		expect(navigations).toHaveLength(1);
+		expect(navigations[0]?.url).toBe(
 			"https://api.example.com/auth/session/login",
 		);
 	});
 
-	it("executes logout and clears pending redirect intent in one canonical convenience", async () => {
-		const sessionStorage = createInMemoryRecordStore();
-		const requests: HttpRequest[] = [];
-		const transport = createTestTransport((request) => {
-			requests.push(request);
-			return {
-				status: 200,
-				headers: {},
-				body: {},
-			};
-		});
+	it("emits session events and operation tracing", async () => {
+		const events: unknown[] = [];
+		const tracingEvents: TracingEvent[] = [];
 		const client = new SessionContextClient(
-			{
-				baseUrl: "https://api.example.com",
+			{ baseUrl: "https://api.example.com" },
+			createEnvironmentForTest({
+				transport: createTestTransport(() => ({
+					status: 401,
+					headers: {},
+				})),
+				tracingCreateOptions: {
+					subscribers: [
+						{
+							record(event: TracingEvent) {
+								tracingEvents.push(event);
+							},
+						},
+					],
+				},
+			}),
+		);
+		client.events.subscribe({
+			next(event) {
+				events.push(event);
 			},
-			{ sessionStorage },
-		);
-
-		await client.rememberPostAuthRedirect("/entries/new");
-		await client.logoutAndClearPendingLoginRedirect(transport);
-
-		expect(requests).toHaveLength(1);
-		expect(requests[0]).toMatchObject({
-			url: "https://api.example.com/auth/session/logout",
-			method: "POST",
-		});
-		expect(await client.loadPendingLoginRedirect()).toBeNull();
-	});
-
-	it("uses configured default paths aligned with reference server", () => {
-		const client = new SessionContextClient({
-			baseUrl: "https://api.example.com",
 		});
 
-		expect(client.loginUrl()).toBe(
-			"https://api.example.com/auth/session/login",
+		await client.refresh();
+
+		expect(events).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: SessionContextEventType.SessionRefreshStarted,
+				}),
+				expect.objectContaining({
+					type: SessionContextEventType.SessionRefreshSucceeded,
+				}),
+			]),
 		);
-		expect(client.logoutUrl()).toBe(
-			"https://api.example.com/auth/session/logout",
+		expect(tracingEvents.map((event) => event.name)).toEqual(
+			expect.arrayContaining(["operation.started", "operation.ended"]),
 		);
 	});
 });

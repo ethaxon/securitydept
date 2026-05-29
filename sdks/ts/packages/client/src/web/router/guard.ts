@@ -8,6 +8,7 @@ import {
 	type RouterNavigationRequest,
 } from "../../router";
 import { abortSignalToCancellationToken } from "../../std";
+import { UriReferenceString } from "../../struct/uri-string";
 import {
 	type NativeWebNavigateEventLike,
 	type ResolvedRouterForNativeWebCreateOptions,
@@ -47,8 +48,12 @@ export class GuardedNativeWebRouter implements GuardedRouterTrait {
 				: new GuardedWebLegacyRouter(options, beforeLoad);
 	}
 
-	currentUrl(): URL | null {
+	currentUrl() {
 		return this.router.currentUrl();
+	}
+
+	baseURI() {
+		return this.router.baseURI();
 	}
 
 	navigate(request: RouterNavigationRequest): void | Promise<void> {
@@ -90,14 +95,15 @@ export class GuardedWebNavigationRouter
 					const currentUrl = this.currentUrl();
 					const decision = await this.beforeLoad({
 						phase: RouterGuardPhase.Navigate,
-						url: new URL(destinationUrl, currentUrl ?? undefined),
+						url: UriReferenceString.parse(destinationUrl),
 						currentUrl,
+						baseURI: this.baseURI(),
 						cancellationToken: event.signal
 							? abortSignalToCancellationToken(event.signal)
 							: undefined,
 					});
 					await this.applyNavigationDecision(decision, {
-						url: destinationUrl,
+						url: UriReferenceString.parse(destinationUrl),
 						mode: event.navigationType === "replace" ? "replace" : "push",
 						intent: "post_auth_redirect",
 						state: event.destination?.getState?.(),
@@ -203,15 +209,16 @@ export class GuardedWebLegacyRouter
 }
 
 async function evaluateNavigateRequest(
-	router: { currentUrl(): URL | null },
+	router: Pick<GuardedNativeWebRouter, "currentUrl" | "baseURI" | "navigate">,
 	beforeLoad: RouterBeforeLoad,
 	request: RouterNavigationRequest,
 ): Promise<RouterGuardDecision> {
 	const currentUrl = router.currentUrl();
 	return await beforeLoad({
 		phase: RouterGuardPhase.Navigate,
-		url: new URL(request.url.toString(), currentUrl ?? undefined),
+		url: request.url,
 		currentUrl,
+		baseURI: router.baseURI(),
 		request,
 	});
 }

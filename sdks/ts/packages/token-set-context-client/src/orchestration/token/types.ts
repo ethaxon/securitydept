@@ -1,4 +1,4 @@
-import { type AuthenticatedPrincipal } from "@securitydept/client";
+import { type IdentityPrincipal } from "@securitydept/client";
 
 // --- Generic Token Orchestration types ---
 // These types describe token material shape, snapshot/delta semantics,
@@ -38,7 +38,7 @@ export interface TokenDelta {
  * Metadata about the authenticated principal, independent of how the
  * tokens were obtained.
  */
-export type AuthPrincipal = AuthenticatedPrincipal;
+export type AuthPrincipal = IdentityPrincipal;
 
 /**
  * Authentication source descriptor.

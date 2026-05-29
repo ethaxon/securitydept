@@ -4,7 +4,7 @@ import {
 } from "@securitydept/basic-auth-context-client-react";
 import { SecuritydeptInjector } from "@securitydept/client";
 import {
-	provideClientEnvironment,
+	provideEnvironment,
 	SecuritydeptProvider,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
@@ -13,10 +13,7 @@ import {
 	createSecureBeforeLoad,
 	withTanStackRouteRequirements,
 } from "@securitydept/client-react/tanstack-router";
-import {
-	createSessionContextController,
-	provideSessionContextController,
-} from "@securitydept/session-context-client-react";
+import { provideSessionContextClient } from "@securitydept/session-context-client-react";
 import { describeFrontendOidcModeCallbackError } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
 	CallbackResumeStatus,
@@ -54,12 +51,7 @@ import {
 	subscribeAuthContextMode,
 } from "@/lib/authContext";
 import { basicAuthContextConfig } from "@/lib/basicAuthContext";
-import {
-	sessionContextClient,
-	sessionContextConfig,
-	sessionContextEnvironment,
-	sessionContextTransport,
-} from "@/lib/sessionContext";
+import { sessionContextClient } from "@/lib/sessionContext";
 import { useThemePreference } from "@/lib/theme";
 import {
 	ensureTokenSetBackendModeClientReady,
@@ -134,6 +126,17 @@ const queryClient = new QueryClient({
 // Mutable session flag for synchronous auth check. Updated by the
 // authenticated layout route's beforeLoad before policy evaluation runs.
 let dashboardAuthenticated = false;
+const SESSION_POST_AUTH_REDIRECT_PARAM = "post_auth_redirect_uri";
+
+function createLoginPath(postAuthRedirectUri?: string): string {
+	if (!postAuthRedirectUri) {
+		return "/login";
+	}
+	const search = new URLSearchParams({
+		[SESSION_POST_AUTH_REDIRECT_PARAM]: postAuthRedirectUri,
+	});
+	return `/login?${search.toString()}`;
+}
 
 const securedBeforeLoad = createSecureBeforeLoad({
 	// TanStack's redirect() returns a Redirect object that must be thrown;
@@ -150,7 +153,8 @@ const securedBeforeLoad = createSecureBeforeLoad({
 	// /login is the stable primary entry for unauthenticated users.
 	// Auth-mode memory may influence the chooser's UI, but it must not
 	// hijack the unauthenticated landing target.
-	defaultOnUnauthenticated: () => "/login",
+	defaultOnUnauthenticated: (_requirement, context) =>
+		createLoginPath(context.attemptedUrl),
 });
 
 // ---------------------------------------------------------------------------
@@ -166,6 +170,12 @@ const rootRoute = createRootRoute({
 const loginRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/login",
+	validateSearch: (search: Record<string, unknown>) => ({
+		post_auth_redirect_uri:
+			typeof search.post_auth_redirect_uri === "string"
+				? search.post_auth_redirect_uri
+				: undefined,
+	}),
 	component: LoginPage,
 });
 
@@ -190,16 +200,8 @@ const authenticatedRoute = createRoute({
 			const snapshot = await ensureTokenSetFrontendModeClientReady();
 			dashboardAuthenticated = Boolean(snapshot?.tokens.accessToken);
 		} else if (mode === AuthContextMode.Session) {
-			const session = await sessionContextClient.fetchUserInfo(
-				sessionContextTransport,
-			);
+			const session = await sessionContextClient.refresh();
 			dashboardAuthenticated = session !== null;
-
-			if (!session) {
-				await sessionContextClient.savePendingLoginRedirect(ctx.location.href);
-			} else {
-				await sessionContextClient.clearPendingLoginRedirect();
-			}
 		} else if (mode === AuthContextMode.Basic) {
 			// Basic auth relies on the browser's cached credentials (from the
 			// earlier 401 WWW-Authenticate challenge at /basic/login). Probe a
@@ -421,8 +423,9 @@ function TokenSetFrontendCallbackRoutePage() {
 	const state = useTokenSetCallbackResume({
 		controller,
 		getCurrentUrl: () => window.location.href,
-		describeError: ({ errorDetails }) =>
-			describeFrontendOidcModeCallbackError(errorDetails, {
+		describeError: (error, options) =>
+			describeFrontendOidcModeCallbackError(error, {
+				...options,
 				recoveryLinks: {
 					restart_flow: TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
 				},
@@ -433,19 +436,27 @@ function TokenSetFrontendCallbackRoutePage() {
 	});
 	const handledResolvedRef = useRef(false);
 	const failurePresentation =
-		state.status === CallbackResumeStatus.Error
-			? (state.errorDetails?.presentation ?? null)
+		state.state === CallbackResumeStatus.Error
+			? describeFrontendOidcModeCallbackError(state.error, {
+					recoveryLinks: {
+						restart_flow: TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
+					},
+					recoveryLabels: {
+						restart_flow: "Return to frontend-mode playground",
+					},
+				})
 			: null;
 
 	useEffect(() => {
 		if (
-			state.status === CallbackResumeStatus.Resolved &&
+			state.state === CallbackResumeStatus.Resolved &&
+			"data" in state &&
 			!handledResolvedRef.current
 		) {
 			handledResolvedRef.current = true;
-			window.location.href = state.result?.postAuthRedirectUri ?? "/";
+			window.location.href = state.data.postAuthRedirectUri ?? "/";
 		}
-	}, [state.status, state.result]);
+	}, [state]);
 
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-zinc-50 p-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
@@ -469,13 +480,13 @@ function TokenSetFrontendCallbackRoutePage() {
 						eyebrow="Callback failure"
 					/>
 				) : null}
-				{state.status === CallbackResumeStatus.Pending ? (
+				{state.state === CallbackResumeStatus.Pending ? (
 					<p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">
 						Warming the frontend-mode client registry and resuming the OIDC
 						callback...
 					</p>
 				) : null}
-				{state.status === CallbackResumeStatus.Idle ? (
+				{state.state === CallbackResumeStatus.Idle ? (
 					<p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/80 dark:bg-amber-950/40 dark:text-amber-300">
 						This URL does not currently carry a recognized frontend-mode
 						callback payload.
@@ -524,18 +535,19 @@ function RootShell() {
 }
 
 export function App() {
+	const tokenSetFrontendModePageEnvironment = useMemo(
+		() => createTokenSetFrontendModePageEnvironment(),
+		[],
+	);
 	const basicAuthClient = useMemo(
-		() => createBasicAuthContextClient(basicAuthContextConfig),
-		[],
-	);
-	const sessionController = useMemo(
 		() =>
-			createSessionContextController({
-				config: sessionContextConfig,
-				environment: sessionContextEnvironment,
+			createBasicAuthContextClient({
+				config: basicAuthContextConfig,
+				environment: tokenSetFrontendModePageEnvironment,
 			}),
-		[],
+		[tokenSetFrontendModePageEnvironment],
 	);
+	const sessionClient = useMemo(() => sessionContextClient, []);
 	const tokenSetClients = useMemo(
 		() => [
 			{
@@ -557,30 +569,28 @@ export function App() {
 			]).get(TOKEN_SET_AUTH_REGISTRY),
 		[tokenSetClients],
 	);
-	const tokenSetFrontendModePageEnvironment = useMemo(
-		() => createTokenSetFrontendModePageEnvironment(),
-		[],
-	);
 	const rootInjector = useMemo(
 		() =>
 			SecuritydeptInjector.resolveAndCreate([
 				provideBasicAuthContextClient(basicAuthClient),
-				...provideSessionContextController(sessionController),
-				provideClientEnvironment(tokenSetFrontendModePageEnvironment),
+				...provideSessionContextClient(sessionClient),
+				provideEnvironment({
+					environment: tokenSetFrontendModePageEnvironment,
+				}),
 				provideTokenSetAuthRegistry(tokenSetRegistry),
 				provideTokenSetCallbackResumeController(tokenSetRegistry),
 			]),
 		[
 			basicAuthClient,
-			sessionController,
+			sessionClient,
 			tokenSetFrontendModePageEnvironment,
 			tokenSetRegistry,
 		],
 	);
 
 	useEffect(() => {
-		void sessionController.refresh().catch(() => {});
-	}, [rootInjector, sessionController]);
+		void sessionClient.start().catch(() => {});
+	}, [rootInjector, sessionClient]);
 
 	return (
 		<QueryClientProvider client={queryClient}>

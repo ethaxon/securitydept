@@ -10,5 +10,8 @@
 		"strictTemplates": true
 	},
 	"include": ["src"],
-	"references": [{ "path": "../basic-auth-context-client" }]
+	"references": [
+		{ "path": "../basic-auth-context-client" },
+		{ "path": "../client-angular" }
+	]
 }

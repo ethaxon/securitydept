@@ -9,6 +9,7 @@ import {
 	createReplaySignal,
 	createSignal,
 } from "@securitydept/client";
+import { FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import {
 	CallbackResumeService,
@@ -218,34 +219,36 @@ describe("TokenSetCallbackComponent", () => {
 			const registry = runInInjectionContext(injector, () =>
 				injector.get(TokenSetAuthRegistry),
 			);
+			const client = {
+				state: createSignal<AuthSnapshot | null>(null),
+				authDetermined,
+				authSnapshot,
+				isAuthenticated,
+				authorizationHeaderValue,
+				lastAuthError,
+				authOperations: {
+					restorePending: createSignal(false),
+					refreshPending: createSignal(false),
+					clearPending: createSignal(false),
+					loginPending: createSignal(false),
+				},
+				authEvents: createEventSubject(),
+				addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
+				removeWorkflowSource: vi.fn(() => false),
+				start: vi.fn(async () => undefined),
+				dispose: vi.fn(),
+				restorePersistedState: vi.fn(async () => null),
+				handleCallback,
+				loginWithRedirect: vi.fn(async () => undefined),
+				loginWithPopup: vi.fn(async () => ({
+					snapshot: { tokens: { accessToken: "popup-at" }, metadata: {} },
+				})),
+			};
+			Object.setPrototypeOf(client, FrontendOidcModeClient.prototype);
 			registry.register({
 				key: "frontend",
 				callbackPath: "/auth/token-set/callback",
-				clientFactory: () => ({
-					state: createSignal<AuthSnapshot | null>(null),
-					authDetermined,
-					authSnapshot,
-					isAuthenticated,
-					authorizationHeaderValue,
-					lastAuthError,
-					authOperations: {
-						restorePending: createSignal(false),
-						refreshPending: createSignal(false),
-						clearPending: createSignal(false),
-						loginPending: createSignal(false),
-					},
-					authEvents: createEventSubject(),
-					addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
-					removeWorkflowSource: vi.fn(() => false),
-					start: vi.fn(async () => undefined),
-					dispose: vi.fn(),
-					restorePersistedState: vi.fn(async () => null),
-					handleCallback,
-					loginWithRedirect: vi.fn(async () => undefined),
-					loginWithPopup: vi.fn(async () => ({
-						snapshot: { tokens: { accessToken: "popup-at" }, metadata: {} },
-					})),
-				}),
+				clientFactory: () => client,
 			});
 			const service = runInInjectionContext(injector, () =>
 				injector.get(CallbackResumeService),
@@ -265,8 +268,8 @@ describe("TokenSetCallbackComponent", () => {
 			});
 
 			expect(handleCallback).toHaveBeenCalledTimes(1);
-			expect(service.state()).toMatchObject({ status: "resolved" });
-			expect(observed).toContain("resolved");
+			expect(service.state()).toMatchObject({ state: "success" });
+			expect(observed).toContain("success");
 			subscription.unsubscribe();
 		} finally {
 			injector.destroy();

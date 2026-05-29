@@ -4,17 +4,24 @@
 //   import { ... } from "@securitydept/basic-auth-context-client-angular"
 //
 // Provides Angular-native DI integration: InjectionToken, provider factory,
-// and Injectable service facade for BasicAuthContextClient.
+// and an Injectable BasicAuthContextClient subclass.
 //
 // Built by ng-packagr (APF / FESM2022). Decorators are fully supported.
 //
 // Stability: provisional (framework adapter)
 
-import { Injectable, InjectionToken, type Provider } from "@angular/core";
+import {
+	DestroyRef,
+	Injectable,
+	InjectionToken,
+	Injector,
+	type Provider,
+} from "@angular/core";
 import {
 	BasicAuthContextClient,
 	type BasicAuthContextClientConfig,
 } from "@securitydept/basic-auth-context-client";
+import { ENVIRONMENT } from "@securitydept/client-angular";
 
 // ---------------------------------------------------------------------------
 // InjectionToken
@@ -29,15 +36,20 @@ import {
 export const BASIC_AUTH_CONTEXT_CLIENT =
 	new InjectionToken<BasicAuthContextClient>("BASIC_AUTH_CONTEXT_CLIENT");
 
+export const BASIC_AUTH_CONTEXT_CLIENT_CONFIG =
+	new InjectionToken<BasicAuthContextClientConfig>(
+		"BASIC_AUTH_CONTEXT_CLIENT_CONFIG",
+	);
+
 // ---------------------------------------------------------------------------
-// Service facade
+// Service
 // ---------------------------------------------------------------------------
 
 /**
- * Angular service facade for `BasicAuthContextClient`.
+ * Angular-injectable `BasicAuthContextClient`.
  *
- * Wraps the SDK client to provide an Angular-idiomatic API surface.
- * Registered via `provideBasicAuthContext`.
+ * Extends the SDK client directly so Angular consumers do not depend on a
+ * wrapper facade that can drift from the core API.
  *
  * @example
  * ```ts
@@ -52,37 +64,12 @@ export const BASIC_AUTH_CONTEXT_CLIENT =
  * ```
  */
 @Injectable()
-export class BasicAuthContextService {
-	constructor(
-		/** The underlying SDK client instance. */
-		readonly client: BasicAuthContextClient,
-	) {}
-
-	/** Find the zone that contains the given path. */
-	zoneForPath(path: string) {
-		return this.client.zoneForPath(path);
-	}
-
-	/** Check whether a path falls inside any configured zone. */
-	isInZone(path: string): boolean {
-		return this.client.isInZone(path);
-	}
-
-	/** Build the full login URL for a zone. */
-	loginUrl(...args: Parameters<BasicAuthContextClient["loginUrl"]>): string {
-		return this.client.loginUrl(...args);
-	}
-
-	/** Build the full logout URL for a zone. */
-	logoutUrl(...args: Parameters<BasicAuthContextClient["logoutUrl"]>): string {
-		return this.client.logoutUrl(...args);
-	}
-
-	/** Handle a 401 response within the zone system. */
-	handleUnauthorized(
-		...args: Parameters<BasicAuthContextClient["handleUnauthorized"]>
-	) {
-		return this.client.handleUnauthorized(...args);
+export class BasicAuthContextService extends BasicAuthContextClient {
+	constructor(injector: Injector) {
+		const config = injector.get(BASIC_AUTH_CONTEXT_CLIENT_CONFIG);
+		const environment = injector.get(ENVIRONMENT);
+		super(config, environment);
+		injector.get(DestroyRef).onDestroy(() => this.dispose());
 	}
 }
 
@@ -106,6 +93,7 @@ export interface ProvideBasicAuthContextOptions {
  *
  * export const appConfig = {
  *   providers: [
+ *     provideEnvironment({ environment }),
  *     provideBasicAuthContext({ config: { baseUrl: "/api", zones: [...] } }),
  *   ],
  * };
@@ -114,15 +102,19 @@ export interface ProvideBasicAuthContextOptions {
 export function provideBasicAuthContext(
 	options: ProvideBasicAuthContextOptions,
 ): Provider[] {
-	const client = new BasicAuthContextClient(options.config);
 	return [
 		{
-			provide: BASIC_AUTH_CONTEXT_CLIENT,
-			useValue: client,
+			provide: BASIC_AUTH_CONTEXT_CLIENT_CONFIG,
+			useValue: options.config,
 		},
 		{
 			provide: BasicAuthContextService,
-			useValue: new BasicAuthContextService(client),
+			useFactory: (injector: Injector) => new BasicAuthContextService(injector),
+			deps: [Injector],
+		},
+		{
+			provide: BASIC_AUTH_CONTEXT_CLIENT,
+			useExisting: BasicAuthContextService,
 		},
 	];
 }

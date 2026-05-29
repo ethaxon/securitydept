@@ -5,12 +5,11 @@
 // handler, etc.).
 //
 // Key architectural boundary:
-//   - The SDK provides **host-neutral URL builders and transport-bound
-//     operations** (fetchUserInfo, logout, authorizeUrl, loginUrl).
+//   - The SDK provides **transport-bound operations** (refresh, logout).
 //   - The host owns **HTTP response construction** (302 redirect headers,
 //     Set-Cookie, response body rendering).
-//   - Browser-specific navigation convenience (loginWithRedirect, etc.)
-//     lives in the `/web` subpath and is NOT imported in SSR contexts.
+//   - Redirect navigation belongs to a server router host capability, not to
+//     per-client URL builder methods.
 //
 // This test verifies that every SSR-relevant operation is available from
 // the root (non-/web) subpath and produces values the server host can
@@ -31,35 +30,22 @@ import { FakeTransport } from "@securitydept/test-utils";
 import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
-// 1. session-context-client — SSR login redirect assembly
+// 1. session-context-client — SSR session operations
 // ---------------------------------------------------------------------------
 
 describe("session-context-client SSR / server-host contract", () => {
-	it("produces a login URL that the server host embeds directly in a 302 redirect", () => {
-		const client = new SessionContextClient({
-			baseUrl: "https://auth.example.com",
-		});
-
-		// In an SSR handler (e.g. Next.js getServerSideProps), the host uses
-		// loginUrl() to build the redirect target, then returns it as a 302.
-		const loginTarget = client.loginUrl("https://app.example.com/protected");
-
-		// The SDK provides a fully-formed, deterministic URL.
-		expect(loginTarget).toBe(
-			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fprotected",
+	it("does not expose URL builder methods for server-side redirect assembly", () => {
+		const client = new SessionContextClient(
+			{
+				baseUrl: "https://auth.example.com",
+			},
+			createFoundationEnvironment({
+				transport: new FakeTransport(),
+			}),
 		);
 
-		// Example SSR handler (pseudocode, not SDK code):
-		//   return { redirect: { destination: loginTarget, permanent: false } };
-	});
-
-	it("exposes logoutUrl() for server-side redirect assembly", () => {
-		const client = new SessionContextClient({
-			baseUrl: "https://auth.example.com",
-		});
-
-		const logoutTarget = client.logoutUrl();
-		expect(logoutTarget).toBe("https://auth.example.com/auth/session/logout");
+		expect("loginUrl" in client).toBe(false);
+		expect("logoutUrl" in client).toBe(false);
 	});
 
 	it("fetchUserInfo() works against server-forwarded cookies via arbitrary transport", async () => {
@@ -84,10 +70,6 @@ describe("session-context-client SSR / server-host contract", () => {
 			},
 		);
 
-		const client = new SessionContextClient({
-			baseUrl: "https://auth.example.com",
-		});
-
 		// The host wraps the transport to forward cookies.
 		const ssrTransport = {
 			async execute(request: import("@securitydept/client").HttpRequest) {
@@ -100,8 +82,16 @@ describe("session-context-client SSR / server-host contract", () => {
 				});
 			},
 		};
+		const client = new SessionContextClient(
+			{
+				baseUrl: "https://auth.example.com",
+			},
+			createFoundationEnvironment({
+				transport: ssrTransport,
+			}),
+		);
 
-		const session = await client.fetchUserInfo(ssrTransport);
+		const session = await client.refresh();
 		expect(session?.principal.displayName).toBe("SSR User");
 		expect(session?.principal.claims).toEqual({ role: "viewer" });
 	});
@@ -113,19 +103,23 @@ describe("session-context-client SSR / server-host contract", () => {
 			() => ({ status: 401, headers: {}, body: null }),
 		);
 
-		const client = new SessionContextClient({
-			baseUrl: "https://auth.example.com",
-		});
+		const client = new SessionContextClient(
+			{
+				baseUrl: "https://auth.example.com",
+			},
+			createFoundationEnvironment({
+				transport,
+			}),
+		);
 
-		const session = await client.fetchUserInfo(transport);
+		const session = await client.refresh();
 		expect(session).toBeNull();
 
 		// Example SSR handler pattern:
 		//   if (!session) {
-		//     return Response.redirect(client.loginUrl(resolvedUrl), 302);
+		//     return serverRouter.navigate({ url, intent: "auth_redirect" });
 		//   }
-		const redirectTarget = client.loginUrl("/protected");
-		expect(redirectTarget).toContain("/auth/session/login");
+		expect("loginUrl" in client).toBe(false);
 	});
 });
 
@@ -135,10 +129,19 @@ describe("session-context-client SSR / server-host contract", () => {
 
 describe("basic-auth-context-client SSR / server-host contract", () => {
 	it("handleUnauthorized() produces zone-matched redirect URLs without browser dependency", () => {
-		const client = new BasicAuthContextClient({
-			baseUrl: "https://auth.example.com",
-			zones: [{ zonePrefix: "/api" }],
-		});
+		const client = new BasicAuthContextClient(
+			{
+				baseUrl: "https://auth.example.com",
+				zones: [{ zonePrefix: "/api" }],
+			},
+			createFoundationEnvironment({
+				transport: {
+					async execute() {
+						throw new Error("Unexpected transport call.");
+					},
+				},
+			}),
+		);
 
 		// In SSR, the host uses handleUnauthorized() after a backend 401.
 		const result = client.handleUnauthorized("/api/protected", 401);
@@ -155,10 +158,19 @@ describe("basic-auth-context-client SSR / server-host contract", () => {
 	});
 
 	it("returns Ok for paths outside configured zones (no redirect needed)", () => {
-		const client = new BasicAuthContextClient({
-			baseUrl: "https://auth.example.com",
-			zones: [{ zonePrefix: "/api" }],
-		});
+		const client = new BasicAuthContextClient(
+			{
+				baseUrl: "https://auth.example.com",
+				zones: [{ zonePrefix: "/api" }],
+			},
+			createFoundationEnvironment({
+				transport: {
+					async execute() {
+						throw new Error("Unexpected transport call.");
+					},
+				},
+			}),
+		);
 
 		const result = client.handleUnauthorized("/public/health", 401);
 		expect(result.kind).toBe(AuthGuardResultKind.Ok);

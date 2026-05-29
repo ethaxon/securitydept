@@ -240,7 +240,7 @@ describe("FrontendOidcModeClient", () => {
 			{
 				name: "ClientError",
 				kind: ClientErrorKind.Protocol,
-				code: "frontend_oidc.invalid_user_info_payload",
+				code: "identity.invalid_principal",
 			},
 		);
 	});

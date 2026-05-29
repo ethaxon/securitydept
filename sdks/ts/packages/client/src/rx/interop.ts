@@ -35,7 +35,7 @@ export function behaviorSubjectToSignal<T>(
 		set: (value) => {
 			subject.next(value);
 		},
-		subscribe(listener) {
+		notify(listener) {
 			const subscription = subject.pipe(skip(1)).subscribe(() => {
 				listener();
 			});
@@ -65,7 +65,7 @@ export function observableToReplaySignal<T>(
 
 	return {
 		get: () => subject.getValue(),
-		subscribe(listener) {
+		notify(listener) {
 			const subscription = subject.pipe(skip(1)).subscribe(() => {
 				listener();
 			});

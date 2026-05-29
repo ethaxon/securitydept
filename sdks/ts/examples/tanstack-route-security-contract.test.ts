@@ -19,6 +19,7 @@
 //   - RouteSecurityBlockedError for hard navigation blocks
 //   - Root-level policy consumption of child route staticData declarations
 
+import { SECURITYDEPT_ROUTE_METADATA_KEY } from "@securitydept/client";
 import {
 	createExternalRedirectBeforeLoadHandler,
 	createSecureBeforeLoad,
@@ -922,8 +923,8 @@ describe("TanStack route-security — createSecureBeforeLoad (execution glue)", 
 // ---------------------------------------------------------------------------
 
 describe("TanStack route-security — Angular parity", () => {
-	it("DEFAULT_REQUIREMENTS_KEY matches Angular's authRequirements key", () => {
-		// Both frameworks use the same default key for requirements
+	it("Angular route metadata uses a namespaced route.data key", () => {
+		expect(SECURITYDEPT_ROUTE_METADATA_KEY).toBe("__securitydept__");
 		expect(DEFAULT_REQUIREMENTS_KEY).toBe("authRequirements");
 	});
 

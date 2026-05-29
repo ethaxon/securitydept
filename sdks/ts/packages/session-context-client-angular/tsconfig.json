@@ -12,6 +12,7 @@
 	"include": ["src"],
 	"references": [
 		{ "path": "../client" },
+		{ "path": "../client-angular" },
 		{ "path": "../session-context-client" }
 	]
 }

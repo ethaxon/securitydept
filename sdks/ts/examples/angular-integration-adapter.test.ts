@@ -16,7 +16,7 @@ import {
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import { signalToObservable } from "@securitydept/client/rx";
-import { bridgeToAngularSignal } from "@securitydept/client-angular";
+import { provideEnvironment, toNgSignal } from "@securitydept/client-angular";
 import {
 	provideSessionContext,
 	SESSION_CONTEXT_CLIENT,
@@ -206,9 +206,20 @@ describe("Angular Integration — Angular-native DI surface", () => {
 	});
 
 	it("provideBasicAuthContext returns Angular Provider array", () => {
-		const providers = provideBasicAuthContext({
-			config: { baseUrl: "/api", zones: [] },
-		});
+		const providers = [
+			provideEnvironment({
+				environment: createFoundationEnvironment({
+					transport: {
+						async execute() {
+							throw new Error("Unexpected transport call.");
+						},
+					},
+				}),
+			}),
+			...provideBasicAuthContext({
+				config: { baseUrl: "/api", zones: [{ zonePrefix: "/basic" }] },
+			}),
+		];
 		expect(Array.isArray(providers)).toBe(true);
 		expect(providers.length).toBeGreaterThanOrEqual(2);
 	});
@@ -218,20 +229,24 @@ describe("Angular Integration — Angular-native DI surface", () => {
 	});
 
 	it("provideSessionContext returns Angular Provider array", () => {
-		const providers = provideSessionContext({
-			config: { baseUrl: "/api" },
-			environment: createFoundationEnvironment({
-				transport: {
-					execute: vi.fn(async () => ({
-						status: 200,
-						headers: {},
-						body: null,
-					})),
-				} satisfies ExternalTransportTrait,
-				span: createRootSpan(),
-				tracing: createTracing(),
+		const providers = [
+			provideEnvironment({
+				environment: createFoundationEnvironment({
+					transport: {
+						execute: vi.fn(async () => ({
+							status: 200,
+							headers: {},
+							body: null,
+						})),
+					} satisfies ExternalTransportTrait,
+					span: createRootSpan(),
+					tracing: createTracing(),
+				}),
 			}),
-		});
+			...provideSessionContext({
+				config: { baseUrl: "/api" },
+			}),
+		];
 		expect(Array.isArray(providers)).toBe(true);
 		expect(providers.length).toBeGreaterThanOrEqual(1);
 	});
@@ -262,34 +277,32 @@ describe("Angular Integration — Angular-native DI surface", () => {
 });
 
 // ===========================================================================
-// 2. Signal bridge tests — using real Angular WritableSignal
+// 2. Signal interop tests — using Angular toSignal
 // ===========================================================================
 
-describe("Angular Integration — Signal Bridge with real Angular signal", () => {
-	it("syncs SDK signal to Angular WritableSignal", async () => {
-		const { signal: angularSignal } = await import("@angular/core");
+describe("Angular Integration — Signal interop with Angular toSignal", () => {
+	it("syncs SDK signal to Angular Signal", async () => {
 		const { signal: sdkSignal, set } = createTestSignal<string | null>("hello");
-		const angularSig = angularSignal<string | null>(null);
+		const angularSig = toNgSignal(sdkSignal, {
+			initialValue: sdkSignal.get(),
+			manualCleanup: true,
+		});
 
-		const cleanup = bridgeToAngularSignal(sdkSignal, angularSig);
 		expect(angularSig()).toBe("hello");
 
 		set("world");
 		expect(angularSig()).toBe("world");
-
-		cleanup();
-		set("after-cleanup");
-		expect(angularSig()).toBe("world");
 	});
 
 	it("bridges AuthSnapshot to Angular signal", async () => {
-		const { signal: angularSignal } = await import("@angular/core");
 		const { signal: sdkSignal, set } = createTestSignal<AuthSnapshot | null>(
 			null,
 		);
-		const angularSig = angularSignal<AuthSnapshot | null>(null);
+		const angularSig = toNgSignal(sdkSignal, {
+			initialValue: sdkSignal.get(),
+			manualCleanup: true,
+		});
 
-		bridgeToAngularSignal(sdkSignal, angularSig);
 		expect(angularSig()).toBeNull();
 
 		set(makeSnapshot("tok-123"));
@@ -905,30 +918,32 @@ describe("Angular Integration — RequirementKind / ProviderFamily mapping", () 
 });
 
 // ===========================================================================
-// 10. createTokenSetRouteAggregationGuard — requirementPolicies (fine-grained)
+// 10. Token-set guard + planner host API (fine-grained policies)
 //
-// Proves that the canonical guard absorbs all former createTokenSetAuthGuard
-// capabilities via requirementPolicies: per-requirement selector (clientKey /
-// query) and per-requirement onUnauthenticated handler.
+// Proves the rewritten surface: createTokenSetCanActivate / Child guards and
+// provideTokenSetRequirementPlannerHost with per-requirement selector
+// (clientKey / query) and per-requirement / per-kind onUnauthenticated handlers.
 // ===========================================================================
 
-import { createPlannerHost } from "@securitydept/client";
 import {
 	type ClientFilter,
 	type ClientMeta,
 	type ClientQueryOptions,
-	createTokenSetRouteAggregationGuard,
+	createTokenSetCanActivate,
+	createTokenSetCanActivateChild,
+	provideTokenSetRequirementPlannerHost,
 	type TokenSetClientSelector,
 	type TokenSetRequirementPolicy,
 } from "@securitydept/token-set-context-client-angular";
 
-describe("Angular Integration — createTokenSetRouteAggregationGuard requirementPolicies", () => {
-	it("createTokenSetRouteAggregationGuard is a function", () => {
-		expect(typeof createTokenSetRouteAggregationGuard).toBe("function");
+describe("Angular Integration — token-set guard + planner host API", () => {
+	it("createTokenSetCanActivate / Child return guard functions", () => {
+		expect(typeof createTokenSetCanActivate()).toBe("function");
+		expect(typeof createTokenSetCanActivateChild()).toBe("function");
 	});
 
-	it("requirementPolicies with clientKey selector — returns a CanActivateFn", () => {
-		const guard = createTokenSetRouteAggregationGuard({
+	it("provideTokenSetRequirementPlannerHost with clientKey selector policy", () => {
+		const providers = provideTokenSetRequirementPlannerHost({
 			requirementPolicies: {
 				"main-auth": {
 					selector: { clientKey: "main" },
@@ -936,11 +951,11 @@ describe("Angular Integration — createTokenSetRouteAggregationGuard requiremen
 				},
 			},
 		});
-		expect(typeof guard).toBe("function");
+		expect(providers).toBeDefined();
 	});
 
-	it("requirementPolicies with query selector — returns a CanActivateFn", () => {
-		const guard = createTokenSetRouteAggregationGuard({
+	it("provideTokenSetRequirementPlannerHost with query selector policy", () => {
+		const providers = provideTokenSetRequirementPlannerHost({
 			requirementPolicies: {
 				"oidc-auth": {
 					selector: {
@@ -953,11 +968,11 @@ describe("Angular Integration — createTokenSetRouteAggregationGuard requiremen
 				},
 			},
 		});
-		expect(typeof guard).toBe("function");
+		expect(providers).toBeDefined();
 	});
 
-	it("multiple requirementPolicies — returns a CanActivateFn", () => {
-		const guard = createTokenSetRouteAggregationGuard({
+	it("provideTokenSetRequirementPlannerHost with multiple policies + kind handlers", () => {
+		const providers = provideTokenSetRequirementPlannerHost({
 			requirementPolicies: {
 				"main-oidc": {
 					selector: { clientKey: "main" },
@@ -968,22 +983,10 @@ describe("Angular Integration — createTokenSetRouteAggregationGuard requiremen
 					onUnauthenticated: () => "/admin/login",
 				},
 			},
+			requirementHandlers: { frontend_oidc: () => "/login" },
+			defaultOnUnauthenticated: () => false,
 		});
-		expect(typeof guard).toBe("function");
-	});
-
-	it("inline plannerHost is accepted", () => {
-		const host = createPlannerHost();
-		const guard = createTokenSetRouteAggregationGuard({
-			plannerHost: host,
-			requirementPolicies: {
-				"test-auth": {
-					selector: { clientKey: "test" },
-					onUnauthenticated: () => false,
-				},
-			},
-		});
-		expect(typeof guard).toBe("function");
+		expect(providers).toBeDefined();
 	});
 
 	it("TokenSetRequirementPolicy type shape is correct", () => {
@@ -1040,210 +1043,124 @@ describe("Angular Integration — createTokenSetRouteAggregationGuard requiremen
 });
 
 // ===========================================================================
-// 11. Angular nested-scope requirements composition — contract evidence
+// 11. Angular route requirements composition — contract evidence
 //
-// Proves the three-layer model:
-//   1. parent scope effective set (provideRouteScopedRequirements resolves against parent)
-//   2. child scope with composition strategy (inherit / merge / replace)
-//   3. guard-declared candidates overlay (always Merge, guard wins)
+// Proves the route-tree composition model on the rewritten pipeline:
+//   - parent segment establishes a base requirement set
+//   - child segment composes via inherit / merge / replace
+//   - RouteCompositionRequirementPlanner folds pathFromRoot into the effective
+//     requirement list the guard evaluates
 //
-// Tests use resolveEffectiveClientSet directly to mirror what the DI factory
-// does at each scope boundary, validating the contract without a full Angular
-// router + DI test bed.
+// Tests project real Angular route data through projectAngularRouteSegments and
+// assert the folded effective set, validating the contract without a full
+// Angular router + DI test bed.
 // ===========================================================================
 
+import { type ActivatedRouteSnapshot } from "@angular/router";
 import {
-	type AuthGuardClientOption,
-	RequirementsClientSetComposition,
-	resolveEffectiveClientSet,
+	RequirementPlannerHost,
+	RequirementsComposition,
+	RouteCompositionRequirementPlanner,
 } from "@securitydept/client";
-import {
-	AUTH_REQUIREMENTS_CLIENT_SET,
-	provideRouteScopedRequirements,
-} from "@securitydept/client-angular";
+import { projectAngularRouteSegments } from "@securitydept/client-angular";
 import { matchesCallbackPath } from "@securitydept/token-set-context-client/registry";
+import { secureRoute } from "@securitydept/token-set-context-client-angular";
 
-describe("Angular nested-scope requirements composition — contract evidence", () => {
-	// Shared fixture candidates
-	const sessionOpt: AuthGuardClientOption = {
-		requirementId: "session",
-		requirementKind: "session",
-		checkAuthenticated: () => true,
-		onUnauthenticated: () => false,
-	};
-	const oidcOpt: AuthGuardClientOption = {
-		requirementId: "oidc",
-		requirementKind: "frontend_oidc",
-		checkAuthenticated: () => false,
-		onUnauthenticated: () => "/login",
-	};
-	const adminOpt: AuthGuardClientOption = {
-		requirementId: "admin",
-		requirementKind: "backend_oidc",
-		checkAuthenticated: () => false,
-		onUnauthenticated: () => "/admin/login",
-	};
-
-	// ── Scope composition (parent → child) ──────────────────────────────────
-
-	it("Replace: app scope establishes base set from empty parent", () => {
-		// Level 0: no parent (empty)
-		// Level 1 (app): Replace with [sessionOpt]
-		const appEffective = resolveEffectiveClientSet([], {
-			composition: RequirementsClientSetComposition.Replace,
-			options: [sessionOpt],
-		});
-		expect(appEffective.map((o) => o.requirementId)).toEqual(["session"]);
-	});
-
-	it("Merge: feature scope appends to app scope", () => {
-		// Level 1 (app): [sessionOpt]
-		// Level 2 (feature): Merge [oidcOpt]
-		const appEffective = [sessionOpt];
-		const featureEffective = resolveEffectiveClientSet(appEffective, {
-			composition: RequirementsClientSetComposition.Merge,
-			options: [oidcOpt],
-		});
-		expect(featureEffective.map((o) => o.requirementId)).toEqual([
-			"session",
-			"oidc",
-		]);
-	});
-
-	it("Inherit: feature scope passes parent effective set unchanged", () => {
-		// Level 1 (app): [sessionOpt]
-		// Level 2 (feature): Inherit — child options are ignored
-		const appEffective = [sessionOpt];
-		const featureEffective = resolveEffectiveClientSet(appEffective, {
-			composition: RequirementsClientSetComposition.Inherit,
-			options: [oidcOpt], // declared but not applied (inherit discards child)
-		});
-		expect(featureEffective.map((o) => o.requirementId)).toEqual(["session"]);
-	});
-
-	it("Replace: child scope discards parent entirely", () => {
-		const appEffective = [sessionOpt];
-		const childEffective = resolveEffectiveClientSet(appEffective, {
-			composition: RequirementsClientSetComposition.Replace,
-			options: [oidcOpt],
-		});
-		expect(childEffective.map((o) => o.requirementId)).toEqual(["oidc"]);
-	});
-
-	// ── Guard overlay (scope effective set → guard candidates) ──────────────
-	// Guard always uses Merge semantics so guard candidates are never swallowed.
-
-	it("Guard overlay: Merge always appends guard candidates to scope effective set", () => {
-		// Scope effective: [sessionOpt, oidcOpt]
-		// Guard declares: [adminOpt]
-		// Expected: [session, oidc, admin]
-		const scopeEffective = [sessionOpt, oidcOpt];
-		const guardEffective = resolveEffectiveClientSet(scopeEffective, {
-			composition: RequirementsClientSetComposition.Merge,
-			options: [adminOpt],
-		});
-		expect(guardEffective.map((o) => o.requirementId)).toEqual([
-			"session",
-			"oidc",
-			"admin",
-		]);
-	});
-
-	it("Guard overlay after Inherit scope: guard candidates still preserved", () => {
-		// Scope Inherit means scope effective == parent effective == [sessionOpt]
-		// Guard overlay with [adminOpt] → expected: [session, admin]
-		// This is the key regression test: guard candidates must NOT be swallowed
-		// even when the scope's own composition is Inherit.
-		const scopeEffective = resolveEffectiveClientSet([sessionOpt], {
-			composition: RequirementsClientSetComposition.Inherit,
-			options: [],
-		});
-		const guardEffective = resolveEffectiveClientSet(scopeEffective, {
-			composition: RequirementsClientSetComposition.Merge,
-			options: [adminOpt],
-		});
-		expect(guardEffective.map((o) => o.requirementId)).toEqual([
-			"session",
-			"admin",
-		]);
-	});
-
-	it("Guard overlay: same requirementId — guard candidate takes precedence", () => {
-		// Scope has oidcOpt; guard re-declares oidc with different behavior
-		const guardOidcOverride: AuthGuardClientOption = {
-			requirementId: "oidc", // same id as oidcOpt
-			requirementKind: "frontend_oidc",
-			checkAuthenticated: () => true, // guard overrides to always-authenticated
-			onUnauthenticated: () => false,
-		};
-		const scopeEffective = [sessionOpt, oidcOpt];
-		const guardEffective = resolveEffectiveClientSet(scopeEffective, {
-			composition: RequirementsClientSetComposition.Merge,
-			options: [guardOidcOverride],
-		});
-		// Guard's oidc replaces scope's oidc; session is preserved
-		expect(guardEffective.map((o) => o.requirementId)).toEqual([
-			"session",
-			"oidc",
-		]);
-		// The oidc candidate should be guard's override (always-authenticated)
-		const oidcCandidate = guardEffective.find(
-			(o) => o.requirementId === "oidc",
+describe("Angular route requirements composition — contract evidence", () => {
+	function buildRouteChain(
+		routes: Array<{ path?: string; data?: Record<string, unknown> }>,
+	): ActivatedRouteSnapshot {
+		const snapshots: ActivatedRouteSnapshot[] = routes.map(
+			(route) =>
+				({
+					routeConfig:
+						route.path !== undefined
+							? { path: route.path, data: route.data }
+							: null,
+					data: route.data ?? {},
+					pathFromRoot: [] as ActivatedRouteSnapshot[],
+				}) as unknown as ActivatedRouteSnapshot,
 		);
-		expect(oidcCandidate?.checkAuthenticated()).toBe(true);
+		for (let i = 0; i < snapshots.length; i++) {
+			(
+				snapshots[i] as unknown as { pathFromRoot: ActivatedRouteSnapshot[] }
+			).pathFromRoot = snapshots.slice(0, i + 1);
+		}
+		const leaf = snapshots[snapshots.length - 1];
+		if (!leaf) {
+			throw new Error("buildRouteChain requires at least one segment");
+		}
+		return leaf;
+	}
+
+	function foldEffectiveIds(leaf: ActivatedRouteSnapshot): string[] {
+		const planner = RouteCompositionRequirementPlanner.fromRootRoute(
+			RequirementPlannerHost.fromBehaviour({}),
+			projectAngularRouteSegments(leaf),
+		);
+		return planner.effectiveRequirements.map((requirement) => requirement.id);
+	}
+
+	const appRoute = secureRoute("app", {
+		requirements: [{ id: "session", kind: "session" }],
+	});
+	const featureMerge = secureRoute("feature", {
+		requirements: [{ id: "oidc", kind: "frontend_oidc" }],
+		composition: RequirementsComposition.Merge,
+	});
+	const featureInherit = secureRoute("feature", {
+		requirements: [{ id: "oidc", kind: "frontend_oidc" }],
+		composition: RequirementsComposition.Inherit,
+	});
+	const featureReplace = secureRoute("feature", {
+		requirements: [{ id: "oidc", kind: "frontend_oidc" }],
+		composition: RequirementsComposition.Replace,
 	});
 
-	// ── Full 3-layer end-to-end contract ────────────────────────────────────
+	it("Merge: feature segment appends to the app segment", () => {
+		const leaf = buildRouteChain([appRoute, featureMerge]);
+		expect(foldEffectiveIds(leaf)).toEqual(["session", "oidc"]);
+	});
 
-	it("3-layer contract: app→feature→guard produces correct effective set for planner", async () => {
-		// Layer 1 (app scope): Replace with [sessionOpt]
-		const appEffective = resolveEffectiveClientSet([], {
-			composition: RequirementsClientSetComposition.Replace,
-			options: [sessionOpt],
-		});
+	it("Inherit: feature segment ignores its own declaration", () => {
+		const leaf = buildRouteChain([appRoute, featureInherit]);
+		expect(foldEffectiveIds(leaf)).toEqual(["session"]);
+	});
 
-		// Layer 2 (feature scope): Merge [oidcOpt]
-		const featureEffective = resolveEffectiveClientSet(appEffective, {
-			composition: RequirementsClientSetComposition.Merge,
-			options: [oidcOpt],
-		});
+	it("Replace: feature segment discards the inherited chain", () => {
+		const leaf = buildRouteChain([appRoute, featureReplace]);
+		expect(foldEffectiveIds(leaf)).toEqual(["oidc"]);
+	});
 
-		// Layer 3 (guard overlay): Merge [adminOpt]
-		const finalCandidates = resolveEffectiveClientSet(featureEffective, {
-			composition: RequirementsClientSetComposition.Merge,
-			options: [adminOpt],
-		});
-
-		expect(finalCandidates.map((o) => o.requirementId)).toEqual([
-			"session",
-			"oidc",
-			"admin",
+	it("Merge with same id: later segment overrides earlier declaration order", () => {
+		const leaf = buildRouteChain([
+			appRoute,
+			secureRoute("feature", {
+				requirements: [
+					{ id: "oidc", kind: "frontend_oidc" },
+					{ id: "session", kind: "session" },
+				],
+				composition: RequirementsComposition.Merge,
+			}),
 		]);
-
-		// Run through planner to verify it selects the first unauthenticated
-		// in declaration order (session is authenticated, oidc is not → planner picks oidc)
-		const { createPlannerHost } = await import("@securitydept/client");
-		const host = createPlannerHost();
-		const result = await host.evaluate(finalCandidates);
-
-		expect(result.allAuthenticated).toBe(false);
-		// oidc is the first unauthenticated requirement in declaration order
-		expect(result.pendingCandidate?.requirementId).toBe("oidc");
+		// session keeps its original slot; oidc appended once.
+		expect(foldEffectiveIds(leaf)).toEqual(["session", "oidc"]);
 	});
 
-	// ── DI token / provider shape ────────────────────────────────────────────
-
-	it("AUTH_REQUIREMENTS_CLIENT_SET token is importable", () => {
-		expect(AUTH_REQUIREMENTS_CLIENT_SET).toBeDefined();
-		expect(typeof AUTH_REQUIREMENTS_CLIENT_SET.toString()).toBe("string");
+	it("multi-level merge accumulates the full path chain", () => {
+		const leaf = buildRouteChain([
+			appRoute,
+			secureRoute("admin", {
+				requirements: [{ id: "admin", kind: "backend_oidc" }],
+			}),
+			secureRoute("settings", {
+				requirements: [{ id: "settings", kind: "frontend_oidc" }],
+			}),
+		]);
+		expect(foldEffectiveIds(leaf)).toEqual(["session", "admin", "settings"]);
 	});
 
-	it("provideRouteScopedRequirements returns EnvironmentProviders", () => {
-		const providers = provideRouteScopedRequirements({
-			composition: RequirementsClientSetComposition.Merge,
-			options: [sessionOpt],
-		});
-		// EnvironmentProviders is an opaque Angular object — verify it's truthy
-		expect(providers).toBeDefined();
+	it("keeps matchesCallbackPath importable for callback discrimination", () => {
+		expect(typeof matchesCallbackPath).toBe("function");
 	});
 });

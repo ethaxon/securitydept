@@ -20,7 +20,7 @@ export function readonlySignal<T>(
 ): ReadableSignalTrait<T> {
 	return {
 		get: () => signal.get(),
-		subscribe: (listener) => signal.subscribe(listener),
+		notify: (listener) => signal.notify(listener),
 		[SYMBOL_OBSERVABLE]: () => signal[SYMBOL_OBSERVABLE](),
 	};
 }
@@ -30,7 +30,7 @@ export function isSignalTrait<T>(obj: unknown): obj is ReadableSignalTrait<T> {
 		typeof obj === "object" &&
 		obj !== null &&
 		typeof (obj as ReadableSignalTrait<T>).get === "function" &&
-		typeof (obj as ReadableSignalTrait<T>).subscribe === "function" &&
+		typeof (obj as ReadableSignalTrait<T>).notify === "function" &&
 		isInteropObservableTrait(obj)
 	);
 }

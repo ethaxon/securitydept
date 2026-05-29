@@ -30,7 +30,7 @@ export function createComputed<T>(
 
 	// Dependency subscriptions are permanent.
 	for (const dep of deps) {
-		dep.subscribe(markDirty);
+		dep.notify(markDirty);
 	}
 
 	const signal = {
@@ -41,7 +41,7 @@ export function createComputed<T>(
 			}
 			return cached as T;
 		},
-		subscribe(listener: () => void): () => void {
+		notify(listener: () => void): () => void {
 			const subscription = changes.subscribe(() => {
 				listener();
 			});
@@ -55,7 +55,7 @@ export function createComputed<T>(
 		[SYMBOL_OBSERVABLE]() {
 			return new Observable<T>((subscriber) => {
 				subscriber.next(signal.get());
-				const unsubscribe = signal.subscribe(() => {
+				const unsubscribe = signal.notify(() => {
 					subscriber.next(signal.get());
 				});
 				return () => {

@@ -1,25 +1,25 @@
 // @vitest-environment jsdom
 
-// Session-context web minimal entry — standalone adopter-facing evidence
+// Session-context browser minimal entry — standalone adopter-facing evidence
 //
-// This test proves the standalone browser entry path for session-context
-// login redirect, exercising the canonical import surface from
-// @securitydept/session-context-client/web.
+// This test proves the browser login redirect path on the environment-bound
+// SessionContextClient root surface.
 //
 // It is intentionally self-contained: no shared helpers from multi-line
 // convenience baselines. An adopter reading this file should understand
 // "how do I start a session login from the browser?" in one glance.
 
 import {
-	createInMemoryRecordStore,
+	createFoundationEnvironment,
+	createRootSpan,
+	createTracing,
 	type RouterTrait,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
-import { SessionContextClient } from "@securitydept/session-context-client";
 import {
-	type LoginWithRedirectOptions,
-	loginWithRedirect,
-} from "@securitydept/session-context-client/web";
+	SessionContextClient,
+	type SessionLoginWithRedirectOptions,
+} from "@securitydept/session-context-client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function createPageLocationEnvironment(href: string): RouterTrait & {
@@ -38,68 +38,65 @@ function createPageLocationEnvironment(href: string): RouterTrait & {
 	};
 }
 
-describe("session-context web minimal entry", () => {
+describe("session-context browser minimal entry", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
 	});
 
-	it("shows the standalone browser entry path: loginWithRedirect saves intent and navigates", async () => {
-		// 1. Create a session client with an in-memory store for pending redirect.
-		const sessionStorage = createInMemoryRecordStore();
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			{ sessionStorage },
-		);
-
+	it("shows the standalone browser entry path: loginWithRedirect navigates with explicit return URI", async () => {
+		// 1. Create a session client with a router-backed browser environment.
 		const environment = createPageLocationEnvironment(
 			"https://app.example.com/protected-page",
 		);
+		const client = new SessionContextClient(
+			{ baseUrl: "https://auth.example.com" },
+			createFoundationEnvironment({
+				transport: {
+					execute: async () => ({ status: 204, headers: {}, body: null }),
+				},
+				router: environment,
+				span: createRootSpan(),
+				tracing: createTracing(),
+			}),
+		);
 
 		// 3. Trigger login redirect with explicit options.
-		const options: LoginWithRedirectOptions = {
-			environment,
+		const options: SessionLoginWithRedirectOptions = {
 			postAuthRedirectUri: "https://app.example.com/dashboard",
 		};
-		await loginWithRedirect(client, options);
+		await client.loginWithRedirect(options);
 
 		// 4. Verify the browser navigated to the login URL.
 		expect(environment.location.href).toBe(
 			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard",
 		);
-
-		// 5. Verify the pending redirect intent was persisted.
-		expect(await client.loadPendingLoginRedirect()).toBe(
-			"https://app.example.com/dashboard",
-		);
 	});
 
-	it("shows the default-options path: uses window.location.href when postAuthRedirectUri is omitted", async () => {
-		const sessionStorage = createInMemoryRecordStore();
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			{ sessionStorage },
-		);
-
+	it("shows the default-options path: no implicit post-auth redirect", async () => {
 		const environment = createPageLocationEnvironment(
 			"https://app.example.com/current-page",
 		);
-
-		await loginWithRedirect(client, { environment });
-
-		expect(environment.location.href).toBe(
-			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fcurrent-page",
+		const client = new SessionContextClient(
+			{ baseUrl: "https://auth.example.com" },
+			createFoundationEnvironment({
+				transport: {
+					execute: async () => ({ status: 204, headers: {}, body: null }),
+				},
+				router: environment,
+				span: createRootSpan(),
+				tracing: createTracing(),
+			}),
 		);
 
-		expect(await client.loadPendingLoginRedirect()).toBe(
-			"https://app.example.com/current-page",
+		await client.loginWithRedirect();
+
+		expect(environment.location.href).toBe(
+			"https://auth.example.com/auth/session/login",
 		);
 	});
 
-	it("LoginWithRedirectOptions is importable as a named type from ./web", () => {
-		// Type-level evidence: the options contract is directly importable
-		// from the canonical ./web subpath, not hidden behind a multi-line
-		// convenience barrel.
-		const options: LoginWithRedirectOptions = {
+	it("SessionLoginWithRedirectOptions is importable as a named type from root", () => {
+		const options: SessionLoginWithRedirectOptions = {
 			postAuthRedirectUri: "https://app.example.com/after-login",
 		};
 		expect(options.postAuthRedirectUri).toBeTruthy();

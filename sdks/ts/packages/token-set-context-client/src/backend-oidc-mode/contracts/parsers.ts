@@ -1,5 +1,5 @@
 import {
-	normalizeAuthenticatedPrincipalWire,
+	IdentityPrincipalWireSchema,
 	validateWithSchemaSync,
 } from "@securitydept/client";
 import { type TokenDelta, type TokenSnapshot } from "../../orchestration";
@@ -105,5 +105,6 @@ export function refreshReturnsToTokenDelta(
 export function parseBackendOidcModeUserInfoBody(
 	body: Record<string, unknown>,
 ): BackendOidcModeUserInfoResponse | null {
-	return normalizeAuthenticatedPrincipalWire(body);
+	const result = validateWithSchemaSync(IdentityPrincipalWireSchema, body);
+	return result.success ? result.value : null;
 }

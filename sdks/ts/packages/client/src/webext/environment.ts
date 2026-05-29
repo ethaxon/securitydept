@@ -4,6 +4,10 @@ import {
 } from "../environment/create";
 import { type FoundationEnvironment } from "../environment/types";
 import {
+	createProviderIfTokenMissing,
+	getSecuritydeptProviderToken,
+	notMissingProvider,
+	type SecuritydeptDependencyDescriptor,
 	type SecuritydeptFactoryProvider,
 	type SecuritydeptProvider,
 	type SecuritydeptValueProvider,
@@ -18,6 +22,10 @@ import {
 	createPageLifecycleForNativeWeb,
 	type PageLifecycleForNativeWebCreateOptions,
 } from "../web/page";
+import {
+	createRouterForNativeWeb,
+	type RouterForNativeWebCreateOptions,
+} from "../web/router";
 import {
 	createRouterForWebExt,
 	type RouterForWebExtCreateOptions,
@@ -46,6 +54,7 @@ export interface CreateEnvironmentForWebExtBackgroundScriptOptions
 
 export interface CreateEnvironmentForWebExtUIOptions
 	extends CreateEnvironmentForWebExtCoreOptions {
+	routerForNativeWebCreateOptions?: RouterForNativeWebCreateOptions;
 	pageLifecycleForNativeWebCreateOptions?: PageLifecycleForNativeWebCreateOptions;
 }
 
@@ -58,10 +67,15 @@ export interface WebExtUIEnvironment extends WebExtCoreEnvironment {}
 export function createEnvironmentForWebExtCore(
 	options: CreateEnvironmentForWebExtCoreOptions,
 ): WebExtCoreEnvironment {
+	const userProviders = options.providers ?? [];
+	const externalProviderTokens = new Set(
+		userProviders.map((provider) => getSecuritydeptProviderToken(provider)),
+	);
+
 	return createFoundationEnvironment({
 		providers: [
-			...createWebExtTraitProviders(options),
-			...(options.providers ?? []),
+			...createWebExtTraitProviders(options, externalProviderTokens),
+			...userProviders,
 		],
 		transport: options.transport,
 		transportForStdFetchCreateOptions:
@@ -86,69 +100,121 @@ export function createEnvironmentForWebExtBackgroundScript(
 export function createEnvironmentForWebExtUI(
 	options: CreateEnvironmentForWebExtUIOptions,
 ): WebExtUIEnvironment {
-	return createEnvironmentForWebExtCore({
+	const userProviders = options.providers ?? [];
+	const userProviderTokens = new Set(
+		userProviders.map((provider) => getSecuritydeptProviderToken(provider)),
+	);
+	const uiProviders = createWebExtUITraitProviders(options, userProviderTokens);
+	const externalProviderTokens = new Set([
+		...userProviderTokens,
+		...uiProviders.map((provider) => getSecuritydeptProviderToken(provider)),
+	]);
+
+	return createFoundationEnvironment({
 		...options,
 		providers: [
-			...createWebExtUITraitProviders(options),
-			...(options.providers ?? []),
+			...createWebExtTraitProviders(options, externalProviderTokens),
+			...uiProviders,
+			...userProviders,
 		],
 	}) as WebExtUIEnvironment;
 }
 
 function createWebExtTraitProviders(
 	options: CreateEnvironmentForWebExtCoreOptions,
+	externalProviderTokens: ReadonlySet<
+		SecuritydeptValueProvider<unknown>["provide"]
+	>,
 ): SecuritydeptProvider[] {
 	return [
-		createWebExtTraitUnit({
-			provide: ROUTER_TRAIT_TOKEN,
-			value: options.router,
-			createValue: () =>
-				createRouterForWebExt({
-					...options.routerForWebExtCreateOptions,
-					validators: options.validators,
+		createProviderIfTokenMissing(
+			externalProviderTokens,
+			ROUTER_TRAIT_TOKEN,
+			() =>
+				createWebExtTraitUnit({
+					provide: ROUTER_TRAIT_TOKEN,
+					value: options.router,
+					createValue: () =>
+						createRouterForWebExt({
+							...options.routerForWebExtCreateOptions,
+							validators: options.validators,
+						}),
 				}),
-		}),
-		createWebExtTraitUnit({
-			provide: PERSISTENT_STORAGE_TRAIT_TOKEN,
-			value: options.persistentStorage,
-			createValue: () =>
-				createPersistentStorageForWebExt({
-					...options.persistentStorageForWebExtCreateOptions,
-					validators: options.validators,
+		),
+		createProviderIfTokenMissing(
+			externalProviderTokens,
+			PERSISTENT_STORAGE_TRAIT_TOKEN,
+			() =>
+				createWebExtTraitUnit({
+					provide: PERSISTENT_STORAGE_TRAIT_TOKEN,
+					value: options.persistentStorage,
+					createValue: () =>
+						createPersistentStorageForWebExt({
+							...options.persistentStorageForWebExtCreateOptions,
+							validators: options.validators,
+						}),
 				}),
-		}),
-		createWebExtTraitUnit({
-			provide: SESSION_STORAGE_TRAIT_TOKEN,
-			value: options.sessionStorage,
-			createValue: () =>
-				createSessionStorageForWebExt({
-					...options.sessionStorageForWebExtCreateOptions,
-					validators: options.validators,
+		),
+		createProviderIfTokenMissing(
+			externalProviderTokens,
+			SESSION_STORAGE_TRAIT_TOKEN,
+			() =>
+				createWebExtTraitUnit({
+					provide: SESSION_STORAGE_TRAIT_TOKEN,
+					value: options.sessionStorage,
+					createValue: () =>
+						createSessionStorageForWebExt({
+							...options.sessionStorageForWebExtCreateOptions,
+							validators: options.validators,
+						}),
 				}),
-		}),
-	];
+		),
+	].filter(notMissingProvider);
 }
 
 function createWebExtUITraitProviders(
 	options: CreateEnvironmentForWebExtUIOptions,
+	externalProviderTokens: ReadonlySet<
+		SecuritydeptValueProvider<unknown>["provide"]
+	>,
 ): SecuritydeptProvider[] {
 	return [
-		createWebExtTraitUnit({
-			provide: PAGE_LIFECYCLE_TRAIT_TOKEN,
-			value: options.pageLifecycle,
-			createValue: () =>
-				createPageLifecycleForNativeWeb({
-					...options.pageLifecycleForNativeWebCreateOptions,
-					validators: options.validators,
+		createProviderIfTokenMissing(
+			externalProviderTokens,
+			ROUTER_TRAIT_TOKEN,
+			() =>
+				createWebExtTraitUnit({
+					provide: ROUTER_TRAIT_TOKEN,
+					value: options.router,
+					createValue: () =>
+						createRouterForNativeWeb({
+							...options.routerForNativeWebCreateOptions,
+							validators: options.validators,
+						}),
 				}),
-		}),
-	];
+		),
+		createProviderIfTokenMissing(
+			externalProviderTokens,
+			PAGE_LIFECYCLE_TRAIT_TOKEN,
+			() =>
+				createWebExtTraitUnit({
+					provide: PAGE_LIFECYCLE_TRAIT_TOKEN,
+					value: options.pageLifecycle,
+					createValue: () =>
+						createPageLifecycleForNativeWeb({
+							...options.pageLifecycleForNativeWebCreateOptions,
+							validators: options.validators,
+						}),
+				}),
+		),
+	].filter(notMissingProvider);
 }
 
 function createWebExtTraitUnit<T>(options: {
 	provide: SecuritydeptValueProvider<T | null>["provide"];
 	value: T | null | undefined;
-	createValue(): T | null;
+	deps?: readonly SecuritydeptDependencyDescriptor<unknown>[];
+	createValue(...deps: readonly unknown[]): T | null;
 }): SecuritydeptProvider {
 	if (options.value !== undefined) {
 		return {
@@ -160,5 +226,6 @@ function createWebExtTraitUnit<T>(options: {
 	return {
 		provide: options.provide,
 		useFactory: options.createValue as (...deps: never[]) => T | null,
+		deps: options.deps,
 	} satisfies SecuritydeptFactoryProvider<T | null>;
 }

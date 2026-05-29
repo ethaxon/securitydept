@@ -15,21 +15,18 @@ import {
 	createRootSpan,
 	createSignal,
 	createTracing,
-	type PlannerHost,
-	type PlannerHostResult,
 	SYMBOL_DISPOSE,
+	writeSecuritydeptRouteMetadata,
 } from "@securitydept/client";
 import {
 	createEnvironmentForNativeWeb,
 	type NativeWebEnvironment,
 } from "@securitydept/client/web";
+import { provideEnvironment } from "@securitydept/client-angular";
 import {
-	AUTH_PLANNER_HOST,
-	provideNativeWebEnvironment,
-} from "@securitydept/client-angular";
-import {
+	createTokenSetCanActivate,
 	createTokenSetOidcLoginRedirectHandler,
-	createTokenSetRouteAggregationGuard,
+	provideTokenSetRequirementPlannerHost,
 	TokenSetAuthRegistry,
 } from "@securitydept/token-set-context-client-angular";
 import { describe, expect, it, vi } from "vitest";
@@ -80,6 +77,21 @@ function createAngularPageEnvironment(): NativeWebEnvironment {
 	});
 }
 
+/**
+ * Mock Angular Router that exposes the attempted navigation via
+ * getCurrentNavigation(), matching how the guard resolves attemptedUrl.
+ */
+function createMockRouter(attemptedUrl: string) {
+	return {
+		url: "/current",
+		parseUrl: (value: string) => ({ redirectedTo: value }),
+		serializeUrl: (tree: unknown) => String(tree),
+		getCurrentNavigation: () => ({
+			finalUrl: { toString: () => attemptedUrl },
+		}),
+	};
+}
+
 describe("Angular token-set route guard injection context", () => {
 	it("runs unauthenticated handlers in the captured injector after async planner work", async () => {
 		let actionCalls = 0;
@@ -109,24 +121,19 @@ describe("Angular token-set route guard injection context", () => {
 			},
 			initialize: async () => client,
 		};
-		const plannerHost: PlannerHost = {
-			async evaluate(candidates): Promise<PlannerHostResult> {
-				await Promise.resolve();
-				return {
-					allAuthenticated: false,
-					unauthenticatedCandidates: candidates,
-					pendingCandidate: candidates[0],
-				};
-			},
-		};
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TokenSetAuthRegistry, useValue: registry },
-				{
-					provide: Router,
-					useValue: { parseUrl: (value: string) => ({ redirectedTo: value }) },
-				},
-				{ provide: AUTH_PLANNER_HOST, useValue: plannerHost },
+				{ provide: Router, useValue: createMockRouter("/confluence") },
+				provideTokenSetRequirementPlannerHost({
+					requirementHandlers: {
+						frontend_oidc: (_failing, _requirement, context) => {
+							inject(TEST_AUTH_ACTION)();
+							attemptedUrl = context.attemptedUrl;
+							return false;
+						},
+					},
+				}),
 				{
 					provide: TEST_AUTH_ACTION,
 					useValue: () => {
@@ -137,15 +144,7 @@ describe("Angular token-set route guard injection context", () => {
 			NULL_ENVIRONMENT_INJECTOR,
 		);
 		const route = createRouteSnapshot();
-		const guard = createTokenSetRouteAggregationGuard({
-			requirementHandlers: {
-				frontend_oidc: (_failing, _requirement, context) => {
-					inject(TEST_AUTH_ACTION)();
-					attemptedUrl = context.attemptedUrl;
-					return false;
-				},
-			},
-		});
+		const guard = createTokenSetCanActivate();
 
 		const result = await runInInjectionContext(injector, () =>
 			guard(route, { url: "/confluence" } as RouterStateSnapshot),
@@ -158,7 +157,7 @@ describe("Angular token-set route guard injection context", () => {
 		injector.destroy();
 	});
 
-	it("uses the attempted router state URL for OIDC login redirects", async () => {
+	it("uses the attempted navigation URL for OIDC login redirects", async () => {
 		const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
 		const environment = createAngularPageEnvironment();
 		const reactive = createTestTokenSetReactiveFields(null);
@@ -186,36 +185,26 @@ describe("Angular token-set route guard injection context", () => {
 			},
 			initialize: async () => client,
 		};
-		const plannerHost: PlannerHost = {
-			async evaluate(candidates): Promise<PlannerHostResult> {
-				await Promise.resolve();
-				return {
-					allAuthenticated: false,
-					unauthenticatedCandidates: candidates,
-					pendingCandidate: candidates[0],
-				};
-			},
-		};
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TokenSetAuthRegistry, useValue: registry },
-				provideNativeWebEnvironment({ environment }),
+				provideEnvironment({ environment }),
 				{
 					provide: Router,
-					useValue: { parseUrl: (value: string) => ({ redirectedTo: value }) },
+					useValue: createMockRouter("/confluence/spaces/abc?tab=pages"),
 				},
-				{ provide: AUTH_PLANNER_HOST, useValue: plannerHost },
+				provideTokenSetRequirementPlannerHost({
+					requirementHandlers: {
+						frontend_oidc: createTokenSetOidcLoginRedirectHandler({
+							clientKey: "confluence",
+						}),
+					},
+				}),
 			],
 			NULL_ENVIRONMENT_INJECTOR,
 		);
 
-		const guard = createTokenSetRouteAggregationGuard({
-			requirementHandlers: {
-				frontend_oidc: createTokenSetOidcLoginRedirectHandler({
-					clientKey: "confluence",
-				}),
-			},
-		});
+		const guard = createTokenSetCanActivate();
 
 		const guardResult = runInInjectionContext(injector, () =>
 			guard(createRouteSnapshot(), {
@@ -237,15 +226,15 @@ describe("Angular token-set route guard injection context", () => {
 
 function createRouteSnapshot(): ActivatedRouteSnapshot {
 	const route = {
-		data: {
-			authRequirements: [
+		data: writeSecuritydeptRouteMetadata(undefined, {
+			requirements: [
 				{
 					id: "confluence-oidc",
-					kind: "frontend_oidc",
 					label: "Confluence OIDC",
+					attributes: { requirementKind: "frontend_oidc" },
 				},
 			],
-		},
+		}),
 		routeConfig: { data: {} },
 	} as unknown as ActivatedRouteSnapshot & {
 		pathFromRoot: ActivatedRouteSnapshot[];

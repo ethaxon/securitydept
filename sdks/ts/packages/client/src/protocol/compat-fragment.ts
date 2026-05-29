@@ -1,3 +1,5 @@
+import { type UriFragmentPart } from "../struct/uri-string";
+
 export const SECURITYDEPT_COMPAT_FRAGMENT_VERSION = "v1";
 
 export type CompatFragmentParameters = Record<string, string>;
@@ -11,23 +13,42 @@ export interface AppendOrReplaceCompatFragmentOptions {
 	payload: string | URLSearchParams;
 }
 
-export function appendOrReplaceCompatFragment(
-	url: URL,
+export interface TakeCompatFragmentResult<T> {
+	compatFragment: CompatFragment | null;
+	fragment: string;
+	url: T;
+}
+
+export interface AppendOrReplaceCompatFragmentResult<T> {
+	fragment: string;
+	url: T;
+}
+
+export type UpdateUriFragmentHash<T> = (input: T, hash: string) => T;
+
+export function appendOrReplaceCompatFragment<
+	T extends string | UriFragmentPart,
+>(
+	input: T,
 	options: AppendOrReplaceCompatFragmentOptions,
-): URL {
-	const blocks = splitFragmentBlocks(url.hash);
+	update: UpdateUriFragmentHash<T>,
+): AppendOrReplaceCompatFragmentResult<T> {
+	const blocks = splitFragmentBlocks(readUriFragmentHash(input));
 	if (isCompatFragmentBlock(blocks.at(-1) ?? "")) {
 		blocks.pop();
 	}
 	blocks.push(buildCompatFragmentBlock(options));
-	url.hash = blocks.join("#");
-	return url;
+	const fragment = joinFragmentBlocks(blocks);
+	return {
+		fragment,
+		url: update(input, fragment),
+	};
 }
 
 export function parseCompatFragment(
-	input: URL | string,
+	input: string | UriFragmentPart,
 ): CompatFragment | null {
-	const fragment = input instanceof URL ? input.hash : input;
+	const fragment = readUriFragmentHash(input);
 	const block = splitFragmentBlocks(fragment).at(-1);
 	if (!block || !isCompatFragmentBlock(block)) {
 		return null;
@@ -45,19 +66,29 @@ export function parseCompatFragment(
 	};
 }
 
-export function removeCompatFragment(url: URL): CompatFragment | null {
-	const blocks = splitFragmentBlocks(url.hash);
+export function takeCompatFragment<T extends string | UriFragmentPart>(
+	input: T,
+	update: UpdateUriFragmentHash<T>,
+): TakeCompatFragmentResult<T> {
+	const currentFragment = readUriFragmentHash(input);
+	const blocks = splitFragmentBlocks(currentFragment);
 	const block = blocks.at(-1);
-	if (!block) {
-		return null;
+	if (!block || !isCompatFragmentBlock(block)) {
+		return {
+			compatFragment: null,
+			fragment: currentFragment,
+			url: input,
+		};
 	}
-	const parsed = parseCompatFragment(block);
-	if (!parsed) {
-		return null;
-	}
+
+	const compatFragment = parseCompatFragment(block);
 	blocks.pop();
-	url.hash = blocks.length > 0 ? blocks.join("#") : "";
-	return parsed;
+	const fragment = joinFragmentBlocks(blocks);
+	return {
+		compatFragment,
+		fragment,
+		url: update(input, fragment),
+	};
 }
 
 export function isCompatFragmentBlock(block: string): boolean {
@@ -68,7 +99,22 @@ export function isCompatFragmentBlock(block: string): boolean {
 	);
 }
 
+function readUriFragmentHash(input: string | UriFragmentPart): string {
+	if (typeof input === "string") {
+		return input.startsWith("#") ? input : `#${input}`;
+	}
+	return input.hash;
+}
+
+function joinFragmentBlocks(blocks: string[]): string {
+	return blocks.length > 0 ? `#${blocks.join("#")}` : "";
+}
+
 function splitFragmentBlocks(fragment: string): string[] {
+	// Lone `#` is an empty hash-route block; distinct from no hash (`""`).
+	if (fragment === "#") {
+		return [""];
+	}
 	const normalized = fragment.startsWith("#") ? fragment.slice(1) : fragment;
 	return normalized ? normalized.split("#") : [];
 }

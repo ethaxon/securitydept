@@ -3,7 +3,7 @@
 // These types define the canonical frontend-facing contract for consuming a
 // backend-oidc deployment, regardless of the active preset (pure / mediated).
 
-import { type AuthenticatedPrincipal } from "@securitydept/client";
+import { type IdentityPrincipal } from "@securitydept/client";
 import {
 	type AuthMetadataDelta,
 	type AuthMetadataSnapshot,
@@ -150,7 +150,7 @@ export interface BackendOidcModeUserInfoRequest {
 	idToken: string;
 }
 
-export type BackendOidcModeUserInfoResponse = AuthenticatedPrincipal;
+export type BackendOidcModeUserInfoResponse = IdentityPrincipal;
 
 // ---------------------------------------------------------------------------
 // Refresh result (typed result from refresh flow)

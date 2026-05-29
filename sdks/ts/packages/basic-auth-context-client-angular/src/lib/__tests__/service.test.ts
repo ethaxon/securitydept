@@ -1,25 +1,46 @@
+import { createEnvironmentInjector, Injector } from "@angular/core";
 import {
 	AuthGuardRedirectStatus,
 	AuthGuardResultKind,
 	BasicAuthContextClient,
 } from "@securitydept/basic-auth-context-client";
-import { BasicAuthContextService } from "@securitydept/basic-auth-context-client-angular";
+import { createFoundationEnvironment } from "@securitydept/client";
+import { provideEnvironment } from "@securitydept/client-angular";
 import { describe, expect, it } from "vitest";
+import { BasicAuthContextService, provideBasicAuthContext } from "../index";
 
 describe("BasicAuthContextService", () => {
-	it("stays a thin facade over core zone, redirect, and guard helpers", () => {
-		const client = new BasicAuthContextClient({
-			baseUrl: "https://auth.example.com",
-			zones: [
-				{ zonePrefix: "/basic" },
-				{
-					zonePrefix: "/internal/basic",
-					loginSubpath: "/signin",
-					logoutSubpath: "/signout",
-				},
+	it("extends the core client while adding Angular destroy lifecycle", async () => {
+		const injector = createEnvironmentInjector(
+			[
+				provideEnvironment({
+					environment: createFoundationEnvironment({
+						transport: {
+							async execute() {
+								throw new Error("Unexpected transport call.");
+							},
+						},
+					}),
+				}),
+				...provideBasicAuthContext({
+					config: {
+						baseUrl: "https://auth.example.com",
+						zones: [
+							{ zonePrefix: "/basic" },
+							{
+								zonePrefix: "/internal/basic",
+								loginSubpath: "/signin",
+								logoutSubpath: "/signout",
+							},
+						],
+					},
+				}),
 			],
-		});
-		const service = new BasicAuthContextService(client);
+			Injector.NULL as never,
+		);
+		const service = injector.get(BasicAuthContextService);
+
+		expect(service).toBeInstanceOf(BasicAuthContextClient);
 
 		expect(service.isInZone("/internal/basic/reports")).toBe(true);
 		expect(service.isInZone("/public")).toBe(false);
@@ -44,6 +65,13 @@ describe("BasicAuthContextService", () => {
 			status: AuthGuardRedirectStatus.Found,
 			location:
 				"https://auth.example.com/internal/basic/signin?post_auth_redirect_uri=%2Finternal%2Fbasic%2Freports",
+		});
+
+		injector.destroy();
+		await expect(
+			service.refresh({ path: "/internal/basic/reports" }),
+		).rejects.toMatchObject({
+			code: "basic_auth.client_disposed",
 		});
 	});
 });

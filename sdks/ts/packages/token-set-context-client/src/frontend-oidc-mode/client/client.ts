@@ -27,6 +27,7 @@
 import {
 	ClientError,
 	ClientErrorKind,
+	UriReferenceString,
 	createKeyedEphemeralFlowStore,
 	decodeJwtPayload,
 	defineInstrumentMethodDecorator,
@@ -34,9 +35,9 @@ import {
 	type FoundationEnvironment,
 	isLoopbackHttpUrl,
 	type KeyedEphemeralFlowStore,
-	normalizeAuthenticatedPrincipal,
 	type OperationSpanTrait,
 	parseDurationToMs,
+	parseIdentityPrincipal,
 	type SpanTrait,
 	UserRecovery,
 } from "@securitydept/client";
@@ -276,12 +277,14 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		});
 
 		await this._ensureAuthServer(operationSpan);
+		this._throwIfNotOperational();
 
 		const effectiveRedirectUri =
 			options.redirectUri ?? this._config.redirectUri;
 		const result = await this._buildAuthorizeUrl({
 			redirectUri: effectiveRedirectUri,
 		});
+		this._throwIfNotOperational();
 
 		const effectivePostAuthRedirectUri =
 			options.postAuthRedirectUri ?? this._config.defaultPostAuthRedirectUri;
@@ -297,6 +300,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			postAuthRedirectUri: effectivePostAuthRedirectUri,
 			createdAt: this._environment.time.now(),
 		});
+		this._throwIfNotOperational();
 
 		operationSpan?.setAttributes({ state: result.state });
 		return result.redirectUrl;
@@ -320,6 +324,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		options: OidcRedirectLoginOptions,
 		operationSpan?: OperationSpanTrait,
 	): Promise<void> {
+		this._throwIfNotOperational();
 		operationSpan?.setAttributes({
 			hasPostAuthRedirectUri: options.postAuthRedirectUri !== undefined,
 		});
@@ -333,12 +338,14 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			});
 		}
 		const url = await this.authorizeUrl(options.postAuthRedirectUri);
+		this._throwIfNotOperational();
 
 		await router.navigate({
-			url,
+			url: UriReferenceString.parse(url),
 			intent: "auth_redirect",
 			mode: "external",
 		});
+		this._throwIfNotOperational();
 		operationSpan?.setAttributes({ navigationMode: "external" });
 	}
 
@@ -356,6 +363,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		options: OidcPopupLoginOptions,
 		operationSpan?: OperationSpanTrait,
 	): Promise<OidcPopupLoginResult> {
+		this._throwIfNotOperational();
 		operationSpan?.setAttributes({
 			popupCallbackUrl: options.popupCallbackUrl,
 		});
@@ -373,6 +381,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		const popupAuthorizeUrl = await this._authorizeUrlWithState({
 			redirectUri: options.popupCallbackUrl,
 		});
+		this._throwIfNotOperational();
 
 		const popupHandle = popupCapability.open(popupAuthorizeUrl, {
 			expectedOrigin: new URL(
@@ -391,6 +400,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			time: this._environment.time,
 			timeoutMs: options.timeoutMs,
 		});
+		this._throwIfNotOperational();
 
 		operationSpan?.addEvent(
 			FrontendOidcModeOperationEventName.PopupRelaySucceeded,
@@ -399,7 +409,8 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			},
 		);
 
-		const result = await this._handleCallback(callbackUrl, operationSpan);
+		const result = await this.handleCallback(callbackUrl);
+		this._throwIfNotOperational();
 		return { snapshot: result.snapshot };
 	}
 
@@ -488,6 +499,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		this._throwIfNotOperational();
 
 		await this._ensureAuthServer(operationSpan);
+		this._throwIfNotOperational();
 		const tokens = await this.exchangeCode(
 			callbackUrl,
 			pending.codeVerifier,
@@ -502,6 +514,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			tokens,
 			operationSpan ?? this.span,
 		);
+		this._throwIfNotOperational();
 
 		const snapshot: AuthSnapshot = {
 			tokens: this._tokenResultToTokenSnapshot(tokens),
@@ -509,6 +522,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		};
 
 		await this._applySnapshot(snapshot, {}, operationSpan);
+		this._throwIfNotOperational();
 		operationSpan?.setAttributes({
 			hasClaimsCheck: metadata.principal !== undefined,
 			persisted: this._persistence !== null,
@@ -526,17 +540,6 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * If the refresh response contains a new id_token, userInfo is re-fetched
 	 * and claims check is re-run. Otherwise, existing metadata is preserved.
 	 */
-	@instrumentFrontendMethod(
-		FrontendOidcModeTraceOperationName.Refresh,
-		function (this: FrontendOidcModeClient) {
-			const snapshotSlot = this.authSnapshot.get();
-			const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
-			return {
-				flow: "refresh",
-				hasIdToken: current?.tokens.idToken !== undefined,
-			};
-		},
-	)
 	protected async _refreshAuthSnapshot(
 		_currentSnapshot: AuthSnapshot,
 		_freshnessTiming: unknown,
@@ -552,6 +555,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		this._throwIfNotOperational();
 
 		await this._ensureAuthServer(operationSpan);
+		this._throwIfNotOperational();
 		const tokens = await this.refreshTokens(refreshMaterial);
 
 		this._throwIfNotOperational();
@@ -562,6 +566,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 				tokens,
 				operationSpan ?? this.span,
 			);
+			this._throwIfNotOperational();
 		} else {
 			metadata = current.metadata;
 		}
@@ -611,11 +616,14 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		}
 
 		await this._ensureAuthServer(operationSpan);
+		this._throwIfNotOperational();
 		const userInfo = await this.fetchUserInfoRaw(current.tokens.accessToken);
+		this._throwIfNotOperational();
 		const result = await this.checkClaims(
 			current.tokens.idToken,
 			userInfo.claims,
 		);
+		this._throwIfNotOperational();
 		operationSpan?.setAttributes({ hasClaimsCheck: true });
 		return result;
 	}
@@ -626,21 +634,25 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 	/** Fetch and cache the provider's OpenID discovery document. */
 	async discover(span?: SpanTrait): Promise<void> {
+		this._throwIfNotOperational();
 		const configuredIssuer = this._config.issuer;
 		const configuredIssuerUrl = new URL(configuredIssuer);
 		const response = await discoveryRequest(
 			configuredIssuerUrl,
 			this._oauthRequestOptions(),
 		);
+		this._throwIfNotOperational();
 		const compatibleIssuer = await resolveDiscoveryIssuerCompatibility(
 			response,
 			configuredIssuer,
 		);
+		this._throwIfNotOperational();
 		const compatibleIssuerUrl = new URL(compatibleIssuer);
 		const discovered = await processDiscoveryResponse(
 			compatibleIssuerUrl,
 			response,
 		);
+		this._throwIfNotOperational();
 		this._authServer = this._applyEndpointOverrides(discovered);
 		this._scheduleMetadataRefresh();
 
@@ -666,6 +678,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	private async _buildAuthorizeUrl(options: {
 		redirectUri: string;
 	}): Promise<FrontendOidcModeAuthorizeResult> {
+		this._throwIfNotOperational();
 		const authServer = this._requireAuthServer("buildAuthorizeUrl");
 		if (!authServer.authorization_endpoint) {
 			throw new Error(
@@ -687,6 +700,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		if (this._config.pkceEnabled) {
 			codeVerifier = generateRandomCodeVerifier();
 			const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
+			this._throwIfNotOperational();
 			authUrl.searchParams.set("code_challenge", codeChallenge);
 			authUrl.searchParams.set("code_challenge_method", "S256");
 		}
@@ -702,6 +716,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		redirectUri: string,
 		expectedNonce?: string,
 	): Promise<FrontendOidcModeTokenResult> {
+		this._throwIfNotOperational();
 		const authServer = this._requireAuthServer("exchangeCode");
 
 		const currentUrl = new URL(callbackUrl);
@@ -721,6 +736,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			this._config.pkceEnabled ? (codeVerifier ?? nopkce) : nopkce,
 			this._oauthRequestOptions(),
 		);
+		this._throwIfNotOperational();
 
 		const result = await processAuthorizationCodeResponse(
 			authServer,
@@ -728,6 +744,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			response,
 			expectedNonce ? { expectedNonce } : undefined,
 		);
+		this._throwIfNotOperational();
 
 		const tokenResult = this._normalizeTokenResponse(result);
 		this._validateRequiredScopes(tokenResult.grantedScopes);
@@ -738,6 +755,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	async refreshTokens(
 		refreshToken: string,
 	): Promise<FrontendOidcModeTokenResult> {
+		this._throwIfNotOperational();
 		const authServer = this._requireAuthServer("refreshTokens");
 
 		const response = await refreshTokenGrantRequest(
@@ -747,12 +765,14 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			refreshToken,
 			this._oauthRequestOptions(),
 		);
+		this._throwIfNotOperational();
 
 		const result = await processRefreshTokenResponse(
 			authServer,
 			this._o4wClient,
 			response,
 		);
+		this._throwIfNotOperational();
 
 		return this._normalizeTokenResponse(result);
 	}
@@ -761,6 +781,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	async fetchUserInfoRaw(
 		accessToken: string,
 	): Promise<FrontendOidcModeUserInfoResponse> {
+		this._throwIfNotOperational();
 		const authServer = this._requireAuthServer("fetchUserInfoRaw");
 
 		const response = await userInfoRequest(
@@ -769,6 +790,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			accessToken,
 			this._oauthRequestOptions(),
 		);
+		this._throwIfNotOperational();
 
 		const claims = await processUserInfoResponse(
 			authServer,
@@ -776,20 +798,13 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			undefined as unknown as string,
 			response,
 		);
-		const principal = normalizeAuthenticatedPrincipal({
+		this._throwIfNotOperational();
+		const principal = parseIdentityPrincipal({
 			subject: claims.sub,
 			displayName: claims.name,
 			picture: claims.picture,
 			claims: claims as Record<string, unknown>,
 		});
-		if (!principal) {
-			throw new ClientError({
-				kind: ClientErrorKind.Protocol,
-				message: "User info response missing required 'sub' claim",
-				code: "frontend_oidc.invalid_user_info_payload",
-				source: TRACE_TARGET,
-			});
-		}
 
 		return {
 			...principal,
@@ -807,12 +822,19 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		idToken: string,
 		userInfoClaims?: Record<string, unknown> | null,
 	): Promise<FrontendOidcModeClaimsCheckResult> {
+		this._throwIfNotOperational();
 		const idTokenClaims = decodeJwtPayload(idToken);
 		const uiClaims = userInfoClaims ?? null;
 
 		const script = this._config.claimsCheckScript;
 		if (script) {
-			return this._executeClaimsCheckScript(script, idTokenClaims, uiClaims);
+			const result = await this._executeClaimsCheckScript(
+				script,
+				idTokenClaims,
+				uiClaims,
+			);
+			this._throwIfNotOperational();
+			return result;
 		}
 		return this._defaultClaimsCheck(idTokenClaims, uiClaims);
 	}
@@ -983,8 +1005,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		if (this._authServer?.userinfo_endpoint) {
 			try {
 				const userInfo = await this.fetchUserInfoRaw(tokens.accessToken);
+				this._throwIfNotOperational();
 				userInfoClaims = userInfo.claims ?? null;
 			} catch (error) {
+				this._rootCancellation.token.throwIfCancellationRequested();
 				this._recordFailureTrace(
 					"frontend_oidc.claims_check.user_info_failed",
 					error,
@@ -995,6 +1019,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		}
 
 		const claimsResult = await this.checkClaims(tokens.idToken, userInfoClaims);
+		this._throwIfNotOperational();
 
 		if (!claimsResult.success) {
 			throw new ClientError({
@@ -1005,20 +1030,12 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			});
 		}
 
-		const principal = normalizeAuthenticatedPrincipal({
+		const principal = parseIdentityPrincipal({
 			subject: decodeJwtPayload(tokens.idToken).sub,
 			displayName: claimsResult.displayName,
 			picture: claimsResult.picture,
 			claims: claimsResult.claims,
 		});
-		if (!principal) {
-			throw new ClientError({
-				kind: ClientErrorKind.Protocol,
-				message: "ID token claims missing required 'sub' claim",
-				code: "frontend_oidc.invalid_principal_payload",
-				source: TRACE_TARGET,
-			});
-		}
 
 		return {
 			principal,
@@ -1034,6 +1051,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		idTokenClaims: Record<string, unknown>,
 		userInfoClaims: Record<string, unknown> | null,
 	): Promise<FrontendOidcModeClaimsCheckResult> {
+		this._throwIfNotOperational();
 		if (script.type !== "inline") {
 			throw new Error(
 				`FrontendOidcModeClient: unsupported claims check script type: ${(script as { type: string }).type}`,
@@ -1059,6 +1077,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		);
 
 		const raw = await fn(idTokenClaims, userInfoClaims);
+		this._throwIfNotOperational();
 
 		if (raw && raw.success === true) {
 			return {

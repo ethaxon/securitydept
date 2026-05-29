@@ -14,22 +14,25 @@ import {
 	type BasicAuthContextClientConfig,
 } from "@securitydept/basic-auth-context-client";
 import {
+	type FoundationEnvironment,
 	SecuritydeptInjectionToken,
 	type SecuritydeptProvider,
 } from "@securitydept/client";
-
-export type { BasicAuthContextClientConfig };
-export { BasicAuthContextClient };
 
 export const BASIC_AUTH_CONTEXT_CLIENT =
 	new SecuritydeptInjectionToken<BasicAuthContextClient>(
 		"BASIC_AUTH_CONTEXT_CLIENT",
 	);
 
+export interface CreateBasicAuthContextClientOptions {
+	config: BasicAuthContextClientConfig;
+	environment: FoundationEnvironment;
+}
+
 export function createBasicAuthContextClient(
-	config: BasicAuthContextClientConfig,
+	options: CreateBasicAuthContextClientOptions,
 ): BasicAuthContextClient {
-	return new BasicAuthContextClient(config);
+	return new BasicAuthContextClient(options.config, options.environment);
 }
 
 export function provideBasicAuthContextClient(

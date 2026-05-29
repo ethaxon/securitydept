@@ -350,11 +350,21 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	async clearState(
 		options: { persistPolicy?: PersistPolicy } = {},
 	): Promise<void> {
+		this._throwIfNotOperational();
+		await this.logout(options);
+	}
+
+	async logout(options: { persistPolicy?: PersistPolicy } = {}): Promise<void> {
+		this._throwIfNotOperational();
 		await this._clearState({}, options);
 	}
 
 	async refreshState(): Promise<AuthSnapshot | null> {
-		const determinatedSnapshot = await this.authSnapshot.whenValue();
+		this._throwIfNotOperational();
+		const determinatedSnapshot = await this.authSnapshot.whenValue({
+			cancellationToken: this._rootCancellation.token,
+		});
+		this._throwIfNotOperational();
 		return this._refreshState({
 			snapshot: determinatedSnapshot,
 			freshnessOptions: this._freshnessOptions,
@@ -413,11 +423,13 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					freshness: freshnessTiming,
 					hasRefreshMaterial,
 				});
+				this._throwIfNotOperational();
 				const refreshed = await this._refreshAuthSnapshot(
 					snapshot,
 					freshnessTiming,
 					operationSpan,
 				);
+				this._throwIfNotOperational();
 				return refreshed;
 			} finally {
 				this._authOperationSignals.refreshPending.set(false);
@@ -436,7 +448,10 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		this._throwIfNotOperational();
 		try {
 			this._authOperationSignals.refreshPending.set(true);
-			const currentSnapshot = await this._authSnapshotSignal.whenValue();
+			const currentSnapshot = await this._authSnapshotSignal.whenValue({
+				cancellationToken: this._rootCancellation.token,
+			});
+			this._throwIfNotOperational();
 			if (!currentSnapshot) {
 				return currentSnapshot;
 			}
@@ -447,6 +462,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				},
 				operationSpan,
 			);
+			this._throwIfNotOperational();
 			if (refreshPlan.kind === AuthDeterminationKind.Failed) {
 				return this._commitDetermination(
 					{
@@ -513,6 +529,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		this._authOperationSignals.clearPending.set(true);
 		try {
 			const clearPlan = await planClear(request);
+			this._throwIfNotOperational();
 			return await this._commitDetermination(
 				{
 					candidate: clearPlan,
@@ -545,6 +562,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		this._authOperationSignals.restorePending.set(true);
 		try {
 			const restorePlan = await planRestore(request);
+			this._throwIfNotOperational();
 			return await this._commitDetermination(
 				{
 					candidate: restorePlan,
@@ -591,6 +609,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		try {
 			this._authOperationSignals.restorePending.set(true);
 			const restorePlan = await planRestorePersisted(request);
+			this._throwIfNotOperational();
 			if (restorePlan.kind === AuthDeterminationKind.Failed) {
 				return this._commitDetermination(
 					{
@@ -646,6 +665,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				},
 				operationSpan,
 			);
+			this._throwIfNotOperational();
 			if (refreshPlan.kind === AuthDeterminationKind.Failed) {
 				return this._commitDetermination(
 					{
@@ -738,6 +758,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		request: Omit<PlanRefreshRequest, "fetchRefreshedSnapshot" | "time">,
 		operationSpan?: SpanTrait,
 	): Promise<PlanRefreshResponse> {
+		this._throwIfNotOperational();
 		const refreshedPlan = await dispatchCommandLocallyToPromise({
 			requestStream: this.planRefreshRequest,
 			responseStream: this.planRefreshResponse,
@@ -748,6 +769,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				fetchRefreshedSnapshot: this._createRefreshFetcher(operationSpan),
 			},
 		});
+		this._throwIfNotOperational();
 		return refreshedPlan.data;
 	}
 
@@ -794,9 +816,11 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		commit: AuthDeterminationCommit<TResult>,
 		span?: SpanTrait,
 	): Promise<TResult> {
+		this._throwIfNotOperational();
 		this._authSnapshotSignal.setValue(commit.candidate.snapshot ?? null);
 		this._lastAuthErrorSignal.set(commit.candidate.error);
 		await this._syncPersistence(commit);
+		this._throwIfNotOperational();
 		for (const event of commit.events ?? []) {
 			this._emitAuthEvent({
 				type: event.type,
@@ -833,6 +857,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		}
 
 		try {
+			this._throwIfNotOperational();
 			if (commit.candidate.snapshot) {
 				await savePersistedAuthSnapshot(
 					this._persistence,
@@ -841,7 +866,9 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			} else {
 				await clearPersistedAuthSnapshot(this._persistence);
 			}
+			this._throwIfNotOperational();
 		} catch (error) {
+			this._rootCancellation.token.throwIfCancellationRequested();
 			if (commit.candidate.error === undefined) {
 				this._lastAuthErrorSignal.set(error);
 			}

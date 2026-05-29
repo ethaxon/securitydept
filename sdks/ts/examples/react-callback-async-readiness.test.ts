@@ -122,6 +122,7 @@ describe("react callback async readiness", () => {
 						return { snapshot, postAuthRedirectUri: "/after-login" };
 					},
 					loginWithRedirect: async () => undefined,
+					logout: async () => undefined,
 					loginWithPopup: async () => ({
 						snapshot: state.get() ?? createSnapshot("popup-at"),
 					}),

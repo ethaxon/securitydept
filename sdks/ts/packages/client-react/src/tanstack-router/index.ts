@@ -20,7 +20,7 @@
 //   - createTanStackRouteSecurityPolicy() — headless evaluator (no router
 //     execution glue; for custom integrations)
 //   - projectTanStackRouteMatches() / createTanStackRouteActivator() —
-//     RouteRequirementOrchestrator projection helpers
+//     RouteRequirementPlannerSession projection helpers
 //
 // Architecture boundary:
 //   - Does NOT own the router, lifecycle, or render UI.
@@ -45,6 +45,8 @@ import {
 	type RouterNavigationRequest,
 	type RouterTrait,
 	throwValidationClientError,
+	UriReferenceString,
+	UriString,
 	validateTraitInput,
 } from "@securitydept/client";
 import { type AnyRoute, type RegisteredRouter } from "@tanstack/react-router";
@@ -72,6 +74,30 @@ export interface TanStackRouterNavigationLike {
 export interface CreateRouterForTanstackRouterOptions {
 	router: TanStackRouterNavigationLike;
 	validators?: Pick<EnvironmentValidators, "router">;
+	/**
+	 * Override the document base URI used to resolve relative references.
+	 *
+	 * Defaults to `document.baseURI` in browser environments.
+	 */
+	baseURI?: string | UriString | null;
+}
+
+function readBrowserDocumentBaseURI(): UriString | null {
+	const global = globalThis as { document?: { baseURI?: string } };
+	const baseURI = global.document?.baseURI;
+	return baseURI ? UriString.tryParse(baseURI) : null;
+}
+
+function resolveConfiguredBaseURI(
+	baseURI: string | UriString | null | undefined,
+): UriString | null {
+	if (baseURI === null) {
+		return null;
+	}
+	if (baseURI === undefined) {
+		return null;
+	}
+	return typeof baseURI === "string" ? UriString.tryParse(baseURI) : baseURI;
 }
 
 const TanStackRouterNavigationLikeSchema = defineType({
@@ -94,6 +120,9 @@ export function createRouterForTanstackRouter(
 				failure,
 			}),
 	});
+	const configuredBaseURI = Object.hasOwn(options, "baseURI")
+		? resolveConfiguredBaseURI(options.baseURI)
+		: undefined;
 	const router: RouterTrait = {
 		currentUrl() {
 			const location = options.router.state?.location;
@@ -103,7 +132,10 @@ export function createRouterForTanstackRouter(
 			const href =
 				location.href ??
 				`${location.pathname ?? "/"}${location.search ?? ""}${location.hash ?? ""}`;
-			return new URL(href, "http://localhost");
+			return UriReferenceString.tryParse(href);
+		},
+		baseURI() {
+			return configuredBaseURI ?? readBrowserDocumentBaseURI();
 		},
 		async navigate(request: RouterNavigationRequest) {
 			await options.router.navigate({

@@ -8,6 +8,7 @@ export {
 	CommandResponseType,
 	type CommandSuccessResponse,
 	type CommandTerminalResponse,
+	commandResponseData,
 	concatCommand,
 	type DispatchCommandBaseOptions,
 	type DispatchCommandByIdOptions,

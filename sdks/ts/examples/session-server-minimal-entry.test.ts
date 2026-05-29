@@ -1,20 +1,20 @@
 // Session server minimal entry — standalone adopter-facing evidence
 //
 // This test proves the standalone server-host entry path for
-// session-context-client, exercising the canonical import surface
-// from @securitydept/session-context-client/server.
+// session-context-client using @securitydept/client/server host adapters.
 //
 // An adopter reading this file should understand "how do I use
 // session helpers in a server request handler?" in one glance.
 
 import {
-	type CreateSessionServerHelperOptions,
-	createSessionServerHelper,
-} from "@securitydept/session-context-client/server";
+	type CreateEnvironmentForServerOptions,
+	createEnvironmentForServer,
+} from "@securitydept/client/server";
+import { SessionContextClient } from "@securitydept/session-context-client";
 import { describe, expect, it, vi } from "vitest";
 
 describe("session server minimal entry", () => {
-	it("shows the standalone server entry path: helper construction → fetchUserInfo → login redirect", async () => {
+	it("shows the standalone server entry path: helper construction → session probe", async () => {
 		// 1. Create a mock transport that simulates an unauthenticated response.
 		const transport = {
 			execute: vi.fn(async () => ({
@@ -24,26 +24,24 @@ describe("session server minimal entry", () => {
 			})),
 		};
 
-		// 2. Create a server helper.
-		const options: CreateSessionServerHelperOptions = {
-			config: { baseUrl: "https://auth.example.com" },
-			externalTransport: transport,
+		// 2. Create a request-scoped server environment and session client.
+		const options: CreateEnvironmentForServerOptions = {
+			transport: transport,
+			request: {
+				headers: { cookie: "session_id=abc123" },
+			},
 		};
-		const helper = createSessionServerHelper(options);
+		const client = new SessionContextClient(
+			{ baseUrl: "https://auth.example.com" },
+			createEnvironmentForServer(options),
+		);
 
 		// 3. Probe the session with forwarded cookies.
-		const session = await helper.fetchUserInfo({
-			headers: { cookie: "session_id=abc123" },
-		});
+		const session = await client.refresh();
 
-		// 4. No session → generate a login redirect URL.
-		//    The host (Next.js, Remix, Express, etc.) uses this URL
-		//    to construct its own redirect response.
+		// 4. No session. Redirect response construction belongs to the server
+		//    host/router layer, not SessionContextClient.
 		expect(session).toBeNull();
-
-		const loginUrl = helper.loginUrl("/protected/page");
-		expect(loginUrl).toContain("https://auth.example.com/auth/session/login");
-		expect(loginUrl).toContain("post_auth_redirect_uri=");
 
 		// 5. Verify the transport received the forwarded cookie header.
 		expect(transport.execute).toHaveBeenCalledWith(
@@ -70,27 +68,18 @@ describe("session server minimal entry", () => {
 			})),
 		};
 
-		const helper = createSessionServerHelper({
-			config: { baseUrl: "https://auth.example.com" },
-			externalTransport: transport,
-		});
+		const client = new SessionContextClient(
+			{ baseUrl: "https://auth.example.com" },
+			createEnvironmentForServer({
+				transport: transport,
+				request: { headers: { cookie: "session_id=valid" } },
+			}),
+		);
 
-		const session = await helper.fetchUserInfo({
-			headers: { cookie: "session_id=valid" },
-		});
+		const session = await client.refresh();
 
 		// Authenticated — the host can use the session info to render the page.
 		expect(session).not.toBeNull();
 		expect(session?.principal.displayName).toBe("Alice");
-	});
-
-	it("shows logoutUrl for server-side URL generation", () => {
-		const helper = createSessionServerHelper({
-			config: { baseUrl: "https://auth.example.com" },
-			externalTransport: { execute: vi.fn() },
-		});
-
-		const logoutUrl = helper.logoutUrl();
-		expect(logoutUrl).toContain("https://auth.example.com/auth/session/logout");
 	});
 });

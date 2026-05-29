@@ -17,7 +17,7 @@
 					"stability": "stable",
 					"owner": "foundation",
 					"changeDiscipline": "stable-deprecation-first",
-					"note": "Owns the current shared cancellation/resource-release baseline, the tracing runtime/subscriber baseline, replay signal primitive, shared authenticated-principal baseline, framework-neutral dependency injection, headless auth-coordination primitives, shared storage contracts, structural utilities, and the dual-layer error bridge: DisposableTrait, CancellationTokenTrait, CancellationTokenSourceTrait, createCancellationTokenSource(), and createLinkedCancellationToken() formalize cooperative cancellation plus owner-side release via dispose(); TimeTrait / createDefaultTimeConfig() formalize the low-level injectable time capability, while IdleCallbackTrait formalizes optional host-owned idle callback capability and EventStreamTrait / EventSubjectTrait remain the SDK-owned reactive primitives even though generic source construction now lives in direct RxJS usage plus the `@securitydept/client/rx` bridge; ReadableReplaySignalTrait / WritableReplaySignalTrait / ComputedReplaySignalTrait, ReplaySignalSlot<T>, ReplaySignalWhenValueOptions, createReplaySignal(), createComputedReplaySignal(), createAndThenComputedReplaySignal(), readonlyReplaySignal(), and isReplaySignalTrait() formalize last-available channels that start empty, replay only emitted values, use get() for synchronous slot reads, and use cancellable whenValue() for asynchronous value waits; SecuritydeptInjectorTrait / SecuritydeptInjector formalize the framework-neutral DI surface, while RequirementPlanner / PlannerHost / RouteRequirementOrchestrator formalize shared auth coordination without a separate core subpath; FoundationEnvironment now treats a root span and tracing runtime as required baseline capabilities, while TracingTrait, createTracing(), TracingEvent, TracingSubscriberTrait, runOperation(), defineInstrumentMethodDecorator(), createTraceTimelineStore() / TraceTimelineStore, and OperationTraceEventType formalize the structured tracing baseline and operation-correlation story; AuthenticatedPrincipal, normalizeAuthenticatedPrincipal(), normalizeAuthenticatedPrincipalWire(), and projectAuthenticatedPrincipal() now formalize the shared human-principal contract and host-facing projection baseline consumed by session/token-set families; ErrorPresentationDescriptor / ErrorPresentationTone / readErrorPresentationDescriptor(), ErrorAttributes, and describeError() remain the host-facing presentation, recovery, and structured error-attribute bridge built on runtime errors.",
+					"note": "Owns the current shared cancellation/resource-release baseline, the tracing runtime/subscriber baseline, replay signal primitive, shared identity-principal baseline, framework-neutral dependency injection, headless auth-coordination primitives, shared storage contracts, structural utilities, and the dual-layer error bridge: DisposableTrait, CancellationTokenTrait, CancellationTokenSourceTrait, createCancellationTokenSource(), and createLinkedCancellationToken() formalize cooperative cancellation plus owner-side release via dispose(); TimeTrait / createDefaultTimeConfig() formalize the low-level injectable time capability, while IdleCallbackTrait formalizes optional host-owned idle callback capability and EventStreamTrait / EventSubjectTrait remain the SDK-owned reactive primitives even though generic source construction now lives in direct RxJS usage plus the `@securitydept/client/rx` bridge; ReadableReplaySignalTrait / WritableReplaySignalTrait / ComputedReplaySignalTrait, ReplaySignalSlot<T>, ReplaySignalWhenValueOptions, createReplaySignal(), createComputedReplaySignal(), createAndThenComputedReplaySignal(), readonlyReplaySignal(), and isReplaySignalTrait() formalize last-available channels that start empty, replay only emitted values, use get() for synchronous slot reads, and use cancellable whenValue() for asynchronous value waits; SecuritydeptInjectorTrait / SecuritydeptInjector formalize the framework-neutral DI surface, while RequirementPlannerHost (non-serializable behaviour resolved through a parent chain), BaseRequirementPlanner with StaticRequirementPlanner / RouteCompositionRequirementPlanner / MergeRequirementPlanner, the serializable contract (AuthRequirement, RequirementsComposition, resolveEffectiveRequirements, RequirementBehaviour, PipelineStepResult / PipelineRunResult), and runStep() / runUntilSettled() formalize shared auth coordination without a separate core subpath; FoundationEnvironment now treats a root span and tracing runtime as required baseline capabilities, while TracingTrait, createTracing(), TracingEvent, TracingSubscriberTrait, runOperation(), defineInstrumentMethodDecorator(), createTraceTimelineStore() / TraceTimelineStore, and OperationTraceEventType formalize the structured tracing baseline and operation-correlation story; IdentityPrincipal, IdentityPrincipalSchema, IdentityPrincipalWireSchema, parseIdentityPrincipal(), parseIdentityPrincipalWire(), and projectIdentityPrincipal() now formalize the shared human-principal contract and host-facing projection baseline consumed by session/token-set families; ErrorPresentationDescriptor / ErrorPresentationTone / readErrorPresentationDescriptor(), ErrorAttributes, and describeError() remain the host-facing presentation, recovery, and structured error-attribute bridge built on runtime errors.",
 					"evidence": [
 						"examples/minimal-entry-points.test.ts",
 						"packages/client/src/cancellation/__tests__/cancellation.test.ts",
@@ -78,11 +78,27 @@
 					}
 				},
 				{
+					"exportKey": "./server",
+					"stability": "provisional",
+					"owner": "foundation",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Owns framework-neutral server host adapters: createTransportForServer() forwards request-scoped headers into a BaseTransportTrait, and createEnvironmentForServer() builds a request-scoped FoundationEnvironment that can be passed directly to package clients such as SessionContextClient.",
+					"evidence": [
+						"packages/client/src/server/__tests__/server.test.ts",
+						"examples/ssr-server-helper-baseline.test.ts",
+						"examples/session-server-minimal-entry.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "SSR / server-host entry: dedicated `./server` helpers"
+					}
+				},
+				{
 					"exportKey": "./webext",
 					"stability": "provisional",
 					"owner": "foundation",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Owns Web extension background-script host adapters: createRouterForWebExtBackgroundScript(), createStorageForWebExt(), and createEnvironmentForWebExtBackgroundScript(). These adapters translate browser extension tabs/windows/storage APIs into RouterTrait, StorageTrait, and FoundationEnvironment without exposing extension globals to core clients.",
+					"note": "Owns Web extension background-script host adapters: createRouterForWebExtBackgroundScript(), createStorageForWebExt(), and createEnvironmentForWebExtBackgroundScript(). These adapters translate browser extension tabs/windows/storage APIs and optional browser.runtime.getURL('') into RouterTrait (currentUrl, baseURI, navigate), StorageTrait, and FoundationEnvironment without exposing extension globals to core clients.",
 					"evidence": ["packages/client/src/webext/__tests__/webext.test.ts"],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -94,7 +110,7 @@
 					"stability": "provisional",
 					"owner": "foundation",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Canonical framework-neutral RxJS bridge for SecurityDept event streams and signals. Exposes `toRxObservable(source)` for EventStreamTrait, ReadableSignalTrait, and ReadableReplaySignalTrait, plus `fromRxObservable(observable)` for the reverse bridge. Replay signals do not emit initial empty slots and replay only the last emitted value to late subscribers. `@securitydept/client` remains the event/operator surface; `@securitydept/client-angular` keeps Angular-native writable-signal bridging only.",
+					"note": "Canonical framework-neutral RxJS bridge for SecurityDept event streams and signals. Exposes `toRxObservable(source)` for EventStreamTrait, ReadableSignalTrait, and ReadableReplaySignalTrait, plus `fromRxObservable(observable)` for the reverse bridge. Replay signals do not emit initial empty slots and replay only the last emitted value to late subscribers. `@securitydept/client` remains the event/operator surface; Angular-native signal derivation should use `toNgSignal(source)` from `@securitydept/client-angular`.",
 					"evidence": [
 						"packages/client/src/rx/__tests__/rx.test.ts",
 						"examples/angular-integration-adapter.test.ts",
@@ -117,44 +133,15 @@
 					"stability": "stable",
 					"owner": "basic-auth-context",
 					"changeDiscipline": "stable-deprecation-first",
+					"note": "Environment-backed BasicAuthContextClient owns zone helpers, boundary observation, login redirect, and logout poison interaction from the root entry. Dedicated ./web and ./server helper subpaths are no longer exported.",
 					"evidence": [
 						"examples/basic-auth-guard-scenario.test.ts",
+						"examples/auth-context-discoverability-parity.test.ts",
 						"examples/ssr-server-host-baseline.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "`basic-auth-context-client`"
-					}
-				},
-				{
-					"exportKey": "./web",
-					"stability": "provisional",
-					"owner": "basic-auth-context",
-					"changeDiscipline": "provisional-migration-required",
-					"note": "Owns basic-auth browser/page redirect helpers. performRedirect() and loginWithRedirect() use an explicit `environment` option carrying router/page capability from the host composition root; worker-like hosts must keep redirect initiation in a real page context or inject explicit page/navigation capability.",
-					"evidence": [
-						"examples/basic-auth-web-minimal-entry.test.ts",
-						"examples/auth-context-discoverability-parity.test.ts",
-						"packages/basic-auth-context-client/src/web/__tests__/adapter.test.ts"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Provisional Adapter Maintenance Standard"
-					}
-				},
-				{
-					"exportKey": "./server",
-					"stability": "provisional",
-					"owner": "basic-auth-context",
-					"changeDiscipline": "provisional-migration-required",
-					"evidence": [
-						"examples/ssr-server-helper-baseline.test.ts",
-						"packages/basic-auth-context-client/src/server/__tests__/helpers.test.ts",
-						"examples/basic-auth-server-minimal-entry.test.ts"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "SSR / server-host entry: dedicated `./server` helpers"
 					}
 				}
 			]
@@ -195,46 +182,16 @@
 					"owner": "session-context",
 					"changeDiscipline": "stable-deprecation-first",
 					"evidence": [
+						"examples/login-redirect-convenience.test.ts",
+						"examples/session-web-minimal-entry.test.ts",
 						"examples/session-context-scenario.test.ts",
 						"examples/ssr-server-host-baseline.test.ts",
-						"packages/session-context-client/src/__tests__/client.test.ts",
-						"packages/session-context-client/src/__tests__/controller.test.ts"
+						"packages/session-context-client/src/__tests__/client.test.ts"
 					],
-					"note": "Owns framework-neutral browser-shell convenience in core: rememberPostAuthRedirect(), clearPostAuthRedirect(), resolveLoginUrl(), and logoutAndClearPendingLoginRedirect(). The user-info principal contract aligns to the shared AuthenticatedPrincipal baseline from @securitydept/client, so stable subject/issuer/claims semantics no longer live in a narrower session-only owner. SessionContextController is the framework-neutral state owner for user-info refresh, logout cleanup, and redirect helpers; React and Angular adapters bridge this controller instead of owning parallel fetch state machines.",
+					"note": "Owns the environment-bound SessionContextClient runtime: session state is exposed as signals, lifecycle events as EventStreamTrait, and refresh/logout/redirect operations use FoundationEnvironment transport/router/storage plus span/tracing. No SessionContextController compatibility layer remains.",
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "`session-context-client`"
-					}
-				},
-				{
-					"exportKey": "./web",
-					"stability": "provisional",
-					"owner": "session-context",
-					"changeDiscipline": "provisional-migration-required",
-					"note": "Owns session browser/page redirect helpers. loginWithRedirect() uses an explicit `environment` option carrying router/page capability from the host composition root, keeping redirect initiation out of worker-like restore-only hosts.",
-					"evidence": [
-						"examples/login-redirect-convenience.test.ts",
-						"examples/session-web-minimal-entry.test.ts",
-						"packages/session-context-client/src/web/__tests__/adapter.test.ts"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Provisional Adapter Maintenance Standard"
-					}
-				},
-				{
-					"exportKey": "./server",
-					"stability": "provisional",
-					"owner": "session-context",
-					"changeDiscipline": "provisional-migration-required",
-					"evidence": [
-						"examples/ssr-server-helper-baseline.test.ts",
-						"packages/session-context-client/src/server/__tests__/helpers.test.ts",
-						"examples/session-server-minimal-entry.test.ts"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "SSR / server-host entry: dedicated `./server` helpers"
 					}
 				}
 			]
@@ -250,7 +207,7 @@
 					"stability": "provisional",
 					"owner": "session-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React entry is injector-first and controller-bridged: it exports `SESSION_CONTEXT_CLIENT`, `SESSION_CONTEXT_CONTROLLER`, `createSessionContextController()`, and `provideSessionContextController()` so hosts compose session dependencies through `SecuritydeptProvider`. No `SessionContextProvider` or `useSessionContext()` public surface remains.",
+					"note": "React entry is injector-first and client-owned: it exports `SESSION_CONTEXT_CLIENT`, `createSessionContextClient()`, and `provideSessionContextClient()` so hosts compose the SessionContextClient through `SecuritydeptProvider`. No controller token or React Context wrapper remains.",
 					"evidence": [
 						"examples/session-context-react-minimal-entry.test.ts",
 						"packages/session-context-client-react/src/__tests__/adapter.test.ts",
@@ -275,7 +232,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Owns token-set backend-mode route/client contracts, browser login helpers, and popup callback relay exports. BackendOidcModeClient construction is direct: adopters create a FoundationEnvironment through the appropriate host creator, then call new BackendOidcModeClient(config, environment). Materialized backend clients expose loginWithRedirect({ postAuthRedirectUri }) and loginWithPopup({ popupCallbackUrl }); page navigation is held by the client environment's router. relayTokenSetPopupCallbackFromEnvironment() and TokenSetPopupRelayErrorCode are exported from this subpath alongside BackendOidcModeTraceEventType. Backend user-info transport remains a family DTO while its semantic authenticated-principal parsing/output aligns to the shared AuthenticatedPrincipal baseline from @securitydept/client instead of a parallel family-local owner.",
+					"note": "Owns token-set backend-mode route/client contracts, browser login helpers, and popup callback relay exports. BackendOidcModeClient construction is direct: adopters create a FoundationEnvironment through the appropriate host creator, then call new BackendOidcModeClient(config, environment). Materialized backend clients expose loginWithRedirect({ postAuthRedirectUri }) and loginWithPopup({ popupCallbackUrl }); page navigation is held by the environment's router. relayTokenSetPopupCallbackFromEnvironment() and TokenSetPopupRelayErrorCode are exported from this subpath alongside BackendOidcModeTraceEventType. Backend user-info transport remains a family DTO while its semantic identity-principal parsing/output aligns to the shared IdentityPrincipal baseline from @securitydept/client instead of a parallel family-local owner.",
 					"evidence": [
 						"examples/backend-oidc-mode-subpath-contract.test.ts",
 						"examples/oidc-client-wrapper-contract.test.ts",
@@ -298,7 +255,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Includes the config projection source contract plus the current browser materialization owner: resolveConfigProjection(), networkConfigSource(), ConfigProjectionSourceKind, ClientReadinessState, createFrontendOidcModeWebClientEnvironment(), createFrontendOidcModeBrowserClient(), resolveFrontendOidcModePersistentStateKey(), and resolveFrontendOidcModeBrowserStorageKey(). The canonical browser composition path is createFrontendOidcModeWebClientEnvironment() first, then createFrontendOidcModeBrowserClient({ environment, ...projectionInput }); the materializer requires that explicit environment and does not create default store/fetch/origin dependency fallbacks. Async clientFactory(environment) support remains part of the browser contract, with registry-owned environment passed to client factories instead of scattered sub-capabilities. loginWithPopup() uses popupCallbackUrl as the real OAuth redirect_uri, supports an explicit postAuthRedirectUri for the opener, and is proven by the apps/webui reference host via popup relay plus cross-tab lifecycle browser e2e. FrontendOidcModeTraceEventType keeps popup / callback / refresh / user-info structured trace taxonomy shared and adopter-visible rather than app-local. describeFrontendOidcModeCallbackError() keeps callback-specific host-facing presentation/recovery mapping under the family owner while building on the shared client error presentation descriptor contract. Capability-first layering on the browser path keeps projection endpoint + redirectUri as bootstrap input, the resolved projection as auth-context config, and environment capability wiring explicit. Frontend-mode user-info and metadata principal construction aligns to the shared AuthenticatedPrincipal baseline, with app-facing display projection left to shared helper-backed host code.",
+					"note": "Includes the config projection source contract plus the current browser materialization owner: resolveConfigProjection(), networkConfigSource(), ConfigProjectionSourceKind, ClientReadinessState, createFrontendOidcModeWebClientEnvironment(), createFrontendOidcModeBrowserClient(), resolveFrontendOidcModePersistentStateKey(), and resolveFrontendOidcModeBrowserStorageKey(). The canonical browser composition path is createFrontendOidcModeWebClientEnvironment() first, then createFrontendOidcModeBrowserClient({ environment, ...projectionInput }); the materializer requires that explicit environment and does not create default store/fetch/origin dependency fallbacks. Async clientFactory(environment) support remains part of the browser contract, with registry-owned environment passed to client factories instead of scattered sub-capabilities. loginWithPopup() uses popupCallbackUrl as the real OAuth redirect_uri, supports an explicit postAuthRedirectUri for the opener, and is proven by the apps/webui reference host via popup relay plus cross-tab lifecycle browser e2e. FrontendOidcModeTraceEventType keeps popup / callback / refresh / user-info structured trace taxonomy shared and adopter-visible rather than app-local. describeFrontendOidcModeCallbackError() keeps callback-specific host-facing presentation/recovery mapping under the family owner while building on the shared client error presentation descriptor contract. Capability-first layering on the browser path keeps projection endpoint + redirectUri as bootstrap input, the resolved projection as auth-context config, and environment capability wiring explicit. Frontend-mode user-info and metadata principal construction aligns to the shared IdentityPrincipal baseline, with app-facing display projection left to shared helper-backed host code.",
 					"evidence": [
 						"examples/scheduling-input-source-baseline.test.ts",
 						"examples/frontend-oidc-minimal-entry.test.ts",
@@ -320,7 +277,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Token-set-specific orchestration layer: base-client, auth-check trigger event sources, persistence, token-ops, types. Base OIDC clients expose authorizedTransport() from their own environment transport and authorization header signal instead of mode-specific auth-transport wrappers. Auth-check sources are pure EventStream producers; client-owned dispatcher/gateway code submits events into the auth-check runner. RequirementPlanner and RouteRequirementOrchestrator are hosted by @securitydept/client. AuthPrincipal aligns to the shared AuthenticatedPrincipal baseline while keeping resource-token facts and substrate ownership outside this human-principal contract.",
+					"note": "Token-set-specific orchestration layer: base-client, auth-check trigger event sources, persistence, token-ops, types. Base OIDC clients expose authorizedTransport() from their own environment transport and authorization header signal instead of mode-specific auth-transport wrappers. Auth-check sources are pure EventStream producers; client-owned dispatcher/gateway code submits events into the auth-check runner. The requirement planner host and planner variants are hosted by @securitydept/client. AuthPrincipal aligns to the shared IdentityPrincipal baseline while keeping resource-token facts and substrate ownership outside this human-principal contract.",
 					"evidence": [
 						"packages/token-set-context-client/src/orchestration/client/__tests__/base-oidc-mode-client-auth-signals.test.ts",
 						"packages/token-set-context-client/src/orchestration/__tests__/workflow-sources.test.ts",
@@ -426,7 +383,7 @@
 						"examples/angular-integration-adapter.test.ts",
 						"packages/session-context-client-angular/src/lib/__tests__/service.test.ts"
 					],
-					"note": "The Angular session adapter is environment-first at the composition root: provideSessionContext({ config, environment }) reads transport and sessionStorage from one flattened FoundationEnvironment instead of exposing transport/sessionStorage as the canonical provider shape. SessionContextService bridges SessionContextController, exposes state via Angular signal/Observable helpers, and makes initial user-info probing explicit through initialRefresh or service.refresh(). Low-level access still stays on SessionContextService.client; Angular DI remains the composition root and service methods consume the registered controller wiring instead of accepting a second foundation environment API.",
+					"note": "The Angular session adapter is environment-first at the composition root: provideSessionContext({ config }) creates one SessionContextClient-backed service. Initial probing is controlled by SessionContextClientConfig.autoStart or explicit service.start()/refresh().",
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Angular entry: thin DI wrappers preserve canonical owner boundaries"
@@ -445,7 +402,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React token-set adapter is now injector-first. The root export owns explicit provider factories (`provideTokenSetAuthRegistry()`, `provideTokenSetCallbackResumeController()`), callback bridges (`useTokenSetCallbackResume()`, `TokenSetCallbackComponent`), and React-specific type re-exports on top of the framework-neutral registry core. Ordinary provider composition is scope-owned: `provide...` factories create registry/controller instances inside the current injection context and let `SecuritydeptDestroyRef` own teardown. Advanced hosts that need manual readiness, manual disposal, or custom warmup policy must create and own the registry/controller explicitly before value-providing them. Keyed auth state is read through `useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` plus `useReadableSignal(service.state)` or through explicit props; no `TokenSetAuthProvider`, fixed runtime bundle, hidden registry/service lookup hook, keyed state hook, or backend-client context helper remains in the public surface.",
+					"note": "React token-set adapter is now injector-first. The root export owns explicit provider factories (`provideTokenSetAuthRegistry()`, `provideTokenSetCallbackResumeController()`), callback bridges (`useTokenSetCallbackResume()`, `TokenSetCallbackComponent`), and React-specific type re-exports on top of the framework-neutral registry core. Ordinary provider composition is scope-owned: `provide...` factories create registry/controller instances inside the current injection context and let `SecuritydeptDestroyRef` own teardown. Advanced hosts that need manual readiness, manual disposal, or custom warmup policy must create and own the registry/controller explicitly before value-providing them. Keyed auth state is read through `useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` plus `useReadableSignalValue(service.state)` or through explicit props; no `TokenSetAuthProvider`, fixed runtime bundle, hidden registry/service lookup hook, keyed state hook, or backend-client context helper remains in the public surface.",
 					"evidence": [
 						"packages/token-set-context-client-react/src/__tests__/adapter.test.ts",
 						"packages/token-set-context-client-react/src/__tests__/injection.test.tsx",
@@ -505,14 +462,14 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Root export owns TokenSetAuthRegistry DI service, multi-client integration, bearer interceptor (BearerInterceptorOptions { strictUrlMatch?: boolean } + TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS InjectionToken; provideTokenSetBearerInterceptor(options?) and createTokenSetBearerInterceptor(registry, options?) accept the same options object — strictUrlMatch: true bounds bearer injection to URLs matching registered urlPatterns), callback resume, and the canonical Angular route-security builders. TokenSetAuthRegistry is now a thin DI wrapper over the shared `createTokenSetOidcAuthRegistry()` lifecycle owner and exposes the same canonical verbs plus signal-state authority as the core: `register(entry)`, `unregister(key)`, `resetMaterialization(key)`, `dispose()`, `state`, registered snapshots, ready keys, and `clientSignalFor()`. Registry methods materialize and return mode clients; Angular-specific code should bridge client replay signals (`authSnapshot`, `isAuthenticated`, `authorizationHeaderValue`, `authOperations`) with `@securitydept/client/rx` or `bridgeToAngularSignal()` when needed rather than using a per-client service wrapper. secureRouteRoot() / secureRoute() are the adopter-facing Angular Router path: child routes declare serializable requirement metadata only, root registers non-serializable runtime policy (planner hosts, requirementPolicies, handlers), and both canActivate + canActivateChild evaluate the full route chain in one pass. createTokenSetRouteAggregationGuard() remains the lower-level route-tree primitive and passes attemptedUrl from Angular router state rather than from page globals. createTokenSetOidcLoginRedirectHandler() is the page redirect helper layered on top of that route context, targeting `BaseOidcModeClient.loginWithRedirect()`. Its public key remains `environment`, and the canonical path is provideNativeWebEnvironment({ environment }) from @securitydept/client-angular. The helper awaits that source inside the guard flow before calling `loginWithRedirect()`. CallbackResumeService now bridges TokenSetCallbackResumeController and exposes component-free resume(url) state through Angular signals / observables; the canonical signal/event-to-RxJS bridge now lives in `@securitydept/client/rx`, while `@securitydept/client-angular` keeps Angular-specific writable-signal bridging.",
+					"note": "Root export owns TokenSetAuthRegistry DI service, multi-client integration, bearer interceptor (BearerInterceptorOptions { strictUrlMatch?: boolean } + TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS InjectionToken; provideTokenSetBearerInterceptor(options?) and createTokenSetBearerInterceptor(registry, options?) accept the same options object — strictUrlMatch: true bounds bearer injection to URLs matching registered urlPatterns), callback resume, and the canonical Angular route-security builders. TokenSetAuthRegistry is now a thin DI wrapper over the shared `createTokenSetOidcAuthRegistry()` lifecycle owner and exposes the same canonical verbs plus signal-state authority as the core: `register(entry)`, `unregister(key)`, `resetMaterialization(key)`, `dispose()`, `state`, registered snapshots, ready keys, and `clientSignalFor()`. Registry methods materialize and return mode clients; Angular-specific code should bridge client replay signals (`authSnapshot`, `isAuthenticated`, `authorizationHeaderValue`, `authOperations`) with `@securitydept/client/rx` plus `toNgSignal(source)` from `@securitydept/client-angular` when needed rather than using a per-client service wrapper. secureRouteRoot() / secureRoute() are the adopter-facing Angular Router path layered on top of @securitydept/client-angular's base builders: child routes declare serializable requirement metadata only (secureRoute normalizes token-set requirementKind into attributes.requirementKind and delegates to the base secureRoute), root registers non-serializable runtime policy and additionally injects provideTokenSetRequirementPlannerHost into route providers (secureRouteRoot delegates to the base secureRouteRoot). Aliases secureTokenSetRoute / secureTokenSetRouteRoot are retained. provideTokenSetRequirementPlannerHost(options?) supplies the token-set RequirementBehaviour to client-angular's REQUIREMENT_PLANNER_HOST DI token: checkAuthenticated resolves clients through TokenSetAuthRegistry (by requirementKind or policy selector), initializes and awaits initial auth determination, and requires all resolved clients to be authenticated; onUnauthenticated selects a handler (requirementPolicies[id] > requirementHandlers[kind] > defaultOnUnauthenticated) and runs it inside runInInjectionContext with a TokenSetRouteUnauthenticatedContext exposing attemptedUrl resolved from Angular router navigation state. createTokenSetCanActivate() / createTokenSetCanActivateChild() wrap client-angular's base guards; the token-set host is provided through DI so no explicit host argument is needed. createTokenSetOidcLoginRedirectHandler() is the page redirect helper layered on top of that route context, targeting `BaseOidcModeClient.loginWithRedirect()`. Its public key remains `environment`, and the canonical path is provideEnvironment({ environment }) from @securitydept/client-angular. The helper awaits that source inside the guard flow before calling `loginWithRedirect()` and returns a never-settling result so the external IdP redirect is not finalized as in-app navigation. CallbackResumeService now bridges TokenSetCallbackResumeController and exposes component-free resume(url) state through Angular signals / observables; the canonical signal/event-to-RxJS bridge now lives in `@securitydept/client/rx`, and Angular-native signals are derived with `toNgSignal(source)` from `@securitydept/client-angular`.",
 					"evidence": [
 						"examples/angular-integration-adapter.test.ts",
 						"examples/angular-full-route-aggregation.test.ts",
 						"examples/angular-guard-injection-context.test.ts",
 						"packages/token-set-context-client-angular/src/lib/__tests__/token-set-auth.registry.test.ts",
 						"packages/token-set-context-client-angular/src/lib/__tests__/token-set-callback.component.test.ts",
-						"packages/token-set-context-client-angular/src/lib/__tests__/route-aggregation-guard.test.ts"
+						"packages/token-set-context-client-angular/src/lib/__tests__/planner-host.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -532,7 +489,7 @@
 					"stability": "provisional",
 					"owner": "shared-framework",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Shared React framework bridge with the only SDK-owned React Context. Root exports include `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()` for injector access, the context-free signal/event bridge `useReadableSignal()` and `useEventStream()`, and shared dependency tokens/provider factories such as `CLIENT_ENVIRONMENT` / `provideClientEnvironment(environment)` and `AUTH_PLANNER_HOST` / `provideAuthPlannerHost()`. Domain packages compose through this injector bridge instead of publishing additional React Context/Provider APIs.",
+					"note": "Shared React framework bridge with the only SDK-owned React Context. Root exports include `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()` for injector access, the context-free interop hooks `useReadableSignalValue()`, `useReplaySignalValue()`, `useInteropObservable()`, and `useEventStream()`, and shared dependency tokens/provider factories such as `ENVIRONMENT` / `provideEnvironment({ environment })` and `AUTH_PLANNER_HOST` / `provideAuthPlannerHost()`. Domain packages compose through this injector bridge instead of publishing additional React Context/Provider APIs.",
 					"evidence": [
 						"examples/react-planner-host-baseline.test.ts",
 						"packages/client-react/src/__tests__/injection.test.tsx",
@@ -571,7 +528,7 @@
 					"stability": "provisional",
 					"owner": "shared-framework",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Canonical owner of Angular framework bridge utilities. Provides: AuthRouteAdapter (projection from ActivatedRouteSnapshot to RouteMatchNode[]), PlannerHost DI wiring (provideAuthPlannerHost, AUTH_PLANNER_HOST, injectPlannerHost), route-metadata helpers (withRouteRequirements, extractFullRouteRequirements, ROUTE_REQUIREMENTS_DATA_KEY, ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY, resolveEffectiveRequirements), canonical native-web-environment DI bridge utilities (provideNativeWebEnvironment, NATIVE_WEB_ENVIRONMENT, NativeWebEnvironmentValue), the Angular writable-signal bridge `bridgeToAngularSignal()`, and provideRouteScopedRequirements (lower-level non-router DI-scope helper). Framework-neutral RxJS bridging for ReadableSignalTrait/EventStreamTrait now lives in `@securitydept/client/rx`, so `@securitydept/client-angular` no longer owns a generic `signalToObservable()` public API. ReadableSignalTrait from @securitydept/client remains the canonical signal contract.",
+					"note": "Canonical owner of token-set-agnostic Angular framework bridge utilities aligned with @securitydept/client's RequirementPlannerHost / RouteCompositionRequirementPlanner pipeline. Provides: createRouterForAngular(options) (Angular Router → RouterTrait { currentUrl, navigate }); route-metadata projection (projectAngularRouteSegments(leafRoute) → RouteTreeSegment[], plus routeDataFromSegment); route metadata storage in @securitydept/client (SECURITYDEPT_ROUTE_METADATA_KEY / SecuritydeptRouteMetadata / readSecuritydeptRouteMetadata / writeSecuritydeptRouteMetadata); DI planner-host wiring (REQUIREMENT_PLANNER_HOST InjectionToken, provideRequirementPlannerHost(behaviourOrFactory) mapping the Angular DI hierarchy to the host parent chain via skipSelf, injectRequirementPlannerHost()); generic route guards (createAngularCanActivate(options?), createAngularCanActivateChild(options?) bridging RouteCompositionRequirementPlanner and mapping settled→true / blocked→false / redirect→Router.parseUrl); declarative route builders (secureRoute() writes requirement metadata only, secureRouteRoot() writes metadata and attaches canActivate + canActivateChild, optionally registering provideRequirementPlannerHost when a behaviour/host is supplied); and canonical environment DI bridge utilities (provideEnvironment({ environment }), ENVIRONMENT). Framework-neutral RxJS bridging for ReadableSignalTrait/EventStreamTrait lives in `@securitydept/client/rx`; Angular-native signals are derived with `toNgSignal(source)`. ReadableSignalTrait from @securitydept/client remains the canonical signal contract.",
 					"evidence": [
 						"examples/angular-router-adapter.test.ts",
 						"examples/angular-full-route-aggregation.test.ts",

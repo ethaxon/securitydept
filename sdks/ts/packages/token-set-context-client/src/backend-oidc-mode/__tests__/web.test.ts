@@ -115,7 +115,9 @@ describe("token-set backend OIDC web helpers", () => {
 
 		const fragment = await takeCompatFragmentFromRouter(router);
 
-		expect(fragment).toBe("access_token=callback-at&id_token=callback-idt");
+		expect(fragment?.payload).toBe(
+			"access_token=callback-at&id_token=callback-idt",
+		);
 		expect(history.replacedUrl).toBe(
 			"https://app.example.com/oidc-mediated?tab=demo#/route",
 		);
@@ -240,7 +242,7 @@ describe("token-set backend OIDC web helpers", () => {
 
 	it("refuses to fall back when token-set authorization is unavailable", async () => {
 		const client = createBackendOidcModeTestClient({});
-		await client.clearState();
+		await client.logout();
 		const transport = client.authorizedTransport({
 			baseTransport: {
 				async execute(): Promise<HttpResponse> {

@@ -1,6 +1,6 @@
 import {
-	createRouteRequirementOrchestrator,
 	ResolutionStatus,
+	RouteRequirementPlannerSession,
 } from "@securitydept/client";
 import {
 	createTanStackRouteActivator,
@@ -89,9 +89,9 @@ describe("TanStack React Router Adapter", () => {
 	});
 
 	describe("createTanStackRouteActivator", () => {
-		it("projects and activates matches on orchestrator", () => {
-			const orchestrator = createRouteRequirementOrchestrator();
-			const activator = createTanStackRouteActivator(orchestrator);
+		it("projects and activates matches on session", () => {
+			const session = RouteRequirementPlannerSession.fromRouteRoot();
+			const activator = createTanStackRouteActivator(session);
 
 			const matches: TanStackRouteMatch[] = [
 				{ routeId: "__root__", staticData: {} },
@@ -105,18 +105,17 @@ describe("TanStack React Router Adapter", () => {
 
 			activator.activate(matches);
 
-			const snap = orchestrator.snapshot();
-			expect(snap.activeRouteId).toBe("/dashboard");
-			expect(snap.settled).toBe(false);
-			expect(snap.pendingRequirement).toEqual({
+			expect(session.activeRouteId).toBe("/dashboard");
+			expect(session.settled).toBe(false);
+			expect(session.pendingRequirement).toEqual({
 				id: "session",
 				kind: "session",
 			});
 		});
 
 		it("deactivates the current route", () => {
-			const orchestrator = createRouteRequirementOrchestrator();
-			const activator = createTanStackRouteActivator(orchestrator);
+			const session = RouteRequirementPlannerSession.fromRouteRoot();
+			const activator = createTanStackRouteActivator(session);
 
 			activator.activate([
 				{
@@ -127,18 +126,18 @@ describe("TanStack React Router Adapter", () => {
 				},
 			]);
 
-			expect(orchestrator.snapshot().activeRouteId).toBe("/secure");
+			expect(session.activeRouteId).toBe("/secure");
 
 			activator.deactivate();
-			expect(orchestrator.snapshot().activeRouteId).toBeNull();
+			expect(session.activeRouteId).toBeNull();
 		});
 
-		it("integrates with full orchestration lifecycle: project → activate → resolve → settled", () => {
+		it("integrates with full lifecycle: project → activate → resolve → settled", () => {
 			const onSettled = vi.fn();
-			const orchestrator = createRouteRequirementOrchestrator({ onSettled });
-			const activator = createTanStackRouteActivator(orchestrator);
+			const session = RouteRequirementPlannerSession.fromRouteRoot();
+			session.onSettled.subscribe({ next: onSettled });
+			const activator = createTanStackRouteActivator(session);
 
-			// Simulate matched route chain with parent + child requirements
 			const matches: TanStackRouteMatch[] = [
 				{
 					routeId: "/app",
@@ -156,31 +155,26 @@ describe("TanStack React Router Adapter", () => {
 
 			activator.activate(matches);
 
-			// Resolve first requirement
-			orchestrator.resolve({
+			session.resolve({
 				requirementId: "session",
 				status: ResolutionStatus.Fulfilled,
 			});
 
-			// Should advance to next
-			expect(orchestrator.snapshot().pendingRequirement?.id).toBe("api-token");
+			expect(session.pendingRequirement?.id).toBe("api-token");
 
-			// Resolve second
-			orchestrator.resolve({
+			session.resolve({
 				requirementId: "api-token",
 				status: ResolutionStatus.Fulfilled,
 			});
 
-			// Settled
-			expect(orchestrator.snapshot().settled).toBe(true);
+			expect(session.settled).toBe(true);
 			expect(onSettled).toHaveBeenCalledOnce();
 		});
 
 		it("route transition preserves shared prefix resolutions", () => {
-			const orchestrator = createRouteRequirementOrchestrator();
-			const activator = createTanStackRouteActivator(orchestrator);
+			const session = RouteRequirementPlannerSession.fromRouteRoot();
+			const activator = createTanStackRouteActivator(session);
 
-			// Initial route: /app → /app/dashboard
 			activator.activate([
 				{
 					routeId: "/app",
@@ -196,18 +190,16 @@ describe("TanStack React Router Adapter", () => {
 				},
 			]);
 
-			// Resolve both
-			orchestrator.resolve({
+			session.resolve({
 				requirementId: "session",
 				status: ResolutionStatus.Fulfilled,
 			});
-			orchestrator.resolve({
+			session.resolve({
 				requirementId: "dash-access",
 				status: ResolutionStatus.Fulfilled,
 			});
-			expect(orchestrator.snapshot().settled).toBe(true);
+			expect(session.settled).toBe(true);
 
-			// Navigate to /app/settings (same parent, different child)
 			activator.activate([
 				{
 					routeId: "/app",
@@ -223,14 +215,9 @@ describe("TanStack React Router Adapter", () => {
 				},
 			]);
 
-			// Session should still be resolved (shared prefix), only settings-access pending
-			const snap = orchestrator.snapshot();
-			expect(snap.pendingRequirement?.id).toBe("settings-access");
-			// The plan should show session as already resolved
-			const plan = snap.plan;
-			expect(plan).toBeDefined();
-			expect(plan?.resolutions).toHaveLength(1);
-			expect(plan?.resolutions[0].requirementId).toBe("session");
+			expect(session.pendingRequirement?.id).toBe("settings-access");
+			expect(session.resolutions).toHaveLength(1);
+			expect(session.resolutions[0].requirementId).toBe("session");
 		});
 	});
 });

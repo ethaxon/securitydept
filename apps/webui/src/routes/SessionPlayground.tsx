@@ -1,8 +1,8 @@
 import {
-	useReadableSignal,
+	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import { SESSION_CONTEXT_CONTROLLER } from "@securitydept/session-context-client-react";
+import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client-react";
 import { useMutation } from "@tanstack/react-query";
 import { ExternalLink, LogIn, LogOut, Shield, Waypoints } from "lucide-react";
 import { useSyncExternalStore } from "react";
@@ -40,20 +40,19 @@ function StatusCard({
 }
 
 export function SessionPlaygroundPage() {
-	const sessionController = useSecuritydeptContext().get(
-		SESSION_CONTEXT_CONTROLLER,
-	);
-	const sessionState = useReadableSignal(sessionController.state);
+	const sessionClient = useSecuritydeptContext().get(SESSION_CONTEXT_CLIENT);
+	const session = useReplaySignalValue(sessionClient.sessionInfo, {
+		initialValue: null,
+	});
 	const rawMode = useSyncExternalStore(
 		subscribeAuthContextMode,
 		getAuthContextMode,
 		getAuthContextMode,
 	);
-	const loginHref = sessionController.client.loginUrl("/playground/session");
 
 	const logout = useMutation({
 		mutationKey: ["playground", "session", "logout"],
-		mutationFn: () => sessionController.logout(),
+		mutationFn: () => sessionClient.logout(),
 		onSuccess: () => {
 			clearAuthContextMode();
 			window.location.href = "/playground/session";
@@ -62,16 +61,13 @@ export function SessionPlaygroundPage() {
 
 	const handleStartLogin = () => {
 		setAuthContextMode(AuthContextMode.Session);
-		window.location.href = loginHref;
+		void sessionClient.loginWithRedirect({
+			postAuthRedirectUri: "/playground/session",
+		});
 	};
 
-	const principal = sessionState.session?.principal;
-	const authStatus =
-		sessionState.status === "loading"
-			? "Checking"
-			: principal
-				? "Authenticated"
-				: "Unauthenticated";
+	const principal = session?.principal;
+	const authStatus = principal ? "Authenticated" : "Unauthenticated";
 	const callbackStatus = rawMode === AuthContextMode.Session ? "Armed" : "Idle";
 
 	return (
@@ -197,10 +193,10 @@ export function SessionPlaygroundPage() {
 							</p>
 							<div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950/60">
 								<p className="text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-									Resolved login URL
+									Post-auth redirect intent
 								</p>
 								<p className="mt-2 break-all font-mono text-xs text-zinc-600 dark:text-zinc-300">
-									{loginHref}
+									/playground/session
 								</p>
 							</div>
 						</div>

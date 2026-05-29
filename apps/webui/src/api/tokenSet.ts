@@ -265,7 +265,7 @@ function useResolvedTokenSetClient(options: {
 		? directClientSignal
 		: resolveTokenSetRegistry(options).clientSignalFor(options.clientKey);
 	const clientSlot = useSyncExternalStore(
-		(listener) => clientSource.subscribe(listener),
+		(listener) => clientSource.notify(listener),
 		() => clientSource.get(),
 		() => clientSource.get(),
 	);

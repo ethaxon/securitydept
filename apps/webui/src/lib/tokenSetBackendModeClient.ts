@@ -134,7 +134,7 @@ export function getTokenSetBackendModeAuthSnapshot(): AuthSnapshot | null {
 export async function clearTokenSetBackendModeBrowserState(
 	client: TokenSetBackendOidcClient,
 ): Promise<void> {
-	await client.clearState();
+	await client.logout();
 }
 
 // ---------------------------------------------------------------------------

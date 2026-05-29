@@ -5,10 +5,7 @@ import {
 	runInInjectionContext,
 } from "@angular/core";
 import { type NativeWebEnvironment } from "@securitydept/client/web";
-import {
-	NATIVE_WEB_ENVIRONMENT,
-	provideNativeWebEnvironment,
-} from "@securitydept/client-angular";
+import { ENVIRONMENT, provideEnvironment } from "@securitydept/client-angular";
 import { describe, expect, it, vi } from "vitest";
 import { createEnvironmentForNativeWebTest } from "../../../../client/src/test";
 
@@ -52,20 +49,18 @@ function createNativeWebEnvironment(): NativeWebEnvironment {
 	});
 }
 
-describe("client-angular native web environment bridge", () => {
+describe("client-angular environment bridge", () => {
 	it("provides the host-owned native web environment object", () => {
 		const environment = createNativeWebEnvironment();
 		const injector = createEnvironmentInjector(
-			[provideNativeWebEnvironment({ environment })],
+			[provideEnvironment({ environment })],
 			Injector.NULL as never,
 		);
 
 		try {
-			expect(
-				runInInjectionContext(injector, () =>
-					inject(NATIVE_WEB_ENVIRONMENT, { optional: true }),
-				),
-			).toBe(environment);
+			expect(runInInjectionContext(injector, () => inject(ENVIRONMENT))).toBe(
+				environment,
+			);
 		} finally {
 			injector.destroy();
 		}
@@ -76,18 +71,8 @@ describe("client-angular native web environment bridge", () => {
 
 		try {
 			expect(() =>
-				runInInjectionContext(injector, () => {
-					const environment = inject(NATIVE_WEB_ENVIRONMENT, {
-						optional: true,
-					});
-					if (!environment) {
-						throw new Error(
-							"Provide it once from the Angular composition root with provideNativeWebEnvironment({ environment }).",
-						);
-					}
-					return environment;
-				}),
-			).toThrow(/provideNativeWebEnvironment/);
+				runInInjectionContext(injector, () => inject(ENVIRONMENT)),
+			).toThrow(/No provider.*ENVIRONMENT|NullInjectorError/);
 		} finally {
 			injector.destroy();
 		}

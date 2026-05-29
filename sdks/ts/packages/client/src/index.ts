@@ -1,31 +1,35 @@
 // @securitydept/client — Foundation public API
 // --- Auth Coordination ---
 export {
-	type AuthGuardClientOption,
+	type AuthenticatedCheck,
 	type AuthRequirement,
-	type CandidateSelector,
-	type ChooserDecision,
-	type CreatePlannerHostOptions,
-	type CreateRequirementPlannerOptions,
-	type CreateRouteRequirementOrchestratorOptions,
-	createPlannerHost,
-	createRequirementPlanner,
-	createRouteRequirementOrchestrator,
-	type PlannerHost,
-	type PlannerHostResult,
-	type PlanSnapshot,
+	type AuthRequirementInput,
+	BaseRequirementPlanner,
+	type CheckAuthenticated,
+	createAuthRequirement,
+	createAuthRequirements,
+	MergeRequirementPlanner,
+	type OnUnauthenticated,
+	PipelineOutcome,
+	type PipelineRunResult,
+	type PipelineStepResult,
 	PlanStatus,
-	type RequirementPlanner,
+	type RequirementBehaviour,
+	type RequirementBehaviourContext,
+	type RequirementPlan,
 	RequirementPlannerError,
+	RequirementPlannerHost,
+	type RequirementPlannerHostOptions,
 	type RequirementResolution,
-	type RequirementsClientSet,
-	RequirementsClientSetComposition,
+	RequirementsComposition,
 	ResolutionStatus,
-	type RouteMatchNode,
-	type RouteOrchestrationSnapshot,
-	type RouteRequirementOrchestrator,
-	resolveEffectiveClientSet,
-	type ScopedRequirementsClientSet,
+	RouteCompositionRequirementPlanner,
+	type RouteRequirementsDeclaration,
+	type RouteTreeSegment,
+	resolveEffectiveRequirements,
+	type SelectCandidate,
+	StaticRequirementPlanner,
+	type UnauthenticatedAction,
 } from "./auth-coordination";
 // --- Cancellation ---
 export {
@@ -98,11 +102,13 @@ export {
 } from "./events";
 // --- Identity ---
 export {
-	type AuthenticatedPrincipal,
-	normalizeAuthenticatedPrincipal,
-	normalizeAuthenticatedPrincipalWire,
-	type ProjectAuthenticatedPrincipalOptions,
-	projectAuthenticatedPrincipal,
+	type IdentityPrincipal,
+	IdentityPrincipalSchema,
+	IdentityPrincipalWireSchema,
+	type ProjectIdentityPrincipalOptions,
+	parseIdentityPrincipal,
+	parseIdentityPrincipalWire,
+	projectIdentityPrincipal,
 } from "./identity";
 // --- Injection ---
 export {
@@ -158,12 +164,15 @@ export {
 // --- Protocol ---
 export {
 	type AppendOrReplaceCompatFragmentOptions,
+	type AppendOrReplaceCompatFragmentResult,
 	appendOrReplaceCompatFragment,
 	type CompatFragment,
 	isCompatFragmentBlock,
 	parseCompatFragment,
-	removeCompatFragment,
 	SECURITYDEPT_COMPAT_FRAGMENT_VERSION,
+	type TakeCompatFragmentResult,
+	takeCompatFragment,
+	type UpdateUriFragmentHash,
 } from "./protocol/compat-fragment";
 export {
 	type CreateJsonRpcClientOptions,
@@ -194,18 +203,23 @@ export {
 } from "./protocol/jwt";
 // --- Router ---
 export type {
+	BaseURIStringSchema,
 	GuardedRouterTrait,
 	RouterBeforeLoad,
 	RouterGuardContext,
 	RouterGuardDecision,
 	RouterNavigationRequest,
 	RouterTrait,
+	SecuritydeptRouteMetadata,
 } from "./router";
 export {
 	ROUTER_TRAIT_TOKEN,
 	RouterGuardDecisionKind,
 	RouterGuardPhase,
+	readSecuritydeptRouteMetadata,
+	SECURITYDEPT_ROUTE_METADATA_KEY,
 	takeCompatFragmentFromRouter,
+	writeSecuritydeptRouteMetadata,
 } from "./router";
 // --- Scheduling ---
 export {
@@ -283,6 +297,13 @@ export {
 	type OnceAsyncLockRunning,
 	OnceAsyncLockState,
 	type OnceAsyncLockSuccess,
+	type UriFragmentPart,
+	UriParseError,
+	UriReferenceString,
+	type UriReferenceStringLike,
+	type UriRelativeParts,
+	UriRelativeString,
+	UriString,
 } from "./struct";
 // --- Tracing ---
 export {

@@ -2,58 +2,51 @@
 //
 // Canonical root export: @securitydept/client
 //
-// This module is the new canonical owner of the requirement planner and
-// route requirement orchestrator. These primitives are:
+// Layers:
+//   - contract.ts        serializable types + pure composition
+//   - planner-host.ts    non-serializable behaviour, resolved through a parent chain
+//   - planner/*          pipeline owner (base) + source-strategy variants
 //
-//   - Mode-agnostic: they do not depend on token-set, session, or basic-auth
-//     domain objects
-//   - Framework-agnostic: they do not depend on Angular, React, or any
-//     browser/Node.js API
-//   - Cross-auth-context: designed to coordinate across session, OIDC, and
-//     custom requirement kinds
-//
-// Owner decision: moved from @securitydept/token-set-context-client/orchestration
-// to @securitydept/client. The token-set package retains a
-// thin provisional compat re-export under the old subpath, scheduled for
-// removal in a future release.
+// These primitives are mode-agnostic, framework-agnostic, and keyed only by
+// opaque requirement entity ids.
 //
 // Stability: provisional (additive, shared coordination capability)
 
-// --- Planner Host ---
+// --- Contract ---
 export type {
-	AuthGuardClientOption,
-	CandidateSelector,
-	CreatePlannerHostOptions,
-	PlannerHost,
-	PlannerHostResult,
-	RequirementsClientSet,
-	ScopedRequirementsClientSet,
-} from "./planner-host";
-export {
-	createPlannerHost,
-	RequirementsClientSetComposition,
-	resolveEffectiveClientSet,
-} from "./planner-host";
-// --- Requirement Planner ---
-export type {
+	AuthenticatedCheck,
 	AuthRequirement,
-	CreateRequirementPlannerOptions,
-	PlanSnapshot,
-	RequirementPlanner,
+	AuthRequirementInput,
+	CheckAuthenticated,
+	OnUnauthenticated,
+	PipelineRunResult,
+	PipelineStepResult,
+	RequirementBehaviour,
+	RequirementBehaviourContext,
 	RequirementResolution,
-} from "./requirement-planner";
+	RouteRequirementsDeclaration,
+	RouteTreeSegment,
+	SelectCandidate,
+	UnauthenticatedAction,
+} from "./contract";
 export {
-	createRequirementPlanner,
+	createAuthRequirement,
+	createAuthRequirements,
+	PipelineOutcome,
 	PlanStatus,
 	RequirementPlannerError,
+	RequirementsComposition,
 	ResolutionStatus,
-} from "./requirement-planner";
-// --- Route Requirement Orchestrator ---
-export type {
-	ChooserDecision,
-	CreateRouteRequirementOrchestratorOptions,
-	RouteMatchNode,
-	RouteOrchestrationSnapshot,
-	RouteRequirementOrchestrator,
-} from "./route-orchestrator";
-export { createRouteRequirementOrchestrator } from "./route-orchestrator";
+	resolveEffectiveRequirements,
+} from "./contract";
+// --- Planners ---
+export {
+	BaseRequirementPlanner,
+	MergeRequirementPlanner,
+	type RequirementPlan,
+	RouteCompositionRequirementPlanner,
+	StaticRequirementPlanner,
+} from "./planner";
+// --- Planner Host ---
+export type { RequirementPlannerHostOptions } from "./planner-host";
+export { RequirementPlannerHost } from "./planner-host";

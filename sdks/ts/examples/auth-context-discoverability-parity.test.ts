@@ -9,28 +9,25 @@
 import {
 	BasicAuthContextClient,
 	type BasicAuthContextClientConfig,
+	type BasicAuthLoginWithRedirectOptions as BasicAuthLoginOptions,
 } from "@securitydept/basic-auth-context-client";
-import {
-	type LoginWithRedirectOptions as BasicAuthLoginOptions,
-	loginWithRedirect as basicAuthLoginWithRedirect,
-} from "@securitydept/basic-auth-context-client/web";
 import {
 	createFoundationEnvironment,
 	createInMemoryRecordStore,
 	createRootSpan,
 	createTracing,
-	type RouterTrait,
+	type FoundationEnvironment,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import {
 	type SessionContextClientConfig,
 	type SessionInfo,
+	type SessionLoginWithRedirectOptions as SessionLoginOptions,
 } from "@securitydept/session-context-client";
-import { type LoginWithRedirectOptions as SessionLoginOptions } from "@securitydept/session-context-client/web";
-import { type CreateSessionContextControllerOptions } from "@securitydept/session-context-client-react";
+import { type CreateSessionContextClientOptions } from "@securitydept/session-context-client-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-function createPageLocationEnvironment(href: string): RouterTrait & {
+function createPageLocationEnvironment(href: string): FoundationEnvironment & {
 	location: { href: string; hash: string; pathname: string; search: string };
 } {
 	const url = new URL(href);
@@ -40,22 +37,31 @@ function createPageLocationEnvironment(href: string): RouterTrait & {
 		pathname: url.pathname,
 		search: url.search,
 	};
-	return {
-		...createRouterForNativeWeb({ location }),
-		location,
-	};
+	return Object.assign(
+		createFoundationEnvironment({
+			transport: {
+				async execute() {
+					throw new Error("Unexpected transport call.");
+				},
+			},
+			router: createRouterForNativeWeb({ location }),
+		}),
+		{
+			location,
+		},
+	);
 }
 
 // ---------------------------------------------------------------------------
-// A. basic-auth-context-client/web: LoginWithRedirectOptions + loginWithRedirect
+// A. basic-auth-context-client: BasicAuthLoginWithRedirectOptions + loginWithRedirect
 // ---------------------------------------------------------------------------
 
-describe("basic-auth ./web discoverability: named options contract + convenience helper", () => {
+describe("basic-auth root discoverability: named options contract + client helper", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
 	});
 
-	it("LoginWithRedirectOptions is importable as a named type from ./web", () => {
+	it("BasicAuthLoginWithRedirectOptions is importable as a named type from root", () => {
 		// Type-level evidence: the options contract is directly importable.
 		const options: BasicAuthLoginOptions = {
 			currentPath: "/basic/api/groups",
@@ -69,14 +75,19 @@ describe("basic-auth ./web discoverability: named options contract + convenience
 			"https://app.example.com/basic/api/groups",
 		);
 
-		const client = new BasicAuthContextClient({
-			baseUrl: "https://auth.example.com",
-			zones: [{ zonePrefix: "/basic" }],
+		const client = new BasicAuthContextClient(
+			{
+				baseUrl: "https://auth.example.com",
+				zones: [{ zonePrefix: "/basic" }],
+			},
+			environment,
+		);
+
+		await client.loginWithRedirect({
+			currentPath: "/basic/api/groups",
+			postAuthRedirectUri: environment.location.href,
 		});
 
-		const result = await basicAuthLoginWithRedirect(client, { environment });
-
-		expect(result).toBe(true);
 		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fbasic%2Fapi%2Fgroups",
 		);
@@ -87,40 +98,45 @@ describe("basic-auth ./web discoverability: named options contract + convenience
 			"https://app.example.com/other",
 		);
 
-		const client = new BasicAuthContextClient({
-			baseUrl: "https://auth.example.com",
-			zones: [{ zonePrefix: "/basic" }],
-		});
+		const client = new BasicAuthContextClient(
+			{
+				baseUrl: "https://auth.example.com",
+				zones: [{ zonePrefix: "/basic" }],
+			},
+			environment,
+		);
 
 		const options: BasicAuthLoginOptions = {
-			environment,
 			currentPath: "/basic/admin",
 			postAuthRedirectUri: "https://app.example.com/basic/admin",
 		};
-		const result = await basicAuthLoginWithRedirect(client, options);
+		await client.loginWithRedirect(options);
 
-		expect(result).toBe(true);
 		expect(environment.location.href).toBe(
 			"https://auth.example.com/basic/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fbasic%2Fadmin",
 		);
 	});
 
-	it("loginWithRedirect returns false when path is outside all zones", async () => {
+	it("loginWithRedirect rejects when path is outside all zones", async () => {
 		const environment = createPageLocationEnvironment(
 			"https://app.example.com/public",
 		);
 
-		const client = new BasicAuthContextClient({
-			baseUrl: "https://auth.example.com",
-			zones: [{ zonePrefix: "/basic" }],
-		});
-
-		const result = await basicAuthLoginWithRedirect(client, {
+		const client = new BasicAuthContextClient(
+			{
+				baseUrl: "https://auth.example.com",
+				zones: [{ zonePrefix: "/basic" }],
+			},
 			environment,
-			currentPath: "/public",
-		});
+		);
 
-		expect(result).toBe(false);
+		await expect(
+			client.loginWithRedirect({
+				currentPath: "/public",
+			}),
+		).rejects.toMatchObject({
+			code: "basic_auth.zone_required",
+		});
 		expect(environment.location.href).toBe("https://app.example.com/public");
 	});
 });
@@ -130,14 +146,15 @@ describe("basic-auth ./web discoverability: named options contract + convenience
 // ---------------------------------------------------------------------------
 
 describe("session ./react discoverability: injector-first named contracts", () => {
-	it("CreateSessionContextControllerOptions is importable as a named type from ./react", () => {
-		const options: CreateSessionContextControllerOptions = {
+	it("CreateSessionContextClientOptions is importable as a named type from ./react", () => {
+		const options: CreateSessionContextClientOptions = {
 			config: {
 				baseUrl: "https://auth.example.com",
 			},
 			environment: createFoundationEnvironment({
-				transport:
-					{} as CreateSessionContextControllerOptions["environment"]["transport"],
+				transport: {
+					execute: async () => ({ status: 204, headers: {}, body: null }),
+				},
 				sessionStorage: createInMemoryRecordStore(),
 				span: createRootSpan(),
 				tracing: createTracing(),
@@ -152,13 +169,14 @@ describe("session ./react discoverability: injector-first named contracts", () =
 			principal: { subject: "session-user-1", displayName: "Alice" },
 		};
 
-		const options: CreateSessionContextControllerOptions = {
+		const options: CreateSessionContextClientOptions = {
 			config: {
 				baseUrl: "https://auth.example.com",
 			},
 			environment: createFoundationEnvironment({
-				transport:
-					{} as CreateSessionContextControllerOptions["environment"]["transport"],
+				transport: {
+					execute: async () => ({ status: 204, headers: {}, body: null }),
+				},
 				sessionStorage: createInMemoryRecordStore(),
 				span: createRootSpan(),
 				tracing: createTracing(),
@@ -190,7 +208,7 @@ describe("cross-line config contract discoverability parity", () => {
 		expect(config.baseUrl).toBeTruthy();
 	});
 
-	it("session ./web LoginWithRedirectOptions is importable as named type", () => {
+	it("session root SessionLoginWithRedirectOptions is importable as named type", () => {
 		const options: SessionLoginOptions = {
 			postAuthRedirectUri: "https://app.example.com/dashboard",
 		};

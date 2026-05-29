@@ -2,7 +2,7 @@ import {
 	type ErrorPresentationDescriptor,
 	OnceAsyncLockState,
 } from "@securitydept/client";
-import { useReadableSignal } from "@securitydept/client-react";
+import { useReadableSignalValue } from "@securitydept/client-react";
 import {
 	type FrontendOidcModeCallbackState,
 	type ReadFrontendOidcModeCallbackErrorPresentationOptions,
@@ -49,7 +49,7 @@ export function useTokenSetCallbackResume(
 	const { getCurrentUrl } = options;
 	const { controller } = options;
 	const currentUrl = getCurrentUrl?.() ?? null;
-	const state = useReadableSignal(controller.state);
+	const state = useReadableSignalValue(controller.state);
 
 	useEffect(() => {
 		if (!currentUrl || !controller.isCallback({ currentUrl })) {

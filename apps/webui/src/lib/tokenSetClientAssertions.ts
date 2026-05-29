@@ -9,7 +9,8 @@ export function isTokenSetBackendOidcClient(
 	return (
 		typeof (client as { authorizeUrl?: unknown }).authorizeUrl === "function" &&
 		typeof (client as { refreshState?: unknown }).refreshState === "function" &&
-		typeof (client as { clearState?: unknown }).clearState === "function"
+		typeof (client as { clearState?: unknown }).clearState === "function" &&
+		typeof (client as { logout?: unknown }).logout === "function"
 	);
 }
 

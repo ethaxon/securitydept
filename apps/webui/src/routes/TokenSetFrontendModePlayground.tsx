@@ -4,7 +4,7 @@ import {
 	UserRecovery,
 } from "@securitydept/client";
 import {
-	CLIENT_ENVIRONMENT,
+	ENVIRONMENT,
 	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
@@ -65,14 +65,13 @@ export function TokenSetFrontendModePlaygroundPage() {
 	const state = useReplaySignalValue(frontendClientSlot.value.authSnapshot, {
 		initialValue: null,
 	}) as AuthStateSnapshot | null;
-	const environment = injector.get(CLIENT_ENVIRONMENT);
+	const environment = injector.get(ENVIRONMENT);
 	const traceEvents = useSyncExternalStore(
 		(listener) => tokenSetFrontendModeTraceTimeline.subscribe(listener),
 		() => tokenSetFrontendModeTraceTimeline.get(),
 	);
 	const crossTabStatus = useSyncExternalStore(
-		(onStoreChange) =>
-			tokenSetFrontendModeCrossTabStatus.subscribe(onStoreChange),
+		(onStoreChange) => tokenSetFrontendModeCrossTabStatus.notify(onStoreChange),
 		() => tokenSetFrontendModeCrossTabStatus.get(),
 	);
 	const [busy, setBusy] = useState<

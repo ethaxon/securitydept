@@ -1,7 +1,4 @@
-import {
-	BasicAuthBoundaryKind as BasicAuthBoundaryKinds,
-	readBasicAuthBoundaryKind,
-} from "@securitydept/basic-auth-context-client";
+import { BasicAuthBoundaryKind as BasicAuthBoundaryKinds } from "@securitydept/basic-auth-context-client";
 import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client-react";
 import { useSecuritydeptContext } from "@securitydept/client-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -23,44 +20,6 @@ import {
 
 type BasicAuthBoundaryKind =
 	(typeof BasicAuthBoundaryKinds)[keyof typeof BasicAuthBoundaryKinds];
-
-interface BasicAuthProbeResult {
-	authenticated: boolean;
-	boundaryKind: BasicAuthBoundaryKind;
-	status: number;
-	challenge: string | null;
-	entryCount: number | null;
-}
-
-async function probeBasicAuthStatus(): Promise<BasicAuthProbeResult> {
-	const response = await fetch("/basic/api/entries", {
-		method: "GET",
-		headers: { Accept: "application/json" },
-	});
-	if (response.ok) {
-		const payload = (await response.json().catch(() => [])) as unknown;
-		return {
-			authenticated: true,
-			boundaryKind: BasicAuthBoundaryKinds.Authenticated,
-			status: response.status,
-			challenge: response.headers.get("WWW-Authenticate"),
-			entryCount: Array.isArray(payload) ? payload.length : null,
-		};
-	}
-	const challenge = response.headers.get("WWW-Authenticate");
-
-	return {
-		authenticated: false,
-		boundaryKind: readBasicAuthBoundaryKind({
-			status: response.status,
-			challengeHeader: challenge,
-			requestPath: "/basic/api/entries",
-		}),
-		status: response.status,
-		challenge,
-		entryCount: null,
-	};
-}
 
 function StatusCard({
 	title,
@@ -153,7 +112,7 @@ export function BasicAuthPlaygroundPage() {
 	);
 	const probeQuery = useQuery({
 		queryKey: ["playground", "basic-auth", "status"],
-		queryFn: probeBasicAuthStatus,
+		queryFn: () => basicAuthClient.refresh(),
 		retry: false,
 		staleTime: 5_000,
 	});
@@ -162,12 +121,7 @@ export function BasicAuthPlaygroundPage() {
 		"/basic/login?post_auth_redirect_uri=%2Fplayground%2Fbasic-auth";
 	const logout = useMutation({
 		mutationKey: ["playground", "basic-auth", "logout"],
-		mutationFn: async () => {
-			await fetch("/basic/logout", {
-				method: "POST",
-				headers: { Accept: "application/json" },
-			});
-		},
+		mutationFn: () => basicAuthClient.logout({ zonePrefix: "/basic" }),
 		onSettled: () => {
 			clearAuthContextMode();
 			window.location.href = "/playground/basic-auth";
@@ -181,7 +135,7 @@ export function BasicAuthPlaygroundPage() {
 			: probeQuery.data?.boundaryKind === BasicAuthBoundaryKinds.Challenge
 				? "Challenge required"
 				: "Unauthorized without challenge";
-	const challengeHeader = probeQuery.data?.challenge ?? "None";
+	const challengeHeader = probeQuery.data?.challengeHeader ?? "None";
 	const boundaryKind =
 		probeQuery.data?.boundaryKind ?? BasicAuthBoundaryKinds.Unauthorized;
 	const protectedProbe = probeQuery.data
@@ -485,11 +439,11 @@ export function BasicAuthPlaygroundPage() {
 									{challengeHeader}
 								</p>
 							</div>
-							{typeof probeQuery.data?.entryCount === "number" ? (
+							{probeQuery.data?.authenticated === true ? (
 								<p>
-									The protected probe could read {probeQuery.data.entryCount}{" "}
-									auth entries, which confirms the browser is currently sending
-									valid cached credentials for the /basic zone.
+									The protected probe succeeded, which confirms the browser is
+									currently sending valid cached credentials for the /basic
+									zone.
 								</p>
 							) : null}
 						</div>

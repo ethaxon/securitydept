@@ -1,6 +1,6 @@
 import {
-	type AuthenticatedPrincipal,
-	projectAuthenticatedPrincipal,
+	type IdentityPrincipal,
+	projectIdentityPrincipal,
 } from "@securitydept/client";
 
 export interface DashboardUser {
@@ -11,7 +11,7 @@ export interface DashboardUser {
 }
 
 export interface ProjectDashboardUserOptions {
-	principal?: AuthenticatedPrincipal | null;
+	principal?: IdentityPrincipal | null;
 	contextLabel: string;
 	fallbackDisplayName?: string;
 	fallbackSubject?: string;
@@ -21,7 +21,7 @@ export interface ProjectDashboardUserOptions {
 export function projectDashboardUser(
 	options: ProjectDashboardUserOptions,
 ): DashboardUser {
-	const principal = projectAuthenticatedPrincipal({
+	const principal = projectIdentityPrincipal({
 		principal: options.principal,
 		fallbackDisplayName: options.fallbackDisplayName,
 		fallbackSubject: options.fallbackSubject,

@@ -458,7 +458,7 @@ describe("BackendOidcModeClient", () => {
 
 		expect(await persistentStorage.get(DEFAULT_PERSISTENCE_KEY)).not.toBeNull();
 
-		await restoredClient.clearState();
+		await restoredClient.logout();
 		expect(await persistentStorage.get(DEFAULT_PERSISTENCE_KEY)).toBeNull();
 	});
 
@@ -637,8 +637,14 @@ describe("BackendOidcModeClient", () => {
 			},
 		});
 
-		await expect(refreshPromise).resolves.toBeNull();
-		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+		await expect(refreshPromise).rejects.toMatchObject({
+			name: "ClientError",
+			kind: "cancelled",
+			code: "backend_oidc.client_disposed",
+		});
+		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+			"at",
+		);
 	});
 
 	it("does not issue fetch transport requests once dispose wins the race", async () => {
@@ -672,7 +678,7 @@ describe("BackendOidcModeClient", () => {
 		await expect(refreshPromise).rejects.toMatchObject({
 			name: "ClientError",
 			kind: "cancelled",
-			code: "client.cancelled",
+			code: "backend_oidc.client_disposed",
 		});
 		expect(time.pendingCount).toBe(0);
 		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
@@ -960,8 +966,6 @@ describe("BackendOidcModeClient", () => {
 		expect(
 			trace.assertOperationLifecycle(operationSpanId!, [
 				OperationTraceEventType.Started,
-				OperationTraceEventType.Event,
-				OperationTraceEventType.Event,
 				OperationTraceEventType.Ended,
 			]),
 		).toEqual(
@@ -1058,6 +1062,8 @@ describe("BackendOidcModeClient", () => {
 		expect(
 			trace.assertOperationLifecycle(operationSpanId!, [
 				OperationTraceEventType.Started,
+				OperationTraceEventType.Event,
+				OperationTraceEventType.Event,
 				OperationTraceEventType.Ended,
 			]),
 		).toEqual(

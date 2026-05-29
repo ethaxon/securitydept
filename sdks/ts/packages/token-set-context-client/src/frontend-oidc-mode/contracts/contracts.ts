@@ -3,7 +3,7 @@
 // These types define the cross-boundary contracts between the frontend OIDC
 // browser client and backend config projection sources.
 
-import { type AuthenticatedPrincipal } from "@securitydept/client";
+import { type IdentityPrincipal } from "@securitydept/client";
 import { type FrontendOidcModeClientConfig } from "../client/types";
 
 export type FrontendOidcModeClaimsCheckScript = {
@@ -102,8 +102,7 @@ export function configProjectionToClientConfig(
 	};
 }
 
-export interface FrontendOidcModeUserInfoResponse
-	extends AuthenticatedPrincipal {
+export interface FrontendOidcModeUserInfoResponse extends IdentityPrincipal {
 	subject: string;
 	displayName: string;
 	picture?: string;

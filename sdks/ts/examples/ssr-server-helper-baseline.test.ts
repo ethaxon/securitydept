@@ -1,10 +1,15 @@
 // SSR / Server-Host Helper Baseline — Contract Evidence
 //
-// This file demonstrates that the server helpers for both basic-auth-context
-// and session-context can drive real server-host flows without browser globals.
+// This file demonstrates server-host flows without browser globals. Basic auth
+// and session context use @securitydept/client/server to create request-scoped
+// environments passed directly to their clients.
 
-import { createBasicAuthServerHelper } from "@securitydept/basic-auth-context-client/server";
-import { createSessionServerHelper } from "@securitydept/session-context-client/server";
+import {
+	AuthGuardResultKind,
+	BasicAuthContextClient,
+} from "@securitydept/basic-auth-context-client";
+import { createEnvironmentForServer } from "@securitydept/client/server";
+import { SessionContextClient } from "@securitydept/session-context-client";
 import { FakeTransport } from "@securitydept/test-utils";
 import { describe, expect, it } from "vitest";
 
@@ -12,38 +17,48 @@ import { describe, expect, it } from "vitest";
 // 1. basic-auth-context — server-host flow
 // ===========================================================================
 
-describe("basic-auth server helper — server-host flow", () => {
+describe("basic-auth root client — server-host flow", () => {
 	it("produces a redirect instruction from a server request context", () => {
-		const helper = createBasicAuthServerHelper({
-			config: {
+		const client = new BasicAuthContextClient(
+			{
 				baseUrl: "https://auth.example.com",
 				zones: [{ zonePrefix: "/api" }],
 			},
-		});
+			createEnvironmentForServer({
+				transport: new FakeTransport(),
+				request: { headers: {} },
+			}),
+		);
 
 		// Simulate: server receives a 401 from upstream for /api/data.
-		const redirect = helper.handleUnauthorized({ path: "/api/data" });
+		const redirect = client.handleUnauthorized("/api/data", 401);
 
 		// The helper produces a framework-neutral redirect instruction.
-		expect(redirect).not.toBeNull();
-		expect(redirect?.statusCode).toBe(302);
-		expect(redirect?.destination).toContain("/api/login");
-		expect(redirect?.destination).toContain("post_auth_redirect_uri");
+		expect(redirect.kind).toBe(AuthGuardResultKind.Redirect);
+		if (redirect.kind === AuthGuardResultKind.Redirect) {
+			expect(redirect.status).toBe(302);
+			expect(redirect.location).toContain("/api/login");
+			expect(redirect.location).toContain("post_auth_redirect_uri");
+		}
 
 		// The host uses this to construct its framework response:
-		//   return Response.redirect(redirect.destination, redirect.statusCode);
+		//   return Response.redirect(redirect.location, redirect.status);
 	});
 
 	it("returns null for paths outside zones", () => {
-		const helper = createBasicAuthServerHelper({
-			config: {
+		const client = new BasicAuthContextClient(
+			{
 				baseUrl: "https://auth.example.com",
 				zones: [{ zonePrefix: "/api" }],
 			},
-		});
+			createEnvironmentForServer({
+				transport: new FakeTransport(),
+				request: { headers: {} },
+			}),
+		);
 
-		const redirect = helper.handleUnauthorized({ path: "/public" });
-		expect(redirect).toBeNull();
+		const redirect = client.handleUnauthorized("/public", 401);
+		expect(redirect.kind).toBe(AuthGuardResultKind.Ok);
 	});
 });
 
@@ -51,7 +66,7 @@ describe("basic-auth server helper — server-host flow", () => {
 // 2. session-context — server-host flow with cookie forwarding
 // ===========================================================================
 
-describe("session server helper — server-host flow with cookie forwarding", () => {
+describe("session server environment — server-host flow with cookie forwarding", () => {
 	it("fetchUserInfo forwards cookies and returns session info", async () => {
 		const transport = new FakeTransport().on(
 			(req) => req.method === "GET" && req.url.endsWith("/user-info"),
@@ -71,38 +86,36 @@ describe("session server helper — server-host flow with cookie forwarding", ()
 			},
 		);
 
-		const helper = createSessionServerHelper({
-			config: { baseUrl: "https://auth.example.com" },
-			externalTransport: transport,
-		});
-
 		// Simulate: server extracts cookies from incoming request.
-		const session = await helper.fetchUserInfo({
-			headers: { cookie: "session_id=xyz789" },
-		});
+		const client = new SessionContextClient(
+			{ baseUrl: "https://auth.example.com" },
+			createEnvironmentForServer({
+				transport,
+				request: { headers: { cookie: "session_id=xyz789" } },
+			}),
+		);
+		const session = await client.refresh();
 
 		expect(session).not.toBeNull();
 		expect(session?.principal.displayName).toBe("Server User");
 		expect(session?.principal.claims).toEqual({ org: "acme" });
 	});
 
-	it("produces login redirect URL when unauthenticated", async () => {
+	it("keeps redirect response construction outside SessionContextClient", async () => {
 		const transport = new FakeTransport().on(
 			(req) => req.method === "GET" && req.url.endsWith("/user-info"),
 			() => ({ status: 401, headers: {}, body: null }),
 		);
 
-		const helper = createSessionServerHelper({
-			config: { baseUrl: "https://auth.example.com" },
-			externalTransport: transport,
-		});
-
-		const session = await helper.fetchUserInfo({ headers: {} });
+		const client = new SessionContextClient(
+			{ baseUrl: "https://auth.example.com" },
+			createEnvironmentForServer({
+				transport,
+				request: { headers: {} },
+			}),
+		);
+		const session = await client.refresh();
 		expect(session).toBeNull();
-
-		// Host builds a redirect response.
-		const loginTarget = helper.loginUrl("/protected/dashboard");
-		expect(loginTarget).toContain("/auth/session/login");
-		expect(loginTarget).toContain("post_auth_redirect_uri");
+		expect("loginUrl" in client).toBe(false);
 	});
 });

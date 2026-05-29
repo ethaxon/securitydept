@@ -6,11 +6,10 @@ import {
 	type RouterTrait,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
-import { SessionContextClient } from "@securitydept/session-context-client";
 import {
-	type LoginWithRedirectOptions,
-	loginWithRedirect,
-} from "@securitydept/session-context-client/web";
+	SessionContextClient,
+	type SessionLoginWithRedirectOptions,
+} from "@securitydept/session-context-client";
 import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it, vi } from "vitest";
 
@@ -42,55 +41,63 @@ function createPageLocationCapability(href: string): RouterTrait & {
 }
 
 // ===========================================================================
-// 1. session-context-client/web — loginWithRedirect
+// 1. session-context-client — SessionContextClient.loginWithRedirect()
 // ===========================================================================
 
-describe("session-context-client/web loginWithRedirect", () => {
-	it("saves the pending redirect URI and navigates to the login URL", async () => {
-		const sessionStorage = createInMemoryRecordStore();
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			{ sessionStorage },
-		);
-
+describe("session-context-client SessionContextClient.loginWithRedirect", () => {
+	it("navigates to the login URL with an explicit return URI", async () => {
 		const environment = createPageLocationCapability(
 			"https://app.example.com/protected",
 		);
-		const options: LoginWithRedirectOptions = {
-			environment,
+		const client = new SessionContextClient(
+			{ baseUrl: "https://auth.example.com" },
+			createFoundationEnvironment({
+				transport: {
+					execute: vi.fn(async () => ({
+						status: 204,
+						headers: {},
+						body: null,
+					})),
+				},
+				router: environment,
+				span: createRootSpan(),
+				tracing: createTracing(),
+			}),
+		);
+
+		const options: SessionLoginWithRedirectOptions = {
 			postAuthRedirectUri: "https://app.example.com/dashboard",
 		};
-		await loginWithRedirect(client, options);
+		await client.loginWithRedirect(options);
 
 		expect(environment.location.href).toBe(
 			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard",
 		);
-
-		// Should have saved the pending redirect.
-		expect(await client.loadPendingLoginRedirect()).toBe(
-			"https://app.example.com/dashboard",
-		);
 	});
 
-	it("defaults postAuthRedirectUri to window.location.href when omitted", async () => {
-		const sessionStorage = createInMemoryRecordStore();
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			{ sessionStorage },
-		);
-
+	it("does not infer postAuthRedirectUri when omitted", async () => {
 		const environment = createPageLocationCapability(
 			"https://app.example.com/current-page",
 		);
-		await loginWithRedirect(client, { environment });
+		const client = new SessionContextClient(
+			{ baseUrl: "https://auth.example.com" },
+			createFoundationEnvironment({
+				transport: {
+					execute: vi.fn(async () => ({
+						status: 204,
+						headers: {},
+						body: null,
+					})),
+				},
+				router: environment,
+				span: createRootSpan(),
+				tracing: createTracing(),
+			}),
+		);
+		await client.loginWithRedirect();
 
 		expect(environment.location.href).toBe(
-			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fcurrent-page",
-		);
-
-		// Pending redirect should contain the current page.
-		expect(await client.loadPendingLoginRedirect()).toBe(
-			"https://app.example.com/current-page",
+			"https://auth.example.com/auth/session/login",
 		);
 	});
 });

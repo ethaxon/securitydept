@@ -16,10 +16,6 @@ const guardedHelperFiles = [
 		import.meta.url,
 	),
 	new URL(
-		"../../../../session-context-client/src/web/index.ts",
-		import.meta.url,
-	),
-	new URL(
 		"../../../../token-set-context-client/src/orchestration/client/popup/relay.ts",
 		import.meta.url,
 	),

@@ -1,11 +1,10 @@
-import { createInMemoryRecordStore } from "@securitydept/client";
+import { createFoundationEnvironment } from "@securitydept/client";
 import { SessionContextClient } from "@securitydept/session-context-client";
 import { FakeTransport } from "@securitydept/test-utils";
 import { describe, expect, it } from "vitest";
 
 describe("external session context scenario", () => {
-	it("supports login URL construction, session fetch, and logout without app glue", async () => {
-		const sessionStorage = createInMemoryRecordStore();
+	it("supports session fetch and logout without app glue", async () => {
 		const transport = new FakeTransport()
 			.on(
 				(request) =>
@@ -31,30 +30,20 @@ describe("external session context scenario", () => {
 			);
 		const client = new SessionContextClient(
 			{ baseUrl: "https://auth.example.com" },
-			{ sessionStorage },
+			createFoundationEnvironment({
+				transport,
+			}),
 		);
 
-		await client.savePendingLoginRedirect("https://app.example.com/dashboard");
-
-		expect(client.loginUrl("https://app.example.com/dashboard")).toBe(
-			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard",
-		);
-		expect(await client.loadPendingLoginRedirect()).toBe(
-			"https://app.example.com/dashboard",
-		);
-
-		const session = await client.fetchUserInfo(transport);
+		const session = await client.refresh();
 
 		expect(session?.principal.displayName).toBe("Alice");
 		expect(session?.principal.picture).toBe(
 			"https://cdn.example.com/alice.png",
 		);
 
-		await client.logout(transport);
+		await client.logout();
 
-		expect(await client.consumePendingLoginRedirect()).toBe(
-			"https://app.example.com/dashboard",
-		);
 		expect(transport.history).toEqual([
 			expect.objectContaining({
 				method: "GET",

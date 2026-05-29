@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { RouterGuardDecisionKind, RouterGuardPhase } from "../../router";
+import { UriReferenceString } from "../../struct/uri-string";
 import {
 	createGuardedRouterForNativeWeb,
 	createRouterForNativeWeb,
@@ -16,16 +17,12 @@ describe("native web router adapter", () => {
 		});
 
 		await router.navigate({
-			url: "/dashboard",
+			url: UriReferenceString.parse("/dashboard"),
 			intent: "post_auth_redirect",
 			mode: "push",
 		});
 
-		expect(pushState).toHaveBeenCalledWith(
-			null,
-			"",
-			"https://app.example.com/dashboard",
-		);
+		expect(pushState).toHaveBeenCalledWith(null, "", "/dashboard");
 	});
 
 	it("guards managed legacy navigate requests", async () => {
@@ -34,7 +31,7 @@ describe("native web router adapter", () => {
 			() =>
 				({
 					kind: RouterGuardDecisionKind.Redirect,
-					url: "/login",
+					url: UriReferenceString.parse("/login"),
 					mode: "replace",
 				}) as const,
 		);
@@ -45,7 +42,7 @@ describe("native web router adapter", () => {
 		});
 
 		await router.navigate({
-			url: "/dashboard",
+			url: UriReferenceString.parse("/dashboard"),
 			intent: "post_auth_redirect",
 			mode: "push",
 		});
@@ -53,14 +50,10 @@ describe("native web router adapter", () => {
 		expect(beforeLoad).toHaveBeenCalledWith(
 			expect.objectContaining({
 				phase: RouterGuardPhase.Navigate,
-				url: new URL("https://app.example.com/dashboard"),
+				url: UriReferenceString.parse("/dashboard"),
 			}),
 		);
-		expect(replaceState).toHaveBeenCalledWith(
-			null,
-			"",
-			"https://app.example.com/login",
-		);
+		expect(replaceState).toHaveBeenCalledWith(null, "", "/login");
 	});
 
 	it("uses Navigation API navigate events for host-level guarded navigation", async () => {
@@ -103,7 +96,7 @@ describe("native web router adapter", () => {
 				cancellationToken: expect.objectContaining({
 					isCancellationRequested: false,
 				}),
-				url: new URL("https://app.example.com/protected"),
+				url: UriReferenceString.parse("https://app.example.com/protected"),
 			}),
 		);
 

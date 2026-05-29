@@ -7,9 +7,10 @@
 // (consolidated from @securitydept/token-set-context-client/orchestration)
 
 import {
-	createRequirementPlanner,
+	createAuthRequirement,
 	PlanStatus,
 	type PlanStatus as PlanStatusType,
+	RequirementPlanner,
 	RequirementPlannerError,
 	ResolutionStatus,
 	type ResolutionStatus as ResolutionStatusType,
@@ -28,52 +29,45 @@ void _planProof;
 
 describe("adopter-facing reference flow: session → backend-oidc → settled", () => {
 	it("drives a complete two-requirement flow to settled", () => {
-		// An adopter would define their requirements using plain kind strings:
-		const planner = createRequirementPlanner({
-			requirements: [
-				{
-					id: "corp-session",
-					kind: "session",
-					label: "Corporate SSO session",
+		const planner = RequirementPlanner.fromRequirements([
+			createAuthRequirement({
+				id: "corp-session",
+				label: "Corporate SSO session",
+				attributes: { mode: "session" },
+			}),
+			createAuthRequirement({
+				id: "api-access",
+				label: "API access token",
+				attributes: {
+					mode: "backend_oidc",
+					audience: "https://api.example.com",
 				},
-				{
-					id: "api-access",
-					kind: "backend_oidc",
-					label: "API access token",
-					attributes: { audience: "https://api.example.com" },
-				},
-			],
-		});
+			}),
+		]);
 
-		// Step 1: Check what's needed.
-		let snap = planner.snapshot();
-		expect(snap.status).toBe(PlanStatus.Pending);
-		expect(snap.nextPending?.id).toBe("corp-session");
-		expect(snap.nextPending?.kind).toBe("session");
+		expect(planner.status).toBe(PlanStatus.Pending);
+		expect(planner.nextPending?.id).toBe("corp-session");
+		expect(planner.nextPending?.attributes?.mode).toBe("session");
 
-		// Step 2: Adopter performs SSO login... then resolves.
 		planner.resolve({
 			requirementId: "corp-session",
 			status: ResolutionStatus.Fulfilled,
 		});
 
-		snap = planner.snapshot();
-		expect(snap.status).toBe(PlanStatus.Pending);
-		expect(snap.nextPending?.id).toBe("api-access");
-		expect(snap.nextPending?.kind).toBe("backend_oidc");
-		expect(snap.resolved).toBe(1);
+		expect(planner.status).toBe(PlanStatus.Pending);
+		expect(planner.nextPending?.id).toBe("api-access");
+		expect(planner.nextPending?.attributes?.mode).toBe("backend_oidc");
+		expect(planner.resolved).toBe(1);
 
-		// Step 3: Adopter exchanges backend-oidc token... then resolves.
 		planner.resolve({
 			requirementId: "api-access",
 			status: ResolutionStatus.Fulfilled,
 		});
 
-		snap = planner.snapshot();
-		expect(snap.status).toBe(PlanStatus.Settled);
-		expect(snap.nextPending).toBeNull();
-		expect(snap.resolved).toBe(2);
-		expect(snap.total).toBe(2);
+		expect(planner.status).toBe(PlanStatus.Settled);
+		expect(planner.nextPending).toBeNull();
+		expect(planner.resolved).toBe(2);
+		expect(planner.total).toBe(2);
 	});
 });
 
@@ -83,96 +77,47 @@ describe("adopter-facing reference flow: session → backend-oidc → settled", 
 
 describe("mixed resolution reference flow", () => {
 	it("handles skipped and failed requirements gracefully", () => {
-		const planner = createRequirementPlanner({
-			requirements: [
-				{ id: "primary-session", kind: "session" },
-				{
-					id: "optional-analytics",
-					kind: "custom",
-					label: "Analytics token (optional)",
-				},
-				{ id: "main-api", kind: "backend_oidc" },
-			],
-		});
+		const planner = RequirementPlanner.fromRequirements([
+			createAuthRequirement({
+				id: "primary-session",
+				attributes: { mode: "session" },
+			}),
+			createAuthRequirement({
+				id: "optional-analytics",
+				label: "Analytics token (optional)",
+				attributes: { mode: "custom" },
+			}),
+			createAuthRequirement({
+				id: "main-api",
+				attributes: { mode: "backend_oidc" },
+			}),
+		]);
 
-		// Primary session: fulfilled.
 		planner.resolve({
 			requirementId: "primary-session",
 			status: ResolutionStatus.Fulfilled,
 		});
 
-		// Optional analytics: skipped.
 		planner.resolve({
 			requirementId: "optional-analytics",
 			status: ResolutionStatus.Skipped,
 			reason: "User declined analytics consent",
 		});
 
-		// Main API: failed.
 		planner.resolve({
 			requirementId: "main-api",
 			status: ResolutionStatus.Failed,
 			reason: "Token endpoint returned 503",
 		});
 
-		const snap = planner.snapshot();
-		expect(snap.status).toBe(PlanStatus.Settled);
-		expect(snap.resolutions).toHaveLength(3);
+		expect(planner.status).toBe(PlanStatus.Settled);
+		expect(planner.resolutions).toHaveLength(3);
 
-		// The adopter can now inspect resolutions to decide what to do.
-		const failed = snap.resolutions.filter(
-			(r: { status: string }) => r.status === ResolutionStatus.Failed,
+		const failed = planner.resolutions.filter(
+			(resolution) => resolution.status === ResolutionStatus.Failed,
 		);
 		expect(failed).toHaveLength(1);
 		expect(failed[0].requirementId).toBe("main-api");
-	});
-});
-
-// ===========================================================================
-// 3. Reset and retry
-// ===========================================================================
-
-describe("reset and retry flow", () => {
-	it("allows retrying a failed plan after reset", () => {
-		const planner = createRequirementPlanner({
-			requirements: [
-				{ id: "session", kind: "session" },
-				{ id: "api", kind: "backend_oidc" },
-			],
-		});
-
-		// First attempt: session fails.
-		planner.resolve({
-			requirementId: "session",
-			status: ResolutionStatus.Failed,
-			reason: "Network timeout",
-		});
-		planner.resolve({
-			requirementId: "api",
-			status: ResolutionStatus.Skipped,
-			reason: "Session failed",
-		});
-		expect(planner.snapshot().status).toBe(PlanStatus.Settled);
-
-		// Reset and retry.
-		planner.reset();
-
-		const snap = planner.snapshot();
-		expect(snap.status).toBe(PlanStatus.Pending);
-		expect(snap.nextPending?.id).toBe("session");
-		expect(snap.resolved).toBe(0);
-
-		// Second attempt: both succeed.
-		planner.resolve({
-			requirementId: "session",
-			status: ResolutionStatus.Fulfilled,
-		});
-		planner.resolve({
-			requirementId: "api",
-			status: ResolutionStatus.Fulfilled,
-		});
-		expect(planner.snapshot().status).toBe(PlanStatus.Settled);
-		expect(planner.snapshot().resolved).toBe(2);
 	});
 });
 
@@ -181,25 +126,37 @@ describe("reset and retry flow", () => {
 // ===========================================================================
 
 describe("error handling in orchestration flow", () => {
-	it("prevents out-of-order resolution", () => {
-		const planner = createRequirementPlanner({
-			requirements: [
-				{ id: "first", kind: "session" },
-				{ id: "second", kind: "backend_oidc" },
-			],
+	it("allows resolving any still-pending requirement by id", () => {
+		const planner = RequirementPlanner.fromRequirements([
+			createAuthRequirement({
+				id: "first",
+				attributes: { mode: "session" },
+			}),
+			createAuthRequirement({
+				id: "second",
+				attributes: { mode: "backend_oidc" },
+			}),
+		]);
+
+		planner.resolve({
+			requirementId: "second",
+			status: ResolutionStatus.Fulfilled,
 		});
 
-		expect(() =>
-			planner.resolve({
-				requirementId: "second",
-				status: ResolutionStatus.Fulfilled,
-			}),
-		).toThrow(RequirementPlannerError);
+		expect(planner.nextPending?.id).toBe("first");
 	});
 
-	it("prevents double resolution after settled", () => {
-		const planner = createRequirementPlanner({
-			requirements: [{ id: "only", kind: "session" }],
+	it("ignores duplicate resolution after settled", () => {
+		const planner = RequirementPlanner.fromRequirements([
+			createAuthRequirement({
+				id: "only",
+				attributes: { mode: "session" },
+			}),
+		]);
+
+		planner.resolve({
+			requirementId: "only",
+			status: ResolutionStatus.Fulfilled,
 		});
 
 		planner.resolve({
@@ -207,11 +164,7 @@ describe("error handling in orchestration flow", () => {
 			status: ResolutionStatus.Fulfilled,
 		});
 
-		expect(() =>
-			planner.resolve({
-				requirementId: "only",
-				status: ResolutionStatus.Fulfilled,
-			}),
-		).toThrow(RequirementPlannerError);
+		expect(planner.status).toBe(PlanStatus.Settled);
+		expect(planner.resolved).toBe(1);
 	});
 });

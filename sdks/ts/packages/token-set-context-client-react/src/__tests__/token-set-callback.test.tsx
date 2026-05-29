@@ -116,6 +116,7 @@ function createControllerFixture() {
 		restorePersistedState: vi.fn(async () => null),
 		handleCallback,
 		loginWithRedirect: vi.fn(async () => undefined),
+		logout: async () => undefined,
 		loginWithPopup: vi.fn(async () => ({
 			snapshot: createSnapshot("popup-at"),
 		})),

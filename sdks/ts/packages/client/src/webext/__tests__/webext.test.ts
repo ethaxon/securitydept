@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { ROUTER_TRAIT_TOKEN } from "../../router";
+import { UriReferenceString } from "../../struct/uri-string";
 import {
 	createEnvironmentForWebExtBackgroundScript,
 	createEnvironmentForWebExtCore,
@@ -35,13 +37,80 @@ describe("web extension environment adapters", () => {
 		}
 		expect(router.currentUrl()).toBeNull();
 		await router.navigate({
-			url: "https://example.com/login",
+			url: UriReferenceString.parse("https://example.com/login"),
 			mode: "external",
 			intent: "auth_redirect",
 		});
 		expect(create).toHaveBeenCalledWith({
 			url: "https://example.com/login",
 		});
+	});
+
+	it("resolves baseURI from runtime.getURL for extension background routers", () => {
+		const browser: WebExtRouterBrowserLike = {
+			runtime: {
+				getURL(path: string) {
+					return `moz-extension://test-id/${path}`;
+				},
+			},
+			tabs: {
+				create: vi.fn(),
+			},
+		};
+
+		const router = createRouterForWebExt({ browser });
+
+		expect(router?.baseURI()?.toString()).toBe("moz-extension://test-id/");
+	});
+
+	it("passes relative navigate targets through to tabs.create", async () => {
+		const create = vi.fn();
+		const browser: WebExtRouterBrowserLike = {
+			runtime: {
+				getURL(path: string) {
+					return `moz-extension://test-id/${path}`;
+				},
+			},
+			tabs: {
+				create,
+			},
+		};
+
+		const router = createRouterForWebExt({ browser });
+		expect(router).not.toBeNull();
+		if (!router) {
+			return;
+		}
+
+		await router.navigate({
+			url: UriReferenceString.parse("callback.html"),
+			mode: "external",
+			intent: "auth_redirect",
+		});
+
+		expect(create).toHaveBeenCalledWith({
+			url: "callback.html",
+		});
+	});
+
+	it("prefers explicit baseURI override over runtime.getURL", () => {
+		const browser: WebExtRouterBrowserLike = {
+			runtime: {
+				getURL() {
+					return "moz-extension://ignored/";
+				},
+			},
+			tabs: {
+				create: vi.fn(),
+			},
+		};
+
+		const router = createRouterForWebExt({
+			browser,
+			baseURI: "https://override.example/",
+		});
+
+		expect(router?.baseURI()?.toString()).toBe("https://override.example/");
 	});
 
 	it("returns null when extension router host is unavailable", () => {
@@ -117,7 +186,7 @@ describe("web extension environment adapters", () => {
 		).toThrow(/persistentStorageForWebExtCreateOptions/u);
 	});
 
-	it("composes a background-script client environment from explicit host inputs", () => {
+	it("composes a background-script environment from explicit host inputs", () => {
 		const browser: WebExtRouterBrowserLike & WebExtStorageBrowserLike = {
 			tabs: { create: vi.fn() },
 			storage: {
@@ -149,6 +218,49 @@ describe("web extension environment adapters", () => {
 		expect(environment.time).toBeDefined();
 	});
 
+	it("uses native web router for extension UI pages", () => {
+		const replaceState = vi.fn();
+		const environment = createEnvironmentForWebExtUI({
+			routerForNativeWebCreateOptions: {
+				location: {
+					href: "moz-extension://test-id/popup.html#callback",
+					hash: "#callback",
+				},
+				document: {
+					baseURI: "moz-extension://test-id/popup.html",
+				},
+				history: { replaceState },
+			},
+			transport: createTransport(),
+		});
+
+		expect(environment.router?.currentUrl()?.toString()).toBe(
+			"moz-extension://test-id/popup.html#callback",
+		);
+		expect(environment.router?.baseURI()?.toString()).toBe(
+			"moz-extension://test-id/popup.html",
+		);
+	});
+
+	it("does not override an explicit UI router provider", () => {
+		const explicitRouter = {
+			currentUrl() {
+				return UriReferenceString.parse("https://override.example/");
+			},
+			baseURI() {
+				return null;
+			},
+			navigate() {},
+		};
+
+		const environment = createEnvironmentForWebExtUI({
+			providers: [{ provide: ROUTER_TRAIT_TOKEN, useValue: explicitRouter }],
+			transport: createTransport(),
+		});
+
+		expect(environment.router).toBe(explicitRouter);
+	});
+
 	it("adds native web page lifecycle for extension UI pages", () => {
 		const target = new EventTarget();
 		const document = {
@@ -162,6 +274,12 @@ describe("web extension environment adapters", () => {
 		};
 
 		const environment = createEnvironmentForWebExtUI({
+			routerForNativeWebCreateOptions: {
+				location: {
+					href: "moz-extension://test-id/popup.html",
+				},
+				history: { replaceState: vi.fn() },
+			},
 			pageLifecycleForNativeWebCreateOptions: {
 				document,
 				window,

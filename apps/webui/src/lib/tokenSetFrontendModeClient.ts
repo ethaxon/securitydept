@@ -7,14 +7,13 @@ import {
 	createTraceTimelineStore,
 	createTracing,
 	type EventSubscriptionTrait,
+	type FoundationEnvironment,
 	readonlyReplaySignal,
 	readonlySignal,
+	SYMBOL_DISPOSE,
 	TracingLevel,
 } from "@securitydept/client";
-import {
-	createCrossTabSync,
-	type NativeWebEnvironment,
-} from "@securitydept/client/web";
+import { createCrossTabSync } from "@securitydept/client/web";
 import {
 	createFrontendOidcModeBrowserClient,
 	createFrontendOidcModeWebClientEnvironment,
@@ -101,6 +100,7 @@ export const tokenSetFrontendModeCrossTabStatus = readonlySignal(
 type TokenSetFrontendModeReactClient = TokenSetReactClient & {
 	refresh(): Promise<AuthSnapshot | null>;
 	clearState(): Promise<void>;
+	logout(): Promise<void>;
 };
 
 function recordFrontendHostTrace(
@@ -192,13 +192,13 @@ function mirrorFrontendModeClientSignals(
 	}
 
 	const unsubscribes = [
-		client.authSnapshot.subscribe(syncSnapshot),
-		client.lastAuthError.subscribe(syncLastError),
+		client.authSnapshot.notify(syncSnapshot),
+		client.lastAuthError.notify(syncLastError),
 		...(
 			Object.keys(tokenSetFrontendModeAuthOperationSignals) as Array<
 				keyof typeof tokenSetFrontendModeAuthOperationSignals
 			>
-		).map((key) => client.authOperations[key].subscribe(syncOperation(key))),
+		).map((key) => client.authOperations[key].notify(syncOperation(key))),
 	];
 	return () => {
 		for (const unsubscribe of unsubscribes) {
@@ -397,6 +397,9 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 			client.dispose();
 		});
 	},
+	[SYMBOL_DISPOSE]() {
+		this.dispose();
+	},
 	async restorePersistedState() {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
 		const snapshot = await client.restorePersistedState();
@@ -421,6 +424,10 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 		const client = await ensureTokenSetFrontendModeClientSubscribed();
 		await client.clearState();
 	},
+	async logout() {
+		const client = await ensureTokenSetFrontendModeClientSubscribed();
+		await client.logout();
+	},
 };
 
 export async function getTokenSetFrontendModeClient(): Promise<TokenSetFrontendModeReactClient> {
@@ -437,13 +444,13 @@ export async function ensureTokenSetFrontendModeClientReady(): Promise<AuthSnaps
 }
 
 export async function startTokenSetFrontendModeLogin(
-	environment: NativeWebEnvironment,
+	environment: FoundationEnvironment,
 	postAuthRedirectUri = "/",
 ): Promise<void> {
 	const client = await ensureTokenSetFrontendModeClientSubscribed();
 	if (!environment.router) {
 		throw new Error(
-			"startTokenSetFrontendModeLogin requires a NativeWebEnvironment with router.",
+			"startTokenSetFrontendModeLogin requires an environment with router.",
 		);
 	}
 	await client.loginWithRedirect({
@@ -466,7 +473,7 @@ export async function startTokenSetFrontendModePopupLogin(): Promise<void> {
 
 export async function clearTokenSetFrontendModeBrowserState(): Promise<void> {
 	const client = await ensureTokenSetFrontendModeClientSubscribed();
-	await client.clearState();
+	await client.logout();
 }
 
 export function isTokenSetFrontendPopupError(error: unknown): error is Error & {

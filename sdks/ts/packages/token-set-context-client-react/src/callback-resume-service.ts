@@ -41,7 +41,7 @@ export class ReactTokenSetCallbackResumeController {
 		options: FrontendOidcModeCallbackInput,
 	): Promise<FrontendOidcModeCallbackResult> {
 		const controller = this.createController(options);
-		const unsubscribe = controller.state.subscribe(() => {
+		const unsubscribe = controller.state.notify(() => {
 			this.stateSignal.set(controller.state.get());
 		});
 		this.stateSignal.set(controller.state.get());

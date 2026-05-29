@@ -31,7 +31,7 @@ const CONTRACTS: PackageContract[] = [
 	{
 		dir: "client",
 		name: "@securitydept/client",
-		exportKeys: [".", "./web", "./webext", "./rx"],
+		exportKeys: [".", "./web", "./webext", "./server", "./rx"],
 		hasReactPeer: false,
 		experimental: false,
 	},
@@ -52,7 +52,7 @@ const CONTRACTS: PackageContract[] = [
 	{
 		dir: "session-context-client",
 		name: "@securitydept/session-context-client",
-		exportKeys: [".", "./web", "./server"],
+		exportKeys: ["."],
 		hasReactPeer: false,
 		experimental: false,
 	},

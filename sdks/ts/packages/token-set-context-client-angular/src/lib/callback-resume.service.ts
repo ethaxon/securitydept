@@ -1,17 +1,11 @@
-import {
-	DestroyRef,
-	Injectable,
-	inject,
-	signal,
-	type WritableSignal,
-} from "@angular/core";
+import { DestroyRef, Injectable, inject, type Signal } from "@angular/core";
 import {
 	createOnceAsyncLockCallable,
 	createSignal,
 	type DisposableTrait,
 } from "@securitydept/client";
 import { signalToObservable } from "@securitydept/client/rx";
-import { bridgeToAngularSignal } from "@securitydept/client-angular";
+import { toNgSignal } from "@securitydept/client-angular";
 import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import {
 	type ClientRegistry as CoreClientRegistry,
@@ -54,16 +48,15 @@ export class CallbackResumeService {
 	private readonly stateSignal = createSignal<FrontendOidcModeCallbackState>(
 		createIdleCallbackLock(),
 	);
-	readonly state: WritableSignal<FrontendOidcModeCallbackState> = signal(
-		this.stateSignal.get(),
+	readonly state: Signal<FrontendOidcModeCallbackState> = toNgSignal(
+		this.stateSignal,
+		{ initialValue: this.stateSignal.get() },
 	);
 	readonly state$: Observable<FrontendOidcModeCallbackState> =
 		signalToObservable(this.stateSignal);
 
 	constructor() {
-		const cleanup = bridgeToAngularSignal(this.stateSignal, this.state);
 		this.destroyRef?.onDestroy(() => {
-			cleanup();
 			this.reset();
 		});
 	}
@@ -105,7 +98,7 @@ export class CallbackResumeService {
 					}
 				: optionsOrCallbackUrl,
 		);
-		const unsubscribe = controller.state.subscribe(() => {
+		const unsubscribe = controller.state.notify(() => {
 			this.stateSignal.set(controller.state.get());
 		});
 		this.stateSignal.set(controller.state.get());

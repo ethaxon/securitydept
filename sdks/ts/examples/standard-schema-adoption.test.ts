@@ -95,7 +95,9 @@ describe("session-context-client @standard-schema adoption", () => {
 		expect(result.success).toBe(false);
 		if (!result.success) {
 			expect(result.issues.length).toBeGreaterThan(0);
-			expect(result.issues[0]?.message).toContain("displayName");
+			expect(result.issues.map((issue) => issue.message).join("; ")).toContain(
+				"principal",
+			);
 		}
 	});
 });
@@ -215,8 +217,11 @@ describe("frontend-oidc-mode @standard-schema adoption", () => {
 
 		expect(result.success).toBe(false);
 		if (!result.success) {
-			expect(result.issues[0]?.message).toContain("claimsCheckScript");
-			expect(result.issues[0]?.message).toContain("inline");
+			const issueSummary = result.issues
+				.map((issue) => issue.message)
+				.join("; ");
+			expect(issueSummary).toContain("claimsCheckScript");
+			expect(issueSummary).toMatch(/inline|content/);
 		}
 	});
 

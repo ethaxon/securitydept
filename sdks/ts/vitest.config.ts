@@ -9,6 +9,8 @@ const ciTestTimeoutMs = 15_000;
 const isCi = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
 const stage3DecoratorRoots = [
 	path.join(packagesDir, "client"),
+	path.join(packagesDir, "basic-auth-context-client"),
+	path.join(packagesDir, "session-context-client"),
 	path.join(packagesDir, "token-set-context-client"),
 ];
 
@@ -54,6 +56,10 @@ export default defineConfig({
 	resolve: {
 		alias: [
 			{
+				find: "@securitydept/client/server",
+				replacement: path.join(packagesDir, "client/src/server/index.ts"),
+			},
+			{
 				find: "@securitydept/client/web",
 				replacement: path.join(packagesDir, "client/src/web/index.ts"),
 			},
@@ -70,20 +76,6 @@ export default defineConfig({
 				replacement: path.join(
 					packagesDir,
 					"basic-auth-context-client-react/src/index.tsx",
-				),
-			},
-			{
-				find: "@securitydept/basic-auth-context-client/web",
-				replacement: path.join(
-					packagesDir,
-					"basic-auth-context-client/src/web/index.ts",
-				),
-			},
-			{
-				find: "@securitydept/basic-auth-context-client/server",
-				replacement: path.join(
-					packagesDir,
-					"basic-auth-context-client/src/server/index.ts",
 				),
 			},
 			{
@@ -106,20 +98,6 @@ export default defineConfig({
 				replacement: path.join(
 					packagesDir,
 					"session-context-client-react/src/index.tsx",
-				),
-			},
-			{
-				find: "@securitydept/session-context-client/web",
-				replacement: path.join(
-					packagesDir,
-					"session-context-client/src/web/index.ts",
-				),
-			},
-			{
-				find: "@securitydept/session-context-client/server",
-				replacement: path.join(
-					packagesDir,
-					"session-context-client/src/server/index.ts",
 				),
 			},
 			{

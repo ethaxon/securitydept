@@ -128,7 +128,7 @@ describe("@securitydept/client/rx", () => {
 		const signal = behaviorSubjectToSignal(() => subject);
 		const notifications: string[] = [];
 
-		signal.subscribe(() => {
+		signal.notify(() => {
 			notifications.push(signal.get());
 		});
 		signal.set("initial");

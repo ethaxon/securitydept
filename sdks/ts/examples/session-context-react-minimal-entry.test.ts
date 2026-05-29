@@ -8,13 +8,13 @@ import {
 } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
-	useReadableSignal,
+	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
-	createSessionContextController,
-	provideSessionContextController,
-	SESSION_CONTEXT_CONTROLLER,
+	createSessionContextClient,
+	provideSessionContextClient,
+	SESSION_CONTEXT_CLIENT,
 } from "@securitydept/session-context-client-react";
 import { act, createElement, type ReactElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
@@ -60,7 +60,7 @@ describe("session-context react minimal entry", () => {
 				},
 			})),
 		};
-		const controller = createSessionContextController({
+		const client = createSessionContextClient({
 			config: { baseUrl: "https://auth.example.com" },
 			environment: createFoundationEnvironment({
 				transport: transport,
@@ -71,23 +71,25 @@ describe("session-context react minimal entry", () => {
 		});
 
 		function SessionBadge() {
-			const sessionController = useSecuritydeptContext().get(
-				SESSION_CONTEXT_CONTROLLER,
+			const sessionClient = useSecuritydeptContext().get(
+				SESSION_CONTEXT_CLIENT,
 			);
-			const state = useReadableSignal(sessionController.state);
+			const session = useReplaySignalValue(sessionClient.sessionInfo, {
+				initialValue: null,
+			});
 
 			useEffect(() => {
-				void sessionController.refresh();
-			}, [sessionController]);
+				void sessionClient.refresh();
+			}, [sessionClient]);
 
-			const principal = state.session?.principal ?? null;
+			const principal = session?.principal ?? null;
 			return createElement("output", null, principal?.displayName ?? "guest");
 		}
 
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{ providers: provideSessionContextController(controller) },
+				{ providers: provideSessionContextClient(client) },
 				createElement(SessionBadge),
 			),
 		);

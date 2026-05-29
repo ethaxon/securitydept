@@ -1,23 +1,18 @@
-// Angular full-route aggregation guard — evidence test
+// Angular full-route aggregation — evidence test
 //
-// Proves the canonical Angular Router auth pattern:
-//   1. Requirements declared in route data (withRouteRequirements)
-//   2. Guard walks pathFromRoot once (extractFullRouteRequirements)
-//   3. All requirements aggregated from parent + child route segments
-//   4. Complete candidate set handed to PlannerHost in a single evaluate() call
-//   5. Chooser / planner makes one decision (no per-segment guard coordination)
-//
-// This test validates:
-//   - Single-route, single-requirement scenario
-//   - Single-route, multi-requirement scenario
-//   - Parent + child route requirement accumulation
-//   - Leaf guard sees the complete aggregated set (full-route aggregation)
-//   - Planner makes exactly one decision for the full set
-//   - createTokenSetRouteAggregationGuard API shape
+// Proves the canonical Angular Router auth pattern on the rewritten pipeline:
+//   1. Requirements declared in route data (secureRoute / secureRouteRoot)
+//   2. projectAngularRouteSegments walks pathFromRoot into RouteTreeSegment[]
+//   3. RouteCompositionRequirementPlanner folds parent + child composition
+//   4. The token-set RequirementPlannerHost maps requirements to registry
+//      clients and drives a single settle/redirect decision
+//   5. secureRouteRoot wires canActivate + canActivateChild to that pipeline
 
 import {
 	createEnvironmentInjector,
 	type EnvironmentInjector,
+	type EnvironmentProviders,
+	type Provider,
 	runInInjectionContext,
 } from "@angular/core";
 import {
@@ -28,33 +23,24 @@ import {
 	type RouterStateSnapshot,
 } from "@angular/router";
 import {
-	type AuthGuardClientOption,
 	createEventSubject,
-	createPlannerHost,
 	type ReadableReplaySignalTrait,
-	RequirementsClientSetComposition,
+	RequirementPlannerHost,
+	RequirementsComposition,
+	RouteCompositionRequirementPlanner,
+	SECURITYDEPT_ROUTE_METADATA_KEY,
+	type SecuritydeptRouteMetadata,
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
-import {
-	AUTH_PLANNER_HOST,
-	DEFAULT_ROUTE_REQUIREMENTS_KEY,
-	extractFullRouteRequirements,
-	ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY,
-	ROUTE_REQUIREMENTS_DATA_KEY,
-	withRouteRequirements,
-} from "@securitydept/client-angular";
+import { projectAngularRouteSegments } from "@securitydept/client-angular";
 import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import {
-	type CreateTokenSetRouteAggregationGuardOptions,
-	createTokenSetRouteAggregationGuard,
+	provideTokenSetRequirementPlannerHost,
 	secureRoute,
 	secureRouteRoot,
-	TOKEN_SET_ROUTE_PLANNER_HOST_KEY_DATA_KEY,
 	type TokenSetAngularClient,
 	TokenSetAuthRegistry,
-	type UnauthenticatedEntry,
 } from "@securitydept/token-set-context-client-angular";
-import { firstValueFrom, isObservable } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 
@@ -76,16 +62,6 @@ function readReplayBoolean(
 ): boolean {
 	const slot = signal.get();
 	return slot.kind === "value" ? slot.value : false;
-}
-
-function readRegistryClientAuthenticated(
-	registry: TokenSetAuthRegistry,
-	key: string,
-): boolean {
-	const slot = registry.clientSignalFor(key).get();
-	return slot.kind === "value"
-		? readReplayBoolean(slot.value.isAuthenticated)
-		: false;
 }
 
 function createMockClient(authenticated: boolean): ExampleClient {
@@ -115,63 +91,23 @@ function createMockClient(authenticated: boolean): ExampleClient {
 	};
 }
 
-function createRouteFreshnessMockClient(options: {
-	initialExpiresAt: number;
-	refreshMaterial?: string;
-	refreshResult: "fresh" | "unauthenticated";
-}): ExampleClient {
-	const initial = {
-		tokens: {
-			accessToken: "expired-token",
-			idToken: "id",
-			accessTokenExpiresAt: new Date(options.initialExpiresAt).toISOString(),
-			refreshMaterial: options.refreshMaterial,
-		},
-		metadata: { source: { kind: "oidc_authorization_code" as const } },
-	};
-	const refreshed = {
-		tokens: {
-			accessToken: "fresh-token",
-			idToken: "id",
-			accessTokenExpiresAt: new Date(Date.now() + 3600_000).toISOString(),
-			refreshMaterial: options.refreshMaterial,
-		},
-		metadata: { source: { kind: "oidc_authorization_code" as const } },
-	};
-	const reactive = createTestTokenSetReactiveFields(
-		options.refreshResult === "fresh" ? refreshed : null,
-	);
-
-	return {
-		...reactive.fields,
-		authEvents: createEventSubject(),
-		addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
-		removeWorkflowSource: vi.fn(() => false),
-		start: vi.fn(async () => undefined),
-		dispose: vi.fn(),
-		[SYMBOL_DISPOSE]: vi.fn(),
-		restorePersistedState: vi.fn().mockResolvedValue(initial),
-		loginWithRedirect: vi.fn(async () => undefined),
-		loginWithPopup: vi.fn(async () => ({ snapshot: initial })),
-		handleCallback: vi.fn().mockResolvedValue({ snapshot: initial }),
-	};
-}
-
 function createMockRouter() {
 	return {
+		url: "/current",
 		parseUrl(url: string) {
-			return {
-				toString() {
-					return url;
-				},
-			};
+			return { toString: () => url };
+		},
+		serializeUrl(tree: unknown) {
+			return String(tree);
+		},
+		getCurrentNavigation() {
+			return null;
 		},
 	};
 }
 
 /**
  * Build a minimal ActivatedRouteSnapshot chain from declarative segments.
- * Each segment can declare `path` and `data`.
  */
 function buildRouteChain(
 	segments: Array<{
@@ -193,7 +129,6 @@ function buildRouteChain(
 		snapshots.push(snapshot);
 	}
 
-	// Wire up pathFromRoot on each snapshot.
 	for (let i = 0; i < snapshots.length; i++) {
 		(
 			snapshots[i] as unknown as { pathFromRoot: ActivatedRouteSnapshot[] }
@@ -219,7 +154,7 @@ function buildRouteChainFromRoutes(routes: Route[]): ActivatedRouteSnapshot {
 async function invokeGuard(
 	guard: (route: ActivatedRouteSnapshot, state: RouterStateSnapshot) => unknown,
 	route: ActivatedRouteSnapshot,
-	providers: Array<{ provide: unknown; useValue: unknown }>,
+	providers: Array<Provider | EnvironmentProviders>,
 ) {
 	const parent = createEnvironmentInjector(
 		[],
@@ -229,9 +164,6 @@ async function invokeGuard(
 	try {
 		return await runInInjectionContext(injector, async () => {
 			const outcome = guard(route, { url: "/target" } as RouterStateSnapshot);
-			if (isObservable(outcome)) {
-				return await firstValueFrom(outcome);
-			}
 			return await Promise.resolve(outcome);
 		});
 	} finally {
@@ -241,266 +173,168 @@ async function invokeGuard(
 }
 
 // ---------------------------------------------------------------------------
-// 1. withRouteRequirements helper
+// 1. secureRoute metadata declaration
 // ---------------------------------------------------------------------------
 
-describe("Angular full-route aggregation — withRouteRequirements helper", () => {
-	it("produces an object with the requirements key", () => {
-		const data = withRouteRequirements([{ id: "session", kind: "session" }]);
-		expect(data[ROUTE_REQUIREMENTS_DATA_KEY]).toEqual([
-			{ id: "session", kind: "session" },
-		]);
-	});
-
-	it("merges extra data properties alongside the requirements key", () => {
-		const data = withRouteRequirements(
-			[{ id: "oidc", kind: "frontend_oidc" }],
-			{ title: "Protected Page" },
-		);
-		expect(data.title).toBe("Protected Page");
-		expect(data[ROUTE_REQUIREMENTS_DATA_KEY]).toHaveLength(1);
-	});
-
-	it("produces empty array for zero requirements", () => {
-		const data = withRouteRequirements([]);
-		expect(data[ROUTE_REQUIREMENTS_DATA_KEY]).toEqual([]);
-	});
-
-	it("defaults composition to merge", () => {
-		const data = withRouteRequirements([{ id: "session", kind: "session" }]);
-		expect(data[ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY]).toBe(
-			RequirementsClientSetComposition.Merge,
-		);
-	});
-
-	it("stores explicit replace composition", () => {
-		const data = withRouteRequirements([], {
-			composition: RequirementsClientSetComposition.Replace,
+describe("Angular full-route aggregation — secureRoute metadata", () => {
+	it("writes normalized requirements into route data (kind → attributes.requirementKind)", () => {
+		const route = secureRoute("dashboard", {
+			requirements: [{ id: "session", kind: "session" }],
 		});
-		expect(data[ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY]).toBe(
-			RequirementsClientSetComposition.Replace,
-		);
+		const metadata = route.data?.[
+			SECURITYDEPT_ROUTE_METADATA_KEY
+		] as SecuritydeptRouteMetadata;
+		const requirements = metadata?.requirements as Array<{
+			id: string;
+			attributes?: Record<string, unknown>;
+		}>;
+		expect(requirements).toHaveLength(1);
+		expect(requirements[0]?.id).toBe("session");
+		expect(requirements[0]?.attributes?.requirementKind).toBe("session");
 	});
 
-	it("ROUTE_REQUIREMENTS_DATA_KEY and DEFAULT_ROUTE_REQUIREMENTS_KEY are the same sentinel", () => {
-		// Both names refer to the same constant — ensures AuthRouteAdapter
-		// and the aggregation helpers share the same default key.
-		expect(ROUTE_REQUIREMENTS_DATA_KEY).toBe(DEFAULT_ROUTE_REQUIREMENTS_KEY);
+	it("stores explicit composition", () => {
+		const route = secureRoute("public", {
+			requirements: [],
+			composition: RequirementsComposition.Replace,
+		});
+		const metadata = route.data?.[
+			SECURITYDEPT_ROUTE_METADATA_KEY
+		] as SecuritydeptRouteMetadata;
+		expect(metadata?.composition).toBe(RequirementsComposition.Replace);
+	});
+
+	it("merges extra route data", () => {
+		const route = secureRoute(
+			"finance",
+			{ requirements: [{ id: "finance-oidc", kind: "frontend_oidc" }] },
+			{ data: { title: "Finance" } },
+		);
+		expect(route.data?.title).toBe("Finance");
+		expect(
+			(
+				route.data?.[
+					SECURITYDEPT_ROUTE_METADATA_KEY
+				] as SecuritydeptRouteMetadata
+			)?.requirements,
+		).toHaveLength(1);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 2. extractFullRouteRequirements — full-route aggregation extraction
+// 2. projectAngularRouteSegments — full-route aggregation via the planner
 // ---------------------------------------------------------------------------
 
-describe("Angular full-route aggregation — extractFullRouteRequirements", () => {
-	it("returns empty array when no segment has authRequirements", () => {
+function foldEffectiveIds(leaf: ActivatedRouteSnapshot): string[] {
+	const planner = RouteCompositionRequirementPlanner.fromRootRoute(
+		RequirementPlannerHost.fromBehaviour({}),
+		projectAngularRouteSegments(leaf),
+	);
+	return planner.effectiveRequirements.map((requirement) => requirement.id);
+}
+
+describe("Angular full-route aggregation — composition folding", () => {
+	it("returns empty when no segment declares requirements", () => {
 		const leaf = buildRouteChain([{}, { path: "public" }]);
-		expect(extractFullRouteRequirements(leaf)).toEqual([]);
+		expect(foldEffectiveIds(leaf)).toEqual([]);
 	});
 
-	it("extracts requirements from a single route segment", () => {
-		const leaf = buildRouteChain([
-			{},
-			{
-				path: "dashboard",
-				data: withRouteRequirements([{ id: "session", kind: "session" }]),
-			},
+	it("accumulates requirements from parent + child segments", () => {
+		const leaf = buildRouteChainFromRoutes([
+			secureRoute("app", {
+				requirements: [{ id: "session", kind: "session" }],
+			}),
+			secureRoute("confluence", {
+				requirements: [{ id: "confluence-oidc", kind: "frontend_oidc" }],
+			}),
 		]);
-		const reqs = extractFullRouteRequirements(leaf);
-		expect(reqs).toHaveLength(1);
-		expect(reqs[0]?.id).toBe("session");
+		expect(foldEffectiveIds(leaf)).toEqual(["session", "confluence-oidc"]);
 	});
 
-	it("accumulates requirements from parent + child segments — full-route aggregation", () => {
-		// This is the core scenario: parent declares session, child declares OIDC.
-		// The leaf guard must see BOTH requirements without per-level DI scope.
-		const leaf = buildRouteChain([
-			{}, // root — no requirements
-			{
-				path: "app",
-				data: withRouteRequirements([{ id: "session", kind: "session" }]),
-			},
-			{
-				path: "confluence",
-				// Child adds OIDC on top of parent's session requirement.
-				data: withRouteRequirements([
-					{ id: "confluence-oidc", kind: "frontend_oidc" },
-				]),
-			},
+	it("handles multi-level accumulation (3 levels)", () => {
+		const leaf = buildRouteChainFromRoutes([
+			secureRoute("app", {
+				requirements: [{ id: "session", kind: "session" }],
+			}),
+			secureRoute("admin", {
+				requirements: [{ id: "admin-oidc", kind: "backend_oidc" }],
+			}),
+			secureRoute("settings", {
+				requirements: [{ id: "settings-perm", kind: "frontend_oidc" }],
+			}),
 		]);
-
-		const reqs = extractFullRouteRequirements(leaf);
-
-		// Guard sees the FULL aggregated set: session (from parent) + OIDC (from child)
-		expect(reqs).toHaveLength(2);
-		expect(reqs[0]?.id).toBe("session"); // parent's requirement comes first
-		expect(reqs[1]?.id).toBe("confluence-oidc"); // child's requirement appended
-	});
-
-	it("handles multi-level requirement accumulation (3 levels)", () => {
-		const leaf = buildRouteChain([
-			{}, // root
-			{
-				path: "app",
-				data: withRouteRequirements([{ id: "session", kind: "session" }]),
-			},
-			{
-				path: "admin",
-				data: withRouteRequirements([
-					{ id: "admin-oidc", kind: "backend_oidc" },
-				]),
-			},
-			{
-				path: "settings",
-				data: withRouteRequirements([
-					{ id: "settings-perm", kind: "frontend_oidc" },
-				]),
-			},
-		]);
-
-		const reqs = extractFullRouteRequirements(leaf);
-
-		// Leaf guard sees all 3 requirements from the entire path chain
-		expect(reqs).toHaveLength(3);
-		expect(reqs.map((r) => r.id)).toEqual([
+		expect(foldEffectiveIds(leaf)).toEqual([
 			"session",
 			"admin-oidc",
 			"settings-perm",
 		]);
 	});
 
-	it("replace composition discards parent requirements", () => {
-		const leaf = buildRouteChain([
-			{},
-			{
-				path: "dashboard",
-				data: withRouteRequirements(
-					[
-						{ id: "oidc-a", kind: "frontend_oidc" },
-						{ id: "oidc-b", kind: "frontend_oidc" },
-					],
-					{ composition: RequirementsClientSetComposition.Merge },
-				),
-			},
-			{
-				path: "public-zone",
-				data: withRouteRequirements([], {
-					composition: RequirementsClientSetComposition.Replace,
-				}),
-			},
+	it("replace composition discards inherited requirements", () => {
+		const leaf = buildRouteChainFromRoutes([
+			secureRoute("dashboard", {
+				requirements: [
+					{ id: "oidc-a", kind: "frontend_oidc" },
+					{ id: "oidc-b", kind: "frontend_oidc" },
+				],
+			}),
+			secureRoute("public-zone", {
+				requirements: [],
+				composition: RequirementsComposition.Replace,
+			}),
 		]);
-
-		expect(extractFullRouteRequirements(leaf)).toEqual([]);
-	});
-
-	it("supports custom requirementsKey", () => {
-		const leaf = buildRouteChain([
-			{},
-			{
-				path: "secure",
-				data: { myAuthReqs: [{ id: "custom", kind: "custom" }] },
-			},
-		]);
-
-		const reqs = extractFullRouteRequirements(leaf, "myAuthReqs");
-		expect(reqs).toHaveLength(1);
-		expect(reqs[0]?.id).toBe("custom");
+		expect(foldEffectiveIds(leaf)).toEqual([]);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 3. Full planner evaluation with aggregated requirements
-//    Proves: leaf guard sees full set, planner makes exactly one decision
+// 3. Full pipeline — planner drives a single settle/redirect decision
 // ---------------------------------------------------------------------------
 
-describe("Angular full-route aggregation — planner evaluates complete aggregated set", () => {
-	it("planner sees full parent + child requirement set and picks the first unmet", async () => {
-		// Scenario:
-		//   Parent route requires "session" (met — client is authenticated)
-		//   Child  route requires "frontend_oidc" (unmet — client is NOT authenticated)
-		//
-		// Guard must aggregate both, hand full set to planner, and planner must
-		// select "frontend_oidc" (the first unmet requirement in declaration order).
-
+describe("Angular full-route aggregation — pipeline decision over aggregated set", () => {
+	it("redirects on the first unmet requirement in declaration order", async () => {
 		const registry = new TokenSetAuthRegistry();
-
-		// "session" client — authenticated
 		registry.register({
 			key: "session",
 			clientFactory: () => createMockClient(true),
 			requirementKind: "session",
 		});
-
-		// "confluence" client — NOT authenticated
 		registry.register({
 			key: "confluence",
 			clientFactory: () => createMockClient(false),
 			requirementKind: "frontend_oidc",
 		});
-		await registry.initialize("session");
-		await registry.initialize("confluence");
 
-		// Build a leaf route that aggregates parent + child requirements
-		const leaf = buildRouteChain([
-			{}, // root
+		const root = secureRouteRoot(
+			"app",
 			{
-				path: "app",
-				data: withRouteRequirements([{ id: "session", kind: "session" }]),
+				requirements: [{ id: "session", kind: "session" }],
+				requirementHandlers: {
+					frontend_oidc: () => "/login/confluence",
+				},
 			},
 			{
-				path: "confluence",
-				data: withRouteRequirements([
-					{ id: "confluence-oidc", kind: "frontend_oidc" },
-				]),
+				children: [
+					secureRoute("confluence", {
+						requirements: [{ id: "confluence-oidc", kind: "frontend_oidc" }],
+					}),
+				],
 			},
+		);
+		const childGuard = root.canActivateChild?.[0] as CanActivateChildFn;
+		const leaf = buildRouteChainFromRoutes([root, root.children?.[0] as Route]);
+
+		const result = await invokeGuard(childGuard, leaf, [
+			...(root.providers ?? []),
+			{ provide: TokenSetAuthRegistry, useValue: registry },
+			{ provide: Router, useValue: createMockRouter() },
 		]);
 
-		// Extract full-route requirements — proves the guard sees both
-		const allReqs = extractFullRouteRequirements(leaf);
-		expect(allReqs).toHaveLength(2);
-		expect(allReqs[0]?.id).toBe("session");
-		expect(allReqs[1]?.id).toBe("confluence-oidc");
-
-		// Build candidates the same way the guard does (map kind → registry clients)
-		const { createPlannerHost: createPlannerHostFn } = await import(
-			"@securitydept/client"
-		);
-		const plannerHost = createPlannerHostFn();
-
-		const candidates = allReqs.flatMap((req) => {
-			const keys = [
-				...registry.clientRecordGenForQuery({
-					requirementKind: req.kind,
-				}),
-			].map((record) => record.get().meta.clientKey);
-			if (keys.length === 0) {
-				return [];
-			}
-			return [
-				{
-					requirementId: req.id,
-					requirementKind: req.kind,
-					checkAuthenticated: () =>
-						keys.every((k) => readRegistryClientAuthenticated(registry, k)),
-					onUnauthenticated: () => false as boolean,
-				},
-			];
-		});
-
-		// One single planner evaluation for the complete aggregated set
-		const result = await plannerHost.evaluate(candidates);
-
-		// Session is authenticated — planner advances past it.
-		// Confluence OIDC is NOT authenticated — planner selects it.
-		expect(result.allAuthenticated).toBe(false);
-		expect(result.pendingCandidate?.requirementId).toBe("confluence-oidc");
+		expect(String(result)).toBe("/login/confluence");
 	});
 
-	it("planner returns allAuthenticated when all aggregated requirements are met", async () => {
+	it("allows navigation when all aggregated requirements are met", async () => {
 		const registry = new TokenSetAuthRegistry();
-
-		// Both clients authenticated
 		registry.register({
 			key: "session",
 			clientFactory: () => createMockClient(true),
@@ -511,136 +345,40 @@ describe("Angular full-route aggregation — planner evaluates complete aggregat
 			clientFactory: () => createMockClient(true),
 			requirementKind: "frontend_oidc",
 		});
-		await registry.initialize("session");
-		await registry.initialize("confluence");
 
-		const leaf = buildRouteChain([
-			{},
+		const root = secureRouteRoot(
+			"app",
 			{
-				path: "app",
-				data: withRouteRequirements([{ id: "session", kind: "session" }]),
+				requirements: [{ id: "session", kind: "session" }],
+				requirementHandlers: { frontend_oidc: () => "/login/confluence" },
 			},
 			{
-				path: "confluence",
-				data: withRouteRequirements([
-					{ id: "confluence-oidc", kind: "frontend_oidc" },
-				]),
+				children: [
+					secureRoute("confluence", {
+						requirements: [{ id: "confluence-oidc", kind: "frontend_oidc" }],
+					}),
+				],
 			},
+		);
+		const childGuard = root.canActivateChild?.[0] as CanActivateChildFn;
+		const leaf = buildRouteChainFromRoutes([root, root.children?.[0] as Route]);
+
+		const result = await invokeGuard(childGuard, leaf, [
+			...(root.providers ?? []),
+			{ provide: TokenSetAuthRegistry, useValue: registry },
+			{ provide: Router, useValue: createMockRouter() },
 		]);
 
-		const allReqs = extractFullRouteRequirements(leaf);
-		const plannerHost = createPlannerHost();
-
-		const candidates = allReqs.flatMap((req) => {
-			const keys = [
-				...registry.clientRecordGenForQuery({
-					requirementKind: req.kind,
-				}),
-			].map((record) => record.get().meta.clientKey);
-			if (keys.length === 0) {
-				return [];
-			}
-			return [
-				{
-					requirementId: req.id,
-					requirementKind: req.kind,
-					checkAuthenticated: () =>
-						keys.every((k) => readRegistryClientAuthenticated(registry, k)),
-					onUnauthenticated: () => false as boolean,
-				},
-			];
-		});
-
-		const result = await plannerHost.evaluate(candidates);
-
-		// All requirements met — planner returns allAuthenticated: true
-		expect(result.allAuthenticated).toBe(true);
-		expect(result.pendingCandidate).toBeNull();
+		expect(result).toBe(true);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// 4. createTokenSetRouteAggregationGuard API shape
-// ---------------------------------------------------------------------------
-
-describe("Angular full-route aggregation — createTokenSetRouteAggregationGuard API", () => {
-	it("is a function that returns a CanActivateFn (function)", () => {
-		expect(typeof createTokenSetRouteAggregationGuard).toBe("function");
-		const guard = createTokenSetRouteAggregationGuard();
-		expect(typeof guard).toBe("function");
-	});
-
-	it("accepts requirementHandlers per kind", () => {
-		const guard = createTokenSetRouteAggregationGuard({
-			requirementHandlers: {
-				frontend_oidc: (_failing: ReadonlyArray<UnauthenticatedEntry>, _req) =>
-					false,
-				backend_oidc: (_failing: ReadonlyArray<UnauthenticatedEntry>, _req) =>
-					"/admin/login",
-			},
-		});
-		expect(typeof guard).toBe("function");
-	});
-
-	it("accepts defaultOnUnauthenticated fallback", () => {
-		const guard = createTokenSetRouteAggregationGuard({
-			defaultOnUnauthenticated: (
-				_failing: ReadonlyArray<UnauthenticatedEntry>,
-				_req,
-			) => "/login",
-		});
-		expect(typeof guard).toBe("function");
-	});
-
-	it("accepts custom requirementsKey", () => {
-		const guard = createTokenSetRouteAggregationGuard({
-			requirementsKey: "myAuthReqs",
-		});
-		expect(typeof guard).toBe("function");
-	});
-
-	it("accepts inline plannerHost", () => {
-		const host = createPlannerHost();
-		const guard = createTokenSetRouteAggregationGuard({ plannerHost: host });
-		expect(typeof guard).toBe("function");
-	});
-
-	it("CreateTokenSetRouteAggregationGuardOptions type is importable", () => {
-		const opts: CreateTokenSetRouteAggregationGuardOptions = {
-			requirementHandlers: {
-				session: () => false,
-			},
-			defaultOnUnauthenticated: () => true,
-			requirementsKey: "authRequirements",
-		};
-		expect(opts).toBeDefined();
-	});
-});
-
-// ---------------------------------------------------------------------------
-// 5. secureRouteRoot / secureRoute — canonical route builder contract
+// 4. secureRouteRoot / secureRoute — builder contract
 // ---------------------------------------------------------------------------
 
 describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () => {
-	it("secureRoute stores serializable plannerHostKey in route data", () => {
-		const route = secureRoute(
-			"finance",
-			{
-				requirements: [{ id: "finance-oidc", kind: "frontend_oidc" }],
-				plannerHostKey: "finance-planner",
-			},
-			{ title: "Finance" } as Route,
-		);
-
-		expect(route.data?.[TOKEN_SET_ROUTE_PLANNER_HOST_KEY_DATA_KEY]).toBe(
-			"finance-planner",
-		);
-		expect(route.data?.[ROUTE_REQUIREMENTS_DATA_KEY]).toEqual([
-			{ id: "finance-oidc", kind: "frontend_oidc" },
-		]);
-	});
-
-	it("secureRouteRoot attaches both canActivate and canActivateChild", () => {
+	it("secureRouteRoot attaches both canActivate and canActivateChild plus a host provider", () => {
 		const root = secureRouteRoot(
 			"dashboard",
 			{
@@ -657,18 +395,13 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 
 		expect(root.canActivate).toHaveLength(1);
 		expect(root.canActivateChild).toHaveLength(1);
+		expect(root.providers?.length).toBeGreaterThanOrEqual(1);
 	});
 
-	it("canActivateChild respects replace composition and avoids carrying parent requirements into public child routes", async () => {
+	it("canActivateChild respects replace composition for public child routes", async () => {
 		const registry = new TokenSetAuthRegistry();
-
 		registry.register({
 			key: "dashboard-a",
-			clientFactory: () => createMockClient(false),
-			requirementKind: "frontend_oidc",
-		});
-		registry.register({
-			key: "dashboard-b",
 			clientFactory: () => createMockClient(false),
 			requirementKind: "frontend_oidc",
 		});
@@ -676,58 +409,40 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 		const root = secureRouteRoot(
 			"dashboard",
 			{
-				requirements: [
-					{ id: "oidc-a", kind: "frontend_oidc" },
-					{ id: "oidc-b", kind: "frontend_oidc" },
-				],
+				requirements: [{ id: "oidc-a", kind: "frontend_oidc" }],
 				requirementPolicies: {
 					"oidc-a": {
 						selector: { clientKey: "dashboard-a" },
 						onUnauthenticated: () => "/login/a",
 					},
-					"oidc-b": {
-						selector: { clientKey: "dashboard-b" },
-						onUnauthenticated: () => "/login/b",
-					},
 				},
 			},
 			{
 				children: [
-					secureRoute(
-						"public-zone",
-						{
-							requirements: [],
-							composition: RequirementsClientSetComposition.Replace,
-						},
-						{},
-					),
+					secureRoute("public-zone", {
+						requirements: [],
+						composition: RequirementsComposition.Replace,
+					}),
 				],
 			},
 		);
-
-		const childGuard = root.canActivateChild?.[0] as
-			| CanActivateChildFn
-			| undefined;
-		if (!childGuard) {
-			throw new Error("secureRouteRoot did not provide canActivateChild");
-		}
-
+		const childGuard = root.canActivateChild?.[0] as CanActivateChildFn;
 		const publicLeaf = buildRouteChainFromRoutes([
 			root,
 			root.children?.[0] as Route,
 		]);
+
 		const result = await invokeGuard(childGuard, publicLeaf, [
+			...(root.providers ?? []),
 			{ provide: TokenSetAuthRegistry, useValue: registry },
-			{ provide: AUTH_PLANNER_HOST, useValue: createPlannerHost() },
 			{ provide: Router, useValue: createMockRouter() },
 		]);
 
 		expect(result).toBe(true);
 	});
 
-	it("canActivateChild re-checks sibling navigation and blocks escape into protected child routes", async () => {
+	it("canActivateChild blocks escape into protected sibling routes", async () => {
 		const registry = new TokenSetAuthRegistry();
-
 		registry.register({
 			key: "dashboard-a",
 			clientFactory: () => createMockClient(false),
@@ -756,32 +471,17 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 			},
 			{
 				children: [
-					secureRoute(
-						"public-zone",
-						{
-							requirements: [],
-							composition: RequirementsClientSetComposition.Replace,
-						},
-						{},
-					),
-					secureRoute(
-						"finance",
-						{
-							requirements: [{ id: "finance-oidc", kind: "frontend_oidc" }],
-						},
-						{},
-					),
+					secureRoute("public-zone", {
+						requirements: [],
+						composition: RequirementsComposition.Replace,
+					}),
+					secureRoute("finance", {
+						requirements: [{ id: "finance-oidc", kind: "frontend_oidc" }],
+					}),
 				],
 			},
 		);
-
-		const childGuard = root.canActivateChild?.[0] as
-			| CanActivateChildFn
-			| undefined;
-		if (!childGuard) {
-			throw new Error("secureRouteRoot did not provide canActivateChild");
-		}
-
+		const childGuard = root.canActivateChild?.[0] as CanActivateChildFn;
 		const publicLeaf = buildRouteChainFromRoutes([
 			root,
 			root.children?.[0] as Route,
@@ -791,116 +491,21 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 			root.children?.[1] as Route,
 		]);
 		const providers = [
+			...(root.providers ?? []),
 			{ provide: TokenSetAuthRegistry, useValue: registry },
-			{ provide: AUTH_PLANNER_HOST, useValue: createPlannerHost() },
 			{ provide: Router, useValue: createMockRouter() },
 		];
 
 		expect(await invokeGuard(childGuard, publicLeaf, providers)).toBe(true);
-
-		const protectedResult = await invokeGuard(
-			childGuard,
-			financeLeaf,
-			providers,
+		expect(String(await invokeGuard(childGuard, financeLeaf, providers))).toBe(
+			"/login/a",
 		);
-		expect(String(protectedResult)).toBe("/login/a");
 	});
 
-	it("plannerHost selection is resolved by serializable route metadata, not inline child callbacks", async () => {
+	it("canActivateChild admits fresh clients without invoking the handler", async () => {
 		const registry = new TokenSetAuthRegistry();
-
-		registry.register({
-			key: "finance",
-			clientFactory: () => createMockClient(true),
-			requirementKind: "frontend_oidc",
-		});
-
-		const defaultEvaluate = vi
-			.fn<
-				(candidates: readonly AuthGuardClientOption[]) => Promise<{
-					allAuthenticated: boolean;
-					unauthenticatedCandidates: readonly AuthGuardClientOption[];
-					pendingCandidate: AuthGuardClientOption | null;
-				}>
-			>()
-			.mockResolvedValue({
-				allAuthenticated: true,
-				unauthenticatedCandidates: [],
-				pendingCandidate: null,
-			});
-		const financeEvaluate = vi
-			.fn<
-				(candidates: readonly AuthGuardClientOption[]) => Promise<{
-					allAuthenticated: boolean;
-					unauthenticatedCandidates: readonly AuthGuardClientOption[];
-					pendingCandidate: AuthGuardClientOption | null;
-				}>
-			>()
-			.mockResolvedValue({
-				allAuthenticated: true,
-				unauthenticatedCandidates: [],
-				pendingCandidate: null,
-			});
-
-		const root = secureRouteRoot(
-			"dashboard",
-			{
-				plannerHosts: {
-					default: { evaluate: defaultEvaluate },
-					finance: { evaluate: financeEvaluate },
-				},
-				defaultPlannerHostKey: "default",
-				requirementPolicies: {
-					"finance-oidc": {
-						selector: { clientKey: "finance" },
-						onUnauthenticated: () => false,
-					},
-				},
-			},
-			{
-				children: [
-					secureRoute(
-						"finance",
-						{
-							plannerHostKey: "finance",
-							requirements: [{ id: "finance-oidc", kind: "frontend_oidc" }],
-						},
-						{},
-					),
-				],
-			},
-		);
-
-		const childGuard = root.canActivateChild?.[0] as
-			| CanActivateChildFn
-			| undefined;
-		if (!childGuard) {
-			throw new Error("secureRouteRoot did not provide canActivateChild");
-		}
-
-		const financeLeaf = buildRouteChainFromRoutes([
-			root,
-			root.children?.[0] as Route,
-		]);
-		const result = await invokeGuard(childGuard, financeLeaf, [
-			{ provide: TokenSetAuthRegistry, useValue: registry },
-			{ provide: Router, useValue: createMockRouter() },
-		]);
-
-		expect(result).toBe(true);
-		expect(financeEvaluate).toHaveBeenCalledTimes(1);
-		expect(defaultEvaluate).not.toHaveBeenCalled();
-	});
-
-	it("canActivateChild refreshes expired token material before allowing protected route entry", async () => {
-		const registry = new TokenSetAuthRegistry();
-		const client = createRouteFreshnessMockClient({
-			initialExpiresAt: Date.now() - 1_000,
-			refreshMaterial: "refresh-token",
-			refreshResult: "fresh",
-		});
+		const client = createMockClient(true);
 		const onUnauthenticated = vi.fn(() => "/login/confluence");
-
 		registry.register({
 			key: "confluence",
 			clientFactory: () => client,
@@ -918,14 +523,14 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 					},
 				},
 			},
-			{ children: [secureRoute("confluence", { requirements: [] }, {})] },
+			{ children: [secureRoute("confluence", { requirements: [] })] },
 		);
 		const childGuard = root.canActivateChild?.[0] as CanActivateChildFn;
 		const leaf = buildRouteChainFromRoutes([root, root.children?.[0] as Route]);
 
 		const result = await invokeGuard(childGuard, leaf, [
+			...(root.providers ?? []),
 			{ provide: TokenSetAuthRegistry, useValue: registry },
-			{ provide: AUTH_PLANNER_HOST, useValue: createPlannerHost() },
 			{ provide: Router, useValue: createMockRouter() },
 		]);
 
@@ -934,15 +539,10 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 		expect(onUnauthenticated).not.toHaveBeenCalled();
 	});
 
-	it("canActivateChild runs unauthenticated handler when refresh material cannot recover the route", async () => {
+	it("canActivateChild runs the handler when the client is unauthenticated", async () => {
 		const registry = new TokenSetAuthRegistry();
-		const client = createRouteFreshnessMockClient({
-			initialExpiresAt: Date.now() - 1_000,
-			refreshMaterial: "refresh-token",
-			refreshResult: "unauthenticated",
-		});
+		const client = createMockClient(false);
 		const onUnauthenticated = vi.fn(() => "/login/confluence");
-
 		registry.register({
 			key: "confluence",
 			clientFactory: () => client,
@@ -960,33 +560,27 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 					},
 				},
 			},
-			{ children: [secureRoute("confluence", { requirements: [] }, {})] },
+			{ children: [secureRoute("confluence", { requirements: [] })] },
 		);
 		const childGuard = root.canActivateChild?.[0] as CanActivateChildFn;
 		const leaf = buildRouteChainFromRoutes([root, root.children?.[0] as Route]);
 
 		const result = await invokeGuard(childGuard, leaf, [
+			...(root.providers ?? []),
 			{ provide: TokenSetAuthRegistry, useValue: registry },
-			{ provide: AUTH_PLANNER_HOST, useValue: createPlannerHost() },
 			{ provide: Router, useValue: createMockRouter() },
 		]);
 
 		expect(String(result)).toBe("/login/confluence");
-		expect(readReplayBoolean(client.isAuthenticated)).toBe(false);
 		expect(onUnauthenticated).toHaveBeenCalledTimes(1);
 	});
 
-	it("canActivateChild does not admit expired access tokens without refresh recovery", async () => {
+	it("blocks (returns false) when the handler denies navigation", async () => {
 		const registry = new TokenSetAuthRegistry();
-		const client = createRouteFreshnessMockClient({
-			initialExpiresAt: Date.now() - 1_000,
-			refreshResult: "unauthenticated",
-		});
 		const onUnauthenticated = vi.fn(() => false);
-
 		registry.register({
 			key: "confluence",
-			clientFactory: () => client,
+			clientFactory: () => createMockClient(false),
 			requirementKind: "frontend_oidc",
 		});
 
@@ -1001,19 +595,32 @@ describe("Angular full-route aggregation — secureRouteRoot / secureRoute", () 
 					},
 				},
 			},
-			{ children: [secureRoute("confluence", { requirements: [] }, {})] },
+			{ children: [secureRoute("confluence", { requirements: [] })] },
 		);
 		const childGuard = root.canActivateChild?.[0] as CanActivateChildFn;
 		const leaf = buildRouteChainFromRoutes([root, root.children?.[0] as Route]);
 
 		const result = await invokeGuard(childGuard, leaf, [
+			...(root.providers ?? []),
 			{ provide: TokenSetAuthRegistry, useValue: registry },
-			{ provide: AUTH_PLANNER_HOST, useValue: createPlannerHost() },
 			{ provide: Router, useValue: createMockRouter() },
 		]);
 
 		expect(result).toBe(false);
-		expect(readReplayBoolean(client.isAuthenticated)).toBe(false);
 		expect(onUnauthenticated).toHaveBeenCalledTimes(1);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 5. provideTokenSetRequirementPlannerHost API shape
+// ---------------------------------------------------------------------------
+
+describe("Angular full-route aggregation — provideTokenSetRequirementPlannerHost", () => {
+	it("returns EnvironmentProviders", () => {
+		const providers = provideTokenSetRequirementPlannerHost({
+			requirementHandlers: { frontend_oidc: () => "/login" },
+			defaultOnUnauthenticated: () => false,
+		});
+		expect(providers).toBeDefined();
 	});
 });

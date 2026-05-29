@@ -1,6 +1,10 @@
 import { type as defineType } from "arktype";
 // --- Event system trait types ---
-import { isInteropObservableTrait, type SubscriptionTrait } from "../compat";
+import {
+	type InteropObservableTrait,
+	isInteropObservableTrait,
+	type SubscriptionTrait,
+} from "../compat";
 
 /** Subscription handle with explicit unsubscribe. */
 export type EventSubscriptionTrait = SubscriptionTrait;
@@ -13,11 +17,8 @@ export interface EventObserverTrait<T> {
 }
 
 /** Read-only event stream — lazy push-based sequence. */
-export interface EventStreamTrait<T> {
+export interface EventStreamTrait<T> extends InteropObservableTrait<T> {
 	subscribe(observer: Partial<EventObserverTrait<T>>): EventSubscriptionTrait;
-	[Symbol.observable](): {
-		subscribe(observer: Partial<EventObserverTrait<T>>): EventSubscriptionTrait;
-	};
 }
 
 export const EventStreamTraitSchema = defineType({

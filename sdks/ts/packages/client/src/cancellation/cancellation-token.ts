@@ -58,6 +58,9 @@ class CancellationToken
 
 	throwIfCancellationRequested(): void {
 		if (this._isCancelled.getValue()) {
+			if (this._reason instanceof Error) {
+				throw this._reason;
+			}
 			throw new ClientError({
 				kind: ClientErrorKind.Cancelled,
 				message: "Operation was cancelled",

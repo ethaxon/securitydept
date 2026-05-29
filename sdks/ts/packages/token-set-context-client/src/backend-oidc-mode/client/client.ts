@@ -2,6 +2,7 @@ import {
 	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
+	UriReferenceString,
 	createLinkedCancellationToken,
 	defineInstrumentMethodDecorator,
 	type FoundationEnvironment,
@@ -167,6 +168,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		options: OidcRedirectLoginOptions,
 		operationSpan?: OperationSpanTrait,
 	): Promise<void> {
+		this._throwIfNotOperational();
 		operationSpan?.setAttributes({
 			hasPostAuthRedirectUri: options.postAuthRedirectUri !== undefined,
 		});
@@ -180,10 +182,13 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			});
 		}
 		await router.navigate({
-			url: this.authorizeUrl(options.postAuthRedirectUri),
+			url: UriReferenceString.parse(
+				this.authorizeUrl(options.postAuthRedirectUri),
+			),
 			intent: "auth_redirect",
 			mode: "external",
 		});
+		this._throwIfNotOperational();
 		operationSpan?.setAttributes({ navigationMode: "external" });
 	}
 
@@ -192,6 +197,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		options: OidcPopupLoginOptions,
 		operationSpan?: OperationSpanTrait,
 	): Promise<OidcPopupLoginResult> {
+		this._throwIfNotOperational();
 		operationSpan?.setAttributes({
 			popupCallbackUrl: options.popupCallbackUrl,
 		});
@@ -227,6 +233,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			time: this._environment.time,
 			timeoutMs: options.timeoutMs,
 		});
+		this._throwIfNotOperational();
 		operationSpan?.addEvent(
 			BackendOidcModeOperationEventName.PopupRelaySucceeded,
 			{
@@ -243,12 +250,9 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			});
 		}
 
-		return {
-			snapshot: await this._handleCallback(
-				compatFragment.parameters,
-				operationSpan,
-			),
-		};
+		const snapshot = await this.handleCallback(compatFragment.parameters);
+		this._throwIfNotOperational();
+		return { snapshot };
 	}
 
 	/**
@@ -387,17 +391,6 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	 * 200 OK and a JSON body containing the token delta. This avoids the
 	 * 302 → fragment pattern that fetch() cannot follow across domains.
 	 */
-	@instrumentBackendMethod(
-		BackendOidcModeTraceOperationName.Refresh,
-		function (this: BackendOidcModeClient) {
-			const snapshotSlot = this.authSnapshot.get();
-			const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
-			return {
-				flow: "refresh",
-				hasIdToken: current?.tokens.idToken !== undefined,
-			};
-		},
-	)
 	protected async _refreshAuthSnapshot(
 		_currentSnapshot: AuthSnapshot,
 		_freshnessTiming: TokenFreshnessTiming,
@@ -516,6 +509,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 
 		// Priority 1: inline metadata already present.
 		if (inlineMetadata) {
+			this._throwIfNotOperational();
 			return inlineMetadata;
 		}
 
@@ -527,6 +521,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				span,
 			);
 			if (redeemed) {
+				this._throwIfNotOperational();
 				return redeemed.metadata as AuthMetadataSnapshot;
 			}
 		}
@@ -542,6 +537,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 					idToken,
 					undefined,
 				);
+				this._throwIfNotOperational();
 				return {
 					...baseMetadata,
 					principal: {
@@ -689,6 +685,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		idToken?: string,
 		options?: { cancellationToken?: CancellationTokenTrait },
 	): Promise<BackendOidcModeUserInfoResponse> {
+		this._throwIfNotOperational();
 		const response = await this._environment.transport.execute({
 			url: this._config.baseUrl + this._config.userInfoPath,
 			method: "POST",
@@ -705,6 +702,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 					: [this._rootCancellation.token]),
 			),
 		});
+		this._throwIfNotOperational();
 
 		if (response.status === 200 && response.body) {
 			const parsed = parseBackendOidcModeUserInfoBody(
@@ -718,6 +716,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 					source: TRACE_TARGET,
 				});
 			}
+			this._throwIfNotOperational();
 			return parsed;
 		}
 

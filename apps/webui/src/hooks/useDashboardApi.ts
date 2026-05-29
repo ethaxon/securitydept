@@ -1,10 +1,9 @@
 import { createReplaySignal } from "@securitydept/client";
 import {
-	useReadableSignal,
 	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import { SESSION_CONTEXT_CONTROLLER } from "@securitydept/session-context-client-react";
+import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client-react";
 import { type AuthSnapshot as AuthStateSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import {
 	TOKEN_SET_AUTH_REGISTRY,
@@ -71,15 +70,20 @@ interface DashboardRuntime {
 const EMPTY_TOKEN_SET_AUTH_SNAPSHOT_SIGNAL =
 	createReplaySignal<AuthStateSnapshot | null>();
 
-function useDashboardSessionController() {
-	return useSecuritydeptContext().get(SESSION_CONTEXT_CONTROLLER);
+function useDashboardSessionClient() {
+	return useSecuritydeptContext().get(SESSION_CONTEXT_CLIENT);
 }
 
 function useDashboardSessionState() {
-	const controller = useDashboardSessionController();
-	const state = useReadableSignal(controller.state);
+	const client = useDashboardSessionClient();
+	const sessionSlot = useSyncExternalStore(
+		(listener) => client.sessionInfo.notify(listener),
+		() => client.sessionInfo.get(),
+		() => client.sessionInfo.get(),
+	);
+	const session = sessionSlot.kind === "value" ? sessionSlot.value : null;
 
-	return { controller, state };
+	return { client, session, loading: sessionSlot.kind === "empty" };
 }
 
 function useDashboardTokenSetClient(
@@ -88,7 +92,7 @@ function useDashboardTokenSetClient(
 	const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
 	const signal = registry.clientSignalFor(clientKey);
 	const slot = useSyncExternalStore(
-		(listener) => signal.subscribe(listener),
+		(listener) => signal.notify(listener),
 		() => signal.get(),
 		() => signal.get(),
 	);
@@ -346,9 +350,7 @@ export function useDashboardDeleteEntryMutation() {
 
 export function useDashboardCurrentUser() {
 	const { mode, tokenSetClient, tokenSetState } = useDashboardRuntime();
-	const { state: sessionState } = useDashboardSessionState();
-	const sessionLoading = sessionState.status === "loading";
-	const session = sessionState.session;
+	const { session, loading: sessionLoading } = useDashboardSessionState();
 
 	if (mode === AuthContextMode.Session) {
 		if (!session) {
@@ -395,7 +397,7 @@ export function useDashboardCurrentUser() {
 
 export function useDashboardLogout() {
 	const { mode, tokenSetClient, tokenSetClientKey } = useDashboardRuntime();
-	const { controller: sessionController } = useDashboardSessionState();
+	const { client: sessionClient } = useDashboardSessionState();
 	const queryClient = useQueryClient();
 
 	const redirectToLogin = () => {
@@ -405,7 +407,7 @@ export function useDashboardLogout() {
 
 	const sessionLogoutMutation = useMutation({
 		mutationKey: ["dashboard", "logout", "session"],
-		mutationFn: () => sessionController.logout(),
+		mutationFn: () => sessionClient.logout(),
 		onSuccess: () => {
 			redirectToLogin();
 		},

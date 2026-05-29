@@ -27,7 +27,7 @@ describe("createSignal", () => {
 	it("should notify subscribers on change", () => {
 		const signal = createSignal("a");
 		let notified = false;
-		signal.subscribe(() => {
+		signal.notify(() => {
 			notified = true;
 		});
 		signal.set("b");
@@ -37,7 +37,7 @@ describe("createSignal", () => {
 	it("should notify on every set, including same-value writes", () => {
 		const signal = createSignal(1);
 		let count = 0;
-		signal.subscribe(() => {
+		signal.notify(() => {
 			count++;
 		});
 		signal.set(1);
@@ -47,7 +47,7 @@ describe("createSignal", () => {
 	it("should support unsubscribe", () => {
 		const signal = createSignal(0);
 		let count = 0;
-		const unsub = signal.subscribe(() => {
+		const unsub = signal.notify(() => {
 			count++;
 		});
 		signal.set(1);
@@ -74,7 +74,7 @@ describe("createReplaySignal", () => {
 		expect(signal.hasValue()).toBe(false);
 
 		let notified = 0;
-		signal.subscribe(() => {
+		signal.notify(() => {
 			notified += 1;
 		});
 		signal.setValue("ready");
@@ -147,7 +147,7 @@ describe("createComputedReplaySignal", () => {
 				: { kind: "empty" };
 		}, [source]);
 		let notified = 0;
-		upper.subscribe(() => {
+		upper.notify(() => {
 			notified += 1;
 		});
 
@@ -209,7 +209,7 @@ describe("createComputed", () => {
 		// Lazy: must read first to initialize cached value.
 		expect(c.get()).toBe(2);
 		let notified = false;
-		c.subscribe(() => {
+		c.notify(() => {
 			notified = true;
 		});
 		a.set(2);

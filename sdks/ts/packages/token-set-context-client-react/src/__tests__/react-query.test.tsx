@@ -136,6 +136,7 @@ describe("token-set react-query helpers", () => {
 							refresh: vi.fn(async () => snapshot),
 							clearState: vi.fn(async () => {}),
 							loginWithRedirect: vi.fn(async () => undefined),
+							logout: async () => undefined,
 							loginWithPopup: vi.fn(async () => ({ snapshot })),
 						}),
 					},

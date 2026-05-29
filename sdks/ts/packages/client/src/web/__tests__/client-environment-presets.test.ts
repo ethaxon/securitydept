@@ -14,7 +14,7 @@ function createTransport() {
 	};
 }
 
-function createClientEnvironmentOptions() {
+function createEnvironmentOptions() {
 	return {
 		transport: createTransport(),
 		persistentStorage: createInMemoryRecordStore(),
@@ -22,7 +22,7 @@ function createClientEnvironmentOptions() {
 	};
 }
 
-describe("client environment factory shape", () => {
+describe("environment factory shape", () => {
 	it("creates a native web environment as a typed superset of foundation environments", () => {
 		const nativeWebPage = {
 			location: {
@@ -32,7 +32,7 @@ describe("client environment factory shape", () => {
 			history: { replaceState() {} },
 		};
 		const environment = createEnvironmentForNativeWeb({
-			...createClientEnvironmentOptions(),
+			...createEnvironmentOptions(),
 			routerForNativeWebCreateOptions: {
 				location: nativeWebPage.location,
 				history: nativeWebPage.history,
@@ -52,7 +52,7 @@ describe("client environment factory shape", () => {
 
 	it("requires native web page capabilities instead of creating page-free native web environments", () => {
 		expect(() =>
-			createEnvironmentForNativeWeb(createClientEnvironmentOptions()),
+			createEnvironmentForNativeWeb(createEnvironmentOptions()),
 		).toThrow(/createRouterForNativeWeb could not validate router/);
 	});
 });

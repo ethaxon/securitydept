@@ -1,4 +1,4 @@
-// Route requirement orchestrator — focused evidence test
+// Route requirement planner session — focused evidence test
 //
 // Proves the headless matched-route-chain integration baseline:
 //   1. Matched route chain — parent requirement inheritance
@@ -8,145 +8,139 @@
 //   5. Route chain transition — shared prefix preservation
 //   6. Route chain transition — diverging decision discard
 //   7. Route deactivation / reset
-//   8. onPendingRequirement callback fires on activation and after resolution
+//   8. onPendingRequirement stream fires on activation and after resolution
 //
 // Canonical import: @securitydept/client
 // (consolidated from @securitydept/token-set-context-client/orchestration)
 
 import {
-	createRouteRequirementOrchestrator,
+	createAuthRequirement,
 	ResolutionStatus,
+	RouteRequirementPlannerSession,
 } from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
 
-describe("route requirement orchestrator (matched-route-chain)", () => {
+describe("route requirement planner session (matched-route-chain)", () => {
 	it("inherits parent requirements in matched route chain", () => {
-		const orchestrator = createRouteRequirementOrchestrator();
+		const session = RouteRequirementPlannerSession.fromRouteRoot();
 
-		orchestrator.activateMatchedRoutes([
+		session.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: "session" }],
+				requirements: [createAuthRequirement({ id: "session" })],
 			},
 			{
 				routeId: "/app/dashboard",
-				requirements: [{ id: "api-token", kind: "backend_oidc" }],
+				requirements: [createAuthRequirement({ id: "api-token" })],
 			},
 		]);
 
-		const snap = orchestrator.snapshot();
-		// Leaf route is the active route.
-		expect(snap.activeRouteId).toBe("/app/dashboard");
-		// Both parent + child requirements are merged.
-		expect(snap.plan?.total).toBe(2);
-		expect(snap.pendingRequirement?.id).toBe("session");
-		// matchedRoutes reflect the chain.
-		expect(snap.matchedRoutes).toHaveLength(2);
+		expect(session.activeRouteId).toBe("/app/dashboard");
+		expect(session.total).toBe(2);
+		expect(session.pendingRequirement?.id).toBe("session");
+		expect(session.matchedRoutes).toHaveLength(2);
 	});
 
 	it("child appends requirements on top of inherited parent", () => {
-		const orchestrator = createRouteRequirementOrchestrator();
+		const session = RouteRequirementPlannerSession.fromRouteRoot();
 
-		orchestrator.activateMatchedRoutes([
+		session.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: "session" }],
+				requirements: [createAuthRequirement({ id: "session" })],
 			},
 			{
 				routeId: "/app/admin",
-				requirements: [{ id: "admin-oidc", kind: "frontend_oidc" }],
+				requirements: [createAuthRequirement({ id: "admin-oidc" })],
 			},
 		]);
 
-		// Resolve parent's requirement.
-		orchestrator.resolve({
+		session.resolve({
 			requirementId: "session",
 			status: ResolutionStatus.Fulfilled,
 		});
 
-		// Child's requirement is now pending.
-		const snap = orchestrator.snapshot();
-		expect(snap.pendingRequirement?.id).toBe("admin-oidc");
-		expect(snap.settled).toBe(false);
+		expect(session.pendingRequirement?.id).toBe("admin-oidc");
+		expect(session.settled).toBe(false);
 	});
 
-	it("resolves all requirements and settles with onSettled callback", () => {
+	it("resolves all requirements and settles with onSettled stream", () => {
 		const onSettled = vi.fn();
-		const orchestrator = createRouteRequirementOrchestrator({ onSettled });
+		const session = RouteRequirementPlannerSession.fromRouteRoot();
+		session.onSettled.subscribe({ next: onSettled });
 
-		orchestrator.activateMatchedRoutes([
+		session.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: "session" }],
+				requirements: [createAuthRequirement({ id: "session" })],
 			},
 			{
 				routeId: "/app/dashboard",
-				requirements: [{ id: "api-token", kind: "backend_oidc" }],
+				requirements: [createAuthRequirement({ id: "api-token" })],
 			},
 		]);
 
-		orchestrator.resolve({
+		session.resolve({
 			requirementId: "session",
 			status: ResolutionStatus.Fulfilled,
 		});
 		expect(onSettled).not.toHaveBeenCalled();
 
-		orchestrator.resolve({
+		session.resolve({
 			requirementId: "api-token",
 			status: ResolutionStatus.Fulfilled,
 		});
 
-		const snap = orchestrator.snapshot();
-		expect(snap.settled).toBe(true);
-		expect(snap.pendingRequirement).toBeNull();
-		expect(onSettled).toHaveBeenCalledWith("/app/dashboard", expect.any(Array));
+		expect(session.settled).toBe(true);
+		expect(session.pendingRequirement).toBeNull();
+		expect(onSettled).toHaveBeenCalledWith({
+			routeId: "/app/dashboard",
+			resolutions: expect.any(Array),
+		});
 	});
 
 	it("tracks chooser decisions", () => {
-		const orchestrator = createRouteRequirementOrchestrator();
+		const session = RouteRequirementPlannerSession.fromRouteRoot();
 
-		orchestrator.activateMatchedRoutes([
+		session.activateMatchedRoutes([
 			{
 				routeId: "/settings",
-				requirements: [{ id: "oidc", kind: "frontend_oidc" }],
+				requirements: [createAuthRequirement({ id: "oidc" })],
 			},
 		]);
 
-		orchestrator.applyChooserDecision({
+		session.applyChooserDecision({
 			requirementId: "oidc",
 			providerId: "google",
 			metadata: { hint: "work-email" },
 		});
 
-		expect(orchestrator.decisions).toHaveLength(1);
-		expect(orchestrator.decisions[0].providerId).toBe("google");
+		expect(session.decisions).toHaveLength(1);
+		expect(session.decisions[0].providerId).toBe("google");
 	});
 
 	it("fires onPendingRequirement on activation and after each resolution", () => {
 		const onPending = vi.fn();
-		const orchestrator = createRouteRequirementOrchestrator({
-			onPendingRequirement: onPending,
-		});
+		const session = RouteRequirementPlannerSession.fromRouteRoot();
+		session.onPendingRequirement.subscribe({ next: onPending });
 
-		orchestrator.activateMatchedRoutes([
+		session.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "first", kind: "session" }],
+				requirements: [createAuthRequirement({ id: "first" })],
 			},
 			{
 				routeId: "/app/page",
-				requirements: [{ id: "second", kind: "backend_oidc" }],
+				requirements: [createAuthRequirement({ id: "second" })],
 			},
 		]);
 
-		// First pending fires on activation.
 		expect(onPending).toHaveBeenCalledTimes(1);
 		expect(onPending).toHaveBeenLastCalledWith(
 			expect.objectContaining({ id: "first" }),
 		);
 
-		// Resolve first → second pending fires.
-		orchestrator.resolve({
+		session.resolve({
 			requirementId: "first",
 			status: ResolutionStatus.Fulfilled,
 		});
@@ -157,117 +151,104 @@ describe("route requirement orchestrator (matched-route-chain)", () => {
 	});
 
 	it("preserves shared-prefix resolutions on route chain transition", () => {
-		const orchestrator = createRouteRequirementOrchestrator();
+		const session = RouteRequirementPlannerSession.fromRouteRoot();
 
-		// First: /app → /app/dashboard
-		orchestrator.activateMatchedRoutes([
+		session.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: "session" }],
+				requirements: [createAuthRequirement({ id: "session" })],
 			},
 			{
 				routeId: "/app/dashboard",
-				requirements: [{ id: "dash-token", kind: "backend_oidc" }],
+				requirements: [createAuthRequirement({ id: "dash-token" })],
 			},
 		]);
 
-		// Resolve the shared parent requirement.
-		orchestrator.resolve({
+		session.resolve({
 			requirementId: "session",
 			status: ResolutionStatus.Fulfilled,
 		});
 
-		// Record a chooser decision for the shared session req.
-		orchestrator.applyChooserDecision({
+		session.applyChooserDecision({
 			requirementId: "session",
 			providerId: "default",
 		});
 
-		// Transition: /app → /app/settings (parent stays, child changes).
-		orchestrator.activateMatchedRoutes([
+		session.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: "session" }],
+				requirements: [createAuthRequirement({ id: "session" })],
 			},
 			{
 				routeId: "/app/settings",
-				requirements: [{ id: "settings-oidc", kind: "frontend_oidc" }],
+				requirements: [createAuthRequirement({ id: "settings-oidc" })],
 			},
 		]);
 
-		const snap = orchestrator.snapshot();
-		// New leaf route.
-		expect(snap.activeRouteId).toBe("/app/settings");
-		// Shared "session" should be already resolved (preserved).
-		expect(snap.plan?.resolved).toBe(1);
-		// New child's requirement is pending.
-		expect(snap.pendingRequirement?.id).toBe("settings-oidc");
-		// Shared-prefix chooser decision should be preserved.
-		expect(orchestrator.decisions).toHaveLength(1);
-		expect(orchestrator.decisions[0].requirementId).toBe("session");
+		expect(session.activeRouteId).toBe("/app/settings");
+		expect(session.resolved).toBe(1);
+		expect(session.pendingRequirement?.id).toBe("settings-oidc");
+		expect(session.decisions).toHaveLength(1);
+		expect(session.decisions[0].requirementId).toBe("session");
 	});
 
 	it("discards diverging decisions on route chain transition", () => {
-		const orchestrator = createRouteRequirementOrchestrator();
+		const session = RouteRequirementPlannerSession.fromRouteRoot();
 
-		orchestrator.activateMatchedRoutes([
+		session.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: "session" }],
+				requirements: [createAuthRequirement({ id: "session" })],
 			},
 			{
 				routeId: "/app/dashboard",
-				requirements: [{ id: "dash-token", kind: "backend_oidc" }],
+				requirements: [createAuthRequirement({ id: "dash-token" })],
 			},
 		]);
 
-		orchestrator.resolve({
+		session.resolve({
 			requirementId: "session",
 			status: ResolutionStatus.Fulfilled,
 		});
-		orchestrator.resolve({
+		session.resolve({
 			requirementId: "dash-token",
 			status: ResolutionStatus.Fulfilled,
 		});
 
-		// Decision on the child route's requirement.
-		orchestrator.applyChooserDecision({
+		session.applyChooserDecision({
 			requirementId: "dash-token",
 			providerId: "azure",
 		});
 
-		// Transition to a different child route.
-		orchestrator.activateMatchedRoutes([
+		session.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "session", kind: "session" }],
+				requirements: [createAuthRequirement({ id: "session" })],
 			},
 			{
 				routeId: "/app/profile",
-				requirements: [{ id: "profile-req", kind: "custom" }],
+				requirements: [createAuthRequirement({ id: "profile-req" })],
 			},
 		]);
 
-		// The dash-token decision should be discarded (diverging).
-		expect(orchestrator.decisions).toHaveLength(0);
+		expect(session.decisions).toHaveLength(0);
 	});
 
 	it("resets state on deactivateRoute", () => {
-		const orchestrator = createRouteRequirementOrchestrator();
+		const session = RouteRequirementPlannerSession.fromRouteRoot();
 
-		orchestrator.activateMatchedRoutes([
+		session.activateMatchedRoutes([
 			{
 				routeId: "/app",
-				requirements: [{ id: "s", kind: "session" }],
+				requirements: [createAuthRequirement({ id: "s" })],
 			},
 		]);
 
-		orchestrator.deactivateRoute();
+		session.deactivateRoute();
 
-		const snap = orchestrator.snapshot();
-		expect(snap.activeRouteId).toBeNull();
-		expect(snap.plan).toBeNull();
-		expect(snap.settled).toBe(false);
-		expect(snap.matchedRoutes).toHaveLength(0);
+		expect(session.activeRouteId).toBeNull();
+		expect(session.planActive).toBe(false);
+		expect(session.settled).toBe(false);
+		expect(session.matchedRoutes).toHaveLength(0);
 	});
 });

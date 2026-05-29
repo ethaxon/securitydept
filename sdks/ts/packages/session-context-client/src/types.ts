@@ -1,4 +1,4 @@
-import { type AuthenticatedPrincipal } from "@securitydept/client";
+import { type IdentityPrincipal } from "@securitydept/client";
 
 // --- Session Context Client types ---
 
@@ -10,7 +10,7 @@ export type SessionContextSource =
 	(typeof SessionContextSource)[keyof typeof SessionContextSource];
 
 /** Session principal — shared authenticated principal semantics via @securitydept/client. */
-export type SessionPrincipal = AuthenticatedPrincipal;
+export type SessionPrincipal = IdentityPrincipal;
 
 /** Session info returned from the server. */
 export interface SessionInfo {
@@ -19,8 +19,14 @@ export interface SessionInfo {
 	extra?: Record<string, unknown>;
 }
 
+export interface SessionContextClientTracingOptions {
+	target?: string;
+	prefix?: string;
+}
+
 /** Configuration for the Session Context Client. */
 export interface SessionContextClientConfig {
+	id?: string;
 	/** Base URL of the SecurityDept server. */
 	baseUrl: string;
 	/** Login path (default: "/login"). */
@@ -29,8 +35,37 @@ export interface SessionContextClientConfig {
 	logoutPath?: string;
 	/** User info endpoint path (default: "/auth/session/user-info"). */
 	userInfoPath?: string;
-	/** Name of the query parameter for post-auth redirect (default: "post_auth_redirect_uri"). */
-	postAuthRedirectParam?: string;
-	/** Optional key used with `environment.sessionStorage` for pending login redirect state. */
-	loginRedirectStateKey?: string;
+	autoStart?: boolean;
+	tracing?: SessionContextClientTracingOptions;
+}
+
+export interface ResolvedSessionContextClientConfig {
+	id: string;
+	baseUrl: string;
+	loginPath: string;
+	logoutPath: string;
+	userInfoPath: string;
+	tracing: Required<SessionContextClientTracingOptions>;
+}
+
+export const SessionContextEventType = {
+	SessionRefreshStarted: "session.refresh.started",
+	SessionRefreshSucceeded: "session.refresh.succeeded",
+	SessionRefreshFailed: "session.refresh.failed",
+	SessionLogoutStarted: "session.logout.started",
+	SessionLogoutSucceeded: "session.logout.succeeded",
+	SessionLogoutFailed: "session.logout.failed",
+} as const;
+
+export type SessionContextEventType =
+	(typeof SessionContextEventType)[keyof typeof SessionContextEventType];
+
+export interface SessionContextEvent {
+	type: SessionContextEventType;
+	at: number;
+	client: {
+		id: string;
+	};
+	session?: SessionInfo | null;
+	errorSummary?: Record<string, unknown>;
 }

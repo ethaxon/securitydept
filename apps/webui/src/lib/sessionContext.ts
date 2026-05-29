@@ -43,9 +43,7 @@ export const sessionContextEnvironment = createEnvironmentForNativeWeb({
 
 export const sessionContextClient = new SessionContextClient(
 	sessionContextConfig,
-	{
-		sessionStorage: sessionContextSessionStore,
-	},
+	sessionContextEnvironment,
 );
 
 function failMissingSessionStorage(): never {

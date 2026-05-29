@@ -32,16 +32,6 @@
 			"monorepo-tsc": "./src/index.ts",
 			"types": "./dist/index.d.mts",
 			"import": "./dist/index.mjs"
-		},
-		"./web": {
-			"monorepo-tsc": "./src/web/index.ts",
-			"types": "./dist/web/index.d.mts",
-			"import": "./dist/web/index.mjs"
-		},
-		"./server": {
-			"monorepo-tsc": "./src/server/index.ts",
-			"types": "./dist/server/index.d.mts",
-			"import": "./dist/server/index.mjs"
 		}
 	},
 	"files": [
@@ -52,6 +42,9 @@
 		"typecheck": "tsc -b --force"
 	},
 	"dependencies": {
-		"@securitydept/client": "workspace:*"
+		"@securitydept/client": "workspace:*",
+		"arktype": "^2.2.0",
+		"rxjs": "^7.0.0",
+		"uuid": "^14.0.1"
 	}
 }

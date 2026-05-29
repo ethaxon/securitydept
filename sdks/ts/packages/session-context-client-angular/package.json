@@ -46,6 +46,7 @@
 	},
 	"peerDependencies": {
 		"@securitydept/client": "workspace:*",
+		"@securitydept/client-angular": "workspace:*",
 		"@securitydept/session-context-client": "workspace:*",
 		"@angular/core": ">=19.0.0",
 		"rxjs": ">=7.0.0"
@@ -53,6 +54,7 @@
 	"devDependencies": {
 		"@angular/core": "catalog:",
 		"@securitydept/client": "workspace:*",
+		"@securitydept/client-angular": "workspace:*",
 		"@securitydept/session-context-client": "workspace:*"
 	}
 }

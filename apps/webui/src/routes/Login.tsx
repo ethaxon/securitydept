@@ -1,12 +1,13 @@
 import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client-react";
 import {
-	CLIENT_ENVIRONMENT,
+	ENVIRONMENT,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import { SESSION_CONTEXT_CONTROLLER } from "@securitydept/session-context-client-react";
+import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client-react";
 import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
+import { useSearch } from "@tanstack/react-router";
 import { FlaskConical, KeyRound, Lock, Shield } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { AppIcon } from "@/components/common/AppIcon";
 import { Header } from "@/components/layout/Header";
 import { AuthContextMode, setAuthContextMode } from "@/lib/authContext";
@@ -24,17 +25,17 @@ import { startTokenSetFrontendModeLogin } from "@/lib/tokenSetFrontendModeClient
  */
 export function LoginPage() {
 	const injector = useSecuritydeptContext();
-	const [sessionHref, setSessionHref] = useState("/auth/session/login");
 	const [frontendModeBusy, setFrontendModeBusy] = useState(false);
-	const sessionController = injector.get(SESSION_CONTEXT_CONTROLLER);
-	const tokenSetFrontendModeEnvironment = injector.get(CLIENT_ENVIRONMENT);
+	const search = useSearch({ from: "/login" });
+	const sessionClient = injector.get(SESSION_CONTEXT_CLIENT);
+	const tokenSetFrontendModeEnvironment = injector.get(ENVIRONMENT);
 	const basicAuthClient = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
 	const tokenSetBackendRegistry = injector.get(TOKEN_SET_AUTH_REGISTRY);
 	const tokenSetBackendSignal = tokenSetBackendRegistry.clientSignalFor(
 		TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	);
 	const tokenSetBackendModeClientSlot = useSyncExternalStore(
-		(listener) => tokenSetBackendSignal.subscribe(listener),
+		(listener) => tokenSetBackendSignal.notify(listener),
 		() => tokenSetBackendSignal.get(),
 		() => tokenSetBackendSignal.get(),
 	);
@@ -53,19 +54,6 @@ export function LoginPage() {
 	const basicAuthHref =
 		basicAuthClient.loginUrlForZonePrefix("/basic") ?? "/basic/login";
 
-	useEffect(() => {
-		let cancelled = false;
-		void sessionController.resolveLoginUrl().then((href) => {
-			if (!cancelled) {
-				setSessionHref(href);
-			}
-		});
-
-		return () => {
-			cancelled = true;
-		};
-	}, [sessionController]);
-
 	return (
 		<div className="flex min-h-screen flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
 			<Header />
@@ -81,10 +69,15 @@ export function LoginPage() {
 
 					<div className="space-y-3">
 						{/* Session context — OIDC session-based auth */}
-						<a
+						<button
+							type="button"
 							id="login-session"
-							href={sessionHref}
-							onClick={() => setAuthContextMode(AuthContextMode.Session)}
+							onClick={() => {
+								setAuthContextMode(AuthContextMode.Session);
+								void sessionClient.loginWithRedirect({
+									postAuthRedirectUri: search.post_auth_redirect_uri,
+								});
+							}}
 							className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 px-4 py-3 text-left text-sm font-medium transition-colors hover:border-blue-400 hover:bg-blue-50 dark:border-zinc-700 dark:hover:border-blue-600 dark:hover:bg-blue-950/40"
 						>
 							<Shield className="h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
@@ -94,7 +87,7 @@ export function LoginPage() {
 									Cookie-based session — dashboard management
 								</span>
 							</div>
-						</a>
+						</button>
 
 						{/* Token-set backend mode — redirects to / after callback */}
 						<a
