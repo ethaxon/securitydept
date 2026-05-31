@@ -14,8 +14,8 @@
 
 // --- Capability axes ---
 
-export type { BackendOidcModeCapabilities } from "./contracts/contracts";
 export {
+	type BackendOidcModeCapabilities,
 	BackendOidcModePreset,
 	MetadataDelivery,
 	PostAuthRedirectPolicy,
@@ -24,17 +24,17 @@ export {
 
 // --- Contract types ---
 
-export type {
-	BackendOidcModeAuthorizeQuery,
-	BackendOidcModeCallbackReturns,
-	BackendOidcModeIntegrationRequirement,
-	BackendOidcModeMetadataRedemptionRequest,
-	BackendOidcModeMetadataRedemptionResponse,
-	BackendOidcModeRefreshPayload,
-	BackendOidcModeRefreshResult,
-	BackendOidcModeRefreshReturns,
-	BackendOidcModeUserInfoRequest,
-	BackendOidcModeUserInfoResponse,
+export {
+	type BackendOidcModeAuthorizeQuery,
+	type BackendOidcModeCallbackReturns,
+	type BackendOidcModeIntegrationRequirement,
+	type BackendOidcModeMetadataRedemptionRequest,
+	type BackendOidcModeMetadataRedemptionResponse,
+	type BackendOidcModeRefreshPayload,
+	type BackendOidcModeRefreshResult,
+	type BackendOidcModeRefreshReturns,
+	type BackendOidcModeUserInfoRequest,
+	type BackendOidcModeUserInfoResponse,
 } from "./contracts/contracts";
 
 // --- Response body parsers ---
@@ -58,10 +58,10 @@ export {
 	TokenSetPopupRelayErrorCode,
 } from "../orchestration/client/popup/relay";
 export { BackendOidcModeClient } from "./client/client";
-export type {
-	BackendOidcModeClientDefaultOptions,
-	BackendOidcModeFetchUserInfoOptions,
-	BackendOidcModeMetadataRedemptionOptions,
+export {
+	type BackendOidcModeClientDefaultOptions,
+	type BackendOidcModeFetchUserInfoOptions,
+	type BackendOidcModeMetadataRedemptionOptions,
 } from "./client/types";
 
 // --- Client trace vocabulary ---
@@ -75,8 +75,8 @@ export {
 
 // --- Client types ---
 
-export type {
-	BackendOidcModeClientConfig,
-	ResolvedBackendOidcModeClientConfig,
+export {
+	type BackendOidcModeClientConfig,
+	BackendOidcModeContextSource,
+	type ResolvedBackendOidcModeClientConfig,
 } from "./client/types";
-export { BackendOidcModeContextSource } from "./client/types";

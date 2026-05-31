@@ -61,7 +61,7 @@ SDK 仍处于 `0.x`，但 public-surface changes 必须保持有纪律。
 - `@securitydept/client-angular` 移除：`AuthRouteAdapter`、`createRouterForAngularRouter`（已改名）、`RouteGuardResult`；旧的 planner-host DI（`AUTH_PLANNER_HOST`、`provideAuthPlannerHost`、`injectPlannerHost`、`AUTH_REQUIREMENTS_CLIENT_SET`、`provideRouteScopedRequirements`、`resolveEffectiveClientSet`）；以及旧的 route-metadata helper（`withRouteRequirements`、`extractFullRouteRequirements`、`ROUTE_REQUIREMENTS_DATA_KEY`、`ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY`、`resolveEffectiveRequirements`）。
 - `@securitydept/client-angular` 新增：`createRouterForAngular(options)`（→ `RouterTrait`）；`projectAngularRouteSegments(leafRoute)`；DI planner-host 装配 `REQUIREMENT_PLANNER_HOST` + `provideRequirementPlannerHost(behaviourOrFactory)` + `injectRequirementPlannerHost()`（Angular DI 层级通过 `skipSelf` 映射为 host parent 链）；`createAngularCanActivate(options?)` / `createAngularCanActivateChild(options?)`；以及路由构造器 `secureRoute()`（仅元信息）/ `secureRouteRoot()`（元信息 + `canActivate` + `canActivateChild`，可选 `provideRequirementPlannerHost`）。路由元信息存储归 `@securitydept/client` 所有（`SECURITYDEPT_ROUTE_METADATA_KEY`、`readSecuritydeptRouteMetadata`、`writeSecuritydeptRouteMetadata`）。
 - `@securitydept/token-set-context-client-angular` 移除：`createTokenSetRouteAggregationGuard` 与 `guard-types` 模块（`UnauthenticatedEntry` 迁入 `planner-host`）。
-- `@securitydept/token-set-context-client-angular` 新增：`provideTokenSetRequirementPlannerHost(options?)`（把 token-set `RequirementBehaviour` 绑定到 `REQUIREMENT_PLANNER_HOST`——`checkAuthenticated` 经 `TokenSetAuthRegistry`，`onUnauthenticated` 经 `requirementPolicies` / `requirementHandlers` / `defaultOnUnauthenticated` 并在 `runInInjectionContext` 内执行）；`createTokenSetCanActivate()` / `createTokenSetCanActivateChild()`；token-set `secureRoute()` / `secureRouteRoot()`（把 `requirementKind` → `attributes.requirementKind` 规整后委托基础构造器），保留别名 `secureTokenSetRoute` / `secureTokenSetRouteRoot`。`createTokenSetOidcLoginRedirectHandler()` 保留；attempted URL 现从 Angular 路由导航状态（`Router.getCurrentNavigation()`）读取，而非页面全局。
+- `@securitydept/token-set-context-client-angular` route auth 现在直接基于核心 registry 模型：`provideTokenSetClientRegistry({ clients })` 注册核心 `ClientRegistryEntry<BaseOidcModeClient>`，`provideTokenSetRequirementPlannerHost(options?)` 把 registry-backed `RequirementBehaviour` 绑定到 `REQUIREMENT_PLANNER_HOST`，token-set `secureRoute()` / `secureRouteRoot()` 使用 query-based `ClientRegistryAuthRequirement` metadata。
 
 迁移：
 
@@ -339,7 +339,7 @@ Packages：
 - `client-react` environment 与 `planner-host` helper 现在只导出 injection token 与 provider factory：例如 `ENVIRONMENT` + `provideEnvironment({ environment })`，`AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`。
 - `basic-auth` / `session` / `token-set` React adapter 不再拥有 domain-specific Provider / Context hook；它们导出 token、plain factory、provider factory，以及显式 callback/component bridge。token-set 多客户端组合现在改为显式 registry/controller wiring，而不是 SDK 预设 runtime bundle。
 - Angular `createTokenSetOidcLoginRedirectHandler()` 现在是 route-login helper。它的 public key 仍然只叫 `environment`，但这个值现在表示稳定的 environment source；Angular DI 应通过 `@securitydept/client-angular` 的 `provideEnvironment({ environment })` 提供该 source。helper 面向 `BaseOidcModeClient.loginWithRedirect()`，并会在 guard flow 中 await 最终 capability 后再调用它。
-- Angular `CallbackResumeService` 与 React `useTokenSetCallbackResume({ getCurrentUrl, describeError })` 现在桥接 `@securitydept/token-set-context-client/registry` 的 shared `TokenSetCallbackResumeController`。Angular `TokenSetCallbackComponent` 仍是该 service 之上的 page-only convenience，并继续使用 injectable current URL 与 host policy tokens。
+- React `useTokenSetCallbackResume({ getCurrentUrl, describeError })` 桥接 `@securitydept/token-set-context-client/registry` 的 shared callback controller。Angular callback resume service/component 导出已移除；Angular callback 适配应基于核心 token-set registry controller 重新构建。
 
 迁移：
 
@@ -347,8 +347,8 @@ Packages：
 - 如果 app 依赖旧的 provider/service construction 副作用来探测 session，应显式创建 `SessionContextController`，并在 host-owned lifecycle 中调用 `controller.refresh()`。
 - 对 React 代码，如需 environment capability，应通过 `provideEnvironment({ environment })` 注册 host-owned object，再在 leaf 代码中用 `useSecuritydeptContext().get(ENVIRONMENT)` 读取。
 - 对 Angular frontend-oidc route redirect，应在 composition root 通过 `provideEnvironment({ environment })` 提供 host-owned environment object。
-- 对 Angular callback route，在 SSR-like test 或 custom shell 中 override `TOKEN_SET_CALLBACK_CURRENT_URL`，当 host 需要非默认 fallback navigation 或集中错误记录时，再 override `TOKEN_SET_CALLBACK_COMPONENT_OPTIONS`。
-- 对 custom callback orchestration，调用 `CallbackResumeService.resume(url)` 或带显式 `controller` / `injector` / `getCurrentUrl` / `describeError` 的 React hook，而不是在普通 helper 里重新引入 page-global fallback 逻辑或 mode-specific copy。`CallbackResumeService.handleCallback(url)` 仅作为 compatibility wrapper 保留。
+- 对 Angular callback route，在新的 Angular adapter 落地前直接使用核心 token-set registry controller。
+- 对 custom callback orchestration，调用带显式 `controller` / `injector` / `getCurrentUrl` / `describeError` 的 React hook，而不是在普通 helper 里重新引入 page-global fallback 逻辑或 mode-specific copy。
 
 ### Route Security And Matched Route Chains
 
@@ -402,7 +402,7 @@ Packages：
 
 - Canonical registry lifecycle verb 现在是 `register(entry)`、`unregister(key)`、`resetMaterialization(key)` 与 `dispose()`。
 - Registry 现在把 configured 与 ready observability 显式拆开：`has()` / `registeredKeys()` / `registeredEntriesSnapshot()` / `registeredMetaSnapshot()` 描述已注册 entry，`readyKeys()` 描述已经完成 materialization 与 `start()` lifecycle 的 client。
-- React token-set composition 现在改为 registry-first：在 composition root 注册 `provideTokenSetAuthRegistry(...)`，只有确实需要 callback resume handling 时才额外注册 `provideTokenSetCallbackResumeController(...)`，运行期 add/remove/reset flow 通过注入后的 registry 实例完成，不再依赖 `TokenSetAuthProvider` 或隐藏 lookup hook。Angular `TokenSetAuthRegistry` 现在暴露与 shared core 对齐的 lifecycle verb、registered snapshots、ready keys 与 `clientSignalFor()` 获取能力。
+- React token-set composition 现在改为 registry-first：在 composition root 注册 `provideTokenSetAuthRegistry(...)`，只有确实需要 callback resume handling 时才额外注册 `provideTokenSetCallbackResumeController(...)`，运行期 add/remove/reset flow 通过注入后的 registry 实例完成，不再依赖 `TokenSetAuthProvider` 或隐藏 lookup hook。Angular token-set composition 使用 `TokenSetClientRegistryService`，它是 shared core `ClientRegistry` 之上的薄 DI adapter。
 
 迁移：
 

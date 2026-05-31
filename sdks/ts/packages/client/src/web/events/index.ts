@@ -1,12 +1,13 @@
-export type {
-	FromStorageEventOptions,
-	StorageEventTarget,
+export {
+	type FromStorageEventOptions,
+	fromStorageEvent,
+	type StorageEventTarget,
 } from "./from-storage";
-export { fromStorageEvent } from "./from-storage";
-export type {
-	CreatePageResumeSourceOptions,
-	PageResumeDocumentTarget,
-	PageResumeEvent,
-	PageResumeWindowTarget,
+export {
+	type CreatePageResumeSourceOptions,
+	createPageResumeSource,
+	type PageResumeDocumentTarget,
+	type PageResumeEvent,
+	PageResumeTriggerKind,
+	type PageResumeWindowTarget,
 } from "./page-resume";
-export { createPageResumeSource, PageResumeTriggerKind } from "./page-resume";

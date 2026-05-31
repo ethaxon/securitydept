@@ -61,7 +61,7 @@ Change:
 - `@securitydept/client-angular` removals: `AuthRouteAdapter`, `createRouterForAngularRouter` (renamed), `RouteGuardResult`; the old planner-host DI (`AUTH_PLANNER_HOST`, `provideAuthPlannerHost`, `injectPlannerHost`, `AUTH_REQUIREMENTS_CLIENT_SET`, `provideRouteScopedRequirements`, `resolveEffectiveClientSet`); and the old route-metadata helpers (`withRouteRequirements`, `extractFullRouteRequirements`, `ROUTE_REQUIREMENTS_DATA_KEY`, `ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY`, `resolveEffectiveRequirements`).
 - `@securitydept/client-angular` additions: `createRouterForAngular(options)` (→ `RouterTrait`); `projectAngularRouteSegments(leafRoute)`; DI planner-host wiring `REQUIREMENT_PLANNER_HOST` + `provideRequirementPlannerHost(behaviourOrFactory)` + `injectRequirementPlannerHost()` (the Angular DI hierarchy maps to the host parent chain via `skipSelf`); `createAngularCanActivate(options?)` / `createAngularCanActivateChild(options?)`; and route builders `secureRoute()` (metadata only) / `secureRouteRoot()` (metadata + `canActivate` + `canActivateChild`, optional `provideRequirementPlannerHost`). Route metadata storage lives in `@securitydept/client` (`SECURITYDEPT_ROUTE_METADATA_KEY`, `readSecuritydeptRouteMetadata`, `writeSecuritydeptRouteMetadata`).
 - `@securitydept/token-set-context-client-angular` removals: `createTokenSetRouteAggregationGuard` and the `guard-types` module (`UnauthenticatedEntry` moved into `planner-host`).
-- `@securitydept/token-set-context-client-angular` additions: `provideTokenSetRequirementPlannerHost(options?)` (binds a token-set `RequirementBehaviour` to `REQUIREMENT_PLANNER_HOST` — `checkAuthenticated` via `TokenSetAuthRegistry`, `onUnauthenticated` via `requirementPolicies` / `requirementHandlers` / `defaultOnUnauthenticated` executed inside `runInInjectionContext`); `createTokenSetCanActivate()` / `createTokenSetCanActivateChild()`; token-set `secureRoute()` / `secureRouteRoot()` (normalize `requirementKind` → `attributes.requirementKind` and delegate to the base builders) with aliases `secureTokenSetRoute` / `secureTokenSetRouteRoot`. `createTokenSetOidcLoginRedirectHandler()` is retained; the attempted URL now comes from Angular router navigation state (`Router.getCurrentNavigation()`), not page globals.
+- `@securitydept/token-set-context-client-angular` route auth now layers on the core registry model: `provideTokenSetClientRegistry({ clients })` registers core `ClientRegistryEntry<BaseOidcModeClient>` values, `provideTokenSetRequirementPlannerHost(options?)` binds registry-backed `RequirementBehaviour` to `REQUIREMENT_PLANNER_HOST`, and token-set `secureRoute()` / `secureRouteRoot()` expect query-based `ClientRegistryAuthRequirement` metadata.
 
 Migration:
 
@@ -339,7 +339,7 @@ Change:
 - `client-react` environment and planner-host helpers now export injection tokens and provider factories only, for example `ENVIRONMENT` + `provideEnvironment({ environment })` and `AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`.
 - The basic-auth / session / token-set React adapters no longer own domain-specific Provider / Context hooks. They export tokens, plain factories, provider factories, and explicit callback/component bridges. Token-set multi-client composition is now explicit registry/controller wiring instead of an SDK-owned runtime bundle.
 - Angular `createTokenSetOidcLoginRedirectHandler()` is now the route-login helper. It still uses `environment` as the only public key, but the value is now a stable environment source that Angular DI provides through `provideEnvironment({ environment })` from `@securitydept/client-angular`. The helper targets `BaseOidcModeClient.loginWithRedirect()` and awaits that source inside the guard flow before calling it.
-- Angular `CallbackResumeService` and React `useTokenSetCallbackResume({ getCurrentUrl, describeError })` now bridge the shared `TokenSetCallbackResumeController` from `@securitydept/token-set-context-client/registry`. Angular `TokenSetCallbackComponent` remains page-only convenience over that service, with injectable current URL and host policy tokens.
+- React `useTokenSetCallbackResume({ getCurrentUrl, describeError })` bridges the shared callback controller from `@securitydept/token-set-context-client/registry`. Angular callback resume service/component exports have been removed; Angular callback adaptation should be rebuilt over the core token-set registry controller.
 
 Migration:
 
@@ -347,8 +347,8 @@ Migration:
 - Opt session adapters into initial probing by explicitly creating `SessionContextController` and calling `controller.refresh()` from the host-owned lifecycle when needed.
 - For React code that needs environment capability, register the host-owned object with `provideEnvironment({ environment })` and read it later through `useSecuritydeptContext().get(ENVIRONMENT)`.
 - For Angular frontend-oidc route redirects, provide the host-owned environment object from the composition root with `provideEnvironment({ environment })`.
-- For Angular callback routes, override `TOKEN_SET_CALLBACK_CURRENT_URL` when `window.location.href` is not the right source of truth, and override `TOKEN_SET_CALLBACK_COMPONENT_OPTIONS` when the host needs non-default fallback navigation or centralized error logging.
-- For custom callback orchestration, call `CallbackResumeService.resume(url)` or the React hook with explicit `controller` / `injector` / `getCurrentUrl` / `describeError` instead of reintroducing page-global fallback logic or mode-specific copy into ordinary helpers. `CallbackResumeService.handleCallback(url)` remains only a compatibility wrapper.
+- For Angular callback routes, use the core token-set registry controller directly until the new Angular adapter exists.
+- For custom callback orchestration, call the React hook with explicit `controller` / `injector` / `getCurrentUrl` / `describeError` instead of reintroducing page-global fallback logic or mode-specific copy into ordinary helpers.
 
 ### Route Security And Matched Route Chains
 
@@ -402,7 +402,7 @@ Change:
 
 - Canonical registry lifecycle verbs are now `register(entry)`, `unregister(key)`, `resetMaterialization(key)`, and `dispose()`.
 - The registry now exposes separate configured-vs-ready observability: `has()` / `registeredKeys()` / `registeredEntriesSnapshot()` / `registeredMetaSnapshot()` describe registered entries, while `readyKeys()` describes clients whose materialization and `start()` lifecycle have completed.
-- React token-set composition is now registry-first: register `provideTokenSetAuthRegistry(...)` at the composition root, add `provideTokenSetCallbackResumeController(...)` only when callback resume handling is needed, and perform add/remove/reset flows through the injected registry instance rather than `TokenSetAuthProvider` or hidden lookup hooks. Angular `TokenSetAuthRegistry` now exposes the same lifecycle verbs, registered snapshots, ready keys, and `clientSignalFor()` acquisition as the shared core.
+- React token-set composition is registry-first: register `provideTokenSetAuthRegistry(...)` at the composition root, add `provideTokenSetCallbackResumeController(...)` only when callback resume handling is needed, and perform add/remove/reset flows through the injected registry instance rather than `TokenSetAuthProvider` or hidden lookup hooks. Angular token-set composition uses `TokenSetClientRegistryService`, a thin DI adapter over the shared core `ClientRegistry`.
 
 Migration:
 

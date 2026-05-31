@@ -143,9 +143,9 @@ Conceptual split:
 | Environment | host dependencies and capabilities | business lifecycle state machine | `FoundationEnvironment`, `NativeWebEnvironment`, `WebExtCoreEnvironment` |
 | Trait | minimal behavior dependency view | unrelated host dependencies | `RouterTrait`, `StorageTrait`, `PopupTrait` |
 | Client | protocol/domain operations | framework lifecycle or DI | `SessionContextClient`, `BackendOidcModeClient` |
-| Registry | multi-client registration/readiness/discrimination | UI policy or framework state | `TokenSetAuthRegistry` |
+| Registry | multi-client registration/readiness/discrimination | UI policy or framework state | `ClientRegistry`, `TokenSetClientRegistryService` |
 | Controller | framework-neutral flow/state orchestration | framework DI facade or product UI | `TokenSetCallbackResumeController`, `SessionContextController` |
-| Service | framework/host facade over clients/controllers | duplicated core state semantics | `SessionContextService`, `CallbackResumeService` |
+| Service | framework/host facade over clients/controllers | duplicated core state semantics | `SessionContextService` |
 
 Do not model these objects as a DI container, service locator, provider tree, global singleton, or business config DSL. Auth-context configuration such as base URLs, source keys, account binding, and product routes remains in family config or host code, not in the foundation environment.
 
@@ -176,7 +176,7 @@ Stable root surface for session login URL, post-auth redirect, user-info, logout
 
 ### `token-set-context-client`
 
-Provisional token-set family for browser-owned OIDC/token material flows. It owns `backend-oidc-mode`, `frontend-oidc-mode`, `orchestration`, `access-token-substrate`, and `registry` entries. The registry entry owns shared callback resume orchestration through `TokenSetCallbackResumeController`; React hooks and Angular services/components bridge that controller instead of becoming callback state machines.
+Provisional token-set family for browser-owned OIDC/token material flows. It owns `backend-oidc-mode`, `frontend-oidc-mode`, `orchestration`, `access-token-substrate`, and `registry` entries. The registry entry owns shared callback resume orchestration through the core callback controllers; framework adapters should bridge those controllers instead of becoming callback state machines.
 
 ## SSR / Server-Side Support
 
@@ -404,8 +404,8 @@ Layering rules:
 - `provideEnvironment({ environment })`: canonical Angular DI bridge for environment capability injection. Context-client Angular providers read this token instead of accepting an `environment` option themselves.
 - `provideSessionContext({ config })`: adapter leaf over `SessionContextClient`. Use `config.autoStart` when service construction should immediately start the client.
 - `SessionContextService`: signal / observable facade over the controller. Low-level auth-context behavior remains on `SessionContextService.client`.
-- `provideTokenSetAuth({ clients, idleWarmup })`: Angular host registration; each client entry still owns auth-context config and environment composition.
-- `CallbackResumeService` wraps the shared `TokenSetCallbackResumeController` and exposes component-free `resume(url)` state through Angular signals / observables. `TokenSetCallbackComponent` is only a page-only convenience component on top of that service; custom hosts, SSR-like tests, or shell adapters can override URL/policy tokens or call `CallbackResumeService.resume(url)` directly. `handleCallback(url)` remains a compatibility wrapper.
+- `provideTokenSetClientRegistry({ clients })`: Angular host registration over core `ClientRegistryEntry<BaseOidcModeClient>` values; each client entry still owns auth-context config and environment composition.
+- Angular token-set callback service/component exports have been removed. New Angular callback adaptation should be built over the core token-set registry controller rather than reintroducing a separate callback state machine.
 - `provideTokenSetBearerInterceptor(options?)` / `createTokenSetBearerInterceptor(registry, options?)`: bearer-header injection using the SDK options-object API form. Before adding `Authorization`, the interceptor waits for the selected client's `authorizationHeaderValue` replay signal. It does not trigger refresh or auth checks; client `start()`, refresh timers, page-resume auth-check triggers, or explicit `authCheck()` own maintenance. `BearerInterceptorOptions.strictUrlMatch` controls unmatched URL behavior:
   - default `strictUrlMatch: false`: keeps the single-client convenience fallback by waiting for the only registered client's `authorizationHeaderValue`; use only when the host calls exactly one registered backend.
   - `strictUrlMatch: true`: unmatched URLs receive no `Authorization` header.
@@ -483,7 +483,7 @@ The registry owns `register(entry)`, `unregister(key)`, `resetMaterialization(ke
 
 The contract now treats `registered` and `ready` as distinct observability surfaces. Use `has()`, `registeredKeys()`, `registeredEntriesSnapshot()`, and `registeredMetaSnapshot()` to inspect configured clients, and `readyKeys()` to inspect clients whose materialization and `start()` lifecycle have completed. Removal and rematerialization now use the canonical verbs `unregister(key)` and `resetMaterialization(key)` directly.
 
-The registry is now also the reactive topology/readiness authority. Observe it through `state: ReadableSignalTrait<TokenSetAuthRegistryState<TClient>>`, `getState()`, or `state.notify(listener)`. Registered snapshot helpers remain available, but they are synchronous convenience over `state.get()` rather than a parallel state source. `clientSignalFor(key?)` is the canonical reactive client acquisition API and triggers lazy materialization/start when called. Promises such as `whenReady()` and `preload()` are action-completion handles, not the canonical observation path.
+The core client registry is the reactive topology/readiness authority. Observe it through `entries: ReadableSignalTrait<readonly ClientRecordView<TClient>[]>` and use `clientRecordFor*` / `clientSignalFor*` for keyed or query-based acquisition. `clientSignalFor(key, { initialize })` and `clientSignalForQuery(query, { initialize })` are the canonical reactive client acquisition APIs and trigger lazy materialization by default. `initialize(key)` is an action-completion handle that resolves to `ClientReadyRecordView<TClient>`, not the canonical observation path.
 
 Per-client token-set auth material is owned by the mode client itself. Every registry-managed OIDC mode client exposes separate auth channels: replay signals for `authDetermined` (first determination), `authSnapshot` (last determined snapshot or `null`), `isAuthenticated` (guard truth), and `authorizationHeaderValue` (bearer projection); plain signals for `lastAuthError` (latest determination/operation error register) and `authOperations.*Pending` (local operation locks). `authSnapshot` is the authoritative auth-material replay source; `authDetermined`, `isAuthenticated`, and `authorizationHeaderValue` are derived replay projections rather than manually synchronized state. Directly created clients start only after `start()` unless `autoStart: true` is explicitly passed. Registry-managed clients never use entry-level `autoStart` or `autoRestore`; registry readiness means the client has been materialized and `start()` has completed. The default `createTokenSetOidcAuthRegistry()` materializes the client itself, so React Query readiness and Angular registry lookups return clients rather than per-client service wrappers. `authEvents` remains auth-domain telemetry only; registry topology and readiness changes are observed through registry `state`.
 
@@ -506,7 +506,7 @@ Groups/entries domain models, CRUD request assembly, and reference-app TanStack 
 
 ### Downstream Reference Case: Outposts
 
-`~/workspace/outposts` validates the real Angular adopter path. It uses `provideTokenSetAuth(...)` plus `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`, proving strict URL-prefix bounded bearer injection against a downstream `confluence` backend. The path also calibrates stale-token handling: the SDK must refresh or clear before the first protected Confluence request instead of sending an expired bearer that the backend correctly rejects with `ExpiredSignature`. Its app-local auth service remains adopter glue, not an SDK API template.
+`~/workspace/outposts` validates the real Angular adopter path. It uses `provideTokenSetClientRegistry(...)` plus `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`, proving strict URL-prefix bounded bearer injection against a downstream `confluence` backend. The path also calibrates stale-token handling: the SDK must refresh or clear before the first protected Confluence request instead of sending an expired bearer that the backend correctly rejects with `ExpiredSignature`. Its app-local auth service remains adopter glue, not an SDK API template.
 
 Downstream verification should use local pnpm `link:` dependencies for SecurityDept SDK packages, not package-manager overrides. Plain TS packages can link to package roots; Angular packages should link to their built `dist/` outputs after rebuilding, then clear the downstream Angular/Vite cache before browser verification.
 

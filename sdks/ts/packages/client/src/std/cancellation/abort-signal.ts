@@ -1,5 +1,9 @@
 import { type CancellationTokenTrait } from "../../cancellation";
-import { type DisposableTrait, SYMBOL_DISPOSE } from "../../compat";
+import {
+	type DisposableTrait,
+	SYMBOL_DISPOSE,
+	SYMBOL_OBSERVABLE,
+} from "../../compat";
 import { ClientError } from "../../errors/client-error";
 import { ClientErrorKind, ClientErrorSource } from "../../errors/types";
 import { abortSignalToEventStream } from "../events";
@@ -44,6 +48,12 @@ export function abortSignalToCancellationToken(
 					subscription.unsubscribe();
 				},
 			};
+		},
+		subscribe(observer) {
+			return abortSignalToEventStream(signal).subscribe(observer);
+		},
+		[SYMBOL_OBSERVABLE]() {
+			return abortSignalToEventStream(signal);
 		},
 		throwIfCancellationRequested() {
 			if (signal.aborted) {

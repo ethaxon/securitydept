@@ -31,14 +31,3 @@ export const BaseTransportTraitSchema = defineType({
 
 export const TRANSPORT_TRAIT_TOKEN =
 	new SecuritydeptInjectionToken<BaseTransportTrait>("TRANSPORT_TRAIT_TOKEN");
-
-/**
- * External transport protocol — auth/runtime bootstrap and protocol traffic.
- */
-export interface ExternalTransportTrait extends BaseTransportTrait {}
-
-/**
- * Managed transport protocol — higher-level resource traffic that may be
- * decorated by auth-aware wrappers.
- */
-export interface ManagedTransportTrait extends BaseTransportTrait {}

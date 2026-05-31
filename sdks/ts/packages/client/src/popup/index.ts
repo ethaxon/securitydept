@@ -7,17 +7,17 @@ import {
 } from "./handle";
 
 export { PopupErrorCode } from "./errors";
-
-export type {
-	PopupClientWindowHandleTrait,
-	PopupMessageChannelTrait,
-	PopupServerWindowHandleTrait,
-	PopupWindowHandleTrait,
+export {
+	PopupClientWindowHandle,
+	type PopupClientWindowHandleTrait,
+	type PopupMessageChannelTrait,
+	PopupServerWindowHandle,
+	type PopupServerWindowHandleTrait,
+	type PopupWindowHandleTrait,
 } from "./handle";
-export { PopupClientWindowHandle, PopupServerWindowHandle } from "./handle";
-export type {
-	CreatePopupClientSessionOptions,
-	CreatePopupServerSessionOptions,
+export {
+	type CreatePopupClientSessionOptions,
+	type CreatePopupServerSessionOptions,
 } from "./session";
 
 export const PopupAttachFailureReason = {

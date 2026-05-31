@@ -9,11 +9,11 @@ Because `outposts` is an external workspace, this document records calibration r
 The current calibration line demonstrates that:
 
 - `outposts-web -> confluence` now consumes the SecurityDept Angular/token-set packages instead of `angular-auth-oidc-client`.
-- The callback route is served by the SDK `TokenSetCallbackComponent`.
+- Callback route adaptation is moving to a new Angular bridge over the core token-set registry controller; the old Angular drop-in callback component is no longer part of the SDK surface.
 - `secureRouteRoot()` carries provider-neutral requirement metadata and next-action policy.
-- `provideTokenSetAuth(...)` registers the `Confluence` client with explicit `providerFamily`, `callbackPath`, and `urlPatterns`.
+- `provideTokenSetClientRegistry(...)` registers the `Confluence` client with explicit `providerFamily`, `callbackPath`, and `urlPatterns`.
 - Route-login integration uses `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })`; the client should already carry a stable page router through its environment rather than receiving a per-call page factory.
-- Registry-managed browser clients now get default page-resume reconciliation through `provideTokenSetAuth(...)`; the adopter does not need a separate wrapper just to recover resume behavior.
+- Registry-managed browser clients now use the core `ClientRegistry` lifecycle through `provideTokenSetClientRegistry(...)`; the adopter does not need a separate wrapper just to recover resume behavior.
 - `provideTokenSetBearerInterceptor({ strictUrlMatch: true })` constrains bearer injection to registered URLs and avoids single-client fallback for unmatched URLs.
 - Short access-token lifetimes are expected to recover through SDK freshness barriers before redirect or bearer injection when refresh material exists.
 - Focused downstream tests lock callback preservation, provider-neutral route metadata, bearer injection boundaries, and redirect preservation.

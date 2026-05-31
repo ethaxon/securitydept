@@ -1,22 +1,20 @@
 export { ClientError } from "./client-error";
-export type {
-	ClientErrorAttributes,
-	ClientErrorRecovery,
-	ErrorAttributes,
-	NativeErrorAttributes,
-	UnknownErrorAttributes,
+export {
+	type ClientErrorAttributes,
+	type ClientErrorRecovery,
+	describeError,
+	type ErrorAttributes,
+	type NativeErrorAttributes,
+	type UnknownErrorAttributes,
 } from "./error-attributes";
-export { describeError } from "./error-attributes";
 export { readErrorPresentationDescriptor } from "./presentation-descriptor";
-export type {
-	ErrorPresentation,
-	ErrorPresentationActionDescriptor,
-	ErrorPresentationDescriptor,
-	ReadErrorPresentationDescriptorOptions,
-} from "./types";
 export {
 	ClientErrorKind,
 	ClientErrorSource,
+	type ErrorPresentation,
+	type ErrorPresentationActionDescriptor,
+	type ErrorPresentationDescriptor,
 	ErrorPresentationTone,
+	type ReadErrorPresentationDescriptorOptions,
 	UserRecovery,
 } from "./types";

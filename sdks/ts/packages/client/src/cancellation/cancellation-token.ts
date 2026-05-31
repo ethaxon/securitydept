@@ -2,7 +2,6 @@ import { filter, map, type Observable, take } from "rxjs";
 import { BehaviorSubject } from "rxjs/internal/BehaviorSubject";
 import {
 	type DisposableTrait,
-	type InteropObservableTrait,
 	isInteropObservableTrait,
 	SYMBOL_DISPOSE,
 	SYMBOL_OBSERVABLE,
@@ -14,9 +13,7 @@ import {
 	type CancellationTokenTrait,
 } from "./types";
 
-class CancellationToken
-	implements CancellationTokenTrait, InteropObservableTrait<unknown>
-{
+class CancellationToken implements CancellationTokenTrait {
 	private _isCancelled = new BehaviorSubject(false);
 	private _reason: unknown;
 
@@ -51,6 +48,15 @@ class CancellationToken
 				subscription.unsubscribe();
 			},
 			[SYMBOL_DISPOSE]: () => {
+				subscription.unsubscribe();
+			},
+		};
+	}
+
+	subscribe(observer: { next?(value: unknown): void }) {
+		const subscription = this._asObservable().subscribe(observer);
+		return {
+			unsubscribe() {
 				subscription.unsubscribe();
 			},
 		};
@@ -136,6 +142,7 @@ export function isCancellationTokenTrait(
 			"boolean" &&
 		typeof (obj as CancellationTokenTrait).onCancellationRequested ===
 			"function" &&
+		typeof (obj as CancellationTokenTrait).subscribe === "function" &&
 		typeof (obj as CancellationTokenTrait).readCancellationError ===
 			"function" &&
 		typeof (obj as CancellationTokenTrait).throwIfCancellationRequested ===

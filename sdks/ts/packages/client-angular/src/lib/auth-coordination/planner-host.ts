@@ -27,9 +27,11 @@ import {
 	makeEnvironmentProviders,
 } from "@angular/core";
 import {
+	type AuthRequirement,
 	type RequirementBehaviour,
 	RequirementPlannerHost,
 } from "@securitydept/client";
+import { ENVIRONMENT } from "../environment";
 
 /**
  * DI token for the nearest {@link RequirementPlannerHost}.
@@ -37,16 +39,21 @@ import {
  * Provide at app / route scope via {@link provideRequirementPlannerHost}.
  * Guards read the nearest instance via {@link injectRequirementPlannerHost}.
  */
-export const REQUIREMENT_PLANNER_HOST =
-	new InjectionToken<RequirementPlannerHost>("REQUIREMENT_PLANNER_HOST");
+export const REQUIREMENT_PLANNER_HOST = new InjectionToken<
+	RequirementPlannerHost<unknown>
+>("REQUIREMENT_PLANNER_HOST");
 
 /**
  * A partial behaviour, or a factory that produces one inside an Angular
  * injection context (so it may call `inject()` to resolve DI services).
  */
-export type RequirementPlannerHostBehaviour =
-	| Partial<RequirementBehaviour>
-	| (() => Partial<RequirementBehaviour>);
+export type RequirementPlannerHostBehaviour<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+	TBehaviour extends Partial<
+		RequirementBehaviour<TAuthRequirement, TPlanContext>
+	> = Partial<RequirementBehaviour<TAuthRequirement, TPlanContext>>,
+> = TBehaviour | (() => TBehaviour);
 
 /**
  * Provide a {@link RequirementPlannerHost} at the current injector scope.
@@ -65,13 +72,23 @@ export type RequirementPlannerHostBehaviour =
  * }))],
  * ```
  */
-export function provideRequirementPlannerHost(
-	behaviour: RequirementPlannerHostBehaviour,
+export function provideRequirementPlannerHost<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+	TBehaviour extends Partial<
+		RequirementBehaviour<TAuthRequirement, TPlanContext>
+	> = Partial<RequirementBehaviour<TAuthRequirement, TPlanContext>>,
+>(
+	behaviour: RequirementPlannerHostBehaviour<
+		TAuthRequirement,
+		TPlanContext,
+		TBehaviour
+	>,
 ): EnvironmentProviders {
 	return makeEnvironmentProviders([
 		{
 			provide: REQUIREMENT_PLANNER_HOST,
-			useFactory: (): RequirementPlannerHost => {
+			useFactory: (): RequirementPlannerHost<unknown> => {
 				// skipSelf avoids reading our own (not-yet-created) token value.
 				const parent =
 					inject(REQUIREMENT_PLANNER_HOST, {
@@ -80,7 +97,13 @@ export function provideRequirementPlannerHost(
 					}) ?? undefined;
 				const resolved =
 					typeof behaviour === "function" ? behaviour() : behaviour;
-				return RequirementPlannerHost.fromBehaviour(resolved, { parent });
+				return RequirementPlannerHost.fromBehaviour(resolved, {
+					parent: parent as RequirementPlannerHost<TBehaviour> | undefined,
+					environment:
+						inject(ENVIRONMENT, {
+							optional: true,
+						}) ?? undefined,
+				}) as RequirementPlannerHost<unknown>;
 			},
 		},
 	]);
@@ -97,15 +120,20 @@ export interface InjectRequirementPlannerHostOptions {
  * provided in the current injector hierarchy.
  *
  * Returning `null` (rather than throwing) lets guards fall back to a
- * self-managed root host with safe defaults.
+ * self-managed host; required behaviour still fails fast during planner build
+ * if no host provides it.
  */
-export function injectRequirementPlannerHost(
+export function injectRequirementPlannerHost<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+	TBehaviour extends Partial<
+		RequirementBehaviour<TAuthRequirement, TPlanContext>
+	> = Partial<RequirementBehaviour<TAuthRequirement, TPlanContext>>,
+>(
 	options?: InjectRequirementPlannerHostOptions,
-): RequirementPlannerHost | null {
-	return (
-		inject(REQUIREMENT_PLANNER_HOST, {
-			optional: true,
-			skipSelf: options?.skipSelf ?? false,
-		}) ?? null
-	);
+): RequirementPlannerHost<TBehaviour> | null {
+	return inject(REQUIREMENT_PLANNER_HOST, {
+		optional: true,
+		skipSelf: options?.skipSelf ?? false,
+	}) as RequirementPlannerHost<TBehaviour> | null;
 }

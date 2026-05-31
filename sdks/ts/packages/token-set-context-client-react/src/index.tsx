@@ -28,10 +28,10 @@ export {
 	TOKEN_SET_CALLBACK_RESUME_CONTROLLER,
 } from "./callback-resume-service";
 // Multi-client registry-based adapter surface.
-export type {
-	TokenSetBackendOidcClient,
-	TokenSetClientEntry,
-	TokenSetReactClient,
+export {
+	type TokenSetBackendOidcClient,
+	type TokenSetClientEntry,
+	type TokenSetReactClient,
 } from "./contracts";
 export {
 	provideTokenSetAuthRegistry,
@@ -48,5 +48,8 @@ export {
 	type UseTokenSetCallbackResumeOptions,
 	useTokenSetCallbackResume,
 } from "./token-set-callback";
-export type { AuthSnapshot, BackendOidcModeClientConfig };
-export { BackendOidcModeClient };
+export {
+	type AuthSnapshot,
+	BackendOidcModeClient,
+	type BackendOidcModeClientConfig,
+};

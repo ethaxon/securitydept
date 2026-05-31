@@ -12,7 +12,7 @@ import {
 	type Provider,
 } from "@angular/core";
 import { from, type Observable, switchMap } from "rxjs";
-import { TokenSetAuthRegistry } from "./token-set-auth.registry";
+import { TokenSetClientRegistryService } from "./client-registry.service";
 
 // ============================================================================
 // 7. Class-based HTTP interceptor + provider factory
@@ -24,7 +24,7 @@ import { TokenSetAuthRegistry } from "./token-set-auth.registry";
  * `strictUrlMatch` is an explicit option instead of living on the implicit
  * single-client convenience path into an explicit option, so multi-backend
  * adopters can guarantee that bearer tokens never leak outside the URL
- * patterns they registered with `provideTokenSetAuth({ clients: [...] })`.
+ * patterns they registered with `provideTokenSetClientRegistry({ clients: [...] })`.
  */
 export interface BearerInterceptorOptions {
 	/**
@@ -77,7 +77,7 @@ export const TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS =
  */
 @Injectable()
 export class TokenSetBearerInterceptor implements HttpInterceptor {
-	private readonly registry = inject(TokenSetAuthRegistry);
+	private readonly registry = inject(TokenSetClientRegistryService);
 	private readonly options: BearerInterceptorOptions =
 		inject(TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS, { optional: true }) ?? {};
 
@@ -118,7 +118,7 @@ export class TokenSetBearerInterceptor implements HttpInterceptor {
  * ```ts
  * @NgModule({
  *   providers: [
- *     provideTokenSetAuth({ clients: [...] }),
+ *     provideTokenSetClientRegistry({ clients: [...] }),
  *     provideTokenSetBearerInterceptor(),     // <— replaces hand-written AuthInterceptor
  *     provideHttpClient(withInterceptorsFromDi()),
  *   ],
@@ -141,7 +141,7 @@ export class TokenSetBearerInterceptor implements HttpInterceptor {
  * ```ts
  * @NgModule({
  *   providers: [
- *     provideTokenSetAuth({ clients: [...] }),
+ *     provideTokenSetClientRegistry({ clients: [...] }),
  *     // Adopters with multiple backends or any third-party HTTP traffic
  *     // MUST opt into strictUrlMatch to prevent token leakage.
  *     provideTokenSetBearerInterceptor({ strictUrlMatch: true }),
@@ -238,7 +238,7 @@ export function provideTokenSetBearerInterceptor(
  * ```
  */
 export function createTokenSetBearerInterceptor(
-	registry: TokenSetAuthRegistry,
+	registry: TokenSetClientRegistryService,
 	options: BearerInterceptorOptions = {},
 ) {
 	return (
@@ -266,8 +266,8 @@ export function createTokenSetBearerInterceptor(
 }
 
 async function resolveAuthorizationForRequest(
-	registry: TokenSetAuthRegistry,
-	record: ReturnType<TokenSetAuthRegistry["clientRecordForQuery"]>,
+	registry: TokenSetClientRegistryService,
+	record: ReturnType<TokenSetClientRegistryService["clientRecordForQuery"]>,
 	options: BearerInterceptorOptions,
 ): Promise<string | null> {
 	if (!record && options.strictUrlMatch) {
@@ -277,7 +277,7 @@ async function resolveAuthorizationForRequest(
 		return null;
 	}
 
-	const client = await registry.initialize(record.get().meta.clientKey);
-	const header = await client.authorizationHeaderValue.whenValue();
+	const clientRecord = await registry.initialize(record.get().meta.clientKey);
+	const header = await clientRecord.client.authorizationHeaderValue.whenValue();
 	return header ?? null;
 }

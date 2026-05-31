@@ -11,8 +11,11 @@ import {
 	type SessionInfo,
 } from "@securitydept/session-context-client";
 
-export type { SessionContextClientConfig, SessionInfo };
-export { SessionContextClient };
+export {
+	SessionContextClient,
+	type SessionContextClientConfig,
+	type SessionInfo,
+};
 
 export const SESSION_CONTEXT_CLIENT =
 	new SecuritydeptInjectionToken<SessionContextClient>(

@@ -1,6 +1,7 @@
 // --- Cancellation and disposal ---
 
-import { type DisposableTrait } from "../compat";
+import { type DisposableTrait, type InteropObservableTrait } from "../compat";
+import { type EventStreamTrait } from "../events/types";
 
 /** Cancelable operation handle. */
 export interface CancelableHandle {
@@ -8,7 +9,9 @@ export interface CancelableHandle {
 }
 
 /** Cooperative cancellation token — consumers check / subscribe to cancellation. */
-export interface CancellationTokenTrait {
+export interface CancellationTokenTrait
+	extends EventStreamTrait<unknown>,
+		InteropObservableTrait<unknown> {
 	readonly isCancellationRequested: boolean;
 	readonly reason?: unknown;
 	onCancellationRequested(listener: (reason: unknown) => void): DisposableTrait;

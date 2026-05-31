@@ -143,9 +143,9 @@ Canonical foundation model：
 | Environment | host dependencies 与 capabilities | 业务 lifecycle state machine | `FoundationEnvironment`、`NativeWebEnvironment`、`WebExtCoreEnvironment` |
 | Trait | 最小行为依赖视图 | 无关 host dependencies | `RouterTrait`、`StorageTrait`、`PopupTrait` |
 | Client | 协议/领域操作 | framework lifecycle 或 DI | `SessionContextClient`、`BackendOidcModeClient` |
-| Registry | 多 client registration/readiness/discrimination | UI policy 或 framework state | `TokenSetAuthRegistry` |
+| Registry | 多 client registration/readiness/discrimination | UI policy 或 framework state | `ClientRegistry`、`TokenSetClientRegistryService` |
 | Controller | framework-neutral flow/state orchestration | framework DI facade 或产品 UI | `TokenSetCallbackResumeController`、`SessionContextController` |
-| Service | framework/host facade over clients/controllers | 重复定义 core state semantics | `SessionContextService`、`CallbackResumeService` |
+| Service | framework/host facade over clients/controllers | 重复定义 core state semantics | `SessionContextService` |
 
 不要把这些对象设计成 DI container、service locator、provider tree、global singleton 或 business config DSL。`baseUrl`、`sourceKey`、account binding、product route 等 auth-context config 仍属于 family config 或 host code，不进入 foundation environment。
 
@@ -176,7 +176,7 @@ Session login URL、post-auth redirect、user-info、logout 与 browser-shell co
 
 ### `token-set-context-client`
 
-Browser-owned OIDC/token material flows 的 provisional token-set family。它拥有 `backend-oidc-mode`、`frontend-oidc-mode`、`orchestration`、`access-token-substrate` 与 `registry` entries。`registry` entry 通过 `TokenSetCallbackResumeController` 拥有 shared callback resume orchestration；React hook 与 Angular service/component 只桥接该 controller，不成为 callback state machine。
+Browser-owned OIDC/token material flows 的 provisional token-set family。它拥有 `backend-oidc-mode`、`frontend-oidc-mode`、`orchestration`、`access-token-substrate` 与 `registry` entries。`registry` entry 通过核心 callback controllers 拥有 shared callback resume orchestration；framework adapter 应桥接这些 controller，而不是成为 callback state machine。
 
 ## SSR / 服务端宿主支持
 
@@ -404,8 +404,8 @@ Layering rules：
 - `provideEnvironment({ environment })`：canonical Angular DI bridge，用于注入 environment capability。Context-client Angular providers 会读取这个 token，而不是自己接收 `environment` option。
 - `provideSessionContext({ config })`：`SessionContextClient` 之上的 adapter leaf。需要 service construction 后立即启动 client 时使用 `config.autoStart`。
 - `SessionContextService`：controller 之上的 signal / observable facade。低层 auth-context behavior 仍在 `SessionContextService.client`。
-- `provideTokenSetAuth({ clients, idleWarmup })`：Angular host registration；每个 client entry 仍拥有 auth-context config 与 environment composition。
-- `CallbackResumeService` 包装 shared `TokenSetCallbackResumeController`，并通过 Angular signals / observables 暴露 component-free 的 `resume(url)` state。`TokenSetCallbackComponent` 只是该 service 之上的 page-only convenience component；custom host、SSR-like test 或 shell adapter 可以 override URL/policy tokens，或直接调用 `CallbackResumeService.resume(url)`。`handleCallback(url)` 仍作为兼容 wrapper 保留。
+- `provideTokenSetClientRegistry({ clients })`：基于核心 `ClientRegistryEntry<BaseOidcModeClient>` 的 Angular host registration；每个 client entry 仍拥有 auth-context config 与 environment composition。
+- Angular token-set callback service/component 导出已移除。新的 Angular callback 适配应基于核心 token-set registry controller 构建，不应重新引入独立 callback state machine。
 - `provideTokenSetBearerInterceptor(options?)` / `createTokenSetBearerInterceptor(registry, options?)`：使用 SDK options-object API 形式的 bearer-header injection。注入 `Authorization` 前，interceptor 等待选中 client 的 `authorizationHeaderValue` replay signal。它不触发 refresh 或 auth check；client `start()`、refresh timer、page-resume auth-check trigger 或显式 `authCheck()` 负责维护。`BearerInterceptorOptions.strictUrlMatch` 控制 unmatched URL behavior：
   - 默认 `strictUrlMatch: false`：保留 single-client convenience fallback，等待唯一 registered client 的 `authorizationHeaderValue`；仅当 host 只调用一个 registered backend 时使用。
   - `strictUrlMatch: true`：unmatched URL 不会收到 `Authorization` header。
@@ -483,7 +483,7 @@ Registry 拥有 `register(entry)`、`unregister(key)`、`resetMaterialization(ke
 
 这套 contract 现在把 `registered` 与 `ready` 视为两个不同的 observability surface。查看已配置 client 时使用 `has()`、`registeredKeys()`、`registeredEntriesSnapshot()` 与 `registeredMetaSnapshot()`；查看已经完成 materialization 与 `start()` lifecycle 的 client 时使用 `readyKeys()`。移除注册与重建 materialization 应直接使用 canonical verb：`unregister(key)` 与 `resetMaterialization(key)`。
 
-Registry 现在同时也是 reactive topology/readiness authority。应通过 `state: ReadableSignalTrait<TokenSetAuthRegistryState<TClient>>`、`getState()` 或 `state.notify(listener)` 观察它。Registered snapshot helper 仍然保留，但只是 `state.get()` 的同步 convenience，而不是第二套并行状态源。`clientSignalFor(key?)` 是 canonical reactive client acquisition API，调用方法本身会触发 lazy materialization/start。`whenReady()`、`preload()` 这类 Promise 现在表达的是动作完成，而不是状态观察主路径。
+核心 client registry 是 reactive topology/readiness authority。应通过 `entries: ReadableSignalTrait<readonly ClientRecordView<TClient>[]>` 观察它，并使用 `clientRecordFor*` / `clientSignalFor*` 进行 keyed 或 query-based acquisition。`clientSignalFor(key, { initialize })` 与 `clientSignalForQuery(query, { initialize })` 是 canonical reactive client acquisition API，默认会触发 lazy materialization。`initialize(key)` 是解析为 `ClientReadyRecordView<TClient>` 的动作完成句柄，而不是状态观察主路径。
 
 每个 client 的 token-set auth material 由 mode client 自己拥有。所有 registry-managed OIDC mode client 都暴露独立 auth channel：`authDetermined` 表示首次判定完成，`authSnapshot` 表示 last determined snapshot 或 `null`，`isAuthenticated` 面向 guard truth，`authorizationHeaderValue` 面向 bearer projection，这四者是 replay signal；`lastAuthError` 表示最近一次判定/操作错误 register，`authOperations.*Pending` 表示局部操作锁，这两类是 plain signal。`authSnapshot` 是权威 auth-material replay source；`authDetermined`、`isAuthenticated` 与 `authorizationHeaderValue` 是 derived replay projection，而不是手动同步的独立状态。直接创建的 client 默认只有调用 `start()` 后才运行；只有 direct creation path 需要立即运行时才显式传 `autoStart: true`。Registry-managed client 不使用 entry-level `autoStart` 或 `autoRestore`；registry readiness 表示 client 已 materialize 且 `start()` 已完成。默认 `createTokenSetOidcAuthRegistry()` 现在 materialize client 本身，因此 React Query readiness 与 Angular registry lookup 返回 client，而不是 per-client service wrapper。`authEvents` 仍只表达 auth domain telemetry；registry topology 与 readiness 变化应通过 registry `state` 观察。
 
@@ -506,7 +506,7 @@ Canonical RxJS bridge 现在位于 `@securitydept/client/rx`。对 `EventStreamT
 
 ### 下游参考案例：Outposts
 
-`~/workspace/outposts` 验证真实 Angular adopter 路径。它使用 `provideTokenSetAuth(...)` 加 `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`，证明了面向 downstream `confluence` backend 的 strict URL-prefix bounded bearer injection。这个路径也用于校准 stale-token handling：SDK 必须在首个 protected Confluence request 前 refresh 或清理状态，而不是发送会被后端正确以 `ExpiredSignature` 拒绝的 expired bearer。其 app-local auth service 仍是 adopter glue，不是 SDK API 模板。
+`~/workspace/outposts` 验证真实 Angular adopter 路径。它使用 `provideTokenSetClientRegistry(...)` 加 `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`，证明了面向 downstream `confluence` backend 的 strict URL-prefix bounded bearer injection。这个路径也用于校准 stale-token handling：SDK 必须在首个 protected Confluence request 前 refresh 或清理状态，而不是发送会被后端正确以 `ExpiredSignature` 拒绝的 expired bearer。其 app-local auth service 仍是 adopter glue，不是 SDK API 模板。
 
 下游验证应使用 pnpm 本地 `link:` dependency 链接 SecurityDept SDK packages，不使用 package-manager override。普通 TS package 可以 link 到 package root；Angular package 应在重建后 link 到对应 `dist/` 输出，并在浏览器验证前清理 downstream Angular/Vite cache。
 

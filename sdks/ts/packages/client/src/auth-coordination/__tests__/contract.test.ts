@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-	createAuthRequirement,
-	createAuthRequirements,
 	PlanStatus,
 	RequirementsComposition,
 	ResolutionStatus,
 	resolveEffectiveRequirements,
+	StaticAttrsAuthRequirement,
 } from "../index";
 
-describe("createAuthRequirement", () => {
+describe("StaticAttrsAuthRequirement.create", () => {
 	it("assigns a uuidv7 id when omitted", () => {
-		const requirement = createAuthRequirement();
+		const requirement = StaticAttrsAuthRequirement.create({});
 		expect(requirement.id).toMatch(
 			/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
 		);
@@ -18,7 +17,10 @@ describe("createAuthRequirement", () => {
 
 	it("preserves an explicit id and freezes the requirement", () => {
 		const attributes = { clientKey: "wiki" };
-		const requirement = createAuthRequirement({ id: "wiki", attributes });
+		const requirement = StaticAttrsAuthRequirement.create({
+			id: "wiki",
+			attributes,
+		});
 
 		expect(requirement.id).toBe("wiki");
 		expect(Object.isFrozen(requirement)).toBe(true);
@@ -28,7 +30,10 @@ describe("createAuthRequirement", () => {
 	});
 
 	it("creates multiple requirements in declaration order", () => {
-		const requirements = createAuthRequirements([{ id: "a" }, { id: "b" }]);
+		const requirements = StaticAttrsAuthRequirement.createList([
+			{ id: "a" },
+			{ id: "b" },
+		]);
 		expect(requirements.map((r) => r.id)).toEqual(["a", "b"]);
 	});
 });
@@ -36,8 +41,8 @@ describe("createAuthRequirement", () => {
 describe("resolveEffectiveRequirements", () => {
 	const parent = new Map(
 		[
-			createAuthRequirement({ id: "session" }),
-			createAuthRequirement({ id: "api" }),
+			StaticAttrsAuthRequirement.create({ id: "session" }),
+			StaticAttrsAuthRequirement.create({ id: "api" }),
 		].map((requirement) => [requirement.id, requirement]),
 	);
 
@@ -46,7 +51,7 @@ describe("resolveEffectiveRequirements", () => {
 		resolveEffectiveRequirements(
 			{
 				composition: RequirementsComposition.Inherit,
-				requirements: [createAuthRequirement({ id: "ignored" })],
+				requirements: [StaticAttrsAuthRequirement.create({ id: "ignored" })],
 			},
 			effective,
 		);
@@ -62,8 +67,8 @@ describe("resolveEffectiveRequirements", () => {
 			{
 				composition: RequirementsComposition.Merge,
 				requirements: [
-					createAuthRequirement({ id: "api", label: "overridden" }),
-					createAuthRequirement({ id: "oidc" }),
+					StaticAttrsAuthRequirement.create({ id: "api", label: "overridden" }),
+					StaticAttrsAuthRequirement.create({ id: "oidc" }),
 				],
 			},
 			effective,
@@ -83,7 +88,7 @@ describe("resolveEffectiveRequirements", () => {
 		resolveEffectiveRequirements(
 			{
 				composition: RequirementsComposition.Replace,
-				requirements: [createAuthRequirement({ id: "public" })],
+				requirements: [StaticAttrsAuthRequirement.create({ id: "public" })],
 			},
 			effective,
 		);
@@ -105,7 +110,7 @@ describe("resolveEffectiveRequirements", () => {
 	it("defaults to a fresh map when effective is omitted", () => {
 		const effective = resolveEffectiveRequirements({
 			composition: RequirementsComposition.Merge,
-			requirements: [createAuthRequirement({ id: "session" })],
+			requirements: [StaticAttrsAuthRequirement.create({ id: "session" })],
 		});
 		expect([...effective.values()].map((r) => r.id)).toEqual(["session"]);
 	});

@@ -1,5 +1,7 @@
-export type { AbortSignalStdSource } from "../std/events";
-export { abortSignalToEventStream } from "../std/events";
+export {
+	type AbortSignalStdSource,
+	abortSignalToEventStream,
+} from "../std/events";
 export {
 	createEmptyEventStream,
 	createEventReplaySubject,
@@ -7,15 +9,14 @@ export {
 	createEventSubject,
 	createNeverEventStream,
 } from "./create";
-export type { ToEventStreamInput } from "./interop";
-export { toEventStream } from "./interop";
-export type {
-	EventObserverTrait,
-	EventOperatorFunction,
-	EventSource,
-	EventStreamTrait,
-	EventSubjectTrait,
-	EventSubscriptionTrait,
-	RuntimeEventEnvelope,
+export { type ToEventStreamInput, toEventStream } from "./interop";
+export {
+	type EventObserverTrait,
+	type EventOperatorFunction,
+	type EventSource,
+	EventSourceKind,
+	type EventStreamTrait,
+	type EventSubjectTrait,
+	type EventSubscriptionTrait,
+	type RuntimeEventEnvelope,
 } from "./types";
-export { EventSourceKind } from "./types";

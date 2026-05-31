@@ -4,6 +4,7 @@ export {
 	SYMBOL_ASYNC_DISPOSE,
 	SYMBOL_DISPOSE,
 } from "./disposable";
+export { promisesToRacedAsyncGenerator } from "./generator";
 export {
 	type InteropObservableTrait,
 	isInteropObservableTrait,

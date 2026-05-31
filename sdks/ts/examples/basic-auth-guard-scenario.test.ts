@@ -3,9 +3,9 @@ import {
 	BasicAuthContextClient,
 } from "@securitydept/basic-auth-context-client";
 import {
-	UriReferenceString,
 	createFoundationEnvironment,
 	type FoundationEnvironment,
+	UriReferenceString,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { afterEach, describe, expect, it, vi } from "vitest";

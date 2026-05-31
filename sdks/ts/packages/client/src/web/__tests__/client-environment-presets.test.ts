@@ -50,9 +50,17 @@ describe("environment factory shape", () => {
 		expect(environment.sessionStorage).toBeDefined();
 	});
 
-	it("requires native web page capabilities instead of creating page-free native web environments", () => {
-		expect(() =>
-			createEnvironmentForNativeWeb(createEnvironmentOptions()),
-		).toThrow(/createRouterForNativeWeb could not validate router/);
+	it("omits native web router when page capabilities are unavailable", () => {
+		const environment = createEnvironmentForNativeWeb({
+			...createEnvironmentOptions(),
+			routerForNativeWebCreateOptions: {
+				navigation: null,
+				location: null,
+				history: null,
+				window: null,
+			},
+		});
+
+		expect(environment.router).toBeUndefined();
 	});
 });

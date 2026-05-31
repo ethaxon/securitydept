@@ -1,31 +1,29 @@
-export type { TracingCreateOptions } from "./create";
-export { createTracing } from "./create";
-export type {
-	DefineInstrumentMethodDecoratorContext,
-	DefineInstrumentMethodDecoratorFactory,
-	InstrumentMethodResolvedOptions,
-	InstrumentMethodThisContext,
-	InstrumentMethodThisResolver,
+export { createTracing, type TracingCreateOptions } from "./create";
+export {
+	type DefineInstrumentMethodDecoratorContext,
+	type DefineInstrumentMethodDecoratorFactory,
+	defineInstrumentMethodDecorator,
+	type InstrumentMethodResolvedOptions,
+	type InstrumentMethodThisContext,
+	type InstrumentMethodThisResolver,
 } from "./operation-method";
-export { defineInstrumentMethodDecorator } from "./operation-method";
-export type {
-	RunOperationEnvironment,
-	RunOperationOptions,
-	RunOperationOptionsBase,
+export {
+	type RunOperationEnvironment,
+	type RunOperationOptions,
+	type RunOperationOptionsBase,
+	runOperation,
 } from "./operation-runner";
-export { runOperation } from "./operation-runner";
-export type {
-	TraceTimelineEntry,
-	TraceTimelineStore,
-	TracingSubscriberTrait,
-} from "./subscriber";
 export {
 	createConsoleTracingSubscriber,
 	createTraceTimelineStore,
+	type TraceTimelineEntry,
+	type TraceTimelineStore,
+	type TracingSubscriberTrait,
 } from "./subscriber";
-export type { TracingEvent, TracingTrait } from "./types";
 export {
 	OperationTraceEventType,
 	TRACING_TRAIT_TOKEN,
+	type TracingEvent,
 	TracingLevel,
+	type TracingTrait,
 } from "./types";

@@ -1,7 +1,5 @@
 import {
-	type BaseTransportTrait,
 	type FoundationEnvironment,
-	type ManagedTransportTrait,
 	type ReadableSignalTrait,
 	type StorageTrait,
 } from "@securitydept/client";
@@ -46,11 +44,6 @@ export interface BaseOidcModeClientDefaultOptions {
 	tokenFreshness: TokenFreshnessOptions;
 }
 
-export interface OidcAuthorizedTransportOptions {
-	baseTransport?: BaseTransportTrait;
-	requireAuthorization?: boolean;
-}
-
 export interface BaseOidcModeClientOptions {
 	environment: FoundationEnvironment;
 	refresh?: Partial<AuthWorkflowRuntimeOptions>;
@@ -92,10 +85,4 @@ export interface TokenSetAuthOperationSignals {
 	readonly refreshPending: ReadableSignalTrait<boolean>;
 	readonly clearPending: ReadableSignalTrait<boolean>;
 	readonly loginPending: ReadableSignalTrait<boolean>;
-}
-
-export interface OidcAuthorizedTransportProvider {
-	authorizedTransport(
-		options?: OidcAuthorizedTransportOptions,
-	): ManagedTransportTrait;
 }

@@ -16,15 +16,20 @@ export interface AppendOrReplaceCompatFragmentOptions {
 export interface TakeCompatFragmentResult<T> {
 	compatFragment: CompatFragment | null;
 	fragment: string;
-	url: T;
+	url: UpdatedUriFragment<T>;
 }
 
 export interface AppendOrReplaceCompatFragmentResult<T> {
 	fragment: string;
-	url: T;
+	url: UpdatedUriFragment<T>;
 }
 
-export type UpdateUriFragmentHash<T> = (input: T, hash: string) => T;
+export type UpdatedUriFragment<T> = T extends string ? string : T;
+
+export type UpdateUriFragmentHash<T> = (
+	input: T,
+	hash: string,
+) => UpdatedUriFragment<T>;
 
 export function appendOrReplaceCompatFragment<
 	T extends string | UriFragmentPart,
@@ -77,7 +82,7 @@ export function takeCompatFragment<T extends string | UriFragmentPart>(
 		return {
 			compatFragment: null,
 			fragment: currentFragment,
-			url: input,
+			url: input as UpdatedUriFragment<T>,
 		};
 	}
 

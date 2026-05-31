@@ -16,11 +16,14 @@
 // Stability: provisional
 
 import {
+	BaseURIStringSchema,
 	type EnvironmentValidators,
+	RouterNavigationMode,
 	type RouterNavigationRequest,
 	type RouterTrait,
 	throwValidationClientError,
 	UriReferenceString,
+	UriReferenceStringSchema,
 	UriString,
 	validateTraitInput,
 	type WithTraitInputValidator,
@@ -41,50 +44,42 @@ export interface AngularRouterNavigationLike {
 	): Promise<boolean> | boolean;
 }
 
+export interface AngularDocumentLike {
+	baseURI?: string;
+}
+
 /** Options for {@link createRouterForAngular}. */
 export interface CreateRouterForAngularOptions {
 	/** The Angular `Router` (or a compatible navigation object). */
 	router: AngularRouterNavigationLike;
-	/**
-	 * Override the current URL. Defaults to `router.url`.
-	 *
-	 * Pass an explicit value when the guarded navigation target differs from
-	 * the router's currently active URL.
-	 */
-	currentUrl?: string | UriReferenceString | null;
+	/** Override the current URL. Defaults to `router.url`. */
+	currentUrl?: string | null;
+	/** Angular document host used to resolve the default base URI. */
+	document?: AngularDocumentLike | null;
 	/**
 	 * Override the document base URI used to resolve relative references.
 	 *
-	 * Defaults to `document.baseURI` in browser environments.
+	 * Defaults to the explicitly provided Angular document's `baseURI`.
 	 */
-	baseURI?: string | UriString | null;
+	baseURI?: string | null;
+}
+
+export interface ResolvedRouterForAngularCreateOptions {
+	router: AngularRouterNavigationLike;
+	currentUrl: string | null;
+	baseURI: string | null;
 }
 
 export const AngularRouterNavigationLikeSchema = defineType({
+	url: "string?",
 	navigateByUrl: "Function",
 });
 
-const CreateRouterForAngularOptionsSchema = defineType({
+const ResolvedRouterForAngularCreateOptionsSchema = defineType({
 	router: AngularRouterNavigationLikeSchema,
+	currentUrl: UriReferenceStringSchema.or("null"),
+	baseURI: BaseURIStringSchema.or("null"),
 });
-
-function readBrowserDocumentBaseURI(): UriString | null {
-	const global = globalThis as { document?: { baseURI?: string } };
-	const baseURI = global.document?.baseURI;
-	return baseURI ? UriString.tryParse(baseURI) : null;
-}
-
-function resolveConfiguredBaseURI(
-	baseURI: string | UriString | null | undefined,
-): UriString | null {
-	if (baseURI === null) {
-		return null;
-	}
-	if (baseURI === undefined) {
-		return null;
-	}
-	return typeof baseURI === "string" ? UriString.tryParse(baseURI) : baseURI;
-}
 
 /**
  * Create a {@link RouterTrait} backed by an Angular `Router`.
@@ -98,12 +93,27 @@ export function createRouterForAngular(
 	options: CreateRouterForAngularOptions &
 		WithTraitInputValidator<Pick<EnvironmentValidators, "router">>,
 ): RouterTrait {
-	const { validators, ...createOptions } = options;
-	const resolvedCreateOptions = createOptions;
+	const routerInput = options.router as
+		| AngularRouterNavigationLike
+		| null
+		| undefined;
+	const resolvedCreateOptions: ResolvedRouterForAngularCreateOptions = {
+		router: options.router,
+		get currentUrl() {
+			return Object.hasOwn(options, "currentUrl")
+				? (options.currentUrl ?? null)
+				: (routerInput?.url ?? null);
+		},
+		get baseURI() {
+			return Object.hasOwn(options, "baseURI")
+				? (options.baseURI ?? null)
+				: (options.document?.baseURI ?? null);
+		},
+	};
 	validateTraitInput({
 		value: resolvedCreateOptions,
-		bundledSchema: CreateRouterForAngularOptionsSchema,
-		validator: validators?.router,
+		bundledSchema: ResolvedRouterForAngularCreateOptionsSchema,
+		validator: options.validators?.router,
 		onInvalid: (failure) =>
 			throwValidationClientError({
 				code: "client_angular.router.invalid_router_options",
@@ -113,21 +123,19 @@ export function createRouterForAngular(
 				failure,
 			}),
 	});
-	const { router, currentUrl, baseURI } = resolvedCreateOptions;
-	const configuredBaseURI = Object.hasOwn(options, "baseURI")
-		? resolveConfiguredBaseURI(baseURI)
-		: undefined;
+	const { router } = resolvedCreateOptions;
 	return {
 		currentUrl() {
-			const url = currentUrl ?? router.url;
-			return url ? UriReferenceString.tryParse(url.toString()) : null;
+			const currentUrl = resolvedCreateOptions.currentUrl;
+			return currentUrl == null ? null : UriReferenceString.parse(currentUrl);
 		},
 		baseURI() {
-			return configuredBaseURI ?? readBrowserDocumentBaseURI();
+			const baseURI = resolvedCreateOptions.baseURI;
+			return baseURI == null ? null : UriString.parse(baseURI);
 		},
 		async navigate(request: RouterNavigationRequest) {
 			await router.navigateByUrl(request.url.toString(), {
-				replaceUrl: request.mode === "replace",
+				replaceUrl: request.mode === RouterNavigationMode.Replace,
 				state: request.state,
 			});
 		},

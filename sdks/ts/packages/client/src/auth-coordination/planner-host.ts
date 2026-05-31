@@ -16,53 +16,52 @@
 // carried here as additional fields without touching the serializable
 // contract layer.
 
+import { type FoundationEnvironment } from "../environment";
 import {
 	type AuthRequirement,
-	type CheckAuthenticated,
-	type OnUnauthenticated,
 	type RequirementBehaviour,
-	type RequirementBehaviourContext,
+	type RequirementCandidateSelectionContext,
 	type SelectCandidate,
 } from "./contract";
 
 /**
- * Default check: treat every requirement as unauthenticated.
+ * Default candidate selector: first unauthenticated candidate as soon as it is
+ * discovered.
  *
- * Safe default — without an explicit policy nothing is considered satisfied,
- * so every requirement becomes an actionable candidate.
+ * If every requirement is already fulfilled the stream completes and the
+ * selector returns `undefined`.
  */
-const defaultCheckAuthenticated: CheckAuthenticated = () => false;
-
-/**
- * Default unauthenticated handler: block.
- *
- * Safe default — without an explicit policy a pending requirement halts the
- * plan rather than silently allowing it.
- */
-const defaultOnUnauthenticated: OnUnauthenticated = () => false;
-
-/**
- * Default candidate selector: first candidate in declaration order.
- *
- * Only invoked when the candidate list is non-empty, so the indexed read is
- * always defined at the call site.
- */
-const defaultSelectCandidate: SelectCandidate = (
-	context: RequirementBehaviourContext,
-): AuthRequirement => context.candidateList[0];
+export function defaultSelectCandidate<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+>(): SelectCandidate<TAuthRequirement, TPlanContext> {
+	return async function selectFirstCandidate(
+		context: RequirementCandidateSelectionContext<
+			TAuthRequirement,
+			TPlanContext
+		>,
+	): Promise<TAuthRequirement | undefined> {
+		const result = await context.candidateList.next();
+		return result.done ? undefined : result.value;
+	};
+}
 
 /** Options for {@link RequirementPlannerHost.fromBehaviour}. */
-export interface RequirementPlannerHostOptions {
+export interface RequirementPlannerHostOptions<
+	TRequirementBehaviour = Partial<RequirementBehaviour>,
+> {
 	/** Parent host to inherit unspecified behaviour from. */
-	parent?: RequirementPlannerHost;
+	parent?: RequirementPlannerHost<TRequirementBehaviour>;
+	environment?: FoundationEnvironment;
 }
 
 /**
  * A coordination-scope host that resolves behaviour through a parent chain.
  *
  * Construct via {@link RequirementPlannerHost.fromBehaviour}. Each behaviour
- * field is optional; unspecified fields are inherited from `parent`, falling
- * back to safe defaults at the root.
+ * field is optional at host construction time; missing required behaviour is
+ * resolved from `parent` and fails fast during planner build if no host in the
+ * chain provides it.
  *
  * @example
  * ```ts
@@ -78,56 +77,58 @@ export interface RequirementPlannerHostOptions {
  * );
  * ```
  */
-export class RequirementPlannerHost {
+export class RequirementPlannerHost<
+	TBehaviour = Partial<RequirementBehaviour>,
+> {
 	/** The parent host, or undefined at the root. */
-	readonly parent?: RequirementPlannerHost;
-
-	private readonly _checkAuthenticated?: CheckAuthenticated;
-	private readonly _onUnauthenticated?: OnUnauthenticated;
-	private readonly _selectCandidate?: SelectCandidate;
+	private readonly _behaviour: TBehaviour;
 
 	protected constructor(
-		behaviour: Partial<RequirementBehaviour>,
-		parent?: RequirementPlannerHost,
+		behaviour: TBehaviour,
+		readonly environment: FoundationEnvironment | undefined,
+		readonly parent: RequirementPlannerHost<TBehaviour> | undefined,
 	) {
-		this._checkAuthenticated = behaviour.checkAuthenticated;
-		this._onUnauthenticated = behaviour.onUnauthenticated;
-		this._selectCandidate = behaviour.selectCandidate;
-		this.parent = parent;
+		this._behaviour = behaviour;
 	}
 
 	/** Create a host scope from a partial behaviour and optional parent. */
-	static fromBehaviour(
-		behaviour: Partial<RequirementBehaviour>,
-		options: RequirementPlannerHostOptions = {},
-	): RequirementPlannerHost {
-		return new RequirementPlannerHost(behaviour, options.parent);
-	}
-
-	/** Resolve the nearest `checkAuthenticated`, defaulting to "unauthenticated". */
-	async resolveCheckAuthenticated(): Promise<CheckAuthenticated> {
-		return (
-			this._checkAuthenticated ??
-			(await this.parent?.resolveCheckAuthenticated()) ??
-			defaultCheckAuthenticated
+	static fromBehaviour<TBehaviour = Partial<RequirementBehaviour>>(
+		behaviour: TBehaviour,
+		options: RequirementPlannerHostOptions<TBehaviour> = {},
+	): RequirementPlannerHost<TBehaviour> {
+		return new RequirementPlannerHost(
+			behaviour,
+			options.environment,
+			options.parent,
 		);
 	}
 
-	/** Resolve the nearest `onUnauthenticated`, defaulting to "block". */
-	async resolveOnUnauthenticated(): Promise<OnUnauthenticated> {
+	async resolveBehaviourOptionFor<K extends keyof TBehaviour>(
+		key: K,
+	): Promise<TBehaviour[K] | undefined> {
 		return (
-			this._onUnauthenticated ??
-			(await this.parent?.resolveOnUnauthenticated()) ??
-			defaultOnUnauthenticated
+			this._behaviour[key] ??
+			(await this.parent?.resolveBehaviourOptionFor(key))
+		);
+	}
+	async resolveBehaviourFor<K extends keyof TBehaviour>(
+		key: K,
+		defaultValue: () =>
+			| NonNullable<TBehaviour[K]>
+			| Promise<NonNullable<TBehaviour[K]>>,
+	): Promise<NonNullable<TBehaviour[K]>> {
+		return (
+			(await this.resolveBehaviourOptionFor(key)) ?? (await defaultValue())
 		);
 	}
 
-	/** Resolve the nearest `selectCandidate`, defaulting to first-in-order. */
-	async resolveSelectCandidate(): Promise<SelectCandidate> {
-		return (
-			this._selectCandidate ??
-			(await this.parent?.resolveSelectCandidate()) ??
-			defaultSelectCandidate
-		);
+	async resolveEnvironmentOption(): Promise<FoundationEnvironment | undefined> {
+		return this.environment ?? (await this.parent?.resolveEnvironmentOption());
+	}
+
+	async resolveEnvironment(
+		defaultValue: () => FoundationEnvironment | Promise<FoundationEnvironment>,
+	): Promise<FoundationEnvironment> {
+		return (await this.resolveEnvironmentOption()) ?? (await defaultValue());
 	}
 }

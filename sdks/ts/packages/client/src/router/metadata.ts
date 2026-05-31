@@ -17,31 +17,37 @@ import {
 export const SECURITYDEPT_ROUTE_METADATA_KEY = "__securitydept__";
 
 /** Serializable SecurityDept route metadata. */
-export interface SecuritydeptRouteMetadata {
-	requirements?: readonly AuthRequirement[];
+export interface SecuritydeptRouteMetadata<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+> {
+	requirements?: readonly TAuthRequirement[];
 	composition?: RequirementsComposition;
 }
 
 /** Read SecurityDept route metadata from a route `data` bag. */
-export function readSecuritydeptRouteMetadata(
+export function readSecuritydeptRouteMetadata<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+>(
 	data: Record<string, unknown> | undefined,
-): SecuritydeptRouteMetadata | undefined {
+): SecuritydeptRouteMetadata<TAuthRequirement> | undefined {
 	const raw = data?.[SECURITYDEPT_ROUTE_METADATA_KEY];
 	if (raw === undefined || raw === null) {
 		return undefined;
 	}
-	return raw as SecuritydeptRouteMetadata;
+	return raw as SecuritydeptRouteMetadata<TAuthRequirement>;
 }
 
 /** Merge SecurityDept route metadata into a route `data` bag. */
-export function writeSecuritydeptRouteMetadata(
+export function writeSecuritydeptRouteMetadata<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+>(
 	base: Record<string, unknown> | undefined,
-	patch: SecuritydeptRouteMetadata,
+	patch: SecuritydeptRouteMetadata<TAuthRequirement>,
 ): Record<string, unknown> {
 	const data: Record<string, unknown> = { ...(base ?? {}) };
 	const previous =
 		(data[SECURITYDEPT_ROUTE_METADATA_KEY] as
-			| SecuritydeptRouteMetadata
+			| SecuritydeptRouteMetadata<TAuthRequirement>
 			| undefined) ?? {};
 	data[SECURITYDEPT_ROUTE_METADATA_KEY] = { ...previous, ...patch };
 	return data;

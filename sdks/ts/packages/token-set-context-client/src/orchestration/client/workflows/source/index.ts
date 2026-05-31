@@ -92,11 +92,11 @@ export function createRefreshTimerWorkflowSource(
 	).eventStream;
 }
 
-export type {
-	CreatePageResumeWorkflowSourceOptions,
-	CreateRefreshTimerWorkflowSourceOptions,
-	PageResumeWorkflowSourceEvent,
-	RefreshTimerWorkflowEvent,
+export {
+	type CreatePageResumeWorkflowSourceOptions,
+	type CreateRefreshTimerWorkflowSourceOptions,
+	PageResumeWorkflowSource,
+	type PageResumeWorkflowSourceEvent,
+	type RefreshTimerWorkflowEvent,
+	RefreshTimerWorkflowSource,
 };
-
-export { PageResumeWorkflowSource, RefreshTimerWorkflowSource };

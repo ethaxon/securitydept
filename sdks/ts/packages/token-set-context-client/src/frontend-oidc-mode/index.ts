@@ -28,7 +28,7 @@ export {
 	TokenSetPopupRelayErrorCode,
 } from "../orchestration/client/popup/relay";
 export { FrontendOidcModeClient } from "./client/client";
-export type { FrontendOidcModeClientDefaultOptions } from "./client/types";
+export { type FrontendOidcModeClientDefaultOptions } from "./client/types";
 
 // --- Types: config, protocol, lifecycle ---
 
@@ -37,27 +37,27 @@ export {
 	FrontendOidcModeTraceEventType,
 	FrontendOidcModeTraceOperationName,
 } from "./client/trace-events";
-export type {
-	FrontendOidcModeAuthorizeResult,
-	FrontendOidcModeCallbackResult,
-	FrontendOidcModeClientConfig,
-	FrontendOidcModePendingState,
-	FrontendOidcModeTokenResult,
-	ResolvedFrontendOidcModeClientConfig,
+export {
+	type FrontendOidcModeAuthorizeResult,
+	type FrontendOidcModeCallbackResult,
+	type FrontendOidcModeClientConfig,
+	FrontendOidcModeContextSource,
+	type FrontendOidcModePendingState,
+	type FrontendOidcModeTokenResult,
+	type ResolvedFrontendOidcModeClientConfig,
 } from "./client/types";
-export { FrontendOidcModeContextSource } from "./client/types";
 export { FrontendOidcModeCallbackErrorCode } from "./errors/callback-error-codes";
 export { describeFrontendOidcModeCallbackError } from "./errors/error-presentation";
 
 // --- Cross-boundary contracts (aligned with Rust FrontendOidcMode*) ---
 
-export type {
-	FrontendOidcModeClaimsCheckFailureResult,
-	FrontendOidcModeClaimsCheckResult,
-	FrontendOidcModeClaimsCheckScript,
-	FrontendOidcModeClaimsCheckSuccessResult,
-	FrontendOidcModeConfigProjection,
-	FrontendOidcModeUserInfoResponse,
+export {
+	type FrontendOidcModeClaimsCheckFailureResult,
+	type FrontendOidcModeClaimsCheckResult,
+	type FrontendOidcModeClaimsCheckScript,
+	type FrontendOidcModeClaimsCheckSuccessResult,
+	type FrontendOidcModeConfigProjection,
+	type FrontendOidcModeUserInfoResponse,
 } from "./contracts/contracts";
 
 // --- Adapters: projection → client config, result → orchestration ---
@@ -72,35 +72,29 @@ export { FrontendOidcModeConfigProjectionSchema } from "./contracts/schemas";
 
 // --- Config projection source contract (core — no web runtime assumptions) ---
 
-export type {
-	ConfigProjectionSource,
-	ConfigProjectionSourceBootstrapScript,
-	ConfigProjectionSourceInline,
-	ConfigProjectionSourceNetwork,
-	ConfigProjectionSourcePersisted,
-	PersistedConfigEnvelope,
-	ResolvedConfigProjection,
-} from "./config/config-source";
-
 export {
+	type ConfigProjectionSource,
+	type ConfigProjectionSourceBootstrapScript,
+	type ConfigProjectionSourceInline,
 	ConfigProjectionSourceKind,
+	type ConfigProjectionSourceNetwork,
+	type ConfigProjectionSourcePersisted,
+	type PersistedConfigEnvelope,
+	type ResolvedConfigProjection,
 	resolveConfigProjection,
 } from "./config/config-source";
 
 // --- Config projection web/browser runtime helpers ---
 
-export type {
-	CreateFrontendOidcModeBrowserClientOptions,
-	CreateFrontendOidcModeWebClientEnvironmentOptions,
-	FrontendOidcModeBrowserClientMaterialization,
-	FrontendOidcModeWebClientEnvironment,
-	IdleRevalidationOptions,
-} from "./config/config-source-web";
-
 export {
 	bootstrapScriptSource,
+	type CreateFrontendOidcModeBrowserClientOptions,
+	type CreateFrontendOidcModeWebClientEnvironmentOptions,
 	createFrontendOidcModeBrowserClient,
 	createFrontendOidcModeWebClientEnvironment,
+	type FrontendOidcModeBrowserClientMaterialization,
+	type FrontendOidcModeWebClientEnvironment,
+	type IdleRevalidationOptions,
 	networkConfigSource,
 	persistConfigProjection,
 	persistedConfigSource,

@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
 	"vcs": {
 		"enabled": true,
 		"clientKind": "git",
@@ -12,10 +12,15 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true,
+			"preset": "recommended",
 			"suspicious": {
 				"noConfusingVoidType": "off",
 				"noExplicitAny": "off"
+			},
+			"complexity": {
+				"noBannedTypes": {
+					"level": "off"
+				}
 			},
 			"style": {
 				"useBlockStatements": {
@@ -31,8 +36,7 @@
 				"useExportType": {
 					"level": "error",
 					"options": {
-						// todo: add in next version
-						// "style": "inlineType"
+						"style": "inlineType"
 					}
 				}
 			}

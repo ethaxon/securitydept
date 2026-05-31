@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCancellationTokenSource } from "../../cancellation/cancellation-token";
 import { ClientError } from "../../errors/client-error";
 import { createBaseTransportForStdFetch } from "../../std/transport";
-import { createExternalTransportFromBase } from "../external-transport";
 
 describe("createBaseTransportForStdFetch()", () => {
 	afterEach(() => {
@@ -45,14 +44,6 @@ describe("createBaseTransportForStdFetch()", () => {
 			code: "test.fetch_cancelled",
 		});
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
-	});
-
-	it("derives external transport without wrapping runtime behavior", () => {
-		const baseTransport = createBaseTransportForStdFetch({
-			fetch: vi.fn(),
-		});
-
-		expect(createExternalTransportFromBase(baseTransport)).toBe(baseTransport);
 	});
 });
 

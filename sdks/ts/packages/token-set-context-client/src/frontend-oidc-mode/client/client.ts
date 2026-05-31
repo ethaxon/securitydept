@@ -27,7 +27,6 @@
 import {
 	ClientError,
 	ClientErrorKind,
-	UriReferenceString,
 	createKeyedEphemeralFlowStore,
 	decodeJwtPayload,
 	defineInstrumentMethodDecorator,
@@ -38,7 +37,10 @@ import {
 	type OperationSpanTrait,
 	parseDurationToMs,
 	parseIdentityPrincipal,
+	RouterNavigationIntent,
+	RouterNavigationMode,
 	type SpanTrait,
+	UriReferenceString,
 	UserRecovery,
 } from "@securitydept/client";
 import { createAsyncSchedulerWithTimestampProvider } from "@securitydept/client/rx";
@@ -342,8 +344,8 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 		await router.navigate({
 			url: UriReferenceString.parse(url),
-			intent: "auth_redirect",
-			mode: "external",
+			intent: RouterNavigationIntent.AuthRedirect,
+			mode: RouterNavigationMode.External,
 		});
 		this._throwIfNotOperational();
 		operationSpan?.setAttributes({ navigationMode: "external" });

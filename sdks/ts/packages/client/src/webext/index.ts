@@ -1,28 +1,24 @@
-export type {
-	CreateEnvironmentForWebExtBackgroundScriptOptions,
-	CreateEnvironmentForWebExtCoreOptions,
-	CreateEnvironmentForWebExtUIOptions,
-	WebExtBackgroundEnvironment,
-	WebExtCoreEnvironment,
-	WebExtUIEnvironment,
-} from "./environment";
 export {
+	type CreateEnvironmentForWebExtBackgroundScriptOptions,
+	type CreateEnvironmentForWebExtCoreOptions,
+	type CreateEnvironmentForWebExtUIOptions,
 	createEnvironmentForWebExtBackgroundScript,
 	createEnvironmentForWebExtCore,
 	createEnvironmentForWebExtUI,
+	type WebExtBackgroundEnvironment,
+	type WebExtCoreEnvironment,
+	type WebExtUIEnvironment,
 } from "./environment";
-export type {
-	RouterForWebExtCreateOptions,
-	WebExtRouterBrowserLike,
+export {
+	createRouterForWebExt,
+	type RouterForWebExtCreateOptions,
+	type WebExtRouterBrowserLike,
 } from "./router";
-export { createRouterForWebExt } from "./router";
-export type {
-	StorageForWebExtCreateOptions,
-	WebExtStorageAreaLike,
-	WebExtStorageBrowserLike,
-} from "./storage";
 export {
 	createPersistentStorageForWebExt,
 	createSessionStorageForWebExt,
 	createStorageForWebExt,
+	type StorageForWebExtCreateOptions,
+	type WebExtStorageAreaLike,
+	type WebExtStorageBrowserLike,
 } from "./storage";

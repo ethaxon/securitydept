@@ -22,8 +22,10 @@
 import { type Route } from "@angular/router";
 import {
 	type AuthRequirement,
+	type RequirementBehaviourWithRouteContext,
 	type RequirementPlannerHost,
 	type RequirementsComposition,
+	type RouteBehaviourContextExtra,
 	type SecuritydeptRouteMetadata,
 	writeSecuritydeptRouteMetadata,
 } from "@securitydept/client";
@@ -35,34 +37,41 @@ import {
 	createAngularCanActivate,
 	createAngularCanActivateChild,
 } from "./route-guard";
-export interface SecureRouteSecurityOptions {
+
+export interface SecureRouteSecurityOptions<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TBehaviour extends Partial<
+		RequirementBehaviourWithRouteContext<TAuthRequirement>
+	> = Partial<RequirementBehaviourWithRouteContext<TAuthRequirement>>,
+> {
 	/** Auth requirements declared on this route segment. */
-	requirements?: readonly AuthRequirement[];
+	requirements?: readonly TAuthRequirement[];
 	/** Composition strategy against the inherited chain (default: `merge`). */
 	composition?: RequirementsComposition;
 	/**
 	 * Explicit planner host for the guards on a root route. When omitted, the
 	 * guard resolves the nearest host from DI (or a self-managed default).
 	 */
-	plannerHost?: RequirementPlannerHost;
+	plannerHost?: RequirementPlannerHost<TBehaviour>;
 	/**
 	 * Behaviour to provide as a scoped {@link RequirementPlannerHost} at the
 	 * root route. Mounted via `provideRequirementPlannerHost` in `providers`.
 	 */
-	behaviour?: RequirementPlannerHostBehaviour;
+	behaviour?: RequirementPlannerHostBehaviour<
+		TAuthRequirement,
+		RouteBehaviourContextExtra,
+		TBehaviour
+	>;
 }
 
 /** Additional route config merged into the produced {@link Route}. */
-export type SecureRouteConfig = Omit<
-	Route,
-	"path" | "canActivate" | "canActivateChild"
->;
+export type SecureRouteConfig = Omit<Route, "path">;
 
-function writeRequirementData(
-	security: SecureRouteSecurityOptions,
+function writeRequirementData<TAuthRequirement extends AuthRequirement>(
+	security: SecureRouteSecurityOptions<TAuthRequirement>,
 	base: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
-	const patch: SecuritydeptRouteMetadata = {};
+	const patch: SecuritydeptRouteMetadata<TAuthRequirement> = {};
 	if (security.requirements !== undefined) {
 		patch.requirements = security.requirements;
 	}
@@ -80,9 +89,14 @@ function writeRequirementData(
  * `data` only. No guard is attached — a guarded ancestor (see
  * {@link secureRouteRoot}) enforces the folded chain.
  */
-export function secureRoute(
+export function secureRoute<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TBehaviour extends Partial<
+		RequirementBehaviourWithRouteContext<TAuthRequirement>
+	> = Partial<RequirementBehaviourWithRouteContext<TAuthRequirement>>,
+>(
 	path: string,
-	security: SecureRouteSecurityOptions,
+	security: SecureRouteSecurityOptions<TAuthRequirement, TBehaviour>,
 	routeOptions?: SecureRouteConfig,
 ): Route {
 	return {
@@ -99,9 +113,14 @@ export function secureRoute(
  * When `security.behaviour` is set, a scoped {@link RequirementPlannerHost}
  * provider is mounted so descendant guards inherit it through DI.
  */
-export function secureRouteRoot(
+export function secureRouteRoot<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TBehaviour extends Partial<
+		RequirementBehaviourWithRouteContext<TAuthRequirement>
+	> = Partial<RequirementBehaviourWithRouteContext<TAuthRequirement>>,
+>(
 	path: string,
-	security: SecureRouteSecurityOptions,
+	security: SecureRouteSecurityOptions<TAuthRequirement, TBehaviour>,
 	routeOptions?: SecureRouteConfig,
 ): Route {
 	const guardOptions = security.plannerHost
@@ -110,15 +129,25 @@ export function secureRouteRoot(
 	const providers = security.behaviour
 		? [
 				...(routeOptions?.providers ?? []),
-				provideRequirementPlannerHost(security.behaviour),
+				provideRequirementPlannerHost<
+					TAuthRequirement,
+					RouteBehaviourContextExtra,
+					TBehaviour
+				>(security.behaviour),
 			]
 		: routeOptions?.providers;
 	const route: Route = {
 		...routeOptions,
 		path,
 		data: writeRequirementData(security, routeOptions?.data),
-		canActivate: [createAngularCanActivate(guardOptions)],
-		canActivateChild: [createAngularCanActivateChild(guardOptions)],
+		canActivate: [
+			...(routeOptions?.canActivate ?? []),
+			createAngularCanActivate<TAuthRequirement, TBehaviour>(guardOptions),
+		],
+		canActivateChild: [
+			...(routeOptions?.canActivateChild ?? []),
+			createAngularCanActivateChild<TAuthRequirement, TBehaviour>(guardOptions),
+		],
 	};
 	if (providers) {
 		route.providers = providers;

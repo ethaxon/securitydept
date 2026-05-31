@@ -3,11 +3,11 @@
 export {
 	type AuthenticatedCheck,
 	type AuthRequirement,
-	type AuthRequirementInput,
 	BaseRequirementPlanner,
 	type CheckAuthenticated,
-	createAuthRequirement,
-	createAuthRequirements,
+	defaultSelectCandidate,
+	isRouteBehaviourContextExtra,
+	isRouteStateSnapshotTrait,
 	MergeRequirementPlanner,
 	type OnUnauthenticated,
 	PipelineOutcome,
@@ -16,6 +16,9 @@ export {
 	PlanStatus,
 	type RequirementBehaviour,
 	type RequirementBehaviourContext,
+	type RequirementBehaviourWithRouteContext,
+	type RequirementCandidateGenerator,
+	type RequirementCandidateSelectionContext,
 	type RequirementPlan,
 	RequirementPlannerError,
 	RequirementPlannerHost,
@@ -23,11 +26,15 @@ export {
 	type RequirementResolution,
 	RequirementsComposition,
 	ResolutionStatus,
+	type RouteBehaviourContextExtra,
 	RouteCompositionRequirementPlanner,
 	type RouteRequirementsDeclaration,
+	type RouteStateSnapshotTrait,
 	type RouteTreeSegment,
 	resolveEffectiveRequirements,
 	type SelectCandidate,
+	StaticAttrsAuthRequirement,
+	type StaticAttrsAuthRequirementInput,
 	StaticRequirementPlanner,
 	type UnauthenticatedAction,
 } from "./auth-coordination";
@@ -47,6 +54,7 @@ export {
 	type InteropObservableTrait,
 	isInteropObservableTrait,
 	type ObserverTrait,
+	promisesToRacedAsyncGenerator,
 	type SubscribableTrait,
 	type SubscriptionTrait,
 	SYMBOL_ASYNC_DISPOSE,
@@ -202,23 +210,18 @@ export {
 	type JwtClaimsSet,
 } from "./protocol/jwt";
 // --- Router ---
-export type {
-	BaseURIStringSchema,
-	GuardedRouterTrait,
-	RouterBeforeLoad,
-	RouterGuardContext,
-	RouterGuardDecision,
-	RouterNavigationRequest,
-	RouterTrait,
-	SecuritydeptRouteMetadata,
-} from "./router";
 export {
+	BaseURIStringSchema,
 	ROUTER_TRAIT_TOKEN,
-	RouterGuardDecisionKind,
-	RouterGuardPhase,
+	RouterNavigationIntent,
+	RouterNavigationMode,
+	type RouterNavigationRequest,
+	type RouterTrait,
 	readSecuritydeptRouteMetadata,
 	SECURITYDEPT_ROUTE_METADATA_KEY,
+	type SecuritydeptRouteMetadata,
 	takeCompatFragmentFromRouter,
+	UriReferenceStringSchema,
 	writeSecuritydeptRouteMetadata,
 } from "./router";
 // --- Scheduling ---
@@ -259,17 +262,15 @@ export {
 	type SpanTrait,
 } from "./span";
 // --- Std ---
-export type {
-	BaseTransportForStdFetchCreateOptions,
-	TimeForStdCreateOptions,
-} from "./std";
 export {
 	abortSignalToCancellationToken,
+	type BaseTransportForStdFetchCreateOptions,
 	cancellationTokenToAbortSignal,
 	createBaseTransportForStdFetch,
 	createTimeForStd,
 	FetchTransportRedirectKind,
 	normalizeAbortError,
+	type TimeForStdCreateOptions,
 } from "./std";
 // --- Storage ---
 export {
@@ -331,22 +332,10 @@ export {
 	type TracingTrait,
 } from "./tracing";
 // --- Transport ---
-export type {
-	AuthorizationHeaderProviderTrait,
-	BaseTransportTrait,
-	BearerHeaderProvider,
-	CreateAuthorizedTransportOptions,
-	CreateRemappingAuthorizedTransportOptions,
-	ExternalTransportTrait,
-	HttpRequest,
-	HttpResponse,
-	ManagedTransportTrait,
-	ReplayBearerHeaderProvider,
-} from "./transport";
 export {
-	createAuthorizedTransportFromBase,
-	createExternalTransportFromBase,
-	createRemappingAuthorizedTransportFromBase,
+	type BaseTransportTrait,
+	type HttpRequest,
+	type HttpResponse,
 	isLoopbackHttpUrl,
 	TRANSPORT_TRAIT_TOKEN,
 } from "./transport";

@@ -1,9 +1,9 @@
 import {
+	type BaseTransportTrait,
 	createFoundationEnvironment,
 	createInMemoryRecordStore,
 	createRootSpan,
 	createTracing,
-	type ExternalTransportTrait,
 	type ReadableReplaySignalTrait,
 	type StorageTrait,
 	type TimeTrait,
@@ -15,7 +15,7 @@ import { type AuthSnapshot } from "../../token/types";
 import { BaseOidcModeClient, PersistPolicy } from "../base-client";
 import { type BaseOidcModeClientOptions } from "../types";
 
-const TEST_TRANSPORT: ExternalTransportTrait = {
+const TEST_TRANSPORT: BaseTransportTrait = {
 	execute: vi.fn(),
 };
 

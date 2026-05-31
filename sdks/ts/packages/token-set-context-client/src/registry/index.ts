@@ -4,52 +4,60 @@
 // It owns initialization scheduling, disposal, lookup metadata, state signals,
 // and lifecycle events. It does not own token-set auth semantics.
 
-export type {
-	ClientFilter,
-	ClientQueryOptions,
-	ClientSelector,
-} from "./contracts/query";
 export {
+	type CheckClientAuthenticated,
+	ClientRegistryAuthRequirement,
+	type ClientRegistryAuthRequirementContext,
+	type ClientRegistryAuthRequirementInput,
+	type ClientRegistryClientGenerator,
+	type ClientRegistryOidcModeClient,
+	ClientRegistryPlannerHost,
+	ClientRegistryRequirementBehaviour,
+	type ClientRegistryRequirementBehaviourOptions,
+	type OnClientUnauthenticated,
+	type SelectClientCandidate,
+} from "./auth-coordination";
+export {
+	type ClientFilter,
+	type ClientQueryOptions,
+	type ClientSelector,
 	matchesCallbackPath,
 	matchesQuery,
 	matchesUrl,
 } from "./contracts/query";
-export type {
-	ClientDisposedRecordView,
-	ClientFailedRecordView,
-	ClientInitializingRecordView,
-	ClientMeta,
-	ClientReadyRecordView,
-	ClientRecordView,
-	ClientRecordViewBase,
-	ClientRegisteredRecordView,
-	ClientRegistryEntry,
-	ClientRegistryEvent,
-	ClientRegistryEventType,
-	CreateClientRegistryOptions,
+export {
+	type ClientDisposedRecordView,
+	type ClientFailedRecordView,
+	ClientInitializationMode,
+	type ClientInitializingRecordView,
+	type ClientMeta,
+	type ClientReadyRecordView,
+	type ClientRecordView,
+	type ClientRecordViewBase,
+	type ClientRegisteredRecordView,
+	type ClientRegistryEntry,
+	ClientRegistryEntryStatus,
+	type ClientRegistryEvent,
+	type ClientRegistryEventType,
+	type ClientSignalOptions,
+	type CreateClientRegistryOptions,
 } from "./contracts/types";
 export {
-	ClientInitializationMode,
-	ClientRegistryEntryStatus,
-} from "./contracts/types";
-export type {
-	BackendOidcModeCallbackHandle,
-	BackendOidcModeCallbackInput,
-	BackendOidcModeCallbackOptions,
-	BackendOidcModeCallbackResult,
-	BackendOidcModeCallbackState,
+	BackendOidcModeCallbackController,
+	type BackendOidcModeCallbackHandle,
+	type BackendOidcModeCallbackInput,
+	type BackendOidcModeCallbackOptions,
+	type BackendOidcModeCallbackResult,
+	type BackendOidcModeCallbackState,
 } from "./controller/backend-mode-callback-controller";
-export { BackendOidcModeCallbackController } from "./controller/backend-mode-callback-controller";
-export type {
-	FrontendOidcModeCallbackHandle,
-	FrontendOidcModeCallbackInput,
-	FrontendOidcModeCallbackOptions,
-	FrontendOidcModeCallbackResult,
-	FrontendOidcModeCallbackState,
-	ReadFrontendOidcModeCallbackErrorPresentationOptions,
-} from "./controller/frontend-mode-callback-controller";
 export {
 	FrontendOidcModeCallbackController,
+	type FrontendOidcModeCallbackHandle,
+	type FrontendOidcModeCallbackInput,
+	type FrontendOidcModeCallbackOptions,
+	type FrontendOidcModeCallbackResult,
+	type FrontendOidcModeCallbackState,
+	type ReadFrontendOidcModeCallbackErrorPresentationOptions,
 	readFrontendOidcModeCallbackErrorPresentation,
 } from "./controller/frontend-mode-callback-controller";
 export { ClientRecord } from "./core/client-record";

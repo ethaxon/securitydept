@@ -1,6 +1,4 @@
 import {
-	ClientErrorKind,
-	createCancellationTokenSource,
 	createFoundationEnvironment,
 	createInMemoryRecordStore,
 	createRootSpan,
@@ -112,6 +110,9 @@ describe("token-set backend OIDC web helpers", () => {
 			},
 			history,
 		});
+		if (router === null) {
+			throw new Error("Expected native web router.");
+		}
 
 		const fragment = await takeCompatFragmentFromRouter(router);
 
@@ -132,6 +133,9 @@ describe("token-set backend OIDC web helpers", () => {
 			},
 			history: createHistoryRecorder(),
 		});
+		if (router === null) {
+			throw new Error("Expected native web router.");
+		}
 		const fragment = await takeCompatFragmentFromRouter(router);
 
 		const snapshot = await client.handleCallback(fragment?.parameters ?? {});
@@ -173,6 +177,9 @@ describe("token-set backend OIDC web helpers", () => {
 				hash: "#ignored",
 			},
 		});
+		if (router === null) {
+			throw new Error("Expected native web router.");
+		}
 		const currentUrl = router.currentUrl();
 
 		const authorizeUrl = client.authorizeUrl(currentUrl?.toString());
@@ -202,9 +209,7 @@ describe("token-set backend OIDC web helpers", () => {
 		);
 	});
 
-	it("injects the current bearer and forwards cancellation tokens", async () => {
-		const cancellation = createCancellationTokenSource();
-		const requests: HttpRequest[] = [];
+	it("exposes the current bearer authorization header", async () => {
 		const client = createBackendOidcModeTestClient({});
 		await client.restoreState({
 			tokens: {
@@ -213,57 +218,9 @@ describe("token-set backend OIDC web helpers", () => {
 			},
 			metadata: {},
 		});
-		const transport = client.authorizedTransport({
-			baseTransport: {
-				async execute(request: HttpRequest): Promise<HttpResponse> {
-					requests.push(request);
-					return {
-						status: 200,
-						headers: {},
-						body: [],
-					};
-				},
-			},
-		});
 
-		await transport.execute({
-			url: "/api/groups",
-			method: "GET",
-			headers: {
-				accept: "application/json",
-			},
-			cancellationToken: cancellation.token,
-		});
-
-		expect(requests).toHaveLength(1);
-		expect(requests[0]?.headers.authorization).toBe("Bearer token-set-at");
-		expect(requests[0]?.cancellationToken).toBe(cancellation.token);
-	});
-
-	it("refuses to fall back when token-set authorization is unavailable", async () => {
-		const client = createBackendOidcModeTestClient({});
-		await client.logout();
-		const transport = client.authorizedTransport({
-			baseTransport: {
-				async execute(): Promise<HttpResponse> {
-					return {
-						status: 200,
-						headers: {},
-						body: null,
-					};
-				},
-			},
-		});
-
-		await expect(
-			transport.execute({
-				url: "/api/groups",
-				method: "GET",
-				headers: {},
-			}),
-		).rejects.toMatchObject({
-			kind: ClientErrorKind.Unauthenticated,
-			code: "client.authorization.unavailable",
-		});
+		await expect(client.authorizationHeaderValue.whenValue()).resolves.toBe(
+			"Bearer token-set-at",
+		);
 	});
 });

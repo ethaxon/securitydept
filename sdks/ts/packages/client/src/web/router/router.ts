@@ -1,6 +1,10 @@
 import { type as defineType } from "arktype";
 import { type EnvironmentValidators } from "../../environment/types";
-import { type RouterNavigationRequest, type RouterTrait } from "../../router";
+import {
+	RouterNavigationMode,
+	type RouterNavigationRequest,
+	type RouterTrait,
+} from "../../router";
 import { BaseURIStringSchema } from "../../router/uri";
 import {
 	type UriReferenceString,
@@ -10,6 +14,7 @@ import {
 import {
 	throwValidationClientError,
 	validateTraitInput,
+	validateWithSchemaSync,
 	type WithTraitInputValidator,
 } from "../../validation";
 
@@ -125,13 +130,40 @@ const RouterForNativeWebCreateOptionsSchema = defineType({
 	document: NullableNativeWebDocumentLikeSchema,
 });
 
+const RouterForNativeWebUnavailableProbeSchema = defineType({
+	navigation: "null | undefined",
+	location: "null | undefined",
+	history: "null | undefined",
+	window: "null | undefined",
+});
+
 export function createRouterForNativeWeb(
 	options: RouterForNativeWebCreateOptions &
 		WithTraitInputValidator<Pick<EnvironmentValidators, "router">> = {},
-): RouterTrait {
-	const router = new NativeWebRouter(
-		resolveRouterForNativeWebCreateOptions(options),
-	);
+): RouterTrait | null {
+	const resolvedCreateOptions = resolveRouterForNativeWebCreateOptions(options);
+	if (
+		validateWithSchemaSync(
+			RouterForNativeWebUnavailableProbeSchema,
+			resolvedCreateOptions,
+		).success
+	) {
+		return null;
+	}
+	validateTraitInput({
+		value: resolvedCreateOptions,
+		bundledSchema: RouterForNativeWebCreateOptionsSchema,
+		validator: options.validators?.router,
+		onInvalid: (failure) =>
+			throwValidationClientError({
+				code: "web.router.invalid_native_web_router_options",
+				source: "web",
+				messagePrefix:
+					"createRouterForNativeWeb could not validate routerForNativeWebCreateOptions",
+				failure,
+			}),
+	});
+	const router = new NativeWebRouter(resolvedCreateOptions);
 	return {
 		currentUrl() {
 			return router.currentUrl();
@@ -209,7 +241,7 @@ export class WebNavigationRouter extends NativeWebRouterBase {
 
 	async navigate(request: RouterNavigationRequest): Promise<void> {
 		const target = this.resolveNavigationTarget(request);
-		if (request.mode === "external") {
+		if (request.mode === RouterNavigationMode.External) {
 			if (this.location) {
 				this.location.href = target;
 				return;
@@ -217,7 +249,10 @@ export class WebNavigationRouter extends NativeWebRouterBase {
 			throw new Error("Native web router cannot perform external navigation.");
 		}
 		const result = this.navigation.navigate(target, {
-			history: request.mode === "replace" ? "replace" : "push",
+			history:
+				request.mode === RouterNavigationMode.Replace
+					? RouterNavigationMode.Replace
+					: RouterNavigationMode.Push,
 			state: request.state,
 		});
 		await result?.committed;
@@ -234,7 +269,7 @@ export class WebLegacyRouter extends NativeWebRouterBase {
 
 	async navigate(request: RouterNavigationRequest): Promise<void> {
 		const target = this.resolveNavigationTarget(request);
-		if (request.mode === "external") {
+		if (request.mode === RouterNavigationMode.External) {
 			if (this.location) {
 				this.location.href = target;
 				return;
@@ -246,7 +281,10 @@ export class WebLegacyRouter extends NativeWebRouterBase {
 				"Native web router requires history for in-page navigation.",
 			);
 		}
-		if (request.mode === "replace" || !this.history.pushState) {
+		if (
+			request.mode === RouterNavigationMode.Replace ||
+			!this.history.pushState
+		) {
 			this.history.replaceState(request.state ?? null, "", target);
 		} else {
 			this.history.pushState(request.state ?? null, "", target);
@@ -255,10 +293,8 @@ export class WebLegacyRouter extends NativeWebRouterBase {
 }
 
 export function resolveRouterForNativeWebCreateOptions(
-	options: RouterForNativeWebCreateOptions &
-		WithTraitInputValidator<Pick<EnvironmentValidators, "router">> = {},
+	options: RouterForNativeWebCreateOptions = {},
 ): ResolvedRouterForNativeWebCreateOptions {
-	const { validators, ...createOptions } = options;
 	const global = globalThis as {
 		navigation?: NativeWebNavigationLike;
 		location?: NativeWebLocationLike;
@@ -281,26 +317,11 @@ export function resolveRouterForNativeWebCreateOptions(
 	const documentLike = Object.hasOwn(options, "document")
 		? (options.document ?? null)
 		: (windowLike?.document ?? global.document ?? null);
-	const resolvedCreateOptions = {
-		...createOptions,
+	return {
 		window: windowLike,
 		navigation,
 		location,
 		history,
 		document: documentLike,
 	};
-	validateTraitInput({
-		value: resolvedCreateOptions,
-		bundledSchema: RouterForNativeWebCreateOptionsSchema,
-		validator: validators?.router,
-		onInvalid: (failure) =>
-			throwValidationClientError({
-				code: "web.router.invalid_native_web_router_options",
-				source: "web",
-				messagePrefix:
-					"createRouterForNativeWeb could not validate routerForNativeWebCreateOptions",
-				failure,
-			}),
-	});
-	return resolvedCreateOptions;
 }

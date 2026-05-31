@@ -70,9 +70,10 @@ export class BackendOidcModeCallbackController {
 				});
 			}
 
-			const client = await this.registry.initialize(
+			const readyRecord = await this.registry.initialize(
 				record.get().meta.clientKey,
 			);
+			const client = readyRecord.client;
 			if (!(client instanceof BackendOidcModeClient)) {
 				throw new ClientRegistryError({
 					code: ClientRegistryErrorCode.CallbackClientModeMismatch,
@@ -84,9 +85,8 @@ export class BackendOidcModeCallbackController {
 			const snapshot = await client.handleCallback(this.payload);
 
 			return {
-				clientRecord: record
-					.get()
-					.toView() as ClientReadyRecordView<BackendOidcModeClient>,
+				clientRecord:
+					readyRecord as ClientReadyRecordView<BackendOidcModeClient>,
 				snapshot,
 			};
 		});

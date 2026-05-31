@@ -5,7 +5,7 @@
 // Concatenates source planners in order. Overlapping ids follow Map semantics:
 // the later source wins for the same key.
 
-import { type AuthRequirement } from "../contract";
+import { type AuthRequirement, type RequirementBehaviour } from "../contract";
 import { type RequirementPlannerHost } from "../planner-host";
 import { BaseRequirementPlanner } from "./base-planner";
 
@@ -21,29 +21,60 @@ import { BaseRequirementPlanner } from "./base-planner";
  * ]);
  * ```
  */
-export class MergeRequirementPlanner extends BaseRequirementPlanner {
-	private readonly sources: readonly BaseRequirementPlanner[];
+export class MergeRequirementPlanner<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+	TBehaviour extends Partial<
+		RequirementBehaviour<TAuthRequirement, TPlanContext>
+	> = Partial<RequirementBehaviour<TAuthRequirement, TPlanContext>>,
+> extends BaseRequirementPlanner<TAuthRequirement, TPlanContext, TBehaviour> {
+	private readonly sources: readonly BaseRequirementPlanner<
+		TAuthRequirement,
+		TPlanContext,
+		TBehaviour
+	>[];
+
+	get planContext(): TPlanContext {
+		return Object.assign(
+			{},
+			...this.sources.map((source) => source.planContext),
+		);
+	}
 
 	protected constructor(
-		host: RequirementPlannerHost,
-		sources: readonly BaseRequirementPlanner[],
+		host: RequirementPlannerHost<TBehaviour>,
+		sources: readonly BaseRequirementPlanner<
+			TAuthRequirement,
+			TPlanContext,
+			TBehaviour
+		>[],
 	) {
 		super(host);
 		this.sources = sources;
 	}
 
 	/** Create a merge planner from an ordered list of source planners. */
-	static fromPlanners(
-		host: RequirementPlannerHost,
-		planners: readonly BaseRequirementPlanner[],
-	): MergeRequirementPlanner {
+	static fromPlanners<
+		TAuthRequirement extends AuthRequirement = AuthRequirement,
+		TPlanContext = {},
+		TBehaviour extends Partial<
+			RequirementBehaviour<TAuthRequirement, TPlanContext>
+		> = Partial<RequirementBehaviour<TAuthRequirement, TPlanContext>>,
+	>(
+		host: RequirementPlannerHost<TBehaviour>,
+		planners: readonly BaseRequirementPlanner<
+			TAuthRequirement,
+			TPlanContext,
+			TBehaviour
+		>[],
+	): MergeRequirementPlanner<TAuthRequirement, TPlanContext, TBehaviour> {
 		return new MergeRequirementPlanner(host, planners);
 	}
 
 	protected async buildRequirementList(): Promise<
-		Map<string, AuthRequirement>
+		Map<string, TAuthRequirement>
 	> {
-		const map = new Map<string, AuthRequirement>();
+		const map = new Map<string, TAuthRequirement>();
 		for (const source of this.sources) {
 			for (const requirement of await source.resolveRequirementList()) {
 				map.set(requirement.id, requirement);

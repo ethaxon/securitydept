@@ -13,31 +13,35 @@
 // Stability: provisional (additive, shared coordination capability)
 
 // --- Contract ---
-export type {
-	AuthenticatedCheck,
-	AuthRequirement,
-	AuthRequirementInput,
-	CheckAuthenticated,
-	OnUnauthenticated,
-	PipelineRunResult,
-	PipelineStepResult,
-	RequirementBehaviour,
-	RequirementBehaviourContext,
-	RequirementResolution,
-	RouteRequirementsDeclaration,
-	RouteTreeSegment,
-	SelectCandidate,
-	UnauthenticatedAction,
-} from "./contract";
 export {
-	createAuthRequirement,
-	createAuthRequirements,
+	type AuthenticatedCheck,
+	type AuthRequirement,
+	type CheckAuthenticated,
+	isRouteBehaviourContextExtra,
+	isRouteStateSnapshotTrait,
+	type OnUnauthenticated,
 	PipelineOutcome,
+	type PipelineRunResult,
+	type PipelineStepResult,
 	PlanStatus,
+	type RequirementBehaviour,
+	type RequirementBehaviourContext,
+	type RequirementBehaviourWithRouteContext,
+	type RequirementCandidateGenerator,
+	type RequirementCandidateSelectionContext,
 	RequirementPlannerError,
+	type RequirementResolution,
 	RequirementsComposition,
 	ResolutionStatus,
+	type RouteBehaviourContextExtra,
+	type RouteRequirementsDeclaration,
+	type RouteStateSnapshotTrait,
+	type RouteTreeSegment,
 	resolveEffectiveRequirements,
+	type SelectCandidate,
+	StaticAttrsAuthRequirement,
+	type StaticAttrsAuthRequirementInput,
+	type UnauthenticatedAction,
 } from "./contract";
 // --- Planners ---
 export {
@@ -48,5 +52,8 @@ export {
 	StaticRequirementPlanner,
 } from "./planner";
 // --- Planner Host ---
-export type { RequirementPlannerHostOptions } from "./planner-host";
-export { RequirementPlannerHost } from "./planner-host";
+export {
+	defaultSelectCandidate,
+	RequirementPlannerHost,
+	type RequirementPlannerHostOptions,
+} from "./planner-host";

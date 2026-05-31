@@ -26,22 +26,28 @@ function createTestTransport(
 describe("SessionContextService", () => {
 	it("bridges client signals and convenience methods", async () => {
 		const requests: HttpRequest[] = [];
-		const environment = createEnvironmentForTest({
-			transport: createTestTransport((request) => {
-				requests.push(request);
-				if (request.url.endsWith("/user-info")) {
-					return {
-						status: 200,
-						headers: {},
-						body: { subject: "session-user-1", display_name: "Alice" },
-					};
-				}
-				return { status: 200, headers: {}, body: {} };
-			}),
-		});
 		const injector = Injector.create({
 			providers: [
-				provideEnvironment({ environment }),
+				provideEnvironment({
+					environment: (ngProviders) =>
+						createEnvironmentForTest({
+							providers: ngProviders,
+							transport: createTestTransport((request) => {
+								requests.push(request);
+								if (request.url.endsWith("/user-info")) {
+									return {
+										status: 200,
+										headers: {},
+										body: {
+											subject: "session-user-1",
+											display_name: "Alice",
+										},
+									};
+								}
+								return { status: 200, headers: {}, body: {} };
+							}),
+						}),
+				}),
 				{
 					provide: DestroyRef,
 					useValue: {
@@ -83,19 +89,21 @@ describe("SessionContextService", () => {
 
 	it("provideSessionContext registers only the client and service", async () => {
 		const requests: HttpRequest[] = [];
-		const environment = createEnvironmentForTest({
-			transport: createTestTransport((request) => {
-				requests.push(request);
-				return {
-					status: 401,
-					headers: {},
-				};
-			}),
-		});
-
 		const injector = Injector.create({
 			providers: [
-				provideEnvironment({ environment }),
+				provideEnvironment({
+					environment: (ngProviders) =>
+						createEnvironmentForTest({
+							providers: ngProviders,
+							transport: createTestTransport((request) => {
+								requests.push(request);
+								return {
+									status: 401,
+									headers: {},
+								};
+							}),
+						}),
+				}),
 				{
 					provide: DestroyRef,
 					useValue: {

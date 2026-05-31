@@ -35,7 +35,7 @@ import {
 	type StorageForNativeWebCreateOptions,
 } from "./storage";
 
-export type { FoundationEnvironment } from "../environment/types";
+export { type FoundationEnvironment } from "../environment/types";
 
 export interface NativeWebEnvironment extends FoundationEnvironment {
 	router: RouterTrait;

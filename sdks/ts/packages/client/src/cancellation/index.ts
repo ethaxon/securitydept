@@ -3,8 +3,8 @@ export {
 	isCancellationTokenTrait,
 } from "./cancellation-token";
 export { createLinkedCancellationToken } from "./linked-cancellation-token";
-export type {
-	CancelableHandle,
-	CancellationTokenSourceTrait,
-	CancellationTokenTrait,
+export {
+	type CancelableHandle,
+	type CancellationTokenSourceTrait,
+	type CancellationTokenTrait,
 } from "./types";

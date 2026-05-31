@@ -561,4 +561,4 @@ function extractGeneratedAtFromProjection(raw: unknown): number | undefined {
 }
 
 // Re-export type needed for overrides parameter inference
-export type { FrontendOidcModeClientConfig };
+export { type FrontendOidcModeClientConfig };

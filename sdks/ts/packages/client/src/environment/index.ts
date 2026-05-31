@@ -1,8 +1,10 @@
-export type { CreateFoundationEnvironmentOptions } from "./create";
-export { createFoundationEnvironment } from "./create";
-export type {
-	EnvironmentValidators,
-	FoundationEnvironment,
-	ServiceWorkerEnvironment,
+export {
+	type CreateFoundationEnvironmentOptions,
+	createFoundationEnvironment,
+} from "./create";
+export {
+	type EnvironmentValidators,
+	FOUNDATION_ENVIRONMENT_TOKEN,
+	type FoundationEnvironment,
+	type ServiceWorkerEnvironment,
 } from "./types";
-export { FOUNDATION_ENVIRONMENT_TOKEN } from "./types";

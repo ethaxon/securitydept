@@ -42,6 +42,7 @@ import {
 	type EnvironmentValidators,
 	RequirementsClientSetComposition,
 	type RouteMatchNode,
+	RouterNavigationMode,
 	type RouterNavigationRequest,
 	type RouterTrait,
 	throwValidationClientError,
@@ -53,7 +54,7 @@ import { type AnyRoute, type RegisteredRouter } from "@tanstack/react-router";
 import { type as defineType } from "arktype";
 import { isPromise } from "es-toolkit/predicate";
 
-export type { AuthRequirement, RouteMatchNode };
+export { type AuthRequirement, type RouteMatchNode };
 
 export interface TanStackRouterNavigationLike {
 	state?: {
@@ -140,7 +141,7 @@ export function createRouterForTanstackRouter(
 		async navigate(request: RouterNavigationRequest) {
 			await options.router.navigate({
 				to: request.url.toString(),
-				replace: request.mode === "replace",
+				replace: request.mode === RouterNavigationMode.Replace,
 				state: request.state,
 			});
 		},
@@ -1037,6 +1038,9 @@ function isValidComposition(
 
 // Unused import prevents TS from complaining if @tanstack/react-router types
 // are not available at build time (peerDep is optional for pure orchestration).
-export type { AnyRoute, RegisteredRouter };
 // Re-export composition enum for adopter convenience
-export { RequirementsClientSetComposition };
+export {
+	type AnyRoute,
+	type RegisteredRouter,
+	RequirementsClientSetComposition,
+};

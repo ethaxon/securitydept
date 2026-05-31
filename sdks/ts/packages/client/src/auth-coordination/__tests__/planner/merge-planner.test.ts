@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-	createAuthRequirement,
 	MergeRequirementPlanner,
 	RequirementPlannerHost,
+	StaticAttrsAuthRequirement,
 	StaticRequirementPlanner,
 } from "../../index";
 
@@ -13,11 +13,11 @@ describe("MergeRequirementPlanner", () => {
 			onUnauthenticated: () => false,
 		});
 		const first = StaticRequirementPlanner.fromRequirements(host, [
-			createAuthRequirement({ id: "a" }),
+			StaticAttrsAuthRequirement.create({ id: "a" }),
 		]);
 		const second = StaticRequirementPlanner.fromRequirements(host, [
-			createAuthRequirement({ id: "b" }),
-			createAuthRequirement({ id: "c" }),
+			StaticAttrsAuthRequirement.create({ id: "b" }),
+			StaticAttrsAuthRequirement.create({ id: "c" }),
 		]);
 
 		const merge = MergeRequirementPlanner.fromPlanners(host, [first, second]);
@@ -37,10 +37,10 @@ describe("MergeRequirementPlanner", () => {
 	it("reflects source order when sources are swapped", async () => {
 		const host = RequirementPlannerHost.fromBehaviour({});
 		const first = StaticRequirementPlanner.fromRequirements(host, [
-			createAuthRequirement({ id: "a" }),
+			StaticAttrsAuthRequirement.create({ id: "a" }),
 		]);
 		const second = StaticRequirementPlanner.fromRequirements(host, [
-			createAuthRequirement({ id: "b" }),
+			StaticAttrsAuthRequirement.create({ id: "b" }),
 		]);
 
 		const merge = MergeRequirementPlanner.fromPlanners(host, [second, first]);

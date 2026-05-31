@@ -24,19 +24,24 @@ import {
 	take,
 	takeUntil,
 } from "rxjs";
+import { type BaseOidcModeClient } from "../../orchestration/client/base-client";
 import { type ClientQueryOptions, matchesQuery } from "../contracts/query";
 import {
 	ClientInitializationMode,
+	type ClientReadyRecordView,
 	type ClientRecordView,
 	type ClientRegistryEntry,
 	ClientRegistryEntryStatus,
 	type ClientRegistryEvent,
+	type ClientSignalOptions,
 	type CreateClientRegistryOptions,
 } from "../contracts/types";
 import { ClientRecord } from "./client-record";
 import { ClientRegistryError, ClientRegistryErrorCode } from "./error";
 
-export class ClientRegistry<TClient extends DisposableTrait> {
+export class ClientRegistry<
+	TClient extends DisposableTrait = BaseOidcModeClient,
+> {
 	private readonly destroyed = new ReplaySubject<true>(1);
 
 	private readonly recordsSubject = new BehaviorSubject(
@@ -123,7 +128,7 @@ export class ClientRegistry<TClient extends DisposableTrait> {
 		}
 	}
 
-	async initialize(key: string): Promise<TClient> {
+	async initialize(key: string): Promise<ClientReadyRecordView<TClient>> {
 		const clientRecord = this.clientRecordSubjectFor(key);
 		const record = clientRecord.getValue();
 
@@ -141,7 +146,10 @@ export class ClientRegistry<TClient extends DisposableTrait> {
 			),
 		);
 		if (result.status === ClientRegistryEntryStatus.Ready) {
-			return result.client as TClient;
+			const view = result.toView();
+			if (view.status === ClientRegistryEntryStatus.Ready) {
+				return view;
+			}
 		}
 		throw result.error;
 	}
@@ -197,10 +205,6 @@ export class ClientRegistry<TClient extends DisposableTrait> {
 		return recordSubject ? ClientRecord.toSignal(recordSubject) : undefined;
 	}
 
-	clientSignalFor(key: string): ReadableReplaySignalTrait<TClient> {
-		return ClientRecord.toClientSignal(this.clientRecordSubjectFor(key));
-	}
-
 	private *clientSubjectGenForQuery(
 		query: ClientQueryOptions,
 	): Generator<BehaviorSubject<ClientRecord<TClient>>, void, unknown> {
@@ -224,6 +228,17 @@ export class ClientRegistry<TClient extends DisposableTrait> {
 		}
 	}
 
+	clientSignalFor(
+		key: string,
+		options: ClientSignalOptions = {},
+	): ReadableReplaySignalTrait<TClient> {
+		const recordSubject = this.clientRecordSubjectFor(key);
+		if (options.initialize ?? true) {
+			this.initializeTrigger.next(recordSubject.getValue().id);
+		}
+		return ClientRecord.toClientSignal(recordSubject);
+	}
+
 	*clientRecordGenForQuery(
 		query: ClientQueryOptions,
 	): Generator<ReadableSignalTrait<ClientRecord<TClient>>, void, unknown> {
@@ -241,16 +256,21 @@ export class ClientRegistry<TClient extends DisposableTrait> {
 
 	*clientSignalGenForQuery(
 		query: ClientQueryOptions,
+		options: ClientSignalOptions = {},
 	): Generator<ReadableReplaySignalTrait<TClient>, void, unknown> {
 		for (const recordSubject of this.clientSubjectGenForQuery(query)) {
+			if (options.initialize ?? true) {
+				this.initializeTrigger.next(recordSubject.getValue().id);
+			}
 			yield ClientRecord.toClientSignal(recordSubject);
 		}
 	}
 
 	clientSignalForQuery(
 		query: ClientQueryOptions,
+		options: ClientSignalOptions = {},
 	): ReadableReplaySignalTrait<TClient> | undefined {
-		const result = this.clientSignalGenForQuery(query).next();
+		const result = this.clientSignalGenForQuery(query, options).next();
 		return result.done ? undefined : result.value;
 	}
 
@@ -265,8 +285,8 @@ export class ClientRegistry<TClient extends DisposableTrait> {
 	}
 }
 
-export function createClientRegistry<TClient extends DisposableTrait>(
-	options: CreateClientRegistryOptions,
-): ClientRegistry<TClient> {
+export function createClientRegistry<
+	TClient extends DisposableTrait = BaseOidcModeClient,
+>(options: CreateClientRegistryOptions): ClientRegistry<TClient> {
 	return new ClientRegistry<TClient>(options);
 }

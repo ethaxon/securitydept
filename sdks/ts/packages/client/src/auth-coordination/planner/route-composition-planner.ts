@@ -12,8 +12,11 @@
 
 import {
 	type AuthRequirement,
+	type RequirementBehaviourWithRouteContext,
 	type RequirementResolution,
 	RequirementsComposition,
+	type RouteBehaviourContextExtra,
+	type RouteStateSnapshotTrait,
 	type RouteTreeSegment,
 	resolveEffectiveRequirements,
 } from "../contract";
@@ -21,10 +24,12 @@ import { type RequirementPlannerHost } from "../planner-host";
 import { BaseRequirementPlanner, type RequirementPlan } from "./base-planner";
 
 /** Fold a matched route chain into its effective requirement list. */
-function foldSegments(
-	segments: readonly RouteTreeSegment[],
-): readonly AuthRequirement[] {
-	const effective = new Map<string, AuthRequirement>();
+function foldSegments<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+>(
+	segments: readonly RouteTreeSegment<TAuthRequirement>[],
+): readonly TAuthRequirement[] {
+	const effective = new Map<string, TAuthRequirement>();
 	for (const segment of segments) {
 		resolveEffectiveRequirements(
 			{
@@ -53,42 +58,71 @@ function sharedPrefixLength(
 /**
  * A planner driven by a matched route chain with composition semantics.
  *
- * Construct via {@link fromRootRoute} for the first activation, or
- * {@link fromActiveRoute} for a transition that preserves shared-prefix
+ * Construct via {@link fromRouteSegments} for a matched route chain, or
+ * {@link fromRouteTransition} for a transition that preserves shared-prefix
  * resolutions from the previous planner instance.
  */
-export class RouteCompositionRequirementPlanner extends BaseRequirementPlanner {
-	private readonly _segments: readonly RouteTreeSegment[];
-	private readonly _effective: readonly AuthRequirement[];
+export class RouteCompositionRequirementPlanner<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TBehaviour extends Partial<
+		RequirementBehaviourWithRouteContext<TAuthRequirement>
+	> = Partial<RequirementBehaviourWithRouteContext<TAuthRequirement>>,
+> extends BaseRequirementPlanner<
+	TAuthRequirement,
+	RouteBehaviourContextExtra,
+	TBehaviour
+> {
+	private readonly _segments: readonly RouteTreeSegment<TAuthRequirement>[];
+	private readonly _effective: readonly TAuthRequirement[];
+	private readonly _planContext: RouteBehaviourContextExtra;
 
 	protected constructor(
-		host: RequirementPlannerHost,
-		segments: readonly RouteTreeSegment[],
+		host: RequirementPlannerHost<TBehaviour>,
+		segments: readonly RouteTreeSegment<TAuthRequirement>[],
+		routeState: RouteStateSnapshotTrait,
 		preservedResolutions: readonly RequirementResolution[] = [],
 	) {
 		super(host, preservedResolutions);
 		this._segments = segments;
 		this._effective = foldSegments(segments);
+		this._planContext = Object.freeze({
+			routeState: Object.freeze({ ...routeState }),
+		});
 	}
 
-	/** Build a planner from a matched route chain (first activation). */
-	static fromRootRoute(
-		host: RequirementPlannerHost,
-		segments: readonly RouteTreeSegment[],
-	): RouteCompositionRequirementPlanner {
-		return new RouteCompositionRequirementPlanner(host, segments);
+	/** Build a planner from a matched route chain. */
+	static fromRouteSegments<
+		TAuthRequirement extends AuthRequirement = AuthRequirement,
+		TBehaviour extends Partial<
+			RequirementBehaviourWithRouteContext<TAuthRequirement>
+		> = Partial<RequirementBehaviourWithRouteContext<TAuthRequirement>>,
+	>(
+		host: RequirementPlannerHost<TBehaviour>,
+		segments: readonly RouteTreeSegment<TAuthRequirement>[],
+		routeState: RouteStateSnapshotTrait,
+	): RouteCompositionRequirementPlanner<TAuthRequirement, TBehaviour> {
+		return new RouteCompositionRequirementPlanner(host, segments, routeState);
 	}
 
 	/**
 	 * Build a planner for a route transition, preserving resolutions for the
 	 * shared requirement prefix carried over from `previousPlan`.
 	 */
-	static fromActiveRoute(
-		host: RequirementPlannerHost,
-		currentSegments: readonly RouteTreeSegment[],
-		previousPlanner: RouteCompositionRequirementPlanner,
-		previousPlan: RequirementPlan,
-	): RouteCompositionRequirementPlanner {
+	static fromRouteTransition<
+		TAuthRequirement extends AuthRequirement = AuthRequirement,
+		TBehaviour extends Partial<
+			RequirementBehaviourWithRouteContext<TAuthRequirement>
+		> = Partial<RequirementBehaviourWithRouteContext<TAuthRequirement>>,
+	>(
+		host: RequirementPlannerHost<TBehaviour>,
+		currentSegments: readonly RouteTreeSegment<TAuthRequirement>[],
+		routeState: RouteStateSnapshotTrait,
+		previousPlanner: RouteCompositionRequirementPlanner<
+			TAuthRequirement,
+			TBehaviour
+		>,
+		previousPlan: RequirementPlan<TAuthRequirement, RouteBehaviourContextExtra>,
+	): RouteCompositionRequirementPlanner<TAuthRequirement, TBehaviour> {
 		const nextEffective = foldSegments(currentSegments);
 		const shared = sharedPrefixLength(
 			previousPlanner.effectiveRequirements,
@@ -103,21 +137,26 @@ export class RouteCompositionRequirementPlanner extends BaseRequirementPlanner {
 		return new RouteCompositionRequirementPlanner(
 			host,
 			currentSegments,
+			routeState,
 			preserved,
 		);
 	}
 
+	get planContext(): RouteBehaviourContextExtra {
+		return this._planContext;
+	}
+
 	/** The matched route chain backing this planner. */
-	get segments(): readonly RouteTreeSegment[] {
+	get segments(): readonly RouteTreeSegment<TAuthRequirement>[] {
 		return this._segments;
 	}
 
 	/** The folded effective requirement list (composition applied). */
-	get effectiveRequirements(): readonly AuthRequirement[] {
+	get effectiveRequirements(): readonly TAuthRequirement[] {
 		return this._effective;
 	}
 
-	protected buildRequirementList(): Map<string, AuthRequirement> {
+	protected buildRequirementList(): Map<string, TAuthRequirement> {
 		return new Map(
 			this._effective.map((requirement) => [requirement.id, requirement]),
 		);

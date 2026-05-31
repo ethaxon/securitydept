@@ -6,14 +6,29 @@ import {
 } from "../protocol/compat-fragment";
 import { type UriReferenceString, type UriString } from "../struct/uri-string";
 
+export const RouterNavigationIntent = {
+	AuthRedirect: "auth_redirect",
+	PostAuthRedirect: "post_auth_redirect",
+	CallbackCleanup: "callback_cleanup",
+	ExternalOpen: "external_open",
+} as const;
+
+export type RouterNavigationIntent =
+	(typeof RouterNavigationIntent)[keyof typeof RouterNavigationIntent];
+
+export const RouterNavigationMode = {
+	Push: "push",
+	Replace: "replace",
+	External: "external",
+} as const;
+
+export type RouterNavigationMode =
+	(typeof RouterNavigationMode)[keyof typeof RouterNavigationMode];
+
 export interface RouterNavigationRequest {
 	url: UriReferenceString;
-	intent:
-		| "auth_redirect"
-		| "post_auth_redirect"
-		| "callback_cleanup"
-		| "external_open";
-	mode: "push" | "replace" | "external";
+	intent: RouterNavigationIntent;
+	mode: RouterNavigationMode;
 	state?: unknown;
 }
 
@@ -43,8 +58,8 @@ export async function takeCompatFragmentFromRouter(
 
 	await router.navigate({
 		url: cleanedUrl,
-		intent: "callback_cleanup",
-		mode: "replace",
+		intent: RouterNavigationIntent.CallbackCleanup,
+		mode: RouterNavigationMode.Replace,
 	});
 	return compatFragment;
 }

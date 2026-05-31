@@ -7,11 +7,12 @@ export {
 	SessionInfoSchema,
 	SessionUserInfoResponseSchema,
 } from "./contracts/schemas";
-export type {
-	SessionContextClientConfig,
-	SessionContextClientTracingOptions,
-	SessionContextEvent,
-	SessionInfo,
-	SessionPrincipal,
+export {
+	type SessionContextClientConfig,
+	type SessionContextClientTracingOptions,
+	type SessionContextEvent,
+	SessionContextEventType,
+	SessionContextSource,
+	type SessionInfo,
+	type SessionPrincipal,
 } from "./types";
-export { SessionContextEventType, SessionContextSource } from "./types";

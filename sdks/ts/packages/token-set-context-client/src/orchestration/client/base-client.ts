@@ -16,7 +16,6 @@ import {
 	ClientError,
 	ClientErrorKind,
 	createAndThenComputedReplaySignal,
-	createAuthorizedTransportFromBase,
 	createCancellationTokenSource,
 	createEventReplaySubject,
 	createEventSubject,
@@ -28,7 +27,6 @@ import {
 	describeError,
 	type EventStreamTrait,
 	type FoundationEnvironment,
-	type ManagedTransportTrait,
 	type OperationSpanTrait,
 	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
@@ -70,7 +68,6 @@ import {
 	type BaseOidcModeClientDefaultOptions,
 	type BaseOidcModeClientOptions,
 	type BaseOidcModeClientTracingOptions,
-	type OidcAuthorizedTransportOptions,
 	type OidcPopupLoginOptions,
 	type OidcPopupLoginResult,
 	type OidcRedirectLoginOptions,
@@ -368,16 +365,6 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		return this._refreshState({
 			snapshot: determinatedSnapshot,
 			freshnessOptions: this._freshnessOptions,
-		});
-	}
-
-	authorizedTransport(
-		options: OidcAuthorizedTransportOptions = {},
-	): ManagedTransportTrait {
-		this._throwIfNotOperational();
-		return createAuthorizedTransportFromBase(this, {
-			baseTransport: options.baseTransport ?? this._environment.transport,
-			requireAuthorization: options.requireAuthorization,
 		});
 	}
 

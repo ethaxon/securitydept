@@ -2,7 +2,6 @@ import {
 	type CancellationTokenSourceTrait,
 	ClientError,
 	ClientErrorKind,
-	UriReferenceString,
 	createAndThenComputedReplaySignal,
 	createCancellationTokenSource,
 	createEventReplaySubject,
@@ -18,10 +17,13 @@ import {
 	type OperationSpanTrait,
 	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
+	RouterNavigationIntent,
+	RouterNavigationMode,
 	readonlyReplaySignal,
 	readonlySignal,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
+	UriReferenceString,
 	type WritableSignalTrait,
 } from "@securitydept/client";
 import {
@@ -282,8 +284,8 @@ export class SessionContextClient implements DisposableTrait {
 				url: UriReferenceString.parse(
 					this._createLoginRedirectUrl(options.postAuthRedirectUri),
 				),
-				intent: "auth_redirect",
-				mode: "external",
+				intent: RouterNavigationIntent.AuthRedirect,
+				mode: RouterNavigationMode.External,
 			});
 			this._throwIfNotOperational();
 		} finally {

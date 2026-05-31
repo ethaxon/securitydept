@@ -1,11 +1,18 @@
-import { type DisposableTrait, SYMBOL_DISPOSE } from "@securitydept/client";
+import {
+	type DisposableTrait,
+	type ReadableSignalTrait,
+	SYMBOL_DISPOSE,
+} from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
+import { type BaseOidcModeClient } from "../../orchestration";
 import {
 	ClientInitializationMode,
+	type ClientReadyRecordView,
 	type ClientRegistryEntry,
 	ClientRegistryEntryStatus,
 	ClientRegistryEventType,
 } from "../contracts/types";
+import { type ClientRecord } from "../core/client-record";
 import { createClientRegistry } from "../core/client-registry";
 
 interface TestClient extends DisposableTrait {
@@ -93,7 +100,22 @@ describe("ClientRegistry", () => {
 		]);
 	});
 
-	it("keeps lazy clients uninitialized until initialize is called", async () => {
+	it("defaults the registry generic to BaseOidcModeClient", () => {
+		const registry: {
+			initialize(
+				key: string,
+			): Promise<ClientReadyRecordView<BaseOidcModeClient>>;
+			clientRecordFor(
+				key: string,
+			): ReadableSignalTrait<ClientRecord<BaseOidcModeClient>>;
+		} = createClientRegistry({
+			environment: {},
+		});
+
+		expect(registry).toBeDefined();
+	});
+
+	it("initializes lazy clients when clientSignalFor is requested", async () => {
 		const factory = vi.fn(() => createClient("lazy"));
 		const registry = createClientRegistry<TestClient>({ environment: {} });
 
@@ -106,18 +128,41 @@ describe("ClientRegistry", () => {
 		);
 
 		expect(factory).not.toHaveBeenCalled();
-		expect(registry.clientSignalFor("lazy").hasValue()).toBe(false);
 		expect(registry.clientRecordFor("lazy").get().status).toBe(
 			ClientRegistryEntryStatus.Registered,
 		);
 
-		const client = await registry.initialize("lazy");
+		const signal = registry.clientSignalFor("lazy");
+		const client = await signal.whenValue();
 		expect(client.id).toBe("lazy");
 		expect(factory).toHaveBeenCalledTimes(1);
-		expect(registry.clientSignalFor("lazy").get()).toEqual({
+		expect(registry.clientRecordFor("lazy").get().status).toBe(
+			ClientRegistryEntryStatus.Ready,
+		);
+		expect(signal.get()).toEqual({
 			kind: "value",
 			value: client,
 		});
+	});
+
+	it("keeps lazy clients uninitialized when clientSignalFor disables initialization", () => {
+		const factory = vi.fn(() => createClient("lazy"));
+		const registry = createClientRegistry<TestClient>({ environment: {} });
+
+		registry.register(
+			createRegistryEntry({
+				key: "lazy",
+				initialization: ClientInitializationMode.Lazy,
+				clientFactory: factory,
+			}),
+		);
+
+		const signal = registry.clientSignalFor("lazy", { initialize: false });
+		expect(factory).not.toHaveBeenCalled();
+		expect(signal.hasValue()).toBe(false);
+		expect(registry.clientRecordFor("lazy").get().status).toBe(
+			ClientRegistryEntryStatus.Registered,
+		);
 	});
 
 	it("returns the ready client when initialize is called again", async () => {
@@ -134,7 +179,10 @@ describe("ClientRegistry", () => {
 
 		await registry.clientSignalFor("main").whenValue();
 
-		await expect(registry.initialize("main")).resolves.toBe(client);
+		await expect(registry.initialize("main")).resolves.toMatchObject({
+			client,
+			status: ClientRegistryEntryStatus.Ready,
+		});
 		expect(factory).toHaveBeenCalledTimes(1);
 	});
 
@@ -232,8 +280,14 @@ describe("ClientRegistry", () => {
 
 		const client = createClient("async");
 		deferred.resolve(client);
-		await expect(first).resolves.toBe(client);
-		await expect(second).resolves.toBe(client);
+		await expect(first).resolves.toMatchObject({
+			client,
+			status: ClientRegistryEntryStatus.Ready,
+		});
+		await expect(second).resolves.toMatchObject({
+			client,
+			status: ClientRegistryEntryStatus.Ready,
+		});
 		expect(factory).toHaveBeenCalledTimes(1);
 	});
 
@@ -285,7 +339,27 @@ describe("ClientRegistry", () => {
 		]);
 	});
 
-	it("does not let clientSignalFor trigger initialization", () => {
+	it("lets clientSignalForQuery initialize lazy clients by default", async () => {
+		const factory = vi.fn(() => createClient("lazy"));
+		const registry = createClientRegistry<TestClient>({ environment: {} });
+		registry.register(
+			createRegistryEntry({
+				key: "lazy",
+				initialization: ClientInitializationMode.Lazy,
+				clientFactory: async () => factory(),
+				requirementKind: "workspace",
+			}),
+		);
+
+		const signal = registry.clientSignalForQuery({
+			requirementKind: "workspace",
+		});
+		expect(signal).toBeDefined();
+		await expect(signal?.whenValue()).resolves.toMatchObject({ id: "lazy" });
+		expect(factory).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps query-selected lazy clients uninitialized when signal initialization is disabled", () => {
 		const factory = vi.fn(() => createClient("lazy"));
 		const registry = createClientRegistry<TestClient>({ environment: {} });
 		registry.register(
@@ -293,11 +367,19 @@ describe("ClientRegistry", () => {
 				key: "lazy",
 				initialization: ClientInitializationMode.Lazy,
 				clientFactory: factory,
+				requirementKind: "workspace",
 			}),
 		);
 
-		registry.clientSignalFor("lazy");
+		const signal = registry.clientSignalForQuery(
+			{ requirementKind: "workspace" },
+			{ initialize: false },
+		);
+		expect(signal).toBeDefined();
 		expect(factory).not.toHaveBeenCalled();
+		expect(registry.clientRecordFor("lazy").get().status).toBe(
+			ClientRegistryEntryStatus.Registered,
+		);
 	});
 
 	it("treats re-registering the same key as a new record identity", async () => {

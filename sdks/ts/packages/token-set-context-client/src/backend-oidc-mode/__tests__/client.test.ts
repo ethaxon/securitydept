@@ -1,10 +1,10 @@
 import {
+	type BaseTransportTrait,
 	createBaseTransportForStdFetch,
 	createFoundationEnvironment,
 	createInMemoryRecordStore,
 	createRootSpan,
 	createTracing,
-	type ExternalTransportTrait,
 	type FoundationEnvironment,
 	type HttpRequest,
 	type HttpResponse,
@@ -117,7 +117,7 @@ class TestTraceCollector implements TracingSubscriberTrait {
 
 function createTestTransport(
 	handler: (request: HttpRequest) => HttpResponse | Promise<HttpResponse>,
-): ExternalTransportTrait {
+): BaseTransportTrait {
 	return {
 		async execute(request: HttpRequest) {
 			return await handler(request);
@@ -137,7 +137,7 @@ function createDeferred<T>() {
 }
 
 function createTestRuntime(
-	externalTransport: ExternalTransportTrait,
+	externalTransport: BaseTransportTrait,
 	options?: {
 		now?: number;
 		tracing?: FoundationEnvironment["tracing"];

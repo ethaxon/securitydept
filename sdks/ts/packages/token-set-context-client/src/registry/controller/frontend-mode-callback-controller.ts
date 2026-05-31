@@ -107,9 +107,10 @@ export class FrontendOidcModeCallbackController {
 				});
 			}
 
-			const client = await this.registry.initialize(
+			const readyRecord = await this.registry.initialize(
 				record.get().meta.clientKey,
 			);
+			const client = readyRecord.client;
 			if (!(client instanceof FrontendOidcModeClient)) {
 				throw new ClientRegistryError({
 					code: ClientRegistryErrorCode.CallbackClientModeMismatch,
@@ -121,9 +122,8 @@ export class FrontendOidcModeCallbackController {
 			const callbackResult = await client.handleCallback(this.currentUrl);
 
 			return {
-				clientRecord: record
-					.get()
-					.toView() as ClientReadyRecordView<FrontendOidcModeClient>,
+				clientRecord:
+					readyRecord as ClientReadyRecordView<FrontendOidcModeClient>,
 				snapshot: callbackResult.snapshot,
 				postAuthRedirectUri: callbackResult.postAuthRedirectUri,
 			};

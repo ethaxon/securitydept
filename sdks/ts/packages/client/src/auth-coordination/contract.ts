@@ -14,61 +14,52 @@
 // frozen factories, and the side-effect-free composition function.
 
 import { v7 as uuidv7 } from "uuid";
+import { type FoundationEnvironment } from "../environment";
 
 // ---------------------------------------------------------------------------
 // Requirement declaration
 // ---------------------------------------------------------------------------
-
-/** Input for {@link createAuthRequirement}. */
-export interface AuthRequirementInput {
-	/**
-	 * Opaque entity id within a plan or route composition scope.
-	 *
-	 * Pass explicitly when parent/child composition must target the same logical
-	 * requirement. When omitted, a new uuidv7 id is assigned at creation time.
-	 */
-	id?: string;
-	/** Human-readable label (for logging / debugging / chooser UI). */
-	label?: string;
-	/** Arbitrary serializable metadata for adapter-specific matching. */
-	attributes?: Record<string, unknown>;
-}
-
-/** A single auth requirement within a plan. */
 export interface AuthRequirement {
 	/** Unique entity id for this requirement within the plan. */
 	readonly id: string;
 	/** Human-readable label (for logging / debugging). */
 	readonly label?: string;
-	/** Opaque metadata — not interpreted by the coordination layer. */
-	readonly attributes?: Readonly<Record<string, unknown>>;
 }
 
-/**
- * Create an auth requirement with a stable or generated entity id.
- *
- * The returned object and its `attributes` object are frozen.
- */
-export function createAuthRequirement(
-	input: AuthRequirementInput = {},
-): AuthRequirement {
-	const attributes = input.attributes ? { ...input.attributes } : undefined;
-	if (attributes !== undefined) {
-		Object.freeze(attributes);
+export interface StaticAttrsAuthRequirementInput<
+	TAttributes = Record<string, unknown>,
+> {
+	readonly id?: string;
+	readonly label?: string;
+	readonly attributes?: TAttributes;
+}
+
+export class StaticAttrsAuthRequirement<TAttributes = Record<string, unknown>>
+	implements AuthRequirement
+{
+	protected constructor(
+		readonly id: string,
+		readonly label: string | undefined,
+		readonly attributes: TAttributes | undefined,
+	) {
+		Object.freeze(this);
 	}
 
-	return Object.freeze({
-		id: input.id ?? uuidv7(),
-		label: input.label,
-		attributes,
-	});
-}
+	public static create<TAttributes = Record<string, unknown>>(
+		input?: StaticAttrsAuthRequirementInput<TAttributes>,
+	): StaticAttrsAuthRequirement<TAttributes> {
+		return new StaticAttrsAuthRequirement<TAttributes>(
+			input?.id ?? uuidv7(),
+			input?.label,
+			input?.attributes ? Object.freeze(input.attributes) : undefined,
+		);
+	}
 
-/** Create multiple auth requirements in declaration order. */
-export function createAuthRequirements(
-	inputs: readonly AuthRequirementInput[],
-): AuthRequirement[] {
-	return inputs.map((input) => createAuthRequirement(input));
+	public static createList<TAttributes = Record<string, unknown>>(
+		inputs: readonly StaticAttrsAuthRequirementInput<TAttributes>[],
+	): readonly StaticAttrsAuthRequirement<TAttributes>[] {
+		return inputs.map((input) => StaticAttrsAuthRequirement.create(input));
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -141,43 +132,109 @@ export type UnauthenticatedAction =
  *
  * Reflects the planner state at the moment the callback is invoked.
  */
-export interface RequirementBehaviourContext {
+export type RequirementBehaviourContext<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+> = {
+	readonly planContext: TPlanContext;
+	readonly environment: FoundationEnvironment;
 	/** The full effective requirement list for the active plan. */
-	readonly requirements: readonly AuthRequirement[];
-	/** Requirements not yet satisfied (the actionable set). */
-	readonly candidateList: readonly AuthRequirement[];
+	readonly requirements: readonly TAuthRequirement[];
 	/** Resolutions collected so far (in requirement order). */
 	readonly resolutionList: readonly RequirementResolution[];
-}
+};
+
+/** Stream of unauthenticated requirements discovered by the planner. */
+export type RequirementCandidateGenerator<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+> = AsyncGenerator<TAuthRequirement, void, unknown>;
+
+/**
+ * Context handed to candidate selection.
+ *
+ * `candidateList` is intentionally a stream: selectors that can act on the
+ * first available unauthenticated requirement do not need to wait for all
+ * checks to complete, while chooser-style selectors can still collect the full
+ * stream with `for await`.
+ */
+export type RequirementCandidateSelectionContext<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+> = RequirementBehaviourContext<TAuthRequirement, TPlanContext> & {
+	/** Requirements not yet satisfied, yielded as their checks complete. */
+	readonly candidateList: RequirementCandidateGenerator<TAuthRequirement>;
+};
 
 /** Decide whether a single requirement is already satisfied. */
-export type CheckAuthenticated = (
-	requirement: AuthRequirement,
-	context: RequirementBehaviourContext,
+export type CheckAuthenticated<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+> = (
+	requirement: TAuthRequirement,
+	context: RequirementBehaviourContext<TAuthRequirement, TPlanContext>,
 ) => AuthenticatedCheck;
 
 /** Decide what to do when a selected requirement is unauthenticated. */
-export type OnUnauthenticated = (
-	requirement: AuthRequirement,
-	context: RequirementBehaviourContext,
+export type OnUnauthenticated<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+> = (
+	requirement: TAuthRequirement,
+	context: RequirementBehaviourContext<TAuthRequirement, TPlanContext>,
 ) => UnauthenticatedAction;
 
 /**
  * Reduce the candidate set to the single requirement to act on next.
  *
- * The default strategy picks `context.candidateList[0]` (declaration order).
- * Only invoked when `candidateList` is non-empty.
+ * The default strategy picks the first unauthenticated candidate yielded by the
+ * stream. Chooser-style strategies may collect the full stream when they need
+ * a complete candidate set.
  */
-export type SelectCandidate = (
-	context: RequirementBehaviourContext,
-) => AuthRequirement | Promise<AuthRequirement>;
+export type SelectCandidate<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+> = (
+	context: RequirementCandidateSelectionContext<TAuthRequirement, TPlanContext>,
+) => TAuthRequirement | undefined | Promise<TAuthRequirement | undefined>;
 
 /** The full behaviour contract resolved by a planner host. */
-export interface RequirementBehaviour {
-	checkAuthenticated: CheckAuthenticated;
-	onUnauthenticated: OnUnauthenticated;
-	selectCandidate: SelectCandidate;
+export interface RequirementBehaviour<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+> {
+	checkAuthenticated: CheckAuthenticated<TAuthRequirement, TPlanContext>;
+	onUnauthenticated: OnUnauthenticated<TAuthRequirement, TPlanContext>;
+	selectCandidate: SelectCandidate<TAuthRequirement, TPlanContext>;
 }
+
+export interface RouteStateSnapshotTrait {
+	readonly url: string;
+}
+
+export interface RouteBehaviourContextExtra {
+	readonly routeState: RouteStateSnapshotTrait;
+}
+
+export function isRouteStateSnapshotTrait(
+	value: unknown,
+): value is RouteStateSnapshotTrait {
+	return typeof value === "object" && value !== null && "url" in value;
+}
+
+export function isRouteBehaviourContextExtra(
+	value: unknown,
+): value is RouteBehaviourContextExtra {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"routeState" in value &&
+		isRouteStateSnapshotTrait(value.routeState)
+	);
+}
+
+export type RequirementBehaviourWithRouteContext<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+> = RequirementBehaviour<TAuthRequirement, RouteBehaviourContextExtra>;
 
 // ---------------------------------------------------------------------------
 // Pipeline results
@@ -199,26 +256,30 @@ export type PipelineOutcome =
 	(typeof PipelineOutcome)[keyof typeof PipelineOutcome];
 
 /** Result of a single {@link BaseRequirementPlanner.runStep}. */
-export type PipelineStepResult =
+export type PipelineStepResult<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+> =
 	| { outcome: typeof PipelineOutcome.Settled }
-	| { outcome: typeof PipelineOutcome.Resolved; requirement: AuthRequirement }
-	| { outcome: typeof PipelineOutcome.Blocked; requirement: AuthRequirement }
+	| { outcome: typeof PipelineOutcome.Resolved; requirement: TAuthRequirement }
+	| { outcome: typeof PipelineOutcome.Blocked; requirement: TAuthRequirement }
 	| {
 			outcome: typeof PipelineOutcome.Redirect;
-			requirement: AuthRequirement;
+			requirement: TAuthRequirement;
 			location: string;
 	  };
 
 /** Result of {@link BaseRequirementPlanner.runUntilSettled}. */
-export type PipelineRunResult =
+export type PipelineRunResult<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+> =
 	| {
 			outcome: typeof PipelineOutcome.Settled;
 			resolutions: readonly RequirementResolution[];
 	  }
-	| { outcome: typeof PipelineOutcome.Blocked; requirement: AuthRequirement }
+	| { outcome: typeof PipelineOutcome.Blocked; requirement: TAuthRequirement }
 	| {
 			outcome: typeof PipelineOutcome.Redirect;
-			requirement: AuthRequirement;
+			requirement: TAuthRequirement;
 			location: string;
 	  };
 
@@ -244,19 +305,23 @@ export type RequirementsComposition =
 	(typeof RequirementsComposition)[keyof typeof RequirementsComposition];
 
 /** A single node in a matched route chain. */
-export interface RouteTreeSegment {
+export interface RouteTreeSegment<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+> {
 	/** Route segment identifier (e.g. route name or path pattern). */
 	routeId: string;
 	/** Auth requirements declared on this route segment. */
-	requirements: readonly AuthRequirement[];
+	requirements: readonly TAuthRequirement[];
 	/** Composition strategy against the inherited chain. Defaults to `merge`. */
 	composition?: RequirementsComposition;
 }
 
 /** A requirements declaration annotated with its composition strategy. */
-export interface RouteRequirementsDeclaration {
+export interface RouteRequirementsDeclaration<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+> {
 	composition: RequirementsComposition;
-	requirements: readonly AuthRequirement[];
+	requirements: readonly TAuthRequirement[];
 }
 
 /**
@@ -266,10 +331,12 @@ export interface RouteRequirementsDeclaration {
  * requirements) without rebuilding parent state each segment. When omitted, a
  * fresh map is created for one-shot composition.
  */
-export function resolveEffectiveRequirements(
-	child: RouteRequirementsDeclaration,
-	effective: Map<string, AuthRequirement> = new Map(),
-): Map<string, AuthRequirement> {
+export function resolveEffectiveRequirements<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+>(
+	child: RouteRequirementsDeclaration<TAuthRequirement>,
+	effective: Map<string, TAuthRequirement> = new Map(),
+): Map<string, TAuthRequirement> {
 	switch (child.composition) {
 		case RequirementsComposition.Inherit:
 			return effective;

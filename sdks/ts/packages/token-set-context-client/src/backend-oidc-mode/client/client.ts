@@ -2,12 +2,14 @@ import {
 	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
-	UriReferenceString,
 	createLinkedCancellationToken,
 	defineInstrumentMethodDecorator,
 	type FoundationEnvironment,
 	type OperationSpanTrait,
 	parseCompatFragment,
+	RouterNavigationIntent,
+	RouterNavigationMode,
+	UriReferenceString,
 	UserRecovery,
 } from "@securitydept/client";
 import { waitForTokenSetPopupRelay } from "../../orchestration/client/popup/relay";
@@ -185,8 +187,8 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			url: UriReferenceString.parse(
 				this.authorizeUrl(options.postAuthRedirectUri),
 			),
-			intent: "auth_redirect",
-			mode: "external",
+			intent: RouterNavigationIntent.AuthRedirect,
+			mode: RouterNavigationMode.External,
 		});
 		this._throwIfNotOperational();
 		operationSpan?.setAttributes({ navigationMode: "external" });

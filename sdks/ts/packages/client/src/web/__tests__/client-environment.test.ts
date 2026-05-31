@@ -69,12 +69,18 @@ describe("environment page capability boundary", () => {
 		).rejects.toThrow(/requires history/);
 	});
 
-	it("reports missing router host fields from the router adapter", () => {
-		expect(() =>
-			createEnvironmentForNativeWeb({
-				transport: createTransport(),
-			}),
-		).toThrow(/createRouterForNativeWeb could not validate router/);
+	it("omits router when native web router hosts are unavailable", () => {
+		const environment = createEnvironmentForNativeWeb({
+			transport: createTransport(),
+			routerForNativeWebCreateOptions: {
+				navigation: null,
+				location: null,
+				history: null,
+				window: null,
+			},
+		});
+
+		expect(environment.router).toBeUndefined();
 	});
 
 	it("omits page lifecycle when native web page targets are unavailable", () => {

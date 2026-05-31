@@ -4,10 +4,22 @@ import {
 	inject,
 	runInInjectionContext,
 } from "@angular/core";
+import {
+	SecuritydeptInjectionToken,
+	type SecuritydeptProvider,
+} from "@securitydept/client";
 import { type NativeWebEnvironment } from "@securitydept/client/web";
-import { ENVIRONMENT, provideEnvironment } from "@securitydept/client-angular";
+import {
+	ENVIRONMENT,
+	provideEnvironment,
+	provideEnvironmentProvider,
+} from "@securitydept/client-angular";
 import { describe, expect, it, vi } from "vitest";
 import { createEnvironmentForNativeWebTest } from "../../../../client/src/test";
+
+const TEST_ENVIRONMENT_EXTENSION = new SecuritydeptInjectionToken<string>(
+	"TEST_ENVIRONMENT_EXTENSION",
+);
 
 function createTransport() {
 	return {
@@ -31,8 +43,11 @@ function createTime() {
 	};
 }
 
-function createNativeWebEnvironment(): NativeWebEnvironment {
+function createNativeWebEnvironment(
+	providers: readonly SecuritydeptProvider[] = [],
+): NativeWebEnvironment {
 	return createEnvironmentForNativeWebTest({
+		providers,
 		transport: createTransport(),
 		time: createTime(),
 		routerForNativeWebCreateOptions: {
@@ -51,16 +66,52 @@ function createNativeWebEnvironment(): NativeWebEnvironment {
 
 describe("client-angular environment bridge", () => {
 	it("provides the host-owned native web environment object", () => {
-		const environment = createNativeWebEnvironment();
+		let environment: NativeWebEnvironment | undefined;
 		const injector = createEnvironmentInjector(
-			[provideEnvironment({ environment })],
+			[
+				provideEnvironment({
+					environment: (ngProviders) => {
+						environment = createNativeWebEnvironment(ngProviders);
+						return environment;
+					},
+				}),
+			],
 			Injector.NULL as never,
 		);
 
 		try {
-			expect(runInInjectionContext(injector, () => inject(ENVIRONMENT))).toBe(
-				environment,
+			const resolved = runInInjectionContext(injector, () =>
+				inject(ENVIRONMENT),
 			);
+			expect(resolved).toBe(environment);
+			expect(resolved.injector.get(Injector)).toBe(injector);
+		} finally {
+			injector.destroy();
+		}
+	});
+
+	it("collects external Securitydept providers into the environment factory", () => {
+		const injector = createEnvironmentInjector(
+			[
+				provideEnvironmentProvider({
+					provide: TEST_ENVIRONMENT_EXTENSION,
+					useValue: "from-angular-provider",
+				}),
+				provideEnvironment({
+					environment: (ngProviders) => createNativeWebEnvironment(ngProviders),
+				}),
+			],
+			Injector.NULL as never,
+		);
+
+		try {
+			const resolved = runInInjectionContext(injector, () =>
+				inject(ENVIRONMENT),
+			);
+			expect(resolved.injector.get(TEST_ENVIRONMENT_EXTENSION)).toBe(
+				"from-angular-provider",
+			);
+			expect(resolved.injector.get(Injector)).toBe(injector);
 		} finally {
 			injector.destroy();
 		}

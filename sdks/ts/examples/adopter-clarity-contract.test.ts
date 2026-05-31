@@ -241,7 +241,7 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		// Angular integration family adapter (productized Angular-native surface).
 		// Proves: InjectionToken for all 3 packages, provideXxx() factories,
 		// service facades, Angular signal bridge, RxJS Observable bridge,
-		// bearer interceptor factory, CallbackResumeService, e2e lifecycle.
+		// bearer interceptor factory, e2e lifecycle.
 		// Tests import real @angular/core InjectionToken + signal, real RxJS Observable.
 		path: "examples/angular-integration-adapter.test.ts",
 		layers: [

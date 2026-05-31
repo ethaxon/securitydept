@@ -2,7 +2,7 @@ import {
 	createEnvironmentInjector,
 	type EnvironmentInjector,
 	InjectionToken,
-	inject,
+	Injector,
 	runInInjectionContext,
 } from "@angular/core";
 import {
@@ -12,75 +12,92 @@ import {
 } from "@angular/router";
 import {
 	createEventSubject,
-	createRootSpan,
+	createFoundationEnvironment,
+	createReplaySignal,
 	createSignal,
-	createTracing,
-	SYMBOL_DISPOSE,
 	writeSecuritydeptRouteMetadata,
 } from "@securitydept/client";
-import {
-	createEnvironmentForNativeWeb,
-	type NativeWebEnvironment,
-} from "@securitydept/client/web";
 import { provideEnvironment } from "@securitydept/client-angular";
+import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
+import {
+	ClientInitializationMode,
+	type ClientReadyRecordView,
+	ClientRegistryEntryStatus,
+} from "@securitydept/token-set-context-client/registry";
 import {
 	createTokenSetCanActivate,
 	createTokenSetOidcLoginRedirectHandler,
 	provideTokenSetRequirementPlannerHost,
-	TokenSetAuthRegistry,
+	TokenSetClientRegistryService,
 } from "@securitydept/token-set-context-client-angular";
 import { describe, expect, it, vi } from "vitest";
-import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 
 const TEST_AUTH_ACTION = new InjectionToken<() => void>("TEST_AUTH_ACTION");
 const NULL_ENVIRONMENT_INJECTOR = null as unknown as EnvironmentInjector;
 
-function createTransport() {
+function createMockClient(authenticated: boolean): BaseOidcModeClient {
+	const authDetermined = createReplaySignal<true>();
+	authDetermined.setValue(true);
+	const authSnapshot = createReplaySignal<null>();
+	authSnapshot.setValue(null);
+	const isAuthenticated = createReplaySignal<boolean>();
+	isAuthenticated.setValue(authenticated);
+	const authorizationHeaderValue = createReplaySignal<string | undefined>();
+	authorizationHeaderValue.setValue(
+		authenticated ? "Bearer confluence" : undefined,
+	);
 	return {
-		execute: vi.fn(async () => ({
-			status: 200,
-			headers: {},
-			body: null,
-		})),
-	};
-}
-
-function createTime() {
-	return {
-		now: () => Date.now(),
-		setTimeout: (callback: () => void, delayMs: number) =>
-			globalThis.setTimeout(callback, delayMs),
-		clearTimeout: (handle: unknown) =>
-			globalThis.clearTimeout(
-				handle as ReturnType<typeof globalThis.setTimeout>,
-			),
-	};
-}
-
-function createAngularPageEnvironment(): NativeWebEnvironment {
-	return createEnvironmentForNativeWeb({
-		transport: createTransport(),
-		time: createTime(),
-		span: createRootSpan(),
-		tracing: createTracing(),
-		routerForNativeWebCreateOptions: {
-			location: {
-				href: "https://app.example.com/current",
-				hash: "",
-				pathname: "/current",
-				search: "",
-			},
-			history: {
-				replaceState() {},
-			},
+		id: "confluence",
+		authDetermined,
+		authSnapshot,
+		isAuthenticated,
+		authorizationHeaderValue,
+		lastAuthError: createSignal<unknown | undefined>(undefined),
+		authOperations: {
+			restorePending: createSignal(false),
+			refreshPending: createSignal(false),
+			clearPending: createSignal(false),
+			loginPending: createSignal(false),
 		},
-	});
+		authEvents: createEventSubject(),
+		start: vi.fn(async () => undefined),
+		dispose: vi.fn(),
+		loginWithRedirect: vi.fn(async () => undefined),
+		loginWithPopup: vi.fn(async () => ({
+			snapshot: { tokens: { accessToken: "popup" }, metadata: {} },
+		})),
+	} as unknown as BaseOidcModeClient;
 }
 
-/**
- * Mock Angular Router that exposes the attempted navigation via
- * getCurrentNavigation(), matching how the guard resolves attemptedUrl.
- */
+function createReadyRecord(
+	client: BaseOidcModeClient,
+): ClientReadyRecordView<BaseOidcModeClient> {
+	const meta = {
+		clientKey: "confluence",
+		urlPatterns: [],
+		callbackPath: "/auth/callback",
+		requirementKind: "frontend_oidc",
+		providerFamily: undefined,
+		initialization: ClientInitializationMode.Lazy,
+	};
+	return {
+		id: "confluence",
+		entry: { clientFactory: () => client, meta },
+		meta,
+		status: ClientRegistryEntryStatus.Ready,
+		client,
+	};
+}
+
+function createRegistryMock(record: ClientReadyRecordView<BaseOidcModeClient>) {
+	return {
+		clientRecordGenForQuery: vi.fn(function* () {
+			yield createSignal(record);
+		}),
+		initialize: vi.fn(async () => record),
+	} as unknown as TokenSetClientRegistryService;
+}
+
 function createMockRouter(attemptedUrl: string) {
 	return {
 		url: "/current",
@@ -93,45 +110,25 @@ function createMockRouter(attemptedUrl: string) {
 }
 
 describe("Angular token-set route guard injection context", () => {
-	it("runs unauthenticated handlers in the captured injector after async planner work", async () => {
+	it("passes Angular injector access through the planner environment", async () => {
 		let actionCalls = 0;
-		let attemptedUrl: string | undefined;
-		const reactive = createTestTokenSetReactiveFields(null);
-		const client = {
-			state: createSignal(null),
-			...reactive.fields,
-			authEvents: createEventSubject(),
-			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
-			removeWorkflowSource: vi.fn(() => false),
-			start: vi.fn(async () => undefined),
-			dispose: vi.fn(),
-			[SYMBOL_DISPOSE]: vi.fn(),
-			restorePersistedState: vi.fn(async () => null),
-			handleCallback: vi.fn(),
-			loginWithRedirect: vi.fn(),
-		};
-		const registry = {
-			clientRecordGenForQuery: function* () {
-				yield createSignal({
-					meta: {
-						clientKey: "confluence",
-						requirementKind: "frontend_oidc",
-					},
-				});
-			},
-			initialize: async () => client,
-		};
+		let routeUrl: string | undefined;
+		const registry = createRegistryMock(
+			createReadyRecord(createMockClient(false)),
+		);
 		const injector = createEnvironmentInjector(
 			[
-				{ provide: TokenSetAuthRegistry, useValue: registry },
+				{ provide: TokenSetClientRegistryService, useValue: registry },
 				{ provide: Router, useValue: createMockRouter("/confluence") },
+				provideEnvironment({
+					environment: (providers) =>
+						createFoundationEnvironment({ providers }),
+				}),
 				provideTokenSetRequirementPlannerHost({
-					requirementHandlers: {
-						frontend_oidc: (_failing, _requirement, context) => {
-							inject(TEST_AUTH_ACTION)();
-							attemptedUrl = context.attemptedUrl;
-							return false;
-						},
+					onClientUnauthenticated: (_requirement, context) => {
+						context.environment.injector.get(Injector).get(TEST_AUTH_ACTION)();
+						routeUrl = context.planContext.routeState.url;
+						return false;
 					},
 				}),
 				{
@@ -143,69 +140,48 @@ describe("Angular token-set route guard injection context", () => {
 			],
 			NULL_ENVIRONMENT_INJECTOR,
 		);
-		const route = createRouteSnapshot();
 		const guard = createTokenSetCanActivate();
 
 		const result = await runInInjectionContext(injector, () =>
-			guard(route, { url: "/confluence" } as RouterStateSnapshot),
+			guard(createRouteSnapshot(), {
+				url: "/confluence",
+			} as RouterStateSnapshot),
 		);
 
 		expect(result).toBe(false);
 		expect(actionCalls).toBe(1);
-		expect(attemptedUrl).toBe("/confluence");
-
+		expect(routeUrl).toBe("/confluence");
 		injector.destroy();
 	});
 
-	it("uses the attempted navigation URL for OIDC login redirects", async () => {
-		const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
-		const environment = createAngularPageEnvironment();
-		const reactive = createTestTokenSetReactiveFields(null);
-		const client = {
-			state: createSignal(null),
-			...reactive.fields,
-			authEvents: createEventSubject(),
-			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
-			removeWorkflowSource: vi.fn(() => false),
-			start: vi.fn(async () => undefined),
-			dispose: vi.fn(),
-			[SYMBOL_DISPOSE]: vi.fn(),
-			restorePersistedState: vi.fn(async () => null),
-			handleCallback: vi.fn(),
-			loginWithRedirect,
-		};
-		const registry = {
-			clientRecordGenForQuery: function* () {
-				yield createSignal({
-					meta: {
-						clientKey: "confluence",
-						requirementKind: "frontend_oidc",
-					},
-				});
-			},
-			initialize: async () => client,
-		};
+	it("starts OIDC login redirects from the registry-backed guard", async () => {
+		const client = createMockClient(false);
+		const loginWithRedirect = vi.spyOn(client, "loginWithRedirect");
+		const registry = createRegistryMock(createReadyRecord(client));
 		const injector = createEnvironmentInjector(
 			[
-				{ provide: TokenSetAuthRegistry, useValue: registry },
-				provideEnvironment({ environment }),
-				{
-					provide: Router,
-					useValue: createMockRouter("/confluence/spaces/abc?tab=pages"),
-				},
-				provideTokenSetRequirementPlannerHost({
-					requirementHandlers: {
-						frontend_oidc: createTokenSetOidcLoginRedirectHandler({
-							clientKey: "confluence",
+				{ provide: TokenSetClientRegistryService, useValue: registry },
+				{ provide: Router, useValue: createMockRouter("/confluence") },
+				provideEnvironment({
+					environment: (providers) =>
+						createFoundationEnvironment({
+							providers,
+							router: {
+								currentUrl: () => new URL("https://app.example.com/current"),
+								baseURI: () => new URL("https://app.example.com/"),
+								navigate: vi.fn(async () => true),
+							},
 						}),
-					},
+				}),
+				provideTokenSetRequirementPlannerHost({
+					onClientUnauthenticated: createTokenSetOidcLoginRedirectHandler({
+						clientKey: "confluence",
+					}),
 				}),
 			],
 			NULL_ENVIRONMENT_INJECTOR,
 		);
-
 		const guard = createTokenSetCanActivate();
-
 		const guardResult = runInInjectionContext(injector, () =>
 			guard(createRouteSnapshot(), {
 				url: "/confluence/spaces/abc?tab=pages",
@@ -216,10 +192,9 @@ describe("Angular token-set route guard injection context", () => {
 
 		await flushMicrotasks();
 		expect(loginWithRedirect).toHaveBeenCalledWith({
-			postAuthRedirectUri: "/confluence/spaces/abc?tab=pages",
+			postAuthRedirectUri: "https://app.example.com/current",
 		});
 		expect(settled).not.toHaveBeenCalled();
-
 		injector.destroy();
 	});
 });
@@ -231,7 +206,7 @@ function createRouteSnapshot(): ActivatedRouteSnapshot {
 				{
 					id: "confluence-oidc",
 					label: "Confluence OIDC",
-					attributes: { requirementKind: "frontend_oidc" },
+					attributes: { query: { requirementKind: "frontend_oidc" } },
 				},
 			],
 		}),
@@ -243,8 +218,7 @@ function createRouteSnapshot(): ActivatedRouteSnapshot {
 	return route;
 }
 
-async function flushMicrotasks(): Promise<void> {
-	await Promise.resolve();
+async function flushMicrotasks() {
 	await Promise.resolve();
 	await Promise.resolve();
 	await new Promise((resolve) => setTimeout(resolve, 0));

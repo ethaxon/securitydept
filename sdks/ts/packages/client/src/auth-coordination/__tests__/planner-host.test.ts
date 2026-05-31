@@ -1,34 +1,58 @@
 import { describe, expect, it } from "vitest";
+import { createEnvironmentForTest } from "../../test";
 import {
 	type AuthRequirement,
-	createAuthRequirement,
+	type RequirementBehaviour,
+	type RequirementCandidateGenerator,
 	RequirementPlannerHost,
+	type RequirementPlannerHostOptions,
+	StaticAttrsAuthRequirement,
 	StaticRequirementPlanner,
 } from "../index";
 
-describe("RequirementPlannerHost behaviour defaults", () => {
-	it("defaults: nothing authenticated, block on unauthenticated", async () => {
-		const host = RequirementPlannerHost.fromBehaviour({});
+async function collectCandidates(
+	candidates: RequirementCandidateGenerator,
+): Promise<AuthRequirement[]> {
+	const collected: AuthRequirement[] = [];
+	for await (const candidate of candidates) {
+		collected.push(candidate);
+	}
+	return collected;
+}
+
+function createTestPlannerHost<TBehaviour = Partial<RequirementBehaviour>>(
+	behaviour: TBehaviour,
+	options: Omit<RequirementPlannerHostOptions<TBehaviour>, "environment"> = {},
+): RequirementPlannerHost<TBehaviour> {
+	return RequirementPlannerHost.fromBehaviour(behaviour, {
+		...options,
+		environment: createEnvironmentForTest(),
+	});
+}
+
+describe("RequirementPlannerHost behaviour resolution", () => {
+	it("fails fast when required behaviour is missing", async () => {
+		const host = createTestPlannerHost({});
 		const planner = StaticRequirementPlanner.fromRequirements(host, [
-			createAuthRequirement({ id: "a" }),
+			StaticAttrsAuthRequirement.create({ id: "a" }),
 		]);
 
-		const result = await planner.runUntilSettled();
-		expect(result.outcome).toBe("blocked");
+		await expect(planner.runUntilSettled()).rejects.toThrow(
+			/No checkAuthenticated resolved/,
+		);
 	});
 
 	it("default selectCandidate picks the first candidate", async () => {
-		const host = RequirementPlannerHost.fromBehaviour({
+		const host = createTestPlannerHost({
 			checkAuthenticated: () => false,
 			onUnauthenticated: () => false,
 		});
 		const planner = StaticRequirementPlanner.fromRequirements(host, [
-			createAuthRequirement({ id: "first" }),
-			createAuthRequirement({ id: "second" }),
+			StaticAttrsAuthRequirement.create({ id: "first" }),
+			StaticAttrsAuthRequirement.create({ id: "second" }),
 		]);
 
 		const plan = await planner.buildPlan();
-		await planner.checkUnauthenticatedCandidates(plan);
 		const step = await planner.runStep(plan);
 		expect(step.outcome).toBe("blocked");
 		if (step.outcome === "blocked") {
@@ -39,25 +63,26 @@ describe("RequirementPlannerHost behaviour defaults", () => {
 
 describe("RequirementPlannerHost parent chain", () => {
 	it("inherits checkAuthenticated/onUnauthenticated, overrides selectCandidate", async () => {
-		const root = RequirementPlannerHost.fromBehaviour({
+		const root = createTestPlannerHost({
 			checkAuthenticated: () => false,
 			onUnauthenticated: () => "/login",
 		});
-		const child = RequirementPlannerHost.fromBehaviour(
+		const child = createTestPlannerHost<Partial<RequirementBehaviour>>(
 			{
-				selectCandidate: (ctx): AuthRequirement =>
-					ctx.candidateList[ctx.candidateList.length - 1],
+				selectCandidate: async (ctx): Promise<AuthRequirement | undefined> => {
+					const candidates = await collectCandidates(ctx.candidateList);
+					return candidates.at(-1);
+				},
 			},
 			{ parent: root },
 		);
 
 		const planner = StaticRequirementPlanner.fromRequirements(child, [
-			createAuthRequirement({ id: "a" }),
-			createAuthRequirement({ id: "b" }),
-		]);
+			StaticAttrsAuthRequirement.create({ id: "a" }),
+			StaticAttrsAuthRequirement.create({ id: "b" }),
+		] as Readonly<AuthRequirement[]>);
 
 		const plan = await planner.buildPlan();
-		await planner.checkUnauthenticatedCandidates(plan);
 		const step = await planner.runStep(plan);
 		// inherited onUnauthenticated -> redirect; overridden chooser -> last
 		expect(step.outcome).toBe("redirect");
@@ -68,17 +93,27 @@ describe("RequirementPlannerHost parent chain", () => {
 	});
 
 	it("falls through multiple levels to the nearest definition", async () => {
-		const root = RequirementPlannerHost.fromBehaviour({
+		const root = createTestPlannerHost<Partial<RequirementBehaviour>>({
 			onUnauthenticated: () => "/root",
 		});
-		const mid = RequirementPlannerHost.fromBehaviour({}, { parent: root });
-		const leaf = RequirementPlannerHost.fromBehaviour({}, { parent: mid });
+		const mid = createTestPlannerHost<Partial<RequirementBehaviour>>(
+			{},
+			{ parent: root },
+		);
+		const leaf = createTestPlannerHost<Partial<RequirementBehaviour>>(
+			{},
+			{ parent: mid },
+		);
 
-		const resolved = await leaf.resolveOnUnauthenticated();
+		const resolved = await leaf.resolveBehaviourFor(
+			"onUnauthenticated",
+			() => () => false,
+		);
 		expect(
-			resolved(createAuthRequirement({ id: "x" }), {
+			resolved(StaticAttrsAuthRequirement.create({ id: "x" }), {
+				planContext: {},
+				environment: createEnvironmentForTest(),
 				requirements: [],
-				candidateList: [],
 				resolutionList: [],
 			}),
 		).toBe("/root");

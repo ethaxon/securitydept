@@ -4,14 +4,11 @@
 //   import { ... } from "@securitydept/token-set-context-client-angular"
 //
 // Multi-client-first Angular-native adapter surface:
-//   - Keyed client registration via provideTokenSetAuth()
-//   - Multi-client lookup via TokenSetAuthRegistry
+//   - Keyed client registration via provideTokenSetClientRegistry()
+//   - Multi-client lookup via TokenSetClientRegistryService
 //   - Per-client mode client replay signals with RxJS bridge support
 //   - Multi-client bearer interceptor (functional + class-based)
 //   - provideTokenSetBearerInterceptor() for NgModule HTTP_INTERCEPTORS setup
-//   - OIDC callback resume with client key discrimination
-//   - CallbackResumeService.isCallback() for programmatic callback detection
-//   - TokenSetCallbackComponent standalone component (drop-in callback route)
 //   - Requirement/provider-family → client key mapping
 //   - secureRouteRoot() / secureRoute() — canonical Angular Router route-security
 //     builders that delegate to the client-angular base helpers, normalize
@@ -26,12 +23,6 @@
 //
 // Stability: provisional (framework adapter)
 
+export * from "./auth-coordination";
 export * from "./bearer-interceptor";
-export * from "./callback-resume.service";
-export * from "./contracts";
-export * from "./planner-host";
-export * from "./provide-token-set-auth";
-export * from "./secure-routes";
-export * from "./token-set-auth.registry";
-export * from "./token-set-callback.component";
-export * from "./tokens";
+export * from "./client-registry.service";

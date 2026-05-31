@@ -21,6 +21,7 @@
 
 import { type ActivatedRouteSnapshot } from "@angular/router";
 import {
+	type AuthRequirement,
 	type RouteTreeSegment,
 	readSecuritydeptRouteMetadata,
 } from "@securitydept/client";
@@ -49,15 +50,19 @@ export function routeDataFromSegment(
  * Segments without a `routeConfig` (e.g. the root) get routeId `"__root__"`;
  * empty-path segments get `"__index__"`.
  */
-export function projectAngularRouteSegments(
-	leafRoute: ActivatedRouteSnapshot,
-): RouteTreeSegment[] {
+export function projectAngularRouteSegments<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+>(leafRoute: ActivatedRouteSnapshot): RouteTreeSegment<TAuthRequirement>[] {
 	const chain = leafRoute.pathFromRoot ?? [leafRoute];
-	return chain.map((segment) => segmentToTreeNode(segment));
+	return chain.map((segment) => segmentToTreeNode<TAuthRequirement>(segment));
 }
 
-function segmentToTreeNode(segment: ActivatedRouteSnapshot): RouteTreeSegment {
-	const metadata = readSecuritydeptRouteMetadata(routeDataFromSegment(segment));
+function segmentToTreeNode<TAuthRequirement extends AuthRequirement>(
+	segment: ActivatedRouteSnapshot,
+): RouteTreeSegment<TAuthRequirement> {
+	const metadata = readSecuritydeptRouteMetadata<TAuthRequirement>(
+		routeDataFromSegment(segment),
+	);
 	const requirements = metadata?.requirements ? [...metadata.requirements] : [];
 	const composition = metadata?.composition;
 	return composition

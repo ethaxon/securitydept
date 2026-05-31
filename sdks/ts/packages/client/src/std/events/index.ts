@@ -1,2 +1,4 @@
-export type { AbortSignalStdSource } from "./from-abort";
-export { abortSignalToEventStream } from "./from-abort";
+export {
+	type AbortSignalStdSource,
+	abortSignalToEventStream,
+} from "./from-abort";

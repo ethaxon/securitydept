@@ -1,7 +1,7 @@
 export { createRootSpan } from "./span";
-export type {
-	OperationSpanTrait,
-	SpanCreateOptions,
-	SpanTrait,
+export {
+	type OperationSpanTrait,
+	SPAN_TRAIT_TOKEN,
+	type SpanCreateOptions,
+	type SpanTrait,
 } from "./types";
-export { SPAN_TRAIT_TOKEN } from "./types";

@@ -2,7 +2,6 @@ import {
 	type CancellationTokenSourceTrait,
 	ClientError,
 	ClientErrorKind,
-	UriReferenceString,
 	createAndThenComputedReplaySignal,
 	createCancellationTokenSource,
 	createEventReplaySubject,
@@ -18,11 +17,14 @@ import {
 	type OperationSpanTrait,
 	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
+	RouterNavigationIntent,
+	RouterNavigationMode,
 	readonlyReplaySignal,
 	readonlySignal,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
 	throwValidationClientError,
+	UriReferenceString,
 	validateTraitInput,
 	type WritableSignalTrait,
 } from "@securitydept/client";
@@ -377,8 +379,8 @@ export class BasicAuthContextClient implements DisposableTrait {
 		try {
 			await router.navigate({
 				url: UriReferenceString.parse(this.loginUrl(zone, postAuthRedirectUri)),
-				intent: "auth_redirect",
-				mode: "external",
+				intent: RouterNavigationIntent.AuthRedirect,
+				mode: RouterNavigationMode.External,
 			});
 			this._throwIfNotOperational();
 			this._emitEvent({

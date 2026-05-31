@@ -38,6 +38,10 @@ export interface ClientRegistryEntry<TClient extends DisposableTrait> {
 	meta: ClientMeta;
 }
 
+export interface ClientSignalOptions {
+	readonly initialize?: boolean;
+}
+
 export interface ClientMeta {
 	readonly clientKey: string;
 	readonly urlPatterns: ReadonlyArray<

@@ -1,6 +1,6 @@
-export type {
-	IdentityPrincipal,
-	ProjectIdentityPrincipalOptions,
+export {
+	type IdentityPrincipal,
+	type ProjectIdentityPrincipalOptions,
 } from "./contracts";
 export {
 	parseIdentityPrincipal,

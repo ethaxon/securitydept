@@ -7,13 +7,13 @@ export {
 	readonlyReplaySignal,
 } from "./replay-signal";
 export { createSignal, isSignalTrait, readonlySignal } from "./signal";
-export type {
-	ComputedReplaySignalTrait,
-	ComputedSignalTrait,
-	ReadableReplaySignalTrait,
-	ReadableSignalTrait,
-	ReplaySignalSlot,
-	ReplaySignalWhenValueOptions,
-	WritableReplaySignalTrait,
-	WritableSignalTrait,
+export {
+	type ComputedReplaySignalTrait,
+	type ComputedSignalTrait,
+	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
+	type ReplaySignalSlot,
+	type ReplaySignalWhenValueOptions,
+	type WritableReplaySignalTrait,
+	type WritableSignalTrait,
 } from "./types";
