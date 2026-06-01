@@ -250,25 +250,22 @@ Packages：
 
 - 将 consumer read 与显式 maintenance 拆开，避免 route/interceptor 读取产生副作用，让 lazy registry lifecycle 更明确，也避免所有 UI 切面被迫通过一个复合命令式状态机。
 
-### Angular Token-Set Bearer Interceptor：`strictUrlMatch`
+### Angular Token-Set Client Registry Authorization Interceptor
 
 Package：`@securitydept/token-set-context-client-angular`
 
 变更：
 
-- `provideTokenSetBearerInterceptor()` 接受 `options?: BearerInterceptorOptions`。
-- `createTokenSetBearerInterceptor(registry, options?)` 接受同一 options object。
-- `BearerInterceptorOptions.strictUrlMatch` 控制未匹配 URL 是否获得 single-client fallback token。
+- `provideTokenSetClientRegistryAuthorizationInterceptor()` 替代 `provideTokenSetBearerInterceptor()`。
+- `createTokenSetClientRegistryAuthorizationInterceptor(options?)` 替代 `createTokenSetBearerInterceptor(registry, options?)`。
+- `authorizationForRequest(registry, request)` 用于自定义 `Authorization` header 解析方式。它可以显式传入，也可以通过 `TOKEN_SET_CLIENT_REGISTRY_AUTHORIZATION_FOR_REQUEST` 提供。默认实现按 request URL 选择 client，未匹配 URL 不注入 header。
 
 迁移：
 
 ```ts
-provideTokenSetBearerInterceptor({ strictUrlMatch: true });
+provideTokenSetClientRegistryAuthorizationInterceptor();
+createTokenSetClientRegistryAuthorizationInterceptor();
 ```
-
-Angular host 如果存在 multiple backends、multiple audiences，或任何第三方 HTTP traffic，应启用 `strictUrlMatch: true`。这样当 request URL 不匹配任何已注册 token-set client `urlPatterns` 时，不会注入 bearer。
-
-单 backend host 如果有意依赖 convenience fallback，可以继续使用无参形式。
 
 ### Shared Authenticated Principal
 

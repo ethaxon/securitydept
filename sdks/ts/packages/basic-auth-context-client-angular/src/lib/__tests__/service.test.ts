@@ -1,4 +1,6 @@
+import { HttpClient, HttpResponse } from "@angular/common/http";
 import { createEnvironmentInjector, Injector } from "@angular/core";
+import { Router } from "@angular/router";
 import {
 	AuthGuardRedirectStatus,
 	AuthGuardResultKind,
@@ -6,21 +8,40 @@ import {
 } from "@securitydept/basic-auth-context-client";
 import { createFoundationEnvironment } from "@securitydept/client";
 import { provideEnvironment } from "@securitydept/client-angular";
-import { describe, expect, it } from "vitest";
+import { of } from "rxjs";
+import { describe, expect, it, vi } from "vitest";
 import { BasicAuthContextService, provideBasicAuthContext } from "../index";
+
+function provideAngularEnvironmentDeps() {
+	return [
+		{
+			provide: Router,
+			useValue: {
+				url: "/",
+				navigateByUrl: vi.fn(async () => true),
+			},
+		},
+		{
+			provide: HttpClient,
+			useValue: {
+				request: vi.fn(() => of(new HttpResponse({ status: 200 }))),
+			},
+		},
+	];
+}
 
 describe("BasicAuthContextService", () => {
 	it("extends the core client while adding Angular destroy lifecycle", async () => {
 		const injector = createEnvironmentInjector(
 			[
+				...provideAngularEnvironmentDeps(),
 				provideEnvironment({
-					environment: createFoundationEnvironment({
-						transport: {
-							async execute() {
-								throw new Error("Unexpected transport call.");
-							},
+					createBaseEnvironment: createFoundationEnvironment,
+					transport: {
+						async execute() {
+							throw new Error("Unexpected transport call.");
 						},
-					}),
+					},
 				}),
 				...provideBasicAuthContext({
 					config: {

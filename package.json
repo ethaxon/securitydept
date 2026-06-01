@@ -33,6 +33,7 @@
 		"@angular/compiler": "catalog:",
 		"@angular/compiler-cli": "catalog:",
 		"@angular/core": "catalog:",
+		"@angular/platform-browser": "catalog:",
 		"@angular/router": "catalog:",
 		"@biomejs/biome": "2.5.2",
 		"@j178/prek": "^0.4.4",

@@ -1,6 +1,5 @@
 import {
 	createOnceAsyncLockCallable,
-	type DisposableTrait,
 	type ErrorPresentationDescriptor,
 	ErrorPresentationTone,
 	type OnceAsyncLock,
@@ -12,6 +11,7 @@ import {
 } from "@securitydept/client";
 import { FrontendOidcModeClient } from "../../frontend-oidc-mode";
 import { type AuthSnapshot } from "../../orchestration";
+import { type BaseOidcModeClient } from "../../orchestration/client/base-client";
 import { type ClientFilter, type ClientQueryOptions } from "../contracts/query";
 import { type ClientReadyRecordView } from "../contracts/types";
 import { type ClientRecord } from "../core/client-record";
@@ -19,13 +19,13 @@ import { type ClientRegistry } from "../core/client-registry";
 import { ClientRegistryError, ClientRegistryErrorCode } from "../core/error";
 
 export interface FrontendOidcModeCallbackInput {
-	currentUrl: string;
-	clientQuery?: ClientQueryOptions;
+	currentUrl: () => string | null | undefined;
+	clientQuery?: () => ClientQueryOptions | undefined;
 }
 
 export interface FrontendOidcModeCallbackOptions
 	extends FrontendOidcModeCallbackInput {
-	registry: ClientRegistry<DisposableTrait>;
+	registry: () => ClientRegistry<BaseOidcModeClient>;
 }
 
 export interface FrontendOidcModeCallbackResult {
@@ -73,14 +73,14 @@ export function readFrontendOidcModeCallbackErrorPresentation(
 export class FrontendOidcModeCallbackController {
 	handle: FrontendOidcModeCallbackHandle;
 
-	private readonly currentUrl: string;
-	private readonly clientQuery: ClientQueryOptions | undefined;
-	private readonly registry: ClientRegistry<DisposableTrait>;
+	private readonly currentUrl: () => string | null | undefined;
+	private readonly clientQuery: () => ClientQueryOptions | undefined;
+	private readonly registry: () => ClientRegistry<BaseOidcModeClient>;
 
 	constructor(options: FrontendOidcModeCallbackOptions) {
 		this.registry = options.registry;
 		this.currentUrl = options.currentUrl;
-		this.clientQuery = options.clientQuery;
+		this.clientQuery = options.clientQuery ?? (() => undefined);
 		this.handle = this.createHandle();
 	}
 
@@ -89,7 +89,17 @@ export class FrontendOidcModeCallbackController {
 	}
 
 	isCallback(): boolean {
-		return this.selectClientRecord() !== undefined;
+		const currentUrl = this.currentUrl();
+		if (currentUrl == null) {
+			return false;
+		}
+		return (
+			this.selectClientRecordForInput(
+				this.registry(),
+				currentUrl,
+				this.clientQuery(),
+			) !== undefined
+		);
 	}
 
 	reset(): void {
@@ -98,16 +108,31 @@ export class FrontendOidcModeCallbackController {
 
 	private createHandle(): FrontendOidcModeCallbackHandle {
 		return createOnceAsyncLockCallable(async () => {
-			const record = this.selectClientRecord();
-			if (!record) {
+			const registry = this.registry();
+			const currentUrl = this.currentUrl();
+			if (currentUrl == null) {
 				throw new ClientRegistryError({
 					code: ClientRegistryErrorCode.CallbackClientNotFound,
-					currentUrl: this.currentUrl,
-					message: `[FrontendOidcModeCallbackController] Cannot determine which frontend client this callback belongs to. URL: ${this.currentUrl}. Register callbackPath in the client entry or pass a matching clientQuery.`,
+					currentUrl: undefined,
+					message:
+						"[FrontendOidcModeCallbackController] Cannot determine which frontend client this callback belongs to. URL: <unavailable>. Register callbackPath in the client entry or pass a matching clientQuery.",
 				});
 			}
 
-			const readyRecord = await this.registry.initialize(
+			const record = this.selectClientRecordForInput(
+				registry,
+				currentUrl,
+				this.clientQuery(),
+			);
+			if (!record) {
+				throw new ClientRegistryError({
+					code: ClientRegistryErrorCode.CallbackClientNotFound,
+					currentUrl,
+					message: `[FrontendOidcModeCallbackController] Cannot determine which frontend client this callback belongs to. URL: ${currentUrl}. Register callbackPath in the client entry or pass a matching clientQuery.`,
+				});
+			}
+
+			const readyRecord = await registry.initialize(
 				record.get().meta.clientKey,
 			);
 			const client = readyRecord.client;
@@ -119,7 +144,7 @@ export class FrontendOidcModeCallbackController {
 					actualMode: client.constructor.name,
 				});
 			}
-			const callbackResult = await client.handleCallback(this.currentUrl);
+			const callbackResult = await client.handleCallback(currentUrl);
 
 			return {
 				clientRecord:
@@ -130,13 +155,15 @@ export class FrontendOidcModeCallbackController {
 		});
 	}
 
-	selectClientRecord():
-		| ReadableSignalTrait<ClientRecord<DisposableTrait>>
-		| undefined {
-		return this.registry.clientRecordForQuery(
+	selectClientRecordForInput(
+		registry: ClientRegistry<BaseOidcModeClient>,
+		currentUrl: string,
+		clientQuery: ClientQueryOptions | undefined,
+	): ReadableSignalTrait<ClientRecord<BaseOidcModeClient>> | undefined {
+		return registry.clientRecordForQuery(
 			FrontendOidcModeCallbackController.createCallbackQuery(
-				this.currentUrl,
-				this.clientQuery,
+				currentUrl,
+				clientQuery,
 			),
 		);
 	}

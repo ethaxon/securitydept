@@ -250,25 +250,22 @@ Justification:
 
 - Splitting consumer reads from explicit maintenance avoids route/interceptor side effects, makes lazy registry lifecycle explicit, and keeps UI slices independent instead of forcing every consumer through one composite imperative state machine.
 
-### Angular Token-Set Bearer Interceptor: `strictUrlMatch`
+### Angular Token-Set Client Registry Authorization Interceptor
 
 Package: `@securitydept/token-set-context-client-angular`
 
 Change:
 
-- `provideTokenSetBearerInterceptor()` accepts `options?: BearerInterceptorOptions`.
-- `createTokenSetBearerInterceptor(registry, options?)` accepts the same options object.
-- `BearerInterceptorOptions.strictUrlMatch` controls whether unmatched URLs receive a single-client fallback token.
+- `provideTokenSetClientRegistryAuthorizationInterceptor()` replaces `provideTokenSetBearerInterceptor()`.
+- `createTokenSetClientRegistryAuthorizationInterceptor(options?)` replaces `createTokenSetBearerInterceptor(registry, options?)`.
+- `authorizationForRequest(registry, request)` customizes how the `Authorization` header is resolved. It can be passed explicitly or provided with `TOKEN_SET_CLIENT_REGISTRY_AUTHORIZATION_FOR_REQUEST`. The default implementation selects a client by request URL and returns no header for unmatched URLs.
 
 Migration:
 
 ```ts
-provideTokenSetBearerInterceptor({ strictUrlMatch: true });
+provideTokenSetClientRegistryAuthorizationInterceptor();
+createTokenSetClientRegistryAuthorizationInterceptor();
 ```
-
-Use `strictUrlMatch: true` for Angular hosts with multiple backends, multiple audiences, or any third-party HTTP traffic. This prevents bearer injection when a request URL does not match any registered token-set client `urlPatterns`.
-
-Single-backend hosts can keep the no-argument form if they intentionally rely on the convenience fallback.
 
 ### Shared Authenticated Principal
 

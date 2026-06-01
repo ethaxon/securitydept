@@ -1,8 +1,10 @@
+import { HttpClient, HttpRequest, HttpResponse } from "@angular/common/http";
 import {
 	createEnvironmentInjector,
 	Injector,
 	runInInjectionContext,
 } from "@angular/core";
+import { Router } from "@angular/router";
 import {
 	createEventSubject,
 	createFoundationEnvironment,
@@ -17,9 +19,10 @@ import {
 	ClientRegistryEntryStatus,
 } from "@securitydept/token-set-context-client/registry";
 import {
-	createTokenSetBearerInterceptor,
+	createTokenSetClientRegistryAuthorizationInterceptor,
 	provideTokenSetClientRegistry,
 	TOKEN_SET_CLIENT_REGISTRY,
+	TOKEN_SET_CLIENT_REGISTRY_AUTHORIZATION_FOR_REQUEST,
 	TokenSetClientRegistryService,
 } from "@securitydept/token-set-context-client-angular";
 import { firstValueFrom, of } from "rxjs";
@@ -96,13 +99,32 @@ function createRegistryInjector(
 ) {
 	return createEnvironmentInjector(
 		[
+			...provideAngularEnvironmentDeps(),
 			provideEnvironment({
-				environment: () => createFoundationEnvironment({}),
+				createBaseEnvironment: createFoundationEnvironment,
 			}),
 			...provideTokenSetClientRegistry({ clients }),
 		],
 		Injector.NULL as never,
 	);
+}
+
+function provideAngularEnvironmentDeps() {
+	return [
+		{
+			provide: Router,
+			useValue: {
+				url: "/",
+				navigateByUrl: vi.fn(async () => true),
+			},
+		},
+		{
+			provide: HttpClient,
+			useValue: {
+				request: vi.fn(() => of(new HttpResponse({ status: 200 }))),
+			},
+		},
+	];
 }
 
 describe("TokenSetClientRegistryService", () => {
@@ -224,7 +246,7 @@ describe("TokenSetClientRegistryService", () => {
 		}
 	});
 
-	it("interceptor does not use a stale service after unregister()", async () => {
+	it("client registry authorization interceptor does not use a stale service after unregister()", async () => {
 		const injector = createRegistryInjector([
 			createEntry(
 				"workspace",
@@ -237,45 +259,79 @@ describe("TokenSetClientRegistryService", () => {
 
 		try {
 			const registry = injector.get(TokenSetClientRegistryService);
-			const interceptor = createTokenSetBearerInterceptor(registry, {
-				strictUrlMatch: true,
+			const interceptor = createTokenSetClientRegistryAuthorizationInterceptor({
+				registry,
 			});
-			const next = vi.fn((request: unknown) => of(request));
-			const clone = vi.fn(
-				(update: { setHeaders?: Record<string, string> }) => ({
-					url: "https://api.example.com/data",
-					headers: update.setHeaders,
-				}),
+			const next = vi.fn((_request: HttpRequest<unknown>) =>
+				of(new HttpResponse({ status: 204 })),
+			);
+			const originalRequest = new HttpRequest(
+				"GET",
+				"https://api.example.com/data",
 			);
 
-			const authorized = await firstValueFrom(
-				interceptor(
-					{
-						url: "https://api.example.com/data",
-						clone,
-					},
-					next,
-				),
-			);
-			expect(clone).toHaveBeenCalledWith({
-				setHeaders: { Authorization: "Bearer live" },
-			});
-			expect(authorized).toMatchObject({
-				headers: { Authorization: "Bearer live" },
-			});
+			await firstValueFrom(interceptor(originalRequest, next));
+			const authorized = next.mock.calls[0]?.[0];
+			expect(authorized).toBeInstanceOf(HttpRequest);
+			expect(authorized?.headers.get("Authorization")).toBe("Bearer live");
 
 			registry.unregister("workspace");
-			clone.mockClear();
 			next.mockClear();
 
-			const originalRequest = {
-				url: "https://api.example.com/data",
-				clone,
-			};
-			const result = await firstValueFrom(interceptor(originalRequest, next));
-			expect(clone).not.toHaveBeenCalled();
-			expect(next).toHaveBeenCalledWith(originalRequest);
-			expect(result).toBe(originalRequest);
+			const staleRequest = new HttpRequest(
+				"GET",
+				"https://api.example.com/data",
+			);
+			await firstValueFrom(interceptor(staleRequest, next));
+			expect(next).toHaveBeenCalledWith(staleRequest);
+		} finally {
+			injector.destroy();
+		}
+	});
+
+	it("client registry authorization interceptor supports injected custom request authorization", async () => {
+		const authorizationForRequest = vi.fn(
+			async (
+				receivedRegistry: TokenSetClientRegistryService,
+				request: { url: string },
+			) => {
+				expect(receivedRegistry).toBeInstanceOf(TokenSetClientRegistryService);
+				return request.url.endsWith("/internal") ? "Bearer custom" : null;
+			},
+		);
+		const injector = createEnvironmentInjector(
+			[
+				...provideAngularEnvironmentDeps(),
+				provideEnvironment({
+					createBaseEnvironment: createFoundationEnvironment,
+				}),
+				...provideTokenSetClientRegistry({ clients: [] }),
+				{
+					provide: TOKEN_SET_CLIENT_REGISTRY_AUTHORIZATION_FOR_REQUEST,
+					useValue: authorizationForRequest,
+				},
+			],
+			Injector.NULL as never,
+		);
+
+		try {
+			const interceptor =
+				createTokenSetClientRegistryAuthorizationInterceptor();
+			const next = vi.fn((_request: HttpRequest<unknown>) =>
+				of(new HttpResponse({ status: 204 })),
+			);
+			const request = new HttpRequest(
+				"GET",
+				"https://api.example.com/internal",
+			);
+
+			await firstValueFrom(
+				runInInjectionContext(injector, () => interceptor(request, next)),
+			);
+			const response = next.mock.calls[0]?.[0];
+			expect(response).toBeInstanceOf(HttpRequest);
+			expect(response?.headers.get("Authorization")).toBe("Bearer custom");
+			expect(authorizationForRequest).toHaveBeenCalledTimes(1);
 		} finally {
 			injector.destroy();
 		}

@@ -14,7 +14,7 @@
 - `provideTokenSetClientRegistry(...)` 为 `Confluence` client 显式注册 `providerFamily`、`callbackPath` 与 `urlPatterns`。
 - Route-login integration 使用 `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })`；client 应已通过自身 environment 持有稳定的 page router，而不是每次调用时接收 page factory。
 - 对 registry-managed browser client，`provideTokenSetClientRegistry(...)` 直接使用核心 `ClientRegistry` lifecycle；adopter 不需要为了 resume recovery 再额外包一层 client。
-- `provideTokenSetBearerInterceptor({ strictUrlMatch: true })` 可以把 bearer injection 限制到已注册 URL，不再对 unmatched URL 使用 single-client fallback。
+- `provideTokenSetClientRegistryAuthorizationInterceptor()` 可以把 authorization injection 限制到已注册 URL，不再对 unmatched URL 使用 fallback authorization。
 - 短 access-token lifetime 应通过 SDK freshness barriers 恢复，而不是在存在 refresh material 时直接 redirect 或发送过期 bearer。
 - Focused downstream tests 已锁住 callback preservation、provider-neutral route metadata、bearer injection boundaries 与 redirect preservation。
 
@@ -35,7 +35,7 @@
 
 这个案例当前强化了以下设计结论：
 
-- Angular bearer injection 应保留显式 `strictUrlMatch` 路径，多 backend 或存在 third-party traffic 的 host 应启用它。
+- Angular authorization injection 应继续由 client registry URL matching 限定，并通过 `authorizationForRequest` 支持 host-specific routing rules。
 - Angular route 与 request handling 应消费 canonical replay channels：route guard 等待 `isAuthenticated`，interceptor 等待 `authorizationHeaderValue`。adopter-local 代码不应自行重拼命令式 freshness 或 bearer fallback chain。
 - Browser token-set client 应默认保留 resume reconciliation；如果 adopter 明确关闭，就必须补上等价的 freshness barrier。
 - Authentik 或等价 provider 配置必须让 browser-owned token-set client 拿到并保留 refresh material，包括 `offline_access` 和可用的 refresh-token lifetime/rotation。

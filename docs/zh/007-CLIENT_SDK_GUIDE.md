@@ -406,11 +406,7 @@ Layering rules：
 - `SessionContextService`：controller 之上的 signal / observable facade。低层 auth-context behavior 仍在 `SessionContextService.client`。
 - `provideTokenSetClientRegistry({ clients })`：基于核心 `ClientRegistryEntry<BaseOidcModeClient>` 的 Angular host registration；每个 client entry 仍拥有 auth-context config 与 environment composition。
 - Angular token-set callback service/component 导出已移除。新的 Angular callback 适配应基于核心 token-set registry controller 构建，不应重新引入独立 callback state machine。
-- `provideTokenSetBearerInterceptor(options?)` / `createTokenSetBearerInterceptor(registry, options?)`：使用 SDK options-object API 形式的 bearer-header injection。注入 `Authorization` 前，interceptor 等待选中 client 的 `authorizationHeaderValue` replay signal。它不触发 refresh 或 auth check；client `start()`、refresh timer、page-resume auth-check trigger 或显式 `authCheck()` 负责维护。`BearerInterceptorOptions.strictUrlMatch` 控制 unmatched URL behavior：
-  - 默认 `strictUrlMatch: false`：保留 single-client convenience fallback，等待唯一 registered client 的 `authorizationHeaderValue`；仅当 host 只调用一个 registered backend 时使用。
-  - `strictUrlMatch: true`：unmatched URL 不会收到 `Authorization` header。
-  - multi-backend、multi-audience 或存在 third-party traffic 的 Angular adopter 必须使用 `strictUrlMatch: true`。
-  - `TOKEN_SET_BEARER_INTERCEPTOR_OPTIONS` 已导出，可用于高级 DI/test override。
+- `provideTokenSetClientRegistryAuthorizationInterceptor(options?)` / `createTokenSetClientRegistryAuthorizationInterceptor(options?)`：使用 SDK options-object API 形式的 request authorization。functional interceptor 默认注入 `TokenSetClientRegistryService`；`authorizationForRequest` 可以显式传入，也可以通过 `TOKEN_SET_CLIENT_REGISTRY_AUTHORIZATION_FOR_REQUEST` 提供。默认 `authorizationForRequest(registry, request)` 会按 request URL 选择已注册 client、初始化该 client，并等待其 `authorizationHeaderValue` replay signal 后注入 `Authorization`。它不触发 refresh 或 auth check；client `start()`、refresh timer、page-resume auth-check trigger 或显式 `authCheck()` 负责维护。request URL 不匹配任何已注册 client 时，不会注入 `Authorization` header。
 
 Freshness 由 token-set core 拥有，而不是由某个 framework adapter 单独修补。Consumer code 读取 replay channels：首屏 readiness 使用 `authDetermined`，稳定 UI 使用 `authSnapshot`，route guard 使用 `isAuthenticated`，transport/interceptor 使用 `authorizationHeaderValue`。`authCheck(options?)` 是唯一显式 maintenance command，只应留给有意触发一次串行检查的高级调用者。Event payload 不得包含 raw access、refresh 或 ID token value。Header availability 不再拥有独立 event/status lifecycle：可用 bearer projection 归属于 authenticated snapshot，缺失 bearer material 则表现为 unauthenticated 或 undefined header projection。Mode client 不再暴露同步 bearer convenience API，registry token sugar 也不属于公开模型。使用 `registry.whenReady(key?)` 或 `registry.clientSignalFor(key?)` 获取已 start 的 client，然后消费该 client 的 replay signals。
 
@@ -506,7 +502,7 @@ Canonical RxJS bridge 现在位于 `@securitydept/client/rx`。对 `EventStreamT
 
 ### 下游参考案例：Outposts
 
-`~/workspace/outposts` 验证真实 Angular adopter 路径。它使用 `provideTokenSetClientRegistry(...)` 加 `provideTokenSetBearerInterceptor({ strictUrlMatch: true })`，证明了面向 downstream `confluence` backend 的 strict URL-prefix bounded bearer injection。这个路径也用于校准 stale-token handling：SDK 必须在首个 protected Confluence request 前 refresh 或清理状态，而不是发送会被后端正确以 `ExpiredSignature` 拒绝的 expired bearer。其 app-local auth service 仍是 adopter glue，不是 SDK API 模板。
+`~/workspace/outposts` 验证真实 Angular adopter 路径。它使用 `provideTokenSetClientRegistry(...)` 加 `provideTokenSetClientRegistryAuthorizationInterceptor()`，证明了面向 downstream `confluence` backend 的 URL-prefix bounded authorization injection。这个路径也用于校准 stale-token handling：SDK 必须在首个 protected Confluence request 前 refresh 或清理状态，而不是发送会被后端正确以 `ExpiredSignature` 拒绝的 expired bearer。其 app-local auth service 仍是 adopter glue，不是 SDK API 模板。
 
 下游验证应使用 pnpm 本地 `link:` dependency 链接 SecurityDept SDK packages，不使用 package-manager override。普通 TS package 可以 link 到 package root；Angular package 应在重建后 link 到对应 `dist/` 输出，并在浏览器验证前清理 downstream Angular/Vite cache。
 

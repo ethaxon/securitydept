@@ -14,7 +14,7 @@ The current calibration line demonstrates that:
 - `provideTokenSetClientRegistry(...)` registers the `Confluence` client with explicit `providerFamily`, `callbackPath`, and `urlPatterns`.
 - Route-login integration uses `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })`; the client should already carry a stable page router through its environment rather than receiving a per-call page factory.
 - Registry-managed browser clients now use the core `ClientRegistry` lifecycle through `provideTokenSetClientRegistry(...)`; the adopter does not need a separate wrapper just to recover resume behavior.
-- `provideTokenSetBearerInterceptor({ strictUrlMatch: true })` constrains bearer injection to registered URLs and avoids single-client fallback for unmatched URLs.
+- `provideTokenSetClientRegistryAuthorizationInterceptor()` constrains authorization injection to registered URLs and avoids fallback authorization for unmatched URLs.
 - Short access-token lifetimes are expected to recover through SDK freshness barriers before redirect or bearer injection when refresh material exists.
 - Focused downstream tests lock callback preservation, provider-neutral route metadata, bearer injection boundaries, and redirect preservation.
 
@@ -35,7 +35,7 @@ This is the kind of pressure that reveals whether SDK primitives are reusable or
 
 Current design guidance reinforced by this case:
 
-- Angular bearer injection should keep an explicit `strictUrlMatch` path, and multi-backend or third-party-traffic hosts should opt into it.
+- Angular authorization injection should remain bounded by client registry URL matching, with `authorizationForRequest` available for host-specific routing rules.
 - Angular route and request handling should consume the canonical replay channels: route guards wait for `isAuthenticated`, and interceptors wait for `authorizationHeaderValue`. Adopter-local code should not rebuild imperative freshness or bearer fallback chains.
 - Browser token-set clients should keep default resume reconciliation unless an adopter deliberately replaces it with an equivalent freshness barrier.
 - Authentik or equivalent provider configuration must keep refresh material available to browser-owned token-set clients, including `offline_access` and workable refresh-token lifetime/rotation.

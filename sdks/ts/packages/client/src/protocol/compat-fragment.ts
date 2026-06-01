@@ -10,7 +10,7 @@ export interface CompatFragment {
 }
 
 export interface AppendOrReplaceCompatFragmentOptions {
-	payload: string | URLSearchParams;
+	payload: string | URLSearchParams | CompatFragmentParameters;
 }
 
 export interface TakeCompatFragmentResult<T> {
@@ -136,7 +136,7 @@ function buildCompatFragmentBlock(
 						? options.payload.slice(1)
 						: options.payload,
 				)
-			: options.payload;
+			: new URLSearchParams(options.payload);
 	for (const [key, value] of payload) {
 		if (key !== "securitydept") {
 			block.append(key, value);

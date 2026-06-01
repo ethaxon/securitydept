@@ -83,7 +83,8 @@ export interface ProvideSessionContextOptions {
  * export const appConfig = {
  *   providers: [
  *     provideEnvironment({
- *       environment: (providers) => createEnvironmentForNativeWeb({ providers, ... }),
+ *       createBaseEnvironment: createEnvironmentForNativeWeb,
+ *       ...
  *     }),
  *     provideSessionContext({ config: { baseUrl: "/api", autoStart: true } }),
  *   ],

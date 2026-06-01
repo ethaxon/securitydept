@@ -14,7 +14,6 @@ export type BuiltinAuthWorkflowSourceConfig<TOptions> =
 
 export function normalizeBuiltinAuthWorkflowSourceConfig<
 	TBundleOptions,
-	// biome-ignore lint/complexity/noBannedTypes: This is a discriminated union type, so it's appropriate here.
 	DBundleOptions = {},
 >(
 	option: BuiltinAuthWorkflowSourceConfig<TBundleOptions>,

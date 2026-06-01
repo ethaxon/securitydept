@@ -4,6 +4,9 @@ import {
 } from "../environment/create";
 import { type FoundationEnvironment } from "../environment/types";
 import {
+	createProviderIfTokenMissing,
+	getSecuritydeptProviderToken,
+	notMissingProvider,
 	type SecuritydeptDependencyDescriptor,
 	type SecuritydeptFactoryProvider,
 	type SecuritydeptProvider,
@@ -59,9 +62,13 @@ export interface CreateEnvironmentForNativeWebOptions
 export function createEnvironmentForNativeWeb(
 	options: CreateEnvironmentForNativeWebOptions,
 ): NativeWebEnvironment {
+	const userProviders = options.providers ?? [];
+	const externalProviderTokens = new Set(
+		userProviders.map((provider) => getSecuritydeptProviderToken(provider)),
+	);
 	const providers = [
-		...createNativeWebTraitProviders(options),
-		...(options.providers ?? []),
+		...createNativeWebTraitProviders(options, externalProviderTokens),
+		...userProviders,
 	];
 	return createFoundationEnvironment({
 		providers,
@@ -81,56 +88,84 @@ export function createEnvironmentForNativeWeb(
 
 function createNativeWebTraitProviders(
 	options: CreateEnvironmentForNativeWebOptions,
+	externalProviderTokens: ReadonlySet<
+		SecuritydeptValueProvider<unknown>["provide"]
+	>,
 ): SecuritydeptProvider[] {
 	return [
-		createNativeWebTraitUnit({
-			provide: ROUTER_TRAIT_TOKEN,
-			value: options.router,
-			createValue: () =>
-				createRouterForNativeWeb({
-					...options.routerForNativeWebCreateOptions,
-					validators: options.validators,
+		createProviderIfTokenMissing(
+			externalProviderTokens,
+			ROUTER_TRAIT_TOKEN,
+			() =>
+				createNativeWebTraitUnit({
+					provide: ROUTER_TRAIT_TOKEN,
+					value: options.router,
+					createValue: () =>
+						createRouterForNativeWeb({
+							...options.routerForNativeWebCreateOptions,
+							validators: options.validators,
+						}),
 				}),
-		}),
-		createNativeWebTraitUnit({
-			provide: PAGE_LIFECYCLE_TRAIT_TOKEN,
-			value: options.pageLifecycle,
-			createValue: () =>
-				createPageLifecycleForNativeWeb({
-					...options.pageLifecycleForNativeWebCreateOptions,
-					validators: options.validators,
+		),
+		createProviderIfTokenMissing(
+			externalProviderTokens,
+			PAGE_LIFECYCLE_TRAIT_TOKEN,
+			() =>
+				createNativeWebTraitUnit({
+					provide: PAGE_LIFECYCLE_TRAIT_TOKEN,
+					value: options.pageLifecycle,
+					createValue: () =>
+						createPageLifecycleForNativeWeb({
+							...options.pageLifecycleForNativeWebCreateOptions,
+							validators: options.validators,
+						}),
 				}),
-		}),
-		createNativeWebTraitUnit({
-			provide: POPUP_TRAIT_TOKEN,
-			value: options.popup,
-			createValue: (time: TimeTrait) =>
-				createPopupForNativeWeb({
-					time,
-					...options.popupForNativeWebCreateOptions,
-					validators: options.validators,
+		),
+		createProviderIfTokenMissing(
+			externalProviderTokens,
+			POPUP_TRAIT_TOKEN,
+			() =>
+				createNativeWebTraitUnit({
+					provide: POPUP_TRAIT_TOKEN,
+					value: options.popup,
+					createValue: (time: TimeTrait) =>
+						createPopupForNativeWeb({
+							time,
+							...options.popupForNativeWebCreateOptions,
+							validators: options.validators,
+						}),
+					deps: [TIME_TRAIT_TOKEN],
 				}),
-			deps: [TIME_TRAIT_TOKEN],
-		}),
-		createNativeWebTraitUnit({
-			provide: PERSISTENT_STORAGE_TRAIT_TOKEN,
-			value: options.persistentStorage,
-			createValue: () =>
-				createPersistentStorageForNativeWeb({
-					...options.persistentStorageForNativeWebCreateOptions,
-					validators: options.validators,
+		),
+		createProviderIfTokenMissing(
+			externalProviderTokens,
+			PERSISTENT_STORAGE_TRAIT_TOKEN,
+			() =>
+				createNativeWebTraitUnit({
+					provide: PERSISTENT_STORAGE_TRAIT_TOKEN,
+					value: options.persistentStorage,
+					createValue: () =>
+						createPersistentStorageForNativeWeb({
+							...options.persistentStorageForNativeWebCreateOptions,
+							validators: options.validators,
+						}),
 				}),
-		}),
-		createNativeWebTraitUnit({
-			provide: SESSION_STORAGE_TRAIT_TOKEN,
-			value: options.sessionStorage,
-			createValue: () =>
-				createSessionStorageForNativeWeb({
-					...options.sessionStorageForNativeWebCreateOptions,
-					validators: options.validators,
+		),
+		createProviderIfTokenMissing(
+			externalProviderTokens,
+			SESSION_STORAGE_TRAIT_TOKEN,
+			() =>
+				createNativeWebTraitUnit({
+					provide: SESSION_STORAGE_TRAIT_TOKEN,
+					value: options.sessionStorage,
+					createValue: () =>
+						createSessionStorageForNativeWeb({
+							...options.sessionStorageForNativeWebCreateOptions,
+							validators: options.validators,
+						}),
 				}),
-		}),
-	];
+		),
+	].filter(notMissingProvider);
 }
 
 function createNativeWebTraitUnit<T>(options: {

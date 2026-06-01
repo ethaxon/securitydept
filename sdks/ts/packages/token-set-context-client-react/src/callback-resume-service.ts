@@ -1,24 +1,29 @@
 import {
 	createOnceAsyncLockCallable,
 	createSignal,
-	type DisposableTrait,
 	readonlySignal,
 	SecuritydeptDestroyRef,
 	SecuritydeptInjectionToken,
 	type SecuritydeptProvider,
 	tryInjectInInjectionContext,
 } from "@securitydept/client";
+import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
+	type ClientQueryOptions,
 	type ClientRegistry as CoreClientRegistry,
 	FrontendOidcModeCallbackController,
-	type FrontendOidcModeCallbackInput,
 	type FrontendOidcModeCallbackResult,
 	type FrontendOidcModeCallbackState,
 } from "@securitydept/token-set-context-client/registry";
 import { type ReactRegistry } from "./token-set-auth-registry";
 
+export interface ReactFrontendOidcModeCallbackInput {
+	currentUrl: string;
+	clientQuery?: ClientQueryOptions;
+}
+
 export class ReactTokenSetCallbackResumeController {
-	private readonly registry: CoreClientRegistry<DisposableTrait>;
+	private readonly registry: CoreClientRegistry<BaseOidcModeClient>;
 	private readonly stateSignal = createSignal<FrontendOidcModeCallbackState>(
 		createIdleCallbackLock(),
 	);
@@ -26,19 +31,20 @@ export class ReactTokenSetCallbackResumeController {
 	readonly state = readonlySignal(this.stateSignal);
 
 	constructor(registry: ReactRegistry) {
-		this.registry = registry as unknown as CoreClientRegistry<DisposableTrait>;
+		this.registry =
+			registry as unknown as CoreClientRegistry<BaseOidcModeClient>;
 
 		tryInjectInInjectionContext(SecuritydeptDestroyRef, {
 			optional: true,
 		})?.onDestroy(() => this.dispose());
 	}
 
-	isCallback(options: FrontendOidcModeCallbackInput): boolean {
+	isCallback(options: ReactFrontendOidcModeCallbackInput): boolean {
 		return this.createController(options).isCallback();
 	}
 
 	async handle(
-		options: FrontendOidcModeCallbackInput,
+		options: ReactFrontendOidcModeCallbackInput,
 	): Promise<FrontendOidcModeCallbackResult> {
 		const controller = this.createController(options);
 		const unsubscribe = controller.state.notify(() => {
@@ -61,12 +67,12 @@ export class ReactTokenSetCallbackResumeController {
 	}
 
 	private createController(
-		options: FrontendOidcModeCallbackInput,
+		options: ReactFrontendOidcModeCallbackInput,
 	): FrontendOidcModeCallbackController {
 		return new FrontendOidcModeCallbackController({
-			registry: this.registry,
-			currentUrl: options.currentUrl,
-			clientQuery: options.clientQuery,
+			registry: () => this.registry,
+			currentUrl: () => options.currentUrl,
+			clientQuery: () => options.clientQuery,
 		});
 	}
 }

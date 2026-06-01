@@ -1,5 +1,6 @@
 // Angular full-route aggregation — evidence test for the current registry model.
 
+import { HttpClient, HttpResponse } from "@angular/common/http";
 import {
 	createEnvironmentInjector,
 	type EnvironmentInjector,
@@ -36,6 +37,7 @@ import {
 	secureRouteRoot,
 	TokenSetClientRegistryService,
 } from "@securitydept/token-set-context-client-angular";
+import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 
 function createMockClient(authenticated: boolean): BaseOidcModeClient {
@@ -68,6 +70,26 @@ function createMockClient(authenticated: boolean): BaseOidcModeClient {
 			snapshot: { tokens: { accessToken: "popup" }, metadata: {} },
 		})),
 	} as unknown as BaseOidcModeClient;
+}
+
+function createRouterProvider() {
+	return {
+		provide: Router,
+		useValue: {
+			url: "/current",
+			navigateByUrl: vi.fn(async () => true),
+			parseUrl: (url: string) => ({ url }),
+		},
+	};
+}
+
+function createHttpClientProvider() {
+	return {
+		provide: HttpClient,
+		useValue: {
+			request: vi.fn(() => of(new HttpResponse({ status: 200 }))),
+		},
+	};
 }
 
 function createReadyRecord(
@@ -232,10 +254,10 @@ describe("Angular full-route aggregation", () => {
 		await expect(
 			invokeGuard(guard, route, [
 				{ provide: TokenSetClientRegistryService, useValue: registry },
-				{ provide: Router, useValue: { parseUrl: (url: string) => ({ url }) } },
+				createRouterProvider(),
+				createHttpClientProvider(),
 				provideEnvironment({
-					environment: (providers) =>
-						createFoundationEnvironment({ providers }),
+					createBaseEnvironment: createFoundationEnvironment,
 				}),
 				provideTokenSetRequirementPlannerHost({
 					onClientUnauthenticated: () => false,
@@ -273,10 +295,10 @@ describe("Angular full-route aggregation", () => {
 		await expect(
 			invokeGuard(guard, buildRouteChain([root, child]), [
 				{ provide: TokenSetClientRegistryService, useValue: registry },
-				{ provide: Router, useValue: { parseUrl: (url: string) => ({ url }) } },
+				createRouterProvider(),
+				createHttpClientProvider(),
 				provideEnvironment({
-					environment: (providers) =>
-						createFoundationEnvironment({ providers }),
+					createBaseEnvironment: createFoundationEnvironment,
 				}),
 				provideTokenSetRequirementPlannerHost(),
 			]),

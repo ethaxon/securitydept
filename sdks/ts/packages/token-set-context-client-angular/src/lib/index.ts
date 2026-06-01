@@ -7,8 +7,8 @@
 //   - Keyed client registration via provideTokenSetClientRegistry()
 //   - Multi-client lookup via TokenSetClientRegistryService
 //   - Per-client mode client replay signals with RxJS bridge support
-//   - Multi-client bearer interceptor (functional + class-based)
-//   - provideTokenSetBearerInterceptor() for NgModule HTTP_INTERCEPTORS setup
+//   - Client-registry authorization interceptor (functional + class-based)
+//   - provideTokenSetClientRegistryAuthorizationInterceptor() for NgModule HTTP_INTERCEPTORS setup
 //   - Requirement/provider-family → client key mapping
 //   - secureRouteRoot() / secureRoute() — canonical Angular Router route-security
 //     builders that delegate to the client-angular base helpers, normalize
@@ -24,5 +24,6 @@
 // Stability: provisional (framework adapter)
 
 export * from "./auth-coordination";
-export * from "./bearer-interceptor";
 export * from "./client-registry.service";
+export * from "./client-registry-authorization.interceptor";
+export * from "./components";

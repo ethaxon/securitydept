@@ -2,9 +2,11 @@ import {
 	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
+	type CompatFragmentParameters,
 	createLinkedCancellationToken,
 	defineInstrumentMethodDecorator,
 	type FoundationEnvironment,
+	type HttpResponseJsonBody,
 	type OperationSpanTrait,
 	parseCompatFragment,
 	RouterNavigationIntent,
@@ -268,14 +270,14 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		flow: "callback.fragment",
 	})
 	async handleCallback(
-		parsedCompatFragment: Record<string, unknown>,
+		parsedCompatFragment: CompatFragmentParameters,
 		operationSpan?: OperationSpanTrait,
 	): Promise<AuthSnapshot> {
 		return await this._handleCallback(parsedCompatFragment, operationSpan);
 	}
 
 	private async _handleCallback(
-		parsedCompatFragment: Record<string, unknown>,
+		parsedCompatFragment: CompatFragmentParameters,
 		operationSpan?: OperationSpanTrait,
 	): Promise<AuthSnapshot> {
 		this._throwIfNotOperational();
@@ -340,7 +342,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		flow: "callback.body",
 	})
 	async handleCallbackBody(
-		body: Record<string, unknown>,
+		body: HttpResponseJsonBody,
 		operationSpan?: OperationSpanTrait,
 	): Promise<AuthSnapshot> {
 		this._throwIfNotOperational();
@@ -425,7 +427,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 
 		if (response.status === 200 && response.body) {
 			const refreshBody = parseBackendOidcModeRefreshPayload(
-				response.body as Record<string, unknown>,
+				response.body as HttpResponseJsonBody,
 			);
 			if (!refreshBody) {
 				throw new ClientError({

@@ -175,6 +175,7 @@ export {
 	type AppendOrReplaceCompatFragmentResult,
 	appendOrReplaceCompatFragment,
 	type CompatFragment,
+	type CompatFragmentParameters,
 	isCompatFragmentBlock,
 	parseCompatFragment,
 	SECURITYDEPT_COMPAT_FRAGMENT_VERSION,
@@ -336,6 +337,7 @@ export {
 	type BaseTransportTrait,
 	type HttpRequest,
 	type HttpResponse,
+	type HttpResponseJsonBody,
 	isLoopbackHttpUrl,
 	TRANSPORT_TRAIT_TOKEN,
 } from "./transport";

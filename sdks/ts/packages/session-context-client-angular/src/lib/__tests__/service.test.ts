@@ -1,16 +1,26 @@
+import {
+	HttpResponse as AngularHttpResponse,
+	HttpClient,
+} from "@angular/common/http";
 import { DestroyRef, Injector } from "@angular/core";
+import { Router } from "@angular/router";
 import {
 	type BaseTransportTrait,
 	type HttpRequest,
 	type HttpResponse,
+	TRANSPORT_TRAIT_TOKEN,
 } from "@securitydept/client";
-import { provideEnvironment } from "@securitydept/client-angular";
+import {
+	provideEnvironment,
+	provideEnvironmentProvider,
+} from "@securitydept/client-angular";
 import {
 	provideSessionContext,
 	SESSION_CONTEXT_CLIENT,
 	SessionContextService,
 } from "@securitydept/session-context-client-angular";
-import { describe, expect, it } from "vitest";
+import { of } from "rxjs";
+import { describe, expect, it, vi } from "vitest";
 import { createEnvironmentForTest } from "../../../../client/src/test";
 
 function createTestTransport(
@@ -23,30 +33,51 @@ function createTestTransport(
 	};
 }
 
+function provideAngularEnvironmentDeps() {
+	return [
+		{
+			provide: Router,
+			useValue: {
+				url: "/",
+				navigateByUrl: vi.fn(async () => true),
+			},
+		},
+		{
+			provide: HttpClient,
+			useValue: {
+				request: vi.fn(() => of(new AngularHttpResponse({ status: 200 }))),
+			},
+		},
+	];
+}
+
 describe("SessionContextService", () => {
 	it("bridges client signals and convenience methods", async () => {
 		const requests: HttpRequest[] = [];
+		const transport = createTestTransport((request) => {
+			requests.push(request);
+			if (request.url.endsWith("/user-info")) {
+				return {
+					status: 200,
+					headers: {},
+					body: {
+						subject: "session-user-1",
+						display_name: "Alice",
+					},
+				};
+			}
+			return { status: 200, headers: {}, body: {} };
+		});
 		const injector = Injector.create({
 			providers: [
+				...provideAngularEnvironmentDeps(),
+				provideEnvironmentProvider({
+					provide: TRANSPORT_TRAIT_TOKEN,
+					useValue: transport,
+				}),
 				provideEnvironment({
-					environment: (ngProviders) =>
-						createEnvironmentForTest({
-							providers: ngProviders,
-							transport: createTestTransport((request) => {
-								requests.push(request);
-								if (request.url.endsWith("/user-info")) {
-									return {
-										status: 200,
-										headers: {},
-										body: {
-											subject: "session-user-1",
-											display_name: "Alice",
-										},
-									};
-								}
-								return { status: 200, headers: {}, body: {} };
-							}),
-						}),
+					createBaseEnvironment: createEnvironmentForTest,
+					transport,
 				}),
 				{
 					provide: DestroyRef,
@@ -89,20 +120,23 @@ describe("SessionContextService", () => {
 
 	it("provideSessionContext registers only the client and service", async () => {
 		const requests: HttpRequest[] = [];
+		const transport = createTestTransport((request) => {
+			requests.push(request);
+			return {
+				status: 401,
+				headers: {},
+			};
+		});
 		const injector = Injector.create({
 			providers: [
+				...provideAngularEnvironmentDeps(),
+				provideEnvironmentProvider({
+					provide: TRANSPORT_TRAIT_TOKEN,
+					useValue: transport,
+				}),
 				provideEnvironment({
-					environment: (ngProviders) =>
-						createEnvironmentForTest({
-							providers: ngProviders,
-							transport: createTestTransport((request) => {
-								requests.push(request);
-								return {
-									status: 401,
-									headers: {},
-								};
-							}),
-						}),
+					createBaseEnvironment: createEnvironmentForTest,
+					transport,
 				}),
 				{
 					provide: DestroyRef,

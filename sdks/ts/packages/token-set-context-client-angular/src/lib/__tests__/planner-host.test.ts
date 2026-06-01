@@ -1,3 +1,4 @@
+import { HttpClient, HttpResponse } from "@angular/common/http";
 import {
 	createEnvironmentInjector,
 	type EnvironmentInjector,
@@ -28,6 +29,7 @@ import {
 	ClientRegistryAuthRequirement,
 	ClientRegistryEntryStatus,
 } from "@securitydept/token-set-context-client/registry";
+import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import { createEnvironmentForNativeWebTest } from "../../../../client/src/test";
 import {
@@ -64,7 +66,7 @@ function createTime() {
 }
 
 function createAngularPageEnvironment(
-	providers: readonly SecuritydeptProvider[] = [],
+	options: { providers?: readonly SecuritydeptProvider[] } = {},
 ): NativeWebEnvironment {
 	const location = {
 		href: "https://app.example.com/current",
@@ -74,7 +76,7 @@ function createAngularPageEnvironment(
 	};
 
 	return createEnvironmentForNativeWebTest({
-		providers,
+		...options,
 		transport: createTransport(),
 		time: createTime(),
 		routerForNativeWebCreateOptions: {
@@ -150,11 +152,21 @@ function createRouterProvider() {
 		provide: Router,
 		useValue: {
 			url: "/current",
+			navigateByUrl: vi.fn(async () => true),
 			parseUrl: vi.fn((url: string) => ({ url })),
 			serializeUrl: (tree: unknown) => String(tree),
 			getCurrentNavigation: () => ({
 				finalUrl: { toString: () => "/workspace/wiki?from=guard" },
 			}),
+		},
+	};
+}
+
+function createHttpClientProvider() {
+	return {
+		provide: HttpClient,
+		useValue: {
+			request: vi.fn(() => of(new HttpResponse({ status: 200 }))),
 		},
 	};
 }
@@ -207,9 +219,9 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 			[
 				{ provide: TokenSetClientRegistryService, useValue: registry },
 				createRouterProvider(),
+				createHttpClientProvider(),
 				provideEnvironment({
-					environment: (ngProviders) =>
-						createAngularPageEnvironment(ngProviders),
+					createBaseEnvironment: createAngularPageEnvironment,
 				}),
 				provideTokenSetRequirementPlannerHost({
 					onClientUnauthenticated: handler,
@@ -274,9 +286,9 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 		const injector = createEnvironmentInjector(
 			[
 				createRouterProvider(),
+				createHttpClientProvider(),
 				provideEnvironment({
-					environment: (ngProviders) =>
-						createAngularPageEnvironment(ngProviders),
+					createBaseEnvironment: createAngularPageEnvironment,
 				}),
 			],
 			Injector.NULL as never,
@@ -290,7 +302,14 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 				clientKey: "frontend",
 			})(
 				createRequirement("frontend"),
-				{ environment, requirements: [], resolutionList: [] },
+				{
+					environment,
+					planContext: {
+						routeState: { url: "https://app.example.com/current" },
+					},
+					requirements: [],
+					resolutionList: [],
+				},
 				createClientGenerator(record),
 			);
 			const settled = vi.fn();
@@ -298,7 +317,7 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 
 			await flushMicrotasks();
 			expect(loginWithRedirect).toHaveBeenCalledWith({
-				postAuthRedirectUri: "https://app.example.com/current",
+				postAuthRedirectUri: "/current",
 			});
 			expect(settled).not.toHaveBeenCalled();
 		} finally {
@@ -320,9 +339,10 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 		const injector = createEnvironmentInjector(
 			[
 				createRouterProvider(),
+				createHttpClientProvider(),
 				provideEnvironment({
-					environment: (ngProviders) => {
-						environment = createAngularPageEnvironment(ngProviders);
+					createBaseEnvironment: (options) => {
+						environment = createAngularPageEnvironment(options);
 						backendClient = new BackendOidcModeClient(
 							{ baseUrl: "https://auth.example.com" },
 							environment,
@@ -346,6 +366,9 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 				createRequirement("backend"),
 				{
 					environment: resolvedEnvironment,
+					planContext: {
+						routeState: { url: "https://app.example.com/current" },
+					},
 					requirements: [],
 					resolutionList: [],
 				},
@@ -356,11 +379,9 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 
 			await flushMicrotasks();
 			expect(loginWithRedirect).toHaveBeenCalledWith({
-				postAuthRedirectUri: "https://app.example.com/current",
+				postAuthRedirectUri: "/current",
 			});
-			expect(environment?.router.currentUrl()?.toString()).toBe(
-				"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fcurrent",
-			);
+			expect(environment?.router.currentUrl()?.toString()).toBe("/current");
 			expect(settled).not.toHaveBeenCalled();
 		} finally {
 			injector.destroy();

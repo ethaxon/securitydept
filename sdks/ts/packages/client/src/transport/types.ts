@@ -20,6 +20,8 @@ export interface HttpResponse {
 	body?: unknown;
 }
 
+export type HttpResponseJsonBody = Record<string, unknown>;
+
 /** Neutral request executor trait. */
 export interface BaseTransportTrait {
 	execute(request: HttpRequest): Promise<HttpResponse>;

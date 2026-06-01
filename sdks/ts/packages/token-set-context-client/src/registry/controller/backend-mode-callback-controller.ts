@@ -1,12 +1,13 @@
 import {
+	type CompatFragmentParameters,
 	createOnceAsyncLockCallable,
-	type DisposableTrait,
 	type OnceAsyncLock,
 	type OnceAsyncLockCallable,
 	type ReadableSignalTrait,
 } from "@securitydept/client";
 import { BackendOidcModeClient } from "../../backend-oidc-mode";
 import { type AuthSnapshot } from "../../orchestration";
+import { type BaseOidcModeClient } from "../../orchestration/client/base-client";
 import { type ClientQueryOptions } from "../contracts/query";
 import { type ClientReadyRecordView } from "../contracts/types";
 import { type ClientRecord } from "../core/client-record";
@@ -14,13 +15,13 @@ import { type ClientRegistry } from "../core/client-registry";
 import { ClientRegistryError, ClientRegistryErrorCode } from "../core/error";
 
 export interface BackendOidcModeCallbackInput {
-	payload: Record<string, unknown>;
-	clientQuery: ClientQueryOptions;
+	payload: () => CompatFragmentParameters;
+	clientQuery: () => ClientQueryOptions;
 }
 
 export interface BackendOidcModeCallbackOptions
 	extends BackendOidcModeCallbackInput {
-	registry: ClientRegistry<DisposableTrait>;
+	registry: () => ClientRegistry<BaseOidcModeClient>;
 }
 
 export interface BackendOidcModeCallbackResult {
@@ -40,9 +41,9 @@ export type BackendOidcModeCallbackState = OnceAsyncLock<
 export class BackendOidcModeCallbackController {
 	handle: BackendOidcModeCallbackHandle;
 
-	private readonly payload: Record<string, unknown>;
-	private readonly clientQuery: ClientQueryOptions;
-	private readonly registry: ClientRegistry<DisposableTrait>;
+	private readonly payload: () => CompatFragmentParameters;
+	private readonly clientQuery: () => ClientQueryOptions;
+	private readonly registry: () => ClientRegistry<BaseOidcModeClient>;
 
 	constructor(options: BackendOidcModeCallbackOptions) {
 		this.registry = options.registry;
@@ -61,7 +62,11 @@ export class BackendOidcModeCallbackController {
 
 	private createHandle(): BackendOidcModeCallbackHandle {
 		return createOnceAsyncLockCallable(async () => {
-			const record = this.selectClientRecord();
+			const registry = this.registry();
+			const record = this.selectClientRecordForInput(
+				registry,
+				this.clientQuery(),
+			);
 			if (!record) {
 				throw new ClientRegistryError({
 					code: ClientRegistryErrorCode.CallbackClientNotFound,
@@ -70,7 +75,7 @@ export class BackendOidcModeCallbackController {
 				});
 			}
 
-			const readyRecord = await this.registry.initialize(
+			const readyRecord = await registry.initialize(
 				record.get().meta.clientKey,
 			);
 			const client = readyRecord.client;
@@ -82,7 +87,7 @@ export class BackendOidcModeCallbackController {
 					actualMode: client.constructor.name,
 				});
 			}
-			const snapshot = await client.handleCallback(this.payload);
+			const snapshot = await client.handleCallback(this.payload());
 
 			return {
 				clientRecord:
@@ -92,9 +97,10 @@ export class BackendOidcModeCallbackController {
 		});
 	}
 
-	selectClientRecord():
-		| ReadableSignalTrait<ClientRecord<DisposableTrait>>
-		| undefined {
-		return this.registry.clientRecordForQuery(this.clientQuery);
+	selectClientRecordForInput(
+		registry: ClientRegistry<BaseOidcModeClient>,
+		clientQuery: ClientQueryOptions,
+	): ReadableSignalTrait<ClientRecord<BaseOidcModeClient>> | undefined {
+		return registry.clientRecordForQuery(clientQuery);
 	}
 }

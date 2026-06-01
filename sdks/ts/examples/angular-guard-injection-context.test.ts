@@ -1,3 +1,4 @@
+import { HttpClient, HttpResponse } from "@angular/common/http";
 import {
 	createEnvironmentInjector,
 	type EnvironmentInjector,
@@ -15,6 +16,8 @@ import {
 	createFoundationEnvironment,
 	createReplaySignal,
 	createSignal,
+	UriReferenceString,
+	UriString,
 	writeSecuritydeptRouteMetadata,
 } from "@securitydept/client";
 import { provideEnvironment } from "@securitydept/client-angular";
@@ -30,6 +33,7 @@ import {
 	provideTokenSetRequirementPlannerHost,
 	TokenSetClientRegistryService,
 } from "@securitydept/token-set-context-client-angular";
+import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 
 const TEST_AUTH_ACTION = new InjectionToken<() => void>("TEST_AUTH_ACTION");
@@ -101,11 +105,21 @@ function createRegistryMock(record: ClientReadyRecordView<BaseOidcModeClient>) {
 function createMockRouter(attemptedUrl: string) {
 	return {
 		url: "/current",
+		navigateByUrl: vi.fn(async () => true),
 		parseUrl: (value: string) => ({ redirectedTo: value }),
 		serializeUrl: (tree: unknown) => String(tree),
 		getCurrentNavigation: () => ({
 			finalUrl: { toString: () => attemptedUrl },
 		}),
+	};
+}
+
+function createHttpClientProvider() {
+	return {
+		provide: HttpClient,
+		useValue: {
+			request: vi.fn(() => of(new HttpResponse({ status: 200 }))),
+		},
 	};
 }
 
@@ -120,9 +134,9 @@ describe("Angular token-set route guard injection context", () => {
 			[
 				{ provide: TokenSetClientRegistryService, useValue: registry },
 				{ provide: Router, useValue: createMockRouter("/confluence") },
+				createHttpClientProvider(),
 				provideEnvironment({
-					environment: (providers) =>
-						createFoundationEnvironment({ providers }),
+					createBaseEnvironment: createFoundationEnvironment,
 				}),
 				provideTokenSetRequirementPlannerHost({
 					onClientUnauthenticated: (_requirement, context) => {
@@ -162,16 +176,15 @@ describe("Angular token-set route guard injection context", () => {
 			[
 				{ provide: TokenSetClientRegistryService, useValue: registry },
 				{ provide: Router, useValue: createMockRouter("/confluence") },
+				createHttpClientProvider(),
 				provideEnvironment({
-					environment: (providers) =>
-						createFoundationEnvironment({
-							providers,
-							router: {
-								currentUrl: () => new URL("https://app.example.com/current"),
-								baseURI: () => new URL("https://app.example.com/"),
-								navigate: vi.fn(async () => true),
-							},
-						}),
+					createBaseEnvironment: createFoundationEnvironment,
+					router: {
+						currentUrl: () =>
+							UriReferenceString.parse("https://app.example.com/current"),
+						baseURI: () => UriString.parse("https://app.example.com/"),
+						navigate: vi.fn(async () => undefined),
+					},
 				}),
 				provideTokenSetRequirementPlannerHost({
 					onClientUnauthenticated: createTokenSetOidcLoginRedirectHandler({
@@ -192,7 +205,7 @@ describe("Angular token-set route guard injection context", () => {
 
 		await flushMicrotasks();
 		expect(loginWithRedirect).toHaveBeenCalledWith({
-			postAuthRedirectUri: "https://app.example.com/current",
+			postAuthRedirectUri: "/current",
 		});
 		expect(settled).not.toHaveBeenCalled();
 		injector.destroy();

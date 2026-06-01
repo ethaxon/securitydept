@@ -167,7 +167,7 @@ function resolveOidcRouteEnvironment(
 function failMissingOidcRouteEnvironment(): never {
 	throw new Error(
 		"createTokenSetOidcLoginRedirectHandler requires an explicit environment.\n" +
-			"Provide the host-owned environment once from the Angular composition root with provideEnvironment({ environment: (providers) => createEnvironmentForNativeWeb({ providers, ... }) }).\n" +
+			"Provide the host-owned environment once from the Angular composition root with provideEnvironment({ createBaseEnvironment: createEnvironmentForNativeWeb, ... }).\n" +
 			"or pass a stable environment override with createTokenSetOidcLoginRedirectHandler({ environment: ... }).",
 	);
 }

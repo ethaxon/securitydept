@@ -94,7 +94,8 @@ export interface ProvideBasicAuthContextOptions {
  * export const appConfig = {
  *   providers: [
  *     provideEnvironment({
- *       environment: (providers) => createEnvironmentForNativeWeb({ providers, ... }),
+ *       createBaseEnvironment: createEnvironmentForNativeWeb,
+ *       ...
  *     }),
  *     provideBasicAuthContext({ config: { baseUrl: "/api", zones: [...] } }),
  *   ],

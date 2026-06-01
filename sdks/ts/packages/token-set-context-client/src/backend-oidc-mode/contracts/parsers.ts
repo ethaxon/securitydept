@@ -1,4 +1,6 @@
 import {
+	type CompatFragmentParameters,
+	type HttpResponseJsonBody,
 	IdentityPrincipalWireSchema,
 	validateWithSchemaSync,
 } from "@securitydept/client";
@@ -25,7 +27,7 @@ import {
  * wrong types).
  */
 export function parseBackendOidcModeCallbackPayload(
-	payload: Record<string, unknown>,
+	payload: CompatFragmentParameters | HttpResponseJsonBody,
 ): BackendOidcModeCallbackReturns | null {
 	const result = validateWithSchemaSync(
 		BackendOidcModeCallbackBodySchema,
@@ -45,7 +47,7 @@ export function parseBackendOidcModeCallbackPayload(
  * wrong types).
  */
 export function parseBackendOidcModeRefreshPayload(
-	payload: Record<string, unknown>,
+	payload: HttpResponseJsonBody,
 ): BackendOidcModeRefreshReturns | null {
 	const result = validateWithSchemaSync(
 		BackendOidcModeRefreshBodySchema,

@@ -1,3 +1,4 @@
+import { HttpClient, HttpResponse } from "@angular/common/http";
 import {
 	createEnvironmentInjector,
 	type EnvironmentProviders,
@@ -13,6 +14,7 @@ import {
 	RequirementPlannerHost,
 	StaticAttrsAuthRequirement,
 } from "@securitydept/client";
+import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import { createEnvironmentForTest } from "../../../../client/src/test";
 import { secureRouteRoot } from "../auth-coordination/secure-routes";
@@ -51,13 +53,21 @@ describe("secureRouteRoot", () => {
 		});
 		const injector = createEnvironmentInjector(
 			[
+				{
+					provide: HttpClient,
+					useValue: {
+						request: vi.fn(() => of(new HttpResponse({ status: 200 }))),
+					},
+				},
 				provideEnvironment({
-					environment: () => createEnvironmentForTest(),
+					createBaseEnvironment: createEnvironmentForTest,
 				}),
 				...(route.providers as readonly (Provider | EnvironmentProviders)[]),
 				{
 					provide: Router,
 					useValue: {
+						url: "/app",
+						navigateByUrl: vi.fn(async () => true),
 						parseUrl: vi.fn(),
 					},
 				},
@@ -78,17 +88,15 @@ describe("secureRouteRoot", () => {
 		const stateSnapshot = { url: "/app" };
 
 		try {
+			const activate = route.canActivate?.[0] as CanActivateFn | undefined;
+			const activateChild = route.canActivateChild?.[0] as
+				| CanActivateChildFn
+				| undefined;
 			await runInInjectionContext(injector, () =>
-				route.canActivate?.[0]?.(
-					routeSnapshot as never,
-					stateSnapshot as never,
-				),
+				activate?.(routeSnapshot as never, stateSnapshot as never),
 			);
 			await runInInjectionContext(injector, () =>
-				route.canActivateChild?.[0]?.(
-					routeSnapshot as never,
-					stateSnapshot as never,
-				),
+				activateChild?.(routeSnapshot as never, stateSnapshot as never),
 			);
 
 			expect(fromBehaviour).toHaveBeenCalledTimes(1);

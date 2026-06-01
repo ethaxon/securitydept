@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createFoundationEnvironment } from "../../environment/create";
+import { POPUP_TRAIT_TOKEN } from "../../popup";
+import { ROUTER_TRAIT_TOKEN } from "../../router";
 import { createInMemoryRecordStore } from "../../storage";
+import {
+	PERSISTENT_STORAGE_TRAIT_TOKEN,
+	SESSION_STORAGE_TRAIT_TOKEN,
+} from "../../storage/types";
 import { UriReferenceString } from "../../struct/uri-string";
 import { createTimeForTest } from "../../test";
 import { createEnvironmentForNativeWeb } from "../environment";
@@ -164,6 +170,57 @@ describe("environment page capability boundary", () => {
 			},
 		});
 
+		expect(environment.persistentStorage).toBe(persistentStorage);
+		expect(environment.sessionStorage).toBe(sessionStorage);
+	});
+
+	it("does not create native web traits when providers already own those tokens", () => {
+		const router = {
+			currentUrl: () =>
+				UriReferenceString.parse("https://provided.example.com/"),
+			baseURI: () => null,
+			navigate: async () => undefined,
+		};
+		const popup = {
+			open() {
+				throw new Error("not used");
+			},
+			attach() {
+				throw new Error("not used");
+			},
+		};
+		const persistentStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const environment = createEnvironmentForNativeWeb({
+			transport: createTransport(),
+			providers: [
+				{ provide: ROUTER_TRAIT_TOKEN, useValue: router },
+				{ provide: POPUP_TRAIT_TOKEN, useValue: popup },
+				{
+					provide: PERSISTENT_STORAGE_TRAIT_TOKEN,
+					useValue: persistentStorage,
+				},
+				{ provide: SESSION_STORAGE_TRAIT_TOKEN, useValue: sessionStorage },
+			],
+			routerForNativeWebCreateOptions: {
+				location: null,
+				history: null,
+				navigation: null,
+				window: null,
+			},
+			popupForNativeWebCreateOptions: {
+				window: null,
+			},
+			persistentStorageForNativeWebCreateOptions: {
+				storage: null,
+			},
+			sessionStorageForNativeWebCreateOptions: {
+				storage: null,
+			},
+		});
+
+		expect(environment.router).toBe(router);
+		expect(environment.popup).toBe(popup);
 		expect(environment.persistentStorage).toBe(persistentStorage);
 		expect(environment.sessionStorage).toBe(sessionStorage);
 	});

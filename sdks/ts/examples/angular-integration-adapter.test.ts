@@ -1,8 +1,10 @@
+import { HttpClient, HttpRequest, HttpResponse } from "@angular/common/http";
 import {
 	createEnvironmentInjector,
 	InjectionToken,
 	Injector,
 } from "@angular/core";
+import { Router } from "@angular/router";
 import {
 	BASIC_AUTH_CONTEXT_CLIENT,
 	BasicAuthContextService,
@@ -29,7 +31,7 @@ import {
 	type ClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
 import {
-	createTokenSetBearerInterceptor,
+	createTokenSetClientRegistryAuthorizationInterceptor,
 	provideTokenSetClientRegistry,
 	TOKEN_SET_CLIENT_REGISTRY,
 	TokenSetClientRegistryService,
@@ -117,10 +119,29 @@ function createAngularEnvironmentProviders(
 	clients: readonly ClientRegistryEntry<BaseOidcModeClient>[] = [],
 ) {
 	return [
+		...provideAngularEnvironmentDeps(),
 		provideEnvironment({
-			environment: (providers) => createFoundationEnvironment({ providers }),
+			createBaseEnvironment: createFoundationEnvironment,
 		}),
 		...provideTokenSetClientRegistry({ clients }),
+	];
+}
+
+function provideAngularEnvironmentDeps() {
+	return [
+		{
+			provide: Router,
+			useValue: {
+				url: "/",
+				navigateByUrl: vi.fn(async () => true),
+			},
+		},
+		{
+			provide: HttpClient,
+			useValue: {
+				request: vi.fn(() => of(new HttpResponse({ status: 200 }))),
+			},
+		},
 	];
 }
 
@@ -160,7 +181,7 @@ describe("Angular integration adapter public surface", () => {
 		}
 	});
 
-	it("supports bearer interception from the core registry service", async () => {
+	it("supports request authorization from the core registry service", async () => {
 		const injector = createEnvironmentInjector(
 			createAngularEnvironmentProviders([
 				createEntry("api", () => createMockClient("api", "Bearer api"), {
@@ -172,24 +193,18 @@ describe("Angular integration adapter public surface", () => {
 
 		try {
 			const registry = injector.get(TokenSetClientRegistryService);
-			const interceptor = createTokenSetBearerInterceptor(registry, {
-				strictUrlMatch: true,
+			const interceptor = createTokenSetClientRegistryAuthorizationInterceptor({
+				registry,
 			});
-			const next = vi.fn((request: unknown) => of(request));
-			const clone = vi.fn(
-				(update: { setHeaders?: Record<string, string> }) => ({
-					url: "https://api.example.com/data",
-					headers: update.setHeaders,
-				}),
+			const next = vi.fn((_request: HttpRequest<unknown>) =>
+				of(new HttpResponse({ status: 204 })),
 			);
+			const request = new HttpRequest("GET", "https://api.example.com/data");
 
-			await expect(
-				firstValueFrom(
-					interceptor({ url: "https://api.example.com/data", clone }, next),
-				),
-			).resolves.toMatchObject({
-				headers: { Authorization: "Bearer api" },
-			});
+			await firstValueFrom(interceptor(request, next));
+			const response = next.mock.calls[0]?.[0];
+			expect(response).toBeInstanceOf(HttpRequest);
+			expect(response?.headers.get("Authorization")).toBe("Bearer api");
 		} finally {
 			injector.destroy();
 		}
