@@ -1,25 +1,30 @@
-import { type ClientMeta } from "./types";
+import { type TokenSetClientMeta } from "./types";
 
-export type ClientSelector = (meta: ClientMeta, index: number) => boolean;
+export type TokenSetClientSelector = (
+	meta: TokenSetClientMeta,
+	index: number,
+) => boolean;
 
-export interface ClientFilter {
+export interface TokenSetClientFilter {
 	clientKey?: string;
 	url?: string;
 	callbackUrl?: string;
 	providerFamily?: string;
 	requirementKind?: string;
-	selector?: ClientSelector;
+	selector?: TokenSetClientSelector;
 }
 
-export type ClientQueryOptions = ClientFilter | ClientFilter[];
+export type TokenSetClientQueryOptions =
+	| TokenSetClientFilter
+	| TokenSetClientFilter[];
 
-export interface ClientQueryTarget {
-	readonly meta: ClientMeta;
+export interface TokenSetClientQueryTarget {
+	readonly meta: TokenSetClientMeta;
 }
 
-export function matchesQuery(
-	target: ClientQueryTarget,
-	filter: ClientFilter,
+export function matchesTokenSetClientQuery(
+	target: TokenSetClientQueryTarget,
+	filter: TokenSetClientFilter,
 ): boolean {
 	if (
 		filter.clientKey !== undefined &&
@@ -42,7 +47,7 @@ export function matchesQuery(
 	if (
 		filter.url !== undefined &&
 		!target.meta.urlPatterns.some((pattern) =>
-			matchesUrl(pattern, filter.url as string),
+			matchesTokenSetClientUrl(pattern, filter.url as string),
 		)
 	) {
 		return false;
@@ -51,7 +56,7 @@ export function matchesQuery(
 		const callbackPath = target.meta.callbackPath;
 		if (
 			!callbackPath ||
-			!matchesCallbackPath({
+			!matchesTokenSetClientCallbackPath({
 				currentUrl: filter.callbackUrl,
 				callbackPath,
 			})
@@ -62,7 +67,7 @@ export function matchesQuery(
 	return true;
 }
 
-export function matchesCallbackPath(options: {
+export function matchesTokenSetClientCallbackPath(options: {
 	currentUrl: string;
 	callbackPath: string;
 }): boolean {
@@ -75,7 +80,7 @@ export function matchesCallbackPath(options: {
 	}
 }
 
-export function matchesUrl(
+export function matchesTokenSetClientUrl(
 	pattern: string | RegExp | ((u: string) => boolean),
 	url: string,
 ): boolean {

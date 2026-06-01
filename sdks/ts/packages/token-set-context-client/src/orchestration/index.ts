@@ -31,20 +31,20 @@ export {
 	type BaseOidcModeClientDefaultOptions,
 	type BaseOidcModeClientOptions,
 	type OidcModeClientConfigBase,
-	type OidcPopupLoginOptions,
-	type OidcPopupLoginResult,
-	type OidcRedirectLoginOptions,
-	StateRestoreSourceKind,
 	type TokenSetAuthOperationSignals,
+	type TokenSetOidcPopupLoginOptions,
+	type TokenSetOidcPopupLoginResult,
+	type TokenSetOidcRedirectLoginOptions,
+	TokenSetStateRestoreSourceKind,
 } from "./client/types";
 export {
-	type AuthWorkflowRuntimeOptions,
-	type AuthWorkflowSource as TokenSetAuthWorkflowSource,
-	type AuthWorkflowSourcesOptions,
-	type BuiltinAuthWorkflowSourceOption as BuiltinWorkflowSourceOption,
-	createPageResumeWorkflowSource,
-	createRefreshTimerWorkflowSource,
-	type PageResumeWorkflowSourceOptions,
+	createTokenSetPageResumeWorkflowSource,
+	createTokenSetRefreshTimerWorkflowSource,
+	type TokenSetAuthWorkflowRuntimeOptions,
+	type TokenSetAuthWorkflowSource,
+	type TokenSetAuthWorkflowSourcesOptions,
+	type TokenSetBuiltinAuthWorkflowSourceOption,
+	type TokenSetPageResumeWorkflowSourceOptions,
 } from "./client/workflows/source";
 export {
 	type CreateTokenSetAuthEventOptions,
@@ -60,15 +60,15 @@ export {
 	type TokenSetAuthRefreshEventPayload,
 } from "./events/auth-events";
 export * from "./token/freshness";
-export { mergeTokenDelta } from "./token/ops";
+export { mergeTokenSetTokenDelta } from "./token/ops";
 export {
-	type AuthDelta,
-	type AuthMetadataDelta,
-	type AuthMetadataSnapshot,
-	type AuthPrincipal,
-	type AuthSnapshot,
-	type AuthSource,
-	AuthSourceKind,
-	type TokenDelta,
-	type TokenSnapshot,
+	type TokenSetAuthDelta,
+	type TokenSetAuthMetadataDelta,
+	type TokenSetAuthMetadataSnapshot,
+	type TokenSetAuthPrincipal,
+	type TokenSetAuthSnapshot,
+	type TokenSetAuthSource,
+	TokenSetAuthSourceKind,
+	type TokenSetTokenDelta,
+	type TokenSetTokenSnapshot,
 } from "./token/types";

@@ -1,20 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
-	getAccessTokenFreshnessTiming,
-	type TokenFreshnessOptions,
-	TokenFreshnessState,
+	getTokenSetAccessTokenFreshnessTiming,
+	type TokenSetTokenFreshnessOptions,
+	TokenSetTokenFreshnessState,
 } from "../token/freshness";
-import { bearerHeader } from "../token/ops";
-import { type AuthSnapshot } from "../token/types";
+import { tokenSetBearerHeader } from "../token/ops";
+import { type TokenSetAuthSnapshot } from "../token/types";
 
 const NOW = Date.parse("2026-01-01T00:00:00Z");
 const OPTIONS = {
 	now: NOW,
 	clockSkewMs: 30_000,
 	refreshWindowMs: 60_000,
-} satisfies TokenFreshnessOptions & { now: number };
+} satisfies TokenSetTokenFreshnessOptions & { now: number };
 
-function snapshot(options: Partial<AuthSnapshot["tokens"]>): AuthSnapshot {
+function snapshot(
+	options: Partial<TokenSetAuthSnapshot["tokens"]>,
+): TokenSetAuthSnapshot {
 	return {
 		tokens: {
 			accessToken: "at",
@@ -25,10 +27,10 @@ function snapshot(options: Partial<AuthSnapshot["tokens"]>): AuthSnapshot {
 }
 
 function getTokenFreshnessState(
-	authSnapshot: AuthSnapshot,
+	authSnapshot: TokenSetAuthSnapshot,
 	options: typeof OPTIONS,
-): TokenFreshnessState {
-	return getAccessTokenFreshnessTiming(
+): TokenSetTokenFreshnessState {
+	return getTokenSetAccessTokenFreshnessTiming(
 		authSnapshot.tokens,
 		options.now,
 		options,
@@ -42,28 +44,28 @@ describe("token freshness operations", () => {
 				snapshot({ accessTokenExpiresAt: "2026-01-01T00:05:00Z" }),
 				OPTIONS,
 			),
-		).toBe(TokenFreshnessState.Fresh);
+		).toBe(TokenSetTokenFreshnessState.Fresh);
 		expect(
 			getTokenFreshnessState(
 				snapshot({ accessTokenExpiresAt: "2026-01-01T00:01:20Z" }),
 				OPTIONS,
 			),
-		).toBe(TokenFreshnessState.RefreshDue);
+		).toBe(TokenSetTokenFreshnessState.RefreshDue);
 		expect(
 			getTokenFreshnessState(
 				snapshot({ accessTokenExpiresAt: "2025-12-31T23:59:59Z" }),
 				OPTIONS,
 			),
-		).toBe(TokenFreshnessState.Expired);
+		).toBe(TokenSetTokenFreshnessState.Expired);
 		expect(getTokenFreshnessState(snapshot({}), OPTIONS)).toBe(
-			TokenFreshnessState.NoExpiry,
+			TokenSetTokenFreshnessState.NoExpiry,
 		);
 		expect(
 			getTokenFreshnessState(
 				snapshot({ accessTokenExpiresAt: "not-a-date" }),
 				OPTIONS,
 			),
-		).toBe(TokenFreshnessState.NoExpiry);
+		).toBe(TokenSetTokenFreshnessState.NoExpiry);
 	});
 
 	it("projects bearer headers and identifies tokens requiring refresh", () => {
@@ -74,13 +76,13 @@ describe("token freshness operations", () => {
 		});
 
 		expect(getTokenFreshnessState(fresh, OPTIONS)).toBe(
-			TokenFreshnessState.Fresh,
+			TokenSetTokenFreshnessState.Fresh,
 		);
-		expect(bearerHeader(fresh.tokens)).toBe("Bearer at");
+		expect(tokenSetBearerHeader(fresh.tokens)).toBe("Bearer at");
 		expect(getTokenFreshnessState(expired, OPTIONS)).toBe(
-			TokenFreshnessState.Expired,
+			TokenSetTokenFreshnessState.Expired,
 		);
-		expect(bearerHeader(expired.tokens)).toBe("Bearer at");
+		expect(tokenSetBearerHeader(expired.tokens)).toBe("Bearer at");
 	});
 
 	it("keeps short-lived newly issued tokens fresh by capping skew and refresh window", () => {
@@ -91,19 +93,19 @@ describe("token freshness operations", () => {
 		});
 
 		expect(getTokenFreshnessState(shortLived, OPTIONS)).toBe(
-			TokenFreshnessState.Fresh,
+			TokenSetTokenFreshnessState.Fresh,
 		);
 		expect(
 			getTokenFreshnessState(shortLived, {
 				...OPTIONS,
 				now: NOW + 30_000,
 			}),
-		).toBe(TokenFreshnessState.RefreshDue);
+		).toBe(TokenSetTokenFreshnessState.RefreshDue);
 		expect(
 			getTokenFreshnessState(shortLived, {
 				...OPTIONS,
 				now: NOW + 50_000,
 			}),
-		).toBe(TokenFreshnessState.Expired);
+		).toBe(TokenSetTokenFreshnessState.Expired);
 	});
 });

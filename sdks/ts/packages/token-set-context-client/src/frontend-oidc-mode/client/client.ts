@@ -69,13 +69,13 @@ import { interval } from "rxjs";
 import { waitForTokenSetPopupRelay } from "../../orchestration/client/popup/relay";
 import {
 	BaseOidcModeClient,
-	type OidcPopupLoginOptions,
-	type OidcPopupLoginResult,
-	type OidcRedirectLoginOptions,
+	type TokenSetOidcPopupLoginOptions,
+	type TokenSetOidcPopupLoginResult,
+	type TokenSetOidcRedirectLoginOptions,
 } from "../../orchestration/index";
 import {
-	type AuthMetadataSnapshot,
-	type AuthSnapshot,
+	type TokenSetAuthMetadataSnapshot,
+	type TokenSetAuthSnapshot,
 } from "../../orchestration/token/types";
 import {
 	type FrontendOidcModeClaimsCheckResult,
@@ -316,14 +316,14 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * for initiating frontend-oidc login in a browser context.
 	 */
 	async loginWithRedirect(
-		options: OidcRedirectLoginOptions = {},
+		options: TokenSetOidcRedirectLoginOptions = {},
 	): Promise<void> {
 		return await this._loginWithRedirect(options);
 	}
 
 	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.LoginRedirect)
 	private async _loginWithRedirect(
-		options: OidcRedirectLoginOptions,
+		options: TokenSetOidcRedirectLoginOptions,
 		operationSpan?: OperationSpanTrait,
 	): Promise<void> {
 		this._throwIfNotOperational();
@@ -362,9 +362,9 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 */
 	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.LoginPopup)
 	async loginWithPopup(
-		options: OidcPopupLoginOptions,
+		options: TokenSetOidcPopupLoginOptions,
 		operationSpan?: OperationSpanTrait,
-	): Promise<OidcPopupLoginResult> {
+	): Promise<TokenSetOidcPopupLoginResult> {
 		this._throwIfNotOperational();
 		operationSpan?.setAttributes({
 			popupCallbackUrl: options.popupCallbackUrl,
@@ -518,7 +518,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		);
 		this._throwIfNotOperational();
 
-		const snapshot: AuthSnapshot = {
+		const snapshot: TokenSetAuthSnapshot = {
 			tokens: this._tokenResultToTokenSnapshot(tokens),
 			metadata,
 		};
@@ -543,10 +543,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * and claims check is re-run. Otherwise, existing metadata is preserved.
 	 */
 	protected async _refreshAuthSnapshot(
-		_currentSnapshot: AuthSnapshot,
+		_currentSnapshot: TokenSetAuthSnapshot,
 		_freshnessTiming: unknown,
 		operationSpan?: OperationSpanTrait,
-	): Promise<AuthSnapshot | null> {
+	): Promise<TokenSetAuthSnapshot | null> {
 		const snapshotSlot = this._authSnapshotSignal.get();
 		const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
 		if (!current?.tokens.refreshMaterial) {
@@ -562,7 +562,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 		this._throwIfNotOperational();
 
-		let metadata: AuthMetadataSnapshot;
+		let metadata: TokenSetAuthMetadataSnapshot;
 		if (tokens.idToken) {
 			metadata = await this._performClaimsCheck(
 				tokens,
@@ -573,7 +573,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			metadata = current.metadata;
 		}
 
-		const newSnapshot: AuthSnapshot = {
+		const newSnapshot: TokenSetAuthSnapshot = {
 			tokens: this._tokenResultToTokenSnapshot(
 				tokens,
 				current.tokens.refreshMaterial,
@@ -998,7 +998,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	private async _performClaimsCheck(
 		tokens: FrontendOidcModeTokenResult,
 		span: SpanTrait,
-	): Promise<AuthMetadataSnapshot> {
+	): Promise<TokenSetAuthMetadataSnapshot> {
 		if (!tokens.idToken) {
 			return {};
 		}

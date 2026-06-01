@@ -15,27 +15,27 @@ import {
 import { type BehaviorSubject, filter, map, ReplaySubject } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import {
-	type ClientDisposedRecordView,
-	type ClientMeta,
-	type ClientRecordView,
-	type ClientRegistryEntry,
-	ClientRegistryEntryStatus,
-	type ClientRegistryEvent,
-	ClientRegistryEventType,
+	type TokenSetClientDisposedRecordView,
+	type TokenSetClientMeta,
+	type TokenSetClientRecordView,
+	type TokenSetClientRegistryEntry,
+	TokenSetClientRegistryEntryStatus,
+	type TokenSetClientRegistryEvent,
+	TokenSetClientRegistryEventType,
 } from "../contracts/types";
 
-export class ClientRecord<TClient extends DisposableTrait>
+export class TokenSetClientRecord<TClient extends DisposableTrait>
 	implements DisposableTrait
 {
-	status: ClientRegistryEntryStatus;
+	status: TokenSetClientRegistryEntryStatus;
 	client: TClient | undefined;
 	error: unknown | null;
 	destroyed = new ReplaySubject<true>(1);
 
 	protected constructor(
 		readonly id: string,
-		readonly entry: ClientRegistryEntry<TClient>,
-		status: ClientRegistryEntryStatus,
+		readonly entry: TokenSetClientRegistryEntry<TClient>,
+		status: TokenSetClientRegistryEntryStatus,
 		client: TClient | undefined,
 		error: unknown | null,
 	) {
@@ -44,7 +44,7 @@ export class ClientRecord<TClient extends DisposableTrait>
 		this.error = error;
 	}
 
-	get meta(): ClientMeta {
+	get meta(): TokenSetClientMeta {
 		return this.entry.meta;
 	}
 
@@ -53,36 +53,38 @@ export class ClientRecord<TClient extends DisposableTrait>
 	}
 
 	static fromRegistered<TClient extends DisposableTrait>(
-		entry: ClientRegistryEntry<TClient>,
-	): ClientRecord<TClient> {
-		return new ClientRecord(
-			ClientRecord.idFactory(),
+		entry: TokenSetClientRegistryEntry<TClient>,
+	): TokenSetClientRecord<TClient> {
+		return new TokenSetClientRecord(
+			TokenSetClientRecord.idFactory(),
 			entry,
-			ClientRegistryEntryStatus.Registered,
+			TokenSetClientRegistryEntryStatus.Registered,
 			undefined,
 			null,
 		);
 	}
 
 	static toSignal<TClient extends DisposableTrait>(
-		recordSubject: BehaviorSubject<ClientRecord<TClient>>,
-	): ReadableSignalTrait<ClientRecord<TClient>> {
+		recordSubject: BehaviorSubject<TokenSetClientRecord<TClient>>,
+	): ReadableSignalTrait<TokenSetClientRecord<TClient>> {
 		return readonlySignal(behaviorSubjectToSignal(() => recordSubject));
 	}
 
 	static toClientSignal<TClient extends DisposableTrait>(
-		recordSubject: BehaviorSubject<ClientRecord<TClient>>,
+		recordSubject: BehaviorSubject<TokenSetClientRecord<TClient>>,
 	): ReadableReplaySignalTrait<TClient> {
 		return observableToReplaySignal<TClient>(
 			recordSubject.pipe(
-				filter((record) => record.status === ClientRegistryEntryStatus.Ready),
+				filter(
+					(record) => record.status === TokenSetClientRegistryEntryStatus.Ready,
+				),
 				map((record) => record.client as TClient),
 			),
 		);
 	}
 
-	async *initialize(): AsyncGenerator<ClientRecord<TClient>> {
-		if (this.status !== ClientRegistryEntryStatus.Registered) {
+	async *initialize(): AsyncGenerator<TokenSetClientRecord<TClient>> {
+		if (this.status !== TokenSetClientRegistryEntryStatus.Registered) {
 			throw new ClientError({
 				kind: ClientErrorKind.Unreachable,
 				code: `client_record.initialize.${this.status}`,
@@ -93,35 +95,35 @@ export class ClientRecord<TClient extends DisposableTrait>
 			});
 		}
 		try {
-			this.status = ClientRegistryEntryStatus.Initializing;
+			this.status = TokenSetClientRegistryEntryStatus.Initializing;
 			yield this;
 			const client = await this.entry.clientFactory();
 			this.client = client;
-			this.status = ClientRegistryEntryStatus.Ready;
+			this.status = TokenSetClientRegistryEntryStatus.Ready;
 			this.error = null;
 			return yield this;
 		} catch (error) {
 			this.client = undefined;
-			this.status = ClientRegistryEntryStatus.Failed;
+			this.status = TokenSetClientRegistryEntryStatus.Failed;
 			this.error = error;
 			return yield this;
 		}
 	}
 
-	toView(): ClientRecordView<TClient> {
+	toView(): TokenSetClientRecordView<TClient> {
 		const base = {
 			id: this.id,
 			entry: this.entry,
 			meta: this.meta,
 		};
-		if (this.status === ClientRegistryEntryStatus.Ready) {
+		if (this.status === TokenSetClientRegistryEntryStatus.Ready) {
 			return {
 				...base,
 				status: this.status,
 				client: this.client as TClient,
 			};
 		}
-		if (this.status === ClientRegistryEntryStatus.Failed) {
+		if (this.status === TokenSetClientRegistryEntryStatus.Failed) {
 			return {
 				...base,
 				status: this.status,
@@ -134,45 +136,45 @@ export class ClientRecord<TClient extends DisposableTrait>
 		};
 	}
 
-	toEvent(): ClientRegistryEvent<TClient> {
+	toEvent(): TokenSetClientRegistryEvent<TClient> {
 		const view = this.toView();
 		switch (view.status) {
-			case ClientRegistryEntryStatus.Registered:
+			case TokenSetClientRegistryEntryStatus.Registered:
 				return {
 					...view,
-					type: ClientRegistryEventType.Registered,
+					type: TokenSetClientRegistryEventType.Registered,
 				};
-			case ClientRegistryEntryStatus.Initializing:
+			case TokenSetClientRegistryEntryStatus.Initializing:
 				return {
 					...view,
-					type: ClientRegistryEventType.Initializing,
+					type: TokenSetClientRegistryEventType.Initializing,
 				};
-			case ClientRegistryEntryStatus.Ready:
+			case TokenSetClientRegistryEntryStatus.Ready:
 				return {
 					...view,
-					type: ClientRegistryEventType.Ready,
+					type: TokenSetClientRegistryEventType.Ready,
 				};
-			case ClientRegistryEntryStatus.Failed:
+			case TokenSetClientRegistryEntryStatus.Failed:
 				return {
 					...view,
-					type: ClientRegistryEventType.Failed,
+					type: TokenSetClientRegistryEventType.Failed,
 				};
 		}
 	}
 
-	toDisposedView(): ClientDisposedRecordView<TClient> {
+	toDisposedView(): TokenSetClientDisposedRecordView<TClient> {
 		return {
 			id: this.id,
 			entry: this.entry,
 			meta: this.meta,
-			status: ClientRegistryEventType.Disposed,
+			status: TokenSetClientRegistryEventType.Disposed,
 		};
 	}
 
-	toDisposedEvent(): ClientRegistryEvent<TClient> {
+	toDisposedEvent(): TokenSetClientRegistryEvent<TClient> {
 		return {
 			...this.toDisposedView(),
-			type: ClientRegistryEventType.Disposed,
+			type: TokenSetClientRegistryEventType.Disposed,
 		};
 	}
 

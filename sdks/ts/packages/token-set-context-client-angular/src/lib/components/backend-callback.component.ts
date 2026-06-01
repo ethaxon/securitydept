@@ -14,7 +14,7 @@ import {
 	BackendOidcModeCallbackController,
 	type BackendOidcModeCallbackResult,
 	type BackendOidcModeCallbackState,
-	type ClientQueryOptions,
+	type TokenSetClientQueryOptions,
 } from "@securitydept/token-set-context-client/registry";
 import { TokenSetClientRegistryService } from "../client-registry.service";
 
@@ -25,7 +25,7 @@ import { TokenSetClientRegistryService } from "../client-registry.service";
 	exportAs: "sdTokenSetBackendCallback",
 })
 export class TokenSetBackendCallbackComponent implements OnInit {
-	readonly clientQuery = input.required<ClientQueryOptions>();
+	readonly clientQuery = input.required<TokenSetClientQueryOptions>();
 	readonly autoHandle = input(true);
 
 	private readonly environment = inject(ENVIRONMENT);

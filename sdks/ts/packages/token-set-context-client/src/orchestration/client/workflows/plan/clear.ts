@@ -1,16 +1,17 @@
 import {
-	AuthDeterminationKind,
-	type AuthDeterminationUnauthenticatedCandidate,
+	TokenSetAuthDeterminationKind,
+	type TokenSetAuthDeterminationUnauthenticatedCandidate,
 } from "../commit";
 
-export type PlanClearRequest = {};
+export type TokenSetPlanClearRequest = {};
 
-export type PlanClearResponse = AuthDeterminationUnauthenticatedCandidate;
+export type TokenSetPlanClearResponse =
+	TokenSetAuthDeterminationUnauthenticatedCandidate;
 
 export async function planClear(
-	_request: PlanClearRequest,
-): Promise<PlanClearResponse> {
+	_request: TokenSetPlanClearRequest,
+): Promise<TokenSetPlanClearResponse> {
 	return {
-		kind: AuthDeterminationKind.Unauthenticated,
+		kind: TokenSetAuthDeterminationKind.Unauthenticated,
 	};
 }

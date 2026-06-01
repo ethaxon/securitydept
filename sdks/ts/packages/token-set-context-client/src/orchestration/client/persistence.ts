@@ -8,7 +8,7 @@ import {
 	validateWithSchemaSync,
 } from "@securitydept/client";
 import { type as defineType } from "arktype";
-import { type AuthSnapshot } from "../token/types";
+import { type TokenSetAuthSnapshot } from "../token/types";
 
 const STATE_VERSION = 1;
 const PERSISTENCE_SOURCE = "token-orchestration-persistence";
@@ -16,7 +16,7 @@ const PERSISTENCE_SOURCE = "token-orchestration-persistence";
 interface StoredStateEnvelope {
 	version: number;
 	storedAt: number;
-	value: AuthSnapshot;
+	value: TokenSetAuthSnapshot;
 }
 
 const AuthSnapshotSchema = defineType({
@@ -36,15 +36,15 @@ const StoredStateEnvelopeShapeSchema = defineType({
 	value: "unknown",
 });
 
-export interface AuthSnapshotPersistenceOptions {
+export interface TokenSetAuthSnapshotPersistenceOptions {
 	store: StorageTrait;
 	key: string;
 	time: TimestampProviderTrait;
 }
 
 export async function loadPersistedAuthSnapshot(
-	options: AuthSnapshotPersistenceOptions,
-): Promise<AuthSnapshot | null> {
+	options: TokenSetAuthSnapshotPersistenceOptions,
+): Promise<TokenSetAuthSnapshot | null> {
 	const raw = await options.store.get(options.key);
 	if (raw === null) {
 		return null;
@@ -55,24 +55,24 @@ export async function loadPersistedAuthSnapshot(
 }
 
 export async function savePersistedAuthSnapshot(
-	options: AuthSnapshotPersistenceOptions,
-	snapshot: AuthSnapshot,
+	options: TokenSetAuthSnapshotPersistenceOptions,
+	snapshot: TokenSetAuthSnapshot,
 ): Promise<void> {
 	await options.store.set(
 		options.key,
-		serializePersistedAuthSnapshot(options, snapshot),
+		serializePersistedTokenSetAuthSnapshot(options, snapshot),
 	);
 }
 
 export async function clearPersistedAuthSnapshot(
-	options: Pick<AuthSnapshotPersistenceOptions, "store" | "key">,
+	options: Pick<TokenSetAuthSnapshotPersistenceOptions, "store" | "key">,
 ): Promise<void> {
 	await options.store.remove(options.key);
 }
 
-export function serializePersistedAuthSnapshot(
-	options: Pick<AuthSnapshotPersistenceOptions, "time">,
-	snapshot: AuthSnapshot,
+export function serializePersistedTokenSetAuthSnapshot(
+	options: Pick<TokenSetAuthSnapshotPersistenceOptions, "time">,
+	snapshot: TokenSetAuthSnapshot,
 ): string {
 	const envelope: StoredStateEnvelope = {
 		version: STATE_VERSION,

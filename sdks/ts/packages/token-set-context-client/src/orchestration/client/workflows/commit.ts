@@ -2,39 +2,39 @@ import {
 	type TokenSetAuthEventPayloadInput,
 	type TokenSetAuthEventType,
 } from "../../events/auth-events";
-import { type AuthSnapshot } from "../../token/types";
+import { type TokenSetAuthSnapshot } from "../../token/types";
 
-export const AuthDeterminationKind = {
+export const TokenSetAuthDeterminationKind = {
 	Authenticated: "authenticated",
 	Unauthenticated: "unauthenticated",
 	Failed: "failed",
 } as const;
 
-export type AuthDeterminationKind =
-	(typeof AuthDeterminationKind)[keyof typeof AuthDeterminationKind];
+export type TokenSetAuthDeterminationKind =
+	(typeof TokenSetAuthDeterminationKind)[keyof typeof TokenSetAuthDeterminationKind];
 
-export interface AuthDeterminationAuthenticatedCandidate {
-	kind: typeof AuthDeterminationKind.Authenticated;
-	snapshot: AuthSnapshot;
+export interface TokenSetAuthDeterminationAuthenticatedCandidate {
+	kind: typeof TokenSetAuthDeterminationKind.Authenticated;
+	snapshot: TokenSetAuthSnapshot;
 	error?: never;
 }
 
-export interface AuthDeterminationUnauthenticatedCandidate {
-	kind: typeof AuthDeterminationKind.Unauthenticated;
+export interface TokenSetAuthDeterminationUnauthenticatedCandidate {
+	kind: typeof TokenSetAuthDeterminationKind.Unauthenticated;
 	snapshot?: never;
 	error?: never;
 }
 
-export interface AuthDeterminationFailedCandidate {
-	kind: typeof AuthDeterminationKind.Failed;
+export interface TokenSetAuthDeterminationFailedCandidate {
+	kind: typeof TokenSetAuthDeterminationKind.Failed;
 	error: unknown;
 	snapshot?: never;
 }
 
-export type AuthDeterminationCandidate =
-	| AuthDeterminationAuthenticatedCandidate
-	| AuthDeterminationUnauthenticatedCandidate
-	| AuthDeterminationFailedCandidate;
+export type TokenSetAuthDeterminationCandidate =
+	| TokenSetAuthDeterminationAuthenticatedCandidate
+	| TokenSetAuthDeterminationUnauthenticatedCandidate
+	| TokenSetAuthDeterminationFailedCandidate;
 
 export const PersistPolicy = {
 	FollowClient: "follow_client",
@@ -43,23 +43,23 @@ export const PersistPolicy = {
 
 export type PersistPolicy = (typeof PersistPolicy)[keyof typeof PersistPolicy];
 
-export type AuthDeterminationEvent = {
+export type TokenSetAuthDeterminationEvent = {
 	[K in TokenSetAuthEventType]: {
 		type: K;
 		payload: Omit<TokenSetAuthEventPayloadInput<K>, "type">;
 	};
 }[TokenSetAuthEventType];
 
-export interface AuthDeterminationTrace {
+export interface TokenSetAuthDeterminationTrace {
 	type: string;
 	attributes?: Record<string, unknown>;
 }
 
-export interface AuthDeterminationCommit<TResult> {
-	candidate: AuthDeterminationCandidate;
+export interface TokenSetAuthDeterminationCommit<TResult> {
+	candidate: TokenSetAuthDeterminationCandidate;
 	persistPolicy: PersistPolicy;
-	events?: readonly AuthDeterminationEvent[];
+	events?: readonly TokenSetAuthDeterminationEvent[];
 	result: TResult;
-	trace?: AuthDeterminationTrace;
+	trace?: TokenSetAuthDeterminationTrace;
 	traceError?: unknown;
 }

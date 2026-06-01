@@ -11,66 +11,66 @@ import {
 } from "@securitydept/client/rx";
 import { EMPTY, filter, type Observable, of, switchMap, timer } from "rxjs";
 import {
-	getAccessTokenFreshnessTiming,
-	type TokenFreshnessOptions,
-	TokenFreshnessState,
+	getTokenSetAccessTokenFreshnessTiming,
+	type TokenSetTokenFreshnessOptions,
+	TokenSetTokenFreshnessState,
 } from "../../../token/freshness";
-import { type AuthSnapshot } from "../../../token/types";
+import { type TokenSetAuthSnapshot } from "../../../token/types";
 import {
-	AuthWorkflowSourceConfigKind,
-	type BuiltinAuthWorkflowSourceConfig,
-	normalizeBuiltinAuthWorkflowSourceConfig,
+	normalizeTokenSetBuiltinAuthWorkflowSourceConfig,
+	TokenSetAuthWorkflowSourceConfigKind,
+	type TokenSetBuiltinAuthWorkflowSourceConfig,
 } from "./types";
 
-const RefreshTriggerKind = {
+const TokenSetRefreshTriggerKind = {
 	Immediate: "immediate",
 	Slice: "slice",
 	Deadline: "deadline",
 } as const;
 
-export type RefreshTriggerKind =
-	(typeof RefreshTriggerKind)[keyof typeof RefreshTriggerKind];
+export type TokenSetRefreshTriggerKind =
+	(typeof TokenSetRefreshTriggerKind)[keyof typeof TokenSetRefreshTriggerKind];
 
-export const RefreshTimerWorkflowSourceTraceEventType = {
+export const TokenSetRefreshTimerWorkflowSourceTraceEventType = {
 	Scheduled: "scheduled",
 	Fired: "fired",
 } as const;
 
-export type RefreshTimerWorkflowSourceTraceEventType =
-	(typeof RefreshTimerWorkflowSourceTraceEventType)[keyof typeof RefreshTimerWorkflowSourceTraceEventType];
+export type TokenSetRefreshTimerWorkflowSourceTraceEventType =
+	(typeof TokenSetRefreshTimerWorkflowSourceTraceEventType)[keyof typeof TokenSetRefreshTimerWorkflowSourceTraceEventType];
 
-export interface RefreshTimerWorkflowEvent {
-	authSnapshot: AuthSnapshot;
-	freshnessOptions: TokenFreshnessOptions;
+export interface TokenSetRefreshTimerWorkflowEvent {
+	authSnapshot: TokenSetAuthSnapshot;
+	freshnessOptions: TokenSetTokenFreshnessOptions;
 }
 
-export interface CreateRefreshTimerWorkflowSourceOptions {
+export interface CreateTokenSetRefreshTimerWorkflowSourceOptions {
 	maxScheduleSliceMs: number;
 }
 
-export interface CreateRefreshTimerWorkflowSourceEnv {
+export interface CreateTokenSetRefreshTimerWorkflowSourceEnv {
 	time: TimeTrait;
-	freshnessOptions: TokenFreshnessOptions;
-	authSnapshot: ReadableReplaySignalTrait<AuthSnapshot | null>;
+	freshnessOptions: TokenSetTokenFreshnessOptions;
+	authSnapshot: ReadableReplaySignalTrait<TokenSetAuthSnapshot | null>;
 	recordTrace?: (
-		type: RefreshTimerWorkflowSourceTraceEventType,
+		type: TokenSetRefreshTimerWorkflowSourceTraceEventType,
 		attributes?: Record<string, unknown>,
 	) => void;
 }
 
-export class RefreshTimerWorkflowSource {
+export class TokenSetRefreshTimerWorkflowSource {
 	static readonly name = "refreshTimer";
 
-	eventStream: EventStreamTrait<RefreshTimerWorkflowEvent>;
+	eventStream: EventStreamTrait<TokenSetRefreshTimerWorkflowEvent>;
 
 	protected constructor(
-		readonly options: CreateRefreshTimerWorkflowSourceOptions &
-			CreateRefreshTimerWorkflowSourceEnv,
+		readonly options: CreateTokenSetRefreshTimerWorkflowSourceOptions &
+			CreateTokenSetRefreshTimerWorkflowSourceEnv,
 	) {
 		this.eventStream = observableToEventStream(
 			signalToObservable(options.authSnapshot).pipe(
 				filter(
-					(snapshot): snapshot is AuthSnapshot =>
+					(snapshot): snapshot is TokenSetAuthSnapshot =>
 						snapshot !== null && snapshot.tokens.refreshMaterial != null,
 				),
 				switchMap((snapshot) =>
@@ -80,25 +80,26 @@ export class RefreshTimerWorkflowSource {
 		);
 	}
 
-	static defaultBuiltInOptions: CreateRefreshTimerWorkflowSourceOptions = {
-		maxScheduleSliceMs: 30 * 60 * 1000, // 30 minutes
-	};
+	static defaultBuiltInOptions: CreateTokenSetRefreshTimerWorkflowSourceOptions =
+		{
+			maxScheduleSliceMs: 30 * 60 * 1000, // 30 minutes
+		};
 
 	static fromBuiltin(
-		env: CreateRefreshTimerWorkflowSourceEnv,
-		options: BuiltinAuthWorkflowSourceConfig<
-			Partial<CreateRefreshTimerWorkflowSourceOptions>
+		env: CreateTokenSetRefreshTimerWorkflowSourceEnv,
+		options: TokenSetBuiltinAuthWorkflowSourceConfig<
+			Partial<CreateTokenSetRefreshTimerWorkflowSourceOptions>
 		>,
-	): RefreshTimerWorkflowSource {
-		const normalizedOptions = normalizeBuiltinAuthWorkflowSourceConfig(
+	): TokenSetRefreshTimerWorkflowSource {
+		const normalizedOptions = normalizeTokenSetBuiltinAuthWorkflowSourceConfig(
 			options,
-			RefreshTimerWorkflowSource.defaultBuiltInOptions,
+			TokenSetRefreshTimerWorkflowSource.defaultBuiltInOptions,
 		);
-		return new RefreshTimerWorkflowSource({
+		return new TokenSetRefreshTimerWorkflowSource({
 			time: env.time,
 			freshnessOptions: env.freshnessOptions,
 			authSnapshot:
-				normalizedOptions.kind === AuthWorkflowSourceConfigKind.Bundle
+				normalizedOptions.kind === TokenSetAuthWorkflowSourceConfigKind.Bundle
 					? env.authSnapshot
 					: createReplaySignal(),
 			maxScheduleSliceMs: normalizedOptions.options.maxScheduleSliceMs,
@@ -108,31 +109,34 @@ export class RefreshTimerWorkflowSource {
 }
 
 function createRefreshTimerStreamForSnapshot(
-	authSnapshot: AuthSnapshot,
-	options: CreateRefreshTimerWorkflowSourceOptions &
-		CreateRefreshTimerWorkflowSourceEnv,
-): Observable<RefreshTimerWorkflowEvent> {
+	authSnapshot: TokenSetAuthSnapshot,
+	options: CreateTokenSetRefreshTimerWorkflowSourceOptions &
+		CreateTokenSetRefreshTimerWorkflowSourceEnv,
+): Observable<TokenSetRefreshTimerWorkflowEvent> {
 	const now = options.time.now();
 	const freshnessOptions = options.freshnessOptions;
-	const freshnessTiming = getAccessTokenFreshnessTiming(
+	const freshnessTiming = getTokenSetAccessTokenFreshnessTiming(
 		authSnapshot.tokens,
 		now,
 		freshnessOptions,
 	);
 
-	if (freshnessTiming.state === TokenFreshnessState.NoExpiry) {
+	if (freshnessTiming.state === TokenSetTokenFreshnessState.NoExpiry) {
 		return EMPTY;
 	}
 
 	const refreshAt = freshnessTiming.refreshAt;
 	const refreshRemaining = refreshAt - now;
 	if (refreshRemaining <= 0) {
-		options.recordTrace?.(RefreshTimerWorkflowSourceTraceEventType.Fired, {
-			triggerKind: RefreshTriggerKind.Immediate,
-			freshnessState: freshnessTiming.state,
-			refreshAt,
-			delayMs: 0,
-		});
+		options.recordTrace?.(
+			TokenSetRefreshTimerWorkflowSourceTraceEventType.Fired,
+			{
+				triggerKind: TokenSetRefreshTriggerKind.Immediate,
+				freshnessState: freshnessTiming.state,
+				refreshAt,
+				delayMs: 0,
+			},
+		);
 		return of({
 			freshnessOptions: options.freshnessOptions,
 			authSnapshot,
@@ -142,14 +146,17 @@ function createRefreshTimerStreamForSnapshot(
 	const delayMs = Math.min(refreshRemaining, options.maxScheduleSliceMs);
 	const triggerKind =
 		refreshRemaining > options.maxScheduleSliceMs
-			? RefreshTriggerKind.Slice
-			: RefreshTriggerKind.Deadline;
-	options.recordTrace?.(RefreshTimerWorkflowSourceTraceEventType.Scheduled, {
-		triggerKind,
-		freshnessState: freshnessTiming.state,
-		refreshAt,
-		delayMs,
-	});
+			? TokenSetRefreshTriggerKind.Slice
+			: TokenSetRefreshTriggerKind.Deadline;
+	options.recordTrace?.(
+		TokenSetRefreshTimerWorkflowSourceTraceEventType.Scheduled,
+		{
+			triggerKind,
+			freshnessState: freshnessTiming.state,
+			refreshAt,
+			delayMs,
+		},
+	);
 	const scheduler = createAsyncSchedulerWithTimestampProvider(options.time);
 
 	return timer(delayMs, scheduler).pipe(
@@ -158,12 +165,15 @@ function createRefreshTimerStreamForSnapshot(
 			if (nextRefreshRemaining > 0) {
 				return createRefreshTimerStreamForSnapshot(authSnapshot, options);
 			}
-			options.recordTrace?.(RefreshTimerWorkflowSourceTraceEventType.Fired, {
-				triggerKind,
-				freshnessState: freshnessTiming.state,
-				refreshAt,
-				delayMs,
-			});
+			options.recordTrace?.(
+				TokenSetRefreshTimerWorkflowSourceTraceEventType.Fired,
+				{
+					triggerKind,
+					freshnessState: freshnessTiming.state,
+					refreshAt,
+					delayMs,
+				},
+			);
 			return of({
 				authSnapshot,
 				freshnessOptions,

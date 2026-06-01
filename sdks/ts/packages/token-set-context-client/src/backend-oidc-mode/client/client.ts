@@ -17,15 +17,15 @@ import {
 import { waitForTokenSetPopupRelay } from "../../orchestration/client/popup/relay";
 import {
 	BaseOidcModeClient,
-	type OidcPopupLoginOptions,
-	type OidcPopupLoginResult,
-	type OidcRedirectLoginOptions,
+	type TokenSetOidcPopupLoginOptions,
+	type TokenSetOidcPopupLoginResult,
+	type TokenSetOidcRedirectLoginOptions,
 } from "../../orchestration/index";
-import { type TokenFreshnessTiming } from "../../orchestration/token/freshness";
-import { mergeTokenDelta } from "../../orchestration/token/ops";
+import { type TokenSetTokenFreshnessTiming } from "../../orchestration/token/freshness";
+import { mergeTokenSetTokenDelta } from "../../orchestration/token/ops";
 import {
-	type AuthMetadataSnapshot,
-	type AuthSnapshot,
+	type TokenSetAuthMetadataSnapshot,
+	type TokenSetAuthSnapshot,
 } from "../../orchestration/token/types";
 import {
 	type BackendOidcModeMetadataRedemptionResponse,
@@ -162,14 +162,14 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	}
 
 	async loginWithRedirect(
-		options: OidcRedirectLoginOptions = {},
+		options: TokenSetOidcRedirectLoginOptions = {},
 	): Promise<void> {
 		return await this._loginWithRedirect(options);
 	}
 
 	@instrumentBackendMethod(BackendOidcModeTraceOperationName.LoginRedirect)
 	private async _loginWithRedirect(
-		options: OidcRedirectLoginOptions,
+		options: TokenSetOidcRedirectLoginOptions,
 		operationSpan?: OperationSpanTrait,
 	): Promise<void> {
 		this._throwIfNotOperational();
@@ -198,9 +198,9 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 
 	@instrumentBackendMethod(BackendOidcModeTraceOperationName.LoginPopup)
 	async loginWithPopup(
-		options: OidcPopupLoginOptions,
+		options: TokenSetOidcPopupLoginOptions,
 		operationSpan?: OperationSpanTrait,
-	): Promise<OidcPopupLoginResult> {
+	): Promise<TokenSetOidcPopupLoginResult> {
 		this._throwIfNotOperational();
 		operationSpan?.setAttributes({
 			popupCallbackUrl: options.popupCallbackUrl,
@@ -272,14 +272,14 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	async handleCallback(
 		parsedCompatFragment: CompatFragmentParameters,
 		operationSpan?: OperationSpanTrait,
-	): Promise<AuthSnapshot> {
+	): Promise<TokenSetAuthSnapshot> {
 		return await this._handleCallback(parsedCompatFragment, operationSpan);
 	}
 
 	private async _handleCallback(
 		parsedCompatFragment: CompatFragmentParameters,
 		operationSpan?: OperationSpanTrait,
-	): Promise<AuthSnapshot> {
+	): Promise<TokenSetAuthSnapshot> {
 		this._throwIfNotOperational();
 
 		const callbackFragment =
@@ -307,7 +307,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 
 		this._throwIfNotOperational();
 
-		const snapshot: AuthSnapshot = {
+		const snapshot: TokenSetAuthSnapshot = {
 			tokens: tokenSnapshot,
 			metadata,
 		};
@@ -344,7 +344,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	async handleCallbackBody(
 		body: HttpResponseJsonBody,
 		operationSpan?: OperationSpanTrait,
-	): Promise<AuthSnapshot> {
+	): Promise<TokenSetAuthSnapshot> {
 		this._throwIfNotOperational();
 
 		const callbackBody = parseBackendOidcModeCallbackPayload(body);
@@ -371,7 +371,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 
 		this._throwIfNotOperational();
 
-		const snapshot: AuthSnapshot = {
+		const snapshot: TokenSetAuthSnapshot = {
 			tokens: cbTokenSnapshot,
 			metadata,
 		};
@@ -396,10 +396,10 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	 * 302 → fragment pattern that fetch() cannot follow across domains.
 	 */
 	protected async _refreshAuthSnapshot(
-		_currentSnapshot: AuthSnapshot,
-		_freshnessTiming: TokenFreshnessTiming,
+		_currentSnapshot: TokenSetAuthSnapshot,
+		_freshnessTiming: TokenSetTokenFreshnessTiming,
 		operationSpan?: OperationSpanTrait,
-	): Promise<AuthSnapshot | null> {
+	): Promise<TokenSetAuthSnapshot | null> {
 		const snapshotSlot = this._authSnapshotSignal.get();
 		const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
 		if (!current?.tokens.refreshMaterial) {
@@ -453,8 +453,8 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 
 			this._throwIfNotOperational();
 
-			const newSnapshot: AuthSnapshot = {
-				tokens: mergeTokenDelta(
+			const newSnapshot: TokenSetAuthSnapshot = {
+				tokens: mergeTokenSetTokenDelta(
 					current.tokens,
 					refreshReturnsToTokenDelta(refreshBody),
 				),
@@ -491,18 +491,18 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	private async _resolveMetadata(
 		opts: {
 			/** Already-resolved inline metadata (skip all network calls). */
-			inlineMetadata?: AuthMetadataSnapshot;
+			inlineMetadata?: TokenSetAuthMetadataSnapshot;
 			/** One-time redemption ID from the response body. */
 			metadataRedemptionId?: string;
 			/** Starting metadata to merge into (e.g. current snapshot for refresh). */
-			baseMetadata: AuthMetadataSnapshot;
+			baseMetadata: TokenSetAuthMetadataSnapshot;
 			/** Access token to use for the userInfo fallback. */
 			accessToken: string;
 			/** ID token to include in the userInfo request body. */
 			idToken?: string;
 		},
 		span?: OperationSpanTrait,
-	): Promise<AuthMetadataSnapshot> {
+	): Promise<TokenSetAuthMetadataSnapshot> {
 		const {
 			inlineMetadata,
 			metadataRedemptionId,
@@ -526,7 +526,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			);
 			if (redeemed) {
 				this._throwIfNotOperational();
-				return redeemed.metadata as AuthMetadataSnapshot;
+				return redeemed.metadata as TokenSetAuthMetadataSnapshot;
 			}
 		}
 

@@ -27,8 +27,8 @@ import {
 } from "@securitydept/session-context-client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
-	ClientInitializationMode,
-	type ClientRegistryEntry,
+	TokenSetClientInitializationMode,
+	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	createTokenSetClientRegistryAuthorizationInterceptor,
@@ -99,8 +99,8 @@ function createMockClient(
 function createEntry(
 	clientKey: string,
 	clientFactory: () => BaseOidcModeClient,
-	meta: Partial<ClientRegistryEntry<BaseOidcModeClient>["meta"]> = {},
-): ClientRegistryEntry<BaseOidcModeClient> {
+	meta: Partial<TokenSetClientRegistryEntry<BaseOidcModeClient>["meta"]> = {},
+): TokenSetClientRegistryEntry<BaseOidcModeClient> {
 	return {
 		clientFactory,
 		meta: {
@@ -109,14 +109,14 @@ function createEntry(
 			callbackPath: undefined,
 			requirementKind: undefined,
 			providerFamily: undefined,
-			initialization: ClientInitializationMode.Lazy,
+			initialization: TokenSetClientInitializationMode.Lazy,
 			...meta,
 		},
 	};
 }
 
 function createAngularEnvironmentProviders(
-	clients: readonly ClientRegistryEntry<BaseOidcModeClient>[] = [],
+	clients: readonly TokenSetClientRegistryEntry<BaseOidcModeClient>[] = [],
 ) {
 	return [
 		...provideAngularEnvironmentDeps(),

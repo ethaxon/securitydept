@@ -4,19 +4,19 @@ import {
 } from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
 import {
-	type AuthSnapshot,
 	BaseOidcModeClient,
 	type BaseOidcModeClientOptions,
+	type TokenSetAuthSnapshot,
 } from "../../orchestration";
 import {
-	ClientRegistryAuthRequirement,
-	type ClientRegistryClientGenerator,
-	ClientRegistryPlannerHost,
-	ClientRegistryRequirementBehaviour,
+	TokenSetClientRegistryAuthRequirement,
+	type TokenSetClientRegistryClientGenerator,
+	TokenSetClientRegistryPlannerHost,
+	TokenSetClientRegistryRequirementBehaviour,
 } from "../auth-coordination";
-import { type ClientQueryOptions } from "../contracts/query";
-import { ClientInitializationMode } from "../contracts/types";
-import { createClientRegistry } from "../core/client-registry";
+import { type TokenSetClientQueryOptions } from "../contracts/query";
+import { TokenSetClientInitializationMode } from "../contracts/types";
+import { createTokenSetClientRegistry } from "../core/client-registry";
 
 function createOptions(id: string): BaseOidcModeClientOptions {
 	return {
@@ -29,7 +29,7 @@ function createOptions(id: string): BaseOidcModeClientOptions {
 	};
 }
 
-function createAuthSnapshot(accessToken: string): AuthSnapshot {
+function createAuthSnapshot(accessToken: string): TokenSetAuthSnapshot {
 	return {
 		tokens: {
 			accessToken,
@@ -52,8 +52,8 @@ class TestOidcClient extends BaseOidcModeClient {
 	}
 
 	protected async _refreshAuthSnapshot(
-		snapshot: AuthSnapshot,
-	): Promise<AuthSnapshot | null> {
+		snapshot: TokenSetAuthSnapshot,
+	): Promise<TokenSetAuthSnapshot | null> {
 		return snapshot;
 	}
 }
@@ -73,15 +73,17 @@ async function createClient(
 
 function createRequirement(
 	id: string,
-	query: ClientQueryOptions,
-): ClientRegistryAuthRequirement {
-	return ClientRegistryAuthRequirement.create({
+	query: TokenSetClientQueryOptions,
+): TokenSetClientRegistryAuthRequirement {
+	return TokenSetClientRegistryAuthRequirement.create({
 		id,
 		query,
 	});
 }
 
-function createContext(requirements: readonly ClientRegistryAuthRequirement[]) {
+function createContext(
+	requirements: readonly TokenSetClientRegistryAuthRequirement[],
+) {
 	return {
 		planContext: {},
 		environment: createFoundationEnvironment({}),
@@ -91,7 +93,7 @@ function createContext(requirements: readonly ClientRegistryAuthRequirement[]) {
 }
 
 function createRouteContext(
-	requirements: readonly ClientRegistryAuthRequirement[],
+	requirements: readonly TokenSetClientRegistryAuthRequirement[],
 	url: string,
 ) {
 	return {
@@ -103,7 +105,7 @@ function createRouteContext(
 }
 
 async function collectClientKeys(
-	clients: ClientRegistryClientGenerator<TestOidcClient>,
+	clients: TokenSetClientRegistryClientGenerator<TestOidcClient>,
 ): Promise<string[]> {
 	const clientKeys: string[] = [];
 	for await (const view of clients) {
@@ -112,9 +114,11 @@ async function collectClientKeys(
 	return clientKeys;
 }
 
-describe("ClientRegistryRequirementBehaviour", () => {
+describe("TokenSetClientRegistryRequirementBehaviour", () => {
 	it("treats all matched authenticated clients as fulfilled", async () => {
-		const registry = createClientRegistry<TestOidcClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestOidcClient>({
+			environment: {},
+		});
 		const first = await createClient("first", true);
 		const second = await createClient("second", true);
 		registry.register({
@@ -125,7 +129,7 @@ describe("ClientRegistryRequirementBehaviour", () => {
 				callbackPath: undefined,
 				requirementKind: "workspace",
 				providerFamily: undefined,
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 			},
 		});
 		registry.register({
@@ -136,13 +140,13 @@ describe("ClientRegistryRequirementBehaviour", () => {
 				callbackPath: undefined,
 				requirementKind: "workspace",
 				providerFamily: undefined,
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 			},
 		});
 		const requirement = createRequirement("workspace", {
 			requirementKind: "workspace",
 		});
-		const behaviour = new ClientRegistryRequirementBehaviour(registry);
+		const behaviour = new TokenSetClientRegistryRequirementBehaviour(registry);
 
 		await expect(
 			behaviour.checkAuthenticated(requirement, createContext([requirement])),
@@ -150,7 +154,9 @@ describe("ClientRegistryRequirementBehaviour", () => {
 	});
 
 	it("keeps a requirement unauthenticated when any matched client is false", async () => {
-		const registry = createClientRegistry<TestOidcClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestOidcClient>({
+			environment: {},
+		});
 		const first = await createClient("first", true);
 		const second = await createClient("second", false);
 		for (const [clientKey, client] of [
@@ -165,14 +171,14 @@ describe("ClientRegistryRequirementBehaviour", () => {
 					callbackPath: undefined,
 					requirementKind: "workspace",
 					providerFamily: undefined,
-					initialization: ClientInitializationMode.Lazy,
+					initialization: TokenSetClientInitializationMode.Lazy,
 				},
 			});
 		}
 		const requirement = createRequirement("workspace", {
 			requirementKind: "workspace",
 		});
-		const behaviour = new ClientRegistryRequirementBehaviour(registry);
+		const behaviour = new TokenSetClientRegistryRequirementBehaviour(registry);
 
 		await expect(
 			behaviour.checkAuthenticated(requirement, createContext([requirement])),
@@ -180,9 +186,11 @@ describe("ClientRegistryRequirementBehaviour", () => {
 	});
 
 	it("treats requirements with no matching clients as fulfilled", async () => {
-		const registry = createClientRegistry<TestOidcClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestOidcClient>({
+			environment: {},
+		});
 		const requirement = createRequirement("missing", { clientKey: "missing" });
-		const behaviour = new ClientRegistryRequirementBehaviour(registry);
+		const behaviour = new TokenSetClientRegistryRequirementBehaviour(registry);
 
 		await expect(
 			behaviour.checkAuthenticated(requirement, createContext([requirement])),
@@ -190,7 +198,9 @@ describe("ClientRegistryRequirementBehaviour", () => {
 	});
 
 	it("starts redirect login for the first unauthenticated client and stays pending", async () => {
-		const registry = createClientRegistry<TestOidcClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestOidcClient>({
+			environment: {},
+		});
 		const first = await createClient("first", true);
 		const second = await createClient("second", false);
 		for (const [clientKey, client] of [
@@ -205,14 +215,14 @@ describe("ClientRegistryRequirementBehaviour", () => {
 					callbackPath: undefined,
 					requirementKind: "workspace",
 					providerFamily: undefined,
-					initialization: ClientInitializationMode.Lazy,
+					initialization: TokenSetClientInitializationMode.Lazy,
 				},
 			});
 		}
 		const requirement = createRequirement("workspace", {
 			requirementKind: "workspace",
 		});
-		const behaviour = new ClientRegistryRequirementBehaviour(registry);
+		const behaviour = new TokenSetClientRegistryRequirementBehaviour(registry);
 
 		const action = behaviour.onUnauthenticated(
 			requirement,
@@ -233,7 +243,9 @@ describe("ClientRegistryRequirementBehaviour", () => {
 	});
 
 	it("passes route state url as post-auth redirect URI for default redirect login", async () => {
-		const registry = createClientRegistry<TestOidcClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestOidcClient>({
+			environment: {},
+		});
 		const client = await createClient("workspace", false);
 		registry.register({
 			clientFactory: () => client,
@@ -243,13 +255,13 @@ describe("ClientRegistryRequirementBehaviour", () => {
 				callbackPath: undefined,
 				requirementKind: "workspace",
 				providerFamily: undefined,
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 			},
 		});
 		const requirement = createRequirement("workspace", {
 			requirementKind: "workspace",
 		});
-		const behaviour = new ClientRegistryRequirementBehaviour(registry);
+		const behaviour = new TokenSetClientRegistryRequirementBehaviour(registry);
 
 		const action = behaviour.onUnauthenticated(
 			requirement,
@@ -272,7 +284,9 @@ describe("ClientRegistryRequirementBehaviour", () => {
 	});
 
 	it("passes typed requirement context and ready clients to custom hooks", async () => {
-		const registry = createClientRegistry<TestOidcClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestOidcClient>({
+			environment: {},
+		});
 		const client = await createClient("workspace", false);
 		registry.register({
 			clientFactory: () => client,
@@ -282,14 +296,14 @@ describe("ClientRegistryRequirementBehaviour", () => {
 				callbackPath: undefined,
 				requirementKind: "workspace",
 				providerFamily: undefined,
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 			},
 		});
 		const requirement = createRequirement("workspace", {
 			requirementKind: "workspace",
 		});
 		const seenClientKeys: string[][] = [];
-		const behaviour = new ClientRegistryRequirementBehaviour(registry, {
+		const behaviour = new TokenSetClientRegistryRequirementBehaviour(registry, {
 			checkClientAuthenticated: async (hookRequirement, context, clients) => {
 				expect(hookRequirement.attributes.query).toEqual({
 					requirementKind: "workspace",
@@ -314,7 +328,9 @@ describe("ClientRegistryRequirementBehaviour", () => {
 	});
 
 	it("starts matched client initialization immediately and yields ready clients first", async () => {
-		const registry = createClientRegistry<TestOidcClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestOidcClient>({
+			environment: {},
+		});
 		const second = await createClient("second", true);
 		const firstFactory = vi.fn(
 			() =>
@@ -332,7 +348,7 @@ describe("ClientRegistryRequirementBehaviour", () => {
 				callbackPath: undefined,
 				requirementKind: "workspace",
 				providerFamily: undefined,
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 			},
 		});
 		registry.register({
@@ -343,13 +359,13 @@ describe("ClientRegistryRequirementBehaviour", () => {
 				callbackPath: undefined,
 				requirementKind: "workspace",
 				providerFamily: undefined,
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 			},
 		});
 		const requirement = createRequirement("workspace", {
 			requirementKind: "workspace",
 		});
-		const behaviour = new ClientRegistryRequirementBehaviour(registry, {
+		const behaviour = new TokenSetClientRegistryRequirementBehaviour(registry, {
 			checkClientAuthenticated: async (_hookRequirement, _context, clients) => {
 				const firstResult = await clients.next();
 				if (firstResult.done) {
@@ -367,7 +383,9 @@ describe("ClientRegistryRequirementBehaviour", () => {
 	});
 
 	it("yields ready clients in authentication signal completion order", async () => {
-		const registry = createClientRegistry<TestOidcClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestOidcClient>({
+			environment: {},
+		});
 		const first = new TestOidcClient("first");
 		const second = await createClient("second", false);
 		const firstFactory = vi.fn(() => first);
@@ -380,7 +398,7 @@ describe("ClientRegistryRequirementBehaviour", () => {
 				callbackPath: undefined,
 				requirementKind: "workspace",
 				providerFamily: undefined,
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 			},
 		});
 		registry.register({
@@ -391,13 +409,13 @@ describe("ClientRegistryRequirementBehaviour", () => {
 				callbackPath: undefined,
 				requirementKind: "workspace",
 				providerFamily: undefined,
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 			},
 		});
 		const requirement = createRequirement("workspace", {
 			requirementKind: "workspace",
 		});
-		const behaviour = new ClientRegistryRequirementBehaviour(registry, {
+		const behaviour = new TokenSetClientRegistryRequirementBehaviour(registry, {
 			checkClientAuthenticated: async (_hookRequirement, _context, clients) => {
 				const firstResult = await clients.next();
 				if (firstResult.done) {
@@ -415,7 +433,9 @@ describe("ClientRegistryRequirementBehaviour", () => {
 	});
 
 	it("uses custom selectClientCandidate as an ordered predicate", async () => {
-		const registry = createClientRegistry<TestOidcClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestOidcClient>({
+			environment: {},
+		});
 		const first = await createClient("first", false);
 		const second = await createClient("second", false);
 		for (const [clientKey, client] of [
@@ -430,7 +450,7 @@ describe("ClientRegistryRequirementBehaviour", () => {
 					callbackPath: undefined,
 					requirementKind: clientKey,
 					providerFamily: undefined,
-					initialization: ClientInitializationMode.Lazy,
+					initialization: TokenSetClientInitializationMode.Lazy,
 				},
 			});
 		}
@@ -441,7 +461,7 @@ describe("ClientRegistryRequirementBehaviour", () => {
 			requirementKind: "second",
 		});
 		const selectedClientKeys: string[] = [];
-		const behaviour = new ClientRegistryRequirementBehaviour(registry, {
+		const behaviour = new TokenSetClientRegistryRequirementBehaviour(registry, {
 			onClientUnauthenticated: () => false,
 			selectClientCandidate: async (_requirement, _context, clients) => {
 				const clientKeys = await collectClientKeys(clients);
@@ -449,7 +469,7 @@ describe("ClientRegistryRequirementBehaviour", () => {
 				return clientKeys.includes("second");
 			},
 		});
-		const host = new ClientRegistryPlannerHost(
+		const host = new TokenSetClientRegistryPlannerHost(
 			registry,
 			behaviour,
 			createFoundationEnvironment({}),
@@ -469,8 +489,10 @@ describe("ClientRegistryRequirementBehaviour", () => {
 		expect(selectedClientKeys).toEqual(["first", "second"]);
 	});
 
-	it("supports ClientRegistryPlannerHost in the auth planner pipeline", async () => {
-		const registry = createClientRegistry<TestOidcClient>({ environment: {} });
+	it("supports TokenSetClientRegistryPlannerHost in the auth planner pipeline", async () => {
+		const registry = createTokenSetClientRegistry<TestOidcClient>({
+			environment: {},
+		});
 		const client = await createClient("workspace", true);
 		registry.register({
 			clientFactory: () => client,
@@ -480,15 +502,15 @@ describe("ClientRegistryRequirementBehaviour", () => {
 				callbackPath: undefined,
 				requirementKind: "workspace",
 				providerFamily: undefined,
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 			},
 		});
 		const requirement = createRequirement("workspace", {
 			requirementKind: "workspace",
 		});
-		const host = new ClientRegistryPlannerHost(
+		const host = new TokenSetClientRegistryPlannerHost(
 			registry,
-			new ClientRegistryRequirementBehaviour(registry),
+			new TokenSetClientRegistryRequirementBehaviour(registry),
 			createFoundationEnvironment({}),
 		);
 		const planner = StaticRequirementPlanner.fromRequirements(host, [

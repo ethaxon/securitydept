@@ -21,9 +21,9 @@ import {
 	networkConfigSource,
 	persistConfigProjection,
 	persistedConfigSource,
-	type ResolvedConfigProjection,
 	resolveConfigProjection,
 	scheduleIdleRevalidation,
+	type TokenSetResolvedConfigProjection,
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -228,8 +228,8 @@ describe("persistConfigProjection", () => {
 	it("writes resolved projection to StorageTrait with generatedAt", async () => {
 		const store = createTestStore();
 		const genAt = Date.now() - 5000;
-		const resolved: ResolvedConfigProjection = {
-			config: {} as ResolvedConfigProjection["config"],
+		const resolved: TokenSetResolvedConfigProjection = {
+			config: {} as TokenSetResolvedConfigProjection["config"],
 			sourceKind: "network",
 			generatedAt: genAt,
 			rawProjection: makeProjection("persisted-write", genAt),
@@ -247,8 +247,8 @@ describe("persistConfigProjection", () => {
 
 	it("skips writeback when rawProjection is undefined", async () => {
 		const store = createTestStore();
-		const resolved: ResolvedConfigProjection = {
-			config: {} as ResolvedConfigProjection["config"],
+		const resolved: TokenSetResolvedConfigProjection = {
+			config: {} as TokenSetResolvedConfigProjection["config"],
 			sourceKind: "inline",
 			// No rawProjection
 		};

@@ -10,7 +10,7 @@ import {
 	SecuritydeptProvider,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
+import { type TokenSetAuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, createElement, type ReactElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
@@ -91,11 +91,11 @@ describe("token-set react-query helpers", () => {
 			);
 		}
 
-		const snapshot: AuthSnapshot = {
+		const snapshot: TokenSetAuthSnapshot = {
 			tokens: { accessToken: "live-at" },
 			metadata: {},
 		};
-		const authSnapshot = createReplaySignal<AuthSnapshot | null>();
+		const authSnapshot = createReplaySignal<TokenSetAuthSnapshot | null>();
 		authSnapshot.setValue(snapshot);
 		const isAuthenticated = createReplaySignal<boolean>();
 		isAuthenticated.setValue(true);
@@ -111,7 +111,7 @@ describe("token-set react-query helpers", () => {
 					{
 						key: "frontend",
 						clientFactory: () => ({
-							state: createSignal<AuthSnapshot | null>(snapshot),
+							state: createSignal<TokenSetAuthSnapshot | null>(snapshot),
 							authDetermined,
 							authSnapshot,
 							isAuthenticated,

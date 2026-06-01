@@ -13,12 +13,12 @@ import {
 import { ENVIRONMENT } from "@securitydept/client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
-	ClientRegistry,
-	type ClientRegistryEntry,
+	TokenSetClientRegistry,
+	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
 
 export const TOKEN_SET_CLIENT_REGISTRY_ENTRIES = new InjectionToken<
-	readonly ClientRegistryEntry<BaseOidcModeClient>[]
+	readonly TokenSetClientRegistryEntry<BaseOidcModeClient>[]
 >("TOKEN_SET_CLIENT_REGISTRY_ENTRIES");
 
 /** InjectionToken for the multi-client token-set client registry. */
@@ -28,7 +28,7 @@ export const TOKEN_SET_CLIENT_REGISTRY =
 	);
 
 @Injectable()
-export class TokenSetClientRegistryService extends ClientRegistry<BaseOidcModeClient> {
+export class TokenSetClientRegistryService extends TokenSetClientRegistry<BaseOidcModeClient> {
 	constructor(injector: Injector) {
 		super({
 			environment: injector.get(ENVIRONMENT),
@@ -38,7 +38,7 @@ export class TokenSetClientRegistryService extends ClientRegistry<BaseOidcModeCl
 }
 
 export interface ProvideTokenSetClientRegistryOptions {
-	readonly clients?: readonly ClientRegistryEntry<BaseOidcModeClient>[];
+	readonly clients?: readonly TokenSetClientRegistryEntry<BaseOidcModeClient>[];
 }
 
 export function provideTokenSetClientRegistry(

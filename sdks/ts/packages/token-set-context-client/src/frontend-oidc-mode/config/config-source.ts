@@ -28,7 +28,7 @@ import { parseConfigProjection } from "../contracts/parsers";
  * Tracks where the projection came from so higher layers (caching,
  * revalidation, tracing) can make informed decisions.
  */
-export const ConfigProjectionSourceKind = {
+export const TokenSetConfigProjectionSourceKind = {
 	/** Projection was provided inline at registration time (static config). */
 	Inline: "inline",
 	/** Projection was fetched from a network endpoint (backend /api/auth/config). */
@@ -39,8 +39,8 @@ export const ConfigProjectionSourceKind = {
 	BootstrapScript: "bootstrap_script",
 } as const;
 
-export type ConfigProjectionSourceKind =
-	(typeof ConfigProjectionSourceKind)[keyof typeof ConfigProjectionSourceKind];
+export type TokenSetConfigProjectionSourceKind =
+	(typeof TokenSetConfigProjectionSourceKind)[keyof typeof TokenSetConfigProjectionSourceKind];
 
 // ---------------------------------------------------------------------------
 // Resolved config projection result
@@ -49,11 +49,11 @@ export type ConfigProjectionSourceKind =
 /**
  * A resolved config projection paired with its source identity.
  */
-export interface ResolvedConfigProjection {
+export interface TokenSetResolvedConfigProjection {
 	/** The resolved client config, ready for `new FrontendOidcModeClient`. */
 	config: FrontendOidcModeClientConfig;
 	/** Where this projection came from. */
-	sourceKind: ConfigProjectionSourceKind;
+	sourceKind: TokenSetConfigProjectionSourceKind;
 	/**
 	 * Authoritative freshness timestamp — the `generatedAt` epoch-ms from
 	 * the backend config projection.
@@ -83,7 +83,7 @@ export interface ResolvedConfigProjection {
  * Used by persistence runtime helpers to serialize/deserialize projections
  * through generic key-value stores.
  */
-export interface PersistedConfigEnvelope {
+export interface TokenSetPersistedConfigEnvelope {
 	/** The raw projection data (JSON-serializable). */
 	data: unknown;
 	/**
@@ -103,22 +103,22 @@ export interface PersistedConfigEnvelope {
  * Each variant represents a different acquisition strategy. The resolver
  * tries sources in precedence order and returns the first successful result.
  */
-export type ConfigProjectionSource =
-	| ConfigProjectionSourceInline
-	| ConfigProjectionSourceNetwork
-	| ConfigProjectionSourcePersisted
-	| ConfigProjectionSourceBootstrapScript;
+export type TokenSetConfigProjectionSource =
+	| TokenSetConfigProjectionSourceInline
+	| TokenSetConfigProjectionSourceNetwork
+	| TokenSetConfigProjectionSourcePersisted
+	| TokenSetConfigProjectionSourceBootstrapScript;
 
 /** Static inline config — already resolved, no async work needed. */
-export interface ConfigProjectionSourceInline {
-	readonly kind: typeof ConfigProjectionSourceKind.Inline;
+export interface TokenSetConfigProjectionSourceInline {
+	readonly kind: typeof TokenSetConfigProjectionSourceKind.Inline;
 	/** Pre-resolved client config. */
 	readonly config: FrontendOidcModeClientConfig;
 }
 
 /** Network source — fetches projection from a backend endpoint. */
-export interface ConfigProjectionSourceNetwork {
-	readonly kind: typeof ConfigProjectionSourceKind.Network;
+export interface TokenSetConfigProjectionSourceNetwork {
+	readonly kind: typeof TokenSetConfigProjectionSourceKind.Network;
 	/**
 	 * Async function that fetches the raw projection from the backend.
 	 * Must return the parsed JSON body (not the HTTP response).
@@ -137,8 +137,8 @@ export interface ConfigProjectionSourceNetwork {
 }
 
 /** Persisted source — restores a previously cached projection. */
-export interface ConfigProjectionSourcePersisted {
-	readonly kind: typeof ConfigProjectionSourceKind.Persisted;
+export interface TokenSetConfigProjectionSourcePersisted {
+	readonly kind: typeof TokenSetConfigProjectionSourceKind.Persisted;
 	/**
 	 * Async function that reads a cached projection from persistent storage.
 	 * Returns `null` if nothing is cached.
@@ -156,8 +156,8 @@ export interface ConfigProjectionSourcePersisted {
 }
 
 /** Bootstrap script source — reads projection from host-injected globals. */
-export interface ConfigProjectionSourceBootstrapScript {
-	readonly kind: typeof ConfigProjectionSourceKind.BootstrapScript;
+export interface TokenSetConfigProjectionSourceBootstrapScript {
+	readonly kind: typeof TokenSetConfigProjectionSourceKind.BootstrapScript;
 	/**
 	 * Sync function that reads the projection from a host-injected source
 	 * (e.g. a window global). Returns `null` if not present.
@@ -204,8 +204,8 @@ export interface ConfigProjectionSourceBootstrapScript {
  * ```
  */
 export async function resolveConfigProjection(
-	sources: readonly ConfigProjectionSource[],
-): Promise<ResolvedConfigProjection> {
+	sources: readonly TokenSetConfigProjectionSource[],
+): Promise<TokenSetResolvedConfigProjection> {
 	for (const source of sources) {
 		try {
 			const result = await resolveOneSource(source);
@@ -228,16 +228,16 @@ export async function resolveConfigProjection(
 // ---------------------------------------------------------------------------
 
 async function resolveOneSource(
-	source: ConfigProjectionSource,
-): Promise<ResolvedConfigProjection | null> {
+	source: TokenSetConfigProjectionSource,
+): Promise<TokenSetResolvedConfigProjection | null> {
 	switch (source.kind) {
-		case ConfigProjectionSourceKind.Inline:
+		case TokenSetConfigProjectionSourceKind.Inline:
 			return {
 				config: source.config,
 				sourceKind: source.kind,
 			};
 
-		case ConfigProjectionSourceKind.Network: {
+		case TokenSetConfigProjectionSourceKind.Network: {
 			const raw = await source.fetch();
 			const result = parseAndWrap(raw, source.kind, source.overrides);
 			return {
@@ -247,7 +247,7 @@ async function resolveOneSource(
 			};
 		}
 
-		case ConfigProjectionSourceKind.Persisted: {
+		case TokenSetConfigProjectionSourceKind.Persisted: {
 			const raw = await source.restore();
 			if (raw === null || raw === undefined) {
 				return null;
@@ -266,7 +266,7 @@ async function resolveOneSource(
 			};
 		}
 
-		case ConfigProjectionSourceKind.BootstrapScript: {
+		case TokenSetConfigProjectionSourceKind.BootstrapScript: {
 			const raw = source.read();
 			if (raw === null || raw === undefined) {
 				return null;
@@ -331,14 +331,14 @@ function unwrapEnvelope(raw: unknown): {
 
 function parseAndWrap(
 	raw: unknown,
-	sourceKind: ConfigProjectionSourceKind,
+	sourceKind: TokenSetConfigProjectionSourceKind,
 	overrides?: Partial<
 		Pick<
 			FrontendOidcModeClientConfig,
 			"redirectUri" | "defaultPostAuthRedirectUri"
 		>
 	>,
-): ResolvedConfigProjection {
+): TokenSetResolvedConfigProjection {
 	const result = parseConfigProjection(raw, overrides);
 	if (!result.success) {
 		const summary = result.issues

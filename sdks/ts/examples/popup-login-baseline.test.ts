@@ -27,7 +27,7 @@ import {
 	FrontendOidcModeClient,
 	relayTokenSetPopupCallbackFromEnvironment as relayFrontendPopupCallbackFromEnvironment,
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
-import { type OidcPopupLoginOptions } from "@securitydept/token-set-context-client/orchestration";
+import { type TokenSetOidcPopupLoginOptions } from "@securitydept/token-set-context-client/orchestration";
 import { describe, expect, it, vi } from "vitest";
 
 function createBrowserTime(): TimeTrait {
@@ -366,8 +366,8 @@ describe("frontend-oidc-mode popup baseline", () => {
 		globalThis.opener = originalOpener;
 	});
 
-	it("OidcPopupLoginOptions type is importable (compile-time evidence)", () => {
-		const opts: OidcPopupLoginOptions = {
+	it("TokenSetOidcPopupLoginOptions type is importable (compile-time evidence)", () => {
+		const opts: TokenSetOidcPopupLoginOptions = {
 			popupCallbackUrl: "https://app.example.com/callback",
 		};
 		expect(opts.popupCallbackUrl).toBe("https://app.example.com/callback");

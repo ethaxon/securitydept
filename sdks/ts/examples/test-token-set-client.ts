@@ -1,8 +1,8 @@
 import { createReplaySignal, createSignal } from "@securitydept/client";
-import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
+import { type TokenSetAuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 
 export function bearerHeaderForSnapshot(
-	snapshot: AuthSnapshot | null,
+	snapshot: TokenSetAuthSnapshot | null,
 ): string | undefined {
 	return snapshot?.tokens.accessToken
 		? `Bearer ${snapshot.tokens.accessToken}`
@@ -10,15 +10,15 @@ export function bearerHeaderForSnapshot(
 }
 
 export function createTestTokenSetReactiveFields(
-	initialSnapshot: AuthSnapshot | null = null,
+	initialSnapshot: TokenSetAuthSnapshot | null = null,
 ) {
 	const authDetermined = createReplaySignal<true>();
-	const authSnapshot = createReplaySignal<AuthSnapshot | null>();
+	const authSnapshot = createReplaySignal<TokenSetAuthSnapshot | null>();
 	const isAuthenticated = createReplaySignal<boolean>();
 	const authorizationHeaderValue = createReplaySignal<string | undefined>();
 	const lastAuthError = createSignal<unknown | undefined>(undefined);
 
-	const emitSnapshot = (snapshot: AuthSnapshot | null): void => {
+	const emitSnapshot = (snapshot: TokenSetAuthSnapshot | null): void => {
 		authSnapshot.setValue(snapshot);
 		authorizationHeaderValue.setValue(bearerHeaderForSnapshot(snapshot));
 		isAuthenticated.setValue(bearerHeaderForSnapshot(snapshot) !== undefined);

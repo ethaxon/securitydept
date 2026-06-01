@@ -18,10 +18,10 @@ import {
 	tryInjectInInjectionContext,
 } from "@securitydept/client";
 import {
-	ClientInitializationMode,
-	ClientRegistry as CoreClientRegistry,
-	type ClientRegistryEntry as CoreClientRegistryEntry,
-	createClientRegistry,
+	TokenSetClientRegistry as CoreClientRegistry,
+	type TokenSetClientRegistryEntry as CoreClientRegistryEntry,
+	createTokenSetClientRegistry,
+	TokenSetClientInitializationMode,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	type TokenSetClientEntry,
@@ -62,7 +62,7 @@ export function provideTokenSetAuthRegistry(
 function createReactTokenSetAuthRegistry({
 	clients,
 }: ProvideTokenSetAuthRegistryOptions): ReactRegistry {
-	const registry = createClientRegistry<TokenSetReactClient>({
+	const registry = createTokenSetClientRegistry<TokenSetReactClient>({
 		environment: {},
 	});
 	tryInjectInInjectionContext(SecuritydeptDestroyRef, {
@@ -93,7 +93,7 @@ function toCoreEntry(
 			requirementKind: entry.requirementKind,
 			providerFamily: entry.providerFamily,
 			initialization:
-				entry.initialization ?? ClientInitializationMode.Immediate,
+				entry.initialization ?? TokenSetClientInitializationMode.Immediate,
 		},
 	};
 }

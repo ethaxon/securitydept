@@ -3,8 +3,8 @@ import {
 	validateWithSchemaSync,
 } from "@securitydept/client";
 import {
-	type AuthSnapshot,
-	AuthSourceKind,
+	type TokenSetAuthSnapshot,
+	TokenSetAuthSourceKind,
 } from "../../orchestration/token/types";
 import {
 	type FrontendOidcModeClientConfig,
@@ -48,7 +48,7 @@ export function tokenResultToAuthSnapshot(
 		providerId?: string;
 		issuer?: string;
 	},
-): AuthSnapshot {
+): TokenSetAuthSnapshot {
 	return {
 		tokens: {
 			accessToken: result.accessToken,
@@ -58,10 +58,10 @@ export function tokenResultToAuthSnapshot(
 		},
 		metadata: {
 			source: {
-				kind: AuthSourceKind.OidcAuthorizationCode,
+				kind: TokenSetAuthSourceKind.OidcAuthorizationCode,
 				providerId: options?.providerId,
 				issuer: options?.issuer,
-				kindHistory: [AuthSourceKind.OidcAuthorizationCode],
+				kindHistory: [TokenSetAuthSourceKind.OidcAuthorizationCode],
 			},
 		},
 	};

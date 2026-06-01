@@ -12,13 +12,13 @@ import {
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
-	type AuthSnapshot,
 	type TokenSetAuthEvent,
+	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	ClientInitializationMode,
-	type ClientRegistryEntry as CoreClientRegistryEntry,
-	createClientRegistry,
+	type TokenSetClientRegistryEntry as CoreClientRegistryEntry,
+	createTokenSetClientRegistry,
+	TokenSetClientInitializationMode,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
@@ -53,7 +53,7 @@ function render(element: ReactElement) {
 	};
 }
 
-function createSnapshot(accessToken: string): AuthSnapshot {
+function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 	return {
 		tokens: { accessToken },
 		metadata: {},
@@ -63,7 +63,7 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 function createManualRegistry(
 	clients: readonly TokenSetClientEntry[],
 ): ReactRegistry {
-	const registry = createClientRegistry<TokenSetReactClient>({
+	const registry = createTokenSetClientRegistry<TokenSetReactClient>({
 		environment: {},
 	});
 
@@ -86,7 +86,7 @@ function toCoreEntry(
 			requirementKind: entry.requirementKind,
 			providerFamily: entry.providerFamily,
 			initialization:
-				entry.initialization ?? ClientInitializationMode.Immediate,
+				entry.initialization ?? TokenSetClientInitializationMode.Immediate,
 		},
 	};
 }
@@ -97,8 +97,10 @@ describe("token-set injector factories", () => {
 	});
 
 	it("exposes registry and callback-controller tokens through explicit SecuritydeptProvider composition", async () => {
-		const state = createSignal<AuthSnapshot | null>(createSnapshot("main-at"));
-		const authSnapshot = createReplaySignal<AuthSnapshot | null>();
+		const state = createSignal<TokenSetAuthSnapshot | null>(
+			createSnapshot("main-at"),
+		);
+		const authSnapshot = createReplaySignal<TokenSetAuthSnapshot | null>();
 		authSnapshot.setValue(state.get());
 		const isAuthenticated = createReplaySignal<boolean>();
 		isAuthenticated.setValue(true);

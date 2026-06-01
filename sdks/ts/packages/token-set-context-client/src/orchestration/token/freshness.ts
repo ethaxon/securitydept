@@ -1,42 +1,42 @@
-import { type TokenSnapshot } from "./types";
+import { type TokenSetTokenSnapshot } from "./types";
 
-export interface TokenFreshnessOptions {
+export interface TokenSetTokenFreshnessOptions {
 	clockSkewMs: number;
 	refreshWindowMs: number;
 }
 
-export const TokenFreshnessState = {
+export const TokenSetTokenFreshnessState = {
 	Fresh: "fresh",
 	RefreshDue: "refresh_due",
 	Expired: "expired",
 	NoExpiry: "no_expiry",
 } as const;
 
-export type TokenFreshnessState =
-	(typeof TokenFreshnessState)[keyof typeof TokenFreshnessState];
+export type TokenSetTokenFreshnessState =
+	(typeof TokenSetTokenFreshnessState)[keyof typeof TokenSetTokenFreshnessState];
 
-export interface TokenFreshnessFresh {
-	state: typeof TokenFreshnessState.Fresh;
+export interface TokenSetTokenFreshnessFresh {
+	state: typeof TokenSetTokenFreshnessState.Fresh;
 }
 
-export interface TokenFreshnessRefreshDue {
-	state: typeof TokenFreshnessState.RefreshDue;
+export interface TokenSetTokenFreshnessRefreshDue {
+	state: typeof TokenSetTokenFreshnessState.RefreshDue;
 	refreshAt: number;
 }
 
-export interface TokenFreshnessExpired {
-	state: typeof TokenFreshnessState.Expired;
+export interface TokenSetTokenFreshnessExpired {
+	state: typeof TokenSetTokenFreshnessState.Expired;
 }
 
-export interface TokenFreshnessNoExpiry {
-	state: typeof TokenFreshnessState.NoExpiry;
+export interface TokenSetTokenFreshnessNoExpiry {
+	state: typeof TokenSetTokenFreshnessState.NoExpiry;
 }
 
-export interface TokenFreshnessTimingWithExpiryInfo {
+export interface TokenSetTokenFreshnessTimingWithExpiryInfo {
 	state:
-		| typeof TokenFreshnessState.Fresh
-		| typeof TokenFreshnessState.Expired
-		| typeof TokenFreshnessState.RefreshDue;
+		| typeof TokenSetTokenFreshnessState.Fresh
+		| typeof TokenSetTokenFreshnessState.Expired
+		| typeof TokenSetTokenFreshnessState.RefreshDue;
 	now: number;
 	expiresAt: number;
 	usableUntil: number;
@@ -44,29 +44,29 @@ export interface TokenFreshnessTimingWithExpiryInfo {
 	clockSkew: number;
 	refreshWindow: number;
 	refreshAt: number;
-	options: TokenFreshnessOptions;
+	options: TokenSetTokenFreshnessOptions;
 }
 
-export interface TokenFreshnessTimingWithoutExpiryInfo {
-	state: typeof TokenFreshnessState.NoExpiry;
+export interface TokenSetTokenFreshnessTimingWithoutExpiryInfo {
+	state: typeof TokenSetTokenFreshnessState.NoExpiry;
 	now: number;
-	options: TokenFreshnessOptions;
+	options: TokenSetTokenFreshnessOptions;
 	clockSkew: number;
 	refreshWindow: number;
 }
 
-export type TokenFreshnessTiming =
-	| TokenFreshnessTimingWithExpiryInfo
-	| TokenFreshnessTimingWithoutExpiryInfo;
+export type TokenSetTokenFreshnessTiming =
+	| TokenSetTokenFreshnessTimingWithExpiryInfo
+	| TokenSetTokenFreshnessTimingWithoutExpiryInfo;
 
-export function getAccessTokenFreshnessTiming(
+export function getTokenSetAccessTokenFreshnessTiming(
 	accessTokenMetadata: Pick<
-		TokenSnapshot,
+		TokenSetTokenSnapshot,
 		"accessTokenIssuedAt" | "accessTokenExpiresAt"
 	>,
 	now: number,
-	options: TokenFreshnessOptions,
-): TokenFreshnessTiming {
+	options: TokenSetTokenFreshnessOptions,
+): TokenSetTokenFreshnessTiming {
 	const parsedExpiresAt = new Date(
 		accessTokenMetadata.accessTokenExpiresAt ?? "",
 	).getTime();
@@ -90,21 +90,21 @@ export function getAccessTokenFreshnessTiming(
 
 	if (!expiresAt || !usableUntil || !refreshAt) {
 		return {
-			state: TokenFreshnessState.NoExpiry,
+			state: TokenSetTokenFreshnessState.NoExpiry,
 			now,
 			options,
 			clockSkew,
 			refreshWindow,
 		};
 	}
-	let freshness: TokenFreshnessState;
+	let freshness: TokenSetTokenFreshnessState;
 
 	if (usableUntil <= now) {
-		freshness = TokenFreshnessState.Expired;
+		freshness = TokenSetTokenFreshnessState.Expired;
 	} else if (refreshAt <= now) {
-		freshness = TokenFreshnessState.RefreshDue;
+		freshness = TokenSetTokenFreshnessState.RefreshDue;
 	} else {
-		freshness = TokenFreshnessState.Fresh;
+		freshness = TokenSetTokenFreshnessState.Fresh;
 	}
 
 	return {

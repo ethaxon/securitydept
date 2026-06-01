@@ -13,15 +13,15 @@ import {
 } from "@securitydept/client";
 import { type BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
-	type AuthSnapshot,
-	type OidcPopupLoginOptions,
-	type OidcPopupLoginResult,
-	type OidcRedirectLoginOptions,
 	type TokenSetAuthEvent,
 	type TokenSetAuthOperationSignals,
+	type TokenSetAuthSnapshot,
 	type TokenSetAuthWorkflowSource,
+	type TokenSetOidcPopupLoginOptions,
+	type TokenSetOidcPopupLoginResult,
+	type TokenSetOidcRedirectLoginOptions,
 } from "@securitydept/token-set-context-client/orchestration";
-import { type ClientInitializationMode } from "@securitydept/token-set-context-client/registry";
+import { type TokenSetClientInitializationMode } from "@securitydept/token-set-context-client/registry";
 
 // ============================================================================
 // Client contracts
@@ -29,7 +29,7 @@ import { type ClientInitializationMode } from "@securitydept/token-set-context-c
 
 export interface TokenSetReactClient extends DisposableTrait {
 	authDetermined: ReadableReplaySignalTrait<true>;
-	authSnapshot: ReadableReplaySignalTrait<AuthSnapshot | null>;
+	authSnapshot: ReadableReplaySignalTrait<TokenSetAuthSnapshot | null>;
 	isAuthenticated: ReadableReplaySignalTrait<boolean>;
 	authorizationHeaderValue: ReadableReplaySignalTrait<string | undefined>;
 	lastAuthError: ReadableSignalTrait<unknown | undefined>;
@@ -40,8 +40,10 @@ export interface TokenSetReactClient extends DisposableTrait {
 	removeWorkflowSource(source: TokenSetAuthWorkflowSource): boolean;
 	dispose(): void;
 	restorePersistedState(): Promise<unknown>;
-	loginWithRedirect(options?: OidcRedirectLoginOptions): Promise<void>;
-	loginWithPopup(options: OidcPopupLoginOptions): Promise<OidcPopupLoginResult>;
+	loginWithRedirect(options?: TokenSetOidcRedirectLoginOptions): Promise<void>;
+	loginWithPopup(
+		options: TokenSetOidcPopupLoginOptions,
+	): Promise<TokenSetOidcPopupLoginResult>;
 	logout(): Promise<void>;
 }
 
@@ -71,7 +73,7 @@ export interface TokenSetClientEntry {
 	/**
 	 * Optional initialization mode.
 	 */
-	initialization?: ClientInitializationMode;
+	initialization?: TokenSetClientInitializationMode;
 	urlPatterns?: ReadonlyArray<string | RegExp | ((url: string) => boolean)>;
 	callbackPath?: string;
 	requirementKind?: string;

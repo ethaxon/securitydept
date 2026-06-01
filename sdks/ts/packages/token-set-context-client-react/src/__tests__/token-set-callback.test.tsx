@@ -8,12 +8,12 @@ import {
 } from "@securitydept/client";
 import { FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
-	type AuthSnapshot,
 	type TokenSetAuthEvent,
+	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	ClientInitializationMode,
-	createClientRegistry,
+	createTokenSetClientRegistry,
+	TokenSetClientInitializationMode,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	CallbackResumeStatus,
@@ -58,7 +58,7 @@ async function flushMicrotasks() {
 	});
 }
 
-function createSnapshot(accessToken: string): AuthSnapshot {
+function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 	return {
 		tokens: {
 			accessToken,
@@ -70,11 +70,11 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 }
 
 function createControllerFixture() {
-	const registry = createClientRegistry<TokenSetReactClient>({
+	const registry = createTokenSetClientRegistry<TokenSetReactClient>({
 		environment: {},
 	});
-	const state = createSignal<AuthSnapshot | null>(null);
-	const authSnapshot = createReplaySignal<AuthSnapshot | null>();
+	const state = createSignal<TokenSetAuthSnapshot | null>(null);
+	const authSnapshot = createReplaySignal<TokenSetAuthSnapshot | null>();
 	const isAuthenticated = createReplaySignal<boolean>();
 	const authorizationHeaderValue = createReplaySignal<string | undefined>();
 	const authDetermined = createReplaySignal<true>();
@@ -131,7 +131,7 @@ function createControllerFixture() {
 			callbackPath: "/oidc/callback",
 			requirementKind: undefined,
 			providerFamily: undefined,
-			initialization: ClientInitializationMode.Immediate,
+			initialization: TokenSetClientInitializationMode.Immediate,
 		},
 	});
 

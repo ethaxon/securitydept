@@ -24,10 +24,10 @@ import { ENVIRONMENT, provideEnvironment } from "@securitydept/client-angular";
 import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
-	ClientInitializationMode,
-	type ClientReadyRecordView,
-	ClientRegistryAuthRequirement,
-	ClientRegistryEntryStatus,
+	TokenSetClientInitializationMode,
+	type TokenSetClientReadyRecordView,
+	TokenSetClientRegistryAuthRequirement,
+	TokenSetClientRegistryEntryStatus,
 } from "@securitydept/token-set-context-client/registry";
 import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
@@ -111,14 +111,14 @@ async function flushMicrotasks() {
 function createReadyRecord(
 	clientKey: string,
 	client: BaseOidcModeClient,
-): ClientReadyRecordView<BaseOidcModeClient> {
+): TokenSetClientReadyRecordView<BaseOidcModeClient> {
 	const meta = {
 		clientKey,
 		urlPatterns: [],
 		callbackPath: "/auth/token-set/callback",
 		requirementKind: "frontend_oidc",
 		providerFamily: "authentik",
-		initialization: ClientInitializationMode.Immediate,
+		initialization: TokenSetClientInitializationMode.Immediate,
 	};
 	return {
 		id: clientKey,
@@ -127,18 +127,24 @@ function createReadyRecord(
 			meta,
 		},
 		meta,
-		status: ClientRegistryEntryStatus.Ready,
+		status: TokenSetClientRegistryEntryStatus.Ready,
 		client,
 	};
 }
 
 async function* createClientGenerator(
-	...records: ClientReadyRecordView<BaseOidcModeClient>[]
-): AsyncGenerator<ClientReadyRecordView<BaseOidcModeClient>, void, unknown> {
+	...records: TokenSetClientReadyRecordView<BaseOidcModeClient>[]
+): AsyncGenerator<
+	TokenSetClientReadyRecordView<BaseOidcModeClient>,
+	void,
+	unknown
+> {
 	yield* records;
 }
 
-function createRequirement(clientKey: string): ClientRegistryAuthRequirement {
+function createRequirement(
+	clientKey: string,
+): TokenSetClientRegistryAuthRequirement {
 	return {
 		id: clientKey,
 		attributes: {
@@ -328,7 +334,7 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 	it("OIDC redirect handlers also drive backend web clients through the shared redirect-login contract", async () => {
 		let environment: NativeWebEnvironment | undefined;
 		let backendClient: BackendOidcModeClient | undefined;
-		let record: ClientReadyRecordView<BaseOidcModeClient> | undefined;
+		let record: TokenSetClientReadyRecordView<BaseOidcModeClient> | undefined;
 		let loginWithRedirect: ReturnType<typeof vi.spyOn> | undefined;
 		async function* backendRecordGenerator() {
 			if (!record) {
@@ -390,12 +396,12 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 	});
 
 	it("secure route helpers write query-based registry requirements", () => {
-		const frontendRequirement = ClientRegistryAuthRequirement.create({
+		const frontendRequirement = TokenSetClientRegistryAuthRequirement.create({
 			id: "frontend",
 			label: "Frontend",
 			query: { requirementKind: "frontend_oidc" },
 		});
-		const rootRequirement = ClientRegistryAuthRequirement.create({
+		const rootRequirement = TokenSetClientRegistryAuthRequirement.create({
 			query: { clientKey: "frontend" },
 		});
 		const child = secureRoute("child", {

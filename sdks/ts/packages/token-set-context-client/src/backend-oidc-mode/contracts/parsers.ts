@@ -4,7 +4,10 @@ import {
 	IdentityPrincipalWireSchema,
 	validateWithSchemaSync,
 } from "@securitydept/client";
-import { type TokenDelta, type TokenSnapshot } from "../../orchestration";
+import {
+	type TokenSetTokenDelta,
+	type TokenSetTokenSnapshot,
+} from "../../orchestration";
 import {
 	type BackendOidcModeCallbackReturns,
 	type BackendOidcModeRefreshReturns,
@@ -64,11 +67,11 @@ export function parseBackendOidcModeRefreshPayload(
 // ---------------------------------------------------------------------------
 
 /**
- * Convert a callback response body into an orchestration `TokenSnapshot`.
+ * Convert a callback response body into an orchestration `TokenSetTokenSnapshot`.
  */
 export function callbackReturnsToTokenSnapshot(
 	body: BackendOidcModeCallbackReturns,
-): TokenSnapshot {
+): TokenSetTokenSnapshot {
 	return {
 		accessToken: body.accessToken,
 		idToken: body.idToken,
@@ -78,11 +81,11 @@ export function callbackReturnsToTokenSnapshot(
 }
 
 /**
- * Convert a refresh response body into an orchestration `TokenDelta`.
+ * Convert a refresh response body into an orchestration `TokenSetTokenDelta`.
  */
 export function refreshReturnsToTokenDelta(
 	body: BackendOidcModeRefreshReturns,
-): TokenDelta {
+): TokenSetTokenDelta {
 	return {
 		accessToken: body.accessToken,
 		idToken: body.idToken,

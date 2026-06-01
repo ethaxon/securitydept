@@ -1,56 +1,58 @@
 import { type TimeTrait } from "@securitydept/client";
-import { type AuthSnapshot } from "../../../token/types";
+import { type TokenSetAuthSnapshot } from "../../../token/types";
 import {
-	type AuthSnapshotPersistenceOptions,
 	loadPersistedAuthSnapshot,
+	type TokenSetAuthSnapshotPersistenceOptions,
 } from "../../persistence";
 import {
-	type AuthDeterminationAuthenticatedCandidate,
-	type AuthDeterminationCandidate,
-	AuthDeterminationKind,
+	type TokenSetAuthDeterminationAuthenticatedCandidate,
+	type TokenSetAuthDeterminationCandidate,
+	TokenSetAuthDeterminationKind,
 } from "../commit";
-import { type PlanRefreshFreshnessOptions } from "./refresh";
+import { type TokenSetPlanRefreshFreshnessOptions } from "./refresh";
 
-export interface PlanRestoreRequest {
-	snapshot: AuthSnapshot;
+export interface TokenSetPlanRestoreRequest {
+	snapshot: TokenSetAuthSnapshot;
 }
 
-export type PlanRestoreResponse = AuthDeterminationAuthenticatedCandidate;
+export type TokenSetPlanRestoreResponse =
+	TokenSetAuthDeterminationAuthenticatedCandidate;
 
 export async function planRestore(
-	request: PlanRestoreRequest,
-): Promise<PlanRestoreResponse> {
+	request: TokenSetPlanRestoreRequest,
+): Promise<TokenSetPlanRestoreResponse> {
 	return {
-		kind: AuthDeterminationKind.Authenticated,
+		kind: TokenSetAuthDeterminationKind.Authenticated,
 		snapshot: request.snapshot,
 	};
 }
 
-export interface PlanRestorePersistedRequest {
-	persistence: AuthSnapshotPersistenceOptions;
+export interface TokenSetPlanRestorePersistedRequest {
+	persistence: TokenSetAuthSnapshotPersistenceOptions;
 	time: TimeTrait;
-	freshnessOptions: PlanRefreshFreshnessOptions;
+	freshnessOptions: TokenSetPlanRefreshFreshnessOptions;
 }
 
-export type PlanRestorePersistedResponse = AuthDeterminationCandidate;
+export type TokenSetPlanRestorePersistedResponse =
+	TokenSetAuthDeterminationCandidate;
 
 export async function planRestorePersisted(
-	request: PlanRestorePersistedRequest,
-): Promise<PlanRestorePersistedResponse> {
+	request: TokenSetPlanRestorePersistedRequest,
+): Promise<TokenSetPlanRestorePersistedResponse> {
 	try {
 		const snapshot = await loadPersistedAuthSnapshot(request.persistence);
 		if (snapshot) {
 			return {
-				kind: AuthDeterminationKind.Authenticated,
+				kind: TokenSetAuthDeterminationKind.Authenticated,
 				snapshot,
 			};
 		}
 		return {
-			kind: AuthDeterminationKind.Unauthenticated,
+			kind: TokenSetAuthDeterminationKind.Unauthenticated,
 		};
 	} catch (error) {
 		return {
-			kind: AuthDeterminationKind.Failed,
+			kind: TokenSetAuthDeterminationKind.Failed,
 			error,
 		};
 	}

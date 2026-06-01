@@ -61,7 +61,7 @@ SDK 仍处于 `0.x`，但 public-surface changes 必须保持有纪律。
 - `@securitydept/client-angular` 移除：`AuthRouteAdapter`、`createRouterForAngularRouter`（已改名）、`RouteGuardResult`；旧的 planner-host DI（`AUTH_PLANNER_HOST`、`provideAuthPlannerHost`、`injectPlannerHost`、`AUTH_REQUIREMENTS_CLIENT_SET`、`provideRouteScopedRequirements`、`resolveEffectiveClientSet`）；以及旧的 route-metadata helper（`withRouteRequirements`、`extractFullRouteRequirements`、`ROUTE_REQUIREMENTS_DATA_KEY`、`ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY`、`resolveEffectiveRequirements`）。
 - `@securitydept/client-angular` 新增：`createRouterForAngular(options)`（→ `RouterTrait`）；`projectAngularRouteSegments(leafRoute)`；DI planner-host 装配 `REQUIREMENT_PLANNER_HOST` + `provideRequirementPlannerHost(behaviourOrFactory)` + `injectRequirementPlannerHost()`（Angular DI 层级通过 `skipSelf` 映射为 host parent 链）；`createAngularCanActivate(options?)` / `createAngularCanActivateChild(options?)`；以及路由构造器 `secureRoute()`（仅元信息）/ `secureRouteRoot()`（元信息 + `canActivate` + `canActivateChild`，可选 `provideRequirementPlannerHost`）。路由元信息存储归 `@securitydept/client` 所有（`SECURITYDEPT_ROUTE_METADATA_KEY`、`readSecuritydeptRouteMetadata`、`writeSecuritydeptRouteMetadata`）。
 - `@securitydept/token-set-context-client-angular` 移除：`createTokenSetRouteAggregationGuard` 与 `guard-types` 模块（`UnauthenticatedEntry` 迁入 `planner-host`）。
-- `@securitydept/token-set-context-client-angular` route auth 现在直接基于核心 registry 模型：`provideTokenSetClientRegistry({ clients })` 注册核心 `ClientRegistryEntry<BaseOidcModeClient>`，`provideTokenSetRequirementPlannerHost(options?)` 把 registry-backed `RequirementBehaviour` 绑定到 `REQUIREMENT_PLANNER_HOST`，token-set `secureRoute()` / `secureRouteRoot()` 使用 query-based `ClientRegistryAuthRequirement` metadata。
+- `@securitydept/token-set-context-client-angular` route auth 现在直接基于核心 registry 模型：`provideTokenSetClientRegistry({ clients })` 注册核心 `TokenSetClientRegistryEntry<BaseOidcModeClient>`，`provideTokenSetRequirementPlannerHost(options?)` 把 registry-backed `RequirementBehaviour` 绑定到 `REQUIREMENT_PLANNER_HOST`，token-set `secureRoute()` / `secureRouteRoot()` 使用 query-based `TokenSetClientRegistryAuthRequirement` metadata。
 
 迁移：
 
@@ -399,7 +399,7 @@ Packages：
 
 - Canonical registry lifecycle verb 现在是 `register(entry)`、`unregister(key)`、`resetMaterialization(key)` 与 `dispose()`。
 - Registry 现在把 configured 与 ready observability 显式拆开：`has()` / `registeredKeys()` / `registeredEntriesSnapshot()` / `registeredMetaSnapshot()` 描述已注册 entry，`readyKeys()` 描述已经完成 materialization 与 `start()` lifecycle 的 client。
-- React token-set composition 现在改为 registry-first：在 composition root 注册 `provideTokenSetAuthRegistry(...)`，只有确实需要 callback resume handling 时才额外注册 `provideTokenSetCallbackResumeController(...)`，运行期 add/remove/reset flow 通过注入后的 registry 实例完成，不再依赖 `TokenSetAuthProvider` 或隐藏 lookup hook。Angular token-set composition 使用 `TokenSetClientRegistryService`，它是 shared core `ClientRegistry` 之上的薄 DI adapter。
+- React token-set composition 现在改为 registry-first：在 composition root 注册 `provideTokenSetAuthRegistry(...)`，只有确实需要 callback resume handling 时才额外注册 `provideTokenSetCallbackResumeController(...)`，运行期 add/remove/reset flow 通过注入后的 registry 实例完成，不再依赖 `TokenSetAuthProvider` 或隐藏 lookup hook。Angular token-set composition 使用 `TokenSetClientRegistryService`，它是 shared core `TokenSetClientRegistry` 之上的薄 DI adapter。
 
 迁移：
 

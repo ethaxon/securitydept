@@ -17,36 +17,37 @@
 //   /backend-oidc-mode      — backend-oidc specific client + contracts
 
 import {
-	type AccessTokenSubstrateIntegrationInfo,
-	TokenPropagation,
+	type TokenSetAccessTokenSubstrateIntegrationInfo,
+	TokenSetTokenPropagation,
 } from "@securitydept/token-set-context-client/access-token-substrate";
 import { describe, expect, it } from "vitest";
 
 describe("access-token-substrate minimal entry", () => {
-	it("shows the substrate capability vocabulary: TokenPropagation", () => {
-		// TokenPropagation is a substrate-level constant, not mode-specific.
+	it("shows the substrate capability vocabulary: TokenSetTokenPropagation", () => {
+		// TokenSetTokenPropagation is a substrate-level constant, not mode-specific.
 		// It tells the frontend whether the backend supports forwarding
 		// validated bearer tokens to downstream services.
-		expect(TokenPropagation.Enabled).toBe("enabled");
-		expect(TokenPropagation.Disabled).toBe("disabled");
+		expect(TokenSetTokenPropagation.Enabled).toBe("enabled");
+		expect(TokenSetTokenPropagation.Disabled).toBe("disabled");
 
 		// Example: use capability value to gate UI features.
-		const capability: string = TokenPropagation.Enabled;
-		const showPropagationSettings = capability === TokenPropagation.Enabled;
+		const capability: string = TokenSetTokenPropagation.Enabled;
+		const showPropagationSettings =
+			capability === TokenSetTokenPropagation.Enabled;
 		expect(showPropagationSettings).toBe(true);
 	});
 
 	it("shows the substrate integration info contract shape", () => {
-		// AccessTokenSubstrateIntegrationInfo describes substrate-level
+		// TokenSetAccessTokenSubstrateIntegrationInfo describes substrate-level
 		// capabilities exposed by the backend — independent of OIDC mode.
-		const info: AccessTokenSubstrateIntegrationInfo = {
+		const info: TokenSetAccessTokenSubstrateIntegrationInfo = {
 			supportsPropagation: true,
 		};
 
 		expect(info.supportsPropagation).toBe(true);
 
 		// When not provided, the adopter treats propagation as unavailable.
-		const emptyInfo: AccessTokenSubstrateIntegrationInfo = {};
+		const emptyInfo: TokenSetAccessTokenSubstrateIntegrationInfo = {};
 		expect(emptyInfo.supportsPropagation).toBeUndefined();
 	});
 });

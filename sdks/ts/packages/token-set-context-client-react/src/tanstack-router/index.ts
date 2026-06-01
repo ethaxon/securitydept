@@ -8,21 +8,24 @@ import {
 	type SecureBeforeLoadContext,
 } from "@securitydept/client-react/tanstack-router";
 import {
-	type ClientQueryOptions,
-	type ClientRecord,
+	type TokenSetClientQueryOptions,
+	type TokenSetClientRecord,
 } from "@securitydept/token-set-context-client/registry";
 import { type TokenSetReactClient } from "../contracts";
 
 export interface TokenSetTanStackAuthRegistry {
 	initialize(key: string): Promise<TokenSetReactClient>;
 	clientRecordGenForQuery(
-		query: ClientQueryOptions,
-	): Generator<ReadableSignalTrait<ClientRecord<TokenSetReactClient>>, void>;
+		query: TokenSetClientQueryOptions,
+	): Generator<
+		ReadableSignalTrait<TokenSetClientRecord<TokenSetReactClient>>,
+		void
+	>;
 }
 
 export interface TokenSetTanStackClientSelector {
 	key?: string;
-	query?: ClientQueryOptions;
+	query?: TokenSetClientQueryOptions;
 	providerFamily?: string;
 }
 
@@ -61,7 +64,8 @@ async function ensureTanStackRequirement(
 function defaultClientSelector(
 	requirement: AuthRequirement,
 ): TokenSetTanStackClientSelector | undefined {
-	const attributes = requirement.attributes ?? {};
+	const attributes =
+		(requirement as { attributes?: Record<string, unknown> }).attributes ?? {};
 	return {
 		key:
 			typeof attributes.clientKey === "string"
@@ -72,7 +76,7 @@ function defaultClientSelector(
 				? attributes.providerFamily
 				: undefined,
 		query: {
-			requirementKind: requirement.kind,
+			requirementKind: (requirement as { kind?: string }).kind,
 			providerFamily:
 				typeof attributes.providerFamily === "string"
 					? attributes.providerFamily

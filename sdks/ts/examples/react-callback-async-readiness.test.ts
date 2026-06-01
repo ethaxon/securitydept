@@ -10,13 +10,13 @@ import {
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
-	type AuthSnapshot,
 	type TokenSetAuthEvent,
+	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	ClientInitializationMode,
-	type ClientRegistryEntry,
-	createClientRegistry,
+	createTokenSetClientRegistry,
+	TokenSetClientInitializationMode,
+	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	CallbackResumeStatus,
@@ -53,7 +53,7 @@ function render(element: ReactElement) {
 	};
 }
 
-function createSnapshot(accessToken: string): AuthSnapshot {
+function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 	return {
 		tokens: { accessToken },
 		metadata: {},
@@ -63,7 +63,7 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 function createManualRegistry(
 	clients: readonly TokenSetClientEntry[],
 ): ReactRegistry {
-	const registry = createClientRegistry<TokenSetReactClient>({
+	const registry = createTokenSetClientRegistry<TokenSetReactClient>({
 		environment: {},
 	});
 
@@ -76,7 +76,7 @@ function createManualRegistry(
 
 function toCoreEntry(
 	entry: TokenSetClientEntry,
-): ClientRegistryEntry<TokenSetReactClient> {
+): TokenSetClientRegistryEntry<TokenSetReactClient> {
 	return {
 		clientFactory: entry.clientFactory,
 		meta: {
@@ -86,14 +86,14 @@ function toCoreEntry(
 			requirementKind: entry.requirementKind,
 			providerFamily: entry.providerFamily,
 			initialization:
-				entry.initialization ?? ClientInitializationMode.Immediate,
+				entry.initialization ?? TokenSetClientInitializationMode.Immediate,
 		},
 	};
 }
 
 describe("react callback async readiness", () => {
 	it("resumes callback from a controller resolved through SecuritydeptProvider", async () => {
-		const state = createSignal<AuthSnapshot | null>(null);
+		const state = createSignal<TokenSetAuthSnapshot | null>(null);
 		const reactive = createTestTokenSetReactiveFields(null);
 		const registry = createManualRegistry([
 			{

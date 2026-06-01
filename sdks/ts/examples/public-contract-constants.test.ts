@@ -13,8 +13,8 @@ import {
 	BackendOidcModeContextSource,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
-	AuthSourceKind,
-	StateRestoreSourceKind,
+	TokenSetAuthSourceKind,
+	TokenSetStateRestoreSourceKind,
 } from "@securitydept/token-set-context-client/orchestration";
 import { describe, expect, it } from "vitest";
 
@@ -36,13 +36,15 @@ describe("public contract constants", () => {
 	});
 
 	it("keeps exported token-set vocabulary stable", () => {
-		expect(AuthSourceKind.RefreshToken).toBe("refresh_token");
+		expect(TokenSetAuthSourceKind.RefreshToken).toBe("refresh_token");
 		expect(BackendOidcModeContextSource.Client).toBe(
 			"backend_oidc_mode_client",
 		);
 		expect(BackendOidcModeContextSource.Persistence).toBe("backend-oidc-mode");
-		expect(StateRestoreSourceKind.Manual).toBe("manual");
-		expect(StateRestoreSourceKind.PersistentStore).toBe("persistent_store");
+		expect(TokenSetStateRestoreSourceKind.Manual).toBe("manual");
+		expect(TokenSetStateRestoreSourceKind.PersistentStore).toBe(
+			"persistent_store",
+		);
 		expect(typeof BackendOidcModeClient).toBe("function");
 	});
 

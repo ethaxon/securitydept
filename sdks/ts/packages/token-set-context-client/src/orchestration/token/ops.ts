@@ -1,4 +1,4 @@
-import { type TokenDelta, type TokenSnapshot } from "./types";
+import { type TokenSetTokenDelta, type TokenSetTokenSnapshot } from "./types";
 
 /**
  * Merge a token delta into an existing snapshot.
@@ -10,10 +10,10 @@ import { type TokenDelta, type TokenSnapshot } from "./types";
  * Fields present in the delta override the snapshot.
  * Fields absent in the delta preserve the snapshot value.
  */
-export function mergeTokenDelta(
-	snapshot: TokenSnapshot,
-	delta: TokenDelta,
-): TokenSnapshot {
+export function mergeTokenSetTokenDelta(
+	snapshot: TokenSetTokenSnapshot,
+	delta: TokenSetTokenDelta,
+): TokenSetTokenSnapshot {
 	return {
 		accessToken: delta.accessToken,
 		idToken: delta.idToken ?? snapshot.idToken,
@@ -25,13 +25,13 @@ export function mergeTokenDelta(
 	};
 }
 
-export function bearerHeader(tokens: undefined): undefined;
-export function bearerHeader(tokens: TokenSnapshot): string;
-export function bearerHeader(
-	tokens: TokenSnapshot | undefined,
+export function tokenSetBearerHeader(tokens: undefined): undefined;
+export function tokenSetBearerHeader(tokens: TokenSetTokenSnapshot): string;
+export function tokenSetBearerHeader(
+	tokens: TokenSetTokenSnapshot | undefined,
 ): string | undefined;
-export function bearerHeader(
-	tokens: TokenSnapshot | undefined,
+export function tokenSetBearerHeader(
+	tokens: TokenSetTokenSnapshot | undefined,
 ): string | undefined {
 	if (typeof tokens?.accessToken === "string") {
 		return `Bearer ${tokens.accessToken}`;

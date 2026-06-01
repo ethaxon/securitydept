@@ -14,7 +14,7 @@ import {
 	createAngularCanActivateChild,
 	type SecureRouteConfig,
 } from "@securitydept/client-angular";
-import { type ClientRegistryAuthRequirement } from "@securitydept/token-set-context-client/registry";
+import { type TokenSetClientRegistryAuthRequirement } from "@securitydept/token-set-context-client/registry";
 import {
 	type ProvideTokenSetRequirementPlannerHostOptions,
 	provideTokenSetRequirementPlannerHost,
@@ -23,7 +23,7 @@ import {
 /** Serializable token-set security declaration for a child route. */
 export interface TokenSetSecureRouteSecurityOptions {
 	/** Requirements declared at this route segment. */
-	requirements?: readonly ClientRegistryAuthRequirement[];
+	requirements?: readonly TokenSetClientRegistryAuthRequirement[];
 	/** Composition strategy against ancestor requirements (default `merge`). */
 	composition?: RequirementsComposition;
 }
@@ -35,7 +35,7 @@ export interface TokenSetSecureRouteRootSecurityOptions
 
 /** Guard factory options specialized to token-set registry requirements. */
 export type TokenSetAngularGuardOptions =
-	CreateAngularGuardOptions<ClientRegistryAuthRequirement>;
+	CreateAngularGuardOptions<TokenSetClientRegistryAuthRequirement>;
 
 /**
  * Create a token-set `CanActivateFn`. The behaviour host is resolved from DI
@@ -44,7 +44,9 @@ export type TokenSetAngularGuardOptions =
 export function createTokenSetCanActivate(
 	options?: TokenSetAngularGuardOptions,
 ): CanActivateFn {
-	return createAngularCanActivate<ClientRegistryAuthRequirement>(options);
+	return createAngularCanActivate<TokenSetClientRegistryAuthRequirement>(
+		options,
+	);
 }
 
 /**
@@ -54,7 +56,9 @@ export function createTokenSetCanActivate(
 export function createTokenSetCanActivateChild(
 	options?: TokenSetAngularGuardOptions,
 ): CanActivateChildFn {
-	return createAngularCanActivateChild<ClientRegistryAuthRequirement>(options);
+	return createAngularCanActivateChild<TokenSetClientRegistryAuthRequirement>(
+		options,
+	);
 }
 
 /**
@@ -67,7 +71,7 @@ export function secureRoute(
 	security: TokenSetSecureRouteSecurityOptions = {},
 	routeOptions?: SecureRouteConfig,
 ): Route {
-	return baseSecureRoute<ClientRegistryAuthRequirement>(
+	return baseSecureRoute<TokenSetClientRegistryAuthRequirement>(
 		path,
 		{
 			requirements: security.requirements,
@@ -94,7 +98,7 @@ export function secureRouteRoot(
 			selectClientCandidate: security.selectClientCandidate,
 		}),
 	];
-	return baseSecureRouteRoot<ClientRegistryAuthRequirement>(
+	return baseSecureRouteRoot<TokenSetClientRegistryAuthRequirement>(
 		path,
 		{
 			requirements: security.requirements,

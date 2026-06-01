@@ -4,22 +4,22 @@ import {
 	UserRecovery,
 } from "@securitydept/client";
 
-export const ClientRegistryErrorCode = {
+export const TokenSetClientRegistryErrorCode = {
 	ClientUnregistered: "client_unregistered",
 	ClientRegistered: "client_registered",
 	CallbackClientNotFound: "callback_client_not_found",
 	CallbackClientModeMismatch: "callback_client_mode_mismatch",
 } as const;
 
-export type ClientRegistryErrorCode =
-	(typeof ClientRegistryErrorCode)[keyof typeof ClientRegistryErrorCode];
+export type TokenSetClientRegistryErrorCode =
+	(typeof TokenSetClientRegistryErrorCode)[keyof typeof TokenSetClientRegistryErrorCode];
 
-export class ClientRegistryError extends ClientError {
-	override readonly code: ClientRegistryErrorCode;
+export class TokenSetClientRegistryError extends ClientError {
+	override readonly code: TokenSetClientRegistryErrorCode;
 	readonly clientKey: string | null;
 
 	constructor(options: {
-		code: ClientRegistryErrorCode;
+		code: TokenSetClientRegistryErrorCode;
 		clientKey?: string;
 		expectedMode?: string;
 		actualMode?: string;
@@ -28,65 +28,65 @@ export class ClientRegistryError extends ClientError {
 		cause?: unknown;
 	}) {
 		super({
-			kind: ClientRegistryError.kindForCode(options.code),
+			kind: TokenSetClientRegistryError.kindForCode(options.code),
 			code: options.code,
 			message:
 				options.message ??
-				ClientRegistryError.defaultErrorMessage({
+				TokenSetClientRegistryError.defaultErrorMessage({
 					code: options.code,
 					clientKey: options.clientKey,
 					expectedMode: options.expectedMode,
 					actualMode: options.actualMode,
 					currentUrl: options.currentUrl,
 				}),
-			recovery: ClientRegistryError.recoveryForCode(options.code),
+			recovery: TokenSetClientRegistryError.recoveryForCode(options.code),
 			retryable: false,
 			source: "client_registry",
 			cause: options.cause,
 		});
-		this.name = "ClientRegistryError";
+		this.name = "TokenSetClientRegistryError";
 		this.code = options.code;
 		this.clientKey = options.clientKey ?? null;
 	}
 
-	static kindForCode(code: ClientRegistryErrorCode) {
+	static kindForCode(code: TokenSetClientRegistryErrorCode) {
 		switch (code) {
-			case ClientRegistryErrorCode.ClientRegistered:
-			case ClientRegistryErrorCode.ClientUnregistered:
-			case ClientRegistryErrorCode.CallbackClientNotFound:
+			case TokenSetClientRegistryErrorCode.ClientRegistered:
+			case TokenSetClientRegistryErrorCode.ClientUnregistered:
+			case TokenSetClientRegistryErrorCode.CallbackClientNotFound:
 				return ClientErrorKind.Configuration;
-			case ClientRegistryErrorCode.CallbackClientModeMismatch:
+			case TokenSetClientRegistryErrorCode.CallbackClientModeMismatch:
 				return ClientErrorKind.Protocol;
 		}
 	}
 
-	static recoveryForCode(code: ClientRegistryErrorCode) {
+	static recoveryForCode(code: TokenSetClientRegistryErrorCode) {
 		switch (code) {
-			case ClientRegistryErrorCode.ClientRegistered:
-			case ClientRegistryErrorCode.ClientUnregistered:
-			case ClientRegistryErrorCode.CallbackClientNotFound:
+			case TokenSetClientRegistryErrorCode.ClientRegistered:
+			case TokenSetClientRegistryErrorCode.ClientUnregistered:
+			case TokenSetClientRegistryErrorCode.CallbackClientNotFound:
 				return UserRecovery.ContactSupport;
-			case ClientRegistryErrorCode.CallbackClientModeMismatch:
+			case TokenSetClientRegistryErrorCode.CallbackClientModeMismatch:
 				return UserRecovery.RestartFlow;
 		}
 	}
 
 	static defaultErrorMessage(options: {
-		code: ClientRegistryErrorCode;
+		code: TokenSetClientRegistryErrorCode;
 		clientKey: string | undefined;
 		expectedMode?: string;
 		actualMode?: string;
 		currentUrl?: string;
 	}) {
 		switch (options.code) {
-			case ClientRegistryErrorCode.ClientUnregistered:
-				return `[ClientRegistry] Client "${options.clientKey ?? "<unknown>"}" was unregistered when accessing.`;
-			case ClientRegistryErrorCode.ClientRegistered:
-				return `[ClientRegistry] Client "${options.clientKey ?? "<unknown>"}" was already registered.`;
-			case ClientRegistryErrorCode.CallbackClientNotFound:
-				return `[ClientRegistry] Cannot determine which client callback "${options.currentUrl ?? "<unknown>"}" belongs to.`;
-			case ClientRegistryErrorCode.CallbackClientModeMismatch:
-				return `[ClientRegistry] Client "${options.clientKey ?? "<unknown>"}" is not a ${options.expectedMode ?? "compatible"} client${options.actualMode ? `; received ${options.actualMode}` : ""}.`;
+			case TokenSetClientRegistryErrorCode.ClientUnregistered:
+				return `[TokenSetClientRegistry] Client "${options.clientKey ?? "<unknown>"}" was unregistered when accessing.`;
+			case TokenSetClientRegistryErrorCode.ClientRegistered:
+				return `[TokenSetClientRegistry] Client "${options.clientKey ?? "<unknown>"}" was already registered.`;
+			case TokenSetClientRegistryErrorCode.CallbackClientNotFound:
+				return `[TokenSetClientRegistry] Cannot determine which client callback "${options.currentUrl ?? "<unknown>"}" belongs to.`;
+			case TokenSetClientRegistryErrorCode.CallbackClientModeMismatch:
+				return `[TokenSetClientRegistry] Client "${options.clientKey ?? "<unknown>"}" is not a ${options.expectedMode ?? "compatible"} client${options.actualMode ? `; received ${options.actualMode}` : ""}.`;
 		}
 	}
 }

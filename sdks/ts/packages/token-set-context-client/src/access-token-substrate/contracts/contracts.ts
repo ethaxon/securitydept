@@ -20,13 +20,13 @@
  * It indicates whether the backend supports forwarding validated bearer
  * tokens to downstream services via the propagation endpoint.
  */
-export const TokenPropagation = {
+export const TokenSetTokenPropagation = {
 	Enabled: "enabled",
 	Disabled: "disabled",
 } as const;
 
-export type TokenPropagation =
-	(typeof TokenPropagation)[keyof typeof TokenPropagation];
+export type TokenSetTokenPropagation =
+	(typeof TokenSetTokenPropagation)[keyof typeof TokenSetTokenPropagation];
 
 // ---------------------------------------------------------------------------
 // Substrate integration info (frontend-facing projection)
@@ -42,7 +42,7 @@ export type TokenPropagation =
  *
  * Aligned with Rust `access_token_substrate` capabilities.
  */
-export interface AccessTokenSubstrateIntegrationInfo {
+export interface TokenSetAccessTokenSubstrateIntegrationInfo {
 	/** Whether the backend supports token propagation. */
 	supportsPropagation?: boolean;
 }

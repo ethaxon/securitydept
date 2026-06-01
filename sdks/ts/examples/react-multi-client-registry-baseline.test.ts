@@ -11,13 +11,13 @@ import {
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
-	type AuthSnapshot,
 	type TokenSetAuthEvent,
+	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	ClientInitializationMode,
-	type ClientRegistryEntry,
-	createClientRegistry,
+	createTokenSetClientRegistry,
+	TokenSetClientInitializationMode,
+	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
@@ -51,7 +51,7 @@ function render(element: ReactElement) {
 	};
 }
 
-function createSnapshot(accessToken: string): AuthSnapshot {
+function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 	return {
 		tokens: { accessToken },
 		metadata: {},
@@ -59,7 +59,7 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 }
 
 function createClient(
-	state: ReturnType<typeof createSignal<AuthSnapshot | null>>,
+	state: ReturnType<typeof createSignal<TokenSetAuthSnapshot | null>>,
 ) {
 	const reactive = createTestTokenSetReactiveFields(state.get());
 	state.notify(() => reactive.emitSnapshot(state.get()));
@@ -87,7 +87,7 @@ function createClient(
 function createManualRegistry(
 	clients: readonly TokenSetClientEntry[],
 ): ReactRegistry {
-	const registry = createClientRegistry<TokenSetReactClient>({
+	const registry = createTokenSetClientRegistry<TokenSetReactClient>({
 		environment: {},
 	});
 
@@ -100,7 +100,7 @@ function createManualRegistry(
 
 function toCoreEntry(
 	entry: TokenSetClientEntry,
-): ClientRegistryEntry<TokenSetReactClient> {
+): TokenSetClientRegistryEntry<TokenSetReactClient> {
 	return {
 		clientFactory: entry.clientFactory,
 		meta: {
@@ -110,17 +110,17 @@ function toCoreEntry(
 			requirementKind: entry.requirementKind,
 			providerFamily: entry.providerFamily,
 			initialization:
-				entry.initialization ?? ClientInitializationMode.Immediate,
+				entry.initialization ?? TokenSetClientInitializationMode.Immediate,
 		},
 	};
 }
 
 describe("react multi-client registry baseline", () => {
 	it("surfaces multiple keyed clients through SecuritydeptProvider", async () => {
-		const mainState = createSignal<AuthSnapshot | null>(
+		const mainState = createSignal<TokenSetAuthSnapshot | null>(
 			createSnapshot("main-at"),
 		);
-		const adminState = createSignal<AuthSnapshot | null>(
+		const adminState = createSignal<TokenSetAuthSnapshot | null>(
 			createSnapshot("admin-at"),
 		);
 		const registry = createManualRegistry([
@@ -182,7 +182,7 @@ describe("react multi-client registry baseline", () => {
 	});
 
 	it("re-renders when a keyed client signal changes", async () => {
-		const mainState = createSignal<AuthSnapshot | null>(
+		const mainState = createSignal<TokenSetAuthSnapshot | null>(
 			createSnapshot("main-at"),
 		);
 		const registry = createManualRegistry([

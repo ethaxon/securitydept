@@ -9,14 +9,14 @@ import {
 } from "@securitydept/client/web";
 import { describe, expect, it, vi } from "vitest";
 import {
-	PageResumeWorkflowSource,
-	PageResumeWorkflowSourceTraceEventType,
+	TokenSetPageResumeWorkflowSource,
+	TokenSetPageResumeWorkflowSourceTraceEventType,
 } from "../client/workflows/source/page-resume";
 import {
-	RefreshTimerWorkflowSource,
-	RefreshTimerWorkflowSourceTraceEventType,
+	TokenSetRefreshTimerWorkflowSource,
+	TokenSetRefreshTimerWorkflowSourceTraceEventType,
 } from "../client/workflows/source/refresh-timer";
-import { type AuthSnapshot } from "../token/types";
+import { type TokenSetAuthSnapshot } from "../token/types";
 
 function createMockDocument(initialState: DocumentVisibilityState = "hidden") {
 	let handler: EventListener | undefined;
@@ -53,7 +53,7 @@ function createAuthSnapshot(
 		expiresAt?: string;
 		refreshMaterial?: string;
 	},
-): AuthSnapshot {
+): TokenSetAuthSnapshot {
 	return {
 		tokens: {
 			accessToken,
@@ -96,7 +96,7 @@ describe("token-set workflow sources", () => {
 		});
 
 		try {
-			const source = PageResumeWorkflowSource.fromBuiltin(
+			const source = TokenSetPageResumeWorkflowSource.fromBuiltin(
 				{
 					pageLifecycle: undefined,
 					time,
@@ -134,7 +134,7 @@ describe("token-set workflow sources", () => {
 			type: string;
 			attributes?: Record<string, unknown>;
 		}> = [];
-		const source = PageResumeWorkflowSource.fromBuiltin(
+		const source = TokenSetPageResumeWorkflowSource.fromBuiltin(
 			{
 				pageLifecycle,
 				time,
@@ -153,7 +153,7 @@ describe("token-set workflow sources", () => {
 
 		expect(traceEvents).toEqual([
 			{
-				type: PageResumeWorkflowSourceTraceEventType.Fired,
+				type: TokenSetPageResumeWorkflowSourceTraceEventType.Fired,
 				attributes: {
 					trigger: PageResumeTriggerKind.Visibility,
 					persisted: undefined,
@@ -166,12 +166,12 @@ describe("token-set workflow sources", () => {
 
 	it("records scheduled refresh-timer traces without elevating a global source enum", () => {
 		const time = createStaticTime(10_000);
-		const authSnapshot = createReplaySignal<AuthSnapshot | null>();
+		const authSnapshot = createReplaySignal<TokenSetAuthSnapshot | null>();
 		const traceEvents: Array<{
 			type: string;
 			attributes?: Record<string, unknown>;
 		}> = [];
-		const source = RefreshTimerWorkflowSource.fromBuiltin(
+		const source = TokenSetRefreshTimerWorkflowSource.fromBuiltin(
 			{
 				time,
 				freshnessOptions: {
@@ -197,7 +197,7 @@ describe("token-set workflow sources", () => {
 		);
 
 		expect(traceEvents[0]).toEqual({
-			type: RefreshTimerWorkflowSourceTraceEventType.Scheduled,
+			type: TokenSetRefreshTimerWorkflowSourceTraceEventType.Scheduled,
 			attributes: expect.objectContaining({
 				triggerKind: "slice",
 				freshnessState: "fresh",
@@ -210,12 +210,12 @@ describe("token-set workflow sources", () => {
 
 	it("records fired refresh-timer traces when refresh is immediately due", () => {
 		const time = createStaticTime(10_000);
-		const authSnapshot = createReplaySignal<AuthSnapshot | null>();
+		const authSnapshot = createReplaySignal<TokenSetAuthSnapshot | null>();
 		const traceEvents: Array<{
 			type: string;
 			attributes?: Record<string, unknown>;
 		}> = [];
-		const source = RefreshTimerWorkflowSource.fromBuiltin(
+		const source = TokenSetRefreshTimerWorkflowSource.fromBuiltin(
 			{
 				time,
 				freshnessOptions: {
@@ -243,7 +243,7 @@ describe("token-set workflow sources", () => {
 		expect(events).toHaveLength(1);
 		expect(traceEvents).toEqual([
 			{
-				type: RefreshTimerWorkflowSourceTraceEventType.Fired,
+				type: TokenSetRefreshTimerWorkflowSourceTraceEventType.Fired,
 				attributes: expect.objectContaining({
 					triggerKind: "immediate",
 					freshnessState: "expired",
@@ -260,7 +260,7 @@ describe("token-set workflow sources", () => {
 		const resume = createEventSubject<{
 			trigger: "focus";
 		}>();
-		const source = PageResumeWorkflowSource.fromBuiltin(
+		const source = TokenSetPageResumeWorkflowSource.fromBuiltin(
 			{
 				pageLifecycle: {
 					resume,

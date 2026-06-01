@@ -13,7 +13,7 @@ The current calibration line demonstrates that:
 - `secureRouteRoot()` carries provider-neutral requirement metadata and next-action policy.
 - `provideTokenSetClientRegistry(...)` registers the `Confluence` client with explicit `providerFamily`, `callbackPath`, and `urlPatterns`.
 - Route-login integration uses `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })`; the client should already carry a stable page router through its environment rather than receiving a per-call page factory.
-- Registry-managed browser clients now use the core `ClientRegistry` lifecycle through `provideTokenSetClientRegistry(...)`; the adopter does not need a separate wrapper just to recover resume behavior.
+- Registry-managed browser clients now use the core `TokenSetClientRegistry` lifecycle through `provideTokenSetClientRegistry(...)`; the adopter does not need a separate wrapper just to recover resume behavior.
 - `provideTokenSetClientRegistryAuthorizationInterceptor()` constrains authorization injection to registered URLs and avoids fallback authorization for unmatched URLs.
 - Short access-token lifetimes are expected to recover through SDK freshness barriers before redirect or bearer injection when refresh material exists.
 - Focused downstream tests lock callback preservation, provider-neutral route metadata, bearer injection boundaries, and redirect preservation.

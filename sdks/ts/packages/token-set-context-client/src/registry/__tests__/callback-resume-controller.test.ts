@@ -5,13 +5,16 @@ import { FrontendOidcModeClient } from "../../frontend-oidc-mode";
 import { type BaseOidcModeClient } from "../../orchestration";
 import { BackendOidcModeCallbackController } from "../controller/backend-mode-callback-controller";
 import { FrontendOidcModeCallbackController } from "../controller/frontend-mode-callback-controller";
-import { createClientRegistry } from "../core/client-registry";
-import { ClientRegistryError, ClientRegistryErrorCode } from "../core/error";
+import { createTokenSetClientRegistry } from "../core/client-registry";
+import {
+	TokenSetClientRegistryError,
+	TokenSetClientRegistryErrorCode,
+} from "../core/error";
 
 function createRegistry(
 	handleCallback = vi.fn(),
-): ReturnType<typeof createClientRegistry<BaseOidcModeClient>> {
-	const registry = createClientRegistry<BaseOidcModeClient>({
+): ReturnType<typeof createTokenSetClientRegistry<BaseOidcModeClient>> {
+	const registry = createTokenSetClientRegistry<BaseOidcModeClient>({
 		environment: {},
 	});
 	const dispose = vi.fn();
@@ -37,8 +40,8 @@ function createRegistry(
 
 function createBackendRegistry(
 	handleCallback = vi.fn(),
-): ReturnType<typeof createClientRegistry<BaseOidcModeClient>> {
-	const registry = createClientRegistry<BaseOidcModeClient>({
+): ReturnType<typeof createTokenSetClientRegistry<BaseOidcModeClient>> {
+	const registry = createTokenSetClientRegistry<BaseOidcModeClient>({
 		environment: {},
 	});
 	const dispose = vi.fn();
@@ -141,12 +144,12 @@ describe("FrontendOidcModeCallbackController", () => {
 		});
 
 		await expect(controller.handle()).rejects.toMatchObject({
-			name: "ClientRegistryError",
-			code: ClientRegistryErrorCode.CallbackClientNotFound,
+			name: "TokenSetClientRegistryError",
+			code: TokenSetClientRegistryErrorCode.CallbackClientNotFound,
 		});
 		expect(controller.state.get()).toMatchObject({
 			state: OnceAsyncLockState.Error,
-			error: expect.any(ClientRegistryError),
+			error: expect.any(TokenSetClientRegistryError),
 		});
 	});
 });
@@ -208,13 +211,13 @@ describe("BackendOidcModeCallbackController", () => {
 		});
 
 		await expect(controller.handle()).rejects.toMatchObject({
-			name: "ClientRegistryError",
-			code: ClientRegistryErrorCode.CallbackClientModeMismatch,
+			name: "TokenSetClientRegistryError",
+			code: TokenSetClientRegistryErrorCode.CallbackClientModeMismatch,
 			clientKey: "frontend",
 		});
 		expect(controller.state.get()).toMatchObject({
 			state: OnceAsyncLockState.Error,
-			error: expect.any(ClientRegistryError),
+			error: expect.any(TokenSetClientRegistryError),
 		});
 	});
 });

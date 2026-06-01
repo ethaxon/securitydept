@@ -6,14 +6,14 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { type BaseOidcModeClient } from "../../orchestration";
 import {
-	ClientInitializationMode,
-	type ClientReadyRecordView,
-	type ClientRegistryEntry,
-	ClientRegistryEntryStatus,
-	ClientRegistryEventType,
+	TokenSetClientInitializationMode,
+	type TokenSetClientReadyRecordView,
+	type TokenSetClientRegistryEntry,
+	TokenSetClientRegistryEntryStatus,
+	TokenSetClientRegistryEventType,
 } from "../contracts/types";
-import { type ClientRecord } from "../core/client-record";
-import { createClientRegistry } from "../core/client-registry";
+import { type TokenSetClientRecord } from "../core/client-record";
+import { createTokenSetClientRegistry } from "../core/client-registry";
 
 interface TestClient extends DisposableTrait {
 	readonly id: string;
@@ -41,12 +41,12 @@ function createDeferred<T>() {
 function createRegistryEntry(options: {
 	key: string;
 	clientFactory: () => TestClient | Promise<TestClient>;
-	initialization?: ClientInitializationMode;
+	initialization?: TokenSetClientInitializationMode;
 	urlPatterns?: ReadonlyArray<string | RegExp | ((url: string) => boolean)>;
 	callbackPath?: string;
 	requirementKind?: string;
 	providerFamily?: string;
-}): ClientRegistryEntry<TestClient> {
+}): TokenSetClientRegistryEntry<TestClient> {
 	return {
 		clientFactory: options.clientFactory,
 		meta: {
@@ -56,18 +56,20 @@ function createRegistryEntry(options: {
 			requirementKind: options.requirementKind,
 			providerFamily: options.providerFamily,
 			initialization:
-				options.initialization ?? ClientInitializationMode.Immediate,
+				options.initialization ?? TokenSetClientInitializationMode.Immediate,
 		},
 	};
 }
 
-describe("ClientRegistry", () => {
+describe("TokenSetClientRegistry", () => {
 	const uuidV7Pattern =
 		/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 	it("initializes immediate clients and publishes state, signal, and events", async () => {
 		const client = createClient("main");
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 		const events: string[] = [];
 		registry.events.subscribe({
 			next: (event: { type: string }) => events.push(event.type),
@@ -85,18 +87,18 @@ describe("ClientRegistry", () => {
 		);
 		const record = registry.clientRecordFor("main").get();
 		expect(record.client).toBe(client);
-		expect(record.status).toBe(ClientRegistryEntryStatus.Ready);
+		expect(record.status).toBe(TokenSetClientRegistryEntryStatus.Ready);
 		expect(registry.entries.get()).toMatchObject([
 			{
 				meta: { clientKey: "main" },
-				status: ClientRegistryEntryStatus.Ready,
+				status: TokenSetClientRegistryEntryStatus.Ready,
 			},
 		]);
 		expect(registry.entries.get()[0]?.id).toMatch(uuidV7Pattern);
 		expect(events).toEqual([
-			ClientRegistryEventType.Registered,
-			ClientRegistryEventType.Initializing,
-			ClientRegistryEventType.Ready,
+			TokenSetClientRegistryEventType.Registered,
+			TokenSetClientRegistryEventType.Initializing,
+			TokenSetClientRegistryEventType.Ready,
 		]);
 	});
 
@@ -104,11 +106,11 @@ describe("ClientRegistry", () => {
 		const registry: {
 			initialize(
 				key: string,
-			): Promise<ClientReadyRecordView<BaseOidcModeClient>>;
+			): Promise<TokenSetClientReadyRecordView<BaseOidcModeClient>>;
 			clientRecordFor(
 				key: string,
-			): ReadableSignalTrait<ClientRecord<BaseOidcModeClient>>;
-		} = createClientRegistry({
+			): ReadableSignalTrait<TokenSetClientRecord<BaseOidcModeClient>>;
+		} = createTokenSetClientRegistry({
 			environment: {},
 		});
 
@@ -117,19 +119,21 @@ describe("ClientRegistry", () => {
 
 	it("initializes lazy clients when clientSignalFor is requested", async () => {
 		const factory = vi.fn(() => createClient("lazy"));
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 
 		registry.register(
 			createRegistryEntry({
 				key: "lazy",
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 				clientFactory: factory,
 			}),
 		);
 
 		expect(factory).not.toHaveBeenCalled();
 		expect(registry.clientRecordFor("lazy").get().status).toBe(
-			ClientRegistryEntryStatus.Registered,
+			TokenSetClientRegistryEntryStatus.Registered,
 		);
 
 		const signal = registry.clientSignalFor("lazy");
@@ -137,7 +141,7 @@ describe("ClientRegistry", () => {
 		expect(client.id).toBe("lazy");
 		expect(factory).toHaveBeenCalledTimes(1);
 		expect(registry.clientRecordFor("lazy").get().status).toBe(
-			ClientRegistryEntryStatus.Ready,
+			TokenSetClientRegistryEntryStatus.Ready,
 		);
 		expect(signal.get()).toEqual({
 			kind: "value",
@@ -147,12 +151,14 @@ describe("ClientRegistry", () => {
 
 	it("keeps lazy clients uninitialized when clientSignalFor disables initialization", () => {
 		const factory = vi.fn(() => createClient("lazy"));
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 
 		registry.register(
 			createRegistryEntry({
 				key: "lazy",
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 				clientFactory: factory,
 			}),
 		);
@@ -161,14 +167,16 @@ describe("ClientRegistry", () => {
 		expect(factory).not.toHaveBeenCalled();
 		expect(signal.hasValue()).toBe(false);
 		expect(registry.clientRecordFor("lazy").get().status).toBe(
-			ClientRegistryEntryStatus.Registered,
+			TokenSetClientRegistryEntryStatus.Registered,
 		);
 	});
 
 	it("returns the ready client when initialize is called again", async () => {
 		const client = createClient("main");
 		const factory = vi.fn(() => client);
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 
 		registry.register(
 			createRegistryEntry({
@@ -181,17 +189,19 @@ describe("ClientRegistry", () => {
 
 		await expect(registry.initialize("main")).resolves.toMatchObject({
 			client,
-			status: ClientRegistryEntryStatus.Ready,
+			status: TokenSetClientRegistryEntryStatus.Ready,
 		});
 		expect(factory).toHaveBeenCalledTimes(1);
 	});
 
 	it("derives granular state signals from registry revisions", async () => {
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 		registry.register(
 			createRegistryEntry({
 				key: "lazy",
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 				clientFactory: () => createClient("lazy"),
 			}),
 		);
@@ -199,20 +209,23 @@ describe("ClientRegistry", () => {
 		expect(registry.entries.get()).toMatchObject([
 			{
 				meta: { clientKey: "lazy" },
-				status: ClientRegistryEntryStatus.Registered,
+				status: TokenSetClientRegistryEntryStatus.Registered,
 			},
 		]);
 
 		await registry.initialize("lazy");
 
 		expect(registry.entries.get()).toMatchObject([
-			{ meta: { clientKey: "lazy" }, status: ClientRegistryEntryStatus.Ready },
+			{
+				meta: { clientKey: "lazy" },
+				status: TokenSetClientRegistryEntryStatus.Ready,
+			},
 		]);
 	});
 
 	it("schedules idle clients only when an idle callback capability is provided", async () => {
 		const callbacks: Array<() => void> = [];
-		const registry = createClientRegistry<TestClient>({
+		const registry = createTokenSetClientRegistry<TestClient>({
 			environment: {
 				idleCallback: {
 					requestIdleCallback: (callback) => {
@@ -233,7 +246,7 @@ describe("ClientRegistry", () => {
 		registry.register(
 			createRegistryEntry({
 				key: "idle",
-				initialization: ClientInitializationMode.Idle,
+				initialization: TokenSetClientInitializationMode.Idle,
 				clientFactory: factory,
 			}),
 		);
@@ -247,30 +260,34 @@ describe("ClientRegistry", () => {
 
 	it("does not initialize idle clients without idle callback fallback", () => {
 		const factory = vi.fn(() => createClient("idle"));
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 
 		registry.register(
 			createRegistryEntry({
 				key: "idle",
-				initialization: ClientInitializationMode.Idle,
+				initialization: TokenSetClientInitializationMode.Idle,
 				clientFactory: factory,
 			}),
 		);
 
 		expect(factory).not.toHaveBeenCalled();
 		expect(registry.clientRecordFor("idle").get().status).toBe(
-			ClientRegistryEntryStatus.Registered,
+			TokenSetClientRegistryEntryStatus.Registered,
 		);
 	});
 
 	it("reuses the in-flight record initialization", async () => {
 		const deferred = createDeferred<TestClient>();
 		const factory = vi.fn(() => deferred.promise);
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 		registry.register(
 			createRegistryEntry({
 				key: "async",
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 				clientFactory: factory,
 			}),
 		);
@@ -282,11 +299,11 @@ describe("ClientRegistry", () => {
 		deferred.resolve(client);
 		await expect(first).resolves.toMatchObject({
 			client,
-			status: ClientRegistryEntryStatus.Ready,
+			status: TokenSetClientRegistryEntryStatus.Ready,
 		});
 		await expect(second).resolves.toMatchObject({
 			client,
-			status: ClientRegistryEntryStatus.Ready,
+			status: TokenSetClientRegistryEntryStatus.Ready,
 		});
 		expect(factory).toHaveBeenCalledTimes(1);
 	});
@@ -294,11 +311,13 @@ describe("ClientRegistry", () => {
 	it("rejects in-flight initialization when its record is unregistered", async () => {
 		const deferred = createDeferred<TestClient>();
 		const client = createClient("late");
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 		registry.register(
 			createRegistryEntry({
 				key: "async",
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 				clientFactory: () => deferred.promise,
 			}),
 		);
@@ -316,11 +335,13 @@ describe("ClientRegistry", () => {
 
 	it("records failed initialization and rejects callers", async () => {
 		const error = new Error("boom");
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 		registry.register(
 			createRegistryEntry({
 				key: "flaky",
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 				clientFactory: () => {
 					throw error;
 				},
@@ -329,23 +350,25 @@ describe("ClientRegistry", () => {
 
 		await expect(registry.initialize("flaky")).rejects.toBe(error);
 		expect(registry.clientRecordFor("flaky").get().status).toBe(
-			ClientRegistryEntryStatus.Failed,
+			TokenSetClientRegistryEntryStatus.Failed,
 		);
 		expect(registry.entries.get()).toMatchObject([
 			{
 				meta: { clientKey: "flaky" },
-				status: ClientRegistryEntryStatus.Failed,
+				status: TokenSetClientRegistryEntryStatus.Failed,
 			},
 		]);
 	});
 
 	it("lets clientSignalForQuery initialize lazy clients by default", async () => {
 		const factory = vi.fn(() => createClient("lazy"));
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 		registry.register(
 			createRegistryEntry({
 				key: "lazy",
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 				clientFactory: async () => factory(),
 				requirementKind: "workspace",
 			}),
@@ -361,11 +384,13 @@ describe("ClientRegistry", () => {
 
 	it("keeps query-selected lazy clients uninitialized when signal initialization is disabled", () => {
 		const factory = vi.fn(() => createClient("lazy"));
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 		registry.register(
 			createRegistryEntry({
 				key: "lazy",
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 				clientFactory: factory,
 				requirementKind: "workspace",
 			}),
@@ -378,14 +403,16 @@ describe("ClientRegistry", () => {
 		expect(signal).toBeDefined();
 		expect(factory).not.toHaveBeenCalled();
 		expect(registry.clientRecordFor("lazy").get().status).toBe(
-			ClientRegistryEntryStatus.Registered,
+			TokenSetClientRegistryEntryStatus.Registered,
 		);
 	});
 
 	it("treats re-registering the same key as a new record identity", async () => {
 		const first = createClient("first");
 		const second = createClient("second");
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 
 		registry.register(
 			createRegistryEntry({ key: "main", clientFactory: () => first }),
@@ -412,7 +439,9 @@ describe("ClientRegistry", () => {
 	it("disposes registered clients on unregister and dispose", async () => {
 		const first = createClient("first");
 		const second = createClient("second");
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 		registry.register(
 			createRegistryEntry({ key: "first", clientFactory: () => first }),
 		);
@@ -431,11 +460,13 @@ describe("ClientRegistry", () => {
 
 	it("keeps metadata lookup separate from initialization", () => {
 		const factory = vi.fn(() => createClient("api"));
-		const registry = createClientRegistry<TestClient>({ environment: {} });
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
 		registry.register(
 			createRegistryEntry({
 				key: "api",
-				initialization: ClientInitializationMode.Lazy,
+				initialization: TokenSetClientInitializationMode.Lazy,
 				clientFactory: factory,
 				urlPatterns: ["/api/"],
 				callbackPath: "/auth/callback",

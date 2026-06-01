@@ -1,11 +1,11 @@
 import { TokenSetOrchestrationTraceEvent } from "../../orchestration/client/tracing";
 import {
-	PageResumeWorkflowSource,
-	PageResumeWorkflowSourceTraceEventType,
+	TokenSetPageResumeWorkflowSource,
+	TokenSetPageResumeWorkflowSourceTraceEventType,
 } from "../../orchestration/client/workflows/source/page-resume";
 import {
-	RefreshTimerWorkflowSource,
-	RefreshTimerWorkflowSourceTraceEventType,
+	TokenSetRefreshTimerWorkflowSource,
+	TokenSetRefreshTimerWorkflowSourceTraceEventType,
 } from "../../orchestration/client/workflows/source/refresh-timer";
 
 const TRACE_PREFIX = "backend_oidc";
@@ -43,9 +43,9 @@ export type BackendOidcModeOperationEventName =
 export const BackendOidcModeComposedTraceEventType = {
 	PersistedRestoreFailed: `${TRACE_PREFIX}.${TokenSetOrchestrationTraceEvent.PersistedRestoreFailed}`,
 	StateRestored: `${TRACE_PREFIX}.${TokenSetOrchestrationTraceEvent.StateRestored}`,
-	RefreshTimerScheduled: `${TRACE_PREFIX}.${RefreshTimerWorkflowSource.name}.${RefreshTimerWorkflowSourceTraceEventType.Scheduled}`,
-	RefreshTimerFired: `${TRACE_PREFIX}.${RefreshTimerWorkflowSource.name}.${RefreshTimerWorkflowSourceTraceEventType.Fired}`,
-	PageResumeFired: `${TRACE_PREFIX}.${PageResumeWorkflowSource.name}.${PageResumeWorkflowSourceTraceEventType.Fired}`,
+	RefreshTimerScheduled: `${TRACE_PREFIX}.${TokenSetRefreshTimerWorkflowSource.name}.${TokenSetRefreshTimerWorkflowSourceTraceEventType.Scheduled}`,
+	RefreshTimerFired: `${TRACE_PREFIX}.${TokenSetRefreshTimerWorkflowSource.name}.${TokenSetRefreshTimerWorkflowSourceTraceEventType.Fired}`,
+	PageResumeFired: `${TRACE_PREFIX}.${TokenSetPageResumeWorkflowSource.name}.${TokenSetPageResumeWorkflowSourceTraceEventType.Fired}`,
 } as const;
 
 export type BackendOidcModeComposedTraceEventType =

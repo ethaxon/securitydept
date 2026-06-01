@@ -10,13 +10,13 @@ import {
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
-	type AuthSnapshot,
 	type TokenSetAuthEvent,
+	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	ClientInitializationMode,
-	type ClientRegistryEntry,
-	createClientRegistry,
+	createTokenSetClientRegistry,
+	TokenSetClientInitializationMode,
+	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
@@ -64,7 +64,7 @@ async function waitFor(predicate: () => boolean, attempts = 10) {
 	throw new Error("Timed out waiting for query state to settle");
 }
 
-function createSnapshot(accessToken: string): AuthSnapshot {
+function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 	return {
 		tokens: { accessToken },
 		metadata: {},
@@ -74,7 +74,7 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 function createManualRegistry(
 	clients: readonly TokenSetClientEntry[],
 ): ReactRegistry {
-	const registry = createClientRegistry<TokenSetReactClient>({
+	const registry = createTokenSetClientRegistry<TokenSetReactClient>({
 		environment: {},
 	});
 
@@ -87,7 +87,7 @@ function createManualRegistry(
 
 function toCoreEntry(
 	entry: TokenSetClientEntry,
-): ClientRegistryEntry<TokenSetReactClient> {
+): TokenSetClientRegistryEntry<TokenSetReactClient> {
 	return {
 		clientFactory: entry.clientFactory,
 		meta: {
@@ -97,7 +97,7 @@ function toCoreEntry(
 			requirementKind: entry.requirementKind,
 			providerFamily: entry.providerFamily,
 			initialization:
-				entry.initialization ?? ClientInitializationMode.Immediate,
+				entry.initialization ?? TokenSetClientInitializationMode.Immediate,
 		},
 	};
 }
@@ -110,7 +110,7 @@ describe("react-query integration evidence", () => {
 			{
 				key: "main",
 				clientFactory: () => ({
-					state: createSignal<AuthSnapshot | null>(snapshot),
+					state: createSignal<TokenSetAuthSnapshot | null>(snapshot),
 					...reactive.fields,
 					authEvents: createEventSubject<TokenSetAuthEvent>(),
 					addWorkflowSource: () => ({ unsubscribe: () => undefined }),
@@ -178,7 +178,7 @@ describe("react-query integration evidence", () => {
 			{
 				key: "main",
 				clientFactory: () => ({
-					state: createSignal<AuthSnapshot | null>(snapshot),
+					state: createSignal<TokenSetAuthSnapshot | null>(snapshot),
 					...reactive.fields,
 					authEvents: createEventSubject<TokenSetAuthEvent>(),
 					addWorkflowSource: () => ({ unsubscribe: () => undefined }),

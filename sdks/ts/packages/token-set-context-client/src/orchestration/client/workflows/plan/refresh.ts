@@ -1,34 +1,34 @@
 import { type TimeTrait } from "@securitydept/client";
 import {
-	getAccessTokenFreshnessTiming,
-	TokenFreshnessState,
-	type TokenFreshnessTiming,
+	getTokenSetAccessTokenFreshnessTiming,
+	TokenSetTokenFreshnessState,
+	type TokenSetTokenFreshnessTiming,
 } from "../../../token/freshness";
-import { type AuthSnapshot } from "../../../token/types";
+import { type TokenSetAuthSnapshot } from "../../../token/types";
 import {
-	type AuthDeterminationCandidate,
-	AuthDeterminationKind,
+	type TokenSetAuthDeterminationCandidate,
+	TokenSetAuthDeterminationKind,
 } from "../commit";
 
-export type FetchRefreshedSnapshot = (
-	snapshot: AuthSnapshot,
-	freshness: TokenFreshnessTiming,
-) => Promise<AuthSnapshot | null>;
+export type TokenSetFetchRefreshedSnapshot = (
+	snapshot: TokenSetAuthSnapshot,
+	freshness: TokenSetTokenFreshnessTiming,
+) => Promise<TokenSetAuthSnapshot | null>;
 
-export interface PlanRefreshFreshnessOptions {
+export interface TokenSetPlanRefreshFreshnessOptions {
 	clockSkewMs: number;
 	refreshWindowMs: number;
 }
 
-export interface PlanRefreshRequest {
-	snapshot: AuthSnapshot;
-	freshnessOptions: PlanRefreshFreshnessOptions;
+export interface TokenSetPlanRefreshRequest {
+	snapshot: TokenSetAuthSnapshot;
+	freshnessOptions: TokenSetPlanRefreshFreshnessOptions;
 	time: TimeTrait;
-	fetchRefreshedSnapshot: FetchRefreshedSnapshot;
+	fetchRefreshedSnapshot: TokenSetFetchRefreshedSnapshot;
 }
 
-export type PlanRefreshResponse = AuthDeterminationCandidate & {
-	freshness: TokenFreshnessTiming;
+export type TokenSetPlanRefreshResponse = TokenSetAuthDeterminationCandidate & {
+	freshness: TokenSetTokenFreshnessTiming;
 };
 
 export async function planRefresh({
@@ -36,19 +36,23 @@ export async function planRefresh({
 	freshnessOptions,
 	fetchRefreshedSnapshot,
 	time,
-}: PlanRefreshRequest): Promise<PlanRefreshResponse> {
+}: TokenSetPlanRefreshRequest): Promise<TokenSetPlanRefreshResponse> {
 	const now = time.now();
-	const freshnessTiming = getAccessTokenFreshnessTiming(snapshot.tokens, now, {
-		...freshnessOptions,
-	});
+	const freshnessTiming = getTokenSetAccessTokenFreshnessTiming(
+		snapshot.tokens,
+		now,
+		{
+			...freshnessOptions,
+		},
+	);
 	const freshnessState = freshnessTiming.state;
 
 	if (
-		freshnessState === TokenFreshnessState.Fresh ||
-		freshnessState === TokenFreshnessState.NoExpiry
+		freshnessState === TokenSetTokenFreshnessState.Fresh ||
+		freshnessState === TokenSetTokenFreshnessState.NoExpiry
 	) {
 		return {
-			kind: AuthDeterminationKind.Authenticated,
+			kind: TokenSetAuthDeterminationKind.Authenticated,
 			snapshot,
 			freshness: freshnessTiming,
 		};
@@ -56,7 +60,7 @@ export async function planRefresh({
 
 	if (!snapshot.tokens.refreshMaterial) {
 		return {
-			kind: AuthDeterminationKind.Unauthenticated,
+			kind: TokenSetAuthDeterminationKind.Unauthenticated,
 			freshness: freshnessTiming,
 		};
 	}
@@ -68,18 +72,18 @@ export async function planRefresh({
 		);
 		if (refreshedSnapshot) {
 			return {
-				kind: AuthDeterminationKind.Authenticated,
+				kind: TokenSetAuthDeterminationKind.Authenticated,
 				snapshot: refreshedSnapshot,
 				freshness: freshnessTiming,
 			};
 		}
 		return {
-			kind: AuthDeterminationKind.Unauthenticated,
+			kind: TokenSetAuthDeterminationKind.Unauthenticated,
 			freshness: freshnessTiming,
 		};
 	} catch (error) {
 		return {
-			kind: AuthDeterminationKind.Failed,
+			kind: TokenSetAuthDeterminationKind.Failed,
 			freshness: freshnessTiming,
 			error,
 		};

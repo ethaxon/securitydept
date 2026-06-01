@@ -3,26 +3,26 @@ import {
 	type FoundationEnvironment,
 } from "@securitydept/client";
 
-export const ClientInitializationMode = {
+export const TokenSetClientInitializationMode = {
 	Immediate: "immediate",
 	Idle: "idle",
 	Lazy: "lazy",
 } as const;
 
-export type ClientInitializationMode =
-	(typeof ClientInitializationMode)[keyof typeof ClientInitializationMode];
+export type TokenSetClientInitializationMode =
+	(typeof TokenSetClientInitializationMode)[keyof typeof TokenSetClientInitializationMode];
 
-export const ClientRegistryEntryStatus = {
+export const TokenSetClientRegistryEntryStatus = {
 	Registered: "registered",
 	Initializing: "initializing",
 	Ready: "ready",
 	Failed: "failed",
 } as const;
 
-export type ClientRegistryEntryStatus =
-	(typeof ClientRegistryEntryStatus)[keyof typeof ClientRegistryEntryStatus];
+export type TokenSetClientRegistryEntryStatus =
+	(typeof TokenSetClientRegistryEntryStatus)[keyof typeof TokenSetClientRegistryEntryStatus];
 
-export const ClientRegistryEventType = {
+export const TokenSetClientRegistryEventType = {
 	Registered: "registered",
 	Initializing: "initializing",
 	Ready: "ready",
@@ -30,19 +30,19 @@ export const ClientRegistryEventType = {
 	Disposed: "disposed",
 } as const;
 
-export type ClientRegistryEventType =
-	(typeof ClientRegistryEventType)[keyof typeof ClientRegistryEventType];
+export type TokenSetClientRegistryEventType =
+	(typeof TokenSetClientRegistryEventType)[keyof typeof TokenSetClientRegistryEventType];
 
-export interface ClientRegistryEntry<TClient extends DisposableTrait> {
+export interface TokenSetClientRegistryEntry<TClient extends DisposableTrait> {
 	clientFactory: () => TClient | Promise<TClient>;
-	meta: ClientMeta;
+	meta: TokenSetClientMeta;
 }
 
-export interface ClientSignalOptions {
+export interface TokenSetClientSignalOptions {
 	readonly initialize?: boolean;
 }
 
-export interface ClientMeta {
+export interface TokenSetClientMeta {
 	readonly clientKey: string;
 	readonly urlPatterns: ReadonlyArray<
 		string | RegExp | ((url: string) => boolean)
@@ -50,73 +50,75 @@ export interface ClientMeta {
 	readonly callbackPath: string | undefined;
 	readonly requirementKind: string | undefined;
 	readonly providerFamily: string | undefined;
-	readonly initialization: ClientInitializationMode;
+	readonly initialization: TokenSetClientInitializationMode;
 }
 
-export interface ClientRecordViewBase<TClient extends DisposableTrait> {
+export interface TokenSetClientRecordViewBase<TClient extends DisposableTrait> {
 	readonly id: string;
-	readonly entry: ClientRegistryEntry<TClient>;
-	readonly meta: ClientMeta;
+	readonly entry: TokenSetClientRegistryEntry<TClient>;
+	readonly meta: TokenSetClientMeta;
 }
 
-export type ClientRegisteredRecordView<TClient extends DisposableTrait> =
-	ClientRecordViewBase<TClient> & {
-		readonly status: typeof ClientRegistryEntryStatus.Registered;
-		readonly client?: undefined;
-		readonly error?: undefined;
-	};
+export type TokenSetClientRegisteredRecordView<
+	TClient extends DisposableTrait,
+> = TokenSetClientRecordViewBase<TClient> & {
+	readonly status: typeof TokenSetClientRegistryEntryStatus.Registered;
+	readonly client?: undefined;
+	readonly error?: undefined;
+};
 
-export type ClientInitializingRecordView<TClient extends DisposableTrait> =
-	ClientRecordViewBase<TClient> & {
-		readonly status: typeof ClientRegistryEntryStatus.Initializing;
-		readonly client?: undefined;
-		readonly error?: undefined;
-	};
+export type TokenSetClientInitializingRecordView<
+	TClient extends DisposableTrait,
+> = TokenSetClientRecordViewBase<TClient> & {
+	readonly status: typeof TokenSetClientRegistryEntryStatus.Initializing;
+	readonly client?: undefined;
+	readonly error?: undefined;
+};
 
-export type ClientReadyRecordView<TClient extends DisposableTrait> =
-	ClientRecordViewBase<TClient> & {
-		readonly status: typeof ClientRegistryEntryStatus.Ready;
+export type TokenSetClientReadyRecordView<TClient extends DisposableTrait> =
+	TokenSetClientRecordViewBase<TClient> & {
+		readonly status: typeof TokenSetClientRegistryEntryStatus.Ready;
 		readonly client: TClient;
 		readonly error?: undefined;
 	};
 
-export type ClientFailedRecordView<TClient extends DisposableTrait> =
-	ClientRecordViewBase<TClient> & {
-		readonly status: typeof ClientRegistryEntryStatus.Failed;
+export type TokenSetClientFailedRecordView<TClient extends DisposableTrait> =
+	TokenSetClientRecordViewBase<TClient> & {
+		readonly status: typeof TokenSetClientRegistryEntryStatus.Failed;
 		readonly client?: undefined;
 		readonly error: unknown;
 	};
 
-export type ClientDisposedRecordView<TClient extends DisposableTrait> =
-	ClientRecordViewBase<TClient> & {
-		readonly status: typeof ClientRegistryEventType.Disposed;
+export type TokenSetClientDisposedRecordView<TClient extends DisposableTrait> =
+	TokenSetClientRecordViewBase<TClient> & {
+		readonly status: typeof TokenSetClientRegistryEventType.Disposed;
 		readonly client?: undefined;
 		readonly error?: undefined;
 	};
 
-export type ClientRecordView<TClient extends DisposableTrait> =
-	| ClientRegisteredRecordView<TClient>
-	| ClientInitializingRecordView<TClient>
-	| ClientReadyRecordView<TClient>
-	| ClientFailedRecordView<TClient>;
+export type TokenSetClientRecordView<TClient extends DisposableTrait> =
+	| TokenSetClientRegisteredRecordView<TClient>
+	| TokenSetClientInitializingRecordView<TClient>
+	| TokenSetClientReadyRecordView<TClient>
+	| TokenSetClientFailedRecordView<TClient>;
 
-export type ClientRegistryEvent<TClient extends DisposableTrait> =
-	| (ClientRegisteredRecordView<TClient> & {
-			type: typeof ClientRegistryEventType.Registered;
+export type TokenSetClientRegistryEvent<TClient extends DisposableTrait> =
+	| (TokenSetClientRegisteredRecordView<TClient> & {
+			type: typeof TokenSetClientRegistryEventType.Registered;
 	  })
-	| (ClientInitializingRecordView<TClient> & {
-			type: typeof ClientRegistryEventType.Initializing;
+	| (TokenSetClientInitializingRecordView<TClient> & {
+			type: typeof TokenSetClientRegistryEventType.Initializing;
 	  })
-	| (ClientReadyRecordView<TClient> & {
-			type: typeof ClientRegistryEventType.Ready;
+	| (TokenSetClientReadyRecordView<TClient> & {
+			type: typeof TokenSetClientRegistryEventType.Ready;
 	  })
-	| (ClientFailedRecordView<TClient> & {
-			type: typeof ClientRegistryEventType.Failed;
+	| (TokenSetClientFailedRecordView<TClient> & {
+			type: typeof TokenSetClientRegistryEventType.Failed;
 	  })
-	| (ClientDisposedRecordView<TClient> & {
-			type: typeof ClientRegistryEventType.Disposed;
+	| (TokenSetClientDisposedRecordView<TClient> & {
+			type: typeof TokenSetClientRegistryEventType.Disposed;
 	  });
 
-export interface CreateClientRegistryOptions {
+export interface CreateTokenSetClientRegistryOptions {
 	environment: Pick<FoundationEnvironment, "idleCallback">;
 }

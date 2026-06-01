@@ -53,51 +53,54 @@ import {
 	TokenSetAuthEventType,
 } from "../events/auth-events";
 import {
-	type TokenFreshnessOptions,
-	TokenFreshnessState,
-	type TokenFreshnessTiming,
+	type TokenSetTokenFreshnessOptions,
+	TokenSetTokenFreshnessState,
+	type TokenSetTokenFreshnessTiming,
 } from "../token/freshness";
-import { bearerHeader } from "../token/ops";
-import { type AuthSnapshot } from "../token/types";
+import { tokenSetBearerHeader } from "../token/ops";
+import { type TokenSetAuthSnapshot } from "../token/types";
 import {
-	type AuthSnapshotPersistenceOptions,
 	clearPersistedAuthSnapshot,
 	savePersistedAuthSnapshot,
+	type TokenSetAuthSnapshotPersistenceOptions,
 } from "./persistence";
 import {
 	type BaseOidcModeClientDefaultOptions,
 	type BaseOidcModeClientOptions,
 	type BaseOidcModeClientTracingOptions,
-	type OidcPopupLoginOptions,
-	type OidcPopupLoginResult,
-	type OidcRedirectLoginOptions,
 	type TokenSetAuthOperationSignals,
+	type TokenSetOidcPopupLoginOptions,
+	type TokenSetOidcPopupLoginResult,
+	type TokenSetOidcRedirectLoginOptions,
 } from "./types";
 import {
-	type AuthDeterminationCommit,
-	type AuthDeterminationEvent,
-	AuthDeterminationKind,
 	PersistPolicy,
+	type TokenSetAuthDeterminationCommit,
+	type TokenSetAuthDeterminationEvent,
+	TokenSetAuthDeterminationKind,
 } from "./workflows/commit";
 
 export { PersistPolicy } from "./workflows/commit";
 
 import { TokenSetOrchestrationTraceEvent } from "./tracing";
-import { type PlanClearRequest, planClear } from "./workflows/plan/clear";
 import {
-	type FetchRefreshedSnapshot,
-	type PlanRefreshRequest,
-	type PlanRefreshResponse,
+	planClear,
+	type TokenSetPlanClearRequest,
+} from "./workflows/plan/clear";
+import {
 	planRefresh,
+	type TokenSetFetchRefreshedSnapshot,
+	type TokenSetPlanRefreshRequest,
+	type TokenSetPlanRefreshResponse,
 } from "./workflows/plan/refresh";
 import {
-	type PlanRestorePersistedRequest,
-	type PlanRestoreRequest,
 	planRestore,
 	planRestorePersisted,
+	type TokenSetPlanRestorePersistedRequest,
+	type TokenSetPlanRestoreRequest,
 } from "./workflows/plan/restore";
-import { PageResumeWorkflowSource } from "./workflows/source/page-resume";
-import { RefreshTimerWorkflowSource } from "./workflows/source/refresh-timer";
+import { TokenSetPageResumeWorkflowSource } from "./workflows/source/page-resume";
+import { TokenSetRefreshTimerWorkflowSource } from "./workflows/source/refresh-timer";
 
 const instrumentWorkflowMethod = defineInstrumentMethodDecorator<
 	[workflow: string],
@@ -124,12 +127,12 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	} as const satisfies BaseOidcModeClientDefaultOptions;
 
 	protected readonly _environment: FoundationEnvironment;
-	protected readonly _freshnessOptions: TokenFreshnessOptions;
+	protected readonly _freshnessOptions: TokenSetTokenFreshnessOptions;
 	protected readonly _tracingOptions: BaseOidcModeClientTracingOptions;
-	protected readonly _persistence: AuthSnapshotPersistenceOptions | null;
+	protected readonly _persistence: TokenSetAuthSnapshotPersistenceOptions | null;
 	protected readonly _span: SpanTrait;
 	protected readonly _authSnapshotSignal =
-		createReplaySignal<AuthSnapshot | null>();
+		createReplaySignal<TokenSetAuthSnapshot | null>();
 
 	private readonly _lastAuthErrorSignal = createSignal<unknown | undefined>(
 		undefined,
@@ -171,14 +174,17 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		createEventReplaySubject<TokenSetAuthEvent>(100);
 	readonly refreshWorkflowSubject = createEventSubject<void>();
 	readonly planRefreshRequest =
-		createEventSubject<Command<PlanRefreshRequest>>();
+		createEventSubject<Command<TokenSetPlanRefreshRequest>>();
 	readonly planRefreshResponse =
 		createEventSubject<
-			CommandResponse<Command<PlanRefreshRequest>, PlanRefreshResponse>
+			CommandResponse<
+				Command<TokenSetPlanRefreshRequest>,
+				TokenSetPlanRefreshResponse
+			>
 		>();
 
 	readonly authDetermined: ReadableReplaySignalTrait<true>;
-	readonly authSnapshot: ReadableReplaySignalTrait<AuthSnapshot | null>;
+	readonly authSnapshot: ReadableReplaySignalTrait<TokenSetAuthSnapshot | null>;
 	readonly isAuthenticated: ReadableReplaySignalTrait<boolean>;
 	readonly authorizationHeaderValue: ReadableReplaySignalTrait<
 		string | undefined
@@ -193,8 +199,8 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	};
 	readonly authEvents: EventStreamTrait<TokenSetAuthEvent> =
 		this._authEventSubject;
-	readonly refreshTimerWorkflowSource: RefreshTimerWorkflowSource;
-	readonly pageResumeWorkflowSource: PageResumeWorkflowSource;
+	readonly refreshTimerWorkflowSource: TokenSetRefreshTimerWorkflowSource;
+	readonly pageResumeWorkflowSource: TokenSetPageResumeWorkflowSource;
 	readonly id: string;
 
 	protected get environment(): FoundationEnvironment {
@@ -205,10 +211,12 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		return this._span;
 	}
 
-	abstract loginWithRedirect(options?: OidcRedirectLoginOptions): Promise<void>;
+	abstract loginWithRedirect(
+		options?: TokenSetOidcRedirectLoginOptions,
+	): Promise<void>;
 	abstract loginWithPopup(
-		options: OidcPopupLoginOptions,
-	): Promise<OidcPopupLoginResult>;
+		options: TokenSetOidcPopupLoginOptions,
+	): Promise<TokenSetOidcPopupLoginResult>;
 
 	protected constructor(options: BaseOidcModeClientOptions) {
 		this._environment = options.environment;
@@ -242,7 +250,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			this._authSnapshotSignal,
 			(snapshot) => ({
 				kind: "value",
-				value: bearerHeader(snapshot?.tokens) ?? undefined,
+				value: tokenSetBearerHeader(snapshot?.tokens) ?? undefined,
 			}),
 		);
 		this.isAuthenticated = createAndThenComputedReplaySignal(
@@ -250,36 +258,38 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			(headerValue) => ({ kind: "value", value: headerValue !== undefined }),
 		);
 
-		this.refreshTimerWorkflowSource = RefreshTimerWorkflowSource.fromBuiltin(
-			{
-				time: options.environment.time,
-				freshnessOptions: this._freshnessOptions,
-				authSnapshot: this.authSnapshot,
-				recordTrace: (type, attributes) => {
-					this._recordTrace(
-						`${this._tracingOptions.prefix}.${RefreshTimerWorkflowSource.name}.${type}`,
-						attributes,
-						this._span,
-					);
+		this.refreshTimerWorkflowSource =
+			TokenSetRefreshTimerWorkflowSource.fromBuiltin(
+				{
+					time: options.environment.time,
+					freshnessOptions: this._freshnessOptions,
+					authSnapshot: this.authSnapshot,
+					recordTrace: (type, attributes) => {
+						this._recordTrace(
+							`${this._tracingOptions.prefix}.${TokenSetRefreshTimerWorkflowSource.name}.${type}`,
+							attributes,
+							this._span,
+						);
+					},
 				},
-			},
-			options.refresh?.sources?.[RefreshTimerWorkflowSource.name],
-		);
+				options.refresh?.sources?.[TokenSetRefreshTimerWorkflowSource.name],
+			);
 
-		this.pageResumeWorkflowSource = PageResumeWorkflowSource.fromBuiltin(
-			{
-				pageLifecycle: options.environment.pageLifecycle,
-				time: options.environment.time,
-				recordTrace: (type, attributes) => {
-					this._recordTrace(
-						`${this._tracingOptions.prefix}.${PageResumeWorkflowSource.name}.${type}`,
-						attributes,
-						this._span,
-					);
+		this.pageResumeWorkflowSource =
+			TokenSetPageResumeWorkflowSource.fromBuiltin(
+				{
+					pageLifecycle: options.environment.pageLifecycle,
+					time: options.environment.time,
+					recordTrace: (type, attributes) => {
+						this._recordTrace(
+							`${this._tracingOptions.prefix}.${TokenSetPageResumeWorkflowSource.name}.${type}`,
+							attributes,
+							this._span,
+						);
+					},
 				},
-			},
-			options.refresh?.sources?.[PageResumeWorkflowSource.name],
-		);
+				options.refresh?.sources?.[TokenSetPageResumeWorkflowSource.name],
+			);
 
 		merge(
 			from(this.pageResumeWorkflowSource.eventStream),
@@ -314,9 +324,9 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	}
 
 	async restoreState(
-		snapshot: AuthSnapshot,
+		snapshot: TokenSetAuthSnapshot,
 		options: { persistPolicy?: PersistPolicy } = {},
-	): Promise<AuthSnapshot> {
+	): Promise<TokenSetAuthSnapshot> {
 		this._throwIfNotOperational();
 		return this._restoreState(
 			{
@@ -326,7 +336,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		);
 	}
 
-	async restorePersistedState(): Promise<AuthSnapshot | null> {
+	async restorePersistedState(): Promise<TokenSetAuthSnapshot | null> {
 		this._throwIfNotOperational();
 		if (this._persistence === null) {
 			throw new ClientError({
@@ -356,7 +366,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		await this._clearState({}, options);
 	}
 
-	async refreshState(): Promise<AuthSnapshot | null> {
+	async refreshState(): Promise<TokenSetAuthSnapshot | null> {
 		this._throwIfNotOperational();
 		const determinatedSnapshot = await this.authSnapshot.whenValue({
 			cancellationToken: this._rootCancellation.token,
@@ -369,15 +379,15 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	}
 
 	protected async _applySnapshot(
-		snapshot: AuthSnapshot,
+		snapshot: TokenSetAuthSnapshot,
 		options: { persistPolicy?: PersistPolicy } = {},
 		span?: SpanTrait,
-	): Promise<AuthSnapshot> {
+	): Promise<TokenSetAuthSnapshot> {
 		this._throwIfNotOperational();
 		return await this._commitDetermination(
 			{
 				candidate: {
-					kind: AuthDeterminationKind.Authenticated,
+					kind: TokenSetAuthDeterminationKind.Authenticated,
 					snapshot,
 				},
 				persistPolicy: options.persistPolicy ?? PersistPolicy.FollowClient,
@@ -395,7 +405,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 
 	private _createRefreshFetcher(
 		operationSpan?: SpanTrait,
-	): FetchRefreshedSnapshot {
+	): TokenSetFetchRefreshedSnapshot {
 		return async (snapshot, freshnessTiming) => {
 			const hasRefreshMaterial = snapshot.tokens.refreshMaterial != null;
 			this._emitAuthEvent({
@@ -427,11 +437,11 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	@instrumentWorkflowMethod("refresh")
 	protected async _refreshState(
 		request: {
-			snapshot: AuthSnapshot | null;
-			freshnessOptions: TokenFreshnessOptions;
+			snapshot: TokenSetAuthSnapshot | null;
+			freshnessOptions: TokenSetTokenFreshnessOptions;
 		},
 		operationSpan?: OperationSpanTrait,
-	): Promise<AuthSnapshot | null> {
+	): Promise<TokenSetAuthSnapshot | null> {
 		this._throwIfNotOperational();
 		try {
 			this._authOperationSignals.refreshPending.set(true);
@@ -450,7 +460,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				operationSpan,
 			);
 			this._throwIfNotOperational();
-			if (refreshPlan.kind === AuthDeterminationKind.Failed) {
+			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
 				return this._commitDetermination(
 					{
 						candidate: refreshPlan,
@@ -482,7 +492,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					persistPolicy: PersistPolicy.FollowClient,
 					events: [
 						...this._buildRefreshLifecycleEvents(currentSnapshot, refreshPlan),
-						refreshPlan.kind === AuthDeterminationKind.Authenticated
+						refreshPlan.kind === TokenSetAuthDeterminationKind.Authenticated
 							? {
 									type: TokenSetAuthEventType.AuthAuthenticated,
 									payload: {},
@@ -508,7 +518,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 
 	@instrumentWorkflowMethod("clear")
 	protected async _clearState(
-		request: PlanClearRequest,
+		request: TokenSetPlanClearRequest,
 		options: { persistPolicy?: PersistPolicy } | undefined,
 		operationSpan?: OperationSpanTrait,
 	): Promise<null> {
@@ -541,10 +551,10 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 
 	@instrumentWorkflowMethod("restore")
 	protected async _restoreState(
-		request: PlanRestoreRequest,
+		request: TokenSetPlanRestoreRequest,
 		options: { persistPolicy?: PersistPolicy } | undefined,
 		operationSpan?: OperationSpanTrait,
-	): Promise<AuthSnapshot> {
+	): Promise<TokenSetAuthSnapshot> {
 		this._throwIfNotOperational();
 		this._authOperationSignals.restorePending.set(true);
 		try {
@@ -580,9 +590,9 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 
 	@instrumentWorkflowMethod("restore.persisted")
 	protected async _restorePersistedState(
-		request: PlanRestorePersistedRequest,
+		request: TokenSetPlanRestorePersistedRequest,
 		operationSpan?: OperationSpanTrait,
-	): Promise<AuthSnapshot | null> {
+	): Promise<TokenSetAuthSnapshot | null> {
 		this._throwIfNotOperational();
 		this._emitAuthEvent({
 			type: TokenSetAuthEventType.AuthMaterialRestoreStarted,
@@ -597,7 +607,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			this._authOperationSignals.restorePending.set(true);
 			const restorePlan = await planRestorePersisted(request);
 			this._throwIfNotOperational();
-			if (restorePlan.kind === AuthDeterminationKind.Failed) {
+			if (restorePlan.kind === TokenSetAuthDeterminationKind.Failed) {
 				return this._commitDetermination(
 					{
 						candidate: restorePlan,
@@ -622,7 +632,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					operationSpan,
 				);
 			}
-			if (restorePlan.kind === AuthDeterminationKind.Unauthenticated) {
+			if (restorePlan.kind === TokenSetAuthDeterminationKind.Unauthenticated) {
 				return this._commitDetermination(
 					{
 						candidate: restorePlan,
@@ -653,7 +663,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				operationSpan,
 			);
 			this._throwIfNotOperational();
-			if (refreshPlan.kind === AuthDeterminationKind.Failed) {
+			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
 				return this._commitDetermination(
 					{
 						candidate: refreshPlan,
@@ -682,7 +692,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					operationSpan,
 				);
 			}
-			if (refreshPlan.kind === AuthDeterminationKind.Authenticated) {
+			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Authenticated) {
 				return this._commitDetermination(
 					{
 						candidate: refreshPlan,
@@ -742,9 +752,12 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	}
 
 	private async _planRefreshInQueue(
-		request: Omit<PlanRefreshRequest, "fetchRefreshedSnapshot" | "time">,
+		request: Omit<
+			TokenSetPlanRefreshRequest,
+			"fetchRefreshedSnapshot" | "time"
+		>,
 		operationSpan?: SpanTrait,
-	): Promise<PlanRefreshResponse> {
+	): Promise<TokenSetPlanRefreshResponse> {
 		this._throwIfNotOperational();
 		const refreshedPlan = await dispatchCommandLocallyToPromise({
 			requestStream: this.planRefreshRequest,
@@ -786,10 +799,10 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	}
 
 	protected abstract _refreshAuthSnapshot(
-		authSnapshot: AuthSnapshot,
-		freshnessTiming: TokenFreshnessTiming,
+		authSnapshot: TokenSetAuthSnapshot,
+		freshnessTiming: TokenSetTokenFreshnessTiming,
 		operationSpan?: SpanTrait,
-	): Promise<AuthSnapshot | null>;
+	): Promise<TokenSetAuthSnapshot | null>;
 
 	protected _onDispose(): void {
 		// Default no-op. Subclasses override as needed.
@@ -800,7 +813,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	}
 
 	private async _commitDetermination<TResult>(
-		commit: AuthDeterminationCommit<TResult>,
+		commit: TokenSetAuthDeterminationCommit<TResult>,
 		span?: SpanTrait,
 	): Promise<TResult> {
 		this._throwIfNotOperational();
@@ -834,7 +847,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	}
 
 	private async _syncPersistence<TResult>(
-		commit: AuthDeterminationCommit<TResult>,
+		commit: TokenSetAuthDeterminationCommit<TResult>,
 	): Promise<void> {
 		if (
 			commit.persistPolicy !== PersistPolicy.FollowClient ||
@@ -879,16 +892,16 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	}
 
 	private _buildRefreshLifecycleEvents(
-		snapshotBeforeRefresh: AuthSnapshot,
-		refreshPlan: PlanRefreshResponse,
-	): AuthDeterminationEvent[] {
-		const events: AuthDeterminationEvent[] = [];
+		snapshotBeforeRefresh: TokenSetAuthSnapshot,
+		refreshPlan: TokenSetPlanRefreshResponse,
+	): TokenSetAuthDeterminationEvent[] {
+		const events: TokenSetAuthDeterminationEvent[] = [];
 		if (
 			snapshotBeforeRefresh.tokens.refreshMaterial != null &&
-			refreshPlan.freshness.state !== TokenFreshnessState.Fresh &&
-			refreshPlan.freshness.state !== TokenFreshnessState.NoExpiry
+			refreshPlan.freshness.state !== TokenSetTokenFreshnessState.Fresh &&
+			refreshPlan.freshness.state !== TokenSetTokenFreshnessState.NoExpiry
 		) {
-			if (refreshPlan.kind === AuthDeterminationKind.Authenticated) {
+			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Authenticated) {
 				events.push({
 					type: TokenSetAuthEventType.AuthRefreshSucceeded,
 					payload: {
@@ -897,7 +910,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					},
 				});
 			}
-			if (refreshPlan.kind === AuthDeterminationKind.Failed) {
+			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
 				events.push({
 					type: TokenSetAuthEventType.AuthRefreshFailed,
 					payload: {

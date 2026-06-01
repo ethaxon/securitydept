@@ -14,7 +14,7 @@ import {
 	type BaseOidcModeClientDefaultOptions,
 	type OidcModeClientConfigBase,
 } from "../../orchestration/client/types";
-import { type AuthSnapshot } from "../../orchestration/token/types";
+import { type TokenSetAuthSnapshot } from "../../orchestration/token/types";
 
 // ---------------------------------------------------------------------------
 // Mode-specific constants
@@ -217,7 +217,7 @@ export interface FrontendOidcModeAuthorizeResult {
  * Token material received from a successful authorization code exchange.
  *
  * This is the bridge between oauth4webapi's token response and our
- * orchestration layer's AuthSnapshot format.
+ * orchestration layer's TokenSetAuthSnapshot format.
  */
 export interface FrontendOidcModeTokenResult {
 	/** The access token. */
@@ -244,7 +244,7 @@ export interface FrontendOidcModeTokenResult {
  */
 export interface FrontendOidcModeCallbackResult {
 	/** The auth state snapshot, already persisted and reflected in `state` signal. */
-	snapshot: AuthSnapshot;
+	snapshot: TokenSetAuthSnapshot;
 	/** The app-level redirect URI from `authorizeUrl()`, if any. */
 	postAuthRedirectUri?: string;
 }

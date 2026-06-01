@@ -73,15 +73,15 @@ export { FrontendOidcModeConfigProjectionSchema } from "./contracts/schemas";
 // --- Config projection source contract (core — no web runtime assumptions) ---
 
 export {
-	type ConfigProjectionSource,
-	type ConfigProjectionSourceBootstrapScript,
-	type ConfigProjectionSourceInline,
-	ConfigProjectionSourceKind,
-	type ConfigProjectionSourceNetwork,
-	type ConfigProjectionSourcePersisted,
-	type PersistedConfigEnvelope,
-	type ResolvedConfigProjection,
 	resolveConfigProjection,
+	type TokenSetConfigProjectionSource,
+	type TokenSetConfigProjectionSourceBootstrapScript,
+	type TokenSetConfigProjectionSourceInline,
+	TokenSetConfigProjectionSourceKind,
+	type TokenSetConfigProjectionSourceNetwork,
+	type TokenSetConfigProjectionSourcePersisted,
+	type TokenSetPersistedConfigEnvelope,
+	type TokenSetResolvedConfigProjection,
 } from "./config/config-source";
 
 // --- Config projection web/browser runtime helpers ---
@@ -94,11 +94,11 @@ export {
 	createFrontendOidcModeWebClientEnvironment,
 	type FrontendOidcModeBrowserClientMaterialization,
 	type FrontendOidcModeWebClientEnvironment,
-	type IdleRevalidationOptions,
 	networkConfigSource,
 	persistConfigProjection,
 	persistedConfigSource,
 	resolveFrontendOidcModeBrowserStorageKey,
 	resolveFrontendOidcModePersistentStateKey,
 	scheduleIdleRevalidation,
+	type TokenSetIdleRevalidationOptions,
 } from "./config/config-source-web";

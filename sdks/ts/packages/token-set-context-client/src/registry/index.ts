@@ -5,42 +5,42 @@
 // and lifecycle events. It does not own token-set auth semantics.
 
 export {
-	type CheckClientAuthenticated,
-	ClientRegistryAuthRequirement,
-	type ClientRegistryAuthRequirementContext,
-	type ClientRegistryAuthRequirementInput,
-	type ClientRegistryClientGenerator,
-	type ClientRegistryOidcModeClient,
-	ClientRegistryPlannerHost,
-	ClientRegistryRequirementBehaviour,
-	type ClientRegistryRequirementBehaviourOptions,
-	type OnClientUnauthenticated,
-	type SelectClientCandidate,
+	type TokenSetCheckClientAuthenticated,
+	TokenSetClientRegistryAuthRequirement,
+	type TokenSetClientRegistryAuthRequirementContext,
+	type TokenSetClientRegistryAuthRequirementInput,
+	type TokenSetClientRegistryClientGenerator,
+	type TokenSetClientRegistryOidcModeClient,
+	TokenSetClientRegistryPlannerHost,
+	TokenSetClientRegistryRequirementBehaviour,
+	type TokenSetClientRegistryRequirementBehaviourOptions,
+	type TokenSetOnClientUnauthenticated,
+	type TokenSetSelectClientCandidate,
 } from "./auth-coordination";
 export {
-	type ClientFilter,
-	type ClientQueryOptions,
-	type ClientSelector,
-	matchesCallbackPath,
-	matchesQuery,
-	matchesUrl,
+	matchesTokenSetClientCallbackPath,
+	matchesTokenSetClientQuery,
+	matchesTokenSetClientUrl,
+	type TokenSetClientFilter,
+	type TokenSetClientQueryOptions,
+	type TokenSetClientSelector,
 } from "./contracts/query";
 export {
-	type ClientDisposedRecordView,
-	type ClientFailedRecordView,
-	ClientInitializationMode,
-	type ClientInitializingRecordView,
-	type ClientMeta,
-	type ClientReadyRecordView,
-	type ClientRecordView,
-	type ClientRecordViewBase,
-	type ClientRegisteredRecordView,
-	type ClientRegistryEntry,
-	ClientRegistryEntryStatus,
-	type ClientRegistryEvent,
-	type ClientRegistryEventType,
-	type ClientSignalOptions,
-	type CreateClientRegistryOptions,
+	type CreateTokenSetClientRegistryOptions,
+	type TokenSetClientDisposedRecordView,
+	type TokenSetClientFailedRecordView,
+	TokenSetClientInitializationMode,
+	type TokenSetClientInitializingRecordView,
+	type TokenSetClientMeta,
+	type TokenSetClientReadyRecordView,
+	type TokenSetClientRecordView,
+	type TokenSetClientRecordViewBase,
+	type TokenSetClientRegisteredRecordView,
+	type TokenSetClientRegistryEntry,
+	TokenSetClientRegistryEntryStatus,
+	type TokenSetClientRegistryEvent,
+	type TokenSetClientRegistryEventType,
+	type TokenSetClientSignalOptions,
 } from "./contracts/types";
 export {
 	BackendOidcModeCallbackController,
@@ -60,12 +60,12 @@ export {
 	type ReadFrontendOidcModeCallbackErrorPresentationOptions,
 	readFrontendOidcModeCallbackErrorPresentation,
 } from "./controller/frontend-mode-callback-controller";
-export { ClientRecord } from "./core/client-record";
+export { TokenSetClientRecord } from "./core/client-record";
 export {
-	ClientRegistry,
-	createClientRegistry,
+	createTokenSetClientRegistry,
+	TokenSetClientRegistry,
 } from "./core/client-registry";
 export {
-	ClientRegistryError,
-	ClientRegistryErrorCode,
+	TokenSetClientRegistryError,
+	TokenSetClientRegistryErrorCode,
 } from "./core/error";

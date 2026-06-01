@@ -12,13 +12,13 @@ import {
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
-	type AuthSnapshot,
 	type TokenSetAuthEvent,
+	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	ClientInitializationMode,
-	type ClientRegistryEntry as CoreClientRegistryEntry,
-	createClientRegistry,
+	type TokenSetClientRegistryEntry as CoreClientRegistryEntry,
+	createTokenSetClientRegistry,
+	TokenSetClientInitializationMode,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
@@ -51,7 +51,7 @@ function render(element: ReactElement) {
 	};
 }
 
-function createSnapshot(accessToken: string): AuthSnapshot {
+function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 	return {
 		tokens: { accessToken },
 		metadata: {},
@@ -59,8 +59,10 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 }
 
 function createRegistryOptions(accessToken: string) {
-	const state = createSignal<AuthSnapshot | null>(createSnapshot(accessToken));
-	const authSnapshot = createReplaySignal<AuthSnapshot | null>();
+	const state = createSignal<TokenSetAuthSnapshot | null>(
+		createSnapshot(accessToken),
+	);
+	const authSnapshot = createReplaySignal<TokenSetAuthSnapshot | null>();
 	authSnapshot.setValue(state.get());
 	const isAuthenticated = createReplaySignal<boolean>();
 	isAuthenticated.setValue(true);
@@ -120,7 +122,7 @@ function createRegistryOptions(accessToken: string) {
 function createManualRegistry(
 	clients: readonly TokenSetClientEntry[],
 ): ReactRegistry {
-	const registry = createClientRegistry<TokenSetReactClient>({
+	const registry = createTokenSetClientRegistry<TokenSetReactClient>({
 		environment: {},
 	});
 
@@ -143,7 +145,7 @@ function toCoreEntry(
 			requirementKind: entry.requirementKind,
 			providerFamily: entry.providerFamily,
 			initialization:
-				entry.initialization ?? ClientInitializationMode.Immediate,
+				entry.initialization ?? TokenSetClientInitializationMode.Immediate,
 		},
 	};
 }

@@ -11,13 +11,13 @@ import {
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
-	type AuthSnapshot,
 	type TokenSetAuthEvent,
+	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	ClientInitializationMode,
-	type ClientRegistryEntry,
-	createClientRegistry,
+	createTokenSetClientRegistry,
+	TokenSetClientInitializationMode,
+	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetAuthRegistry,
@@ -52,7 +52,7 @@ function render(element: ReactElement) {
 	};
 }
 
-function createSnapshot(accessToken: string): AuthSnapshot {
+function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 	return {
 		tokens: { accessToken },
 		metadata: {},
@@ -60,9 +60,9 @@ function createSnapshot(accessToken: string): AuthSnapshot {
 }
 
 function createBackendClient(
-	snapshot: AuthSnapshot,
+	snapshot: TokenSetAuthSnapshot,
 ): TokenSetBackendOidcClient {
-	const state = createSignal<AuthSnapshot | null>(snapshot);
+	const state = createSignal<TokenSetAuthSnapshot | null>(snapshot);
 	const reactive = createTestTokenSetReactiveFields(snapshot);
 	const dispose = vi.fn(() => {
 		state.set(null);
@@ -99,7 +99,7 @@ type BackendClientEntry = Omit<TokenSetClientEntry, "clientFactory"> & {
 function createManualRegistry(
 	clients: readonly BackendClientEntry[],
 ): ReactRegistry {
-	const registry = createClientRegistry<TokenSetBackendOidcClient>({
+	const registry = createTokenSetClientRegistry<TokenSetBackendOidcClient>({
 		environment: {},
 	});
 
@@ -112,7 +112,7 @@ function createManualRegistry(
 
 function toCoreEntry(
 	entry: BackendClientEntry,
-): ClientRegistryEntry<TokenSetBackendOidcClient> {
+): TokenSetClientRegistryEntry<TokenSetBackendOidcClient> {
 	return {
 		clientFactory: entry.clientFactory,
 		meta: {
@@ -122,7 +122,7 @@ function toCoreEntry(
 			requirementKind: entry.requirementKind,
 			providerFamily: entry.providerFamily,
 			initialization:
-				entry.initialization ?? ClientInitializationMode.Immediate,
+				entry.initialization ?? TokenSetClientInitializationMode.Immediate,
 		},
 	};
 }

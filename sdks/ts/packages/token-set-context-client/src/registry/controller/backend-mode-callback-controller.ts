@@ -6,27 +6,30 @@ import {
 	type ReadableSignalTrait,
 } from "@securitydept/client";
 import { BackendOidcModeClient } from "../../backend-oidc-mode";
-import { type AuthSnapshot } from "../../orchestration";
+import { type TokenSetAuthSnapshot } from "../../orchestration";
 import { type BaseOidcModeClient } from "../../orchestration/client/base-client";
-import { type ClientQueryOptions } from "../contracts/query";
-import { type ClientReadyRecordView } from "../contracts/types";
-import { type ClientRecord } from "../core/client-record";
-import { type ClientRegistry } from "../core/client-registry";
-import { ClientRegistryError, ClientRegistryErrorCode } from "../core/error";
+import { type TokenSetClientQueryOptions } from "../contracts/query";
+import { type TokenSetClientReadyRecordView } from "../contracts/types";
+import { type TokenSetClientRecord } from "../core/client-record";
+import { type TokenSetClientRegistry } from "../core/client-registry";
+import {
+	TokenSetClientRegistryError,
+	TokenSetClientRegistryErrorCode,
+} from "../core/error";
 
 export interface BackendOidcModeCallbackInput {
 	payload: () => CompatFragmentParameters;
-	clientQuery: () => ClientQueryOptions;
+	clientQuery: () => TokenSetClientQueryOptions;
 }
 
 export interface BackendOidcModeCallbackOptions
 	extends BackendOidcModeCallbackInput {
-	registry: () => ClientRegistry<BaseOidcModeClient>;
+	registry: () => TokenSetClientRegistry<BaseOidcModeClient>;
 }
 
 export interface BackendOidcModeCallbackResult {
-	clientRecord: ClientReadyRecordView<BackendOidcModeClient>;
-	snapshot: AuthSnapshot;
+	clientRecord: TokenSetClientReadyRecordView<BackendOidcModeClient>;
+	snapshot: TokenSetAuthSnapshot;
 }
 
 export type BackendOidcModeCallbackHandle = OnceAsyncLockCallable<
@@ -42,8 +45,8 @@ export class BackendOidcModeCallbackController {
 	handle: BackendOidcModeCallbackHandle;
 
 	private readonly payload: () => CompatFragmentParameters;
-	private readonly clientQuery: () => ClientQueryOptions;
-	private readonly registry: () => ClientRegistry<BaseOidcModeClient>;
+	private readonly clientQuery: () => TokenSetClientQueryOptions;
+	private readonly registry: () => TokenSetClientRegistry<BaseOidcModeClient>;
 
 	constructor(options: BackendOidcModeCallbackOptions) {
 		this.registry = options.registry;
@@ -68,8 +71,8 @@ export class BackendOidcModeCallbackController {
 				this.clientQuery(),
 			);
 			if (!record) {
-				throw new ClientRegistryError({
-					code: ClientRegistryErrorCode.CallbackClientNotFound,
+				throw new TokenSetClientRegistryError({
+					code: TokenSetClientRegistryErrorCode.CallbackClientNotFound,
 					message:
 						"[BackendOidcModeCallbackController] Cannot determine which backend client this callback belongs to. Pass a matching clientQuery.",
 				});
@@ -80,8 +83,8 @@ export class BackendOidcModeCallbackController {
 			);
 			const client = readyRecord.client;
 			if (!(client instanceof BackendOidcModeClient)) {
-				throw new ClientRegistryError({
-					code: ClientRegistryErrorCode.CallbackClientModeMismatch,
+				throw new TokenSetClientRegistryError({
+					code: TokenSetClientRegistryErrorCode.CallbackClientModeMismatch,
 					clientKey: record.get().meta.clientKey,
 					expectedMode: "BackendOidcModeClient",
 					actualMode: client.constructor.name,
@@ -91,16 +94,16 @@ export class BackendOidcModeCallbackController {
 
 			return {
 				clientRecord:
-					readyRecord as ClientReadyRecordView<BackendOidcModeClient>,
+					readyRecord as TokenSetClientReadyRecordView<BackendOidcModeClient>,
 				snapshot,
 			};
 		});
 	}
 
 	selectClientRecordForInput(
-		registry: ClientRegistry<BaseOidcModeClient>,
-		clientQuery: ClientQueryOptions,
-	): ReadableSignalTrait<ClientRecord<BaseOidcModeClient>> | undefined {
+		registry: TokenSetClientRegistry<BaseOidcModeClient>,
+		clientQuery: TokenSetClientQueryOptions,
+	): ReadableSignalTrait<TokenSetClientRecord<BaseOidcModeClient>> | undefined {
 		return registry.clientRecordForQuery(clientQuery);
 	}
 }

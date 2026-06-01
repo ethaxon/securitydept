@@ -13,7 +13,7 @@
 - `secureRouteRoot()` 承载 provider-neutral requirement metadata 与 next-action policy。
 - `provideTokenSetClientRegistry(...)` 为 `Confluence` client 显式注册 `providerFamily`、`callbackPath` 与 `urlPatterns`。
 - Route-login integration 使用 `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })`；client 应已通过自身 environment 持有稳定的 page router，而不是每次调用时接收 page factory。
-- 对 registry-managed browser client，`provideTokenSetClientRegistry(...)` 直接使用核心 `ClientRegistry` lifecycle；adopter 不需要为了 resume recovery 再额外包一层 client。
+- 对 registry-managed browser client，`provideTokenSetClientRegistry(...)` 直接使用核心 `TokenSetClientRegistry` lifecycle；adopter 不需要为了 resume recovery 再额外包一层 client。
 - `provideTokenSetClientRegistryAuthorizationInterceptor()` 可以把 authorization injection 限制到已注册 URL，不再对 unmatched URL 使用 fallback authorization。
 - 短 access-token lifetime 应通过 SDK freshness barriers 恢复，而不是在存在 refresh material 时直接 redirect 或发送过期 bearer。
 - Focused downstream tests 已锁住 callback preservation、provider-neutral route metadata、bearer injection boundaries 与 redirect preservation。

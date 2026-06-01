@@ -26,10 +26,10 @@ import {
 import { provideEnvironment } from "@securitydept/client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
-	ClientInitializationMode,
-	type ClientReadyRecordView,
-	ClientRegistryAuthRequirement,
-	ClientRegistryEntryStatus,
+	TokenSetClientInitializationMode,
+	type TokenSetClientReadyRecordView,
+	TokenSetClientRegistryAuthRequirement,
+	TokenSetClientRegistryEntryStatus,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetRequirementPlannerHost,
@@ -96,26 +96,26 @@ function createReadyRecord(
 	clientKey: string,
 	requirementKind: string,
 	client: BaseOidcModeClient,
-): ClientReadyRecordView<BaseOidcModeClient> {
+): TokenSetClientReadyRecordView<BaseOidcModeClient> {
 	const meta = {
 		clientKey,
 		urlPatterns: [],
 		callbackPath: undefined,
 		requirementKind,
 		providerFamily: undefined,
-		initialization: ClientInitializationMode.Lazy,
+		initialization: TokenSetClientInitializationMode.Lazy,
 	};
 	return {
 		id: clientKey,
 		entry: { clientFactory: () => client, meta },
 		meta,
-		status: ClientRegistryEntryStatus.Ready,
+		status: TokenSetClientRegistryEntryStatus.Ready,
 		client,
 	};
 }
 
 function createRegistryMock(
-	records: readonly ClientReadyRecordView<BaseOidcModeClient>[],
+	records: readonly TokenSetClientReadyRecordView<BaseOidcModeClient>[],
 ) {
 	return {
 		clientRecordGenForQuery: vi.fn(function* (query: {
@@ -187,7 +187,7 @@ async function invokeGuard(
 
 describe("Angular full-route aggregation", () => {
 	it("writes query-based token-set requirements into route metadata", () => {
-		const requirement = ClientRegistryAuthRequirement.create({
+		const requirement = TokenSetClientRegistryAuthRequirement.create({
 			id: "finance",
 			query: { requirementKind: "finance_oidc" },
 		});
@@ -207,7 +207,7 @@ describe("Angular full-route aggregation", () => {
 			"app",
 			{
 				requirements: [
-					ClientRegistryAuthRequirement.create({
+					TokenSetClientRegistryAuthRequirement.create({
 						id: "root",
 						query: { requirementKind: "root_oidc" },
 					}),
@@ -229,11 +229,11 @@ describe("Angular full-route aggregation", () => {
 	});
 
 	it("blocks when an inherited registry-backed route requirement is unauthenticated", async () => {
-		const rootRequirement = ClientRegistryAuthRequirement.create({
+		const rootRequirement = TokenSetClientRegistryAuthRequirement.create({
 			id: "root",
 			query: { requirementKind: "root_oidc" },
 		});
-		const childRequirement = ClientRegistryAuthRequirement.create({
+		const childRequirement = TokenSetClientRegistryAuthRequirement.create({
 			id: "finance",
 			query: { requirementKind: "finance_oidc" },
 		});
@@ -272,7 +272,7 @@ describe("Angular full-route aggregation", () => {
 	it("settles when all inherited registry-backed requirements are authenticated", async () => {
 		const root = secureRouteRoot("app", {
 			requirements: [
-				ClientRegistryAuthRequirement.create({
+				TokenSetClientRegistryAuthRequirement.create({
 					id: "root",
 					query: { requirementKind: "root_oidc" },
 				}),
@@ -280,7 +280,7 @@ describe("Angular full-route aggregation", () => {
 		});
 		const child = secureRoute("finance", {
 			requirements: [
-				ClientRegistryAuthRequirement.create({
+				TokenSetClientRegistryAuthRequirement.create({
 					id: "finance",
 					query: { requirementKind: "finance_oidc" },
 				}),

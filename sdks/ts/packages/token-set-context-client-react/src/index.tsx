@@ -13,14 +13,14 @@ import {
 	BackendOidcModeClient,
 	type BackendOidcModeClientConfig,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
+import { type TokenSetAuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 
 export {
-	type ClientFilter,
-	ClientInitializationMode,
-	type ClientMeta,
-	type ClientQueryOptions,
-	type ClientSelector,
+	type TokenSetClientFilter,
+	TokenSetClientInitializationMode,
+	type TokenSetClientMeta,
+	type TokenSetClientQueryOptions,
+	type TokenSetClientSelector,
 } from "@securitydept/token-set-context-client/registry";
 export {
 	createTokenSetCallbackResumeController,
@@ -49,7 +49,7 @@ export {
 	useTokenSetCallbackResume,
 } from "./token-set-callback";
 export {
-	type AuthSnapshot,
 	BackendOidcModeClient,
 	type BackendOidcModeClientConfig,
+	type TokenSetAuthSnapshot,
 };

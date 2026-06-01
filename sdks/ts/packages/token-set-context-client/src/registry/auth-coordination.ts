@@ -14,34 +14,34 @@ import {
 } from "@securitydept/client";
 import { v7 as uuidv7 } from "uuid";
 import { type BaseOidcModeClient } from "../orchestration/client/base-client";
-import { type OidcRedirectLoginOptions } from "../orchestration/client/types";
-import { type ClientQueryOptions } from "./contracts/query";
-import { type ClientReadyRecordView } from "./contracts/types";
-import { type ClientRegistry } from "./core/client-registry";
+import { type TokenSetOidcRedirectLoginOptions } from "../orchestration/client/types";
+import { type TokenSetClientQueryOptions } from "./contracts/query";
+import { type TokenSetClientReadyRecordView } from "./contracts/types";
+import { type TokenSetClientRegistry } from "./core/client-registry";
 
-export interface ClientRegistryOidcModeClient extends DisposableTrait {
+export interface TokenSetClientRegistryOidcModeClient extends DisposableTrait {
 	readonly isAuthenticated: ReadableReplaySignalTrait<boolean>;
-	loginWithRedirect(options?: OidcRedirectLoginOptions): Promise<void>;
+	loginWithRedirect(options?: TokenSetOidcRedirectLoginOptions): Promise<void>;
 }
 
-export interface ClientRegistryAuthRequirementInput {
+export interface TokenSetClientRegistryAuthRequirementInput {
 	readonly id?: string;
 	readonly label?: string;
-	readonly query: ClientQueryOptions;
+	readonly query: TokenSetClientQueryOptions;
 }
 
-export class ClientRegistryAuthRequirement implements AuthRequirement {
+export class TokenSetClientRegistryAuthRequirement implements AuthRequirement {
 	readonly id: string;
 	readonly label?: string;
 	readonly attributes: Readonly<{
-		query: ClientQueryOptions;
+		query: TokenSetClientQueryOptions;
 	}>;
 
 	protected constructor(
 		id: string,
 		label: string | undefined,
 		attributes: Readonly<{
-			query: ClientQueryOptions;
+			query: TokenSetClientQueryOptions;
 		}>,
 	) {
 		this.id = id;
@@ -50,9 +50,9 @@ export class ClientRegistryAuthRequirement implements AuthRequirement {
 	}
 
 	static create(
-		input: ClientRegistryAuthRequirementInput,
-	): ClientRegistryAuthRequirement {
-		return new ClientRegistryAuthRequirement(
+		input: TokenSetClientRegistryAuthRequirementInput,
+	): TokenSetClientRegistryAuthRequirement {
+		return new TokenSetClientRegistryAuthRequirement(
 			input.id ?? uuidv7(),
 			input.label,
 			Object.freeze({ query: input.query }),
@@ -60,78 +60,85 @@ export class ClientRegistryAuthRequirement implements AuthRequirement {
 	}
 }
 
-export type ClientRegistryClientGenerator<
-	TClient extends ClientRegistryOidcModeClient = BaseOidcModeClient,
-> = AsyncGenerator<ClientReadyRecordView<TClient>, void, unknown>;
+export type TokenSetClientRegistryClientGenerator<
+	TClient extends TokenSetClientRegistryOidcModeClient = BaseOidcModeClient,
+> = AsyncGenerator<TokenSetClientReadyRecordView<TClient>, void, unknown>;
 
-export type ClientRegistryAuthRequirementContext<TPlanContext = {}> =
-	RequirementBehaviourContext<ClientRegistryAuthRequirement, TPlanContext>;
+export type TokenSetClientRegistryAuthRequirementContext<TPlanContext = {}> =
+	RequirementBehaviourContext<
+		TokenSetClientRegistryAuthRequirement,
+		TPlanContext
+	>;
 
-export type ClientRegistryAuthRequirementCandidateSelectionContext<
+export type TokenSetClientRegistryAuthRequirementCandidateSelectionContext<
 	TPlanContext = {},
 > = RequirementCandidateSelectionContext<
-	ClientRegistryAuthRequirement,
+	TokenSetClientRegistryAuthRequirement,
 	TPlanContext
 >;
 
-export type CheckClientAuthenticated<
-	TClient extends ClientRegistryOidcModeClient = BaseOidcModeClient,
+export type TokenSetCheckClientAuthenticated<
+	TClient extends TokenSetClientRegistryOidcModeClient = BaseOidcModeClient,
 	TPlanContext = {},
 > = (
-	requirement: ClientRegistryAuthRequirement,
-	context: ClientRegistryAuthRequirementContext<TPlanContext>,
-	clients: ClientRegistryClientGenerator<TClient>,
+	requirement: TokenSetClientRegistryAuthRequirement,
+	context: TokenSetClientRegistryAuthRequirementContext<TPlanContext>,
+	clients: TokenSetClientRegistryClientGenerator<TClient>,
 ) => AuthenticatedCheck;
 
-export type OnClientUnauthenticated<
-	TClient extends ClientRegistryOidcModeClient = BaseOidcModeClient,
+export type TokenSetOnClientUnauthenticated<
+	TClient extends TokenSetClientRegistryOidcModeClient = BaseOidcModeClient,
 	TPlanContext = {},
 > = (
-	requirement: ClientRegistryAuthRequirement,
-	context: ClientRegistryAuthRequirementContext<TPlanContext>,
-	clients: ClientRegistryClientGenerator<TClient>,
+	requirement: TokenSetClientRegistryAuthRequirement,
+	context: TokenSetClientRegistryAuthRequirementContext<TPlanContext>,
+	clients: TokenSetClientRegistryClientGenerator<TClient>,
 ) => UnauthenticatedAction;
 
-export type SelectClientCandidate<
-	TClient extends ClientRegistryOidcModeClient = BaseOidcModeClient,
+export type TokenSetSelectClientCandidate<
+	TClient extends TokenSetClientRegistryOidcModeClient = BaseOidcModeClient,
 	TPlanContext = {},
 > = (
-	requirement: ClientRegistryAuthRequirement,
-	context: ClientRegistryAuthRequirementCandidateSelectionContext<TPlanContext>,
-	clients: ClientRegistryClientGenerator<TClient>,
+	requirement: TokenSetClientRegistryAuthRequirement,
+	context: TokenSetClientRegistryAuthRequirementCandidateSelectionContext<TPlanContext>,
+	clients: TokenSetClientRegistryClientGenerator<TClient>,
 ) => boolean | Promise<boolean>;
 
-export interface ClientRegistryRequirementBehaviourOptions<
-	TClient extends ClientRegistryOidcModeClient = BaseOidcModeClient,
+export interface TokenSetClientRegistryRequirementBehaviourOptions<
+	TClient extends TokenSetClientRegistryOidcModeClient = BaseOidcModeClient,
 	TPlanContext = {},
 > {
-	readonly checkClientAuthenticated?: CheckClientAuthenticated<
+	readonly checkClientAuthenticated?: TokenSetCheckClientAuthenticated<
 		TClient,
 		TPlanContext
 	>;
-	readonly onClientUnauthenticated?: OnClientUnauthenticated<
+	readonly onClientUnauthenticated?: TokenSetOnClientUnauthenticated<
 		TClient,
 		TPlanContext
 	>;
-	readonly selectClientCandidate?: SelectClientCandidate<TClient, TPlanContext>;
+	readonly selectClientCandidate?: TokenSetSelectClientCandidate<
+		TClient,
+		TPlanContext
+	>;
 }
 
-export class ClientRegistryRequirementBehaviour<
-	TClient extends ClientRegistryOidcModeClient = BaseOidcModeClient,
+export class TokenSetClientRegistryRequirementBehaviour<
+	TClient extends TokenSetClientRegistryOidcModeClient = BaseOidcModeClient,
 	TPlanContext = {},
-> implements RequirementBehaviour<ClientRegistryAuthRequirement, TPlanContext>
+> implements
+		RequirementBehaviour<TokenSetClientRegistryAuthRequirement, TPlanContext>
 {
 	constructor(
-		private readonly registry: ClientRegistry<TClient>,
-		private readonly options: ClientRegistryRequirementBehaviourOptions<
+		private readonly registry: TokenSetClientRegistry<TClient>,
+		private readonly options: TokenSetClientRegistryRequirementBehaviourOptions<
 			TClient,
 			TPlanContext
 		> = {},
 	) {}
 
 	readonly checkAuthenticated = async (
-		requirement: ClientRegistryAuthRequirement,
-		context: ClientRegistryAuthRequirementContext<TPlanContext>,
+		requirement: TokenSetClientRegistryAuthRequirement,
+		context: TokenSetClientRegistryAuthRequirementContext<TPlanContext>,
 	): Promise<boolean> => {
 		const clients = this.resolveClientViews(requirement);
 		const checkClientAuthenticated = this.options.checkClientAuthenticated;
@@ -142,8 +149,8 @@ export class ClientRegistryRequirementBehaviour<
 	};
 
 	readonly onUnauthenticated = async (
-		requirement: ClientRegistryAuthRequirement,
-		context: ClientRegistryAuthRequirementContext<TPlanContext>,
+		requirement: TokenSetClientRegistryAuthRequirement,
+		context: TokenSetClientRegistryAuthRequirementContext<TPlanContext>,
 	): Promise<boolean | string> => {
 		const clients = this.resolveClientViews(requirement);
 		const onClientUnauthenticated = this.options.onClientUnauthenticated;
@@ -154,15 +161,15 @@ export class ClientRegistryRequirementBehaviour<
 	};
 
 	readonly selectCandidate = async (
-		context: ClientRegistryAuthRequirementCandidateSelectionContext<TPlanContext>,
-	): Promise<ClientRegistryAuthRequirement | undefined> => {
+		context: TokenSetClientRegistryAuthRequirementCandidateSelectionContext<TPlanContext>,
+	): Promise<TokenSetClientRegistryAuthRequirement | undefined> => {
 		const selectClientCandidate = this.options.selectClientCandidate;
 		if (!selectClientCandidate) {
 			const firstCandidate = await context.candidateList.next();
 			return firstCandidate.done ? undefined : firstCandidate.value;
 		}
 
-		let firstCandidate: ClientRegistryAuthRequirement | undefined;
+		let firstCandidate: TokenSetClientRegistryAuthRequirement | undefined;
 		for await (const candidate of context.candidateList) {
 			firstCandidate ??= candidate;
 			const clients = this.resolveClientViews(candidate);
@@ -174,8 +181,8 @@ export class ClientRegistryRequirementBehaviour<
 	};
 
 	private resolveClientViews(
-		requirement: ClientRegistryAuthRequirement,
-	): ClientRegistryClientGenerator<TClient> {
+		requirement: TokenSetClientRegistryAuthRequirement,
+	): TokenSetClientRegistryClientGenerator<TClient> {
 		return promisesToRacedAsyncGenerator(
 			[
 				...this.registry.clientRecordGenForQuery(requirement.attributes.query),
@@ -190,7 +197,7 @@ export class ClientRegistryRequirementBehaviour<
 	}
 
 	private async defaultCheckClientAuthenticated(
-		clients: ClientRegistryClientGenerator<TClient>,
+		clients: TokenSetClientRegistryClientGenerator<TClient>,
 	): Promise<boolean> {
 		for await (const client of clients) {
 			if ((await client.client.isAuthenticated.whenValue()) !== true) {
@@ -201,8 +208,8 @@ export class ClientRegistryRequirementBehaviour<
 	}
 
 	private async defaultOnClientUnauthenticated(
-		clients: ClientRegistryClientGenerator<TClient>,
-		context: ClientRegistryAuthRequirementContext<TPlanContext>,
+		clients: TokenSetClientRegistryClientGenerator<TClient>,
+		context: TokenSetClientRegistryAuthRequirementContext<TPlanContext>,
 	): Promise<boolean> {
 		for await (const client of clients) {
 			if ((await client.client.isAuthenticated.whenValue()) !== true) {
@@ -220,18 +227,21 @@ export class ClientRegistryRequirementBehaviour<
 	}
 }
 
-export class ClientRegistryPlannerHost<
-	TClient extends ClientRegistryOidcModeClient = BaseOidcModeClient,
+export class TokenSetClientRegistryPlannerHost<
+	TClient extends TokenSetClientRegistryOidcModeClient = BaseOidcModeClient,
 	TPlanContext = {},
 > extends RequirementPlannerHost<
-	ClientRegistryRequirementBehaviour<TClient, TPlanContext>
+	TokenSetClientRegistryRequirementBehaviour<TClient, TPlanContext>
 > {
 	constructor(
-		readonly registry: ClientRegistry<TClient>,
-		behaviour: ClientRegistryRequirementBehaviour<TClient, TPlanContext>,
+		readonly registry: TokenSetClientRegistry<TClient>,
+		behaviour: TokenSetClientRegistryRequirementBehaviour<
+			TClient,
+			TPlanContext
+		>,
 		environment?: FoundationEnvironment,
 		parent?: RequirementPlannerHost<
-			ClientRegistryRequirementBehaviour<TClient, TPlanContext>
+			TokenSetClientRegistryRequirementBehaviour<TClient, TPlanContext>
 		>,
 	) {
 		super(behaviour, environment, parent);

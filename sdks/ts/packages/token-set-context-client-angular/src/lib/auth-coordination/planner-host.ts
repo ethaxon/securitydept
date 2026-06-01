@@ -16,17 +16,17 @@ import {
 } from "@securitydept/client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
-	type ClientReadyRecordView,
-	ClientRegistryPlannerHost,
-	ClientRegistryRequirementBehaviour,
-	type ClientRegistryRequirementBehaviourOptions,
-	type OnClientUnauthenticated,
+	type TokenSetClientReadyRecordView,
+	TokenSetClientRegistryPlannerHost,
+	TokenSetClientRegistryRequirementBehaviour,
+	type TokenSetClientRegistryRequirementBehaviourOptions,
+	type TokenSetOnClientUnauthenticated,
 } from "@securitydept/token-set-context-client/registry";
 import { TokenSetClientRegistryService } from "../client-registry.service";
 
 /** Options for {@link provideTokenSetRequirementPlannerHost}. */
 export type ProvideTokenSetRequirementPlannerHostOptions =
-	ClientRegistryRequirementBehaviourOptions<
+	TokenSetClientRegistryRequirementBehaviourOptions<
 		BaseOidcModeClient,
 		RouteBehaviourContextExtra
 	>;
@@ -36,7 +36,7 @@ export type ProvideTokenSetRequirementPlannerHostOptions =
  *
  * This is intentionally a thin adapter over the framework-neutral registry
  * auth-coordination layer. Route requirements must carry
- * `attributes.query: ClientQueryOptions`.
+ * `attributes.query: TokenSetClientQueryOptions`.
  */
 export function provideTokenSetRequirementPlannerHost(
 	options: ProvideTokenSetRequirementPlannerHostOptions = {},
@@ -52,17 +52,17 @@ export function provideTokenSetRequirementPlannerHost(
 						optional: true,
 						skipSelf: true,
 					}) ?? undefined;
-				const behaviour = new ClientRegistryRequirementBehaviour<
+				const behaviour = new TokenSetClientRegistryRequirementBehaviour<
 					BaseOidcModeClient,
 					RouteBehaviourContextExtra
 				>(registry, options);
-				return new ClientRegistryPlannerHost(
+				return new TokenSetClientRegistryPlannerHost(
 					registry,
 					behaviour,
 					environment,
 					parent as
 						| RequirementPlannerHost<
-								ClientRegistryRequirementBehaviour<
+								TokenSetClientRegistryRequirementBehaviour<
 									BaseOidcModeClient,
 									RouteBehaviourContextExtra
 								>
@@ -103,7 +103,10 @@ export interface CreateTokenSetOidcLoginRedirectHandlerOptions {
  */
 export function createTokenSetOidcLoginRedirectHandler(
 	options: CreateTokenSetOidcLoginRedirectHandlerOptions = {},
-): OnClientUnauthenticated<BaseOidcModeClient, RouteBehaviourContextExtra> {
+): TokenSetOnClientUnauthenticated<
+	BaseOidcModeClient,
+	RouteBehaviourContextExtra
+> {
 	return async (_requirement, context, clients) => {
 		const environment = resolveOidcRouteEnvironment(
 			options.environment ?? context.environment,
@@ -123,9 +126,9 @@ export function createTokenSetOidcLoginRedirectHandler(
 }
 
 async function selectRedirectClient(
-	clients: AsyncGenerator<ClientReadyRecordView<BaseOidcModeClient>>,
+	clients: AsyncGenerator<TokenSetClientReadyRecordView<BaseOidcModeClient>>,
 	clientKey: string | undefined,
-): Promise<ClientReadyRecordView<BaseOidcModeClient> | undefined> {
+): Promise<TokenSetClientReadyRecordView<BaseOidcModeClient> | undefined> {
 	for await (const record of clients) {
 		if (clientKey) {
 			if (record.meta.clientKey === clientKey) {

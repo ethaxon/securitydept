@@ -12,47 +12,47 @@ import {
 import { type PageResumeEvent } from "@securitydept/client/web";
 import { tap, throttleTime } from "rxjs";
 import {
-	type BuiltinAuthWorkflowSourceConfig,
-	normalizeBuiltinAuthWorkflowSourceConfig,
+	normalizeTokenSetBuiltinAuthWorkflowSourceConfig,
+	type TokenSetBuiltinAuthWorkflowSourceConfig,
 } from "./types";
 
-export interface CreatePageResumeWorkflowSourceOptions {
+export interface CreateTokenSetPageResumeWorkflowSourceOptions {
 	throttleMs: number;
 }
 
-export interface CreatePageResumeWorkflowSourceEnv {
+export interface CreateTokenSetPageResumeWorkflowSourceEnv {
 	pageLifecycle:
 		| Pick<PageLifecycleTrait<PageResumeEvent>, "resume">
 		| undefined;
 	time: TimeTrait;
 	recordTrace?: (
-		type: PageResumeWorkflowSourceTraceEventType,
+		type: TokenSetPageResumeWorkflowSourceTraceEventType,
 		attributes?: Record<string, unknown>,
 	) => void;
 }
 
-export type PageResumeWorkflowSourceEvent = PageResumeEvent;
+export type TokenSetPageResumeWorkflowSourceEvent = PageResumeEvent;
 
-export const PageResumeWorkflowSourceTraceEventType = {
+export const TokenSetPageResumeWorkflowSourceTraceEventType = {
 	Fired: "fired",
 } as const;
 
-export type PageResumeWorkflowSourceTraceEventType =
-	(typeof PageResumeWorkflowSourceTraceEventType)[keyof typeof PageResumeWorkflowSourceTraceEventType];
+export type TokenSetPageResumeWorkflowSourceTraceEventType =
+	(typeof TokenSetPageResumeWorkflowSourceTraceEventType)[keyof typeof TokenSetPageResumeWorkflowSourceTraceEventType];
 
-export class PageResumeWorkflowSource {
+export class TokenSetPageResumeWorkflowSource {
 	static readonly name = "pageResume";
 
-	static readonly defaultBuiltInOptions: CreatePageResumeWorkflowSourceOptions =
+	static readonly defaultBuiltInOptions: CreateTokenSetPageResumeWorkflowSourceOptions =
 		{
 			throttleMs: 500,
 		};
 
-	eventStream: EventStreamTrait<PageResumeWorkflowSourceEvent>;
+	eventStream: EventStreamTrait<TokenSetPageResumeWorkflowSourceEvent>;
 
 	protected constructor(
-		readonly options: CreatePageResumeWorkflowSourceOptions &
-			CreatePageResumeWorkflowSourceEnv,
+		readonly options: CreateTokenSetPageResumeWorkflowSourceOptions &
+			CreateTokenSetPageResumeWorkflowSourceEnv,
 	) {
 		const throttleMs = options.throttleMs;
 		this.eventStream = observableToEventStream(
@@ -65,26 +65,29 @@ export class PageResumeWorkflowSource {
 					createAsyncSchedulerWithTimestampProvider(options.time),
 				),
 				tap((event) => {
-					options.recordTrace?.(PageResumeWorkflowSourceTraceEventType.Fired, {
-						trigger: event.trigger,
-						persisted: event.persisted,
-					});
+					options.recordTrace?.(
+						TokenSetPageResumeWorkflowSourceTraceEventType.Fired,
+						{
+							trigger: event.trigger,
+							persisted: event.persisted,
+						},
+					);
 				}),
 			),
 		);
 	}
 
 	static fromBuiltin(
-		env: CreatePageResumeWorkflowSourceEnv,
-		config: BuiltinAuthWorkflowSourceConfig<
-			Partial<CreatePageResumeWorkflowSourceOptions>
+		env: CreateTokenSetPageResumeWorkflowSourceEnv,
+		config: TokenSetBuiltinAuthWorkflowSourceConfig<
+			Partial<CreateTokenSetPageResumeWorkflowSourceOptions>
 		>,
-	): PageResumeWorkflowSource {
-		const normalizedConfig = normalizeBuiltinAuthWorkflowSourceConfig(
+	): TokenSetPageResumeWorkflowSource {
+		const normalizedConfig = normalizeTokenSetBuiltinAuthWorkflowSourceConfig(
 			config,
-			PageResumeWorkflowSource.defaultBuiltInOptions,
+			TokenSetPageResumeWorkflowSource.defaultBuiltInOptions,
 		);
-		return new PageResumeWorkflowSource({
+		return new TokenSetPageResumeWorkflowSource({
 			pageLifecycle:
 				normalizedConfig.kind === "bundle" ? env.pageLifecycle : undefined,
 			time: env.time,

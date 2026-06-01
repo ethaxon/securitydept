@@ -7,10 +7,10 @@ import {
 } from "@angular/core";
 import { ENVIRONMENT, toNgSignal } from "@securitydept/client-angular";
 import {
-	type ClientQueryOptions,
 	FrontendOidcModeCallbackController,
 	type FrontendOidcModeCallbackResult,
 	type FrontendOidcModeCallbackState,
+	type TokenSetClientQueryOptions,
 } from "@securitydept/token-set-context-client/registry";
 import { TokenSetClientRegistryService } from "../client-registry.service";
 
@@ -21,7 +21,9 @@ import { TokenSetClientRegistryService } from "../client-registry.service";
 	exportAs: "sdTokenSetFrontendCallback",
 })
 export class TokenSetFrontendCallbackComponent implements OnInit {
-	readonly clientQuery = input<ClientQueryOptions | undefined>(undefined);
+	readonly clientQuery = input<TokenSetClientQueryOptions | undefined>(
+		undefined,
+	);
 	readonly autoHandle = input(true);
 
 	private readonly environment = inject(ENVIRONMENT);

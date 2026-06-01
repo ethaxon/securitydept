@@ -5,8 +5,8 @@
 
 import { type IdentityPrincipal } from "@securitydept/client";
 import {
-	type AuthMetadataDelta,
-	type AuthMetadataSnapshot,
+	type TokenSetAuthMetadataDelta,
+	type TokenSetAuthMetadataSnapshot,
 } from "../../orchestration/token/types";
 
 // ---------------------------------------------------------------------------
@@ -83,7 +83,7 @@ export interface BackendOidcModeRefreshPayload {
 	refreshToken: string;
 	postAuthRedirectUri?: string;
 	idToken?: string;
-	currentMetadataSnapshot?: AuthMetadataSnapshot;
+	currentMetadataSnapshot?: TokenSetAuthMetadataSnapshot;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ export interface BackendOidcModeCallbackReturns {
 	refreshToken?: string;
 	expiresAt?: string;
 	metadataRedemptionId?: string;
-	metadata?: AuthMetadataSnapshot;
+	metadata?: TokenSetAuthMetadataSnapshot;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ export interface BackendOidcModeRefreshReturns {
 	refreshToken?: string;
 	expiresAt?: string;
 	metadataRedemptionId?: string;
-	metadata?: AuthMetadataDelta;
+	metadata?: TokenSetAuthMetadataDelta;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +139,7 @@ export interface BackendOidcModeMetadataRedemptionRequest {
 }
 
 export interface BackendOidcModeMetadataRedemptionResponse {
-	metadata: AuthMetadataSnapshot | AuthMetadataDelta;
+	metadata: TokenSetAuthMetadataSnapshot | TokenSetAuthMetadataDelta;
 }
 
 // ---------------------------------------------------------------------------

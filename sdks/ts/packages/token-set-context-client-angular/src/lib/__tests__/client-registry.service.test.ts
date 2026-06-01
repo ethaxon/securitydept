@@ -14,9 +14,9 @@ import {
 import { provideEnvironment } from "@securitydept/client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
-	ClientInitializationMode,
-	type ClientRegistryEntry,
-	ClientRegistryEntryStatus,
+	TokenSetClientInitializationMode,
+	type TokenSetClientRegistryEntry,
+	TokenSetClientRegistryEntryStatus,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	createTokenSetClientRegistryAuthorizationInterceptor,
@@ -78,8 +78,8 @@ function createOidcClient(
 function createEntry(
 	clientKey: string,
 	clientFactory: () => BaseOidcModeClient | Promise<BaseOidcModeClient>,
-	meta: Partial<ClientRegistryEntry<BaseOidcModeClient>["meta"]> = {},
-): ClientRegistryEntry<BaseOidcModeClient> {
+	meta: Partial<TokenSetClientRegistryEntry<BaseOidcModeClient>["meta"]> = {},
+): TokenSetClientRegistryEntry<BaseOidcModeClient> {
 	return {
 		clientFactory,
 		meta: {
@@ -88,14 +88,14 @@ function createEntry(
 			callbackPath: undefined,
 			requirementKind: undefined,
 			providerFamily: undefined,
-			initialization: ClientInitializationMode.Lazy,
+			initialization: TokenSetClientInitializationMode.Lazy,
 			...meta,
 		},
 	};
 }
 
 function createRegistryInjector(
-	clients: readonly ClientRegistryEntry<BaseOidcModeClient>[] = [],
+	clients: readonly TokenSetClientRegistryEntry<BaseOidcModeClient>[] = [],
 ) {
 	return createEnvironmentInjector(
 		[
@@ -181,7 +181,7 @@ describe("TokenSetClientRegistryService", () => {
 			expect(registry.entries.get()).toMatchObject([
 				{
 					meta: { clientKey: "workspace" },
-					status: ClientRegistryEntryStatus.Registered,
+					status: TokenSetClientRegistryEntryStatus.Registered,
 				},
 			]);
 
@@ -192,7 +192,7 @@ describe("TokenSetClientRegistryService", () => {
 			expect(registry.entries.get()).toMatchObject([
 				{
 					meta: { clientKey: "workspace" },
-					status: ClientRegistryEntryStatus.Ready,
+					status: TokenSetClientRegistryEntryStatus.Ready,
 				},
 			]);
 

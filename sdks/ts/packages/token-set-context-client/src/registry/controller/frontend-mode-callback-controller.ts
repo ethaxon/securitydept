@@ -10,27 +10,33 @@ import {
 	UserRecovery,
 } from "@securitydept/client";
 import { FrontendOidcModeClient } from "../../frontend-oidc-mode";
-import { type AuthSnapshot } from "../../orchestration";
+import { type TokenSetAuthSnapshot } from "../../orchestration";
 import { type BaseOidcModeClient } from "../../orchestration/client/base-client";
-import { type ClientFilter, type ClientQueryOptions } from "../contracts/query";
-import { type ClientReadyRecordView } from "../contracts/types";
-import { type ClientRecord } from "../core/client-record";
-import { type ClientRegistry } from "../core/client-registry";
-import { ClientRegistryError, ClientRegistryErrorCode } from "../core/error";
+import {
+	type TokenSetClientFilter,
+	type TokenSetClientQueryOptions,
+} from "../contracts/query";
+import { type TokenSetClientReadyRecordView } from "../contracts/types";
+import { type TokenSetClientRecord } from "../core/client-record";
+import { type TokenSetClientRegistry } from "../core/client-registry";
+import {
+	TokenSetClientRegistryError,
+	TokenSetClientRegistryErrorCode,
+} from "../core/error";
 
 export interface FrontendOidcModeCallbackInput {
 	currentUrl: () => string | null | undefined;
-	clientQuery?: () => ClientQueryOptions | undefined;
+	clientQuery?: () => TokenSetClientQueryOptions | undefined;
 }
 
 export interface FrontendOidcModeCallbackOptions
 	extends FrontendOidcModeCallbackInput {
-	registry: () => ClientRegistry<BaseOidcModeClient>;
+	registry: () => TokenSetClientRegistry<BaseOidcModeClient>;
 }
 
 export interface FrontendOidcModeCallbackResult {
-	clientRecord: ClientReadyRecordView<FrontendOidcModeClient>;
-	snapshot: AuthSnapshot;
+	clientRecord: TokenSetClientReadyRecordView<FrontendOidcModeClient>;
+	snapshot: TokenSetAuthSnapshot;
 	postAuthRedirectUri?: string;
 }
 
@@ -74,8 +80,8 @@ export class FrontendOidcModeCallbackController {
 	handle: FrontendOidcModeCallbackHandle;
 
 	private readonly currentUrl: () => string | null | undefined;
-	private readonly clientQuery: () => ClientQueryOptions | undefined;
-	private readonly registry: () => ClientRegistry<BaseOidcModeClient>;
+	private readonly clientQuery: () => TokenSetClientQueryOptions | undefined;
+	private readonly registry: () => TokenSetClientRegistry<BaseOidcModeClient>;
 
 	constructor(options: FrontendOidcModeCallbackOptions) {
 		this.registry = options.registry;
@@ -111,8 +117,8 @@ export class FrontendOidcModeCallbackController {
 			const registry = this.registry();
 			const currentUrl = this.currentUrl();
 			if (currentUrl == null) {
-				throw new ClientRegistryError({
-					code: ClientRegistryErrorCode.CallbackClientNotFound,
+				throw new TokenSetClientRegistryError({
+					code: TokenSetClientRegistryErrorCode.CallbackClientNotFound,
 					currentUrl: undefined,
 					message:
 						"[FrontendOidcModeCallbackController] Cannot determine which frontend client this callback belongs to. URL: <unavailable>. Register callbackPath in the client entry or pass a matching clientQuery.",
@@ -125,8 +131,8 @@ export class FrontendOidcModeCallbackController {
 				this.clientQuery(),
 			);
 			if (!record) {
-				throw new ClientRegistryError({
-					code: ClientRegistryErrorCode.CallbackClientNotFound,
+				throw new TokenSetClientRegistryError({
+					code: TokenSetClientRegistryErrorCode.CallbackClientNotFound,
 					currentUrl,
 					message: `[FrontendOidcModeCallbackController] Cannot determine which frontend client this callback belongs to. URL: ${currentUrl}. Register callbackPath in the client entry or pass a matching clientQuery.`,
 				});
@@ -137,8 +143,8 @@ export class FrontendOidcModeCallbackController {
 			);
 			const client = readyRecord.client;
 			if (!(client instanceof FrontendOidcModeClient)) {
-				throw new ClientRegistryError({
-					code: ClientRegistryErrorCode.CallbackClientModeMismatch,
+				throw new TokenSetClientRegistryError({
+					code: TokenSetClientRegistryErrorCode.CallbackClientModeMismatch,
 					clientKey: record.get().meta.clientKey,
 					expectedMode: "FrontendOidcModeClient",
 					actualMode: client.constructor.name,
@@ -148,7 +154,7 @@ export class FrontendOidcModeCallbackController {
 
 			return {
 				clientRecord:
-					readyRecord as ClientReadyRecordView<FrontendOidcModeClient>,
+					readyRecord as TokenSetClientReadyRecordView<FrontendOidcModeClient>,
 				snapshot: callbackResult.snapshot,
 				postAuthRedirectUri: callbackResult.postAuthRedirectUri,
 			};
@@ -156,10 +162,10 @@ export class FrontendOidcModeCallbackController {
 	}
 
 	selectClientRecordForInput(
-		registry: ClientRegistry<BaseOidcModeClient>,
+		registry: TokenSetClientRegistry<BaseOidcModeClient>,
 		currentUrl: string,
-		clientQuery: ClientQueryOptions | undefined,
-	): ReadableSignalTrait<ClientRecord<BaseOidcModeClient>> | undefined {
+		clientQuery: TokenSetClientQueryOptions | undefined,
+	): ReadableSignalTrait<TokenSetClientRecord<BaseOidcModeClient>> | undefined {
 		return registry.clientRecordForQuery(
 			FrontendOidcModeCallbackController.createCallbackQuery(
 				currentUrl,
@@ -170,13 +176,15 @@ export class FrontendOidcModeCallbackController {
 
 	static createCallbackQuery(
 		currentUrl: string,
-		clientQuery: ClientQueryOptions | undefined,
-	): ClientQueryOptions {
+		clientQuery: TokenSetClientQueryOptions | undefined,
+	): TokenSetClientQueryOptions {
 		if (!clientQuery) {
 			return { callbackUrl: currentUrl };
 		}
 
-		function withCallbackUrl(filter: ClientFilter): ClientFilter {
+		function withCallbackUrl(
+			filter: TokenSetClientFilter,
+		): TokenSetClientFilter {
 			return {
 				callbackUrl: currentUrl,
 				...filter,

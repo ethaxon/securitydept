@@ -3,11 +3,11 @@ import {
 	type ReadableSignalTrait,
 	type StorageTrait,
 } from "@securitydept/client";
-import { type TokenFreshnessOptions } from "../token/freshness";
-import { type AuthSnapshot } from "../token/types";
-import { type AuthWorkflowRuntimeOptions } from "./workflows/source";
+import { type TokenSetTokenFreshnessOptions } from "../token/freshness";
+import { type TokenSetAuthSnapshot } from "../token/types";
+import { type TokenSetAuthWorkflowRuntimeOptions } from "./workflows/source";
 
-export interface OidcRedirectLoginOptions {
+export interface TokenSetOidcRedirectLoginOptions {
 	/**
 	 * Where to redirect the user after successful authentication.
 	 *
@@ -16,7 +16,7 @@ export interface OidcRedirectLoginOptions {
 	postAuthRedirectUri?: string;
 }
 
-export interface OidcPopupLoginOptions {
+export interface TokenSetOidcPopupLoginOptions {
 	/**
 	 * The popup callback URL. This page should relay the callback URL back to
 	 * the opener through the token-set popup relay helper for the selected mode.
@@ -30,9 +30,9 @@ export interface OidcPopupLoginOptions {
 	timeoutMs?: number;
 }
 
-export interface OidcPopupLoginResult {
+export interface TokenSetOidcPopupLoginResult {
 	/** The auth state snapshot produced by the popup callback. */
-	snapshot: AuthSnapshot;
+	snapshot: TokenSetAuthSnapshot;
 }
 
 export interface BaseOidcModeClientTracingOptions {
@@ -41,12 +41,12 @@ export interface BaseOidcModeClientTracingOptions {
 }
 
 export interface BaseOidcModeClientDefaultOptions {
-	tokenFreshness: TokenFreshnessOptions;
+	tokenFreshness: TokenSetTokenFreshnessOptions;
 }
 
 export interface BaseOidcModeClientOptions {
 	environment: FoundationEnvironment;
-	refresh?: Partial<AuthWorkflowRuntimeOptions>;
+	refresh?: Partial<TokenSetAuthWorkflowRuntimeOptions>;
 	tracing: BaseOidcModeClientTracingOptions;
 	id?: string;
 	persistence?: {
@@ -72,13 +72,13 @@ export type OidcModeClientConfigBase = Omit<
 	>;
 };
 
-export const StateRestoreSourceKind = {
+export const TokenSetStateRestoreSourceKind = {
 	Manual: "manual",
 	PersistentStore: "persistent_store",
 } as const;
 
-export type StateRestoreSourceKind =
-	(typeof StateRestoreSourceKind)[keyof typeof StateRestoreSourceKind];
+export type TokenSetStateRestoreSourceKind =
+	(typeof TokenSetStateRestoreSourceKind)[keyof typeof TokenSetStateRestoreSourceKind];
 
 export interface TokenSetAuthOperationSignals {
 	readonly restorePending: ReadableSignalTrait<boolean>;

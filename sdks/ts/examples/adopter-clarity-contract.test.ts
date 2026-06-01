@@ -157,8 +157,8 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 	},
 	{
 		// Standalone minimal-entry example for access-token-substrate.
-		// Proves TokenPropagation capability vocabulary and
-		// AccessTokenSubstrateIntegrationInfo contract shape.
+		// Proves TokenSetTokenPropagation capability vocabulary and
+		// TokenSetAccessTokenSubstrateIntegrationInfo contract shape.
 		path: "examples/access-token-substrate-minimal-entry.test.ts",
 		layers: [
 			EvidenceSemanticLayer.MinimalEntry,

@@ -3,7 +3,7 @@ import {
 	EventSourceKind,
 	type RuntimeEventEnvelope,
 } from "@securitydept/client";
-import { type TokenFreshnessTiming } from "../token/freshness";
+import { type TokenSetTokenFreshnessTiming } from "../token/freshness";
 
 export const TokenSetAuthEventType = {
 	AuthMaterialRestoreStarted: "auth.material.restore.started",
@@ -55,7 +55,7 @@ export type TokenSetAuthRefreshEventPayload<
 > = TokenSetAuthEventPayloadBuilder<
 	TType,
 	{
-		freshness: TokenFreshnessTiming;
+		freshness: TokenSetTokenFreshnessTiming;
 		hasRefreshMaterial: boolean;
 	} & TExtra
 >;

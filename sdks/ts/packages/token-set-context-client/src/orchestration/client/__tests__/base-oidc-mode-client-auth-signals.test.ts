@@ -11,7 +11,7 @@ import {
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { TokenSetAuthEventType } from "../../events/auth-events";
-import { type AuthSnapshot } from "../../token/types";
+import { type TokenSetAuthSnapshot } from "../../token/types";
 import { BaseOidcModeClient, PersistPolicy } from "../base-client";
 import { type BaseOidcModeClientOptions } from "../types";
 
@@ -34,7 +34,7 @@ function createAuthSnapshot(
 		expiresAt?: string;
 		refreshMaterial?: string;
 	},
-): AuthSnapshot {
+): TokenSetAuthSnapshot {
 	return {
 		tokens: {
 			accessToken,
@@ -102,15 +102,17 @@ class TestTime implements TimeTrait {
 
 class TestOidcModeClient extends BaseOidcModeClient {
 	private refreshImpl: (
-		snapshot: AuthSnapshot,
-	) => Promise<AuthSnapshot | null> = async (snapshot) => snapshot;
+		snapshot: TokenSetAuthSnapshot,
+	) => Promise<TokenSetAuthSnapshot | null> = async (snapshot) => snapshot;
 
 	constructor(options: BaseOidcModeClientOptions = createOptions()) {
 		super(options);
 	}
 
 	setRefreshImpl(
-		refreshImpl: (snapshot: AuthSnapshot) => Promise<AuthSnapshot | null>,
+		refreshImpl: (
+			snapshot: TokenSetAuthSnapshot,
+		) => Promise<TokenSetAuthSnapshot | null>,
 	): void {
 		this.refreshImpl = refreshImpl;
 	}
@@ -126,15 +128,15 @@ class TestOidcModeClient extends BaseOidcModeClient {
 	}
 
 	async applySnapshot(
-		snapshot: AuthSnapshot,
+		snapshot: TokenSetAuthSnapshot,
 		persistPolicy = PersistPolicy.FollowClient,
-	): Promise<AuthSnapshot> {
+	): Promise<TokenSetAuthSnapshot> {
 		return await this._applySnapshot(snapshot, { persistPolicy });
 	}
 
 	protected async _refreshAuthSnapshot(
-		authSnapshot: AuthSnapshot,
-	): Promise<AuthSnapshot | null> {
+		authSnapshot: TokenSetAuthSnapshot,
+	): Promise<TokenSetAuthSnapshot | null> {
 		return await this.refreshImpl(authSnapshot);
 	}
 }

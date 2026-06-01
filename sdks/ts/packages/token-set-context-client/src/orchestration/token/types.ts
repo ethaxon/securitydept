@@ -12,7 +12,7 @@ import { type IdentityPrincipal } from "@securitydept/client";
  * obtained via standard OIDC, a OIDC-mediated sealed callback, or any other
  * mechanism.
  */
-export interface TokenSnapshot {
+export interface TokenSetTokenSnapshot {
 	accessToken: string;
 	idToken?: string;
 	refreshMaterial?: string;
@@ -26,7 +26,7 @@ export interface TokenSnapshot {
  * Fields present in the delta override the corresponding snapshot fields.
  * Fields absent preserve the prior snapshot value.
  */
-export interface TokenDelta {
+export interface TokenSetTokenDelta {
 	accessToken: string;
 	idToken?: string;
 	refreshMaterial?: string;
@@ -38,20 +38,20 @@ export interface TokenDelta {
  * Metadata about the authenticated principal, independent of how the
  * tokens were obtained.
  */
-export type AuthPrincipal = IdentityPrincipal;
+export type TokenSetAuthPrincipal = IdentityPrincipal;
 
 /**
  * Authentication source descriptor.
  */
-export interface AuthSource {
-	kind: AuthSourceKind;
+export interface TokenSetAuthSource {
+	kind: TokenSetAuthSourceKind;
 	providerId?: string;
 	issuer?: string;
-	kindHistory?: AuthSourceKind[];
+	kindHistory?: TokenSetAuthSourceKind[];
 	attributes?: Record<string, unknown>;
 }
 
-export const AuthSourceKind = {
+export const TokenSetAuthSourceKind = {
 	OidcAuthorizationCode: "oidc_authorization_code",
 	RefreshToken: "refresh_token",
 	ForwardedBearer: "forwarded_bearer",
@@ -59,39 +59,39 @@ export const AuthSourceKind = {
 	Unknown: "unknown",
 } as const;
 
-export type AuthSourceKind =
-	(typeof AuthSourceKind)[keyof typeof AuthSourceKind];
+export type TokenSetAuthSourceKind =
+	(typeof TokenSetAuthSourceKind)[keyof typeof TokenSetAuthSourceKind];
 
 /**
  * Metadata snapshot that accompanies a token snapshot.
  */
-export interface AuthMetadataSnapshot {
-	principal?: AuthPrincipal;
-	source?: AuthSource;
+export interface TokenSetAuthMetadataSnapshot {
+	principal?: TokenSetAuthPrincipal;
+	source?: TokenSetAuthSource;
 	attributes?: Record<string, unknown>;
 }
 
 /**
  * A delta update to auth metadata.
  */
-export interface AuthMetadataDelta {
-	principal?: AuthPrincipal;
-	source?: AuthSource;
+export interface TokenSetAuthMetadataDelta {
+	principal?: TokenSetAuthPrincipal;
+	source?: TokenSetAuthSource;
 	attributes?: Record<string, unknown>;
 }
 
 /**
  * Combined token + metadata snapshot — the primary auth state atom.
  */
-export interface AuthSnapshot {
-	tokens: TokenSnapshot;
-	metadata: AuthMetadataSnapshot;
+export interface TokenSetAuthSnapshot {
+	tokens: TokenSetTokenSnapshot;
+	metadata: TokenSetAuthMetadataSnapshot;
 }
 
 /**
  * Combined token + metadata delta.
  */
-export interface AuthDelta {
-	tokens: TokenDelta;
-	metadata?: AuthMetadataDelta;
+export interface TokenSetAuthDelta {
+	tokens: TokenSetTokenDelta;
+	metadata?: TokenSetAuthMetadataDelta;
 }

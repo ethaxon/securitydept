@@ -1,45 +1,54 @@
-export const AuthWorkflowSourceConfigKind = {
+export const TokenSetAuthWorkflowSourceConfigKind = {
 	Bundle: "bundle",
 	None: "none",
 } as const;
 
-export type AuthWorkflowSourceConfigKind =
-	(typeof AuthWorkflowSourceConfigKind)[keyof typeof AuthWorkflowSourceConfigKind];
+export type TokenSetAuthWorkflowSourceConfigKind =
+	(typeof TokenSetAuthWorkflowSourceConfigKind)[keyof typeof TokenSetAuthWorkflowSourceConfigKind];
 
-export type BuiltinAuthWorkflowSourceConfig<TOptions> =
-	| typeof AuthWorkflowSourceConfigKind.Bundle
-	| { kind: typeof AuthWorkflowSourceConfigKind.Bundle; options?: TOptions }
+export type TokenSetBuiltinAuthWorkflowSourceConfig<TOptions> =
+	| typeof TokenSetAuthWorkflowSourceConfigKind.Bundle
+	| {
+			kind: typeof TokenSetAuthWorkflowSourceConfigKind.Bundle;
+			options?: TOptions;
+	  }
 	| undefined // equals to bundle with default options
 	| false;
 
-export function normalizeBuiltinAuthWorkflowSourceConfig<
+export function normalizeTokenSetBuiltinAuthWorkflowSourceConfig<
 	TBundleOptions,
 	DBundleOptions = {},
 >(
-	option: BuiltinAuthWorkflowSourceConfig<TBundleOptions>,
+	option: TokenSetBuiltinAuthWorkflowSourceConfig<TBundleOptions>,
 	defaultOptions?: DBundleOptions,
 ):
 	| {
-			kind: typeof AuthWorkflowSourceConfigKind.Bundle;
+			kind: typeof TokenSetAuthWorkflowSourceConfigKind.Bundle;
 			options: (TBundleOptions & DBundleOptions) | DBundleOptions;
 	  }
 	| {
-			kind: typeof AuthWorkflowSourceConfigKind.None;
+			kind: typeof TokenSetAuthWorkflowSourceConfigKind.None;
 			options: DBundleOptions;
 	  } {
-	if (option === AuthWorkflowSourceConfigKind.Bundle || option === undefined) {
+	if (
+		option === TokenSetAuthWorkflowSourceConfigKind.Bundle ||
+		option === undefined
+	) {
 		return {
-			kind: AuthWorkflowSourceConfigKind.Bundle,
+			kind: TokenSetAuthWorkflowSourceConfigKind.Bundle,
 			options: Object.assign({}, defaultOptions),
 		};
-	} else if (option && option?.kind === AuthWorkflowSourceConfigKind.Bundle) {
+	} else if (
+		option &&
+		option?.kind === TokenSetAuthWorkflowSourceConfigKind.Bundle
+	) {
 		return {
-			kind: AuthWorkflowSourceConfigKind.Bundle,
+			kind: TokenSetAuthWorkflowSourceConfigKind.Bundle,
 			options: Object.assign({}, defaultOptions, option.options),
 		};
 	} else {
 		return {
-			kind: AuthWorkflowSourceConfigKind.None,
+			kind: TokenSetAuthWorkflowSourceConfigKind.None,
 			options: Object.assign({}, defaultOptions),
 		};
 	}

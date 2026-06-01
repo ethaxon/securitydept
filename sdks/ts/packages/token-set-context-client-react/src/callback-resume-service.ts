@@ -9,17 +9,17 @@ import {
 } from "@securitydept/client";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
-	type ClientQueryOptions,
-	type ClientRegistry as CoreClientRegistry,
+	type TokenSetClientRegistry as CoreClientRegistry,
 	FrontendOidcModeCallbackController,
 	type FrontendOidcModeCallbackResult,
 	type FrontendOidcModeCallbackState,
+	type TokenSetClientQueryOptions,
 } from "@securitydept/token-set-context-client/registry";
 import { type ReactRegistry } from "./token-set-auth-registry";
 
 export interface ReactFrontendOidcModeCallbackInput {
 	currentUrl: string;
-	clientQuery?: ClientQueryOptions;
+	clientQuery?: TokenSetClientQueryOptions;
 }
 
 export class ReactTokenSetCallbackResumeController {

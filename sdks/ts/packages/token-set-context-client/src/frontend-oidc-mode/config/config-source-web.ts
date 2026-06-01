@@ -36,12 +36,12 @@ import { FrontendOidcModeClient } from "../client/client";
 import { type FrontendOidcModeClientConfig } from "../client/types";
 import { parseConfigProjection } from "../contracts/parsers";
 import {
-	type ConfigProjectionSourceBootstrapScript,
-	ConfigProjectionSourceKind,
-	type ConfigProjectionSourceNetwork,
-	type ConfigProjectionSourcePersisted,
-	type PersistedConfigEnvelope,
-	type ResolvedConfigProjection,
+	type TokenSetConfigProjectionSourceBootstrapScript,
+	TokenSetConfigProjectionSourceKind,
+	type TokenSetConfigProjectionSourceNetwork,
+	type TokenSetConfigProjectionSourcePersisted,
+	type TokenSetPersistedConfigEnvelope,
+	type TokenSetResolvedConfigProjection,
 } from "./config-source";
 
 const FRONTEND_OIDC_PERSISTENT_PREFIX =
@@ -102,7 +102,7 @@ export interface CreateFrontendOidcModeWebClientEnvironmentOptions {
 export interface FrontendOidcModeBrowserClientMaterialization {
 	client: FrontendOidcModeClient;
 	config: FrontendOidcModeClientConfig;
-	resolvedProjection: ResolvedConfigProjection;
+	resolvedProjection: TokenSetResolvedConfigProjection;
 	browserPersistentStorageKey: string;
 }
 
@@ -183,9 +183,9 @@ export async function createFrontendOidcModeBrowserClient(
 		);
 	}
 
-	const resolvedProjection: ResolvedConfigProjection = {
+	const resolvedProjection: TokenSetResolvedConfigProjection = {
 		config: parsed.value,
-		sourceKind: ConfigProjectionSourceKind.Network,
+		sourceKind: TokenSetConfigProjectionSourceKind.Network,
 		generatedAt:
 			typeof projection === "object" &&
 			projection !== null &&
@@ -280,7 +280,7 @@ export function networkConfigSource(options: {
 	apiEndpoint: string;
 	redirectUri: string;
 	defaultPostAuthRedirectUri?: string;
-}): ConfigProjectionSourceNetwork {
+}): TokenSetConfigProjectionSourceNetwork {
 	const {
 		apiEndpoint,
 		redirectUri,
@@ -288,7 +288,7 @@ export function networkConfigSource(options: {
 	} = options;
 
 	return {
-		kind: ConfigProjectionSourceKind.Network,
+		kind: TokenSetConfigProjectionSourceKind.Network,
 		fetch: async () => {
 			const url = new URL(`${apiEndpoint}/auth/config`);
 			url.searchParams.set("redirect_uri", redirectUri);
@@ -328,7 +328,7 @@ export function bootstrapScriptSource(options: {
 	projectionField?: string;
 	redirectUri?: string;
 	defaultPostAuthRedirectUri?: string;
-}): ConfigProjectionSourceBootstrapScript {
+}): TokenSetConfigProjectionSourceBootstrapScript {
 	const {
 		globalKey,
 		projectionField = "oidc",
@@ -337,7 +337,7 @@ export function bootstrapScriptSource(options: {
 	} = options;
 
 	return {
-		kind: ConfigProjectionSourceKind.BootstrapScript,
+		kind: TokenSetConfigProjectionSourceKind.BootstrapScript,
 		read: () => {
 			const global = (globalThis as Record<string, unknown>)[globalKey];
 			if (global == null || typeof global !== "object") {
@@ -382,19 +382,19 @@ export function persistedConfigSource(options: {
 	storageKey: string;
 	redirectUri?: string;
 	defaultPostAuthRedirectUri?: string;
-}): ConfigProjectionSourcePersisted {
+}): TokenSetConfigProjectionSourcePersisted {
 	const { store, storageKey, redirectUri, defaultPostAuthRedirectUri } =
 		options;
 
 	return {
-		kind: ConfigProjectionSourceKind.Persisted,
+		kind: TokenSetConfigProjectionSourceKind.Persisted,
 		restore: async () => {
 			const raw = await store.get(storageKey);
 			if (raw === null) {
 				return null;
 			}
 			try {
-				const envelope = JSON.parse(raw) as PersistedConfigEnvelope;
+				const envelope = JSON.parse(raw) as TokenSetPersistedConfigEnvelope;
 				if (!envelope.data) {
 					return null;
 				}
@@ -433,12 +433,12 @@ export function persistedConfigSource(options: {
 export async function persistConfigProjection(
 	store: StorageTrait,
 	storageKey: string,
-	resolved: ResolvedConfigProjection,
+	resolved: TokenSetResolvedConfigProjection,
 ): Promise<void> {
 	if (resolved.rawProjection === undefined) {
 		return;
 	}
-	const envelope: PersistedConfigEnvelope = {
+	const envelope: TokenSetPersistedConfigEnvelope = {
 		data: resolved.rawProjection,
 		generatedAt: resolved.generatedAt ?? 0,
 	};
@@ -452,11 +452,11 @@ export async function persistConfigProjection(
 /**
  * Options for `scheduleIdleRevalidation`.
  */
-export interface IdleRevalidationOptions {
+export interface TokenSetIdleRevalidationOptions {
 	/**
 	 * The network source to re-fetch from.
 	 */
-	networkSource: ConfigProjectionSourceNetwork;
+	networkSource: TokenSetConfigProjectionSourceNetwork;
 	/**
 	 * Explicit time capability used for freshness checks and persisted metadata.
 	 */
@@ -500,7 +500,7 @@ export interface IdleRevalidationOptions {
  *          skipped (source is still fresh).
  */
 export function scheduleIdleRevalidation(
-	options: IdleRevalidationOptions,
+	options: TokenSetIdleRevalidationOptions,
 ): (() => void) | undefined {
 	const {
 		networkSource,
@@ -528,7 +528,7 @@ export function scheduleIdleRevalidation(
 			// Extract generatedAt from the fresh projection for the envelope
 			const freshGeneratedAt =
 				extractGeneratedAtFromProjection(raw) ?? time.now();
-			const envelope: PersistedConfigEnvelope = {
+			const envelope: TokenSetPersistedConfigEnvelope = {
 				data: raw,
 				generatedAt: freshGeneratedAt,
 			};

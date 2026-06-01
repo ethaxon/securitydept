@@ -23,9 +23,9 @@ import {
 import { provideEnvironment } from "@securitydept/client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
-	ClientInitializationMode,
-	type ClientReadyRecordView,
-	ClientRegistryEntryStatus,
+	TokenSetClientInitializationMode,
+	type TokenSetClientReadyRecordView,
+	TokenSetClientRegistryEntryStatus,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	createTokenSetCanActivate,
@@ -75,25 +75,27 @@ function createMockClient(authenticated: boolean): BaseOidcModeClient {
 
 function createReadyRecord(
 	client: BaseOidcModeClient,
-): ClientReadyRecordView<BaseOidcModeClient> {
+): TokenSetClientReadyRecordView<BaseOidcModeClient> {
 	const meta = {
 		clientKey: "confluence",
 		urlPatterns: [],
 		callbackPath: "/auth/callback",
 		requirementKind: "frontend_oidc",
 		providerFamily: undefined,
-		initialization: ClientInitializationMode.Lazy,
+		initialization: TokenSetClientInitializationMode.Lazy,
 	};
 	return {
 		id: "confluence",
 		entry: { clientFactory: () => client, meta },
 		meta,
-		status: ClientRegistryEntryStatus.Ready,
+		status: TokenSetClientRegistryEntryStatus.Ready,
 		client,
 	};
 }
 
-function createRegistryMock(record: ClientReadyRecordView<BaseOidcModeClient>) {
+function createRegistryMock(
+	record: TokenSetClientReadyRecordView<BaseOidcModeClient>,
+) {
 	return {
 		clientRecordGenForQuery: vi.fn(function* () {
 			yield createSignal(record);
