@@ -38,10 +38,8 @@ export interface FoundationEnvironment {
 
 export interface ServiceWorkerEnvironment extends FoundationEnvironment {}
 
-export const FOUNDATION_ENVIRONMENT_TOKEN =
-	new SecuritydeptInjectionToken<FoundationEnvironment>(
-		"FOUNDATION_ENVIRONMENT_TOKEN",
-	);
+export const ENVIRONMENT_TOKEN =
+	new SecuritydeptInjectionToken<FoundationEnvironment>("ENVIRONMENT_TOKEN");
 
 export interface EnvironmentValidators {
 	transport?: TraitInputValidator;

@@ -7,7 +7,6 @@ import {
 	inject,
 	runInInjectionContext,
 	type SecuritydeptDependencyToken,
-	type SecuritydeptDestroyRef,
 	SecuritydeptInjectionToken,
 	SecuritydeptInjector,
 	type SecuritydeptInjectorTrait,
@@ -246,7 +245,7 @@ describe("SecuritydeptInjector", () => {
 
 		const trigger = vi.fn();
 		destroyRef.onDestroy(trigger);
-		(destroyRef as SecuritydeptDestroyRef & { destroy: () => void }).destroy();
+		destroyRef.dispose();
 
 		expect(destroyRef.destroyed).toBe(true);
 		expect(callback).not.toHaveBeenCalled();

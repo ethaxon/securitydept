@@ -1,4 +1,10 @@
 export {
+	BaseURIStringSchema,
+	UriReferenceStringSchema,
+	UriRelativeStringSchema,
+	UriStringSchema,
+} from "../validation/schemas/uri";
+export {
 	readSecuritydeptRouteMetadata,
 	SECURITYDEPT_ROUTE_METADATA_KEY,
 	type SecuritydeptRouteMetadata,
@@ -13,4 +19,3 @@ export {
 	RouterTraitSchema,
 	takeCompatFragmentFromRouter,
 } from "./router";
-export { BaseURIStringSchema, UriReferenceStringSchema } from "./uri";

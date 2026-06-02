@@ -1,17 +1,7 @@
 // TimeTrait focused unit tests.
 
 import { describe, expect, it } from "vitest";
-import { createDefaultTimeConfig, parseDurationToMs } from "../index";
-
-describe("createDefaultTimeConfig", () => {
-	it("exposes wall-clock and timer capabilities", () => {
-		const time = createDefaultTimeConfig();
-
-		expect(time.now()).toBeTypeOf("number");
-		expect(typeof time.setTimeout).toBe("function");
-		expect(typeof time.clearTimeout).toBe("function");
-	});
-});
+import { parseDurationToMs } from "../index";
 
 describe("parseDurationToMs", () => {
 	it("parses supported duration suffixes into milliseconds", () => {

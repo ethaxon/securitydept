@@ -22,18 +22,6 @@ describe("Angular router adapter", () => {
 		expect(() =>
 			createRouterForAngular({
 				router: { navigateByUrl },
-				baseURI: "/relative",
-			}),
-		).toThrow(/createRouterForAngular could not validate router/);
-		expect(() =>
-			createRouterForAngular({
-				router: { navigateByUrl },
-				document: { baseURI: "/relative" },
-			}),
-		).toThrow(/createRouterForAngular could not validate router/);
-		expect(() =>
-			createRouterForAngular({
-				router: { navigateByUrl },
 				currentUrl: "http://[",
 			}),
 		).toThrow(/createRouterForAngular could not validate router/);
@@ -75,53 +63,6 @@ describe("Angular router adapter", () => {
 		expect(router.currentUrl()?.toString()).toBe("/next");
 	});
 
-	it("uses only explicit Angular document for default base URI", () => {
-		const routerWithoutDocument = createRouterForAngular({
-			router: {
-				url: "/current",
-				navigateByUrl: vi.fn(async () => true),
-			},
-		});
-		const routerWithDocument = createRouterForAngular({
-			router: {
-				url: "/current",
-				navigateByUrl: vi.fn(async () => true),
-			},
-			document: { baseURI: "https://document.example.com/" },
-		});
-		const routerWithOverride = createRouterForAngular({
-			router: {
-				url: "/current",
-				navigateByUrl: vi.fn(async () => true),
-			},
-			document: { baseURI: "https://document.example.com/" },
-			baseURI: "https://override.example.com/",
-		});
-
-		expect(routerWithoutDocument.baseURI()).toBeNull();
-		expect(routerWithDocument.baseURI()?.toString()).toBe(
-			"https://document.example.com/",
-		);
-		expect(routerWithOverride.baseURI()?.toString()).toBe(
-			"https://override.example.com/",
-		);
-	});
-
-	it("reads Angular document base URI dynamically when base URI is not explicit", () => {
-		const documentHost = { baseURI: "https://initial.example.com/" };
-		const router = createRouterForAngular({
-			router: {
-				url: "/current",
-				navigateByUrl: vi.fn(async () => true),
-			},
-			document: documentHost,
-		});
-
-		expect(router.baseURI()?.toString()).toBe("https://initial.example.com/");
-		documentHost.baseURI = "https://next.example.com/";
-		expect(router.baseURI()?.toString()).toBe("https://next.example.com/");
-	});
-
 	it("builds a RouterTrait from Angular navigation", async () => {
 		const navigateByUrl = vi.fn(async () => true);
 		const router = createRouterForAngular({
@@ -129,11 +70,9 @@ describe("Angular router adapter", () => {
 				url: "/current",
 				navigateByUrl,
 			},
-			baseURI: "https://app.example.com/",
 		});
 
 		expect(router.currentUrl()?.toString()).toBe("/current");
-		expect(router.baseURI()?.toString()).toBe("https://app.example.com/");
 		await router.navigate({
 			url: UriReferenceString.parse("/next"),
 			intent: "post_auth_redirect",

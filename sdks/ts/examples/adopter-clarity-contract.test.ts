@@ -216,17 +216,6 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		],
 	},
 	{
-		// TanStack React Router adapter.
-		// Backs MinimalEntry for @securitydept/client-react/tanstack-router.
-		// Proves canonical import path, route match projection, custom requirements key,
-		// activator lifecycle, and shared-prefix transition preservation.
-		path: "examples/tanstack-react-router-adapter.test.ts",
-		layers: [
-			EvidenceSemanticLayer.MinimalEntry,
-			EvidenceSemanticLayer.PromotionReadiness,
-		],
-	},
-	{
 		// Angular Router adapter (route projection + guard).
 		// Backs MinimalEntry for @securitydept/client-angular.
 		// Proves canonical import path, pathFromRoot projection, empty-path handling,
@@ -253,7 +242,7 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		// Angular full-route aggregation guard canonical pattern.
 		// Backs MinimalEntry for @securitydept/client-angular and
 		// @securitydept/token-set-context-client-angular.
-		// Proves: secureRoute/secureRouteRoot declaration, projectAngularRouteSegments
+		// Proves: secureTokenSetRoute/Root declaration, projectAngularRouteSegments
 		// multi-level accumulation (parent + child) via RouteCompositionRequirementPlanner,
 		// single-pass planner evaluation, and provideTokenSetRequirementPlannerHost /
 		// createTokenSetCanActivate API shape.
@@ -264,25 +253,12 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		],
 	},
 	{
-		// React planner-host baseline.
-		// Backs MinimalEntry for @securitydept/client-react root export (.).
-		// Proves canonical import shape, AuthPlannerHostProvider, useAuthPlannerHost,
-		// AuthRequirementsClientSetProvider, useEffectiveClientSet, and the full
-		// composition semantics (inherit/merge/replace) from a React adopter perspective.
-		// Also covers async selector support (chooser UI pattern).
-		path: "examples/react-planner-host-baseline.test.ts",
-		layers: [
-			EvidenceSemanticLayer.MinimalEntry,
-			EvidenceSemanticLayer.PromotionReadiness,
-		],
-	},
-	{
 		// TanStack Router route-security contract.
 		// Backs MinimalEntry for @securitydept/client-react/tanstack-router.
-		// Proves: withTanStackRouteRequirements declaration, merge/replace/inherit
-		// composition, extractTanStackRouteRequirements aggregation,
-		// createTanStackRouteSecurityPolicy root-level runtime policy,
-		// handler resolution order, public zone via replace, and Angular parity.
+		// Proves: secureRoute / secureRouteRoot staticData declaration,
+		// router.state.matches staticData projection, beforeLoad composition,
+		// SecurityDept injector planner-host lookup, scoped behaviour inheritance,
+		// and blocked / redirect outcome mapping.
 		path: "examples/tanstack-route-security-contract.test.ts",
 		layers: [
 			EvidenceSemanticLayer.MinimalEntry,

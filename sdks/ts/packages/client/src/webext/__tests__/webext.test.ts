@@ -46,23 +46,6 @@ describe("web extension environment adapters", () => {
 		});
 	});
 
-	it("resolves baseURI from runtime.getURL for extension background routers", () => {
-		const browser: WebExtRouterBrowserLike = {
-			runtime: {
-				getURL(path: string) {
-					return `moz-extension://test-id/${path}`;
-				},
-			},
-			tabs: {
-				create: vi.fn(),
-			},
-		};
-
-		const router = createRouterForWebExt({ browser });
-
-		expect(router?.baseURI()?.toString()).toBe("moz-extension://test-id/");
-	});
-
 	it("passes relative navigate targets through to tabs.create", async () => {
 		const create = vi.fn();
 		const browser: WebExtRouterBrowserLike = {
@@ -91,26 +74,6 @@ describe("web extension environment adapters", () => {
 		expect(create).toHaveBeenCalledWith({
 			url: "callback.html",
 		});
-	});
-
-	it("prefers explicit baseURI override over runtime.getURL", () => {
-		const browser: WebExtRouterBrowserLike = {
-			runtime: {
-				getURL() {
-					return "moz-extension://ignored/";
-				},
-			},
-			tabs: {
-				create: vi.fn(),
-			},
-		};
-
-		const router = createRouterForWebExt({
-			browser,
-			baseURI: "https://override.example/",
-		});
-
-		expect(router?.baseURI()?.toString()).toBe("https://override.example/");
 	});
 
 	it("returns null when extension router host is unavailable", () => {
@@ -226,9 +189,6 @@ describe("web extension environment adapters", () => {
 					href: "moz-extension://test-id/popup.html#callback",
 					hash: "#callback",
 				},
-				document: {
-					baseURI: "moz-extension://test-id/popup.html",
-				},
 				history: { replaceState },
 			},
 			transport: createTransport(),
@@ -237,18 +197,12 @@ describe("web extension environment adapters", () => {
 		expect(environment.router?.currentUrl()?.toString()).toBe(
 			"moz-extension://test-id/popup.html#callback",
 		);
-		expect(environment.router?.baseURI()?.toString()).toBe(
-			"moz-extension://test-id/popup.html",
-		);
 	});
 
 	it("does not override an explicit UI router provider", () => {
 		const explicitRouter = {
 			currentUrl() {
 				return UriReferenceString.parse("https://override.example/");
-			},
-			baseURI() {
-				return null;
 			},
 			navigate() {},
 		};

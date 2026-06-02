@@ -52,6 +52,11 @@
 			"monorepo-tsc": "./src/rx/index.ts",
 			"types": "./dist/rx/index.d.mts",
 			"import": "./dist/rx/index.mjs"
+		},
+		"./test": {
+			"monorepo-tsc": "./src/test/index.ts",
+			"types": "./dist/test/index.d.mts",
+			"import": "./dist/test/index.mjs"
 		}
 	},
 	"files": [

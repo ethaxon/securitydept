@@ -26,7 +26,7 @@ import {
 	createInMemoryRecordStore,
 } from "@securitydept/client";
 import { SessionContextClient } from "@securitydept/session-context-client";
-import { FakeTransport } from "@securitydept/test-utils";
+import { createTransportForTest } from "@securitydept/client/test";
 import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -40,7 +40,7 @@ describe("session-context-client SSR / server-host contract", () => {
 				baseUrl: "https://auth.example.com",
 			},
 			createFoundationEnvironment({
-				transport: new FakeTransport(),
+				transport: createTransportForTest(),
 			}),
 		);
 
@@ -51,7 +51,7 @@ describe("session-context-client SSR / server-host contract", () => {
 	it("fetchUserInfo() works against server-forwarded cookies via arbitrary transport", async () => {
 		// In SSR, the host forwards the user's cookies via a custom transport
 		// that injects Cookie headers.  The SDK does NOT own cookie handling.
-		const transport = new FakeTransport().on(
+		const transport = createTransportForTest().on(
 			(request) =>
 				request.method === "GET" && request.url.endsWith("/user-info"),
 			(request) => {
@@ -97,7 +97,7 @@ describe("session-context-client SSR / server-host contract", () => {
 	});
 
 	it("fetchUserInfo() returns null when unauthenticated, enabling server-side redirect", async () => {
-		const transport = new FakeTransport().on(
+		const transport = createTransportForTest().on(
 			(request) =>
 				request.method === "GET" && request.url.endsWith("/user-info"),
 			() => ({ status: 401, headers: {}, body: null }),

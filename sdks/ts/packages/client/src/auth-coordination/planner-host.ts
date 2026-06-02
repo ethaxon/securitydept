@@ -16,13 +16,43 @@
 // carried here as additional fields without touching the serializable
 // contract layer.
 
-import { type FoundationEnvironment } from "../environment";
+import { ENVIRONMENT_TOKEN, type FoundationEnvironment } from "../environment";
+import {
+	PARENT_INJECTOR_TOKEN,
+	SecurityDeptOptional,
+	SecuritydeptInjectionToken,
+	type SecuritydeptInjectorTrait,
+	type SecuritydeptProvider,
+} from "../injection";
 import {
 	type AuthRequirement,
 	type RequirementBehaviour,
 	type RequirementCandidateSelectionContext,
 	type SelectCandidate,
 } from "./contract";
+
+export const REQUIREMENT_PLANNER_HOST = new SecuritydeptInjectionToken<
+	RequirementPlannerHost<unknown>
+>("REQUIREMENT_PLANNER_HOST");
+
+export type RequirementPlannerHostBehaviour<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+	TBehaviour extends Partial<
+		RequirementBehaviour<TAuthRequirement, TPlanContext>
+	> = Partial<RequirementBehaviour<TAuthRequirement, TPlanContext>>,
+> = TBehaviour | (() => TBehaviour);
+
+export interface ProvideRequirementPlannerHostOptions<
+	TBehaviour = Partial<RequirementBehaviour>,
+> {
+	readonly parent?: RequirementPlannerHost<TBehaviour>;
+	readonly environment?: FoundationEnvironment;
+}
+
+export interface InjectRequirementPlannerHostOptions {
+	readonly injector: SecuritydeptInjectorTrait;
+}
 
 /**
  * Default candidate selector: first unauthenticated candidate as soon as it is
@@ -131,4 +161,60 @@ export class RequirementPlannerHost<
 	): Promise<FoundationEnvironment> {
 		return (await this.resolveEnvironmentOption()) ?? (await defaultValue());
 	}
+}
+
+export function provideRequirementPlannerHost<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+	TBehaviour extends Partial<
+		RequirementBehaviour<TAuthRequirement, TPlanContext>
+	> = Partial<RequirementBehaviour<TAuthRequirement, TPlanContext>>,
+>(
+	behaviour: RequirementPlannerHostBehaviour<
+		TAuthRequirement,
+		TPlanContext,
+		TBehaviour
+	>,
+	options: ProvideRequirementPlannerHostOptions<TBehaviour> = {},
+): SecuritydeptProvider<RequirementPlannerHost<TBehaviour>> {
+	return {
+		provide: REQUIREMENT_PLANNER_HOST,
+		useFactory: (
+			parentInjector: SecuritydeptInjectorTrait | null,
+			environment: FoundationEnvironment | null,
+		) => {
+			const parent =
+				options.parent ??
+				(parentInjector?.get(
+					REQUIREMENT_PLANNER_HOST,
+					null,
+				) as RequirementPlannerHost<TBehaviour> | null) ??
+				undefined;
+			const resolved =
+				typeof behaviour === "function" ? behaviour() : behaviour;
+			return RequirementPlannerHost.fromBehaviour(resolved, {
+				parent,
+				environment: options.environment ?? environment ?? undefined,
+			});
+		},
+		deps: [
+			[new SecurityDeptOptional(), PARENT_INJECTOR_TOKEN],
+			[new SecurityDeptOptional(), ENVIRONMENT_TOKEN],
+		],
+	};
+}
+
+export function injectRequirementPlannerHost<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TPlanContext = {},
+	TBehaviour extends Partial<
+		RequirementBehaviour<TAuthRequirement, TPlanContext>
+	> = Partial<RequirementBehaviour<TAuthRequirement, TPlanContext>>,
+>(
+	options: InjectRequirementPlannerHostOptions,
+): RequirementPlannerHost<TBehaviour> | null {
+	return options.injector.get(
+		REQUIREMENT_PLANNER_HOST,
+		null,
+	) as RequirementPlannerHost<TBehaviour> | null;
 }

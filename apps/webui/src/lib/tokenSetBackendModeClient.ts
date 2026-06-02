@@ -1,27 +1,20 @@
 // Shared token-set client instance for the React canonical consumer path.
 //
 // This module creates a singleton BackendOidcModeClient wrapped as a
-// TokenSetReactClient
-// for use with the token-set auth runtime and route-level auth checks. The wrapper
-// delegates all methods to the underlying BackendOidcModeClient, adapting only
-// the two methods whose signatures differ from the TokenSetReactClient contract
-// (restorePersistedState, handleCallback).
+// BaseOidcModeClient for use with the token-set auth runtime and route-level
+// auth checks.
 
 import {
 	createRootSpan,
 	createTraceTimelineStore,
 	createTracing,
 	FetchTransportRedirectKind,
-	parseCompatFragment,
 	takeCompatFragmentFromRouter,
 } from "@securitydept/client";
 import { createEnvironmentForNativeWeb } from "@securitydept/client/web";
 import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { type AuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import {
-	type TokenSetBackendOidcClient,
-	type TokenSetReactClient,
-} from "@securitydept/token-set-context-client-react";
+import { type TokenSetBackendOidcClient } from "@/lib/tokenSetClientAssertions";
 import {
 	TOKEN_SET_BACKEND_MODE_LOGIN_PATH,
 	TOKEN_SET_BACKEND_MODE_METADATA_REDEEM_PATH,
@@ -52,8 +45,6 @@ export const tokenSetBackendModeHostSpan = tokenSetBackendModeRootSpan.fork({
 		role: "host",
 	},
 });
-
-type WrappedTokenSetReactClient = TokenSetReactClient & BackendOidcModeClient;
 
 const tokenSetBackendModeEnvironment = createEnvironmentForNativeWeb({
 	span: tokenSetBackendModeRootSpan,
@@ -138,77 +129,17 @@ export async function clearTokenSetBackendModeBrowserState(
 }
 
 // ---------------------------------------------------------------------------
-// TokenSetReactClient adapter
-// ---------------------------------------------------------------------------
-
-/**
- * Adapt a BackendOidcModeClient to satisfy the TokenSetReactClient contract while
- * preserving full access to the BackendOidcModeClient surface.
- *
- * The wrapper is built via Proxy so every property/method of the underlying
- * client remains accessible at runtime through the registered client object.
- * Only the two contract-divergent methods are overridden:
- *
- * - `restorePersistedState()` remains a manual persistence re-sync command
- * - `handleCallback(url)` extracts the compat fragment and delegates
- */
-function wrapAsTokenSetReactClient(
-	client: BackendOidcModeClient,
-): WrappedTokenSetReactClient {
-	const overrides = {
-		async restorePersistedState(): Promise<AuthSnapshot | null> {
-			return await client.restorePersistedState();
-		},
-
-		async handleCallback(
-			callbackUrl: string,
-		): Promise<{ snapshot: AuthSnapshot; postAuthRedirectUri?: string }> {
-			const fragment = parseCompatFragment(new URL(callbackUrl));
-			if (!fragment) {
-				throw new Error(
-					"Token-set backend callback URL has no compat fragment.",
-				);
-			}
-			const snapshot = await client.handleCallback(fragment.parameters);
-			return { snapshot };
-		},
-	};
-
-	return new Proxy(client, {
-		get(target, prop, receiver) {
-			// Override methods take precedence.
-			if (prop in overrides) {
-				return (overrides as Record<string | symbol, unknown>)[prop];
-			}
-			const value = Reflect.get(target, prop, receiver);
-			// Bind methods so `this` is the original client, not the proxy.
-			if (typeof value === "function") {
-				return value.bind(target);
-			}
-			return value;
-		},
-	}) as WrappedTokenSetReactClient;
-}
-
-const reactTokenSetBackendModeClient = wrapAsTokenSetReactClient(
-	tokenSetBackendModeClient,
-);
-
-// ---------------------------------------------------------------------------
 // Client factory
 // ---------------------------------------------------------------------------
 
 /**
  * Factory for the token-set auth runtime registry entry.
  *
- * Creates the BackendOidcModeClient (with browser defaults and the shared
- * trace timeline) and wraps it as a TokenSetReactClient via Proxy. The
- * resulting
- * client is accessed exclusively through the service returned by
- * injector.get(TOKEN_SET_AUTH_REGISTRY).require(key).
+ * Returns the singleton BackendOidcModeClient with browser defaults and the
+ * shared trace timeline.
  */
-export function tokenSetBackendModeClientFactory(): TokenSetReactClient {
-	return reactTokenSetBackendModeClient;
+export function tokenSetBackendModeClientFactory(): BackendOidcModeClient {
+	return tokenSetBackendModeClient;
 }
 
 export const ensureTokenSetBackendClientReady =

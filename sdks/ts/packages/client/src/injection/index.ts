@@ -8,7 +8,11 @@ export {
 	createSecuritydeptDestroyRef,
 	SecuritydeptDestroyRef,
 } from "./destroy";
-export { INJECTOR_TOKEN, SecuritydeptInjector } from "./injector";
+export {
+	INJECTOR_TOKEN,
+	PARENT_INJECTOR_TOKEN,
+	SecuritydeptInjector,
+} from "./injector";
 export {
 	createProviderIfTokenMissing,
 	getSecuritydeptProviderToken,

@@ -8,9 +8,9 @@ import {
 	OperationTraceEventType,
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
+import { createEnvironmentForTest as createFoundationEnvironment } from "@securitydept/client/test";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createEnvironmentForTest as createFoundationEnvironment } from "../../../../client/src/test";
 import {
 	type TokenSetAuthEvent,
 	TokenSetAuthEventType,

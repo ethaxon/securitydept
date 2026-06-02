@@ -10,7 +10,7 @@
 
 - `outposts-web -> confluence` 已改为消费 SecurityDept Angular/token-set packages，不再依赖 `angular-auth-oidc-client`。
 - Callback route 适配会迁移到基于核心 token-set registry controller 的新 Angular bridge；旧 Angular drop-in callback component 不再属于 SDK surface。
-- `secureRouteRoot()` 承载 provider-neutral requirement metadata 与 next-action policy。
+- `secureTokenSetRouteRoot()` 承载 provider-neutral requirement metadata 与 next-action policy。
 - `provideTokenSetClientRegistry(...)` 为 `Confluence` client 显式注册 `providerFamily`、`callbackPath` 与 `urlPatterns`。
 - Route-login integration 使用 `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })`；client 应已通过自身 environment 持有稳定的 page router，而不是每次调用时接收 page factory。
 - 对 registry-managed browser client，`provideTokenSetClientRegistry(...)` 直接使用核心 `TokenSetClientRegistry` lifecycle；adopter 不需要为了 resume recovery 再额外包一层 client。

@@ -1,6 +1,6 @@
-import { DOCUMENT } from "@angular/common";
 import { HttpClient } from "@angular/common/http";
 import {
+	DestroyRef,
 	InjectionToken,
 	Injector,
 	Optional,
@@ -9,13 +9,19 @@ import {
 import { Router } from "@angular/router";
 import {
 	createProviderIfTokenMissing,
+	createSecuritydeptDestroyRef,
 	type FoundationEnvironment,
 	getSecuritydeptProviderToken,
 	notMissingProvider,
 	ROUTER_TRAIT_TOKEN,
+	SecuritydeptDestroyRef,
 	type SecuritydeptProvider,
 	TRANSPORT_TRAIT_TOKEN,
 } from "@securitydept/client";
+import {
+	type ProvideSecuritydeptOptions,
+	SECURITYDEPT_INJECTOR,
+} from "./injection";
 import {
 	type CreateRouterForAngularOptions,
 	createRouterForAngular,
@@ -69,11 +75,11 @@ export type ProvideEnvironmentOptions<
 	| "transportForAngularCreateOptions"
 	| "injectorForAngularProvider"
 	| "providers"
-> & {
-	routerForAngularCreateOptions?: Partial<CreateRouterForAngularOptions>;
-	transportForAngularCreateOptions?: Partial<BaseTransportForAngularCreateOptions>;
-	providers?: readonly SecuritydeptProvider[];
-};
+> &
+	ProvideSecuritydeptOptions & {
+		routerForAngularCreateOptions?: Partial<CreateRouterForAngularOptions>;
+		transportForAngularCreateOptions?: Partial<BaseTransportForAngularCreateOptions>;
+	};
 
 export function createEnvironmentForAngular<
 	TBaseOptions extends EnvironmentCreatorOptions,
@@ -134,35 +140,64 @@ export function provideEnvironment<
 			provide: ENVIRONMENT,
 			useFactory: (
 				router: Router,
-				document: Document | null,
 				httpClient: HttpClient,
 				injector: Injector,
+				destroyRef: DestroyRef,
 				providers: readonly SecuritydeptProvider[] | null,
-			) =>
-				createEnvironmentForAngular({
-					...options,
+			) => {
+				const {
+					autoCreateDestroyRef,
+					providers: optionProviders,
+					...environmentOptions
+				} = options;
+				const securitydeptDestroyRef =
+					autoCreateDestroyRef === false
+						? null
+						: createSecuritydeptDestroyRef();
+				if (securitydeptDestroyRef) {
+					destroyRef.onDestroy(() => securitydeptDestroyRef.dispose());
+				}
+				const environmentProviders = [
+					...(optionProviders ?? []),
+					...(providers ?? []),
+					...(securitydeptDestroyRef
+						? [
+								{
+									provide: SecuritydeptDestroyRef,
+									useValue: securitydeptDestroyRef,
+								} satisfies SecuritydeptProvider,
+							]
+						: []),
+				];
+				return createEnvironmentForAngular({
+					...environmentOptions,
 					routerForAngularCreateOptions: {
 						router,
-						document,
-						...options.routerForAngularCreateOptions,
+						...environmentOptions.routerForAngularCreateOptions,
 					},
 					transportForAngularCreateOptions: {
 						httpClient,
-						...options.transportForAngularCreateOptions,
+						...environmentOptions.transportForAngularCreateOptions,
 					},
 					injectorForAngularProvider: injector,
-					providers: [...(options.providers ?? []), ...(providers ?? [])],
+					providers: environmentProviders,
 				} as unknown as CreateEnvironmentForAngularOptions<
 					TBaseOptions,
 					TEnvironment
-				>),
+				>);
+			},
 			deps: [
 				Router,
-				[new Optional(), DOCUMENT],
 				HttpClient,
 				Injector,
+				DestroyRef,
 				[new Optional(), ENVIRONMENT_PROVIDER],
 			],
+		},
+		{
+			provide: SECURITYDEPT_INJECTOR,
+			useFactory: (environment: FoundationEnvironment) => environment.injector,
+			deps: [ENVIRONMENT],
 		},
 	];
 }

@@ -1,10 +1,14 @@
-import {
-	type TokenSetBackendOidcClient,
-	type TokenSetReactClient,
-} from "@securitydept/token-set-context-client-react";
+import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
+
+export type TokenSetBackendOidcClient = BaseOidcModeClient & {
+	authorizeUrl(): string;
+	refreshState(): Promise<unknown>;
+	clearState(): Promise<unknown>;
+	logout(): Promise<void>;
+};
 
 export function isTokenSetBackendOidcClient(
-	client: TokenSetReactClient,
+	client: BaseOidcModeClient,
 ): client is TokenSetBackendOidcClient {
 	return (
 		typeof (client as { authorizeUrl?: unknown }).authorizeUrl === "function" &&
@@ -15,7 +19,7 @@ export function isTokenSetBackendOidcClient(
 }
 
 export function assertTokenSetBackendOidcClient(
-	client: TokenSetReactClient,
+	client: BaseOidcModeClient,
 	context: string,
 ): asserts client is TokenSetBackendOidcClient {
 	if (!isTokenSetBackendOidcClient(client)) {

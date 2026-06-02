@@ -3,8 +3,8 @@
 import { AuthGuardResultKind } from "@securitydept/basic-auth-context-client";
 import {
 	BASIC_AUTH_CONTEXT_CLIENT,
-	createBasicAuthContextClient,
-	provideBasicAuthContextClient,
+	BasicAuthContextService,
+	provideBasicAuthContext,
 } from "@securitydept/basic-auth-context-client-react";
 import { createFoundationEnvironment } from "@securitydept/client";
 import {
@@ -64,6 +64,7 @@ describe("basic-auth react adapter", () => {
 		function Probe() {
 			const injector = useSecuritydeptContext();
 			const client = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
+			expect(client).toBeInstanceOf(BasicAuthContextService);
 			const zone = client.zoneForPath("/basic/api/groups");
 			const redirect = client.handleUnauthorized("/basic/api/groups", 401);
 
@@ -88,18 +89,18 @@ describe("basic-auth react adapter", () => {
 			);
 		}
 
-		const initialClient = createBasicAuthContextClient({
-			config: {
-				baseUrl: "https://auth.example.com",
-				zones: [{ zonePrefix: "/basic" }],
-			},
-			environment,
-		});
-
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{ providers: [provideBasicAuthContextClient(initialClient)] },
+				{
+					parentInjector: environment.injector,
+					providers: provideBasicAuthContext({
+						config: {
+							baseUrl: "https://auth.example.com",
+							zones: [{ zonePrefix: "/basic" }],
+						},
+					}),
+				},
 				createElement(Probe),
 			),
 		);
@@ -107,18 +108,20 @@ describe("basic-auth react adapter", () => {
 		expect(view.container.textContent).toBe("/basic|/basic/login|redirect");
 		expect(observed).toEqual(["/basic|/basic/login|redirect"]);
 
-		const updatedClient = createBasicAuthContextClient({
-			config: {
-				baseUrl: "https://auth.example.com",
-				zones: [{ zonePrefix: "/internal/basic", loginSubpath: "/signin" }],
-			},
-			environment,
-		});
-
 		view.rerender(
 			createElement(
 				SecuritydeptProvider,
-				{ providers: [provideBasicAuthContextClient(updatedClient)] },
+				{
+					parentInjector: environment.injector,
+					providers: provideBasicAuthContext({
+						config: {
+							baseUrl: "https://auth.example.com",
+							zones: [
+								{ zonePrefix: "/internal/basic", loginSubpath: "/signin" },
+							],
+						},
+					}),
+				},
 				createElement(Probe),
 			),
 		);
@@ -149,18 +152,18 @@ describe("basic-auth react adapter", () => {
 			);
 		}
 
-		const client = createBasicAuthContextClient({
-			config: {
-				baseUrl: "https://auth.example.com",
-				zones: [{ zonePrefix: "/basic" }],
-			},
-			environment,
-		});
-
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{ providers: [provideBasicAuthContextClient(client)] },
+				{
+					parentInjector: environment.injector,
+					providers: provideBasicAuthContext({
+						config: {
+							baseUrl: "https://auth.example.com",
+							zones: [{ zonePrefix: "/basic" }],
+						},
+					}),
+				},
 				createElement(Probe),
 			),
 		);

@@ -22,17 +22,16 @@
 import { type Route } from "@angular/router";
 import {
 	type AuthRequirement,
+	provideRequirementPlannerHost,
 	type RequirementBehaviourWithRouteContext,
 	type RequirementPlannerHost,
+	type RequirementPlannerHostBehaviour,
 	type RequirementsComposition,
 	type RouteBehaviourContextExtra,
 	type SecuritydeptRouteMetadata,
 	writeSecuritydeptRouteMetadata,
 } from "@securitydept/client";
-import {
-	provideRequirementPlannerHost,
-	type RequirementPlannerHostBehaviour,
-} from "./planner-host";
+import { provideSecuritydept } from "../injection";
 import {
 	createAngularCanActivate,
 	createAngularCanActivateChild,
@@ -55,7 +54,7 @@ export interface SecureRouteSecurityOptions<
 	plannerHost?: RequirementPlannerHost<TBehaviour>;
 	/**
 	 * Behaviour to provide as a scoped {@link RequirementPlannerHost} at the
-	 * root route. Mounted via `provideRequirementPlannerHost` in `providers`.
+	 * root route. Mounted via `provideSecuritydept({ providers: [...] })`.
 	 */
 	behaviour?: RequirementPlannerHostBehaviour<
 		TAuthRequirement,
@@ -129,11 +128,15 @@ export function secureRouteRoot<
 	const providers = security.behaviour
 		? [
 				...(routeOptions?.providers ?? []),
-				provideRequirementPlannerHost<
-					TAuthRequirement,
-					RouteBehaviourContextExtra,
-					TBehaviour
-				>(security.behaviour),
+				provideSecuritydept({
+					providers: [
+						provideRequirementPlannerHost<
+							TAuthRequirement,
+							RouteBehaviourContextExtra,
+							TBehaviour
+						>(security.behaviour),
+					],
+				}),
 			]
 		: routeOptions?.providers;
 	const route: Route = {

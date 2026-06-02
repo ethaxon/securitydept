@@ -9,10 +9,12 @@ import {
 	notMissingProvider,
 	type SecuritydeptProvider,
 } from "../injection";
+import { TIME_TRAIT_TOKEN, type TimeTrait } from "../scheduling/types";
 import {
 	type BaseTransportTrait,
 	TRANSPORT_TRAIT_TOKEN,
 } from "../transport/types";
+import { createTimeForTest } from "./time";
 
 export type EnvironmentCreatorOptions = {
 	providers?: readonly SecuritydeptProvider[];
@@ -26,6 +28,7 @@ export type EnvironmentCreator<
 export interface CreateEnvironmentForTestOptions
 	extends Omit<CreateFoundationEnvironmentOptions, "transport"> {
 	transport?: BaseTransportTrait;
+	time?: TimeTrait;
 }
 
 export type CreateEnvironmentForTestWithBaseOptions<
@@ -75,6 +78,15 @@ export function createEnvironmentForTest(
 			() => ({
 				provide: TRANSPORT_TRAIT_TOKEN,
 				useValue: transport ?? createMissingTransportForTest(),
+			}),
+		),
+		createProviderIfTokenMissing(
+			externalProviderTokens,
+			TIME_TRAIT_TOKEN,
+			() => ({
+				provide: TIME_TRAIT_TOKEN,
+				useValue:
+					baseOptions.time ?? createTimeForTest({ initialNow: Date.now() }),
 			}),
 		),
 	].filter(notMissingProvider) as SecuritydeptProvider[];

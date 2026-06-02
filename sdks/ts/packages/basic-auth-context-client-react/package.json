@@ -42,6 +42,7 @@
 		"typecheck": "tsc -b --force"
 	},
 	"dependencies": {
+		"@securitydept/client": "workspace:*",
 		"@securitydept/basic-auth-context-client": "workspace:*"
 	},
 	"peerDependencies": {

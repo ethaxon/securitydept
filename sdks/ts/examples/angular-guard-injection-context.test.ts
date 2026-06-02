@@ -17,7 +17,6 @@ import {
 	createReplaySignal,
 	createSignal,
 	UriReferenceString,
-	UriString,
 	writeSecuritydeptRouteMetadata,
 } from "@securitydept/client";
 import { provideEnvironment } from "@securitydept/client-angular";
@@ -29,7 +28,6 @@ import {
 } from "@securitydept/token-set-context-client/registry";
 import {
 	createTokenSetCanActivate,
-	createTokenSetOidcLoginRedirectHandler,
 	provideTokenSetRequirementPlannerHost,
 	TokenSetClientRegistryService,
 } from "@securitydept/token-set-context-client-angular";
@@ -184,15 +182,10 @@ describe("Angular token-set route guard injection context", () => {
 					router: {
 						currentUrl: () =>
 							UriReferenceString.parse("https://app.example.com/current"),
-						baseURI: () => UriString.parse("https://app.example.com/"),
 						navigate: vi.fn(async () => undefined),
 					},
 				}),
-				provideTokenSetRequirementPlannerHost({
-					onClientUnauthenticated: createTokenSetOidcLoginRedirectHandler({
-						clientKey: "confluence",
-					}),
-				}),
+				provideTokenSetRequirementPlannerHost(),
 			],
 			NULL_ENVIRONMENT_INJECTOR,
 		);
@@ -207,7 +200,7 @@ describe("Angular token-set route guard injection context", () => {
 
 		await flushMicrotasks();
 		expect(loginWithRedirect).toHaveBeenCalledWith({
-			postAuthRedirectUri: "/current",
+			postAuthRedirectUri: "/confluence/spaces/abc?tab=pages",
 		});
 		expect(settled).not.toHaveBeenCalled();
 		injector.destroy();

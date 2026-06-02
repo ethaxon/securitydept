@@ -1,13 +1,8 @@
 // @vitest-environment jsdom
 
 import {
-	type BasicAuthContextClient,
-	type BasicAuthContextClientConfig,
-} from "@securitydept/basic-auth-context-client";
-import {
 	BASIC_AUTH_CONTEXT_CLIENT,
-	createBasicAuthContextClient,
-	provideBasicAuthContextClient,
+	provideBasicAuthContext,
 } from "@securitydept/basic-auth-context-client-react";
 import { createFoundationEnvironment } from "@securitydept/client";
 import {
@@ -38,18 +33,13 @@ function render(element: ReactElement) {
 	};
 }
 
-function createClient(
-	config: BasicAuthContextClientConfig,
-): BasicAuthContextClient {
-	return createBasicAuthContextClient({
-		config,
-		environment: createFoundationEnvironment({
-			transport: {
-				async execute() {
-					throw new Error("Unexpected transport call.");
-				},
+function createEnvironment() {
+	return createFoundationEnvironment({
+		transport: {
+			async execute() {
+				throw new Error("Unexpected transport call.");
 			},
-		}),
+		},
 	});
 }
 
@@ -59,6 +49,8 @@ describe("basic-auth react minimal entry", () => {
 	});
 
 	it("shows the minimal injector path for consuming zone-aware basic-auth state in React", () => {
+		const environment = createEnvironment();
+
 		function ZoneStatus() {
 			const client = useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT);
 			const zone = client.zoneForPath("/api/resource");
@@ -73,13 +65,14 @@ describe("basic-auth react minimal entry", () => {
 			createElement(
 				SecuritydeptProvider,
 				{
+					parentInjector: environment.injector,
 					providers: [
-						provideBasicAuthContextClient(
-							createClient({
+						...provideBasicAuthContext({
+							config: {
 								baseUrl: "https://auth.example.com",
 								zones: [{ zonePrefix: "/api" }],
-							}),
-						),
+							},
+						}),
 					],
 				},
 				createElement(ZoneStatus),
@@ -91,6 +84,8 @@ describe("basic-auth react minimal entry", () => {
 	});
 
 	it("shows the handleUnauthorized contract through the injected client", () => {
+		const environment = createEnvironment();
+
 		function AuthGuard() {
 			const client = useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT);
 			const result = client.handleUnauthorized("/api/data", 401);
@@ -105,13 +100,14 @@ describe("basic-auth react minimal entry", () => {
 			createElement(
 				SecuritydeptProvider,
 				{
+					parentInjector: environment.injector,
 					providers: [
-						provideBasicAuthContextClient(
-							createClient({
+						...provideBasicAuthContext({
+							config: {
 								baseUrl: "https://auth.example.com",
 								zones: [{ zonePrefix: "/api" }],
-							}),
-						),
+							},
+						}),
 					],
 				},
 				createElement(AuthGuard),

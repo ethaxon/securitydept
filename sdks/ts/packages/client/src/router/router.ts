@@ -4,7 +4,7 @@ import {
 	type CompatFragment,
 	takeCompatFragment,
 } from "../protocol/compat-fragment";
-import { type UriReferenceString, type UriString } from "../struct/uri-string";
+import { type UriReferenceString } from "../struct/uri-string";
 
 export const RouterNavigationIntent = {
 	AuthRedirect: "auth_redirect",
@@ -34,7 +34,6 @@ export interface RouterNavigationRequest {
 
 export interface RouterTrait {
 	currentUrl(): UriReferenceString | null;
-	baseURI(): UriString | null;
 	navigate(request: RouterNavigationRequest): void | Promise<void>;
 }
 
@@ -66,7 +65,6 @@ export async function takeCompatFragmentFromRouter(
 
 export const RouterTraitSchema = defineType({
 	currentUrl: "Function",
-	baseURI: "Function",
 	navigate: "Function",
 });
 

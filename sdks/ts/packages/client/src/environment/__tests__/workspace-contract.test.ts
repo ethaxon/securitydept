@@ -31,14 +31,14 @@ const CONTRACTS: PackageContract[] = [
 	{
 		dir: "client",
 		name: "@securitydept/client",
-		exportKeys: [".", "./web", "./webext", "./server", "./rx"],
+		exportKeys: [".", "./web", "./webext", "./server", "./rx", "./test"],
 		hasReactPeer: false,
 		experimental: false,
 	},
 	{
 		dir: "basic-auth-context-client",
 		name: "@securitydept/basic-auth-context-client",
-		exportKeys: [".", "./web", "./server"],
+		exportKeys: ["."],
 		hasReactPeer: false,
 		experimental: false,
 	},
@@ -79,7 +79,7 @@ const CONTRACTS: PackageContract[] = [
 	{
 		dir: "token-set-context-client-react",
 		name: "@securitydept/token-set-context-client-react",
-		exportKeys: [".", "./react-query", "./tanstack-router"],
+		exportKeys: [".", "./tanstack-router"],
 		hasReactPeer: true,
 		experimental: false,
 	},

@@ -3,34 +3,28 @@
 import {
 	createEventSubject,
 	createSignal,
+	OnceAsyncLockState,
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
+import { SecuritydeptProvider } from "@securitydept/client-react";
+import { FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
-	SecuritydeptProvider,
-	useSecuritydeptContext,
-} from "@securitydept/client-react";
-import {
+	type BaseOidcModeClient,
 	type TokenSetAuthEvent,
 	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	createTokenSetClientRegistry,
 	TokenSetClientInitializationMode,
 	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
 import {
-	CallbackResumeStatus,
-	provideTokenSetAuthRegistry,
-	provideTokenSetCallbackResumeController,
-	type ReactRegistry,
-	TOKEN_SET_CALLBACK_RESUME_CONTROLLER,
-	type TokenSetClientEntry,
-	type TokenSetReactClient,
-	useTokenSetCallbackResume,
+	provideTokenSetClientRegistry,
+	useTokenSetFrontendCallbackController,
 } from "@securitydept/token-set-context-client-react";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
+import { createEnvironmentForTest } from "../packages/client/src/test";
 import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 
 function render(element: ReactElement) {
@@ -53,6 +47,13 @@ function render(element: ReactElement) {
 	};
 }
 
+async function flushMicrotasks() {
+	await act(async () => {
+		await Promise.resolve();
+		await Promise.resolve();
+	});
+}
+
 function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 	return {
 		tokens: { accessToken },
@@ -60,140 +61,115 @@ function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 	};
 }
 
-function createManualRegistry(
-	clients: readonly TokenSetClientEntry[],
-): ReactRegistry {
-	const registry = createTokenSetClientRegistry<TokenSetReactClient>({
-		environment: {},
-	});
-
-	for (const client of clients) {
-		registry.register(toCoreEntry(client));
-	}
-
-	return registry;
+function createFrontendClient(): FrontendOidcModeClient {
+	const state = createSignal<TokenSetAuthSnapshot | null>(null);
+	const reactive = createTestTokenSetReactiveFields(null);
+	const client = {
+		state,
+		...reactive.fields,
+		authEvents: createEventSubject<TokenSetAuthEvent>(),
+		addWorkflowSource: () => ({ unsubscribe: () => undefined }),
+		removeWorkflowSource: () => false,
+		start: async () => undefined,
+		dispose: () => {
+			state.set(null);
+			reactive.emitSnapshot(null);
+		},
+		[SYMBOL_DISPOSE]: () => {
+			state.set(null);
+			reactive.emitSnapshot(null);
+		},
+		restorePersistedState: async () => state.get(),
+		handleCallback: async () => {
+			const snapshot = createSnapshot("callback-at");
+			state.set(snapshot);
+			reactive.emitSnapshot(snapshot);
+			return { snapshot, postAuthRedirectUri: "/after-login" };
+		},
+		loginWithRedirect: async () => undefined,
+		logout: async () => undefined,
+		loginWithPopup: async () => ({
+			snapshot: state.get() ?? createSnapshot("popup-at"),
+		}),
+	};
+	Object.setPrototypeOf(client, FrontendOidcModeClient.prototype);
+	return client as unknown as FrontendOidcModeClient;
 }
 
-function toCoreEntry(
-	entry: TokenSetClientEntry,
-): TokenSetClientRegistryEntry<TokenSetReactClient> {
+function createEntry(): TokenSetClientRegistryEntry<BaseOidcModeClient> {
 	return {
-		clientFactory: entry.clientFactory,
+		clientFactory: async () => createFrontendClient(),
 		meta: {
-			clientKey: entry.key,
-			urlPatterns: entry.urlPatterns ?? [],
-			callbackPath: entry.callbackPath,
-			requirementKind: entry.requirementKind,
-			providerFamily: entry.providerFamily,
-			initialization:
-				entry.initialization ?? TokenSetClientInitializationMode.Immediate,
+			clientKey: "frontend",
+			urlPatterns: [],
+			callbackPath: "/oidc/callback",
+			requirementKind: undefined,
+			providerFamily: undefined,
+			initialization: TokenSetClientInitializationMode.Lazy,
 		},
 	};
 }
 
 describe("react callback async readiness", () => {
-	it("resumes callback from a controller resolved through SecuritydeptProvider", async () => {
-		const state = createSignal<TokenSetAuthSnapshot | null>(null);
-		const reactive = createTestTokenSetReactiveFields(null);
-		const registry = createManualRegistry([
-			{
-				key: "frontend",
-				callbackPath: "/oidc/callback",
-				clientFactory: async () => ({
-					state,
-					...reactive.fields,
-					authEvents: createEventSubject<TokenSetAuthEvent>(),
-					addWorkflowSource: () => ({ unsubscribe: () => undefined }),
-					removeWorkflowSource: () => false,
-					start: async () => undefined,
-					dispose: () => {
-						state.set(null);
-						reactive.emitSnapshot(null);
-					},
-					[SYMBOL_DISPOSE]: () => {
-						state.set(null);
-						reactive.emitSnapshot(null);
-					},
-					restorePersistedState: async () => state.get(),
-					handleCallback: async () => {
-						const snapshot = createSnapshot("callback-at");
-						state.set(snapshot);
-						reactive.emitSnapshot(snapshot);
-						return { snapshot, postAuthRedirectUri: "/after-login" };
-					},
-					loginWithRedirect: async () => undefined,
-					logout: async () => undefined,
-					loginWithPopup: async () => ({
-						snapshot: state.get() ?? createSnapshot("popup-at"),
-					}),
-				}),
-			},
-		]);
+	it("resumes callback through the frontend callback hook", async () => {
+		const environment = createEnvironmentForTest();
 
 		function Probe() {
-			const controller = useSecuritydeptContext().get(
-				TOKEN_SET_CALLBACK_RESUME_CONTROLLER,
-			);
-			const resumeState = useTokenSetCallbackResume({
-				controller,
-				getCurrentUrl: () =>
-					"https://app.example.com/oidc/callback?code=ok&state=s1",
+			const callback = useTokenSetFrontendCallbackController({
+				currentUrl: "https://app.example.com/oidc/callback?code=ok&state=s1",
 			});
-			return createElement("output", null, resumeState.state);
+			return createElement("output", null, callback.state.state);
 		}
 
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
 				{
+					parentInjector: environment.injector,
 					providers: [
-						provideTokenSetAuthRegistry(registry),
-						provideTokenSetCallbackResumeController(registry),
+						...provideTokenSetClientRegistry({
+							clients: [createEntry()],
+						}),
 					],
 				},
 				createElement(Probe),
 			),
 		);
 
-		await act(async () => {
-			await Promise.resolve();
-			await Promise.resolve();
-		});
+		await flushMicrotasks();
 
-		expect(view.container.textContent).toBe(CallbackResumeStatus.Resolved);
+		expect(view.container.textContent).toBe(OnceAsyncLockState.Success);
 		view.unmount();
-		registry.dispose();
 	});
 
-	it("returns idle when the current URL is not a callback", () => {
-		const registry = createManualRegistry([]);
+	it("stays idle when the current URL is not a callback", async () => {
+		const environment = createEnvironmentForTest();
 
 		function Probe() {
-			const controller = useSecuritydeptContext().get(
-				TOKEN_SET_CALLBACK_RESUME_CONTROLLER,
-			);
-			const resumeState = useTokenSetCallbackResume({
-				controller,
-				getCurrentUrl: () => "https://app.example.com/not-a-callback",
+			const callback = useTokenSetFrontendCallbackController({
+				currentUrl: "https://app.example.com/not-a-callback",
 			});
-			return createElement("output", null, resumeState.state);
+			return createElement("output", null, callback.state.state);
 		}
 
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
 				{
+					parentInjector: environment.injector,
 					providers: [
-						provideTokenSetAuthRegistry(registry),
-						provideTokenSetCallbackResumeController(registry),
+						...provideTokenSetClientRegistry({
+							clients: [createEntry()],
+						}),
 					],
 				},
 				createElement(Probe),
 			),
 		);
 
-		expect(view.container.textContent).toBe(CallbackResumeStatus.Idle);
+		await flushMicrotasks();
+
+		expect(view.container.textContent).toBe(OnceAsyncLockState.Init);
 		view.unmount();
-		registry.dispose();
 	});
 });

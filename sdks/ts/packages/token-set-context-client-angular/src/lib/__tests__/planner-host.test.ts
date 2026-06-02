@@ -3,7 +3,6 @@ import {
 	createEnvironmentInjector,
 	type EnvironmentInjector,
 	Injector,
-	inject,
 	runInInjectionContext,
 } from "@angular/core";
 import {
@@ -19,9 +18,11 @@ import {
 	type SecuritydeptProvider,
 	writeSecuritydeptRouteMetadata,
 } from "@securitydept/client";
-import { type NativeWebEnvironment } from "@securitydept/client/web";
-import { ENVIRONMENT, provideEnvironment } from "@securitydept/client-angular";
-import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import {
+	createEnvironmentForNativeWeb,
+	type NativeWebEnvironment,
+} from "@securitydept/client/web";
+import { provideEnvironment } from "@securitydept/client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
 	TokenSetClientInitializationMode,
@@ -31,15 +32,11 @@ import {
 } from "@securitydept/token-set-context-client/registry";
 import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
-import { createEnvironmentForNativeWebTest } from "../../../../client/src/test";
-import {
-	createTokenSetOidcLoginRedirectHandler,
-	provideTokenSetRequirementPlannerHost,
-} from "../auth-coordination/planner-host";
+import { provideTokenSetRequirementPlannerHost } from "../auth-coordination/planner-host";
 import {
 	createTokenSetCanActivate,
-	secureRoute,
-	secureRouteRoot,
+	secureTokenSetRoute,
+	secureTokenSetRouteRoot,
 } from "../auth-coordination/secure-routes";
 import { TokenSetClientRegistryService } from "../client-registry.service";
 
@@ -75,7 +72,7 @@ function createAngularPageEnvironment(
 		search: "",
 	};
 
-	return createEnvironmentForNativeWebTest({
+	return createEnvironmentForNativeWeb({
 		...options,
 		transport: createTransport(),
 		time: createTime(),
@@ -129,27 +126,6 @@ function createReadyRecord(
 		meta,
 		status: TokenSetClientRegistryEntryStatus.Ready,
 		client,
-	};
-}
-
-async function* createClientGenerator(
-	...records: TokenSetClientReadyRecordView<BaseOidcModeClient>[]
-): AsyncGenerator<
-	TokenSetClientReadyRecordView<BaseOidcModeClient>,
-	void,
-	unknown
-> {
-	yield* records;
-}
-
-function createRequirement(
-	clientKey: string,
-): TokenSetClientRegistryAuthRequirement {
-	return {
-		id: clientKey,
-		attributes: {
-			query: { clientKey },
-		},
 	};
 }
 
@@ -281,7 +257,7 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 		injector.destroy();
 	});
 
-	it("OIDC redirect handlers resolve the canonical foundation page environment provider", async () => {
+	it("starts OIDC redirect login for unauthenticated clients by default", async () => {
 		const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
 		const client = {
 			isAuthenticated: { whenValue: vi.fn(async () => false) },
@@ -289,109 +265,54 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 			dispose: vi.fn(),
 		} as unknown as BaseOidcModeClient;
 		const record = createReadyRecord("frontend", client);
+		const registry = {
+			clientRecordGenForQuery: vi.fn(function* () {
+				yield createSignal(record);
+			}),
+			initialize: vi.fn(async () => record),
+		} as unknown as TokenSetClientRegistryService;
 		const injector = createEnvironmentInjector(
 			[
+				{ provide: TokenSetClientRegistryService, useValue: registry },
 				createRouterProvider(),
 				createHttpClientProvider(),
 				provideEnvironment({
 					createBaseEnvironment: createAngularPageEnvironment,
 				}),
+				provideTokenSetRequirementPlannerHost(),
 			],
 			Injector.NULL as never,
 		);
 
 		try {
-			const environment = runInInjectionContext(injector, () =>
-				inject(ENVIRONMENT),
-			);
-			const pendingResult = createTokenSetOidcLoginRedirectHandler({
-				clientKey: "frontend",
-			})(
-				createRequirement("frontend"),
-				{
-					environment,
-					planContext: {
-						routeState: { url: "https://app.example.com/current" },
+			const guard = createTokenSetCanActivate();
+			const routeMetadata = writeSecuritydeptRouteMetadata(undefined, {
+				requirements: [
+					{
+						id: "frontend",
+						attributes: { query: { clientKey: "frontend" } },
 					},
-					requirements: [],
-					resolutionList: [],
-				},
-				createClientGenerator(record),
+				],
+			});
+			const route = {
+				pathFromRoot: [{ data: routeMetadata }],
+				data: routeMetadata,
+			} as unknown as ActivatedRouteSnapshot;
+			const pendingResult = runInInjectionContext(injector, () =>
+				guard(route, {
+					url: "/workspace/wiki?from=guard",
+				} as RouterStateSnapshot),
 			);
 			const settled = vi.fn();
 			Promise.resolve(pendingResult).then(settled, settled);
 
 			await flushMicrotasks();
 			expect(loginWithRedirect).toHaveBeenCalledWith({
-				postAuthRedirectUri: "/current",
+				postAuthRedirectUri: "/workspace/wiki?from=guard",
 			});
 			expect(settled).not.toHaveBeenCalled();
 		} finally {
 			injector.destroy();
-		}
-	});
-
-	it("OIDC redirect handlers also drive backend web clients through the shared redirect-login contract", async () => {
-		let environment: NativeWebEnvironment | undefined;
-		let backendClient: BackendOidcModeClient | undefined;
-		let record: TokenSetClientReadyRecordView<BaseOidcModeClient> | undefined;
-		let loginWithRedirect: ReturnType<typeof vi.spyOn> | undefined;
-		async function* backendRecordGenerator() {
-			if (!record) {
-				throw new Error("Backend record was not initialized.");
-			}
-			yield record;
-		}
-		const injector = createEnvironmentInjector(
-			[
-				createRouterProvider(),
-				createHttpClientProvider(),
-				provideEnvironment({
-					createBaseEnvironment: (options) => {
-						environment = createAngularPageEnvironment(options);
-						backendClient = new BackendOidcModeClient(
-							{ baseUrl: "https://auth.example.com" },
-							environment,
-						);
-						loginWithRedirect = vi.spyOn(backendClient, "loginWithRedirect");
-						record = createReadyRecord("backend", backendClient);
-						return environment;
-					},
-				}),
-			],
-			Injector.NULL as never,
-		);
-
-		try {
-			const resolvedEnvironment = runInInjectionContext(injector, () =>
-				inject(ENVIRONMENT),
-			);
-			const pendingResult = createTokenSetOidcLoginRedirectHandler({
-				clientKey: "backend",
-			})(
-				createRequirement("backend"),
-				{
-					environment: resolvedEnvironment,
-					planContext: {
-						routeState: { url: "https://app.example.com/current" },
-					},
-					requirements: [],
-					resolutionList: [],
-				},
-				backendRecordGenerator(),
-			);
-			const settled = vi.fn();
-			Promise.resolve(pendingResult).then(settled, settled);
-
-			await flushMicrotasks();
-			expect(loginWithRedirect).toHaveBeenCalledWith({
-				postAuthRedirectUri: "/current",
-			});
-			expect(environment?.router.currentUrl()?.toString()).toBe("/current");
-			expect(settled).not.toHaveBeenCalled();
-		} finally {
-			injector.destroy();
-			backendClient?.dispose();
 		}
 	});
 
@@ -404,14 +325,11 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 		const rootRequirement = TokenSetClientRegistryAuthRequirement.create({
 			query: { clientKey: "frontend" },
 		});
-		const child = secureRoute("child", {
+		const child = secureTokenSetRoute("child", {
 			requirements: [frontendRequirement],
 		});
-		const root = secureRouteRoot("root", {
+		const root = secureTokenSetRouteRoot("root", {
 			requirements: [rootRequirement],
-			onClientUnauthenticated: createTokenSetOidcLoginRedirectHandler({
-				clientKey: "frontend",
-			}),
 		});
 
 		expect(readSecuritydeptRouteMetadata(child.data)?.requirements).toEqual([

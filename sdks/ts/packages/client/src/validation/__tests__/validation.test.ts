@@ -2,6 +2,10 @@ import { type StandardSchemaV1 } from "@standard-schema/spec";
 import { type as defineType } from "arktype";
 import { describe, expect, it } from "vitest";
 import {
+	BaseURIStringSchema,
+	UriReferenceStringSchema,
+	UriRelativeStringSchema,
+	UriStringSchema,
 	validateTraitInput,
 	validateWithSchema,
 	validateWithSchemaSync,
@@ -148,6 +152,40 @@ describe("foundation validation baseline", () => {
 					},
 				}),
 			).not.toThrow();
+		});
+	});
+
+	describe("URI schemas", () => {
+		it("validates absolute, relative, and reference URI strings", () => {
+			expect(
+				validateWithSchemaSync(UriStringSchema, "https://example.com/path")
+					.success,
+			).toBe(true);
+			expect(validateWithSchemaSync(UriStringSchema, "/relative").success).toBe(
+				false,
+			);
+			expect(
+				validateWithSchemaSync(BaseURIStringSchema, "https://example.com/")
+					.success,
+			).toBe(true);
+			expect(
+				validateWithSchemaSync(UriRelativeStringSchema, "/relative").success,
+			).toBe(true);
+			expect(
+				validateWithSchemaSync(
+					UriRelativeStringSchema,
+					"https://example.com/path",
+				).success,
+			).toBe(false);
+			expect(
+				validateWithSchemaSync(UriReferenceStringSchema, "/relative").success,
+			).toBe(true);
+			expect(
+				validateWithSchemaSync(
+					UriReferenceStringSchema,
+					"https://example.com/path",
+				).success,
+			).toBe(true);
 		});
 	});
 });

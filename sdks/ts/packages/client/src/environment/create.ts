@@ -62,8 +62,8 @@ import {
 	validateTraitInput,
 } from "../validation";
 import {
+	ENVIRONMENT_TOKEN,
 	type EnvironmentValidators,
-	FOUNDATION_ENVIRONMENT_TOKEN,
 	type FoundationEnvironment,
 } from "./types";
 
@@ -109,12 +109,12 @@ export function createFoundationEnvironment(
 	const externalProviderTokens = new Set(
 		providers.map((provider) => getSecuritydeptProviderToken(provider)),
 	);
-	if (externalProviderTokens.has(FOUNDATION_ENVIRONMENT_TOKEN)) {
+	if (externalProviderTokens.has(ENVIRONMENT_TOKEN)) {
 		throwValidationClientError({
 			code: "environment.foundation_provider_reserved",
 			source: "environment",
 			messagePrefix:
-				"createFoundationEnvironment does not allow overriding FOUNDATION_ENVIRONMENT_TOKEN",
+				"createFoundationEnvironment does not allow overriding ENVIRONMENT_TOKEN",
 		});
 	}
 	const injector = SecuritydeptInjector.resolveAndCreate([
@@ -122,7 +122,7 @@ export function createFoundationEnvironment(
 		...providers,
 		createFoundationEnvironmentUnit(),
 	]);
-	return injector.get(FOUNDATION_ENVIRONMENT_TOKEN);
+	return injector.get(ENVIRONMENT_TOKEN);
 }
 
 function createBuiltInTraitUnits(
@@ -312,7 +312,7 @@ function createBuiltInTraitUnit<T>(options: {
 
 function createFoundationEnvironmentUnit(): SecuritydeptFactoryProvider<FoundationEnvironment> {
 	return {
-		provide: FOUNDATION_ENVIRONMENT_TOKEN,
+		provide: ENVIRONMENT_TOKEN,
 		useFactory: ((
 			injector: SecuritydeptInjector,
 			transport: BaseTransportTrait,

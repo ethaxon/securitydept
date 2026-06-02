@@ -10,9 +10,9 @@
 //   - Client-registry authorization interceptor (functional + class-based)
 //   - provideTokenSetClientRegistryAuthorizationInterceptor() for NgModule HTTP_INTERCEPTORS setup
 //   - Requirement/provider-family → client key mapping
-//   - secureRouteRoot() / secureRoute() — canonical Angular Router route-security
-//     builders that delegate to the client-angular base helpers, normalize
-//     token-set requirement metadata, and mount the token-set behaviour host.
+//   - secureTokenSetRouteRoot() / secureTokenSetRoute() — token-set Angular
+//     Router route-security builders that delegate to the client-angular base
+//     helpers and mount the token-set behaviour host.
 //   - provideTokenSetRequirementPlannerHost() — provides the token-set
 //     RequirementPlannerHost behaviour to the client-angular guard pipeline.
 //   - createTokenSetCanActivate() / createTokenSetCanActivateChild() — token-set

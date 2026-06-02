@@ -64,7 +64,6 @@ function createRouter(url: string | null) {
 	return {
 		router: {
 			currentUrl: () => (url === null ? null : UriReferenceString.parse(url)),
-			baseURI: () => null,
 			navigate,
 		} satisfies RouterTrait,
 		navigate,

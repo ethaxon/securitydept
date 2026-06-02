@@ -39,6 +39,10 @@ export class SecuritydeptInjector implements SecuritydeptInjectorTrait {
 		providers: readonly SecuritydeptProvider[],
 	): SecuritydeptInjector {
 		const normalized = normalizeProviders([
+			{
+				provide: PARENT_INJECTOR_TOKEN,
+				useValue: parent,
+			},
 			...providers,
 			createInjectorSelfProvider(),
 		]);
@@ -78,6 +82,11 @@ export class SecuritydeptInjector implements SecuritydeptInjectorTrait {
 
 export const INJECTOR_TOKEN =
 	new SecuritydeptInjectionToken<SecuritydeptInjector>("INJECTOR_TOKEN");
+
+export const PARENT_INJECTOR_TOKEN =
+	new SecuritydeptInjectionToken<SecuritydeptInjectorTrait>(
+		"PARENT_INJECTOR_TOKEN",
+	);
 
 function normalizeProviders(
 	providers: readonly SecuritydeptProvider[],

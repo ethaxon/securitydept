@@ -13,14 +13,14 @@ import {
 } from "@securitydept/client";
 import { useReplaySignalValue } from "@securitydept/client-react";
 import { BackendOidcModeContextSource } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
-	type ReactRegistry,
-	TOKEN_SET_AUTH_REGISTRY,
-	type TokenSetReactClient,
+	TOKEN_SET_CLIENT_REGISTRY,
+	type TokenSetClientRegistryService,
 } from "@securitydept/token-set-context-client-react";
-import { tokenSetQueryKeys } from "@securitydept/token-set-context-client-react/react-query";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useSyncExternalStore } from "react";
+import { tokenSetQueryKeys } from "@/lib/tokenSetQueryKeys";
 import {
 	type AuthEntry,
 	type CreateBasicEntryResponse,
@@ -67,8 +67,8 @@ export type TokenSetMutationRequestOptions = Omit<
 export interface TokenSetScopedHookOptions {
 	clientKey: string;
 	injector?: SecuritydeptInjectorTrait;
-	registry?: ReactRegistry;
-	client?: TokenSetReactClient;
+	registry?: TokenSetClientRegistryService;
+	client?: BaseOidcModeClient;
 	enabled?: boolean;
 	requestOptions?: TokenSetQueryRequestOptions;
 }
@@ -84,8 +84,8 @@ export interface TokenSetEntryQueryOptions extends TokenSetScopedHookOptions {
 export interface TokenSetMutationHookOptions {
 	clientKey: string;
 	injector?: SecuritydeptInjectorTrait;
-	registry?: ReactRegistry;
-	client?: TokenSetReactClient;
+	registry?: TokenSetClientRegistryService;
+	client?: BaseOidcModeClient;
 	requestOptions?: TokenSetQueryRequestOptions;
 }
 
@@ -96,7 +96,7 @@ export interface TokenSetApiAuthorizationClient {
 	}): ManagedTransportTrait;
 }
 
-type TokenSetApiClient = TokenSetReactClient | TokenSetApiAuthorizationClient;
+type TokenSetApiClient = BaseOidcModeClient | TokenSetApiAuthorizationClient;
 
 export const tokenSetDashboardQueryKeys = {
 	forClient: (clientKey: string) =>
@@ -220,14 +220,14 @@ function resolveCancellationToken(
 function resolveTokenSetRegistry(options: {
 	clientKey: string;
 	injector?: SecuritydeptInjectorTrait;
-	registry?: ReactRegistry;
-}): ReactRegistry {
+	registry?: TokenSetClientRegistryService;
+}): TokenSetClientRegistryService {
 	if (options.registry) {
 		return options.registry;
 	}
 
 	if (options.injector) {
-		return options.injector.get(TOKEN_SET_AUTH_REGISTRY);
+		return options.injector.get(TOKEN_SET_CLIENT_REGISTRY);
 	}
 
 	throw new Error(
@@ -238,24 +238,25 @@ function resolveTokenSetRegistry(options: {
 async function resolveTokenSetClient(options: {
 	clientKey: string;
 	injector?: SecuritydeptInjectorTrait;
-	registry?: ReactRegistry;
-	client?: TokenSetReactClient;
-}): Promise<TokenSetReactClient> {
+	registry?: TokenSetClientRegistryService;
+	client?: BaseOidcModeClient;
+}): Promise<BaseOidcModeClient> {
 	if (options.client) {
 		return options.client;
 	}
 
-	return resolveTokenSetRegistry(options).initialize(options.clientKey);
+	return (await resolveTokenSetRegistry(options).initialize(options.clientKey))
+		.client;
 }
 
 function useResolvedTokenSetClient(options: {
 	clientKey: string;
 	injector?: SecuritydeptInjectorTrait;
-	registry?: ReactRegistry;
-	client?: TokenSetReactClient;
-}): { enabled: boolean; client: TokenSetReactClient | undefined } {
+	registry?: TokenSetClientRegistryService;
+	client?: BaseOidcModeClient;
+}): { enabled: boolean; client: BaseOidcModeClient | undefined } {
 	const directClientSignal = useMemo(() => {
-		const signal = createReplaySignal<TokenSetReactClient>();
+		const signal = createReplaySignal<BaseOidcModeClient>();
 		if (options.client) {
 			signal.setValue(options.client);
 		}
@@ -283,9 +284,9 @@ function useResolvedTokenSetClient(options: {
 }
 
 function requireTokenSetClient(
-	client: TokenSetReactClient | undefined,
+	client: BaseOidcModeClient | undefined,
 	clientKey: string,
-): TokenSetReactClient {
+): BaseOidcModeClient {
 	if (client) {
 		return client;
 	}

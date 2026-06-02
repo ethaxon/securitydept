@@ -14,9 +14,9 @@ import {
 	RequirementPlannerHost,
 	StaticAttrsAuthRequirement,
 } from "@securitydept/client";
+import { createEnvironmentForTest } from "@securitydept/client/test";
 import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
-import { createEnvironmentForTest } from "../../../../client/src/test";
 import { secureRouteRoot } from "../auth-coordination/secure-routes";
 import { provideEnvironment } from "../environment";
 
@@ -51,7 +51,7 @@ describe("secureRouteRoot", () => {
 				onUnauthenticated: () => false,
 			},
 		});
-		const injector = createEnvironmentInjector(
+		const appInjector = createEnvironmentInjector(
 			[
 				{
 					provide: HttpClient,
@@ -62,7 +62,6 @@ describe("secureRouteRoot", () => {
 				provideEnvironment({
 					createBaseEnvironment: createEnvironmentForTest,
 				}),
-				...(route.providers as readonly (Provider | EnvironmentProviders)[]),
 				{
 					provide: Router,
 					useValue: {
@@ -73,6 +72,20 @@ describe("secureRouteRoot", () => {
 				},
 			],
 			null as never,
+		);
+		const routeInjector = createEnvironmentInjector(
+			[
+				...(route.providers as readonly (Provider | EnvironmentProviders)[]),
+				{
+					provide: Router,
+					useValue: {
+						url: "/app",
+						navigateByUrl: vi.fn(async () => true),
+						parseUrl: vi.fn(),
+					},
+				},
+			],
+			appInjector,
 		);
 		const routeSnapshot = {
 			pathFromRoot: [
@@ -92,17 +105,18 @@ describe("secureRouteRoot", () => {
 			const activateChild = route.canActivateChild?.[0] as
 				| CanActivateChildFn
 				| undefined;
-			await runInInjectionContext(injector, () =>
+			await runInInjectionContext(routeInjector, () =>
 				activate?.(routeSnapshot as never, stateSnapshot as never),
 			);
-			await runInInjectionContext(injector, () =>
+			await runInInjectionContext(routeInjector, () =>
 				activateChild?.(routeSnapshot as never, stateSnapshot as never),
 			);
 
 			expect(fromBehaviour).toHaveBeenCalledTimes(1);
 		} finally {
 			fromBehaviour.mockRestore();
-			injector.destroy();
+			routeInjector.destroy();
+			appInjector.destroy();
 		}
 	});
 });

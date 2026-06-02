@@ -12,8 +12,7 @@ import {
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
-	createSessionContextClient,
-	provideSessionContextClient,
+	provideSessionContext,
 	SESSION_CONTEXT_CLIENT,
 } from "@securitydept/session-context-client-react";
 import { act, createElement, type ReactElement, useEffect } from "react";
@@ -60,14 +59,11 @@ describe("session-context react minimal entry", () => {
 				},
 			})),
 		};
-		const client = createSessionContextClient({
-			config: { baseUrl: "https://auth.example.com" },
-			environment: createFoundationEnvironment({
-				transport: transport,
-				sessionStorage: createInMemoryRecordStore(),
-				span: createRootSpan(),
-				tracing: createTracing(),
-			}),
+		const environment = createFoundationEnvironment({
+			transport: transport,
+			sessionStorage: createInMemoryRecordStore(),
+			span: createRootSpan(),
+			tracing: createTracing(),
 		});
 
 		function SessionBadge() {
@@ -89,7 +85,12 @@ describe("session-context react minimal entry", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{ providers: provideSessionContextClient(client) },
+				{
+					parentInjector: environment.injector,
+					providers: provideSessionContext({
+						config: { baseUrl: "https://auth.example.com" },
+					}),
+				},
 				createElement(SessionBadge),
 			),
 		);

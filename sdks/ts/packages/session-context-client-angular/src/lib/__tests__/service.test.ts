@@ -10,6 +10,7 @@ import {
 	type HttpResponse,
 	TRANSPORT_TRAIT_TOKEN,
 } from "@securitydept/client";
+import { createEnvironmentForTest } from "@securitydept/client/test";
 import {
 	provideEnvironment,
 	provideEnvironmentProvider,
@@ -21,7 +22,6 @@ import {
 } from "@securitydept/session-context-client-angular";
 import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
-import { createEnvironmentForTest } from "../../../../client/src/test";
 
 function createTestTransport(
 	handler: (request: HttpRequest) => HttpResponse,

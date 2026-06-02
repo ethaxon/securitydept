@@ -68,6 +68,10 @@ export default defineConfig({
 				replacement: path.join(packagesDir, "client/src/rx/index.ts"),
 			},
 			{
+				find: "@securitydept/client/test",
+				replacement: path.join(packagesDir, "client/src/test/index.ts"),
+			},
+			{
 				find: "@securitydept/client",
 				replacement: path.join(packagesDir, "client/src/index.ts"),
 			},
@@ -128,19 +132,11 @@ export default defineConfig({
 				replacement: path.join(packagesDir, "client-react/src/index.ts"),
 			},
 			{
-				// token-set-context-client-react react-context convenience subpath — MUST precede root alias
-				find: "@securitydept/token-set-context-client-react/react-context",
+				// token-set-context-client-react tanstack-router subpath — MUST precede root alias
+				find: "@securitydept/token-set-context-client-react/tanstack-router",
 				replacement: path.join(
 					packagesDir,
-					"token-set-context-client-react/src/react-context/index.ts",
-				),
-			},
-			{
-				// token-set-context-client-react react-query subpath — MUST precede root alias
-				find: "@securitydept/token-set-context-client-react/react-query",
-				replacement: path.join(
-					packagesDir,
-					"token-set-context-client-react/src/react-query/index.ts",
+					"token-set-context-client-react/src/tanstack-router/index.ts",
 				),
 			},
 			{

@@ -9,13 +9,14 @@
 // Produces Angular `CanActivateFn` / `CanActivateChildFn` guards that project
 // the matched route chain into `RouteTreeSegment[]`, run the SDK's
 // `RouteCompositionRequirementPlanner` against the nearest
-// `RequirementPlannerHost`, and map the pipeline result onto Angular's guard
-// return contract (`true` / `false` / `UrlTree`).
+// `RequirementPlannerHost` resolved from the current Securitydept injector,
+// and map the pipeline result onto Angular's guard return contract (`true` /
+// `false` / `UrlTree`).
 //
 // Injection-context discipline: DI reads (host, Router) happen synchronously at
 // guard entry, before any `await`. Behaviour that needs DI services should be
-// provided via {@link provideRequirementPlannerHost} (or its factory form), not
-// inline callbacks that call `inject()` here.
+// provided through `provideSecuritydept({ providers: [...] })`, not inline
+// callbacks that call `inject()` here.
 //
 // Architecture boundary:
 //   - Does NOT own behaviour (checkAuthenticated / onUnauthenticated) — that is
@@ -35,20 +36,20 @@ import {
 } from "@angular/router";
 import {
 	type AuthRequirement,
+	ENVIRONMENT_TOKEN,
+	injectRequirementPlannerHost,
 	PipelineOutcome,
+	REQUIREMENT_PLANNER_HOST,
 	type RequirementBehaviourWithRouteContext,
 	RequirementPlannerHost,
+	type RequirementPlannerHostBehaviour,
 	type RouteBehaviourContextExtra,
 	RouteCompositionRequirementPlanner,
 } from "@securitydept/client";
-import {
-	injectRequirementPlannerHost,
-	REQUIREMENT_PLANNER_HOST,
-} from "./planner-host";
+import { SECURITYDEPT_INJECTOR } from "../injection";
 import { projectAngularRouteSegments } from "./route-metadata";
 
-/** Options shared by {@link createAngularCanActivate} and its child variant. */
-export interface CreateAngularGuardOptions<
+export interface CreateAngularGuardWithPlannerHostOptions<
 	TAuthRequirement extends AuthRequirement = AuthRequirement,
 	TBehaviour extends Partial<
 		RequirementBehaviourWithRouteContext<TAuthRequirement>
@@ -56,41 +57,36 @@ export interface CreateAngularGuardOptions<
 > {
 	/**
 	 * Explicit planner host. When omitted, the guard uses the nearest
-	 * {@link REQUIREMENT_PLANNER_HOST} in DI, falling back to an empty host only
-	 * when no provider exists.
+	 * {@link REQUIREMENT_PLANNER_HOST} from the Securitydept injector, falling
+	 * back to an empty host only when no provider exists.
 	 */
-	plannerHost?: RequirementPlannerHost<TBehaviour>;
+	readonly plannerHost: RequirementPlannerHost<TBehaviour>;
+	readonly behaviour?: never;
 }
 
-/**
- * Resolve the planner host at guard entry (synchronous DI phase).
- *
- * Prefers an explicit host, otherwise reuses the nearest provided host. The
- * empty fallback exists only so missing behaviour fails in the core planner
- * contract rather than as an Angular DI error.
- */
-function resolveGuardHost<
+export interface CreateAngularGuardWithBehaviourOptions<
 	TAuthRequirement extends AuthRequirement = AuthRequirement,
 	TBehaviour extends Partial<
 		RequirementBehaviourWithRouteContext<TAuthRequirement>
 	> = Partial<RequirementBehaviourWithRouteContext<TAuthRequirement>>,
->(
-	options: CreateAngularGuardOptions<TAuthRequirement, TBehaviour> | undefined,
-): RequirementPlannerHost<TBehaviour> {
-	if (options?.plannerHost) {
-		return options.plannerHost;
-	}
-	const parent =
-		injectRequirementPlannerHost<
-			TAuthRequirement,
-			RouteBehaviourContextExtra,
-			TBehaviour
-		>() ?? undefined;
-	if (parent) {
-		return parent;
-	}
-	return RequirementPlannerHost.fromBehaviour({} as TBehaviour);
+> {
+	readonly plannerHost?: never;
+	readonly behaviour?: RequirementPlannerHostBehaviour<
+		TAuthRequirement,
+		RouteBehaviourContextExtra,
+		TBehaviour
+	>;
 }
+
+/** Options shared by {@link createAngularCanActivate} and its child variant. */
+export type CreateAngularGuardOptions<
+	TAuthRequirement extends AuthRequirement = AuthRequirement,
+	TBehaviour extends Partial<
+		RequirementBehaviourWithRouteContext<TAuthRequirement>
+	> = Partial<RequirementBehaviourWithRouteContext<TAuthRequirement>>,
+> =
+	| CreateAngularGuardWithPlannerHostOptions<TAuthRequirement, TBehaviour>
+	| CreateAngularGuardWithBehaviourOptions<TAuthRequirement, TBehaviour>;
 
 async function runRouteGuard<
 	TAuthRequirement extends AuthRequirement = AuthRequirement,
@@ -133,7 +129,31 @@ export function createAngularCanActivate<
 	options?: CreateAngularGuardOptions<TAuthRequirement, TBehaviour>,
 ): CanActivateFn {
 	return (route, state) => {
-		const host = resolveGuardHost<TAuthRequirement, TBehaviour>(options);
+		const securitydeptInjector = inject(SECURITYDEPT_INJECTOR, {
+			optional: true,
+		});
+		const parentHost = securitydeptInjector
+			? injectRequirementPlannerHost<
+					TAuthRequirement,
+					RouteBehaviourContextExtra,
+					TBehaviour
+				>({ injector: securitydeptInjector })
+			: null;
+		const host =
+			options?.plannerHost ??
+			(options?.behaviour
+				? RequirementPlannerHost.fromBehaviour(
+						typeof options.behaviour === "function"
+							? options.behaviour()
+							: options.behaviour,
+						{
+							parent: parentHost ?? undefined,
+							environment:
+								securitydeptInjector?.get(ENVIRONMENT_TOKEN, null) ?? undefined,
+						},
+					)
+				: parentHost) ??
+			RequirementPlannerHost.fromBehaviour({} as TBehaviour);
 		const router = inject(Router);
 		return runRouteGuard<TAuthRequirement, TBehaviour>(
 			route,
@@ -157,7 +177,30 @@ export function createAngularCanActivateChild<
 	options?: CreateAngularGuardOptions<TAuthRequirement, TBehaviour>,
 ): CanActivateChildFn {
 	return (childRoute, state) => {
-		const host = resolveGuardHost<TAuthRequirement, TBehaviour>(options);
+		const injector = inject(SECURITYDEPT_INJECTOR, {
+			optional: true,
+		});
+		const parentHost = injector
+			? injectRequirementPlannerHost<
+					TAuthRequirement,
+					RouteBehaviourContextExtra,
+					TBehaviour
+				>({ injector })
+			: null;
+		const host =
+			options?.plannerHost ??
+			(options?.behaviour
+				? RequirementPlannerHost.fromBehaviour(
+						typeof options.behaviour === "function"
+							? options.behaviour()
+							: options.behaviour,
+						{
+							parent: parentHost ?? undefined,
+							environment: injector?.get(ENVIRONMENT_TOKEN, null) ?? undefined,
+						},
+					)
+				: parentHost) ??
+			RequirementPlannerHost.fromBehaviour({} as TBehaviour);
 		const router = inject(Router);
 		return runRouteGuard<TAuthRequirement, TBehaviour>(
 			childRoute,

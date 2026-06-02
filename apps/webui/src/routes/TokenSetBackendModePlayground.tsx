@@ -13,8 +13,7 @@ import {
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import { type AuthSnapshot as AuthStateSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
-import { tokenSetQueryKeys } from "@securitydept/token-set-context-client-react/react-query";
+import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
 	useCallback,
@@ -60,6 +59,7 @@ import {
 	TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	TOKEN_SET_BACKEND_MODE_PLAYGROUND_PATH,
 } from "@/lib/tokenSetConfig";
+import { tokenSetQueryKeys } from "@/lib/tokenSetQueryKeys";
 import {
 	createTokenSetBackendHostTraceRecorder,
 	readTokenSetTraceErrorFields,
@@ -327,7 +327,7 @@ function readMutationStatusText(status: MutationStatus, label: string): string {
 
 export function TokenSetBackendModePlaygroundPage() {
 	const injector = useSecuritydeptContext();
-	const registry = injector.get(TOKEN_SET_AUTH_REGISTRY);
+	const registry = injector.get(TOKEN_SET_CLIENT_REGISTRY);
 	const traceTimeline = tokenSetBackendModeTraceTimeline;
 	const recordAppTrace = useMemo(
 		() =>

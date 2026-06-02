@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { TRANSPORT_TRAIT_TOKEN } from "../../transport";
 import {
-	createEnvironmentForNativeWebTest,
+	RouterNavigationIntent,
+	RouterNavigationMode,
+} from "../../router/router";
+import { UriReferenceString } from "../../struct/uri-string";
+import { TRANSPORT_TRAIT_TOKEN } from "../../transport";
+import { createEnvironmentForNativeWeb } from "../../web/environment";
+import {
 	createEnvironmentForTest,
+	createRouterForTest,
+	createStorageForTest,
+	createTimeForTest,
+	createTransportForTest,
 } from "../index";
 
 describe("client test environment helpers", () => {
@@ -15,7 +24,7 @@ describe("client test environment helpers", () => {
 	});
 
 	it("creates a native-web test environment with default span and tracing", () => {
-		const environment = createEnvironmentForNativeWebTest({
+		const environment = createEnvironmentForNativeWeb({
 			routerForNativeWebCreateOptions: {
 				location: {
 					href: "https://app.example.com/dashboard",
@@ -38,7 +47,7 @@ describe("client test environment helpers", () => {
 
 	it("adds the test transport before delegating to a base environment", async () => {
 		const environment = createEnvironmentForTest({
-			createBaseEnvironment: createEnvironmentForNativeWebTest,
+			createBaseEnvironment: createEnvironmentForNativeWeb,
 			routerForNativeWebCreateOptions: {
 				location: {
 					href: "https://app.example.com/dashboard",
@@ -82,5 +91,68 @@ describe("client test environment helpers", () => {
 			}),
 		).resolves.toMatchObject({ status: 299 });
 		expect(environment.transport).toBe(transport);
+	});
+
+	it("uses test time by default", () => {
+		const environment = createEnvironmentForTest();
+
+		expect(environment.time.now()).toBeTypeOf("number");
+	});
+
+	it("creates deterministic time for tests", () => {
+		const time = createTimeForTest({ initialNow: 10 });
+		const calls: string[] = [];
+
+		time.setTimeout(() => calls.push("later"), 5);
+		time.advanceAndFlush(4);
+		expect(calls).toEqual([]);
+		expect(time.pendingCount).toBe(1);
+
+		time.advanceAndFlush(1);
+		expect(calls).toEqual(["later"]);
+		expect(time.pendingCount).toBe(0);
+	});
+
+	it("creates in-memory storage for tests", async () => {
+		const storage = createStorageForTest({
+			initialEntries: { token: "abc" },
+		});
+
+		await expect(storage.get("token")).resolves.toBe("abc");
+		await storage.set("token", "def");
+		await expect(storage.get("token")).resolves.toBe("def");
+		await storage.remove("token");
+		await expect(storage.get("token")).resolves.toBeNull();
+	});
+
+	it("creates route-based transport for tests", async () => {
+		const transport = createTransportForTest().onRequest("GET", "/ok", {
+			status: 200,
+			headers: {},
+			body: { ok: true },
+		});
+
+		await expect(
+			transport.execute({ url: "/ok/1", method: "GET", headers: {} }),
+		).resolves.toMatchObject({ status: 200 });
+		await expect(
+			transport.execute({ url: "/missing", method: "GET", headers: {} }),
+		).resolves.toMatchObject({ status: 404 });
+		expect(transport.history).toHaveLength(2);
+	});
+
+	it("creates recording router for tests", async () => {
+		const router = createRouterForTest({ currentUrl: "/start" });
+
+		await router.navigate({
+			url: UriReferenceString.parse("/next"),
+			intent: RouterNavigationIntent.PostAuthRedirect,
+			mode: RouterNavigationMode.Replace,
+			state: { from: "test" },
+		});
+
+		expect(router.currentUrl()?.toString()).toBe("/next");
+		expect(router.navigations).toHaveLength(1);
+		expect(router.navigations[0]?.state).toEqual({ from: "test" });
 	});
 });

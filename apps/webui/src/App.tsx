@@ -1,27 +1,18 @@
-import {
-	createBasicAuthContextClient,
-	provideBasicAuthContextClient,
-} from "@securitydept/basic-auth-context-client-react";
-import { SecuritydeptInjector } from "@securitydept/client";
-import {
-	provideEnvironment,
-	SecuritydeptProvider,
-	useSecuritydeptContext,
-} from "@securitydept/client-react";
+import { provideBasicAuthContext } from "@securitydept/basic-auth-context-client-react";
 import {
 	type AuthRequirement,
-	createSecureBeforeLoad,
-	withTanStackRouteRequirements,
-} from "@securitydept/client-react/tanstack-router";
-import { provideSessionContextClient } from "@securitydept/session-context-client-react";
+	createFoundationEnvironment,
+	OnceAsyncLockState,
+	type RequirementBehaviourWithRouteContext,
+	RequirementPlannerHost,
+} from "@securitydept/client";
+import { SecuritydeptProvider } from "@securitydept/client-react";
+import { secureRouteRoot } from "@securitydept/client-react/tanstack-router";
+import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client-react";
 import { describeFrontendOidcModeCallbackError } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
-	CallbackResumeStatus,
-	provideTokenSetAuthRegistry,
-	provideTokenSetCallbackResumeController,
-	TOKEN_SET_AUTH_REGISTRY,
-	TOKEN_SET_CALLBACK_RESUME_CONTROLLER,
-	useTokenSetCallbackResume,
+	provideTokenSetClientRegistry,
+	useTokenSetFrontendCallbackController,
 } from "@securitydept/token-set-context-client-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -30,7 +21,6 @@ import {
 	createRouter,
 	Outlet,
 	RouterProvider,
-	redirect,
 } from "@tanstack/react-router";
 
 import {
@@ -119,14 +109,18 @@ const queryClient = new QueryClient({
 //
 // Non-serializable runtime policy (session fetch, redirect intent, security
 // evaluation) is wired at the authenticated layout route level via
-// createSecureBeforeLoad. Child routes only carry serializable requirement
-// metadata via withTanStackRouteRequirements.
+// secureRouteRoot. Child routes remain plain TanStack routes because this demo
+// currently has one dashboard-wide requirement.
 // ---------------------------------------------------------------------------
 
 // Mutable session flag for synchronous auth check. Updated by the
 // authenticated layout route's beforeLoad before policy evaluation runs.
 let dashboardAuthenticated = false;
 const SESSION_POST_AUTH_REDIRECT_PARAM = "post_auth_redirect_uri";
+
+interface DashboardAuthRequirement extends AuthRequirement {
+	readonly kind: "dashboard";
+}
 
 function createLoginPath(postAuthRedirectUri?: string): string {
 	if (!postAuthRedirectUri) {
@@ -138,24 +132,24 @@ function createLoginPath(postAuthRedirectUri?: string): string {
 	return `/login?${search.toString()}`;
 }
 
-const securedBeforeLoad = createSecureBeforeLoad({
-	// TanStack's redirect() returns a Redirect object that must be thrown;
-	// the SDK interface expects (opts) => never, so we wrap with throw.
-	redirect: (opts) => {
-		throw redirect(opts);
+const dashboardPlannerHost = RequirementPlannerHost.fromBehaviour<
+	Partial<RequirementBehaviourWithRouteContext<DashboardAuthRequirement>>
+>(
+	{
+		checkAuthenticated: (req) => {
+			if (req.kind === "dashboard") {
+				return dashboardAuthenticated;
+			}
+			return false;
+		},
+		// /login is the stable primary entry for unauthenticated users.
+		// Auth-mode memory may influence the chooser's UI, but it must not
+		// hijack the unauthenticated landing target.
+		onUnauthenticated: (_requirement, context) =>
+			createLoginPath(context.planContext.routeState.url),
 	},
-	checkAuthenticated: (req: AuthRequirement) => {
-		if (req.kind === "dashboard") {
-			return dashboardAuthenticated;
-		}
-		return false;
-	},
-	// /login is the stable primary entry for unauthenticated users.
-	// Auth-mode memory may influence the chooser's UI, but it must not
-	// hijack the unauthenticated landing target.
-	defaultOnUnauthenticated: (_requirement, context) =>
-		createLoginPath(context.attemptedUrl),
-});
+	{ environment: createFoundationEnvironment({}) },
+);
 
 // ---------------------------------------------------------------------------
 // Route tree
@@ -187,42 +181,45 @@ const loginRoute = createRoute({
 const authenticatedRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	id: "authenticated",
-	staticData: withTanStackRouteRequirements([
-		{ id: "dashboard", kind: "dashboard" },
-	]),
-	beforeLoad: async (ctx) => {
-		const mode = resolveAuthContextMode();
+	...secureRouteRoot<DashboardAuthRequirement>(
+		{
+			requirements: [{ id: "dashboard", kind: "dashboard" }],
+			plannerHost: dashboardPlannerHost,
+		},
+		{
+			beforeLoad: async () => {
+				const mode = resolveAuthContextMode();
 
-		if (mode === AuthContextMode.TokenSetBackend) {
-			const snapshot = await ensureTokenSetBackendModeClientReady();
-			dashboardAuthenticated = Boolean(snapshot?.tokens.accessToken);
-		} else if (mode === AuthContextMode.TokenSetFrontend) {
-			const snapshot = await ensureTokenSetFrontendModeClientReady();
-			dashboardAuthenticated = Boolean(snapshot?.tokens.accessToken);
-		} else if (mode === AuthContextMode.Session) {
-			const session = await sessionContextClient.refresh();
-			dashboardAuthenticated = session !== null;
-		} else if (mode === AuthContextMode.Basic) {
-			// Basic auth relies on the browser's cached credentials (from the
-			// earlier 401 WWW-Authenticate challenge at /basic/login). Probe a
-			// lightweight protected endpoint to verify the credentials are still
-			// valid — the browser automatically attaches the Authorization header.
-			try {
-				const probe = await fetch("/basic/api/entries", {
-					method: "GET",
-					headers: { Accept: "application/json" },
-				});
-				dashboardAuthenticated = probe.ok;
-			} catch {
-				dashboardAuthenticated = false;
-			}
-		} else {
-			dashboardAuthenticated = false;
-		}
-
-		securedBeforeLoad(ctx);
-	},
-	component: Outlet,
+				if (mode === AuthContextMode.TokenSetBackend) {
+					const snapshot = await ensureTokenSetBackendModeClientReady();
+					dashboardAuthenticated = Boolean(snapshot?.tokens.accessToken);
+				} else if (mode === AuthContextMode.TokenSetFrontend) {
+					const snapshot = await ensureTokenSetFrontendModeClientReady();
+					dashboardAuthenticated = Boolean(snapshot?.tokens.accessToken);
+				} else if (mode === AuthContextMode.Session) {
+					const session = await sessionContextClient.refresh();
+					dashboardAuthenticated = session !== null;
+				} else if (mode === AuthContextMode.Basic) {
+					// Basic auth relies on the browser's cached credentials (from the
+					// earlier 401 WWW-Authenticate challenge at /basic/login). Probe a
+					// lightweight protected endpoint to verify the credentials are still
+					// valid — the browser automatically attaches the Authorization header.
+					try {
+						const probe = await fetch("/basic/api/entries", {
+							method: "GET",
+							headers: { Accept: "application/json" },
+						});
+						dashboardAuthenticated = probe.ok;
+					} catch {
+						dashboardAuthenticated = false;
+					}
+				} else {
+					dashboardAuthenticated = false;
+				}
+			},
+			component: Outlet,
+		},
+	),
 });
 
 // --- Protected routes (children of authenticated layout) ---
@@ -417,26 +414,12 @@ function TokenSetFrontendModePlaygroundRoutePage() {
 }
 
 function TokenSetFrontendCallbackRoutePage() {
-	const controller = useSecuritydeptContext().get(
-		TOKEN_SET_CALLBACK_RESUME_CONTROLLER,
-	);
-	const state = useTokenSetCallbackResume({
-		controller,
-		getCurrentUrl: () => window.location.href,
-		describeError: (error, options) =>
-			describeFrontendOidcModeCallbackError(error, {
-				...options,
-				recoveryLinks: {
-					restart_flow: TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
-				},
-				recoveryLabels: {
-					restart_flow: "Return to frontend-mode playground",
-				},
-			}),
+	const { state } = useTokenSetFrontendCallbackController({
+		currentUrl: window.location.href,
 	});
 	const handledResolvedRef = useRef(false);
 	const failurePresentation =
-		state.state === CallbackResumeStatus.Error
+		state.state === OnceAsyncLockState.Error
 			? describeFrontendOidcModeCallbackError(state.error, {
 					recoveryLinks: {
 						restart_flow: TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
@@ -449,7 +432,7 @@ function TokenSetFrontendCallbackRoutePage() {
 
 	useEffect(() => {
 		if (
-			state.state === CallbackResumeStatus.Resolved &&
+			state.state === OnceAsyncLockState.Success &&
 			"data" in state &&
 			!handledResolvedRef.current
 		) {
@@ -480,13 +463,13 @@ function TokenSetFrontendCallbackRoutePage() {
 						eyebrow="Callback failure"
 					/>
 				) : null}
-				{state.state === CallbackResumeStatus.Pending ? (
+				{state.state === OnceAsyncLockState.Running ? (
 					<p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">
 						Warming the frontend-mode client registry and resuming the OIDC
 						callback...
 					</p>
 				) : null}
-				{state.state === CallbackResumeStatus.Idle ? (
+				{state.state === OnceAsyncLockState.Init ? (
 					<p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/80 dark:bg-amber-950/40 dark:text-amber-300">
 						This URL does not currently carry a recognized frontend-mode
 						callback payload.
@@ -539,62 +522,51 @@ export function App() {
 		() => createTokenSetFrontendModePageEnvironment(),
 		[],
 	);
-	const basicAuthClient = useMemo(
-		() =>
-			createBasicAuthContextClient({
-				config: basicAuthContextConfig,
-				environment: tokenSetFrontendModePageEnvironment,
-			}),
-		[tokenSetFrontendModePageEnvironment],
-	);
 	const sessionClient = useMemo(() => sessionContextClient, []);
 	const tokenSetClients = useMemo(
 		() => [
 			{
-				key: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+				meta: {
+					clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+				},
 				clientFactory: tokenSetBackendModeClientFactory,
 			},
 			{
-				key: TOKEN_SET_FRONTEND_MODE_CLIENT_KEY,
+				meta: {
+					clientKey: TOKEN_SET_FRONTEND_MODE_CLIENT_KEY,
+					callbackPath: TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH,
+				},
 				clientFactory: tokenSetFrontendModeClientFactory,
-				callbackPath: TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH,
 			},
 		],
 		[],
 	);
-	const tokenSetRegistry = useMemo(
-		() =>
-			SecuritydeptInjector.resolveAndCreate([
-				provideTokenSetAuthRegistry({ clients: tokenSetClients }),
-			]).get(TOKEN_SET_AUTH_REGISTRY),
-		[tokenSetClients],
-	);
-	const rootInjector = useMemo(
-		() =>
-			SecuritydeptInjector.resolveAndCreate([
-				provideBasicAuthContextClient(basicAuthClient),
-				...provideSessionContextClient(sessionClient),
-				provideEnvironment({
-					environment: tokenSetFrontendModePageEnvironment,
-				}),
-				provideTokenSetAuthRegistry(tokenSetRegistry),
-				provideTokenSetCallbackResumeController(tokenSetRegistry),
-			]),
-		[
-			basicAuthClient,
-			sessionClient,
-			tokenSetFrontendModePageEnvironment,
-			tokenSetRegistry,
+	const rootProviders = useMemo(
+		() => [
+			...provideBasicAuthContext({
+				config: basicAuthContextConfig,
+			}),
+			{
+				provide: SESSION_CONTEXT_CLIENT,
+				useValue: sessionClient,
+			},
+			...provideTokenSetClientRegistry({
+				clients: tokenSetClients,
+			}),
 		],
+		[sessionClient, tokenSetClients],
 	);
 
 	useEffect(() => {
 		void sessionClient.start().catch(() => {});
-	}, [rootInjector, sessionClient]);
+	}, [sessionClient]);
 
 	return (
 		<QueryClientProvider client={queryClient}>
-			<SecuritydeptProvider injector={rootInjector}>
+			<SecuritydeptProvider
+				parentInjector={tokenSetFrontendModePageEnvironment.injector}
+				providers={rootProviders}
+			>
 				<RouterProvider router={router} />
 			</SecuritydeptProvider>
 		</QueryClientProvider>

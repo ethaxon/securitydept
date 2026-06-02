@@ -7,10 +7,9 @@ import {
 	type RouterTrait,
 	type TracingEvent,
 	UriReferenceString,
-	UriString,
 } from "@securitydept/client";
+import { createEnvironmentForTest } from "@securitydept/client/test";
 import { describe, expect, it } from "vitest";
-import { createEnvironmentForTest } from "../../../client/src/test";
 import { SessionContextClient } from "../client";
 import { SessionContextEventType, SessionContextSource } from "../types";
 
@@ -33,9 +32,6 @@ function createTestRouter(url = "https://app.example.com/current"): {
 		router: {
 			currentUrl() {
 				return UriReferenceString.parse(url);
-			},
-			baseURI() {
-				return UriString.parse(url);
 			},
 			navigate(request) {
 				navigations.push({

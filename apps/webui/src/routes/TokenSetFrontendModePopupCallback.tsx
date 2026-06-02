@@ -1,12 +1,10 @@
-import {
-	ENVIRONMENT,
-	useSecuritydeptContext,
-} from "@securitydept/client-react";
+import { ENVIRONMENT_TOKEN } from "@securitydept/client";
+import { useSecuritydeptContext } from "@securitydept/client-react";
 import { relayTokenSetPopupCallbackFromEnvironment } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { useEffect } from "react";
 
 export function TokenSetFrontendModePopupCallbackPage() {
-	const environment = useSecuritydeptContext().get(ENVIRONMENT);
+	const environment = useSecuritydeptContext().get(ENVIRONMENT_TOKEN);
 
 	useEffect(() => {
 		void relayTokenSetPopupCallbackFromEnvironment(environment);

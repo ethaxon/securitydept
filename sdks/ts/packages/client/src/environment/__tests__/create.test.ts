@@ -14,10 +14,7 @@ import { createSignal } from "../../signals";
 import { createRootSpan } from "../../span";
 import { createTracing } from "../../tracing";
 import { createFoundationEnvironment } from "../create";
-import {
-	FOUNDATION_ENVIRONMENT_TOKEN,
-	type FoundationEnvironment,
-} from "../types";
+import { ENVIRONMENT_TOKEN, type FoundationEnvironment } from "../types";
 
 describe("createFoundationEnvironment()", () => {
 	it("fills foundation defaults including transport", () => {
@@ -25,9 +22,7 @@ describe("createFoundationEnvironment()", () => {
 
 		const environment = createFoundationEnvironment({});
 
-		expect(environment.injector.get(FOUNDATION_ENVIRONMENT_TOKEN)).toBe(
-			environment,
-		);
+		expect(environment.injector.get(ENVIRONMENT_TOKEN)).toBe(environment);
 		expect(environment.injector.get(INJECTOR_TOKEN)).toBe(environment.injector);
 		expect(typeof environment.transport.execute).toBe("function");
 		expect(environment.time.now()).toBeTypeOf("number");
@@ -184,19 +179,19 @@ describe("createFoundationEnvironment()", () => {
 		expect(environment.popup).toBe(popup);
 	});
 
-	it("rejects external FOUNDATION_ENVIRONMENT_TOKEN providers", () => {
+	it("rejects external ENVIRONMENT_TOKEN providers", () => {
 		expect(() =>
 			createFoundationEnvironment({
 				providers: [
 					{
-						provide: FOUNDATION_ENVIRONMENT_TOKEN,
+						provide: ENVIRONMENT_TOKEN,
 						useFactory: (() => {
 							throw new Error("reserved provider should not run");
 						}) as (...deps: never[]) => FoundationEnvironment,
 					},
 				],
 			}),
-		).toThrow(/does not allow overriding FOUNDATION_ENVIRONMENT_TOKEN/);
+		).toThrow(/does not allow overriding ENVIRONMENT_TOKEN/);
 	});
 
 	it("keeps custom dynamic traits injector-only by default", () => {

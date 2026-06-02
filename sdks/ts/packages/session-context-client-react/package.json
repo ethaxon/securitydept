@@ -29,7 +29,7 @@
 	"sideEffects": false,
 	"exports": {
 		".": {
-			"monorepo-tsc": "./src/index.ts",
+			"monorepo-tsc": "./src/index.tsx",
 			"types": "./dist/index.d.mts",
 			"import": "./dist/index.mjs"
 		}

@@ -35,7 +35,6 @@
 		"tailwind-merge": "^3.3.0"
 	},
 	"devDependencies": {
-		"@securitydept/e2e-utils": "workspace:*",
-		"@securitydept/test-utils": "workspace:*"
+		"@securitydept/e2e-utils": "workspace:*"
 	}
 }

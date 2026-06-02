@@ -1,4 +1,3 @@
-export { createDefaultTimeConfig } from "./default-time-config";
 export { parseDurationToMs } from "./duration";
 export {
 	IDLE_CALLBACK_TRAIT_TOKEN,

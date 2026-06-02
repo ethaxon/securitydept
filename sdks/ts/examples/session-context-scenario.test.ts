@@ -1,11 +1,11 @@
 import { createFoundationEnvironment } from "@securitydept/client";
 import { SessionContextClient } from "@securitydept/session-context-client";
-import { FakeTransport } from "@securitydept/test-utils";
+import { createTransportForTest } from "@securitydept/client/test";
 import { describe, expect, it } from "vitest";
 
 describe("external session context scenario", () => {
 	it("supports session fetch and logout without app glue", async () => {
-		const transport = new FakeTransport()
+		const transport = createTransportForTest()
 			.on(
 				(request) =>
 					request.method === "GET" && request.url.endsWith("/user-info"),

@@ -6,6 +6,8 @@ export {
 	BaseRequirementPlanner,
 	type CheckAuthenticated,
 	defaultSelectCandidate,
+	type InjectRequirementPlannerHostOptions,
+	injectRequirementPlannerHost,
 	isRouteBehaviourContextExtra,
 	isRouteStateSnapshotTrait,
 	MergeRequirementPlanner,
@@ -14,6 +16,9 @@ export {
 	type PipelineRunResult,
 	type PipelineStepResult,
 	PlanStatus,
+	type ProvideRequirementPlannerHostOptions,
+	provideRequirementPlannerHost,
+	REQUIREMENT_PLANNER_HOST,
 	type RequirementBehaviour,
 	type RequirementBehaviourContext,
 	type RequirementBehaviourWithRouteContext,
@@ -22,6 +27,7 @@ export {
 	type RequirementPlan,
 	RequirementPlannerError,
 	RequirementPlannerHost,
+	type RequirementPlannerHostBehaviour,
 	type RequirementPlannerHostOptions,
 	type RequirementResolution,
 	RequirementsComposition,
@@ -65,8 +71,8 @@ export {
 export {
 	type CreateFoundationEnvironmentOptions,
 	createFoundationEnvironment,
+	ENVIRONMENT_TOKEN,
 	type EnvironmentValidators,
-	FOUNDATION_ENVIRONMENT_TOKEN,
 	type FoundationEnvironment,
 	type ServiceWorkerEnvironment,
 } from "./environment";
@@ -212,7 +218,6 @@ export {
 } from "./protocol/jwt";
 // --- Router ---
 export {
-	BaseURIStringSchema,
 	ROUTER_TRAIT_TOKEN,
 	RouterNavigationIntent,
 	RouterNavigationMode,
@@ -222,12 +227,10 @@ export {
 	SECURITYDEPT_ROUTE_METADATA_KEY,
 	type SecuritydeptRouteMetadata,
 	takeCompatFragmentFromRouter,
-	UriReferenceStringSchema,
 	writeSecuritydeptRouteMetadata,
 } from "./router";
 // --- Scheduling ---
 export {
-	createDefaultTimeConfig,
 	IDLE_CALLBACK_TRAIT_TOKEN,
 	type IdleCallbackTrait,
 	parseDurationToMs,
@@ -264,9 +267,13 @@ export {
 } from "./span";
 // --- Std ---
 export {
+	type AuthorizationInterceptedFetchPredicate,
+	type AuthorizationSignal,
 	abortSignalToCancellationToken,
 	type BaseTransportForStdFetchCreateOptions,
+	type CreateAuthorizationInterceptedFetchOptions,
 	cancellationTokenToAbortSignal,
+	createAuthorizationInterceptedFetch,
 	createBaseTransportForStdFetch,
 	createTimeForStd,
 	FetchTransportRedirectKind,
@@ -343,9 +350,13 @@ export {
 } from "./transport";
 // --- Validation ---
 export {
+	BaseURIStringSchema,
 	formatValidationFailure,
 	type TraitInputValidator,
 	throwValidationClientError,
+	UriReferenceStringSchema,
+	UriRelativeStringSchema,
+	UriStringSchema,
 	type ValidateTraitInputOptions,
 	type ValidationFailure,
 	type ValidationResult,

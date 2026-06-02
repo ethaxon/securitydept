@@ -1,39 +1,42 @@
-export abstract class SecuritydeptDestroyRef {
+import { type DisposableTrait, SYMBOL_DISPOSE } from "../compat/disposable";
+import { createReplaySignal } from "../signals/replay-signal";
+
+export abstract class SecuritydeptDestroyRef implements DisposableTrait {
 	abstract readonly destroyed: boolean;
 	abstract onDestroy(callback: () => void): () => void;
+	abstract dispose(): void;
+
+	[SYMBOL_DISPOSE](): void {
+		this.dispose();
+	}
 }
 
 class ManagedSecuritydeptDestroyRef extends SecuritydeptDestroyRef {
-	private isDestroyed = false;
-	private readonly listeners = new Set<() => void>();
+	private readonly destroyedSignal = createReplaySignal<void>();
 
 	get destroyed(): boolean {
-		return this.isDestroyed;
+		return this.destroyedSignal.hasValue();
 	}
 
 	onDestroy(callback: () => void): () => void {
-		if (this.isDestroyed) {
+		if (this.destroyedSignal.hasValue()) {
 			callback();
 			return () => undefined;
 		}
 
-		this.listeners.add(callback);
-		return () => {
-			this.listeners.delete(callback);
-		};
+		return this.destroyedSignal.notify(callback);
 	}
 
-	destroy(): void {
-		if (this.isDestroyed) {
+	dispose(): void {
+		if (this.destroyedSignal.hasValue()) {
 			return;
 		}
 
-		this.isDestroyed = true;
-		const listeners = [...this.listeners];
-		this.listeners.clear();
-		for (const listener of listeners) {
-			listener();
-		}
+		this.destroyedSignal.setValue(undefined);
+	}
+
+	destroy(): void {
+		this.dispose();
 	}
 }
 

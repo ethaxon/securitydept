@@ -178,7 +178,6 @@ describe("environment page capability boundary", () => {
 		const router = {
 			currentUrl: () =>
 				UriReferenceString.parse("https://provided.example.com/"),
-			baseURI: () => null,
 			navigate: async () => undefined,
 		};
 		const popup = {
@@ -232,9 +231,6 @@ describe("environment page capability boundary", () => {
 				time: createTimeForTest(),
 				router: {
 					currentUrl() {
-						return null;
-					},
-					baseURI() {
 						return null;
 					},
 				} as never,

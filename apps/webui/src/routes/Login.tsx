@@ -1,10 +1,8 @@
 import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client-react";
-import {
-	ENVIRONMENT,
-	useSecuritydeptContext,
-} from "@securitydept/client-react";
+import { ENVIRONMENT_TOKEN } from "@securitydept/client";
+import { useSecuritydeptContext } from "@securitydept/client-react";
 import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client-react";
-import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
+import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { useSearch } from "@tanstack/react-router";
 import { FlaskConical, KeyRound, Lock, Shield } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
@@ -28,9 +26,9 @@ export function LoginPage() {
 	const [frontendModeBusy, setFrontendModeBusy] = useState(false);
 	const search = useSearch({ from: "/login" });
 	const sessionClient = injector.get(SESSION_CONTEXT_CLIENT);
-	const tokenSetFrontendModeEnvironment = injector.get(ENVIRONMENT);
+	const tokenSetFrontendModeEnvironment = injector.get(ENVIRONMENT_TOKEN);
 	const basicAuthClient = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
-	const tokenSetBackendRegistry = injector.get(TOKEN_SET_AUTH_REGISTRY);
+	const tokenSetBackendRegistry = injector.get(TOKEN_SET_CLIENT_REGISTRY);
 	const tokenSetBackendSignal = tokenSetBackendRegistry.clientSignalFor(
 		TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	);

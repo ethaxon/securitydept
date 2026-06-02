@@ -160,7 +160,7 @@ Foundation Web environment factories are explicit composition helpers, not autom
 
 Do not use a string-driven `createEnvironmentFromPreset(name)`, preset-only wrapper factories, or global-shape detection to guess the host. Core clients never read `window`, `document`, `location`, or `history`; only explicitly named host adapters such as `createRouterForNativeWeb()`, `createPageLifecycleForNativeWeb()`, `createPopupForNativeWeb()`, and `createEnvironmentForNativeWeb()` may read native globals when the caller does not provide the host objects. `NativeWeb` means a normal browser page host with native navigation/location/history capabilities; worker-like hosts should use `createFoundationEnvironment()` or a more specific host factory.
 
-When a host needs environment capabilities across routes, commands, or framework adapters, create one explicit environment at the composition root and pass that object through the framework bridge. In React, register it through `provideEnvironment({ environment })` and read it later with `useSecuritydeptContext().get(ENVIRONMENT)`. In Angular, provide the same object with `provideEnvironment({ environment })`. The SDK does not expose a separate layered environment resolver: `NativeWebEnvironment` structurally covers the foundation `FoundationEnvironment`, and `WebExtUIEnvironment` structurally combines WebExt core plus native-web page capabilities.
+When a host needs environment capabilities across routes, commands, or framework adapters, create one explicit environment at the composition root and pass that object through the framework bridge. In React, pass `environment.injector` to the root `SecuritydeptProvider` as `parentInjector`, then read it later with `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)`. In Angular, provide the same object with `provideEnvironment({ environment })`. The SDK does not expose a separate layered environment resolver: `NativeWebEnvironment` structurally covers the foundation `FoundationEnvironment`, and `WebExtUIEnvironment` structurally combines WebExt core plus native-web page capabilities.
 
 This rule applies beyond `@securitydept/client`: context packages and framework adapters must use the same boundary for public helpers. Any helper that reads host globals, performs page navigation, constructs a client, or owns transport/store/time wiring should accept an environment or a narrow capability view. Provider, DI, and top-level adapter registration APIs may accept a full environment as composition roots; ordinary hooks, guards, interceptors, services, and convenience helpers should not each redeclare the full dependency bag.
 
@@ -247,12 +247,8 @@ The table below is the current TS SDK public-surface snapshot. It must remain al
 | `@securitydept/client/persistence/web` | `stable` | `foundation` | `stable-deprecation-first` |
 | `@securitydept/client/web` | `stable` | `foundation` | `stable-deprecation-first` |
 | `@securitydept/basic-auth-context-client` | `stable` | `basic-auth-context` | `stable-deprecation-first` |
-| `@securitydept/basic-auth-context-client/web` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
-| `@securitydept/basic-auth-context-client/server` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
 | `@securitydept/basic-auth-context-client-react` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client` | `stable` | `session-context` | `stable-deprecation-first` |
-| `@securitydept/session-context-client/web` | `provisional` | `session-context` | `provisional-migration-required` |
-| `@securitydept/session-context-client/server` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client-react` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/backend-oidc-mode` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/frontend-oidc-mode` | `provisional` | `token-set-context` | `provisional-migration-required` |
@@ -263,7 +259,6 @@ The table below is the current TS SDK public-surface snapshot. It must remain al
 | `@securitydept/basic-auth-context-client-angular` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client-angular` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client-react` | `provisional` | `token-set-context` | `provisional-migration-required` |
-| `@securitydept/token-set-context-client-react/react-query` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client-react/tanstack-router` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client-angular` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/client-react` | `provisional` | `shared-framework` | `provisional-migration-required` |
@@ -308,11 +303,11 @@ Framework router adapters are owned by:
 
 Canonical semantics: full matched-route chain aggregation, `inherit` / `merge` / `replace`, child-route serializable metadata, root-level runtime policy, and no product chooser UI in the SDK.
 
-For Angular, `@securitydept/client-angular` owns the token-set-agnostic base layer built on `RequirementPlannerHost` / `RouteCompositionRequirementPlanner`: declare child requirements with `secureRoute()`, assemble the root with `secureRouteRoot()` (which attaches `createAngularCanActivate` / `createAngularCanActivateChild`), project route metadata with `projectAngularRouteSegments()`, and wire the planner host through the `REQUIREMENT_PLANNER_HOST` DI token via `provideRequirementPlannerHost()`. `@securitydept/token-set-context-client-angular` layers the registry-backed specialization on top: `provideTokenSetRequirementPlannerHost()` binds the token-set behaviour, `createTokenSetCanActivate()` / `createTokenSetCanActivateChild()` wrap the base guards, and its `secureRoute()` / `secureRouteRoot()` (aliases `secureTokenSetRoute` / `secureTokenSetRouteRoot`) normalize `requirementKind` before delegating to the base builders.
+For Angular, `@securitydept/client-angular` owns the token-set-agnostic base layer built on `RequirementPlannerHost` / `RouteCompositionRequirementPlanner`: declare child requirements with `secureRoute()`, assemble the root with `secureRouteRoot()` (which attaches `createAngularCanActivate` / `createAngularCanActivateChild`), project route metadata with `projectAngularRouteSegments()`, and wire the planner host through the `REQUIREMENT_PLANNER_HOST` DI token via `provideRequirementPlannerHost()`. `@securitydept/token-set-context-client-angular` layers the registry-backed specialization on top: `provideTokenSetRequirementPlannerHost()` binds the token-set behaviour, `createTokenSetCanActivate()` / `createTokenSetCanActivateChild()` wrap the base guards, and `secureTokenSetRoute()` / `secureTokenSetRouteRoot()` provide explicitly named token-set route builders before delegating to the base builders.
 
-Angular token-set route handlers receive a route unauthenticated context with `attemptedUrl`. Use that value when starting OIDC redirect login so the attempted navigation is recorded as `postAuthRedirectUri`. The canonical Angular path is to provide the host-owned environment object from the composition root with `provideEnvironment({ environment })`, then call `createTokenSetOidcLoginRedirectHandler({ ... })` without re-creating page capability in every guard path. The shared contract is `BaseOidcModeClient.loginWithRedirect(options)` plus `TokenSetOidcRedirectLoginOptions` from `@securitydept/token-set-context-client/registry`; Angular, React/TanStack, `FrontendOidcModeClient`, and backend-oidc web clients all target that capability instead of a mode-qualified helper. Do not read Angular `Router.url` for this value inside a guard handler, because the attempted navigation has not been committed yet. A handler that has started a full-page external redirect should not resolve to `false`; the SDK helper returns a never-settling guard result after starting the redirect so Angular does not finalize an in-app navigation cancel while the page is leaving.
+Angular token-set route security uses `secureTokenSetRouteRoot()` with registry requirements whose `attributes.query` selects clients (for example `{ clientKey: "main" }` or `{ requirementKind: "frontend_oidc" }`). When a guard rejects navigation, the registry behaviour's default `onUnauthenticated` handler starts OIDC redirect login for the first unauthenticated client and records `planContext.routeState.url` as `postAuthRedirectUri`. Override redirect policy only when needed via `secureTokenSetRouteRoot({ onClientUnauthenticated: ... })` or `provideTokenSetRequirementPlannerHost({ onClientUnauthenticated: ... })`. The shared contract is `BaseOidcModeClient.loginWithRedirect(options)` plus `TokenSetOidcRedirectLoginOptions` from `@securitydept/token-set-context-client/registry`. Do not read Angular `Router.url` for the post-auth target inside a guard handler, because the attempted navigation has not been committed yet. A handler that has started a full-page external redirect should not resolve to `false`; the default registry handler returns a never-settling guard result after starting the redirect so Angular does not finalize an in-app navigation cancel while the page is leaving.
 
-TanStack Router's `createSecureBeforeLoad()` likewise passes an unauthenticated handler context with `attemptedUrl`. React/TanStack adopters that start a full-page external auth redirect should use `createExternalRedirectBeforeLoadHandler()`, call their login client inside the callback, and pass `context.attemptedUrl` as `postAuthRedirectUri`. Do not infer the target page from `window.location`; while `beforeLoad` is running, the current document URL may still be the previously committed route.
+TanStack Router uses `secureRoute()` for serializable `staticData` and `secureRouteRoot()` for root `beforeLoad` composition. Runtime behaviour is supplied through core `RequirementPlannerHost` / `REQUIREMENT_PLANNER_HOST`; route context includes `planContext.routeState.url`, which should be used as the attempted navigation URL when starting full-page auth redirects. Do not infer the target page from `window.location`; while `beforeLoad` is running, the current document URL may still be the previously committed route.
 
 ### token-set-context-client v1 Scope Baseline
 
@@ -384,11 +379,11 @@ Use:
 React composition still follows the three-layer model: auth-context config, injector providers/factories, and host registration glue.
 
 - `@securitydept/client-react` owns the only SDK React Context: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()`. It also owns the context-free signal/event bridge `useReadableSignalValue()`, `useReplaySignalValue()`, `useInteropObservable()`, and `useEventStream()`.
-- `provideEnvironment({ environment })` and the planner-host factories (`AUTH_PLANNER_HOST`, `provideAuthPlannerHost()`, `AUTH_REQUIREMENTS_CLIENT_SET`, `provideRequirementsClientSet()`) register shared dependencies into the injector. They do not introduce additional domain-specific Providers or Context hooks.
-- `@securitydept/basic-auth-context-client-react` exports `BASIC_AUTH_CONTEXT_CLIENT`, `createBasicAuthContextClient()`, and `provideBasicAuthContextClient()`. React code reads the client through `useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT)`.
-- `@securitydept/session-context-client-react` exports `SESSION_CONTEXT_CLIENT`, `SESSION_CONTEXT_CONTROLLER`, `createSessionContextController()`, and `provideSessionContextController()`. React code reads controller/client through `useSecuritydeptContext().get(...)` and reads state through `useReadableSignalValue(controller.state)`.
-- `@securitydept/token-set-context-client-react` exports `provideTokenSetAuthRegistry()`, `TOKEN_SET_AUTH_REGISTRY`, `provideTokenSetCallbackResumeController()`, `TOKEN_SET_CALLBACK_RESUME_CONTROLLER`, `useTokenSetCallbackResume()`, and `TokenSetCallbackComponent`. There is no separate token-set runtime wrapper anymore. The canonical keyed auth-state path is `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` followed by `useReadableSignalValue(registry.clientSignalFor("main"))`, then reading the returned client's replay channels such as `authSnapshot` or `isAuthenticated`.
-- `useTokenSetCallbackResume({ controller, injector, getCurrentUrl, describeError })` is the explicit callback bridge over the shared `TokenSetCallbackResumeController`. An explicit `controller` or `injector` wins; when no current URL is available the hook stays idle instead of forcing callback handling. Default failure presentation comes from `readCallbackResumeErrorDetails()` in `@securitydept/token-set-context-client/registry`; mode-specific copy belongs in an explicit `describeError` override owned by the host or adapter.
+- React uses the environment's own injector as the root `SecuritydeptProvider.parentInjector`; concrete router adapters such as `@securitydept/client-react/tanstack-router` own route-scoped auth coordination.
+- `@securitydept/basic-auth-context-client-react` exports `BASIC_AUTH_CONTEXT_CLIENT`, `BASIC_AUTH_CONTEXT_CLIENT_CONFIG`, `BasicAuthContextService`, and `provideBasicAuthContext({ config })`. React code reads the client through `useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT)`.
+- `@securitydept/session-context-client-react` exports `SESSION_CONTEXT_CLIENT`, `SESSION_CONTEXT_CLIENT_CONFIG`, `SessionContextService`, and `provideSessionContext({ config })`. React code reads the client through `useSecuritydeptContext().get(SESSION_CONTEXT_CLIENT)` and reads state through signal hooks such as `useReplaySignalValue(client.sessionInfo)`.
+- `@securitydept/token-set-context-client-react` exports `provideTokenSetClientRegistry()`, `TOKEN_SET_CLIENT_REGISTRY`, `TokenSetClientRegistryService`, and headless callback hooks. The canonical keyed auth-state path is `const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)` followed by `useReplaySignalValue(registry.clientSignalFor("main"))`, then reading the returned client's replay channels such as `authSnapshot` or `isAuthenticated`.
+- Frontend callbacks use `useTokenSetFrontendCallbackController({ currentUrl, clientQuery })`; backend callbacks use `useTokenSetBackendCallbackController({ clientQuery })` and read compat fragments from `environment.router`. Both hooks are thin React bindings over the shared registry callback controllers.
 
 #### 4. Angular entry: thin DI wrappers preserve canonical owner boundaries
 
@@ -436,14 +431,14 @@ Object.entries(localStorage)
 
 When `hasRefreshMaterial=false`, check the IdP, requested scopes, and refresh-token policy; the SDK still must not send the expired access token. For Authentik deployments this usually means verifying that `offline_access` is requested/allowed and that refresh-token rotation/lifetime settings allow the browser client to keep usable refresh material. When `hasRefreshMaterial=true`, the SDK should refresh before route admission, page-resume recovery, or the first protected request, or move the client to unauthenticated state; `ExpiredSignature` should not appear on a request sent through the SDK bearer interceptor or authorized transport.
 
-#### 5. SSR / server-host entry: dedicated `./server` helpers
+#### 5. SSR / server-host entry: environment host adapters
 
-Use:
+Use foundation host adapters from `@securitydept/client`, then pass the resulting environment into context clients.
 
-- `@securitydept/basic-auth-context-client/server`
-- `@securitydept/session-context-client/server`
+- `@securitydept/client/server`
+- `createEnvironmentFor{Host}` helpers owned by concrete host/framework adapters
 
-Do not import `/web` subpaths into server-hosted code.
+Context packages do not own dedicated `/web` or `/server` subpaths. Host capability resolution belongs to the client foundation package and framework adapters.
 
 ### Provisional Adapter Maintenance Standard
 
@@ -464,12 +459,9 @@ Do not import `/web` subpaths into server-hosted code.
 | Adapter / Surface | Current judgment |
 |---|---|
 | `@securitydept/client/web` | stable foundation-owned browser helper surface |
-| `basic-auth-context-client/web` | provisional; thin browser convenience established |
-| `session-context-client/web` | provisional; login redirect convenience established |
-| `basic-auth-context-client/server` / `session-context-client/server` | provisional; SSR/server-host baseline established |
+| `@securitydept/client/web` / `@securitydept/client/server` | foundation-owned host environment adapters established |
 | `*-react` / `*-angular` adapter family | provisional; real reference-app/downstream proof exists, broad host matrix does not |
 | `@securitydept/token-set-context-client/frontend-oidc-mode` | provisional; keyed pending-state and single-consume callback semantics formalized |
-| `token-set-context-client-react/react-query` | provisional; canonical token-set readiness/invalidation glue path established |
 
 ## Shared Client Lifecycle Contract
 
@@ -484,14 +476,6 @@ The core client registry is the reactive topology/readiness authority. Observe i
 Per-client token-set auth material is owned by the mode client itself. Every registry-managed OIDC mode client exposes separate auth channels: replay signals for `authDetermined` (first determination), `authSnapshot` (last determined snapshot or `null`), `isAuthenticated` (guard truth), and `authorizationHeaderValue` (bearer projection); plain signals for `lastAuthError` (latest determination/operation error register) and `authOperations.*Pending` (local operation locks). `authSnapshot` is the authoritative auth-material replay source; `authDetermined`, `isAuthenticated`, and `authorizationHeaderValue` are derived replay projections rather than manually synchronized state. Directly created clients start only after `start()` unless `autoStart: true` is explicitly passed. Registry-managed clients never use entry-level `autoStart` or `autoRestore`; registry readiness means the client has been materialized and `start()` has completed. The default `createTokenSetOidcAuthRegistry()` materializes the client itself, so React Query readiness and Angular registry lookups return clients rather than per-client service wrappers. `authEvents` remains auth-domain telemetry only; registry topology and readiness changes are observed through registry `state`.
 
 The canonical RxJS bridge now lives at `@securitydept/client/rx`. Use `toRxObservable(source)` for either `EventStreamTrait` or `ReadableSignalTrait`, and `fromRxObservable(observable)` for the reverse bridge. Angular adapters should use `toNgSignal(source)` from `@securitydept/client-angular` when they need Angular-native signals.
-
-## React Query Integration
-
-**Subpath**: `@securitydept/token-set-context-client-react/react-query`
-
-This is the token-set React Query integration surface. It owns cache-key namespace helpers, readiness queries over registry materialization, and canonical invalidation for token-set-aware query trees. It is not the login, refresh, lifecycle, or reference-app resource API.
-
-Groups/entries domain models, CRUD request assembly, and reference-app TanStack hooks stay app-local or adopter-local. Hosts should compose those resource queries on top of SDK token-set clients or registry readiness rather than importing a productized business API from the SDK.
 
 ## Examples and Reference Implementations
 

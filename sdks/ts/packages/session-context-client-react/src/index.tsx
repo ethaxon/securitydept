@@ -1,8 +1,17 @@
-// Session Context Client — injector tokens and provider factories
+// React adapter for @securitydept/session-context-client
+//
+// Canonical import path:
+//   import { ... } from "@securitydept/session-context-client-react"
+//
+// Provides Securitydept DI integration: injection tokens, provider factory,
+// and a SessionContextClient subclass.
 
 import {
-	type FoundationEnvironment,
+	ENVIRONMENT_TOKEN,
+	INJECTOR_TOKEN,
+	SecuritydeptDestroyRef,
 	SecuritydeptInjectionToken,
+	type SecuritydeptInjector,
 	type SecuritydeptProvider,
 } from "@securitydept/client";
 import {
@@ -22,25 +31,41 @@ export const SESSION_CONTEXT_CLIENT =
 		"SESSION_CONTEXT_CLIENT",
 	);
 
-export interface CreateSessionContextClientOptions {
+export const SESSION_CONTEXT_CLIENT_CONFIG =
+	new SecuritydeptInjectionToken<SessionContextClientConfig>(
+		"SESSION_CONTEXT_CLIENT_CONFIG",
+	);
+
+export class SessionContextService extends SessionContextClient {
+	constructor(injector: SecuritydeptInjector) {
+		const config = injector.get(SESSION_CONTEXT_CLIENT_CONFIG);
+		const environment = injector.get(ENVIRONMENT_TOKEN);
+		super(config, environment);
+		injector.get(SecuritydeptDestroyRef, null)?.onDestroy(() => this.dispose());
+	}
+}
+
+export interface ProvideSessionContextOptions {
 	config: SessionContextClientConfig;
-	environment: FoundationEnvironment;
 }
 
-export function createSessionContextClient({
-	config,
-	environment,
-}: CreateSessionContextClientOptions): SessionContextClient {
-	return new SessionContextClient(config, environment);
-}
-
-export function provideSessionContextClient(
-	client: SessionContextClient,
+export function provideSessionContext(
+	options: ProvideSessionContextOptions,
 ): readonly SecuritydeptProvider[] {
 	return [
 		{
+			provide: SESSION_CONTEXT_CLIENT_CONFIG,
+			useValue: options.config,
+		},
+		{
+			provide: SessionContextService,
+			useFactory: (injector: SecuritydeptInjector) =>
+				new SessionContextService(injector),
+			deps: [INJECTOR_TOKEN],
+		},
+		{
 			provide: SESSION_CONTEXT_CLIENT,
-			useValue: client,
+			useExisting: SessionContextService,
 		},
 	];
 }

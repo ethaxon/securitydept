@@ -4,12 +4,11 @@ import {
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client-react";
-import { type AuthSnapshot as AuthStateSnapshot } from "@securitydept/token-set-context-client/orchestration";
 import {
-	TOKEN_SET_AUTH_REGISTRY,
-	type TokenSetReactClient,
-} from "@securitydept/token-set-context-client-react";
-import { tokenSetQueryKeys } from "@securitydept/token-set-context-client-react/react-query";
+	type AuthSnapshot as AuthStateSnapshot,
+	type BaseOidcModeClient,
+} from "@securitydept/token-set-context-client/orchestration";
+import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import {
@@ -53,6 +52,7 @@ import { clearTokenSetBackendModeBrowserState } from "@/lib/tokenSetBackendModeC
 import { assertTokenSetBackendOidcClient } from "@/lib/tokenSetClientAssertions";
 import { TOKEN_SET_BACKEND_MODE_CLIENT_KEY } from "@/lib/tokenSetConfig";
 import { clearTokenSetFrontendModeBrowserState } from "@/lib/tokenSetFrontendModeClient";
+import { tokenSetQueryKeys } from "@/lib/tokenSetQueryKeys";
 
 interface DashboardNotice {
 	title: string;
@@ -63,7 +63,7 @@ interface DashboardRuntime {
 	mode: AuthContextMode;
 	tokenSetClientKey: string;
 	tokenSetState: AuthStateSnapshot | null;
-	tokenSetClient: TokenSetReactClient | null;
+	tokenSetClient: BaseOidcModeClient | null;
 	tokenSetAuthenticated: boolean;
 }
 
@@ -88,8 +88,8 @@ function useDashboardSessionState() {
 
 function useDashboardTokenSetClient(
 	clientKey: string,
-): TokenSetReactClient | null {
-	const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
+): BaseOidcModeClient | null {
+	const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
 	const signal = registry.clientSignalFor(clientKey);
 	const slot = useSyncExternalStore(
 		(listener) => signal.notify(listener),
@@ -100,7 +100,7 @@ function useDashboardTokenSetClient(
 }
 
 function useDashboardTokenSetSnapshot(
-	client: TokenSetReactClient | null,
+	client: BaseOidcModeClient | null,
 ): AuthStateSnapshot | null {
 	return useReplaySignalValue(
 		client?.authSnapshot ?? EMPTY_TOKEN_SET_AUTH_SNAPSHOT_SIGNAL,

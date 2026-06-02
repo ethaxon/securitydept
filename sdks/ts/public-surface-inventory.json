@@ -17,7 +17,7 @@
 					"stability": "stable",
 					"owner": "foundation",
 					"changeDiscipline": "stable-deprecation-first",
-					"note": "Owns the current shared cancellation/resource-release baseline, the tracing runtime/subscriber baseline, replay signal primitive, shared identity-principal baseline, framework-neutral dependency injection, headless auth-coordination primitives, shared storage contracts, structural utilities, and the dual-layer error bridge: DisposableTrait, CancellationTokenTrait, CancellationTokenSourceTrait, createCancellationTokenSource(), and createLinkedCancellationToken() formalize cooperative cancellation plus owner-side release via dispose(); TimeTrait / createDefaultTimeConfig() formalize the low-level injectable time capability, while IdleCallbackTrait formalizes optional host-owned idle callback capability and EventStreamTrait / EventSubjectTrait remain the SDK-owned reactive primitives even though generic source construction now lives in direct RxJS usage plus the `@securitydept/client/rx` bridge; ReadableReplaySignalTrait / WritableReplaySignalTrait / ComputedReplaySignalTrait, ReplaySignalSlot<T>, ReplaySignalWhenValueOptions, createReplaySignal(), createComputedReplaySignal(), createAndThenComputedReplaySignal(), readonlyReplaySignal(), and isReplaySignalTrait() formalize last-available channels that start empty, replay only emitted values, use get() for synchronous slot reads, and use cancellable whenValue() for asynchronous value waits; SecuritydeptInjectorTrait / SecuritydeptInjector formalize the framework-neutral DI surface, while RequirementPlannerHost (non-serializable behaviour resolved through a parent chain), BaseRequirementPlanner with StaticRequirementPlanner / RouteCompositionRequirementPlanner / MergeRequirementPlanner, the serializable contract (AuthRequirement, RequirementsComposition, resolveEffectiveRequirements, RequirementBehaviour, PipelineStepResult / PipelineRunResult), and runStep() / runUntilSettled() formalize shared auth coordination without a separate core subpath; FoundationEnvironment now treats a root span and tracing runtime as required baseline capabilities, while TracingTrait, createTracing(), TracingEvent, TracingSubscriberTrait, runOperation(), defineInstrumentMethodDecorator(), createTraceTimelineStore() / TraceTimelineStore, and OperationTraceEventType formalize the structured tracing baseline and operation-correlation story; IdentityPrincipal, IdentityPrincipalSchema, IdentityPrincipalWireSchema, parseIdentityPrincipal(), parseIdentityPrincipalWire(), and projectIdentityPrincipal() now formalize the shared human-principal contract and host-facing projection baseline consumed by session/token-set families; ErrorPresentationDescriptor / ErrorPresentationTone / readErrorPresentationDescriptor(), ErrorAttributes, and describeError() remain the host-facing presentation, recovery, and structured error-attribute bridge built on runtime errors.",
+					"note": "Owns the current shared cancellation/resource-release baseline, the tracing runtime/subscriber baseline, replay signal primitive, shared identity-principal baseline, framework-neutral dependency injection, headless auth-coordination primitives, shared storage contracts, structural utilities, and the dual-layer error bridge: DisposableTrait, CancellationTokenTrait, CancellationTokenSourceTrait, createCancellationTokenSource(), and createLinkedCancellationToken() formalize cooperative cancellation plus owner-side release via dispose(); TimeTrait / createTimeForStd() formalize the low-level injectable time capability, while IdleCallbackTrait formalizes optional host-owned idle callback capability and EventStreamTrait / EventSubjectTrait remain the SDK-owned reactive primitives even though generic source construction now lives in direct RxJS usage plus the `@securitydept/client/rx` bridge; ReadableReplaySignalTrait / WritableReplaySignalTrait / ComputedReplaySignalTrait, ReplaySignalSlot<T>, ReplaySignalWhenValueOptions, createReplaySignal(), createComputedReplaySignal(), createAndThenComputedReplaySignal(), readonlyReplaySignal(), and isReplaySignalTrait() formalize last-available channels that start empty, replay only emitted values, use get() for synchronous slot reads, and use cancellable whenValue() for asynchronous value waits; SecuritydeptInjectorTrait / SecuritydeptInjector formalize the framework-neutral DI surface, while RequirementPlannerHost (non-serializable behaviour resolved through a parent chain), BaseRequirementPlanner with StaticRequirementPlanner / RouteCompositionRequirementPlanner / MergeRequirementPlanner, the serializable contract (AuthRequirement, RequirementsComposition, resolveEffectiveRequirements, RequirementBehaviour, PipelineStepResult / PipelineRunResult), and runStep() / runUntilSettled() formalize shared auth coordination without a separate core subpath; FoundationEnvironment now treats a root span and tracing runtime as required baseline capabilities, while TracingTrait, createTracing(), TracingEvent, TracingSubscriberTrait, runOperation(), defineInstrumentMethodDecorator(), createTraceTimelineStore() / TraceTimelineStore, and OperationTraceEventType formalize the structured tracing baseline and operation-correlation story; IdentityPrincipal, IdentityPrincipalSchema, IdentityPrincipalWireSchema, parseIdentityPrincipal(), parseIdentityPrincipalWire(), and projectIdentityPrincipal() now formalize the shared human-principal contract and host-facing projection baseline consumed by session/token-set families; ErrorPresentationDescriptor / ErrorPresentationTone / readErrorPresentationDescriptor(), ErrorAttributes, and describeError() remain the host-facing presentation, recovery, and structured error-attribute bridge built on runtime errors.",
 					"evidence": [
 						"examples/minimal-entry-points.test.ts",
 						"packages/client/src/cancellation/__tests__/cancellation.test.ts",
@@ -157,7 +157,7 @@
 					"stability": "provisional",
 					"owner": "basic-auth-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React entry is injector-first: it exports `BASIC_AUTH_CONTEXT_CLIENT`, `createBasicAuthContextClient()`, and `provideBasicAuthContextClient()` so hosts compose the client through `SecuritydeptProvider`. No domain-specific React Context, Provider component, or `useBasicAuthContext()` lookup hook remains in the public surface.",
+					"note": "React entry is injector-first: it exports `BASIC_AUTH_CONTEXT_CLIENT`, `BASIC_AUTH_CONTEXT_CLIENT_CONFIG`, `BasicAuthContextService`, and `provideBasicAuthContext({ config })` so hosts compose the client through `SecuritydeptProvider` plus a parent environment injector. No domain-specific React Context, Provider component, or `useBasicAuthContext()` lookup hook remains in the public surface.",
 					"evidence": [
 						"examples/basic-auth-react-minimal-entry.test.ts",
 						"packages/basic-auth-context-client-react/src/__tests__/adapter.test.ts",
@@ -207,7 +207,7 @@
 					"stability": "provisional",
 					"owner": "session-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React entry is injector-first and client-owned: it exports `SESSION_CONTEXT_CLIENT`, `createSessionContextClient()`, and `provideSessionContextClient()` so hosts compose the SessionContextClient through `SecuritydeptProvider`. No controller token or React Context wrapper remains.",
+					"note": "React entry is injector-first and client-owned: it exports `SESSION_CONTEXT_CLIENT`, `SESSION_CONTEXT_CLIENT_CONFIG`, `SessionContextService`, and `provideSessionContext({ config })` so hosts compose the SessionContextClient through `SecuritydeptProvider` plus a parent environment injector. No controller token or React Context wrapper remains.",
 					"evidence": [
 						"examples/session-context-react-minimal-entry.test.ts",
 						"packages/session-context-client-react/src/__tests__/adapter.test.ts",
@@ -332,7 +332,7 @@
 					"stability": "experimental",
 					"owner": "foundation",
 					"changeDiscipline": "experimental-fast-break",
-					"note": "Owns focused test observation helpers for the current browser/SDK baseline: FakeClock, FakeTimeConfig, FakeTransport, and InMemoryTraceCollector. Operation-level trace observation through ofOperation(), operationLifecycle(), and assertOperationLifecycle() keeps tests from needing ad hoc operationId filters.",
+					"note": "Owns focused test observation helpers for the current browser/SDK baseline: InMemoryTraceCollector. Deterministic time and transport fakes live in @securitydept/client/test (`createTimeForTest`, `createTransportForTest`). Operation-level trace observation through ofOperation(), operationLifecycle(), and assertOperationLifecycle() keeps tests from needing ad hoc operationId filters.",
 					"evidence": [
 						"packages/test-utils/src/__tests__/in-memory-trace-collector.test.ts",
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client.test.ts",
@@ -402,37 +402,19 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React token-set adapter is now injector-first. The root export owns explicit provider factories (`provideTokenSetAuthRegistry()`, `provideTokenSetCallbackResumeController()`), callback bridges (`useTokenSetCallbackResume()`, `TokenSetCallbackComponent`), and React-specific type re-exports on top of the framework-neutral registry core. Ordinary provider composition is scope-owned: `provide...` factories create registry/controller instances inside the current injection context and let `SecuritydeptDestroyRef` own teardown. Advanced hosts that need manual readiness, manual disposal, or custom warmup policy must create and own the registry/controller explicitly before value-providing them. Keyed auth state is read through `useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` plus `useReadableSignalValue(service.state)` or through explicit props; no `TokenSetAuthProvider`, fixed runtime bundle, hidden registry/service lookup hook, keyed state hook, or backend-client context helper remains in the public surface.",
+					"note": "React token-set adapter is injector-first and core-registry-first. The root export owns `provideTokenSetClientRegistry()`, `TOKEN_SET_CLIENT_REGISTRY`, `TokenSetClientRegistryService`, and headless callback controller hooks (`useTokenSetFrontendCallbackController()`, `useTokenSetBackendCallbackController()`). Keyed auth state is read through `useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)` plus `useReplaySignalValue(registry.clientSignalFor(key))`. React Query integration is intentionally app-local; the SDK no longer exports a `./react-query` subpath or React-specific client/entry wrapper types.",
 					"evidence": [
-						"packages/token-set-context-client-react/src/__tests__/adapter.test.ts",
-						"packages/token-set-context-client-react/src/__tests__/injection.test.tsx",
-						"packages/token-set-context-client-react/src/__tests__/react-query.test.tsx",
+						"packages/token-set-context-client-react/src/__tests__/client-registry-service.test.tsx",
+						"packages/token-set-context-client-react/src/__tests__/callback-hooks.test.tsx",
 						"packages/token-set-context-client-react/src/__tests__/tanstack-router.test.ts",
-						"packages/token-set-context-client-react/src/__tests__/token-set-callback-import-boundary.test.ts",
 						"examples/backend-oidc-react-minimal-entry.test.ts",
 						"examples/react-multi-client-registry-baseline.test.ts",
 						"examples/react-callback-async-readiness.test.ts",
-						"examples/react-query-integration-evidence.test.ts",
 						"../../apps/webui/e2e/frontend-oidc.spec.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "React entry: one SDK context plus injector factories"
-					}
-				},
-				{
-					"exportKey": "./react-query",
-					"stability": "provisional",
-					"owner": "token-set-context",
-					"changeDiscipline": "provisional-migration-required",
-					"note": "Canonical token-set React Query integration surface (not a separate package). `@tanstack/react-query` is an optional peer dependency. This subpath owns cache-key namespacing, readiness queries over registry materialization, and namespace invalidation glue for token-set-aware consumers. Reference-app resource domain models, CRUD transport logic, and groups/entries mutations remain app-local or adopter-local code rather than SDK public surface.",
-					"evidence": [
-						"examples/react-query-integration-evidence.test.ts",
-						"packages/token-set-context-client-react/src/__tests__/react-query.test.tsx"
-					],
-					"docsAnchor": {
-						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "React Query Integration"
 					}
 				},
 				{
@@ -488,9 +470,8 @@
 					"stability": "provisional",
 					"owner": "shared-framework",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Shared React framework bridge with the only SDK-owned React Context. Root exports include `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()` for injector access, the context-free interop hooks `useReadableSignalValue()`, `useReplaySignalValue()`, `useInteropObservable()`, and `useEventStream()`, and shared dependency tokens/provider factories such as `ENVIRONMENT` / `provideEnvironment({ environment })` and `AUTH_PLANNER_HOST` / `provideAuthPlannerHost()`. Domain packages compose through this injector bridge instead of publishing additional React Context/Provider APIs.",
+					"note": "Shared React framework bridge with the only SDK-owned React Context. Root exports include `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()` for injector access, plus the context-free interop hooks `useReadableSignalValue()`, `useReplaySignalValue()`, `useInteropObservable()`, and `useEventStream()`. React environment capability is inherited by passing the core environment injector to `SecuritydeptProvider.parentInjector`; route-scoped planner hosts are owned by concrete router adapters rather than the React root package.",
 					"evidence": [
-						"examples/react-planner-host-baseline.test.ts",
 						"packages/client-react/src/__tests__/injection.test.tsx",
 						"../../apps/webui/src/App.tsx"
 					],
@@ -504,11 +485,8 @@
 					"stability": "provisional",
 					"owner": "shared-framework",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Canonical owner of TanStack React Router route-security contract, aligned with Angular's @securitydept/client-angular route metadata contract. Canonical adopter-facing entry: createSecureBeforeLoad() — a beforeLoad-compatible factory that wires root-level runtime policy into TanStack Router execution semantics (throws redirect or RouteSecurityBlockedError). Child routes use withTanStackRouteRequirements() for serializable staticData declaration only. Lower-level building blocks: extractTanStackRouteRequirements (full-route aggregation with merge/replace/inherit), createTanStackRouteSecurityPolicy (headless evaluator), projectTanStackRouteMatches, createTanStackRouteActivator.",
-					"evidence": [
-						"examples/tanstack-react-router-adapter.test.ts",
-						"examples/tanstack-route-security-contract.test.ts"
-					],
+					"note": "Canonical owner of TanStack React Router route-security contract, aligned with Angular's @securitydept/client-angular route metadata contract. Canonical adopter-facing entries: createRouterForTanStackRouter(options), createTanStackRouterContext({ environment? injector? }), secureRoute() for staticData-only declarations, and secureRouteRoot() for root beforeLoad composition. Route chain projection reads TanStack match-level staticData through router.state.matches / beforeLoad matches and resolves runtime behaviour through core REQUIREMENT_PLANNER_HOST in the SecurityDept injector.",
+					"evidence": ["examples/tanstack-route-security-contract.test.ts"],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Framework Router Adapters"

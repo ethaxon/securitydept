@@ -1,15 +1,15 @@
 import {
+	ENVIRONMENT_TOKEN,
 	type ErrorPresentationDescriptor,
 	readErrorPresentationDescriptor,
 	UserRecovery,
 } from "@securitydept/client";
 import {
-	ENVIRONMENT,
 	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import { type AuthSnapshot as AuthStateSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import { TOKEN_SET_AUTH_REGISTRY } from "@securitydept/token-set-context-client-react";
+import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { Link } from "@tanstack/react-router";
 import {
 	ArrowRight,
@@ -54,7 +54,7 @@ function renderTokenPreview(value: string | undefined): string {
 export function TokenSetFrontendModePlaygroundPage() {
 	const injector = useSecuritydeptContext();
 	const frontendClientSlot = injector
-		.get(TOKEN_SET_AUTH_REGISTRY)
+		.get(TOKEN_SET_CLIENT_REGISTRY)
 		.clientSignalFor(TOKEN_SET_FRONTEND_MODE_CLIENT_KEY)
 		.get();
 	if (frontendClientSlot.kind !== "value") {
@@ -65,7 +65,7 @@ export function TokenSetFrontendModePlaygroundPage() {
 	const state = useReplaySignalValue(frontendClientSlot.value.authSnapshot, {
 		initialValue: null,
 	}) as AuthStateSnapshot | null;
-	const environment = injector.get(ENVIRONMENT);
+	const environment = injector.get(ENVIRONMENT_TOKEN);
 	const traceEvents = useSyncExternalStore(
 		(listener) => tokenSetFrontendModeTraceTimeline.subscribe(listener),
 		() => tokenSetFrontendModeTraceTimeline.get(),

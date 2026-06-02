@@ -56,6 +56,10 @@ export default defineConfig({
 				replacement: path.join(packagesDir, "client/src/web/index.ts"),
 			},
 			{
+				find: "@securitydept/client/test",
+				replacement: path.join(packagesDir, "client/src/test/index.ts"),
+			},
+			{
 				find: /^@securitydept\/client$/,
 				replacement: path.join(packagesDir, "client/src/index.ts"),
 			},
@@ -106,10 +110,10 @@ export default defineConfig({
 				),
 			},
 			{
-				find: "@securitydept/token-set-context-client-react/react-query",
+				find: "@securitydept/token-set-context-client-react/tanstack-router",
 				replacement: path.join(
 					packagesDir,
-					"token-set-context-client-react/src/react-query/index.ts",
+					"token-set-context-client-react/src/tanstack-router/index.ts",
 				),
 			},
 			{
@@ -125,10 +129,6 @@ export default defineConfig({
 					packagesDir,
 					"token-set-context-client/src/index.ts",
 				),
-			},
-			{
-				find: "@securitydept/test-utils",
-				replacement: path.join(packagesDir, "test-utils/src/index.ts"),
 			},
 			{
 				find: /^@\//,

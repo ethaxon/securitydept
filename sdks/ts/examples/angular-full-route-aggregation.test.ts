@@ -33,8 +33,8 @@ import {
 } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetRequirementPlannerHost,
-	secureRoute,
-	secureRouteRoot,
+	secureTokenSetRoute,
+	secureTokenSetRouteRoot,
 	TokenSetClientRegistryService,
 } from "@securitydept/token-set-context-client-angular";
 import { of } from "rxjs";
@@ -191,7 +191,7 @@ describe("Angular full-route aggregation", () => {
 			id: "finance",
 			query: { requirementKind: "finance_oidc" },
 		});
-		const route = secureRoute("finance", {
+		const route = secureTokenSetRoute("finance", {
 			requirements: [requirement],
 			composition: RequirementsComposition.Merge,
 		});
@@ -201,9 +201,9 @@ describe("Angular full-route aggregation", () => {
 		]);
 	});
 
-	it("secureRouteRoot wires guards and preserves route options", () => {
+	it("secureTokenSetRouteRoot wires guards and preserves route options", () => {
 		const existingCanActivate = vi.fn(() => true);
-		const route = secureRouteRoot(
+		const route = secureTokenSetRouteRoot(
 			"app",
 			{
 				requirements: [
@@ -237,10 +237,10 @@ describe("Angular full-route aggregation", () => {
 			id: "finance",
 			query: { requirementKind: "finance_oidc" },
 		});
-		const root = secureRouteRoot("app", {
+		const root = secureTokenSetRouteRoot("app", {
 			requirements: [rootRequirement],
 		});
-		const child = secureRoute("finance", {
+		const child = secureTokenSetRoute("finance", {
 			requirements: [childRequirement],
 		});
 		const route = buildRouteChain([root, child]);
@@ -270,7 +270,7 @@ describe("Angular full-route aggregation", () => {
 	});
 
 	it("settles when all inherited registry-backed requirements are authenticated", async () => {
-		const root = secureRouteRoot("app", {
+		const root = secureTokenSetRouteRoot("app", {
 			requirements: [
 				TokenSetClientRegistryAuthRequirement.create({
 					id: "root",
@@ -278,7 +278,7 @@ describe("Angular full-route aggregation", () => {
 				}),
 			],
 		});
-		const child = secureRoute("finance", {
+		const child = secureTokenSetRoute("finance", {
 			requirements: [
 				TokenSetClientRegistryAuthRequirement.create({
 					id: "finance",

@@ -1,8 +1,7 @@
 import { type as defineType } from "arktype";
 import { type EnvironmentValidators } from "../environment/types";
 import { type RouterNavigationRequest, type RouterTrait } from "../router";
-import { BaseURIStringSchema } from "../router/uri";
-import { type UriReferenceString, UriString } from "../struct/uri-string";
+import { type UriReferenceString } from "../struct/uri-string";
 import {
 	throwValidationClientError,
 	validateTraitInput,
@@ -27,8 +26,6 @@ export interface WebExtRouterBrowserLike {
 
 export interface RouterForWebExtCreateOptions {
 	browser?: WebExtRouterBrowserLike | null;
-	/** Explicit absolute base URI override for external hosts. */
-	baseURI?: string | null;
 }
 
 const WebExtRuntimeRouterLikeSchema = defineType({
@@ -49,7 +46,6 @@ const RouterForWebExtCreateOptionsSchema = defineType({
 		tabs: WebExtTabsRouterLikeSchema.optional(),
 		windows: WebExtWindowsRouterLikeSchema.optional(),
 	},
-	baseURI: defineType("null").or(BaseURIStringSchema),
 });
 
 const RouterForWebExtUnavailableProbeSchema = defineType({
@@ -68,9 +64,6 @@ export function createRouterForWebExt(
 	const resolvedCreateOptions = {
 		...createOptions,
 		browser,
-		baseURI: Object.hasOwn(options, "baseURI")
-			? (options.baseURI ?? null)
-			: (browser?.runtime?.getURL?.("") ?? null),
 	};
 	const unavailableProbeResult = validateWithSchemaSync(
 		RouterForWebExtUnavailableProbeSchema,
@@ -98,16 +91,10 @@ export function createRouterForWebExt(
 	});
 	const resolvedBrowser =
 		resolvedCreateOptions.browser as WebExtRouterBrowserLike;
-	const baseURI = resolvedCreateOptions.baseURI
-		? UriString.parse(resolvedCreateOptions.baseURI)
-		: null;
 
 	const router: RouterTrait = {
 		currentUrl(): UriReferenceString | null {
 			return null;
-		},
-		baseURI(): UriString | null {
-			return baseURI;
 		},
 		async navigate(request: RouterNavigationRequest) {
 			const url = request.url.toString();

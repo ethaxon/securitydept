@@ -5,11 +5,9 @@ import {
 	type RouterNavigationRequest,
 	type RouterTrait,
 } from "../../router";
-import { BaseURIStringSchema } from "../../router/uri";
 import {
 	type UriReferenceString,
 	UriReferenceString as UriReferenceStringClass,
-	UriString,
 } from "../../struct/uri-string";
 import {
 	throwValidationClientError,
@@ -58,14 +56,9 @@ export interface NativeWebHistoryLike {
 	replaceState(data: unknown, unused: string, url?: string | URL | null): void;
 }
 
-export interface NativeWebDocumentLike {
-	baseURI: string;
-}
-
 export interface NativeWebWindowLike {
 	location?: NativeWebLocationLike;
 	history?: NativeWebHistoryLike;
-	document?: NativeWebDocumentLike;
 }
 
 export interface RouterForNativeWebCreateOptions {
@@ -73,7 +66,6 @@ export interface RouterForNativeWebCreateOptions {
 	location?: NativeWebLocationLike | null;
 	history?: NativeWebHistoryLike | null;
 	window?: NativeWebWindowLike | null;
-	document?: NativeWebDocumentLike | null;
 }
 
 export interface ResolvedRouterForNativeWebCreateOptions {
@@ -81,7 +73,6 @@ export interface ResolvedRouterForNativeWebCreateOptions {
 	location: NativeWebLocationLike | null;
 	history: NativeWebHistoryLike | null;
 	window: NativeWebWindowLike | null;
-	document: NativeWebDocumentLike | null;
 }
 
 const NativeWebNavigationLikeSchema = defineType({
@@ -98,36 +89,27 @@ const NativeWebHistoryLikeSchema = defineType({
 	replaceState: "Function",
 });
 
-const NativeWebDocumentLikeSchema = defineType({
-	baseURI: BaseURIStringSchema,
-});
-
 const NativeWebWindowLikeSchema = defineType({
 	location: NativeWebLocationLikeSchema.optional(),
 	history: NativeWebHistoryLikeSchema.optional(),
 	open: "Function?",
-	document: NativeWebDocumentLikeSchema.optional(),
 });
 
 const NullableNativeWebHistoryLikeSchema =
 	NativeWebHistoryLikeSchema.or("null").or("undefined");
 const NullableNativeWebWindowLikeSchema =
 	NativeWebWindowLikeSchema.or("null").or("undefined");
-const NullableNativeWebDocumentLikeSchema =
-	NativeWebDocumentLikeSchema.or("null").or("undefined");
 
 const RouterForNativeWebCreateOptionsSchema = defineType({
 	navigation: NativeWebNavigationLikeSchema,
 	location: NativeWebLocationLikeSchema.or("null").or("undefined"),
 	history: NullableNativeWebHistoryLikeSchema,
 	window: NullableNativeWebWindowLikeSchema,
-	document: NullableNativeWebDocumentLikeSchema,
 }).or({
 	navigation: "null | undefined",
 	location: NativeWebLocationLikeSchema,
 	history: NullableNativeWebHistoryLikeSchema,
 	window: NullableNativeWebWindowLikeSchema,
-	document: NullableNativeWebDocumentLikeSchema,
 });
 
 const RouterForNativeWebUnavailableProbeSchema = defineType({
@@ -168,9 +150,6 @@ export function createRouterForNativeWeb(
 		currentUrl() {
 			return router.currentUrl();
 		},
-		baseURI() {
-			return router.baseURI();
-		},
 		navigate(request) {
 			return router.navigate(request);
 		},
@@ -190,10 +169,6 @@ export class NativeWebRouter implements RouterTrait {
 		return this.router.currentUrl();
 	}
 
-	baseURI(): UriString | null {
-		return this.router.baseURI();
-	}
-
 	navigate(request: RouterNavigationRequest): void | Promise<void> {
 		return this.router.navigate(request);
 	}
@@ -201,24 +176,15 @@ export class NativeWebRouter implements RouterTrait {
 
 abstract class NativeWebRouterBase implements RouterTrait {
 	protected readonly location: NativeWebLocationLike | null;
-	protected readonly document: NativeWebDocumentLike | null;
 
 	constructor(options: ResolvedRouterForNativeWebCreateOptions) {
 		this.location = options.location;
-		this.document = options.document;
 	}
 
 	currentUrl(): UriReferenceString | null {
 		return this.location?.href
 			? UriReferenceStringClass.parse(this.location.href)
 			: null;
-	}
-
-	baseURI(): UriString | null {
-		if (this.document?.baseURI) {
-			return UriString.tryParse(this.document.baseURI);
-		}
-		return this.currentUrl()?.asAbsolute() ?? null;
 	}
 
 	protected resolveNavigationTarget(request: RouterNavigationRequest): string {
@@ -300,7 +266,6 @@ export function resolveRouterForNativeWebCreateOptions(
 		location?: NativeWebLocationLike;
 		history?: NativeWebHistoryLike;
 		window?: NativeWebWindowLike;
-		document?: NativeWebDocumentLike;
 	};
 	const windowLike = Object.hasOwn(options, "window")
 		? (options.window ?? null)
@@ -314,14 +279,10 @@ export function resolveRouterForNativeWebCreateOptions(
 	const history = Object.hasOwn(options, "history")
 		? (options.history ?? null)
 		: (windowLike?.history ?? global.history ?? null);
-	const documentLike = Object.hasOwn(options, "document")
-		? (options.document ?? null)
-		: (windowLike?.document ?? global.document ?? null);
 	return {
 		window: windowLike,
 		navigation,
 		location,
 		history,
-		document: documentLike,
 	};
 }

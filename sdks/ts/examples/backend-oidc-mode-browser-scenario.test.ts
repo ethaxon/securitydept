@@ -6,7 +6,7 @@ import {
 	takeCompatFragmentFromRouter,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
-import { FakeTimeConfig, FakeTransport } from "@securitydept/test-utils";
+import { createTimeForTest, createTransportForTest } from "@securitydept/client/test";
 import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it } from "vitest";
 
@@ -34,8 +34,10 @@ describe("external backend-oidc-mode browser scenario", () => {
 	it("supports bootstrap, callback handling, refresh, and disposal from browser-facing entry points", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = new FakeTimeConfig(Date.parse("2026-01-01T00:00:00Z"));
-		const transport = new FakeTransport()
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
+		const transport = createTransportForTest()
 			.on(
 				(request) => request.url.endsWith("/metadata/redeem"),
 				() => ({

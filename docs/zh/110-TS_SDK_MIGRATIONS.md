@@ -61,14 +61,14 @@ SDK 仍处于 `0.x`，但 public-surface changes 必须保持有纪律。
 - `@securitydept/client-angular` 移除：`AuthRouteAdapter`、`createRouterForAngularRouter`（已改名）、`RouteGuardResult`；旧的 planner-host DI（`AUTH_PLANNER_HOST`、`provideAuthPlannerHost`、`injectPlannerHost`、`AUTH_REQUIREMENTS_CLIENT_SET`、`provideRouteScopedRequirements`、`resolveEffectiveClientSet`）；以及旧的 route-metadata helper（`withRouteRequirements`、`extractFullRouteRequirements`、`ROUTE_REQUIREMENTS_DATA_KEY`、`ROUTE_REQUIREMENTS_COMPOSITION_DATA_KEY`、`resolveEffectiveRequirements`）。
 - `@securitydept/client-angular` 新增：`createRouterForAngular(options)`（→ `RouterTrait`）；`projectAngularRouteSegments(leafRoute)`；DI planner-host 装配 `REQUIREMENT_PLANNER_HOST` + `provideRequirementPlannerHost(behaviourOrFactory)` + `injectRequirementPlannerHost()`（Angular DI 层级通过 `skipSelf` 映射为 host parent 链）；`createAngularCanActivate(options?)` / `createAngularCanActivateChild(options?)`；以及路由构造器 `secureRoute()`（仅元信息）/ `secureRouteRoot()`（元信息 + `canActivate` + `canActivateChild`，可选 `provideRequirementPlannerHost`）。路由元信息存储归 `@securitydept/client` 所有（`SECURITYDEPT_ROUTE_METADATA_KEY`、`readSecuritydeptRouteMetadata`、`writeSecuritydeptRouteMetadata`）。
 - `@securitydept/token-set-context-client-angular` 移除：`createTokenSetRouteAggregationGuard` 与 `guard-types` 模块（`UnauthenticatedEntry` 迁入 `planner-host`）。
-- `@securitydept/token-set-context-client-angular` route auth 现在直接基于核心 registry 模型：`provideTokenSetClientRegistry({ clients })` 注册核心 `TokenSetClientRegistryEntry<BaseOidcModeClient>`，`provideTokenSetRequirementPlannerHost(options?)` 把 registry-backed `RequirementBehaviour` 绑定到 `REQUIREMENT_PLANNER_HOST`，token-set `secureRoute()` / `secureRouteRoot()` 使用 query-based `TokenSetClientRegistryAuthRequirement` metadata。
+- `@securitydept/token-set-context-client-angular` route auth 现在直接基于核心 registry 模型：`provideTokenSetClientRegistry({ clients })` 注册核心 `TokenSetClientRegistryEntry<BaseOidcModeClient>`，`provideTokenSetRequirementPlannerHost(options?)` 把 registry-backed `RequirementBehaviour` 绑定到 `REQUIREMENT_PLANNER_HOST`，`secureTokenSetRoute()` / `secureTokenSetRouteRoot()` 使用 query-based `TokenSetClientRegistryAuthRequirement` metadata。
 
 迁移：
 
 - 把 `createRouterForAngularRouter(...)` 替换为 `createRouterForAngular(...)`。
 - 把 `AuthRouteAdapter.projectRouteMatch(...)` + `extractFullRouteRequirements(...)` 替换为 `projectAngularRouteSegments(route)`，并喂给 `RouteCompositionRequirementPlanner.fromRootRoute(host, segments)`。
 - 把 `provideAuthPlannerHost()` / `AUTH_PLANNER_HOST` 替换为 `provideRequirementPlannerHost(behaviourOrFactory)` / `REQUIREMENT_PLANNER_HOST`；token-set 场景使用 `provideTokenSetRequirementPlannerHost(options?)`。
-- 把 `createTokenSetRouteAggregationGuard(...)` 替换为 `createTokenSetCanActivate()` / `createTokenSetCanActivateChild()`（host 经 DI 解析），或优先用 `secureRoute()` / `secureRouteRoot()` 声明路由。
+- 把 `createTokenSetRouteAggregationGuard(...)` 替换为 `createTokenSetCanActivate()` / `createTokenSetCanActivateChild()`（host 经 DI 解析），或优先用 `secureTokenSetRoute()` / `secureTokenSetRouteRoot()` 声明 token-set 路由。
 - 把 token-set requirement 的 `kind` 迁入 `attributes.requirementKind`（token-set 的 `secureRoute` helper 会自动完成）。
 
 ### RouterTrait URI Reference 迁移
@@ -87,18 +87,14 @@ SDK 仍处于 `0.x`，但 public-surface changes 必须保持有纪律。
 变更：
 
 - `RouterTrait.currentUrl()` 现返回 `UriReferenceString | null`，不再返回 `URL | null`。SPA 适配器可直接暴露相对 in-app 路径（如 `/dashboard`），无需伪造绝对 URL。
-- `RouterTrait` 新增 `baseURI(): UriString | null`——语义对齐 `document.baseURI`，但由各 host 解析：浏览器页面用 `document.baseURI`；WebExt background 在可用时用 `browser.runtime.getURL('')`；适配器 create options 支持显式 `baseURI` 覆盖。
-- `RouterNavigationRequest.url`、`RouterGuardContext` 的 `url` / `currentUrl` 及 redirect 决策改为 `UriReferenceString`；`RouterGuardContext` 另增 `baseURI`。
-- 新增 helper：`coerceUriReferenceString`、`resolveUriReferenceToUrl`、`resolveUriReferenceWithRouter`（base 优先级：显式 → `router.baseURI()` → 绝对的 `currentUrl()`）。
+- `RouterNavigationRequest.url`、`RouterGuardContext` 的 `url` / `currentUrl` 及 redirect 决策改为 `UriReferenceString`。
 - `parseCompatFragment` / `takeCompatFragmentFromRouter` 支持 `UriReferenceString` 输入。
 
 迁移：
 
 - `environment.router.currentUrl()?.toString()` 仍可用于 OAuth 回跳 URI 与日志。
-- 自定义适配器中，用 `UriReferenceString.tryParse(relative)` 替代 `new URL(relative, sentinelBase)` 作为 `currentUrl`；需要原生 `URL` 时用 `resolveUriReferenceWithRouter(ref, router)`。
-- mock `RouterTrait` 须实现 `baseURI()`（无基座时返回 `null`）。
+- 自定义适配器中，用 `UriReferenceString.tryParse(relative)` 替代 `new URL(relative, sentinelBase)` 作为 `currentUrl`。
 - 从返回 string 的 client API 调用 `router.navigate({ url, ... })` 时，使用 `coerceUriReferenceString(string)`。
-- WebExt：经 `RouterForWebExtCreateOptions.browser.runtime` 传入 `runtime.getURL`，或在测试中显式设置 `baseURI`。
 
 ### Token-set Auth Event Payload Map
 
@@ -140,8 +136,8 @@ Packages：
 
 - 用 `SecuritydeptProvider` 包住 React subtree；可以传入已有 `injector`，也可以通过 `providers` / `parentInjector` 派生 child injector。
 - 将 `XxxContextProvider` / `useXxxContext()` 迁移为 `useSecuritydeptContext().get(TOKEN)`。
-- 将 `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` 迁移为 `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)`，再配合 `useReadableSignalValue(registry.clientSignalFor(key))` 读取返回 client 的 replay channels。需要观察 registry topology 时使用 `useReadableSignalValue(registry.state)`。
-- 将 basic-auth / session 的 provider-first 组合迁移为 `create*()` + `provide*()`；token-set 多客户端 React 组合改为注册 `provideTokenSetAuthRegistry({ clients })`，只有在 host 明确需要 callback resume wiring 时才额外组合 `provideTokenSetCallbackResumeController(registry)`。
+- 将 `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` 迁移为 `const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)`，再配合 `useReplaySignalValue(registry.clientSignalFor(key))` 读取返回 client 的 replay channels。
+- 将 basic-auth / session 的 provider-first 组合迁移为 `create*()` + `provide*()`；token-set 多客户端 React 组合改为注册 `provideTokenSetClientRegistry({ clients })`，需要 callback handling 时使用显式 frontend/backend callback controller hooks。
 
 ### Token-Set React Registry Composition
 
@@ -156,8 +152,8 @@ Package：
 
 迁移：
 
-- 普通 React host 直接注册 `provideTokenSetAuthRegistry({ clients })`。
-- 如果 host 需要 callback resume，则在自行决定 registry ownership 之后，显式组合 `provideTokenSetCallbackResumeController(registry)`。
+- 普通 React host 直接注册 `provideTokenSetClientRegistry({ clients })`。
+- 如果 host 需要 callback handling，使用 React root adapter 导出的 `useTokenSetFrontendCallbackController()` 或 `useTokenSetBackendCallbackController()`。
 - 如果 host 需要手动 readiness、手动 disposal 或自定义 warmup 策略，应直接创建并持有 registry/controller，而不是继续依赖 SDK 预设的 runtime object。
 
 ### Client Environment 与 Backend-OIDC Web Host 边界
@@ -203,7 +199,7 @@ Package：
 变更：
 
 - `FoundationEnvironment` 现在承载单一 `time: TimeTrait` capability，不再拆成 `clock` 与 `scheduler` 字段。Idle work 是独立的可选 `idleCallback: IdleCallbackTrait` capability。
-- `createDefaultTimeConfig()` 取代 `createDefaultClock()` 与 `createDefaultScheduler()`。
+- `createTimeForStd()` 取代 `createDefaultClock()` 与 `createDefaultScheduler()`。
 - `createDefaultIdleScheduler()` 与 registry `idleScheduler` wiring 已移除。Registry idle warmup 只有在 host 显式提供 `environment.idleCallback` 时才会运行。
 - `timer()`、`interval()`、`scheduleAt()`、`fromTimeout()`、`fromInterval()`、`fromScheduleAt()`、`fromEventPattern()`、`fromSignal()` 与 `fromPromise()` 已从 `@securitydept/client` 移除。
 - SDK 仍然对外暴露 `EventStreamTrait` / `EventSubjectTrait` 作为公共响应式原语，但通用 source 构造改为直接使用 RxJS；当需要由 host-owned `TimeTrait` 驱动调度时，使用 `@securitydept/client/rx` 中的 `createAsyncSchedulerWithTimestampProvider(...)`。
@@ -215,7 +211,7 @@ Package：
 - 将直接 callback timer handle 改为 `timer(delayMs, createAsyncSchedulerWithTimestampProvider(time)).subscribe(...)`。
 - 将重复 callback 调度改为 `interval(periodMs, createAsyncSchedulerWithTimestampProvider(time)).subscribe(...)`。
 - 原先依赖 `fromEventPattern({ ..., callback })` 风格 SDK helper 的场景，改为直接使用 `rxjs` 的 `fromEventPattern(...)`、`from(Promise.resolve(...))` 或 `new Observable(...)`；只有在跨越 SecurityDept trait 边界时才再桥接回 `EventStreamTrait`。
-- 测试中需要 deterministic `now()`、timer queue、flush 与 pending-count 断言时使用 `FakeTimeConfig`。
+- 测试中需要 deterministic `now()`、timer queue、flush 与 pending-count 断言时使用 `@securitydept/client/test` 的 `createTimeForTest()`。
 
 理由：
 
@@ -305,20 +301,17 @@ Package：`@securitydept/client`
 
 ### Token-Set React Query
 
-Package：`@securitydept/token-set-context-client-react/react-query`
+Package：已移除的 token-set React Query subpath
 
 变更：
 
-- React Query integration 是 React package 的 subpath，不是独立 package。
-- SDK-owned surface 只保留 readiness query、token-set-aware query-key namespace 与 invalidation glue。
-- 资源 domain model 与 groups/entries CRUD hooks 保留在 app-local 或 adopter-local 代码中。
+- React Query subpath 已移除。
+- Query keys、readiness query 与 invalidation policy 都是 app-local concern，应构建在注入的 token-set registry 与 client 之上。
 
 迁移：
 
-- 从 `./react-query` subpath 导入 React Query helpers。
-- 在 host app 内构建 app-specific resource hooks，而不是期待 SDK 提供 token-set CRUD surface。
-- 只有导入该 subpath 的 host 需要安装 TanStack Query optional peer dependency。
-- 使用 SDK 的 query-key prefix 与 readiness helper 组合 host-owned query tree，并在 token-set lifecycle 变化时统一失效。
+- 将 token-set query keys 移到 host app。
+- 在 host-owned TanStack Query hooks 中使用 `TOKEN_SET_CLIENT_REGISTRY` 加 `registry.initialize(key)` 或 `registry.clientSignalFor(key)`。
 
 ### Framework Adapter Environment Boundaries
 
@@ -333,16 +326,16 @@ Packages：
 变更：
 
 - `@securitydept/client-react` 现在拥有 canonical React injector bridge：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`，以及 context-free `useReadableSignalValue()`、`useReplaySignalValue()`、`useInteropObservable()` 与 `useEventStream()`。
-- `client-react` environment 与 `planner-host` helper 现在只导出 injection token 与 provider factory：例如 `ENVIRONMENT` + `provideEnvironment({ environment })`，`AUTH_PLANNER_HOST` + `provideAuthPlannerHost()`。
+- `client-react` root 现在只导出 React injector bridge。React environment capability 来自核心 environment injector：将 `environment.injector` 作为根 `SecuritydeptProvider` 的 `parentInjector` 传入。Route-scoped planner host 由具体 router adapter（如 `@securitydept/client-react/tanstack-router`）拥有。
 - `basic-auth` / `session` / `token-set` React adapter 不再拥有 domain-specific Provider / Context hook；它们导出 token、plain factory、provider factory，以及显式 callback/component bridge。token-set 多客户端组合现在改为显式 registry/controller wiring，而不是 SDK 预设 runtime bundle。
-- Angular `createTokenSetOidcLoginRedirectHandler()` 现在是 route-login helper。它的 public key 仍然只叫 `environment`，但这个值现在表示稳定的 environment source；Angular DI 应通过 `@securitydept/client-angular` 的 `provideEnvironment({ environment })` 提供该 source。helper 面向 `BaseOidcModeClient.loginWithRedirect()`，并会在 guard flow 中 await 最终 capability 后再调用它。
-- React `useTokenSetCallbackResume({ getCurrentUrl, describeError })` 桥接 `@securitydept/token-set-context-client/registry` 的 shared callback controller。Angular callback resume service/component 导出已移除；Angular callback 适配应基于核心 token-set registry controller 重新构建。
+- Token-set Angular/React 路由安全现依赖 `secureTokenSetRouteRoot()` 与 registry 默认 unauthenticated handler。client 选择应写在 requirement `attributes.query` 中；仅在需要时通过 secure route root 或 planner host provider 的 `onClientUnauthenticated` 自定义 redirect 策略。
+- React callback handling 使用 `useTokenSetFrontendCallbackController()` 与 `useTokenSetBackendCallbackController()` 桥接 shared registry callback controller。Angular callback 适配同样基于核心 registry controller 构建。
 
 迁移：
 
 - 在 framework composition root 构建 browser environment，再通过 `SecuritydeptProvider` + provider factory 把这些 dependency 注册到 injector 中。
 - 如果 app 依赖旧的 provider/service construction 副作用来探测 session，应显式创建 `SessionContextController`，并在 host-owned lifecycle 中调用 `controller.refresh()`。
-- 对 React 代码，如需 environment capability，应通过 `provideEnvironment({ environment })` 注册 host-owned object，再在 leaf 代码中用 `useSecuritydeptContext().get(ENVIRONMENT)` 读取。
+- 对 React 代码，如需 environment capability，应将 host-owned environment injector 作为 `SecuritydeptProvider.parentInjector`，再在 leaf 代码中用 `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)` 读取。
 - 对 Angular frontend-oidc route redirect，应在 composition root 通过 `provideEnvironment({ environment })` 提供 host-owned environment object。
 - 对 Angular callback route，在新的 Angular adapter 落地前直接使用核心 token-set registry controller。
 - 对 custom callback orchestration，调用带显式 `controller` / `injector` / `getCurrentUrl` / `describeError` 的 React hook，而不是在普通 helper 里重新引入 page-global fallback 逻辑或 mode-specific copy。
@@ -399,14 +392,14 @@ Packages：
 
 - Canonical registry lifecycle verb 现在是 `register(entry)`、`unregister(key)`、`resetMaterialization(key)` 与 `dispose()`。
 - Registry 现在把 configured 与 ready observability 显式拆开：`has()` / `registeredKeys()` / `registeredEntriesSnapshot()` / `registeredMetaSnapshot()` 描述已注册 entry，`readyKeys()` 描述已经完成 materialization 与 `start()` lifecycle 的 client。
-- React token-set composition 现在改为 registry-first：在 composition root 注册 `provideTokenSetAuthRegistry(...)`，只有确实需要 callback resume handling 时才额外注册 `provideTokenSetCallbackResumeController(...)`，运行期 add/remove/reset flow 通过注入后的 registry 实例完成，不再依赖 `TokenSetAuthProvider` 或隐藏 lookup hook。Angular token-set composition 使用 `TokenSetClientRegistryService`，它是 shared core `TokenSetClientRegistry` 之上的薄 DI adapter。
+- React token-set composition 现在改为 registry-first：在 composition root 注册 `provideTokenSetClientRegistry(...)`，仅在 callback route 渲染处使用 callback controller hooks，运行期 add/remove/reset flow 通过注入后的 registry 实例完成。Angular token-set composition 使用 `TokenSetClientRegistryService`，它是 shared core `TokenSetClientRegistry` 之上的薄 DI adapter。
 
 迁移：
 
 - 将历史上表示“移除此 client registration”的 `reset(key)` 调用替换为 `unregister(key)`。
 - 将失败后通过重新注册同一个 key 来重试/重建的流程替换为 `resetMaterialization(key)` 后再调用 `whenReady(key)`。
 - 对 management UI 或 diagnosis，使用 registered snapshot 作为配置态真值，使用 `readyKeys()` 表示已启动 client membership，并通过 `clientSignalFor(key)` / `whenReady(key)` 访问 live client；不要再把 ready-only key 当作所有已配置 client 的来源。
-- 在 React host 中，不要期待 prop 变化自动 reconcile token-set registration。运行期 lifecycle 变更应通过 `useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)` 或其它持有的 registry 引用完成。
+- 在 React host 中，不要期待 prop 变化自动 reconcile token-set registration。运行期 lifecycle 变更应通过 `useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)` 或其它持有的 registry 引用完成。
 
 理由：
 

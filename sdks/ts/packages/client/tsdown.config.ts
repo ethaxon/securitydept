@@ -5,6 +5,7 @@ export default defineConfig({
 		index: "./src/index.ts",
 		"rx/index": "./src/rx/index.ts",
 		"server/index": "./src/server/index.ts",
+		"test/index": "./src/test/index.ts",
 		"web/index": "./src/web/index.ts",
 		"webext/index": "./src/webext/index.ts",
 	},

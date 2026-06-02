@@ -11,6 +11,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	SecuritydeptProvider,
+	type SecuritydeptProviderProps,
 	useSecuritydeptContext,
 } from "../injection/index";
 
@@ -103,7 +104,7 @@ describe("client-react unified Securitydept context", () => {
 		view.unmount();
 	});
 
-	it("prefers an explicit injector over providers", () => {
+	it("uses an explicit injector without creating an inline child injector", () => {
 		const injector = SecuritydeptInjector.resolveAndCreate([
 			{ provide: LABEL_TOKEN, useValue: "explicit" },
 		]);
@@ -118,7 +119,6 @@ describe("client-react unified Securitydept context", () => {
 				SecuritydeptProvider,
 				{
 					injector,
-					providers: [{ provide: LABEL_TOKEN, useValue: "ignored" }],
 				},
 				createElement(Probe),
 			),
@@ -126,6 +126,23 @@ describe("client-react unified Securitydept context", () => {
 
 		expect(view.container.textContent).toBe("explicit");
 		view.unmount();
+	});
+
+	it("rejects mixing explicit injector with inline providers at type level", () => {
+		const injector = SecuritydeptInjector.resolveAndCreate([]);
+		const acceptProviderProps = (_props: SecuritydeptProviderProps) => {};
+
+		// @ts-expect-error `injector` and `providers` are mutually exclusive modes.
+		acceptProviderProps({
+			injector,
+			providers: [{ provide: LABEL_TOKEN, useValue: "ignored" }],
+		});
+
+		// @ts-expect-error explicit injector mode never creates a destroy ref.
+		acceptProviderProps({
+			injector,
+			autoCreateDestroyRef: true,
+		});
 	});
 
 	it("derives from an explicit parentInjector", () => {
@@ -250,7 +267,7 @@ describe("client-react unified Securitydept context", () => {
 		view.unmount();
 	});
 
-	it("still layers a destroy ref over an explicit injector", () => {
+	it("uses an explicit injector as-is without layering a destroy ref", () => {
 		const injector = SecuritydeptInjector.resolveAndCreate([
 			{ provide: LABEL_TOKEN, useValue: "explicit" },
 		]);
@@ -260,7 +277,7 @@ describe("client-react unified Securitydept context", () => {
 			return createElement(
 				"div",
 				null,
-				`${resolvedInjector.get(LABEL_TOKEN)}:${resolvedInjector.get(SecuritydeptDestroyRef).destroyed ? "destroyed" : "live"}`,
+				`${resolvedInjector.get(LABEL_TOKEN)}:${resolvedInjector.get(SecuritydeptDestroyRef, null) === null ? "missing" : "present"}`,
 			);
 		}
 
@@ -268,7 +285,7 @@ describe("client-react unified Securitydept context", () => {
 			createElement(SecuritydeptProvider, { injector }, createElement(Probe)),
 		);
 
-		expect(view.container.textContent).toBe("explicit:live");
+		expect(view.container.textContent).toBe("explicit:missing");
 		view.unmount();
 	});
 });

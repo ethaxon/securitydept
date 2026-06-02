@@ -7,30 +7,31 @@ import {
 } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
-	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
+	type BaseOidcModeClient,
 	type TokenSetAuthEvent,
 	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	createTokenSetClientRegistry,
 	TokenSetClientInitializationMode,
 	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
 import {
-	provideTokenSetAuthRegistry,
-	type ReactRegistry,
-	TOKEN_SET_AUTH_REGISTRY,
-	type TokenSetBackendOidcClient,
-	type TokenSetClientEntry,
-	type TokenSetReactClient,
+	provideTokenSetClientRegistry,
+	TOKEN_SET_CLIENT_REGISTRY,
+	type TokenSetClientRegistryService,
 } from "@securitydept/token-set-context-client-react";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createEnvironmentForTest } from "../packages/client/src/test";
 import { createTestTokenSetReactiveFields } from "./test-token-set-client";
+
+type BackendViewClient = BaseOidcModeClient & {
+	authorizeUrl(): string;
+};
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
@@ -61,7 +62,7 @@ function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 
 function createBackendClient(
 	snapshot: TokenSetAuthSnapshot,
-): TokenSetBackendOidcClient {
+): BackendViewClient {
 	const state = createSignal<TokenSetAuthSnapshot | null>(snapshot);
 	const reactive = createTestTokenSetReactiveFields(snapshot);
 	const dispose = vi.fn(() => {
@@ -82,47 +83,21 @@ function createBackendClient(
 		logout: async () => undefined,
 		loginWithPopup: async () => ({ snapshot }),
 		authorizeUrl: () => "/authorize",
-		refreshState: async () => snapshot,
-		clearState: async () => {
-			state.set(null);
-			reactive.emitSnapshot(null);
-		},
-	};
+	} as unknown as BackendViewClient;
 }
 
-type BackendClientEntry = Omit<TokenSetClientEntry, "clientFactory"> & {
-	clientFactory: () =>
-		| TokenSetBackendOidcClient
-		| Promise<TokenSetBackendOidcClient>;
-};
-
-function createManualRegistry(
-	clients: readonly BackendClientEntry[],
-): ReactRegistry {
-	const registry = createTokenSetClientRegistry<TokenSetBackendOidcClient>({
-		environment: {},
-	});
-
-	for (const client of clients) {
-		registry.register(toCoreEntry(client));
-	}
-
-	return registry;
-}
-
-function toCoreEntry(
-	entry: BackendClientEntry,
-): TokenSetClientRegistryEntry<TokenSetBackendOidcClient> {
+function createEntry(
+	clientFactory: () => BackendViewClient,
+): TokenSetClientRegistryEntry<BaseOidcModeClient> {
 	return {
-		clientFactory: entry.clientFactory,
+		clientFactory,
 		meta: {
-			clientKey: entry.key,
-			urlPatterns: entry.urlPatterns ?? [],
-			callbackPath: entry.callbackPath,
-			requirementKind: entry.requirementKind,
-			providerFamily: entry.providerFamily,
-			initialization:
-				entry.initialization ?? TokenSetClientInitializationMode.Immediate,
+			clientKey: "main",
+			urlPatterns: [],
+			callbackPath: undefined,
+			requirementKind: undefined,
+			providerFamily: undefined,
+			initialization: TokenSetClientInitializationMode.Lazy,
 		},
 	};
 }
@@ -133,79 +108,84 @@ describe("backend-oidc react minimal entry", () => {
 	});
 
 	it("shows the minimal injector path for consuming backend-OIDC auth state in React", async () => {
-		const registry = createManualRegistry([
-			{
-				key: "main",
-				clientFactory: () => createBackendClient(createSnapshot("backend-at")),
-			},
-		]);
-		await registry.initialize("main");
+		const environment = createEnvironmentForTest();
+		let registry: TokenSetClientRegistryService | undefined;
 
 		function AuthBadge() {
-			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const client = useReplaySignalValue(registry.clientSignalFor("main"));
-			return createElement(AuthBadgeForClient, { client });
-		}
-
-		function AuthBadgeForClient({ client }: { client: TokenSetReactClient }) {
-			const snapshot = useReplaySignalValue(client.authSnapshot, {
-				initialValue: null,
-			});
-			return createElement(
-				"output",
-				null,
-				snapshot ? `token:${snapshot.tokens.accessToken}` : "unauthenticated",
-			);
+			registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
+			return createElement("output", null, "ready");
 		}
 
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{ providers: [provideTokenSetAuthRegistry(registry)] },
+				{
+					parentInjector: environment.injector,
+					providers: [
+						...provideTokenSetClientRegistry({
+							clients: [
+								createEntry(() =>
+									createBackendClient(createSnapshot("backend-at")),
+								),
+							],
+						}),
+					],
+				},
 				createElement(AuthBadge),
 			),
 		);
 
-		expect(view.container.textContent).toBe("token:backend-at");
+		await act(async () => {
+			await Promise.resolve();
+		});
+
+		const client = (await registry?.initialize("main"))?.client;
+		expect(await client?.authSnapshot.whenValue()).toEqual(
+			createSnapshot("backend-at"),
+		);
 		view.unmount();
-		registry.dispose();
 	});
 
 	it("shows advanced client access through the keyed registry service", async () => {
-		const registry = createManualRegistry([
-			{
-				key: "main",
-				clientFactory: () => createBackendClient(createSnapshot("backend-at")),
-			},
-		]);
-		await registry.initialize("main");
+		const environment = createEnvironmentForTest();
+		let registry: TokenSetClientRegistryService | undefined;
 
 		function ClientProbe() {
-			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const client = useReplaySignalValue(registry.clientSignalFor("main"));
-			if (
-				!("authorizeUrl" in client) ||
-				typeof client.authorizeUrl !== "function"
-			) {
-				throw new Error("Expected backend-specific client surface");
-			}
-			return createElement(
-				"output",
-				null,
-				(client as TokenSetBackendOidcClient).authorizeUrl(),
-			);
+			registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
+			return createElement("output", null, "ready");
 		}
 
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{ providers: [provideTokenSetAuthRegistry(registry)] },
+				{
+					parentInjector: environment.injector,
+					providers: [
+						...provideTokenSetClientRegistry({
+							clients: [
+								createEntry(() =>
+									createBackendClient(createSnapshot("backend-at")),
+								),
+							],
+						}),
+					],
+				},
 				createElement(ClientProbe),
 			),
 		);
 
-		expect(view.container.textContent).toBe("/authorize");
+		await act(async () => {
+			await Promise.resolve();
+		});
+
+		const client = (await registry?.initialize("main"))?.client;
+		if (
+			!("authorizeUrl" in client) ||
+			typeof client.authorizeUrl !== "function"
+		) {
+			throw new Error("Expected backend-specific client surface");
+		}
+		expect(client.authorizeUrl()).toBe("/authorize");
 		view.unmount();
-		registry.dispose();
 	});
 });

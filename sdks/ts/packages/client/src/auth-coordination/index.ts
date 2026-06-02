@@ -54,6 +54,12 @@ export {
 // --- Planner Host ---
 export {
 	defaultSelectCandidate,
+	type InjectRequirementPlannerHostOptions,
+	injectRequirementPlannerHost,
+	type ProvideRequirementPlannerHostOptions,
+	provideRequirementPlannerHost,
+	REQUIREMENT_PLANNER_HOST,
 	RequirementPlannerHost,
+	type RequirementPlannerHostBehaviour,
 	type RequirementPlannerHostOptions,
 } from "./planner-host";

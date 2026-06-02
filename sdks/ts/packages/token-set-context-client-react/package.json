@@ -33,11 +33,6 @@
 			"types": "./dist/index.d.mts",
 			"import": "./dist/index.mjs"
 		},
-		"./react-query": {
-			"monorepo-tsc": "./src/react-query/index.ts",
-			"types": "./dist/react-query/index.d.mts",
-			"import": "./dist/react-query/index.mjs"
-		},
 		"./tanstack-router": {
 			"monorepo-tsc": "./src/tanstack-router/index.ts",
 			"types": "./dist/tanstack-router/index.d.mts",
@@ -57,16 +52,9 @@
 		"@securitydept/token-set-context-client": "workspace:*"
 	},
 	"peerDependencies": {
-		"react": ">=19.0.0",
-		"@tanstack/react-query": ">=5.0.0"
-	},
-	"peerDependenciesMeta": {
-		"@tanstack/react-query": {
-			"optional": true
-		}
+		"react": ">=19.0.0"
 	},
 	"devDependencies": {
-		"@tanstack/react-query": "catalog:",
 		"react": "catalog:"
 	}
 }

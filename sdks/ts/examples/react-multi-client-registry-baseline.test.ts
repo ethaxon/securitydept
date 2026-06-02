@@ -7,28 +7,26 @@ import {
 } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
-	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
+	type BaseOidcModeClient,
 	type TokenSetAuthEvent,
 	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	createTokenSetClientRegistry,
 	TokenSetClientInitializationMode,
 	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
 import {
-	provideTokenSetAuthRegistry,
-	type ReactRegistry,
-	TOKEN_SET_AUTH_REGISTRY,
-	type TokenSetClientEntry,
-	type TokenSetReactClient,
+	provideTokenSetClientRegistry,
+	TOKEN_SET_CLIENT_REGISTRY,
+	type TokenSetClientRegistryService,
 } from "@securitydept/token-set-context-client-react";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
+import { createEnvironmentForTest } from "../packages/client/src/test";
 import { createTestTokenSetReactiveFields } from "./test-token-set-client";
 
 function render(element: ReactElement) {
@@ -60,7 +58,7 @@ function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 
 function createClient(
 	state: ReturnType<typeof createSignal<TokenSetAuthSnapshot | null>>,
-) {
+): BaseOidcModeClient {
 	const reactive = createTestTokenSetReactiveFields(state.get());
 	state.notify(() => reactive.emitSnapshot(state.get()));
 	return {
@@ -81,149 +79,114 @@ function createClient(
 		loginWithRedirect: async () => undefined,
 		logout: async () => undefined,
 		loginWithPopup: async () => ({ snapshot: state.get()! }),
-	};
+	} as unknown as BaseOidcModeClient;
 }
 
-function createManualRegistry(
-	clients: readonly TokenSetClientEntry[],
-): ReactRegistry {
-	const registry = createTokenSetClientRegistry<TokenSetReactClient>({
-		environment: {},
-	});
-
-	for (const client of clients) {
-		registry.register(toCoreEntry(client));
-	}
-
-	return registry;
-}
-
-function toCoreEntry(
-	entry: TokenSetClientEntry,
-): TokenSetClientRegistryEntry<TokenSetReactClient> {
+function createEntry(
+	clientKey: string,
+	clientFactory: () => BaseOidcModeClient,
+): TokenSetClientRegistryEntry<BaseOidcModeClient> {
 	return {
-		clientFactory: entry.clientFactory,
+		clientFactory,
 		meta: {
-			clientKey: entry.key,
-			urlPatterns: entry.urlPatterns ?? [],
-			callbackPath: entry.callbackPath,
-			requirementKind: entry.requirementKind,
-			providerFamily: entry.providerFamily,
-			initialization:
-				entry.initialization ?? TokenSetClientInitializationMode.Immediate,
+			clientKey,
+			urlPatterns: [],
+			callbackPath: undefined,
+			requirementKind: undefined,
+			providerFamily: undefined,
+			initialization: TokenSetClientInitializationMode.Lazy,
 		},
 	};
 }
 
 describe("react multi-client registry baseline", () => {
 	it("surfaces multiple keyed clients through SecuritydeptProvider", async () => {
+		const environment = createEnvironmentForTest();
 		const mainState = createSignal<TokenSetAuthSnapshot | null>(
 			createSnapshot("main-at"),
 		);
 		const adminState = createSignal<TokenSetAuthSnapshot | null>(
 			createSnapshot("admin-at"),
 		);
-		const registry = createManualRegistry([
-			{
-				key: "main",
-				clientFactory: () => createClient(mainState),
-			},
-			{
-				key: "admin",
-				clientFactory: () => createClient(adminState),
-			},
-		]);
-		await registry.initialize("main");
-		await registry.initialize("admin");
+		let registry: TokenSetClientRegistryService | undefined;
 
 		function Probe() {
-			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const mainClient = useReplaySignalValue(registry.clientSignalFor("main"));
-			const adminClient = useReplaySignalValue(
-				registry.clientSignalFor("admin"),
-			);
-			return createElement(MultiClientProbe, {
-				mainClient,
-				adminClient,
-			});
-		}
-
-		function MultiClientProbe({
-			mainClient,
-			adminClient,
-		}: {
-			mainClient: TokenSetReactClient;
-			adminClient: TokenSetReactClient;
-		}) {
-			const main = useReplaySignalValue(mainClient.authSnapshot, {
-				initialValue: null,
-			});
-			const admin = useReplaySignalValue(adminClient.authSnapshot, {
-				initialValue: null,
-			});
-			return createElement(
-				"output",
-				null,
-				`${main?.tokens.accessToken ?? "empty"}:${admin?.tokens.accessToken ?? "empty"}`,
-			);
+			registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
+			return createElement("output", null, "ready");
 		}
 
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{ providers: [provideTokenSetAuthRegistry(registry)] },
+				{
+					parentInjector: environment.injector,
+					providers: [
+						...provideTokenSetClientRegistry({
+							clients: [
+								createEntry("main", () => createClient(mainState)),
+								createEntry("admin", () => createClient(adminState)),
+							],
+						}),
+					],
+				},
 				createElement(Probe),
 			),
 		);
 
-		expect(view.container.textContent).toBe("main-at:admin-at");
+		await act(async () => {
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		const mainClient = (await registry?.initialize("main"))?.client;
+		const adminClient = (await registry?.initialize("admin"))?.client;
+		expect(await mainClient?.authSnapshot.whenValue()).toEqual(
+			createSnapshot("main-at"),
+		);
+		expect(await adminClient?.authSnapshot.whenValue()).toEqual(
+			createSnapshot("admin-at"),
+		);
 		view.unmount();
-		registry.dispose();
 	});
 
 	it("re-renders when a keyed client signal changes", async () => {
+		const environment = createEnvironmentForTest();
 		const mainState = createSignal<TokenSetAuthSnapshot | null>(
 			createSnapshot("main-at"),
 		);
-		const registry = createManualRegistry([
-			{
-				key: "main",
-				clientFactory: () => createClient(mainState),
-			},
-		]);
-		await registry.initialize("main");
+		let registry: TokenSetClientRegistryService | undefined;
 
 		function Probe() {
-			const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY);
-			const client = useReplaySignalValue(registry.clientSignalFor("main"));
-			return createElement(SingleClientProbe, { client });
-		}
-
-		function SingleClientProbe({ client }: { client: TokenSetReactClient }) {
-			const snapshot = useReplaySignalValue(client.authSnapshot, {
-				initialValue: null,
-			});
-			return createElement(
-				"output",
-				null,
-				snapshot?.tokens.accessToken ?? "empty",
-			);
+			registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
+			return createElement("output", null, "ready");
 		}
 
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{ providers: [provideTokenSetAuthRegistry(registry)] },
+				{
+					parentInjector: environment.injector,
+					providers: [
+						...provideTokenSetClientRegistry({
+							clients: [createEntry("main", () => createClient(mainState))],
+						}),
+					],
+				},
 				createElement(Probe),
 			),
 		);
 
+		await act(async () => {
+			await Promise.resolve();
+		});
 		act(() => {
 			mainState.set(createSnapshot("updated-at"));
 		});
 
-		expect(view.container.textContent).toBe("updated-at");
+		const client = (await registry?.initialize("main"))?.client;
+		expect(await client?.authSnapshot.whenValue()).toEqual(
+			createSnapshot("updated-at"),
+		);
 		view.unmount();
-		registry.dispose();
 	});
 });

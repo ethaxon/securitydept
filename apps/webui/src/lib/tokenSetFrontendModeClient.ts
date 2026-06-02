@@ -24,7 +24,6 @@ import {
 	type AuthSnapshot,
 	type TokenSetAuthWorkflowSource,
 } from "@securitydept/token-set-context-client/orchestration";
-import { type TokenSetReactClient } from "@securitydept/token-set-context-client-react";
 import {
 	TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH,
 	TOKEN_SET_FRONTEND_MODE_CONFIG_PATH,
@@ -97,11 +96,27 @@ export const tokenSetFrontendModeCrossTabStatus = readonlySignal(
 	tokenSetFrontendModeCrossTabStatusSignal,
 );
 
-type TokenSetFrontendModeReactClient = TokenSetReactClient & {
+type TokenSetFrontendModeViewClient = {
 	refresh(): Promise<AuthSnapshot | null>;
 	clearState(): Promise<void>;
 	logout(): Promise<void>;
-};
+} & Pick<
+	FrontendOidcModeClient,
+	| "authDetermined"
+	| "authSnapshot"
+	| "isAuthenticated"
+	| "authorizationHeaderValue"
+	| "lastAuthError"
+	| "authOperations"
+	| "authEvents"
+	| "start"
+	| "addWorkflowSource"
+	| "removeWorkflowSource"
+	| "dispose"
+	| "restorePersistedState"
+	| "loginWithRedirect"
+	| "loginWithPopup"
+>;
 
 function recordFrontendHostTrace(
 	name: string,
@@ -277,7 +292,7 @@ async function ensureTokenSetFrontendModeClientSubscribed(): Promise<FrontendOid
 	return client;
 }
 
-const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
+const tokenSetFrontendModeReactClient: TokenSetFrontendModeViewClient = {
 	authDetermined: createAndThenComputedReplaySignal(
 		tokenSetFrontendModeAuthSnapshotSignal,
 		() => ({ kind: "value", value: true }),
@@ -430,7 +445,7 @@ const tokenSetFrontendModeReactClient: TokenSetFrontendModeReactClient = {
 	},
 };
 
-export async function getTokenSetFrontendModeClient(): Promise<TokenSetFrontendModeReactClient> {
+export async function getTokenSetFrontendModeClient(): Promise<TokenSetFrontendModeViewClient> {
 	await ensureTokenSetFrontendModeClientSubscribed();
 	return tokenSetFrontendModeReactClient;
 }
@@ -485,6 +500,6 @@ export function isTokenSetFrontendPopupError(error: unknown): error is Error & {
 
 export { TokenSetPopupRelayErrorCode };
 
-export function tokenSetFrontendModeClientFactory(): TokenSetReactClient {
-	return tokenSetFrontendModeReactClient;
+export async function tokenSetFrontendModeClientFactory(): Promise<FrontendOidcModeClient> {
+	return await ensureTokenSetFrontendModeClientSubscribed();
 }

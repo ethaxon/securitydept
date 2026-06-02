@@ -10,7 +10,7 @@ import {
 } from "@securitydept/basic-auth-context-client";
 import { createEnvironmentForServer } from "@securitydept/client/server";
 import { SessionContextClient } from "@securitydept/session-context-client";
-import { FakeTransport } from "@securitydept/test-utils";
+import { createTransportForTest } from "@securitydept/client/test";
 import { describe, expect, it } from "vitest";
 
 // ===========================================================================
@@ -25,7 +25,7 @@ describe("basic-auth root client — server-host flow", () => {
 				zones: [{ zonePrefix: "/api" }],
 			},
 			createEnvironmentForServer({
-				transport: new FakeTransport(),
+				transport: createTransportForTest(),
 				request: { headers: {} },
 			}),
 		);
@@ -52,7 +52,7 @@ describe("basic-auth root client — server-host flow", () => {
 				zones: [{ zonePrefix: "/api" }],
 			},
 			createEnvironmentForServer({
-				transport: new FakeTransport(),
+				transport: createTransportForTest(),
 				request: { headers: {} },
 			}),
 		);
@@ -68,7 +68,7 @@ describe("basic-auth root client — server-host flow", () => {
 
 describe("session server environment — server-host flow with cookie forwarding", () => {
 	it("fetchUserInfo forwards cookies and returns session info", async () => {
-		const transport = new FakeTransport().on(
+		const transport = createTransportForTest().on(
 			(req) => req.method === "GET" && req.url.endsWith("/user-info"),
 			(req) => {
 				// Verify cookie was forwarded from the server request.
@@ -102,7 +102,7 @@ describe("session server environment — server-host flow with cookie forwarding
 	});
 
 	it("keeps redirect response construction outside SessionContextClient", async () => {
-		const transport = new FakeTransport().on(
+		const transport = createTransportForTest().on(
 			(req) => req.method === "GET" && req.url.endsWith("/user-info"),
 			() => ({ status: 401, headers: {}, body: null }),
 		);

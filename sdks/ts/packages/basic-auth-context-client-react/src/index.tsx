@@ -1,45 +1,66 @@
-// Basic Auth Context Client — injector tokens and provider factories
+// React adapter for @securitydept/basic-auth-context-client
 //
 // Canonical import path:
 //   import { ... } from "@securitydept/basic-auth-context-client-react"
 //
-// Provides injector tokens and plain factories for integrating
-// BasicAuthContextClient. React trees compose these through
-// SecuritydeptProvider; no domain-specific React Context is created here.
-//
-// Stability: provisional (React adapter)
+// Provides Securitydept DI integration: injection tokens, provider factory,
+// and a BasicAuthContextClient subclass.
 
 import {
 	BasicAuthContextClient,
 	type BasicAuthContextClientConfig,
 } from "@securitydept/basic-auth-context-client";
 import {
-	type FoundationEnvironment,
+	ENVIRONMENT_TOKEN,
+	INJECTOR_TOKEN,
+	SecuritydeptDestroyRef,
 	SecuritydeptInjectionToken,
+	type SecuritydeptInjector,
 	type SecuritydeptProvider,
 } from "@securitydept/client";
+
+export { BasicAuthContextClient, type BasicAuthContextClientConfig };
 
 export const BASIC_AUTH_CONTEXT_CLIENT =
 	new SecuritydeptInjectionToken<BasicAuthContextClient>(
 		"BASIC_AUTH_CONTEXT_CLIENT",
 	);
 
-export interface CreateBasicAuthContextClientOptions {
+export const BASIC_AUTH_CONTEXT_CLIENT_CONFIG =
+	new SecuritydeptInjectionToken<BasicAuthContextClientConfig>(
+		"BASIC_AUTH_CONTEXT_CLIENT_CONFIG",
+	);
+
+export class BasicAuthContextService extends BasicAuthContextClient {
+	constructor(injector: SecuritydeptInjector) {
+		const config = injector.get(BASIC_AUTH_CONTEXT_CLIENT_CONFIG);
+		const environment = injector.get(ENVIRONMENT_TOKEN);
+		super(config, environment);
+		injector.get(SecuritydeptDestroyRef, null)?.onDestroy(() => this.dispose());
+	}
+}
+
+export interface ProvideBasicAuthContextOptions {
 	config: BasicAuthContextClientConfig;
-	environment: FoundationEnvironment;
 }
 
-export function createBasicAuthContextClient(
-	options: CreateBasicAuthContextClientOptions,
-): BasicAuthContextClient {
-	return new BasicAuthContextClient(options.config, options.environment);
-}
-
-export function provideBasicAuthContextClient(
-	client: BasicAuthContextClient,
-): SecuritydeptProvider<BasicAuthContextClient> {
-	return {
-		provide: BASIC_AUTH_CONTEXT_CLIENT,
-		useValue: client,
-	};
+export function provideBasicAuthContext(
+	options: ProvideBasicAuthContextOptions,
+): readonly SecuritydeptProvider[] {
+	return [
+		{
+			provide: BASIC_AUTH_CONTEXT_CLIENT_CONFIG,
+			useValue: options.config,
+		},
+		{
+			provide: BasicAuthContextService,
+			useFactory: (injector: SecuritydeptInjector) =>
+				new BasicAuthContextService(injector),
+			deps: [INJECTOR_TOKEN],
+		},
+		{
+			provide: BASIC_AUTH_CONTEXT_CLIENT,
+			useExisting: BasicAuthContextService,
+		},
+	];
 }

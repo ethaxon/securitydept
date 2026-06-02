@@ -63,10 +63,10 @@ export function createTokenSetCanActivateChild(
 
 /**
  * Declare a secured child route. Writes token-set registry requirement
- * metadata only; enforcement is owned by a guarded {@link secureRouteRoot}
- * ancestor.
+ * metadata only; enforcement is owned by a guarded
+ * {@link secureTokenSetRouteRoot} ancestor.
  */
-export function secureRoute(
+export function secureTokenSetRoute(
 	path: string,
 	security: TokenSetSecureRouteSecurityOptions = {},
 	routeOptions?: SecureRouteConfig,
@@ -85,7 +85,7 @@ export function secureRoute(
  * Declare a guarded token-set route root. Delegates guard assembly to the
  * client-angular base helper and mounts registry-backed behaviour hooks.
  */
-export function secureRouteRoot(
+export function secureTokenSetRouteRoot(
 	path: string,
 	security: TokenSetSecureRouteRootSecurityOptions = {},
 	routeOptions?: SecureRouteConfig,
@@ -110,9 +110,3 @@ export function secureRouteRoot(
 		},
 	);
 }
-
-/** Token-set-named alias for {@link secureRoute}. */
-export const secureTokenSetRoute = secureRoute;
-
-/** Token-set-named alias for {@link secureRouteRoot}. */
-export const secureTokenSetRouteRoot = secureRouteRoot;

@@ -3,8 +3,8 @@ export {
 	createFoundationEnvironment,
 } from "./create";
 export {
+	ENVIRONMENT_TOKEN,
 	type EnvironmentValidators,
-	FOUNDATION_ENVIRONMENT_TOKEN,
 	type FoundationEnvironment,
 	type ServiceWorkerEnvironment,
 } from "./types";

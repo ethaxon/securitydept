@@ -8,11 +8,15 @@ import {
 import { Router } from "@angular/router";
 import {
 	ROUTER_TRAIT_TOKEN,
+	SecuritydeptDestroyRef,
 	SecuritydeptInjectionToken,
 	type SecuritydeptProvider,
 	TRANSPORT_TRAIT_TOKEN,
 } from "@securitydept/client";
-import { type NativeWebEnvironment } from "@securitydept/client/web";
+import {
+	createEnvironmentForNativeWeb,
+	type NativeWebEnvironment,
+} from "@securitydept/client/web";
 import {
 	createEnvironmentForAngular,
 	ENVIRONMENT,
@@ -21,7 +25,6 @@ import {
 } from "@securitydept/client-angular";
 import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
-import { createEnvironmentForNativeWebTest } from "../../../../client/src/test";
 
 const TEST_ENVIRONMENT_EXTENSION = new SecuritydeptInjectionToken<string>(
 	"TEST_ENVIRONMENT_EXTENSION",
@@ -86,7 +89,7 @@ function createTime() {
 function createNativeWebEnvironment(
 	options: { providers?: readonly SecuritydeptProvider[] } = {},
 ): NativeWebEnvironment {
-	return createEnvironmentForNativeWebTest({
+	return createEnvironmentForNativeWeb({
 		...options,
 		transport: createTransport(),
 		time: createTime(),
@@ -195,6 +198,61 @@ describe("client-angular environment bridge", () => {
 		}
 	});
 
+	it("auto-creates a Securitydept destroy ref for the environment injector", () => {
+		const injector = createEnvironmentInjector(
+			[
+				...provideAngularEnvironmentDeps(),
+				provideEnvironment({
+					createBaseEnvironment: createNativeWebEnvironment,
+				}),
+			],
+			Injector.NULL as never,
+		);
+
+		const onDestroy = vi.fn();
+		try {
+			const resolved = runInInjectionContext(injector, () =>
+				inject(ENVIRONMENT),
+			);
+			const destroyRef = resolved.injector.get(SecuritydeptDestroyRef);
+			destroyRef.onDestroy(onDestroy);
+
+			expect(destroyRef.destroyed).toBe(false);
+		} finally {
+			injector.destroy();
+		}
+
+		expect(onDestroy).toHaveBeenCalledOnce();
+	});
+
+	it("does not create a Securitydept destroy ref when autoCreateDestroyRef is false", () => {
+		const injector = createEnvironmentInjector(
+			[
+				...provideAngularEnvironmentDeps(),
+				provideEnvironment({
+					createBaseEnvironment: createNativeWebEnvironment,
+					autoCreateDestroyRef: false,
+				}),
+			],
+			Injector.NULL as never,
+		);
+
+		try {
+			const resolved = runInInjectionContext(injector, () =>
+				inject(ENVIRONMENT),
+			);
+
+			expect(
+				resolved.injector.get<SecuritydeptDestroyRef | null>(
+					SecuritydeptDestroyRef,
+					null,
+				),
+			).toBeNull();
+		} finally {
+			injector.destroy();
+		}
+	});
+
 	it("includes default Angular router and transport trait providers", () => {
 		const injector = createEnvironmentInjector(
 			[
@@ -219,7 +277,6 @@ describe("client-angular environment bridge", () => {
 				throw new Error("Expected default Angular router trait.");
 			}
 			expect(router.currentUrl()?.toString()).toBe("/current");
-			expect(router.baseURI()).toBeNull();
 		} finally {
 			injector.destroy();
 		}
@@ -247,7 +304,6 @@ describe("client-angular environment bridge", () => {
 					createBaseEnvironment: createNativeWebEnvironment,
 					routerForAngularCreateOptions: {
 						currentUrl: "/override",
-						baseURI: "https://app.example.com/base/",
 					},
 					transportForAngularCreateOptions: {
 						baseUrl: "https://api.example.com",
@@ -262,9 +318,6 @@ describe("client-angular environment bridge", () => {
 				inject(ENVIRONMENT),
 			);
 			expect(resolved.router?.currentUrl()?.toString()).toBe("/override");
-			expect(resolved.router?.baseURI()?.toString()).toBe(
-				"https://app.example.com/base/",
-			);
 
 			await resolved.transport.execute({
 				url: "/resource",

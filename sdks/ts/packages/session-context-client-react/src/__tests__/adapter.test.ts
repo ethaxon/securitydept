@@ -5,6 +5,7 @@ import {
 	type HttpRequest,
 	type HttpResponse,
 } from "@securitydept/client";
+import { createEnvironmentForTest } from "@securitydept/client/test";
 import {
 	SecuritydeptProvider,
 	useReplaySignalValue,
@@ -13,11 +14,10 @@ import {
 import { act, createElement, type ReactElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import { createEnvironmentForTest } from "../../../client/src/test";
 import {
-	createSessionContextClient,
-	provideSessionContextClient,
+	provideSessionContext,
 	SESSION_CONTEXT_CLIENT,
+	SessionContextService,
 } from "../index";
 
 function render(element: ReactElement) {
@@ -61,20 +61,20 @@ describe("session-context react adapter", () => {
 		(
 			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 		).IS_REACT_ACT_ENVIRONMENT = true;
-		const client = createSessionContextClient({
-			config: { baseUrl: "https://auth.example.com" },
-			environment: createEnvironmentForTest({
-				transport: createTestTransport(() => ({
-					status: 200,
-					headers: {},
-					body: { subject: "session-user-1", display_name: "Alice" },
-				})),
-			}),
+		const environment = createEnvironmentForTest({
+			transport: createTestTransport(() => ({
+				status: 200,
+				headers: {},
+				body: { subject: "session-user-1", display_name: "Alice" },
+			})),
 		});
+		let client: SessionContextService | null = null;
 
 		function Probe() {
 			const injector = useSecuritydeptContext();
 			const resolvedClient = injector.get(SESSION_CONTEXT_CLIENT);
+			expect(resolvedClient).toBeInstanceOf(SessionContextService);
+			client = resolvedClient as SessionContextService;
 			const session = useReplaySignalValue(resolvedClient.sessionInfo, {
 				initialValue: null,
 			});
@@ -92,7 +92,12 @@ describe("session-context react adapter", () => {
 				null,
 				createElement(
 					SecuritydeptProvider,
-					{ providers: provideSessionContextClient(client) },
+					{
+						parentInjector: environment.injector,
+						providers: provideSessionContext({
+							config: { baseUrl: "https://auth.example.com" },
+						}),
+					},
 					createElement(Probe),
 				),
 			),
@@ -100,7 +105,7 @@ describe("session-context react adapter", () => {
 
 		expect(view.container.textContent).toBe("none");
 		await act(async () => {
-			await client.refresh();
+			await client?.refresh();
 		});
 		expect(view.container.textContent).toBe("Alice");
 

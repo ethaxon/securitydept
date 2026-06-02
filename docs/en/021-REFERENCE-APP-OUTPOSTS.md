@@ -10,7 +10,7 @@ The current calibration line demonstrates that:
 
 - `outposts-web -> confluence` now consumes the SecurityDept Angular/token-set packages instead of `angular-auth-oidc-client`.
 - Callback route adaptation is moving to a new Angular bridge over the core token-set registry controller; the old Angular drop-in callback component is no longer part of the SDK surface.
-- `secureRouteRoot()` carries provider-neutral requirement metadata and next-action policy.
+- `secureTokenSetRouteRoot()` carries provider-neutral requirement metadata and next-action policy.
 - `provideTokenSetClientRegistry(...)` registers the `Confluence` client with explicit `providerFamily`, `callbackPath`, and `urlPatterns`.
 - Route-login integration uses `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })`; the client should already carry a stable page router through its environment rather than receiving a per-call page factory.
 - Registry-managed browser clients now use the core `TokenSetClientRegistry` lifecycle through `provideTokenSetClientRegistry(...)`; the adopter does not need a separate wrapper just to recover resume behavior.

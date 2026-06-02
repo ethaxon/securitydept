@@ -16,25 +16,44 @@ import {
 export const SecuritydeptContext =
 	createContext<SecuritydeptInjectorTrait | null>(null);
 
-export interface SecuritydeptProviderProps {
-	injector?: SecuritydeptInjectorTrait;
+interface SecuritydeptProviderCommonProps {
+	children?: ReactNode;
+}
+
+export interface SecuritydeptProviderWithInjectorProps
+	extends SecuritydeptProviderCommonProps {
+	injector: SecuritydeptInjectorTrait;
+	parentInjector?: never;
+	providers?: never;
+	autoCreateDestroyRef?: never;
+}
+
+export interface SecuritydeptProviderWithProvidersProps
+	extends SecuritydeptProviderCommonProps {
+	injector?: never;
 	parentInjector?: SecuritydeptInjectorTrait;
 	providers?: readonly SecuritydeptDependencyProvider[];
 	autoCreateDestroyRef?: boolean;
-	children?: ReactNode;
 }
+
+export type SecuritydeptProviderProps =
+	| SecuritydeptProviderWithInjectorProps
+	| SecuritydeptProviderWithProvidersProps;
 
 export function SecuritydeptProvider({
 	injector,
 	parentInjector,
-	providers = [],
+	providers,
 	autoCreateDestroyRef = true,
 	children,
 }: SecuritydeptProviderProps) {
 	const inheritedInjector = useContext(SecuritydeptContext);
 	const destroyRef = useMemo(
-		() => (autoCreateDestroyRef ? createSecuritydeptDestroyRef() : null),
-		[autoCreateDestroyRef],
+		() =>
+			injector || autoCreateDestroyRef === false
+				? null
+				: createSecuritydeptDestroyRef(),
+		[injector, autoCreateDestroyRef],
 	);
 	const resolvedInjector = useMemo(() => {
 		const destroyRefProviders = destroyRef
@@ -47,18 +66,11 @@ export function SecuritydeptProvider({
 			: [];
 
 		if (injector) {
-			if (destroyRefProviders.length === 0) {
-				return injector;
-			}
-
-			return SecuritydeptInjector.fromParentInjector(
-				injector,
-				destroyRefProviders,
-			);
+			return injector;
 		}
 
 		const resolvedParentInjector = parentInjector ?? inheritedInjector;
-		const resolvedProviders = [...providers, ...destroyRefProviders];
+		const resolvedProviders = [...(providers ?? []), ...destroyRefProviders];
 		if (resolvedParentInjector) {
 			return SecuritydeptInjector.fromParentInjector(
 				resolvedParentInjector,
@@ -75,9 +87,7 @@ export function SecuritydeptProvider({
 		}
 
 		return () => {
-			(
-				destroyRef as SecuritydeptDestroyRef & { destroy?: () => void }
-			).destroy?.();
+			destroyRef.dispose();
 		};
 	}, [destroyRef]);
 

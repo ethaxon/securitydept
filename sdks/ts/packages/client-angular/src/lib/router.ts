@@ -16,7 +16,6 @@
 // Stability: provisional
 
 import {
-	BaseURIStringSchema,
 	type EnvironmentValidators,
 	RouterNavigationMode,
 	type RouterNavigationRequest,
@@ -24,7 +23,6 @@ import {
 	throwValidationClientError,
 	UriReferenceString,
 	UriReferenceStringSchema,
-	UriString,
 	validateTraitInput,
 	type WithTraitInputValidator,
 } from "@securitydept/client";
@@ -44,30 +42,17 @@ export interface AngularRouterNavigationLike {
 	): Promise<boolean> | boolean;
 }
 
-export interface AngularDocumentLike {
-	baseURI?: string;
-}
-
 /** Options for {@link createRouterForAngular}. */
 export interface CreateRouterForAngularOptions {
 	/** The Angular `Router` (or a compatible navigation object). */
 	router: AngularRouterNavigationLike;
 	/** Override the current URL. Defaults to `router.url`. */
 	currentUrl?: string | null;
-	/** Angular document host used to resolve the default base URI. */
-	document?: AngularDocumentLike | null;
-	/**
-	 * Override the document base URI used to resolve relative references.
-	 *
-	 * Defaults to the explicitly provided Angular document's `baseURI`.
-	 */
-	baseURI?: string | null;
 }
 
 export interface ResolvedRouterForAngularCreateOptions {
 	router: AngularRouterNavigationLike;
 	currentUrl: string | null;
-	baseURI: string | null;
 }
 
 export const AngularRouterNavigationLikeSchema = defineType({
@@ -78,7 +63,6 @@ export const AngularRouterNavigationLikeSchema = defineType({
 const ResolvedRouterForAngularCreateOptionsSchema = defineType({
 	router: AngularRouterNavigationLikeSchema,
 	currentUrl: UriReferenceStringSchema.or("null"),
-	baseURI: BaseURIStringSchema.or("null"),
 });
 
 /**
@@ -104,11 +88,6 @@ export function createRouterForAngular(
 				? (options.currentUrl ?? null)
 				: (routerInput?.url ?? null);
 		},
-		get baseURI() {
-			return Object.hasOwn(options, "baseURI")
-				? (options.baseURI ?? null)
-				: (options.document?.baseURI ?? null);
-		},
 	};
 	validateTraitInput({
 		value: resolvedCreateOptions,
@@ -128,10 +107,6 @@ export function createRouterForAngular(
 		currentUrl() {
 			const currentUrl = resolvedCreateOptions.currentUrl;
 			return currentUrl == null ? null : UriReferenceString.parse(currentUrl);
-		},
-		baseURI() {
-			const baseURI = resolvedCreateOptions.baseURI;
-			return baseURI == null ? null : UriString.parse(baseURI);
 		},
 		async navigate(request: RouterNavigationRequest) {
 			await router.navigateByUrl(request.url.toString(), {

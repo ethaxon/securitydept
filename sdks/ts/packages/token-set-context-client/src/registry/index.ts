@@ -14,6 +14,8 @@ export {
 	TokenSetClientRegistryPlannerHost,
 	TokenSetClientRegistryRequirementBehaviour,
 	type TokenSetClientRegistryRequirementBehaviourOptions,
+	type TokenSetClientRegistryRequirementBehaviourShape,
+	type TokenSetClientRegistryRouteRequirementBehaviourShape,
 	type TokenSetOnClientUnauthenticated,
 	type TokenSetSelectClientCandidate,
 } from "./auth-coordination";

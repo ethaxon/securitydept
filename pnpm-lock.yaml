@@ -258,9 +258,6 @@ importers:
       '@securitydept/e2e-utils':
         specifier: workspace:*
         version: link:../../sdks/ts/packages/e2e-utils
-      '@securitydept/test-utils':
-        specifier: workspace:*
-        version: link:../../sdks/ts/packages/test-utils
 
   sdks/ts:
     devDependencies:
@@ -340,6 +337,9 @@ importers:
       '@securitydept/basic-auth-context-client':
         specifier: workspace:*
         version: link:../basic-auth-context-client
+      '@securitydept/client':
+        specifier: workspace:*
+        version: link:../client
     devDependencies:
       react:
         specifier: 'catalog:'
@@ -394,6 +394,9 @@ importers:
       '@securitydept/client':
         specifier: workspace:*
         version: link:../client
+      arktype:
+        specifier: ^2.2.0
+        version: 2.2.0
       es-toolkit:
         specifier: ^1.49.0
         version: 1.49.0
@@ -524,9 +527,6 @@ importers:
         specifier: workspace:*
         version: link:../token-set-context-client
     devDependencies:
-      '@tanstack/react-query':
-        specifier: 'catalog:'
-        version: 5.100.10(react@19.2.6)
       react:
         specifier: 'catalog:'
         version: 19.2.6

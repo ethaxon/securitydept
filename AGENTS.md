@@ -42,6 +42,7 @@ _Single source of truth for Agent identity, code standards, and project rules. S
   - Manage via `tsconfig.json` references.
   - Use `bundler` resolution (prefer extensionless imports without `.js` suffixes if not necessary).
   - Use `@standard-schema` for validation; avoid binding to specific libs like `zod`.
+  - Keep short, single-use internal helper functions inline when extraction only adds navigation overhead; extract helpers when they are reused, materially clarify a complex block, or define a stable boundary.
   - For enum-like string domains, prefer `export const Foo = { ... } as const` + `export type Foo = (typeof Foo)[keyof typeof Foo]`.
   - For public contracts and repeated telemetry vocabulary, extract named constants instead of scattering raw strings.
   - **TS SDK API shape — options object first**: public functions use an `options` object for optional params; positional second args only when self-evident and uniquely ergonomic. Widening an API converts the whole second arg to options even if it's a breaking change. See [TypeScript SDK Coding Standards](docs/en/007-CLIENT_SDK_GUIDE.md#typescript-sdk-coding-standards) for the full decision rationale.

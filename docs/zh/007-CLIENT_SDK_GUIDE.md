@@ -160,7 +160,7 @@ Foundation Web environment factory 是显式 composition helper，不是自动 h
 
 不要使用字符串驱动的 `createEnvironmentFromPreset(name)`、preset-only wrapper factory 或 global-shape detection 猜测 host。Core client 不读取 `window`、`document`、`location` 或 `history`；只有 `createRouterForNativeWeb()`、`createPageLifecycleForNativeWeb()`、`createPopupForNativeWeb()`、`createEnvironmentForNativeWeb()` 这类显式命名 host adapter 可以在调用者未传入 host object 时读取 native global。`NativeWeb` 表示具备 native navigation/location/history 能力的普通浏览器页面宿主；worker-like host 应使用 `createFoundationEnvironment()` 或更具体的 host factory。
 
-当 host 需要在 routes、commands 或 framework adapter 之间使用 environment capability 时，应在 composition root 创建一个显式 environment，并通过 framework bridge 传递这个对象。React 侧通过 `provideEnvironment({ environment })` 注册，再用 `useSecuritydeptContext().get(ENVIRONMENT)` 读取；Angular 侧通过 `provideEnvironment({ environment })` 提供同一个对象。SDK 不再暴露单独的分层 environment resolver：`NativeWebEnvironment` 在类型上覆盖 foundation `FoundationEnvironment`，而 `WebExtUIEnvironment` 在结构上组合 WebExt core 与 native-web page capability。
+当 host 需要在 routes、commands 或 framework adapter 之间使用 environment capability 时，应在 composition root 创建一个显式 environment，并通过 framework bridge 传递这个对象。React 侧将 `environment.injector` 作为根 `SecuritydeptProvider` 的 `parentInjector` 传入，再用 `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)` 读取；Angular 侧通过 `provideEnvironment({ environment })` 提供同一个对象。SDK 不再暴露单独的分层 environment resolver：`NativeWebEnvironment` 在类型上覆盖 foundation `FoundationEnvironment`，而 `WebExtUIEnvironment` 在结构上组合 WebExt core 与 native-web page capability。
 
 该规则不只适用于 `@securitydept/client`：context package 与 framework adapter 的 public helper 也必须使用同一边界。任何会读取 host globals、执行 page navigation、构造 client，或拥有 transport/store/time wiring 的 helper，都应接收 environment 或窄 capability view。Provider、DI 与顶层 adapter registration API 可以作为 composition root 接收完整 environment；普通 hook、guard、interceptor、service 与 convenience helper 不应各自重复声明完整 dependency bag。
 
@@ -247,12 +247,8 @@ Package 应保持 import-safe 与 side-effect-light。Registration side effect �
 | `@securitydept/client/persistence/web` | `stable` | `foundation` | `stable-deprecation-first` |
 | `@securitydept/client/web` | `stable` | `foundation` | `stable-deprecation-first` |
 | `@securitydept/basic-auth-context-client` | `stable` | `basic-auth-context` | `stable-deprecation-first` |
-| `@securitydept/basic-auth-context-client/web` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
-| `@securitydept/basic-auth-context-client/server` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
 | `@securitydept/basic-auth-context-client-react` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client` | `stable` | `session-context` | `stable-deprecation-first` |
-| `@securitydept/session-context-client/web` | `provisional` | `session-context` | `provisional-migration-required` |
-| `@securitydept/session-context-client/server` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client-react` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/backend-oidc-mode` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client/frontend-oidc-mode` | `provisional` | `token-set-context` | `provisional-migration-required` |
@@ -263,7 +259,6 @@ Package 应保持 import-safe 与 side-effect-light。Registration side effect �
 | `@securitydept/basic-auth-context-client-angular` | `provisional` | `basic-auth-context` | `provisional-migration-required` |
 | `@securitydept/session-context-client-angular` | `provisional` | `session-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client-react` | `provisional` | `token-set-context` | `provisional-migration-required` |
-| `@securitydept/token-set-context-client-react/react-query` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client-react/tanstack-router` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/token-set-context-client-angular` | `provisional` | `token-set-context` | `provisional-migration-required` |
 | `@securitydept/client-react` | `provisional` | `shared-framework` | `provisional-migration-required` |
@@ -308,11 +303,11 @@ Framework router adapter 由以下 package 拥有：
 
 Canonical semantics：完整 matched-route chain aggregation、`inherit` / `merge` / `replace`、child-route serializable metadata、root-level runtime policy，且 SDK 不内建产品 chooser UI。
 
-对 Angular，`@securitydept/client-angular` 拥有基于 `RequirementPlannerHost` / `RouteCompositionRequirementPlanner` 的 token-set 无关基础层：用 `secureRoute()` 声明 child requirement，用 `secureRouteRoot()` 装配 root（其会挂上 `createAngularCanActivate` / `createAngularCanActivateChild`），用 `projectAngularRouteSegments()` 投影路由元信息，并通过 `provideRequirementPlannerHost()` 将 planner host 装配到 `REQUIREMENT_PLANNER_HOST` DI token。`@securitydept/token-set-context-client-angular` 在其上叠加基于 registry 的特化层：`provideTokenSetRequirementPlannerHost()` 绑定 token-set behaviour，`createTokenSetCanActivate()` / `createTokenSetCanActivateChild()` 包装基础 guard，其 `secureRoute()` / `secureRouteRoot()`（别名 `secureTokenSetRoute` / `secureTokenSetRouteRoot`）在委托基础构造器前会先规整 `requirementKind`。
+对 Angular，`@securitydept/client-angular` 拥有基于 `RequirementPlannerHost` / `RouteCompositionRequirementPlanner` 的 token-set 无关基础层：用 `secureRoute()` 声明 child requirement，用 `secureRouteRoot()` 装配 root（其会挂上 `createAngularCanActivate` / `createAngularCanActivateChild`），用 `projectAngularRouteSegments()` 投影路由元信息，并通过 `provideRequirementPlannerHost()` 将 planner host 装配到 `REQUIREMENT_PLANNER_HOST` DI token。`@securitydept/token-set-context-client-angular` 在其上叠加基于 registry 的特化层：`provideTokenSetRequirementPlannerHost()` 绑定 token-set behaviour，`createTokenSetCanActivate()` / `createTokenSetCanActivateChild()` 包装基础 guard，`secureTokenSetRoute()` / `secureTokenSetRouteRoot()` 提供显式命名的 token-set route builders，再委托基础构造器。
 
-Angular token-set route handler 会收到包含 `attemptedUrl` 的 route unauthenticated context。启动 OIDC redirect login 时，应使用这个值，确保被拦截的目标导航被记录为 `postAuthRedirectUri`。Canonical Angular 路径是在 composition root 通过 `provideEnvironment({ environment })` 提供 host-owned environment object，然后调用 `createTokenSetOidcLoginRedirectHandler({ ... })`，而不是在每个 guard 路径里重复创建 page capability。底层共享 contract 是 `BaseOidcModeClient.loginWithRedirect(options)` 与 `@securitydept/token-set-context-client/registry` 中的 `TokenSetOidcRedirectLoginOptions`；Angular、React/TanStack、`FrontendOidcModeClient` 以及 backend-oidc web client 都应面向这层 capability，而不是某个 mode-specific helper。不要在 guard handler 内读取 Angular `Router.url` 作为回跳目标，因为此时 attempted navigation 尚未提交。已经启动整页外部 redirect 的 handler 不应再 resolve 为 `false`；SDK helper 会在启动 redirect 后返回永不 settle 的 guard result，避免 Angular 在页面离开前完成一次 in-app navigation cancel。
+Angular token-set 路由安全通过 `secureTokenSetRouteRoot()` 与 registry requirement 配合使用；客户端选择写在 requirement 的 `attributes.query` 中（例如 `{ clientKey: "main" }` 或 `{ requirementKind: "frontend_oidc" }`）。guard 拒绝导航时，registry behaviour 的默认 `onUnauthenticated` 会对第一个未认证 client 启动 OIDC redirect login，并将 `planContext.routeState.url` 记录为 `postAuthRedirectUri`。仅在需要时通过 `secureTokenSetRouteRoot({ onClientUnauthenticated: ... })` 或 `provideTokenSetRequirementPlannerHost({ onClientUnauthenticated: ... })` 覆盖 redirect 策略。共享 contract 是 `BaseOidcModeClient.loginWithRedirect(options)` 与 `@securitydept/token-set-context-client/registry` 中的 `TokenSetOidcRedirectLoginOptions`。不要在 guard handler 内读取 Angular `Router.url` 作为回跳目标，因为 attempted navigation 尚未提交。已经启动整页外部 redirect 的 handler 不应再 resolve 为 `false`；registry 默认 handler 会在启动 redirect 后返回永不 settle 的 guard result，避免 Angular 在页面离开前完成 in-app navigation cancel。
 
-TanStack Router 的 `createSecureBeforeLoad()` 同样会向 unauthenticated handler 传入包含 `attemptedUrl` 的 context。对会发起整页外部 auth redirect 的 React/TanStack adopter，应使用 `createExternalRedirectBeforeLoadHandler()`，在 callback 中调用自己的 login client，并用 `context.attemptedUrl` 作为 `postAuthRedirectUri`。不要从 `window.location` 推断目标页；beforeLoad 执行时当前 document URL 也可能仍是旧路由。
+TanStack Router 使用 `secureRoute()` 写入可序列化 `staticData`，用 `secureRouteRoot()` 组合 root `beforeLoad`。运行时 behaviour 通过核心 `RequirementPlannerHost` / `REQUIREMENT_PLANNER_HOST` 提供；route context 包含 `planContext.routeState.url`，发起整页 auth redirect 时应把它作为 attempted navigation URL。不要从 `window.location` 推断目标页；beforeLoad 执行时当前 document URL 也可能仍是旧路由。
 
 ### token-set-context-client v1 Scope Baseline
 
@@ -384,11 +379,11 @@ Verified 表示已有聚焦型验证、仓库内 proof 或下游校准；不代�
 React composition 仍服从三层模型：auth-context config、injector provider/factory、host registration glue。
 
 - `@securitydept/client-react` 拥有唯一 SDK React Context：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`。它同时提供 context-free signal/event bridge：`useReadableSignalValue()`、`useReplaySignalValue()`、`useInteropObservable()` 与 `useEventStream()`。
-- `provideEnvironment({ environment })` 与 planner-host 相关 factory（`AUTH_PLANNER_HOST`、`provideAuthPlannerHost()`、`AUTH_REQUIREMENTS_CLIENT_SET`、`provideRequirementsClientSet()`）把 shared dependency 注册进 injector；它们不再引入额外的 domain-specific Provider 或 Context hook。
-- `@securitydept/basic-auth-context-client-react` 导出 `BASIC_AUTH_CONTEXT_CLIENT`、`createBasicAuthContextClient()`、`provideBasicAuthContextClient()`。React 代码通过 `useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT)` 读取 client。
-- `@securitydept/session-context-client-react` 导出 `SESSION_CONTEXT_CLIENT`、`SESSION_CONTEXT_CONTROLLER`、`createSessionContextController()`、`provideSessionContextController()`。React 代码通过 `useSecuritydeptContext().get(...)` 读取 controller/client，并通过 `useReadableSignalValue(controller.state)` 读取状态。
-- `@securitydept/token-set-context-client-react` 导出 `provideTokenSetAuthRegistry()`、`TOKEN_SET_AUTH_REGISTRY`、`provideTokenSetCallbackResumeController()`、`TOKEN_SET_CALLBACK_RESUME_CONTROLLER`、`useTokenSetCallbackResume()`、`TokenSetCallbackComponent`。已经不再存在单独的 token-set runtime wrapper。读取 keyed auth state 的 canonical 方式是 `const registry = useSecuritydeptContext().get(TOKEN_SET_AUTH_REGISTRY)`，然后 `useReadableSignalValue(registry.clientSignalFor("main"))`，再读取返回 client 的 `authSnapshot`、`isAuthenticated` 等 replay channels。
-- `useTokenSetCallbackResume({ controller, injector, getCurrentUrl, describeError })` 是 shared `TokenSetCallbackResumeController` 之上的 explicit callback bridge。显式 `controller` 或 `injector` 优先；缺少当前 URL 时 hook 保持 idle，而不是隐式强行处理 callback。默认失败展示来自 `@securitydept/token-set-context-client/registry` 的 `readCallbackResumeErrorDetails()`；mode-specific copy 应由 host 或 adapter 通过显式 `describeError` override 注入。
+- React 使用 environment 自己的 injector 作为根 `SecuritydeptProvider.parentInjector`；具体 router adapter（如 `@securitydept/client-react/tanstack-router`）负责 route-scoped auth coordination。
+- `@securitydept/basic-auth-context-client-react` 导出 `BASIC_AUTH_CONTEXT_CLIENT`、`BASIC_AUTH_CONTEXT_CLIENT_CONFIG`、`BasicAuthContextService`、`provideBasicAuthContext({ config })`。React 代码通过 `useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT)` 读取 client。
+- `@securitydept/session-context-client-react` 导出 `SESSION_CONTEXT_CLIENT`、`SESSION_CONTEXT_CLIENT_CONFIG`、`SessionContextService`、`provideSessionContext({ config })`。React 代码通过 `useSecuritydeptContext().get(SESSION_CONTEXT_CLIENT)` 读取 client，并通过 `useReplaySignalValue(client.sessionInfo)` 等 signal hook 读取状态。
+- `@securitydept/token-set-context-client-react` 导出 `provideTokenSetClientRegistry()`、`TOKEN_SET_CLIENT_REGISTRY`、`TokenSetClientRegistryService` 和无样式 callback hooks。读取 keyed auth state 的 canonical 方式是 `const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)`，然后 `useReplaySignalValue(registry.clientSignalFor("main"))`，再读取返回 client 的 `authSnapshot`、`isAuthenticated` 等 replay channels。
+- Frontend callback 使用 `useTokenSetFrontendCallbackController({ currentUrl, clientQuery })`；backend callback 使用 `useTokenSetBackendCallbackController({ clientQuery })` 并从 `environment.router` 读取 compat fragment。两个 hook 都只是 shared registry callback controller 之上的 React 绑定。
 
 #### 4. Angular 入口：thin DI wrapper 保持 canonical owner 边界
 
@@ -436,14 +431,14 @@ Object.entries(localStorage)
 
 `hasRefreshMaterial=false` 时需要检查 IdP、requested scopes 与 refresh-token policy；即便如此，SDK 仍不得发送 expired access token。对 Authentik deployment，通常要确认已请求/允许 `offline_access`，并且 refresh-token rotation/lifetime 配置允许 browser client 持有可用 refresh material。`hasRefreshMaterial=true` 时，SDK 应在 route admission、page-resume recovery 或首个 protected request 前完成 refresh，或者把 client 推入 unauthenticated state；因此通过 SDK bearer interceptor 或 authorized transport 发送的请求不应再出现 `ExpiredSignature`。
 
-#### 5. SSR / server-host 入口：dedicated `./server` helpers
+#### 5. SSR / server-host 入口：environment host adapters
 
-使用：
+使用 `@securitydept/client` 提供的 foundation host adapter，然后把生成的 environment 传入具体 context client。
 
-- `@securitydept/basic-auth-context-client/server`
-- `@securitydept/session-context-client/server`
+- `@securitydept/client/server`
+- 具体 host/framework adapter 拥有的 `createEnvironmentFor{Host}` helpers
 
-不要在 server-hosted code 中导入 `/web` subpath。
+Context packages 不再拥有专用 `/web` 或 `/server` subpath。Host capability resolution 属于 client foundation package 与 framework adapter。
 
 ### Provisional Adapter 维护标准
 
@@ -464,12 +459,9 @@ Object.entries(localStorage)
 | Adapter / Surface | 当前判断 |
 |---|---|
 | `@securitydept/client/web` | stable foundation-owned browser helper surface |
-| `basic-auth-context-client/web` | provisional；thin browser convenience 已成立 |
-| `session-context-client/web` | provisional；login redirect convenience 已成立 |
-| `basic-auth-context-client/server` / `session-context-client/server` | provisional；SSR/server-host baseline 已成立 |
+| `@securitydept/client/web` / `@securitydept/client/server` | foundation-owned host environment adapter 已成立 |
 | `*-react` / `*-angular` adapter family | provisional；已有真实 reference-app/downstream proof，但没有 broad host matrix |
 | `@securitydept/token-set-context-client/frontend-oidc-mode` | provisional；keyed pending-state 与 single-consume callback semantics 已正式化 |
-| `token-set-context-client-react/react-query` | provisional；canonical token-set readiness/invalidation glue path 已成立 |
 
 ## Shared Client Lifecycle Contract（共享客户端生命周期契约）
 
@@ -484,14 +476,6 @@ Registry 拥有 `register(entry)`、`unregister(key)`、`resetMaterialization(ke
 每个 client 的 token-set auth material 由 mode client 自己拥有。所有 registry-managed OIDC mode client 都暴露独立 auth channel：`authDetermined` 表示首次判定完成，`authSnapshot` 表示 last determined snapshot 或 `null`，`isAuthenticated` 面向 guard truth，`authorizationHeaderValue` 面向 bearer projection，这四者是 replay signal；`lastAuthError` 表示最近一次判定/操作错误 register，`authOperations.*Pending` 表示局部操作锁，这两类是 plain signal。`authSnapshot` 是权威 auth-material replay source；`authDetermined`、`isAuthenticated` 与 `authorizationHeaderValue` 是 derived replay projection，而不是手动同步的独立状态。直接创建的 client 默认只有调用 `start()` 后才运行；只有 direct creation path 需要立即运行时才显式传 `autoStart: true`。Registry-managed client 不使用 entry-level `autoStart` 或 `autoRestore`；registry readiness 表示 client 已 materialize 且 `start()` 已完成。默认 `createTokenSetOidcAuthRegistry()` 现在 materialize client 本身，因此 React Query readiness 与 Angular registry lookup 返回 client，而不是 per-client service wrapper。`authEvents` 仍只表达 auth domain telemetry；registry topology 与 readiness 变化应通过 registry `state` 观察。
 
 Canonical RxJS bridge 现在位于 `@securitydept/client/rx`。对 `EventStreamTrait` 或 `ReadableSignalTrait` 都使用 `toRxObservable(source)`，反向桥接使用 `fromRxObservable(observable)`。Angular adapter 如果需要 Angular-native signal，应使用 `@securitydept/client-angular` 的 `toNgSignal(source)`。
-
-## React Query Integration（React Query 集成）
-
-**Subpath**：`@securitydept/token-set-context-client-react/react-query`
-
-这是 token-set React Query integration surface。它拥有 query-key namespace helper、围绕 registry materialization 的 readiness query，以及 token-set-aware query tree 的 canonical invalidation。它不是 login、refresh、lifecycle，也不是 reference-app 资源 API。
-
-`groups` / `entries` 这类 domain model、CRUD request 组装与 reference-app TanStack hooks 应保留在 app-local 或 adopter-local 模块中。Host 应在 SDK token-set client 或 registry readiness 之上组合自己的资源查询，而不是从 SDK 导入被产品化的业务 API。
 
 ## 示例与参考实现
 

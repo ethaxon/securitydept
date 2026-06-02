@@ -8,6 +8,7 @@ import {
 	type ReadableReplaySignalTrait,
 	type RequirementBehaviour,
 	type RequirementBehaviourContext,
+	type RequirementBehaviourWithRouteContext,
 	type RequirementCandidateSelectionContext,
 	RequirementPlannerHost,
 	type UnauthenticatedAction,
@@ -122,6 +123,25 @@ export interface TokenSetClientRegistryRequirementBehaviourOptions<
 	>;
 }
 
+/**
+ * Partial planner-host behaviour contract for token-set registry requirements.
+ *
+ * Hosts and planners (`BaseRequirementPlanner`, `RouteCompositionRequirementPlanner`)
+ * should bind this shape — not the concrete behaviour class — so covariance stays
+ * sound without adapter-side casts.
+ */
+export interface TokenSetClientRegistryRequirementBehaviourShape<
+	TPlanContext = {},
+> extends Partial<
+	RequirementBehaviour<TokenSetClientRegistryAuthRequirement, TPlanContext>
+> {}
+
+/** Route-scoped partial behaviour for token-set registry planner hosts. */
+export interface TokenSetClientRegistryRouteRequirementBehaviourShape
+	extends Partial<
+		RequirementBehaviourWithRouteContext<TokenSetClientRegistryAuthRequirement>
+	> {}
+
 export class TokenSetClientRegistryRequirementBehaviour<
 	TClient extends TokenSetClientRegistryOidcModeClient = BaseOidcModeClient,
 	TPlanContext = {},
@@ -230,19 +250,14 @@ export class TokenSetClientRegistryRequirementBehaviour<
 export class TokenSetClientRegistryPlannerHost<
 	TClient extends TokenSetClientRegistryOidcModeClient = BaseOidcModeClient,
 	TPlanContext = {},
-> extends RequirementPlannerHost<
-	TokenSetClientRegistryRequirementBehaviour<TClient, TPlanContext>
-> {
+	TBehaviour extends
+		TokenSetClientRegistryRequirementBehaviourShape<TPlanContext> = TokenSetClientRegistryRequirementBehaviourShape<TPlanContext>,
+> extends RequirementPlannerHost<TBehaviour> {
 	constructor(
 		readonly registry: TokenSetClientRegistry<TClient>,
-		behaviour: TokenSetClientRegistryRequirementBehaviour<
-			TClient,
-			TPlanContext
-		>,
+		behaviour: TBehaviour,
 		environment?: FoundationEnvironment,
-		parent?: RequirementPlannerHost<
-			TokenSetClientRegistryRequirementBehaviour<TClient, TPlanContext>
-		>,
+		parent?: RequirementPlannerHost<TBehaviour>,
 	) {
 		super(behaviour, environment, parent);
 	}
