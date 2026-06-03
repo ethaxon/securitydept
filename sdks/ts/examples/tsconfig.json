@@ -7,7 +7,7 @@
 		"lib": ["ES2022", "DOM"],
 		"types": ["node"]
 	},
-	"include": ["./**/*.test.ts", "./test-*.ts"],
+	"include": ["./**/*.test.ts", "./_helpers/test-*.ts"],
 	"references": [
 		{ "path": "../packages/client" },
 		{ "path": "../packages/client-angular" },

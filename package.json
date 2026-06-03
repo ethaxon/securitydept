@@ -39,7 +39,7 @@
 		"@j178/prek": "^0.4.4",
 		"@playwright/cli": "^0.1.13",
 		"@playwright/test": "^1.60.0",
-		"@standard-schema/spec": "^1.1.0",
+		"@standard-schema/spec": "catalog:",
 		"@tailwindcss/vite": "^4.3.0",
 		"@tanstack/react-query": "catalog:",
 		"@tanstack/react-router": "catalog:",
@@ -55,13 +55,13 @@
 		"dockerode": "^5.0.0",
 		"jsdom": "^29.1.1",
 		"ng-packagr": "^21.2.3",
-		"nunjucks": "^3.2.4",
+		"nunjucks": "catalog:",
 		"oauth4webapi": "^3.8.6",
 		"oidc-provider": "^9.8.3",
 		"playwright": "^1.60.0",
 		"react": "catalog:",
 		"react-dom": "catalog:",
-		"rxjs": "^7.8.2",
+		"rxjs": "catalog:",
 		"semver": "^7.8.0",
 		"shx": "^0.4.0",
 		"tailwindcss": "^4.3.0",
@@ -73,9 +73,8 @@
 		"zone.js": "^0.16.2"
 	},
 	"dependencies": {
-		"arktype": "^2.2.0",
-		"es-toolkit": "^1.49.0",
-		"mnemonist": "^0.40.4",
-		"uuid": "^14.0.1"
+		"arktype": "catalog:",
+		"es-toolkit": "catalog:",
+		"uuid": "catalog:"
 	}
 }

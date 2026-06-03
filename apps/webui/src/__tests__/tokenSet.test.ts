@@ -12,7 +12,10 @@ import {
 	UriReferenceString,
 	UserRecovery,
 } from "@securitydept/client";
-import { createTimeForTest, createTransportForTest } from "@securitydept/client/test";
+import {
+	createTimeForTest,
+	createTransportForTest,
+} from "@securitydept/client/test";
 import {
 	BackendOidcModeClient,
 	type BackendOidcModeClientConfig,
@@ -272,7 +275,9 @@ describe("token-set browser flow", () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
 		const transport = createTokenSetTransport();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const client = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
@@ -300,7 +305,9 @@ describe("token-set browser flow", () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
 		const transport = createTokenSetTransport();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const seedingClient = createBackendOidcModeTestClient({
 			span: createRootSpan(),
 			persistentStorage,
@@ -338,7 +345,9 @@ describe("token-set browser flow", () => {
 	it("propagates redirect and current metadata into refresh requests", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const transport = createTokenSetTransport().on(
 			(request) => request.url.endsWith("/refresh"),
 			(request) => {
@@ -384,7 +393,9 @@ describe("token-set browser flow", () => {
 	it("loads groups through the real business path with the refreshed token-set bearer", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const transport = createTokenSetTransport()
 			.on(
 				(request) => request.url.endsWith("/refresh"),
@@ -443,7 +454,9 @@ describe("token-set browser flow", () => {
 	it("loads entries through a second business path with the refreshed token-set bearer", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const transport = createTokenSetTransport()
 			.on(
 				(request) => request.url.endsWith("/refresh"),
@@ -510,7 +523,9 @@ describe("token-set browser flow", () => {
 	it("creates a token entry with the refreshed bearer and can reload entries afterward", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const transport = createTokenSetTransport()
 			.on(
 				(request) => request.url.endsWith("/refresh"),
@@ -623,7 +638,9 @@ describe("token-set browser flow", () => {
 	it("creates a basic entry with the refreshed bearer and can reload entries afterward", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const transport = createTokenSetTransport()
 			.on(
 				(request) => request.url.endsWith("/refresh"),
@@ -740,7 +757,9 @@ describe("token-set browser flow", () => {
 	it("creates a group with the refreshed bearer and can reload groups and entries afterward", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const transport = createTokenSetTransport()
 			.on(
 				(request) => request.url.endsWith("/refresh"),
@@ -883,7 +902,9 @@ describe("token-set browser flow", () => {
 	it("forwards cancellation and refuses to load groups without a token-set bearer", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const cancellation = createCancellationTokenSource();
 		let seenCancellationToken = false;
 		const transport = createTransportForTest().on(
@@ -931,7 +952,9 @@ describe("token-set browser flow", () => {
 	it("bridges AbortSignal into the token-set request cancellation contract through the shared web helper", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const controller = new AbortController();
 		let seenCancelledState = false;
 		let seenReason: unknown;
@@ -980,7 +1003,9 @@ describe("token-set browser flow", () => {
 	it("forwards cancellation and refuses to load entries without a token-set bearer", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const cancellation = createCancellationTokenSource();
 		let seenCancellationToken = false;
 		const transport = createTransportForTest().on(
@@ -1028,7 +1053,9 @@ describe("token-set browser flow", () => {
 	it("forwards cancellation and preserves structured failure details for token entry mutation", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const cancellation = createCancellationTokenSource();
 		let seenCancellationToken = false;
 		const transport = createTransportForTest().on(
@@ -1099,7 +1126,9 @@ describe("token-set browser flow", () => {
 	it("forwards cancellation and preserves structured failure details for basic entry mutation", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const cancellation = createCancellationTokenSource();
 		let seenCancellationToken = false;
 		const transport = createTransportForTest().on(
@@ -1174,7 +1203,9 @@ describe("token-set browser flow", () => {
 	it("forwards cancellation and preserves structured failure details for group mutation", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const cancellation = createCancellationTokenSource();
 		let seenCancellationToken = false;
 		const transport = createTransportForTest().on(
@@ -1246,7 +1277,9 @@ describe("token-set browser flow", () => {
 	it("probes the forward-auth boundary without treating 401 as a transport failure", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const transport = createTokenSetTransport().on(
 			(request) => request.url.endsWith("/api/forwardauth/traefik/Admins"),
 			(request) => {
@@ -1336,7 +1369,9 @@ describe("token-set browser flow", () => {
 	it("probes the propagation route with dashboard bearer and explicit directive", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const time = createTimeForTest({ initialNow: Date.parse("2026-01-01T00:00:00Z") });
+		const time = createTimeForTest({
+			initialNow: Date.parse("2026-01-01T00:00:00Z"),
+		});
 		const transport = createTokenSetTransport().on(
 			(request) => request.url.endsWith(DEFAULT_PROPAGATION_PROBE_PATH),
 			(request) => {

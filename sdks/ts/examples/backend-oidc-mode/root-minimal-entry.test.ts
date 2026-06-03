@@ -53,7 +53,7 @@ const minimalRuntime = createFoundationEnvironment({
 });
 
 describe("backend-oidc-mode root minimal entry", () => {
-	it("shows the standalone root entry path: construct → restoreState → state + auth header", () => {
+	it("shows the standalone root entry path: construct → restoreState → state + auth header", async () => {
 		// 1. Config — only baseUrl is required at minimum.
 		const config: BackendOidcModeClientConfig = {
 			baseUrl: "https://auth.example.com",
@@ -67,7 +67,7 @@ describe("backend-oidc-mode root minimal entry", () => {
 		expect(client.authorizationHeaderValue.hasValue()).toBe(false);
 
 		// 4. Restore state (e.g. from backend bootstrap or SSR injection).
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "example-at",
 				refreshMaterial: "example-rt",

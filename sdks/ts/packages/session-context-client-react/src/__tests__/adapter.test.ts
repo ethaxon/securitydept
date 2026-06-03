@@ -11,7 +11,7 @@ import {
 	useReplaySignalValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import { act, createElement, type ReactElement, StrictMode } from "react";
+import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -88,18 +88,14 @@ describe("session-context react adapter", () => {
 
 		const view = render(
 			createElement(
-				StrictMode,
-				null,
-				createElement(
-					SecuritydeptProvider,
-					{
-						parentInjector: environment.injector,
-						providers: provideSessionContext({
-							config: { baseUrl: "https://auth.example.com" },
-						}),
-					},
-					createElement(Probe),
-				),
+				SecuritydeptProvider,
+				{
+					parentInjector: environment.injector,
+					providers: provideSessionContext({
+						config: { baseUrl: "https://auth.example.com" },
+					}),
+				},
+				createElement(Probe),
 			),
 		);
 

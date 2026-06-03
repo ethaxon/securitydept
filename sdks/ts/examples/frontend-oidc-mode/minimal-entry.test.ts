@@ -62,7 +62,7 @@ const minimalConfig: FrontendOidcModeClientConfig = {
 };
 
 describe("frontend-oidc-mode minimal entry", () => {
-	it("shows the standalone entry path: construct → restoreState → read auth state + authorization header", () => {
+	it("shows the standalone entry path: construct → restoreState → read auth state + authorization header", async () => {
 		// 1. Create client via constructor.
 		const client = new FrontendOidcModeClient(minimalConfig, minimalRuntime);
 		expect(client).toBeInstanceOf(FrontendOidcModeClient);
@@ -72,7 +72,7 @@ describe("frontend-oidc-mode minimal entry", () => {
 		expect(client.authorizationHeaderValue.hasValue()).toBe(false);
 
 		// 3. Restore state (e.g. from SSR bootstrap or persisted storage).
-		client.restoreState({
+		await client.restoreState({
 			tokens: {
 				accessToken: "eyJhbGci.example.access-token",
 				refreshMaterial: "example-refresh-token",
@@ -88,12 +88,17 @@ describe("frontend-oidc-mode minimal entry", () => {
 		const authHeader = expectReplayValue(client.authorizationHeaderValue);
 		expect(authHeader).toBe("Bearer eyJhbGci.example.access-token");
 
-		// 5. Clean up.
+		// 5. Clean up — dispose marks the client non-operational; replay state is retained.
 		client.dispose();
-		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+		await expect(
+			client.restoreState({
+				tokens: { accessToken: "x" },
+				metadata: {},
+			}),
+		).rejects.toThrow();
 	});
 
-	it("shows the config type import and client state signal subscription", () => {
+	it("shows the config type import and client state signal subscription", async () => {
 		const client = new FrontendOidcModeClient(minimalConfig, minimalRuntime);
 
 		// Subscribe to auth snapshot changes via the replay signal.
@@ -104,7 +109,7 @@ describe("frontend-oidc-mode minimal entry", () => {
 		});
 
 		// Trigger a state change.
-		client.restoreState({
+		await client.restoreState({
 			tokens: { accessToken: "first-at" },
 			metadata: {},
 		});

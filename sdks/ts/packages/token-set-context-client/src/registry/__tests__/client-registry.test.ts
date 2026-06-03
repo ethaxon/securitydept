@@ -407,7 +407,7 @@ describe("TokenSetClientRegistry", () => {
 		);
 	});
 
-	it("treats re-registering the same key as a new record identity", async () => {
+	it("re-registering the same key creates a new record while prior client signals keep entity-scoped replay", async () => {
 		const first = createClient("first");
 		const second = createClient("second");
 		const registry = createTokenSetClientRegistry<TestClient>({
@@ -422,7 +422,7 @@ describe("TokenSetClientRegistry", () => {
 		const firstRecordId = registry.entries.get()[0]?.id;
 
 		registry.unregister("main");
-		expect(firstSignal.get()).toEqual({ kind: "empty" });
+		expect(firstSignal.get()).toEqual({ kind: "value", value: first });
 
 		registry.register(
 			createRegistryEntry({ key: "main", clientFactory: () => second }),
@@ -433,7 +433,7 @@ describe("TokenSetClientRegistry", () => {
 
 		expect(registry.entries.get()[0]?.id).toMatch(uuidV7Pattern);
 		expect(registry.entries.get()[0]?.id).not.toBe(firstRecordId);
-		expect(firstSignal.get()).toEqual({ kind: "empty" });
+		expect(firstSignal.get()).toEqual({ kind: "value", value: first });
 	});
 
 	it("disposes registered clients on unregister and dispose", async () => {

@@ -67,12 +67,11 @@
 		"typecheck": "tsc -b --force"
 	},
 	"dependencies": {
-		"@standard-schema/spec": "^1.0.0",
-		"arktype": "^2.2.0",
-		"es-toolkit": "^1.49.0",
+		"@standard-schema/spec": "catalog:",
+		"arktype": "catalog:",
+		"es-toolkit": "catalog:",
 		"injection-js": "^2.6.1",
-		"mnemonist": "^0.40.4",
-		"rxjs": "^7.8.2",
-		"uuid": "^14.0.1"
+		"rxjs": "catalog:",
+		"uuid": "catalog:"
 	}
 }

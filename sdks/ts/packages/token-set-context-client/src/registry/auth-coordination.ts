@@ -133,8 +133,8 @@ export interface TokenSetClientRegistryRequirementBehaviourOptions<
 export interface TokenSetClientRegistryRequirementBehaviourShape<
 	TPlanContext = {},
 > extends Partial<
-	RequirementBehaviour<TokenSetClientRegistryAuthRequirement, TPlanContext>
-> {}
+		RequirementBehaviour<TokenSetClientRegistryAuthRequirement, TPlanContext>
+	> {}
 
 /** Route-scoped partial behaviour for token-set registry planner hosts. */
 export interface TokenSetClientRegistryRouteRequirementBehaviourShape

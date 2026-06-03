@@ -39,6 +39,14 @@ class CancellationToken implements CancellationTokenTrait {
 	onCancellationRequested(
 		listener: (reason: unknown) => void,
 	): DisposableTrait {
+		if (this._isCancelled.getValue()) {
+			listener(this._reason);
+			return {
+				dispose() {},
+				[SYMBOL_DISPOSE]() {},
+			};
+		}
+
 		const subscription = this._asObservable().subscribe(() => {
 			listener(this._reason);
 		});

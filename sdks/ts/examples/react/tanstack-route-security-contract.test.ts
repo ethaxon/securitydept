@@ -48,6 +48,28 @@ function createInjector(host: RequirementPlannerHost<unknown>) {
 	]);
 }
 
+function beforeLoadContext(options: {
+	readonly securitydeptInjector: ReturnType<typeof createInjector>;
+	readonly matches: ReturnType<typeof secureMatch>[];
+	readonly href?: string;
+}) {
+	return {
+		context: {
+			securitydeptInjector: options.securitydeptInjector,
+			router: {
+				state: {
+					matches: options.matches,
+				},
+			},
+		},
+		matches: options.matches,
+		location: {
+			href: options.href ?? "/dashboard",
+			pathname: options.href ?? "/dashboard",
+		},
+	};
+}
+
 describe("TanStack Router auth coordination", () => {
 	it("secureRoute writes SecurityDept metadata into staticData only", () => {
 		const route = secureRoute<TestRequirement>({
@@ -101,26 +123,21 @@ describe("TanStack Router auth coordination", () => {
 		const checkAuthenticated = vi.fn(() => true);
 		const beforeLoad = createTanStackBeforeLoad<TestRequirement>();
 
-		await beforeLoad({
-			context: {
+		await beforeLoad(
+			beforeLoadContext({
 				securitydeptInjector: createInjector(
 					createHost({
 						checkAuthenticated,
 						onUnauthenticated: () => false,
 					}),
 				),
-				router: {
-					state: {
-						matches: [
-							secureMatch({
-								requirements: [sessionRequirement],
-							}),
-						],
-					},
-				},
-			},
-			location: { pathname: "/dashboard" },
-		});
+				matches: [
+					secureMatch({
+						requirements: [sessionRequirement],
+					}),
+				],
+			}),
+		);
 
 		expect(checkAuthenticated).toHaveBeenCalledWith(
 			sessionRequirement,
@@ -137,22 +154,17 @@ describe("TanStack Router auth coordination", () => {
 			{ beforeLoad: previousBeforeLoad },
 		);
 
-		const result = await route.beforeLoad?.({
-			context: {
+		const result = await route.beforeLoad?.(
+			beforeLoadContext({
 				securitydeptInjector: createInjector(
 					createHost({
 						checkAuthenticated: () => true,
 						onUnauthenticated: () => false,
 					}),
 				),
-				router: {
-					state: {
-						matches: [secureMatch({ requirements: [sessionRequirement] })],
-					},
-				},
-			},
-			location: { pathname: "/dashboard" },
-		});
+				matches: [secureMatch({ requirements: [sessionRequirement] })],
+			}),
+		);
 
 		expect(previousBeforeLoad).toHaveBeenCalledTimes(1);
 		expect(result).toEqual({ user: "existing" });
@@ -172,17 +184,12 @@ describe("TanStack Router auth coordination", () => {
 		});
 
 		await expect(
-			route.beforeLoad?.({
-				context: {
+			route.beforeLoad?.(
+				beforeLoadContext({
 					securitydeptInjector: createInjector(parentHost),
-					router: {
-						state: {
-							matches: [secureMatch({ requirements: [sessionRequirement] })],
-						},
-					},
-				},
-				location: { pathname: "/dashboard" },
-			}),
+					matches: [secureMatch({ requirements: [sessionRequirement] })],
+				}),
+			),
 		).resolves.toBeUndefined();
 	});
 
@@ -199,21 +206,32 @@ describe("TanStack Router auth coordination", () => {
 				onUnauthenticated: () => "/login",
 			}),
 		});
-		const context = {
-			context: {
-				router: {
-					state: {
-						matches: [secureMatch({ requirements: [sessionRequirement] })],
-					},
-				},
-			},
-			location: { pathname: "/dashboard" },
-		};
+		const context = beforeLoadContext({
+			securitydeptInjector: createInjector(
+				createHost({
+					checkAuthenticated: () => false,
+					onUnauthenticated: () => false,
+				}),
+			),
+			matches: [secureMatch({ requirements: [sessionRequirement] })],
+		});
 
 		await expect(blocked(context)).rejects.toBeInstanceOf(
 			TanStackRouteSecurityBlockedError,
 		);
-		await expect(redirected(context)).rejects.toSatisfy(isRedirect);
+		await expect(
+			redirected(
+				beforeLoadContext({
+					securitydeptInjector: createInjector(
+						createHost({
+							checkAuthenticated: () => false,
+							onUnauthenticated: () => "/login",
+						}),
+					),
+					matches: [secureMatch({ requirements: [sessionRequirement] })],
+				}),
+			),
+		).rejects.toSatisfy(isRedirect);
 	});
 
 	it("core RequirementPlannerHost token is injectable", () => {

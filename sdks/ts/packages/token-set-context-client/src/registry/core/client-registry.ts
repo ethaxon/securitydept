@@ -11,14 +11,15 @@ import {
 import {
 	BehaviorSubject,
 	combineLatest,
+	EmptyError,
 	filter,
 	firstValueFrom,
 	from,
 	fromEventPattern,
 	map,
 	NEVER,
+	type Observable,
 	of,
-	ReplaySubject,
 	Subject,
 	switchMap,
 	take,
@@ -48,7 +49,7 @@ import {
 export class TokenSetClientRegistry<
 	TClient extends DisposableTrait = BaseOidcModeClient,
 > {
-	private readonly destroyed = new ReplaySubject<true>(1);
+	private readonly _destroyed = new BehaviorSubject(false);
 
 	private readonly recordsSubject = new BehaviorSubject(
 		new Map<string, BehaviorSubject<TokenSetClientRecord<TClient>>>(),
@@ -85,6 +86,13 @@ export class TokenSetClientRegistry<
 
 	constructor(private readonly options: CreateTokenSetClientRegistryOptions) {}
 
+	get destroyed(): Observable<true> {
+		return this._destroyed.pipe(
+			filter((x): x is true => x),
+			take(1),
+		);
+	}
+
 	register(entry: TokenSetClientRegistryEntry<TClient>): void {
 		const clientKey = entry.meta.clientKey;
 		if (this.recordsSubject.getValue().has(clientKey)) {
@@ -108,7 +116,6 @@ export class TokenSetClientRegistry<
 				filter((id) => id === record.id),
 				take(1),
 				switchMap(() => from(record.initialize())),
-				takeUntil(record.destroyed),
 			)
 			.subscribe((record) => {
 				recordSubject.next(record);
@@ -145,24 +152,40 @@ export class TokenSetClientRegistry<
 
 		this.initializeTrigger.next(record.id);
 
-		const result = await firstValueFrom(
-			clientRecord.pipe(
-				filter(
-					(record) =>
-						record.status === TokenSetClientRegistryEntryStatus.Ready ||
-						record.status === TokenSetClientRegistryEntryStatus.Failed,
+		let result: TokenSetClientRecord<TClient>;
+		try {
+			result = await firstValueFrom(
+				clientRecord.pipe(
+					filter(
+						(record) =>
+							record.status === TokenSetClientRegistryEntryStatus.Ready ||
+							record.status === TokenSetClientRegistryEntryStatus.Failed,
+					),
+					take(1),
+					takeUntil(record.destroyed),
 				),
-				take(1),
-				takeUntil(record.destroyed),
-			),
-		);
+			);
+		} catch (error) {
+			if (error instanceof EmptyError) {
+				result = clientRecord.getValue();
+			} else {
+				throw error;
+			}
+		}
+
 		if (result.status === TokenSetClientRegistryEntryStatus.Ready) {
 			const view = result.toView();
 			if (view.status === TokenSetClientRegistryEntryStatus.Ready) {
 				return view;
 			}
 		}
-		throw result.error;
+		if (result.status === TokenSetClientRegistryEntryStatus.Failed) {
+			throw result.error;
+		}
+		throw new TokenSetClientRegistryError({
+			code: TokenSetClientRegistryErrorCode.ClientUnregistered,
+			clientKey: key,
+		});
 	}
 
 	has(key: string): boolean {
@@ -185,11 +208,10 @@ export class TokenSetClientRegistry<
 	}
 
 	dispose(): void {
-		for (const key of this.recordsSubject.getValue().keys()) {
+		for (const key of [...this.recordsSubject.getValue().keys()]) {
 			this.unregister(key);
 		}
-		this.destroyed.next(true);
-		this.destroyed.complete();
+		this._destroyed.next(true);
 	}
 
 	private clientRecordSubjectFor(

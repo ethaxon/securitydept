@@ -11,10 +11,16 @@ catalog:
   "@angular/core": ^21.2.12
   "@angular/platform-browser": ^21.2.12
   "@angular/router": ^21.2.12
+  "@standard-schema/spec": ^1.1.0
   "@tanstack/react-query": ^5.100.10
   "@tanstack/react-router": ^1.169.2
+  arktype: ^2.2.0
+  es-toolkit: ^1.49.0
+  nunjucks: ^3.2.4
   react: ^19.2.6
   react-dom: ^19.2.6
+  rxjs: ^7.8.2
+  uuid: ^14.0.1
 
 allowBuilds:
   "@kie/act-js": true

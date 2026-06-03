@@ -26,8 +26,8 @@ import {
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createEnvironmentForTest } from "../packages/client/src/test";
-import { createTestTokenSetReactiveFields } from "./test-token-set-client";
+import { createEnvironmentForTest } from "../../packages/client/src/test";
+import { createTestTokenSetReactiveFields } from "../_helpers/test-token-set-client";
 
 type BackendViewClient = BaseOidcModeClient & {
 	authorizeUrl(): string;

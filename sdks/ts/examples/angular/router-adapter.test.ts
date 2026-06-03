@@ -4,8 +4,10 @@
 // RouteTreeSegment[] contract via projectAngularRouteSegments, plus the
 // RouteCompositionRequirementPlanner pipeline that a canActivate guard drives.
 
+import { HttpClient } from "@angular/common/http";
 import {
 	createEnvironmentInjector,
+	DestroyRef,
 	runInInjectionContext,
 } from "@angular/core";
 import {
@@ -20,9 +22,11 @@ import {
 	RouteCompositionRequirementPlanner,
 	writeSecuritydeptRouteMetadata,
 } from "@securitydept/client";
+import { createEnvironmentForTest } from "@securitydept/client/test";
 import {
 	createAngularCanActivate,
 	projectAngularRouteSegments,
+	provideEnvironment,
 } from "@securitydept/client-angular";
 import { describe, expect, it } from "vitest";
 
@@ -133,11 +137,14 @@ describe("Angular Router adapter — planner pipeline over projected segments", 
 		authenticatedIds: readonly string[],
 	): RequirementPlannerHost {
 		const authed = new Set(authenticatedIds);
-		return RequirementPlannerHost.fromBehaviour({
-			checkAuthenticated: (requirement: AuthRequirement) =>
-				authed.has(requirement.id),
-			onUnauthenticated: () => false,
-		});
+		return RequirementPlannerHost.fromBehaviour(
+			{
+				checkAuthenticated: (requirement: AuthRequirement) =>
+					authed.has(requirement.id),
+				onUnauthenticated: () => false,
+			},
+			{ environment: createEnvironmentForTest() },
+		);
 	}
 
 	it("blocks when a projected requirement is unmet", async () => {
@@ -150,9 +157,10 @@ describe("Angular Router adapter — planner pipeline over projected segments", 
 				}),
 			},
 		]);
-		const planner = RouteCompositionRequirementPlanner.fromRootRoute(
+		const planner = RouteCompositionRequirementPlanner.fromRouteSegments(
 			hostWith([]),
 			projectAngularRouteSegments(leaf),
+			{ url: "/secure" },
 		);
 
 		const result = await planner.runUntilSettled();
@@ -162,9 +170,10 @@ describe("Angular Router adapter — planner pipeline over projected segments", 
 
 	it("settles when the route declares no requirements", async () => {
 		const leaf = buildRouteChain([{}, { path: "public" }]);
-		const planner = RouteCompositionRequirementPlanner.fromRootRoute(
+		const planner = RouteCompositionRequirementPlanner.fromRouteSegments(
 			hostWith([]),
 			projectAngularRouteSegments(leaf),
+			{ url: "/secure" },
 		);
 
 		const result = await planner.runUntilSettled();
@@ -188,9 +197,10 @@ describe("Angular Router adapter — planner pipeline over projected segments", 
 				}),
 			},
 		]);
-		const planner = RouteCompositionRequirementPlanner.fromRootRoute(
+		const planner = RouteCompositionRequirementPlanner.fromRouteSegments(
 			hostWith(["session", "admin-token"]),
 			projectAngularRouteSegments(leaf),
+			{ url: "/app/admin" },
 		);
 
 		const result = await planner.runUntilSettled();
@@ -200,18 +210,40 @@ describe("Angular Router adapter — planner pipeline over projected segments", 
 });
 
 describe("createAngularCanActivate — guard behaviour option", () => {
-	const routerState = {} as RouterStateSnapshot;
+	const routerState = { url: "/secure" } as RouterStateSnapshot;
 
 	function invokeGuard(
 		leaf: ActivatedRouteSnapshot,
 		options: Parameters<typeof createAngularCanActivate>[0],
 	): Promise<boolean> {
-		const injector = createEnvironmentInjector([
-			{
-				provide: Router,
-				useValue: { parseUrl: (url: string) => url },
-			},
-		]);
+		const injector = createEnvironmentInjector(
+			[
+				provideEnvironment({
+					createBaseEnvironment: createEnvironmentForTest,
+				}),
+				{
+					provide: Router,
+					useValue: {
+						url: "/secure",
+						parseUrl: (url: string) => url,
+						navigateByUrl: async () => true,
+					},
+				},
+				{
+					provide: HttpClient,
+					useValue: {
+						request: () => undefined,
+					},
+				},
+				{
+					provide: DestroyRef,
+					useValue: {
+						onDestroy: () => undefined,
+					},
+				},
+			],
+			null as never,
+		);
 		const guard = createAngularCanActivate(options);
 		return runInInjectionContext(injector, () =>
 			Promise.resolve(guard(leaf, routerState)),
@@ -231,7 +263,10 @@ describe("createAngularCanActivate — guard behaviour option", () => {
 
 		await expect(
 			invokeGuard(leaf, {
-				behaviour: { checkAuthenticated: () => false },
+				behaviour: {
+					checkAuthenticated: () => false,
+					onUnauthenticated: () => false,
+				},
 			}),
 		).resolves.toBe(false);
 
@@ -240,6 +275,7 @@ describe("createAngularCanActivate — guard behaviour option", () => {
 				behaviour: {
 					checkAuthenticated: (requirement: AuthRequirement) =>
 						requirement.id === "session",
+					onUnauthenticated: () => false,
 				},
 			}),
 		).resolves.toBe(true);
@@ -256,9 +292,13 @@ describe("createAngularCanActivate — guard behaviour option", () => {
 			},
 		]);
 
-		const host = RequirementPlannerHost.fromBehaviour({
-			checkAuthenticated: () => true,
-		});
+		const host = RequirementPlannerHost.fromBehaviour(
+			{
+				checkAuthenticated: () => true,
+				onUnauthenticated: () => false,
+			},
+			{ environment: createEnvironmentForTest() },
+		);
 
 		await expect(
 			invokeGuard(leaf, {

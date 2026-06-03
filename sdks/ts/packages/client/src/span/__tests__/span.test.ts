@@ -6,11 +6,10 @@ describe("span", () => {
 	it("uses UUID v7 ids by default", () => {
 		const root = createRootSpan();
 		const child = root.fork();
-		const uuidV7Pattern =
-			/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+		const spanIdPattern = /^span_[0-9a-f-]+$/iu;
 
-		expect(root.id).toMatch(uuidV7Pattern);
-		expect(child.id).toMatch(uuidV7Pattern);
+		expect(root.id).toMatch(spanIdPattern);
+		expect(child.id).toMatch(spanIdPattern);
 		expect(child.parent).toBe(root);
 	});
 

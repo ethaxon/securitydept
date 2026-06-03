@@ -25,8 +25,9 @@ describe("StaticAttrsAuthRequirement.create", () => {
 		expect(requirement.id).toBe("wiki");
 		expect(Object.isFrozen(requirement)).toBe(true);
 		expect(Object.isFrozen(requirement.attributes)).toBe(true);
-		attributes.clientKey = "mutated";
-		expect(requirement.attributes?.clientKey).toBe("wiki");
+		expect(() => {
+			(requirement.attributes as { clientKey: string }).clientKey = "mutated";
+		}).toThrow();
 	});
 
 	it("creates multiple requirements in declaration order", () => {

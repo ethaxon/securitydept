@@ -19,6 +19,6 @@
 		"typecheck": "tsc -b --force"
 	},
 	"dependencies": {
-		"nunjucks": "^3.2.4"
+		"nunjucks": "catalog:"
 	}
 }

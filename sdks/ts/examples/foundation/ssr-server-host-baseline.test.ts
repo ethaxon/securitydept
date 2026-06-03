@@ -25,8 +25,8 @@ import {
 	createFoundationEnvironment,
 	createInMemoryRecordStore,
 } from "@securitydept/client";
-import { SessionContextClient } from "@securitydept/session-context-client";
 import { createTransportForTest } from "@securitydept/client/test";
+import { SessionContextClient } from "@securitydept/session-context-client";
 import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------

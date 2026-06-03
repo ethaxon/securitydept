@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createEnvironmentForTest } from "../../../test";
 import {
 	MergeRequirementPlanner,
 	RequirementPlannerHost,
@@ -8,10 +9,13 @@ import {
 
 describe("MergeRequirementPlanner", () => {
 	it("concatenates source requirement lists in order", async () => {
-		const host = RequirementPlannerHost.fromBehaviour({
-			checkAuthenticated: () => false,
-			onUnauthenticated: () => false,
-		});
+		const host = RequirementPlannerHost.fromBehaviour(
+			{
+				checkAuthenticated: () => false,
+				onUnauthenticated: () => false,
+			},
+			{ environment: createEnvironmentForTest() },
+		);
 		const first = StaticRequirementPlanner.fromRequirements(host, [
 			StaticAttrsAuthRequirement.create({ id: "a" }),
 		]);

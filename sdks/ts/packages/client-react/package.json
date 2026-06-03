@@ -48,8 +48,8 @@
 	},
 	"dependencies": {
 		"@securitydept/client": "workspace:*",
-		"arktype": "^2.2.0",
-		"es-toolkit": "^1.49.0"
+		"arktype": "catalog:",
+		"es-toolkit": "catalog:"
 	},
 	"peerDependencies": {
 		"react": ">=19.0.0",

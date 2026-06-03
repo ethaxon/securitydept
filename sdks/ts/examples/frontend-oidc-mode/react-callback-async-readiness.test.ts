@@ -24,8 +24,8 @@ import {
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
-import { createEnvironmentForTest } from "../packages/client/src/test";
-import { createTestTokenSetReactiveFields } from "./test-token-set-client";
+import { createEnvironmentForTest } from "../../packages/client/src/test";
+import { createTestTokenSetReactiveFields } from "../_helpers/test-token-set-client";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");

@@ -9,8 +9,8 @@ import {
 	BasicAuthContextClient,
 } from "@securitydept/basic-auth-context-client";
 import { createEnvironmentForServer } from "@securitydept/client/server";
-import { SessionContextClient } from "@securitydept/session-context-client";
 import { createTransportForTest } from "@securitydept/client/test";
+import { SessionContextClient } from "@securitydept/session-context-client";
 import { describe, expect, it } from "vitest";
 
 // ===========================================================================

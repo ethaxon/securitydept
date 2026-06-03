@@ -188,7 +188,7 @@ describe("FrontendOidcModeClient / lifecycle", () => {
 		expect(client.authSnapshot.hasValue()).toBe(false);
 	});
 
-	it("auth snapshot becomes null after dispose", () => {
+	it("dispose is idempotent before auth state is established", () => {
 		const client = new FrontendOidcModeClient(
 			{
 				issuer: "https://auth.example.com",
@@ -199,10 +199,11 @@ describe("FrontendOidcModeClient / lifecycle", () => {
 		);
 
 		client.dispose();
-		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+		expect(() => client.dispose()).not.toThrow();
+		expect(client.authSnapshot.hasValue()).toBe(false);
 	});
 
-	it("throws on operations after dispose", () => {
+	it("throws on operations after dispose", async () => {
 		const client = new FrontendOidcModeClient(
 			{
 				issuer: "https://auth.example.com",
@@ -213,12 +214,12 @@ describe("FrontendOidcModeClient / lifecycle", () => {
 		);
 
 		client.dispose();
-		expect(() =>
+		await expect(
 			client.restoreState({
 				tokens: { accessToken: "x" },
 				metadata: {},
 			}),
-		).toThrow();
+		).rejects.toThrow();
 	});
 
 	it("authorizationHeader returns null when not authenticated", () => {

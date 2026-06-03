@@ -43,8 +43,8 @@
 	},
 	"dependencies": {
 		"@securitydept/client": "workspace:*",
-		"arktype": "^2.2.0",
-		"rxjs": "^7.0.0",
-		"uuid": "^14.0.1"
+		"arktype": "catalog:",
+		"rxjs": "catalog:",
+		"uuid": "catalog:"
 	}
 }

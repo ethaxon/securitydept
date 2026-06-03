@@ -23,7 +23,7 @@ describe("client test environment helpers", () => {
 		expect(typeof environment.transport.execute).toBe("function");
 	});
 
-	it("creates a native-web test environment with default span and tracing", () => {
+	it("creates a native web environment with default span and tracing", () => {
 		const environment = createEnvironmentForNativeWeb({
 			routerForNativeWebCreateOptions: {
 				location: {

@@ -5,8 +5,11 @@ import {
 	createTracing,
 	takeCompatFragmentFromRouter,
 } from "@securitydept/client";
+import {
+	createTimeForTest,
+	createTransportForTest,
+} from "@securitydept/client/test";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
-import { createTimeForTest, createTransportForTest } from "@securitydept/client/test";
 import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it } from "vitest";
 
@@ -100,7 +103,7 @@ describe("external backend-oidc-mode browser scenario", () => {
 		expect(callbackSnapshot.tokens.accessToken).toBe("callback-at");
 		expect(callbackSnapshot.metadata.principal?.displayName).toBe("Alice");
 		expect(callbackHistory.replacedUrl).toBe(
-			"https://app.example.com/oidc-mediated?tab=demo",
+			"https://app.example.com/oidc-mediated?tab=demo#/route",
 		);
 		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
 			"Bearer callback-at",

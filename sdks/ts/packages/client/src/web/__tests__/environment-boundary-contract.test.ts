@@ -8,14 +8,6 @@ const forbiddenFallbacks = [
 
 const guardedHelperFiles = [
 	new URL(
-		"../../../../basic-auth-context-client/src/web/login-redirect.ts",
-		import.meta.url,
-	),
-	new URL(
-		"../../../../basic-auth-context-client/src/web/redirect.ts",
-		import.meta.url,
-	),
-	new URL(
 		"../../../../token-set-context-client/src/orchestration/client/popup/relay.ts",
 		import.meta.url,
 	),

@@ -12,7 +12,7 @@ import {
 	behaviorSubjectToSignal,
 	observableToReplaySignal,
 } from "@securitydept/client/rx";
-import { type BehaviorSubject, filter, map, ReplaySubject } from "rxjs";
+import { BehaviorSubject, filter, map, type Observable, take } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import {
 	type TokenSetClientDisposedRecordView,
@@ -30,7 +30,7 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 	status: TokenSetClientRegistryEntryStatus;
 	client: TClient | undefined;
 	error: unknown | null;
-	destroyed = new ReplaySubject<true>(1);
+	private readonly _destroyed = new BehaviorSubject(false);
 
 	protected constructor(
 		readonly id: string,
@@ -42,6 +42,13 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 		this.status = status;
 		this.client = client;
 		this.error = error;
+	}
+
+	get destroyed(): Observable<true> {
+		return this._destroyed.pipe(
+			filter((value): value is true => value),
+			take(1),
+		);
 	}
 
 	get meta(): TokenSetClientMeta {
@@ -101,11 +108,20 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 			this.client = client;
 			this.status = TokenSetClientRegistryEntryStatus.Ready;
 			this.error = null;
+			if (this._destroyed.getValue()) {
+				yield this;
+				client.dispose();
+				return yield this;
+			}
 			return yield this;
 		} catch (error) {
 			this.client = undefined;
 			this.status = TokenSetClientRegistryEntryStatus.Failed;
 			this.error = error;
+			if (this._destroyed.getValue()) {
+				yield this;
+				return yield this;
+			}
 			return yield this;
 		}
 	}
@@ -179,8 +195,7 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 	}
 
 	dispose(): void {
-		this.destroyed.next(true);
-		this.destroyed.complete();
+		this._destroyed.next(true);
 		this.client?.dispose();
 	}
 
