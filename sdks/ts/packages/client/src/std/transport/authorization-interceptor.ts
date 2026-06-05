@@ -1,12 +1,8 @@
-import {
-	isReplaySignalTrait,
-	type ReadableReplaySignalTrait,
-	type ReadableSignalTrait,
-} from "../../signals";
+import { type ReadableSignalTrait, type ResourceTrait } from "../../signals";
 
 export type AuthorizationSignal =
 	| ReadableSignalTrait<string | null | undefined>
-	| ReadableReplaySignalTrait<string | null | undefined>;
+	| ResourceTrait<string | null | undefined>;
 
 export type AuthorizationInterceptedFetchPredicate = (
 	input: RequestInfo | URL,
@@ -26,11 +22,10 @@ export function createAuthorizationInterceptedFetch(
 		if (!(await options.predicate(input, init))) {
 			return fetchImpl(input, init);
 		}
-		const authorization = isReplaySignalTrait<string | null | undefined>(
-			options.authorization,
-		)
-			? await options.authorization.whenValue()
-			: options.authorization.get();
+		const authorization =
+			"whenValue" in options.authorization
+				? await options.authorization.whenValue()
+				: options.authorization.get();
 		if (!authorization) {
 			return fetchImpl(input, init);
 		}

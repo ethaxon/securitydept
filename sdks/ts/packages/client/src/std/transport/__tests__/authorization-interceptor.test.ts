@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { createReplaySignal, createSignal } from "../../../signals";
+import {
+	createSignal,
+	ResourceStatus,
+	resourceFromSnapshots,
+} from "../../../signals";
 import { createAuthorizationInterceptedFetch } from "../authorization-interceptor";
 
 describe("createAuthorizationInterceptedFetch()", () => {
@@ -21,8 +25,13 @@ describe("createAuthorizationInterceptedFetch()", () => {
 		expect(headers.get("accept")).toBe("application/json");
 	});
 
-	it("waits for authorization from a replay signal", async () => {
-		const authorization = createReplaySignal<string>();
+	it("waits for authorization from a resource", async () => {
+		const authorizationSnapshot = createSignal<
+			import("../../../signals").ResourceSnapshot<string>
+		>({ status: ResourceStatus.Loading });
+		const authorization = resourceFromSnapshots(() =>
+			authorizationSnapshot.get(),
+		);
 		const fetchSpy = createFetchSpy();
 		const interceptedFetch = createAuthorizationInterceptedFetch(fetchSpy, {
 			predicate: () => true,
@@ -31,13 +40,17 @@ describe("createAuthorizationInterceptedFetch()", () => {
 
 		const pending = interceptedFetch("https://api.example.com/resource");
 		expect(fetchSpy).not.toHaveBeenCalled();
-		authorization.setValue("Bearer replay-token");
+		authorizationSnapshot.set({
+			status: ResourceStatus.Resolved,
+			value: "Bearer resource-token",
+		});
 		await pending;
 
 		const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
 		expect(new Headers(init.headers).get("authorization")).toBe(
-			"Bearer replay-token",
+			"Bearer resource-token",
 		);
+		authorization.dispose();
 	});
 
 	it("does not modify fetch arguments when predicate does not match", async () => {

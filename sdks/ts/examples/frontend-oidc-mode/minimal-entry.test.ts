@@ -17,17 +17,6 @@ import {
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { describe, expect, it } from "vitest";
 
-function expectReplayValue<T>(signal: {
-	get(): { kind: "empty" } | { kind: "value"; value: T };
-}): T {
-	const slot = signal.get();
-	expect(slot.kind).toBe("value");
-	if (slot.kind !== "value") {
-		throw new Error("Expected replay signal value.");
-	}
-	return slot.value;
-}
-
 // Minimal runtime stubs — just enough to construct a client.
 // In a real app, these come from the @securitydept/client runtime layer.
 const minimalRuntime = createFoundationEnvironment({
@@ -67,8 +56,8 @@ describe("frontend-oidc-mode minimal entry", () => {
 		const client = new FrontendOidcModeClient(minimalConfig, minimalRuntime);
 		expect(client).toBeInstanceOf(FrontendOidcModeClient);
 
-		// 2. Initially undetermined: replay auth snapshot is empty, no auth header.
-		expect(client.authSnapshot.hasValue()).toBe(false);
+		// 2. Initially idle: auth snapshot has no value and no auth header.
+		expect(client.authSnapshot.get()).toEqual({ status: "idle" });
 		expect(client.authorizationHeaderValue.hasValue()).toBe(false);
 
 		// 3. Restore state (e.g. from SSR bootstrap or persisted storage).
@@ -81,14 +70,14 @@ describe("frontend-oidc-mode minimal entry", () => {
 		});
 
 		// 4. Now authenticated: state reflects tokens, auth header is set.
-		const state = expectReplayValue(client.authSnapshot);
+		const state = client.authResource.value.get();
 		expect(state).not.toBeNull();
 		expect(state?.tokens.accessToken).toBe("eyJhbGci.example.access-token");
 
-		const authHeader = expectReplayValue(client.authorizationHeaderValue);
+		const authHeader = client.authorizationHeaderValue.value.get();
 		expect(authHeader).toBe("Bearer eyJhbGci.example.access-token");
 
-		// 5. Clean up — dispose marks the client non-operational; replay state is retained.
+		// 5. Clean up — dispose marks the client non-operational.
 		client.dispose();
 		await expect(
 			client.restoreState({
@@ -101,11 +90,13 @@ describe("frontend-oidc-mode minimal entry", () => {
 	it("shows the config type import and client state signal subscription", async () => {
 		const client = new FrontendOidcModeClient(minimalConfig, minimalRuntime);
 
-		// Subscribe to auth snapshot changes via the replay signal.
+		// Subscribe to auth snapshot changes via the signal.
 		const observed: Array<string | null> = [];
-		const unsubscribe = client.authSnapshot.notify(() => {
-			const snapshot = expectReplayValue(client.authSnapshot);
-			observed.push(snapshot?.tokens.accessToken ?? null);
+		const subscription = client.authSnapshot.watchStream().subscribe({
+			next() {
+				const snapshot = client.authResource.value.get();
+				observed.push(snapshot?.tokens.accessToken ?? null);
+			},
 		});
 
 		// Trigger a state change.
@@ -116,7 +107,7 @@ describe("frontend-oidc-mode minimal entry", () => {
 
 		expect(observed).toContain("first-at");
 
-		unsubscribe();
+		subscription.unsubscribe();
 		client.dispose();
 	});
 });

@@ -8,8 +8,9 @@ import { Router } from "@angular/router";
 import {
 	createEventSubject,
 	createFoundationEnvironment,
-	createReplaySignal,
 	createSignal,
+	ResourceStatus,
+	resourceFromSnapshots,
 } from "@securitydept/client";
 import { provideEnvironment } from "@securitydept/client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
@@ -28,37 +29,36 @@ import {
 import { firstValueFrom, of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 
-function expectReplayValue<T>(signal: {
-	get(): { kind: "empty" } | { kind: "value"; value: T };
-}): T {
-	const slot = signal.get();
-	expect(slot.kind).toBe("value");
-	if (slot.kind !== "value") {
-		throw new Error("Expected replay signal value.");
-	}
-	return slot.value;
-}
-
 function createOidcClient(
 	name: string,
 	authorizationHeader: string,
 	disposeSpy: () => void = vi.fn<() => void>(() => undefined),
 ): BaseOidcModeClient {
-	const authDetermined = createReplaySignal<true>();
-	authDetermined.setValue(true);
-	const authSnapshot = createReplaySignal<null>();
-	authSnapshot.setValue(null);
-	const isAuthenticated = createReplaySignal<boolean>();
-	isAuthenticated.setValue(true);
-	const authorizationHeaderValue = createReplaySignal<string | undefined>();
-	authorizationHeaderValue.setValue(authorizationHeader);
+	const authSnapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: null,
+	} as const);
+	const authResource = resourceFromSnapshots(() => authSnapshot.get());
+	const isAuthenticatedSnapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: true,
+	} as const);
+	const isAuthenticated = resourceFromSnapshots(() =>
+		isAuthenticatedSnapshot.get(),
+	);
+	const authorizationSnapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: authorizationHeader as string | undefined,
+	} as const);
+	const authorizationHeaderValue = resourceFromSnapshots(() =>
+		authorizationSnapshot.get(),
+	);
 	return {
 		id: name,
-		authDetermined,
 		authSnapshot,
+		authResource,
 		isAuthenticated,
 		authorizationHeaderValue,
-		lastAuthError: createSignal<unknown | undefined>(undefined),
 		authOperations: {
 			restorePending: createSignal(false),
 			refreshPending: createSignal(false),
@@ -128,7 +128,7 @@ function provideAngularEnvironmentDeps() {
 }
 
 describe("TokenSetClientRegistryService", () => {
-	it("passes client signal initialization options through to the core registry", async () => {
+	it("passes client resource initialization options through to the core registry", async () => {
 		const factory = vi.fn(() =>
 			createOidcClient("workspace", "Bearer workspace"),
 		);
@@ -140,13 +140,13 @@ describe("TokenSetClientRegistryService", () => {
 
 		try {
 			const registry = injector.get(TokenSetClientRegistryService);
-			const passiveSignal = registry.clientSignalFor("workspace", {
+			const passiveSignal = registry.clientResourceFor("workspace", {
 				initialize: false,
 			});
 			expect(factory).not.toHaveBeenCalled();
 			expect(passiveSignal.hasValue()).toBe(false);
 
-			const activeSignal = registry.clientSignalFor("workspace");
+			const activeSignal = registry.clientResourceFor("workspace");
 			await expect(activeSignal.whenValue()).resolves.toMatchObject({
 				authorizationHeaderValue: expect.anything(),
 			});
@@ -186,9 +186,9 @@ describe("TokenSetClientRegistryService", () => {
 			]);
 
 			const firstRecord = await registry.initialize("workspace");
-			expect(
-				expectReplayValue(firstRecord.client.authorizationHeaderValue),
-			).toBe("Bearer first");
+			expect(firstRecord.client.authorizationHeaderValue.value.get()).toBe(
+				"Bearer first",
+			);
 			expect(registry.entries.get()).toMatchObject([
 				{
 					meta: { clientKey: "workspace" },
@@ -216,9 +216,9 @@ describe("TokenSetClientRegistryService", () => {
 
 			const secondRecord = await registry.initialize("workspace");
 			expect(secondRecord.client).not.toBe(firstRecord.client);
-			expect(
-				expectReplayValue(secondRecord.client.authorizationHeaderValue),
-			).toBe("Bearer second");
+			expect(secondRecord.client.authorizationHeaderValue.value.get()).toBe(
+				"Bearer second",
+			);
 			expect(factory).toHaveBeenCalledTimes(2);
 
 			expect(registry.unregister("workspace")).toBe(true);

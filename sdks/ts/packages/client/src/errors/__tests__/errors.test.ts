@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createCancellationTokenSource } from "../../cancellation/cancellation-token";
+import { createCancellationTokenSource } from "../../cancellation/create";
 import { ClientError } from "../../errors/client-error";
 import { describeError } from "../../errors/error-attributes";
 import { readErrorPresentationDescriptor } from "../../errors/presentation-descriptor";

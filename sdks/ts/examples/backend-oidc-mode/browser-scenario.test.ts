@@ -13,17 +13,6 @@ import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it } from "vitest";
 
-function expectReplayValue<T>(signal: {
-	get(): { kind: "empty" } | { kind: "value"; value: T };
-}): T {
-	const slot = signal.get();
-	expect(slot.kind).toBe("value");
-	if (slot.kind !== "value") {
-		throw new Error("Expected replay signal value.");
-	}
-	return slot.value;
-}
-
 function createHistoryRecorder() {
 	return {
 		replacedUrl: "" as string,
@@ -94,7 +83,7 @@ describe("external backend-oidc-mode browser scenario", () => {
 					hash: "#/route#securitydept=v1&access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
 				},
 				history: callbackHistory,
-			}),
+			})!,
 		);
 		const callbackSnapshot = await client.handleCallback(
 			callbackFragment?.parameters ?? {},
@@ -105,7 +94,7 @@ describe("external backend-oidc-mode browser scenario", () => {
 		expect(callbackHistory.replacedUrl).toBe(
 			"https://app.example.com/oidc-mediated?tab=demo#/route",
 		);
-		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
+		expect(client.authorizationHeaderValue.value.get()).toBe(
 			"Bearer callback-at",
 		);
 
@@ -114,7 +103,7 @@ describe("external backend-oidc-mode browser scenario", () => {
 
 		expect(refreshed?.tokens.accessToken).toBe("refreshed-at");
 		expect(refreshed?.tokens.refreshMaterial).toBe("refreshed-rt");
-		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+		expect(client.authResource.value.get()?.tokens.accessToken).toBe(
 			"refreshed-at",
 		);
 

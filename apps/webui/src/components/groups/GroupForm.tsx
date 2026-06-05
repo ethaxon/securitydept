@@ -4,11 +4,11 @@ import { Save, Users } from "lucide-react";
 import { type Group } from "@/api/groups";
 import { AuthModeNotice } from "@/components/auth/AuthModeNotice";
 import {
+	useCreateGroupMutation,
 	useDashboardAccessNotice,
-	useDashboardCreateGroupMutation,
-	useDashboardEntriesQuery,
-	useDashboardUpdateGroupMutation,
-} from "@/hooks/useDashboardApi";
+	useEntriesQuery,
+	useUpdateGroupMutation,
+} from "@/hooks/useDashboardData";
 
 const GroupFormMode = {
 	Create: "create",
@@ -29,9 +29,9 @@ export function GroupForm({ mode, group }: GroupFormProps) {
 	const navigate = useNavigate();
 	const isEdit = mode === GroupFormMode.Edit;
 	const accessNotice = useDashboardAccessNotice();
-	const createGroup = useDashboardCreateGroupMutation();
-	const updateGroup = useDashboardUpdateGroupMutation();
-	const { data: entries = [] } = useDashboardEntriesQuery();
+	const createGroup = useCreateGroupMutation();
+	const updateGroup = useUpdateGroupMutation();
+	const { data: entries = [] } = useEntriesQuery();
 
 	const initialEntryIds = isEdit
 		? entries

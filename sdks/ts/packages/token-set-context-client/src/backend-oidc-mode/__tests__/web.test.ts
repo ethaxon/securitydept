@@ -5,6 +5,8 @@ import {
 	createTracing,
 	type HttpRequest,
 	type HttpResponse,
+	type ReadableSignalTrait,
+	type ResourceSnapshot,
 	type TimeTrait,
 	takeCompatFragmentFromRouter,
 } from "@securitydept/client";
@@ -13,15 +15,18 @@ import { describe, expect, it } from "vitest";
 import { BackendOidcModeClient } from "../client/client";
 import { type BackendOidcModeClientConfig } from "../client/types";
 
-function expectReplayValue<T>(signal: {
-	get(): { kind: "empty" } | { kind: "value"; value: T };
-}): T {
-	const slot = signal.get();
-	expect(slot.kind).toBe("value");
-	if (slot.kind !== "value") {
-		throw new Error("Expected replay signal value.");
+function expectSnapshotValue<T>(
+	signal: ReadableSignalTrait<ResourceSnapshot<T>>,
+): T {
+	const snapshot = signal.get();
+	if (
+		snapshot.status !== "reloading" &&
+		snapshot.status !== "resolved" &&
+		snapshot.status !== "error"
+	) {
+		throw new Error("Expected resource snapshot value.");
 	}
-	return slot.value;
+	return snapshot.value;
 }
 
 function callbackParameters(fragment: string): Record<string, string> {
@@ -142,7 +147,7 @@ describe("token-set backend OIDC web helpers", () => {
 
 		expect(snapshot.tokens.accessToken).toBe("callback-at");
 		expect(snapshot.metadata.principal?.displayName).toBe("Alice");
-		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(
 			"callback-at",
 		);
 	});

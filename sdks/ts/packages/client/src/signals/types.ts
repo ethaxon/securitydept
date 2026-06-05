@@ -1,7 +1,12 @@
 // --- Signal trait types ---
 
 import { type CancellationTokenTrait } from "../cancellation/types";
-import { type InteropObservableTrait } from "../compat";
+import { type DisposableTrait, type InteropObservableTrait } from "../compat";
+import { type EventStreamTrait } from "../events/types";
+
+export interface SignalOptions<T> {
+	equals?: (a: T, b: T) => boolean;
+}
 
 /**
  * Read-only signal interface.
@@ -9,14 +14,15 @@ import { type InteropObservableTrait } from "../compat";
  * to avoid coupling to any specific polyfill or standard implementation.
  */
 export interface ReadableSignalTrait<T> extends InteropObservableTrait<T> {
+	readonly equals: (a: unknown, b: unknown) => boolean;
 	/** Return the current snapshot value. */
 	get(): T;
 	/**
-	 * Notify on writes.
-	 * The listener is called whenever `set()` publishes a value (not on registration).
-	 * @returns An unsubscribe function.
+	 * Watch value invalidations.
+	 * The stream does not emit the current value on subscription; use
+	 * `[SYMBOL_OBSERVABLE]()` when value replay is required.
 	 */
-	notify(listener: () => void): () => void;
+	watchStream(): EventStreamTrait<void>;
 }
 
 /**
@@ -34,26 +40,67 @@ export interface WritableSignalTrait<T> extends ReadableSignalTrait<T> {
  */
 export interface ComputedSignalTrait<T> extends ReadableSignalTrait<T> {}
 
-export type ReplaySignalSlot<T> =
-	| { kind: "empty" }
-	| { kind: "value"; value: T };
+export const ResourceStatus = {
+	Idle: "idle",
+	Loading: "loading",
+	LoadingError: "loading_error",
+	Reloading: "reloading",
+	Resolved: "resolved",
+	Error: "error",
+} as const;
 
-export interface ReplaySignalWhenValueOptions {
+export type ResourceStatus =
+	(typeof ResourceStatus)[keyof typeof ResourceStatus];
+
+export interface ResourceIdleSnapshot {
+	readonly status: typeof ResourceStatus.Idle;
+}
+
+export interface ResourceLoadingSnapshot {
+	readonly status: typeof ResourceStatus.Loading;
+}
+
+export interface ResourceLoadingErrorSnapshot {
+	readonly status: typeof ResourceStatus.LoadingError;
+	readonly error: unknown;
+}
+
+export interface ResourceReloadingSnapshot<T> {
+	readonly status: typeof ResourceStatus.Reloading;
+	readonly value: T;
+}
+
+export interface ResourceResolvedSnapshot<T> {
+	readonly status: typeof ResourceStatus.Resolved;
+	readonly value: T;
+}
+
+export interface ResourceErrorSnapshot<T> {
+	readonly status: typeof ResourceStatus.Error;
+	readonly value: T;
+	readonly error: unknown;
+}
+
+export type ResourceSnapshot<T> =
+	| ResourceIdleSnapshot
+	| ResourceLoadingSnapshot
+	| ResourceLoadingErrorSnapshot
+	| ResourceReloadingSnapshot<T>
+	| ResourceResolvedSnapshot<T>
+	| ResourceErrorSnapshot<T>;
+
+export interface ResourceWhenValueOptions {
 	cancellationToken?: CancellationTokenTrait;
 }
 
-export interface ReadableReplaySignalTrait<T>
-	extends InteropObservableTrait<T> {
-	get(): ReplaySignalSlot<T>;
-	notify(listener: () => void): () => void;
+export interface ResourceTrait<T>
+	extends DisposableTrait,
+		InteropObservableTrait<ResourceSnapshot<T>> {
+	readonly value: ReadableSignalTrait<T>;
+	readonly status: ReadableSignalTrait<ResourceStatus>;
+	readonly error: ReadableSignalTrait<unknown | undefined>;
+	readonly isLoading: ReadableSignalTrait<boolean>;
+	readonly snapshot: ReadableSignalTrait<ResourceSnapshot<T>>;
 	hasValue(): boolean;
-	whenValue(options?: ReplaySignalWhenValueOptions): Promise<T>;
-}
-
-export interface ComputedReplaySignalTrait<T>
-	extends ReadableReplaySignalTrait<T> {}
-
-export interface WritableReplaySignalTrait<T>
-	extends ReadableReplaySignalTrait<T> {
-	setValue(value: T): void;
+	whenValue(options?: ResourceWhenValueOptions): Promise<T>;
 }

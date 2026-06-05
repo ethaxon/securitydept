@@ -1,4 +1,5 @@
 import { type CancellationTokenTrait } from "../../cancellation";
+import { type CancellationTokenErrorData } from "../../cancellation/types";
 import {
 	type DisposableTrait,
 	SYMBOL_DISPOSE,
@@ -36,7 +37,9 @@ export function abortSignalToCancellationToken(
 		get reason() {
 			return signal.reason;
 		},
-		onCancellationRequested(listener: (reason: unknown) => void) {
+		onCancellationRequested(
+			listener: (data: CancellationTokenErrorData) => void,
+		) {
 			const subscription = abortSignalToEventStream(signal).subscribe({
 				next: listener,
 			});
@@ -48,9 +51,6 @@ export function abortSignalToCancellationToken(
 					subscription.unsubscribe();
 				},
 			};
-		},
-		subscribe(observer) {
-			return abortSignalToEventStream(signal).subscribe(observer);
 		},
 		[SYMBOL_OBSERVABLE]() {
 			return abortSignalToEventStream(signal);
@@ -65,14 +65,6 @@ export function abortSignalToCancellationToken(
 					cause: signal.reason,
 				});
 			}
-		},
-		readCancellationError() {
-			try {
-				this.throwIfCancellationRequested();
-			} catch (error) {
-				return error;
-			}
-			return signal.reason;
 		},
 	};
 }
@@ -100,15 +92,16 @@ export function cancellationTokenToAbortSignal(
 	}
 
 	const controller = new AbortController();
+
+	if (token.isCancellationRequested) {
+		controller.abort(token.reason);
+	}
+
 	let subscription: DisposableTrait | null = token.onCancellationRequested(
 		(reason) => {
 			controller.abort(reason);
 		},
 	);
-
-	if (token.isCancellationRequested) {
-		controller.abort(token.reason);
-	}
 
 	const dispose = () => {
 		if (subscription) {

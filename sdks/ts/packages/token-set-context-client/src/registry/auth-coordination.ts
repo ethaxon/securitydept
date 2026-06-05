@@ -5,12 +5,12 @@ import {
 	type FoundationEnvironment,
 	isRouteBehaviourContextExtra,
 	promisesToRacedAsyncGenerator,
-	type ReadableReplaySignalTrait,
 	type RequirementBehaviour,
 	type RequirementBehaviourContext,
 	type RequirementBehaviourWithRouteContext,
 	type RequirementCandidateSelectionContext,
 	RequirementPlannerHost,
+	type ResourceTrait,
 	type UnauthenticatedAction,
 } from "@securitydept/client";
 import { v7 as uuidv7 } from "uuid";
@@ -21,7 +21,7 @@ import { type TokenSetClientReadyRecordView } from "./contracts/types";
 import { type TokenSetClientRegistry } from "./core/client-registry";
 
 export interface TokenSetClientRegistryOidcModeClient extends DisposableTrait {
-	readonly isAuthenticated: ReadableReplaySignalTrait<boolean>;
+	readonly isAuthenticated: ResourceTrait<boolean>;
 	loginWithRedirect(options?: TokenSetOidcRedirectLoginOptions): Promise<void>;
 }
 

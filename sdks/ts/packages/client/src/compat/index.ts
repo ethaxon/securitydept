@@ -12,4 +12,5 @@ export {
 	type SubscribableTrait,
 	type SubscriptionTrait,
 	SYMBOL_OBSERVABLE,
+	type WithInteropObservableTraitCompat,
 } from "./observable";

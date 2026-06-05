@@ -1,6 +1,6 @@
 import { fromEventPattern } from "rxjs";
 import { type EventStreamTrait } from "../../events";
-import { observableToEventStream } from "../../rx";
+import { RxEventStream } from "../../rx";
 
 export interface StorageEventTarget {
 	addEventListener(type: "storage", listener: EventListener): void;
@@ -19,7 +19,7 @@ export function fromStorageEvent(
 ): EventStreamTrait<StorageEvent> {
 	const { storageEventTarget } = options;
 
-	return observableToEventStream(
+	return RxEventStream.fromObservableInput(
 		fromEventPattern<StorageEvent>(
 			(handler) => {
 				storageEventTarget.addEventListener("storage", handler);

@@ -9,12 +9,12 @@ import {
 } from "@/api/entries";
 import { AuthModeNotice } from "@/components/auth/AuthModeNotice";
 import {
+	useCreateBasicEntryMutation,
+	useCreateTokenEntryMutation,
 	useDashboardAccessNotice,
-	useDashboardCreateBasicEntryMutation,
-	useDashboardCreateTokenEntryMutation,
-	useDashboardGroupsQuery,
-	useDashboardUpdateEntryMutation,
-} from "@/hooks/useDashboardApi";
+	useGroupsQuery,
+	useUpdateEntryMutation,
+} from "@/hooks/useDashboardData";
 import { type EntrySearch } from "@/routes/entrySearch";
 
 const EntryFormMode = {
@@ -35,10 +35,10 @@ export function EntryForm({ mode, entry, initial }: EntryFormProps) {
 	const [generatedToken, setGeneratedToken] = useState<string | null>(null);
 
 	const accessNotice = useDashboardAccessNotice();
-	const { data: groups = [] } = useDashboardGroupsQuery();
-	const createBasic = useDashboardCreateBasicEntryMutation();
-	const createToken = useDashboardCreateTokenEntryMutation();
-	const updateEntry = useDashboardUpdateEntryMutation();
+	const { data: groups = [] } = useGroupsQuery();
+	const createBasic = useCreateBasicEntryMutation();
+	const createToken = useCreateTokenEntryMutation();
+	const updateEntry = useUpdateEntryMutation();
 
 	const form = useForm({
 		defaultValues: {

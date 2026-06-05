@@ -1,6 +1,6 @@
 import { filter, map } from "rxjs";
 import { type EventStreamTrait } from "../../events";
-import { eventStreamToObservable, observableToEventStream } from "../../rx";
+import { RxEventStream } from "../../rx";
 import {
 	fromStorageEvent,
 	type StorageEventTarget,
@@ -75,17 +75,15 @@ export interface CreateCrossTabSyncOptions {
 export function createCrossTabSync(
 	options: CreateCrossTabSyncOptions,
 ): EventStreamTrait<CrossTabSyncEvent> {
-	return observableToEventStream(
-		eventStreamToObservable(
-			fromStorageEvent({
-				storageEventTarget: options.storageEventTarget,
-			}),
-		).pipe(
-			filter((storageEvent) => storageEvent.key === options.key),
-			map((storageEvent) => ({
-				newValue: storageEvent.newValue,
-				oldValue: storageEvent.oldValue,
-			})),
-		),
+	return RxEventStream.fromObservableInput(
+		fromStorageEvent({
+			storageEventTarget: options.storageEventTarget,
+		}),
+	).pipe(
+		filter((storageEvent) => storageEvent.key === options.key),
+		map((storageEvent) => ({
+			newValue: storageEvent.newValue,
+			oldValue: storageEvent.oldValue,
+		})),
 	);
 }

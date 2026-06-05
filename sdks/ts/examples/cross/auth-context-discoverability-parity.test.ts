@@ -13,9 +13,6 @@ import {
 } from "@securitydept/basic-auth-context-client";
 import {
 	createFoundationEnvironment,
-	createInMemoryRecordStore,
-	createRootSpan,
-	createTracing,
 	type FoundationEnvironment,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
@@ -24,7 +21,7 @@ import {
 	type SessionInfo,
 	type SessionLoginWithRedirectOptions as SessionLoginOptions,
 } from "@securitydept/session-context-client";
-import { type CreateSessionContextClientOptions } from "@securitydept/session-context-client-react";
+import { type ProvideSessionContextOptions } from "@securitydept/session-context-client-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function createPageLocationEnvironment(href: string): FoundationEnvironment & {
@@ -146,19 +143,11 @@ describe("basic-auth root discoverability: named options contract + client helpe
 // ---------------------------------------------------------------------------
 
 describe("session ./react discoverability: injector-first named contracts", () => {
-	it("CreateSessionContextClientOptions is importable as a named type from ./react", () => {
-		const options: CreateSessionContextClientOptions = {
+	it("ProvideSessionContextOptions is importable as a named type from the React adapter", () => {
+		const options: ProvideSessionContextOptions = {
 			config: {
 				baseUrl: "https://auth.example.com",
 			},
-			environment: createFoundationEnvironment({
-				transport: {
-					execute: async () => ({ status: 204, headers: {}, body: null }),
-				},
-				sessionStorage: createInMemoryRecordStore(),
-				span: createRootSpan(),
-				tracing: createTracing(),
-			}),
 		};
 
 		expect(options.config.baseUrl).toBe("https://auth.example.com");
@@ -169,18 +158,10 @@ describe("session ./react discoverability: injector-first named contracts", () =
 			principal: { subject: "session-user-1", displayName: "Alice" },
 		};
 
-		const options: CreateSessionContextClientOptions = {
+		const options: ProvideSessionContextOptions = {
 			config: {
 				baseUrl: "https://auth.example.com",
 			},
-			environment: createFoundationEnvironment({
-				transport: {
-					execute: async () => ({ status: 204, headers: {}, body: null }),
-				},
-				sessionStorage: createInMemoryRecordStore(),
-				span: createRootSpan(),
-				tracing: createTracing(),
-			}),
 		};
 
 		expect(sessionInfo.principal.displayName).toBe("Alice");

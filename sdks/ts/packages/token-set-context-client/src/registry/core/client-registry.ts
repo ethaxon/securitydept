@@ -1,15 +1,17 @@
 import {
 	type DisposableTrait,
-	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
+	ResourceStatus,
+	type ResourceTrait,
 	readonlySignal,
+	resourceFromSnapshots,
 } from "@securitydept/client";
 import {
-	behaviorSubjectToSignal,
-	observableToEventStream,
+	RxEventStream,
+	RxStateSignal,
+	type RxStateSignalCompat,
 } from "@securitydept/client/rx";
 import {
-	BehaviorSubject,
 	combineLatest,
 	EmptyError,
 	filter,
@@ -18,7 +20,6 @@ import {
 	fromEventPattern,
 	map,
 	NEVER,
-	type Observable,
 	of,
 	Subject,
 	switchMap,
@@ -38,7 +39,7 @@ import {
 	type TokenSetClientRegistryEntry,
 	TokenSetClientRegistryEntryStatus,
 	type TokenSetClientRegistryEvent,
-	type TokenSetClientSignalOptions,
+	type TokenSetClientResourceOptions,
 } from "../contracts/types";
 import { TokenSetClientRecord } from "./client-record";
 import {
@@ -46,56 +47,61 @@ import {
 	TokenSetClientRegistryErrorCode,
 } from "./error";
 
+type TokenSetClientRecordSignal<TClient extends DisposableTrait> =
+	RxStateSignalCompat<TokenSetClientRecord<TClient>>;
+
+interface TokenSetClientRecordSlot<TClient extends DisposableTrait> {
+	recordSignal: TokenSetClientRecordSignal<TClient>;
+	clientResource: ResourceTrait<TClient>;
+}
+
 export class TokenSetClientRegistry<
 	TClient extends DisposableTrait = BaseOidcModeClient,
 > {
-	private readonly _destroyed = new BehaviorSubject(false);
+	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
+	private readonly destroyed$ = from(this._destroyed).pipe(
+		filter((value): value is true => value),
+	);
 
-	private readonly recordsSubject = new BehaviorSubject(
-		new Map<string, BehaviorSubject<TokenSetClientRecord<TClient>>>(),
+	private readonly recordsSignal = RxStateSignal.fromInitialValue(
+		new Map<string, TokenSetClientRecordSlot<TClient>>(),
 	);
 	private readonly eventsSubject = new Subject<
 		TokenSetClientRegistryEvent<TClient>
 	>();
+	private readonly entriesSignal = RxStateSignal.fromInitialValue<
+		readonly TokenSetClientRecordView<TClient>[]
+	>([]);
 
-	readonly events = observableToEventStream(this.eventsSubject);
-	readonly entries = readonlySignal(
-		behaviorSubjectToSignal(() => {
-			const entriesSubject = new BehaviorSubject<
-				readonly TokenSetClientRecordView<TClient>[]
-			>([]);
-			this.recordsSubject
-				.pipe(
-					switchMap((records) => {
-						const recordSubjects = [...records.values()];
-						return recordSubjects.length === 0
-							? of([] as TokenSetClientRecord<TClient>[])
-							: combineLatest(recordSubjects);
-					}),
-					map((records) => records.map((record) => record.toView())),
-					takeUntil(this.destroyed),
-				)
-				.subscribe((entries) => {
-					entriesSubject.next(entries);
-				});
-			return entriesSubject;
-		}),
-	);
+	readonly events = RxEventStream.fromObservableInput(this.eventsSubject);
+	readonly entries = readonlySignal(this.entriesSignal);
 
 	private readonly initializeTrigger = new Subject<string>();
 
-	constructor(private readonly options: CreateTokenSetClientRegistryOptions) {}
-
-	get destroyed(): Observable<true> {
-		return this._destroyed.pipe(
-			filter((x): x is true => x),
-			take(1),
-		);
+	constructor(private readonly options: CreateTokenSetClientRegistryOptions) {
+		from(this.recordsSignal)
+			.pipe(
+				switchMap((records) => {
+					const recordSignals = [...records.values()].map(
+						(slot) => slot.recordSignal,
+					);
+					return recordSignals.length === 0
+						? of([] as TokenSetClientRecord<TClient>[])
+						: combineLatest(
+								recordSignals.map((recordSignal) => from(recordSignal)),
+							);
+				}),
+				map((records) => records.map((record) => record.toView())),
+				takeUntil(this.destroyed$),
+			)
+			.subscribe((entries) => {
+				this.entriesSignal.set(entries);
+			});
 	}
 
 	register(entry: TokenSetClientRegistryEntry<TClient>): void {
 		const clientKey = entry.meta.clientKey;
-		if (this.recordsSubject.getValue().has(clientKey)) {
+		if (this.recordsSignal.get().has(clientKey)) {
 			throw new TokenSetClientRegistryError({
 				code: TokenSetClientRegistryErrorCode.ClientRegistered,
 				clientKey,
@@ -103,22 +109,46 @@ export class TokenSetClientRegistry<
 		}
 
 		const record = TokenSetClientRecord.fromRegistered(entry);
-		const recordSubject = new BehaviorSubject(record);
+		const recordSignal = RxStateSignal.fromInitialValue(record, {
+			equals: () => false,
+		});
+		const clientResource = resourceFromSnapshots<TClient>(() => {
+			const current = recordSignal.get();
+			switch (current.status) {
+				case TokenSetClientRegistryEntryStatus.Registered:
+					return { status: ResourceStatus.Idle };
+				case TokenSetClientRegistryEntryStatus.Initializing:
+					return { status: ResourceStatus.Loading };
+				case TokenSetClientRegistryEntryStatus.Ready:
+					return {
+						status: ResourceStatus.Resolved,
+						value: current.client as TClient,
+					};
+				case TokenSetClientRegistryEntryStatus.Failed:
+					return {
+						status: ResourceStatus.LoadingError,
+						error: current.error,
+					};
+			}
+		});
 		this.updateRecords((records) => {
-			records.set(clientKey, recordSubject);
+			records.set(clientKey, { recordSignal, clientResource });
 		});
-		recordSubject.pipe(takeUntil(record.destroyed)).subscribe((record) => {
-			this.eventsSubject.next(record.toEvent());
-		});
+		from(recordSignal)
+			.pipe(takeUntil(record.destroyed$))
+			.subscribe((record) => {
+				this.eventsSubject.next(record.toEvent());
+			});
 
 		this.initializeTrigger
 			.pipe(
 				filter((id) => id === record.id),
 				take(1),
+				takeUntil(record.destroyed$),
 				switchMap(() => from(record.initialize())),
 			)
 			.subscribe((record) => {
-				recordSubject.next(record);
+				recordSignal.set(record);
 			});
 
 		if (
@@ -137,7 +167,7 @@ export class TokenSetClientRegistry<
 					)
 				: NEVER
 			)
-				.pipe(takeUntil(record.destroyed))
+				.pipe(takeUntil(record.destroyed$))
 				.subscribe(() => {
 					this.initializeTrigger.next(record.id);
 				});
@@ -147,27 +177,27 @@ export class TokenSetClientRegistry<
 	async initialize(
 		key: string,
 	): Promise<TokenSetClientReadyRecordView<TClient>> {
-		const clientRecord = this.clientRecordSubjectFor(key);
-		const record = clientRecord.getValue();
+		const recordSignal = this.clientRecordSignalFor(key);
+		const record = recordSignal.get();
 
 		this.initializeTrigger.next(record.id);
 
 		let result: TokenSetClientRecord<TClient>;
 		try {
 			result = await firstValueFrom(
-				clientRecord.pipe(
+				from(recordSignal).pipe(
 					filter(
 						(record) =>
 							record.status === TokenSetClientRegistryEntryStatus.Ready ||
 							record.status === TokenSetClientRegistryEntryStatus.Failed,
 					),
 					take(1),
-					takeUntil(record.destroyed),
+					takeUntil(record.destroyed$),
 				),
 			);
 		} catch (error) {
 			if (error instanceof EmptyError) {
-				result = clientRecord.getValue();
+				result = recordSignal.get();
 			} else {
 				throw error;
 			}
@@ -189,68 +219,69 @@ export class TokenSetClientRegistry<
 	}
 
 	has(key: string): boolean {
-		return this.recordsSubject.getValue().has(key);
+		return this.recordsSignal.get().has(key);
 	}
 
 	unregister(key: string): boolean {
-		const recordSubject = this.recordsSubject.getValue().get(key);
-		if (!recordSubject) {
+		const slot = this.recordsSignal.get().get(key);
+		if (!slot) {
 			return false;
 		}
-		const record = recordSubject.getValue();
+		const record = slot.recordSignal.get();
 		this.updateRecords((records) => {
 			records.delete(key);
 		});
 		record.dispose();
-		recordSubject.complete();
+		slot.clientResource.dispose();
 		this.eventsSubject.next(record.toDisposedEvent());
 		return true;
 	}
 
 	dispose(): void {
-		for (const key of [...this.recordsSubject.getValue().keys()]) {
+		if (this._destroyed.get()) {
+			return;
+		}
+		for (const key of [...this.recordsSignal.get().keys()]) {
 			this.unregister(key);
 		}
-		this._destroyed.next(true);
+		this._destroyed.set(true);
 	}
 
-	private clientRecordSubjectFor(
+	private clientRecordSignalFor(
 		key: string,
-	): BehaviorSubject<TokenSetClientRecord<TClient>> {
-		const recordSubject = this.recordsSubject.getValue().get(key);
-		if (!recordSubject) {
+	): TokenSetClientRecordSignal<TClient> {
+		const slot = this.recordsSignal.get().get(key);
+		if (!slot) {
 			throw new TokenSetClientRegistryError({
 				code: TokenSetClientRegistryErrorCode.ClientUnregistered,
 				clientKey: key,
 			});
 		}
-		return recordSubject;
+		return slot.recordSignal;
 	}
 
 	clientRecordFor(
 		key: string,
 	): ReadableSignalTrait<TokenSetClientRecord<TClient>> {
-		return TokenSetClientRecord.toSignal(this.clientRecordSubjectFor(key));
+		return TokenSetClientRecord.toSignal(this.clientRecordSignalFor(key));
 	}
 
 	clientRecordOptionFor(
 		key: string,
 	): ReadableSignalTrait<TokenSetClientRecord<TClient>> | undefined {
-		const recordSubject = this.recordsSubject.getValue().get(key);
-		return recordSubject
-			? TokenSetClientRecord.toSignal(recordSubject)
-			: undefined;
+		const slot = this.recordsSignal.get().get(key);
+		return slot ? TokenSetClientRecord.toSignal(slot.recordSignal) : undefined;
 	}
 
-	private *clientSubjectGenForQuery(
+	private *clientRecordSignalGenForQuery(
 		query: TokenSetClientQueryOptions,
-	): Generator<BehaviorSubject<TokenSetClientRecord<TClient>>, void, unknown> {
+	): Generator<TokenSetClientRecordSignal<TClient>, void, unknown> {
 		const filters = Array.isArray(query) ? query : [query];
 		const seen = new Set<string>();
 		for (const filter of filters) {
 			let index = 0;
-			for (const recordSubject of this.recordsSubject.getValue().values()) {
-				const record = recordSubject.getValue();
+			for (const { recordSignal } of this.recordsSignal.get().values()) {
+				const record = recordSignal.get();
 				if (
 					matchesTokenSetClientQuery(record, filter) &&
 					(!filter.selector || filter.selector(record.meta, index))
@@ -258,22 +289,28 @@ export class TokenSetClientRegistry<
 					index++;
 					if (!seen.has(record.id)) {
 						seen.add(record.id);
-						yield recordSubject;
+						yield recordSignal;
 					}
 				}
 			}
 		}
 	}
 
-	clientSignalFor(
+	clientResourceFor(
 		key: string,
-		options: TokenSetClientSignalOptions = {},
-	): ReadableReplaySignalTrait<TClient> {
-		const recordSubject = this.clientRecordSubjectFor(key);
-		if (options.initialize ?? true) {
-			this.initializeTrigger.next(recordSubject.getValue().id);
+		options: TokenSetClientResourceOptions = {},
+	): ResourceTrait<TClient> {
+		const slot = this.recordsSignal.get().get(key);
+		if (!slot) {
+			throw new TokenSetClientRegistryError({
+				code: TokenSetClientRegistryErrorCode.ClientUnregistered,
+				clientKey: key,
+			});
 		}
-		return TokenSetClientRecord.toClientSignal(recordSubject);
+		if (options.initialize ?? true) {
+			this.initializeTrigger.next(slot.recordSignal.get().id);
+		}
+		return slot.clientResource;
 	}
 
 	*clientRecordGenForQuery(
@@ -283,8 +320,8 @@ export class TokenSetClientRegistry<
 		void,
 		unknown
 	> {
-		for (const recordSubject of this.clientSubjectGenForQuery(query)) {
-			yield TokenSetClientRecord.toSignal(recordSubject);
+		for (const recordSignal of this.clientRecordSignalGenForQuery(query)) {
+			yield TokenSetClientRecord.toSignal(recordSignal);
 		}
 	}
 
@@ -295,34 +332,36 @@ export class TokenSetClientRegistry<
 		return result.done ? undefined : result.value;
 	}
 
-	*clientSignalGenForQuery(
+	*clientResourceGenForQuery(
 		query: TokenSetClientQueryOptions,
-		options: TokenSetClientSignalOptions = {},
-	): Generator<ReadableReplaySignalTrait<TClient>, void, unknown> {
-		for (const recordSubject of this.clientSubjectGenForQuery(query)) {
+		options: TokenSetClientResourceOptions = {},
+	): Generator<ResourceTrait<TClient>, void, unknown> {
+		for (const recordSignal of this.clientRecordSignalGenForQuery(query)) {
 			if (options.initialize ?? true) {
-				this.initializeTrigger.next(recordSubject.getValue().id);
+				this.initializeTrigger.next(recordSignal.get().id);
 			}
-			yield TokenSetClientRecord.toClientSignal(recordSubject);
+			const clientKey = recordSignal.get().meta.clientKey;
+			const slot = this.recordsSignal.get().get(clientKey);
+			if (slot) {
+				yield slot.clientResource;
+			}
 		}
 	}
 
-	clientSignalForQuery(
+	clientResourceForQuery(
 		query: TokenSetClientQueryOptions,
-		options: TokenSetClientSignalOptions = {},
-	): ReadableReplaySignalTrait<TClient> | undefined {
-		const result = this.clientSignalGenForQuery(query, options).next();
+		options: TokenSetClientResourceOptions = {},
+	): ResourceTrait<TClient> | undefined {
+		const result = this.clientResourceGenForQuery(query, options).next();
 		return result.done ? undefined : result.value;
 	}
 
 	private updateRecords(
-		mutate: (
-			records: Map<string, BehaviorSubject<TokenSetClientRecord<TClient>>>,
-		) => void,
+		mutate: (records: Map<string, TokenSetClientRecordSlot<TClient>>) => void,
 	): void {
-		const records = this.recordsSubject.getValue();
+		const records = new Map(this.recordsSignal.get());
 		mutate(records);
-		this.recordsSubject.next(records);
+		this.recordsSignal.set(records);
 	}
 }
 

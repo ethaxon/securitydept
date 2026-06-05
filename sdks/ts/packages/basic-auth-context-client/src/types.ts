@@ -1,8 +1,9 @@
 // --- Basic Auth Context Client types ---
 
 import {
-	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
+	type ResourceSnapshot,
+	type ResourceTrait,
 } from "@securitydept/client";
 
 /** Configuration for a single Basic Auth zone. */
@@ -162,7 +163,9 @@ export interface ResolvedBasicAuthZone {
 }
 
 export interface BasicAuthContextClientStateSignals {
-	readonly boundarySnapshot: ReadableReplaySignalTrait<BasicAuthBoundarySnapshot | null>;
-	readonly boundaryDetermined: ReadableReplaySignalTrait<true>;
-	readonly isAuthenticated: ReadableReplaySignalTrait<boolean>;
+	readonly boundarySnapshot: ReadableSignalTrait<
+		ResourceSnapshot<BasicAuthBoundarySnapshot | null>
+	>;
+	readonly boundaryResource: ResourceTrait<BasicAuthBoundarySnapshot | null>;
+	readonly isAuthenticated: ResourceTrait<boolean>;
 }

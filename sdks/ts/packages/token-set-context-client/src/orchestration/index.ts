@@ -26,6 +26,10 @@ export {
 	type UnknownErrorAttributes,
 } from "@securitydept/client";
 export { BaseOidcModeClient, PersistPolicy } from "./client/base-client";
+export {
+	TokenSetAuthorizationRevocationError,
+	TokenSetAuthorizationRevocationReason,
+} from "./client/error";
 // Base client: shared lifecycle infrastructure for mode-specific clients.
 export {
 	type BaseOidcModeClientDefaultOptions,

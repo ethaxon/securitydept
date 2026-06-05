@@ -29,10 +29,10 @@ vi.mock("@/components/auth/AuthModeNotice", () => ({
 	),
 }));
 
-vi.mock("@/hooks/useDashboardApi", () => ({
+vi.mock("@/hooks/useDashboardData", () => ({
 	useDashboardAccessNotice: () => null,
-	useDashboardEntriesQuery: () => ({ data: [] }),
-	useDashboardGroupsQuery: () => ({ data: [] }),
+	useEntriesQuery: () => ({ data: [] }),
+	useGroupsQuery: () => ({ data: [] }),
 }));
 
 vi.mock("@/api/serverHealth", async () => {

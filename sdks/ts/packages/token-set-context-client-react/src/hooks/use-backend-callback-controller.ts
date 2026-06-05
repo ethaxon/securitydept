@@ -4,10 +4,7 @@ import {
 	type FoundationEnvironment,
 	takeCompatFragmentFromRouter,
 } from "@securitydept/client";
-import {
-	useReadableSignalValue,
-	useSecuritydeptContext,
-} from "@securitydept/client-react";
+import { useSecuritydeptContext, useSignal } from "@securitydept/client-react";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
 	BackendOidcModeCallbackController,
@@ -64,7 +61,7 @@ export function useTokenSetBackendCallbackController(
 			}),
 		[registry],
 	);
-	const state = useReadableSignalValue(controller.state);
+	const state = useSignal(controller.state);
 	const autoHandle = options.autoHandle ?? true;
 
 	useEffect(() => {

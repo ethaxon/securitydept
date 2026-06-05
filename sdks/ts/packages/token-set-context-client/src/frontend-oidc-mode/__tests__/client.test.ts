@@ -5,7 +5,12 @@ import {
 	createRootSpan,
 	createSignal,
 	createTracing,
+	type JsonRpcMessage,
+	type JsonRpcNotificationEvent,
+	type JsonRpcRequestEvent,
 	OperationTraceEventType,
+	type ReadableSignalTrait,
+	type ResourceSnapshot,
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import { createEnvironmentForTest as createFoundationEnvironment } from "@securitydept/client/test";
@@ -39,10 +44,10 @@ vi.mock("../../orchestration/client/popup/relay", async () => {
 });
 
 function createMockPopupTrait() {
-	const onNotification = createEventSubject();
-	const onRequest = createEventSubject();
-	const outgoing = createEventSubject();
-	const incoming = createEventSubject();
+	const onNotification = createEventSubject<JsonRpcNotificationEvent>();
+	const onRequest = createEventSubject<JsonRpcRequestEvent>();
+	const outgoing = createEventSubject<JsonRpcMessage>();
+	const incoming = createEventSubject<unknown>();
 
 	return {
 		open: popupMocks.open,
@@ -66,15 +71,18 @@ function createMockPopupTrait() {
 	};
 }
 
-function expectReplayValue<T>(signal: {
-	get(): { kind: "empty" } | { kind: "value"; value: T };
-}): T {
-	const slot = signal.get();
-	expect(slot.kind).toBe("value");
-	if (slot.kind !== "value") {
-		throw new Error("Expected replay signal value.");
+function expectSnapshotValue<T>(
+	signal: ReadableSignalTrait<ResourceSnapshot<T>>,
+): T {
+	const snapshot = signal.get();
+	if (
+		snapshot.status !== "reloading" &&
+		snapshot.status !== "resolved" &&
+		snapshot.status !== "error"
+	) {
+		throw new Error("Expected resource snapshot value.");
 	}
-	return slot.value;
+	return snapshot.value;
 }
 
 const oauthMocks = vi.hoisted(() => ({
@@ -942,8 +950,8 @@ describe("FrontendOidcModeClient", () => {
 		const refreshed = await client.refreshState();
 
 		expect(refreshed?.tokens.refreshMaterial).toBe("seed-rt");
-		expect(expectReplayValue(client.authSnapshot)?.tokens.refreshMaterial).toBe(
-			"seed-rt",
-		);
+		expect(
+			expectSnapshotValue(client.authSnapshot)?.tokens.refreshMaterial,
+		).toBe("seed-rt");
 	});
 });

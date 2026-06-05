@@ -5,7 +5,7 @@ import {
 	createJsonRpcServer,
 	type JsonRpcMessage,
 } from "../../protocol/json-rpc";
-import { observableToEventStream } from "../../rx";
+import { RxEventStream } from "../../rx";
 import { createSignal } from "../../signals";
 import { createTimeForTest } from "../../test";
 import { PopupErrorCode } from "../errors";
@@ -92,6 +92,8 @@ function createJsonRpcPeerPair() {
 		server,
 		time,
 		closed,
-		closedStream: observableToEventStream(closed[SYMBOL_OBSERVABLE]()),
+		closedStream: RxEventStream.fromObservableInput(
+			closed[SYMBOL_OBSERVABLE](),
+		),
 	};
 }

@@ -1,10 +1,12 @@
 import {
-	createReplaySignal,
+	createSignal,
 	ENVIRONMENT_TOKEN,
 	REQUIREMENT_PLANNER_HOST,
 	RequirementPlannerHost,
+	ResourceStatus,
 	type RouteBehaviourContextExtra,
 	readSecuritydeptRouteMetadata,
+	resourceFromSnapshots,
 	SecuritydeptInjector,
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
@@ -27,8 +29,13 @@ import {
 } from "../tanstack-router";
 
 function createClient(isAuthenticatedValue: boolean): BaseOidcModeClient {
-	const isAuthenticated = createReplaySignal<boolean>();
-	isAuthenticated.setValue(isAuthenticatedValue);
+	const isAuthenticatedSnapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: isAuthenticatedValue,
+	} as const);
+	const isAuthenticated = resourceFromSnapshots(() =>
+		isAuthenticatedSnapshot.get(),
+	);
 	return {
 		isAuthenticated,
 		loginWithRedirect: vi.fn(async () => undefined),

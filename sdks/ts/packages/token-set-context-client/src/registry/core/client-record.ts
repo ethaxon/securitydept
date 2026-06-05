@@ -2,17 +2,12 @@ import {
 	ClientError,
 	ClientErrorKind,
 	type DisposableTrait,
-	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
-	readonlySignal,
 	SYMBOL_DISPOSE,
 	UserRecovery,
 } from "@securitydept/client";
-import {
-	behaviorSubjectToSignal,
-	observableToReplaySignal,
-} from "@securitydept/client/rx";
-import { BehaviorSubject, filter, map, type Observable, take } from "rxjs";
+import { RxStateSignal } from "@securitydept/client/rx";
+import { filter, from } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import {
 	type TokenSetClientDisposedRecordView,
@@ -30,7 +25,10 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 	status: TokenSetClientRegistryEntryStatus;
 	client: TClient | undefined;
 	error: unknown | null;
-	private readonly _destroyed = new BehaviorSubject(false);
+	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
+	readonly destroyed$ = from(this._destroyed).pipe(
+		filter((value): value is true => value),
+	);
 
 	protected constructor(
 		readonly id: string,
@@ -42,13 +40,6 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 		this.status = status;
 		this.client = client;
 		this.error = error;
-	}
-
-	get destroyed(): Observable<true> {
-		return this._destroyed.pipe(
-			filter((value): value is true => value),
-			take(1),
-		);
 	}
 
 	get meta(): TokenSetClientMeta {
@@ -72,22 +63,9 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 	}
 
 	static toSignal<TClient extends DisposableTrait>(
-		recordSubject: BehaviorSubject<TokenSetClientRecord<TClient>>,
+		recordSignal: ReadableSignalTrait<TokenSetClientRecord<TClient>>,
 	): ReadableSignalTrait<TokenSetClientRecord<TClient>> {
-		return readonlySignal(behaviorSubjectToSignal(() => recordSubject));
-	}
-
-	static toClientSignal<TClient extends DisposableTrait>(
-		recordSubject: BehaviorSubject<TokenSetClientRecord<TClient>>,
-	): ReadableReplaySignalTrait<TClient> {
-		return observableToReplaySignal<TClient>(
-			recordSubject.pipe(
-				filter(
-					(record) => record.status === TokenSetClientRegistryEntryStatus.Ready,
-				),
-				map((record) => record.client as TClient),
-			),
-		);
+		return recordSignal;
 	}
 
 	async *initialize(): AsyncGenerator<TokenSetClientRecord<TClient>> {
@@ -108,7 +86,7 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 			this.client = client;
 			this.status = TokenSetClientRegistryEntryStatus.Ready;
 			this.error = null;
-			if (this._destroyed.getValue()) {
+			if (this._destroyed.get()) {
 				yield this;
 				client.dispose();
 				return yield this;
@@ -118,7 +96,7 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 			this.client = undefined;
 			this.status = TokenSetClientRegistryEntryStatus.Failed;
 			this.error = error;
-			if (this._destroyed.getValue()) {
+			if (this._destroyed.get()) {
 				yield this;
 				return yield this;
 			}
@@ -195,7 +173,10 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 	}
 
 	dispose(): void {
-		this._destroyed.next(true);
+		if (this._destroyed.get()) {
+			return;
+		}
+		this._destroyed.set(true);
 		this.client?.dispose();
 	}
 

@@ -3,15 +3,9 @@ import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-clie
 import { useSecuritydeptContext } from "@securitydept/client-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ExternalLink, Lock, LogIn, LogOut, ShieldAlert } from "lucide-react";
-import { useSyncExternalStore } from "react";
 import { Layout } from "@/components/layout/Layout";
-import {
-	AuthContextMode,
-	clearAuthContextMode,
-	getAuthContextMode,
-	setAuthContextMode,
-	subscribeAuthContextMode,
-} from "@/lib/authContext";
+import { useAuthMode, useAuthService } from "@/lib/auth/authHooks";
+import { AuthContextMode } from "@/lib/auth/authService";
 import {
 	AuthObservationProfileId,
 	authObservationProfiles,
@@ -102,14 +96,11 @@ function readObservedBoundarySummary(
 }
 
 export function BasicAuthPlaygroundPage() {
+	const authService = useAuthService();
 	const basicAuthClient = useSecuritydeptContext().get(
 		BASIC_AUTH_CONTEXT_CLIENT,
 	);
-	const rawMode = useSyncExternalStore(
-		subscribeAuthContextMode,
-		getAuthContextMode,
-		getAuthContextMode,
-	);
+	const { storedMode } = useAuthMode();
 	const probeQuery = useQuery({
 		queryKey: ["playground", "basic-auth", "status"],
 		queryFn: () => basicAuthClient.refresh(),
@@ -123,7 +114,7 @@ export function BasicAuthPlaygroundPage() {
 		mutationKey: ["playground", "basic-auth", "logout"],
 		mutationFn: () => basicAuthClient.logout({ zonePrefix: "/basic" }),
 		onSettled: () => {
-			clearAuthContextMode();
+			authService.clearMode();
 			window.location.href = "/playground/basic-auth";
 		},
 	});
@@ -166,7 +157,7 @@ export function BasicAuthPlaygroundPage() {
 						<div className="flex flex-col gap-3 sm:flex-row">
 							<a
 								href={loginHref}
-								onClick={() => setAuthContextMode(AuthContextMode.Basic)}
+								onClick={() => authService.setMode(AuthContextMode.Basic)}
 								className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-medium text-zinc-950 transition-colors hover:bg-amber-400"
 							>
 								<LogIn className="h-4 w-4" />
@@ -188,7 +179,7 @@ export function BasicAuthPlaygroundPage() {
 				<section className="grid gap-4 md:grid-cols-3">
 					<StatusCard
 						title="Stored mode"
-						value={rawMode ?? "none"}
+						value={storedMode ?? "none"}
 						description="The local auth-context hint for the current browser tab."
 					/>
 					<StatusCard

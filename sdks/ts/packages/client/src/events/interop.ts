@@ -1,10 +1,7 @@
 import { from } from "rxjs";
 import { type InteropObservableTrait } from "../compat";
-import { observableToEventStream } from "../rx";
-import {
-	type ReadableReplaySignalTrait,
-	type ReadableSignalTrait,
-} from "../signals/types";
+import { RxEventStream } from "../rx/event";
+import { type ReadableSignalTrait } from "../signals/types";
 import { type EventStreamTrait, isEventStreamTrait } from "./types";
 
 export type ToEventStreamInput<T> =
@@ -15,8 +12,7 @@ export type ToEventStreamInput<T> =
 	| ArrayLike<T>
 	| Iterable<T>
 	| EventStreamTrait<T>
-	| ReadableSignalTrait<T>
-	| ReadableReplaySignalTrait<T>;
+	| ReadableSignalTrait<T>;
 
 export function toEventStream<T>(
 	input: ToEventStreamInput<T>,
@@ -24,5 +20,5 @@ export function toEventStream<T>(
 	if (isEventStreamTrait(input)) {
 		return input;
 	}
-	return observableToEventStream(from(input));
+	return RxEventStream.fromObservableInput(from(input));
 }

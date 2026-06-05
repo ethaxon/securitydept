@@ -66,6 +66,7 @@ export {
 	SYMBOL_ASYNC_DISPOSE,
 	SYMBOL_DISPOSE,
 	SYMBOL_OBSERVABLE,
+	type WithInteropObservableTraitCompat,
 } from "./compat";
 // --- Environment ---
 export {
@@ -240,21 +241,33 @@ export {
 } from "./scheduling";
 // --- Signals ---
 export {
-	type ComputedReplaySignalTrait,
 	type ComputedSignalTrait,
-	createAndThenComputedReplaySignal,
+	type CreateResourceOptions,
 	createComputed,
-	createComputedReplaySignal,
-	createReplaySignal,
+	createResource,
 	createSignal,
-	isReplaySignalTrait,
-	type ReadableReplaySignalTrait,
+	mapResource,
 	type ReadableSignalTrait,
-	type ReplaySignalSlot,
-	type ReplaySignalWhenValueOptions,
-	readonlyReplaySignal,
+	ResourceError,
+	ResourceErrorCode,
+	type ResourceErrorSnapshot,
+	type ResourceIdleSnapshot,
+	type ResourceLoadingErrorSnapshot,
+	type ResourceLoadingSnapshot,
+	type ResourceReloadingSnapshot,
+	type ResourceResolvedSnapshot,
+	type ResourceSnapshot,
+	type ResourceSnapshotUpdate,
+	ResourceSnapshotUpdateKind,
+	ResourceStatus,
+	type ResourceStreamContext,
+	type ResourceTrait,
+	type ResourceValueUnavailableErrorOptions,
+	type ResourceWhenValueOptions,
 	readonlySignal,
-	type WritableReplaySignalTrait,
+	reduceResourceSnapshot,
+	resourceFromSnapshots,
+	resourceSnapshotValueOr,
 	type WritableSignalTrait,
 } from "./signals";
 // --- Span ---

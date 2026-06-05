@@ -42,7 +42,7 @@ export {
 	TokenSetClientRegistryEntryStatus,
 	type TokenSetClientRegistryEvent,
 	type TokenSetClientRegistryEventType,
-	type TokenSetClientSignalOptions,
+	type TokenSetClientResourceOptions,
 } from "./contracts/types";
 export {
 	BackendOidcModeCallbackController,

@@ -5,14 +5,14 @@ import { EntryTable } from "@/components/entries/EntryTable";
 import { Layout } from "@/components/layout/Layout";
 import {
 	useDashboardAccessNotice,
-	useDashboardEntriesQuery,
-	useDashboardGroupsQuery,
-} from "@/hooks/useDashboardApi";
+	useEntriesQuery,
+	useGroupsQuery,
+} from "@/hooks/useDashboardData";
 
 export function EntriesPage() {
 	const accessNotice = useDashboardAccessNotice();
-	const { data: entries = [], isLoading } = useDashboardEntriesQuery();
-	const { data: groups = [] } = useDashboardGroupsQuery();
+	const { data: entries = [], isLoading } = useEntriesQuery();
+	const { data: groups = [] } = useGroupsQuery();
 
 	return (
 		<Layout>

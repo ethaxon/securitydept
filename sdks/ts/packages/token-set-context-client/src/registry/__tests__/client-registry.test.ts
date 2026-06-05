@@ -1,6 +1,7 @@
 import {
 	type DisposableTrait,
 	type ReadableSignalTrait,
+	ResourceStatus,
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
@@ -82,7 +83,7 @@ describe("TokenSetClientRegistry", () => {
 			}),
 		);
 
-		await expect(registry.clientSignalFor("main").whenValue()).resolves.toBe(
+		await expect(registry.clientResourceFor("main").whenValue()).resolves.toBe(
 			client,
 		);
 		const record = registry.clientRecordFor("main").get();
@@ -117,7 +118,7 @@ describe("TokenSetClientRegistry", () => {
 		expect(registry).toBeDefined();
 	});
 
-	it("initializes lazy clients when clientSignalFor is requested", async () => {
+	it("initializes lazy clients when clientResourceFor is requested", async () => {
 		const factory = vi.fn(() => createClient("lazy"));
 		const registry = createTokenSetClientRegistry<TestClient>({
 			environment: {},
@@ -136,20 +137,20 @@ describe("TokenSetClientRegistry", () => {
 			TokenSetClientRegistryEntryStatus.Registered,
 		);
 
-		const signal = registry.clientSignalFor("lazy");
+		const signal = registry.clientResourceFor("lazy");
 		const client = await signal.whenValue();
-		expect(client.id).toBe("lazy");
+		expect(client?.id).toBe("lazy");
 		expect(factory).toHaveBeenCalledTimes(1);
 		expect(registry.clientRecordFor("lazy").get().status).toBe(
 			TokenSetClientRegistryEntryStatus.Ready,
 		);
-		expect(signal.get()).toEqual({
-			kind: "value",
+		expect(signal.snapshot.get()).toEqual({
+			status: "resolved",
 			value: client,
 		});
 	});
 
-	it("keeps lazy clients uninitialized when clientSignalFor disables initialization", () => {
+	it("keeps lazy clients uninitialized when clientResourceFor disables initialization", () => {
 		const factory = vi.fn(() => createClient("lazy"));
 		const registry = createTokenSetClientRegistry<TestClient>({
 			environment: {},
@@ -163,7 +164,7 @@ describe("TokenSetClientRegistry", () => {
 			}),
 		);
 
-		const signal = registry.clientSignalFor("lazy", { initialize: false });
+		const signal = registry.clientResourceFor("lazy", { initialize: false });
 		expect(factory).not.toHaveBeenCalled();
 		expect(signal.hasValue()).toBe(false);
 		expect(registry.clientRecordFor("lazy").get().status).toBe(
@@ -185,7 +186,7 @@ describe("TokenSetClientRegistry", () => {
 			}),
 		);
 
-		await registry.clientSignalFor("main").whenValue();
+		await registry.clientResourceFor("main").whenValue();
 
 		await expect(registry.initialize("main")).resolves.toMatchObject({
 			client,
@@ -254,7 +255,7 @@ describe("TokenSetClientRegistry", () => {
 		expect(callbacks).toHaveLength(1);
 
 		callbacks[0]();
-		await registry.clientSignalFor("idle").whenValue();
+		await registry.clientResourceFor("idle").whenValue();
 		expect(factory).toHaveBeenCalledTimes(1);
 	});
 
@@ -349,6 +350,10 @@ describe("TokenSetClientRegistry", () => {
 		);
 
 		await expect(registry.initialize("flaky")).rejects.toBe(error);
+		expect(registry.clientResourceFor("flaky").snapshot.get()).toEqual({
+			status: ResourceStatus.LoadingError,
+			error,
+		});
 		expect(registry.clientRecordFor("flaky").get().status).toBe(
 			TokenSetClientRegistryEntryStatus.Failed,
 		);
@@ -360,7 +365,7 @@ describe("TokenSetClientRegistry", () => {
 		]);
 	});
 
-	it("lets clientSignalForQuery initialize lazy clients by default", async () => {
+	it("lets clientResourceForQuery initialize lazy clients by default", async () => {
 		const factory = vi.fn(() => createClient("lazy"));
 		const registry = createTokenSetClientRegistry<TestClient>({
 			environment: {},
@@ -374,7 +379,7 @@ describe("TokenSetClientRegistry", () => {
 			}),
 		);
 
-		const signal = registry.clientSignalForQuery({
+		const signal = registry.clientResourceForQuery({
 			requirementKind: "workspace",
 		});
 		expect(signal).toBeDefined();
@@ -396,7 +401,7 @@ describe("TokenSetClientRegistry", () => {
 			}),
 		);
 
-		const signal = registry.clientSignalForQuery(
+		const signal = registry.clientResourceForQuery(
 			{ requirementKind: "workspace" },
 			{ initialize: false },
 		);
@@ -407,7 +412,7 @@ describe("TokenSetClientRegistry", () => {
 		);
 	});
 
-	it("re-registering the same key creates a new record while prior client signals keep entity-scoped replay", async () => {
+	it("re-registering the same key creates a new record while prior client resources keep their snapshot", async () => {
 		const first = createClient("first");
 		const second = createClient("second");
 		const registry = createTokenSetClientRegistry<TestClient>({
@@ -417,23 +422,29 @@ describe("TokenSetClientRegistry", () => {
 		registry.register(
 			createRegistryEntry({ key: "main", clientFactory: () => first }),
 		);
-		const firstSignal = registry.clientSignalFor("main");
+		const firstSignal = registry.clientResourceFor("main");
 		await expect(firstSignal.whenValue()).resolves.toBe(first);
 		const firstRecordId = registry.entries.get()[0]?.id;
 
 		registry.unregister("main");
-		expect(firstSignal.get()).toEqual({ kind: "value", value: first });
+		expect(firstSignal.snapshot.get()).toEqual({
+			status: "resolved",
+			value: first,
+		});
 
 		registry.register(
 			createRegistryEntry({ key: "main", clientFactory: () => second }),
 		);
-		await expect(registry.clientSignalFor("main").whenValue()).resolves.toBe(
+		await expect(registry.clientResourceFor("main").whenValue()).resolves.toBe(
 			second,
 		);
 
 		expect(registry.entries.get()[0]?.id).toMatch(uuidV7Pattern);
 		expect(registry.entries.get()[0]?.id).not.toBe(firstRecordId);
-		expect(firstSignal.get()).toEqual({ kind: "value", value: first });
+		expect(firstSignal.snapshot.get()).toEqual({
+			status: "resolved",
+			value: first,
+		});
 	});
 
 	it("disposes registered clients on unregister and dispose", async () => {

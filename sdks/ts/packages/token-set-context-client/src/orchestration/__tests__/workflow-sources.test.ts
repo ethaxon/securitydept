@@ -1,6 +1,8 @@
 import {
 	createEventSubject,
-	createReplaySignal,
+	createSignal,
+	type ResourceSnapshot,
+	ResourceStatus,
 	type TimeTrait,
 } from "@securitydept/client";
 import {
@@ -166,7 +168,9 @@ describe("token-set workflow sources", () => {
 
 	it("records scheduled refresh-timer traces without elevating a global source enum", () => {
 		const time = createStaticTime(10_000);
-		const authSnapshot = createReplaySignal<TokenSetAuthSnapshot | null>();
+		const authSnapshot = createSignal<
+			ResourceSnapshot<TokenSetAuthSnapshot | null>
+		>({ status: ResourceStatus.Idle });
 		const traceEvents: Array<{
 			type: string;
 			attributes?: Record<string, unknown>;
@@ -190,11 +194,12 @@ describe("token-set workflow sources", () => {
 		);
 		const subscription = source.eventStream.subscribe({ next: () => {} });
 
-		authSnapshot.setValue(
-			createAuthSnapshot("future-token", {
+		authSnapshot.set({
+			status: ResourceStatus.Resolved,
+			value: createAuthSnapshot("future-token", {
 				expiresAt: new Date(10_000 + 5 * 60_000).toISOString(),
 			}),
-		);
+		});
 
 		expect(traceEvents[0]).toEqual({
 			type: TokenSetRefreshTimerWorkflowSourceTraceEventType.Scheduled,
@@ -210,7 +215,9 @@ describe("token-set workflow sources", () => {
 
 	it("records fired refresh-timer traces when refresh is immediately due", () => {
 		const time = createStaticTime(10_000);
-		const authSnapshot = createReplaySignal<TokenSetAuthSnapshot | null>();
+		const authSnapshot = createSignal<
+			ResourceSnapshot<TokenSetAuthSnapshot | null>
+		>({ status: ResourceStatus.Idle });
 		const traceEvents: Array<{
 			type: string;
 			attributes?: Record<string, unknown>;
@@ -234,11 +241,12 @@ describe("token-set workflow sources", () => {
 			next: (event) => events.push(event),
 		});
 
-		authSnapshot.setValue(
-			createAuthSnapshot("expired-token", {
+		authSnapshot.set({
+			status: ResourceStatus.Resolved,
+			value: createAuthSnapshot("expired-token", {
 				expiresAt: new Date(10_000 - 1_000).toISOString(),
 			}),
-		);
+		});
 
 		expect(events).toHaveLength(1);
 		expect(traceEvents).toEqual([

@@ -2,7 +2,8 @@ import {
 	createTimeForStd,
 	type EventStreamTrait,
 	type PageLifecycleTrait,
-	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
+	type ResourceSnapshot,
 	type TimeTrait,
 } from "@securitydept/client";
 import { type PageResumeEvent } from "@securitydept/client/web";
@@ -51,7 +52,9 @@ export type TokenSetPageResumeWorkflowSourceOptions =
 	};
 
 export interface CreateTokenSetRefreshTimerWorkflowSourceInput {
-	authSnapshot: ReadableReplaySignalTrait<TokenSetAuthSnapshot | null>;
+	authSnapshot: ReadableSignalTrait<
+		ResourceSnapshot<TokenSetAuthSnapshot | null>
+	>;
 	freshnessOptions: TokenSetTokenFreshnessOptions;
 	maxScheduleSliceMs?: number;
 	time?: TimeTrait;

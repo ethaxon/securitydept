@@ -1,6 +1,6 @@
 import { EMPTY, fromEventPattern, map, merge, of } from "rxjs";
 import { type EventStreamTrait } from "../../events/types";
-import { observableToEventStream } from "../../rx/interop";
+import { RxEventStream } from "../../rx";
 
 export type AbortSignalStdSource = Pick<AbortSignal, "aborted" | "reason"> & {
 	addEventListener?: (type: "abort", listener: EventListener) => void;
@@ -13,7 +13,7 @@ export type AbortSignalStdSource = Pick<AbortSignal, "aborted" | "reason"> & {
 export function abortSignalToEventStream(
 	signal: AbortSignalStdSource,
 ): EventStreamTrait<unknown> {
-	return observableToEventStream(
+	return RxEventStream.fromObservableInput(
 		merge(
 			signal.aborted ? of(signal.reason) : EMPTY,
 			fromEventPattern<Event>(

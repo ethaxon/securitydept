@@ -57,6 +57,7 @@ export interface TokenSetAuthDeterminationTrace {
 
 export interface TokenSetAuthDeterminationCommit<TResult> {
 	candidate: TokenSetAuthDeterminationCandidate;
+	failureValue?: TokenSetAuthSnapshot | null;
 	persistPolicy: PersistPolicy;
 	events?: readonly TokenSetAuthDeterminationEvent[];
 	result: TResult;

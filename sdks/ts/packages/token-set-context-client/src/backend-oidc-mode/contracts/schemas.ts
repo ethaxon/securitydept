@@ -35,3 +35,8 @@ export const BackendOidcModeRefreshBodySchema = defineType({
 		metadataRedemptionId: input.metadata_redemption_id ?? undefined,
 	}),
 );
+
+export const BackendOidcModeOAuthErrorBodySchema = defineType({
+	error: "string",
+	"error_description?": "string",
+});

@@ -7,13 +7,7 @@ import {
 	UserRecovery,
 	type UserRecovery as UserRecoveryType,
 } from "@securitydept/client";
-import {
-	useReadableSignalValue,
-	useReplaySignalValue,
-	useSecuritydeptContext,
-} from "@securitydept/client-react";
-import { type AuthSnapshot as AuthStateSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client-react";
+import { useReplaySignalValue, useSignal } from "@securitydept/client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
 	useCallback,
@@ -33,33 +27,25 @@ import {
 	probeForwardAuthWithBasicEntry,
 	probeForwardAuthWithEntryToken,
 	probePropagationRouteWithTokenSet,
-	tokenSetDashboardQueryKeys,
-	useTokenSetCreateBasicEntryMutation,
-	useTokenSetCreateGroupMutation,
-	useTokenSetCreateTokenEntryMutation,
-	useTokenSetEntriesQuery,
-	useTokenSetGroupsQuery,
 } from "@/api/tokenSet";
 import { ErrorPresentationCallout } from "@/components/common/ErrorPresentationCallout";
 import { Layout } from "@/components/layout/Layout";
 import {
-	AuthContextMode,
-	clearAuthContextMode,
-	getAuthContextMode,
-	setAuthContextMode,
-} from "@/lib/authContext";
+	dashboardQueryKeys,
+	useCreateBasicEntryMutation,
+	useCreateGroupMutation,
+	useCreateTokenEntryMutation,
+	useEntriesQuery,
+	useGroupsQuery,
+} from "@/hooks/useDashboardData";
+import { useAuthService } from "@/lib/auth/authHooks";
 import {
-	clearTokenSetBackendModeBrowserState,
+	AuthContextMode,
 	tokenSetBackendModeHostSpan,
 	tokenSetBackendModeTraceTimeline,
 	tokenSetBackendModeTracing,
-} from "@/lib/tokenSetBackendModeClient";
-import { assertTokenSetBackendOidcClient } from "@/lib/tokenSetClientAssertions";
-import {
-	TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
-	TOKEN_SET_BACKEND_MODE_PLAYGROUND_PATH,
-} from "@/lib/tokenSetConfig";
-import { tokenSetQueryKeys } from "@/lib/tokenSetQueryKeys";
+} from "@/lib/auth/authService";
+import { TOKEN_SET_BACKEND_MODE_PLAYGROUND_PATH } from "@/lib/tokenSetConfig";
 import {
 	createTokenSetBackendHostTraceRecorder,
 	readTokenSetTraceErrorFields,
@@ -326,8 +312,7 @@ function readMutationStatusText(status: MutationStatus, label: string): string {
 }
 
 export function TokenSetBackendModePlaygroundPage() {
-	const injector = useSecuritydeptContext();
-	const registry = injector.get(TOKEN_SET_CLIENT_REGISTRY);
+	const authService = useAuthService();
 	const traceTimeline = tokenSetBackendModeTraceTimeline;
 	const recordAppTrace = useMemo(
 		() =>
@@ -338,20 +323,19 @@ export function TokenSetBackendModePlaygroundPage() {
 		[],
 	);
 
-	const clientSlot = registry
-		.clientSignalFor(TOKEN_SET_BACKEND_MODE_CLIENT_KEY)
-		.get();
-	if (clientSlot.kind !== "value") {
-		throw new Error(
-			`Token-set backend mode client ${TOKEN_SET_BACKEND_MODE_CLIENT_KEY} is not ready.`,
-		);
-	}
-	const client = clientSlot.value;
+	const client = authService.getBackendOidcClient();
 	const state = useReplaySignalValue(client.authSnapshot, {
 		initialValue: null,
-	}) as AuthStateSnapshot | null;
+	});
 	const authDeterminedSlot = useSyncExternalStore(
-		(listener) => client.authDetermined.notify(listener),
+		(listener) => {
+			const subscription = client.authDetermined.watchStream().subscribe({
+				next: listener,
+			});
+			return () => {
+				subscription.unsubscribe();
+			};
+		},
 		() => client.authDetermined.get(),
 		() => client.authDetermined.get(),
 	);
@@ -359,11 +343,7 @@ export function TokenSetBackendModePlaygroundPage() {
 		client.authorizationHeaderValue,
 		{ initialValue: undefined },
 	);
-	const lastAuthError = useReadableSignalValue(client.lastAuthError);
-	assertTokenSetBackendOidcClient(
-		client,
-		`TokenSetBackendModePlaygroundPage client ${TOKEN_SET_BACKEND_MODE_CLIENT_KEY}`,
-	);
+	const lastAuthError = useSignal(client.lastAuthError);
 	const backendClient = client;
 
 	const traceEvents = useSyncExternalStore(
@@ -390,29 +370,14 @@ export function TokenSetBackendModePlaygroundPage() {
 
 	// --- React Query read paths (replaces imperative loadGroups / loadEntries) ---
 	const queryClient = useQueryClient();
-	const groupsQuery = useTokenSetGroupsQuery({
-		injector,
-		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
-	});
-	const entriesQuery = useTokenSetEntriesQuery({
-		injector,
-		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
-	});
+	const groupsQuery = useGroupsQuery();
+	const entriesQuery = useEntriesQuery();
 	const protectedGroups = groupsQuery.data ?? [];
 
 	// --- React Query mutation paths ---
-	const createGroupMutation = useTokenSetCreateGroupMutation({
-		injector,
-		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
-	});
-	const createTokenEntryMutation = useTokenSetCreateTokenEntryMutation({
-		injector,
-		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
-	});
-	const createBasicEntryMutation = useTokenSetCreateBasicEntryMutation({
-		injector,
-		clientKey: TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
-	});
+	const createGroupMutation = useCreateGroupMutation();
+	const createTokenEntryMutation = useCreateTokenEntryMutation();
+	const createBasicEntryMutation = useCreateBasicEntryMutation();
 	const protectedEntries = entriesQuery.data ?? [];
 	const [selectedGroupId, setSelectedGroupId] = useState("");
 	const [newGroupName, setNewGroupName] = useState("");
@@ -485,11 +450,9 @@ export function TokenSetBackendModePlaygroundPage() {
 
 	useEffect(() => {
 		if (state?.tokens.accessToken) {
-			if (getAuthContextMode() !== AuthContextMode.TokenSetBackend) {
-				setAuthContextMode(AuthContextMode.TokenSetBackend);
-			}
+			authService.setMode(AuthContextMode.TokenSetBackend);
 		}
-	}, [state?.tokens.accessToken]);
+	}, [authService, state?.tokens.accessToken]);
 
 	useEffect(() => {
 		if (authDeterminedSlot.kind === "empty") {
@@ -554,19 +517,15 @@ export function TokenSetBackendModePlaygroundPage() {
 		propagationRequestRef.current = null;
 
 		try {
-			await clearTokenSetBackendModeBrowserState(backendClient);
-			if (getAuthContextMode() === AuthContextMode.TokenSetBackend) {
-				clearAuthContextMode();
-			}
+			await backendClient.logout();
+			authService.clearMode();
 			setBootstrap({
 				kind: BootstrapStatusKind.Ready,
 				source: BackendModeStartupSource.Empty,
 			});
 			// Reset React Query caches — removes cached data and resets to initial state.
 			void queryClient.resetQueries({
-				queryKey: tokenSetQueryKeys.forClient(
-					TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
-				),
+				queryKey: dashboardQueryKeys.root,
 			});
 			setSelectedGroupId("");
 			setNewGroupName("");
@@ -690,9 +649,6 @@ export function TokenSetBackendModePlaygroundPage() {
 			const result = await createTokenEntryMutation.mutateAsync({
 				name: newTokenEntryName.trim(),
 				group_ids: [selectedGroup.id],
-				requestOptions: {
-					cancellationToken: cancellation.token,
-				},
 			});
 			if (createTokenEntryRequestRef.current !== cancellation) {
 				return;
@@ -794,9 +750,6 @@ export function TokenSetBackendModePlaygroundPage() {
 				username: newBasicEntryUsername.trim(),
 				password: newBasicEntryPassword,
 				group_ids: [selectedGroup.id],
-				requestOptions: {
-					cancellationToken: cancellation.token,
-				},
 			});
 			if (createBasicEntryRequestRef.current !== cancellation) {
 				return;
@@ -1287,7 +1240,7 @@ export function TokenSetBackendModePlaygroundPage() {
 							<button
 								type="button"
 								onClick={() => {
-									setAuthContextMode(AuthContextMode.TokenSetBackend);
+									authService.setMode(AuthContextMode.TokenSetBackend);
 									window.location.href = client.authorizeUrl(
 										TOKEN_SET_BACKEND_MODE_PLAYGROUND_PATH,
 									);
@@ -1422,8 +1375,8 @@ export function TokenSetBackendModePlaygroundPage() {
 								type="button"
 								onClick={() =>
 									void queryClient.cancelQueries({
-										queryKey: tokenSetDashboardQueryKeys.groups(
-											TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+										queryKey: dashboardQueryKeys.groups(
+											AuthContextMode.TokenSetBackend,
 										),
 									})
 								}
@@ -1659,8 +1612,8 @@ export function TokenSetBackendModePlaygroundPage() {
 								type="button"
 								onClick={() =>
 									void queryClient.cancelQueries({
-										queryKey: tokenSetDashboardQueryKeys.entries(
-											TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
+										queryKey: dashboardQueryKeys.entries(
+											AuthContextMode.TokenSetBackend,
 										),
 									})
 								}

@@ -1,7 +1,7 @@
 // Base OIDC Mode Client — shared lifecycle infrastructure
 //
 // Shared lifecycle host for backend/frontend OIDC mode clients:
-//   - Auth snapshot authority + replay signals
+//   - Auth snapshot authority + resources
 //   - Queue-serialized top-level auth workflows
 //   - Final candidate commit
 //   - Persistence-backed restore helpers
@@ -15,23 +15,25 @@ import {
 	type CancellationTokenSourceTrait,
 	ClientError,
 	ClientErrorKind,
-	createAndThenComputedReplaySignal,
 	createCancellationTokenSource,
-	createEventReplaySubject,
-	createEventSubject,
 	createOnceAsyncLockCallable,
-	createReplaySignal,
 	createSignal,
 	type DisposableTrait,
 	defineInstrumentMethodDecorator,
 	describeError,
 	type EventStreamTrait,
 	type FoundationEnvironment,
+	mapResource,
 	type OperationSpanTrait,
-	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
-	readonlyReplaySignal,
+	type ResourceSnapshot,
+	ResourceSnapshotUpdateKind,
+	ResourceStatus,
+	type ResourceTrait,
 	readonlySignal,
+	reduceResourceSnapshot,
+	resourceFromSnapshots,
+	resourceSnapshotValueOr,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
 	type WritableSignalTrait,
@@ -41,9 +43,11 @@ import {
 	type CommandResponse,
 	concatCommand,
 	dispatchCommandLocallyToPromise,
-	signalToObservable,
+	RxEventReplaySubject,
+	RxEventSubject,
+	RxStateSignal,
 } from "@securitydept/client/rx";
-import { from, merge, takeUntil, withLatestFrom } from "rxjs";
+import { filter, from, merge, takeUntil } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import {
 	createTokenSetAuthEvent,
@@ -59,6 +63,7 @@ import {
 } from "../token/freshness";
 import { tokenSetBearerHeader } from "../token/ops";
 import { type TokenSetAuthSnapshot } from "../token/types";
+import { TokenSetAuthorizationRevocationError } from "./error";
 import {
 	clearPersistedAuthSnapshot,
 	savePersistedAuthSnapshot,
@@ -131,12 +136,9 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	protected readonly _tracingOptions: BaseOidcModeClientTracingOptions;
 	protected readonly _persistence: TokenSetAuthSnapshotPersistenceOptions | null;
 	protected readonly _span: SpanTrait;
-	protected readonly _authSnapshotSignal =
-		createReplaySignal<TokenSetAuthSnapshot | null>();
-
-	private readonly _lastAuthErrorSignal = createSignal<unknown | undefined>(
-		undefined,
-	);
+	protected readonly _authSnapshotSignal = RxStateSignal.fromInitialValue<
+		ResourceSnapshot<TokenSetAuthSnapshot | null>
+	>({ status: ResourceStatus.Idle });
 	protected readonly _authOperationSignals: {
 		readonly restorePending: WritableSignalTrait<boolean>;
 		readonly refreshPending: WritableSignalTrait<boolean>;
@@ -151,9 +153,17 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	protected readonly _rootCancellation: CancellationTokenSourceTrait =
 		createCancellationTokenSource();
 
-	private readonly _destroyed = createReplaySignal<void>();
+	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
+	protected readonly destroyed$ = from(this._destroyed).pipe(
+		filter((value): value is true => value),
+	);
 	public start = createOnceAsyncLockCallable(async () => {
 		this._throwIfNotOperational();
+		this._authSnapshotSignal.set(
+			reduceResourceSnapshot(this._authSnapshotSignal.get(), {
+				kind: ResourceSnapshotUpdateKind.Load,
+			}),
+		);
 		if (this._persistence) {
 			return await this._restorePersistedState({
 				persistence: this._persistence,
@@ -171,26 +181,24 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	});
 	private _authEventSequence = 0;
 	private readonly _authEventSubject =
-		createEventReplaySubject<TokenSetAuthEvent>(100);
-	readonly refreshWorkflowSubject = createEventSubject<void>();
-	readonly planRefreshRequest =
-		createEventSubject<Command<TokenSetPlanRefreshRequest>>();
-	readonly planRefreshResponse =
-		createEventSubject<
-			CommandResponse<
-				Command<TokenSetPlanRefreshRequest>,
-				TokenSetPlanRefreshResponse
-			>
-		>();
+		new RxEventReplaySubject<TokenSetAuthEvent>(100);
+	private readonly refreshWorkflowSubject = new RxEventSubject<void>();
+	private readonly planRefreshRequest = new RxEventSubject<
+		Command<TokenSetPlanRefreshRequest>
+	>();
+	private readonly planRefreshResponse = new RxEventSubject<
+		CommandResponse<
+			Command<TokenSetPlanRefreshRequest>,
+			TokenSetPlanRefreshResponse
+		>
+	>();
 
-	readonly authDetermined: ReadableReplaySignalTrait<true>;
-	readonly authSnapshot: ReadableReplaySignalTrait<TokenSetAuthSnapshot | null>;
-	readonly isAuthenticated: ReadableReplaySignalTrait<boolean>;
-	readonly authorizationHeaderValue: ReadableReplaySignalTrait<
-		string | undefined
+	readonly authSnapshot: ReadableSignalTrait<
+		ResourceSnapshot<TokenSetAuthSnapshot | null>
 	>;
-	readonly lastAuthError: ReadableSignalTrait<unknown | undefined> =
-		readonlySignal(this._lastAuthErrorSignal);
+	readonly authResource: ResourceTrait<TokenSetAuthSnapshot | null>;
+	readonly isAuthenticated: ResourceTrait<boolean>;
+	readonly authorizationHeaderValue: ResourceTrait<string | undefined>;
 	readonly authOperations: TokenSetAuthOperationSignals = {
 		restorePending: readonlySignal(this._authOperationSignals.restorePending),
 		refreshPending: readonlySignal(this._authOperationSignals.refreshPending),
@@ -241,21 +249,17 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				}
 			: null;
 
-		this.authSnapshot = readonlyReplaySignal(this._authSnapshotSignal);
-		this.authDetermined = createAndThenComputedReplaySignal(
-			this._authSnapshotSignal,
-			() => ({ kind: "value", value: true }),
+		this.authSnapshot = readonlySignal(this._authSnapshotSignal);
+		this.authResource = resourceFromSnapshots(() =>
+			this._authSnapshotSignal.get(),
 		);
-		this.authorizationHeaderValue = createAndThenComputedReplaySignal(
-			this._authSnapshotSignal,
-			(snapshot) => ({
-				kind: "value",
-				value: tokenSetBearerHeader(snapshot?.tokens) ?? undefined,
-			}),
+		this.authorizationHeaderValue = mapResource(
+			this.authResource,
+			(snapshot) => tokenSetBearerHeader(snapshot?.tokens) ?? undefined,
 		);
-		this.isAuthenticated = createAndThenComputedReplaySignal(
+		this.isAuthenticated = mapResource(
 			this.authorizationHeaderValue,
-			(headerValue) => ({ kind: "value", value: headerValue !== undefined }),
+			(headerValue) => headerValue !== undefined,
 		);
 
 		this.refreshTimerWorkflowSource =
@@ -295,30 +299,35 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			from(this.pageResumeWorkflowSource.eventStream),
 			from(this.refreshTimerWorkflowSource.eventStream),
 		)
-			.pipe(takeUntil(signalToObservable<void>(this._destroyed)))
+			.pipe(takeUntil(this.destroyed$))
 			.subscribe(() => {
 				this.refreshWorkflowSubject.next();
 			});
 
 		from(this.refreshWorkflowSubject)
-			.pipe(
-				withLatestFrom(signalToObservable(this.authSnapshot)),
-				takeUntil(signalToObservable<void>(this._destroyed)),
-			)
-			.subscribe(([_, snapshot]) => {
-				this._refreshState({
-					snapshot: snapshot,
-					freshnessOptions: this._freshnessOptions,
-				});
+			.pipe(takeUntil(this.destroyed$))
+			.subscribe(() => {
+				const snapshot = this._readAuthSnapshotValue();
+				if (snapshot) {
+					this._refreshState({
+						snapshot,
+						freshnessOptions: this._freshnessOptions,
+					}).catch(() => {
+						// Refresh failure is reflected by authSnapshot.
+					});
+				}
 			});
 
 		from(this.planRefreshRequest)
-			.pipe(concatCommand((request) => planRefresh(request.payload)))
+			.pipe(
+				takeUntil(this.destroyed$),
+				concatCommand((request) => planRefresh(request.payload)),
+			)
 			.subscribe(this.planRefreshResponse);
 
 		if (options.autoStart === true) {
 			this.start().catch(() => {
-				// Startup failures are reflected through lastAuthError.
+				// Startup failure is reflected by authSnapshot.
 			});
 		}
 	}
@@ -368,9 +377,13 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 
 	async refreshState(): Promise<TokenSetAuthSnapshot | null> {
 		this._throwIfNotOperational();
-		const determinatedSnapshot = await this.authSnapshot.whenValue({
-			cancellationToken: this._rootCancellation.token,
-		});
+		const current = this._authSnapshotSignal.get();
+		const determinatedSnapshot =
+			current.status === ResourceStatus.Error
+				? current.value
+				: await this.authResource.whenValue({
+						cancellationToken: this._rootCancellation.token,
+					});
 		this._throwIfNotOperational();
 		return this._refreshState({
 			snapshot: determinatedSnapshot,
@@ -445,11 +458,19 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		this._throwIfNotOperational();
 		try {
 			this._authOperationSignals.refreshPending.set(true);
-			const currentSnapshot = await this._authSnapshotSignal.whenValue({
-				cancellationToken: this._rootCancellation.token,
-			});
-			this._throwIfNotOperational();
+			const currentSnapshot = request.snapshot;
+			this._authSnapshotSignal.set(
+				reduceResourceSnapshot(this._authSnapshotSignal.get(), {
+					kind: ResourceSnapshotUpdateKind.Load,
+				}),
+			);
 			if (!currentSnapshot) {
+				this._authSnapshotSignal.set(
+					reduceResourceSnapshot(this._authSnapshotSignal.get(), {
+						kind: ResourceSnapshotUpdateKind.Resolve,
+						value: null,
+					}),
+				);
 				return currentSnapshot;
 			}
 			const refreshPlan = await this._planRefreshInQueue(
@@ -461,19 +482,28 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			);
 			this._throwIfNotOperational();
 			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
-				return this._commitDetermination(
+				const revoked =
+					refreshPlan.error instanceof TokenSetAuthorizationRevocationError;
+				await this._commitDetermination(
 					{
 						candidate: refreshPlan,
-						persistPolicy: PersistPolicy.FollowClient,
+						failureValue: revoked ? null : currentSnapshot,
+						persistPolicy: revoked
+							? PersistPolicy.FollowClient
+							: PersistPolicy.Skip,
 						events: [
 							...this._buildRefreshLifecycleEvents(
 								currentSnapshot,
 								refreshPlan,
 							),
-							{
-								type: TokenSetAuthEventType.AuthUnauthenticated,
-								payload: {},
-							},
+							...(revoked
+								? [
+										{
+											type: TokenSetAuthEventType.AuthUnauthenticated,
+											payload: {},
+										} as const,
+									]
+								: []),
 						],
 						result: null,
 						trace: {
@@ -485,6 +515,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					},
 					operationSpan,
 				);
+				throw refreshPlan.error;
 			}
 			return this._commitDetermination(
 				{
@@ -664,10 +695,15 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			);
 			this._throwIfNotOperational();
 			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
-				return this._commitDetermination(
+				const revoked =
+					refreshPlan.error instanceof TokenSetAuthorizationRevocationError;
+				await this._commitDetermination(
 					{
 						candidate: refreshPlan,
-						persistPolicy: PersistPolicy.FollowClient,
+						failureValue: revoked ? null : restorePlan.snapshot,
+						persistPolicy: revoked
+							? PersistPolicy.FollowClient
+							: PersistPolicy.Skip,
 						events: [
 							...this._buildRefreshLifecycleEvents(
 								restorePlan.snapshot,
@@ -680,6 +716,14 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 									errorSummary: summarizeAuthError(refreshPlan.error),
 								},
 							},
+							...(revoked
+								? [
+										{
+											type: TokenSetAuthEventType.AuthUnauthenticated,
+											payload: {},
+										} as const,
+									]
+								: []),
 						],
 						result: null,
 						trace: {
@@ -691,6 +735,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					},
 					operationSpan,
 				);
+				throw refreshPlan.error;
 			}
 			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Authenticated) {
 				return this._commitDetermination(
@@ -774,10 +819,10 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	}
 
 	dispose(): void {
-		if (this._destroyed.hasValue()) {
+		if (this._destroyed.get()) {
 			return;
 		}
-		this._destroyed.setValue(undefined);
+		this._destroyed.set(true);
 		this._onDispose();
 		this._rootCancellation.cancel(
 			new ClientError({
@@ -787,6 +832,9 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				source: this._tracingOptions.target,
 			}),
 		);
+		this.isAuthenticated.dispose();
+		this.authorizationHeaderValue.dispose();
+		this.authResource.dispose();
 		this._recordTrace(
 			this._traceType(TokenSetOrchestrationTraceEvent.Disposed),
 			undefined,
@@ -812,13 +860,36 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		this._rootCancellation.token.throwIfCancellationRequested();
 	}
 
+	protected _readAuthSnapshotValue(): TokenSetAuthSnapshot | null {
+		return resourceSnapshotValueOr(this._authSnapshotSignal.get(), null);
+	}
+
 	private async _commitDetermination<TResult>(
 		commit: TokenSetAuthDeterminationCommit<TResult>,
 		span?: SpanTrait,
 	): Promise<TResult> {
 		this._throwIfNotOperational();
-		this._authSnapshotSignal.setValue(commit.candidate.snapshot ?? null);
-		this._lastAuthErrorSignal.set(commit.candidate.error);
+		const previous = this._authSnapshotSignal.get();
+		this._authSnapshotSignal.set(
+			commit.candidate.kind === TokenSetAuthDeterminationKind.Failed
+				? reduceResourceSnapshot(
+						previous,
+						commit.failureValue === undefined
+							? {
+									kind: ResourceSnapshotUpdateKind.Fail,
+									error: commit.candidate.error,
+								}
+							: {
+									kind: ResourceSnapshotUpdateKind.FailWithValue,
+									value: commit.failureValue,
+									error: commit.candidate.error,
+								},
+					)
+				: reduceResourceSnapshot(previous, {
+						kind: ResourceSnapshotUpdateKind.Resolve,
+						value: commit.candidate.snapshot ?? null,
+					}),
+		);
 		await this._syncPersistence(commit);
 		this._throwIfNotOperational();
 		for (const event of commit.events ?? []) {
@@ -869,9 +940,12 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			this._throwIfNotOperational();
 		} catch (error) {
 			this._rootCancellation.token.throwIfCancellationRequested();
-			if (commit.candidate.error === undefined) {
-				this._lastAuthErrorSignal.set(error);
-			}
+			this._authSnapshotSignal.set(
+				reduceResourceSnapshot(this._authSnapshotSignal.get(), {
+					kind: ResourceSnapshotUpdateKind.Fail,
+					error,
+				}),
+			);
 		}
 	}
 

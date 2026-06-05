@@ -2,9 +2,12 @@
 
 import {
 	ClientErrorKind,
+	createBaseTransportForStdFetch,
+	createFoundationEnvironment,
 	readErrorPresentationDescriptor,
 	UserRecovery,
 } from "@securitydept/client";
+import { SessionContextClient } from "@securitydept/session-context-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 class MemoryStorage {
@@ -50,33 +53,6 @@ describe("webui auth smoke", () => {
 		});
 	});
 
-	it("notifies auth-context subscribers through shared storage and custom-event bridges", async () => {
-		const { AuthContextMode, setAuthContextMode, subscribeAuthContextMode } =
-			await import("../lib/authContext");
-		const listener = vi.fn();
-		const unsubscribe = subscribeAuthContextMode(listener);
-
-		window.dispatchEvent(
-			new StorageEvent("storage", {
-				key: "securitydept.webui.auth_context_mode",
-				newValue: AuthContextMode.TokenSetFrontend,
-			}),
-		);
-		expect(listener).toHaveBeenCalledTimes(1);
-
-		setAuthContextMode(AuthContextMode.Basic);
-		expect(listener).toHaveBeenCalledTimes(2);
-
-		unsubscribe();
-		window.dispatchEvent(
-			new StorageEvent("storage", {
-				key: "securitydept.webui.auth_context_mode",
-				newValue: AuthContextMode.Session,
-			}),
-		);
-		expect(listener).toHaveBeenCalledTimes(2);
-	});
-
 	it("fetchCurrentSession returns session when authenticated", async () => {
 		vi.stubGlobal(
 			"fetch",
@@ -87,7 +63,12 @@ describe("webui auth smoke", () => {
 				}),
 			),
 		);
-		const { sessionContextClient } = await import("../lib/sessionContext");
+		const sessionContextClient = new SessionContextClient(
+			{ baseUrl: "" },
+			createFoundationEnvironment({
+				transport: createBaseTransportForStdFetch(),
+			}),
+		);
 
 		const session = await sessionContextClient.refresh();
 		expect(session).toEqual({
@@ -106,7 +87,12 @@ describe("webui auth smoke", () => {
 			"fetch",
 			vi.fn(async () => createJsonResponse(401, { message: "unauthorized" })),
 		);
-		const { sessionContextClient } = await import("../lib/sessionContext");
+		const sessionContextClient = new SessionContextClient(
+			{ baseUrl: "" },
+			createFoundationEnvironment({
+				transport: createBaseTransportForStdFetch(),
+			}),
+		);
 
 		const session = await sessionContextClient.refresh();
 		expect(session).toBeNull();
@@ -124,7 +110,12 @@ describe("webui auth smoke", () => {
 			},
 		);
 		vi.stubGlobal("fetch", fetchMock);
-		const { sessionContextClient } = await import("../lib/sessionContext");
+		const sessionContextClient = new SessionContextClient(
+			{ baseUrl: "" },
+			createFoundationEnvironment({
+				transport: createBaseTransportForStdFetch(),
+			}),
+		);
 
 		await sessionContextClient.logout();
 

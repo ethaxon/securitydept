@@ -8,11 +8,12 @@ import {
 import { act, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-	FrontendHostTraceEventType,
-	TOKEN_SET_FRONTEND_HOST_TRACE_TARGET,
-} from "@/lib/tokenSetFrontendModeClient";
 import { TraceTimelineSection } from "../TraceTimelineSection";
+
+const TOKEN_SET_FRONTEND_HOST_TRACE_TARGET = "apps.webui.token-set-frontend";
+const FrontendHostTraceEventType = {
+	CrossTabCleared: "frontend_oidc.host.cross_tab.cleared",
+} as const;
 
 function TraceTimelineHarness(props: {
 	timeline: ReturnType<typeof createTraceTimelineStore>;

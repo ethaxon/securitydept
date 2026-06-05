@@ -23,11 +23,29 @@ export {
 } from "./command";
 export { createAsyncSchedulerWithTimestampProvider } from "./environment";
 export {
-	behaviorSubjectToSignal,
-	eventStreamToObservable,
-	eventSubjectToSubject,
-	observableToEventStream,
-	observableToReplaySignal,
-	signalToObservable,
-	subjectToEventSubject,
-} from "./interop";
+	RxEventReplaySubject,
+	RxEventStream,
+	RxEventSubject,
+} from "./event";
+export {
+	mapResource,
+	type ResourceSnapshot,
+	ResourceStatus,
+	type ResourceTrait,
+	RxResource,
+	type RxResourceOptions,
+	type RxResourceStreamContext,
+	resourceFromSnapshots,
+	rxResource,
+} from "./resource";
+export {
+	RxComputedSignal,
+	type RxComputedSignalCompat,
+	type RxSignalDirtyEvent,
+	type RxSignalOptions,
+	type RxSignalWatchCanceller,
+	type RxSignalWatchOptions,
+	type RxSignalWatchScheduler,
+	RxStateSignal,
+	type RxStateSignalCompat,
+} from "./signal";

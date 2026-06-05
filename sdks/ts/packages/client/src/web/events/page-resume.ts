@@ -8,7 +8,7 @@ import {
 	type Observable,
 } from "rxjs";
 import { type EventStreamTrait } from "../../events/types";
-import { observableToEventStream } from "../../rx";
+import { RxEventStream } from "../../rx";
 
 export const PageResumeTriggerKind = {
 	Visibility: "visibility",
@@ -50,7 +50,7 @@ export interface CreatePageResumeSourceOptions {
 export function createPageResumeSource(
 	options: CreatePageResumeSourceOptions,
 ): EventStreamTrait<PageResumeEvent> {
-	return observableToEventStream(
+	return RxEventStream.fromObservableInput(
 		defer(() => {
 			const { documentTarget, windowTarget } = options;
 			const streams: Observable<PageResumeEvent>[] = [];

@@ -5,12 +5,12 @@ import { GroupTable } from "@/components/groups/GroupTable";
 import { Layout } from "@/components/layout/Layout";
 import {
 	useDashboardAccessNotice,
-	useDashboardGroupsQuery,
-} from "@/hooks/useDashboardApi";
+	useGroupsQuery,
+} from "@/hooks/useDashboardData";
 
 export function GroupsPage() {
 	const accessNotice = useDashboardAccessNotice();
-	const { data: groups = [], isLoading } = useDashboardGroupsQuery();
+	const { data: groups = [], isLoading } = useGroupsQuery();
 
 	return (
 		<Layout>

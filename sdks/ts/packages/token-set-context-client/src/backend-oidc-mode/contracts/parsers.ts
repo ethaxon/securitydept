@@ -15,8 +15,19 @@ import {
 } from "./contracts";
 import {
 	BackendOidcModeCallbackBodySchema,
+	BackendOidcModeOAuthErrorBodySchema,
 	BackendOidcModeRefreshBodySchema,
 } from "./schemas";
+
+export function parseBackendOidcModeOAuthErrorPayload(
+	payload: HttpResponseJsonBody,
+): typeof BackendOidcModeOAuthErrorBodySchema.infer | null {
+	const result = validateWithSchemaSync(
+		BackendOidcModeOAuthErrorBodySchema,
+		payload,
+	);
+	return result.success ? result.value : null;
+}
 
 // ---------------------------------------------------------------------------
 // Response payload parsers

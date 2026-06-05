@@ -38,7 +38,9 @@ function createRecord(clientKey: string) {
 				clientKey,
 			},
 		}),
-		notify: () => () => undefined,
+		watchStream: () => ({
+			subscribe: () => ({ unsubscribe: () => undefined }),
+		}),
 	};
 }
 

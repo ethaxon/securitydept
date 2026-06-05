@@ -8,7 +8,7 @@ import {
 } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
-	useReplaySignalValue,
+	useResourceValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
@@ -70,7 +70,7 @@ describe("session-context react minimal entry", () => {
 			const sessionClient = useSecuritydeptContext().get(
 				SESSION_CONTEXT_CLIENT,
 			);
-			const session = useReplaySignalValue(sessionClient.sessionInfo, {
+			const session = useResourceValue(sessionClient.sessionResource, {
 				initialValue: null,
 			});
 

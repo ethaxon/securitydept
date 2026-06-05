@@ -9,17 +9,6 @@ import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it, vi } from "vitest";
 
-function expectReplayValue<T>(signal: {
-	get(): { kind: "empty" } | { kind: "value"; value: T };
-}): T {
-	const slot = signal.get();
-	expect(slot.kind).toBe("value");
-	if (slot.kind !== "value") {
-		throw new Error("Expected replay signal value.");
-	}
-	return slot.value;
-}
-
 function callbackParameters(fragment: string): Record<string, string> {
 	const parameters = new URLSearchParams(fragment);
 	const result: Record<string, string> = {};
@@ -117,8 +106,7 @@ describe("backend-oidc worker-like host boundary", () => {
 
 		expect(result?.tokens.accessToken).toBe("worker-at");
 		expect(
-			expectReplayValue(restoreClient.authSnapshot)?.metadata.principal
-				?.displayName,
+			restoreClient.authResource.value.get()?.metadata.principal?.displayName,
 		).toBe("Worker User");
 	});
 
@@ -147,7 +135,7 @@ describe("backend-oidc worker-like host boundary", () => {
 					hash: "#securitydept=v1&access_token=popup-at&id_token=popup-idt&metadata_redemption_id=meta-worker",
 				},
 				history,
-			}),
+			})!,
 		);
 		const snapshot = await client.handleCallback(fragment?.parameters ?? {});
 

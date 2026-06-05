@@ -23,6 +23,11 @@ export interface InteropObservableTrait<T> {
 	[SYMBOL_OBSERVABLE](): SubscribableTrait<T>;
 }
 
+export type WithInteropObservableTraitCompat<
+	O extends InteropObservableTrait<unknown>,
+	T extends O extends InteropObservableTrait<infer U> ? U : never,
+> = O & InteropObservableTrait<T>;
+
 export function isInteropObservableTrait<T>(
 	value: unknown,
 ): value is InteropObservableTrait<T> {

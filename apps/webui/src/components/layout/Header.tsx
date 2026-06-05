@@ -2,9 +2,9 @@ import { LogIn, LogOut } from "lucide-react";
 import { AppIcon } from "@/components/common/AppIcon";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-	useDashboardCurrentUser,
-	useDashboardLogout,
-} from "@/hooks/useDashboardApi";
+	useCurrentDashboardUser,
+	useLogoutMutation,
+} from "@/hooks/useDashboardData";
 import { ThemeToggle } from "./ThemeToggle";
 
 function getInitials(displayName: string) {
@@ -20,8 +20,8 @@ function truncateDisplayName(displayName: string, maxLength: number) {
 }
 
 export function Header() {
-	const { user } = useDashboardCurrentUser();
-	const logout = useDashboardLogout();
+	const { data: user } = useCurrentDashboardUser();
+	const logout = useLogoutMutation();
 
 	return (
 		<header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">

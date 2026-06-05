@@ -1,15 +1,21 @@
-import { BehaviorSubject } from "rxjs";
-import { isInteropObservableTrait, SYMBOL_OBSERVABLE } from "../compat";
-import { behaviorSubjectToSignal } from "../rx/interop";
-import { type ReadableSignalTrait, type WritableSignalTrait } from "./types";
+import { SYMBOL_OBSERVABLE } from "../compat";
+import { RxStateSignal } from "../rx/signal";
+import {
+	type ReadableSignalTrait,
+	type SignalOptions,
+	type WritableSignalTrait,
+} from "./types";
 
 /**
  * Minimal writable signal implementation.
- * `set()` always publishes a write. Equality-based suppression belongs in
- * higher-level operators, not in the base signal primitive.
+ * `set()` always publishes a write. Equality-based value-version suppression is
+ * handled by the underlying Rx signal for computed dependency validation.
  */
-export function createSignal<T>(initial: T): WritableSignalTrait<T> {
-	return behaviorSubjectToSignal(() => new BehaviorSubject(initial));
+export function createSignal<T>(
+	initial: T,
+	options?: SignalOptions<T>,
+): WritableSignalTrait<T> {
+	return RxStateSignal.fromInitialValue(initial, options);
 }
 
 /**
@@ -18,19 +24,16 @@ export function createSignal<T>(initial: T): WritableSignalTrait<T> {
 export function readonlySignal<T>(
 	signal: WritableSignalTrait<T>,
 ): ReadableSignalTrait<T> {
-	return {
-		get: () => signal.get(),
-		notify: (listener) => signal.notify(listener),
-		[SYMBOL_OBSERVABLE]: () => signal[SYMBOL_OBSERVABLE](),
-	};
+	return signal;
 }
 
 export function isSignalTrait<T>(obj: unknown): obj is ReadableSignalTrait<T> {
 	return (
 		typeof obj === "object" &&
 		obj !== null &&
+		typeof (obj as ReadableSignalTrait<T>).equals === "function" &&
 		typeof (obj as ReadableSignalTrait<T>).get === "function" &&
-		typeof (obj as ReadableSignalTrait<T>).notify === "function" &&
-		isInteropObservableTrait(obj)
+		typeof (obj as ReadableSignalTrait<T>).watchStream === "function" &&
+		typeof (obj as ReadableSignalTrait<T>)[SYMBOL_OBSERVABLE] === "function"
 	);
 }

@@ -1,15 +1,12 @@
 import {
-	ENVIRONMENT_TOKEN,
+	createReplaySignal,
 	type ErrorPresentationDescriptor,
 	readErrorPresentationDescriptor,
 	UserRecovery,
 } from "@securitydept/client";
-import {
-	useReplaySignalValue,
-	useSecuritydeptContext,
-} from "@securitydept/client-react";
+import { useReplaySignalValue } from "@securitydept/client-react";
+import { type FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { type AuthSnapshot as AuthStateSnapshot } from "@securitydept/token-set-context-client/orchestration";
-import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { Link } from "@tanstack/react-router";
 import {
 	ArrowRight,
@@ -21,22 +18,16 @@ import {
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ErrorPresentationCallout } from "@/components/common/ErrorPresentationCallout";
 import { Layout } from "@/components/layout/Layout";
-import { AuthContextMode, setAuthContextMode } from "@/lib/authContext";
+import { useAuthService } from "@/lib/auth/authHooks";
+import {
+	AuthContextMode,
+	tokenSetFrontendModeTraceTimeline,
+} from "@/lib/auth/authService";
 import {
 	TOKEN_SET_FRONTEND_MODE_CALLBACK_PATH,
-	TOKEN_SET_FRONTEND_MODE_CLIENT_KEY,
 	TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
 	TOKEN_SET_FRONTEND_MODE_POPUP_CALLBACK_PATH,
 } from "@/lib/tokenSetConfig";
-import {
-	clearTokenSetFrontendModeBrowserState,
-	ensureTokenSetFrontendModeClientReady,
-	getTokenSetFrontendModeClient,
-	startTokenSetFrontendModeLogin,
-	startTokenSetFrontendModePopupLogin,
-	tokenSetFrontendModeCrossTabStatus,
-	tokenSetFrontendModeTraceTimeline,
-} from "@/lib/tokenSetFrontendModeClient";
 import { TraceTimelineSection } from "@/routes/tokenSetFrontendMode/TraceTimelineSection";
 
 function renderTokenPreview(value: string | undefined): string {
@@ -51,28 +42,22 @@ function renderTokenPreview(value: string | undefined): string {
 	return `${value.slice(0, 16)}...${value.slice(-12)}`;
 }
 
+const emptyFrontendModeSnapshot =
+	createReplaySignal<AuthStateSnapshot | null>();
+
 export function TokenSetFrontendModePlaygroundPage() {
-	const injector = useSecuritydeptContext();
-	const frontendClientSlot = injector
-		.get(TOKEN_SET_CLIENT_REGISTRY)
-		.clientSignalFor(TOKEN_SET_FRONTEND_MODE_CLIENT_KEY)
-		.get();
-	if (frontendClientSlot.kind !== "value") {
-		throw new Error(
-			`Token-set frontend mode client ${TOKEN_SET_FRONTEND_MODE_CLIENT_KEY} is not ready.`,
-		);
-	}
-	const state = useReplaySignalValue(frontendClientSlot.value.authSnapshot, {
-		initialValue: null,
-	}) as AuthStateSnapshot | null;
-	const environment = injector.get(ENVIRONMENT_TOKEN);
+	const authService = useAuthService();
+	const [frontendClient, setFrontendClient] =
+		useState<FrontendOidcModeClient | null>(null);
+	const state = useReplaySignalValue(
+		frontendClient?.authSnapshot ?? emptyFrontendModeSnapshot,
+		{
+			initialValue: null,
+		},
+	) as AuthStateSnapshot | null;
 	const traceEvents = useSyncExternalStore(
 		(listener) => tokenSetFrontendModeTraceTimeline.subscribe(listener),
 		() => tokenSetFrontendModeTraceTimeline.get(),
-	);
-	const crossTabStatus = useSyncExternalStore(
-		(onStoreChange) => tokenSetFrontendModeCrossTabStatus.notify(onStoreChange),
-		() => tokenSetFrontendModeCrossTabStatus.get(),
 	);
 	const [busy, setBusy] = useState<
 		"login" | "popup" | "refresh" | "clear" | null
@@ -80,14 +65,23 @@ export function TokenSetFrontendModePlaygroundPage() {
 	const [error, setError] = useState<ErrorPresentationDescriptor | null>(null);
 
 	useEffect(() => {
-		void ensureTokenSetFrontendModeClientReady();
-	}, []);
+		let mounted = true;
+		void authService.getFrontendOidcClient().then((client) => {
+			if (mounted) {
+				setFrontendClient(client);
+			}
+			void client.start();
+		});
+		return () => {
+			mounted = false;
+		};
+	}, [authService]);
 
 	useEffect(() => {
 		if (state?.tokens.accessToken) {
-			setAuthContextMode(AuthContextMode.TokenSetFrontend);
+			authService.setMode(AuthContextMode.TokenSetFrontend);
 		}
-	}, [state?.tokens.accessToken]);
+	}, [authService, state?.tokens.accessToken]);
 
 	function describeHostError(error: unknown): ErrorPresentationDescriptor {
 		return readErrorPresentationDescriptor(error, {
@@ -106,12 +100,14 @@ export function TokenSetFrontendModePlaygroundPage() {
 	async function handleLogin() {
 		setBusy("login");
 		setError(null);
-		setAuthContextMode(AuthContextMode.TokenSetFrontend);
+		authService.setMode(AuthContextMode.TokenSetFrontend);
 		try {
-			await startTokenSetFrontendModeLogin(
-				environment,
-				TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
-			);
+			if (!frontendClient) {
+				throw new Error("Token-set frontend-mode client is not ready.");
+			}
+			await frontendClient.loginWithRedirect({
+				postAuthRedirectUri: TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
+			});
 		} catch (loginError) {
 			setError(describeHostError(loginError));
 			setBusy(null);
@@ -121,9 +117,17 @@ export function TokenSetFrontendModePlaygroundPage() {
 	async function handlePopupLogin() {
 		setBusy("popup");
 		setError(null);
-		setAuthContextMode(AuthContextMode.TokenSetFrontend);
+		authService.setMode(AuthContextMode.TokenSetFrontend);
 		try {
-			await startTokenSetFrontendModePopupLogin();
+			if (!frontendClient) {
+				throw new Error("Token-set frontend-mode client is not ready.");
+			}
+			await frontendClient.loginWithPopup({
+				popupCallbackUrl: new URL(
+					TOKEN_SET_FRONTEND_MODE_POPUP_CALLBACK_PATH,
+					window.location.origin,
+				).toString(),
+			});
 		} catch (popupError) {
 			setError(describeHostError(popupError));
 		} finally {
@@ -135,8 +139,10 @@ export function TokenSetFrontendModePlaygroundPage() {
 		setBusy("refresh");
 		setError(null);
 		try {
-			const client = await getTokenSetFrontendModeClient();
-			await client.refresh();
+			if (!frontendClient) {
+				throw new Error("Token-set frontend-mode client is not ready.");
+			}
+			await frontendClient.refreshState();
 		} catch (refreshError) {
 			setError(describeHostError(refreshError));
 		} finally {
@@ -148,7 +154,10 @@ export function TokenSetFrontendModePlaygroundPage() {
 		setBusy("clear");
 		setError(null);
 		try {
-			await clearTokenSetFrontendModeBrowserState();
+			if (!frontendClient) {
+				throw new Error("Token-set frontend-mode client is not ready.");
+			}
+			await frontendClient.logout();
 		} catch (clearError) {
 			setError(describeHostError(clearError));
 		} finally {
@@ -233,7 +242,7 @@ export function TokenSetFrontendModePlaygroundPage() {
 					) : null}
 				</section>
 
-				<section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+				<section className="grid gap-4 lg:grid-cols-3">
 					<div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
 						<p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500 dark:text-zinc-400">
 							Callback route
@@ -268,22 +277,6 @@ export function TokenSetFrontendModePlaygroundPage() {
 						<p className="mt-3 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
 							Dashboard API calls and TanStack route security both read from
 							this same frontend-mode client.
-						</p>
-					</div>
-					<div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-						<p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500 dark:text-zinc-400">
-							Cross-tab status
-						</p>
-						<p className="mt-3 text-sm text-zinc-700 dark:text-zinc-300">
-							{crossTabStatus.lastEvent === "idle"
-								? "Waiting for another tab to update this frontend-mode client"
-								: crossTabStatus.lastEvent === "hydrated"
-									? "Another tab updated this frontend-mode client and this page reconciled the persisted snapshot"
-									: "Another tab cleared the persisted frontend-mode snapshot and this page dropped its in-memory state"}
-						</p>
-						<p className="mt-3 font-mono text-xs text-zinc-500 dark:text-zinc-400">
-							sync_count={crossTabStatus.syncCount} has_access_token=
-							{String(crossTabStatus.hasAccessToken)}
 						</p>
 					</div>
 				</section>

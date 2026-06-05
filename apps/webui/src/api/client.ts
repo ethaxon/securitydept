@@ -1,15 +1,7 @@
 import { ClientError } from "@securitydept/client";
-import { AuthContextMode, resolveAuthContextMode } from "@/lib/authContext";
-
-/** API path prefix — prepends `/basic` when using basic auth so that
- *  `/api/entries` becomes `/basic/api/entries`. */
-function resolveApiBase(): string {
-	return resolveAuthContextMode() === AuthContextMode.Basic ? "/basic" : "";
-}
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-	const base = resolveApiBase();
-	const res = await fetch(`${base}${path}`, {
+	const res = await fetch(path, {
 		headers: {
 			"Content-Type": "application/json",
 			...options.headers,

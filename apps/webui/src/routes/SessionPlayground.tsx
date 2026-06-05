@@ -5,15 +5,9 @@ import {
 import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client-react";
 import { useMutation } from "@tanstack/react-query";
 import { ExternalLink, LogIn, LogOut, Shield, Waypoints } from "lucide-react";
-import { useSyncExternalStore } from "react";
 import { Layout } from "@/components/layout/Layout";
-import {
-	AuthContextMode,
-	clearAuthContextMode,
-	getAuthContextMode,
-	setAuthContextMode,
-	subscribeAuthContextMode,
-} from "@/lib/authContext";
+import { useAuthMode, useAuthService } from "@/lib/auth/authHooks";
+import { AuthContextMode } from "@/lib/auth/authService";
 
 function StatusCard({
 	title,
@@ -40,35 +34,33 @@ function StatusCard({
 }
 
 export function SessionPlaygroundPage() {
+	const authService = useAuthService();
 	const sessionClient = useSecuritydeptContext().get(SESSION_CONTEXT_CLIENT);
 	const session = useReplaySignalValue(sessionClient.sessionInfo, {
 		initialValue: null,
 	});
-	const rawMode = useSyncExternalStore(
-		subscribeAuthContextMode,
-		getAuthContextMode,
-		getAuthContextMode,
-	);
+	const { storedMode } = useAuthMode();
 
 	const logout = useMutation({
 		mutationKey: ["playground", "session", "logout"],
 		mutationFn: () => sessionClient.logout(),
 		onSuccess: () => {
-			clearAuthContextMode();
+			authService.clearMode();
 			window.location.href = "/playground/session";
 		},
 	});
 
 	const handleStartLogin = () => {
-		setAuthContextMode(AuthContextMode.Session);
-		void sessionClient.loginWithRedirect({
+		void authService.login({
+			mode: AuthContextMode.Session,
 			postAuthRedirectUri: "/playground/session",
 		});
 	};
 
 	const principal = session?.principal;
 	const authStatus = principal ? "Authenticated" : "Unauthenticated";
-	const callbackStatus = rawMode === AuthContextMode.Session ? "Armed" : "Idle";
+	const callbackStatus =
+		storedMode === AuthContextMode.Session ? "Armed" : "Idle";
 
 	return (
 		<Layout>
@@ -114,7 +106,7 @@ export function SessionPlaygroundPage() {
 				<section className="grid gap-4 md:grid-cols-3">
 					<StatusCard
 						title="Stored mode"
-						value={rawMode ?? "none"}
+						value={storedMode ?? "none"}
 						description="The local auth-context hint used by the dashboard shell before route security runs."
 					/>
 					<StatusCard

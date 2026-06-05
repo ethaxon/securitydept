@@ -1,8 +1,0 @@
-{
-	"servers": {
-		"gitnexus": {
-			"command": "npx",
-			"args": ["-y", "gitnexus@^1.6.5", "analyze"]
-		}
-	}
-}

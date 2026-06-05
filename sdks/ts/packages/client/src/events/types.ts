@@ -32,6 +32,10 @@ export interface EventSubjectTrait<T> extends EventStreamTrait<T> {
 	complete(): void;
 }
 
+export interface StateStreamTrait<T> extends EventSubjectTrait<T> {
+	getValue(): T;
+}
+
 // --- Event envelope ---
 
 export const EventSourceKind = {

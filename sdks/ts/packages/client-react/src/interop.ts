@@ -2,8 +2,10 @@ import {
 	type EventStreamTrait,
 	type InteropObservableTrait,
 	isInteropObservableTrait,
-	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
+	type ResourceSnapshot,
+	ResourceStatus,
+	type ResourceTrait,
 	type SubscribableTrait,
 	SYMBOL_OBSERVABLE,
 } from "@securitydept/client";
@@ -15,9 +17,16 @@ import {
 	useSyncExternalStore,
 } from "react";
 
-export function useReadableSignalValue<T>(source: ReadableSignalTrait<T>): T {
+export function useSignal<T>(source: ReadableSignalTrait<T>): T {
 	const subscribe = useCallback(
-		(listener: () => void) => source.notify(listener),
+		(listener: () => void) => {
+			const subscription = source.watchStream().subscribe({
+				next: listener,
+			});
+			return () => {
+				subscription.unsubscribe();
+			};
+		},
 		[source],
 	);
 	const getSnapshot = useCallback(() => source.get(), [source]);
@@ -25,26 +34,51 @@ export function useReadableSignalValue<T>(source: ReadableSignalTrait<T>): T {
 	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-export interface UseReplaySignalValueOptions<T> {
+export function useResourceSnapshot<T>(
+	resource: ResourceTrait<T>,
+): ResourceSnapshot<T> {
+	const subscribe = useCallback(
+		(listener: () => void) => {
+			const subscription = resource[SYMBOL_OBSERVABLE]().subscribe({
+				next: listener,
+				error: listener,
+			});
+			return () => {
+				subscription.unsubscribe();
+			};
+		},
+		[resource],
+	);
+	const getSnapshot = useCallback(() => resource.snapshot.get(), [resource]);
+
+	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+export interface UseResourceValueOptions<T> {
 	initialValue?: T;
 }
 
-export function useReplaySignalValue<T>(
-	source: ReadableReplaySignalTrait<T>,
-	options: UseReplaySignalValueOptions<T> = {},
+export function useResourceValue<T>(
+	resource: ResourceTrait<T>,
+	options: UseResourceValueOptions<T> = {},
 ): T {
-	const slot = useSyncExternalStore(
-		useCallback((listener: () => void) => source.notify(listener), [source]),
-		useCallback(() => source.get(), [source]),
-		useCallback(() => source.get(), [source]),
-	);
-	if (slot.kind === "value") {
-		return slot.value;
+	const snapshot = useResourceSnapshot(resource);
+	if (
+		snapshot.status === ResourceStatus.LoadingError ||
+		snapshot.status === ResourceStatus.Error
+	) {
+		throw snapshot.error;
+	}
+	if (
+		snapshot.status === ResourceStatus.Reloading ||
+		snapshot.status === ResourceStatus.Resolved
+	) {
+		return snapshot.value;
 	}
 	if (Object.hasOwn(options, "initialValue")) {
 		return options.initialValue as T;
 	}
-	throw source.whenValue();
+	throw resource.whenValue();
 }
 
 export interface UseInteropObservableOptions<T> {

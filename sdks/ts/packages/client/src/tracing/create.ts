@@ -1,10 +1,7 @@
 import { type as defineType } from "arktype";
 import { SYMBOL_DISPOSE } from "../compat";
-import {
-	createEventSubject,
-	type EventStreamTrait,
-	type EventSubscriptionTrait,
-} from "../events";
+import { type EventStreamTrait, type EventSubscriptionTrait } from "../events";
+import { RxEventSubject } from "../rx/event";
 import {
 	type TraitInputValidator,
 	throwValidationClientError,
@@ -44,7 +41,7 @@ export function createTracing(
 				failure,
 			}),
 	});
-	const subject = createEventSubject<TracingEvent>();
+	const subject = new RxEventSubject<TracingEvent>();
 	const events: EventStreamTrait<TracingEvent> = subject;
 	const subscriptions: EventSubscriptionTrait[] = [];
 

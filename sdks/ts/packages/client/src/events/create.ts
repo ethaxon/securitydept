@@ -1,5 +1,9 @@
-import { EMPTY, NEVER, Observable, ReplaySubject, Subject } from "rxjs";
-import { observableToEventStream, subjectToEventSubject } from "../rx/interop";
+import { EMPTY, NEVER } from "rxjs";
+import {
+	RxEventReplaySubject,
+	RxEventStream,
+	RxEventSubject,
+} from "../rx/event";
 import {
 	type EventObserverTrait,
 	type EventStreamTrait,
@@ -16,23 +20,23 @@ import {
 export function createEventStream<T>(
 	producer: (observer: EventObserverTrait<T>) => (() => void) | void,
 ): EventStreamTrait<T> {
-	return observableToEventStream(new Observable<T>(producer));
+	return new RxEventStream(producer);
 }
 
 export function createEventSubject<T>(): EventSubjectTrait<T> {
-	return subjectToEventSubject(new Subject<T>());
+	return new RxEventSubject<T>();
 }
 
 export function createEventReplaySubject<T>(
 	bufferSize = Infinity,
 ): EventSubjectTrait<T> {
-	return subjectToEventSubject(new ReplaySubject<T>(bufferSize));
+	return new RxEventReplaySubject<T>(bufferSize);
 }
 
 export function createEmptyEventStream<T>(): EventStreamTrait<T> {
-	return observableToEventStream(EMPTY);
+	return RxEventStream.fromObservableInput(EMPTY);
 }
 
 export function createNeverEventStream<T>(): EventStreamTrait<T> {
-	return observableToEventStream(NEVER);
+	return RxEventStream.fromObservableInput(NEVER);
 }

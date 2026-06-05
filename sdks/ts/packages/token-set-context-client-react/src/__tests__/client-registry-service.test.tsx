@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 import {
-	createReplaySignal,
 	createSignal,
+	ResourceStatus,
+	resourceFromSnapshots,
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import { createEnvironmentForTest } from "@securitydept/client/test";
@@ -53,15 +54,22 @@ async function flushMicrotasks() {
 
 function createMockClient(accessToken: string): BaseOidcModeClient {
 	const disposed = createSignal(false);
-	const isAuthenticated = createReplaySignal<boolean>();
-	isAuthenticated.setValue(true);
-	const authSnapshot = createReplaySignal<{
-		tokens: { accessToken: string };
-	}>();
-	authSnapshot.setValue({ tokens: { accessToken } });
+	const isAuthenticatedSnapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: true,
+	} as const);
+	const isAuthenticated = resourceFromSnapshots(() =>
+		isAuthenticatedSnapshot.get(),
+	);
+	const authSnapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: { tokens: { accessToken } },
+	} as const);
+	const authResource = resourceFromSnapshots(() => authSnapshot.get());
 	return {
 		isAuthenticated,
 		authSnapshot,
+		authResource,
 		dispose: () => disposed.set(true),
 		[SYMBOL_DISPOSE]: () => disposed.set(true),
 	} as unknown as BaseOidcModeClient;
@@ -114,7 +122,7 @@ describe("token-set React client registry service", () => {
 
 		expect(view.container.textContent).toBe("ready");
 		const resolvedClient = (await registry?.initialize("main"))?.client;
-		expect(await resolvedClient?.authSnapshot.whenValue()).toEqual({
+		expect(await resolvedClient?.authResource.whenValue()).toEqual({
 			tokens: { accessToken: "main-at" },
 		});
 
@@ -168,12 +176,12 @@ describe("token-set React client registry service", () => {
 		expect(
 			await (
 				await parentRegistry?.initialize("main")
-			)?.client.authSnapshot.whenValue(),
+			)?.client.authResource.whenValue(),
 		).toEqual({ tokens: { accessToken: "parent-at" } });
 		expect(
 			await (
 				await childRegistry?.initialize("main")
-			)?.client.authSnapshot.whenValue(),
+			)?.client.authResource.whenValue(),
 		).toEqual({ tokens: { accessToken: "child-at" } });
 		view.unmount();
 	});

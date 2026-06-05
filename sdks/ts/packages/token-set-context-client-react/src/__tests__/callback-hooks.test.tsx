@@ -2,10 +2,12 @@
 
 import {
 	appendOrReplaceCompatFragment,
-	createReplaySignal,
+	createSignal,
 	OnceAsyncLockState,
+	ResourceStatus,
 	type RouterNavigationRequest,
 	type RouterTrait,
+	resourceFromSnapshots,
 	SYMBOL_DISPOSE,
 	UriReferenceString,
 } from "@securitydept/client";
@@ -66,8 +68,13 @@ function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 }
 
 function createBaseMockClient(): BaseOidcModeClient {
-	const isAuthenticated = createReplaySignal<boolean>();
-	isAuthenticated.setValue(false);
+	const isAuthenticatedSnapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: false,
+	} as const);
+	const isAuthenticated = resourceFromSnapshots(() =>
+		isAuthenticatedSnapshot.get(),
+	);
 	return {
 		isAuthenticated,
 		dispose: () => undefined,

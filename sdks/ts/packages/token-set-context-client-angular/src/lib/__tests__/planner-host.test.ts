@@ -12,9 +12,10 @@ import {
 } from "@angular/router";
 import {
 	createEventSubject,
-	createReplaySignal,
 	createSignal,
+	ResourceStatus,
 	readSecuritydeptRouteMetadata,
+	resourceFromSnapshots,
 	type SecuritydeptProvider,
 	writeSecuritydeptRouteMetadata,
 } from "@securitydept/client";
@@ -159,22 +160,31 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 			const router = context.environment.injector.get(Injector).get(Router);
 			return router.serializeUrl(router.getCurrentNavigation()?.finalUrl);
 		});
-		const isAuthenticated = createReplaySignal<boolean>();
-		isAuthenticated.setValue(false);
-		const authDetermined = createReplaySignal<true>();
-		authDetermined.setValue(true);
-		const authSnapshot = createReplaySignal<null>();
-		authSnapshot.setValue(null);
-		const authorizationHeaderValue = createReplaySignal<string | undefined>();
-		authorizationHeaderValue.setValue(undefined);
-		const lastAuthError = createSignal<unknown | undefined>(undefined);
+		const isAuthenticatedSnapshot = createSignal({
+			status: ResourceStatus.Resolved,
+			value: false,
+		} as const);
+		const isAuthenticated = resourceFromSnapshots(() =>
+			isAuthenticatedSnapshot.get(),
+		);
+		const authSnapshot = createSignal({
+			status: ResourceStatus.Resolved,
+			value: null,
+		} as const);
+		const authResource = resourceFromSnapshots(() => authSnapshot.get());
+		const authorizationSnapshot = createSignal({
+			status: ResourceStatus.Resolved,
+			value: undefined as string | undefined,
+		} as const);
+		const authorizationHeaderValue = resourceFromSnapshots(() =>
+			authorizationSnapshot.get(),
+		);
 		const client = {
 			state: createSignal(null),
-			authDetermined,
 			authSnapshot,
+			authResource,
 			isAuthenticated,
 			authorizationHeaderValue,
-			lastAuthError,
 			authOperations: {
 				restorePending: createSignal(false),
 				refreshPending: createSignal(false),

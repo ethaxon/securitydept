@@ -17,17 +17,6 @@ import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it } from "vitest";
 
-function expectReplayValue<T>(signal: {
-	get(): { kind: "empty" } | { kind: "value"; value: T };
-}): T {
-	const slot = signal.get();
-	expect(slot.kind).toBe("value");
-	if (slot.kind !== "value") {
-		throw new Error("Expected replay signal value.");
-	}
-	return slot.value;
-}
-
 describe("backend-oidc-mode web minimal entry", () => {
 	it("shows the standalone browser entry path: create client → bootstrap → authorize URL", async () => {
 		const persistentStorage = createInMemoryRecordStore();
@@ -67,13 +56,13 @@ describe("backend-oidc-mode web minimal entry", () => {
 		const result = await client.start();
 
 		expect(result).toBeNull();
-		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+		expect(client.authResource.value.get()).toBeNull();
 
 		// 3. Build the authorize URL — the adopter redirects the browser here.
 		const router = createRouterForNativeWeb({
 			location: { href: "https://app.example.com/dashboard", hash: "" },
 		});
-		const authorizeUrl = client.authorizeUrl(router.currentUrl()?.toString());
+		const authorizeUrl = client.authorizeUrl(router?.currentUrl()?.toString());
 
 		expect(authorizeUrl).toContain("https://auth.example.com");
 		expect(authorizeUrl).toContain("post_auth_redirect_uri=");
@@ -115,12 +104,8 @@ describe("backend-oidc-mode web minimal entry", () => {
 			metadata: {},
 		});
 
-		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
-			"ssr-at",
-		);
-		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
-			"Bearer ssr-at",
-		);
+		expect(client.authResource.value.get()?.tokens.accessToken).toBe("ssr-at");
+		expect(client.authorizationHeaderValue.value.get()).toBe("Bearer ssr-at");
 
 		client.dispose();
 	});

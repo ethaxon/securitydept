@@ -1,19 +1,35 @@
 export { createComputed } from "./computed";
 export {
-	createAndThenComputedReplaySignal,
-	createComputedReplaySignal,
-	createReplaySignal,
-	isReplaySignalTrait,
-	readonlyReplaySignal,
-} from "./replay-signal";
+	ResourceError,
+	ResourceErrorCode,
+	type ResourceValueUnavailableErrorOptions,
+} from "./error";
+export {
+	type CreateResourceOptions,
+	createResource,
+	mapResource,
+	type ResourceStreamContext,
+	resourceFromSnapshots,
+} from "./resource";
+export {
+	type ResourceSnapshotUpdate,
+	ResourceSnapshotUpdateKind,
+	reduceResourceSnapshot,
+	resourceSnapshotValueOr,
+} from "./resource-snapshot";
 export { createSignal, isSignalTrait, readonlySignal } from "./signal";
 export {
-	type ComputedReplaySignalTrait,
 	type ComputedSignalTrait,
-	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
-	type ReplaySignalSlot,
-	type ReplaySignalWhenValueOptions,
-	type WritableReplaySignalTrait,
+	type ResourceErrorSnapshot,
+	type ResourceIdleSnapshot,
+	type ResourceLoadingErrorSnapshot,
+	type ResourceLoadingSnapshot,
+	type ResourceReloadingSnapshot,
+	type ResourceResolvedSnapshot,
+	type ResourceSnapshot,
+	ResourceStatus,
+	type ResourceTrait,
+	type ResourceWhenValueOptions,
 	type WritableSignalTrait,
 } from "./types";

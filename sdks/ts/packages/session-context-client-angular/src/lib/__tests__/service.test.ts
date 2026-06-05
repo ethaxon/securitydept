@@ -97,16 +97,13 @@ describe("SessionContextService", () => {
 
 		await service.refresh();
 
-		expect(service.sessionInfo.get()).toEqual({
-			kind: "value",
+		expect(service.sessionSnapshot.get()).toEqual({
+			status: "resolved",
 			value: expect.objectContaining({
 				principal: expect.objectContaining({ displayName: "Alice" }),
 			}),
 		});
-		expect(service.isAuthenticated.get()).toEqual({
-			kind: "value",
-			value: true,
-		});
+		expect(service.isAuthenticated.value.get()).toBe(true);
 
 		await service.logout();
 		expect(requests).toContainEqual(
@@ -115,7 +112,10 @@ describe("SessionContextService", () => {
 				url: "https://auth.example.com/auth/session/logout",
 			}),
 		);
-		expect(service.sessionInfo.get()).toEqual({ kind: "value", value: null });
+		expect(service.sessionSnapshot.get()).toEqual({
+			status: "resolved",
+			value: null,
+		});
 	});
 
 	it("provideSessionContext registers only the client and service", async () => {
@@ -159,7 +159,7 @@ describe("SessionContextService", () => {
 		const client = injector.get(SESSION_CONTEXT_CLIENT);
 		const service = injector.get(SessionContextService);
 
-		await service.sessionInfo.whenValue();
+		await service.sessionResource.whenValue();
 		expect(service).toBe(client);
 		expect(requests).toContainEqual(
 			expect.objectContaining({

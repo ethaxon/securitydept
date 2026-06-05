@@ -8,10 +8,10 @@ import {
 import { Pencil, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 import { type Group } from "@/api/groups";
-import { useDashboardDeleteGroupMutation } from "@/hooks/useDashboardApi";
+import { useDeleteGroupMutation } from "@/hooks/useDashboardData";
 
 export function GroupTable({ groups }: { groups: Group[] }) {
-	const deleteGroup = useDashboardDeleteGroupMutation();
+	const deleteGroup = useDeleteGroupMutation();
 
 	const columns = useMemo<ColumnDef<Group>[]>(
 		() => [
@@ -45,7 +45,7 @@ export function GroupTable({ groups }: { groups: Group[] }) {
 						</Link>
 						<button
 							type="button"
-							onClick={() => deleteGroup.mutate({ groupId: row.original.id })}
+							onClick={() => deleteGroup.mutate(row.original.id)}
 							className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30"
 						>
 							<Trash2 className="h-4 w-4" />

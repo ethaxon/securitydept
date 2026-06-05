@@ -5,14 +5,14 @@ import { EntryForm } from "@/components/entries/EntryForm";
 import { Layout } from "@/components/layout/Layout";
 import {
 	useDashboardAccessNotice,
-	useDashboardEntryQuery,
-} from "@/hooks/useDashboardApi";
+	useEntryQuery,
+} from "@/hooks/useDashboardData";
 
 export function EntryEditPage() {
 	const { entryId } = useParams({ from: "/entries/$entryId/edit" });
 	const search = useSearch({ from: "/entries/$entryId/edit" });
 	const accessNotice = useDashboardAccessNotice();
-	const { data: entry, isLoading } = useDashboardEntryQuery(entryId);
+	const { data: entry, isLoading } = useEntryQuery(entryId);
 	const formKey = `edit:${entryId}:${JSON.stringify(search)}`;
 
 	return (

@@ -9,7 +9,10 @@ import {
 	type HttpRequest,
 	type HttpResponse,
 	OperationTraceEventType,
-	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
+	type ResourceSnapshot,
+	ResourceStatus,
+	type ResourceTrait,
 	type TracingEvent,
 	type TracingSubscriberTrait,
 } from "@securitydept/client";
@@ -30,13 +33,22 @@ const BASE_URL = "https://api.example.com";
 const DEFAULT_PERSISTENCE_KEY =
 	BackendOidcModeClient.resolveDefaultPersistenceKey(BASE_URL);
 
-function expectReplayValue<T>(signal: ReadableReplaySignalTrait<T>): T {
-	const slot = signal.get();
-	expect(slot.kind).toBe("value");
-	if (slot.kind !== "value") {
-		throw new Error("Expected replay signal value.");
+function expectSnapshotValue<T>(
+	signal: ReadableSignalTrait<ResourceSnapshot<T>>,
+): T {
+	const snapshot = signal.get();
+	if (
+		snapshot.status !== "reloading" &&
+		snapshot.status !== "resolved" &&
+		snapshot.status !== "error"
+	) {
+		throw new Error("Expected resource snapshot value.");
 	}
-	return slot.value;
+	return snapshot.value;
+}
+
+function expectResourceValue<T>(resource: ResourceTrait<T>): T {
+	return resource.value.get();
 }
 
 function callbackParameters(fragment: string): Record<string, string> {
@@ -179,7 +191,13 @@ describe("BackendOidcModeClient", () => {
 			},
 		}));
 		const { runtime } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{
+				baseUrl: BASE_URL,
+				refresh: { sources: { refreshTimer: false } },
+			},
+			runtime,
+		);
 
 		await client.restoreState({
 			tokens: {
@@ -198,12 +216,11 @@ describe("BackendOidcModeClient", () => {
 		expect(result?.tokens.refreshMaterial).toBe("new-rt");
 		expect(result?.tokens.accessTokenExpiresAt).toBe("2026-12-31T00:00:00Z");
 		expect(client.authOperations.refreshPending.get()).toBe(false);
-		expect(expectReplayValue(client.authSnapshot)).toBe(result);
-		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
+		expect(expectSnapshotValue(client.authSnapshot)).toBe(result);
+		expect(expectResourceValue(client.authorizationHeaderValue)).toBe(
 			"Bearer new-at",
 		);
-		expect(expectReplayValue(client.isAuthenticated)).toBe(true);
-		expect(client.lastAuthError.get()).toBeUndefined();
+		expect(expectResourceValue(client.isAuthenticated)).toBe(true);
 	});
 
 	it("throws when a refresh response body is missing access_token", async () => {
@@ -225,9 +242,14 @@ describe("BackendOidcModeClient", () => {
 		});
 
 		const refreshPromise = client.refreshState();
-		await expect(refreshPromise).resolves.toBeNull();
+		await expect(refreshPromise).rejects.toBeInstanceOf(Error);
 		expect(client.authOperations.refreshPending.get()).toBe(false);
-		expect(client.lastAuthError.get()).toBeInstanceOf(Error);
+		expect(client.authSnapshot.get()).toMatchObject({
+			status: "error",
+			value: expect.objectContaining({
+				tokens: expect.objectContaining({ accessToken: "at" }),
+			}),
+		});
 	});
 
 	it("projects an authorization header whenever access token material exists", async () => {
@@ -247,10 +269,10 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
+		expect(expectResourceValue(client.authorizationHeaderValue)).toBe(
 			"Bearer expired-at",
 		);
-		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(
 			"expired-at",
 		);
 	});
@@ -276,7 +298,10 @@ describe("BackendOidcModeClient", () => {
 		const client = new BackendOidcModeClient(
 			{
 				baseUrl: BASE_URL,
-				refresh: { tokenFreshness: { refreshWindowMs: 0 } },
+				refresh: {
+					tokenFreshness: { refreshWindowMs: 0 },
+					sources: { refreshTimer: false },
+				},
 			},
 			runtime,
 		);
@@ -359,7 +384,7 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
+		expect(expectResourceValue(client.authorizationHeaderValue)).toBe(
 			"Bearer fresh-at",
 		);
 
@@ -382,7 +407,13 @@ describe("BackendOidcModeClient", () => {
 			body: { error: "invalid_grant" },
 		}));
 		const { runtime } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{
+				baseUrl: BASE_URL,
+				refresh: { sources: { refreshTimer: false } },
+			},
+			runtime,
+		);
 
 		await client.restoreState({
 			tokens: {
@@ -393,9 +424,112 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		await expect(client.refreshState()).resolves.toBeNull();
-		expect(expectReplayValue(client.authSnapshot)).toBeNull();
-		expect(expectReplayValue(client.authorizationHeaderValue)).toBeUndefined();
+		await expect(client.refreshState()).rejects.toMatchObject({
+			name: "TokenSetAuthorizationRevocationError",
+			reason: "invalid_grant",
+		});
+		expect(expectSnapshotValue(client.authSnapshot)).toBeNull();
+		expect(client.authorizationHeaderValue.snapshot.get()).toMatchObject({
+			status: "error",
+			value: undefined,
+		});
+	});
+
+	it("preserves persisted state when restore refresh fails transiently", async () => {
+		const persistentStorage = createInMemoryRecordStore();
+		const staleSnapshot = {
+			tokens: {
+				accessToken: "stale-at",
+				accessTokenExpiresAt: "2025-12-31T23:59:59Z",
+				refreshMaterial: "rt",
+			},
+			metadata: {},
+		};
+		await persistentStorage.set(
+			DEFAULT_PERSISTENCE_KEY,
+			JSON.stringify({
+				version: 1,
+				storedAt: Date.parse("2026-01-01T00:00:00Z"),
+				value: staleSnapshot,
+			}),
+		);
+		const persisted = await persistentStorage.get(DEFAULT_PERSISTENCE_KEY);
+		expect(persisted).not.toBeNull();
+
+		const transientRefresh = vi.fn(() => ({
+			status: 503,
+			headers: {},
+			body: null,
+		}));
+		const { runtime } = createTestRuntime(
+			createTestTransport(transientRefresh),
+			{ persistentStorage },
+		);
+		const client = new BackendOidcModeClient(
+			{
+				baseUrl: BASE_URL,
+				refresh: { sources: { refreshTimer: false } },
+			},
+			runtime,
+		);
+		await expect(client.restorePersistedState()).rejects.toMatchObject({
+			name: "ClientError",
+		});
+		expect(transientRefresh).toHaveBeenCalled();
+		expect(client.authSnapshot.get()).toMatchObject({
+			status: "error",
+			value: staleSnapshot,
+		});
+		expect(await persistentStorage.get(DEFAULT_PERSISTENCE_KEY)).toBe(
+			persisted,
+		);
+	});
+
+	it("clears persisted state when restore refresh proves revocation", async () => {
+		const persistentStorage = createInMemoryRecordStore();
+		await persistentStorage.set(
+			DEFAULT_PERSISTENCE_KEY,
+			JSON.stringify({
+				version: 1,
+				storedAt: Date.parse("2026-01-01T00:00:00Z"),
+				value: {
+					tokens: {
+						accessToken: "revoked-at",
+						accessTokenExpiresAt: "2025-12-31T23:59:59Z",
+						refreshMaterial: "rt",
+					},
+					metadata: {},
+				},
+			}),
+		);
+		expect(await persistentStorage.get(DEFAULT_PERSISTENCE_KEY)).not.toBeNull();
+
+		const revokedRefresh = vi.fn(() => ({
+			status: 401,
+			headers: { "content-type": "application/json" },
+			body: { error: "invalid_grant" },
+		}));
+		const { runtime } = createTestRuntime(createTestTransport(revokedRefresh), {
+			persistentStorage,
+		});
+		const client = new BackendOidcModeClient(
+			{
+				baseUrl: BASE_URL,
+				refresh: { sources: { refreshTimer: false } },
+			},
+			runtime,
+		);
+
+		await expect(client.restorePersistedState()).rejects.toMatchObject({
+			name: "TokenSetAuthorizationRevocationError",
+			reason: "invalid_grant",
+		});
+		expect(revokedRefresh).toHaveBeenCalled();
+		expect(client.authSnapshot.get()).toMatchObject({
+			status: "error",
+			value: null,
+		});
+		expect(await persistentStorage.get(DEFAULT_PERSISTENCE_KEY)).toBeNull();
 	});
 
 	it("persists callback state, supports explicit restore, and only clears on explicit clear", async () => {
@@ -508,12 +642,21 @@ describe("BackendOidcModeClient", () => {
 				tracing: createTracing({ subscribers: [trace] }),
 			},
 		);
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{
+				baseUrl: BASE_URL,
+				refresh: { sources: { refreshTimer: false } },
+			},
+			runtime,
+		);
 
 		await expect(client.restorePersistedState()).resolves.toBeNull();
 		await flushMicrotasks();
 
-		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+		expect(client.authSnapshot.get()).toMatchObject({
+			status: ResourceStatus.LoadingError,
+			error: expect.any(Error),
+		});
 		expect(await persistentStorage.get(DEFAULT_PERSISTENCE_KEY)).toBeNull();
 		expect(trace.events.map((event) => event.name)).toContain(
 			BackendOidcModeComposedTraceEventType.PersistedRestoreFailed,
@@ -597,10 +740,10 @@ describe("BackendOidcModeClient", () => {
 		});
 		await flushMicrotasks();
 
-		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(
 			"refreshed-at",
 		);
-		expect(client.lastAuthError.get()).toBeInstanceOf(Error);
+		expect(client.authSnapshot.get().status).toBe("error");
 	});
 
 	it("stops refresh work on dispose and prevents future scheduled refreshes", async () => {
@@ -623,7 +766,7 @@ describe("BackendOidcModeClient", () => {
 		client.dispose();
 
 		expect(time.pendingCount).toBe(0);
-		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(
 			"at",
 		);
 
@@ -642,7 +785,7 @@ describe("BackendOidcModeClient", () => {
 			kind: "cancelled",
 			code: "backend_oidc.client_disposed",
 		});
-		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(
 			"at",
 		);
 	});
@@ -661,7 +804,13 @@ describe("BackendOidcModeClient", () => {
 		const { runtime, time } = createTestRuntime(
 			createBaseTransportForStdFetch(),
 		);
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{
+				baseUrl: BASE_URL,
+				refresh: { sources: { refreshTimer: false } },
+			},
+			runtime,
+		);
 
 		await client.restoreState({
 			tokens: {
@@ -681,7 +830,7 @@ describe("BackendOidcModeClient", () => {
 			code: "backend_oidc.client_disposed",
 		});
 		expect(time.pendingCount).toBe(0);
-		expect(expectReplayValue(client.authSnapshot)?.tokens.accessToken).toBe(
+		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(
 			"at",
 		);
 		expect(fetchSpy).toHaveBeenCalledTimes(0);

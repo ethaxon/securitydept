@@ -8,7 +8,7 @@ import {
 import { createEnvironmentForTest } from "@securitydept/client/test";
 import {
 	SecuritydeptProvider,
-	useReplaySignalValue,
+	useResourceValue,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import { act, createElement, type ReactElement } from "react";
@@ -75,7 +75,7 @@ describe("session-context react adapter", () => {
 			const resolvedClient = injector.get(SESSION_CONTEXT_CLIENT);
 			expect(resolvedClient).toBeInstanceOf(SessionContextService);
 			client = resolvedClient as SessionContextService;
-			const session = useReplaySignalValue(resolvedClient.sessionInfo, {
+			const session = useResourceValue(resolvedClient.sessionResource, {
 				initialValue: null,
 			});
 

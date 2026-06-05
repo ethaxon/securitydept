@@ -2,25 +2,27 @@ import {
 	type CancellationTokenSourceTrait,
 	ClientError,
 	ClientErrorKind,
-	createAndThenComputedReplaySignal,
 	createCancellationTokenSource,
-	createEventReplaySubject,
-	createEventSubject,
 	createOnceAsyncLockCallable,
-	createReplaySignal,
 	createSignal,
 	type DisposableTrait,
 	defineInstrumentMethodDecorator,
 	describeError,
 	type EventStreamTrait,
 	type FoundationEnvironment,
+	mapResource,
 	type OperationSpanTrait,
-	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
+	type ResourceSnapshot,
+	ResourceSnapshotUpdateKind,
+	ResourceStatus,
+	type ResourceTrait,
 	RouterNavigationIntent,
 	RouterNavigationMode,
-	readonlyReplaySignal,
 	readonlySignal,
+	reduceResourceSnapshot,
+	resourceFromSnapshots,
+	resourceSnapshotValueOr,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
 	UriReferenceString,
@@ -32,9 +34,11 @@ import {
 	commandResponseData,
 	concatCommand,
 	dispatchCommandLocallyToStream,
-	signalToObservable,
+	RxEventReplaySubject,
+	RxEventSubject,
+	RxStateSignal,
 } from "@securitydept/client/rx";
-import { from, lastValueFrom, takeUntil } from "rxjs";
+import { filter, from, lastValueFrom, takeUntil } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import { parseSessionInfoPayload } from "./contracts/parsers";
 import {
@@ -105,12 +109,13 @@ export class SessionContextClient implements DisposableTrait {
 	private readonly _span: SpanTrait;
 	private readonly _rootCancellation: CancellationTokenSourceTrait =
 		createCancellationTokenSource();
-	private readonly _destroyed = createReplaySignal<void>();
-	private readonly _sessionInfoSignal =
-		createReplaySignal<SessionInfo | null>();
-	private readonly _lastSessionErrorSignal = createSignal<unknown | undefined>(
-		undefined,
+	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
+	private readonly destroyed$ = from(this._destroyed).pipe(
+		filter((value): value is true => value),
 	);
+	private readonly _sessionSnapshotSignal = RxStateSignal.fromInitialValue<
+		ResourceSnapshot<SessionInfo | null>
+	>({ status: ResourceStatus.Idle });
 	private readonly _operationSignals: {
 		readonly startPending: WritableSignalTrait<boolean>;
 		readonly refreshPending: WritableSignalTrait<boolean>;
@@ -123,17 +128,17 @@ export class SessionContextClient implements DisposableTrait {
 		loginRedirectPending: createSignal(false),
 	};
 	private readonly _eventSubject =
-		createEventReplaySubject<SessionContextEvent>(100);
+		new RxEventReplaySubject<SessionContextEvent>(100);
 	private readonly _refreshCommandSubject =
-		createEventSubject<SessionRefreshCommand>();
-	private readonly _refreshResponseSubject =
-		createEventSubject<
-			CommandResponse<SessionRefreshCommand, SessionInfo | null>
-		>();
+		new RxEventSubject<SessionRefreshCommand>();
+	private readonly _refreshResponseSubject = new RxEventSubject<
+		CommandResponse<SessionRefreshCommand, SessionInfo | null>
+	>();
 	private readonly _logoutCommandSubject =
-		createEventSubject<SessionLogoutCommand>();
-	private readonly _logoutResponseSubject =
-		createEventSubject<CommandResponse<SessionLogoutCommand, void>>();
+		new RxEventSubject<SessionLogoutCommand>();
+	private readonly _logoutResponseSubject = new RxEventSubject<
+		CommandResponse<SessionLogoutCommand, void>
+	>();
 	private readonly _startOnce = createOnceAsyncLockCallable(
 		async (operationSpan?: OperationSpanTrait) => {
 			this._throwIfNotOperational();
@@ -147,10 +152,11 @@ export class SessionContextClient implements DisposableTrait {
 	);
 
 	readonly id: string;
-	readonly sessionInfo: ReadableReplaySignalTrait<SessionInfo | null>;
-	readonly sessionDetermined: ReadableReplaySignalTrait<true>;
-	readonly isAuthenticated: ReadableReplaySignalTrait<boolean>;
-	readonly lastSessionError: ReadableSignalTrait<unknown | undefined>;
+	readonly sessionSnapshot: ReadableSignalTrait<
+		ResourceSnapshot<SessionInfo | null>
+	>;
+	readonly sessionResource: ResourceTrait<SessionInfo | null>;
+	readonly isAuthenticated: ResourceTrait<boolean>;
 	readonly sessionOperations: SessionContextOperationSignals;
 	readonly events: EventStreamTrait<SessionContextEvent>;
 
@@ -197,16 +203,14 @@ export class SessionContextClient implements DisposableTrait {
 				id: this.id,
 			},
 		});
-		this.sessionInfo = readonlyReplaySignal(this._sessionInfoSignal);
-		this.sessionDetermined = createAndThenComputedReplaySignal(
-			this._sessionInfoSignal,
-			() => ({ kind: "value", value: true }),
+		this.sessionSnapshot = readonlySignal(this._sessionSnapshotSignal);
+		this.sessionResource = resourceFromSnapshots(() =>
+			this._sessionSnapshotSignal.get(),
 		);
-		this.isAuthenticated = createAndThenComputedReplaySignal(
-			this._sessionInfoSignal,
-			(sessionInfo) => ({ kind: "value", value: sessionInfo !== null }),
+		this.isAuthenticated = mapResource(
+			this.sessionResource,
+			(sessionInfo) => sessionInfo !== null,
 		);
-		this.lastSessionError = readonlySignal(this._lastSessionErrorSignal);
 		this.sessionOperations = {
 			startPending: readonlySignal(this._operationSignals.startPending),
 			refreshPending: readonlySignal(this._operationSignals.refreshPending),
@@ -219,21 +223,21 @@ export class SessionContextClient implements DisposableTrait {
 
 		from(this._refreshCommandSubject)
 			.pipe(
+				takeUntil(this.destroyed$),
 				concatCommand((command) => this._executeRefresh(command.operationSpan)),
-				takeUntil(signalToObservable<void>(this._destroyed)),
 			)
 			.subscribe(this._refreshResponseSubject);
 
 		from(this._logoutCommandSubject)
 			.pipe(
+				takeUntil(this.destroyed$),
 				concatCommand((command) => this._executeLogout(command.operationSpan)),
-				takeUntil(signalToObservable<void>(this._destroyed)),
 			)
 			.subscribe(this._logoutResponseSubject);
 
 		if (config.autoStart === true) {
 			this.start().catch(() => {
-				// Startup failures are reflected through lastSessionError.
+				// Startup failure is reflected by sessionSnapshot.
 			});
 		}
 	}
@@ -294,10 +298,10 @@ export class SessionContextClient implements DisposableTrait {
 	}
 
 	dispose(): void {
-		if (this._destroyed.hasValue()) {
+		if (this._destroyed.get()) {
 			return;
 		}
-		this._destroyed.setValue();
+		this._destroyed.set(true);
 		this._rootCancellation.cancel(
 			new ClientError({
 				kind: ClientErrorKind.Cancelled,
@@ -306,6 +310,8 @@ export class SessionContextClient implements DisposableTrait {
 				source: SessionContextSource.SessionContext,
 			}),
 		);
+		this.isAuthenticated.dispose();
+		this.sessionResource.dispose();
 	}
 
 	[SYMBOL_DISPOSE](): void {
@@ -358,15 +364,25 @@ export class SessionContextClient implements DisposableTrait {
 	): Promise<SessionInfo | null> {
 		this._throwIfNotOperational();
 		this._operationSignals.refreshPending.set(true);
+		const previous = this._sessionSnapshotSignal.get();
+		const previousValue = resourceSnapshotValueOr(previous, null);
+		const loadingSnapshot = reduceResourceSnapshot(previous, {
+			kind: ResourceSnapshotUpdateKind.Load,
+		});
+		this._sessionSnapshotSignal.set(loadingSnapshot);
 		this._emitSessionEvent({
 			type: SessionContextEventType.SessionRefreshStarted,
-			session: null,
+			session: previousValue,
 		});
 		try {
 			const sessionInfo = await this._fetchSessionInfo();
 			this._throwIfNotOperational();
-			this._sessionInfoSignal.setValue(sessionInfo);
-			this._lastSessionErrorSignal.set(undefined);
+			this._sessionSnapshotSignal.set(
+				reduceResourceSnapshot(loadingSnapshot, {
+					kind: ResourceSnapshotUpdateKind.Resolve,
+					value: sessionInfo,
+				}),
+			);
 			operationSpan?.setAttributes({
 				authenticated: sessionInfo !== null,
 			});
@@ -376,11 +392,15 @@ export class SessionContextClient implements DisposableTrait {
 			});
 			return sessionInfo;
 		} catch (error) {
-			this._lastSessionErrorSignal.set(error);
-			this._sessionInfoSignal.setValue(null);
+			this._sessionSnapshotSignal.set(
+				reduceResourceSnapshot(loadingSnapshot, {
+					kind: ResourceSnapshotUpdateKind.Fail,
+					error,
+				}),
+			);
 			this._emitSessionEvent({
 				type: SessionContextEventType.SessionRefreshFailed,
-				session: null,
+				session: previousValue,
 				errorSummary: describeError(error),
 			});
 			throw error;
@@ -394,6 +414,11 @@ export class SessionContextClient implements DisposableTrait {
 	): Promise<void> {
 		this._throwIfNotOperational();
 		this._operationSignals.logoutPending.set(true);
+		const previous = this._sessionSnapshotSignal.get();
+		const loadingSnapshot = reduceResourceSnapshot(previous, {
+			kind: ResourceSnapshotUpdateKind.Load,
+		});
+		this._sessionSnapshotSignal.set(loadingSnapshot);
 		this._emitSessionEvent({
 			type: SessionContextEventType.SessionLogoutStarted,
 			session: this._readCurrentSession(),
@@ -412,15 +437,24 @@ export class SessionContextClient implements DisposableTrait {
 			}
 
 			this._throwIfNotOperational();
-			this._sessionInfoSignal.setValue(null);
-			this._lastSessionErrorSignal.set(undefined);
+			this._sessionSnapshotSignal.set(
+				reduceResourceSnapshot(loadingSnapshot, {
+					kind: ResourceSnapshotUpdateKind.Resolve,
+					value: null,
+				}),
+			);
 			operationSpan?.setAttributes({ authenticated: false });
 			this._emitSessionEvent({
 				type: SessionContextEventType.SessionLogoutSucceeded,
 				session: null,
 			});
 		} catch (error) {
-			this._lastSessionErrorSignal.set(error);
+			this._sessionSnapshotSignal.set(
+				reduceResourceSnapshot(loadingSnapshot, {
+					kind: ResourceSnapshotUpdateKind.Fail,
+					error,
+				}),
+			);
 			this._emitSessionEvent({
 				type: SessionContextEventType.SessionLogoutFailed,
 				session: this._readCurrentSession(),
@@ -469,8 +503,7 @@ export class SessionContextClient implements DisposableTrait {
 	}
 
 	private _readCurrentSession(): SessionInfo | null {
-		const slot = this._sessionInfoSignal.get();
-		return slot.kind === "value" ? slot.value : null;
+		return resourceSnapshotValueOr(this._sessionSnapshotSignal.get(), null);
 	}
 
 	private _emitSessionEvent(

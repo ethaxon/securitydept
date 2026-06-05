@@ -2,10 +2,7 @@ import {
 	ENVIRONMENT_TOKEN,
 	type FoundationEnvironment,
 } from "@securitydept/client";
-import {
-	useReadableSignalValue,
-	useSecuritydeptContext,
-} from "@securitydept/client-react";
+import { useSecuritydeptContext, useSignal } from "@securitydept/client-react";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
 	FrontendOidcModeCallbackController,
@@ -59,7 +56,7 @@ export function useTokenSetFrontendCallbackController(
 			}),
 		[registry],
 	);
-	const state = useReadableSignalValue(controller.state);
+	const state = useSignal(controller.state);
 	const isCallback = controller.isCallback();
 	const autoHandle = options.autoHandle ?? true;
 	const currentUrl = currentUrlRef.current;

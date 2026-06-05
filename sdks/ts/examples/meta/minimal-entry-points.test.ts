@@ -88,7 +88,7 @@ describe("minimal entry points", () => {
 			},
 		});
 
-		expect(client.authorizeUrl(router.currentUrl()?.toString())).toBe(
+		expect(client.authorizeUrl(router?.currentUrl()?.toString())).toBe(
 			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Foidc-mediated%23callback",
 		);
 	});
@@ -141,7 +141,7 @@ describe("minimal entry points", () => {
 			},
 		});
 
-		expect(client.authorizeUrl(router.currentUrl()?.toString())).toBe(
+		expect(client.authorizeUrl(router?.currentUrl()?.toString())).toBe(
 			"https://auth.example.com/auth/token-set/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard",
 		);
 	});

@@ -4,7 +4,9 @@ import {
 	createInMemoryRecordStore,
 	createRootSpan,
 	createTracing,
-	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
+	type ResourceSnapshot,
+	type ResourceTrait,
 	type StorageTrait,
 	type TimeTrait,
 } from "@securitydept/client";
@@ -19,13 +21,22 @@ const TEST_TRANSPORT: BaseTransportTrait = {
 	execute: vi.fn(),
 };
 
-function expectReplayValue<T>(signal: ReadableReplaySignalTrait<T>): T {
-	const slot = signal.get();
-	expect(slot.kind).toBe("value");
-	if (slot.kind !== "value") {
-		throw new Error("Expected replay signal value.");
+function expectSnapshotValue<T>(
+	signal: ReadableSignalTrait<ResourceSnapshot<T>>,
+): T {
+	const snapshot = signal.get();
+	if (
+		snapshot.status !== "reloading" &&
+		snapshot.status !== "resolved" &&
+		snapshot.status !== "error"
+	) {
+		throw new Error("Expected resource snapshot value.");
 	}
-	return slot.value;
+	return snapshot.value;
+}
+
+function expectResourceValue<T>(resource: ResourceTrait<T>): T {
+	return resource.value.get();
 }
 
 function createAuthSnapshot(
@@ -81,6 +92,11 @@ function createOptions(options?: {
 				}
 			: undefined,
 		autoStart: options?.autoStart,
+		refresh: {
+			sources: {
+				refreshTimer: false,
+			},
+		},
 	};
 }
 
@@ -160,13 +176,12 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		await seedClient.applySnapshot(seededSnapshot);
 
 		const client = new TestOidcModeClient(createOptions({ store }));
-		expect(client.authDetermined.hasValue()).toBe(false);
-		expect(client.authSnapshot.hasValue()).toBe(false);
+		expect(client.authSnapshot.get()).toEqual({ status: "idle" });
 
 		await client.start();
 
-		expect(expectReplayValue(client.authSnapshot)).toEqual(seededSnapshot);
-		expect(expectReplayValue(client.authorizationHeaderValue)).toBe(
+		expect(expectSnapshotValue(client.authSnapshot)).toEqual(seededSnapshot);
+		expect(expectResourceValue(client.authorizationHeaderValue)).toBe(
 			"Bearer persisted-token",
 		);
 	});
@@ -208,7 +223,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 
 		await client.logout();
 
-		expect(expectReplayValue(client.authSnapshot)).toBeNull();
+		expect(expectSnapshotValue(client.authSnapshot)).toBeNull();
 		const restoredClient = new TestOidcModeClient(createOptions({ store }));
 		await expect(restoredClient.restorePersistedState()).resolves.toBeNull();
 	});
@@ -289,7 +304,10 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 				}),
 			}),
 		);
-		expect(client.lastAuthError.get()).toBeInstanceOf(Error);
+		expect(client.authSnapshot.get()).toMatchObject({
+			status: "loading_error",
+			error: expect.any(Error),
+		});
 	});
 
 	it("confines freshness to refresh-specific auth events", async () => {
@@ -344,7 +362,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		expect(JSON.stringify(events)).not.toContain("refresh-token");
 	});
 
-	it("emits refresh failure before the unauthenticated terminal event", async () => {
+	it("rejects transient refresh failure without emitting unauthenticated", async () => {
 		const trace = new InMemoryTraceCollector();
 		const client = new TestOidcModeClient(
 			createOptions({
@@ -374,13 +392,12 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		});
 		events.length = 0;
 
-		await expect(client.refreshState()).resolves.toBeNull();
+		await expect(client.refreshState()).rejects.toThrow("refresh exploded");
 
 		expect(events.map((event) => event.type)).toEqual([
 			TokenSetAuthEventType.AuthRefreshRequired,
 			TokenSetAuthEventType.AuthRefreshStarted,
 			TokenSetAuthEventType.AuthRefreshFailed,
-			TokenSetAuthEventType.AuthUnauthenticated,
 		]);
 		expect(events[2]?.payload).toEqual(
 			expect.objectContaining({
@@ -392,10 +409,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 				}),
 			}),
 		);
-		expect(events[3]?.payload).toEqual({
-			type: TokenSetAuthEventType.AuthUnauthenticated,
-			client: { id: "test-client" },
-		});
+		expect(expectSnapshotValue(client.authSnapshot)).toEqual(expired);
 		expect(
 			trace.events.find(
 				(event) => event.name === "test_token_set.refresh.failed",
@@ -504,8 +518,8 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 			}),
 		);
 
-		await client.authDetermined.whenValue();
-		expect(expectReplayValue(client.authSnapshot)).toEqual(snapshot);
+		await client.authResource.whenValue();
+		expect(expectSnapshotValue(client.authSnapshot)).toEqual(snapshot);
 	});
 
 	it("uses deterministic trace timestamps from the provided environment time", async () => {

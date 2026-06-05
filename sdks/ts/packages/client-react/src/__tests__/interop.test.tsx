@@ -2,21 +2,23 @@
 
 import {
 	createEventSubject,
-	createReplaySignal,
+	createResource,
 	createSignal,
 	type ObserverTrait,
+	ResourceStatus,
 	type SubscriptionTrait,
 	SYMBOL_OBSERVABLE,
 } from "@securitydept/client";
-import { act, createElement, type ReactElement, Suspense } from "react";
+import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	useEventStream,
 	useInteropObservable,
-	useReadableSignalValue,
-	useReplaySignalValue,
+	useResourceSnapshot,
+	useResourceValue,
+	useSignal,
 } from "../interop";
 
 function render(element: ReactElement) {
@@ -48,7 +50,7 @@ describe("client-react interop", () => {
 		const source = createSignal("initial");
 
 		function Probe() {
-			const value = useReadableSignalValue(source);
+			const value = useSignal(source);
 			return createElement("div", null, value);
 		}
 
@@ -66,18 +68,25 @@ describe("client-react interop", () => {
 
 	it("unsubscribes from the signal when the component unmounts", () => {
 		const unsubscribe = vi.fn();
+		const subscription = { unsubscribe };
+		const watchStream = {
+			subscribe: vi.fn(() => subscription),
+			[SYMBOL_OBSERVABLE]: () => watchStream,
+		};
 		const source = {
+			equals: Object.is,
 			get: () => "stable",
-			notify: vi.fn(() => unsubscribe),
+			watchStream: vi.fn(() => watchStream),
+			[SYMBOL_OBSERVABLE]: vi.fn(),
 		};
 
 		function Probe() {
-			const value = useReadableSignalValue(source);
+			const value = useSignal(source);
 			return createElement("div", null, value);
 		}
 
 		const view = render(createElement(Probe));
-		expect(source.notify).toHaveBeenCalledTimes(1);
+		expect(source.watchStream).toHaveBeenCalledTimes(1);
 		view.unmount();
 		expect(unsubscribe).toHaveBeenCalledTimes(1);
 	});
@@ -86,32 +95,45 @@ describe("client-react interop", () => {
 		const source = createSignal("client");
 
 		function Probe() {
-			const value = useReadableSignalValue(source);
+			const value = useSignal(source);
 			return createElement("div", null, value);
 		}
 
 		expect(renderToString(createElement(Probe))).toContain("client");
 	});
 
-	it("reads the current replay signal value", async () => {
-		const source = createReplaySignal<string>();
-		source.setValue("client");
+	it("reads resource snapshots and re-renders on updates", async () => {
+		const response = createEventSubject<string>();
+		const resource = createResource<string>({
+			stream: () => response,
+		});
 
 		function Probe() {
-			const value = useReplaySignalValue(source);
-			return createElement("div", null, value);
+			const snapshot = useResourceSnapshot(resource);
+			return createElement("div", null, snapshot.status);
 		}
 
 		const view = render(createElement(Probe));
-		expect(view.container.textContent).toBe("client");
+		expect(view.container.textContent).toBe(ResourceStatus.Loading);
+
+		await act(async () => {
+			response.next("ready");
+			await Promise.resolve();
+		});
+
+		expect(view.container.textContent).toBe(ResourceStatus.Resolved);
 		view.unmount();
+		resource.dispose();
 	});
 
-	it("uses the replay initialValue until the first value arrives", async () => {
-		const source = createReplaySignal<string>();
+	it("reads resource values with an initial value until resolved", async () => {
+		const response = createEventSubject<string>();
+		const resource = createResource<string>({
+			stream: () => response,
+		});
 
 		function Probe() {
-			const value = useReplaySignalValue(source, { initialValue: "loading" });
+			const value = useResourceValue(resource, { initialValue: "loading" });
 			return createElement("div", null, value);
 		}
 
@@ -119,87 +141,22 @@ describe("client-react interop", () => {
 		expect(view.container.textContent).toBe("loading");
 
 		await act(async () => {
-			source.setValue("ready");
+			response.next("ready");
 			await Promise.resolve();
 		});
 
 		expect(view.container.textContent).toBe("ready");
 		view.unmount();
-	});
-
-	it("suspends replay signals without an initialValue until a value is available", async () => {
-		const source = createReplaySignal<string>();
-
-		function Probe() {
-			const value = useReplaySignalValue(source);
-			return createElement("div", null, value);
-		}
-
-		const view = render(
-			createElement(
-				Suspense,
-				{ fallback: createElement("div", null, "pending") },
-				createElement(Probe),
-			),
-		);
-		expect(view.container.textContent).toBe("pending");
-
-		await act(async () => {
-			source.setValue("resolved");
-			await Promise.resolve();
-		});
-
-		expect(view.container.textContent).toBe("resolved");
-		view.unmount();
-	});
-
-	it("re-suspends when switching to another replay signal without a value", async () => {
-		const ready = createReplaySignal<string>();
-		ready.setValue("first");
-		const pending = createReplaySignal<string>();
-
-		function Probe(props: { source: typeof ready }) {
-			const value = useReplaySignalValue(props.source);
-			return createElement("div", null, value);
-		}
-
-		const view = render(
-			createElement(
-				Suspense,
-				{ fallback: createElement("div", null, "pending") },
-				createElement(Probe, { source: ready }),
-			),
-		);
-		expect(view.container.textContent).toBe("first");
-
-		await act(async () => {
-			view.unmount();
-			await Promise.resolve();
-		});
-
-		const switchedView = render(
-			createElement(
-				Suspense,
-				{ fallback: createElement("div", null, "pending") },
-				createElement(Probe, { source: pending }),
-			),
-		);
-		expect(switchedView.container.textContent).toBe("pending");
-
-		await act(async () => {
-			pending.setValue("second");
-			await Promise.resolve();
-		});
-
-		expect(switchedView.container.textContent).toBe("second");
-		switchedView.unmount();
+		resource.dispose();
 	});
 
 	it("reads interop observable initialValue and later emissions", async () => {
 		const subject = createEventSubject<string>();
 
 		function Probe() {
-			const value = useInteropObservable(subject, { initialValue: "loading" });
+			const value = useInteropObservable<string, string>(subject, {
+				initialValue: "loading",
+			});
 			return createElement("div", null, value);
 		}
 
@@ -301,7 +258,7 @@ describe("client-react interop", () => {
 		function Probe(props: { enabled?: boolean }) {
 			useEventStream(
 				subject,
-				(event) => {
+				(event: string) => {
 					received.push(event);
 				},
 				{ enabled: props.enabled },

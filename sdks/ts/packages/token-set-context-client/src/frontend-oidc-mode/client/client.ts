@@ -60,15 +60,19 @@ import {
 	processDiscoveryResponse,
 	processRefreshTokenResponse,
 	processUserInfoResponse,
+	ResponseBodyError,
 	refreshTokenGrantRequest,
 	type TokenEndpointResponse,
 	userInfoRequest,
 	validateAuthResponse,
+	WWWAuthenticateChallengeError,
 } from "oauth4webapi";
-import { interval } from "rxjs";
+import { interval, takeUntil } from "rxjs";
 import { waitForTokenSetPopupRelay } from "../../orchestration/client/popup/relay";
 import {
 	BaseOidcModeClient,
+	TokenSetAuthorizationRevocationError,
+	TokenSetAuthorizationRevocationReason,
 	type TokenSetOidcPopupLoginOptions,
 	type TokenSetOidcPopupLoginResult,
 	type TokenSetOidcRedirectLoginOptions,
@@ -543,13 +547,11 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * and claims check is re-run. Otherwise, existing metadata is preserved.
 	 */
 	protected async _refreshAuthSnapshot(
-		_currentSnapshot: TokenSetAuthSnapshot,
+		current: TokenSetAuthSnapshot,
 		_freshnessTiming: unknown,
 		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetAuthSnapshot | null> {
-		const snapshotSlot = this._authSnapshotSignal.get();
-		const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
-		if (!current?.tokens.refreshMaterial) {
+		if (!current.tokens.refreshMaterial) {
 			return null;
 		}
 		const refreshMaterial = current.tokens.refreshMaterial;
@@ -558,7 +560,36 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 		await this._ensureAuthServer(operationSpan);
 		this._throwIfNotOperational();
-		const tokens = await this.refreshTokens(refreshMaterial);
+		let tokens: FrontendOidcModeTokenResult;
+		try {
+			tokens = await this.refreshTokens(refreshMaterial);
+		} catch (error) {
+			if (
+				error instanceof ResponseBodyError &&
+				error.error === TokenSetAuthorizationRevocationReason.InvalidGrant
+			) {
+				throw new TokenSetAuthorizationRevocationError(
+					TokenSetAuthorizationRevocationReason.InvalidGrant,
+					{ cause: error },
+				);
+			}
+			if (
+				error instanceof WWWAuthenticateChallengeError &&
+				error.status === 401 &&
+				error.cause.some(
+					(challenge) =>
+						challenge.scheme === "bearer" &&
+						challenge.parameters.error ===
+							TokenSetAuthorizationRevocationReason.InvalidToken,
+				)
+			) {
+				throw new TokenSetAuthorizationRevocationError(
+					TokenSetAuthorizationRevocationReason.InvalidToken,
+					{ cause: error },
+				);
+			}
+			throw error;
+		}
 
 		this._throwIfNotOperational();
 
@@ -602,8 +633,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	): Promise<FrontendOidcModeClaimsCheckResult> {
 		this._throwIfNotOperational();
 
-		const snapshotSlot = this._authSnapshotSignal.get();
-		const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
+		const current = this._readAuthSnapshotValue();
 		operationSpan?.setAttributes({
 			hasAccessToken: current?.tokens.accessToken !== undefined,
 			hasIdToken: current?.tokens.idToken !== undefined,
@@ -1238,29 +1268,28 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		this._metadataRefreshHandle = interval(
 			intervalMs,
 			createAsyncSchedulerWithTimestampProvider(this._environment.time),
-		).subscribe({
-			next: () => {
-				if (this._rootCancellation.token.isCancellationRequested) {
-					return;
-				}
-				this.discover(this.span)
-					.then(() => {
-						this._recordTrace(
-							FrontendOidcModeTraceEventType.MetadataRefreshed,
-							undefined,
-							this.span,
-						);
-					})
-					.catch((error) => {
-						this._recordFailureTrace(
-							FrontendOidcModeTraceEventType.MetadataRefreshFailed,
-							error,
-							undefined,
-							this.span,
-						);
-					});
-			},
-		});
+		)
+			.pipe(takeUntil(this.destroyed$))
+			.subscribe({
+				next: () => {
+					this.discover(this.span)
+						.then(() => {
+							this._recordTrace(
+								FrontendOidcModeTraceEventType.MetadataRefreshed,
+								undefined,
+								this.span,
+							);
+						})
+						.catch((error) => {
+							this._recordFailureTrace(
+								FrontendOidcModeTraceEventType.MetadataRefreshFailed,
+								error,
+								undefined,
+								this.span,
+							);
+						});
+				},
+			});
 	}
 
 	private _cancelMetadataRefresh(): void {

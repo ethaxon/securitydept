@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createCancellationTokenSource } from "../../cancellation/cancellation-token";
+import { createCancellationTokenSource } from "../../cancellation/create";
 import { ClientError } from "../../errors/client-error";
 import { createBaseTransportForStdFetch } from "../../std/transport";
 

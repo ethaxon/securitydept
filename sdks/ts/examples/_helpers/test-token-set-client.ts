@@ -1,4 +1,10 @@
-import { createReplaySignal, createSignal } from "@securitydept/client";
+import {
+	createSignal,
+	mapResource,
+	type ResourceSnapshot,
+	ResourceStatus,
+	resourceFromSnapshots,
+} from "@securitydept/client";
 import { type TokenSetAuthSnapshot } from "@securitydept/token-set-context-client/orchestration";
 
 export function bearerHeaderForSnapshot(
@@ -12,34 +18,45 @@ export function bearerHeaderForSnapshot(
 export function createTestTokenSetReactiveFields(
 	initialSnapshot: TokenSetAuthSnapshot | null = null,
 ) {
-	const authDetermined = createReplaySignal<true>();
-	const authSnapshot = createReplaySignal<TokenSetAuthSnapshot | null>();
-	const isAuthenticated = createReplaySignal<boolean>();
-	const authorizationHeaderValue = createReplaySignal<string | undefined>();
-	const lastAuthError = createSignal<unknown | undefined>(undefined);
+	const authSnapshot = createSignal<
+		ResourceSnapshot<TokenSetAuthSnapshot | null>
+	>({ status: ResourceStatus.Idle });
+	const authResource = resourceFromSnapshots(() => authSnapshot.get());
+	const authorizationHeaderValue = mapResource(
+		authResource,
+		bearerHeaderForSnapshot,
+	);
+	const isAuthenticated = mapResource(
+		authorizationHeaderValue,
+		(header) => header !== undefined,
+	);
 
 	const emitSnapshot = (snapshot: TokenSetAuthSnapshot | null): void => {
-		authSnapshot.setValue(snapshot);
-		authorizationHeaderValue.setValue(bearerHeaderForSnapshot(snapshot));
-		isAuthenticated.setValue(bearerHeaderForSnapshot(snapshot) !== undefined);
-		lastAuthError.set(undefined);
-		authDetermined.setValue(true);
+		authSnapshot.set({ status: ResourceStatus.Resolved, value: snapshot });
 	};
 
 	const emitError = (error: unknown): void => {
-		lastAuthError.set(error);
-		authDetermined.setValue(true);
+		const current = authSnapshot.get();
+		authSnapshot.set({
+			status: ResourceStatus.Error,
+			value:
+				current.status === ResourceStatus.Reloading ||
+				current.status === ResourceStatus.Resolved ||
+				current.status === ResourceStatus.Error
+					? current.value
+					: null,
+			error,
+		});
 	};
 
 	emitSnapshot(initialSnapshot);
 
 	return {
 		fields: {
-			authDetermined,
 			authSnapshot,
+			authResource,
 			isAuthenticated,
 			authorizationHeaderValue,
-			lastAuthError,
 			authOperations: {
 				restorePending: createSignal(false),
 				refreshPending: createSignal(false),

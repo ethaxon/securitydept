@@ -6,6 +6,7 @@ const repoRoot = path.resolve(import.meta.dirname, "../..");
 const packagesDir = path.join(repoRoot, "sdks/ts/packages");
 const stage3DecoratorRoots = [
 	path.join(packagesDir, "client"),
+	path.join(packagesDir, "basic-auth-context-client"),
 	path.join(packagesDir, "session-context-client"),
 	path.join(packagesDir, "token-set-context-client"),
 ];
@@ -60,6 +61,10 @@ export default defineConfig({
 				replacement: path.join(packagesDir, "client/src/test/index.ts"),
 			},
 			{
+				find: "@securitydept/client/rx",
+				replacement: path.join(packagesDir, "client/src/rx/index.ts"),
+			},
+			{
 				find: /^@securitydept\/client$/,
 				replacement: path.join(packagesDir, "client/src/index.ts"),
 			},
@@ -79,6 +84,27 @@ export default defineConfig({
 				replacement: path.join(
 					packagesDir,
 					"session-context-client/src/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/basic-auth-context-client",
+				replacement: path.join(
+					packagesDir,
+					"basic-auth-context-client/src/index.ts",
+				),
+			},
+			{
+				find: "@securitydept/session-context-client-react",
+				replacement: path.join(
+					packagesDir,
+					"session-context-client-react/src/index.tsx",
+				),
+			},
+			{
+				find: "@securitydept/basic-auth-context-client-react",
+				replacement: path.join(
+					packagesDir,
+					"basic-auth-context-client-react/src/index.tsx",
 				),
 			},
 			{

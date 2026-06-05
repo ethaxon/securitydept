@@ -1,56 +1,24 @@
-import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client-react";
-import { ENVIRONMENT_TOKEN } from "@securitydept/client";
-import { useSecuritydeptContext } from "@securitydept/client-react";
-import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client-react";
-import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { useSearch } from "@tanstack/react-router";
 import { FlaskConical, KeyRound, Lock, Shield } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { AppIcon } from "@/components/common/AppIcon";
 import { Header } from "@/components/layout/Header";
-import { AuthContextMode, setAuthContextMode } from "@/lib/authContext";
-import { assertTokenSetBackendOidcClient } from "@/lib/tokenSetClientAssertions";
+import { useAuthService } from "@/lib/auth/authHooks";
+import { AuthContextMode } from "@/lib/auth/authService";
 import {
-	TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
 	TOKEN_SET_BACKEND_MODE_PLAYGROUND_PATH,
 	TOKEN_SET_FRONTEND_MODE_PLAYGROUND_PATH,
 } from "@/lib/tokenSetConfig";
-import { startTokenSetFrontendModeLogin } from "@/lib/tokenSetFrontendModeClient";
 
 /**
  * Login chooser — three real auth-context entry points, plus a Playgrounds
  * section for developer tooling routes.
  */
 export function LoginPage() {
-	const injector = useSecuritydeptContext();
+	const authService = useAuthService();
 	const [frontendModeBusy, setFrontendModeBusy] = useState(false);
 	const search = useSearch({ from: "/login" });
-	const sessionClient = injector.get(SESSION_CONTEXT_CLIENT);
-	const tokenSetFrontendModeEnvironment = injector.get(ENVIRONMENT_TOKEN);
-	const basicAuthClient = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
-	const tokenSetBackendRegistry = injector.get(TOKEN_SET_CLIENT_REGISTRY);
-	const tokenSetBackendSignal = tokenSetBackendRegistry.clientSignalFor(
-		TOKEN_SET_BACKEND_MODE_CLIENT_KEY,
-	);
-	const tokenSetBackendModeClientSlot = useSyncExternalStore(
-		(listener) => tokenSetBackendSignal.notify(listener),
-		() => tokenSetBackendSignal.get(),
-		() => tokenSetBackendSignal.get(),
-	);
-	const tokenSetBackendModeClient =
-		tokenSetBackendModeClientSlot.kind === "value"
-			? tokenSetBackendModeClientSlot.value
-			: null;
-	if (tokenSetBackendModeClient) {
-		assertTokenSetBackendOidcClient(
-			tokenSetBackendModeClient,
-			`LoginPage token-set client ${TOKEN_SET_BACKEND_MODE_CLIENT_KEY}`,
-		);
-	}
-	const tokenSetBackendModeHref =
-		tokenSetBackendModeClient?.authorizeUrl() ?? "#";
-	const basicAuthHref =
-		basicAuthClient.loginUrlForZonePrefix("/basic") ?? "/basic/login";
+	const postAuthRedirectUri = search.post_auth_redirect_uri;
 
 	return (
 		<div className="flex min-h-screen flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
@@ -71,9 +39,9 @@ export function LoginPage() {
 							type="button"
 							id="login-session"
 							onClick={() => {
-								setAuthContextMode(AuthContextMode.Session);
-								void sessionClient.loginWithRedirect({
-									postAuthRedirectUri: search.post_auth_redirect_uri,
+								void authService.login({
+									mode: AuthContextMode.Session,
+									postAuthRedirectUri,
 								});
 							}}
 							className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 px-4 py-3 text-left text-sm font-medium transition-colors hover:border-blue-400 hover:bg-blue-50 dark:border-zinc-700 dark:hover:border-blue-600 dark:hover:bg-blue-950/40"
@@ -88,12 +56,15 @@ export function LoginPage() {
 						</button>
 
 						{/* Token-set backend mode — redirects to / after callback */}
-						<a
+						<button
+							type="button"
 							id="login-token-set-backend-mode"
-							href={tokenSetBackendModeHref}
-							onClick={() =>
-								setAuthContextMode(AuthContextMode.TokenSetBackend)
-							}
+							onClick={() => {
+								void authService.login({
+									mode: AuthContextMode.TokenSetBackend,
+									postAuthRedirectUri,
+								});
+							}}
 							className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 px-4 py-3 text-left text-sm font-medium transition-colors hover:border-emerald-400 hover:bg-emerald-50 dark:border-zinc-700 dark:hover:border-emerald-600 dark:hover:bg-emerald-950/40"
 						>
 							<KeyRound className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
@@ -105,19 +76,21 @@ export function LoginPage() {
 									Server-owned callback and redirect completion
 								</span>
 							</div>
-						</a>
+						</button>
 
 						<button
 							type="button"
 							id="login-token-set-frontend-mode"
 							onClick={() => {
-								setAuthContextMode(AuthContextMode.TokenSetFrontend);
 								setFrontendModeBusy(true);
-								void startTokenSetFrontendModeLogin(
-									tokenSetFrontendModeEnvironment,
-								).finally(() => {
-									setFrontendModeBusy(false);
-								});
+								void authService
+									.login({
+										mode: AuthContextMode.TokenSetFrontend,
+										postAuthRedirectUri,
+									})
+									.finally(() => {
+										setFrontendModeBusy(false);
+									});
 							}}
 							disabled={frontendModeBusy}
 							className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 px-4 py-3 text-left text-sm font-medium transition-colors hover:border-teal-400 hover:bg-teal-50 disabled:cursor-wait disabled:opacity-70 dark:border-zinc-700 dark:hover:border-teal-600 dark:hover:bg-teal-950/40"
@@ -134,10 +107,15 @@ export function LoginPage() {
 						</button>
 
 						{/* Basic context — HTTP Basic auth */}
-						<a
+						<button
+							type="button"
 							id="login-basic"
-							href={basicAuthHref}
-							onClick={() => setAuthContextMode(AuthContextMode.Basic)}
+							onClick={() => {
+								void authService.login({
+									mode: AuthContextMode.Basic,
+									postAuthRedirectUri,
+								});
+							}}
 							className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 px-4 py-3 text-left text-sm font-medium transition-colors hover:border-amber-400 hover:bg-amber-50 dark:border-zinc-700 dark:hover:border-amber-600 dark:hover:bg-amber-950/40"
 						>
 							<Lock className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -147,7 +125,7 @@ export function LoginPage() {
 									HTTP Basic — username &amp; password
 								</span>
 							</div>
-						</a>
+						</button>
 					</div>
 
 					{/* Playgrounds — developer tooling, separated from auth choices */}

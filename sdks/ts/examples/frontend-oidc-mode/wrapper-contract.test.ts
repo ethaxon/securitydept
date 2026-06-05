@@ -25,17 +25,6 @@ import {
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { describe, expect, it, vi } from "vitest";
 
-function expectReplayValue<T>(signal: {
-	get(): { kind: "empty" } | { kind: "value"; value: T };
-}): T {
-	const slot = signal.get();
-	expect(slot.kind).toBe("value");
-	if (slot.kind !== "value") {
-		throw new Error("Expected replay signal value.");
-	}
-	return slot.value;
-}
-
 // Minimal runtime stub for tests that don't make real requests
 function createTestRuntime() {
 	const sessionStorage = createInMemoryRecordStore();
@@ -185,7 +174,7 @@ describe("FrontendOidcModeClient / lifecycle", () => {
 			createTestRuntime(),
 		);
 
-		expect(client.authSnapshot.hasValue()).toBe(false);
+		expect(client.authSnapshot.get()).toEqual({ status: "idle" });
 	});
 
 	it("dispose is idempotent before auth state is established", () => {
@@ -200,7 +189,7 @@ describe("FrontendOidcModeClient / lifecycle", () => {
 
 		client.dispose();
 		expect(() => client.dispose()).not.toThrow();
-		expect(client.authSnapshot.hasValue()).toBe(false);
+		expect(client.authSnapshot.get()).toEqual({ status: "idle" });
 	});
 
 	it("throws on operations after dispose", async () => {

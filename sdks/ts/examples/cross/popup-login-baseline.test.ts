@@ -9,8 +9,8 @@ import {
 	ClientError,
 	ClientErrorKind,
 	createCancellationTokenSource,
-	createReplaySignal,
 	createRootSpan,
+	createSignal,
 	createTracing,
 	PopupErrorCode,
 	type PopupTrait,
@@ -72,7 +72,7 @@ function createBackendPopupMockClient(
 			attributes: { clientName: "BackendOidcModeClient" },
 		}),
 		_rootCancellation: createCancellationTokenSource(),
-		_destroyed: createReplaySignal<void>(),
+		_destroyed: createSignal(false),
 		_tracingOptions: {
 			target: "backend-oidc-mode",
 			prefix: "backend_oidc",
@@ -444,7 +444,7 @@ describe("frontend-oidc-mode popup baseline", () => {
 			attributes: { clientName: "FrontendOidcModeClient" },
 		});
 		mockClient._rootCancellation = createCancellationTokenSource();
-		mockClient._destroyed = createReplaySignal<void>();
+		mockClient._destroyed = createSignal(false);
 		mockClient._tracingOptions = {
 			target: "frontend-oidc-mode",
 			prefix: "frontend_oidc",

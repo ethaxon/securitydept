@@ -1,5 +1,5 @@
 import { type as defineType } from "arktype";
-import { filter, fromEventPattern, map, Subject, take, timer } from "rxjs";
+import { filter, fromEventPattern, map, take, timer } from "rxjs";
 import { type EnvironmentValidators } from "../environment/types";
 import { ClientError, ClientErrorKind, UserRecovery } from "../errors";
 import { type EventSubjectTrait } from "../events";
@@ -17,8 +17,8 @@ import {
 import { type JsonRpcMessage } from "../protocol/json-rpc";
 import {
 	createAsyncSchedulerWithTimestampProvider,
-	observableToEventStream,
-	subjectToEventSubject,
+	RxEventStream,
+	RxEventSubject,
 } from "../rx";
 import { type TimeTrait } from "../scheduling/types";
 import {
@@ -195,7 +195,7 @@ function createPopupClientWindowHandleForNativeWeb(
 	const resolvedBaseHref = hostWindow.location?.href ?? "http://localhost";
 	const expectedOrigin =
 		options.expectedOrigin ?? new URL(options.url, resolvedBaseHref).origin;
-	const incoming = observableToEventStream(
+	const incoming = RxEventStream.fromObservableInput(
 		fromEventPattern<MessageEvent>(
 			(handler) => {
 				hostWindow.addEventListener("message", handler);
@@ -214,7 +214,7 @@ function createPopupClientWindowHandleForNativeWeb(
 	const outgoing = createPostMessageSubject((message) => {
 		popupWindow.postMessage(message, expectedOrigin);
 	});
-	const closedStream = observableToEventStream(
+	const closedStream = RxEventStream.fromObservableInput(
 		timer(
 			options.pollIntervalMs ?? 500,
 			options.pollIntervalMs ?? 500,
@@ -274,7 +274,7 @@ function attachPopupWindowToOpenerForNativeWeb(options: {
 		};
 	}
 
-	const incoming = observableToEventStream(
+	const incoming = RxEventStream.fromObservableInput(
 		fromEventPattern<MessageEvent>(
 			(handler) => {
 				currentWindow.addEventListener("message", handler);
@@ -311,7 +311,7 @@ function attachPopupWindowToOpenerForNativeWeb(options: {
 function createPostMessageSubject(
 	send: (message: JsonRpcMessage) => void,
 ): EventSubjectTrait<JsonRpcMessage> {
-	const outgoing = subjectToEventSubject(new Subject<JsonRpcMessage>());
+	const outgoing = new RxEventSubject<JsonRpcMessage>();
 	outgoing.subscribe({
 		next(message) {
 			send(message);

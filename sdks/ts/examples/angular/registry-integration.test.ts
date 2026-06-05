@@ -13,12 +13,11 @@ import {
 import {
 	createEventSubject,
 	createFoundationEnvironment,
-	createReplaySignal,
 	createSignal,
-	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
+	ResourceStatus,
+	resourceFromSnapshots,
 } from "@securitydept/client";
-import { signalToObservable } from "@securitydept/client/rx";
 import { provideEnvironment, toNgSignal } from "@securitydept/client-angular";
 import {
 	provideSessionContext,
@@ -36,17 +35,8 @@ import {
 	TOKEN_SET_CLIENT_REGISTRY,
 	TokenSetClientRegistryService,
 } from "@securitydept/token-set-context-client-angular";
-import { firstValueFrom, Observable, of } from "rxjs";
+import { firstValueFrom, from, Observable, of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
-
-function expectReplayValue<T>(signal: ReadableReplaySignalTrait<T>): T {
-	const slot = signal.get();
-	expect(slot.kind).toBe("value");
-	if (slot.kind !== "value") {
-		throw new Error("Expected replay signal value.");
-	}
-	return slot.value;
-}
 
 function createTestSignal<T>(initial: T): {
 	signal: ReadableSignalTrait<T>;
@@ -65,21 +55,25 @@ function createMockClient(
 	name: string,
 	authorizationHeader = `Bearer ${name}`,
 ): BaseOidcModeClient {
-	const authDetermined = createReplaySignal<true>();
-	authDetermined.setValue(true);
-	const authSnapshot = createReplaySignal<null>();
-	authSnapshot.setValue(null);
-	const isAuthenticated = createReplaySignal<boolean>();
-	isAuthenticated.setValue(true);
-	const authorizationHeaderValue = createReplaySignal<string | undefined>();
-	authorizationHeaderValue.setValue(authorizationHeader);
+	const authSnapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: null,
+	} as const);
+	const authResource = resourceFromSnapshots(() => authSnapshot.get());
+	const isAuthenticated = resourceFromSnapshots(() => ({
+		status: ResourceStatus.Resolved,
+		value: true,
+	}));
+	const authorizationHeaderValue = resourceFromSnapshots(() => ({
+		status: ResourceStatus.Resolved,
+		value: authorizationHeader as string | undefined,
+	}));
 	return {
 		id: name,
-		authDetermined,
 		authSnapshot,
+		authResource,
 		isAuthenticated,
 		authorizationHeaderValue,
-		lastAuthError: createSignal<unknown | undefined>(undefined),
 		authOperations: {
 			restorePending: createSignal(false),
 			refreshPending: createSignal(false),
@@ -231,7 +225,7 @@ describe("Angular integration adapter public surface", () => {
 			initialValue: signal.get(),
 			manualCleanup: true,
 		});
-		const observable = signalToObservable(signal);
+		const observable = from(signal);
 		const values: string[] = [];
 		const subscription = observable.subscribe((value) => values.push(value));
 
@@ -244,6 +238,6 @@ describe("Angular integration adapter public surface", () => {
 	});
 
 	it("exposes client replay signals from registry-backed clients", () => {
-		expectReplayValue(createMockClient("main").authorizationHeaderValue);
+		createMockClient("main").authorizationHeaderValue.value.get();
 	});
 });

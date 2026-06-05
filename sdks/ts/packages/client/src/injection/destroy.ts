@@ -1,5 +1,5 @@
 import { type DisposableTrait, SYMBOL_DISPOSE } from "../compat/disposable";
-import { createReplaySignal } from "../signals/replay-signal";
+import { createSignal } from "../signals/signal";
 
 export abstract class SecuritydeptDestroyRef implements DisposableTrait {
 	abstract readonly destroyed: boolean;
@@ -12,27 +12,32 @@ export abstract class SecuritydeptDestroyRef implements DisposableTrait {
 }
 
 class ManagedSecuritydeptDestroyRef extends SecuritydeptDestroyRef {
-	private readonly destroyedSignal = createReplaySignal<void>();
+	private readonly destroyedSignal = createSignal(false);
 
 	get destroyed(): boolean {
-		return this.destroyedSignal.hasValue();
+		return this.destroyedSignal.get();
 	}
 
 	onDestroy(callback: () => void): () => void {
-		if (this.destroyedSignal.hasValue()) {
+		if (this.destroyedSignal.get()) {
 			callback();
 			return () => undefined;
 		}
 
-		return this.destroyedSignal.notify(callback);
+		const subscription = this.destroyedSignal.watchStream().subscribe({
+			next: callback,
+		});
+		return () => {
+			subscription.unsubscribe();
+		};
 	}
 
 	dispose(): void {
-		if (this.destroyedSignal.hasValue()) {
+		if (this.destroyedSignal.get()) {
 			return;
 		}
 
-		this.destroyedSignal.setValue(undefined);
+		this.destroyedSignal.set(true);
 	}
 
 	destroy(): void {

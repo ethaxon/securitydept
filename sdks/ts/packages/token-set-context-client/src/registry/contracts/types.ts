@@ -38,7 +38,7 @@ export interface TokenSetClientRegistryEntry<TClient extends DisposableTrait> {
 	meta: TokenSetClientMeta;
 }
 
-export interface TokenSetClientSignalOptions {
+export interface TokenSetClientResourceOptions {
 	readonly initialize?: boolean;
 }
 

@@ -5,22 +5,10 @@ import {
 	ClientError,
 	ClientErrorKind,
 	createBaseTransportForStdFetch,
-	createReplaySignal,
-	type ExternalTransportTrait,
 	FetchTransportRedirectKind,
-	type ManagedTransportTrait,
-	type SecuritydeptInjectorTrait,
 } from "@securitydept/client";
-import { useReplaySignalValue } from "@securitydept/client-react";
 import { BackendOidcModeContextSource } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
-import {
-	TOKEN_SET_CLIENT_REGISTRY,
-	type TokenSetClientRegistryService,
-} from "@securitydept/token-set-context-client-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useSyncExternalStore } from "react";
-import { tokenSetQueryKeys } from "@/lib/tokenSetQueryKeys";
 import {
 	type AuthEntry,
 	type CreateBasicEntryResponse,
@@ -31,7 +19,6 @@ import { type Group } from "./groups";
 const tokenSetApiTransport = createBaseTransportForStdFetch({
 	redirect: FetchTransportRedirectKind.Follow,
 });
-const emptyAuthorizationHeaderSignal = createReplaySignal<string | undefined>();
 
 export const DEFAULT_PROPAGATION_HEADER_NAME = "x-securitydept-propagation";
 export const DEFAULT_PROPAGATION_PROBE_PATH = "/api/propagation/api/health";
@@ -48,7 +35,7 @@ proxy_path = "/api/propagation"`;
 
 export interface TokenSetApiRequestOptions {
 	baseUrl?: string;
-	transport?: ExternalTransportTrait;
+	transport?: BaseTransportTrait;
 	cancellationToken?: CancellationTokenTrait;
 	/** Web AbortSignal — bridged to CancellationTokenTrait for React Query compatibility. */
 	abortSignal?: AbortSignal;
@@ -64,52 +51,7 @@ export type TokenSetMutationRequestOptions = Omit<
 	"abortSignal"
 >;
 
-export interface TokenSetScopedHookOptions {
-	clientKey: string;
-	injector?: SecuritydeptInjectorTrait;
-	registry?: TokenSetClientRegistryService;
-	client?: BaseOidcModeClient;
-	enabled?: boolean;
-	requestOptions?: TokenSetQueryRequestOptions;
-}
-
-export interface TokenSetGroupQueryOptions extends TokenSetScopedHookOptions {
-	groupId: string;
-}
-
-export interface TokenSetEntryQueryOptions extends TokenSetScopedHookOptions {
-	entryId: string;
-}
-
-export interface TokenSetMutationHookOptions {
-	clientKey: string;
-	injector?: SecuritydeptInjectorTrait;
-	registry?: TokenSetClientRegistryService;
-	client?: BaseOidcModeClient;
-	requestOptions?: TokenSetQueryRequestOptions;
-}
-
-export interface TokenSetApiAuthorizationClient {
-	authorizedTransport(options?: {
-		baseTransport?: BaseTransportTrait;
-		requireAuthorization?: boolean;
-	}): ManagedTransportTrait;
-}
-
-type TokenSetApiClient = BaseOidcModeClient | TokenSetApiAuthorizationClient;
-
-export const tokenSetDashboardQueryKeys = {
-	forClient: (clientKey: string) =>
-		[...tokenSetQueryKeys.forClient(clientKey), "dashboard"] as const,
-	groups: (clientKey: string) =>
-		[...tokenSetDashboardQueryKeys.forClient(clientKey), "groups"] as const,
-	group: (clientKey: string, groupId: string) =>
-		[...tokenSetDashboardQueryKeys.groups(clientKey), groupId] as const,
-	entries: (clientKey: string) =>
-		[...tokenSetDashboardQueryKeys.forClient(clientKey), "entries"] as const,
-	entry: (clientKey: string, entryId: string) =>
-		[...tokenSetDashboardQueryKeys.entries(clientKey), entryId] as const,
-} as const;
+type TokenSetApiClient = BaseOidcModeClient;
 
 export interface ForwardAuthBoundaryProbeResult {
 	status: number;
@@ -185,27 +127,37 @@ function encodeBasicAuthorization(username: string, password: string): string {
 function createAuthorizedTokenSetApiTransport(
 	client: TokenSetApiClient,
 	options: TokenSetApiRequestOptions,
-): ManagedTransportTrait {
-	return requireAuthorizedTransportClient(client).authorizedTransport({
-		baseTransport: options.transport ?? tokenSetApiTransport,
-	});
-}
-
-function requireAuthorizedTransportClient(
-	client: TokenSetApiClient,
-): TokenSetApiAuthorizationClient {
-	if (
-		"authorizedTransport" in client &&
-		typeof client.authorizedTransport === "function"
-	) {
-		return client;
-	}
-	throw new ClientError({
-		kind: ClientErrorKind.Configuration,
-		message: "Token-set API calls require a client with authorizedTransport().",
-		code: "token_set_api.authorized_transport.unavailable",
-		source: BackendOidcModeContextSource.Client,
-	});
+): BaseTransportTrait {
+	const baseTransport = options.transport ?? tokenSetApiTransport;
+	return {
+		async execute(request) {
+			const refreshableClient = client as {
+				refreshState?: () => Promise<unknown>;
+				refresh?: () => Promise<unknown>;
+			};
+			if (typeof refreshableClient.refreshState === "function") {
+				await refreshableClient.refreshState();
+			} else if (typeof refreshableClient.refresh === "function") {
+				await refreshableClient.refresh();
+			}
+			const authorization = await client.authorizationHeaderValue.whenValue();
+			if (!authorization) {
+				throw new ClientError({
+					kind: ClientErrorKind.Unauthenticated,
+					message: "Token-set API calls require an authorization header.",
+					code: "backend_oidc.authorization.unavailable",
+					source: BackendOidcModeContextSource.Client,
+				});
+			}
+			return await baseTransport.execute({
+				...request,
+				headers: {
+					...request.headers,
+					authorization,
+				},
+			});
+		},
+	};
 }
 
 function resolveCancellationToken(
@@ -215,382 +167,6 @@ function resolveCancellationToken(
 		return options.cancellationToken;
 	}
 	return abortSignalToCancellationToken(options.abortSignal);
-}
-
-function resolveTokenSetRegistry(options: {
-	clientKey: string;
-	injector?: SecuritydeptInjectorTrait;
-	registry?: TokenSetClientRegistryService;
-}): TokenSetClientRegistryService {
-	if (options.registry) {
-		return options.registry;
-	}
-
-	if (options.injector) {
-		return options.injector.get(TOKEN_SET_CLIENT_REGISTRY);
-	}
-
-	throw new Error(
-		`[webui token-set api] ${options.clientKey} requires an explicit registry or injector.`,
-	);
-}
-
-async function resolveTokenSetClient(options: {
-	clientKey: string;
-	injector?: SecuritydeptInjectorTrait;
-	registry?: TokenSetClientRegistryService;
-	client?: BaseOidcModeClient;
-}): Promise<BaseOidcModeClient> {
-	if (options.client) {
-		return options.client;
-	}
-
-	return (await resolveTokenSetRegistry(options).initialize(options.clientKey))
-		.client;
-}
-
-function useResolvedTokenSetClient(options: {
-	clientKey: string;
-	injector?: SecuritydeptInjectorTrait;
-	registry?: TokenSetClientRegistryService;
-	client?: BaseOidcModeClient;
-}): { enabled: boolean; client: BaseOidcModeClient | undefined } {
-	const directClientSignal = useMemo(() => {
-		const signal = createReplaySignal<BaseOidcModeClient>();
-		if (options.client) {
-			signal.setValue(options.client);
-		}
-		return signal;
-	}, [options.client]);
-	const clientSource = options.client
-		? directClientSignal
-		: resolveTokenSetRegistry(options).clientSignalFor(options.clientKey);
-	const clientSlot = useSyncExternalStore(
-		(listener) => clientSource.notify(listener),
-		() => clientSource.get(),
-		() => clientSource.get(),
-	);
-	const client =
-		options.client ??
-		(clientSlot.kind === "value" ? clientSlot.value : undefined);
-	const authorizationHeader = useReplaySignalValue(
-		client?.authorizationHeaderValue ?? emptyAuthorizationHeaderSignal,
-		{ initialValue: undefined },
-	);
-	return {
-		enabled: client !== undefined && authorizationHeader !== undefined,
-		client,
-	};
-}
-
-function requireTokenSetClient(
-	client: BaseOidcModeClient | undefined,
-	clientKey: string,
-): BaseOidcModeClient {
-	if (client) {
-		return client;
-	}
-	throw new Error(
-		`[webui token-set api] ${clientKey} is not ready. Query execution should be disabled until clientSignalFor() emits.`,
-	);
-}
-
-function mergeRequestOptions(
-	defaults: TokenSetQueryRequestOptions | undefined,
-	overrides: TokenSetApiRequestOptions = {},
-): TokenSetApiRequestOptions {
-	return {
-		...defaults,
-		...overrides,
-	};
-}
-
-function isQueryEnabled(options: { enabled?: boolean }, authEnabled: boolean) {
-	return (options.enabled ?? true) && authEnabled;
-}
-
-export function useTokenSetGroupsQuery(options: TokenSetScopedHookOptions) {
-	const { enabled, client } = useResolvedTokenSetClient(options);
-
-	return useQuery({
-		queryKey: tokenSetDashboardQueryKeys.groups(options.clientKey),
-		queryFn: ({ signal }) =>
-			listGroupsWithTokenSet(
-				requireTokenSetClient(client, options.clientKey),
-				mergeRequestOptions(options.requestOptions, { abortSignal: signal }),
-			),
-		enabled: isQueryEnabled(options, enabled),
-		refetchOnWindowFocus: false,
-	});
-}
-
-export function useTokenSetGroupQuery(options: TokenSetGroupQueryOptions) {
-	const { enabled, client } = useResolvedTokenSetClient(options);
-
-	return useQuery({
-		queryKey: tokenSetDashboardQueryKeys.group(
-			options.clientKey,
-			options.groupId,
-		),
-		queryFn: ({ signal }) =>
-			getGroupWithTokenSet(
-				requireTokenSetClient(client, options.clientKey),
-				options.groupId,
-				mergeRequestOptions(options.requestOptions, { abortSignal: signal }),
-			),
-		enabled: Boolean(options.groupId) && isQueryEnabled(options, enabled),
-		refetchOnWindowFocus: false,
-	});
-}
-
-export function useTokenSetEntriesQuery(options: TokenSetScopedHookOptions) {
-	const { enabled, client } = useResolvedTokenSetClient(options);
-
-	return useQuery({
-		queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
-		queryFn: ({ signal }) =>
-			listEntriesWithTokenSet(
-				requireTokenSetClient(client, options.clientKey),
-				mergeRequestOptions(options.requestOptions, { abortSignal: signal }),
-			),
-		enabled: isQueryEnabled(options, enabled),
-		refetchOnWindowFocus: false,
-	});
-}
-
-export function useTokenSetEntryQuery(options: TokenSetEntryQueryOptions) {
-	const { enabled, client } = useResolvedTokenSetClient(options);
-
-	return useQuery({
-		queryKey: tokenSetDashboardQueryKeys.entry(
-			options.clientKey,
-			options.entryId,
-		),
-		queryFn: ({ signal }) =>
-			getEntryWithTokenSet(
-				requireTokenSetClient(client, options.clientKey),
-				options.entryId,
-				mergeRequestOptions(options.requestOptions, { abortSignal: signal }),
-			),
-		enabled: Boolean(options.entryId) && isQueryEnabled(options, enabled),
-		refetchOnWindowFocus: false,
-	});
-}
-
-export function useTokenSetCreateGroupMutation(
-	options: TokenSetMutationHookOptions,
-) {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async ({
-			requestOptions,
-			...request
-		}: CreateGroupWithTokenSetRequest & {
-			requestOptions?: TokenSetMutationRequestOptions;
-		}) =>
-			createGroupWithTokenSet(
-				await resolveTokenSetClient(options),
-				request,
-				mergeRequestOptions(options.requestOptions, requestOptions),
-			),
-		onSuccess: async () => {
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetDashboardQueryKeys.groups(options.clientKey),
-			});
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
-			});
-		},
-	});
-}
-
-export function useTokenSetUpdateGroupMutation(
-	options: TokenSetMutationHookOptions,
-) {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async ({
-			id,
-			requestOptions,
-			...request
-		}: UpdateGroupWithTokenSetRequest & {
-			id: string;
-			requestOptions?: TokenSetMutationRequestOptions;
-		}) =>
-			updateGroupWithTokenSet(
-				await resolveTokenSetClient(options),
-				id,
-				request,
-				mergeRequestOptions(options.requestOptions, requestOptions),
-			),
-		onSuccess: async (_, variables) => {
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetDashboardQueryKeys.groups(options.clientKey),
-			});
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
-			});
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetDashboardQueryKeys.group(
-					options.clientKey,
-					variables.id,
-				),
-			});
-		},
-	});
-}
-
-export function useTokenSetDeleteGroupMutation(
-	options: TokenSetMutationHookOptions,
-) {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async ({
-			groupId,
-			requestOptions,
-		}: {
-			groupId: string;
-			requestOptions?: TokenSetMutationRequestOptions;
-		}) =>
-			deleteGroupWithTokenSet(
-				await resolveTokenSetClient(options),
-				groupId,
-				mergeRequestOptions(options.requestOptions, requestOptions),
-			),
-		onSuccess: async (_, variables) => {
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetDashboardQueryKeys.groups(options.clientKey),
-			});
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
-			});
-			await queryClient.removeQueries({
-				queryKey: tokenSetDashboardQueryKeys.group(
-					options.clientKey,
-					variables.groupId,
-				),
-			});
-		},
-	});
-}
-
-export function useTokenSetCreateBasicEntryMutation(
-	options: TokenSetMutationHookOptions,
-) {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async ({
-			requestOptions,
-			...request
-		}: CreateBasicEntryWithTokenSetRequest & {
-			requestOptions?: TokenSetMutationRequestOptions;
-		}) =>
-			createBasicEntryWithTokenSet(
-				await resolveTokenSetClient(options),
-				request,
-				mergeRequestOptions(options.requestOptions, requestOptions),
-			),
-		onSuccess: async () => {
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
-			});
-		},
-	});
-}
-
-export function useTokenSetCreateTokenEntryMutation(
-	options: TokenSetMutationHookOptions,
-) {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async ({
-			requestOptions,
-			...request
-		}: CreateTokenEntryWithTokenSetRequest & {
-			requestOptions?: TokenSetMutationRequestOptions;
-		}) =>
-			createTokenEntryWithTokenSet(
-				await resolveTokenSetClient(options),
-				request,
-				mergeRequestOptions(options.requestOptions, requestOptions),
-			),
-		onSuccess: async () => {
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
-			});
-		},
-	});
-}
-
-export function useTokenSetUpdateEntryMutation(
-	options: TokenSetMutationHookOptions,
-) {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async ({
-			id,
-			requestOptions,
-			...request
-		}: UpdateEntryWithTokenSetRequest & {
-			id: string;
-			requestOptions?: TokenSetMutationRequestOptions;
-		}) =>
-			updateEntryWithTokenSet(
-				await resolveTokenSetClient(options),
-				id,
-				request,
-				mergeRequestOptions(options.requestOptions, requestOptions),
-			),
-		onSuccess: async (_, variables) => {
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
-			});
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetDashboardQueryKeys.entry(
-					options.clientKey,
-					variables.id,
-				),
-			});
-		},
-	});
-}
-
-export function useTokenSetDeleteEntryMutation(
-	options: TokenSetMutationHookOptions,
-) {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async ({
-			entryId,
-			requestOptions,
-		}: {
-			entryId: string;
-			requestOptions?: TokenSetMutationRequestOptions;
-		}) =>
-			deleteEntryWithTokenSet(
-				await resolveTokenSetClient(options),
-				entryId,
-				mergeRequestOptions(options.requestOptions, requestOptions),
-			),
-		onSuccess: async (_, variables) => {
-			await queryClient.invalidateQueries({
-				queryKey: tokenSetDashboardQueryKeys.entries(options.clientKey),
-			});
-			await queryClient.removeQueries({
-				queryKey: tokenSetDashboardQueryKeys.entry(
-					options.clientKey,
-					variables.entryId,
-				),
-			});
-		},
-	});
 }
 
 export async function listGroupsWithTokenSet(

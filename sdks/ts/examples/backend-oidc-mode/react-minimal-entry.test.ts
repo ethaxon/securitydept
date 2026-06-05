@@ -69,7 +69,11 @@ function createBackendClient(
 		state.set(null);
 		reactive.emitSnapshot(null);
 	});
-	state.notify(() => reactive.emitSnapshot(state.get()));
+	state.watchStream().subscribe({
+		next() {
+			reactive.emitSnapshot(state.get());
+		},
+	});
 	return {
 		...reactive.fields,
 		authEvents: createEventSubject<TokenSetAuthEvent>(),
@@ -140,7 +144,7 @@ describe("backend-oidc react minimal entry", () => {
 		});
 
 		const client = (await registry?.initialize("main"))?.client;
-		expect(await client?.authSnapshot.whenValue()).toEqual(
+		expect(await client?.authResource.whenValue()).toEqual(
 			createSnapshot("backend-at"),
 		);
 		view.unmount();
@@ -180,6 +184,7 @@ describe("backend-oidc react minimal entry", () => {
 
 		const client = (await registry?.initialize("main"))?.client;
 		if (
+			!client ||
 			!("authorizeUrl" in client) ||
 			typeof client.authorizeUrl !== "function"
 		) {

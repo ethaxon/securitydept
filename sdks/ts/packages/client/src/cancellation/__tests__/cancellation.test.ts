@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { ClientError } from "../../errors/client-error";
 import { ClientErrorKind } from "../../errors/types";
-import { createCancellationTokenSource } from "../cancellation-token";
-import { createLinkedCancellationToken } from "../linked-cancellation-token";
+import { createCancellationTokenSource } from "../create";
+import { createLinkedCancellationToken } from "../linked";
 
 describe("cancellation baseline", () => {
 	it("does not throw before cancellation and throws after cancellation", () => {
@@ -15,27 +14,9 @@ describe("cancellation baseline", () => {
 		expect(() => source.token.throwIfCancellationRequested()).toThrow(
 			/Operation was cancelled/,
 		);
-		expect(source.token.readCancellationError()).toMatchObject({
+		expect(source.token.cancellationError).toMatchObject({
 			kind: ClientErrorKind.Cancelled,
 			message: "Operation was cancelled",
-		});
-	});
-
-	it("treats Symbol.dispose as resource release plus cancellation for the owned token", () => {
-		const source = createCancellationTokenSource();
-		const seenReasons: unknown[] = [];
-		source.token.onCancellationRequested((reason) => {
-			seenReasons.push(reason);
-		});
-
-		source[Symbol.dispose]();
-
-		expect(source.token.isCancellationRequested).toBe(true);
-		expect(seenReasons).toHaveLength(1);
-		expect(seenReasons[0]).toBeInstanceOf(ClientError);
-		expect(seenReasons[0]).toMatchObject({
-			kind: ClientErrorKind.Cancelled,
-			message: "Disposed",
 		});
 	});
 
@@ -45,7 +26,7 @@ describe("cancellation baseline", () => {
 		const linked = createLinkedCancellationToken(outer.token, inner.token);
 		const seenReasons: unknown[] = [];
 
-		linked.onCancellationRequested((reason) => {
+		linked.onCancellationRequested(({ reason }) => {
 			seenReasons.push(reason);
 		});
 

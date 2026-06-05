@@ -32,8 +32,12 @@ function createPageLocationEnvironment(href: string): RouterTrait & {
 		pathname: url.pathname,
 		search: url.search,
 	};
+	const router = createRouterForNativeWeb({ location });
+	if (!router) {
+		throw new Error("Expected native web router capability.");
+	}
 	return {
-		...createRouterForNativeWeb({ location }),
+		...router,
 		location,
 	};
 }

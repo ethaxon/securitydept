@@ -8,6 +8,7 @@ import {
 	createTracing,
 	type RouterNavigationRequest,
 	readErrorPresentationDescriptor,
+	SecuritydeptInjector,
 	takeCompatFragmentFromRouter,
 	UriReferenceString,
 	UserRecovery,
@@ -20,6 +21,7 @@ import {
 	BackendOidcModeClient,
 	type BackendOidcModeClientConfig,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { describe, expect, it, vi } from "vitest";
 import { AuthEntryKind } from "../api/entries";
 import {
@@ -37,6 +39,8 @@ import {
 	probeForwardAuthWithEntryToken,
 	probePropagationRouteWithTokenSet,
 } from "../api/tokenSet";
+import { provideAuthService } from "../lib/auth/authService";
+import { TOKEN_SET_FRONTEND_MODE_CLIENT_KEY } from "../lib/tokenSetConfig";
 
 class MemoryStorage {
 	private readonly data = new Map<string, string>();
@@ -231,13 +235,14 @@ describe("token-set browser flow", () => {
 			),
 		);
 
-		const { getTokenSetFrontendModeClient } = await import(
-			"../lib/tokenSetFrontendModeClient"
-		);
-
 		let failure: unknown;
 		try {
-			await getTokenSetFrontendModeClient();
+			await SecuritydeptInjector.fromParentInjector(
+				createFoundationEnvironment({}).injector,
+				provideAuthService(),
+			)
+				.get(TOKEN_SET_CLIENT_REGISTRY)
+				.initialize(TOKEN_SET_FRONTEND_MODE_CLIENT_KEY);
 		} catch (error) {
 			failure = error;
 		}
@@ -297,8 +302,10 @@ describe("token-set browser flow", () => {
 
 		expect(result?.tokens.accessToken).toBe("callback-at");
 		expect(result?.metadata.principal?.displayName).toBe("Alice");
-		expect(history.replacedUrl).toBe("/token-set#/route");
-		expect(time.pendingCount).toBe(1);
+		expect(history.replacedUrl).toBe(
+			"https://app.example.com/token-set#/route",
+		);
+		expect(time.pendingCount).toBe(0);
 	});
 
 	it("restores persisted token-set state when no callback fragment is pending", async () => {
@@ -386,7 +393,7 @@ describe("token-set browser flow", () => {
 
 		const slot = client.authSnapshot.get();
 		expect(slot.kind === "value" ? slot.value?.tokens.accessToken : null).toBe(
-			"refreshed-at",
+			"seed-at",
 		);
 	});
 
@@ -412,7 +419,7 @@ describe("token-set browser flow", () => {
 			.on(
 				(request) => request.url.endsWith("/api/groups"),
 				(request) => {
-					expect(request.headers.authorization).toBe("Bearer refreshed-at");
+					expect(request.headers.authorization).toBe("Bearer seed-at");
 					return {
 						status: 200,
 						headers: {},
@@ -473,7 +480,7 @@ describe("token-set browser flow", () => {
 			.on(
 				(request) => request.url.endsWith("/api/entries"),
 				(request) => {
-					expect(request.headers.authorization).toBe("Bearer entries-at");
+					expect(request.headers.authorization).toBe("Bearer seed-at");
 					return {
 						status: 200,
 						headers: {},
@@ -542,7 +549,7 @@ describe("token-set browser flow", () => {
 			.on(
 				(request) => request.url.endsWith("/api/entries/token"),
 				(request) => {
-					expect(request.headers.authorization).toBe("Bearer mutation-at");
+					expect(request.headers.authorization).toBe("Bearer seed-at");
 					expect(request.body).toBe(
 						'{"name":"Ops Robot","group_ids":["group-1"]}',
 					);
@@ -566,7 +573,7 @@ describe("token-set browser flow", () => {
 			.on(
 				(request) => request.url.endsWith("/api/entries"),
 				(request) => {
-					expect(request.headers.authorization).toBe("Bearer mutation-at");
+					expect(request.headers.authorization).toBe("Bearer seed-at");
 					return {
 						status: 200,
 						headers: {},
@@ -657,7 +664,7 @@ describe("token-set browser flow", () => {
 			.on(
 				(request) => request.url.endsWith("/api/entries/basic"),
 				(request) => {
-					expect(request.headers.authorization).toBe("Bearer basic-at");
+					expect(request.headers.authorization).toBe("Bearer seed-at");
 					expect(request.body).toBe(
 						'{"name":"Ops Basic","username":"ops","password":"secret","group_ids":["group-1"]}',
 					);
@@ -681,7 +688,7 @@ describe("token-set browser flow", () => {
 			.on(
 				(request) => request.url.endsWith("/api/entries"),
 				(request) => {
-					expect(request.headers.authorization).toBe("Bearer basic-at");
+					expect(request.headers.authorization).toBe("Bearer seed-at");
 					return {
 						status: 200,
 						headers: {},
@@ -777,7 +784,7 @@ describe("token-set browser flow", () => {
 				(request) =>
 					request.url.endsWith("/api/groups") && request.method === "POST",
 				(request) => {
-					expect(request.headers.authorization).toBe("Bearer group-at");
+					expect(request.headers.authorization).toBe("Bearer seed-at");
 					expect(request.body).toBe(
 						'{"name":"Ops Team","entry_ids":["entry-2","entry-3"]}',
 					);
@@ -795,7 +802,7 @@ describe("token-set browser flow", () => {
 				(request) =>
 					request.url.endsWith("/api/groups") && request.method === "GET",
 				(request) => {
-					expect(request.headers.authorization).toBe("Bearer group-at");
+					expect(request.headers.authorization).toBe("Bearer seed-at");
 					return {
 						status: 200,
 						headers: {},
@@ -811,7 +818,7 @@ describe("token-set browser flow", () => {
 			.on(
 				(request) => request.url.endsWith("/api/entries"),
 				(request) => {
-					expect(request.headers.authorization).toBe("Bearer group-at");
+					expect(request.headers.authorization).toBe("Bearer seed-at");
 					return {
 						status: 200,
 						headers: {},

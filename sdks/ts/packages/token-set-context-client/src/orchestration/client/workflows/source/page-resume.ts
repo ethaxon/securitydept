@@ -1,16 +1,14 @@
 import {
-	createNeverEventStream,
 	type EventStreamTrait,
 	type PageLifecycleTrait,
 	type TimeTrait,
 } from "@securitydept/client";
 import {
 	createAsyncSchedulerWithTimestampProvider,
-	eventStreamToObservable,
-	observableToEventStream,
+	RxEventStream,
 } from "@securitydept/client/rx";
 import { type PageResumeEvent } from "@securitydept/client/web";
-import { tap, throttleTime } from "rxjs";
+import { NEVER, tap, throttleTime } from "rxjs";
 import {
 	normalizeTokenSetBuiltinAuthWorkflowSourceConfig,
 	type TokenSetBuiltinAuthWorkflowSourceConfig,
@@ -55,25 +53,22 @@ export class TokenSetPageResumeWorkflowSource {
 			CreateTokenSetPageResumeWorkflowSourceEnv,
 	) {
 		const throttleMs = options.throttleMs;
-		this.eventStream = observableToEventStream(
-			eventStreamToObservable(
-				options.pageLifecycle?.resume ??
-					createNeverEventStream<PageResumeEvent>(),
-			).pipe(
-				throttleTime(
-					throttleMs,
-					createAsyncSchedulerWithTimestampProvider(options.time),
-				),
-				tap((event) => {
-					options.recordTrace?.(
-						TokenSetPageResumeWorkflowSourceTraceEventType.Fired,
-						{
-							trigger: event.trigger,
-							persisted: event.persisted,
-						},
-					);
-				}),
+		this.eventStream = RxEventStream.fromObservableInput(
+			options.pageLifecycle?.resume ?? NEVER,
+		).pipe(
+			throttleTime(
+				throttleMs,
+				createAsyncSchedulerWithTimestampProvider(options.time),
 			),
+			tap((event) => {
+				options.recordTrace?.(
+					TokenSetPageResumeWorkflowSourceTraceEventType.Fired,
+					{
+						trigger: event.trigger,
+						persisted: event.persisted,
+					},
+				);
+			}),
 		);
 	}
 

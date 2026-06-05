@@ -34,9 +34,13 @@ function createPageLocationCapability(href: string): RouterTrait & {
 			search: url.search,
 		},
 	};
+	const router = createRouterForNativeWeb(capability);
+	if (!router) {
+		throw new Error("Expected native web router capability.");
+	}
 	return {
 		...capability,
-		...createRouterForNativeWeb(capability),
+		...router,
 	};
 }
 

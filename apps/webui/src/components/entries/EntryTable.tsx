@@ -9,7 +9,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 import { type AuthEntry, AuthEntryKind } from "@/api/entries";
 import { type Group } from "@/api/groups";
-import { useDashboardDeleteEntryMutation } from "@/hooks/useDashboardApi";
+import { useDeleteEntryMutation } from "@/hooks/useDashboardData";
 
 export function EntryTable({
 	entries,
@@ -18,7 +18,7 @@ export function EntryTable({
 	entries: AuthEntry[];
 	groups: Group[];
 }) {
-	const deleteEntry = useDashboardDeleteEntryMutation();
+	const deleteEntry = useDeleteEntryMutation();
 	const groupNameById = useMemo(
 		() => new Map(groups.map((group) => [group.id, group.name])),
 		[groups],
@@ -96,7 +96,7 @@ export function EntryTable({
 						</Link>
 						<button
 							type="button"
-							onClick={() => deleteEntry.mutate({ entryId: row.original.id })}
+							onClick={() => deleteEntry.mutate(row.original.id)}
 							className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30"
 						>
 							<Trash2 className="h-4 w-4" />

@@ -18,10 +18,11 @@ import {
 import {
 	createEventSubject,
 	createFoundationEnvironment,
-	createReplaySignal,
 	createSignal,
 	RequirementsComposition,
+	ResourceStatus,
 	readSecuritydeptRouteMetadata,
+	resourceFromSnapshots,
 } from "@securitydept/client";
 import { provideEnvironment } from "@securitydept/client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
@@ -41,21 +42,25 @@ import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 
 function createMockClient(authenticated: boolean): BaseOidcModeClient {
-	const authDetermined = createReplaySignal<true>();
-	authDetermined.setValue(true);
-	const authSnapshot = createReplaySignal<null>();
-	authSnapshot.setValue(null);
-	const isAuthenticated = createReplaySignal<boolean>();
-	isAuthenticated.setValue(authenticated);
-	const authorizationHeaderValue = createReplaySignal<string | undefined>();
-	authorizationHeaderValue.setValue(authenticated ? "Bearer live" : undefined);
+	const authSnapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: null,
+	} as const);
+	const authResource = resourceFromSnapshots(() => authSnapshot.get());
+	const isAuthenticated = resourceFromSnapshots(() => ({
+		status: ResourceStatus.Resolved,
+		value: authenticated,
+	}));
+	const authorizationHeaderValue = resourceFromSnapshots(() => ({
+		status: ResourceStatus.Resolved,
+		value: authenticated ? "Bearer live" : undefined,
+	}));
 	return {
 		id: authenticated ? "ready" : "login",
-		authDetermined,
 		authSnapshot,
+		authResource,
 		isAuthenticated,
 		authorizationHeaderValue,
-		lastAuthError: createSignal<unknown | undefined>(undefined),
 		authOperations: {
 			restorePending: createSignal(false),
 			refreshPending: createSignal(false),

@@ -2,25 +2,27 @@ import {
 	type CancellationTokenSourceTrait,
 	ClientError,
 	ClientErrorKind,
-	createAndThenComputedReplaySignal,
 	createCancellationTokenSource,
-	createEventReplaySubject,
-	createEventSubject,
 	createOnceAsyncLockCallable,
-	createReplaySignal,
 	createSignal,
 	type DisposableTrait,
 	defineInstrumentMethodDecorator,
 	describeError,
 	type EventStreamTrait,
 	type FoundationEnvironment,
+	mapResource,
 	type OperationSpanTrait,
-	type ReadableReplaySignalTrait,
 	type ReadableSignalTrait,
+	type ResourceSnapshot,
+	ResourceSnapshotUpdateKind,
+	ResourceStatus,
+	type ResourceTrait,
 	RouterNavigationIntent,
 	RouterNavigationMode,
-	readonlyReplaySignal,
 	readonlySignal,
+	reduceResourceSnapshot,
+	resourceFromSnapshots,
+	resourceSnapshotValueOr,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
 	throwValidationClientError,
@@ -34,9 +36,11 @@ import {
 	commandResponseData,
 	concatCommand,
 	dispatchCommandLocallyToStream,
-	signalToObservable,
+	RxEventReplaySubject,
+	RxEventSubject,
+	RxStateSignal,
 } from "@securitydept/client/rx";
-import { from, lastValueFrom, takeUntil } from "rxjs";
+import { filter, from, lastValueFrom, takeUntil } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import { BasicAuthContextClientConfigSchema } from "./schemas";
 import {
@@ -144,12 +148,13 @@ export class BasicAuthContextClient implements DisposableTrait {
 	private readonly _span: SpanTrait;
 	private readonly _rootCancellation: CancellationTokenSourceTrait =
 		createCancellationTokenSource();
-	private readonly _destroyed = createReplaySignal<void>();
-	private readonly _boundarySnapshotSignal =
-		createReplaySignal<BasicAuthBoundarySnapshot | null>();
-	private readonly _lastBoundaryErrorSignal = createSignal<unknown | undefined>(
-		undefined,
+	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
+	private readonly destroyed$ = from(this._destroyed).pipe(
+		filter((value): value is true => value),
 	);
+	private readonly _boundarySnapshotSignal = RxStateSignal.fromInitialValue<
+		ResourceSnapshot<BasicAuthBoundarySnapshot | null>
+	>({ status: ResourceStatus.Idle });
 	private readonly _operationSignals: {
 		readonly startPending: WritableSignalTrait<boolean>;
 		readonly refreshPending: WritableSignalTrait<boolean>;
@@ -162,19 +167,17 @@ export class BasicAuthContextClient implements DisposableTrait {
 		loginRedirectPending: createSignal(false),
 	};
 	private readonly _eventSubject =
-		createEventReplaySubject<BasicAuthContextEvent>(100);
+		new RxEventReplaySubject<BasicAuthContextEvent>(100);
 	private readonly _refreshCommandSubject =
-		createEventSubject<BasicAuthRefreshCommand>();
-	private readonly _refreshResponseSubject =
-		createEventSubject<
-			CommandResponse<BasicAuthRefreshCommand, BasicAuthBoundarySnapshot>
-		>();
+		new RxEventSubject<BasicAuthRefreshCommand>();
+	private readonly _refreshResponseSubject = new RxEventSubject<
+		CommandResponse<BasicAuthRefreshCommand, BasicAuthBoundarySnapshot>
+	>();
 	private readonly _logoutCommandSubject =
-		createEventSubject<BasicAuthLogoutCommand>();
-	private readonly _logoutResponseSubject =
-		createEventSubject<
-			CommandResponse<BasicAuthLogoutCommand, BasicAuthBoundarySnapshot>
-		>();
+		new RxEventSubject<BasicAuthLogoutCommand>();
+	private readonly _logoutResponseSubject = new RxEventSubject<
+		CommandResponse<BasicAuthLogoutCommand, BasicAuthBoundarySnapshot>
+	>();
 	private readonly _startOnce = createOnceAsyncLockCallable(
 		async (operationSpan?: OperationSpanTrait) => {
 			this._throwIfNotOperational();
@@ -192,10 +195,11 @@ export class BasicAuthContextClient implements DisposableTrait {
 
 	readonly id: string;
 	readonly zones: readonly ResolvedBasicAuthZone[];
-	readonly boundarySnapshot: ReadableReplaySignalTrait<BasicAuthBoundarySnapshot | null>;
-	readonly boundaryDetermined: ReadableReplaySignalTrait<true>;
-	readonly isAuthenticated: ReadableReplaySignalTrait<boolean>;
-	readonly lastBoundaryError: ReadableSignalTrait<unknown | undefined>;
+	readonly boundarySnapshot: ReadableSignalTrait<
+		ResourceSnapshot<BasicAuthBoundarySnapshot | null>
+	>;
+	readonly boundaryResource: ResourceTrait<BasicAuthBoundarySnapshot | null>;
+	readonly isAuthenticated: ResourceTrait<boolean>;
 	readonly operations: BasicAuthContextOperationSignals;
 	readonly events: EventStreamTrait<BasicAuthContextEvent>;
 
@@ -251,19 +255,14 @@ export class BasicAuthContextClient implements DisposableTrait {
 				id: this.id,
 			},
 		});
-		this.boundarySnapshot = readonlyReplaySignal(this._boundarySnapshotSignal);
-		this.boundaryDetermined = createAndThenComputedReplaySignal(
-			this._boundarySnapshotSignal,
-			() => ({ kind: "value", value: true }),
+		this.boundarySnapshot = readonlySignal(this._boundarySnapshotSignal);
+		this.boundaryResource = resourceFromSnapshots(() =>
+			this._boundarySnapshotSignal.get(),
 		);
-		this.isAuthenticated = createAndThenComputedReplaySignal(
-			this._boundarySnapshotSignal,
-			(snapshot) => ({
-				kind: "value",
-				value: snapshot?.authenticated === true,
-			}),
+		this.isAuthenticated = mapResource(
+			this.boundaryResource,
+			(snapshot) => snapshot?.authenticated === true,
 		);
-		this.lastBoundaryError = readonlySignal(this._lastBoundaryErrorSignal);
 		this.operations = {
 			startPending: readonlySignal(this._operationSignals.startPending),
 			refreshPending: readonlySignal(this._operationSignals.refreshPending),
@@ -276,25 +275,25 @@ export class BasicAuthContextClient implements DisposableTrait {
 
 		from(this._refreshCommandSubject)
 			.pipe(
+				takeUntil(this.destroyed$),
 				concatCommand((command) =>
 					this._executeRefresh(command.payload, command.operationSpan),
 				),
-				takeUntil(signalToObservable<void>(this._destroyed)),
 			)
 			.subscribe(this._refreshResponseSubject);
 
 		from(this._logoutCommandSubject)
 			.pipe(
+				takeUntil(this.destroyed$),
 				concatCommand((command) =>
 					this._executeLogout(command.payload, command.operationSpan),
 				),
-				takeUntil(signalToObservable<void>(this._destroyed)),
 			)
 			.subscribe(this._logoutResponseSubject);
 
 		if (config.autoStart === true) {
 			this.start().catch(() => {
-				// Startup failures are reflected through lastBoundaryError.
+				// Startup failure is reflected by boundarySnapshot.
 			});
 		}
 	}
@@ -388,7 +387,6 @@ export class BasicAuthContextClient implements DisposableTrait {
 				zone,
 			});
 		} catch (error) {
-			this._lastBoundaryErrorSignal.set(error);
 			this._emitEvent({
 				type: BasicAuthContextEventType.LoginRedirectFailed,
 				zone,
@@ -481,10 +479,10 @@ export class BasicAuthContextClient implements DisposableTrait {
 	}
 
 	dispose(): void {
-		if (this._destroyed.hasValue()) {
+		if (this._destroyed.get()) {
 			return;
 		}
-		this._destroyed.setValue();
+		this._destroyed.set(true);
 		this._rootCancellation.cancel(
 			new ClientError({
 				kind: ClientErrorKind.Cancelled,
@@ -493,6 +491,8 @@ export class BasicAuthContextClient implements DisposableTrait {
 				source: BasicAuthContextSource.BasicAuthContext,
 			}),
 		);
+		this.isAuthenticated.dispose();
+		this.boundaryResource.dispose();
 	}
 
 	[SYMBOL_DISPOSE](): void {
@@ -598,6 +598,11 @@ export class BasicAuthContextClient implements DisposableTrait {
 	): Promise<BasicAuthBoundarySnapshot> {
 		this._throwIfNotOperational();
 		this._operationSignals.refreshPending.set(true);
+		const previous = this._boundarySnapshotSignal.get();
+		const loadingSnapshot = reduceResourceSnapshot(previous, {
+			kind: ResourceSnapshotUpdateKind.Load,
+		});
+		this._boundarySnapshotSignal.set(loadingSnapshot);
 		this._emitEvent({
 			type: BasicAuthContextEventType.BoundaryRefreshStarted,
 			snapshot: this._readCurrentSnapshot(),
@@ -619,8 +624,12 @@ export class BasicAuthContextClient implements DisposableTrait {
 
 			this._throwIfNotOperational();
 			const snapshot = this._snapshotFromResponse(options.path, response);
-			this._boundarySnapshotSignal.setValue(snapshot);
-			this._lastBoundaryErrorSignal.set(undefined);
+			this._boundarySnapshotSignal.set(
+				reduceResourceSnapshot(loadingSnapshot, {
+					kind: ResourceSnapshotUpdateKind.Resolve,
+					value: snapshot,
+				}),
+			);
 			operationSpan?.setAttributes({
 				authenticated: snapshot.authenticated,
 				boundaryKind: snapshot.boundaryKind,
@@ -632,7 +641,12 @@ export class BasicAuthContextClient implements DisposableTrait {
 			});
 			return snapshot;
 		} catch (error) {
-			this._lastBoundaryErrorSignal.set(error);
+			this._boundarySnapshotSignal.set(
+				reduceResourceSnapshot(loadingSnapshot, {
+					kind: ResourceSnapshotUpdateKind.Fail,
+					error,
+				}),
+			);
 			this._emitEvent({
 				type: BasicAuthContextEventType.BoundaryRefreshFailed,
 				snapshot: this._readCurrentSnapshot(),
@@ -650,6 +664,11 @@ export class BasicAuthContextClient implements DisposableTrait {
 	): Promise<BasicAuthBoundarySnapshot> {
 		this._throwIfNotOperational();
 		this._operationSignals.logoutPending.set(true);
+		const previous = this._boundarySnapshotSignal.get();
+		const loadingSnapshot = reduceResourceSnapshot(previous, {
+			kind: ResourceSnapshotUpdateKind.Load,
+		});
+		this._boundarySnapshotSignal.set(loadingSnapshot);
 		this._emitEvent({
 			type: BasicAuthContextEventType.LogoutStarted,
 			snapshot: this._readCurrentSnapshot(),
@@ -675,8 +694,12 @@ export class BasicAuthContextClient implements DisposableTrait {
 				});
 			}
 
-			this._boundarySnapshotSignal.setValue(snapshot);
-			this._lastBoundaryErrorSignal.set(undefined);
+			this._boundarySnapshotSignal.set(
+				reduceResourceSnapshot(loadingSnapshot, {
+					kind: ResourceSnapshotUpdateKind.Resolve,
+					value: snapshot,
+				}),
+			);
 			operationSpan?.setAttributes({
 				authenticated: false,
 				boundaryKind: snapshot.boundaryKind,
@@ -688,7 +711,12 @@ export class BasicAuthContextClient implements DisposableTrait {
 			});
 			return snapshot;
 		} catch (error) {
-			this._lastBoundaryErrorSignal.set(error);
+			this._boundarySnapshotSignal.set(
+				reduceResourceSnapshot(loadingSnapshot, {
+					kind: ResourceSnapshotUpdateKind.Fail,
+					error,
+				}),
+			);
 			this._emitEvent({
 				type: BasicAuthContextEventType.LogoutFailed,
 				snapshot: this._readCurrentSnapshot(),
@@ -727,8 +755,7 @@ export class BasicAuthContextClient implements DisposableTrait {
 	}
 
 	private _readCurrentSnapshot(): BasicAuthBoundarySnapshot | null {
-		const slot = this._boundarySnapshotSignal.get();
-		return slot.kind === "value" ? slot.value : null;
+		return resourceSnapshotValueOr(this._boundarySnapshotSignal.get(), null);
 	}
 
 	private _emitEvent(

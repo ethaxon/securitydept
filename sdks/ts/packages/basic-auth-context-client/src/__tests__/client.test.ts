@@ -204,13 +204,10 @@ describe("BasicAuthContextClient", () => {
 			path: "/basic/api/entries",
 		});
 		expect(client.boundarySnapshot.get()).toMatchObject({
-			kind: "value",
+			status: "resolved",
 			value: snapshot,
 		});
-		expect(client.isAuthenticated.get()).toEqual({
-			kind: "value",
-			value: false,
-		});
+		expect(client.isAuthenticated.value.get()).toBe(false);
 		expect(traces).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ name: "operation.started" }),

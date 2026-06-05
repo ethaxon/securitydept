@@ -1,5 +1,6 @@
 import { SYMBOL_DISPOSE } from "../../compat";
-import { createEventSubject, type EventStreamTrait } from "../../events";
+import { type EventStreamTrait } from "../../events";
+import { RxEventSubject } from "../../rx/event";
 import { validateWithSchemaSync } from "../../validation";
 import {
 	type CreateJsonRpcClientOptions,
@@ -54,7 +55,7 @@ class JsonRpcClient implements JsonRpcClientTrait {
 	readonly onNotification: EventStreamTrait<JsonRpcNotificationEvent>;
 
 	private readonly notificationSubject =
-		createEventSubject<JsonRpcNotificationEvent>();
+		new RxEventSubject<JsonRpcNotificationEvent>();
 	private readonly pendingRequests = new Map<JsonRpcId, PendingRequest>();
 	private disposed = false;
 	private nextRequestId = 1;
@@ -196,9 +197,9 @@ class JsonRpcServer implements JsonRpcServerTrait {
 	readonly onRequest: EventStreamTrait<JsonRpcRequestEvent>;
 	readonly onNotification: EventStreamTrait<JsonRpcNotificationEvent>;
 
-	private readonly requestSubject = createEventSubject<JsonRpcRequestEvent>();
+	private readonly requestSubject = new RxEventSubject<JsonRpcRequestEvent>();
 	private readonly notificationSubject =
-		createEventSubject<JsonRpcNotificationEvent>();
+		new RxEventSubject<JsonRpcNotificationEvent>();
 	private disposed = false;
 
 	constructor(private readonly options: CreateJsonRpcServerOptions) {

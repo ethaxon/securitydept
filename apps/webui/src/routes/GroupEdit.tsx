@@ -5,13 +5,13 @@ import { GroupForm } from "@/components/groups/GroupForm";
 import { Layout } from "@/components/layout/Layout";
 import {
 	useDashboardAccessNotice,
-	useDashboardGroupQuery,
-} from "@/hooks/useDashboardApi";
+	useGroupQuery,
+} from "@/hooks/useDashboardData";
 
 export function GroupEditPage() {
 	const { groupId } = useParams({ from: "/groups/$groupId/edit" });
 	const accessNotice = useDashboardAccessNotice();
-	const { data: group, isLoading } = useDashboardGroupQuery(groupId);
+	const { data: group, isLoading } = useGroupQuery(groupId);
 
 	return (
 		<Layout>

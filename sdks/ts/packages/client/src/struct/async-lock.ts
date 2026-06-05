@@ -100,8 +100,19 @@ export function createOnceAsyncLockCallable<
 			if (prop in internalState) {
 				return Reflect.get(internalState, prop);
 			}
-			if (prop === "get" || prop === "notify" || prop === SYMBOL_OBSERVABLE) {
-				return Reflect.get(internalStateSignal, prop, internalStateSignal);
+			if (
+				prop === "get" ||
+				prop === "watchStream" ||
+				prop === SYMBOL_OBSERVABLE
+			) {
+				const value = Reflect.get(
+					internalStateSignal,
+					prop,
+					internalStateSignal,
+				);
+				return typeof value === "function"
+					? value.bind(internalStateSignal)
+					: value;
 			}
 			// other properties (like function's name, length, toString, etc.) retain original function behavior
 			return Reflect.get(target, prop, receiver);

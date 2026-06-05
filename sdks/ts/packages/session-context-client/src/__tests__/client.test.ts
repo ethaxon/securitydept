@@ -77,7 +77,7 @@ describe("SessionContextClient", () => {
 				claims: rustSessionUserInfoResponse.claims,
 			},
 		});
-		expect(await client.sessionInfo.whenValue()).toEqual(result);
+		expect(await client.sessionResource.whenValue()).toEqual(result);
 		expect(await client.isAuthenticated.whenValue()).toBe(true);
 	});
 
@@ -94,12 +94,12 @@ describe("SessionContextClient", () => {
 			);
 
 			await expect(client.refresh()).resolves.toBeNull();
-			expect(await client.sessionInfo.whenValue()).toBeNull();
+			expect(await client.sessionResource.whenValue()).toBeNull();
 			expect(await client.isAuthenticated.whenValue()).toBe(false);
 		}
 	});
 
-	it("records failures in lastSessionError", async () => {
+	it("records failures in the session snapshot", async () => {
 		const client = new SessionContextClient(
 			{ baseUrl: "https://api.example.com" },
 			createEnvironmentForTest({
@@ -112,8 +112,9 @@ describe("SessionContextClient", () => {
 		);
 
 		await expect(client.refresh()).rejects.toBeInstanceOf(ClientError);
-		expect(client.lastSessionError.get()).toMatchObject({
-			kind: ClientErrorKind.Server,
+		expect(client.sessionSnapshot.get()).toMatchObject({
+			status: "loading_error",
+			error: { kind: ClientErrorKind.Server },
 		});
 	});
 
@@ -164,7 +165,7 @@ describe("SessionContextClient", () => {
 			url: "https://api.example.com/auth/session/logout",
 			method: "POST",
 		});
-		expect(await client.sessionInfo.whenValue()).toBeNull();
+		expect(await client.sessionResource.whenValue()).toBeNull();
 	});
 
 	it("loginWithRedirect navigates with an explicit post-auth redirect", async () => {

@@ -10,14 +10,14 @@ import { BrowserHarnessSection } from "@/components/dashboard/BrowserHarnessSect
 import { Layout } from "@/components/layout/Layout";
 import {
 	useDashboardAccessNotice,
-	useDashboardEntriesQuery,
-	useDashboardGroupsQuery,
-} from "@/hooks/useDashboardApi";
+	useEntriesQuery,
+	useGroupsQuery,
+} from "@/hooks/useDashboardData";
 
 export function DashboardPage() {
 	const accessNotice = useDashboardAccessNotice();
-	const { data: entries = [] } = useDashboardEntriesQuery();
-	const { data: groups = [] } = useDashboardGroupsQuery();
+	const { data: entries = [] } = useEntriesQuery();
+	const { data: groups = [] } = useGroupsQuery();
 	const {
 		data: serverHealth,
 		isLoading: isHealthLoading,

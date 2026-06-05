@@ -1,15 +1,24 @@
 import {
-	createReplaySignal,
 	type EventStreamTrait,
-	type ReadableReplaySignalTrait,
+	type ReadableSignalTrait,
+	type ResourceSnapshot,
+	ResourceStatus,
 	type TimeTrait,
 } from "@securitydept/client";
 import {
 	createAsyncSchedulerWithTimestampProvider,
-	observableToEventStream,
-	signalToObservable,
+	RxEventStream,
 } from "@securitydept/client/rx";
-import { EMPTY, filter, type Observable, of, switchMap, timer } from "rxjs";
+import {
+	EMPTY,
+	filter,
+	from,
+	map,
+	type Observable,
+	of,
+	switchMap,
+	timer,
+} from "rxjs";
 import {
 	getTokenSetAccessTokenFreshnessTiming,
 	type TokenSetTokenFreshnessOptions,
@@ -51,7 +60,9 @@ export interface CreateTokenSetRefreshTimerWorkflowSourceOptions {
 export interface CreateTokenSetRefreshTimerWorkflowSourceEnv {
 	time: TimeTrait;
 	freshnessOptions: TokenSetTokenFreshnessOptions;
-	authSnapshot: ReadableReplaySignalTrait<TokenSetAuthSnapshot | null>;
+	authSnapshot: ReadableSignalTrait<
+		ResourceSnapshot<TokenSetAuthSnapshot | null>
+	>;
 	recordTrace?: (
 		type: TokenSetRefreshTimerWorkflowSourceTraceEventType,
 		attributes?: Record<string, unknown>,
@@ -65,18 +76,22 @@ export class TokenSetRefreshTimerWorkflowSource {
 
 	protected constructor(
 		readonly options: CreateTokenSetRefreshTimerWorkflowSourceOptions &
-			CreateTokenSetRefreshTimerWorkflowSourceEnv,
+			CreateTokenSetRefreshTimerWorkflowSourceEnv & { enabled: boolean },
 	) {
-		this.eventStream = observableToEventStream(
-			signalToObservable(options.authSnapshot).pipe(
-				filter(
-					(snapshot): snapshot is TokenSetAuthSnapshot =>
-						snapshot !== null && snapshot.tokens.refreshMaterial != null,
-				),
-				switchMap((snapshot) =>
-					createRefreshTimerStreamForSnapshot(snapshot, options),
-				),
-			),
+		this.eventStream = RxEventStream.fromObservableInput(
+			options.enabled
+				? from(options.authSnapshot).pipe(
+						filter((snapshot) => snapshot.status === ResourceStatus.Resolved),
+						map((snapshot) => snapshot.value),
+						filter(
+							(snapshot): snapshot is TokenSetAuthSnapshot =>
+								snapshot !== null && snapshot.tokens.refreshMaterial != null,
+						),
+						switchMap((snapshot) =>
+							createRefreshTimerStreamForSnapshot(snapshot, options),
+						),
+					)
+				: EMPTY,
 		);
 	}
 
@@ -98,10 +113,9 @@ export class TokenSetRefreshTimerWorkflowSource {
 		return new TokenSetRefreshTimerWorkflowSource({
 			time: env.time,
 			freshnessOptions: env.freshnessOptions,
-			authSnapshot:
-				normalizedOptions.kind === TokenSetAuthWorkflowSourceConfigKind.Bundle
-					? env.authSnapshot
-					: createReplaySignal(),
+			authSnapshot: env.authSnapshot,
+			enabled:
+				normalizedOptions.kind === TokenSetAuthWorkflowSourceConfigKind.Bundle,
 			maxScheduleSliceMs: normalizedOptions.options.maxScheduleSliceMs,
 			recordTrace: env.recordTrace,
 		});

@@ -1,8 +1,13 @@
-import { createReplaySignal, createSignal } from "@securitydept/client";
+import { rxResource } from "@angular/core/rxjs-interop";
+import { createSignal } from "@securitydept/client";
 import { describe, expect, it } from "vitest";
-import { toNgSignal } from "../interop";
+import { toNgResource, toNgSignal } from "../interop";
 
 describe("client-angular interop", () => {
+	it("forwards Angular rxResource without changing its options contract", () => {
+		expect(toNgResource).toBe(rxResource);
+	});
+
 	it("converts SDK signals to Angular signals", () => {
 		const source = createSignal("initial");
 		const signal = toNgSignal(source, {
@@ -25,19 +30,5 @@ describe("client-angular interop", () => {
 		});
 
 		expect(signal()).toBe("initial");
-	});
-
-	it("converts replay signals with an explicit initial value", () => {
-		const source = createReplaySignal<string>();
-		const signal = toNgSignal(source, {
-			initialValue: null,
-			manualCleanup: true,
-		});
-
-		expect(signal()).toBeNull();
-
-		source.setValue("ready");
-
-		expect(signal()).toBe("ready");
 	});
 });

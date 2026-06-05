@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCancellationTokenSource } from "../../cancellation/cancellation-token";
+import { createCancellationTokenSource } from "../../cancellation/create";
 import { ClientErrorKind } from "../../errors/types";
 import {
 	abortSignalToCancellationToken,

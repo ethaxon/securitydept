@@ -60,7 +60,11 @@ function createClient(
 	state: ReturnType<typeof createSignal<TokenSetAuthSnapshot | null>>,
 ): BaseOidcModeClient {
 	const reactive = createTestTokenSetReactiveFields(state.get());
-	state.notify(() => reactive.emitSnapshot(state.get()));
+	state.watchStream().subscribe({
+		next() {
+			reactive.emitSnapshot(state.get());
+		},
+	});
 	return {
 		...reactive.fields,
 		authEvents: createEventSubject<TokenSetAuthEvent>(),
@@ -140,10 +144,10 @@ describe("react multi-client registry baseline", () => {
 
 		const mainClient = (await registry?.initialize("main"))?.client;
 		const adminClient = (await registry?.initialize("admin"))?.client;
-		expect(await mainClient?.authSnapshot.whenValue()).toEqual(
+		expect(await mainClient?.authResource.whenValue()).toEqual(
 			createSnapshot("main-at"),
 		);
-		expect(await adminClient?.authSnapshot.whenValue()).toEqual(
+		expect(await adminClient?.authResource.whenValue()).toEqual(
 			createSnapshot("admin-at"),
 		);
 		view.unmount();
@@ -184,7 +188,7 @@ describe("react multi-client registry baseline", () => {
 		});
 
 		const client = (await registry?.initialize("main"))?.client;
-		expect(await client?.authSnapshot.whenValue()).toEqual(
+		expect(await client?.authResource.whenValue()).toEqual(
 			createSnapshot("updated-at"),
 		);
 		view.unmount();

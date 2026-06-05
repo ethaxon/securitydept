@@ -14,8 +14,9 @@ import {
 import {
 	createEventSubject,
 	createFoundationEnvironment,
-	createReplaySignal,
 	createSignal,
+	ResourceStatus,
+	resourceFromSnapshots,
 	UriReferenceString,
 	writeSecuritydeptRouteMetadata,
 } from "@securitydept/client";
@@ -38,23 +39,25 @@ const TEST_AUTH_ACTION = new InjectionToken<() => void>("TEST_AUTH_ACTION");
 const NULL_ENVIRONMENT_INJECTOR = null as unknown as EnvironmentInjector;
 
 function createMockClient(authenticated: boolean): BaseOidcModeClient {
-	const authDetermined = createReplaySignal<true>();
-	authDetermined.setValue(true);
-	const authSnapshot = createReplaySignal<null>();
-	authSnapshot.setValue(null);
-	const isAuthenticated = createReplaySignal<boolean>();
-	isAuthenticated.setValue(authenticated);
-	const authorizationHeaderValue = createReplaySignal<string | undefined>();
-	authorizationHeaderValue.setValue(
-		authenticated ? "Bearer confluence" : undefined,
-	);
+	const authSnapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: null,
+	} as const);
+	const authResource = resourceFromSnapshots(() => authSnapshot.get());
+	const isAuthenticated = resourceFromSnapshots(() => ({
+		status: ResourceStatus.Resolved,
+		value: authenticated,
+	}));
+	const authorizationHeaderValue = resourceFromSnapshots(() => ({
+		status: ResourceStatus.Resolved,
+		value: authenticated ? "Bearer confluence" : undefined,
+	}));
 	return {
 		id: "confluence",
-		authDetermined,
 		authSnapshot,
+		authResource,
 		isAuthenticated,
 		authorizationHeaderValue,
-		lastAuthError: createSignal<unknown | undefined>(undefined),
 		authOperations: {
 			restorePending: createSignal(false),
 			refreshPending: createSignal(false),

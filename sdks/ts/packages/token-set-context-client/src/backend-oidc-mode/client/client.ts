@@ -17,6 +17,8 @@ import {
 import { waitForTokenSetPopupRelay } from "../../orchestration/client/popup/relay";
 import {
 	BaseOidcModeClient,
+	TokenSetAuthorizationRevocationError,
+	TokenSetAuthorizationRevocationReason,
 	type TokenSetOidcPopupLoginOptions,
 	type TokenSetOidcPopupLoginResult,
 	type TokenSetOidcRedirectLoginOptions,
@@ -34,6 +36,7 @@ import {
 import {
 	callbackReturnsToTokenSnapshot,
 	parseBackendOidcModeCallbackPayload,
+	parseBackendOidcModeOAuthErrorPayload,
 	parseBackendOidcModeRefreshPayload,
 	parseBackendOidcModeUserInfoBody,
 	refreshReturnsToTokenDelta,
@@ -396,13 +399,11 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	 * 302 → fragment pattern that fetch() cannot follow across domains.
 	 */
 	protected async _refreshAuthSnapshot(
-		_currentSnapshot: TokenSetAuthSnapshot,
+		current: TokenSetAuthSnapshot,
 		_freshnessTiming: TokenSetTokenFreshnessTiming,
 		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetAuthSnapshot | null> {
-		const snapshotSlot = this._authSnapshotSignal.get();
-		const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
-		if (!current?.tokens.refreshMaterial) {
+		if (!current.tokens.refreshMaterial) {
 			return null;
 		}
 
@@ -418,9 +419,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				id_token: current.tokens.idToken,
 				current_metadata_snapshot: current.metadata,
 			}),
-			cancellationToken: createLinkedCancellationToken(
-				this._rootCancellation.token,
-			),
+			cancellationToken: this._rootCancellation.token,
 		});
 
 		this._throwIfNotOperational();
@@ -472,6 +471,33 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			return newSnapshot;
 		}
 
+		const oauthError = response.body
+			? parseBackendOidcModeOAuthErrorPayload(
+					response.body as HttpResponseJsonBody,
+				)
+			: null;
+		if (
+			oauthError?.error === TokenSetAuthorizationRevocationReason.InvalidGrant
+		) {
+			throw new TokenSetAuthorizationRevocationError(
+				TokenSetAuthorizationRevocationReason.InvalidGrant,
+				{ cause: response.body },
+			);
+		}
+		const challenge =
+			response.headers["WWW-Authenticate"] ??
+			response.headers["www-authenticate"];
+		if (
+			response.status === 401 &&
+			challenge !== undefined &&
+			/^Bearer\s+/i.test(challenge) &&
+			/(?:^|,)\s*error\s*=\s*"?invalid_token"?(?:\s*,|\s*$)/i.test(challenge)
+		) {
+			throw new TokenSetAuthorizationRevocationError(
+				TokenSetAuthorizationRevocationReason.InvalidToken,
+				{ cause: response },
+			);
+		}
 		throw ClientError.fromHttpResponse(response.status, response.body);
 	}
 
@@ -570,6 +596,11 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		options: BackendOidcModeMetadataRedemptionOptions | undefined,
 		span?: OperationSpanTrait,
 	): Promise<BackendOidcModeMetadataRedemptionResponse | null> {
+		using cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options?.cancellationToken,
+		);
+
 		span?.addEvent(
 			BackendOidcModeOperationEventName.MetadataRedemptionStarted,
 			{
@@ -586,14 +617,10 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			body: JSON.stringify({
 				metadata_redemption_id: redemptionId,
 			}),
-			cancellationToken: createLinkedCancellationToken(
-				...(options?.cancellationToken
-					? [this._rootCancellation.token, options.cancellationToken]
-					: [this._rootCancellation.token]),
-			),
+			cancellationToken,
 		});
 
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		if (response.status === 200 && response.body) {
 			span?.addEvent(
@@ -656,8 +683,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	): Promise<BackendOidcModeUserInfoResponse> {
 		this._throwIfNotOperational();
 
-		const snapshotSlot = this._authSnapshotSignal.get();
-		const current = snapshotSlot.kind === "value" ? snapshotSlot.value : null;
+		const current = this._readAuthSnapshotValue();
 		operationSpan?.setAttributes({
 			hasAccessToken: current?.tokens.accessToken !== undefined,
 			hasIdToken: current?.tokens.idToken !== undefined,
@@ -701,9 +727,8 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				id_token: idToken,
 			}),
 			cancellationToken: createLinkedCancellationToken(
-				...(options?.cancellationToken
-					? [this._rootCancellation.token, options.cancellationToken]
-					: [this._rootCancellation.token]),
+				this._rootCancellation.token,
+				options?.cancellationToken,
 			),
 		});
 		this._throwIfNotOperational();

@@ -1,6 +1,5 @@
-import { type ResourceRef, type Signal } from "@angular/core";
+import { type Signal } from "@angular/core";
 import {
-	type RxResourceOptions,
 	rxResource,
 	type ToSignalOptions,
 	toSignal,
@@ -9,9 +8,6 @@ import {
 	type InteropObservableTrait,
 	SYMBOL_OBSERVABLE,
 } from "@securitydept/client";
-import { from } from "rxjs";
-
-export type ToNgResourceOptions<T, R> = Omit<RxResourceOptions<T, R>, "stream">;
 
 export function toNgSignal<T>(
 	source: InteropObservableTrait<T>,
@@ -53,22 +49,4 @@ export function toNgSignal<T>(
 	>;
 }
 
-export function toNgResource<T, R = unknown>(
-	source: InteropObservableTrait<T>,
-	options: ToNgResourceOptions<T, R> & {
-		defaultValue: NoInfer<T>;
-	},
-): ResourceRef<T>;
-export function toNgResource<T, R = unknown>(
-	source: InteropObservableTrait<T>,
-	options?: ToNgResourceOptions<T, R>,
-): ResourceRef<T | undefined>;
-export function toNgResource<T, R = unknown>(
-	source: InteropObservableTrait<T>,
-	options: ToNgResourceOptions<T, R> = {},
-): ResourceRef<T | undefined> {
-	return rxResource({
-		...options,
-		stream: () => from(source),
-	});
-}
+export const toNgResource = rxResource;

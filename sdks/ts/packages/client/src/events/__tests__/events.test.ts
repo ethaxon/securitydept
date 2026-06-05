@@ -4,6 +4,7 @@ import {
 	EMPTY,
 	exhaustMap,
 	filter,
+	from,
 	map,
 	merge,
 	NEVER,
@@ -19,11 +20,7 @@ import {
 	createEventStream,
 	createEventSubject,
 } from "../../events/index";
-import {
-	eventStreamToObservable,
-	observableToEventStream,
-	signalToObservable,
-} from "../../rx";
+import { RxEventStream } from "../../rx";
 import { createSignal } from "../../signals";
 
 describe("createEventStream", () => {
@@ -104,9 +101,7 @@ describe("operators", () => {
 			observer.next?.(2);
 			observer.complete?.();
 		});
-		const doubled = eventStreamToObservable(source).pipe(
-			map((x: number) => x * 2),
-		);
+		const doubled = from(source).pipe(map((x: number) => x * 2));
 		doubled.subscribe({ next: (v: number) => values.push(v) });
 		expect(values).toEqual([2, 4]);
 	});
@@ -119,9 +114,7 @@ describe("operators", () => {
 			observer.next?.(3);
 			observer.complete?.();
 		});
-		const even = eventStreamToObservable(source).pipe(
-			filter((x: number) => x % 2 === 0),
-		);
+		const even = from(source).pipe(filter((x: number) => x % 2 === 0));
 		even.subscribe({ next: (v: number) => values.push(v) });
 		expect(values).toEqual([2]);
 	});
@@ -141,9 +134,7 @@ describe("operators", () => {
 			notifierObserver = observer;
 		});
 
-		const limited = eventStreamToObservable(source).pipe(
-			takeUntil(eventStreamToObservable(notifier)),
-		);
+		const limited = from(source).pipe(takeUntil(notifier));
 		limited.subscribe({
 			next: (v: number) => values.push(v),
 			complete: () => {
@@ -172,10 +163,7 @@ describe("operators", () => {
 			observer.next?.("b1");
 			observer.complete?.();
 		});
-		const merged = merge(
-			eventStreamToObservable(a),
-			eventStreamToObservable(b),
-		);
+		const merged = merge(a, b);
 		merged.subscribe({ next: (v: string) => values.push(v) });
 		expect(values).toEqual(["a1", "b1"]);
 	});
@@ -184,14 +172,12 @@ describe("operators", () => {
 		const source = createEventSubject<number>();
 		const values: number[] = [];
 
-		eventStreamToObservable(source)
+		from(source)
 			.pipe(
 				switchMap((value) =>
-					eventStreamToObservable(
-						createEventStream<number>((observer) => {
-							observer.next?.(value * 10);
-						}),
-					),
+					createEventStream<number>((observer) => {
+						observer.next?.(value * 10);
+					}),
 				),
 			)
 			.subscribe({ next: (value: number) => values.push(value) });
@@ -210,16 +196,14 @@ describe("operators", () => {
 			observer.complete?.();
 		});
 
-		eventStreamToObservable(source)
+		from(source)
 			.pipe(
 				concatMap((value) =>
-					eventStreamToObservable(
-						createEventStream<number>((observer) => {
-							observer.next?.(value);
-							observer.next?.(value * 10);
-							observer.complete?.();
-						}),
-					),
+					createEventStream<number>((observer) => {
+						observer.next?.(value);
+						observer.next?.(value * 10);
+						observer.complete?.();
+					}),
 				),
 			)
 			.subscribe({ next: (value: number) => values.push(value) });
@@ -232,8 +216,8 @@ describe("operators", () => {
 		const inner = createEventSubject<number>();
 		const values: number[] = [];
 
-		eventStreamToObservable(source)
-			.pipe(exhaustMap(() => eventStreamToObservable(inner)))
+		from(source)
+			.pipe(exhaustMap(() => inner))
 			.subscribe({ next: (value: number) => values.push(value) });
 
 		source.next(1);
@@ -250,7 +234,7 @@ describe("operators", () => {
 		try {
 			const source = createEventSubject<number>();
 			const values: number[] = [];
-			eventStreamToObservable(source)
+			from(source)
 				.pipe(debounceTime(100))
 				.subscribe({
 					next: (value: number) => values.push(value),
@@ -271,8 +255,8 @@ describe("operators", () => {
 		const source = createEventSubject<number>();
 		const values: Array<[number, string]> = [];
 
-		eventStreamToObservable(source)
-			.pipe(withLatestFrom(signalToObservable(signal)))
+		from(source)
+			.pipe(withLatestFrom(from(signal)))
 			.subscribe({
 				next: (value: [number, string]) => values.push(value),
 			});
@@ -314,7 +298,7 @@ describe("subjects and RxJS interop", () => {
 
 	it("fromRxObservable should wrap RxJS observables", () => {
 		const values: number[] = [];
-		observableToEventStream(of(1, 2, 3)).subscribe({
+		RxEventStream.fromObservableInput(of(1, 2, 3)).subscribe({
 			next: (value: number) => values.push(value),
 		});
 
@@ -324,7 +308,7 @@ describe("subjects and RxJS interop", () => {
 	it("toRxObservable should expose streams to RxJS operators", () => {
 		const source = createEventSubject<number>();
 		const values: number[] = [];
-		eventStreamToObservable(source)
+		from(source)
 			.pipe(shareReplay(1))
 			.subscribe((value: number) => values.push(value));
 
