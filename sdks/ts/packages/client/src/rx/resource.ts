@@ -12,6 +12,7 @@ import {
 	type ObservableInput,
 	of,
 	switchMap,
+	take,
 	takeUntil,
 } from "rxjs";
 import {
@@ -85,6 +86,7 @@ abstract class RxResourceBase<T>
 	protected readonly destroyed = RxStateSignal.fromInitialValue(false);
 	protected readonly destroyed$ = from(this.destroyed).pipe(
 		filter((value): value is true => value),
+		take(1),
 	);
 
 	protected constructor() {
@@ -189,9 +191,6 @@ abstract class RxResourceBase<T>
 	}
 
 	dispose(): void {
-		if (this.destroyed.get()) {
-			return;
-		}
 		this.destroyed.set(true);
 	}
 

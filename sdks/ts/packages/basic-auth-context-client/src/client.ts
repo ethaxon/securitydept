@@ -40,7 +40,7 @@ import {
 	RxEventSubject,
 	RxStateSignal,
 } from "@securitydept/client/rx";
-import { filter, from, lastValueFrom, takeUntil } from "rxjs";
+import { filter, from, lastValueFrom, take, takeUntil } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import { BasicAuthContextClientConfigSchema } from "./schemas";
 import {
@@ -151,6 +151,7 @@ export class BasicAuthContextClient implements DisposableTrait {
 	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
 	private readonly destroyed$ = from(this._destroyed).pipe(
 		filter((value): value is true => value),
+		take(1),
 	);
 	private readonly _boundarySnapshotSignal = RxStateSignal.fromInitialValue<
 		ResourceSnapshot<BasicAuthBoundarySnapshot | null>
@@ -272,6 +273,18 @@ export class BasicAuthContextClient implements DisposableTrait {
 			),
 		};
 		this.events = this._eventSubject;
+		this.destroyed$.subscribe(() => {
+			this._rootCancellation.cancel(
+				new ClientError({
+					kind: ClientErrorKind.Cancelled,
+					code: "basic_auth.client_disposed",
+					message: "BasicAuthContextClient has been disposed.",
+					source: BasicAuthContextSource.BasicAuthContext,
+				}),
+			);
+			this.isAuthenticated.dispose();
+			this.boundaryResource.dispose();
+		});
 
 		from(this._refreshCommandSubject)
 			.pipe(
@@ -479,20 +492,7 @@ export class BasicAuthContextClient implements DisposableTrait {
 	}
 
 	dispose(): void {
-		if (this._destroyed.get()) {
-			return;
-		}
 		this._destroyed.set(true);
-		this._rootCancellation.cancel(
-			new ClientError({
-				kind: ClientErrorKind.Cancelled,
-				code: "basic_auth.client_disposed",
-				message: "BasicAuthContextClient has been disposed.",
-				source: BasicAuthContextSource.BasicAuthContext,
-			}),
-		);
-		this.isAuthenticated.dispose();
-		this.boundaryResource.dispose();
 	}
 
 	[SYMBOL_DISPOSE](): void {

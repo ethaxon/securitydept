@@ -33,6 +33,14 @@ export const TokenSetClientRegistryEventType = {
 export type TokenSetClientRegistryEventType =
 	(typeof TokenSetClientRegistryEventType)[keyof typeof TokenSetClientRegistryEventType];
 
+export const TokenSetRequirementKind = {
+	FrontendOidc: "frontend_oidc",
+	BackendOidc: "backend_oidc",
+} as const;
+
+export type TokenSetRequirementKind =
+	(typeof TokenSetRequirementKind)[keyof typeof TokenSetRequirementKind];
+
 export interface TokenSetClientRegistryEntry<TClient extends DisposableTrait> {
 	clientFactory: () => TClient | Promise<TClient>;
 	meta: TokenSetClientMeta;
@@ -48,7 +56,7 @@ export interface TokenSetClientMeta {
 		string | RegExp | ((url: string) => boolean)
 	>;
 	readonly callbackPath: string | undefined;
-	readonly requirementKind: string | undefined;
+	readonly requirementKind: TokenSetRequirementKind | string | undefined;
 	readonly providerFamily: string | undefined;
 	readonly initialization: TokenSetClientInitializationMode;
 }

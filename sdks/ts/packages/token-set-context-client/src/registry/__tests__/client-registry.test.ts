@@ -9,11 +9,11 @@ import { type BaseOidcModeClient } from "../../orchestration";
 import {
 	TokenSetClientInitializationMode,
 	type TokenSetClientReadyRecordView,
+	type TokenSetClientRecordView,
 	type TokenSetClientRegistryEntry,
 	TokenSetClientRegistryEntryStatus,
 	TokenSetClientRegistryEventType,
 } from "../contracts/types";
-import { type TokenSetClientRecord } from "../core/client-record";
 import { createTokenSetClientRegistry } from "../core/client-registry";
 
 interface TestClient extends DisposableTrait {
@@ -110,7 +110,7 @@ describe("TokenSetClientRegistry", () => {
 			): Promise<TokenSetClientReadyRecordView<BaseOidcModeClient>>;
 			clientRecordFor(
 				key: string,
-			): ReadableSignalTrait<TokenSetClientRecord<BaseOidcModeClient>>;
+			): ReadableSignalTrait<TokenSetClientRecordView<BaseOidcModeClient>>;
 		} = createTokenSetClientRegistry({
 			environment: {},
 		});
@@ -206,6 +206,8 @@ describe("TokenSetClientRegistry", () => {
 				clientFactory: () => createClient("lazy"),
 			}),
 		);
+		const viewSignal = registry.clientRecordFor("lazy");
+		const registeredView = viewSignal.get();
 
 		expect(registry.entries.get()).toMatchObject([
 			{
@@ -215,6 +217,7 @@ describe("TokenSetClientRegistry", () => {
 		]);
 
 		await registry.initialize("lazy");
+		const readyView = viewSignal.get();
 
 		expect(registry.entries.get()).toMatchObject([
 			{
@@ -222,6 +225,9 @@ describe("TokenSetClientRegistry", () => {
 				status: TokenSetClientRegistryEntryStatus.Ready,
 			},
 		]);
+		expect(readyView).not.toBe(registeredView);
+		expect(readyView).not.toHaveProperty("initialize");
+		expect(readyView).not.toHaveProperty("dispose");
 	});
 
 	it("schedules idle clients only when an idle callback capability is provided", async () => {

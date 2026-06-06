@@ -38,7 +38,7 @@ import {
 	RxEventSubject,
 	RxStateSignal,
 } from "@securitydept/client/rx";
-import { filter, from, lastValueFrom, takeUntil } from "rxjs";
+import { filter, from, lastValueFrom, take, takeUntil } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import { parseSessionInfoPayload } from "./contracts/parsers";
 import {
@@ -112,6 +112,7 @@ export class SessionContextClient implements DisposableTrait {
 	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
 	private readonly destroyed$ = from(this._destroyed).pipe(
 		filter((value): value is true => value),
+		take(1),
 	);
 	private readonly _sessionSnapshotSignal = RxStateSignal.fromInitialValue<
 		ResourceSnapshot<SessionInfo | null>
@@ -220,6 +221,18 @@ export class SessionContextClient implements DisposableTrait {
 			),
 		};
 		this.events = this._eventSubject;
+		this.destroyed$.subscribe(() => {
+			this._rootCancellation.cancel(
+				new ClientError({
+					kind: ClientErrorKind.Cancelled,
+					code: "session.client_disposed",
+					message: "SessionContextClient has been disposed.",
+					source: SessionContextSource.SessionContext,
+				}),
+			);
+			this.isAuthenticated.dispose();
+			this.sessionResource.dispose();
+		});
 
 		from(this._refreshCommandSubject)
 			.pipe(
@@ -298,20 +311,7 @@ export class SessionContextClient implements DisposableTrait {
 	}
 
 	dispose(): void {
-		if (this._destroyed.get()) {
-			return;
-		}
 		this._destroyed.set(true);
-		this._rootCancellation.cancel(
-			new ClientError({
-				kind: ClientErrorKind.Cancelled,
-				code: "session.client_disposed",
-				message: "SessionContextClient has been disposed.",
-				source: SessionContextSource.SessionContext,
-			}),
-		);
-		this.isAuthenticated.dispose();
-		this.sessionResource.dispose();
 	}
 
 	[SYMBOL_DISPOSE](): void {

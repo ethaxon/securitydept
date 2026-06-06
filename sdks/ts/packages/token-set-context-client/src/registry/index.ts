@@ -43,6 +43,7 @@ export {
 	type TokenSetClientRegistryEvent,
 	type TokenSetClientRegistryEventType,
 	type TokenSetClientResourceOptions,
+	TokenSetRequirementKind,
 } from "./contracts/types";
 export {
 	BackendOidcModeCallbackController,
@@ -62,7 +63,6 @@ export {
 	type ReadFrontendOidcModeCallbackErrorPresentationOptions,
 	readFrontendOidcModeCallbackErrorPresentation,
 } from "./controller/frontend-mode-callback-controller";
-export { TokenSetClientRecord } from "./core/client-record";
 export {
 	createTokenSetClientRegistry,
 	TokenSetClientRegistry,

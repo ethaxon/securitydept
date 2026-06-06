@@ -47,7 +47,7 @@ import {
 	RxEventSubject,
 	RxStateSignal,
 } from "@securitydept/client/rx";
-import { filter, from, merge, takeUntil } from "rxjs";
+import { filter, from, merge, take, takeUntil } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import {
 	createTokenSetAuthEvent,
@@ -156,6 +156,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
 	protected readonly destroyed$ = from(this._destroyed).pipe(
 		filter((value): value is true => value),
+		take(1),
 	);
 	public start = createOnceAsyncLockCallable(async () => {
 		this._throwIfNotOperational();
@@ -294,6 +295,25 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				},
 				options.refresh?.sources?.[TokenSetPageResumeWorkflowSource.name],
 			);
+		this.destroyed$.subscribe(() => {
+			this._onDispose();
+			this._rootCancellation.cancel(
+				new ClientError({
+					kind: ClientErrorKind.Cancelled,
+					code: `${this._tracingOptions.prefix}.client_disposed`,
+					message: `${this.constructor.name} was disposed`,
+					source: this._tracingOptions.target,
+				}),
+			);
+			this.isAuthenticated.dispose();
+			this.authorizationHeaderValue.dispose();
+			this.authResource.dispose();
+			this._recordTrace(
+				this._traceType(TokenSetOrchestrationTraceEvent.Disposed),
+				undefined,
+				this._span,
+			);
+		});
 
 		merge(
 			from(this.pageResumeWorkflowSource.eventStream),
@@ -819,27 +839,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	}
 
 	dispose(): void {
-		if (this._destroyed.get()) {
-			return;
-		}
 		this._destroyed.set(true);
-		this._onDispose();
-		this._rootCancellation.cancel(
-			new ClientError({
-				kind: ClientErrorKind.Cancelled,
-				code: `${this._tracingOptions.prefix}.client_disposed`,
-				message: `${this.constructor.name} was disposed`,
-				source: this._tracingOptions.target,
-			}),
-		);
-		this.isAuthenticated.dispose();
-		this.authorizationHeaderValue.dispose();
-		this.authResource.dispose();
-		this._recordTrace(
-			this._traceType(TokenSetOrchestrationTraceEvent.Disposed),
-			undefined,
-			this._span,
-		);
 	}
 
 	[SYMBOL_DISPOSE](): void {

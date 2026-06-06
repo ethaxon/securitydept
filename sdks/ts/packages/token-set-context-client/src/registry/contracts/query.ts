@@ -1,4 +1,8 @@
-import { type TokenSetClientMeta } from "./types";
+import { UriReferenceString } from "@securitydept/client";
+import {
+	type TokenSetClientMeta,
+	type TokenSetRequirementKind,
+} from "./types";
 
 export type TokenSetClientSelector = (
 	meta: TokenSetClientMeta,
@@ -8,9 +12,9 @@ export type TokenSetClientSelector = (
 export interface TokenSetClientFilter {
 	clientKey?: string;
 	url?: string;
-	callbackUrl?: string;
+	callbackUrl?: string | { pathname: string };
 	providerFamily?: string;
-	requirementKind?: string;
+	requirementKind?: TokenSetRequirementKind | string;
 	selector?: TokenSetClientSelector;
 }
 
@@ -21,6 +25,8 @@ export type TokenSetClientQueryOptions =
 export interface TokenSetClientQueryTarget {
 	readonly meta: TokenSetClientMeta;
 }
+
+type TokenSetClientCallbackPathLike = string | { pathname: string };
 
 export function matchesTokenSetClientQuery(
 	target: TokenSetClientQueryTarget,
@@ -68,13 +74,19 @@ export function matchesTokenSetClientQuery(
 }
 
 export function matchesTokenSetClientCallbackPath(options: {
-	currentUrl: string;
-	callbackPath: string;
+	currentUrl: TokenSetClientCallbackPathLike;
+	callbackPath: TokenSetClientCallbackPathLike;
 }): boolean {
 	try {
-		const url = new URL(options.currentUrl);
-		const callbackUrl = new URL(options.callbackPath, url.origin);
-		return url.pathname === callbackUrl.pathname;
+		const callbackPathname =
+			typeof options.callbackPath === "string"
+				? UriReferenceString.parse(options.callbackPath).pathname
+				: options.callbackPath.pathname;
+		const currentPathname =
+			typeof options.currentUrl === "string"
+				? UriReferenceString.parse(options.currentUrl).pathname
+				: options.currentUrl.pathname;
+		return callbackPathname === currentPathname;
 	} catch {
 		return false;
 	}

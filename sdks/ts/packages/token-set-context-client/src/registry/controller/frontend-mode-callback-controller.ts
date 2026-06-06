@@ -16,8 +16,10 @@ import {
 	type TokenSetClientFilter,
 	type TokenSetClientQueryOptions,
 } from "../contracts/query";
-import { type TokenSetClientReadyRecordView } from "../contracts/types";
-import { type TokenSetClientRecord } from "../core/client-record";
+import {
+	type TokenSetClientReadyRecordView,
+	type TokenSetClientRecordView,
+} from "../contracts/types";
 import { type TokenSetClientRegistry } from "../core/client-registry";
 import {
 	TokenSetClientRegistryError,
@@ -165,7 +167,9 @@ export class FrontendOidcModeCallbackController {
 		registry: TokenSetClientRegistry<BaseOidcModeClient>,
 		currentUrl: string,
 		clientQuery: TokenSetClientQueryOptions | undefined,
-	): ReadableSignalTrait<TokenSetClientRecord<BaseOidcModeClient>> | undefined {
+	):
+		| ReadableSignalTrait<TokenSetClientRecordView<BaseOidcModeClient>>
+		| undefined {
 		return registry.clientRecordForQuery(
 			FrontendOidcModeCallbackController.createCallbackQuery(
 				currentUrl,

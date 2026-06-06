@@ -133,28 +133,27 @@ export interface TokenSetClientRegistryRequirementBehaviourOptions<
 export interface TokenSetClientRegistryRequirementBehaviourShape<
 	TPlanContext = {},
 > extends Partial<
-		RequirementBehaviour<TokenSetClientRegistryAuthRequirement, TPlanContext>
-	> {}
+	RequirementBehaviour<TokenSetClientRegistryAuthRequirement, TPlanContext>
+> { }
 
 /** Route-scoped partial behaviour for token-set registry planner hosts. */
 export interface TokenSetClientRegistryRouteRequirementBehaviourShape
 	extends Partial<
 		RequirementBehaviourWithRouteContext<TokenSetClientRegistryAuthRequirement>
-	> {}
+	> { }
 
 export class TokenSetClientRegistryRequirementBehaviour<
 	TClient extends TokenSetClientRegistryOidcModeClient = BaseOidcModeClient,
 	TPlanContext = {},
 > implements
-		RequirementBehaviour<TokenSetClientRegistryAuthRequirement, TPlanContext>
-{
+	RequirementBehaviour<TokenSetClientRegistryAuthRequirement, TPlanContext> {
 	constructor(
 		private readonly registry: TokenSetClientRegistry<TClient>,
 		private readonly options: TokenSetClientRegistryRequirementBehaviourOptions<
 			TClient,
 			TPlanContext
 		> = {},
-	) {}
+	) { }
 
 	readonly checkAuthenticated = async (
 		requirement: TokenSetClientRegistryAuthRequirement,
@@ -251,7 +250,7 @@ export class TokenSetClientRegistryPlannerHost<
 	TClient extends TokenSetClientRegistryOidcModeClient = BaseOidcModeClient,
 	TPlanContext = {},
 	TBehaviour extends
-		TokenSetClientRegistryRequirementBehaviourShape<TPlanContext> = TokenSetClientRegistryRequirementBehaviourShape<TPlanContext>,
+	TokenSetClientRegistryRequirementBehaviourShape<TPlanContext> = TokenSetClientRegistryRequirementBehaviourShape<TPlanContext>,
 > extends RequirementPlannerHost<TBehaviour> {
 	constructor(
 		readonly registry: TokenSetClientRegistry<TClient>,

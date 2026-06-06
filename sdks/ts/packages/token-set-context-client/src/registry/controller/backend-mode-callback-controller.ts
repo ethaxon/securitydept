@@ -9,8 +9,10 @@ import { BackendOidcModeClient } from "../../backend-oidc-mode";
 import { type TokenSetAuthSnapshot } from "../../orchestration";
 import { type BaseOidcModeClient } from "../../orchestration/client/base-client";
 import { type TokenSetClientQueryOptions } from "../contracts/query";
-import { type TokenSetClientReadyRecordView } from "../contracts/types";
-import { type TokenSetClientRecord } from "../core/client-record";
+import {
+	type TokenSetClientReadyRecordView,
+	type TokenSetClientRecordView,
+} from "../contracts/types";
 import { type TokenSetClientRegistry } from "../core/client-registry";
 import {
 	TokenSetClientRegistryError,
@@ -103,7 +105,9 @@ export class BackendOidcModeCallbackController {
 	selectClientRecordForInput(
 		registry: TokenSetClientRegistry<BaseOidcModeClient>,
 		clientQuery: TokenSetClientQueryOptions,
-	): ReadableSignalTrait<TokenSetClientRecord<BaseOidcModeClient>> | undefined {
+	):
+		| ReadableSignalTrait<TokenSetClientRecordView<BaseOidcModeClient>>
+		| undefined {
 		return registry.clientRecordForQuery(clientQuery);
 	}
 }
