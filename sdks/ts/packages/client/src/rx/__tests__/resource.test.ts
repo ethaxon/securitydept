@@ -1,6 +1,7 @@
 import { from, of, Subject, throwError } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import {
+	type CancellationTokenTrait,
 	createCancellationTokenSource,
 	createEventStream,
 	createResource,
@@ -233,7 +234,13 @@ describe("@securitydept/client/rx/resource", () => {
 		request.set("second");
 
 		expect(stream).toHaveBeenCalledTimes(1);
-		expect(resource.value.get()).toBe("value:first");
+		expect(resource.snapshot.get()).toEqual({ status: ResourceStatus.Idle });
+		expect(() => resource.value.get()).toThrow(
+			expect.objectContaining({
+				code: ResourceErrorCode.ValueUnavailable,
+				status: ResourceStatus.Idle,
+			}),
+		);
 	});
 
 	it("keeps an undefined request idle", () => {
@@ -283,20 +290,42 @@ describe("@securitydept/client/rx/resource", () => {
 		expect(() => mapped.value.get()).toThrow(error);
 
 		mapped.dispose();
+		expect(mapped.snapshot.get()).toEqual({ status: ResourceStatus.Idle });
+		expect(resource.snapshot.get()).toEqual({
+			status: ResourceStatus.Error,
+			value: 2,
+			error,
+		});
 		resource.dispose();
+		expect(resource.snapshot.get()).toEqual({ status: ResourceStatus.Idle });
 	});
 
-	it("rejects pending whenValue when disposed", async () => {
+	it("leaves pending whenValue unsettled when disposed", async () => {
 		const response = new Subject<string>();
+		let cancellationToken: CancellationTokenTrait | undefined;
 		const resource = rxResource({
-			stream: () => response,
+			stream: (context) => {
+				cancellationToken = context.cancellationToken;
+				return response;
+			},
 		});
 		const pending = resource.whenValue();
+		let settled = false;
+		void pending.then(
+			() => {
+				settled = true;
+			},
+			() => {
+				settled = true;
+			},
+		);
 
 		resource.dispose();
+		await Promise.resolve();
 
-		await expect(pending).rejects.toMatchObject({
-			code: ResourceErrorCode.Disposed,
-		});
+		expect(response.observed).toBe(false);
+		expect(cancellationToken?.isCancellationRequested).toBe(true);
+		expect(resource.snapshot.get()).toEqual({ status: ResourceStatus.Idle });
+		expect(settled).toBe(false);
 	});
 });

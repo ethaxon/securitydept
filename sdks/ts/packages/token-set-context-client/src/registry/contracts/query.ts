@@ -1,8 +1,5 @@
 import { UriReferenceString } from "@securitydept/client";
-import {
-	type TokenSetClientMeta,
-	type TokenSetRequirementKind,
-} from "./types";
+import { type TokenSetClientMeta, type TokenSetRequirementKind } from "./types";
 
 export type TokenSetClientSelector = (
 	meta: TokenSetClientMeta,

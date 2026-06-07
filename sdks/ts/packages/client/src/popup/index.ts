@@ -6,7 +6,10 @@ import {
 	type PopupServerWindowHandleTrait,
 } from "./handle";
 
-export { PopupErrorCode } from "./errors";
+export {
+	PopupErrorCode,
+	readPopupErrorPresentationDescriptor,
+} from "./errors";
 export {
 	PopupClientWindowHandle,
 	type PopupClientWindowHandleTrait,

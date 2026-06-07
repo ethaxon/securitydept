@@ -281,7 +281,7 @@ describe("createAngularCanActivate — guard behaviour option", () => {
 		).resolves.toBe(true);
 	});
 
-	it("prefers plannerHost over behaviour", async () => {
+	it("uses an explicit plannerHost", async () => {
 		const leaf = buildRouteChain([
 			{},
 			{
@@ -303,7 +303,6 @@ describe("createAngularCanActivate — guard behaviour option", () => {
 		await expect(
 			invokeGuard(leaf, {
 				plannerHost: host,
-				behaviour: { checkAuthenticated: () => false },
 			}),
 		).resolves.toBe(true);
 	});

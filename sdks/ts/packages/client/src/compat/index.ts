@@ -1,8 +1,15 @@
 export {
 	type AsyncDisposableTrait,
+	createDisposableStack,
+	type DisposableStackTrait,
 	type DisposableTrait,
+	injectDisposableStackFrom,
+	SimpleDisposableStack,
+	StdDisposableStack,
 	SYMBOL_ASYNC_DISPOSE,
+	SYMBOL_DISPOSABLE_STACK,
 	SYMBOL_DISPOSE,
+	withDisposableStack,
 } from "./disposable";
 export { promisesToRacedAsyncGenerator } from "./generator";
 export {

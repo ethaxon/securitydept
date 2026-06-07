@@ -255,7 +255,6 @@ describe("runOperation", () => {
 				operationName: "frontend_oidc.callback",
 				phase: "exchange",
 				errorName: "Error",
-				errorMessage: "boom",
 			}),
 		});
 		expect(events[3]).toMatchObject({
@@ -295,7 +294,7 @@ describe("runOperation", () => {
 			level: TracingLevel.Error,
 			fields: expect.objectContaining({
 				operationName: "token.refresh",
-				errorMessage: "boom",
+				errorName: "Error",
 			}),
 		});
 		expect(events[2]).toMatchObject({
@@ -414,7 +413,7 @@ describe("defineInstrumentMethodDecorator", () => {
 			level: TracingLevel.Error,
 			fields: expect.objectContaining({
 				operationName: "decorated.failure",
-				errorMessage: "decorated boom",
+				errorName: "Error",
 			}),
 		});
 		expect(events[2]).toMatchObject({

@@ -25,13 +25,17 @@
 // Stability: provisional (mode-aligned surface)
 
 import {
+	type CancellationTokenOptions,
+	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
 	createKeyedEphemeralFlowStore,
+	createLinkedCancellationToken,
 	decodeJwtPayload,
 	defineInstrumentMethodDecorator,
 	type EventSubscriptionTrait,
 	type FoundationEnvironment,
+	injectDisposableStackFrom,
 	isLoopbackHttpUrl,
 	type KeyedEphemeralFlowStore,
 	type OperationSpanTrait,
@@ -42,6 +46,7 @@ import {
 	type SpanTrait,
 	UriReferenceString,
 	UserRecovery,
+	withDisposableStack,
 } from "@securitydept/client";
 import { createAsyncSchedulerWithTimestampProvider } from "@securitydept/client/rx";
 import {
@@ -90,6 +95,10 @@ import { transformScriptForBrowser } from "../contracts/script-compat";
 import { FrontendOidcModeCallbackErrorCode } from "../errors/callback-error-codes";
 import { resolveDiscoveryIssuerCompatibility } from "./discovery";
 import {
+	FrontendOidcModeErrorCode,
+	FrontendOidcModeErrorSource,
+} from "./error-codes";
+import {
 	FrontendOidcModeOperationEventName,
 	FrontendOidcModeTraceEventType,
 	FrontendOidcModeTraceOperationName,
@@ -97,9 +106,11 @@ import {
 import {
 	type FrontendOidcModeAuthorizeResult,
 	type FrontendOidcModeCallbackResult,
+	type FrontendOidcModeCheckClaimsOptions,
 	type FrontendOidcModeClientConfig,
 	type FrontendOidcModeClientDefaultOptions,
 	FrontendOidcModeContextSource,
+	type FrontendOidcModeExchangeCodeOptions,
 	type FrontendOidcModePendingState,
 	type FrontendOidcModeTokenResult,
 	type ResolvedFrontendOidcModeClientConfig,
@@ -128,12 +139,27 @@ const instrumentFrontendMethod = defineInstrumentMethodDecorator<
 				name,
 				target: TRACE_TARGET,
 				fields: typeof fields === "function" ? fields.call(this) : fields,
+				normalizeError: (error: unknown) =>
+					ClientError.fromUnknown(error, {
+						code: FrontendOidcModeErrorCode.OperationFailed,
+						message: "The frontend OIDC operation failed unexpectedly",
+						source: TRACE_TARGET,
+					}),
 			};
 		},
 );
 
 interface FrontendOidcModeConsumedState {
 	consumedAt: number;
+}
+
+interface FrontendOidcModeClaimsCheckScriptResult {
+	success?: boolean;
+	display_name?: string;
+	displayName?: string;
+	picture?: string;
+	claims?: Record<string, unknown>;
+	error?: string;
 }
 
 type PendingStateTakeResult =
@@ -261,10 +287,20 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * The consumer should redirect the browser to the returned URL.
 	 * On the callback page, call `handleCallback(callbackUrl)`.
 	 */
-	async authorizeUrl(postAuthRedirectUri?: string): Promise<string> {
-		return await this._authorizeUrlWithState({
-			postAuthRedirectUri,
-		});
+	@withDisposableStack(0, true)
+	async authorizeUrl(
+		options: TokenSetOidcRedirectLoginOptions = {},
+	): Promise<string> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._authorizeUrlWithState(
+			{ postAuthRedirectUri: options.postAuthRedirectUri },
+			cancellationToken,
+		);
 	}
 
 	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.Authorize)
@@ -273,24 +309,26 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			postAuthRedirectUri?: string;
 			redirectUri?: string;
 		},
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<string> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		operationSpan?.setAttributes({
 			hasPostAuthRedirectUri:
 				options.postAuthRedirectUri !== undefined ||
 				this._config.defaultPostAuthRedirectUri !== undefined,
 		});
 
-		await this._ensureAuthServer(operationSpan);
-		this._throwIfNotOperational();
+		await this._ensureAuthServer(cancellationToken, operationSpan);
+		cancellationToken.throwIfCancellationRequested();
 
 		const effectiveRedirectUri =
 			options.redirectUri ?? this._config.redirectUri;
-		const result = await this._buildAuthorizeUrl({
-			redirectUri: effectiveRedirectUri,
-		});
-		this._throwIfNotOperational();
+		const result = await this._buildAuthorizeUrl(
+			{ redirectUri: effectiveRedirectUri },
+			cancellationToken,
+		);
+		cancellationToken.throwIfCancellationRequested();
 
 		const effectivePostAuthRedirectUri =
 			options.postAuthRedirectUri ?? this._config.defaultPostAuthRedirectUri;
@@ -306,7 +344,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			postAuthRedirectUri: effectivePostAuthRedirectUri,
 			createdAt: this._environment.time.now(),
 		});
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		operationSpan?.setAttributes({ state: result.state });
 		return result.redirectUrl;
@@ -319,18 +357,26 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * and navigates the current window.  This is the recommended entry point
 	 * for initiating frontend-oidc login in a browser context.
 	 */
+	@withDisposableStack(0, true)
 	async loginWithRedirect(
 		options: TokenSetOidcRedirectLoginOptions = {},
 	): Promise<void> {
-		return await this._loginWithRedirect(options);
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._loginWithRedirect(options, cancellationToken);
 	}
 
 	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.LoginRedirect)
 	private async _loginWithRedirect(
 		options: TokenSetOidcRedirectLoginOptions,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<void> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		operationSpan?.setAttributes({
 			hasPostAuthRedirectUri: options.postAuthRedirectUri !== undefined,
 		});
@@ -338,20 +384,23 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		if (!router) {
 			throw new ClientError({
 				kind: ClientErrorKind.Configuration,
-				code: "frontend_oidc.redirect.router_unavailable",
+				code: FrontendOidcModeErrorCode.RedirectRouterUnavailable,
 				message: "Frontend OIDC redirect login requires environment.router.",
 				source: TRACE_TARGET,
 			});
 		}
-		const url = await this.authorizeUrl(options.postAuthRedirectUri);
-		this._throwIfNotOperational();
+		const url = await this._authorizeUrlWithState(
+			{ postAuthRedirectUri: options.postAuthRedirectUri },
+			cancellationToken,
+		);
+		cancellationToken.throwIfCancellationRequested();
 
 		await router.navigate({
 			url: UriReferenceString.parse(url),
 			intent: RouterNavigationIntent.AuthRedirect,
 			mode: RouterNavigationMode.External,
 		});
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		operationSpan?.setAttributes({ navigationMode: "external" });
 	}
 
@@ -364,12 +413,19 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 *
 	 * @returns The callback result from processing the authorization code.
 	 */
+	@withDisposableStack(0, true)
 	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.LoginPopup)
 	async loginWithPopup(
 		options: TokenSetOidcPopupLoginOptions,
 		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetOidcPopupLoginResult> {
-		this._throwIfNotOperational();
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		cancellationToken.throwIfCancellationRequested();
 		operationSpan?.setAttributes({
 			popupCallbackUrl: options.popupCallbackUrl,
 		});
@@ -377,17 +433,18 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		if (!popupCapability) {
 			throw new ClientError({
 				kind: ClientErrorKind.Configuration,
-				code: "frontend_oidc.popup.capability_missing",
+				code: FrontendOidcModeErrorCode.PopupCapabilityMissing,
 				message:
 					"Frontend OIDC popup login requires environment.popup capability.",
 				source: TRACE_TARGET,
 				recovery: UserRecovery.RestartFlow,
 			});
 		}
-		const popupAuthorizeUrl = await this._authorizeUrlWithState({
-			redirectUri: options.popupCallbackUrl,
-		});
-		this._throwIfNotOperational();
+		const popupAuthorizeUrl = await this._authorizeUrlWithState(
+			{ redirectUri: options.popupCallbackUrl },
+			cancellationToken,
+		);
+		cancellationToken.throwIfCancellationRequested();
 
 		const popupHandle = popupCapability.open(popupAuthorizeUrl, {
 			expectedOrigin: new URL(
@@ -405,8 +462,9 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			popup: popupHandle,
 			time: this._environment.time,
 			timeoutMs: options.timeoutMs,
+			cancellationToken,
 		});
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		operationSpan?.addEvent(
 			FrontendOidcModeOperationEventName.PopupRelaySucceeded,
@@ -415,8 +473,11 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			},
 		);
 
-		const result = await this.handleCallback(callbackUrl);
-		this._throwIfNotOperational();
+		const result = await this._handleCallbackOperation(
+			callbackUrl,
+			cancellationToken,
+		);
+		cancellationToken.throwIfCancellationRequested();
 		return { snapshot: result.snapshot };
 	}
 
@@ -426,21 +487,29 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * Restores pending state, exchanges code, fetches userInfo,
 	 * runs claims check, persists snapshot, and schedules refresh.
 	 */
+	@withDisposableStack(1, true)
+	async handleCallback(
+		callbackUrl: string,
+		options: CancellationTokenOptions = {},
+	): Promise<FrontendOidcModeCallbackResult> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._handleCallbackOperation(callbackUrl, cancellationToken);
+	}
+
 	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.Callback, {
 		flow: "callback",
 	})
-	async handleCallback(
+	private async _handleCallbackOperation(
 		callbackUrl: string,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<FrontendOidcModeCallbackResult> {
-		return await this._handleCallback(callbackUrl, operationSpan);
-	}
-
-	private async _handleCallback(
-		callbackUrl: string,
-		operationSpan?: OperationSpanTrait,
-	): Promise<FrontendOidcModeCallbackResult> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const url = new URL(callbackUrl);
 		const state = url.searchParams.get("state");
@@ -502,33 +571,35 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			});
 		}
 
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
-		await this._ensureAuthServer(operationSpan);
-		this._throwIfNotOperational();
-		const tokens = await this.exchangeCode(
+		await this._ensureAuthServer(cancellationToken, operationSpan);
+		cancellationToken.throwIfCancellationRequested();
+		const tokens = await this._exchangeCode(
 			callbackUrl,
 			pending.codeVerifier,
 			pending.state,
 			pending.redirectUri,
+			cancellationToken,
 			pending.nonce,
 		);
 
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const metadata = await this._performClaimsCheck(
 			tokens,
+			cancellationToken,
 			operationSpan ?? this.span,
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const snapshot: TokenSetAuthSnapshot = {
 			tokens: this._tokenResultToTokenSnapshot(tokens),
 			metadata,
 		};
 
-		await this._applySnapshot(snapshot, {}, operationSpan);
-		this._throwIfNotOperational();
+		await this._applySnapshot(snapshot, {}, cancellationToken, operationSpan);
+		cancellationToken.throwIfCancellationRequested();
 		operationSpan?.setAttributes({
 			hasClaimsCheck: metadata.principal !== undefined,
 			persisted: this._persistence !== null,
@@ -549,6 +620,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	protected async _refreshAuthSnapshot(
 		current: TokenSetAuthSnapshot,
 		_freshnessTiming: unknown,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetAuthSnapshot | null> {
 		if (!current.tokens.refreshMaterial) {
@@ -556,22 +628,22 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		}
 		const refreshMaterial = current.tokens.refreshMaterial;
 
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
-		await this._ensureAuthServer(operationSpan);
-		this._throwIfNotOperational();
+		await this._ensureAuthServer(cancellationToken, operationSpan);
+		cancellationToken.throwIfCancellationRequested();
 		let tokens: FrontendOidcModeTokenResult;
 		try {
-			tokens = await this.refreshTokens(refreshMaterial);
+			tokens = await this._refreshTokens(refreshMaterial, cancellationToken);
 		} catch (error) {
 			if (
 				error instanceof ResponseBodyError &&
 				error.error === TokenSetAuthorizationRevocationReason.InvalidGrant
 			) {
-				throw new TokenSetAuthorizationRevocationError(
-					TokenSetAuthorizationRevocationReason.InvalidGrant,
-					{ cause: error },
-				);
+				throw new TokenSetAuthorizationRevocationError({
+					reason: TokenSetAuthorizationRevocationReason.InvalidGrant,
+					cause: error,
+				});
 			}
 			if (
 				error instanceof WWWAuthenticateChallengeError &&
@@ -583,23 +655,24 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 							TokenSetAuthorizationRevocationReason.InvalidToken,
 				)
 			) {
-				throw new TokenSetAuthorizationRevocationError(
-					TokenSetAuthorizationRevocationReason.InvalidToken,
-					{ cause: error },
-				);
+				throw new TokenSetAuthorizationRevocationError({
+					reason: TokenSetAuthorizationRevocationReason.InvalidToken,
+					cause: error,
+				});
 			}
 			throw error;
 		}
 
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		let metadata: TokenSetAuthMetadataSnapshot;
 		if (tokens.idToken) {
 			metadata = await this._performClaimsCheck(
 				tokens,
+				cancellationToken,
 				operationSpan ?? this.span,
 			);
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 		} else {
 			metadata = current.metadata;
 		}
@@ -623,15 +696,25 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	/**
 	 * Fetch userInfo using the current auth state and run claims check.
 	 */
-	async fetchUserInfo(): Promise<FrontendOidcModeClaimsCheckResult> {
-		return await this._fetchUserInfoFromCurrentState();
+	@withDisposableStack(0, true)
+	async fetchUserInfo(
+		options: CancellationTokenOptions = {},
+	): Promise<FrontendOidcModeClaimsCheckResult> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._fetchUserInfoFromCurrentState(cancellationToken);
 	}
 
 	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.UserInfo)
 	private async _fetchUserInfoFromCurrentState(
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<FrontendOidcModeClaimsCheckResult> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const current = this._readAuthSnapshotValue();
 		operationSpan?.setAttributes({
@@ -642,20 +725,24 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			throw new ClientError({
 				kind: ClientErrorKind.Unauthenticated,
 				message: "Cannot fetch user info without access_token and id_token",
-				code: "frontend_oidc.user_info.unauthenticated",
+				code: FrontendOidcModeErrorCode.UserInfoUnauthenticated,
 				source: TRACE_TARGET,
 			});
 		}
 
-		await this._ensureAuthServer(operationSpan);
-		this._throwIfNotOperational();
-		const userInfo = await this.fetchUserInfoRaw(current.tokens.accessToken);
-		this._throwIfNotOperational();
-		const result = await this.checkClaims(
+		await this._ensureAuthServer(cancellationToken, operationSpan);
+		cancellationToken.throwIfCancellationRequested();
+		const userInfo = await this._fetchUserInfoRaw(
+			current.tokens.accessToken,
+			cancellationToken,
+		);
+		cancellationToken.throwIfCancellationRequested();
+		const result = await this._checkClaims(
 			current.tokens.idToken,
+			cancellationToken,
 			userInfo.claims,
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		operationSpan?.setAttributes({ hasClaimsCheck: true });
 		return result;
 	}
@@ -665,26 +752,40 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	// =======================================================================
 
 	/** Fetch and cache the provider's OpenID discovery document. */
-	async discover(span?: SpanTrait): Promise<void> {
-		this._throwIfNotOperational();
+	@withDisposableStack(0, true)
+	async discover(options: CancellationTokenOptions = {}): Promise<void> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		await this._discover(cancellationToken);
+	}
+
+	private async _discover(
+		cancellationToken: CancellationTokenTrait,
+		span?: SpanTrait,
+	): Promise<void> {
+		cancellationToken.throwIfCancellationRequested();
 		const configuredIssuer = this._config.issuer;
 		const configuredIssuerUrl = new URL(configuredIssuer);
 		const response = await discoveryRequest(
 			configuredIssuerUrl,
 			this._oauthRequestOptions(),
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		const compatibleIssuer = await resolveDiscoveryIssuerCompatibility(
 			response,
 			configuredIssuer,
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		const compatibleIssuerUrl = new URL(compatibleIssuer);
 		const discovered = await processDiscoveryResponse(
 			compatibleIssuerUrl,
 			response,
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		this._authServer = this._applyEndpointOverrides(discovered);
 		this._scheduleMetadataRefresh();
 
@@ -701,21 +802,36 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	}
 
 	/** Build an authorization URL with PKCE + nonce (low-level). */
-	async buildAuthorizeUrl(): Promise<FrontendOidcModeAuthorizeResult> {
-		return await this._buildAuthorizeUrl({
-			redirectUri: this._config.redirectUri,
-		});
+	@withDisposableStack(0, true)
+	async buildAuthorizeUrl(
+		options: CancellationTokenOptions = {},
+	): Promise<FrontendOidcModeAuthorizeResult> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._buildAuthorizeUrl(
+			{ redirectUri: this._config.redirectUri },
+			cancellationToken,
+		);
 	}
 
-	private async _buildAuthorizeUrl(options: {
-		redirectUri: string;
-	}): Promise<FrontendOidcModeAuthorizeResult> {
-		this._throwIfNotOperational();
+	private async _buildAuthorizeUrl(
+		options: { redirectUri: string },
+		cancellationToken: CancellationTokenTrait,
+	): Promise<FrontendOidcModeAuthorizeResult> {
+		cancellationToken.throwIfCancellationRequested();
 		const authServer = this._requireAuthServer("buildAuthorizeUrl");
 		if (!authServer.authorization_endpoint) {
-			throw new Error(
-				"FrontendOidcModeClient: authorization_endpoint not found in discovery",
-			);
+			throw new ClientError({
+				kind: ClientErrorKind.Protocol,
+				code: FrontendOidcModeErrorCode.AuthorizationEndpointMissing,
+				message:
+					"The OIDC authorization server metadata does not provide an authorization endpoint",
+				source: FrontendOidcModeErrorSource.Discovery,
+			});
 		}
 
 		const state = generateRandomState();
@@ -732,7 +848,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		if (this._config.pkceEnabled) {
 			codeVerifier = generateRandomCodeVerifier();
 			const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 			authUrl.searchParams.set("code_challenge", codeChallenge);
 			authUrl.searchParams.set("code_challenge_method", "S256");
 		}
@@ -741,14 +857,39 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	}
 
 	/** Exchange an authorization code for tokens (low-level). */
+	@withDisposableStack(4, true)
 	async exchangeCode(
 		callbackUrl: string,
 		codeVerifier: string | undefined,
 		state: string,
 		redirectUri: string,
+		options: FrontendOidcModeExchangeCodeOptions = {},
+	): Promise<FrontendOidcModeTokenResult> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._exchangeCode(
+			callbackUrl,
+			codeVerifier,
+			state,
+			redirectUri,
+			cancellationToken,
+			options.expectedNonce,
+		);
+	}
+
+	private async _exchangeCode(
+		callbackUrl: string,
+		codeVerifier: string | undefined,
+		state: string,
+		redirectUri: string,
+		cancellationToken: CancellationTokenTrait,
 		expectedNonce?: string,
 	): Promise<FrontendOidcModeTokenResult> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		const authServer = this._requireAuthServer("exchangeCode");
 
 		const currentUrl = new URL(callbackUrl);
@@ -768,7 +909,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			this._config.pkceEnabled ? (codeVerifier ?? nopkce) : nopkce,
 			this._oauthRequestOptions(),
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const result = await processAuthorizationCodeResponse(
 			authServer,
@@ -776,7 +917,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			response,
 			expectedNonce ? { expectedNonce } : undefined,
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const tokenResult = this._normalizeTokenResponse(result);
 		this._validateRequiredScopes(tokenResult.grantedScopes);
@@ -784,10 +925,25 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	}
 
 	/** Refresh tokens using a refresh_token grant (low-level). */
+	@withDisposableStack(1, true)
 	async refreshTokens(
 		refreshToken: string,
+		options: CancellationTokenOptions = {},
 	): Promise<FrontendOidcModeTokenResult> {
-		this._throwIfNotOperational();
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._refreshTokens(refreshToken, cancellationToken);
+	}
+
+	private async _refreshTokens(
+		refreshToken: string,
+		cancellationToken: CancellationTokenTrait,
+	): Promise<FrontendOidcModeTokenResult> {
+		cancellationToken.throwIfCancellationRequested();
 		const authServer = this._requireAuthServer("refreshTokens");
 
 		const response = await refreshTokenGrantRequest(
@@ -797,23 +953,38 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			refreshToken,
 			this._oauthRequestOptions(),
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const result = await processRefreshTokenResponse(
 			authServer,
 			this._o4wClient,
 			response,
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		return this._normalizeTokenResponse(result);
 	}
 
 	/** Fetch raw userInfo from the provider (low-level). */
+	@withDisposableStack(1, true)
 	async fetchUserInfoRaw(
 		accessToken: string,
+		options: CancellationTokenOptions = {},
 	): Promise<FrontendOidcModeUserInfoResponse> {
-		this._throwIfNotOperational();
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._fetchUserInfoRaw(accessToken, cancellationToken);
+	}
+
+	private async _fetchUserInfoRaw(
+		accessToken: string,
+		cancellationToken: CancellationTokenTrait,
+	): Promise<FrontendOidcModeUserInfoResponse> {
+		cancellationToken.throwIfCancellationRequested();
 		const authServer = this._requireAuthServer("fetchUserInfoRaw");
 
 		const response = await userInfoRequest(
@@ -822,7 +993,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			accessToken,
 			this._oauthRequestOptions(),
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const claims = await processUserInfoResponse(
 			authServer,
@@ -830,7 +1001,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			undefined as unknown as string,
 			response,
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		const principal = parseIdentityPrincipal({
 			subject: claims.sub,
 			displayName: claims.name,
@@ -850,11 +1021,30 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	}
 
 	/** Run claims check script or default logic (low-level). */
+	@withDisposableStack(1, true)
 	async checkClaims(
 		idToken: string,
+		options: FrontendOidcModeCheckClaimsOptions = {},
+	): Promise<FrontendOidcModeClaimsCheckResult> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._checkClaims(
+			idToken,
+			cancellationToken,
+			options.userInfoClaims,
+		);
+	}
+
+	private async _checkClaims(
+		idToken: string,
+		cancellationToken: CancellationTokenTrait,
 		userInfoClaims?: Record<string, unknown> | null,
 	): Promise<FrontendOidcModeClaimsCheckResult> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		const idTokenClaims = decodeJwtPayload(idToken);
 		const uiClaims = userInfoClaims ?? null;
 
@@ -864,8 +1054,9 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 				script,
 				idTokenClaims,
 				uiClaims,
+				cancellationToken,
 			);
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 			return result;
 		}
 		return this._defaultClaimsCheck(idTokenClaims, uiClaims);
@@ -875,7 +1066,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	// Private: Auth server management
 	// =======================================================================
 
-	private async _ensureAuthServer(span?: SpanTrait): Promise<void> {
+	private async _ensureAuthServer(
+		cancellationToken: CancellationTokenTrait,
+		span?: SpanTrait,
+	): Promise<void> {
 		if (this._authServer) {
 			return;
 		}
@@ -883,7 +1077,8 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			this._authServer = this._constructManualAuthServer();
 			return;
 		}
-		await this.discover(span);
+		await this._discover(cancellationToken, span);
+		cancellationToken.throwIfCancellationRequested();
 	}
 
 	private _canConstructManually(): boolean {
@@ -930,9 +1125,12 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 	private _requireAuthServer(method: string): AuthorizationServer {
 		if (!this._authServer) {
-			throw new Error(
-				`FrontendOidcModeClient: call discover() or authorizeUrl() before ${method}()`,
-			);
+			throw new ClientError({
+				kind: ClientErrorKind.Configuration,
+				code: FrontendOidcModeErrorCode.AuthorizationServerUnavailable,
+				message: `OIDC authorization server metadata is unavailable before ${method}()`,
+				source: FrontendOidcModeErrorSource.Discovery,
+			});
 		}
 		return this._authServer;
 	}
@@ -1002,9 +1200,12 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		const granted = new Set(grantedScopes ?? []);
 		const missing = this._config.requiredScopes.filter((s) => !granted.has(s));
 		if (missing.length > 0) {
-			throw new Error(
-				`FrontendOidcModeClient: token response is missing required scopes: ${missing.join(", ")}`,
-			);
+			throw new ClientError({
+				kind: ClientErrorKind.Authorization,
+				code: FrontendOidcModeErrorCode.RequiredScopesMissing,
+				message: `The token response is missing required scopes: ${missing.join(", ")}`,
+				source: FrontendOidcModeErrorSource.Authorization,
+			});
 		}
 	}
 
@@ -1027,6 +1228,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 	private async _performClaimsCheck(
 		tokens: FrontendOidcModeTokenResult,
+		cancellationToken: CancellationTokenTrait,
 		span: SpanTrait,
 	): Promise<TokenSetAuthMetadataSnapshot> {
 		if (!tokens.idToken) {
@@ -1036,11 +1238,13 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		let userInfoClaims: Record<string, unknown> | null = null;
 		if (this._authServer?.userinfo_endpoint) {
 			try {
-				const userInfo = await this.fetchUserInfoRaw(tokens.accessToken);
-				this._throwIfNotOperational();
+				const userInfo = await this._fetchUserInfoRaw(
+					tokens.accessToken,
+					cancellationToken,
+				);
 				userInfoClaims = userInfo.claims ?? null;
 			} catch (error) {
-				this._rootCancellation.token.throwIfCancellationRequested();
+				cancellationToken.throwIfCancellationRequested();
 				this._recordFailureTrace(
 					"frontend_oidc.claims_check.user_info_failed",
 					error,
@@ -1050,14 +1254,18 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			}
 		}
 
-		const claimsResult = await this.checkClaims(tokens.idToken, userInfoClaims);
-		this._throwIfNotOperational();
+		const claimsResult = await this._checkClaims(
+			tokens.idToken,
+			cancellationToken,
+			userInfoClaims,
+		);
+		cancellationToken.throwIfCancellationRequested();
 
 		if (!claimsResult.success) {
 			throw new ClientError({
 				kind: ClientErrorKind.Authorization,
 				message: `Claims check failed: ${claimsResult.error ?? "unknown reason"}`,
-				code: "frontend_oidc.claims_check_failed",
+				code: FrontendOidcModeErrorCode.ClaimsCheckFailed,
 				source: TRACE_TARGET,
 			});
 		}
@@ -1082,12 +1290,16 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		script: FrontendOidcModeClaimsCheckScript,
 		idTokenClaims: Record<string, unknown>,
 		userInfoClaims: Record<string, unknown> | null,
+		cancellationToken: CancellationTokenTrait,
 	): Promise<FrontendOidcModeClaimsCheckResult> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		if (script.type !== "inline") {
-			throw new Error(
-				`FrontendOidcModeClient: unsupported claims check script type: ${(script as { type: string }).type}`,
-			);
+			throw new ClientError({
+				kind: ClientErrorKind.Configuration,
+				code: FrontendOidcModeErrorCode.ClaimsScriptUnsupported,
+				message: `Unsupported claims check script type: ${(script as { type: string }).type}`,
+				source: FrontendOidcModeErrorSource.Claims,
+			});
 		}
 
 		const compatScript = transformScriptForBrowser(script.content);
@@ -1108,8 +1320,22 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			`,
 		);
 
-		const raw = await fn(idTokenClaims, userInfoClaims);
-		this._throwIfNotOperational();
+		let raw: FrontendOidcModeClaimsCheckScriptResult | null;
+		try {
+			raw = (await fn(
+				idTokenClaims,
+				userInfoClaims,
+			)) as FrontendOidcModeClaimsCheckScriptResult | null;
+		} catch (error) {
+			throw new ClientError({
+				kind: ClientErrorKind.Authorization,
+				code: FrontendOidcModeErrorCode.ClaimsScriptFailed,
+				message: "The configured claims check script failed",
+				source: FrontendOidcModeErrorSource.Claims,
+				cause: error,
+			});
+		}
+		cancellationToken.throwIfCancellationRequested();
 
 		if (raw && raw.success === true) {
 			return {
@@ -1173,7 +1399,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 				kind: ClientErrorKind.Configuration,
 				message:
 					"FrontendOidcModeClient requires environment.sessionStorage for redirect-based flows",
-				code: "frontend_oidc.no_session_store",
+				code: FrontendOidcModeErrorCode.SessionStorageUnavailable,
 				source: TRACE_TARGET,
 			});
 		}
@@ -1186,7 +1412,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 				kind: ClientErrorKind.Configuration,
 				message:
 					"FrontendOidcModeClient requires environment.sessionStorage for redirect-based flows",
-				code: "frontend_oidc.no_session_store",
+				code: FrontendOidcModeErrorCode.SessionStorageUnavailable,
 				source: TRACE_TARGET,
 			});
 		}
@@ -1272,7 +1498,8 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			.pipe(takeUntil(this.destroyed$))
 			.subscribe({
 				next: () => {
-					this.discover(this.span)
+					const cancellationToken = this._rootCancellation.token;
+					this._discover(cancellationToken, this.span)
 						.then(() => {
 							this._recordTrace(
 								FrontendOidcModeTraceEventType.MetadataRefreshed,

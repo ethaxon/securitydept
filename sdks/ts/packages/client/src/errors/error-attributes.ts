@@ -1,52 +1,25 @@
 import { ClientError } from "./client-error";
 import { type ClientErrorKind, type UserRecovery } from "./types";
 
-export type ClientErrorRecovery = UserRecovery;
-
-export type ClientErrorAttributes = {
-	errorKind: ClientErrorKind;
-	errorCode: string;
-	recovery: ClientErrorRecovery;
-};
-
-export type NativeErrorAttributes = {
+export interface ErrorSummary {
 	errorName: string;
-	errorMessage: string;
-};
+	errorKind?: ClientErrorKind;
+	errorCode?: string;
+	recovery?: UserRecovery;
+}
 
-export type UnknownErrorAttributes = {
-	errorValue: string;
-};
-
-export type ErrorAttributes =
-	| ClientErrorAttributes
-	| NativeErrorAttributes
-	| UnknownErrorAttributes;
-
-/** Extract stable structured attributes from an unknown error value. */
-export function describeError(error: unknown): ErrorAttributes {
-	if (isClientError(error)) {
+/** Extract secret-safe diagnostic attributes without copying runtime messages. */
+export function describeError(error: unknown): ErrorSummary {
+	if (error instanceof ClientError) {
 		return {
+			errorName: error.name,
 			errorKind: error.kind,
 			errorCode: error.code,
 			recovery: error.recovery,
 		};
 	}
 
-	if (isNativeError(error)) {
-		return {
-			errorName: error.name,
-			errorMessage: error.message,
-		};
-	}
-
-	return { errorValue: String(error) };
-}
-
-function isClientError(error: unknown): error is ClientError {
-	return error instanceof ClientError;
-}
-
-function isNativeError(error: unknown): error is Error {
-	return error instanceof Error;
+	return {
+		errorName: error instanceof Error ? error.name : typeof error,
+	};
 }

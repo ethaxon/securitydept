@@ -17,25 +17,22 @@
 // Stability: provisional (additive, freezing-in-progress; not yet promoted to stable).
 // Not a separate npm package — extraction path is clear if warranted later.
 
-export {
-	type ClientErrorAttributes,
-	type ClientErrorRecovery,
-	describeError,
-	type ErrorAttributes,
-	type NativeErrorAttributes,
-	type UnknownErrorAttributes,
-} from "@securitydept/client";
+export { describeError, type ErrorSummary } from "@securitydept/client";
 export { BaseOidcModeClient, PersistPolicy } from "./client/base-client";
 export {
+	TokenSetAuthorizationErrorCode,
+	TokenSetAuthorizationErrorSource,
 	TokenSetAuthorizationRevocationError,
 	TokenSetAuthorizationRevocationReason,
 } from "./client/error";
+export { TokenSetPersistenceErrorCode } from "./client/persistence";
 // Base client: shared lifecycle infrastructure for mode-specific clients.
 export {
 	type BaseOidcModeClientDefaultOptions,
 	type BaseOidcModeClientOptions,
 	type OidcModeClientConfigBase,
 	type TokenSetAuthOperationSignals,
+	type TokenSetAuthStateOperationOptions,
 	type TokenSetOidcPopupLoginOptions,
 	type TokenSetOidcPopupLoginResult,
 	type TokenSetOidcRedirectLoginOptions,
@@ -53,8 +50,6 @@ export {
 export {
 	type CreateTokenSetAuthEventOptions,
 	createTokenSetAuthEvent,
-	summarizeAuthError,
-	type TokenSetAuthErrorSummary,
 	type TokenSetAuthEvent,
 	type TokenSetAuthEventPayload,
 	type TokenSetAuthEventPayloadBase,

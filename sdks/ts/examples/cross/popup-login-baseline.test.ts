@@ -79,7 +79,10 @@ function createBackendPopupMockClient(
 		},
 		authorizeUrl: (returnUri: string) =>
 			`https://auth.example.com/authorize?return_uri=${encodeURIComponent(returnUri)}`,
-		_handleCallback: vi.fn(async () => ({ tokens: {}, metadata: {} })),
+		_handleCallbackOperation: vi.fn(async () => ({
+			tokens: {},
+			metadata: {},
+		})),
 		...overrides,
 	});
 	return mockClient;
@@ -282,9 +285,9 @@ describe("backend-oidc-mode popup baseline", () => {
 		expect(
 			(
 				mockClient as unknown as {
-					_handleCallback: ReturnType<typeof vi.fn>;
+					_handleCallbackOperation: ReturnType<typeof vi.fn>;
 				}
-			)._handleCallback,
+			)._handleCallbackOperation,
 		).toHaveBeenCalledWith(
 			{ access_token: "ns_token", id_token: "ns_idt" },
 			expect.anything(),
@@ -458,7 +461,7 @@ describe("frontend-oidc-mode popup baseline", () => {
 			source: "callback",
 			snapshot: { tokens: { accessToken: "at" } },
 		};
-		mockClient._handleCallback = vi
+		mockClient._handleCallbackOperation = vi
 			.fn()
 			.mockResolvedValue(handleCallbackResult);
 
@@ -486,12 +489,15 @@ describe("frontend-oidc-mode popup baseline", () => {
 		const result = await promise;
 
 		// Verify popup authorize state was built with the popup callback URL.
-		expect(mockClient._authorizeUrlWithState).toHaveBeenCalledWith({
-			redirectUri: "https://app.example.com/popup-callback",
-		});
+		expect(mockClient._authorizeUrlWithState).toHaveBeenCalledWith(
+			{
+				redirectUri: "https://app.example.com/popup-callback",
+			},
+			expect.anything(),
+		);
 
 		// Verify callback processing received the relayed callback URL.
-		expect(mockClient._handleCallback).toHaveBeenCalledWith(
+		expect(mockClient._handleCallbackOperation).toHaveBeenCalledWith(
 			"https://app.example.com/popup-callback?code=authcode123&state=abc",
 			expect.anything(),
 		);

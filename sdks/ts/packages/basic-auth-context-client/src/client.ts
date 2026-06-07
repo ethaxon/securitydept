@@ -1,8 +1,10 @@
 import {
 	type CancellationTokenSourceTrait,
+	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
 	createCancellationTokenSource,
+	createLinkedCancellationToken,
 	createOnceAsyncLockCallable,
 	createSignal,
 	type DisposableTrait,
@@ -10,6 +12,7 @@ import {
 	describeError,
 	type EventStreamTrait,
 	type FoundationEnvironment,
+	injectDisposableStackFrom,
 	mapResource,
 	type OperationSpanTrait,
 	type ReadableSignalTrait,
@@ -29,6 +32,7 @@ import {
 	UriReferenceString,
 	validateTraitInput,
 	type WritableSignalTrait,
+	withDisposableStack,
 } from "@securitydept/client";
 import {
 	type Command,
@@ -52,6 +56,7 @@ import {
 	type BasicAuthBoundaryObservation,
 	type BasicAuthBoundarySnapshot,
 	type BasicAuthContextClientConfig,
+	BasicAuthContextErrorCode,
 	type BasicAuthContextEvent,
 	BasicAuthContextEventType,
 	type BasicAuthContextOperationSignals,
@@ -69,11 +74,14 @@ const DEFAULT_LOGOUT_SUBPATH = "/logout";
 const POST_AUTH_REDIRECT_PARAM = "post_auth_redirect_uri";
 
 interface BasicAuthCommandExtra {
+	cancellationToken: CancellationTokenTrait;
 	operationSpan?: OperationSpanTrait;
 }
 
+type ResolvedBasicAuthRefreshOptions = { path: string };
+
 type BasicAuthRefreshCommand = Command<
-	Required<BasicAuthRefreshOptions>,
+	ResolvedBasicAuthRefreshOptions,
 	BasicAuthCommandExtra
 >;
 type BasicAuthLogoutCommand = Command<
@@ -93,6 +101,12 @@ const instrumentBasicAuthMethod = defineInstrumentMethodDecorator<
 				name: `${this.config.tracing.prefix}.${operation}`,
 				target: this.config.tracing.target,
 				fields: { operation },
+				normalizeError: (error: unknown) =>
+					ClientError.fromUnknown(error, {
+						code: BasicAuthContextErrorCode.OperationFailed,
+						message: "The Basic Auth operation failed unexpectedly",
+						source: BasicAuthContextSource.BasicAuthContext,
+					}),
 			};
 		},
 );
@@ -180,12 +194,16 @@ export class BasicAuthContextClient implements DisposableTrait {
 		CommandResponse<BasicAuthLogoutCommand, BasicAuthBoundarySnapshot>
 	>();
 	private readonly _startOnce = createOnceAsyncLockCallable(
-		async (operationSpan?: OperationSpanTrait) => {
-			this._throwIfNotOperational();
+		async (
+			cancellationToken: CancellationTokenTrait,
+			operationSpan?: OperationSpanTrait,
+		) => {
+			cancellationToken.throwIfCancellationRequested();
 			this._operationSignals.startPending.set(true);
 			try {
 				return await this._dispatchRefresh(
 					this._resolveRefreshOptions({}),
+					cancellationToken,
 					operationSpan,
 				);
 			} finally {
@@ -225,7 +243,7 @@ export class BasicAuthContextClient implements DisposableTrait {
 			bundledSchema: BasicAuthContextClientConfigSchema,
 			onInvalid: (failure) =>
 				throwValidationClientError({
-					code: "basic_auth.invalid_config",
+					code: BasicAuthContextErrorCode.InvalidConfig,
 					source: BasicAuthContextSource.BasicAuthContext,
 					messagePrefix: "BasicAuthContextClient could not validate config",
 					failure,
@@ -277,7 +295,7 @@ export class BasicAuthContextClient implements DisposableTrait {
 			this._rootCancellation.cancel(
 				new ClientError({
 					kind: ClientErrorKind.Cancelled,
-					code: "basic_auth.client_disposed",
+					code: BasicAuthContextErrorCode.ClientDisposed,
 					message: "BasicAuthContextClient has been disposed.",
 					source: BasicAuthContextSource.BasicAuthContext,
 				}),
@@ -290,7 +308,11 @@ export class BasicAuthContextClient implements DisposableTrait {
 			.pipe(
 				takeUntil(this.destroyed$),
 				concatCommand((command) =>
-					this._executeRefresh(command.payload, command.operationSpan),
+					this._executeRefresh(
+						command.payload,
+						command.cancellationToken,
+						command.operationSpan,
+					),
 				),
 			)
 			.subscribe(this._refreshResponseSubject);
@@ -299,7 +321,11 @@ export class BasicAuthContextClient implements DisposableTrait {
 			.pipe(
 				takeUntil(this.destroyed$),
 				concatCommand((command) =>
-					this._executeLogout(command.payload, command.operationSpan),
+					this._executeLogout(
+						command.payload,
+						command.cancellationToken,
+						command.operationSpan,
+					),
 				),
 			)
 			.subscribe(this._logoutResponseSubject);
@@ -312,69 +338,97 @@ export class BasicAuthContextClient implements DisposableTrait {
 	}
 
 	async start(): Promise<BasicAuthBoundarySnapshot> {
-		return await this._start();
+		const cancellationToken = this._rootCancellation.token;
+		return await this._start(cancellationToken);
 	}
 
 	@instrumentBasicAuthMethod("start")
 	private async _start(
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<BasicAuthBoundarySnapshot> {
-		return await this._startOnce(operationSpan);
+		return await this._startOnce(cancellationToken, operationSpan);
 	}
 
+	@withDisposableStack(0, true)
 	async refresh(
 		options: BasicAuthRefreshOptions = {},
 	): Promise<BasicAuthBoundarySnapshot> {
-		return await this._refresh(options);
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._refresh(options, cancellationToken);
 	}
 
 	@instrumentBasicAuthMethod("refresh")
 	private async _refresh(
 		options: BasicAuthRefreshOptions,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<BasicAuthBoundarySnapshot> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		return await this._dispatchRefresh(
 			this._resolveRefreshOptions(options),
+			cancellationToken,
 			operationSpan,
 		);
 	}
 
+	@withDisposableStack(0, true)
 	async logout(
 		options: BasicAuthLogoutOptions,
 	): Promise<BasicAuthBoundarySnapshot> {
-		return await this._logout(options);
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._logout(options, cancellationToken);
 	}
 
 	@instrumentBasicAuthMethod("logout")
 	private async _logout(
 		options: BasicAuthLogoutOptions,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<BasicAuthBoundarySnapshot> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		return await this._dispatchLogout(
 			this._resolveZoneForAction(options, "logout"),
+			cancellationToken,
 			operationSpan,
 		);
 	}
 
+	@withDisposableStack(0, true)
 	async loginWithRedirect(
 		options: BasicAuthLoginWithRedirectOptions,
 	): Promise<void> {
-		await this._loginWithRedirect(options);
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		await this._loginWithRedirect(options, cancellationToken);
 	}
 
 	@instrumentBasicAuthMethod("login.redirect")
 	private async _loginWithRedirect(
 		options: BasicAuthLoginWithRedirectOptions,
+		cancellationToken: CancellationTokenTrait,
 		_operationSpan?: OperationSpanTrait,
 	): Promise<void> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		const router = this._environment.router;
 		if (!router) {
 			throw new ClientError({
 				kind: ClientErrorKind.Configuration,
-				code: "basic_auth.router_unavailable",
+				code: BasicAuthContextErrorCode.RouterUnavailable,
 				message: "loginWithRedirect() requires environment.router.",
 				source: BasicAuthContextSource.BasicAuthContext,
 			});
@@ -394,7 +448,7 @@ export class BasicAuthContextClient implements DisposableTrait {
 				intent: RouterNavigationIntent.AuthRedirect,
 				mode: RouterNavigationMode.External,
 			});
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 			this._emitEvent({
 				type: BasicAuthContextEventType.LoginRedirectSucceeded,
 				zone,
@@ -501,12 +555,12 @@ export class BasicAuthContextClient implements DisposableTrait {
 
 	private _resolveRefreshOptions(
 		options: BasicAuthRefreshOptions,
-	): Required<BasicAuthRefreshOptions> {
+	): ResolvedBasicAuthRefreshOptions {
 		const path = options.path ?? this._config.probePath;
 		if (!path) {
 			throw new ClientError({
 				kind: ClientErrorKind.Configuration,
-				code: "basic_auth.probe_path_required",
+				code: BasicAuthContextErrorCode.ProbePathRequired,
 				message:
 					"BasicAuthContextClient.refresh() requires options.path or config.probePath.",
 				source: BasicAuthContextSource.BasicAuthContext,
@@ -526,7 +580,7 @@ export class BasicAuthContextClient implements DisposableTrait {
 			}
 			throw new ClientError({
 				kind: ClientErrorKind.Configuration,
-				code: "basic_auth.zone_not_found",
+				code: BasicAuthContextErrorCode.ZoneNotFound,
 				message: `BasicAuthContextClient ${action} could not find zone "${options.zonePrefix}".`,
 				source: BasicAuthContextSource.BasicAuthContext,
 			});
@@ -542,20 +596,21 @@ export class BasicAuthContextClient implements DisposableTrait {
 
 		throw new ClientError({
 			kind: ClientErrorKind.Configuration,
-			code: "basic_auth.zone_required",
+			code: BasicAuthContextErrorCode.ZoneRequired,
 			message: `BasicAuthContextClient ${action} requires options.currentPath inside a configured zone or options.zonePrefix.`,
 			source: BasicAuthContextSource.BasicAuthContext,
 		});
 	}
 
 	private async _dispatchRefresh(
-		payload: Required<BasicAuthRefreshOptions>,
+		payload: ResolvedBasicAuthRefreshOptions,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<BasicAuthBoundarySnapshot> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		const snapshot = await lastValueFrom(
 			dispatchCommandLocallyToStream<
-				Required<BasicAuthRefreshOptions>,
+				ResolvedBasicAuthRefreshOptions,
 				BasicAuthCommandExtra,
 				BasicAuthBoundarySnapshot,
 				BasicAuthRefreshCommand
@@ -563,18 +618,19 @@ export class BasicAuthContextClient implements DisposableTrait {
 				payload,
 				requestStream: this._refreshCommandSubject,
 				responseStream: this._refreshResponseSubject,
-				createCommandExtra: () => ({ operationSpan }),
+				createCommandExtra: () => ({ cancellationToken, operationSpan }),
 			}).pipe(commandResponseData()),
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		return snapshot;
 	}
 
 	private async _dispatchLogout(
 		payload: ResolvedBasicAuthZone,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<BasicAuthBoundarySnapshot> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		const snapshot = await lastValueFrom(
 			dispatchCommandLocallyToStream<
 				ResolvedBasicAuthZone,
@@ -585,18 +641,19 @@ export class BasicAuthContextClient implements DisposableTrait {
 				payload,
 				requestStream: this._logoutCommandSubject,
 				responseStream: this._logoutResponseSubject,
-				createCommandExtra: () => ({ operationSpan }),
+				createCommandExtra: () => ({ cancellationToken, operationSpan }),
 			}).pipe(commandResponseData()),
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		return snapshot;
 	}
 
 	private async _executeRefresh(
-		options: Required<BasicAuthRefreshOptions>,
+		options: ResolvedBasicAuthRefreshOptions,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<BasicAuthBoundarySnapshot> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		this._operationSignals.refreshPending.set(true);
 		const previous = this._boundarySnapshotSignal.get();
 		const loadingSnapshot = reduceResourceSnapshot(previous, {
@@ -612,17 +669,20 @@ export class BasicAuthContextClient implements DisposableTrait {
 				url: this._config.baseUrl + options.path,
 				method: "GET",
 				headers: { accept: "application/json" },
-				cancellationToken: this._rootCancellation.token,
+				cancellationToken,
 			});
 			if (
 				response.status >= 400 &&
 				response.status !== 401 &&
 				response.status !== 403
 			) {
-				throw ClientError.fromHttpResponse(response.status, response.body);
+				throw ClientError.fromHttpResponse({
+					status: response.status,
+					body: response.body,
+				});
 			}
 
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 			const snapshot = this._snapshotFromResponse(options.path, response);
 			this._boundarySnapshotSignal.set(
 				reduceResourceSnapshot(loadingSnapshot, {
@@ -660,9 +720,10 @@ export class BasicAuthContextClient implements DisposableTrait {
 
 	private async _executeLogout(
 		zone: ResolvedBasicAuthZone,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<BasicAuthBoundarySnapshot> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		this._operationSignals.logoutPending.set(true);
 		const previous = this._boundarySnapshotSignal.get();
 		const loadingSnapshot = reduceResourceSnapshot(previous, {
@@ -679,14 +740,14 @@ export class BasicAuthContextClient implements DisposableTrait {
 				url: this.logoutUrl(zone),
 				method: "POST",
 				headers: { accept: "application/json" },
-				cancellationToken: this._rootCancellation.token,
+				cancellationToken,
 			});
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 			const snapshot = this._snapshotFromResponse(zone.logoutPath, response);
 			if (snapshot.boundaryKind !== BasicAuthBoundaryKindValues.LogoutPoison) {
 				throw new ClientError({
 					kind: ClientErrorKind.Protocol,
-					code: "basic_auth.logout_poison_expected",
+					code: BasicAuthContextErrorCode.LogoutPoisonExpected,
 					message:
 						"BasicAuthContextClient.logout() expected a Basic Auth logout poison response.",
 					source: BasicAuthContextSource.BasicAuthContext,
@@ -768,9 +829,5 @@ export class BasicAuthContextClient implements DisposableTrait {
 				id: this.id,
 			},
 		});
-	}
-
-	private _throwIfNotOperational(): void {
-		this._rootCancellation.token.throwIfCancellationRequested();
 	}
 }

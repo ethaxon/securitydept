@@ -58,16 +58,17 @@ describe("describeFrontendOidcModeCallbackError", () => {
 	it("falls back to the shared descriptor for unknown callback failures", () => {
 		expect(
 			describeFrontendOidcModeCallbackError({
-				code: "callback.other",
+				code: "frontend_oidc.callback.other",
 				kind: "protocol",
 				message: "Other callback failure",
 				recovery: UserRecovery.None,
 				retryable: false,
 			}),
 		).toMatchObject({
-			code: "callback.other",
+			code: "frontend_oidc.callback.other",
 			title: "Frontend-mode callback failed",
-			description: "Other callback failure",
+			description:
+				"The service response did not satisfy the expected protocol.",
 			recovery: UserRecovery.None,
 		});
 	});

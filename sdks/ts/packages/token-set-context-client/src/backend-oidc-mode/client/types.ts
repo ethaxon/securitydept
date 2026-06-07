@@ -3,7 +3,7 @@
 // Mode-specific constants and config types live here. Shared token/auth
 // material types are exported from the orchestration layer.
 
-import { type CancellationTokenTrait } from "@securitydept/client";
+import { type CancellationTokenOptions } from "@securitydept/client";
 import {
 	type BaseOidcModeClientDefaultOptions,
 	type OidcModeClientConfigBase,
@@ -56,13 +56,11 @@ export interface BackendOidcModeClientConfig extends OidcModeClientConfigBase {
 	defaultPostAuthRedirectUri?: string;
 }
 
-export interface BackendOidcModeFetchUserInfoOptions {
-	cancellationToken?: CancellationTokenTrait;
-}
+export interface BackendOidcModeFetchUserInfoOptions
+	extends CancellationTokenOptions {}
 
-export interface BackendOidcModeMetadataRedemptionOptions {
-	cancellationToken?: CancellationTokenTrait;
-}
+export interface BackendOidcModeMetadataRedemptionOptions
+	extends CancellationTokenOptions {}
 
 export interface BackendOidcModeClientDefaultOptions
 	extends BaseOidcModeClientDefaultOptions {

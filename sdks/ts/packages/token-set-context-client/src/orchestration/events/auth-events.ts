@@ -1,5 +1,6 @@
 /** biome-ignore-all lint/complexity/noBannedTypes: enable for event payload builders */
 import {
+	type ErrorSummary,
 	EventSourceKind,
 	type RuntimeEventEnvelope,
 } from "@securitydept/client";
@@ -20,13 +21,6 @@ export const TokenSetAuthEventType = {
 
 export type TokenSetAuthEventType =
 	(typeof TokenSetAuthEventType)[keyof typeof TokenSetAuthEventType];
-
-export interface TokenSetAuthErrorSummary {
-	message?: string;
-	errorKind?: string;
-	errorCode?: string;
-	recovery?: string;
-}
 
 // Minimal client identity context carried by every auth event. Keep the
 // identity namespaced so event-specific payload fields cannot collide with it.
@@ -78,7 +72,7 @@ type AuthMaterialRestoreFailedEventPayload = TokenSetAuthEventPayloadBuilder<
 	typeof TokenSetAuthEventType.AuthMaterialRestoreFailed,
 	{
 		persisted: true;
-		errorSummary: TokenSetAuthErrorSummary;
+		errorSummary: ErrorSummary;
 	}
 >;
 
@@ -97,7 +91,7 @@ type AuthRefreshSucceededEventPayload = TokenSetAuthRefreshEventPayload<
 type AuthRefreshFailedEventPayload = TokenSetAuthRefreshEventPayload<
 	typeof TokenSetAuthEventType.AuthRefreshFailed,
 	{
-		errorSummary: TokenSetAuthErrorSummary;
+		errorSummary: ErrorSummary;
 	}
 >;
 
@@ -161,29 +155,4 @@ export function createTokenSetAuthEvent<
 		source,
 		payload: options.payload,
 	};
-}
-
-export function summarizeAuthError(error: unknown): TokenSetAuthErrorSummary {
-	if (error instanceof Error) {
-		const record = error as Error &
-			Partial<Record<"kind" | "code" | "recovery", unknown>>;
-		return {
-			message: error.message,
-			errorKind: typeof record.kind === "string" ? record.kind : undefined,
-			errorCode: typeof record.code === "string" ? record.code : undefined,
-			recovery:
-				typeof record.recovery === "string" ? record.recovery : undefined,
-		};
-	}
-	if (typeof error === "object" && error !== null) {
-		const record = error as Record<string, unknown>;
-		return {
-			message: typeof record.message === "string" ? record.message : undefined,
-			errorKind: typeof record.kind === "string" ? record.kind : undefined,
-			errorCode: typeof record.code === "string" ? record.code : undefined,
-			recovery:
-				typeof record.recovery === "string" ? record.recovery : undefined,
-		};
-	}
-	return { message: String(error) };
 }

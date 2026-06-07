@@ -12,6 +12,7 @@ import {
 	createTanStackBeforeLoad,
 	createTanStackRouterContext,
 	projectTanStackRouteSegments,
+	type SecuritydeptTanStackRouterContext,
 	secureRoute,
 	secureRouteRoot,
 	TanStackRouteSecurityBlockedError,
@@ -85,11 +86,10 @@ describe("TanStack Router auth coordination", () => {
 	});
 
 	it("projects TanStack router.state.matches staticData into route segments", async () => {
-		const rootRoute = createRootRouteWithContext<{
-			securitydeptInjector: ReturnType<typeof createInjector>;
-		}>()({
-			...secureRoute({ requirements: [sessionRequirement] }),
-		});
+		const rootRoute =
+			createRootRouteWithContext<SecuritydeptTanStackRouterContext>()({
+				...secureRoute({ requirements: [sessionRequirement] }),
+			});
 		const childRoute = createRoute({
 			getParentRoute: () => rootRoute,
 			path: "/dashboard",

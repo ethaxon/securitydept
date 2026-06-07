@@ -11,7 +11,7 @@ import {
 	type TokenSetClientQueryOptions,
 	type TokenSetClientRegistry,
 } from "@securitydept/token-set-context-client/registry";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
 	TOKEN_SET_CLIENT_REGISTRY,
 	type TokenSetClientRegistryService,
@@ -41,25 +41,22 @@ export function useTokenSetFrontendCallbackController(
 		(injector.get(TOKEN_SET_CLIENT_REGISTRY) as TokenSetClientRegistryService);
 	const environment = options.environment ?? injector.get(ENVIRONMENT_TOKEN);
 	const clientQueryRef = useRef(options.clientQuery);
-	const currentUrlRef = useRef<string | null | undefined>(undefined);
 	clientQueryRef.current = options.clientQuery;
-	currentUrlRef.current =
+	const currentUrl =
 		options.currentUrl ?? environment.router?.currentUrl()?.toString();
-	const [, setControllerVersion] = useState(0);
 
 	const controller = useMemo(
 		() =>
 			new FrontendOidcModeCallbackController({
 				registry: () => registry,
-				currentUrl: () => currentUrlRef.current,
+				currentUrl: () => currentUrl,
 				clientQuery: () => clientQueryRef.current,
 			}),
-		[registry],
+		[registry, currentUrl],
 	);
 	const state = useSignal(controller.state);
 	const isCallback = controller.isCallback();
 	const autoHandle = options.autoHandle ?? true;
-	const currentUrl = currentUrlRef.current;
 	const clientQuery = clientQueryRef.current;
 
 	useEffect(() => {
@@ -69,8 +66,6 @@ export function useTokenSetFrontendCallbackController(
 			return;
 		}
 		if (!controller.isCallback()) {
-			controller.reset();
-			setControllerVersion((version) => version + 1);
 			return;
 		}
 		void controller.handle().catch(() => undefined);

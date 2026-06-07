@@ -28,9 +28,11 @@ export interface SecuritydeptRouteMetadata<
 export function readSecuritydeptRouteMetadata<
 	TAuthRequirement extends AuthRequirement = AuthRequirement,
 >(
-	data: Record<string, unknown> | undefined,
+	data: object | undefined,
 ): SecuritydeptRouteMetadata<TAuthRequirement> | undefined {
-	const raw = data?.[SECURITYDEPT_ROUTE_METADATA_KEY];
+	const raw = (data as Record<string, unknown> | undefined)?.[
+		SECURITYDEPT_ROUTE_METADATA_KEY
+	];
 	if (raw === undefined || raw === null) {
 		return undefined;
 	}
@@ -41,7 +43,7 @@ export function readSecuritydeptRouteMetadata<
 export function writeSecuritydeptRouteMetadata<
 	TAuthRequirement extends AuthRequirement = AuthRequirement,
 >(
-	base: Record<string, unknown> | undefined,
+	base: object | undefined,
 	patch: SecuritydeptRouteMetadata<TAuthRequirement>,
 ): Record<string, unknown> {
 	const data: Record<string, unknown> = { ...(base ?? {}) };

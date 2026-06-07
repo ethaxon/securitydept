@@ -1,4 +1,5 @@
 import {
+	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
 	type FoundationEnvironment,
@@ -12,21 +13,25 @@ import {
 	filter,
 	firstValueFrom,
 	from,
+	NEVER,
 	TimeoutError,
 	take,
+	takeUntil,
 	timeout,
 } from "rxjs";
 
 export const TokenSetPopupRelayErrorCode = {
-	Timeout: "token_set.popup_relay_timeout",
-	Protocol: "token_set.popup_relay_protocol_error",
-	Payload: "token_set.popup_relay_payload_error",
+	Timeout: "token_set.popup_relay.timeout",
+	Protocol: "token_set.popup_relay.protocol",
+	Payload: "token_set.popup_relay.payload",
 	AttachUnavailable: "token_set.popup_relay.attach_unavailable",
 	CallbackUrlMissing: "token_set.popup_relay.callback_url_missing",
 } as const;
 
 export type TokenSetPopupRelayErrorCode =
 	(typeof TokenSetPopupRelayErrorCode)[keyof typeof TokenSetPopupRelayErrorCode];
+
+export const TokenSetPopupRelayErrorSource = "token_set.popup_relay";
 
 export const TokenSetPopupRelayMethod = {
 	Callback: "securitydept.token_set.popup.callback",
@@ -41,6 +46,7 @@ export interface WaitForTokenSetPopupRelayOptions {
 	popup: PopupClientWindowHandleTrait;
 	time: TimeTrait;
 	timeoutMs?: number;
+	cancellationToken?: CancellationTokenTrait;
 }
 
 export interface RelayTokenSetPopupCallbackOptions {
@@ -50,11 +56,10 @@ export interface RelayTokenSetPopupCallbackOptions {
 	closeAfterRelay?: boolean;
 }
 
-export async function waitForTokenSetPopupRelay({
-	popup,
-	time,
-	timeoutMs = 120_000,
-}: WaitForTokenSetPopupRelayOptions): Promise<string> {
+export async function waitForTokenSetPopupRelay(
+	options: WaitForTokenSetPopupRelayOptions,
+): Promise<string> {
+	const { popup, time, timeoutMs = 120_000, cancellationToken } = options;
 	try {
 		const callbackNotification = await firstValueFrom(
 			from(popup.onNotification).pipe(
@@ -64,6 +69,7 @@ export async function waitForTokenSetPopupRelay({
 					first: timeoutMs,
 					scheduler: createAsyncSchedulerWithTimestampProvider(time),
 				}),
+				takeUntil(cancellationToken ? from(cancellationToken) : NEVER),
 			),
 		);
 
@@ -77,7 +83,7 @@ export async function waitForTokenSetPopupRelay({
 				code: TokenSetPopupRelayErrorCode.Payload,
 				message: `Popup callback relay error: ${relayPayload.error}`,
 				recovery: UserRecovery.RestartFlow,
-				source: "token-set-popup-relay",
+				source: TokenSetPopupRelayErrorSource,
 			});
 		}
 
@@ -87,12 +93,13 @@ export async function waitForTokenSetPopupRelay({
 				code: TokenSetPopupRelayErrorCode.Protocol,
 				message: "Popup callback relay payload is missing.",
 				recovery: UserRecovery.RestartFlow,
-				source: "token-set-popup-relay",
+				source: TokenSetPopupRelayErrorSource,
 			});
 		}
 
 		return relayPayload.payload;
 	} catch (error) {
+		cancellationToken?.throwIfCancellationRequested();
 		if (error instanceof ClientError) {
 			throw error;
 		}
@@ -102,17 +109,17 @@ export async function waitForTokenSetPopupRelay({
 				code: TokenSetPopupRelayErrorCode.Timeout,
 				message: `Popup login timed out after ${timeoutMs}ms.`,
 				recovery: UserRecovery.Retry,
-				source: "token-set-popup-relay",
+				source: TokenSetPopupRelayErrorSource,
 			});
 		}
 
-		const message = error instanceof Error ? error.message : String(error);
 		throw new ClientError({
 			kind: ClientErrorKind.Protocol,
 			code: TokenSetPopupRelayErrorCode.Protocol,
-			message,
+			message: "The popup callback relay failed unexpectedly.",
 			recovery: UserRecovery.RestartFlow,
-			source: "token-set-popup-relay",
+			source: TokenSetPopupRelayErrorSource,
+			cause: error,
 		});
 	} finally {
 		popup.dispose();
@@ -184,7 +191,7 @@ export async function relayTokenSetPopupCallbackFromEnvironment(
 				kind: ClientErrorKind.Configuration,
 				code: TokenSetPopupRelayErrorCode.AttachUnavailable,
 				message: "Popup callback relay requires environment.popup.attach().",
-				source: "token-set-popup-relay",
+				source: TokenSetPopupRelayErrorSource,
 				recovery: UserRecovery.RestartFlow,
 			})
 		);
@@ -195,7 +202,7 @@ export async function relayTokenSetPopupCallbackFromEnvironment(
 			kind: ClientErrorKind.Configuration,
 			code: TokenSetPopupRelayErrorCode.CallbackUrlMissing,
 			message: "Popup callback relay requires environment.router.currentUrl().",
-			source: "token-set-popup-relay",
+			source: TokenSetPopupRelayErrorSource,
 			recovery: UserRecovery.RestartFlow,
 		});
 	}

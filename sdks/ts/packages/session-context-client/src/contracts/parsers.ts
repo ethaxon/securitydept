@@ -4,7 +4,11 @@ import {
 	formatValidationFailure,
 	validateWithSchemaSync,
 } from "@securitydept/client";
-import { SessionContextSource, type SessionInfo } from "../types";
+import {
+	SessionContextErrorCode,
+	SessionContextSource,
+	type SessionInfo,
+} from "../types";
 import { SessionInfoSchema, SessionUserInfoResponseSchema } from "./schemas";
 
 export function parseSessionInfoPayload(body: unknown): SessionInfo {
@@ -28,7 +32,7 @@ export function parseSessionInfoPayload(body: unknown): SessionInfo {
 	const issueSummary = formatValidationFailure(failure);
 	throw new ClientError({
 		kind: ClientErrorKind.Protocol,
-		code: "session.invalid_user_info_payload",
+		code: SessionContextErrorCode.InvalidSessionPayload,
 		message: issueSummary
 			? `Session /user-info payload is invalid: ${issueSummary}.`
 			: "Session /user-info payload is invalid.",

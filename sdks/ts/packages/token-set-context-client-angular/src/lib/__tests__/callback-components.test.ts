@@ -11,10 +11,6 @@ import { ENVIRONMENT } from "@securitydept/client-angular";
 import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
-	BackendOidcModeCallbackController,
-	FrontendOidcModeCallbackController,
-} from "@securitydept/token-set-context-client/registry";
-import {
 	TokenSetBackendCallbackComponent,
 	TokenSetClientRegistryService,
 	TokenSetFrontendCallbackComponent,
@@ -198,37 +194,5 @@ describe("token-set Angular callback components", () => {
 		expect(fixture.componentInstance.state()).toMatchObject({
 			state: OnceAsyncLockState.Init,
 		});
-	});
-
-	it("does not reset callback controllers on destroy", () => {
-		const frontendReset = vi.spyOn(
-			FrontendOidcModeCallbackController.prototype,
-			"reset",
-		);
-		const backendReset = vi.spyOn(
-			BackendOidcModeCallbackController.prototype,
-			"reset",
-		);
-		const frontendClient = { handleCallback: vi.fn() };
-		Object.setPrototypeOf(frontendClient, FrontendOidcModeClient.prototype);
-		const registry = createRegistry("frontend", frontendClient);
-		const { router } = createRouter(
-			"https://app.example.com/auth/callback?code=ok&state=s1",
-		);
-
-		TestBed.configureTestingModule({
-			imports: [TokenSetFrontendCallbackComponent],
-			providers: [
-				{ provide: ENVIRONMENT, useValue: createEnvironment(router) },
-				{ provide: TokenSetClientRegistryService, useValue: registry },
-			],
-		});
-
-		const fixture = TestBed.createComponent(TokenSetFrontendCallbackComponent);
-		fixture.detectChanges();
-		fixture.destroy();
-
-		expect(frontendReset).not.toHaveBeenCalled();
-		expect(backendReset).not.toHaveBeenCalled();
 	});
 });

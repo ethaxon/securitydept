@@ -9,6 +9,7 @@ import {
 	ErrorPresentationTone,
 	UserRecovery,
 } from "../../errors/types";
+import { readPopupErrorPresentationDescriptor } from "../../popup/errors";
 
 describe("ClientError", () => {
 	it("should create with kind and message", () => {
@@ -41,6 +42,21 @@ describe("ClientError", () => {
 		expect(err.cause).toBe(cause);
 	});
 
+	it("wraps unknown errors and preserves their cause", () => {
+		const cause = new TypeError("secret detail");
+		const error = ClientError.fromUnknown(cause, {
+			code: "test.operation_failed",
+			message: "The test operation failed",
+			source: "test",
+		});
+		expect(error).toMatchObject({
+			kind: ClientErrorKind.Internal,
+			code: "test.operation_failed",
+			source: "test",
+			cause,
+		});
+	});
+
 	it("should create from server error body", () => {
 		const err = ClientError.fromServerError({
 			code: "auth_required",
@@ -49,43 +65,51 @@ describe("ClientError", () => {
 		});
 		expect(err.code).toBe("auth_required");
 		expect(err.recovery).toBe(UserRecovery.Reauthenticate);
-		expect(err.presentation?.code).toBe("auth_required");
-		expect(err.presentation?.recovery).toBe(UserRecovery.Reauthenticate);
+		expect(err.presentation).toBeUndefined();
 	});
 
 	it("should create from 500 HTTP response", () => {
-		const err = ClientError.fromHttpResponse(500, { message: "Internal" });
+		const err = ClientError.fromHttpResponse({
+			status: 500,
+			body: { message: "Internal" },
+		});
 		expect(err.kind).toBe(ClientErrorKind.Server);
 		expect(err.retryable).toBe(true);
 		expect(err.recovery).toBe(UserRecovery.Retry);
 	});
 
 	it("should classify structured 500 error body as server, not protocol", () => {
-		const err = ClientError.fromHttpResponse(500, {
-			code: "db_unavailable",
-			message: "Database connection failed",
-			recovery: UserRecovery.Retry,
+		const err = ClientError.fromHttpResponse({
+			status: 500,
+			body: {
+				code: "db_unavailable",
+				message: "Database connection failed",
+				recovery: UserRecovery.Retry,
+			},
 		});
 		expect(err.kind).toBe(ClientErrorKind.Server);
 		expect(err.source).toBe(ClientErrorSource.Server);
 		expect(err.code).toBe("db_unavailable");
-		expect(err.presentation?.code).toBe("db_unavailable");
+		expect(err.presentation).toBeUndefined();
 	});
 
 	it("should consume a structured server error envelope", () => {
-		const err = ClientError.fromHttpResponse(503, {
-			success: false,
+		const err = ClientError.fromHttpResponse({
 			status: 503,
-			error: {
-				kind: "unavailable",
-				code: "service_unavailable",
-				message: "The service is temporarily unavailable.",
-				recovery: UserRecovery.ContactSupport,
-				retryable: false,
-				presentation: {
+			body: {
+				success: false,
+				status: 503,
+				error: {
+					kind: "unavailable",
 					code: "service_unavailable",
 					message: "The service is temporarily unavailable.",
 					recovery: UserRecovery.ContactSupport,
+					retryable: false,
+					presentation: {
+						code: "service_unavailable",
+						message: "The service is temporarily unavailable.",
+						recovery: UserRecovery.ContactSupport,
+					},
 				},
 			},
 		});
@@ -101,10 +125,36 @@ describe("ClientError", () => {
 		});
 	});
 
+	it("ignores unsupported server recovery values", () => {
+		const err = ClientError.fromHttpResponse({
+			status: 500,
+			body: {
+				code: "service_unavailable",
+				message: "The service is temporarily unavailable.",
+				recovery: "execute_shell",
+			},
+		});
+
+		expect(err.recovery).toBe(UserRecovery.Retry);
+		expect(err.presentation).toBeUndefined();
+	});
+
 	it("should create from 401 HTTP response", () => {
-		const err = ClientError.fromHttpResponse(401);
+		const err = ClientError.fromHttpResponse({ status: 401 });
 		expect(err.kind).toBe(ClientErrorKind.Unauthenticated);
 		expect(err.recovery).toBe(UserRecovery.Reauthenticate);
+	});
+
+	it.each([
+		[403, ClientErrorKind.Unauthorized, UserRecovery.None],
+		[408, ClientErrorKind.Timeout, UserRecovery.Retry],
+		[422, ClientErrorKind.Protocol, UserRecovery.None],
+	])("maps HTTP %i to %s", (status, kind, recovery) => {
+		expect(ClientError.fromHttpResponse({ status })).toMatchObject({
+			kind,
+			recovery,
+			source: ClientErrorSource.Server,
+		});
 	});
 
 	it("should preserve source and retryable", () => {
@@ -119,7 +169,7 @@ describe("ClientError", () => {
 	});
 
 	it("builds a host-facing descriptor for popup errors", () => {
-		const descriptor = readErrorPresentationDescriptor(
+		const descriptor = readPopupErrorPresentationDescriptor(
 			new ClientError({
 				kind: ClientErrorKind.Authorization,
 				code: "popup.closed_by_user",
@@ -135,7 +185,7 @@ describe("ClientError", () => {
 
 		expect(descriptor).toMatchObject({
 			code: "popup.closed_by_user",
-			title: "Popup login was closed",
+			title: "Popup was closed",
 			recovery: UserRecovery.RestartFlow,
 			tone: ErrorPresentationTone.Warning,
 			primaryAction: {
@@ -160,7 +210,7 @@ describe("ClientError", () => {
 			code: "authentication_required",
 			kind: ClientErrorKind.Unauthenticated,
 			title: "Authentication required",
-			description: "Login required",
+			description: "Sign in again to continue.",
 			recovery: UserRecovery.Reauthenticate,
 			primaryAction: {
 				recovery: UserRecovery.Reauthenticate,
@@ -183,6 +233,7 @@ describe("describeError", () => {
 				}),
 			),
 		).toEqual({
+			errorName: "ClientError",
 			errorKind: ClientErrorKind.Unauthenticated,
 			errorCode: "authentication_required",
 			recovery: UserRecovery.Reauthenticate,
@@ -192,12 +243,27 @@ describe("describeError", () => {
 	it("describes native Error values", () => {
 		expect(describeError(new TypeError("Wrong type"))).toEqual({
 			errorName: "TypeError",
-			errorMessage: "Wrong type",
 		});
 	});
 
 	it("describes unknown thrown values", () => {
-		expect(describeError("bad")).toEqual({ errorValue: "bad" });
+		expect(describeError("bad")).toEqual({ errorName: "string" });
+	});
+
+	it("does not expose runtime messages through presentation or telemetry", () => {
+		const secret = "SECRET_SENTINEL";
+		const error = ClientError.fromHttpResponse({
+			status: 422,
+			body: {
+				code: "test.secret",
+				message: secret,
+			},
+		});
+		expect(error.presentation).toBeUndefined();
+		expect(
+			JSON.stringify(readErrorPresentationDescriptor(error)),
+		).not.toContain(secret);
+		expect(JSON.stringify(describeError(error))).not.toContain(secret);
 	});
 });
 
@@ -217,7 +283,7 @@ describe("CancellationTokenSource", () => {
 	it("should invoke listener on cancel", () => {
 		const cts = createCancellationTokenSource();
 		let received: unknown;
-		cts.token.onCancellationRequested((reason) => {
+		cts.token.onCancellationRequested(({ reason }) => {
 			received = reason;
 		});
 		cts.cancel("gone");
@@ -228,7 +294,7 @@ describe("CancellationTokenSource", () => {
 		const cts = createCancellationTokenSource();
 		cts.cancel("early");
 		let received: unknown;
-		cts.token.onCancellationRequested((reason) => {
+		cts.token.onCancellationRequested(({ reason }) => {
 			received = reason;
 		});
 		expect(received).toBe("early");

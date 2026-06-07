@@ -9,10 +9,7 @@ import { BackendOidcModeClient } from "../../backend-oidc-mode";
 import { type TokenSetAuthSnapshot } from "../../orchestration";
 import { type BaseOidcModeClient } from "../../orchestration/client/base-client";
 import { type TokenSetClientQueryOptions } from "../contracts/query";
-import {
-	type TokenSetClientReadyRecordView,
-	type TokenSetClientRecordView,
-} from "../contracts/types";
+import { type TokenSetClientReadyRecordView } from "../contracts/types";
 import { type TokenSetClientRegistry } from "../core/client-registry";
 import {
 	TokenSetClientRegistryError,
@@ -44,7 +41,7 @@ export type BackendOidcModeCallbackState = OnceAsyncLock<
 >;
 
 export class BackendOidcModeCallbackController {
-	handle: BackendOidcModeCallbackHandle;
+	readonly handle: BackendOidcModeCallbackHandle;
 
 	private readonly payload: () => CompatFragmentParameters;
 	private readonly clientQuery: () => TokenSetClientQueryOptions;
@@ -61,17 +58,10 @@ export class BackendOidcModeCallbackController {
 		return this.handle;
 	}
 
-	reset(): void {
-		this.handle = this.createHandle();
-	}
-
 	private createHandle(): BackendOidcModeCallbackHandle {
 		return createOnceAsyncLockCallable(async () => {
 			const registry = this.registry();
-			const record = this.selectClientRecordForInput(
-				registry,
-				this.clientQuery(),
-			);
+			const record = registry.clientRecordForQuery(this.clientQuery());
 			if (!record) {
 				throw new TokenSetClientRegistryError({
 					code: TokenSetClientRegistryErrorCode.CallbackClientNotFound,
@@ -100,14 +90,5 @@ export class BackendOidcModeCallbackController {
 				snapshot,
 			};
 		});
-	}
-
-	selectClientRecordForInput(
-		registry: TokenSetClientRegistry<BaseOidcModeClient>,
-		clientQuery: TokenSetClientQueryOptions,
-	):
-		| ReadableSignalTrait<TokenSetClientRecordView<BaseOidcModeClient>>
-		| undefined {
-		return registry.clientRecordForQuery(clientQuery);
 	}
 }

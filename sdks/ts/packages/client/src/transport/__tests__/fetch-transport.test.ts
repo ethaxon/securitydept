@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCancellationTokenSource } from "../../cancellation/create";
 import { ClientError } from "../../errors/client-error";
+import { ClientErrorKind } from "../../errors/types";
 import { createBaseTransportForStdFetch } from "../../std/transport";
+import { TransportErrorCode } from "../types";
 
 describe("createBaseTransportForStdFetch()", () => {
 	afterEach(() => {
@@ -41,9 +43,48 @@ describe("createBaseTransportForStdFetch()", () => {
 		await expect(requestPromise).rejects.toMatchObject({
 			name: "ClientError",
 			kind: "cancelled",
-			code: "test.fetch_cancelled",
+			code: "client.cancelled",
 		});
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("maps network failures to transport errors", async () => {
+		const cause = new TypeError("SECRET_NETWORK_DETAIL");
+		const transport = createBaseTransportForStdFetch({
+			fetch: vi.fn().mockRejectedValue(cause),
+		});
+		await expect(
+			transport.execute({
+				url: "https://api.example.com",
+				method: "GET",
+				headers: {},
+			}),
+		).rejects.toMatchObject({
+			kind: ClientErrorKind.Transport,
+			code: TransportErrorCode.RequestFailed,
+			cause,
+		});
+	});
+
+	it("maps invalid JSON responses to protocol errors", async () => {
+		const transport = createBaseTransportForStdFetch({
+			fetch: vi.fn().mockResolvedValue(
+				new Response("{", {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				}),
+			),
+		});
+		await expect(
+			transport.execute({
+				url: "https://api.example.com",
+				method: "GET",
+				headers: {},
+			}),
+		).rejects.toMatchObject({
+			kind: ClientErrorKind.Protocol,
+			code: TransportErrorCode.ResponseDecodeFailed,
+		});
 	});
 });
 

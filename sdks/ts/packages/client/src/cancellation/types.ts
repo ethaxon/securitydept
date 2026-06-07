@@ -1,6 +1,7 @@
 // --- Cancellation and disposal ---
 
 import { type DisposableTrait, type InteropObservableTrait } from "../compat";
+import { type ClientError } from "../errors";
 
 /** Cancelable operation handle. */
 export interface CancelableHandle {
@@ -8,7 +9,7 @@ export interface CancelableHandle {
 }
 
 export interface CancellationTokenErrorData {
-	readonly cancellationError: Error;
+	readonly cancellationError: ClientError;
 	readonly reason: unknown;
 }
 
@@ -16,12 +17,16 @@ export interface CancellationTokenErrorData {
 export interface CancellationTokenTrait
 	extends InteropObservableTrait<CancellationTokenErrorData> {
 	readonly isCancellationRequested: boolean;
-	readonly cancellationError?: Error | undefined;
+	readonly cancellationError?: ClientError | undefined;
 	readonly reason?: unknown;
 	onCancellationRequested(
 		listener: (data: CancellationTokenErrorData) => void,
 	): DisposableTrait;
 	throwIfCancellationRequested(): void;
+}
+
+export interface CancellationTokenOptions {
+	cancellationToken?: CancellationTokenTrait;
 }
 
 /** Cancellation source — producer-side control. */

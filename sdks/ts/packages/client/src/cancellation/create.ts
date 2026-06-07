@@ -7,7 +7,7 @@ import {
 	SYMBOL_OBSERVABLE,
 } from "../compat";
 import { ClientError } from "../errors/client-error";
-import { ClientErrorKind } from "../errors/types";
+import { ClientErrorKind, ClientErrorSource } from "../errors/types";
 import {
 	type CancellationTokenErrorData,
 	type CancellationTokenSourceTrait,
@@ -45,14 +45,13 @@ export class CancellationToken implements CancellationTokenTrait {
 		this.cancellationState.next({
 			isCancelled: true,
 			reason,
-			cancellationError:
-				reason instanceof Error
-					? reason
-					: new ClientError({
-							kind: ClientErrorKind.Cancelled,
-							message: "Operation was cancelled",
-							cause: reason,
-						}),
+			cancellationError: new ClientError({
+				kind: ClientErrorKind.Cancelled,
+				message: "Operation was cancelled",
+				code: "client.cancelled",
+				source: ClientErrorSource.Client,
+				cause: reason,
+			}),
 		});
 	}
 
@@ -92,7 +91,7 @@ export class CancellationToken implements CancellationTokenTrait {
 		}
 	}
 
-	get cancellationError(): Error | undefined {
+	get cancellationError(): ClientError | undefined {
 		const cancellationState = this.cancellationState.getValue();
 		return cancellationState?.cancellationError;
 	}

@@ -17,6 +17,7 @@ import {
 	type BaseTransportTrait,
 	ClientError,
 	ClientErrorKind,
+	ClientErrorSource,
 	createFoundationEnvironment,
 	type FoundationEnvironment,
 	type IdleCallbackTrait,
@@ -43,6 +44,10 @@ import {
 	type TokenSetPersistedConfigEnvelope,
 	type TokenSetResolvedConfigProjection,
 } from "./config-source";
+import {
+	FrontendOidcModeConfigErrorCode,
+	FrontendOidcModeConfigErrorSource,
+} from "./error-codes";
 
 const FRONTEND_OIDC_PERSISTENT_PREFIX =
 	"securitydept.web.frontend_oidc:persistent:";
@@ -161,26 +166,58 @@ export async function createFrontendOidcModeBrowserClient(
 ): Promise<FrontendOidcModeBrowserClientMaterialization> {
 	const environment = options.environment;
 	if (!environment) {
-		throw new Error(FRONTEND_OIDC_WEB_ENVIRONMENT_ERROR_MESSAGE);
+		throw new ClientError({
+			kind: ClientErrorKind.Configuration,
+			code: FrontendOidcModeConfigErrorCode.WebEnvironmentUnavailable,
+			message: FRONTEND_OIDC_WEB_ENVIRONMENT_ERROR_MESSAGE,
+			source: FrontendOidcModeConfigErrorSource,
+		});
 	}
 
 	const configEndpoint = new URL(options.configEndpoint, environment.origin);
 	configEndpoint.searchParams.set("redirect_uri", options.redirectUri);
-	const response = await environment.fetch(configEndpoint.toString());
+	let response: Response;
+	try {
+		response = await environment.fetch(configEndpoint.toString());
+	} catch (error) {
+		throw new ClientError({
+			kind: ClientErrorKind.Transport,
+			code: FrontendOidcModeConfigErrorCode.NetworkRequestFailed,
+			message: "The frontend OIDC config projection request failed",
+			source: ClientErrorSource.Transport,
+			cause: error,
+		});
+	}
 	if (!response.ok) {
 		const body = await response.json().catch(() => undefined);
-		throw ClientError.fromHttpResponse(response.status, body);
+		throw ClientError.fromHttpResponse({ status: response.status, body });
 	}
 
-	const projection = await response.json();
+	let projection: unknown;
+	try {
+		projection = await response.json();
+	} catch (error) {
+		throw new ClientError({
+			kind: ClientErrorKind.Protocol,
+			code: FrontendOidcModeConfigErrorCode.ResponseDecodeFailed,
+			message: "The frontend OIDC config projection response is not valid JSON",
+			source: FrontendOidcModeConfigErrorSource,
+			cause: error,
+		});
+	}
 	const parsed = parseConfigProjection(projection, {
 		redirectUri: options.redirectUri,
 		defaultPostAuthRedirectUri: options.defaultPostAuthRedirectUri ?? "/",
 	});
 	if (!parsed.success) {
-		throw new Error(
-			"Frontend-mode config projection response did not match the shared projection schema.",
-		);
+		throw new ClientError({
+			kind: ClientErrorKind.Protocol,
+			code: FrontendOidcModeConfigErrorCode.InvalidProjection,
+			message:
+				"The frontend OIDC config projection response did not match the shared schema",
+			source: FrontendOidcModeConfigErrorSource,
+			cause: parsed.issues,
+		});
 	}
 
 	const resolvedProjection: TokenSetResolvedConfigProjection = {
@@ -230,7 +267,7 @@ function requireFrontendOidcWebStorage(
 	}
 	throw new ClientError({
 		kind: ClientErrorKind.Configuration,
-		code: "frontend_oidc.web.storage_unavailable",
+		code: FrontendOidcModeConfigErrorCode.StorageUnavailable,
 		message: `Frontend OIDC browser materialization requires globalThis.${hostName}.`,
 		recovery: UserRecovery.RestartFlow,
 		source: "frontend-oidc-mode",
@@ -248,7 +285,12 @@ function requireWindowOrigin(): string {
 			? (location as { origin?: unknown }).origin
 			: undefined;
 	if (typeof origin !== "string" || origin.length === 0) {
-		throw new Error(FRONTEND_OIDC_WEB_ENVIRONMENT_ERROR_MESSAGE);
+		throw new ClientError({
+			kind: ClientErrorKind.Configuration,
+			code: FrontendOidcModeConfigErrorCode.WebEnvironmentUnavailable,
+			message: FRONTEND_OIDC_WEB_ENVIRONMENT_ERROR_MESSAGE,
+			source: FrontendOidcModeConfigErrorSource,
+		});
 	}
 
 	return origin;
@@ -256,7 +298,12 @@ function requireWindowOrigin(): string {
 
 function requireGlobalFetch(): typeof globalThis.fetch {
 	if (typeof globalThis.fetch !== "function") {
-		throw new Error(FRONTEND_OIDC_WEB_ENVIRONMENT_ERROR_MESSAGE);
+		throw new ClientError({
+			kind: ClientErrorKind.Configuration,
+			code: FrontendOidcModeConfigErrorCode.WebEnvironmentUnavailable,
+			message: FRONTEND_OIDC_WEB_ENVIRONMENT_ERROR_MESSAGE,
+			source: FrontendOidcModeConfigErrorSource,
+		});
 	}
 
 	return globalThis.fetch.bind(globalThis);
@@ -294,9 +341,7 @@ export function networkConfigSource(options: {
 			url.searchParams.set("redirect_uri", redirectUri);
 			const response = await fetch(url.toString());
 			if (!response.ok) {
-				throw new Error(
-					`Config projection fetch failed: ${response.status} ${response.statusText}`,
-				);
+				throw ClientError.fromHttpResponse({ status: response.status });
 			}
 			return response.json();
 		},

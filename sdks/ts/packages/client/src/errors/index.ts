@@ -1,16 +1,17 @@
-export { ClientError } from "./client-error";
 export {
-	type ClientErrorAttributes,
-	type ClientErrorRecovery,
+	ClientError,
+	type ClientErrorFromHttpResponseOptions,
+	type ClientErrorFromUnknownOptions,
+} from "./client-error";
+export {
 	describeError,
-	type ErrorAttributes,
-	type NativeErrorAttributes,
-	type UnknownErrorAttributes,
+	type ErrorSummary,
 } from "./error-attributes";
 export { readErrorPresentationDescriptor } from "./presentation-descriptor";
 export {
 	ClientErrorKind,
 	ClientErrorSource,
+	type ErrorCodePresentationDescriptor,
 	type ErrorPresentation,
 	type ErrorPresentationActionDescriptor,
 	type ErrorPresentationDescriptor,

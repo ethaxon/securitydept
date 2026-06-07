@@ -13,7 +13,7 @@ import {
 	type TokenSetClientQueryOptions,
 	type TokenSetClientRegistry,
 } from "@securitydept/token-set-context-client/registry";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
 	TOKEN_SET_CLIENT_REGISTRY,
 	type TokenSetClientRegistryService,
@@ -43,7 +43,6 @@ export function useTokenSetBackendCallbackController(
 	const payloadRef = useRef<CompatFragmentParameters | undefined>(undefined);
 	const clientQueryRef = useRef(options.clientQuery);
 	clientQueryRef.current = options.clientQuery;
-	const [, setControllerVersion] = useState(0);
 
 	const controller = useMemo(
 		() =>
@@ -75,8 +74,6 @@ export function useTokenSetBackendCallbackController(
 				return;
 			}
 			payloadRef.current = compatFragment.parameters;
-			controller.reset();
-			setControllerVersion((version) => version + 1);
 			if (autoHandle) {
 				void controller.handle().catch(() => undefined);
 			}

@@ -1,8 +1,10 @@
 import { type as defineType } from "arktype";
+import { ClientError, ClientErrorKind, ClientErrorSource } from "../../errors";
 import {
 	type BaseTransportTrait,
 	type HttpRequest,
 	type HttpResponse,
+	TransportErrorCode,
 } from "../../transport/types";
 import {
 	type TraitInputValidator,
@@ -57,7 +59,7 @@ export function createBaseTransportForStdFetch(
 		validator: validators,
 		onInvalid: (failure) =>
 			throwValidationClientError({
-				code: "transport.invalid_std_fetch_options",
+				code: TransportErrorCode.InvalidStdFetchOptions,
 				source: "transport",
 				messagePrefix:
 					"createBaseTransportForStdFetch could not validate transportForStdFetchCreateOptions",
@@ -95,7 +97,26 @@ export function createBaseTransportForStdFetch(
 			}
 
 			try {
-				const res = await fetchImpl(requestUrl, init);
+				let res: Response;
+				try {
+					res = await fetchImpl(requestUrl, init);
+				} catch (error) {
+					const normalized = normalizeAbortError(
+						request.cancellationToken,
+						error,
+					);
+					if (normalized instanceof ClientError) {
+						throw normalized;
+					}
+					throw new ClientError({
+						kind: ClientErrorKind.Transport,
+						message: "The HTTP request could not reach the remote service",
+						code: TransportErrorCode.RequestFailed,
+						source: ClientErrorSource.Transport,
+						retryable: true,
+						cause: error,
+					});
+				}
 
 				const responseHeaders: Record<string, string> = {};
 				res.headers.forEach((value, key) => {
@@ -103,15 +124,25 @@ export function createBaseTransportForStdFetch(
 				});
 
 				let body: unknown;
-				const contentType = res.headers.get("content-type");
-				if (contentType?.includes("application/json")) {
-					body = await res.json();
-				} else if (
-					res.status !== 302 &&
-					res.status !== 303 &&
-					res.status !== 301
-				) {
-					body = await res.text();
+				try {
+					const contentType = res.headers.get("content-type");
+					if (contentType?.includes("application/json")) {
+						body = await res.json();
+					} else if (
+						res.status !== 302 &&
+						res.status !== 303 &&
+						res.status !== 301
+					) {
+						body = await res.text();
+					}
+				} catch (error) {
+					throw new ClientError({
+						kind: ClientErrorKind.Protocol,
+						message: "The HTTP response body could not be decoded",
+						code: TransportErrorCode.ResponseDecodeFailed,
+						source: ClientErrorSource.Transport,
+						cause: error,
+					});
 				}
 
 				return {
@@ -119,8 +150,6 @@ export function createBaseTransportForStdFetch(
 					headers: responseHeaders,
 					body,
 				};
-			} catch (error) {
-				throw normalizeAbortError(request.cancellationToken, error);
 			} finally {
 				abortBridge?.dispose();
 			}

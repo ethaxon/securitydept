@@ -1,8 +1,10 @@
 import {
 	type CancellationTokenSourceTrait,
+	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
 	createCancellationTokenSource,
+	createLinkedCancellationToken,
 	createOnceAsyncLockCallable,
 	createSignal,
 	type DisposableTrait,
@@ -10,6 +12,7 @@ import {
 	describeError,
 	type EventStreamTrait,
 	type FoundationEnvironment,
+	injectDisposableStackFrom,
 	mapResource,
 	type OperationSpanTrait,
 	type ReadableSignalTrait,
@@ -27,6 +30,7 @@ import {
 	SYMBOL_DISPOSE,
 	UriReferenceString,
 	type WritableSignalTrait,
+	withDisposableStack,
 } from "@securitydept/client";
 import {
 	type Command,
@@ -44,10 +48,13 @@ import { parseSessionInfoPayload } from "./contracts/parsers";
 import {
 	type ResolvedSessionContextClientConfig,
 	type SessionContextClientConfig,
+	SessionContextErrorCode,
 	type SessionContextEvent,
 	SessionContextEventType,
+	type SessionContextOperationOptions,
 	SessionContextSource,
 	type SessionInfo,
+	type SessionLoginWithRedirectOptions,
 } from "./types";
 
 interface SessionContextOperationSignals {
@@ -58,6 +65,7 @@ interface SessionContextOperationSignals {
 }
 
 interface SessionCommandExtra {
+	cancellationToken: CancellationTokenTrait;
 	operationSpan?: OperationSpanTrait;
 }
 
@@ -65,10 +73,6 @@ type SessionRefreshCommand = Command<void, SessionCommandExtra>;
 type SessionLogoutCommand = Command<void, SessionCommandExtra>;
 
 const POST_AUTH_REDIRECT_PARAM = "post_auth_redirect_uri";
-
-export interface SessionLoginWithRedirectOptions {
-	postAuthRedirectUri?: string;
-}
 
 const instrumentSessionMethod = defineInstrumentMethodDecorator<
 	[operation: string],
@@ -82,6 +86,12 @@ const instrumentSessionMethod = defineInstrumentMethodDecorator<
 				name: `${this.config.tracing.prefix}.${operation}`,
 				target: this.config.tracing.target,
 				fields: { operation },
+				normalizeError: (error: unknown) =>
+					ClientError.fromUnknown(error, {
+						code: SessionContextErrorCode.OperationFailed,
+						message: "The session operation failed unexpectedly",
+						source: SessionContextSource.SessionContext,
+					}),
 			};
 		},
 );
@@ -141,11 +151,14 @@ export class SessionContextClient implements DisposableTrait {
 		CommandResponse<SessionLogoutCommand, void>
 	>();
 	private readonly _startOnce = createOnceAsyncLockCallable(
-		async (operationSpan?: OperationSpanTrait) => {
-			this._throwIfNotOperational();
+		async (
+			cancellationToken: CancellationTokenTrait,
+			operationSpan?: OperationSpanTrait,
+		) => {
+			cancellationToken.throwIfCancellationRequested();
 			this._operationSignals.startPending.set(true);
 			try {
-				return await this._dispatchRefresh(operationSpan);
+				return await this._dispatchRefresh(cancellationToken, operationSpan);
 			} finally {
 				this._operationSignals.startPending.set(false);
 			}
@@ -225,7 +238,7 @@ export class SessionContextClient implements DisposableTrait {
 			this._rootCancellation.cancel(
 				new ClientError({
 					kind: ClientErrorKind.Cancelled,
-					code: "session.client_disposed",
+					code: SessionContextErrorCode.ClientDisposed,
 					message: "SessionContextClient has been disposed.",
 					source: SessionContextSource.SessionContext,
 				}),
@@ -237,14 +250,21 @@ export class SessionContextClient implements DisposableTrait {
 		from(this._refreshCommandSubject)
 			.pipe(
 				takeUntil(this.destroyed$),
-				concatCommand((command) => this._executeRefresh(command.operationSpan)),
+				concatCommand((command) =>
+					this._executeRefresh(
+						command.cancellationToken,
+						command.operationSpan,
+					),
+				),
 			)
 			.subscribe(this._refreshResponseSubject);
 
 		from(this._logoutCommandSubject)
 			.pipe(
 				takeUntil(this.destroyed$),
-				concatCommand((command) => this._executeLogout(command.operationSpan)),
+				concatCommand((command) =>
+					this._executeLogout(command.cancellationToken, command.operationSpan),
+				),
 			)
 			.subscribe(this._logoutResponseSubject);
 
@@ -257,40 +277,77 @@ export class SessionContextClient implements DisposableTrait {
 
 	@instrumentSessionMethod("start")
 	async start(operationSpan?: OperationSpanTrait): Promise<SessionInfo | null> {
-		return await this._startOnce(operationSpan);
+		const cancellationToken = this._rootCancellation.token;
+		return await this._startOnce(cancellationToken, operationSpan);
+	}
+
+	@withDisposableStack(0, true)
+	async refresh(
+		options: SessionContextOperationOptions = {},
+	): Promise<SessionInfo | null> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._refresh(cancellationToken);
 	}
 
 	@instrumentSessionMethod("refresh")
-	async refresh(
+	private async _refresh(
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<SessionInfo | null> {
-		this._throwIfNotOperational();
-		return await this._dispatchRefresh(operationSpan);
+		cancellationToken.throwIfCancellationRequested();
+		return await this._dispatchRefresh(cancellationToken, operationSpan);
+	}
+
+	@withDisposableStack(0, true)
+	async logout(options: SessionContextOperationOptions = {}): Promise<void> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		await this._logout(cancellationToken);
 	}
 
 	@instrumentSessionMethod("logout")
-	async logout(operationSpan?: OperationSpanTrait): Promise<void> {
-		this._throwIfNotOperational();
-		await this._dispatchLogout(operationSpan);
+	private async _logout(
+		cancellationToken: CancellationTokenTrait,
+		operationSpan?: OperationSpanTrait,
+	): Promise<void> {
+		cancellationToken.throwIfCancellationRequested();
+		await this._dispatchLogout(cancellationToken, operationSpan);
 	}
 
+	@withDisposableStack(0, true)
 	async loginWithRedirect(
 		options: SessionLoginWithRedirectOptions = {},
 	): Promise<void> {
-		await this._loginWithRedirect(options);
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		await this._loginWithRedirect(options, cancellationToken);
 	}
 
 	@instrumentSessionMethod("login.redirect")
 	private async _loginWithRedirect(
 		options: SessionLoginWithRedirectOptions,
+		cancellationToken: CancellationTokenTrait,
 		_operationSpan?: OperationSpanTrait,
 	): Promise<void> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		const router = this._environment.router;
 		if (!router) {
 			throw new ClientError({
 				kind: ClientErrorKind.Configuration,
-				code: "session.router_unavailable",
+				code: SessionContextErrorCode.RouterUnavailable,
 				message: "loginWithRedirect() requires environment.router.",
 				source: SessionContextSource.SessionContext,
 			});
@@ -304,7 +361,7 @@ export class SessionContextClient implements DisposableTrait {
 				intent: RouterNavigationIntent.AuthRedirect,
 				mode: RouterNavigationMode.External,
 			});
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 		} finally {
 			this._operationSignals.loginRedirectPending.set(false);
 		}
@@ -319,9 +376,10 @@ export class SessionContextClient implements DisposableTrait {
 	}
 
 	private async _dispatchRefresh(
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<SessionInfo | null> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		const sessionInfo = await lastValueFrom(
 			dispatchCommandLocallyToStream<
 				void,
@@ -332,17 +390,18 @@ export class SessionContextClient implements DisposableTrait {
 				payload: undefined,
 				requestStream: this._refreshCommandSubject,
 				responseStream: this._refreshResponseSubject,
-				createCommandExtra: () => ({ operationSpan }),
+				createCommandExtra: () => ({ cancellationToken, operationSpan }),
 			}).pipe(commandResponseData()),
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		return sessionInfo;
 	}
 
 	private async _dispatchLogout(
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<void> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		await lastValueFrom(
 			dispatchCommandLocallyToStream<
 				void,
@@ -353,16 +412,17 @@ export class SessionContextClient implements DisposableTrait {
 				payload: undefined,
 				requestStream: this._logoutCommandSubject,
 				responseStream: this._logoutResponseSubject,
-				createCommandExtra: () => ({ operationSpan }),
+				createCommandExtra: () => ({ cancellationToken, operationSpan }),
 			}).pipe(commandResponseData()),
 		);
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 	}
 
 	private async _executeRefresh(
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<SessionInfo | null> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		this._operationSignals.refreshPending.set(true);
 		const previous = this._sessionSnapshotSignal.get();
 		const previousValue = resourceSnapshotValueOr(previous, null);
@@ -375,8 +435,8 @@ export class SessionContextClient implements DisposableTrait {
 			session: previousValue,
 		});
 		try {
-			const sessionInfo = await this._fetchSessionInfo();
-			this._throwIfNotOperational();
+			const sessionInfo = await this._fetchSessionInfo(cancellationToken);
+			cancellationToken.throwIfCancellationRequested();
 			this._sessionSnapshotSignal.set(
 				reduceResourceSnapshot(loadingSnapshot, {
 					kind: ResourceSnapshotUpdateKind.Resolve,
@@ -410,9 +470,10 @@ export class SessionContextClient implements DisposableTrait {
 	}
 
 	private async _executeLogout(
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<void> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		this._operationSignals.logoutPending.set(true);
 		const previous = this._sessionSnapshotSignal.get();
 		const loadingSnapshot = reduceResourceSnapshot(previous, {
@@ -429,14 +490,17 @@ export class SessionContextClient implements DisposableTrait {
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({}),
-				cancellationToken: this._rootCancellation.token,
+				cancellationToken,
 			});
 
 			if (response.status < 200 || response.status >= 300) {
-				throw ClientError.fromHttpResponse(response.status, response.body);
+				throw ClientError.fromHttpResponse({
+					status: response.status,
+					body: response.body,
+				});
 			}
 
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 			this._sessionSnapshotSignal.set(
 				reduceResourceSnapshot(loadingSnapshot, {
 					kind: ResourceSnapshotUpdateKind.Resolve,
@@ -466,15 +530,17 @@ export class SessionContextClient implements DisposableTrait {
 		}
 	}
 
-	private async _fetchSessionInfo(): Promise<SessionInfo | null> {
-		this._throwIfNotOperational();
+	private async _fetchSessionInfo(
+		cancellationToken: CancellationTokenTrait,
+	): Promise<SessionInfo | null> {
+		cancellationToken.throwIfCancellationRequested();
 		const response = await this._environment.transport.execute({
 			url: this._config.baseUrl + this._config.userInfoPath,
 			method: "GET",
 			headers: {},
-			cancellationToken: this._rootCancellation.token,
+			cancellationToken,
 		});
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		if (response.status === 401 || response.status === 403) {
 			return null;
@@ -484,7 +550,10 @@ export class SessionContextClient implements DisposableTrait {
 			return parseSessionInfoPayload(response.body);
 		}
 
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	private _createLoginRedirectUrl(postAuthRedirectUri?: string): string {
@@ -516,9 +585,5 @@ export class SessionContextClient implements DisposableTrait {
 				id: this.id,
 			},
 		});
-	}
-
-	private _throwIfNotOperational(): void {
-		this._rootCancellation.token.throwIfCancellationRequested();
 	}
 }

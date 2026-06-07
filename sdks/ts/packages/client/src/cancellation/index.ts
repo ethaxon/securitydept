@@ -5,6 +5,7 @@ export {
 export { createLinkedCancellationToken } from "./linked";
 export {
 	type CancelableHandle,
+	type CancellationTokenOptions,
 	type CancellationTokenSourceTrait,
 	type CancellationTokenTrait,
 } from "./types";

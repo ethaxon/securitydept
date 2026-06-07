@@ -15,8 +15,13 @@
 //
 // Stability: provisional (mode-aligned surface)
 
+import { ClientError, ClientErrorKind } from "@securitydept/client";
 import { type FrontendOidcModeClientConfig } from "../client/types";
 import { parseConfigProjection } from "../contracts/parsers";
+import {
+	FrontendOidcModeConfigErrorCode,
+	FrontendOidcModeConfigErrorSource,
+} from "./error-codes";
 
 // ---------------------------------------------------------------------------
 // Config projection source identity
@@ -206,21 +211,26 @@ export interface TokenSetConfigProjectionSourceBootstrapScript {
 export async function resolveConfigProjection(
 	sources: readonly TokenSetConfigProjectionSource[],
 ): Promise<TokenSetResolvedConfigProjection> {
+	const errors: unknown[] = [];
 	for (const source of sources) {
 		try {
 			const result = await resolveOneSource(source);
 			if (result !== null) {
 				return result;
 			}
-		} catch {
+		} catch (error) {
+			errors.push(error);
 			// Continue to next source
 		}
 	}
 
-	throw new Error(
-		`[frontend-oidc-mode] All config projection sources exhausted without success. ` +
-			`Tried: ${sources.map((s) => s.kind).join(", ")}`,
-	);
+	throw new ClientError({
+		kind: ClientErrorKind.Configuration,
+		code: FrontendOidcModeConfigErrorCode.SourcesExhausted,
+		message: `All config projection sources were exhausted: ${sources.map((source) => source.kind).join(", ")}`,
+		source: FrontendOidcModeConfigErrorSource,
+		cause: errors,
+	});
 }
 
 // ---------------------------------------------------------------------------
@@ -347,7 +357,16 @@ function parseAndWrap(
 				return `${path.join(".")}: ${issue.message}`;
 			})
 			.join("; ");
-		throw new Error(`Invalid config projection from ${sourceKind}: ${summary}`);
+		throw new ClientError({
+			kind:
+				sourceKind === TokenSetConfigProjectionSourceKind.Inline
+					? ClientErrorKind.Configuration
+					: ClientErrorKind.Protocol,
+			code: FrontendOidcModeConfigErrorCode.InvalidProjection,
+			message: `Invalid config projection from ${sourceKind}: ${summary}`,
+			source: FrontendOidcModeConfigErrorSource,
+			cause: result.issues,
+		});
 	}
 	return { config: result.value, sourceKind };
 }

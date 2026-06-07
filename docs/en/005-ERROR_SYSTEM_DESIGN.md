@@ -12,6 +12,15 @@ The current model has three independent layers:
 - HTTP status mapping through `ToHttpStatus` or route/service status helpers.
 - Safe public presentation through `ToErrorPresentation`.
 
+The TypeScript SDK uses the corresponding four-layer boundary:
+
+- `ClientError` is the canonical runtime exception for public asynchronous flows. `kind`, namespaced `code`, `recovery`, `source`, and `cause` form the machine contract.
+- `ResourceSnapshot` may retain the original error object for diagnosis and retry control.
+- Lifecycle events and tracing project only the secret-safe `ErrorSummary`: `errorName` plus optional `errorKind`, `errorCode`, and `recovery`. They never copy runtime messages.
+- `readErrorPresentationDescriptor()` reads only explicit safe `presentation`, domain code mappings, or generic foundation kind copy. It never treats `Error.message` as user-facing copy.
+
+The TS SDK `ClientErrorKind` vocabulary is `authorization`, `transport`, `server`, `protocol`, `storage`, `configuration`, `unauthenticated`, `unauthorized`, `cancelled`, `timeout`, and `internal`. Schema/options failures are `configuration`; invalid remote or persisted payloads are `protocol`; unknown failures are wrapped as `internal` at public client operation boundaries while preserving `cause`.
+
 Shared types live in `securitydept-utils`:
 
 - `ErrorPresentation`
@@ -106,6 +115,9 @@ The mounted-route policy table in `apps/server/src/routes/policy.rs` records the
 - A new error variant that can reach an adopter-facing response must implement safe presentation.
 - Protocol-specific routes must not be "normalized" into the shared JSON envelope if doing so breaks browser or proxy semantics.
 - Tests should assert `kind`, `code`, and `recovery`; message text is useful to verify but should not be the only machine contract.
+- TS SDK public operations must not leak unknown raw `Error` values. Use `ClientError.fromUnknown(...)` to establish a stable boundary without double-wrapping existing `ClientError` values.
+- Error codes must be centralized by their domain owner with the `const + type` pattern and use a domain namespace.
+- Presentation mappings belong to domain owners; the foundation must not contain popup- or OIDC-specific copy.
 
 ---
 

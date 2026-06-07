@@ -47,6 +47,7 @@ export {
 // --- Cancellation ---
 export {
 	type CancelableHandle,
+	type CancellationTokenOptions,
 	type CancellationTokenSourceTrait,
 	type CancellationTokenTrait,
 	createCancellationTokenSource,
@@ -56,17 +57,24 @@ export {
 // --- Compat ---
 export {
 	type AsyncDisposableTrait,
+	createDisposableStack,
+	type DisposableStackTrait,
 	type DisposableTrait,
 	type InteropObservableTrait,
+	injectDisposableStackFrom,
 	isInteropObservableTrait,
 	type ObserverTrait,
 	promisesToRacedAsyncGenerator,
+	SimpleDisposableStack,
+	StdDisposableStack,
 	type SubscribableTrait,
 	type SubscriptionTrait,
 	SYMBOL_ASYNC_DISPOSE,
+	SYMBOL_DISPOSABLE_STACK,
 	SYMBOL_DISPOSE,
 	SYMBOL_OBSERVABLE,
 	type WithInteropObservableTraitCompat,
+	withDisposableStack,
 } from "./compat";
 // --- Environment ---
 export {
@@ -80,20 +88,19 @@ export {
 // --- Errors ---
 export {
 	ClientError,
-	type ClientErrorAttributes,
+	type ClientErrorFromHttpResponseOptions,
+	type ClientErrorFromUnknownOptions,
 	ClientErrorKind,
-	type ClientErrorRecovery,
 	ClientErrorSource,
 	describeError,
-	type ErrorAttributes,
+	type ErrorCodePresentationDescriptor,
 	type ErrorPresentation,
 	type ErrorPresentationActionDescriptor,
 	type ErrorPresentationDescriptor,
 	ErrorPresentationTone,
-	type NativeErrorAttributes,
+	type ErrorSummary,
 	type ReadErrorPresentationDescriptorOptions,
 	readErrorPresentationDescriptor,
-	type UnknownErrorAttributes,
 	UserRecovery,
 } from "./errors";
 // --- Events ---
@@ -175,6 +182,7 @@ export {
 	type PopupServerWindowHandleTrait,
 	type PopupTrait,
 	type PopupWindowHandleTrait,
+	readPopupErrorPresentationDescriptor,
 } from "./popup";
 // --- Protocol ---
 export {
@@ -216,6 +224,8 @@ export {
 	decodeJwtPayload,
 	type JwtAudienceClaim,
 	type JwtClaimsSet,
+	JwtDecodeError,
+	JwtDecodeErrorCode,
 } from "./protocol/jwt";
 // --- Router ---
 export {
@@ -360,6 +370,7 @@ export {
 	type HttpResponseJsonBody,
 	isLoopbackHttpUrl,
 	TRANSPORT_TRAIT_TOKEN,
+	TransportErrorCode,
 } from "./transport";
 // --- Validation ---
 export {

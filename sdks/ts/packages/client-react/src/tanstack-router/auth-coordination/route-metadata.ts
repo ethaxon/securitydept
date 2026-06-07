@@ -8,7 +8,7 @@ export interface TanStackRouteMatchLike {
 	readonly id?: string;
 	readonly routeId?: string;
 	readonly pathname?: string;
-	readonly staticData?: Record<string, unknown>;
+	readonly staticData?: object;
 }
 
 export function projectTanStackRouteSegments<

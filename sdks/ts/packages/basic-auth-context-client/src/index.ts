@@ -10,6 +10,7 @@ export {
 	type BasicAuthContextClientConfig,
 	type BasicAuthContextClientStateSignals,
 	type BasicAuthContextClientTracingOptions,
+	BasicAuthContextErrorCode,
 	type BasicAuthContextEvent,
 	BasicAuthContextEventType,
 	type BasicAuthContextOperationSignals,

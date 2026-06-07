@@ -18,6 +18,26 @@ type ServerErrorBody = {
 	};
 };
 
+export interface ClientErrorFromUnknownOptions {
+	message: string;
+	code: string;
+	source: string;
+}
+
+export interface ClientErrorFromHttpResponseOptions {
+	status: number;
+	body?: unknown;
+	source?: string;
+}
+
+const userRecoveryValues = new Set<string>(Object.values(UserRecovery));
+
+function readUserRecovery(value: unknown): UserRecoveryType | undefined {
+	return typeof value === "string" && userRecoveryValues.has(value)
+		? (value as UserRecoveryType)
+		: undefined;
+}
+
 function mapServerErrorKind(
 	kind: string | undefined,
 	status: number,
@@ -38,9 +58,11 @@ function mapServerErrorKind(
 				? ClientErrorKind.Unauthenticated
 				: status === 403
 					? ClientErrorKind.Unauthorized
-					: status >= 500
-						? ClientErrorKind.Server
-						: ClientErrorKind.Protocol;
+					: status === 408
+						? ClientErrorKind.Timeout
+						: status >= 500
+							? ClientErrorKind.Server
+							: ClientErrorKind.Protocol;
 	}
 }
 
@@ -152,27 +174,44 @@ export class ClientError extends Error {
 		overrides?: { kind?: ClientErrorKind; source?: string },
 	): ClientError {
 		const rawPresentation = body.presentation;
+		const recovery =
+			readUserRecovery(body.recovery) ??
+			readUserRecovery(rawPresentation?.recovery) ??
+			UserRecovery.None;
 		const presentation: ErrorPresentation | undefined =
-			(rawPresentation?.code ?? body.code) &&
-			(rawPresentation?.message ?? body.message)
+			rawPresentation?.code && rawPresentation.message
 				? {
-						code: rawPresentation?.code ?? body.code ?? "unknown_server_error",
-						message:
-							rawPresentation?.message ??
-							body.message ??
-							"Unknown server error",
-						recovery:
-							(rawPresentation?.recovery as ErrorPresentation["recovery"]) ??
-							(body.recovery as ErrorPresentation["recovery"]) ??
-							UserRecovery.None,
+						code: rawPresentation.code,
+						message: rawPresentation.message,
+						recovery: readUserRecovery(rawPresentation.recovery) ?? recovery,
 					}
 				: undefined;
 
 		return new ClientError({
 			kind: overrides?.kind ?? mapServerErrorKind(body.kind, 400),
-			message: presentation?.message ?? body.message ?? "Unknown server error",
+			message: body.message ?? presentation?.message ?? "Unknown server error",
+			code: body.code ?? presentation?.code,
+			recovery,
+			retryable: recovery === UserRecovery.Retry,
 			presentation,
 			source: overrides?.source,
+		});
+	}
+
+	static fromUnknown(
+		error: unknown,
+		options: ClientErrorFromUnknownOptions,
+	): ClientError {
+		if (error instanceof ClientError) {
+			return error;
+		}
+
+		return new ClientError({
+			kind: ClientErrorKind.Internal,
+			message: options.message,
+			code: options.code,
+			source: options.source,
+			cause: error,
 		});
 	}
 
@@ -180,37 +219,49 @@ export class ClientError extends Error {
 	 * Create a `ClientError` from an HTTP response status and optional body.
 	 * Used when a non-success status is unexpected.
 	 */
-	static fromHttpResponse(status: number, body?: unknown): ClientError {
+	static fromHttpResponse(
+		options: ClientErrorFromHttpResponseOptions,
+	): ClientError {
+		const { status, body } = options;
 		const serverBody = readServerErrorBody(body);
 
 		// Derive kind and source from HTTP status first — these apply
 		// whether or not the response carries a structured error body.
 		const kind = mapServerErrorKind(serverBody?.kind, status);
 
-		const source =
-			status >= 500
-				? ClientErrorSource.Server
-				: ClientErrorSource.ClientEnvironment;
+		const source = options.source ?? ClientErrorSource.Server;
+		const fallbackRecovery: UserRecoveryType =
+			kind === ClientErrorKind.Unauthenticated
+				? UserRecovery.Reauthenticate
+				: status === 408 || status >= 500
+					? UserRecovery.Retry
+					: UserRecovery.None;
 
 		// If the server returned a structured error body, preserve it
 		// but keep the status-derived kind/source.
 		if (serverBody?.code && serverBody?.message) {
-			return ClientError.fromServerError(serverBody, { kind, source });
+			const recovery =
+				readUserRecovery(serverBody.presentation?.recovery) ??
+				readUserRecovery(serverBody.recovery) ??
+				fallbackRecovery;
+			return ClientError.fromServerError(
+				{
+					...serverBody,
+					recovery,
+					presentation: serverBody.presentation
+						? { ...serverBody.presentation, recovery }
+						: undefined,
+				},
+				{ kind, source },
+			);
 		}
-
-		const recovery: UserRecoveryType =
-			kind === ClientErrorKind.Unauthenticated
-				? UserRecovery.Reauthenticate
-				: status >= 500
-					? UserRecovery.Retry
-					: UserRecovery.None;
 
 		return new ClientError({
 			kind,
 			message: serverBody?.message ?? `HTTP ${status}`,
 			code: serverBody?.code ?? `http.${status}`,
-			recovery,
-			retryable: status >= 500,
+			recovery: fallbackRecovery,
+			retryable: status === 408 || status >= 500,
 			source,
 		});
 	}

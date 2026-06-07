@@ -215,8 +215,7 @@
 						"examples/session-context/react-minimal-entry.test.ts",
 						"packages/session-context-client-react/src/__tests__/adapter.test.ts",
 						"../../apps/webui/src/routes/Login.tsx",
-						"../../apps/webui/src/routes/SessionPlayground.tsx",
-						"../../apps/webui/src/hooks/useDashboardApi.ts"
+						"../../apps/webui/src/routes/SessionPlayground.tsx"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -267,7 +266,6 @@
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/config-source-web.test.ts",
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/error-presentation.test.ts",
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client.test.ts",
-						"../../apps/webui/src/lib/tokenSetFrontendModeClient.ts",
 						"../../apps/webui/e2e/frontend-oidc.spec.ts"
 					],
 					"docsAnchor": {

@@ -12,6 +12,7 @@ import {
 	type HttpRequest,
 	type HttpResponse,
 	type TraitInputValidator,
+	TransportErrorCode,
 	throwValidationClientError,
 	validateTraitInput,
 	type WithTraitInputValidator,
@@ -58,7 +59,7 @@ export function createBaseTransportForAngular(
 		validator: options.validators,
 		onInvalid: (failure) =>
 			throwValidationClientError({
-				code: "client_angular.transport.invalid_angular_options",
+				code: TransportErrorCode.InvalidAngularOptions,
 				source: "client-angular",
 				messagePrefix:
 					"createBaseTransportForAngular could not validate transportForAngularCreateOptions",
@@ -95,12 +96,46 @@ export function createBaseTransportForAngular(
 							.pipe(takeUntil(from(request.cancellationToken)))
 					: httpClient.request(request.method, requestUrl, requestOptions);
 				const response = await firstValueFrom(responseSource);
-				return angularResponseToHttpResponse(response);
+				try {
+					return angularResponseToHttpResponse(response);
+				} catch (error) {
+					throw new ClientError({
+						kind: ClientErrorKind.Protocol,
+						message: "The HTTP response body could not be decoded",
+						code: TransportErrorCode.ResponseDecodeFailed,
+						source: ClientErrorSource.Transport,
+						cause: error,
+					});
+				}
 			} catch (error) {
 				if (error instanceof HttpErrorResponse && error.status !== 0) {
-					return angularErrorResponseToHttpResponse(error);
+					try {
+						return angularErrorResponseToHttpResponse(error);
+					} catch (decodeError) {
+						throw new ClientError({
+							kind: ClientErrorKind.Protocol,
+							message: "The HTTP response body could not be decoded",
+							code: TransportErrorCode.ResponseDecodeFailed,
+							source: ClientErrorSource.Transport,
+							cause: decodeError,
+						});
+					}
 				}
-				throw normalizeAngularTransportError(request.cancellationToken, error);
+				const normalized = normalizeAngularTransportError(
+					request.cancellationToken,
+					error,
+				);
+				if (normalized instanceof ClientError) {
+					throw normalized;
+				}
+				throw new ClientError({
+					kind: ClientErrorKind.Transport,
+					message: "The HTTP request could not reach the remote service",
+					code: TransportErrorCode.RequestFailed,
+					source: ClientErrorSource.Transport,
+					retryable: true,
+					cause: error,
+				});
 			}
 		},
 	};
@@ -163,24 +198,5 @@ function normalizeAngularTransportError(
 	if (!token?.isCancellationRequested) {
 		return error;
 	}
-	const reason = token.reason;
-	if (reason instanceof ClientError) {
-		return reason;
-	}
-	if (reason instanceof Error) {
-		return new ClientError({
-			kind: ClientErrorKind.Cancelled,
-			message: reason.message,
-			code: "client.cancelled",
-			source: ClientErrorSource.Transport,
-			cause: reason,
-		});
-	}
-	return new ClientError({
-		kind: ClientErrorKind.Cancelled,
-		message: "HTTP request was cancelled",
-		code: "client.cancelled",
-		source: ClientErrorSource.Transport,
-		cause: reason ?? error,
-	});
+	return token.cancellationError ?? error;
 }

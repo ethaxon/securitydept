@@ -62,6 +62,7 @@ export function defineInstrumentMethodDecorator<
 					target: resolvedOptions.target,
 					fields: resolvedOptions.fields,
 					idFactory: resolvedOptions.idFactory,
+					normalizeError: resolvedOptions.normalizeError,
 					execute: (span) =>
 						(
 							target as unknown as (

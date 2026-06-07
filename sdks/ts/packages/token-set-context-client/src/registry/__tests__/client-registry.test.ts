@@ -1,4 +1,6 @@
 import {
+	type CancellationTokenTrait,
+	createCancellationTokenSource,
 	type DisposableTrait,
 	type ReadableSignalTrait,
 	ResourceStatus,
@@ -14,7 +16,9 @@ import {
 	TokenSetClientRegistryEntryStatus,
 	TokenSetClientRegistryEventType,
 } from "../contracts/types";
+import { TokenSetClientRecord } from "../core/client-record";
 import { createTokenSetClientRegistry } from "../core/client-registry";
+import { TokenSetClientRegistryErrorCode } from "../core/error";
 
 interface TestClient extends DisposableTrait {
 	readonly id: string;
@@ -41,7 +45,7 @@ function createDeferred<T>() {
 
 function createRegistryEntry(options: {
 	key: string;
-	clientFactory: () => TestClient | Promise<TestClient>;
+	clientFactory: TokenSetClientRegistryEntry<TestClient>["clientFactory"];
 	initialization?: TokenSetClientInitializationMode;
 	urlPatterns?: ReadonlyArray<string | RegExp | ((url: string) => boolean)>;
 	callbackPath?: string;
@@ -315,9 +319,10 @@ describe("TokenSetClientRegistry", () => {
 		expect(factory).toHaveBeenCalledTimes(1);
 	});
 
-	it("rejects in-flight initialization when its record is unregistered", async () => {
+	it("cancels in-flight factory initialization when its record is unregistered", async () => {
 		const deferred = createDeferred<TestClient>();
 		const client = createClient("late");
+		let factoryCancellationToken: CancellationTokenTrait | undefined;
 		const registry = createTokenSetClientRegistry<TestClient>({
 			environment: {},
 		});
@@ -325,19 +330,74 @@ describe("TokenSetClientRegistry", () => {
 			createRegistryEntry({
 				key: "async",
 				initialization: TokenSetClientInitializationMode.Lazy,
-				clientFactory: () => deferred.promise,
+				clientFactory: ({ cancellationToken }) => {
+					factoryCancellationToken = cancellationToken;
+					return deferred.promise;
+				},
 			}),
 		);
 
-		const pending = registry.initialize("async");
+		registry.clientResourceFor("async");
 		registry.unregister("async");
 
-		await expect(pending).rejects.toBeDefined();
+		expect(factoryCancellationToken?.isCancellationRequested).toBe(true);
 
 		deferred.resolve(client);
 		await new Promise((resolve) => setTimeout(resolve, 0));
-
 		expect(client.dispose).toHaveBeenCalledTimes(1);
+	});
+
+	it("disposes a client that cannot be adopted after initialization cancellation", async () => {
+		const deferred = createDeferred<TestClient>();
+		const client = createClient("completed-after-cancellation");
+		const record = TokenSetClientRecord.fromRegistered(
+			createRegistryEntry({
+				key: "direct",
+				initialization: TokenSetClientInitializationMode.Lazy,
+				clientFactory: () => deferred.promise,
+			}),
+		);
+		const cancellation = createCancellationTokenSource();
+		const pending = record.initialize({
+			cancellationToken: cancellation.token,
+		});
+
+		cancellation.cancel();
+		deferred.resolve(client);
+		await expect(pending).rejects.toBe(cancellation.token.cancellationError);
+
+		expect(record.view.get()).toMatchObject({
+			status: TokenSetClientRegistryEntryStatus.Failed,
+			error: cancellation.token.cancellationError,
+		});
+		expect(client.dispose).toHaveBeenCalledTimes(1);
+
+		record.dispose();
+		expect(client.dispose).toHaveBeenCalledTimes(1);
+	});
+
+	it("records cancellation as a failure while the record remains alive", async () => {
+		const deferred = createDeferred<TestClient>();
+		const record = TokenSetClientRecord.fromRegistered(
+			createRegistryEntry({
+				key: "cancelled",
+				initialization: TokenSetClientInitializationMode.Lazy,
+				clientFactory: () => deferred.promise,
+			}),
+		);
+		const cancellation = createCancellationTokenSource();
+		const pending = record.initialize({
+			cancellationToken: cancellation.token,
+		});
+
+		cancellation.cancel();
+		deferred.reject(cancellation.token.cancellationError);
+		await expect(pending).rejects.toBe(cancellation.token.cancellationError);
+
+		expect(record.view.get()).toMatchObject({
+			status: TokenSetClientRegistryEntryStatus.Failed,
+			error: cancellation.token.cancellationError,
+		});
 	});
 
 	it("records failed initialization and rejects callers", async () => {
@@ -355,10 +415,16 @@ describe("TokenSetClientRegistry", () => {
 			}),
 		);
 
-		await expect(registry.initialize("flaky")).rejects.toBe(error);
+		await expect(registry.initialize("flaky")).rejects.toMatchObject({
+			code: TokenSetClientRegistryErrorCode.ClientFactoryFailed,
+			cause: error,
+		});
 		expect(registry.clientResourceFor("flaky").snapshot.get()).toEqual({
 			status: ResourceStatus.LoadingError,
-			error,
+			error: expect.objectContaining({
+				code: TokenSetClientRegistryErrorCode.ClientFactoryFailed,
+				cause: error,
+			}),
 		});
 		expect(registry.clientRecordFor("flaky").get().status).toBe(
 			TokenSetClientRegistryEntryStatus.Failed,
@@ -418,7 +484,7 @@ describe("TokenSetClientRegistry", () => {
 		);
 	});
 
-	it("re-registering the same key creates a new record while prior client resources keep their snapshot", async () => {
+	it("re-registering the same key creates a new record and leaves the prior resource idle", async () => {
 		const first = createClient("first");
 		const second = createClient("second");
 		const registry = createTokenSetClientRegistry<TestClient>({
@@ -433,10 +499,7 @@ describe("TokenSetClientRegistry", () => {
 		const firstRecordId = registry.entries.get()[0]?.id;
 
 		registry.unregister("main");
-		expect(firstSignal.snapshot.get()).toEqual({
-			status: "resolved",
-			value: first,
-		});
+		expect(firstSignal.snapshot.get()).toEqual({ status: ResourceStatus.Idle });
 
 		registry.register(
 			createRegistryEntry({ key: "main", clientFactory: () => second }),
@@ -447,10 +510,7 @@ describe("TokenSetClientRegistry", () => {
 
 		expect(registry.entries.get()[0]?.id).toMatch(uuidV7Pattern);
 		expect(registry.entries.get()[0]?.id).not.toBe(firstRecordId);
-		expect(firstSignal.snapshot.get()).toEqual({
-			status: "resolved",
-			value: first,
-		});
+		expect(firstSignal.snapshot.get()).toEqual({ status: ResourceStatus.Idle });
 	});
 
 	it("disposes registered clients on unregister and dispose", async () => {

@@ -1,5 +1,7 @@
 import {
 	type BaseTransportTrait,
+	type CancellationTokenTrait,
+	createCancellationTokenSource,
 	createFoundationEnvironment,
 	createInMemoryRecordStore,
 	createRootSpan,
@@ -147,17 +149,41 @@ class TestOidcModeClient extends BaseOidcModeClient {
 		snapshot: TokenSetAuthSnapshot,
 		persistPolicy = PersistPolicy.FollowClient,
 	): Promise<TokenSetAuthSnapshot> {
-		return await this._applySnapshot(snapshot, { persistPolicy });
+		const cancellationToken = this._rootCancellation.token;
+		return await this._applySnapshot(
+			snapshot,
+			{ persistPolicy },
+			cancellationToken,
+		);
 	}
 
 	protected async _refreshAuthSnapshot(
 		authSnapshot: TokenSetAuthSnapshot,
+		_freshnessTiming: unknown,
+		_cancellationToken: CancellationTokenTrait,
 	): Promise<TokenSetAuthSnapshot | null> {
 		return await this.refreshImpl(authSnapshot);
 	}
 }
 
 describe("BaseOidcModeClient auth event and trace contract", () => {
+	it("links public workflow cancellation to the client lifecycle token", async () => {
+		const client = new TestOidcModeClient(createOptions());
+		const cancellation = createCancellationTokenSource();
+		const reason = new Error("cancel restore");
+		cancellation.cancel(reason);
+
+		await expect(
+			client.restoreState(createAuthSnapshot("cancelled"), {
+				cancellationToken: cancellation.token,
+			}),
+		).rejects.toMatchObject({
+			kind: "cancelled",
+			code: "client.cancelled",
+			cause: reason,
+		});
+	});
+
 	it("generates a UUID v7 id when no explicit id is provided", () => {
 		const client = new TestOidcModeClient({
 			...createOptions(),
@@ -167,6 +193,22 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		expect(client.id).toMatch(
 			/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
 		);
+	});
+
+	it("records every dispose call", () => {
+		const trace = new InMemoryTraceCollector();
+		const client = new TestOidcModeClient(
+			createOptions({
+				tracing: createTracing({ subscribers: [trace] }),
+			}),
+		);
+
+		client.dispose();
+		client.dispose();
+
+		expect(
+			trace.events.filter((event) => event.name === "test_token_set.disposed"),
+		).toHaveLength(2);
 	});
 
 	it("waits for explicit start before restoring persisted state", async () => {
@@ -300,7 +342,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 				client: { id: "test-client" },
 				persisted: true,
 				errorSummary: expect.objectContaining({
-					errorCode: "token_orchestration.persistence.invalid_json",
+					errorCode: "token_set.persistence.invalid_json",
 				}),
 			}),
 		);
@@ -392,7 +434,11 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		});
 		events.length = 0;
 
-		await expect(client.refreshState()).rejects.toThrow("refresh exploded");
+		await expect(client.refreshState()).rejects.toMatchObject({
+			kind: "internal",
+			code: "token_set.authorization.operation_failed",
+			cause: expect.objectContaining({ message: "refresh exploded" }),
+		});
 
 		expect(events.map((event) => event.type)).toEqual([
 			TokenSetAuthEventType.AuthRefreshRequired,
@@ -404,9 +450,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 				client: { id: "test-client" },
 				hasRefreshMaterial: true,
 				freshness: expect.any(Object),
-				errorSummary: expect.objectContaining({
-					message: "refresh exploded",
-				}),
+				errorSummary: { errorName: "Error" },
 			}),
 		);
 		expect(expectSnapshotValue(client.authSnapshot)).toEqual(expired);

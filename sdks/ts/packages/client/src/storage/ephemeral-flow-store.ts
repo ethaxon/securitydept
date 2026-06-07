@@ -26,12 +26,49 @@ function requireRecordStoreTake(
 	store: StorageTrait,
 ): NonNullable<StorageTrait["take"]> {
 	if (!store.take) {
-		throw new Error(
-			"Ephemeral flow stores require StorageTrait.take() for atomic single-consume semantics",
-		);
+		throw new ClientError({
+			kind: ClientErrorKind.Configuration,
+			code: "storage.ephemeral.take_unavailable",
+			message:
+				"Ephemeral flow stores require StorageTrait.take() for atomic single-consume semantics",
+			source: "storage.ephemeral",
+		});
 	}
 
 	return store.take.bind(store);
+}
+
+async function executeStorageOperation<T>(
+	operation: () => Promise<T>,
+): Promise<T> {
+	try {
+		return await operation();
+	} catch (error) {
+		if (error instanceof ClientError) {
+			throw error;
+		}
+		throw new ClientError({
+			kind: ClientErrorKind.Storage,
+			code: "storage.ephemeral.io_failed",
+			message: "The ephemeral flow store operation failed",
+			source: "storage.ephemeral",
+			cause: error,
+		});
+	}
+}
+
+function decodeStoredValue<T>(codec: Codec<T>, value: string): T {
+	try {
+		return codec.decode(value);
+	} catch (error) {
+		throw new ClientError({
+			kind: ClientErrorKind.Protocol,
+			code: "storage.ephemeral.invalid_payload",
+			message: "The ephemeral flow store payload is invalid",
+			source: "storage.ephemeral",
+			cause: error,
+		});
+	}
 }
 
 /**
@@ -47,21 +84,25 @@ export function createEphemeralFlowStore<T>(
 	const storeTake = requireRecordStoreTake(options.store);
 
 	async function load(): Promise<T | null> {
-		const raw = await options.store.get(options.key);
-		return raw === null ? null : codec.decode(raw);
+		const raw = await executeStorageOperation(() =>
+			options.store.get(options.key),
+		);
+		return raw === null ? null : decodeStoredValue(codec, raw);
 	}
 
 	async function save(value: T): Promise<void> {
-		await options.store.set(options.key, codec.encode(value));
+		await executeStorageOperation(() =>
+			options.store.set(options.key, codec.encode(value)),
+		);
 	}
 
 	async function consume(): Promise<T | null> {
-		const raw = await storeTake(options.key);
-		return raw === null ? null : codec.decode(raw);
+		const raw = await executeStorageOperation(() => storeTake(options.key));
+		return raw === null ? null : decodeStoredValue(codec, raw);
 	}
 
 	async function clear(): Promise<void> {
-		await options.store.remove(options.key);
+		await executeStorageOperation(() => options.store.remove(options.key));
 	}
 
 	return {
@@ -86,26 +127,32 @@ export function createKeyedEphemeralFlowStore<T>(
 	const storeTake = requireRecordStoreTake(options.store);
 
 	async function load(key: string): Promise<T | null> {
-		const raw = await options.store.get(
-			resolveStorageKey(options.keyPrefix, key),
+		const raw = await executeStorageOperation(() =>
+			options.store.get(resolveStorageKey(options.keyPrefix, key)),
 		);
-		return raw === null ? null : codec.decode(raw);
+		return raw === null ? null : decodeStoredValue(codec, raw);
 	}
 
 	async function save(key: string, value: T): Promise<void> {
-		await options.store.set(
-			resolveStorageKey(options.keyPrefix, key),
-			codec.encode(value),
+		await executeStorageOperation(() =>
+			options.store.set(
+				resolveStorageKey(options.keyPrefix, key),
+				codec.encode(value),
+			),
 		);
 	}
 
 	async function take(key: string): Promise<T | null> {
-		const raw = await storeTake(resolveStorageKey(options.keyPrefix, key));
-		return raw === null ? null : codec.decode(raw);
+		const raw = await executeStorageOperation(() =>
+			storeTake(resolveStorageKey(options.keyPrefix, key)),
+		);
+		return raw === null ? null : decodeStoredValue(codec, raw);
 	}
 
 	async function clear(key: string): Promise<void> {
-		await options.store.remove(resolveStorageKey(options.keyPrefix, key));
+		await executeStorageOperation(() =>
+			options.store.remove(resolveStorageKey(options.keyPrefix, key)),
+		);
 	}
 
 	return {
@@ -115,3 +162,5 @@ export function createKeyedEphemeralFlowStore<T>(
 		clear,
 	};
 }
+
+import { ClientError, ClientErrorKind } from "../errors";

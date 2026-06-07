@@ -114,7 +114,10 @@ describe("FrontendOidcModeClient / error boundaries", () => {
 			createTestRuntime(),
 		);
 
-		await expect(client.buildAuthorizeUrl()).rejects.toThrow(/discover/);
+		await expect(client.buildAuthorizeUrl()).rejects.toMatchObject({
+			kind: "configuration",
+			code: "frontend_oidc.discovery.authorization_server_unavailable",
+		});
 	});
 
 	it("throws when exchangeCode() is called before discover()", async () => {
@@ -134,7 +137,10 @@ describe("FrontendOidcModeClient / error boundaries", () => {
 				"xyz",
 				"https://app.example.com/callback",
 			),
-		).rejects.toThrow(/discover/);
+		).rejects.toMatchObject({
+			kind: "configuration",
+			code: "frontend_oidc.discovery.authorization_server_unavailable",
+		});
 	});
 });
 

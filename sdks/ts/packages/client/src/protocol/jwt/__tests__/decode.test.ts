@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decodeJwtPayload } from "../decode";
+import { type JwtDecodeError, JwtDecodeErrorCode } from "../error";
 
 function encodeBase64UrlJson(value: unknown): string {
 	const bytes = new TextEncoder().encode(JSON.stringify(value));
@@ -49,8 +50,11 @@ describe("decodeJwtPayload", () => {
 	});
 
 	it("rejects non-compact JWS input", () => {
-		expect(() => decodeJwtPayload("header.payload")).toThrow(
-			/JWT must use compact JWS serialization/,
+		expect(() => decodeJwtPayload("header.payload")).toThrowError(
+			expect.objectContaining({
+				name: "JwtDecodeError",
+				code: JwtDecodeErrorCode.InvalidFormat,
+			}) as JwtDecodeError,
 		);
 	});
 });

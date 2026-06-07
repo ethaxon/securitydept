@@ -190,7 +190,9 @@ Server-side token ownership、BFF 与 mixed-custody 仍在当前 `0.3.x` SDK bas
 
 ## 错误模型
 
-SDK error 在需要时暴露 machine-facing code 与 host-facing recovery hint。Host copy 与 UI state 仍由 adopter 拥有。不要用不稳定的 `Error.message` 字符串做控制流。
+公开异步流程使用 `ClientError` 作为 canonical runtime exception。调用方应以 `kind`、domain-namespaced `code` 与 `recovery` 做控制流；`cause` 仅用于诊断。未知错误在 client operation boundary 通过 `ClientError.fromUnknown(...)` 归一化，已有 `ClientError` 保持原样。
+
+用户文案必须来自显式安全 `presentation`、domain code presentation map 或 foundation generic kind copy。`readErrorPresentationDescriptor()` 不展示 runtime `Error.message`。Events 与 tracing 使用不含 message 的 `ErrorSummary`；Resource snapshot 可以保留原 error object。Host copy 与 UI state 仍由 adopter 拥有。
 
 ## Cancellation 与资源释放
 

@@ -12,10 +12,13 @@
 // they return only final candidates and never enqueue follow-up tasks.
 
 import {
+	type CancellationTokenOptions,
 	type CancellationTokenSourceTrait,
+	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
 	createCancellationTokenSource,
+	createLinkedCancellationToken,
 	createOnceAsyncLockCallable,
 	createSignal,
 	type DisposableTrait,
@@ -23,6 +26,7 @@ import {
 	describeError,
 	type EventStreamTrait,
 	type FoundationEnvironment,
+	injectDisposableStackFrom,
 	mapResource,
 	type OperationSpanTrait,
 	type ReadableSignalTrait,
@@ -37,6 +41,7 @@ import {
 	type SpanTrait,
 	SYMBOL_DISPOSE,
 	type WritableSignalTrait,
+	withDisposableStack,
 } from "@securitydept/client";
 import {
 	type Command,
@@ -51,7 +56,6 @@ import { filter, from, merge, take, takeUntil } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import {
 	createTokenSetAuthEvent,
-	summarizeAuthError,
 	type TokenSetAuthEvent,
 	type TokenSetAuthEventPayloadInput,
 	TokenSetAuthEventType,
@@ -63,17 +67,23 @@ import {
 } from "../token/freshness";
 import { tokenSetBearerHeader } from "../token/ops";
 import { type TokenSetAuthSnapshot } from "../token/types";
-import { TokenSetAuthorizationRevocationError } from "./error";
+import {
+	TokenSetAuthorizationErrorCode,
+	TokenSetAuthorizationErrorSource,
+	TokenSetAuthorizationRevocationError,
+} from "./error";
 import {
 	clearPersistedAuthSnapshot,
 	savePersistedAuthSnapshot,
 	type TokenSetAuthSnapshotPersistenceOptions,
+	TokenSetPersistenceErrorCode,
 } from "./persistence";
 import {
 	type BaseOidcModeClientDefaultOptions,
 	type BaseOidcModeClientOptions,
 	type BaseOidcModeClientTracingOptions,
 	type TokenSetAuthOperationSignals,
+	type TokenSetAuthStateOperationOptions,
 	type TokenSetOidcPopupLoginOptions,
 	type TokenSetOidcPopupLoginResult,
 	type TokenSetOidcRedirectLoginOptions,
@@ -119,6 +129,13 @@ const instrumentWorkflowMethod = defineInstrumentMethodDecorator<
 				name: `${this._tracingOptions.prefix}.${workflow}`,
 				fields: { workflow },
 				target: this._tracingOptions.target,
+				normalizeError: (error: unknown) =>
+					ClientError.fromUnknown(error, {
+						code: TokenSetAuthorizationErrorCode.OperationFailed,
+						message:
+							"The token-set authorization operation failed unexpectedly",
+						source: TokenSetAuthorizationErrorSource,
+					}),
 			};
 		},
 );
@@ -159,24 +176,29 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		take(1),
 	);
 	public start = createOnceAsyncLockCallable(async () => {
-		this._throwIfNotOperational();
+		const cancellationToken = this._rootCancellation.token;
+		cancellationToken.throwIfCancellationRequested();
 		this._authSnapshotSignal.set(
 			reduceResourceSnapshot(this._authSnapshotSignal.get(), {
 				kind: ResourceSnapshotUpdateKind.Load,
 			}),
 		);
 		if (this._persistence) {
-			return await this._restorePersistedState({
-				persistence: this._persistence,
-				time: this._environment.time,
-				freshnessOptions: this._freshnessOptions,
-			});
+			return await this._restorePersistedState(
+				{
+					persistence: this._persistence,
+					time: this._environment.time,
+					freshnessOptions: this._freshnessOptions,
+				},
+				cancellationToken,
+			);
 		} else {
 			return await this._clearState(
 				{
 					snapshot: null,
 				},
 				undefined,
+				cancellationToken,
 			);
 		}
 	});
@@ -295,26 +317,6 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				},
 				options.refresh?.sources?.[TokenSetPageResumeWorkflowSource.name],
 			);
-		this.destroyed$.subscribe(() => {
-			this._onDispose();
-			this._rootCancellation.cancel(
-				new ClientError({
-					kind: ClientErrorKind.Cancelled,
-					code: `${this._tracingOptions.prefix}.client_disposed`,
-					message: `${this.constructor.name} was disposed`,
-					source: this._tracingOptions.target,
-				}),
-			);
-			this.isAuthenticated.dispose();
-			this.authorizationHeaderValue.dispose();
-			this.authResource.dispose();
-			this._recordTrace(
-				this._traceType(TokenSetOrchestrationTraceEvent.Disposed),
-				undefined,
-				this._span,
-			);
-		});
-
 		merge(
 			from(this.pageResumeWorkflowSource.eventStream),
 			from(this.refreshTimerWorkflowSource.eventStream),
@@ -327,12 +329,16 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		from(this.refreshWorkflowSubject)
 			.pipe(takeUntil(this.destroyed$))
 			.subscribe(() => {
+				const cancellationToken = this._rootCancellation.token;
 				const snapshot = this._readAuthSnapshotValue();
 				if (snapshot) {
-					this._refreshState({
-						snapshot,
-						freshnessOptions: this._freshnessOptions,
-					}).catch(() => {
+					this._refreshState(
+						{
+							snapshot,
+							freshnessOptions: this._freshnessOptions,
+						},
+						cancellationToken,
+					).catch(() => {
 						// Refresh failure is reflected by authSnapshot.
 					});
 				}
@@ -352,71 +358,118 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		}
 	}
 
+	@withDisposableStack(1, true)
 	async restoreState(
 		snapshot: TokenSetAuthSnapshot,
-		options: { persistPolicy?: PersistPolicy } = {},
+		options: TokenSetAuthStateOperationOptions = {},
 	): Promise<TokenSetAuthSnapshot> {
-		this._throwIfNotOperational();
-		return this._restoreState(
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		cancellationToken.throwIfCancellationRequested();
+		return await this._restoreState(
 			{
 				snapshot,
 			},
 			options,
+			cancellationToken,
 		);
 	}
 
-	async restorePersistedState(): Promise<TokenSetAuthSnapshot | null> {
-		this._throwIfNotOperational();
+	@withDisposableStack(0, true)
+	async restorePersistedState(
+		options: CancellationTokenOptions = {},
+	): Promise<TokenSetAuthSnapshot | null> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		cancellationToken.throwIfCancellationRequested();
 		if (this._persistence === null) {
 			throw new ClientError({
 				kind: ClientErrorKind.Configuration,
 				message:
 					"restorePersistedState() requires configured persistence for this client.",
-				code: "auth_restore.persistence_unavailable",
+				code: TokenSetPersistenceErrorCode.Unavailable,
 				source: this._tracingOptions.target,
 			});
 		}
-		return await this._restorePersistedState({
-			persistence: this._persistence,
-			time: this._environment.time,
-			freshnessOptions: this._freshnessOptions,
-		});
+		return await this._restorePersistedState(
+			{
+				persistence: this._persistence,
+				time: this._environment.time,
+				freshnessOptions: this._freshnessOptions,
+			},
+			cancellationToken,
+		);
 	}
 
+	@withDisposableStack(0, true)
 	async clearState(
-		options: { persistPolicy?: PersistPolicy } = {},
+		options: TokenSetAuthStateOperationOptions = {},
 	): Promise<void> {
-		this._throwIfNotOperational();
-		await this.logout(options);
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		cancellationToken.throwIfCancellationRequested();
+		await this._clearState({}, options, cancellationToken);
 	}
 
-	async logout(options: { persistPolicy?: PersistPolicy } = {}): Promise<void> {
-		this._throwIfNotOperational();
-		await this._clearState({}, options);
+	@withDisposableStack(0, true)
+	async logout(options: TokenSetAuthStateOperationOptions = {}): Promise<void> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		cancellationToken.throwIfCancellationRequested();
+		await this._clearState({}, options, cancellationToken);
 	}
 
-	async refreshState(): Promise<TokenSetAuthSnapshot | null> {
-		this._throwIfNotOperational();
+	@withDisposableStack(0, true)
+	async refreshState(
+		options: CancellationTokenOptions = {},
+	): Promise<TokenSetAuthSnapshot | null> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		cancellationToken.throwIfCancellationRequested();
 		const current = this._authSnapshotSignal.get();
 		const determinatedSnapshot =
 			current.status === ResourceStatus.Error
 				? current.value
 				: await this.authResource.whenValue({
-						cancellationToken: this._rootCancellation.token,
+						cancellationToken,
 					});
-		this._throwIfNotOperational();
-		return this._refreshState({
-			snapshot: determinatedSnapshot,
-			freshnessOptions: this._freshnessOptions,
-		});
+		cancellationToken.throwIfCancellationRequested();
+		return await this._refreshState(
+			{
+				snapshot: determinatedSnapshot,
+				freshnessOptions: this._freshnessOptions,
+			},
+			cancellationToken,
+		);
 	}
 
 	protected async _applySnapshot(
 		snapshot: TokenSetAuthSnapshot,
 		options: { persistPolicy?: PersistPolicy } = {},
+		cancellationToken: CancellationTokenTrait,
 		span?: SpanTrait,
 	): Promise<TokenSetAuthSnapshot> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		return await this._commitDetermination(
 			{
 				candidate: {
@@ -432,11 +485,13 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				],
 				result: snapshot,
 			},
+			cancellationToken,
 			span,
 		);
 	}
 
 	private _createRefreshFetcher(
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: SpanTrait,
 	): TokenSetFetchRefreshedSnapshot {
 		return async (snapshot, freshnessTiming) => {
@@ -453,13 +508,14 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					freshness: freshnessTiming,
 					hasRefreshMaterial,
 				});
-				this._throwIfNotOperational();
+				cancellationToken.throwIfCancellationRequested();
 				const refreshed = await this._refreshAuthSnapshot(
 					snapshot,
 					freshnessTiming,
+					cancellationToken,
 					operationSpan,
 				);
-				this._throwIfNotOperational();
+				cancellationToken.throwIfCancellationRequested();
 				return refreshed;
 			} finally {
 				this._authOperationSignals.refreshPending.set(false);
@@ -473,9 +529,10 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			snapshot: TokenSetAuthSnapshot | null;
 			freshnessOptions: TokenSetTokenFreshnessOptions;
 		},
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetAuthSnapshot | null> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		try {
 			this._authOperationSignals.refreshPending.set(true);
 			const currentSnapshot = request.snapshot;
@@ -498,9 +555,10 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					snapshot: currentSnapshot,
 					freshnessOptions: request.freshnessOptions,
 				},
+				cancellationToken,
 				operationSpan,
 			);
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
 				const revoked =
 					refreshPlan.error instanceof TokenSetAuthorizationRevocationError;
@@ -533,6 +591,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 						},
 						traceError: refreshPlan.error,
 					},
+					cancellationToken,
 					operationSpan,
 				);
 				throw refreshPlan.error;
@@ -560,6 +619,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 						),
 					},
 				},
+				cancellationToken,
 				operationSpan,
 			);
 		} finally {
@@ -571,13 +631,14 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	protected async _clearState(
 		request: TokenSetPlanClearRequest,
 		options: { persistPolicy?: PersistPolicy } | undefined,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<null> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		this._authOperationSignals.clearPending.set(true);
 		try {
 			const clearPlan = await planClear(request);
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 			return await this._commitDetermination(
 				{
 					candidate: clearPlan,
@@ -593,6 +654,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 						type: this._traceType(TokenSetOrchestrationTraceEvent.StateCleared),
 					},
 				},
+				cancellationToken,
 				operationSpan,
 			);
 		} finally {
@@ -604,13 +666,14 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	protected async _restoreState(
 		request: TokenSetPlanRestoreRequest,
 		options: { persistPolicy?: PersistPolicy } | undefined,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetAuthSnapshot> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		this._authOperationSignals.restorePending.set(true);
 		try {
 			const restorePlan = await planRestore(request);
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 			return await this._commitDetermination(
 				{
 					candidate: restorePlan,
@@ -632,6 +695,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 						),
 					},
 				},
+				cancellationToken,
 				operationSpan,
 			);
 		} finally {
@@ -642,9 +706,10 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	@instrumentWorkflowMethod("restore.persisted")
 	protected async _restorePersistedState(
 		request: TokenSetPlanRestorePersistedRequest,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetAuthSnapshot | null> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		this._emitAuthEvent({
 			type: TokenSetAuthEventType.AuthMaterialRestoreStarted,
 			persisted: true,
@@ -657,7 +722,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		try {
 			this._authOperationSignals.restorePending.set(true);
 			const restorePlan = await planRestorePersisted(request);
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 			if (restorePlan.kind === TokenSetAuthDeterminationKind.Failed) {
 				return this._commitDetermination(
 					{
@@ -668,7 +733,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 								type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
 								payload: {
 									persisted: true,
-									errorSummary: summarizeAuthError(restorePlan.error),
+									errorSummary: describeError(restorePlan.error),
 								},
 							},
 						],
@@ -680,6 +745,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 						},
 						traceError: restorePlan.error,
 					},
+					cancellationToken,
 					operationSpan,
 				);
 			}
@@ -701,6 +767,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 							),
 						},
 					},
+					cancellationToken,
 					operationSpan,
 				);
 			}
@@ -711,9 +778,10 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					snapshot: restorePlan.snapshot,
 					freshnessOptions: request.freshnessOptions,
 				},
+				cancellationToken,
 				operationSpan,
 			);
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
 				const revoked =
 					refreshPlan.error instanceof TokenSetAuthorizationRevocationError;
@@ -733,7 +801,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 								type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
 								payload: {
 									persisted: true,
-									errorSummary: summarizeAuthError(refreshPlan.error),
+									errorSummary: describeError(refreshPlan.error),
 								},
 							},
 							...(revoked
@@ -753,6 +821,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 						},
 						traceError: refreshPlan.error,
 					},
+					cancellationToken,
 					operationSpan,
 				);
 				throw refreshPlan.error;
@@ -783,6 +852,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 							),
 						},
 					},
+					cancellationToken,
 					operationSpan,
 				);
 			}
@@ -809,6 +879,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 						),
 					},
 				},
+				cancellationToken,
 				operationSpan,
 			);
 		} finally {
@@ -821,9 +892,10 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			TokenSetPlanRefreshRequest,
 			"fetchRefreshedSnapshot" | "time"
 		>,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: SpanTrait,
 	): Promise<TokenSetPlanRefreshResponse> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		const refreshedPlan = await dispatchCommandLocallyToPromise({
 			requestStream: this.planRefreshRequest,
 			responseStream: this.planRefreshResponse,
@@ -831,15 +903,35 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				snapshot: request.snapshot,
 				freshnessOptions: request.freshnessOptions,
 				time: this._environment.time,
-				fetchRefreshedSnapshot: this._createRefreshFetcher(operationSpan),
+				fetchRefreshedSnapshot: this._createRefreshFetcher(
+					cancellationToken,
+					operationSpan,
+				),
 			},
 		});
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		return refreshedPlan.data;
 	}
 
 	dispose(): void {
 		this._destroyed.set(true);
+		this._onDispose();
+		this._rootCancellation.cancel(
+			new ClientError({
+				kind: ClientErrorKind.Cancelled,
+				code: `${this._tracingOptions.prefix}.client_disposed`,
+				message: `${this.constructor.name} was disposed`,
+				source: this._tracingOptions.target,
+			}),
+		);
+		this.isAuthenticated.dispose();
+		this.authorizationHeaderValue.dispose();
+		this.authResource.dispose();
+		this._recordTrace(
+			this._traceType(TokenSetOrchestrationTraceEvent.Disposed),
+			undefined,
+			this._span,
+		);
 	}
 
 	[SYMBOL_DISPOSE](): void {
@@ -849,15 +941,12 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	protected abstract _refreshAuthSnapshot(
 		authSnapshot: TokenSetAuthSnapshot,
 		freshnessTiming: TokenSetTokenFreshnessTiming,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: SpanTrait,
 	): Promise<TokenSetAuthSnapshot | null>;
 
 	protected _onDispose(): void {
 		// Default no-op. Subclasses override as needed.
-	}
-
-	protected _throwIfNotOperational(): void {
-		this._rootCancellation.token.throwIfCancellationRequested();
 	}
 
 	protected _readAuthSnapshotValue(): TokenSetAuthSnapshot | null {
@@ -866,9 +955,10 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 
 	private async _commitDetermination<TResult>(
 		commit: TokenSetAuthDeterminationCommit<TResult>,
+		cancellationToken: CancellationTokenTrait,
 		span?: SpanTrait,
 	): Promise<TResult> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		const previous = this._authSnapshotSignal.get();
 		this._authSnapshotSignal.set(
 			commit.candidate.kind === TokenSetAuthDeterminationKind.Failed
@@ -890,8 +980,8 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 						value: commit.candidate.snapshot ?? null,
 					}),
 		);
-		await this._syncPersistence(commit);
-		this._throwIfNotOperational();
+		await this._syncPersistence(commit, cancellationToken);
+		cancellationToken.throwIfCancellationRequested();
 		for (const event of commit.events ?? []) {
 			this._emitAuthEvent({
 				type: event.type,
@@ -919,6 +1009,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 
 	private async _syncPersistence<TResult>(
 		commit: TokenSetAuthDeterminationCommit<TResult>,
+		cancellationToken: CancellationTokenTrait,
 	): Promise<void> {
 		if (
 			commit.persistPolicy !== PersistPolicy.FollowClient ||
@@ -927,8 +1018,8 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			return;
 		}
 
+		cancellationToken.throwIfCancellationRequested();
 		try {
-			this._throwIfNotOperational();
 			if (commit.candidate.snapshot) {
 				await savePersistedAuthSnapshot(
 					this._persistence,
@@ -937,9 +1028,8 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			} else {
 				await clearPersistedAuthSnapshot(this._persistence);
 			}
-			this._throwIfNotOperational();
 		} catch (error) {
-			this._rootCancellation.token.throwIfCancellationRequested();
+			cancellationToken.throwIfCancellationRequested();
 			this._authSnapshotSignal.set(
 				reduceResourceSnapshot(this._authSnapshotSignal.get(), {
 					kind: ResourceSnapshotUpdateKind.Fail,
@@ -990,7 +1080,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					payload: {
 						freshness: refreshPlan.freshness,
 						hasRefreshMaterial: true,
-						errorSummary: summarizeAuthError(refreshPlan.error),
+						errorSummary: describeError(refreshPlan.error),
 					},
 				});
 			}

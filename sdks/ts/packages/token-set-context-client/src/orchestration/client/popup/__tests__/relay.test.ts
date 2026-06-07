@@ -1,4 +1,5 @@
 import {
+	createCancellationTokenSource,
 	createEventSubject,
 	createSignal,
 	type PopupClientWindowHandleTrait,
@@ -59,6 +60,27 @@ function createTestServerPopup(): PopupServerWindowHandleTrait {
 }
 
 describe("waitForTokenSetPopupRelay", () => {
+	it("stops waiting when the operation cancellation token is cancelled", async () => {
+		const popup = createTestPopup();
+		const cancellation = createCancellationTokenSource();
+		const reason = new Error("cancel popup relay");
+		const waitPromise = waitForTokenSetPopupRelay({
+			popup,
+			time: createBrowserTime(),
+			cancellationToken: cancellation.token,
+		});
+
+		cancellation.cancel(reason);
+
+		await expect(waitPromise).rejects.toMatchObject({
+			kind: "cancelled",
+			code: "client.cancelled",
+			cause: reason,
+		});
+		expect(popup.dispose).toHaveBeenCalledTimes(1);
+		expect(popup.close).toHaveBeenCalledTimes(1);
+	});
+
 	it("resolves with callback payload from the relay notification stream", async () => {
 		const notifications = createEventSubject<{
 			method: string;

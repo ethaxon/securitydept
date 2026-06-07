@@ -1,9 +1,9 @@
 export const FrontendOidcModeCallbackErrorCode = {
-	MissingState: "callback.missing_state",
-	UnknownState: "callback.unknown_state",
-	DuplicateState: "callback.duplicate_state",
-	PendingStale: "callback.pending_stale",
-	PendingClientMismatch: "callback.pending_client_mismatch",
+	MissingState: "frontend_oidc.callback.missing_state",
+	UnknownState: "frontend_oidc.callback.unknown_state",
+	DuplicateState: "frontend_oidc.callback.duplicate_state",
+	PendingStale: "frontend_oidc.callback.pending_stale",
+	PendingClientMismatch: "frontend_oidc.callback.pending_client_mismatch",
 } as const;
 
 export type FrontendOidcModeCallbackErrorCode =

@@ -26,9 +26,18 @@
 export {
 	relayTokenSetPopupCallbackFromEnvironment,
 	TokenSetPopupRelayErrorCode,
+	TokenSetPopupRelayErrorSource,
 } from "../orchestration/client/popup/relay";
 export { FrontendOidcModeClient } from "./client/client";
-export { type FrontendOidcModeClientDefaultOptions } from "./client/types";
+export {
+	FrontendOidcModeErrorCode,
+	FrontendOidcModeErrorSource,
+} from "./client/error-codes";
+export {
+	type FrontendOidcModeCheckClaimsOptions,
+	type FrontendOidcModeClientDefaultOptions,
+	type FrontendOidcModeExchangeCodeOptions,
+} from "./client/types";
 
 // --- Types: config, protocol, lifecycle ---
 
@@ -83,6 +92,10 @@ export {
 	type TokenSetPersistedConfigEnvelope,
 	type TokenSetResolvedConfigProjection,
 } from "./config/config-source";
+export {
+	FrontendOidcModeConfigErrorCode,
+	FrontendOidcModeConfigErrorSource,
+} from "./config/error-codes";
 
 // --- Config projection web/browser runtime helpers ---
 

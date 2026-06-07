@@ -1,5 +1,4 @@
 export const ResourceErrorCode = {
-	Disposed: "resource.disposed",
 	ValueUnavailable: "resource.value_unavailable",
 } as const;
 
@@ -34,11 +33,5 @@ export class ResourceError extends Error {
 				status: options.status,
 			},
 		);
-	}
-
-	static disposed(): ResourceError {
-		return new ResourceError("Resource has been disposed.", {
-			code: ResourceErrorCode.Disposed,
-		});
 	}
 }

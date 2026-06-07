@@ -783,7 +783,7 @@ describe("BackendOidcModeClient", () => {
 		await expect(refreshPromise).rejects.toMatchObject({
 			name: "ClientError",
 			kind: "cancelled",
-			code: "backend_oidc.client_disposed",
+			code: "client.cancelled",
 		});
 		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(
 			"at",
@@ -827,7 +827,7 @@ describe("BackendOidcModeClient", () => {
 		await expect(refreshPromise).rejects.toMatchObject({
 			name: "ClientError",
 			kind: "cancelled",
-			code: "backend_oidc.client_disposed",
+			code: "client.cancelled",
 		});
 		expect(time.pendingCount).toBe(0);
 		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(

@@ -1,5 +1,6 @@
 import { type as defineType } from "arktype";
 import { type EnvironmentValidators } from "../environment/types";
+import { ClientError, ClientErrorKind } from "../errors";
 import { type RouterNavigationRequest, type RouterTrait } from "../router";
 import { type UriReferenceString } from "../struct/uri-string";
 import {
@@ -106,7 +107,12 @@ export function createRouterForWebExt(
 				await resolvedBrowser.windows.create({ url });
 				return;
 			}
-			throw new Error("Web extension background router cannot open URL.");
+			throw new ClientError({
+				kind: ClientErrorKind.Configuration,
+				code: "webext.router.navigation_unavailable",
+				message: "Web extension router cannot open the requested URL",
+				source: "webext.router",
+			});
 		},
 	};
 	return router;

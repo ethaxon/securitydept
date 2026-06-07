@@ -1,13 +1,16 @@
 import {
+	type CancellationTokenOptions,
 	type FoundationEnvironment,
 	type ReadableSignalTrait,
 	type StorageTrait,
 } from "@securitydept/client";
 import { type TokenSetTokenFreshnessOptions } from "../token/freshness";
 import { type TokenSetAuthSnapshot } from "../token/types";
+import { type PersistPolicy } from "./workflows/commit";
 import { type TokenSetAuthWorkflowRuntimeOptions } from "./workflows/source";
 
-export interface TokenSetOidcRedirectLoginOptions {
+export interface TokenSetOidcRedirectLoginOptions
+	extends CancellationTokenOptions {
 	/**
 	 * Where to redirect the user after successful authentication.
 	 *
@@ -16,7 +19,8 @@ export interface TokenSetOidcRedirectLoginOptions {
 	postAuthRedirectUri?: string;
 }
 
-export interface TokenSetOidcPopupLoginOptions {
+export interface TokenSetOidcPopupLoginOptions
+	extends CancellationTokenOptions {
 	/**
 	 * The popup callback URL. This page should relay the callback URL back to
 	 * the opener through the token-set popup relay helper for the selected mode.
@@ -28,6 +32,11 @@ export interface TokenSetOidcPopupLoginOptions {
 	popupHeight?: number;
 	/** Maximum time in ms to wait for the popup relay. */
 	timeoutMs?: number;
+}
+
+export interface TokenSetAuthStateOperationOptions
+	extends CancellationTokenOptions {
+	persistPolicy?: PersistPolicy;
 }
 
 export interface TokenSetOidcPopupLoginResult {

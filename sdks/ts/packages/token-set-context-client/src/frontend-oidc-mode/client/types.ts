@@ -10,6 +10,7 @@
 //
 // Stability: provisional (mode-aligned surface)
 
+import { type CancellationTokenOptions } from "@securitydept/client";
 import {
 	type BaseOidcModeClientDefaultOptions,
 	type OidcModeClientConfigBase,
@@ -163,6 +164,16 @@ export interface FrontendOidcModeClientDefaultOptions
 	consumedStateKeyPrefix: string;
 	pendingStateTtlMs: number;
 	consumedStateTtlMs: number;
+}
+
+export interface FrontendOidcModeExchangeCodeOptions
+	extends CancellationTokenOptions {
+	expectedNonce?: string;
+}
+
+export interface FrontendOidcModeCheckClaimsOptions
+	extends CancellationTokenOptions {
+	userInfoClaims?: Record<string, unknown> | null;
 }
 
 // ---------------------------------------------------------------------------

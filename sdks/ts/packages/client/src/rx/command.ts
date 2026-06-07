@@ -285,14 +285,14 @@ export async function dispatchCommandLocallyToPromise<
 	}
 	if (terminal === undefined) {
 		throw new ClientError({
-			kind: ClientErrorKind.Unreachable,
+			kind: ClientErrorKind.Internal,
 			message:
 				"the execution of dispatchCommandLocallyToPromise must produce a valid terminal response.",
 		});
 	}
 	if (!isCommandTerminalResponse(terminal)) {
 		throw new ClientError({
-			kind: ClientErrorKind.Unreachable,
+			kind: ClientErrorKind.Internal,
 			message:
 				"the execution of dispatchCommandLocallyToPromise must produce a valid terminal response.",
 		});
@@ -330,14 +330,14 @@ export async function dispatchCommandByIdToPromise<
 	}
 	if (terminal === undefined) {
 		throw new ClientError({
-			kind: ClientErrorKind.Unreachable,
+			kind: ClientErrorKind.Internal,
 			message:
 				"the execution of dispatchCommandLocallyToPromise must produce a valid terminal response.",
 		});
 	}
 	if (!isCommandTerminalResponse(terminal)) {
 		throw new ClientError({
-			kind: ClientErrorKind.Unreachable,
+			kind: ClientErrorKind.Internal,
 			message:
 				"the execution of dispatchCommandLocallyToPromise must produce a valid terminal response.",
 		});

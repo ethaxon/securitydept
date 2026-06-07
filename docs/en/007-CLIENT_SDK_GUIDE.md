@@ -190,7 +190,9 @@ Server-side token ownership, BFF, and mixed-custody remain outside the current `
 
 ## Error Model
 
-SDK errors expose machine-facing codes and host-facing recovery hints where relevant. Host copy and UI state remain adopter-owned. Do not parse opaque `Error.message` strings for control flow.
+Public asynchronous flows use `ClientError` as the canonical runtime exception. Callers should branch on `kind`, domain-namespaced `code`, and `recovery`; `cause` is diagnostic only. Unknown failures are normalized with `ClientError.fromUnknown(...)` at client operation boundaries, while existing `ClientError` values remain unchanged.
+
+User-facing copy must come from explicit safe `presentation`, a domain code presentation map, or generic foundation kind copy. `readErrorPresentationDescriptor()` never displays runtime `Error.message`. Events and tracing use the message-free `ErrorSummary`; Resource snapshots may retain the original error object. Host copy and UI state remain adopter-owned.
 
 ## Cancellation and Disposal
 

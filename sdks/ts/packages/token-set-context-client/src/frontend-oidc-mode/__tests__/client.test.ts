@@ -274,7 +274,9 @@ describe("FrontendOidcModeClient", () => {
 			runtime,
 		);
 
-		await client.authorizeUrl("/playground/token-set/frontend-mode");
+		await client.authorizeUrl({
+			postAuthRedirectUri: "/playground/token-set/frontend-mode",
+		});
 		await client.handleCallback(
 			"https://app.example.com/auth/callback?code=auth-code&state=state-value",
 		);
@@ -313,8 +315,8 @@ describe("FrontendOidcModeClient", () => {
 			runtime,
 		);
 
-		await client.authorizeUrl("/after-a");
-		await client.authorizeUrl("/after-b");
+		await client.authorizeUrl({ postAuthRedirectUri: "/after-a" });
+		await client.authorizeUrl({ postAuthRedirectUri: "/after-b" });
 
 		await expect(
 			sessionStorage.get("securitydept.frontend_oidc.pending:state-a"),
@@ -363,7 +365,7 @@ describe("FrontendOidcModeClient", () => {
 			runtime,
 		);
 
-		await client.authorizeUrl("/after-login");
+		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
 		await client.handleCallback(
 			"https://app.example.com/auth/callback?code=auth-code&state=state-value",
 		);
@@ -524,13 +526,17 @@ describe("FrontendOidcModeClient", () => {
 			runtime,
 		);
 
-		await client.authorizeUrl("/after-login");
+		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
 
 		await expect(
 			client.handleCallback(
 				"https://app.example.com/auth/callback?code=auth-code&state=state-value",
 			),
-		).rejects.toThrow(/token exchange failed/i);
+		).rejects.toMatchObject({
+			kind: ClientErrorKind.Internal,
+			code: "frontend_oidc.operation_failed",
+			cause: expect.objectContaining({ message: "token exchange failed" }),
+		});
 
 		await expect(
 			client.handleCallback(
@@ -566,7 +572,7 @@ describe("FrontendOidcModeClient", () => {
 			runtime,
 		);
 
-		await client.authorizeUrl("/after-login");
+		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
 		await client.handleCallback(
 			"http://localhost:4722/auth/callback?code=auth-code&state=state-value",
 		);
@@ -768,7 +774,7 @@ describe("FrontendOidcModeClient", () => {
 			runtime,
 		);
 
-		await client.authorizeUrl("/after-login");
+		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
 		await client.handleCallback(
 			"https://app.example.com/auth/callback?code=auth-code&state=state-value",
 		);
@@ -891,7 +897,7 @@ describe("FrontendOidcModeClient", () => {
 		const events: TokenSetAuthEvent[] = [];
 		client.authEvents.subscribe({ next: (event) => events.push(event) });
 
-		await client.authorizeUrl("/after-login");
+		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
 		await client.handleCallback(
 			"https://app.example.com/auth/callback?code=auth-code&state=state-value",
 		);

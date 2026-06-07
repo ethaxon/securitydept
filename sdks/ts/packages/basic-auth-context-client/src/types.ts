@@ -1,12 +1,28 @@
 // --- Basic Auth Context Client types ---
 
 import {
+	type CancellationTokenOptions,
+	type ErrorSummary,
 	type ReadableSignalTrait,
 	type ResourceSnapshot,
 	type ResourceTrait,
 } from "@securitydept/client";
 
 /** Configuration for a single Basic Auth zone. */
+export const BasicAuthContextErrorCode = {
+	OperationFailed: "basic_auth.operation_failed",
+	InvalidConfig: "basic_auth.invalid_config",
+	ClientDisposed: "basic_auth.client_disposed",
+	RouterUnavailable: "basic_auth.router_unavailable",
+	ProbePathRequired: "basic_auth.probe_path_required",
+	ZoneNotFound: "basic_auth.zone_not_found",
+	ZoneRequired: "basic_auth.zone_required",
+	LogoutPoisonExpected: "basic_auth.logout_poison_expected",
+} as const;
+
+export type BasicAuthContextErrorCode =
+	(typeof BasicAuthContextErrorCode)[keyof typeof BasicAuthContextErrorCode];
+
 export interface BasicAuthZoneConfig {
 	/** URL path prefix for this zone (e.g. "/basic"). */
 	zonePrefix: string;
@@ -98,7 +114,7 @@ export interface BasicAuthContextEvent {
 	};
 	snapshot?: BasicAuthBoundarySnapshot | null;
 	zone?: ResolvedBasicAuthZone;
-	errorSummary?: Record<string, unknown>;
+	errorSummary?: ErrorSummary;
 }
 
 export interface BasicAuthContextOperationSignals {
@@ -108,7 +124,7 @@ export interface BasicAuthContextOperationSignals {
 	readonly loginRedirectPending: ReadableSignalTrait<boolean>;
 }
 
-export interface BasicAuthRefreshOptions {
+export interface BasicAuthRefreshOptions extends CancellationTokenOptions {
 	path?: string;
 }
 
@@ -122,10 +138,11 @@ export type BasicAuthZoneSelectionOptions =
 			currentPath?: never;
 	  };
 
-export type BasicAuthLogoutOptions = BasicAuthZoneSelectionOptions;
+export type BasicAuthLogoutOptions = BasicAuthZoneSelectionOptions &
+	CancellationTokenOptions;
 
-export type BasicAuthLoginWithRedirectOptions =
-	BasicAuthZoneSelectionOptions & {
+export type BasicAuthLoginWithRedirectOptions = BasicAuthZoneSelectionOptions &
+	CancellationTokenOptions & {
 		postAuthRedirectUri?: string;
 	};
 

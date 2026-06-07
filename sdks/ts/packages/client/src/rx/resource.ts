@@ -131,9 +131,6 @@ abstract class RxResourceBase<T>
 
 	async whenValue(options?: ResourceWhenValueOptions): Promise<T> {
 		options?.cancellationToken?.throwIfCancellationRequested();
-		if (this.destroyed.get()) {
-			throw ResourceError.disposed();
-		}
 		const current = this.snapshot.get();
 		if (
 			current.status === ResourceStatus.Resolved ||
@@ -164,11 +161,6 @@ abstract class RxResourceBase<T>
 							snapshot.status === ResourceStatus.LoadingError ||
 							snapshot.status === ResourceStatus.Error,
 					),
-				),
-				this.destroyed$.pipe(
-					map(() => {
-						throw ResourceError.disposed();
-					}),
 				),
 				(options?.cancellationToken
 					? from(options.cancellationToken)
@@ -212,6 +204,9 @@ export class RxResource<T, R = undefined> extends RxResourceBase<T> {
 		super();
 		this.snapshot = RxStateSignal.fromInitialValue<ResourceSnapshot<T>>({
 			status: ResourceStatus.Idle,
+		});
+		this.destroyed$.subscribe(() => {
+			this.snapshot.set({ status: ResourceStatus.Idle });
 		});
 		this.connect();
 	}
@@ -269,7 +264,7 @@ export class RxResource<T, R = undefined> extends RxResourceBase<T> {
 								}),
 							),
 						),
-						finalize(() => loadCancellation.cancel(ResourceError.disposed())),
+						finalize(() => loadCancellation.cancel()),
 					);
 				}),
 				takeUntil(this.destroyed$),
@@ -289,7 +284,9 @@ class RxSnapshotResource<T> extends RxResourceBase<T> {
 
 	constructor(source: () => ResourceSnapshot<T>) {
 		super();
-		this.snapshot = RxComputedSignal.computed(source);
+		this.snapshot = RxComputedSignal.computed(() =>
+			this.destroyed.get() ? { status: ResourceStatus.Idle } : source(),
+		);
 	}
 }
 

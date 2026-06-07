@@ -1,4 +1,5 @@
 import {
+	type CancellationTokenOptions,
 	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
@@ -7,12 +8,14 @@ import {
 	defineInstrumentMethodDecorator,
 	type FoundationEnvironment,
 	type HttpResponseJsonBody,
+	injectDisposableStackFrom,
 	type OperationSpanTrait,
 	parseCompatFragment,
 	RouterNavigationIntent,
 	RouterNavigationMode,
 	UriReferenceString,
 	UserRecovery,
+	withDisposableStack,
 } from "@securitydept/client";
 import { waitForTokenSetPopupRelay } from "../../orchestration/client/popup/relay";
 import {
@@ -41,6 +44,7 @@ import {
 	parseBackendOidcModeUserInfoBody,
 	refreshReturnsToTokenDelta,
 } from "../contracts/parsers";
+import { BackendOidcModeErrorCode } from "./error-codes";
 import {
 	BackendOidcModeOperationEventName,
 	BackendOidcModeTraceEventType,
@@ -73,6 +77,12 @@ const instrumentBackendMethod = defineInstrumentMethodDecorator<
 				name,
 				target: TRACE_TARGET,
 				fields: typeof fields === "function" ? fields.call(this) : fields,
+				normalizeError: (error: unknown) =>
+					ClientError.fromUnknown(error, {
+						code: BackendOidcModeErrorCode.OperationFailed,
+						message: "The backend OIDC operation failed unexpectedly",
+						source: TRACE_TARGET,
+					}),
 			};
 		},
 );
@@ -164,18 +174,26 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		return base;
 	}
 
+	@withDisposableStack(0, true)
 	async loginWithRedirect(
 		options: TokenSetOidcRedirectLoginOptions = {},
 	): Promise<void> {
-		return await this._loginWithRedirect(options);
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._loginWithRedirect(options, cancellationToken);
 	}
 
 	@instrumentBackendMethod(BackendOidcModeTraceOperationName.LoginRedirect)
 	private async _loginWithRedirect(
 		options: TokenSetOidcRedirectLoginOptions,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<void> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		operationSpan?.setAttributes({
 			hasPostAuthRedirectUri: options.postAuthRedirectUri !== undefined,
 		});
@@ -183,7 +201,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		if (!router) {
 			throw new ClientError({
 				kind: ClientErrorKind.Configuration,
-				code: "backend_oidc.redirect.router_unavailable",
+				code: BackendOidcModeErrorCode.RedirectRouterUnavailable,
 				message: "Backend OIDC redirect login requires environment.router.",
 				source: TRACE_TARGET,
 			});
@@ -195,16 +213,23 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			intent: RouterNavigationIntent.AuthRedirect,
 			mode: RouterNavigationMode.External,
 		});
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		operationSpan?.setAttributes({ navigationMode: "external" });
 	}
 
+	@withDisposableStack(0, true)
 	@instrumentBackendMethod(BackendOidcModeTraceOperationName.LoginPopup)
 	async loginWithPopup(
 		options: TokenSetOidcPopupLoginOptions,
 		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetOidcPopupLoginResult> {
-		this._throwIfNotOperational();
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		cancellationToken.throwIfCancellationRequested();
 		operationSpan?.setAttributes({
 			popupCallbackUrl: options.popupCallbackUrl,
 		});
@@ -212,7 +237,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		if (!popup) {
 			throw new ClientError({
 				kind: ClientErrorKind.Configuration,
-				code: "backend_oidc.popup.capability_missing",
+				code: BackendOidcModeErrorCode.PopupCapabilityMissing,
 				message: "Backend OIDC popup login requires environment.popup.",
 				source: TRACE_TARGET,
 				recovery: UserRecovery.RestartFlow,
@@ -239,8 +264,9 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			popup: popupWindow,
 			time: this._environment.time,
 			timeoutMs: options.timeoutMs,
+			cancellationToken,
 		});
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		operationSpan?.addEvent(
 			BackendOidcModeOperationEventName.PopupRelaySucceeded,
 			{
@@ -251,14 +277,17 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		if (!compatFragment) {
 			throw new ClientError({
 				kind: ClientErrorKind.Protocol,
-				code: "backend_oidc.popup.no_fragment",
+				code: BackendOidcModeErrorCode.PopupFragmentMissing,
 				message: "Popup callback URL has no compat fragment to process.",
 				source: TRACE_TARGET,
 			});
 		}
 
-		const snapshot = await this.handleCallback(compatFragment.parameters);
-		this._throwIfNotOperational();
+		const snapshot = await this._handleCallbackOperation(
+			compatFragment.parameters,
+			cancellationToken,
+		);
+		cancellationToken.throwIfCancellationRequested();
 		return { snapshot };
 	}
 
@@ -269,21 +298,32 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	 * state, and updates the auth signal. Inline metadata (from
 	 * `callback_body_return` servers) is used directly, skipping redemption.
 	 */
+	@withDisposableStack(1, true)
+	async handleCallback(
+		parsedCompatFragment: CompatFragmentParameters,
+		options: CancellationTokenOptions = {},
+	): Promise<TokenSetAuthSnapshot> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._handleCallbackOperation(
+			parsedCompatFragment,
+			cancellationToken,
+		);
+	}
+
 	@instrumentBackendMethod(BackendOidcModeTraceOperationName.Callback, {
 		flow: "callback.fragment",
 	})
-	async handleCallback(
+	private async _handleCallbackOperation(
 		parsedCompatFragment: CompatFragmentParameters,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetAuthSnapshot> {
-		return await this._handleCallback(parsedCompatFragment, operationSpan);
-	}
-
-	private async _handleCallback(
-		parsedCompatFragment: CompatFragmentParameters,
-		operationSpan?: OperationSpanTrait,
-	): Promise<TokenSetAuthSnapshot> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const callbackFragment =
 			parseBackendOidcModeCallbackPayload(parsedCompatFragment);
@@ -291,7 +331,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			throw new ClientError({
 				kind: ClientErrorKind.Protocol,
 				message: "Callback fragment missing access_token or id_token",
-				code: "callback.missing_access_token",
+				code: BackendOidcModeErrorCode.CallbackAccessTokenMissing,
 				source: TRACE_TARGET,
 			});
 		}
@@ -305,17 +345,18 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				accessToken: tokenSnapshot.accessToken,
 				idToken: tokenSnapshot.idToken,
 			},
+			cancellationToken,
 			operationSpan,
 		);
 
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const snapshot: TokenSetAuthSnapshot = {
 			tokens: tokenSnapshot,
 			metadata,
 		};
 
-		await this._applySnapshot(snapshot, {}, operationSpan);
+		await this._applySnapshot(snapshot, {}, cancellationToken, operationSpan);
 		operationSpan?.setAttributes({
 			hasMetadataRedemption:
 				callbackFragment.metadataRedemptionId !== undefined,
@@ -341,21 +382,36 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	 * receives the JSON body directly (e.g. in a single-page app that POSTs
 	 * the code to the backend and reads the 200 OK response).
 	 */
+	@withDisposableStack(1, true)
+	async handleCallbackBody(
+		body: HttpResponseJsonBody,
+		options: CancellationTokenOptions = {},
+	): Promise<TokenSetAuthSnapshot> {
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._handleCallbackBodyOperation(body, cancellationToken);
+	}
+
 	@instrumentBackendMethod(BackendOidcModeTraceOperationName.Callback, {
 		flow: "callback.body",
 	})
-	async handleCallbackBody(
+	private async _handleCallbackBodyOperation(
 		body: HttpResponseJsonBody,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetAuthSnapshot> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const callbackBody = parseBackendOidcModeCallbackPayload(body);
 		if (!callbackBody) {
 			throw new ClientError({
 				kind: ClientErrorKind.Protocol,
 				message: "Callback response body missing access_token or id_token",
-				code: "backend_oidc.callback.missing_access_token",
+				code: BackendOidcModeErrorCode.CallbackAccessTokenMissing,
 				source: TRACE_TARGET,
 			});
 		}
@@ -369,17 +425,18 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				accessToken: cbTokenSnapshot.accessToken,
 				idToken: cbTokenSnapshot.idToken,
 			},
+			cancellationToken,
 			operationSpan,
 		);
 
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const snapshot: TokenSetAuthSnapshot = {
 			tokens: cbTokenSnapshot,
 			metadata,
 		};
 
-		await this._applySnapshot(snapshot, {}, operationSpan);
+		await this._applySnapshot(snapshot, {}, cancellationToken, operationSpan);
 		operationSpan?.setAttributes({
 			hasMetadataRedemption: callbackBody.metadataRedemptionId !== undefined,
 			hasInlineMetadata: callbackBody.metadata !== undefined,
@@ -401,13 +458,14 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	protected async _refreshAuthSnapshot(
 		current: TokenSetAuthSnapshot,
 		_freshnessTiming: TokenSetTokenFreshnessTiming,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetAuthSnapshot | null> {
 		if (!current.tokens.refreshMaterial) {
 			return null;
 		}
 
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const response = await this._environment.transport.execute({
 			url: this._config.baseUrl + this._config.refreshPath,
@@ -419,10 +477,10 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				id_token: current.tokens.idToken,
 				current_metadata_snapshot: current.metadata,
 			}),
-			cancellationToken: this._rootCancellation.token,
+			cancellationToken,
 		});
 
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		if (response.status === 200 && response.body) {
 			const refreshBody = parseBackendOidcModeRefreshPayload(
@@ -432,7 +490,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				throw new ClientError({
 					kind: ClientErrorKind.Protocol,
 					message: "Refresh response body missing access_token",
-					code: "backend_oidc.refresh.missing_access_token",
+					code: BackendOidcModeErrorCode.RefreshAccessTokenMissing,
 					source: TRACE_TARGET,
 				});
 			}
@@ -447,10 +505,11 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 					accessToken: refreshBody.accessToken,
 					idToken: refreshBody.idToken ?? current.tokens.idToken,
 				},
+				cancellationToken,
 				operationSpan,
 			);
 
-			this._throwIfNotOperational();
+			cancellationToken.throwIfCancellationRequested();
 
 			const newSnapshot: TokenSetAuthSnapshot = {
 				tokens: mergeTokenSetTokenDelta(
@@ -479,10 +538,10 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		if (
 			oauthError?.error === TokenSetAuthorizationRevocationReason.InvalidGrant
 		) {
-			throw new TokenSetAuthorizationRevocationError(
-				TokenSetAuthorizationRevocationReason.InvalidGrant,
-				{ cause: response.body },
-			);
+			throw new TokenSetAuthorizationRevocationError({
+				reason: TokenSetAuthorizationRevocationReason.InvalidGrant,
+				cause: response.body,
+			});
 		}
 		const challenge =
 			response.headers["WWW-Authenticate"] ??
@@ -493,12 +552,15 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			/^Bearer\s+/i.test(challenge) &&
 			/(?:^|,)\s*error\s*=\s*"?invalid_token"?(?:\s*,|\s*$)/i.test(challenge)
 		) {
-			throw new TokenSetAuthorizationRevocationError(
-				TokenSetAuthorizationRevocationReason.InvalidToken,
-				{ cause: response },
-			);
+			throw new TokenSetAuthorizationRevocationError({
+				reason: TokenSetAuthorizationRevocationReason.InvalidToken,
+				cause: response,
+			});
 		}
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	/**
@@ -527,6 +589,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			/** ID token to include in the userInfo request body. */
 			idToken?: string;
 		},
+		cancellationToken: CancellationTokenTrait,
 		span?: OperationSpanTrait,
 	): Promise<TokenSetAuthMetadataSnapshot> {
 		const {
@@ -536,10 +599,10 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			accessToken,
 			idToken,
 		} = opts;
+		cancellationToken.throwIfCancellationRequested();
 
 		// Priority 1: inline metadata already present.
 		if (inlineMetadata) {
-			this._throwIfNotOperational();
 			return inlineMetadata;
 		}
 
@@ -547,11 +610,11 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		if (metadataRedemptionId) {
 			const redeemed = await this._redeemMetadata(
 				metadataRedemptionId,
-				undefined,
+				cancellationToken,
 				span,
 			);
 			if (redeemed) {
-				this._throwIfNotOperational();
+				cancellationToken.throwIfCancellationRequested();
 				return redeemed.metadata as TokenSetAuthMetadataSnapshot;
 			}
 		}
@@ -565,9 +628,8 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				const userInfo = await this._fetchUserInfoRaw(
 					accessToken,
 					idToken,
-					undefined,
+					cancellationToken,
 				);
-				this._throwIfNotOperational();
 				return {
 					...baseMetadata,
 					principal: {
@@ -579,6 +641,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 					},
 				};
 			} catch (error) {
+				cancellationToken.throwIfCancellationRequested();
 				this._recordFailureTrace(
 					BackendOidcModeTraceEventType.UserInfoFallbackFailed,
 					error,
@@ -593,14 +656,9 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 
 	private async _redeemMetadata(
 		redemptionId: string,
-		options: BackendOidcModeMetadataRedemptionOptions | undefined,
+		cancellationToken: CancellationTokenTrait,
 		span?: OperationSpanTrait,
 	): Promise<BackendOidcModeMetadataRedemptionResponse | null> {
-		using cancellationToken = createLinkedCancellationToken(
-			this._rootCancellation.token,
-			options?.cancellationToken,
-		);
-
 		span?.addEvent(
 			BackendOidcModeOperationEventName.MetadataRedemptionStarted,
 			{
@@ -608,7 +666,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			},
 		);
 
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const response = await this._environment.transport.execute({
 			url: this._config.baseUrl + this._config.metadataRedeemPath,
@@ -644,24 +702,38 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			return null;
 		}
 
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	/** Redeem metadata from the server by redemption ID. */
+	@withDisposableStack(1, true)
 	async redeemMetadata(
 		redemptionId: string,
-		options?: BackendOidcModeMetadataRedemptionOptions,
+		options: BackendOidcModeMetadataRedemptionOptions = {},
 	): Promise<BackendOidcModeMetadataRedemptionResponse | null> {
-		return await this._redeemMetadataOperation(redemptionId, options);
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._redeemMetadataOperation(redemptionId, cancellationToken);
 	}
 
 	@instrumentBackendMethod(BackendOidcModeTraceOperationName.MetadataRedemption)
 	private async _redeemMetadataOperation(
 		redemptionId: string,
-		options: BackendOidcModeMetadataRedemptionOptions | undefined,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<BackendOidcModeMetadataRedemptionResponse | null> {
-		return await this._redeemMetadata(redemptionId, options, operationSpan);
+		return await this._redeemMetadata(
+			redemptionId,
+			cancellationToken,
+			operationSpan,
+		);
 	}
 
 	/**
@@ -670,18 +742,25 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	 * Protocol: POST /auth/oidc/user-info (SDK default) with Bearer access_token
 	 * and JSON body `{ id_token }`. Returns the server-normalized user info.
 	 */
+	@withDisposableStack(0, true)
 	async fetchUserInfo(
-		options?: BackendOidcModeFetchUserInfoOptions,
+		options: BackendOidcModeFetchUserInfoOptions = {},
 	): Promise<BackendOidcModeUserInfoResponse> {
-		return await this._fetchUserInfoFromCurrentState(options);
+		const disposableStack = injectDisposableStackFrom(options, true);
+		const cancellationToken = createLinkedCancellationToken(
+			this._rootCancellation.token,
+			options.cancellationToken,
+		);
+		disposableStack?.use(cancellationToken);
+		return await this._fetchUserInfoFromCurrentState(cancellationToken);
 	}
 
 	@instrumentBackendMethod(BackendOidcModeTraceOperationName.UserInfo)
 	private async _fetchUserInfoFromCurrentState(
-		options: BackendOidcModeFetchUserInfoOptions | undefined,
+		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<BackendOidcModeUserInfoResponse> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		const current = this._readAuthSnapshotValue();
 		operationSpan?.setAttributes({
@@ -692,7 +771,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			throw new ClientError({
 				kind: ClientErrorKind.Unauthenticated,
 				message: "Cannot fetch user info without access_token and id_token",
-				code: "backend_oidc.user_info.unauthenticated",
+				code: BackendOidcModeErrorCode.UserInfoUnauthenticated,
 				source: TRACE_TARGET,
 			});
 		}
@@ -700,7 +779,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		return await this._fetchUserInfoRaw(
 			current.tokens.accessToken,
 			current.tokens.idToken,
-			options,
+			cancellationToken,
 		);
 	}
 
@@ -712,10 +791,10 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	 */
 	private async _fetchUserInfoRaw(
 		accessToken: string,
-		idToken?: string,
-		options?: { cancellationToken?: CancellationTokenTrait },
+		idToken: string | undefined,
+		cancellationToken: CancellationTokenTrait,
 	): Promise<BackendOidcModeUserInfoResponse> {
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 		const response = await this._environment.transport.execute({
 			url: this._config.baseUrl + this._config.userInfoPath,
 			method: "POST",
@@ -726,12 +805,9 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			body: JSON.stringify({
 				id_token: idToken,
 			}),
-			cancellationToken: createLinkedCancellationToken(
-				this._rootCancellation.token,
-				options?.cancellationToken,
-			),
+			cancellationToken,
 		});
-		this._throwIfNotOperational();
+		cancellationToken.throwIfCancellationRequested();
 
 		if (response.status === 200 && response.body) {
 			const parsed = parseBackendOidcModeUserInfoBody(
@@ -741,14 +817,16 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				throw new ClientError({
 					kind: ClientErrorKind.Protocol,
 					message: "User info response missing required 'subject' field",
-					code: "backend_oidc.user_info.invalid_response",
+					code: BackendOidcModeErrorCode.UserInfoInvalidResponse,
 					source: TRACE_TARGET,
 				});
 			}
-			this._throwIfNotOperational();
 			return parsed;
 		}
 
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 }

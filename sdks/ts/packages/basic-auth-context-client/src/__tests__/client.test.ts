@@ -1,4 +1,6 @@
 import {
+	ClientErrorKind,
+	createCancellationTokenSource,
 	createFoundationEnvironment,
 	createTracing,
 	type FoundationEnvironment,
@@ -6,7 +8,7 @@ import {
 	type HttpResponse,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { BasicAuthContextClient, readBasicAuthBoundaryKind } from "../client";
 import {
 	AuthGuardRedirectStatus,
@@ -57,6 +59,23 @@ function createClient(environment = createBasicAuthEnvironment({})) {
 }
 
 describe("BasicAuthContextClient", () => {
+	it("links refresh cancellation to the client lifecycle token", async () => {
+		const onRequest = vi.fn();
+		const client = createClient(createBasicAuthEnvironment({ onRequest }));
+		const cancellation = createCancellationTokenSource();
+		const reason = new Error("cancel basic auth refresh");
+		cancellation.cancel(reason);
+
+		await expect(
+			client.refresh({ cancellationToken: cancellation.token }),
+		).rejects.toMatchObject({
+			kind: ClientErrorKind.Cancelled,
+			code: "client.cancelled",
+			cause: reason,
+		});
+		expect(onRequest).not.toHaveBeenCalled();
+	});
+
 	it("keeps zone and URL helpers host-neutral", () => {
 		const client = createClient();
 
@@ -277,7 +296,7 @@ describe("BasicAuthContextClient", () => {
 		client.dispose();
 
 		await expect(client.refresh()).rejects.toMatchObject({
-			code: "basic_auth.client_disposed",
+			code: "client.cancelled",
 		});
 	});
 });

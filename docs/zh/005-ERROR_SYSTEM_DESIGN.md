@@ -12,6 +12,15 @@ Structured diagnosis 是与 public error presentation 分离的另一层契约�
 - 通过 `ToHttpStatus` 或 route/service status helpers 映射 HTTP status。
 - 通过 `ToErrorPresentation` 生成安全的 public presentation。
 
+TS SDK 对应采用四层边界：
+
+- `ClientError` 是公开异步流程的 canonical runtime exception；`kind`、namespaced `code`、`recovery`、`source` 与 `cause` 是 machine contract。
+- `ResourceSnapshot` 可以保留原始 error object，供调用方诊断和重试控制使用。
+- lifecycle events 与 tracing 只投影 secret-safe `ErrorSummary`：`errorName`、可选 `errorKind`、`errorCode` 与 `recovery`，不复制 runtime message。
+- `readErrorPresentationDescriptor()` 只读取显式安全 `presentation`、domain code mapping 或 foundation generic kind copy，绝不把 `Error.message` 当成用户文案。
+
+TS SDK 的 `ClientErrorKind` 固定为 `authorization`、`transport`、`server`、`protocol`、`storage`、`configuration`、`unauthenticated`、`unauthorized`、`cancelled`、`timeout` 与 `internal`。Schema/options 输入错误属于 `configuration`；remote 或 persisted payload 错误属于 `protocol`；未知错误在公开 client operation boundary 被包装为 `internal` 并保留 `cause`。
+
 共享类型位于 `securitydept-utils`：
 
 - `ErrorPresentation`
@@ -106,6 +115,9 @@ Structured diagnosis 是与 public error presentation 分离的另一层契约�
 - 能到达 adopter-facing response 的新 error variant 必须实现 safe presentation。
 - 如果会破坏 browser 或 proxy semantics，protocol-specific routes 不得被“统一”进 shared JSON envelope。
 - Tests 应断言 `kind`、`code` 与 `recovery`；message text 可以验证，但不能成为唯一 machine contract。
+- TS SDK public operation 不得让未知裸 `Error` 逃逸；使用 `ClientError.fromUnknown(...)` 建立稳定 boundary，已有 `ClientError` 不重复包装。
+- Error code 必须由 domain owner 以 `const + type` 集中定义，并使用 domain namespace。
+- Presentation mapping 由 domain owner 提供；foundation 不包含 popup、OIDC 等应用层文案。
 
 ---
 

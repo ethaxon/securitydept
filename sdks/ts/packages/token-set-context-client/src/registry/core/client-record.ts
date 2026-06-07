@@ -1,4 +1,5 @@
 import {
+	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
 	type DisposableTrait,
@@ -17,7 +18,6 @@ import {
 import { filter, from, take } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import {
-	type TokenSetClientDisposedRecordView,
 	type TokenSetClientMeta,
 	type TokenSetClientRecordView,
 	type TokenSetClientRegistryEntry,
@@ -25,9 +25,19 @@ import {
 	type TokenSetClientRegistryEvent,
 	TokenSetClientRegistryEventType,
 } from "../contracts/types";
+import {
+	TokenSetClientRegistryError,
+	TokenSetClientRegistryErrorCode,
+	TokenSetClientRegistryErrorSource,
+} from "./error";
+
+interface TokenSetClientRecordInitializeOptions {
+	readonly cancellationToken: CancellationTokenTrait;
+}
 
 export class TokenSetClientRecord<TClient extends DisposableTrait>
-	implements DisposableTrait {
+	implements DisposableTrait
+{
 	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
 	private readonly _signal: RxStateSignalCompat<
 		TokenSetClientRecordView<TClient>
@@ -71,10 +81,6 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 					};
 			}
 		});
-		this.destroyed$.subscribe(() => {
-			this.client?.dispose();
-			this.clientResource.dispose();
-		});
 	}
 
 	get meta(): TokenSetClientMeta {
@@ -109,26 +115,31 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 		return new TokenSetClientRecord(TokenSetClientRecord.idFactory(), entry);
 	}
 
-	async *initialize(): AsyncGenerator<TokenSetClientRecord<TClient>> {
+	async initialize(
+		options: TokenSetClientRecordInitializeOptions,
+	): Promise<void> {
 		if (this.status !== TokenSetClientRegistryEntryStatus.Registered) {
 			throw new ClientError({
-				kind: ClientErrorKind.Unreachable,
-				code: `client_record.initialize.${this.status}`,
+				kind: ClientErrorKind.Internal,
+				code: "token_set.registry.record_not_registered",
 				message: `[ClientRecord] Cannot initialize a ${this.status} client record; initialize() is non-idempotent.`,
 				recovery: UserRecovery.ContactSupport,
 				retryable: false,
-				source: "client_registry",
+				source: TokenSetClientRegistryErrorSource,
 			});
 		}
+		const { cancellationToken } = options;
+		let client: TClient | null = null;
 		try {
+			cancellationToken.throwIfCancellationRequested();
 			this._signal.set({
 				id: this.id,
 				entry: this.entry,
 				meta: this.meta,
 				status: TokenSetClientRegistryEntryStatus.Initializing,
 			});
-			yield this;
-			const client = await this.entry.clientFactory();
+			client = await this.entry.clientFactory({ cancellationToken });
+			cancellationToken.throwIfCancellationRequested();
 			this._signal.set({
 				id: this.id,
 				entry: this.entry,
@@ -136,25 +147,25 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 				status: TokenSetClientRegistryEntryStatus.Ready,
 				client,
 			});
-			if (this._destroyed.get()) {
-				yield this;
-				client.dispose();
-				return yield this;
-			}
-			return yield this;
+			client = null;
 		} catch (error) {
+			client?.dispose();
+			const registryError =
+				error instanceof ClientError
+					? error
+					: new TokenSetClientRegistryError({
+							code: TokenSetClientRegistryErrorCode.ClientFactoryFailed,
+							clientKey: this.meta.clientKey,
+							cause: error,
+						});
 			this._signal.set({
 				id: this.id,
 				entry: this.entry,
 				meta: this.meta,
 				status: TokenSetClientRegistryEntryStatus.Failed,
-				error,
+				error: registryError,
 			});
-			if (this._destroyed.get()) {
-				yield this;
-				return yield this;
-			}
-			return yield this;
+			throw registryError;
 		}
 	}
 
@@ -196,6 +207,8 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 
 	dispose(): void {
 		this._destroyed.set(true);
+		this.client?.dispose();
+		this.clientResource.dispose();
 	}
 
 	[SYMBOL_DISPOSE]() {

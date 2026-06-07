@@ -11,7 +11,19 @@ import { type as defineType } from "arktype";
 import { type TokenSetAuthSnapshot } from "../token/types";
 
 const STATE_VERSION = 1;
-const PERSISTENCE_SOURCE = "token-orchestration-persistence";
+const PERSISTENCE_SOURCE = "token_set.persistence";
+
+export const TokenSetPersistenceErrorCode = {
+	Unavailable: "token_set.persistence.unavailable",
+	IoFailed: "token_set.persistence.io_failed",
+	InvalidJson: "token_set.persistence.invalid_json",
+	InvalidEnvelope: "token_set.persistence.invalid_envelope",
+	UnsupportedVersion: "token_set.persistence.unsupported_version",
+	InvalidSnapshot: "token_set.persistence.invalid_snapshot",
+} as const;
+
+export type TokenSetPersistenceErrorCode =
+	(typeof TokenSetPersistenceErrorCode)[keyof typeof TokenSetPersistenceErrorCode];
 
 interface StoredStateEnvelope {
 	version: number;
@@ -45,7 +57,18 @@ export interface TokenSetAuthSnapshotPersistenceOptions {
 export async function loadPersistedAuthSnapshot(
 	options: TokenSetAuthSnapshotPersistenceOptions,
 ): Promise<TokenSetAuthSnapshot | null> {
-	const raw = await options.store.get(options.key);
+	let raw: string | null;
+	try {
+		raw = await options.store.get(options.key);
+	} catch (error) {
+		throw new ClientError({
+			kind: ClientErrorKind.Storage,
+			code: TokenSetPersistenceErrorCode.IoFailed,
+			message: "Persisted token-set state could not be read",
+			source: PERSISTENCE_SOURCE,
+			cause: error,
+		});
+	}
 	if (raw === null) {
 		return null;
 	}
@@ -58,16 +81,36 @@ export async function savePersistedAuthSnapshot(
 	options: TokenSetAuthSnapshotPersistenceOptions,
 	snapshot: TokenSetAuthSnapshot,
 ): Promise<void> {
-	await options.store.set(
-		options.key,
-		serializePersistedTokenSetAuthSnapshot(options, snapshot),
-	);
+	try {
+		await options.store.set(
+			options.key,
+			serializePersistedTokenSetAuthSnapshot(options, snapshot),
+		);
+	} catch (error) {
+		throw new ClientError({
+			kind: ClientErrorKind.Storage,
+			code: TokenSetPersistenceErrorCode.IoFailed,
+			message: "Persisted token-set state could not be written",
+			source: PERSISTENCE_SOURCE,
+			cause: error,
+		});
+	}
 }
 
 export async function clearPersistedAuthSnapshot(
 	options: Pick<TokenSetAuthSnapshotPersistenceOptions, "store" | "key">,
 ): Promise<void> {
-	await options.store.remove(options.key);
+	try {
+		await options.store.remove(options.key);
+	} catch (error) {
+		throw new ClientError({
+			kind: ClientErrorKind.Storage,
+			code: TokenSetPersistenceErrorCode.IoFailed,
+			message: "Persisted token-set state could not be cleared",
+			source: PERSISTENCE_SOURCE,
+			cause: error,
+		});
+	}
 }
 
 export function serializePersistedTokenSetAuthSnapshot(
@@ -90,7 +133,7 @@ function parseEnvelope(raw: string, now: () => number): StoredStateEnvelope {
 	} catch (cause) {
 		throw new ClientError({
 			kind: ClientErrorKind.Protocol,
-			code: "token_orchestration.persistence.invalid_json",
+			code: TokenSetPersistenceErrorCode.InvalidJson,
 			message: "Persisted auth state is not valid JSON",
 			source: PERSISTENCE_SOURCE,
 			cause,
@@ -103,7 +146,7 @@ function parseEnvelope(raw: string, now: () => number): StoredStateEnvelope {
 	);
 	if (!envelopeShapeResult.success) {
 		throwPersistenceValidationError({
-			code: "token_orchestration.persistence.invalid_envelope",
+			code: TokenSetPersistenceErrorCode.InvalidEnvelope,
 			messagePrefix: "Persisted auth state has an invalid envelope",
 			failure: envelopeShapeResult,
 		});
@@ -114,7 +157,7 @@ function parseEnvelope(raw: string, now: () => number): StoredStateEnvelope {
 	if (envelope.version !== STATE_VERSION) {
 		throw new ClientError({
 			kind: ClientErrorKind.Protocol,
-			code: "token_orchestration.persistence.unsupported_version",
+			code: TokenSetPersistenceErrorCode.UnsupportedVersion,
 			message: `Unsupported auth state version: ${String(envelope.version)}`,
 			source: PERSISTENCE_SOURCE,
 		});
@@ -126,7 +169,7 @@ function parseEnvelope(raw: string, now: () => number): StoredStateEnvelope {
 	);
 	if (!authSnapshotResult.success) {
 		throwPersistenceValidationError({
-			code: "token_orchestration.persistence.invalid_snapshot",
+			code: TokenSetPersistenceErrorCode.InvalidSnapshot,
 			messagePrefix: "Persisted auth state payload is invalid",
 			failure: authSnapshotResult,
 		});

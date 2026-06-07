@@ -1,25 +1,14 @@
 import {
 	createOnceAsyncLockCallable,
-	type ErrorPresentationDescriptor,
-	ErrorPresentationTone,
 	type OnceAsyncLock,
 	type OnceAsyncLockCallable,
 	type ReadableSignalTrait,
-	type ReadErrorPresentationDescriptorOptions,
-	readErrorPresentationDescriptor,
-	UserRecovery,
 } from "@securitydept/client";
 import { FrontendOidcModeClient } from "../../frontend-oidc-mode";
 import { type TokenSetAuthSnapshot } from "../../orchestration";
 import { type BaseOidcModeClient } from "../../orchestration/client/base-client";
-import {
-	type TokenSetClientFilter,
-	type TokenSetClientQueryOptions,
-} from "../contracts/query";
-import {
-	type TokenSetClientReadyRecordView,
-	type TokenSetClientRecordView,
-} from "../contracts/types";
+import { type TokenSetClientQueryOptions } from "../contracts/query";
+import { type TokenSetClientReadyRecordView } from "../contracts/types";
 import { type TokenSetClientRegistry } from "../core/client-registry";
 import {
 	TokenSetClientRegistryError,
@@ -51,35 +40,8 @@ export type FrontendOidcModeCallbackState = OnceAsyncLock<
 	unknown
 >;
 
-export interface ReadFrontendOidcModeCallbackErrorPresentationOptions
-	extends ReadErrorPresentationDescriptorOptions {
-	clientKey?: string | null;
-	currentUrl?: string;
-}
-
-export function readFrontendOidcModeCallbackErrorPresentation(
-	error: unknown,
-	options: ReadFrontendOidcModeCallbackErrorPresentationOptions = {},
-): ErrorPresentationDescriptor {
-	const descriptor = readErrorPresentationDescriptor(error, {
-		fallbackTitle: "Authentication callback failed",
-		fallbackDescription:
-			"The frontend OIDC callback could not be completed by the registered token-set client. Restart the sign-in flow from this application.",
-		...options,
-	});
-
-	return {
-		...descriptor,
-		title: "Authentication callback failed",
-		tone:
-			descriptor.retryable || descriptor.recovery === UserRecovery.RestartFlow
-				? ErrorPresentationTone.Warning
-				: descriptor.tone,
-	};
-}
-
 export class FrontendOidcModeCallbackController {
-	handle: FrontendOidcModeCallbackHandle;
+	readonly handle: FrontendOidcModeCallbackHandle;
 
 	private readonly currentUrl: () => string | null | undefined;
 	private readonly clientQuery: () => TokenSetClientQueryOptions | undefined;
@@ -102,16 +64,13 @@ export class FrontendOidcModeCallbackController {
 			return false;
 		}
 		return (
-			this.selectClientRecordForInput(
-				this.registry(),
-				currentUrl,
-				this.clientQuery(),
+			this.registry().clientRecordForQuery(
+				FrontendOidcModeCallbackController.createCallbackQuery(
+					currentUrl,
+					this.clientQuery(),
+				),
 			) !== undefined
 		);
-	}
-
-	reset(): void {
-		this.handle = this.createHandle();
 	}
 
 	private createHandle(): FrontendOidcModeCallbackHandle {
@@ -127,10 +86,11 @@ export class FrontendOidcModeCallbackController {
 				});
 			}
 
-			const record = this.selectClientRecordForInput(
-				registry,
-				currentUrl,
-				this.clientQuery(),
+			const record = registry.clientRecordForQuery(
+				FrontendOidcModeCallbackController.createCallbackQuery(
+					currentUrl,
+					this.clientQuery(),
+				),
 			);
 			if (!record) {
 				throw new TokenSetClientRegistryError({
@@ -163,21 +123,6 @@ export class FrontendOidcModeCallbackController {
 		});
 	}
 
-	selectClientRecordForInput(
-		registry: TokenSetClientRegistry<BaseOidcModeClient>,
-		currentUrl: string,
-		clientQuery: TokenSetClientQueryOptions | undefined,
-	):
-		| ReadableSignalTrait<TokenSetClientRecordView<BaseOidcModeClient>>
-		| undefined {
-		return registry.clientRecordForQuery(
-			FrontendOidcModeCallbackController.createCallbackQuery(
-				currentUrl,
-				clientQuery,
-			),
-		);
-	}
-
 	static createCallbackQuery(
 		currentUrl: string,
 		clientQuery: TokenSetClientQueryOptions | undefined,
@@ -186,17 +131,14 @@ export class FrontendOidcModeCallbackController {
 			return { callbackUrl: currentUrl };
 		}
 
-		function withCallbackUrl(
-			filter: TokenSetClientFilter,
-		): TokenSetClientFilter {
-			return {
-				callbackUrl: currentUrl,
-				...filter,
-			};
-		}
-
 		return Array.isArray(clientQuery)
-			? clientQuery.map(withCallbackUrl)
-			: withCallbackUrl(clientQuery);
+			? clientQuery.map((filter) => ({
+					callbackUrl: currentUrl,
+					...filter,
+				}))
+			: {
+					callbackUrl: currentUrl,
+					...clientQuery,
+				};
 	}
 }

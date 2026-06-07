@@ -5,6 +5,7 @@ import {
 	SYMBOL_DISPOSE,
 	SYMBOL_OBSERVABLE,
 } from "../compat";
+import { type ClientError } from "../errors";
 import { CancellationToken } from "./create";
 import {
 	type CancellationTokenErrorData,
@@ -48,7 +49,7 @@ export class LinkedCancellationToken
 	get isCancellationRequested(): boolean {
 		return this.token.isCancellationRequested;
 	}
-	get cancellationError(): Error | undefined {
+	get cancellationError(): ClientError | undefined {
 		return this.token.cancellationError;
 	}
 	get reason(): unknown {

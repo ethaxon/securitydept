@@ -2,6 +2,16 @@ import { type as defineType } from "arktype";
 import { type CancellationTokenTrait } from "../cancellation/types";
 import { SecuritydeptInjectionToken } from "../injection";
 
+export const TransportErrorCode = {
+	RequestFailed: "transport.request_failed",
+	ResponseDecodeFailed: "transport.response_decode_failed",
+	InvalidStdFetchOptions: "transport.invalid_std_fetch_options",
+	InvalidAngularOptions: "transport.invalid_angular_options",
+} as const;
+
+export type TransportErrorCode =
+	(typeof TransportErrorCode)[keyof typeof TransportErrorCode];
+
 // --- Transport abstraction ---
 
 /** Neutral HTTP request representation. */

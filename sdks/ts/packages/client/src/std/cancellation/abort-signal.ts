@@ -1,3 +1,4 @@
+import { from, map } from "rxjs";
 import { type CancellationTokenTrait } from "../../cancellation";
 import { type CancellationTokenErrorData } from "../../cancellation/types";
 import {
@@ -37,11 +38,32 @@ export function abortSignalToCancellationToken(
 		get reason() {
 			return signal.reason;
 		},
+		get cancellationError() {
+			return signal.aborted
+				? new ClientError({
+						kind: ClientErrorKind.Cancelled,
+						message: "Request was cancelled via AbortSignal",
+						code: "client.cancelled",
+						source: ClientErrorSource.Transport,
+						cause: signal.reason,
+					})
+				: undefined;
+		},
 		onCancellationRequested(
 			listener: (data: CancellationTokenErrorData) => void,
 		) {
 			const subscription = abortSignalToEventStream(signal).subscribe({
-				next: listener,
+				next: (reason) =>
+					listener({
+						reason,
+						cancellationError: new ClientError({
+							kind: ClientErrorKind.Cancelled,
+							message: "Request was cancelled via AbortSignal",
+							code: "client.cancelled",
+							source: ClientErrorSource.Transport,
+							cause: reason,
+						}),
+					}),
 			});
 			return {
 				dispose() {
@@ -53,7 +75,18 @@ export function abortSignalToCancellationToken(
 			};
 		},
 		[SYMBOL_OBSERVABLE]() {
-			return abortSignalToEventStream(signal);
+			return from(abortSignalToEventStream(signal)).pipe(
+				map((reason) => ({
+					reason,
+					cancellationError: new ClientError({
+						kind: ClientErrorKind.Cancelled,
+						message: "Request was cancelled via AbortSignal",
+						code: "client.cancelled",
+						source: ClientErrorSource.Transport,
+						cause: reason,
+					}),
+				})),
+			);
 		},
 		throwIfCancellationRequested() {
 			if (signal.aborted) {
@@ -98,7 +131,7 @@ export function cancellationTokenToAbortSignal(
 	}
 
 	let subscription: DisposableTrait | null = token.onCancellationRequested(
-		(reason) => {
+		({ reason }) => {
 			controller.abort(reason);
 		},
 	);
@@ -125,19 +158,8 @@ export function normalizeAbortError(
 		return error;
 	}
 
-	const reason = token?.reason;
-	if (reason instanceof ClientError) {
-		return reason;
-	}
-
-	if (reason instanceof Error) {
-		return new ClientError({
-			kind: ClientErrorKind.Cancelled,
-			message: reason.message,
-			code: "client.cancelled",
-			source: ClientErrorSource.Transport,
-			cause: reason,
-		});
+	if (token?.cancellationError) {
+		return token.cancellationError;
 	}
 
 	return new ClientError({
@@ -145,7 +167,7 @@ export function normalizeAbortError(
 		message: "HTTP request was cancelled",
 		code: "client.cancelled",
 		source: ClientErrorSource.Transport,
-		cause: reason ?? error,
+		cause: token?.reason ?? error,
 	});
 }
 

@@ -27,6 +27,7 @@ export interface RunOperationOptionsBase extends RunOperationEnvironment {
 	target: string;
 	fields?: Record<string, unknown>;
 	idFactory?: () => string;
+	normalizeError?: (error: unknown) => unknown;
 }
 
 export interface RunOperationOptions<T> extends RunOperationOptionsBase {
@@ -135,9 +136,10 @@ export function runOperation<T>(
 		return result;
 	};
 	const fail = (error: unknown): never => {
-		operationSpan.recordError(error);
+		const normalizedError = options.normalizeError?.(error) ?? error;
+		operationSpan.recordError(normalizedError);
 		operationSpan.recordEnded("failed");
-		throw error;
+		throw normalizedError;
 	};
 
 	const invoke = () => options.execute(operationSpan);

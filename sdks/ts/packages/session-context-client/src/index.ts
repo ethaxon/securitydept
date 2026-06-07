@@ -1,7 +1,4 @@
-export {
-	SessionContextClient,
-	type SessionLoginWithRedirectOptions,
-} from "./client";
+export { SessionContextClient } from "./client";
 export { parseSessionInfoPayload } from "./contracts/parsers";
 export {
 	SessionInfoSchema,
@@ -10,9 +7,12 @@ export {
 export {
 	type SessionContextClientConfig,
 	type SessionContextClientTracingOptions,
+	SessionContextErrorCode,
 	type SessionContextEvent,
 	SessionContextEventType,
+	type SessionContextOperationOptions,
 	SessionContextSource,
 	type SessionInfo,
+	type SessionLoginWithRedirectOptions,
 	type SessionPrincipal,
 } from "./types";

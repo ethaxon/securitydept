@@ -92,7 +92,8 @@ describe("BasicAuthContextService", () => {
 		await expect(
 			service.refresh({ path: "/internal/basic/reports" }),
 		).rejects.toMatchObject({
-			code: "basic_auth.client_disposed",
+			kind: "cancelled",
+			code: "client.cancelled",
 		});
 	});
 });

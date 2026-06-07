@@ -1,4 +1,5 @@
 import {
+	type CancellationTokenTrait,
 	type DisposableTrait,
 	type FoundationEnvironment,
 } from "@securitydept/client";
@@ -41,8 +42,14 @@ export const TokenSetRequirementKind = {
 export type TokenSetRequirementKind =
 	(typeof TokenSetRequirementKind)[keyof typeof TokenSetRequirementKind];
 
+export interface TokenSetClientFactoryOptions {
+	readonly cancellationToken: CancellationTokenTrait;
+}
+
 export interface TokenSetClientRegistryEntry<TClient extends DisposableTrait> {
-	clientFactory: () => TClient | Promise<TClient>;
+	clientFactory(
+		options: TokenSetClientFactoryOptions,
+	): TClient | Promise<TClient>;
 	meta: TokenSetClientMeta;
 }
 

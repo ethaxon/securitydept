@@ -56,8 +56,10 @@ export {
 export {
 	relayTokenSetPopupCallbackFromEnvironment,
 	TokenSetPopupRelayErrorCode,
+	TokenSetPopupRelayErrorSource,
 } from "../orchestration/client/popup/relay";
 export { BackendOidcModeClient } from "./client/client";
+export { BackendOidcModeErrorCode } from "./client/error-codes";
 export {
 	type BackendOidcModeClientDefaultOptions,
 	type BackendOidcModeFetchUserInfoOptions,

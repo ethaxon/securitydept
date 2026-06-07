@@ -2,6 +2,7 @@ import {
 	type BaseTransportTrait,
 	ClientError,
 	ClientErrorKind,
+	createCancellationTokenSource,
 	type HttpRequest,
 	type HttpResponse,
 	type RouterTrait,
@@ -9,7 +10,7 @@ import {
 	UriReferenceString,
 } from "@securitydept/client";
 import { createEnvironmentForTest } from "@securitydept/client/test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SessionContextClient } from "../client";
 import { SessionContextEventType, SessionContextSource } from "../types";
 
@@ -47,6 +48,26 @@ function createTestRouter(url = "https://app.example.com/current"): {
 }
 
 describe("SessionContextClient", () => {
+	it("links refresh cancellation to the client lifecycle token", async () => {
+		const execute = vi.fn(async () => ({ status: 200, headers: {} }));
+		const client = new SessionContextClient(
+			{ baseUrl: "https://api.example.com" },
+			createEnvironmentForTest({ transport: { execute } }),
+		);
+		const cancellation = createCancellationTokenSource();
+		const reason = new Error("cancel session refresh");
+		cancellation.cancel(reason);
+
+		await expect(
+			client.refresh({ cancellationToken: cancellation.token }),
+		).rejects.toMatchObject({
+			kind: ClientErrorKind.Cancelled,
+			code: "client.cancelled",
+			cause: reason,
+		});
+		expect(execute).not.toHaveBeenCalled();
+	});
+
 	it("normalizes the Rust session /auth/session/user-info payload into SessionInfo", async () => {
 		const rustSessionUserInfoResponse = {
 			subject: "session-user-1",

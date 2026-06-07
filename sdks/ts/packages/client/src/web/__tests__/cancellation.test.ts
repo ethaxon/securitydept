@@ -39,7 +39,15 @@ describe("web cancellation bridge", () => {
 
 		expect(token?.isCancellationRequested).toBe(true);
 		expect(token?.reason).toBe("react-query");
-		expect(listener).toHaveBeenCalledWith("react-query");
+		expect(listener).toHaveBeenCalledWith(
+			expect.objectContaining({
+				reason: "react-query",
+				cancellationError: expect.objectContaining({
+					kind: ClientErrorKind.Cancelled,
+					code: "client.cancelled",
+				}),
+			}),
+		);
 
 		try {
 			token?.throwIfCancellationRequested();
@@ -64,6 +72,14 @@ describe("web cancellation bridge", () => {
 		expect(token?.isCancellationRequested).toBe(true);
 		expect(token?.reason).toBe("already-cancelled");
 		expect(listener).toHaveBeenCalledOnce();
-		expect(listener).toHaveBeenCalledWith("already-cancelled");
+		expect(listener).toHaveBeenCalledWith(
+			expect.objectContaining({
+				reason: "already-cancelled",
+				cancellationError: expect.objectContaining({
+					kind: ClientErrorKind.Cancelled,
+					code: "client.cancelled",
+				}),
+			}),
+		);
 	});
 });

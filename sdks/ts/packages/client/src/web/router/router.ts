@@ -1,5 +1,6 @@
 import { type as defineType } from "arktype";
 import { type EnvironmentValidators } from "../../environment/types";
+import { ClientError, ClientErrorKind } from "../../errors";
 import {
 	RouterNavigationMode,
 	type RouterNavigationRequest,
@@ -199,7 +200,12 @@ export class WebNavigationRouter extends NativeWebRouterBase {
 
 	constructor(options: ResolvedRouterForNativeWebCreateOptions) {
 		if (!options.navigation) {
-			throw new Error("WebNavigationRouter requires navigation.");
+			throw new ClientError({
+				kind: ClientErrorKind.Configuration,
+				code: "web.router.navigation_unavailable",
+				message: "WebNavigationRouter requires the Navigation API",
+				source: "web.router",
+			});
 		}
 		super(options);
 		this.navigation = options.navigation;
@@ -212,7 +218,13 @@ export class WebNavigationRouter extends NativeWebRouterBase {
 				this.location.href = target;
 				return;
 			}
-			throw new Error("Native web router cannot perform external navigation.");
+			throw new ClientError({
+				kind: ClientErrorKind.Configuration,
+				code: "web.router.location_unavailable",
+				message:
+					"Native web router cannot perform external navigation without location",
+				source: "web.router",
+			});
 		}
 		const result = this.navigation.navigate(target, {
 			history:
@@ -240,12 +252,21 @@ export class WebLegacyRouter extends NativeWebRouterBase {
 				this.location.href = target;
 				return;
 			}
-			throw new Error("Native web router cannot perform external navigation.");
+			throw new ClientError({
+				kind: ClientErrorKind.Configuration,
+				code: "web.router.location_unavailable",
+				message:
+					"Native web router cannot perform external navigation without location",
+				source: "web.router",
+			});
 		}
 		if (!this.history) {
-			throw new Error(
-				"Native web router requires history for in-page navigation.",
-			);
+			throw new ClientError({
+				kind: ClientErrorKind.Configuration,
+				code: "web.router.history_unavailable",
+				message: "Native web router requires history for in-page navigation",
+				source: "web.router",
+			});
 		}
 		if (
 			request.mode === RouterNavigationMode.Replace ||

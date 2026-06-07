@@ -49,8 +49,16 @@ export interface ErrorPresentationDescriptor {
 export interface ReadErrorPresentationDescriptorOptions {
 	fallbackTitle?: string;
 	fallbackDescription?: string;
+	codePresentations?: Readonly<Record<string, ErrorCodePresentationDescriptor>>;
 	recoveryLinks?: Partial<Record<UserRecovery, string>>;
 	recoveryLabels?: Partial<Record<UserRecovery, string>>;
+}
+
+export interface ErrorCodePresentationDescriptor {
+	title: string;
+	description: string;
+	tone?: ErrorPresentationTone;
+	recovery?: UserRecovery;
 }
 
 /** Machine-facing error kind discriminator. */
@@ -59,15 +67,11 @@ export const ClientErrorKind = {
 	Transport: "transport",
 	Server: "server",
 	Protocol: "protocol",
-	Presentation: "presentation",
-	Validation: "validation",
 	Storage: "storage",
 	Configuration: "configuration",
 	Unauthenticated: "unauthenticated",
 	Unauthorized: "unauthorized",
-	RedirectRequired: "redirect_required",
 	Cancelled: "cancelled",
-	Unreachable: "unreachable",
 	Timeout: "timeout",
 	Internal: "internal",
 } as const;
@@ -79,7 +83,7 @@ export type ClientErrorKind =
 export const ClientErrorSource = {
 	Transport: "transport",
 	Server: "server",
-	ClientEnvironment: "client_environment",
+	Client: "client",
 } as const;
 
 export type ClientErrorSource =

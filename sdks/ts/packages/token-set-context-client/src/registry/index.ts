@@ -30,6 +30,7 @@ export {
 export {
 	type CreateTokenSetClientRegistryOptions,
 	type TokenSetClientDisposedRecordView,
+	type TokenSetClientFactoryOptions,
 	type TokenSetClientFailedRecordView,
 	TokenSetClientInitializationMode,
 	type TokenSetClientInitializingRecordView,
@@ -60,8 +61,6 @@ export {
 	type FrontendOidcModeCallbackOptions,
 	type FrontendOidcModeCallbackResult,
 	type FrontendOidcModeCallbackState,
-	type ReadFrontendOidcModeCallbackErrorPresentationOptions,
-	readFrontendOidcModeCallbackErrorPresentation,
 } from "./controller/frontend-mode-callback-controller";
 export {
 	createTokenSetClientRegistry,
@@ -70,4 +69,5 @@ export {
 export {
 	TokenSetClientRegistryError,
 	TokenSetClientRegistryErrorCode,
+	TokenSetClientRegistryErrorSource,
 } from "./core/error";

@@ -38,7 +38,7 @@ export interface TanStackRouteSecurityOptions<
 }
 
 export interface TanStackRouteOptionsLike {
-	readonly staticData?: Record<string, unknown>;
+	readonly staticData?: object;
 	readonly beforeLoad?: (context: TanStackBeforeLoadContextLike) => unknown;
 	readonly [key: string]: unknown;
 }
@@ -109,7 +109,7 @@ function writeRequirementStaticData<
 	>,
 >(
 	security: TanStackRouteSecurityOptions<TAuthRequirement, TBehaviour>,
-	base: Record<string, unknown> | undefined,
+	base: object | undefined,
 ): Record<string, unknown> {
 	const patch: SecuritydeptRouteMetadata<TAuthRequirement> = {};
 	if (security.requirements !== undefined) {

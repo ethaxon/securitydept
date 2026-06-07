@@ -6,6 +6,7 @@ import {
 import {
 	ClientErrorKind,
 	createCancellationTokenSource,
+	TransportErrorCode,
 } from "@securitydept/client";
 import { Observable, of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
@@ -134,9 +135,51 @@ describe("Angular base transport adapter", () => {
 
 		await expect(requestPromise).rejects.toMatchObject({
 			kind: ClientErrorKind.Cancelled,
-			message: "stopped",
+			code: "client.cancelled",
+			cause: expect.any(Error),
 		});
 		expect(unsubscribe).toHaveBeenCalledOnce();
+	});
+
+	it("maps Angular network failures to transport errors", async () => {
+		const cause = new Error("network failed");
+		const transport = createBaseTransportForAngular({
+			httpClient: {
+				request: () =>
+					new Observable<HttpResponse<string>>((subscriber) => {
+						subscriber.error(
+							new HttpErrorResponse({ status: 0, error: cause }),
+						);
+					}),
+			},
+		});
+		await expect(
+			transport.execute({ url: "/network", method: "GET", headers: {} }),
+		).rejects.toMatchObject({
+			kind: ClientErrorKind.Transport,
+			code: TransportErrorCode.RequestFailed,
+		});
+	});
+
+	it("maps invalid JSON responses to protocol errors", async () => {
+		const transport = createBaseTransportForAngular({
+			httpClient: {
+				request: () =>
+					of(
+						new HttpResponse({
+							status: 200,
+							headers: new HttpHeaders({ "content-type": "application/json" }),
+							body: "{",
+						}),
+					),
+			},
+		});
+		await expect(
+			transport.execute({ url: "/json", method: "GET", headers: {} }),
+		).rejects.toMatchObject({
+			kind: ClientErrorKind.Protocol,
+			code: TransportErrorCode.ResponseDecodeFailed,
+		});
 	});
 
 	it("validates Angular transport options", () => {

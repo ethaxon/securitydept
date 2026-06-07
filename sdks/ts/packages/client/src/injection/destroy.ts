@@ -1,3 +1,4 @@
+import { filter, from, take } from "rxjs";
 import { type DisposableTrait, SYMBOL_DISPOSE } from "../compat/disposable";
 import { createSignal } from "../signals/signal";
 
@@ -24,9 +25,14 @@ class ManagedSecuritydeptDestroyRef extends SecuritydeptDestroyRef {
 			return () => undefined;
 		}
 
-		const subscription = this.destroyedSignal.watchStream().subscribe({
-			next: callback,
-		});
+		const subscription = from(this.destroyedSignal)
+			.pipe(
+				filter((destroyed): destroyed is true => destroyed),
+				take(1),
+			)
+			.subscribe({
+				next: callback,
+			});
 		return () => {
 			subscription.unsubscribe();
 		};

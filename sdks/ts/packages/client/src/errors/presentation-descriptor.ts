@@ -1,18 +1,19 @@
 import { ClientError } from "./client-error";
 import {
-	ClientErrorKind,
+	type ClientErrorKind,
+	ClientErrorKind as ClientErrorKindValue,
 	type ErrorPresentation,
 	type ErrorPresentationActionDescriptor,
 	type ErrorPresentationDescriptor,
 	ErrorPresentationTone,
 	type ReadErrorPresentationDescriptorOptions,
-	UserRecovery,
+	type UserRecovery,
+	UserRecovery as UserRecoveryValue,
 } from "./types";
 
 interface ClientErrorLike {
 	code: string | null;
 	kind: ClientErrorKind | null;
-	message: string;
 	recovery: UserRecovery;
 	retryable: boolean;
 	source?: string;
@@ -20,188 +21,146 @@ interface ClientErrorLike {
 }
 
 const DEFAULT_RECOVERY_LABELS: Record<UserRecovery, string> = {
-	[UserRecovery.None]: "",
-	[UserRecovery.Retry]: "Try again",
-	[UserRecovery.RestartFlow]: "Restart flow",
-	[UserRecovery.Reauthenticate]: "Sign in again",
-	[UserRecovery.ContactSupport]: "Contact support",
+	[UserRecoveryValue.None]: "",
+	[UserRecoveryValue.Retry]: "Try again",
+	[UserRecoveryValue.RestartFlow]: "Restart flow",
+	[UserRecoveryValue.Reauthenticate]: "Sign in again",
+	[UserRecoveryValue.ContactSupport]: "Contact support",
 };
 
-const POPUP_PRESENTATIONS = {
-	"popup.blocked": {
-		title: "Popup was blocked",
-		description:
-			"The browser blocked the popup window before the login flow could start. Allow popups for this site, then try again.",
-		tone: ErrorPresentationTone.Warning,
-	},
-	"popup.closed_by_user": {
-		title: "Popup login was closed",
-		description:
-			"The popup window was closed before the OIDC provider returned a callback. Start the login flow again to continue.",
-		tone: ErrorPresentationTone.Warning,
-	},
-} as const;
+const userRecoveryValues = new Set<string>(Object.values(UserRecoveryValue));
+const clientErrorKindValues = new Set<string>(
+	Object.values(ClientErrorKindValue),
+);
 
 export function readErrorPresentationDescriptor(
 	error: unknown,
 	options: ReadErrorPresentationDescriptorOptions = {},
 ): ErrorPresentationDescriptor {
-	if (error instanceof ClientError) {
-		return describeClientErrorPresentation(error, options);
-	}
-
-	const clientErrorLike = coerceClientErrorLike(error);
-	if (clientErrorLike) {
-		return describeClientErrorLikePresentation(clientErrorLike, options);
-	}
-
-	if (error instanceof Error) {
+	const clientError =
+		error instanceof ClientError ? error : coerceClientErrorLike(error);
+	if (!clientError) {
 		return {
 			code: null,
 			kind: null,
 			title: options.fallbackTitle ?? "Operation failed",
 			description:
-				error.message ||
-				options.fallbackDescription ||
+				options.fallbackDescription ??
 				"An unexpected error prevented the operation from completing.",
-			recovery: UserRecovery.None,
+			recovery: UserRecoveryValue.None,
 			retryable: false,
 			tone: ErrorPresentationTone.Danger,
 			primaryAction: null,
 		};
 	}
 
+	const code = clientError.presentation?.code ?? clientError.code;
+	const codePresentation = code ? options.codePresentations?.[code] : undefined;
+	const recovery =
+		clientError.presentation?.recovery ??
+		codePresentation?.recovery ??
+		clientError.recovery;
+	const generic = readGenericPresentation(clientError.kind);
+
 	return {
-		code: null,
-		kind: null,
-		title: options.fallbackTitle ?? "Operation failed",
+		code,
+		kind: clientError.kind,
+		source: clientError.source,
+		title: codePresentation?.title ?? generic.title,
 		description:
-			options.fallbackDescription ??
-			"An unexpected error prevented the operation from completing.",
-		recovery: UserRecovery.None,
-		retryable: false,
-		tone: ErrorPresentationTone.Danger,
-		primaryAction: null,
+			clientError.presentation?.message ??
+			codePresentation?.description ??
+			generic.description,
+		recovery,
+		retryable: clientError.retryable,
+		tone:
+			codePresentation?.tone ?? readClientErrorTone(clientError.kind, recovery),
+		primaryAction: readPrimaryAction(recovery, options),
 	};
 }
 
-function describeClientErrorPresentation(
-	error: ClientError,
-	options: ReadErrorPresentationDescriptorOptions,
-): ErrorPresentationDescriptor {
-	return describeClientErrorLikePresentation(
-		{
-			code: error.code,
-			kind: error.kind,
-			message: error.message,
-			recovery: error.recovery,
-			retryable: error.retryable,
-			source: error.source,
-			presentation: error.presentation,
-		},
-		options,
-	);
-}
-
-function describeClientErrorLikePresentation(
-	error: ClientErrorLike,
-	options: ReadErrorPresentationDescriptorOptions,
-): ErrorPresentationDescriptor {
-	const popupPresentation =
-		POPUP_PRESENTATIONS[error.code as keyof typeof POPUP_PRESENTATIONS];
-	const title = popupPresentation?.title ?? readClientErrorTitle(error);
-	const description =
-		popupPresentation?.description ??
-		error.presentation?.message ??
-		error.message ??
-		options.fallbackDescription ??
-		"The operation could not complete.";
-
-	return {
-		code: error.code,
-		kind: error.kind,
-		source: error.source,
-		title,
-		description,
-		recovery: error.recovery,
-		retryable: error.retryable,
-		tone: popupPresentation?.tone ?? readClientErrorTone(error),
-		primaryAction: readPrimaryAction(error.recovery, options),
-	};
-}
-
-function readClientErrorTitle(
-	error: Pick<ClientErrorLike, "kind" | "recovery">,
-): string {
-	if (error.kind === ClientErrorKind.Unauthenticated) {
-		return "Authentication required";
+function readGenericPresentation(kind: ClientErrorKind | null): {
+	title: string;
+	description: string;
+} {
+	switch (kind) {
+		case ClientErrorKindValue.Unauthenticated:
+			return {
+				title: "Authentication required",
+				description: "Sign in again to continue.",
+			};
+		case ClientErrorKindValue.Unauthorized:
+			return {
+				title: "Access denied",
+				description: "You do not have permission to complete this operation.",
+			};
+		case ClientErrorKindValue.Cancelled:
+			return {
+				title: "Operation cancelled",
+				description: "The operation was cancelled before it completed.",
+			};
+		case ClientErrorKindValue.Timeout:
+			return {
+				title: "Request timed out",
+				description: "The operation did not complete in time.",
+			};
+		case ClientErrorKindValue.Configuration:
+			return {
+				title: "Configuration error",
+				description: "The client is not configured to complete this operation.",
+			};
+		case ClientErrorKindValue.Storage:
+			return {
+				title: "Storage failed",
+				description: "The client could not access required stored data.",
+			};
+		case ClientErrorKindValue.Transport:
+			return {
+				title: "Network request failed",
+				description: "The client could not reach the service.",
+			};
+		case ClientErrorKindValue.Server:
+			return {
+				title: "Server request failed",
+				description: "The service could not complete the request.",
+			};
+		case ClientErrorKindValue.Protocol:
+			return {
+				title: "Invalid response",
+				description:
+					"The service response did not satisfy the expected protocol.",
+			};
+		case ClientErrorKindValue.Authorization:
+			return {
+				title: "Authorization failed",
+				description: "The authorization flow could not be completed.",
+			};
+		default:
+			return {
+				title: "Operation failed",
+				description: "The operation could not be completed.",
+			};
 	}
-
-	if (error.kind === ClientErrorKind.Unauthorized) {
-		return "Access denied";
-	}
-
-	if (error.kind === ClientErrorKind.Cancelled) {
-		return "Operation cancelled";
-	}
-
-	if (error.kind === ClientErrorKind.Timeout) {
-		return "Request timed out";
-	}
-
-	if (error.kind === ClientErrorKind.Configuration) {
-		return "Configuration error";
-	}
-
-	if (error.kind === ClientErrorKind.Validation) {
-		return "Validation failed";
-	}
-
-	if (error.kind === ClientErrorKind.Storage) {
-		return "Browser storage failed";
-	}
-
-	if (
-		error.kind === ClientErrorKind.Authorization &&
-		error.recovery === UserRecovery.RestartFlow
-	) {
-		return "Flow needs to restart";
-	}
-
-	if (error.kind === ClientErrorKind.Transport) {
-		return "Network request failed";
-	}
-
-	if (error.kind === ClientErrorKind.Server) {
-		return "Server request failed";
-	}
-
-	if (error.kind === ClientErrorKind.Protocol) {
-		return "Request failed";
-	}
-
-	return "Operation failed";
 }
 
 function readClientErrorTone(
-	error: Pick<ClientErrorLike, "kind" | "recovery">,
+	kind: ClientErrorKind | null,
+	recovery: UserRecovery,
 ) {
-	if (error.kind === ClientErrorKind.Cancelled) {
+	if (kind === ClientErrorKindValue.Cancelled) {
 		return ErrorPresentationTone.Neutral;
 	}
-
 	if (
-		error.kind === ClientErrorKind.Unauthenticated ||
-		error.kind === ClientErrorKind.Timeout ||
-		error.kind === ClientErrorKind.Transport ||
-		error.kind === ClientErrorKind.Server ||
-		error.recovery === UserRecovery.Retry ||
-		error.recovery === UserRecovery.RestartFlow ||
-		error.recovery === UserRecovery.Reauthenticate
+		kind === ClientErrorKindValue.Unauthenticated ||
+		kind === ClientErrorKindValue.Timeout ||
+		kind === ClientErrorKindValue.Transport ||
+		kind === ClientErrorKindValue.Server ||
+		recovery === UserRecoveryValue.Retry ||
+		recovery === UserRecoveryValue.RestartFlow ||
+		recovery === UserRecoveryValue.Reauthenticate
 	) {
 		return ErrorPresentationTone.Warning;
 	}
-
 	return ErrorPresentationTone.Danger;
 }
 
@@ -209,23 +168,21 @@ function coerceClientErrorLike(error: unknown): ClientErrorLike | null {
 	if (typeof error !== "object" || error === null) {
 		return null;
 	}
-
 	const candidate = error as Record<string, unknown>;
-	if (typeof candidate.message !== "string") {
+	if (
+		typeof candidate.kind !== "string" ||
+		!clientErrorKindValues.has(candidate.kind)
+	) {
 		return null;
 	}
-
 	return {
 		code: typeof candidate.code === "string" ? candidate.code : null,
-		kind:
-			typeof candidate.kind === "string"
-				? (candidate.kind as ClientErrorKind)
-				: null,
-		message: candidate.message,
+		kind: candidate.kind as ClientErrorKind,
 		recovery:
-			typeof candidate.recovery === "string"
+			typeof candidate.recovery === "string" &&
+			userRecoveryValues.has(candidate.recovery)
 				? (candidate.recovery as UserRecovery)
-				: UserRecovery.None,
+				: UserRecoveryValue.None,
 		retryable: candidate.retryable === true,
 		source: typeof candidate.source === "string" ? candidate.source : undefined,
 		presentation: isErrorPresentation(candidate.presentation)
@@ -240,7 +197,10 @@ function isErrorPresentation(value: unknown): value is ErrorPresentation {
 		value !== null &&
 		typeof (value as Record<string, unknown>).code === "string" &&
 		typeof (value as Record<string, unknown>).message === "string" &&
-		typeof (value as Record<string, unknown>).recovery === "string"
+		typeof (value as Record<string, unknown>).recovery === "string" &&
+		userRecoveryValues.has(
+			(value as Record<string, unknown>).recovery as string,
+		)
 	);
 }
 
@@ -248,16 +208,14 @@ function readPrimaryAction(
 	recovery: UserRecovery,
 	options: ReadErrorPresentationDescriptorOptions,
 ): ErrorPresentationActionDescriptor | null {
-	if (recovery === UserRecovery.None) {
+	if (recovery === UserRecoveryValue.None) {
 		return null;
 	}
-
 	const label =
 		options.recoveryLabels?.[recovery] ?? DEFAULT_RECOVERY_LABELS[recovery];
 	if (!label) {
 		return null;
 	}
-
 	return {
 		recovery,
 		label,

@@ -1,4 +1,5 @@
 import {
+	createCancellationTokenSource,
 	type DisposableTrait,
 	type ReadableSignalTrait,
 	type ResourceTrait,
@@ -7,10 +8,10 @@ import {
 } from "@securitydept/client";
 import { RxEventStream, RxStateSignal } from "@securitydept/client/rx";
 import {
+	catchError,
 	combineLatest,
-	EmptyError,
+	EMPTY,
 	filter,
-	firstValueFrom,
 	from,
 	fromEventPattern,
 	NEVER,
@@ -19,6 +20,7 @@ import {
 	switchMap,
 	take,
 	takeUntil,
+	tap,
 } from "rxjs";
 import { type BaseOidcModeClient } from "../../orchestration/client/base-client";
 import {
@@ -31,7 +33,6 @@ import {
 	type TokenSetClientReadyRecordView,
 	type TokenSetClientRecordView,
 	type TokenSetClientRegistryEntry,
-	TokenSetClientRegistryEntryStatus,
 	type TokenSetClientRegistryEvent,
 	type TokenSetClientResourceOptions,
 } from "../contracts/types";
@@ -43,7 +44,8 @@ import {
 
 export class TokenSetClientRegistry<
 	TClient extends DisposableTrait = BaseOidcModeClient,
-> implements DisposableTrait {
+> implements DisposableTrait
+{
 	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
 	private readonly destroyed$ = from(this._destroyed).pipe(
 		filter((value): value is true => value),
@@ -108,9 +110,17 @@ export class TokenSetClientRegistry<
 		this.initializeTrigger
 			.pipe(
 				filter((id) => id === record.id),
-				take(1),
 				takeUntil(record.destroyed$),
-				switchMap(() => from(record.initialize())),
+				take(1),
+				switchMap(() => {
+					const cancellation = createCancellationTokenSource();
+					return from(
+						record.initialize({ cancellationToken: cancellation.token }),
+					).pipe(
+						catchError(() => EMPTY),
+						takeUntil(record.destroyed$.pipe(tap(() => cancellation.cancel()))),
+					);
+				}),
 			)
 			.subscribe();
 
@@ -125,9 +135,9 @@ export class TokenSetClientRegistry<
 			const idleCallback = this.options.environment.idleCallback;
 			(idleCallback
 				? fromEventPattern<void>(
-					(handler) => idleCallback.requestIdleCallback(() => handler()),
-					(_handler, handle) => idleCallback.cancelIdleCallback(handle),
-				)
+						(handler) => idleCallback.requestIdleCallback(() => handler()),
+						(_handler, handle) => idleCallback.cancelIdleCallback(handle),
+					)
 				: NEVER
 			)
 				.pipe(takeUntil(record.destroyed$))
@@ -143,38 +153,8 @@ export class TokenSetClientRegistry<
 		const record = this.clientRecordForKey(key);
 
 		this.initializeTrigger.next(record.id);
-
-		let result: TokenSetClientRecordView<TClient>;
-		try {
-			result = await firstValueFrom(
-				from(record.view).pipe(
-					filter(
-						(record) =>
-							record.status === TokenSetClientRegistryEntryStatus.Ready ||
-							record.status === TokenSetClientRegistryEntryStatus.Failed,
-					),
-					take(1),
-					takeUntil(record.destroyed$),
-				),
-			);
-		} catch (error) {
-			if (error instanceof EmptyError) {
-				result = record.view.get();
-			} else {
-				throw error;
-			}
-		}
-
-		if (result.status === TokenSetClientRegistryEntryStatus.Ready) {
-			return result;
-		}
-		if (result.status === TokenSetClientRegistryEntryStatus.Failed) {
-			throw result.error;
-		}
-		throw new TokenSetClientRegistryError({
-			code: TokenSetClientRegistryErrorCode.ClientUnregistered,
-			clientKey: key,
-		});
+		await record.clientResource.whenValue();
+		return record.view.get() as TokenSetClientReadyRecordView<TClient>;
 	}
 
 	has(key: string): boolean {

@@ -1,6 +1,20 @@
-import { type IdentityPrincipal } from "@securitydept/client";
+import {
+	type CancellationTokenOptions,
+	type ErrorSummary,
+	type IdentityPrincipal,
+} from "@securitydept/client";
 
 // --- Session Context Client types ---
+
+export const SessionContextErrorCode = {
+	OperationFailed: "session.operation_failed",
+	ClientDisposed: "session.client_disposed",
+	RouterUnavailable: "session.router_unavailable",
+	InvalidSessionPayload: "session.invalid_user_info_payload",
+} as const;
+
+export type SessionContextErrorCode =
+	(typeof SessionContextErrorCode)[keyof typeof SessionContextErrorCode];
 
 export const SessionContextSource = {
 	SessionContext: "session-context",
@@ -22,6 +36,14 @@ export interface SessionInfo {
 export interface SessionContextClientTracingOptions {
 	target?: string;
 	prefix?: string;
+}
+
+export interface SessionContextOperationOptions
+	extends CancellationTokenOptions {}
+
+export interface SessionLoginWithRedirectOptions
+	extends CancellationTokenOptions {
+	postAuthRedirectUri?: string;
 }
 
 /** Configuration for the Session Context Client. */
@@ -67,5 +89,5 @@ export interface SessionContextEvent {
 		id: string;
 	};
 	session?: SessionInfo | null;
-	errorSummary?: Record<string, unknown>;
+	errorSummary?: ErrorSummary;
 }

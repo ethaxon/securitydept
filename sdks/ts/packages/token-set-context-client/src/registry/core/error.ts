@@ -5,11 +5,15 @@ import {
 } from "@securitydept/client";
 
 export const TokenSetClientRegistryErrorCode = {
-	ClientUnregistered: "client_unregistered",
-	ClientRegistered: "client_registered",
-	CallbackClientNotFound: "callback_client_not_found",
-	CallbackClientModeMismatch: "callback_client_mode_mismatch",
+	ClientUnregistered: "token_set.registry.client_unregistered",
+	ClientRegistered: "token_set.registry.client_registered",
+	CallbackClientNotFound: "token_set.registry.callback_client_not_found",
+	CallbackClientModeMismatch:
+		"token_set.registry.callback_client_mode_mismatch",
+	ClientFactoryFailed: "token_set.registry.client_factory_failed",
 } as const;
+
+export const TokenSetClientRegistryErrorSource = "token_set.registry";
 
 export type TokenSetClientRegistryErrorCode =
 	(typeof TokenSetClientRegistryErrorCode)[keyof typeof TokenSetClientRegistryErrorCode];
@@ -40,8 +44,7 @@ export class TokenSetClientRegistryError extends ClientError {
 					currentUrl: options.currentUrl,
 				}),
 			recovery: TokenSetClientRegistryError.recoveryForCode(options.code),
-			retryable: false,
-			source: "client_registry",
+			source: TokenSetClientRegistryErrorSource,
 			cause: options.cause,
 		});
 		this.name = "TokenSetClientRegistryError";
@@ -57,6 +60,8 @@ export class TokenSetClientRegistryError extends ClientError {
 				return ClientErrorKind.Configuration;
 			case TokenSetClientRegistryErrorCode.CallbackClientModeMismatch:
 				return ClientErrorKind.Protocol;
+			case TokenSetClientRegistryErrorCode.ClientFactoryFailed:
+				return ClientErrorKind.Internal;
 		}
 	}
 
@@ -68,6 +73,8 @@ export class TokenSetClientRegistryError extends ClientError {
 				return UserRecovery.ContactSupport;
 			case TokenSetClientRegistryErrorCode.CallbackClientModeMismatch:
 				return UserRecovery.RestartFlow;
+			case TokenSetClientRegistryErrorCode.ClientFactoryFailed:
+				return UserRecovery.Retry;
 		}
 	}
 
@@ -87,6 +94,8 @@ export class TokenSetClientRegistryError extends ClientError {
 				return `[TokenSetClientRegistry] Cannot determine which client callback "${options.currentUrl ?? "<unknown>"}" belongs to.`;
 			case TokenSetClientRegistryErrorCode.CallbackClientModeMismatch:
 				return `[TokenSetClientRegistry] Client "${options.clientKey ?? "<unknown>"}" is not a ${options.expectedMode ?? "compatible"} client${options.actualMode ? `; received ${options.actualMode}` : ""}.`;
+			case TokenSetClientRegistryErrorCode.ClientFactoryFailed:
+				return `[TokenSetClientRegistry] Client factory for "${options.clientKey ?? "<unknown>"}" failed.`;
 		}
 	}
 }
