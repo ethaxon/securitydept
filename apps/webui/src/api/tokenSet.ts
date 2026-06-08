@@ -1,11 +1,10 @@
+import { createBasicAuthorizationHeaderValue } from "@securitydept/basic-auth-context-client";
 import {
 	abortSignalToCancellationToken,
 	type BaseTransportTrait,
 	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
-	createBaseTransportForStdFetch,
-	FetchTransportRedirectKind,
 } from "@securitydept/client";
 import { BackendOidcModeContextSource } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
@@ -15,10 +14,6 @@ import {
 	type CreateTokenResponse,
 } from "./entries";
 import { type Group } from "./groups";
-
-const tokenSetApiTransport = createBaseTransportForStdFetch({
-	redirect: FetchTransportRedirectKind.Follow,
-});
 
 export const DEFAULT_PROPAGATION_HEADER_NAME = "x-securitydept-propagation";
 export const DEFAULT_PROPAGATION_PROBE_PATH = "/api/propagation/api/health";
@@ -35,7 +30,7 @@ proxy_path = "/api/propagation"`;
 
 export interface TokenSetApiRequestOptions {
 	baseUrl?: string;
-	transport?: BaseTransportTrait;
+	transport: BaseTransportTrait;
 	cancellationToken?: CancellationTokenTrait;
 	/** Web AbortSignal — bridged to CancellationTokenTrait for React Query compatibility. */
 	abortSignal?: AbortSignal;
@@ -100,35 +95,11 @@ export interface PropagationProbeAssessment {
 	recommendedConfigSnippet: string | null;
 }
 
-function encodeBasicAuthorization(username: string, password: string): string {
-	const value = `${username}:${password}`;
-	if (typeof globalThis.btoa === "function") {
-		return `Basic ${globalThis.btoa(value)}`;
-	}
-	const runtime = globalThis as typeof globalThis & {
-		Buffer?: {
-			from(
-				input: string,
-				encoding: string,
-			): { toString(encoding: string): string };
-		};
-	};
-	if (runtime.Buffer) {
-		return `Basic ${runtime.Buffer.from(value, "utf8").toString("base64")}`;
-	}
-	throw new ClientError({
-		kind: ClientErrorKind.Configuration,
-		message: "Basic authorization encoding is unavailable in this runtime",
-		code: "basic_auth.encoding.unavailable",
-		source: BackendOidcModeContextSource.Client,
-	});
-}
-
 function createAuthorizedTokenSetApiTransport(
 	client: TokenSetApiClient,
 	options: TokenSetApiRequestOptions,
 ): BaseTransportTrait {
-	const baseTransport = options.transport ?? tokenSetApiTransport;
+	const baseTransport = options.transport;
 	return {
 		async execute(request) {
 			const refreshableClient = client as {
@@ -171,7 +142,7 @@ function resolveCancellationToken(
 
 export async function listGroupsWithTokenSet(
 	client: TokenSetApiClient,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<Group[]> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
 	const response = await transport.execute({
@@ -184,7 +155,10 @@ export async function listGroupsWithTokenSet(
 	});
 
 	if (response.status !== 200 || !Array.isArray(response.body)) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	return response.body as Group[];
@@ -192,7 +166,7 @@ export async function listGroupsWithTokenSet(
 
 export async function listEntriesWithTokenSet(
 	client: TokenSetApiClient,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<AuthEntry[]> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
 	const response = await transport.execute({
@@ -205,7 +179,10 @@ export async function listEntriesWithTokenSet(
 	});
 
 	if (response.status !== 200 || !Array.isArray(response.body)) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	return response.body as AuthEntry[];
@@ -214,7 +191,7 @@ export async function listEntriesWithTokenSet(
 export async function createTokenEntryWithTokenSet(
 	client: TokenSetApiClient,
 	request: CreateTokenEntryWithTokenSetRequest,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<CreateTokenResponse> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
 	const response = await transport.execute({
@@ -235,7 +212,10 @@ export async function createTokenEntryWithTokenSet(
 		!("token" in response.body) ||
 		!("entry" in response.body)
 	) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	return response.body as CreateTokenResponse;
@@ -244,7 +224,7 @@ export async function createTokenEntryWithTokenSet(
 export async function createBasicEntryWithTokenSet(
 	client: TokenSetApiClient,
 	request: CreateBasicEntryWithTokenSetRequest,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<CreateBasicEntryResponse> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
 	const response = await transport.execute({
@@ -264,7 +244,10 @@ export async function createBasicEntryWithTokenSet(
 		typeof response.body !== "object" ||
 		!("entry" in response.body)
 	) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	return response.body as CreateBasicEntryResponse;
@@ -273,7 +256,7 @@ export async function createBasicEntryWithTokenSet(
 export async function createGroupWithTokenSet(
 	client: TokenSetApiClient,
 	request: CreateGroupWithTokenSetRequest,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<Group> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
 	const response = await transport.execute({
@@ -294,7 +277,10 @@ export async function createGroupWithTokenSet(
 		!("id" in response.body) ||
 		!("name" in response.body)
 	) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	return response.body as Group;
@@ -303,7 +289,7 @@ export async function createGroupWithTokenSet(
 export async function getGroupWithTokenSet(
 	client: TokenSetApiClient,
 	groupId: string,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<Group> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
 	const response = await transport.execute({
@@ -322,7 +308,10 @@ export async function getGroupWithTokenSet(
 		!("id" in response.body) ||
 		!("name" in response.body)
 	) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	return response.body as Group;
@@ -332,7 +321,7 @@ export async function updateGroupWithTokenSet(
 	client: TokenSetApiClient,
 	groupId: string,
 	request: UpdateGroupWithTokenSetRequest,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<Group> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
 	const response = await transport.execute({
@@ -353,7 +342,10 @@ export async function updateGroupWithTokenSet(
 		!("id" in response.body) ||
 		!("name" in response.body)
 	) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	return response.body as Group;
@@ -362,7 +354,7 @@ export async function updateGroupWithTokenSet(
 export async function deleteGroupWithTokenSet(
 	client: TokenSetApiClient,
 	groupId: string,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<void> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
 	const response = await transport.execute({
@@ -380,14 +372,17 @@ export async function deleteGroupWithTokenSet(
 		typeof response.body !== "object" ||
 		!("ok" in response.body)
 	) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 }
 
 export async function getEntryWithTokenSet(
 	client: TokenSetApiClient,
 	entryId: string,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<AuthEntry> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
 	const response = await transport.execute({
@@ -406,7 +401,10 @@ export async function getEntryWithTokenSet(
 		!("id" in response.body) ||
 		!("name" in response.body)
 	) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	return response.body as AuthEntry;
@@ -416,7 +414,7 @@ export async function updateEntryWithTokenSet(
 	client: TokenSetApiClient,
 	entryId: string,
 	request: UpdateEntryWithTokenSetRequest,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<AuthEntry> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
 	const response = await transport.execute({
@@ -437,7 +435,10 @@ export async function updateEntryWithTokenSet(
 		!("id" in response.body) ||
 		!("name" in response.body)
 	) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	return response.body as AuthEntry;
@@ -446,7 +447,7 @@ export async function updateEntryWithTokenSet(
 export async function deleteEntryWithTokenSet(
 	client: TokenSetApiClient,
 	entryId: string,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<void> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
 	const response = await transport.execute({
@@ -464,14 +465,17 @@ export async function deleteEntryWithTokenSet(
 		typeof response.body !== "object" ||
 		!("ok" in response.body)
 	) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 }
 
 export async function probeForwardAuthBoundaryWithTokenSet(
 	client: TokenSetApiClient,
 	groupName: string,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<ForwardAuthBoundaryProbeResult> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
 	const response = await transport.execute({
@@ -484,7 +488,10 @@ export async function probeForwardAuthBoundaryWithTokenSet(
 	});
 
 	if (response.status !== 200 && response.status !== 401) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	return {
@@ -504,9 +511,9 @@ export async function probeForwardAuthBoundaryWithTokenSet(
 export async function probeForwardAuthWithEntryToken(
 	entryToken: string,
 	groupName: string,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<ForwardAuthBoundaryProbeResult> {
-	const transport = options.transport ?? tokenSetApiTransport;
+	const transport = options.transport;
 	const response = await transport.execute({
 		url: `${options.baseUrl ?? ""}/api/forwardauth/traefik/${encodeURIComponent(groupName)}`,
 		method: "GET",
@@ -518,7 +525,10 @@ export async function probeForwardAuthWithEntryToken(
 	});
 
 	if (response.status !== 200 && response.status !== 401) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	return {
@@ -539,21 +549,27 @@ export async function probeForwardAuthWithBasicEntry(
 	username: string,
 	password: string,
 	groupName: string,
-	options: TokenSetApiRequestOptions = {},
+	options: TokenSetApiRequestOptions,
 ): Promise<ForwardAuthBoundaryProbeResult> {
-	const transport = options.transport ?? tokenSetApiTransport;
+	const transport = options.transport;
 	const response = await transport.execute({
 		url: `${options.baseUrl ?? ""}/api/forwardauth/traefik/${encodeURIComponent(groupName)}`,
 		method: "GET",
 		headers: {
 			accept: "application/json",
-			authorization: encodeBasicAuthorization(username, password),
+			authorization: createBasicAuthorizationHeaderValue({
+				username,
+				password,
+			}),
 		},
 		cancellationToken: options.cancellationToken,
 	});
 
 	if (response.status !== 200 && response.status !== 401) {
-		throw ClientError.fromHttpResponse(response.status, response.body);
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
 
 	return {
@@ -573,7 +589,7 @@ export async function probeForwardAuthWithBasicEntry(
 export async function probePropagationRouteWithTokenSet(
 	client: TokenSetApiClient,
 	directive: string,
-	options: TokenSetApiRequestOptions & { path?: string } = {},
+	options: TokenSetApiRequestOptions & { path?: string },
 ): Promise<PropagationProbeResult> {
 	const transport = createAuthorizedTokenSetApiTransport(client, options);
 	const response = await transport.execute({

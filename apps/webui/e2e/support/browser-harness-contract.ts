@@ -90,7 +90,6 @@ export const VerifiedScenarioId = {
 	FrontendOidcCallbackRedirect: "frontend-oidc.callback.redirect",
 	FrontendOidcPopupRelay: "frontend-oidc.popup.relay",
 	FrontendOidcPopupClosedByUser: "frontend-oidc.popup.closed-by-user",
-	FrontendOidcCrossTabStorage: "frontend-oidc.cross-tab.storage",
 	FrontendOidcCallbackDuplicateReplay:
 		"frontend-oidc.callback.duplicate-replay",
 	FrontendOidcCallbackUnknownState: "frontend-oidc.callback.unknown-state",

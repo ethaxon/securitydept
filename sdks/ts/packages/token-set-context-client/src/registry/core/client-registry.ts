@@ -147,7 +147,7 @@ export class TokenSetClientRegistry<
 		}
 	}
 
-	async initialize(
+	protected async initialize(
 		key: string,
 	): Promise<TokenSetClientReadyRecordView<TClient>> {
 		const record = this.clientRecordForKey(key);
@@ -187,14 +187,42 @@ export class TokenSetClientRegistry<
 
 	clientRecordFor(
 		key: string,
-	): ReadableSignalTrait<TokenSetClientRecordView<TClient>> {
-		return this.clientRecordForKey(key).view;
+		options: { readonly initialize: true },
+	): Promise<TokenSetClientReadyRecordView<TClient>>;
+	clientRecordFor(
+		key: string,
+		options?: { readonly initialize?: false },
+	): ReadableSignalTrait<TokenSetClientRecordView<TClient>>;
+	clientRecordFor(
+		key: string,
+		options: { readonly initialize?: boolean } = {},
+	):
+		| Promise<TokenSetClientReadyRecordView<TClient>>
+		| ReadableSignalTrait<TokenSetClientRecordView<TClient>> {
+		const record = this.clientRecordForKey(key);
+		return options.initialize ? this.initialize(key) : record.view;
 	}
 
 	clientRecordOptionFor(
 		key: string,
-	): ReadableSignalTrait<TokenSetClientRecordView<TClient>> | undefined {
-		return this.recordsSignal.get().get(key)?.view;
+		options: { readonly initialize: true },
+	): Promise<TokenSetClientReadyRecordView<TClient> | undefined>;
+	clientRecordOptionFor(
+		key: string,
+		options?: { readonly initialize?: false },
+	): ReadableSignalTrait<TokenSetClientRecordView<TClient>> | undefined;
+	clientRecordOptionFor(
+		key: string,
+		options: { readonly initialize?: boolean } = {},
+	):
+		| Promise<TokenSetClientReadyRecordView<TClient> | undefined>
+		| ReadableSignalTrait<TokenSetClientRecordView<TClient>>
+		| undefined {
+		const record = this.recordsSignal.get().get(key);
+		if (!record) {
+			return options.initialize ? Promise.resolve(undefined) : undefined;
+		}
+		return options.initialize ? this.initialize(key) : record.view;
 	}
 
 	private *clientRecordGenForQueryInternal(
@@ -250,9 +278,26 @@ export class TokenSetClientRegistry<
 
 	clientRecordForQuery(
 		query: TokenSetClientQueryOptions,
-	): ReadableSignalTrait<TokenSetClientRecordView<TClient>> | undefined {
-		const result = this.clientRecordGenForQuery(query).next();
-		return result.done ? undefined : result.value;
+		options: { readonly initialize: true },
+	): Promise<TokenSetClientReadyRecordView<TClient> | undefined>;
+	clientRecordForQuery(
+		query: TokenSetClientQueryOptions,
+		options?: { readonly initialize?: false },
+	): ReadableSignalTrait<TokenSetClientRecordView<TClient>> | undefined;
+	clientRecordForQuery(
+		query: TokenSetClientQueryOptions,
+		options: { readonly initialize?: boolean } = {},
+	):
+		| Promise<TokenSetClientReadyRecordView<TClient> | undefined>
+		| ReadableSignalTrait<TokenSetClientRecordView<TClient>>
+		| undefined {
+		const result = this.clientRecordGenForQueryInternal(query).next();
+		if (result.done) {
+			return options.initialize ? Promise.resolve(undefined) : undefined;
+		}
+		return options.initialize
+			? this.initialize(result.value.meta.clientKey)
+			: result.value.view;
 	}
 
 	*clientResourceGenForQuery(

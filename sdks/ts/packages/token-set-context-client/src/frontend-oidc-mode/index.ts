@@ -82,36 +82,22 @@ export { FrontendOidcModeConfigProjectionSchema } from "./contracts/schemas";
 // --- Config projection source contract (core — no web runtime assumptions) ---
 
 export {
-	resolveConfigProjection,
-	type TokenSetConfigProjectionSource,
-	type TokenSetConfigProjectionSourceBootstrapScript,
-	type TokenSetConfigProjectionSourceInline,
-	TokenSetConfigProjectionSourceKind,
-	type TokenSetConfigProjectionSourceNetwork,
-	type TokenSetConfigProjectionSourcePersisted,
-	type TokenSetPersistedConfigEnvelope,
-	type TokenSetResolvedConfigProjection,
+	type FrontendOidcModeConfigProjectionRealmOptions,
+	type InjectConfigProjectionIntoRealmOptions,
+	injectConfigProjectionIntoRealm,
+} from "./config/config-projection-realm";
+export {
+	type FrontendOidcModeConfigProjectionInlineSource,
+	type FrontendOidcModeConfigProjectionNetworkSource,
+	type FrontendOidcModeConfigProjectionPersistedSource,
+	type FrontendOidcModeConfigProjectionRealmSource,
+	type FrontendOidcModeConfigProjectionSource,
+	FrontendOidcModeConfigProjectionSourceKind,
+	type ResolvedFrontendOidcModeConfigProjection,
+	type ResolveFrontendOidcModeConfigProjectionOptions,
+	resolveFrontendOidcModeConfigProjection,
 } from "./config/config-source";
 export {
 	FrontendOidcModeConfigErrorCode,
 	FrontendOidcModeConfigErrorSource,
 } from "./config/error-codes";
-
-// --- Config projection web/browser runtime helpers ---
-
-export {
-	bootstrapScriptSource,
-	type CreateFrontendOidcModeBrowserClientOptions,
-	type CreateFrontendOidcModeWebClientEnvironmentOptions,
-	createFrontendOidcModeBrowserClient,
-	createFrontendOidcModeWebClientEnvironment,
-	type FrontendOidcModeBrowserClientMaterialization,
-	type FrontendOidcModeWebClientEnvironment,
-	networkConfigSource,
-	persistConfigProjection,
-	persistedConfigSource,
-	resolveFrontendOidcModeBrowserStorageKey,
-	resolveFrontendOidcModePersistentStateKey,
-	scheduleIdleRevalidation,
-	type TokenSetIdleRevalidationOptions,
-} from "./config/config-source-web";

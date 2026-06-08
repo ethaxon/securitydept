@@ -25,7 +25,6 @@ import {
 	readonlySignal,
 	reduceResourceSnapshot,
 	resourceFromSnapshots,
-	resourceSnapshotValueOr,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
 	throwValidationClientError,
@@ -816,7 +815,12 @@ export class BasicAuthContextClient implements DisposableTrait {
 	}
 
 	private _readCurrentSnapshot(): BasicAuthBoundarySnapshot | null {
-		return resourceSnapshotValueOr(this._boundarySnapshotSignal.get(), null);
+		const snapshot = this._boundarySnapshotSignal.get();
+		return snapshot.status === ResourceStatus.Reloading ||
+			snapshot.status === ResourceStatus.Resolved ||
+			snapshot.status === ResourceStatus.Error
+			? snapshot.value
+			: null;
 	}
 
 	private _emitEvent(

@@ -37,7 +37,6 @@ import {
 	readonlySignal,
 	reduceResourceSnapshot,
 	resourceFromSnapshots,
-	resourceSnapshotValueOr,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
 	type WritableSignalTrait,
@@ -950,7 +949,12 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	}
 
 	protected _readAuthSnapshotValue(): TokenSetAuthSnapshot | null {
-		return resourceSnapshotValueOr(this._authSnapshotSignal.get(), null);
+		const snapshot = this._authSnapshotSignal.get();
+		return snapshot.status === ResourceStatus.Reloading ||
+			snapshot.status === ResourceStatus.Resolved ||
+			snapshot.status === ResourceStatus.Error
+			? snapshot.value
+			: null;
 	}
 
 	private async _commitDetermination<TResult>(

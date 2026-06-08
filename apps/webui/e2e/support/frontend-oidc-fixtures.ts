@@ -1,4 +1,5 @@
 import { type Page } from "@playwright/test";
+import { FrontendOidcModeContextSource } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
 	frontendCallbackPath,
 	frontendCallbackUrl,
@@ -8,7 +9,7 @@ import {
 	webuiBaseUrl,
 } from "./constants.ts";
 
-const webuiSessionPrefix = "securitydept.webui.token-set-frontend:session:";
+const nativeWebSessionPrefix = "securitydept.web.client:";
 const pendingStateKeyPrefix = "securitydept.frontend_oidc.pending";
 
 export interface SeedFrontendOidcPendingStateOptions {
@@ -23,7 +24,7 @@ export interface SeedFrontendOidcPendingStateOptions {
 }
 
 function resolvePendingStorageKey(state: string): string {
-	return `${webuiSessionPrefix}${pendingStateKeyPrefix}:${state}`;
+	return `${nativeWebSessionPrefix}${pendingStateKeyPrefix}:${state}`;
 }
 
 export function createFrontendModeCallbackUrl(state: string): string {
@@ -41,7 +42,7 @@ export async function seedFrontendOidcPendingState(
 	const pendingState = {
 		codeVerifier: options.codeVerifier ?? "pkce-verifier",
 		state: options.state,
-		contextSource: "client",
+		contextSource: FrontendOidcModeContextSource.Client,
 		issuer: options.issuer ?? oidcIssuerUrl,
 		clientId: options.clientId ?? oidcClientId,
 		redirectUri: options.redirectUri ?? frontendCallbackUrl,
@@ -50,8 +51,7 @@ export async function seedFrontendOidcPendingState(
 		createdAt: options.createdAt ?? Date.now(),
 	};
 
-	await page.goto(frontendPlaygroundPath);
-	await page.evaluate(
+	await page.addInitScript(
 		({ key, value }) => {
 			window.sessionStorage.setItem(key, JSON.stringify(value));
 		},

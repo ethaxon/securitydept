@@ -60,14 +60,3 @@ export function reduceResourceSnapshot<T>(
 			};
 	}
 }
-
-export function resourceSnapshotValueOr<T>(
-	snapshot: ResourceSnapshot<T>,
-	unavailableValue: T,
-): T {
-	return snapshot.status === ResourceStatus.Reloading ||
-		snapshot.status === ResourceStatus.Resolved ||
-		snapshot.status === ResourceStatus.Error
-		? snapshot.value
-		: unavailableValue;
-}

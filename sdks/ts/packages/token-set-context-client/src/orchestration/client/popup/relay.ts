@@ -13,10 +13,13 @@ import {
 	filter,
 	firstValueFrom,
 	from,
+	merge,
+	mergeMap,
 	NEVER,
 	TimeoutError,
 	take,
 	takeUntil,
+	throwError,
 	timeout,
 } from "rxjs";
 
@@ -62,8 +65,15 @@ export async function waitForTokenSetPopupRelay(
 	const { popup, time, timeoutMs = 120_000, cancellationToken } = options;
 	try {
 		const callbackNotification = await firstValueFrom(
-			from(popup.onNotification).pipe(
-				filter((event) => event.method === TokenSetPopupRelayMethod.Callback),
+			merge(
+				from(popup.onNotification).pipe(
+					filter((event) => event.method === TokenSetPopupRelayMethod.Callback),
+				),
+				from(popup.failure).pipe(
+					filter((error): error is ClientError => error !== null),
+					mergeMap((error) => throwError(() => error)),
+				),
+			).pipe(
 				take(1),
 				timeout({
 					first: timeoutMs,

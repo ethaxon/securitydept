@@ -86,13 +86,14 @@ export class FrontendOidcModeCallbackController {
 				});
 			}
 
-			const record = registry.clientRecordForQuery(
+			const readyRecord = await registry.clientRecordForQuery(
 				FrontendOidcModeCallbackController.createCallbackQuery(
 					currentUrl,
 					this.clientQuery(),
 				),
+				{ initialize: true },
 			);
-			if (!record) {
+			if (!readyRecord) {
 				throw new TokenSetClientRegistryError({
 					code: TokenSetClientRegistryErrorCode.CallbackClientNotFound,
 					currentUrl,
@@ -100,14 +101,11 @@ export class FrontendOidcModeCallbackController {
 				});
 			}
 
-			const readyRecord = await registry.initialize(
-				record.get().meta.clientKey,
-			);
 			const client = readyRecord.client;
 			if (!(client instanceof FrontendOidcModeClient)) {
 				throw new TokenSetClientRegistryError({
 					code: TokenSetClientRegistryErrorCode.CallbackClientModeMismatch,
-					clientKey: record.get().meta.clientKey,
+					clientKey: readyRecord.meta.clientKey,
 					expectedMode: "FrontendOidcModeClient",
 					actualMode: client.constructor.name,
 				});

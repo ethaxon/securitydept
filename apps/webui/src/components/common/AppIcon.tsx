@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/styles";
 
 export function AppIcon({ className }: { className?: string }) {
 	return (

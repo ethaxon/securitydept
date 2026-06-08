@@ -2,6 +2,7 @@
 
 import {
 	createSignal,
+	ENVIRONMENT_TOKEN,
 	ResourceStatus,
 	resourceFromSnapshots,
 	SYMBOL_DISPOSE,
@@ -121,13 +122,53 @@ describe("token-set React client registry service", () => {
 		await flushMicrotasks();
 
 		expect(view.container.textContent).toBe("ready");
-		const resolvedClient = (await registry?.initialize("main"))?.client;
+		const resolvedClient = (
+			await registry?.clientRecordFor("main", { initialize: true })
+		)?.client;
 		expect(await resolvedClient?.authResource.whenValue()).toEqual({
 			tokens: { accessToken: "main-at" },
 		});
 
 		view.unmount();
 		expect(() => registryClientIsDisposed(client)).not.toThrow();
+	});
+
+	it("creates registry entries inside the injector scope", async () => {
+		const environment = createEnvironmentForTest();
+		const client = createMockClient("scoped-at");
+		let registry: TokenSetClientRegistryService | undefined;
+		let factoryCalls = 0;
+
+		function Probe() {
+			registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
+			return createElement("output", null, "ready");
+		}
+
+		const view = render(
+			createElement(
+				SecuritydeptProvider,
+				{
+					parentInjector: environment.injector,
+					providers: [
+						...provideTokenSetClientRegistry({
+							createClients: (injector) => {
+								factoryCalls++;
+								expect(injector.get(ENVIRONMENT_TOKEN)).toBe(environment);
+								return [createEntry("scoped", client)];
+							},
+						}),
+					],
+				},
+				createElement(Probe),
+			),
+		);
+		await flushMicrotasks();
+
+		expect(factoryCalls).toBe(1);
+		expect(
+			(await registry?.clientRecordFor("scoped", { initialize: true }))?.client,
+		).toBe(client);
+		view.unmount();
 	});
 
 	it("supports nested registry overrides", async () => {
@@ -175,12 +216,12 @@ describe("token-set React client registry service", () => {
 		expect(view.container.textContent).toBe("parentchild");
 		expect(
 			await (
-				await parentRegistry?.initialize("main")
+				await parentRegistry?.clientRecordFor("main", { initialize: true })
 			)?.client.authResource.whenValue(),
 		).toEqual({ tokens: { accessToken: "parent-at" } });
 		expect(
 			await (
-				await childRegistry?.initialize("main")
+				await childRegistry?.clientRecordFor("main", { initialize: true })
 			)?.client.authResource.whenValue(),
 		).toEqual({ tokens: { accessToken: "child-at" } });
 		view.unmount();

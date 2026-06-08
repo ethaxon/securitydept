@@ -37,18 +37,32 @@ export class TokenSetClientRegistryService extends TokenSetClientRegistry<BaseOi
 	}
 }
 
-export interface ProvideTokenSetClientRegistryOptions {
-	readonly clients?: readonly TokenSetClientRegistryEntry<BaseOidcModeClient>[];
-}
+export type ProvideTokenSetClientRegistryOptions =
+	| {
+			readonly clients?: readonly TokenSetClientRegistryEntry<BaseOidcModeClient>[];
+			readonly createClients?: never;
+	  }
+	| {
+			readonly clients?: never;
+			readonly createClients: (
+				injector: SecuritydeptInjector,
+			) => readonly TokenSetClientRegistryEntry<BaseOidcModeClient>[];
+	  };
 
 export function provideTokenSetClientRegistry(
 	options: ProvideTokenSetClientRegistryOptions = {},
 ): readonly SecuritydeptProvider[] {
 	return [
-		{
-			provide: TOKEN_SET_CLIENT_REGISTRY_ENTRIES,
-			useValue: options.clients ?? [],
-		},
+		options.createClients
+			? {
+					provide: TOKEN_SET_CLIENT_REGISTRY_ENTRIES,
+					useFactory: options.createClients,
+					deps: [INJECTOR_TOKEN],
+				}
+			: {
+					provide: TOKEN_SET_CLIENT_REGISTRY_ENTRIES,
+					useValue: options.clients ?? [],
+				},
 		{
 			provide: TokenSetClientRegistryService,
 			useFactory: (injector: SecuritydeptInjector) =>

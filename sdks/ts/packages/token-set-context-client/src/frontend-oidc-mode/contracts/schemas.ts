@@ -1,5 +1,4 @@
 import { type as defineType } from "arktype";
-import { type FrontendOidcModeConfigProjection } from "./contracts";
 
 export const FrontendOidcModeClaimsCheckScriptSchema = defineType({
 	type: "'inline'",
@@ -26,10 +25,5 @@ export const FrontendOidcModeConfigProjectionSchema = defineType({
 	redirectUrl: "string > 0",
 	"pkceEnabled?": "boolean",
 	"claimsCheckScript?": FrontendOidcModeClaimsCheckScriptSchema,
-	"generatedAt?": "number",
-}).pipe(
-	(input): FrontendOidcModeConfigProjection => ({
-		...input,
-		generatedAt: input.generatedAt ?? 0,
-	}),
-);
+	generatedAt: "number",
+});

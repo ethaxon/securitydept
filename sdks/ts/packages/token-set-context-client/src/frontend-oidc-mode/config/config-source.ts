@@ -1,372 +1,248 @@
-// Frontend OIDC Mode — config projection source contract (core)
-//
-// Defines how a frontend-oidc-mode client acquires its configuration
-// projection before materialization. This is a core/shared contract
-// consumed by both Angular and React adapters, and by runtime-specific
-// helpers in sibling modules (e.g. config-source-web.ts).
-//
-// Design principles:
-//   - Source resolution is async and framework-agnostic
-//   - Multiple sources can compose with explicit precedence
-//   - Readiness state is a first-class concept
-//   - The contract owns the "config not yet available" lifecycle gap
-//   - NO browser/web runtime assumptions — all host-specific capabilities
-//     (fetch, globalThis, idle scheduling) live in runtime helper modules
-//
-// Stability: provisional (mode-aligned surface)
-
-import { ClientError, ClientErrorKind } from "@securitydept/client";
+import {
+	type CancellationTokenTrait,
+	ClientError,
+	ClientErrorKind,
+	type FoundationEnvironment,
+	type HttpResponse,
+} from "@securitydept/client";
 import { type FrontendOidcModeClientConfig } from "../client/types";
-import { parseConfigProjection } from "../contracts/parsers";
+import {
+	configProjectionToClientConfig,
+	type FrontendOidcModeConfigProjection,
+} from "../contracts/contracts";
+import { validateConfigProjection } from "../contracts/parsers";
+import { readConfigProjectionFromRealm } from "./config-projection-realm";
 import {
 	FrontendOidcModeConfigErrorCode,
 	FrontendOidcModeConfigErrorSource,
 } from "./error-codes";
 
-// ---------------------------------------------------------------------------
-// Config projection source identity
-// ---------------------------------------------------------------------------
+const DEFAULT_PERSISTED_MAX_AGE_MS = 300_000;
+const PERSISTED_STORAGE_KEY_PREFIX =
+	"securitydept.frontend_oidc.config_projection:v1:";
 
-/**
- * Discriminated source identity for a resolved config projection.
- *
- * Tracks where the projection came from so higher layers (caching,
- * revalidation, tracing) can make informed decisions.
- */
-export const TokenSetConfigProjectionSourceKind = {
-	/** Projection was provided inline at registration time (static config). */
+export const FrontendOidcModeConfigProjectionSourceKind = {
 	Inline: "inline",
-	/** Projection was fetched from a network endpoint (backend /api/auth/config). */
-	Network: "network",
-	/** Projection was restored from a persistent cache (localStorage, etc.). */
+	Realm: "realm",
 	Persisted: "persisted",
-	/** Projection was injected via a bootstrap script (<script> tag / window.__BOOTSTRAP__). */
-	BootstrapScript: "bootstrap_script",
+	Network: "network",
 } as const;
 
-export type TokenSetConfigProjectionSourceKind =
-	(typeof TokenSetConfigProjectionSourceKind)[keyof typeof TokenSetConfigProjectionSourceKind];
+export type FrontendOidcModeConfigProjectionSourceKind =
+	(typeof FrontendOidcModeConfigProjectionSourceKind)[keyof typeof FrontendOidcModeConfigProjectionSourceKind];
 
-// ---------------------------------------------------------------------------
-// Resolved config projection result
-// ---------------------------------------------------------------------------
-
-/**
- * A resolved config projection paired with its source identity.
- */
-export interface TokenSetResolvedConfigProjection {
-	/** The resolved client config, ready for `new FrontendOidcModeClient`. */
-	config: FrontendOidcModeClientConfig;
-	/** Where this projection came from. */
-	sourceKind: TokenSetConfigProjectionSourceKind;
-	/**
-	 * Authoritative freshness timestamp — the `generatedAt` epoch-ms from
-	 * the backend config projection.
-	 *
-	 * This is the moment the backend assembled the projection, NOT the
-	 * time it was injected, cached, or restored. All revalidation decisions
-	 * should be based on this value.
-	 *
-	 * `undefined` when the projection lacks a `generatedAt` field (e.g.
-	 * inline source or legacy payloads).
-	 */
-	generatedAt?: number;
-	/**
-	 * The raw (pre-parse) projection payload, suitable for persisting
-	 * via a runtime-specific writeback helper.
-	 */
-	rawProjection?: unknown;
+export interface FrontendOidcModeConfigProjectionInlineSource {
+	readonly kind: typeof FrontendOidcModeConfigProjectionSourceKind.Inline;
+	readonly projection: FrontendOidcModeConfigProjection;
 }
 
-// ---------------------------------------------------------------------------
-// Persisted config envelope
-// ---------------------------------------------------------------------------
-
-/**
- * Envelope stored in a `StorageTrait` for persisted config projections.
- *
- * Used by persistence runtime helpers to serialize/deserialize projections
- * through generic key-value stores.
- */
-export interface TokenSetPersistedConfigEnvelope {
-	/** The raw projection data (JSON-serializable). */
-	data: unknown;
-	/**
-	 * Authoritative freshness timestamp — carried forward from the projection's
-	 * `generatedAt`. NOT the time of local cache write.
-	 */
-	generatedAt: number;
+export interface FrontendOidcModeConfigProjectionRealmSource {
+	readonly kind: typeof FrontendOidcModeConfigProjectionSourceKind.Realm;
+	readonly realm?: object;
+	readonly key?: PropertyKey;
 }
 
-// ---------------------------------------------------------------------------
-// Config projection source descriptor
-// ---------------------------------------------------------------------------
+export interface FrontendOidcModeConfigProjectionPersistedSource {
+	readonly kind: typeof FrontendOidcModeConfigProjectionSourceKind.Persisted;
+	readonly storageKey?: string;
+	readonly maxAgeMs?: number;
+}
 
-/**
- * A typed source descriptor for config projection resolution.
- *
- * Each variant represents a different acquisition strategy. The resolver
- * tries sources in precedence order and returns the first successful result.
- */
-export type TokenSetConfigProjectionSource =
-	| TokenSetConfigProjectionSourceInline
-	| TokenSetConfigProjectionSourceNetwork
-	| TokenSetConfigProjectionSourcePersisted
-	| TokenSetConfigProjectionSourceBootstrapScript;
+export interface FrontendOidcModeConfigProjectionNetworkSource {
+	readonly kind: typeof FrontendOidcModeConfigProjectionSourceKind.Network;
+	readonly endpoint: string;
+}
 
-/** Static inline config — already resolved, no async work needed. */
-export interface TokenSetConfigProjectionSourceInline {
-	readonly kind: typeof TokenSetConfigProjectionSourceKind.Inline;
-	/** Pre-resolved client config. */
+export type FrontendOidcModeConfigProjectionSource =
+	| FrontendOidcModeConfigProjectionInlineSource
+	| FrontendOidcModeConfigProjectionRealmSource
+	| FrontendOidcModeConfigProjectionPersistedSource
+	| FrontendOidcModeConfigProjectionNetworkSource;
+
+export interface ResolveFrontendOidcModeConfigProjectionOptions {
+	readonly clientKey: string;
+	readonly environment: FoundationEnvironment;
+	readonly sources: readonly FrontendOidcModeConfigProjectionSource[];
+	readonly overrides?: Partial<
+		Pick<
+			FrontendOidcModeClientConfig,
+			"redirectUri" | "defaultPostAuthRedirectUri"
+		>
+	>;
+	readonly cancellationToken?: CancellationTokenTrait;
+}
+
+export interface ResolvedFrontendOidcModeConfigProjection {
+	readonly projection: FrontendOidcModeConfigProjection;
 	readonly config: FrontendOidcModeClientConfig;
+	readonly sourceKind: FrontendOidcModeConfigProjectionSourceKind;
 }
 
-/** Network source — fetches projection from a backend endpoint. */
-export interface TokenSetConfigProjectionSourceNetwork {
-	readonly kind: typeof TokenSetConfigProjectionSourceKind.Network;
-	/**
-	 * Async function that fetches the raw projection from the backend.
-	 * Must return the parsed JSON body (not the HTTP response).
-	 * Validation is handled by the resolver via `parseConfigProjection`.
-	 */
-	readonly fetch: () => Promise<unknown>;
-	/**
-	 * Overrides applied after parsing (e.g. `redirectUri`, `defaultPostAuthRedirectUri`).
-	 */
-	readonly overrides?: Partial<
-		Pick<
-			FrontendOidcModeClientConfig,
-			"redirectUri" | "defaultPostAuthRedirectUri"
-		>
-	>;
-}
+export async function resolveFrontendOidcModeConfigProjection(
+	options: ResolveFrontendOidcModeConfigProjectionOptions,
+): Promise<ResolvedFrontendOidcModeConfigProjection> {
+	const { cancellationToken, clientKey, environment, overrides, sources } =
+		options;
+	cancellationToken?.throwIfCancellationRequested();
+	const persistedSources = sources.filter(
+		(source): source is FrontendOidcModeConfigProjectionPersistedSource =>
+			source.kind === FrontendOidcModeConfigProjectionSourceKind.Persisted,
+	);
+	if (persistedSources.length > 1) {
+		throw new ClientError({
+			kind: ClientErrorKind.Configuration,
+			code: FrontendOidcModeConfigErrorCode.MultiplePersistedSources,
+			message:
+				"Frontend OIDC config projection resolution accepts at most one persisted source",
+			source: FrontendOidcModeConfigErrorSource,
+		});
+	}
 
-/** Persisted source — restores a previously cached projection. */
-export interface TokenSetConfigProjectionSourcePersisted {
-	readonly kind: typeof TokenSetConfigProjectionSourceKind.Persisted;
-	/**
-	 * Async function that reads a cached projection from persistent storage.
-	 * Returns `null` if nothing is cached.
-	 */
-	readonly restore: () => Promise<unknown | null>;
-	/**
-	 * Overrides applied after parsing.
-	 */
-	readonly overrides?: Partial<
-		Pick<
-			FrontendOidcModeClientConfig,
-			"redirectUri" | "defaultPostAuthRedirectUri"
-		>
-	>;
-}
+	const persistedSource = persistedSources[0];
+	const persistentStorage = environment.persistentStorage;
+	const storageKey =
+		persistedSource?.storageKey ??
+		`${PERSISTED_STORAGE_KEY_PREFIX}${clientKey}`;
 
-/** Bootstrap script source — reads projection from host-injected globals. */
-export interface TokenSetConfigProjectionSourceBootstrapScript {
-	readonly kind: typeof TokenSetConfigProjectionSourceKind.BootstrapScript;
-	/**
-	 * Sync function that reads the projection from a host-injected source
-	 * (e.g. a window global). Returns `null` if not present.
-	 */
-	readonly read: () => unknown | null;
-	/**
-	 * Overrides applied after parsing.
-	 */
-	readonly overrides?: Partial<
-		Pick<
-			FrontendOidcModeClientConfig,
-			"redirectUri" | "defaultPostAuthRedirectUri"
-		>
-	>;
-}
-
-// ---------------------------------------------------------------------------
-// Config projection source resolution
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve a config projection from an ordered list of sources.
- *
- * Sources are tried in declaration order. The first source that produces
- * a valid `FrontendOidcModeClientConfig` wins. Sources that throw or
- * return `null` are skipped with a warning.
- *
- * This is the canonical resolution entry point for the config projection
- * source contract. Both Angular and React adapters should delegate to
- * this function instead of implementing their own resolution logic.
- *
- * @param sources - Ordered list of config projection sources (highest priority first).
- * @param logger - Optional logging callback for diagnostics.
- * @returns The resolved config projection with source identity, or throws
- *          if no source succeeds.
- *
- * @example
- * ```ts
- * const resolved = await resolveConfigProjection([
- *   { kind: "bootstrap_script", read: () => window.__OIDC_CONFIG__ },
- *   { kind: "network", fetch: () => fetch("/api/auth/config?...").then(r => r.json()) },
- * ]);
- * const client = new FrontendOidcModeClient(resolved.config, runtime);
- * ```
- */
-export async function resolveConfigProjection(
-	sources: readonly TokenSetConfigProjectionSource[],
-): Promise<TokenSetResolvedConfigProjection> {
-	const errors: unknown[] = [];
 	for (const source of sources) {
-		try {
-			const result = await resolveOneSource(source);
-			if (result !== null) {
-				return result;
+		cancellationToken?.throwIfCancellationRequested();
+		let projectionInput: unknown;
+
+		switch (source.kind) {
+			case FrontendOidcModeConfigProjectionSourceKind.Inline:
+				projectionInput = source.projection;
+				break;
+			case FrontendOidcModeConfigProjectionSourceKind.Realm: {
+				const realmResult = readConfigProjectionFromRealm({
+					clientKey,
+					realm: source.realm,
+					key: source.key,
+				});
+				if (!realmResult.found) {
+					continue;
+				}
+				projectionInput = realmResult.projection;
+				break;
 			}
-		} catch (error) {
-			errors.push(error);
-			// Continue to next source
+			case FrontendOidcModeConfigProjectionSourceKind.Persisted: {
+				if (!persistentStorage) {
+					continue;
+				}
+				let raw: string | null;
+				try {
+					raw = await persistentStorage.get(storageKey);
+				} catch (error) {
+					cancellationToken?.throwIfCancellationRequested();
+					throw new ClientError({
+						kind: ClientErrorKind.Storage,
+						code: FrontendOidcModeConfigErrorCode.PersistenceReadFailed,
+						message:
+							"The persisted frontend OIDC config projection could not be read",
+						source: FrontendOidcModeConfigErrorSource,
+						cause: error,
+					});
+				}
+				cancellationToken?.throwIfCancellationRequested();
+				if (raw === null) {
+					continue;
+				}
+				try {
+					projectionInput = JSON.parse(raw);
+				} catch (error) {
+					throw new ClientError({
+						kind: ClientErrorKind.Protocol,
+						code: FrontendOidcModeConfigErrorCode.InvalidProjection,
+						message:
+							"The persisted frontend OIDC config projection is not valid JSON",
+						source: FrontendOidcModeConfigErrorSource,
+						cause: error,
+					});
+				}
+				break;
+			}
+			case FrontendOidcModeConfigProjectionSourceKind.Network: {
+				let response: HttpResponse;
+				try {
+					response = await environment.transport.execute({
+						url: source.endpoint,
+						method: "GET",
+						headers: { accept: "application/json" },
+						cancellationToken,
+					});
+				} catch (error) {
+					cancellationToken?.throwIfCancellationRequested();
+					throw error;
+				}
+				cancellationToken?.throwIfCancellationRequested();
+				if (response.status < 200 || response.status >= 300) {
+					throw ClientError.fromHttpResponse({
+						status: response.status,
+						body: response.body,
+						source: FrontendOidcModeConfigErrorSource,
+					});
+				}
+				projectionInput = response.body;
+				break;
+			}
 		}
+
+		const validation = validateConfigProjection(projectionInput);
+		if (!validation.success) {
+			throw new ClientError({
+				kind:
+					source.kind === FrontendOidcModeConfigProjectionSourceKind.Inline
+						? ClientErrorKind.Configuration
+						: ClientErrorKind.Protocol,
+				code: FrontendOidcModeConfigErrorCode.InvalidProjection,
+				message: `Invalid frontend OIDC config projection from ${source.kind}`,
+				source: FrontendOidcModeConfigErrorSource,
+				cause: validation.issues,
+			});
+		}
+		const projection = validation.value as FrontendOidcModeConfigProjection;
+
+		if (
+			source.kind === FrontendOidcModeConfigProjectionSourceKind.Persisted &&
+			environment.time.now() - projection.generatedAt >
+				(source.maxAgeMs ?? DEFAULT_PERSISTED_MAX_AGE_MS)
+		) {
+			continue;
+		}
+
+		if (
+			persistentStorage &&
+			persistedSource &&
+			(source.kind === FrontendOidcModeConfigProjectionSourceKind.Realm ||
+				source.kind === FrontendOidcModeConfigProjectionSourceKind.Network)
+		) {
+			cancellationToken?.throwIfCancellationRequested();
+			try {
+				await persistentStorage.set(storageKey, JSON.stringify(projection));
+			} catch (error) {
+				cancellationToken?.throwIfCancellationRequested();
+				throw new ClientError({
+					kind: ClientErrorKind.Storage,
+					code: FrontendOidcModeConfigErrorCode.PersistenceWriteFailed,
+					message:
+						"The frontend OIDC config projection cache could not be written",
+					source: FrontendOidcModeConfigErrorSource,
+					cause: error,
+				});
+			}
+			cancellationToken?.throwIfCancellationRequested();
+		}
+
+		return {
+			projection,
+			config: configProjectionToClientConfig(projection, overrides),
+			sourceKind: source.kind,
+		};
 	}
 
 	throw new ClientError({
 		kind: ClientErrorKind.Configuration,
 		code: FrontendOidcModeConfigErrorCode.SourcesExhausted,
-		message: `All config projection sources were exhausted: ${sources.map((source) => source.kind).join(", ")}`,
+		message: `All frontend OIDC config projection sources were unavailable: ${sources.map((source) => source.kind).join(", ")}`,
 		source: FrontendOidcModeConfigErrorSource,
-		cause: errors,
 	});
-}
-
-// ---------------------------------------------------------------------------
-// Internal: single-source resolution
-// ---------------------------------------------------------------------------
-
-async function resolveOneSource(
-	source: TokenSetConfigProjectionSource,
-): Promise<TokenSetResolvedConfigProjection | null> {
-	switch (source.kind) {
-		case TokenSetConfigProjectionSourceKind.Inline:
-			return {
-				config: source.config,
-				sourceKind: source.kind,
-			};
-
-		case TokenSetConfigProjectionSourceKind.Network: {
-			const raw = await source.fetch();
-			const result = parseAndWrap(raw, source.kind, source.overrides);
-			return {
-				...result,
-				generatedAt: extractGeneratedAt(raw),
-				rawProjection: raw,
-			};
-		}
-
-		case TokenSetConfigProjectionSourceKind.Persisted: {
-			const raw = await source.restore();
-			if (raw === null || raw === undefined) {
-				return null;
-			}
-			const unwrapped = unwrapEnvelope(raw);
-			const result = parseAndWrap(
-				unwrapped.data,
-				source.kind,
-				source.overrides,
-			);
-			return {
-				...result,
-				generatedAt:
-					unwrapped.generatedAt ?? extractGeneratedAt(unwrapped.data),
-				rawProjection: unwrapped.data,
-			};
-		}
-
-		case TokenSetConfigProjectionSourceKind.BootstrapScript: {
-			const raw = source.read();
-			if (raw === null || raw === undefined) {
-				return null;
-			}
-			const unwrapped = unwrapEnvelope(raw);
-			const result = parseAndWrap(
-				unwrapped.data,
-				source.kind,
-				source.overrides,
-			);
-			return {
-				...result,
-				generatedAt:
-					unwrapped.generatedAt ?? extractGeneratedAt(unwrapped.data),
-				rawProjection: unwrapped.data,
-			};
-		}
-
-		default:
-			return null;
-	}
-}
-
-/**
- * Extract the authoritative `generatedAt` timestamp from a raw projection
- * payload. Returns `undefined` for legacy payloads without the field.
- */
-function extractGeneratedAt(raw: unknown): number | undefined {
-	if (
-		typeof raw === "object" &&
-		raw !== null &&
-		"generatedAt" in raw &&
-		typeof (raw as Record<string, unknown>).generatedAt === "number"
-	) {
-		return (raw as Record<string, unknown>).generatedAt as number;
-	}
-	return undefined;
-}
-
-/**
- * Unwrap an envelope from runtime helpers (bootstrapScriptSource /
- * persistedConfigSource). They wrap data as `{ __data, __generatedAt }`
- * to carry the authoritative freshness timestamp through the generic
- * source interface.
- */
-function unwrapEnvelope(raw: unknown): {
-	data: unknown;
-	generatedAt?: number;
-} {
-	if (typeof raw === "object" && raw !== null && "__data" in raw) {
-		const envelope = raw as { __data: unknown; __generatedAt?: number };
-		return {
-			data: envelope.__data,
-			generatedAt:
-				typeof envelope.__generatedAt === "number"
-					? envelope.__generatedAt
-					: undefined,
-		};
-	}
-	return { data: raw };
-}
-
-function parseAndWrap(
-	raw: unknown,
-	sourceKind: TokenSetConfigProjectionSourceKind,
-	overrides?: Partial<
-		Pick<
-			FrontendOidcModeClientConfig,
-			"redirectUri" | "defaultPostAuthRedirectUri"
-		>
-	>,
-): TokenSetResolvedConfigProjection {
-	const result = parseConfigProjection(raw, overrides);
-	if (!result.success) {
-		const summary = result.issues
-			.map((issue) => {
-				const path = Array.from(issue.path ?? [], (segment) => String(segment));
-				return `${path.join(".")}: ${issue.message}`;
-			})
-			.join("; ");
-		throw new ClientError({
-			kind:
-				sourceKind === TokenSetConfigProjectionSourceKind.Inline
-					? ClientErrorKind.Configuration
-					: ClientErrorKind.Protocol,
-			code: FrontendOidcModeConfigErrorCode.InvalidProjection,
-			message: `Invalid config projection from ${sourceKind}: ${summary}`,
-			source: FrontendOidcModeConfigErrorSource,
-			cause: result.issues,
-		});
-	}
-	return { config: result.value, sourceKind };
 }

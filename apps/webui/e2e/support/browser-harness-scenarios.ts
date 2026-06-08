@@ -55,11 +55,6 @@ const scenarioCatalog: readonly ScenarioCatalogEntry[] = [
 		pathKind: VerifiedPathKind.BrowserNative,
 	},
 	{
-		scenarioId: VerifiedScenarioId.FrontendOidcCrossTabStorage,
-		suiteId: AuthFlowSuiteId.FrontendOidc,
-		pathKind: VerifiedPathKind.BrowserNative,
-	},
-	{
 		scenarioId: VerifiedScenarioId.FrontendOidcCallbackDuplicateReplay,
 		suiteId: AuthFlowSuiteId.FrontendOidc,
 		pathKind: VerifiedPathKind.BrowserNative,
@@ -113,29 +108,24 @@ const verifiedClaimsByBrowser = {
 				"Popup closed by user surfaces a host-visible error with restart_flow recovery.",
 		},
 		{
-			scenarioId: VerifiedScenarioId.FrontendOidcCrossTabStorage,
-			summary:
-				"Cross-tab hydrate/clear lifecycle is verified inside the browser-owned storage domain.",
-		},
-		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackDuplicateReplay,
 			summary:
-				"Duplicate callback replay surfaces callback.duplicate_state with stable error code.",
+				"Duplicate callback replay surfaces frontend_oidc.callback.duplicate_state with stable error code.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackUnknownState,
 			summary:
-				"Unknown callback state surfaces callback.unknown_state with a restart path.",
+				"Unknown callback state surfaces frontend_oidc.callback.unknown_state with a restart path.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackStaleState,
 			summary:
-				"Stale pending callback state surfaces callback.pending_stale with restart_flow recovery.",
+				"Stale pending callback state surfaces frontend_oidc.callback.pending_stale with restart_flow recovery.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackClientMismatch,
 			summary:
-				"Client-mismatch callback state surfaces callback.pending_client_mismatch.",
+				"Client-mismatch callback state surfaces frontend_oidc.callback.pending_client_mismatch.",
 		},
 	],
 	[HarnessBrowserName.Firefox]: [
@@ -155,29 +145,24 @@ const verifiedClaimsByBrowser = {
 				"Popup closed by user surfaces a host-visible error with restart_flow recovery under Firefox.",
 		},
 		{
-			scenarioId: VerifiedScenarioId.FrontendOidcCrossTabStorage,
-			summary:
-				"Cross-tab hydrate/clear lifecycle is verified inside the browser-owned storage domain under Firefox.",
-		},
-		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackDuplicateReplay,
 			summary:
-				"Duplicate callback replay surfaces callback.duplicate_state with stable error code under Firefox.",
+				"Duplicate callback replay surfaces frontend_oidc.callback.duplicate_state with stable error code under Firefox.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackUnknownState,
 			summary:
-				"Unknown callback state surfaces callback.unknown_state with a restart path under Firefox.",
+				"Unknown callback state surfaces frontend_oidc.callback.unknown_state with a restart path under Firefox.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackStaleState,
 			summary:
-				"Stale pending callback state surfaces callback.pending_stale with restart_flow recovery under Firefox.",
+				"Stale pending callback state surfaces frontend_oidc.callback.pending_stale with restart_flow recovery under Firefox.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackClientMismatch,
 			summary:
-				"Client-mismatch callback state surfaces callback.pending_client_mismatch under Firefox.",
+				"Client-mismatch callback state surfaces frontend_oidc.callback.pending_client_mismatch under Firefox.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.BasicAuthChallengeNoCachedCredentials,
@@ -222,34 +207,28 @@ const verifiedClaimsByBrowser = {
 				"Distrobox-hosted Ubuntu WebKit surfaces popup closed by user with the same host-visible restart_flow recovery path.",
 		},
 		{
-			scenarioId: VerifiedScenarioId.FrontendOidcCrossTabStorage,
-			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
-			summary:
-				"Distrobox-hosted Ubuntu WebKit verifies the cross-tab hydrate and clear lifecycle inside the same browser-owned storage domain.",
-		},
-		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackDuplicateReplay,
 			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
-				"Distrobox-hosted Ubuntu WebKit surfaces callback.duplicate_state after the first callback is consumed.",
+				"Distrobox-hosted Ubuntu WebKit surfaces frontend_oidc.callback.duplicate_state after the first callback is consumed.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackUnknownState,
 			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
-				"Distrobox-hosted Ubuntu WebKit surfaces callback.unknown_state with a restart path.",
+				"Distrobox-hosted Ubuntu WebKit surfaces frontend_oidc.callback.unknown_state with a restart path.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackStaleState,
 			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
-				"Distrobox-hosted Ubuntu WebKit surfaces callback.pending_stale with restart_flow recovery.",
+				"Distrobox-hosted Ubuntu WebKit surfaces frontend_oidc.callback.pending_stale with restart_flow recovery.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackClientMismatch,
 			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
-				"Distrobox-hosted Ubuntu WebKit surfaces callback.pending_client_mismatch for another frontend-mode client.",
+				"Distrobox-hosted Ubuntu WebKit surfaces frontend_oidc.callback.pending_client_mismatch for another frontend-mode client.",
 		},
 	],
 } as const satisfies Record<

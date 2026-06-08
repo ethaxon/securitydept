@@ -7,7 +7,7 @@ import {
 	Shield,
 	Users,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/styles";
 
 export const navItems = [
 	{ to: "/", label: "Dashboard", icon: LayoutDashboard },

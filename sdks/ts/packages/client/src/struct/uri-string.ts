@@ -52,6 +52,10 @@ export interface UriReferenceStringLike {
 	toString(): string;
 }
 
+export type UriSearchParamsInit = NonNullable<
+	ConstructorParameters<typeof URLSearchParams>[0]
+>;
+
 // ---------------------------------------------------------------------------
 // UriReferenceString — the URI-reference supertype (absolute | relative)
 // ---------------------------------------------------------------------------
@@ -197,6 +201,21 @@ export class UriReferenceString {
 		const hashIndex = this._raw.indexOf("#");
 		const base = hashIndex >= 0 ? this._raw.slice(0, hashIndex) : this._raw;
 		return UriReferenceString.parse(`${base}${value}`) as this;
+	}
+
+	/** Returns a new instance with the complete query parameter set replaced. */
+	setSearchParams(init?: UriSearchParamsInit): this {
+		const hashIndex = this._raw.indexOf("#");
+		const hash = hashIndex >= 0 ? this._raw.slice(hashIndex) : "";
+		const withoutHash =
+			hashIndex >= 0 ? this._raw.slice(0, hashIndex) : this._raw;
+		const searchIndex = withoutHash.indexOf("?");
+		const base =
+			searchIndex >= 0 ? withoutHash.slice(0, searchIndex) : withoutHash;
+		const search = new URLSearchParams(init).toString();
+		return UriReferenceString.parse(
+			`${base}${search.length > 0 ? `?${search}` : ""}${hash}`,
+		) as this;
 	}
 
 	// ---- Conversion ------------------------------------------------------

@@ -43,11 +43,16 @@ function createRecord(clientKey: string) {
 function createRegistry(clientKey: string, client: unknown, matched = true) {
 	const record = createRecord(clientKey);
 	return {
-		clientRecordForQuery: vi.fn(() => (matched ? record : undefined)),
-		initialize: vi.fn(async () => ({
-			client,
-			meta: { clientKey },
-		})),
+		clientRecordForQuery: vi.fn(
+			(_query: unknown, options?: { initialize?: boolean }) => {
+				if (!matched) {
+					return options?.initialize ? Promise.resolve(undefined) : undefined;
+				}
+				return options?.initialize
+					? Promise.resolve({ client, meta: { clientKey } })
+					: record;
+			},
+		),
 	};
 }
 

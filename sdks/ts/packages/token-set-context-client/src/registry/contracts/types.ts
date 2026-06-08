@@ -62,9 +62,9 @@ export interface TokenSetClientMeta {
 	readonly urlPatterns: ReadonlyArray<
 		string | RegExp | ((url: string) => boolean)
 	>;
-	readonly callbackPath: string | undefined;
-	readonly requirementKind: TokenSetRequirementKind | string | undefined;
-	readonly providerFamily: string | undefined;
+	readonly callbackPath?: string;
+	readonly requirementKind?: TokenSetRequirementKind | string;
+	readonly providerFamily?: string;
 	readonly initialization: TokenSetClientInitializationMode;
 }
 

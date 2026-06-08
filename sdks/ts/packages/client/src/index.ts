@@ -57,9 +57,12 @@ export {
 // --- Compat ---
 export {
 	type AsyncDisposableTrait,
+	Base64CompatErrorCode,
 	createDisposableStack,
 	type DisposableStackTrait,
 	type DisposableTrait,
+	decodeBase64ToUint8Array,
+	encodeUint8ArrayToBase64,
 	type InteropObservableTrait,
 	injectDisposableStackFrom,
 	isInteropObservableTrait,
@@ -277,7 +280,6 @@ export {
 	readonlySignal,
 	reduceResourceSnapshot,
 	resourceFromSnapshots,
-	resourceSnapshotValueOr,
 	type WritableSignalTrait,
 } from "./signals";
 // --- Span ---
@@ -335,6 +337,7 @@ export {
 	type UriReferenceStringLike,
 	type UriRelativeParts,
 	UriRelativeString,
+	type UriSearchParamsInit,
 	UriString,
 } from "./struct";
 // --- Tracing ---

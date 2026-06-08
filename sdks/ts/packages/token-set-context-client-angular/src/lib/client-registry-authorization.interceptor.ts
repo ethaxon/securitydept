@@ -129,14 +129,16 @@ export async function defaultTokenSetClientRegistryAuthorizationForRequest(
 	registry: TokenSetClientRegistryService,
 	request: TokenSetClientRegistryAuthorizationRequest,
 ): Promise<string | null> {
-	const record = registry.clientRecordForQuery({
-		url: request.url,
-	});
+	const record = await registry.clientRecordForQuery(
+		{
+			url: request.url,
+		},
+		{ initialize: true },
+	);
 	if (!record) {
 		return null;
 	}
 
-	const clientRecord = await registry.initialize(record.get().meta.clientKey);
-	const header = await clientRecord.client.authorizationHeaderValue.whenValue();
+	const header = await record.client.authorizationHeaderValue.whenValue();
 	return header ?? null;
 }

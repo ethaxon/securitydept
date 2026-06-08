@@ -185,7 +185,9 @@ describe("TokenSetClientRegistryService", () => {
 				},
 			]);
 
-			const firstRecord = await registry.initialize("workspace");
+			const firstRecord = await registry.clientRecordFor("workspace", {
+				initialize: true,
+			});
 			expect(firstRecord.client.authorizationHeaderValue.value.get()).toBe(
 				"Bearer first",
 			);
@@ -214,7 +216,9 @@ describe("TokenSetClientRegistryService", () => {
 				].map((record) => record.get().meta.clientKey),
 			).toEqual(["workspace"]);
 
-			const secondRecord = await registry.initialize("workspace");
+			const secondRecord = await registry.clientRecordFor("workspace", {
+				initialize: true,
+			});
 			expect(secondRecord.client).not.toBe(firstRecord.client);
 			expect(secondRecord.client.authorizationHeaderValue.value.get()).toBe(
 				"Bearer second",

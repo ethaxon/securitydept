@@ -109,8 +109,9 @@ describe("TokenSetClientRegistry", () => {
 
 	it("defaults the registry generic to BaseOidcModeClient", () => {
 		const registry: {
-			initialize(
+			clientRecordFor(
 				key: string,
+				options: { readonly initialize: true },
 			): Promise<TokenSetClientReadyRecordView<BaseOidcModeClient>>;
 			clientRecordFor(
 				key: string,
@@ -192,7 +193,9 @@ describe("TokenSetClientRegistry", () => {
 
 		await registry.clientResourceFor("main").whenValue();
 
-		await expect(registry.initialize("main")).resolves.toMatchObject({
+		await expect(
+			registry.clientRecordFor("main", { initialize: true }),
+		).resolves.toMatchObject({
 			client,
 			status: TokenSetClientRegistryEntryStatus.Ready,
 		});
@@ -220,7 +223,7 @@ describe("TokenSetClientRegistry", () => {
 			},
 		]);
 
-		await registry.initialize("lazy");
+		await registry.clientRecordFor("lazy", { initialize: true });
 		const readyView = viewSignal.get();
 
 		expect(registry.entries.get()).toMatchObject([
@@ -303,8 +306,8 @@ describe("TokenSetClientRegistry", () => {
 			}),
 		);
 
-		const first = registry.initialize("async");
-		const second = registry.initialize("async");
+		const first = registry.clientRecordFor("async", { initialize: true });
+		const second = registry.clientRecordFor("async", { initialize: true });
 
 		const client = createClient("async");
 		deferred.resolve(client);
@@ -415,7 +418,9 @@ describe("TokenSetClientRegistry", () => {
 			}),
 		);
 
-		await expect(registry.initialize("flaky")).rejects.toMatchObject({
+		await expect(
+			registry.clientRecordFor("flaky", { initialize: true }),
+		).rejects.toMatchObject({
 			code: TokenSetClientRegistryErrorCode.ClientFactoryFailed,
 			cause: error,
 		});
@@ -484,6 +489,40 @@ describe("TokenSetClientRegistry", () => {
 		);
 	});
 
+	it("returns ready record views when record lookup requests initialization", async () => {
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: {},
+		});
+		registry.register(
+			createRegistryEntry({
+				key: "lazy",
+				initialization: TokenSetClientInitializationMode.Lazy,
+				clientFactory: () => createClient("lazy"),
+				requirementKind: "workspace",
+			}),
+		);
+
+		const passiveRecord = registry.clientRecordForQuery({
+			requirementKind: "workspace",
+		});
+		expect(passiveRecord?.get().status).toBe(
+			TokenSetClientRegistryEntryStatus.Registered,
+		);
+
+		const readyRecord = await registry.clientRecordForQuery(
+			{ requirementKind: "workspace" },
+			{ initialize: true },
+		);
+		expect(readyRecord).toMatchObject({
+			id: passiveRecord?.get().id,
+			status: TokenSetClientRegistryEntryStatus.Ready,
+			client: { id: "lazy" },
+		});
+		await expect(
+			registry.clientRecordOptionFor("missing", { initialize: true }),
+		).resolves.toBeUndefined();
+	});
+
 	it("re-registering the same key creates a new record and leaves the prior resource idle", async () => {
 		const first = createClient("first");
 		const second = createClient("second");
@@ -525,8 +564,8 @@ describe("TokenSetClientRegistry", () => {
 		registry.register(
 			createRegistryEntry({ key: "second", clientFactory: () => second }),
 		);
-		await registry.initialize("first");
-		await registry.initialize("second");
+		await registry.clientRecordFor("first", { initialize: true });
+		await registry.clientRecordFor("second", { initialize: true });
 
 		expect(registry.unregister("first")).toBe(true);
 		expect(first.dispose).toHaveBeenCalledTimes(1);

@@ -168,7 +168,9 @@ describe("Angular integration adapter public surface", () => {
 			expect(
 				registry.clientRecordForQuery({ url: "/api/users" })?.get().meta,
 			).toMatchObject({ clientKey: "main" });
-			const ready = await registry.initialize("main");
+			const ready = await registry.clientRecordFor("main", {
+				initialize: true,
+			});
 			expect(ready.client).toBe(client);
 		} finally {
 			injector.destroy();

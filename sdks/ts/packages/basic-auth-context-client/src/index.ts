@@ -1,3 +1,7 @@
+export {
+	type CreateBasicAuthorizationHeaderValueOptions,
+	createBasicAuthorizationHeaderValue,
+} from "./authorization-header";
 export { BasicAuthContextClient, readBasicAuthBoundaryKind } from "./client";
 export { BasicAuthContextClientConfigSchema } from "./schemas";
 export {

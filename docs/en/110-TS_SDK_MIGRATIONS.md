@@ -180,7 +180,7 @@ Migration:
 - Do not run callback fragment consumption in service workers or extension backgrounds. Run restore/token-state APIs there, and consume callback fragments only in a real page/popup document or with an explicit fake `RouterTrait` in tests.
 - Update ambiguous page-global helper usage to explicit page forms: use `client.authorizeUrl(environment.router.currentUrl()?.toString())` or `client.loginWithRedirect({ postAuthRedirectUri })` for return-URL construction, and use `takeCompatFragmentFromRouter(router)` followed by `client.handleCallback(fragment)` for backend OIDC callback pages. Backend OIDC fragment redirects use the securitydept compat fragment protocol and preserve existing hash-router fragments.
 - Treat popup callback relay helpers such as `relayTokenSetPopupCallbackFromEnvironment()` as page-only helpers; pass a page-bearing `environment` when testing or running in a host wrapper. Import them from `@securitydept/token-set-context-client/backend-oidc-mode` or `@securitydept/token-set-context-client/frontend-oidc-mode`; the removed `@securitydept/token-set-context-client/backend-oidc-mode/web` subpath was only a forwarder. The canonical shared token-set OIDC browser login contracts are `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })` and `BaseOidcModeClient.loginWithPopup({ popupCallbackUrl })`; the client carries page navigation and popup capability through its environment. Backend and frontend mode clients expose those methods directly. Backend OIDC no longer owns hidden callback-fragment flow state; retry or delayed callback handling must be explicit application code.
-- For frontend-mode browser materialization, create `createFrontendOidcModeWebClientEnvironment(...)` at the host composition root and pass it to `createFrontendOidcModeBrowserClient({ environment, ... })`; the materializer no longer creates a default environment when `environment` is omitted.
+- Replace frontend-mode browser materialization with `resolveFrontendOidcModeConfigProjection({ clientKey, environment, sources, overrides })`, then construct `FrontendOidcModeClient` with the returned config and the same root environment. Declare realm, persisted, and network precedence explicitly; inject server-rendered projections with `injectConfigProjectionIntoRealm()`.
 - When browser/page environment ownership must stay stable across framework routes or commands, create one host-owned `NativeWebEnvironment` at the composition root and inject that object. Do not invent app-local module singletons or SDK-local lazy environment resolvers.
 - Treat basic-auth/session `/web` redirect helpers as page navigation helpers; keep them in a real page context or inject an explicit `RouterTrait`.
 - Let framework provider/DI registration functions own full environment composition. Do not make ordinary hooks, guards, interceptors, services, or convenience helpers each accept a full scattered dependency bag.
@@ -311,7 +311,7 @@ Change:
 Migration:
 
 - Move token-set query keys into the host app.
-- Use `TOKEN_SET_CLIENT_REGISTRY` plus `registry.initialize(key)` or `registry.clientSignalFor(key)` inside host-owned TanStack Query hooks.
+- Use `TOKEN_SET_CLIENT_REGISTRY` plus `registry.clientRecordFor(key, { initialize: true })` or `registry.clientResourceFor(key)` inside host-owned TanStack Query hooks.
 
 ### Framework Adapter Environment Boundaries
 

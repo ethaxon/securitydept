@@ -270,7 +270,7 @@ The table below is the current TS SDK public-surface snapshot. It must remain al
 #### How To Read `token-set-context-client` Subpaths
 
 - `/backend-oidc-mode`: platform-neutral client/service/token-material entry plus browser login and popup callback relay helpers.
-- `/frontend-oidc-mode`: browser-owned OIDC client mode and config projection materialization.
+- `/frontend-oidc-mode`: frontend OIDC client mode and environment-backed config projection resolution.
 - `/orchestration`: protocol-agnostic token lifecycle and route requirement primitives.
 - `/access-token-substrate`: access-token propagation vocabulary and substrate contract.
 - `/registry`: shared multi-client lifecycle core.
@@ -288,7 +288,7 @@ Frontend adopters should reason in layers: foundation coordination, token-set mo
 
 #### Config Projection Source Contract (`frontend-oidc-mode/config-source.ts`)
 
-`frontend-oidc-mode` owns projection-source precedence, validation, freshness, restore, and revalidation. `createFrontendOidcModeBrowserClient()` owns browser materialization from an explicit `FrontendOidcModeWebClientEnvironment`; the host owns config endpoint wiring, environment creation, and page routes.
+`frontend-oidc-mode` owns ordered config projection resolution across inline, realm, persisted, and network sources. `resolveFrontendOidcModeConfigProjection()` accepts a root `FoundationEnvironment`, validates every source through the same projection schema, reads transport/storage/time capabilities from that environment, and returns the resolved projection plus client config. Realm injection is explicit through `injectConfigProjectionIntoRealm()`; no browser materializer or mode-specific web environment exists. The host owns its single environment, source descriptors, endpoint URL, redirect URI, and client construction.
 
 #### Reference-App Baseline (`apps/webui` / `apps/server`)
 

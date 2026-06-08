@@ -25,7 +25,6 @@ import {
 	readonlySignal,
 	reduceResourceSnapshot,
 	resourceFromSnapshots,
-	resourceSnapshotValueOr,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
 	UriReferenceString,
@@ -425,7 +424,12 @@ export class SessionContextClient implements DisposableTrait {
 		cancellationToken.throwIfCancellationRequested();
 		this._operationSignals.refreshPending.set(true);
 		const previous = this._sessionSnapshotSignal.get();
-		const previousValue = resourceSnapshotValueOr(previous, null);
+		const previousValue =
+			previous.status === ResourceStatus.Reloading ||
+			previous.status === ResourceStatus.Resolved ||
+			previous.status === ResourceStatus.Error
+				? previous.value
+				: null;
 		const loadingSnapshot = reduceResourceSnapshot(previous, {
 			kind: ResourceSnapshotUpdateKind.Load,
 		});
@@ -572,7 +576,12 @@ export class SessionContextClient implements DisposableTrait {
 	}
 
 	private _readCurrentSession(): SessionInfo | null {
-		return resourceSnapshotValueOr(this._sessionSnapshotSignal.get(), null);
+		const snapshot = this._sessionSnapshotSignal.get();
+		return snapshot.status === ResourceStatus.Reloading ||
+			snapshot.status === ResourceStatus.Resolved ||
+			snapshot.status === ResourceStatus.Error
+			? snapshot.value
+			: null;
 	}
 
 	private _emitSessionEvent(

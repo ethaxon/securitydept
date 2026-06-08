@@ -101,7 +101,7 @@ function createRegistryMock(
 		clientRecordGenForQuery: vi.fn(function* () {
 			yield createSignal(record);
 		}),
-		initialize: vi.fn(async () => record),
+		clientRecordFor: vi.fn(async () => record),
 	} as unknown as TokenSetClientRegistryService;
 }
 

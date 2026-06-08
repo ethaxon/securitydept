@@ -61,8 +61,11 @@ export class BackendOidcModeCallbackController {
 	private createHandle(): BackendOidcModeCallbackHandle {
 		return createOnceAsyncLockCallable(async () => {
 			const registry = this.registry();
-			const record = registry.clientRecordForQuery(this.clientQuery());
-			if (!record) {
+			const readyRecord = await registry.clientRecordForQuery(
+				this.clientQuery(),
+				{ initialize: true },
+			);
+			if (!readyRecord) {
 				throw new TokenSetClientRegistryError({
 					code: TokenSetClientRegistryErrorCode.CallbackClientNotFound,
 					message:
@@ -70,14 +73,11 @@ export class BackendOidcModeCallbackController {
 				});
 			}
 
-			const readyRecord = await registry.initialize(
-				record.get().meta.clientKey,
-			);
 			const client = readyRecord.client;
 			if (!(client instanceof BackendOidcModeClient)) {
 				throw new TokenSetClientRegistryError({
 					code: TokenSetClientRegistryErrorCode.CallbackClientModeMismatch,
-					clientKey: record.get().meta.clientKey,
+					clientKey: readyRecord.meta.clientKey,
 					expectedMode: "BackendOidcModeClient",
 					actualMode: client.constructor.name,
 				});

@@ -1,5 +1,5 @@
 import { Link, useMatchRoute } from "@tanstack/react-router";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/styles";
 import { navItems, playgroundItems } from "./Sidebar";
 
 export function MobileNav() {

@@ -118,6 +118,7 @@ describe("frontend-oidc-mode @standard-schema adoption", () => {
 				issuerUrl: "https://auth.example.com",
 				scopes: ["openid", "profile"],
 				pkceEnabled: true,
+				generatedAt: 1,
 			},
 		);
 
@@ -137,6 +138,7 @@ describe("frontend-oidc-mode @standard-schema adoption", () => {
 				type: "inline",
 				content: "return true;",
 			},
+			generatedAt: 1,
 		});
 
 		expect(result.success).toBe(true);
@@ -153,6 +155,7 @@ describe("frontend-oidc-mode @standard-schema adoption", () => {
 	it("rejects missing clientId", () => {
 		const result = validateConfigProjection({
 			redirectUrl: "https://app.example.com/callback",
+			generatedAt: 1,
 		});
 
 		expect(result.success).toBe(false);
@@ -164,11 +167,24 @@ describe("frontend-oidc-mode @standard-schema adoption", () => {
 	it("rejects missing redirectUrl", () => {
 		const result = validateConfigProjection({
 			clientId: "spa-client",
+			generatedAt: 1,
 		});
 
 		expect(result.success).toBe(false);
 		if (!result.success) {
 			expect(result.issues[0]?.message).toContain("redirectUrl");
+		}
+	});
+
+	it("rejects missing generatedAt", () => {
+		const result = validateConfigProjection({
+			clientId: "spa-client",
+			redirectUrl: "https://app.example.com/callback",
+		});
+
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.issues[0]?.message).toContain("generatedAt");
 		}
 	});
 
@@ -184,6 +200,7 @@ describe("frontend-oidc-mode @standard-schema adoption", () => {
 			clientId: "spa-client",
 			redirectUrl: "https://app.example.com/callback",
 			scopes: [123, "profile"],
+			generatedAt: 1,
 		});
 
 		expect(result.success).toBe(false);
@@ -198,6 +215,7 @@ describe("frontend-oidc-mode @standard-schema adoption", () => {
 			clientId: "spa-client",
 			redirectUrl: "https://app.example.com/callback",
 			requiredScopes: ["openid", true],
+			generatedAt: 1,
 		});
 
 		expect(result.success).toBe(false);
@@ -213,6 +231,7 @@ describe("frontend-oidc-mode @standard-schema adoption", () => {
 			clientId: "spa-client",
 			redirectUrl: "https://app.example.com/callback",
 			claimsCheckScript: { type: "url", url: "https://example.com" },
+			generatedAt: 1,
 		});
 
 		expect(result.success).toBe(false);
@@ -230,6 +249,7 @@ describe("frontend-oidc-mode @standard-schema adoption", () => {
 			clientId: "spa-client",
 			redirectUrl: "https://app.example.com/callback",
 			claimsCheckScript: "not-an-object",
+			generatedAt: 1,
 		});
 
 		expect(result.success).toBe(false);
@@ -247,6 +267,7 @@ describe("frontend-oidc-mode @standard-schema adoption", () => {
 			issuerUrl: "https://auth.example.com",
 			scopes: ["openid", "profile"],
 			pkceEnabled: true,
+			generatedAt: 1,
 		});
 
 		expect(result.success).toBe(true);
@@ -263,6 +284,7 @@ describe("frontend-oidc-mode @standard-schema adoption", () => {
 		const result = parseConfigProjection({
 			clientId: "",
 			redirectUrl: "https://app.example.com/callback",
+			generatedAt: 1,
 		});
 
 		expect(result.success).toBe(false);
@@ -277,6 +299,7 @@ describe("frontend-oidc-mode @standard-schema adoption", () => {
 				clientId: "spa-client",
 				redirectUrl: "https://app.example.com/callback",
 				issuerUrl: "https://auth.example.com",
+				generatedAt: 1,
 			},
 			{ redirectUri: "https://custom.example.com/callback" },
 		);

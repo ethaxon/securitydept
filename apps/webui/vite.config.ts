@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 
@@ -8,7 +9,17 @@ export default defineConfig(({ mode }) => {
 	const backendUrl = env.VITE_BACKEND_URL || "http://localhost:7021";
 
 	return {
-		plugins: [react(), tailwindcss()],
+		plugins: [
+			tanstackRouter({
+				target: "react",
+				routesDirectory: "./src/routes",
+				generatedRouteTree: "./src/routeTree.gen.ts",
+				autoCodeSplitting: true,
+				quoteStyle: "double",
+			}),
+			react(),
+			tailwindcss(),
+		],
 		resolve: {
 			alias: {
 				"@": resolve(__dirname, "./src"),

@@ -207,8 +207,9 @@ export class TokenSetClientRegistryRequirementBehaviour<
 			[
 				...this.registry.clientRecordGenForQuery(requirement.attributes.query),
 			].map(async (recordSignal) => {
-				const view = await this.registry.initialize(
+				const view = await this.registry.clientRecordFor(
 					recordSignal.get().meta.clientKey,
+					{ initialize: true },
 				);
 				await view.client.isAuthenticated.whenValue();
 				return view;

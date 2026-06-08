@@ -15,5 +15,6 @@ export {
 	type UriReferenceStringLike,
 	type UriRelativeParts,
 	UriRelativeString,
+	type UriSearchParamsInit,
 	UriString,
 } from "./uri-string";

@@ -71,13 +71,8 @@ async function completeFrontendModePopupLogin(
 	await popup.locator("#oidc-approve").click();
 	await popupClosed;
 	await expect(
-		page
-			.locator('[data-trace-type="frontend_oidc.popup.relay.succeeded"]')
-			.first(),
+		page.locator('[data-trace-event-name="popup.relay.succeeded"]').first(),
 	).toBeVisible({ timeout: 30_000 });
-	await expect(page.getByText("has_access_token=true")).toBeVisible({
-		timeout: 30_000,
-	});
 
 	await expect(
 		page.getByRole("button", { name: "Refresh tokens" }),
@@ -126,7 +121,7 @@ test.describe("frontend-mode browser callback", () => {
 		const verifiedCount = suiteScenarios.filter(
 			(s) => s.status === VerifiedStatus.Verified,
 		).length;
-		expect(verifiedCount).toBeGreaterThanOrEqual(8);
+		expect(verifiedCount).toBeGreaterThanOrEqual(7);
 
 		const callbackScenario = getVerifiedScenario(
 			VerifiedScenarioId.FrontendOidcCallbackRedirect,
@@ -143,14 +138,6 @@ test.describe("frontend-mode browser callback", () => {
 		expect(popupRelayScenario).toBeDefined();
 		expect(popupRelayScenario?.pathKind).toBe(VerifiedPathKind.BrowserNative);
 		expect(popupRelayScenario?.status).toBe(VerifiedStatus.Verified);
-
-		const crossTabScenario = getVerifiedScenario(
-			VerifiedScenarioId.FrontendOidcCrossTabStorage,
-			browser,
-		);
-		expect(crossTabScenario).toBeDefined();
-		expect(crossTabScenario?.pathKind).toBe(VerifiedPathKind.BrowserNative);
-		expect(crossTabScenario?.status).toBe(VerifiedStatus.Verified);
 
 		const popupClosedScenario = getVerifiedScenario(
 			VerifiedScenarioId.FrontendOidcPopupClosedByUser,
@@ -260,17 +247,14 @@ test.describe("frontend-mode browser callback", () => {
 		await expect(page).toHaveURL(frontendPlaygroundPath);
 		await expect(
 			page.getByText(
-				"cross-tab lifecycle all land inside the same browser-owned host",
+				"callback handling all land inside the same browser-owned host",
 			),
 		).toBeVisible();
-		await expect(page.getByText("has_access_token=true")).toBeVisible();
 		await expect(
-			page.locator('[data-trace-type="frontend_oidc.popup.opened"]').first(),
+			page.locator('[data-trace-event-name="popup.opened"]').first(),
 		).toBeVisible();
 		await expect(
-			page
-				.locator('[data-trace-type="frontend_oidc.popup.relay.succeeded"]')
-				.first(),
+			page.locator('[data-trace-event-name="popup.relay.succeeded"]').first(),
 		).toBeVisible();
 	});
 
@@ -284,69 +268,13 @@ test.describe("frontend-mode browser callback", () => {
 		const popup = await popupPromise;
 		await popup.close();
 
-		await expect(page.getByText("Popup login was closed")).toBeVisible();
+		await expect(page.getByText("Popup was closed")).toBeVisible();
 		await expect(
 			page.locator('[data-error-code="popup.closed_by_user"]'),
 		).toBeVisible();
 		await expect(
 			page.locator('[data-error-recovery="restart_flow"]'),
 		).toBeVisible();
-	});
-
-	test("hydrates another tab from cross-tab storage authority", async ({
-		browser,
-	}) => {
-		const context = await browser.newContext();
-		try {
-			const primaryPage = await context.newPage();
-			const followerPage = await context.newPage();
-
-			await followerPage.goto(frontendPlaygroundPath);
-			await expect(
-				followerPage.getByText(
-					"Waiting for another tab to update this frontend-mode client",
-				),
-			).toBeVisible();
-
-			await completeFrontendModeLogin(primaryPage);
-
-			await expect(
-				followerPage.getByText(
-					"Another tab updated this frontend-mode client and this page reconciled the persisted snapshot",
-				),
-			).toBeVisible();
-			await expect(
-				followerPage.getByRole("button", { name: "Refresh tokens" }),
-			).toBeEnabled();
-			await expect(
-				followerPage.getByText("has_access_token=true"),
-			).toBeVisible();
-			await expect(
-				followerPage
-					.locator('[data-trace-type="frontend_oidc.host.cross_tab.hydrated"]')
-					.first(),
-			).toBeVisible();
-
-			await primaryPage
-				.getByRole("button", { name: "Forget frontend-mode state" })
-				.click();
-
-			await expect(
-				followerPage.getByText(
-					"Another tab cleared the persisted frontend-mode snapshot and this page dropped its in-memory state",
-				),
-			).toBeVisible();
-			await expect(
-				followerPage.getByText("has_access_token=false"),
-			).toBeVisible();
-			await expect(
-				followerPage
-					.locator('[data-trace-type="frontend_oidc.host.cross_tab.cleared"]')
-					.first(),
-			).toBeVisible();
-		} finally {
-			await context.close();
-		}
 	});
 
 	test("surfaces duplicate callback replay after the first callback is consumed", async ({
@@ -361,7 +289,9 @@ test.describe("frontend-mode browser callback", () => {
 		);
 		await expect(page.getByText("Callback already consumed")).toBeVisible();
 		await expect(
-			page.locator('[data-error-code="callback.duplicate_state"]'),
+			page.locator(
+				`[data-error-code="${FrontendOidcModeCallbackErrorCode.DuplicateState}"]`,
+			),
 		).toBeVisible();
 		await expect(
 			page.getByText(FrontendOidcModeCallbackErrorCode.DuplicateState),
@@ -378,7 +308,9 @@ test.describe("frontend-mode browser callback", () => {
 		);
 		await expect(page.getByText("Unknown callback state")).toBeVisible();
 		await expect(
-			page.locator('[data-error-code="callback.unknown_state"]'),
+			page.locator(
+				`[data-error-code="${FrontendOidcModeCallbackErrorCode.UnknownState}"]`,
+			),
 		).toBeVisible();
 		await expect(
 			page.getByText(FrontendOidcModeCallbackErrorCode.UnknownState),

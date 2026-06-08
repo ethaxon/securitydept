@@ -180,7 +180,7 @@ Packages：
 - 不要在 service worker 或 extension background 中消费 callback fragment。那里只运行 restore/token-state API；callback fragment 只应在 real page/popup document 中消费，或在测试中显式传入 fake `RouterTrait`。
 - 将 ambiguous page-global helper usage 迁移到显式 page 形式：用 `client.authorizeUrl(environment.router.currentUrl()?.toString())` 或 `client.loginWithRedirect({ postAuthRedirectUri })` 构造 return URL；Backend OIDC callback page 使用 `takeCompatFragmentFromRouter(router)` 后接 `client.handleCallback(fragment)`。Backend OIDC fragment redirect 使用 securitydept compat fragment 协议，并保留既有 hash-router fragment。
 - 将 `relayTokenSetPopupCallbackFromEnvironment()` 等 popup callback relay helper 视为 page-only helper；测试或 host wrapper 中应传入携带 page capability 的 `environment`。从 `@securitydept/token-set-context-client/backend-oidc-mode` 或 `@securitydept/token-set-context-client/frontend-oidc-mode` 导入；已删除的 `@securitydept/token-set-context-client/backend-oidc-mode/web` 子路径只是转发层。现在 canonical 的共享 token-set OIDC 浏览器 login contract 是 `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })` 和 `BaseOidcModeClient.loginWithPopup({ popupCallbackUrl })`；client 通过 environment 持有 page navigation 和 popup capability。Backend / frontend mode client 都直接暴露这些方法。Backend OIDC 不再持有隐藏的 callback-fragment flow state；重试或延迟 callback handling 必须由应用代码显式实现。
-- Frontend-mode browser materialization 应在 host composition root 创建 `createFrontendOidcModeWebClientEnvironment(...)`，再传给 `createFrontendOidcModeBrowserClient({ environment, ... })`；materializer 不再在缺少 `environment` 时创建默认 environment。
+- Frontend-mode 不再使用 browser materialization。改为调用 `resolveFrontendOidcModeConfigProjection({ clientKey, environment, sources, overrides })`，再用返回的 config 与同一个 root environment 构造 `FrontendOidcModeClient`。Realm、persisted 与 network 的优先级必须显式声明；服务端渲染的 projection 通过 `injectConfigProjectionIntoRealm()` 注入。
 - 当 browser/page environment ownership 需要在 framework route 或 command 之间保持稳定时，应在 composition root 创建一个 host-owned `NativeWebEnvironment` object 并注入该对象。不要继续发明 app-local module singleton 或 SDK-local lazy environment resolver。
 - 将 basic-auth/session `/web` redirect helper 视为 page navigation helper；要么留在 real page context，要么注入显式 `RouterTrait`。
 - Framework provider/DI registration function 可以持有完整 environment composition；普通 hook、guard、interceptor、service 或 convenience helper 不应各自接受一整套分散 dependency bag。
@@ -311,7 +311,7 @@ Package：已移除的 token-set React Query subpath
 迁移：
 
 - 将 token-set query keys 移到 host app。
-- 在 host-owned TanStack Query hooks 中使用 `TOKEN_SET_CLIENT_REGISTRY` 加 `registry.initialize(key)` 或 `registry.clientSignalFor(key)`。
+- 在 host-owned TanStack Query hooks 中使用 `TOKEN_SET_CLIENT_REGISTRY` 加 `registry.clientRecordFor(key, { initialize: true })` 或 `registry.clientResourceFor(key)`。
 
 ### Framework Adapter Environment Boundaries
 

@@ -13,7 +13,8 @@ catalog:
   "@angular/router": ^21.2.12
   "@standard-schema/spec": ^1.1.0
   "@tanstack/react-query": ^5.100.10
-  "@tanstack/react-router": ^1.169.2
+  "@tanstack/react-router": ^1.170.18
+  "@tanstack/router-plugin": ^1.168.20
   arktype: ^2.2.0
   es-toolkit: ^1.49.0
   nunjucks: ^3.2.4
@@ -30,6 +31,7 @@ allowBuilds:
   cpu-features: true
   protobufjs: true
   ssh2: true
+  '@swc/core': true
 
 overrides:
   # for tsdown peer dependency

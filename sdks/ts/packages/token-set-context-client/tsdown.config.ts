@@ -1,4 +1,5 @@
 import { defineConfig } from "tsdown";
+import { createStage3DecoratorSwcPlugin } from "../../../../scripts/ts/stage3-decorator-swc.ts";
 
 export default defineConfig({
 	entry: {
@@ -13,6 +14,7 @@ export default defineConfig({
 		// Shared multi-client registry (framework-neutral).
 		"registry/index": "./src/registry/index.ts",
 	},
+	plugins: [createStage3DecoratorSwcPlugin({ roots: [import.meta.dirname] })],
 	target: "es2022",
 	format: "esm",
 	dts: true,

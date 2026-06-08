@@ -64,6 +64,7 @@
 		"ignoreUnknown": false,
 		"includes": [
 			"**",
+			"!**/routeTree.gen.ts",
 			"!dist",
 			"!**/dist",
 			// ng-packagr intermediate build artefacts (also in .gitignore)

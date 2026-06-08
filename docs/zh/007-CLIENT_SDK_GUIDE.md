@@ -270,7 +270,7 @@ Package 应保持 import-safe 与 side-effect-light。Registration side effect �
 #### token-set-context-client Subpath Family 阅读方式
 
 - `/backend-oidc-mode`：platform-neutral client/service/token-material entry，以及 browser login 与 popup callback relay helper。
-- `/frontend-oidc-mode`：browser-owned OIDC client mode 与 config projection materialization。
+- `/frontend-oidc-mode`：frontend OIDC client mode 与基于 environment 的 config projection resolution。
 - `/orchestration`：protocol-agnostic token lifecycle 与 route requirement primitives。
 - `/access-token-substrate`：access-token propagation vocabulary 与 substrate contract。
 - `/registry`：shared multi-client lifecycle core。
@@ -288,7 +288,7 @@ Frontend adopter 应按层理解：foundation coordination、token-set mode/subs
 
 #### Config Projection Source Contract（`frontend-oidc-mode/config-source.ts`）
 
-`frontend-oidc-mode` 拥有 projection-source precedence、validation、freshness、restore 与 revalidation。`createFrontendOidcModeBrowserClient()` 从显式 `FrontendOidcModeWebClientEnvironment` 完成 browser materialization；host 拥有 config endpoint wiring、environment creation 与 page routes。
+`frontend-oidc-mode` 负责按顺序从 inline、realm、persisted 和 network source 解析 config projection。`resolveFrontendOidcModeConfigProjection()` 接受 root `FoundationEnvironment`，让所有 source 经过同一 projection schema，并从该 environment 使用 transport、storage 与 time capability，最终返回 projection 和 client config。Realm 注入通过 `injectConfigProjectionIntoRealm()` 显式完成；不再存在 browser materializer 或 mode-specific web environment。Host 只负责其唯一 environment、source descriptor、endpoint URL、redirect URI 与 client 构造。
 
 #### 参考应用基线（`apps/webui` / `apps/server`）
 

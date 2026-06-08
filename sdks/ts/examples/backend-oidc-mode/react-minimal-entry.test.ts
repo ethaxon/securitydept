@@ -143,7 +143,9 @@ describe("backend-oidc react minimal entry", () => {
 			await Promise.resolve();
 		});
 
-		const client = (await registry?.initialize("main"))?.client;
+		const client = (
+			await registry?.clientRecordFor("main", { initialize: true })
+		)?.client;
 		expect(await client?.authResource.whenValue()).toEqual(
 			createSnapshot("backend-at"),
 		);
@@ -182,7 +184,9 @@ describe("backend-oidc react minimal entry", () => {
 			await Promise.resolve();
 		});
 
-		const client = (await registry?.initialize("main"))?.client;
+		const client = (
+			await registry?.clientRecordFor("main", { initialize: true })
+		)?.client;
 		if (
 			!client ||
 			!("authorizeUrl" in client) ||

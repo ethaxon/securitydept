@@ -106,6 +106,17 @@ describe("UriString", () => {
 		});
 	});
 
+	describe("setSearchParams", () => {
+		it("replaces search params and preserves the concrete absolute type", () => {
+			const uri = UriString.parse("https://example.com/path?old=1#hash");
+			const updated: UriString = uri.setSearchParams({ q: "two words" });
+
+			expect(updated).toBeInstanceOf(UriString);
+			expect(updated.raw).toBe("https://example.com/path?q=two+words#hash");
+			expect(uri.raw).toBe("https://example.com/path?old=1#hash");
+		});
+	});
+
 	describe("type narrowing", () => {
 		it("isAbsolute returns true", () => {
 			const uri = UriString.parse("https://x.com");
@@ -284,6 +295,23 @@ describe("UriRelativeString", () => {
 			expect(uri.hash).toBe("#hash");
 		});
 	});
+
+	describe("setSearchParams", () => {
+		it("accepts URLSearchParams and preserves the concrete relative type", () => {
+			const uri = UriRelativeString.parse("/path?old=1#hash");
+			const updated: UriRelativeString = uri.setSearchParams(
+				new URLSearchParams("q=1&q=2"),
+			);
+
+			expect(updated).toBeInstanceOf(UriRelativeString);
+			expect(updated.raw).toBe("/path?q=1&q=2#hash");
+		});
+
+		it("removes the existing search when passed no parameters", () => {
+			const uri = UriRelativeString.parse("/path?old=1#hash");
+			expect(uri.setSearchParams().raw).toBe("/path#hash");
+		});
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -398,6 +426,26 @@ describe("UriReferenceString", () => {
 		it("clears hash when given an empty string", () => {
 			const ref = UriReferenceString.parse("https://example.com/p#old");
 			expect(ref.setHash("").raw).toBe("https://example.com/p");
+		});
+	});
+
+	describe("setSearchParams", () => {
+		it("accepts tuple entries and preserves the runtime reference variant", () => {
+			const ref = UriReferenceString.parse("/p?old=1#hash");
+			const updated = ref.setSearchParams([
+				["q", "1"],
+				["q", "2"],
+			]);
+
+			expect(updated).toBeInstanceOf(UriRelativeString);
+			expect(updated.raw).toBe("/p?q=1&q=2#hash");
+		});
+
+		it("accepts a query string", () => {
+			const ref = UriReferenceString.parse("https://example.com/p?old=1");
+			expect(ref.setSearchParams("q=one+two").raw).toBe(
+				"https://example.com/p?q=one+two",
+			);
 		});
 	});
 

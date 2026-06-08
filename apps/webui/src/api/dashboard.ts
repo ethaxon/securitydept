@@ -1,5 +1,8 @@
-import { ClientError } from "@securitydept/client";
-import { type DashboardAccess } from "@/lib/auth/authService";
+import {
+	abortSignalToCancellationToken,
+	ClientError,
+} from "@securitydept/client";
+import { type DashboardAccess } from "@/auth/model";
 import {
 	type AuthEntry,
 	type CreateBasicEntryResponse,
@@ -44,24 +47,35 @@ async function request<T>(
 	if (access.kind !== "cookie") {
 		throw new Error("Dashboard cookie request received token-set access.");
 	}
-	const res = await fetch(`${access.basePath}${path}`, {
-		...options,
+	const response = await access.transport.execute({
+		url: `${access.basePath}${path}`,
+		method: options.method ?? "GET",
 		headers: {
-			"Content-Type": "application/json",
-			...options.headers,
+			"content-type": "application/json",
+			...(options.headers as Record<string, string> | undefined),
 		},
+		body: options.body as string | undefined,
+		cancellationToken: abortSignalToCancellationToken(
+			options.signal ?? undefined,
+		),
 	});
-	if (!res.ok) {
-		const body = await res.json().catch(() => undefined);
-		throw ClientError.fromHttpResponse(res.status, body);
+	if (response.status < 200 || response.status >= 300) {
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
-	return res.json();
+	return response.body as T;
 }
 
 function tokenSetOptions(
+	access: Extract<DashboardAccess, { kind: "token-set" }>,
 	options: DashboardRequestOptions = {},
 ): TokenSetApiRequestOptions {
-	return { abortSignal: options.abortSignal };
+	return {
+		transport: access.transport,
+		abortSignal: options.abortSignal,
+	};
 }
 
 export async function listGroups(
@@ -69,7 +83,10 @@ export async function listGroups(
 	options: DashboardRequestOptions = {},
 ): Promise<Group[]> {
 	if (access.kind === "token-set") {
-		return listGroupsWithTokenSet(access.client, tokenSetOptions(options));
+		return listGroupsWithTokenSet(
+			access.client,
+			tokenSetOptions(access, options),
+		);
 	}
 	return request<Group[]>(access, "/api/groups", {
 		signal: options.abortSignal,
@@ -85,7 +102,7 @@ export async function getGroup(
 		return getGroupWithTokenSet(
 			access.client,
 			groupId,
-			tokenSetOptions(options),
+			tokenSetOptions(access, options),
 		);
 	}
 	return request<Group>(access, `/api/groups/${encodeURIComponent(groupId)}`, {
@@ -98,7 +115,11 @@ export async function createGroup(
 	input: CreateGroupRequest,
 ): Promise<Group> {
 	if (access.kind === "token-set") {
-		return createGroupWithTokenSet(access.client, input);
+		return createGroupWithTokenSet(
+			access.client,
+			input,
+			tokenSetOptions(access),
+		);
 	}
 	return request<Group>(access, "/api/groups", {
 		method: "POST",
@@ -112,7 +133,12 @@ export async function updateGroup(
 	input: UpdateGroupRequest,
 ): Promise<Group> {
 	if (access.kind === "token-set") {
-		return updateGroupWithTokenSet(access.client, groupId, input);
+		return updateGroupWithTokenSet(
+			access.client,
+			groupId,
+			input,
+			tokenSetOptions(access),
+		);
 	}
 	return request<Group>(access, `/api/groups/${encodeURIComponent(groupId)}`, {
 		method: "PUT",
@@ -125,7 +151,11 @@ export async function deleteGroup(
 	groupId: string,
 ): Promise<void> {
 	if (access.kind === "token-set") {
-		await deleteGroupWithTokenSet(access.client, groupId);
+		await deleteGroupWithTokenSet(
+			access.client,
+			groupId,
+			tokenSetOptions(access),
+		);
 		return;
 	}
 	await request(access, `/api/groups/${encodeURIComponent(groupId)}`, {
@@ -138,7 +168,10 @@ export async function listEntries(
 	options: DashboardRequestOptions = {},
 ): Promise<AuthEntry[]> {
 	if (access.kind === "token-set") {
-		return listEntriesWithTokenSet(access.client, tokenSetOptions(options));
+		return listEntriesWithTokenSet(
+			access.client,
+			tokenSetOptions(access, options),
+		);
 	}
 	return request<AuthEntry[]>(access, "/api/entries", {
 		signal: options.abortSignal,
@@ -154,7 +187,7 @@ export async function getEntry(
 		return getEntryWithTokenSet(
 			access.client,
 			entryId,
-			tokenSetOptions(options),
+			tokenSetOptions(access, options),
 		);
 	}
 	return request<AuthEntry>(
@@ -169,7 +202,11 @@ export async function createBasicEntry(
 	input: CreateBasicEntryRequest,
 ): Promise<CreateBasicEntryResponse> {
 	if (access.kind === "token-set") {
-		return createBasicEntryWithTokenSet(access.client, input);
+		return createBasicEntryWithTokenSet(
+			access.client,
+			input,
+			tokenSetOptions(access),
+		);
 	}
 	return request<CreateBasicEntryResponse>(access, "/api/entries/basic", {
 		method: "POST",
@@ -182,7 +219,11 @@ export async function createTokenEntry(
 	input: CreateTokenEntryRequest,
 ): Promise<CreateTokenResponse> {
 	if (access.kind === "token-set") {
-		return createTokenEntryWithTokenSet(access.client, input);
+		return createTokenEntryWithTokenSet(
+			access.client,
+			input,
+			tokenSetOptions(access),
+		);
 	}
 	return request<CreateTokenResponse>(access, "/api/entries/token", {
 		method: "POST",
@@ -196,7 +237,12 @@ export async function updateEntry(
 	input: UpdateEntryRequest,
 ): Promise<AuthEntry> {
 	if (access.kind === "token-set") {
-		return updateEntryWithTokenSet(access.client, entryId, input);
+		return updateEntryWithTokenSet(
+			access.client,
+			entryId,
+			input,
+			tokenSetOptions(access),
+		);
 	}
 	return request<AuthEntry>(
 		access,
@@ -213,7 +259,11 @@ export async function deleteEntry(
 	entryId: string,
 ): Promise<void> {
 	if (access.kind === "token-set") {
-		await deleteEntryWithTokenSet(access.client, entryId);
+		await deleteEntryWithTokenSet(
+			access.client,
+			entryId,
+			tokenSetOptions(access),
+		);
 		return;
 	}
 	await request(access, `/api/entries/${encodeURIComponent(entryId)}`, {

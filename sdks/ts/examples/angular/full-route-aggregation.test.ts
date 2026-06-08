@@ -135,7 +135,7 @@ function createRegistryMock(
 				}
 			}
 		}),
-		initialize: vi.fn(async (clientKey: string) => {
+		clientRecordFor: vi.fn(async (clientKey: string) => {
 			const record = records.find((item) => item.meta.clientKey === clientKey);
 			if (!record) {
 				throw new Error(`Missing test record: ${clientKey}`);

@@ -1,4 +1,6 @@
 import {
+	ClientError,
+	ClientErrorKind,
 	createCancellationTokenSource,
 	createEventSubject,
 	createSignal,
@@ -30,6 +32,7 @@ function createTestPopup(
 		method: string;
 		params?: unknown;
 	}>(),
+	failure = createSignal<ClientError | null>(null),
 ): PopupClientWindowHandleTrait {
 	return {
 		onNotification,
@@ -41,7 +44,7 @@ function createTestPopup(
 		},
 		notify: vi.fn(async () => undefined),
 		request: vi.fn(),
-		failure: createSignal(null),
+		failure,
 		isActive: createSignal(true),
 	} as unknown as PopupClientWindowHandleTrait;
 }
@@ -100,6 +103,27 @@ describe("waitForTokenSetPopupRelay", () => {
 		await expect(waitPromise).resolves.toBe(
 			"https://app.example.com/callback?code=abc",
 		);
+		expect(popup.dispose).toHaveBeenCalledTimes(1);
+		expect(popup.close).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects with the popup session failure", async () => {
+		const failure = createSignal<ClientError | null>(null);
+		const popup = createTestPopup(undefined, failure);
+		const error = new ClientError({
+			kind: ClientErrorKind.Authorization,
+			code: "popup.closed_by_user",
+			message: "Popup closed",
+			source: "popup",
+		});
+		const waitPromise = waitForTokenSetPopupRelay({
+			popup,
+			time: createBrowserTime(),
+		});
+
+		failure.set(error);
+
+		await expect(waitPromise).rejects.toBe(error);
 		expect(popup.dispose).toHaveBeenCalledTimes(1);
 		expect(popup.close).toHaveBeenCalledTimes(1);
 	});

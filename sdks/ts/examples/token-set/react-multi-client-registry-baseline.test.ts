@@ -142,8 +142,12 @@ describe("react multi-client registry baseline", () => {
 			await Promise.resolve();
 		});
 
-		const mainClient = (await registry?.initialize("main"))?.client;
-		const adminClient = (await registry?.initialize("admin"))?.client;
+		const mainClient = (
+			await registry?.clientRecordFor("main", { initialize: true })
+		)?.client;
+		const adminClient = (
+			await registry?.clientRecordFor("admin", { initialize: true })
+		)?.client;
 		expect(await mainClient?.authResource.whenValue()).toEqual(
 			createSnapshot("main-at"),
 		);
@@ -187,7 +191,9 @@ describe("react multi-client registry baseline", () => {
 			mainState.set(createSnapshot("updated-at"));
 		});
 
-		const client = (await registry?.initialize("main"))?.client;
+		const client = (
+			await registry?.clientRecordFor("main", { initialize: true })
+		)?.client;
 		expect(await client?.authResource.whenValue()).toEqual(
 			createSnapshot("updated-at"),
 		);

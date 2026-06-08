@@ -1,6 +1,6 @@
 import { Monitor, Moon, Sun } from "lucide-react";
-import { type ThemePreference, useThemePreference } from "@/lib/theme";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/styles";
+import { type ThemePreference, useThemePreference } from "@/theme/react";
 
 const options: Array<{
 	value: ThemePreference;

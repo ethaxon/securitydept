@@ -62,5 +62,14 @@
 		"**/*.just": "just",
 		"**/justfile": "just"
 	},
-	"js/ts.experimental.useTsgo": false
+	"js/ts.experimental.useTsgo": false,
+	"files.readonlyInclude": {
+		"**/routeTree.gen.ts": true
+	},
+	"files.watcherExclude": {
+		"**/routeTree.gen.ts": true
+	},
+	"search.exclude": {
+		"**/routeTree.gen.ts": true
+	}
 }

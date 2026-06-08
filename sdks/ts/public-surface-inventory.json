@@ -32,9 +32,9 @@
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client.test.ts",
 						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/client.test.ts",
 						"packages/token-set-context-client-react/src/__tests__/client-registry-service.test.tsx",
-						"../../apps/webui/src/lib/__tests__/dashboardPrincipal.test.ts",
-						"../../apps/webui/src/routes/tokenSetFrontendMode/__tests__/traceTimelineSection.test.ts",
-						"../../apps/webui/src/routes/tokenSetBackendMode/__tests__/traceTimelineSection.test.ts",
+						"../../apps/webui/src/dashboard/__tests__/principal.test.ts",
+						"../../apps/webui/src/__tests__/routes/playground/token-set/frontend-mode/trace-timeline-section.test.ts",
+						"../../apps/webui/src/__tests__/routes/playground/token-set/backend-mode/trace-timeline-section.test.ts",
 						"../../apps/webui/e2e/frontend-oidc.spec.ts"
 					],
 					"docsAnchor": {
@@ -57,7 +57,7 @@
 						"packages/client/src/web/__tests__/environment-boundary-contract.test.ts",
 						"packages/client/src/web/__tests__/input-sources.test.ts",
 						"packages/client/src/web/__tests__/page-resume.test.ts",
-						"../../apps/webui/src/__tests__/tokenSet.test.ts"
+						"../../apps/webui/src/__tests__/token-set.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -164,8 +164,8 @@
 					"evidence": [
 						"examples/basic-auth/react-minimal-entry.test.ts",
 						"packages/basic-auth-context-client-react/src/__tests__/adapter.test.ts",
-						"../../apps/webui/src/routes/Login.tsx",
-						"../../apps/webui/src/routes/BasicAuthPlayground.tsx"
+						"../../apps/webui/src/routes/login/index.tsx",
+						"../../apps/webui/src/routes/_playground/playground/basic-auth.tsx"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -214,8 +214,8 @@
 					"evidence": [
 						"examples/session-context/react-minimal-entry.test.ts",
 						"packages/session-context-client-react/src/__tests__/adapter.test.ts",
-						"../../apps/webui/src/routes/Login.tsx",
-						"../../apps/webui/src/routes/SessionPlayground.tsx"
+						"../../apps/webui/src/routes/login/index.tsx",
+						"../../apps/webui/src/routes/_playground/playground/session.tsx"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -257,13 +257,13 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Includes the config projection source contract plus the current browser materialization owner: resolveConfigProjection(), networkConfigSource(), TokenSetConfigProjectionSourceKind, ClientReadinessState, createFrontendOidcModeWebClientEnvironment(), createFrontendOidcModeBrowserClient(), resolveFrontendOidcModePersistentStateKey(), and resolveFrontendOidcModeBrowserStorageKey(). The canonical browser composition path is createFrontendOidcModeWebClientEnvironment() first, then createFrontendOidcModeBrowserClient({ environment, ...projectionInput }); the materializer requires that explicit environment and does not create default store/fetch/origin dependency fallbacks. Async clientFactory(environment) support remains part of the browser contract, with registry-owned environment passed to client factories instead of scattered sub-capabilities. loginWithPopup() uses popupCallbackUrl as the real OAuth redirect_uri, supports an explicit postAuthRedirectUri for the opener, and is proven by the apps/webui reference host via popup relay plus cross-tab lifecycle browser e2e. FrontendOidcModeTraceEventType keeps popup / callback / refresh / user-info structured trace taxonomy shared and adopter-visible rather than app-local. describeFrontendOidcModeCallbackError() keeps callback-specific host-facing presentation/recovery mapping under the family owner while building on the shared client error presentation descriptor contract. Capability-first layering on the browser path keeps projection endpoint + redirectUri as bootstrap input, the resolved projection as auth-context config, and environment capability wiring explicit. Frontend-mode user-info and metadata principal construction aligns to the shared IdentityPrincipal baseline, with app-facing display projection left to shared helper-backed host code.",
+					"note": "Includes FrontendOidcModeClient and the environment-backed config projection source contract: resolveFrontendOidcModeConfigProjection(), FrontendOidcModeConfigProjectionSourceKind, and injectConfigProjectionIntoRealm(). Hosts declare ordered inline, realm, persisted, and network sources, pass one root FoundationEnvironment, then construct FrontendOidcModeClient with the returned config and the same environment. The resolver validates every source through one projection schema and uses only environment transport, storage, time, and cancellation capabilities; there is no browser materializer or mode-specific web environment. loginWithPopup() uses popupCallbackUrl as the real OAuth redirect_uri and is proven by the apps/webui reference host via popup relay browser e2e. FrontendOidcModeTraceEventType keeps popup / callback / refresh / user-info structured trace taxonomy shared and adopter-visible rather than app-local. describeFrontendOidcModeCallbackError() keeps callback-specific host-facing presentation/recovery mapping under the family owner while building on the shared client error presentation descriptor contract. Frontend-mode user-info and metadata principal construction aligns to the shared IdentityPrincipal baseline, with app-facing display projection left to shared helper-backed host code.",
 					"evidence": [
 						"packages/client/src/web/__tests__/input-sources.test.ts",
 						"examples/frontend-oidc-mode/minimal-entry.test.ts",
 						"examples/frontend-oidc-mode/react-callback-async-readiness.test.ts",
 						"examples/cross/popup-login-baseline.test.ts",
-						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/config-source-web.test.ts",
+						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/config-source.test.ts",
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/error-presentation.test.ts",
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client.test.ts",
 						"../../apps/webui/e2e/frontend-oidc.spec.ts"

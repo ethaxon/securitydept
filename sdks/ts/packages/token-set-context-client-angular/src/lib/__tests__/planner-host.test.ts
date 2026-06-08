@@ -205,7 +205,7 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 			clientRecordGenForQuery: vi.fn(function* () {
 				yield createSignal(readyRecord);
 			}),
-			initialize: vi.fn(async () => readyRecord),
+			clientRecordFor: vi.fn(async () => readyRecord),
 		} as unknown as TokenSetClientRegistryService;
 		const injector = createEnvironmentInjector(
 			[
@@ -279,7 +279,7 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 			clientRecordGenForQuery: vi.fn(function* () {
 				yield createSignal(record);
 			}),
-			initialize: vi.fn(async () => record),
+			clientRecordFor: vi.fn(async () => record),
 		} as unknown as TokenSetClientRegistryService;
 		const injector = createEnvironmentInjector(
 			[

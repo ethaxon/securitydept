@@ -1,3 +1,4 @@
+import { type BaseTransportTrait, ClientError } from "@securitydept/client";
 import { useQuery } from "@tanstack/react-query";
 
 export const ServerApiRouteAuthBoundary = {
@@ -60,18 +61,27 @@ export function describeApiRouteAvailability(route: ServerApiRoute): string {
 	return apiRouteAvailabilityLabels[route.availability];
 }
 
-export async function fetchServerHealth(): Promise<ServerHealth> {
-	const res = await fetch("/api/health?api_details=true");
-	if (!res.ok) {
-		throw new Error(`Health check failed: ${res.status}`);
+export async function fetchServerHealth(
+	transport: BaseTransportTrait,
+): Promise<ServerHealth> {
+	const response = await transport.execute({
+		url: "/api/health?api_details=true",
+		method: "GET",
+		headers: { accept: "application/json" },
+	});
+	if (response.status !== 200) {
+		throw ClientError.fromHttpResponse({
+			status: response.status,
+			body: response.body,
+		});
 	}
-	return res.json();
+	return response.body as ServerHealth;
 }
 
-export function useServerHealth() {
+export function useServerHealth(transport: BaseTransportTrait) {
 	return useQuery({
 		queryKey: ["server-health", "api-details"],
-		queryFn: fetchServerHealth,
+		queryFn: () => fetchServerHealth(transport),
 		refetchInterval: 5_000,
 		refetchIntervalInBackground: true,
 		retry: false,

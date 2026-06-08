@@ -1,6 +1,6 @@
 import path from "node:path";
-import ts from "typescript";
 import { defineConfig } from "vitest/config";
+import { createStage3DecoratorSwcPlugin } from "../../scripts/ts/stage3-decorator-swc.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 const packagesDir = path.join(repoRoot, "sdks/ts/packages");
@@ -11,45 +11,8 @@ const stage3DecoratorRoots = [
 	path.join(packagesDir, "token-set-context-client"),
 ];
 
-function createStage3DecoratorTransformPlugin() {
-	return {
-		name: "securitydept-stage3-decorators",
-		enforce: "pre" as const,
-		transform(code: string, id: string) {
-			const filePath = id.split("?", 1)[0];
-			if (!filePath.endsWith(".ts") && !filePath.endsWith(".tsx")) {
-				return null;
-			}
-			if (!stage3DecoratorRoots.some((root) => filePath.startsWith(root))) {
-				return null;
-			}
-			if (!/@[A-Za-z_$]/.test(code)) {
-				return null;
-			}
-			const result = ts.transpileModule(code, {
-				fileName: filePath,
-				compilerOptions: {
-					target: ts.ScriptTarget.ES2022,
-					module: ts.ModuleKind.ESNext,
-					moduleResolution: ts.ModuleResolutionKind.Bundler,
-					jsx: filePath.endsWith(".tsx")
-						? ts.JsxEmit.ReactJSX
-						: ts.JsxEmit.Preserve,
-					experimentalDecorators: false,
-					useDefineForClassFields: true,
-					sourceMap: true,
-				},
-			});
-			return {
-				code: result.outputText,
-				map: result.sourceMapText ? JSON.parse(result.sourceMapText) : null,
-			};
-		},
-	};
-}
-
 export default defineConfig({
-	plugins: [createStage3DecoratorTransformPlugin()],
+	plugins: [createStage3DecoratorSwcPlugin({ roots: stage3DecoratorRoots })],
 	resolve: {
 		alias: [
 			{

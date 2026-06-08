@@ -1117,6 +1117,8 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	private _oauthRequestOptions():
 		| { [allowInsecureRequests]: true }
 		| undefined {
+		// TODO: Route oauth4webapi requests through environment.transport once the
+		// library exposes a transport-level adapter that preserves Fetch semantics.
 		const issuerUrl = new URL(this._config.issuer);
 		return isLoopbackHttpUrl(issuerUrl)
 			? { [allowInsecureRequests]: true }

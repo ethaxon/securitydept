@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const forbiddenFallbacks = [
-	"options.environment ?? createFrontendOidcModeWebClientEnvironment(",
-	"?? createFrontendOidcModeWebClientEnvironment(",
+	"options.environment ?? createFoundationEnvironment(",
+	"?? createFoundationEnvironment(",
 ];
 
 const guardedHelperFiles = [
@@ -16,7 +16,7 @@ const guardedHelperFiles = [
 		import.meta.url,
 	),
 	new URL(
-		"../../../../token-set-context-client/src/frontend-oidc-mode/config/config-source-web.ts",
+		"../../../../token-set-context-client/src/frontend-oidc-mode/config/config-source.ts",
 		import.meta.url,
 	),
 ];
@@ -30,5 +30,14 @@ describe("environment boundary contract", () => {
 				expect(source).not.toContain(forbiddenFallback);
 			}
 		}
+	});
+
+	it("keeps config projection resolution behind environment capabilities", () => {
+		const source = readFileSync(guardedHelperFiles[2], "utf8");
+
+		expect(source).not.toContain("globalThis.fetch");
+		expect(source).not.toContain("globalThis.localStorage");
+		expect(source).not.toContain("globalThis.sessionStorage");
+		expect(source).not.toContain("window.");
 	});
 });

@@ -3,8 +3,6 @@
 	"compilerOptions": {
 		"outDir": "./dist-tsc/scripts",
 		"types": ["node"],
-		"module": "NodeNext",
-		"moduleResolution": "nodenext",
 		"allowImportingTsExtensions": true
 	},
 	"include": [

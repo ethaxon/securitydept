@@ -1,4 +1,9 @@
 export {
+	Base64CompatErrorCode,
+	decodeBase64ToUint8Array,
+	encodeUint8ArrayToBase64,
+} from "./base64";
+export {
 	type AsyncDisposableTrait,
 	createDisposableStack,
 	type DisposableStackTrait,

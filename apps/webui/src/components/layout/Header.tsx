@@ -4,7 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
 	useCurrentDashboardUser,
 	useLogoutMutation,
-} from "@/hooks/useDashboardData";
+} from "@/dashboard/queries";
 import { ThemeToggle } from "./ThemeToggle";
 
 function getInitials(displayName: string) {
