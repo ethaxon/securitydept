@@ -1,5 +1,5 @@
 name: Setup mise and pnpm
-description: Install mise toolchyamlains, restore pnpm store cache, and install
+description: Install mise toolchains, restore pnpm store cache, and install
   pnpm dependencies.
 
 inputs:
@@ -25,6 +25,10 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Configure CI mise environment
+      shell: bash
+      run: echo "MISE_ENV=ci" >> "$GITHUB_ENV"
+
     - name: Setup mise
       uses: jdx/mise-action@v4
 

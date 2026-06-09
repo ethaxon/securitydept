@@ -1,0 +1,3 @@
+# CI/production pipeline only. Activated when MISE_ENV=ci.
+[settings]
+enable_tools = ["node", "pnpm", "rust"]

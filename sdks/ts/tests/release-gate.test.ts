@@ -52,7 +52,7 @@ interface Inventory {
 // Paths
 // ---------------------------------------------------------------------------
 
-const tsWorkspaceRoot = path.resolve(import.meta.dirname, "../../../../../");
+const tsWorkspaceRoot = path.resolve(import.meta.dirname, "..");
 const packagesRoot = path.join(tsWorkspaceRoot, "packages");
 const docsRoot = path.resolve(tsWorkspaceRoot, "../../docs");
 const inventoryPath = path.join(
@@ -114,7 +114,7 @@ describe("release-gate: public-surface inventory validation", () => {
 				);
 				if (!fs.existsSync(packageJsonPath)) {
 					mismatches.push(
-						`${pkg.name}: dist/package.json not found — run build:angular before the release gate`,
+						`${pkg.name}: dist/package.json not found — run pnpm build:sdks before the release gate`,
 					);
 					continue;
 				}

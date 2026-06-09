@@ -15,6 +15,7 @@
 		{ "path": "./packages/token-set-context-client" },
 		{ "path": "./packages/token-set-context-client-angular" },
 		{ "path": "./packages/token-set-context-client-react" },
-		{ "path": "./examples" }
+		{ "path": "./examples" },
+		{ "path": "./tests" }
 	]
 }

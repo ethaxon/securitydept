@@ -34,11 +34,10 @@ e2e-rs-isolated:
 test-all-rs: unittest-rs integration-rs e2e-rs
 
 unittest-ts:
-    cd sdks/ts && pnpm test
-    cd apps/webui && pnpm test
+    pnpm test
 
 e2e-ts:
-    cd apps/webui && pnpm run e2e
+    pnpm e2e
 
 test-all-ts: unittest-ts e2e-ts
 

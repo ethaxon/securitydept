@@ -1,0 +1,105 @@
+{
+	"$schema": "https://turborepo.dev/schema.json",
+	"globalDependencies": [
+		"pnpm-workspace.yaml",
+		".pnpmfile.cjs",
+		"tsconfig.base.json"
+	],
+	"globalPassThroughEnv": [
+		"ACT",
+		"GH_TOKEN",
+		"GITHUB_EVENT_NAME",
+		"GITHUB_EVENT_PATH",
+		"GITHUB_OUTPUT",
+		"GITHUB_REF",
+		"GITHUB_REF_NAME",
+		"GITHUB_REPOSITORY",
+		"GITHUB_RUN_ID",
+		"GITHUB_SHA",
+		"GITHUB_TOKEN",
+		"SECURITYDEPT_LOCAL_ACTIONS",
+		"SECURITYDEPT_SKIP_TURBO_PREREQUISITES",
+		"TURBO_HASH"
+	],
+	"tasks": {
+		"build": {
+			"dependsOn": ["^build"],
+			"outputs": ["dist/**"],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				".env*",
+				"$TURBO_ROOT$/scripts/tooling/**",
+				"$TURBO_ROOT$/sdks/ts/tsconfig.sdks.json"
+			],
+			"env": ["VITE_*"]
+		},
+		"dependency-transit": {
+			"dependsOn": ["^dependency-transit"]
+		},
+		"typecheck": {
+			"dependsOn": ["dependency-transit"],
+			"outputs": [],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/tsconfig.base.json",
+				"$TURBO_ROOT$/sdks/ts/tsconfig.sdks.json"
+			]
+		},
+		"test": {
+			"dependsOn": ["build"],
+			"outputs": [],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/scripts/tooling/**",
+				"$TURBO_ROOT$/sdks/ts/vitest*.ts"
+			],
+			"env": ["CI", "GITHUB_ACTIONS"]
+		},
+		"test:watch": {
+			"dependsOn": ["build"],
+			"cache": false,
+			"persistent": true,
+			"interruptible": true
+		},
+		"dev": {
+			"dependsOn": ["^build"],
+			"cache": false,
+			"persistent": true,
+			"interruptible": true
+		},
+		"e2e": {
+			"dependsOn": ["build"],
+			"cache": false,
+			"env": ["CI", "GITHUB_ACTIONS"],
+			"passThroughEnv": [
+				"PLAYWRIGHT_*",
+				"SECURITYDEPT_*",
+				"OIDC__*",
+				"RUST_LOG"
+			]
+		},
+		"stage": {
+			"dependsOn": ["build"],
+			"cache": false
+		},
+		"@securitydept/ts-sdks#test": {
+			"dependsOn": ["^build"],
+			"outputs": [],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/docs/**",
+				"$TURBO_ROOT$/package.json",
+				"$TURBO_ROOT$/pnpm-workspace.yaml",
+				"$TURBO_ROOT$/scripts/tooling/**",
+				"$TURBO_ROOT$/securitydept-metadata.toml",
+				"$TURBO_ROOT$/sdks/ts/vitest*.ts",
+				"$TURBO_ROOT$/turbo.json"
+			],
+			"env": ["CI", "GITHUB_ACTIONS"]
+		},
+		"//#typecheck:scripts": {
+			"outputs": [],
+			"inputs": ["$TURBO_DEFAULT$", "scripts/**", "tsconfig.scripts.json"]
+		}
+	}
+}

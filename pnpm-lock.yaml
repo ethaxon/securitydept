@@ -57,6 +57,9 @@ catalogs:
     uuid:
       specifier: ^14.0.1
       version: 14.0.1
+    vitest:
+      specifier: ^4.1.6
+      version: 4.1.6
 
 overrides:
   typescript: 6.0.3
@@ -197,6 +200,9 @@ importers:
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(typescript@6.0.3)
+      turbo:
+        specifier: ^2.10.5
+        version: 2.10.5
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -285,6 +291,9 @@ importers:
       '@tanstack/router-plugin':
         specifier: 'catalog:'
         version: 1.168.20(@tanstack/react-router@1.170.18(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(esbuild@0.27.7)(rolldown@1.0.0)(rollup@4.60.3)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
 
   sdks/ts:
     devDependencies:
@@ -330,6 +339,9 @@ importers:
       '@securitydept/token-set-context-client-react':
         specifier: workspace:*
         version: link:packages/token-set-context-client-react
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
 
   sdks/ts/packages/basic-auth-context-client:
     dependencies:
@@ -345,6 +357,10 @@ importers:
       uuid:
         specifier: 'catalog:'
         version: 14.0.1
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
 
   sdks/ts/packages/basic-auth-context-client-angular:
     devDependencies:
@@ -354,9 +370,15 @@ importers:
       '@securitydept/basic-auth-context-client':
         specifier: workspace:*
         version: link:../basic-auth-context-client
+      '@securitydept/client':
+        specifier: workspace:*
+        version: link:../client
       '@securitydept/client-angular':
         specifier: workspace:*
         version: link:../client-angular
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
     publishDirectory: dist
 
   sdks/ts/packages/basic-auth-context-client-react:
@@ -368,9 +390,15 @@ importers:
         specifier: workspace:*
         version: link:../client
     devDependencies:
+      '@securitydept/client-react':
+        specifier: workspace:*
+        version: link:../client-react
       react:
         specifier: 'catalog:'
         version: 19.2.6
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
 
   sdks/ts/packages/client:
     dependencies:
@@ -392,6 +420,13 @@ importers:
       uuid:
         specifier: 'catalog:'
         version: 14.0.1
+    devDependencies:
+      '@types/node':
+        specifier: ^25.7.0
+        version: 25.7.0
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
 
   sdks/ts/packages/client-angular:
     dependencies:
@@ -411,6 +446,9 @@ importers:
       '@securitydept/client':
         specifier: workspace:*
         version: link:../client
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
     publishDirectory: dist
 
   sdks/ts/packages/client-react:
@@ -431,6 +469,9 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.2.6
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
 
   sdks/ts/packages/e2e-utils:
     dependencies:
@@ -452,6 +493,10 @@ importers:
       uuid:
         specifier: 'catalog:'
         version: 14.0.1
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
 
   sdks/ts/packages/session-context-client-angular:
     dependencies:
@@ -471,6 +516,9 @@ importers:
       '@securitydept/session-context-client':
         specifier: workspace:*
         version: link:../session-context-client
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
     publishDirectory: dist
 
   sdks/ts/packages/session-context-client-react:
@@ -482,15 +530,25 @@ importers:
         specifier: workspace:*
         version: link:../session-context-client
     devDependencies:
+      '@securitydept/client-react':
+        specifier: workspace:*
+        version: link:../client-react
       react:
         specifier: 'catalog:'
         version: 19.2.6
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
 
   sdks/ts/packages/test-utils:
     dependencies:
       '@securitydept/client':
         specifier: workspace:*
         version: link:../client
+    devDependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
 
   sdks/ts/packages/token-set-context-client:
     dependencies:
@@ -512,6 +570,13 @@ importers:
       uuid:
         specifier: 'catalog:'
         version: 14.0.1
+    devDependencies:
+      '@securitydept/test-utils':
+        specifier: workspace:*
+        version: link:../test-utils
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
 
   sdks/ts/packages/token-set-context-client-angular:
     dependencies:
@@ -537,6 +602,9 @@ importers:
       '@securitydept/token-set-context-client':
         specifier: workspace:*
         version: link:../token-set-context-client
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
     publishDirectory: dist
 
   sdks/ts/packages/token-set-context-client-react:
@@ -554,6 +622,9 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.2.6
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.6(@types/node@25.7.0)(jsdom@29.1.1)(vite@8.0.12(@types/node@25.7.0)(esbuild@0.27.7)(jiti@2.7.0)(less@4.6.4)(sass@1.99.0))
 
 packages:
 
@@ -2081,6 +2152,36 @@ packages:
     resolution: {integrity: sha512-uhOeFyxLcU41HzvrxsGpiWdcMbScY1EDgbZ5K7DVRMYInbLYWAC0EA/kx9wXAoSM8q82bUG2hRl8+EAjE6XAbA==}
     engines: {node: '>=20.19'}
 
+  '@turbo/darwin-64@2.10.5':
+    resolution: {integrity: sha512-ENvPwy3x5yS7MwNYHeWjqOBXkwIMp39Pd+/zXC6PoiNzF8EIvvLZOZZ+ny6L9x4WgS5vxUii2LM5gM+zjPdnWw==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@turbo/darwin-arm64@2.10.5':
+    resolution: {integrity: sha512-rqROo9zsF/P9RqsdtbLD1nFJicjSrYyvQ9kNJC38AbxA3pAs6VAlATvtvOFx7bqOv6vicf20SP9kF33avJjy2w==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@turbo/linux-64@2.10.5':
+    resolution: {integrity: sha512-RoSSiNFUxi27zLJuM9F6GyWWjHgLch9t6nwD6K0FkXRirZkTLlzIj6IhFnK8H9++nefLtdFqylE4vGjZAv6AAA==}
+    cpu: [x64]
+    os: [linux]
+
+  '@turbo/linux-arm64@2.10.5':
+    resolution: {integrity: sha512-4ZComcpzmHGmVynQqvvi+iZOSq/tBvY1SltXB8g4NZRsrA01W8E+yRL8RNM+PLoyWsrCnJa8xa+DkWkv+xg4iQ==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@turbo/windows-64@2.10.5':
+    resolution: {integrity: sha512-eL2Iyj4DbMINq1Sr1w0iAi6nAiZOF16KSlRGwCJpVh+IWZeY33MAsLHVOBMj1xoFtncVJXclCVpTPL2nBoYkFg==}
+    cpu: [x64]
+    os: [win32]
+
+  '@turbo/windows-arm64@2.10.5':
+    resolution: {integrity: sha512-sog+wP+8YSJrdWZ/rUJg8xghVTrwoG+BrSlDQpnK5fzSgJHn1INRWXbVWRH0d3vX8dBI01E3yxXRre9Dn+OXQA==}
+    cpu: [arm64]
+    os: [win32]
+
   '@tybys/wasm-util@0.10.2':
     resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
 
@@ -3509,6 +3610,10 @@ packages:
     resolution: {integrity: sha512-LxhtAkPDTkVCMQjt2h6eBVY28KCjikZqZfMcC15YBeNjkgUpdCfBu5HoiOTDu86v6smE8yOjyEktJ8hlbANHQA==}
     engines: {node: '>=0.6.x'}
 
+  turbo@2.10.5:
+    resolution: {integrity: sha512-07Y/C7OUp23l4P92PJoYtFNbHjLhftrZH5Ce7dbczS4kX2Re+wtbXvZLoxn/pUtzgsQaRCBaRuZPJp4zmAn0WQ==}
+    hasBin: true
+
   tweetnacl@0.14.5:
     resolution: {integrity: sha512-KXXFFdAbFXY4geFIwoyNK+f5Z1b7swfXABfL7HXCmoIWMKU3dmS26672A4EeQtDzLKy7SXmfBu51JolvEKwtGA==}
 
@@ -4910,6 +5015,24 @@ snapshots:
   '@tanstack/table-core@8.21.3': {}
 
   '@tanstack/virtual-file-routes@1.162.0': {}
+
+  '@turbo/darwin-64@2.10.5':
+    optional: true
+
+  '@turbo/darwin-arm64@2.10.5':
+    optional: true
+
+  '@turbo/linux-64@2.10.5':
+    optional: true
+
+  '@turbo/linux-arm64@2.10.5':
+    optional: true
+
+  '@turbo/windows-64@2.10.5':
+    optional: true
+
+  '@turbo/windows-arm64@2.10.5':
+    optional: true
 
   '@tybys/wasm-util@0.10.2':
     dependencies:
@@ -6316,6 +6439,15 @@ snapshots:
   tslib@2.8.1: {}
 
   tsscmp@1.0.6: {}
+
+  turbo@2.10.5:
+    optionalDependencies:
+      '@turbo/darwin-64': 2.10.5
+      '@turbo/darwin-arm64': 2.10.5
+      '@turbo/linux-64': 2.10.5
+      '@turbo/linux-arm64': 2.10.5
+      '@turbo/windows-64': 2.10.5
+      '@turbo/windows-arm64': 2.10.5
 
   tweetnacl@0.14.5: {}
 

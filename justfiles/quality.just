@@ -23,19 +23,15 @@ fix: fix-rs fix-ts fix-docsite-symlink fix-release-metadata
 
 # Type checking and client iteration checks
 typecheck-sdks:
-    cd sdks/ts && pnpm typecheck
+    pnpm typecheck:sdks
 
 typecheck-webui:
-    cd apps/webui && pnpm typecheck
+    pnpm typecheck:webui
 
 typecheck:
     pnpm typecheck
 
 verify-client-sdk-iteration:
     pnpm lint-fix
-    cd sdks/ts && pnpm build
-    cd sdks/ts && pnpm typecheck
-    cd sdks/ts && pnpm test
-    cd apps/webui && pnpm test
-    cd apps/webui && pnpm typecheck
-    pnpm -r --filter @securitydept/webui... build
+    pnpm verify:ts
+    pnpm stage:webui

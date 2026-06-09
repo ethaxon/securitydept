@@ -1,5 +1,7 @@
+import path from "node:path";
 import { defineConfig } from "tsdown";
-import { createStage3DecoratorSwcPlugin } from "../../../../scripts/ts/stage3-decorator-swc.ts";
+import { createStage3DecoratorSwcPlugin } from "../../../../scripts/tooling/stage3-decorators-swc.ts";
+import { runTurboPrerequisites } from "../../../../scripts/tooling/turbo-prerequisites.ts";
 
 export default defineConfig({
 	entry: {
@@ -13,6 +15,14 @@ export default defineConfig({
 		"access-token-substrate/index": "./src/access-token-substrate/index.ts",
 		// Shared multi-client registry (framework-neutral).
 		"registry/index": "./src/registry/index.ts",
+	},
+	hooks: {
+		"build:prepare": () =>
+			runTurboPrerequisites({
+				workspaceRoot: path.resolve(import.meta.dirname, "../../../.."),
+				packageRoot: import.meta.dirname,
+				includeSelf: false,
+			}),
 	},
 	plugins: [createStage3DecoratorSwcPlugin({ roots: [import.meta.dirname] })],
 	target: "es2022",

@@ -17,8 +17,13 @@ interface PackageJsonContract {
 	name?: string;
 	sideEffects?: boolean;
 	exports?: Record<string, unknown>;
+	scripts?: Record<string, string>;
+	dependencies?: Record<string, string>;
+	devDependencies?: Record<string, string>;
+	optionalDependencies?: Record<string, string>;
 	peerDependencies?: {
 		react?: string;
+		[key: string]: string | undefined;
 	};
 	peerDependenciesMeta?: {
 		react?: {
@@ -99,7 +104,7 @@ const CONTRACTS: PackageContract[] = [
 	},
 ];
 
-const tsWorkspaceRoot = path.resolve(import.meta.dirname, "../../../../../");
+const tsWorkspaceRoot = path.resolve(import.meta.dirname, "..");
 const packagesRoot = path.join(tsWorkspaceRoot, "packages");
 
 describe("workspace package contract", () => {
@@ -243,19 +248,59 @@ describe("Angular workspace build topology guardrails", () => {
 		}
 	});
 
-	it("root build script uses pnpm recursive build (not manual core/angular split)", () => {
-		const rootPkg = readJson(
-			path.join(tsWorkspaceRoot, "package.json"),
-		) as Record<string, unknown>;
-		const scripts = (rootPkg.scripts ?? {}) as Record<string, string>;
-		const buildScript = scripts.build ?? "";
+	it("delegates the workspace build graph to Turbo", () => {
+		const repositoryRoot = path.resolve(tsWorkspaceRoot, "../..");
+		const rootPackage = readJson(path.join(repositoryRoot, "package.json"));
+		const turboConfig = JSON.parse(
+			fs.readFileSync(path.join(repositoryRoot, "turbo.json"), "utf8"),
+		) as {
+			tasks?: Record<string, { dependsOn?: string[]; outputs?: string[] }>;
+		};
 
-		// Must NOT contain the old manual two-phase pattern
-		expect(buildScript).not.toContain("build:core");
-		expect(buildScript).not.toContain("build:angular");
+		expect(rootPackage.scripts?.build).toBe("turbo run build");
+		expect(turboConfig.tasks?.build?.dependsOn).toContain("^build");
+		expect(turboConfig.tasks?.build?.outputs).toContain("dist/**");
+		expect(turboConfig.tasks?.test?.dependsOn).toContain("build");
+	});
 
-		// Must use pnpm recursive
-		expect(buildScript).toContain("pnpm -r");
+	it("declares every direct cross-package import in the importing package", () => {
+		const missing: string[] = [];
+
+		for (const packageDir of fs.readdirSync(packagesRoot)) {
+			const packageRoot = path.join(packagesRoot, packageDir);
+			const packageJsonPath = path.join(packageRoot, "package.json");
+			const srcRoot = path.join(packageRoot, "src");
+			if (!fs.existsSync(packageJsonPath) || !fs.existsSync(srcRoot)) {
+				continue;
+			}
+
+			const packageJson = readJson(packageJsonPath);
+			const declared = new Set([
+				...Object.keys(packageJson.dependencies ?? {}),
+				...Object.keys(packageJson.devDependencies ?? {}),
+				...Object.keys(packageJson.optionalDependencies ?? {}),
+				...Object.keys(packageJson.peerDependencies ?? {}),
+			]);
+
+			for (const filePath of collectTypeScriptFiles(srcRoot)) {
+				const source = fs.readFileSync(filePath, "utf8");
+				for (const match of source.matchAll(
+					/(?:from\s*|import\s*\()\s*["'](@securitydept\/[^/"']+)/g,
+				)) {
+					const importedPackage = match[1];
+					if (
+						importedPackage !== packageJson.name &&
+						!declared.has(importedPackage)
+					) {
+						missing.push(
+							`${packageJson.name}: ${path.relative(packageRoot, filePath)} imports undeclared ${importedPackage}`,
+						);
+					}
+				}
+			}
+		}
+
+		expect(missing.sort()).toEqual([]);
 	});
 });
 
@@ -284,6 +329,19 @@ function collectCompiledArtifacts(packagesDir: string): string[] {
 	}
 
 	return leaked.sort();
+}
+
+function collectTypeScriptFiles(root: string): string[] {
+	const files: string[] = [];
+	for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+		const entryPath = path.join(root, entry.name);
+		if (entry.isDirectory()) {
+			files.push(...collectTypeScriptFiles(entryPath));
+		} else if (/\.[cm]?tsx?$/.test(entry.name)) {
+			files.push(entryPath);
+		}
+	}
+	return files;
 }
 
 function visitSrc(

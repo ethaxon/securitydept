@@ -24,7 +24,7 @@ ENV PATH="$PNPM_HOME:$PATH"
 WORKDIR /app
 COPY . .
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile --ignore-scripts
-RUN pnpm -r --filter @securitydept/webui... build
+RUN pnpm stage:webui
 
 FROM alpine AS runtime
 RUN apk add --no-cache ca-certificates

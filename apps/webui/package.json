@@ -4,14 +4,14 @@
 	"description": "WebUI for SecurityDept",
 	"type": "module",
 	"scripts": {
-		"build": "vite build && shx cp -r dist ../../webui",
-		"build:release": "pnpm -C ../.. -r --filter @securitydept/webui... build",
+		"build": "vite build",
 		"dev": "vite dev",
-		"e2e:prepare": "pnpm -C ../../sdks/ts build",
-		"e2e": "pnpm run e2e:prepare && playwright test -c playwright.config.ts",
-		"e2e:headed": "pnpm run e2e:prepare && playwright test -c playwright.config.ts --headed",
-		"test": "vitest run",
-		"typecheck": "tsc -b --force --pretty false"
+		"e2e": "playwright test -c playwright.config.ts",
+		"e2e:headed": "playwright test -c playwright.config.ts --headed",
+		"stage": "shx rm -rf ../../webui && shx cp -r dist ../../webui",
+		"test": "vitest run --config vitest.config.ts",
+		"test:watch": "vitest --config vitest.config.ts",
+		"typecheck": "tsc -p tsconfig.app.json --noEmit --pretty false && tsc -p tsconfig.test.json --noEmit --pretty false && tsc -p tsconfig.e2e.json --noEmit --pretty false"
 	},
 	"dependencies": {
 		"@radix-ui/react-avatar": "^1.1.10",
@@ -36,6 +36,7 @@
 	},
 	"devDependencies": {
 		"@securitydept/e2e-utils": "workspace:*",
-		"@tanstack/router-plugin": "catalog:"
+		"@tanstack/router-plugin": "catalog:",
+		"vitest": "catalog:"
 	}
 }

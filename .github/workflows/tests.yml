@@ -118,14 +118,27 @@ jobs:
         with:
           cache-mode: read-only
 
+      - name: Restore Turbo typecheck cache
+        id: turbo-typecheck-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ needs.preflight.outputs.cache_scope }}-typecheck-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ needs.preflight.outputs.cache_scope }}-typecheck-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-
+
       - name: Lint repository
         run: mise exec --command "pnpm lint"
 
-      - name: Build TypeScript SDK packages for repository typecheck
-        run: mise exec -C sdks/ts --command "pnpm build"
-
       - name: Typecheck repository
         run: mise exec --command "pnpm typecheck"
+
+      - name: Save Turbo typecheck cache
+        if: steps.turbo-typecheck-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: .turbo
+          key: ${{ steps.turbo-typecheck-cache.outputs.cache-primary-key }}
 
       - name: Install Rust clippy component
         run: mise exec --command "rustup component add --toolchain nightly clippy"
@@ -187,11 +200,24 @@ jobs:
         with:
           cache-mode: read-only
 
-      - name: Test TypeScript SDKs
-        run: mise exec -C sdks/ts --command "pnpm test"
+      - name: Restore Turbo test cache
+        id: turbo-test-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ needs.preflight.outputs.cache_scope }}-test-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ needs.preflight.outputs.cache_scope }}-test-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-
 
-      - name: Test web UI
-        run: mise exec -C apps/webui --command "pnpm test"
+      - name: Test TypeScript workspace
+        run: mise exec --command "pnpm test"
+
+      - name: Save Turbo test cache
+        if: steps.turbo-test-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: .turbo
+          key: ${{ steps.turbo-test-cache.outputs.cache-primary-key }}
 
   rs-tests-e2e:
     if: needs.preflight.outputs.run_tests == 'true'
@@ -264,6 +290,14 @@ jobs:
         with:
           cache-mode: read-only
 
+      - name: Restore Turbo test cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ needs.preflight.outputs.cache_scope }}-test-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ needs.preflight.outputs.cache_scope }}-test-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-
+
       - name: Restore Rust build cache
         uses: ./.github/actions/setup-rust-cache
         with:
@@ -288,7 +322,7 @@ jobs:
         run: mise exec --command "cargo build --manifest-path apps/server/Cargo.toml"
 
       - name: Run web UI end-to-end tests
-        run: mise exec -C apps/webui --command "pnpm run e2e"
+        run: mise exec --command "pnpm e2e"
 
   tests-report:
     if: always()

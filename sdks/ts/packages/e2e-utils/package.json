@@ -16,7 +16,7 @@
 	],
 	"scripts": {
 		"build": "tsdown",
-		"typecheck": "tsc -b --force"
+		"typecheck": "tsc -p tsconfig.json --noEmit --pretty false"
 	},
 	"dependencies": {
 		"nunjucks": "catalog:"

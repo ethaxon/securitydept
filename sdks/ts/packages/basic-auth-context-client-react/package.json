@@ -39,7 +39,9 @@
 	],
 	"scripts": {
 		"build": "tsdown",
-		"typecheck": "tsc -b --force"
+		"test": "vitest run --config ../../vitest.package.config.ts",
+		"test:watch": "vitest --config ../../vitest.package.config.ts",
+		"typecheck": "tsc -p tsconfig.json --noEmit --pretty false"
 	},
 	"dependencies": {
 		"@securitydept/client": "workspace:*",
@@ -49,6 +51,8 @@
 		"react": ">=19.0.0"
 	},
 	"devDependencies": {
-		"react": "catalog:"
+		"@securitydept/client-react": "workspace:*",
+		"react": "catalog:",
+		"vitest": "catalog:"
 	}
 }

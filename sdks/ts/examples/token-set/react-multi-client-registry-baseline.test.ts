@@ -5,6 +5,7 @@ import {
 	createSignal,
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
+import { createEnvironmentForTest } from "@securitydept/client/test";
 import {
 	SecuritydeptProvider,
 	useSecuritydeptContext,
@@ -26,7 +27,6 @@ import {
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
-import { createEnvironmentForTest } from "../../packages/client/src/test";
 import { createTestTokenSetReactiveFields } from "../_helpers/test-token-set-client";
 
 function render(element: ReactElement) {

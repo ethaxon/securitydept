@@ -42,7 +42,10 @@
 		}
 	},
 	"scripts": {
-		"build": "ng-packagr -p ng-package.json -c tsconfig.lib.json"
+		"build": "ng-packagr -p ng-package.json -c tsconfig.lib.json",
+		"test": "vitest run --config ../../vitest.package.config.ts",
+		"test:watch": "vitest --config ../../vitest.package.config.ts",
+		"typecheck": "tsc -p tsconfig.json --noEmit --pretty false"
 	},
 	"peerDependencies": {
 		"@securitydept/client": "workspace:*",
@@ -59,6 +62,7 @@
 		"@angular/router": "catalog:",
 		"@securitydept/client": "workspace:*",
 		"@securitydept/client-angular": "workspace:*",
-		"@securitydept/token-set-context-client": "workspace:*"
+		"@securitydept/token-set-context-client": "workspace:*",
+		"vitest": "catalog:"
 	}
 }

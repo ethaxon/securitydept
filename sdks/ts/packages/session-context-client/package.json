@@ -39,12 +39,17 @@
 	],
 	"scripts": {
 		"build": "tsdown",
-		"typecheck": "tsc -b --force"
+		"test": "vitest run --config ../../vitest.package.config.ts",
+		"test:watch": "vitest --config ../../vitest.package.config.ts",
+		"typecheck": "tsc -p tsconfig.json --noEmit --pretty false"
 	},
 	"dependencies": {
 		"@securitydept/client": "workspace:*",
 		"arktype": "catalog:",
 		"rxjs": "catalog:",
 		"uuid": "catalog:"
+	},
+	"devDependencies": {
+		"vitest": "catalog:"
 	}
 }

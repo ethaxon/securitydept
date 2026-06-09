@@ -1,6 +1,6 @@
 # Build and packaging tasks
 build-sdks:
-    cd sdks/ts && pnpm build
+    pnpm build:sdks
 
 build-docs:
     cd docsite && pnpm run build
@@ -9,10 +9,10 @@ preview-docs:
     cd docsite && pnpm run preview
 
 build-webui-only:
-    cd apps/webui && pnpm build
+    pnpm build:webui
 
 build-webui:
-    pnpm -r --filter @securitydept/webui... build
+    pnpm stage:webui
 
 build-server:
     cargo build --manifest-path apps/server/Cargo.toml --release

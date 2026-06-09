@@ -4,10 +4,9 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "pnpm -r --filter './packages/*' run build",
-		"test": "pnpm run build && vitest run",
-		"test:watch": "vitest",
-		"typecheck": "tsc -b --force"
+		"test": "vitest run --config vitest.config.ts",
+		"test:watch": "vitest --config vitest.config.ts",
+		"typecheck": "tsc -p examples/tsconfig.json --noEmit --pretty false && tsc -p tests/tsconfig.json --noEmit --pretty false"
 	},
 	"devDependencies": {
 		"@securitydept/e2e-utils": "workspace:*",
@@ -23,6 +22,7 @@
 		"@securitydept/session-context-client-react": "workspace:*",
 		"@securitydept/token-set-context-client": "workspace:*",
 		"@securitydept/token-set-context-client-angular": "workspace:*",
-		"@securitydept/token-set-context-client-react": "workspace:*"
+		"@securitydept/token-set-context-client-react": "workspace:*",
+		"vitest": "catalog:"
 	}
 }

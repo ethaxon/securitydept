@@ -1,6 +1,6 @@
 # Local development entrypoints
 dev-webui:
-    cd apps/webui && pnpm dev
+    pnpm dev:webui
 
 dev-docs:
     cd docsite && pnpm run dev

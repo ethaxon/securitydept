@@ -64,7 +64,9 @@
 	],
 	"scripts": {
 		"build": "tsdown",
-		"typecheck": "tsc -b --force"
+		"test": "vitest run --config ../../vitest.package.config.ts",
+		"test:watch": "vitest --config ../../vitest.package.config.ts",
+		"typecheck": "tsc -p tsconfig.json --noEmit --pretty false"
 	},
 	"dependencies": {
 		"@standard-schema/spec": "catalog:",
@@ -73,5 +75,9 @@
 		"injection-js": "^2.6.1",
 		"rxjs": "catalog:",
 		"uuid": "catalog:"
+	},
+	"devDependencies": {
+		"@types/node": "^25.7.0",
+		"vitest": "catalog:"
 	}
 }

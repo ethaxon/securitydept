@@ -135,6 +135,7 @@ release 相关 workflow 必须遵循：
 
 - pnpm 与 Rust setup/cache 行为由 `.github/actions/` 下的 repo-local composite actions 拥有。
 - pnpm cache mode 必须显式写成 `read-write`、`read-only` 或 `none`。稳定 restore key 是 `pnpm-store-${runner.os}-${hashFiles(lockfile)}`；同一个 workflow 拓扑中，同一 key 只能有一个 read-write owner。
+- Turborepo 负责 JS/TS 的 build、test 与 typecheck 任务图。GitHub Actions 分别按 typecheck、test、npm-release 和 WebUI-release scope 持久化 `.turbo`，不需要远程缓存凭据。
 - Rust cache mode 同样必须显式。使用共享 key 的 read-write job 必须是该拓扑唯一 writer；后续 job 只能 read-only restore 或消费 artifact。
 - Debug CI 拓扑直接放在 `.github/workflows/tests.yml`；`release.yml` 由成功的 `Tests` run 调度，不再重复同一套 debug verification graph，也不使用 crates.io 不支持的 `workflow_run` 发布入口。
 - Rust shared key 应该是稳定的 lane/profile scope，例如 `securitydept-rust-${runner.os}-pr-mainline-debug`、`securitydept-rust-${runner.os}-mainline-debug` 与 `securitydept-rust-${runner.os}-release`。不要在 workflow 里手写 `hashFiles(...)` 塞进 `shared-key`；`Swatinem/rust-cache` 本身已经把 Cargo manifest、lockfile、toolchain 与相关 env var 的 Rust environment hash 纳入最终 key，并且会尝试从旧 lockfile 版本恢复。
@@ -146,7 +147,7 @@ release 相关 workflow 必须遵循：
 	| `securitydept-rust-${runner.os}-${cache_scope}-release` in `release.yml` | `docker-release`，仅在 `publish_docker=true` 时运行 | 同一个 `docker-release` job 内的 runtime binary build | 当前只有 Docker 消费 release-profile artifacts，因此 writer 放在唯一消费 job 内；只有未来出现多个 release-profile consumers 时才需要重新拆出 prime job |
 
 	每一行对应的 cache key 都只有一个 read-write owner。行外 job 只能 read-only restore 或不接触该 key。这是当前实践裁决下采用的暂定优化策略，并依赖唯一 writer 拓扑；其耗时收益仍需后续通过可复现的本地 workflow benchmark 证明后再继续调优。
-- Docker buildx cache 只用于 Docker layer cache。release runtime scope 不再尝试缓存 cargo 或 pnpm build，因为这些 build 已经在 Docker 外完成。
+- Docker buildx cache 仍只用于 Docker layer。JS/TS 构建产物在组装 runtime image 前通过 release scope 的 Turborepo cache 恢复。
 - already-published skip 语义仍由 `release-cli npm publish` 与 `release-cli crates publish` 拥有，因此部分发布成功后重跑会继续剩余 package / crate，而不是因重复版本失败。
 
 这样可以保证以下规则只有一份实现：

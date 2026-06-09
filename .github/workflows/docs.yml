@@ -12,6 +12,7 @@ on:
             - "docs/**"
             - "docsite/**"
             - "mise.toml"
+            - "mise.ci.toml"
             - "justfile"
             - ".github/workflows/docs.yml"
     workflow_dispatch:

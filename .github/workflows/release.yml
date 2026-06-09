@@ -123,8 +123,24 @@ jobs:
               with:
                   cache-mode: read-only
 
+            - name: Restore Turbo npm release cache
+              id: turbo-npm-release-cache
+              uses: actions/cache/restore@v5
+              with:
+                  path: .turbo
+                  key: turbo-${{ runner.os }}-${{ needs.release-plan.outputs.cache_scope }}-release-npm-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-${{ needs.release-plan.outputs.source_sha }}
+                  restore-keys: |
+                      turbo-${{ runner.os }}-${{ needs.release-plan.outputs.cache_scope }}-release-npm-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-
+
             - name: Build TypeScript SDK packages for npm release
-              run: mise exec -C sdks/ts --command "pnpm build"
+              run: mise exec --command "pnpm build:sdks"
+
+            - name: Save Turbo npm release cache
+              if: steps.turbo-npm-release-cache.outputs.cache-hit != 'true'
+              uses: actions/cache/save@v5
+              with:
+                  path: .turbo
+                  key: ${{ steps.turbo-npm-release-cache.outputs.cache-primary-key }}
 
             - name: Publish npm packages
               env:
@@ -224,6 +240,15 @@ jobs:
               with:
                   cache-mode: read-only
 
+            - name: Restore Turbo web UI release cache
+              id: turbo-webui-release-cache
+              uses: actions/cache/restore@v5
+              with:
+                  path: .turbo
+                  key: turbo-${{ runner.os }}-${{ needs.release-plan.outputs.cache_scope }}-release-webui-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-${{ needs.release-plan.outputs.source_sha }}
+                  restore-keys: |
+                      turbo-${{ runner.os }}-${{ needs.release-plan.outputs.cache_scope }}-release-webui-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-
+
             - name: Restore Rust release build cache
               uses: ./.github/actions/setup-rust-cache
               with:
@@ -237,7 +262,14 @@ jobs:
                   mise exec --command "cargo build --release --manifest-path apps/cli/Cargo.toml --bin securitydept-cli"
 
             - name: Build web UI assets
-              run: mise exec --command "pnpm -r --filter @securitydept/webui... build"
+              run: mise exec --command "pnpm stage:webui"
+
+            - name: Save Turbo web UI release cache
+              if: steps.turbo-webui-release-cache.outputs.cache-hit != 'true'
+              uses: actions/cache/save@v5
+              with:
+                  path: .turbo
+                  key: ${{ steps.turbo-webui-release-cache.outputs.cache-primary-key }}
 
             - name: Stage runtime artifacts
               shell: bash

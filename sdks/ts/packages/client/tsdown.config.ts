@@ -1,4 +1,6 @@
+import path from "node:path";
 import { defineConfig } from "tsdown";
+import { runTurboPrerequisites } from "../../../../scripts/tooling/turbo-prerequisites.ts";
 
 export default defineConfig({
 	entry: {
@@ -8,6 +10,14 @@ export default defineConfig({
 		"test/index": "./src/test/index.ts",
 		"web/index": "./src/web/index.ts",
 		"webext/index": "./src/webext/index.ts",
+	},
+	hooks: {
+		"build:prepare": () =>
+			runTurboPrerequisites({
+				workspaceRoot: path.resolve(import.meta.dirname, "../../../.."),
+				packageRoot: import.meta.dirname,
+				includeSelf: false,
+			}),
 	},
 	format: "esm",
 	dts: true,
