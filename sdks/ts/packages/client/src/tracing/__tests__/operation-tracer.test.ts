@@ -5,7 +5,7 @@ import { createFoundationEnvironment } from "../../environment/create";
 import { createRootSpan } from "../../span";
 import { createTracing } from "../create";
 import { defineInstrumentMethodDecorator } from "../operation-method";
-import { runOperation } from "../operation-runner";
+import { OperationSpan, runOperation } from "../operation-runner";
 import {
 	OperationTraceEventType,
 	type TracingEvent,
@@ -150,6 +150,34 @@ function createRecordingEnvironment(events: TracingEvent[]) {
 }
 
 describe("runOperation", () => {
+	it("supports manually managed operation lifecycles", () => {
+		const events: TracingEvent[] = [];
+		const environment = createRecordingEnvironment(events);
+		const operationSpan = OperationSpan.start({
+			environment,
+			span: environment.span,
+			name: "manual.workflow",
+			target: "manual-test",
+			idFactory: () => "manual_span",
+		});
+
+		operationSpan.setAttributes({ phase: "committed" });
+		operationSpan.recordEnded("succeeded");
+
+		expect(events.map((event) => event.name)).toEqual([
+			OperationTraceEventType.Started,
+			OperationTraceEventType.Ended,
+		]);
+		expect(events.every((event) => event.span.id === "manual_span")).toBe(true);
+		expect(events[1]).toMatchObject({
+			fields: {
+				operationName: "manual.workflow",
+				outcome: "succeeded",
+				phase: "committed",
+			},
+		});
+	});
+
 	it("uses the parent span id factory by default", () => {
 		const events: TracingEvent[] = [];
 		let nextId = 0;

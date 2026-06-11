@@ -22,13 +22,12 @@ import {
 	createOnceAsyncLockCallable,
 	createSignal,
 	type DisposableTrait,
-	defineInstrumentMethodDecorator,
 	describeError,
 	type EventStreamTrait,
 	type FoundationEnvironment,
 	injectDisposableStackFrom,
 	mapResource,
-	type OperationSpanTrait,
+	OperationSpan,
 	type ReadableSignalTrait,
 	type ResourceSnapshot,
 	ResourceSnapshotUpdateKind,
@@ -81,6 +80,8 @@ import {
 	type BaseOidcModeClientDefaultOptions,
 	type BaseOidcModeClientOptions,
 	type BaseOidcModeClientTracingOptions,
+	OidcModeCallbackHandlingKind,
+	type OidcModeCallbackHandlingResult,
 	type TokenSetAuthOperationSignals,
 	type TokenSetAuthStateOperationOptions,
 	type TokenSetOidcPopupLoginOptions,
@@ -92,6 +93,8 @@ import {
 	type TokenSetAuthDeterminationCommit,
 	type TokenSetAuthDeterminationEvent,
 	TokenSetAuthDeterminationKind,
+	TokenSetAuthDeterminationOutcomeKind,
+	type TokenSetAuthDeterminationTerminal,
 } from "./workflows/commit";
 
 export { PersistPolicy } from "./workflows/commit";
@@ -115,29 +118,6 @@ import {
 } from "./workflows/plan/restore";
 import { TokenSetPageResumeWorkflowSource } from "./workflows/source/page-resume";
 import { TokenSetRefreshTimerWorkflowSource } from "./workflows/source/refresh-timer";
-
-const instrumentWorkflowMethod = defineInstrumentMethodDecorator<
-	[workflow: string],
-	BaseOidcModeClient
->(
-	({ factoryArgs: [workflow] }) =>
-		function (this: BaseOidcModeClient) {
-			return {
-				environment: this.environment,
-				span: this.span,
-				name: `${this._tracingOptions.prefix}.${workflow}`,
-				fields: { workflow },
-				target: this._tracingOptions.target,
-				normalizeError: (error: unknown) =>
-					ClientError.fromUnknown(error, {
-						code: TokenSetAuthorizationErrorCode.OperationFailed,
-						message:
-							"The token-set authorization operation failed unexpectedly",
-						source: TokenSetAuthorizationErrorSource,
-					}),
-			};
-		},
-);
 
 export abstract class BaseOidcModeClient implements DisposableTrait {
 	static defaultOptions = {
@@ -176,12 +156,19 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	);
 	public start = createOnceAsyncLockCallable(async () => {
 		const cancellationToken = this._rootCancellation.token;
-		cancellationToken.throwIfCancellationRequested();
 		this._authSnapshotSignal.set(
 			reduceResourceSnapshot(this._authSnapshotSignal.get(), {
 				kind: ResourceSnapshotUpdateKind.Load,
 			}),
 		);
+		// start only selects the restoration workflow. Each workflow owns
+		// cancellation and must determine auth state before it rejects; catching
+		// here would re-apply failures already committed by that workflow.
+		const callbackResult =
+			await this._restoreStateFromCallbackInput(cancellationToken);
+		if (callbackResult.kind === OidcModeCallbackHandlingKind.Handled) {
+			return callbackResult.result;
+		}
 		if (this._persistence) {
 			return await this._restorePersistedState(
 				{
@@ -191,15 +178,14 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				},
 				cancellationToken,
 			);
-		} else {
-			return await this._clearState(
-				{
-					snapshot: null,
-				},
-				undefined,
-				cancellationToken,
-			);
 		}
+		return await this._clearState(
+			{
+				snapshot: null,
+			},
+			undefined,
+			cancellationToken,
+		);
 	});
 	private _authEventSequence = 0;
 	private readonly _authEventSubject =
@@ -351,8 +337,10 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			.subscribe(this.planRefreshResponse);
 
 		if (options.autoStart === true) {
-			this.start().catch(() => {
-				// Startup failure is reflected by authSnapshot.
+			queueMicrotask(() => {
+				this.start().catch(() => {
+					// Startup failure is reflected by authSnapshot.
+				});
 			});
 		}
 	}
@@ -462,31 +450,66 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		);
 	}
 
-	protected async _applySnapshot(
-		snapshot: TokenSetAuthSnapshot,
-		options: { persistPolicy?: PersistPolicy } = {},
-		cancellationToken: CancellationTokenTrait,
-		span?: SpanTrait,
-	): Promise<TokenSetAuthSnapshot> {
-		cancellationToken.throwIfCancellationRequested();
-		return await this._commitDetermination(
-			{
-				candidate: {
-					kind: TokenSetAuthDeterminationKind.Authenticated,
-					snapshot,
-				},
-				persistPolicy: options.persistPolicy ?? PersistPolicy.FollowClient,
-				events: [
+	protected async _runDeterminationWorkflow<TResult>(options: {
+		name: string;
+		fields?: Record<string, unknown>;
+		pendingSignal?: WritableSignalTrait<boolean>;
+		normalizeError?: (error: unknown) => unknown;
+		workflow: (
+			operationSpan: OperationSpan,
+		) => Promise<TokenSetAuthDeterminationTerminal<TResult>>;
+	}): Promise<TResult> {
+		const operationSpan = OperationSpan.start({
+			environment: this._environment,
+			span: this._span,
+			name: options.name,
+			target: this._tracingOptions.target,
+			fields: options.fields,
+		});
+		let commitStarted = false;
+		options.pendingSignal?.set(true);
+		try {
+			const terminal = await options.workflow(operationSpan);
+			// Committing is the point of no return. Cancellation and other fallible
+			// planning must finish before this boundary so determination is published
+			// exactly once.
+			commitStarted = true;
+			await this._commitDetermination(terminal.commit, operationSpan);
+			if (
+				terminal.outcome.kind === TokenSetAuthDeterminationOutcomeKind.Throw
+			) {
+				throw terminal.outcome.error;
+			}
+			operationSpan.recordEnded("succeeded");
+			return terminal.outcome.value;
+		} catch (sourceError) {
+			const error = options.normalizeError
+				? options.normalizeError(sourceError)
+				: ClientError.fromUnknown(sourceError, {
+						code: TokenSetAuthorizationErrorCode.OperationFailed,
+						message:
+							"The token-set authorization operation failed unexpectedly",
+						source: TokenSetAuthorizationErrorSource,
+					});
+			if (!commitStarted) {
+				commitStarted = true;
+				await this._commitDetermination(
 					{
-						type: TokenSetAuthEventType.AuthAuthenticated,
-						payload: {},
+						candidate: {
+							kind: TokenSetAuthDeterminationKind.Failed,
+							error,
+						},
+						persistPolicy: PersistPolicy.Skip,
 					},
-				],
-				result: snapshot,
-			},
-			cancellationToken,
-			span,
-		);
+					operationSpan,
+				);
+			}
+			operationSpan.recordError(error);
+			operationSpan.recordEnded("failed");
+			throw error;
+		} finally {
+			options.pendingSignal?.set(false);
+		}
 	}
 
 	private _createRefreshFetcher(
@@ -500,390 +523,406 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				freshness: freshnessTiming,
 				hasRefreshMaterial,
 			});
-			try {
-				this._authOperationSignals.refreshPending.set(true);
-				this._emitAuthEvent({
-					type: TokenSetAuthEventType.AuthRefreshStarted,
-					freshness: freshnessTiming,
-					hasRefreshMaterial,
-				});
-				cancellationToken.throwIfCancellationRequested();
-				const refreshed = await this._refreshAuthSnapshot(
-					snapshot,
-					freshnessTiming,
-					cancellationToken,
-					operationSpan,
-				);
-				cancellationToken.throwIfCancellationRequested();
-				return refreshed;
-			} finally {
-				this._authOperationSignals.refreshPending.set(false);
-			}
+			this._emitAuthEvent({
+				type: TokenSetAuthEventType.AuthRefreshStarted,
+				freshness: freshnessTiming,
+				hasRefreshMaterial,
+			});
+			cancellationToken.throwIfCancellationRequested();
+			const refreshed = await this._refreshAuthSnapshot(
+				snapshot,
+				freshnessTiming,
+				cancellationToken,
+				operationSpan,
+			);
+			cancellationToken.throwIfCancellationRequested();
+			return refreshed;
 		};
 	}
 
-	@instrumentWorkflowMethod("refresh")
 	protected async _refreshState(
 		request: {
 			snapshot: TokenSetAuthSnapshot | null;
 			freshnessOptions: TokenSetTokenFreshnessOptions;
 		},
 		cancellationToken: CancellationTokenTrait,
-		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetAuthSnapshot | null> {
-		cancellationToken.throwIfCancellationRequested();
-		try {
-			this._authOperationSignals.refreshPending.set(true);
-			const currentSnapshot = request.snapshot;
-			this._authSnapshotSignal.set(
-				reduceResourceSnapshot(this._authSnapshotSignal.get(), {
-					kind: ResourceSnapshotUpdateKind.Load,
-				}),
-			);
-			if (!currentSnapshot) {
+		return await this._runDeterminationWorkflow({
+			name: `${this._tracingOptions.prefix}.refresh`,
+			fields: { workflow: "refresh" },
+			pendingSignal: this._authOperationSignals.refreshPending,
+			workflow: async (operationSpan) => {
+				cancellationToken.throwIfCancellationRequested();
+				const currentSnapshot = request.snapshot;
 				this._authSnapshotSignal.set(
 					reduceResourceSnapshot(this._authSnapshotSignal.get(), {
-						kind: ResourceSnapshotUpdateKind.Resolve,
-						value: null,
+						kind: ResourceSnapshotUpdateKind.Load,
 					}),
 				);
-				return currentSnapshot;
-			}
-			const refreshPlan = await this._planRefreshInQueue(
-				{
-					snapshot: currentSnapshot,
-					freshnessOptions: request.freshnessOptions,
-				},
-				cancellationToken,
-				operationSpan,
-			);
-			cancellationToken.throwIfCancellationRequested();
-			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
-				const revoked =
-					refreshPlan.error instanceof TokenSetAuthorizationRevocationError;
-				await this._commitDetermination(
+				if (!currentSnapshot) {
+					return {
+						commit: {
+							candidate: {
+								kind: TokenSetAuthDeterminationKind.Unauthenticated,
+							},
+							persistPolicy: PersistPolicy.Skip,
+						},
+						outcome: {
+							kind: TokenSetAuthDeterminationOutcomeKind.Return,
+							value: null,
+						},
+					};
+				}
+				const refreshPlan = await this._planRefreshInQueue(
 					{
+						snapshot: currentSnapshot,
+						freshnessOptions: request.freshnessOptions,
+					},
+					cancellationToken,
+					operationSpan,
+				);
+				cancellationToken.throwIfCancellationRequested();
+				if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
+					const revoked =
+						refreshPlan.error instanceof TokenSetAuthorizationRevocationError;
+					return {
+						commit: {
+							candidate: refreshPlan,
+							failureValue: revoked ? null : currentSnapshot,
+							persistPolicy: revoked
+								? PersistPolicy.FollowClient
+								: PersistPolicy.Skip,
+							events: [
+								...this._buildRefreshLifecycleEvents(
+									currentSnapshot,
+									refreshPlan,
+								),
+								...(revoked
+									? [
+											{
+												type: TokenSetAuthEventType.AuthUnauthenticated,
+												payload: {},
+											} as const,
+										]
+									: []),
+							],
+							trace: {
+								type: this._traceType(
+									TokenSetOrchestrationTraceEvent.RefreshFailed,
+								),
+							},
+							traceError: refreshPlan.error,
+						},
+						outcome: {
+							kind: TokenSetAuthDeterminationOutcomeKind.Throw,
+							error: refreshPlan.error,
+						},
+					};
+				}
+				return {
+					commit: {
 						candidate: refreshPlan,
-						failureValue: revoked ? null : currentSnapshot,
-						persistPolicy: revoked
-							? PersistPolicy.FollowClient
-							: PersistPolicy.Skip,
+						persistPolicy: PersistPolicy.FollowClient,
 						events: [
 							...this._buildRefreshLifecycleEvents(
 								currentSnapshot,
 								refreshPlan,
 							),
-							...(revoked
-								? [
-										{
-											type: TokenSetAuthEventType.AuthUnauthenticated,
-											payload: {},
-										} as const,
-									]
-								: []),
+							refreshPlan.kind === TokenSetAuthDeterminationKind.Authenticated
+								? {
+										type: TokenSetAuthEventType.AuthAuthenticated,
+										payload: {},
+									}
+								: {
+										type: TokenSetAuthEventType.AuthUnauthenticated,
+										payload: {},
+									},
 						],
-						result: null,
 						trace: {
 							type: this._traceType(
-								TokenSetOrchestrationTraceEvent.RefreshFailed,
+								TokenSetOrchestrationTraceEvent.RefreshCommitted,
 							),
 						},
-						traceError: refreshPlan.error,
 					},
-					cancellationToken,
-					operationSpan,
-				);
-				throw refreshPlan.error;
-			}
-			return this._commitDetermination(
-				{
-					candidate: refreshPlan,
-					persistPolicy: PersistPolicy.FollowClient,
-					events: [
-						...this._buildRefreshLifecycleEvents(currentSnapshot, refreshPlan),
-						refreshPlan.kind === TokenSetAuthDeterminationKind.Authenticated
-							? {
-									type: TokenSetAuthEventType.AuthAuthenticated,
-									payload: {},
-								}
-							: {
-									type: TokenSetAuthEventType.AuthUnauthenticated,
-									payload: {},
-								},
-					],
-					result: refreshPlan.snapshot ?? null,
-					trace: {
-						type: this._traceType(
-							TokenSetOrchestrationTraceEvent.RefreshCommitted,
-						),
+					outcome: {
+						kind: TokenSetAuthDeterminationOutcomeKind.Return,
+						value: refreshPlan.snapshot ?? null,
 					},
-				},
-				cancellationToken,
-				operationSpan,
-			);
-		} finally {
-			this._authOperationSignals.refreshPending.set(false);
-		}
+				};
+			},
+		});
 	}
 
-	@instrumentWorkflowMethod("clear")
 	protected async _clearState(
 		request: TokenSetPlanClearRequest,
 		options: { persistPolicy?: PersistPolicy } | undefined,
 		cancellationToken: CancellationTokenTrait,
-		operationSpan?: OperationSpanTrait,
 	): Promise<null> {
-		cancellationToken.throwIfCancellationRequested();
-		this._authOperationSignals.clearPending.set(true);
-		try {
-			const clearPlan = await planClear(request);
-			cancellationToken.throwIfCancellationRequested();
-			return await this._commitDetermination(
-				{
-					candidate: clearPlan,
-					persistPolicy: options?.persistPolicy ?? PersistPolicy.FollowClient,
-					events: [
-						{
-							type: TokenSetAuthEventType.AuthMaterialCleared,
-							payload: {},
+		return await this._runDeterminationWorkflow({
+			name: `${this._tracingOptions.prefix}.clear`,
+			fields: { workflow: "clear" },
+			pendingSignal: this._authOperationSignals.clearPending,
+			workflow: async () => {
+				cancellationToken.throwIfCancellationRequested();
+				const clearPlan = await planClear(request);
+				cancellationToken.throwIfCancellationRequested();
+				return {
+					commit: {
+						candidate: clearPlan,
+						persistPolicy: options?.persistPolicy ?? PersistPolicy.FollowClient,
+						events: [
+							{
+								type: TokenSetAuthEventType.AuthMaterialCleared,
+								payload: {},
+							},
+						],
+						trace: {
+							type: this._traceType(
+								TokenSetOrchestrationTraceEvent.StateCleared,
+							),
 						},
-					],
-					result: null,
-					trace: {
-						type: this._traceType(TokenSetOrchestrationTraceEvent.StateCleared),
 					},
-				},
-				cancellationToken,
-				operationSpan,
-			);
-		} finally {
-			this._authOperationSignals.clearPending.set(false);
-		}
+					outcome: {
+						kind: TokenSetAuthDeterminationOutcomeKind.Return,
+						value: null,
+					},
+				};
+			},
+		});
 	}
 
-	@instrumentWorkflowMethod("restore")
 	protected async _restoreState(
 		request: TokenSetPlanRestoreRequest,
 		options: { persistPolicy?: PersistPolicy } | undefined,
 		cancellationToken: CancellationTokenTrait,
-		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetAuthSnapshot> {
-		cancellationToken.throwIfCancellationRequested();
-		this._authOperationSignals.restorePending.set(true);
-		try {
-			const restorePlan = await planRestore(request);
-			cancellationToken.throwIfCancellationRequested();
-			return await this._commitDetermination(
-				{
-					candidate: restorePlan,
-					persistPolicy: options?.persistPolicy ?? PersistPolicy.Skip,
-					events: [
-						{
-							type: TokenSetAuthEventType.AuthMaterialRestored,
-							payload: {},
-						},
-						{
-							type: TokenSetAuthEventType.AuthAuthenticated,
-							payload: {},
-						},
-					],
-					result: restorePlan.snapshot,
-					trace: {
-						type: this._traceType(
-							TokenSetOrchestrationTraceEvent.StateRestored,
-						),
-					},
-				},
-				cancellationToken,
-				operationSpan,
-			);
-		} finally {
-			this._authOperationSignals.restorePending.set(false);
-		}
-	}
-
-	@instrumentWorkflowMethod("restore.persisted")
-	protected async _restorePersistedState(
-		request: TokenSetPlanRestorePersistedRequest,
-		cancellationToken: CancellationTokenTrait,
-		operationSpan?: OperationSpanTrait,
-	): Promise<TokenSetAuthSnapshot | null> {
-		cancellationToken.throwIfCancellationRequested();
-		this._emitAuthEvent({
-			type: TokenSetAuthEventType.AuthMaterialRestoreStarted,
-			persisted: true,
-		});
-		this._recordTrace(
-			this._traceType(TokenSetOrchestrationTraceEvent.PersistedRestoreStarted),
-			undefined,
-			operationSpan ?? this._span,
-		);
-		try {
-			this._authOperationSignals.restorePending.set(true);
-			const restorePlan = await planRestorePersisted(request);
-			cancellationToken.throwIfCancellationRequested();
-			if (restorePlan.kind === TokenSetAuthDeterminationKind.Failed) {
-				return this._commitDetermination(
-					{
+		return await this._runDeterminationWorkflow({
+			name: `${this._tracingOptions.prefix}.restore`,
+			fields: { workflow: "restore" },
+			pendingSignal: this._authOperationSignals.restorePending,
+			workflow: async () => {
+				cancellationToken.throwIfCancellationRequested();
+				const restorePlan = await planRestore(request);
+				cancellationToken.throwIfCancellationRequested();
+				return {
+					commit: {
 						candidate: restorePlan,
-						persistPolicy: PersistPolicy.FollowClient,
+						persistPolicy: options?.persistPolicy ?? PersistPolicy.Skip,
 						events: [
-							{
-								type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
-								payload: {
-									persisted: true,
-									errorSummary: describeError(restorePlan.error),
-								},
-							},
-						],
-						result: null,
-						trace: {
-							type: this._traceType(
-								TokenSetOrchestrationTraceEvent.PersistedRestoreFailed,
-							),
-						},
-						traceError: restorePlan.error,
-					},
-					cancellationToken,
-					operationSpan,
-				);
-			}
-			if (restorePlan.kind === TokenSetAuthDeterminationKind.Unauthenticated) {
-				return this._commitDetermination(
-					{
-						candidate: restorePlan,
-						persistPolicy: PersistPolicy.FollowClient,
-						events: [
-							{
-								type: TokenSetAuthEventType.AuthUnauthenticated,
-								payload: {},
-							},
-						],
-						result: null,
-						trace: {
-							type: this._traceType(
-								TokenSetOrchestrationTraceEvent.PersistedRestoreLoaded,
-							),
-						},
-					},
-					cancellationToken,
-					operationSpan,
-				);
-			}
-			// A persisted snapshot was loaded; reconcile its freshness before
-			// committing the restored determination.
-			const refreshPlan = await this._planRefreshInQueue(
-				{
-					snapshot: restorePlan.snapshot,
-					freshnessOptions: request.freshnessOptions,
-				},
-				cancellationToken,
-				operationSpan,
-			);
-			cancellationToken.throwIfCancellationRequested();
-			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
-				const revoked =
-					refreshPlan.error instanceof TokenSetAuthorizationRevocationError;
-				await this._commitDetermination(
-					{
-						candidate: refreshPlan,
-						failureValue: revoked ? null : restorePlan.snapshot,
-						persistPolicy: revoked
-							? PersistPolicy.FollowClient
-							: PersistPolicy.Skip,
-						events: [
-							...this._buildRefreshLifecycleEvents(
-								restorePlan.snapshot,
-								refreshPlan,
-							),
-							{
-								type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
-								payload: {
-									persisted: true,
-									errorSummary: describeError(refreshPlan.error),
-								},
-							},
-							...(revoked
-								? [
-										{
-											type: TokenSetAuthEventType.AuthUnauthenticated,
-											payload: {},
-										} as const,
-									]
-								: []),
-						],
-						result: null,
-						trace: {
-							type: this._traceType(
-								TokenSetOrchestrationTraceEvent.PersistedRestoreFailed,
-							),
-						},
-						traceError: refreshPlan.error,
-					},
-					cancellationToken,
-					operationSpan,
-				);
-				throw refreshPlan.error;
-			}
-			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Authenticated) {
-				return this._commitDetermination(
-					{
-						candidate: refreshPlan,
-						persistPolicy: PersistPolicy.FollowClient,
-						events: [
-							...this._buildRefreshLifecycleEvents(
-								restorePlan.snapshot,
-								refreshPlan,
-							),
 							{
 								type: TokenSetAuthEventType.AuthMaterialRestored,
-								payload: { persisted: true },
+								payload: {},
 							},
 							{
 								type: TokenSetAuthEventType.AuthAuthenticated,
 								payload: {},
 							},
 						],
-						result: refreshPlan.snapshot,
+						trace: {
+							type: this._traceType(
+								TokenSetOrchestrationTraceEvent.StateRestored,
+							),
+						},
+					},
+					outcome: {
+						kind: TokenSetAuthDeterminationOutcomeKind.Return,
+						value: restorePlan.snapshot,
+					},
+				};
+			},
+		});
+	}
+
+	protected async _restorePersistedState(
+		request: TokenSetPlanRestorePersistedRequest,
+		cancellationToken: CancellationTokenTrait,
+	): Promise<TokenSetAuthSnapshot | null> {
+		return await this._runDeterminationWorkflow({
+			name: `${this._tracingOptions.prefix}.restore.persisted`,
+			fields: { workflow: "restore.persisted" },
+			pendingSignal: this._authOperationSignals.restorePending,
+			workflow: async (operationSpan) => {
+				cancellationToken.throwIfCancellationRequested();
+				this._emitAuthEvent({
+					type: TokenSetAuthEventType.AuthMaterialRestoreStarted,
+					persisted: true,
+				});
+				this._recordTrace(
+					this._traceType(
+						TokenSetOrchestrationTraceEvent.PersistedRestoreStarted,
+					),
+					undefined,
+					operationSpan,
+				);
+				const restorePlan = await planRestorePersisted(request);
+				cancellationToken.throwIfCancellationRequested();
+				if (restorePlan.kind === TokenSetAuthDeterminationKind.Failed) {
+					return {
+						commit: {
+							candidate: restorePlan,
+							persistPolicy: PersistPolicy.FollowClient,
+							events: [
+								{
+									type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
+									payload: {
+										persisted: true,
+										errorSummary: describeError(restorePlan.error),
+									},
+								},
+							],
+							trace: {
+								type: this._traceType(
+									TokenSetOrchestrationTraceEvent.PersistedRestoreFailed,
+								),
+							},
+							traceError: restorePlan.error,
+						},
+						outcome: {
+							kind: TokenSetAuthDeterminationOutcomeKind.Return,
+							value: null,
+						},
+					};
+				}
+				if (
+					restorePlan.kind === TokenSetAuthDeterminationKind.Unauthenticated
+				) {
+					return {
+						commit: {
+							candidate: restorePlan,
+							persistPolicy: PersistPolicy.FollowClient,
+							events: [
+								{
+									type: TokenSetAuthEventType.AuthUnauthenticated,
+									payload: {},
+								},
+							],
+							trace: {
+								type: this._traceType(
+									TokenSetOrchestrationTraceEvent.PersistedRestoreLoaded,
+								),
+							},
+						},
+						outcome: {
+							kind: TokenSetAuthDeterminationOutcomeKind.Return,
+							value: null,
+						},
+					};
+				}
+				// A persisted snapshot was loaded; reconcile its freshness before
+				// committing the restored determination.
+				const refreshPlan = await this._planRefreshInQueue(
+					{
+						snapshot: restorePlan.snapshot,
+						freshnessOptions: request.freshnessOptions,
+					},
+					cancellationToken,
+					operationSpan,
+				);
+				cancellationToken.throwIfCancellationRequested();
+				if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
+					const revoked =
+						refreshPlan.error instanceof TokenSetAuthorizationRevocationError;
+					return {
+						commit: {
+							candidate: refreshPlan,
+							failureValue: revoked ? null : restorePlan.snapshot,
+							persistPolicy: revoked
+								? PersistPolicy.FollowClient
+								: PersistPolicy.Skip,
+							events: [
+								...this._buildRefreshLifecycleEvents(
+									restorePlan.snapshot,
+									refreshPlan,
+								),
+								{
+									type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
+									payload: {
+										persisted: true,
+										errorSummary: describeError(refreshPlan.error),
+									},
+								},
+								...(revoked
+									? [
+											{
+												type: TokenSetAuthEventType.AuthUnauthenticated,
+												payload: {},
+											} as const,
+										]
+									: []),
+							],
+							trace: {
+								type: this._traceType(
+									TokenSetOrchestrationTraceEvent.PersistedRestoreFailed,
+								),
+							},
+							traceError: refreshPlan.error,
+						},
+						outcome: {
+							kind: TokenSetAuthDeterminationOutcomeKind.Throw,
+							error: refreshPlan.error,
+						},
+					};
+				}
+				if (refreshPlan.kind === TokenSetAuthDeterminationKind.Authenticated) {
+					return {
+						commit: {
+							candidate: refreshPlan,
+							persistPolicy: PersistPolicy.FollowClient,
+							events: [
+								...this._buildRefreshLifecycleEvents(
+									restorePlan.snapshot,
+									refreshPlan,
+								),
+								{
+									type: TokenSetAuthEventType.AuthMaterialRestored,
+									payload: { persisted: true },
+								},
+								{
+									type: TokenSetAuthEventType.AuthAuthenticated,
+									payload: {},
+								},
+							],
+							trace: {
+								type: this._traceType(
+									TokenSetOrchestrationTraceEvent.PersistedRestoreLoaded,
+								),
+							},
+						},
+						outcome: {
+							kind: TokenSetAuthDeterminationOutcomeKind.Return,
+							value: refreshPlan.snapshot,
+						},
+					};
+				}
+				// Persisted snapshot loaded but the refresh determination found it is
+				// no longer usable.
+				return {
+					commit: {
+						candidate: refreshPlan,
+						persistPolicy: PersistPolicy.FollowClient,
+						events: [
+							...this._buildRefreshLifecycleEvents(
+								restorePlan.snapshot,
+								refreshPlan,
+							),
+							{
+								type: TokenSetAuthEventType.AuthUnauthenticated,
+								payload: {},
+							},
+						],
 						trace: {
 							type: this._traceType(
 								TokenSetOrchestrationTraceEvent.PersistedRestoreLoaded,
 							),
 						},
 					},
-					cancellationToken,
-					operationSpan,
-				);
-			}
-			// Persisted snapshot loaded but the refresh determination found it is
-			// no longer usable.
-			return this._commitDetermination(
-				{
-					candidate: refreshPlan,
-					persistPolicy: PersistPolicy.FollowClient,
-					events: [
-						...this._buildRefreshLifecycleEvents(
-							restorePlan.snapshot,
-							refreshPlan,
-						),
-						{
-							type: TokenSetAuthEventType.AuthUnauthenticated,
-							payload: {},
-						},
-					],
-					result: null,
-					trace: {
-						type: this._traceType(
-							TokenSetOrchestrationTraceEvent.PersistedRestoreLoaded,
-						),
+					outcome: {
+						kind: TokenSetAuthDeterminationOutcomeKind.Return,
+						value: null,
 					},
-				},
-				cancellationToken,
-				operationSpan,
-			);
-		} finally {
-			this._authOperationSignals.restorePending.set(false);
-		}
+				};
+			},
+		});
 	}
 
 	private async _planRefreshInQueue(
@@ -944,6 +983,37 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		operationSpan?: SpanTrait,
 	): Promise<TokenSetAuthSnapshot | null>;
 
+	private async _restoreStateFromCallbackInput(
+		cancellationToken: CancellationTokenTrait,
+	): Promise<OidcModeCallbackHandlingResult<TokenSetAuthSnapshot | null>> {
+		const snapshotBeforeRestore = this._authSnapshotSignal.get();
+		try {
+			return await this._restoreStateFromCallbackInputOperation(
+				cancellationToken,
+			);
+		} catch (error) {
+			if (this._authSnapshotSignal.get() !== snapshotBeforeRestore) {
+				throw error;
+			}
+
+			// A claimed callback is already a determination workflow. Only resolver
+			// failures reach this branch before that workflow starts.
+			return await this._runDeterminationWorkflow<never>({
+				name: `${this._tracingOptions.prefix}.callback`,
+				fields: { flow: "callback.restore" },
+				workflow: async () => {
+					throw error;
+				},
+			});
+		}
+	}
+
+	protected async _restoreStateFromCallbackInputOperation(
+		_cancellationToken: CancellationTokenTrait,
+	): Promise<OidcModeCallbackHandlingResult<TokenSetAuthSnapshot | null>> {
+		return { kind: OidcModeCallbackHandlingKind.NotApplicable };
+	}
+
 	protected _onDispose(): void {
 		// Default no-op. Subclasses override as needed.
 	}
@@ -957,14 +1027,12 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			: null;
 	}
 
-	private async _commitDetermination<TResult>(
-		commit: TokenSetAuthDeterminationCommit<TResult>,
-		cancellationToken: CancellationTokenTrait,
+	private async _commitDetermination(
+		commit: TokenSetAuthDeterminationCommit,
 		span?: SpanTrait,
-	): Promise<TResult> {
-		cancellationToken.throwIfCancellationRequested();
+	): Promise<void> {
 		const previous = this._authSnapshotSignal.get();
-		this._authSnapshotSignal.set(
+		const nextSnapshot =
 			commit.candidate.kind === TokenSetAuthDeterminationKind.Failed
 				? reduceResourceSnapshot(
 						previous,
@@ -982,10 +1050,8 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				: reduceResourceSnapshot(previous, {
 						kind: ResourceSnapshotUpdateKind.Resolve,
 						value: commit.candidate.snapshot ?? null,
-					}),
-		);
-		await this._syncPersistence(commit, cancellationToken);
-		cancellationToken.throwIfCancellationRequested();
+					});
+		this._authSnapshotSignal.set(nextSnapshot);
 		for (const event of commit.events ?? []) {
 			this._emitAuthEvent({
 				type: event.type,
@@ -1008,12 +1074,12 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				);
 			}
 		}
-		return commit.result;
+		await this._syncPersistence(commit, span);
 	}
 
-	private async _syncPersistence<TResult>(
-		commit: TokenSetAuthDeterminationCommit<TResult>,
-		cancellationToken: CancellationTokenTrait,
+	private async _syncPersistence(
+		commit: TokenSetAuthDeterminationCommit,
+		span?: SpanTrait,
 	): Promise<void> {
 		if (
 			commit.persistPolicy !== PersistPolicy.FollowClient ||
@@ -1022,7 +1088,6 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			return;
 		}
 
-		cancellationToken.throwIfCancellationRequested();
 		try {
 			if (commit.candidate.snapshot) {
 				await savePersistedAuthSnapshot(
@@ -1033,12 +1098,11 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				await clearPersistedAuthSnapshot(this._persistence);
 			}
 		} catch (error) {
-			cancellationToken.throwIfCancellationRequested();
-			this._authSnapshotSignal.set(
-				reduceResourceSnapshot(this._authSnapshotSignal.get(), {
-					kind: ResourceSnapshotUpdateKind.Fail,
-					error,
-				}),
+			this._recordFailureTrace(
+				this._traceType(TokenSetOrchestrationTraceEvent.PersistenceSyncFailed),
+				error,
+				undefined,
+				span ?? this._span,
 			);
 		}
 	}

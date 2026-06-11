@@ -8,6 +8,7 @@ export {
 	type InstrumentMethodThisResolver,
 } from "./operation-method";
 export {
+	OperationSpan,
 	type RunOperationEnvironment,
 	type RunOperationOptions,
 	type RunOperationOptionsBase,

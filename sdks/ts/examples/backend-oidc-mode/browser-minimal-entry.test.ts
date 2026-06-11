@@ -48,7 +48,7 @@ describe("backend-oidc-mode web minimal entry", () => {
 		//    default to browser-native implementations.
 		const client = new BackendOidcModeClient(
 			{ baseUrl: "https://auth.example.com" },
-			environment,
+			{ environment: environment },
 		);
 
 		// 2. Start the client. With no callback fragment and no prior state,
@@ -73,26 +73,28 @@ describe("backend-oidc-mode web minimal entry", () => {
 	it("shows restoreState as an alternative to bootstrap for SSR-provided tokens", async () => {
 		const client = new BackendOidcModeClient(
 			{ baseUrl: "https://auth.example.com" },
-			createFoundationEnvironment({
-				span: createRootSpan(),
-				tracing: createTracing(),
-				persistentStorage: createInMemoryRecordStore(),
-				sessionStorage: createInMemoryRecordStore(),
-				transport: {
-					async execute() {
-						return { status: 500, headers: {}, body: null };
+			{
+				environment: createFoundationEnvironment({
+					span: createRootSpan(),
+					tracing: createTracing(),
+					persistentStorage: createInMemoryRecordStore(),
+					sessionStorage: createInMemoryRecordStore(),
+					transport: {
+						async execute() {
+							return { status: 500, headers: {}, body: null };
+						},
 					},
-				},
-				time: {
-					now: () => Date.now(),
-					setTimeout: (callback: () => void, delayMs: number) =>
-						globalThis.setTimeout(callback, delayMs),
-					clearTimeout: (handle: unknown) =>
-						globalThis.clearTimeout(
-							handle as ReturnType<typeof globalThis.setTimeout>,
-						),
-				},
-			}),
+					time: {
+						now: () => Date.now(),
+						setTimeout: (callback: () => void, delayMs: number) =>
+							globalThis.setTimeout(callback, delayMs),
+						clearTimeout: (handle: unknown) =>
+							globalThis.clearTimeout(
+								handle as ReturnType<typeof globalThis.setTimeout>,
+							),
+					},
+				}),
+			},
 		);
 
 		// Restore state directly (e.g. from server-rendered bootstrap data).

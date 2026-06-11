@@ -59,12 +59,22 @@ export {
 	TokenSetPopupRelayErrorSource,
 } from "../orchestration/client/popup/relay";
 export { BackendOidcModeClient } from "./client/client";
-export { BackendOidcModeErrorCode } from "./client/error-codes";
+export {
+	BackendOidcModeErrorCode,
+	BackendOidcModeErrorSource,
+} from "./client/error-codes";
 export {
 	type BackendOidcModeClientDefaultOptions,
+	type BackendOidcModeClientOptions,
 	type BackendOidcModeFetchUserInfoOptions,
 	type BackendOidcModeMetadataRedemptionOptions,
 } from "./client/types";
+export {
+	type BackendOidcModeCallbackInput,
+	BackendOidcModeCompatFragmentKind,
+	type TakeBackendOidcCallbackInputFromRouterOptions,
+	takeBackendOidcCallbackInputFromRouter,
+} from "./contracts/callback";
 
 // --- Client trace vocabulary ---
 

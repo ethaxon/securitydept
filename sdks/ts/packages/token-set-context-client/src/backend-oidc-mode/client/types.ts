@@ -3,11 +3,16 @@
 // Mode-specific constants and config types live here. Shared token/auth
 // material types are exported from the orchestration layer.
 
-import { type CancellationTokenOptions } from "@securitydept/client";
+import {
+	type CancellationTokenOptions,
+	type FoundationEnvironment,
+} from "@securitydept/client";
 import {
 	type BaseOidcModeClientDefaultOptions,
+	type OidcModeCallbackInputResolver,
 	type OidcModeClientConfigBase,
 } from "../../orchestration/client/types";
+import { type BackendOidcModeCallbackInput } from "../contracts/callback";
 
 // --- Mode-specific constants ---
 
@@ -54,6 +59,12 @@ export interface BackendOidcModeClientConfig extends OidcModeClientConfigBase {
 	userInfoPath?: string;
 	/** Optional default redirect URI reused by authorize/refresh browser flows. */
 	defaultPostAuthRedirectUri?: string;
+}
+
+export interface BackendOidcModeClientOptions {
+	readonly environment: FoundationEnvironment;
+	readonly callbackRoutingKey?: string;
+	readonly callbackInputResolver?: OidcModeCallbackInputResolver<BackendOidcModeCallbackInput> | null;
 }
 
 export interface BackendOidcModeFetchUserInfoOptions

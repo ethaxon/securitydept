@@ -56,7 +56,10 @@ export function createWebuiTokenSetClientEntries(
 							TOKEN_SET_BACKEND_MODE_CONFIG.paths.metadataRedeem,
 						userInfoPath: TOKEN_SET_BACKEND_MODE_CONFIG.paths.userInfo,
 					},
-					options.environment,
+					{
+						environment: options.environment,
+						callbackRoutingKey: TOKEN_SET_BACKEND_MODE_CONFIG.clientKey,
+					},
 				);
 				try {
 					await client.start();
@@ -113,7 +116,9 @@ export function createWebuiTokenSetClientEntries(
 					cancellationToken,
 				});
 				cancellationToken.throwIfCancellationRequested();
-				const client = new FrontendOidcModeClient(config, options.environment);
+				const client = new FrontendOidcModeClient(config, {
+					environment: options.environment,
+				});
 				try {
 					await client.start();
 					cancellationToken.throwIfCancellationRequested();

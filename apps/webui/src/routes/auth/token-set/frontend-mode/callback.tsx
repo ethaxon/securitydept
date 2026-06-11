@@ -2,14 +2,15 @@ import {
 	ClientError,
 	ClientErrorKind,
 	ENVIRONMENT_TOKEN,
-	OnceAsyncLockState,
+	ResourceStatus,
 	RouterNavigationIntent,
 	RouterNavigationMode,
 	UriReferenceString,
 } from "@securitydept/client";
 import { useSecuritydeptContext } from "@securitydept/client-react";
 import { describeFrontendOidcModeCallbackError } from "@securitydept/token-set-context-client/frontend-oidc-mode";
-import { useTokenSetFrontendCallbackController } from "@securitydept/token-set-context-client-react";
+import { OidcModeCallbackHandlingKind } from "@securitydept/token-set-context-client/orchestration";
+import { useTokenSetFrontendCallback } from "@securitydept/token-set-context-client-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { TOKEN_SET_FRONTEND_MODE_CONFIG } from "@/auth/token-set/config";
@@ -30,21 +31,11 @@ function RouteComponent() {
 			source: "webui",
 		});
 	}
-	const currentUrl = router.currentUrl();
-	if (!currentUrl) {
-		throw new ClientError({
-			kind: ClientErrorKind.Configuration,
-			code: "webui.frontend_oidc.callback_url_unavailable",
-			message: "The frontend OIDC callback route requires a current URL",
-			source: "webui",
-		});
-	}
-	const { state } = useTokenSetFrontendCallbackController({
-		currentUrl: currentUrl.toString(),
-	});
+	const { state } = useTokenSetFrontendCallback();
 	const handledResolvedRef = useRef(false);
 	const failurePresentation =
-		state.state === OnceAsyncLockState.Error
+		state.status === ResourceStatus.LoadingError ||
+		state.status === ResourceStatus.Error
 			? describeFrontendOidcModeCallbackError(state.error, {
 					recoveryLinks: {
 						restart_flow: TOKEN_SET_FRONTEND_MODE_CONFIG.paths.playground,
@@ -57,13 +48,15 @@ function RouteComponent() {
 
 	useEffect(() => {
 		if (
-			state.state === OnceAsyncLockState.Success &&
-			"data" in state &&
+			state.status === ResourceStatus.Resolved &&
+			state.value.kind === OidcModeCallbackHandlingKind.Handled &&
 			!handledResolvedRef.current
 		) {
 			handledResolvedRef.current = true;
 			void router.navigate({
-				url: UriReferenceString.parse(state.data.postAuthRedirectUri ?? "/"),
+				url: UriReferenceString.parse(
+					state.value.result.postAuthRedirectUri ?? "/",
+				),
 				intent: RouterNavigationIntent.AuthRedirect,
 				mode: RouterNavigationMode.External,
 			});
@@ -92,13 +85,14 @@ function RouteComponent() {
 						eyebrow="Callback failure"
 					/>
 				) : null}
-				{state.state === OnceAsyncLockState.Running ? (
+				{state.status === ResourceStatus.Loading ||
+				state.status === ResourceStatus.Reloading ? (
 					<p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">
 						Warming the frontend-mode client registry and resuming the OIDC
 						callback...
 					</p>
 				) : null}
-				{state.state === OnceAsyncLockState.Init ? (
+				{state.status === ResourceStatus.Idle ? (
 					<p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/80 dark:bg-amber-950/40 dark:text-amber-300">
 						This URL does not currently carry a recognized frontend-mode
 						callback payload.

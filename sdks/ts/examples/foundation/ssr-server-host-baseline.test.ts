@@ -195,25 +195,27 @@ describe("backend-oidc-mode SSR / server-host contract", () => {
 				baseUrl: "https://auth.example.com",
 				defaultPostAuthRedirectUri: "https://app.example.com/callback",
 			},
-			createFoundationEnvironment({
-				transport: {
-					execute: async () => ({
-						status: 200,
-						headers: {},
-						body: null,
-					}),
-				},
-				time: {
-					now: () => Date.now(),
-					setTimeout: (callback: () => void, delayMs: number) =>
-						globalThis.setTimeout(callback, delayMs),
-					clearTimeout: (handle: unknown) =>
-						globalThis.clearTimeout(
-							handle as ReturnType<typeof globalThis.setTimeout>,
-						),
-				},
-				persistentStorage: sessionStorage,
-			}),
+			{
+				environment: createFoundationEnvironment({
+					transport: {
+						execute: async () => ({
+							status: 200,
+							headers: {},
+							body: null,
+						}),
+					},
+					time: {
+						now: () => Date.now(),
+						setTimeout: (callback: () => void, delayMs: number) =>
+							globalThis.setTimeout(callback, delayMs),
+						clearTimeout: (handle: unknown) =>
+							globalThis.clearTimeout(
+								handle as ReturnType<typeof globalThis.setTimeout>,
+							),
+					},
+					persistentStorage: sessionStorage,
+				}),
+			},
 		);
 
 		const authorizeTarget = client.authorizeUrl(

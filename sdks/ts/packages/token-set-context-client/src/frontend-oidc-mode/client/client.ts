@@ -34,7 +34,6 @@ import {
 	decodeJwtPayload,
 	defineInstrumentMethodDecorator,
 	type EventSubscriptionTrait,
-	type FoundationEnvironment,
 	injectDisposableStackFrom,
 	isLoopbackHttpUrl,
 	type KeyedEphemeralFlowStore,
@@ -45,6 +44,7 @@ import {
 	RouterNavigationMode,
 	type SpanTrait,
 	UriReferenceString,
+	type UriSearchParamsInit,
 	UserRecovery,
 	withDisposableStack,
 } from "@securitydept/client";
@@ -73,9 +73,20 @@ import {
 	WWWAuthenticateChallengeError,
 } from "oauth4webapi";
 import { interval, takeUntil } from "rxjs";
+import { OidcModeCallbackHandler } from "../../orchestration/client/callback-handler";
 import { waitForTokenSetPopupRelay } from "../../orchestration/client/popup/relay";
 import {
+	TokenSetAuthDeterminationKind,
+	TokenSetAuthDeterminationOutcomeKind,
+} from "../../orchestration/client/workflows/commit";
+import {
 	BaseOidcModeClient,
+	OidcModeCallbackHandlingKind,
+	type OidcModeCallbackHandlingResult,
+	type OidcModeCallbackInputResolver,
+	type OidcModeCallbackStateTrait,
+	PersistPolicy,
+	TokenSetAuthEventType,
 	TokenSetAuthorizationRevocationError,
 	TokenSetAuthorizationRevocationReason,
 	type TokenSetOidcPopupLoginOptions,
@@ -86,6 +97,10 @@ import {
 	type TokenSetAuthMetadataSnapshot,
 	type TokenSetAuthSnapshot,
 } from "../../orchestration/token/types";
+import {
+	type FrontendOidcModeCallbackInput,
+	takeFrontendOidcCallbackInputFromRouter,
+} from "../contracts/callback";
 import {
 	type FrontendOidcModeClaimsCheckResult,
 	type FrontendOidcModeClaimsCheckScript,
@@ -109,6 +124,7 @@ import {
 	type FrontendOidcModeCheckClaimsOptions,
 	type FrontendOidcModeClientConfig,
 	type FrontendOidcModeClientDefaultOptions,
+	type FrontendOidcModeClientOptions,
 	FrontendOidcModeContextSource,
 	type FrontendOidcModeExchangeCodeOptions,
 	type FrontendOidcModePendingState,
@@ -148,6 +164,33 @@ const instrumentFrontendMethod = defineInstrumentMethodDecorator<
 			};
 		},
 );
+
+function createDefaultFrontendOidcModeCallbackInputResolver(
+	redirectUri: string,
+): OidcModeCallbackInputResolver<FrontendOidcModeCallbackInput> {
+	const callbackPathname = new URL(redirectUri).pathname;
+	return async ({ environment, cancellationToken }) => {
+		cancellationToken.throwIfCancellationRequested();
+		const router = environment.router;
+		const currentUrl = router?.currentUrl();
+		if (!router || !currentUrl || currentUrl.pathname !== callbackPathname) {
+			return null;
+		}
+
+		const callbackInput = await takeFrontendOidcCallbackInputFromRouter(router);
+		cancellationToken.throwIfCancellationRequested();
+		if (!callbackInput) {
+			throw new ClientError({
+				kind: ClientErrorKind.Protocol,
+				code: FrontendOidcModeErrorCode.CallbackInputNotFound,
+				message: "The frontend OIDC callback input is no longer available.",
+				source: TRACE_TARGET,
+				recovery: UserRecovery.RestartFlow,
+			});
+		}
+		return callbackInput;
+	};
+}
 
 interface FrontendOidcModeConsumedState {
 	consumedAt: number;
@@ -216,11 +259,17 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 	// --- Metadata refresh ---
 	private _metadataRefreshHandle: EventSubscriptionTrait | null = null;
+	private readonly _callbackHandler: OidcModeCallbackHandler<
+		FrontendOidcModeCallbackInput,
+		FrontendOidcModeCallbackResult
+	>;
+	readonly callback: OidcModeCallbackStateTrait<FrontendOidcModeCallbackResult>;
 
 	constructor(
 		config: FrontendOidcModeClientConfig,
-		environment: FoundationEnvironment,
+		options: FrontendOidcModeClientOptions,
 	) {
+		const { environment } = options;
 		super({
 			environment,
 			tracing: {
@@ -265,6 +314,34 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 						FrontendOidcModeClient.defaultOptions.consumedStateKeyPrefix,
 				});
 		}
+
+		this._callbackHandler = new OidcModeCallbackHandler({
+			environment,
+			rootCancellationToken: this._rootCancellation.token,
+			inputResolver:
+				options.callbackInputResolver === undefined
+					? createDefaultFrontendOidcModeCallbackInputResolver(
+							this._config.redirectUri,
+						)
+					: options.callbackInputResolver,
+			handleInput: (callbackInput, cancellationToken) =>
+				this._handleCallbackOperation(callbackInput, cancellationToken),
+			createInputNotFoundError: () =>
+				new ClientError({
+					kind: ClientErrorKind.Protocol,
+					code: FrontendOidcModeErrorCode.CallbackInputNotFound,
+					message: "No frontend OIDC callback input was provided.",
+					source: TRACE_TARGET,
+					recovery: UserRecovery.RestartFlow,
+				}),
+			normalizeError: (error) =>
+				ClientError.fromUnknown(error, {
+					code: FrontendOidcModeErrorCode.CallbackFailed,
+					message: "The frontend OIDC callback failed.",
+					source: TRACE_TARGET,
+				}),
+		});
+		this.callback = this._callbackHandler;
 	}
 
 	/** The resolved configuration. */
@@ -274,7 +351,22 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 	/** Subclass dispose hook — cancel metadata refresh timer. */
 	protected override _onDispose(): void {
+		this._callbackHandler.dispose();
 		this._cancelMetadataRefresh();
+	}
+
+	protected override async _restoreStateFromCallbackInputOperation(
+		cancellationToken: CancellationTokenTrait,
+	): Promise<OidcModeCallbackHandlingResult<TokenSetAuthSnapshot | null>> {
+		const callbackResult = await this._callbackHandler.restore({
+			cancellationToken,
+		});
+		return callbackResult.kind === OidcModeCallbackHandlingKind.Handled
+			? {
+					kind: OidcModeCallbackHandlingKind.Handled,
+					result: callbackResult.result.snapshot,
+				}
+			: callbackResult;
 	}
 
 	// =======================================================================
@@ -285,7 +377,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * Build the authorize URL, generate PKCE + nonce, and store pending state.
 	 *
 	 * The consumer should redirect the browser to the returned URL.
-	 * On the callback page, call `handleCallback(callbackUrl)`.
+	 * On the callback page, call `handleCallback(callbackInput)`.
 	 */
 	@withDisposableStack(0, true)
 	async authorizeUrl(
@@ -473,10 +565,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			},
 		);
 
-		const result = await this._handleCallbackOperation(
-			callbackUrl,
+		const result = await this._callbackHandler.handle({
+			callbackInput: new URLSearchParams(new URL(callbackUrl).search),
 			cancellationToken,
-		);
+		});
 		cancellationToken.throwIfCancellationRequested();
 		return { snapshot: result.snapshot };
 	}
@@ -487,128 +579,151 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 * Restores pending state, exchanges code, fetches userInfo,
 	 * runs claims check, persists snapshot, and schedules refresh.
 	 */
-	@withDisposableStack(1, true)
 	async handleCallback(
-		callbackUrl: string,
+		callbackInput: FrontendOidcModeCallbackInput,
 		options: CancellationTokenOptions = {},
 	): Promise<FrontendOidcModeCallbackResult> {
-		const disposableStack = injectDisposableStackFrom(options, true);
-		const cancellationToken = createLinkedCancellationToken(
-			this._rootCancellation.token,
-			options.cancellationToken,
-		);
-		disposableStack?.use(cancellationToken);
-		return await this._handleCallbackOperation(callbackUrl, cancellationToken);
+		return await this._callbackHandler.handle({
+			callbackInput,
+			cancellationToken: options.cancellationToken,
+		});
 	}
 
-	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.Callback, {
-		flow: "callback",
-	})
 	private async _handleCallbackOperation(
-		callbackUrl: string,
+		callbackInput: FrontendOidcModeCallbackInput,
 		cancellationToken: CancellationTokenTrait,
-		operationSpan?: OperationSpanTrait,
 	): Promise<FrontendOidcModeCallbackResult> {
-		cancellationToken.throwIfCancellationRequested();
+		return await this._runDeterminationWorkflow({
+			name: FrontendOidcModeTraceOperationName.Callback,
+			fields: { flow: "callback" },
+			normalizeError: (error) =>
+				ClientError.fromUnknown(error, {
+					code: FrontendOidcModeErrorCode.OperationFailed,
+					message: "The frontend OIDC operation failed unexpectedly",
+					source: TRACE_TARGET,
+				}),
+			workflow: async (operationSpan) => {
+				cancellationToken.throwIfCancellationRequested();
+				const callbackParameters =
+					typeof callbackInput === "object" &&
+					"searchParams" in callbackInput &&
+					callbackInput.searchParams instanceof URLSearchParams
+						? new URLSearchParams(callbackInput.searchParams)
+						: new URLSearchParams(callbackInput as UriSearchParamsInit);
 
-		const url = new URL(callbackUrl);
-		const state = url.searchParams.get("state");
-		if (!state) {
-			throw new ClientError({
-				kind: ClientErrorKind.Protocol,
-				message: "Callback URL missing state parameter",
-				code: FrontendOidcModeCallbackErrorCode.MissingState,
-				recovery: UserRecovery.RestartFlow,
-				source: TRACE_TARGET,
-			});
-		}
+				const state = callbackParameters.get("state");
+				if (!state) {
+					throw new ClientError({
+						kind: ClientErrorKind.Protocol,
+						message: "Callback URL missing state parameter",
+						code: FrontendOidcModeCallbackErrorCode.MissingState,
+						recovery: UserRecovery.RestartFlow,
+						source: TRACE_TARGET,
+					});
+				}
 
-		const pendingResult = await this._takePendingState(state);
-		if (pendingResult.kind === "missing") {
-			throw new ClientError({
-				kind: ClientErrorKind.Protocol,
-				message:
-					"No pending authorization state exists for this callback state",
-				code: FrontendOidcModeCallbackErrorCode.UnknownState,
-				recovery: UserRecovery.RestartFlow,
-				source: TRACE_TARGET,
-			});
-		}
+				const pendingResult = await this._takePendingState(state);
+				if (pendingResult.kind === "missing") {
+					throw new ClientError({
+						kind: ClientErrorKind.Protocol,
+						message:
+							"No pending authorization state exists for this callback state",
+						code: FrontendOidcModeCallbackErrorCode.UnknownState,
+						recovery: UserRecovery.RestartFlow,
+						source: TRACE_TARGET,
+					});
+				}
 
-		if (pendingResult.kind === "duplicate") {
-			throw new ClientError({
-				kind: ClientErrorKind.Protocol,
-				message: "This callback state has already been consumed",
-				code: FrontendOidcModeCallbackErrorCode.DuplicateState,
-				recovery: UserRecovery.RestartFlow,
-				source: TRACE_TARGET,
-			});
-		}
+				if (pendingResult.kind === "duplicate") {
+					throw new ClientError({
+						kind: ClientErrorKind.Protocol,
+						message: "This callback state has already been consumed",
+						code: FrontendOidcModeCallbackErrorCode.DuplicateState,
+						recovery: UserRecovery.RestartFlow,
+						source: TRACE_TARGET,
+					});
+				}
 
-		if (pendingResult.kind === "stale") {
-			throw new ClientError({
-				kind: ClientErrorKind.Protocol,
-				message: "Pending authorization state expired before callback",
-				code: FrontendOidcModeCallbackErrorCode.PendingStale,
-				recovery: UserRecovery.RestartFlow,
-				source: TRACE_TARGET,
-			});
-		}
+				if (pendingResult.kind === "stale") {
+					throw new ClientError({
+						kind: ClientErrorKind.Protocol,
+						message: "Pending authorization state expired before callback",
+						code: FrontendOidcModeCallbackErrorCode.PendingStale,
+						recovery: UserRecovery.RestartFlow,
+						source: TRACE_TARGET,
+					});
+				}
 
-		const pending = pendingResult.pending;
-		if (
-			pending.contextSource !== FrontendOidcModeContextSource.Client ||
-			pending.issuer !== this._config.issuer ||
-			pending.clientId !== this._config.clientId
-		) {
-			throw new ClientError({
-				kind: ClientErrorKind.Protocol,
-				message:
-					"Pending authorization state does not belong to this frontend OIDC client",
-				code: FrontendOidcModeCallbackErrorCode.PendingClientMismatch,
-				recovery: UserRecovery.RestartFlow,
-				source: TRACE_TARGET,
-			});
-		}
+				const pending = pendingResult.pending;
+				if (
+					pending.contextSource !== FrontendOidcModeContextSource.Client ||
+					pending.issuer !== this._config.issuer ||
+					pending.clientId !== this._config.clientId
+				) {
+					throw new ClientError({
+						kind: ClientErrorKind.Protocol,
+						message:
+							"Pending authorization state does not belong to this frontend OIDC client",
+						code: FrontendOidcModeCallbackErrorCode.PendingClientMismatch,
+						recovery: UserRecovery.RestartFlow,
+						source: TRACE_TARGET,
+					});
+				}
 
-		cancellationToken.throwIfCancellationRequested();
+				cancellationToken.throwIfCancellationRequested();
+				await this._ensureAuthServer(cancellationToken, operationSpan);
+				cancellationToken.throwIfCancellationRequested();
+				const tokens = await this._exchangeCode(
+					callbackParameters,
+					pending.codeVerifier,
+					pending.state,
+					pending.redirectUri,
+					cancellationToken,
+					pending.nonce,
+				);
+				cancellationToken.throwIfCancellationRequested();
 
-		await this._ensureAuthServer(cancellationToken, operationSpan);
-		cancellationToken.throwIfCancellationRequested();
-		const tokens = await this._exchangeCode(
-			callbackUrl,
-			pending.codeVerifier,
-			pending.state,
-			pending.redirectUri,
-			cancellationToken,
-			pending.nonce,
-		);
+				const metadata = await this._performClaimsCheck(
+					tokens,
+					cancellationToken,
+					operationSpan ?? this.span,
+				);
+				cancellationToken.throwIfCancellationRequested();
 
-		cancellationToken.throwIfCancellationRequested();
+				const snapshot: TokenSetAuthSnapshot = {
+					tokens: this._tokenResultToTokenSnapshot(tokens),
+					metadata,
+				};
+				const result: FrontendOidcModeCallbackResult = {
+					snapshot,
+					postAuthRedirectUri: pending.postAuthRedirectUri,
+				};
+				operationSpan.setAttributes({
+					hasClaimsCheck: metadata.principal !== undefined,
+					persisted: this._persistence !== null,
+				});
 
-		const metadata = await this._performClaimsCheck(
-			tokens,
-			cancellationToken,
-			operationSpan ?? this.span,
-		);
-		cancellationToken.throwIfCancellationRequested();
-
-		const snapshot: TokenSetAuthSnapshot = {
-			tokens: this._tokenResultToTokenSnapshot(tokens),
-			metadata,
-		};
-
-		await this._applySnapshot(snapshot, {}, cancellationToken, operationSpan);
-		cancellationToken.throwIfCancellationRequested();
-		operationSpan?.setAttributes({
-			hasClaimsCheck: metadata.principal !== undefined,
-			persisted: this._persistence !== null,
+				return {
+					commit: {
+						candidate: {
+							kind: TokenSetAuthDeterminationKind.Authenticated,
+							snapshot,
+						},
+						persistPolicy: PersistPolicy.FollowClient,
+						events: [
+							{
+								type: TokenSetAuthEventType.AuthAuthenticated,
+								payload: {},
+							},
+						],
+					},
+					outcome: {
+						kind: TokenSetAuthDeterminationOutcomeKind.Return,
+						value: result,
+					},
+				};
+			},
 		});
-
-		return {
-			snapshot,
-			postAuthRedirectUri: pending.postAuthRedirectUri,
-		};
 	}
 
 	/**
@@ -872,7 +987,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		);
 		disposableStack?.use(cancellationToken);
 		return await this._exchangeCode(
-			callbackUrl,
+			new URLSearchParams(new URL(callbackUrl).search),
 			codeVerifier,
 			state,
 			redirectUri,
@@ -882,7 +997,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	}
 
 	private async _exchangeCode(
-		callbackUrl: string,
+		callbackParameters: URLSearchParams | URL,
 		codeVerifier: string | undefined,
 		state: string,
 		redirectUri: string,
@@ -892,11 +1007,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		cancellationToken.throwIfCancellationRequested();
 		const authServer = this._requireAuthServer("exchangeCode");
 
-		const currentUrl = new URL(callbackUrl);
 		const params = validateAuthResponse(
 			authServer,
 			this._o4wClient,
-			currentUrl,
+			callbackParameters,
 			state,
 		);
 

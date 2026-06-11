@@ -52,34 +52,36 @@ describe("minimal entry points", () => {
 				baseUrl: "https://auth.example.com",
 				defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
 			},
-			createFoundationEnvironment({
-				span: createRootSpan(),
-				tracing: createTracing(),
-				transport: {
-					execute: vi.fn(async () => ({
-						status: 200,
-						headers: {},
-						body: null,
-					})),
-				},
-				persistentStorage: {
-					async get() {
-						return null;
+			{
+				environment: createFoundationEnvironment({
+					span: createRootSpan(),
+					tracing: createTracing(),
+					transport: {
+						execute: vi.fn(async () => ({
+							status: 200,
+							headers: {},
+							body: null,
+						})),
 					},
-					async set() {},
-					async remove() {},
-				},
-				sessionStorage: {
-					async get() {
-						return null;
+					persistentStorage: {
+						async get() {
+							return null;
+						},
+						async set() {},
+						async remove() {},
 					},
-					async take() {
-						return null;
+					sessionStorage: {
+						async get() {
+							return null;
+						},
+						async take() {
+							return null;
+						},
+						async set() {},
+						async remove() {},
 					},
-					async set() {},
-					async remove() {},
-				},
-			}),
+				}),
+			},
 		);
 		const router = createRouterForNativeWeb({
 			location: {
@@ -105,34 +107,36 @@ describe("minimal entry points", () => {
 				metadataRedeemPath: "/auth/token-set/metadata/redeem",
 				userInfoPath: "/auth/token-set/user-info",
 			},
-			createFoundationEnvironment({
-				span: createRootSpan(),
-				tracing: createTracing(),
-				transport: {
-					execute: vi.fn(async () => ({
-						status: 200,
-						headers: {},
-						body: null,
-					})),
-				},
-				persistentStorage: {
-					async get() {
-						return null;
+			{
+				environment: createFoundationEnvironment({
+					span: createRootSpan(),
+					tracing: createTracing(),
+					transport: {
+						execute: vi.fn(async () => ({
+							status: 200,
+							headers: {},
+							body: null,
+						})),
 					},
-					async set() {},
-					async remove() {},
-				},
-				sessionStorage: {
-					async get() {
-						return null;
+					persistentStorage: {
+						async get() {
+							return null;
+						},
+						async set() {},
+						async remove() {},
 					},
-					async take() {
-						return null;
+					sessionStorage: {
+						async get() {
+							return null;
+						},
+						async take() {
+							return null;
+						},
+						async set() {},
+						async remove() {},
 					},
-					async set() {},
-					async remove() {},
-				},
-			}),
+				}),
+			},
 		);
 		const router = createRouterForNativeWeb({
 			location: {

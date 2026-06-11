@@ -11,8 +11,8 @@ import {
 	TOKEN_SET_CLIENT_REGISTRY,
 	TOKEN_SET_CLIENT_REGISTRY_ENTRIES,
 	TokenSetClientRegistryService,
-	useTokenSetBackendCallbackController,
-	useTokenSetFrontendCallbackController,
+	useTokenSetBackendCallback,
+	useTokenSetFrontendCallback,
 } from "@securitydept/token-set-context-client-react";
 import { describe, expect, it } from "vitest";
 
@@ -48,10 +48,10 @@ describe("token-set React canonical entry", () => {
 		expect(TOKEN_SET_CLIENT_REGISTRY_ENTRIES).toBeDefined();
 	});
 
-	it("exports headless callback controller hooks", () => {
-		expect(useTokenSetBackendCallbackController).toBeDefined();
-		expect(typeof useTokenSetBackendCallbackController).toBe("function");
-		expect(useTokenSetFrontendCallbackController).toBeDefined();
-		expect(typeof useTokenSetFrontendCallbackController).toBe("function");
+	it("exports headless callback resource hooks", () => {
+		expect(useTokenSetBackendCallback).toBeDefined();
+		expect(typeof useTokenSetBackendCallback).toBe("function");
+		expect(useTokenSetFrontendCallback).toBeDefined();
+		expect(typeof useTokenSetFrontendCallback).toBe("function");
 	});
 });

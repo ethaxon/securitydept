@@ -1,4 +1,4 @@
-use url::{form_urlencoded, Url};
+use url::{Url, form_urlencoded};
 
 pub const SECURITYDEPT_COMPAT_FRAGMENT_VERSION: &str = "v1";
 
@@ -46,7 +46,9 @@ pub fn parse_compat_fragment(input: &str) -> Option<CompatFragment> {
 
 pub fn remove_compat_fragment(url: &mut Url) -> Option<CompatFragment> {
     let mut blocks = split_fragment_blocks(url.fragment()?);
-    let parsed = blocks.last().and_then(|block| parse_compat_fragment(block))?;
+    let parsed = blocks
+        .last()
+        .and_then(|block| parse_compat_fragment(block))?;
     blocks.pop();
     if blocks.is_empty() {
         url.set_fragment(None);
@@ -57,9 +59,8 @@ pub fn remove_compat_fragment(url: &mut Url) -> Option<CompatFragment> {
 }
 
 pub fn is_compat_fragment_block(block: &str) -> bool {
-    form_urlencoded::parse(block.trim_start_matches('#').as_bytes()).any(|(key, value)| {
-        key == "securitydept" && value == SECURITYDEPT_COMPAT_FRAGMENT_VERSION
-    })
+    form_urlencoded::parse(block.trim_start_matches('#').as_bytes())
+        .any(|(key, value)| key == "securitydept" && value == SECURITYDEPT_COMPAT_FRAGMENT_VERSION)
 }
 
 fn split_fragment_blocks(fragment: &str) -> Vec<String> {
@@ -131,7 +132,10 @@ mod tests {
 
     #[test]
     fn parse_compat_fragment_ignores_non_compat_last_block() {
-        assert_eq!(parse_compat_fragment("https://app.example.com/#/orders"), None);
+        assert_eq!(
+            parse_compat_fragment("https://app.example.com/#/orders"),
+            None
+        );
     }
 
     #[test]

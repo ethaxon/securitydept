@@ -19,6 +19,11 @@ export interface TakeCompatFragmentResult<T> {
 	url: UpdatedUriFragment<T>;
 }
 
+export interface TakeCompatFragmentOptions<T> {
+	condition?: (compatFragment: CompatFragment) => boolean;
+	update: UpdateUriFragmentHash<T>;
+}
+
 export interface AppendOrReplaceCompatFragmentResult<T> {
 	fragment: string;
 	url: UpdatedUriFragment<T>;
@@ -73,7 +78,7 @@ export function parseCompatFragment(
 
 export function takeCompatFragment<T extends string | UriFragmentPart>(
 	input: T,
-	update: UpdateUriFragmentHash<T>,
+	options: TakeCompatFragmentOptions<T>,
 ): TakeCompatFragmentResult<T> {
 	const currentFragment = readUriFragmentHash(input);
 	const blocks = splitFragmentBlocks(currentFragment);
@@ -87,12 +92,22 @@ export function takeCompatFragment<T extends string | UriFragmentPart>(
 	}
 
 	const compatFragment = parseCompatFragment(block);
+	if (
+		!compatFragment ||
+		(options.condition && !options.condition(compatFragment))
+	) {
+		return {
+			compatFragment: null,
+			fragment: currentFragment,
+			url: input as UpdatedUriFragment<T>,
+		};
+	}
 	blocks.pop();
 	const fragment = joinFragmentBlocks(blocks);
 	return {
 		compatFragment,
 		fragment,
-		url: update(input, fragment),
+		url: options.update(input, fragment),
 	};
 }
 

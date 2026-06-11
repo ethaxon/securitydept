@@ -55,12 +55,34 @@ export interface TokenSetAuthDeterminationTrace {
 	attributes?: Record<string, unknown>;
 }
 
-export interface TokenSetAuthDeterminationCommit<TResult> {
+export interface TokenSetAuthDeterminationCommit {
 	candidate: TokenSetAuthDeterminationCandidate;
 	failureValue?: TokenSetAuthSnapshot | null;
 	persistPolicy: PersistPolicy;
 	events?: readonly TokenSetAuthDeterminationEvent[];
-	result: TResult;
 	trace?: TokenSetAuthDeterminationTrace;
 	traceError?: unknown;
+}
+
+export const TokenSetAuthDeterminationOutcomeKind = {
+	Return: "return",
+	Throw: "throw",
+} as const;
+
+export type TokenSetAuthDeterminationOutcomeKind =
+	(typeof TokenSetAuthDeterminationOutcomeKind)[keyof typeof TokenSetAuthDeterminationOutcomeKind];
+
+export type TokenSetAuthDeterminationOutcome<TResult> =
+	| {
+			kind: typeof TokenSetAuthDeterminationOutcomeKind.Return;
+			value: TResult;
+	  }
+	| {
+			kind: typeof TokenSetAuthDeterminationOutcomeKind.Throw;
+			error: unknown;
+	  };
+
+export interface TokenSetAuthDeterminationTerminal<TResult> {
+	commit: TokenSetAuthDeterminationCommit;
+	outcome: TokenSetAuthDeterminationOutcome<TResult>;
 }

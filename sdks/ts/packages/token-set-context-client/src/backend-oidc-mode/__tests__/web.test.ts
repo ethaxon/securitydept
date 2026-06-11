@@ -8,12 +8,15 @@ import {
 	type ReadableSignalTrait,
 	type ResourceSnapshot,
 	type TimeTrait,
-	takeCompatFragmentFromRouter,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import { describe, expect, it } from "vitest";
 import { BackendOidcModeClient } from "../client/client";
 import { type BackendOidcModeClientConfig } from "../client/types";
+import {
+	BackendOidcModeCompatFragmentKind,
+	takeBackendOidcCallbackInputFromRouter,
+} from "../contracts/callback";
 
 function expectSnapshotValue<T>(
 	signal: ReadableSignalTrait<ResourceSnapshot<T>>,
@@ -92,16 +95,18 @@ function createBackendOidcModeTestClient(options: {
 			baseUrl: options.baseUrl ?? "https://auth.example.com",
 			persistence: options.persistence,
 		},
-		createFoundationEnvironment({
-			persistentStorage:
-				options.persistentStorage ?? createInMemoryRecordStore(),
-			sessionStorage: options.sessionStorage ?? createInMemoryRecordStore(),
-			transport: options.transport ?? createTokenSetTransport(),
-			span: createRootSpan(),
-			tracing: createTracing(),
-			time: testTime,
-			router: options.router,
-		}),
+		{
+			environment: createFoundationEnvironment({
+				persistentStorage:
+					options.persistentStorage ?? createInMemoryRecordStore(),
+				sessionStorage: options.sessionStorage ?? createInMemoryRecordStore(),
+				transport: options.transport ?? createTokenSetTransport(),
+				span: createRootSpan(),
+				tracing: createTracing(),
+				time: testTime,
+				router: options.router,
+			}),
+		},
 	);
 }
 
@@ -110,8 +115,8 @@ describe("token-set backend OIDC web helpers", () => {
 		const history = createHistoryRecorder();
 		const router = createRouterForNativeWeb({
 			location: {
-				href: "https://app.example.com/oidc-mediated?tab=demo#/route#securitydept=v1&access_token=callback-at&id_token=callback-idt",
-				hash: "#/route#securitydept=v1&access_token=callback-at&id_token=callback-idt",
+				href: `https://app.example.com/oidc-mediated?tab=demo#/route#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&access_token=callback-at&id_token=callback-idt`,
+				hash: `#/route#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&access_token=callback-at&id_token=callback-idt`,
 			},
 			history,
 		});
@@ -119,11 +124,12 @@ describe("token-set backend OIDC web helpers", () => {
 			throw new Error("Expected native web router.");
 		}
 
-		const fragment = await takeCompatFragmentFromRouter(router);
+		const callbackInput = await takeBackendOidcCallbackInputFromRouter(router);
 
-		expect(fragment?.payload).toBe(
-			"access_token=callback-at&id_token=callback-idt",
-		);
+		expect(callbackInput).toEqual({
+			access_token: "callback-at",
+			id_token: "callback-idt",
+		});
 		expect(history.replacedUrl).toBe(
 			"https://app.example.com/oidc-mediated?tab=demo#/route",
 		);
@@ -133,23 +139,45 @@ describe("token-set backend OIDC web helpers", () => {
 		const client = createBackendOidcModeTestClient({});
 		const router = createRouterForNativeWeb({
 			location: {
-				href: "https://app.example.com/oidc-mediated#securitydept=v1&access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&metadata_redemption_id=meta-1",
-				hash: "#securitydept=v1&access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&metadata_redemption_id=meta-1",
+				href: `https://app.example.com/oidc-mediated#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&metadata_redemption_id=meta-1`,
+				hash: `#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&metadata_redemption_id=meta-1`,
 			},
 			history: createHistoryRecorder(),
 		});
 		if (router === null) {
 			throw new Error("Expected native web router.");
 		}
-		const fragment = await takeCompatFragmentFromRouter(router);
+		const callbackInput = await takeBackendOidcCallbackInputFromRouter(router);
 
-		const snapshot = await client.handleCallback(fragment?.parameters ?? {});
+		const snapshot = await client.handleCallback(callbackInput ?? {});
 
 		expect(snapshot.tokens.accessToken).toBe("callback-at");
 		expect(snapshot.metadata.principal?.displayName).toBe("Alice");
 		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(
 			"callback-at",
 		);
+	});
+
+	it("does not consume a compat fragment owned by another application protocol", async () => {
+		const history = createHistoryRecorder();
+		const callbackUrl =
+			"https://app.example.com/oidc-mediated#/route#securitydept=v1&kind=another_protocol&access_token=other-at";
+		const router = createRouterForNativeWeb({
+			location: {
+				href: callbackUrl,
+				hash: "#/route#securitydept=v1&kind=another_protocol&access_token=other-at",
+			},
+			history,
+		});
+		if (router === null) {
+			throw new Error("Expected native web router.");
+		}
+
+		await expect(
+			takeBackendOidcCallbackInputFromRouter(router),
+		).resolves.toBeNull();
+		expect(history.replacedUrl).toBe("");
+		expect(router.currentUrl()?.toString()).toBe(callbackUrl);
 	});
 
 	it("restores persisted auth when no callback fragment is present", async () => {

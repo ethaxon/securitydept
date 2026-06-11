@@ -30,6 +30,11 @@ export { TokenSetPersistenceErrorCode } from "./client/persistence";
 export {
 	type BaseOidcModeClientDefaultOptions,
 	type BaseOidcModeClientOptions,
+	OidcModeCallbackHandlingKind,
+	type OidcModeCallbackHandlingResult,
+	type OidcModeCallbackInputResolver,
+	type OidcModeCallbackInputResolverOptions,
+	type OidcModeCallbackStateTrait,
 	type OidcModeClientConfigBase,
 	type TokenSetAuthOperationSignals,
 	type TokenSetAuthStateOperationOptions,

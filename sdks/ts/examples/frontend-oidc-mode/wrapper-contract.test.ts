@@ -64,7 +64,9 @@ describe("FrontendOidcModeClient / config vocabulary", () => {
 			redirectUri: "https://app.example.com/callback",
 		};
 
-		const client = new FrontendOidcModeClient(config, createTestRuntime());
+		const client = new FrontendOidcModeClient(config, {
+			environment: createTestRuntime(),
+		});
 
 		expect(client.config.issuer).toBe("https://auth.example.com");
 		expect(client.config.clientId).toBe("spa-client");
@@ -78,7 +80,7 @@ describe("FrontendOidcModeClient / config vocabulary", () => {
 				clientId: "spa",
 				redirectUri: "https://app.example.com/callback",
 			},
-			createTestRuntime(),
+			{ environment: createTestRuntime() },
 		);
 
 		// The resolved scopes are internal to the client; we verify by checking
@@ -94,7 +96,9 @@ describe("FrontendOidcModeClient / config vocabulary", () => {
 			scopes: ["openid", "profile", "email"],
 		};
 
-		const client = new FrontendOidcModeClient(config, createTestRuntime());
+		const client = new FrontendOidcModeClient(config, {
+			environment: createTestRuntime(),
+		});
 		expect(client.config.scopes).toEqual(["openid", "profile", "email"]);
 	});
 });
@@ -111,7 +115,7 @@ describe("FrontendOidcModeClient / error boundaries", () => {
 				clientId: "spa",
 				redirectUri: "https://app.example.com/callback",
 			},
-			createTestRuntime(),
+			{ environment: createTestRuntime() },
 		);
 
 		await expect(client.buildAuthorizeUrl()).rejects.toMatchObject({
@@ -127,7 +131,7 @@ describe("FrontendOidcModeClient / error boundaries", () => {
 				clientId: "spa",
 				redirectUri: "https://app.example.com/callback",
 			},
-			createTestRuntime(),
+			{ environment: createTestRuntime() },
 		);
 
 		await expect(
@@ -177,7 +181,7 @@ describe("FrontendOidcModeClient / lifecycle", () => {
 				clientId: "spa",
 				redirectUri: "https://app.example.com/callback",
 			},
-			createTestRuntime(),
+			{ environment: createTestRuntime() },
 		);
 
 		expect(client.authSnapshot.get()).toEqual({ status: "idle" });
@@ -190,7 +194,7 @@ describe("FrontendOidcModeClient / lifecycle", () => {
 				clientId: "spa",
 				redirectUri: "https://app.example.com/callback",
 			},
-			createTestRuntime(),
+			{ environment: createTestRuntime() },
 		);
 
 		client.dispose();
@@ -205,7 +209,7 @@ describe("FrontendOidcModeClient / lifecycle", () => {
 				clientId: "spa",
 				redirectUri: "https://app.example.com/callback",
 			},
-			createTestRuntime(),
+			{ environment: createTestRuntime() },
 		);
 
 		client.dispose();
@@ -224,7 +228,7 @@ describe("FrontendOidcModeClient / lifecycle", () => {
 				clientId: "spa",
 				redirectUri: "https://app.example.com/callback",
 			},
-			createTestRuntime(),
+			{ environment: createTestRuntime() },
 		);
 
 		expect(client.authorizationHeaderValue.hasValue()).toBe(false);
@@ -245,7 +249,7 @@ describe("FrontendOidcModeClient / no-discovery mode", () => {
 				authorizationEndpoint: "https://auth.example.com/oauth2/authorize",
 				tokenEndpoint: "https://auth.example.com/oauth2/token",
 			},
-			createTestRuntime(),
+			{ environment: createTestRuntime() },
 		);
 
 		// Should NOT throw — endpoints are provided, no discovery needed

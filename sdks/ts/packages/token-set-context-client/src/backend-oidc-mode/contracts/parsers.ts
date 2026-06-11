@@ -1,5 +1,4 @@
 import {
-	type CompatFragmentParameters,
 	type HttpResponseJsonBody,
 	IdentityPrincipalWireSchema,
 	validateWithSchemaSync,
@@ -8,6 +7,7 @@ import {
 	type TokenSetTokenDelta,
 	type TokenSetTokenSnapshot,
 } from "../../orchestration";
+import { type BackendOidcModeCallbackInput } from "./callback";
 import {
 	type BackendOidcModeCallbackReturns,
 	type BackendOidcModeRefreshReturns,
@@ -41,7 +41,7 @@ export function parseBackendOidcModeOAuthErrorPayload(
  * wrong types).
  */
 export function parseBackendOidcModeCallbackPayload(
-	payload: CompatFragmentParameters | HttpResponseJsonBody,
+	payload: BackendOidcModeCallbackInput,
 ): BackendOidcModeCallbackReturns | null {
 	const result = validateWithSchemaSync(
 		BackendOidcModeCallbackBodySchema,

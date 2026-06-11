@@ -49,7 +49,9 @@ describe("backend-oidc-mode root minimal entry", () => {
 		};
 
 		// 2. Construct the client directly from the root subpath.
-		const client = new BackendOidcModeClient(config, minimalRuntime);
+		const client = new BackendOidcModeClient(config, {
+			environment: minimalRuntime,
+		});
 
 		// 3. Initially undetermined.
 		expect(client.authSnapshot.get()).toEqual({ status: "idle" });

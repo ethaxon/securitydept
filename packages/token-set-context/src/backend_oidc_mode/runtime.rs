@@ -47,6 +47,7 @@ use crate::{
 };
 
 const PENDING_POST_AUTH_REDIRECT_URI_KEY: &str = "post_auth_redirect_uri";
+const PENDING_CALLBACK_ROUTING_KEY: &str = "callback_routing_key";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -57,6 +58,7 @@ const PENDING_POST_AUTH_REDIRECT_URI_KEY: &str = "post_auth_redirect_uri";
 pub struct BackendOidcModeCodeCallbackResult {
     /// Present only when `post_auth_redirect_policy = resolved`.
     pub post_auth_redirect_uri: Option<Url>,
+    pub callback_routing_key: Option<String>,
     pub auth_state_snapshot: AuthStateSnapshot,
     pub response_body: BackendOidcModeCallbackReturns,
 }
@@ -461,6 +463,7 @@ where
         oidc_client: &OidcClient<PS>,
         external_base_url: &Url,
         requested_post_auth_redirect_uri: Option<&str>,
+        callback_routing_key: Option<&str>,
         redirect_url_override: Option<&str>,
     ) -> BackendOidcModeRuntimeResult<OidcCodeFlowAuthorizationRequest>
     where
@@ -478,9 +481,12 @@ where
             )?;
         }
 
-        let extra_data = requested_post_auth_redirect_uri.map(|uri| {
+        let extra_data = (requested_post_auth_redirect_uri.is_some()
+            || callback_routing_key.is_some())
+        .then(|| {
             json!({
-                PENDING_POST_AUTH_REDIRECT_URI_KEY: uri,
+                PENDING_POST_AUTH_REDIRECT_URI_KEY: requested_post_auth_redirect_uri,
+                PENDING_CALLBACK_ROUTING_KEY: callback_routing_key,
             })
         });
 
@@ -538,6 +544,7 @@ where
 
         Ok(BackendOidcModeCodeCallbackResult {
             post_auth_redirect_uri,
+            callback_routing_key: callback_routing_key(&result),
             auth_state_snapshot,
             response_body,
         })
@@ -647,6 +654,7 @@ where
 
         Ok(BackendOidcModeCodeCallbackResult {
             post_auth_redirect_uri: None,
+            callback_routing_key: None,
             auth_state_snapshot,
             response_body,
         })
@@ -835,6 +843,15 @@ fn callback_post_auth_redirect_uri(result: &OidcCodeCallbackResult) -> Option<St
         .pending_extra_data
         .as_ref()
         .and_then(|value| value.get(PENDING_POST_AUTH_REDIRECT_URI_KEY))
+        .and_then(|value| value.as_str())
+        .map(ToOwned::to_owned)
+}
+
+fn callback_routing_key(result: &OidcCodeCallbackResult) -> Option<String> {
+    result
+        .pending_extra_data
+        .as_ref()
+        .and_then(|value| value.get(PENDING_CALLBACK_ROUTING_KEY))
         .and_then(|value| value.as_str())
         .map(ToOwned::to_owned)
 }

@@ -7,7 +7,10 @@ use securitydept_utils::{
         DiagnosedResult,
     },
 };
-use url::Url;
+use url::{Url, form_urlencoded};
+
+const BACKEND_OIDC_CALLBACK_COMPAT_FRAGMENT_KIND: &str = "token_set_backend_oidc_callback";
+const BACKEND_OIDC_REFRESH_COMPAT_FRAGMENT_KIND: &str = "token_set_backend_oidc_refresh";
 
 use super::{
     metadata_redemption::PendingAuthStateMetadataRedemptionStore,
@@ -190,6 +193,7 @@ where
                 self.oidc_client,
                 external_base_url,
                 query.post_auth_redirect_uri.as_deref(),
+                query.callback_routing_key.as_deref(),
                 Some(self.callback_path),
             )
             .await?;
@@ -296,7 +300,16 @@ where
         caller_post_auth_redirect_uri: Option<&Url>,
     ) -> Result<HttpResponse, BackendOidcModeRuntimeError> {
         let result = self.callback(external_base_url, search_params).await?;
-        let qs = result.response_body.to_fragment_query_string();
+        let mut compat_parameters = form_urlencoded::Serializer::new(String::new());
+        compat_parameters.append_pair("kind", BACKEND_OIDC_CALLBACK_COMPAT_FRAGMENT_KIND);
+        if let Some(callback_routing_key) = result.callback_routing_key.as_deref() {
+            compat_parameters.append_pair("callback_routing_key", callback_routing_key);
+        }
+        let qs = format!(
+            "{}&{}",
+            compat_parameters.finish(),
+            result.response_body.to_fragment_query_string()
+        );
 
         let redirect_url = pick_redirect_uri(
             result.post_auth_redirect_uri.as_ref(),
@@ -401,7 +414,10 @@ where
         external_base_url: &Url,
     ) -> Result<HttpResponse, BackendOidcModeRuntimeError> {
         let result = self.refresh(payload, external_base_url).await?;
-        let qs = result.response_body.to_fragment_query_string();
+        let qs = format!(
+            "kind={BACKEND_OIDC_REFRESH_COMPAT_FRAGMENT_KIND}&{}",
+            result.response_body.to_fragment_query_string()
+        );
 
         let redirect_url = pick_redirect_uri(
             result.post_auth_redirect_uri.as_ref(),
@@ -594,6 +610,7 @@ mod tests {
             &Url::parse("https://auth.example.com").expect("url should parse"),
             &BackendOidcModeAuthorizeQuery {
                 post_auth_redirect_uri: Some("/app".to_string()),
+                callback_routing_key: None,
             },
         );
 

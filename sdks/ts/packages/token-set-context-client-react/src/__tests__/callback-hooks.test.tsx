@@ -1,11 +1,8 @@
 // @vitest-environment jsdom
 
 import {
-	appendOrReplaceCompatFragment,
 	createSignal,
-	OnceAsyncLockState,
 	ResourceStatus,
-	type RouterNavigationRequest,
 	type RouterTrait,
 	resourceFromSnapshots,
 	SYMBOL_DISPOSE,
@@ -13,10 +10,18 @@ import {
 } from "@securitydept/client";
 import { createEnvironmentForTest } from "@securitydept/client/test";
 import { SecuritydeptProvider } from "@securitydept/client-react";
-import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import { FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import {
+	BackendOidcModeClient,
+	BackendOidcModeCompatFragmentKind,
+} from "@securitydept/token-set-context-client/backend-oidc-mode";
+import {
+	type FrontendOidcModeCallbackResult,
+	FrontendOidcModeClient,
+} from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
 	type BaseOidcModeClient,
+	OidcModeCallbackHandlingKind,
+	type OidcModeCallbackHandlingResult,
 	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
@@ -28,25 +33,19 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	provideTokenSetClientRegistry,
-	useTokenSetBackendCallbackController,
-	useTokenSetFrontendCallbackController,
+	useTokenSetBackendCallback,
+	useTokenSetFrontendCallback,
 } from "../index";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
 	document.body.appendChild(container);
 	const root = createRoot(container);
-
-	act(() => {
-		root.render(element);
-	});
-
+	act(() => root.render(element));
 	return {
 		container,
 		unmount() {
-			act(() => {
-				root.unmount();
-			});
+			act(() => root.unmount());
 			container.remove();
 		},
 	};
@@ -61,59 +60,69 @@ async function flushMicrotasks() {
 }
 
 function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
-	return {
-		tokens: { accessToken },
-		metadata: {},
-	};
+	return { tokens: { accessToken }, metadata: {} };
 }
 
-function createBaseMockClient(): BaseOidcModeClient {
-	const isAuthenticatedSnapshot = createSignal({
+function createFrontendClient(): FrontendOidcModeClient {
+	const callbackSnapshot = createSignal({
 		status: ResourceStatus.Resolved,
-		value: false,
+		value: {
+			kind: OidcModeCallbackHandlingKind.Handled,
+			result: {
+				snapshot: createSnapshot("frontend-at"),
+				postAuthRedirectUri: "/after-login",
+			},
+		},
 	} as const);
-	const isAuthenticated = resourceFromSnapshots(() =>
-		isAuthenticatedSnapshot.get(),
-	);
-	return {
-		isAuthenticated,
-		dispose: () => undefined,
-		[SYMBOL_DISPOSE]: () => undefined,
-	} as unknown as BaseOidcModeClient;
-}
-
-function createFrontendClient() {
+	const callbackResource = resourceFromSnapshots<
+		OidcModeCallbackHandlingResult<FrontendOidcModeCallbackResult>
+	>(() => callbackSnapshot.get());
+	const dispose = vi.fn(() => callbackResource.dispose());
 	const client = {
-		...createBaseMockClient(),
-		handleCallback: vi.fn(async () => ({
-			snapshot: createSnapshot("frontend-at"),
-			postAuthRedirectUri: "/after-login",
-		})),
-	};
+		callback: {
+			state: callbackSnapshot,
+			resource: callbackResource,
+			cancel: vi.fn(),
+		},
+		dispose,
+		[SYMBOL_DISPOSE]: dispose,
+	} as unknown as FrontendOidcModeClient;
 	Object.setPrototypeOf(client, FrontendOidcModeClient.prototype);
-	return client as unknown as FrontendOidcModeClient & {
-		handleCallback: ReturnType<typeof vi.fn>;
-	};
+	return client;
 }
 
-function createBackendClient() {
+function createBackendClient(): BackendOidcModeClient {
+	const callbackSnapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: {
+			kind: OidcModeCallbackHandlingKind.Handled,
+			result: createSnapshot("backend-at"),
+		},
+	} as const);
+	const callbackResource = resourceFromSnapshots<
+		OidcModeCallbackHandlingResult<TokenSetAuthSnapshot>
+	>(() => callbackSnapshot.get());
+	const dispose = vi.fn(() => callbackResource.dispose());
 	const client = {
-		...createBaseMockClient(),
-		handleCallback: vi.fn(async () => createSnapshot("backend-at")),
-	};
+		callback: {
+			state: callbackSnapshot,
+			resource: callbackResource,
+			cancel: vi.fn(),
+		},
+		dispose,
+		[SYMBOL_DISPOSE]: dispose,
+	} as unknown as BackendOidcModeClient;
 	Object.setPrototypeOf(client, BackendOidcModeClient.prototype);
-	return client as unknown as BackendOidcModeClient & {
-		handleCallback: ReturnType<typeof vi.fn>;
-	};
+	return client;
 }
 
 function createEntry(
 	clientKey: string,
-	client: BaseOidcModeClient,
+	clientFactory: () => BaseOidcModeClient,
 	callbackPath?: string,
 ): TokenSetClientRegistryEntry<BaseOidcModeClient> {
 	return {
-		clientFactory: () => client,
+		clientFactory,
 		meta: {
 			clientKey,
 			urlPatterns: [],
@@ -125,104 +134,29 @@ function createEntry(
 	};
 }
 
-describe("token-set React callback controller hooks", () => {
+function createRouter(url: string): RouterTrait {
+	return {
+		currentUrl: () => UriReferenceString.parse(url),
+		navigate: vi.fn(),
+	};
+}
+
+describe("token-set React callback hooks", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
 	});
 
-	it("auto-handles a matching frontend callback URL", async () => {
+	it("initializes the selected frontend record without consuming callback input", async () => {
 		const client = createFrontendClient();
-		const environment = createEnvironmentForTest();
-
-		function Probe() {
-			const callback = useTokenSetFrontendCallbackController({
-				currentUrl: "https://app.example.com/oidc/callback?code=ok&state=s1",
-			});
-			return createElement("output", null, callback.state.state);
-		}
-
-		const view = render(
-			createElement(
-				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: [
-						...provideTokenSetClientRegistry({
-							clients: [createEntry("frontend", client, "/oidc/callback")],
-						}),
-					],
-				},
-				createElement(Probe),
-			),
-		);
-		await flushMicrotasks();
-
-		expect(client.handleCallback).toHaveBeenCalledWith(
+		const clientFactory = vi.fn(() => client);
+		const router = createRouter(
 			"https://app.example.com/oidc/callback?code=ok&state=s1",
 		);
-		expect(view.container.textContent).toBe(OnceAsyncLockState.Success);
-		view.unmount();
-	});
-
-	it("keeps frontend callback idle for non-callback URLs", async () => {
-		const client = createFrontendClient();
-		const environment = createEnvironmentForTest();
-
-		function Probe() {
-			const callback = useTokenSetFrontendCallbackController({
-				currentUrl: "https://app.example.com/dashboard",
-			});
-			return createElement("output", null, callback.state.state);
-		}
-
-		const view = render(
-			createElement(
-				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: [
-						...provideTokenSetClientRegistry({
-							clients: [createEntry("frontend", client, "/oidc/callback")],
-						}),
-					],
-				},
-				createElement(Probe),
-			),
-		);
-		await flushMicrotasks();
-
-		expect(client.handleCallback).not.toHaveBeenCalled();
-		expect(view.container.textContent).toBe(OnceAsyncLockState.Init);
-		view.unmount();
-	});
-
-	it("reads backend compat fragments from the environment router and cleans them", async () => {
-		const client = createBackendClient();
-		const currentUrl = appendOrReplaceCompatFragment(
-			UriReferenceString.parse("https://app.example.com/callback#hash"),
-			{
-				payload: {
-					code: "ok",
-					state: "s1",
-				},
-			},
-			(input, hash) => input.setHash(hash),
-		).url;
-		const navigate = vi.fn(async (request: RouterNavigationRequest) => {
-			current = request.url;
-		});
-		let current = currentUrl;
-		const router: RouterTrait = {
-			currentUrl: () => current,
-			navigate,
-		};
 		const environment = createEnvironmentForTest({ router });
 
 		function Probe() {
-			const callback = useTokenSetBackendCallbackController({
-				clientQuery: { clientKey: "backend" },
-			});
-			return createElement("output", null, callback.state.state);
+			const callback = useTokenSetFrontendCallback();
+			return createElement("output", null, callback.state.status);
 		}
 
 		const view = render(
@@ -230,23 +164,87 @@ describe("token-set React callback controller hooks", () => {
 				SecuritydeptProvider,
 				{
 					parentInjector: environment.injector,
-					providers: [
-						...provideTokenSetClientRegistry({
-							clients: [createEntry("backend", client)],
-						}),
-					],
+					providers: provideTokenSetClientRegistry({
+						clients: [createEntry("frontend", clientFactory, "/oidc/callback")],
+					}),
 				},
 				createElement(Probe),
 			),
 		);
 		await flushMicrotasks();
 
-		expect(client.handleCallback).toHaveBeenCalledWith({
-			code: "ok",
-			state: "s1",
+		expect(clientFactory).toHaveBeenCalledOnce();
+		expect(router.navigate).not.toHaveBeenCalled();
+		expect(view.container.textContent).toBe(ResourceStatus.Resolved);
+		view.unmount();
+	});
+
+	it("resolves not-applicable outside a frontend callback path", async () => {
+		const clientFactory = vi.fn(() => createFrontendClient());
+		const environment = createEnvironmentForTest({
+			router: createRouter("https://app.example.com/dashboard"),
 		});
-		expect(navigate).toHaveBeenCalledTimes(1);
-		expect(view.container.textContent).toBe(OnceAsyncLockState.Success);
+
+		function Probe() {
+			const callback = useTokenSetFrontendCallback();
+			const kind =
+				callback.state.status === ResourceStatus.Resolved
+					? callback.state.value.kind
+					: "pending";
+			return createElement("output", null, kind);
+		}
+
+		const view = render(
+			createElement(
+				SecuritydeptProvider,
+				{
+					parentInjector: environment.injector,
+					providers: provideTokenSetClientRegistry({
+						clients: [createEntry("frontend", clientFactory, "/oidc/callback")],
+					}),
+				},
+				createElement(Probe),
+			),
+		);
+		await flushMicrotasks();
+
+		expect(clientFactory).not.toHaveBeenCalled();
+		expect(view.container.textContent).toBe(
+			OidcModeCallbackHandlingKind.NotApplicable,
+		);
+		view.unmount();
+	});
+
+	it("selects a backend record from callback_routing_key", async () => {
+		const client = createBackendClient();
+		const clientFactory = vi.fn(() => client);
+		const environment = createEnvironmentForTest({
+			router: createRouter(
+				`https://app.example.com/callback#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&callback_routing_key=backend&access_token=at`,
+			),
+		});
+
+		function Probe() {
+			const callback = useTokenSetBackendCallback();
+			return createElement("output", null, callback.state.status);
+		}
+
+		const view = render(
+			createElement(
+				SecuritydeptProvider,
+				{
+					parentInjector: environment.injector,
+					providers: provideTokenSetClientRegistry({
+						clients: [createEntry("backend", clientFactory)],
+					}),
+				},
+				createElement(Probe),
+			),
+		);
+		await flushMicrotasks();
+
+		expect(clientFactory).toHaveBeenCalledOnce();
+		expect(view.container.textContent).toBe(ResourceStatus.Resolved);
 		view.unmount();
 	});
 });

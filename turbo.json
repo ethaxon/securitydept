@@ -33,18 +33,6 @@
 			],
 			"env": ["VITE_*"]
 		},
-		"dependency-transit": {
-			"dependsOn": ["^dependency-transit"]
-		},
-		"typecheck": {
-			"dependsOn": ["dependency-transit"],
-			"outputs": [],
-			"inputs": [
-				"$TURBO_DEFAULT$",
-				"$TURBO_ROOT$/tsconfig.base.json",
-				"$TURBO_ROOT$/sdks/ts/tsconfig.sdks.json"
-			]
-		},
 		"test": {
 			"dependsOn": ["build"],
 			"outputs": [],
@@ -96,10 +84,6 @@
 				"$TURBO_ROOT$/turbo.json"
 			],
 			"env": ["CI", "GITHUB_ACTIONS"]
-		},
-		"//#typecheck:scripts": {
-			"outputs": [],
-			"inputs": ["$TURBO_DEFAULT$", "scripts/**", "tsconfig.scripts.json"]
 		}
 	}
 }

@@ -3,14 +3,17 @@ import {
 	createInMemoryRecordStore,
 	createRootSpan,
 	createTracing,
-	takeCompatFragmentFromRouter,
 } from "@securitydept/client";
 import {
 	createTimeForTest,
 	createTransportForTest,
 } from "@securitydept/client/test";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
-import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import {
+	BackendOidcModeClient,
+	BackendOidcModeCompatFragmentKind,
+	takeBackendOidcCallbackInputFromRouter,
+} from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it } from "vitest";
 
 function createHistoryRecorder() {
@@ -62,32 +65,32 @@ describe("external backend-oidc-mode browser scenario", () => {
 				baseUrl: "https://auth.example.com",
 				defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
 			},
-			createFoundationEnvironment({
-				span: createRootSpan(),
-				tracing: createTracing(),
-				persistentStorage,
-				sessionStorage,
-				transport: transport,
-				time,
-			}),
+			{
+				environment: createFoundationEnvironment({
+					span: createRootSpan(),
+					tracing: createTracing(),
+					persistentStorage,
+					sessionStorage,
+					transport: transport,
+					time,
+				}),
+			},
 		);
 		const emptySnapshot = await client.start();
 
 		expect(emptySnapshot).toBeNull();
 
 		const callbackHistory = createHistoryRecorder();
-		const callbackFragment = await takeCompatFragmentFromRouter(
+		const callbackInput = await takeBackendOidcCallbackInputFromRouter(
 			createRouterForNativeWeb({
 				location: {
-					href: "https://app.example.com/oidc-mediated?tab=demo#/route#securitydept=v1&access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
-					hash: "#/route#securitydept=v1&access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1",
+					href: `https://app.example.com/oidc-mediated?tab=demo#/route#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1`,
+					hash: `#/route#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-1`,
 				},
 				history: callbackHistory,
 			})!,
 		);
-		const callbackSnapshot = await client.handleCallback(
-			callbackFragment?.parameters ?? {},
-		);
+		const callbackSnapshot = await client.handleCallback(callbackInput ?? {});
 
 		expect(callbackSnapshot.tokens.accessToken).toBe("callback-at");
 		expect(callbackSnapshot.metadata.principal?.displayName).toBe("Alice");

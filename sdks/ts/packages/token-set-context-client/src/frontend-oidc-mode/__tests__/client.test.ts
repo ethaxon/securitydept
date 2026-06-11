@@ -11,7 +11,10 @@ import {
 	OperationTraceEventType,
 	type ReadableSignalTrait,
 	type ResourceSnapshot,
+	type RouterNavigationRequest,
+	type RouterTrait,
 	SYMBOL_DISPOSE,
+	UriReferenceString,
 } from "@securitydept/client";
 import { createEnvironmentForTest as createFoundationEnvironment } from "@securitydept/client/test";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
@@ -178,6 +181,54 @@ describe("FrontendOidcModeClient", () => {
 		});
 	});
 
+	it("restores a matching callback before persistence during start", async () => {
+		let currentUrl = UriReferenceString.parse("https://app.example.com/login");
+		const navigate = vi.fn(async (request: RouterNavigationRequest) => {
+			currentUrl = request.url;
+		});
+		const router: RouterTrait = {
+			currentUrl: () => currentUrl,
+			navigate,
+		};
+		const runtime = createFoundationEnvironment({
+			router,
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			sessionStorage: createInMemoryRecordStore(),
+		});
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			{ environment: runtime },
+		);
+
+		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
+		currentUrl = UriReferenceString.parse(
+			"https://app.example.com/auth/callback?code=auth-code&state=state-value&tab=security",
+		);
+
+		await expect(client.start()).resolves.toMatchObject({
+			tokens: { accessToken: "access-token" },
+		});
+		expect(client.callback.resource.value.get()).toMatchObject({
+			kind: "handled",
+			result: { postAuthRedirectUri: "/after-login" },
+		});
+		expect(navigate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				url: UriReferenceString.parse(
+					"https://app.example.com/auth/callback?tab=security",
+				),
+			}),
+		);
+	});
+
 	it("normalizes raw userInfo into the shared authenticated principal contract", async () => {
 		const runtime = createFoundationEnvironment({
 			transport: {
@@ -195,7 +246,7 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.discover();
@@ -236,7 +287,7 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.discover();
@@ -271,14 +322,14 @@ describe("FrontendOidcModeClient", () => {
 				tokenEndpoint: "https://auth.example.com/token",
 				pkceEnabled: false,
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.authorizeUrl({
 			postAuthRedirectUri: "/playground/token-set/frontend-mode",
 		});
 		await client.handleCallback(
-			"https://app.example.com/auth/callback?code=auth-code&state=state-value",
+			new URLSearchParams({ code: "auth-code", state: "state-value" }),
 		);
 
 		expect(oauthMocks.authorizationCodeGrantRequest).toHaveBeenCalledTimes(1);
@@ -312,7 +363,7 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-a" });
@@ -326,9 +377,7 @@ describe("FrontendOidcModeClient", () => {
 		).resolves.not.toBeNull();
 
 		await expect(
-			client.handleCallback(
-				"https://app.example.com/auth/callback?code=auth-code&state=state-a",
-			),
+			client.handleCallback({ code: "auth-code", state: "state-a" }),
 		).resolves.toMatchObject({ postAuthRedirectUri: "/after-a" });
 
 		await expect(
@@ -339,9 +388,12 @@ describe("FrontendOidcModeClient", () => {
 		).resolves.not.toBeNull();
 
 		await expect(
-			client.handleCallback(
-				"https://app.example.com/auth/callback?code=auth-code&state=state-b",
-			),
+			client.handleCallback({
+				searchParams: new URLSearchParams({
+					code: "auth-code",
+					state: "state-b",
+				}),
+			}),
 		).resolves.toMatchObject({ postAuthRedirectUri: "/after-b" });
 	});
 
@@ -362,18 +414,17 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
-		await client.handleCallback(
-			"https://app.example.com/auth/callback?code=auth-code&state=state-value",
-		);
+		await client.handleCallback([
+			["code", "auth-code"],
+			["state", "state-value"],
+		]);
 
 		await expect(
-			client.handleCallback(
-				"https://app.example.com/auth/callback?code=auth-code&state=state-value",
-			),
+			client.handleCallback("?code=auth-code&state=state-value"),
 		).rejects.toMatchObject({
 			code: FrontendOidcModeCallbackErrorCode.DuplicateState,
 			recovery: "restart_flow",
@@ -397,13 +448,11 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await expect(
-			client.handleCallback(
-				"https://app.example.com/auth/callback?code=auth-code&state=unknown-state",
-			),
+			client.handleCallback("?code=auth-code&state=unknown-state"),
 		).rejects.toMatchObject({
 			code: FrontendOidcModeCallbackErrorCode.UnknownState,
 			recovery: "restart_flow",
@@ -428,7 +477,7 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await sessionStorage.set(
@@ -447,9 +496,7 @@ describe("FrontendOidcModeClient", () => {
 		);
 
 		await expect(
-			client.handleCallback(
-				"https://app.example.com/auth/callback?code=auth-code&state=state-stale",
-			),
+			client.handleCallback("?code=auth-code&state=state-stale"),
 		).rejects.toMatchObject({
 			code: FrontendOidcModeCallbackErrorCode.PendingStale,
 			recovery: "restart_flow",
@@ -474,7 +521,7 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await sessionStorage.set(
@@ -493,9 +540,7 @@ describe("FrontendOidcModeClient", () => {
 		);
 
 		await expect(
-			client.handleCallback(
-				"https://app.example.com/auth/callback?code=auth-code&state=state-mismatch",
-			),
+			client.handleCallback("?code=auth-code&state=state-mismatch"),
 		).rejects.toMatchObject({
 			code: FrontendOidcModeCallbackErrorCode.PendingClientMismatch,
 			recovery: "restart_flow",
@@ -523,15 +568,13 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
 
 		await expect(
-			client.handleCallback(
-				"https://app.example.com/auth/callback?code=auth-code&state=state-value",
-			),
+			client.handleCallback("?code=auth-code&state=state-value"),
 		).rejects.toMatchObject({
 			kind: ClientErrorKind.Internal,
 			code: "frontend_oidc.operation_failed",
@@ -539,9 +582,7 @@ describe("FrontendOidcModeClient", () => {
 		});
 
 		await expect(
-			client.handleCallback(
-				"https://app.example.com/auth/callback?code=auth-code&state=state-value",
-			),
+			client.handleCallback("?code=auth-code&state=state-value"),
 		).rejects.toMatchObject({
 			code: FrontendOidcModeCallbackErrorCode.DuplicateState,
 			recovery: "restart_flow",
@@ -569,13 +610,11 @@ describe("FrontendOidcModeClient", () => {
 				clientId: "spa-client",
 				redirectUri: "http://localhost:4722/auth/callback",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
-		await client.handleCallback(
-			"http://localhost:4722/auth/callback?code=auth-code&state=state-value",
-		);
+		await client.handleCallback("?code=auth-code&state=state-value");
 
 		expect(oauthMocks.discoveryRequest).toHaveBeenCalledWith(
 			expect.any(URL),
@@ -610,7 +649,7 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.loginWithPopup({
@@ -687,7 +726,7 @@ describe("FrontendOidcModeClient", () => {
 					authorizationEndpoint: "https://auth.example.com/authorize",
 					tokenEndpoint: "https://auth.example.com/token",
 				},
-				runtime,
+				{ environment: runtime },
 			);
 
 			await expect(client.loginWithRedirect()).rejects.toMatchObject({
@@ -725,13 +764,11 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await expect(
-			client.handleCallback(
-				"https://app.example.com/auth/callback?code=auth-code&state=missing-state",
-			),
+			client.handleCallback("?code=auth-code&state=missing-state"),
 		).rejects.toMatchObject({
 			code: FrontendOidcModeCallbackErrorCode.UnknownState,
 		});
@@ -771,13 +808,11 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
-		await client.handleCallback(
-			"https://app.example.com/auth/callback?code=auth-code&state=state-value",
-		);
+		await client.handleCallback("?code=auth-code&state=state-value");
 
 		const callbackStarted = trace
 			.ofType(OperationTraceEventType.Started)
@@ -830,7 +865,7 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.restoreState({
@@ -892,15 +927,13 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 		const events: TokenSetAuthEvent[] = [];
 		client.authEvents.subscribe({ next: (event) => events.push(event) });
 
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
-		await client.handleCallback(
-			"https://app.example.com/auth/callback?code=auth-code&state=state-value",
-		);
+		await client.handleCallback("?code=auth-code&state=state-value");
 
 		const authenticatedEvents = events.filter(
 			(event) => event.type === TokenSetAuthEventType.AuthAuthenticated,
@@ -940,7 +973,7 @@ describe("FrontendOidcModeClient", () => {
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		client.restoreState({

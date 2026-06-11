@@ -33,6 +33,8 @@ use crate::models::{
 pub struct BackendOidcModeAuthorizeQuery {
     #[serde(default)]
     pub post_auth_redirect_uri: Option<String>,
+    #[serde(default)]
+    pub callback_routing_key: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

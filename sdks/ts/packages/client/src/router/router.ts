@@ -37,8 +37,13 @@ export interface RouterTrait {
 	navigate(request: RouterNavigationRequest): void | Promise<void>;
 }
 
+export interface TakeCompatFragmentFromRouterOptions {
+	condition?: (compatFragment: CompatFragment) => boolean;
+}
+
 export async function takeCompatFragmentFromRouter(
 	router: RouterTrait,
+	options: TakeCompatFragmentFromRouterOptions = {},
 ): Promise<CompatFragment | null> {
 	const currentUrl = router.currentUrl();
 
@@ -46,10 +51,10 @@ export async function takeCompatFragmentFromRouter(
 		return null;
 	}
 
-	const { compatFragment, url: cleanedUrl } = takeCompatFragment(
-		currentUrl,
-		(ref, hash) => ref.setHash(hash),
-	);
+	const { compatFragment, url: cleanedUrl } = takeCompatFragment(currentUrl, {
+		condition: options.condition,
+		update: (ref, hash) => ref.setHash(hash),
+	});
 
 	if (!compatFragment) {
 		return null;

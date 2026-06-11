@@ -66,6 +66,7 @@ export type BackendOidcModePreset =
 
 export interface BackendOidcModeAuthorizeQuery {
 	postAuthRedirectUri?: string;
+	callbackRoutingKey?: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -118,27 +118,11 @@ jobs:
         with:
           cache-mode: read-only
 
-      - name: Restore Turbo typecheck cache
-        id: turbo-typecheck-cache
-        uses: actions/cache/restore@v5
-        with:
-          path: .turbo
-          key: turbo-${{ runner.os }}-${{ needs.preflight.outputs.cache_scope }}-typecheck-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-${{ github.sha }}
-          restore-keys: |
-            turbo-${{ runner.os }}-${{ needs.preflight.outputs.cache_scope }}-typecheck-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-
-
       - name: Lint repository
         run: mise exec --command "pnpm lint"
 
       - name: Typecheck repository
         run: mise exec --command "pnpm typecheck"
-
-      - name: Save Turbo typecheck cache
-        if: steps.turbo-typecheck-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: .turbo
-          key: ${{ steps.turbo-typecheck-cache.outputs.cache-primary-key }}
 
       - name: Install Rust clippy component
         run: mise exec --command "rustup component add --toolchain nightly clippy"

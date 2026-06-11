@@ -197,6 +197,7 @@ export {
 	isCompatFragmentBlock,
 	parseCompatFragment,
 	SECURITYDEPT_COMPAT_FRAGMENT_VERSION,
+	type TakeCompatFragmentOptions,
 	type TakeCompatFragmentResult,
 	takeCompatFragment,
 	type UpdateUriFragmentHash,
@@ -240,6 +241,7 @@ export {
 	readSecuritydeptRouteMetadata,
 	SECURITYDEPT_ROUTE_METADATA_KEY,
 	type SecuritydeptRouteMetadata,
+	type TakeCompatFragmentFromRouterOptions,
 	takeCompatFragmentFromRouter,
 	writeSecuritydeptRouteMetadata,
 } from "./router";
@@ -351,6 +353,7 @@ export {
 	type InstrumentMethodResolvedOptions,
 	type InstrumentMethodThisContext,
 	type InstrumentMethodThisResolver,
+	OperationSpan,
 	OperationTraceEventType,
 	type RunOperationEnvironment,
 	type RunOperationOptions,

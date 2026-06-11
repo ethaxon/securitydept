@@ -81,10 +81,9 @@ describe("securitydept compat fragment", () => {
 			"https://app.example.com/#/orders#securitydept=v1&access_token=at",
 		);
 
-		const { compatFragment, url: cleaned } = takeCompatFragment(
-			url,
-			updateUrlHash,
-		);
+		const { compatFragment, url: cleaned } = takeCompatFragment(url, {
+			update: updateUrlHash,
+		});
 
 		expect(compatFragment?.payload).toBe("access_token=at");
 		expect(cleaned.toString()).toBe("https://app.example.com/#/orders");
@@ -98,10 +97,9 @@ describe("securitydept compat fragment", () => {
 			"https://app.example.com/#/orders#securitydept=v1&access_token=at",
 		);
 
-		const { compatFragment, url: cleaned } = takeCompatFragment(
-			ref,
-			(current, hash) => current.setHash(hash),
-		);
+		const { compatFragment, url: cleaned } = takeCompatFragment(ref, {
+			update: (current, hash) => current.setHash(hash),
+		});
 
 		expect(compatFragment?.payload).toBe("access_token=at");
 		expect(cleaned.raw).toBe("https://app.example.com/#/orders");
@@ -113,7 +111,7 @@ describe("securitydept compat fragment", () => {
 	it("preserves an empty hash-route block when taking compat fragments", () => {
 		const { compatFragment, fragment } = takeCompatFragment(
 			"##securitydept=v1&access_token=at",
-			(_, hash) => hash,
+			{ update: (_, hash) => hash },
 		);
 
 		expect(compatFragment?.payload).toBe("access_token=at");
@@ -133,9 +131,23 @@ describe("securitydept compat fragment", () => {
 	it("clears hash entirely when taking a lone compat block", () => {
 		const { fragment } = takeCompatFragment(
 			"#securitydept=v1&access_token=at",
-			(_, hash) => hash,
+			{ update: (_, hash) => hash },
 		);
 
 		expect(fragment).toBe("");
+	});
+
+	it("does not take a compat fragment when its condition does not match", () => {
+		const input =
+			"#/orders#securitydept=v1&kind=another_protocol&access_token=at";
+		const { compatFragment, fragment, url } = takeCompatFragment(input, {
+			condition: ({ parameters }) =>
+				parameters.kind === "token_set_backend_oidc_callback",
+			update: (_, hash) => hash,
+		});
+
+		expect(compatFragment).toBeNull();
+		expect(fragment).toBe(input);
+		expect(url).toBe(input);
 	});
 });

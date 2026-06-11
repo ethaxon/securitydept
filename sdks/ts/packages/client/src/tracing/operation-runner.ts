@@ -34,13 +34,28 @@ export interface RunOperationOptions<T> extends RunOperationOptionsBase {
 	execute: (span: OperationSpanTrait) => T;
 }
 
-class OperationSpan implements OperationSpanTrait {
-	constructor(
+export class OperationSpan implements OperationSpanTrait {
+	private constructor(
 		private readonly _span: MutableSpanTrait,
 		private readonly _environment: RunOperationEnvironment["environment"],
 		private readonly _name: string,
 		private readonly _target: string,
 	) {}
+
+	static start(options: RunOperationOptionsBase): OperationSpan {
+		const operationSpan = new OperationSpan(
+			options.span.fork({
+				mutable: true,
+				idFactory: options.idFactory,
+				attributes: options.fields,
+			}),
+			options.environment,
+			options.name,
+			options.target,
+		);
+		operationSpan.recordStarted();
+		return operationSpan;
+	}
 
 	get id(): string {
 		return this._span.id;
@@ -119,18 +134,7 @@ export function runOperation<T>(
 export function runOperation<T>(
 	options: RunOperationOptions<T | Promise<T>>,
 ): T | Promise<T> {
-	const span = options.span.fork({
-		mutable: true,
-		idFactory: options.idFactory,
-		attributes: options.fields,
-	});
-	const operationSpan = new OperationSpan(
-		span,
-		options.environment,
-		options.name,
-		options.target,
-	);
-	operationSpan.recordStarted();
+	const operationSpan = OperationSpan.start(options);
 	const complete = (result: T): T => {
 		operationSpan.recordEnded("succeeded");
 		return result;

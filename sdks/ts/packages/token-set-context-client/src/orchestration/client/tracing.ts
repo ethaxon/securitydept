@@ -15,6 +15,7 @@ export const TokenSetOrchestrationTraceEvent = {
 	PersistedRestoreStarted: "restore.persisted.started",
 	PersistedRestoreLoaded: "restore.persisted.loaded",
 	PersistedRestoreFailed: "restore.persisted.failed",
+	PersistenceSyncFailed: "persistence.sync.failed",
 	StateRestored: "state.restored",
 	StateCleared: "state.cleared",
 	RefreshCommitted: "refresh.committed",

@@ -12,6 +12,8 @@ export const FrontendOidcModeErrorCode = {
 		"frontend_oidc.configuration.claims_script_unsupported",
 	ClaimsScriptFailed: "frontend_oidc.authorization.claims_script_failed",
 	SessionStorageUnavailable: "frontend_oidc.storage.session_unavailable",
+	CallbackInputNotFound: "frontend_oidc.callback.input_not_found",
+	CallbackFailed: "frontend_oidc.callback.failed",
 	UserInfoUnauthenticated: "frontend_oidc.user_info.unauthenticated",
 } as const;
 

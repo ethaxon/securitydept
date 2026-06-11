@@ -3,10 +3,13 @@ import {
 	createInMemoryRecordStore,
 	createRootSpan,
 	createTracing,
-	takeCompatFragmentFromRouter,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
-import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import {
+	BackendOidcModeClient,
+	BackendOidcModeCompatFragmentKind,
+	takeBackendOidcCallbackInputFromRouter,
+} from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { describe, expect, it, vi } from "vitest";
 
 function callbackParameters(fragment: string): Record<string, string> {
@@ -60,14 +63,16 @@ describe("backend-oidc worker-like host boundary", () => {
 		const sessionStorage = createInMemoryRecordStore();
 		const client = new BackendOidcModeClient(
 			{ baseUrl: "" },
-			createFoundationEnvironment({
-				span: createRootSpan(),
-				tracing: createTracing(),
-				persistentStorage,
-				sessionStorage,
-				transport: createMetadataTransport(),
-				time: createTime(),
-			}),
+			{
+				environment: createFoundationEnvironment({
+					span: createRootSpan(),
+					tracing: createTracing(),
+					persistentStorage,
+					sessionStorage,
+					transport: createMetadataTransport(),
+					time: createTime(),
+				}),
+			},
 		);
 
 		const result = await client.start();
@@ -90,7 +95,7 @@ describe("backend-oidc worker-like host boundary", () => {
 		});
 		const callbackClient = new BackendOidcModeClient(
 			{ baseUrl: "" },
-			baseEnvironment,
+			{ environment: baseEnvironment },
 		);
 
 		await callbackClient.handleCallback(
@@ -100,7 +105,7 @@ describe("backend-oidc worker-like host boundary", () => {
 		);
 		const restoreClient = new BackendOidcModeClient(
 			{ baseUrl: "" },
-			baseEnvironment,
+			{ environment: baseEnvironment },
 		);
 		const result = await restoreClient.start();
 
@@ -114,12 +119,14 @@ describe("backend-oidc worker-like host boundary", () => {
 		const time = createTime();
 		const client = new BackendOidcModeClient(
 			{ baseUrl: "" },
-			createFoundationEnvironment({
-				transport: createMetadataTransport(),
-				time,
-				span: createRootSpan(),
-				tracing: createTracing(),
-			}),
+			{
+				environment: createFoundationEnvironment({
+					transport: createMetadataTransport(),
+					time,
+					span: createRootSpan(),
+					tracing: createTracing(),
+				}),
+			},
 		);
 		const history = {
 			replacedUrl: "",
@@ -128,20 +135,22 @@ describe("backend-oidc worker-like host boundary", () => {
 			},
 		};
 
-		const fragment = await takeCompatFragmentFromRouter(
+		const callbackInput = await takeBackendOidcCallbackInputFromRouter(
 			createRouterForNativeWeb({
 				location: {
-					href: "https://app.example.com/popup#securitydept=v1&access_token=popup-at&id_token=popup-idt&metadata_redemption_id=meta-worker",
-					hash: "#securitydept=v1&access_token=popup-at&id_token=popup-idt&metadata_redemption_id=meta-worker",
+					href: `https://app.example.com/popup#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&access_token=popup-at&id_token=popup-idt&metadata_redemption_id=meta-worker`,
+					hash: `#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&access_token=popup-at&id_token=popup-idt&metadata_redemption_id=meta-worker`,
 				},
 				history,
 			})!,
 		);
-		const snapshot = await client.handleCallback(fragment?.parameters ?? {});
+		const snapshot = await client.handleCallback(callbackInput ?? {});
 
-		expect(fragment?.payload).toBe(
-			"access_token=popup-at&id_token=popup-idt&metadata_redemption_id=meta-worker",
-		);
+		expect(callbackInput).toEqual({
+			access_token: "popup-at",
+			id_token: "popup-idt",
+			metadata_redemption_id: "meta-worker",
+		});
 		expect(snapshot.tokens.accessToken).toBe("popup-at");
 		expect(history.replacedUrl).toBe("https://app.example.com/popup");
 	});

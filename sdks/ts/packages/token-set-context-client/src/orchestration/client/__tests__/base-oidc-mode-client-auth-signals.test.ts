@@ -6,6 +6,7 @@ import {
 	createInMemoryRecordStore,
 	createRootSpan,
 	createTracing,
+	OperationTraceEventType,
 	type ReadableSignalTrait,
 	type ResourceSnapshot,
 	type ResourceTrait,
@@ -13,11 +14,16 @@ import {
 	type TimeTrait,
 } from "@securitydept/client";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
+import { from } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import { TokenSetAuthEventType } from "../../events/auth-events";
 import { type TokenSetAuthSnapshot } from "../../token/types";
 import { BaseOidcModeClient, PersistPolicy } from "../base-client";
 import { type BaseOidcModeClientOptions } from "../types";
+import {
+	TokenSetAuthDeterminationKind,
+	TokenSetAuthDeterminationOutcomeKind,
+} from "../workflows/commit";
 
 const TEST_TRANSPORT: BaseTransportTrait = {
 	execute: vi.fn(),
@@ -149,12 +155,29 @@ class TestOidcModeClient extends BaseOidcModeClient {
 		snapshot: TokenSetAuthSnapshot,
 		persistPolicy = PersistPolicy.FollowClient,
 	): Promise<TokenSetAuthSnapshot> {
-		const cancellationToken = this._rootCancellation.token;
-		return await this._applySnapshot(
-			snapshot,
-			{ persistPolicy },
-			cancellationToken,
-		);
+		return await this._runDeterminationWorkflow({
+			name: "test.apply_snapshot",
+			fields: { workflow: "apply_snapshot" },
+			workflow: async () => ({
+				commit: {
+					candidate: {
+						kind: TokenSetAuthDeterminationKind.Authenticated,
+						snapshot,
+					},
+					persistPolicy,
+					events: [
+						{
+							type: TokenSetAuthEventType.AuthAuthenticated,
+							payload: {},
+						},
+					],
+				},
+				outcome: {
+					kind: TokenSetAuthDeterminationOutcomeKind.Return,
+					value: snapshot,
+				},
+			}),
+		});
 	}
 
 	protected async _refreshAuthSnapshot(
@@ -226,6 +249,100 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		expect(expectResourceValue(client.authorizationHeaderValue)).toBe(
 			"Bearer persisted-token",
 		);
+	});
+
+	it("runs protected determination workflows through one operation lifecycle", async () => {
+		const trace = new InMemoryTraceCollector();
+		const client = new TestOidcModeClient(
+			createOptions({ tracing: createTracing({ subscribers: [trace] }) }),
+		);
+
+		await client.applySnapshot(createAuthSnapshot("direct-runner"));
+
+		const started = trace
+			.ofType(OperationTraceEventType.Started)
+			.find((event) => event.fields?.operationName === "test.apply_snapshot");
+		expect(started?.span.id).toBeTruthy();
+		expect(
+			trace.assertOperationLifecycle(started!.span.id, [
+				OperationTraceEventType.Started,
+				OperationTraceEventType.Ended,
+			]),
+		).toHaveLength(2);
+	});
+
+	it("does not redetermine a persisted restore failure in start", async () => {
+		const time = new TestTime(Date.parse("2026-01-01T00:00:00Z"));
+		const store = createInMemoryRecordStore();
+		const trace = new InMemoryTraceCollector();
+		const expiredSnapshot = createAuthSnapshot("persisted-token", {
+			expiresAt: new Date(time.now() - 60_000).toISOString(),
+			refreshMaterial: "refresh-token",
+		});
+		const seedClient = new TestOidcModeClient(createOptions({ store, time }));
+		await seedClient.applySnapshot(expiredSnapshot);
+
+		const client = new TestOidcModeClient(
+			createOptions({
+				store,
+				time,
+				tracing: createTracing({ subscribers: [trace] }),
+			}),
+		);
+		client.setRefreshImpl(async () => {
+			expect(client.authOperations.restorePending.get()).toBe(true);
+			expect(client.authOperations.refreshPending.get()).toBe(false);
+			throw new Error("refresh exploded");
+		});
+		const failureSnapshots: ResourceSnapshot<TokenSetAuthSnapshot | null>[] =
+			[];
+		const subscription = from(client.authSnapshot).subscribe((snapshot) => {
+			if (snapshot.status === "loading_error" || snapshot.status === "error") {
+				failureSnapshots.push(snapshot);
+			}
+		});
+
+		try {
+			await expect(client.start()).rejects.toMatchObject({
+				kind: "internal",
+				code: "token_set.authorization.operation_failed",
+			});
+		} finally {
+			subscription.unsubscribe();
+		}
+
+		expect(failureSnapshots).toHaveLength(1);
+		expect(client.authSnapshot.get()).toBe(failureSnapshots[0]);
+		expect(client.authOperations.restorePending.get()).toBe(false);
+		expect(client.authOperations.refreshPending.get()).toBe(false);
+		const started = trace
+			.ofType(OperationTraceEventType.Started)
+			.filter(
+				(event) =>
+					event.fields?.operationName === "test_token_set.restore.persisted",
+			);
+		expect(started).toHaveLength(1);
+		expect(
+			trace.assertOperationLifecycle(started[0]!.span.id, [
+				OperationTraceEventType.Started,
+				OperationTraceEventType.Error,
+				OperationTraceEventType.Ended,
+			]),
+		).toHaveLength(3);
+	});
+
+	it("delegates startup cancellation determination to the selected workflow", async () => {
+		const client = new TestOidcModeClient();
+		const start = client.start();
+
+		client.dispose();
+
+		await expect(start).rejects.toMatchObject({ kind: "cancelled" });
+		expect(client.authOperations.restorePending.get()).toBe(false);
+		expect(client.authSnapshot.get()).toMatchObject({
+			status: "loading_error",
+			error: expect.objectContaining({ kind: "cancelled" }),
+		});
 	});
 
 	it("persists manual restore when requested", async () => {
@@ -362,7 +479,11 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 			refreshMaterial: "refresh-token",
 		});
 		await client.restoreState(expired);
-		client.setRefreshImpl(async () => refreshed);
+		client.setRefreshImpl(async () => {
+			expect(client.authOperations.refreshPending.get()).toBe(true);
+			expect(client.authOperations.restorePending.get()).toBe(false);
+			return refreshed;
+		});
 
 		const events: Array<{
 			type: string;
@@ -379,6 +500,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		events.length = 0;
 
 		await expect(client.refreshState()).resolves.toEqual(refreshed);
+		expect(client.authOperations.refreshPending.get()).toBe(false);
 
 		expect(events.map((event) => event.type)).toEqual([
 			TokenSetAuthEventType.AuthRefreshRequired,

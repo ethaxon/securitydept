@@ -17,5 +17,6 @@ export {
 	type RouterNavigationRequest,
 	type RouterTrait,
 	RouterTraitSchema,
+	type TakeCompatFragmentFromRouterOptions,
 	takeCompatFragmentFromRouter,
 } from "./router";

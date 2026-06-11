@@ -135,7 +135,7 @@ Release-related workflows must follow these rules:
 
 - pnpm and Rust setup/cache behavior is owned by repo-local composite actions under `.github/actions/`.
 - pnpm cache modes are explicit: `read-write`, `read-only`, and `none`. The stable restore key is `pnpm-store-${runner.os}-${hashFiles(lockfile)}`; only one job in a workflow topology may be the read-write owner for that key.
-- Turborepo owns the JS/TS build, test, and typecheck task graph. GitHub Actions persists `.turbo` separately for typecheck, test, npm-release, and WebUI-release scopes; no remote cache credentials are required.
+- Turborepo owns the JS/TS build and test task graph. TypeScript project references and `tsc -b` own typechecking and declaration propagation. GitHub Actions persists `.turbo` separately for test, npm-release, and WebUI-release scopes; no remote cache credentials are required.
 - Rust cache modes are also explicit. A job that uses the shared key as `read-write` must be the only writer in that topology; downstream jobs use `read-only` restore or artifacts.
 - Debug CI topology lives directly in `.github/workflows/tests.yml`; `release.yml` is dispatched by the successful `Tests` run instead of repeating the same debug verification graph, and it avoids the crates.io-unsupported `workflow_run` publish entrypoint.
 - Rust shared keys are stable lane/profile scopes such as `securitydept-rust-${runner.os}-pr-mainline-debug`, `securitydept-rust-${runner.os}-mainline-debug`, and `securitydept-rust-${runner.os}-release`. Do not embed `hashFiles(...)` manually in workflow `shared-key` values; `Swatinem/rust-cache` already adds its own Rust-environment hash for Cargo manifests, lockfiles, toolchains, and relevant env vars, and it can restore from previous lockfile versions.

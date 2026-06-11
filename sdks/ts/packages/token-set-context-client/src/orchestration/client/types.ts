@@ -1,7 +1,10 @@
 import {
 	type CancellationTokenOptions,
+	type CancellationTokenTrait,
 	type FoundationEnvironment,
 	type ReadableSignalTrait,
+	type ResourceSnapshot,
+	type ResourceTrait,
 	type StorageTrait,
 } from "@securitydept/client";
 import { type TokenSetTokenFreshnessOptions } from "../token/freshness";
@@ -47,6 +50,40 @@ export interface TokenSetOidcPopupLoginResult {
 export interface BaseOidcModeClientTracingOptions {
 	target: string;
 	prefix: string;
+}
+
+export const OidcModeCallbackHandlingKind = {
+	NotApplicable: "not_applicable",
+	Handled: "handled",
+} as const;
+
+export type OidcModeCallbackHandlingKind =
+	(typeof OidcModeCallbackHandlingKind)[keyof typeof OidcModeCallbackHandlingKind];
+
+export type OidcModeCallbackHandlingResult<TResult> =
+	| {
+			readonly kind: typeof OidcModeCallbackHandlingKind.NotApplicable;
+	  }
+	| {
+			readonly kind: typeof OidcModeCallbackHandlingKind.Handled;
+			readonly result: TResult;
+	  };
+
+export interface OidcModeCallbackInputResolverOptions {
+	readonly environment: FoundationEnvironment;
+	readonly cancellationToken: CancellationTokenTrait;
+}
+
+export type OidcModeCallbackInputResolver<TInput> = (
+	options: OidcModeCallbackInputResolverOptions,
+) => TInput | null | Promise<TInput | null>;
+
+export interface OidcModeCallbackStateTrait<TResult> {
+	readonly state: ReadableSignalTrait<
+		ResourceSnapshot<OidcModeCallbackHandlingResult<TResult>>
+	>;
+	readonly resource: ResourceTrait<OidcModeCallbackHandlingResult<TResult>>;
+	cancel(): void;
 }
 
 export interface BaseOidcModeClientDefaultOptions {

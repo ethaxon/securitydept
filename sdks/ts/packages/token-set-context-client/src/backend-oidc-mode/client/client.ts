@@ -3,10 +3,8 @@ import {
 	type CancellationTokenTrait,
 	ClientError,
 	ClientErrorKind,
-	type CompatFragmentParameters,
 	createLinkedCancellationToken,
 	defineInstrumentMethodDecorator,
-	type FoundationEnvironment,
 	type HttpResponseJsonBody,
 	injectDisposableStackFrom,
 	type OperationSpanTrait,
@@ -17,9 +15,19 @@ import {
 	UserRecovery,
 	withDisposableStack,
 } from "@securitydept/client";
+import { OidcModeCallbackHandler } from "../../orchestration/client/callback-handler";
 import { waitForTokenSetPopupRelay } from "../../orchestration/client/popup/relay";
 import {
+	TokenSetAuthDeterminationKind,
+	TokenSetAuthDeterminationOutcomeKind,
+} from "../../orchestration/client/workflows/commit";
+import {
 	BaseOidcModeClient,
+	type OidcModeCallbackHandlingResult,
+	type OidcModeCallbackInputResolver,
+	type OidcModeCallbackStateTrait,
+	PersistPolicy,
+	TokenSetAuthEventType,
 	TokenSetAuthorizationRevocationError,
 	TokenSetAuthorizationRevocationReason,
 	type TokenSetOidcPopupLoginOptions,
@@ -32,6 +40,11 @@ import {
 	type TokenSetAuthMetadataSnapshot,
 	type TokenSetAuthSnapshot,
 } from "../../orchestration/token/types";
+import {
+	type BackendOidcModeCallbackInput,
+	BackendOidcModeCompatFragmentKind,
+	takeBackendOidcCallbackInputFromRouter,
+} from "../contracts/callback";
 import {
 	type BackendOidcModeMetadataRedemptionResponse,
 	type BackendOidcModeUserInfoResponse,
@@ -53,6 +66,7 @@ import {
 import {
 	type BackendOidcModeClientConfig,
 	type BackendOidcModeClientDefaultOptions,
+	type BackendOidcModeClientOptions,
 	type BackendOidcModeFetchUserInfoOptions,
 	type BackendOidcModeMetadataRedemptionOptions,
 	type ResolvedBackendOidcModeClientConfig,
@@ -87,6 +101,59 @@ const instrumentBackendMethod = defineInstrumentMethodDecorator<
 		},
 );
 
+function createDefaultBackendOidcModeCallbackInputResolver(
+	callbackRoutingKey?: string,
+): OidcModeCallbackInputResolver<BackendOidcModeCallbackInput> {
+	return async ({ environment, cancellationToken }) => {
+		cancellationToken.throwIfCancellationRequested();
+		const router = environment.router;
+		const currentUrl = router?.currentUrl();
+		if (!router || !currentUrl) {
+			return null;
+		}
+
+		const compatFragment = parseCompatFragment(currentUrl);
+		if (
+			compatFragment?.parameters.kind !==
+			BackendOidcModeCompatFragmentKind.Callback
+		) {
+			return null;
+		}
+
+		if (callbackRoutingKey !== undefined) {
+			const actualRoutingKey = compatFragment.parameters.callback_routing_key;
+			if (actualRoutingKey === undefined) {
+				throw new ClientError({
+					kind: ClientErrorKind.Protocol,
+					code: BackendOidcModeErrorCode.CallbackRoutingKeyMissing,
+					message:
+						"The backend OIDC callback does not identify its owning client.",
+					source: TRACE_TARGET,
+					recovery: UserRecovery.RestartFlow,
+				});
+			}
+			if (actualRoutingKey !== callbackRoutingKey) {
+				return null;
+			}
+		}
+
+		const callbackInput = await takeBackendOidcCallbackInputFromRouter(router, {
+			callbackRoutingKey,
+		});
+		cancellationToken.throwIfCancellationRequested();
+		if (!callbackInput) {
+			throw new ClientError({
+				kind: ClientErrorKind.Protocol,
+				code: BackendOidcModeErrorCode.CallbackInputNotFound,
+				message: "The backend OIDC callback input is no longer available.",
+				source: TRACE_TARGET,
+				recovery: UserRecovery.RestartFlow,
+			});
+		}
+		return callbackInput;
+	};
+}
+
 /**
  * Backend OIDC Mode Client.
  *
@@ -114,11 +181,18 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	}
 
 	private readonly _config: ResolvedBackendOidcModeClientConfig;
+	private readonly _callbackHandler: OidcModeCallbackHandler<
+		BackendOidcModeCallbackInput,
+		TokenSetAuthSnapshot
+	>;
+	private readonly _callbackRoutingKey?: string;
+	readonly callback: OidcModeCallbackStateTrait<TokenSetAuthSnapshot>;
 
 	constructor(
 		config: BackendOidcModeClientConfig,
-		environment: FoundationEnvironment,
+		options: BackendOidcModeClientOptions,
 	) {
+		const { environment } = options;
 		const baseUrl = config.baseUrl.replace(/\/+$/, "");
 		super({
 			environment,
@@ -153,6 +227,34 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				config.userInfoPath ??
 				BackendOidcModeClient.defaultOptions.userInfoPath,
 		};
+		this._callbackRoutingKey = options.callbackRoutingKey;
+		this._callbackHandler = new OidcModeCallbackHandler({
+			environment,
+			rootCancellationToken: this._rootCancellation.token,
+			inputResolver:
+				options.callbackInputResolver === undefined
+					? createDefaultBackendOidcModeCallbackInputResolver(
+							options.callbackRoutingKey,
+						)
+					: options.callbackInputResolver,
+			handleInput: (callbackInput, cancellationToken) =>
+				this._handleCallbackOperation(callbackInput, cancellationToken),
+			createInputNotFoundError: () =>
+				new ClientError({
+					kind: ClientErrorKind.Protocol,
+					code: BackendOidcModeErrorCode.CallbackInputNotFound,
+					message: "No backend OIDC callback input was provided.",
+					source: TRACE_TARGET,
+					recovery: UserRecovery.RestartFlow,
+				}),
+			normalizeError: (error) =>
+				ClientError.fromUnknown(error, {
+					code: BackendOidcModeErrorCode.CallbackFailed,
+					message: "The backend OIDC callback failed.",
+					source: TRACE_TARGET,
+				}),
+		});
+		this.callback = this._callbackHandler;
 	}
 
 	/** The resolved configuration. */
@@ -160,18 +262,30 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		return this._config;
 	}
 
+	protected override async _restoreStateFromCallbackInputOperation(
+		cancellationToken: CancellationTokenTrait,
+	): Promise<OidcModeCallbackHandlingResult<TokenSetAuthSnapshot | null>> {
+		return await this._callbackHandler.restore({ cancellationToken });
+	}
+
+	protected override _onDispose(): void {
+		this._callbackHandler.dispose();
+	}
+
 	/** Build the login/authorize URL with optional post-auth redirect. */
 	authorizeUrl(postAuthRedirectUri?: string): string {
 		const base = this._config.baseUrl + this._config.loginPath;
 		const effectiveRedirectUri =
 			postAuthRedirectUri ?? this._config.defaultPostAuthRedirectUri;
+		const params = new URLSearchParams();
 		if (effectiveRedirectUri) {
-			const params = new URLSearchParams({
-				post_auth_redirect_uri: effectiveRedirectUri,
-			});
-			return `${base}?${params.toString()}`;
+			params.set("post_auth_redirect_uri", effectiveRedirectUri);
 		}
-		return base;
+		if (this._callbackRoutingKey !== undefined) {
+			params.set("callback_routing_key", this._callbackRoutingKey);
+		}
+		const query = params.toString();
+		return query ? `${base}?${query}` : base;
 	}
 
 	@withDisposableStack(0, true)
@@ -274,7 +388,11 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			},
 		);
 		const compatFragment = parseCompatFragment(new URL(callbackUrl));
-		if (!compatFragment) {
+		if (
+			!compatFragment ||
+			compatFragment.parameters.kind !==
+				BackendOidcModeCompatFragmentKind.Callback
+		) {
 			throw new ClientError({
 				kind: ClientErrorKind.Protocol,
 				code: BackendOidcModeErrorCode.PopupFragmentMissing,
@@ -282,170 +400,105 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				source: TRACE_TARGET,
 			});
 		}
+		const {
+			kind: _kind,
+			callback_routing_key: _callbackRoutingKey,
+			...callbackInput
+		} = compatFragment.parameters;
 
-		const snapshot = await this._handleCallbackOperation(
-			compatFragment.parameters,
+		const snapshot = await this._callbackHandler.handle({
+			callbackInput,
 			cancellationToken,
-		);
+		});
 		cancellationToken.throwIfCancellationRequested();
 		return { snapshot };
 	}
 
-	/**
-	 * Handle a parsed callback compat fragment from a redirect flow.
-	 *
-	 * Parses tokens, redeems metadata if a redemption ID is present, persists
-	 * state, and updates the auth signal. Inline metadata (from
-	 * `callback_body_return` servers) is used directly, skipping redemption.
-	 */
-	@withDisposableStack(1, true)
+	/** Handle a callback payload from a compat fragment or JSON body response. */
 	async handleCallback(
-		parsedCompatFragment: CompatFragmentParameters,
+		callbackInput: BackendOidcModeCallbackInput,
 		options: CancellationTokenOptions = {},
 	): Promise<TokenSetAuthSnapshot> {
-		const disposableStack = injectDisposableStackFrom(options, true);
-		const cancellationToken = createLinkedCancellationToken(
-			this._rootCancellation.token,
-			options.cancellationToken,
-		);
-		disposableStack?.use(cancellationToken);
-		return await this._handleCallbackOperation(
-			parsedCompatFragment,
-			cancellationToken,
-		);
+		return await this._callbackHandler.handle({
+			callbackInput,
+			cancellationToken: options.cancellationToken,
+		});
 	}
 
-	@instrumentBackendMethod(BackendOidcModeTraceOperationName.Callback, {
-		flow: "callback.fragment",
-	})
 	private async _handleCallbackOperation(
-		parsedCompatFragment: CompatFragmentParameters,
+		callbackInput: BackendOidcModeCallbackInput,
 		cancellationToken: CancellationTokenTrait,
-		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetAuthSnapshot> {
-		cancellationToken.throwIfCancellationRequested();
+		return await this._runDeterminationWorkflow({
+			name: BackendOidcModeTraceOperationName.Callback,
+			fields: { flow: "callback" },
+			normalizeError: (error) =>
+				ClientError.fromUnknown(error, {
+					code: BackendOidcModeErrorCode.OperationFailed,
+					message: "The backend OIDC operation failed unexpectedly",
+					source: TRACE_TARGET,
+				}),
+			workflow: async (operationSpan) => {
+				cancellationToken.throwIfCancellationRequested();
+				const callbackPayload =
+					parseBackendOidcModeCallbackPayload(callbackInput);
+				if (!callbackPayload) {
+					throw new ClientError({
+						kind: ClientErrorKind.Protocol,
+						message: "Callback payload missing access_token or id_token",
+						code: BackendOidcModeErrorCode.CallbackAccessTokenMissing,
+						source: TRACE_TARGET,
+					});
+				}
 
-		const callbackFragment =
-			parseBackendOidcModeCallbackPayload(parsedCompatFragment);
-		if (!callbackFragment) {
-			throw new ClientError({
-				kind: ClientErrorKind.Protocol,
-				message: "Callback fragment missing access_token or id_token",
-				code: BackendOidcModeErrorCode.CallbackAccessTokenMissing,
-				source: TRACE_TARGET,
-			});
-		}
+				const tokenSnapshot = callbackReturnsToTokenSnapshot(callbackPayload);
+				const metadata = await this._resolveMetadata(
+					{
+						inlineMetadata: callbackPayload.metadata,
+						metadataRedemptionId: callbackPayload.metadataRedemptionId,
+						baseMetadata: {},
+						accessToken: tokenSnapshot.accessToken,
+						idToken: tokenSnapshot.idToken,
+					},
+					cancellationToken,
+					operationSpan,
+				);
+				cancellationToken.throwIfCancellationRequested();
 
-		const tokenSnapshot = callbackReturnsToTokenSnapshot(callbackFragment);
-		const metadata = await this._resolveMetadata(
-			{
-				inlineMetadata: callbackFragment.metadata,
-				metadataRedemptionId: callbackFragment.metadataRedemptionId,
-				baseMetadata: {},
-				accessToken: tokenSnapshot.accessToken,
-				idToken: tokenSnapshot.idToken,
+				const snapshot: TokenSetAuthSnapshot = {
+					tokens: tokenSnapshot,
+					metadata,
+				};
+				operationSpan.setAttributes({
+					hasMetadataRedemption:
+						callbackPayload.metadataRedemptionId !== undefined,
+					hasInlineMetadata: callbackPayload.metadata !== undefined,
+					hasUserInfoFallback:
+						!callbackPayload.metadata && !callbackPayload.metadataRedemptionId,
+					persisted: this._persistence !== null,
+				});
+
+				return {
+					commit: {
+						candidate: {
+							kind: TokenSetAuthDeterminationKind.Authenticated,
+							snapshot,
+						},
+						persistPolicy: PersistPolicy.FollowClient,
+						events: [
+							{
+								type: TokenSetAuthEventType.AuthAuthenticated,
+								payload: {},
+							},
+						],
+					},
+					outcome: {
+						kind: TokenSetAuthDeterminationOutcomeKind.Return,
+						value: snapshot,
+					},
+				};
 			},
-			cancellationToken,
-			operationSpan,
-		);
-
-		cancellationToken.throwIfCancellationRequested();
-
-		const snapshot: TokenSetAuthSnapshot = {
-			tokens: tokenSnapshot,
-			metadata,
-		};
-
-		await this._applySnapshot(snapshot, {}, cancellationToken, operationSpan);
-		operationSpan?.setAttributes({
-			hasMetadataRedemption:
-				callbackFragment.metadataRedemptionId !== undefined,
-			hasInlineMetadata: callbackFragment.metadata !== undefined,
-			hasUserInfoFallback:
-				!callbackFragment.metadata && !callbackFragment.metadataRedemptionId,
-			persisted: this._persistence !== null,
 		});
-
-		return snapshot;
-	}
-
-	/**
-	 * Handle a callback from a JSON body response (body-return flow).
-	 *
-	 * Unlike {@link handleCallback}, this method accepts the parsed JSON object
-	 * from a `callback_body_return` (200 OK) response:
-	 *
-	 * - Metadata is embedded inline — no redemption round-trip
-	 * - No URL fragment parsing
-	 *
-	 * Use this when the server uses `callback_body_return` and the client
-	 * receives the JSON body directly (e.g. in a single-page app that POSTs
-	 * the code to the backend and reads the 200 OK response).
-	 */
-	@withDisposableStack(1, true)
-	async handleCallbackBody(
-		body: HttpResponseJsonBody,
-		options: CancellationTokenOptions = {},
-	): Promise<TokenSetAuthSnapshot> {
-		const disposableStack = injectDisposableStackFrom(options, true);
-		const cancellationToken = createLinkedCancellationToken(
-			this._rootCancellation.token,
-			options.cancellationToken,
-		);
-		disposableStack?.use(cancellationToken);
-		return await this._handleCallbackBodyOperation(body, cancellationToken);
-	}
-
-	@instrumentBackendMethod(BackendOidcModeTraceOperationName.Callback, {
-		flow: "callback.body",
-	})
-	private async _handleCallbackBodyOperation(
-		body: HttpResponseJsonBody,
-		cancellationToken: CancellationTokenTrait,
-		operationSpan?: OperationSpanTrait,
-	): Promise<TokenSetAuthSnapshot> {
-		cancellationToken.throwIfCancellationRequested();
-
-		const callbackBody = parseBackendOidcModeCallbackPayload(body);
-		if (!callbackBody) {
-			throw new ClientError({
-				kind: ClientErrorKind.Protocol,
-				message: "Callback response body missing access_token or id_token",
-				code: BackendOidcModeErrorCode.CallbackAccessTokenMissing,
-				source: TRACE_TARGET,
-			});
-		}
-
-		const cbTokenSnapshot = callbackReturnsToTokenSnapshot(callbackBody);
-		const metadata = await this._resolveMetadata(
-			{
-				inlineMetadata: callbackBody.metadata,
-				metadataRedemptionId: callbackBody.metadataRedemptionId,
-				baseMetadata: {},
-				accessToken: cbTokenSnapshot.accessToken,
-				idToken: cbTokenSnapshot.idToken,
-			},
-			cancellationToken,
-			operationSpan,
-		);
-
-		cancellationToken.throwIfCancellationRequested();
-
-		const snapshot: TokenSetAuthSnapshot = {
-			tokens: cbTokenSnapshot,
-			metadata,
-		};
-
-		await this._applySnapshot(snapshot, {}, cancellationToken, operationSpan);
-		operationSpan?.setAttributes({
-			hasMetadataRedemption: callbackBody.metadataRedemptionId !== undefined,
-			hasInlineMetadata: callbackBody.metadata !== undefined,
-			hasUserInfoFallback:
-				!callbackBody.metadata && !callbackBody.metadataRedemptionId,
-			persisted: this._persistence !== null,
-		});
-
-		return snapshot;
 	}
 
 	/**

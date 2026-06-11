@@ -10,12 +10,17 @@
 //
 // Stability: provisional (mode-aligned surface)
 
-import { type CancellationTokenOptions } from "@securitydept/client";
+import {
+	type CancellationTokenOptions,
+	type FoundationEnvironment,
+} from "@securitydept/client";
 import {
 	type BaseOidcModeClientDefaultOptions,
+	type OidcModeCallbackInputResolver,
 	type OidcModeClientConfigBase,
 } from "../../orchestration/client/types";
 import { type TokenSetAuthSnapshot } from "../../orchestration/token/types";
+import { type FrontendOidcModeCallbackInput } from "../contracts/callback";
 
 // ---------------------------------------------------------------------------
 // Mode-specific constants
@@ -149,6 +154,11 @@ export interface FrontendOidcModeClientConfig extends OidcModeClientConfigBase {
 	 * Can be overridden per `authorizeUrl()` call.
 	 */
 	defaultPostAuthRedirectUri?: string;
+}
+
+export interface FrontendOidcModeClientOptions {
+	readonly environment: FoundationEnvironment;
+	readonly callbackInputResolver?: OidcModeCallbackInputResolver<FrontendOidcModeCallbackInput> | null;
 }
 
 export interface ResolvedFrontendOidcModeClientConfig

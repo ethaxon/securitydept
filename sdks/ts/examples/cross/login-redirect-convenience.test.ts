@@ -123,13 +123,15 @@ describe("backend-oidc-mode BackendOidcModeClient.loginWithRedirect", () => {
 				baseUrl: "https://auth.example.com",
 				defaultPostAuthRedirectUri: "https://app.example.com/callback",
 			},
-			createFoundationEnvironment({
-				span: createRootSpan(),
-				tracing: createTracing(),
-				persistentStorage,
-				sessionStorage,
-				router: environment,
-			}),
+			{
+				environment: createFoundationEnvironment({
+					span: createRootSpan(),
+					tracing: createTracing(),
+					persistentStorage,
+					sessionStorage,
+					router: environment,
+				}),
+			},
 		);
 
 		await client.loginWithRedirect({
@@ -155,13 +157,15 @@ describe("backend-oidc-mode BackendOidcModeClient.loginWithRedirect", () => {
 				baseUrl: "https://auth.example.com",
 				defaultPostAuthRedirectUri: "https://app.example.com/default",
 			},
-			createFoundationEnvironment({
-				span: createRootSpan(),
-				tracing: createTracing(),
-				persistentStorage,
-				sessionStorage,
-				router: environment,
-			}),
+			{
+				environment: createFoundationEnvironment({
+					span: createRootSpan(),
+					tracing: createTracing(),
+					persistentStorage,
+					sessionStorage,
+					router: environment,
+				}),
+			},
 		);
 
 		await client.loginWithRedirect();
@@ -220,7 +224,7 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 				authorizationEndpoint: "https://auth.example.com/oauth2/authorize",
 				tokenEndpoint: "https://auth.example.com/oauth2/token",
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		const options = {

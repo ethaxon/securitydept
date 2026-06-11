@@ -3,14 +3,23 @@
 import {
 	createEventSubject,
 	createSignal,
-	OnceAsyncLockState,
+	ResourceStatus,
+	type RouterNavigationRequest,
+	type RouterTrait,
+	resourceFromSnapshots,
 	SYMBOL_DISPOSE,
+	UriReferenceString,
 } from "@securitydept/client";
 import { createEnvironmentForTest } from "@securitydept/client/test";
 import { SecuritydeptProvider } from "@securitydept/client-react";
-import { FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import {
+	type FrontendOidcModeCallbackResult,
+	FrontendOidcModeClient,
+} from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
 	type BaseOidcModeClient,
+	OidcModeCallbackHandlingKind,
+	type OidcModeCallbackHandlingResult,
 	type TokenSetAuthEvent,
 	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
@@ -20,7 +29,7 @@ import {
 } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetClientRegistry,
-	useTokenSetFrontendCallbackController,
+	useTokenSetFrontendCallback,
 } from "@securitydept/token-set-context-client-react";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -64,18 +73,38 @@ function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 function createFrontendClient(): FrontendOidcModeClient {
 	const state = createSignal<TokenSetAuthSnapshot | null>(null);
 	const reactive = createTestTokenSetReactiveFields(null);
+	const callbackSnapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: {
+			kind: OidcModeCallbackHandlingKind.Handled,
+			result: {
+				snapshot: createSnapshot("callback-at"),
+				postAuthRedirectUri: "/after-login",
+			},
+		},
+	} as const);
+	const callbackResource = resourceFromSnapshots<
+		OidcModeCallbackHandlingResult<FrontendOidcModeCallbackResult>
+	>(() => callbackSnapshot.get());
 	const client = {
 		state,
 		...reactive.fields,
+		callback: {
+			state: callbackSnapshot,
+			resource: callbackResource,
+			cancel: () => undefined,
+		},
 		authEvents: createEventSubject<TokenSetAuthEvent>(),
 		addWorkflowSource: () => ({ unsubscribe: () => undefined }),
 		removeWorkflowSource: () => false,
 		start: async () => undefined,
 		dispose: () => {
+			callbackResource.dispose();
 			state.set(null);
 			reactive.emitSnapshot(null);
 		},
 		[SYMBOL_DISPOSE]: () => {
+			callbackResource.dispose();
 			state.set(null);
 			reactive.emitSnapshot(null);
 		},
@@ -110,15 +139,27 @@ function createEntry(): TokenSetClientRegistryEntry<BaseOidcModeClient> {
 	};
 }
 
+function createRouter(url: string): RouterTrait {
+	let currentUrl = UriReferenceString.parse(url);
+	return {
+		currentUrl: () => currentUrl,
+		navigate: async (request: RouterNavigationRequest) => {
+			currentUrl = request.url;
+		},
+	};
+}
+
 describe("react callback async readiness", () => {
 	it("resumes callback through the frontend callback hook", async () => {
-		const environment = createEnvironmentForTest();
+		const environment = createEnvironmentForTest({
+			router: createRouter(
+				"https://app.example.com/oidc/callback?code=ok&state=s1",
+			),
+		});
 
 		function Probe() {
-			const callback = useTokenSetFrontendCallbackController({
-				currentUrl: "https://app.example.com/oidc/callback?code=ok&state=s1",
-			});
-			return createElement("output", null, callback.state.state);
+			const callback = useTokenSetFrontendCallback();
+			return createElement("output", null, callback.state.status);
 		}
 
 		const view = render(
@@ -138,18 +179,18 @@ describe("react callback async readiness", () => {
 
 		await flushMicrotasks();
 
-		expect(view.container.textContent).toBe(OnceAsyncLockState.Success);
+		expect(view.container.textContent).toBe(ResourceStatus.Resolved);
 		view.unmount();
 	});
 
-	it("stays idle when the current URL is not a callback", async () => {
-		const environment = createEnvironmentForTest();
+	it("resolves without auth when no client matches the current URL", async () => {
+		const environment = createEnvironmentForTest({
+			router: createRouter("https://app.example.com/not-a-callback"),
+		});
 
 		function Probe() {
-			const callback = useTokenSetFrontendCallbackController({
-				currentUrl: "https://app.example.com/not-a-callback",
-			});
-			return createElement("output", null, callback.state.state);
+			const callback = useTokenSetFrontendCallback();
+			return createElement("output", null, callback.state.status);
 		}
 
 		const view = render(
@@ -169,7 +210,7 @@ describe("react callback async readiness", () => {
 
 		await flushMicrotasks();
 
-		expect(view.container.textContent).toBe(OnceAsyncLockState.Init);
+		expect(view.container.textContent).toBe(ResourceStatus.Resolved);
 		view.unmount();
 	});
 });

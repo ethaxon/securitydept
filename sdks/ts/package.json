@@ -6,7 +6,7 @@
 	"scripts": {
 		"test": "vitest run --config vitest.config.ts",
 		"test:watch": "vitest --config vitest.config.ts",
-		"typecheck": "tsc -p examples/tsconfig.json --noEmit --pretty false && tsc -p tests/tsconfig.json --noEmit --pretty false"
+		"typecheck": "tsc -b --pretty false"
 	},
 	"devDependencies": {
 		"@securitydept/e2e-utils": "workspace:*",

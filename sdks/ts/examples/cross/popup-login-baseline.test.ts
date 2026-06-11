@@ -8,9 +8,8 @@
 import {
 	ClientError,
 	ClientErrorKind,
-	createCancellationTokenSource,
+	createFoundationEnvironment,
 	createRootSpan,
-	createSignal,
 	createTracing,
 	PopupErrorCode,
 	type PopupTrait,
@@ -23,6 +22,7 @@ import {
 } from "@securitydept/client/web";
 import {
 	BackendOidcModeClient,
+	BackendOidcModeCompatFragmentKind,
 	relayTokenSetPopupCallbackFromEnvironment as relayBackendPopupCallbackFromEnvironment,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
@@ -49,43 +49,30 @@ function requirePopup(popup: PopupTrait | null): PopupTrait {
 }
 
 function createBackendPopupMockEnvironment(time: TimeTrait) {
-	return {
+	return createFoundationEnvironment({
 		popup: requirePopup(createPopupForNativeWeb({ time })),
 		time,
 		span: createRootSpan(),
 		tracing: createTracing(),
-	};
+	});
 }
 
-function createBackendPopupMockClient(
-	time: TimeTrait,
-	overrides: Record<string, unknown> = {},
-) {
+function createBackendPopupMockClient(time: TimeTrait) {
 	const environment = createBackendPopupMockEnvironment(time);
-	const mockClient = Object.create(BackendOidcModeClient.prototype);
-	Object.assign(mockClient, {
-		_config: {
-			baseUrl: "https://app.example.com",
-		},
-		_environment: environment,
-		_span: environment.span.fork({
-			attributes: { clientName: "BackendOidcModeClient" },
-		}),
-		_rootCancellation: createCancellationTokenSource(),
-		_destroyed: createSignal(false),
-		_tracingOptions: {
-			target: "backend-oidc-mode",
-			prefix: "backend_oidc",
-		},
-		authorizeUrl: (returnUri: string) =>
-			`https://auth.example.com/authorize?return_uri=${encodeURIComponent(returnUri)}`,
-		_handleCallbackOperation: vi.fn(async () => ({
-			tokens: {},
-			metadata: {},
-		})),
-		...overrides,
-	});
-	return mockClient;
+	const client = new BackendOidcModeClient(
+		{ baseUrl: "https://app.example.com" },
+		{ environment, callbackInputResolver: null },
+	);
+	const handleCallbackOperation = vi.fn(async () => ({
+		tokens: {},
+		metadata: {},
+	}));
+	(
+		client as unknown as {
+			_handleCallbackOperation: typeof handleCallbackOperation;
+		}
+	)._handleCallbackOperation = handleCallbackOperation;
+	return { client, handleCallbackOperation };
 }
 
 // ===========================================================================
@@ -149,7 +136,7 @@ describe("backend-oidc-mode popup baseline", () => {
 		vi.stubGlobal("innerWidth", 1000);
 		vi.stubGlobal("innerHeight", 800);
 
-		const mockClient = createBackendPopupMockClient(time);
+		const { client: mockClient } = createBackendPopupMockClient(time);
 
 		try {
 			await mockClient.loginWithPopup({
@@ -193,7 +180,7 @@ describe("backend-oidc-mode popup baseline", () => {
 		);
 		vi.stubGlobal("removeEventListener", vi.fn());
 
-		const mockClient = createBackendPopupMockClient(time);
+		const { client: mockClient } = createBackendPopupMockClient(time);
 
 		const promise = mockClient.loginWithPopup({
 			popupCallbackUrl: "https://app.example.com/popup-callback",
@@ -206,8 +193,7 @@ describe("backend-oidc-mode popup baseline", () => {
 				jsonrpc: "2.0",
 				method: "securitydept.token_set.popup.callback",
 				params: {
-					payload:
-						"https://app.example.com/popup-callback#securitydept=v1&access_token=at123&id_token=idt456",
+					payload: `https://app.example.com/popup-callback#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&access_token=at123&id_token=idt456`,
 				},
 			},
 			source: mockWin,
@@ -256,7 +242,8 @@ describe("backend-oidc-mode popup baseline", () => {
 		);
 		vi.stubGlobal("removeEventListener", vi.fn());
 
-		const mockClient = createBackendPopupMockClient(time);
+		const { client: mockClient, handleCallbackOperation } =
+			createBackendPopupMockClient(time);
 
 		const promise = mockClient.loginWithPopup({
 			popupCallbackUrl: "https://app.example.com/popup-callback",
@@ -269,8 +256,7 @@ describe("backend-oidc-mode popup baseline", () => {
 				jsonrpc: "2.0",
 				method: "securitydept.token_set.popup.callback",
 				params: {
-					payload:
-						"https://app.example.com/popup-callback#securitydept=v1&access_token=ns_token&id_token=ns_idt",
+					payload: `https://app.example.com/popup-callback#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&access_token=ns_token&id_token=ns_idt`,
 				},
 			},
 			source: mockWin,
@@ -282,13 +268,7 @@ describe("backend-oidc-mode popup baseline", () => {
 			// Bootstrap may fail in test env — that's OK.
 		}
 
-		expect(
-			(
-				mockClient as unknown as {
-					_handleCallbackOperation: ReturnType<typeof vi.fn>;
-				}
-			)._handleCallbackOperation,
-		).toHaveBeenCalledWith(
+		expect(handleCallbackOperation).toHaveBeenCalledWith(
 			{ access_token: "ns_token", id_token: "ns_idt" },
 			expect.anything(),
 		);
@@ -409,7 +389,7 @@ describe("frontend-oidc-mode popup baseline", () => {
 		);
 		vi.stubGlobal("removeEventListener", vi.fn());
 
-		const environment = {
+		const environment = createFoundationEnvironment({
 			time,
 			span: createRootSpan(),
 			tracing: createTracing(),
@@ -437,22 +417,16 @@ describe("frontend-oidc-mode popup baseline", () => {
 					},
 				}),
 			),
-		};
-		const mockClient = Object.create(FrontendOidcModeClient.prototype);
-		mockClient._config = {
-			redirectUri: "https://app.example.com/auth/callback",
-		};
-		mockClient._environment = environment;
-		mockClient._span = environment.span.fork({
-			attributes: { clientName: "FrontendOidcModeClient" },
 		});
-		mockClient._rootCancellation = createCancellationTokenSource();
-		mockClient._destroyed = createSignal(false);
-		mockClient._tracingOptions = {
-			target: "frontend-oidc-mode",
-			prefix: "frontend_oidc",
-		};
-		mockClient._authorizeUrlWithState = vi
+		const mockClient = new FrontendOidcModeClient(
+			{
+				issuer: "https://idp.example.com",
+				clientId: "test-client",
+				redirectUri: "https://app.example.com/auth/callback",
+			},
+			{ environment, callbackInputResolver: null },
+		);
+		const authorizeUrlWithState = vi
 			.fn()
 			.mockResolvedValue(
 				"https://idp.example.com/authorize?client_id=test&redirect_uri=https://app.example.com/callback&state=abc",
@@ -461,9 +435,19 @@ describe("frontend-oidc-mode popup baseline", () => {
 			source: "callback",
 			snapshot: { tokens: { accessToken: "at" } },
 		};
-		mockClient._handleCallbackOperation = vi
+		const handleCallbackOperation = vi
 			.fn()
 			.mockResolvedValue(handleCallbackResult);
+		Object.assign(
+			mockClient as unknown as {
+				_authorizeUrlWithState: typeof authorizeUrlWithState;
+				_handleCallbackOperation: typeof handleCallbackOperation;
+			},
+			{
+				_authorizeUrlWithState: authorizeUrlWithState,
+				_handleCallbackOperation: handleCallbackOperation,
+			},
+		);
 
 		const promise = mockClient.loginWithPopup({
 			popupCallbackUrl: "https://app.example.com/popup-callback",
@@ -489,7 +473,7 @@ describe("frontend-oidc-mode popup baseline", () => {
 		const result = await promise;
 
 		// Verify popup authorize state was built with the popup callback URL.
-		expect(mockClient._authorizeUrlWithState).toHaveBeenCalledWith(
+		expect(authorizeUrlWithState).toHaveBeenCalledWith(
 			{
 				redirectUri: "https://app.example.com/popup-callback",
 			},
@@ -497,10 +481,14 @@ describe("frontend-oidc-mode popup baseline", () => {
 		);
 
 		// Verify callback processing received the relayed callback URL.
-		expect(mockClient._handleCallbackOperation).toHaveBeenCalledWith(
-			"https://app.example.com/popup-callback?code=authcode123&state=abc",
+		expect(handleCallbackOperation).toHaveBeenCalledWith(
+			expect.any(URLSearchParams),
 			expect.anything(),
 		);
+		const callbackParameters = handleCallbackOperation.mock
+			.calls[0]?.[0] as URLSearchParams;
+		expect(callbackParameters.get("code")).toBe("authcode123");
+		expect(callbackParameters.get("state")).toBe("abc");
 
 		// Popup login exposes only the auth snapshot; parent navigation stays with the opener.
 		expect(result).toEqual({ snapshot: handleCallbackResult.snapshot });

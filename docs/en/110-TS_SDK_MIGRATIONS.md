@@ -137,7 +137,7 @@ Migration:
 - Wrap React subtrees with `SecuritydeptProvider`; pass a ready-made `injector`, or derive a child injector from `providers` / `parentInjector`.
 - Replace `XxxContextProvider` / `useXxxContext()` with `useSecuritydeptContext().get(TOKEN)`.
 - Replace `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` with `const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)` followed by `useReplaySignalValue(registry.clientSignalFor(key))`, then read the returned client's replay channels.
-- Replace basic-auth / session provider-first composition with `create*()` + `provide*()`. For token-set multi-client React composition, register `provideTokenSetClientRegistry({ clients })` and use the explicit frontend/backend callback controller hooks when the host needs callback handling.
+- Replace basic-auth / session provider-first composition with `create*()` + `provide*()`. For token-set multi-client React composition, register `provideTokenSetClientRegistry({ clients })` and use the frontend/backend callback Resource hooks when the host needs callback rendering.
 
 ### Token-Set React Registry Composition
 
@@ -153,8 +153,8 @@ Change:
 Migration:
 
 - For ordinary React hosts, register `provideTokenSetClientRegistry({ clients })`.
-- If the host needs callback handling, use `useTokenSetFrontendCallbackController()` or `useTokenSetBackendCallbackController()` from the React root adapter.
-- If the host needs manual readiness, manual disposal, or custom warmup policy, create and own the registry/controller directly instead of depending on an SDK-owned runtime object.
+- If the host needs callback rendering, use `useTokenSetFrontendCallback()` or `useTokenSetBackendCallback()` from the React root adapter.
+- If the host needs manual readiness, manual disposal, or custom warmup policy, create and own the registry directly instead of depending on an SDK-owned runtime object.
 
 ### Client Environment And Backend-OIDC Web Host Boundary
 
@@ -178,7 +178,7 @@ Migration:
 - Use `createEnvironmentForNativeWeb({ location, history, ...options })` for real page/tab/popup callback flows; page capabilities are explicit top-level host inputs and must come from the host composition root.
 - Do not use `createEnvironmentForNativeWeb()` for worker-like hosts. Compose those with `createFoundationEnvironment()` or a more specific host factory, then inject persistence/session stores explicitly when needed.
 - Do not run callback fragment consumption in service workers or extension backgrounds. Run restore/token-state APIs there, and consume callback fragments only in a real page/popup document or with an explicit fake `RouterTrait` in tests.
-- Update ambiguous page-global helper usage to explicit page forms: use `client.authorizeUrl(environment.router.currentUrl()?.toString())` or `client.loginWithRedirect({ postAuthRedirectUri })` for return-URL construction, and use `takeCompatFragmentFromRouter(router)` followed by `client.handleCallback(fragment)` for backend OIDC callback pages. Backend OIDC fragment redirects use the securitydept compat fragment protocol and preserve existing hash-router fragments.
+- Update ambiguous page-global helper usage to explicit page forms: use `client.authorizeUrl(environment.router.currentUrl()?.toString())` or `client.loginWithRedirect({ postAuthRedirectUri })` for return-URL construction. Callback pages use `takeFrontendOidcCallbackInputFromRouter(router)` or `takeBackendOidcCallbackInputFromRouter(router)` followed by `client.handleCallback(input)`. Backend OIDC fragment redirects use the securitydept compat fragment protocol and preserve existing hash-router fragments.
 - Treat popup callback relay helpers such as `relayTokenSetPopupCallbackFromEnvironment()` as page-only helpers; pass a page-bearing `environment` when testing or running in a host wrapper. Import them from `@securitydept/token-set-context-client/backend-oidc-mode` or `@securitydept/token-set-context-client/frontend-oidc-mode`; the removed `@securitydept/token-set-context-client/backend-oidc-mode/web` subpath was only a forwarder. The canonical shared token-set OIDC browser login contracts are `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })` and `BaseOidcModeClient.loginWithPopup({ popupCallbackUrl })`; the client carries page navigation and popup capability through its environment. Backend and frontend mode clients expose those methods directly. Backend OIDC no longer owns hidden callback-fragment flow state; retry or delayed callback handling must be explicit application code.
 - Replace frontend-mode browser materialization with `resolveFrontendOidcModeConfigProjection({ clientKey, environment, sources, overrides })`, then construct `FrontendOidcModeClient` with the returned config and the same root environment. Declare realm, persisted, and network precedence explicitly; inject server-rendered projections with `injectConfigProjectionIntoRealm()`.
 - When browser/page environment ownership must stay stable across framework routes or commands, create one host-owned `NativeWebEnvironment` at the composition root and inject that object. Do not invent app-local module singletons or SDK-local lazy environment resolvers.
@@ -329,7 +329,7 @@ Change:
 - `client-react` root now exports the React injector bridge only. React environment capability comes from the core environment injector: pass `environment.injector` to the root `SecuritydeptProvider` as `parentInjector`. Route-scoped planner hosts are owned by concrete router adapters such as `@securitydept/client-react/tanstack-router`.
 - The basic-auth / session / token-set React adapters no longer own domain-specific Provider / Context hooks. They export tokens, plain factories, provider factories, and explicit callback/component bridges. Token-set multi-client composition is now explicit registry/controller wiring instead of an SDK-owned runtime bundle.
 - Token-set Angular/React route security now relies on `secureTokenSetRouteRoot()` plus the registry-backed default unauthenticated handler. Client selection belongs in requirement `attributes.query`; custom redirect policy is optional via `onClientUnauthenticated` on the secure route root or planner host provider.
-- React callback handling uses `useTokenSetFrontendCallbackController()` and `useTokenSetBackendCallbackController()` over the shared registry callback controllers. Angular callback adaptation is likewise built over core registry controllers.
+- React callback handling uses `useTokenSetFrontendCallback()` and `useTokenSetBackendCallback()` over client-owned callback Resources. Registry selection is non-consuming and returns a fixed-record client resolver. The registry entry factory starts the client; client startup resolves and takes callback input before persistence restore.
 
 Migration:
 
@@ -337,8 +337,8 @@ Migration:
 - Opt session adapters into initial probing by explicitly creating `SessionContextController` and calling `controller.refresh()` from the host-owned lifecycle when needed.
 - For React code that needs environment capability, pass the host-owned environment injector to `SecuritydeptProvider` as `parentInjector` and read it later through `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)`.
 - For Angular frontend-oidc route redirects, provide the host-owned environment object from the composition root with `provideEnvironment({ environment })`.
-- For Angular callback routes, use the core token-set registry controller directly until the new Angular adapter exists.
-- For custom callback orchestration, call the React hook with explicit `controller` / `injector` / `getCurrentUrl` / `describeError` instead of reintroducing page-global fallback logic or mode-specific copy into ordinary helpers.
+- For Angular callback routes, use `TokenSetFrontendCallbackComponent` or `TokenSetBackendCallbackComponent`.
+- For custom callback orchestration, provide a client `callbackInputResolver` and use the registry selectors without reintroducing a separate callback controller.
 
 ### Route Security And Matched Route Chains
 
@@ -392,7 +392,7 @@ Change:
 
 - Canonical registry lifecycle verbs are now `register(entry)`, `unregister(key)`, `resetMaterialization(key)`, and `dispose()`.
 - The registry now exposes separate configured-vs-ready observability: `has()` / `registeredKeys()` / `registeredEntriesSnapshot()` / `registeredMetaSnapshot()` describe registered entries, while `readyKeys()` describes clients whose materialization and `start()` lifecycle have completed.
-- React token-set composition is registry-first: register `provideTokenSetClientRegistry(...)` at the composition root, use callback controller hooks only where callback routes are rendered, and perform add/remove/reset flows through the injected registry instance. Angular token-set composition uses `TokenSetClientRegistryService`, a thin DI adapter over the shared core `TokenSetClientRegistry`.
+- React token-set composition is registry-first: register `provideTokenSetClientRegistry(...)` at the composition root, use callback Resource hooks only where callback state is rendered, and perform add/remove flows through the injected registry instance. Angular token-set composition uses `TokenSetClientRegistryService`, a thin DI adapter over the shared core `TokenSetClientRegistry`.
 
 Migration:
 

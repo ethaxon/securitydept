@@ -1,4 +1,5 @@
 import {
+	appendOrReplaceCompatFragment,
 	type BaseTransportTrait,
 	createBaseTransportForStdFetch,
 	createFoundationEnvironment,
@@ -13,8 +14,11 @@ import {
 	type ResourceSnapshot,
 	ResourceStatus,
 	type ResourceTrait,
+	type RouterNavigationRequest,
+	type RouterTrait,
 	type TracingEvent,
 	type TracingSubscriberTrait,
+	UriReferenceString,
 } from "@securitydept/client";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -23,11 +27,13 @@ import {
 	TokenSetAuthEventType,
 } from "../../orchestration";
 import { BackendOidcModeClient } from "../client/client";
+import { BackendOidcModeErrorCode } from "../client/error-codes";
 import {
 	BackendOidcModeComposedTraceEventType,
 	BackendOidcModeOperationEventName,
 	BackendOidcModeTraceOperationName,
 } from "../client/trace-events";
+import { BackendOidcModeCompatFragmentKind } from "../contracts/callback";
 
 const BASE_URL = "https://api.example.com";
 const DEFAULT_PERSISTENCE_KEY =
@@ -180,6 +186,133 @@ describe("BackendOidcModeClient", () => {
 		vi.unstubAllGlobals();
 	});
 
+	it("round-trips callback routing keys through authorize URLs and the default resolver", async () => {
+		let currentUrl = appendOrReplaceCompatFragment(
+			UriReferenceString.parse("https://app.example.com/after#route"),
+			{
+				payload: {
+					kind: BackendOidcModeCompatFragmentKind.Callback,
+					callback_routing_key: "backend",
+					access_token: "callback-at",
+					id_token: "callback-idt",
+					metadata_redemption_id: "meta-1",
+				},
+			},
+			(input, hash) => input.setHash(hash),
+		).url;
+		const navigate = vi.fn(async (request: RouterNavigationRequest) => {
+			currentUrl = request.url;
+		});
+		const router: RouterTrait = {
+			currentUrl: () => currentUrl,
+			navigate,
+		};
+		const environment = createFoundationEnvironment({
+			router,
+			transport: createTestTransport(() => ({
+				status: 200,
+				headers: {},
+				body: { metadata: {} },
+			})),
+		});
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment, callbackRoutingKey: "backend" },
+		);
+
+		expect(client.authorizeUrl("/after")).toBe(
+			`${BASE_URL}/auth/oidc/login?post_auth_redirect_uri=%2Fafter&callback_routing_key=backend`,
+		);
+		await expect(client.start()).resolves.toMatchObject({
+			tokens: { accessToken: "callback-at" },
+		});
+		expect(client.callback.resource.value.get()).toMatchObject({
+			kind: "handled",
+			result: { tokens: { accessToken: "callback-at" } },
+		});
+		expect(navigate).toHaveBeenCalledOnce();
+		expect(currentUrl.toString()).toBe("https://app.example.com/after#route");
+	});
+
+	it("does not consume a backend callback owned by another routing key", async () => {
+		const currentUrl = appendOrReplaceCompatFragment(
+			UriReferenceString.parse("https://app.example.com/after"),
+			{
+				payload: {
+					kind: BackendOidcModeCompatFragmentKind.Callback,
+					callback_routing_key: "backend-a",
+					access_token: "callback-at",
+				},
+			},
+			(input, hash) => input.setHash(hash),
+		).url;
+		const navigate = vi.fn();
+		const environment = createFoundationEnvironment({
+			router: { currentUrl: () => currentUrl, navigate },
+			transport: createTestTransport(() => ({ status: 500, headers: {} })),
+		});
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment, callbackRoutingKey: "backend-b" },
+		);
+
+		await expect(client.start()).resolves.toBeNull();
+		expect(navigate).not.toHaveBeenCalled();
+		expect(client.callback.resource.value.get()).toEqual({
+			kind: "not_applicable",
+		});
+	});
+
+	it("determines auth failure when callback restoration rejects", async () => {
+		const resolverError = new Error("callback resolver failed");
+		const trace = new InMemoryTraceCollector();
+		const environment = createFoundationEnvironment({
+			transport: createTestTransport(() => ({ status: 500, headers: {} })),
+			tracing: createTracing({ subscribers: [trace] }),
+		});
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{
+				environment,
+				callbackInputResolver: async () => {
+					throw resolverError;
+				},
+			},
+		);
+
+		await expect(client.start()).rejects.toMatchObject({
+			code: BackendOidcModeErrorCode.CallbackFailed,
+			cause: resolverError,
+		});
+		expect(client.authSnapshot.get()).toMatchObject({
+			status: ResourceStatus.LoadingError,
+			error: expect.objectContaining({
+				code: BackendOidcModeErrorCode.CallbackFailed,
+			}),
+		});
+		const callbackOperations = trace
+			.ofType(OperationTraceEventType.Started)
+			.filter(
+				(event) =>
+					event.fields?.operationName ===
+					BackendOidcModeTraceOperationName.Callback,
+			);
+		expect(callbackOperations).toHaveLength(1);
+		expect(
+			trace.assertOperationLifecycle(callbackOperations[0]!.span.id, [
+				OperationTraceEventType.Started,
+				OperationTraceEventType.Error,
+				OperationTraceEventType.Ended,
+			]),
+		).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					fields: expect.objectContaining({ flow: "callback.restore" }),
+				}),
+			]),
+		);
+	});
+
 	it("refreshes tokens from a JSON response body", async () => {
 		const transport = createTestTransport(() => ({
 			status: 200,
@@ -196,7 +329,7 @@ describe("BackendOidcModeClient", () => {
 				baseUrl: BASE_URL,
 				refresh: { sources: { refreshTimer: false } },
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.restoreState({
@@ -230,7 +363,10 @@ describe("BackendOidcModeClient", () => {
 			body: { id_token: "only-id-token" },
 		}));
 		const { runtime } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment: runtime },
+		);
 
 		await client.restoreState({
 			tokens: {
@@ -259,7 +395,10 @@ describe("BackendOidcModeClient", () => {
 			body: null,
 		}));
 		const { runtime } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment: runtime },
+		);
 
 		await client.restoreState({
 			tokens: {
@@ -303,7 +442,7 @@ describe("BackendOidcModeClient", () => {
 					sources: { refreshTimer: false },
 				},
 			},
-			runtime,
+			{ environment: runtime },
 		);
 		const events: TokenSetAuthEvent[] = [];
 		client.authEvents.subscribe({
@@ -371,7 +510,10 @@ describe("BackendOidcModeClient", () => {
 			body: null,
 		}));
 		const { runtime } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment: runtime },
+		);
 		const events: Array<unknown> = [];
 		client.authEvents.subscribe({ next: (event) => events.push(event) });
 
@@ -412,7 +554,7 @@ describe("BackendOidcModeClient", () => {
 				baseUrl: BASE_URL,
 				refresh: { sources: { refreshTimer: false } },
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.restoreState({
@@ -470,7 +612,7 @@ describe("BackendOidcModeClient", () => {
 				baseUrl: BASE_URL,
 				refresh: { sources: { refreshTimer: false } },
 			},
-			runtime,
+			{ environment: runtime },
 		);
 		await expect(client.restorePersistedState()).rejects.toMatchObject({
 			name: "ClientError",
@@ -517,7 +659,7 @@ describe("BackendOidcModeClient", () => {
 				baseUrl: BASE_URL,
 				refresh: { sources: { refreshTimer: false } },
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await expect(client.restorePersistedState()).rejects.toMatchObject({
@@ -553,7 +695,10 @@ describe("BackendOidcModeClient", () => {
 			throw new Error(`Unexpected request: ${request.url}`);
 		});
 		const { runtime } = createTestRuntime(transport, { persistentStorage });
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment: runtime },
+		);
 
 		const snapshot = await client.handleCallback(
 			callbackParameters(
@@ -583,7 +728,7 @@ describe("BackendOidcModeClient", () => {
 		).runtime;
 		const restoredClient = new BackendOidcModeClient(
 			{ baseUrl: BASE_URL },
-			restoredRuntime,
+			{ environment: restoredRuntime },
 		);
 		const restored = await restoredClient.restorePersistedState();
 
@@ -594,6 +739,65 @@ describe("BackendOidcModeClient", () => {
 
 		await restoredClient.logout();
 		expect(await persistentStorage.get(DEFAULT_PERSISTENCE_KEY)).toBeNull();
+	});
+
+	it("keeps callback auth state when best-effort persistence fails", async () => {
+		const trace = new TestTraceCollector();
+		const persistentStorage: NonNullable<
+			FoundationEnvironment["persistentStorage"]
+		> = {
+			get: async () => null,
+			set: async () => {
+				throw new Error("disk full");
+			},
+			remove: async () => undefined,
+		};
+		const { runtime } = createTestRuntime(
+			createTestTransport(() => ({
+				status: 200,
+				headers: {},
+				body: { metadata: {} },
+			})),
+			{
+				persistentStorage,
+				tracing: createTracing({ subscribers: [trace] }),
+			},
+		);
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment: runtime },
+		);
+		const events: TokenSetAuthEvent[] = [];
+		client.authEvents.subscribe({ next: (event) => events.push(event) });
+
+		await expect(
+			client.handleCallback(
+				callbackParameters(
+					"access_token=callback-at&id_token=callback-idt&metadata_redemption_id=meta-1",
+				),
+			),
+		).resolves.toMatchObject({
+			tokens: { accessToken: "callback-at" },
+		});
+		expect(client.authSnapshot.get()).toMatchObject({
+			status: ResourceStatus.Resolved,
+			value: { tokens: { accessToken: "callback-at" } },
+		});
+		expect(client.callback.state.get()).toMatchObject({
+			status: ResourceStatus.Resolved,
+			value: {
+				kind: "handled",
+				result: { tokens: { accessToken: "callback-at" } },
+			},
+		});
+		expect(
+			events.some(
+				(event) => event.type === TokenSetAuthEventType.AuthAuthenticated,
+			),
+		).toBe(true);
+		expect(trace.events.map((event) => event.name)).toContain(
+			BackendOidcModeComposedTraceEventType.PersistenceSyncFailed,
+		);
 	});
 
 	it.each([
@@ -647,7 +851,7 @@ describe("BackendOidcModeClient", () => {
 				baseUrl: BASE_URL,
 				refresh: { sources: { refreshTimer: false } },
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await expect(client.restorePersistedState()).resolves.toBeNull();
@@ -675,7 +879,10 @@ describe("BackendOidcModeClient", () => {
 			},
 		}));
 		const { runtime } = createTestRuntime(transport, { persistentStorage });
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment: runtime },
+		);
 
 		await client.restoreState({
 			tokens: {
@@ -701,7 +908,7 @@ describe("BackendOidcModeClient", () => {
 		});
 	});
 
-	it("keeps refreshed memory state even when persistence sync fails", async () => {
+	it("keeps refreshed memory state when best-effort persistence fails", async () => {
 		const persistentStorage: NonNullable<
 			FoundationEnvironment["persistentStorage"]
 		> = {
@@ -721,7 +928,10 @@ describe("BackendOidcModeClient", () => {
 			},
 		}));
 		const { runtime } = createTestRuntime(transport, { persistentStorage });
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment: runtime },
+		);
 
 		await client.restoreState({
 			tokens: {
@@ -743,14 +953,17 @@ describe("BackendOidcModeClient", () => {
 		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(
 			"refreshed-at",
 		);
-		expect(client.authSnapshot.get().status).toBe("error");
+		expect(client.authSnapshot.get().status).toBe("resolved");
 	});
 
 	it("stops refresh work on dispose and prevents future scheduled refreshes", async () => {
 		const deferred = createDeferred<HttpResponse>();
 		const transport = createTestTransport(async () => await deferred.promise);
 		const { runtime, time } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment: runtime },
+		);
 
 		await client.restoreState({
 			tokens: {
@@ -809,7 +1022,7 @@ describe("BackendOidcModeClient", () => {
 				baseUrl: BASE_URL,
 				refresh: { sources: { refreshTimer: false } },
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.restoreState({
@@ -859,7 +1072,10 @@ describe("BackendOidcModeClient", () => {
 		const { runtime } = createTestRuntime(transport, {
 			tracing: createTracing({ subscribers: [trace] }),
 		});
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment: runtime },
+		);
 
 		await client.handleCallback(
 			callbackParameters(
@@ -923,7 +1139,7 @@ describe("BackendOidcModeClient", () => {
 				baseUrl: BASE_URL,
 				refresh: { tokenFreshness: { refreshWindowMs: 60_000 } },
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.restoreState({
@@ -967,7 +1183,10 @@ describe("BackendOidcModeClient", () => {
 				span: rootSpan,
 			},
 		);
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment: runtime },
+		);
 		await client.restoreState({
 			tokens: {
 				accessToken: "expired-at",
@@ -1013,7 +1232,10 @@ describe("BackendOidcModeClient", () => {
 		const { runtime } = createTestRuntime(transport, {
 			tracing: createTracing({ subscribers: [trace] }),
 		});
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment: runtime },
+		);
 
 		await client.handleCallback(
 			callbackParameters(
@@ -1062,14 +1284,14 @@ describe("BackendOidcModeClient", () => {
 				expect.objectContaining({
 					fields: expect.objectContaining({
 						operationName: BackendOidcModeTraceOperationName.Callback,
-						flow: "callback.fragment",
+						flow: "callback",
 					}),
 				}),
 			]),
 		);
 	});
 
-	it("treats callback body as the same callback operation story", async () => {
+	it("accepts callback JSON bodies through the unified callback input", async () => {
 		const trace = new InMemoryTraceCollector();
 		const transport = createTestTransport(() => {
 			throw new Error("callback body should not hit transport");
@@ -1077,9 +1299,12 @@ describe("BackendOidcModeClient", () => {
 		const { runtime } = createTestRuntime(transport, {
 			tracing: createTracing({ subscribers: [trace] }),
 		});
-		const client = new BackendOidcModeClient({ baseUrl: BASE_URL }, runtime);
+		const client = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment: runtime },
+		);
 
-		await client.handleCallbackBody({
+		await client.handleCallback({
 			access_token: "body-at",
 			id_token: "body-idt",
 			refresh_token: "body-rt",
@@ -1122,7 +1347,7 @@ describe("BackendOidcModeClient", () => {
 				expect.objectContaining({
 					fields: expect.objectContaining({
 						operationName: BackendOidcModeTraceOperationName.Callback,
-						flow: "callback.body",
+						flow: "callback",
 					}),
 				}),
 			]),
@@ -1165,7 +1390,7 @@ describe("BackendOidcModeClient", () => {
 				baseUrl: BASE_URL,
 				refresh: { tokenFreshness: { refreshWindowMs: 60_000 } },
 			},
-			runtime,
+			{ environment: runtime },
 		);
 
 		await client.restoreState({

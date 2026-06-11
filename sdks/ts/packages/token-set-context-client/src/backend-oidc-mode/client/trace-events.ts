@@ -42,6 +42,7 @@ export type BackendOidcModeOperationEventName =
 /** Orchestration and workflow-source events composed with the backend-oidc trace prefix. */
 export const BackendOidcModeComposedTraceEventType = {
 	PersistedRestoreFailed: `${TRACE_PREFIX}.${TokenSetOrchestrationTraceEvent.PersistedRestoreFailed}`,
+	PersistenceSyncFailed: `${TRACE_PREFIX}.${TokenSetOrchestrationTraceEvent.PersistenceSyncFailed}`,
 	StateRestored: `${TRACE_PREFIX}.${TokenSetOrchestrationTraceEvent.StateRestored}`,
 	RefreshTimerScheduled: `${TRACE_PREFIX}.${TokenSetRefreshTimerWorkflowSource.name}.${TokenSetRefreshTimerWorkflowSourceTraceEventType.Scheduled}`,
 	RefreshTimerFired: `${TRACE_PREFIX}.${TokenSetRefreshTimerWorkflowSource.name}.${TokenSetRefreshTimerWorkflowSourceTraceEventType.Fired}`,

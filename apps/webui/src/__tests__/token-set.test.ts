@@ -125,10 +125,12 @@ function createBackendOidcModeTestClient(
 			metadataRedeemPath,
 			userInfoPath,
 		},
-		createFoundationEnvironment({
-			...environmentOptions,
-			tracing: tracing ?? createTracing(),
-		}),
+		{
+			environment: createFoundationEnvironment({
+				...environmentOptions,
+				tracing: tracing ?? createTracing(),
+			}),
+		},
 	);
 }
 

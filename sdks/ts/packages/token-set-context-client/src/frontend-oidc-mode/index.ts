@@ -36,8 +36,14 @@ export {
 export {
 	type FrontendOidcModeCheckClaimsOptions,
 	type FrontendOidcModeClientDefaultOptions,
+	type FrontendOidcModeClientOptions,
 	type FrontendOidcModeExchangeCodeOptions,
 } from "./client/types";
+export {
+	type FrontendOidcModeCallbackInput,
+	type FrontendOidcModeCallbackSearchString,
+	takeFrontendOidcCallbackInputFromRouter,
+} from "./contracts/callback";
 
 // --- Types: config, protocol, lifecycle ---
 

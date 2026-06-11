@@ -2,14 +2,34 @@
 
 import { TestBed } from "@angular/core/testing";
 import {
+	createSignal,
 	type FoundationEnvironment,
-	OnceAsyncLockState,
+	ResourceStatus,
 	type RouterTrait,
+	resourceFromSnapshots,
+	SYMBOL_DISPOSE,
 	UriReferenceString,
 } from "@securitydept/client";
 import { ENVIRONMENT } from "@securitydept/client-angular";
-import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import { FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import {
+	BackendOidcModeClient,
+	BackendOidcModeCompatFragmentKind,
+} from "@securitydept/token-set-context-client/backend-oidc-mode";
+import {
+	type FrontendOidcModeCallbackResult,
+	FrontendOidcModeClient,
+} from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import {
+	type BaseOidcModeClient,
+	OidcModeCallbackHandlingKind,
+	type OidcModeCallbackHandlingResult,
+	type TokenSetAuthSnapshot,
+} from "@securitydept/token-set-context-client/orchestration";
+import {
+	createTokenSetClientRegistry,
+	TokenSetClientInitializationMode,
+	type TokenSetClientRegistryEntry,
+} from "@securitydept/token-set-context-client/registry";
 import {
 	TokenSetBackendCallbackComponent,
 	TokenSetClientRegistryService,
@@ -17,60 +37,97 @@ import {
 } from "@securitydept/token-set-context-client-angular";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-function createSnapshot(accessToken: string) {
-	return {
-		tokens: {
-			accessToken,
-			idToken: `${accessToken}-id`,
+function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
+	return { tokens: { accessToken }, metadata: {} };
+}
+
+function createFrontendClient(): FrontendOidcModeClient {
+	const snapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: {
+			kind: OidcModeCallbackHandlingKind.Handled,
+			result: {
+				snapshot: createSnapshot("frontend-at"),
+				postAuthRedirectUri: "/home",
+			},
 		},
-		metadata: {},
+	} as const);
+	const resource = resourceFromSnapshots<
+		OidcModeCallbackHandlingResult<FrontendOidcModeCallbackResult>
+	>(() => snapshot.get());
+	const dispose = vi.fn(() => resource.dispose());
+	const client = {
+		callback: { state: snapshot, resource, cancel: vi.fn() },
+		dispose,
+		[SYMBOL_DISPOSE]: dispose,
+	} as unknown as FrontendOidcModeClient;
+	Object.setPrototypeOf(client, FrontendOidcModeClient.prototype);
+	return client;
+}
+
+function createBackendClient(): BackendOidcModeClient {
+	const snapshot = createSignal({
+		status: ResourceStatus.Resolved,
+		value: {
+			kind: OidcModeCallbackHandlingKind.Handled,
+			result: createSnapshot("backend-at"),
+		},
+	} as const);
+	const resource = resourceFromSnapshots<
+		OidcModeCallbackHandlingResult<TokenSetAuthSnapshot>
+	>(() => snapshot.get());
+	const dispose = vi.fn(() => resource.dispose());
+	const client = {
+		callback: { state: snapshot, resource, cancel: vi.fn() },
+		dispose,
+		[SYMBOL_DISPOSE]: dispose,
+	} as unknown as BackendOidcModeClient;
+	Object.setPrototypeOf(client, BackendOidcModeClient.prototype);
+	return client;
+}
+
+function createEntry(
+	clientKey: string,
+	clientFactory: () => BaseOidcModeClient,
+	callbackPath?: string,
+): TokenSetClientRegistryEntry<BaseOidcModeClient> {
+	return {
+		clientFactory,
+		meta: {
+			clientKey,
+			urlPatterns: [],
+			callbackPath,
+			requirementKind: undefined,
+			providerFamily: undefined,
+			initialization: TokenSetClientInitializationMode.Lazy,
+		},
 	};
 }
 
-function createRecord(clientKey: string) {
+function createRouter(url: string): RouterTrait {
 	return {
-		get: () => ({
-			meta: {
-				clientKey,
+		currentUrl: () => UriReferenceString.parse(url),
+		navigate: vi.fn(),
+	};
+}
+
+function configure(options: {
+	router: RouterTrait;
+	entry: TokenSetClientRegistryEntry<BaseOidcModeClient>;
+}): void {
+	const registry = createTokenSetClientRegistry<BaseOidcModeClient>({
+		environment: {},
+	});
+	registry.register(options.entry);
+	TestBed.configureTestingModule({
+		providers: [
+			{
+				provide: ENVIRONMENT,
+				useValue: { router: options.router } as FoundationEnvironment,
 			},
-		}),
-		watchStream: () => ({
-			subscribe: () => ({ unsubscribe: () => undefined }),
-		}),
-	};
-}
-
-function createRegistry(clientKey: string, client: unknown, matched = true) {
-	const record = createRecord(clientKey);
-	return {
-		clientRecordForQuery: vi.fn(
-			(_query: unknown, options?: { initialize?: boolean }) => {
-				if (!matched) {
-					return options?.initialize ? Promise.resolve(undefined) : undefined;
-				}
-				return options?.initialize
-					? Promise.resolve({ client, meta: { clientKey } })
-					: record;
-			},
-		),
-	};
-}
-
-function createEnvironment(router?: RouterTrait): FoundationEnvironment {
-	return {
-		router,
-	} as FoundationEnvironment;
-}
-
-function createRouter(url: string | null) {
-	const navigate = vi.fn(async () => undefined);
-	return {
-		router: {
-			currentUrl: () => (url === null ? null : UriReferenceString.parse(url)),
-			navigate,
-		} satisfies RouterTrait,
-		navigate,
-	};
+			{ provide: TokenSetClientRegistryService, useValue: registry },
+		],
+	});
 }
 
 describe("token-set Angular callback components", () => {
@@ -79,125 +136,63 @@ describe("token-set Angular callback components", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("frontend component reads current URL from the environment router and exposes state as a signal", async () => {
-		const handleCallback = vi.fn(async () => ({
-			snapshot: createSnapshot("frontend-at"),
-			postAuthRedirectUri: "/home",
-		}));
-		const client = { handleCallback };
-		Object.setPrototypeOf(client, FrontendOidcModeClient.prototype);
-		const registry = createRegistry("frontend", client);
-		const { router } = createRouter(
-			"https://app.example.com/auth/callback?code=ok&state=s1",
-		);
-
-		TestBed.configureTestingModule({
-			imports: [TokenSetFrontendCallbackComponent],
-			providers: [
-				{ provide: ENVIRONMENT, useValue: createEnvironment(router) },
-				{ provide: TokenSetClientRegistryService, useValue: registry },
-			],
+	it("frontend component initializes the selected callback client", async () => {
+		const clientFactory = vi.fn(() => createFrontendClient());
+		configure({
+			router: createRouter(
+				"https://app.example.com/auth/callback?code=ok&state=s1",
+			),
+			entry: createEntry("frontend", clientFactory, "/auth/callback"),
 		});
 
 		const fixture = TestBed.createComponent(TokenSetFrontendCallbackComponent);
 		fixture.detectChanges();
 		await fixture.whenStable();
 
-		expect(typeof fixture.componentInstance.state).toBe("function");
-		expect(handleCallback).toHaveBeenCalledWith(
-			"https://app.example.com/auth/callback?code=ok&state=s1",
-		);
 		await vi.waitFor(() => {
-			expect(fixture.componentInstance.state()).toMatchObject({
-				state: OnceAsyncLockState.Success,
-			});
+			expect(clientFactory).toHaveBeenCalledOnce();
+			expect(fixture.componentInstance.state().status).toBe(
+				ResourceStatus.Resolved,
+			);
 		});
 	});
 
-	it("frontend component does not auto-handle when no callback client matches", async () => {
-		const handleCallback = vi.fn(async () => ({
-			snapshot: createSnapshot("frontend-at"),
-		}));
-		const client = { handleCallback };
-		Object.setPrototypeOf(client, FrontendOidcModeClient.prototype);
-		const registry = createRegistry("frontend", client, false);
-		const { router } = createRouter("https://app.example.com/not-callback");
-
-		TestBed.configureTestingModule({
-			imports: [TokenSetFrontendCallbackComponent],
-			providers: [
-				{ provide: ENVIRONMENT, useValue: createEnvironment(router) },
-				{ provide: TokenSetClientRegistryService, useValue: registry },
-			],
+	it("frontend component resolves not-applicable outside its callback path", async () => {
+		const clientFactory = vi.fn(() => createFrontendClient());
+		configure({
+			router: createRouter("https://app.example.com/dashboard"),
+			entry: createEntry("frontend", clientFactory, "/auth/callback"),
 		});
 
 		const fixture = TestBed.createComponent(TokenSetFrontendCallbackComponent);
 		fixture.detectChanges();
 		await fixture.whenStable();
 
-		expect(handleCallback).not.toHaveBeenCalled();
+		expect(clientFactory).not.toHaveBeenCalled();
 		expect(fixture.componentInstance.state()).toMatchObject({
-			state: OnceAsyncLockState.Init,
+			status: ResourceStatus.Resolved,
+			value: { kind: OidcModeCallbackHandlingKind.NotApplicable },
 		});
 	});
 
-	it("backend component consumes compat fragment parameters from the environment router", async () => {
-		const handleCallback = vi.fn(async () => createSnapshot("backend-at"));
-		const client = { handleCallback };
-		Object.setPrototypeOf(client, BackendOidcModeClient.prototype);
-		const registry = createRegistry("backend", client);
-		const { router, navigate } = createRouter(
-			"https://app.example.com/callback#securitydept=v1&access_token=at&id_token=idt",
-		);
-
-		TestBed.configureTestingModule({
-			imports: [TokenSetBackendCallbackComponent],
-			providers: [
-				{ provide: ENVIRONMENT, useValue: createEnvironment(router) },
-				{ provide: TokenSetClientRegistryService, useValue: registry },
-			],
+	it("backend component selects by callback_routing_key", async () => {
+		const clientFactory = vi.fn(() => createBackendClient());
+		configure({
+			router: createRouter(
+				`https://app.example.com/callback#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&callback_routing_key=backend&access_token=at`,
+			),
+			entry: createEntry("backend", clientFactory),
 		});
 
 		const fixture = TestBed.createComponent(TokenSetBackendCallbackComponent);
-		fixture.componentRef.setInput("clientQuery", { clientKey: "backend" });
 		fixture.detectChanges();
 		await fixture.whenStable();
 
 		await vi.waitFor(() => {
-			expect(handleCallback).toHaveBeenCalledWith({
-				access_token: "at",
-				id_token: "idt",
-			});
-			expect(fixture.componentInstance.state()).toMatchObject({
-				state: OnceAsyncLockState.Success,
-			});
-		});
-		expect(navigate).toHaveBeenCalledOnce();
-	});
-
-	it("backend component stays idle when no compat fragment exists", async () => {
-		const handleCallback = vi.fn(async () => createSnapshot("backend-at"));
-		const client = { handleCallback };
-		Object.setPrototypeOf(client, BackendOidcModeClient.prototype);
-		const registry = createRegistry("backend", client);
-		const { router } = createRouter("https://app.example.com/callback#plain");
-
-		TestBed.configureTestingModule({
-			imports: [TokenSetBackendCallbackComponent],
-			providers: [
-				{ provide: ENVIRONMENT, useValue: createEnvironment(router) },
-				{ provide: TokenSetClientRegistryService, useValue: registry },
-			],
-		});
-
-		const fixture = TestBed.createComponent(TokenSetBackendCallbackComponent);
-		fixture.componentRef.setInput("clientQuery", { clientKey: "backend" });
-		fixture.detectChanges();
-		await fixture.whenStable();
-
-		expect(handleCallback).not.toHaveBeenCalled();
-		expect(fixture.componentInstance.state()).toMatchObject({
-			state: OnceAsyncLockState.Init,
+			expect(clientFactory).toHaveBeenCalledOnce();
+			expect(fixture.componentInstance.state().status).toBe(
+				ResourceStatus.Resolved,
+			);
 		});
 	});
 });

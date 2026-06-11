@@ -45,7 +45,7 @@
 		"build": "ng-packagr -p ng-package.json -c tsconfig.lib.json",
 		"test": "vitest run --config ../../vitest.package.config.ts",
 		"test:watch": "vitest --config ../../vitest.package.config.ts",
-		"typecheck": "tsc -p tsconfig.json --noEmit --pretty false"
+		"typecheck": "tsc -b --pretty false"
 	},
 	"peerDependencies": {
 		"@securitydept/client": "workspace:*",

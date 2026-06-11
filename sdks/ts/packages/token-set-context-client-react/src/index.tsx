@@ -4,7 +4,7 @@
 //   import { ... } from "@securitydept/token-set-context-client-react"
 //
 // Provides Securitydept DI integration for the core token-set client registry
-// plus headless React callback controller hooks.
+// plus headless React callback Resource hooks.
 
 export {
 	BackendOidcModeClient,

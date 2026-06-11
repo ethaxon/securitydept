@@ -1,22 +1,38 @@
 import {
 	Component,
+	DestroyRef,
 	inject,
 	input,
 	type OnInit,
 	type Signal,
 } from "@angular/core";
 import {
-	type CompatFragmentParameters,
-	takeCompatFragmentFromRouter,
+	ClientError,
+	ClientErrorKind,
+	createSignal,
+	type ResourceSnapshot,
+	ResourceStatus,
+	resourceFromSnapshots,
 } from "@securitydept/client";
 import { ENVIRONMENT, toNgSignal } from "@securitydept/client-angular";
+import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
-	BackendOidcModeCallbackController,
-	type BackendOidcModeCallbackResult,
-	type BackendOidcModeCallbackState,
-	type TokenSetClientQueryOptions,
+	OidcModeCallbackHandlingKind,
+	type OidcModeCallbackHandlingResult,
+	type TokenSetAuthSnapshot,
+} from "@securitydept/token-set-context-client/orchestration";
+import {
+	selectTokenSetBackendCallbackClientFromRegistry,
+	type TokenSetBackendCallbackClientFromRegistrySelection,
+	TokenSetCallbackClientSelectionKind,
+	TokenSetClientRegistryEntryStatus,
+	TokenSetRegistryCallbackErrorCode,
+	TokenSetRegistryCallbackErrorSource,
 } from "@securitydept/token-set-context-client/registry";
 import { TokenSetClientRegistryService } from "../client-registry.service";
+
+type BackendCallbackResult =
+	OidcModeCallbackHandlingResult<TokenSetAuthSnapshot>;
 
 @Component({
 	selector: "sd-token-set-backend-callback",
@@ -25,54 +41,75 @@ import { TokenSetClientRegistryService } from "../client-registry.service";
 	exportAs: "sdTokenSetBackendCallback",
 })
 export class TokenSetBackendCallbackComponent implements OnInit {
-	readonly clientQuery = input.required<TokenSetClientQueryOptions>();
-	readonly autoHandle = input(true);
+	readonly autoInitialize = input(true);
 
 	private readonly environment = inject(ENVIRONMENT);
 	private readonly registry = inject(TokenSetClientRegistryService);
-	private compatFragmentPayload: CompatFragmentParameters | undefined;
-	private readonly controller = new BackendOidcModeCallbackController({
-		registry: () => this.registry,
-		payload: () => this.readCompatFragmentPayload(),
-		clientQuery: () => this.clientQuery(),
-	});
+	private readonly destroyRef = inject(DestroyRef);
+	private readonly selectionSignal =
+		createSignal<TokenSetBackendCallbackClientFromRegistrySelection>({
+			kind: TokenSetCallbackClientSelectionKind.NotApplicable,
+		});
 
-	readonly state: Signal<BackendOidcModeCallbackState> = toNgSignal(
-		this.controller.state,
-		{ initialValue: this.controller.state.get() },
+	readonly resource = resourceFromSnapshots<BackendCallbackResult>(() => {
+		const selection = this.selectionSignal.get();
+		if (selection.kind === TokenSetCallbackClientSelectionKind.NotApplicable) {
+			return {
+				status: ResourceStatus.Resolved,
+				value: { kind: OidcModeCallbackHandlingKind.NotApplicable },
+			};
+		}
+
+		const record = selection.clientRecord.get();
+		switch (record.status) {
+			case TokenSetClientRegistryEntryStatus.Registered:
+				return { status: ResourceStatus.Idle };
+			case TokenSetClientRegistryEntryStatus.Initializing:
+				return { status: ResourceStatus.Loading };
+			case TokenSetClientRegistryEntryStatus.Failed:
+				return {
+					status: ResourceStatus.LoadingError,
+					error: record.error,
+				};
+			case TokenSetClientRegistryEntryStatus.Ready:
+				return record.client instanceof BackendOidcModeClient
+					? record.client.callback.state.get()
+					: {
+							status: ResourceStatus.LoadingError,
+							error: new ClientError({
+								kind: ClientErrorKind.Configuration,
+								code: TokenSetRegistryCallbackErrorCode.ClientModeMismatch,
+								message: `Client "${record.meta.clientKey}" is not a BackendOidcModeClient.`,
+								source: TokenSetRegistryCallbackErrorSource,
+							}),
+						};
+		}
+	});
+	readonly state: Signal<ResourceSnapshot<BackendCallbackResult>> = toNgSignal(
+		this.resource,
+		{ requireSync: true },
 	);
 
+	constructor() {
+		this.destroyRef.onDestroy(() => this.resource.dispose());
+	}
+
 	ngOnInit(): void {
-		void this.initialize();
-	}
-
-	private async initialize(): Promise<void> {
-		const router = this.environment.router;
-		if (!router) {
-			return;
-		}
-
-		const compatFragment = await takeCompatFragmentFromRouter(router);
-		if (!compatFragment) {
-			return;
-		}
-		this.compatFragmentPayload = compatFragment.parameters;
-
-		if (this.autoHandle()) {
-			void this.controller.handle().catch(() => undefined);
+		this.selectionSignal.set(
+			selectTokenSetBackendCallbackClientFromRegistry({
+				registry: this.registry,
+				callbackUrl: this.environment.router?.currentUrl()?.toString() ?? "",
+			}),
+		);
+		if (this.autoInitialize()) {
+			void this.initialize().catch(() => undefined);
 		}
 	}
 
-	handle(): Promise<BackendOidcModeCallbackResult> {
-		return this.controller.handle();
-	}
-
-	private readCompatFragmentPayload(): CompatFragmentParameters {
-		if (!this.compatFragmentPayload) {
-			throw new Error(
-				"[TokenSetBackendCallbackComponent] No compat fragment payload is available.",
-			);
-		}
-		return this.compatFragmentPayload;
+	async initialize(): Promise<BackendOidcModeClient | null> {
+		const selection = this.selectionSignal.get();
+		return selection.kind === TokenSetCallbackClientSelectionKind.Selected
+			? await selection.clientResolver()
+			: null;
 	}
 }
