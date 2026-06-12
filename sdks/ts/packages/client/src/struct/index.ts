@@ -12,6 +12,7 @@ export {
 	type UriFragmentPart,
 	UriParseError,
 	UriReferenceString,
+	type UriReferenceStringInput,
 	type UriReferenceStringLike,
 	type UriRelativeParts,
 	UriRelativeString,

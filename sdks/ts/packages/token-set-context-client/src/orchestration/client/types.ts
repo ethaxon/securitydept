@@ -6,6 +6,7 @@ import {
 	type ResourceSnapshot,
 	type ResourceTrait,
 	type StorageTrait,
+	type UriReferenceString,
 } from "@securitydept/client";
 import { type TokenSetTokenFreshnessOptions } from "../token/freshness";
 import { type TokenSetAuthSnapshot } from "../token/types";
@@ -77,6 +78,26 @@ export interface OidcModeCallbackInputResolverOptions {
 export type OidcModeCallbackInputResolver<TInput> = (
 	options: OidcModeCallbackInputResolverOptions,
 ) => TInput | null | Promise<TInput | null>;
+
+export interface OidcModeCallbackInputPredicateOptions<TInput>
+	extends OidcModeCallbackInputResolverOptions {
+	readonly callbackInput: TInput;
+	readonly callbackUrl: UriReferenceString;
+}
+
+export type OidcModeCallbackInputPredicate<TInput> = (
+	options: OidcModeCallbackInputPredicateOptions<TInput>,
+) => boolean | Promise<boolean>;
+
+export type OidcModeCallbackResolutionOptions<TInput> =
+	| {
+			readonly callbackInputResolver?: undefined;
+			readonly callbackInputPredicate?: OidcModeCallbackInputPredicate<TInput>;
+	  }
+	| {
+			readonly callbackInputResolver: OidcModeCallbackInputResolver<TInput> | null;
+			readonly callbackInputPredicate?: never;
+	  };
 
 export interface OidcModeCallbackStateTrait<TResult> {
 	readonly state: ReadableSignalTrait<

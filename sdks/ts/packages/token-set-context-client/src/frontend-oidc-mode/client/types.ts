@@ -13,11 +13,14 @@
 import {
 	type CancellationTokenOptions,
 	type FoundationEnvironment,
+	type KeyedEphemeralFlowStore,
+	type UriReferenceStringLike,
 } from "@securitydept/client";
 import {
 	type BaseOidcModeClientDefaultOptions,
-	type OidcModeCallbackInputResolver,
+	type OidcModeCallbackResolutionOptions,
 	type OidcModeClientConfigBase,
+	type TokenSetOidcRedirectLoginOptions,
 } from "../../orchestration/client/types";
 import { type TokenSetAuthSnapshot } from "../../orchestration/token/types";
 import { type FrontendOidcModeCallbackInput } from "../contracts/callback";
@@ -32,6 +35,17 @@ export const FrontendOidcModeContextSource = {
 
 export type FrontendOidcModeContextSource =
 	(typeof FrontendOidcModeContextSource)[keyof typeof FrontendOidcModeContextSource];
+
+export interface FrontendOidcModeRedirectLoginOptions
+	extends TokenSetOidcRedirectLoginOptions {
+	/** Redirect URI for this authorization request. */
+	redirectUri?: string;
+}
+
+export type FrontendOidcModeRedirectUriCandidatesInput =
+	| string
+	| UriReferenceStringLike
+	| ReadonlyArray<string | UriReferenceStringLike>;
 
 // ---------------------------------------------------------------------------
 // OIDC Client Configuration
@@ -156,10 +170,9 @@ export interface FrontendOidcModeClientConfig extends OidcModeClientConfigBase {
 	defaultPostAuthRedirectUri?: string;
 }
 
-export interface FrontendOidcModeClientOptions {
+export type FrontendOidcModeClientOptions = {
 	readonly environment: FoundationEnvironment;
-	readonly callbackInputResolver?: OidcModeCallbackInputResolver<FrontendOidcModeCallbackInput> | null;
-}
+} & OidcModeCallbackResolutionOptions<FrontendOidcModeCallbackInput>;
 
 export interface ResolvedFrontendOidcModeClientConfig
 	extends FrontendOidcModeClientConfig {
@@ -187,15 +200,16 @@ export interface FrontendOidcModeCheckClaimsOptions
 }
 
 // ---------------------------------------------------------------------------
-// Pending OAuth State (stored in sessionStorage for redirect flows)
+// Pending OAuth State
 // ---------------------------------------------------------------------------
 
 /**
- * Transient state stored in sessionStorage during the authorization redirect.
+ * Transient state stored in the flow's selected storage scope.
  *
  * When the user clicks "login", the client generates PKCE + nonce + state,
- * stores them in sessionStorage keyed by `state`, then redirects. On callback,
- * the client retrieves this state to complete the code exchange.
+ * stores them keyed by `state`, then starts the authorization flow. Redirect
+ * flows use session storage, while popup flows use realm storage. On callback,
+ * the client retrieves this state from the same scope to complete the exchange.
  */
 export interface FrontendOidcModePendingState {
 	/** PKCE code_verifier (undefined when PKCE is disabled). */
@@ -216,6 +230,15 @@ export interface FrontendOidcModePendingState {
 	postAuthRedirectUri?: string;
 	/** Timestamp (ms) when this pending state was created. TTL enforcement. */
 	createdAt: number;
+}
+
+export interface FrontendOidcModeConsumedState {
+	readonly consumedAt: number;
+}
+
+export interface FrontendOidcModeFlowStores {
+	readonly pending: KeyedEphemeralFlowStore<FrontendOidcModePendingState>;
+	readonly consumed: KeyedEphemeralFlowStore<FrontendOidcModeConsumedState>;
 }
 
 /** The result of building an authorization request (low-level). */

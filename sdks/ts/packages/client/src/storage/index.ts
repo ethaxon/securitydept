@@ -12,6 +12,7 @@ export {
 	type KeyedEphemeralFlowStore,
 	PERSISTENT_STORAGE_TRAIT_TOKEN,
 	type PersistentAuthStore,
+	REALM_STORAGE_TRAIT_TOKEN,
 	type RecoverableStateStore,
 	SESSION_STORAGE_TRAIT_TOKEN,
 	type StorageTrait,

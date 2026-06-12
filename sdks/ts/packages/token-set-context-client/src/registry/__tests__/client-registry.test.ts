@@ -1,24 +1,29 @@
 import {
 	type CancellationTokenTrait,
 	createCancellationTokenSource,
+	createFoundationEnvironment,
 	type DisposableTrait,
 	type ReadableSignalTrait,
 	ResourceStatus,
 	SYMBOL_DISPOSE,
+	UriReferenceString,
 } from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
 import { type BaseOidcModeClient } from "../../orchestration";
 import {
+	type TokenSetClientCallbackUrls,
+	type TokenSetClientFactoryOptions,
 	TokenSetClientInitializationMode,
 	type TokenSetClientReadyRecordView,
 	type TokenSetClientRecordView,
 	type TokenSetClientRegistryEntry,
-	TokenSetClientRegistryEntryStatus,
 	TokenSetClientRegistryEventType,
 } from "../contracts/types";
 import { TokenSetClientRecord } from "../core/client-record";
 import { createTokenSetClientRegistry } from "../core/client-registry";
 import { TokenSetClientRegistryErrorCode } from "../core/error";
+
+const testEnvironment = createFoundationEnvironment({});
 
 interface TestClient extends DisposableTrait {
 	readonly id: string;
@@ -48,7 +53,7 @@ function createRegistryEntry(options: {
 	clientFactory: TokenSetClientRegistryEntry<TestClient>["clientFactory"];
 	initialization?: TokenSetClientInitializationMode;
 	urlPatterns?: ReadonlyArray<string | RegExp | ((url: string) => boolean)>;
-	callbackPath?: string;
+	callbackUrl?: TokenSetClientCallbackUrls;
 	requirementKind?: string;
 	providerFamily?: string;
 }): TokenSetClientRegistryEntry<TestClient> {
@@ -57,7 +62,7 @@ function createRegistryEntry(options: {
 		meta: {
 			clientKey: options.key,
 			urlPatterns: options.urlPatterns ?? [],
-			callbackPath: options.callbackPath,
+			callbackUrl: options.callbackUrl,
 			requirementKind: options.requirementKind,
 			providerFamily: options.providerFamily,
 			initialization:
@@ -73,7 +78,7 @@ describe("TokenSetClientRegistry", () => {
 	it("initializes immediate clients and publishes state, signal, and events", async () => {
 		const client = createClient("main");
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 		const events: string[] = [];
 		registry.events.subscribe({
@@ -92,11 +97,11 @@ describe("TokenSetClientRegistry", () => {
 		);
 		const record = registry.clientRecordFor("main").get();
 		expect(record.client).toBe(client);
-		expect(record.status).toBe(TokenSetClientRegistryEntryStatus.Ready);
+		expect(record.status).toBe(ResourceStatus.Resolved);
 		expect(registry.entries.get()).toMatchObject([
 			{
 				meta: { clientKey: "main" },
-				status: TokenSetClientRegistryEntryStatus.Ready,
+				status: ResourceStatus.Resolved,
 			},
 		]);
 		expect(registry.entries.get()[0]?.id).toMatch(uuidV7Pattern);
@@ -105,6 +110,29 @@ describe("TokenSetClientRegistry", () => {
 			TokenSetClientRegistryEventType.Initializing,
 			TokenSetClientRegistryEventType.Ready,
 		]);
+	});
+
+	it("passes the registry environment and record metadata to the client factory", async () => {
+		const client = createClient("factory-options");
+		const factory = vi.fn((_options: TokenSetClientFactoryOptions) => client);
+		const entry = createRegistryEntry({
+			key: "factory-options",
+			clientFactory: factory,
+			callbackUrl: ["/callback", "/alternate-callback"],
+		});
+		const registry = createTokenSetClientRegistry<TestClient>({
+			environment: testEnvironment,
+		});
+
+		registry.register(entry);
+		await registry.clientResourceFor("factory-options").whenValue();
+
+		expect(factory).toHaveBeenCalledOnce();
+		expect(factory.mock.calls[0]?.[0]).toMatchObject({
+			environment: testEnvironment,
+			meta: entry.meta,
+		});
+		expect(factory.mock.calls[0]?.[0].cancellationToken).toBeDefined();
 	});
 
 	it("defaults the registry generic to BaseOidcModeClient", () => {
@@ -117,7 +145,7 @@ describe("TokenSetClientRegistry", () => {
 				key: string,
 			): ReadableSignalTrait<TokenSetClientRecordView<BaseOidcModeClient>>;
 		} = createTokenSetClientRegistry({
-			environment: {},
+			environment: testEnvironment,
 		});
 
 		expect(registry).toBeDefined();
@@ -126,7 +154,7 @@ describe("TokenSetClientRegistry", () => {
 	it("initializes lazy clients when clientResourceFor is requested", async () => {
 		const factory = vi.fn(() => createClient("lazy"));
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 
 		registry.register(
@@ -139,7 +167,7 @@ describe("TokenSetClientRegistry", () => {
 
 		expect(factory).not.toHaveBeenCalled();
 		expect(registry.clientRecordFor("lazy").get().status).toBe(
-			TokenSetClientRegistryEntryStatus.Registered,
+			ResourceStatus.Idle,
 		);
 
 		const signal = registry.clientResourceFor("lazy");
@@ -147,7 +175,7 @@ describe("TokenSetClientRegistry", () => {
 		expect(client?.id).toBe("lazy");
 		expect(factory).toHaveBeenCalledTimes(1);
 		expect(registry.clientRecordFor("lazy").get().status).toBe(
-			TokenSetClientRegistryEntryStatus.Ready,
+			ResourceStatus.Resolved,
 		);
 		expect(signal.snapshot.get()).toEqual({
 			status: "resolved",
@@ -158,7 +186,7 @@ describe("TokenSetClientRegistry", () => {
 	it("keeps lazy clients uninitialized when clientResourceFor disables initialization", () => {
 		const factory = vi.fn(() => createClient("lazy"));
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 
 		registry.register(
@@ -173,7 +201,7 @@ describe("TokenSetClientRegistry", () => {
 		expect(factory).not.toHaveBeenCalled();
 		expect(signal.hasValue()).toBe(false);
 		expect(registry.clientRecordFor("lazy").get().status).toBe(
-			TokenSetClientRegistryEntryStatus.Registered,
+			ResourceStatus.Idle,
 		);
 	});
 
@@ -181,7 +209,7 @@ describe("TokenSetClientRegistry", () => {
 		const client = createClient("main");
 		const factory = vi.fn(() => client);
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 
 		registry.register(
@@ -197,14 +225,14 @@ describe("TokenSetClientRegistry", () => {
 			registry.clientRecordFor("main", { initialize: true }),
 		).resolves.toMatchObject({
 			client,
-			status: TokenSetClientRegistryEntryStatus.Ready,
+			status: ResourceStatus.Resolved,
 		});
 		expect(factory).toHaveBeenCalledTimes(1);
 	});
 
 	it("derives granular state signals from registry revisions", async () => {
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 		registry.register(
 			createRegistryEntry({
@@ -219,7 +247,7 @@ describe("TokenSetClientRegistry", () => {
 		expect(registry.entries.get()).toMatchObject([
 			{
 				meta: { clientKey: "lazy" },
-				status: TokenSetClientRegistryEntryStatus.Registered,
+				status: ResourceStatus.Idle,
 			},
 		]);
 
@@ -229,7 +257,7 @@ describe("TokenSetClientRegistry", () => {
 		expect(registry.entries.get()).toMatchObject([
 			{
 				meta: { clientKey: "lazy" },
-				status: TokenSetClientRegistryEntryStatus.Ready,
+				status: ResourceStatus.Resolved,
 			},
 		]);
 		expect(readyView).not.toBe(registeredView);
@@ -240,7 +268,7 @@ describe("TokenSetClientRegistry", () => {
 	it("schedules idle clients only when an idle callback capability is provided", async () => {
 		const callbacks: Array<() => void> = [];
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {
+			environment: createFoundationEnvironment({
 				idleCallback: {
 					requestIdleCallback: (callback) => {
 						callbacks.push(callback);
@@ -253,7 +281,7 @@ describe("TokenSetClientRegistry", () => {
 						}
 					},
 				},
-			},
+			}),
 		});
 		const factory = vi.fn(() => createClient("idle"));
 
@@ -275,7 +303,7 @@ describe("TokenSetClientRegistry", () => {
 	it("does not initialize idle clients without idle callback fallback", () => {
 		const factory = vi.fn(() => createClient("idle"));
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 
 		registry.register(
@@ -288,7 +316,7 @@ describe("TokenSetClientRegistry", () => {
 
 		expect(factory).not.toHaveBeenCalled();
 		expect(registry.clientRecordFor("idle").get().status).toBe(
-			TokenSetClientRegistryEntryStatus.Registered,
+			ResourceStatus.Idle,
 		);
 	});
 
@@ -296,7 +324,7 @@ describe("TokenSetClientRegistry", () => {
 		const deferred = createDeferred<TestClient>();
 		const factory = vi.fn(() => deferred.promise);
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 		registry.register(
 			createRegistryEntry({
@@ -313,11 +341,11 @@ describe("TokenSetClientRegistry", () => {
 		deferred.resolve(client);
 		await expect(first).resolves.toMatchObject({
 			client,
-			status: TokenSetClientRegistryEntryStatus.Ready,
+			status: ResourceStatus.Resolved,
 		});
 		await expect(second).resolves.toMatchObject({
 			client,
-			status: TokenSetClientRegistryEntryStatus.Ready,
+			status: ResourceStatus.Resolved,
 		});
 		expect(factory).toHaveBeenCalledTimes(1);
 	});
@@ -327,7 +355,7 @@ describe("TokenSetClientRegistry", () => {
 		const client = createClient("late");
 		let factoryCancellationToken: CancellationTokenTrait | undefined;
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 		registry.register(
 			createRegistryEntry({
@@ -363,6 +391,7 @@ describe("TokenSetClientRegistry", () => {
 		const cancellation = createCancellationTokenSource();
 		const pending = record.initialize({
 			cancellationToken: cancellation.token,
+			environment: testEnvironment,
 		});
 
 		cancellation.cancel();
@@ -370,7 +399,7 @@ describe("TokenSetClientRegistry", () => {
 		await expect(pending).rejects.toBe(cancellation.token.cancellationError);
 
 		expect(record.view.get()).toMatchObject({
-			status: TokenSetClientRegistryEntryStatus.Failed,
+			status: ResourceStatus.LoadingError,
 			error: cancellation.token.cancellationError,
 		});
 		expect(client.dispose).toHaveBeenCalledTimes(1);
@@ -391,6 +420,7 @@ describe("TokenSetClientRegistry", () => {
 		const cancellation = createCancellationTokenSource();
 		const pending = record.initialize({
 			cancellationToken: cancellation.token,
+			environment: testEnvironment,
 		});
 
 		cancellation.cancel();
@@ -398,7 +428,7 @@ describe("TokenSetClientRegistry", () => {
 		await expect(pending).rejects.toBe(cancellation.token.cancellationError);
 
 		expect(record.view.get()).toMatchObject({
-			status: TokenSetClientRegistryEntryStatus.Failed,
+			status: ResourceStatus.LoadingError,
 			error: cancellation.token.cancellationError,
 		});
 	});
@@ -406,7 +436,7 @@ describe("TokenSetClientRegistry", () => {
 	it("records failed initialization and rejects callers", async () => {
 		const error = new Error("boom");
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 		registry.register(
 			createRegistryEntry({
@@ -432,12 +462,12 @@ describe("TokenSetClientRegistry", () => {
 			}),
 		});
 		expect(registry.clientRecordFor("flaky").get().status).toBe(
-			TokenSetClientRegistryEntryStatus.Failed,
+			ResourceStatus.LoadingError,
 		);
 		expect(registry.entries.get()).toMatchObject([
 			{
 				meta: { clientKey: "flaky" },
-				status: TokenSetClientRegistryEntryStatus.Failed,
+				status: ResourceStatus.LoadingError,
 			},
 		]);
 	});
@@ -445,7 +475,7 @@ describe("TokenSetClientRegistry", () => {
 	it("lets clientResourceForQuery initialize lazy clients by default", async () => {
 		const factory = vi.fn(() => createClient("lazy"));
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 		registry.register(
 			createRegistryEntry({
@@ -467,7 +497,7 @@ describe("TokenSetClientRegistry", () => {
 	it("keeps query-selected lazy clients uninitialized when signal initialization is disabled", () => {
 		const factory = vi.fn(() => createClient("lazy"));
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 		registry.register(
 			createRegistryEntry({
@@ -485,13 +515,13 @@ describe("TokenSetClientRegistry", () => {
 		expect(signal).toBeDefined();
 		expect(factory).not.toHaveBeenCalled();
 		expect(registry.clientRecordFor("lazy").get().status).toBe(
-			TokenSetClientRegistryEntryStatus.Registered,
+			ResourceStatus.Idle,
 		);
 	});
 
 	it("returns ready record views when record lookup requests initialization", async () => {
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 		registry.register(
 			createRegistryEntry({
@@ -505,9 +535,7 @@ describe("TokenSetClientRegistry", () => {
 		const passiveRecord = registry.clientRecordForQuery({
 			requirementKind: "workspace",
 		});
-		expect(passiveRecord?.get().status).toBe(
-			TokenSetClientRegistryEntryStatus.Registered,
-		);
+		expect(passiveRecord?.get().status).toBe(ResourceStatus.Idle);
 
 		const readyRecord = await registry.clientRecordForQuery(
 			{ requirementKind: "workspace" },
@@ -515,7 +543,7 @@ describe("TokenSetClientRegistry", () => {
 		);
 		expect(readyRecord).toMatchObject({
 			id: passiveRecord?.get().id,
-			status: TokenSetClientRegistryEntryStatus.Ready,
+			status: ResourceStatus.Resolved,
 			client: { id: "lazy" },
 		});
 		await expect(
@@ -527,7 +555,7 @@ describe("TokenSetClientRegistry", () => {
 		const first = createClient("first");
 		const second = createClient("second");
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 
 		registry.register(
@@ -556,7 +584,7 @@ describe("TokenSetClientRegistry", () => {
 		const first = createClient("first");
 		const second = createClient("second");
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 		registry.register(
 			createRegistryEntry({ key: "first", clientFactory: () => first }),
@@ -577,7 +605,7 @@ describe("TokenSetClientRegistry", () => {
 	it("keeps metadata lookup separate from initialization", () => {
 		const factory = vi.fn(() => createClient("api"));
 		const registry = createTokenSetClientRegistry<TestClient>({
-			environment: {},
+			environment: testEnvironment,
 		});
 		registry.register(
 			createRegistryEntry({
@@ -585,7 +613,7 @@ describe("TokenSetClientRegistry", () => {
 				initialization: TokenSetClientInitializationMode.Lazy,
 				clientFactory: factory,
 				urlPatterns: ["/api/"],
-				callbackPath: "/auth/callback",
+				callbackUrl: ["/auth/callback", "/auth/alternate-callback"],
 				requirementKind: "session",
 				providerFamily: "internal",
 			}),
@@ -597,7 +625,12 @@ describe("TokenSetClientRegistry", () => {
 		expect(
 			registry
 				.clientRecordForQuery({
-					callbackUrl: "https://app.test/auth/callback?code=1",
+					callbackUrl: [
+						"https://app.test/not-a-callback",
+						UriReferenceString.parse(
+							"https://app.test/auth/alternate-callback?code=1",
+						),
+					],
 				})
 				?.get().meta.clientKey,
 		).toBe("api");

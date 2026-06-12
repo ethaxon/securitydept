@@ -12,6 +12,10 @@ import { POPUP_TRAIT_TOKEN, type PopupTrait } from "../../popup";
 import { TIME_TRAIT_TOKEN, type TimeTrait } from "../../scheduling/types";
 import { createSignal } from "../../signals";
 import { createRootSpan } from "../../span";
+import {
+	createInMemoryRecordStore,
+	REALM_STORAGE_TRAIT_TOKEN,
+} from "../../storage";
 import { createTracing } from "../../tracing";
 import { createFoundationEnvironment } from "../create";
 import { ENVIRONMENT_TOKEN, type FoundationEnvironment } from "../types";
@@ -29,10 +33,46 @@ describe("createFoundationEnvironment()", () => {
 		expect(typeof environment.time.setTimeout).toBe("function");
 		expect(typeof environment.time.clearTimeout).toBe("function");
 		expect(environment.injector.get(TIME_TRAIT_TOKEN)).toBe(environment.time);
+		expect(environment.injector.get(REALM_STORAGE_TRAIT_TOKEN)).toBe(
+			environment.realmStorage,
+		);
+		expect(typeof environment.realmStorage.take).toBe("function");
 		expect(environment.injector.get(POPUP_TRAIT_TOKEN)).toBeNull();
 		expect(environment.span.parent).toBeUndefined();
 		expect(typeof environment.tracing.record).toBe("function");
 		expect(typeof environment.tracing.events.subscribe).toBe("function");
+	});
+
+	it("creates isolated realm storage for each environment", async () => {
+		const first = createFoundationEnvironment({});
+		const second = createFoundationEnvironment({});
+
+		await first.realmStorage.set("flow", "first");
+
+		await expect(first.realmStorage.get("flow")).resolves.toBe("first");
+		await expect(second.realmStorage.get("flow")).resolves.toBeNull();
+		expect(first.realmStorage).not.toBe(second.realmStorage);
+	});
+
+	it("accepts realm storage option and provider overrides", () => {
+		const optionStorage = createInMemoryRecordStore();
+		const providerStorage = createInMemoryRecordStore();
+
+		const fromOption = createFoundationEnvironment({
+			realmStorage: optionStorage,
+		});
+		const fromProvider = createFoundationEnvironment({
+			realmStorage: optionStorage,
+			providers: [
+				{
+					provide: REALM_STORAGE_TRAIT_TOKEN,
+					useValue: providerStorage,
+				},
+			],
+		});
+
+		expect(fromOption.realmStorage).toBe(optionStorage);
+		expect(fromProvider.realmStorage).toBe(providerStorage);
 	});
 
 	it("resolves root span and tracing from constructor options", () => {
@@ -220,6 +260,14 @@ describe("createFoundationEnvironment()", () => {
 				transport: {} as never,
 			}),
 		).toThrow(/could not validate transport/);
+	});
+
+	it("rejects invalid realm storage traits", () => {
+		expect(() =>
+			createFoundationEnvironment({
+				realmStorage: {} as never,
+			}),
+		).toThrow(/could not validate realmStorage/);
 	});
 
 	it("rejects invalid explicit span traits", () => {

@@ -3,6 +3,7 @@ import {
 	ClientError,
 	ClientErrorKind,
 	type DisposableTrait,
+	type FoundationEnvironment,
 	type ReadableSignalTrait,
 	ResourceStatus,
 	type ResourceTrait,
@@ -21,7 +22,7 @@ import {
 	type TokenSetClientMeta,
 	type TokenSetClientRecordView,
 	type TokenSetClientRegistryEntry,
-	TokenSetClientRegistryEntryStatus,
+	type TokenSetClientRegistryEntryStatus,
 	type TokenSetClientRegistryEvent,
 	TokenSetClientRegistryEventType,
 } from "../contracts/types";
@@ -33,6 +34,7 @@ import {
 
 interface TokenSetClientRecordInitializeOptions {
 	readonly cancellationToken: CancellationTokenTrait;
+	readonly environment: FoundationEnvironment;
 }
 
 export class TokenSetClientRecord<TClient extends DisposableTrait>
@@ -59,22 +61,22 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 			id,
 			entry,
 			meta: entry.meta,
-			status: TokenSetClientRegistryEntryStatus.Registered,
+			status: ResourceStatus.Idle,
 		});
 		this.view = readonlySignal(this._signal);
 		this.clientResource = resourceFromSnapshots<TClient>(() => {
 			const current = this._signal.get();
 			switch (current.status) {
-				case TokenSetClientRegistryEntryStatus.Registered:
+				case ResourceStatus.Idle:
 					return { status: ResourceStatus.Idle };
-				case TokenSetClientRegistryEntryStatus.Initializing:
+				case ResourceStatus.Loading:
 					return { status: ResourceStatus.Loading };
-				case TokenSetClientRegistryEntryStatus.Ready:
+				case ResourceStatus.Resolved:
 					return {
 						status: ResourceStatus.Resolved,
-						value: current.client as TClient,
+						value: current.client,
 					};
-				case TokenSetClientRegistryEntryStatus.Failed:
+				case ResourceStatus.LoadingError:
 					return {
 						status: ResourceStatus.LoadingError,
 						error: current.error,
@@ -93,16 +95,12 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 
 	get client(): TClient | undefined {
 		const view = this._signal.get();
-		return view.status === TokenSetClientRegistryEntryStatus.Ready
-			? view.client
-			: undefined;
+		return view.status === ResourceStatus.Resolved ? view.client : undefined;
 	}
 
 	get error(): unknown | null {
 		const view = this._signal.get();
-		return view.status === TokenSetClientRegistryEntryStatus.Failed
-			? view.error
-			: null;
+		return view.status === ResourceStatus.LoadingError ? view.error : null;
 	}
 
 	static idFactory() {
@@ -118,7 +116,7 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 	async initialize(
 		options: TokenSetClientRecordInitializeOptions,
 	): Promise<void> {
-		if (this.status !== TokenSetClientRegistryEntryStatus.Registered) {
+		if (this.status !== ResourceStatus.Idle) {
 			throw new ClientError({
 				kind: ClientErrorKind.Internal,
 				code: "token_set.registry.record_not_registered",
@@ -128,7 +126,7 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 				source: TokenSetClientRegistryErrorSource,
 			});
 		}
-		const { cancellationToken } = options;
+		const { cancellationToken, environment } = options;
 		let client: TClient | null = null;
 		try {
 			cancellationToken.throwIfCancellationRequested();
@@ -136,15 +134,19 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 				id: this.id,
 				entry: this.entry,
 				meta: this.meta,
-				status: TokenSetClientRegistryEntryStatus.Initializing,
+				status: ResourceStatus.Loading,
 			});
-			client = await this.entry.clientFactory({ cancellationToken });
+			client = await this.entry.clientFactory({
+				cancellationToken,
+				environment,
+				meta: this.meta,
+			});
 			cancellationToken.throwIfCancellationRequested();
 			this._signal.set({
 				id: this.id,
 				entry: this.entry,
 				meta: this.meta,
-				status: TokenSetClientRegistryEntryStatus.Ready,
+				status: ResourceStatus.Resolved,
 				client,
 			});
 			client = null;
@@ -162,7 +164,7 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 				id: this.id,
 				entry: this.entry,
 				meta: this.meta,
-				status: TokenSetClientRegistryEntryStatus.Failed,
+				status: ResourceStatus.LoadingError,
 				error: registryError,
 			});
 			throw registryError;
@@ -172,22 +174,22 @@ export class TokenSetClientRecord<TClient extends DisposableTrait>
 	toEvent(): TokenSetClientRegistryEvent<TClient> {
 		const view = this.view.get();
 		switch (view.status) {
-			case TokenSetClientRegistryEntryStatus.Registered:
+			case ResourceStatus.Idle:
 				return {
 					...view,
 					type: TokenSetClientRegistryEventType.Registered,
 				};
-			case TokenSetClientRegistryEntryStatus.Initializing:
+			case ResourceStatus.Loading:
 				return {
 					...view,
 					type: TokenSetClientRegistryEventType.Initializing,
 				};
-			case TokenSetClientRegistryEntryStatus.Ready:
+			case ResourceStatus.Resolved:
 				return {
 					...view,
 					type: TokenSetClientRegistryEventType.Ready,
 				};
-			case TokenSetClientRegistryEntryStatus.Failed:
+			case ResourceStatus.LoadingError:
 				return {
 					...view,
 					type: TokenSetClientRegistryEventType.Failed,

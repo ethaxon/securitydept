@@ -1,5 +1,9 @@
 import { UriReferenceString } from "@securitydept/client";
-import { type TokenSetClientMeta, type TokenSetRequirementKind } from "./types";
+import {
+	type TokenSetClientCallbackUrls,
+	type TokenSetClientMeta,
+	type TokenSetRequirementKind,
+} from "./types";
 
 export type TokenSetClientSelector = (
 	meta: TokenSetClientMeta,
@@ -9,7 +13,7 @@ export type TokenSetClientSelector = (
 export interface TokenSetClientFilter {
 	clientKey?: string;
 	url?: string;
-	callbackUrl?: string | { pathname: string };
+	callbackUrl?: TokenSetClientCallbackUrls;
 	providerFamily?: string;
 	requirementKind?: TokenSetRequirementKind | string;
 	selector?: TokenSetClientSelector;
@@ -22,8 +26,6 @@ export type TokenSetClientQueryOptions =
 export interface TokenSetClientQueryTarget {
 	readonly meta: TokenSetClientMeta;
 }
-
-type TokenSetClientCallbackPathLike = string | { pathname: string };
 
 export function matchesTokenSetClientQuery(
 	target: TokenSetClientQueryTarget,
@@ -56,12 +58,12 @@ export function matchesTokenSetClientQuery(
 		return false;
 	}
 	if (filter.callbackUrl !== undefined) {
-		const callbackPath = target.meta.callbackPath;
+		const callbackUrlCandidates = target.meta.callbackUrl;
 		if (
-			!callbackPath ||
-			!matchesTokenSetClientCallbackPath({
+			!callbackUrlCandidates ||
+			!matchesTokenSetClientCallbackUrl({
 				currentUrl: filter.callbackUrl,
-				callbackPath,
+				callbackUrlCandidates,
 			})
 		) {
 			return false;
@@ -70,20 +72,24 @@ export function matchesTokenSetClientQuery(
 	return true;
 }
 
-export function matchesTokenSetClientCallbackPath(options: {
-	currentUrl: TokenSetClientCallbackPathLike;
-	callbackPath: TokenSetClientCallbackPathLike;
+export function matchesTokenSetClientCallbackUrl(options: {
+	currentUrl: TokenSetClientCallbackUrls;
+	callbackUrlCandidates: TokenSetClientCallbackUrls;
 }): boolean {
 	try {
-		const callbackPathname =
-			typeof options.callbackPath === "string"
-				? UriReferenceString.parse(options.callbackPath).pathname
-				: options.callbackPath.pathname;
-		const currentPathname =
-			typeof options.currentUrl === "string"
-				? UriReferenceString.parse(options.currentUrl).pathname
-				: options.currentUrl.pathname;
-		return callbackPathname === currentPathname;
+		const currentUrls = Array.isArray(options.currentUrl)
+			? options.currentUrl
+			: [options.currentUrl];
+		const callbackUrlCandidates = Array.isArray(options.callbackUrlCandidates)
+			? options.callbackUrlCandidates
+			: [options.callbackUrlCandidates];
+		return callbackUrlCandidates.some((callbackUrl) => {
+			const callbackPathname = UriReferenceString.parse(callbackUrl).pathname;
+			return currentUrls.some(
+				(currentUrl) =>
+					UriReferenceString.parse(currentUrl).pathname === callbackPathname,
+			);
+		});
 	} catch {
 		return false;
 	}

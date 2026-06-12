@@ -2,8 +2,8 @@
 
 import { TestBed } from "@angular/core/testing";
 import {
+	createFoundationEnvironment,
 	createSignal,
-	type FoundationEnvironment,
 	ResourceStatus,
 	type RouterTrait,
 	resourceFromSnapshots,
@@ -27,6 +27,7 @@ import {
 } from "@securitydept/token-set-context-client/orchestration";
 import {
 	createTokenSetClientRegistry,
+	TokenSetCallbackClientSelectionKind,
 	TokenSetClientInitializationMode,
 	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
@@ -89,14 +90,14 @@ function createBackendClient(): BackendOidcModeClient {
 function createEntry(
 	clientKey: string,
 	clientFactory: () => BaseOidcModeClient,
-	callbackPath?: string,
+	callbackUrl?: string,
 ): TokenSetClientRegistryEntry<BaseOidcModeClient> {
 	return {
 		clientFactory,
 		meta: {
 			clientKey,
 			urlPatterns: [],
-			callbackPath,
+			callbackUrl,
 			requirementKind: undefined,
 			providerFamily: undefined,
 			initialization: TokenSetClientInitializationMode.Lazy,
@@ -115,15 +116,16 @@ function configure(options: {
 	router: RouterTrait;
 	entry: TokenSetClientRegistryEntry<BaseOidcModeClient>;
 }): void {
+	const environment = createFoundationEnvironment({ router: options.router });
 	const registry = createTokenSetClientRegistry<BaseOidcModeClient>({
-		environment: {},
+		environment,
 	});
 	registry.register(options.entry);
 	TestBed.configureTestingModule({
 		providers: [
 			{
 				provide: ENVIRONMENT,
-				useValue: { router: options.router } as FoundationEnvironment,
+				useValue: environment,
 			},
 			{ provide: TokenSetClientRegistryService, useValue: registry },
 		],
@@ -138,14 +140,21 @@ describe("token-set Angular callback components", () => {
 
 	it("frontend component initializes the selected callback client", async () => {
 		const clientFactory = vi.fn(() => createFrontendClient());
+		const router = createRouter(
+			"https://app.example.com/auth/callback?code=ok&state=s1",
+		);
+		const currentUrl = vi.spyOn(router, "currentUrl");
 		configure({
-			router: createRouter(
-				"https://app.example.com/auth/callback?code=ok&state=s1",
-			),
+			router,
 			entry: createEntry("frontend", clientFactory, "/auth/callback"),
 		});
 
 		const fixture = TestBed.createComponent(TokenSetFrontendCallbackComponent);
+		expect(fixture.componentInstance.selection().status).toBe(
+			ResourceStatus.Idle,
+		);
+		expect(fixture.componentInstance.state().status).toBe(ResourceStatus.Idle);
+		expect(currentUrl).not.toHaveBeenCalled();
 		fixture.detectChanges();
 		await fixture.whenStable();
 
@@ -155,6 +164,11 @@ describe("token-set Angular callback components", () => {
 				ResourceStatus.Resolved,
 			);
 		});
+		expect(fixture.componentInstance.selection()).toMatchObject({
+			status: ResourceStatus.Resolved,
+			value: { kind: TokenSetCallbackClientSelectionKind.Selected },
+		});
+		expect(currentUrl).toHaveBeenCalledOnce();
 	});
 
 	it("frontend component resolves not-applicable outside its callback path", async () => {
@@ -172,6 +186,31 @@ describe("token-set Angular callback components", () => {
 		expect(fixture.componentInstance.state()).toMatchObject({
 			status: ResourceStatus.Resolved,
 			value: { kind: OidcModeCallbackHandlingKind.NotApplicable },
+		});
+	});
+
+	it("forwards a custom frontend callback client query", async () => {
+		const clientFactory = vi.fn(() => createFrontendClient());
+		configure({
+			router: createRouter("https://app.example.com/custom-callback?code=ok"),
+			entry: createEntry("frontend", clientFactory, "/different-callback"),
+		});
+		const clientQuery = vi.fn(({ callbackUrl }) => {
+			expect(callbackUrl.pathname).toBe("/custom-callback");
+			return { clientKey: "frontend" };
+		});
+
+		const fixture = TestBed.createComponent(TokenSetFrontendCallbackComponent);
+		fixture.componentRef.setInput("clientQuery", clientQuery);
+		fixture.detectChanges();
+		await fixture.whenStable();
+
+		await vi.waitFor(() => {
+			expect(clientQuery).toHaveBeenCalled();
+			expect(clientFactory).toHaveBeenCalledOnce();
+			expect(fixture.componentInstance.state().status).toBe(
+				ResourceStatus.Resolved,
+			);
 		});
 	});
 
@@ -193,6 +232,10 @@ describe("token-set Angular callback components", () => {
 			expect(fixture.componentInstance.state().status).toBe(
 				ResourceStatus.Resolved,
 			);
+		});
+		expect(fixture.componentInstance.selection()).toMatchObject({
+			status: ResourceStatus.Resolved,
+			value: { kind: TokenSetCallbackClientSelectionKind.Selected },
 		});
 	});
 });

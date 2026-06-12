@@ -474,19 +474,21 @@ describe("frontend-oidc-mode popup baseline", () => {
 
 		// Verify popup authorize state was built with the popup callback URL.
 		expect(authorizeUrlWithState).toHaveBeenCalledWith(
-			{
+			expect.objectContaining({
 				redirectUri: "https://app.example.com/popup-callback",
-			},
+			}),
 			expect.anything(),
 		);
 
 		// Verify callback processing received the relayed callback URL.
 		expect(handleCallbackOperation).toHaveBeenCalledWith(
-			expect.any(URLSearchParams),
+			expect.objectContaining({
+				callbackInput: expect.any(URLSearchParams),
+			}),
 			expect.anything(),
 		);
-		const callbackParameters = handleCallbackOperation.mock
-			.calls[0]?.[0] as URLSearchParams;
+		const callbackParameters = handleCallbackOperation.mock.calls[0]?.[0]
+			.callbackInput as URLSearchParams;
 		expect(callbackParameters.get("code")).toBe("authcode123");
 		expect(callbackParameters.get("state")).toBe("abc");
 

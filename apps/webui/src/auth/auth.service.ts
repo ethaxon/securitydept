@@ -389,9 +389,7 @@ export function provideAuthService(
 		...provideTokenSetClientRegistry({
 			createClients: (injector) => {
 				injector.get(TokenSetTracingService);
-				return createWebuiTokenSetClientEntries({
-					environment: injector.get(ENVIRONMENT_TOKEN),
-				});
+				return createWebuiTokenSetClientEntries();
 			},
 		}),
 		{

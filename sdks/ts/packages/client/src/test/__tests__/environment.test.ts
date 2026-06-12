@@ -21,6 +21,7 @@ describe("client test environment helpers", () => {
 		expect(environment.span.id).toMatch(/^span_/);
 		expect(typeof environment.tracing.record).toBe("function");
 		expect(typeof environment.transport.execute).toBe("function");
+		expect(typeof environment.realmStorage.take).toBe("function");
 	});
 
 	it("creates a native web environment with default span and tracing", () => {
@@ -43,6 +44,7 @@ describe("client test environment helpers", () => {
 		);
 		expect(environment.span.id).toMatch(/^span_/);
 		expect(typeof environment.tracing.record).toBe("function");
+		expect(typeof environment.realmStorage.take).toBe("function");
 	});
 
 	it("adds the test transport before delegating to a base environment", async () => {

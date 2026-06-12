@@ -1,14 +1,13 @@
 import {
+	afterNextRender,
 	Component,
 	DestroyRef,
 	inject,
 	input,
-	type OnInit,
 	type Signal,
 } from "@angular/core";
 import {
-	ClientError,
-	ClientErrorKind,
+	createComputed,
 	createSignal,
 	type ResourceSnapshot,
 	ResourceStatus,
@@ -17,7 +16,7 @@ import {
 import { ENVIRONMENT, toNgSignal } from "@securitydept/client-angular";
 import {
 	type FrontendOidcModeCallbackResult,
-	FrontendOidcModeClient,
+	type FrontendOidcModeClient,
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
 	OidcModeCallbackHandlingKind,
@@ -25,12 +24,10 @@ import {
 } from "@securitydept/token-set-context-client/orchestration";
 import {
 	selectTokenSetFrontendCallbackClientFromRegistry,
+	type TokenSetCallbackClientQuery,
 	TokenSetCallbackClientSelectionKind,
-	type TokenSetClientQueryOptions,
-	TokenSetClientRegistryEntryStatus,
-	type TokenSetFrontendCallbackClientFromRegistrySelection,
-	TokenSetRegistryCallbackErrorCode,
-	TokenSetRegistryCallbackErrorSource,
+	type TokenSetCallbackClientSelectionSnapshot,
+	type TokenSetFrontendCallbackClientFromRegistrySelectionSignal,
 } from "@securitydept/token-set-context-client/registry";
 import { TokenSetClientRegistryService } from "../client-registry.service";
 
@@ -43,50 +40,46 @@ type FrontendCallbackResult =
 	template: "",
 	exportAs: "sdTokenSetFrontendCallback",
 })
-export class TokenSetFrontendCallbackComponent implements OnInit {
-	readonly clientQuery = input<TokenSetClientQueryOptions | undefined>();
+export class TokenSetFrontendCallbackComponent {
+	readonly clientQuery = input<TokenSetCallbackClientQuery | undefined>();
 	readonly autoInitialize = input(true);
 
 	private readonly environment = inject(ENVIRONMENT);
 	private readonly registry = inject(TokenSetClientRegistryService);
 	private readonly destroyRef = inject(DestroyRef);
-	private readonly selectionSignal =
-		createSignal<TokenSetFrontendCallbackClientFromRegistrySelection>({
-			kind: TokenSetCallbackClientSelectionKind.NotApplicable,
-		});
+	private readonly selectionSource =
+		createSignal<TokenSetFrontendCallbackClientFromRegistrySelectionSignal | null>(
+			null,
+		);
+	private readonly selectionSignal = createComputed<
+		TokenSetCallbackClientSelectionSnapshot<FrontendOidcModeClient>
+	>(
+		() =>
+			this.selectionSource.get()?.get() ?? {
+				status: ResourceStatus.Idle,
+			},
+	);
 
+	readonly selection: Signal<
+		TokenSetCallbackClientSelectionSnapshot<FrontendOidcModeClient>
+	> = toNgSignal(this.selectionSignal, { requireSync: true });
 	readonly resource = resourceFromSnapshots<FrontendCallbackResult>(() => {
 		const selection = this.selectionSignal.get();
-		if (selection.kind === TokenSetCallbackClientSelectionKind.NotApplicable) {
-			return {
-				status: ResourceStatus.Resolved,
-				value: { kind: OidcModeCallbackHandlingKind.NotApplicable },
-			};
-		}
-
-		const record = selection.clientRecord.get();
-		switch (record.status) {
-			case TokenSetClientRegistryEntryStatus.Registered:
+		switch (selection.status) {
+			case ResourceStatus.Idle:
 				return { status: ResourceStatus.Idle };
-			case TokenSetClientRegistryEntryStatus.Initializing:
+			case ResourceStatus.Loading:
 				return { status: ResourceStatus.Loading };
-			case TokenSetClientRegistryEntryStatus.Failed:
-				return {
-					status: ResourceStatus.LoadingError,
-					error: record.error,
-				};
-			case TokenSetClientRegistryEntryStatus.Ready:
-				return record.client instanceof FrontendOidcModeClient
-					? record.client.callback.state.get()
-					: {
-							status: ResourceStatus.LoadingError,
-							error: new ClientError({
-								kind: ClientErrorKind.Configuration,
-								code: TokenSetRegistryCallbackErrorCode.ClientModeMismatch,
-								message: `Client "${record.meta.clientKey}" is not a FrontendOidcModeClient.`,
-								source: TokenSetRegistryCallbackErrorSource,
-							}),
-						};
+			case ResourceStatus.LoadingError:
+				return selection;
+			case ResourceStatus.Resolved:
+				return selection.value.kind ===
+					TokenSetCallbackClientSelectionKind.NotApplicable
+					? {
+							status: ResourceStatus.Resolved,
+							value: { kind: OidcModeCallbackHandlingKind.NotApplicable },
+						}
+					: selection.value.client.callback.state.get();
 		}
 	});
 	readonly state: Signal<ResourceSnapshot<FrontendCallbackResult>> = toNgSignal(
@@ -96,25 +89,15 @@ export class TokenSetFrontendCallbackComponent implements OnInit {
 
 	constructor() {
 		this.destroyRef.onDestroy(() => this.resource.dispose());
-	}
-
-	ngOnInit(): void {
-		this.selectionSignal.set(
-			selectTokenSetFrontendCallbackClientFromRegistry({
-				registry: this.registry,
-				callbackUrl: this.environment.router?.currentUrl()?.toString() ?? "",
-				clientQuery: this.clientQuery(),
-			}),
-		);
-		if (this.autoInitialize()) {
-			void this.initialize().catch(() => undefined);
-		}
-	}
-
-	async initialize(): Promise<FrontendOidcModeClient | null> {
-		const selection = this.selectionSignal.get();
-		return selection.kind === TokenSetCallbackClientSelectionKind.Selected
-			? await selection.clientResolver()
-			: null;
+		afterNextRender(() => {
+			this.selectionSource.set(
+				selectTokenSetFrontendCallbackClientFromRegistry({
+					registry: this.registry,
+					callbackUrl: this.environment.router?.currentUrl()?.toString() ?? "",
+					clientQuery: this.clientQuery(),
+					initialize: this.autoInitialize(),
+				}),
+			);
+		});
 	}
 }

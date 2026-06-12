@@ -25,7 +25,6 @@ import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/
 import {
 	TokenSetClientInitializationMode,
 	type TokenSetClientReadyRecordView,
-	TokenSetClientRegistryEntryStatus,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	createTokenSetCanActivate,
@@ -80,7 +79,7 @@ function createReadyRecord(
 	const meta = {
 		clientKey: "confluence",
 		urlPatterns: [],
-		callbackPath: "/auth/callback",
+		callbackUrl: "/auth/callback",
 		requirementKind: "frontend_oidc",
 		providerFamily: undefined,
 		initialization: TokenSetClientInitializationMode.Lazy,
@@ -89,7 +88,7 @@ function createReadyRecord(
 		id: "confluence",
 		entry: { clientFactory: () => client, meta },
 		meta,
-		status: TokenSetClientRegistryEntryStatus.Ready,
+		status: ResourceStatus.Resolved,
 		client,
 	};
 }

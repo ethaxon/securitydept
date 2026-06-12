@@ -29,7 +29,6 @@ import {
 	TokenSetClientInitializationMode,
 	type TokenSetClientReadyRecordView,
 	TokenSetClientRegistryAuthRequirement,
-	TokenSetClientRegistryEntryStatus,
 } from "@securitydept/token-set-context-client/registry";
 import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
@@ -113,7 +112,7 @@ function createReadyRecord(
 	const meta = {
 		clientKey,
 		urlPatterns: [],
-		callbackPath: "/auth/token-set/callback",
+		callbackUrl: "/auth/token-set/callback",
 		requirementKind: "frontend_oidc",
 		providerFamily: "authentik",
 		initialization: TokenSetClientInitializationMode.Immediate,
@@ -125,7 +124,7 @@ function createReadyRecord(
 			meta,
 		},
 		meta,
-		status: TokenSetClientRegistryEntryStatus.Ready,
+		status: ResourceStatus.Resolved,
 		client,
 	};
 }

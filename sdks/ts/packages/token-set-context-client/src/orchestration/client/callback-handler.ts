@@ -40,12 +40,12 @@ export interface OidcModeCallbackHandlerOptions<TInput, TResult> {
 type OidcModeCallbackHandlerExecuteOptions<TInput> =
 	| {
 			readonly resolveInput: true;
-			readonly callbackInput?: never;
+			readonly input?: never;
 			readonly cancellationToken?: CancellationTokenTrait;
 	  }
 	| {
 			readonly resolveInput: false;
-			readonly callbackInput: TInput | null;
+			readonly input: TInput | null;
 			readonly cancellationToken?: CancellationTokenTrait;
 	  };
 
@@ -82,11 +82,11 @@ export class OidcModeCallbackHandler<TInput, TResult>
 	}
 
 	async handle(options: {
-		callbackInput: TInput | null;
+		input: TInput | null;
 		cancellationToken?: CancellationTokenTrait;
 	}): Promise<TResult> {
 		const outcome = await this.execute({
-			callbackInput: options.callbackInput,
+			input: options.input,
 			resolveInput: false,
 			cancellationToken: options.cancellationToken,
 		});
@@ -133,15 +133,15 @@ export class OidcModeCallbackHandler<TInput, TResult>
 		executor = (async () => {
 			try {
 				cancellationToken.throwIfCancellationRequested();
-				const callbackInput = executeOptions.resolveInput
+				const input = executeOptions.resolveInput
 					? await this.options.inputResolver?.({
 							environment: this.options.environment,
 							cancellationToken,
 						})
-					: executeOptions.callbackInput;
+					: executeOptions.input;
 				cancellationToken.throwIfCancellationRequested();
 
-				if (callbackInput == null) {
+				if (input == null) {
 					if (!executeOptions.resolveInput) {
 						throw this.options.createInputNotFoundError();
 					}
@@ -158,7 +158,7 @@ export class OidcModeCallbackHandler<TInput, TResult>
 				}
 
 				const callbackResult = await this.options.handleInput(
-					callbackInput,
+					input,
 					cancellationToken,
 				);
 				cancellationToken.throwIfCancellationRequested();

@@ -131,7 +131,7 @@ function createEntry(): TokenSetClientRegistryEntry<BaseOidcModeClient> {
 		meta: {
 			clientKey: "frontend",
 			urlPatterns: [],
-			callbackPath: "/oidc/callback",
+			callbackUrl: "/oidc/callback",
 			requirementKind: undefined,
 			providerFamily: undefined,
 			initialization: TokenSetClientInitializationMode.Lazy,

@@ -166,6 +166,7 @@ Packages:
 Change:
 
 - Framework-neutral host capability resolution is now owned by the client foundation through typed `FoundationEnvironment`, `NativeWebEnvironment`, `WebExtCoreEnvironment`, and related host specializations.
+- `FoundationEnvironment.realmStorage` is now a required volatile `StorageTrait`. `createFoundationEnvironment()` and all derived host factories create a fresh isolated in-memory realm store by default; composition roots may override it through options or the `REALM_STORAGE_TRAIT_TOKEN` provider. Manually constructed environment objects must add this field.
 - The historical `ClientRuntime` naming has been retired in favor of environment terminology. Core client constructor dependencies are environments, not a second runtime layer. Canonical access is `environment.transport`, `environment.sessionStorage`, and peers.
 - Web host environment factories are explicit composition entry points. They are not automatic host detection and no longer expose preset-only worker/service-worker/extension-background wrappers.
 - Context and adapter public helpers use the same boundary. Backend-OIDC web helpers, basic-auth/session redirect helpers, and framework adapter convenience helpers must not each redeclare or guess transport/store/time/page dependencies.
@@ -181,6 +182,7 @@ Migration:
 - Update ambiguous page-global helper usage to explicit page forms: use `client.authorizeUrl(environment.router.currentUrl()?.toString())` or `client.loginWithRedirect({ postAuthRedirectUri })` for return-URL construction. Callback pages use `takeFrontendOidcCallbackInputFromRouter(router)` or `takeBackendOidcCallbackInputFromRouter(router)` followed by `client.handleCallback(input)`. Backend OIDC fragment redirects use the securitydept compat fragment protocol and preserve existing hash-router fragments.
 - Treat popup callback relay helpers such as `relayTokenSetPopupCallbackFromEnvironment()` as page-only helpers; pass a page-bearing `environment` when testing or running in a host wrapper. Import them from `@securitydept/token-set-context-client/backend-oidc-mode` or `@securitydept/token-set-context-client/frontend-oidc-mode`; the removed `@securitydept/token-set-context-client/backend-oidc-mode/web` subpath was only a forwarder. The canonical shared token-set OIDC browser login contracts are `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })` and `BaseOidcModeClient.loginWithPopup({ popupCallbackUrl })`; the client carries page navigation and popup capability through its environment. Backend and frontend mode clients expose those methods directly. Backend OIDC no longer owns hidden callback-fragment flow state; retry or delayed callback handling must be explicit application code.
 - Replace frontend-mode browser materialization with `resolveFrontendOidcModeConfigProjection({ clientKey, environment, sources, overrides })`, then construct `FrontendOidcModeClient` with the returned config and the same root environment. Declare realm, persisted, and network precedence explicitly; inject server-rendered projections with `injectConfigProjectionIntoRealm()`.
+- Frontend OIDC redirect and public callback flows require `environment.sessionStorage`; popup flows use `environment.realmStorage`. Do not implement cross-scope fallback or copy pending/consumed records between them.
 - When browser/page environment ownership must stay stable across framework routes or commands, create one host-owned `NativeWebEnvironment` at the composition root and inject that object. Do not invent app-local module singletons or SDK-local lazy environment resolvers.
 - Treat basic-auth/session `/web` redirect helpers as page navigation helpers; keep them in a real page context or inject an explicit `RouterTrait`.
 - Let framework provider/DI registration functions own full environment composition. Do not make ordinary hooks, guards, interceptors, services, or convenience helpers each accept a full scattered dependency bag.
@@ -207,7 +209,7 @@ Change:
 Migration:
 
 - Replace `{ clock, scheduler }` environment wiring with `{ time }`; pass a host-owned `{ environment }` whose `environment.idleCallback` is set only when the host intentionally enables registry idle warmup. Tool-level idle revalidation helpers still consume explicit narrow capabilities.
-- Registry-managed token-set entries now receive that same registry-owned environment as `clientFactory(environment)`. Build clients from this argument instead of reaching for module globals or passing scattered sub-capabilities.
+- Registry-managed token-set entries now receive `{ environment, meta, cancellationToken }` from `clientFactory(options)`. Build clients from this environment instead of reaching for module globals or passing scattered sub-capabilities.
 - Replace direct callback timer handles with `timer(delayMs, createAsyncSchedulerWithTimestampProvider(time)).subscribe(...)`.
 - Replace recurring callback scheduling with `interval(periodMs, createAsyncSchedulerWithTimestampProvider(time)).subscribe(...)`.
 - Replace `fromEventPattern({ ..., callback })` style SDK helpers with direct `rxjs` sources such as `fromEventPattern(...)`, `from(Promise.resolve(...))`, or `new Observable(...)`, then bridge back to `EventStreamTrait` only when a SecurityDept trait boundary is required.
@@ -329,7 +331,7 @@ Change:
 - `client-react` root now exports the React injector bridge only. React environment capability comes from the core environment injector: pass `environment.injector` to the root `SecuritydeptProvider` as `parentInjector`. Route-scoped planner hosts are owned by concrete router adapters such as `@securitydept/client-react/tanstack-router`.
 - The basic-auth / session / token-set React adapters no longer own domain-specific Provider / Context hooks. They export tokens, plain factories, provider factories, and explicit callback/component bridges. Token-set multi-client composition is now explicit registry/controller wiring instead of an SDK-owned runtime bundle.
 - Token-set Angular/React route security now relies on `secureTokenSetRouteRoot()` plus the registry-backed default unauthenticated handler. Client selection belongs in requirement `attributes.query`; custom redirect policy is optional via `onClientUnauthenticated` on the secure route root or planner host provider.
-- React callback handling uses `useTokenSetFrontendCallback()` and `useTokenSetBackendCallback()` over client-owned callback Resources. Registry selection is non-consuming and returns a fixed-record client resolver. The registry entry factory starts the client; client startup resolves and takes callback input before persistence restore.
+- React callback handling uses `useTokenSetFrontendCallback()` and `useTokenSetBackendCallback()` over client-owned callback Resources. Registry selection is non-consuming and returns a snapshot signal bound to a fixed record identity. A custom `clientQuery({ callbackUrl })` controls registry selection, while a client `callbackInputPredicate` independently filters callback input before URL cleanup. The registry entry factory starts the client; client startup resolves and takes callback input before persistence restore.
 
 Migration:
 
@@ -338,7 +340,7 @@ Migration:
 - For React code that needs environment capability, pass the host-owned environment injector to `SecuritydeptProvider` as `parentInjector` and read it later through `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)`.
 - For Angular frontend-oidc route redirects, provide the host-owned environment object from the composition root with `provideEnvironment({ environment })`.
 - For Angular callback routes, use `TokenSetFrontendCallbackComponent` or `TokenSetBackendCallbackComponent`.
-- For custom callback orchestration, provide a client `callbackInputResolver` and use the registry selectors without reintroducing a separate callback controller.
+- For custom callback orchestration, use a selector `clientQuery`, a default resolver `callbackInputPredicate`, or a complete client `callbackInputResolver` without reintroducing a separate callback controller.
 
 ### Route Security And Matched Route Chains
 

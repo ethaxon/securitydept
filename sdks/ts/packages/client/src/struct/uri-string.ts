@@ -52,6 +52,8 @@ export interface UriReferenceStringLike {
 	toString(): string;
 }
 
+export type UriReferenceStringInput = string | UriReferenceStringLike;
+
 export type UriSearchParamsInit = NonNullable<
 	ConstructorParameters<typeof URLSearchParams>[0]
 >;
@@ -105,7 +107,7 @@ export class UriReferenceString {
 	 *
 	 * @throws {UriParseError} when the input is not a valid URI reference.
 	 */
-	static parse(input: string | UriReferenceStringLike): UriReferenceString {
+	static parse(input: UriReferenceStringInput): UriReferenceString {
 		const result = UriReferenceString.tryParse(input);
 		if (!result) {
 			throw new UriParseError(
@@ -122,9 +124,7 @@ export class UriReferenceString {
 	 * The returned instance is always a {@link UriString} or
 	 * {@link UriRelativeString}.
 	 */
-	static tryParse(
-		input: string | UriReferenceStringLike,
-	): UriReferenceString | null {
+	static tryParse(input: UriReferenceStringInput): UriReferenceString | null {
 		if (input instanceof UriReferenceString) {
 			return input;
 		}

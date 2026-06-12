@@ -33,22 +33,24 @@ import {
 	createLinkedCancellationToken,
 	decodeJwtPayload,
 	defineInstrumentMethodDecorator,
-	type EventSubscriptionTrait,
 	injectDisposableStackFrom,
 	isLoopbackHttpUrl,
-	type KeyedEphemeralFlowStore,
 	type OperationSpanTrait,
 	parseDurationToMs,
 	parseIdentityPrincipal,
 	RouterNavigationIntent,
 	RouterNavigationMode,
 	type SpanTrait,
+	type StorageTrait,
 	UriReferenceString,
 	type UriSearchParamsInit,
 	UserRecovery,
 	withDisposableStack,
 } from "@securitydept/client";
-import { createAsyncSchedulerWithTimestampProvider } from "@securitydept/client/rx";
+import {
+	createAsyncSchedulerWithTimestampProvider,
+	RxEventSubject,
+} from "@securitydept/client/rx";
 import {
 	type AuthorizationServer,
 	allowInsecureRequests,
@@ -72,7 +74,16 @@ import {
 	validateAuthResponse,
 	WWWAuthenticateChallengeError,
 } from "oauth4webapi";
-import { interval, takeUntil } from "rxjs";
+import {
+	catchError,
+	EMPTY,
+	exhaustMap,
+	from,
+	switchMap,
+	takeUntil,
+	tap,
+	timer,
+} from "rxjs";
 import { OidcModeCallbackHandler } from "../../orchestration/client/callback-handler";
 import { waitForTokenSetPopupRelay } from "../../orchestration/client/popup/relay";
 import {
@@ -83,7 +94,6 @@ import {
 	BaseOidcModeClient,
 	OidcModeCallbackHandlingKind,
 	type OidcModeCallbackHandlingResult,
-	type OidcModeCallbackInputResolver,
 	type OidcModeCallbackStateTrait,
 	PersistPolicy,
 	TokenSetAuthEventType,
@@ -97,10 +107,7 @@ import {
 	type TokenSetAuthMetadataSnapshot,
 	type TokenSetAuthSnapshot,
 } from "../../orchestration/token/types";
-import {
-	type FrontendOidcModeCallbackInput,
-	takeFrontendOidcCallbackInputFromRouter,
-} from "../contracts/callback";
+import { type FrontendOidcModeCallbackInput } from "../contracts/callback";
 import {
 	type FrontendOidcModeClaimsCheckResult,
 	type FrontendOidcModeClaimsCheckScript,
@@ -108,6 +115,7 @@ import {
 } from "../contracts/contracts";
 import { transformScriptForBrowser } from "../contracts/script-compat";
 import { FrontendOidcModeCallbackErrorCode } from "../errors/callback-error-codes";
+import { createDefaultFrontendOidcModeCallbackInputResolver } from "./callback-input-resolver";
 import { resolveDiscoveryIssuerCompatibility } from "./discovery";
 import {
 	FrontendOidcModeErrorCode,
@@ -125,9 +133,12 @@ import {
 	type FrontendOidcModeClientConfig,
 	type FrontendOidcModeClientDefaultOptions,
 	type FrontendOidcModeClientOptions,
+	type FrontendOidcModeConsumedState,
 	FrontendOidcModeContextSource,
 	type FrontendOidcModeExchangeCodeOptions,
+	type FrontendOidcModeFlowStores,
 	type FrontendOidcModePendingState,
+	type FrontendOidcModeRedirectLoginOptions,
 	type FrontendOidcModeTokenResult,
 	type ResolvedFrontendOidcModeClientConfig,
 } from "./types";
@@ -165,37 +176,6 @@ const instrumentFrontendMethod = defineInstrumentMethodDecorator<
 		},
 );
 
-function createDefaultFrontendOidcModeCallbackInputResolver(
-	redirectUri: string,
-): OidcModeCallbackInputResolver<FrontendOidcModeCallbackInput> {
-	const callbackPathname = new URL(redirectUri).pathname;
-	return async ({ environment, cancellationToken }) => {
-		cancellationToken.throwIfCancellationRequested();
-		const router = environment.router;
-		const currentUrl = router?.currentUrl();
-		if (!router || !currentUrl || currentUrl.pathname !== callbackPathname) {
-			return null;
-		}
-
-		const callbackInput = await takeFrontendOidcCallbackInputFromRouter(router);
-		cancellationToken.throwIfCancellationRequested();
-		if (!callbackInput) {
-			throw new ClientError({
-				kind: ClientErrorKind.Protocol,
-				code: FrontendOidcModeErrorCode.CallbackInputNotFound,
-				message: "The frontend OIDC callback input is no longer available.",
-				source: TRACE_TARGET,
-				recovery: UserRecovery.RestartFlow,
-			});
-		}
-		return callbackInput;
-	};
-}
-
-interface FrontendOidcModeConsumedState {
-	consumedAt: number;
-}
-
 interface FrontendOidcModeClaimsCheckScriptResult {
 	success?: boolean;
 	display_name?: string;
@@ -210,6 +190,11 @@ type PendingStateTakeResult =
 	| { kind: "missing" }
 	| { kind: "duplicate" }
 	| { kind: "stale"; pending: FrontendOidcModePendingState };
+
+interface FrontendOidcModeCallbackExecutionInput {
+	readonly callbackInput: FrontendOidcModeCallbackInput;
+	readonly flowStores: FrontendOidcModeFlowStores;
+}
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -251,16 +236,14 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	>;
 	private _authServer: AuthorizationServer | null = null;
 
-	// --- Pending state ---
-	private _pendingStore: KeyedEphemeralFlowStore<FrontendOidcModePendingState> | null =
-		null;
-	private _consumedStateStore: KeyedEphemeralFlowStore<FrontendOidcModeConsumedState> | null =
-		null;
+	// --- OAuth flow state ---
+	private readonly _realmFlowStores: FrontendOidcModeFlowStores;
+	private readonly _sessionFlowStores: FrontendOidcModeFlowStores | null;
 
 	// --- Metadata refresh ---
-	private _metadataRefreshHandle: EventSubscriptionTrait | null = null;
+	private readonly _metadataRefreshTrigger = new RxEventSubject<void>();
 	private readonly _callbackHandler: OidcModeCallbackHandler<
-		FrontendOidcModeCallbackInput,
+		FrontendOidcModeCallbackExecutionInput,
 		FrontendOidcModeCallbackResult
 	>;
 	readonly callback: OidcModeCallbackStateTrait<FrontendOidcModeCallbackResult>;
@@ -294,38 +277,81 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			scopes: config.scopes ?? ["openid"],
 			pkceEnabled: config.pkceEnabled ?? true,
 		};
+		const metadataRefreshInterval = this._config.metadataRefreshInterval;
+		if (metadataRefreshInterval) {
+			const intervalMs = parseDurationToMs(metadataRefreshInterval);
+			if (intervalMs > 0) {
+				const scheduler = createAsyncSchedulerWithTimestampProvider(
+					this._environment.time,
+				);
+				this._metadataRefreshTrigger
+					.pipe(
+						switchMap(() => timer(intervalMs, scheduler)),
+						exhaustMap(() => {
+							const cancellationToken = this._rootCancellation.token;
+							return from(this._discover(cancellationToken, this.span)).pipe(
+								tap(() => {
+									this._recordTrace(
+										FrontendOidcModeTraceEventType.MetadataRefreshed,
+										undefined,
+										this.span,
+									);
+								}),
+								catchError((error) => {
+									this._recordFailureTrace(
+										FrontendOidcModeTraceEventType.MetadataRefreshFailed,
+										error,
+										undefined,
+										this.span,
+									);
+									this._metadataRefreshTrigger.next();
+									return EMPTY;
+								}),
+							);
+						}),
+						takeUntil(this.destroyed$),
+					)
+					.subscribe();
+			}
+		}
 
 		this._o4wClient = { client_id: config.clientId };
 		this._clientAuth = config.clientSecret
 			? ClientSecretPost(config.clientSecret)
 			: ClientNone();
 
-		if (environment.sessionStorage) {
-			this._pendingStore =
-				createKeyedEphemeralFlowStore<FrontendOidcModePendingState>({
-					store: environment.sessionStorage,
-					keyPrefix:
-						FrontendOidcModeClient.defaultOptions.pendingStateKeyPrefix,
-				});
-			this._consumedStateStore =
-				createKeyedEphemeralFlowStore<FrontendOidcModeConsumedState>({
-					store: environment.sessionStorage,
-					keyPrefix:
-						FrontendOidcModeClient.defaultOptions.consumedStateKeyPrefix,
-				});
-		}
+		this._realmFlowStores = this.createFrontendOidcModeFlowStores(
+			environment.realmStorage,
+		);
+		this._sessionFlowStores = environment.sessionStorage
+			? this.createFrontendOidcModeFlowStores(environment.sessionStorage)
+			: null;
+		const callbackInputResolver =
+			options.callbackInputResolver === undefined
+				? createDefaultFrontendOidcModeCallbackInputResolver({
+						redirectUriCandidates: this._config.redirectUri,
+						callbackInputPredicate: options.callbackInputPredicate,
+					})
+				: options.callbackInputResolver;
 
 		this._callbackHandler = new OidcModeCallbackHandler({
 			environment,
 			rootCancellationToken: this._rootCancellation.token,
 			inputResolver:
-				options.callbackInputResolver === undefined
-					? createDefaultFrontendOidcModeCallbackInputResolver(
-							this._config.redirectUri,
-						)
-					: options.callbackInputResolver,
-			handleInput: (callbackInput, cancellationToken) =>
-				this._handleCallbackOperation(callbackInput, cancellationToken),
+				callbackInputResolver === null
+					? null
+					: async (resolverOptions) => {
+							const callbackInput =
+								await callbackInputResolver(resolverOptions);
+							return callbackInput === null
+								? null
+								: {
+										callbackInput,
+										flowStores: this._requireSessionFlowStores(),
+									};
+						},
+			handleInput: (executionInput, cancellationToken) =>
+				this._handleCallbackOperation(executionInput, cancellationToken),
 			createInputNotFoundError: () =>
 				new ClientError({
 					kind: ClientErrorKind.Protocol,
@@ -349,10 +375,9 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		return this._config;
 	}
 
-	/** Subclass dispose hook — cancel metadata refresh timer. */
+	/** Subclass dispose hook. */
 	protected override _onDispose(): void {
 		this._callbackHandler.dispose();
-		this._cancelMetadataRefresh();
 	}
 
 	protected override async _restoreStateFromCallbackInputOperation(
@@ -390,7 +415,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		);
 		disposableStack?.use(cancellationToken);
 		return await this._authorizeUrlWithState(
-			{ postAuthRedirectUri: options.postAuthRedirectUri },
+			{
+				postAuthRedirectUri: options.postAuthRedirectUri,
+				flowStores: this._requireSessionFlowStores(),
+			},
 			cancellationToken,
 		);
 	}
@@ -400,6 +428,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		options: {
 			postAuthRedirectUri?: string;
 			redirectUri?: string;
+			flowStores: FrontendOidcModeFlowStores;
 		},
 		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
@@ -425,7 +454,8 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		const effectivePostAuthRedirectUri =
 			options.postAuthRedirectUri ?? this._config.defaultPostAuthRedirectUri;
 
-		await this._savePendingState({
+		await options.flowStores.consumed.clear(result.state);
+		await options.flowStores.pending.save(result.state, {
 			codeVerifier: result.codeVerifier,
 			state: result.state,
 			contextSource: FrontendOidcModeContextSource.Client,
@@ -451,7 +481,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	 */
 	@withDisposableStack(0, true)
 	async loginWithRedirect(
-		options: TokenSetOidcRedirectLoginOptions = {},
+		options: FrontendOidcModeRedirectLoginOptions = {},
 	): Promise<void> {
 		const disposableStack = injectDisposableStackFrom(options, true);
 		const cancellationToken = createLinkedCancellationToken(
@@ -464,7 +494,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 	@instrumentFrontendMethod(FrontendOidcModeTraceOperationName.LoginRedirect)
 	private async _loginWithRedirect(
-		options: TokenSetOidcRedirectLoginOptions,
+		options: FrontendOidcModeRedirectLoginOptions,
 		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
 	): Promise<void> {
@@ -482,7 +512,11 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			});
 		}
 		const url = await this._authorizeUrlWithState(
-			{ postAuthRedirectUri: options.postAuthRedirectUri },
+			{
+				postAuthRedirectUri: options.postAuthRedirectUri,
+				redirectUri: options.redirectUri,
+				flowStores: this._requireSessionFlowStores(),
+			},
 			cancellationToken,
 		);
 		cancellationToken.throwIfCancellationRequested();
@@ -533,7 +567,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			});
 		}
 		const popupAuthorizeUrl = await this._authorizeUrlWithState(
-			{ redirectUri: options.popupCallbackUrl },
+			{
+				redirectUri: options.popupCallbackUrl,
+				flowStores: this._realmFlowStores,
+			},
 			cancellationToken,
 		);
 		cancellationToken.throwIfCancellationRequested();
@@ -566,7 +603,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		);
 
 		const result = await this._callbackHandler.handle({
-			callbackInput: new URLSearchParams(new URL(callbackUrl).search),
+			input: {
+				callbackInput: new URLSearchParams(new URL(callbackUrl).search),
+				flowStores: this._realmFlowStores,
+			},
 			cancellationToken,
 		});
 		cancellationToken.throwIfCancellationRequested();
@@ -584,13 +624,16 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		options: CancellationTokenOptions = {},
 	): Promise<FrontendOidcModeCallbackResult> {
 		return await this._callbackHandler.handle({
-			callbackInput,
+			input: {
+				callbackInput,
+				flowStores: this._requireSessionFlowStores(),
+			},
 			cancellationToken: options.cancellationToken,
 		});
 	}
 
 	private async _handleCallbackOperation(
-		callbackInput: FrontendOidcModeCallbackInput,
+		executionInput: FrontendOidcModeCallbackExecutionInput,
 		cancellationToken: CancellationTokenTrait,
 	): Promise<FrontendOidcModeCallbackResult> {
 		return await this._runDeterminationWorkflow({
@@ -604,6 +647,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 				}),
 			workflow: async (operationSpan) => {
 				cancellationToken.throwIfCancellationRequested();
+				const { callbackInput, flowStores } = executionInput;
 				const callbackParameters =
 					typeof callbackInput === "object" &&
 					"searchParams" in callbackInput &&
@@ -622,7 +666,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 					});
 				}
 
-				const pendingResult = await this._takePendingState(state);
+				const pendingResult = await this._takePendingState(flowStores, state);
 				if (pendingResult.kind === "missing") {
 					throw new ClientError({
 						kind: ClientErrorKind.Protocol,
@@ -902,7 +946,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		);
 		cancellationToken.throwIfCancellationRequested();
 		this._authServer = this._applyEndpointOverrides(discovered);
-		this._scheduleMetadataRefresh();
+		this._metadataRefreshTrigger.next();
 
 		if (compatibleIssuer !== configuredIssuer) {
 			this._recordTrace(
@@ -1187,17 +1231,16 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		if (this._authServer) {
 			return;
 		}
-		if (this._canConstructManually()) {
+		if (
+			this._config.authorizationEndpoint &&
+			this._config.tokenEndpoint &&
+			this._config.issuer
+		) {
 			this._authServer = this._constructManualAuthServer();
 			return;
 		}
 		await this._discover(cancellationToken, span);
 		cancellationToken.throwIfCancellationRequested();
-	}
-
-	private _canConstructManually(): boolean {
-		const c = this._config;
-		return !!(c.authorizationEndpoint && c.tokenEndpoint && c.issuer);
 	}
 
 	private _constructManualAuthServer(): AuthorizationServer {
@@ -1506,11 +1549,32 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	}
 
 	// =======================================================================
-	// Private: Pending state management (KeyedEphemeralFlowStore)
+	// Private: OAuth flow state management
 	// =======================================================================
 
-	private _requirePendingStore(): KeyedEphemeralFlowStore<FrontendOidcModePendingState> {
-		if (!this._pendingStore) {
+	/**
+	 * Creates the matching pending and consumed stores for one flow scope.
+	 *
+	 * This method runs during base construction. Overrides must not depend on
+	 * subclass fields initialized after `super()` returns.
+	 */
+	protected createFrontendOidcModeFlowStores(
+		storage: StorageTrait,
+	): FrontendOidcModeFlowStores {
+		return {
+			pending: createKeyedEphemeralFlowStore<FrontendOidcModePendingState>({
+				store: storage,
+				keyPrefix: FrontendOidcModeClient.defaultOptions.pendingStateKeyPrefix,
+			}),
+			consumed: createKeyedEphemeralFlowStore<FrontendOidcModeConsumedState>({
+				store: storage,
+				keyPrefix: FrontendOidcModeClient.defaultOptions.consumedStateKeyPrefix,
+			}),
+		};
+	}
+
+	private _requireSessionFlowStores(): FrontendOidcModeFlowStores {
+		if (!this._sessionFlowStores) {
 			throw new ClientError({
 				kind: ClientErrorKind.Configuration,
 				message:
@@ -1519,35 +1583,16 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 				source: TRACE_TARGET,
 			});
 		}
-		return this._pendingStore;
-	}
-
-	private _requireConsumedStateStore(): KeyedEphemeralFlowStore<FrontendOidcModeConsumedState> {
-		if (!this._consumedStateStore) {
-			throw new ClientError({
-				kind: ClientErrorKind.Configuration,
-				message:
-					"FrontendOidcModeClient requires environment.sessionStorage for redirect-based flows",
-				code: FrontendOidcModeErrorCode.SessionStorageUnavailable,
-				source: TRACE_TARGET,
-			});
-		}
-		return this._consumedStateStore;
-	}
-
-	private async _savePendingState(
-		pending: FrontendOidcModePendingState,
-	): Promise<void> {
-		await this._clearConsumedState(pending.state);
-		await this._requirePendingStore().save(pending.state, pending);
+		return this._sessionFlowStores;
 	}
 
 	private async _takePendingState(
+		flowStores: FrontendOidcModeFlowStores,
 		state: string,
 	): Promise<PendingStateTakeResult> {
-		const pending = await this._requirePendingStore().take(state);
+		const pending = await flowStores.pending.take(state);
 		if (!pending) {
-			const consumedState = await this._loadConsumedState(state);
+			const consumedState = await this._loadConsumedState(flowStores, state);
 			return consumedState ? { kind: "duplicate" } : { kind: "missing" };
 		}
 
@@ -1558,20 +1603,17 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			return { kind: "stale", pending };
 		}
 
-		await this._markConsumedState(state);
+		await flowStores.consumed.save(state, {
+			consumedAt: this._environment.time.now(),
+		});
 		return { kind: "taken", pending };
 	}
 
-	private async _markConsumedState(state: string): Promise<void> {
-		await this._requireConsumedStateStore().save(state, {
-			consumedAt: this._environment.time.now(),
-		});
-	}
-
 	private async _loadConsumedState(
+		flowStores: FrontendOidcModeFlowStores,
 		state: string,
 	): Promise<FrontendOidcModeConsumedState | null> {
-		const consumedState = await this._requireConsumedStateStore().load(state);
+		const consumedState = await flowStores.consumed.load(state);
 		if (!consumedState) {
 			return null;
 		}
@@ -1580,66 +1622,10 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			this._environment.time.now() - consumedState.consumedAt >
 			FrontendOidcModeClient.defaultOptions.consumedStateTtlMs
 		) {
-			await this._clearConsumedState(state);
+			await flowStores.consumed.clear(state);
 			return null;
 		}
 
 		return consumedState;
-	}
-
-	private async _clearConsumedState(state: string): Promise<void> {
-		await this._requireConsumedStateStore().clear(state);
-	}
-
-	// =======================================================================
-	// Private: Metadata refresh
-	// =======================================================================
-
-	private _scheduleMetadataRefresh(): void {
-		const intervalStr = this._config.metadataRefreshInterval;
-		if (!intervalStr) {
-			return;
-		}
-		const intervalMs = parseDurationToMs(intervalStr);
-		if (intervalMs <= 0) {
-			return;
-		}
-
-		this._cancelMetadataRefresh();
-
-		this._metadataRefreshHandle = interval(
-			intervalMs,
-			createAsyncSchedulerWithTimestampProvider(this._environment.time),
-		)
-			.pipe(takeUntil(this.destroyed$))
-			.subscribe({
-				next: () => {
-					const cancellationToken = this._rootCancellation.token;
-					this._discover(cancellationToken, this.span)
-						.then(() => {
-							this._recordTrace(
-								FrontendOidcModeTraceEventType.MetadataRefreshed,
-								undefined,
-								this.span,
-							);
-						})
-						.catch((error) => {
-							this._recordFailureTrace(
-								FrontendOidcModeTraceEventType.MetadataRefreshFailed,
-								error,
-								undefined,
-								this.span,
-							);
-						});
-				},
-			});
-	}
-
-	private _cancelMetadataRefresh(): void {
-		if (!this._metadataRefreshHandle) {
-			return;
-		}
-		this._metadataRefreshHandle.unsubscribe();
-		this._metadataRefreshHandle = null;
 	}
 }

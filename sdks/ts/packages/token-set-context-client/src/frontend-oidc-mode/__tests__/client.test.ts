@@ -13,10 +13,14 @@ import {
 	type ResourceSnapshot,
 	type RouterNavigationRequest,
 	type RouterTrait,
+	type StorageTrait,
 	SYMBOL_DISPOSE,
 	UriReferenceString,
 } from "@securitydept/client";
-import { createEnvironmentForTest as createFoundationEnvironment } from "@securitydept/client/test";
+import {
+	createEnvironmentForTest as createFoundationEnvironment,
+	createTimeForTest,
+} from "@securitydept/client/test";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -74,6 +78,18 @@ function createMockPopupTrait() {
 	};
 }
 
+function createFailingStorage() {
+	const fail = async () => {
+		throw new Error("storage unavailable");
+	};
+	return {
+		get: vi.fn(fail),
+		set: vi.fn(fail),
+		take: vi.fn(fail),
+		remove: vi.fn(fail),
+	};
+}
+
 function expectSnapshotValue<T>(
 	signal: ReadableSignalTrait<ResourceSnapshot<T>>,
 ): T {
@@ -125,7 +141,10 @@ vi.mock("oauth4webapi", () => ({
 	validateAuthResponse: oauthMocks.validateAuthResponse,
 }));
 
+import { createDefaultFrontendOidcModeCallbackInputResolver } from "../client/callback-input-resolver";
 import { FrontendOidcModeClient } from "../client/client";
+import { FrontendOidcModeErrorCode } from "../client/error-codes";
+import { type FrontendOidcModeFlowStores } from "../client/types";
 
 describe("FrontendOidcModeClient", () => {
 	beforeEach(() => {
@@ -181,6 +200,39 @@ describe("FrontendOidcModeClient", () => {
 		});
 	});
 
+	it("allows subclasses to override flow-store creation", () => {
+		const realmStorage = createInMemoryRecordStore();
+		const sessionStorage = createInMemoryRecordStore();
+		const createFlowStores = vi.fn();
+		class CustomFrontendOidcModeClient extends FrontendOidcModeClient {
+			protected override createFrontendOidcModeFlowStores(
+				storage: StorageTrait,
+			): FrontendOidcModeFlowStores {
+				createFlowStores(storage);
+				return super.createFrontendOidcModeFlowStores(storage);
+			}
+		}
+		const environment = createFoundationEnvironment({
+			realmStorage,
+			sessionStorage,
+		});
+
+		const client = new CustomFrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+			},
+			{ environment },
+		);
+
+		expect(createFlowStores.mock.calls).toEqual([
+			[realmStorage],
+			[sessionStorage],
+		]);
+		client.dispose();
+	});
+
 	it("restores a matching callback before persistence during start", async () => {
 		let currentUrl = UriReferenceString.parse("https://app.example.com/login");
 		const navigate = vi.fn(async (request: RouterNavigationRequest) => {
@@ -227,6 +279,108 @@ describe("FrontendOidcModeClient", () => {
 				),
 			}),
 		);
+	});
+
+	it("restores a callback using an overridden redirect URI candidate", async () => {
+		let currentUrl = UriReferenceString.parse("https://app.example.com/login");
+		const router: RouterTrait = {
+			currentUrl: () => currentUrl,
+			navigate: async (request) => {
+				currentUrl = request.url;
+			},
+		};
+		const runtime = createFoundationEnvironment({
+			router,
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			sessionStorage: createInMemoryRecordStore(),
+		});
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/default-callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			{
+				environment: runtime,
+				callbackInputResolver:
+					createDefaultFrontendOidcModeCallbackInputResolver({
+						redirectUriCandidates: [
+							"/auth/default-callback",
+							UriReferenceString.parse("/auth/override-callback"),
+						],
+					}),
+			},
+		);
+
+		await client.loginWithRedirect({
+			redirectUri: "https://app.example.com/auth/override-callback",
+			postAuthRedirectUri: "/after-login",
+		});
+		const state = new URL(currentUrl.toString()).searchParams.get("state");
+		expect(state).toBeTruthy();
+		currentUrl = UriReferenceString.parse(
+			`https://app.example.com/auth/override-callback?code=auth-code&state=${state}`,
+		);
+
+		await expect(client.start()).resolves.toMatchObject({
+			tokens: { accessToken: "access-token" },
+		});
+	});
+
+	it("serializes metadata refresh and reschedules after completion", async () => {
+		const time = createTimeForTest();
+		const runtime = createFoundationEnvironment({
+			time,
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+		});
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				metadataRefreshInterval: "1s",
+			},
+			{ environment: runtime },
+		);
+
+		await client.discover();
+		expect(time.pendingCount).toBe(1);
+
+		let resolveRefresh!: (response: { ok: boolean }) => void;
+		oauthMocks.discoveryRequest.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					resolveRefresh = resolve;
+				}),
+		);
+		time.advanceAndFlush(1_000);
+		expect(oauthMocks.discoveryRequest).toHaveBeenCalledTimes(2);
+
+		time.advanceAndFlush(5_000);
+		expect(oauthMocks.discoveryRequest).toHaveBeenCalledTimes(2);
+
+		resolveRefresh({ ok: true });
+		await vi.waitFor(() => {
+			expect(time.pendingCount).toBe(1);
+		});
+
+		oauthMocks.discoveryRequest.mockRejectedValueOnce(
+			new Error("metadata refresh failed"),
+		);
+		time.advanceAndFlush(1_000);
+		await vi.waitFor(() => {
+			expect(oauthMocks.discoveryRequest).toHaveBeenCalledTimes(3);
+			expect(time.pendingCount).toBe(1);
+		});
+
+		client.dispose();
+		expect(time.pendingCount).toBe(0);
 	});
 
 	it("normalizes raw userInfo into the shared authenticated principal contract", async () => {
@@ -375,6 +529,9 @@ describe("FrontendOidcModeClient", () => {
 		await expect(
 			sessionStorage.get("securitydept.frontend_oidc.pending:state-b"),
 		).resolves.not.toBeNull();
+		await expect(
+			runtime.realmStorage.get("securitydept.frontend_oidc.pending:state-a"),
+		).resolves.toBeNull();
 
 		await expect(
 			client.handleCallback({ code: "auth-code", state: "state-a" }),
@@ -386,6 +543,9 @@ describe("FrontendOidcModeClient", () => {
 		await expect(
 			sessionStorage.get("securitydept.frontend_oidc.pending:state-b"),
 		).resolves.not.toBeNull();
+		await expect(
+			runtime.realmStorage.get("securitydept.frontend_oidc.consumed:state-a"),
+		).resolves.toBeNull();
 
 		await expect(
 			client.handleCallback({
@@ -636,7 +796,6 @@ describe("FrontendOidcModeClient", () => {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
 			span: createRootSpan(),
-			sessionStorage: createInMemoryRecordStore(),
 			tracing: createTracing({ subscribers: [trace] }),
 			popup: createMockPopupTrait(),
 		});
@@ -655,6 +814,16 @@ describe("FrontendOidcModeClient", () => {
 		await client.loginWithPopup({
 			popupCallbackUrl: "https://app.example.com/auth/popup-callback",
 		});
+		await expect(
+			runtime.realmStorage.get(
+				"securitydept.frontend_oidc.pending:state-value",
+			),
+		).resolves.toBeNull();
+		await expect(
+			runtime.realmStorage.get(
+				"securitydept.frontend_oidc.consumed:state-value",
+			),
+		).resolves.not.toBeNull();
 
 		expect(
 			trace
@@ -683,6 +852,148 @@ describe("FrontendOidcModeClient", () => {
 						event.fields?.outcome === "succeeded",
 				),
 		).toHaveLength(1);
+	});
+
+	it("does not access session storage during popup login", async () => {
+		const sessionStorage = createFailingStorage();
+		const runtime = createFoundationEnvironment({
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			sessionStorage,
+			popup: createMockPopupTrait(),
+		});
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			{ environment: runtime },
+		);
+
+		await expect(
+			client.loginWithPopup({
+				popupCallbackUrl: "https://app.example.com/auth/popup-callback",
+			}),
+		).resolves.toMatchObject({
+			snapshot: { tokens: { accessToken: "access-token" } },
+		});
+		expect(sessionStorage.get).not.toHaveBeenCalled();
+		expect(sessionStorage.set).not.toHaveBeenCalled();
+		expect(sessionStorage.take).not.toHaveBeenCalled();
+		expect(sessionStorage.remove).not.toHaveBeenCalled();
+	});
+
+	it("does not fall back to session storage when realm storage fails", async () => {
+		const realmStorage = createFailingStorage();
+		const sessionStorage = createInMemoryRecordStore();
+		const runtime = createFoundationEnvironment({
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			realmStorage,
+			sessionStorage,
+			popup: createMockPopupTrait(),
+		});
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			{ environment: runtime },
+		);
+
+		await expect(
+			client.loginWithPopup({
+				popupCallbackUrl: "https://app.example.com/auth/popup-callback",
+			}),
+		).rejects.toMatchObject({
+			kind: ClientErrorKind.Storage,
+			code: "storage.ephemeral.io_failed",
+		});
+		expect(popupMocks.open).not.toHaveBeenCalled();
+		await expect(
+			sessionStorage.get("securitydept.frontend_oidc.pending:state-value"),
+		).resolves.toBeNull();
+	});
+
+	it("does not fall back to realm storage when session storage fails", async () => {
+		const sessionStorage = createFailingStorage();
+		const navigate = vi.fn(async () => undefined);
+		const runtime = createFoundationEnvironment({
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			sessionStorage,
+			router: {
+				currentUrl: () =>
+					UriReferenceString.parse("https://app.example.com/login"),
+				navigate,
+			},
+		});
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			{ environment: runtime },
+		);
+
+		await expect(client.loginWithRedirect()).rejects.toMatchObject({
+			kind: ClientErrorKind.Storage,
+			code: "storage.ephemeral.io_failed",
+		});
+		await expect(
+			runtime.realmStorage.get(
+				"securitydept.frontend_oidc.pending:state-value",
+			),
+		).resolves.toBeNull();
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it("requires session storage for redirect and direct callback flows", async () => {
+		const navigate = vi.fn(async () => undefined);
+		const runtime = createFoundationEnvironment({
+			transport: {
+				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
+			},
+			router: {
+				currentUrl: () =>
+					UriReferenceString.parse("https://app.example.com/login"),
+				navigate,
+			},
+		});
+		const client = new FrontendOidcModeClient(
+			{
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/auth/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+				tokenEndpoint: "https://auth.example.com/token",
+			},
+			{ environment: runtime },
+		);
+
+		await expect(client.loginWithRedirect()).rejects.toMatchObject({
+			kind: ClientErrorKind.Configuration,
+			code: FrontendOidcModeErrorCode.SessionStorageUnavailable,
+		});
+		await expect(
+			client.handleCallback({ code: "auth-code", state: "state-value" }),
+		).rejects.toMatchObject({
+			kind: ClientErrorKind.Configuration,
+			code: FrontendOidcModeErrorCode.SessionStorageUnavailable,
+		});
+		expect(navigate).not.toHaveBeenCalled();
 	});
 
 	it("fails page helpers without explicit environment instead of reading a global window", async () => {

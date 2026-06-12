@@ -24,7 +24,6 @@ import {
 import {
 	BaseOidcModeClient,
 	type OidcModeCallbackHandlingResult,
-	type OidcModeCallbackInputResolver,
 	type OidcModeCallbackStateTrait,
 	PersistPolicy,
 	TokenSetAuthEventType,
@@ -43,7 +42,6 @@ import {
 import {
 	type BackendOidcModeCallbackInput,
 	BackendOidcModeCompatFragmentKind,
-	takeBackendOidcCallbackInputFromRouter,
 } from "../contracts/callback";
 import {
 	type BackendOidcModeMetadataRedemptionResponse,
@@ -57,6 +55,7 @@ import {
 	parseBackendOidcModeUserInfoBody,
 	refreshReturnsToTokenDelta,
 } from "../contracts/parsers";
+import { createDefaultBackendOidcModeCallbackInputResolver } from "./callback-input-resolver";
 import { BackendOidcModeErrorCode } from "./error-codes";
 import {
 	BackendOidcModeOperationEventName,
@@ -100,59 +99,6 @@ const instrumentBackendMethod = defineInstrumentMethodDecorator<
 			};
 		},
 );
-
-function createDefaultBackendOidcModeCallbackInputResolver(
-	callbackRoutingKey?: string,
-): OidcModeCallbackInputResolver<BackendOidcModeCallbackInput> {
-	return async ({ environment, cancellationToken }) => {
-		cancellationToken.throwIfCancellationRequested();
-		const router = environment.router;
-		const currentUrl = router?.currentUrl();
-		if (!router || !currentUrl) {
-			return null;
-		}
-
-		const compatFragment = parseCompatFragment(currentUrl);
-		if (
-			compatFragment?.parameters.kind !==
-			BackendOidcModeCompatFragmentKind.Callback
-		) {
-			return null;
-		}
-
-		if (callbackRoutingKey !== undefined) {
-			const actualRoutingKey = compatFragment.parameters.callback_routing_key;
-			if (actualRoutingKey === undefined) {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					code: BackendOidcModeErrorCode.CallbackRoutingKeyMissing,
-					message:
-						"The backend OIDC callback does not identify its owning client.",
-					source: TRACE_TARGET,
-					recovery: UserRecovery.RestartFlow,
-				});
-			}
-			if (actualRoutingKey !== callbackRoutingKey) {
-				return null;
-			}
-		}
-
-		const callbackInput = await takeBackendOidcCallbackInputFromRouter(router, {
-			callbackRoutingKey,
-		});
-		cancellationToken.throwIfCancellationRequested();
-		if (!callbackInput) {
-			throw new ClientError({
-				kind: ClientErrorKind.Protocol,
-				code: BackendOidcModeErrorCode.CallbackInputNotFound,
-				message: "The backend OIDC callback input is no longer available.",
-				source: TRACE_TARGET,
-				recovery: UserRecovery.RestartFlow,
-			});
-		}
-		return callbackInput;
-	};
-}
 
 /**
  * Backend OIDC Mode Client.
@@ -233,9 +179,10 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			rootCancellationToken: this._rootCancellation.token,
 			inputResolver:
 				options.callbackInputResolver === undefined
-					? createDefaultBackendOidcModeCallbackInputResolver(
-							options.callbackRoutingKey,
-						)
+					? createDefaultBackendOidcModeCallbackInputResolver({
+							callbackRoutingKey: options.callbackRoutingKey,
+							callbackInputPredicate: options.callbackInputPredicate,
+						})
 					: options.callbackInputResolver,
 			handleInput: (callbackInput, cancellationToken) =>
 				this._handleCallbackOperation(callbackInput, cancellationToken),
@@ -407,7 +354,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		} = compatFragment.parameters;
 
 		const snapshot = await this._callbackHandler.handle({
-			callbackInput,
+			input: callbackInput,
 			cancellationToken,
 		});
 		cancellationToken.throwIfCancellationRequested();
@@ -420,7 +367,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		options: CancellationTokenOptions = {},
 	): Promise<TokenSetAuthSnapshot> {
 		return await this._callbackHandler.handle({
-			callbackInput,
+			input: callbackInput,
 			cancellationToken: options.cancellationToken,
 		});
 	}

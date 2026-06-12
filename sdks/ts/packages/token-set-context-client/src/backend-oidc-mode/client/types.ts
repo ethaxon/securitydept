@@ -9,7 +9,7 @@ import {
 } from "@securitydept/client";
 import {
 	type BaseOidcModeClientDefaultOptions,
-	type OidcModeCallbackInputResolver,
+	type OidcModeCallbackResolutionOptions,
 	type OidcModeClientConfigBase,
 } from "../../orchestration/client/types";
 import { type BackendOidcModeCallbackInput } from "../contracts/callback";
@@ -61,11 +61,10 @@ export interface BackendOidcModeClientConfig extends OidcModeClientConfigBase {
 	defaultPostAuthRedirectUri?: string;
 }
 
-export interface BackendOidcModeClientOptions {
+export type BackendOidcModeClientOptions = {
 	readonly environment: FoundationEnvironment;
 	readonly callbackRoutingKey?: string;
-	readonly callbackInputResolver?: OidcModeCallbackInputResolver<BackendOidcModeCallbackInput> | null;
-}
+} & OidcModeCallbackResolutionOptions<BackendOidcModeCallbackInput>;
 
 export interface BackendOidcModeFetchUserInfoOptions
 	extends CancellationTokenOptions {}

@@ -21,6 +21,9 @@ export const StorageTraitSchema = defineType({
 	remove: "Function",
 });
 
+export const REALM_STORAGE_TRAIT_TOKEN =
+	new SecuritydeptInjectionToken<StorageTrait>("REALM_STORAGE_TRAIT_TOKEN");
+
 export const PERSISTENT_STORAGE_TRAIT_TOKEN =
 	new SecuritydeptInjectionToken<StorageTrait | null>(
 		"PERSISTENT_STORAGE_TRAIT_TOKEN",

@@ -30,7 +30,6 @@ import {
 	TokenSetClientInitializationMode,
 	type TokenSetClientReadyRecordView,
 	TokenSetClientRegistryAuthRequirement,
-	TokenSetClientRegistryEntryStatus,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetRequirementPlannerHost,
@@ -105,7 +104,7 @@ function createReadyRecord(
 	const meta = {
 		clientKey,
 		urlPatterns: [],
-		callbackPath: undefined,
+		callbackUrl: undefined,
 		requirementKind,
 		providerFamily: undefined,
 		initialization: TokenSetClientInitializationMode.Lazy,
@@ -114,7 +113,7 @@ function createReadyRecord(
 		id: clientKey,
 		entry: { clientFactory: () => client, meta },
 		meta,
-		status: TokenSetClientRegistryEntryStatus.Ready,
+		status: ResourceStatus.Resolved,
 		client,
 	};
 }

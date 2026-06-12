@@ -115,7 +115,10 @@ export class TokenSetClientRegistry<
 				switchMap(() => {
 					const cancellation = createCancellationTokenSource();
 					return from(
-						record.initialize({ cancellationToken: cancellation.token }),
+						record.initialize({
+							cancellationToken: cancellation.token,
+							environment: this.options.environment,
+						}),
 					).pipe(
 						catchError(() => EMPTY),
 						takeUntil(record.destroyed$.pipe(tap(() => cancellation.cancel()))),

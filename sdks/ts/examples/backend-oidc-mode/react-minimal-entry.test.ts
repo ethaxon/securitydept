@@ -98,7 +98,7 @@ function createEntry(
 		meta: {
 			clientKey: "main",
 			urlPatterns: [],
-			callbackPath: undefined,
+			callbackUrl: undefined,
 			requirementKind: undefined,
 			providerFamily: undefined,
 			initialization: TokenSetClientInitializationMode.Lazy,

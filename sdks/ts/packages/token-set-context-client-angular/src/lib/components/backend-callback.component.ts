@@ -1,21 +1,20 @@
 import {
+	afterNextRender,
 	Component,
 	DestroyRef,
 	inject,
 	input,
-	type OnInit,
 	type Signal,
 } from "@angular/core";
 import {
-	ClientError,
-	ClientErrorKind,
+	createComputed,
 	createSignal,
 	type ResourceSnapshot,
 	ResourceStatus,
 	resourceFromSnapshots,
 } from "@securitydept/client";
 import { ENVIRONMENT, toNgSignal } from "@securitydept/client-angular";
-import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { type BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	OidcModeCallbackHandlingKind,
 	type OidcModeCallbackHandlingResult,
@@ -23,11 +22,10 @@ import {
 } from "@securitydept/token-set-context-client/orchestration";
 import {
 	selectTokenSetBackendCallbackClientFromRegistry,
-	type TokenSetBackendCallbackClientFromRegistrySelection,
+	type TokenSetBackendCallbackClientFromRegistrySelectionSignal,
+	type TokenSetCallbackClientQuery,
 	TokenSetCallbackClientSelectionKind,
-	TokenSetClientRegistryEntryStatus,
-	TokenSetRegistryCallbackErrorCode,
-	TokenSetRegistryCallbackErrorSource,
+	type TokenSetCallbackClientSelectionSnapshot,
 } from "@securitydept/token-set-context-client/registry";
 import { TokenSetClientRegistryService } from "../client-registry.service";
 
@@ -40,49 +38,46 @@ type BackendCallbackResult =
 	template: "",
 	exportAs: "sdTokenSetBackendCallback",
 })
-export class TokenSetBackendCallbackComponent implements OnInit {
+export class TokenSetBackendCallbackComponent {
+	readonly clientQuery = input<TokenSetCallbackClientQuery | undefined>();
 	readonly autoInitialize = input(true);
 
 	private readonly environment = inject(ENVIRONMENT);
 	private readonly registry = inject(TokenSetClientRegistryService);
 	private readonly destroyRef = inject(DestroyRef);
-	private readonly selectionSignal =
-		createSignal<TokenSetBackendCallbackClientFromRegistrySelection>({
-			kind: TokenSetCallbackClientSelectionKind.NotApplicable,
-		});
+	private readonly selectionSource =
+		createSignal<TokenSetBackendCallbackClientFromRegistrySelectionSignal | null>(
+			null,
+		);
+	private readonly selectionSignal = createComputed<
+		TokenSetCallbackClientSelectionSnapshot<BackendOidcModeClient>
+	>(
+		() =>
+			this.selectionSource.get()?.get() ?? {
+				status: ResourceStatus.Idle,
+			},
+	);
 
+	readonly selection: Signal<
+		TokenSetCallbackClientSelectionSnapshot<BackendOidcModeClient>
+	> = toNgSignal(this.selectionSignal, { requireSync: true });
 	readonly resource = resourceFromSnapshots<BackendCallbackResult>(() => {
 		const selection = this.selectionSignal.get();
-		if (selection.kind === TokenSetCallbackClientSelectionKind.NotApplicable) {
-			return {
-				status: ResourceStatus.Resolved,
-				value: { kind: OidcModeCallbackHandlingKind.NotApplicable },
-			};
-		}
-
-		const record = selection.clientRecord.get();
-		switch (record.status) {
-			case TokenSetClientRegistryEntryStatus.Registered:
+		switch (selection.status) {
+			case ResourceStatus.Idle:
 				return { status: ResourceStatus.Idle };
-			case TokenSetClientRegistryEntryStatus.Initializing:
+			case ResourceStatus.Loading:
 				return { status: ResourceStatus.Loading };
-			case TokenSetClientRegistryEntryStatus.Failed:
-				return {
-					status: ResourceStatus.LoadingError,
-					error: record.error,
-				};
-			case TokenSetClientRegistryEntryStatus.Ready:
-				return record.client instanceof BackendOidcModeClient
-					? record.client.callback.state.get()
-					: {
-							status: ResourceStatus.LoadingError,
-							error: new ClientError({
-								kind: ClientErrorKind.Configuration,
-								code: TokenSetRegistryCallbackErrorCode.ClientModeMismatch,
-								message: `Client "${record.meta.clientKey}" is not a BackendOidcModeClient.`,
-								source: TokenSetRegistryCallbackErrorSource,
-							}),
-						};
+			case ResourceStatus.LoadingError:
+				return selection;
+			case ResourceStatus.Resolved:
+				return selection.value.kind ===
+					TokenSetCallbackClientSelectionKind.NotApplicable
+					? {
+							status: ResourceStatus.Resolved,
+							value: { kind: OidcModeCallbackHandlingKind.NotApplicable },
+						}
+					: selection.value.client.callback.state.get();
 		}
 	});
 	readonly state: Signal<ResourceSnapshot<BackendCallbackResult>> = toNgSignal(
@@ -92,24 +87,15 @@ export class TokenSetBackendCallbackComponent implements OnInit {
 
 	constructor() {
 		this.destroyRef.onDestroy(() => this.resource.dispose());
-	}
-
-	ngOnInit(): void {
-		this.selectionSignal.set(
-			selectTokenSetBackendCallbackClientFromRegistry({
-				registry: this.registry,
-				callbackUrl: this.environment.router?.currentUrl()?.toString() ?? "",
-			}),
-		);
-		if (this.autoInitialize()) {
-			void this.initialize().catch(() => undefined);
-		}
-	}
-
-	async initialize(): Promise<BackendOidcModeClient | null> {
-		const selection = this.selectionSignal.get();
-		return selection.kind === TokenSetCallbackClientSelectionKind.Selected
-			? await selection.clientResolver()
-			: null;
+		afterNextRender(() => {
+			this.selectionSource.set(
+				selectTokenSetBackendCallbackClientFromRegistry({
+					registry: this.registry,
+					callbackUrl: this.environment.router?.currentUrl()?.toString() ?? "",
+					clientQuery: this.clientQuery(),
+					initialize: this.autoInitialize(),
+				}),
+			);
+		});
 	}
 }

@@ -263,6 +263,97 @@ describe("BackendOidcModeClient", () => {
 		});
 	});
 
+	it("leaves a keyless callback for a standalone fallback client", async () => {
+		let currentUrl = appendOrReplaceCompatFragment(
+			UriReferenceString.parse("https://app.example.com/after"),
+			{
+				payload: {
+					kind: BackendOidcModeCompatFragmentKind.Callback,
+					access_token: "callback-at",
+					id_token: "callback-idt",
+					metadata_redemption_id: "meta-1",
+				},
+			},
+			(input, hash) => input.setHash(hash),
+		).url;
+		const navigate = vi.fn(async (request: RouterNavigationRequest) => {
+			currentUrl = request.url;
+		});
+		const environment = createFoundationEnvironment({
+			router: { currentUrl: () => currentUrl, navigate },
+			transport: createTestTransport(() => ({
+				status: 200,
+				headers: {},
+				body: { metadata: {} },
+			})),
+		});
+		const registryClient = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment, callbackRoutingKey: "backend" },
+		);
+
+		await expect(registryClient.start()).resolves.toBeNull();
+		expect(registryClient.callback.resource.value.get()).toEqual({
+			kind: "not_applicable",
+		});
+		expect(navigate).not.toHaveBeenCalled();
+
+		const standaloneClient = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment },
+		);
+		await expect(standaloneClient.start()).resolves.toMatchObject({
+			tokens: { accessToken: "callback-at" },
+		});
+		expect(navigate).toHaveBeenCalledOnce();
+	});
+
+	it("does not let a standalone fallback client consume a keyed callback", async () => {
+		let currentUrl = appendOrReplaceCompatFragment(
+			UriReferenceString.parse("https://app.example.com/after"),
+			{
+				payload: {
+					kind: BackendOidcModeCompatFragmentKind.Callback,
+					callback_routing_key: "backend",
+					access_token: "callback-at",
+					id_token: "callback-idt",
+					metadata_redemption_id: "meta-1",
+				},
+			},
+			(input, hash) => input.setHash(hash),
+		).url;
+		const navigate = vi.fn(async (request: RouterNavigationRequest) => {
+			currentUrl = request.url;
+		});
+		const environment = createFoundationEnvironment({
+			router: { currentUrl: () => currentUrl, navigate },
+			transport: createTestTransport(() => ({
+				status: 200,
+				headers: {},
+				body: { metadata: {} },
+			})),
+		});
+		const standaloneClient = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment },
+		);
+
+		await expect(standaloneClient.start()).resolves.toBeNull();
+		expect(standaloneClient.callback.resource.value.get()).toEqual({
+			kind: "not_applicable",
+		});
+		expect(navigate).not.toHaveBeenCalled();
+
+		const registryClient = new BackendOidcModeClient(
+			{ baseUrl: BASE_URL },
+			{ environment, callbackRoutingKey: "backend" },
+		);
+		await expect(registryClient.start()).resolves.toMatchObject({
+			tokens: { accessToken: "callback-at" },
+		});
+		expect(navigate).toHaveBeenCalledOnce();
+	});
+
 	it("determines auth failure when callback restoration rejects", async () => {
 		const resolverError = new Error("callback resolver failed");
 		const trace = new InMemoryTraceCollector();

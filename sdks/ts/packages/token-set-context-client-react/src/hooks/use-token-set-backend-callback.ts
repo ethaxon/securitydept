@@ -1,6 +1,6 @@
 import {
-	ClientError,
-	ClientErrorKind,
+	createComputed,
+	createSignal,
 	ENVIRONMENT_TOKEN,
 	type FoundationEnvironment,
 	type ResourceSnapshot,
@@ -11,8 +11,9 @@ import {
 import {
 	useResourceSnapshot,
 	useSecuritydeptContext,
+	useSignal,
 } from "@securitydept/client-react";
-import { BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { type BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	OidcModeCallbackHandlingKind,
 	type OidcModeCallbackHandlingResult,
@@ -20,14 +21,13 @@ import {
 } from "@securitydept/token-set-context-client/orchestration";
 import {
 	selectTokenSetBackendCallbackClientFromRegistry,
-	type TokenSetBackendCallbackClientFromRegistrySelection,
+	type TokenSetBackendCallbackClientFromRegistrySelectionSignal,
+	type TokenSetCallbackClientQuery,
 	TokenSetCallbackClientSelectionKind,
+	type TokenSetCallbackClientSelectionSnapshot,
 	type TokenSetClientRegistry,
-	TokenSetClientRegistryEntryStatus,
-	TokenSetRegistryCallbackErrorCode,
-	TokenSetRegistryCallbackErrorSource,
 } from "@securitydept/token-set-context-client/registry";
-import { useCallback, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	TOKEN_SET_CLIENT_REGISTRY,
 	type TokenSetClientRegistryService,
@@ -39,14 +39,14 @@ type BackendCallbackResult =
 export interface UseTokenSetBackendCallbackOptions {
 	readonly registry?: TokenSetClientRegistry;
 	readonly environment?: FoundationEnvironment;
+	readonly clientQuery?: TokenSetCallbackClientQuery;
 	readonly autoInitialize?: boolean;
 }
 
 export interface UseTokenSetBackendCallbackResult {
-	readonly selection: TokenSetBackendCallbackClientFromRegistrySelection;
+	readonly selection: TokenSetCallbackClientSelectionSnapshot<BackendOidcModeClient>;
 	readonly state: ResourceSnapshot<BackendCallbackResult>;
 	readonly resource: ResourceTrait<BackendCallbackResult>;
-	initialize(): Promise<BackendOidcModeClient | null>;
 }
 
 export function useTokenSetBackendCallback(
@@ -57,69 +57,71 @@ export function useTokenSetBackendCallback(
 		options.registry ??
 		(injector.get(TOKEN_SET_CLIENT_REGISTRY) as TokenSetClientRegistryService);
 	const environment = options.environment ?? injector.get(ENVIRONMENT_TOKEN);
-	const callbackUrl = environment.router?.currentUrl()?.toString() ?? "";
-	const selection = useMemo(
-		() =>
-			selectTokenSetBackendCallbackClientFromRegistry({
-				registry,
-				callbackUrl,
-			}),
-		[callbackUrl, registry],
+	const [selectionSource] = useState(() =>
+		createSignal<TokenSetBackendCallbackClientFromRegistrySelectionSignal | null>(
+			null,
+		),
 	);
+	const selectionSignal = useMemo(
+		() =>
+			createComputed<
+				TokenSetCallbackClientSelectionSnapshot<BackendOidcModeClient>
+			>(
+				() =>
+					selectionSource.get()?.get() ?? {
+						status: ResourceStatus.Idle,
+					},
+			),
+		[selectionSource],
+	);
+	const selection = useSignal(selectionSignal);
 	const resource = useMemo(
 		() =>
 			resourceFromSnapshots<BackendCallbackResult>(() => {
-				if (
-					selection.kind === TokenSetCallbackClientSelectionKind.NotApplicable
-				) {
-					return {
-						status: ResourceStatus.Resolved,
-						value: { kind: OidcModeCallbackHandlingKind.NotApplicable },
-					};
+				const current = selectionSource.get()?.get();
+				if (!current) {
+					return { status: ResourceStatus.Idle };
 				}
-
-				const record = selection.clientRecord.get();
-				switch (record.status) {
-					case TokenSetClientRegistryEntryStatus.Registered:
+				switch (current.status) {
+					case ResourceStatus.Idle:
 						return { status: ResourceStatus.Idle };
-					case TokenSetClientRegistryEntryStatus.Initializing:
+					case ResourceStatus.Loading:
 						return { status: ResourceStatus.Loading };
-					case TokenSetClientRegistryEntryStatus.Failed:
-						return {
-							status: ResourceStatus.LoadingError,
-							error: record.error,
-						};
-					case TokenSetClientRegistryEntryStatus.Ready:
-						return record.client instanceof BackendOidcModeClient
-							? record.client.callback.state.get()
-							: {
-									status: ResourceStatus.LoadingError,
-									error: new ClientError({
-										kind: ClientErrorKind.Configuration,
-										code: TokenSetRegistryCallbackErrorCode.ClientModeMismatch,
-										message: `Client "${record.meta.clientKey}" is not a BackendOidcModeClient.`,
-										source: TokenSetRegistryCallbackErrorSource,
-									}),
-								};
+					case ResourceStatus.LoadingError:
+						return current;
+					case ResourceStatus.Resolved:
+						return current.value.kind ===
+							TokenSetCallbackClientSelectionKind.NotApplicable
+							? {
+									status: ResourceStatus.Resolved,
+									value: {
+										kind: OidcModeCallbackHandlingKind.NotApplicable,
+									},
+								}
+							: current.value.client.callback.state.get();
 				}
 			}),
-		[selection],
+		[selectionSource],
 	);
 	const state = useResourceSnapshot(resource);
-	const initialize = useCallback(
-		async () =>
-			selection.kind === TokenSetCallbackClientSelectionKind.Selected
-				? await selection.clientResolver()
-				: null,
-		[selection],
-	);
-
 	useEffect(() => {
-		if (options.autoInitialize !== false) {
-			void initialize().catch(() => undefined);
-		}
-	}, [initialize, options.autoInitialize]);
+		selectionSource.set(
+			selectTokenSetBackendCallbackClientFromRegistry({
+				registry,
+				callbackUrl: environment.router?.currentUrl()?.toString() ?? "",
+				clientQuery: options.clientQuery,
+				initialize: options.autoInitialize !== false,
+			}),
+		);
+		return () => selectionSource.set(null);
+	}, [
+		environment,
+		options.autoInitialize,
+		options.clientQuery,
+		registry,
+		selectionSource,
+	]);
 	useEffect(() => () => resource.dispose(), [resource]);
 
-	return { selection, state, resource, initialize };
+	return { selection, state, resource };
 }

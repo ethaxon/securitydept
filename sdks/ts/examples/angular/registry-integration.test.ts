@@ -100,7 +100,7 @@ function createEntry(
 		meta: {
 			clientKey,
 			urlPatterns: [],
-			callbackPath: undefined,
+			callbackUrl: undefined,
 			requirementKind: undefined,
 			providerFamily: undefined,
 			initialization: TokenSetClientInitializationMode.Lazy,
@@ -156,7 +156,7 @@ describe("Angular integration adapter public surface", () => {
 			createAngularEnvironmentProviders([
 				createEntry("main", () => client, {
 					urlPatterns: ["/api/"],
-					callbackPath: "/auth/callback",
+					callbackUrl: "/auth/callback",
 				}),
 			]),
 			Injector.NULL as never,

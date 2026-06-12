@@ -166,6 +166,7 @@ Packages：
 变更：
 
 - Framework-neutral host capability resolution 现在由 client foundation 通过 typed `FoundationEnvironment`、`NativeWebEnvironment`、`WebExtCoreEnvironment` 以及相关 host 特化对象拥有。
+- `FoundationEnvironment.realmStorage` 现在是必需的易失 `StorageTrait`。`createFoundationEnvironment()` 与所有派生 host factory 默认都会创建全新且相互隔离的内存 realm store；composition root 可以通过 options 或 `REALM_STORAGE_TRAIT_TOKEN` provider 覆盖。手写 environment object 必须补充该字段。
 - 历史 `ClientRuntime` 命名已收口为 environment terminology。Core client constructor 依赖属于 environment，不是第二层 runtime。Canonical path 是 `environment.transport`、`environment.sessionStorage` 等顶层字段。
 - Web host environment factory 是显式 composition entry，不是 automatic host detection，也不再暴露仅用于 preset 区分的 worker/service-worker/extension-background wrapper。
 - Context 与 adapter public helper 使用同一边界。Backend-OIDC web helper、basic-auth/session redirect helper，以及 framework adapter convenience helper 不得各自重复声明或猜测 transport/store/time/page dependencies。
@@ -181,6 +182,7 @@ Packages：
 - 将 ambiguous page-global helper usage 迁移到显式 page 形式：用 `client.authorizeUrl(environment.router.currentUrl()?.toString())` 或 `client.loginWithRedirect({ postAuthRedirectUri })` 构造 return URL；callback page 使用 `takeFrontendOidcCallbackInputFromRouter(router)` 或 `takeBackendOidcCallbackInputFromRouter(router)` 后接 `client.handleCallback(input)`。Backend OIDC fragment redirect 使用 securitydept compat fragment 协议，并保留既有 hash-router fragment。
 - 将 `relayTokenSetPopupCallbackFromEnvironment()` 等 popup callback relay helper 视为 page-only helper；测试或 host wrapper 中应传入携带 page capability 的 `environment`。从 `@securitydept/token-set-context-client/backend-oidc-mode` 或 `@securitydept/token-set-context-client/frontend-oidc-mode` 导入；已删除的 `@securitydept/token-set-context-client/backend-oidc-mode/web` 子路径只是转发层。现在 canonical 的共享 token-set OIDC 浏览器 login contract 是 `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })` 和 `BaseOidcModeClient.loginWithPopup({ popupCallbackUrl })`；client 通过 environment 持有 page navigation 和 popup capability。Backend / frontend mode client 都直接暴露这些方法。Backend OIDC 不再持有隐藏的 callback-fragment flow state；重试或延迟 callback handling 必须由应用代码显式实现。
 - Frontend-mode 不再使用 browser materialization。改为调用 `resolveFrontendOidcModeConfigProjection({ clientKey, environment, sources, overrides })`，再用返回的 config 与同一个 root environment 构造 `FrontendOidcModeClient`。Realm、persisted 与 network 的优先级必须显式声明；服务端渲染的 projection 通过 `injectConfigProjectionIntoRealm()` 注入。
+- Frontend OIDC redirect 与 public callback flow 必须使用 `environment.sessionStorage`；popup flow 使用 `environment.realmStorage`。不要实现跨 scope fallback，也不要在两者之间复制 pending/consumed record。
 - 当 browser/page environment ownership 需要在 framework route 或 command 之间保持稳定时，应在 composition root 创建一个 host-owned `NativeWebEnvironment` object 并注入该对象。不要继续发明 app-local module singleton 或 SDK-local lazy environment resolver。
 - 将 basic-auth/session `/web` redirect helper 视为 page navigation helper；要么留在 real page context，要么注入显式 `RouterTrait`。
 - Framework provider/DI registration function 可以持有完整 environment composition；普通 hook、guard、interceptor、service 或 convenience helper 不应各自接受一整套分散 dependency bag。
@@ -207,7 +209,7 @@ Package：
 迁移：
 
 - 将 `{ clock, scheduler }` environment wiring 改为 `{ time }`；只有当 host 明确启用 registry idle warmup 时才传入带 `environment.idleCallback` 的 host-owned `{ environment }`。工具级 idle revalidation helper 仍消费显式窄 capability。
-- Registry 管理的 token-set entry 现在会通过 `clientFactory(environment)` 接收同一个 registry-owned environment。Client 构造应从该参数取能力，不应读取 module global 或继续传递分散的子 capability。
+- Registry 管理的 token-set entry 现在会通过 `clientFactory(options)` 接收 `{ environment, meta, cancellationToken }`。Client 构造应从该 environment 取能力，不应读取 module global 或继续传递分散的子 capability。
 - 将直接 callback timer handle 改为 `timer(delayMs, createAsyncSchedulerWithTimestampProvider(time)).subscribe(...)`。
 - 将重复 callback 调度改为 `interval(periodMs, createAsyncSchedulerWithTimestampProvider(time)).subscribe(...)`。
 - 原先依赖 `fromEventPattern({ ..., callback })` 风格 SDK helper 的场景，改为直接使用 `rxjs` 的 `fromEventPattern(...)`、`from(Promise.resolve(...))` 或 `new Observable(...)`；只有在跨越 SecurityDept trait 边界时才再桥接回 `EventStreamTrait`。
@@ -329,7 +331,7 @@ Packages：
 - `client-react` root 现在只导出 React injector bridge。React environment capability 来自核心 environment injector：将 `environment.injector` 作为根 `SecuritydeptProvider` 的 `parentInjector` 传入。Route-scoped planner host 由具体 router adapter（如 `@securitydept/client-react/tanstack-router`）拥有。
 - `basic-auth` / `session` / `token-set` React adapter 不再拥有 domain-specific Provider / Context hook；它们导出 token、plain factory、provider factory，以及显式 callback/component bridge。token-set 多客户端组合现在改为显式 registry/controller wiring，而不是 SDK 预设 runtime bundle。
 - Token-set Angular/React 路由安全现依赖 `secureTokenSetRouteRoot()` 与 registry 默认 unauthenticated handler。client 选择应写在 requirement `attributes.query` 中；仅在需要时通过 secure route root 或 planner host provider 的 `onClientUnauthenticated` 自定义 redirect 策略。
-- React callback handling 使用 `useTokenSetFrontendCallback()` 与 `useTokenSetBackendCallback()` 桥接 client-owned callback Resource。Registry selection 是非消费式的，并返回绑定固定 record 的 client resolver；registry entry factory 负责启动 client，而 client startup 会在 persistence restore 前解析并 take callback input。
+- React callback handling 使用 `useTokenSetFrontendCallback()` 与 `useTokenSetBackendCallback()` 桥接 client-owned callback Resource。Registry selection 是非消费式的，并返回绑定固定 record identity 的 snapshot signal。自定义 `clientQuery({ callbackUrl })` 控制 registry selection，client `callbackInputPredicate` 则独立地在 URL cleanup 前筛选 callback input。Registry entry factory 负责启动 client，而 client startup 会在 persistence restore 前解析并 take callback input。
 
 迁移：
 
@@ -338,7 +340,7 @@ Packages：
 - 对 React 代码，如需 environment capability，应将 host-owned environment injector 作为 `SecuritydeptProvider.parentInjector`，再在 leaf 代码中用 `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)` 读取。
 - 对 Angular frontend-oidc route redirect，应在 composition root 通过 `provideEnvironment({ environment })` 提供 host-owned environment object。
 - 对 Angular callback route，使用 `TokenSetFrontendCallbackComponent` 或 `TokenSetBackendCallbackComponent`。
-- 对 custom callback orchestration，提供 client `callbackInputResolver` 并使用 registry selector，不要重新引入独立 callback controller。
+- 对 custom callback orchestration，使用 selector `clientQuery`、默认 resolver 的 `callbackInputPredicate`，或完整的 client `callbackInputResolver`，不要重新引入独立 callback controller。
 
 ### Route Security And Matched Route Chains
 

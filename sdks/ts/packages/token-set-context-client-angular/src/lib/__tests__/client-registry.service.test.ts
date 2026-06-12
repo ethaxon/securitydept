@@ -17,7 +17,6 @@ import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/
 import {
 	TokenSetClientInitializationMode,
 	type TokenSetClientRegistryEntry,
-	TokenSetClientRegistryEntryStatus,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	createTokenSetClientRegistryAuthorizationInterceptor,
@@ -85,7 +84,7 @@ function createEntry(
 		meta: {
 			clientKey,
 			urlPatterns: [],
-			callbackPath: undefined,
+			callbackUrl: undefined,
 			requirementKind: undefined,
 			providerFamily: undefined,
 			initialization: TokenSetClientInitializationMode.Lazy,
@@ -181,7 +180,7 @@ describe("TokenSetClientRegistryService", () => {
 			expect(registry.entries.get()).toMatchObject([
 				{
 					meta: { clientKey: "workspace" },
-					status: TokenSetClientRegistryEntryStatus.Registered,
+					status: ResourceStatus.Idle,
 				},
 			]);
 
@@ -194,7 +193,7 @@ describe("TokenSetClientRegistryService", () => {
 			expect(registry.entries.get()).toMatchObject([
 				{
 					meta: { clientKey: "workspace" },
-					status: TokenSetClientRegistryEntryStatus.Ready,
+					status: ResourceStatus.Resolved,
 				},
 			]);
 

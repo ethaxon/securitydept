@@ -16,7 +16,7 @@ import { type TraitInputValidator } from "../validation";
  * Foundation dependency environment injected into client-side auth runtimes
  * via explicit wiring at the composition root.
  *
- * `transport`, `time`, `span`, and `tracing` are the required baseline
+ * `transport`, `time`, `realmStorage`, `span`, and `tracing` are the required baseline
  * capabilities. Optional page/router/popup/storage traits stay explicit.
  * Raw host-material inputs such as `window`, `location`, or browser storage
  * handles are intentionally outside this contract and should be resolved by
@@ -26,6 +26,7 @@ export interface FoundationEnvironment {
 	injector: SecuritydeptInjector;
 	transport: BaseTransportTrait;
 	time: TimeTrait;
+	realmStorage: StorageTrait;
 	idleCallback?: IdleCallbackTrait;
 	persistentStorage?: StorageTrait;
 	sessionStorage?: StorageTrait;
@@ -46,6 +47,7 @@ export interface EnvironmentValidators {
 	transportForStdFetchCreateOptions?: TraitInputValidator;
 	time?: TraitInputValidator;
 	timeForStdCreateOptions?: TraitInputValidator;
+	realmStorage?: TraitInputValidator;
 	idleCallback?: TraitInputValidator;
 	persistentStorage?: TraitInputValidator;
 	sessionStorage?: TraitInputValidator;

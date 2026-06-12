@@ -38,8 +38,10 @@ import {
 import { createBaseTransportForStdFetch, createTimeForStd } from "../std/index";
 import { type TimeForStdCreateOptions } from "../std/time";
 import { type BaseTransportForStdFetchCreateOptions } from "../std/transport";
+import { createInMemoryRecordStore } from "../storage/memory-store";
 import {
 	PERSISTENT_STORAGE_TRAIT_TOKEN,
+	REALM_STORAGE_TRAIT_TOKEN,
 	SESSION_STORAGE_TRAIT_TOKEN,
 	type StorageTrait,
 	StorageTraitSchema,
@@ -73,6 +75,7 @@ export interface CreateFoundationEnvironmentOptions {
 	transportForStdFetchCreateOptions?: BaseTransportForStdFetchCreateOptions;
 	time?: TimeTrait;
 	timeForStdCreateOptions?: TimeForStdCreateOptions;
+	realmStorage?: StorageTrait;
 	span?: SpanTrait;
 	spanCreateOptions?: SpanCreateOptions;
 	tracing?: TracingTrait;
@@ -163,6 +166,19 @@ function createBuiltInTraitUnits(
 						validators: overrides.validators?.timeForStdCreateOptions,
 					}),
 			}),
+		),
+		createProviderIfTokenMissing(
+			externalProviderTokens,
+			REALM_STORAGE_TRAIT_TOKEN,
+			() =>
+				createBuiltInTraitUnit({
+					token: REALM_STORAGE_TRAIT_TOKEN,
+					traitName: "realmStorage",
+					bundledSchema: StorageTraitSchema,
+					validator: overrides.validators?.realmStorage,
+					createValue: () =>
+						overrides.realmStorage ?? createInMemoryRecordStore(),
+				}),
 		),
 		createProviderIfTokenMissing(externalProviderTokens, SPAN_TRAIT_TOKEN, () =>
 			createBuiltInTraitUnit({
@@ -317,6 +333,7 @@ function createFoundationEnvironmentUnit(): SecuritydeptFactoryProvider<Foundati
 			injector: SecuritydeptInjector,
 			transport: BaseTransportTrait,
 			time: TimeTrait,
+			realmStorage: StorageTrait,
 			span: SpanTrait,
 			tracing: TracingTrait,
 			idleCallback: IdleCallbackTrait | null,
@@ -330,6 +347,7 @@ function createFoundationEnvironmentUnit(): SecuritydeptFactoryProvider<Foundati
 				injector,
 				transport,
 				time,
+				realmStorage,
 				idleCallback: idleCallback ?? undefined,
 				persistentStorage: persistentStorage ?? undefined,
 				sessionStorage: sessionStorage ?? undefined,
@@ -344,6 +362,7 @@ function createFoundationEnvironmentUnit(): SecuritydeptFactoryProvider<Foundati
 			INJECTOR_TOKEN,
 			TRANSPORT_TRAIT_TOKEN,
 			TIME_TRAIT_TOKEN,
+			REALM_STORAGE_TRAIT_TOKEN,
 			SPAN_TRAIT_TOKEN,
 			TRACING_TRAIT_TOKEN,
 			IDLE_CALLBACK_TRAIT_TOKEN,

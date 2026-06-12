@@ -2,6 +2,8 @@ import {
 	type CancellationTokenTrait,
 	type DisposableTrait,
 	type FoundationEnvironment,
+	type ResourceStatus,
+	type UriReferenceStringInput,
 } from "@securitydept/client";
 
 export const TokenSetClientInitializationMode = {
@@ -13,15 +15,11 @@ export const TokenSetClientInitializationMode = {
 export type TokenSetClientInitializationMode =
 	(typeof TokenSetClientInitializationMode)[keyof typeof TokenSetClientInitializationMode];
 
-export const TokenSetClientRegistryEntryStatus = {
-	Registered: "registered",
-	Initializing: "initializing",
-	Ready: "ready",
-	Failed: "failed",
-} as const;
-
 export type TokenSetClientRegistryEntryStatus =
-	(typeof TokenSetClientRegistryEntryStatus)[keyof typeof TokenSetClientRegistryEntryStatus];
+	| typeof ResourceStatus.Idle
+	| typeof ResourceStatus.Loading
+	| typeof ResourceStatus.Resolved
+	| typeof ResourceStatus.LoadingError;
 
 export const TokenSetClientRegistryEventType = {
 	Registered: "registered",
@@ -44,12 +42,16 @@ export type TokenSetRequirementKind =
 
 export interface TokenSetClientFactoryOptions {
 	readonly cancellationToken: CancellationTokenTrait;
+	readonly environment: FoundationEnvironment;
+	readonly meta: TokenSetClientMeta;
 }
 
+export type TokenSetClientFactory<TClient extends DisposableTrait> = (
+	options: TokenSetClientFactoryOptions,
+) => TClient | Promise<TClient>;
+
 export interface TokenSetClientRegistryEntry<TClient extends DisposableTrait> {
-	clientFactory(
-		options: TokenSetClientFactoryOptions,
-	): TClient | Promise<TClient>;
+	clientFactory: TokenSetClientFactory<TClient>;
 	meta: TokenSetClientMeta;
 }
 
@@ -57,12 +59,18 @@ export interface TokenSetClientResourceOptions {
 	readonly initialize?: boolean;
 }
 
+export type TokenSetClientCallbackUrl = UriReferenceStringInput;
+
+export type TokenSetClientCallbackUrls =
+	| TokenSetClientCallbackUrl
+	| ReadonlyArray<TokenSetClientCallbackUrl>;
+
 export interface TokenSetClientMeta {
 	readonly clientKey: string;
 	readonly urlPatterns: ReadonlyArray<
 		string | RegExp | ((url: string) => boolean)
 	>;
-	readonly callbackPath?: string;
+	readonly callbackUrl?: TokenSetClientCallbackUrls;
 	readonly requirementKind?: TokenSetRequirementKind | string;
 	readonly providerFamily?: string;
 	readonly initialization: TokenSetClientInitializationMode;
@@ -77,7 +85,7 @@ export interface TokenSetClientRecordViewBase<TClient extends DisposableTrait> {
 export type TokenSetClientRegisteredRecordView<
 	TClient extends DisposableTrait,
 > = TokenSetClientRecordViewBase<TClient> & {
-	readonly status: typeof TokenSetClientRegistryEntryStatus.Registered;
+	readonly status: typeof ResourceStatus.Idle;
 	readonly client?: undefined;
 	readonly error?: undefined;
 };
@@ -85,21 +93,21 @@ export type TokenSetClientRegisteredRecordView<
 export type TokenSetClientInitializingRecordView<
 	TClient extends DisposableTrait,
 > = TokenSetClientRecordViewBase<TClient> & {
-	readonly status: typeof TokenSetClientRegistryEntryStatus.Initializing;
+	readonly status: typeof ResourceStatus.Loading;
 	readonly client?: undefined;
 	readonly error?: undefined;
 };
 
 export type TokenSetClientReadyRecordView<TClient extends DisposableTrait> =
 	TokenSetClientRecordViewBase<TClient> & {
-		readonly status: typeof TokenSetClientRegistryEntryStatus.Ready;
+		readonly status: typeof ResourceStatus.Resolved;
 		readonly client: TClient;
 		readonly error?: undefined;
 	};
 
 export type TokenSetClientFailedRecordView<TClient extends DisposableTrait> =
 	TokenSetClientRecordViewBase<TClient> & {
-		readonly status: typeof TokenSetClientRegistryEntryStatus.Failed;
+		readonly status: typeof ResourceStatus.LoadingError;
 		readonly client?: undefined;
 		readonly error: unknown;
 	};
@@ -135,5 +143,5 @@ export type TokenSetClientRegistryEvent<TClient extends DisposableTrait> =
 	  });
 
 export interface CreateTokenSetClientRegistryOptions {
-	environment: Pick<FoundationEnvironment, "idleCallback">;
+	environment: FoundationEnvironment;
 }

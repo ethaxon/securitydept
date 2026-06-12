@@ -28,7 +28,15 @@ export {
 	TokenSetPopupRelayErrorCode,
 	TokenSetPopupRelayErrorSource,
 } from "../orchestration/client/popup/relay";
+export {
+	type CreateDefaultFrontendOidcModeCallbackInputResolverOptions,
+	createDefaultFrontendOidcModeCallbackInputResolver,
+} from "./client/callback-input-resolver";
 export { FrontendOidcModeClient } from "./client/client";
+export {
+	type CreateFrontendOidcModeClientFactoryOptions,
+	createFrontendOidcModeClientFactory,
+} from "./client/client-factory";
 export {
 	FrontendOidcModeErrorCode,
 	FrontendOidcModeErrorSource,
@@ -38,10 +46,14 @@ export {
 	type FrontendOidcModeClientDefaultOptions,
 	type FrontendOidcModeClientOptions,
 	type FrontendOidcModeExchangeCodeOptions,
+	type FrontendOidcModeRedirectLoginOptions,
+	type FrontendOidcModeRedirectUriCandidatesInput,
 } from "./client/types";
 export {
 	type FrontendOidcModeCallbackInput,
+	type FrontendOidcModeCallbackInputConditionOptions,
 	type FrontendOidcModeCallbackSearchString,
+	type TakeFrontendOidcCallbackInputFromRouterOptions,
 	takeFrontendOidcCallbackInputFromRouter,
 } from "./contracts/callback";
 
@@ -56,7 +68,9 @@ export {
 	type FrontendOidcModeAuthorizeResult,
 	type FrontendOidcModeCallbackResult,
 	type FrontendOidcModeClientConfig,
+	type FrontendOidcModeConsumedState,
 	FrontendOidcModeContextSource,
+	type FrontendOidcModeFlowStores,
 	type FrontendOidcModePendingState,
 	type FrontendOidcModeTokenResult,
 	type ResolvedFrontendOidcModeClientConfig,

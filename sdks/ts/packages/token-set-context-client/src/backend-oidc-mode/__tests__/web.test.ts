@@ -10,10 +10,12 @@ import {
 	type TimeTrait,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { type OidcModeCallbackInputPredicate } from "../../orchestration/client/types";
 import { BackendOidcModeClient } from "../client/client";
 import { type BackendOidcModeClientConfig } from "../client/types";
 import {
+	type BackendOidcModeCallbackInput,
 	BackendOidcModeCompatFragmentKind,
 	takeBackendOidcCallbackInputFromRouter,
 } from "../contracts/callback";
@@ -89,6 +91,7 @@ function createBackendOidcModeTestClient(options: {
 	sessionStorage?: ReturnType<typeof createInMemoryRecordStore>;
 	transport?: { execute(request: HttpRequest): Promise<HttpResponse> };
 	router?: ReturnType<typeof createRouterForNativeWeb>;
+	callbackInputPredicate?: OidcModeCallbackInputPredicate<BackendOidcModeCallbackInput>;
 }) {
 	return new BackendOidcModeClient(
 		{
@@ -106,6 +109,7 @@ function createBackendOidcModeTestClient(options: {
 				time: testTime,
 				router: options.router,
 			}),
+			callbackInputPredicate: options.callbackInputPredicate,
 		},
 	);
 }
@@ -135,8 +139,43 @@ describe("token-set backend OIDC web helpers", () => {
 		);
 	});
 
+	it("does not consume a compat fragment when the condition rejects it", async () => {
+		const history = createHistoryRecorder();
+		const expectedCallbackUrl = `https://app.example.com/oidc-mediated#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&callback_routing_key=backend&access_token=callback-at`;
+		const router = createRouterForNativeWeb({
+			location: {
+				href: expectedCallbackUrl,
+				hash: `#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&callback_routing_key=backend&access_token=callback-at`,
+			},
+			history,
+		});
+		if (router === null) {
+			throw new Error("Expected native web router.");
+		}
+		const condition = vi.fn(async ({ callbackInput, callbackUrl }) => {
+			expect(callbackInput).toEqual({ access_token: "callback-at" });
+			expect(callbackUrl.toString()).toBe(expectedCallbackUrl);
+			return false;
+		});
+
+		await expect(
+			takeBackendOidcCallbackInputFromRouter(router, {
+				condition: (options) => {
+					expect(options.callbackRoutingKey).toBe("backend");
+					return condition(options);
+				},
+			}),
+		).resolves.toBeNull();
+		expect(condition).toHaveBeenCalledOnce();
+		expect(history.replacedUrl).toBe("");
+		expect(router.currentUrl()?.toString()).toBe(expectedCallbackUrl);
+	});
+
 	it("lets callers pass a taken fragment directly to handleCallback", async () => {
-		const client = createBackendOidcModeTestClient({});
+		const callbackInputPredicate = vi.fn(() => false);
+		const client = createBackendOidcModeTestClient({
+			callbackInputPredicate,
+		});
 		const router = createRouterForNativeWeb({
 			location: {
 				href: `https://app.example.com/oidc-mediated#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&metadata_redemption_id=meta-1`,
@@ -156,6 +195,7 @@ describe("token-set backend OIDC web helpers", () => {
 		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(
 			"callback-at",
 		);
+		expect(callbackInputPredicate).not.toHaveBeenCalled();
 	});
 
 	it("does not consume a compat fragment owned by another application protocol", async () => {

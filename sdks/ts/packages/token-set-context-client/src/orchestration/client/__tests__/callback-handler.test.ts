@@ -80,7 +80,7 @@ describe("OidcModeCallbackHandler", () => {
 			kind: OidcModeCallbackHandlingKind.Handled,
 			result: "handled:redirect",
 		});
-		await expect(handler.handle({ callbackInput: "popup" })).resolves.toBe(
+		await expect(handler.handle({ input: "popup" })).resolves.toBe(
 			"handled:popup",
 		);
 		expect(handleInput).toHaveBeenCalledTimes(2);
@@ -108,8 +108,8 @@ describe("OidcModeCallbackHandler", () => {
 	it("rejects an explicit null input with the stable input error", async () => {
 		const { handler } = createHandler({ inputResolver: () => null });
 
-		await expect(handler.handle({ callbackInput: null })).rejects.toMatchObject(
-			{ code: "test.callback.input_not_found" },
-		);
+		await expect(handler.handle({ input: null })).rejects.toMatchObject({
+			code: "test.callback.input_not_found",
+		});
 	});
 });

@@ -30,6 +30,7 @@ import {
 } from "@securitydept/token-set-context-client/registry";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	provideTokenSetClientRegistry,
@@ -119,14 +120,14 @@ function createBackendClient(): BackendOidcModeClient {
 function createEntry(
 	clientKey: string,
 	clientFactory: () => BaseOidcModeClient,
-	callbackPath?: string,
+	callbackUrl?: string,
 ): TokenSetClientRegistryEntry<BaseOidcModeClient> {
 	return {
 		clientFactory,
 		meta: {
 			clientKey,
 			urlPatterns: [],
-			callbackPath,
+			callbackUrl,
 			requirementKind: undefined,
 			providerFamily: undefined,
 			initialization: TokenSetClientInitializationMode.Lazy,
@@ -144,6 +145,50 @@ function createRouter(url: string): RouterTrait {
 describe("token-set React callback hooks", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
+	});
+
+	it("keeps callback selection idle during server rendering", () => {
+		const frontendClientFactory = vi.fn(() => createFrontendClient());
+		const backendClientFactory = vi.fn(() => createBackendClient());
+		const currentUrl = vi.fn(() =>
+			UriReferenceString.parse(
+				`https://app.example.com/callback#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&callback_routing_key=backend&access_token=at`,
+			),
+		);
+		const environment = createEnvironmentForTest({
+			router: { currentUrl, navigate: vi.fn() },
+		});
+
+		function Probe() {
+			const frontend = useTokenSetFrontendCallback();
+			const backend = useTokenSetBackendCallback();
+			return createElement(
+				"output",
+				null,
+				`${frontend.state.status}:${backend.state.status}`,
+			);
+		}
+
+		const html = renderToString(
+			createElement(
+				SecuritydeptProvider,
+				{
+					parentInjector: environment.injector,
+					providers: provideTokenSetClientRegistry({
+						clients: [
+							createEntry("frontend", frontendClientFactory, "/callback"),
+							createEntry("backend", backendClientFactory),
+						],
+					}),
+				},
+				createElement(Probe),
+			),
+		);
+
+		expect(html).toContain(`${ResourceStatus.Idle}:${ResourceStatus.Idle}`);
+		expect(currentUrl).not.toHaveBeenCalled();
+		expect(frontendClientFactory).not.toHaveBeenCalled();
+		expect(backendClientFactory).not.toHaveBeenCalled();
 	});
 
 	it("initializes the selected frontend record without consuming callback input", async () => {
@@ -243,6 +288,42 @@ describe("token-set React callback hooks", () => {
 		);
 		await flushMicrotasks();
 
+		expect(clientFactory).toHaveBeenCalledOnce();
+		expect(view.container.textContent).toBe(ResourceStatus.Resolved);
+		view.unmount();
+	});
+
+	it("forwards a custom backend callback client query", async () => {
+		const client = createBackendClient();
+		const clientFactory = vi.fn(() => client);
+		const environment = createEnvironmentForTest({
+			router: createRouter("https://app.example.com/custom-callback"),
+		});
+		const clientQuery = vi.fn(({ callbackUrl }) => {
+			expect(callbackUrl.pathname).toBe("/custom-callback");
+			return { clientKey: "backend" };
+		});
+
+		function Probe() {
+			const callback = useTokenSetBackendCallback({ clientQuery });
+			return createElement("output", null, callback.state.status);
+		}
+
+		const view = render(
+			createElement(
+				SecuritydeptProvider,
+				{
+					parentInjector: environment.injector,
+					providers: provideTokenSetClientRegistry({
+						clients: [createEntry("backend", clientFactory)],
+					}),
+				},
+				createElement(Probe),
+			),
+		);
+		await flushMicrotasks();
+
+		expect(clientQuery).toHaveBeenCalled();
 		expect(clientFactory).toHaveBeenCalledOnce();
 		expect(view.container.textContent).toBe(ResourceStatus.Resolved);
 		view.unmount();

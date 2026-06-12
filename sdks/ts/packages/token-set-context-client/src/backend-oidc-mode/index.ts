@@ -58,7 +58,15 @@ export {
 	TokenSetPopupRelayErrorCode,
 	TokenSetPopupRelayErrorSource,
 } from "../orchestration/client/popup/relay";
+export {
+	type CreateDefaultBackendOidcModeCallbackInputResolverOptions,
+	createDefaultBackendOidcModeCallbackInputResolver,
+} from "./client/callback-input-resolver";
 export { BackendOidcModeClient } from "./client/client";
+export {
+	type CreateBackendOidcModeClientFactoryOptions,
+	createBackendOidcModeClientFactory,
+} from "./client/client-factory";
 export {
 	BackendOidcModeErrorCode,
 	BackendOidcModeErrorSource,
@@ -71,6 +79,7 @@ export {
 } from "./client/types";
 export {
 	type BackendOidcModeCallbackInput,
+	type BackendOidcModeCallbackInputConditionOptions,
 	BackendOidcModeCompatFragmentKind,
 	type TakeBackendOidcCallbackInputFromRouterOptions,
 	takeBackendOidcCallbackInputFromRouter,

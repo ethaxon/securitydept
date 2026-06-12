@@ -1,4 +1,9 @@
-import { SYMBOL_DISPOSE } from "@securitydept/client";
+import {
+	createFoundationEnvironment,
+	ResourceStatus,
+	SYMBOL_DISPOSE,
+	UriReferenceString,
+} from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
 import {
 	BackendOidcModeClient,
@@ -17,6 +22,8 @@ import {
 	type TokenSetClientRegistry,
 } from "../core/client-registry";
 
+const testEnvironment = createFoundationEnvironment({});
+
 function createClient<TClient extends BaseOidcModeClient>(Client: {
 	readonly prototype: TClient;
 }): TClient {
@@ -32,12 +39,12 @@ function createClient<TClient extends BaseOidcModeClient>(Client: {
 function createRegistry(
 	clientKey: string,
 	client: BaseOidcModeClient,
-	callbackPath?: string,
+	callbackUrl?: string | readonly string[],
 ) {
 	const registry = createTokenSetClientRegistry<BaseOidcModeClient>({
-		environment: {},
+		environment: testEnvironment,
 	});
-	registerClient(registry, clientKey, client, callbackPath);
+	registerClient(registry, clientKey, client, callbackUrl);
 	return registry;
 }
 
@@ -45,14 +52,14 @@ function registerClient(
 	registry: TokenSetClientRegistry<BaseOidcModeClient>,
 	clientKey: string,
 	client: BaseOidcModeClient,
-	callbackPath?: string,
+	callbackUrl?: string | readonly string[],
 ): void {
 	registry.register({
 		clientFactory: () => client,
 		meta: {
 			clientKey,
 			urlPatterns: [],
-			callbackPath,
+			callbackUrl,
 			requirementKind: undefined,
 			providerFamily: undefined,
 			initialization: "lazy",
@@ -68,7 +75,7 @@ function backendCallbackUrl(clientKey?: string): string {
 }
 
 describe("token-set registry callback client selection", () => {
-	it("returns a synchronous frontend record and fixed-record client resolver", async () => {
+	it("returns a frontend client selection snapshot signal", async () => {
 		const client = createClient(FrontendOidcModeClient);
 		const registry = createRegistry(
 			"frontend",
@@ -79,14 +86,61 @@ describe("token-set registry callback client selection", () => {
 		const selection = selectTokenSetFrontendCallbackClientFromRegistry({
 			registry,
 			callbackUrl: "https://app.example.com/auth/token-set/callback?code=ok",
+			initialize: true,
 		});
 
-		expect(selection.kind).toBe(TokenSetCallbackClientSelectionKind.Selected);
-		if (selection.kind !== TokenSetCallbackClientSelectionKind.Selected) {
-			throw new Error("Expected a selected frontend callback client.");
-		}
-		expect(selection.clientRecord.get().meta.clientKey).toBe("frontend");
-		await expect(selection.clientResolver()).resolves.toBe(client);
+		await vi.waitFor(() => {
+			expect(selection.get()).toEqual({
+				status: ResourceStatus.Resolved,
+				value: {
+					kind: TokenSetCallbackClientSelectionKind.Selected,
+					client,
+				},
+			});
+		});
+	});
+
+	it("lets a custom query derive client selection from a normalized callback URL", async () => {
+		const client = createClient(FrontendOidcModeClient);
+		const registry = createRegistry("frontend", client, "/ignored");
+		const clientQuery = vi.fn(({ callbackUrl }) => {
+			expect(callbackUrl).toBeInstanceOf(UriReferenceString);
+			expect(callbackUrl.pathname).toBe("/custom-callback");
+			return { clientKey: "frontend" };
+		});
+		const selection = selectTokenSetFrontendCallbackClientFromRegistry({
+			registry,
+			callbackUrl: new URL("https://app.example.com/custom-callback?code=ok"),
+			clientQuery,
+			initialize: true,
+		});
+
+		await vi.waitFor(() => {
+			expect(selection.get()).toMatchObject({
+				status: ResourceStatus.Resolved,
+				value: { kind: TokenSetCallbackClientSelectionKind.Selected, client },
+			});
+		});
+		expect(clientQuery).toHaveBeenCalledOnce();
+	});
+
+	it("treats a null custom query as not applicable", () => {
+		const registry = createRegistry(
+			"frontend",
+			createClient(FrontendOidcModeClient),
+			"/callback",
+		);
+
+		expect(
+			selectTokenSetFrontendCallbackClientFromRegistry({
+				registry,
+				callbackUrl: "/callback?code=ok",
+				clientQuery: () => null,
+			}).get(),
+		).toEqual({
+			status: ResourceStatus.Resolved,
+			value: { kind: TokenSetCallbackClientSelectionKind.NotApplicable },
+		});
 	});
 
 	it("selects a backend client from the compat-fragment routing key", async () => {
@@ -96,14 +150,18 @@ describe("token-set registry callback client selection", () => {
 		const selection = selectTokenSetBackendCallbackClientFromRegistry({
 			registry,
 			callbackUrl: backendCallbackUrl("backend"),
+			initialize: true,
 		});
 
-		expect(selection.kind).toBe(TokenSetCallbackClientSelectionKind.Selected);
-		if (selection.kind !== TokenSetCallbackClientSelectionKind.Selected) {
-			throw new Error("Expected a selected backend callback client.");
-		}
-		expect(selection.clientRecord.get().meta.clientKey).toBe("backend");
-		await expect(selection.clientResolver()).resolves.toBe(client);
+		await vi.waitFor(() => {
+			expect(selection.get()).toEqual({
+				status: ResourceStatus.Resolved,
+				value: {
+					kind: TokenSetCallbackClientSelectionKind.Selected,
+					client,
+				},
+			});
+		});
 	});
 
 	it("returns not applicable when a frontend callback path does not match", () => {
@@ -117,8 +175,11 @@ describe("token-set registry callback client selection", () => {
 			selectTokenSetFrontendCallbackClientFromRegistry({
 				registry,
 				callbackUrl: "https://app.example.com/not-a-callback",
-			}),
-		).toEqual({ kind: TokenSetCallbackClientSelectionKind.NotApplicable });
+			}).get(),
+		).toEqual({
+			status: ResourceStatus.Resolved,
+			value: { kind: TokenSetCallbackClientSelectionKind.NotApplicable },
+		});
 	});
 
 	it("does not resolve a replacement record with the same client key", async () => {
@@ -131,10 +192,6 @@ describe("token-set registry callback client selection", () => {
 			registry,
 			callbackUrl: "https://app.example.com/auth/token-set/callback?code=ok",
 		});
-		if (selection.kind !== TokenSetCallbackClientSelectionKind.Selected) {
-			throw new Error("Expected a selected frontend callback client.");
-		}
-
 		registry.unregister("frontend");
 		registerClient(
 			registry,
@@ -143,8 +200,9 @@ describe("token-set registry callback client selection", () => {
 			"/auth/token-set/callback",
 		);
 
-		await expect(selection.clientResolver()).rejects.toMatchObject({
-			code: TokenSetRegistryCallbackErrorCode.ClientNotFound,
+		expect(selection.get()).toMatchObject({
+			status: ResourceStatus.LoadingError,
+			error: { code: TokenSetRegistryCallbackErrorCode.ClientNotFound },
 		});
 	});
 
@@ -154,51 +212,102 @@ describe("token-set registry callback client selection", () => {
 			createClient(FrontendOidcModeClient),
 		);
 
-		expect(() =>
+		expect(
 			selectTokenSetBackendCallbackClientFromRegistry({
 				registry,
 				callbackUrl: backendCallbackUrl(),
-			}),
-		).toThrowError(
-			expect.objectContaining({
+			}).get(),
+		).toMatchObject({
+			status: ResourceStatus.LoadingError,
+			error: {
 				code: TokenSetRegistryCallbackErrorCode.RoutingKeyMissing,
-			}),
-		);
+			},
+		});
 
 		const selection = selectTokenSetBackendCallbackClientFromRegistry({
 			registry,
 			callbackUrl: backendCallbackUrl("frontend"),
+			initialize: true,
 		});
-		if (selection.kind !== TokenSetCallbackClientSelectionKind.Selected) {
-			throw new Error("Expected a selected backend callback client.");
-		}
-		await expect(selection.clientResolver()).rejects.toMatchObject({
-			code: TokenSetRegistryCallbackErrorCode.ClientModeMismatch,
+		await vi.waitFor(() => {
+			expect(selection.get()).toMatchObject({
+				status: ResourceStatus.LoadingError,
+				error: { code: TokenSetRegistryCallbackErrorCode.ClientModeMismatch },
+			});
 		});
+	});
+
+	it("lets backend callers map an initial missing client", () => {
+		const registry = createRegistry(
+			"frontend",
+			createClient(FrontendOidcModeClient),
+		);
+		const mapClientNotFound = vi.fn(
+			() =>
+				({
+					status: ResourceStatus.Resolved,
+					value: { kind: TokenSetCallbackClientSelectionKind.NotApplicable },
+				}) as const,
+		);
+
+		expect(
+			selectTokenSetBackendCallbackClientFromRegistry({
+				registry,
+				callbackUrl: backendCallbackUrl("missing"),
+				mapClientNotFound,
+			}).get(),
+		).toEqual({
+			status: ResourceStatus.Resolved,
+			value: { kind: TokenSetCallbackClientSelectionKind.NotApplicable },
+		});
+		expect(mapClientNotFound).toHaveBeenCalledWith({
+			status: ResourceStatus.LoadingError,
+			error: expect.objectContaining({
+				code: TokenSetRegistryCallbackErrorCode.ClientNotFound,
+			}),
+		});
+	});
+
+	it("lets a client-not-found mapper throw from the selection signal", () => {
+		const registry = createRegistry(
+			"frontend",
+			createClient(FrontendOidcModeClient),
+		);
+		const mapperError = new Error("mapped client not found");
+		const selection = selectTokenSetBackendCallbackClientFromRegistry({
+			registry,
+			callbackUrl: backendCallbackUrl("missing"),
+			mapClientNotFound: () => {
+				throw mapperError;
+			},
+		});
+
+		expect(() => selection.get()).toThrow(mapperError);
 	});
 
 	it("rejects ambiguous frontend callback metadata", () => {
 		const registry = createRegistry(
 			"frontend-a",
 			createClient(FrontendOidcModeClient),
-			"/callback",
+			["/callback", "/alternate-callback"],
 		);
 		registerClient(
 			registry,
 			"frontend-b",
 			createClient(FrontendOidcModeClient),
-			"/callback",
+			["/callback", "/second-alternate-callback"],
 		);
 
-		expect(() =>
+		expect(
 			selectTokenSetFrontendCallbackClientFromRegistry({
 				registry,
 				callbackUrl: "https://app.example.com/callback?code=ok",
-			}),
-		).toThrowError(
-			expect.objectContaining({
+			}).get(),
+		).toMatchObject({
+			status: ResourceStatus.LoadingError,
+			error: {
 				code: TokenSetRegistryCallbackErrorCode.ClientSelectionAmbiguous,
-			}),
-		);
+			},
+		});
 	});
 });
