@@ -128,15 +128,6 @@ describe("dashboard route catalog rendering", () => {
 		expect(container.textContent).toContain("Conditional Propagation");
 		expect(container.textContent).toContain("Disabled");
 
-		// Browser harness section is mounted under the
-		// dashboard and renders Chromium / Firefox / WebKit identities and
-		// at least one verified-scenario count line.
-		expect(container.textContent).toContain("Browser Harness");
-		expect(container.textContent).toContain("Chromium");
-		expect(container.textContent).toContain("Firefox");
-		expect(container.textContent).toContain("WebKit");
-		expect(container.textContent).toContain("verified");
-
 		await act(async () => {
 			root.unmount();
 		});

@@ -128,7 +128,8 @@ Angular DI remains an adapter concern. Framework-neutral host capability resolut
 
 The canonical foundation model is:
 
-- `FoundationEnvironment` is the flattened foundation client dependency environment. It directly carries `transport`, `time`, a required root `span`, required `tracing`, required `realmStorage`, and optional `idleCallback`, `persistentStorage`, `sessionStorage`, `router`, `pageLifecycle`, and `popup`. `realmStorage` is volatile storage scoped to that environment's JavaScript realm: `createFoundationEnvironment()` creates a fresh isolated in-memory store unless the composition root supplies an override. Historical `ClientRuntime` naming is retired and not canonical vocabulary.
+- `FoundationEnvironment` is the flattened foundation client dependency environment. It directly carries `transport`, `time`, a required root `span`, required `tracing`, required `realmStorage`, and optional `idleCallback`, `persistentStorage`, `sessionStorage`, `router`, `pageLifecycle`, and `popup`. `realmStorage` is a synchronous `SyncStorageTrait` scoped to that environment's JavaScript realm: `createFoundationEnvironment()` creates a fresh isolated in-memory store unless the composition root supplies an override. Historical `ClientRuntime` naming is retired and not canonical vocabulary.
+- `StorageTrait` operations may complete synchronously or return a Promise, while `SyncStorageTrait` narrows all operations to synchronous results and therefore remains structurally assignable to `StorageTrait`. A storage adapter may expose `storageEvent` for logical-key mutation notifications; `StorageChangeEvent.origin` distinguishes same-context `local` mutations from cross-context `external` mutations, while host adapters own native event filtering and key-prefix normalization.
 - `NativeWebEnvironment` is the canonical browser page environment. It extends the foundation environment with host-owned page capabilities such as `router`, `PageLifecycleTrait`, and `PopupTrait`; it does not expose `window.location` or `window.history`, and it no longer mirrors router methods at the top level.
 - `WebExtCoreEnvironment` is the shared extension-core environment above the foundation layer. `WebExtBackgroundEnvironment` is the background-script specialization, and `WebExtPageEnvironment` combines extension-core capabilities with `NativeWebEnvironment`.
 - `ServiceWorkerEnvironment` is the service-worker specialization above the foundation layer.
@@ -294,7 +295,7 @@ Frontend OIDC flow state has an explicit storage scope selected at the flow entr
 
 #### Reference-App Baseline (`apps/webui` / `apps/server`)
 
-`apps/webui` and `apps/server` define the current in-repo baseline: backend-mode and frontend-mode host splits, keyed callback/readiness, React Query token-set management flows, route security, dashboard bearer access, browser harness reporting, and shared error/diagnosis consumption.
+`apps/webui` and `apps/server` define the current in-repo baseline: backend-mode and frontend-mode host splits, keyed callback/readiness, React Query token-set management flows, route security, dashboard bearer access, browser E2E coverage, and shared error/diagnosis consumption.
 
 The reference app should prove canonical SDK usage directly. `apps/webui` now reads SDK dependencies through `useSecuritydeptContext().get(TOKEN)`, `useReadableSignalValue(...)`, and explicit assertion/helpers local to each feature instead of hiding those reads behind a shared app-local facade.
 
@@ -486,7 +487,7 @@ The canonical RxJS bridge now lives at `@securitydept/client/rx`. Use `toRxObser
 ### Primary Real Reference Apps
 
 - `apps/server`: auth, propagation, route composition, server error/diagnosis proof.
-- `apps/webui`: React/browser/multi-context auth shell, token-set reference page, dashboard, browser harness report, and SDK dogfooding coverage.
+- `apps/webui`: React/browser/multi-context auth shell, token-set reference page, dashboard, browser E2E coverage, and SDK dogfooding coverage.
 
 ### Downstream Reference Case: Outposts
 

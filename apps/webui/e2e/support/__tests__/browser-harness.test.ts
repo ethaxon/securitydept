@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { detectBrowserCapabilities } from "../../e2e/support/browser-capability-detection.ts";
-import { buildExecutionBaselinePolicy } from "../../e2e/support/browser-execution-baseline-policy.ts";
+import { detectBrowserCapabilities } from "../browser-capability-detection.ts";
+import { buildExecutionBaselinePolicy } from "../browser-execution-baseline-policy.ts";
 import {
 	BrowserAvailability,
 	ExecutionBaseline,
 	ExecutionBaselineRole,
 	HarnessBrowserName,
-} from "../../e2e/support/browser-harness-contract.ts";
+} from "../browser-harness-contract.ts";
 
 describe("browser harness capability detection", () => {
 	it("uses adapter/runtime inputs rather than assuming Playwright cache layout", () => {

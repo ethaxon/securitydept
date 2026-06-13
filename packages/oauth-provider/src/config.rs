@@ -11,7 +11,7 @@ use crate::{OAuthProviderError, OAuthProviderResult};
 /// resource-server verifiers.
 #[serde_as]
 #[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct OAuthProviderRemoteConfig {
     /// OpenID Connect discovery document URL.
     ///
@@ -44,6 +44,18 @@ pub struct OAuthProviderRemoteConfig {
     #[serde(default = "default_jwks_refresh_interval", with = "humantime_serde")]
     #[cfg_attr(feature = "config-schema", schemars(with = "String"))]
     pub jwks_refresh_interval: Duration,
+}
+
+impl Default for OAuthProviderRemoteConfig {
+    fn default() -> Self {
+        Self {
+            well_known_url: None,
+            issuer_url: None,
+            jwks_uri: None,
+            metadata_refresh_interval: default_metadata_refresh_interval(),
+            jwks_refresh_interval: default_jwks_refresh_interval(),
+        }
+    }
 }
 
 impl OAuthProviderRemoteConfig {
@@ -154,6 +166,22 @@ mod tests {
     use openidconnect::core::{CoreClientAuthMethod, CoreJwsSigningAlgorithm};
 
     use super::{OAuthProviderConfig, OAuthProviderOidcConfig, OAuthProviderRemoteConfig};
+
+    #[test]
+    fn remote_rust_default_matches_deserialization_defaults() {
+        let rust_default = OAuthProviderRemoteConfig::default();
+        let deserialized: OAuthProviderRemoteConfig =
+            serde_json::from_value(serde_json::json!({})).expect("config should deserialize");
+
+        assert_eq!(
+            rust_default.metadata_refresh_interval,
+            deserialized.metadata_refresh_interval
+        );
+        assert_eq!(
+            rust_default.jwks_refresh_interval,
+            deserialized.jwks_refresh_interval
+        );
+    }
 
     #[test]
     fn deserialize_empty_strings_as_none() {

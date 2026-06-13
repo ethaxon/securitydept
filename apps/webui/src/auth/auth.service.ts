@@ -3,14 +3,20 @@ import {
 	type BasicAuthContextService,
 } from "@securitydept/basic-auth-context-client-react";
 import {
+	type AuthRequirement,
 	type BaseTransportTrait,
+	ClientError,
+	ClientErrorKind,
 	createComputed,
-	createSignal,
 	type DisposableTrait,
 	ENVIRONMENT_TOKEN,
+	type EventStreamTrait,
 	type FoundationEnvironment,
+	flattenResourceSnapshot,
 	INJECTOR_TOKEN,
-	type ReadableSignalTrait,
+	REQUIREMENT_PLANNER_HOST,
+	type RequirementBehaviourWithRouteContext,
+	RequirementPlannerHost,
 	type ResourceSnapshot,
 	ResourceStatus,
 	type ResourceTrait,
@@ -20,8 +26,9 @@ import {
 	type SecuritydeptInjector,
 	type SecuritydeptProvider,
 	SYMBOL_DISPOSE,
-	type WritableSignalTrait,
+	UserRecovery,
 } from "@securitydept/client";
+import { RxStateSignal } from "@securitydept/client/rx";
 import {
 	SESSION_CONTEXT_CLIENT,
 	type SessionContextService,
@@ -34,6 +41,7 @@ import {
 	TOKEN_SET_CLIENT_REGISTRY,
 	type TokenSetClientRegistryService,
 } from "@securitydept/token-set-context-client-react";
+import { filter, from, take, takeUntil } from "rxjs";
 import {
 	TOKEN_SET_BACKEND_MODE_CONFIG,
 	TOKEN_SET_FRONTEND_MODE_CONFIG,
@@ -44,7 +52,7 @@ import {
 	TokenSetTracingService,
 } from "@/auth/token-set/tracing";
 import { projectDashboardUser } from "@/dashboard/principal";
-import { type AuthModeStore } from "./mode-store";
+import { type AuthModeStore, createAuthModeStore } from "./mode-store";
 import {
 	AuthContextMode,
 	type AuthLoginOptions,
@@ -52,6 +60,22 @@ import {
 	type WebuiAuthUser,
 	WebuiAuthUserKind,
 } from "./model";
+
+const SESSION_POST_AUTH_REDIRECT_PARAM = "post_auth_redirect_uri";
+
+interface DashboardAuthRequirement extends AuthRequirement {
+	readonly kind: "dashboard";
+}
+
+function createLoginPath(postAuthRedirectUri?: string): string {
+	if (!postAuthRedirectUri) {
+		return "/login";
+	}
+	const search = new URLSearchParams({
+		[SESSION_POST_AUTH_REDIRECT_PARAM]: postAuthRedirectUri,
+	});
+	return `/login?${search.toString()}`;
+}
 
 function mapAuthUserSnapshot<T>(
 	snapshot: ResourceSnapshot<T>,
@@ -80,21 +104,22 @@ function mapAuthUserSnapshot<T>(
 export const AUTH_SERVICE = new SecuritydeptInjectionToken<AuthService>(
 	"AUTH_SERVICE",
 );
-export const AUTH_MODE_STORE = new SecuritydeptInjectionToken<AuthModeStore>(
-	"AUTH_MODE_STORE",
-);
 
 export class AuthService implements DisposableTrait {
 	private readonly session: SessionContextService;
 	private readonly basic: BasicAuthContextService;
 	private readonly registry: TokenSetClientRegistryService;
 	private readonly modeStore: AuthModeStore;
-	private readonly modeSignal: WritableSignalTrait<AuthContextMode>;
-	private readonly unsubscribeModeStore: () => void;
+	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
+	private readonly destroyed$ = from(this._destroyed).pipe(
+		filter((value): value is true => value),
+		take(1),
+	);
 	private readonly tokenSetBackendModeClientResource: ResourceTrait<BaseOidcModeClient>;
 	private readonly tokenSetFrontendModeClientResource: ResourceTrait<BaseOidcModeClient>;
 	readonly authUser: ResourceTrait<WebuiAuthUser>;
-	readonly mode: ReadableSignalTrait<AuthContextMode>;
+	readonly mode: ResourceTrait<AuthContextMode | null>;
+	readonly modeErrors: EventStreamTrait<ClientError>;
 	readonly environment: FoundationEnvironment;
 
 	get transport(): BaseTransportTrait {
@@ -109,11 +134,12 @@ export class AuthService implements DisposableTrait {
 			BASIC_AUTH_CONTEXT_CLIENT,
 		) as BasicAuthContextService;
 		this.registry = injector.get(TOKEN_SET_CLIENT_REGISTRY);
-		this.modeStore = injector.get(AUTH_MODE_STORE);
-		const initialMode = this.resolveMode();
-		this.modeSignal = createSignal(initialMode);
-		this.mode = this.modeSignal;
 		this.environment = injector.get(ENVIRONMENT_TOKEN);
+		this.modeStore = createAuthModeStore({
+			persistentStorage: this.environment.persistentStorage,
+		});
+		this.mode = this.modeStore.mode;
+		this.modeErrors = this.modeStore.errors;
 		this.tokenSetBackendModeClientResource = this.registry.clientResourceFor(
 			TOKEN_SET_BACKEND_MODE_CONFIG.clientKey,
 			{ initialize: false },
@@ -122,28 +148,33 @@ export class AuthService implements DisposableTrait {
 			TOKEN_SET_FRONTEND_MODE_CONFIG.clientKey,
 			{ initialize: false },
 		);
-		if (initialMode === AuthContextMode.TokenSetBackend) {
-			this.registry.clientResourceFor(TOKEN_SET_BACKEND_MODE_CONFIG.clientKey);
-		} else if (initialMode === AuthContextMode.TokenSetFrontend) {
-			this.registry.clientResourceFor(TOKEN_SET_FRONTEND_MODE_CONFIG.clientKey);
-		}
-		this.unsubscribeModeStore = this.modeStore.subscribe(() => {
-			const mode = this.getMode() ?? AuthContextMode.Session;
-			if (mode === AuthContextMode.TokenSetBackend) {
-				this.registry.clientResourceFor(
-					TOKEN_SET_BACKEND_MODE_CONFIG.clientKey,
-				);
-			} else if (mode === AuthContextMode.TokenSetFrontend) {
-				this.registry.clientResourceFor(
-					TOKEN_SET_FRONTEND_MODE_CONFIG.clientKey,
-				);
-			}
-			this.modeSignal.set(mode);
-		});
+		from(this.mode)
+			.pipe(takeUntil(this.destroyed$))
+			.subscribe((snapshot) => {
+				if (snapshot.status !== ResourceStatus.Resolved) {
+					return;
+				}
+				if (snapshot.value === AuthContextMode.TokenSetBackend) {
+					this.registry.clientResourceFor(
+						TOKEN_SET_BACKEND_MODE_CONFIG.clientKey,
+					);
+				} else if (snapshot.value === AuthContextMode.TokenSetFrontend) {
+					this.registry.clientResourceFor(
+						TOKEN_SET_FRONTEND_MODE_CONFIG.clientKey,
+					);
+				}
+			});
 
 		const authUserSnapshot = createComputed<ResourceSnapshot<WebuiAuthUser>>(
 			() => {
-				const mode = this.modeSignal.get();
+				const modeSnapshot = this.mode.snapshot.get();
+				if (modeSnapshot.status !== ResourceStatus.Resolved) {
+					return mapAuthUserSnapshot(modeSnapshot, () => null);
+				}
+				const mode = modeSnapshot.value;
+				if (mode === null) {
+					return { status: ResourceStatus.Resolved, value: null };
+				}
 				if (mode === AuthContextMode.Session) {
 					return mapAuthUserSnapshot(
 						this.session.sessionResource.snapshot.get(),
@@ -181,20 +212,6 @@ export class AuthService implements DisposableTrait {
 					mode === AuthContextMode.TokenSetBackend
 						? this.tokenSetBackendModeClientResource.snapshot.get()
 						: this.tokenSetFrontendModeClientResource.snapshot.get();
-				if (
-					clientSnapshot.status === ResourceStatus.Idle ||
-					clientSnapshot.status === ResourceStatus.Loading ||
-					clientSnapshot.status === ResourceStatus.LoadingError
-				) {
-					return clientSnapshot;
-				}
-				if (clientSnapshot.status === ResourceStatus.Error) {
-					return {
-						status: ResourceStatus.LoadingError,
-						error: clientSnapshot.error,
-					};
-				}
-
 				const type =
 					mode === AuthContextMode.TokenSetBackend
 						? WebuiAuthUserKind.TokenSetBackendOidcMode
@@ -204,7 +221,10 @@ export class AuthService implements DisposableTrait {
 						? "Token Set Backend Mode"
 						: "Token Set Frontend Mode";
 				return mapAuthUserSnapshot(
-					clientSnapshot.value.authResource.snapshot.get(),
+					flattenResourceSnapshot(
+						clientSnapshot,
+						(client) => client.authSnapshot,
+					),
 					(snapshot) => {
 						const principal = snapshot?.metadata.principal;
 						return principal
@@ -221,31 +241,19 @@ export class AuthService implements DisposableTrait {
 		injector.get(SecuritydeptDestroyRef).onDestroy(() => this.dispose());
 	}
 
-	getMode(): AuthContextMode | null {
-		return this.parseMode(this.modeStore.read());
-	}
-
-	resolveMode(): AuthContextMode {
-		return this.getMode() ?? AuthContextMode.Session;
-	}
-
 	setMode(mode: AuthContextMode): void {
-		if (mode === AuthContextMode.TokenSetBackend) {
-			this.registry.clientResourceFor(TOKEN_SET_BACKEND_MODE_CONFIG.clientKey);
-		} else if (mode === AuthContextMode.TokenSetFrontend) {
-			this.registry.clientResourceFor(TOKEN_SET_FRONTEND_MODE_CONFIG.clientKey);
-		}
-		this.modeStore.write(mode);
-		this.modeSignal.set(mode);
+		this.modeStore.set(mode);
 	}
 
 	clearMode(): void {
 		this.modeStore.clear();
-		this.modeSignal.set(AuthContextMode.Session);
 	}
 
 	async ensureAuthenticatedForRoute(_url: string): Promise<boolean> {
-		const mode = this.resolveMode();
+		const mode = await this.mode.whenValue();
+		if (mode === null) {
+			return false;
+		}
 		if (mode === AuthContextMode.Session) {
 			return (await this.session.refresh()) !== null;
 		}
@@ -286,8 +294,11 @@ export class AuthService implements DisposableTrait {
 	}
 
 	async logout(): Promise<void> {
-		const mode = this.resolveMode();
+		const mode = await this.mode.whenValue();
 		try {
+			if (mode === null) {
+				return;
+			}
 			if (mode === AuthContextMode.Session) {
 				await this.session.logout();
 			} else if (mode === AuthContextMode.Basic) {
@@ -319,7 +330,16 @@ export class AuthService implements DisposableTrait {
 	}
 
 	async resolveDashboardAccess(): Promise<DashboardAccess> {
-		const mode = this.resolveMode();
+		const mode = await this.mode.whenValue();
+		if (mode === null) {
+			throw new ClientError({
+				kind: ClientErrorKind.Unauthenticated,
+				code: "webui.auth_mode.not_selected",
+				message: "An authentication mode must be selected before API access",
+				source: "webui.auth_service",
+				recovery: UserRecovery.Reauthenticate,
+			});
+		}
 		if (mode === AuthContextMode.Session) {
 			return {
 				kind: "cookie",
@@ -355,36 +375,18 @@ export class AuthService implements DisposableTrait {
 	}
 
 	dispose(): void {
-		this.unsubscribeModeStore();
+		this._destroyed.set(true);
 		this.authUser.dispose();
+		this.modeStore.dispose();
 	}
 
 	[SYMBOL_DISPOSE](): void {
 		this.dispose();
 	}
-
-	private parseMode(raw: string | null): AuthContextMode | null {
-		return raw === AuthContextMode.Session ||
-			raw === AuthContextMode.TokenSetBackend ||
-			raw === AuthContextMode.TokenSetFrontend ||
-			raw === AuthContextMode.Basic
-			? raw
-			: null;
-	}
 }
 
-export interface ProvideAuthServiceOptions {
-	readonly authModeStore: AuthModeStore;
-}
-
-export function provideAuthService(
-	options: ProvideAuthServiceOptions,
-): readonly SecuritydeptProvider[] {
+export function provideAuthService(): readonly SecuritydeptProvider[] {
 	return [
-		{
-			provide: AUTH_MODE_STORE,
-			useValue: options.authModeStore,
-		},
 		...provideTokenSetTracing(),
 		...provideTokenSetClientRegistry({
 			createClients: (injector) => {
@@ -400,6 +402,30 @@ export function provideAuthService(
 		{
 			provide: AUTH_SERVICE,
 			useExisting: AuthService,
+		},
+		{
+			provide: REQUIREMENT_PLANNER_HOST,
+			useFactory: (
+				authService: AuthService,
+				environment: FoundationEnvironment,
+			) =>
+				RequirementPlannerHost.fromBehaviour<
+					Partial<
+						RequirementBehaviourWithRouteContext<DashboardAuthRequirement>
+					>
+				>(
+					{
+						checkAuthenticated: (requirement, context) =>
+							requirement.kind === "dashboard" &&
+							authService.ensureAuthenticatedForRoute(
+								context.planContext.routeState.url,
+							),
+						onUnauthenticated: (_requirement, context) =>
+							createLoginPath(context.planContext.routeState.url),
+					},
+					{ environment },
+				),
+			deps: [AUTH_SERVICE, ENVIRONMENT_TOKEN],
 		},
 	];
 }

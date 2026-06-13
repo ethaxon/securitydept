@@ -12,6 +12,7 @@ export {
 	resourceFromSnapshots,
 } from "./resource";
 export {
+	flattenResourceSnapshot,
 	type ResourceSnapshotUpdate,
 	ResourceSnapshotUpdateKind,
 	reduceResourceSnapshot,

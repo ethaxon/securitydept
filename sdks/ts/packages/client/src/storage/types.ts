@@ -1,20 +1,48 @@
 import { type as defineType } from "arktype";
+import { type EventStreamTrait } from "../events";
 import { SecuritydeptInjectionToken } from "../injection";
 
 // --- Storage abstractions ---
 
+export const StorageChangeEventOrigin = {
+	Local: "local",
+	External: "external",
+} as const;
+
+export type StorageChangeEventOrigin =
+	(typeof StorageChangeEventOrigin)[keyof typeof StorageChangeEventOrigin];
+
+export interface StorageChangeEvent {
+	readonly origin: StorageChangeEventOrigin;
+	readonly key: string | null;
+	readonly oldValue: string | null;
+	readonly newValue: string | null;
+}
+
 /** Low-level key-value storage trait. */
 export interface StorageTrait {
-	get(key: string): Promise<string | null>;
-	set(key: string, value: string): Promise<void>;
+	readonly storageEvent?: EventStreamTrait<StorageChangeEvent>;
+	get(key: string): string | null | Promise<string | null>;
+	set(key: string, value: string): void | Promise<void>;
 	/**
 	 * Atomically read and remove a record within the store's consistency domain.
 	 */
-	take?(key: string): Promise<string | null>;
-	remove(key: string): Promise<void>;
+	take?(key: string): string | null | Promise<string | null>;
+	remove(key: string): void | Promise<void>;
+}
+
+/** Storage whose operations complete synchronously in the current realm. */
+export interface SyncStorageTrait extends StorageTrait {
+	get(key: string): string | null;
+	set(key: string, value: string): void;
+	take?(key: string): string | null;
+	remove(key: string): void;
 }
 
 export const StorageTraitSchema = defineType({
+	"storageEvent?": {
+		subscribe: "Function",
+	},
 	get: "Function",
 	set: "Function",
 	take: "Function?",
@@ -22,7 +50,7 @@ export const StorageTraitSchema = defineType({
 });
 
 export const REALM_STORAGE_TRAIT_TOKEN =
-	new SecuritydeptInjectionToken<StorageTrait>("REALM_STORAGE_TRAIT_TOKEN");
+	new SecuritydeptInjectionToken<SyncStorageTrait>("REALM_STORAGE_TRAIT_TOKEN");
 
 export const PERSISTENT_STORAGE_TRAIT_TOKEN =
 	new SecuritydeptInjectionToken<StorageTrait | null>(

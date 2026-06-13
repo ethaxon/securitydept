@@ -9,8 +9,7 @@ import {
 import { createTanStackRouterContext } from "@securitydept/client-react/tanstack-router";
 import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
-import { StrictMode, useMemo } from "react";
-import { AuthRuntime } from "@/auth/runtime";
+import { StrictMode, Suspense, useMemo } from "react";
 import { createAppRouter } from "@/router";
 import { ThemeProvider } from "@/theme/react";
 import { type ThemeService } from "@/theme/theme.service";
@@ -50,8 +49,9 @@ function AppRouterProvider() {
 	);
 	return (
 		<StrictMode>
-			<AuthRuntime />
-			<RouterProvider router={router} />
+			<Suspense fallback={null}>
+				<RouterProvider router={router} />
+			</Suspense>
 		</StrictMode>
 	);
 }

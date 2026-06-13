@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	type StorageChangeEvent,
+	StorageChangeEventOrigin,
+} from "../../storage";
+import {
 	createPersistentStorageForNativeWeb,
 	createSessionStorageForNativeWeb,
 	type NativeWebStorageLike,
@@ -51,7 +55,7 @@ describe("native web storage adapter", () => {
 		).toThrow(/createStorageForNativeWeb could not validate/);
 	});
 
-	it("adapts valid native web storage hosts", async () => {
+	it("adapts valid native web storage hosts synchronously", () => {
 		const hostStorage = createNativeWebStorage();
 		const storage = createPersistentStorageForNativeWeb({
 			storage: hostStorage,
@@ -59,15 +63,15 @@ describe("native web storage adapter", () => {
 		});
 
 		expect(storage).not.toBeNull();
-		await storage?.set("key", "value");
+		storage?.set("key", "value");
 		expect(hostStorage.values.get("test:key")).toBe("value");
-		await expect(storage?.get("key")).resolves.toBe("value");
+		expect(storage?.get("key")).toBe("value");
 		expect(storage?.take).toBeDefined();
-		await expect(storage?.take?.("key")).resolves.toBe("value");
-		await expect(storage?.get("key")).resolves.toBeNull();
-		await storage?.set("key", "next");
-		await storage?.remove("key");
-		await expect(storage?.get("key")).resolves.toBeNull();
+		expect(storage?.take?.("key")).toBe("value");
+		expect(storage?.get("key")).toBeNull();
+		storage?.set("key", "next");
+		storage?.remove("key");
+		expect(storage?.get("key")).toBeNull();
 	});
 
 	it("returns null from host-specific creators when global storage is unavailable", () => {
@@ -76,5 +80,56 @@ describe("native web storage adapter", () => {
 
 		expect(createPersistentStorageForNativeWeb({ prefix: "test:" })).toBeNull();
 		expect(createSessionStorageForNativeWeb({ prefix: "test:" })).toBeNull();
+	});
+
+	it("emits logical local and matching external storage changes", () => {
+		const hostStorage = createNativeWebStorage();
+		let storageHandler: EventListener | undefined;
+		const storage = createPersistentStorageForNativeWeb({
+			storage: hostStorage,
+			prefix: "test:",
+			storageEventTarget: {
+				addEventListener(_type, listener) {
+					storageHandler = listener;
+				},
+				removeEventListener() {
+					storageHandler = undefined;
+				},
+			},
+		});
+		const events: StorageChangeEvent[] = [];
+		const subscription = storage?.storageEvent?.subscribe({
+			next: (event) => events.push(event),
+		});
+
+		storage?.set("local", "value");
+		storageHandler?.({
+			key: "test:remote",
+			oldValue: "before",
+			newValue: "after",
+			storageArea: hostStorage,
+		} as unknown as StorageEvent);
+		storageHandler?.({
+			key: "other:remote",
+			oldValue: null,
+			newValue: "ignored",
+			storageArea: hostStorage,
+		} as unknown as StorageEvent);
+
+		expect(events).toEqual([
+			{
+				origin: StorageChangeEventOrigin.Local,
+				key: "local",
+				oldValue: null,
+				newValue: "value",
+			},
+			{
+				origin: StorageChangeEventOrigin.External,
+				key: "remote",
+				oldValue: "before",
+				newValue: "after",
+			},
+		]);
+		subscription?.unsubscribe();
 	});
 });

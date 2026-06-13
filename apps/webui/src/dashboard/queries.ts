@@ -23,21 +23,21 @@ import { useAuthMode, useAuthService, useAuthUser } from "@/auth/react";
 
 export const dashboardQueryKeys = {
 	root: ["dashboard"] as const,
-	groups: (mode: AuthContextMode) =>
+	groups: (mode: AuthContextMode | null) =>
 		[...dashboardQueryKeys.root, mode, "groups"] as const,
-	group: (mode: AuthContextMode, groupId: string) =>
+	group: (mode: AuthContextMode | null, groupId: string) =>
 		[...dashboardQueryKeys.groups(mode), groupId] as const,
-	entries: (mode: AuthContextMode) =>
+	entries: (mode: AuthContextMode | null) =>
 		[...dashboardQueryKeys.root, mode, "entries"] as const,
-	entry: (mode: AuthContextMode, entryId: string) =>
+	entry: (mode: AuthContextMode | null, entryId: string) =>
 		[...dashboardQueryKeys.entries(mode), entryId] as const,
-	currentUser: (mode: AuthContextMode) =>
+	currentUser: (mode: AuthContextMode | null) =>
 		[...dashboardQueryKeys.root, mode, "current-user"] as const,
 } as const;
 
 export function useCurrentDashboardUser() {
 	const authUser = useAuthUser();
-	const { mode } = useAuthMode();
+	const mode = useAuthMode();
 	return useQuery({
 		queryKey: dashboardQueryKeys.currentUser(mode),
 		queryFn: async () => authUser?.userInfo ?? null,
@@ -47,7 +47,7 @@ export function useCurrentDashboardUser() {
 
 export function useDashboardAccessNotice() {
 	const authUser = useAuthUser();
-	const { mode } = useAuthMode();
+	const mode = useAuthMode();
 	if (
 		(mode === AuthContextMode.TokenSetBackend ||
 			mode === AuthContextMode.TokenSetFrontend) &&
@@ -64,7 +64,7 @@ export function useDashboardAccessNotice() {
 
 export function useGroupsQuery() {
 	const authService = useAuthService();
-	const { mode } = useAuthMode();
+	const mode = useAuthMode();
 	return useQuery({
 		queryKey: dashboardQueryKeys.groups(mode),
 		queryFn: async ({ signal }) =>
@@ -77,7 +77,7 @@ export function useGroupsQuery() {
 
 export function useGroupQuery(groupId: string) {
 	const authService = useAuthService();
-	const { mode } = useAuthMode();
+	const mode = useAuthMode();
 	return useQuery({
 		queryKey: dashboardQueryKeys.group(mode, groupId),
 		queryFn: async ({ signal }) =>
@@ -91,7 +91,7 @@ export function useGroupQuery(groupId: string) {
 
 export function useEntriesQuery() {
 	const authService = useAuthService();
-	const { mode } = useAuthMode();
+	const mode = useAuthMode();
 	return useQuery({
 		queryKey: dashboardQueryKeys.entries(mode),
 		queryFn: async ({ signal }) =>
@@ -104,7 +104,7 @@ export function useEntriesQuery() {
 
 export function useEntryQuery(entryId: string) {
 	const authService = useAuthService();
-	const { mode } = useAuthMode();
+	const mode = useAuthMode();
 	return useQuery({
 		queryKey: dashboardQueryKeys.entry(mode, entryId),
 		queryFn: async ({ signal }) =>

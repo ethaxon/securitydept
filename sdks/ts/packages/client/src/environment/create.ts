@@ -45,6 +45,7 @@ import {
 	SESSION_STORAGE_TRAIT_TOKEN,
 	type StorageTrait,
 	StorageTraitSchema,
+	type SyncStorageTrait,
 } from "../storage/types";
 import { createTracing } from "../tracing";
 import { type TracingCreateOptions } from "../tracing/create";
@@ -75,7 +76,7 @@ export interface CreateFoundationEnvironmentOptions {
 	transportForStdFetchCreateOptions?: BaseTransportForStdFetchCreateOptions;
 	time?: TimeTrait;
 	timeForStdCreateOptions?: TimeForStdCreateOptions;
-	realmStorage?: StorageTrait;
+	realmStorage?: SyncStorageTrait;
 	span?: SpanTrait;
 	spanCreateOptions?: SpanCreateOptions;
 	tracing?: TracingTrait;
@@ -333,7 +334,7 @@ function createFoundationEnvironmentUnit(): SecuritydeptFactoryProvider<Foundati
 			injector: SecuritydeptInjector,
 			transport: BaseTransportTrait,
 			time: TimeTrait,
-			realmStorage: StorageTrait,
+			realmStorage: SyncStorageTrait,
 			span: SpanTrait,
 			tracing: TracingTrait,
 			idleCallback: IdleCallbackTrait | null,

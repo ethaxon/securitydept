@@ -11,6 +11,8 @@ export default defineConfig({
 		include: [
 			"src/**/__tests__/**/*.test.ts",
 			"src/**/__tests__/**/*.test.tsx",
+			"e2e/support/**/__tests__/**/*.test.ts",
+			"../../scripts/tooling/**/__tests__/**/*.test.ts",
 		],
 		globalSetup: [
 			path.resolve(import.meta.dirname, "../../sdks/ts/vitest.global-setup.ts"),

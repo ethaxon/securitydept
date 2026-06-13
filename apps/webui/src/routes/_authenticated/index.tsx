@@ -7,7 +7,6 @@ import {
 	useServerHealth,
 } from "@/api/serverHealth";
 import { useAuthService } from "@/auth/react";
-import { BrowserHarnessSection } from "@/browser-harness/react";
 import { Layout } from "@/components/layout/Layout";
 import {
 	useDashboardAccessNotice,
@@ -181,7 +180,6 @@ function DashboardRouteContent() {
 						</table>
 					</div>
 				</div>
-				<BrowserHarnessSection />
 			</div>
 		</Layout>
 	);

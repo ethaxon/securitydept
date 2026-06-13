@@ -8,10 +8,6 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { provideAuthService } from "./auth/auth.service";
 import { basicAuthContextConfig } from "./auth/basic/config";
-import {
-	AUTH_MODE_STORAGE_KEY,
-	NativeWebAuthModeStore,
-} from "./auth/mode-store";
 import { sessionContextConfig } from "./auth/session/config";
 import "./app.css";
 import { ThemeService } from "./theme/theme.service";
@@ -35,13 +31,7 @@ function bootstrap(): void {
 	const providers = [
 		...provideSessionContext({ config: sessionContextConfig }),
 		...provideBasicAuthContext({ config: basicAuthContextConfig }),
-		...provideAuthService({
-			authModeStore: new NativeWebAuthModeStore({
-				key: AUTH_MODE_STORAGE_KEY,
-				storage: window.localStorage,
-				eventTarget: window,
-			}),
-		}),
+		...provideAuthService(),
 	];
 
 	createRoot(root).render(

@@ -1,25 +1,54 @@
-import { type StorageTrait } from "./types";
+import { RxEventSubject } from "../rx/event";
+import {
+	type StorageChangeEvent,
+	StorageChangeEventOrigin,
+	type SyncStorageTrait,
+} from "./types";
 
-/** In-memory `StorageTrait` — useful for tests and SSR. */
-export function createInMemoryRecordStore(): StorageTrait {
+/** In-memory `SyncStorageTrait` — useful for realm state, tests, and SSR. */
+export function createInMemoryRecordStore(): SyncStorageTrait {
 	const store = new Map<string, string>();
+	const storageEvent = new RxEventSubject<StorageChangeEvent>();
 
 	return {
-		async get(key: string): Promise<string | null> {
+		storageEvent,
+		get(key: string): string | null {
 			return store.get(key) ?? null;
 		},
-		async set(key: string, value: string): Promise<void> {
+		set(key: string, value: string): void {
+			const oldValue = store.get(key) ?? null;
 			store.set(key, value);
+			storageEvent.next({
+				origin: StorageChangeEventOrigin.Local,
+				key,
+				oldValue,
+				newValue: value,
+			});
 		},
-		async take(key: string): Promise<string | null> {
+		take(key: string): string | null {
 			const value = store.get(key) ?? null;
 			if (value !== null) {
 				store.delete(key);
+				storageEvent.next({
+					origin: StorageChangeEventOrigin.Local,
+					key,
+					oldValue: value,
+					newValue: null,
+				});
 			}
 			return value;
 		},
-		async remove(key: string): Promise<void> {
-			store.delete(key);
+		remove(key: string): void {
+			const oldValue = store.get(key) ?? null;
+			if (oldValue !== null) {
+				store.delete(key);
+				storageEvent.next({
+					origin: StorageChangeEventOrigin.Local,
+					key,
+					oldValue,
+					newValue: null,
+				});
+			}
 		},
 	};
 }

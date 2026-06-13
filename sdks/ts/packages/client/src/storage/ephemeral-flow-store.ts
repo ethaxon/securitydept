@@ -39,7 +39,7 @@ function requireRecordStoreTake(
 }
 
 async function executeStorageOperation<T>(
-	operation: () => Promise<T>,
+	operation: () => T | Promise<T>,
 ): Promise<T> {
 	try {
 		return await operation();

@@ -128,7 +128,8 @@ Angular DI 仍属于 adapter concern；framework-neutral host capability resolut
 
 Canonical foundation model：
 
-- `FoundationEnvironment` 是扁平的 foundation client dependency environment，直接承载 `transport`、`time`、必需的 root `span`、必需的 `tracing`、必需的 `realmStorage`，以及可选的 `idleCallback`、`persistentStorage`、`sessionStorage`、`router`、`pageLifecycle` 与 `popup`。`realmStorage` 是限定在该 environment 所属 JavaScript realm 内的易失存储；除非 composition root 显式覆盖，否则每次 `createFoundationEnvironment()` 都会创建一个全新且相互隔离的内存 store。历史 `ClientRuntime` 命名已退役，不是 canonical vocabulary。
+- `FoundationEnvironment` 是扁平的 foundation client dependency environment，直接承载 `transport`、`time`、必需的 root `span`、必需的 `tracing`、必需的 `realmStorage`，以及可选的 `idleCallback`、`persistentStorage`、`sessionStorage`、`router`、`pageLifecycle` 与 `popup`。`realmStorage` 是限定在该 environment 所属 JavaScript realm 内的同步 `SyncStorageTrait`；除非 composition root 显式覆盖，否则每次 `createFoundationEnvironment()` 都会创建一个全新且相互隔离的内存 store。历史 `ClientRuntime` 命名已退役，不是 canonical vocabulary。
+- `StorageTrait` 操作可以同步完成或返回 Promise；`SyncStorageTrait` 将所有返回值收窄为同步结果，因此结构上自然满足 `StorageTrait`。Storage adapter 可以通过 `storageEvent` 暴露逻辑 key 的变更事件；`StorageChangeEvent.origin` 用于区分同 context 的 `local` 变更和跨 context 的 `external` 变更，native event 过滤和 key prefix 还原由 host adapter 负责。
 - `NativeWebEnvironment` 是 canonical 的浏览器页面 environment，在 foundation 环境之上表达 `router`、`PageLifecycleTrait`、`PopupTrait` 等 host-owned page capability；它不暴露 `window.location` 或 `window.history`，也不再在顶层镜像 router 方法。
 - `WebExtCoreEnvironment` 是高于 foundation 层的共享 extension-core environment。`WebExtBackgroundEnvironment` 是 background-script 特化，`WebExtPageEnvironment` 则是 extension-core capability 与 `NativeWebEnvironment` 的组合。
 - `ServiceWorkerEnvironment` 是高于 foundation 层的 service-worker 特化。
@@ -294,7 +295,7 @@ Frontend OIDC flow state 会在流程入口显式确定 storage scope。Redirect
 
 #### 参考应用基线（`apps/webui` / `apps/server`）
 
-`apps/webui` 与 `apps/server` 定义当前仓库内基线：backend-mode 与 frontend-mode host split、keyed callback/readiness、React Query token-set management flows、route security、dashboard bearer access、browser harness report，以及 shared error/diagnosis consumption。
+`apps/webui` 与 `apps/server` 定义当前仓库内基线：backend-mode 与 frontend-mode host split、keyed callback/readiness、React Query token-set management flows、route security、dashboard bearer access、浏览器 E2E 覆盖，以及 shared error/diagnosis consumption。
 
 参考应用应直接证明 canonical SDK 用法。`apps/webui` 现在通过 `useSecuritydeptContext().get(TOKEN)`、`useReadableSignalValue(...)` 与 feature-local 的显式 assertion/helper 读取 SDK 依赖，而不是再用一个共享的 app-local facade 把这些读取隐藏起来。
 
@@ -486,7 +487,7 @@ Canonical RxJS bridge 现在位于 `@securitydept/client/rx`。对 `EventStreamT
 ### 真实参考实现
 
 - `apps/server`：auth、propagation、route composition、server error/diagnosis proof。
-- `apps/webui`：React/browser/multi-context auth shell、token-set reference page、dashboard、browser harness report 与 SDK dogfooding 覆盖。
+- `apps/webui`：React/browser/multi-context auth shell、token-set reference page、dashboard、浏览器 E2E 覆盖与 SDK dogfooding 覆盖。
 
 ### 下游参考案例：Outposts
 

@@ -166,7 +166,7 @@ Packages：
 变更：
 
 - Framework-neutral host capability resolution 现在由 client foundation 通过 typed `FoundationEnvironment`、`NativeWebEnvironment`、`WebExtCoreEnvironment` 以及相关 host 特化对象拥有。
-- `FoundationEnvironment.realmStorage` 现在是必需的易失 `StorageTrait`。`createFoundationEnvironment()` 与所有派生 host factory 默认都会创建全新且相互隔离的内存 realm store；composition root 可以通过 options 或 `REALM_STORAGE_TRAIT_TOKEN` provider 覆盖。手写 environment object 必须补充该字段。
+- `FoundationEnvironment.realmStorage` 现在是必需的易失 `SyncStorageTrait`。通用 `StorageTrait` 操作可以返回同步值或 Promise，storage adapter 也可以通过 `storageEvent` 暴露逻辑 key 变更。`createFoundationEnvironment()` 与所有派生 host factory 默认都会创建全新且相互隔离的同步内存 realm store；composition root 可以通过 options 或 `REALM_STORAGE_TRAIT_TOKEN` provider 覆盖。手写 environment object 必须补充该字段。
 - 历史 `ClientRuntime` 命名已收口为 environment terminology。Core client constructor 依赖属于 environment，不是第二层 runtime。Canonical path 是 `environment.transport`、`environment.sessionStorage` 等顶层字段。
 - Web host environment factory 是显式 composition entry，不是 automatic host detection，也不再暴露仅用于 preset 区分的 worker/service-worker/extension-background wrapper。
 - Context 与 adapter public helper 使用同一边界。Backend-OIDC web helper、basic-auth/session redirect helper，以及 framework adapter convenience helper 不得各自重复声明或猜测 transport/store/time/page dependencies。

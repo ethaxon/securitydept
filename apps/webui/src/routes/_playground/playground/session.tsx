@@ -57,7 +57,7 @@ function SessionPlaygroundContent() {
 	const session = useResourceValue(sessionClient.sessionResource, {
 		initialValue: null,
 	});
-	const { storedMode } = useAuthMode();
+	const mode = useAuthMode();
 
 	const logout = useMutation({
 		mutationKey: ["playground", "session", "logout"],
@@ -77,8 +77,7 @@ function SessionPlaygroundContent() {
 
 	const principal = session?.principal;
 	const authStatus = principal ? "Authenticated" : "Unauthenticated";
-	const callbackStatus =
-		storedMode === AuthContextMode.Session ? "Armed" : "Idle";
+	const callbackStatus = mode === AuthContextMode.Session ? "Armed" : "Idle";
 
 	return (
 		<Layout>
@@ -124,7 +123,7 @@ function SessionPlaygroundContent() {
 				<section className="grid gap-4 md:grid-cols-3">
 					<StatusCard
 						title="Stored mode"
-						value={storedMode ?? "none"}
+						value={mode ?? "none"}
 						description="The local auth-context hint used by the dashboard shell before route security runs."
 					/>
 					<StatusCard

@@ -6,6 +6,7 @@ import {
 	createSecuritydeptDestroyRef,
 	createSignal,
 	ENVIRONMENT_TOKEN,
+	REQUIREMENT_PLANNER_HOST,
 	type ResourceSnapshot,
 	ResourceStatus,
 	resourceFromSnapshots,
@@ -15,45 +16,9 @@ import {
 import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client-react";
 import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client-react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	AUTH_MODE_STORE,
-	AUTH_SERVICE,
-	AuthService,
-	provideAuthService,
-} from "../auth.service";
-import { AUTH_MODE_STORAGE_KEY, type AuthModeStore } from "../mode-store";
+import { AUTH_SERVICE, AuthService, provideAuthService } from "../auth.service";
 import { AuthContextMode } from "../model";
 import { TOKEN_SET_FRONTEND_MODE_CONFIG } from "../token-set/config";
-
-class MemoryStorage {
-	private readonly data = new Map<string, string>();
-
-	getItem(key: string): string | null {
-		return this.data.get(key) ?? null;
-	}
-
-	setItem(key: string, value: string): void {
-		this.data.set(key, value);
-	}
-
-	removeItem(key: string): void {
-		this.data.delete(key);
-	}
-
-	clear(): void {
-		this.data.clear();
-	}
-}
-
-function createAuthModeStore(): AuthModeStore {
-	return {
-		read: () => globalThis.localStorage.getItem(AUTH_MODE_STORAGE_KEY),
-		write: (value) =>
-			globalThis.localStorage.setItem(AUTH_MODE_STORAGE_KEY, value),
-		clear: () => globalThis.localStorage.removeItem(AUTH_MODE_STORAGE_KEY),
-		subscribe: () => () => undefined,
-	};
-}
 
 function createAuthServiceFixture() {
 	function createResolvedResource<T>(initialValue: T) {
@@ -143,7 +108,6 @@ function createAuthServiceFixture() {
 		}),
 	};
 	const environment = createFoundationEnvironment({});
-	const modeStore = createAuthModeStore();
 	const destroyRef = createSecuritydeptDestroyRef();
 	const injector = {
 		get(token: unknown) {
@@ -159,9 +123,6 @@ function createAuthServiceFixture() {
 			if (token === ENVIRONMENT_TOKEN) {
 				return environment;
 			}
-			if (token === AUTH_MODE_STORE) {
-				return modeStore;
-			}
 			if (token === SecuritydeptDestroyRef) {
 				return destroyRef;
 			}
@@ -176,6 +137,7 @@ function createAuthServiceFixture() {
 		basic,
 		registry,
 		tokenClient,
+		tokenClientState,
 		tokenAuthenticated,
 		tokenAuthState,
 		tokenAuthorization,
@@ -187,30 +149,23 @@ function createAuthServiceFixture() {
 describe("AuthService", () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
-		Object.defineProperty(globalThis, "localStorage", {
-			value: new MemoryStorage(),
-			configurable: true,
-			writable: true,
-		});
 	});
 
-	it("stores and resolves auth mode changes", () => {
+	it("stores and resolves auth mode changes", async () => {
 		const { service } = createAuthServiceFixture();
 
-		expect(service.getMode()).toBeNull();
-		expect(service.resolveMode()).toBe(AuthContextMode.Session);
+		await expect(service.mode.whenValue()).resolves.toBeNull();
 
 		service.setMode(AuthContextMode.Basic);
-		expect(service.getMode()).toBe(AuthContextMode.Basic);
-		expect(service.mode.get()).toBe(AuthContextMode.Basic);
+		expect(service.mode.value.get()).toBe(AuthContextMode.Basic);
 
 		service.clearMode();
-		expect(service.getMode()).toBeNull();
-		expect(service.mode.get()).toBe(AuthContextMode.Session);
+		expect(service.mode.value.get()).toBeNull();
 	});
 
 	it("exposes the resolved auth user through a resource", () => {
 		const { service, sessionState } = createAuthServiceFixture();
+		service.setMode(AuthContextMode.Session);
 
 		expect(service.authUser.value.get()).toBeNull();
 
@@ -229,6 +184,7 @@ describe("AuthService", () => {
 	it("preserves loading and error states from the selected auth resource", () => {
 		const { service, sessionState } = createAuthServiceFixture();
 		const error = new Error("session probe failed");
+		service.setMode(AuthContextMode.Session);
 
 		sessionState.setSnapshot({ status: ResourceStatus.Loading });
 		expect(service.authUser.snapshot.get()).toEqual({
@@ -241,6 +197,45 @@ describe("AuthService", () => {
 		});
 		expect(service.authUser.snapshot.get()).toEqual({
 			status: ResourceStatus.LoadingError,
+			error,
+		});
+	});
+
+	it("flattens token-set client and auth snapshots", () => {
+		const { service, tokenAuthState, tokenClientState, tokenClient } =
+			createAuthServiceFixture();
+		const error = new Error("client refresh failed");
+
+		service.setMode(AuthContextMode.TokenSetBackend);
+		tokenAuthState.set({
+			tokens: { accessToken: "at" },
+			metadata: {
+				principal: { subject: "oidc-user", displayName: "OIDC User" },
+			},
+		});
+		tokenClientState.setSnapshot({
+			status: ResourceStatus.Reloading,
+			value: tokenClient,
+		});
+		expect(service.authUser.snapshot.get()).toMatchObject({
+			status: ResourceStatus.Reloading,
+			value: {
+				type: "token-set-backend-oidc-mode",
+				userInfo: { displayName: "OIDC User" },
+			},
+		});
+
+		tokenClientState.setSnapshot({
+			status: ResourceStatus.Error,
+			value: tokenClient,
+			error,
+		});
+		expect(service.authUser.snapshot.get()).toMatchObject({
+			status: ResourceStatus.Error,
+			value: {
+				type: "token-set-backend-oidc-mode",
+				userInfo: { displayName: "OIDC User" },
+			},
 			error,
 		});
 	});
@@ -259,6 +254,7 @@ describe("AuthService", () => {
 		const { service, session, basic, registry, tokenClient } =
 			createAuthServiceFixture();
 
+		service.setMode(AuthContextMode.Session);
 		expect(await service.ensureAuthenticatedForRoute("/dashboard")).toBe(true);
 		expect(session.refresh).toHaveBeenCalledTimes(1);
 
@@ -301,24 +297,26 @@ describe("AuthService", () => {
 		service.setMode(AuthContextMode.Basic);
 		await service.logout();
 		expect(basic.logout).toHaveBeenCalledWith({ zonePrefix: "/basic" });
-		expect(service.getMode()).toBeNull();
+		expect(service.mode.value.get()).toBeNull();
 
 		service.setMode(AuthContextMode.TokenSetFrontend);
 		await service.logout();
 		expect(tokenClient.logout).toHaveBeenCalledTimes(1);
-		expect(service.getMode()).toBeNull();
+		expect(service.mode.value.get()).toBeNull();
 	});
 
 	it("provides Securitydept providers for the service token", () => {
-		const providers = provideAuthService({
-			authModeStore: createAuthModeStore(),
-		});
+		const providers = provideAuthService();
 		expect(providers).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ provide: AuthService }),
 				expect.objectContaining({
 					provide: AUTH_SERVICE,
 					useExisting: AuthService,
+				}),
+				expect.objectContaining({
+					provide: REQUIREMENT_PLANNER_HOST,
+					deps: [AUTH_SERVICE, ENVIRONMENT_TOKEN],
 				}),
 			]),
 		);

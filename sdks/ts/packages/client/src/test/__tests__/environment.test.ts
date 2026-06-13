@@ -115,16 +115,16 @@ describe("client test environment helpers", () => {
 		expect(time.pendingCount).toBe(0);
 	});
 
-	it("creates in-memory storage for tests", async () => {
+	it("creates synchronous in-memory storage for tests", () => {
 		const storage = createStorageForTest({
 			initialEntries: { token: "abc" },
 		});
 
-		await expect(storage.get("token")).resolves.toBe("abc");
-		await storage.set("token", "def");
-		await expect(storage.get("token")).resolves.toBe("def");
-		await storage.remove("token");
-		await expect(storage.get("token")).resolves.toBeNull();
+		expect(storage.get("token")).toBe("abc");
+		storage.set("token", "def");
+		expect(storage.get("token")).toBe("def");
+		storage.remove("token");
+		expect(storage.get("token")).toBeNull();
 	});
 
 	it("creates route-based transport for tests", async () => {

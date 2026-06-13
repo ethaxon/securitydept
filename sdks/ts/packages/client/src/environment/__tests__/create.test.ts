@@ -43,14 +43,14 @@ describe("createFoundationEnvironment()", () => {
 		expect(typeof environment.tracing.events.subscribe).toBe("function");
 	});
 
-	it("creates isolated realm storage for each environment", async () => {
+	it("creates isolated synchronous realm storage for each environment", () => {
 		const first = createFoundationEnvironment({});
 		const second = createFoundationEnvironment({});
 
-		await first.realmStorage.set("flow", "first");
+		first.realmStorage.set("flow", "first");
 
-		await expect(first.realmStorage.get("flow")).resolves.toBe("first");
-		await expect(second.realmStorage.get("flow")).resolves.toBeNull();
+		expect(first.realmStorage.get("flow")).toBe("first");
+		expect(second.realmStorage.get("flow")).toBeNull();
 		expect(first.realmStorage).not.toBe(second.realmStorage);
 	});
 

@@ -1,0 +1,3 @@
+[     202ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:7022/node_modules/.vite/deps/react-dom_client.js?v=fd8860ba:14336
+[     302ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://localhost:7022/auth/session/user-info:0
+[     337ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://localhost:7022/basic/api/entries:0

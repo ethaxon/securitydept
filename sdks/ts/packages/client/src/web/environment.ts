@@ -77,6 +77,7 @@ export function createEnvironmentForNativeWeb(
 			options.transportForStdFetchCreateOptions,
 		time: options.time,
 		timeForStdCreateOptions: options.timeForStdCreateOptions,
+		realmStorage: options.realmStorage,
 		idleCallback: options.idleCallback,
 		span: options.span,
 		spanCreateOptions: options.spanCreateOptions,

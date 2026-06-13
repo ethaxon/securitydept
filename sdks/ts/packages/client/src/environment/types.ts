@@ -7,7 +7,7 @@ import { type PopupTrait } from "../popup";
 import { type RouterTrait } from "../router";
 import { type IdleCallbackTrait, type TimeTrait } from "../scheduling/types";
 import { type SpanTrait } from "../span/types";
-import { type StorageTrait } from "../storage/types";
+import { type StorageTrait, type SyncStorageTrait } from "../storage/types";
 import { type TracingTrait } from "../tracing/types";
 import { type BaseTransportTrait } from "../transport/types";
 import { type TraitInputValidator } from "../validation";
@@ -26,7 +26,7 @@ export interface FoundationEnvironment {
 	injector: SecuritydeptInjector;
 	transport: BaseTransportTrait;
 	time: TimeTrait;
-	realmStorage: StorageTrait;
+	realmStorage: SyncStorageTrait;
 	idleCallback?: IdleCallbackTrait;
 	persistentStorage?: StorageTrait;
 	sessionStorage?: StorageTrait;

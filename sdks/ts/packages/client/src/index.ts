@@ -261,6 +261,7 @@ export {
 	createComputed,
 	createResource,
 	createSignal,
+	flattenResourceSnapshot,
 	mapResource,
 	type ReadableSignalTrait,
 	ResourceError,
@@ -321,8 +322,11 @@ export {
 	REALM_STORAGE_TRAIT_TOKEN,
 	type RecoverableStateStore,
 	SESSION_STORAGE_TRAIT_TOKEN,
+	type StorageChangeEvent,
+	StorageChangeEventOrigin,
 	type StorageTrait,
 	type StoredEnvelope,
+	type SyncStorageTrait,
 } from "./storage";
 // --- Structs ---
 export {

@@ -4,6 +4,7 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 import { createTurboPrerequisitesVitePlugin } from "../../scripts/tooling/vite-turbo-prerequisites.ts";
+import { createWaitBackendVitePlugin } from "../../scripts/tooling/vite-wait-backend.ts";
 
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
@@ -16,6 +17,7 @@ export default defineConfig(({ mode }) => {
 				packageRoot: import.meta.dirname,
 				includeSelf: false,
 			}),
+			createWaitBackendVitePlugin({ backendUrl }),
 			tanstackRouter({
 				target: "react",
 				routesDirectory: "./src/routes",

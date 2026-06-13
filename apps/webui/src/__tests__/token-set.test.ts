@@ -156,14 +156,7 @@ describe("token-set browser flow", () => {
 		const initializedRecord = await SecuritydeptInjector.fromParentInjector(
 			environment.injector,
 			[
-				...provideAuthService({
-					authModeStore: {
-						read: () => null,
-						write: () => undefined,
-						clear: () => undefined,
-						subscribe: () => () => undefined,
-					},
-				}),
+				...provideAuthService(),
 				{
 					provide: SecuritydeptDestroyRef,
 					useValue: createSecuritydeptDestroyRef(),

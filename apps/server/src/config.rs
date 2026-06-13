@@ -241,7 +241,7 @@ pub struct ServerConfig {
     /// the full backend/frontend union surface. The server composes concrete
     /// backend/frontend configs from it instead of owning frontend inheritance
     /// policy locally.
-    #[serde(rename = "oidc_client")]
+    #[serde(default, rename = "oidc_client")]
     pub oidc_client_union: ServerOidcClientUnionConfig,
 
     // -- BackendOidcModeConfig override ([backend_oidc_override] section) --
@@ -273,7 +273,7 @@ pub struct ServerConfig {
     /// Contains resource-server verification config and token-propagation
     /// policy. Call [`resolve_substrate`](Self::resolve_substrate) to apply
     /// `[oidc]` shared defaults and validate.
-    #[serde(rename = "oauth_resource_server")]
+    #[serde(default, rename = "oauth_resource_server")]
     pub access_token_substrate: AccessTokenSubstrateConfig,
 
     // -- Server-specific (not in BackendOidcModeConfig) --
@@ -463,7 +463,7 @@ impl ServerConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ServerCoreConfig {
     #[serde(default = "default_host")]
     pub host: String,
@@ -489,8 +489,61 @@ fn default_port() -> u16 {
     7021
 }
 
+impl Default for ServerCoreConfig {
+    fn default() -> Self {
+        Self {
+            host: default_host(),
+            port: default_port(),
+            webui_dir: None,
+            external_base_url: ExternalBaseUrl::default(),
+        }
+    }
+}
+
 fn default_basic_auth_context() -> BasicAuthContextConfig<Argon2BasicAuthCred> {
     BasicAuthContextConfig::builder()
         .zones(vec![BasicAuthZoneConfig::default()])
         .build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_config(source: &str) -> Result<ServerConfig, figment::Error> {
+        Figment::new().merge(Toml::string(source)).extract()
+    }
+
+    #[test]
+    fn optional_top_level_sections_use_defaults_when_absent() {
+        let config = parse_config("").expect("empty config should use top-level defaults");
+
+        assert!(config.oidc.is_none());
+        assert_eq!(config.server.host, "0.0.0.0");
+        assert_eq!(config.server.port, 7021);
+        assert_eq!(config.creds_manage.data_path, "./data/data.json");
+        config.validate().expect("default config should validate");
+    }
+
+    #[test]
+    fn oidc_shared_config_does_not_require_consumer_sections() {
+        let config = parse_config(
+            r#"
+                [oidc]
+                well_known_url = "https://issuer.example.com/.well-known/openid-configuration"
+                client_id = "client-id"
+            "#,
+        )
+        .expect("OIDC shared config should not require empty consumer sections");
+
+        config
+            .resolve_oidc()
+            .expect("backend OIDC config should inherit shared defaults");
+        config
+            .resolve_frontend_oidc()
+            .expect("frontend OIDC config should inherit shared defaults");
+        config
+            .resolve_substrate()
+            .expect("resource-server config should inherit shared defaults");
+    }
 }

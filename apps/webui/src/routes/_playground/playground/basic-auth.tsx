@@ -118,7 +118,7 @@ function BasicAuthPlaygroundContent() {
 	const basicAuthClient = useSecuritydeptContext().get(
 		BASIC_AUTH_CONTEXT_CLIENT,
 	);
-	const { storedMode } = useAuthMode();
+	const mode = useAuthMode();
 	const probeQuery = useQuery({
 		queryKey: ["playground", "basic-auth", "status"],
 		queryFn: () => basicAuthClient.refresh(),
@@ -203,7 +203,7 @@ function BasicAuthPlaygroundContent() {
 				<section className="grid gap-4 md:grid-cols-3">
 					<StatusCard
 						title="Stored mode"
-						value={storedMode ?? "none"}
+						value={mode ?? "none"}
 						description="The local auth-context hint for the current browser tab."
 					/>
 					<StatusCard

@@ -6,6 +6,7 @@
 	"scripts": {
 		"build": "vite build",
 		"dev": "vite dev",
+		"dev:coordinated": "cross-env VITE_WAIT_FOR_BACKEND=1 vite dev",
 		"e2e": "playwright test -c playwright.config.ts",
 		"e2e:headed": "playwright test -c playwright.config.ts --headed",
 		"stage": "shx rm -rf ../../webui && shx cp -r dist ../../webui",
@@ -37,6 +38,7 @@
 	"devDependencies": {
 		"@securitydept/e2e-utils": "workspace:*",
 		"@tanstack/router-plugin": "catalog:",
+		"cross-env": "^7.0.3",
 		"vitest": "catalog:"
 	}
 }

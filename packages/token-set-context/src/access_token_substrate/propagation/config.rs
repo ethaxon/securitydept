@@ -56,7 +56,7 @@ impl Default for TokenPropagatorConfig {
 
 /// Allowlist and safety guards for downstream targets.
 #[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default, TypedBuilder)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TypedBuilder)]
 pub struct PropagationDestinationPolicy {
     /// Stable service identities that may receive forwarded credentials.
     #[builder(default)]
@@ -77,6 +77,17 @@ pub struct PropagationDestinationPolicy {
     #[builder(default = true)]
     #[serde(default = "default_true")]
     pub require_explicit_port: bool,
+}
+
+impl Default for PropagationDestinationPolicy {
+    fn default() -> Self {
+        Self {
+            allowed_node_ids: Vec::new(),
+            allowed_targets: Vec::new(),
+            deny_sensitive_ip_literals: default_true(),
+            require_explicit_port: default_true(),
+        }
+    }
 }
 
 /// Normalized scheme used for downstream propagation rules.
@@ -221,4 +232,18 @@ pub struct PropagatedTokenValidationConfig {
     #[builder(default)]
     #[serde(default)]
     pub allowed_azp: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn destination_policy_rust_default_matches_deserialization_defaults() {
+        let rust_default = PropagationDestinationPolicy::default();
+        let deserialized: PropagationDestinationPolicy =
+            serde_json::from_value(serde_json::json!({})).expect("config should deserialize");
+
+        assert_eq!(rust_default, deserialized);
+    }
 }

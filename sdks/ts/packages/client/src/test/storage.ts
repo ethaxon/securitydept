@@ -1,7 +1,7 @@
 import { type as defineType } from "arktype";
 import { type EnvironmentValidators } from "../environment/types";
 import { createInMemoryRecordStore } from "../storage/memory-store";
-import { type StorageTrait } from "../storage/types";
+import { type SyncStorageTrait } from "../storage/types";
 import {
 	throwValidationClientError,
 	validateTraitInput,
@@ -23,7 +23,7 @@ export function createStorageForTest(
 		WithTraitInputValidator<
 			Pick<EnvironmentValidators, "persistentStorage" | "sessionStorage">
 		> = {},
-): StorageTrait {
+): SyncStorageTrait {
 	const { validators, ...createOptions } = options;
 	const validatorKey = options.validatorKey ?? "persistentStorage";
 	const resolvedCreateOptions = {
@@ -46,7 +46,7 @@ export function createStorageForTest(
 	for (const [key, value] of Object.entries(
 		resolvedCreateOptions.initialEntries,
 	)) {
-		void storage.set(key, value);
+		storage.set(key, value);
 	}
 	return storage;
 }

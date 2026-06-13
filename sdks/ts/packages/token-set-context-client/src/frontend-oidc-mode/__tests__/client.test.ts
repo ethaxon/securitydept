@@ -523,29 +523,29 @@ describe("FrontendOidcModeClient", () => {
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-a" });
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-b" });
 
-		await expect(
+		expect(
 			sessionStorage.get("securitydept.frontend_oidc.pending:state-a"),
-		).resolves.not.toBeNull();
-		await expect(
+		).not.toBeNull();
+		expect(
 			sessionStorage.get("securitydept.frontend_oidc.pending:state-b"),
-		).resolves.not.toBeNull();
-		await expect(
+		).not.toBeNull();
+		expect(
 			runtime.realmStorage.get("securitydept.frontend_oidc.pending:state-a"),
-		).resolves.toBeNull();
+		).toBeNull();
 
 		await expect(
 			client.handleCallback({ code: "auth-code", state: "state-a" }),
 		).resolves.toMatchObject({ postAuthRedirectUri: "/after-a" });
 
-		await expect(
+		expect(
 			sessionStorage.get("securitydept.frontend_oidc.pending:state-a"),
-		).resolves.toBeNull();
-		await expect(
+		).toBeNull();
+		expect(
 			sessionStorage.get("securitydept.frontend_oidc.pending:state-b"),
-		).resolves.not.toBeNull();
-		await expect(
+		).not.toBeNull();
+		expect(
 			runtime.realmStorage.get("securitydept.frontend_oidc.consumed:state-a"),
-		).resolves.toBeNull();
+		).toBeNull();
 
 		await expect(
 			client.handleCallback({
@@ -814,16 +814,16 @@ describe("FrontendOidcModeClient", () => {
 		await client.loginWithPopup({
 			popupCallbackUrl: "https://app.example.com/auth/popup-callback",
 		});
-		await expect(
+		expect(
 			runtime.realmStorage.get(
 				"securitydept.frontend_oidc.pending:state-value",
 			),
-		).resolves.toBeNull();
-		await expect(
+		).toBeNull();
+		expect(
 			runtime.realmStorage.get(
 				"securitydept.frontend_oidc.consumed:state-value",
 			),
-		).resolves.not.toBeNull();
+		).not.toBeNull();
 
 		expect(
 			trace
@@ -888,7 +888,15 @@ describe("FrontendOidcModeClient", () => {
 	});
 
 	it("does not fall back to session storage when realm storage fails", async () => {
-		const realmStorage = createFailingStorage();
+		const fail = () => {
+			throw new Error("storage unavailable");
+		};
+		const realmStorage = {
+			get: vi.fn(fail),
+			set: vi.fn(fail),
+			take: vi.fn(fail),
+			remove: vi.fn(fail),
+		};
 		const sessionStorage = createInMemoryRecordStore();
 		const runtime = createFoundationEnvironment({
 			transport: {
@@ -918,9 +926,9 @@ describe("FrontendOidcModeClient", () => {
 			code: "storage.ephemeral.io_failed",
 		});
 		expect(popupMocks.open).not.toHaveBeenCalled();
-		await expect(
+		expect(
 			sessionStorage.get("securitydept.frontend_oidc.pending:state-value"),
-		).resolves.toBeNull();
+		).toBeNull();
 	});
 
 	it("does not fall back to realm storage when session storage fails", async () => {
@@ -952,11 +960,11 @@ describe("FrontendOidcModeClient", () => {
 			kind: ClientErrorKind.Storage,
 			code: "storage.ephemeral.io_failed",
 		});
-		await expect(
+		expect(
 			runtime.realmStorage.get(
 				"securitydept.frontend_oidc.pending:state-value",
 			),
-		).resolves.toBeNull();
+		).toBeNull();
 		expect(navigate).not.toHaveBeenCalled();
 	});
 
