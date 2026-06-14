@@ -1,5 +1,6 @@
+import { type ResourceSnapshot } from "@securitydept/client";
 import {
-	useResourceValue,
+	useResourceSnapshot,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import { AUTH_SERVICE, type AuthService } from "./auth.service";
@@ -9,10 +10,10 @@ export function useAuthService(): AuthService {
 	return useSecuritydeptContext().get(AUTH_SERVICE);
 }
 
-export function useAuthMode(): AuthContextMode | null {
-	return useResourceValue(useAuthService().mode);
+export function useAuthMode(): ResourceSnapshot<AuthContextMode | null> {
+	return useResourceSnapshot(useAuthService().mode);
 }
 
-export function useAuthUser(): WebuiAuthUser {
-	return useResourceValue(useAuthService().authUser);
+export function useAuthUser(): ResourceSnapshot<WebuiAuthUser> {
+	return useResourceSnapshot(useAuthService().authUser);
 }

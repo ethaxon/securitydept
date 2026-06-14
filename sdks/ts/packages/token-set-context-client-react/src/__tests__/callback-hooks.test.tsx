@@ -157,6 +157,12 @@ describe("token-set React callback hooks", () => {
 		);
 		const environment = createEnvironmentForTest({
 			router: { currentUrl, navigate: vi.fn() },
+			providers: provideTokenSetClientRegistry({
+				clients: [
+					createEntry("frontend", frontendClientFactory, "/callback"),
+					createEntry("backend", backendClientFactory),
+				],
+			}),
 		});
 
 		function Probe() {
@@ -172,15 +178,7 @@ describe("token-set React callback hooks", () => {
 		const html = renderToString(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: provideTokenSetClientRegistry({
-						clients: [
-							createEntry("frontend", frontendClientFactory, "/callback"),
-							createEntry("backend", backendClientFactory),
-						],
-					}),
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);
@@ -197,7 +195,12 @@ describe("token-set React callback hooks", () => {
 		const router = createRouter(
 			"https://app.example.com/oidc/callback?code=ok&state=s1",
 		);
-		const environment = createEnvironmentForTest({ router });
+		const environment = createEnvironmentForTest({
+			router,
+			providers: provideTokenSetClientRegistry({
+				clients: [createEntry("frontend", clientFactory, "/oidc/callback")],
+			}),
+		});
 
 		function Probe() {
 			const callback = useTokenSetFrontendCallback();
@@ -207,12 +210,7 @@ describe("token-set React callback hooks", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: provideTokenSetClientRegistry({
-						clients: [createEntry("frontend", clientFactory, "/oidc/callback")],
-					}),
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);
@@ -228,6 +226,9 @@ describe("token-set React callback hooks", () => {
 		const clientFactory = vi.fn(() => createFrontendClient());
 		const environment = createEnvironmentForTest({
 			router: createRouter("https://app.example.com/dashboard"),
+			providers: provideTokenSetClientRegistry({
+				clients: [createEntry("frontend", clientFactory, "/oidc/callback")],
+			}),
 		});
 
 		function Probe() {
@@ -242,12 +243,7 @@ describe("token-set React callback hooks", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: provideTokenSetClientRegistry({
-						clients: [createEntry("frontend", clientFactory, "/oidc/callback")],
-					}),
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);
@@ -267,6 +263,9 @@ describe("token-set React callback hooks", () => {
 			router: createRouter(
 				`https://app.example.com/callback#securitydept=v1&kind=${BackendOidcModeCompatFragmentKind.Callback}&callback_routing_key=backend&access_token=at`,
 			),
+			providers: provideTokenSetClientRegistry({
+				clients: [createEntry("backend", clientFactory)],
+			}),
 		});
 
 		function Probe() {
@@ -277,12 +276,7 @@ describe("token-set React callback hooks", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: provideTokenSetClientRegistry({
-						clients: [createEntry("backend", clientFactory)],
-					}),
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);
@@ -298,6 +292,9 @@ describe("token-set React callback hooks", () => {
 		const clientFactory = vi.fn(() => client);
 		const environment = createEnvironmentForTest({
 			router: createRouter("https://app.example.com/custom-callback"),
+			providers: provideTokenSetClientRegistry({
+				clients: [createEntry("backend", clientFactory)],
+			}),
 		});
 		const clientQuery = vi.fn(({ callbackUrl }) => {
 			expect(callbackUrl.pathname).toBe("/custom-callback");
@@ -312,12 +309,7 @@ describe("token-set React callback hooks", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: provideTokenSetClientRegistry({
-						clients: [createEntry("backend", clientFactory)],
-					}),
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);

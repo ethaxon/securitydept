@@ -155,6 +155,7 @@ describe("react callback async readiness", () => {
 			router: createRouter(
 				"https://app.example.com/oidc/callback?code=ok&state=s1",
 			),
+			providers: provideTokenSetClientRegistry({ clients: [createEntry()] }),
 		});
 
 		function Probe() {
@@ -165,14 +166,7 @@ describe("react callback async readiness", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: [
-						...provideTokenSetClientRegistry({
-							clients: [createEntry()],
-						}),
-					],
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);
@@ -186,6 +180,7 @@ describe("react callback async readiness", () => {
 	it("resolves without auth when no client matches the current URL", async () => {
 		const environment = createEnvironmentForTest({
 			router: createRouter("https://app.example.com/not-a-callback"),
+			providers: provideTokenSetClientRegistry({ clients: [createEntry()] }),
 		});
 
 		function Probe() {
@@ -196,14 +191,7 @@ describe("react callback async readiness", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: [
-						...provideTokenSetClientRegistry({
-							clients: [createEntry()],
-						}),
-					],
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);

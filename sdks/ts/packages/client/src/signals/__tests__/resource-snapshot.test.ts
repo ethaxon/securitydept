@@ -1,11 +1,54 @@
 import { describe, expect, it, vi } from "vitest";
+import { createCancellationTokenSource } from "../../cancellation";
 import {
 	createComputed,
 	createSignal,
 	flattenResourceSnapshot,
 	type ResourceSnapshot,
 	ResourceStatus,
+	whenResourceSnapshotValue,
 } from "../../signals/index";
+
+describe("whenResourceSnapshotValue", () => {
+	it("returns an available value immediately", async () => {
+		const snapshot = createSignal<ResourceSnapshot<string>>({
+			status: ResourceStatus.Resolved,
+			value: "ready",
+		});
+
+		await expect(whenResourceSnapshotValue(snapshot)).resolves.toBe("ready");
+	});
+
+	it("waits for a value and propagates resource errors", async () => {
+		const snapshot = createSignal<ResourceSnapshot<string>>({
+			status: ResourceStatus.Loading,
+		});
+		const value = whenResourceSnapshotValue(snapshot);
+
+		snapshot.set({ status: ResourceStatus.Resolved, value: "ready" });
+		await expect(value).resolves.toBe("ready");
+
+		const error = new Error("failed");
+		snapshot.set({ status: ResourceStatus.LoadingError, error });
+		await expect(whenResourceSnapshotValue(snapshot)).rejects.toBe(error);
+	});
+
+	it("supports cancellation while waiting", async () => {
+		const snapshot = createSignal<ResourceSnapshot<string>>({
+			status: ResourceStatus.Loading,
+		});
+		const cancellation = createCancellationTokenSource();
+		const value = whenResourceSnapshotValue(snapshot, {
+			cancellationToken: cancellation.token,
+		});
+
+		cancellation.cancel(new Error("cancelled"));
+
+		await expect(value).rejects.toMatchObject({
+			code: "client.cancelled",
+		});
+	});
+});
 
 describe("flattenResourceSnapshot", () => {
 	it("flattens a resolved snapshot into a selected snapshot signal", () => {

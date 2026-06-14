@@ -1,5 +1,6 @@
+import { ResourceStatus } from "@securitydept/client";
 import {
-	useResourceValue,
+	useResourceSnapshot,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client-react";
@@ -54,10 +55,30 @@ function SessionPlaygroundContent() {
 	const authService = useAuthService();
 	const router = useRouter();
 	const sessionClient = useSecuritydeptContext().get(SESSION_CONTEXT_CLIENT);
-	const session = useResourceValue(sessionClient.sessionResource, {
-		initialValue: null,
-	});
-	const mode = useAuthMode();
+	const sessionSnapshot = useResourceSnapshot(sessionClient.sessionResource);
+	const modeSnapshot = useAuthMode();
+	if (
+		sessionSnapshot.status === ResourceStatus.LoadingError ||
+		sessionSnapshot.status === ResourceStatus.Error
+	) {
+		throw sessionSnapshot.error;
+	}
+	if (
+		modeSnapshot.status === ResourceStatus.LoadingError ||
+		modeSnapshot.status === ResourceStatus.Error
+	) {
+		throw modeSnapshot.error;
+	}
+	const session =
+		sessionSnapshot.status === ResourceStatus.Reloading ||
+		sessionSnapshot.status === ResourceStatus.Resolved
+			? sessionSnapshot.value
+			: null;
+	const mode =
+		modeSnapshot.status === ResourceStatus.Reloading ||
+		modeSnapshot.status === ResourceStatus.Resolved
+			? modeSnapshot.value
+			: null;
 
 	const logout = useMutation({
 		mutationKey: ["playground", "session", "logout"],

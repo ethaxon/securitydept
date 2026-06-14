@@ -1,21 +1,24 @@
 import {
+	createComputed,
 	type EventStreamTrait,
 	type InteropObservableTrait,
 	isInteropObservableTrait,
 	type ReadableSignalTrait,
 	type ResourceSnapshot,
-	ResourceStatus,
 	type ResourceTrait,
 	type SubscribableTrait,
 	SYMBOL_OBSERVABLE,
 } from "@securitydept/client";
 import {
+	type DependencyList,
 	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
 	useSyncExternalStore,
 } from "react";
+
+const EMPTY_DEPENDENCIES: DependencyList = [];
 
 export function useSignal<T>(source: ReadableSignalTrait<T>): T {
 	const subscribe = useCallback(
@@ -36,49 +39,33 @@ export function useSignal<T>(source: ReadableSignalTrait<T>): T {
 
 export function useResourceSnapshot<T>(
 	resource: ResourceTrait<T>,
+): ResourceSnapshot<T>;
+export function useResourceSnapshot<T>(
+	snapshot: ReadableSignalTrait<ResourceSnapshot<T>>,
+): ResourceSnapshot<T>;
+export function useResourceSnapshot<T>(
+	compute: () => ResourceSnapshot<T>,
+	dependencies: DependencyList,
+): ResourceSnapshot<T>;
+export function useResourceSnapshot<T>(
+	source:
+		| ResourceTrait<T>
+		| ReadableSignalTrait<ResourceSnapshot<T>>
+		| (() => ResourceSnapshot<T>),
+	dependencies?: DependencyList,
 ): ResourceSnapshot<T> {
-	const subscribe = useCallback(
-		(listener: () => void) => {
-			const subscription = resource[SYMBOL_OBSERVABLE]().subscribe({
-				next: listener,
-				error: listener,
-			});
-			return () => {
-				subscription.unsubscribe();
-			};
-		},
-		[resource],
+	const computedSignal = useMemo(
+		() => (typeof source === "function" ? createComputed(source) : null),
+		// biome-ignore lint/correctness/useExhaustiveDependencies: The caller owns the computation's React closure dependencies.
+		dependencies ?? EMPTY_DEPENDENCIES,
 	);
-	const getSnapshot = useCallback(() => resource.snapshot.get(), [resource]);
-
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
-export interface UseResourceValueOptions<T> {
-	initialValue?: T;
-}
-
-export function useResourceValue<T>(
-	resource: ResourceTrait<T>,
-	options: UseResourceValueOptions<T> = {},
-): T {
-	const snapshot = useResourceSnapshot(resource);
-	if (
-		snapshot.status === ResourceStatus.LoadingError ||
-		snapshot.status === ResourceStatus.Error
-	) {
-		throw snapshot.error;
-	}
-	if (
-		snapshot.status === ResourceStatus.Reloading ||
-		snapshot.status === ResourceStatus.Resolved
-	) {
-		return snapshot.value;
-	}
-	if (Object.hasOwn(options, "initialValue")) {
-		return options.initialValue as T;
-	}
-	throw resource.whenValue();
+	const snapshotSignal =
+		typeof source === "function"
+			? (computedSignal as ReadableSignalTrait<ResourceSnapshot<T>>)
+			: "snapshot" in source
+				? source.snapshot
+				: source;
+	return useSignal(snapshotSignal);
 }
 
 export interface UseInteropObservableOptions<T> {

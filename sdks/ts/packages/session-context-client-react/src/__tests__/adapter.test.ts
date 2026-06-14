@@ -4,11 +4,12 @@ import {
 	type BaseTransportTrait,
 	type HttpRequest,
 	type HttpResponse,
+	ResourceStatus,
 } from "@securitydept/client";
 import { createEnvironmentForTest } from "@securitydept/client/test";
 import {
 	SecuritydeptProvider,
-	useResourceValue,
+	useResourceSnapshot,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import { act, createElement, type ReactElement } from "react";
@@ -67,6 +68,9 @@ describe("session-context react adapter", () => {
 				headers: {},
 				body: { subject: "session-user-1", display_name: "Alice" },
 			})),
+			providers: provideSessionContext({
+				config: { baseUrl: "https://auth.example.com" },
+			}),
 		});
 		let client: SessionContextService | null = null;
 
@@ -75,9 +79,20 @@ describe("session-context react adapter", () => {
 			const resolvedClient = injector.get(SESSION_CONTEXT_CLIENT);
 			expect(resolvedClient).toBeInstanceOf(SessionContextService);
 			client = resolvedClient as SessionContextService;
-			const session = useResourceValue(resolvedClient.sessionResource, {
-				initialValue: null,
-			});
+			const sessionSnapshot = useResourceSnapshot(
+				resolvedClient.sessionResource,
+			);
+			if (
+				sessionSnapshot.status === ResourceStatus.LoadingError ||
+				sessionSnapshot.status === ResourceStatus.Error
+			) {
+				throw sessionSnapshot.error;
+			}
+			const session =
+				sessionSnapshot.status === ResourceStatus.Reloading ||
+				sessionSnapshot.status === ResourceStatus.Resolved
+					? sessionSnapshot.value
+					: null;
 
 			return createElement(
 				"output",
@@ -89,12 +104,7 @@ describe("session-context react adapter", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: provideSessionContext({
-						config: { baseUrl: "https://auth.example.com" },
-					}),
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);

@@ -3,13 +3,14 @@ import {
 	ClientErrorKind,
 	createCancellationTokenSource,
 	type ErrorPresentationDescriptor,
+	ResourceStatus,
 	type ResourceTrait,
 	readErrorPresentationDescriptor,
 	UserRecovery,
 	type UserRecovery as UserRecoveryType,
 } from "@securitydept/client";
 import {
-	useResourceValue,
+	useResourceSnapshot,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
@@ -20,7 +21,6 @@ import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-clien
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
-	Suspense,
 	useEffect,
 	useMemo,
 	useRef,
@@ -187,20 +187,10 @@ function TokenSetBackendModePlaygroundContent() {
 	);
 
 	return (
-		<Suspense
-			fallback={
-				<Layout>
-					<p className="mx-auto max-w-5xl text-sm text-zinc-500 dark:text-zinc-400">
-						Loading token-set backend-mode client...
-					</p>
-				</Layout>
-			}
-		>
-			<TokenSetBackendModePlaygroundResolvedContent
-				authService={authService}
-				clientResource={clientResource}
-			/>
-		</Suspense>
+		<TokenSetBackendModePlaygroundResolvedContent
+			authService={authService}
+			clientResource={clientResource}
+		/>
 	);
 }
 
@@ -211,7 +201,26 @@ function TokenSetBackendModePlaygroundResolvedContent({
 	authService: AuthService;
 	clientResource: ResourceTrait<BaseOidcModeClient>;
 }) {
-	const client = useResourceValue(clientResource);
+	const clientSnapshot = useResourceSnapshot(clientResource);
+	if (
+		clientSnapshot.status === ResourceStatus.LoadingError ||
+		clientSnapshot.status === ResourceStatus.Error
+	) {
+		throw clientSnapshot.error;
+	}
+	if (
+		clientSnapshot.status === ResourceStatus.Idle ||
+		clientSnapshot.status === ResourceStatus.Loading
+	) {
+		return (
+			<Layout>
+				<p className="mx-auto max-w-5xl text-sm text-zinc-500 dark:text-zinc-400">
+					Loading token-set backend-mode client...
+				</p>
+			</Layout>
+		);
+	}
+	const client = clientSnapshot.value;
 	return (
 		<TokenSetBackendModePlaygroundReadyContent
 			authService={authService}
@@ -237,8 +246,28 @@ function TokenSetBackendModePlaygroundReadyContent({
 			),
 		[tracingService],
 	);
-	const state = useResourceValue(client.authResource);
-	const authorizationHeader = useResourceValue(client.authorizationHeaderValue);
+	const stateSnapshot = useResourceSnapshot(client.authResource);
+	const authorizationHeaderSnapshot = useResourceSnapshot(
+		client.authorizationHeaderValue,
+	);
+	const state =
+		stateSnapshot.status === ResourceStatus.Reloading ||
+		stateSnapshot.status === ResourceStatus.Resolved
+			? stateSnapshot.value
+			: null;
+	const authorizationHeader =
+		authorizationHeaderSnapshot.status === ResourceStatus.Reloading ||
+		authorizationHeaderSnapshot.status === ResourceStatus.Resolved
+			? authorizationHeaderSnapshot.value
+			: null;
+	const resourceError =
+		stateSnapshot.status === ResourceStatus.LoadingError ||
+		stateSnapshot.status === ResourceStatus.Error
+			? stateSnapshot.error
+			: authorizationHeaderSnapshot.status === ResourceStatus.LoadingError ||
+					authorizationHeaderSnapshot.status === ResourceStatus.Error
+				? authorizationHeaderSnapshot.error
+				: null;
 	const traceEvents = useSyncExternalStore(
 		(listener) => traceTimeline.subscribe(listener),
 		() => traceTimeline.get(),
@@ -393,6 +422,9 @@ function TokenSetBackendModePlaygroundReadyContent({
 				propagationRequestRef.current = null;
 			}
 		}
+	}
+	if (resourceError !== null) {
+		throw resourceError;
 	}
 
 	return (

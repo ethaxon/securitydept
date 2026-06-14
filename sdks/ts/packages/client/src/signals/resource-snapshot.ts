@@ -1,8 +1,70 @@
+import { filter, firstValueFrom, from, map, merge, NEVER } from "rxjs";
 import {
 	type ReadableSignalTrait,
+	type ResourceErrorSnapshot,
+	type ResourceLoadingErrorSnapshot,
+	type ResourceReloadingSnapshot,
+	type ResourceResolvedSnapshot,
 	type ResourceSnapshot,
 	ResourceStatus,
+	type ResourceWhenValueOptions,
 } from "./types";
+
+export async function whenResourceSnapshotValue<T>(
+	snapshotSignal: ReadableSignalTrait<ResourceSnapshot<T>>,
+	options?: ResourceWhenValueOptions,
+): Promise<T> {
+	options?.cancellationToken?.throwIfCancellationRequested();
+	const current = snapshotSignal.get();
+	if (
+		current.status === ResourceStatus.Resolved ||
+		current.status === ResourceStatus.Reloading
+	) {
+		return current.value;
+	}
+	if (
+		current.status === ResourceStatus.LoadingError ||
+		current.status === ResourceStatus.Error
+	) {
+		throw current.error;
+	}
+
+	const snapshot = await firstValueFrom(
+		merge(
+			from(snapshotSignal).pipe(
+				filter(
+					(
+						snapshot,
+					): snapshot is
+						| ResourceResolvedSnapshot<T>
+						| ResourceReloadingSnapshot<T>
+						| ResourceLoadingErrorSnapshot
+						| ResourceErrorSnapshot<T> =>
+						snapshot.status === ResourceStatus.Resolved ||
+						snapshot.status === ResourceStatus.Reloading ||
+						snapshot.status === ResourceStatus.LoadingError ||
+						snapshot.status === ResourceStatus.Error,
+				),
+			),
+			(options?.cancellationToken
+				? from(options.cancellationToken)
+				: NEVER
+			).pipe(
+				map(({ cancellationError }) => {
+					throw cancellationError;
+				}),
+			),
+		),
+	);
+
+	if (
+		snapshot.status === ResourceStatus.LoadingError ||
+		snapshot.status === ResourceStatus.Error
+	) {
+		throw snapshot.error;
+	}
+	return snapshot.value;
+}
 
 type AnyResourceSnapshotSelector = (
 	// More than four levels intentionally falls back to runtime composition.

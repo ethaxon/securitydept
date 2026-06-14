@@ -8,7 +8,6 @@ import {
 	createTracing,
 	ResourceStatus,
 	SecuritydeptDestroyRef,
-	SecuritydeptInjector,
 	UriReferenceString,
 } from "@securitydept/client";
 import {
@@ -152,17 +151,15 @@ describe("token-set browser flow", () => {
 
 		const environment = createFoundationEnvironment({
 			router: createPageRouter("https://app.example.com/"),
-		});
-		const initializedRecord = await SecuritydeptInjector.fromParentInjector(
-			environment.injector,
-			[
+			providers: [
 				...provideAuthService(),
 				{
 					provide: SecuritydeptDestroyRef,
 					useValue: createSecuritydeptDestroyRef(),
 				},
 			],
-		)
+		});
+		const initializedRecord = await environment.injector
 			.get(TOKEN_SET_CLIENT_REGISTRY)
 			.clientRecordFor(TOKEN_SET_FRONTEND_MODE_CONFIG.clientKey, {
 				initialize: true,

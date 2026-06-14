@@ -5,6 +5,7 @@ import {
 	createResource,
 	createSignal,
 	type ObserverTrait,
+	type ResourceSnapshot,
 	ResourceStatus,
 	type SubscriptionTrait,
 	SYMBOL_OBSERVABLE,
@@ -17,7 +18,6 @@ import {
 	useEventStream,
 	useInteropObservable,
 	useResourceSnapshot,
-	useResourceValue,
 	useSignal,
 } from "../interop";
 
@@ -32,6 +32,11 @@ function render(element: ReactElement) {
 
 	return {
 		container,
+		rerender(nextElement: ReactElement) {
+			act(() => {
+				root.render(nextElement);
+			});
+		},
 		unmount() {
 			act(() => {
 				root.unmount();
@@ -126,28 +131,92 @@ describe("client-react interop", () => {
 		resource.dispose();
 	});
 
-	it("reads resource values with an initial value until resolved", async () => {
-		const response = createEventSubject<string>();
-		const resource = createResource<string>({
-			stream: () => response,
+	it("reads resource snapshot signals directly", async () => {
+		const snapshot = createSignal<ResourceSnapshot<string>>({
+			status: ResourceStatus.Loading,
 		});
 
 		function Probe() {
-			const value = useResourceValue(resource, { initialValue: "loading" });
-			return createElement("div", null, value);
+			const value = useResourceSnapshot(snapshot);
+			return createElement("div", null, value.status);
 		}
 
 		const view = render(createElement(Probe));
-		expect(view.container.textContent).toBe("loading");
+		expect(view.container.textContent).toBe(ResourceStatus.Loading);
 
 		await act(async () => {
-			response.next("ready");
+			snapshot.set({ status: ResourceStatus.Resolved, value: "ready" });
 			await Promise.resolve();
 		});
 
-		expect(view.container.textContent).toBe("ready");
+		expect(view.container.textContent).toBe(ResourceStatus.Resolved);
 		view.unmount();
-		resource.dispose();
+	});
+
+	it("tracks dependencies from a resource snapshot computation", async () => {
+		const ready = createSignal(false);
+		const result = createSignal("first");
+
+		function Probe() {
+			const snapshot = useResourceSnapshot<string>(
+				() =>
+					ready.get()
+						? { status: ResourceStatus.Resolved, value: result.get() }
+						: { status: ResourceStatus.Loading },
+				[],
+			);
+			return createElement(
+				"div",
+				null,
+				snapshot.status === ResourceStatus.Resolved
+					? snapshot.value
+					: snapshot.status,
+			);
+		}
+
+		const view = render(createElement(Probe));
+		expect(view.container.textContent).toBe(ResourceStatus.Loading);
+
+		await act(async () => {
+			ready.set(true);
+			await Promise.resolve();
+		});
+
+		expect(view.container.textContent).toBe("first");
+
+		await act(async () => {
+			result.set("second");
+			await Promise.resolve();
+		});
+
+		expect(view.container.textContent).toBe("second");
+		view.unmount();
+	});
+
+	it("recreates a resource snapshot computation when React dependencies change", () => {
+		function Probe({ prefix }: { prefix: string }) {
+			const snapshot = useResourceSnapshot(
+				() => ({
+					status: ResourceStatus.Resolved,
+					value: `${prefix}:value`,
+				}),
+				[prefix],
+			);
+			return createElement(
+				"div",
+				null,
+				snapshot.status === ResourceStatus.Resolved
+					? snapshot.value
+					: snapshot.status,
+			);
+		}
+
+		const view = render(createElement(Probe, { prefix: "first" }));
+		expect(view.container.textContent).toBe("first:value");
+
+		view.rerender(createElement(Probe, { prefix: "second" }));
+		expect(view.container.textContent).toBe("second:value");
+		view.unmount();
 	});
 
 	it("reads interop observable initialValue and later emissions", async () => {

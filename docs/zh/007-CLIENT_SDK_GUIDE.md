@@ -122,7 +122,7 @@ Scheduling、cancellation、abort interop、storage、page lifecycle、promise/s
 
 `@securitydept/client` 现在是 framework-neutral DI authority。`SecuritydeptInjectorTrait` 是最小读取侧 contract，只表达 `get()`；consumer、React Context、以及其它 injector adapter 都围绕这个 duck type 工作。`SecuritydeptInjector` 是 SDK runtime/facade，负责 `resolveAndCreate()`、`fromParentInjector()`、显式 provider 解析、parent 继承、override 与 side-effect-free `has()` 诊断。
 
-React 侧只允许一组 SDK Context，全部位于 `@securitydept/client-react`：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`。Domain React package 不再创建自己的 public Context/Provider/`useXxxContext()` surface，而是导出 injection token、provider factory、显式 callback/component bridge，以及可配合 `useReadableSignalValue()`、`useReplaySignalValue()`、`useInteropObservable()` 与 `useEventStream()` 的 signal/event bridge。
+React 侧只允许一组 SDK Context，全部位于 `@securitydept/client-react`：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`。Domain React package 不再创建自己的 public Context/Provider/`useXxxContext()` surface，而是导出 injection token、provider factory 和显式 callback/component bridge。React 通过 `useSignal()` 读取同步 signal，通过 `useResourceSnapshot()` 读取 Resource snapshot，并通过 `useInteropObservable()` 与 `useEventStream()` 对接其它 observable/event source。
 
 Angular DI 仍属于 adapter concern；framework-neutral host capability resolution 仍属于 foundation concern。Core client 继续消费 `FoundationEnvironment`；不直接绑定 client 的 helper 继续消费由 host composition root 创建的显式 typed environment object 或更窄 capability view。
 
@@ -161,7 +161,7 @@ Foundation Web environment factory 是显式 composition helper，不是自动 h
 
 不要使用字符串驱动的 `createEnvironmentFromPreset(name)`、preset-only wrapper factory 或 global-shape detection 猜测 host。Core client 不读取 `window`、`document`、`location` 或 `history`；只有 `createRouterForNativeWeb()`、`createPageLifecycleForNativeWeb()`、`createPopupForNativeWeb()`、`createEnvironmentForNativeWeb()` 这类显式命名 host adapter 可以在调用者未传入 host object 时读取 native global。`NativeWeb` 表示具备 native navigation/location/history 能力的普通浏览器页面宿主；worker-like host 应使用 `createFoundationEnvironment()` 或更具体的 host factory。
 
-当 host 需要在 routes、commands 或 framework adapter 之间使用 environment capability 时，应在 composition root 创建一个显式 environment，并通过 framework bridge 传递这个对象。React 侧将 `environment.injector` 作为根 `SecuritydeptProvider` 的 `parentInjector` 传入，再用 `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)` 读取；Angular 侧通过 `provideEnvironment({ environment })` 提供同一个对象。SDK 不再暴露单独的分层 environment resolver：`NativeWebEnvironment` 在类型上覆盖 foundation `FoundationEnvironment`，而 `WebExtUIEnvironment` 在结构上组合 WebExt core 与 native-web page capability。
+当 host 需要在 routes、commands 或 framework adapter 之间使用 environment capability 时，应在 composition root 创建一个显式 environment，并通过 framework bridge 传递这个对象。React 侧应以 `createEnvironmentForReact()` 作为 framework composition layer，并组合 `createEnvironmentForNativeWeb()` 等 host creator；它在 React Fiber 树外构造最终 injector，并为 React 专属服务提供统一插入点。然后将完整 injector 传给根 `SecuritydeptProvider`，leaf 代码通过 `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)` 读取。`SecuritydeptProvider` 不负责创建 injector，也不拥有 destroy 生命周期。Angular 侧使用 `provideEnvironment()` 通过 Angular DI 构造并提供 environment。`NativeWebEnvironment` 在类型上覆盖 foundation `FoundationEnvironment`，而 `WebExtUIEnvironment` 在结构上组合 WebExt core 与 native-web page capability。
 
 该规则不只适用于 `@securitydept/client`：context package 与 framework adapter 的 public helper 也必须使用同一边界。任何会读取 host globals、执行 page navigation、构造 client，或拥有 transport/store/time wiring 的 helper，都应接收 environment 或窄 capability view。Provider、DI 与顶层 adapter registration API 可以作为 composition root 接收完整 environment；普通 hook、guard、interceptor、service 与 convenience helper 不应各自重复声明完整 dependency bag。
 
@@ -297,7 +297,7 @@ Frontend OIDC flow state 会在流程入口显式确定 storage scope。Redirect
 
 `apps/webui` 与 `apps/server` 定义当前仓库内基线：backend-mode 与 frontend-mode host split、keyed callback/readiness、React Query token-set management flows、route security、dashboard bearer access、浏览器 E2E 覆盖，以及 shared error/diagnosis consumption。
 
-参考应用应直接证明 canonical SDK 用法。`apps/webui` 现在通过 `useSecuritydeptContext().get(TOKEN)`、`useReadableSignalValue(...)` 与 feature-local 的显式 assertion/helper 读取 SDK 依赖，而不是再用一个共享的 app-local facade 把这些读取隐藏起来。
+参考应用应直接证明 canonical SDK 用法。`apps/webui` 现在通过 `useSecuritydeptContext().get(TOKEN)`、`useSignal(...)` / `useResourceSnapshot(...)` 与 feature-local 的显式 assertion/helper 读取 SDK 依赖，而不是再用一个共享的 app-local facade 把这些读取隐藏起来。
 
 ### Framework Router Adapters
 
@@ -383,11 +383,11 @@ Verified 表示已有聚焦型验证、仓库内 proof 或下游校准；不代�
 
 React composition 仍服从三层模型：auth-context config、injector provider/factory、host registration glue。
 
-- `@securitydept/client-react` 拥有唯一 SDK React Context：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`。它同时提供 context-free signal/event bridge：`useReadableSignalValue()`、`useReplaySignalValue()`、`useInteropObservable()` 与 `useEventStream()`。
-- React 使用 environment 自己的 injector 作为根 `SecuritydeptProvider.parentInjector`；具体 router adapter（如 `@securitydept/client-react/tanstack-router`）负责 route-scoped auth coordination。
+- `@securitydept/client-react` 拥有 `createEnvironmentForReact()`、唯一 SDK React Context（`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`），以及 context-free bridge：`useSignal()`、`useResourceSnapshot()`、`useInteropObservable()` 与 `useEventStream()`。
+- React 在 Fiber 树外构造最终 injector，并通过 `SecuritydeptProvider.injector` 传入；具体 router adapter（如 `@securitydept/client-react/tanstack-router`）负责 route-scoped auth coordination。
 - `@securitydept/basic-auth-context-client-react` 导出 `BASIC_AUTH_CONTEXT_CLIENT`、`BASIC_AUTH_CONTEXT_CLIENT_CONFIG`、`BasicAuthContextService`、`provideBasicAuthContext({ config })`。React 代码通过 `useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT)` 读取 client。
-- `@securitydept/session-context-client-react` 导出 `SESSION_CONTEXT_CLIENT`、`SESSION_CONTEXT_CLIENT_CONFIG`、`SessionContextService`、`provideSessionContext({ config })`。React 代码通过 `useSecuritydeptContext().get(SESSION_CONTEXT_CLIENT)` 读取 client，并通过 `useReplaySignalValue(client.sessionInfo)` 等 signal hook 读取状态。
-- `@securitydept/token-set-context-client-react` 导出 `provideTokenSetClientRegistry()`、`TOKEN_SET_CLIENT_REGISTRY`、`TokenSetClientRegistryService` 和无样式 callback hooks。读取 keyed auth state 的 canonical 方式是 `const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)`，然后 `useReplaySignalValue(registry.clientSignalFor("main"))`，再读取返回 client 的 `authSnapshot`、`isAuthenticated` 等 replay channels。
+- `@securitydept/session-context-client-react` 导出 `SESSION_CONTEXT_CLIENT`、`SESSION_CONTEXT_CLIENT_CONFIG`、`SessionContextService`、`provideSessionContext({ config })`。React 代码通过 `useSecuritydeptContext().get(SESSION_CONTEXT_CLIENT)` 读取 client，并通过 `useResourceSnapshot(client.sessionResource)` 读取状态。
+- `@securitydept/token-set-context-client-react` 导出 `provideTokenSetClientRegistry()`、`TOKEN_SET_CLIENT_REGISTRY`、`TokenSetClientRegistryService` 和无样式 callback hooks。读取 keyed auth state 的 canonical 方式是 `const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)`，然后调用 `useResourceSnapshot(registry.clientResourceFor("main"))`；client snapshot resolved 后再通过 `useResourceSnapshot(client.authResource)` 读取认证状态。
 - Frontend 与 backend callback 分别使用 `useTokenSetFrontendCallback({ clientQuery })` 和 `useTokenSetBackendCallback({ clientQuery })`。可选的同步 `clientQuery({ callbackUrl })` 负责生成 registry query，或返回 `null` 表示 callback 不适用；它不会消费 callback input。Hook 在 SSR 与 hydration 首次渲染期间保持 callback state 为 idle，并在客户端 commit 后初始化选中的 record，再将 registry readiness 与 client 自己的 `callback` Resource 展平。Callback input 仍由 client 在 `start()` 中、persistence restore 之前解析和清理。默认 resolver 支持异步 `callbackInputPredicate`，它在 canonical `take...FromRouter()` 清理前执行；返回 `false` 时 URL 保持不变。Backend registry selection 默认使用 compat fragment 的 `callback_routing_key`，`createBackendOidcModeClientFactory()` 默认以 `meta.clientKey` 作为 client routing key。Frontend selection 默认匹配 entry metadata 的 `callbackUrl` 候选，未显式提供 resolver 时 factory 也使用这些候选。Registry query 与 input predicate 是彼此独立的扩展点。Registry factory 接收 `{ environment, meta, cancellationToken }`；framework adapter 不直接调用 `client.start()`。Callback determination 成功后，内存 auth/callback Resource 的提交不依赖 best-effort persistence 同步；storage 写入失败只记录 trace，不会把本次登录改判为失败。
 
 #### 4. Angular 入口：thin DI wrapper 保持 canonical owner 边界

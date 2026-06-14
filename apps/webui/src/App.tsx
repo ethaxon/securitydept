@@ -1,7 +1,4 @@
-import {
-	type FoundationEnvironment,
-	type SecuritydeptProvider as SecuritydeptDependencyProvider,
-} from "@securitydept/client";
+import { type SecuritydeptInjectorTrait } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useSecuritydeptContext,
@@ -15,25 +12,16 @@ import { ThemeProvider } from "@/theme/react";
 import { type ThemeService } from "@/theme/theme.service";
 
 export interface AppProps {
-	readonly environment: FoundationEnvironment;
-	readonly providers: readonly SecuritydeptDependencyProvider[];
+	readonly injector: SecuritydeptInjectorTrait;
 	readonly queryClient: QueryClient;
 	readonly themeService: ThemeService;
 }
 
-export function App({
-	environment,
-	providers,
-	queryClient,
-	themeService,
-}: AppProps) {
+export function App({ injector, queryClient, themeService }: AppProps) {
 	return (
 		<ThemeProvider service={themeService}>
 			<QueryClientProvider client={queryClient}>
-				<SecuritydeptProvider
-					parentInjector={environment.injector}
-					providers={providers}
-				>
+				<SecuritydeptProvider injector={injector}>
 					<AppRouterProvider />
 				</SecuritydeptProvider>
 			</QueryClientProvider>

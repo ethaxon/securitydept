@@ -1,3 +1,4 @@
+import { type ResourceSnapshot, ResourceStatus } from "@securitydept/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import {
@@ -18,8 +19,40 @@ import {
 	updateEntry,
 	updateGroup,
 } from "@/api/dashboard";
-import { AuthContextMode } from "@/auth/model";
+import { AuthContextMode, type WebuiAuthUser } from "@/auth/model";
 import { useAuthMode, useAuthService, useAuthUser } from "@/auth/react";
+
+function readAuthModeSnapshot(
+	snapshot: ResourceSnapshot<AuthContextMode | null>,
+): AuthContextMode | null {
+	switch (snapshot.status) {
+		case ResourceStatus.Idle:
+		case ResourceStatus.Loading:
+			return null;
+		case ResourceStatus.LoadingError:
+		case ResourceStatus.Error:
+			throw snapshot.error;
+		case ResourceStatus.Reloading:
+		case ResourceStatus.Resolved:
+			return snapshot.value;
+	}
+}
+
+function readAuthUserSnapshot(
+	snapshot: ResourceSnapshot<WebuiAuthUser>,
+): WebuiAuthUser {
+	switch (snapshot.status) {
+		case ResourceStatus.Idle:
+		case ResourceStatus.Loading:
+			return null;
+		case ResourceStatus.LoadingError:
+		case ResourceStatus.Error:
+			throw snapshot.error;
+		case ResourceStatus.Reloading:
+		case ResourceStatus.Resolved:
+			return snapshot.value;
+	}
+}
 
 export const dashboardQueryKeys = {
 	root: ["dashboard"] as const,
@@ -36,8 +69,8 @@ export const dashboardQueryKeys = {
 } as const;
 
 export function useCurrentDashboardUser() {
-	const authUser = useAuthUser();
-	const mode = useAuthMode();
+	const authUser = readAuthUserSnapshot(useAuthUser());
+	const mode = readAuthModeSnapshot(useAuthMode());
 	return useQuery({
 		queryKey: dashboardQueryKeys.currentUser(mode),
 		queryFn: async () => authUser?.userInfo ?? null,
@@ -46,8 +79,8 @@ export function useCurrentDashboardUser() {
 }
 
 export function useDashboardAccessNotice() {
-	const authUser = useAuthUser();
-	const mode = useAuthMode();
+	const authUser = readAuthUserSnapshot(useAuthUser());
+	const mode = readAuthModeSnapshot(useAuthMode());
 	if (
 		(mode === AuthContextMode.TokenSetBackend ||
 			mode === AuthContextMode.TokenSetFrontend) &&
@@ -64,7 +97,7 @@ export function useDashboardAccessNotice() {
 
 export function useGroupsQuery() {
 	const authService = useAuthService();
-	const mode = useAuthMode();
+	const mode = readAuthModeSnapshot(useAuthMode());
 	return useQuery({
 		queryKey: dashboardQueryKeys.groups(mode),
 		queryFn: async ({ signal }) =>
@@ -77,7 +110,7 @@ export function useGroupsQuery() {
 
 export function useGroupQuery(groupId: string) {
 	const authService = useAuthService();
-	const mode = useAuthMode();
+	const mode = readAuthModeSnapshot(useAuthMode());
 	return useQuery({
 		queryKey: dashboardQueryKeys.group(mode, groupId),
 		queryFn: async ({ signal }) =>
@@ -91,7 +124,7 @@ export function useGroupQuery(groupId: string) {
 
 export function useEntriesQuery() {
 	const authService = useAuthService();
-	const mode = useAuthMode();
+	const mode = readAuthModeSnapshot(useAuthMode());
 	return useQuery({
 		queryKey: dashboardQueryKeys.entries(mode),
 		queryFn: async ({ signal }) =>
@@ -104,7 +137,7 @@ export function useEntriesQuery() {
 
 export function useEntryQuery(entryId: string) {
 	const authService = useAuthService();
-	const mode = useAuthMode();
+	const mode = readAuthModeSnapshot(useAuthMode());
 	return useQuery({
 		queryKey: dashboardQueryKeys.entry(mode, entryId),
 		queryFn: async ({ signal }) =>

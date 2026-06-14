@@ -3,11 +3,8 @@ import {
 	distinctUntilChanged,
 	filter,
 	finalize,
-	firstValueFrom,
 	from,
 	map,
-	merge,
-	NEVER,
 	type Observable,
 	type ObservableInput,
 	of,
@@ -29,13 +26,10 @@ import { ResourceError } from "../signals/error";
 import {
 	ResourceSnapshotUpdateKind,
 	reduceResourceSnapshot,
+	whenResourceSnapshotValue,
 } from "../signals/resource-snapshot";
 import {
 	type ReadableSignalTrait,
-	type ResourceErrorSnapshot,
-	type ResourceLoadingErrorSnapshot,
-	type ResourceReloadingSnapshot,
-	type ResourceResolvedSnapshot,
 	type ResourceSnapshot,
 	ResourceStatus,
 	type ResourceTrait,
@@ -130,56 +124,7 @@ abstract class RxResourceBase<T>
 	}
 
 	async whenValue(options?: ResourceWhenValueOptions): Promise<T> {
-		options?.cancellationToken?.throwIfCancellationRequested();
-		const current = this.snapshot.get();
-		if (
-			current.status === ResourceStatus.Resolved ||
-			current.status === ResourceStatus.Reloading
-		) {
-			return current.value;
-		}
-		if (
-			current.status === ResourceStatus.LoadingError ||
-			current.status === ResourceStatus.Error
-		) {
-			throw current.error;
-		}
-
-		const snapshot = await firstValueFrom(
-			merge(
-				from(this.snapshot).pipe(
-					filter(
-						(
-							snapshot,
-						): snapshot is
-							| ResourceResolvedSnapshot<T>
-							| ResourceReloadingSnapshot<T>
-							| ResourceLoadingErrorSnapshot
-							| ResourceErrorSnapshot<T> =>
-							snapshot.status === ResourceStatus.Resolved ||
-							snapshot.status === ResourceStatus.Reloading ||
-							snapshot.status === ResourceStatus.LoadingError ||
-							snapshot.status === ResourceStatus.Error,
-					),
-				),
-				(options?.cancellationToken
-					? from(options.cancellationToken)
-					: NEVER
-				).pipe(
-					map(({ cancellationError }) => {
-						throw cancellationError;
-					}),
-				),
-			),
-		);
-
-		if (
-			snapshot.status === ResourceStatus.LoadingError ||
-			snapshot.status === ResourceStatus.Error
-		) {
-			throw snapshot.error;
-		}
-		return snapshot.value;
+		return whenResourceSnapshotValue(this.snapshot, options);
 	}
 
 	dispose(): void {

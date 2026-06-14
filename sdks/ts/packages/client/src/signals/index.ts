@@ -16,6 +16,7 @@ export {
 	type ResourceSnapshotUpdate,
 	ResourceSnapshotUpdateKind,
 	reduceResourceSnapshot,
+	whenResourceSnapshotValue,
 } from "./resource-snapshot";
 export { createSignal, isSignalTrait, readonlySignal } from "./signal";
 export {

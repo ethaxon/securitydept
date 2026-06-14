@@ -2,12 +2,13 @@ import {
 	ClientError,
 	type ErrorPresentationDescriptor,
 	PopupErrorCode,
+	ResourceStatus,
 	readErrorPresentationDescriptor,
 	readPopupErrorPresentationDescriptor,
 	UserRecovery,
 } from "@securitydept/client";
 import {
-	useResourceValue,
+	useResourceSnapshot,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import { type FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
@@ -105,9 +106,17 @@ function TokenSetFrontendModePlaygroundContent({
 }) {
 	const tracingService = useSecuritydeptContext().get(TokenSetTracingService);
 	const traceTimeline = tracingService.frontendTimeline;
-	const state = useResourceValue(frontendClient.authResource, {
-		initialValue: null,
-	});
+	const stateSnapshot = useResourceSnapshot(frontendClient.authResource);
+	const state =
+		stateSnapshot.status === ResourceStatus.Reloading ||
+		stateSnapshot.status === ResourceStatus.Resolved
+			? stateSnapshot.value
+			: null;
+	const stateError =
+		stateSnapshot.status === ResourceStatus.LoadingError ||
+		stateSnapshot.status === ResourceStatus.Error
+			? stateSnapshot.error
+			: null;
 	const traceEvents = useSyncExternalStore(
 		(listener) => traceTimeline.subscribe(listener),
 		() => traceTimeline.get(),
@@ -180,6 +189,9 @@ function TokenSetFrontendModePlaygroundContent({
 		popupLogin.isPending ||
 		refresh.isPending ||
 		clear.isPending;
+	if (stateError !== null) {
+		throw stateError;
+	}
 
 	return (
 		<Layout>

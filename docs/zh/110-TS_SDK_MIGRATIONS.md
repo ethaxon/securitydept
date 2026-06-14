@@ -130,13 +130,13 @@ Packages：
 - `@securitydept/client` 现在拥有 framework-neutral DI authority：`SecuritydeptInjectorTrait` 是读取侧最小 contract，只表达 `get()`；`SecuritydeptInjector` 是 SDK runtime/facade，负责 provider 解析、parent 继承、override 与 `has()` 诊断。
 - React 侧现在只有一组 SDK Context：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`，全部位于 `@securitydept/client-react`。
 - React domain package 不再导出 `BasicAuthContextProvider`、`SessionContextProvider`、`BackendOidcModeContextProvider`、`TokenSetAuthProvider`、`useBasicAuthContext()`、`useSessionContext()`、`useBackendOidcModeContext()`、`useTokenSetAuthRegistry()` 等 domain-specific Context / Provider / keyed state helper。
-- React domain package 改为导出 injection token、provider factory、plain factory 与显式 callback/component bridge。状态读取统一通过 `useReadableSignalValue(...)` 完成。
+- React domain package 改为导出 injection token、provider factory、plain factory 与显式 callback/component bridge。同步 signal 通过 `useSignal(...)` 读取，Resource 通过 `useResourceSnapshot(...)` 读取。
 
 迁移：
 
-- 用 `SecuritydeptProvider` 包住 React subtree；可以传入已有 `injector`，也可以通过 `providers` / `parentInjector` 派生 child injector。
+- 在 React Fiber 树外构造 injector，再用 `SecuritydeptProvider` 包住 React subtree 并传入完整 `injector`。Provider 不再派生 child injector，也不再创建 destroy ref。
 - 将 `XxxContextProvider` / `useXxxContext()` 迁移为 `useSecuritydeptContext().get(TOKEN)`。
-- 将 `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` 迁移为 `const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)`，再配合 `useReplaySignalValue(registry.clientSignalFor(key))` 读取返回 client 的 replay channels。
+- 将 `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` 迁移为 `const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)`，再通过 `useResourceSnapshot()` 读取 `registry.clientResourceFor(key)` 与选中 client 的 Resource。
 - 将 basic-auth / session 的 provider-first 组合迁移为 `create*()` + `provide*()`；token-set 多客户端 React 组合改为注册 `provideTokenSetClientRegistry({ clients })`，需要 callback rendering 时使用 frontend/backend callback Resource hooks。
 
 ### Token-Set React Registry Composition
@@ -327,8 +327,8 @@ Packages：
 
 变更：
 
-- `@securitydept/client-react` 现在拥有 canonical React injector bridge：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`，以及 context-free `useReadableSignalValue()`、`useReplaySignalValue()`、`useInteropObservable()` 与 `useEventStream()`。
-- `client-react` root 现在只导出 React injector bridge。React environment capability 来自核心 environment injector：将 `environment.injector` 作为根 `SecuritydeptProvider` 的 `parentInjector` 传入。Route-scoped planner host 由具体 router adapter（如 `@securitydept/client-react/tanstack-router`）拥有。
+- `@securitydept/client-react` 现在拥有 canonical React injector bridge：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`，以及 context-free `useSignal()`、`useResourceSnapshot()`、`useInteropObservable()` 与 `useEventStream()`。`useResourceValue()` 已删除，因为在 suspended render 中临时创建 `whenValue()` Promise 并不稳定；React 应从 snapshot 显式渲染 Resource 状态。
+- `client-react` root 现在导出 `createEnvironmentForReact()` 和 React injector bridge。在 Fiber 树外使用该 creator，将 React 专属 providers 组合到 host environment creator 上，再把已构造完成的 injector 传给根 `SecuritydeptProvider`。Route-scoped planner host 由具体 router adapter（如 `@securitydept/client-react/tanstack-router`）拥有。
 - `basic-auth` / `session` / `token-set` React adapter 不再拥有 domain-specific Provider / Context hook；它们导出 token、plain factory、provider factory，以及显式 callback/component bridge。token-set 多客户端组合现在改为显式 registry/controller wiring，而不是 SDK 预设 runtime bundle。
 - Token-set Angular/React 路由安全现依赖 `secureTokenSetRouteRoot()` 与 registry 默认 unauthenticated handler。client 选择应写在 requirement `attributes.query` 中；仅在需要时通过 secure route root 或 planner host provider 的 `onClientUnauthenticated` 自定义 redirect 策略。
 - React callback handling 使用 `useTokenSetFrontendCallback()` 与 `useTokenSetBackendCallback()` 桥接 client-owned callback Resource。Registry selection 是非消费式的，并返回绑定固定 record identity 的 snapshot signal。自定义 `clientQuery({ callbackUrl })` 控制 registry selection，client `callbackInputPredicate` 则独立地在 URL cleanup 前筛选 callback input。Registry entry factory 负责启动 client，而 client startup 会在 persistence restore 前解析并 take callback input。
@@ -337,7 +337,7 @@ Packages：
 
 - 在 framework composition root 构建 browser environment，再通过 `SecuritydeptProvider` + provider factory 把这些 dependency 注册到 injector 中。
 - 如果 app 依赖旧的 provider/service construction 副作用来探测 session，应显式创建 `SessionContextController`，并在 host-owned lifecycle 中调用 `controller.refresh()`。
-- 对 React 代码，如需 environment capability，应将 host-owned environment injector 作为 `SecuritydeptProvider.parentInjector`，再在 leaf 代码中用 `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)` 读取。
+- 对 React 代码，如需 environment capability，应将 host-owned、已完整构造的 injector 传入 `SecuritydeptProvider`，再在 leaf 代码中用 `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)` 读取。
 - 对 Angular frontend-oidc route redirect，应在 composition root 通过 `provideEnvironment({ environment })` 提供 host-owned environment object。
 - 对 Angular callback route，使用 `TokenSetFrontendCallbackComponent` 或 `TokenSetBackendCallbackComponent`。
 - 对 custom callback orchestration，使用 selector `clientQuery`、默认 resolver 的 `callbackInputPredicate`，或完整的 client `callbackInputResolver`，不要重新引入独立 callback controller。
@@ -434,11 +434,11 @@ Packages：
 
 - 通过 `registry.state`、`registry.getState()` 或 `registry.state.notify(listener)` 观察 registry topology 与 readiness；`registeredKeys()` / `readyKeys()` / registered snapshot helper 只作为同步 convenience 使用。
 - 如果宿主代码依赖 adapter-local token-set service 状态机或 `TokenSetAuthService`，请直接迁移到 mode client channels：首屏 readiness 使用 `authDetermined`，稳定 UI 使用 `authSnapshot`，route guard 使用 `isAuthenticated`，HTTP 使用 `authorizationHeaderValue`，按钮锁定使用 `authOperations.*Pending`。
-- 将 `registry.require(key).client` 这类同步 service-wrapper access 替换为 async setup 中的 `await registry.whenReady(key)`，或 reactive host 中的 `useReadableSignalValue(registry.clientSignalFor(key))`。
-- Multi-client host 应向 `whenReady(key)` 与 `clientSignalFor(key)` 传入显式 registry key。只有真实 single-client host 才继续使用省略 key 的写法。
+- 将 `registry.require(key).client` 这类同步 service-wrapper access 替换为 async setup 中的 `await registry.clientResourceFor(key).whenValue()`，或 reactive host 中的 `useResourceSnapshot(registry.clientResourceFor(key))`。
+- Multi-client host 应向 `clientResourceFor(key)` 传入显式 registry key。
 - 将 `import { signalToObservable } from "@securitydept/client-angular"` 替换为 `import { toRxObservable } from "@securitydept/client/rx"`。
 - Angular host 如需 RxJS auth state，应调用 `toRxObservable(client.authSnapshot)` 或其它 client replay signal。Replay signal observable 在首值前不会发出值，并会向 late subscriber replay 最后一个值。
-- 在需要 aggregate registry reactivity 的 React host 中，使用 `useReadableSignalValue(registry.state)`，不要再维护 app-local 的 registered/ready mirror store。Per-client auth 应读取 client replay signals，而不是创建 service hook。
+- 在需要 aggregate registry reactivity 的 React host 中，使用 `useSignal(registry.state)`，不要再维护 app-local 的 registered/ready mirror store。Per-client auth 应通过 `useResourceSnapshot()` 读取 client Resource，而不是创建 service hook。
 
 理由：
 

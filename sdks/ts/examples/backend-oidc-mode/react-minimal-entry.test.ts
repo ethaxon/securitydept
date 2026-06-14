@@ -112,7 +112,13 @@ describe("backend-oidc react minimal entry", () => {
 	});
 
 	it("shows the minimal injector path for consuming backend-OIDC auth state in React", async () => {
-		const environment = createEnvironmentForTest();
+		const environment = createEnvironmentForTest({
+			providers: provideTokenSetClientRegistry({
+				clients: [
+					createEntry(() => createBackendClient(createSnapshot("backend-at"))),
+				],
+			}),
+		});
 		let registry: TokenSetClientRegistryService | undefined;
 
 		function AuthBadge() {
@@ -123,18 +129,7 @@ describe("backend-oidc react minimal entry", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: [
-						...provideTokenSetClientRegistry({
-							clients: [
-								createEntry(() =>
-									createBackendClient(createSnapshot("backend-at")),
-								),
-							],
-						}),
-					],
-				},
+				{ injector: environment.injector },
 				createElement(AuthBadge),
 			),
 		);
@@ -153,7 +148,13 @@ describe("backend-oidc react minimal entry", () => {
 	});
 
 	it("shows advanced client access through the keyed registry service", async () => {
-		const environment = createEnvironmentForTest();
+		const environment = createEnvironmentForTest({
+			providers: provideTokenSetClientRegistry({
+				clients: [
+					createEntry(() => createBackendClient(createSnapshot("backend-at"))),
+				],
+			}),
+		});
 		let registry: TokenSetClientRegistryService | undefined;
 
 		function ClientProbe() {
@@ -164,18 +165,7 @@ describe("backend-oidc react minimal entry", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: [
-						...provideTokenSetClientRegistry({
-							clients: [
-								createEntry(() =>
-									createBackendClient(createSnapshot("backend-at")),
-								),
-							],
-						}),
-					],
-				},
+				{ injector: environment.injector },
 				createElement(ClientProbe),
 			),
 		);

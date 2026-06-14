@@ -5,10 +5,11 @@ import {
 	createInMemoryRecordStore,
 	createRootSpan,
 	createTracing,
+	ResourceStatus,
 } from "@securitydept/client";
 import {
 	SecuritydeptProvider,
-	useResourceValue,
+	useResourceSnapshot,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
 import {
@@ -64,15 +65,29 @@ describe("session-context react minimal entry", () => {
 			sessionStorage: createInMemoryRecordStore(),
 			span: createRootSpan(),
 			tracing: createTracing(),
+			providers: provideSessionContext({
+				config: { baseUrl: "https://auth.example.com" },
+			}),
 		});
 
 		function SessionBadge() {
 			const sessionClient = useSecuritydeptContext().get(
 				SESSION_CONTEXT_CLIENT,
 			);
-			const session = useResourceValue(sessionClient.sessionResource, {
-				initialValue: null,
-			});
+			const sessionSnapshot = useResourceSnapshot(
+				sessionClient.sessionResource,
+			);
+			if (
+				sessionSnapshot.status === ResourceStatus.LoadingError ||
+				sessionSnapshot.status === ResourceStatus.Error
+			) {
+				throw sessionSnapshot.error;
+			}
+			const session =
+				sessionSnapshot.status === ResourceStatus.Reloading ||
+				sessionSnapshot.status === ResourceStatus.Resolved
+					? sessionSnapshot.value
+					: null;
 
 			useEffect(() => {
 				void sessionClient.refresh();
@@ -85,12 +100,7 @@ describe("session-context react minimal entry", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: provideSessionContext({
-						config: { baseUrl: "https://auth.example.com" },
-					}),
-				},
+				{ injector: environment.injector },
 				createElement(SessionBadge),
 			),
 		);

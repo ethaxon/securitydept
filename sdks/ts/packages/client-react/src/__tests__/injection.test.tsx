@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+	createSecuritydeptDestroyRef,
 	SecuritydeptDestroyRef,
 	SecuritydeptInjectionToken,
 	SecuritydeptInjector,
@@ -64,25 +65,36 @@ describe("client-react unified Securitydept context", () => {
 		document.body.innerHTML = "";
 	});
 
-	it("creates a root injector from providers", () => {
+	it("provides an injector created outside the React tree", () => {
+		const injector = SecuritydeptInjector.resolveAndCreate([
+			{ provide: LABEL_TOKEN, useValue: "root" },
+		]);
+
 		function Probe() {
-			const injector = useSecuritydeptContext();
-			return createElement("div", null, injector.get(LABEL_TOKEN));
+			return createElement(
+				"div",
+				null,
+				useSecuritydeptContext().get(LABEL_TOKEN),
+			);
 		}
 
 		const view = render(
-			createElement(
-				SecuritydeptProvider,
-				{ providers: [{ provide: LABEL_TOKEN, useValue: "root" }] },
-				createElement(Probe),
-			),
+			createElement(SecuritydeptProvider, { injector }, createElement(Probe)),
 		);
 
 		expect(view.container.textContent).toBe("root");
 		view.unmount();
 	});
 
-	it("supports nested provider overrides", () => {
+	it("supports nested providers with injectors created outside React", () => {
+		const parentInjector = SecuritydeptInjector.resolveAndCreate([
+			{ provide: LABEL_TOKEN, useValue: "parent" },
+		]);
+		const childInjector = SecuritydeptInjector.fromParentInjector(
+			parentInjector,
+			[{ provide: LABEL_TOKEN, useValue: "child" }],
+		);
+
 		function Probe() {
 			const injector = useSecuritydeptContext();
 			return createElement("div", null, injector.get(LABEL_TOKEN));
@@ -91,10 +103,10 @@ describe("client-react unified Securitydept context", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{ providers: [{ provide: LABEL_TOKEN, useValue: "parent" }] },
+				{ injector: parentInjector },
 				createElement(
 					SecuritydeptProvider,
-					{ providers: [{ provide: LABEL_TOKEN, useValue: "child" }] },
+					{ injector: childInjector },
 					createElement(Probe),
 				),
 			),
@@ -128,27 +140,37 @@ describe("client-react unified Securitydept context", () => {
 		view.unmount();
 	});
 
-	it("rejects mixing explicit injector with inline providers at type level", () => {
+	it("requires an injector and rejects inline injector construction props", () => {
 		const injector = SecuritydeptInjector.resolveAndCreate([]);
 		const acceptProviderProps = (_props: SecuritydeptProviderProps) => {};
 
-		// @ts-expect-error `injector` and `providers` are mutually exclusive modes.
+		// @ts-expect-error `injector` is required.
+		acceptProviderProps({});
+
 		acceptProviderProps({
 			injector,
+			// @ts-expect-error Provider does not accept inline dependency providers.
 			providers: [{ provide: LABEL_TOKEN, useValue: "ignored" }],
 		});
 
-		// @ts-expect-error explicit injector mode never creates a destroy ref.
 		acceptProviderProps({
 			injector,
-			autoCreateDestroyRef: true,
+			// @ts-expect-error Provider does not derive child injectors.
+			parentInjector: injector,
 		});
+
+		// @ts-expect-error Provider does not own an automatic destroy lifecycle.
+		acceptProviderProps({ injector, autoCreateDestroyRef: true });
 	});
 
-	it("derives from an explicit parentInjector", () => {
+	it("accepts a child injector created before render", () => {
 		const parentInjector = SecuritydeptInjector.resolveAndCreate([
 			{ provide: LABEL_TOKEN, useValue: "parent" },
 		]);
+		const injector = SecuritydeptInjector.fromParentInjector(
+			parentInjector,
+			[],
+		);
 
 		function Probe() {
 			const injector = useSecuritydeptContext();
@@ -156,19 +178,15 @@ describe("client-react unified Securitydept context", () => {
 		}
 
 		const view = render(
-			createElement(
-				SecuritydeptProvider,
-				{ parentInjector },
-				createElement(Probe),
-			),
+			createElement(SecuritydeptProvider, { injector }, createElement(Probe)),
 		);
 
 		expect(view.container.textContent).toBe("parent");
 		view.unmount();
 	});
 
-	it("accepts arbitrary SecuritydeptInjectorTrait as parentInjector", () => {
-		const parentInjector: SecuritydeptInjectorTrait = {
+	it("accepts an arbitrary SecuritydeptInjectorTrait", () => {
+		const injector: SecuritydeptInjectorTrait = {
 			get(token, notFoundValue?) {
 				if (token === LABEL_TOKEN) {
 					return "duck-parent";
@@ -187,11 +205,7 @@ describe("client-react unified Securitydept context", () => {
 		}
 
 		const view = render(
-			createElement(
-				SecuritydeptProvider,
-				{ parentInjector },
-				createElement(Probe),
-			),
+			createElement(SecuritydeptProvider, { injector }, createElement(Probe)),
 		);
 
 		expect(view.container.textContent).toBe("duck-parent");
@@ -221,71 +235,26 @@ describe("client-react unified Securitydept context", () => {
 		view.unmount();
 	});
 
-	it("provides a destroy ref by default and fires it on unmount", () => {
+	it("does not control the lifecycle of dependencies in the injector", () => {
 		const cleanup = vi.fn();
-
-		function Probe() {
-			const injector = useSecuritydeptContext();
-			const destroyRef = injector.get(SecuritydeptDestroyRef);
-			destroyRef.onDestroy(cleanup);
-			return createElement(
-				"div",
-				null,
-				destroyRef.destroyed ? "destroyed" : "live",
-			);
-		}
-
-		const view = render(
-			createElement(SecuritydeptProvider, null, createElement(Probe)),
-		);
-
-		expect(view.container.textContent).toBe("live");
-		view.unmount();
-		expect(cleanup).toHaveBeenCalledTimes(1);
-	});
-
-	it("can disable automatic destroy ref creation", () => {
-		function Probe() {
-			const injector = useSecuritydeptContext();
-			const destroyRef = injector.get(SecuritydeptDestroyRef, null);
-			return createElement(
-				"div",
-				null,
-				destroyRef === null ? "missing" : "present",
-			);
-		}
-
-		const view = render(
-			createElement(
-				SecuritydeptProvider,
-				{ autoCreateDestroyRef: false },
-				createElement(Probe),
-			),
-		);
-
-		expect(view.container.textContent).toBe("missing");
-		view.unmount();
-	});
-
-	it("uses an explicit injector as-is without layering a destroy ref", () => {
+		const destroyRef = createSecuritydeptDestroyRef();
 		const injector = SecuritydeptInjector.resolveAndCreate([
-			{ provide: LABEL_TOKEN, useValue: "explicit" },
+			{ provide: SecuritydeptDestroyRef, useValue: destroyRef },
 		]);
+		destroyRef.onDestroy(cleanup);
 
 		function Probe() {
-			const resolvedInjector = useSecuritydeptContext();
-			return createElement(
-				"div",
-				null,
-				`${resolvedInjector.get(LABEL_TOKEN)}:${resolvedInjector.get(SecuritydeptDestroyRef, null) === null ? "missing" : "present"}`,
-			);
+			return createElement("div", null, "live");
 		}
 
 		const view = render(
 			createElement(SecuritydeptProvider, { injector }, createElement(Probe)),
 		);
 
-		expect(view.container.textContent).toBe("explicit:missing");
+		expect(view.container.textContent).toBe("live");
 		view.unmount();
+		expect(cleanup).not.toHaveBeenCalled();
+		destroyRef.dispose();
+		expect(cleanup).toHaveBeenCalledOnce();
 	});
 });

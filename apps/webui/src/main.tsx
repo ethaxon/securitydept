@@ -2,6 +2,7 @@
 
 import { provideBasicAuthContext } from "@securitydept/basic-auth-context-client-react";
 import { createEnvironmentForNativeWeb } from "@securitydept/client/web";
+import { createEnvironmentForReact } from "@securitydept/client-react";
 import { provideSessionContext } from "@securitydept/session-context-client-react";
 import { QueryClient } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
@@ -18,7 +19,14 @@ function bootstrap(): void {
 		throw new Error("Root element not found");
 	}
 
-	const environment = createEnvironmentForNativeWeb({});
+	const environment = createEnvironmentForReact({
+		createBaseEnvironment: createEnvironmentForNativeWeb,
+		providers: [
+			...provideSessionContext({ config: sessionContextConfig }),
+			...provideBasicAuthContext({ config: basicAuthContextConfig }),
+			...provideAuthService(),
+		],
+	});
 	const themeService = new ThemeService({ window, document });
 	const queryClient = new QueryClient({
 		defaultOptions: {
@@ -28,16 +36,9 @@ function bootstrap(): void {
 			},
 		},
 	});
-	const providers = [
-		...provideSessionContext({ config: sessionContextConfig }),
-		...provideBasicAuthContext({ config: basicAuthContextConfig }),
-		...provideAuthService(),
-	];
-
 	createRoot(root).render(
 		<App
-			environment={environment}
-			providers={providers}
+			injector={environment.injector}
 			queryClient={queryClient}
 			themeService={themeService}
 		/>,

@@ -6,7 +6,10 @@ import {
 	BasicAuthContextService,
 	provideBasicAuthContext,
 } from "@securitydept/basic-auth-context-client-react";
-import { createFoundationEnvironment } from "@securitydept/client";
+import {
+	createFoundationEnvironment,
+	type SecuritydeptProvider as SecuritydeptDependencyProvider,
+} from "@securitydept/client";
 import {
 	SecuritydeptProvider,
 	useSecuritydeptContext,
@@ -41,13 +44,18 @@ function render(element: ReactElement) {
 }
 
 describe("basic-auth react adapter", () => {
-	const environment = createFoundationEnvironment({
-		transport: {
-			async execute() {
-				throw new Error("Unexpected transport call.");
+	function createEnvironment(
+		providers: readonly SecuritydeptDependencyProvider[],
+	) {
+		return createFoundationEnvironment({
+			transport: {
+				async execute() {
+					throw new Error("Unexpected transport call.");
+				},
 			},
-		},
-	});
+			providers,
+		});
+	}
 
 	afterEach(() => {
 		document.body.innerHTML = "";
@@ -60,6 +68,14 @@ describe("basic-auth react adapter", () => {
 			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 		).IS_REACT_ACT_ENVIRONMENT = true;
 		const observed: string[] = [];
+		const environment = createEnvironment(
+			provideBasicAuthContext({
+				config: {
+					baseUrl: "https://auth.example.com",
+					zones: [{ zonePrefix: "/basic" }],
+				},
+			}),
+		);
 
 		function Probe() {
 			const injector = useSecuritydeptContext();
@@ -92,15 +108,7 @@ describe("basic-auth react adapter", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: provideBasicAuthContext({
-						config: {
-							baseUrl: "https://auth.example.com",
-							zones: [{ zonePrefix: "/basic" }],
-						},
-					}),
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);
@@ -108,20 +116,18 @@ describe("basic-auth react adapter", () => {
 		expect(view.container.textContent).toBe("/basic|/basic/login|redirect");
 		expect(observed).toEqual(["/basic|/basic/login|redirect"]);
 
+		const replacementEnvironment = createEnvironment(
+			provideBasicAuthContext({
+				config: {
+					baseUrl: "https://auth.example.com",
+					zones: [{ zonePrefix: "/internal/basic", loginSubpath: "/signin" }],
+				},
+			}),
+		);
 		view.rerender(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: provideBasicAuthContext({
-						config: {
-							baseUrl: "https://auth.example.com",
-							zones: [
-								{ zonePrefix: "/internal/basic", loginSubpath: "/signin" },
-							],
-						},
-					}),
-				},
+				{ injector: replacementEnvironment.injector },
 				createElement(Probe),
 			),
 		);
@@ -139,6 +145,14 @@ describe("basic-auth react adapter", () => {
 		(
 			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 		).IS_REACT_ACT_ENVIRONMENT = true;
+		const environment = createEnvironment(
+			provideBasicAuthContext({
+				config: {
+					baseUrl: "https://auth.example.com",
+					zones: [{ zonePrefix: "/basic" }],
+				},
+			}),
+		);
 
 		function Probe() {
 			const injector = useSecuritydeptContext();
@@ -155,15 +169,7 @@ describe("basic-auth react adapter", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: provideBasicAuthContext({
-						config: {
-							baseUrl: "https://auth.example.com",
-							zones: [{ zonePrefix: "/basic" }],
-						},
-					}),
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);

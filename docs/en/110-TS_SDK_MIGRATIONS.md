@@ -130,13 +130,13 @@ Change:
 - `@securitydept/client` now owns the framework-neutral DI authority. `SecuritydeptInjectorTrait` is the minimal read-side contract and only expresses `get()`; `SecuritydeptInjector` is the SDK runtime/facade that owns provider resolution, parent inheritance, overrides, and `has()` diagnostics.
 - React now has exactly one SDK Context: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()` in `@securitydept/client-react`.
 - React domain packages no longer export `BasicAuthContextProvider`, `SessionContextProvider`, `BackendOidcModeContextProvider`, `TokenSetAuthProvider`, `useBasicAuthContext()`, `useSessionContext()`, `useBackendOidcModeContext()`, `useTokenSetAuthRegistry()`, and similar domain-specific Context / Provider / keyed state helpers.
-- React domain packages now export injection tokens, provider factories, plain factories, and explicit callback/component bridges. State reading is unified around `useReadableSignalValue(...)`.
+- React domain packages now export injection tokens, provider factories, plain factories, and explicit callback/component bridges. State reading uses `useSignal(...)` for synchronous signals and `useResourceSnapshot(...)` for Resources.
 
 Migration:
 
-- Wrap React subtrees with `SecuritydeptProvider`; pass a ready-made `injector`, or derive a child injector from `providers` / `parentInjector`.
+- Construct injectors outside the React Fiber tree, then wrap React subtrees with `SecuritydeptProvider` and pass the ready-made `injector`. The provider no longer derives child injectors or creates destroy refs.
 - Replace `XxxContextProvider` / `useXxxContext()` with `useSecuritydeptContext().get(TOKEN)`.
-- Replace `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` with `const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)` followed by `useReplaySignalValue(registry.clientSignalFor(key))`, then read the returned client's replay channels.
+- Replace `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` with `const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)`, then read `registry.clientResourceFor(key)` and the selected client's Resources through `useResourceSnapshot()`.
 - Replace basic-auth / session provider-first composition with `create*()` + `provide*()`. For token-set multi-client React composition, register `provideTokenSetClientRegistry({ clients })` and use the frontend/backend callback Resource hooks when the host needs callback rendering.
 
 ### Token-Set React Registry Composition
@@ -327,8 +327,8 @@ Packages:
 
 Change:
 
-- `@securitydept/client-react` now owns the canonical React injector bridge: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()`, plus the context-free `useReadableSignalValue()`, `useReplaySignalValue()`, `useInteropObservable()`, and `useEventStream()` bridge.
-- `client-react` root now exports the React injector bridge only. React environment capability comes from the core environment injector: pass `environment.injector` to the root `SecuritydeptProvider` as `parentInjector`. Route-scoped planner hosts are owned by concrete router adapters such as `@securitydept/client-react/tanstack-router`.
+- `@securitydept/client-react` now owns the canonical React injector bridge: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()`, plus the context-free `useSignal()`, `useResourceSnapshot()`, `useInteropObservable()`, and `useEventStream()` bridges. `useResourceValue()` is removed because creating a transient `whenValue()` Promise during a suspended render is not stable; React renders Resource status explicitly from snapshots instead.
+- `client-react` root exports `createEnvironmentForReact()` and the React injector bridge. Use the creator outside Fiber to compose React-owned providers over a host environment creator, then pass its ready-made injector to the root `SecuritydeptProvider`. Route-scoped planner hosts are owned by concrete router adapters such as `@securitydept/client-react/tanstack-router`.
 - The basic-auth / session / token-set React adapters no longer own domain-specific Provider / Context hooks. They export tokens, plain factories, provider factories, and explicit callback/component bridges. Token-set multi-client composition is now explicit registry/controller wiring instead of an SDK-owned runtime bundle.
 - Token-set Angular/React route security now relies on `secureTokenSetRouteRoot()` plus the registry-backed default unauthenticated handler. Client selection belongs in requirement `attributes.query`; custom redirect policy is optional via `onClientUnauthenticated` on the secure route root or planner host provider.
 - React callback handling uses `useTokenSetFrontendCallback()` and `useTokenSetBackendCallback()` over client-owned callback Resources. Registry selection is non-consuming and returns a snapshot signal bound to a fixed record identity. A custom `clientQuery({ callbackUrl })` controls registry selection, while a client `callbackInputPredicate` independently filters callback input before URL cleanup. The registry entry factory starts the client; client startup resolves and takes callback input before persistence restore.
@@ -337,7 +337,7 @@ Migration:
 
 - Build browser environments at the framework composition root, then register those dependencies through `SecuritydeptProvider` plus provider factories.
 - Opt session adapters into initial probing by explicitly creating `SessionContextController` and calling `controller.refresh()` from the host-owned lifecycle when needed.
-- For React code that needs environment capability, pass the host-owned environment injector to `SecuritydeptProvider` as `parentInjector` and read it later through `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)`.
+- For React code that needs environment capability, pass a host-owned, fully constructed injector to `SecuritydeptProvider` and read it later through `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)`.
 - For Angular frontend-oidc route redirects, provide the host-owned environment object from the composition root with `provideEnvironment({ environment })`.
 - For Angular callback routes, use `TokenSetFrontendCallbackComponent` or `TokenSetBackendCallbackComponent`.
 - For custom callback orchestration, use a selector `clientQuery`, a default resolver `callbackInputPredicate`, or a complete client `callbackInputResolver` without reintroducing a separate callback controller.
@@ -434,11 +434,11 @@ Migration:
 
 - Observe registry topology and readiness through `registry.state`, `registry.getState()`, or `registry.state.notify(listener)`; use `registeredKeys()` / `readyKeys()` / registered snapshot helpers only as synchronous convenience.
 - If host code depended on adapter-local token-set service state machines or `TokenSetAuthService`, migrate to the mode client channels directly: first-screen readiness uses `authDetermined`, stable UI uses `authSnapshot`, route guards use `isAuthenticated`, HTTP uses `authorizationHeaderValue`, and button locks use `authOperations.*Pending`.
-- Replace synchronous service-wrapper access such as `registry.require(key).client` with `await registry.whenReady(key)` in async setup, or `useReadableSignalValue(registry.clientSignalFor(key))` in reactive hosts.
-- In multi-client hosts, pass an explicit registry key to `whenReady(key)` and `clientSignalFor(key)`. Keep omitted-key usage only for true single-client hosts.
+- Replace synchronous service-wrapper access such as `registry.require(key).client` with `await registry.clientResourceFor(key).whenValue()` in async setup, or `useResourceSnapshot(registry.clientResourceFor(key))` in reactive hosts.
+- In multi-client hosts, pass an explicit registry key to `clientResourceFor(key)`.
 - Replace `import { signalToObservable } from "@securitydept/client-angular"` with `import { toRxObservable } from "@securitydept/client/rx"`.
 - In Angular hosts that need RxJS values for auth state, call `toRxObservable(client.authSnapshot)` or another client replay signal. Replay signal observables do not emit before the first value and replay the last value to late subscribers.
-- In React hosts that need aggregate registry reactivity, use `useReadableSignalValue(registry.state)` instead of maintaining an app-local mirror store for registered/ready keys. For per-client auth, read the client replay signals instead of creating service hooks.
+- In React hosts that need aggregate registry reactivity, use `useSignal(registry.state)` instead of maintaining an app-local mirror store for registered/ready keys. For per-client auth, read client Resources through `useResourceSnapshot()` instead of creating service hooks.
 
 Justification:
 

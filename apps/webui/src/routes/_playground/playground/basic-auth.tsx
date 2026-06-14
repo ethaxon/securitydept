@@ -1,5 +1,6 @@
 import { BasicAuthBoundaryKind as BasicAuthBoundaryKinds } from "@securitydept/basic-auth-context-client";
 import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client-react";
+import { ResourceStatus } from "@securitydept/client";
 import { useSecuritydeptContext } from "@securitydept/client-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
@@ -118,7 +119,18 @@ function BasicAuthPlaygroundContent() {
 	const basicAuthClient = useSecuritydeptContext().get(
 		BASIC_AUTH_CONTEXT_CLIENT,
 	);
-	const mode = useAuthMode();
+	const modeSnapshot = useAuthMode();
+	if (
+		modeSnapshot.status === ResourceStatus.LoadingError ||
+		modeSnapshot.status === ResourceStatus.Error
+	) {
+		throw modeSnapshot.error;
+	}
+	const mode =
+		modeSnapshot.status === ResourceStatus.Reloading ||
+		modeSnapshot.status === ResourceStatus.Resolved
+			? modeSnapshot.value
+			: null;
 	const probeQuery = useQuery({
 		queryKey: ["playground", "basic-auth", "status"],
 		queryFn: () => basicAuthClient.refresh(),

@@ -1,3 +1,4 @@
+import { ResourceStatus } from "@securitydept/client";
 import { useNavigate } from "@tanstack/react-router";
 import { type AuthContextMode } from "@/auth/model";
 import { useAuthMode, useAuthService } from "@/auth/react";
@@ -13,7 +14,20 @@ export function PlaygroundAccessBoundary({
 }) {
 	const authService = useAuthService();
 	const navigate = useNavigate();
-	const mode = useAuthMode();
+	const modeSnapshot = useAuthMode();
+	if (
+		modeSnapshot.status === ResourceStatus.LoadingError ||
+		modeSnapshot.status === ResourceStatus.Error
+	) {
+		throw modeSnapshot.error;
+	}
+	if (
+		modeSnapshot.status === ResourceStatus.Idle ||
+		modeSnapshot.status === ResourceStatus.Loading
+	) {
+		return null;
+	}
+	const mode = modeSnapshot.value;
 
 	if (mode !== null && mode !== expectedMode) {
 		return (

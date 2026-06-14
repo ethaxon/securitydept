@@ -105,13 +105,20 @@ function createEntry(
 
 describe("react multi-client registry baseline", () => {
 	it("surfaces multiple keyed clients through SecuritydeptProvider", async () => {
-		const environment = createEnvironmentForTest();
 		const mainState = createSignal<TokenSetAuthSnapshot | null>(
 			createSnapshot("main-at"),
 		);
 		const adminState = createSignal<TokenSetAuthSnapshot | null>(
 			createSnapshot("admin-at"),
 		);
+		const environment = createEnvironmentForTest({
+			providers: provideTokenSetClientRegistry({
+				clients: [
+					createEntry("main", () => createClient(mainState)),
+					createEntry("admin", () => createClient(adminState)),
+				],
+			}),
+		});
 		let registry: TokenSetClientRegistryService | undefined;
 
 		function Probe() {
@@ -122,17 +129,7 @@ describe("react multi-client registry baseline", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: [
-						...provideTokenSetClientRegistry({
-							clients: [
-								createEntry("main", () => createClient(mainState)),
-								createEntry("admin", () => createClient(adminState)),
-							],
-						}),
-					],
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);
@@ -158,10 +155,14 @@ describe("react multi-client registry baseline", () => {
 	});
 
 	it("re-renders when a keyed client signal changes", async () => {
-		const environment = createEnvironmentForTest();
 		const mainState = createSignal<TokenSetAuthSnapshot | null>(
 			createSnapshot("main-at"),
 		);
+		const environment = createEnvironmentForTest({
+			providers: provideTokenSetClientRegistry({
+				clients: [createEntry("main", () => createClient(mainState))],
+			}),
+		});
 		let registry: TokenSetClientRegistryService | undefined;
 
 		function Probe() {
@@ -172,14 +173,7 @@ describe("react multi-client registry baseline", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: [
-						...provideTokenSetClientRegistry({
-							clients: [createEntry("main", () => createClient(mainState))],
-						}),
-					],
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);

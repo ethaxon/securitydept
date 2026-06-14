@@ -284,6 +284,7 @@ export {
 	reduceResourceSnapshot,
 	resourceFromSnapshots,
 	type WritableSignalTrait,
+	whenResourceSnapshotValue,
 } from "./signals";
 // --- Span ---
 export {

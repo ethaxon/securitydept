@@ -5,6 +5,7 @@ import {
 	ENVIRONMENT_TOKEN,
 	ResourceStatus,
 	resourceFromSnapshots,
+	SecuritydeptInjector,
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import { createEnvironmentForTest } from "@securitydept/client/test";
@@ -98,10 +99,12 @@ describe("token-set React client registry service", () => {
 		document.body.innerHTML = "";
 	});
 
-	it("registers entries through Securitydept DI and disposes with the React scope", async () => {
-		const environment = createEnvironmentForTest();
+	it("registers entries through an externally created Securitydept injector", async () => {
 		const client = createMockClient("main-at");
 		const entry = createEntry("main", client);
+		const environment = createEnvironmentForTest({
+			providers: provideTokenSetClientRegistry({ clients: [entry] }),
+		});
 		let registry: TokenSetClientRegistryService | undefined;
 
 		function Probe() {
@@ -112,10 +115,7 @@ describe("token-set React client registry service", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: [...provideTokenSetClientRegistry({ clients: [entry] })],
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);
@@ -134,10 +134,18 @@ describe("token-set React client registry service", () => {
 	});
 
 	it("creates registry entries inside the injector scope", async () => {
-		const environment = createEnvironmentForTest();
 		const client = createMockClient("scoped-at");
 		let registry: TokenSetClientRegistryService | undefined;
 		let factoryCalls = 0;
+		const environment = createEnvironmentForTest({
+			providers: provideTokenSetClientRegistry({
+				createClients: (injector) => {
+					factoryCalls++;
+					expect(injector.get(ENVIRONMENT_TOKEN)).toBe(environment);
+					return [createEntry("scoped", client)];
+				},
+			}),
+		});
 
 		function Probe() {
 			registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
@@ -147,18 +155,7 @@ describe("token-set React client registry service", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: [
-						...provideTokenSetClientRegistry({
-							createClients: (injector) => {
-								factoryCalls++;
-								expect(injector.get(ENVIRONMENT_TOKEN)).toBe(environment);
-								return [createEntry("scoped", client)];
-							},
-						}),
-					],
-				},
+				{ injector: environment.injector },
 				createElement(Probe),
 			),
 		);
@@ -172,9 +169,20 @@ describe("token-set React client registry service", () => {
 	});
 
 	it("supports nested registry overrides", async () => {
-		const environment = createEnvironmentForTest();
 		let parentRegistry: TokenSetClientRegistryService | undefined;
 		let childRegistry: TokenSetClientRegistryService | undefined;
+		const environment = createEnvironmentForTest({
+			providers: provideTokenSetClientRegistry({
+				clients: [createEntry("main", createMockClient("parent-at"))],
+			}),
+		});
+		const parentInjector = environment.injector;
+		const childInjector = SecuritydeptInjector.fromParentInjector(
+			parentInjector,
+			provideTokenSetClientRegistry({
+				clients: [createEntry("main", createMockClient("child-at"))],
+			}),
+		);
 
 		function Probe({ label }: { label: string }) {
 			const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
@@ -189,24 +197,11 @@ describe("token-set React client registry service", () => {
 		const view = render(
 			createElement(
 				SecuritydeptProvider,
-				{
-					parentInjector: environment.injector,
-					providers: [
-						...provideTokenSetClientRegistry({
-							clients: [createEntry("main", createMockClient("parent-at"))],
-						}),
-					],
-				},
+				{ injector: parentInjector },
 				createElement(Probe, { label: "parent" }),
 				createElement(
 					SecuritydeptProvider,
-					{
-						providers: [
-							...provideTokenSetClientRegistry({
-								clients: [createEntry("main", createMockClient("child-at"))],
-							}),
-						],
-					},
+					{ injector: childInjector },
 					createElement(Probe, { label: "child" }),
 				),
 			),
