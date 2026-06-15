@@ -1,17 +1,12 @@
 // @vitest-environment jsdom
 
-import {
-	BASIC_AUTH_CONTEXT_CLIENT,
-	provideBasicAuthContext,
-} from "@securitydept/basic-auth-context-client-react";
+import { provideBasicAuthContext } from "@securitydept/basic-auth-context-client";
+import { useBasicAuthContextClient } from "@securitydept/basic-auth-context-client-react";
 import {
 	createFoundationEnvironment,
 	type SecuritydeptProvider as SecuritydeptDependencyProvider,
 } from "@securitydept/client";
-import {
-	SecuritydeptProvider,
-	useSecuritydeptContext,
-} from "@securitydept/client-react";
+import { SecuritydeptProvider } from "@securitydept/client-react";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
@@ -65,7 +60,7 @@ describe("basic-auth react minimal entry", () => {
 		);
 
 		function ZoneStatus() {
-			const client = useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT);
+			const client = useBasicAuthContextClient();
 			const zone = client.zoneForPath("/api/resource");
 			return createElement(
 				"output",
@@ -99,7 +94,7 @@ describe("basic-auth react minimal entry", () => {
 		);
 
 		function AuthGuard() {
-			const client = useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT);
+			const client = useBasicAuthContextClient();
 			const result = client.handleUnauthorized("/api/data", 401);
 			return createElement(
 				"output",

@@ -14,6 +14,7 @@ import { createEnvironmentForTest } from "@securitydept/client/test";
 import { createTanStackRouterContext } from "@securitydept/client-react/tanstack-router";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
+	TOKEN_SET_CLIENT_REGISTRY,
 	TokenSetClientInitializationMode,
 	TokenSetClientRegistry,
 	TokenSetClientRegistryAuthRequirement,
@@ -21,7 +22,6 @@ import {
 	TokenSetClientRegistryRequirementBehaviour,
 } from "@securitydept/token-set-context-client/registry";
 import { describe, expect, it, vi } from "vitest";
-import { TOKEN_SET_CLIENT_REGISTRY } from "../index";
 import {
 	createTokenSetCanBeforeLoad,
 	secureTokenSetRoute,
@@ -81,9 +81,10 @@ describe("token-set TanStack auth coordination", () => {
 
 	it("combines existing root beforeLoad before token-set beforeLoad", async () => {
 		const environment = createEnvironmentForTest();
-		const registry = new TokenSetClientRegistry<BaseOidcModeClient>({
-			environment,
-		});
+		const registry =
+			TokenSetClientRegistry.fromEnvironmentConfig<BaseOidcModeClient>({
+				environment,
+			});
 		registry.register(createEntry("main", createClient(true)));
 		const injector = SecuritydeptInjector.fromParentInjector(
 			environment.injector,
@@ -123,9 +124,10 @@ describe("token-set TanStack auth coordination", () => {
 
 	it("runs custom unauthenticated hooks with route context", async () => {
 		const environment = createEnvironmentForTest();
-		const registry = new TokenSetClientRegistry<BaseOidcModeClient>({
-			environment,
-		});
+		const registry =
+			TokenSetClientRegistry.fromEnvironmentConfig<BaseOidcModeClient>({
+				environment,
+			});
 		registry.register(createEntry("main", createClient(false)));
 		const onClientUnauthenticated = vi.fn(() => true);
 		const parentHost = RequirementPlannerHost.fromBehaviour(

@@ -50,10 +50,10 @@ function createTestRouter(url = "https://app.example.com/current"): {
 describe("SessionContextClient", () => {
 	it("links refresh cancellation to the client lifecycle token", async () => {
 		const execute = vi.fn(async () => ({ status: 200, headers: {} }));
-		const client = new SessionContextClient(
-			{ baseUrl: "https://api.example.com" },
-			createEnvironmentForTest({ transport: { execute } }),
-		);
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://api.example.com" },
+			environment: createEnvironmentForTest({ transport: { execute } }),
+		});
 		const cancellation = createCancellationTokenSource();
 		const reason = new Error("cancel session refresh");
 		cancellation.cancel(reason);
@@ -76,16 +76,16 @@ describe("SessionContextClient", () => {
 			issuer: "https://issuer.example.com",
 			claims: { role: "admin" },
 		};
-		const client = new SessionContextClient(
-			{ baseUrl: "https://api.example.com" },
-			createEnvironmentForTest({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://api.example.com" },
+			environment: createEnvironmentForTest({
 				transport: createTestTransport(() => ({
 					status: 200,
 					headers: {},
 					body: rustSessionUserInfoResponse,
 				})),
 			}),
-		);
+		});
 
 		const result = await client.refresh();
 
@@ -104,15 +104,15 @@ describe("SessionContextClient", () => {
 
 	it("commits unauthenticated state for 401 and 403", async () => {
 		for (const status of [401, 403]) {
-			const client = new SessionContextClient(
-				{ baseUrl: "https://api.example.com" },
-				createEnvironmentForTest({
+			const client = SessionContextClient.fromEnvironmentConfig({
+				config: { baseUrl: "https://api.example.com" },
+				environment: createEnvironmentForTest({
 					transport: createTestTransport(() => ({
 						status,
 						headers: {},
 					})),
 				}),
-			);
+			});
 
 			await expect(client.refresh()).resolves.toBeNull();
 			expect(await client.sessionResource.whenValue()).toBeNull();
@@ -121,16 +121,16 @@ describe("SessionContextClient", () => {
 	});
 
 	it("records failures in the session snapshot", async () => {
-		const client = new SessionContextClient(
-			{ baseUrl: "https://api.example.com" },
-			createEnvironmentForTest({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://api.example.com" },
+			environment: createEnvironmentForTest({
 				transport: createTestTransport(() => ({
 					status: 500,
 					headers: {},
 					body: { message: "Internal Server Error" },
 				})),
 			}),
-		);
+		});
 
 		await expect(client.refresh()).rejects.toBeInstanceOf(ClientError);
 		expect(client.sessionSnapshot.get()).toMatchObject({
@@ -140,9 +140,9 @@ describe("SessionContextClient", () => {
 	});
 
 	it("rejects the legacy session /auth/session/user-info payload without subject", async () => {
-		const client = new SessionContextClient(
-			{ baseUrl: "https://api.example.com" },
-			createEnvironmentForTest({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://api.example.com" },
+			environment: createEnvironmentForTest({
 				transport: createTestTransport(() => ({
 					status: 200,
 					headers: {},
@@ -153,7 +153,7 @@ describe("SessionContextClient", () => {
 					},
 				})),
 			}),
-		);
+		});
 
 		await expect(client.refresh()).rejects.toMatchObject({
 			name: "ClientError",
@@ -165,9 +165,9 @@ describe("SessionContextClient", () => {
 
 	it("executes logout against the configured endpoint and clears session", async () => {
 		const requests: HttpRequest[] = [];
-		const client = new SessionContextClient(
-			{ baseUrl: "https://api.example.com" },
-			createEnvironmentForTest({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://api.example.com" },
+			environment: createEnvironmentForTest({
 				transport: createTestTransport((request) => {
 					requests.push(request);
 					return {
@@ -177,7 +177,7 @@ describe("SessionContextClient", () => {
 					};
 				}),
 			}),
-		);
+		});
 
 		await client.logout();
 
@@ -193,12 +193,12 @@ describe("SessionContextClient", () => {
 		const { router, navigations } = createTestRouter(
 			"https://app.example.com/dashboard#state",
 		);
-		const client = new SessionContextClient(
-			{ baseUrl: "https://api.example.com" },
-			createEnvironmentForTest({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://api.example.com" },
+			environment: createEnvironmentForTest({
 				router,
 			}),
-		);
+		});
 
 		await client.loginWithRedirect({
 			postAuthRedirectUri: "https://app.example.com/dashboard#state",
@@ -214,10 +214,10 @@ describe("SessionContextClient", () => {
 		const { router, navigations } = createTestRouter(
 			"https://app.example.com/dashboard#state",
 		);
-		const client = new SessionContextClient(
-			{ baseUrl: "https://api.example.com" },
-			createEnvironmentForTest({ router }),
-		);
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://api.example.com" },
+			environment: createEnvironmentForTest({ router }),
+		});
 
 		await client.loginWithRedirect();
 
@@ -230,9 +230,9 @@ describe("SessionContextClient", () => {
 	it("emits session events and operation tracing", async () => {
 		const events: unknown[] = [];
 		const tracingEvents: TracingEvent[] = [];
-		const client = new SessionContextClient(
-			{ baseUrl: "https://api.example.com" },
-			createEnvironmentForTest({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://api.example.com" },
+			environment: createEnvironmentForTest({
 				transport: createTestTransport(() => ({
 					status: 401,
 					headers: {},
@@ -247,7 +247,7 @@ describe("SessionContextClient", () => {
 					],
 				},
 			}),
-		);
+		});
 		client.events.subscribe({
 			next(event) {
 				events.push(event);

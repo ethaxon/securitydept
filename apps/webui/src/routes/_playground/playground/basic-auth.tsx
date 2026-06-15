@@ -1,7 +1,6 @@
 import { BasicAuthBoundaryKind as BasicAuthBoundaryKinds } from "@securitydept/basic-auth-context-client";
-import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client-react";
+import { useBasicAuthContextClient } from "@securitydept/basic-auth-context-client-react";
 import { ResourceStatus } from "@securitydept/client";
-import { useSecuritydeptContext } from "@securitydept/client-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ExternalLink, Lock, LogIn, LogOut, ShieldAlert } from "lucide-react";
@@ -116,9 +115,7 @@ function readObservedBoundarySummary(
 function BasicAuthPlaygroundContent() {
 	const authService = useAuthService();
 	const router = useRouter();
-	const basicAuthClient = useSecuritydeptContext().get(
-		BASIC_AUTH_CONTEXT_CLIENT,
-	);
+	const basicAuthClient = useBasicAuthContextClient();
 	const modeSnapshot = useAuthMode();
 	if (
 		modeSnapshot.status === ResourceStatus.LoadingError ||

@@ -93,25 +93,23 @@ function createBackendOidcModeTestClient(options: {
 	router?: ReturnType<typeof createRouterForNativeWeb>;
 	callbackInputPredicate?: OidcModeCallbackInputPredicate<BackendOidcModeCallbackInput>;
 }) {
-	return new BackendOidcModeClient(
-		{
+	return BackendOidcModeClient.fromEnvironmentConfig({
+		config: {
 			baseUrl: options.baseUrl ?? "https://auth.example.com",
 			persistence: options.persistence,
 		},
-		{
-			environment: createFoundationEnvironment({
-				persistentStorage:
-					options.persistentStorage ?? createInMemoryRecordStore(),
-				sessionStorage: options.sessionStorage ?? createInMemoryRecordStore(),
-				transport: options.transport ?? createTokenSetTransport(),
-				span: createRootSpan(),
-				tracing: createTracing(),
-				time: testTime,
-				router: options.router,
-			}),
-			callbackInputPredicate: options.callbackInputPredicate,
-		},
-	);
+		environment: createFoundationEnvironment({
+			persistentStorage:
+				options.persistentStorage ?? createInMemoryRecordStore(),
+			sessionStorage: options.sessionStorage ?? createInMemoryRecordStore(),
+			transport: options.transport ?? createTokenSetTransport(),
+			span: createRootSpan(),
+			tracing: createTracing(),
+			time: testTime,
+			router: options.router,
+		}),
+		callbackInputPredicate: options.callbackInputPredicate,
+	});
 }
 
 describe("token-set backend OIDC web helpers", () => {

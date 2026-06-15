@@ -5,7 +5,7 @@
 //
 // Multi-client-first Angular-native adapter surface:
 //   - Keyed client registration via provideTokenSetClientRegistry()
-//   - Multi-client lookup via TokenSetClientRegistryService
+//   - Multi-client lookup via the core TokenSetClientRegistry
 //   - Per-client mode client replay signals with RxJS bridge support
 //   - Client-registry authorization interceptor (functional + class-based)
 //   - provideTokenSetClientRegistryAuthorizationInterceptor() for NgModule HTTP_INTERCEPTORS setup
@@ -24,6 +24,6 @@
 // Stability: provisional (framework adapter)
 
 export * from "./auth-coordination";
-export * from "./client-registry.service";
+export * from "./client-registry";
 export * from "./client-registry-authorization.interceptor";
 export * from "./components";

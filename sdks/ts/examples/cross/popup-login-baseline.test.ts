@@ -59,10 +59,11 @@ function createBackendPopupMockEnvironment(time: TimeTrait) {
 
 function createBackendPopupMockClient(time: TimeTrait) {
 	const environment = createBackendPopupMockEnvironment(time);
-	const client = new BackendOidcModeClient(
-		{ baseUrl: "https://app.example.com" },
-		{ environment, callbackInputResolver: null },
-	);
+	const client = BackendOidcModeClient.fromEnvironmentConfig({
+		config: { baseUrl: "https://app.example.com" },
+		environment,
+		callbackInputResolver: null,
+	});
 	const handleCallbackOperation = vi.fn(async () => ({
 		tokens: {},
 		metadata: {},
@@ -418,14 +419,15 @@ describe("frontend-oidc-mode popup baseline", () => {
 				}),
 			),
 		});
-		const mockClient = new FrontendOidcModeClient(
-			{
+		const mockClient = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://idp.example.com",
 				clientId: "test-client",
 				redirectUri: "https://app.example.com/auth/callback",
 			},
-			{ environment, callbackInputResolver: null },
-		);
+			environment,
+			callbackInputResolver: null,
+		});
 		const authorizeUrlWithState = vi
 			.fn()
 			.mockResolvedValue(

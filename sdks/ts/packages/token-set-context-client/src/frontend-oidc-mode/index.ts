@@ -56,6 +56,15 @@ export {
 	type TakeFrontendOidcCallbackInputFromRouterOptions,
 	takeFrontendOidcCallbackInputFromRouter,
 } from "./contracts/callback";
+export {
+	type ProvideFrontendOidcModeClientOptions,
+	provideFrontendOidcModeClient,
+} from "./providers";
+export {
+	FRONTEND_OIDC_MODE_CLIENT,
+	FRONTEND_OIDC_MODE_CLIENT_OPTIONS,
+	type FrontendOidcModeClientInjectionOptions,
+} from "./tokens";
 
 // --- Types: config, protocol, lifecycle ---
 

@@ -15,10 +15,12 @@ export async function whenResourceSnapshotValue<T>(
 	options?: ResourceWhenValueOptions,
 ): Promise<T> {
 	options?.cancellationToken?.throwIfCancellationRequested();
+	const staleValueWhenError = options?.staleValueWhenError ?? true;
 	const current = snapshotSignal.get();
 	if (
 		current.status === ResourceStatus.Resolved ||
-		current.status === ResourceStatus.Reloading
+		current.status === ResourceStatus.Reloading ||
+		(current.status === ResourceStatus.Error && staleValueWhenError)
 	) {
 		return current.value;
 	}
@@ -57,10 +59,10 @@ export async function whenResourceSnapshotValue<T>(
 		),
 	);
 
-	if (
-		snapshot.status === ResourceStatus.LoadingError ||
-		snapshot.status === ResourceStatus.Error
-	) {
+	if (snapshot.status === ResourceStatus.LoadingError) {
+		throw snapshot.error;
+	}
+	if (snapshot.status === ResourceStatus.Error && !staleValueWhenError) {
 		throw snapshot.error;
 	}
 	return snapshot.value;

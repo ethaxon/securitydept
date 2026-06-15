@@ -19,16 +19,16 @@ import { describe, expect, it } from "vitest";
 
 describe("basic-auth root client — server-host flow", () => {
 	it("produces a redirect instruction from a server request context", () => {
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				zones: [{ zonePrefix: "/api" }],
 			},
-			createEnvironmentForServer({
+			environment: createEnvironmentForServer({
 				transport: createTransportForTest(),
 				request: { headers: {} },
 			}),
-		);
+		});
 
 		// Simulate: server receives a 401 from upstream for /api/data.
 		const redirect = client.handleUnauthorized("/api/data", 401);
@@ -46,16 +46,16 @@ describe("basic-auth root client — server-host flow", () => {
 	});
 
 	it("returns null for paths outside zones", () => {
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				zones: [{ zonePrefix: "/api" }],
 			},
-			createEnvironmentForServer({
+			environment: createEnvironmentForServer({
 				transport: createTransportForTest(),
 				request: { headers: {} },
 			}),
-		);
+		});
 
 		const redirect = client.handleUnauthorized("/public", 401);
 		expect(redirect.kind).toBe(AuthGuardResultKind.Ok);
@@ -87,13 +87,13 @@ describe("session server environment — server-host flow with cookie forwarding
 		);
 
 		// Simulate: server extracts cookies from incoming request.
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			createEnvironmentForServer({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://auth.example.com" },
+			environment: createEnvironmentForServer({
 				transport,
 				request: { headers: { cookie: "session_id=xyz789" } },
 			}),
-		);
+		});
 		const session = await client.refresh();
 
 		expect(session).not.toBeNull();
@@ -107,13 +107,13 @@ describe("session server environment — server-host flow with cookie forwarding
 			() => ({ status: 401, headers: {}, body: null }),
 		);
 
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			createEnvironmentForServer({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://auth.example.com" },
+			environment: createEnvironmentForServer({
 				transport,
 				request: { headers: {} },
 			}),
-		);
+		});
 		const session = await client.refresh();
 		expect(session).toBeNull();
 		expect("loginUrl" in client).toBe(false);

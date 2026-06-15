@@ -1,19 +1,16 @@
 // @vitest-environment jsdom
 
-import { AuthGuardResultKind } from "@securitydept/basic-auth-context-client";
 import {
-	BASIC_AUTH_CONTEXT_CLIENT,
-	BasicAuthContextService,
+	AuthGuardResultKind,
+	BasicAuthContextClient,
 	provideBasicAuthContext,
-} from "@securitydept/basic-auth-context-client-react";
+} from "@securitydept/basic-auth-context-client";
+import { useBasicAuthContextClient } from "@securitydept/basic-auth-context-client-react";
 import {
 	createFoundationEnvironment,
 	type SecuritydeptProvider as SecuritydeptDependencyProvider,
 } from "@securitydept/client";
-import {
-	SecuritydeptProvider,
-	useSecuritydeptContext,
-} from "@securitydept/client-react";
+import { SecuritydeptProvider } from "@securitydept/client-react";
 import { act, createElement, type ReactElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
@@ -78,9 +75,8 @@ describe("basic-auth react adapter", () => {
 		);
 
 		function Probe() {
-			const injector = useSecuritydeptContext();
-			const client = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
-			expect(client).toBeInstanceOf(BasicAuthContextService);
+			const client = useBasicAuthContextClient();
+			expect(client).toBeInstanceOf(BasicAuthContextClient);
 			const zone = client.zoneForPath("/basic/api/groups");
 			const redirect = client.handleUnauthorized("/basic/api/groups", 401);
 
@@ -155,8 +151,7 @@ describe("basic-auth react adapter", () => {
 		);
 
 		function Probe() {
-			const injector = useSecuritydeptContext();
-			const client = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
+			const client = useBasicAuthContextClient();
 			const result = client.handleUnauthorized("/basic/api/groups", 401);
 
 			return createElement(

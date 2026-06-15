@@ -1,7 +1,7 @@
 import {
 	BASIC_AUTH_CONTEXT_CLIENT,
-	type BasicAuthContextService,
-} from "@securitydept/basic-auth-context-client-react";
+	type BasicAuthContextClient,
+} from "@securitydept/basic-auth-context-client";
 import {
 	type AuthRequirement,
 	type BaseTransportTrait,
@@ -31,16 +31,16 @@ import {
 import { RxStateSignal } from "@securitydept/client/rx";
 import {
 	SESSION_CONTEXT_CLIENT,
-	type SessionContextService,
-} from "@securitydept/session-context-client-react";
+	type SessionContextClient,
+} from "@securitydept/session-context-client";
 import { type BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { type FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
 	provideTokenSetClientRegistry,
 	TOKEN_SET_CLIENT_REGISTRY,
-	type TokenSetClientRegistryService,
-} from "@securitydept/token-set-context-client-react";
+	type TokenSetClientRegistry,
+} from "@securitydept/token-set-context-client/registry";
 import { filter, from, take, takeUntil } from "rxjs";
 import {
 	TOKEN_SET_BACKEND_MODE_CONFIG,
@@ -106,9 +106,9 @@ export const AUTH_SERVICE = new SecuritydeptInjectionToken<AuthService>(
 );
 
 export class AuthService implements DisposableTrait {
-	private readonly session: SessionContextService;
-	private readonly basic: BasicAuthContextService;
-	private readonly registry: TokenSetClientRegistryService;
+	private readonly session: SessionContextClient;
+	private readonly basic: BasicAuthContextClient;
+	private readonly registry: TokenSetClientRegistry;
 	private readonly modeStore: AuthModeStore;
 	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
 	private readonly destroyed$ = from(this._destroyed).pipe(
@@ -127,12 +127,8 @@ export class AuthService implements DisposableTrait {
 	}
 
 	constructor(injector: SecuritydeptInjector) {
-		this.session = injector.get(
-			SESSION_CONTEXT_CLIENT,
-		) as SessionContextService;
-		this.basic = injector.get(
-			BASIC_AUTH_CONTEXT_CLIENT,
-		) as BasicAuthContextService;
+		this.session = injector.get(SESSION_CONTEXT_CLIENT);
+		this.basic = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
 		this.registry = injector.get(TOKEN_SET_CLIENT_REGISTRY);
 		this.environment = injector.get(ENVIRONMENT_TOKEN);
 		this.modeStore = createAuthModeStore({

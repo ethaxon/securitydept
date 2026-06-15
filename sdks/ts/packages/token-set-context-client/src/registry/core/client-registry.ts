@@ -1,9 +1,13 @@
 import {
 	createCancellationTokenSource,
 	type DisposableTrait,
+	ENVIRONMENT_TOKEN,
+	type FoundationEnvironment,
 	type ReadableSignalTrait,
 	type ResourceTrait,
 	readonlySignal,
+	SecuritydeptDestroyRef,
+	type SecuritydeptInjectorTrait,
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import { RxEventStream, RxStateSignal } from "@securitydept/client/rx";
@@ -27,13 +31,14 @@ import {
 	matchesTokenSetClientQuery,
 	type TokenSetClientQueryOptions,
 } from "../contracts/query";
+import { TOKEN_SET_CLIENT_REGISTRY_ENTRIES } from "../contracts/tokens";
 import {
-	type CreateTokenSetClientRegistryOptions,
 	TokenSetClientInitializationMode,
 	type TokenSetClientReadyRecordView,
 	type TokenSetClientRecordView,
 	type TokenSetClientRegistryEntry,
 	type TokenSetClientRegistryEvent,
+	type TokenSetClientRegistryFromEnvironmentConfigOptions,
 	type TokenSetClientResourceOptions,
 } from "../contracts/types";
 import { TokenSetClientRecord } from "./client-record";
@@ -67,7 +72,32 @@ export class TokenSetClientRegistry<
 
 	private readonly initializeTrigger = new Subject<string>();
 
-	constructor(private readonly options: CreateTokenSetClientRegistryOptions) {
+	static fromEnvironmentConfig<
+		TClient extends DisposableTrait = BaseOidcModeClient,
+	>(
+		options: TokenSetClientRegistryFromEnvironmentConfigOptions<TClient>,
+	): TokenSetClientRegistry<TClient> {
+		const registry = new TokenSetClientRegistry<TClient>(options.environment);
+		for (const entry of options.entries ?? []) {
+			registry.register(entry);
+		}
+		return registry;
+	}
+
+	static fromInjector(
+		injector: SecuritydeptInjectorTrait,
+	): TokenSetClientRegistry<BaseOidcModeClient> {
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig({
+			environment: injector.get(ENVIRONMENT_TOKEN),
+			entries: injector.get(TOKEN_SET_CLIENT_REGISTRY_ENTRIES, []),
+		});
+		injector
+			.get(SecuritydeptDestroyRef, null)
+			?.onDestroy(() => registry.dispose());
+		return registry;
+	}
+
+	protected constructor(private readonly environment: FoundationEnvironment) {
 		this.destroyed$.subscribe(() => {
 			for (const key of [...this.recordsSignal.get().keys()]) {
 				this.unregister(key);
@@ -117,7 +147,7 @@ export class TokenSetClientRegistry<
 					return from(
 						record.initialize({
 							cancellationToken: cancellation.token,
-							environment: this.options.environment,
+							environment: this.environment,
 						}),
 					).pipe(
 						catchError(() => EMPTY),
@@ -135,7 +165,7 @@ export class TokenSetClientRegistry<
 		} else if (
 			record.entry.meta.initialization === TokenSetClientInitializationMode.Idle
 		) {
-			const idleCallback = this.options.environment.idleCallback;
+			const idleCallback = this.environment.idleCallback;
 			(idleCallback
 				? fromEventPattern<void>(
 						(handler) => idleCallback.requestIdleCallback(() => handler()),
@@ -338,12 +368,4 @@ export class TokenSetClientRegistry<
 	[SYMBOL_DISPOSE]() {
 		this.dispose();
 	}
-}
-
-export function createTokenSetClientRegistry<
-	TClient extends DisposableTrait = BaseOidcModeClient,
->(
-	options: CreateTokenSetClientRegistryOptions,
-): TokenSetClientRegistry<TClient> {
-	return new TokenSetClientRegistry<TClient>(options);
 }

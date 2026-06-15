@@ -44,13 +44,13 @@ describe("external basic-auth guard scenario", () => {
 		const environment = createPageEnvironment(
 			"https://app.example.com/current",
 		);
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				zones: [{ zonePrefix: "/basic" }],
 			},
 			environment,
-		);
+		});
 
 		const outOfZone = client.handleUnauthorized("/public/health", 401);
 		const inZone = client.handleUnauthorized("/basic/api/groups", 401);
@@ -78,8 +78,8 @@ describe("external basic-auth guard scenario", () => {
 		const environment = createPageEnvironment(
 			"https://app.example.com/current",
 		);
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				zones: [
 					{ zonePrefix: "/basic" },
@@ -90,7 +90,7 @@ describe("external basic-auth guard scenario", () => {
 				],
 			},
 			environment,
-		);
+		});
 
 		const outOfZone = client.handleUnauthorized("/public/health?full=1", 401);
 		const inZone = client.handleUnauthorized(

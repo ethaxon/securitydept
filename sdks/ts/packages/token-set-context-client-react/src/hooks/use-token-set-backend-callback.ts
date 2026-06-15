@@ -5,10 +5,10 @@ import {
 	type FoundationEnvironment,
 	type ResourceSnapshot,
 	ResourceStatus,
-	type ResourceTrait,
-	resourceFromSnapshots,
+	SYMBOL_OBSERVABLE,
 } from "@securitydept/client";
 import {
+	useInitialRef,
 	useResourceSnapshot,
 	useSecuritydeptContext,
 	useSignal,
@@ -21,17 +21,13 @@ import {
 } from "@securitydept/token-set-context-client/orchestration";
 import {
 	selectTokenSetBackendCallbackClientFromRegistry,
-	type TokenSetBackendCallbackClientFromRegistrySelectionSignal,
+	TOKEN_SET_CLIENT_REGISTRY,
 	type TokenSetCallbackClientQuery,
 	TokenSetCallbackClientSelectionKind,
 	type TokenSetCallbackClientSelectionSnapshot,
 	type TokenSetClientRegistry,
 } from "@securitydept/token-set-context-client/registry";
-import { useEffect, useMemo, useState } from "react";
-import {
-	TOKEN_SET_CLIENT_REGISTRY,
-	type TokenSetClientRegistryService,
-} from "../client-registry-service";
+import { useEffect, useMemo } from "react";
 
 type BackendCallbackResult =
 	OidcModeCallbackHandlingResult<TokenSetAuthSnapshot>;
@@ -46,42 +42,26 @@ export interface UseTokenSetBackendCallbackOptions {
 export interface UseTokenSetBackendCallbackResult {
 	readonly selection: TokenSetCallbackClientSelectionSnapshot<BackendOidcModeClient>;
 	readonly state: ResourceSnapshot<BackendCallbackResult>;
-	readonly resource: ResourceTrait<BackendCallbackResult>;
 }
 
 export function useTokenSetBackendCallback(
 	options: UseTokenSetBackendCallbackOptions = {},
 ): UseTokenSetBackendCallbackResult {
 	const injector = useSecuritydeptContext();
-	const registry =
-		options.registry ??
-		(injector.get(TOKEN_SET_CLIENT_REGISTRY) as TokenSetClientRegistryService);
+	const registry = options.registry ?? injector.get(TOKEN_SET_CLIENT_REGISTRY);
 	const environment = options.environment ?? injector.get(ENVIRONMENT_TOKEN);
-	const [selectionSource] = useState(() =>
-		createSignal<TokenSetBackendCallbackClientFromRegistrySelectionSignal | null>(
-			null,
-		),
-	);
-	const selectionSignal = useMemo(
-		() =>
-			createComputed<
-				TokenSetCallbackClientSelectionSnapshot<BackendOidcModeClient>
-			>(
-				() =>
-					selectionSource.get()?.get() ?? {
-						status: ResourceStatus.Idle,
-					},
-			),
-		[selectionSource],
-	);
+	const selectionSignal = useInitialRef(() =>
+		createSignal<
+			TokenSetCallbackClientSelectionSnapshot<BackendOidcModeClient>
+		>({
+			status: ResourceStatus.Idle,
+		}),
+	).current;
 	const selection = useSignal(selectionSignal);
-	const resource = useMemo(
+	const stateSignal = useMemo(
 		() =>
-			resourceFromSnapshots<BackendCallbackResult>(() => {
-				const current = selectionSource.get()?.get();
-				if (!current) {
-					return { status: ResourceStatus.Idle };
-				}
+			createComputed<ResourceSnapshot<BackendCallbackResult>>(() => {
+				const current = selectionSignal.get();
 				switch (current.status) {
 					case ResourceStatus.Idle:
 						return { status: ResourceStatus.Idle };
@@ -101,27 +81,30 @@ export function useTokenSetBackendCallback(
 							: current.value.client.callback.state.get();
 				}
 			}),
-		[selectionSource],
+		[selectionSignal],
 	);
-	const state = useResourceSnapshot(resource);
+	const state = useResourceSnapshot(stateSignal);
 	useEffect(() => {
-		selectionSource.set(
-			selectTokenSetBackendCallbackClientFromRegistry({
-				registry,
-				callbackUrl: environment.router?.currentUrl()?.toString() ?? "",
-				clientQuery: options.clientQuery,
-				initialize: options.autoInitialize !== false,
-			}),
-		);
-		return () => selectionSource.set(null);
+		const source = selectTokenSetBackendCallbackClientFromRegistry({
+			registry,
+			callbackUrl: environment.router?.currentUrl()?.toString() ?? "",
+			clientQuery: options.clientQuery,
+			initialize: options.autoInitialize !== false,
+		});
+		const subscription = source[SYMBOL_OBSERVABLE]().subscribe({
+			next: (snapshot) => selectionSignal.set(snapshot),
+		});
+		return () => {
+			subscription.unsubscribe();
+			selectionSignal.set({ status: ResourceStatus.Idle });
+		};
 	}, [
 		environment,
 		options.autoInitialize,
 		options.clientQuery,
 		registry,
-		selectionSource,
+		selectionSignal,
 	]);
-	useEffect(() => () => resource.dispose(), [resource]);
 
-	return { selection, state, resource };
+	return { selection, state };
 }

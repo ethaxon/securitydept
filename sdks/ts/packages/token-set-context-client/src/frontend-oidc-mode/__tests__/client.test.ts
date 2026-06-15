@@ -144,7 +144,10 @@ vi.mock("oauth4webapi", () => ({
 import { createDefaultFrontendOidcModeCallbackInputResolver } from "../client/callback-input-resolver";
 import { FrontendOidcModeClient } from "../client/client";
 import { FrontendOidcModeErrorCode } from "../client/error-codes";
-import { type FrontendOidcModeFlowStores } from "../client/types";
+import {
+	type FrontendOidcModeClientOptions,
+	type FrontendOidcModeFlowStores,
+} from "../client/types";
 
 describe("FrontendOidcModeClient", () => {
 	beforeEach(() => {
@@ -205,6 +208,12 @@ describe("FrontendOidcModeClient", () => {
 		const sessionStorage = createInMemoryRecordStore();
 		const createFlowStores = vi.fn();
 		class CustomFrontendOidcModeClient extends FrontendOidcModeClient {
+			static create(
+				options: FrontendOidcModeClientOptions,
+			): CustomFrontendOidcModeClient {
+				return new CustomFrontendOidcModeClient(options);
+			}
+
 			protected override createFrontendOidcModeFlowStores(
 				storage: StorageTrait,
 			): FrontendOidcModeFlowStores {
@@ -217,14 +226,14 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage,
 		});
 
-		const client = new CustomFrontendOidcModeClient(
-			{
+		const client = CustomFrontendOidcModeClient.create({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 			},
-			{ environment },
-		);
+			environment,
+		});
 
 		expect(createFlowStores.mock.calls).toEqual([
 			[realmStorage],
@@ -249,16 +258,16 @@ describe("FrontendOidcModeClient", () => {
 			},
 			sessionStorage: createInMemoryRecordStore(),
 		});
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
 		currentUrl = UriReferenceString.parse(
@@ -296,25 +305,24 @@ describe("FrontendOidcModeClient", () => {
 			},
 			sessionStorage: createInMemoryRecordStore(),
 		});
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/default-callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{
-				environment: runtime,
-				callbackInputResolver:
-					createDefaultFrontendOidcModeCallbackInputResolver({
-						redirectUriCandidates: [
-							"/auth/default-callback",
-							UriReferenceString.parse("/auth/override-callback"),
-						],
-					}),
-			},
-		);
+			environment: runtime,
+			callbackInputResolver: createDefaultFrontendOidcModeCallbackInputResolver(
+				{
+					redirectUriCandidates: [
+						"/auth/default-callback",
+						UriReferenceString.parse("/auth/override-callback"),
+					],
+				},
+			),
+		});
 
 		await client.loginWithRedirect({
 			redirectUri: "https://app.example.com/auth/override-callback",
@@ -339,15 +347,15 @@ describe("FrontendOidcModeClient", () => {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
 		});
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				metadataRefreshInterval: "1s",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.discover();
 		expect(time.pendingCount).toBe(1);
@@ -392,16 +400,16 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.discover();
 		oauthMocks.processUserInfoResponse.mockResolvedValueOnce({
@@ -433,16 +441,16 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.discover();
 		oauthMocks.processUserInfoResponse.mockResolvedValueOnce({
@@ -467,8 +475,8 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
@@ -476,8 +484,8 @@ describe("FrontendOidcModeClient", () => {
 				tokenEndpoint: "https://auth.example.com/token",
 				pkceEnabled: false,
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.authorizeUrl({
 			postAuthRedirectUri: "/playground/token-set/frontend-mode",
@@ -509,16 +517,16 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage,
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-a" });
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-b" });
@@ -566,16 +574,16 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
 		await client.handleCallback([
@@ -600,16 +608,16 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await expect(
 			client.handleCallback("?code=auth-code&state=unknown-state"),
@@ -629,16 +637,16 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage,
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await sessionStorage.set(
 			"securitydept.frontend_oidc.pending:state-stale",
@@ -673,16 +681,16 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage,
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await sessionStorage.set(
 			"securitydept.frontend_oidc.pending:state-mismatch",
@@ -720,16 +728,16 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
 
@@ -764,14 +772,14 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "http://localhost:4710",
 				clientId: "spa-client",
 				redirectUri: "http://localhost:4722/auth/callback",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
 		await client.handleCallback("?code=auth-code&state=state-value");
@@ -800,16 +808,16 @@ describe("FrontendOidcModeClient", () => {
 			popup: createMockPopupTrait(),
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.loginWithPopup({
 			popupCallbackUrl: "https://app.example.com/auth/popup-callback",
@@ -863,16 +871,16 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage,
 			popup: createMockPopupTrait(),
 		});
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await expect(
 			client.loginWithPopup({
@@ -906,16 +914,16 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage,
 			popup: createMockPopupTrait(),
 		});
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await expect(
 			client.loginWithPopup({
@@ -945,16 +953,16 @@ describe("FrontendOidcModeClient", () => {
 				navigate,
 			},
 		});
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await expect(client.loginWithRedirect()).rejects.toMatchObject({
 			kind: ClientErrorKind.Storage,
@@ -980,16 +988,16 @@ describe("FrontendOidcModeClient", () => {
 				navigate,
 			},
 		});
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await expect(client.loginWithRedirect()).rejects.toMatchObject({
 			kind: ClientErrorKind.Configuration,
@@ -1037,16 +1045,16 @@ describe("FrontendOidcModeClient", () => {
 				sessionStorage: createInMemoryRecordStore(),
 			});
 
-			const client = new FrontendOidcModeClient(
-				{
+			const client = FrontendOidcModeClient.fromEnvironmentConfig({
+				config: {
 					issuer: "https://auth.example.com",
 					clientId: "spa-client",
 					redirectUri: "https://app.example.com/auth/callback",
 					authorizationEndpoint: "https://auth.example.com/authorize",
 					tokenEndpoint: "https://auth.example.com/token",
 				},
-				{ environment: runtime },
-			);
+				environment: runtime,
+			});
 
 			await expect(client.loginWithRedirect()).rejects.toMatchObject({
 				code: "frontend_oidc.redirect.router_unavailable",
@@ -1075,16 +1083,16 @@ describe("FrontendOidcModeClient", () => {
 			tracing: createTracing({ subscribers: [trace] }),
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await expect(
 			client.handleCallback("?code=auth-code&state=missing-state"),
@@ -1119,16 +1127,16 @@ describe("FrontendOidcModeClient", () => {
 			tracing: createTracing({ subscribers: [trace] }),
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.authorizeUrl({ postAuthRedirectUri: "/after-login" });
 		await client.handleCallback("?code=auth-code&state=state-value");
@@ -1176,16 +1184,16 @@ describe("FrontendOidcModeClient", () => {
 			tracing: createTracing({ subscribers: [trace] }),
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.restoreState({
 			tokens: {
@@ -1238,16 +1246,16 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 		const events: TokenSetAuthEvent[] = [];
 		client.authEvents.subscribe({ next: (event) => events.push(event) });
 
@@ -1284,16 +1292,16 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage: createInMemoryRecordStore(),
 		});
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/auth/callback",
 				authorizationEndpoint: "https://auth.example.com/authorize",
 				tokenEndpoint: "https://auth.example.com/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		client.restoreState({
 			tokens: {

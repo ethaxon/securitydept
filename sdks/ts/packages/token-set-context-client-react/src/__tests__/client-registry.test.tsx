@@ -9,23 +9,18 @@ import {
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import { createEnvironmentForTest } from "@securitydept/client/test";
-import {
-	SecuritydeptProvider,
-	useSecuritydeptContext,
-} from "@securitydept/client-react";
+import { SecuritydeptProvider } from "@securitydept/client-react";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
+	provideTokenSetClientRegistry,
 	TokenSetClientInitializationMode,
+	type TokenSetClientRegistry,
 	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-	provideTokenSetClientRegistry,
-	TOKEN_SET_CLIENT_REGISTRY,
-	type TokenSetClientRegistryService,
-} from "../index";
+import { useTokenSetClientRegistry } from "../index";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
@@ -94,7 +89,7 @@ function createEntry(
 	};
 }
 
-describe("token-set React client registry service", () => {
+describe("TokenSetClientRegistry React adapter", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
 	});
@@ -105,10 +100,10 @@ describe("token-set React client registry service", () => {
 		const environment = createEnvironmentForTest({
 			providers: provideTokenSetClientRegistry({ clients: [entry] }),
 		});
-		let registry: TokenSetClientRegistryService | undefined;
+		let registry: TokenSetClientRegistry<BaseOidcModeClient> | undefined;
 
 		function Probe() {
-			registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
+			registry = useTokenSetClientRegistry();
 			return createElement("output", null, "ready");
 		}
 
@@ -135,7 +130,7 @@ describe("token-set React client registry service", () => {
 
 	it("creates registry entries inside the injector scope", async () => {
 		const client = createMockClient("scoped-at");
-		let registry: TokenSetClientRegistryService | undefined;
+		let registry: TokenSetClientRegistry<BaseOidcModeClient> | undefined;
 		let factoryCalls = 0;
 		const environment = createEnvironmentForTest({
 			providers: provideTokenSetClientRegistry({
@@ -148,7 +143,7 @@ describe("token-set React client registry service", () => {
 		});
 
 		function Probe() {
-			registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
+			registry = useTokenSetClientRegistry();
 			return createElement("output", null, "ready");
 		}
 
@@ -169,8 +164,8 @@ describe("token-set React client registry service", () => {
 	});
 
 	it("supports nested registry overrides", async () => {
-		let parentRegistry: TokenSetClientRegistryService | undefined;
-		let childRegistry: TokenSetClientRegistryService | undefined;
+		let parentRegistry: TokenSetClientRegistry<BaseOidcModeClient> | undefined;
+		let childRegistry: TokenSetClientRegistry<BaseOidcModeClient> | undefined;
 		const environment = createEnvironmentForTest({
 			providers: provideTokenSetClientRegistry({
 				clients: [createEntry("main", createMockClient("parent-at"))],
@@ -185,7 +180,7 @@ describe("token-set React client registry service", () => {
 		);
 
 		function Probe({ label }: { label: string }) {
-			const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
+			const registry = useTokenSetClientRegistry();
 			if (label === "parent") {
 				parentRegistry = registry;
 			} else {

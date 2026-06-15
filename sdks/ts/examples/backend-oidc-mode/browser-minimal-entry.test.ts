@@ -46,10 +46,10 @@ describe("backend-oidc-mode web minimal entry", () => {
 		// 1. Create the browser client with minimal config + runtime stubs.
 		//    In a real app, only baseUrl is required — stores and transport
 		//    default to browser-native implementations.
-		const client = new BackendOidcModeClient(
-			{ baseUrl: "https://auth.example.com" },
-			{ environment: environment },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://auth.example.com" },
+			environment: environment,
+		});
 
 		// 2. Start the client. With no callback fragment and no prior state,
 		//    startup resolves to null and updates authSnapshot.
@@ -71,31 +71,29 @@ describe("backend-oidc-mode web minimal entry", () => {
 	});
 
 	it("shows restoreState as an alternative to bootstrap for SSR-provided tokens", async () => {
-		const client = new BackendOidcModeClient(
-			{ baseUrl: "https://auth.example.com" },
-			{
-				environment: createFoundationEnvironment({
-					span: createRootSpan(),
-					tracing: createTracing(),
-					persistentStorage: createInMemoryRecordStore(),
-					sessionStorage: createInMemoryRecordStore(),
-					transport: {
-						async execute() {
-							return { status: 500, headers: {}, body: null };
-						},
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://auth.example.com" },
+			environment: createFoundationEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
+				persistentStorage: createInMemoryRecordStore(),
+				sessionStorage: createInMemoryRecordStore(),
+				transport: {
+					async execute() {
+						return { status: 500, headers: {}, body: null };
 					},
-					time: {
-						now: () => Date.now(),
-						setTimeout: (callback: () => void, delayMs: number) =>
-							globalThis.setTimeout(callback, delayMs),
-						clearTimeout: (handle: unknown) =>
-							globalThis.clearTimeout(
-								handle as ReturnType<typeof globalThis.setTimeout>,
-							),
-					},
-				}),
-			},
-		);
+				},
+				time: {
+					now: () => Date.now(),
+					setTimeout: (callback: () => void, delayMs: number) =>
+						globalThis.setTimeout(callback, delayMs),
+					clearTimeout: (handle: unknown) =>
+						globalThis.clearTimeout(
+							handle as ReturnType<typeof globalThis.setTimeout>,
+						),
+				},
+			}),
+		});
 
 		// Restore state directly (e.g. from server-rendered bootstrap data).
 		await client.restoreState({

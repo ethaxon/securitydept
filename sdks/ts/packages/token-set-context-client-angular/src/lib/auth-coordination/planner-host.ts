@@ -22,7 +22,7 @@ import {
 	type TokenSetClientRegistryRequirementBehaviourOptions,
 	type TokenSetClientRegistryRouteRequirementBehaviourShape,
 } from "@securitydept/token-set-context-client/registry";
-import { TokenSetClientRegistryService } from "../client-registry.service";
+import { TOKEN_SET_CLIENT_REGISTRY } from "../client-registry";
 
 /** Options for {@link provideTokenSetRequirementPlannerHost}. */
 export type ProvideTokenSetRequirementPlannerHostOptions =
@@ -45,7 +45,7 @@ export function provideTokenSetRequirementPlannerHost(
 		{
 			provide: SECURITYDEPT_INJECTOR,
 			useFactory: (): SecuritydeptInjector => {
-				const registry = inject(TokenSetClientRegistryService);
+				const registry = inject(TOKEN_SET_CLIENT_REGISTRY);
 				const environment = inject(ENVIRONMENT);
 				const parentInjector =
 					inject(SECURITYDEPT_INJECTOR, {

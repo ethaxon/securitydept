@@ -171,6 +171,7 @@ export interface FrontendOidcModeClientConfig extends OidcModeClientConfigBase {
 }
 
 export type FrontendOidcModeClientOptions = {
+	readonly config: FrontendOidcModeClientConfig;
 	readonly environment: FoundationEnvironment;
 } & OidcModeCallbackResolutionOptions<FrontendOidcModeCallbackInput>;
 

@@ -10,16 +10,15 @@ import { createEnvironmentForTest } from "@securitydept/client/test";
 import {
 	SecuritydeptProvider,
 	useResourceSnapshot,
-	useSecuritydeptContext,
 } from "@securitydept/client-react";
+import {
+	provideSessionContext,
+	type SessionContextClient,
+} from "@securitydept/session-context-client";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-	provideSessionContext,
-	SESSION_CONTEXT_CLIENT,
-	SessionContextService,
-} from "../index";
+import { useSessionContextClient } from "../index";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
@@ -72,13 +71,11 @@ describe("session-context react adapter", () => {
 				config: { baseUrl: "https://auth.example.com" },
 			}),
 		});
-		let client: SessionContextService | null = null;
+		let client: SessionContextClient | null = null;
 
 		function Probe() {
-			const injector = useSecuritydeptContext();
-			const resolvedClient = injector.get(SESSION_CONTEXT_CLIENT);
-			expect(resolvedClient).toBeInstanceOf(SessionContextService);
-			client = resolvedClient as SessionContextService;
+			const resolvedClient = useSessionContextClient();
+			client = resolvedClient;
 			const sessionSnapshot = useResourceSnapshot(
 				resolvedClient.sessionResource,
 			);

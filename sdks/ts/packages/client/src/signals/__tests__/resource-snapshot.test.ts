@@ -33,6 +33,32 @@ describe("whenResourceSnapshotValue", () => {
 		await expect(whenResourceSnapshotValue(snapshot)).rejects.toBe(error);
 	});
 
+	it("returns stale error values by default and supports strict errors", async () => {
+		const error = new Error("refresh failed");
+		const snapshot = createSignal<ResourceSnapshot<string>>({
+			status: ResourceStatus.Error,
+			value: "stale",
+			error,
+		});
+
+		await expect(whenResourceSnapshotValue(snapshot)).resolves.toBe("stale");
+		await expect(
+			whenResourceSnapshotValue(snapshot, { staleValueWhenError: false }),
+		).rejects.toBe(error);
+
+		snapshot.set({ status: ResourceStatus.Loading });
+		const pending = whenResourceSnapshotValue(snapshot, {
+			staleValueWhenError: false,
+		});
+		snapshot.set({
+			status: ResourceStatus.Error,
+			value: "stale",
+			error,
+		});
+
+		await expect(pending).rejects.toBe(error);
+	});
+
 	it("supports cancellation while waiting", async () => {
 		const snapshot = createSignal<ResourceSnapshot<string>>({
 			status: ResourceStatus.Loading,

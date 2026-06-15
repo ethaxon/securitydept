@@ -25,11 +25,12 @@ import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/
 import {
 	TokenSetClientInitializationMode,
 	type TokenSetClientReadyRecordView,
+	type TokenSetClientRegistry,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	createTokenSetCanActivate,
 	provideTokenSetRequirementPlannerHost,
-	TokenSetClientRegistryService,
+	TOKEN_SET_CLIENT_REGISTRY,
 } from "@securitydept/token-set-context-client-angular";
 import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
@@ -101,7 +102,7 @@ function createRegistryMock(
 			yield createSignal(record);
 		}),
 		clientRecordFor: vi.fn(async () => record),
-	} as unknown as TokenSetClientRegistryService;
+	} as unknown as TokenSetClientRegistry<BaseOidcModeClient>;
 }
 
 function createMockRouter(attemptedUrl: string) {
@@ -134,7 +135,7 @@ describe("Angular token-set route guard injection context", () => {
 		);
 		const injector = createEnvironmentInjector(
 			[
-				{ provide: TokenSetClientRegistryService, useValue: registry },
+				{ provide: TOKEN_SET_CLIENT_REGISTRY, useValue: registry },
 				{ provide: Router, useValue: createMockRouter("/confluence") },
 				createHttpClientProvider(),
 				provideEnvironment({
@@ -176,7 +177,7 @@ describe("Angular token-set route guard injection context", () => {
 		const registry = createRegistryMock(createReadyRecord(client));
 		const injector = createEnvironmentInjector(
 			[
-				{ provide: TokenSetClientRegistryService, useValue: registry },
+				{ provide: TOKEN_SET_CLIENT_REGISTRY, useValue: registry },
 				{ provide: Router, useValue: createMockRouter("/confluence") },
 				createHttpClientProvider(),
 				provideEnvironment({

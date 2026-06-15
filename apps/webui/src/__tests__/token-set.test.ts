@@ -18,7 +18,7 @@ import {
 	BackendOidcModeClient,
 	type BackendOidcModeClientConfig,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
-import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client-react";
+import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client/registry";
 import { describe, expect, it, vi } from "vitest";
 import { AuthEntryKind } from "../api/entries";
 import {
@@ -111,8 +111,8 @@ function createBackendOidcModeTestClient(
 		...environmentOptions
 	} = options;
 
-	return new BackendOidcModeClient(
-		{
+	return BackendOidcModeClient.fromEnvironmentConfig({
+		config: {
 			baseUrl: baseUrl ?? "",
 			defaultPostAuthRedirectUri,
 			refresh,
@@ -124,13 +124,11 @@ function createBackendOidcModeTestClient(
 			metadataRedeemPath,
 			userInfoPath,
 		},
-		{
-			environment: createFoundationEnvironment({
-				...environmentOptions,
-				tracing: tracing ?? createTracing(),
-			}),
-		},
-	);
+		environment: createFoundationEnvironment({
+			...environmentOptions,
+			tracing: tracing ?? createTracing(),
+		}),
+	});
 }
 
 describe("token-set browser flow", () => {

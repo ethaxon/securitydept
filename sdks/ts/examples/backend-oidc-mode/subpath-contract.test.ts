@@ -7,11 +7,13 @@ import {
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	provideTokenSetClientRegistry,
-	BackendOidcModeClient as ReactBackendOidcModeClient,
 	TOKEN_SET_CLIENT_REGISTRY,
 	TOKEN_SET_CLIENT_REGISTRY_ENTRIES,
-	TokenSetClientRegistryService,
+	TokenSetClientRegistry,
+} from "@securitydept/token-set-context-client/registry";
+import {
 	useTokenSetBackendCallback,
+	useTokenSetClientRegistry,
 	useTokenSetFrontendCallback,
 } from "@securitydept/token-set-context-client-react";
 import { describe, expect, it } from "vitest";
@@ -37,18 +39,18 @@ describe("backend-oidc-mode popup relay exports", () => {
 	});
 });
 
-describe("token-set React canonical entry", () => {
-	it("exports backend-OIDC client and registry composition helpers from the React root entry", () => {
-		expect(ReactBackendOidcModeClient).toBeDefined();
-		expect(typeof ReactBackendOidcModeClient).toBe("function");
+describe("token-set core registry and React canonical entries", () => {
+	it("owns registry composition in the framework-neutral registry entry", () => {
 		expect(provideTokenSetClientRegistry).toBeDefined();
 		expect(typeof provideTokenSetClientRegistry).toBe("function");
-		expect(TokenSetClientRegistryService).toBeDefined();
+		expect(TokenSetClientRegistry).toBeDefined();
 		expect(TOKEN_SET_CLIENT_REGISTRY).toBeDefined();
 		expect(TOKEN_SET_CLIENT_REGISTRY_ENTRIES).toBeDefined();
 	});
 
-	it("exports headless callback resource hooks", () => {
+	it("exports only React-specific registry and callback hooks from the adapter", () => {
+		expect(useTokenSetClientRegistry).toBeDefined();
+		expect(typeof useTokenSetClientRegistry).toBe("function");
 		expect(useTokenSetBackendCallback).toBeDefined();
 		expect(typeof useTokenSetBackendCallback).toBe("function");
 		expect(useTokenSetFrontendCallback).toBeDefined();

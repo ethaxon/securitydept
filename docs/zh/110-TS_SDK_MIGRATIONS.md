@@ -136,7 +136,7 @@ Packages：
 
 - 在 React Fiber 树外构造 injector，再用 `SecuritydeptProvider` 包住 React subtree 并传入完整 `injector`。Provider 不再派生 child injector，也不再创建 destroy ref。
 - 将 `XxxContextProvider` / `useXxxContext()` 迁移为 `useSecuritydeptContext().get(TOKEN)`。
-- 将 `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` 迁移为 `const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)`，再通过 `useResourceSnapshot()` 读取 `registry.clientResourceFor(key)` 与选中 client 的 Resource。
+- 将 `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` 迁移为 `const registry = useTokenSetClientRegistry()`，再通过 `useResourceSnapshot()` 读取 `registry.clientResourceFor(key)` 与选中 client 的 Resource。
 - 将 basic-auth / session 的 provider-first 组合迁移为 `create*()` + `provide*()`；token-set 多客户端 React 组合改为注册 `provideTokenSetClientRegistry({ clients })`，需要 callback rendering 时使用 frontend/backend callback Resource hooks。
 
 ### Token-Set React Registry Composition
@@ -181,7 +181,8 @@ Packages：
 - 不要在 service worker 或 extension background 中消费 callback fragment。那里只运行 restore/token-state API；callback fragment 只应在 real page/popup document 中消费，或在测试中显式传入 fake `RouterTrait`。
 - 将 ambiguous page-global helper usage 迁移到显式 page 形式：用 `client.authorizeUrl(environment.router.currentUrl()?.toString())` 或 `client.loginWithRedirect({ postAuthRedirectUri })` 构造 return URL；callback page 使用 `takeFrontendOidcCallbackInputFromRouter(router)` 或 `takeBackendOidcCallbackInputFromRouter(router)` 后接 `client.handleCallback(input)`。Backend OIDC fragment redirect 使用 securitydept compat fragment 协议，并保留既有 hash-router fragment。
 - 将 `relayTokenSetPopupCallbackFromEnvironment()` 等 popup callback relay helper 视为 page-only helper；测试或 host wrapper 中应传入携带 page capability 的 `environment`。从 `@securitydept/token-set-context-client/backend-oidc-mode` 或 `@securitydept/token-set-context-client/frontend-oidc-mode` 导入；已删除的 `@securitydept/token-set-context-client/backend-oidc-mode/web` 子路径只是转发层。现在 canonical 的共享 token-set OIDC 浏览器 login contract 是 `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })` 和 `BaseOidcModeClient.loginWithPopup({ popupCallbackUrl })`；client 通过 environment 持有 page navigation 和 popup capability。Backend / frontend mode client 都直接暴露这些方法。Backend OIDC 不再持有隐藏的 callback-fragment flow state；重试或延迟 callback handling 必须由应用代码显式实现。
-- Frontend-mode 不再使用 browser materialization。改为调用 `resolveFrontendOidcModeConfigProjection({ clientKey, environment, sources, overrides })`，再用返回的 config 与同一个 root environment 构造 `FrontendOidcModeClient`。Realm、persisted 与 network 的优先级必须显式声明；服务端渲染的 projection 通过 `injectConfigProjectionIntoRealm()` 注入。
+- Frontend-mode 不再使用 browser materialization。改为调用 `resolveFrontendOidcModeConfigProjection({ clientKey, environment, sources, overrides })`，再将返回的 config 与同一个 root environment 传给 `FrontendOidcModeClient.fromEnvironmentConfig({ config, environment })`。Realm、persisted 与 network 的优先级必须显式声明；服务端渲染的 projection 通过 `injectConfigProjectionIntoRealm()` 注入。
+- 将直接的 `new FrontendOidcModeClient(config, options)` 与 `new BackendOidcModeClient(config, options)` 调用改为对应 mode 的 `fromEnvironmentConfig({ config, ...options })` 静态工厂。Framework-neutral injector host 可以使用 `provideFrontendOidcModeClient()` / `provideBackendOidcModeClient()` 和对应 mode client token。Registry entry 继续使用 registry-aware factory creator。
 - Frontend OIDC redirect 与 public callback flow 必须使用 `environment.sessionStorage`；popup flow 使用 `environment.realmStorage`。不要实现跨 scope fallback，也不要在两者之间复制 pending/consumed record。
 - 当 browser/page environment ownership 需要在 framework route 或 command 之间保持稳定时，应在 composition root 创建一个 host-owned `NativeWebEnvironment` object 并注入该对象。不要继续发明 app-local module singleton 或 SDK-local lazy environment resolver。
 - 将 basic-auth/session `/web` redirect helper 视为 page navigation helper；要么留在 real page context，要么注入显式 `RouterTrait`。
@@ -327,7 +328,7 @@ Packages：
 
 变更：
 
-- `@securitydept/client-react` 现在拥有 canonical React injector bridge：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`，以及 context-free `useSignal()`、`useResourceSnapshot()`、`useInteropObservable()` 与 `useEventStream()`。`useResourceValue()` 已删除，因为在 suspended render 中临时创建 `whenValue()` Promise 并不稳定；React 应从 snapshot 显式渲染 Resource 状态。
+- `@securitydept/client-react` 现在拥有 canonical React injector bridge：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`，以及 context-free `useSignal()`、`useResourceSnapshot()`、`useInteropObservable()` 与 `useEventStream()`。旧的临时 `useResourceValue()` 已由 `useSuspenseResourceValue()` 取代；后者通过 environment-scoped `QueryStore` 跨 Suspense retry 缓存 wait，并在零引用后按可配置延迟回收 query。
 - `client-react` root 现在导出 `createEnvironmentForReact()` 和 React injector bridge。在 Fiber 树外使用该 creator，将 React 专属 providers 组合到 host environment creator 上，再把已构造完成的 injector 传给根 `SecuritydeptProvider`。Route-scoped planner host 由具体 router adapter（如 `@securitydept/client-react/tanstack-router`）拥有。
 - `basic-auth` / `session` / `token-set` React adapter 不再拥有 domain-specific Provider / Context hook；它们导出 token、plain factory、provider factory，以及显式 callback/component bridge。token-set 多客户端组合现在改为显式 registry/controller wiring，而不是 SDK 预设 runtime bundle。
 - Token-set Angular/React 路由安全现依赖 `secureTokenSetRouteRoot()` 与 registry 默认 unauthenticated handler。client 选择应写在 requirement `attributes.query` 中；仅在需要时通过 secure route root 或 planner host provider 的 `onClientUnauthenticated` 自定义 redirect 策略。
@@ -394,14 +395,14 @@ Packages：
 
 - Canonical registry lifecycle verb 现在是 `register(entry)`、`unregister(key)`、`resetMaterialization(key)` 与 `dispose()`。
 - Registry 现在把 configured 与 ready observability 显式拆开：`has()` / `registeredKeys()` / `registeredEntriesSnapshot()` / `registeredMetaSnapshot()` 描述已注册 entry，`readyKeys()` 描述已经完成 materialization 与 `start()` lifecycle 的 client。
-- React token-set composition 现在改为 registry-first：在 composition root 注册 `provideTokenSetClientRegistry(...)`，仅在 callback 状态渲染处使用 callback Resource hooks，运行期 add/remove flow 通过注入后的 registry 实例完成。Angular token-set composition 使用 `TokenSetClientRegistryService`，它是 shared core `TokenSetClientRegistry` 之上的薄 DI adapter。
+- Token-set composition 统一为 core-registry-first：从 `@securitydept/token-set-context-client/registry` 导入 `provideTokenSetClientRegistry(...)` 与 `TOKEN_SET_CLIENT_REGISTRY`。React 只增加 `useTokenSetClientRegistry()` 和 callback hooks；Angular 将同一个 core registry 实例映射到原生 injection token，不再创建 service facade。
 
 迁移：
 
 - 将历史上表示“移除此 client registration”的 `reset(key)` 调用替换为 `unregister(key)`。
 - 将失败后通过重新注册同一个 key 来重试/重建的流程替换为 `resetMaterialization(key)` 后再调用 `whenReady(key)`。
 - 对 management UI 或 diagnosis，使用 registered snapshot 作为配置态真值，使用 `readyKeys()` 表示已启动 client membership，并通过 `clientSignalFor(key)` / `whenReady(key)` 访问 live client；不要再把 ready-only key 当作所有已配置 client 的来源。
-- 在 React host 中，不要期待 prop 变化自动 reconcile token-set registration。运行期 lifecycle 变更应通过 `useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)` 或其它持有的 registry 引用完成。
+- 在 React host 中，不要期待 prop 变化自动 reconcile token-set registration。运行期 lifecycle 变更应通过 `useTokenSetClientRegistry()` 或其它持有的 registry 引用完成。
 
 理由：
 

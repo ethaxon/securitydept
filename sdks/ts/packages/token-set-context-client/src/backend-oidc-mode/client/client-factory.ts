@@ -45,7 +45,8 @@ export function createBackendOidcModeClientFactory(
 						callbackInputPredicate: options.callbackInputPredicate,
 					})
 				: options.callbackInputResolver;
-		const client = new BackendOidcModeClient(config, {
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config,
 			environment,
 			callbackRoutingKey,
 			callbackInputResolver,

@@ -1,9 +1,6 @@
 import { ResourceStatus } from "@securitydept/client";
-import {
-	useResourceSnapshot,
-	useSecuritydeptContext,
-} from "@securitydept/client-react";
-import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client-react";
+import { useResourceSnapshot } from "@securitydept/client-react";
+import { useSessionContextClient } from "@securitydept/session-context-client-react";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ExternalLink, LogIn, LogOut, Shield, Waypoints } from "lucide-react";
@@ -54,7 +51,7 @@ function StatusCard({
 function SessionPlaygroundContent() {
 	const authService = useAuthService();
 	const router = useRouter();
-	const sessionClient = useSecuritydeptContext().get(SESSION_CONTEXT_CLIENT);
+	const sessionClient = useSessionContextClient();
 	const sessionSnapshot = useResourceSnapshot(sessionClient.sessionResource);
 	const modeSnapshot = useAuthMode();
 	if (

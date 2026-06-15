@@ -10,6 +10,7 @@ import {
 	type DisposableTrait,
 	defineInstrumentMethodDecorator,
 	describeError,
+	ENVIRONMENT_TOKEN,
 	type EventStreamTrait,
 	type FoundationEnvironment,
 	injectDisposableStackFrom,
@@ -25,6 +26,8 @@ import {
 	readonlySignal,
 	reduceResourceSnapshot,
 	resourceFromSnapshots,
+	SecuritydeptDestroyRef,
+	type SecuritydeptInjectorTrait,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
 	UriReferenceString,
@@ -44,6 +47,7 @@ import {
 import { filter, from, lastValueFrom, take, takeUntil } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import { parseSessionInfoPayload } from "./contracts/parsers";
+import { SESSION_CONTEXT_CLIENT_CONFIG } from "./tokens";
 import {
 	type ResolvedSessionContextClientConfig,
 	type SessionContextClientConfig,
@@ -185,7 +189,27 @@ export class SessionContextClient implements DisposableTrait {
 		return this._config;
 	}
 
-	constructor(
+	static fromEnvironmentConfig(options: {
+		readonly config: SessionContextClientConfig;
+		readonly environment: FoundationEnvironment;
+	}): SessionContextClient {
+		return new SessionContextClient(options.config, options.environment);
+	}
+
+	static fromInjector(
+		injector: SecuritydeptInjectorTrait,
+	): SessionContextClient {
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: injector.get(SESSION_CONTEXT_CLIENT_CONFIG),
+			environment: injector.get(ENVIRONMENT_TOKEN),
+		});
+		injector
+			.get(SecuritydeptDestroyRef, null)
+			?.onDestroy(() => client.dispose());
+		return client;
+	}
+
+	protected constructor(
 		config: SessionContextClientConfig,
 		environment: FoundationEnvironment,
 	) {

@@ -2,8 +2,10 @@ import {
 	type CreateFoundationEnvironmentOptions,
 	createFoundationEnvironment,
 	type FoundationEnvironment,
+	getSecuritydeptProviderToken,
 	type SecuritydeptProvider,
 } from "@securitydept/client";
+import { provideQueryStore, QueryStore } from "./query-store";
 
 export type ReactEnvironmentCreatorOptions = {
 	providers?: readonly SecuritydeptProvider[];
@@ -38,9 +40,7 @@ export function createEnvironmentForReact<
 /**
  * Compose React-owned providers over a host or foundation environment creator.
  *
- * React currently adds no mandatory environment capability. Keeping this layer
- * explicit gives React-specific services a composition-root boundary without
- * coupling their lifetime to the React fiber tree.
+ * React services are owned by the environment rather than the React fiber tree.
  */
 export function createEnvironmentForReact(
 	options:
@@ -59,9 +59,15 @@ export function createEnvironmentForReact(
 		FoundationEnvironment
 	> &
 		CreateEnvironmentForReactOptions;
+	const providerTokens = new Set(
+		providers.map((provider) => getSecuritydeptProviderToken(provider)),
+	);
+	const reactProviders = providerTokens.has(QueryStore)
+		? providers
+		: [...provideQueryStore(), ...providers];
 
 	return createBaseEnvironment({
 		...(baseOptions as Omit<ReactEnvironmentCreatorOptions, "providers">),
-		providers,
+		providers: reactProviders,
 	});
 }

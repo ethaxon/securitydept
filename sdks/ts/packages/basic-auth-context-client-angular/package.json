@@ -49,6 +49,7 @@
 	},
 	"peerDependencies": {
 		"@securitydept/basic-auth-context-client": "workspace:*",
+		"@securitydept/client": "workspace:*",
 		"@securitydept/client-angular": "workspace:*",
 		"@angular/core": ">=19.0.0"
 	},

@@ -5,9 +5,9 @@ import {
 	Injector,
 } from "@angular/core";
 import { Router } from "@angular/router";
+import { BasicAuthContextClient } from "@securitydept/basic-auth-context-client";
 import {
 	BASIC_AUTH_CONTEXT_CLIENT,
-	BasicAuthContextService,
 	provideBasicAuthContext,
 } from "@securitydept/basic-auth-context-client-angular";
 import {
@@ -19,10 +19,10 @@ import {
 	resourceFromSnapshots,
 } from "@securitydept/client";
 import { provideEnvironment, toNgSignal } from "@securitydept/client-angular";
+import { SessionContextClient } from "@securitydept/session-context-client";
 import {
 	provideSessionContext,
 	SESSION_CONTEXT_CLIENT,
-	SessionContextService,
 } from "@securitydept/session-context-client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
@@ -33,7 +33,6 @@ import {
 	createTokenSetClientRegistryAuthorizationInterceptor,
 	provideTokenSetClientRegistry,
 	TOKEN_SET_CLIENT_REGISTRY,
-	TokenSetClientRegistryService,
 } from "@securitydept/token-set-context-client-angular";
 import { firstValueFrom, from, Observable, of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
@@ -163,7 +162,7 @@ describe("Angular integration adapter public surface", () => {
 		);
 
 		try {
-			const registry = injector.get(TokenSetClientRegistryService);
+			const registry = injector.get(TOKEN_SET_CLIENT_REGISTRY);
 			expect(injector.get(TOKEN_SET_CLIENT_REGISTRY)).toBe(registry);
 			expect(
 				registry.clientRecordForQuery({ url: "/api/users" })?.get().meta,
@@ -188,7 +187,7 @@ describe("Angular integration adapter public surface", () => {
 		);
 
 		try {
-			const registry = injector.get(TokenSetClientRegistryService);
+			const registry = injector.get(TOKEN_SET_CLIENT_REGISTRY);
 			const interceptor = createTokenSetClientRegistryAuthorizationInterceptor({
 				registry,
 			});
@@ -209,8 +208,8 @@ describe("Angular integration adapter public surface", () => {
 	it("keeps basic-auth and session Angular adapters available", () => {
 		expect(BASIC_AUTH_CONTEXT_CLIENT).toBeInstanceOf(InjectionToken);
 		expect(SESSION_CONTEXT_CLIENT).toBeInstanceOf(InjectionToken);
-		expect(BasicAuthContextService).toBeDefined();
-		expect(SessionContextService).toBeDefined();
+		expect(BasicAuthContextClient).toBeDefined();
+		expect(SessionContextClient).toBeDefined();
 		expect(
 			provideBasicAuthContext({
 				config: { baseUrl: "/api", zones: [{ zonePrefix: "/basic" }] },

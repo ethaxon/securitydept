@@ -215,10 +215,11 @@ describe("BackendOidcModeClient", () => {
 				body: { metadata: {} },
 			})),
 		});
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment, callbackRoutingKey: "backend" },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment,
+			callbackRoutingKey: "backend",
+		});
 
 		expect(client.authorizeUrl("/after")).toBe(
 			`${BASE_URL}/auth/oidc/login?post_auth_redirect_uri=%2Fafter&callback_routing_key=backend`,
@@ -251,10 +252,11 @@ describe("BackendOidcModeClient", () => {
 			router: { currentUrl: () => currentUrl, navigate },
 			transport: createTestTransport(() => ({ status: 500, headers: {} })),
 		});
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment, callbackRoutingKey: "backend-b" },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment,
+			callbackRoutingKey: "backend-b",
+		});
 
 		await expect(client.start()).resolves.toBeNull();
 		expect(navigate).not.toHaveBeenCalled();
@@ -287,10 +289,11 @@ describe("BackendOidcModeClient", () => {
 				body: { metadata: {} },
 			})),
 		});
-		const registryClient = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment, callbackRoutingKey: "backend" },
-		);
+		const registryClient = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment,
+			callbackRoutingKey: "backend",
+		});
 
 		await expect(registryClient.start()).resolves.toBeNull();
 		expect(registryClient.callback.resource.value.get()).toEqual({
@@ -298,10 +301,10 @@ describe("BackendOidcModeClient", () => {
 		});
 		expect(navigate).not.toHaveBeenCalled();
 
-		const standaloneClient = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment },
-		);
+		const standaloneClient = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment,
+		});
 		await expect(standaloneClient.start()).resolves.toMatchObject({
 			tokens: { accessToken: "callback-at" },
 		});
@@ -333,10 +336,10 @@ describe("BackendOidcModeClient", () => {
 				body: { metadata: {} },
 			})),
 		});
-		const standaloneClient = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment },
-		);
+		const standaloneClient = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment,
+		});
 
 		await expect(standaloneClient.start()).resolves.toBeNull();
 		expect(standaloneClient.callback.resource.value.get()).toEqual({
@@ -344,10 +347,11 @@ describe("BackendOidcModeClient", () => {
 		});
 		expect(navigate).not.toHaveBeenCalled();
 
-		const registryClient = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment, callbackRoutingKey: "backend" },
-		);
+		const registryClient = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment,
+			callbackRoutingKey: "backend",
+		});
 		await expect(registryClient.start()).resolves.toMatchObject({
 			tokens: { accessToken: "callback-at" },
 		});
@@ -361,15 +365,13 @@ describe("BackendOidcModeClient", () => {
 			transport: createTestTransport(() => ({ status: 500, headers: {} })),
 			tracing: createTracing({ subscribers: [trace] }),
 		});
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{
-				environment,
-				callbackInputResolver: async () => {
-					throw resolverError;
-				},
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment,
+			callbackInputResolver: async () => {
+				throw resolverError;
 			},
-		);
+		});
 
 		await expect(client.start()).rejects.toMatchObject({
 			code: BackendOidcModeErrorCode.CallbackFailed,
@@ -415,13 +417,13 @@ describe("BackendOidcModeClient", () => {
 			},
 		}));
 		const { runtime } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: BASE_URL,
 				refresh: { sources: { refreshTimer: false } },
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.restoreState({
 			tokens: {
@@ -454,10 +456,10 @@ describe("BackendOidcModeClient", () => {
 			body: { id_token: "only-id-token" },
 		}));
 		const { runtime } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment: runtime },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment: runtime,
+		});
 
 		await client.restoreState({
 			tokens: {
@@ -486,10 +488,10 @@ describe("BackendOidcModeClient", () => {
 			body: null,
 		}));
 		const { runtime } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment: runtime },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment: runtime,
+		});
 
 		await client.restoreState({
 			tokens: {
@@ -525,16 +527,16 @@ describe("BackendOidcModeClient", () => {
 			throw new Error(`Unexpected request: ${request.url}`);
 		});
 		const { runtime } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: BASE_URL,
 				refresh: {
 					tokenFreshness: { refreshWindowMs: 0 },
 					sources: { refreshTimer: false },
 				},
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 		const events: TokenSetAuthEvent[] = [];
 		client.authEvents.subscribe({
 			next: (event) => events.push(event),
@@ -601,10 +603,10 @@ describe("BackendOidcModeClient", () => {
 			body: null,
 		}));
 		const { runtime } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment: runtime },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment: runtime,
+		});
 		const events: Array<unknown> = [];
 		client.authEvents.subscribe({ next: (event) => events.push(event) });
 
@@ -640,13 +642,13 @@ describe("BackendOidcModeClient", () => {
 			body: { error: "invalid_grant" },
 		}));
 		const { runtime } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: BASE_URL,
 				refresh: { sources: { refreshTimer: false } },
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.restoreState({
 			tokens: {
@@ -698,13 +700,13 @@ describe("BackendOidcModeClient", () => {
 			createTestTransport(transientRefresh),
 			{ persistentStorage },
 		);
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: BASE_URL,
 				refresh: { sources: { refreshTimer: false } },
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 		await expect(client.restorePersistedState()).rejects.toMatchObject({
 			name: "ClientError",
 		});
@@ -745,13 +747,13 @@ describe("BackendOidcModeClient", () => {
 		const { runtime } = createTestRuntime(createTestTransport(revokedRefresh), {
 			persistentStorage,
 		});
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: BASE_URL,
 				refresh: { sources: { refreshTimer: false } },
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await expect(client.restorePersistedState()).rejects.toMatchObject({
 			name: "TokenSetAuthorizationRevocationError",
@@ -786,10 +788,10 @@ describe("BackendOidcModeClient", () => {
 			throw new Error(`Unexpected request: ${request.url}`);
 		});
 		const { runtime } = createTestRuntime(transport, { persistentStorage });
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment: runtime },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment: runtime,
+		});
 
 		const snapshot = await client.handleCallback(
 			callbackParameters(
@@ -817,10 +819,10 @@ describe("BackendOidcModeClient", () => {
 			})),
 			{ persistentStorage },
 		).runtime;
-		const restoredClient = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment: restoredRuntime },
-		);
+		const restoredClient = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment: restoredRuntime,
+		});
 		const restored = await restoredClient.restorePersistedState();
 
 		expect(restored?.tokens.accessToken).toBe("callback-at");
@@ -854,10 +856,10 @@ describe("BackendOidcModeClient", () => {
 				tracing: createTracing({ subscribers: [trace] }),
 			},
 		);
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment: runtime },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment: runtime,
+		});
 		const events: TokenSetAuthEvent[] = [];
 		client.authEvents.subscribe({ next: (event) => events.push(event) });
 
@@ -937,13 +939,13 @@ describe("BackendOidcModeClient", () => {
 				tracing: createTracing({ subscribers: [trace] }),
 			},
 		);
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: BASE_URL,
 				refresh: { sources: { refreshTimer: false } },
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await expect(client.restorePersistedState()).resolves.toBeNull();
 		await flushMicrotasks();
@@ -970,10 +972,10 @@ describe("BackendOidcModeClient", () => {
 			},
 		}));
 		const { runtime } = createTestRuntime(transport, { persistentStorage });
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment: runtime },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment: runtime,
+		});
 
 		await client.restoreState({
 			tokens: {
@@ -1019,10 +1021,10 @@ describe("BackendOidcModeClient", () => {
 			},
 		}));
 		const { runtime } = createTestRuntime(transport, { persistentStorage });
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment: runtime },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment: runtime,
+		});
 
 		await client.restoreState({
 			tokens: {
@@ -1051,10 +1053,10 @@ describe("BackendOidcModeClient", () => {
 		const deferred = createDeferred<HttpResponse>();
 		const transport = createTestTransport(async () => await deferred.promise);
 		const { runtime, time } = createTestRuntime(transport);
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment: runtime },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment: runtime,
+		});
 
 		await client.restoreState({
 			tokens: {
@@ -1108,13 +1110,13 @@ describe("BackendOidcModeClient", () => {
 		const { runtime, time } = createTestRuntime(
 			createBaseTransportForStdFetch(),
 		);
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: BASE_URL,
 				refresh: { sources: { refreshTimer: false } },
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.restoreState({
 			tokens: {
@@ -1163,10 +1165,10 @@ describe("BackendOidcModeClient", () => {
 		const { runtime } = createTestRuntime(transport, {
 			tracing: createTracing({ subscribers: [trace] }),
 		});
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment: runtime },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment: runtime,
+		});
 
 		await client.handleCallback(
 			callbackParameters(
@@ -1225,13 +1227,13 @@ describe("BackendOidcModeClient", () => {
 		const { runtime, time } = createTestRuntime(transport, {
 			tracing: createTracing({ subscribers: [trace] }),
 		});
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: BASE_URL,
 				refresh: { tokenFreshness: { refreshWindowMs: 60_000 } },
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.restoreState({
 			tokens: {
@@ -1274,10 +1276,10 @@ describe("BackendOidcModeClient", () => {
 				span: rootSpan,
 			},
 		);
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment: runtime },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment: runtime,
+		});
 		await client.restoreState({
 			tokens: {
 				accessToken: "expired-at",
@@ -1323,10 +1325,10 @@ describe("BackendOidcModeClient", () => {
 		const { runtime } = createTestRuntime(transport, {
 			tracing: createTracing({ subscribers: [trace] }),
 		});
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment: runtime },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment: runtime,
+		});
 
 		await client.handleCallback(
 			callbackParameters(
@@ -1390,10 +1392,10 @@ describe("BackendOidcModeClient", () => {
 		const { runtime } = createTestRuntime(transport, {
 			tracing: createTracing({ subscribers: [trace] }),
 		});
-		const client = new BackendOidcModeClient(
-			{ baseUrl: BASE_URL },
-			{ environment: runtime },
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: BASE_URL },
+			environment: runtime,
+		});
 
 		await client.handleCallback({
 			access_token: "body-at",
@@ -1476,13 +1478,13 @@ describe("BackendOidcModeClient", () => {
 		const { runtime } = createTestRuntime(transport, {
 			tracing: createTracing({ subscribers: [trace] }),
 		});
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: BASE_URL,
 				refresh: { tokenFreshness: { refreshWindowMs: 60_000 } },
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		await client.restoreState({
 			tokens: {

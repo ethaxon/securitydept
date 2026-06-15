@@ -41,8 +41,8 @@ function createBasicAuthEnvironment(options: {
 }
 
 function createClient(environment = createBasicAuthEnvironment({})) {
-	return new BasicAuthContextClient(
-		{
+	return BasicAuthContextClient.fromEnvironmentConfig({
+		config: {
 			baseUrl: "https://auth.example.com",
 			probePath: "/basic/api/entries",
 			zones: [
@@ -55,7 +55,7 @@ function createClient(environment = createBasicAuthEnvironment({})) {
 			],
 		},
 		environment,
-	);
+	});
 }
 
 describe("BasicAuthContextClient", () => {
@@ -116,8 +116,8 @@ describe("BasicAuthContextClient", () => {
 	});
 
 	it("builds zone-aware redirect instructions for custom login paths", () => {
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				zones: [
 					{ zonePrefix: "/basic" },
@@ -128,8 +128,8 @@ describe("BasicAuthContextClient", () => {
 					},
 				],
 			},
-			createBasicAuthEnvironment({}),
-		);
+			environment: createBasicAuthEnvironment({}),
+		});
 
 		const result = client.handleUnauthorized(
 			"/internal/basic/reports?tab=members#invite",
@@ -145,16 +145,16 @@ describe("BasicAuthContextClient", () => {
 	});
 
 	it("prefers the most specific zone when overlapping prefixes both match", () => {
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				zones: [
 					{ zonePrefix: "/basic" },
 					{ zonePrefix: "/basic/admin", loginSubpath: "/signin" },
 				],
 			},
-			createBasicAuthEnvironment({}),
-		);
+			environment: createBasicAuthEnvironment({}),
+		});
 
 		const zone = client.zoneForPath("/basic/admin/reports");
 		const result = client.handleUnauthorized("/basic/admin/reports", 401);
@@ -200,19 +200,19 @@ describe("BasicAuthContextClient", () => {
 				expect(request.method).toBe("GET");
 			},
 		});
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				probePath: "/basic/api/entries",
 				zones: [{ zonePrefix: "/basic" }],
 			},
-			{
+			environment: {
 				...environment,
 				tracing: createTracing({
 					subscribers: [{ record: (event) => traces.push(event) }],
 				}),
 			},
-		);
+		});
 
 		const snapshot = await client.refresh();
 
@@ -236,13 +236,13 @@ describe("BasicAuthContextClient", () => {
 	});
 
 	it("requires an explicit probe path for refresh/start", async () => {
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				zones: [{ zonePrefix: "/basic" }],
 			},
-			createBasicAuthEnvironment({}),
-		);
+			environment: createBasicAuthEnvironment({}),
+		});
 
 		await expect(client.refresh()).rejects.toMatchObject({
 			code: "basic_auth.probe_path_required",
@@ -272,13 +272,13 @@ describe("BasicAuthContextClient", () => {
 		const environment = createBasicAuthEnvironment({
 			routerUrl: "https://app.example.com/basic/api/groups",
 		});
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				zones: [{ zonePrefix: "/basic" }],
 			},
 			environment,
-		);
+		});
 
 		await expect(
 			client.loginWithRedirect({

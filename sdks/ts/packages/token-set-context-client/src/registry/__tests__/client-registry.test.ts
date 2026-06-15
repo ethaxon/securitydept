@@ -20,7 +20,7 @@ import {
 	TokenSetClientRegistryEventType,
 } from "../contracts/types";
 import { TokenSetClientRecord } from "../core/client-record";
-import { createTokenSetClientRegistry } from "../core/client-registry";
+import { TokenSetClientRegistry } from "../core/client-registry";
 import { TokenSetClientRegistryErrorCode } from "../core/error";
 
 const testEnvironment = createFoundationEnvironment({});
@@ -77,7 +77,7 @@ describe("TokenSetClientRegistry", () => {
 
 	it("initializes immediate clients and publishes state, signal, and events", async () => {
 		const client = createClient("main");
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 		const events: string[] = [];
@@ -120,7 +120,7 @@ describe("TokenSetClientRegistry", () => {
 			clientFactory: factory,
 			callbackUrl: ["/callback", "/alternate-callback"],
 		});
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 
@@ -144,7 +144,7 @@ describe("TokenSetClientRegistry", () => {
 			clientRecordFor(
 				key: string,
 			): ReadableSignalTrait<TokenSetClientRecordView<BaseOidcModeClient>>;
-		} = createTokenSetClientRegistry({
+		} = TokenSetClientRegistry.fromEnvironmentConfig({
 			environment: testEnvironment,
 		});
 
@@ -153,7 +153,7 @@ describe("TokenSetClientRegistry", () => {
 
 	it("initializes lazy clients when clientResourceFor is requested", async () => {
 		const factory = vi.fn(() => createClient("lazy"));
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 
@@ -185,7 +185,7 @@ describe("TokenSetClientRegistry", () => {
 
 	it("keeps lazy clients uninitialized when clientResourceFor disables initialization", () => {
 		const factory = vi.fn(() => createClient("lazy"));
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 
@@ -208,7 +208,7 @@ describe("TokenSetClientRegistry", () => {
 	it("returns the ready client when initialize is called again", async () => {
 		const client = createClient("main");
 		const factory = vi.fn(() => client);
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 
@@ -231,7 +231,7 @@ describe("TokenSetClientRegistry", () => {
 	});
 
 	it("derives granular state signals from registry revisions", async () => {
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 		registry.register(
@@ -267,7 +267,7 @@ describe("TokenSetClientRegistry", () => {
 
 	it("schedules idle clients only when an idle callback capability is provided", async () => {
 		const callbacks: Array<() => void> = [];
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: createFoundationEnvironment({
 				idleCallback: {
 					requestIdleCallback: (callback) => {
@@ -302,7 +302,7 @@ describe("TokenSetClientRegistry", () => {
 
 	it("does not initialize idle clients without idle callback fallback", () => {
 		const factory = vi.fn(() => createClient("idle"));
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 
@@ -323,7 +323,7 @@ describe("TokenSetClientRegistry", () => {
 	it("reuses the in-flight record initialization", async () => {
 		const deferred = createDeferred<TestClient>();
 		const factory = vi.fn(() => deferred.promise);
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 		registry.register(
@@ -354,7 +354,7 @@ describe("TokenSetClientRegistry", () => {
 		const deferred = createDeferred<TestClient>();
 		const client = createClient("late");
 		let factoryCancellationToken: CancellationTokenTrait | undefined;
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 		registry.register(
@@ -435,7 +435,7 @@ describe("TokenSetClientRegistry", () => {
 
 	it("records failed initialization and rejects callers", async () => {
 		const error = new Error("boom");
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 		registry.register(
@@ -474,7 +474,7 @@ describe("TokenSetClientRegistry", () => {
 
 	it("lets clientResourceForQuery initialize lazy clients by default", async () => {
 		const factory = vi.fn(() => createClient("lazy"));
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 		registry.register(
@@ -496,7 +496,7 @@ describe("TokenSetClientRegistry", () => {
 
 	it("keeps query-selected lazy clients uninitialized when signal initialization is disabled", () => {
 		const factory = vi.fn(() => createClient("lazy"));
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 		registry.register(
@@ -520,7 +520,7 @@ describe("TokenSetClientRegistry", () => {
 	});
 
 	it("returns ready record views when record lookup requests initialization", async () => {
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 		registry.register(
@@ -554,7 +554,7 @@ describe("TokenSetClientRegistry", () => {
 	it("re-registering the same key creates a new record and leaves the prior resource idle", async () => {
 		const first = createClient("first");
 		const second = createClient("second");
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 
@@ -583,7 +583,7 @@ describe("TokenSetClientRegistry", () => {
 	it("disposes registered clients on unregister and dispose", async () => {
 		const first = createClient("first");
 		const second = createClient("second");
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 		registry.register(
@@ -604,7 +604,7 @@ describe("TokenSetClientRegistry", () => {
 
 	it("keeps metadata lookup separate from initialization", () => {
 		const factory = vi.fn(() => createClient("api"));
-		const registry = createTokenSetClientRegistry<TestClient>({
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
 		registry.register(

@@ -84,6 +84,15 @@ export {
 	type TakeBackendOidcCallbackInputFromRouterOptions,
 	takeBackendOidcCallbackInputFromRouter,
 } from "./contracts/callback";
+export {
+	type ProvideBackendOidcModeClientOptions,
+	provideBackendOidcModeClient,
+} from "./providers";
+export {
+	BACKEND_OIDC_MODE_CLIENT,
+	BACKEND_OIDC_MODE_CLIENT_OPTIONS,
+	type BackendOidcModeClientInjectionOptions,
+} from "./tokens";
 
 // --- Client trace vocabulary ---
 

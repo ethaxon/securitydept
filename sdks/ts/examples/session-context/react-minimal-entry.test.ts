@@ -10,12 +10,9 @@ import {
 import {
 	SecuritydeptProvider,
 	useResourceSnapshot,
-	useSecuritydeptContext,
 } from "@securitydept/client-react";
-import {
-	provideSessionContext,
-	SESSION_CONTEXT_CLIENT,
-} from "@securitydept/session-context-client-react";
+import { provideSessionContext } from "@securitydept/session-context-client";
+import { useSessionContextClient } from "@securitydept/session-context-client-react";
 import { act, createElement, type ReactElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -71,9 +68,7 @@ describe("session-context react minimal entry", () => {
 		});
 
 		function SessionBadge() {
-			const sessionClient = useSecuritydeptContext().get(
-				SESSION_CONTEXT_CLIENT,
-			);
+			const sessionClient = useSessionContextClient();
 			const sessionSnapshot = useResourceSnapshot(
 				sessionClient.sessionResource,
 			);

@@ -10,7 +10,7 @@ import { createFoundationEnvironment } from "@securitydept/client";
 import { provideEnvironment } from "@securitydept/client-angular";
 import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
-import { BasicAuthContextService, provideBasicAuthContext } from "../index";
+import { BASIC_AUTH_CONTEXT_CLIENT, provideBasicAuthContext } from "../index";
 
 function provideAngularEnvironmentDeps() {
 	return [
@@ -30,8 +30,8 @@ function provideAngularEnvironmentDeps() {
 	];
 }
 
-describe("BasicAuthContextService", () => {
-	it("extends the core client while adding Angular destroy lifecycle", async () => {
+describe("BasicAuthContextClient Angular adapter", () => {
+	it("bridges the core client into Angular DI and lifecycle", async () => {
 		const injector = createEnvironmentInjector(
 			[
 				...provideAngularEnvironmentDeps(),
@@ -59,14 +59,14 @@ describe("BasicAuthContextService", () => {
 			],
 			Injector.NULL as never,
 		);
-		const service = injector.get(BasicAuthContextService);
+		const client = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
 
-		expect(service).toBeInstanceOf(BasicAuthContextClient);
+		expect(client).toBeInstanceOf(BasicAuthContextClient);
 
-		expect(service.isInZone("/internal/basic/reports")).toBe(true);
-		expect(service.isInZone("/public")).toBe(false);
+		expect(client.isInZone("/internal/basic/reports")).toBe(true);
+		expect(client.isInZone("/public")).toBe(false);
 
-		const zone = service.zoneForPath("/internal/basic/reports");
+		const zone = client.zoneForPath("/internal/basic/reports");
 		expect(zone).toEqual(
 			expect.objectContaining({
 				zonePrefix: "/internal/basic",
@@ -75,13 +75,13 @@ describe("BasicAuthContextService", () => {
 			}),
 		);
 
-		expect(service.loginUrl(zone!, "/playground/basic-auth")).toBe(
+		expect(client.loginUrl(zone!, "/playground/basic-auth")).toBe(
 			"https://auth.example.com/internal/basic/signin?post_auth_redirect_uri=%2Fplayground%2Fbasic-auth",
 		);
-		expect(service.logoutUrl(zone!)).toBe(
+		expect(client.logoutUrl(zone!)).toBe(
 			"https://auth.example.com/internal/basic/signout",
 		);
-		expect(service.handleUnauthorized("/internal/basic/reports", 401)).toEqual({
+		expect(client.handleUnauthorized("/internal/basic/reports", 401)).toEqual({
 			kind: AuthGuardResultKind.Redirect,
 			status: AuthGuardRedirectStatus.Found,
 			location:
@@ -90,7 +90,7 @@ describe("BasicAuthContextService", () => {
 
 		injector.destroy();
 		await expect(
-			service.refresh({ path: "/internal/basic/reports" }),
+			client.refresh({ path: "/internal/basic/reports" }),
 		).rejects.toMatchObject({
 			kind: "cancelled",
 			code: "client.cancelled",

@@ -6,24 +6,19 @@ import {
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import { createEnvironmentForTest } from "@securitydept/client/test";
-import {
-	SecuritydeptProvider,
-	useSecuritydeptContext,
-} from "@securitydept/client-react";
+import { SecuritydeptProvider } from "@securitydept/client-react";
 import {
 	type BaseOidcModeClient,
 	type TokenSetAuthEvent,
 	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
+	provideTokenSetClientRegistry,
 	TokenSetClientInitializationMode,
+	type TokenSetClientRegistry,
 	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
-import {
-	provideTokenSetClientRegistry,
-	TOKEN_SET_CLIENT_REGISTRY,
-	type TokenSetClientRegistryService,
-} from "@securitydept/token-set-context-client-react";
+import { useTokenSetClientRegistry } from "@securitydept/token-set-context-client-react";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -119,10 +114,10 @@ describe("backend-oidc react minimal entry", () => {
 				],
 			}),
 		});
-		let registry: TokenSetClientRegistryService | undefined;
+		let registry: TokenSetClientRegistry<BaseOidcModeClient> | undefined;
 
 		function AuthBadge() {
-			registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
+			registry = useTokenSetClientRegistry();
 			return createElement("output", null, "ready");
 		}
 
@@ -147,7 +142,7 @@ describe("backend-oidc react minimal entry", () => {
 		view.unmount();
 	});
 
-	it("shows advanced client access through the keyed registry service", async () => {
+	it("shows advanced client access through the keyed registry", async () => {
 		const environment = createEnvironmentForTest({
 			providers: provideTokenSetClientRegistry({
 				clients: [
@@ -155,10 +150,10 @@ describe("backend-oidc react minimal entry", () => {
 				],
 			}),
 		});
-		let registry: TokenSetClientRegistryService | undefined;
+		let registry: TokenSetClientRegistry<BaseOidcModeClient> | undefined;
 
 		function ClientProbe() {
-			registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
+			registry = useTokenSetClientRegistry();
 			return createElement("output", null, "ready");
 		}
 

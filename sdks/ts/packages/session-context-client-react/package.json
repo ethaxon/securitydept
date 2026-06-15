@@ -45,13 +45,13 @@
 	},
 	"dependencies": {
 		"@securitydept/client": "workspace:*",
+		"@securitydept/client-react": "workspace:*",
 		"@securitydept/session-context-client": "workspace:*"
 	},
 	"peerDependencies": {
 		"react": ">=19.0.0"
 	},
 	"devDependencies": {
-		"@securitydept/client-react": "workspace:*",
 		"react": "catalog:",
 		"vitest": "catalog:"
 	}

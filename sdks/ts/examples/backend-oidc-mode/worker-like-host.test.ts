@@ -61,19 +61,17 @@ describe("backend-oidc worker-like host boundary", () => {
 
 		const persistentStorage = createInMemoryRecordStore();
 		const sessionStorage = createInMemoryRecordStore();
-		const client = new BackendOidcModeClient(
-			{ baseUrl: "" },
-			{
-				environment: createFoundationEnvironment({
-					span: createRootSpan(),
-					tracing: createTracing(),
-					persistentStorage,
-					sessionStorage,
-					transport: createMetadataTransport(),
-					time: createTime(),
-				}),
-			},
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: "" },
+			environment: createFoundationEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
+				persistentStorage,
+				sessionStorage,
+				transport: createMetadataTransport(),
+				time: createTime(),
+			}),
+		});
 
 		const result = await client.start();
 
@@ -93,20 +91,20 @@ describe("backend-oidc worker-like host boundary", () => {
 			span: createRootSpan(),
 			tracing: createTracing(),
 		});
-		const callbackClient = new BackendOidcModeClient(
-			{ baseUrl: "" },
-			{ environment: baseEnvironment },
-		);
+		const callbackClient = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: "" },
+			environment: baseEnvironment,
+		});
 
 		await callbackClient.handleCallback(
 			callbackParameters(
 				"access_token=worker-at&id_token=worker-idt&refresh_token=worker-rt&metadata_redemption_id=meta-worker",
 			),
 		);
-		const restoreClient = new BackendOidcModeClient(
-			{ baseUrl: "" },
-			{ environment: baseEnvironment },
-		);
+		const restoreClient = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: "" },
+			environment: baseEnvironment,
+		});
 		const result = await restoreClient.start();
 
 		expect(result?.tokens.accessToken).toBe("worker-at");
@@ -117,17 +115,15 @@ describe("backend-oidc worker-like host boundary", () => {
 
 	it("takes callback fragments only from explicit host-injected page capabilities", async () => {
 		const time = createTime();
-		const client = new BackendOidcModeClient(
-			{ baseUrl: "" },
-			{
-				environment: createFoundationEnvironment({
-					transport: createMetadataTransport(),
-					time,
-					span: createRootSpan(),
-					tracing: createTracing(),
-				}),
-			},
-		);
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: { baseUrl: "" },
+			environment: createFoundationEnvironment({
+				transport: createMetadataTransport(),
+				time,
+				span: createRootSpan(),
+				tracing: createTracing(),
+			}),
+		});
 		const history = {
 			replacedUrl: "",
 			replaceState(_data: unknown, _unused: string, url?: string) {

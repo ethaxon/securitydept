@@ -2,6 +2,7 @@
 
 import {
 	createSignal,
+	type ResourceSnapshot,
 	ResourceStatus,
 	type RouterTrait,
 	resourceFromSnapshots,
@@ -25,6 +26,7 @@ import {
 	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
+	provideTokenSetClientRegistry,
 	TokenSetClientInitializationMode,
 	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
@@ -33,7 +35,6 @@ import { createRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-	provideTokenSetClientRegistry,
 	useTokenSetBackendCallback,
 	useTokenSetFrontendCallback,
 } from "../index";
@@ -64,8 +65,12 @@ function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 	return { tokens: { accessToken }, metadata: {} };
 }
 
-function createFrontendClient(): FrontendOidcModeClient {
-	const callbackSnapshot = createSignal({
+type FrontendCallbackSnapshot = ResourceSnapshot<
+	OidcModeCallbackHandlingResult<FrontendOidcModeCallbackResult>
+>;
+
+function createFrontendClient(
+	callbackSnapshot = createSignal<FrontendCallbackSnapshot>({
 		status: ResourceStatus.Resolved,
 		value: {
 			kind: OidcModeCallbackHandlingKind.Handled,
@@ -74,7 +79,8 @@ function createFrontendClient(): FrontendOidcModeClient {
 				postAuthRedirectUri: "/after-login",
 			},
 		},
-	} as const);
+	}),
+): FrontendOidcModeClient {
 	const callbackResource = resourceFromSnapshots<
 		OidcModeCallbackHandlingResult<FrontendOidcModeCallbackResult>
 	>(() => callbackSnapshot.get());
@@ -218,6 +224,53 @@ describe("token-set React callback hooks", () => {
 
 		expect(clientFactory).toHaveBeenCalledOnce();
 		expect(router.navigate).not.toHaveBeenCalled();
+		expect(view.container.textContent).toBe(ResourceStatus.Resolved);
+		view.unmount();
+	});
+
+	it("tracks the selected client's callback snapshot without a Resource wrapper", async () => {
+		const callbackSnapshot = createSignal<FrontendCallbackSnapshot>({
+			status: ResourceStatus.Loading,
+		});
+		const client = createFrontendClient(callbackSnapshot);
+		const environment = createEnvironmentForTest({
+			router: createRouter(
+				"https://app.example.com/oidc/callback?code=ok&state=s1",
+			),
+			providers: provideTokenSetClientRegistry({
+				clients: [createEntry("frontend", () => client, "/oidc/callback")],
+			}),
+		});
+
+		function Probe() {
+			const callback = useTokenSetFrontendCallback();
+			return createElement("output", null, callback.state.status);
+		}
+
+		const view = render(
+			createElement(
+				SecuritydeptProvider,
+				{ injector: environment.injector },
+				createElement(Probe),
+			),
+		);
+		await flushMicrotasks();
+		expect(view.container.textContent).toBe(ResourceStatus.Loading);
+
+		act(() => {
+			callbackSnapshot.set({
+				status: ResourceStatus.Resolved,
+				value: {
+					kind: OidcModeCallbackHandlingKind.Handled,
+					result: {
+						snapshot: createSnapshot("frontend-at"),
+						postAuthRedirectUri: "/after-login",
+					},
+				},
+			});
+		});
+		await flushMicrotasks();
+
 		expect(view.container.textContent).toBe(ResourceStatus.Resolved);
 		view.unmount();
 	});

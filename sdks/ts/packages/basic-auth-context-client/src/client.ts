@@ -10,6 +10,7 @@ import {
 	type DisposableTrait,
 	defineInstrumentMethodDecorator,
 	describeError,
+	ENVIRONMENT_TOKEN,
 	type EventStreamTrait,
 	type FoundationEnvironment,
 	injectDisposableStackFrom,
@@ -25,6 +26,8 @@ import {
 	readonlySignal,
 	reduceResourceSnapshot,
 	resourceFromSnapshots,
+	SecuritydeptDestroyRef,
+	type SecuritydeptInjectorTrait,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
 	throwValidationClientError,
@@ -46,6 +49,7 @@ import {
 import { filter, from, lastValueFrom, take, takeUntil } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import { BasicAuthContextClientConfigSchema } from "./schemas";
+import { BASIC_AUTH_CONTEXT_CLIENT_CONFIG } from "./tokens";
 import {
 	AuthGuardRedirectStatus,
 	type AuthGuardResult,
@@ -233,7 +237,27 @@ export class BasicAuthContextClient implements DisposableTrait {
 		return this._config;
 	}
 
-	constructor(
+	static fromEnvironmentConfig(options: {
+		readonly config: BasicAuthContextClientConfig;
+		readonly environment: FoundationEnvironment;
+	}): BasicAuthContextClient {
+		return new BasicAuthContextClient(options.config, options.environment);
+	}
+
+	static fromInjector(
+		injector: SecuritydeptInjectorTrait,
+	): BasicAuthContextClient {
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: injector.get(BASIC_AUTH_CONTEXT_CLIENT_CONFIG),
+			environment: injector.get(ENVIRONMENT_TOKEN),
+		});
+		injector
+			.get(SecuritydeptDestroyRef, null)
+			?.onDestroy(() => client.dispose());
+		return client;
+	}
+
+	protected constructor(
 		config: BasicAuthContextClientConfig,
 		environment: FoundationEnvironment,
 	) {

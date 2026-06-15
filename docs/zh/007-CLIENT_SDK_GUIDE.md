@@ -122,7 +122,11 @@ Scheduling、cancellation、abort interop、storage、page lifecycle、promise/s
 
 `@securitydept/client` 现在是 framework-neutral DI authority。`SecuritydeptInjectorTrait` 是最小读取侧 contract，只表达 `get()`；consumer、React Context、以及其它 injector adapter 都围绕这个 duck type 工作。`SecuritydeptInjector` 是 SDK runtime/facade，负责 `resolveAndCreate()`、`fromParentInjector()`、显式 provider 解析、parent 继承、override 与 side-effect-free `has()` 诊断。
 
-React 侧只允许一组 SDK Context，全部位于 `@securitydept/client-react`：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`。Domain React package 不再创建自己的 public Context/Provider/`useXxxContext()` surface，而是导出 injection token、provider factory 和显式 callback/component bridge。React 通过 `useSignal()` 读取同步 signal，通过 `useResourceSnapshot()` 读取 Resource snapshot，并通过 `useInteropObservable()` 与 `useEventStream()` 对接其它 observable/event source。
+React 侧只允许一组 SDK Context，全部位于 `@securitydept/client-react`：`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`。Domain React package 不再创建自己的 public Context/Provider/`useXxxContext()` surface，而是导出 injection token、provider factory 和显式 callback/component bridge。React 通过 `useSignal()` 读取同步 signal，通过 `useResourceSnapshot()` 读取 Resource snapshot，通过 environment-scoped `useSuspenseResourceValue()` 读取 Suspense value，并通过 `useInteropObservable()` 与 `useEventStream()` 对接其它 observable/event source。
+
+`ResourceTrait.whenValue()` 与 `whenResourceSnapshotValue()` 默认返回 `error` snapshot 携带的 stale value；由于 `loading-error` 不包含 value，它仍然会 reject。调用方需要严格传播 error 时应传入 `{ staleValueWhenError: false }`。
+
+`useSuspenseResourceValue()` 的 computed overload 要求同时传入 `dependencies` 和显式 `queryKey`。Dependencies 只控制 React memoized computation，不会被序列化到缓存 identity；query key 是该 computation 的完整语义身份，必须包含所有会改变结果的变量。调用方确实需要按组件位置隔离时，可以自行将 `useId()` 加入 key，但 adapter 不会默认添加。稳定 Resource 与 snapshot signal 输入仍然从 snapshot signal 派生 identity，并允许附加可选 query-key suffix。
 
 Angular DI 仍属于 adapter concern；framework-neutral host capability resolution 仍属于 foundation concern。Core client 继续消费 `FoundationEnvironment`；不直接绑定 client 的 helper 继续消费由 host composition root 创建的显式 typed environment object 或更窄 capability view。
 
@@ -144,9 +148,8 @@ Canonical foundation model：
 | Environment | host dependencies 与 capabilities | 业务 lifecycle state machine | `FoundationEnvironment`、`NativeWebEnvironment`、`WebExtCoreEnvironment` |
 | Trait | 最小行为依赖视图 | 无关 host dependencies | `RouterTrait`、`StorageTrait`、`PopupTrait` |
 | Client | 协议/领域操作 | framework lifecycle 或 DI | `SessionContextClient`、`BackendOidcModeClient` |
-| Registry | 多 client registration/readiness/discrimination | UI policy 或 framework state | `TokenSetClientRegistry`、`TokenSetClientRegistryService` |
+| Registry | 多 client registration/readiness/discrimination | UI policy 或 framework state | `TokenSetClientRegistry` |
 | Callback handler | client-owned callback input、执行、取消与 Resource 状态 | registry selection 或 framework rendering | `client.callback` |
-| Service | framework/host facade over clients | 重复定义 core state semantics | `SessionContextService` |
 
 不要把这些对象设计成 DI container、service locator、provider tree、global singleton 或 business config DSL。`baseUrl`、`sourceKey`、account binding、product route 等 auth-context config 仍属于 family config 或 host code，不进入 foundation environment。
 
@@ -161,7 +164,7 @@ Foundation Web environment factory 是显式 composition helper，不是自动 h
 
 不要使用字符串驱动的 `createEnvironmentFromPreset(name)`、preset-only wrapper factory 或 global-shape detection 猜测 host。Core client 不读取 `window`、`document`、`location` 或 `history`；只有 `createRouterForNativeWeb()`、`createPageLifecycleForNativeWeb()`、`createPopupForNativeWeb()`、`createEnvironmentForNativeWeb()` 这类显式命名 host adapter 可以在调用者未传入 host object 时读取 native global。`NativeWeb` 表示具备 native navigation/location/history 能力的普通浏览器页面宿主；worker-like host 应使用 `createFoundationEnvironment()` 或更具体的 host factory。
 
-当 host 需要在 routes、commands 或 framework adapter 之间使用 environment capability 时，应在 composition root 创建一个显式 environment，并通过 framework bridge 传递这个对象。React 侧应以 `createEnvironmentForReact()` 作为 framework composition layer，并组合 `createEnvironmentForNativeWeb()` 等 host creator；它在 React Fiber 树外构造最终 injector，并为 React 专属服务提供统一插入点。然后将完整 injector 传给根 `SecuritydeptProvider`，leaf 代码通过 `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)` 读取。`SecuritydeptProvider` 不负责创建 injector，也不拥有 destroy 生命周期。Angular 侧使用 `provideEnvironment()` 通过 Angular DI 构造并提供 environment。`NativeWebEnvironment` 在类型上覆盖 foundation `FoundationEnvironment`，而 `WebExtUIEnvironment` 在结构上组合 WebExt core 与 native-web page capability。
+当 host 需要在 routes、commands 或 framework adapter 之间使用 environment capability 时，应在 composition root 创建一个显式 environment，并通过 framework bridge 传递这个对象。React 侧应以 `createEnvironmentForReact()` 作为 framework composition layer，并组合 `createEnvironmentForNativeWeb()` 等 host creator；它在 React Fiber 树外构造最终 injector，并安装 environment-scoped `QueryStore` 来共享 Suspense Resource wait。然后将完整 injector 传给根 `SecuritydeptProvider`，leaf 代码通过 `useSecuritydeptContext().get(ENVIRONMENT_TOKEN)` 读取。`SecuritydeptProvider` 不负责创建 injector，也不拥有 destroy 生命周期。Angular 侧使用 `provideEnvironment()` 通过 Angular DI 构造并提供 environment。`NativeWebEnvironment` 在类型上覆盖 foundation `FoundationEnvironment`，而 `WebExtUIEnvironment` 在结构上组合 WebExt core 与 native-web page capability。
 
 该规则不只适用于 `@securitydept/client`：context package 与 framework adapter 的 public helper 也必须使用同一边界。任何会读取 host globals、执行 page navigation、构造 client，或拥有 transport/store/time wiring 的 helper，都应接收 environment 或窄 capability view。Provider、DI 与顶层 adapter registration API 可以作为 composition root 接收完整 environment；普通 hook、guard、interceptor、service 与 convenience helper 不应各自重复声明完整 dependency bag。
 
@@ -354,7 +357,7 @@ Verified 表示已有聚焦型验证、仓库内 proof 或下游校准；不代�
 
 该 subpath 是 browser-host glue，不表示所有 Web-like runtime 都具备 page navigation。选择 helper 前应先明确 foundation environment 边界：
 
-- Browser client construction 应使用 `new BackendOidcModeClient(config, environment)`；`environment` 由 host 通过 `createFoundationEnvironment(...)`、`createEnvironmentForNativeWeb(...)` 或其它显式 host creator 创建。不要把 transport、time、persistent store、session store 分散传给每个 helper。
+- Standalone client 使用 `BackendOidcModeClient.fromEnvironmentConfig({ config, environment, ...options })` 或 `FrontendOidcModeClient.fromEnvironmentConfig({ config, environment, ...options })` 构造；`environment` 由 host 通过 `createFoundationEnvironment(...)`、`createEnvironmentForNativeWeb(...)` 或其它显式 host creator 创建。Framework-neutral DI host 也可以安装 `provideBackendOidcModeClient(...)` 或 `provideFrontendOidcModeClient(...)`，再解析对应 mode 自己拥有的 client token。Constructor 为 protected，使 subclass 可以扩展实现细节而不会形成第二套 public construction contract。Registry-managed client 继续使用 `createBackendOidcModeClientFactory()` / `createFrontendOidcModeClientFactory()`，因为这些 factory 还负责 registry metadata、startup 与 initialization cancellation。不要把 transport、time、persistent store、session store 分散传给每个 helper。
 - Worker-like host、service worker 与 extension background 可以创建/restore client，并运行 token-state API，但默认不得执行 page callback capture。
 - Page-only helper 只能通过 `NativeWebEnvironment` 读取 `window.location` / `window.history`；return URL 构造应留在应用边界显式完成，例如 `client.authorizeUrl(environment.router.currentUrl()?.toString())` 或 `client.loginWithRedirect({ postAuthRedirectUri })`。Callback page 应先调用 mode-owned `takeFrontendOidcCallbackInputFromRouter(router)` 或 `takeBackendOidcCallbackInputFromRouter(router)`，再把返回值传给 `client.handleCallback(...)`。两个 helper 都通过 `RouterTrait` 完成 callback cleanup；frontend helper 保留非 OIDC query，backend helper 保留既有 hash-router block。对 token-set OIDC login 而言，共享的浏览器入口是 `BaseOidcModeClient` 上的 `loginWithRedirect({ postAuthRedirectUri })` 和 `loginWithPopup({ popupCallbackUrl })`；`FrontendOidcModeClient.loginWithRedirect()` 还接受 per-request `redirectUri`，该 URI 必须包含在配置给 callback resolver 的候选集合中。Client 自身必须通过 environment 持有 page router / popup capability。`FrontendOidcModeClient` 和 `BackendOidcModeClient` 都直接实现这些方法。`relayTokenSetPopupCallbackFromEnvironment()` 仍是 page-only helper，并要求显式传入 `environment`。
 - Backend OIDC 不维护隐藏的 callback fragment store。重试或延迟处理 callback 是应用层策略；应用必须在从 router 消费 callback input 前自行保留它。缺少必要 capability 时必须 fail-fast，而不是落到 `window is not defined` 或 stale URL parsing。
@@ -381,13 +384,14 @@ Verified 表示已有聚焦型验证、仓库内 proof 或下游校准；不代�
 - `@securitydept/session-context-client-react`
 - `@securitydept/token-set-context-client-react`
 
-React composition 仍服从三层模型：auth-context config、injector provider/factory、host registration glue。
+React composition 仍服从三层模型：core auth-context provider、Fiber 树外 injector、React view hook。
 
-- `@securitydept/client-react` 拥有 `createEnvironmentForReact()`、唯一 SDK React Context（`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`），以及 context-free bridge：`useSignal()`、`useResourceSnapshot()`、`useInteropObservable()` 与 `useEventStream()`。
+- `@securitydept/client-react` 拥有 `createEnvironmentForReact()`、environment-scoped `QueryStore`、唯一 SDK React Context（`SecuritydeptContext`、`SecuritydeptProvider`、`useSecuritydeptContext()`），以及 `useSignal()`、`useResourceSnapshot()`、`useSuspenseResourceValue()`、`useInteropObservable()` 与 `useEventStream()` bridge。
 - React 在 Fiber 树外构造最终 injector，并通过 `SecuritydeptProvider.injector` 传入；具体 router adapter（如 `@securitydept/client-react/tanstack-router`）负责 route-scoped auth coordination。
-- `@securitydept/basic-auth-context-client-react` 导出 `BASIC_AUTH_CONTEXT_CLIENT`、`BASIC_AUTH_CONTEXT_CLIENT_CONFIG`、`BasicAuthContextService`、`provideBasicAuthContext({ config })`。React 代码通过 `useSecuritydeptContext().get(BASIC_AUTH_CONTEXT_CLIENT)` 读取 client。
-- `@securitydept/session-context-client-react` 导出 `SESSION_CONTEXT_CLIENT`、`SESSION_CONTEXT_CLIENT_CONFIG`、`SessionContextService`、`provideSessionContext({ config })`。React 代码通过 `useSecuritydeptContext().get(SESSION_CONTEXT_CLIENT)` 读取 client，并通过 `useResourceSnapshot(client.sessionResource)` 读取状态。
-- `@securitydept/token-set-context-client-react` 导出 `provideTokenSetClientRegistry()`、`TOKEN_SET_CLIENT_REGISTRY`、`TokenSetClientRegistryService` 和无样式 callback hooks。读取 keyed auth state 的 canonical 方式是 `const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)`，然后调用 `useResourceSnapshot(registry.clientResourceFor("main"))`；client snapshot resolved 后再通过 `useResourceSnapshot(client.authResource)` 读取认证状态。
+- `@securitydept/basic-auth-context-client` 拥有 `BASIC_AUTH_CONTEXT_CLIENT`、`BASIC_AUTH_CONTEXT_CLIENT_CONFIG`、`provideBasicAuthContext({ config })` 与 client 构造；`@securitydept/basic-auth-context-client-react` 只增加 `useBasicAuthContextClient()`。
+- `@securitydept/session-context-client` 拥有 `SESSION_CONTEXT_CLIENT`、`SESSION_CONTEXT_CLIENT_CONFIG`、`provideSessionContext({ config })` 与 client 构造；`@securitydept/session-context-client-react` 只增加 `useSessionContextClient()`，渲染时通过 `useResourceSnapshot(client.sessionResource)` 读取状态。
+- `@securitydept/token-set-context-client/registry` 拥有 `provideTokenSetClientRegistry()`、`TOKEN_SET_CLIENT_REGISTRY`、registry 构造与生命周期；`@securitydept/token-set-context-client-react` 增加 `useTokenSetClientRegistry()` 和无样式 callback hooks。通过 `useResourceSnapshot(registry.clientResourceFor("main"))` 读取 keyed state，再读取 resolved client 的 `authResource`。
+- `@securitydept/token-set-context-client/backend-oidc-mode` 与 `@securitydept/token-set-context-client/frontend-oidc-mode` 各自拥有 standalone client token 和 provider graph；React 专属包不会重新创建这些 client 或接管其生命周期。
 - Frontend 与 backend callback 分别使用 `useTokenSetFrontendCallback({ clientQuery })` 和 `useTokenSetBackendCallback({ clientQuery })`。可选的同步 `clientQuery({ callbackUrl })` 负责生成 registry query，或返回 `null` 表示 callback 不适用；它不会消费 callback input。Hook 在 SSR 与 hydration 首次渲染期间保持 callback state 为 idle，并在客户端 commit 后初始化选中的 record，再将 registry readiness 与 client 自己的 `callback` Resource 展平。Callback input 仍由 client 在 `start()` 中、persistence restore 之前解析和清理。默认 resolver 支持异步 `callbackInputPredicate`，它在 canonical `take...FromRouter()` 清理前执行；返回 `false` 时 URL 保持不变。Backend registry selection 默认使用 compat fragment 的 `callback_routing_key`，`createBackendOidcModeClientFactory()` 默认以 `meta.clientKey` 作为 client routing key。Frontend selection 默认匹配 entry metadata 的 `callbackUrl` 候选，未显式提供 resolver 时 factory 也使用这些候选。Registry query 与 input predicate 是彼此独立的扩展点。Registry factory 接收 `{ environment, meta, cancellationToken }`；framework adapter 不直接调用 `client.start()`。Callback determination 成功后，内存 auth/callback Resource 的提交不依赖 best-effort persistence 同步；storage 写入失败只记录 trace，不会把本次登录改判为失败。
 
 #### 4. Angular 入口：thin DI wrapper 保持 canonical owner 边界
@@ -400,13 +404,12 @@ React composition 仍服从三层模型：auth-context config、injector provide
 
 Layering rules：
 
-- `provideBasicAuthContext({ config })`：仅 auth-context config。
+- `provideBasicAuthContext({ config })`：将 core provider graph 安装到共享 environment injector，并把其中的 client 实例映射到 Angular DI。
 - `provideEnvironment({ environment })`：canonical Angular DI bridge，用于注入 environment capability。Context-client Angular providers 会读取这个 token，而不是自己接收 `environment` option。
-- `provideSessionContext({ config })`：`SessionContextClient` 之上的 adapter leaf。需要 service construction 后立即启动 client 时使用 `config.autoStart`。
-- `SessionContextService`：controller 之上的 signal / observable facade。低层 auth-context behavior 仍在 `SessionContextService.client`。
-- `provideTokenSetClientRegistry({ clients })`：基于核心 `TokenSetClientRegistryEntry<BaseOidcModeClient>` 的 Angular host registration；每个 client entry 仍拥有 auth-context config 与 environment composition。
+- `provideSessionContext({ config })`：把 core `SessionContextClient` 实例映射到 Angular DI。需要构造后立即启动 client 时使用 `config.autoStart`。
+- `provideTokenSetClientRegistry({ clients })`：安装 core registry provider graph，并把同一个 `TokenSetClientRegistry` 实例映射到 Angular DI；每个 client entry 仍拥有自己的 auth-context config。
 - `TokenSetFrontendCallbackComponent` 与 `TokenSetBackendCallbackComponent` 将 registry/client callback Resource 桥接为 Angular signal。它们在服务端渲染期间保持 idle，并在 Angular 仅浏览器执行的 `afterNextRender()` 阶段初始化选中的 record，因此生成 SSR 输出时不会消费 callback input。它们不解析 callback input，也不拥有第二套 callback state machine。
-- `provideTokenSetClientRegistryAuthorizationInterceptor(options?)` / `createTokenSetClientRegistryAuthorizationInterceptor(options?)`：使用 SDK options-object API 形式的 request authorization。functional interceptor 默认注入 `TokenSetClientRegistryService`；`authorizationForRequest` 可以显式传入，也可以通过 `TOKEN_SET_CLIENT_REGISTRY_AUTHORIZATION_FOR_REQUEST` 提供。默认 `authorizationForRequest(registry, request)` 会按 request URL 选择已注册 client、初始化该 client，并等待其 `authorizationHeaderValue` replay signal 后注入 `Authorization`。它不触发 refresh 或 auth check；client `start()`、refresh timer、page-resume auth-check trigger 或显式 `authCheck()` 负责维护。request URL 不匹配任何已注册 client 时，不会注入 `Authorization` header。
+- `provideTokenSetClientRegistryAuthorizationInterceptor(options?)` / `createTokenSetClientRegistryAuthorizationInterceptor(options?)`：使用 SDK options-object API 形式的 request authorization。functional interceptor 默认读取映射 core registry 的 Angular `TOKEN_SET_CLIENT_REGISTRY`；`authorizationForRequest` 可以显式传入，也可以通过 `TOKEN_SET_CLIENT_REGISTRY_AUTHORIZATION_FOR_REQUEST` 提供。
 
 Freshness 由 token-set core 拥有，而不是由某个 framework adapter 单独修补。Consumer code 读取 replay channels：首屏 readiness 使用 `authDetermined`，稳定 UI 使用 `authSnapshot`，route guard 使用 `isAuthenticated`，transport/interceptor 使用 `authorizationHeaderValue`。`authCheck(options?)` 是唯一显式 maintenance command，只应留给有意触发一次串行检查的高级调用者。Event payload 不得包含 raw access、refresh 或 ID token value。Header availability 不再拥有独立 event/status lifecycle：可用 bearer projection 归属于 authenticated snapshot，缺失 bearer material 则表现为 unauthenticated 或 undefined header projection。Mode client 不再暴露同步 bearer convenience API，registry token sugar 也不属于公开模型。使用 `registry.whenReady(key?)` 或 `registry.clientSignalFor(key?)` 获取已 start 的 client，然后消费该 client 的 replay signals。
 

@@ -51,7 +51,8 @@
 	"dependencies": {
 		"@securitydept/client": "workspace:*",
 		"arktype": "catalog:",
-		"es-toolkit": "catalog:"
+		"es-toolkit": "catalog:",
+		"rxjs": "catalog:"
 	},
 	"peerDependencies": {
 		"react": ">=19.0.0",

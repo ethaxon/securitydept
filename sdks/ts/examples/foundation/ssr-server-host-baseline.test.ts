@@ -35,14 +35,14 @@ import { describe, expect, it } from "vitest";
 
 describe("session-context-client SSR / server-host contract", () => {
 	it("does not expose URL builder methods for server-side redirect assembly", () => {
-		const client = new SessionContextClient(
-			{
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 			},
-			createFoundationEnvironment({
+			environment: createFoundationEnvironment({
 				transport: createTransportForTest(),
 			}),
-		);
+		});
 
 		expect("loginUrl" in client).toBe(false);
 		expect("logoutUrl" in client).toBe(false);
@@ -82,14 +82,14 @@ describe("session-context-client SSR / server-host contract", () => {
 				});
 			},
 		};
-		const client = new SessionContextClient(
-			{
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 			},
-			createFoundationEnvironment({
+			environment: createFoundationEnvironment({
 				transport: ssrTransport,
 			}),
-		);
+		});
 
 		const session = await client.refresh();
 		expect(session?.principal.displayName).toBe("SSR User");
@@ -103,14 +103,14 @@ describe("session-context-client SSR / server-host contract", () => {
 			() => ({ status: 401, headers: {}, body: null }),
 		);
 
-		const client = new SessionContextClient(
-			{
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 			},
-			createFoundationEnvironment({
+			environment: createFoundationEnvironment({
 				transport,
 			}),
-		);
+		});
 
 		const session = await client.refresh();
 		expect(session).toBeNull();
@@ -129,19 +129,19 @@ describe("session-context-client SSR / server-host contract", () => {
 
 describe("basic-auth-context-client SSR / server-host contract", () => {
 	it("handleUnauthorized() produces zone-matched redirect URLs without browser dependency", () => {
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				zones: [{ zonePrefix: "/api" }],
 			},
-			createFoundationEnvironment({
+			environment: createFoundationEnvironment({
 				transport: {
 					async execute() {
 						throw new Error("Unexpected transport call.");
 					},
 				},
 			}),
-		);
+		});
 
 		// In SSR, the host uses handleUnauthorized() after a backend 401.
 		const result = client.handleUnauthorized("/api/protected", 401);
@@ -158,19 +158,19 @@ describe("basic-auth-context-client SSR / server-host contract", () => {
 	});
 
 	it("returns Ok for paths outside configured zones (no redirect needed)", () => {
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				zones: [{ zonePrefix: "/api" }],
 			},
-			createFoundationEnvironment({
+			environment: createFoundationEnvironment({
 				transport: {
 					async execute() {
 						throw new Error("Unexpected transport call.");
 					},
 				},
 			}),
-		);
+		});
 
 		const result = client.handleUnauthorized("/public/health", 401);
 		expect(result.kind).toBe(AuthGuardResultKind.Ok);
@@ -190,33 +190,31 @@ describe("backend-oidc-mode SSR / server-host contract", () => {
 		);
 
 		const sessionStorage = createInMemoryRecordStore();
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				defaultPostAuthRedirectUri: "https://app.example.com/callback",
 			},
-			{
-				environment: createFoundationEnvironment({
-					transport: {
-						execute: async () => ({
-							status: 200,
-							headers: {},
-							body: null,
-						}),
-					},
-					time: {
-						now: () => Date.now(),
-						setTimeout: (callback: () => void, delayMs: number) =>
-							globalThis.setTimeout(callback, delayMs),
-						clearTimeout: (handle: unknown) =>
-							globalThis.clearTimeout(
-								handle as ReturnType<typeof globalThis.setTimeout>,
-							),
-					},
-					persistentStorage: sessionStorage,
-				}),
-			},
-		);
+			environment: createFoundationEnvironment({
+				transport: {
+					execute: async () => ({
+						status: 200,
+						headers: {},
+						body: null,
+					}),
+				},
+				time: {
+					now: () => Date.now(),
+					setTimeout: (callback: () => void, delayMs: number) =>
+						globalThis.setTimeout(callback, delayMs),
+					clearTimeout: (handle: unknown) =>
+						globalThis.clearTimeout(
+							handle as ReturnType<typeof globalThis.setTimeout>,
+						),
+				},
+				persistentStorage: sessionStorage,
+			}),
+		});
 
 		const authorizeTarget = client.authorizeUrl(
 			"https://app.example.com/protected",

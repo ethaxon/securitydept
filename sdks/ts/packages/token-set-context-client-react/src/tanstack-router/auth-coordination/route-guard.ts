@@ -10,16 +10,14 @@ import {
 } from "@securitydept/client-react/tanstack-router";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
+	TOKEN_SET_CLIENT_REGISTRY,
+	type TokenSetClientRegistry,
 	type TokenSetClientRegistryAuthRequirement,
 	TokenSetClientRegistryPlannerHost,
 	TokenSetClientRegistryRequirementBehaviour,
 	type TokenSetClientRegistryRequirementBehaviourOptions,
 	type TokenSetClientRegistryRouteRequirementBehaviourShape,
 } from "@securitydept/token-set-context-client/registry";
-import {
-	TOKEN_SET_CLIENT_REGISTRY,
-	type TokenSetClientRegistryService,
-} from "../../client-registry-service";
 
 export type TokenSetTanStackRequirementPlannerOptions =
 	TokenSetClientRegistryRequirementBehaviourOptions<
@@ -44,13 +42,13 @@ export function createTokenSetCanBeforeLoad(
 		const behaviour = new TokenSetClientRegistryRequirementBehaviour<
 			BaseOidcModeClient,
 			RouteBehaviourContextExtra
-		>(registry as TokenSetClientRegistryService, options);
+		>(registry as TokenSetClientRegistry, options);
 		const host = new TokenSetClientRegistryPlannerHost<
 			BaseOidcModeClient,
 			RouteBehaviourContextExtra,
 			TokenSetClientRegistryRouteRequirementBehaviourShape
 		>(
-			registry as TokenSetClientRegistryService,
+			registry as TokenSetClientRegistry,
 			behaviour,
 			environment,
 			parent ?? undefined,

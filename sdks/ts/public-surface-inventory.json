@@ -31,7 +31,7 @@
 						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/contracts-parsers.test.ts",
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client.test.ts",
 						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/client.test.ts",
-						"packages/token-set-context-client-react/src/__tests__/client-registry-service.test.tsx",
+						"packages/token-set-context-client-react/src/__tests__/client-registry.test.tsx",
 						"../../apps/webui/src/dashboard/__tests__/principal.test.ts",
 						"../../apps/webui/src/__tests__/routes/playground/token-set/frontend-mode/trace-timeline-section.test.ts",
 						"../../apps/webui/src/__tests__/routes/playground/token-set/backend-mode/trace-timeline-section.test.ts",
@@ -136,7 +136,7 @@
 					"stability": "stable",
 					"owner": "basic-auth-context",
 					"changeDiscipline": "stable-deprecation-first",
-					"note": "Environment-backed BasicAuthContextClient owns zone helpers, boundary observation, login redirect, and logout poison interaction from the root entry. Dedicated ./web and ./server helper subpaths are no longer exported.",
+					"note": "Environment-backed BasicAuthContextClient owns zone helpers, boundary observation, login redirect, and logout poison interaction from the root entry. The core package also owns BASIC_AUTH_CONTEXT_CLIENT, BASIC_AUTH_CONTEXT_CLIENT_CONFIG, provideBasicAuthContext(), and the fromEnvironmentConfig()/fromInjector() construction paths so framework-neutral hosts share one DI contract.",
 					"evidence": [
 						"examples/basic-auth/guard-scenario.test.ts",
 						"examples/cross/auth-context-discoverability-parity.test.ts",
@@ -160,7 +160,7 @@
 					"stability": "provisional",
 					"owner": "basic-auth-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React entry is injector-first: it exports `BASIC_AUTH_CONTEXT_CLIENT`, `BASIC_AUTH_CONTEXT_CLIENT_CONFIG`, `BasicAuthContextService`, and `provideBasicAuthContext({ config })` so hosts compose the client through `SecuritydeptProvider` plus a parent environment injector. No domain-specific React Context, Provider component, or `useBasicAuthContext()` lookup hook remains in the public surface.",
+					"note": "React entry is a thin view adapter. It exports useBasicAuthContextClient(), which resolves the core BASIC_AUTH_CONTEXT_CLIENT from SecuritydeptContext. Tokens, providers, construction, and lifecycle ownership remain in @securitydept/basic-auth-context-client.",
 					"evidence": [
 						"examples/basic-auth/react-minimal-entry.test.ts",
 						"packages/basic-auth-context-client-react/src/__tests__/adapter.test.ts",
@@ -191,7 +191,7 @@
 						"examples/foundation/ssr-server-host-baseline.test.ts",
 						"packages/session-context-client/src/__tests__/client.test.ts"
 					],
-					"note": "Owns the environment-bound SessionContextClient runtime: session state is exposed as signals, lifecycle events as EventStreamTrait, and refresh/logout/redirect operations use FoundationEnvironment transport/router/storage plus span/tracing. No SessionContextController compatibility layer remains.",
+					"note": "Owns the environment-bound SessionContextClient runtime: session state is exposed as signals, lifecycle events as EventStreamTrait, and refresh/logout/redirect operations use FoundationEnvironment transport/router/storage plus span/tracing. The core package also owns SESSION_CONTEXT_CLIENT, SESSION_CONTEXT_CLIENT_CONFIG, provideSessionContext(), and the fromEnvironmentConfig()/fromInjector() construction paths. No SessionContextController compatibility layer remains.",
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "`session-context-client`"
@@ -210,7 +210,7 @@
 					"stability": "provisional",
 					"owner": "session-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React entry is injector-first and client-owned: it exports `SESSION_CONTEXT_CLIENT`, `SESSION_CONTEXT_CLIENT_CONFIG`, `SessionContextService`, and `provideSessionContext({ config })` so hosts compose the SessionContextClient through `SecuritydeptProvider` plus a parent environment injector. No controller token or React Context wrapper remains.",
+					"note": "React entry is a thin view adapter. It exports useSessionContextClient(), which resolves the core SESSION_CONTEXT_CLIENT from SecuritydeptContext. Tokens, providers, construction, and lifecycle ownership remain in @securitydept/session-context-client.",
 					"evidence": [
 						"examples/session-context/react-minimal-entry.test.ts",
 						"packages/session-context-client-react/src/__tests__/adapter.test.ts",
@@ -234,7 +234,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Owns token-set backend-mode route/client contracts, browser login helpers, and popup callback relay exports. Adopters may construct BackendOidcModeClient directly with a FoundationEnvironment or use createBackendOidcModeClientFactory() for registry-managed construction, startup, cancellation cleanup, and a callback routing key that defaults to entry meta.clientKey. Materialized backend clients expose loginWithRedirect({ postAuthRedirectUri }) and loginWithPopup({ popupCallbackUrl }); page navigation is held by the environment's router. relayTokenSetPopupCallbackFromEnvironment() and TokenSetPopupRelayErrorCode are exported from this subpath alongside BackendOidcModeTraceEventType. Backend user-info transport remains a family DTO while its semantic identity-principal parsing/output aligns to the shared IdentityPrincipal baseline from @securitydept/client instead of a parallel family-local owner.",
+					"note": "Owns token-set backend-mode route/client contracts, browser login helpers, popup callback relay exports, BACKEND_OIDC_MODE_CLIENT / BACKEND_OIDC_MODE_CLIENT_OPTIONS, and provideBackendOidcModeClient(). Standalone hosts construct BackendOidcModeClient through fromEnvironmentConfig({ config, environment, ...options }) or fromInjector(); its constructor is protected. Registry-managed hosts use createBackendOidcModeClientFactory() for startup, cancellation cleanup, entry metadata, and a callback routing key that defaults to meta.clientKey. Materialized backend clients expose loginWithRedirect({ postAuthRedirectUri }) and loginWithPopup({ popupCallbackUrl }); page navigation is held by the environment's router. relayTokenSetPopupCallbackFromEnvironment() and TokenSetPopupRelayErrorCode are exported from this subpath alongside BackendOidcModeTraceEventType. Backend user-info transport remains a family DTO while its semantic identity-principal parsing/output aligns to the shared IdentityPrincipal baseline from @securitydept/client instead of a parallel family-local owner.",
 					"evidence": [
 						"examples/backend-oidc-mode/subpath-contract.test.ts",
 						"examples/frontend-oidc-mode/wrapper-contract.test.ts",
@@ -246,6 +246,7 @@
 						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/contracts-parsers.test.ts",
 						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/client-factory.test.ts",
 						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/client.test.ts",
+						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/providers.test.ts",
 						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/web.test.ts"
 					],
 					"docsAnchor": {
@@ -258,7 +259,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Includes FrontendOidcModeClient and the environment-backed config projection source contract: resolveFrontendOidcModeConfigProjection(), FrontendOidcModeConfigProjectionSourceKind, and injectConfigProjectionIntoRealm(). Hosts declare ordered inline, realm, persisted, and network sources, pass one root FoundationEnvironment, then construct FrontendOidcModeClient directly or use createFrontendOidcModeClientFactory() for registry-managed config resolution, startup, cancellation cleanup, and metadata-driven callback resolution. The config projection resolver validates every source through one projection schema and uses only environment transport, storage, time, and cancellation capabilities; there is no browser materializer or mode-specific web environment. createDefaultFrontendOidcModeCallbackInputResolver() accepts an options object with one or multiple redirect URI candidates and an optional asynchronous callbackInputPredicate; the predicate runs inside the canonical take helper before URL cleanup. The default factory creator uses entry meta.callbackUrl when no explicit resolver override is supplied, so per-request loginWithRedirect({ redirectUri }) overrides remain restorable. Registry callback selection separately supports a synchronous clientQuery callback and never consumes callback input. Redirect, automatic callback restore, and public handleCallback() use session-scoped pending/consumed stores; popup flows use matching realmStorage-backed stores without cross-scope probing or fallback. loginWithPopup() uses popupCallbackUrl as the real OAuth redirect_uri and is proven by the apps/webui reference host via popup relay browser e2e. FrontendOidcModeTraceEventType keeps popup / callback / refresh / user-info structured trace taxonomy shared and adopter-visible rather than app-local. describeFrontendOidcModeCallbackError() keeps callback-specific host-facing presentation/recovery mapping under the family owner while building on the shared client error presentation descriptor contract. Frontend-mode user-info and metadata principal construction aligns to the shared IdentityPrincipal baseline, with app-facing display projection left to shared helper-backed host code.",
+					"note": "Includes FrontendOidcModeClient, FRONTEND_OIDC_MODE_CLIENT / FRONTEND_OIDC_MODE_CLIENT_OPTIONS, provideFrontendOidcModeClient(), and the environment-backed config projection source contract: resolveFrontendOidcModeConfigProjection(), FrontendOidcModeConfigProjectionSourceKind, and injectConfigProjectionIntoRealm(). Standalone hosts use fromEnvironmentConfig({ config, environment, ...options }) or fromInjector(); the constructor is protected. Registry-managed hosts use createFrontendOidcModeClientFactory() for registry metadata, startup, cancellation cleanup, and metadata-driven callback resolution. Hosts declare ordered inline, realm, persisted, and network sources and pass one root FoundationEnvironment. The config projection resolver validates every source through one projection schema and uses only environment transport, storage, time, and cancellation capabilities; there is no browser materializer or mode-specific web environment. createDefaultFrontendOidcModeCallbackInputResolver() accepts an options object with one or multiple redirect URI candidates and an optional asynchronous callbackInputPredicate; the predicate runs inside the canonical take helper before URL cleanup. The default factory creator uses entry meta.callbackUrl when no explicit resolver override is supplied, so per-request loginWithRedirect({ redirectUri }) overrides remain restorable. Registry callback selection separately supports a synchronous clientQuery callback and never consumes callback input. Redirect, automatic callback restore, and public handleCallback() use session-scoped pending/consumed stores; popup flows use matching realmStorage-backed stores without cross-scope probing or fallback. loginWithPopup() uses popupCallbackUrl as the real OAuth redirect_uri and is proven by the apps/webui reference host via popup relay browser e2e. FrontendOidcModeTraceEventType keeps popup / callback / refresh / user-info structured trace taxonomy shared and adopter-visible rather than app-local. describeFrontendOidcModeCallbackError() keeps callback-specific host-facing presentation/recovery mapping under the family owner while building on the shared client error presentation descriptor contract. Frontend-mode user-info and metadata principal construction aligns to the shared IdentityPrincipal baseline, with app-facing display projection left to shared helper-backed host code.",
 					"evidence": [
 						"packages/client/src/web/__tests__/input-sources.test.ts",
 						"examples/frontend-oidc-mode/minimal-entry.test.ts",
@@ -268,6 +269,7 @@
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/error-presentation.test.ts",
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client-factory.test.ts",
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client.test.ts",
+						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/providers.test.ts",
 						"../../apps/webui/e2e/frontend-oidc.spec.ts"
 					],
 					"docsAnchor": {
@@ -359,10 +361,10 @@
 					"stability": "provisional",
 					"owner": "basic-auth-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Angular entry keeps provideBasicAuthContext({ config }) as auth-context config only; Angular DI owns host registration, while the service facade stays a thin wrapper over core zone/redirect helpers. Angular DI is the composition root; service methods do not become a second foundation environment API.",
+					"note": "Angular entry exposes a native BASIC_AUTH_CONTEXT_CLIENT InjectionToken and provideBasicAuthContext() bridge. The provider installs the core provider graph into the shared FoundationEnvironment injector and maps the same core BasicAuthContextClient instance into Angular DI; no service facade or subclass is created.",
 					"evidence": [
 						"examples/angular/registry-integration.test.ts",
-						"packages/basic-auth-context-client-angular/src/lib/__tests__/service.test.ts"
+						"packages/basic-auth-context-client-angular/src/lib/__tests__/adapter.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
@@ -384,9 +386,9 @@
 					"changeDiscipline": "provisional-migration-required",
 					"evidence": [
 						"examples/angular/registry-integration.test.ts",
-						"packages/session-context-client-angular/src/lib/__tests__/service.test.ts"
+						"packages/session-context-client-angular/src/lib/__tests__/adapter.test.ts"
 					],
-					"note": "The Angular session adapter is environment-first at the composition root: provideSessionContext({ config }) creates one SessionContextClient-backed service. Initial probing is controlled by SessionContextClientConfig.autoStart or explicit service.start()/refresh().",
+					"note": "The Angular session adapter exposes a native SESSION_CONTEXT_CLIENT InjectionToken and provideSessionContext() bridge. It maps the same core SessionContextClient from the FoundationEnvironment injector into Angular DI; initial probing remains controlled by SessionContextClientConfig.autoStart or explicit client.start()/refresh().",
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Angular entry: thin DI wrappers preserve canonical owner boundaries"
@@ -405,9 +407,9 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "React token-set adapter is injector-first and core-registry-first. The root export owns `provideTokenSetClientRegistry()`, `TOKEN_SET_CLIENT_REGISTRY`, `TokenSetClientRegistryService`, and headless callback Resource hooks (`useTokenSetFrontendCallback()`, `useTokenSetBackendCallback()`). Keyed clients are read through the registry Resource API. Callback state and input handling are client-owned; registry selection is non-consuming and exposes a fixed-record client resolver. React Query integration is intentionally app-local; the SDK no longer exports a `./react-query` subpath or React-specific client/entry wrapper types.",
+					"note": "React token-set adapter is a thin view layer. It exports useTokenSetClientRegistry() and headless callback Resource hooks; the core registry subpath owns TOKEN_SET_CLIENT_REGISTRY, TOKEN_SET_CLIENT_REGISTRY_ENTRIES, provideTokenSetClientRegistry(), construction, and lifecycle. Callback state and input handling remain client-owned, while registry selection is non-consuming and preserves record identity.",
 					"evidence": [
-						"packages/token-set-context-client-react/src/__tests__/client-registry-service.test.tsx",
+						"packages/token-set-context-client-react/src/__tests__/client-registry.test.tsx",
 						"packages/token-set-context-client-react/src/__tests__/callback-hooks.test.tsx",
 						"packages/token-set-context-client-react/src/__tests__/route-security.test.ts",
 						"examples/backend-oidc-mode/react-minimal-entry.test.ts",
@@ -447,12 +449,12 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Root export owns TokenSetClientRegistryService, multi-client integration, client registry authorization interceptor (TOKEN_SET_CLIENT_REGISTRY_AUTHORIZATION_FOR_REQUEST InjectionToken; provideTokenSetClientRegistryAuthorizationInterceptor(options?) and createTokenSetClientRegistryAuthorizationInterceptor(options?) use the SDK options-object API shape), and the canonical Angular route-security builders. TokenSetClientRegistryService is a thin DI wrapper over the shared core TokenSetClientRegistry and exposes the same canonical verbs plus signal-state authority. Registry methods materialize and return mode clients; Angular-specific code should bridge client replay signals (`authSnapshot`, `isAuthenticated`, `authorizationHeaderValue`, `authOperations`) with `@securitydept/client/rx` plus `toNgSignal(source)` from `@securitydept/client-angular` when needed rather than using a per-client service wrapper. Angular callback service/component exports have been removed; future Angular callback adaptation should be built over the core token-set registry controller.",
+					"note": "The Angular root exports a native TOKEN_SET_CLIENT_REGISTRY InjectionToken, provideTokenSetClientRegistry() bridge, callback components, authorization interceptor, and route-security builders. The provider installs the core registry provider graph into the shared FoundationEnvironment injector and maps that same TokenSetClientRegistry instance into Angular DI; no registry service facade is created.",
 					"evidence": [
 						"examples/angular/registry-integration.test.ts",
 						"examples/angular/full-route-aggregation.test.ts",
 						"examples/angular/guard-injection-context.test.ts",
-						"packages/token-set-context-client-angular/src/lib/__tests__/client-registry.service.test.ts",
+						"packages/token-set-context-client-angular/src/lib/__tests__/client-registry.test.ts",
 						"packages/token-set-context-client-angular/src/lib/__tests__/planner-host.test.ts"
 					],
 					"docsAnchor": {
@@ -473,9 +475,10 @@
 					"stability": "provisional",
 					"owner": "shared-framework",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Shared React framework bridge with the only SDK-owned React Context. Root exports include `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()` for injector access, plus the context-free interop hooks `useReadableSignalValue()`, `useReplaySignalValue()`, `useInteropObservable()`, and `useEventStream()`. React environment capability is inherited by passing the core environment injector to `SecuritydeptProvider.parentInjector`; route-scoped planner hosts are owned by concrete router adapters rather than the React root package.",
+					"note": "Shared React framework bridge with the only SDK-owned React Context. Root exports include `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()` for injector access; `createEnvironmentForReact()` and `provideQueryStore()` for environment-scoped Suspense query ownership; `useSignal()`, `useResourceSnapshot()`, `useSuspenseResourceValue()`, `useInteropObservable()`, and `useEventStream()` for React interop. The ready-made environment injector is passed through `SecuritydeptProvider.injector`; the provider neither creates an injector nor owns its destruction lifecycle.",
 					"evidence": [
 						"packages/client-react/src/__tests__/injection.test.tsx",
+						"packages/client-react/src/__tests__/query-store.test.tsx",
 						"../../apps/webui/src/App.tsx"
 					],
 					"docsAnchor": {

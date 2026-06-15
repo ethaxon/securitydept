@@ -85,6 +85,23 @@ describe("@securitydept/client/rx/resource", () => {
 		resource.dispose();
 	});
 
+	it("returns stale error values unless strict error handling is requested", async () => {
+		const error = new Error("refresh failed");
+		const snapshot = createSignal({
+			status: ResourceStatus.Error,
+			value: "stale",
+			error,
+		} as const);
+		const resource = resourceFromSnapshots(() => snapshot.get());
+
+		await expect(resource.whenValue()).resolves.toBe("stale");
+		await expect(
+			resource.whenValue({ staleValueWhenError: false }),
+		).rejects.toBe(error);
+
+		resource.dispose();
+	});
+
 	it("supports cancellation while waiting for a resource value", async () => {
 		const response = new Subject<string>();
 		const resource = rxResource({

@@ -45,7 +45,7 @@ const EVIDENCE_FILE_MAPPINGS: EvidenceFileMapping[] = [
 		],
 	},
 	{
-		path: "packages/token-set-context-client-react/src/__tests__/client-registry-service.test.tsx",
+		path: "packages/token-set-context-client-react/src/__tests__/client-registry.test.tsx",
 		layers: [
 			EvidenceSemanticLayer.VerifiedEnvironments,
 			EvidenceSemanticLayer.PromotionReadiness,

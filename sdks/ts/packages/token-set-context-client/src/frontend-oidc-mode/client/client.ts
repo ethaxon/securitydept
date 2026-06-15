@@ -33,6 +33,7 @@ import {
 	createLinkedCancellationToken,
 	decodeJwtPayload,
 	defineInstrumentMethodDecorator,
+	ENVIRONMENT_TOKEN,
 	injectDisposableStackFrom,
 	isLoopbackHttpUrl,
 	type OperationSpanTrait,
@@ -40,6 +41,8 @@ import {
 	parseIdentityPrincipal,
 	RouterNavigationIntent,
 	RouterNavigationMode,
+	SecuritydeptDestroyRef,
+	type SecuritydeptInjectorTrait,
 	type SpanTrait,
 	type StorageTrait,
 	UriReferenceString,
@@ -115,6 +118,7 @@ import {
 } from "../contracts/contracts";
 import { transformScriptForBrowser } from "../contracts/script-compat";
 import { FrontendOidcModeCallbackErrorCode } from "../errors/callback-error-codes";
+import { FRONTEND_OIDC_MODE_CLIENT_OPTIONS } from "../tokens";
 import { createDefaultFrontendOidcModeCallbackInputResolver } from "./callback-input-resolver";
 import { resolveDiscoveryIssuerCompatibility } from "./discovery";
 import {
@@ -226,6 +230,25 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		return `${FrontendOidcModeClient.defaultOptions.persistenceKeyPrefix}:v1:${config.issuer}:${config.clientId}`;
 	}
 
+	static fromEnvironmentConfig(
+		options: FrontendOidcModeClientOptions,
+	): FrontendOidcModeClient {
+		return new FrontendOidcModeClient(options);
+	}
+
+	static fromInjector(
+		injector: SecuritydeptInjectorTrait,
+	): FrontendOidcModeClient {
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			...injector.get(FRONTEND_OIDC_MODE_CLIENT_OPTIONS),
+			environment: injector.get(ENVIRONMENT_TOKEN),
+		});
+		injector
+			.get(SecuritydeptDestroyRef, null)
+			?.onDestroy(() => client.dispose());
+		return client;
+	}
+
 	// --- Config ---
 	private readonly _config: ResolvedFrontendOidcModeClientConfig;
 
@@ -248,11 +271,8 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	>;
 	readonly callback: OidcModeCallbackStateTrait<FrontendOidcModeCallbackResult>;
 
-	constructor(
-		config: FrontendOidcModeClientConfig,
-		options: FrontendOidcModeClientOptions,
-	) {
-		const { environment } = options;
+	protected constructor(options: FrontendOidcModeClientOptions) {
+		const { config, environment } = options;
 		super({
 			environment,
 			tracing: {

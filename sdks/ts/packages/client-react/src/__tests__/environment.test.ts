@@ -8,6 +8,7 @@ import {
 } from "@securitydept/client/web";
 import { describe, expect, it } from "vitest";
 import { createEnvironmentForReact } from "../environment";
+import { QueryStore } from "../query-store";
 
 const LABEL_TOKEN = new SecuritydeptInjectionToken<string>("LABEL_TOKEN");
 
@@ -21,6 +22,17 @@ describe("createEnvironmentForReact", () => {
 		const environment = createEnvironmentForReact({ providers: [provider] });
 
 		expect(environment.injector.get(LABEL_TOKEN)).toBe("react");
+		expect(environment.injector.get(QueryStore)).toBeInstanceOf(QueryStore);
+	});
+
+	it("allows callers to override the environment query store", () => {
+		const base = createEnvironmentForReact();
+		const queryStore = new QueryStore({ time: base.time });
+		const environment = createEnvironmentForReact({
+			providers: [{ provide: QueryStore, useValue: queryStore }],
+		});
+
+		expect(environment.injector.get(QueryStore)).toBe(queryStore);
 	});
 
 	it("composes over a host environment creator", () => {

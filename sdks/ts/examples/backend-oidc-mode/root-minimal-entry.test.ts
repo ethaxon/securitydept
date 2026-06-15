@@ -49,7 +49,8 @@ describe("backend-oidc-mode root minimal entry", () => {
 		};
 
 		// 2. Construct the client directly from the root subpath.
-		const client = new BackendOidcModeClient(config, {
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: config,
 			environment: minimalRuntime,
 		});
 

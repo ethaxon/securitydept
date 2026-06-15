@@ -90,7 +90,8 @@ export type ResourceSnapshot<T> =
 	| ResourceErrorSnapshot<T>;
 
 export interface ResourceWhenValueOptions {
-	cancellationToken?: CancellationTokenTrait;
+	readonly cancellationToken?: CancellationTokenTrait;
+	readonly staleValueWhenError?: boolean;
 }
 
 export interface ResourceTrait<T>

@@ -136,7 +136,7 @@ Migration:
 
 - Construct injectors outside the React Fiber tree, then wrap React subtrees with `SecuritydeptProvider` and pass the ready-made `injector`. The provider no longer derives child injectors or creates destroy refs.
 - Replace `XxxContextProvider` / `useXxxContext()` with `useSecuritydeptContext().get(TOKEN)`.
-- Replace `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` with `const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)`, then read `registry.clientResourceFor(key)` and the selected client's Resources through `useResourceSnapshot()`.
+- Replace `useTokenSetAuthState(key)` / `useTokenSetAccessToken(key)` / `useTokenSetAuthRegistryState()` with `const registry = useTokenSetClientRegistry()`, then read `registry.clientResourceFor(key)` and the selected client's Resources through `useResourceSnapshot()`.
 - Replace basic-auth / session provider-first composition with `create*()` + `provide*()`. For token-set multi-client React composition, register `provideTokenSetClientRegistry({ clients })` and use the frontend/backend callback Resource hooks when the host needs callback rendering.
 
 ### Token-Set React Registry Composition
@@ -181,7 +181,8 @@ Migration:
 - Do not run callback fragment consumption in service workers or extension backgrounds. Run restore/token-state APIs there, and consume callback fragments only in a real page/popup document or with an explicit fake `RouterTrait` in tests.
 - Update ambiguous page-global helper usage to explicit page forms: use `client.authorizeUrl(environment.router.currentUrl()?.toString())` or `client.loginWithRedirect({ postAuthRedirectUri })` for return-URL construction. Callback pages use `takeFrontendOidcCallbackInputFromRouter(router)` or `takeBackendOidcCallbackInputFromRouter(router)` followed by `client.handleCallback(input)`. Backend OIDC fragment redirects use the securitydept compat fragment protocol and preserve existing hash-router fragments.
 - Treat popup callback relay helpers such as `relayTokenSetPopupCallbackFromEnvironment()` as page-only helpers; pass a page-bearing `environment` when testing or running in a host wrapper. Import them from `@securitydept/token-set-context-client/backend-oidc-mode` or `@securitydept/token-set-context-client/frontend-oidc-mode`; the removed `@securitydept/token-set-context-client/backend-oidc-mode/web` subpath was only a forwarder. The canonical shared token-set OIDC browser login contracts are `BaseOidcModeClient.loginWithRedirect({ postAuthRedirectUri })` and `BaseOidcModeClient.loginWithPopup({ popupCallbackUrl })`; the client carries page navigation and popup capability through its environment. Backend and frontend mode clients expose those methods directly. Backend OIDC no longer owns hidden callback-fragment flow state; retry or delayed callback handling must be explicit application code.
-- Replace frontend-mode browser materialization with `resolveFrontendOidcModeConfigProjection({ clientKey, environment, sources, overrides })`, then construct `FrontendOidcModeClient` with the returned config and the same root environment. Declare realm, persisted, and network precedence explicitly; inject server-rendered projections with `injectConfigProjectionIntoRealm()`.
+- Replace frontend-mode browser materialization with `resolveFrontendOidcModeConfigProjection({ clientKey, environment, sources, overrides })`, then call `FrontendOidcModeClient.fromEnvironmentConfig({ config, environment })` with the returned config and the same root environment. Declare realm, persisted, and network precedence explicitly; inject server-rendered projections with `injectConfigProjectionIntoRealm()`.
+- Replace direct `new FrontendOidcModeClient(config, options)` and `new BackendOidcModeClient(config, options)` calls with the mode's `fromEnvironmentConfig({ config, ...options })` static factory. Framework-neutral injector hosts may use `provideFrontendOidcModeClient()` / `provideBackendOidcModeClient()` and the matching mode client token. Registry entries continue to use the registry-aware factory creators.
 - Frontend OIDC redirect and public callback flows require `environment.sessionStorage`; popup flows use `environment.realmStorage`. Do not implement cross-scope fallback or copy pending/consumed records between them.
 - When browser/page environment ownership must stay stable across framework routes or commands, create one host-owned `NativeWebEnvironment` at the composition root and inject that object. Do not invent app-local module singletons or SDK-local lazy environment resolvers.
 - Treat basic-auth/session `/web` redirect helpers as page navigation helpers; keep them in a real page context or inject an explicit `RouterTrait`.
@@ -327,7 +328,7 @@ Packages:
 
 Change:
 
-- `@securitydept/client-react` now owns the canonical React injector bridge: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()`, plus the context-free `useSignal()`, `useResourceSnapshot()`, `useInteropObservable()`, and `useEventStream()` bridges. `useResourceValue()` is removed because creating a transient `whenValue()` Promise during a suspended render is not stable; React renders Resource status explicitly from snapshots instead.
+- `@securitydept/client-react` now owns the canonical React injector bridge: `SecuritydeptContext`, `SecuritydeptProvider`, and `useSecuritydeptContext()`, plus the context-free `useSignal()`, `useResourceSnapshot()`, `useInteropObservable()`, and `useEventStream()` bridges. The old transient `useResourceValue()` is replaced by `useSuspenseResourceValue()`, whose environment-scoped `QueryStore` caches waits across Suspense retries and collects zero-reference queries after a configurable delay.
 - `client-react` root exports `createEnvironmentForReact()` and the React injector bridge. Use the creator outside Fiber to compose React-owned providers over a host environment creator, then pass its ready-made injector to the root `SecuritydeptProvider`. Route-scoped planner hosts are owned by concrete router adapters such as `@securitydept/client-react/tanstack-router`.
 - The basic-auth / session / token-set React adapters no longer own domain-specific Provider / Context hooks. They export tokens, plain factories, provider factories, and explicit callback/component bridges. Token-set multi-client composition is now explicit registry/controller wiring instead of an SDK-owned runtime bundle.
 - Token-set Angular/React route security now relies on `secureTokenSetRouteRoot()` plus the registry-backed default unauthenticated handler. Client selection belongs in requirement `attributes.query`; custom redirect policy is optional via `onClientUnauthenticated` on the secure route root or planner host provider.
@@ -394,14 +395,14 @@ Change:
 
 - Canonical registry lifecycle verbs are now `register(entry)`, `unregister(key)`, `resetMaterialization(key)`, and `dispose()`.
 - The registry now exposes separate configured-vs-ready observability: `has()` / `registeredKeys()` / `registeredEntriesSnapshot()` / `registeredMetaSnapshot()` describe registered entries, while `readyKeys()` describes clients whose materialization and `start()` lifecycle have completed.
-- React token-set composition is registry-first: register `provideTokenSetClientRegistry(...)` at the composition root, use callback Resource hooks only where callback state is rendered, and perform add/remove flows through the injected registry instance. Angular token-set composition uses `TokenSetClientRegistryService`, a thin DI adapter over the shared core `TokenSetClientRegistry`.
+- Token-set composition is core-registry-first: import `provideTokenSetClientRegistry(...)` and `TOKEN_SET_CLIENT_REGISTRY` from `@securitydept/token-set-context-client/registry`. React adds `useTokenSetClientRegistry()` and callback hooks; Angular maps the same core registry instance to its native injection token without a service facade.
 
 Migration:
 
 - Replace old `reset(key)` calls that meant “remove this client registration” with `unregister(key)`.
 - Replace old retry/recreate flows that re-register the same key after failure with `resetMaterialization(key)` followed by `whenReady(key)`.
 - For management UIs or diagnostics, use the registered snapshots for configured rows, `readyKeys()` for started-client membership, and `clientSignalFor(key)` / `whenReady(key)` for live client access; do not treat ready-only keys as the source of truth for configured clients.
-- In React hosts, do not expect prop changes to reconcile token-set registration automatically. Use `useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY)` or another retained registry reference for runtime lifecycle changes.
+- In React hosts, do not expect prop changes to reconcile token-set registration automatically. Use `useTokenSetClientRegistry()` or another retained registry reference for runtime lifecycle changes.
 
 Justification:
 

@@ -52,9 +52,9 @@ describe("session-context browser minimal entry", () => {
 		const environment = createPageLocationEnvironment(
 			"https://app.example.com/protected-page",
 		);
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			createFoundationEnvironment({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://auth.example.com" },
+			environment: createFoundationEnvironment({
 				transport: {
 					execute: async () => ({ status: 204, headers: {}, body: null }),
 				},
@@ -62,7 +62,7 @@ describe("session-context browser minimal entry", () => {
 				span: createRootSpan(),
 				tracing: createTracing(),
 			}),
-		);
+		});
 
 		// 3. Trigger login redirect with explicit options.
 		const options: SessionLoginWithRedirectOptions = {
@@ -80,9 +80,9 @@ describe("session-context browser minimal entry", () => {
 		const environment = createPageLocationEnvironment(
 			"https://app.example.com/current-page",
 		);
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			createFoundationEnvironment({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://auth.example.com" },
+			environment: createFoundationEnvironment({
 				transport: {
 					execute: async () => ({ status: 204, headers: {}, body: null }),
 				},
@@ -90,7 +90,7 @@ describe("session-context browser minimal entry", () => {
 				span: createRootSpan(),
 				tracing: createTracing(),
 			}),
-		);
+		});
 
 		await client.loginWithRedirect();
 

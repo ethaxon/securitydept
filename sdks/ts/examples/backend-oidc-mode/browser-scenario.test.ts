@@ -60,22 +60,20 @@ describe("external backend-oidc-mode browser scenario", () => {
 					},
 				}),
 			);
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
 			},
-			{
-				environment: createFoundationEnvironment({
-					span: createRootSpan(),
-					tracing: createTracing(),
-					persistentStorage,
-					sessionStorage,
-					transport: transport,
-					time,
-				}),
-			},
-		);
+			environment: createFoundationEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
+				persistentStorage,
+				sessionStorage,
+				transport: transport,
+				time,
+			}),
+		});
 		const emptySnapshot = await client.start();
 
 		expect(emptySnapshot).toBeNull();

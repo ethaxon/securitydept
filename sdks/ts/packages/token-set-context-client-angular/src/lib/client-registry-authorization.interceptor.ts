@@ -13,8 +13,10 @@ import {
 	inject,
 	type Provider,
 } from "@angular/core";
+import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
+import { type TokenSetClientRegistry } from "@securitydept/token-set-context-client/registry";
 import { from, type Observable, switchMap } from "rxjs";
-import { TokenSetClientRegistryService } from "./client-registry.service";
+import { TOKEN_SET_CLIENT_REGISTRY } from "./client-registry";
 
 export interface TokenSetClientRegistryAuthorizationRequest {
 	url: string;
@@ -22,7 +24,7 @@ export interface TokenSetClientRegistryAuthorizationRequest {
 }
 
 export type TokenSetClientRegistryAuthorizationForRequest = (
-	registry: TokenSetClientRegistryService,
+	registry: TokenSetClientRegistry<BaseOidcModeClient>,
 	request: TokenSetClientRegistryAuthorizationRequest,
 ) => Promise<string | null | undefined> | string | null | undefined;
 
@@ -38,7 +40,7 @@ export interface TokenSetClientRegistryAuthorizationInterceptorProviderOptions {
 
 export interface TokenSetClientRegistryAuthorizationInterceptorOptions
 	extends TokenSetClientRegistryAuthorizationInterceptorProviderOptions {
-	registry?: TokenSetClientRegistryService;
+	registry?: TokenSetClientRegistry<BaseOidcModeClient>;
 }
 
 export const TOKEN_SET_CLIENT_REGISTRY_AUTHORIZATION_FOR_REQUEST =
@@ -50,7 +52,7 @@ export const TOKEN_SET_CLIENT_REGISTRY_AUTHORIZATION_FOR_REQUEST =
 export class TokenSetClientRegistryAuthorizationInterceptor
 	implements HttpInterceptor
 {
-	private readonly registry = inject(TokenSetClientRegistryService);
+	private readonly registry = inject(TOKEN_SET_CLIENT_REGISTRY);
 	private readonly authorizationForRequest =
 		inject(TOKEN_SET_CLIENT_REGISTRY_AUTHORIZATION_FOR_REQUEST, {
 			optional: true,
@@ -103,7 +105,7 @@ export function createTokenSetClientRegistryAuthorizationInterceptor(
 		req: HttpRequest<unknown>,
 		next: HttpHandlerFn,
 	): Observable<HttpEvent<unknown>> {
-		const registry = options?.registry ?? inject(TokenSetClientRegistryService);
+		const registry = options?.registry ?? inject(TOKEN_SET_CLIENT_REGISTRY);
 		const authorizationForRequest =
 			options?.authorizationForRequest ??
 			(options
@@ -126,7 +128,7 @@ export function createTokenSetClientRegistryAuthorizationInterceptor(
 }
 
 export async function defaultTokenSetClientRegistryAuthorizationForRequest(
-	registry: TokenSetClientRegistryService,
+	registry: TokenSetClientRegistry<BaseOidcModeClient>,
 	request: TokenSetClientRegistryAuthorizationRequest,
 ): Promise<string | null> {
 	const record = await registry.clientRecordForQuery(

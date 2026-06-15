@@ -17,11 +17,11 @@ import {
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
 import {
+	type ProvideSessionContextOptions,
 	type SessionContextClientConfig,
 	type SessionInfo,
 	type SessionLoginWithRedirectOptions as SessionLoginOptions,
 } from "@securitydept/session-context-client";
-import { type ProvideSessionContextOptions } from "@securitydept/session-context-client-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function createPageLocationEnvironment(href: string): FoundationEnvironment & {
@@ -72,13 +72,13 @@ describe("basic-auth root discoverability: named options contract + client helpe
 			"https://app.example.com/basic/api/groups",
 		);
 
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				zones: [{ zonePrefix: "/basic" }],
 			},
 			environment,
-		);
+		});
 
 		await client.loginWithRedirect({
 			currentPath: "/basic/api/groups",
@@ -95,13 +95,13 @@ describe("basic-auth root discoverability: named options contract + client helpe
 			"https://app.example.com/other",
 		);
 
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				zones: [{ zonePrefix: "/basic" }],
 			},
 			environment,
-		);
+		});
 
 		const options: BasicAuthLoginOptions = {
 			currentPath: "/basic/admin",
@@ -119,13 +119,13 @@ describe("basic-auth root discoverability: named options contract + client helpe
 			"https://app.example.com/public",
 		);
 
-		const client = new BasicAuthContextClient(
-			{
+		const client = BasicAuthContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				zones: [{ zonePrefix: "/basic" }],
 			},
 			environment,
-		);
+		});
 
 		await expect(
 			client.loginWithRedirect({

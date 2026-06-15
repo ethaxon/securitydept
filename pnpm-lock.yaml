@@ -395,10 +395,10 @@ importers:
       '@securitydept/client':
         specifier: workspace:*
         version: link:../client
-    devDependencies:
       '@securitydept/client-react':
         specifier: workspace:*
         version: link:../client-react
+    devDependencies:
       react:
         specifier: 'catalog:'
         version: 19.2.6
@@ -468,6 +468,9 @@ importers:
       es-toolkit:
         specifier: 'catalog:'
         version: 1.49.0
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
     devDependencies:
       '@tanstack/react-router':
         specifier: 'catalog:'
@@ -532,13 +535,13 @@ importers:
       '@securitydept/client':
         specifier: workspace:*
         version: link:../client
+      '@securitydept/client-react':
+        specifier: workspace:*
+        version: link:../client-react
       '@securitydept/session-context-client':
         specifier: workspace:*
         version: link:../session-context-client
     devDependencies:
-      '@securitydept/client-react':
-        specifier: workspace:*
-        version: link:../client-react
       react:
         specifier: 'catalog:'
         version: 19.2.6

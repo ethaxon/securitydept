@@ -31,10 +31,10 @@ describe("session server minimal entry", () => {
 				headers: { cookie: "session_id=abc123" },
 			},
 		};
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			createEnvironmentForServer(options),
-		);
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://auth.example.com" },
+			environment: createEnvironmentForServer(options),
+		});
 
 		// 3. Probe the session with forwarded cookies.
 		const session = await client.refresh();
@@ -68,13 +68,13 @@ describe("session server minimal entry", () => {
 			})),
 		};
 
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			createEnvironmentForServer({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://auth.example.com" },
+			environment: createEnvironmentForServer({
 				transport: transport,
 				request: { headers: { cookie: "session_id=valid" } },
 			}),
-		);
+		});
 
 		const session = await client.refresh();
 

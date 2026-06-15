@@ -5,6 +5,7 @@
 
 import {
 	BasicAuthContextClient,
+	type BasicAuthContextClientConfig,
 	BasicAuthContextClientConfigSchema,
 } from "@securitydept/basic-auth-context-client";
 import {
@@ -75,20 +76,17 @@ describe("@standard-schema adoption: BasicAuthContextClientConfig", () => {
 	});
 
 	it("constructor rejects invalid config", () => {
-		expect(
-			() =>
-				new BasicAuthContextClient(
-					{} as unknown as ConstructorParameters<
-						typeof BasicAuthContextClient
-					>[0],
-					createFoundationEnvironment({
-						transport: {
-							async execute() {
-								throw new Error("Unexpected transport call.");
-							},
+		expect(() =>
+			BasicAuthContextClient.fromEnvironmentConfig({
+				config: {} as unknown as BasicAuthContextClientConfig,
+				environment: createFoundationEnvironment({
+					transport: {
+						async execute() {
+							throw new Error("Unexpected transport call.");
 						},
-					}),
-				),
+					},
+				}),
+			}),
 		).toThrow(/BasicAuthContextClient could not validate config/);
 	});
 });

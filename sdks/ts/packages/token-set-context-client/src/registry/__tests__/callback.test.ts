@@ -17,10 +17,7 @@ import {
 	TokenSetCallbackClientSelectionKind,
 	TokenSetRegistryCallbackErrorCode,
 } from "../callback";
-import {
-	createTokenSetClientRegistry,
-	type TokenSetClientRegistry,
-} from "../core/client-registry";
+import { TokenSetClientRegistry } from "../core/client-registry";
 
 const testEnvironment = createFoundationEnvironment({});
 
@@ -41,9 +38,10 @@ function createRegistry(
 	client: BaseOidcModeClient,
 	callbackUrl?: string | readonly string[],
 ) {
-	const registry = createTokenSetClientRegistry<BaseOidcModeClient>({
-		environment: testEnvironment,
-	});
+	const registry =
+		TokenSetClientRegistry.fromEnvironmentConfig<BaseOidcModeClient>({
+			environment: testEnvironment,
+		});
 	registerClient(registry, clientKey, client, callbackUrl);
 	return registry;
 }

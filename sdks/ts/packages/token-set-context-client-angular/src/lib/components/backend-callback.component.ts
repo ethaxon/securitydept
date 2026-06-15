@@ -27,7 +27,7 @@ import {
 	TokenSetCallbackClientSelectionKind,
 	type TokenSetCallbackClientSelectionSnapshot,
 } from "@securitydept/token-set-context-client/registry";
-import { TokenSetClientRegistryService } from "../client-registry.service";
+import { TOKEN_SET_CLIENT_REGISTRY } from "../client-registry";
 
 type BackendCallbackResult =
 	OidcModeCallbackHandlingResult<TokenSetAuthSnapshot>;
@@ -43,7 +43,7 @@ export class TokenSetBackendCallbackComponent {
 	readonly autoInitialize = input(true);
 
 	private readonly environment = inject(ENVIRONMENT);
-	private readonly registry = inject(TokenSetClientRegistryService);
+	private readonly registry = inject(TOKEN_SET_CLIENT_REGISTRY);
 	private readonly destroyRef = inject(DestroyRef);
 	private readonly selectionSource =
 		createSignal<TokenSetBackendCallbackClientFromRegistrySelectionSignal | null>(

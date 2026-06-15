@@ -142,6 +142,9 @@ export type TokenSetClientRegistryEvent<TClient extends DisposableTrait> =
 			type: typeof TokenSetClientRegistryEventType.Disposed;
 	  });
 
-export interface CreateTokenSetClientRegistryOptions {
-	environment: FoundationEnvironment;
+export interface TokenSetClientRegistryFromEnvironmentConfigOptions<
+	TClient extends DisposableTrait,
+> {
+	readonly environment: FoundationEnvironment;
+	readonly entries?: readonly TokenSetClientRegistryEntry<TClient>[];
 }

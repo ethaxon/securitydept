@@ -49,7 +49,10 @@ export {
 	type TokenSetClientSelector,
 } from "./contracts/query";
 export {
-	type CreateTokenSetClientRegistryOptions,
+	TOKEN_SET_CLIENT_REGISTRY,
+	TOKEN_SET_CLIENT_REGISTRY_ENTRIES,
+} from "./contracts/tokens";
+export {
 	type TokenSetClientCallbackUrl,
 	type TokenSetClientCallbackUrls,
 	type TokenSetClientDisposedRecordView,
@@ -67,15 +70,17 @@ export {
 	type TokenSetClientRegistryEntryStatus,
 	type TokenSetClientRegistryEvent,
 	type TokenSetClientRegistryEventType,
+	type TokenSetClientRegistryFromEnvironmentConfigOptions,
 	type TokenSetClientResourceOptions,
 	TokenSetRequirementKind,
 } from "./contracts/types";
-export {
-	createTokenSetClientRegistry,
-	TokenSetClientRegistry,
-} from "./core/client-registry";
+export { TokenSetClientRegistry } from "./core/client-registry";
 export {
 	TokenSetClientRegistryError,
 	TokenSetClientRegistryErrorCode,
 	TokenSetClientRegistryErrorSource,
 } from "./core/error";
+export {
+	type ProvideTokenSetClientRegistryOptions,
+	provideTokenSetClientRegistry,
+} from "./providers";

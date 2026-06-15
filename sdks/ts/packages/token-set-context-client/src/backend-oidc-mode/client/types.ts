@@ -62,6 +62,7 @@ export interface BackendOidcModeClientConfig extends OidcModeClientConfigBase {
 }
 
 export type BackendOidcModeClientOptions = {
+	readonly config: BackendOidcModeClientConfig;
 	readonly environment: FoundationEnvironment;
 	readonly callbackRoutingKey?: string;
 } & OidcModeCallbackResolutionOptions<BackendOidcModeCallbackInput>;

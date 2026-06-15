@@ -1,9 +1,9 @@
 /// <reference types="vite/client" />
 
-import { provideBasicAuthContext } from "@securitydept/basic-auth-context-client-react";
+import { provideBasicAuthContext } from "@securitydept/basic-auth-context-client";
 import { createEnvironmentForNativeWeb } from "@securitydept/client/web";
 import { createEnvironmentForReact } from "@securitydept/client-react";
-import { provideSessionContext } from "@securitydept/session-context-client-react";
+import { provideSessionContext } from "@securitydept/session-context-client";
 import { QueryClient } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";

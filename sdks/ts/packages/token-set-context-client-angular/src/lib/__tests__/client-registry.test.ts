@@ -16,6 +16,7 @@ import { provideEnvironment } from "@securitydept/client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
 	TokenSetClientInitializationMode,
+	TokenSetClientRegistry,
 	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
 import {
@@ -23,7 +24,6 @@ import {
 	provideTokenSetClientRegistry,
 	TOKEN_SET_CLIENT_REGISTRY,
 	TOKEN_SET_CLIENT_REGISTRY_AUTHORIZATION_FOR_REQUEST,
-	TokenSetClientRegistryService,
 } from "@securitydept/token-set-context-client-angular";
 import { firstValueFrom, of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
@@ -126,7 +126,7 @@ function provideAngularEnvironmentDeps() {
 	];
 }
 
-describe("TokenSetClientRegistryService", () => {
+describe("TokenSetClientRegistry Angular adapter", () => {
 	it("passes client resource initialization options through to the core registry", async () => {
 		const factory = vi.fn(() =>
 			createOidcClient("workspace", "Bearer workspace"),
@@ -138,7 +138,7 @@ describe("TokenSetClientRegistryService", () => {
 		]);
 
 		try {
-			const registry = injector.get(TokenSetClientRegistryService);
+			const registry = injector.get(TOKEN_SET_CLIENT_REGISTRY);
 			const passiveSignal = registry.clientResourceFor("workspace", {
 				initialize: false,
 			});
@@ -175,7 +175,7 @@ describe("TokenSetClientRegistryService", () => {
 		]);
 
 		try {
-			const registry = injector.get(TokenSetClientRegistryService);
+			const registry = injector.get(TOKEN_SET_CLIENT_REGISTRY);
 			expect(registry.has("workspace")).toBe(true);
 			expect(registry.entries.get()).toMatchObject([
 				{
@@ -238,18 +238,18 @@ describe("TokenSetClientRegistryService", () => {
 		const injector = createRegistryInjector();
 
 		try {
-			const service = injector.get(TokenSetClientRegistryService);
+			const registry = injector.get(TOKEN_SET_CLIENT_REGISTRY);
 			const tokenValue = runInInjectionContext(injector, () =>
 				injector.get(TOKEN_SET_CLIENT_REGISTRY),
 			);
 
-			expect(tokenValue).toBe(service);
+			expect(tokenValue).toBe(registry);
 		} finally {
 			injector.destroy();
 		}
 	});
 
-	it("client registry authorization interceptor does not use a stale service after unregister()", async () => {
+	it("client registry authorization interceptor does not use a stale client after unregister()", async () => {
 		const injector = createRegistryInjector([
 			createEntry(
 				"workspace",
@@ -261,7 +261,7 @@ describe("TokenSetClientRegistryService", () => {
 		]);
 
 		try {
-			const registry = injector.get(TokenSetClientRegistryService);
+			const registry = injector.get(TOKEN_SET_CLIENT_REGISTRY);
 			const interceptor = createTokenSetClientRegistryAuthorizationInterceptor({
 				registry,
 			});
@@ -295,10 +295,10 @@ describe("TokenSetClientRegistryService", () => {
 	it("client registry authorization interceptor supports injected custom request authorization", async () => {
 		const authorizationForRequest = vi.fn(
 			async (
-				receivedRegistry: TokenSetClientRegistryService,
+				receivedRegistry: TokenSetClientRegistry<BaseOidcModeClient>,
 				request: { url: string },
 			) => {
-				expect(receivedRegistry).toBeInstanceOf(TokenSetClientRegistryService);
+				expect(receivedRegistry).toBeInstanceOf(TokenSetClientRegistry);
 				return request.url.endsWith("/internal") ? "Bearer custom" : null;
 			},
 		);

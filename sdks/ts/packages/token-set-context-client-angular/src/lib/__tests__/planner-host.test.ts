@@ -28,6 +28,7 @@ import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/
 import {
 	TokenSetClientInitializationMode,
 	type TokenSetClientReadyRecordView,
+	type TokenSetClientRegistry,
 	TokenSetClientRegistryAuthRequirement,
 } from "@securitydept/token-set-context-client/registry";
 import { of } from "rxjs";
@@ -38,7 +39,7 @@ import {
 	secureTokenSetRoute,
 	secureTokenSetRouteRoot,
 } from "../auth-coordination/secure-routes";
-import { TokenSetClientRegistryService } from "../client-registry.service";
+import { TOKEN_SET_CLIENT_REGISTRY } from "../client-registry";
 
 function createTransport() {
 	return {
@@ -205,10 +206,10 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 				yield createSignal(readyRecord);
 			}),
 			clientRecordFor: vi.fn(async () => readyRecord),
-		} as unknown as TokenSetClientRegistryService;
+		} as unknown as TokenSetClientRegistry<BaseOidcModeClient>;
 		const injector = createEnvironmentInjector(
 			[
-				{ provide: TokenSetClientRegistryService, useValue: registry },
+				{ provide: TOKEN_SET_CLIENT_REGISTRY, useValue: registry },
 				createRouterProvider(),
 				createHttpClientProvider(),
 				provideEnvironment({
@@ -279,10 +280,10 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 				yield createSignal(record);
 			}),
 			clientRecordFor: vi.fn(async () => record),
-		} as unknown as TokenSetClientRegistryService;
+		} as unknown as TokenSetClientRegistry<BaseOidcModeClient>;
 		const injector = createEnvironmentInjector(
 			[
-				{ provide: TokenSetClientRegistryService, useValue: registry },
+				{ provide: TOKEN_SET_CLIENT_REGISTRY, useValue: registry },
 				createRouterProvider(),
 				createHttpClientProvider(),
 				provideEnvironment({

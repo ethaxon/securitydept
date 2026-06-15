@@ -53,7 +53,8 @@ const minimalConfig: FrontendOidcModeClientConfig = {
 describe("frontend-oidc-mode minimal entry", () => {
 	it("shows the standalone entry path: construct → restoreState → read auth state + authorization header", async () => {
 		// 1. Create client via constructor.
-		const client = new FrontendOidcModeClient(minimalConfig, {
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: minimalConfig,
 			environment: minimalRuntime,
 		});
 		expect(client).toBeInstanceOf(FrontendOidcModeClient);
@@ -90,7 +91,8 @@ describe("frontend-oidc-mode minimal entry", () => {
 	});
 
 	it("shows the config type import and client state signal subscription", async () => {
-		const client = new FrontendOidcModeClient(minimalConfig, {
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: minimalConfig,
 			environment: minimalRuntime,
 		});
 

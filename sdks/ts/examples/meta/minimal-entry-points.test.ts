@@ -28,12 +28,12 @@ describe("minimal entry points", () => {
 			span: createRootSpan(),
 			tracing: createTracing(),
 		});
-		const client = new SessionContextClient(
-			{
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 			},
 			environment,
-		);
+		});
 
 		const session = await client.refresh();
 
@@ -47,42 +47,40 @@ describe("minimal entry points", () => {
 	});
 
 	it("supports a browser-oriented token-set entry path", () => {
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				defaultPostAuthRedirectUri: "https://app.example.com/oidc-mediated",
 			},
-			{
-				environment: createFoundationEnvironment({
-					span: createRootSpan(),
-					tracing: createTracing(),
-					transport: {
-						execute: vi.fn(async () => ({
-							status: 200,
-							headers: {},
-							body: null,
-						})),
+			environment: createFoundationEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
+				transport: {
+					execute: vi.fn(async () => ({
+						status: 200,
+						headers: {},
+						body: null,
+					})),
+				},
+				persistentStorage: {
+					async get() {
+						return null;
 					},
-					persistentStorage: {
-						async get() {
-							return null;
-						},
-						async set() {},
-						async remove() {},
+					async set() {},
+					async remove() {},
+				},
+				sessionStorage: {
+					async get() {
+						return null;
 					},
-					sessionStorage: {
-						async get() {
-							return null;
-						},
-						async take() {
-							return null;
-						},
-						async set() {},
-						async remove() {},
+					async take() {
+						return null;
 					},
-				}),
-			},
-		);
+					async set() {},
+					async remove() {},
+				},
+			}),
+		});
 		const router = createRouterForNativeWeb({
 			location: {
 				href: "https://app.example.com/oidc-mediated#callback",
@@ -99,45 +97,43 @@ describe("minimal entry points", () => {
 		// securitydept-server uses /auth/token-set/* instead of the SDK
 		// default /auth/oidc/*. Adopters must be able to pass these overrides
 		// through the browser convenience entry.
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				loginPath: "/auth/token-set/login",
 				refreshPath: "/auth/token-set/refresh",
 				metadataRedeemPath: "/auth/token-set/metadata/redeem",
 				userInfoPath: "/auth/token-set/user-info",
 			},
-			{
-				environment: createFoundationEnvironment({
-					span: createRootSpan(),
-					tracing: createTracing(),
-					transport: {
-						execute: vi.fn(async () => ({
-							status: 200,
-							headers: {},
-							body: null,
-						})),
+			environment: createFoundationEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
+				transport: {
+					execute: vi.fn(async () => ({
+						status: 200,
+						headers: {},
+						body: null,
+					})),
+				},
+				persistentStorage: {
+					async get() {
+						return null;
 					},
-					persistentStorage: {
-						async get() {
-							return null;
-						},
-						async set() {},
-						async remove() {},
+					async set() {},
+					async remove() {},
+				},
+				sessionStorage: {
+					async get() {
+						return null;
 					},
-					sessionStorage: {
-						async get() {
-							return null;
-						},
-						async take() {
-							return null;
-						},
-						async set() {},
-						async remove() {},
+					async take() {
+						return null;
 					},
-				}),
-			},
-		);
+					async set() {},
+					async remove() {},
+				},
+			}),
+		});
 		const router = createRouterForNativeWeb({
 			location: {
 				href: "https://app.example.com/dashboard",
@@ -169,11 +165,11 @@ describe("minimal entry points", () => {
 	});
 
 	it("leaves SSR redirect URL materialization outside SessionContextClient", () => {
-		const sessionClient = new SessionContextClient(
-			{
+		const sessionClient = SessionContextClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 			},
-			createFoundationEnvironment({
+			environment: createFoundationEnvironment({
 				transport: {
 					execute: vi.fn(async () => ({
 						status: 204,
@@ -184,7 +180,7 @@ describe("minimal entry points", () => {
 				span: createRootSpan(),
 				tracing: createTracing(),
 			}),
-		);
+		});
 
 		expect("loginUrl" in sessionClient).toBe(false);
 		expect("logoutUrl" in sessionClient).toBe(false);

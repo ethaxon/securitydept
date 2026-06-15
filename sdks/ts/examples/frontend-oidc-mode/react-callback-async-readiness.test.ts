@@ -24,13 +24,11 @@ import {
 	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
+	provideTokenSetClientRegistry,
 	TokenSetClientInitializationMode,
 	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
-import {
-	provideTokenSetClientRegistry,
-	useTokenSetFrontendCallback,
-} from "@securitydept/token-set-context-client-react";
+import { useTokenSetFrontendCallback } from "@securitydept/token-set-context-client-react";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";

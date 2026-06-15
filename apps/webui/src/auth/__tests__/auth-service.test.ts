@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client-react";
+import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client";
 import {
 	createFoundationEnvironment,
 	createSecuritydeptDestroyRef,
@@ -13,8 +13,8 @@ import {
 	SecuritydeptDestroyRef,
 	type SecuritydeptInjector,
 } from "@securitydept/client";
-import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client-react";
-import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client-react";
+import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client";
+import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client/registry";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_SERVICE, AuthService, provideAuthService } from "../auth.service";
 import { AuthContextMode } from "../model";

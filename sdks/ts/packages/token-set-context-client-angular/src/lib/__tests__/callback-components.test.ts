@@ -26,14 +26,14 @@ import {
 	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
-	createTokenSetClientRegistry,
 	TokenSetCallbackClientSelectionKind,
 	TokenSetClientInitializationMode,
+	TokenSetClientRegistry,
 	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
 import {
+	TOKEN_SET_CLIENT_REGISTRY,
 	TokenSetBackendCallbackComponent,
-	TokenSetClientRegistryService,
 	TokenSetFrontendCallbackComponent,
 } from "@securitydept/token-set-context-client-angular";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -117,9 +117,10 @@ function configure(options: {
 	entry: TokenSetClientRegistryEntry<BaseOidcModeClient>;
 }): void {
 	const environment = createFoundationEnvironment({ router: options.router });
-	const registry = createTokenSetClientRegistry<BaseOidcModeClient>({
-		environment,
-	});
+	const registry =
+		TokenSetClientRegistry.fromEnvironmentConfig<BaseOidcModeClient>({
+			environment,
+		});
 	registry.register(options.entry);
 	TestBed.configureTestingModule({
 		providers: [
@@ -127,7 +128,7 @@ function configure(options: {
 				provide: ENVIRONMENT,
 				useValue: environment,
 			},
-			{ provide: TokenSetClientRegistryService, useValue: registry },
+			{ provide: TOKEN_SET_CLIENT_REGISTRY, useValue: registry },
 		],
 	});
 }

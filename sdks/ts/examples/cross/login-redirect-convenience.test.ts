@@ -53,9 +53,9 @@ describe("session-context-client SessionContextClient.loginWithRedirect", () => 
 		const environment = createPageLocationCapability(
 			"https://app.example.com/protected",
 		);
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			createFoundationEnvironment({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://auth.example.com" },
+			environment: createFoundationEnvironment({
 				transport: {
 					execute: vi.fn(async () => ({
 						status: 204,
@@ -67,7 +67,7 @@ describe("session-context-client SessionContextClient.loginWithRedirect", () => 
 				span: createRootSpan(),
 				tracing: createTracing(),
 			}),
-		);
+		});
 
 		const options: SessionLoginWithRedirectOptions = {
 			postAuthRedirectUri: "https://app.example.com/dashboard",
@@ -83,9 +83,9 @@ describe("session-context-client SessionContextClient.loginWithRedirect", () => 
 		const environment = createPageLocationCapability(
 			"https://app.example.com/current-page",
 		);
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			createFoundationEnvironment({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://auth.example.com" },
+			environment: createFoundationEnvironment({
 				transport: {
 					execute: vi.fn(async () => ({
 						status: 204,
@@ -97,7 +97,7 @@ describe("session-context-client SessionContextClient.loginWithRedirect", () => 
 				span: createRootSpan(),
 				tracing: createTracing(),
 			}),
-		);
+		});
 		await client.loginWithRedirect();
 
 		expect(environment.location.href).toBe(
@@ -118,21 +118,19 @@ describe("backend-oidc-mode BackendOidcModeClient.loginWithRedirect", () => {
 			"https://app.example.com/page",
 		);
 
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				defaultPostAuthRedirectUri: "https://app.example.com/callback",
 			},
-			{
-				environment: createFoundationEnvironment({
-					span: createRootSpan(),
-					tracing: createTracing(),
-					persistentStorage,
-					sessionStorage,
-					router: environment,
-				}),
-			},
-		);
+			environment: createFoundationEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
+				persistentStorage,
+				sessionStorage,
+				router: environment,
+			}),
+		});
 
 		await client.loginWithRedirect({
 			postAuthRedirectUri: "https://app.example.com/return",
@@ -152,21 +150,19 @@ describe("backend-oidc-mode BackendOidcModeClient.loginWithRedirect", () => {
 			"https://app.example.com/page#fragment",
 		);
 
-		const client = new BackendOidcModeClient(
-			{
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				baseUrl: "https://auth.example.com",
 				defaultPostAuthRedirectUri: "https://app.example.com/default",
 			},
-			{
-				environment: createFoundationEnvironment({
-					span: createRootSpan(),
-					tracing: createTracing(),
-					persistentStorage,
-					sessionStorage,
-					router: environment,
-				}),
-			},
-		);
+			environment: createFoundationEnvironment({
+				span: createRootSpan(),
+				tracing: createTracing(),
+				persistentStorage,
+				sessionStorage,
+				router: environment,
+			}),
+		});
 
 		await client.loginWithRedirect();
 
@@ -215,8 +211,8 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 			"@securitydept/token-set-context-client/frontend-oidc-mode"
 		);
 
-		const client = new FrontendOidcModeClient(
-			{
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
 				redirectUri: "https://app.example.com/callback",
@@ -224,8 +220,8 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 				authorizationEndpoint: "https://auth.example.com/oauth2/authorize",
 				tokenEndpoint: "https://auth.example.com/oauth2/token",
 			},
-			{ environment: runtime },
-		);
+			environment: runtime,
+		});
 
 		const options = {
 			postAuthRedirectUri: "https://app.example.com/after-login",

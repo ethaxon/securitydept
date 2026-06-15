@@ -5,12 +5,15 @@ import {
 	ClientErrorKind,
 	createLinkedCancellationToken,
 	defineInstrumentMethodDecorator,
+	ENVIRONMENT_TOKEN,
 	type HttpResponseJsonBody,
 	injectDisposableStackFrom,
 	type OperationSpanTrait,
 	parseCompatFragment,
 	RouterNavigationIntent,
 	RouterNavigationMode,
+	SecuritydeptDestroyRef,
+	type SecuritydeptInjectorTrait,
 	UriReferenceString,
 	UserRecovery,
 	withDisposableStack,
@@ -55,6 +58,7 @@ import {
 	parseBackendOidcModeUserInfoBody,
 	refreshReturnsToTokenDelta,
 } from "../contracts/parsers";
+import { BACKEND_OIDC_MODE_CLIENT_OPTIONS } from "../tokens";
 import { createDefaultBackendOidcModeCallbackInputResolver } from "./callback-input-resolver";
 import { BackendOidcModeErrorCode } from "./error-codes";
 import {
@@ -63,7 +67,6 @@ import {
 	BackendOidcModeTraceOperationName,
 } from "./trace-events";
 import {
-	type BackendOidcModeClientConfig,
 	type BackendOidcModeClientDefaultOptions,
 	type BackendOidcModeClientOptions,
 	type BackendOidcModeFetchUserInfoOptions,
@@ -126,6 +129,25 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		return `${BackendOidcModeClient.defaultOptions.persistenceKeyPrefix}:v1:${normalizedBaseUrl}`;
 	}
 
+	static fromEnvironmentConfig(
+		options: BackendOidcModeClientOptions,
+	): BackendOidcModeClient {
+		return new BackendOidcModeClient(options);
+	}
+
+	static fromInjector(
+		injector: SecuritydeptInjectorTrait,
+	): BackendOidcModeClient {
+		const client = BackendOidcModeClient.fromEnvironmentConfig({
+			...injector.get(BACKEND_OIDC_MODE_CLIENT_OPTIONS),
+			environment: injector.get(ENVIRONMENT_TOKEN),
+		});
+		injector
+			.get(SecuritydeptDestroyRef, null)
+			?.onDestroy(() => client.dispose());
+		return client;
+	}
+
 	private readonly _config: ResolvedBackendOidcModeClientConfig;
 	private readonly _callbackHandler: OidcModeCallbackHandler<
 		BackendOidcModeCallbackInput,
@@ -134,11 +156,8 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	private readonly _callbackRoutingKey?: string;
 	readonly callback: OidcModeCallbackStateTrait<TokenSetAuthSnapshot>;
 
-	constructor(
-		config: BackendOidcModeClientConfig,
-		options: BackendOidcModeClientOptions,
-	) {
-		const { environment } = options;
+	protected constructor(options: BackendOidcModeClientOptions) {
+		const { config, environment } = options;
 		const baseUrl = config.baseUrl.replace(/\/+$/, "");
 		super({
 			environment,

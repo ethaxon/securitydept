@@ -17,7 +17,7 @@ import {
 	type BaseOidcModeClient,
 	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
-import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client-react";
+import { useTokenSetClientRegistry } from "@securitydept/token-set-context-client-react";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
@@ -179,7 +179,7 @@ function describePropagationStatus(status: PropagationStatus): string {
 }
 
 function TokenSetBackendModePlaygroundContent() {
-	const registry = useSecuritydeptContext().get(TOKEN_SET_CLIENT_REGISTRY);
+	const registry = useTokenSetClientRegistry();
 	const authService = useAuthService();
 	const clientResource = useMemo(
 		() => registry.clientResourceFor(TOKEN_SET_BACKEND_MODE_CONFIG.clientKey),

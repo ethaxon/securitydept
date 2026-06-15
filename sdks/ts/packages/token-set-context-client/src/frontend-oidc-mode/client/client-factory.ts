@@ -41,7 +41,8 @@ export function createFrontendOidcModeClientFactory(
 						callbackInputPredicate: options.callbackInputPredicate,
 					})
 				: options.callbackInputResolver;
-		const client = new FrontendOidcModeClient(config, {
+		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config,
 			environment,
 			callbackInputResolver,
 		});

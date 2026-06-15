@@ -28,12 +28,12 @@ describe("external session context scenario", () => {
 					body: null,
 				}),
 			);
-		const client = new SessionContextClient(
-			{ baseUrl: "https://auth.example.com" },
-			createFoundationEnvironment({
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://auth.example.com" },
+			environment: createFoundationEnvironment({
 				transport,
 			}),
-		);
+		});
 
 		const session = await client.refresh();
 

@@ -29,13 +29,14 @@ import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/
 import {
 	TokenSetClientInitializationMode,
 	type TokenSetClientReadyRecordView,
+	type TokenSetClientRegistry,
 	TokenSetClientRegistryAuthRequirement,
 } from "@securitydept/token-set-context-client/registry";
 import {
 	provideTokenSetRequirementPlannerHost,
 	secureTokenSetRoute,
 	secureTokenSetRouteRoot,
-	TokenSetClientRegistryService,
+	TOKEN_SET_CLIENT_REGISTRY,
 } from "@securitydept/token-set-context-client-angular";
 import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
@@ -141,7 +142,7 @@ function createRegistryMock(
 			}
 			return record;
 		}),
-	} as unknown as TokenSetClientRegistryService;
+	} as unknown as TokenSetClientRegistry<BaseOidcModeClient>;
 }
 
 function buildRouteChain(routes: Route[]): ActivatedRouteSnapshot {
@@ -257,7 +258,7 @@ describe("Angular full-route aggregation", () => {
 
 		await expect(
 			invokeGuard(guard, route, [
-				{ provide: TokenSetClientRegistryService, useValue: registry },
+				{ provide: TOKEN_SET_CLIENT_REGISTRY, useValue: registry },
 				createRouterProvider(),
 				createHttpClientProvider(),
 				provideEnvironment({
@@ -298,7 +299,7 @@ describe("Angular full-route aggregation", () => {
 
 		await expect(
 			invokeGuard(guard, buildRouteChain([root, child]), [
-				{ provide: TokenSetClientRegistryService, useValue: registry },
+				{ provide: TOKEN_SET_CLIENT_REGISTRY, useValue: registry },
 				createRouterProvider(),
 				createHttpClientProvider(),
 				provideEnvironment({

@@ -18,7 +18,6 @@ import {
 import {
 	provideSessionContext,
 	SESSION_CONTEXT_CLIENT,
-	SessionContextService,
 } from "@securitydept/session-context-client-angular";
 import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
@@ -51,7 +50,7 @@ function provideAngularEnvironmentDeps() {
 	];
 }
 
-describe("SessionContextService", () => {
+describe("SessionContextClient Angular adapter", () => {
 	it("bridges client signals and convenience methods", async () => {
 		const requests: HttpRequest[] = [];
 		const transport = createTestTransport((request) => {
@@ -93,32 +92,32 @@ describe("SessionContextService", () => {
 				}),
 			],
 		});
-		const service = injector.get(SessionContextService);
+		const client = injector.get(SESSION_CONTEXT_CLIENT);
 
-		await service.refresh();
+		await client.refresh();
 
-		expect(service.sessionSnapshot.get()).toEqual({
+		expect(client.sessionSnapshot.get()).toEqual({
 			status: "resolved",
 			value: expect.objectContaining({
 				principal: expect.objectContaining({ displayName: "Alice" }),
 			}),
 		});
-		expect(service.isAuthenticated.value.get()).toBe(true);
+		expect(client.isAuthenticated.value.get()).toBe(true);
 
-		await service.logout();
+		await client.logout();
 		expect(requests).toContainEqual(
 			expect.objectContaining({
 				method: "POST",
 				url: "https://auth.example.com/auth/session/logout",
 			}),
 		);
-		expect(service.sessionSnapshot.get()).toEqual({
+		expect(client.sessionSnapshot.get()).toEqual({
 			status: "resolved",
 			value: null,
 		});
 	});
 
-	it("provideSessionContext registers only the client and service", async () => {
+	it("provideSessionContext maps one core client into Angular DI", async () => {
 		const requests: HttpRequest[] = [];
 		const transport = createTestTransport((request) => {
 			requests.push(request);
@@ -157,10 +156,8 @@ describe("SessionContextService", () => {
 		});
 
 		const client = injector.get(SESSION_CONTEXT_CLIENT);
-		const service = injector.get(SessionContextService);
 
-		await service.sessionResource.whenValue();
-		expect(service).toBe(client);
+		await client.sessionResource.whenValue();
 		expect(requests).toContainEqual(
 			expect.objectContaining({
 				url: "https://auth.example.com/auth/session/user-info",
