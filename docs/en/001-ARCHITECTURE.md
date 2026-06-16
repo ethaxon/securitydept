@@ -1,136 +1,67 @@
 # Architecture
 
-SecurityDept is a layered auth stack, not a monolithic authentication service. Lower crates own protocol and verification primitives; auth-context crates compose those primitives into deployable application contracts.
+SecurityDept separates reusable security primitives from application composition. Rust owns server-side protocols and configuration resolution; TypeScript owns explicit host integration and browser/framework lifecycle composition; the reference apps prove both surfaces together.
 
-## Layers
+## Rust Layers
 
-### 1. Verification Primitives
+| Layer | Main crates | Responsibility |
+| --- | --- | --- |
+| Foundation | `securitydept-utils`, `securitydept-core` | Shared utility contracts and curated re-exports. |
+| Credential and network policy | `securitydept-creds`, `securitydept-creds-manage`, `securitydept-realip` | Credential verification/storage and trusted client-IP resolution. |
+| OAuth/OIDC | `securitydept-oidc-client`, `securitydept-oauth-provider`, `securitydept-oauth-resource-server` | Provider interaction, authorization-code flow, and resource-token verification. |
+| Auth contexts | `securitydept-basic-auth-context`, `securitydept-session-context`, `securitydept-token-set-context` | Application-facing authentication models and their runtime/config contracts. |
 
-Crate: `securitydept-creds`
+`securitydept-core` is a convenience entry for aligned re-exports. It does not replace the ownership of the individual crates.
 
-- Basic Auth and static-token parsing / verification
-- JWT and JWE helpers
-- RFC 9068 access-token validation
-- shared credential and verifier traits
+## Auth Contexts
 
-This layer does not know about browser redirects, OIDC authorization-code flow, application sessions, or route policy.
+The product has three top-level auth contexts:
 
-### 2. Remote Provider Runtime
+- Basic Auth context models browser Basic-Auth challenge zones.
+- Session context models server-owned, cookie-backed user sessions.
+- Token-set context models OIDC token state and the frontend/backend integration modes around it.
 
-Crate: `securitydept-oauth-provider`
+The detailed ownership model is in [Auth Context and Modes](020-AUTH_CONTEXT_AND_MODES.md). A `zone` belongs only to Basic Auth; a `mode` belongs only to token-set context.
 
-- OIDC discovery metadata fetch and refresh
-- JWKS fetch and refresh
-- shared HTTP client reuse
-- introspection endpoint access
-- provider configuration normalization
+## Token-Set Architecture
 
-This layer is shared by OIDC client code and OAuth resource-server verification.
+Token-set context is intentionally split into protocol-neutral and mode-specific pieces:
 
-### 3. OIDC Client
+- `orchestration` owns token snapshots, freshness calculation, persistence helpers, workflow sources, lifecycle candidates, and final determination commit.
+- `frontend-oidc-mode` owns browser authorization-code/PKCE protocol work and safe server configuration projection consumption.
+- `backend-oidc-mode` owns the server-mediated callback, refresh, metadata redemption, and user-info contract.
+- `access-token-substrate` owns resource-token verification and bearer propagation integration.
+- `registry` owns composition of multiple mode clients and callback routing.
 
-Crate: `securitydept-oidc-client`
+The client is the sole authority for its in-memory auth snapshot. Workflow planners compute closed, discriminated candidates; the host commits one final determination. Workflow sources such as page resume and token-refresh timers only provide inputs to the serialized lifecycle, not alternate state authorities.
 
-- authorization-code and PKCE flow
-- callback exchange
-- refresh and revocation helpers
-- claims normalization
-- optional userinfo fetch
-- pending OAuth state storage
+## TypeScript Foundation
 
-This crate acquires identity and token material. It does not validate arbitrary bearer tokens presented to APIs.
+Every client is constructed with an explicit `FoundationEnvironment`. Its required baseline is:
 
-### 4. OAuth Resource Server
+- neutral `transport`
+- `time`
+- `realmStorage`
+- `span`
+- `tracing`
 
-Crate: `securitydept-oauth-resource-server`
+Optional browser capabilities, such as persistent/session storage, router, page lifecycle, popup, and idle callbacks, remain optional and explicit. Environment creators in the `web`, `webext`, and `server` subpaths adapt raw host facilities before client construction.
 
-- bearer access-token verification for APIs
-- JWT, JWE, and opaque-token introspection
-- issuer, audience, scope, and time validation
-- JWE decryption-key loading and refresh
+The public state and event boundary is SDK-owned `SignalTrait`, `EventStreamTrait`, and cancellation-token traits. These implement observable interop, so implementations may compose directly with RxJS internally without exposing RxJS as the public SDK contract.
 
-This crate validates presented tokens. It does not perform browser login or authorization-code redirects.
+## Reference Runtime
 
-### 5. Auth Context Crates
+`apps/server` resolves raw TOML/environment configuration into crate-owned resolved configuration, builds context runtimes, and mounts the HTTP routes. `apps/webui` is a React reference host that composes the TypeScript clients through the same explicit environment model.
 
-Auth-context crates are deployment contracts above the lower layers:
-
-- `securitydept-basic-auth-context`: Basic Auth zones, challenge/login/logout response metadata, post-auth redirects, and optional real-IP access restrictions.
-- `securitydept-session-context`: cookie-session auth context, normalized session principal, session service traits, OIDC session service, and dev-session service behind the `service` feature.
-- `securitydept-token-set-context`: frontend OIDC mode, backend OIDC mode, access-token substrate, route orchestration, metadata redemption, and bearer propagation.
-
-Route-facing services live in their owning crates:
-
-- `BasicAuthContextService` in `securitydept-basic-auth-context`
-- `SessionAuthServiceTrait`, `OidcSessionAuthService`, and `DevSessionAuthService` in `securitydept-session-context`
-- `BackendOidcModeAuthService` in `securitydept-token-set-context::backend_oidc_mode`
-- `AccessTokenSubstrateResourceService` in `securitydept-token-set-context::access_token_substrate`
-
-The removed `securitydept-auth-runtime` aggregation layer is not a product surface.
-
-### 6. Real-IP Resolution
-
-Crate: `securitydept-realip`
-
-- trusted peer CIDR providers
-- effective client-IP resolution across stacked proxies and CDNs
-- source-specific trust rules for forwarded headers and transport metadata
-- refresh / watch behavior for trusted peer lists
-
-This crate resolves trust-boundary-aware client IP. It does not own URL reconstruction, rate limiting, or business traffic policy.
-
-### 7. Credential Management
-
-Crate: `securitydept-creds-manage`
-
-- manage local Basic Auth credentials and static tokens
-- provide operator-managed storage for simple credential data
-- support lock-free reads, atomic writes, debounced watching, and self-write detection
-
-This crate stores local credential data. Verification still belongs to `securitydept-creds`.
-
-### 8. Reference Applications
-
-Applications:
-
-- `apps/server`: Axum reference server
-- `apps/webui`: React reference UI
-- `apps/cli`: local credential-management CLI
-
-Reference applications prove combined behavior; they are not the product boundary for reusable crates or SDK packages.
-
-## Token-Set Context Shape
-
-`token-set-context` has two formal OIDC modes:
-
-- `frontend-oidc`: browser-owned OIDC flow, backend-projected configuration, and access-token substrate integration.
-- `backend-oidc`: backend-owned OIDC flow with capability axes for refresh-material protection, metadata delivery, and post-auth redirect policy.
-
-`backend-oidc` presets such as `pure` and `mediated` are profiles inside the `backend-oidc` mode, not separate first-level modes. Token propagation is a shared access-token substrate capability, not a `backend-oidc` preset axis.
-
-Two principal concepts must stay separate:
-
-- `AuthenticatedPrincipal`: human authentication identity used by session and token-set user-info surfaces.
-- `ResourceTokenPrincipal`: access-token-derived resource facts used for API authorization and bearer propagation.
-
-## Server Route Boundary
-
-The reference server dashboard API currently tries auth in this order:
-
-1. bearer access token when an `Authorization: Bearer ...` header is present
-2. cookie session
-3. configured Basic Auth guarded by `basic-auth-context` and optional real-IP policy
-
-`X-SecurityDept-Propagation` makes `/api/*` a propagation-aware dashboard context and requires bearer-token authentication. Basic Auth protocol routes and forward-auth challenge routes intentionally keep protocol-specific response shapes instead of being forced into the shared JSON error envelope.
+The reference runtime is a proof surface, not an additional public SDK layer. Its application routes, UI copy, and local composition choices do not become reusable SDK contracts.
 
 ## Boundary Rules
 
-- `oidc-client` must not absorb resource-server verification.
-- `oauth-resource-server` must not absorb browser login flow.
-- provider discovery / cache stays below both OIDC client and resource-server verification.
-- auth-context crates compose lower crates instead of duplicating their logic.
-- framework-specific response assembly belongs at the app or adapter boundary unless the reusable crate intentionally exposes framework-neutral response metadata.
-- bearer forwarding must be explicit and policy-checked; it should not be hidden inside login APIs.
+- Raw host configuration is resolved and validated before reusable runtime construction.
+- Access-token facts and authenticated-user principals are separate projections.
+- Redirect targets are validated policy inputs, never unchecked raw URLs.
+- Transport is neutral at the environment boundary. Authorized transport is a derived client capability, not an environment-owned authorization state.
+- Span context provides trace nesting; callers record local behavior rather than maintaining parallel global outcome/source vocabularies.
 
 ---
 

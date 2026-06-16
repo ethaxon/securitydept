@@ -1,149 +1,60 @@
-# 认证上下文与模式
+# 认证上下文和模式
 
-本文定义 SecurityDept 中 auth context、zone 与 mode 的产品含义。Package maps 与 public SDK subpaths 见 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)。Release planning 与 deferrals 见 [100-ROADMAP.md](100-ROADMAP.md)。
+auth context 是面向应用的 authentication integration boundary。它定义 state 所在位置、redirect/persistence model，以及向 host application 暴露的 principal shape。
 
-## 核心术语
+## 产品模型
 
-### Auth Context
-
-Auth context 是 top-level application-facing authentication integration surface。它定义 auth state 存放在哪里、frontend/backend responsibilities 如何划分、redirect 与 persistence 如何工作，以及 application 接收什么 principal shape。
-
-SecurityDept 当前有三种 auth contexts：
-
-- `basic-auth-context`
-- `session-context`
-- `token-set-context`
-
-### Zone
-
-Zone 只存在于 `basic-auth-context` 内。它定义 Basic Auth challenge boundary：route area、login/logout behavior、post-auth redirect policy 与 optional real-IP access restrictions。
-
-Zone 不是独立 auth context。
-
-### Mode
-
-Mode 只存在于 `token-set-context` 内。它描述 token-set auth state 的 OIDC integration shape。
-
-当前 token-set modes：
-
-- `frontend-oidc`
-- `backend-oidc`
-
-`pure`、`mediated` 这类 `backend-oidc` preset 是 `backend-oidc` 内部 profiles，不是 first-level modes。
-
-## Auth Context Overview
-
-| Auth Context | 适用场景 | State Ownership | 内部形态 | 主要表面 |
-| --- | --- | --- | --- | --- |
-| Basic Auth context | browser-native Basic Auth 与 simple admin zones | browser credential cache 和 challenge routes | zones | `securitydept-basic-auth-context`、`@securitydept/basic-auth-context-client*` |
-| Session context | centralized services 与 weak frontend capability | backend session store 和 HTTP-only cookie | no mode family | `securitydept-session-context`、`@securitydept/session-context-client*` |
-| Token-set context | distributed SPAs 与 stronger frontend capability | 由 frontend/backend OIDC mode 决定 | `frontend-oidc`、`backend-oidc` | `securitydept-token-set-context`、`@securitydept/token-set-context-client*` |
+| Context | State owner | 适用场景 | 主要 surface |
+| --- | --- | --- | --- |
+| Basic Auth | browser credential cache 和 server challenge boundary | 小型管理区需要 HTTP Basic Auth semantics。 | `basic-auth-context` |
+| Session | server session store 和 HTTP-only cookie | server 应拥有 login、callback 和 user state。 | `session-context` |
+| Token set | 所选 OIDC mode 和 client runtime | browser 或 server-mediated OIDC integration 需要 access-token state。 | `token-set-context` |
 
 ## Basic Auth Context
 
-`basic-auth-context` 组合：
+Basic Auth `zone` 描述一个 challenge boundary：route prefix、login/logout path、post-auth redirect policy，以及可选 client-IP restriction。zone 不是独立的 auth context。
 
-- `securitydept-creds`
-- optional `securitydept-creds-manage`
-- optional `securitydept-realip`
-- Basic Auth challenge/login/logout response metadata
-- thin browser / React / Angular helpers
-
-推荐 browser UX：
-
-- 普通 JSON APIs 返回不带 `WWW-Authenticate` 的 `401`
-- 专用 challenge route 返回带 `WWW-Authenticate: Basic` 的 `401`
-- challenge 成功后 redirect 回 application
-
-Logout 必须尊重浏览器限制：没有标准 JavaScript API 能清除 cached Basic Auth credentials。SecurityDept 支持 protocol-compatible logout poisoning，而不是假装 Basic Auth 有普通 token-clear 操作。
+浏览器不能可靠地清除已缓存的 Basic Auth credential。logout 因此使用 protocol-compatible challenge/poisoning flow，不能描述成普通 token deletion。
 
 ## Session Context
 
-`session-context` 是 backend-owned cookie-session auth context。它组合：
-
-- `securitydept-oidc-client`
-- `securitydept-session-context`
-- `tower-sessions`
-- optional browser / React / Angular helpers
-
-Backend 拥有 OIDC login、callback handling、session state、logout 与 normalized user-info。Browser 携带 HTTP-only session cookie，client helper 主要用于 login URL、user-info 与 logout entrypoints。
-
-Session context 没有 mode family。
+Session context 是 server-owned 的。server 处理 OIDC login、callback、logout 和 normalized user-info；browser 只携带 session cookie，并通过显式 client operation 进行 navigation 或 session refresh。session context 没有 mode family。
 
 ## Token-Set Context
 
-`token-set-context` 跨 frontend token runtime、backend OIDC runtime、access-token substrate 与 cross-boundary transport contracts。
+token-set `mode` 描述 OIDC integration shape：
 
-### Frontend OIDC Mode
+- `frontend-oidc`：browser 执行 authorization-code/PKCE；server 投影安全 configuration DTO；client 拥有自身 in-memory token snapshot 与 lifecycle。
+- `backend-oidc`：server 执行 OIDC redirect/callback/refresh protocol，并向 client 暴露 mode contract。
 
-在 `frontend-oidc` 中：
+backend-mode preset 与 capability choice 是 `backend-oidc` 内部配置，不是新的顶层 mode。bearer propagation 属于 access-token substrate，而不属于 backend-mode capability axis。
 
-- browser 运行 authorization、callback、token exchange 与 token storage
-- backend 通过 config endpoint 投影安全 frontend configuration
-- access-token material 可被 API calls 与 propagation-aware server boundaries 消费
+### Browser Projection 和 Secret Boundary
 
-虽然 OIDC flow 由 browser 运行，Rust 仍拥有正式 config projection 与 integration contracts。
+`frontend-oidc` 接收 `FrontendOidcModeConfigProjection`，即由 server 生成的 browser DTO。它包含 browser 所需的 resolved public OIDC connectivity 与 callback information，而不是 server 的完整 OIDC configuration。client secret 默认不会投影；只有显式启用 unsafe server capability 后才可能包含。browser application 不得将这一 opt-in 当作普通 deployment default。
 
-### Backend OIDC Mode
+server 持有的 secret value 使用 `SecretString`，其 debug 和 serialization 形式均会被 redacted。application boundary 也遵守同一规则：raw access token、refresh token、authorization header、password、provider secret 和 token-exchange payload 都不是安全的 browser projection 或 public event data。
 
-在 `backend-oidc` 中：
+reference server 在 `GET /api/auth/token-set/frontend-mode/config` 暴露 public frontend projection。backend-mode 的 login、callback、refresh、metadata redemption 与 user-info 位于 `/auth/token-set/backend-mode/*`。host 可以使用不同 path，但 callback/redirect validation 必须留在 server policy 内，不得接受 caller-controlled URL。
 
-- backend 运行 OIDC authorize、callback、refresh、exchange 与 user-info paths
-- browser 接收 mode-qualified responses 与 token-set state
-- `pure` 与 `mediated` 是同一个 backend mode 内部的 preset bundles
+## Principal 和 Token 边界
 
-Backend OIDC capability axes：
+- authenticated principal 表示已登录的人，用于 session/token-set 的 user-facing state。
+- resource-token principal 表示已验证 bearer-token authorization facts，例如 subject、issuer、audience、scope 和 authorized party。
 
-- `refresh_material_protection`：例如 `passthrough` 或 `sealed`
-- `metadata_delivery`：例如 `none` 或 `redemption`
-- `post_auth_redirect_policy`：例如 `caller_validated` 或 `resolved`
+二者相关但不可互换。raw token material、authorization header、password、provider/client secret 不得进入 safe principal claim。
 
-Token propagation 不是 backend-oidc axis。它归属 `access_token_substrate`。
+`ResourceTokenPrincipal` 是从已验证 bearer token 导出的 authorization evidence：subject、issuer、audience、scope、authorized party 和 claim。它不是 session 或 token-set user-facing state 所使用的 authenticated human principal 的替代品。
 
-## Principal Boundaries
+## Host Configuration
 
-SecurityDept 区分：
+Rust host 分阶段解析配置：
 
-- `AuthenticatedPrincipal`：session 与 token-set user-info surfaces 使用的人类认证身份。
-- `ResourceTokenPrincipal`：resource-server verification、API authorization 与 propagation 使用的 access-token-derived resource facts。
+1. serde-facing raw configuration 接收 file/environment input。
+2. crate-owned config source 应用 shared OIDC default 和 host validator。
+3. resolved configuration 构造 reusable runtime。
 
-不要把二者视为别名。Human principal 回答“谁登录了”；resource token principal 回答“这个 bearer token 能访问什么”。
-
-## Redirect Boundary
-
-Post-auth redirects 不是 unchecked raw URLs。每个 context 都必须将 redirect targets 限制在已验证 same-origin 或已配置 application paths 内。
-
-当前相关路径：
-
-- session callback：`/auth/session/callback`
-- token-set backend-mode callback：`/auth/token-set/backend-mode/callback`
-- frontend-mode config projection：`/api/auth/token-set/frontend-mode/config`
-- frontend-mode browser callback route：由 host application / adapter integration 拥有
-
-## Rust Host Config Resolution
-
-Rust host application 应把 raw config、resolved config 与 runtime construction 视为三个分离阶段。
-
-- `XxxConfig` 是 serde-facing shape，用于文件、环境变量 overlay 与 schema generation。
-- `XxxConfigSource` 是 host extension point。它读取 component fields，并拥有 `resolve_*`、`resolve_all(...)`、`resolve_all_with_validator(...)`。
-- `ResolvedXxxConfig` 是 runtime-facing shape。Services 与 contexts 通过 `from_resolved_config(...)` 或 mode-specific resolved constructors 消费 resolved config。
-- Validators 表达 host deployment policy。内置 fixed redirect validators 会拒绝用户配置覆盖 host-owned callback paths。
-
-该模型适用于 token-set backend/frontend OIDC mode、token-set access-token substrate、Basic Auth context 与 session context。Host-only concepts 不进入 reusable config surface：source key、frontend config endpoint path、account binding、display metadata 与 audit context 属于 adopter application wrapper。
-
-带 secret 的 Rust config fields 使用 `SecretString`。它的 `Debug` 与普通 serialization 都会 redacted；runtime code 只有在 provider client 需要 raw value 的位置才显式调用 `expose_secret()`。
-
-`FrontendOidcModeConfigProjection` 继续作为 SecurityDept-owned frontend-safe projection DTO。除非显式启用 unsafe frontend-client-secret capability，它不包含 client secret。Host 需要 source key 或 route path 时，应使用自己的 DTO 包住 projection 并通过 `serde(flatten)` 组合，而不是把 host routing fields 加进 SecurityDept mode config。
-
-`ResourceTokenPrincipal` 是 verified resource token 的 host-facing projection。它暴露 subject、issuer、audiences、scopes、authorized party 等已验证 token facts；additional claims 在 projection 前会被过滤，raw token material、authorization headers、passwords 与 client/provider secret fields 不会进入 safe claims map。
-
-## Ownership Rules
-
-- Basic Auth `zone` 只属于 `basic-auth-context`。
-- `mode` 只属于 `token-set-context`。
-- Session context 不是 token-set mode。
-- Route-facing services 位于 owning crates，不位于共享 auth-runtime aggregation layer。
-- App-specific chooser UI、product copy 与 business routes 属于 adopter 或参考应用，不属于 SDK core。
+host 将 route path、source key、account binding、display data 等 product-specific policy 放在 reusable config projection 之外。redirect target 必须经过 host policy 验证；任何 auth context 都不接受未检查的任意 redirect URL。
 
 ---
 

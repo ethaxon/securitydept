@@ -1,12 +1,10 @@
 <h1 align="center">
-  <img src="./assets/icons/icon.png" alt="logo" height=180/>
-  <br />
+  <img src="./assets/icons/icon.png" alt="SecurityDept logo" height="180">
+  <br>
   <b>SecurityDept</b>
 </h1>
 
-SecurityDept 是一个分层的认证与授权工具包。它以可复用的 Rust crates、TypeScript SDK packages，以及用于验证真实 server / browser 部署契约的参考应用形式交付。
-
-上方徽章反映已发布 package 的状态。这份 README 只负责仓库入口和导航；具体契约、发布规则与迁移记录以 focused docs 为准。
+SecurityDept 是分层的认证与授权工具包，交付为可复用 Rust crates、TypeScript client SDK workspace，以及共同验证同一 contract 的 Axum/React reference runtime。
 
 <p class="badges" align="center">
   <a href="https://www.npmjs.com/package/@securitydept/client"><img src="https://img.shields.io/npm/v/%40securitydept%2Fclient?logo=npm&label=npm" alt="npm"></a>
@@ -16,99 +14,68 @@ SecurityDept 是一个分层的认证与授权工具包。它以可复用的 Rus
   <a href="https://github.com/ethaxon/securitydept/actions/workflows/docs.yml"><img src="https://github.com/ethaxon/securitydept/actions/workflows/docs.yml/badge.svg" alt="Docs"></a>
 </p>
 
-## 从哪里进入
+## 选择入口
 
-### Rust Crates
+| 需求 | 使用内容 |
+| --- | --- |
+| 服务端 credential、OAuth/OIDC、client-IP policy 或 auth context | `packages/*` 下的 Rust crates；从 `securitydept-core` 或拥有该职责的 crate 开始。 |
+| browser、React、Angular 或 host-runtime authentication integration | `sdks/ts/packages/*` 下的 TypeScript SDK；从 `@securitydept/client` 与对应 context client 开始。 |
+| 需要可执行的 server/browser 基线 | `apps/server`、`apps/webui`、`config.example.toml` 和发布的 Docker image。 |
 
-当你的集成点是 server、proxy 边界、凭证管理，或 framework-neutral auth-context services 时，使用 Rust crates。
+SecurityDept 有三个产品 auth context：
 
-主要 crate families：
+- Basic Auth context：HTTP Basic Auth challenge zone。
+- Session context：server-owned cookie session。
+- Token-set context：frontend 或 backend mediated OIDC token state。
 
-- `securitydept-creds`、`securitydept-creds-manage`、`securitydept-realip`
-- `securitydept-oidc-client`、`securitydept-oauth-provider`、`securitydept-oauth-resource-server`
-- `securitydept-basic-auth-context`、`securitydept-session-context`、`securitydept-token-set-context`
-- `securitydept-core` 用于对齐下游 re-exports
+crate 和 runtime ownership 见 [架构](docs/zh/001-ARCHITECTURE.md)，产品模型见 [认证上下文和模式](docs/zh/020-AUTH_CONTEXT_AND_MODES.md)。
 
-推荐入口方式是：依赖 `securitydept-core`，只打开需要的 feature，再通过它的 re-export 导入产品面。
+## TypeScript SDK
+
+TypeScript SDK 使用显式 host capability。通过 host-specific creator 构造 `FoundationEnvironment` 后传给 context client。required baseline 是 neutral transport、time、realm storage、span、tracing；router、popup、persistent storage 等 browser capability 保持显式 optional dependency。
+
+core package 提供 SDK-owned signal、event stream、cancellation token、span、tracing、transport 和 RxJS interop。public API 暴露 SDK trait 而非 raw RxJS observable；internal implementation 可以直接用 RxJS 组合。
+
+token-set client 只有一个 in-memory auth snapshot authority。`start()` 是 initial lifecycle entry；如果 client 由 registry 构造，则 registry 负责 readiness。选择 package 或 subpath 前请阅读 [Client SDK 指南](docs/zh/007-CLIENT_SDK_GUIDE.md)。
+
+## 首次集成
+
+Rust server integration 可以直接添加 owning crate，或通过 curated `securitydept-core` re-export 只启用所需 feature：
 
 ```bash
 cargo add securitydept-core --features session-context
 ```
 
-```rust
-use securitydept_core::session_context::{
-  SessionContext,
-  SessionContextConfig,
-  SessionPrincipal,
-};
-
-let session_config = SessionContextConfig::default();
-let session = SessionContext::builder()
-  .principal(
-    SessionPrincipal::builder()
-      .subject("dev-session")
-      .display_name("dev")
-      .build(),
-  )
-  .build();
-```
-
-先看 [架构](docs/zh/001-ARCHITECTURE.md) 理解 crate 边界，再看 [认证上下文和模式](docs/zh/020-AUTH_CONTEXT_AND_MODES.md) 理解产品面。
-
-### TypeScript SDKs
-
-当你需要为 SecurityDept auth-context modes 构建 browser、React、Angular 或 host-framework 集成时，使用 npm packages。
-
-已发布 SDK families：
-
-- `@securitydept/client`、`@securitydept/client-react`、`@securitydept/client-angular`
-- `@securitydept/basic-auth-context-client`、`@securitydept/basic-auth-context-client-react`、`@securitydept/basic-auth-context-client-angular`
-- `@securitydept/session-context-client`、`@securitydept/session-context-client-react`、`@securitydept/session-context-client-angular`
-- `@securitydept/token-set-context-client`、`@securitydept/token-set-context-client-react`、`@securitydept/token-set-context-client-angular`
-
-典型例子：用 `@securitydept/basic-auth-context-client` 处理一个纯浏览器 Basic Auth 入口。
+对于 browser Basic Auth boundary，安装 foundation 和 context client，构造显式 browser environment，再使用 public factory，而不是直接调用 constructor：
 
 ```bash
-pnpm add @securitydept/basic-auth-context-client
+pnpm add @securitydept/client @securitydept/basic-auth-context-client
 ```
 
 ```ts
-import {
-  AuthGuardResultKind,
-  BasicAuthContextClient,
-} from "@securitydept/basic-auth-context-client";
+import { BasicAuthContextClient } from "@securitydept/basic-auth-context-client";
+import { createEnvironmentForNativeWeb } from "@securitydept/client/web";
 
-const client = new BasicAuthContextClient({
-  baseUrl: "https://auth.example.com",
-  zones: [{ zonePrefix: "/basic" }],
+const environment = createEnvironmentForNativeWeb({});
+const client = BasicAuthContextClient.fromEnvironmentConfig({
+  environment,
+  config: {
+    baseUrl: "https://auth.example.com",
+    zones: [{ zonePrefix: "/basic" }],
+    probePath: "/basic/api/status",
+  },
 });
 
-const result = client.handleUnauthorized("/basic/api/groups", 401);
-
-if (result.kind === AuthGuardResultKind.Redirect) {
-  window.location.href = result.location;
-}
+await client.start();
 ```
 
-这是最小 SDK 入口：识别某个 zone 的 `401`，然后把浏览器重定向到对应 login route。
+environment creator 是 browser composition root。framework application 应在此处组合 framework environment 或 injector，而不是让 client 在稍后自行发现 browser global。
 
-[Client SDK 指南](docs/zh/007-CLIENT_SDK_GUIDE.md) 是 package boundaries、subpaths、stability labels 与 adapter contracts 的权威文档。`apps/webui/src/api/*` 是 reference-app glue，不是 public SDK API。
+## Reference Runtime
 
-### 参考运行时
+reference server 挂载 session、Basic Auth、token-set backend OIDC、token-set frontend configuration projection、management、propagation 和 health route family。React WebUI 是同一 SDK contract 的 executable host。
 
-当你需要一个可执行基线，而不是只做 library-only integration 时，使用参考运行时。仓库提供：
-
-- `apps/server` 作为 Axum 参考服务端
-- `apps/webui` 作为 React 参考界面
-- 一个组合 server 与 web UI 制品的 release Docker image
-
-参考运行时主要用于 dogfood：
-
-- Basic Auth、cookie-session、token-set 三种 auth-context modes
-- browser / React / Angular SDK adapter ergonomics
-- protected management APIs、bearer propagation、real-IP policy、route guards 与 release packaging
-
-典型例子：先拉取示例配置和 compose 文件，再在本地启动已发布 image。
+本地运行已发布 runtime：
 
 ```bash
 wget -O config.toml https://raw.githubusercontent.com/ethaxon/securitydept/main/config.example.toml
@@ -116,40 +83,11 @@ wget -O docker-compose.yml https://raw.githubusercontent.com/ethaxon/securitydep
 docker compose up -d
 ```
 
-如果你只想先看最小 compose 骨架，可以从下面这一瞥开始：
+默认服务地址是 `http://localhost:7021`。实际启用的 route 与 provider setting 以配置文件为准。
 
-```yaml
-services:
-  securitydept-server:
-    image: ghcr.io/ethaxon/securitydept:latest
-    ports:
-      - "7021:7021"
-    environment:
-      SECURITYDEPT_CONFIG: /app/config.toml
-    volumes:
-      - ./config.toml:/app/config.toml
-      - ./data:/app/data
-```
+## 开发
 
-启动后，参考运行时会暴露在 `http://localhost:7021`。Docker tags、publish 行为和 release workflow 详见 [发布自动化](docs/zh/008-RELEASE_AUTOMATION.md)。
-
-## 文档导航
-
-当你需要项目说明而不是 package API 时，从这些文档进入：
-
-- [概览](docs/zh/000-OVERVIEW.md)：文档地图与制品边界
-- [架构](docs/zh/001-ARCHITECTURE.md)：crate 分层与 runtime ownership
-- [Client SDK 指南](docs/zh/007-CLIENT_SDK_GUIDE.md)：TypeScript package boundaries 与 public contracts
-- [发布自动化](docs/zh/008-RELEASE_AUTOMATION.md)：versioning、publish workflow 与 release authority
-- [Roadmap](docs/zh/100-ROADMAP.md)：当前约束与延期主题
-- [TS SDK 迁移记录](docs/zh/110-TS_SDK_MIGRATIONS.md)：公共接口迁移记录
-- [CHANGELOG](CHANGELOG.md)：发布执行历史
-
-如果你需要专项契约，再看 [能力矩阵](docs/zh/002-FEATURES.md)、[错误系统设计](docs/zh/005-ERROR_SYSTEM_DESIGN.md)、[RealIP](docs/zh/006-REALIP.md) 与 [Outposts 参考案例](docs/zh/021-REFERENCE-APP-OUTPOSTS.md)。
-
-## 开发本仓库
-
-本地初始化：
+使用声明的 toolchain：
 
 ```bash
 mise install
@@ -157,35 +95,27 @@ pnpm install
 just setup-docs
 ```
 
-常用循环：
+常用命令：
 
 ```bash
 just dev-server
 just dev-webui
 just lint
-just unittest
-just integration
-just e2e
 just test-all
 just build-docs
 ```
 
-`just build-docs` 是 docs site 的构建与验证路径，独立于主 app build。根 `justfile` 通过 `import` 拆分到 `justfiles/`，但所有 recipe 仍从仓库根目录执行。
+`just build-docs` 独立验证 VitePress site。源文档位于 `docs/en` 与 `docs/zh`；`docsite/` 通过 symlink 渲染它们。
 
-Kubernetes Rust e2e 资源由 `scripts/test-cli.ts` 管理，使用带 `securitydept.test=true` 标签的可复用本地 Docker/kind/k3d 资源，并提供显式清理 recipe。
+## 文档
 
-## 项目边界
-
-- SecurityDept 不是单体 auth service；它是由 reusable crates、SDKs 与参考应用组成的分层栈。
-- 长期产品化 auth-context surfaces 是 Basic Auth context、session context 与 token-set context。
-- mixed custody、BFF、server-side token ownership 等更复杂 token-set 部署形态，除非在 SDK guide 中明确记录，否则不属于当前 release contract。
-- 历史状态不应进入面向用户的 docs；稳定 docs 只描述当前行为或明确的未来计划。
-
-## Docs Site
-
-源文档位于 `docs/en` 与 `docs/zh`。`docsite/` 下的 VitePress docsite 通过 Git-compatible symlinks 引用这些源文档，并与主 app build 分离构建。
-
-计划公开地址：`https://securitydept.ethaxon.com/`。
+- [概览](docs/zh/000-OVERVIEW.md)
+- [架构](docs/zh/001-ARCHITECTURE.md)
+- [能力矩阵](docs/zh/002-FEATURES.md)
+- [Client SDK 指南](docs/zh/007-CLIENT_SDK_GUIDE.md)
+- [发布自动化](docs/zh/008-RELEASE_AUTOMATION.md)
+- [TS SDK 迁移记录](docs/zh/110-TS_SDK_MIGRATIONS.md)
+- [CHANGELOG](CHANGELOG.md)
 
 ## 许可证
 

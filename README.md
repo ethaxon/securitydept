@@ -1,12 +1,10 @@
 <h1 align="center">
-  <img src="./assets/icons/icon.png" alt="logo" height=180/>
-  <br />
+  <img src="./assets/icons/icon.png" alt="SecurityDept logo" height="180">
+  <br>
   <b>SecurityDept</b>
 </h1>
 
-SecurityDept is a layered authentication and authorization toolkit. It ships as reusable Rust crates, TypeScript SDK packages, and reference applications that exercise the same contracts in real server and browser deployments.
-
-Use the badges above as the published-package status view. Use this README as the repository entry point; use the focused docs for detailed contracts and release policy.
+SecurityDept is a layered authentication and authorization toolkit. It ships reusable Rust crates, a TypeScript client SDK workspace, and an Axum/React reference runtime that exercises the same contracts.
 
 <p class="badges" align="center">
   <a href="https://www.npmjs.com/package/@securitydept/client"><img src="https://img.shields.io/npm/v/%40securitydept%2Fclient?logo=npm&label=npm" alt="npm"></a>
@@ -16,99 +14,68 @@ Use the badges above as the published-package status view. Use this README as th
   <a href="https://github.com/ethaxon/securitydept/actions/workflows/docs.yml"><img src="https://github.com/ethaxon/securitydept/actions/workflows/docs.yml/badge.svg" alt="Docs"></a>
 </p>
 
-## Choose Your Entry Point
+## What To Use
 
-### Rust Crates
+| Need | Use |
+| --- | --- |
+| Server-side credentials, OAuth/OIDC, client-IP policy, or auth contexts | The Rust crates under `packages/*`; start with `securitydept-core` or the owning crate. |
+| Browser, React, Angular, or host-runtime authentication integration | The TypeScript SDK under `sdks/ts/packages/*`; start with `@securitydept/client` and the relevant context client. |
+| An executable baseline with server and browser behavior | `apps/server`, `apps/webui`, `config.example.toml`, and the published Docker image. |
 
-Use the Rust crates when your integration point is a server, a proxy boundary, credential management, or framework-neutral auth-context services.
+SecurityDept has three product auth contexts:
 
-Primary crate families:
+- Basic Auth context for HTTP Basic Auth challenge zones.
+- Session context for server-owned cookie sessions.
+- Token-set context for frontend- or backend-mediated OIDC token state.
 
-- `securitydept-creds`, `securitydept-creds-manage`, `securitydept-realip`
-- `securitydept-oidc-client`, `securitydept-oauth-provider`, `securitydept-oauth-resource-server`
-- `securitydept-basic-auth-context`, `securitydept-session-context`, `securitydept-token-set-context`
-- `securitydept-core` for aligned downstream re-exports
+Read [Architecture](docs/en/001-ARCHITECTURE.md) for ownership boundaries and [Auth Context and Modes](docs/en/020-AUTH_CONTEXT_AND_MODES.md) for the model.
 
-Recommended entry style: depend on `securitydept-core`, enable only the features you need, and import the product surface through its re-exports.
+## TypeScript SDK
+
+The TypeScript SDK uses explicit host capabilities. Construct a `FoundationEnvironment` through a host-specific creator, then pass it to a context client. The required baseline is neutral transport, time, realm storage, span, and tracing; browser capabilities such as router, popup, and persistent storage remain explicit optional dependencies.
+
+The core package exposes SDK-owned signals, event streams, cancellation tokens, spans, tracing, transport, and RxJS interoperability. Public APIs expose SDK traits rather than raw RxJS observables; internal implementations are free to compose with RxJS directly.
+
+Token-set clients use one in-memory auth snapshot authority. `start()` is the initial lifecycle entry; a registry owns readiness when it constructs clients. See [Client SDK Guide](docs/en/007-CLIENT_SDK_GUIDE.md) before choosing a package or subpath.
+
+## First Integration
+
+For a Rust server integration, add the owning crate directly or use the curated `securitydept-core` re-exports with only the required feature set:
 
 ```bash
 cargo add securitydept-core --features session-context
 ```
 
-```rust
-use securitydept_core::session_context::{
-  SessionContext,
-  SessionContextConfig,
-  SessionPrincipal,
-};
-
-let session_config = SessionContextConfig::default();
-let session = SessionContext::builder()
-  .principal(
-    SessionPrincipal::builder()
-      .subject("dev-session")
-      .display_name("dev")
-      .build(),
-  )
-  .build();
-```
-
-Start with [Architecture](docs/en/001-ARCHITECTURE.md) for crate boundaries and [Auth Context and Modes](docs/en/020-AUTH_CONTEXT_AND_MODES.md) for the product surfaces.
-
-### TypeScript SDKs
-
-Use the npm packages when you are building browser, React, Angular, or host-framework integrations for SecurityDept auth-context modes.
-
-Published SDK families:
-
-- `@securitydept/client`, `@securitydept/client-react`, `@securitydept/client-angular`
-- `@securitydept/basic-auth-context-client`, `@securitydept/basic-auth-context-client-react`, `@securitydept/basic-auth-context-client-angular`
-- `@securitydept/session-context-client`, `@securitydept/session-context-client-react`, `@securitydept/session-context-client-angular`
-- `@securitydept/token-set-context-client`, `@securitydept/token-set-context-client-react`, `@securitydept/token-set-context-client-angular`
-
-Typical example: handle a browser-only Basic Auth entry with `@securitydept/basic-auth-context-client`.
+For a browser Basic Auth boundary, install the foundation and context client, construct an explicit browser environment, then use the public factory rather than a constructor:
 
 ```bash
-pnpm add @securitydept/basic-auth-context-client
+pnpm add @securitydept/client @securitydept/basic-auth-context-client
 ```
 
 ```ts
-import {
-  AuthGuardResultKind,
-  BasicAuthContextClient,
-} from "@securitydept/basic-auth-context-client";
+import { BasicAuthContextClient } from "@securitydept/basic-auth-context-client";
+import { createEnvironmentForNativeWeb } from "@securitydept/client/web";
 
-const client = new BasicAuthContextClient({
-  baseUrl: "https://auth.example.com",
-  zones: [{ zonePrefix: "/basic" }],
+const environment = createEnvironmentForNativeWeb({});
+const client = BasicAuthContextClient.fromEnvironmentConfig({
+  environment,
+  config: {
+    baseUrl: "https://auth.example.com",
+    zones: [{ zonePrefix: "/basic" }],
+    probePath: "/basic/api/status",
+  },
 });
 
-const result = client.handleUnauthorized("/basic/api/groups", 401);
-
-if (result.kind === AuthGuardResultKind.Redirect) {
-  window.location.href = result.location;
-}
+await client.start();
 ```
 
-That is the minimal SDK entry: detect a zone-scoped `401` and redirect the browser to the matching login route.
+The environment creator is the browser composition root. Framework applications should compose their framework environment or injector there, rather than allowing a client to discover browser globals later.
 
-Use [Client SDK Guide](docs/en/007-CLIENT_SDK_GUIDE.md) as the authority for package boundaries, subpaths, stability labels, and adapter contracts. Treat `apps/webui/src/api/*` as reference-app glue, not public SDK API.
+## Reference Runtime
 
-### Reference Runtime
+The reference server mounts session, Basic Auth, token-set backend OIDC, token-set frontend configuration projection, management, propagation, and health route families. The React WebUI is an executable host for the same SDK contracts.
 
-Use the reference runtime when you need an executable baseline rather than a library-only integration. The repo ships:
-
-- `apps/server` as the Axum reference server
-- `apps/webui` as the React reference UI
-- a release Docker image that combines the server and web UI artifacts
-
-The reference runtime dogfoods:
-
-- Basic Auth, cookie-session, and token-set auth-context modes
-- browser / React / Angular SDK adapter ergonomics
-- protected management APIs, bearer propagation, real-IP policy, route guards, and release packaging
-
-Typical example: fetch the sample config and compose file, then start the published image locally.
+To run the published runtime locally:
 
 ```bash
 wget -O config.toml https://raw.githubusercontent.com/ethaxon/securitydept/main/config.example.toml
@@ -116,40 +83,11 @@ wget -O docker-compose.yml https://raw.githubusercontent.com/ethaxon/securitydep
 docker compose up -d
 ```
 
-If you only want the smallest compose skeleton, it looks like this:
+The default service address is `http://localhost:7021`. The supplied configuration is the authority for enabled routes and provider settings.
 
-```yaml
-services:
-  securitydept-server:
-    image: ghcr.io/ethaxon/securitydept:latest
-    ports:
-      - "7021:7021"
-    environment:
-      SECURITYDEPT_CONFIG: /app/config.toml
-    volumes:
-      - ./config.toml:/app/config.toml
-      - ./data:/app/data
-```
+## Develop
 
-The reference runtime is then exposed on `http://localhost:7021`. For Docker tags, publish behavior, and release workflow, see [Release Automation](docs/en/008-RELEASE_AUTOMATION.md).
-
-## Navigate The Docs
-
-Start here when you need project guidance rather than package APIs:
-
-- [Overview](docs/en/000-OVERVIEW.md) for the documentation map and artifact boundaries
-- [Architecture](docs/en/001-ARCHITECTURE.md) for crate layering and runtime ownership
-- [Client SDK Guide](docs/en/007-CLIENT_SDK_GUIDE.md) for TypeScript package boundaries and public contracts
-- [Release Automation](docs/en/008-RELEASE_AUTOMATION.md) for versioning, publish workflow, and release authority
-- [Roadmap](docs/en/100-ROADMAP.md) for active constraints and deferred topics
-- [TS SDK Migrations](docs/en/110-TS_SDK_MIGRATIONS.md) for public-surface migration history
-- [CHANGELOG](CHANGELOG.md) for release execution history
-
-Use [Features](docs/en/002-FEATURES.md), [Error System Design](docs/en/005-ERROR_SYSTEM_DESIGN.md), [RealIP](docs/en/006-REALIP.md), and [Reference App: Outposts](docs/en/021-REFERENCE-APP-OUTPOSTS.md) when you need those focused contracts.
-
-## Develop This Repository
-
-Local setup:
+Use the declared toolchain:
 
 ```bash
 mise install
@@ -157,35 +95,27 @@ pnpm install
 just setup-docs
 ```
 
-Common loops:
+Common commands:
 
 ```bash
 just dev-server
 just dev-webui
 just lint
-just unittest
-just integration
-just e2e
 just test-all
 just build-docs
 ```
 
-`just build-docs` is the docs-site build and verification path; it is independent from the main app build. The root `justfile` imports topic files under `justfiles/`, but recipes still execute from the repository root.
+`just build-docs` validates the VitePress site independently from the runtime build. Source documentation lives in `docs/en` and `docs/zh`; `docsite/` renders those files through symlinks.
 
-Kubernetes-backed Rust e2e resources are managed through `scripts/test-cli.ts`, with reusable labeled local Docker/kind/k3d resources and explicit cleanup recipes.
+## Documentation
 
-## Project Boundaries
-
-- SecurityDept is not a single monolithic auth service; it is a layered stack of reusable crates, SDKs, and reference apps.
-- The long-term product auth-context surfaces are Basic Auth context, session context, and token-set context.
-- Higher-complexity token-set deployments such as mixed custody, BFF, and server-side token ownership are not part of the current release contract unless documented in the SDK guide.
-- Historical status belongs outside user-facing docs; docs should describe current behavior or explicit future plans.
-
-## Docs Site
-
-Source docs live in `docs/en` and `docs/zh`. The VitePress docsite in `docsite/` uses Git-compatible symlinks to those source docs and is built independently from the main app build.
-
-Planned public URL: `https://securitydept.ethaxon.com/`.
+- [Overview](docs/en/000-OVERVIEW.md)
+- [Architecture](docs/en/001-ARCHITECTURE.md)
+- [Capability Matrix](docs/en/002-FEATURES.md)
+- [Client SDK Guide](docs/en/007-CLIENT_SDK_GUIDE.md)
+- [Release Automation](docs/en/008-RELEASE_AUTOMATION.md)
+- [TS SDK Migrations](docs/en/110-TS_SDK_MIGRATIONS.md)
+- [CHANGELOG](CHANGELOG.md)
 
 ## License
 

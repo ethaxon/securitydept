@@ -1,54 +1,42 @@
 # 能力矩阵
 
-本文总结 SecurityDept 当前能力。所有权边界见 [001-ARCHITECTURE.md](001-ARCHITECTURE.md)，TypeScript SDK 契约见 [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md)，release planning 见 [100-ROADMAP.md](100-ROADMAP.md)。
+本页描述当前已经实现的产品基线，不表示 reference-app 的每条 route 都是 stable SDK API。
 
-## 能力状态
-
-| 领域 | 当前状态 | 主要表面 |
+| 领域 | 当前基线 | 主要 surface |
 | --- | --- | --- |
-| Credential verification | 已实现 Basic Auth、static tokens、JWT、JWE 与 RFC 9068 access tokens。 | `securitydept-creds` |
-| OIDC client | 已实现 authorization-code / PKCE、callback exchange、refresh、claims normalization、optional userinfo 与 pending OAuth state。 | `securitydept-oidc-client` |
-| OAuth resource server | 已实现 JWT、JWE、不透明 token 的 bearer verification，并支持 issuer / audience / scope policy。 | `securitydept-oauth-resource-server`、`securitydept-oauth-provider` |
-| Basic Auth context | 已实现 Basic Auth zones、challenge / login / logout metadata、post-auth redirects、optional real-IP access policy、server integration，以及 browser / React / Angular helpers。 | `securitydept-basic-auth-context`、`@securitydept/basic-auth-context-client*` |
-| Session context | 已实现 cookie-session context、normalized principal、OIDC session service、dev-session service、server integration，以及 browser / React / Angular helpers。 | `securitydept-session-context`、`@securitydept/session-context-client*` |
-| Token-set context | 已实现 frontend/backend OIDC mode contracts、backend-mode routes、frontend-mode config projection、access-token substrate、bearer propagation、route orchestration、React / Angular adapters 与仓库内 dogfooding。 | `securitydept-token-set-context`、`@securitydept/token-set-context-client*` |
-| Real-IP resolution | 已实现 trusted provider/source model，覆盖 forwarded headers、PROXY protocol、local / remote / command / Docker / Kubernetes provider sources，集成到 reference-server Basic Auth policy，并为本地 provider tests 管理带标签的可复用资源。 | `securitydept-realip`、`scripts/test-cli.ts` |
-| Credential management | 已实现本地 Basic Auth 与 static-token storage，支持 lock-free reads、atomic writes、debounced watching 与 self-write detection。 | `securitydept-creds-manage`、`apps/cli`、`apps/server` |
-| Reference runtime 与 apps | 已实现 Axum server、React web UI、playground/reference routes、management API auth branching、bearer propagation，以及从预构建 runtime artifacts 组装 release Docker image 的路径。 | `apps/server`、`apps/webui`、`Dockerfile.runtime` |
-| TypeScript SDK public surface | 已实现 shared client foundation、Basic Auth、session、token-set、React、Angular integration 的 publishable npm package families。 | `sdks/ts/packages/*`、`public-surface-inventory.json` |
+| Credential verification | Basic credentials、static tokens、JWT/JWE、RFC 9068 access-token validation。 | `securitydept-creds` |
+| Credential management | local credential/token data、atomic update、debounced reload 与 self-write detection。 | `securitydept-creds-manage` |
+| OIDC/OAuth | authorization-code/PKCE、callback exchange、refresh、user-info/claims normalization、provider 和 resource-server contract。 | `securitydept-oidc-client`、`securitydept-oauth-*` |
+| Basic Auth context | zone policy、challenge/login/logout metadata、redirect policy 与 client adapter。 | `securitydept-basic-auth-context`、`@securitydept/basic-auth-context-client*` |
+| Session context | server-owned OIDC/dev session flow、normalized session principal 与 client adapter。 | `securitydept-session-context`、`@securitydept/session-context-client*` |
+| Token-set context | frontend/backend OIDC mode、orchestration、registry、access-token substrate 与 framework adapter。 | `securitydept-token-set-context`、`@securitydept/token-set-context-client*` |
+| Client foundation | explicit environment、signals/resources、event stream、cancellation、span、tracing、transport、storage、router/popup abstraction 与 RxJS interop。 | `@securitydept/client` |
+| Client-IP policy | forwarded header、PROXY protocol 以及 local/container/Kubernetes source 的 trusted provider resolution。 | `securitydept-realip` |
+| Reference runtime | Axum server、React WebUI、Docker runtime artifact 和 end-to-end proof path。 | `apps/server`、`apps/webui` |
 
-## 当前 Auth-Context Baseline
+## Reference Server Routes
 
-SecurityDept 当前将这些视为产品化 auth-context surfaces：
+参考 server 挂载以下 contract family：
 
-- Basic Auth context：轻量 browser-native Basic Auth zones 与 helpers。
-- Session context：backend-owned session state 与 HTTP-only cookie flow。
-- Token-set context：browser / backend OIDC mode contracts，加上 access-token substrate 与 framework adapters。
+- `/auth/session/*`：session login、callback、logout 和 user info。
+- `/auth/token-set/backend-mode/*`：backend OIDC login、callback、refresh、metadata redemption 和 user info。
+- `/api/auth/token-set/frontend-mode/config`：safe frontend OIDC configuration projection。
+- `/basic/*` 与 `/basic/api/*`：Basic Auth challenge 和 protected management API。
+- `/api/*`：dashboard-authenticated management API。
+- `/api/propagation/*`：只在配置 bearer propagation 时存在。
+- `/health` 和 `/api/health`：health check。
 
-Token-set 有意比 Basic Auth 和 session 更丰富。Basic Auth 与 session 必须保持 discoverable 和 tested，但除非持续的下游使用证明确有必要，否则不应膨胀成平行的大型 frontend runtime。
+## 有意保留的边界
 
-## Reference Server Behavior
+当前基线不 productize：
 
-参考服务端通过以下路径验证组合行为：
+- mixed-custody token ownership 或通用 BFF/server-side token-set model
+- 内置 chooser UI、business route table 或 product copy
+- 非 TypeScript client SDK
+- 完整 OpenTelemetry exporter/product observability stack
+- 除已配置 propagation forwarder 外的通用 token exchange
 
-- `/api/*` dashboard APIs，按 bearer-first、session-second、Basic Auth fallback 顺序授权。
-- `/basic/*` Basic Auth dashboard zone，以及 `/basic/api/*` Basic Auth-protected management API mirror。
-- `/auth/session/*` session login、callback、logout 与 user-info routes。
-- `/auth/token-set/backend-mode/*` backend OIDC mode routes。
-- `/api/auth/token-set/frontend-mode/config` frontend OIDC mode config projection。
-- 配置后启用的 `/api/propagation/*` bearer-authenticated propagation forwarder。
-- route-level diagnosis 与 response-shape policy tables，覆盖 shared envelope、protocol exceptions、business not-found 与 forwarding-preserved errors。
-
-## 已知边界
-
-这些主题是真实需求，但不属于当前基线：
-
-- mixed-custody token ownership
-- full BFF / server-side token-set ownership
-- SDK 内建 chooser UI 或 product route tables
-- 非 TypeScript SDK productization
-- full OTel/exporter stack
-- 超出当前 propagation forwarder baseline 的 broad token-exchange policy
+当前工作与延期范围见 [路线图](100-ROADMAP.md)。
 
 ---
 

@@ -67,6 +67,8 @@ export function runMetadataSync(options: MetadataSyncOptions): void {
 				pkg.name,
 				description,
 				metadata.project.repositoryUrl,
+				`${metadata.rust.documentationUrlBase}/${pkg.name}`,
+				"Rust crate",
 			),
 		);
 
@@ -112,6 +114,8 @@ export function runMetadataSync(options: MetadataSyncOptions): void {
 				pkg.name,
 				description,
 				metadata.project.repositoryUrl,
+				`https://www.npmjs.com/package/${pkg.name}`,
+				"TypeScript package",
 			),
 		);
 
@@ -205,8 +209,14 @@ function createPackageReadme(
 	packageName: string,
 	description: string,
 	repositoryUrl: string,
+	packageDocumentationUrl: string,
+	packageKind: string,
 ): string {
-	return `# ${packageName}\n\n${description}\n\nRepository: [ethaxon/securitydept](${repositoryUrl})\n`;
+	const packageGuide =
+		packageKind === "TypeScript package"
+			? `- [SecurityDept TypeScript SDK guide](${repositoryUrl}/blob/main/docs/en/007-CLIENT_SDK_GUIDE.md)\n`
+			: "";
+	return `# ${packageName}\n\n${description}\n\n## Documentation\n\n- [Package documentation](${packageDocumentationUrl})\n${packageGuide}- [SecurityDept architecture](${repositoryUrl}/blob/main/docs/en/001-ARCHITECTURE.md)\n\nRepository: [ethaxon/securitydept](${repositoryUrl})\n`;
 }
 
 function syncReadme(readmePath: string, content: string): boolean {

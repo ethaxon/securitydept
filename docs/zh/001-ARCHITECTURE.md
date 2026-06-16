@@ -1,136 +1,67 @@
 # 架构
 
-SecurityDept 是分层 auth stack，不是单体认证服务。底层 crates 拥有协议和验证原语；auth-context crates 将这些原语组合成可部署的应用契约。
+SecurityDept 将可复用的安全原语与应用组合分开。Rust 负责服务端协议和配置解析；TypeScript 负责显式的 host integration 与 browser/framework lifecycle composition；参考应用共同验证这两层。
 
-## 分层
+## Rust 分层
 
-### 1. 验证原语
+| 层 | 主要 crates | 职责 |
+| --- | --- | --- |
+| Foundation | `securitydept-utils`、`securitydept-core` | 共享 utility contracts 和对齐的 re-exports。 |
+| Credential 和网络 policy | `securitydept-creds`、`securitydept-creds-manage`、`securitydept-realip` | credential verification/storage 与可信 client-IP resolution。 |
+| OAuth/OIDC | `securitydept-oidc-client`、`securitydept-oauth-provider`、`securitydept-oauth-resource-server` | provider interaction、authorization-code flow 和 resource-token verification。 |
+| Auth contexts | `securitydept-basic-auth-context`、`securitydept-session-context`、`securitydept-token-set-context` | 面向应用的 authentication model 和对应 runtime/config contracts。 |
 
-Crate：`securitydept-creds`
+`securitydept-core` 是便捷的对齐 re-export 入口，不替代各 crate 的职责归属。
 
-- Basic Auth 与 static-token 解析 / 验证
-- JWT 与 JWE helpers
-- RFC 9068 access-token validation
-- 共享 credential 与 verifier traits
+## Auth Contexts
 
-这一层不理解 browser redirects、OIDC authorization-code flow、application sessions 或 route policy。
+产品有三个顶层 auth context：
 
-### 2. 远程 Provider Runtime
+- Basic Auth context 建模浏览器 Basic-Auth challenge zones。
+- Session context 建模 server-owned、cookie-backed user session。
+- Token-set context 建模 OIDC token state 及其 frontend/backend integration modes。
 
-Crate：`securitydept-oauth-provider`
+完整 ownership 见 [认证上下文和模式](020-AUTH_CONTEXT_AND_MODES.md)。`zone` 只属于 Basic Auth，`mode` 只属于 token-set context。
 
-- OIDC discovery metadata fetch / refresh
-- JWKS fetch / refresh
-- 共享 HTTP client reuse
-- introspection endpoint access
-- provider configuration normalization
+## Token-Set 架构
 
-这一层由 OIDC client code 与 OAuth resource-server verification 共用。
+Token-set context 有意分为 protocol-neutral 与 mode-specific 部分：
 
-### 3. OIDC Client
+- `orchestration` 负责 token snapshot、freshness calculation、persistence helper、workflow source、lifecycle candidate 和 final determination commit。
+- `frontend-oidc-mode` 负责 browser authorization-code/PKCE protocol，以及 safe server configuration projection 的消费。
+- `backend-oidc-mode` 负责 server-mediated callback、refresh、metadata redemption 和 user-info contract。
+- `access-token-substrate` 负责 resource-token verification 和 bearer propagation integration。
+- `registry` 负责多个 mode client 的 composition 与 callback routing。
 
-Crate：`securitydept-oidc-client`
+client 是自身内存 auth snapshot 的唯一 authority。workflow planner 计算闭合的、可判别的 candidate；host 一次性提交最终 determination。page resume、token-refresh timer 等 workflow source 只提供串行 lifecycle 输入，不拥有第二份 state authority。
 
-- authorization-code 与 PKCE flow
-- callback exchange
-- refresh 与 revocation helpers
-- claims normalization
-- optional userinfo fetch
-- pending OAuth state storage
+## TypeScript Foundation
 
-这个 crate 获取 identity 与 token material。它不验证任意 API 请求携带的 bearer token。
+每个 client 都接收显式的 `FoundationEnvironment`。其必需基线能力为：
 
-### 4. OAuth Resource Server
+- neutral `transport`
+- `time`
+- `realmStorage`
+- `span`
+- `tracing`
 
-Crate：`securitydept-oauth-resource-server`
+persistent/session storage、router、page lifecycle、popup、idle callback 等 browser capability 保持可选且显式。`web`、`webext`、`server` subpath 的 environment creator 在 client construction 前适配 raw host facility。
 
-- API bearer access-token verification
-- JWT、JWE、不透明 token introspection
-- issuer、audience、scope 与 time validation
-- JWE decryption-key loading / refresh
+公开 state/event 边界是 SDK 自己的 `SignalTrait`、`EventStreamTrait` 与 cancellation-token traits。它们具有 observable interop，因此内部实现可直接用 RxJS 组合，而不把 RxJS 作为 public SDK contract 泄漏出去。
 
-这个 crate 验证已呈现的 token。它不执行 browser login 或 authorization-code redirect。
+## 参考运行时
 
-### 5. Auth Context Crates
+`apps/server` 将 raw TOML/environment configuration 解析为 crate-owned resolved configuration，构建 context runtime 并挂载 HTTP routes。`apps/webui` 是 React reference host，使用同一显式 environment model 组合 TypeScript clients。
 
-Auth-context crates 是底层之上的部署契约：
-
-- `securitydept-basic-auth-context`：Basic Auth zones、challenge/login/logout response metadata、post-auth redirects 与可选 real-IP access restrictions。
-- `securitydept-session-context`：cookie-session auth context、normalized session principal、session service traits、OIDC session service，以及 `service` feature 下的 dev-session service。
-- `securitydept-token-set-context`：frontend OIDC mode、backend OIDC mode、access-token substrate、route orchestration、metadata redemption 与 bearer propagation。
-
-Route-facing services 位于 owning crates：
-
-- `BasicAuthContextService` 位于 `securitydept-basic-auth-context`
-- `SessionAuthServiceTrait`、`OidcSessionAuthService`、`DevSessionAuthService` 位于 `securitydept-session-context`
-- `BackendOidcModeAuthService` 位于 `securitydept-token-set-context::backend_oidc_mode`
-- `AccessTokenSubstrateResourceService` 位于 `securitydept-token-set-context::access_token_substrate`
-
-已移除的 `securitydept-auth-runtime` 聚合层不是产品面。
-
-### 6. Real-IP Resolution
-
-Crate：`securitydept-realip`
-
-- trusted peer CIDR providers
-- 跨 stacked proxies / CDNs 的 effective client-IP resolution
-- forwarded headers 与 transport metadata 的 source-specific trust rules
-- trusted peer lists 的 refresh / watch 行为
-
-这个 crate 解析 trust-boundary-aware client IP。它不拥有 URL reconstruction、rate limiting 或 business traffic policy。
-
-### 7. Credential Management
-
-Crate：`securitydept-creds-manage`
-
-- 管理本地 Basic Auth credentials 与 static tokens
-- 为简单 credential data 提供 operator-managed storage
-- 支持 lock-free reads、atomic writes、debounced watching 与 self-write detection
-
-这个 crate 存储本地 credential data。验证仍归属 `securitydept-creds`。
-
-### 8. Reference Applications
-
-Applications：
-
-- `apps/server`：Axum 参考服务端
-- `apps/webui`：React reference UI
-- `apps/cli`：local credential-management CLI
-
-Reference applications 用于证明组合行为；它们不是 reusable crates 或 SDK packages 的产品边界。
-
-## Token-Set Context Shape
-
-`token-set-context` 有两个正式 OIDC modes：
-
-- `frontend-oidc`：browser-owned OIDC flow、backend-projected configuration 与 access-token substrate integration。
-- `backend-oidc`：backend-owned OIDC flow，能力轴包括 refresh-material protection、metadata delivery 与 post-auth redirect policy。
-
-`pure`、`mediated` 这类 `backend-oidc` preset 是 `backend-oidc` mode 内部的 profiles，不是独立 first-level modes。Token propagation 是共享 access-token substrate capability，不是 `backend-oidc` preset axis。
-
-两个 principal 概念必须保持分离：
-
-- `AuthenticatedPrincipal`：session 与 token-set user-info surfaces 使用的人类认证身份。
-- `ResourceTokenPrincipal`：API authorization 与 bearer propagation 使用的 access-token-derived resource facts。
-
-## Server Route Boundary
-
-参考服务端 dashboard API 当前按以下顺序尝试认证：
-
-1. 存在 `Authorization: Bearer ...` header 时使用 bearer access token
-2. cookie session
-3. 受 `basic-auth-context` 与可选 real-IP policy 约束的 configured Basic Auth
-
-`X-SecurityDept-Propagation` 会让 `/api/*` 进入 propagation-aware dashboard context，并强制 bearer-token authentication。Basic Auth protocol routes 与 forward-auth challenge routes 刻意保留 protocol-specific response shapes，而不是强行进入 shared JSON error envelope。
+参考运行时是 proof surface，而不是新的 public SDK layer。其 application route、UI copy 和 local composition choice 不构成可复用 SDK contract。
 
 ## 边界规则
 
-- `oidc-client` 不得吸收 resource-server verification。
-- `oauth-resource-server` 不得吸收 browser login flow。
-- provider discovery / cache 保持在 OIDC client 与 resource-server verification 下方。
-- auth-context crates 组合底层 crates，而不是复制底层逻辑。
-- framework-specific response assembly 属于 app 或 adapter boundary，除非 reusable crate 明确暴露 framework-neutral response metadata。
-- bearer forwarding 必须显式且经过 policy check；不应隐藏在 login APIs 内部。
+- raw host configuration 必须先解析和验证，再构造 reusable runtime。
+- access-token facts 与 authenticated-user principal 是不同 projection。
+- redirect target 是经过验证的 policy input，不是未检查的 raw URL。
+- environment 边界中的 transport 是 neutral 的；authorized transport 是从 client 派生的能力，不是 environment 持有的 authorization state。
+- span context 提供 trace nesting；调用者记录当前行为，而不维护另一套全局 outcome/source vocabulary。
 
 ---
 

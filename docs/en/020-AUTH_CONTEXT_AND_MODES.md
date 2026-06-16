@@ -1,149 +1,60 @@
 # Auth Context and Modes
 
-This document defines the product meanings of auth context, zone, and mode in SecurityDept. For package maps and public SDK subpaths, use [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md). For release planning and deferrals, use [100-ROADMAP.md](100-ROADMAP.md).
+An auth context is an application-facing authentication integration boundary. It owns the location of state, the redirect and persistence model, and the principal shape exposed to the host application.
 
-## Core Terms
+## Product Model
 
-### Auth Context
-
-An auth context is a top-level application-facing authentication integration surface. It defines where auth state lives, how frontend and backend responsibilities are split, how redirects and persistence work, and what principal shape the application receives.
-
-SecurityDept currently has three auth contexts:
-
-- `basic-auth-context`
-- `session-context`
-- `token-set-context`
-
-### Zone
-
-A zone exists only inside `basic-auth-context`. It defines a Basic Auth challenge boundary: route area, login/logout behavior, post-auth redirect policy, and optional real-IP access restrictions.
-
-A zone is not a separate auth context.
-
-### Mode
-
-A mode exists only inside `token-set-context`. It describes the OIDC integration shape for token-set auth state.
-
-Current token-set modes:
-
-- `frontend-oidc`
-- `backend-oidc`
-
-`backend-oidc` presets such as `pure` and `mediated` are profiles inside `backend-oidc`, not first-level modes.
-
-## Auth Context Overview
-
-| Auth Context | Best For | State Ownership | Internal Shape | Main Surfaces |
-| --- | --- | --- | --- | --- |
-| Basic Auth context | browser-native Basic Auth and simple admin zones | browser credential cache and challenge routes | zones | `securitydept-basic-auth-context`, `@securitydept/basic-auth-context-client*` |
-| Session context | centralized services and weak frontend capability | backend session store and HTTP-only cookie | no mode family | `securitydept-session-context`, `@securitydept/session-context-client*` |
-| Token-set context | distributed SPAs and stronger frontend capability | determined by frontend/backend OIDC mode | `frontend-oidc`, `backend-oidc` | `securitydept-token-set-context`, `@securitydept/token-set-context-client*` |
+| Context | State owner | Use when | Main surfaces |
+| --- | --- | --- | --- |
+| Basic Auth | Browser credential cache and server challenge boundary | A small administrative area needs HTTP Basic Auth semantics. | `basic-auth-context` |
+| Session | Server session store and HTTP-only cookie | The server should own login, callback, and user state. | `session-context` |
+| Token set | The selected OIDC mode and client runtime | A browser or server-mediated OIDC integration needs access-token state. | `token-set-context` |
 
 ## Basic Auth Context
 
-`basic-auth-context` composes:
+A Basic Auth `zone` describes one challenge boundary: route prefix, login/logout paths, post-auth redirect policy, and optional client-IP restrictions. A zone is not an auth context of its own.
 
-- `securitydept-creds`
-- optional `securitydept-creds-manage`
-- optional `securitydept-realip`
-- Basic Auth challenge/login/logout response metadata
-- thin browser / React / Angular helpers
-
-Recommended browser UX:
-
-- ordinary JSON APIs should return `401` without `WWW-Authenticate`
-- a dedicated challenge route should return `401` with `WWW-Authenticate: Basic`
-- a successful challenge redirects back to the application
-
-Logout must respect browser limitations: there is no standard JavaScript API to clear cached Basic Auth credentials. SecurityDept supports protocol-compatible logout poisoning rather than pretending Basic Auth has a normal token-clear operation.
+The browser cannot reliably erase cached Basic Auth credentials. Logout therefore uses a protocol-compatible challenge/poisoning flow; it must not be presented as ordinary token deletion.
 
 ## Session Context
 
-`session-context` is the backend-owned cookie-session auth context. It composes:
-
-- `securitydept-oidc-client`
-- `securitydept-session-context`
-- `tower-sessions`
-- optional browser / React / Angular helpers
-
-The backend owns OIDC login, callback handling, session state, logout, and normalized user-info. The browser carries an HTTP-only session cookie and uses the client helper mainly for login URL, user-info, and logout entrypoints.
-
-Session context has no mode family.
+Session context is server owned. The server handles OIDC login, callback, logout, and normalized user-info; the browser carries the session cookie and invokes explicit client operations for navigation or session refresh. Session context has no mode family.
 
 ## Token-Set Context
 
-`token-set-context` spans frontend token runtime, backend OIDC runtime, access-token substrate, and cross-boundary transport contracts.
+A token-set `mode` describes the OIDC integration shape:
 
-### Frontend OIDC Mode
+- `frontend-oidc`: the browser performs authorization-code/PKCE work. The server projects a safe configuration DTO; the client owns its in-memory token snapshot and lifecycle.
+- `backend-oidc`: the server performs the OIDC redirect/callback/refresh protocol and exposes the mode contract to the client.
 
-In `frontend-oidc`:
+Backend-mode presets and capability choices are configurations within `backend-oidc`, not additional top-level modes. Bearer propagation belongs to the access-token substrate, not to a backend-mode capability axis.
 
-- the browser runs authorization, callback, token exchange, and token storage
-- the backend projects safe frontend configuration through a config endpoint
-- access-token material can be consumed by API calls and propagation-aware server boundaries
+### Browser Projection And Secret Boundary
 
-Rust still owns formal config projection and integration contracts even though the browser runs the OIDC flow.
+`frontend-oidc` receives `FrontendOidcModeConfigProjection`, a server-produced browser DTO. It contains the resolved public OIDC connectivity and callback information needed by the browser, not the server's complete OIDC configuration. Client secrets are omitted by default and can be included only through an explicit unsafe server capability; a browser application must not treat that opt-in as a normal deployment default.
 
-### Backend OIDC Mode
+Server-held secret values use `SecretString`, whose debug and serialization forms are redacted. The same rule applies at application boundaries: raw access tokens, refresh tokens, authorization headers, passwords, provider secrets, and token-exchange payloads are never safe browser projections or public event data.
 
-In `backend-oidc`:
+The reference server exposes the public frontend projection at `GET /api/auth/token-set/frontend-mode/config`. Backend-mode login, callback, refresh, metadata redemption, and user-info live below `/auth/token-set/backend-mode/*`. Hosts may mount different paths, but must keep callback and redirect validation inside server policy rather than accepting caller-controlled URLs.
 
-- the backend runs OIDC authorize, callback, refresh, exchange, and user-info paths
-- the browser receives mode-qualified responses and token-set state
-- `pure` and `mediated` are preset bundles inside one backend mode
+## Principal And Token Boundaries
 
-Backend OIDC capability axes:
+- An authenticated principal represents the signed-in person and is used for session/token-set user-facing state.
+- A resource-token principal represents verified bearer-token authorization facts such as subject, issuer, audiences, scopes, and authorized party.
 
-- `refresh_material_protection`: for example `passthrough` or `sealed`
-- `metadata_delivery`: for example `none` or `redemption`
-- `post_auth_redirect_policy`: for example `caller_validated` or `resolved`
+They are related but not interchangeable. Raw token material, authorization headers, passwords, and provider/client secrets must not be projected into safe principal claims.
 
-Token propagation is not a backend-oidc axis. It belongs to `access_token_substrate`.
+`ResourceTokenPrincipal` is authorization evidence derived from a verified bearer token: subject, issuer, audiences, scopes, authorized party, and claims. It is not a substitute for the authenticated human principal used by session or token-set user-facing state.
 
-## Principal Boundaries
+## Host Configuration
 
-SecurityDept separates:
+Rust hosts resolve configuration in stages:
 
-- `AuthenticatedPrincipal`: the human authenticated identity used by session and token-set user-info surfaces.
-- `ResourceTokenPrincipal`: access-token-derived resource facts used by resource-server verification, API authorization, and propagation.
+1. serde-facing raw configuration receives file and environment input.
+2. a crate-owned config source applies shared OIDC defaults and host validators.
+3. a resolved configuration constructs reusable runtimes.
 
-Do not treat these two as aliases. A human principal answers "who is signed in"; a resource token principal answers "what this bearer token is allowed to access."
-
-## Redirect Boundary
-
-Post-auth redirects are never raw unchecked URLs. Each context must keep redirect targets constrained to validated same-origin or configured application paths.
-
-Current relevant paths:
-
-- session callback: `/auth/session/callback`
-- token-set backend-mode callback: `/auth/token-set/backend-mode/callback`
-- frontend-mode config projection: `/api/auth/token-set/frontend-mode/config`
-- frontend-mode browser callback route: owned by the host application / adapter integration
-
-## Rust Host Config Resolution
-
-Rust host applications should treat raw config, resolved config, and runtime construction as separate phases.
-
-- `XxxConfig` is the serde-facing shape used for files, environment overlays, and schema generation.
-- `XxxConfigSource` is the host extension point. It reads component fields and owns `resolve_*`, `resolve_all(...)`, and `resolve_all_with_validator(...)`.
-- `ResolvedXxxConfig` is the runtime-facing shape. Services and contexts consume resolved config through `from_resolved_config(...)` or mode-specific resolved constructors.
-- Validators express host deployment policy. Built-in fixed redirect validators reject user config that tries to override host-owned callback paths.
-
-This model applies to token-set backend/frontend OIDC mode, token-set access-token substrate, Basic Auth context, and session context. Host-only concepts stay outside the reusable config surface: source keys, frontend config endpoint paths, account binding, display metadata, and audit context belong in the adopting application wrapper.
-
-Secret-bearing Rust config fields use `SecretString`. Its `Debug` and ordinary serialization are redacted; runtime code must call `expose_secret()` explicitly where a provider client needs the raw value.
-
-`FrontendOidcModeConfigProjection` remains the SecurityDept-owned frontend-safe projection DTO. It does not include client secrets unless the unsafe frontend-client-secret capability is explicitly enabled. Hosts that need source keys or route paths should wrap the projection with their own DTO and `serde(flatten)` rather than adding host routing fields to SecurityDept mode config.
-
-`ResourceTokenPrincipal` is the host-facing projection for verified resource tokens. It exposes verified token facts such as subject, issuer, audiences, scopes, and authorized party; additional claims are filtered before projection so raw token material, authorization headers, passwords, and client/provider secret fields do not enter the safe claims map.
-
-## Ownership Rules
-
-- Basic Auth `zone` belongs only to `basic-auth-context`.
-- `mode` belongs only to `token-set-context`.
-- Session context is not a token-set mode.
-- Route-facing services live in their owning crates, not in a shared auth-runtime aggregation layer.
-- App-specific chooser UI, product copy, and business routes belong to adopters or reference apps, not to SDK core.
+Hosts keep route paths, source keys, account bindings, display data, and other product-specific policy outside reusable config projections. Redirect targets are validated against host policy; no auth context accepts unchecked arbitrary redirect URLs.
 
 ---
 

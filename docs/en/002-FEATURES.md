@@ -1,54 +1,42 @@
 # Capability Matrix
 
-This document summarizes current SecurityDept capabilities. Use [001-ARCHITECTURE.md](001-ARCHITECTURE.md) for ownership boundaries, [007-CLIENT_SDK_GUIDE.md](007-CLIENT_SDK_GUIDE.md) for TypeScript SDK contracts, and [100-ROADMAP.md](100-ROADMAP.md) for release planning.
+This page states the currently implemented product baseline. It is not a promise that every reference-app route is a stable SDK API.
 
-## Capability Status
-
-| Area | Current Status | Primary Surfaces |
+| Area | Current baseline | Primary surface |
 | --- | --- | --- |
-| Credential verification | Implemented for Basic Auth, static tokens, JWT, JWE, and RFC 9068 access tokens. | `securitydept-creds` |
-| OIDC client | Implemented authorization-code / PKCE, callback exchange, refresh, claims normalization, optional userinfo, and pending OAuth state. | `securitydept-oidc-client` |
-| OAuth resource server | Implemented bearer verification for JWT, JWE, and opaque tokens with issuer / audience / scope policy. | `securitydept-oauth-resource-server`, `securitydept-oauth-provider` |
-| Basic Auth context | Implemented Basic Auth zones, challenge / login / logout metadata, post-auth redirects, optional real-IP access policy, server integration, and browser / React / Angular helpers. | `securitydept-basic-auth-context`, `@securitydept/basic-auth-context-client*` |
-| Session context | Implemented cookie-session context, normalized principal, OIDC session service, dev-session service, server integration, and browser / React / Angular helpers. | `securitydept-session-context`, `@securitydept/session-context-client*` |
-| Token-set context | Implemented frontend/backend OIDC mode contracts, backend-mode routes, frontend-mode config projection, access-token substrate, bearer propagation, route orchestration, React / Angular adapters, and in-repo dogfooding. | `securitydept-token-set-context`, `@securitydept/token-set-context-client*` |
-| Real-IP resolution | Implemented trusted provider/source model for forwarded headers, PROXY protocol, local / remote / command / Docker / Kubernetes provider sources, reference-server Basic Auth policy integration, and labeled local provider-test resources. | `securitydept-realip`, `scripts/test-cli.ts` |
-| Credential management | Implemented local Basic Auth and static-token storage with lock-free reads, atomic writes, debounced watching, and self-write detection. | `securitydept-creds-manage`, `apps/cli`, `apps/server` |
-| Reference runtime and apps | Implemented Axum server, React web UI, playground/reference routes, management API auth branching, bearer propagation, and release Docker image assembly from prebuilt runtime artifacts. | `apps/server`, `apps/webui`, `Dockerfile.runtime` |
-| TypeScript SDK public surface | Implemented publishable npm package families for shared client foundation, Basic Auth, session, token-set, React, and Angular integration. | `sdks/ts/packages/*`, `public-surface-inventory.json` |
+| Credential verification | Basic credentials, static tokens, JWT/JWE, and RFC 9068 access-token validation. | `securitydept-creds` |
+| Credential management | Local credential/token data, atomic updates, debounced reloads, and self-write detection. | `securitydept-creds-manage` |
+| OIDC/OAuth | Authorization-code/PKCE, callback exchange, refresh, user-info and claims normalization, provider and resource-server contracts. | `securitydept-oidc-client`, `securitydept-oauth-*` |
+| Basic Auth context | Zone policy, challenge/login/logout metadata, redirect policy, and client adapters. | `securitydept-basic-auth-context`, `@securitydept/basic-auth-context-client*` |
+| Session context | Server-owned OIDC/dev session flow, normalized session principal, and client adapters. | `securitydept-session-context`, `@securitydept/session-context-client*` |
+| Token-set context | Frontend/backend OIDC modes, orchestration, registry, access-token substrate, and framework adapters. | `securitydept-token-set-context`, `@securitydept/token-set-context-client*` |
+| Client foundation | Explicit environment, signals/resources, event streams, cancellation, spans, tracing, transport, storage, router/popup abstractions, and RxJS interop. | `@securitydept/client` |
+| Client-IP policy | Trusted source/provider resolution for forwarded headers, PROXY protocol, and local/container/Kubernetes sources. | `securitydept-realip` |
+| Reference runtime | Axum server, React WebUI, Docker runtime artifact, and end-to-end proof paths. | `apps/server`, `apps/webui` |
 
-## Current Auth-Context Baseline
+## Reference Server Routes
 
-SecurityDept currently treats these as the product auth-context surfaces:
+The reference server mounts these contract families:
 
-- Basic Auth context: lightweight browser-native Basic Auth zones and helpers.
-- Session context: backend-owned session state with HTTP-only cookie flow.
-- Token-set context: browser / backend OIDC mode contracts with access-token substrate and framework adapters.
+- `/auth/session/*` for session login, callback, logout, and user info.
+- `/auth/token-set/backend-mode/*` for backend OIDC login, callback, refresh, metadata redemption, and user info.
+- `/api/auth/token-set/frontend-mode/config` for safe frontend OIDC configuration projection.
+- `/basic/*` and `/basic/api/*` for Basic Auth challenge and protected management APIs.
+- `/api/*` for dashboard-authenticated management APIs.
+- `/api/propagation/*` only when bearer propagation is configured.
+- `/health` and `/api/health` for health checks.
 
-Token-set is intentionally richer than Basic Auth and session. Basic Auth and session should remain discoverable and tested, but they should not grow into parallel large frontend runtimes unless repeated downstream use proves the need.
+## Deliberate Boundaries
 
-## Reference Server Behavior
+The current baseline does not productize:
 
-The reference server validates combined behavior through:
+- mixed-custody token ownership or a general BFF/server-side token-set model
+- a built-in chooser UI, business route table, or application copy
+- non-TypeScript client SDKs
+- a full OpenTelemetry exporter/product observability stack
+- general-purpose token exchange beyond the configured propagation forwarder
 
-- `/api/*` dashboard APIs with bearer-first, session-second, Basic Auth fallback authorization.
-- `/basic/*` Basic Auth dashboard zone and `/basic/api/*` Basic Auth-protected management API mirror.
-- `/auth/session/*` session login, callback, logout, and user-info routes.
-- `/auth/token-set/backend-mode/*` backend OIDC mode routes.
-- `/api/auth/token-set/frontend-mode/config` frontend OIDC mode config projection.
-- `/api/propagation/*` bearer-authenticated propagation forwarder when configured.
-- route-level diagnosis and response-shape policy tables for shared envelope, protocol exceptions, business not-found, and forwarding-preserved errors.
-
-## Known Boundaries
-
-These topics are recognized but not part of the current baseline:
-
-- mixed-custody token ownership
-- full BFF / server-side token-set ownership
-- built-in chooser UI or product route tables in the SDK
-- non-TypeScript SDK productization
-- full OTel/exporter stack
-- broad token-exchange policy beyond the current propagation forwarder baseline
+See [Roadmap](100-ROADMAP.md) for active work and explicit deferrals.
 
 ---
 

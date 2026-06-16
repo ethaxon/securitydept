@@ -60,7 +60,7 @@ release channel 由版本号自动推断，而不是手工传参。
 
 行为规则：
 
-- `metadata sync` 会把 [`securitydept-metadata.toml`](../../securitydept-metadata.toml) 中的共享发布元信息写入 publishable Rust crate 和 publishable npm package，包括 description、author、license、Rust crate 的 categories、keywords、repository 链接以及最简 `README.md`。
+- `metadata sync` 会把 [`securitydept-metadata.toml`](../../securitydept-metadata.toml) 中的共享发布元信息写入 publishable Rust crate 和 publishable npm package，包括 description、author、license、Rust crate 的 categories、keywords、repository 链接以及生成的 package `README.md` 文档入口。修改生成 README 内容时必须同步修改生成器。
 - `version set` 会更新 [`securitydept-metadata.toml`](../../securitydept-metadata.toml) 中列出的所有 release-managed `package.json` 和 `Cargo.toml`。
 - `version check` 也会校验 publishable Rust crate 之间的 `path` 依赖版本，并要求内部依赖使用 `=X.Y.Z[-alpha.N|-beta.N]` 这种精确版本约束。
 - `version set` 也会为这些 publishable Rust 内部依赖写入精确版本约束，保证本地 package 校验与 publish 准备阶段的一致性。
