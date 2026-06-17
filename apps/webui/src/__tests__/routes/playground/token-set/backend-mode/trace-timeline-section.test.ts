@@ -4,6 +4,10 @@ import {
 	OperationTraceEventType,
 	TracingLevel,
 } from "@securitydept/client";
+import {
+	BackendOidcModeTraceEventType,
+	BackendOidcModeTraceOperationName,
+} from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -41,18 +45,18 @@ describe("trace timeline section", () => {
 			span: operationSpan,
 			level: TracingLevel.Info,
 			fields: {
-				operationName: "backend_oidc.refresh",
+				operationName: BackendOidcModeTraceOperationName.Refresh,
 			},
 		});
 
 		timeline.record({
-			name: "token_set.callback.started",
+			name: BackendOidcModeTraceEventType.UserInfoFallbackFailed,
 			at: Date.parse("2026-01-01T00:00:00Z"),
-			target: "token-set-context",
+			target: TOKEN_SET_BACKEND_MODE_CONFIG.tracing.clientTarget,
 			span: operationSpan,
-			level: TracingLevel.Info,
+			level: TracingLevel.Warn,
 			fields: {
-				stage: "callback",
+				errorCode: "backend_oidc.user_info.invalid_response",
 			},
 		});
 		timeline.record({
@@ -91,7 +95,7 @@ describe("trace timeline section", () => {
 		expect(markup).toContain("Failed");
 		expect(markup).toContain("Superseded");
 		expect(markup).toContain("/api/entries");
-		expect(markup).toContain("callback.started");
+		expect(markup).toContain("backend_oidc.user_info.fallback_failed");
 		expect(markup).not.toContain("No trace events recorded yet.");
 		expect(markup).not.toContain('disabled=""');
 

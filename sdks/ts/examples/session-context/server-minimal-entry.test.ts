@@ -53,7 +53,7 @@ describe("session server minimal entry", () => {
 		);
 	});
 
-	it("shows the authenticated path: fetchUserInfo returns session info", async () => {
+	it("shows the authenticated path: refresh returns session info", async () => {
 		const transport = {
 			execute: vi.fn(async () => ({
 				status: 200,

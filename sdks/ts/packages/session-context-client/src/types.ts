@@ -51,9 +51,9 @@ export interface SessionContextClientConfig {
 	id?: string;
 	/** Base URL of the SecurityDept server. */
 	baseUrl: string;
-	/** Login path (default: "/login"). */
+	/** Login path (default: "/auth/session/login"). */
 	loginPath?: string;
-	/** Logout path (default: "/logout"). */
+	/** Logout path (default: "/auth/session/logout"). */
 	logoutPath?: string;
 	/** User info endpoint path (default: "/auth/session/user-info"). */
 	userInfoPath?: string;

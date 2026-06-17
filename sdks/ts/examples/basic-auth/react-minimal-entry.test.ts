@@ -3,10 +3,9 @@
 import { provideBasicAuthContext } from "@securitydept/basic-auth-context-client";
 import { useBasicAuthContextClient } from "@securitydept/basic-auth-context-client-react";
 import {
-	createFoundationEnvironment,
-	type SecuritydeptProvider as SecuritydeptDependencyProvider,
-} from "@securitydept/client";
-import { SecuritydeptProvider } from "@securitydept/client-react";
+	createEnvironmentForReact,
+	SecuritydeptProvider,
+} from "@securitydept/client-react";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
@@ -31,33 +30,20 @@ function render(element: ReactElement) {
 	};
 }
 
-function createEnvironment(
-	providers: readonly SecuritydeptDependencyProvider[],
-) {
-	return createFoundationEnvironment({
-		transport: {
-			async execute() {
-				throw new Error("Unexpected transport call.");
-			},
-		},
-		providers,
-	});
-}
-
 describe("basic-auth react minimal entry", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
 	});
 
 	it("shows the minimal injector path for consuming zone-aware basic-auth state in React", () => {
-		const environment = createEnvironment(
-			provideBasicAuthContext({
+		const environment = createEnvironmentForReact({
+			providers: provideBasicAuthContext({
 				config: {
 					baseUrl: "https://auth.example.com",
 					zones: [{ zonePrefix: "/api" }],
 				},
 			}),
-		);
+		});
 
 		function ZoneStatus() {
 			const client = useBasicAuthContextClient();
@@ -84,14 +70,14 @@ describe("basic-auth react minimal entry", () => {
 	});
 
 	it("shows the handleUnauthorized contract through the injected client", () => {
-		const environment = createEnvironment(
-			provideBasicAuthContext({
+		const environment = createEnvironmentForReact({
+			providers: provideBasicAuthContext({
 				config: {
 					baseUrl: "https://auth.example.com",
 					zones: [{ zonePrefix: "/api" }],
 				},
 			}),
-		);
+		});
 
 		function AuthGuard() {
 			const client = useBasicAuthContextClient();

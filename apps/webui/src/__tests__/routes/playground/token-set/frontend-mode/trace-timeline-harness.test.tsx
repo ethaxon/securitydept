@@ -3,17 +3,20 @@
 import {
 	createRootSpan,
 	createTraceTimelineStore,
+	OperationTraceEventType,
 	TracingLevel,
 } from "@securitydept/client";
+import {
+	FrontendOidcModeErrorCode,
+	FrontendOidcModeTraceEventType,
+	FrontendOidcModeTraceOperationName,
+} from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { act, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TraceTimelineSection } from "@/routes/_playground/playground/token-set/-frontend-mode/trace-timeline-section";
 
-const TOKEN_SET_FRONTEND_HOST_TRACE_TARGET = "apps.webui.token-set-frontend";
-const FrontendHostTraceEventType = {
-	CrossTabCleared: "frontend_oidc.host.cross_tab.cleared",
-} as const;
+const TOKEN_SET_FRONTEND_TRACE_TARGET = "frontend-oidc-mode";
 
 function TraceTimelineHarness(props: {
 	timeline: ReturnType<typeof createTraceTimelineStore>;
@@ -51,7 +54,6 @@ describe("frontend trace timeline harness", () => {
 		const timeline = createTraceTimelineStore();
 		const rootSpan = createRootSpan({ idFactory: () => "root" });
 		const sdkSpan = rootSpan.fork({ idFactory: () => "sdk_frontend_1" });
-		const hostSpan = rootSpan.fork({ idFactory: () => "host_frontend_1" });
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const root = createRoot(container);
@@ -66,39 +68,37 @@ describe("frontend trace timeline harness", () => {
 
 		await act(async () => {
 			timeline.record({
-				name: "token_set.callback.failed",
+				name: OperationTraceEventType.Error,
 				at: Date.parse("2026-01-01T00:00:00Z"),
-				target: "token-set-context",
+				target: TOKEN_SET_FRONTEND_TRACE_TARGET,
 				span: sdkSpan,
 				level: TracingLevel.Error,
 				fields: {
+					operationName: FrontendOidcModeTraceOperationName.Callback,
 					errorKind: "server",
-					errorCode: "metadata_unavailable",
+					errorCode: FrontendOidcModeErrorCode.CallbackFailed,
 					recovery: "retry",
 				},
 			});
 			timeline.record({
-				name: FrontendHostTraceEventType.CrossTabCleared,
+				name: FrontendOidcModeTraceEventType.MetadataRefreshFailed,
 				at: Date.parse("2026-01-01T00:00:01Z"),
-				target: TOKEN_SET_FRONTEND_HOST_TRACE_TARGET,
-				span: hostSpan,
-				level: TracingLevel.Info,
+				target: TOKEN_SET_FRONTEND_TRACE_TARGET,
+				span: sdkSpan,
+				level: TracingLevel.Error,
 				fields: {
-					hasAccessToken: false,
-					syncCount: 4,
+					errorCode: FrontendOidcModeErrorCode.AuthorizationServerUnavailable,
 				},
 			});
 		});
 
 		expect(container.textContent).toContain("SDK Lifecycle");
-		expect(container.textContent).toContain("Host Adoption");
+		expect(container.textContent).toContain(TOKEN_SET_FRONTEND_TRACE_TARGET);
+		expect(container.textContent).toContain("operation.error");
+		expect(container.textContent).toContain("metadata.refresh_failed");
 		expect(container.textContent).toContain(
-			TOKEN_SET_FRONTEND_HOST_TRACE_TARGET,
+			`code: ${FrontendOidcModeErrorCode.CallbackFailed}`,
 		);
-		expect(container.textContent).toContain("callback.failed");
-		expect(container.textContent).toContain("cross_tab.cleared");
-		expect(container.textContent).toContain("code: metadata_unavailable");
-		expect(container.textContent).toContain("sync_count: 4");
 
 		const clearButton = container.querySelector("button");
 		expect(clearButton).not.toBeNull();

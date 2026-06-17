@@ -1,6 +1,8 @@
 import {
 	appendOrReplaceCompatFragment,
 	type BaseTransportTrait,
+	ClientError,
+	ClientErrorKind,
 	createBaseTransportForStdFetch,
 	createFoundationEnvironment,
 	createInMemoryRecordStore,
@@ -471,7 +473,12 @@ describe("BackendOidcModeClient", () => {
 		});
 
 		const refreshPromise = client.refreshState();
-		await expect(refreshPromise).rejects.toBeInstanceOf(Error);
+		const error = await refreshPromise.catch((caught) => caught);
+		expect(error).toBeInstanceOf(ClientError);
+		expect(error).toMatchObject({
+			kind: ClientErrorKind.Protocol,
+			code: BackendOidcModeErrorCode.RefreshAccessTokenMissing,
+		});
 		expect(client.authOperations.refreshPending.get()).toBe(false);
 		expect(client.authSnapshot.get()).toMatchObject({
 			status: "error",

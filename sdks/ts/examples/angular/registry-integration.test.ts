@@ -238,7 +238,7 @@ describe("Angular integration adapter public surface", () => {
 		subscription.unsubscribe();
 	});
 
-	it("exposes client replay signals from registry-backed clients", () => {
+	it("exposes client resources from registry-backed clients", () => {
 		createMockClient("main").authorizationHeaderValue.value.get();
 	});
 });

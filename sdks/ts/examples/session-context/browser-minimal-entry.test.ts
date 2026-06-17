@@ -9,22 +9,11 @@
 // convenience baselines. An adopter reading this file should understand
 // "how do I start a session login from the browser?" in one glance.
 
-import {
-	createFoundationEnvironment,
-	createRootSpan,
-	createTracing,
-	type RouterTrait,
-} from "@securitydept/client";
-import { createRouterForNativeWeb } from "@securitydept/client/web";
-import {
-	SessionContextClient,
-	type SessionLoginWithRedirectOptions,
-} from "@securitydept/session-context-client";
+import { createEnvironmentForNativeWeb } from "@securitydept/client/web";
+import { SessionContextClient } from "@securitydept/session-context-client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-function createPageLocationEnvironment(href: string): RouterTrait & {
-	location: { href: string; hash: string; pathname: string; search: string };
-} {
+function createPageEnvironment(href: string) {
 	const url = new URL(href);
 	const location = {
 		href,
@@ -32,13 +21,18 @@ function createPageLocationEnvironment(href: string): RouterTrait & {
 		pathname: url.pathname,
 		search: url.search,
 	};
-	const router = createRouterForNativeWeb({ location });
-	if (!router) {
-		throw new Error("Expected native web router capability.");
-	}
 	return {
-		...router,
 		location,
+		environment: createEnvironmentForNativeWeb({
+			routerForNativeWebCreateOptions: { location },
+			pageLifecycle: null,
+			popup: null,
+			persistentStorage: null,
+			sessionStorage: null,
+			transport: {
+				execute: async () => ({ status: 204, headers: {}, body: null }),
+			},
+		}),
 	};
 }
 
@@ -49,60 +43,34 @@ describe("session-context browser minimal entry", () => {
 
 	it("shows the standalone browser entry path: loginWithRedirect navigates with explicit return URI", async () => {
 		// 1. Create a session client with a router-backed browser environment.
-		const environment = createPageLocationEnvironment(
+		const { environment, location } = createPageEnvironment(
 			"https://app.example.com/protected-page",
 		);
 		const client = SessionContextClient.fromEnvironmentConfig({
 			config: { baseUrl: "https://auth.example.com" },
-			environment: createFoundationEnvironment({
-				transport: {
-					execute: async () => ({ status: 204, headers: {}, body: null }),
-				},
-				router: environment,
-				span: createRootSpan(),
-				tracing: createTracing(),
-			}),
+			environment,
 		});
 
-		// 3. Trigger login redirect with explicit options.
-		const options: SessionLoginWithRedirectOptions = {
+		await client.loginWithRedirect({
 			postAuthRedirectUri: "https://app.example.com/dashboard",
-		};
-		await client.loginWithRedirect(options);
+		});
 
-		// 4. Verify the browser navigated to the login URL.
-		expect(environment.location.href).toBe(
+		expect(location.href).toBe(
 			"https://auth.example.com/auth/session/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard",
 		);
 	});
 
 	it("shows the default-options path: no implicit post-auth redirect", async () => {
-		const environment = createPageLocationEnvironment(
+		const { environment, location } = createPageEnvironment(
 			"https://app.example.com/current-page",
 		);
 		const client = SessionContextClient.fromEnvironmentConfig({
 			config: { baseUrl: "https://auth.example.com" },
-			environment: createFoundationEnvironment({
-				transport: {
-					execute: async () => ({ status: 204, headers: {}, body: null }),
-				},
-				router: environment,
-				span: createRootSpan(),
-				tracing: createTracing(),
-			}),
+			environment,
 		});
 
 		await client.loginWithRedirect();
 
-		expect(environment.location.href).toBe(
-			"https://auth.example.com/auth/session/login",
-		);
-	});
-
-	it("SessionLoginWithRedirectOptions is importable as a named type from root", () => {
-		const options: SessionLoginWithRedirectOptions = {
-			postAuthRedirectUri: "https://app.example.com/after-login",
-		};
-		expect(options.postAuthRedirectUri).toBeTruthy();
+		expect(location.href).toBe("https://auth.example.com/auth/session/login");
 	});
 });

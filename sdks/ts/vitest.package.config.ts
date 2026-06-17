@@ -12,6 +12,7 @@ const manifest = JSON.parse(
 	readFileSync(path.join(packageRoot, "package.json"), "utf8"),
 ) as PackageManifest;
 const isAngularPackage = manifest.name.endsWith("-angular");
+const isReactPackage = manifest.name.endsWith("-react");
 const isCi = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
 
 export default defineConfig({
@@ -21,8 +22,13 @@ export default defineConfig({
 		include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
 		testTimeout: isCi ? 15_000 : undefined,
 		globalSetup: [path.join(import.meta.dirname, "vitest.global-setup.ts")],
-		setupFiles: isAngularPackage
-			? [path.join(import.meta.dirname, "vitest.angular-setup.ts")]
-			: [],
+		setupFiles: [
+			...(isAngularPackage
+				? [path.join(import.meta.dirname, "vitest.angular-setup.ts")]
+				: []),
+			...(isReactPackage
+				? [path.join(import.meta.dirname, "vitest.react-setup.ts")]
+				: []),
+		],
 	},
 });

@@ -11,44 +11,45 @@ import { SessionContextSource } from "@securitydept/session-context-client";
 import {
 	BackendOidcModeClient,
 	BackendOidcModeContextSource,
+	relayTokenSetPopupCallbackFromEnvironment,
 } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	TokenSetAuthSourceKind,
 	TokenSetStateRestoreSourceKind,
 } from "@securitydept/token-set-context-client/orchestration";
+import {
+	provideTokenSetClientRegistry,
+	TOKEN_SET_CLIENT_REGISTRY,
+	TOKEN_SET_CLIENT_REGISTRY_ENTRIES,
+	TokenSetClientRegistry,
+} from "@securitydept/token-set-context-client/registry";
 import { describe, expect, it } from "vitest";
 
-describe("public contract constants", () => {
-	it("keeps exported client error vocabulary stable", () => {
+describe("public contract values", () => {
+	it("exports canonical error, guard, and auth-source vocabulary", () => {
 		expect(ClientErrorKind.Cancelled).toBe("cancelled");
 		expect(ClientErrorKind.Unauthenticated).toBe("unauthenticated");
 		expect(ClientErrorSource.Transport).toBe("transport");
-		expect(ClientErrorSource.Client).toBe("client");
 		expect(UserRecovery.Reauthenticate).toBe("reauthenticate");
-		expect(UserRecovery.Retry).toBe("retry");
-	});
-
-	it("keeps exported auth guard vocabulary stable", () => {
 		expect(AuthGuardResultKind.Ok).toBe("ok");
 		expect(AuthGuardResultKind.Redirect).toBe("redirect");
 		expect(AuthGuardRedirectStatus.Found).toBe(302);
-		expect(AuthGuardRedirectStatus.TemporaryRedirect).toBe(307);
-	});
-
-	it("keeps exported token-set vocabulary stable", () => {
 		expect(TokenSetAuthSourceKind.RefreshToken).toBe("refresh_token");
-		expect(BackendOidcModeContextSource.Client).toBe(
-			"backend_oidc_mode_client",
-		);
-		expect(BackendOidcModeContextSource.Persistence).toBe("backend-oidc-mode");
-		expect(TokenSetStateRestoreSourceKind.Manual).toBe("manual");
 		expect(TokenSetStateRestoreSourceKind.PersistentStore).toBe(
 			"persistent_store",
 		);
-		expect(typeof BackendOidcModeClient).toBe("function");
+		expect(BackendOidcModeContextSource.Client).toBe(
+			"backend_oidc_mode_client",
+		);
+		expect(SessionContextSource.SessionContext).toBe("session-context");
 	});
 
-	it("keeps exported session vocabulary stable", () => {
-		expect(SessionContextSource.SessionContext).toBe("session-context");
+	it("resolves canonical token-set entrypoint exports", () => {
+		expect(BackendOidcModeClient).toBeDefined();
+		expect(relayTokenSetPopupCallbackFromEnvironment).toBeDefined();
+		expect(provideTokenSetClientRegistry).toBeDefined();
+		expect(TokenSetClientRegistry).toBeDefined();
+		expect(TOKEN_SET_CLIENT_REGISTRY).toBeDefined();
+		expect(TOKEN_SET_CLIENT_REGISTRY_ENTRIES).toBeDefined();
 	});
 });

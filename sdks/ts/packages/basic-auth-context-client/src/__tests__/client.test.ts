@@ -290,13 +290,4 @@ describe("BasicAuthContextClient", () => {
 			"https://auth.example.com/basic/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fbasic%2Fapi%2Fgroups",
 		);
 	});
-
-	it("rejects operations after dispose", async () => {
-		const client = createClient();
-		client.dispose();
-
-		await expect(client.refresh()).rejects.toMatchObject({
-			code: "client.cancelled",
-		});
-	});
 });

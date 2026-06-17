@@ -17,9 +17,9 @@
 					"stability": "stable",
 					"owner": "foundation",
 					"changeDiscipline": "stable-deprecation-first",
-					"note": "Owns the current shared cancellation/resource-release baseline, the tracing runtime/subscriber baseline, replay signal primitive, shared identity-principal baseline, framework-neutral dependency injection, headless auth-coordination primitives, shared storage contracts, structural utilities, and the dual-layer error bridge: DisposableTrait, CancellationTokenTrait, CancellationTokenSourceTrait, createCancellationTokenSource(), and createLinkedCancellationToken() formalize cooperative cancellation plus owner-side release via dispose(); TimeTrait / createTimeForStd() formalize the low-level injectable time capability, while IdleCallbackTrait formalizes optional host-owned idle callback capability and EventStreamTrait / EventSubjectTrait remain the SDK-owned reactive primitives even though generic source construction now lives in direct RxJS usage plus the `@securitydept/client/rx` bridge; ReadableReplaySignalTrait / WritableReplaySignalTrait / ComputedReplaySignalTrait, ReplaySignalSlot<T>, ReplaySignalWhenValueOptions, createReplaySignal(), createComputedReplaySignal(), createAndThenComputedReplaySignal(), readonlyReplaySignal(), and isReplaySignalTrait() formalize last-available channels that start empty, replay only emitted values, use get() for synchronous slot reads, and use cancellable whenValue() for asynchronous value waits; SecuritydeptInjectorTrait / SecuritydeptInjector formalize the framework-neutral DI surface, while RequirementPlannerHost (non-serializable behaviour resolved through a parent chain), BaseRequirementPlanner with StaticRequirementPlanner / RouteCompositionRequirementPlanner / MergeRequirementPlanner, the serializable contract (AuthRequirement, RequirementsComposition, resolveEffectiveRequirements, RequirementBehaviour, PipelineStepResult / PipelineRunResult), and runStep() / runUntilSettled() formalize shared auth coordination without a separate core subpath; FoundationEnvironment now treats a root span, tracing runtime, and per-environment realmStorage as required baseline capabilities. createFoundationEnvironment() creates an isolated in-memory realm store by default, while REALM_STORAGE_TRAIT_TOKEN supports composition-root overrides; TracingTrait, createTracing(), TracingEvent, TracingSubscriberTrait, OperationSpan.start(), runOperation(), defineInstrumentMethodDecorator(), createTraceTimelineStore() / TraceTimelineStore, and OperationTraceEventType formalize the structured tracing baseline and operation-correlation story; IdentityPrincipal, IdentityPrincipalSchema, IdentityPrincipalWireSchema, parseIdentityPrincipal(), parseIdentityPrincipalWire(), and projectIdentityPrincipal() now formalize the shared human-principal contract and host-facing projection baseline consumed by session/token-set families; ErrorPresentationDescriptor / ErrorPresentationTone / readErrorPresentationDescriptor(), ErrorAttributes, and describeError() remain the host-facing presentation, recovery, and structured error-attribute bridge built on runtime errors.",
+					"note": "Owns the framework-neutral runtime contracts: FoundationEnvironment and injection, Signal/EventStream/Resource state, cancellation and disposal, transport/storage/router capabilities, span and operation tracing, identity projection, auth coordination, and the canonical ClientError bridge. ResourceSnapshot models idle, loading, reloading, resolved, loading-error, and stale-error states; resourceFromSnapshots(), mapResource(), flattenResourceSnapshot(), and whenResourceSnapshotValue() provide deterministic value and waiting semantics without replay-signal compatibility APIs.",
 					"evidence": [
-						"examples/meta/minimal-entry-points.test.ts",
+						"tests/public-contract-values.test.ts",
 						"packages/client/src/cancellation/__tests__/cancellation.test.ts",
 						"packages/client/src/errors/__tests__/errors.test.ts",
 						"packages/client/src/identity/__tests__/principal.test.ts",
@@ -39,7 +39,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Logging, Tracing, and Testing"
+						"heading": "State, Events, And Cancellation"
 					}
 				},
 				{
@@ -49,8 +49,8 @@
 					"changeDiscipline": "stable-deprecation-first",
 					"note": "Owns native Web host adapters and browser-native interop that still depends on page/storage/document concepts: abortSignalToCancellationToken(signal), fromStorageEvent, page lifecycle EventStream source createPageResumeSource, higher-level lifecycle helper createCrossTabSync, native Web host adapters createRouterForNativeWeb(), createPageLifecycleForNativeWeb(), createPopupForNativeWeb(), createEnvironmentForNativeWeb(), and the foundation Web environment boundary centered on `FoundationEnvironment` and `NativeWebEnvironment`. Canonical adopter-facing access is the flattened environment trait object shape (`environment.transport`, `environment.realmStorage`, `environment.sessionStorage`, `environment.router`, `environment.pageLifecycle`, `environment.popup`, and peers). Raw location/history host objects are adapter inputs only, not core environment fields. Host capabilities are explicit and are not automatic host detection or a DI container.",
 					"evidence": [
-						"examples/cross/popup-login-baseline.test.ts",
-						"examples/backend-oidc-mode/worker-like-host.test.ts",
+						"examples/backend-oidc-mode/browser-minimal-entry.test.ts",
+						"examples/backend-oidc-mode/browser-minimal-entry.test.ts",
 						"packages/client/src/web/__tests__/cancellation.test.ts",
 						"packages/client/src/web/__tests__/environment.test.ts",
 						"packages/client/src/web/__tests__/environment-presets.test.ts",
@@ -61,7 +61,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Cancellation and Disposal"
+						"heading": "Supported Host Entrypoints"
 					}
 				},
 				{
@@ -77,7 +77,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "SSR / Server-Side Support"
+						"heading": "Supported Host Entrypoints"
 					}
 				},
 				{
@@ -89,7 +89,7 @@
 					"evidence": ["packages/client/src/webext/__tests__/webext.test.ts"],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Foundation Web environment factories"
+						"heading": "Supported Host Entrypoints"
 					}
 				},
 				{
@@ -97,7 +97,7 @@
 					"stability": "provisional",
 					"owner": "foundation",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Canonical framework-neutral RxJS bridge for SecurityDept event streams and signals. Exposes `toRxObservable(source)` for EventStreamTrait, ReadableSignalTrait, and ReadableReplaySignalTrait, plus `fromRxObservable(observable)` for the reverse bridge. Replay signals do not emit initial empty slots and replay only the last emitted value to late subscribers. `@securitydept/client` remains the event/operator surface; Angular-native signal derivation should use `toNgSignal(source)` from `@securitydept/client-angular`.",
+					"note": "Concrete RxJS-backed implementations for SDK signals, event streams, commands, and resources. Public framework-neutral contracts remain exported from @securitydept/client; consumers enter RxJS composition with from(source), while this subpath is used when concrete RxStateSignal, RxEventStream, RxEventSubject, or rxResource capabilities are required.",
 					"evidence": [
 						"packages/client/src/rx/__tests__/rx.test.ts",
 						"examples/angular/registry-integration.test.ts",
@@ -105,7 +105,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Shared Client Lifecycle Contract"
+						"heading": "State, Events, And Cancellation"
 					}
 				},
 				{
@@ -121,7 +121,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Logging, Tracing, and Testing"
+						"heading": "Supported Host Entrypoints"
 					}
 				}
 			]
@@ -139,12 +139,12 @@
 					"note": "Environment-backed BasicAuthContextClient owns zone helpers, boundary observation, login redirect, and logout poison interaction from the root entry. The core package also owns BASIC_AUTH_CONTEXT_CLIENT, BASIC_AUTH_CONTEXT_CLIENT_CONFIG, provideBasicAuthContext(), and the fromEnvironmentConfig()/fromInjector() construction paths so framework-neutral hosts share one DI contract.",
 					"evidence": [
 						"examples/basic-auth/guard-scenario.test.ts",
-						"examples/cross/auth-context-discoverability-parity.test.ts",
-						"examples/foundation/ssr-server-host-baseline.test.ts"
+						"packages/basic-auth-context-client/src/__tests__/client.test.ts",
+						"packages/basic-auth-context-client/src/__tests__/client.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "`basic-auth-context-client`"
+						"heading": "Basic Auth"
 					}
 				}
 			]
@@ -169,7 +169,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "React entry: one SDK context plus injector factories"
+						"heading": "Framework Adapters"
 					}
 				}
 			]
@@ -188,13 +188,13 @@
 						"examples/cross/login-redirect-convenience.test.ts",
 						"examples/session-context/browser-minimal-entry.test.ts",
 						"examples/session-context/scenario.test.ts",
-						"examples/foundation/ssr-server-host-baseline.test.ts",
+						"examples/session-context/server-minimal-entry.test.ts",
 						"packages/session-context-client/src/__tests__/client.test.ts"
 					],
 					"note": "Owns the environment-bound SessionContextClient runtime: session state is exposed as signals, lifecycle events as EventStreamTrait, and refresh/logout/redirect operations use FoundationEnvironment transport/router/storage plus span/tracing. The core package also owns SESSION_CONTEXT_CLIENT, SESSION_CONTEXT_CLIENT_CONFIG, provideSessionContext(), and the fromEnvironmentConfig()/fromInjector() construction paths. No SessionContextController compatibility layer remains.",
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "`session-context-client`"
+						"heading": "Session"
 					}
 				}
 			]
@@ -219,7 +219,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "React entry: one SDK context plus injector factories"
+						"heading": "Framework Adapters"
 					}
 				}
 			]
@@ -236,12 +236,8 @@
 					"changeDiscipline": "provisional-migration-required",
 					"note": "Owns token-set backend-mode route/client contracts, browser login helpers, popup callback relay exports, BACKEND_OIDC_MODE_CLIENT / BACKEND_OIDC_MODE_CLIENT_OPTIONS, and provideBackendOidcModeClient(). Standalone hosts construct BackendOidcModeClient through fromEnvironmentConfig({ config, environment, ...options }) or fromInjector(); its constructor is protected. Registry-managed hosts use createBackendOidcModeClientFactory() for startup, cancellation cleanup, entry metadata, and a callback routing key that defaults to meta.clientKey. Materialized backend clients expose loginWithRedirect({ postAuthRedirectUri }) and loginWithPopup({ popupCallbackUrl }); page navigation is held by the environment's router. relayTokenSetPopupCallbackFromEnvironment() and TokenSetPopupRelayErrorCode are exported from this subpath alongside BackendOidcModeTraceEventType. Backend user-info transport remains a family DTO while its semantic identity-principal parsing/output aligns to the shared IdentityPrincipal baseline from @securitydept/client instead of a parallel family-local owner.",
 					"evidence": [
-						"examples/backend-oidc-mode/subpath-contract.test.ts",
-						"examples/frontend-oidc-mode/wrapper-contract.test.ts",
+						"tests/public-contract-values.test.ts",
 						"examples/backend-oidc-mode/root-minimal-entry.test.ts",
-						"examples/backend-oidc-mode/browser-scenario.test.ts",
-						"examples/backend-oidc-mode/worker-like-host.test.ts",
-						"examples/cross/popup-login-baseline.test.ts",
 						"examples/backend-oidc-mode/browser-minimal-entry.test.ts",
 						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/contracts-parsers.test.ts",
 						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/client-factory.test.ts",
@@ -251,7 +247,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Browser entry: backend OIDC client"
+						"heading": "Token Set"
 					}
 				},
 				{
@@ -263,8 +259,7 @@
 					"evidence": [
 						"packages/client/src/web/__tests__/input-sources.test.ts",
 						"examples/frontend-oidc-mode/minimal-entry.test.ts",
-						"examples/frontend-oidc-mode/react-callback-async-readiness.test.ts",
-						"examples/cross/popup-login-baseline.test.ts",
+						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/callback-input.test.ts",
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/config-source.test.ts",
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/error-presentation.test.ts",
 						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client-factory.test.ts",
@@ -274,7 +269,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Config Projection Source Contract"
+						"heading": "Token Set"
 					}
 				},
 				{
@@ -290,7 +285,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Current Contract Snapshot"
+						"heading": "Token Set"
 					}
 				},
 				{
@@ -303,7 +298,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Current Contract Snapshot"
+						"heading": "Token Set"
 					}
 				},
 				{
@@ -314,15 +309,16 @@
 					"note": "Framework-neutral multi-client registry core. It owns keyed registration, immediate/idle/lazy factory initialization, record state/resources, disposal, and metadata queries. Each factory receives the registry-owned FoundationEnvironment, the immutable record metadata, and an initialization cancellation token. The registry does not own client auth state, client start, or callback execution. Registry callback helpers perform non-consuming selection and fixed-record initialization; each mode client owns callback input resolution, execution, Resource state, and cancellation.",
 					"evidence": [
 						"examples/token-set/react-multi-client-registry-baseline.test.ts",
-						"examples/frontend-oidc-mode/react-callback-async-readiness.test.ts",
 						"examples/angular/registry-integration.test.ts",
+						"packages/token-set-context-client/src/backend-oidc-mode/__tests__/client-factory.test.ts",
+						"packages/token-set-context-client/src/frontend-oidc-mode/__tests__/client-factory.test.ts",
 						"packages/token-set-context-client/src/registry/__tests__/client-registry.test.ts",
 						"packages/token-set-context-client/src/orchestration/client/__tests__/base-oidc-mode-client-auth-signals.test.ts",
 						"packages/token-set-context-client/src/registry/__tests__/callback.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Shared Client Lifecycle Contract"
+						"heading": "Token Set"
 					}
 				}
 			]
@@ -345,7 +341,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Logging, Tracing, and Testing"
+						"heading": "Span And Tracing"
 					}
 				}
 			]
@@ -368,7 +364,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Angular entry: thin DI wrappers preserve canonical owner boundaries"
+						"heading": "Framework Adapters"
 					}
 				}
 			]
@@ -391,7 +387,7 @@
 					"note": "The Angular session adapter exposes a native SESSION_CONTEXT_CLIENT InjectionToken and provideSessionContext() bridge. It maps the same core SessionContextClient from the FoundationEnvironment injector into Angular DI; initial probing remains controlled by SessionContextClientConfig.autoStart or explicit client.start()/refresh().",
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Angular entry: thin DI wrappers preserve canonical owner boundaries"
+						"heading": "Framework Adapters"
 					}
 				}
 			]
@@ -414,12 +410,11 @@
 						"packages/token-set-context-client-react/src/__tests__/route-security.test.ts",
 						"examples/backend-oidc-mode/react-minimal-entry.test.ts",
 						"examples/token-set/react-multi-client-registry-baseline.test.ts",
-						"examples/frontend-oidc-mode/react-callback-async-readiness.test.ts",
 						"../../apps/webui/e2e/frontend-oidc.spec.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "React entry: one SDK context plus injector factories"
+						"heading": "Framework Adapters"
 					}
 				},
 				{
@@ -427,13 +422,13 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Token-set-specific TanStack Router beforeLoad helper that wraps @securitydept/client-react/tanstack-router and waits for the selected client's `isAuthenticated` replay signal for each route requirement before redirect/block fallback.",
+					"note": "Token-set-specific TanStack Router beforeLoad helper that wraps @securitydept/client-react/tanstack-router and waits for the selected client's isAuthenticated Resource for each route requirement before redirect/block fallback.",
 					"evidence": [
 						"packages/token-set-context-client-react/src/__tests__/route-security.test.ts"
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Framework Router Adapters"
+						"heading": "Framework Adapters"
 					}
 				}
 			]
@@ -459,7 +454,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Framework Router Adapters"
+						"heading": "Framework Adapters"
 					}
 				}
 			]
@@ -483,7 +478,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "React entry: one SDK context plus injector factories"
+						"heading": "Framework Adapters"
 					}
 				},
 				{
@@ -497,7 +492,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Framework Router Adapters"
+						"heading": "Framework Adapters"
 					}
 				}
 			]
@@ -521,7 +516,7 @@
 					],
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
-						"heading": "Framework Router Adapters"
+						"heading": "Framework Adapters"
 					}
 				}
 			]

@@ -4,16 +4,16 @@ import {
 	OperationTraceEventType,
 	TracingLevel,
 } from "@securitydept/client";
+import {
+	FrontendOidcModeOperationEventName,
+	FrontendOidcModeTraceEventType,
+	FrontendOidcModeTraceOperationName,
+} from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { TOKEN_SET_FRONTEND_MODE_CONFIG } from "@/auth/token-set/config";
 import { TraceTimelineSection } from "@/routes/_playground/playground/token-set/-frontend-mode/trace-timeline-section";
-
-const TOKEN_SET_FRONTEND_HOST_TRACE_TARGET = "apps.webui.token-set-frontend";
-const FrontendHostTraceEventType = {
-	CrossTabHydrated: "frontend_oidc.host.cross_tab.hydrated",
-} as const;
 
 function renderTimeline(events = createTraceTimelineStore().get()): string {
 	return renderToStaticMarkup(
@@ -37,7 +37,6 @@ describe("frontend trace timeline section", () => {
 		const timeline = createTraceTimelineStore();
 		const rootSpan = createRootSpan({ idFactory: () => "root" });
 		const operationSpan = rootSpan.fork({ idFactory: () => "op_frontend_1" });
-		const hostSpan = rootSpan.fork({ idFactory: () => "host_frontend_1" });
 
 		timeline.record({
 			name: OperationTraceEventType.Started,
@@ -46,29 +45,31 @@ describe("frontend trace timeline section", () => {
 			span: operationSpan,
 			level: TracingLevel.Info,
 			fields: {
-				operationName: "frontend_oidc.callback",
+				operationName: FrontendOidcModeTraceOperationName.Callback,
 			},
 		});
 
 		timeline.record({
-			name: "token_set.popup.closed_by_user",
+			name: OperationTraceEventType.Event,
 			at: Date.parse("2026-01-01T00:00:00Z"),
-			target: "token-set-context",
+			target: TOKEN_SET_FRONTEND_MODE_CONFIG.tracing.clientTarget,
 			span: operationSpan,
-			level: TracingLevel.Error,
+			level: TracingLevel.Info,
 			fields: {
-				recovery: "restart_flow",
+				operationName: FrontendOidcModeTraceOperationName.LoginPopup,
+				eventName: FrontendOidcModeOperationEventName.PopupOpened,
+				popupCallbackUrl: "https://app.example.com/popup-callback",
 			},
 		});
 		timeline.record({
-			name: FrontendHostTraceEventType.CrossTabHydrated,
+			name: FrontendOidcModeTraceEventType.MetadataRefreshed,
 			at: Date.parse("2026-01-01T00:00:01Z"),
-			target: TOKEN_SET_FRONTEND_HOST_TRACE_TARGET,
-			span: hostSpan,
+			target: TOKEN_SET_FRONTEND_MODE_CONFIG.tracing.clientTarget,
+			span: operationSpan,
 			level: TracingLevel.Info,
 			fields: {
-				hasAccessToken: true,
-				syncCount: 3,
+				configuredIssuer: "https://idp.example.com",
+				resolvedIssuer: "https://idp.example.com",
 			},
 		});
 
@@ -77,13 +78,11 @@ describe("frontend trace timeline section", () => {
 		expect(markup).toContain("Structured Trace Timeline");
 		expect(markup).toContain("Operation Lifecycle");
 		expect(markup).toContain("SDK Lifecycle");
-		expect(markup).toContain("Host Adoption");
 		expect(markup).toContain("Operation: op_frontend_1");
 		expect(markup).toContain("operation: frontend_oidc.callback");
-		expect(markup).toContain(TOKEN_SET_FRONTEND_HOST_TRACE_TARGET);
-		expect(markup).toContain("popup.closed_by_user");
-		expect(markup).toContain("cross_tab.hydrated");
-		expect(markup).toContain("sync_count: 3");
+		expect(markup).toContain("event: popup.opened");
+		expect(markup).toContain("metadata.refreshed");
+		expect(markup).toContain("https://idp.example.com");
 		expect(markup).not.toContain("No frontend-mode trace events recorded yet.");
 		expect(markup).not.toContain('disabled=""');
 	});

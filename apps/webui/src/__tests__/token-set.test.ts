@@ -201,7 +201,7 @@ describe("token-set browser flow", () => {
 					body: {
 						access_token: "refreshed-at",
 						refresh_token: "refreshed-rt",
-						expires_at: "2026-01-01T00:07:00Z",
+						access_token_expires_at: "2026-01-01T00:07:00Z",
 					},
 				}),
 			)
@@ -233,7 +233,7 @@ describe("token-set browser flow", () => {
 
 		await client.handleCallback(
 			callbackParameters(
-				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-6",
+				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-6",
 			),
 		);
 		await expect(
@@ -261,7 +261,7 @@ describe("token-set browser flow", () => {
 					body: {
 						access_token: "entries-at",
 						refresh_token: "entries-rt",
-						expires_at: "2026-01-01T00:07:00Z",
+						access_token_expires_at: "2026-01-01T00:07:00Z",
 					},
 				}),
 			)
@@ -297,7 +297,7 @@ describe("token-set browser flow", () => {
 
 		await client.handleCallback(
 			callbackParameters(
-				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-7",
+				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-7",
 			),
 		);
 		await expect(
@@ -329,7 +329,7 @@ describe("token-set browser flow", () => {
 					body: {
 						access_token: "mutation-at",
 						refresh_token: "mutation-rt",
-						expires_at: "2026-01-01T00:07:00Z",
+						access_token_expires_at: "2026-01-01T00:07:00Z",
 					},
 				}),
 			)
@@ -389,7 +389,7 @@ describe("token-set browser flow", () => {
 
 		await client.handleCallback(
 			callbackParameters(
-				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-8",
+				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-8",
 			),
 		);
 		await expect(
@@ -442,7 +442,7 @@ describe("token-set browser flow", () => {
 					body: {
 						access_token: "basic-at",
 						refresh_token: "basic-rt",
-						expires_at: "2026-01-01T00:07:00Z",
+						access_token_expires_at: "2026-01-01T00:07:00Z",
 					},
 				}),
 			)
@@ -503,7 +503,7 @@ describe("token-set browser flow", () => {
 
 		await client.handleCallback(
 			callbackParameters(
-				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-9",
+				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-9",
 			),
 		);
 		await expect(
@@ -559,7 +559,7 @@ describe("token-set browser flow", () => {
 					body: {
 						access_token: "group-at",
 						refresh_token: "group-rt",
-						expires_at: "2026-01-01T00:07:00Z",
+						access_token_expires_at: "2026-01-01T00:07:00Z",
 					},
 				}),
 			)
@@ -639,7 +639,7 @@ describe("token-set browser flow", () => {
 
 		await client.handleCallback(
 			callbackParameters(
-				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&expires_at=2026-01-01T00%3A02%3A00Z&metadata_redemption_id=meta-10",
+				"access_token=seed-at&id_token=seed-idt&refresh_token=seed-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z&metadata_redemption_id=meta-10",
 			),
 		);
 		await expect(
@@ -721,7 +721,7 @@ describe("token-set browser flow", () => {
 
 		await client.handleCallback(
 			callbackParameters(
-				"access_token=abort-at&id_token=abort-idt&refresh_token=abort-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+				"access_token=abort-at&id_token=abort-idt&refresh_token=abort-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z",
 			),
 		);
 
@@ -767,7 +767,7 @@ describe("token-set browser flow", () => {
 
 		await client.handleCallback(
 			callbackParameters(
-				"access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+				"access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z",
 			),
 		);
 
@@ -864,7 +864,7 @@ describe("token-set browser flow", () => {
 
 		await client.handleCallback(
 			callbackParameters(
-				"access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&expires_at=2026-01-01T00%3A05%3A00Z",
+				"access_token=callback-at&id_token=callback-idt&refresh_token=callback-rt&access_token_expires_at=2026-01-01T00%3A05%3A00Z",
 			),
 		);
 

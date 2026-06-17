@@ -109,7 +109,7 @@ describe("parseBackendOidcModeUserInfoBody", () => {
 	});
 });
 
-describe("callbackFragmentToTokenSnapshot", () => {
+describe("callbackReturnsToTokenSnapshot", () => {
 	it("maps fragment fields to orchestration TokenSetTokenSnapshot", () => {
 		const snapshot = callbackReturnsToTokenSnapshot({
 			accessToken: "at",
@@ -125,7 +125,7 @@ describe("callbackFragmentToTokenSnapshot", () => {
 	});
 });
 
-describe("refreshFragmentToTokenDelta", () => {
+describe("refreshReturnsToTokenDelta", () => {
 	it("maps fragment fields to orchestration TokenSetTokenDelta", () => {
 		const delta = refreshReturnsToTokenDelta({
 			accessToken: "at2",

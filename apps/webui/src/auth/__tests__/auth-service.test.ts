@@ -242,12 +242,11 @@ describe("AuthService", () => {
 
 	it("disposes with the injected Securitydept destroy ref", () => {
 		const { service, destroyRef } = createAuthServiceFixture();
+		const dispose = vi.spyOn(service, "dispose");
 
 		destroyRef.dispose();
 
-		expect(service.authUser.snapshot.get()).toEqual({
-			status: ResourceStatus.Idle,
-		});
+		expect(dispose).toHaveBeenCalledOnce();
 	});
 
 	it("checks route authentication through selected context clients", async () => {

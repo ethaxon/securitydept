@@ -1,124 +1,63 @@
 // @vitest-environment jsdom
 
 import {
-	createEventSubject,
-	createSignal,
-	SYMBOL_DISPOSE,
-} from "@securitydept/client";
-import { createEnvironmentForTest } from "@securitydept/client/test";
-import { SecuritydeptProvider } from "@securitydept/client-react";
+	createEnvironmentForReact,
+	SecuritydeptProvider,
+	useSecuritydeptContext,
+	useSuspenseResourceValue,
+} from "@securitydept/client-react";
 import {
-	type BaseOidcModeClient,
-	type TokenSetAuthEvent,
-	type TokenSetAuthSnapshot,
-} from "@securitydept/token-set-context-client/orchestration";
-import {
-	provideTokenSetClientRegistry,
-	TokenSetClientInitializationMode,
-	type TokenSetClientRegistry,
-	type TokenSetClientRegistryEntry,
-} from "@securitydept/token-set-context-client/registry";
-import { useTokenSetClientRegistry } from "@securitydept/token-set-context-client-react";
+	BACKEND_OIDC_MODE_CLIENT,
+	provideBackendOidcModeClient,
+} from "@securitydept/token-set-context-client/backend-oidc-mode";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { createTestTokenSetReactiveFields } from "../_helpers/test-token-set-client";
-
-type BackendViewClient = BaseOidcModeClient & {
-	authorizeUrl(): string;
-};
+import { afterEach, describe, expect, it } from "vitest";
 
 function render(element: ReactElement) {
 	const container = document.createElement("div");
 	document.body.appendChild(container);
 	const root = createRoot(container);
 
-	act(() => {
-		root.render(element);
-	});
+	act(() => root.render(element));
 
 	return {
 		container,
 		unmount() {
-			act(() => {
-				root.unmount();
-			});
+			act(() => root.unmount());
 			container.remove();
 		},
 	};
 }
 
-function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
-	return {
-		tokens: { accessToken },
-		metadata: {},
-	};
-}
-
-function createBackendClient(
-	snapshot: TokenSetAuthSnapshot,
-): BackendViewClient {
-	const state = createSignal<TokenSetAuthSnapshot | null>(snapshot);
-	const reactive = createTestTokenSetReactiveFields(snapshot);
-	const dispose = vi.fn(() => {
-		state.set(null);
-		reactive.emitSnapshot(null);
-	});
-	state.watchStream().subscribe({
-		next() {
-			reactive.emitSnapshot(state.get());
-		},
-	});
-	return {
-		...reactive.fields,
-		authEvents: createEventSubject<TokenSetAuthEvent>(),
-		addWorkflowSource: () => ({ unsubscribe: () => undefined }),
-		removeWorkflowSource: () => false,
-		start: async () => undefined,
-		dispose,
-		[SYMBOL_DISPOSE]: dispose,
-		restorePersistedState: async () => state.get(),
-		loginWithRedirect: async () => undefined,
-		logout: async () => undefined,
-		loginWithPopup: async () => ({ snapshot }),
-		authorizeUrl: () => "/authorize",
-	} as unknown as BackendViewClient;
-}
-
-function createEntry(
-	clientFactory: () => BackendViewClient,
-): TokenSetClientRegistryEntry<BaseOidcModeClient> {
-	return {
-		clientFactory,
-		meta: {
-			clientKey: "main",
-			urlPatterns: [],
-			callbackUrl: undefined,
-			requirementKind: undefined,
-			providerFamily: undefined,
-			initialization: TokenSetClientInitializationMode.Lazy,
-		},
-	};
-}
-
-describe("backend-oidc react minimal entry", () => {
+describe("backend-oidc React minimal entry", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
 	});
 
-	it("shows the minimal injector path for consuming backend-OIDC auth state in React", async () => {
-		const environment = createEnvironmentForTest({
-			providers: provideTokenSetClientRegistry({
-				clients: [
-					createEntry(() => createBackendClient(createSnapshot("backend-at"))),
-				],
+	it("injects the core single-client provider without a React-owned client wrapper", async () => {
+		const environment = createEnvironmentForReact({
+			providers: provideBackendOidcModeClient({
+				config: { baseUrl: "https://auth.example.com" },
+				callbackInputResolver: null,
 			}),
 		});
-		let registry: TokenSetClientRegistry<BaseOidcModeClient> | undefined;
+		const client = environment.injector.get(BACKEND_OIDC_MODE_CLIENT);
+		await client.restoreState({
+			tokens: { accessToken: "backend-at" },
+			metadata: {},
+		});
 
 		function AuthBadge() {
-			registry = useTokenSetClientRegistry();
-			return createElement("output", null, "ready");
+			const injectedClient = useSecuritydeptContext().get(
+				BACKEND_OIDC_MODE_CLIENT,
+			);
+			const snapshot = useSuspenseResourceValue(injectedClient.authResource);
+			return createElement(
+				"output",
+				null,
+				snapshot?.tokens.accessToken ?? "guest",
+			);
 		}
 
 		const view = render(
@@ -129,57 +68,7 @@ describe("backend-oidc react minimal entry", () => {
 			),
 		);
 
-		await act(async () => {
-			await Promise.resolve();
-		});
-
-		const client = (
-			await registry?.clientRecordFor("main", { initialize: true })
-		)?.client;
-		expect(await client?.authResource.whenValue()).toEqual(
-			createSnapshot("backend-at"),
-		);
-		view.unmount();
-	});
-
-	it("shows advanced client access through the keyed registry", async () => {
-		const environment = createEnvironmentForTest({
-			providers: provideTokenSetClientRegistry({
-				clients: [
-					createEntry(() => createBackendClient(createSnapshot("backend-at"))),
-				],
-			}),
-		});
-		let registry: TokenSetClientRegistry<BaseOidcModeClient> | undefined;
-
-		function ClientProbe() {
-			registry = useTokenSetClientRegistry();
-			return createElement("output", null, "ready");
-		}
-
-		const view = render(
-			createElement(
-				SecuritydeptProvider,
-				{ injector: environment.injector },
-				createElement(ClientProbe),
-			),
-		);
-
-		await act(async () => {
-			await Promise.resolve();
-		});
-
-		const client = (
-			await registry?.clientRecordFor("main", { initialize: true })
-		)?.client;
-		if (
-			!client ||
-			!("authorizeUrl" in client) ||
-			typeof client.authorizeUrl !== "function"
-		) {
-			throw new Error("Expected backend-specific client surface");
-		}
-		expect(client.authorizeUrl()).toBe("/authorize");
+		expect(view.container.textContent).toBe("backend-at");
 		view.unmount();
 	});
 });

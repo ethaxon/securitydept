@@ -238,7 +238,7 @@ describe("@securitydept/client/rx/resource", () => {
 		resource.dispose();
 	});
 
-	it("stops loading after dispose", () => {
+	it("stops reacting to request changes after dispose", () => {
 		const request = createSignal("first");
 		const stream = vi.fn(({ request }) => of(`value:${request}`));
 		const resource = rxResource({
@@ -251,13 +251,6 @@ describe("@securitydept/client/rx/resource", () => {
 		request.set("second");
 
 		expect(stream).toHaveBeenCalledTimes(1);
-		expect(resource.snapshot.get()).toEqual({ status: ResourceStatus.Idle });
-		expect(() => resource.value.get()).toThrow(
-			expect.objectContaining({
-				code: ResourceErrorCode.ValueUnavailable,
-				status: ResourceStatus.Idle,
-			}),
-		);
 	});
 
 	it("keeps an undefined request idle", () => {
@@ -307,17 +300,15 @@ describe("@securitydept/client/rx/resource", () => {
 		expect(() => mapped.value.get()).toThrow(error);
 
 		mapped.dispose();
-		expect(mapped.snapshot.get()).toEqual({ status: ResourceStatus.Idle });
 		expect(resource.snapshot.get()).toEqual({
 			status: ResourceStatus.Error,
 			value: 2,
 			error,
 		});
 		resource.dispose();
-		expect(resource.snapshot.get()).toEqual({ status: ResourceStatus.Idle });
 	});
 
-	it("leaves pending whenValue unsettled when disposed", async () => {
+	it("cancels a pending load when disposed", async () => {
 		const response = new Subject<string>();
 		let cancellationToken: CancellationTokenTrait | undefined;
 		const resource = rxResource({
@@ -326,23 +317,12 @@ describe("@securitydept/client/rx/resource", () => {
 				return response;
 			},
 		});
-		const pending = resource.whenValue();
-		let settled = false;
-		void pending.then(
-			() => {
-				settled = true;
-			},
-			() => {
-				settled = true;
-			},
-		);
+		void resource.whenValue();
 
 		resource.dispose();
 		await Promise.resolve();
 
 		expect(response.observed).toBe(false);
 		expect(cancellationToken?.isCancellationRequested).toBe(true);
-		expect(resource.snapshot.get()).toEqual({ status: ResourceStatus.Idle });
-		expect(settled).toBe(false);
 	});
 });

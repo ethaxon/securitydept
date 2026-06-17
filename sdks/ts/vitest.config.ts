@@ -8,6 +8,6 @@ export default defineConfig({
 		include: ["examples/**/*.test.ts", "tests/**/*.test.ts"],
 		testTimeout: isCi ? 15_000 : undefined,
 		globalSetup: [path.join(import.meta.dirname, "vitest.global-setup.ts")],
-		setupFiles: ["./vitest.angular-setup.ts"],
+		setupFiles: ["./vitest.angular-setup.ts", "./vitest.react-setup.ts"],
 	},
 });
