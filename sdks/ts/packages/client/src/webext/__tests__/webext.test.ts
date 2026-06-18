@@ -183,13 +183,14 @@ describe("web extension environment adapters", () => {
 
 	it("uses native web router for extension UI pages", () => {
 		const replaceState = vi.fn();
+		const pushState = vi.fn();
 		const environment = createEnvironmentForWebExtUI({
 			routerForNativeWebCreateOptions: {
 				location: {
 					href: "moz-extension://test-id/popup.html#callback",
 					hash: "#callback",
 				},
-				history: { replaceState },
+				history: { replaceState, pushState },
 			},
 			transport: createTransport(),
 		});
@@ -232,7 +233,7 @@ describe("web extension environment adapters", () => {
 				location: {
 					href: "moz-extension://test-id/popup.html",
 				},
-				history: { replaceState: vi.fn() },
+				history: { replaceState: vi.fn(), pushState: vi.fn() },
 			},
 			pageLifecycleForNativeWebCreateOptions: {
 				document,

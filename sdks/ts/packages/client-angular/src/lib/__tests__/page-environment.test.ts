@@ -102,6 +102,7 @@ function createNativeWebEnvironment(
 			},
 			history: {
 				replaceState() {},
+				pushState() {},
 			},
 		},
 	});

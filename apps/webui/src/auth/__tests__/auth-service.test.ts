@@ -1,24 +1,40 @@
 // @vitest-environment jsdom
 
-import { BASIC_AUTH_CONTEXT_CLIENT } from "@securitydept/basic-auth-context-client";
+import {
+	BASIC_AUTH_CONTEXT_CLIENT,
+	provideBasicAuthContext,
+} from "@securitydept/basic-auth-context-client";
 import {
 	createFoundationEnvironment,
 	createSecuritydeptDestroyRef,
 	createSignal,
 	ENVIRONMENT_TOKEN,
+	INJECTOR_TOKEN,
 	REQUIREMENT_PLANNER_HOST,
+	RequirementPlannerHost,
 	type ResourceSnapshot,
 	ResourceStatus,
 	resourceFromSnapshots,
 	SecuritydeptDestroyRef,
 	type SecuritydeptInjector,
 } from "@securitydept/client";
-import { SESSION_CONTEXT_CLIENT } from "@securitydept/session-context-client";
-import { TOKEN_SET_CLIENT_REGISTRY } from "@securitydept/token-set-context-client/registry";
+import { createEnvironmentForReact } from "@securitydept/client-react";
+import {
+	provideSessionContext,
+	SESSION_CONTEXT_CLIENT,
+} from "@securitydept/session-context-client";
+import {
+	TOKEN_SET_CLIENT_REGISTRY,
+	TOKEN_SET_CLIENT_REGISTRY_ENTRIES,
+} from "@securitydept/token-set-context-client/registry";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_SERVICE, AuthService, provideAuthService } from "../auth.service";
+import { basicAuthContextConfig } from "../basic/config";
 import { AuthContextMode } from "../model";
+import { sessionContextConfig } from "../session/config";
 import { TOKEN_SET_FRONTEND_MODE_CONFIG } from "../token-set/config";
+import { provideWebuiTokenSetContext } from "../token-set/providers";
+import { TokenSetTracingService } from "../token-set/tracing";
 
 function createAuthServiceFixture() {
 	function createResolvedResource<T>(initialValue: T) {
@@ -308,10 +324,9 @@ describe("AuthService", () => {
 		const providers = provideAuthService();
 		expect(providers).toEqual(
 			expect.arrayContaining([
-				expect.objectContaining({ provide: AuthService }),
 				expect.objectContaining({
 					provide: AUTH_SERVICE,
-					useExisting: AuthService,
+					deps: [INJECTOR_TOKEN],
 				}),
 				expect.objectContaining({
 					provide: REQUIREMENT_PLANNER_HOST,
@@ -319,5 +334,37 @@ describe("AuthService", () => {
 				}),
 			]),
 		);
+		expect(providers).not.toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ provide: AuthService }),
+			]),
+		);
+	});
+
+	it("provides token-set registry entries with an explicit tracing dependency", () => {
+		expect(provideWebuiTokenSetContext()).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					provide: TOKEN_SET_CLIENT_REGISTRY_ENTRIES,
+					deps: [INJECTOR_TOKEN, TokenSetTracingService],
+				}),
+			]),
+		);
+	});
+
+	it("resolves the planner host from the production provider graph", () => {
+		const environment = createEnvironmentForReact({
+			providers: [
+				...provideSessionContext({ config: sessionContextConfig }),
+				...provideBasicAuthContext({ config: basicAuthContextConfig }),
+				...provideWebuiTokenSetContext(),
+				...provideAuthService(),
+			],
+		});
+
+		expect(environment.injector.get(REQUIREMENT_PLANNER_HOST)).toBeInstanceOf(
+			RequirementPlannerHost,
+		);
+		environment.injector.get(AUTH_SERVICE).dispose();
 	});
 });

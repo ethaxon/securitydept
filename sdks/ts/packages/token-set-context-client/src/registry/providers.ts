@@ -1,5 +1,6 @@
 import {
 	INJECTOR_TOKEN,
+	type SecuritydeptDependencyDescriptor,
 	type SecuritydeptInjectorTrait,
 	type SecuritydeptProvider,
 } from "@securitydept/client";
@@ -11,27 +12,45 @@ import {
 import { type TokenSetClientRegistryEntry } from "./contracts/types";
 import { TokenSetClientRegistry } from "./core/client-registry";
 
-export type ProvideTokenSetClientRegistryOptions =
+type TokenSetClientRegistryFactoryDependencies<
+	TDependencies extends readonly unknown[],
+> = {
+	readonly [TIndex in keyof TDependencies]: SecuritydeptDependencyDescriptor<
+		TDependencies[TIndex]
+	>;
+};
+
+export type ProvideTokenSetClientRegistryOptions<
+	TDependencies extends readonly unknown[] = readonly [],
+> =
 	| {
 			readonly clients?: readonly TokenSetClientRegistryEntry<BaseOidcModeClient>[];
 			readonly createClients?: never;
+			readonly dependencies?: never;
 	  }
 	| {
 			readonly clients?: never;
 			readonly createClients: (
 				injector: SecuritydeptInjectorTrait,
+				...dependencies: TDependencies
 			) => readonly TokenSetClientRegistryEntry<BaseOidcModeClient>[];
+			readonly dependencies?: TokenSetClientRegistryFactoryDependencies<TDependencies>;
 	  };
 
-export function provideTokenSetClientRegistry(
-	options: ProvideTokenSetClientRegistryOptions = {},
+export function provideTokenSetClientRegistry<
+	TDependencies extends readonly unknown[] = readonly [],
+>(
+	options: ProvideTokenSetClientRegistryOptions<TDependencies> = {},
 ): readonly SecuritydeptProvider[] {
 	return [
 		options.createClients
 			? {
 					provide: TOKEN_SET_CLIENT_REGISTRY_ENTRIES,
-					useFactory: options.createClients,
-					deps: [INJECTOR_TOKEN],
+					useFactory: (
+						injector: SecuritydeptInjectorTrait,
+						...dependencies: TDependencies
+					) => options.createClients(injector, ...dependencies),
+					deps: [INJECTOR_TOKEN, ...(options.dependencies ?? [])],
 				}
 			: {
 					provide: TOKEN_SET_CLIENT_REGISTRY_ENTRIES,

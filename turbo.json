@@ -24,6 +24,7 @@
 	"tasks": {
 		"build": {
 			"dependsOn": ["^build"],
+			"outputLogs": "errors-only",
 			"outputs": ["dist/**"],
 			"inputs": [
 				"$TURBO_DEFAULT$",

@@ -46,8 +46,12 @@ function callbackParameters(fragment: string): Record<string, string> {
 function createHistoryRecorder() {
 	return {
 		replacedUrl: "" as string,
+		pushedUrl: "" as string,
 		replaceState(_data: unknown, _unused: string, url?: string) {
 			this.replacedUrl = url ?? "";
+		},
+		pushState(_data: unknown, _unused: string, url?: string) {
+			this.pushedUrl = url ?? "";
 		},
 	};
 }

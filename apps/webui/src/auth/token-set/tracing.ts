@@ -4,7 +4,9 @@ import {
 	ENVIRONMENT_TOKEN,
 	type EventSubscriptionTrait,
 	type FoundationEnvironment,
+	INJECTOR_TOKEN,
 	SecuritydeptDestroyRef,
+	type SecuritydeptInjector,
 	type SecuritydeptProvider,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
@@ -65,13 +67,15 @@ export function provideTokenSetTracing(): readonly SecuritydeptProvider[] {
 			provide: TokenSetTracingService,
 			useFactory: (
 				environment: FoundationEnvironment,
-				destroyRef: SecuritydeptDestroyRef,
+				injector: SecuritydeptInjector,
 			) => {
 				const service = new TokenSetTracingService(environment);
-				destroyRef.onDestroy(() => service.dispose());
+				injector
+					.get(SecuritydeptDestroyRef, null)
+					?.onDestroy(() => service.dispose());
 				return service;
 			},
-			deps: [ENVIRONMENT_TOKEN, SecuritydeptDestroyRef],
+			deps: [ENVIRONMENT_TOKEN, INJECTOR_TOKEN],
 		},
 	];
 }

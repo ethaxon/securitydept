@@ -7,6 +7,7 @@ export const FrontendOidcModeErrorCode = {
 	AuthorizationEndpointMissing:
 		"frontend_oidc.discovery.authorization_endpoint_missing",
 	RequiredScopesMissing: "frontend_oidc.authorization.required_scopes_missing",
+	TokenEndpointRejected: "frontend_oidc.token.endpoint_rejected",
 	ClaimsCheckFailed: "frontend_oidc.authorization.claims_check_failed",
 	ClaimsScriptUnsupported:
 		"frontend_oidc.configuration.claims_script_unsupported",

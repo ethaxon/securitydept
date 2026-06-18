@@ -35,6 +35,7 @@ describe("client test environment helpers", () => {
 				},
 				history: {
 					replaceState() {},
+					pushState() {},
 				},
 			},
 		});
@@ -59,6 +60,7 @@ describe("client test environment helpers", () => {
 				},
 				history: {
 					replaceState() {},
+					pushState() {},
 				},
 			},
 		});

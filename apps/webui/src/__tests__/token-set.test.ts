@@ -36,8 +36,8 @@ import {
 	probeForwardAuthWithEntryToken,
 	probePropagationRouteWithTokenSet,
 } from "../api/tokenSet";
-import { provideAuthService } from "../auth/auth.service";
 import { TOKEN_SET_FRONTEND_MODE_CONFIG } from "../auth/token-set/config";
+import { provideWebuiTokenSetContext } from "../auth/token-set/providers";
 
 function createJsonResponse(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), {
@@ -150,7 +150,7 @@ describe("token-set browser flow", () => {
 		const environment = createFoundationEnvironment({
 			router: createPageRouter("https://app.example.com/"),
 			providers: [
-				...provideAuthService(),
+				...provideWebuiTokenSetContext(),
 				{
 					provide: SecuritydeptDestroyRef,
 					useValue: createSecuritydeptDestroyRef(),

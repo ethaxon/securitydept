@@ -37,6 +37,7 @@
 		"test": "turbo run test",
 		"test:sdks": "turbo run test --filter='./sdks/ts/**'",
 		"test:webui": "turbo run test --filter=@securitydept/webui",
+		"test:full-logs": "turbo run test --output-logs=full",
 		"test:watch": "turbo watch test:watch",
 		"typecheck": "tsc -b --pretty false",
 		"typecheck:scripts": "tsc -b tsconfig.scripts.json --pretty false",

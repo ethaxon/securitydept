@@ -121,25 +121,30 @@ const oauthMocks = vi.hoisted(() => ({
 	validateAuthResponse: vi.fn(),
 }));
 
-vi.mock("oauth4webapi", () => ({
-	allowInsecureRequests: oauthMocks.allowInsecureRequests,
-	authorizationCodeGrantRequest: oauthMocks.authorizationCodeGrantRequest,
-	calculatePKCECodeChallenge: oauthMocks.calculatePKCECodeChallenge,
-	ClientNone: vi.fn(() => ({ type: "none" })),
-	ClientSecretPost: vi.fn(() => ({ type: "client_secret_post" })),
-	discoveryRequest: oauthMocks.discoveryRequest,
-	generateRandomCodeVerifier: oauthMocks.generateRandomCodeVerifier,
-	generateRandomState: oauthMocks.generateRandomState,
-	nopkce: oauthMocks.nopkce,
-	None: vi.fn(() => ({ type: "none" })),
-	processAuthorizationCodeResponse: oauthMocks.processAuthorizationCodeResponse,
-	processDiscoveryResponse: oauthMocks.processDiscoveryResponse,
-	processRefreshTokenResponse: oauthMocks.processRefreshTokenResponse,
-	processUserInfoResponse: oauthMocks.processUserInfoResponse,
-	refreshTokenGrantRequest: oauthMocks.refreshTokenGrantRequest,
-	userInfoRequest: oauthMocks.userInfoRequest,
-	validateAuthResponse: oauthMocks.validateAuthResponse,
-}));
+vi.mock("oauth4webapi", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("oauth4webapi")>();
+	return {
+		...actual,
+		allowInsecureRequests: oauthMocks.allowInsecureRequests,
+		authorizationCodeGrantRequest: oauthMocks.authorizationCodeGrantRequest,
+		calculatePKCECodeChallenge: oauthMocks.calculatePKCECodeChallenge,
+		ClientNone: vi.fn(() => ({ type: "none" })),
+		ClientSecretPost: vi.fn(() => ({ type: "client_secret_post" })),
+		discoveryRequest: oauthMocks.discoveryRequest,
+		generateRandomCodeVerifier: oauthMocks.generateRandomCodeVerifier,
+		generateRandomState: oauthMocks.generateRandomState,
+		nopkce: oauthMocks.nopkce,
+		None: vi.fn(() => ({ type: "none" })),
+		processAuthorizationCodeResponse:
+			oauthMocks.processAuthorizationCodeResponse,
+		processDiscoveryResponse: oauthMocks.processDiscoveryResponse,
+		processRefreshTokenResponse: oauthMocks.processRefreshTokenResponse,
+		processUserInfoResponse: oauthMocks.processUserInfoResponse,
+		refreshTokenGrantRequest: oauthMocks.refreshTokenGrantRequest,
+		userInfoRequest: oauthMocks.userInfoRequest,
+		validateAuthResponse: oauthMocks.validateAuthResponse,
+	};
+});
 
 import { createDefaultFrontendOidcModeCallbackInputResolver } from "../client/callback-input-resolver";
 import { FrontendOidcModeClient } from "../client/client";

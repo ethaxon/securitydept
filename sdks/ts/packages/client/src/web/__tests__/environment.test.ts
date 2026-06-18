@@ -26,7 +26,7 @@ describe("environment page capability boundary", () => {
 				href: "https://app.example.com/callback#fragment",
 				hash: "#fragment",
 			},
-			history: { replaceState() {} },
+			history: { replaceState() {}, pushState() {} },
 		};
 
 		const environment = createEnvironmentForNativeWeb({
@@ -97,7 +97,7 @@ describe("environment page capability boundary", () => {
 					href: "https://app.example.com/callback#fragment",
 					hash: "#fragment",
 				},
-				history: { replaceState() {} },
+				history: { replaceState() {}, pushState() {} },
 			},
 			pageLifecycleForNativeWebCreateOptions: {
 				document: null,
@@ -116,7 +116,7 @@ describe("environment page capability boundary", () => {
 					href: "https://app.example.com/callback#fragment",
 					hash: "#fragment",
 				},
-				history: { replaceState() {} },
+				history: { replaceState() {}, pushState() {} },
 			},
 			popupForNativeWebCreateOptions: {
 				window: null,
@@ -134,7 +134,7 @@ describe("environment page capability boundary", () => {
 					href: "https://app.example.com/callback#fragment",
 					hash: "#fragment",
 				},
-				history: { replaceState() {} },
+				history: { replaceState() {}, pushState() {} },
 			},
 			persistentStorageForNativeWebCreateOptions: {
 				storage: null,
@@ -160,7 +160,7 @@ describe("environment page capability boundary", () => {
 					href: "https://app.example.com/callback#fragment",
 					hash: "#fragment",
 				},
-				history: { replaceState() {} },
+				history: { replaceState() {}, pushState() {} },
 			},
 			persistentStorageForNativeWebCreateOptions: {
 				storage: null,

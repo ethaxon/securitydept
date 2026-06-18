@@ -1071,35 +1071,67 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		cancellationToken.throwIfCancellationRequested();
 		const authServer = this._requireAuthServer("exchangeCode");
 
-		const params = validateAuthResponse(
-			authServer,
-			this._o4wClient,
-			callbackParameters,
-			state,
-		);
+		try {
+			const params = validateAuthResponse(
+				authServer,
+				this._o4wClient,
+				callbackParameters,
+				state,
+			);
 
-		const response = await authorizationCodeGrantRequest(
-			authServer,
-			this._o4wClient,
-			this._clientAuth,
-			params,
-			redirectUri,
-			this._config.pkceEnabled ? (codeVerifier ?? nopkce) : nopkce,
-			this._oauthRequestOptions(),
-		);
-		cancellationToken.throwIfCancellationRequested();
+			const response = await authorizationCodeGrantRequest(
+				authServer,
+				this._o4wClient,
+				this._clientAuth,
+				params,
+				redirectUri,
+				this._config.pkceEnabled ? (codeVerifier ?? nopkce) : nopkce,
+				this._oauthRequestOptions(),
+			);
+			cancellationToken.throwIfCancellationRequested();
 
-		const result = await processAuthorizationCodeResponse(
-			authServer,
-			this._o4wClient,
-			response,
-			expectedNonce ? { expectedNonce } : undefined,
-		);
-		cancellationToken.throwIfCancellationRequested();
+			const result = await processAuthorizationCodeResponse(
+				authServer,
+				this._o4wClient,
+				response,
+				expectedNonce ? { expectedNonce } : undefined,
+			);
+			cancellationToken.throwIfCancellationRequested();
 
-		const tokenResult = this._normalizeTokenResponse(result);
-		this._validateRequiredScopes(tokenResult.grantedScopes);
-		return tokenResult;
+			const tokenResult = this._normalizeTokenResponse(result);
+			this._validateRequiredScopes(tokenResult.grantedScopes);
+			return tokenResult;
+		} catch (error) {
+			throw this._mapTokenEndpointError(error);
+		}
+	}
+
+	private _mapTokenEndpointError(error: unknown): unknown {
+		if (!(error instanceof ResponseBodyError)) {
+			return error;
+		}
+		const oauthError = error.error;
+		const description =
+			typeof error.error_description === "string" &&
+			error.error_description.length > 0
+				? error.error_description
+				: undefined;
+		const message = description
+			? `Token endpoint rejected the authorization code grant (${oauthError}): ${description}`
+			: `Token endpoint rejected the authorization code grant (${oauthError})`;
+		return new ClientError({
+			kind: ClientErrorKind.Authorization,
+			code: FrontendOidcModeErrorCode.TokenEndpointRejected,
+			message,
+			recovery: UserRecovery.RestartFlow,
+			source: FrontendOidcModeErrorSource.Authorization,
+			cause: error,
+			presentation: {
+				code: FrontendOidcModeErrorCode.TokenEndpointRejected,
+				message,
+				recovery: UserRecovery.RestartFlow,
+			},
+		});
 	}
 
 	/** Refresh tokens using a refresh_token grant (low-level). */

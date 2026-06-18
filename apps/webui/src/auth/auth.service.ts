@@ -37,7 +37,6 @@ import { type BackendOidcModeClient } from "@securitydept/token-set-context-clie
 import { type FrontendOidcModeClient } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
-	provideTokenSetClientRegistry,
 	TOKEN_SET_CLIENT_REGISTRY,
 	type TokenSetClientRegistry,
 } from "@securitydept/token-set-context-client/registry";
@@ -46,11 +45,6 @@ import {
 	TOKEN_SET_BACKEND_MODE_CONFIG,
 	TOKEN_SET_FRONTEND_MODE_CONFIG,
 } from "@/auth/token-set/config";
-import { createWebuiTokenSetClientEntries } from "@/auth/token-set/providers";
-import {
-	provideTokenSetTracing,
-	TokenSetTracingService,
-} from "@/auth/token-set/tracing";
 import { projectDashboardUser } from "@/dashboard/principal";
 import { type AuthModeStore, createAuthModeStore } from "./mode-store";
 import {
@@ -234,7 +228,7 @@ export class AuthService implements DisposableTrait {
 			},
 		);
 		this.authUser = resourceFromSnapshots(() => authUserSnapshot.get());
-		injector.get(SecuritydeptDestroyRef).onDestroy(() => this.dispose());
+		injector.get(SecuritydeptDestroyRef, null)?.onDestroy(() => this.dispose());
 	}
 
 	setMode(mode: AuthContextMode): void {
@@ -383,21 +377,10 @@ export class AuthService implements DisposableTrait {
 
 export function provideAuthService(): readonly SecuritydeptProvider[] {
 	return [
-		...provideTokenSetTracing(),
-		...provideTokenSetClientRegistry({
-			createClients: (injector) => {
-				injector.get(TokenSetTracingService);
-				return createWebuiTokenSetClientEntries();
-			},
-		}),
-		{
-			provide: AuthService,
-			useFactory: (injector: SecuritydeptInjector) => new AuthService(injector),
-			deps: [INJECTOR_TOKEN],
-		},
 		{
 			provide: AUTH_SERVICE,
-			useExisting: AuthService,
+			useFactory: (injector: SecuritydeptInjector) => new AuthService(injector),
+			deps: [INJECTOR_TOKEN],
 		},
 		{
 			provide: REQUIREMENT_PLANNER_HOST,

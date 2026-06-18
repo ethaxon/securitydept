@@ -53,7 +53,7 @@ export interface NativeWebLocationLike {
 }
 
 export interface NativeWebHistoryLike {
-	pushState?(data: unknown, unused: string, url?: string | URL | null): void;
+	pushState(data: unknown, unused: string, url?: string | URL | null): void;
 	replaceState(data: unknown, unused: string, url?: string | URL | null): void;
 }
 
@@ -87,6 +87,7 @@ const NativeWebLocationLikeSchema = defineType({
 });
 
 const NativeWebHistoryLikeSchema = defineType({
+	pushState: "Function",
 	replaceState: "Function",
 });
 
@@ -197,6 +198,7 @@ abstract class NativeWebRouterBase implements RouterTrait {
 
 export class WebNavigationRouter extends NativeWebRouterBase {
 	protected readonly navigation: NativeWebNavigationLike;
+	protected readonly history: NativeWebHistoryLike | null;
 
 	constructor(options: ResolvedRouterForNativeWebCreateOptions) {
 		if (!options.navigation) {
@@ -209,6 +211,7 @@ export class WebNavigationRouter extends NativeWebRouterBase {
 		}
 		super(options);
 		this.navigation = options.navigation;
+		this.history = options.history;
 	}
 
 	async navigate(request: RouterNavigationRequest): Promise<void> {
@@ -226,6 +229,18 @@ export class WebNavigationRouter extends NativeWebRouterBase {
 				source: "web.router",
 			});
 		}
+		// Prefer History API for same-origin Push/Replace. Unintercepted
+		// Navigation API navigations load a new document even for in-app path,
+		// query, or hash changes, which breaks SPA routing and aborts in-flight
+		// OIDC callback handling after the callback payload has been taken.
+		if (this.history && this.isSameOriginNavigation(request.url)) {
+			if (request.mode === RouterNavigationMode.Replace) {
+				this.history.replaceState(request.state ?? null, "", target);
+			} else {
+				this.history.pushState(request.state ?? null, "", target);
+			}
+			return;
+		}
 		const result = this.navigation.navigate(target, {
 			history:
 				request.mode === RouterNavigationMode.Replace
@@ -234,6 +249,18 @@ export class WebNavigationRouter extends NativeWebRouterBase {
 			state: request.state,
 		});
 		await result?.committed;
+	}
+
+	private isSameOriginNavigation(url: UriReferenceString): boolean {
+		const current = this.currentUrl();
+		if (!current) {
+			return false;
+		}
+		if (url.isAbsolute() && current.isAbsolute()) {
+			return url.origin === current.origin;
+		}
+		// Relative targets inherit the current document origin.
+		return url.isRelative();
 	}
 }
 
@@ -268,10 +295,7 @@ export class WebLegacyRouter extends NativeWebRouterBase {
 				source: "web.router",
 			});
 		}
-		if (
-			request.mode === RouterNavigationMode.Replace ||
-			!this.history.pushState
-		) {
+		if (request.mode === RouterNavigationMode.Replace) {
 			this.history.replaceState(request.state ?? null, "", target);
 		} else {
 			this.history.pushState(request.state ?? null, "", target);

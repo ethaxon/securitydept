@@ -55,6 +55,32 @@ describe("describeFrontendOidcModeCallbackError", () => {
 		});
 	});
 
+	it("describes token-endpoint rejection with the oauth presentation message", () => {
+		expect(
+			describeFrontendOidcModeCallbackError({
+				code: "frontend_oidc.token.endpoint_rejected",
+				kind: "authorization",
+				message:
+					"Token endpoint rejected the authorization code grant (invalid_client): Client authentication failed",
+				recovery: UserRecovery.RestartFlow,
+				retryable: false,
+				presentation: {
+					code: "frontend_oidc.token.endpoint_rejected",
+					message:
+						"Token endpoint rejected the authorization code grant (invalid_client): Client authentication failed",
+					recovery: UserRecovery.RestartFlow,
+				},
+			}),
+		).toMatchObject({
+			code: "frontend_oidc.token.endpoint_rejected",
+			title: "Token exchange failed",
+			description:
+				"Token endpoint rejected the authorization code grant (invalid_client): Client authentication failed",
+			recovery: UserRecovery.RestartFlow,
+			tone: "danger",
+		});
+	});
+
 	it("falls back to the shared descriptor for unknown callback failures", () => {
 		expect(
 			describeFrontendOidcModeCallbackError({

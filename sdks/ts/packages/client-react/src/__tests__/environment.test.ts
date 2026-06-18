@@ -47,6 +47,7 @@ describe("createEnvironmentForReact", () => {
 				},
 				history: {
 					replaceState() {},
+					pushState() {},
 				},
 			},
 		});

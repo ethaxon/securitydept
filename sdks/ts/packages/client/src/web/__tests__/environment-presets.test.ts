@@ -29,7 +29,7 @@ describe("environment factory shape", () => {
 				href: "https://app.example.com/dashboard",
 				hash: "",
 			},
-			history: { replaceState() {} },
+			history: { replaceState() {}, pushState() {} },
 		};
 		const environment = createEnvironmentForNativeWeb({
 			...createEnvironmentOptions(),

@@ -10,6 +10,7 @@ import { App } from "./App";
 import { provideAuthService } from "./auth/auth.service";
 import { basicAuthContextConfig } from "./auth/basic/config";
 import { sessionContextConfig } from "./auth/session/config";
+import { provideWebuiTokenSetContext } from "./auth/token-set/providers";
 import "./app.css";
 import { ThemeService } from "./theme/theme.service";
 
@@ -24,6 +25,7 @@ function bootstrap(): void {
 		providers: [
 			...provideSessionContext({ config: sessionContextConfig }),
 			...provideBasicAuthContext({ config: basicAuthContextConfig }),
+			...provideWebuiTokenSetContext(),
 			...provideAuthService(),
 		],
 	});

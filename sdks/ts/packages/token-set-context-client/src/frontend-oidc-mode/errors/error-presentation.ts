@@ -8,6 +8,7 @@ import {
 	type UserRecovery,
 	UserRecovery as UserRecoveryValue,
 } from "@securitydept/client";
+import { FrontendOidcModeErrorCode } from "../client/error-codes";
 import { FrontendOidcModeCallbackErrorCode } from "./callback-error-codes";
 
 export interface FrontendOidcModeCallbackErrorDescriptorInput {
@@ -58,6 +59,18 @@ const callbackPresentations: Readonly<
 	},
 };
 
+const tokenPresentations: Readonly<
+	Record<string, ErrorCodePresentationDescriptor>
+> = {
+	[FrontendOidcModeErrorCode.TokenEndpointRejected]: {
+		title: "Token exchange failed",
+		description:
+			"The identity provider rejected the authorization-code exchange. For confidential clients, enable UnsafeFrontendClientSecret locally or configure a public PKCE client that advertises token_endpoint_auth_method=none.",
+		recovery: UserRecoveryValue.RestartFlow,
+		tone: ErrorPresentationTone.Danger,
+	},
+};
+
 export function describeFrontendOidcModeCallbackError(
 	error: FrontendOidcModeCallbackErrorDescriptorInput | unknown,
 	options: ReadErrorPresentationDescriptorOptions = {},
@@ -69,10 +82,16 @@ export function describeFrontendOidcModeCallbackError(
 		...options,
 		codePresentations: {
 			...callbackPresentations,
+			...tokenPresentations,
 			...options.codePresentations,
 		},
 	});
-	return descriptor.code && descriptor.code in callbackPresentations
-		? descriptor
-		: { ...descriptor, title: "Frontend-mode callback failed" };
+	if (
+		descriptor.code &&
+		(descriptor.code in callbackPresentations ||
+			descriptor.code in tokenPresentations)
+	) {
+		return descriptor;
+	}
+	return { ...descriptor, title: "Frontend-mode callback failed" };
 }

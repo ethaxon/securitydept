@@ -1,6 +1,7 @@
 import {
 	ClientError,
 	ClientErrorKind,
+	type SecuritydeptProvider,
 	UriRelativeString,
 } from "@securitydept/client";
 import { createBackendOidcModeClientFactory } from "@securitydept/token-set-context-client/backend-oidc-mode";
@@ -11,6 +12,7 @@ import {
 } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
+	provideTokenSetClientRegistry,
 	TokenSetClientInitializationMode,
 	type TokenSetClientRegistryEntry,
 	TokenSetRequirementKind,
@@ -19,6 +21,18 @@ import {
 	TOKEN_SET_BACKEND_MODE_CONFIG,
 	TOKEN_SET_FRONTEND_MODE_CONFIG,
 } from "./config";
+import { provideTokenSetTracing, TokenSetTracingService } from "./tracing";
+
+export function provideWebuiTokenSetContext(): readonly SecuritydeptProvider[] {
+	return [
+		...provideTokenSetTracing(),
+		...provideTokenSetClientRegistry({
+			createClients: (_injector, _tracingService: TokenSetTracingService) =>
+				createWebuiTokenSetClientEntries(),
+			dependencies: [TokenSetTracingService],
+		}),
+	];
+}
 
 export function createWebuiTokenSetClientEntries(): readonly TokenSetClientRegistryEntry<BaseOidcModeClient>[] {
 	const frontendModeMeta = {
