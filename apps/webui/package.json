@@ -12,7 +12,8 @@
 		"stage": "shx rm -rf ../../webui && shx cp -r dist ../../webui",
 		"test": "vitest run --config vitest.config.ts",
 		"test:watch": "vitest --config vitest.config.ts",
-		"typecheck": "tsc -b --pretty false"
+		"typecheck": "tsc -b --pretty false",
+		"build:dep": "pnpm run build"
 	},
 	"dependencies": {
 		"@radix-ui/react-avatar": "^1.1.10",

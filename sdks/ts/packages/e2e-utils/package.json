@@ -16,7 +16,8 @@
 	],
 	"scripts": {
 		"build": "tsdown",
-		"typecheck": "tsc -b --pretty false"
+		"typecheck": "tsc -b --pretty false",
+		"build:dep": "pnpm run build"
 	},
 	"dependencies": {
 		"nunjucks": "catalog:"

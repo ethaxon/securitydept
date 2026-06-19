@@ -59,14 +59,7 @@ export async function runTurboPrerequisites(
 		build = new Promise<void>((resolve, reject) => {
 			const child = spawn(
 				process.platform === "win32" ? "pnpm.cmd" : "pnpm",
-				[
-					"exec",
-					"turbo",
-					"run",
-					"build",
-					`--filter=${filter}`,
-					"--output-logs=errors-only",
-				],
+				["exec", "turbo", "run", "build:dep", `--filter=${filter}`],
 				{
 					cwd: path.resolve(options.workspaceRoot),
 					stdio: "inherit",
