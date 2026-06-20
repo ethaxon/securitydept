@@ -1,1 +1,1 @@
-mod kube_provider;
+mod kube_cidr_node;

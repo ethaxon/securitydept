@@ -7,8 +7,8 @@ use std::{
 use bollard::{Docker, models::NetworkCreateRequest, query_parameters::InspectNetworkOptions};
 use ipnet::IpNet;
 use securitydept_realip::{
-    ProviderRegistry,
-    config::{CustomProviderConfig, ProviderConfig, RefreshFailurePolicy},
+    CidrNodeRegistry,
+    config::{CustomCidrNodeConfig, NodeConfig, RefreshFailurePolicy},
 };
 
 const TEST_LABEL_KEY: &str = "securitydept.test";
@@ -70,12 +70,12 @@ fn is_unsupported_docker_test_environment(error: &impl std::fmt::Display) -> boo
 }
 
 #[tokio::test]
-async fn docker_provider_loads_configured_network_subnets() {
+async fn docker_cidr_node_loads_configured_network_subnets() {
     let docker = match Docker::connect_with_local_defaults() {
         Ok(docker) => docker,
         Err(error) => {
             eprintln!(
-                "skipping docker_provider_loads_configured_network_subnets: Docker is \
+                "skipping docker_cidr_node_loads_configured_network_subnets: Docker is \
                  unavailable: {error}"
             );
             return;
@@ -100,7 +100,7 @@ async fn docker_provider_loads_configured_network_subnets() {
     if let Err(error) = create_network_result {
         if is_unsupported_docker_test_environment(&error) {
             eprintln!(
-                "skipping docker_provider_loads_configured_network_subnets: Docker bridge \
+                "skipping docker_cidr_node_loads_configured_network_subnets: Docker bridge \
                  networking is unavailable in this environment: {error}"
             );
             return;
@@ -128,9 +128,12 @@ async fn docker_provider_loads_configured_network_subnets() {
         serde_json::json!([network.name().to_string()]),
     );
 
-    let config = ProviderConfig::Custom(CustomProviderConfig {
+    let config = NodeConfig::CustomCidr(CustomCidrNodeConfig {
         name: "docker-test".to_string(),
-        kind: "docker-provider".to_string(),
+        priority: 0,
+        accepts_from: vec![],
+        allow_multiple_unions: false,
+        kind: "docker".to_string(),
         refresh: None,
         timeout: None,
         on_refresh_failure: RefreshFailurePolicy::KeepLastGood,
@@ -138,10 +141,10 @@ async fn docker_provider_loads_configured_network_subnets() {
         extra,
     });
 
-    let registry = ProviderRegistry::from_configs(&[config]).await.unwrap();
-    let cidrs = registry.all_cidrs().await;
+    let registry = CidrNodeRegistry::from_configs(&[config]).await.unwrap();
+    let cidrs = registry.snapshot("docker-test").unwrap().cidrs.clone();
 
-    assert_eq!(cidrs, expected_subnets);
+    assert_eq!(cidrs.as_ref(), &expected_subnets);
 
     network.remove(&docker).await.unwrap();
 }

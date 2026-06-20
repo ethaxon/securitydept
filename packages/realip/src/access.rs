@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::{RealIpError, RealIpResult},
-    resolve::{ResolvedClientIp, ResolvedSourceKind},
+    resolve::{RealIpResolutionStatus, ResolvedClientIp},
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -50,10 +50,17 @@ impl RealIpAccessManager {
     }
 
     pub fn ensure_allowed(&self, resolved: &ResolvedClientIp) -> RealIpResult<()> {
-        if resolved.source_kind == ResolvedSourceKind::Fallback && !self.config.allow_fallback {
+        if matches!(resolved.status, RealIpResolutionStatus::Rejected { .. }) {
             return Err(RealIpError::AccessDenied {
                 client_ip: resolved.client_ip,
-                reason: "fallback source is not allowed".to_string(),
+                reason: "real-IP resolution rejected malformed trusted input".to_string(),
+            });
+        }
+
+        if resolved.status == RealIpResolutionStatus::Fallback && !self.config.allow_fallback {
+            return Err(RealIpError::AccessDenied {
+                client_ip: resolved.client_ip,
+                reason: "fallback resolution is not allowed".to_string(),
             });
         }
 
@@ -92,9 +99,10 @@ mod tests {
         let resolved = ResolvedClientIp {
             client_ip: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 7)),
             peer_ip: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 7)),
-            source_name: None,
-            source_kind: ResolvedSourceKind::Fallback,
-            header_name: None,
+            rule_name: None,
+            input_kind: crate::ResolvedInputKind::Fallback,
+            status: RealIpResolutionStatus::Fallback,
+            matched_nodes: vec![],
         };
 
         let error = manager
@@ -102,5 +110,29 @@ mod tests {
             .expect_err("fallback should be rejected");
 
         assert!(matches!(error, RealIpError::AccessDenied { .. }));
+    }
+
+    #[test]
+    fn access_manager_always_rejects_malformed_resolution() {
+        let manager = RealIpAccessManager::from_config(RealIpAccessConfig {
+            allowed_cidrs: vec!["10.0.0.0/8".parse().expect("cidr should parse")],
+            allow_fallback: true,
+        })
+        .expect("access manager should build");
+        let resolved = ResolvedClientIp {
+            client_ip: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 7)),
+            peer_ip: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 8)),
+            rule_name: Some("xff".to_string()),
+            input_kind: crate::ResolvedInputKind::Header,
+            status: RealIpResolutionStatus::Rejected {
+                reason: crate::RealIpRejectionReason::MalformedChainElement,
+            },
+            matched_nodes: vec![],
+        };
+
+        assert!(matches!(
+            manager.ensure_allowed(&resolved),
+            Err(RealIpError::AccessDenied { .. })
+        ));
     }
 }

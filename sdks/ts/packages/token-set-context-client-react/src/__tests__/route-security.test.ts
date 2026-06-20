@@ -79,7 +79,7 @@ describe("token-set TanStack auth coordination", () => {
 		).toEqual([requirement]);
 	});
 
-	it("combines existing root beforeLoad before token-set beforeLoad", async () => {
+	it("returns a focused root patch and runs token-set beforeLoad", async () => {
 		const environment = createEnvironmentForTest();
 		const registry =
 			TokenSetClientRegistry.fromEnvironmentConfig<BaseOidcModeClient>({
@@ -93,7 +93,6 @@ describe("token-set TanStack auth coordination", () => {
 				{ provide: ENVIRONMENT_TOKEN, useValue: environment },
 			],
 		);
-		const previousBeforeLoad = vi.fn(async () => "previous");
 		const requirement = TokenSetClientRegistryAuthRequirement.create({
 			id: "main-auth",
 			query: { clientKey: "main" },
@@ -103,7 +102,7 @@ describe("token-set TanStack auth coordination", () => {
 				requirements: [requirement],
 			},
 			{
-				beforeLoad: previousBeforeLoad,
+				staticData: { title: "Private" },
 			},
 		);
 
@@ -118,8 +117,9 @@ describe("token-set TanStack auth coordination", () => {
 				],
 				location: { href: "https://app.example.com/private" },
 			}),
-		).resolves.toBe("previous");
-		expect(previousBeforeLoad).toHaveBeenCalledTimes(1);
+		).resolves.toBeUndefined();
+		expect(route.staticData).toMatchObject({ title: "Private" });
+		expect(Object.keys(route).sort()).toEqual(["beforeLoad", "staticData"]);
 	});
 
 	it("runs custom unauthenticated hooks with route context", async () => {

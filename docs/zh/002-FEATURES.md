@@ -11,7 +11,7 @@
 | Session context | server-owned OIDC/dev session flow、normalized session principal 与 client adapter。 | `securitydept-session-context`、`@securitydept/session-context-client*` |
 | Token-set context | frontend/backend OIDC mode、orchestration、registry、access-token substrate 与 framework adapter。 | `securitydept-token-set-context`、`@securitydept/token-set-context-client*` |
 | Client foundation | explicit environment、signals/resources、event stream、cancellation、span、tracing、transport、storage、router/popup abstraction 与 RxJS interop。 | `@securitydept/client` |
-| Client-IP policy | forwarded header、PROXY protocol 以及 local/container/Kubernetes source 的 trusted provider resolution。 | `securitydept-realip` |
+| Client-IP policy | 基于 rule 的可信 hop graph，支持 forwarded header、bridge proof、PROXY protocol 与 local/container/Kubernetes node。 | `securitydept-realip` |
 | Reference runtime | Axum server、React WebUI、Docker runtime artifact 和 end-to-end proof path。 | `apps/server`、`apps/webui` |
 
 ## Reference Server Routes

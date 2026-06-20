@@ -377,7 +377,7 @@ fn resolve_root_web_route(redirect_target: &str) -> WebRoute {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
-    use securitydept_realip::ResolvedSourceKind;
+    use securitydept_realip::{RealIpResolutionStatus, ResolvedInputKind};
 
     use super::*;
 
@@ -543,9 +543,10 @@ mod tests {
         let resolved = ResolvedClientIp {
             client_ip: IpAddr::V4(Ipv4Addr::new(10, 1, 2, 3)),
             peer_ip: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)),
-            source_name: Some("proxy".to_string()),
-            source_kind: ResolvedSourceKind::Header,
-            header_name: Some("x-forwarded-for".to_string()),
+            rule_name: Some("proxy".to_string()),
+            input_kind: ResolvedInputKind::Header,
+            status: RealIpResolutionStatus::Resolved,
+            matched_nodes: vec![],
         };
 
         let context = BasicAuthContext::from_resolved_config(

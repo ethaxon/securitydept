@@ -78,7 +78,7 @@ describe("TanStack Router auth coordination", () => {
 			composition: RequirementsComposition.Replace,
 		});
 
-		expect(route.beforeLoad).toBeUndefined();
+		expect("beforeLoad" in route).toBe(false);
 		expect(readSecuritydeptRouteMetadata(route.staticData)).toEqual({
 			requirements: [sessionRequirement],
 			composition: RequirementsComposition.Replace,
@@ -147,11 +147,10 @@ describe("TanStack Router auth coordination", () => {
 		);
 	});
 
-	it("secureRouteRoot composes existing beforeLoad before security", async () => {
-		const previousBeforeLoad = vi.fn(() => ({ user: "existing" }));
+	it("secureRouteRoot returns a focused security patch", async () => {
 		const route = secureRouteRoot<TestRequirement>(
 			{ requirements: [sessionRequirement] },
-			{ beforeLoad: previousBeforeLoad },
+			{ staticData: { title: "Dashboard" } },
 		);
 
 		const result = await route.beforeLoad?.(
@@ -166,8 +165,9 @@ describe("TanStack Router auth coordination", () => {
 			}),
 		);
 
-		expect(previousBeforeLoad).toHaveBeenCalledTimes(1);
-		expect(result).toEqual({ user: "existing" });
+		expect(result).toBeUndefined();
+		expect(route.staticData).toMatchObject({ title: "Dashboard" });
+		expect(Object.keys(route).sort()).toEqual(["beforeLoad", "staticData"]);
 	});
 
 	it("route-scoped behaviour overrides parent host through child injector", async () => {

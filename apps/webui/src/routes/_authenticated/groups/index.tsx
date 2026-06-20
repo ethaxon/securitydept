@@ -1,8 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
-import { useDashboardAccessNotice, useGroupsQuery } from "@/dashboard/queries";
-import { AuthModeNotice } from "@/routes/_authenticated/-auth-mode-notice";
+import { useGroupsQuery } from "@/dashboard/queries";
 import { GroupTable } from "./-group-table";
 
 export const Route = createFileRoute("/_authenticated/groups/")({
@@ -10,18 +9,11 @@ export const Route = createFileRoute("/_authenticated/groups/")({
 });
 
 function RouteComponent() {
-	const accessNotice = useDashboardAccessNotice();
 	const { data: groups = [], isLoading } = useGroupsQuery();
 
 	return (
-		<Layout>
+		<Layout authenticated>
 			<div className="mx-auto max-w-5xl space-y-6">
-				{accessNotice ? (
-					<AuthModeNotice
-						title={accessNotice.title}
-						description={accessNotice.description}
-					/>
-				) : null}
 				<div className="flex items-center justify-between gap-3">
 					<h1 className="text-2xl font-semibold">Groups</h1>
 					<Link

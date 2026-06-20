@@ -1,12 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
-import {
-	useDashboardAccessNotice,
-	useEntriesQuery,
-	useGroupsQuery,
-} from "@/dashboard/queries";
-import { AuthModeNotice } from "@/routes/_authenticated/-auth-mode-notice";
+import { useEntriesQuery, useGroupsQuery } from "@/dashboard/queries";
 import { EntryTable } from "./-entry-table";
 
 export const Route = createFileRoute("/_authenticated/entries/")({
@@ -14,19 +9,12 @@ export const Route = createFileRoute("/_authenticated/entries/")({
 });
 
 function RouteComponent() {
-	const accessNotice = useDashboardAccessNotice();
 	const { data: entries = [], isLoading } = useEntriesQuery();
 	const { data: groups = [] } = useGroupsQuery();
 
 	return (
-		<Layout>
+		<Layout authenticated>
 			<div className="mx-auto max-w-5xl space-y-6">
-				{accessNotice ? (
-					<AuthModeNotice
-						title={accessNotice.title}
-						description={accessNotice.description}
-					/>
-				) : null}
 				<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 					<h1 className="text-2xl font-semibold">Auth Entries</h1>
 					<Link

@@ -9,28 +9,18 @@ import {
 } from "@/api/serverHealth";
 
 vi.mock("@/components/layout/Layout", () => ({
-	Layout: ({ children }: { children: React.ReactNode }) => (
-		<div>{children}</div>
-	),
-}));
-
-vi.mock("@/routes/_authenticated/-auth-mode-notice", () => ({
-	AuthModeNotice: ({
-		title,
-		description,
+	Layout: ({
+		children,
+		authenticated,
 	}: {
-		title: string;
-		description: string;
+		children: React.ReactNode;
+		authenticated?: boolean;
 	}) => (
-		<div>
-			<p>{title}</p>
-			<p>{description}</p>
-		</div>
+		<div data-authenticated={authenticated ? "true" : "false"}>{children}</div>
 	),
 }));
 
 vi.mock("@/dashboard/queries", () => ({
-	useDashboardAccessNotice: () => null,
 	useEntriesQuery: () => ({ data: [] }),
 	useGroupsQuery: () => ({ data: [] }),
 }));
@@ -127,6 +117,9 @@ describe("dashboard route catalog rendering", () => {
 		expect(container.textContent).toContain("/api/propagation/{*rest}");
 		expect(container.textContent).toContain("Conditional Propagation");
 		expect(container.textContent).toContain("Disabled");
+		expect(
+			container.querySelector('[data-authenticated="true"]'),
+		).not.toBeNull();
 
 		await act(async () => {
 			root.unmount();

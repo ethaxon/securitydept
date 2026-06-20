@@ -4,11 +4,9 @@ import { Save, Users } from "lucide-react";
 import { type Group } from "@/api/groups";
 import {
 	useCreateGroupMutation,
-	useDashboardAccessNotice,
 	useEntriesQuery,
 	useUpdateGroupMutation,
 } from "@/dashboard/queries";
-import { AuthModeNotice } from "@/routes/_authenticated/-auth-mode-notice";
 
 const GroupFormMode = {
 	Create: "create",
@@ -28,7 +26,6 @@ function sortedUnique(ids: string[]) {
 export function GroupForm({ mode, group }: GroupFormProps) {
 	const navigate = useNavigate();
 	const isEdit = mode === GroupFormMode.Edit;
-	const accessNotice = useDashboardAccessNotice();
 	const createGroup = useCreateGroupMutation();
 	const updateGroup = useUpdateGroupMutation();
 	const { data: entries = [] } = useEntriesQuery();
@@ -64,15 +61,6 @@ export function GroupForm({ mode, group }: GroupFormProps) {
 			await navigate({ to: "/groups" });
 		},
 	});
-
-	if (accessNotice) {
-		return (
-			<AuthModeNotice
-				title={accessNotice.title}
-				description={accessNotice.description}
-			/>
-		);
-	}
 
 	return (
 		<form

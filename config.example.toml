@@ -136,16 +136,31 @@ password_hash = "$argon2id$v=19$m=19456,t=2,p=1$replace$with$your$argon2$hash"
 # [real_ip_resolve.fallback]
 # strategy = "remote-addr"
 #
-# [[real_ip_resolve.providers]]
+# [[real_ip_resolve.nodes]]
 # name = "edge-proxy"
-# kind = "inline"
+# kind = "cidrs-inline"
 # cidrs = ["10.0.0.0/24", "192.168.10.0/24"]
+# accepts_from = ["edge-proxy"]
 #
-# [[real_ip_resolve.sources]]
+# [[real_ip_resolve.rules]]
+# name = "edge-resolved"
+# kind = "trusted-resolved-header"
+# priority = 300
+# headers = ["x-trusted-real-ip"]
+# direct_peer_nodes = ["edge-proxy"]
+#
+# [[real_ip_resolve.rules]]
 # name = "edge-xff"
+# kind = "x-forwarded-for"
+# priority = 200
+# headers = ["x-forwarded-for"]
+# direction = "right-to-left"
+# direct_peer_nodes = ["edge-proxy"]
+#
+# [[real_ip_resolve.rules]]
+# name = "edge-forwarded"
+# kind = "forwarded"
 # priority = 100
-# peers_from = ["edge-proxy"]
-# accept_headers = [
-#   { kind = "x-forwarded-for", mode = "recursive", direction = "right-to-left" },
-#   { kind = "forwarded", mode = "recursive", direction = "right-to-left", param = "for" },
-# ]
+# headers = ["forwarded"]
+# direction = "right-to-left"
+# direct_peer_nodes = ["edge-proxy"]

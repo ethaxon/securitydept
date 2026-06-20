@@ -37,10 +37,19 @@ export interface TanStackRouteSecurityOptions<
 	>;
 }
 
-export interface TanStackRouteOptionsLike {
+export interface CreateTanStackRouteSecurityPatchOptions {
 	readonly staticData?: object;
-	readonly beforeLoad?: (context: TanStackBeforeLoadContextLike) => unknown;
-	readonly [key: string]: unknown;
+}
+
+export interface TanStackRouteSecurityPatch {
+	readonly staticData: Record<string, unknown>;
+}
+
+export interface TanStackRouteRootSecurityPatch
+	extends TanStackRouteSecurityPatch {
+	readonly beforeLoad: (
+		context: TanStackBeforeLoadContextLike,
+	) => Promise<void>;
 }
 
 export function createTanStackRouterContext(
@@ -63,11 +72,10 @@ export function secureRoute<
 	> = Partial<RequirementBehaviourWithRouteContext<TAuthRequirement>>,
 >(
 	security: TanStackRouteSecurityOptions<TAuthRequirement, TBehaviour>,
-	routeOptions: TanStackRouteOptionsLike = {},
-): TanStackRouteOptionsLike {
+	options: CreateTanStackRouteSecurityPatchOptions = {},
+): TanStackRouteSecurityPatch {
 	return {
-		...routeOptions,
-		staticData: writeRequirementStaticData(security, routeOptions.staticData),
+		staticData: writeRequirementStaticData(security, options.staticData),
 	};
 }
 
@@ -78,9 +86,8 @@ export function secureRouteRoot<
 	> = Partial<RequirementBehaviourWithRouteContext<TAuthRequirement>>,
 >(
 	security: TanStackRouteSecurityOptions<TAuthRequirement, TBehaviour>,
-	routeOptions: TanStackRouteOptionsLike = {},
-): TanStackRouteOptionsLike {
-	const previousBeforeLoad = routeOptions.beforeLoad;
+	options: CreateTanStackRouteSecurityPatchOptions = {},
+): TanStackRouteRootSecurityPatch {
 	const securityBeforeLoad = createTanStackBeforeLoad<
 		TAuthRequirement,
 		TBehaviour
@@ -92,13 +99,8 @@ export function secureRouteRoot<
 				: undefined,
 	);
 	return {
-		...routeOptions,
-		staticData: writeRequirementStaticData(security, routeOptions.staticData),
-		async beforeLoad(context) {
-			const previousResult = await previousBeforeLoad?.(context);
-			await securityBeforeLoad(context);
-			return previousResult;
-		},
+		staticData: writeRequirementStaticData(security, options.staticData),
+		beforeLoad: securityBeforeLoad,
 	};
 }
 

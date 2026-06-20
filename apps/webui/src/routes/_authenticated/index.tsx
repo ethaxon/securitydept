@@ -8,12 +8,7 @@ import {
 } from "@/api/serverHealth";
 import { useAuthService } from "@/auth/react";
 import { Layout } from "@/components/layout/Layout";
-import {
-	useDashboardAccessNotice,
-	useEntriesQuery,
-	useGroupsQuery,
-} from "@/dashboard/queries";
-import { AuthModeNotice } from "./-auth-mode-notice";
+import { useEntriesQuery, useGroupsQuery } from "@/dashboard/queries";
 
 export const Route = createFileRoute("/_authenticated/")({
 	component: DashboardRouteContent,
@@ -21,7 +16,6 @@ export const Route = createFileRoute("/_authenticated/")({
 
 function DashboardRouteContent() {
 	const authService = useAuthService();
-	const accessNotice = useDashboardAccessNotice();
 	const { data: entries = [] } = useEntriesQuery();
 	const { data: groups = [] } = useGroupsQuery();
 	const {
@@ -69,14 +63,8 @@ function DashboardRouteContent() {
 	];
 
 	return (
-		<Layout>
+		<Layout authenticated>
 			<div className="mx-auto max-w-5xl space-y-6">
-				{accessNotice ? (
-					<AuthModeNotice
-						title={accessNotice.title}
-						description={accessNotice.description}
-					/>
-				) : null}
 				<h1 className="text-2xl font-semibold">Dashboard</h1>
 				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 					{stats.map((stat) => (

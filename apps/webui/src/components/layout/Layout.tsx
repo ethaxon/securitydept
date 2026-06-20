@@ -3,10 +3,16 @@ import { Header } from "./Header";
 import { MobileNav } from "./MobileNav";
 import { Sidebar } from "./Sidebar";
 
-export function Layout({ children }: { children: ReactNode }) {
+export function Layout({
+	children,
+	authenticated = false,
+}: {
+	children: ReactNode;
+	authenticated?: boolean;
+}) {
 	return (
 		<div className="flex min-h-dvh flex-col bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-			<Header />
+			<Header authenticated={authenticated} />
 			<MobileNav />
 			<div className="flex flex-1 overflow-hidden">
 				<Sidebar />

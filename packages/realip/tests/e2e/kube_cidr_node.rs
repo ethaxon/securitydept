@@ -19,8 +19,8 @@ use kube::{
     config::{KubeConfigOptions, Kubeconfig},
 };
 use securitydept_realip::{
-    ProviderRegistry,
-    config::{CustomProviderConfig, ProviderConfig, RefreshFailurePolicy},
+    CidrNodeRegistry,
+    config::{CustomCidrNodeConfig, NodeConfig, RefreshFailurePolicy},
 };
 use testcontainers::{
     GenericImage, ImageExt,
@@ -622,18 +622,16 @@ async fn wait_for_default_service_account(client: &Client, namespace: &str) -> a
     }
 }
 
-async fn wait_for_provider_cidrs(
-    config: ProviderConfig,
-    timeout: Duration,
-) -> anyhow::Result<Vec<String>> {
+async fn wait_for_node_cidrs(config: NodeConfig, timeout: Duration) -> anyhow::Result<Vec<String>> {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        if let Ok(registry) = ProviderRegistry::from_configs(std::slice::from_ref(&config)).await {
-            let cidrs = registry
-                .all_cidrs()
-                .await
-                .into_iter()
-                .map(|cidr| cidr.to_string())
+        if let Ok(registry) = CidrNodeRegistry::from_configs(std::slice::from_ref(&config)).await
+            && let Some(snapshot) = registry.snapshot(config.name())
+        {
+            let cidrs = snapshot
+                .cidrs
+                .iter()
+                .map(ToString::to_string)
                 .collect::<Vec<_>>();
             if !cidrs.is_empty() {
                 return Ok(cidrs);
@@ -641,21 +639,24 @@ async fn wait_for_provider_cidrs(
         }
 
         if tokio::time::Instant::now() >= deadline {
-            anyhow::bail!("timed out waiting for kube provider to return CIDRs");
+            anyhow::bail!("timed out waiting for kube CIDR node to return CIDRs");
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 }
 
-fn kube_provider_config(
+fn kube_node_config(
     name: &str,
     resource: &str,
     kubeconfig_path: &Path,
     extra: BTreeMap<String, serde_json::Value>,
-) -> ProviderConfig {
-    ProviderConfig::Custom(CustomProviderConfig {
+) -> NodeConfig {
+    NodeConfig::CustomCidr(CustomCidrNodeConfig {
         name: name.to_string(),
-        kind: "kube-provider".to_string(),
+        priority: 0,
+        accepts_from: vec![],
+        allow_multiple_unions: false,
+        kind: "kube".to_string(),
         refresh: None,
         timeout: None,
         on_refresh_failure: RefreshFailurePolicy::KeepLastGood,
@@ -672,7 +673,7 @@ fn kube_provider_config(
 }
 
 #[tokio::test]
-async fn kind_provider_loads_native_pod_ips() -> anyhow::Result<()> {
+async fn kind_cidr_node_loads_native_pod_ips() -> anyhow::Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .ok();
@@ -749,8 +750,8 @@ async fn kind_provider_loads_native_pod_ips() -> anyhow::Result<()> {
             )
             .await?;
 
-        let cidrs = wait_for_provider_cidrs(
-            kube_provider_config(
+        let cidrs = wait_for_node_cidrs(
+            kube_node_config(
                 "kind-native-pods",
                 "pods",
                 cluster.kubeconfig_path(),
@@ -769,14 +770,17 @@ async fn kind_provider_loads_native_pod_ips() -> anyhow::Result<()> {
         assert_eq!(cidrs.len(), 1);
         assert!(cidrs[0].ends_with("/32") || cidrs[0].ends_with("/128"));
 
-        let ep_cidrs = wait_for_provider_cidrs(
-            kube_provider_config(
+        let ep_cidrs = wait_for_node_cidrs(
+            kube_node_config(
                 "kind-native-endpoints",
                 "endpoints",
                 cluster.kubeconfig_path(),
                 BTreeMap::from([
                     ("namespace".to_string(), serde_json::json!(namespace_name)),
-                    ("name".to_string(), serde_json::json!("realip-native-svc")),
+                    (
+                        "resource_name".to_string(),
+                        serde_json::json!("realip-native-svc"),
+                    ),
                 ]),
             ),
             Duration::from_secs(120),
@@ -784,8 +788,8 @@ async fn kind_provider_loads_native_pod_ips() -> anyhow::Result<()> {
         .await?;
         assert_eq!(ep_cidrs.len(), 1);
 
-        let eps_cidrs = wait_for_provider_cidrs(
-            kube_provider_config(
+        let eps_cidrs = wait_for_node_cidrs(
+            kube_node_config(
                 "kind-native-endpoint-slices",
                 "endpoint-slices",
                 cluster.kubeconfig_path(),
@@ -811,7 +815,7 @@ async fn kind_provider_loads_native_pod_ips() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn k3d_provider_loads_k3s_default_traefik_pods() -> anyhow::Result<()> {
+async fn k3d_cidr_node_loads_k3s_default_traefik_pods() -> anyhow::Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .ok();
@@ -819,7 +823,7 @@ async fn k3d_provider_loads_k3s_default_traefik_pods() -> anyhow::Result<()> {
     let mut cluster = create_cluster_guard(&helper, ClusterFlavor::K3d).await?;
 
     let result = async {
-        let config = kube_provider_config(
+        let config = kube_node_config(
             "k3d-traefik-pods",
             "pods",
             cluster.kubeconfig_path(),
@@ -836,13 +840,13 @@ async fn k3d_provider_loads_k3s_default_traefik_pods() -> anyhow::Result<()> {
             let now = tokio::time::Instant::now();
             let remaining = deadline.saturating_duration_since(now);
             let attempt_timeout = remaining.min(Duration::from_secs(15));
-            match wait_for_provider_cidrs(config.clone(), attempt_timeout).await {
+            match wait_for_node_cidrs(config.clone(), attempt_timeout).await {
                 Ok(cidrs) => break cidrs,
                 Err(_error) if remaining > Duration::from_secs(15) => {
                     let diagnostics = diagnose_k3d_cluster(&helper, &cluster.cluster_name).await?;
                     if is_known_k3d_environment_issue(&diagnostics) {
                         eprintln!(
-                            "skipping k3d_provider_loads_k3s_default_traefik_pods: k3d cluster \
+                            "skipping k3d_cidr_node_loads_k3s_default_traefik_pods: k3d cluster \
                              did not become schedulable in this environment; system pods could \
                              not pull {K3D_PAUSE_IMAGE}.\n{diagnostics}"
                         );
@@ -854,7 +858,7 @@ async fn k3d_provider_loads_k3s_default_traefik_pods() -> anyhow::Result<()> {
                     let diagnostics = diagnose_k3d_cluster(&helper, &cluster.cluster_name).await?;
                     if is_known_k3d_environment_issue(&diagnostics) {
                         eprintln!(
-                            "skipping k3d_provider_loads_k3s_default_traefik_pods: k3d cluster \
+                            "skipping k3d_cidr_node_loads_k3s_default_traefik_pods: k3d cluster \
                              did not become schedulable in this environment; system pods could \
                              not pull {K3D_PAUSE_IMAGE}.\n{diagnostics}"
                         );
@@ -862,7 +866,7 @@ async fn k3d_provider_loads_k3s_default_traefik_pods() -> anyhow::Result<()> {
                     }
 
                     return Err(error.context(format!(
-                        "k3d provider did not return CIDRs; cluster diagnostics:\n{diagnostics}"
+                        "k3d CIDR node did not return CIDRs; cluster diagnostics:\n{diagnostics}"
                     )));
                 }
             }

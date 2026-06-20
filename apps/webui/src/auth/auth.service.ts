@@ -73,8 +73,8 @@ function createLoginPath(postAuthRedirectUri?: string): string {
 
 function mapAuthUserSnapshot<T>(
 	snapshot: ResourceSnapshot<T>,
-	mapValue: (value: T) => WebuiAuthUser,
-): ResourceSnapshot<WebuiAuthUser> {
+	mapValue: (value: T) => WebuiAuthUser | null,
+): ResourceSnapshot<WebuiAuthUser | null> {
 	switch (snapshot.status) {
 		case ResourceStatus.Idle:
 		case ResourceStatus.Loading:
@@ -111,7 +111,7 @@ export class AuthService implements DisposableTrait {
 	);
 	private readonly tokenSetBackendModeClientResource: ResourceTrait<BaseOidcModeClient>;
 	private readonly tokenSetFrontendModeClientResource: ResourceTrait<BaseOidcModeClient>;
-	readonly authUser: ResourceTrait<WebuiAuthUser>;
+	readonly authUser: ResourceTrait<WebuiAuthUser | null>;
 	readonly mode: ResourceTrait<AuthContextMode | null>;
 	readonly modeErrors: EventStreamTrait<ClientError>;
 	readonly environment: FoundationEnvironment;
@@ -155,78 +155,80 @@ export class AuthService implements DisposableTrait {
 				}
 			});
 
-		const authUserSnapshot = createComputed<ResourceSnapshot<WebuiAuthUser>>(
-			() => {
-				const modeSnapshot = this.mode.snapshot.get();
-				if (modeSnapshot.status !== ResourceStatus.Resolved) {
-					return mapAuthUserSnapshot(modeSnapshot, () => null);
-				}
-				const mode = modeSnapshot.value;
-				if (mode === null) {
-					return { status: ResourceStatus.Resolved, value: null };
-				}
-				if (mode === AuthContextMode.Session) {
-					return mapAuthUserSnapshot(
-						this.session.sessionResource.snapshot.get(),
-						(session) =>
-							session
-								? {
-										type: WebuiAuthUserKind.Session,
-										userInfo: projectDashboardUser({
-											principal: session.principal,
-											contextLabel: "Session",
-										}),
-									}
-								: null,
-					);
-				}
-				if (mode === AuthContextMode.Basic) {
-					return mapAuthUserSnapshot(
-						this.basic.boundaryResource.snapshot.get(),
-						(snapshot) =>
-							snapshot?.authenticated
-								? {
-										type: WebuiAuthUserKind.Basic,
-										userInfo: projectDashboardUser({
-											contextLabel: "Basic",
-											fallbackDisplayName: "Basic auth context",
-											fallbackSubject: "context.basic-auth",
-											showIdentity: false,
-										}),
-									}
-								: null,
-					);
-				}
-
-				const clientSnapshot =
-					mode === AuthContextMode.TokenSetBackend
-						? this.tokenSetBackendModeClientResource.snapshot.get()
-						: this.tokenSetFrontendModeClientResource.snapshot.get();
-				const type =
-					mode === AuthContextMode.TokenSetBackend
-						? WebuiAuthUserKind.TokenSetBackendOidcMode
-						: WebuiAuthUserKind.TokenSetFrontendOidcMode;
-				const contextLabel =
-					mode === AuthContextMode.TokenSetBackend
-						? "Token Set Backend Mode"
-						: "Token Set Frontend Mode";
+		const authUserSnapshot = createComputed<
+			ResourceSnapshot<WebuiAuthUser | null>
+		>(() => {
+			const modeSnapshot = this.mode.snapshot.get();
+			if (modeSnapshot.status !== ResourceStatus.Resolved) {
+				return mapAuthUserSnapshot(modeSnapshot, () => null);
+			}
+			const mode = modeSnapshot.value;
+			if (mode === null) {
+				return { status: ResourceStatus.Resolved, value: null };
+			}
+			if (mode === AuthContextMode.Session) {
 				return mapAuthUserSnapshot(
-					flattenResourceSnapshot(
-						clientSnapshot,
-						(client) => client.authSnapshot,
-					),
-					(snapshot) => {
-						const principal = snapshot?.metadata.principal;
-						return principal
+					this.session.sessionResource.snapshot.get(),
+					(session) =>
+						session
 							? {
-									type,
-									userInfo: projectDashboardUser({ principal, contextLabel }),
+									type: WebuiAuthUserKind.Session,
+									userInfo: projectDashboardUser({
+										principal: session.principal,
+										contextLabel: "Session",
+									}),
 								}
-							: null;
-					},
+							: null,
 				);
-			},
-		);
+			}
+			if (mode === AuthContextMode.Basic) {
+				return mapAuthUserSnapshot(
+					this.basic.boundaryResource.snapshot.get(),
+					(snapshot) =>
+						snapshot?.authenticated
+							? {
+									type: WebuiAuthUserKind.Basic,
+									userInfo: projectDashboardUser({
+										contextLabel: "Basic",
+										fallbackDisplayName: "Basic auth context",
+										fallbackSubject: "context.basic-auth",
+										showIdentity: false,
+									}),
+								}
+							: null,
+				);
+			}
+
+			const clientSnapshot =
+				mode === AuthContextMode.TokenSetBackend
+					? this.tokenSetBackendModeClientResource.snapshot.get()
+					: this.tokenSetFrontendModeClientResource.snapshot.get();
+			const type =
+				mode === AuthContextMode.TokenSetBackend
+					? WebuiAuthUserKind.TokenSetBackendOidcMode
+					: WebuiAuthUserKind.TokenSetFrontendOidcMode;
+			const contextLabel =
+				mode === AuthContextMode.TokenSetBackend
+					? "Token Set Backend Mode"
+					: "Token Set Frontend Mode";
+			return mapAuthUserSnapshot(
+				flattenResourceSnapshot(
+					clientSnapshot,
+					(client) => client.authSnapshot,
+				),
+				(snapshot) =>
+					snapshot
+						? {
+								type,
+								userInfo: projectDashboardUser({
+									principal: snapshot.metadata.principal,
+									contextLabel,
+									fallbackDisplayName: `${contextLabel} context`,
+								}),
+							}
+						: null,
+			);
+		});
 		this.authUser = resourceFromSnapshots(() => authUserSnapshot.get());
 		injector.get(SecuritydeptDestroyRef, null)?.onDestroy(() => this.dispose());
 	}

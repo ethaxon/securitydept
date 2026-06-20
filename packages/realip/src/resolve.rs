@@ -1,16 +1,15 @@
-use std::{collections::HashSet, net::IpAddr};
+use std::{net::IpAddr, str::FromStr};
 
-use http::HeaderMap;
-use ipnet::IpNet;
+use http::{HeaderMap, HeaderName};
 use rfc7239::parse as parse_forwarded;
+use tracing::warn;
 
 use crate::{
-    config::{
-        ChainDirection, FallbackStrategy, HeaderInputConfig, HeaderMode, RealIpResolveConfig,
-    },
+    config::{ChainDirection, FallbackStrategy, RealIpResolveConfig, RuleConfig},
     error::RealIpResult,
-    extension::ProviderFactoryRegistry,
-    providers::{ProviderRegistry, ProviderSnapshot},
+    extension::CidrNodeFactoryRegistry,
+    graph::{CompiledNodeGraph, NodeMatch, RequestNodeState},
+    node_registry::CidrNodeRegistry,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -19,49 +18,124 @@ pub struct TransportContext {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ResolvedSourceKind {
+pub enum ResolvedInputKind {
     Transport,
     Header,
     Fallback,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RealIpRejectionReason {
+    MalformedHeaderValue,
+    MalformedChainElement,
+    MissingForwardedFor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RealIpResolutionStatus {
+    Resolved,
+    Fallback,
+    Rejected { reason: RealIpRejectionReason },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedNodeMatch {
+    pub role_name: String,
+    pub evidence_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedClientIp {
     pub client_ip: IpAddr,
     pub peer_ip: IpAddr,
-    pub source_name: Option<String>,
-    pub source_kind: ResolvedSourceKind,
-    pub header_name: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-struct CompiledSource {
-    name: String,
-    priority: i32,
-    peer_cidrs: Vec<IpNet>,
-    accept_transport: Vec<String>,
-    accept_headers: Vec<HeaderInputConfig>,
+    pub rule_name: Option<String>,
+    pub input_kind: ResolvedInputKind,
+    pub status: RealIpResolutionStatus,
+    pub matched_nodes: Vec<ResolvedNodeMatch>,
 }
 
 pub struct RealIpResolver {
-    config: RealIpResolveConfig,
-    providers: ProviderRegistry,
+    fallback: FallbackStrategy,
+    rules: Vec<CompiledRule>,
+    graph: CompiledNodeGraph,
+    cidr_nodes: CidrNodeRegistry,
+}
+
+#[derive(Debug)]
+struct CompiledRule {
+    name: String,
+    priority: i32,
+    order: usize,
+    direct_peer_roles: Vec<usize>,
+    kind: CompiledRuleKind,
+}
+
+#[derive(Debug)]
+enum CompiledRuleKind {
+    XForwardedFor {
+        headers: Vec<HeaderName>,
+        direction: ChainDirection,
+    },
+    Forwarded {
+        headers: Vec<HeaderName>,
+        direction: ChainDirection,
+    },
+    TrustedResolvedHeader {
+        headers: Vec<HeaderName>,
+        skip_if_matches_roles: Vec<usize>,
+    },
+    ProxyProtocol,
+}
+
+enum RuleOutcome {
+    NotApplicable,
+    Resolved {
+        client_ip: IpAddr,
+        input_kind: ResolvedInputKind,
+        matched_nodes: Vec<ResolvedNodeMatch>,
+    },
+    Rejected {
+        client_ip: IpAddr,
+        input_kind: ResolvedInputKind,
+        reason: RealIpRejectionReason,
+        matched_nodes: Vec<ResolvedNodeMatch>,
+    },
+}
+
+struct ChainResolutionContext<'a> {
+    headers: &'a HeaderMap,
+    graph: &'a CompiledNodeGraph,
+    cidr_nodes: &'a CidrNodeRegistry,
 }
 
 impl RealIpResolver {
     pub async fn from_config(config: RealIpResolveConfig) -> RealIpResult<Self> {
-        let factories = ProviderFactoryRegistry::with_builtin_providers()?;
+        let factories = CidrNodeFactoryRegistry::with_builtin_nodes()?;
         Self::from_config_with_factories(config, &factories).await
     }
 
     pub async fn from_config_with_factories(
         config: RealIpResolveConfig,
-        factories: &ProviderFactoryRegistry,
+        factories: &CidrNodeFactoryRegistry,
     ) -> RealIpResult<Self> {
         config.validate()?;
-        let providers =
-            ProviderRegistry::from_configs_with_factories(&config.providers, factories).await?;
-        Ok(Self { config, providers })
+        let graph = CompiledNodeGraph::compile(&config.nodes)?;
+        let cidr_nodes =
+            CidrNodeRegistry::from_configs_with_factories(&config.nodes, factories).await?;
+        let mut rules: Vec<CompiledRule> = config
+            .rules
+            .iter()
+            .enumerate()
+            .map(|(order, rule)| CompiledRule::compile(rule, order, &graph))
+            .collect();
+        rules.sort_by_key(|rule| (std::cmp::Reverse(rule.priority), rule.order));
+
+        Ok(Self {
+            fallback: config.fallback.strategy,
+            rules,
+            graph,
+            cidr_nodes,
+        })
     }
 
     pub async fn resolve(
@@ -70,447 +144,816 @@ impl RealIpResolver {
         headers: &HeaderMap,
         transport: &TransportContext,
     ) -> ResolvedClientIp {
-        let compiled_sources = self.compile_sources().await;
-        let trusted_peers = self.providers.all_cidrs().await;
-        let trusted_set = TrustedSet::new(trusted_peers);
-
-        for source in compiled_sources {
-            if !source.matches_peer(peer_ip) {
-                continue;
-            }
-
-            if let Some(result) = source.resolve_transport(peer_ip, transport) {
-                return result;
-            }
-
-            if let Some(result) = source.resolve_headers(peer_ip, headers, &trusted_set) {
-                return result;
+        for rule in &self.rules {
+            match rule.resolve(peer_ip, headers, transport, &self.graph, &self.cidr_nodes) {
+                RuleOutcome::NotApplicable => {}
+                RuleOutcome::Resolved {
+                    client_ip,
+                    input_kind,
+                    matched_nodes,
+                } => {
+                    return ResolvedClientIp {
+                        client_ip,
+                        peer_ip,
+                        rule_name: Some(rule.name.clone()),
+                        input_kind,
+                        status: RealIpResolutionStatus::Resolved,
+                        matched_nodes,
+                    };
+                }
+                RuleOutcome::Rejected {
+                    client_ip,
+                    input_kind,
+                    reason,
+                    matched_nodes,
+                } => {
+                    warn!(rule = %rule.name, ?reason, "Rejected malformed real-IP input at the nearest proven hop");
+                    return ResolvedClientIp {
+                        client_ip,
+                        peer_ip,
+                        rule_name: Some(rule.name.clone()),
+                        input_kind,
+                        status: RealIpResolutionStatus::Rejected { reason },
+                        matched_nodes,
+                    };
+                }
             }
         }
 
-        match self.config.fallback.strategy {
+        match self.fallback {
             FallbackStrategy::RemoteAddr => ResolvedClientIp {
                 client_ip: peer_ip,
                 peer_ip,
-                source_name: None,
-                source_kind: ResolvedSourceKind::Fallback,
-                header_name: None,
+                rule_name: None,
+                input_kind: ResolvedInputKind::Fallback,
+                status: RealIpResolutionStatus::Fallback,
+                matched_nodes: vec![],
             },
         }
     }
-
-    async fn compile_sources(&self) -> Vec<CompiledSource> {
-        let mut compiled = Vec::with_capacity(self.config.sources.len());
-        for source in &self.config.sources {
-            let mut peer_cidrs = Vec::new();
-            for provider_name in &source.peers_from {
-                if let Some(ProviderSnapshot { cidrs, .. }) =
-                    self.providers.snapshot(provider_name).await
-                {
-                    peer_cidrs.extend(cidrs.iter().copied());
-                }
-            }
-
-            compiled.push(CompiledSource {
-                name: source.name.clone(),
-                priority: source.priority,
-                peer_cidrs,
-                accept_transport: source
-                    .accept_transport
-                    .iter()
-                    .map(|item| item.kind.to_ascii_lowercase())
-                    .collect(),
-                accept_headers: source.accept_headers.clone(),
-            });
-        }
-
-        compiled.sort_by_key(|right| std::cmp::Reverse(right.priority));
-        compiled
-    }
 }
 
-impl CompiledSource {
-    fn matches_peer(&self, peer_ip: IpAddr) -> bool {
-        self.peer_cidrs.iter().any(|cidr| cidr.contains(&peer_ip))
-    }
+impl CompiledRule {
+    fn compile(config: &RuleConfig, order: usize, graph: &CompiledNodeGraph) -> Self {
+        let kind = match config {
+            RuleConfig::XForwardedFor(config) => CompiledRuleKind::XForwardedFor {
+                headers: compile_headers(&config.headers),
+                direction: config.direction,
+            },
+            RuleConfig::Forwarded(config) => CompiledRuleKind::Forwarded {
+                headers: compile_headers(&config.headers),
+                direction: config.direction,
+            },
+            RuleConfig::TrustedResolvedHeader(config) => CompiledRuleKind::TrustedResolvedHeader {
+                headers: compile_headers(&config.headers),
+                skip_if_matches_roles: graph.role_ids(&config.skip_if_matches_nodes),
+            },
+            RuleConfig::ProxyProtocol(_) => CompiledRuleKind::ProxyProtocol,
+        };
 
-    fn resolve_transport(
-        &self,
-        peer_ip: IpAddr,
-        transport: &TransportContext,
-    ) -> Option<ResolvedClientIp> {
-        if self
-            .accept_transport
-            .iter()
-            .any(|kind| kind == "proxy-protocol")
-            && let Some(proxy_ip) = transport.proxy_protocol_addr
-        {
-            return Some(ResolvedClientIp {
-                client_ip: proxy_ip,
-                peer_ip,
-                source_name: Some(self.name.clone()),
-                source_kind: ResolvedSourceKind::Transport,
-                header_name: Some("proxy-protocol".to_string()),
-            });
+        Self {
+            name: config.name().to_string(),
+            priority: config.priority(),
+            order,
+            direct_peer_roles: graph.role_ids(config.direct_peer_nodes()),
+            kind,
         }
-
-        None
     }
 
-    fn resolve_headers(
+    fn resolve(
         &self,
         peer_ip: IpAddr,
         headers: &HeaderMap,
-        trusted_set: &TrustedSet,
-    ) -> Option<ResolvedClientIp> {
-        for header in &self.accept_headers {
-            let kind = header.kind.to_ascii_lowercase();
-            let candidate = match header.mode {
-                HeaderMode::Single => resolve_single_header(headers, &kind),
-                HeaderMode::Recursive => resolve_chain_header(headers, &kind, header, trusted_set),
-            };
+        transport: &TransportContext,
+        graph: &CompiledNodeGraph,
+        cidr_nodes: &CidrNodeRegistry,
+    ) -> RuleOutcome {
+        let mut request_state = RequestNodeState::default();
+        let Some(direct_peer_match) = graph.match_roles(
+            &self.direct_peer_roles,
+            peer_ip,
+            None,
+            headers,
+            &request_state,
+            cidr_nodes,
+        ) else {
+            return RuleOutcome::NotApplicable;
+        };
+        request_state.commit(&direct_peer_match);
 
-            let candidate = match candidate {
-                Some(ip) => ip,
-                None => continue,
-            };
-
-            if header.use_only_if_not_in_trusted_peers && trusted_set.contains(candidate) {
-                continue;
+        match &self.kind {
+            CompiledRuleKind::XForwardedFor {
+                headers: names,
+                direction,
+            } => {
+                let Some(chain) = read_chain_headers(headers, names, parse_x_forwarded_for_value)
+                else {
+                    return RuleOutcome::NotApplicable;
+                };
+                resolve_chain(
+                    peer_ip,
+                    direct_peer_match,
+                    chain,
+                    *direction,
+                    request_state,
+                    ChainResolutionContext {
+                        headers,
+                        graph,
+                        cidr_nodes,
+                    },
+                )
             }
-
-            return Some(ResolvedClientIp {
-                client_ip: candidate,
+            CompiledRuleKind::Forwarded {
+                headers: names,
+                direction,
+            } => {
+                let Some(chain) = read_chain_headers(headers, names, parse_forwarded_value) else {
+                    return RuleOutcome::NotApplicable;
+                };
+                resolve_chain(
+                    peer_ip,
+                    direct_peer_match,
+                    chain,
+                    *direction,
+                    request_state,
+                    ChainResolutionContext {
+                        headers,
+                        graph,
+                        cidr_nodes,
+                    },
+                )
+            }
+            CompiledRuleKind::TrustedResolvedHeader {
+                headers: names,
+                skip_if_matches_roles,
+            } => resolve_trusted_header(
+                headers,
+                names,
                 peer_ip,
-                source_name: Some(self.name.clone()),
-                source_kind: ResolvedSourceKind::Header,
-                header_name: Some(kind),
-            });
+                vec![resolved_node_match(&direct_peer_match)],
+                skip_if_matches_roles,
+                graph,
+                cidr_nodes,
+            ),
+            CompiledRuleKind::ProxyProtocol => match transport.proxy_protocol_addr {
+                Some(client_ip) => RuleOutcome::Resolved {
+                    client_ip,
+                    input_kind: ResolvedInputKind::Transport,
+                    matched_nodes: vec![resolved_node_match(&direct_peer_match)],
+                },
+                None => RuleOutcome::NotApplicable,
+            },
         }
-
-        None
     }
 }
 
-#[derive(Debug, Clone)]
-struct TrustedSet {
-    cidrs: Vec<IpNet>,
-}
+fn resolve_chain(
+    peer_ip: IpAddr,
+    direct_peer_match: NodeMatch,
+    mut chain: Vec<Result<IpAddr, RealIpRejectionReason>>,
+    direction: ChainDirection,
+    mut request_state: RequestNodeState,
+    context: ChainResolutionContext<'_>,
+) -> RuleOutcome {
+    if matches!(direction, ChainDirection::RightToLeft) {
+        chain.reverse();
+    }
 
-impl TrustedSet {
-    fn new(cidrs: Vec<IpNet>) -> Self {
-        let mut unique = HashSet::new();
-        let mut deduped = Vec::new();
-        for cidr in cidrs {
-            if unique.insert(cidr) {
-                deduped.push(cidr);
+    let mut current_role = direct_peer_match.role_id;
+    let mut last_proven_ip = peer_ip;
+    let mut matched_nodes = vec![resolved_node_match(&direct_peer_match)];
+    for index in 0..chain.len() {
+        let candidate_ip = match chain[index] {
+            Ok(ip) => ip,
+            Err(reason) => {
+                return RuleOutcome::Rejected {
+                    client_ip: last_proven_ip,
+                    input_kind: ResolvedInputKind::Header,
+                    reason,
+                    matched_nodes,
+                };
             }
-        }
-        Self { cidrs: deduped }
+        };
+        let peek_ip = chain
+            .get(index + 1)
+            .and_then(|value| value.as_ref().ok())
+            .copied();
+        let Some(matched) = context.graph.match_roles(
+            context.graph.accepted_role_ids(current_role),
+            candidate_ip,
+            peek_ip,
+            context.headers,
+            &request_state,
+            context.cidr_nodes,
+        ) else {
+            return RuleOutcome::Resolved {
+                client_ip: candidate_ip,
+                input_kind: ResolvedInputKind::Header,
+                matched_nodes,
+            };
+        };
+
+        request_state.commit(&matched);
+        current_role = matched.role_id;
+        last_proven_ip = candidate_ip;
+        matched_nodes.push(resolved_node_match(&matched));
     }
 
-    fn contains(&self, ip: IpAddr) -> bool {
-        self.cidrs.iter().any(|cidr| cidr.contains(&ip))
+    RuleOutcome::Resolved {
+        client_ip: last_proven_ip,
+        input_kind: ResolvedInputKind::Header,
+        matched_nodes,
     }
 }
 
-fn resolve_single_header(headers: &HeaderMap, kind: &str) -> Option<IpAddr> {
-    headers
-        .get(kind)
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .and_then(|value| value.parse::<IpAddr>().ok())
-}
-
-fn resolve_chain_header(
+fn resolve_trusted_header(
     headers: &HeaderMap,
-    kind: &str,
-    config: &HeaderInputConfig,
-    trusted_set: &TrustedSet,
-) -> Option<IpAddr> {
-    let chain = match kind {
-        "x-forwarded-for" => parse_x_forwarded_for(headers),
-        "forwarded" => parse_forwarded_for(headers, config.param.as_deref().unwrap_or("for")),
-        _ => Vec::new(),
-    };
-
-    resolve_from_chain(&chain, trusted_set, config.direction)
-}
-
-fn parse_x_forwarded_for(headers: &HeaderMap) -> Vec<IpAddr> {
-    headers
-        .get("x-forwarded-for")
-        .and_then(|value| value.to_str().ok())
-        .into_iter()
-        .flat_map(|value| value.split(','))
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .filter_map(|value| value.parse::<IpAddr>().ok())
-        .collect()
-}
-
-fn parse_forwarded_for(headers: &HeaderMap, param: &str) -> Vec<IpAddr> {
-    let Some(raw) = headers
-        .get(http::header::FORWARDED)
-        .and_then(|value| value.to_str().ok())
-    else {
-        return Vec::new();
-    };
-
-    let mut result = Vec::new();
-    for node in parse_forwarded(raw).flatten() {
-        if param != "for" {
-            continue;
-        }
-        let Some(value) = node.forwarded_for.map(|value| value.to_string()) else {
+    names: &[HeaderName],
+    peer_ip: IpAddr,
+    matched_nodes: Vec<ResolvedNodeMatch>,
+    skip_if_matches_roles: &[usize],
+    graph: &CompiledNodeGraph,
+    cidr_nodes: &CidrNodeRegistry,
+) -> RuleOutcome {
+    for name in names {
+        let mut values = headers.get_all(name).iter();
+        let Some(value) = values.next() else {
             continue;
         };
-        if let Some(ip) = parse_forwarded_ip(&value) {
-            result.push(ip);
+        if values.next().is_some() {
+            return rejected_header(peer_ip, matched_nodes);
         }
+        let Ok(value) = value.to_str() else {
+            return rejected_header(peer_ip, matched_nodes);
+        };
+        let Ok(client_ip) = value.trim().parse::<IpAddr>() else {
+            return rejected_header(peer_ip, matched_nodes);
+        };
+        if graph
+            .match_roles(
+                skip_if_matches_roles,
+                client_ip,
+                None,
+                headers,
+                &RequestNodeState::default(),
+                cidr_nodes,
+            )
+            .is_some()
+        {
+            return RuleOutcome::NotApplicable;
+        }
+        return RuleOutcome::Resolved {
+            client_ip,
+            input_kind: ResolvedInputKind::Header,
+            matched_nodes,
+        };
     }
-    result
+    RuleOutcome::NotApplicable
 }
 
-fn parse_forwarded_ip(value: &str) -> Option<IpAddr> {
-    let trimmed = value.trim().trim_matches('"');
-    let without_brackets = trimmed
-        .strip_prefix('[')
-        .and_then(|value| value.strip_suffix(']'))
-        .unwrap_or(trimmed);
-
-    if let Ok(ip) = without_brackets.parse::<IpAddr>() {
-        return Some(ip);
+fn rejected_header(peer_ip: IpAddr, matched_nodes: Vec<ResolvedNodeMatch>) -> RuleOutcome {
+    RuleOutcome::Rejected {
+        client_ip: peer_ip,
+        input_kind: ResolvedInputKind::Header,
+        reason: RealIpRejectionReason::MalformedHeaderValue,
+        matched_nodes,
     }
+}
 
-    if let Some((host, _port)) = without_brackets.rsplit_once(':')
-        && let Ok(ip) = host.parse::<IpAddr>()
-    {
-        return Some(ip);
+fn read_chain_headers(
+    headers: &HeaderMap,
+    names: &[HeaderName],
+    parse: fn(&str) -> Vec<Result<IpAddr, RealIpRejectionReason>>,
+) -> Option<Vec<Result<IpAddr, RealIpRejectionReason>>> {
+    for name in names {
+        let values = headers.get_all(name);
+        if values.iter().next().is_none() {
+            continue;
+        }
+        let mut chain = Vec::new();
+        for value in values {
+            match value.to_str() {
+                Ok(value) => chain.extend(parse(value)),
+                Err(_) => chain.push(Err(RealIpRejectionReason::MalformedHeaderValue)),
+            }
+        }
+        return Some(chain);
     }
-
     None
 }
 
-fn resolve_from_chain(
-    chain: &[IpAddr],
-    trusted_set: &TrustedSet,
-    direction: ChainDirection,
-) -> Option<IpAddr> {
-    let iter: Box<dyn Iterator<Item = &IpAddr>> = match direction {
-        ChainDirection::LeftToRight => Box::new(chain.iter()),
-        ChainDirection::RightToLeft => Box::new(chain.iter().rev()),
-    };
+fn parse_x_forwarded_for_value(value: &str) -> Vec<Result<IpAddr, RealIpRejectionReason>> {
+    value
+        .split(',')
+        .map(str::trim)
+        .map(|value| {
+            value
+                .parse::<IpAddr>()
+                .map_err(|_| RealIpRejectionReason::MalformedChainElement)
+        })
+        .collect()
+}
 
-    let mut last = None;
-    for ip in iter {
-        last = Some(*ip);
-        if !trusted_set.contains(*ip) {
-            return Some(*ip);
-        }
-    }
+fn parse_forwarded_value(value: &str) -> Vec<Result<IpAddr, RealIpRejectionReason>> {
+    parse_forwarded(value)
+        .map(|node| {
+            let node = node.map_err(|_| RealIpRejectionReason::MalformedChainElement)?;
+            node.forwarded_for
+                .ok_or(RealIpRejectionReason::MissingForwardedFor)?
+                .ip()
+                .copied()
+                .ok_or(RealIpRejectionReason::MalformedChainElement)
+        })
+        .collect()
+}
 
-    match direction {
-        ChainDirection::LeftToRight => chain.last().copied().or(last),
-        ChainDirection::RightToLeft => chain.first().copied().or(last),
+fn compile_headers(headers: &[String]) -> Vec<HeaderName> {
+    headers
+        .iter()
+        .map(|header| HeaderName::from_str(header).expect("validated header"))
+        .collect()
+}
+
+fn resolved_node_match(matched: &NodeMatch) -> ResolvedNodeMatch {
+    ResolvedNodeMatch {
+        role_name: matched.role_name.clone(),
+        evidence_name: matched.evidence_name.clone(),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, net::IpAddr, path::PathBuf, sync::Arc};
+    use std::collections::BTreeMap;
 
-    use http::HeaderMap;
+    use ipnet::IpNet;
 
     use super::*;
-    use crate::{
-        config::{
-            CommandProviderConfig, CoreProviderConfig, CustomProviderConfig, HeaderInputConfig,
-            HeaderMode, InlineProviderConfig, LocalFileProviderConfig, ProviderConfig,
-            RefreshFailurePolicy, SourceConfig,
-        },
-        extension::{
-            CustomProviderFactory, DynamicProvider, ProviderFactoryRegistry, ProviderLoadFuture,
-        },
+    use crate::config::{
+        CidrsInlineNodeConfig, CoreNodeConfig, FallbackConfig, NodeConfig,
+        TrustedBridgeHeadersNodeConfig, UnionNodeConfig, XForwardedForRuleConfig,
     };
 
-    fn temp_file(name: &str, content: &str) -> PathBuf {
-        let path =
-            std::env::temp_dir().join(format!("securitydept-realip-{name}-{}", std::process::id()));
-        fs::write(&path, content).unwrap();
-        path
+    fn cidr_node(
+        name: &str,
+        cidrs: &[&str],
+        accepts_from: &[&str],
+        allow_multiple_unions: bool,
+    ) -> NodeConfig {
+        NodeConfig::Core(CoreNodeConfig::CidrsInline(CidrsInlineNodeConfig {
+            name: name.to_string(),
+            priority: 0,
+            accepts_from: accepts_from.iter().map(ToString::to_string).collect(),
+            allow_multiple_unions,
+            cidrs: cidrs
+                .iter()
+                .map(|cidr| cidr.parse::<IpNet>().unwrap())
+                .collect(),
+            extra: BTreeMap::new(),
+        }))
+    }
+
+    fn bridge_node(name: &str, header: &str) -> NodeConfig {
+        NodeConfig::Core(CoreNodeConfig::TrustedBridgeHeaders(
+            TrustedBridgeHeadersNodeConfig {
+                name: name.to_string(),
+                priority: 0,
+                accepts_from: vec![],
+                allow_multiple_unions: false,
+                headers: vec![header.to_string()],
+            },
+        ))
+    }
+
+    fn union_node(name: &str, members: &[&str], accepts_from: &[&str]) -> NodeConfig {
+        NodeConfig::Core(CoreNodeConfig::Union(UnionNodeConfig {
+            name: name.to_string(),
+            priority: 0,
+            accepts_from: accepts_from.iter().map(ToString::to_string).collect(),
+            members: members.iter().map(ToString::to_string).collect(),
+        }))
+    }
+
+    fn recursive_config() -> RealIpResolveConfig {
+        RealIpResolveConfig {
+            rules: vec![RuleConfig::XForwardedFor(XForwardedForRuleConfig {
+                name: "xff".to_string(),
+                priority: 100,
+                headers: vec!["x-forwarded-for".to_string()],
+                direction: ChainDirection::RightToLeft,
+                direct_peer_nodes: vec!["local".to_string()],
+            })],
+            nodes: vec![
+                cidr_node("local-cidrs", &["10.0.0.0/24"], &[], false),
+                cidr_node("cloudflare", &["203.0.113.0/24"], &[], false),
+                bridge_node("edgeone", "eo-secret-client-ip"),
+                union_node("local", &["local-cidrs"], &["local", "cdn"]),
+                union_node("cdn", &["cloudflare", "edgeone"], &["cdn"]),
+            ],
+            fallback: FallbackConfig::default(),
+        }
     }
 
     #[tokio::test]
-    async fn resolves_recursive_xff_after_skipping_trusted_proxies() {
-        let config = RealIpResolveConfig {
-            providers: vec![
-                ProviderConfig::Core(CoreProviderConfig::Inline(InlineProviderConfig {
-                    name: "cloudflare".to_string(),
-                    cidrs: vec!["203.0.113.0/24".parse().unwrap()],
-                    extra: Default::default(),
-                })),
-                ProviderConfig::Core(CoreProviderConfig::Inline(InlineProviderConfig {
-                    name: "edgeone".to_string(),
-                    cidrs: vec!["198.51.100.0/24".parse().unwrap()],
-                    extra: Default::default(),
-                })),
-            ],
-            sources: vec![SourceConfig {
-                name: "cloudflare".to_string(),
-                priority: 100,
-                peers_from: vec!["cloudflare".to_string()],
-                accept_transport: vec![],
-                accept_headers: vec![
-                    HeaderInputConfig {
-                        kind: "cf-connecting-ip".to_string(),
-                        mode: HeaderMode::Single,
-                        direction: ChainDirection::RightToLeft,
-                        param: None,
-                        use_only_if_not_in_trusted_peers: true,
-                    },
-                    HeaderInputConfig {
-                        kind: "x-forwarded-for".to_string(),
-                        mode: HeaderMode::Recursive,
-                        direction: ChainDirection::RightToLeft,
-                        param: None,
-                        use_only_if_not_in_trusted_peers: false,
-                    },
-                ],
-            }],
-            fallback: Default::default(),
-        };
-        let resolver = RealIpResolver::from_config(config).await.unwrap();
-        let peer_ip: IpAddr = "203.0.113.10".parse().unwrap();
-
+    async fn recursively_resolves_cidr_and_bridge_nodes() {
+        let resolver = RealIpResolver::from_config(recursive_config())
+            .await
+            .unwrap();
         let mut headers = HeaderMap::new();
-        headers.insert("cf-connecting-ip", "198.51.100.2".parse().unwrap());
         headers.insert(
             "x-forwarded-for",
-            "198.18.0.10, 198.51.100.2".parse().unwrap(),
+            "198.18.0.10, 198.51.100.9, 203.0.113.8, 10.0.0.3"
+                .parse()
+                .unwrap(),
         );
+        headers.insert("eo-secret-client-ip", "198.18.0.10".parse().unwrap());
 
         let resolved = resolver
-            .resolve(peer_ip, &headers, &TransportContext::default())
+            .resolve(
+                "10.0.0.2".parse().unwrap(),
+                &headers,
+                &TransportContext::default(),
+            )
             .await;
 
         assert_eq!(resolved.client_ip, "198.18.0.10".parse::<IpAddr>().unwrap());
-        assert_eq!(resolved.header_name.as_deref(), Some("x-forwarded-for"));
+        assert_eq!(resolved.status, RealIpResolutionStatus::Resolved);
+        assert_eq!(
+            resolved
+                .matched_nodes
+                .iter()
+                .map(|matched| (matched.role_name.as_str(), matched.evidence_name.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("local", "local-cidrs"),
+                ("local", "local-cidrs"),
+                ("cdn", "cloudflare"),
+                ("cdn", "edgeone"),
+            ]
+        );
     }
 
     #[tokio::test]
-    async fn loads_local_file_provider() {
-        let path = temp_file("local-provider", "127.0.0.1/32\n::1/128\n");
-        let config = RealIpResolveConfig {
-            providers: vec![ProviderConfig::Core(CoreProviderConfig::LocalFile(
-                LocalFileProviderConfig {
-                    name: "local".to_string(),
-                    path: path.clone(),
-                    watch: false,
-                    debounce: None,
-                    max_stale: None,
-                    extra: Default::default(),
-                },
-            ))],
-            sources: vec![],
-            fallback: Default::default(),
-        };
-
-        let resolver = RealIpResolver::from_config(config).await.unwrap();
-        let trusted = resolver.providers.all_cidrs().await;
-        assert_eq!(trusted.len(), 2);
-
-        let _ = fs::remove_file(path);
-    }
-
-    #[tokio::test]
-    async fn loads_command_provider() {
-        let config = RealIpResolveConfig {
-            providers: vec![ProviderConfig::Core(CoreProviderConfig::Command(
-                CommandProviderConfig {
-                    name: "command".to_string(),
-                    command: "sh".to_string(),
-                    args: vec![
-                        "-c".to_string(),
-                        "printf '10.0.0.1\\n10.0.0.0/24\\n'".to_string(),
-                    ],
-                    refresh: None,
-                    timeout: Some(std::time::Duration::from_secs(5)),
-                    on_refresh_failure: RefreshFailurePolicy::KeepLastGood,
-                    max_stale: None,
-                    extra: Default::default(),
-                },
-            ))],
-            sources: vec![],
-            fallback: Default::default(),
-        };
-
-        let resolver = RealIpResolver::from_config(config).await.unwrap();
-        let trusted = resolver.providers.all_cidrs().await;
-        assert_eq!(trusted.len(), 2);
-    }
-
-    struct StaticCustomProvider {
-        cidrs: Vec<IpNet>,
-    }
-
-    impl DynamicProvider for StaticCustomProvider {
-        fn load<'a>(&'a self) -> ProviderLoadFuture<'a> {
-            let cidrs = self.cidrs.clone();
-            Box::pin(async move { Ok(cidrs) })
-        }
-    }
-
-    struct StaticCustomProviderFactory;
-
-    impl CustomProviderFactory for StaticCustomProviderFactory {
-        fn kind(&self) -> &'static str {
-            "static-custom"
-        }
-
-        fn create(&self, config: &CustomProviderConfig) -> RealIpResult<Arc<dyn DynamicProvider>> {
-            let cidrs = config
-                .extra
-                .get("cidrs")
-                .and_then(|value| value.as_array())
-                .into_iter()
-                .flatten()
-                .filter_map(|value| value.as_str())
-                .map(|value| value.parse::<IpNet>().unwrap())
-                .collect();
-            Ok(Arc::new(StaticCustomProvider { cidrs }))
-        }
-    }
-
-    #[tokio::test]
-    async fn loads_custom_provider_via_factory_registry() {
-        let mut factories = ProviderFactoryRegistry::new();
-        factories.register(StaticCustomProviderFactory).unwrap();
-
-        let config = RealIpResolveConfig {
-            providers: vec![ProviderConfig::Custom(CustomProviderConfig {
-                name: "custom".to_string(),
-                kind: "static-custom".to_string(),
-                refresh: None,
-                timeout: None,
-                on_refresh_failure: RefreshFailurePolicy::KeepLastGood,
-                max_stale: None,
-                extra: [(
-                    "cidrs".to_string(),
-                    serde_json::json!(["10.10.0.0/16", "127.0.0.1/32"]),
-                )]
-                .into_iter()
-                .collect(),
-            })],
-            sources: vec![],
-            fallback: Default::default(),
-        };
-
-        let resolver = RealIpResolver::from_config_with_factories(config, &factories)
+    async fn missing_bridge_proof_stops_at_unknown_proxy() {
+        let resolver = RealIpResolver::from_config(recursive_config())
             .await
             .unwrap();
-        let trusted = resolver.providers.all_cidrs().await;
-        assert_eq!(trusted.len(), 2);
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            "198.18.0.10, 198.51.100.9, 203.0.113.8, 10.0.0.3"
+                .parse()
+                .unwrap(),
+        );
+
+        let resolved = resolver
+            .resolve(
+                "10.0.0.2".parse().unwrap(),
+                &headers,
+                &TransportContext::default(),
+            )
+            .await;
+
+        assert_eq!(
+            resolved.client_ip,
+            "198.51.100.9".parse::<IpAddr>().unwrap()
+        );
+        assert_eq!(resolved.status, RealIpResolutionStatus::Resolved);
+    }
+
+    #[tokio::test]
+    async fn fully_trusted_chain_returns_farthest_clientward_node() {
+        let config = RealIpResolveConfig {
+            rules: vec![RuleConfig::XForwardedFor(XForwardedForRuleConfig {
+                name: "lan-xff".to_string(),
+                priority: 100,
+                headers: vec!["x-forwarded-for".to_string()],
+                direction: ChainDirection::RightToLeft,
+                direct_peer_nodes: vec!["lan".to_string()],
+            })],
+            nodes: vec![cidr_node("lan", &["192.168.0.0/16"], &["lan"], false)],
+            fallback: FallbackConfig::default(),
+        };
+        let resolver = RealIpResolver::from_config(config).await.unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            "192.168.1.1, 192.168.1.2".parse().unwrap(),
+        );
+
+        let resolved = resolver
+            .resolve(
+                "192.168.1.3".parse().unwrap(),
+                &headers,
+                &TransportContext::default(),
+            )
+            .await;
+
+        assert_eq!(resolved.client_ip, "192.168.1.1".parse::<IpAddr>().unwrap());
+        assert_eq!(resolved.status, RealIpResolutionStatus::Resolved);
+        assert_eq!(resolved.matched_nodes.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn different_bridge_headers_can_prove_multiple_cdn_hops() {
+        let mut config = recursive_config();
+        config
+            .nodes
+            .insert(3, bridge_node("second-edge", "second-secret-client-ip"));
+        let NodeConfig::Core(CoreNodeConfig::Union(cdn)) = &mut config.nodes[5] else {
+            unreachable!();
+        };
+        cdn.members.push("second-edge".to_string());
+
+        let resolver = RealIpResolver::from_config(config).await.unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            "198.18.0.10, 198.51.100.9, 198.51.100.8, 10.0.0.3"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert("eo-secret-client-ip", "198.18.0.10".parse().unwrap());
+        headers.insert("second-secret-client-ip", "198.51.100.9".parse().unwrap());
+
+        let resolved = resolver
+            .resolve(
+                "10.0.0.2".parse().unwrap(),
+                &headers,
+                &TransportContext::default(),
+            )
+            .await;
+
+        assert_eq!(resolved.client_ip, "198.18.0.10".parse::<IpAddr>().unwrap());
+        assert_eq!(resolved.status, RealIpResolutionStatus::Resolved);
+        assert_eq!(
+            resolved
+                .matched_nodes
+                .iter()
+                .map(|matched| matched.evidence_name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["local-cidrs", "local-cidrs", "second-edge", "edgeone"]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_bridge_header_can_only_prove_one_hop_per_request() {
+        let mut config = recursive_config();
+        let NodeConfig::Core(CoreNodeConfig::Union(cdn)) = &mut config.nodes[4] else {
+            unreachable!();
+        };
+        cdn.members = vec!["edgeone".to_string()];
+
+        let resolver = RealIpResolver::from_config(config).await.unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            "198.18.0.10, 198.51.100.9, 198.51.100.8, 10.0.0.3"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert("eo-secret-client-ip", "198.51.100.9".parse().unwrap());
+
+        let resolved = resolver
+            .resolve(
+                "10.0.0.2".parse().unwrap(),
+                &headers,
+                &TransportContext::default(),
+            )
+            .await;
+
+        assert_eq!(
+            resolved.client_ip,
+            "198.51.100.9".parse::<IpAddr>().unwrap()
+        );
+        assert_eq!(
+            resolved
+                .matched_nodes
+                .iter()
+                .filter(|matched| matched.evidence_name == "edgeone")
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_chain_returns_rejected_nearest_proven_hop() {
+        let resolver = RealIpResolver::from_config(recursive_config())
+            .await
+            .unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            "198.18.0.10, malformed, 203.0.113.8, 10.0.0.3"
+                .parse()
+                .unwrap(),
+        );
+
+        let resolved = resolver
+            .resolve(
+                "10.0.0.2".parse().unwrap(),
+                &headers,
+                &TransportContext::default(),
+            )
+            .await;
+
+        assert_eq!(resolved.client_ip, "203.0.113.8".parse::<IpAddr>().unwrap());
+        assert_eq!(
+            resolved.status,
+            RealIpResolutionStatus::Rejected {
+                reason: RealIpRejectionReason::MalformedChainElement,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_forwarded_chain_is_not_compacted() {
+        let mut config = recursive_config();
+        config.rules = vec![RuleConfig::Forwarded(crate::config::ForwardedRuleConfig {
+            name: "forwarded".to_string(),
+            priority: 100,
+            headers: vec!["forwarded".to_string()],
+            direction: ChainDirection::RightToLeft,
+            param: "for".to_string(),
+            direct_peer_nodes: vec!["local".to_string()],
+        })];
+        let resolver = RealIpResolver::from_config(config).await.unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "forwarded",
+            "for=198.18.0.10, by=unknown, for=203.0.113.8, for=10.0.0.3"
+                .parse()
+                .unwrap(),
+        );
+
+        let resolved = resolver
+            .resolve(
+                "10.0.0.2".parse().unwrap(),
+                &headers,
+                &TransportContext::default(),
+            )
+            .await;
+
+        assert_eq!(resolved.client_ip, "203.0.113.8".parse::<IpAddr>().unwrap());
+        assert_eq!(
+            resolved.status,
+            RealIpResolutionStatus::Rejected {
+                reason: RealIpRejectionReason::MissingForwardedFor,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn shared_leaf_keeps_each_union_role_topology_isolated() {
+        let mut shared_node = cidr_node("shared", &["10.0.0.0/24"], &[], true);
+        let NodeConfig::Core(CoreNodeConfig::CidrsInline(shared_config)) = &mut shared_node else {
+            unreachable!();
+        };
+        shared_config.priority = 100;
+        let config = RealIpResolveConfig {
+            rules: vec![RuleConfig::XForwardedFor(XForwardedForRuleConfig {
+                name: "xff".to_string(),
+                priority: 100,
+                headers: vec!["x-forwarded-for".to_string()],
+                direction: ChainDirection::RightToLeft,
+                direct_peer_nodes: vec!["edge".to_string(), "internal".to_string()],
+            })],
+            nodes: vec![
+                shared_node,
+                cidr_node("edge-upstream", &["203.0.113.0/24"], &[], false),
+                cidr_node("internal-upstream", &["192.0.2.0/24"], &[], false),
+                union_node("edge", &["shared"], &["edge-upstream"]),
+                union_node("internal", &["shared"], &["internal-upstream"]),
+            ],
+            fallback: FallbackConfig::default(),
+        };
+        let resolver = RealIpResolver::from_config(config).await.unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "192.0.2.8".parse().unwrap());
+
+        let resolved = resolver
+            .resolve(
+                "10.0.0.2".parse().unwrap(),
+                &headers,
+                &TransportContext::default(),
+            )
+            .await;
+
+        assert_eq!(resolved.client_ip, "192.0.2.8".parse::<IpAddr>().unwrap());
+        assert_eq!(resolved.matched_nodes.len(), 1);
+        assert_eq!(resolved.matched_nodes[0].role_name, "edge");
+    }
+
+    #[tokio::test]
+    async fn untrusted_direct_peer_uses_fallback_without_reading_headers() {
+        let resolver = RealIpResolver::from_config(recursive_config())
+            .await
+            .unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "198.18.0.10".parse().unwrap());
+
+        let resolved = resolver
+            .resolve(
+                "192.0.2.10".parse().unwrap(),
+                &headers,
+                &TransportContext::default(),
+            )
+            .await;
+
+        assert_eq!(resolved.client_ip, "192.0.2.10".parse::<IpAddr>().unwrap());
+        assert_eq!(resolved.status, RealIpResolutionStatus::Fallback);
+    }
+
+    #[tokio::test]
+    async fn trusted_resolved_header_can_defer_when_candidate_is_still_a_proxy() {
+        let config = RealIpResolveConfig {
+            rules: vec![
+                RuleConfig::TrustedResolvedHeader(crate::config::TrustedResolvedHeaderRuleConfig {
+                    name: "resolved".to_string(),
+                    priority: 100,
+                    headers: vec!["x-real-ip".to_string()],
+                    direct_peer_nodes: vec!["cloudflare".to_string()],
+                    skip_if_matches_nodes: vec!["cloudflare".to_string()],
+                }),
+                RuleConfig::XForwardedFor(XForwardedForRuleConfig {
+                    name: "xff".to_string(),
+                    priority: 90,
+                    headers: vec!["x-forwarded-for".to_string()],
+                    direction: ChainDirection::RightToLeft,
+                    direct_peer_nodes: vec!["cloudflare".to_string()],
+                }),
+            ],
+            nodes: vec![cidr_node(
+                "cloudflare",
+                &["203.0.113.0/24"],
+                &["cloudflare"],
+                false,
+            )],
+            fallback: FallbackConfig::default(),
+        };
+        let resolver = RealIpResolver::from_config(config).await.unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert("x-real-ip", "203.0.113.9".parse().unwrap());
+        headers.insert(
+            "x-forwarded-for",
+            "198.18.0.10, 203.0.113.9".parse().unwrap(),
+        );
+
+        let resolved = resolver
+            .resolve(
+                "203.0.113.8".parse().unwrap(),
+                &headers,
+                &TransportContext::default(),
+            )
+            .await;
+
+        assert_eq!(resolved.client_ip, "198.18.0.10".parse::<IpAddr>().unwrap());
+        assert_eq!(resolved.rule_name.as_deref(), Some("xff"));
+    }
+
+    #[tokio::test]
+    async fn trusted_resolved_header_and_proxy_protocol_remain_supported() {
+        let config = RealIpResolveConfig {
+            rules: vec![
+                RuleConfig::ProxyProtocol(crate::config::ProxyProtocolRuleConfig {
+                    name: "proxy".to_string(),
+                    priority: 100,
+                    direct_peer_nodes: vec!["local".to_string()],
+                }),
+                RuleConfig::TrustedResolvedHeader(crate::config::TrustedResolvedHeaderRuleConfig {
+                    name: "resolved".to_string(),
+                    priority: 90,
+                    headers: vec!["x-real-ip".to_string()],
+                    direct_peer_nodes: vec!["local".to_string()],
+                    skip_if_matches_nodes: vec![],
+                }),
+            ],
+            nodes: vec![cidr_node("local", &["10.0.0.0/24"], &[], false)],
+            fallback: FallbackConfig::default(),
+        };
+        let resolver = RealIpResolver::from_config(config).await.unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert("x-real-ip", "198.18.0.10".parse().unwrap());
+
+        let resolved = resolver
+            .resolve(
+                "10.0.0.2".parse().unwrap(),
+                &headers,
+                &TransportContext::default(),
+            )
+            .await;
+        assert_eq!(resolved.client_ip, "198.18.0.10".parse::<IpAddr>().unwrap());
+        assert_eq!(resolved.rule_name.as_deref(), Some("resolved"));
+
+        let resolved = resolver
+            .resolve(
+                "10.0.0.2".parse().unwrap(),
+                &headers,
+                &TransportContext {
+                    proxy_protocol_addr: Some("203.0.113.7".parse().unwrap()),
+                },
+            )
+            .await;
+        assert_eq!(resolved.client_ip, "203.0.113.7".parse::<IpAddr>().unwrap());
+        assert_eq!(resolved.input_kind, ResolvedInputKind::Transport);
     }
 }

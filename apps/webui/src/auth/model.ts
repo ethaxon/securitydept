@@ -46,8 +46,7 @@ export type WebuiAuthUser =
 	| WebuiSessionAuthUser
 	| WebuiBasicAuthUser
 	| WebuiTokenSetBackendOidcModeAuthUser
-	| WebuiTokenSetFrontendOidcModeAuthUser
-	| null;
+	| WebuiTokenSetFrontendOidcModeAuthUser;
 
 export interface DashboardCookieAccess {
 	readonly kind: "cookie";

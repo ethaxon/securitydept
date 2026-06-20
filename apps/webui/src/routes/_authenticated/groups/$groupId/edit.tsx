@@ -1,8 +1,7 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
-import { useDashboardAccessNotice, useGroupQuery } from "@/dashboard/queries";
-import { AuthModeNotice } from "@/routes/_authenticated/-auth-mode-notice";
+import { useGroupQuery } from "@/dashboard/queries";
 import { GroupForm } from "../-group-form";
 
 export const Route = createFileRoute("/_authenticated/groups/$groupId/edit")({
@@ -13,18 +12,11 @@ function RouteComponent() {
 	const { groupId } = useParams({
 		from: "/_authenticated/groups/$groupId/edit",
 	});
-	const accessNotice = useDashboardAccessNotice();
 	const { data: group, isLoading } = useGroupQuery(groupId);
 
 	return (
-		<Layout>
+		<Layout authenticated>
 			<div className="mx-auto max-w-5xl space-y-6">
-				{accessNotice ? (
-					<AuthModeNotice
-						title={accessNotice.title}
-						description={accessNotice.description}
-					/>
-				) : null}
 				<div className="space-y-2">
 					<Link
 						to="/groups"

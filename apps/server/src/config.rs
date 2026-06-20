@@ -546,4 +546,25 @@ mod tests {
             .resolve_substrate()
             .expect("resource-server config should inherit shared defaults");
     }
+
+    #[test]
+    fn real_ip_config_uses_rules_and_nodes() {
+        let config = parse_config(
+            r#"
+                [[real_ip_resolve.nodes]]
+                name = "local"
+                kind = "cidrs-inline"
+                cidrs = ["127.0.0.1/32"]
+                accepts_from = ["local"]
+
+                [[real_ip_resolve.rules]]
+                name = "xff"
+                kind = "x-forwarded-for"
+                direct_peer_nodes = ["local"]
+            "#,
+        )
+        .expect("rule/node real-IP config should deserialize");
+
+        config.validate().expect("real-IP graph should validate");
+    }
 }

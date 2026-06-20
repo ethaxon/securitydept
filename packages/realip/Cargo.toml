@@ -48,6 +48,10 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"
+
+[[test]]
+name = "docker"
+path = "tests/integration/docker_cidr_node.rs"
 required-features = ["docker"]
 
 [[test]]

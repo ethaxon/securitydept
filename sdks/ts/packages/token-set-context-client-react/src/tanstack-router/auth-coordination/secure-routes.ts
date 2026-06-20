@@ -1,8 +1,9 @@
 import { type RequirementsComposition } from "@securitydept/client";
 import {
 	secureRoute as baseSecureRoute,
-	type TanStackBeforeLoadContextLike,
-	type TanStackRouteOptionsLike,
+	type CreateTanStackRouteSecurityPatchOptions,
+	type TanStackRouteRootSecurityPatch,
+	type TanStackRouteSecurityPatch,
 } from "@securitydept/client-react/tanstack-router";
 import {
 	TokenSetClientRegistryAuthRequirement,
@@ -30,31 +31,26 @@ export interface TokenSetSecureRouteRootSecurityOptions
 
 export function secureTokenSetRoute(
 	security: TokenSetSecureRouteSecurityOptions = {},
-	routeOptions: TanStackRouteOptionsLike = {},
-): TanStackRouteOptionsLike {
+	options: CreateTanStackRouteSecurityPatchOptions = {},
+): TanStackRouteSecurityPatch {
 	return baseSecureRoute<TokenSetClientRegistryAuthRequirement>(
 		security,
-		routeOptions,
+		options,
 	);
 }
 
 export function secureTokenSetRouteRoot(
 	security: TokenSetSecureRouteRootSecurityOptions = {},
-	routeOptions: TanStackRouteOptionsLike = {},
-): TanStackRouteOptionsLike {
-	const previousBeforeLoad = routeOptions.beforeLoad;
+	options: CreateTanStackRouteSecurityPatchOptions = {},
+): TanStackRouteRootSecurityPatch {
 	const securityBeforeLoad = createTokenSetCanBeforeLoad({
 		checkClientAuthenticated: security.checkClientAuthenticated,
 		onClientUnauthenticated: security.onClientUnauthenticated,
 		selectClientCandidate: security.selectClientCandidate,
 	});
-	const secured = secureTokenSetRoute(security, routeOptions);
+	const secured = secureTokenSetRoute(security, options);
 	return {
 		...secured,
-		async beforeLoad(context: TanStackBeforeLoadContextLike) {
-			const previousResult = await previousBeforeLoad?.(context);
-			await securityBeforeLoad(context);
-			return previousResult;
-		},
+		beforeLoad: securityBeforeLoad,
 	};
 }

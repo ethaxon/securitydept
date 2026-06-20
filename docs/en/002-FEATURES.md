@@ -11,7 +11,7 @@ This page states the currently implemented product baseline. It is not a promise
 | Session context | Server-owned OIDC/dev session flow, normalized session principal, and client adapters. | `securitydept-session-context`, `@securitydept/session-context-client*` |
 | Token-set context | Frontend/backend OIDC modes, orchestration, registry, access-token substrate, and framework adapters. | `securitydept-token-set-context`, `@securitydept/token-set-context-client*` |
 | Client foundation | Explicit environment, signals/resources, event streams, cancellation, spans, tracing, transport, storage, router/popup abstractions, and RxJS interop. | `@securitydept/client` |
-| Client-IP policy | Trusted source/provider resolution for forwarded headers, PROXY protocol, and local/container/Kubernetes sources. | `securitydept-realip` |
+| Client-IP policy | Rule-driven trusted-hop graphs for forwarded headers, bridge proofs, PROXY protocol, and local/container/Kubernetes nodes. | `securitydept-realip` |
 | Reference runtime | Axum server, React WebUI, Docker runtime artifact, and end-to-end proof paths. | `apps/server`, `apps/webui` |
 
 ## Reference Server Routes

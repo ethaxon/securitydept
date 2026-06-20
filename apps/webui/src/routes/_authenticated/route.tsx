@@ -13,7 +13,7 @@ const security = secureRouteRoot<DashboardAuthRequirement>({
 export const Route = createFileRoute("/_authenticated")({
 	component: Outlet,
 	staticData: security.staticData,
-	async beforeLoad(context) {
-		await security.beforeLoad?.(context);
+	beforeLoad(context): Promise<void> {
+		return security.beforeLoad(context);
 	},
 });

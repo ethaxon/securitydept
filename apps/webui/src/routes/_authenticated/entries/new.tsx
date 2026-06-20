@@ -14,7 +14,7 @@ function RouteComponent() {
 	const formKey = `create:${JSON.stringify(search)}`;
 
 	return (
-		<Layout>
+		<Layout authenticated>
 			<div className="mx-auto max-w-5xl space-y-6">
 				<div className="space-y-2">
 					<Link

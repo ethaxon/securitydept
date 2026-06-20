@@ -1,2 +1,1 @@
-mod core_providers;
-mod docker_provider;
+mod core_cidr_nodes;

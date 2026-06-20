@@ -256,6 +256,23 @@ describe("AuthService", () => {
 		});
 	});
 
+	it("projects an authenticated token-set context without principal metadata", () => {
+		const { service, tokenAuthState } = createAuthServiceFixture();
+
+		service.setMode(AuthContextMode.TokenSetBackend);
+		tokenAuthState.set({
+			tokens: { accessToken: "at" },
+			metadata: {},
+		});
+
+		expect(service.authUser.value.get()).toMatchObject({
+			type: "token-set-backend-oidc-mode",
+			userInfo: {
+				displayName: "Token Set Backend Mode context",
+			},
+		});
+	});
+
 	it("disposes with the injected Securitydept destroy ref", () => {
 		const { service, destroyRef } = createAuthServiceFixture();
 		const dispose = vi.spyOn(service, "dispose");

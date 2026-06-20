@@ -6,8 +6,7 @@ import {
 } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
-import { useDashboardAccessNotice, useEntryQuery } from "@/dashboard/queries";
-import { AuthModeNotice } from "@/routes/_authenticated/-auth-mode-notice";
+import { useEntryQuery } from "@/dashboard/queries";
 import { EntryForm } from "../-entry-form";
 import { parseEntrySearch } from "../-entry-search";
 
@@ -23,19 +22,12 @@ function RouteComponent() {
 	const search = useSearch({
 		from: "/_authenticated/entries/$entryId/edit",
 	});
-	const accessNotice = useDashboardAccessNotice();
 	const { data: entry, isLoading } = useEntryQuery(entryId);
 	const formKey = `edit:${entryId}:${JSON.stringify(search)}`;
 
 	return (
-		<Layout>
+		<Layout authenticated>
 			<div className="mx-auto max-w-5xl space-y-6">
-				{accessNotice ? (
-					<AuthModeNotice
-						title={accessNotice.title}
-						description={accessNotice.description}
-					/>
-				) : null}
 				<div className="space-y-2">
 					<Link
 						to="/entries"

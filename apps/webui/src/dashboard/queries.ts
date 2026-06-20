@@ -1,4 +1,3 @@
-import { type ResourceSnapshot, ResourceStatus } from "@securitydept/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import {
@@ -19,85 +18,32 @@ import {
 	updateEntry,
 	updateGroup,
 } from "@/api/dashboard";
-import { AuthContextMode, type WebuiAuthUser } from "@/auth/model";
-import { useAuthMode, useAuthService, useAuthUser } from "@/auth/react";
-
-function readAuthModeSnapshot(
-	snapshot: ResourceSnapshot<AuthContextMode | null>,
-): AuthContextMode | null {
-	switch (snapshot.status) {
-		case ResourceStatus.Idle:
-		case ResourceStatus.Loading:
-			return null;
-		case ResourceStatus.LoadingError:
-		case ResourceStatus.Error:
-			throw snapshot.error;
-		case ResourceStatus.Reloading:
-		case ResourceStatus.Resolved:
-			return snapshot.value;
-	}
-}
-
-function readAuthUserSnapshot(
-	snapshot: ResourceSnapshot<WebuiAuthUser>,
-): WebuiAuthUser {
-	switch (snapshot.status) {
-		case ResourceStatus.Idle:
-		case ResourceStatus.Loading:
-			return null;
-		case ResourceStatus.LoadingError:
-		case ResourceStatus.Error:
-			throw snapshot.error;
-		case ResourceStatus.Reloading:
-		case ResourceStatus.Resolved:
-			return snapshot.value;
-	}
-}
+import { type AuthContextMode } from "@/auth/model";
+import {
+	useAuthenticatedAuthMode,
+	useAuthenticatedAuthUser,
+	useAuthService,
+} from "@/auth/react";
 
 export const dashboardQueryKeys = {
 	root: ["dashboard"] as const,
-	groups: (mode: AuthContextMode | null) =>
+	groups: (mode: AuthContextMode) =>
 		[...dashboardQueryKeys.root, mode, "groups"] as const,
-	group: (mode: AuthContextMode | null, groupId: string) =>
+	group: (mode: AuthContextMode, groupId: string) =>
 		[...dashboardQueryKeys.groups(mode), groupId] as const,
-	entries: (mode: AuthContextMode | null) =>
+	entries: (mode: AuthContextMode) =>
 		[...dashboardQueryKeys.root, mode, "entries"] as const,
-	entry: (mode: AuthContextMode | null, entryId: string) =>
+	entry: (mode: AuthContextMode, entryId: string) =>
 		[...dashboardQueryKeys.entries(mode), entryId] as const,
-	currentUser: (mode: AuthContextMode | null) =>
-		[...dashboardQueryKeys.root, mode, "current-user"] as const,
 } as const;
 
 export function useCurrentDashboardUser() {
-	const authUser = readAuthUserSnapshot(useAuthUser());
-	const mode = readAuthModeSnapshot(useAuthMode());
-	return useQuery({
-		queryKey: dashboardQueryKeys.currentUser(mode),
-		queryFn: async () => authUser?.userInfo ?? null,
-		initialData: authUser?.userInfo ?? null,
-	});
-}
-
-export function useDashboardAccessNotice() {
-	const authUser = readAuthUserSnapshot(useAuthUser());
-	const mode = readAuthModeSnapshot(useAuthMode());
-	if (
-		(mode === AuthContextMode.TokenSetBackend ||
-			mode === AuthContextMode.TokenSetFrontend) &&
-		authUser === null
-	) {
-		return {
-			title: "Token-set authorization is not ready",
-			description:
-				"Token-set mode is selected, but no dashboard bearer is available yet. Sign in again before loading protected API data.",
-		};
-	}
-	return null;
+	return useAuthenticatedAuthUser().userInfo;
 }
 
 export function useGroupsQuery() {
 	const authService = useAuthService();
-	const mode = readAuthModeSnapshot(useAuthMode());
+	const mode = useAuthenticatedAuthMode();
 	return useQuery({
 		queryKey: dashboardQueryKeys.groups(mode),
 		queryFn: async ({ signal }) =>
@@ -110,7 +56,7 @@ export function useGroupsQuery() {
 
 export function useGroupQuery(groupId: string) {
 	const authService = useAuthService();
-	const mode = readAuthModeSnapshot(useAuthMode());
+	const mode = useAuthenticatedAuthMode();
 	return useQuery({
 		queryKey: dashboardQueryKeys.group(mode, groupId),
 		queryFn: async ({ signal }) =>
@@ -124,7 +70,7 @@ export function useGroupQuery(groupId: string) {
 
 export function useEntriesQuery() {
 	const authService = useAuthService();
-	const mode = readAuthModeSnapshot(useAuthMode());
+	const mode = useAuthenticatedAuthMode();
 	return useQuery({
 		queryKey: dashboardQueryKeys.entries(mode),
 		queryFn: async ({ signal }) =>
@@ -137,7 +83,7 @@ export function useEntriesQuery() {
 
 export function useEntryQuery(entryId: string) {
 	const authService = useAuthService();
-	const mode = readAuthModeSnapshot(useAuthMode());
+	const mode = useAuthenticatedAuthMode();
 	return useQuery({
 		queryKey: dashboardQueryKeys.entry(mode, entryId),
 		queryFn: async ({ signal }) =>

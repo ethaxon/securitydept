@@ -5,19 +5,19 @@ use ipnet::IpNet;
 
 use super::string_list;
 use crate::{
-    config::CustomProviderConfig,
+    config::CustomCidrNodeConfig,
     error::{RealIpError, RealIpResult},
-    extension::{CustomProviderFactory, DynamicProvider, ProviderLoadFuture},
+    extension::{CidrNodeLoadFuture, CustomCidrNodeFactory, DynamicCidrNode},
 };
 
-pub(crate) struct DockerProviderFactory;
+pub(crate) struct DockerCidrNodeFactory;
 
-impl CustomProviderFactory for DockerProviderFactory {
+impl CustomCidrNodeFactory for DockerCidrNodeFactory {
     fn kind(&self) -> &'static str {
-        "docker-provider"
+        "docker"
     }
 
-    fn create(&self, config: &CustomProviderConfig) -> RealIpResult<Arc<dyn DynamicProvider>> {
+    fn create(&self, config: &CustomCidrNodeConfig) -> RealIpResult<Arc<dyn DynamicCidrNode>> {
         let host = config
             .extra
             .get("host")
@@ -25,34 +25,34 @@ impl CustomProviderFactory for DockerProviderFactory {
             .map(str::to_string);
         let networks = string_list(config, "networks");
         let docker =
-            connect_docker(host.as_deref()).map_err(|error| RealIpError::ProviderLoad {
-                provider: config.name.clone(),
+            connect_docker(host.as_deref()).map_err(|error| RealIpError::CidrNodeLoad {
+                node: config.name.clone(),
                 details: error,
             })?;
 
-        Ok(Arc::new(DockerProvider {
-            provider_name: config.name.clone(),
+        Ok(Arc::new(DockerCidrNode {
+            node_name: config.name.clone(),
             docker,
             networks,
         }))
     }
 }
 
-struct DockerProvider {
-    provider_name: String,
+struct DockerCidrNode {
+    node_name: String,
     docker: Docker,
     networks: Vec<String>,
 }
 
-impl DynamicProvider for DockerProvider {
-    fn load<'a>(&'a self) -> ProviderLoadFuture<'a> {
+impl DynamicCidrNode for DockerCidrNode {
+    fn load<'a>(&'a self) -> CidrNodeLoadFuture<'a> {
         Box::pin(async move {
             let ipams: Vec<Option<Ipam>> = if self.networks.is_empty() {
                 self.docker
                     .list_networks(None::<bollard::query_parameters::ListNetworksOptions>)
                     .await
-                    .map_err(|error| RealIpError::ProviderLoad {
-                        provider: self.provider_name.clone(),
+                    .map_err(|error| RealIpError::CidrNodeLoad {
+                        node: self.node_name.clone(),
                         details: error.to_string(),
                     })?
                     .into_iter()
@@ -65,8 +65,8 @@ impl DynamicProvider for DockerProvider {
                         .docker
                         .inspect_network(network, None::<InspectNetworkOptions>)
                         .await
-                        .map_err(|error| RealIpError::ProviderLoad {
-                            provider: self.provider_name.clone(),
+                        .map_err(|error| RealIpError::CidrNodeLoad {
+                            node: self.node_name.clone(),
                             details: error.to_string(),
                         })?;
                     items.push(item.ipam);
@@ -74,7 +74,7 @@ impl DynamicProvider for DockerProvider {
                 items
             };
 
-            extract_docker_subnets(&self.provider_name, &ipams)
+            extract_docker_subnets(&self.node_name, &ipams)
         })
     }
 }
@@ -91,7 +91,7 @@ fn connect_docker(host: Option<&str>) -> Result<Docker, String> {
     }
 }
 
-fn extract_docker_subnets(provider: &str, ipams: &[Option<Ipam>]) -> RealIpResult<Vec<IpNet>> {
+fn extract_docker_subnets(node: &str, ipams: &[Option<Ipam>]) -> RealIpResult<Vec<IpNet>> {
     let mut cidrs = Vec::new();
     for ipam in ipams {
         let Some(ipam) = ipam else {
@@ -107,8 +107,8 @@ fn extract_docker_subnets(provider: &str, ipams: &[Option<Ipam>]) -> RealIpResul
             cidrs.push(
                 subnet
                     .parse::<IpNet>()
-                    .map_err(|_| RealIpError::ProviderLoad {
-                        provider: provider.to_string(),
+                    .map_err(|_| RealIpError::CidrNodeLoad {
+                        node: node.to_string(),
                         details: format!("invalid docker subnet `{subnet}`"),
                     })?,
             );

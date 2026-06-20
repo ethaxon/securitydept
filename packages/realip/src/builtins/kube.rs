@@ -12,33 +12,33 @@ use kube::{
 };
 
 use crate::{
-    config::CustomProviderConfig,
+    config::CustomCidrNodeConfig,
     error::{RealIpError, RealIpResult},
-    extension::{CustomProviderFactory, DynamicProvider, ProviderLoadFuture},
+    extension::{CidrNodeLoadFuture, CustomCidrNodeFactory, DynamicCidrNode},
 };
 
-pub(crate) struct KubeProviderFactory;
+pub(crate) struct KubeCidrNodeFactory;
 
-impl CustomProviderFactory for KubeProviderFactory {
+impl CustomCidrNodeFactory for KubeCidrNodeFactory {
     fn kind(&self) -> &'static str {
-        "kube-provider"
+        "kube"
     }
 
-    fn create(&self, config: &CustomProviderConfig) -> RealIpResult<Arc<dyn DynamicProvider>> {
-        Ok(Arc::new(KubeProvider::from_config(config)))
+    fn create(&self, config: &CustomCidrNodeConfig) -> RealIpResult<Arc<dyn DynamicCidrNode>> {
+        Ok(Arc::new(KubeCidrNode::from_config(config)))
     }
 }
 
-struct KubeProvider {
-    provider_name: String,
-    request: KubeProviderRequest,
+struct KubeCidrNode {
+    node_name: String,
+    request: KubeNodeRequest,
 }
 
-impl KubeProvider {
-    fn from_config(config: &CustomProviderConfig) -> Self {
+impl KubeCidrNode {
+    fn from_config(config: &CustomCidrNodeConfig) -> Self {
         Self {
-            provider_name: config.name.clone(),
-            request: KubeProviderRequest {
+            node_name: config.name.clone(),
+            request: KubeNodeRequest {
                 resource: config
                     .extra
                     .get("resource")
@@ -50,9 +50,9 @@ impl KubeProvider {
                     .get("namespace")
                     .and_then(|value| value.as_str())
                     .map(str::to_string),
-                name: config
+                resource_name: config
                     .extra
-                    .get("name")
+                    .get("resource_name")
                     .and_then(|value| value.as_str())
                     .map(str::to_string),
                 label_selector: config
@@ -75,20 +75,20 @@ impl KubeProvider {
     }
 }
 
-impl DynamicProvider for KubeProvider {
-    fn load<'a>(&'a self) -> ProviderLoadFuture<'a> {
+impl DynamicCidrNode for KubeCidrNode {
+    fn load<'a>(&'a self) -> CidrNodeLoadFuture<'a> {
         Box::pin(async move {
-            let backend = LiveKubeBackend::new(&self.provider_name, &self.request).await?;
-            load_with_backend(&self.provider_name, &backend, &self.request).await
+            let backend = LiveKubeBackend::new(&self.node_name, &self.request).await?;
+            load_with_backend(&self.node_name, &backend, &self.request).await
         })
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct KubeProviderRequest {
+struct KubeNodeRequest {
     resource: String,
     namespace: Option<String>,
-    name: Option<String>,
+    resource_name: Option<String>,
     label_selector: Option<String>,
     field_selector: Option<String>,
     kubeconfig_path: Option<String>,
@@ -119,44 +119,44 @@ trait KubeBackend: Send + Sync {
 }
 
 struct LiveKubeBackend {
-    provider_name: String,
+    node_name: String,
     client: Client,
 }
 
 impl LiveKubeBackend {
-    async fn new(provider_name: &str, request: &KubeProviderRequest) -> RealIpResult<Self> {
+    async fn new(node_name: &str, request: &KubeNodeRequest) -> RealIpResult<Self> {
         let client = if let Some(path) = request.kubeconfig_path.as_deref() {
-            client_from_kubeconfig_path(provider_name, path).await?
+            client_from_kubeconfig_path(node_name, path).await?
         } else {
             Client::try_default()
                 .await
-                .map_err(|error| RealIpError::ProviderLoad {
-                    provider: provider_name.to_string(),
+                .map_err(|error| RealIpError::CidrNodeLoad {
+                    node: node_name.to_string(),
                     details: error.to_string(),
                 })?
         };
         Ok(Self {
-            provider_name: provider_name.to_string(),
+            node_name: node_name.to_string(),
             client,
         })
     }
 }
 
-async fn client_from_kubeconfig_path(provider_name: &str, path: &str) -> RealIpResult<Client> {
+async fn client_from_kubeconfig_path(node_name: &str, path: &str) -> RealIpResult<Client> {
     let kubeconfig =
-        Kubeconfig::read_from(Path::new(path)).map_err(|error| RealIpError::ProviderLoad {
-            provider: provider_name.to_string(),
+        Kubeconfig::read_from(Path::new(path)).map_err(|error| RealIpError::CidrNodeLoad {
+            node: node_name.to_string(),
             details: error.to_string(),
         })?;
     let config = Config::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions::default())
         .await
-        .map_err(|error| RealIpError::ProviderLoad {
-            provider: provider_name.to_string(),
+        .map_err(|error| RealIpError::CidrNodeLoad {
+            node: node_name.to_string(),
             details: error.to_string(),
         })?;
 
-    Client::try_from(config).map_err(|error| RealIpError::ProviderLoad {
-        provider: provider_name.to_string(),
+    Client::try_from(config).map_err(|error| RealIpError::CidrNodeLoad {
+        node: node_name.to_string(),
         details: error.to_string(),
     })
 }
@@ -171,8 +171,8 @@ impl KubeBackend for LiveKubeBackend {
             let list =
                 api.list(&list_params(query))
                     .await
-                    .map_err(|error| RealIpError::ProviderLoad {
-                        provider: self.provider_name.clone(),
+                    .map_err(|error| RealIpError::CidrNodeLoad {
+                        node: self.node_name.clone(),
                         details: error.to_string(),
                     })?;
             Ok(list.items)
@@ -188,8 +188,8 @@ impl KubeBackend for LiveKubeBackend {
             let api: Api<Endpoints> = Api::namespaced(self.client.clone(), namespace);
             api.get(name)
                 .await
-                .map_err(|error| RealIpError::ProviderLoad {
-                    provider: self.provider_name.clone(),
+                .map_err(|error| RealIpError::CidrNodeLoad {
+                    node: self.node_name.clone(),
                     details: error.to_string(),
                 })
         })
@@ -204,16 +204,16 @@ impl KubeBackend for LiveKubeBackend {
                 query
                     .namespace
                     .as_deref()
-                    .ok_or_else(|| RealIpError::ProviderLoad {
-                        provider: self.provider_name.clone(),
+                    .ok_or_else(|| RealIpError::CidrNodeLoad {
+                        node: self.node_name.clone(),
                         details: "kube endpoints require `namespace`".to_string(),
                     })?;
             let api: Api<Endpoints> = Api::namespaced(self.client.clone(), namespace);
             let list =
                 api.list(&list_params(query))
                     .await
-                    .map_err(|error| RealIpError::ProviderLoad {
-                        provider: self.provider_name.clone(),
+                    .map_err(|error| RealIpError::CidrNodeLoad {
+                        node: self.node_name.clone(),
                         details: error.to_string(),
                     })?;
             Ok(list.items)
@@ -232,8 +232,8 @@ impl KubeBackend for LiveKubeBackend {
             let list =
                 api.list(&list_params(query))
                     .await
-                    .map_err(|error| RealIpError::ProviderLoad {
-                        provider: self.provider_name.clone(),
+                    .map_err(|error| RealIpError::CidrNodeLoad {
+                        node: self.node_name.clone(),
                         details: error.to_string(),
                     })?;
             Ok(list.items)
@@ -242,9 +242,9 @@ impl KubeBackend for LiveKubeBackend {
 }
 
 async fn load_with_backend(
-    provider: &str,
+    node: &str,
     backend: &dyn KubeBackend,
-    request: &KubeProviderRequest,
+    request: &KubeNodeRequest,
 ) -> RealIpResult<Vec<IpNet>> {
     let query = KubeListQuery {
         namespace: request.namespace.clone(),
@@ -259,11 +259,11 @@ async fn load_with_backend(
                 request
                     .namespace
                     .as_deref()
-                    .ok_or_else(|| RealIpError::ProviderLoad {
-                        provider: provider.to_string(),
+                    .ok_or_else(|| RealIpError::CidrNodeLoad {
+                        node: node.to_string(),
                         details: "kube endpoints require `namespace`".to_string(),
                     })?;
-            let items = if let Some(name) = request.name.as_deref() {
+            let items = if let Some(name) = request.resource_name.as_deref() {
                 vec![backend.get_endpoints(namespace, name).await?]
             } else {
                 backend.list_endpoints(&query).await?
@@ -273,8 +273,8 @@ async fn load_with_backend(
         "endpointslices" | "endpoint-slices" => Ok(extract_endpoint_slice_cidrs(
             &backend.list_endpoint_slices(&query).await?,
         )),
-        other => Err(RealIpError::ProviderLoad {
-            provider: provider.to_string(),
+        other => Err(RealIpError::CidrNodeLoad {
+            node: node.to_string(),
             details: format!("unsupported kube resource `{other}`"),
         }),
     }
@@ -373,6 +373,35 @@ mod tests {
         ListEndpointSlices(KubeListQuery),
     }
 
+    #[test]
+    fn config_uses_resource_name_separately_from_node_name() {
+        let mut extra = std::collections::BTreeMap::new();
+        extra.insert(
+            "resource_name".to_string(),
+            serde_json::json!("ingress-service"),
+        );
+        let config = CustomCidrNodeConfig {
+            name: "ingress-endpoints".to_string(),
+            priority: 0,
+            accepts_from: vec![],
+            allow_multiple_unions: false,
+            kind: "kube".to_string(),
+            refresh: None,
+            timeout: None,
+            on_refresh_failure: Default::default(),
+            max_stale: None,
+            extra,
+        };
+
+        let node = KubeCidrNode::from_config(&config);
+
+        assert_eq!(node.node_name, "ingress-endpoints");
+        assert_eq!(
+            node.request.resource_name.as_deref(),
+            Some("ingress-service")
+        );
+    }
+
     impl KubeBackend for Mutex<FakeKubeBackend> {
         fn list_pods<'a>(&'a self, query: &'a KubeListQuery) -> KubeLoadFuture<'a, Vec<Pod>> {
             Box::pin(async move {
@@ -396,8 +425,8 @@ mod tests {
                 state
                     .named_endpoints
                     .pop_front()
-                    .ok_or_else(|| RealIpError::ProviderLoad {
-                        provider: "fake".to_string(),
+                    .ok_or_else(|| RealIpError::CidrNodeLoad {
+                        node: "fake".to_string(),
                         details: "missing fake named endpoints".to_string(),
                     })
             })
@@ -517,10 +546,10 @@ mod tests {
             }],
             ..Default::default()
         });
-        let request = KubeProviderRequest {
+        let request = KubeNodeRequest {
             resource: "pods".to_string(),
             namespace: Some("ingress".to_string()),
-            name: None,
+            resource_name: None,
             label_selector: Some("app=test".to_string()),
             field_selector: Some("spec.nodeName=node-a".to_string()),
             kubeconfig_path: None,
@@ -545,10 +574,10 @@ mod tests {
     #[tokio::test]
     async fn load_with_backend_requires_namespace_for_endpoints() {
         let backend = Mutex::new(FakeKubeBackend::default());
-        let request = KubeProviderRequest {
+        let request = KubeNodeRequest {
             resource: "endpoints".to_string(),
             namespace: None,
-            name: None,
+            resource_name: None,
             label_selector: None,
             field_selector: None,
             kubeconfig_path: None,
@@ -584,10 +613,10 @@ mod tests {
             }]),
             ..Default::default()
         });
-        let request = KubeProviderRequest {
+        let request = KubeNodeRequest {
             resource: "endpoints".to_string(),
             namespace: Some("ingress-nginx".to_string()),
-            name: Some("ingress".to_string()),
+            resource_name: Some("ingress".to_string()),
             label_selector: Some("ignored=yes".to_string()),
             field_selector: None,
             kubeconfig_path: None,
@@ -620,10 +649,10 @@ mod tests {
             }],
             ..Default::default()
         });
-        let request = KubeProviderRequest {
+        let request = KubeNodeRequest {
             resource: "endpoint-slices".to_string(),
             namespace: Some("kube-system".to_string()),
-            name: None,
+            resource_name: None,
             label_selector: Some("kubernetes.io/service-name=dns".to_string()),
             field_selector: None,
             kubeconfig_path: None,
@@ -648,10 +677,10 @@ mod tests {
     #[tokio::test]
     async fn load_with_backend_rejects_unsupported_resource() {
         let backend = Mutex::new(FakeKubeBackend::default());
-        let request = KubeProviderRequest {
+        let request = KubeNodeRequest {
             resource: "services".to_string(),
             namespace: None,
-            name: None,
+            resource_name: None,
             label_selector: None,
             field_selector: None,
             kubeconfig_path: None,

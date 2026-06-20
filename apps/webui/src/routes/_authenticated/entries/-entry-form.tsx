@@ -10,11 +10,9 @@ import {
 import {
 	useCreateBasicEntryMutation,
 	useCreateTokenEntryMutation,
-	useDashboardAccessNotice,
 	useGroupsQuery,
 	useUpdateEntryMutation,
 } from "@/dashboard/queries";
-import { AuthModeNotice } from "@/routes/_authenticated/-auth-mode-notice";
 import { type EntrySearch } from "./-entry-search";
 
 const EntryFormMode = {
@@ -34,7 +32,6 @@ export function EntryForm({ mode, entry, initial }: EntryFormProps) {
 	const isEdit = mode === EntryFormMode.Edit;
 	const [generatedToken, setGeneratedToken] = useState<string | null>(null);
 
-	const accessNotice = useDashboardAccessNotice();
 	const { data: groups = [] } = useGroupsQuery();
 	const createBasic = useCreateBasicEntryMutation();
 	const createToken = useCreateTokenEntryMutation();
@@ -107,15 +104,6 @@ export function EntryForm({ mode, entry, initial }: EntryFormProps) {
 			});
 		},
 	});
-
-	if (accessNotice) {
-		return (
-			<AuthModeNotice
-				title={accessNotice.title}
-				description={accessNotice.description}
-			/>
-		);
-	}
 
 	return (
 		<div className="space-y-4">
