@@ -197,6 +197,16 @@ Missing, duplicate, malformed, or non-matching bridge values do not reject the r
 
 The secret header is evidence from an upstream integration, not a substitute for origin isolation. The trusted path must strip external copies and set the secret header itself.
 
+Generate the opaque header-name bearer with:
+
+```sh
+securitydept-cli realip header create-secret-bearer
+```
+
+The command returns a URL-safe token. Embed it in the provider-specific header
+name, for example `EO-<secret_bearer>-Client-IP`; never use the token as the
+header value, which must remain the adjacent clientward IP.
+
 ### Unions and Multiple Membership
 
 ```toml

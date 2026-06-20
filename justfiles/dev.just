@@ -10,3 +10,6 @@ dev-server:
 
 dev-all:
     zellij --layout dev.kdl
+
+dev-cli *args:
+    cargo run --manifest-path apps/cli/Cargo.toml -- {{args}}

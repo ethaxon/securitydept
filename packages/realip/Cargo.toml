@@ -18,6 +18,7 @@ kube-integration-test = ["kube"]
 
 [dependencies]
 arc-swap = { workspace = true }
+base64 = { workspace = true }
 bollard = { workspace = true, default-features = false, features = [
     "ssl",
     "pipe",
@@ -31,6 +32,7 @@ kube = { version = "3", default-features = false, features = [
 ], optional = true }
 notify = { workspace = true }
 reqwest = { workspace = true }
+rand = { workspace = true }
 rfc7239 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

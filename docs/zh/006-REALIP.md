@@ -197,6 +197,15 @@ headers = ["EO-RANDOM-SECRET-Client-IP"]
 
 Secret header 是上游 integration 提供的 evidence，不是 origin isolation 的替代品。可信路径必须移除外部传入的同名 header，并自行设置 secret header。
 
+可通过以下命令生成 header 名称中使用的 opaque bearer：
+
+```sh
+securitydept-cli realip header create-secret-bearer
+```
+
+该命令输出 URL-safe token。将其嵌入 provider-specific header 名称，例如
+`EO-<secret_bearer>-Client-IP`；不要把 token 作为 header value，value 仍必须是紧邻的 clientward IP。
+
 ### Union 与多归属
 
 ```toml

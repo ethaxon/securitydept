@@ -152,7 +152,7 @@ impl AuthFlowDiagnosis {
     }
 
     pub fn to_json_value(&self) -> Value {
-        serde_json::to_value(self).unwrap_or_else(|_| Value::Null)
+        serde_json::to_value(self).unwrap_or(Value::Null)
     }
 }
 

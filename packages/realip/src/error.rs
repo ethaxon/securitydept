@@ -10,6 +10,9 @@ pub enum RealIpError {
     #[snafu(display("Invalid real-IP config: {message}"))]
     Config { message: String },
 
+    #[snafu(display("Failed to generate trusted bridge secret: {message}"))]
+    RandomBytes { message: String },
+
     #[snafu(display("No custom CIDR node factory registered for kind `{kind}`"))]
     MissingCidrNodeFactory { kind: String },
 

@@ -63,6 +63,7 @@ notify = "8"
 notify-debouncer-full = "0.7"
 reqwest = { version = "0.13" }
 ipnet = { version = "2", features = ["serde"] }
+inquire = "0.9.4"
 rfc7239 = "0.1"
 humantime-serde = "1"
 chrono = { version = "0.4", features = ["serde"] }
