@@ -2,6 +2,9 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+/// Local decryption-key configuration for the RustCrypto-backed JWE verifier.
+///
+/// Key files are parsed without OpenSSL and can be watched for local rotation.
 #[cfg_attr(feature = "config-schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct OAuthResourceServerJweConfig {

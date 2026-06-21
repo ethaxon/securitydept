@@ -1,3 +1,9 @@
+//! Compact JWE decryption backed by the modular `no-way-jose` RustCrypto
+//! crates.
+//!
+//! The implementation does not link OpenSSL. It accepts compact JWE values and
+//! limits the verified payload path to nested JWTs.
+
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use no_way_jose_aes_cbc_hs::{A128CbcHs256, A192CbcHs384, A256CbcHs512};
 use no_way_jose_aes_gcm::{A128Gcm, A192Gcm, A256Gcm};

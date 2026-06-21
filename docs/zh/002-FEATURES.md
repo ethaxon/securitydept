@@ -14,6 +14,21 @@
 | Client-IP policy | 基于 rule 的可信 hop graph，支持 forwarded header、bridge proof、PROXY protocol 与 local/container/Kubernetes node。 | `securitydept-realip` |
 | Reference runtime | Axum server、React WebUI、Docker runtime artifact 和 end-to-end proof path。 | `apps/server`、`apps/webui` |
 
+## JWE 基线
+
+Reference server 与 JWT 一起启用 JWE，`securitydept-oauth-resource-server` 也默认启用 `jwe` feature。较底层的 `securitydept-creds` 继续提供细粒度 feature：JWT 与 JWE 均不会被隐式启用，其中 `jwe` feature 会包含所需的 `jwt` 和 `jwk` features。
+
+Compact JWE 解密使用模块化 `no-way-jose` crates 与 RustCrypto 实现，不链接 OpenSSL。Rustls 负责 network TLS，与本地 JOSE cryptography 是相互独立的边界。
+
+当前实现基线如下：
+
+- 仅接受 nested signed JWT payload。
+- 支持 `RSA-OAEP`、`RSA-OAEP-256`、ECDH-ES、AES-KW、AES-GCM-KW、direct（`dir`）与 PBES2 key management。
+- 支持 128/192/256-bit 变体中的 AES-GCM 与 AES-CBC-HMAC-SHA2 content encryption。
+- OAuth resource server 支持本地 JWK/JWKS key，以及 RSA PKCS#1/PKCS#8、P-256/P-384 SEC1/PKCS#8 PEM private key，并可监视 key file rotation。
+
+已弃用的 `RSA1_5` 会被拒绝。当前 `no-way-jose` backend 尚未实现 `RSA-OAEP-384` 与 `RSA-OAEP-512`，因此也会明确拒绝这两种算法。
+
 ## Reference Server Routes
 
 参考 server 挂载以下 contract family：

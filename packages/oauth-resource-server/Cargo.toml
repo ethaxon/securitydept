@@ -13,6 +13,7 @@ readme = "README.md"
 keywords = ["auth","oauth","oidc","security","token"]
 categories = ["authentication","network-programming","web-programming"]
 [features]
+default = ["jwe"]
 config-schema = [
     "dep:schemars",
     "securitydept-utils/config-schema",

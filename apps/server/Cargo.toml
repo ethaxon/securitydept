@@ -4,9 +4,6 @@ version = "0.3.0-beta.4"
 edition = "2024"
 publish = false
 
-[features]
-jwe = ["securitydept-core/creds-jwe"]
-
 [dependencies]
 securitydept-core = { path = "../../packages/core", features = [
     "utils",
@@ -20,9 +17,11 @@ securitydept-core = { path = "../../packages/core", features = [
     "creds-manage-migration",
     "creds-rfc9068",
     "creds-jwt",
+    "creds-jwe",
     "creds-oidc",
     "realip",
     "oauth-resource-server",
+    "oauth-resource-server-jwe",
 ] }
 axum = { workspace = true }
 tower = { workspace = true }

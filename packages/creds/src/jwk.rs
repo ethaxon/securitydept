@@ -1,9 +1,13 @@
+#[cfg(any(feature = "jwt", feature = "jwe"))]
 use std::borrow::Cow;
 
 #[cfg(all(feature = "oidc", feature = "jwt"))]
 use openidconnect::JsonWebKey;
 
-use crate::{CredsError, CredsResult};
+#[cfg(all(feature = "oidc", feature = "jwt"))]
+use crate::CredsError;
+#[cfg(any(feature = "jwt", feature = "jwe"))]
+use crate::CredsResult;
 
 #[cfg(feature = "jwt")]
 pub trait JwtJwkTrait {

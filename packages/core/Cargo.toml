@@ -277,7 +277,7 @@ utils-config-schema = [
 securitydept-utils = { version = "~0.3.0-beta.4", path = "../utils", optional = true }
 securitydept-oauth-provider = { version = "~0.3.0-beta.4", path = "../oauth-provider", optional = true }
 securitydept-oidc-client = { version = "~0.3.0-beta.4", path = "../oidc-client", optional = true }
-securitydept-oauth-resource-server = { version = "~0.3.0-beta.4", path = "../oauth-resource-server", optional = true }
+securitydept-oauth-resource-server = { version = "~0.3.0-beta.4", path = "../oauth-resource-server", optional = true, default-features = false }
 securitydept-basic-auth-context = { version = "~0.3.0-beta.4", path = "../basic-auth-context", optional = true }
 securitydept-session-context = { version = "~0.3.0-beta.4", path = "../session-context", optional = true }
 securitydept-token-set-context = { version = "~0.3.0-beta.4", path = "../token-set-context", optional = true }

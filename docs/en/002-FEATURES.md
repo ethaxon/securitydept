@@ -14,6 +14,21 @@ This page states the currently implemented product baseline. It is not a promise
 | Client-IP policy | Rule-driven trusted-hop graphs for forwarded headers, bridge proofs, PROXY protocol, and local/container/Kubernetes nodes. | `securitydept-realip` |
 | Reference runtime | Axum server, React WebUI, Docker runtime artifact, and end-to-end proof paths. | `apps/server`, `apps/webui` |
 
+## JWE Baseline
+
+The reference server enables JWE alongside JWT, and `securitydept-oauth-resource-server` enables its `jwe` feature by default. The lower-level `securitydept-creds` crate remains feature-granular: neither JWT nor JWE is enabled implicitly, while its `jwe` feature includes the required `jwt` and `jwk` features.
+
+Compact JWE decryption uses the modular `no-way-jose` crates and RustCrypto implementations; it does not link OpenSSL. Rustls concerns network TLS and is separate from local JOSE cryptography.
+
+The implemented baseline is:
+
+- Nested signed JWT payloads only.
+- `RSA-OAEP`, `RSA-OAEP-256`, ECDH-ES, AES-KW, AES-GCM-KW, direct (`dir`), and PBES2 key management.
+- AES-GCM and AES-CBC-HMAC-SHA2 content encryption at the supported 128/192/256-bit variants.
+- Local JWK/JWKS keys, or RSA PKCS#1/PKCS#8 and P-256/P-384 SEC1/PKCS#8 PEM private keys, with file rotation watching in the OAuth resource server.
+
+Deprecated `RSA1_5` is rejected. `RSA-OAEP-384` and `RSA-OAEP-512` are also rejected because the current `no-way-jose` backend does not implement them.
+
 ## Reference Server Routes
 
 The reference server mounts these contract families:
