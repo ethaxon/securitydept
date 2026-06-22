@@ -17,7 +17,6 @@ export const BasicAuthContextErrorCode = {
 	ProbePathRequired: "basic_auth.probe_path_required",
 	ZoneNotFound: "basic_auth.zone_not_found",
 	ZoneRequired: "basic_auth.zone_required",
-	LogoutPoisonExpected: "basic_auth.logout_poison_expected",
 } as const;
 
 export type BasicAuthContextErrorCode =
@@ -28,8 +27,6 @@ export interface BasicAuthZoneConfig {
 	zonePrefix: string;
 	/** Login subpath relative to zone prefix (default: "/login"). */
 	loginSubpath?: string;
-	/** Logout subpath relative to zone prefix (default: "/logout"). */
-	logoutSubpath?: string;
 }
 
 /** Configuration for the Basic Auth Context Client. */
@@ -62,7 +59,6 @@ export const BasicAuthBoundaryKind = {
 	Authenticated: "authenticated",
 	Challenge: "challenge",
 	Unauthorized: "unauthorized",
-	LogoutPoison: "logout_poison",
 } as const;
 
 export type BasicAuthBoundaryKind =
@@ -72,7 +68,6 @@ export interface BasicAuthBoundaryObservation {
 	status: number;
 	challengeHeader?: string | null;
 	requestPath?: string;
-	isLogoutPath?: boolean;
 }
 
 export interface BasicAuthBoundarySnapshot {
@@ -95,6 +90,7 @@ export const BasicAuthContextEventType = {
 	BoundaryRefreshStarted: "basic_auth.boundary.refresh.started",
 	BoundaryRefreshSucceeded: "basic_auth.boundary.refresh.succeeded",
 	BoundaryRefreshFailed: "basic_auth.boundary.refresh.failed",
+	/** These logout events describe local boundary-projection clearing only. */
 	LogoutStarted: "basic_auth.logout.started",
 	LogoutSucceeded: "basic_auth.logout.succeeded",
 	LogoutFailed: "basic_auth.logout.failed",
@@ -138,8 +134,8 @@ export type BasicAuthZoneSelectionOptions =
 			currentPath?: never;
 	  };
 
-export type BasicAuthLogoutOptions = BasicAuthZoneSelectionOptions &
-	CancellationTokenOptions;
+/** Options for clearing the client's in-memory boundary projection. */
+export interface BasicAuthLogoutOptions extends CancellationTokenOptions {}
 
 export type BasicAuthLoginWithRedirectOptions = BasicAuthZoneSelectionOptions &
 	CancellationTokenOptions & {
@@ -176,7 +172,6 @@ export type AuthGuardResult<T> =
 export interface ResolvedBasicAuthZone {
 	zonePrefix: string;
 	loginPath: string;
-	logoutPath: string;
 }
 
 export interface BasicAuthContextClientStateSignals {

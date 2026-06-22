@@ -68,12 +68,12 @@ import {
 	type BasicAuthLogoutOptions,
 	type BasicAuthRefreshOptions,
 	type BasicAuthZoneConfig,
+	type BasicAuthZoneSelectionOptions,
 	type ResolvedBasicAuthContextClientConfig,
 	type ResolvedBasicAuthZone,
 } from "./types";
 
 const DEFAULT_LOGIN_SUBPATH = "/login";
-const DEFAULT_LOGOUT_SUBPATH = "/logout";
 const POST_AUTH_REDIRECT_PARAM = "post_auth_redirect_uri";
 
 interface BasicAuthCommandExtra {
@@ -85,10 +85,6 @@ type ResolvedBasicAuthRefreshOptions = { path: string };
 
 type BasicAuthRefreshCommand = Command<
 	ResolvedBasicAuthRefreshOptions,
-	BasicAuthCommandExtra
->;
-type BasicAuthLogoutCommand = Command<
-	ResolvedBasicAuthZone,
 	BasicAuthCommandExtra
 >;
 
@@ -117,12 +113,10 @@ const instrumentBasicAuthMethod = defineInstrumentMethodDecorator<
 function resolveZone(config: BasicAuthZoneConfig): ResolvedBasicAuthZone {
 	const prefix = config.zonePrefix.replace(/\/+$/, "");
 	const loginSub = config.loginSubpath ?? DEFAULT_LOGIN_SUBPATH;
-	const logoutSub = config.logoutSubpath ?? DEFAULT_LOGOUT_SUBPATH;
 
 	return {
 		zonePrefix: prefix,
 		loginPath: prefix + loginSub,
-		logoutPath: prefix + logoutSub,
 	};
 }
 
@@ -137,23 +131,18 @@ export function readBasicAuthBoundaryKind(
 		return BasicAuthBoundaryKindValues.Challenge;
 	}
 
-	if (options.status === 401 && options.isLogoutPath === true) {
-		return BasicAuthBoundaryKindValues.LogoutPoison;
-	}
-
 	return BasicAuthBoundaryKindValues.Unauthorized;
 }
 
 /**
  * Basic Auth Context Client.
  *
- * Owns zone-aware Basic Auth boundary observations and redirect/logout
- * navigation. It does not manage credentials or principal data.
+ * Owns zone-aware Basic Auth boundary observations and login navigation.
+ * It does not manage browser credentials or principal data.
  */
 export class BasicAuthContextClient implements DisposableTrait {
 	static defaultOptions = {
 		loginSubpath: DEFAULT_LOGIN_SUBPATH,
-		logoutSubpath: DEFAULT_LOGOUT_SUBPATH,
 		tracing: {
 			target: "basic-auth-context-client",
 			prefix: "basic_auth_context",
@@ -190,11 +179,6 @@ export class BasicAuthContextClient implements DisposableTrait {
 		new RxEventSubject<BasicAuthRefreshCommand>();
 	private readonly _refreshResponseSubject = new RxEventSubject<
 		CommandResponse<BasicAuthRefreshCommand, BasicAuthBoundarySnapshot>
-	>();
-	private readonly _logoutCommandSubject =
-		new RxEventSubject<BasicAuthLogoutCommand>();
-	private readonly _logoutResponseSubject = new RxEventSubject<
-		CommandResponse<BasicAuthLogoutCommand, BasicAuthBoundarySnapshot>
 	>();
 	private readonly _startOnce = createOnceAsyncLockCallable(
 		async (
@@ -340,19 +324,6 @@ export class BasicAuthContextClient implements DisposableTrait {
 			)
 			.subscribe(this._refreshResponseSubject);
 
-		from(this._logoutCommandSubject)
-			.pipe(
-				takeUntil(this.destroyed$),
-				concatCommand((command) =>
-					this._executeLogout(
-						command.payload,
-						command.cancellationToken,
-						command.operationSpan,
-					),
-				),
-			)
-			.subscribe(this._logoutResponseSubject);
-
 		if (config.autoStart === true) {
 			this.start().catch(() => {
 				// Startup failure is reflected by boundarySnapshot.
@@ -400,10 +371,15 @@ export class BasicAuthContextClient implements DisposableTrait {
 		);
 	}
 
+	/**
+	 * Clears only this client's in-memory Basic Auth boundary projection.
+	 *
+	 * Browsers own HTTP Basic credentials. This method cannot revoke or clear
+	 * those credentials, and a later probe may observe an authenticated state
+	 * again when the browser continues sending them.
+	 */
 	@withDisposableStack(0, true)
-	async logout(
-		options: BasicAuthLogoutOptions,
-	): Promise<BasicAuthBoundarySnapshot> {
+	async logout(options: BasicAuthLogoutOptions = {}): Promise<void> {
 		const disposableStack = injectDisposableStackFrom(options, true);
 		const cancellationToken = createLinkedCancellationToken(
 			this._rootCancellation.token,
@@ -415,16 +391,37 @@ export class BasicAuthContextClient implements DisposableTrait {
 
 	@instrumentBasicAuthMethod("logout")
 	private async _logout(
-		options: BasicAuthLogoutOptions,
+		_options: BasicAuthLogoutOptions,
 		cancellationToken: CancellationTokenTrait,
 		operationSpan?: OperationSpanTrait,
-	): Promise<BasicAuthBoundarySnapshot> {
+	): Promise<void> {
 		cancellationToken.throwIfCancellationRequested();
-		return await this._dispatchLogout(
-			this._resolveZoneForAction(options, "logout"),
-			cancellationToken,
-			operationSpan,
-		);
+		this._operationSignals.logoutPending.set(true);
+		this._emitEvent({
+			type: BasicAuthContextEventType.LogoutStarted,
+			snapshot: this._readCurrentSnapshot(),
+		});
+		try {
+			cancellationToken.throwIfCancellationRequested();
+			this._boundarySnapshotSignal.set({
+				status: ResourceStatus.Resolved,
+				value: null,
+			});
+			operationSpan?.setAttributes({ localProjectionCleared: true });
+			this._emitEvent({
+				type: BasicAuthContextEventType.LogoutSucceeded,
+				snapshot: null,
+			});
+		} catch (error) {
+			this._emitEvent({
+				type: BasicAuthContextEventType.LogoutFailed,
+				snapshot: this._readCurrentSnapshot(),
+				errorSummary: describeError(error),
+			});
+			throw error;
+		} finally {
+			this._operationSignals.logoutPending.set(false);
+		}
 	}
 
 	@withDisposableStack(0, true)
@@ -539,11 +536,6 @@ export class BasicAuthContextClient implements DisposableTrait {
 		return zone ? this.loginUrl(zone, postAuthRedirectUri) : null;
 	}
 
-	/** Build the full logout URL for a zone. */
-	logoutUrl(zone: ResolvedBasicAuthZone): string {
-		return this._config.baseUrl + zone.logoutPath;
-	}
-
 	/**
 	 * Handle a 401 response: if the current path is inside a zone,
 	 * return a redirect instruction to the zone's login URL.
@@ -593,7 +585,7 @@ export class BasicAuthContextClient implements DisposableTrait {
 	}
 
 	private _resolveZoneForAction(
-		options: BasicAuthLogoutOptions,
+		options: BasicAuthZoneSelectionOptions,
 		action: string,
 	): ResolvedBasicAuthZone {
 		if (options.zonePrefix) {
@@ -641,29 +633,6 @@ export class BasicAuthContextClient implements DisposableTrait {
 				payload,
 				requestStream: this._refreshCommandSubject,
 				responseStream: this._refreshResponseSubject,
-				createCommandExtra: () => ({ cancellationToken, operationSpan }),
-			}).pipe(commandResponseData()),
-		);
-		cancellationToken.throwIfCancellationRequested();
-		return snapshot;
-	}
-
-	private async _dispatchLogout(
-		payload: ResolvedBasicAuthZone,
-		cancellationToken: CancellationTokenTrait,
-		operationSpan?: OperationSpanTrait,
-	): Promise<BasicAuthBoundarySnapshot> {
-		cancellationToken.throwIfCancellationRequested();
-		const snapshot = await lastValueFrom(
-			dispatchCommandLocallyToStream<
-				ResolvedBasicAuthZone,
-				BasicAuthCommandExtra,
-				BasicAuthBoundarySnapshot,
-				BasicAuthLogoutCommand
-			>({
-				payload,
-				requestStream: this._logoutCommandSubject,
-				responseStream: this._logoutResponseSubject,
 				createCommandExtra: () => ({ cancellationToken, operationSpan }),
 			}).pipe(commandResponseData()),
 		);
@@ -741,78 +710,6 @@ export class BasicAuthContextClient implements DisposableTrait {
 		}
 	}
 
-	private async _executeLogout(
-		zone: ResolvedBasicAuthZone,
-		cancellationToken: CancellationTokenTrait,
-		operationSpan?: OperationSpanTrait,
-	): Promise<BasicAuthBoundarySnapshot> {
-		cancellationToken.throwIfCancellationRequested();
-		this._operationSignals.logoutPending.set(true);
-		const previous = this._boundarySnapshotSignal.get();
-		const loadingSnapshot = reduceResourceSnapshot(previous, {
-			kind: ResourceSnapshotUpdateKind.Load,
-		});
-		this._boundarySnapshotSignal.set(loadingSnapshot);
-		this._emitEvent({
-			type: BasicAuthContextEventType.LogoutStarted,
-			snapshot: this._readCurrentSnapshot(),
-			zone,
-		});
-		try {
-			const response = await this._environment.transport.execute({
-				url: this.logoutUrl(zone),
-				method: "POST",
-				headers: { accept: "application/json" },
-				cancellationToken,
-			});
-			cancellationToken.throwIfCancellationRequested();
-			const snapshot = this._snapshotFromResponse(zone.logoutPath, response);
-			if (snapshot.boundaryKind !== BasicAuthBoundaryKindValues.LogoutPoison) {
-				throw new ClientError({
-					kind: ClientErrorKind.Protocol,
-					code: BasicAuthContextErrorCode.LogoutPoisonExpected,
-					message:
-						"BasicAuthContextClient.logout() expected a Basic Auth logout poison response.",
-					source: BasicAuthContextSource.BasicAuthContext,
-					cause: snapshot,
-				});
-			}
-
-			this._boundarySnapshotSignal.set(
-				reduceResourceSnapshot(loadingSnapshot, {
-					kind: ResourceSnapshotUpdateKind.Resolve,
-					value: snapshot,
-				}),
-			);
-			operationSpan?.setAttributes({
-				authenticated: false,
-				boundaryKind: snapshot.boundaryKind,
-			});
-			this._emitEvent({
-				type: BasicAuthContextEventType.LogoutSucceeded,
-				snapshot,
-				zone,
-			});
-			return snapshot;
-		} catch (error) {
-			this._boundarySnapshotSignal.set(
-				reduceResourceSnapshot(loadingSnapshot, {
-					kind: ResourceSnapshotUpdateKind.Fail,
-					error,
-				}),
-			);
-			this._emitEvent({
-				type: BasicAuthContextEventType.LogoutFailed,
-				snapshot: this._readCurrentSnapshot(),
-				zone,
-				errorSummary: describeError(error),
-			});
-			throw error;
-		} finally {
-			this._operationSignals.logoutPending.set(false);
-		}
-	}
-
 	private _snapshotFromResponse(
 		path: string,
 		response: { status: number; headers: Record<string, string> },
@@ -826,7 +723,6 @@ export class BasicAuthContextClient implements DisposableTrait {
 			status: response.status,
 			challengeHeader,
 			requestPath: path,
-			isLogoutPath: zone?.logoutPath === path,
 		});
 		return {
 			authenticated: boundaryKind === BasicAuthBoundaryKindValues.Authenticated,

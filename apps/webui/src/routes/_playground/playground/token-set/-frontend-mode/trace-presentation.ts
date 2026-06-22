@@ -16,6 +16,24 @@ export interface TraceBadge {
 	tone: TraceBadgeTone;
 }
 
+const SUMMARY_FIELD_KEYS = new Set([
+	"popupCallbackUrl",
+	"operationName",
+	"eventName",
+	"configuredIssuer",
+	"resolvedIssuer",
+	"state",
+	"reason",
+	"errorCode",
+	"code",
+	"recovery",
+	"persisted",
+	"hasClaimsCheck",
+	"newIdToken",
+	"hasAccessToken",
+	"syncCount",
+]);
+
 const OUTCOME_BADGES: Record<string, TraceBadge> = {
 	cleared: { label: "Cleared", tone: TraceBadgeTone.Muted },
 	failed: { label: "Failed", tone: TraceBadgeTone.Danger },
@@ -76,7 +94,6 @@ export function readTraceSummary(entry: TraceTimelineEntry): string | null {
 	const metadata = entry.fields ?? {};
 	const parts: string[] = [];
 
-	appendStringField(parts, entry.target);
 	appendStringField(parts, metadata.popupCallbackUrl);
 	appendStringField(parts, metadata.operationName, "operation");
 	appendStringField(parts, metadata.eventName, "event");
@@ -96,12 +113,19 @@ export function readTraceSummary(entry: TraceTimelineEntry): string | null {
 	return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-export function formatTraceFields(entry: TraceTimelineEntry): string {
-	if (!entry.fields || Object.keys(entry.fields).length === 0) {
-		return "{}";
+export function formatTraceFields(entry: TraceTimelineEntry): string | null {
+	if (!entry.fields) {
+		return null;
 	}
 
-	return JSON.stringify(entry.fields, null, 2);
+	const details = Object.fromEntries(
+		Object.entries(entry.fields).filter(
+			([key]) => !SUMMARY_FIELD_KEYS.has(key),
+		),
+	);
+	return Object.keys(details).length > 0
+		? JSON.stringify(details, null, 2)
+		: null;
 }
 
 export function readTraceBadgeClassName(tone: TraceBadgeTone): string {

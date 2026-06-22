@@ -87,7 +87,7 @@ This is preferred over multiple booleans such as `retryable` and `reauth_require
 Most ordinary server failures use `ServerErrorEnvelope`, but some route families intentionally do not:
 
 - Basic Auth challenge routes must preserve `WWW-Authenticate`.
-- Basic Auth logout poison responses must remain plain `401` without a fresh challenge.
+- Basic Auth has no credential-revocation route; local projection clearing must not be represented as a server protocol response.
 - ForwardAuth challenge routes must preserve proxy protocol semantics.
 - Backend-mode `metadata/redeem` not-found is a business `404`, not a shared server failure envelope.
 - Propagation forwarding preserves the underlying upstream status / presentation instead of rewriting it to a route-local generic error.

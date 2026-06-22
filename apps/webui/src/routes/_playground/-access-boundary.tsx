@@ -1,4 +1,5 @@
 import { ResourceStatus } from "@securitydept/client";
+import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { type AuthContextMode } from "@/auth/model";
 import { useAuthMode, useAuthService } from "@/auth/react";
@@ -15,6 +16,16 @@ export function PlaygroundAccessBoundary({
 	const authService = useAuthService();
 	const navigate = useNavigate();
 	const modeSnapshot = useAuthMode();
+	const exitCurrentMode = useMutation({
+		mutationKey: ["playground", "access-boundary", "logout"],
+		mutationFn: async () => {
+			try {
+				await authService.logout();
+			} finally {
+				await navigate({ to: "/login" });
+			}
+		},
+	});
 	if (
 		modeSnapshot.status === ResourceStatus.LoadingError ||
 		modeSnapshot.status === ResourceStatus.Error
@@ -29,7 +40,7 @@ export function PlaygroundAccessBoundary({
 	}
 	const mode = modeSnapshot.value;
 
-	if (mode !== null && mode !== expectedMode) {
+	if (exitCurrentMode.isPending || (mode !== null && mode !== expectedMode)) {
 		return (
 			<div className="flex min-h-screen items-center justify-center bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
 				<div className="w-full max-w-md space-y-4 rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -50,13 +61,13 @@ export function PlaygroundAccessBoundary({
 					</div>
 					<button
 						type="button"
-						onClick={() => {
-							authService.clearMode();
-							void navigate({ to: "/login" });
-						}}
+						onClick={() => exitCurrentMode.mutate()}
+						disabled={exitCurrentMode.isPending}
 						className="w-full rounded-lg border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
 					>
-						Sign out and go to login
+						{exitCurrentMode.isPending
+							? "Signing out..."
+							: "Sign out and go to login"}
 					</button>
 				</div>
 			</div>

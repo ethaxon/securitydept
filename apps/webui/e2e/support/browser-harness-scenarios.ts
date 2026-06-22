@@ -34,12 +34,6 @@ const scenarioCatalog: readonly ScenarioCatalogEntry[] = [
 		pathKind: VerifiedPathKind.BrowserNative,
 	},
 	{
-		scenarioId: VerifiedScenarioId.BasicAuthLogoutAuthorizationHeaderHarness,
-		suiteId: AuthFlowSuiteId.BasicAuth,
-		pathKind: VerifiedPathKind.HarnessBacked,
-		harnessId: "authorization-header-context",
-	},
-	{
 		scenarioId: VerifiedScenarioId.FrontendOidcCallbackRedirect,
 		suiteId: AuthFlowSuiteId.FrontendOidc,
 		pathKind: VerifiedPathKind.BrowserNative,
@@ -85,12 +79,7 @@ const verifiedClaimsByBrowser = {
 		{
 			scenarioId: VerifiedScenarioId.BasicAuthChallengeNoCachedCredentials,
 			summary:
-				"Explicit /basic/login escalates into a browser auth error before page render; protected JSON stays plain unauthorized; /basic/logout returns plain 401 without WWW-Authenticate.",
-		},
-		{
-			scenarioId: VerifiedScenarioId.BasicAuthLogoutAuthorizationHeaderHarness,
-			summary:
-				"Authorization-header harness reaches 200 before logout; /basic/logout remains plain 401 without challenge; subsequent probe stays authenticated because the harness continues to send credentials.",
+				"Explicit /basic/login escalates into a browser auth error before page render; protected JSON stays plain unauthorized without opening an implicit challenge.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackRedirect,
@@ -167,12 +156,7 @@ const verifiedClaimsByBrowser = {
 		{
 			scenarioId: VerifiedScenarioId.BasicAuthChallengeNoCachedCredentials,
 			summary:
-				"Firefox Basic Auth no-cached-credentials path: explicit /basic/login challenge, protected JSON stays plain unauthorized, /basic/logout returns plain 401 without WWW-Authenticate.",
-		},
-		{
-			scenarioId: VerifiedScenarioId.BasicAuthLogoutAuthorizationHeaderHarness,
-			summary:
-				"Authorization-header harness under Firefox reaches 200 before logout; /basic/logout remains plain 401 without challenge; subsequent probe stays authenticated because the harness continues to send credentials.",
+				"Firefox Basic Auth no-cached-credentials path: explicit /basic/login challenge while protected JSON stays plain unauthorized without opening an implicit challenge.",
 		},
 	],
 	[HarnessBrowserName.Webkit]: [
@@ -180,13 +164,7 @@ const verifiedClaimsByBrowser = {
 			scenarioId: VerifiedScenarioId.BasicAuthChallengeNoCachedCredentials,
 			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
 			summary:
-				"Distrobox-hosted Ubuntu WebKit preserves the explicit /basic/login challenge as a committed 401 response with WWW-Authenticate, while protected JSON and /basic/logout remain plain unauthorized without a fresh challenge header.",
-		},
-		{
-			scenarioId: VerifiedScenarioId.BasicAuthLogoutAuthorizationHeaderHarness,
-			requiredExecutionBaseline: webkitRequiredExecutionBaseline,
-			summary:
-				"Distrobox-hosted Ubuntu WebKit verifies the authorization-header harness path: protected backend access reaches 200 before logout, /basic/logout stays plain 401 without challenge, and the next protected probe remains authenticated because the harness keeps sending credentials.",
+				"Distrobox-hosted Ubuntu WebKit preserves the explicit /basic/login challenge as a committed 401 response with WWW-Authenticate, while protected JSON remains plain unauthorized without a fresh challenge header.",
 		},
 		{
 			scenarioId: VerifiedScenarioId.FrontendOidcCallbackRedirect,

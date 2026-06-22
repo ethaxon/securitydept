@@ -24,6 +24,7 @@ if (configuredProjects.length === 0) {
 
 export default defineConfig({
 	testDir: "./e2e",
+	testIgnore: "**/__tests__/**",
 	fullyParallel: false,
 	workers: 1,
 	timeout: 90_000,

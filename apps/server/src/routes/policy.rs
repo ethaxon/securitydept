@@ -7,16 +7,16 @@
 //!    machine-readable auth-flow diagnosis on that route, and
 //! 2. a [`RouteErrorPolicy`] explaining which response shape that route's
 //!    failures use (shared `ServerErrorEnvelope`, business not-found,
-//!    protocol-specific challenge / poison response, conditional propagation
-//!    forwarding, capability catalog, or static fallback).
+//!    protocol-specific challenge response, conditional propagation forwarding,
+//!    capability catalog, or static fallback).
 //!
 //! These two tables exist to keep both subjects auditable and prevent
 //! regressions like:
 //!
 //! - introducing a new mounted route without explicitly classifying its
 //!   diagnosis owner,
-//! - "unifying" a Basic-Auth challenge or logout poison response into the
-//!   shared error envelope and breaking the protocol contract,
+//! - "unifying" a Basic-Auth challenge response into the shared error envelope
+//!   and breaking the protocol contract,
 //! - rewriting `/api/propagation/{*rest}` failures as route-local
 //!   `service_unavailable` and discarding the underlying status / presentation,
 //! - retrofitting backend-mode `metadata/redeem` business not-found into a
@@ -52,7 +52,7 @@ pub enum RouteDiagnosisPolicy {
     /// middleware is the authoritative diagnosis owner for this mount point.
     MiddlewareDiagnosed,
     /// The route preserves a protocol-specific response (Basic-Auth
-    /// challenge, logout poison, ForwardAuth challenge) and is deliberately
+    /// challenge or ForwardAuth challenge) and is deliberately
     /// not folded into the shared auth-flow diagnosis baseline as an
     /// ordinary failure. The route may still emit a diagnosis, but its
     /// observable response shape is owned by the protocol contract.
@@ -95,9 +95,6 @@ pub enum RouteErrorPolicy {
     /// in the shared envelope would break the browser-native or proxy
     /// contract.
     ProtocolChallengeException,
-    /// Basic-Auth logout poison response. Returns plain `401` without a
-    /// fresh challenge so that the browser drops the cached credential.
-    ProtocolPoisonException,
     /// Conditional propagation forwarding: failures preserve the
     /// underlying upstream status / presentation through
     /// `ServerError::from(error)` instead of being rewritten to a
@@ -184,11 +181,6 @@ fn classify_diagnosis(method: &str, path: &str) -> (RouteDiagnosisPolicy, Option
             RouteDiagnosisPolicy::ProtocolException,
             Some(AuthFlowOperation::BASIC_AUTH_LOGIN),
         ),
-        ("POST", "/basic/logout") => (
-            RouteDiagnosisPolicy::ProtocolException,
-            Some(AuthFlowOperation::BASIC_AUTH_LOGOUT),
-        ),
-
         ("GET", "/api/forwardauth/traefik/{group}") | ("GET", "/api/forwardauth/nginx/{group}") => {
             (
                 RouteDiagnosisPolicy::ProtocolException,
@@ -251,7 +243,6 @@ fn classify_error(method: &str, path: &str) -> RouteErrorPolicy {
     match (method, path) {
         ("GET", "/api/health") | ("GET", "/health") => RouteErrorPolicy::CapabilityCatalog,
         ("GET", "/basic/login") => RouteErrorPolicy::ProtocolChallengeException,
-        ("POST", "/basic/logout") => RouteErrorPolicy::ProtocolPoisonException,
         ("GET", "/api/forwardauth/traefik/{group}") | ("GET", "/api/forwardauth/nginx/{group}") => {
             RouteErrorPolicy::ProtocolChallengeException
         }
@@ -336,7 +327,6 @@ fn known_auth_flow_operations() -> &'static [&'static str] {
         AuthFlowOperation::FORWARD_AUTH_CHECK,
         AuthFlowOperation::PROPAGATION_FORWARD,
         AuthFlowOperation::BASIC_AUTH_LOGIN,
-        AuthFlowOperation::BASIC_AUTH_LOGOUT,
         AuthFlowOperation::BASIC_AUTH_AUTHORIZE,
         AuthFlowOperation::SESSION_LOGIN,
         AuthFlowOperation::SESSION_LOGOUT,
@@ -485,13 +475,6 @@ mod tests {
             Some(AuthFlowOperation::BASIC_AUTH_LOGIN)
         );
 
-        let basic_logout = find_diag(&entries, "POST", "/basic/logout");
-        assert_eq!(basic_logout.policy, RouteDiagnosisPolicy::ProtocolException);
-        assert_eq!(
-            basic_logout.operation,
-            Some(AuthFlowOperation::BASIC_AUTH_LOGOUT)
-        );
-
         for path in [
             "/api/forwardauth/traefik/{group}",
             "/api/forwardauth/nginx/{group}",
@@ -627,10 +610,6 @@ mod tests {
             RouteErrorPolicy::ProtocolChallengeException,
         );
         assert_eq!(
-            find_err(&entries, "POST", "/basic/logout").policy,
-            RouteErrorPolicy::ProtocolPoisonException,
-        );
-        assert_eq!(
             find_err(&entries, "GET", "/api/forwardauth/traefik/{group}").policy,
             RouteErrorPolicy::ProtocolChallengeException,
         );
@@ -746,40 +725,6 @@ mod tests {
         assert!(envelope["error"]["recovery"].is_string());
         assert!(envelope["error"]["presentation"]["code"].is_string());
         assert!(envelope["error"]["presentation"]["recovery"].is_string());
-    }
-
-    #[tokio::test]
-    async fn basic_auth_logout_poison_is_not_wrapped_in_envelope() {
-        let app = build_router(test_server_state("policy-basic-poison").await);
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/basic/logout")
-                    .body(Body::empty())
-                    .expect("request should build"),
-            )
-            .await
-            .expect("basic logout request should be served");
-
-        // Logout poison contract: plain 401 without WWW-Authenticate so the
-        // browser drops the cached credential, and never the shared
-        // application/json error envelope.
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assert!(
-            response.headers().get("www-authenticate").is_none(),
-            "Basic-Auth logout poison must NOT advertise a fresh challenge",
-        );
-        let content_type = response
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .map(|v| v.to_str().unwrap_or("").to_string())
-            .unwrap_or_default();
-        assert!(
-            !content_type.starts_with("application/json"),
-            "Basic-Auth logout poison must not be served as application/json envelope (got \
-             {content_type:?})",
-        );
     }
 
     #[tokio::test]

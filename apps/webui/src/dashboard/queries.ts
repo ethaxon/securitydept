@@ -198,10 +198,13 @@ export function useLogoutMutation() {
 	const queryClient = useQueryClient();
 	const router = useRouter();
 	return useMutation({
-		mutationFn: () => authService.logout(),
-		onSuccess: async () => {
+		mutationFn: async () => {
+			// Unmount authenticated consumers before logout publishes an empty auth state.
+			await router.navigate({ to: "/login", replace: true });
+			await authService.logout();
+		},
+		onSettled: async () => {
 			await queryClient.resetQueries({ queryKey: dashboardQueryKeys.root });
-			await router.navigate({ to: "/login" });
 		},
 	});
 }

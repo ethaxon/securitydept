@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-server"
-version = "0.3.0-beta.4"
+version = "0.3.0-beta.5"
 edition = "2024"
 publish = false
 
@@ -20,6 +20,8 @@ securitydept-core = { path = "../../packages/core", features = [
     "creds-jwe",
     "creds-oidc",
     "realip",
+    "realip-docker",
+    "realip-kube",
     "oauth-resource-server",
     "oauth-resource-server-jwe",
 ] }
@@ -41,6 +43,7 @@ maplit = { workspace = true }
 url = { workspace = true }
 chrono = { workspace = true }
 rustls = { workspace = true }
+regex = { workspace = true }
 
 [build-dependencies]
 winres = "0.1"

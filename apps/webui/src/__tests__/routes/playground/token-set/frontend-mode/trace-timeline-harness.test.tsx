@@ -62,9 +62,7 @@ describe("frontend trace timeline harness", () => {
 			root.render(<TraceTimelineHarness timeline={timeline} />);
 		});
 
-		expect(container.textContent).toContain(
-			"No frontend-mode trace events recorded yet.",
-		);
+		expect(container.textContent).toContain("No trace events yet.");
 
 		await act(async () => {
 			timeline.record({
@@ -93,8 +91,9 @@ describe("frontend trace timeline harness", () => {
 		});
 
 		expect(container.textContent).toContain("SDK Lifecycle");
-		expect(container.textContent).toContain(TOKEN_SET_FRONTEND_TRACE_TARGET);
-		expect(container.textContent).toContain("operation.error");
+		expect(container.textContent).toContain(
+			"operation: frontend_oidc.callback",
+		);
 		expect(container.textContent).toContain("metadata.refresh_failed");
 		expect(container.textContent).toContain(
 			`code: ${FrontendOidcModeErrorCode.CallbackFailed}`,
@@ -107,9 +106,7 @@ describe("frontend trace timeline harness", () => {
 			clearButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		});
 
-		expect(container.textContent).toContain(
-			"No frontend-mode trace events recorded yet.",
-		);
+		expect(container.textContent).toContain("No trace events yet.");
 		expect(clearButton?.hasAttribute("disabled")).toBe(true);
 
 		await act(async () => {

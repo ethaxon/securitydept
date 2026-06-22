@@ -28,7 +28,7 @@ describe("frontend trace timeline section", () => {
 	it("renders empty state and keeps clear disabled when no trace exists", () => {
 		const markup = renderTimeline();
 
-		expect(markup).toContain("No frontend-mode trace events recorded yet.");
+		expect(markup).toContain("No trace events yet.");
 		expect(markup).toContain("Clear Trace");
 		expect(markup).toContain("disabled");
 	});
@@ -75,15 +75,16 @@ describe("frontend trace timeline section", () => {
 
 		const markup = renderTimeline(timeline.get());
 
-		expect(markup).toContain("Structured Trace Timeline");
+		expect(markup).toContain("Trace timeline");
 		expect(markup).toContain("Operation Lifecycle");
 		expect(markup).toContain("SDK Lifecycle");
-		expect(markup).toContain("Operation: op_frontend_1");
 		expect(markup).toContain("operation: frontend_oidc.callback");
 		expect(markup).toContain("event: popup.opened");
 		expect(markup).toContain("metadata.refreshed");
 		expect(markup).toContain("https://idp.example.com");
-		expect(markup).not.toContain("No frontend-mode trace events recorded yet.");
+		expect(markup).not.toContain("Operation:");
+		expect(markup).not.toContain("<pre");
+		expect(markup).not.toContain("No trace events yet.");
 		expect(markup).not.toContain('disabled=""');
 	});
 });

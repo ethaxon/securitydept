@@ -22,18 +22,9 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 			className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
 		>
 			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div>
-					<h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-						Structured Trace Timeline
-					</h2>
-					<p className="mt-1 max-w-4xl text-sm text-zinc-500 dark:text-zinc-400">
-						This reference view keeps the SDK tracing runtime and the backend
-						host-owned protected action, forward-auth, and propagation probes on
-						the same structured timeline. That combined trace is the primary
-						diagnosis surface for backend-mode callback, restore, refresh, and
-						auth-boundary debugging.
-					</p>
-				</div>
+				<h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+					Trace timeline
+				</h2>
 				<div className="flex flex-wrap gap-2">
 					<button
 						type="button"
@@ -51,6 +42,7 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 					const domainBadge = readTraceDomainBadge(event);
 					const outcomeBadge = readTraceOutcomeBadge(event);
 					const summary = readTraceSummary(event);
+					const details = formatTraceFields(event);
 
 					return (
 						<div
@@ -62,9 +54,6 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 								<div className="min-w-0">
 									<p className="text-sm font-medium">
 										{readTraceDisplayType(event)}
-									</p>
-									<p className="mt-1 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-										{event.name}
 									</p>
 									<div className="mt-2 flex flex-wrap gap-2">
 										<span
@@ -85,12 +74,6 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 											{summary}
 										</p>
 									)}
-									<p className="mt-2 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-										Operation: {event.span.id}
-									</p>
-									<p className="mt-2 text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-										{event.target}
-									</p>
 								</div>
 								<div className="text-right">
 									<p className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
@@ -98,16 +81,22 @@ export function TraceTimelineSection(props: TraceTimelineSectionProps) {
 									</p>
 								</div>
 							</div>
-							<pre className="mt-3 overflow-x-auto rounded-lg bg-zinc-950 p-3 text-xs text-zinc-100">
-								{formatTraceFields(event)}
-							</pre>
+							{details ? (
+								<details className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+									<summary className="cursor-pointer select-none">
+										Details
+									</summary>
+									<pre className="mt-2 overflow-x-auto rounded-lg bg-zinc-950 p-3 text-xs text-zinc-100">
+										{details}
+									</pre>
+								</details>
+							) : null}
 						</div>
 					);
 				})}
 				{!hasEvents && (
 					<div className="rounded-lg border border-dashed border-zinc-300 p-4 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-						No backend-mode trace events recorded yet. Start the token flow or
-						exercise one of the protected actions above.
+						No trace events yet.
 					</div>
 				)}
 			</div>

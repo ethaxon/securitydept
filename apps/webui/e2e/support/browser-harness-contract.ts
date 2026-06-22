@@ -85,8 +85,6 @@ export interface BrowserExecutionBaselinePolicy {
 export const VerifiedScenarioId = {
 	BasicAuthChallengeNoCachedCredentials:
 		"basic-auth.challenge.no-cached-credentials",
-	BasicAuthLogoutAuthorizationHeaderHarness:
-		"basic-auth.logout.authorization-header-harness",
 	FrontendOidcCallbackRedirect: "frontend-oidc.callback.redirect",
 	FrontendOidcPopupRelay: "frontend-oidc.popup.relay",
 	FrontendOidcPopupClosedByUser: "frontend-oidc.popup.closed-by-user",

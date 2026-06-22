@@ -24,9 +24,6 @@ pub struct BasicAuthZoneConfig {
     #[builder(default = default_login_subpath())]
     #[serde(default = "default_login_subpath")]
     pub login_subpath: String,
-    #[builder(default = default_logout_subpath())]
-    #[serde(default = "default_logout_subpath")]
-    pub logout_subpath: String,
     #[builder(default, setter(strip_option))]
     #[serde(default)]
     pub realm: Option<String>,
@@ -40,7 +37,6 @@ impl Default for BasicAuthZoneConfig {
         Self {
             zone_prefix: default_zone_prefix(),
             login_subpath: default_login_subpath(),
-            logout_subpath: default_logout_subpath(),
             realm: None,
             post_auth_redirect: None,
         }
@@ -92,7 +88,6 @@ where
 pub struct ResolvedBasicAuthZoneConfig {
     pub zone_prefix: String,
     pub login_subpath: String,
-    pub logout_subpath: String,
     pub realm: String,
     pub post_auth_redirect: RedirectTargetConfig,
 }
@@ -247,10 +242,6 @@ pub(crate) fn default_login_subpath() -> String {
     "/login".to_string()
 }
 
-pub(crate) fn default_logout_subpath() -> String {
-    "/logout".to_string()
-}
-
 pub(crate) fn default_post_auth_redirect() -> RedirectTargetConfig {
     RedirectTargetConfig::strict_default("/")
 }
@@ -273,7 +264,6 @@ pub(crate) fn resolve_basic_auth_zone_config(
     Ok(ResolvedBasicAuthZoneConfig {
         zone_prefix: zone.zone_prefix,
         login_subpath: zone.login_subpath,
-        logout_subpath: zone.logout_subpath,
         realm: zone.realm.unwrap_or_else(|| default_realm.to_string()),
         post_auth_redirect,
     })

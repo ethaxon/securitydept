@@ -177,19 +177,13 @@ where
 pub struct BasicAuthContextFixedSingleZonePathValidator {
     zone_prefix: String,
     login_subpath: String,
-    logout_subpath: String,
 }
 
 impl BasicAuthContextFixedSingleZonePathValidator {
-    pub fn new(
-        zone_prefix: impl Into<String>,
-        login_subpath: impl Into<String>,
-        logout_subpath: impl Into<String>,
-    ) -> Self {
+    pub fn new(zone_prefix: impl Into<String>, login_subpath: impl Into<String>) -> Self {
         Self {
             zone_prefix: zone_prefix.into(),
             login_subpath: login_subpath.into(),
-            logout_subpath: logout_subpath.into(),
         }
     }
 }
@@ -234,17 +228,6 @@ where
                 ),
             ));
         }
-        if zone.logout_subpath != self.logout_subpath {
-            return Err(BasicAuthContextConfigValidationError::new(
-                "zones[0].logout_subpath",
-                "fixed_zone_path_conflict",
-                format!(
-                    "basic-auth logout_subpath is fixed by the host to {}",
-                    self.logout_subpath
-                ),
-            ));
-        }
-
         Ok(())
     }
 }

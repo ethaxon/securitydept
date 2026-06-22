@@ -71,6 +71,14 @@ await client.start();
 
 environment creator 是 browser composition root。framework application 应在此处组合 framework environment 或 injector，而不是让 client 在稍后自行发现 browser global。
 
+本地配置 material generation 与 credential data 维护使用 runtime CLI。静态 generator 不要求 `config.toml`，entry/group 管理命令会读取配置：
+
+```bash
+securitydept-cli creds create-basic -i
+securitydept-cli creds-manage entry list
+securitydept-cli realip header create-secret-bearer
+```
+
 ## Reference Runtime
 
 reference server 挂载 session、Basic Auth、token-set backend OIDC、token-set frontend configuration projection、management、propagation 和 health route family。React WebUI 是同一 SDK contract 的 executable host。

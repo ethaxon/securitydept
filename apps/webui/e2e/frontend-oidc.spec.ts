@@ -17,7 +17,11 @@ import {
 	VerifiedStatus,
 } from "./support/browser-harness.ts";
 import { type HarnessBrowserName } from "./support/browser-harness-contract.ts";
-import { frontendPlaygroundPath } from "./support/constants.ts";
+import {
+	frontendCallbackPath,
+	frontendCallbackUrl,
+	frontendPlaygroundPath,
+} from "./support/constants.ts";
 import {
 	createFrontendModeCallbackUrl,
 	seedFrontendOidcPendingState,
@@ -30,7 +34,7 @@ async function completeFrontendModeLogin(
 	page: import("@playwright/test").Page,
 ) {
 	await page.goto(frontendPlaygroundPath);
-	await page.getByRole("button", { name: "Start frontend-mode login" }).click();
+	await page.getByRole("button", { name: "Redirect login" }).click();
 
 	await expect(page.locator("#oidc-login")).toBeVisible();
 	await page.locator("#oidc-login").fill("e2e-user");
@@ -38,12 +42,12 @@ async function completeFrontendModeLogin(
 	await page.locator("#oidc-submit").click();
 
 	await expect(page.locator("#oidc-approve")).toBeVisible();
-	const callbackArrival = page.waitForURL(
-		/\/auth\/token-set\/frontend-mode\/callback\?/,
-	);
+	const callbackRequest = page.waitForRequest((request) => {
+		const url = new URL(request.url());
+		return url.pathname === frontendCallbackPath && url.search.length > 0;
+	});
 	await page.locator("#oidc-approve").click();
-	await callbackArrival;
-	const callbackUrl = page.url();
+	const callbackUrl = (await callbackRequest).url();
 
 	await page.waitForURL(`**${frontendPlaygroundPath}`);
 	await expect(
@@ -58,7 +62,7 @@ async function completeFrontendModePopupLogin(
 ) {
 	await page.goto(frontendPlaygroundPath);
 	const popupPromise = page.waitForEvent("popup");
-	await page.getByRole("button", { name: "Start popup login" }).click();
+	await page.getByRole("button", { name: "Popup login" }).click();
 
 	const popup = await popupPromise;
 	await expect(popup.locator("#oidc-login")).toBeVisible();
@@ -232,9 +236,7 @@ test.describe("frontend-mode browser callback", () => {
 
 		await expect(page).toHaveURL(frontendPlaygroundPath);
 		await expect(
-			page.getByRole("heading", {
-				name: "Browser-owned popup and callback reference path",
-			}),
+			page.getByRole("heading", { name: "Frontend OIDC mode" }),
 		).toBeVisible();
 		await expect(page.getByText("Popup relay route")).toBeVisible();
 	});
@@ -246,9 +248,7 @@ test.describe("frontend-mode browser callback", () => {
 
 		await expect(page).toHaveURL(frontendPlaygroundPath);
 		await expect(
-			page.getByText(
-				"callback handling all land inside the same browser-owned host",
-			),
+			page.getByRole("heading", { name: "Frontend OIDC mode" }),
 		).toBeVisible();
 		await expect(
 			page.locator('[data-trace-event-name="popup.opened"]').first(),
@@ -263,7 +263,7 @@ test.describe("frontend-mode browser callback", () => {
 	}) => {
 		await page.goto(frontendPlaygroundPath);
 		const popupPromise = page.waitForEvent("popup");
-		await page.getByRole("button", { name: "Start popup login" }).click();
+		await page.getByRole("button", { name: "Popup login" }).click();
 
 		const popup = await popupPromise;
 		await popup.close();
@@ -284,9 +284,7 @@ test.describe("frontend-mode browser callback", () => {
 
 		await page.goto(callbackUrl);
 
-		await expect(page).toHaveURL(
-			/\/auth\/token-set\/frontend-mode\/callback\?/,
-		);
+		await expect(page).toHaveURL(frontendCallbackUrl);
 		await expect(page.getByText("Callback already consumed")).toBeVisible();
 		await expect(
 			page.locator(
@@ -303,9 +301,7 @@ test.describe("frontend-mode browser callback", () => {
 	}) => {
 		await page.goto(createFrontendModeCallbackUrl("missing-state"));
 
-		await expect(page).toHaveURL(
-			/\/auth\/token-set\/frontend-mode\/callback\?/,
-		);
+		await expect(page).toHaveURL(frontendCallbackUrl);
 		await expect(page.getByText("Unknown callback state")).toBeVisible();
 		await expect(
 			page.locator(
@@ -332,9 +328,7 @@ test.describe("frontend-mode browser callback", () => {
 
 		await page.goto(callbackUrl);
 
-		await expect(page).toHaveURL(
-			/\/auth\/token-set\/frontend-mode\/callback\?/,
-		);
+		await expect(page).toHaveURL(frontendCallbackUrl);
 		await expect(page.getByText("Callback state expired")).toBeVisible();
 		await expect(
 			page.getByText(FrontendOidcModeCallbackErrorCode.PendingStale),
@@ -352,9 +346,7 @@ test.describe("frontend-mode browser callback", () => {
 
 		await page.goto(callbackUrl);
 
-		await expect(page).toHaveURL(
-			/\/auth\/token-set\/frontend-mode\/callback\?/,
-		);
+		await expect(page).toHaveURL(frontendCallbackUrl);
 		await expect(
 			page.getByText("Callback belongs to another frontend-mode client"),
 		).toBeVisible();

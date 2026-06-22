@@ -5,14 +5,42 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+<!-- markdownlint-disable MD024 -->
+
 ## [Unreleased]
+
+## [0.3.0-beta.5]
+
+### Added
+
+- Added a Resource-first TypeScript reactive foundation with explicit idle/loading/reloading/resolved/error snapshots, snapshot flattening and mapping, observable interoperability, React Suspense query caching, and Angular resource/signal adapters.
+- Added the versioned SecurityDept compat-fragment protocol and client-owned OIDC callback handling, including hash-router-safe redirects, backend callback routing keys for multi-client registries, frontend callback candidate selection, and popup flow state isolated in per-environment realm storage.
+- Added graph-based Real-IP policy with named nodes, rules, unions, trusted resolved headers, authenticated bridge headers, recursive `X-Forwarded-For` / `Forwarded` resolution, and built-in local, container, and Kubernetes sources.
+- Added structured `securitydept-cli` credential and Real-IP commands, including static Basic Auth config generation, managed entry/group operations, masked interactive input, selectable TOML/JSON output, and trusted-bridge secret-bearer generation.
 
 ### Changed
 
-- Replaced the OpenSSL-backed `josekit` JWE implementation with the modular, RustCrypto-backed `no-way-jose` crates; JWK/JWKS parsing, RSA/P-256/P-384 PEM loading, runtime JWE algorithm dispatch, and `securitydept-core` reexports now use the new backend without linking OpenSSL. The reference server and OAuth resource server now enable JWE in their default capability sets. `RSA-OAEP-384` and `RSA-OAEP-512` are rejected explicitly because `no-way-jose` does not implement them.
-- Closed the TypeScript token-set orchestration auth event and trace semantics: replaced the loose `TokenSetAuthEventPayload` bag with a per-event-type `TokenSetAuthEventPayloadMap`, made `createTokenSetAuthEvent()` a generic factory keyed by event type, confined `freshness` / `hasRefreshMaterial` to the refresh-specific payload, carried client identity only through `id`, and routed all auth event emission and host-level trace recording through `base-client` as the single authority. Removed the dead `AuthCheck*` event family and the `TokenSetAuthFlowOutcome` / `TokenSetAuthFlowReason` / `authCheckReason` auth-event vocabulary; reason context now lives in local orchestration trace attributes instead of event payload fields.
-- Unified the TypeScript SDK React dependency model around `@securitydept/client/injection` and the single `SecuritydeptContext` / `SecuritydeptProvider` / `useSecuritydeptContext()` bridge in `@securitydept/client-react`, removing domain-specific React Context/Provider surfaces from the basic-auth, session, and token-set React packages.
-- Rewrote the React example evidence, Web UI helper naming, and the TypeScript SDK docs/inventory to reflect injector-first composition, explicit token/provider-factory usage, and callback/query flows that no longer depend on hidden token-set React context.
+- Rebuilt the TypeScript SDK around explicit `FoundationEnvironment` capabilities, injector-owned providers, SDK Signal/Resource/EventStream traits, cooperative cancellation, disposal, spans/tracing, namespaced `ClientError` contracts, URI reference types, and synchronous realm storage. Removed ReplaySignal-era state and host-global fallback models.
+- Reworked Basic Auth, session, and token-set clients into environment-backed lifecycle owners with static environment/injector factories, Resource snapshots, operation signals, typed events, and canonical `start()` / `dispose()` boundaries. Basic Auth logout now explicitly clears only the local observation because browsers expose no reliable credential-cache revocation API.
+- Rebuilt token-set orchestration and registry around single-commit determination workflows, best-effort persistence, Resource-based client records, explicit initialization policies, client-owned callback state, safer transient-failure versus token-revocation handling, and unified authorization-header derivation. Auth event and trace payloads are now discriminated, secret-safe, and emitted from the base client authority.
+- Replaced browser-specific frontend OIDC config materialization with an environment-backed projection resolver supporting ordered inline, realm, persisted, and network sources. Frontend and backend mode factories now compose callback input resolution from registry metadata without acquiring host capabilities implicitly.
+- Unified React and Angular adapters around the core injector and client ownership model. React now uses one `SecuritydeptContext`, external-Fiber environment creation, Resource snapshot hooks, and optional Suspense query caching; Angular adapters bridge the same core Resources, registry, callback selection, routes, and transports through Angular DI.
+- Migrated the React WebUI to TanStack file-based routing and domain-oriented auth composition, with Resource-driven auth mode/user state, corrected logout and playground access sequencing, streamlined playground diagnostics, and SDK-owned callback/registry flows.
+- Replaced the OpenSSL-backed `josekit` JWE implementation with modular RustCrypto-backed `no-way-jose` crates. JWK/JWKS parsing, RSA/P-256/P-384 PEM loading, runtime algorithm dispatch, and core reexports no longer link OpenSSL; the reference server and OAuth resource server enable JWE in their default capability sets.
+- Introduced a Turborepo task graph for the TypeScript workspace so package tests consume freshly built dependency artifacts while project-reference typechecking continues to resolve workspace source. Rolldown/tsdown decorator builds now use SWC's 2023-11 transform, and CI caches Turbo outputs by verification lane.
+- Bumped release-managed Rust crates, TypeScript packages, apps, lockfiles, and shared metadata to `0.3.0-beta.5`.
+
+### Fixed
+
+- Fixed frontend and backend OIDC callback restoration so user-owned hashes survive redirects, sensitive callback parameters are consumed only by the matching client, and callback completion precedes resolved auth state without making persistence success a login prerequisite.
+- Fixed token refresh failure handling so explicit `invalid_grant` / `invalid_token` revocation clears authorization while transient transport, server, and parsing failures retain the last in-memory and persisted state.
+- Fixed Real-IP trust traversal and malformed-chain handling by replacing ambiguous provider/source grouping with an explicit graph, preventing untrusted forwarded values or bridge headers from being accepted outside their configured trust relationships.
+- Fixed optional server configuration defaults, Basic Auth playground probing, auth-mode transitions, dashboard logout ordering, and protected playground access so runtime state no longer depends on stale projections or mismatched auth contexts.
+
+### Removed
+
+- Removed obsolete TypeScript ReplaySignal APIs, controller/service wrappers, browser-specific context-client helper layers, source-alias test resolution, and compatibility aliases that preserved superseded ownership models.
+- Removed the Basic Auth server logout route and any claim that a browser Basic Auth credential cache can be programmatically revoked.
 
 ## [0.3.0-beta.4]
 
@@ -25,7 +53,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- Added TypeScript SDK environment presets for browser page, browser worker, service worker, and browser-extension background hosts, with page capability resolution that fails fast outside real page/tab/popup documents.
+- Added TypeScript SDK client-environment presets for browser page, browser worker, service worker, and browser-extension background hosts, with page capability resolution that fails fast outside real page/tab/popup documents.
 - Added `ClientEnvironmentService`, React environment-service hooks, and Angular page-environment DI bridge support for provider/injector-scoped environment ownership, async materialization, and Suspense-compatible render reads.
 - Added `SessionContextController` and `TokenSetCallbackResumeController` as framework-neutral state owners for session user-info refresh/logout and token-set callback resume orchestration.
 - Added a cross-platform `scripts/test-cli.ts kube ...` entry with Dockerode-backed Kubernetes test image/resource management, labeled SecurityDept test resources, hot/reusable/isolated Rust e2e lanes, and explicit cleanup recipes.

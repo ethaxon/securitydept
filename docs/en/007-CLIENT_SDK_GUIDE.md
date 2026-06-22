@@ -8,7 +8,7 @@ This document defines the TypeScript SDK contract. It is the authority for packa
 | --- | --- |
 | `@securitydept/client` | Foundation traits: environment, transport, state/resources, events, cancellation, spans, tracing, injection, protocol and URL helpers. |
 | `@securitydept/client-react` / `@securitydept/client-angular` | Framework bridges for the foundation traits. |
-| `@securitydept/basic-auth-context-client*` | Basic-Auth boundary observations and login/logout navigation. |
+| `@securitydept/basic-auth-context-client*` | Basic-Auth boundary observations, login navigation, and local projection clearing. |
 | `@securitydept/session-context-client*` | Cookie-session refresh, user-info, login and logout integration. |
 | `@securitydept/token-set-context-client*` | Token-set OIDC modes, lifecycle orchestration, registry, access-token substrate, and framework adapters. |
 
@@ -100,7 +100,7 @@ Trace records describe the local action. Do not add parallel global source/outco
 
 ### Basic Auth
 
-`BasicAuthContextClient` models zone-aware challenge boundaries. It does not manage a browser credential cache or invent a normal credential-clear operation. The client exposes boundary snapshots, operations, and events; login/logout navigation remains an explicit host/router action.
+`BasicAuthContextClient` models zone-aware challenge boundaries. It does not manage or revoke the browser credential cache. The client exposes boundary snapshots, operations, and events; login navigation remains an explicit host/router action. Its `logout()` method only clears the current in-memory boundary projection and performs no network request.
 
 ### Session
 

@@ -294,7 +294,7 @@ export class AuthService implements DisposableTrait {
 			if (mode === AuthContextMode.Session) {
 				await this.session.logout();
 			} else if (mode === AuthContextMode.Basic) {
-				await this.basic.logout({ zonePrefix: "/basic" });
+				await this.basic.logout();
 			} else if (mode === AuthContextMode.TokenSetBackend) {
 				await (await this.getBackendOidcClient()).logout();
 			} else {

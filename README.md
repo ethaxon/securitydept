@@ -71,6 +71,14 @@ await client.start();
 
 The environment creator is the browser composition root. Framework applications should compose their framework environment or injector there, rather than allowing a client to discover browser globals later.
 
+For local configuration material and credential-data maintenance, use the runtime CLI. Static generators do not require `config.toml`; managed entry/group commands do:
+
+```bash
+securitydept-cli creds create-basic -i
+securitydept-cli creds-manage entry list
+securitydept-cli realip header create-secret-bearer
+```
+
 ## Reference Runtime
 
 The reference server mounts session, Basic Auth, token-set backend OIDC, token-set frontend configuration projection, management, propagation, and health route families. The React WebUI is an executable host for the same SDK contracts.

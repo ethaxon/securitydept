@@ -174,14 +174,6 @@ pub(crate) fn api_route_catalog(capabilities: ApiCatalogCapabilities) -> Vec<Api
             description: "Basic Auth login challenge endpoint",
         },
         ApiRouteInfo {
-            method: "POST",
-            path: "/basic/logout",
-            auth_required: false,
-            auth_boundary: ApiRouteAuthBoundary::Protocol,
-            availability: ApiRouteAvailability::Always,
-            description: "Basic Auth logout poison endpoint",
-        },
-        ApiRouteInfo {
             method: "GET",
             path: "/basic/api/entries",
             auth_required: true,
@@ -443,6 +435,7 @@ mod tests {
             find_route(&catalog, "GET", "/basic/login").auth_boundary,
             ApiRouteAuthBoundary::Protocol
         );
+        assert!(catalog.iter().all(|route| route.path != "/basic/logout"));
         assert!(find_route(&catalog, "GET", "/basic/api/groups/{id}").auth_required);
         assert_eq!(
             find_route(&catalog, "GET", "/basic/api/groups/{id}").auth_boundary,

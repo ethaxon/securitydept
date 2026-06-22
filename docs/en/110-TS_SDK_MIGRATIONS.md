@@ -51,7 +51,7 @@ Only refresh events carry freshness and refresh-material facts. Auth event paylo
 
 ## Persistence
 
-Persistence follows the committed snapshot policy rather than being a second snapshot authority. A determination uses `persistPolicy: "follow_client" | "skip"`; `snapshot === null` under the follow policy naturally implies persistence clearing. The current client performs this synchronization from its determination path and records sync failures as trace events. A separate best-effort persistence workflow/event surface is planned work, not current public behavior.
+Persistence follows the committed snapshot policy rather than being a second snapshot authority. A determination uses `persistPolicy: "follow_client" | "skip"`; `snapshot === null` under the follow policy naturally implies persistence clearing. The client commits the in-memory snapshot first, then attempts the corresponding persistence update. A persistence failure is recorded as a trace event and does not roll back or reject an otherwise successful authentication determination.
 
 ## Router And Callback Composition
 

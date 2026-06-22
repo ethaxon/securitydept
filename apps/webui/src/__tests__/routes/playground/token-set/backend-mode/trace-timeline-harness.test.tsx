@@ -9,7 +9,6 @@ import {
 import { act, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { TOKEN_SET_BACKEND_MODE_CONFIG } from "@/auth/token-set/config";
 import { createTokenSetBackendHostTraceRecorder } from "@/routes/_playground/playground/token-set/-backend-mode/app-trace";
 import { TraceTimelineSection } from "@/routes/_playground/playground/token-set/-backend-mode/trace-timeline-section";
 
@@ -63,9 +62,7 @@ describe("trace timeline harness", () => {
 			root.render(<TraceTimelineHarness timeline={timeline} />);
 		});
 
-		expect(container.textContent).toContain(
-			"No backend-mode trace events recorded yet.",
-		);
+		expect(container.textContent).toContain("No trace events yet.");
 
 		await act(async () => {
 			tracing.record({
@@ -93,9 +90,6 @@ describe("trace timeline harness", () => {
 
 		expect(container.textContent).toContain("SDK Lifecycle");
 		expect(container.textContent).toContain("App Trace");
-		expect(container.textContent).toContain(
-			TOKEN_SET_BACKEND_MODE_CONFIG.tracing.hostTarget,
-		);
 		expect(container.textContent).toContain("callback.failed");
 		expect(container.textContent).toContain("entries.load.failed");
 		expect(container.textContent).toContain("code: metadata_unavailable");
@@ -111,9 +105,7 @@ describe("trace timeline harness", () => {
 			clearButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		});
 
-		expect(container.textContent).toContain(
-			"No backend-mode trace events recorded yet.",
-		);
+		expect(container.textContent).toContain("No trace events yet.");
 		expect(clearButton?.hasAttribute("disabled")).toBe(true);
 
 		await act(async () => {

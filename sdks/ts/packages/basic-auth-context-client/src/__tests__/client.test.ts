@@ -50,7 +50,6 @@ function createClient(environment = createBasicAuthEnvironment({})) {
 				{
 					zonePrefix: "/internal/basic",
 					loginSubpath: "/signin",
-					logoutSubpath: "/signout",
 				},
 			],
 		},
@@ -86,7 +85,6 @@ describe("BasicAuthContextClient", () => {
 		expect(client.isInZone("/basically")).toBe(false);
 
 		const basicZone = client.zoneForPath("/basic")!;
-		const internalZone = client.zoneForPath("/internal/basic/page")!;
 		expect(client.loginUrl(basicZone)).toBe(
 			"https://auth.example.com/basic/login",
 		);
@@ -97,9 +95,6 @@ describe("BasicAuthContextClient", () => {
 			client.loginUrlForZonePrefix("/basic", "/playground/basic-auth"),
 		).toBe(
 			"https://auth.example.com/basic/login?post_auth_redirect_uri=%2Fplayground%2Fbasic-auth",
-		);
-		expect(client.logoutUrl(internalZone)).toBe(
-			"https://auth.example.com/internal/basic/signout",
 		);
 	});
 
@@ -124,7 +119,6 @@ describe("BasicAuthContextClient", () => {
 					{
 						zonePrefix: "/internal/basic",
 						loginSubpath: "/signin",
-						logoutSubpath: "/signout",
 					},
 				],
 			},
@@ -185,10 +179,9 @@ describe("BasicAuthContextClient", () => {
 		expect(
 			readBasicAuthBoundaryKind({
 				status: 401,
-				requestPath: "/basic/logout",
-				isLogoutPath: true,
+				requestPath: "/basic/api/entries",
 			}),
-		).toBe(BasicAuthBoundaryKind.LogoutPoison);
+		).toBe(BasicAuthBoundaryKind.Unauthorized);
 	});
 
 	it("refreshes boundary state from the configured probe path", async () => {
@@ -249,23 +242,29 @@ describe("BasicAuthContextClient", () => {
 		});
 	});
 
-	it("observes logout poison through logout()", async () => {
+	it("clears only the in-memory boundary projection through logout()", async () => {
 		const requests: HttpRequest[] = [];
 		const client = createClient(
 			createBasicAuthEnvironment({
-				response: { status: 401, headers: {}, body: null },
+				response: { status: 204, headers: {}, body: null },
 				onRequest(request) {
 					requests.push(request);
 				},
 			}),
 		);
 
-		const snapshot = await client.logout({ zonePrefix: "/basic" });
+		await client.refresh();
+		expect(client.isAuthenticated.value.get()).toBe(true);
 
-		expect(requests[0]?.url).toBe("https://auth.example.com/basic/logout");
-		expect(requests[0]?.method).toBe("POST");
-		expect(snapshot.boundaryKind).toBe(BasicAuthBoundaryKind.LogoutPoison);
-		expect(snapshot.authenticated).toBe(false);
+		await expect(client.logout()).resolves.toBeUndefined();
+
+		expect(requests).toHaveLength(1);
+		expect(requests[0]?.url).toBe("https://auth.example.com/basic/api/entries");
+		expect(client.boundarySnapshot.get()).toEqual({
+			status: "resolved",
+			value: null,
+		});
+		expect(client.isAuthenticated.value.get()).toBe(false);
 	});
 
 	it("uses explicit currentPath for loginWithRedirect zone resolution", async () => {

@@ -15,6 +15,9 @@ temp/*
 .factory
 .claude/*local*
 
+# IDE
+/.idea/
+
 # Web Dev
 /webui
 **/dist

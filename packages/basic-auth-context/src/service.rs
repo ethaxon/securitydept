@@ -11,11 +11,12 @@ use securitydept_utils::{
         AuthFlowDiagnosis, AuthFlowDiagnosisField, AuthFlowDiagnosisOutcome, AuthFlowOperation,
         DiagnosedResult,
     },
+    redirect::RedirectTargetError,
 };
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 
-use crate::{BasicAuthContext, BasicAuthContextError, BasicAuthZone};
+use crate::{BasicAuthContext, BasicAuthContextError};
 
 fn basic_auth_diagnosis(operation: &str) -> AuthFlowDiagnosis {
     AuthFlowDiagnosis::started(operation).field(AuthFlowDiagnosisField::AUTH_FAMILY, "basic-auth")
@@ -28,6 +29,8 @@ pub enum BasicAuthContextServiceError {
     BasicAuthContext { source: BasicAuthContextError },
     #[snafu(transparent)]
     Creds { source: CredsError },
+    #[snafu(display("post-auth redirect was rejected: {source}"))]
+    RedirectTarget { source: RedirectTargetError },
 }
 
 impl ToHttpStatus for BasicAuthContextServiceError {
@@ -35,6 +38,7 @@ impl ToHttpStatus for BasicAuthContextServiceError {
         match self {
             Self::BasicAuthContext { .. } => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Creds { source } => source.to_http_status(),
+            Self::RedirectTarget { .. } => StatusCode::BAD_REQUEST,
         }
     }
 }
@@ -48,13 +52,18 @@ impl ToErrorPresentation for BasicAuthContextServiceError {
                 UserRecovery::ContactSupport,
             ),
             Self::Creds { source } => source.to_error_presentation(),
+            Self::RedirectTarget { .. } => ErrorPresentation::new(
+                "basic_auth_post_auth_redirect_rejected",
+                "The requested return location is not allowed.",
+                UserRecovery::RestartFlow,
+            ),
         }
     }
 }
 
 /// Route-facing service for basic-auth context operations.
 ///
-/// Provides login, logout, and request authorization based on HTTP Basic
+/// Provides login and request authorization based on HTTP Basic
 /// credentials.
 pub struct BasicAuthContextService<'a, Creds>
 where
@@ -185,7 +194,7 @@ where
                         .with_outcome(AuthFlowDiagnosisOutcome::Failed)
                         .field("authenticated", true)
                         .field(AuthFlowDiagnosisField::REASON, "post_auth_redirect_invalid"),
-                    BasicAuthContextServiceError::BasicAuthContext { source },
+                    BasicAuthContextServiceError::RedirectTarget { source },
                 ),
             }
         } else {
@@ -202,53 +211,6 @@ where
                 response,
             )
         }
-    }
-
-    pub fn logout(&self, request_path: &str) -> HttpResponse {
-        self.logout_diagnosed(request_path)
-            .into_result()
-            .expect("basic-auth logout diagnosis should not fail")
-    }
-
-    pub fn logout_diagnosed(
-        &self,
-        request_path: &str,
-    ) -> DiagnosedResult<HttpResponse, BasicAuthContextServiceError> {
-        let diagnosis = basic_auth_diagnosis(AuthFlowOperation::BASIC_AUTH_LOGOUT)
-            .field(AuthFlowDiagnosisField::REQUEST_PATH, request_path);
-        if let Some(protocol_response) = self.logout_protocol_response(request_path) {
-            let response = protocol_response.into_http_response();
-            DiagnosedResult::success(
-                diagnosis
-                    .with_outcome(AuthFlowDiagnosisOutcome::Succeeded)
-                    .field("response_kind", "logout_poison")
-                    .field(
-                        AuthFlowDiagnosisField::HTTP_STATUS,
-                        response.status.as_u16(),
-                    ),
-                response,
-            )
-        } else {
-            DiagnosedResult::success(
-                diagnosis
-                    .with_outcome(AuthFlowDiagnosisOutcome::Rejected)
-                    .field("response_kind", "not_found")
-                    .field(
-                        AuthFlowDiagnosisField::HTTP_STATUS,
-                        StatusCode::NOT_FOUND.as_u16(),
-                    ),
-                HttpResponse::new(StatusCode::NOT_FOUND),
-            )
-        }
-    }
-
-    pub fn logout_protocol_response(
-        &self,
-        request_path: &str,
-    ) -> Option<crate::BasicAuthProtocolResponse> {
-        self.basic_auth_context
-            .zone_for_request_path(request_path)
-            .map(BasicAuthZone::logout_poison_protocol_response)
     }
 
     pub fn authorize_request(
@@ -489,6 +451,30 @@ mod tests {
     }
 
     #[test]
+    fn login_rejects_disallowed_redirect_as_invalid_request() {
+        let context = test_context_with_dynamic_redirect();
+        let service = BasicAuthContextService::new(&context).expect("service should build");
+        let error = service
+            .login(
+                "/basic/login",
+                Some("Basic YWRtaW46c2VjcmV0"),
+                Some("/entries"),
+                None,
+            )
+            .expect_err("redirect outside the configured policy should fail");
+
+        assert!(matches!(
+            error,
+            BasicAuthContextServiceError::RedirectTarget { .. }
+        ));
+        assert_eq!(error.to_http_status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error.to_error_presentation().code,
+            "basic_auth_post_auth_redirect_rejected"
+        );
+    }
+
+    #[test]
     fn authorize_request_diagnosed_reports_verified_credentials() {
         let context = test_context();
         let service = BasicAuthContextService::new(&context).expect("service should build");
@@ -509,30 +495,5 @@ mod tests {
             AuthFlowDiagnosisOutcome::Succeeded
         );
         assert_eq!(diagnosed.diagnosis().fields["authorized"], true);
-    }
-
-    #[test]
-    fn logout_diagnosed_reports_logout_poison_protocol_response() {
-        let context = test_context();
-        let service = BasicAuthContextService::new(&context).expect("service should build");
-        let diagnosed = service.logout_diagnosed("/basic/logout");
-        let response = diagnosed
-            .result()
-            .as_ref()
-            .expect("logout should produce response");
-
-        assert_eq!(response.status, StatusCode::UNAUTHORIZED);
-        assert_eq!(
-            diagnosed.diagnosis().operation,
-            AuthFlowOperation::BASIC_AUTH_LOGOUT
-        );
-        assert_eq!(
-            diagnosed.diagnosis().outcome,
-            AuthFlowDiagnosisOutcome::Succeeded
-        );
-        assert_eq!(
-            diagnosed.diagnosis().fields["response_kind"],
-            "logout_poison"
-        );
     }
 }

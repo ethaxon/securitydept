@@ -328,7 +328,7 @@ describe("AuthService", () => {
 
 		service.setMode(AuthContextMode.Basic);
 		await service.logout();
-		expect(basic.logout).toHaveBeenCalledWith({ zonePrefix: "/basic" });
+		expect(basic.logout).toHaveBeenCalledWith();
 		expect(service.mode.value.get()).toBeNull();
 
 		service.setMode(AuthContextMode.TokenSetFrontend);

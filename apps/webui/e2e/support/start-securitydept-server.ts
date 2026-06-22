@@ -58,7 +58,6 @@ const serverProcess = spawn(
 		"--",
 		"--config",
 		renderedConfigPath,
-		"serve",
 	],
 	{
 		cwd: repoRootDir,

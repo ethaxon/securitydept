@@ -24,7 +24,6 @@ export const frontendPopupCallbackUrl = `${webuiBaseUrl}${frontendPopupCallbackP
 
 export const basicAuthPlaygroundPath = "/playground/basic-auth";
 export const basicAuthLoginPath = "/basic/login";
-export const basicAuthLogoutPath = "/basic/logout";
 
 export const oidcClientId = "securitydept-webui-e2e";
 export const oidcTestAccount = Object.freeze({

@@ -3,7 +3,6 @@ import { type as defineType } from "arktype";
 export const BasicAuthZoneConfigSchema = defineType({
 	zonePrefix: "string > 0",
 	"loginSubpath?": "string",
-	"logoutSubpath?": "string",
 });
 
 export const BasicAuthContextClientConfigSchema = defineType({

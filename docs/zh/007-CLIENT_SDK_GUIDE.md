@@ -8,7 +8,7 @@
 | --- | --- |
 | `@securitydept/client` | Foundation traits：environment、transport、state/resource、event、cancellation、span、tracing、injection、protocol 和 URL helper。 |
 | `@securitydept/client-react` / `@securitydept/client-angular` | foundation trait 的 framework bridge。 |
-| `@securitydept/basic-auth-context-client*` | Basic-Auth boundary observation 与 login/logout navigation。 |
+| `@securitydept/basic-auth-context-client*` | Basic-Auth boundary observation、login navigation 与本地投影清理。 |
 | `@securitydept/session-context-client*` | cookie-session refresh、user-info、login 和 logout integration。 |
 | `@securitydept/token-set-context-client*` | token-set OIDC mode、lifecycle orchestration、registry、access-token substrate 和 framework adapter。 |
 
@@ -100,7 +100,7 @@ trace 只描述当前动作。不要为了重建 span tree 已有的 nesting 再
 
 ### Basic Auth
 
-`BasicAuthContextClient` 建模 zone-aware challenge boundary。它不管理 browser credential cache，也不伪造普通 credential-clear operation。client 暴露 boundary snapshot、operation 和 event；login/logout navigation 仍是显式的 host/router action。
+`BasicAuthContextClient` 建模 zone-aware challenge boundary。它不管理或撤销 browser credential cache。client 暴露 boundary snapshot、operation 和 event；login navigation 仍是显式的 host/router action。其 `logout()` 只清除当前内存 boundary projection，不发起网络请求。
 
 ### Session
 

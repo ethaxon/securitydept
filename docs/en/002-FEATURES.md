@@ -7,12 +7,31 @@ This page states the currently implemented product baseline. It is not a promise
 | Credential verification | Basic credentials, static tokens, JWT/JWE, and RFC 9068 access-token validation. | `securitydept-creds` |
 | Credential management | Local credential/token data, atomic updates, debounced reloads, and self-write detection. | `securitydept-creds-manage` |
 | OIDC/OAuth | Authorization-code/PKCE, callback exchange, refresh, user-info and claims normalization, provider and resource-server contracts. | `securitydept-oidc-client`, `securitydept-oauth-*` |
-| Basic Auth context | Zone policy, challenge/login/logout metadata, redirect policy, and client adapters. | `securitydept-basic-auth-context`, `@securitydept/basic-auth-context-client*` |
+| Basic Auth context | Zone policy, challenge/login metadata, redirect policy, boundary observation, and client adapters. | `securitydept-basic-auth-context`, `@securitydept/basic-auth-context-client*` |
 | Session context | Server-owned OIDC/dev session flow, normalized session principal, and client adapters. | `securitydept-session-context`, `@securitydept/session-context-client*` |
 | Token-set context | Frontend/backend OIDC modes, orchestration, registry, access-token substrate, and framework adapters. | `securitydept-token-set-context`, `@securitydept/token-set-context-client*` |
 | Client foundation | Explicit environment, signals/resources, event streams, cancellation, spans, tracing, transport, storage, router/popup abstractions, and RxJS interop. | `@securitydept/client` |
 | Client-IP policy | Rule-driven trusted-hop graphs for forwarded headers, bridge proofs, PROXY protocol, and local/container/Kubernetes nodes. | `securitydept-realip` |
 | Reference runtime | Axum server, React WebUI, Docker runtime artifact, and end-to-end proof paths. | `apps/server`, `apps/webui` |
+
+## Management CLI
+
+`securitydept-cli` separates config-independent material generation from commands that modify the configured credential-management data file:
+
+```bash
+# Emit a complete [[basic_auth_context.users]] block without reading config.toml.
+securitydept-cli creds create-basic -i
+
+# Manage entries and groups in [creds_manage].data_path.
+securitydept-cli creds-manage entry list
+securitydept-cli creds-manage entry create-basic -i
+securitydept-cli creds-manage group list
+
+# Emit an opaque bearer for a trusted Real-IP bridge header.
+securitydept-cli realip header create-secret-bearer
+```
+
+Interactive credential commands use masked password input with confirmation. Static generators support `--format toml` and `--format json`; only `creds-manage` commands load `--config`.
 
 ## JWE Baseline
 

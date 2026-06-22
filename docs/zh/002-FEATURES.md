@@ -7,12 +7,31 @@
 | Credential verification | Basic credentials、static tokens、JWT/JWE、RFC 9068 access-token validation。 | `securitydept-creds` |
 | Credential management | local credential/token data、atomic update、debounced reload 与 self-write detection。 | `securitydept-creds-manage` |
 | OIDC/OAuth | authorization-code/PKCE、callback exchange、refresh、user-info/claims normalization、provider 和 resource-server contract。 | `securitydept-oidc-client`、`securitydept-oauth-*` |
-| Basic Auth context | zone policy、challenge/login/logout metadata、redirect policy 与 client adapter。 | `securitydept-basic-auth-context`、`@securitydept/basic-auth-context-client*` |
+| Basic Auth context | zone policy、challenge/login metadata、redirect policy、boundary observation 与 client adapter。 | `securitydept-basic-auth-context`、`@securitydept/basic-auth-context-client*` |
 | Session context | server-owned OIDC/dev session flow、normalized session principal 与 client adapter。 | `securitydept-session-context`、`@securitydept/session-context-client*` |
 | Token-set context | frontend/backend OIDC mode、orchestration、registry、access-token substrate 与 framework adapter。 | `securitydept-token-set-context`、`@securitydept/token-set-context-client*` |
 | Client foundation | explicit environment、signals/resources、event stream、cancellation、span、tracing、transport、storage、router/popup abstraction 与 RxJS interop。 | `@securitydept/client` |
 | Client-IP policy | 基于 rule 的可信 hop graph，支持 forwarded header、bridge proof、PROXY protocol 与 local/container/Kubernetes node。 | `securitydept-realip` |
 | Reference runtime | Axum server、React WebUI、Docker runtime artifact 和 end-to-end proof path。 | `apps/server`、`apps/webui` |
+
+## 管理 CLI
+
+`securitydept-cli` 将不依赖配置的 material generation 与修改 credential-management 数据文件的命令分开：
+
+```bash
+# 不读取 config.toml，输出完整的 [[basic_auth_context.users]] block。
+securitydept-cli creds create-basic -i
+
+# 管理 [creds_manage].data_path 中的 entry 和 group。
+securitydept-cli creds-manage entry list
+securitydept-cli creds-manage entry create-basic -i
+securitydept-cli creds-manage group list
+
+# 输出用于 trusted Real-IP bridge header 的 opaque bearer。
+securitydept-cli realip header create-secret-bearer
+```
+
+交互式 credential 命令使用带二次确认的掩码密码输入。静态 generator 支持 `--format toml` 与 `--format json`；只有 `creds-manage` 命令会加载 `--config`。
 
 ## JWE 基线
 

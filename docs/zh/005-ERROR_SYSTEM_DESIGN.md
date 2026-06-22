@@ -87,7 +87,7 @@ TS SDK 的 `ClientErrorKind` 固定为 `authorization`、`transport`、`server`�
 大多数普通 server failures 使用 `ServerErrorEnvelope`，但部分 route families 有意不使用：
 
 - Basic Auth challenge routes 必须保留 `WWW-Authenticate`。
-- Basic Auth logout poison responses 必须保持 plain `401`，且不带新的 challenge。
+- Basic Auth 不存在 credential-revocation route；本地投影清理不得伪装成 server protocol response。
 - ForwardAuth challenge routes 必须保留 proxy protocol semantics。
 - Backend-mode `metadata/redeem` not-found 是业务 `404`，不是 shared server failure envelope。
 - Propagation forwarding 保留 underlying upstream status / presentation，而不是改写成 route-local generic error。

@@ -136,7 +136,7 @@
 					"stability": "stable",
 					"owner": "basic-auth-context",
 					"changeDiscipline": "stable-deprecation-first",
-					"note": "Environment-backed BasicAuthContextClient owns zone helpers, boundary observation, login redirect, and logout poison interaction from the root entry. The core package also owns BASIC_AUTH_CONTEXT_CLIENT, BASIC_AUTH_CONTEXT_CLIENT_CONFIG, provideBasicAuthContext(), and the fromEnvironmentConfig()/fromInjector() construction paths so framework-neutral hosts share one DI contract.",
+					"note": "Environment-backed BasicAuthContextClient owns zone helpers, boundary observation, login redirect, and local boundary-projection clearing from the root entry. It cannot revoke browser-managed Basic credentials. The core package also owns BASIC_AUTH_CONTEXT_CLIENT, BASIC_AUTH_CONTEXT_CLIENT_CONFIG, provideBasicAuthContext(), and the fromEnvironmentConfig()/fromInjector() construction paths so framework-neutral hosts share one DI contract.",
 					"evidence": [
 						"examples/basic-auth/guard-scenario.test.ts",
 						"packages/basic-auth-context-client/src/__tests__/client.test.ts",

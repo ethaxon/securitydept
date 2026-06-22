@@ -27,7 +27,7 @@ describe("trace timeline section", () => {
 	it("renders empty state and keeps clear disabled when no trace exists", () => {
 		const markup = renderTimeline();
 
-		expect(markup).toContain("No backend-mode trace events recorded yet.");
+		expect(markup).toContain("No trace events yet.");
 		expect(markup).toContain("Clear Trace");
 		expect(markup).toContain("disabled");
 	});
@@ -88,23 +88,21 @@ describe("trace timeline section", () => {
 		expect(markup).toContain("Operation Lifecycle");
 		expect(markup).toContain("SDK Lifecycle");
 		expect(markup).toContain("App Trace");
-		expect(markup).toContain("Structured Trace Timeline");
-		expect(markup).toContain("Operation: op_backend_1");
+		expect(markup).toContain("Trace timeline");
 		expect(markup).toContain("operation: backend_oidc.refresh");
-		expect(markup).toContain(TOKEN_SET_BACKEND_MODE_CONFIG.tracing.hostTarget);
 		expect(markup).toContain("Failed");
 		expect(markup).toContain("Superseded");
 		expect(markup).toContain("/api/entries");
 		expect(markup).toContain("backend_oidc.user_info.fallback_failed");
-		expect(markup).not.toContain("No trace events recorded yet.");
+		expect(markup).not.toContain("Operation:");
+		expect(markup).not.toContain("<pre");
+		expect(markup).not.toContain("No trace events yet.");
 		expect(markup).not.toContain('disabled=""');
 
 		timeline.clear();
 
 		const clearedMarkup = renderTimeline(timeline.get());
-		expect(clearedMarkup).toContain(
-			"No backend-mode trace events recorded yet.",
-		);
+		expect(clearedMarkup).toContain("No trace events yet.");
 		expect(clearedMarkup).toContain('disabled=""');
 	});
 });

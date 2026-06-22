@@ -13,7 +13,6 @@ impl AuthFlowOperation {
     pub const FORWARD_AUTH_CHECK: &'static str = "forward_auth.check";
     pub const PROPAGATION_FORWARD: &'static str = "propagation.forward";
     pub const BASIC_AUTH_LOGIN: &'static str = "basic_auth.login";
-    pub const BASIC_AUTH_LOGOUT: &'static str = "basic_auth.logout";
     pub const BASIC_AUTH_AUTHORIZE: &'static str = "basic_auth.authorize";
     pub const SESSION_LOGIN: &'static str = "session.login";
     pub const SESSION_LOGOUT: &'static str = "session.logout";
@@ -218,7 +217,6 @@ mod tests {
             "propagation.forward"
         );
         assert_eq!(AuthFlowOperation::BASIC_AUTH_LOGIN, "basic_auth.login");
-        assert_eq!(AuthFlowOperation::BASIC_AUTH_LOGOUT, "basic_auth.logout");
         assert_eq!(
             AuthFlowOperation::BASIC_AUTH_AUTHORIZE,
             "basic_auth.authorize"

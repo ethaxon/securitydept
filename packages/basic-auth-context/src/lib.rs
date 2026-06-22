@@ -28,7 +28,6 @@ use web_route::WebRoute;
 pub enum BasicAuthProtocolResponseKind {
     Challenge,
     Unauthorized,
-    LogoutPoison,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,14 +49,6 @@ impl BasicAuthProtocolResponse {
     pub fn unauthorized() -> Self {
         Self {
             kind: BasicAuthProtocolResponseKind::Unauthorized,
-            status: StatusCode::UNAUTHORIZED,
-            challenge_header: None,
-        }
-    }
-
-    pub fn logout_poison() -> Self {
-        Self {
-            kind: BasicAuthProtocolResponseKind::LogoutPoison,
             status: StatusCode::UNAUTHORIZED,
             challenge_header: None,
         }
@@ -87,7 +78,6 @@ impl BasicAuthProtocolResponse {
 pub struct BasicAuthZone {
     pub zone_prefix: WebRoute,
     pub login_path: WebRoute,
-    pub logout_path: WebRoute,
     pub post_auth_redirect: Arc<RedirectTargetConfig>,
     pub realm: String,
     post_auth_redirect_resolver: Arc<UriRelativeRedirectTargetResolver>,
@@ -173,11 +163,10 @@ where
     pub fn resolve_post_auth_redirect_uri(
         &self,
         requested_post_auth_redirect_uri: Option<&str>,
-    ) -> BasicAuthContextResult<WebRoute> {
+    ) -> Result<WebRoute, RedirectTargetError> {
         let redirect_target = self
             .post_auth_redirect_resolver
-            .resolve_redirect_target(requested_post_auth_redirect_uri)
-            .map_err(|source| BasicAuthContextError::RedirectTarget { source })?;
+            .resolve_redirect_target(requested_post_auth_redirect_uri)?;
 
         Ok(resolve_root_web_route(redirect_target.as_str()))
     }
@@ -202,7 +191,6 @@ impl BasicAuthZone {
         Ok(Self {
             zone_prefix: zone_prefix.clone(),
             login_path: zone_prefix.join(config.login_subpath),
-            logout_path: zone_prefix.join(config.logout_subpath),
             post_auth_redirect: Arc::new(config.post_auth_redirect),
             realm: config.realm,
             post_auth_redirect_resolver,
@@ -223,7 +211,6 @@ impl BasicAuthZone {
         Ok(Self {
             zone_prefix: zone_prefix.clone(),
             login_path: zone_prefix.join(config.login_subpath),
-            logout_path: zone_prefix.join(config.logout_subpath),
             post_auth_redirect: Arc::new(post_auth_redirect),
             realm: config.realm.unwrap_or_else(default_realm),
             post_auth_redirect_resolver,
@@ -252,7 +239,6 @@ impl BasicAuthZone {
         Ok(Self {
             zone_prefix: zone_prefix.clone(),
             login_path: zone_prefix.join(config.login_subpath),
-            logout_path: zone_prefix.join(config.logout_subpath),
             post_auth_redirect,
             realm: config.realm.unwrap_or_else(|| context.realm.clone()),
             post_auth_redirect_resolver,
@@ -275,10 +261,6 @@ impl BasicAuthZone {
 
     pub fn is_login_path(&self, request_path: &str) -> bool {
         request_path == &self.login_path as &str
-    }
-
-    pub fn is_logout_path(&self, request_path: &str) -> bool {
-        request_path == &self.logout_path as &str
     }
 
     /// Rule for whether a `WWW-Authenticate` challenge header should be
@@ -304,21 +286,10 @@ impl BasicAuthZone {
     pub fn login_success_response(
         &self,
         requested_post_auth_redirect_uri: Option<&str>,
-    ) -> Result<HttpResponse, BasicAuthContextError> {
+    ) -> Result<HttpResponse, RedirectTargetError> {
         let redirect_target =
             self.resolve_post_auth_redirect_uri(requested_post_auth_redirect_uri)?;
         Ok(HttpResponse::found(&redirect_target))
-    }
-
-    /// Build logout poisoning response.
-    ///
-    /// MUST be `401` without `WWW-Authenticate`.
-    pub fn logout_poison_protocol_response(&self) -> BasicAuthProtocolResponse {
-        BasicAuthProtocolResponse::logout_poison()
-    }
-
-    pub fn logout_poison_response(&self) -> HttpResponse {
-        self.logout_poison_protocol_response().into_http_response()
     }
 
     /// Build unauthorized response for generic handler paths.
@@ -344,11 +315,10 @@ impl BasicAuthZone {
     pub fn resolve_post_auth_redirect_uri(
         &self,
         requested_post_auth_redirect_uri: Option<&str>,
-    ) -> Result<WebRoute, BasicAuthContextError> {
+    ) -> Result<WebRoute, RedirectTargetError> {
         let redirect_target = self
             .post_auth_redirect_resolver
-            .resolve_redirect_target(requested_post_auth_redirect_uri)
-            .map_err(|source| BasicAuthContextError::RedirectTarget { source })?;
+            .resolve_redirect_target(requested_post_auth_redirect_uri)?;
 
         Ok(resolve_web_route(
             &self.zone_prefix,
@@ -387,7 +357,6 @@ mod tests {
 
         assert_eq!(zone.zone_prefix, "/basic");
         assert_eq!(zone.login_subpath, "/login");
-        assert_eq!(zone.logout_subpath, "/logout");
 
         assert_eq!(zone.realm, None);
         assert_eq!(zone.post_auth_redirect, None);
@@ -398,7 +367,6 @@ mod tests {
         let zone_config = BasicAuthZoneConfig::builder()
             .zone_prefix("/internal/basic/".to_string())
             .login_subpath("/signin".to_string())
-            .logout_subpath("signout".to_string())
             .post_auth_redirect(RedirectTargetConfig::strict_default("app"))
             .realm("corp".to_string())
             .build();
@@ -406,7 +374,6 @@ mod tests {
 
         assert_eq!(&zone.zone_prefix as &str, "/internal/basic");
         assert_eq!(&zone.login_path as &str, "/internal/basic/signin");
-        assert_eq!(&zone.logout_path as &str, "/internal/basic/signout");
         assert_eq!(
             &zone
                 .resolve_post_auth_redirect_uri(None)
@@ -473,18 +440,6 @@ mod tests {
             response.challenge_header(),
             Some(r#"Basic realm="securitydept""#),
         );
-    }
-
-    #[test]
-    fn test_logout_poison_protocol_response_omits_www_authenticate() {
-        let zone = BasicAuthZone::from_isolated_config(BasicAuthZoneConfig::default())
-            .expect("zone should build");
-
-        let response = zone.logout_poison_protocol_response();
-
-        assert_eq!(response.kind(), BasicAuthProtocolResponseKind::LogoutPoison);
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assert_eq!(response.challenge_header(), None);
     }
 
     #[test]
@@ -569,8 +524,7 @@ mod tests {
                     .build(),
             ])
             .build();
-        let validator =
-            BasicAuthContextFixedSingleZonePathValidator::new("/basic", "/login", "/logout");
+        let validator = BasicAuthContextFixedSingleZonePathValidator::new("/basic", "/login");
 
         let error = BasicAuthContextConfigSource::resolve_all_with_validator(&config, &validator)
             .expect_err("unexpected zone path should be rejected");

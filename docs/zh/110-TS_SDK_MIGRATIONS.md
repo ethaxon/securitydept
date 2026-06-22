@@ -51,7 +51,7 @@ auth event 是 direct discriminated union，event `type` 固定 payload shape。
 
 ## Persistence
 
-persistence 遵循 committed snapshot policy，而不是第二份 snapshot authority。determination 使用 `persistPolicy: "follow_client" | "skip"`；在 follow policy 下 `snapshot === null` 自然代表 clear persisted state。当前 client 在 determination path 中执行同步，并将 sync failure 记录为 trace event。独立的 best-effort persistence workflow/event surface 是计划工作，不是当前 public behavior。
+persistence 遵循 committed snapshot policy，而不是第二份 snapshot authority。determination 使用 `persistPolicy: "follow_client" | "skip"`；在 follow policy 下 `snapshot === null` 自然代表 clear persisted state。client 会先提交内存 snapshot，再尝试对应的 persistence update。persistence failure 只记录为 trace event，不会回滚或 reject 本来已经成功的 authentication determination。
 
 ## Router 和 Callback Composition
 

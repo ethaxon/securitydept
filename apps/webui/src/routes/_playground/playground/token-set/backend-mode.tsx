@@ -150,8 +150,10 @@ function CollapsibleTokenCell({
 	);
 }
 
-function readMetadata(snapshot: TokenSetAuthSnapshot | null): string {
-	return JSON.stringify(snapshot?.metadata ?? {}, null, 2);
+function readMetadata(snapshot: TokenSetAuthSnapshot | null): string | null {
+	return snapshot && Object.keys(snapshot.metadata).length > 0
+		? JSON.stringify(snapshot.metadata, null, 2)
+		: null;
 }
 
 function isCancelledClientError(error: unknown): boolean {
@@ -330,6 +332,7 @@ function TokenSetBackendModePlaygroundReadyContent({
 	});
 	const authActionPending =
 		login.isPending || refresh.isPending || clear.isPending;
+	const metadata = readMetadata(state);
 
 	useEffect(() => {
 		if (state?.tokens.accessToken) {
@@ -429,20 +432,19 @@ function TokenSetBackendModePlaygroundReadyContent({
 
 	return (
 		<Layout>
-			<div className="mx-auto max-w-6xl space-y-6">
+			<div className="mx-auto max-w-6xl space-y-5">
 				<section className="rounded-[28px] border border-emerald-200 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.2),transparent_38%),linear-gradient(135deg,rgba(236,253,245,1),rgba(255,255,255,0.94))] p-8 shadow-sm dark:border-emerald-900/60 dark:bg-[radial-gradient(circle_at_top_left,rgba(5,150,105,0.24),transparent_35%),linear-gradient(135deg,rgba(9,9,11,1),rgba(16,24,39,0.94))]">
 					<div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
 						<div className="max-w-3xl space-y-3">
 							<div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/70 bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 backdrop-blur dark:border-emerald-800 dark:bg-zinc-950/40 dark:text-emerald-300">
-								Token Set Backend Mode Playground
+								Token Set Backend Mode
 							</div>
 							<h1 className="text-3xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
-								Backend-mode client diagnostics
+								Backend OIDC mode
 							</h1>
 							<p className="text-sm leading-6 text-zinc-600 dark:text-zinc-300">
-								Inspect backend OIDC login, refresh, local logout, token state,
-								bearer propagation, and tracing. Auth entries and groups are
-								application data and remain in the dashboard.
+								Test login, refresh, local state clearing, bearer propagation,
+								and tracing.
 							</p>
 						</div>
 						<div className="flex flex-col gap-3 sm:flex-row">
@@ -452,7 +454,7 @@ function TokenSetBackendModePlaygroundReadyContent({
 								disabled={authActionPending}
 								className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
 							>
-								Start Backend-Mode Flow
+								Start login
 							</button>
 							<button
 								type="button"
@@ -460,7 +462,7 @@ function TokenSetBackendModePlaygroundReadyContent({
 								disabled={authActionPending || !state?.tokens.refreshMaterial}
 								className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white/80 px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-400 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950/60 dark:text-zinc-200 dark:hover:border-zinc-500"
 							>
-								{refresh.isPending ? "Refreshing..." : "Refresh Now"}
+								{refresh.isPending ? "Refreshing..." : "Refresh"}
 							</button>
 							<button
 								type="button"
@@ -468,7 +470,7 @@ function TokenSetBackendModePlaygroundReadyContent({
 								disabled={authActionPending}
 								className="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-white/80 px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-400 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950/60 dark:text-zinc-200 dark:hover:border-zinc-500"
 							>
-								{clear.isPending ? "Clearing..." : "Forget Backend Mode State"}
+								{clear.isPending ? "Clearing..." : "Clear state"}
 							</button>
 						</div>
 					</div>
@@ -476,14 +478,9 @@ function TokenSetBackendModePlaygroundReadyContent({
 
 				<div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
 					<section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-						<div className="mb-4">
-							<h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-								Runtime State
-							</h2>
-							<p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-								Token state: {state ? "available" : "empty"}
-							</p>
-						</div>
+						<h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+							Token state
+						</h2>
 						{actionError ? (
 							<ErrorPresentationCallout
 								descriptor={actionError}
@@ -527,9 +524,15 @@ function TokenSetBackendModePlaygroundReadyContent({
 						<h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
 							Metadata
 						</h2>
-						<pre className="mt-4 overflow-x-auto rounded-lg bg-zinc-950 p-4 text-xs text-zinc-100">
-							{readMetadata(state)}
-						</pre>
+						{metadata ? (
+							<pre className="mt-4 overflow-x-auto rounded-lg bg-zinc-950 p-4 text-xs text-zinc-100">
+								{metadata}
+							</pre>
+						) : (
+							<p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
+								No metadata available.
+							</p>
+						)}
 					</section>
 				</div>
 
@@ -537,12 +540,11 @@ function TokenSetBackendModePlaygroundReadyContent({
 					<div className="flex flex-wrap items-center justify-between gap-3">
 						<div>
 							<h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-								Propagation Route Probe
+								Propagation probe
 							</h2>
 							<p className="mt-1 max-w-4xl text-sm text-zinc-500 dark:text-zinc-400">
-								Exercise the propagation boundary with the current backend-mode
-								bearer and an explicit forwarding directive. This probe does not
-								read or mutate dashboard business data.
+								Send the current bearer through an explicit forwarding
+								directive.
 							</p>
 						</div>
 						<div className="flex flex-wrap gap-2">
@@ -557,7 +559,7 @@ function TokenSetBackendModePlaygroundReadyContent({
 							>
 								{propagationStatus.kind === PropagationStatusKind.Loading
 									? "Probing..."
-									: "Probe Propagation Route"}
+									: "Run probe"}
 							</button>
 							<button
 								type="button"
@@ -567,7 +569,7 @@ function TokenSetBackendModePlaygroundReadyContent({
 								}
 								className="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
 							>
-								Cancel Probe
+								Cancel
 							</button>
 						</div>
 					</div>
@@ -575,7 +577,7 @@ function TokenSetBackendModePlaygroundReadyContent({
 					<div className="mt-4 grid gap-4 lg:grid-cols-3">
 						<div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
 							<p className="text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-								Propagation Route
+								Route
 							</p>
 							<input
 								type="text"
@@ -583,13 +585,10 @@ function TokenSetBackendModePlaygroundReadyContent({
 								onChange={(event) => setPropagationPath(event.target.value)}
 								className="mt-3 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
 							/>
-							<p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-								The default route forwards to the same server's health endpoint.
-							</p>
 						</div>
 						<div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
 							<p className="text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-								Propagation Directive
+								Directive
 							</p>
 							<textarea
 								value={propagationDirective}
@@ -599,13 +598,18 @@ function TokenSetBackendModePlaygroundReadyContent({
 								rows={3}
 								className="mt-3 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
 							/>
-							<pre className="mt-3 overflow-x-auto rounded-lg bg-zinc-950 p-3 text-xs text-zinc-100">
-								{DEFAULT_PROPAGATION_FORWARDER_CONFIG_SNIPPET}
-							</pre>
+							<details className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+								<summary className="cursor-pointer select-none">
+									Forwarder config
+								</summary>
+								<pre className="mt-2 overflow-x-auto rounded-lg bg-zinc-950 p-3 text-xs text-zinc-100">
+									{DEFAULT_PROPAGATION_FORWARDER_CONFIG_SNIPPET}
+								</pre>
+							</details>
 						</div>
 						<div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
 							<p className="text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
-								Probe Result
+								Result
 							</p>
 							<p className="mt-2 text-sm">
 								{describePropagationStatus(propagationStatus)}

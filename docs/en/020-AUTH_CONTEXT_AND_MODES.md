@@ -12,9 +12,11 @@ An auth context is an application-facing authentication integration boundary. It
 
 ## Basic Auth Context
 
-A Basic Auth `zone` describes one challenge boundary: route prefix, login/logout paths, post-auth redirect policy, and optional client-IP restrictions. A zone is not an auth context of its own.
+A Basic Auth `zone` describes one challenge boundary: route prefix, login path, post-auth redirect policy, and optional client-IP restrictions. A zone is not an auth context of its own.
 
-The browser cannot reliably erase cached Basic Auth credentials. Logout therefore uses a protocol-compatible challenge/poisoning flow; it must not be presented as ordinary token deletion.
+The browser owns cached Basic Auth credentials and exposes no reliable programmatic revocation operation. The server therefore exposes no Basic Auth logout route. `BasicAuthContextClient.logout()` only clears the client's current in-memory boundary projection; a later probe may resolve as authenticated again when the browser continues sending credentials.
+
+The reference server accepts root-absolute, same-origin WebUI return paths for Basic Auth login, including dashboard routes. Absolute URLs, network-path references such as `//host/path`, and backslash variants are rejected by the server redirect policy.
 
 ## Session Context
 

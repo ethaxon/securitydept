@@ -265,10 +265,10 @@ describe("Angular workspace build topology guardrails", () => {
 		};
 
 		expect(rootPackage.scripts?.build).toBe("turbo run build");
-		expect(turboConfig.tasks?.build?.dependsOn).toContain("^build:dep");
+		expect(turboConfig.tasks?.build?.dependsOn).toContain("^build");
 		expect(turboConfig.tasks?.build?.outputs).toContain("dist/**");
 		expect(turboConfig.tasks?.["build:dep"]?.outputLogs).toBe("errors-only");
-		expect(turboConfig.tasks?.test?.dependsOn).toContain("build:dep");
+		expect(turboConfig.tasks?.test?.dependsOn).toContain("build");
 	});
 
 	it("declares every direct cross-package import in the importing package", () => {

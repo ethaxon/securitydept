@@ -23,7 +23,7 @@
 	],
 	"tasks": {
 		"build": {
-			"dependsOn": ["^build:dep"],
+			"dependsOn": ["^build"],
 			"outputs": ["dist/**"],
 			"inputs": [
 				"$TURBO_DEFAULT$",
@@ -46,7 +46,7 @@
 			"env": ["VITE_*"]
 		},
 		"test": {
-			"dependsOn": ["build:dep"],
+			"dependsOn": ["build"],
 			"outputs": [],
 			"inputs": [
 				"$TURBO_DEFAULT$",
@@ -56,19 +56,19 @@
 			"env": ["CI", "GITHUB_ACTIONS"]
 		},
 		"test:watch": {
-			"dependsOn": ["build:dep"],
+			"dependsOn": ["build"],
 			"cache": false,
 			"persistent": true,
 			"interruptible": true
 		},
 		"dev": {
-			"dependsOn": ["^build:dep"],
+			"dependsOn": ["^build"],
 			"cache": false,
 			"persistent": true,
 			"interruptible": true
 		},
 		"e2e": {
-			"dependsOn": ["build:dep"],
+			"dependsOn": ["build"],
 			"cache": false,
 			"env": ["CI", "GITHUB_ACTIONS"],
 			"passThroughEnv": [
@@ -79,11 +79,11 @@
 			]
 		},
 		"stage": {
-			"dependsOn": ["build:dep"],
+			"dependsOn": ["build"],
 			"cache": false
 		},
 		"@securitydept/ts-sdks#test": {
-			"dependsOn": ["^build:dep"],
+			"dependsOn": ["^build"],
 			"outputs": [],
 			"inputs": [
 				"$TURBO_DEFAULT$",

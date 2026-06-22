@@ -5,7 +5,7 @@ use axum::{
     extract::{ConnectInfo, Query},
     http::HeaderMap,
     response::Response,
-    routing::{get, post},
+    routing::get,
 };
 use serde::Deserialize;
 
@@ -23,9 +23,7 @@ pub struct BasicAuthLoginQuery {
 }
 
 pub fn router() -> Router {
-    Router::new()
-        .route("/login", get(login))
-        .route("/logout", post(logout))
+    Router::new().route("/login", get(login))
 }
 
 pub async fn login(
@@ -61,26 +59,4 @@ pub async fn login(
         }
     }
     result.map(into_axum_response).map_err(ServerError::from)
-}
-
-pub async fn logout(Extension(state): Extension<ServerState>) -> Response {
-    let diagnosed = state
-        .basic_auth_context_service()
-        .logout_diagnosed("/basic/logout");
-    let (diagnosis, result) = diagnosed.into_parts();
-    let context = RouteDiagnosisContext {
-        route: "/basic/logout",
-        method: "POST",
-        status: result
-            .as_ref()
-            .ok()
-            .map(|response| response.status.as_u16()),
-    };
-    match &result {
-        Ok(_) => log_route_diagnosis(context, &diagnosis, "Basic-auth logout completed"),
-        Err(error) => {
-            log_route_diagnosis_error(context, &diagnosis, error, "Basic-auth logout failed")
-        }
-    }
-    into_axum_response(result.expect("basic-auth logout diagnosis should not fail at route layer"))
 }

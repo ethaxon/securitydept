@@ -51,7 +51,6 @@ describe("BasicAuthContextClient Angular adapter", () => {
 							{
 								zonePrefix: "/internal/basic",
 								loginSubpath: "/signin",
-								logoutSubpath: "/signout",
 							},
 						],
 					},
@@ -71,15 +70,11 @@ describe("BasicAuthContextClient Angular adapter", () => {
 			expect.objectContaining({
 				zonePrefix: "/internal/basic",
 				loginPath: "/internal/basic/signin",
-				logoutPath: "/internal/basic/signout",
 			}),
 		);
 
 		expect(client.loginUrl(zone!, "/playground/basic-auth")).toBe(
 			"https://auth.example.com/internal/basic/signin?post_auth_redirect_uri=%2Fplayground%2Fbasic-auth",
-		);
-		expect(client.logoutUrl(zone!)).toBe(
-			"https://auth.example.com/internal/basic/signout",
 		);
 		expect(client.handleUnauthorized("/internal/basic/reports", 401)).toEqual({
 			kind: AuthGuardResultKind.Redirect,

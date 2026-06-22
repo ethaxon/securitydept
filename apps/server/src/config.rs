@@ -4,6 +4,7 @@ use figment::{
     Figment,
     providers::{Env, Format, Toml},
 };
+use regex::Regex;
 use securitydept_core::{
     basic_auth_context::{
         BasicAuthContextConfig, BasicAuthContextConfigSource,
@@ -28,8 +29,8 @@ use securitydept_core::{
         backend_oidc_mode::{
             BackendOidcModeConfigSource, BackendOidcModeConfigValidationError,
             BackendOidcModeConfigValidator, BackendOidcModeFixedRedirectUriValidator,
-            BackendOidcModeRedirectUriConfig, MokaPendingAuthStateMetadataRedemptionConfig,
-            PostAuthRedirectPolicy, ResolvedBackendOidcModeConfig,
+            MokaPendingAuthStateMetadataRedemptionConfig, PostAuthRedirectPolicy,
+            ResolvedBackendOidcModeConfig,
         },
         cross_mode_config::{
             BackendOidcModeOverrideConfig, FrontendOidcModeOverrideConfig,
@@ -122,48 +123,29 @@ impl BackendOidcModeConfigValidator for ServerBackendOidcFixedPostAuthRedirectVa
     }
 }
 
-fn server_session_post_auth_redirect() -> RedirectTargetConfig {
+fn server_webui_post_auth_redirect() -> RedirectTargetConfig {
     RedirectTargetConfig::dynamic_default_and_dynamic_targets(
         "/",
-        [
-            RedirectTargetRule::Strict {
-                value: "/".to_string(),
-            },
-            RedirectTargetRule::Strict {
-                value: "/playground/session".to_string(),
-            },
-        ],
+        [RedirectTargetRule::Regex {
+            // Allow same-origin absolute paths while rejecting `//host` and backslash variants.
+            value: Regex::new(r"^/(?:$|[^/\\].*)$")
+                .expect("the server WebUI redirect rule must be valid"),
+        }],
     )
+}
+
+fn server_session_post_auth_redirect() -> RedirectTargetConfig {
+    server_webui_post_auth_redirect()
 }
 
 fn server_token_set_post_auth_redirect() -> PostAuthRedirectPolicy {
     PostAuthRedirectPolicy::Resolved {
-        config: BackendOidcModeRedirectUriConfig::dynamic_default_and_dynamic_targets(
-            "/",
-            [
-                RedirectTargetRule::Strict {
-                    value: "/".to_string(),
-                },
-                RedirectTargetRule::Strict {
-                    value: "/playground/token-set/backend-mode".to_string(),
-                },
-            ],
-        ),
+        config: server_webui_post_auth_redirect(),
     }
 }
 
 fn server_basic_auth_post_auth_redirect() -> RedirectTargetConfig {
-    RedirectTargetConfig::dynamic_default_and_dynamic_targets(
-        "/",
-        [
-            RedirectTargetRule::Strict {
-                value: "/".to_string(),
-            },
-            RedirectTargetRule::Strict {
-                value: "/playground/basic-auth".to_string(),
-            },
-        ],
-    )
+    server_webui_post_auth_redirect()
 }
 
 fn is_default_post_auth_redirect_policy(policy: &PostAuthRedirectPolicy) -> bool {
@@ -350,7 +332,7 @@ impl ServerConfig {
 
         config
             .resolve_all_with_validator(&(
-                BasicAuthContextFixedSingleZonePathValidator::new("/basic", "/login", "/logout"),
+                BasicAuthContextFixedSingleZonePathValidator::new("/basic", "/login"),
                 BasicAuthContextFixedPostAuthRedirectValidator::new(
                     server_basic_auth_post_auth_redirect(),
                 ),
@@ -548,6 +530,41 @@ mod tests {
         config
             .resolve_substrate()
             .expect("resource-server config should inherit shared defaults");
+    }
+
+    #[test]
+    fn webui_post_auth_redirect_accepts_local_paths_and_rejects_external_targets() {
+        let resolver =
+            securitydept_core::utils::redirect::UriRelativeRedirectTargetResolver::from_config(
+                server_webui_post_auth_redirect(),
+            )
+            .expect("server WebUI redirect policy should be valid");
+
+        for target in [
+            "/",
+            "/entries",
+            "/entries/example/edit?tab=credentials",
+            "/groups#members",
+        ] {
+            assert_eq!(
+                resolver
+                    .resolve_redirect_target(Some(target))
+                    .expect("same-origin WebUI path should be accepted")
+                    .to_string(),
+                target
+            );
+        }
+
+        for target in [
+            "//evil.example/path",
+            r"/\evil.example/path",
+            "https://evil.example/path",
+        ] {
+            assert!(
+                resolver.resolve_redirect_target(Some(target)).is_err(),
+                "external target should be rejected: {target}"
+            );
+        }
     }
 
     #[test]

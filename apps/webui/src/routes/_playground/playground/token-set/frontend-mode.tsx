@@ -195,7 +195,7 @@ function TokenSetFrontendModePlaygroundContent({
 
 	return (
 		<Layout>
-			<div className="mx-auto flex max-w-5xl flex-col gap-6">
+			<div className="mx-auto flex max-w-5xl flex-col gap-5">
 				<section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
 					<div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
 						<div className="space-y-3">
@@ -204,13 +204,11 @@ function TokenSetFrontendModePlaygroundContent({
 							</p>
 							<div className="space-y-2">
 								<h1 className="text-3xl font-semibold tracking-tight">
-									Browser-owned popup and callback reference path
+									Frontend OIDC mode
 								</h1>
 								<p className="max-w-3xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-									This reference route proves the frontend-owned token-set OIDC
-									story in the real host app: redirect callback, popup relay,
-									and callback handling all land inside the same browser-owned
-									host.
+									Test redirect and popup login, refresh the resulting token
+									set, and inspect the client trace.
 								</p>
 							</div>
 						</div>
@@ -224,7 +222,7 @@ function TokenSetFrontendModePlaygroundContent({
 								className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-teal-500 disabled:cursor-wait disabled:opacity-70"
 							>
 								<FlaskConical className="h-4 w-4" />
-								Start frontend-mode login
+								Redirect login
 							</button>
 							<button
 								type="button"
@@ -235,7 +233,7 @@ function TokenSetFrontendModePlaygroundContent({
 								className="inline-flex items-center justify-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm font-medium text-teal-700 transition-colors hover:border-teal-400 hover:bg-teal-100 disabled:cursor-wait disabled:opacity-70 dark:border-teal-900/80 dark:bg-teal-950/40 dark:text-teal-200 dark:hover:border-teal-700 dark:hover:bg-teal-950/70"
 							>
 								<MonitorUp className="h-4 w-4" />
-								Start popup login
+								Popup login
 							</button>
 							<button
 								type="button"
@@ -257,7 +255,7 @@ function TokenSetFrontendModePlaygroundContent({
 								className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-wait disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
 							>
 								<Trash2 className="h-4 w-4" />
-								Forget frontend-mode state
+								Clear state
 							</button>
 						</div>
 					</div>
@@ -278,10 +276,6 @@ function TokenSetFrontendModePlaygroundContent({
 						<p className="mt-3 font-mono text-sm text-zinc-700 dark:text-zinc-300">
 							{TOKEN_SET_FRONTEND_MODE_CONFIG.paths.callback}
 						</p>
-						<p className="mt-3 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-							The OIDC provider redirects here for the browser-owned callback,
-							and the React SDK completes the code exchange on an app route.
-						</p>
 					</div>
 					<div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
 						<p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500 dark:text-zinc-400">
@@ -290,10 +284,6 @@ function TokenSetFrontendModePlaygroundContent({
 						<p className="mt-3 font-mono text-sm text-zinc-700 dark:text-zinc-300">
 							{TOKEN_SET_FRONTEND_MODE_CONFIG.paths.popupCallback}
 						</p>
-						<p className="mt-3 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-							Popup login returns to an app-owned relay route that posts the
-							callback URL back to this page and closes the popup.
-						</p>
 					</div>
 					<div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
 						<p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500 dark:text-zinc-400">
@@ -301,10 +291,6 @@ function TokenSetFrontendModePlaygroundContent({
 						</p>
 						<p className="mt-3 font-mono text-sm text-zinc-700 dark:text-zinc-300">
 							{renderTokenPreview(state?.tokens.accessToken)}
-						</p>
-						<p className="mt-3 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-							Dashboard API calls and TanStack route security both read from
-							this same frontend-mode client.
 						</p>
 					</div>
 				</section>
@@ -317,15 +303,9 @@ function TokenSetFrontendModePlaygroundContent({
 				<section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
 					<div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 						<div className="space-y-2">
-							<h2 className="text-xl font-semibold">
-								Bearer integration result
-							</h2>
+							<h2 className="text-xl font-semibold">Dashboard integration</h2>
 							<p className="text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-								Once this frontend-mode client holds an access token, the
-								protected dashboard routes reuse it through the same token-set
-								React Query integration that backend mode uses. That is the
-								host-level proof for frontend bearer integration in this
-								iteration.
+								Open the protected dashboard with the current access token.
 							</p>
 						</div>
 						<Link

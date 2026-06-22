@@ -12,9 +12,11 @@ auth context 是面向应用的 authentication integration boundary。它定义 
 
 ## Basic Auth Context
 
-Basic Auth `zone` 描述一个 challenge boundary：route prefix、login/logout path、post-auth redirect policy，以及可选 client-IP restriction。zone 不是独立的 auth context。
+Basic Auth `zone` 描述一个 challenge boundary：route prefix、login path、post-auth redirect policy，以及可选 client-IP restriction。zone 不是独立的 auth context。
 
-浏览器不能可靠地清除已缓存的 Basic Auth credential。logout 因此使用 protocol-compatible challenge/poisoning flow，不能描述成普通 token deletion。
+浏览器持有已缓存的 Basic Auth credential，且没有可靠的程序化撤销操作。因此 server 不暴露 Basic Auth logout route。`BasicAuthContextClient.logout()` 只清除 client 当前的内存 boundary projection；如果浏览器继续发送 credential，后续 probe 仍可能重新解析为 authenticated。
+
+reference server 允许 Basic Auth 登录回跳到 WebUI 内以 `/` 开头的同源路径，包括 dashboard route。绝对 URL、`//host/path` 形式的 network-path reference 和反斜杠变体会被 server redirect policy 拒绝。
 
 ## Session Context
 
