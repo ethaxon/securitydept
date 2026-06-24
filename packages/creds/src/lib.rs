@@ -21,11 +21,11 @@ pub use config::{BasicAuthCredsConfig, StaticTokenAuthCredsConfig};
 pub use error::{CredsError, CredsResult};
 #[cfg(feature = "jwe")]
 pub use jwe::{
-    JweDecryptedData, JweTokenData, decrypt_token_jwe, decrypt_token_jwe_with_jwks,
+    JweDecryptedData, JweHeader, JweTokenData, decrypt_token_jwe, decrypt_token_jwe_with_jwks,
     verify_token_jwe_payload_with_jwks,
 };
 #[cfg(all(feature = "jwk", feature = "jwe"))]
-pub use jwk::{JweJwkTrait, JweJwksTrait, LocalJweDecryptionKeySet};
+pub use jwk::{JweJwk, JweJwkSet, JweJwkTrait, JweJwksTrait, LocalJweDecryptionKeySet};
 #[cfg(all(feature = "jwk", feature = "jwt"))]
 pub use jwk::{JwtJwkTrait, JwtJwksTrait};
 #[cfg(feature = "jwt")]

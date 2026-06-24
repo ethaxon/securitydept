@@ -104,7 +104,14 @@ const STANDALONE_EXTERNAL_REEXPORTS = new Map<string, string>([
 	["oauth2", "reexport-oauth2"],
 	["openidconnect", "reexport-openidconnect"],
 	["jsonwebtoken", "reexport-jsonwebtoken"],
-	["josekit", "reexport-josekit"],
+	["no-way-jose-core", "reexport-no-way-jose"],
+	["no-way-jose-aes-cbc-hs", "reexport-no-way-jose"],
+	["no-way-jose-aes-gcm", "reexport-no-way-jose"],
+	["no-way-jose-aes-gcm-kw", "reexport-no-way-jose"],
+	["no-way-jose-aes-kw", "reexport-no-way-jose"],
+	["no-way-jose-ecdh-es", "reexport-no-way-jose"],
+	["no-way-jose-pbes2", "reexport-no-way-jose"],
+	["no-way-jose-rsa", "reexport-no-way-jose"],
 ]);
 
 const EXCLUDED_FEATURE_PATTERNS = [/(?:^|[-_])test$/];
@@ -148,7 +155,10 @@ function main() {
 			externalCrate === "openidconnect"
 				? ["dep:openidconnect", "reexport-oauth2"]
 				: [`dep:${externalCrate}`];
-		generatedFeatures.set(featureName, deps);
+		generatedFeatures.set(featureName, [
+			...(generatedFeatures.get(featureName) ?? []),
+			...deps,
+		]);
 	}
 
 	for (const item of INTERNAL_REEXPORT_CRATES) {
@@ -181,8 +191,10 @@ function main() {
 	}
 
 	const fullFeatureDeps = [
-		...STANDALONE_EXTERNAL_REEXPORTS.values(),
-		...buildOrderedFeatureNames(),
+		...new Set([
+			...STANDALONE_EXTERNAL_REEXPORTS.values(),
+			...buildOrderedFeatureNames(),
+		]),
 	];
 
 	const featuresSection = renderFeaturesSection(
@@ -436,7 +448,10 @@ function renderFeaturesSection(
 			"reexport-jsonwebtoken",
 			features.get("reexport-jsonwebtoken") ?? [],
 		),
-		renderFeature("reexport-josekit", features.get("reexport-josekit") ?? []),
+		renderFeature(
+			"reexport-no-way-jose",
+			features.get("reexport-no-way-jose") ?? [],
+		),
 	];
 
 	for (const item of INTERNAL_REEXPORT_CRATES) {
@@ -480,8 +495,17 @@ function renderFeature(name: string, deps: string[]): string {
 
 function renderCoreLibSource(): string {
 	const lines = [
-		'#[cfg(feature = "reexport-josekit")]',
-		"pub use josekit;",
+		'#[cfg(feature = "reexport-no-way-jose")]',
+		"pub mod no_way_jose {",
+		"    pub use no_way_jose_aes_cbc_hs as aes_cbc_hs;",
+		"    pub use no_way_jose_aes_gcm as aes_gcm;",
+		"    pub use no_way_jose_aes_gcm_kw as aes_gcm_kw;",
+		"    pub use no_way_jose_aes_kw as aes_kw;",
+		"    pub use no_way_jose_core as core;",
+		"    pub use no_way_jose_ecdh_es as ecdh_es;",
+		"    pub use no_way_jose_pbes2 as pbes2;",
+		"    pub use no_way_jose_rsa as rsa;",
+		"}",
 		'#[cfg(feature = "reexport-jsonwebtoken")]',
 		"pub use jsonwebtoken;",
 		'#[cfg(feature = "reexport-oauth2")]',

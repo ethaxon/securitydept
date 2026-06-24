@@ -1,5 +1,14 @@
-#[cfg(feature = "reexport-josekit")]
-pub use josekit;
+#[cfg(feature = "reexport-no-way-jose")]
+pub mod no_way_jose {
+    pub use no_way_jose_aes_cbc_hs as aes_cbc_hs;
+    pub use no_way_jose_aes_gcm as aes_gcm;
+    pub use no_way_jose_aes_gcm_kw as aes_gcm_kw;
+    pub use no_way_jose_aes_kw as aes_kw;
+    pub use no_way_jose_core as core;
+    pub use no_way_jose_ecdh_es as ecdh_es;
+    pub use no_way_jose_pbes2 as pbes2;
+    pub use no_way_jose_rsa as rsa;
+}
 #[cfg(feature = "reexport-jsonwebtoken")]
 pub use jsonwebtoken;
 #[cfg(feature = "reexport-oauth2")]

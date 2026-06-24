@@ -12,8 +12,14 @@ pub trait JwtJwkTrait {
 
 #[cfg(feature = "jwe")]
 pub trait JweJwkTrait {
-    fn to_jwe_jwk<'a>(&'a self) -> CredsResult<Cow<'a, josekit::jwk::Jwk>>;
+    fn to_jwe_jwk<'a>(&'a self) -> CredsResult<Cow<'a, JweJwk>>;
 }
+
+#[cfg(feature = "jwe")]
+pub type JweJwk = no_way_jose_core::jwk::Jwk;
+
+#[cfg(feature = "jwe")]
+pub type JweJwkSet = no_way_jose_core::jwk::JwkSet;
 
 #[cfg(feature = "jwt")]
 pub trait JwtJwksTrait<JWK: JwtJwkTrait> {
@@ -48,38 +54,47 @@ pub trait JweJwksTrait<JWK: JweJwkTrait> {
 }
 
 #[cfg(feature = "jwe")]
-impl JweJwkTrait for josekit::jwk::Jwk {
-    fn to_jwe_jwk<'a>(&'a self) -> CredsResult<Cow<'a, josekit::jwk::Jwk>> {
+impl JweJwkTrait for JweJwk {
+    fn to_jwe_jwk<'a>(&'a self) -> CredsResult<Cow<'a, JweJwk>> {
         Ok(Cow::Borrowed(self))
+    }
+}
+
+#[cfg(feature = "jwe")]
+impl JweJwksTrait<JweJwk> for JweJwkSet {
+    fn find(&self, kid: &str) -> Option<&JweJwk> {
+        self.find_by_kid(kid)
+    }
+
+    fn keys(&self) -> &[JweJwk] {
+        &self.keys
     }
 }
 
 #[cfg(feature = "jwe")]
 #[derive(Debug, Clone)]
 pub struct LocalJweDecryptionKeySet {
-    keys: Vec<josekit::jwk::Jwk>,
+    keys: Vec<JweJwk>,
 }
 
 #[cfg(feature = "jwe")]
 impl LocalJweDecryptionKeySet {
-    pub fn new(keys: Vec<josekit::jwk::Jwk>) -> Self {
+    pub fn new(keys: Vec<JweJwk>) -> Self {
         Self { keys }
     }
 
-    pub fn keys(&self) -> &[josekit::jwk::Jwk] {
+    pub fn keys(&self) -> &[JweJwk] {
         &self.keys
     }
 }
 
 #[cfg(feature = "jwe")]
-impl JweJwksTrait<josekit::jwk::Jwk> for LocalJweDecryptionKeySet {
-    fn find(&self, kid: &str) -> Option<&josekit::jwk::Jwk> {
-        self.keys
-            .iter()
-            .find(|jwk| jwk.key_id().is_some_and(|value| value == kid))
+impl JweJwksTrait<JweJwk> for LocalJweDecryptionKeySet {
+    fn find(&self, kid: &str) -> Option<&JweJwk> {
+        self.keys.iter().find(|jwk| jwk.kid.as_deref() == Some(kid))
     }
 
-    fn keys(&self) -> &[josekit::jwk::Jwk] {
+    fn keys(&self) -> &[JweJwk] {
         &self.keys
     }
 }

@@ -23,8 +23,8 @@ pub struct OAuthResourceServerJweConfig {
     pub jwe_jwk_path: Option<String>,
     /// Path to a local PEM private key file used to decrypt JWE access tokens.
     ///
-    /// Supported PEM inputs are auto-detected. RSA and EC private keys are the
-    /// primary expected formats for JWE.
+    /// Supported PEM inputs are RSA PKCS#1/PKCS#8 and P-256/P-384
+    /// SEC1/PKCS#8 private keys.
     #[serde(default)]
     pub jwe_pem_path: Option<String>,
     /// Optional `kid` override applied to the JWK derived from `jwe_pem_path`.

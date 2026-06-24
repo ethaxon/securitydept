@@ -19,7 +19,7 @@ full = [
     "reexport-oauth2",
     "reexport-openidconnect",
     "reexport-jsonwebtoken",
-    "reexport-josekit",
+    "reexport-no-way-jose",
     "basic-auth-context",
     "creds",
     "creds-jwk",
@@ -67,7 +67,16 @@ reexport-openidconnect = [
     "reexport-oauth2",
 ]
 reexport-jsonwebtoken = ["dep:jsonwebtoken"]
-reexport-josekit = ["dep:josekit"]
+reexport-no-way-jose = [
+    "dep:no-way-jose-core",
+    "dep:no-way-jose-aes-cbc-hs",
+    "dep:no-way-jose-aes-gcm",
+    "dep:no-way-jose-aes-gcm-kw",
+    "dep:no-way-jose-aes-kw",
+    "dep:no-way-jose-ecdh-es",
+    "dep:no-way-jose-pbes2",
+    "dep:no-way-jose-rsa",
+]
 
 # Basic Auth Context
 basic-auth-context = [
@@ -101,8 +110,8 @@ creds-jwe = [
     "creds",
     "securitydept-creds/jwe",
     "creds-jwt",
-    "reexport-josekit",
     "creds-jwk",
+    "reexport-no-way-jose",
 ]
 creds-rfc9068 = [
     "creds",
@@ -156,7 +165,7 @@ oauth-resource-server-jwe = [
     "oauth-resource-server",
     "securitydept-oauth-resource-server/jwe",
     "creds-jwe",
-    "reexport-josekit",
+    "reexport-no-way-jose",
 ]
 
 # Oidc Client
@@ -278,4 +287,11 @@ securitydept-creds-manage = { version = "~0.3.0-beta.4", path = "../creds-manage
 openidconnect = { workspace = true, optional = true }
 oauth2 = { workspace = true, optional = true }
 jsonwebtoken = { workspace = true, optional = true }
-josekit = { workspace = true, optional = true }
+no-way-jose-core = { workspace = true, optional = true }
+no-way-jose-aes-cbc-hs = { workspace = true, optional = true }
+no-way-jose-aes-gcm = { workspace = true, optional = true }
+no-way-jose-aes-gcm-kw = { workspace = true, optional = true }
+no-way-jose-aes-kw = { workspace = true, optional = true }
+no-way-jose-ecdh-es = { workspace = true, optional = true }
+no-way-jose-pbes2 = { workspace = true, optional = true }
+no-way-jose-rsa = { workspace = true, optional = true }

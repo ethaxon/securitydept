@@ -19,7 +19,15 @@ config-schema = [
     "securitydept-oauth-provider/config-schema",
     "serde_with/schemars_1",
 ]
-jwe = ["securitydept-creds/jwe", "dep:josekit"]
+jwe = [
+    "securitydept-creds/jwe",
+    "dep:no-way-jose-core",
+    "dep:no-way-jose-ecdh-es",
+    "dep:no-way-jose-rsa",
+    "dep:p256",
+    "dep:p384",
+    "dep:rsa",
+]
 
 [dependencies]
 securitydept-oauth-provider = { version = "~0.3.0-beta.4", path = "../oauth-provider" }
@@ -39,8 +47,14 @@ openidconnect = { workspace = true }
 oauth2 = { workspace = true }
 chrono = { workspace = true }
 humantime-serde = { workspace = true }
-josekit = { workspace = true, optional = true }
+no-way-jose-core = { workspace = true, optional = true }
+no-way-jose-ecdh-es = { workspace = true, optional = true }
+no-way-jose-rsa = { workspace = true, optional = true }
+p256 = { workspace = true, optional = true }
+p384 = { workspace = true, optional = true }
+rsa = { workspace = true, optional = true }
 http = { workspace = true }
 
 [dev-dependencies]
 jsonwebtoken = { workspace = true }
+rand = { workspace = true }

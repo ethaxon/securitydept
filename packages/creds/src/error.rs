@@ -35,8 +35,8 @@ pub enum CredsError {
     JSONWebToken { source: jsonwebtoken::errors::Error },
 
     #[cfg(feature = "jwe")]
-    #[snafu(display("JWE error: {source}"))]
-    JoseKit { source: josekit::JoseError },
+    #[snafu(display("JWE error: {message}"))]
+    Jwe { message: String },
 }
 
 impl ToHttpStatus for CredsError {
@@ -48,7 +48,7 @@ impl ToHttpStatus for CredsError {
             #[cfg(feature = "jwt")]
             CredsError::JSONWebToken { .. } => StatusCode::UNAUTHORIZED,
             #[cfg(feature = "jwe")]
-            CredsError::JoseKit { .. } => StatusCode::UNAUTHORIZED,
+            CredsError::Jwe { .. } => StatusCode::UNAUTHORIZED,
             CredsError::PasswordHash { .. }
             | CredsError::ConfigError { .. }
             | CredsError::RandomBytes { .. } => StatusCode::INTERNAL_SERVER_ERROR,
@@ -81,7 +81,7 @@ impl ToErrorPresentation for CredsError {
                 UserRecovery::Reauthenticate,
             ),
             #[cfg(feature = "jwe")]
-            CredsError::JoseKit { .. } => ErrorPresentation::new(
+            CredsError::Jwe { .. } => ErrorPresentation::new(
                 "auth_invalid_token",
                 "The access token is invalid or expired.",
                 UserRecovery::Reauthenticate,

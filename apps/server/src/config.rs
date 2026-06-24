@@ -510,8 +510,11 @@ fn default_basic_auth_context() -> BasicAuthContextConfig<Argon2BasicAuthCred> {
 mod tests {
     use super::*;
 
-    fn parse_config(source: &str) -> Result<ServerConfig, figment::Error> {
-        Figment::new().merge(Toml::string(source)).extract()
+    fn parse_config(source: &str) -> Result<ServerConfig, Box<figment::Error>> {
+        Figment::new()
+            .merge(Toml::string(source))
+            .extract()
+            .map_err(Box::new)
     }
 
     #[test]
