@@ -57,6 +57,21 @@ persistence 遵循 committed snapshot policy，而不是第二份 snapshot autho
 
 router integration 使用 `RouterTrait` 与 URI reference type。token-set factory 负责 callback input resolution，并在 factory construction 中 start。由 registry 拥有的 client 以 registry readiness 为 initial readiness boundary，不再 direct call persisted restore。
 
+`createRouterForAngular(...)` 现在会在内部组合 Angular Router 与 native-web routing。native-web creator field 扁平混入同一个 options object；不要再注册第二个 environment router：
+
+```ts
+const router = createRouterForAngular({
+  router: angularRouter,
+  location: window.location,
+  history: window.history,
+  window,
+});
+```
+
+同一组 native-web field 也可以通过 `provideEnvironment({ routerForAngularCreateOptions: ... })` 传入。push/replace 使用 Angular Router，external navigation 则要求 native-web capability，并用它完成 full-document redirect。没有 native-web routing 的 host 仍可执行 internal navigation，但 external request 会以 `client_angular.router.native_web_router_unavailable` 失败。
+
+TanStack Router creator 没有新增 call-site option。adapter 现在把 internal push/replace request 映射到 `to`，把 external request 映射到 `href`；应删除将 absolute authorization URL 改写为 internal `to` value 的 wrapper。
+
 ## Framework Composition
 
 | 旧 integration pattern | 当前 contract |

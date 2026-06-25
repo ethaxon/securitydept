@@ -57,6 +57,21 @@ Persistence follows the committed snapshot policy rather than being a second sna
 
 Router integrations use `RouterTrait` and URI reference types. Token-set factories own callback input resolution and are started as part of factory construction. Registry readiness, not a direct persisted-restore call, is the initial readiness boundary for registry-owned clients.
 
+`createRouterForAngular(...)` now composes Angular Router and native-web routing internally. Native-web creator fields are flattened into the same options object; do not register a second environment router:
+
+```ts
+const router = createRouterForAngular({
+  router: angularRouter,
+  location: window.location,
+  history: window.history,
+  window,
+});
+```
+
+The same native-web fields may be supplied through `provideEnvironment({ routerForAngularCreateOptions: ... })`. Push and replace use Angular Router, while external navigation requires the native-web side and uses it for full-document redirects. A host without native-web routing can still perform internal navigation, but an external request fails with `client_angular.router.native_web_router_unavailable`.
+
+The TanStack Router creator has no new call-site option. Its adapter now maps internal push/replace requests to `to` and external requests to `href`; remove wrappers that rewrite absolute authorization URLs into an internal `to` value.
+
 ## Framework Composition
 
 | Previous integration pattern | Current contract |

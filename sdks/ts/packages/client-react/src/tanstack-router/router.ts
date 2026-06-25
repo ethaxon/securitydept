@@ -9,6 +9,7 @@ import {
 	validateTraitInput,
 	type WithTraitInputValidator,
 } from "@securitydept/client";
+import { type AnyRouter, type NavigateOptions } from "@tanstack/react-router";
 import { type as defineType } from "arktype";
 
 export interface TanStackRouterLocationLike {
@@ -19,12 +20,16 @@ export interface TanStackRouterNavigationLike {
 	readonly state?: {
 		readonly location?: TanStackRouterLocationLike;
 	};
-	navigate(options: {
-		to: string;
-		replace?: boolean;
-		state?: unknown;
-	}): Promise<unknown> | unknown;
+	navigate(options: TanStackRouterNavigateOptions): Promise<unknown> | unknown;
 }
+
+export type TanStackRouterNavigateOptions = NavigateOptions<
+	AnyRouter,
+	string,
+	string | undefined,
+	string,
+	""
+>;
 
 export interface CreateRouterForTanStackRouterOptions {
 	readonly router: TanStackRouterNavigationLike;
@@ -86,10 +91,14 @@ export function createRouterForTanStackRouter(
 			return currentUrl == null ? null : UriReferenceString.parse(currentUrl);
 		},
 		async navigate(request: RouterNavigationRequest) {
+			if (request.mode === RouterNavigationMode.External) {
+				await router.navigate({ href: request.url.toString() });
+				return;
+			}
 			await router.navigate({
 				to: request.url.toString(),
 				replace: request.mode === RouterNavigationMode.Replace,
-				state: request.state,
+				state: request.state as TanStackRouterNavigateOptions["state"],
 			});
 		},
 	};

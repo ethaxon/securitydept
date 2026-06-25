@@ -1,6 +1,6 @@
 {
 	"name": "@securitydept/client-react",
-	"version": "0.3.0-beta.5",
+	"version": "0.3.0-beta.6",
 	"description": "Client React of the SecurityDept TypeScript SDK, a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps.",
 	"author": "Zhou Yeheng <root@aitiotekt.com>",
 	"license": "MIT",
@@ -56,8 +56,8 @@
 		"rxjs": "catalog:"
 	},
 	"peerDependencies": {
-		"react": ">=19.0.0",
-		"@tanstack/react-router": ">=1.0.0"
+		"@tanstack/react-router": ">=1.0.0",
+		"react": ">=19.0.0"
 	},
 	"peerDependenciesMeta": {
 		"@tanstack/react-router": {

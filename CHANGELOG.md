@@ -7,7 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 <!-- markdownlint-disable MD024 -->
 
-## [Unreleased]
+## [0.3.0-beta.6]
+
+### Changed
+
+- Changed the Angular router adapter to compose Angular Router and native-web navigation from one flattened creator-options object, dispatching in-app push/replace requests to Angular and external requests to the native-web router.
+- Changed the TanStack React Router adapter to send in-app requests through `to` and external requests through `href`, matching TanStack Router's internal-route and full-document navigation contracts.
+- Upgraded Angular and ng-packagr to 22.1, jsdom to 30.0, and the TOML parser to 5.0 while retaining TypeScript 6.0 for Angular compiler compatibility. Centralized the shared Node.js types and Vitest versions in the pnpm workspace catalog and realigned all React catalog consumers to React 19.2.8.
+- Upgraded the Rust dependency set, including base64 0.23, jsonwebtoken 11, tower-http 0.7, tabled 0.21, kube 4.2 with k8s-openapi 0.28, swc_core 75, and the stable p256/p384 0.14 line. Centralized the shared serde_regex, tower-sessions-memory-store, and winres version requirements in the Cargo workspace.
+- Bumped release-managed Rust crates, TypeScript packages, apps, lockfiles, and shared metadata to `0.3.0-beta.6`.
+
+### Fixed
+
+- Fixed external OIDC authorization redirects being interpreted as malformed in-app paths by the Angular and TanStack Router adapters.
 
 ## [0.3.0-beta.5]
 

@@ -5,24 +5,25 @@ packages:
   - .agents/skills/playwright-skill
 
 catalog:
-  "@angular/common": ^21.2.12
-  "@angular/compiler": ^21.2.12
-  "@angular/compiler-cli": ^21.2.12
-  "@angular/core": ^21.2.12
-  "@angular/platform-browser": ^21.2.12
-  "@angular/router": ^21.2.12
+  "@angular/common": ^22.1.0
+  "@angular/compiler": ^22.1.0
+  "@angular/compiler-cli": ^22.1.0
+  "@angular/core": ^22.1.0
+  "@angular/platform-browser": ^22.1.0
+  "@angular/router": ^22.1.0
   "@standard-schema/spec": ^1.1.0
-  "@tanstack/react-query": ^5.100.10
+  "@tanstack/react-query": ^5.101.4
   "@tanstack/react-router": ^1.170.18
   "@tanstack/router-plugin": ^1.168.20
-  arktype: ^2.2.0
-  es-toolkit: ^1.49.0
+  "@types/node": ^26.1.2
+  arktype: ^2.2.3
+  es-toolkit: ^1.50.0
   nunjucks: ^3.2.4
-  react: ^19.2.6
-  react-dom: ^19.2.6
+  react: ^19.2.8
+  react-dom: ^19.2.8
   rxjs: ^7.8.2
   uuid: ^14.0.1
-  vitest: ^4.1.6
+  vitest: ^4.1.10
 
 allowBuilds:
   "@kie/act-js": true
@@ -32,24 +33,4 @@ allowBuilds:
   cpu-features: true
   protobufjs: true
   ssh2: true
-  '@swc/core': true
-  '@ladybugdb/core': true
-  '@scarf/scarf': false
-  gitnexus: true
-  onnxruntime-node: true
-  sharp: true
-  tree-sitter: true
-  tree-sitter-c-sharp: true
-  tree-sitter-cpp: true
-  tree-sitter-go: true
-  tree-sitter-java: true
-  tree-sitter-javascript: true
-  tree-sitter-php: true
-  tree-sitter-python: true
-  tree-sitter-ruby: true
-  tree-sitter-rust: true
-  tree-sitter-typescript: true
-
-overrides:
-  # for tsdown peer dependency
-  typescript: 6.0.3
+  "@swc/core": true

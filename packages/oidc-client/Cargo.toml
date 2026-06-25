@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-oidc-client"
-version = "0.3.0-beta.5"
+version = "0.3.0-beta.6"
 edition = "2024"
 
 authors = ["Zhou Yeheng <root@aitiotekt.com>"]
@@ -25,8 +25,8 @@ recommend-pending-store = ["moka-pending-store"]
 moka-pending-store = ["dep:moka"]
 
 [dependencies]
-securitydept-oauth-provider = { version = "~0.3.0-beta.5", path = "../oauth-provider" }
-securitydept-utils = { version = "~0.3.0-beta.5", path = "../utils" }
+securitydept-oauth-provider = { version = "~0.3.0-beta.6", path = "../oauth-provider" }
+securitydept-utils = { version = "~0.3.0-beta.6", path = "../utils" }
 openidconnect = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -40,7 +40,7 @@ http = { workspace = true }
 base64 = { workspace = true }
 boa_engine = { version = "0.21", optional = true }
 chrono = { workspace = true }
-swc_core = { version = "58", features = [
+swc_core = { version = "75", features = [
     "__parser",
     "common",
     "ecma_ast",

@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-cli"
-version = "0.3.0-beta.5"
+version = "0.3.0-beta.6"
 edition = "2024"
 publish = false
 
@@ -21,7 +21,7 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 figment = { workspace = true }
 inquire = { workspace = true }
-tabled = "0.20"
+tabled = "0.21"
 
 [build-dependencies]
-winres = "0.1"
+winres = { workspace = true }

@@ -270,3 +270,27 @@ pub async fn transpile_claims_script_typescript_to_javascript(
         })
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::transpile_claims_script_typescript_to_javascript;
+
+    #[tokio::test]
+    async fn transpiles_typescript_claims_script_with_swc() {
+        let source = r#"
+            type Claims = { sub: string };
+
+            export default function check(claims: Claims): boolean {
+                return claims.sub.length > 0;
+            }
+        "#;
+
+        let output = transpile_claims_script_typescript_to_javascript("claims.ts", source)
+            .await
+            .expect("TypeScript claims script should compile");
+
+        assert!(!output.contains("type Claims"));
+        assert!(!output.contains(": Claims"));
+        assert!(output.contains("export default function check(claims)"));
+    }
+}

@@ -128,6 +128,10 @@ React and Angular packages adapt canonical client ownership into their framework
 - Token-set hosts register keyed clients with `provideTokenSetClientRegistry(...)`. React reads it with `useTokenSetClientRegistry()` and callback hooks; Angular provides the same core registry and can use its callback components, route-root helpers, and guard factories.
 - Route helpers express requirements and delegate evaluation to the registry/client lifecycle. The application still owns its route tree, redirects, UI, and user-facing copy.
 
+Router navigation mode determines which host mechanism receives a target. The Angular adapter composes both mechanisms into one `RouterTrait`: pass native-web `navigation`, `location`, `history`, and `window` options beside the Angular `router` in `CreateRouterForAngularOptions` (or in `provideEnvironment({ routerForAngularCreateOptions: ... })`). Push and replace stay in Angular Router; external requests, including OIDC authorization URLs, use the internally composed native-web router. Applications do not register or choose a second environment router.
+
+The TanStack React Router adapter maps push and replace requests to `router.navigate({ to, ... })`, while external requests use `router.navigate({ href })`. Do not pass an absolute IdP URL through `to`; TanStack treats `to` as an internal route destination.
+
 ## Lifecycle And Error Rules
 
 - Call `start()` once the client and required host capabilities are composed.

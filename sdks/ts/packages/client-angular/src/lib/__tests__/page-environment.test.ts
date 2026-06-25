@@ -12,6 +12,7 @@ import {
 	SecuritydeptInjectionToken,
 	type SecuritydeptProvider,
 	TRANSPORT_TRAIT_TOKEN,
+	UriReferenceString,
 } from "@securitydept/client";
 import {
 	createEnvironmentForNativeWeb,
@@ -278,6 +279,51 @@ describe("client-angular environment bridge", () => {
 				throw new Error("Expected default Angular router trait.");
 			}
 			expect(router.currentUrl()?.toString()).toBe("/current");
+		} finally {
+			injector.destroy();
+		}
+	});
+
+	it("routes external navigation through the Angular router native web options", async () => {
+		const navigateByUrl = vi.fn(async () => true);
+		const location = { href: "https://app.example.com/current" };
+		const injector = createEnvironmentInjector(
+			[
+				{
+					provide: Router,
+					useValue: { url: "/current", navigateByUrl },
+				},
+				provideHttpClientDep(),
+				provideEnvironment({
+					createBaseEnvironment: createNativeWebEnvironment,
+					routerForAngularCreateOptions: {
+						navigation: null,
+						location,
+						history: null,
+						window: null,
+					},
+				}),
+			],
+			Injector.NULL as never,
+		);
+
+		try {
+			const resolved = runInInjectionContext(injector, () =>
+				inject(ENVIRONMENT),
+			);
+			const router = resolved.router;
+			if (!router) {
+				throw new Error("Expected the combined Angular router trait.");
+			}
+
+			await router.navigate({
+				url: UriReferenceString.parse("https://idp.example.com/authorize"),
+				intent: "auth_redirect",
+				mode: "external",
+			});
+
+			expect(location.href).toBe("https://idp.example.com/authorize");
+			expect(navigateByUrl).not.toHaveBeenCalled();
 		} finally {
 			injector.destroy();
 		}

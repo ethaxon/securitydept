@@ -84,4 +84,54 @@ describe("Angular router adapter", () => {
 			state: { from: "test" },
 		});
 	});
+
+	it("delegates external navigation to the native web router", async () => {
+		const navigateByUrl = vi.fn(async () => true);
+		const location = { href: "https://app.example.com/current" };
+		const router = createRouterForAngular({
+			router: {
+				url: "/current",
+				navigateByUrl,
+			},
+			navigation: null,
+			location,
+			history: null,
+			window: null,
+		});
+
+		await router.navigate({
+			url: UriReferenceString.parse(
+				"https://idp.example.com/authorize?client_id=web",
+			),
+			intent: "auth_redirect",
+			mode: "external",
+		});
+
+		expect(location.href).toBe(
+			"https://idp.example.com/authorize?client_id=web",
+		);
+		expect(navigateByUrl).not.toHaveBeenCalled();
+	});
+
+	it("fails external navigation when native web routing is unavailable", async () => {
+		const router = createRouterForAngular({
+			router: {
+				navigateByUrl: vi.fn(async () => true),
+			},
+			navigation: null,
+			location: null,
+			history: null,
+			window: null,
+		});
+
+		await expect(
+			router.navigate({
+				url: UriReferenceString.parse("https://idp.example.com/authorize"),
+				intent: "auth_redirect",
+				mode: "external",
+			}),
+		).rejects.toMatchObject({
+			code: "client_angular.router.native_web_router_unavailable",
+		});
+	});
 });

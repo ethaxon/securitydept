@@ -16,6 +16,8 @@
 // Stability: provisional
 
 import {
+	ClientError,
+	ClientErrorKind,
 	type EnvironmentValidators,
 	RouterNavigationMode,
 	type RouterNavigationRequest,
@@ -26,6 +28,10 @@ import {
 	validateTraitInput,
 	type WithTraitInputValidator,
 } from "@securitydept/client";
+import {
+	createRouterForNativeWeb,
+	type RouterForNativeWebCreateOptions,
+} from "@securitydept/client/web";
 import { type as defineType } from "arktype";
 
 /**
@@ -43,7 +49,8 @@ export interface AngularRouterNavigationLike {
 }
 
 /** Options for {@link createRouterForAngular}. */
-export interface CreateRouterForAngularOptions {
+export interface CreateRouterForAngularOptions
+	extends RouterForNativeWebCreateOptions {
 	/** The Angular `Router` (or a compatible navigation object). */
 	router: AngularRouterNavigationLike;
 	/** Override the current URL. Defaults to `router.url`. */
@@ -70,7 +77,10 @@ const ResolvedRouterForAngularCreateOptionsSchema = defineType({
  *
  * @example
  * ```ts
- * const routerTrait = createRouterForAngular({ router: inject(Router) });
+ * const routerTrait = createRouterForAngular({
+ *   router: inject(Router),
+ *   location: window.location,
+ * });
  * ```
  */
 export function createRouterForAngular(
@@ -103,16 +113,47 @@ export function createRouterForAngular(
 			}),
 	});
 	const { router } = resolvedCreateOptions;
+	const nativeWebRouter = createRouterForNativeWeb(
+		projectNativeWebRouterCreateOptions(options),
+	);
 	return {
 		currentUrl() {
 			const currentUrl = resolvedCreateOptions.currentUrl;
 			return currentUrl == null ? null : UriReferenceString.parse(currentUrl);
 		},
 		async navigate(request: RouterNavigationRequest) {
+			if (request.mode === RouterNavigationMode.External) {
+				if (!nativeWebRouter) {
+					throw new ClientError({
+						kind: ClientErrorKind.Configuration,
+						code: "client_angular.router.native_web_router_unavailable",
+						message:
+							"Angular router cannot perform external navigation without a native web router",
+						source: "client-angular.router",
+					});
+				}
+				await nativeWebRouter.navigate(request);
+				return;
+			}
 			await router.navigateByUrl(request.url.toString(), {
 				replaceUrl: request.mode === RouterNavigationMode.Replace,
 				state: request.state,
 			});
 		},
+	};
+}
+
+function projectNativeWebRouterCreateOptions(
+	options: CreateRouterForAngularOptions,
+): RouterForNativeWebCreateOptions {
+	return {
+		...(Object.hasOwn(options, "navigation")
+			? { navigation: options.navigation }
+			: {}),
+		...(Object.hasOwn(options, "location")
+			? { location: options.location }
+			: {}),
+		...(Object.hasOwn(options, "history") ? { history: options.history } : {}),
+		...(Object.hasOwn(options, "window") ? { window: options.window } : {}),
 	};
 }
