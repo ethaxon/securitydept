@@ -6,10 +6,11 @@ import {
 } from "./manifest-version.ts";
 import {
 	loadSecuritydeptMetadata,
-	parseReleaseVersion,
 	writeSecuritydeptMetadataVersion,
 } from "./metadata.ts";
 import { resolveFromRoot } from "./paths.ts";
+import { syncRootReadmeBadges } from "./readme-badges.ts";
+import { parseReleasePolicy } from "./release-policy.ts";
 
 export type VersionMismatch = {
 	kind: "manifest-version" | "cargo-dependency-version";
@@ -89,8 +90,10 @@ export function ensureVersionConsistency(): void {
 }
 
 export function setWorkspaceVersion(nextVersionText: string): void {
-	const parsedVersion = parseReleaseVersion(nextVersionText);
-	const metadata = writeSecuritydeptMetadataVersion(parsedVersion.version);
+	const releasePolicy = parseReleasePolicy(nextVersionText);
+	const metadata = writeSecuritydeptMetadataVersion(
+		releasePolicy.version.version,
+	);
 	const versionedPackages = [
 		...metadata.nodePackages,
 		...metadata.rustPackages,
@@ -118,7 +121,12 @@ export function setWorkspaceVersion(nextVersionText: string): void {
 		);
 	}
 
+	const updatedReadmeCount = syncRootReadmeBadges(
+		metadata.project.version,
+		releasePolicy.npmDistTag,
+	);
+
 	console.log(
-		`Updated ${versionedPackages.length} release-managed manifests and ${updatedCargoDependencyCount} Cargo dependency version entries to ${metadata.project.version}.`,
+		`Updated ${versionedPackages.length} release-managed manifests, ${updatedCargoDependencyCount} Cargo dependency version entries, and ${updatedReadmeCount} root README badge file(s) to ${metadata.project.version} (npm dist-tag: ${releasePolicy.npmDistTag}).`,
 	);
 }
