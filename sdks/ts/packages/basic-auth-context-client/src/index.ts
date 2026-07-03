@@ -4,6 +4,10 @@ export {
 } from "./authorization-header";
 export { BasicAuthContextClient, readBasicAuthBoundaryKind } from "./client";
 export {
+	BasicAuthContextErrorCode,
+	BasicAuthContextSource,
+} from "./error";
+export {
 	type ProvideBasicAuthContextOptions,
 	provideBasicAuthContext,
 } from "./providers";
@@ -22,11 +26,9 @@ export {
 	type BasicAuthContextClientConfig,
 	type BasicAuthContextClientStateSignals,
 	type BasicAuthContextClientTracingOptions,
-	BasicAuthContextErrorCode,
 	type BasicAuthContextEvent,
 	BasicAuthContextEventType,
 	type BasicAuthContextOperationSignals,
-	BasicAuthContextSource,
 	type BasicAuthLoginWithRedirectOptions,
 	type BasicAuthLogoutOptions,
 	type BasicAuthRefreshOptions,

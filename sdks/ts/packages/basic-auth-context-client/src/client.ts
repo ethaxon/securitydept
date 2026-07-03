@@ -9,7 +9,6 @@ import {
 	createSignal,
 	type DisposableTrait,
 	defineInstrumentMethodDecorator,
-	describeError,
 	ENVIRONMENT_TOKEN,
 	type EventStreamTrait,
 	type FoundationEnvironment,
@@ -28,6 +27,7 @@ import {
 	resourceFromSnapshots,
 	SecuritydeptDestroyRef,
 	type SecuritydeptInjectorTrait,
+	SpanSharedAttributeName,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
 	throwValidationClientError,
@@ -42,12 +42,16 @@ import {
 	commandResponseData,
 	concatCommand,
 	dispatchCommandLocallyToStream,
-	RxEventReplaySubject,
 	RxEventSubject,
 	RxStateSignal,
 } from "@securitydept/client/rx";
 import { filter, from, lastValueFrom, take, takeUntil } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
+import {
+	BasicAuthContextErrorCode,
+	BasicAuthContextSource,
+	clientErrorFromBasicAuthError,
+} from "./error";
 import { BasicAuthContextClientConfigSchema } from "./schemas";
 import { BASIC_AUTH_CONTEXT_CLIENT_CONFIG } from "./tokens";
 import {
@@ -59,11 +63,10 @@ import {
 	type BasicAuthBoundaryObservation,
 	type BasicAuthBoundarySnapshot,
 	type BasicAuthContextClientConfig,
-	BasicAuthContextErrorCode,
 	type BasicAuthContextEvent,
+	type BasicAuthContextEventInput,
 	BasicAuthContextEventType,
 	type BasicAuthContextOperationSignals,
-	BasicAuthContextSource,
 	type BasicAuthLoginWithRedirectOptions,
 	type BasicAuthLogoutOptions,
 	type BasicAuthRefreshOptions,
@@ -99,13 +102,9 @@ const instrumentBasicAuthMethod = defineInstrumentMethodDecorator<
 				span: this.span,
 				name: `${this.config.tracing.prefix}.${operation}`,
 				target: this.config.tracing.target,
-				fields: { operation },
-				normalizeError: (error: unknown) =>
-					ClientError.fromUnknown(error, {
-						code: BasicAuthContextErrorCode.OperationFailed,
-						message: "The Basic Auth operation failed unexpectedly",
-						source: BasicAuthContextSource.BasicAuthContext,
-					}),
+				traceAttributes: { operation },
+				clientErrorFromUnknown: (error, options) =>
+					clientErrorFromBasicAuthError(error, options),
 			};
 		},
 );
@@ -173,8 +172,7 @@ export class BasicAuthContextClient implements DisposableTrait {
 		logoutPending: createSignal(false),
 		loginRedirectPending: createSignal(false),
 	};
-	private readonly _eventSubject =
-		new RxEventReplaySubject<BasicAuthContextEvent>(100);
+	private readonly _eventSubject = new RxEventSubject<BasicAuthContextEvent>();
 	private readonly _refreshCommandSubject =
 		new RxEventSubject<BasicAuthRefreshCommand>();
 	private readonly _refreshResponseSubject = new RxEventSubject<
@@ -277,8 +275,8 @@ export class BasicAuthContextClient implements DisposableTrait {
 		this.zones = resolvedConfig.zones;
 		this._span = environment.span.fork({
 			attributes: {
-				clientName: this.constructor.name,
-				id: this.id,
+				[SpanSharedAttributeName.ClientName]: this.constructor.name,
+				[SpanSharedAttributeName.ClientId]: this.id,
 			},
 		});
 		this.boundarySnapshot = readonlySignal(this._boundarySnapshotSignal);
@@ -407,18 +405,21 @@ export class BasicAuthContextClient implements DisposableTrait {
 				status: ResourceStatus.Resolved,
 				value: null,
 			});
-			operationSpan?.setAttributes({ localProjectionCleared: true });
+			operationSpan?.setTraceAttributes({ localProjectionCleared: true });
 			this._emitEvent({
 				type: BasicAuthContextEventType.LogoutSucceeded,
 				snapshot: null,
 			});
 		} catch (error) {
+			const clientError = clientErrorFromBasicAuthError(error, {
+				span: operationSpan?.span,
+			});
 			this._emitEvent({
 				type: BasicAuthContextEventType.LogoutFailed,
 				snapshot: this._readCurrentSnapshot(),
-				errorSummary: describeError(error),
+				error: clientError,
 			});
-			throw error;
+			throw clientError;
 		} finally {
 			this._operationSignals.logoutPending.set(false);
 		}
@@ -474,12 +475,15 @@ export class BasicAuthContextClient implements DisposableTrait {
 				zone,
 			});
 		} catch (error) {
+			const clientError = clientErrorFromBasicAuthError(error, {
+				span: _operationSpan?.span,
+			});
 			this._emitEvent({
 				type: BasicAuthContextEventType.LoginRedirectFailed,
 				zone,
-				errorSummary: describeError(error),
+				error: clientError,
 			});
-			throw error;
+			throw clientError;
 		} finally {
 			this._operationSignals.loginRedirectPending.set(false);
 		}
@@ -562,6 +566,7 @@ export class BasicAuthContextClient implements DisposableTrait {
 
 	dispose(): void {
 		this._destroyed.set(true);
+		this._eventSubject.complete();
 	}
 
 	[SYMBOL_DISPOSE](): void {
@@ -682,7 +687,7 @@ export class BasicAuthContextClient implements DisposableTrait {
 					value: snapshot,
 				}),
 			);
-			operationSpan?.setAttributes({
+			operationSpan?.setTraceAttributes({
 				authenticated: snapshot.authenticated,
 				boundaryKind: snapshot.boundaryKind,
 			});
@@ -693,18 +698,21 @@ export class BasicAuthContextClient implements DisposableTrait {
 			});
 			return snapshot;
 		} catch (error) {
+			const clientError = clientErrorFromBasicAuthError(error, {
+				span: operationSpan?.span,
+			});
 			this._boundarySnapshotSignal.set(
 				reduceResourceSnapshot(loadingSnapshot, {
 					kind: ResourceSnapshotUpdateKind.Fail,
-					error,
+					error: clientError,
 				}),
 			);
 			this._emitEvent({
 				type: BasicAuthContextEventType.BoundaryRefreshFailed,
 				snapshot: this._readCurrentSnapshot(),
-				errorSummary: describeError(error),
+				error: clientError,
 			});
-			throw error;
+			throw clientError;
 		} finally {
 			this._operationSignals.refreshPending.set(false);
 		}
@@ -743,9 +751,7 @@ export class BasicAuthContextClient implements DisposableTrait {
 			: null;
 	}
 
-	private _emitEvent(
-		input: Omit<BasicAuthContextEvent, "at" | "client">,
-	): void {
+	private _emitEvent(input: BasicAuthContextEventInput): void {
 		this._eventSubject.next({
 			...input,
 			at: this._environment.time.now(),

@@ -5,6 +5,10 @@ export {
 	SessionUserInfoResponseSchema,
 } from "./contracts/schemas";
 export {
+	SessionContextErrorCode,
+	SessionContextSource,
+} from "./error";
+export {
 	type ProvideSessionContextOptions,
 	provideSessionContext,
 } from "./providers";
@@ -15,11 +19,9 @@ export {
 export {
 	type SessionContextClientConfig,
 	type SessionContextClientTracingOptions,
-	SessionContextErrorCode,
 	type SessionContextEvent,
 	SessionContextEventType,
 	type SessionContextOperationOptions,
-	SessionContextSource,
 	type SessionInfo,
 	type SessionLoginWithRedirectOptions,
 	type SessionPrincipal,

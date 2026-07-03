@@ -18,6 +18,7 @@ import {
 	type ResourceTrait,
 	type RouterNavigationRequest,
 	type RouterTrait,
+	TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
 	type TracingEvent,
 	type TracingSubscriberTrait,
 	UriReferenceString,
@@ -386,26 +387,21 @@ describe("BackendOidcModeClient", () => {
 			}),
 		});
 		const callbackOperations = trace
-			.ofType(OperationTraceEventType.Started)
-			.filter(
-				(event) =>
-					event.fields?.operationName ===
-					BackendOidcModeTraceOperationName.Callback,
-			);
+			.ofOperationName(BackendOidcModeTraceOperationName.Callback)
+			.filter((event) => event.name === OperationTraceEventType.Started);
 		expect(callbackOperations).toHaveLength(1);
+		expect(
+			callbackOperations[0]?.span.getAttributes({
+				providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
+			}),
+		).toMatchObject({ flow: "callback.restore" });
 		expect(
 			trace.assertOperationLifecycle(callbackOperations[0]!.span.id, [
 				OperationTraceEventType.Started,
 				OperationTraceEventType.Error,
 				OperationTraceEventType.Ended,
 			]),
-		).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					fields: expect.objectContaining({ flow: "callback.restore" }),
-				}),
-			]),
-		);
+		).toHaveLength(3);
 	});
 
 	it("refreshes tokens from a JSON response body", async () => {
@@ -1299,12 +1295,8 @@ describe("BackendOidcModeClient", () => {
 		await client.refreshState();
 
 		const taskStarted = trace
-			.ofType(OperationTraceEventType.Started)
-			.find(
-				(event) =>
-					event.fields?.operationName ===
-					BackendOidcModeTraceOperationName.Refresh,
-			);
+			.ofOperationName(BackendOidcModeTraceOperationName.Refresh)
+			.find((event) => event.name === OperationTraceEventType.Started);
 		expect(taskStarted?.span?.id).toBeTruthy();
 		expect(taskStarted?.span?.parent?.id).toBeTruthy();
 	});
@@ -1344,12 +1336,8 @@ describe("BackendOidcModeClient", () => {
 		);
 
 		const callbackStarted = trace
-			.ofType(OperationTraceEventType.Started)
-			.find(
-				(event) =>
-					event.fields?.operationName ===
-					BackendOidcModeTraceOperationName.Callback,
-			);
+			.ofOperationName(BackendOidcModeTraceOperationName.Callback)
+			.find((event) => event.name === OperationTraceEventType.Started);
 		const operationSpanId = callbackStarted?.span?.id;
 
 		expect(operationSpanId).toBeTruthy();
@@ -1364,11 +1352,10 @@ describe("BackendOidcModeClient", () => {
 		).toBe(operationSpanId);
 		expect(
 			trace
-				.ofType(OperationTraceEventType.Ended)
+				.ofOperationName(BackendOidcModeTraceOperationName.Callback)
 				.find(
 					(event) =>
-						event.fields?.operationName ===
-							BackendOidcModeTraceOperationName.Callback &&
+						event.name === OperationTraceEventType.Ended &&
 						event.fields?.outcome === "succeeded",
 				)?.span?.id,
 		).toBe(operationSpanId);
@@ -1379,16 +1366,12 @@ describe("BackendOidcModeClient", () => {
 				OperationTraceEventType.Event,
 				OperationTraceEventType.Ended,
 			]),
-		).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					fields: expect.objectContaining({
-						operationName: BackendOidcModeTraceOperationName.Callback,
-						flow: "callback",
-					}),
-				}),
-			]),
-		);
+		).toHaveLength(4);
+		expect(
+			callbackStarted?.span.getAttributes({
+				providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
+			}),
+		).toMatchObject({ flow: "callback" });
 	});
 
 	it("accepts callback JSON bodies through the unified callback input", async () => {
@@ -1418,22 +1401,17 @@ describe("BackendOidcModeClient", () => {
 		});
 
 		const callbackStarted = trace
-			.ofType(OperationTraceEventType.Started)
-			.find(
-				(event) =>
-					event.fields?.operationName ===
-					BackendOidcModeTraceOperationName.Callback,
-			);
+			.ofOperationName(BackendOidcModeTraceOperationName.Callback)
+			.find((event) => event.name === OperationTraceEventType.Started);
 		const operationSpanId = callbackStarted?.span?.id;
 
 		expect(operationSpanId).toBeTruthy();
 		expect(
 			trace
-				.ofType(OperationTraceEventType.Ended)
+				.ofOperationName(BackendOidcModeTraceOperationName.Callback)
 				.find(
 					(event) =>
-						event.fields?.operationName ===
-							BackendOidcModeTraceOperationName.Callback &&
+						event.name === OperationTraceEventType.Ended &&
 						event.fields?.outcome === "succeeded",
 				)?.span?.id,
 		).toBe(operationSpanId);
@@ -1442,16 +1420,12 @@ describe("BackendOidcModeClient", () => {
 				OperationTraceEventType.Started,
 				OperationTraceEventType.Ended,
 			]),
-		).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					fields: expect.objectContaining({
-						operationName: BackendOidcModeTraceOperationName.Callback,
-						flow: "callback",
-					}),
-				}),
-			]),
-		);
+		).toHaveLength(2);
+		expect(
+			callbackStarted?.span.getAttributes({
+				providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
+			}),
+		).toMatchObject({ flow: "callback" });
 	});
 
 	it("correlates refresh lifecycle with nested redemption traces", async () => {
@@ -1505,12 +1479,8 @@ describe("BackendOidcModeClient", () => {
 		await client.refreshState();
 
 		const refreshStarted = trace
-			.ofType(OperationTraceEventType.Started)
-			.find(
-				(event) =>
-					event.fields?.operationName ===
-					BackendOidcModeTraceOperationName.Refresh,
-			);
+			.ofOperationName(BackendOidcModeTraceOperationName.Refresh)
+			.find((event) => event.name === OperationTraceEventType.Started);
 		const operationSpanId = refreshStarted?.span?.id;
 
 		expect(operationSpanId).toBeTruthy();
@@ -1525,11 +1495,10 @@ describe("BackendOidcModeClient", () => {
 		).toBe(operationSpanId);
 		expect(
 			trace
-				.ofType(OperationTraceEventType.Ended)
+				.ofOperationName(BackendOidcModeTraceOperationName.Refresh)
 				.find(
 					(event) =>
-						event.fields?.operationName ===
-							BackendOidcModeTraceOperationName.Refresh &&
+						event.name === OperationTraceEventType.Ended &&
 						event.fields?.outcome === "succeeded",
 				)?.span?.id,
 		).toBe(operationSpanId);
@@ -1540,15 +1509,7 @@ describe("BackendOidcModeClient", () => {
 				OperationTraceEventType.Event,
 				OperationTraceEventType.Ended,
 			]),
-		).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					fields: expect.objectContaining({
-						operationName: BackendOidcModeTraceOperationName.Refresh,
-					}),
-				}),
-			]),
-		);
+		).toHaveLength(4);
 	});
 });
 

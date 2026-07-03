@@ -2,6 +2,7 @@ import {
 	createRootSpan,
 	createTraceTimelineStore,
 	OperationTraceEventType,
+	SpanSharedAttributeName,
 	TracingLevel,
 } from "@securitydept/client";
 import {
@@ -14,7 +15,7 @@ import { describe, expect, it } from "vitest";
 import { TOKEN_SET_BACKEND_MODE_CONFIG } from "@/auth/token-set/config";
 import { TraceTimelineSection } from "@/routes/_playground/playground/token-set/-backend-mode/trace-timeline-section";
 
-function renderTimeline(events = createTraceTimelineStore().get()): string {
+function renderTimeline(events = createTraceTimelineStore().entries): string {
 	return renderToStaticMarkup(
 		createElement(TraceTimelineSection, {
 			events,
@@ -35,7 +36,13 @@ describe("trace timeline section", () => {
 	it("renders sdk and app traces with readable badges and survives clear", () => {
 		const timeline = createTraceTimelineStore();
 		const rootSpan = createRootSpan({ idFactory: () => "root" });
-		const operationSpan = rootSpan.fork({ idFactory: () => "op_backend_1" });
+		const operationSpan = rootSpan.fork({
+			idFactory: () => "op_backend_1",
+			attributes: {
+				[SpanSharedAttributeName.OperationName]:
+					BackendOidcModeTraceOperationName.Refresh,
+			},
+		});
 		const hostSpan = rootSpan.fork({ idFactory: () => "host_backend_1" });
 
 		timeline.record({
@@ -44,9 +51,6 @@ describe("trace timeline section", () => {
 			target: TOKEN_SET_BACKEND_MODE_CONFIG.tracing.clientTarget,
 			span: operationSpan,
 			level: TracingLevel.Info,
-			fields: {
-				operationName: BackendOidcModeTraceOperationName.Refresh,
-			},
 		});
 
 		timeline.record({
@@ -83,7 +87,7 @@ describe("trace timeline section", () => {
 			},
 		});
 
-		const markup = renderTimeline(timeline.get());
+		const markup = renderTimeline(timeline.entries);
 
 		expect(markup).toContain("Operation Lifecycle");
 		expect(markup).toContain("SDK Lifecycle");
@@ -101,7 +105,7 @@ describe("trace timeline section", () => {
 
 		timeline.clear();
 
-		const clearedMarkup = renderTimeline(timeline.get());
+		const clearedMarkup = renderTimeline(timeline.entries);
 		expect(clearedMarkup).toContain("No trace events yet.");
 		expect(clearedMarkup).toContain('disabled=""');
 	});

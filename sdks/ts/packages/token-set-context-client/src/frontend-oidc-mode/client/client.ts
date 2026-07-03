@@ -43,6 +43,7 @@ import {
 	RouterNavigationMode,
 	SecuritydeptDestroyRef,
 	type SecuritydeptInjectorTrait,
+	type SpanAttributes,
 	type SpanTrait,
 	type StorageTrait,
 	UriReferenceString,
@@ -155,8 +156,8 @@ const TRACE_TARGET = "frontend-oidc-mode";
 const TRACE_PREFIX = "frontend_oidc";
 
 type FrontendOperationFields =
-	| Record<string, unknown>
-	| ((this: FrontendOidcModeClient) => Record<string, unknown> | undefined);
+	| SpanAttributes
+	| ((this: FrontendOidcModeClient) => SpanAttributes | undefined);
 
 const instrumentFrontendMethod = defineInstrumentMethodDecorator<
 	[name: string, fields?: FrontendOperationFields],
@@ -169,12 +170,14 @@ const instrumentFrontendMethod = defineInstrumentMethodDecorator<
 				span: this.span,
 				name,
 				target: TRACE_TARGET,
-				fields: typeof fields === "function" ? fields.call(this) : fields,
-				normalizeError: (error: unknown) =>
+				traceAttributes:
+					typeof fields === "function" ? fields.call(this) : fields,
+				clientErrorFromUnknown: (error: unknown, { span }) =>
 					ClientError.fromUnknown(error, {
 						code: FrontendOidcModeErrorCode.OperationFailed,
 						message: "The frontend OIDC operation failed unexpectedly",
 						source: TRACE_TARGET,
+						span,
 					}),
 			};
 		},
@@ -356,6 +359,8 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 		this._callbackHandler = new OidcModeCallbackHandler({
 			environment,
+			span: this.span,
+			operationName: FrontendOidcModeTraceOperationName.Callback,
 			rootCancellationToken: this._rootCancellation.token,
 			inputResolver:
 				callbackInputResolver === null
@@ -380,11 +385,12 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 					source: TRACE_TARGET,
 					recovery: UserRecovery.RestartFlow,
 				}),
-			normalizeError: (error) =>
+			clientErrorFromUnknown: (error, { span }) =>
 				ClientError.fromUnknown(error, {
 					code: FrontendOidcModeErrorCode.CallbackFailed,
 					message: "The frontend OIDC callback failed.",
 					source: TRACE_TARGET,
+					span,
 				}),
 		});
 		this.callback = this._callbackHandler;
@@ -454,7 +460,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		operationSpan?: OperationSpanTrait,
 	): Promise<string> {
 		cancellationToken.throwIfCancellationRequested();
-		operationSpan?.setAttributes({
+		operationSpan?.setTraceAttributes({
 			hasPostAuthRedirectUri:
 				options.postAuthRedirectUri !== undefined ||
 				this._config.defaultPostAuthRedirectUri !== undefined,
@@ -488,7 +494,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		});
 		cancellationToken.throwIfCancellationRequested();
 
-		operationSpan?.setAttributes({ state: result.state });
+		operationSpan?.setTraceAttributes({ state: result.state });
 		return result.redirectUrl;
 	}
 
@@ -519,7 +525,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		operationSpan?: OperationSpanTrait,
 	): Promise<void> {
 		cancellationToken.throwIfCancellationRequested();
-		operationSpan?.setAttributes({
+		operationSpan?.setTraceAttributes({
 			hasPostAuthRedirectUri: options.postAuthRedirectUri !== undefined,
 		});
 		const router = this._environment.router;
@@ -547,7 +553,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			mode: RouterNavigationMode.External,
 		});
 		cancellationToken.throwIfCancellationRequested();
-		operationSpan?.setAttributes({ navigationMode: "external" });
+		operationSpan?.setTraceAttributes({ navigationMode: "external" });
 	}
 
 	/**
@@ -572,7 +578,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		);
 		disposableStack?.use(cancellationToken);
 		cancellationToken.throwIfCancellationRequested();
-		operationSpan?.setAttributes({
+		operationSpan?.setTraceAttributes({
 			popupCallbackUrl: options.popupCallbackUrl,
 		});
 		const popupCapability = this._environment.popup;
@@ -658,12 +664,13 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 	): Promise<FrontendOidcModeCallbackResult> {
 		return await this._runDeterminationWorkflow({
 			name: FrontendOidcModeTraceOperationName.Callback,
-			fields: { flow: "callback" },
-			normalizeError: (error) =>
+			traceAttributes: { flow: "callback" },
+			clientErrorFromUnknown: (error, { span }) =>
 				ClientError.fromUnknown(error, {
 					code: FrontendOidcModeErrorCode.OperationFailed,
 					message: "The frontend OIDC operation failed unexpectedly",
 					source: TRACE_TARGET,
+					span,
 				}),
 			workflow: async (operationSpan) => {
 				cancellationToken.throwIfCancellationRequested();
@@ -750,7 +757,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 				const metadata = await this._performClaimsCheck(
 					tokens,
 					cancellationToken,
-					operationSpan ?? this.span,
+					operationSpan?.span ?? this.span,
 				);
 				cancellationToken.throwIfCancellationRequested();
 
@@ -762,7 +769,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 					snapshot,
 					postAuthRedirectUri: pending.postAuthRedirectUri,
 				};
-				operationSpan.setAttributes({
+				operationSpan.setTraceAttributes({
 					hasClaimsCheck: metadata.principal !== undefined,
 					persisted: this._persistence !== null,
 				});
@@ -849,7 +856,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			metadata = await this._performClaimsCheck(
 				tokens,
 				cancellationToken,
-				operationSpan ?? this.span,
+				operationSpan?.span ?? this.span,
 			);
 			cancellationToken.throwIfCancellationRequested();
 		} else {
@@ -864,7 +871,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			metadata,
 		};
 
-		operationSpan?.setAttributes({
+		operationSpan?.setTraceAttributes({
 			newIdToken: tokens.idToken !== undefined,
 			persisted: this._persistence !== null,
 		});
@@ -896,7 +903,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		cancellationToken.throwIfCancellationRequested();
 
 		const current = this._readAuthSnapshotValue();
-		operationSpan?.setAttributes({
+		operationSpan?.setTraceAttributes({
 			hasAccessToken: current?.tokens.accessToken !== undefined,
 			hasIdToken: current?.tokens.idToken !== undefined,
 		});
@@ -922,7 +929,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			userInfo.claims,
 		);
 		cancellationToken.throwIfCancellationRequested();
-		operationSpan?.setAttributes({ hasClaimsCheck: true });
+		operationSpan?.setTraceAttributes({ hasClaimsCheck: true });
 		return result;
 	}
 
@@ -1278,7 +1285,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 	private async _ensureAuthServer(
 		cancellationToken: CancellationTokenTrait,
-		span?: SpanTrait,
+		operationSpan?: OperationSpanTrait,
 	): Promise<void> {
 		if (this._authServer) {
 			return;
@@ -1291,7 +1298,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			this._authServer = this._constructManualAuthServer();
 			return;
 		}
-		await this._discover(cancellationToken, span);
+		await this._discover(cancellationToken, operationSpan?.span);
 		cancellationToken.throwIfCancellationRequested();
 	}
 

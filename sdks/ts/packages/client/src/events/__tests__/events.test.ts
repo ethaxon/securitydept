@@ -15,10 +15,13 @@ import {
 	withLatestFrom,
 } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
+import { ClientError } from "../../errors/client-error";
+import { ClientErrorKind } from "../../errors/types";
 import {
 	createEventReplaySubject,
 	createEventStream,
 	createEventSubject,
+	isClientErrorEvent,
 } from "../../events/index";
 import { RxEventStream } from "../../rx";
 import { createSignal } from "../../signals";
@@ -273,6 +276,31 @@ describe("operators", () => {
 });
 
 describe("subjects and RxJS interop", () => {
+	it("filters structurally typed client error events", () => {
+		type TestEvent =
+			| { type: "succeeded" }
+			| { type: "failed"; error: ClientError }
+			| { type: "enveloped_failed"; payload: { error: ClientError } };
+		const subject = createEventSubject<TestEvent>();
+		const errors: ClientError[] = [];
+		const error = new ClientError({
+			kind: ClientErrorKind.Internal,
+			code: "test.failed",
+			message: "test failure",
+		});
+
+		from(subject)
+			.pipe(filter(isClientErrorEvent))
+			.subscribe((event) =>
+				errors.push("error" in event ? event.error : event.payload.error),
+			);
+		subject.next({ type: "succeeded" });
+		subject.next({ type: "failed", error });
+		subject.next({ type: "enveloped_failed", payload: { error } });
+
+		expect(errors).toEqual([error, error]);
+	});
+
 	it("createSubject should expose a hot event producer", () => {
 		const subject = createEventSubject<number>();
 		const values: number[] = [];

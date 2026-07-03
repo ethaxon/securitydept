@@ -1,22 +1,28 @@
 import {
 	type BaseTransportTrait,
 	type CancellationTokenTrait,
+	type ClientError,
 	createCancellationTokenSource,
 	createFoundationEnvironment,
 	createInMemoryRecordStore,
 	createRootSpan,
 	createTracing,
+	isClientErrorEvent,
 	OperationTraceEventType,
 	type ReadableSignalTrait,
 	type ResourceSnapshot,
 	type ResourceTrait,
+	SpanSharedAttributeName,
 	type StorageTrait,
 	type TimeTrait,
 } from "@securitydept/client";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
-import { from } from "rxjs";
+import { filter, from } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
-import { TokenSetAuthEventType } from "../../events/auth-events";
+import {
+	type TokenSetAuthEvent,
+	TokenSetAuthEventType,
+} from "../../events/auth-events";
 import { type TokenSetAuthSnapshot } from "../../token/types";
 import { BaseOidcModeClient, PersistPolicy } from "../base-client";
 import { type BaseOidcModeClientOptions } from "../types";
@@ -157,7 +163,7 @@ class TestOidcModeClient extends BaseOidcModeClient {
 	): Promise<TokenSetAuthSnapshot> {
 		return await this._runDeterminationWorkflow({
 			name: "test.apply_snapshot",
-			fields: { workflow: "apply_snapshot" },
+			traceAttributes: { workflow: "apply_snapshot" },
 			workflow: async () => ({
 				commit: {
 					candidate: {
@@ -260,8 +266,8 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		await client.applySnapshot(createAuthSnapshot("direct-runner"));
 
 		const started = trace
-			.ofType(OperationTraceEventType.Started)
-			.find((event) => event.fields?.operationName === "test.apply_snapshot");
+			.ofOperationName("test.apply_snapshot")
+			.find((event) => event.name === OperationTraceEventType.Started);
 		expect(started?.span.id).toBeTruthy();
 		expect(
 			trace.assertOperationLifecycle(started!.span.id, [
@@ -316,11 +322,8 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		expect(client.authOperations.restorePending.get()).toBe(false);
 		expect(client.authOperations.refreshPending.get()).toBe(false);
 		const started = trace
-			.ofType(OperationTraceEventType.Started)
-			.filter(
-				(event) =>
-					event.fields?.operationName === "test_token_set.restore.persisted",
-			);
+			.ofOperationName("test_token_set.restore.persisted")
+			.filter((event) => event.name === OperationTraceEventType.Started);
 		expect(started).toHaveLength(1);
 		expect(
 			trace.assertOperationLifecycle(started[0]!.span.id, [
@@ -431,6 +434,16 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		expect(JSON.stringify(events)).not.toContain("persisted-token");
 	});
 
+	it("does not replay auth lifecycle events to late subscribers", async () => {
+		const client = new TestOidcModeClient();
+		await client.restoreState(createAuthSnapshot("current-token"));
+		const events: TokenSetAuthEvent[] = [];
+
+		client.authEvents.subscribe({ next: (event) => events.push(event) });
+
+		expect(events).toEqual([]);
+	});
+
 	it("emits restore failure when persisted material cannot be parsed", async () => {
 		const store = createInMemoryRecordStore();
 		await store.set("test-auth", "{invalid json");
@@ -458,8 +471,8 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 			expect.objectContaining({
 				client: { id: "test-client" },
 				persisted: true,
-				errorSummary: expect.objectContaining({
-					errorCode: "token_set.persistence.invalid_json",
+				error: expect.objectContaining({
+					code: "token_set.persistence.invalid_json",
 				}),
 			}),
 		);
@@ -546,6 +559,7 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 			type: string;
 			payload: Record<string, unknown>;
 		}> = [];
+		const errors: ClientError[] = [];
 		client.authEvents.subscribe({
 			next: (event) => {
 				events.push({
@@ -554,9 +568,12 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 				});
 			},
 		});
-		events.length = 0;
+		from(client.authEvents)
+			.pipe(filter(isClientErrorEvent))
+			.subscribe((event) => errors.push(event.payload.error));
 
-		await expect(client.refreshState()).rejects.toMatchObject({
+		const rejected = await client.refreshState().catch((error) => error);
+		expect(rejected).toMatchObject({
 			kind: "internal",
 			code: "token_set.authorization.operation_failed",
 			cause: expect.objectContaining({ message: "refresh exploded" }),
@@ -572,9 +589,17 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 				client: { id: "test-client" },
 				hasRefreshMaterial: true,
 				freshness: expect.any(Object),
-				errorSummary: { errorName: "Error" },
+				error: expect.objectContaining({
+					code: "token_set.authorization.operation_failed",
+				}),
 			}),
 		);
+		expect(errors).toEqual([rejected]);
+		expect(
+			errors[0]?.spanContext?.at(-1)?.attributes[
+				SpanSharedAttributeName.OperationName
+			],
+		).toBe("test_token_set.refresh");
 		expect(expectSnapshotValue(client.authSnapshot)).toEqual(expired);
 		expect(
 			trace.events.find(

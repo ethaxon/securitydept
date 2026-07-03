@@ -1,4 +1,5 @@
 import {
+	type ClientError,
 	ClientErrorKind,
 	createCancellationTokenSource,
 	createFoundationEnvironment,
@@ -6,8 +7,11 @@ import {
 	type FoundationEnvironment,
 	type HttpRequest,
 	type HttpResponse,
+	isClientErrorEvent,
+	SpanSharedAttributeName,
 } from "@securitydept/client";
 import { createRouterForNativeWeb } from "@securitydept/client/web";
+import { filter, from } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import { BasicAuthContextClient, readBasicAuthBoundaryKind } from "../client";
 import {
@@ -58,6 +62,36 @@ function createClient(environment = createBasicAuthEnvironment({})) {
 }
 
 describe("BasicAuthContextClient", () => {
+	it("emits non-replayed typed failure events", async () => {
+		const client = createClient(
+			createBasicAuthEnvironment({
+				response: { status: 500, headers: {}, body: null },
+			}),
+		);
+		const errors: ClientError[] = [];
+		from(client.events)
+			.pipe(filter(isClientErrorEvent))
+			.subscribe((event) => errors.push(event.error));
+
+		let rejected: unknown;
+		try {
+			await client.refresh();
+		} catch (error) {
+			rejected = error;
+		}
+
+		expect(errors).toHaveLength(1);
+		expect(errors[0]).toBe(rejected);
+		expect(
+			errors[0]?.spanContext?.at(-1)?.attributes[
+				SpanSharedAttributeName.OperationName
+			],
+		).toBe("basic_auth_context.refresh");
+		const lateEvents: unknown[] = [];
+		client.events.subscribe({ next: (event) => lateEvents.push(event) });
+		expect(lateEvents).toEqual([]);
+	});
+
 	it("links refresh cancellation to the client lifecycle token", async () => {
 		const onRequest = vi.fn();
 		const client = createClient(createBasicAuthEnvironment({ onRequest }));

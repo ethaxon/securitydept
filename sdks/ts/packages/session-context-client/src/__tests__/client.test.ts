@@ -5,14 +5,18 @@ import {
 	createCancellationTokenSource,
 	type HttpRequest,
 	type HttpResponse,
+	isClientErrorEvent,
 	type RouterTrait,
+	SpanSharedAttributeName,
 	type TracingEvent,
 	UriReferenceString,
 } from "@securitydept/client";
 import { createEnvironmentForTest } from "@securitydept/client/test";
+import { filter, from } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import { SessionContextClient } from "../client";
-import { SessionContextEventType, SessionContextSource } from "../types";
+import { SessionContextSource } from "../error";
+import { SessionContextEventType } from "../types";
 
 function createTestTransport(
 	handler: (request: HttpRequest) => HttpResponse,
@@ -48,6 +52,41 @@ function createTestRouter(url = "https://app.example.com/current"): {
 }
 
 describe("SessionContextClient", () => {
+	it("emits non-replayed typed failure events", async () => {
+		const client = SessionContextClient.fromEnvironmentConfig({
+			config: { baseUrl: "https://api.example.com" },
+			environment: createEnvironmentForTest({
+				transport: createTestTransport(() => ({
+					status: 500,
+					headers: {},
+					body: null,
+				})),
+			}),
+		});
+		const errors: ClientError[] = [];
+		from(client.events)
+			.pipe(filter(isClientErrorEvent))
+			.subscribe((event) => errors.push(event.error));
+
+		let rejected: unknown;
+		try {
+			await client.refresh();
+		} catch (error) {
+			rejected = error;
+		}
+
+		expect(errors).toHaveLength(1);
+		expect(errors[0]).toBe(rejected);
+		expect(
+			errors[0]?.spanContext?.at(-1)?.attributes[
+				SpanSharedAttributeName.OperationName
+			],
+		).toBe("session_context.refresh");
+		const lateEvents: unknown[] = [];
+		client.events.subscribe({ next: (event) => lateEvents.push(event) });
+		expect(lateEvents).toEqual([]);
+	});
+
 	it("links refresh cancellation to the client lifecycle token", async () => {
 		const execute = vi.fn(async () => ({ status: 200, headers: {} }));
 		const client = SessionContextClient.fromEnvironmentConfig({

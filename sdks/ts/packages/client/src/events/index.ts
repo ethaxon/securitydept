@@ -9,6 +9,11 @@ export {
 	createEventSubject,
 	createNeverEventStream,
 } from "./create";
+export {
+	type ClientErrorEvent,
+	type ExtractClientErrorEvent,
+	isClientErrorEvent,
+} from "./error";
 export { type ToEventStreamInput, toEventStream } from "./interop";
 export {
 	type EventObserverTrait,

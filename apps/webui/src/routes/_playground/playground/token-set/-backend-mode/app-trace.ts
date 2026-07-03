@@ -1,5 +1,6 @@
 import {
 	ClientError,
+	type SpanAttributes,
 	type SpanTrait,
 	TracingLevel,
 	type TracingTrait,
@@ -9,8 +10,8 @@ import { TOKEN_SET_BACKEND_MODE_CONFIG } from "@/auth/token-set/config";
 export function createTokenSetBackendHostTraceRecorder(
 	tracing: TracingTrait,
 	span: SpanTrait,
-): (name: string, fields?: Record<string, unknown>) => void {
-	return (name: string, fields?: Record<string, unknown>) => {
+): (name: string, fields?: SpanAttributes) => void {
+	return (name: string, fields?: SpanAttributes) => {
 		tracing.record({
 			name,
 			at: Date.now(),
@@ -28,7 +29,7 @@ export const createTokenSetAppTraceRecorder =
 export function readTokenSetTraceErrorFields(
 	error: unknown,
 	fallback: string,
-): Record<string, unknown> {
+): SpanAttributes {
 	if (error instanceof ClientError) {
 		return {
 			kind: error.kind,

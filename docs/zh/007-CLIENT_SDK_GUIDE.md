@@ -88,11 +88,19 @@ interface FoundationEnvironment {
 
 consumer 接收 read-only signal 与 event stream。实现可直接使用 RxJS：这些 trait 已提供 observable interop，`@securitydept/client/rx` 提供 RxJS-backed implementation 与 command/resource utility。不要为了内部“纯度”再套一层只转发 subscription 的 wrapper，也不要把 RxJS `Observable` 作为 SDK public contract 暴露。
 
+Client lifecycle event stream 是 hot、non-replay 的边沿流。current/stale state 属于 `SignalTrait` / `ResourceTrait`；诊断历史属于显式命名的 trace timeline 或 event-history adapter。late subscriber 不得因订阅 event stream 而重复触发历史 toast、metric 等副作用。
+
+failure variant 必须在 required `error` field 中携带所属 context 生成的 `ClientError`。consumer 可以通过 `from(client.events).pipe(filter(isClientErrorEvent))` 派生默认 message stream，无需建立第二个 error subject。Resource、failure event 与 rejected operation 发布同一个 error instance。完整 error 是进程内 programming contract，不得直接序列化；logging/tracing 使用 `describeError(error)` 派生 secret-safe field，UI adapter 使用 `readErrorPresentationDescriptor(error)`。
+
 当 public trait API 需要 RxJS `NEVER` 或 `EMPTY` 语义时，使用 `createNeverEventStream()` 与 `createEmptyEventStream()`。
 
 ## Span 和 Tracing
 
-`SpanTrait` 是独立 foundation capability，不属于 telemetry 或 event 的子能力。调用方在 top-level workflow boundary fork child span，再在它下方记录当前操作。它同时支持可自动传播 context 的 host 和使用显式 propagation 的 host。
+`SpanTrait` 是 tracing、error 与未来 event correlation 共享的 foundation context capability，不属于 telemetry 或 event 的子能力。context propagation 保持显式：client fork client frame，每个 operation 再 fork operation frame。shared attribute 使用具名的 `client.name`、`client.id`、`operation.name`；provider detail 通过 `setAttributes(attributes, { providerId })` 写入。provider read 默认看到自身 attribute 加 shared attribute，同时保留 root-to-node frame，不做跨层扁平合并。attribute value 使用 immutable `SpanAttributeValue` contract；span core 依赖 readonly contract，只在状态变化时复制顶层 record，不检查、复制或冻结嵌套值。attribute 通过 `getAttributes()` 或 `getRootToNodeAttributes()` 读取。
+
+tracing 使用 `TRACING_SPAN_ATTRIBUTE_PROVIDER_ID` 写入 protocol/lifecycle detail。`TracingEvent` 保留 live span reference；`createTraceTimelineStore()` 这类 buffering subscriber 在自己的消费边界读取并保存 tracing-visible root-to-node frame。timeline 使用 optional `mnemonist` peer 提供有界 queue storage；non-replay `latestEntry` stream 在记录时发布 entry，在 clear 后发布 `null`，`entries` getter 仅在 consumer 需要完整 timeline 时创建 readonly array snapshot。operation creator option 使用 `traceAttributes`，不再使用旧的通用 `fields` input。
+
+`ClientError` 首次捕获 error-visible span path，并保留原 error instance 与 subclass。snapshot 只包含 shared attribute 和 `CLIENT_ERROR_SPAN_ATTRIBUTE_PROVIDER_ID` attribute，不包含 tracing-only detail。`readErrorPresentationDescriptor()` 默认读取最深层 client identity 与 operation name，因此通用 message stream 无需维护 event-type mapping 就能输出来源明确的 UI 文案。通过 `contextFormatter: null` 可关闭该前缀，也可注入返回本地化 context label 的 formatter。
 
 trace 只描述当前动作。不要为了重建 span tree 已有的 nesting 再维护全局 source/outcome enum。freshness 是 refresh boundary fact，不是所有 auth event/trace 的默认字段。
 
@@ -137,7 +145,7 @@ TanStack React Router adapter 将 push/replace request 映射为 `router.navigat
 - 在 client 与 required host capability 完成 composition 后调用一次 `start()`。
 - 消费 public read-only state/event surface；在 owning framework/container destroy 时调用 `dispose()`。
 - 向可取消 operation 传递 cancellation token；cancellation 是 cooperative 的，必须在 async boundary 检查。
-- public failure 使用 `ClientError`-compatible 的 safe code/source/recovery metadata 规范化。不得在 UI error 或 event 中暴露 secret-bearing transport、token、provider payload。
+- public failure 使用所属 context 生成、带有 safe code/source/recovery metadata 的 `ClientError`。不得在 UI error 或 event 中暴露 secret-bearing transport、token、provider payload。
 
 ## 兼容性
 

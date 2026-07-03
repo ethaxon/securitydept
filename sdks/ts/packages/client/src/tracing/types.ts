@@ -2,7 +2,11 @@ import { type as defineType } from "arktype";
 import { type DisposableTrait } from "../compat";
 import { type EventStreamTrait, EventStreamTraitSchema } from "../events/types";
 import { SecuritydeptInjectionToken } from "../injection";
-import { type SpanTrait } from "../span/types";
+import {
+	type MutableSpanTrait,
+	type SpanAttributes,
+	type SpanTrait,
+} from "../span/types";
 
 // --- Tracing and observability ---
 
@@ -25,13 +29,23 @@ export const OperationTraceEventType = {
 export type OperationTraceEventType =
 	(typeof OperationTraceEventType)[keyof typeof OperationTraceEventType];
 
+export const TRACING_SPAN_ATTRIBUTE_PROVIDER_ID =
+	"@securitydept/client/tracing";
+
+export interface OperationSpanTrait {
+	readonly span: MutableSpanTrait;
+	setTraceAttributes(attributes: SpanAttributes): void;
+	addEvent(type: string, attributes?: SpanAttributes): void;
+	recordError(error: unknown, attributes?: SpanAttributes): void;
+}
+
 export interface TracingEvent {
 	name: string;
 	at: number;
 	span: SpanTrait;
 	level: TracingLevel;
 	target: string;
-	fields?: Record<string, unknown>;
+	fields?: SpanAttributes;
 }
 
 export interface TracingTrait extends DisposableTrait {

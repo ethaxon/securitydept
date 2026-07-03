@@ -10,6 +10,7 @@ import {
 	type UserRecovery as UserRecoveryType,
 } from "@securitydept/client";
 import {
+	useInteropObservable,
 	useResourceSnapshot,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
@@ -20,13 +21,7 @@ import {
 import { useTokenSetClientRegistry } from "@securitydept/token-set-context-client-react";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	useSyncExternalStore,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	assessPropagationProbeResult,
 	DEFAULT_PROPAGATION_FORWARDER_CONFIG_SNIPPET,
@@ -270,10 +265,8 @@ function TokenSetBackendModePlaygroundReadyContent({
 					authorizationHeaderSnapshot.status === ResourceStatus.Error
 				? authorizationHeaderSnapshot.error
 				: null;
-	const traceEvents = useSyncExternalStore(
-		(listener) => traceTimeline.subscribe(listener),
-		() => traceTimeline.get(),
-	);
+	useInteropObservable(traceTimeline.latestEntry, { initialValue: null });
+	const traceEvents = traceTimeline.entries;
 	const propagationRequestRef = useRef<CancellationTokenSourceTrait | null>(
 		null,
 	);

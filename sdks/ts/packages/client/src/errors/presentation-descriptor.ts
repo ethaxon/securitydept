@@ -1,24 +1,16 @@
+import { SpanSharedAttributeName } from "../span/attributes";
 import { ClientError } from "./client-error";
 import {
+	type ClientErrorContextFormatter,
 	type ClientErrorKind,
 	ClientErrorKind as ClientErrorKindValue,
-	type ErrorPresentation,
-	type ErrorPresentationActionDescriptor,
 	type ErrorPresentationDescriptor,
 	ErrorPresentationTone,
+	type ErrorRecoveryActionDescriptor,
 	type ReadErrorPresentationDescriptorOptions,
 	type UserRecovery,
 	UserRecovery as UserRecoveryValue,
 } from "./types";
-
-interface ClientErrorLike {
-	code: string | null;
-	kind: ClientErrorKind | null;
-	recovery: UserRecovery;
-	retryable: boolean;
-	source?: string;
-	presentation?: ErrorPresentation;
-}
 
 const DEFAULT_RECOVERY_LABELS: Record<UserRecovery, string> = {
 	[UserRecoveryValue.None]: "",
@@ -28,31 +20,51 @@ const DEFAULT_RECOVERY_LABELS: Record<UserRecovery, string> = {
 	[UserRecoveryValue.ContactSupport]: "Contact support",
 };
 
-const userRecoveryValues = new Set<string>(Object.values(UserRecoveryValue));
-const clientErrorKindValues = new Set<string>(
-	Object.values(ClientErrorKindValue),
-);
+export const formatClientErrorContext: ClientErrorContextFormatter = (
+	context,
+) => {
+	let clientName: string | undefined;
+	let clientId: string | undefined;
+	let operationName: string | undefined;
+	for (const frame of context) {
+		const frameClientName =
+			frame.attributes[SpanSharedAttributeName.ClientName];
+		const frameClientId = frame.attributes[SpanSharedAttributeName.ClientId];
+		const frameOperationName =
+			frame.attributes[SpanSharedAttributeName.OperationName];
+		if (typeof frameClientName === "string") {
+			clientName = frameClientName;
+		}
+		if (typeof frameClientId === "string") {
+			clientId = frameClientId;
+		}
+		if (typeof frameOperationName === "string") {
+			operationName = frameOperationName;
+		}
+	}
+	const contextLabel = [clientName ?? clientId, operationName]
+		.filter((value): value is string => Boolean(value))
+		.join(" · ");
+	return contextLabel || undefined;
+};
 
 export function readErrorPresentationDescriptor(
 	error: unknown,
 	options: ReadErrorPresentationDescriptorOptions = {},
 ): ErrorPresentationDescriptor {
-	const clientError =
-		error instanceof ClientError ? error : coerceClientErrorLike(error);
-	if (!clientError) {
+	if (!(error instanceof ClientError)) {
 		return {
 			code: null,
-			kind: null,
 			title: options.fallbackTitle ?? "Operation failed",
 			description:
 				options.fallbackDescription ??
 				"An unexpected error prevented the operation from completing.",
 			recovery: UserRecoveryValue.None,
-			retryable: false,
 			tone: ErrorPresentationTone.Danger,
 			primaryAction: null,
 		};
 	}
+	const clientError = error;
 
 	const code = clientError.presentation?.code ?? clientError.code;
 	const codePresentation = code ? options.codePresentations?.[code] : undefined;
@@ -62,21 +74,27 @@ export function readErrorPresentationDescriptor(
 		clientError.recovery;
 	const generic = readGenericPresentation(clientError.kind);
 
-	return {
+	const descriptor: ErrorPresentationDescriptor = {
 		code,
-		kind: clientError.kind,
-		source: clientError.source,
 		title: codePresentation?.title ?? generic.title,
 		description:
 			clientError.presentation?.message ??
 			codePresentation?.description ??
 			generic.description,
 		recovery,
-		retryable: clientError.retryable,
 		tone:
 			codePresentation?.tone ?? readClientErrorTone(clientError.kind, recovery),
 		primaryAction: readPrimaryAction(recovery, options),
 	};
+	if (!clientError.spanContext || options.contextFormatter === null) {
+		return descriptor;
+	}
+	const contextLabel = (options.contextFormatter ?? formatClientErrorContext)(
+		clientError.spanContext,
+	);
+	return contextLabel
+		? { ...descriptor, title: `${contextLabel}: ${descriptor.title}` }
+		: descriptor;
 }
 
 function readGenericPresentation(kind: ClientErrorKind | null): {
@@ -164,50 +182,10 @@ function readClientErrorTone(
 	return ErrorPresentationTone.Danger;
 }
 
-function coerceClientErrorLike(error: unknown): ClientErrorLike | null {
-	if (typeof error !== "object" || error === null) {
-		return null;
-	}
-	const candidate = error as Record<string, unknown>;
-	if (
-		typeof candidate.kind !== "string" ||
-		!clientErrorKindValues.has(candidate.kind)
-	) {
-		return null;
-	}
-	return {
-		code: typeof candidate.code === "string" ? candidate.code : null,
-		kind: candidate.kind as ClientErrorKind,
-		recovery:
-			typeof candidate.recovery === "string" &&
-			userRecoveryValues.has(candidate.recovery)
-				? (candidate.recovery as UserRecovery)
-				: UserRecoveryValue.None,
-		retryable: candidate.retryable === true,
-		source: typeof candidate.source === "string" ? candidate.source : undefined,
-		presentation: isErrorPresentation(candidate.presentation)
-			? candidate.presentation
-			: undefined,
-	};
-}
-
-function isErrorPresentation(value: unknown): value is ErrorPresentation {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		typeof (value as Record<string, unknown>).code === "string" &&
-		typeof (value as Record<string, unknown>).message === "string" &&
-		typeof (value as Record<string, unknown>).recovery === "string" &&
-		userRecoveryValues.has(
-			(value as Record<string, unknown>).recovery as string,
-		)
-	);
-}
-
 function readPrimaryAction(
 	recovery: UserRecovery,
 	options: ReadErrorPresentationDescriptorOptions,
-): ErrorPresentationActionDescriptor | null {
+): ErrorRecoveryActionDescriptor | null {
 	if (recovery === UserRecoveryValue.None) {
 		return null;
 	}

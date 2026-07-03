@@ -8,6 +8,7 @@ import { defineInstrumentMethodDecorator } from "../operation-method";
 import { OperationSpan, runOperation } from "../operation-runner";
 import {
 	OperationTraceEventType,
+	TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
 	type TracingEvent,
 	TracingLevel,
 } from "../types";
@@ -161,7 +162,7 @@ describe("runOperation", () => {
 			idFactory: () => "manual_span",
 		});
 
-		operationSpan.setAttributes({ phase: "committed" });
+		operationSpan.setTraceAttributes({ phase: "committed" });
 		operationSpan.recordEnded("succeeded");
 
 		expect(events.map((event) => event.name)).toEqual([
@@ -170,12 +171,20 @@ describe("runOperation", () => {
 		]);
 		expect(events.every((event) => event.span.id === "manual_span")).toBe(true);
 		expect(events[1]).toMatchObject({
-			fields: {
-				operationName: "manual.workflow",
-				outcome: "succeeded",
-				phase: "committed",
-			},
+			fields: { outcome: "succeeded" },
 		});
+		expect(
+			events[1]?.span.getRootToNodeAttributes({
+				providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
+			}),
+		).toContainEqual(
+			expect.objectContaining({
+				attributes: {
+					"operation.name": "manual.workflow",
+					phase: "committed",
+				},
+			}),
+		);
 	});
 
 	it("uses the parent span id factory by default", () => {
@@ -236,10 +245,10 @@ describe("runOperation", () => {
 			span: environment.span,
 			name: "frontend_oidc.callback",
 			target: "frontend-oidc-mode",
-			fields: { flow: "callback" },
+			traceAttributes: { flow: "callback" },
 			idFactory: () => "op_fixed",
 			execute: (span) => {
-				span.setAttributes({ mode: "frontend" });
+				span.setTraceAttributes({ mode: "frontend" });
 				span.addEvent("pending.state.loaded", { state: "s1" });
 				span.recordError(new Error("boom"), { phase: "exchange" });
 			},
@@ -257,10 +266,6 @@ describe("runOperation", () => {
 		expect(events.every((event) => event.span.id === "op_fixed")).toBe(true);
 		expect(events[0]).toMatchObject({
 			level: TracingLevel.Info,
-			fields: {
-				operationName: "frontend_oidc.callback",
-				flow: "callback",
-			},
 			span: expect.objectContaining({
 				id: "op_fixed",
 				parent: expect.objectContaining({
@@ -270,29 +275,29 @@ describe("runOperation", () => {
 		});
 		expect(events[1]).toMatchObject({
 			fields: {
-				operationName: "frontend_oidc.callback",
 				eventName: "pending.state.loaded",
-				flow: "callback",
-				mode: "frontend",
 				state: "s1",
 			},
 		});
 		expect(events[2]).toMatchObject({
 			level: TracingLevel.Error,
 			fields: expect.objectContaining({
-				operationName: "frontend_oidc.callback",
 				phase: "exchange",
 				errorName: "Error",
 			}),
 		});
 		expect(events[3]).toMatchObject({
 			level: TracingLevel.Info,
-			fields: {
-				operationName: "frontend_oidc.callback",
-				flow: "callback",
-				mode: "frontend",
-				outcome: "succeeded",
-			},
+			fields: { outcome: "succeeded" },
+		});
+		expect(
+			events[3]?.span.getAttributes({
+				providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
+			}),
+		).toEqual({
+			"operation.name": "frontend_oidc.callback",
+			flow: "callback",
+			mode: "frontend",
 		});
 	});
 
@@ -321,16 +326,12 @@ describe("runOperation", () => {
 		expect(events[1]).toMatchObject({
 			level: TracingLevel.Error,
 			fields: expect.objectContaining({
-				operationName: "token.refresh",
 				errorName: "Error",
 			}),
 		});
 		expect(events[2]).toMatchObject({
 			level: TracingLevel.Error,
-			fields: {
-				operationName: "token.refresh",
-				outcome: "failed",
-			},
+			fields: { outcome: "failed" },
 		});
 	});
 });
@@ -355,8 +356,8 @@ describe("defineInstrumentMethodDecorator", () => {
 						span: this.environment.span,
 						name: `${prefix}.${methodName}`,
 						target: "decorator-test",
-						fields: {
-							tag: args[0],
+						traceAttributes: {
+							tag: String(args[0]),
 						},
 					};
 				},
@@ -378,10 +379,6 @@ describe("defineInstrumentMethodDecorator", () => {
 		]);
 		expect(events[0]).toMatchObject({
 			target: "decorator-test",
-			fields: {
-				operationName: "resolved.execute",
-				tag: "alpha",
-			},
 			span: expect.objectContaining({
 				parent: expect.objectContaining({
 					id: "root_span",
@@ -390,12 +387,13 @@ describe("defineInstrumentMethodDecorator", () => {
 		});
 		expect(events[1]).toMatchObject({
 			target: "decorator-test",
-			fields: {
-				operationName: "resolved.execute",
-				tag: "alpha",
-				outcome: "succeeded",
-			},
+			fields: { outcome: "succeeded" },
 		});
+		expect(
+			events[1]?.span.getAttributes({
+				providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
+			}),
+		).toEqual({ "operation.name": "resolved.execute", tag: "alpha" });
 	});
 
 	it("records error lifecycle for decorated methods", async () => {
@@ -440,17 +438,13 @@ describe("defineInstrumentMethodDecorator", () => {
 			target: "decorator-test",
 			level: TracingLevel.Error,
 			fields: expect.objectContaining({
-				operationName: "decorated.failure",
 				errorName: "Error",
 			}),
 		});
 		expect(events[2]).toMatchObject({
 			target: "decorator-test",
 			level: TracingLevel.Error,
-			fields: {
-				operationName: "decorated.failure",
-				outcome: "failed",
-			},
+			fields: { outcome: "failed" },
 		});
 	});
 });

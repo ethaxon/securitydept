@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createCancellationTokenSource } from "../../cancellation/create";
-import { ClientError } from "../../errors/client-error";
+import {
+	CLIENT_ERROR_SPAN_ATTRIBUTE_PROVIDER_ID,
+	ClientError,
+} from "../../errors/client-error";
 import { describeError } from "../../errors/error-attributes";
 import { readErrorPresentationDescriptor } from "../../errors/presentation-descriptor";
 import {
@@ -10,6 +13,9 @@ import {
 	UserRecovery,
 } from "../../errors/types";
 import { readPopupErrorPresentationDescriptor } from "../../popup/errors";
+import { SpanSharedAttributeName } from "../../span/attributes";
+import { createRootSpan } from "../../span/span";
+import { TRACING_SPAN_ATTRIBUTE_PROVIDER_ID } from "../../tracing/types";
 
 describe("ClientError", () => {
 	it("should create with kind and message", () => {
@@ -55,6 +61,65 @@ describe("ClientError", () => {
 			source: "test",
 			cause,
 		});
+	});
+
+	it("captures the first error-oriented span path without changing identity", () => {
+		class SpecificClientError extends ClientError {}
+		const root = createRootSpan({
+			idFactory: () => "root",
+			attributes: {
+				[SpanSharedAttributeName.ClientName]: "SessionContextClient",
+				[SpanSharedAttributeName.ClientId]: "session-client",
+			},
+		});
+		const operation = root.fork({
+			mutable: true,
+			idFactory: () => "operation",
+			attributes: {
+				[SpanSharedAttributeName.OperationName]: "session_context.refresh",
+			},
+		});
+		operation.setAttributes(
+			{ endpointKind: "user_info" },
+			{ providerId: CLIENT_ERROR_SPAN_ATTRIBUTE_PROVIDER_ID },
+		);
+		operation.setAttributes(
+			{ traceSecret: "trace-only" },
+			{ providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID },
+		);
+		const error = new SpecificClientError({
+			kind: ClientErrorKind.Server,
+			message: "Request failed",
+		});
+
+		expect(error.captureSpanContext(operation)).toBe(error);
+		expect(error).toBeInstanceOf(SpecificClientError);
+		expect(error.spanContext).toEqual([
+			{
+				spanId: "root",
+				attributes: {
+					[SpanSharedAttributeName.ClientName]: "SessionContextClient",
+					[SpanSharedAttributeName.ClientId]: "session-client",
+				},
+			},
+			{
+				spanId: "operation",
+				parentSpanId: "root",
+				attributes: {
+					[SpanSharedAttributeName.OperationName]: "session_context.refresh",
+					endpointKind: "user_info",
+				},
+			},
+		]);
+		expect(JSON.stringify(error.spanContext)).not.toContain("trace-only");
+
+		const other = root.fork({
+			attributes: {
+				[SpanSharedAttributeName.OperationName]: "outer.operation",
+			},
+		});
+		error.captureSpanContext(other);
+		expect(error.spanContext?.at(-1)?.spanId).toBe("operation");
 	});
 
 	it("should create from server error body", () => {
@@ -208,7 +273,6 @@ describe("ClientError", () => {
 
 		expect(descriptor).toMatchObject({
 			code: "authentication_required",
-			kind: ClientErrorKind.Unauthenticated,
 			title: "Authentication required",
 			description: "Sign in again to continue.",
 			recovery: UserRecovery.Reauthenticate,
@@ -218,6 +282,50 @@ describe("ClientError", () => {
 				href: null,
 			},
 		});
+	});
+
+	it("uses the safe fallback for structurally similar non-ClientError values", () => {
+		expect(
+			readErrorPresentationDescriptor({
+				kind: ClientErrorKind.Server,
+				code: "server.fake",
+				message: "not a ClientError",
+			}),
+		).toEqual({
+			code: null,
+			title: "Operation failed",
+			description:
+				"An unexpected error prevented the operation from completing.",
+			recovery: UserRecovery.None,
+			tone: ErrorPresentationTone.Danger,
+			primaryAction: null,
+		});
+	});
+
+	it("formats default and host-defined presentation from span context", () => {
+		const span = createRootSpan({
+			attributes: {
+				[SpanSharedAttributeName.ClientName]: "SessionContextClient",
+				[SpanSharedAttributeName.OperationName]: "session_context.refresh",
+			},
+		});
+		const error = new ClientError({
+			kind: ClientErrorKind.Server,
+			message: "Request failed",
+			span,
+		});
+
+		expect(readErrorPresentationDescriptor(error).title).toBe(
+			"SessionContextClient · session_context.refresh: Server request failed",
+		);
+		expect(
+			readErrorPresentationDescriptor(error, {
+				contextFormatter: () => "Localized",
+			}).title,
+		).toBe("Localized: Server request failed");
+		expect(
+			readErrorPresentationDescriptor(error, { contextFormatter: null }).title,
+		).toBe("Server request failed");
 	});
 });
 

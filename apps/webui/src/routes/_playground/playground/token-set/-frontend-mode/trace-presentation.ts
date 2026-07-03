@@ -1,4 +1,8 @@
-import { type TraceTimelineEntry, UserRecovery } from "@securitydept/client";
+import {
+	SpanSharedAttributeName,
+	type TraceTimelineEntry,
+	UserRecovery,
+} from "@securitydept/client";
 
 export const TraceBadgeTone = {
 	Neutral: "neutral",
@@ -18,7 +22,7 @@ export interface TraceBadge {
 
 const SUMMARY_FIELD_KEYS = new Set([
 	"popupCallbackUrl",
-	"operationName",
+	SpanSharedAttributeName.OperationName,
 	"eventName",
 	"configuredIssuer",
 	"resolvedIssuer",
@@ -91,11 +95,19 @@ export function readTraceDisplayType(entry: TraceTimelineEntry): string {
 }
 
 export function readTraceSummary(entry: TraceTimelineEntry): string | null {
-	const metadata = entry.fields ?? {};
+	const metadata = Object.assign(
+		{},
+		...entry.spanAttributes.map((frame) => frame.attributes),
+		entry.fields,
+	);
 	const parts: string[] = [];
 
 	appendStringField(parts, metadata.popupCallbackUrl);
-	appendStringField(parts, metadata.operationName, "operation");
+	appendStringField(
+		parts,
+		metadata[SpanSharedAttributeName.OperationName],
+		"operation",
+	);
 	appendStringField(parts, metadata.eventName, "event");
 	appendStringField(parts, metadata.configuredIssuer);
 	appendStringField(parts, metadata.resolvedIssuer);

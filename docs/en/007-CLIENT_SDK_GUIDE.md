@@ -88,11 +88,19 @@ The public reactive contracts are SDK traits:
 
 Consumers receive read-only signals and event streams. Implementations may use RxJS directly: the traits implement observable interop, and `@securitydept/client/rx` provides RxJS-backed implementations plus command/resource utilities. Do not wrap RxJS again merely to hide it internally, and do not expose an RxJS `Observable` as the SDK's public contract.
 
+Client lifecycle event streams are hot, non-replaying edge streams. Current or stale state belongs in `SignalTrait` / `ResourceTrait`; diagnostic history belongs in an explicitly named trace timeline or event-history adapter. A late event subscriber must not re-run historical side effects such as toasts or metrics.
+
+Failure variants carry a context-specific `ClientError` as a required `error` field. Consumers can use `from(client.events).pipe(filter(isClientErrorEvent))` to derive a default message stream without creating a second error subject. The same error instance is published to the Resource, failure event, and rejected operation. The full error is an in-process programming contract and must not be serialized directly; logging and tracing should derive secret-safe fields with `describeError(error)`, while UI adapters should use `readErrorPresentationDescriptor(error)`.
+
 `createNeverEventStream()` and `createEmptyEventStream()` are the semantic equivalents of RxJS `NEVER` and `EMPTY` for public trait APIs.
 
 ## Span And Tracing
 
-`SpanTrait` is a base context capability, independent of tracing and events. A caller forks a span for nested work; tracing records the current operation under that span. This supports hosts that can propagate context automatically and hosts that use explicit propagation.
+`SpanTrait` is a base context capability shared by tracing, errors, and future event correlation. Context propagation is explicit: clients fork a client frame, and each operation forks an operation frame. Shared attributes use the named `client.name`, `client.id`, and `operation.name` keys. Provider-specific details are written with `setAttributes(attributes, { providerId })`; a provider read sees its own attributes plus shared attributes by default, without flattening the root-to-node path. Attribute values use the immutable `SpanAttributeValue` contract. Span core relies on this readonly contract and only copies top-level records when state changes; it does not inspect, clone, or freeze nested values. Read attributes with `getAttributes()` or `getRootToNodeAttributes()`.
+
+Tracing writes protocol and lifecycle detail under `TRACING_SPAN_ATTRIBUTE_PROVIDER_ID`. A `TracingEvent` keeps a live span reference; a buffering subscriber such as `createTraceTimelineStore()` reads and stores the tracing-visible root-to-node frames at its own consumption boundary. The timeline uses the optional `mnemonist` peer for bounded queue storage. Its non-replaying `latestEntry` stream emits each recorded entry and `null` after clear; the `entries` getter creates a readonly array snapshot only when a consumer needs the full timeline. Operation creator options use `traceAttributes`, not the former generic `fields` input.
+
+`ClientError` captures the first error-visible span path, preserving the concrete error instance and subclass. The snapshot contains shared attributes plus `CLIENT_ERROR_SPAN_ATTRIBUTE_PROVIDER_ID` attributes, never tracing-only details. `readErrorPresentationDescriptor()` uses the deepest client identity and operation name by default, so a generic message stream can produce source-aware UI text without an event-type mapping. Set `contextFormatter: null` to disable this prefix or provide a formatter that returns a localized context label.
 
 Trace records describe the local action. Do not add parallel global source/outcome enums merely to reconstruct nesting that the span tree already provides. Freshness is a refresh-boundary fact, not a default field of every auth event or trace.
 
@@ -137,7 +145,7 @@ The TanStack React Router adapter maps push and replace requests to `router.navi
 - Call `start()` once the client and required host capabilities are composed.
 - Consume public read-only state/event surfaces; call `dispose()` when the owning framework/container is destroyed.
 - Pass cancellation tokens to cancellable operations; cancellation is cooperative and must be checked at async boundaries.
-- Public failures are `ClientError`-compatible, normalized with safe code/source/recovery metadata. Do not expose secret-bearing transport, token, or provider payloads in UI errors or events.
+- Public failures use context-owned `ClientError` values with safe code/source/recovery metadata. Do not expose secret-bearing transport, token, or provider payloads in UI errors or events.
 
 ## Compatibility
 

@@ -1,3 +1,10 @@
+import {
+	ClientError,
+	ClientErrorKind,
+	type SpanTrait,
+	UserRecovery,
+} from "@securitydept/client";
+
 export const TokenSetAuthorizationRevocationReason = {
 	InvalidGrant: "invalid_grant",
 	InvalidToken: "invalid_token",
@@ -16,6 +23,18 @@ export type TokenSetAuthorizationErrorCode =
 	(typeof TokenSetAuthorizationErrorCode)[keyof typeof TokenSetAuthorizationErrorCode];
 
 export const TokenSetAuthorizationErrorSource = "token_set.authorization";
+
+export function clientErrorFromTokenSetAuthorizationError(
+	error: unknown,
+	options: { span: SpanTrait | undefined },
+): ClientError {
+	return ClientError.fromUnknown(error, {
+		code: TokenSetAuthorizationErrorCode.OperationFailed,
+		message: "The token-set authorization operation failed unexpectedly",
+		source: TokenSetAuthorizationErrorSource,
+		span: options.span,
+	});
+}
 
 export class TokenSetAuthorizationRevocationError extends ClientError {
 	override readonly code: TokenSetAuthorizationErrorCode;
@@ -42,9 +61,3 @@ export class TokenSetAuthorizationRevocationError extends ClientError {
 		this.reason = options.reason;
 	}
 }
-
-import {
-	ClientError,
-	ClientErrorKind,
-	UserRecovery,
-} from "@securitydept/client";

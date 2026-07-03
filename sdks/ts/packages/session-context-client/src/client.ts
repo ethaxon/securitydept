@@ -9,7 +9,6 @@ import {
 	createSignal,
 	type DisposableTrait,
 	defineInstrumentMethodDecorator,
-	describeError,
 	ENVIRONMENT_TOKEN,
 	type EventStreamTrait,
 	type FoundationEnvironment,
@@ -28,6 +27,7 @@ import {
 	resourceFromSnapshots,
 	SecuritydeptDestroyRef,
 	type SecuritydeptInjectorTrait,
+	SpanSharedAttributeName,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
 	UriReferenceString,
@@ -40,22 +40,25 @@ import {
 	commandResponseData,
 	concatCommand,
 	dispatchCommandLocallyToStream,
-	RxEventReplaySubject,
 	RxEventSubject,
 	RxStateSignal,
 } from "@securitydept/client/rx";
 import { filter, from, lastValueFrom, take, takeUntil } from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import { parseSessionInfoPayload } from "./contracts/parsers";
+import {
+	clientErrorFromSessionError,
+	SessionContextErrorCode,
+	SessionContextSource,
+} from "./error";
 import { SESSION_CONTEXT_CLIENT_CONFIG } from "./tokens";
 import {
 	type ResolvedSessionContextClientConfig,
 	type SessionContextClientConfig,
-	SessionContextErrorCode,
 	type SessionContextEvent,
+	type SessionContextEventInput,
 	SessionContextEventType,
 	type SessionContextOperationOptions,
-	SessionContextSource,
 	type SessionInfo,
 	type SessionLoginWithRedirectOptions,
 } from "./types";
@@ -88,13 +91,9 @@ const instrumentSessionMethod = defineInstrumentMethodDecorator<
 				span: this.span,
 				name: `${this.config.tracing.prefix}.${operation}`,
 				target: this.config.tracing.target,
-				fields: { operation },
-				normalizeError: (error: unknown) =>
-					ClientError.fromUnknown(error, {
-						code: SessionContextErrorCode.OperationFailed,
-						message: "The session operation failed unexpectedly",
-						source: SessionContextSource.SessionContext,
-					}),
+				traceAttributes: { operation },
+				clientErrorFromUnknown: (error, options) =>
+					clientErrorFromSessionError(error, options),
 			};
 		},
 );
@@ -141,8 +140,7 @@ export class SessionContextClient implements DisposableTrait {
 		logoutPending: createSignal(false),
 		loginRedirectPending: createSignal(false),
 	};
-	private readonly _eventSubject =
-		new RxEventReplaySubject<SessionContextEvent>(100);
+	private readonly _eventSubject = new RxEventSubject<SessionContextEvent>();
 	private readonly _refreshCommandSubject =
 		new RxEventSubject<SessionRefreshCommand>();
 	private readonly _refreshResponseSubject = new RxEventSubject<
@@ -236,8 +234,8 @@ export class SessionContextClient implements DisposableTrait {
 		this.id = this._config.id;
 		this._span = environment.span.fork({
 			attributes: {
-				clientName: this.constructor.name,
-				id: this.id,
+				[SpanSharedAttributeName.ClientName]: this.constructor.name,
+				[SpanSharedAttributeName.ClientId]: this.id,
 			},
 		});
 		this.sessionSnapshot = readonlySignal(this._sessionSnapshotSignal);
@@ -392,6 +390,7 @@ export class SessionContextClient implements DisposableTrait {
 
 	dispose(): void {
 		this._destroyed.set(true);
+		this._eventSubject.complete();
 	}
 
 	[SYMBOL_DISPOSE](): void {
@@ -471,7 +470,7 @@ export class SessionContextClient implements DisposableTrait {
 					value: sessionInfo,
 				}),
 			);
-			operationSpan?.setAttributes({
+			operationSpan?.setTraceAttributes({
 				authenticated: sessionInfo !== null,
 			});
 			this._emitSessionEvent({
@@ -480,18 +479,21 @@ export class SessionContextClient implements DisposableTrait {
 			});
 			return sessionInfo;
 		} catch (error) {
+			const clientError = clientErrorFromSessionError(error, {
+				span: operationSpan?.span,
+			});
 			this._sessionSnapshotSignal.set(
 				reduceResourceSnapshot(loadingSnapshot, {
 					kind: ResourceSnapshotUpdateKind.Fail,
-					error,
+					error: clientError,
 				}),
 			);
 			this._emitSessionEvent({
 				type: SessionContextEventType.SessionRefreshFailed,
 				session: previousValue,
-				errorSummary: describeError(error),
+				error: clientError,
 			});
-			throw error;
+			throw clientError;
 		} finally {
 			this._operationSignals.refreshPending.set(false);
 		}
@@ -535,24 +537,27 @@ export class SessionContextClient implements DisposableTrait {
 					value: null,
 				}),
 			);
-			operationSpan?.setAttributes({ authenticated: false });
+			operationSpan?.setTraceAttributes({ authenticated: false });
 			this._emitSessionEvent({
 				type: SessionContextEventType.SessionLogoutSucceeded,
 				session: null,
 			});
 		} catch (error) {
+			const clientError = clientErrorFromSessionError(error, {
+				span: operationSpan?.span,
+			});
 			this._sessionSnapshotSignal.set(
 				reduceResourceSnapshot(loadingSnapshot, {
 					kind: ResourceSnapshotUpdateKind.Fail,
-					error,
+					error: clientError,
 				}),
 			);
 			this._emitSessionEvent({
 				type: SessionContextEventType.SessionLogoutFailed,
 				session: this._readCurrentSession(),
-				errorSummary: describeError(error),
+				error: clientError,
 			});
-			throw error;
+			throw clientError;
 		} finally {
 			this._operationSignals.logoutPending.set(false);
 		}
@@ -608,9 +613,7 @@ export class SessionContextClient implements DisposableTrait {
 			: null;
 	}
 
-	private _emitSessionEvent(
-		input: Omit<SessionContextEvent, "at" | "client">,
-	): void {
+	private _emitSessionEvent(input: SessionContextEventInput): void {
 		this._eventSubject.next({
 			...input,
 			at: this._environment.time.now(),

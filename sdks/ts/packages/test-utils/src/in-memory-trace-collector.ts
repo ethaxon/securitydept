@@ -1,5 +1,6 @@
 import {
 	OperationTraceEventType,
+	SpanSharedAttributeName,
 	type TracingEvent,
 	type TracingSubscriberTrait,
 } from "@securitydept/client";
@@ -35,6 +36,15 @@ export class InMemoryTraceCollector implements TracingSubscriberTrait {
 	/** Filter events by operation span id. */
 	ofOperation(spanId: string): TracingEvent[] {
 		return this._events.filter((event) => event.span.id === spanId);
+	}
+
+	/** Filter events by their operation span name. */
+	ofOperationName(operationName: string): TracingEvent[] {
+		return this._events.filter(
+			(event) =>
+				event.span.getAttributes()[SpanSharedAttributeName.OperationName] ===
+				operationName,
+		);
 	}
 
 	/** Return only lifecycle events for one operation span id. */

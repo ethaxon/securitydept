@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 <!-- markdownlint-disable MD024 -->
 
+## [0.3.0-beta.7]
+
+### Added
+
+- Added a WebUI `MessageService` backed by sonner and connected auth-context client error events to the default toast presentation flow.
+- Added provider-scoped span attributes, root-to-node attribute views, shallow tracing-subscriber frame snapshots, and first-capture `ClientError` span context with customizable context-label formatting.
+
+### Changed
+
+- Changed Basic Auth, Session, and Token Set lifecycle event streams to non-replaying edge streams, made failure variants carry context-specific `ClientError` values, and added `isClientErrorEvent()` for type-safe downstream message filtering without a second error subject.
+- Changed operation instrumentation to store `client.name`, `client.id`, and `operation.name` as shared span attributes while keeping protocol details in the tracing provider. Default error presentation now derives client and operation context without an event-type mapping.
+- Simplified the TypeScript error presentation boundary to accept canonical `ClientError` instances only, removed machine-only `kind`, `source`, and `retryable` fields from the UI descriptor, and renamed its supporting contracts to `ServerErrorPresentation`, `ErrorCodePresentation`, and `ErrorRecoveryActionDescriptor`.
+- Changed tracing subscribers to prototype-based classes and backed trace timeline history with the optional `mnemonist` peer queue. Timeline writes now publish only the latest entry through an event stream, while full readonly array snapshots are created on demand.
+- Bumped release-managed Rust crates, TypeScript packages, apps, lockfiles, and shared metadata to `0.3.0-beta.7`.
+
 ## [0.3.0-beta.6]
 
 ### Changed

@@ -1,26 +1,16 @@
 import {
-	type ClientErrorKind,
-	type ErrorCodePresentationDescriptor,
+	type ErrorCodePresentation,
 	type ErrorPresentationDescriptor,
 	ErrorPresentationTone,
 	type ReadErrorPresentationDescriptorOptions,
 	readErrorPresentationDescriptor,
-	type UserRecovery,
 	UserRecovery as UserRecoveryValue,
 } from "@securitydept/client";
 import { FrontendOidcModeErrorCode } from "../client/error-codes";
 import { FrontendOidcModeCallbackErrorCode } from "./callback-error-codes";
 
-export interface FrontendOidcModeCallbackErrorDescriptorInput {
-	code: string | null;
-	kind: ClientErrorKind | null;
-	recovery: UserRecovery;
-	retryable: boolean;
-	source?: string;
-}
-
 const callbackPresentations: Readonly<
-	Record<FrontendOidcModeCallbackErrorCode, ErrorCodePresentationDescriptor>
+	Record<FrontendOidcModeCallbackErrorCode, ErrorCodePresentation>
 > = {
 	[FrontendOidcModeCallbackErrorCode.MissingState]: {
 		title: "Unknown callback state",
@@ -59,9 +49,7 @@ const callbackPresentations: Readonly<
 	},
 };
 
-const tokenPresentations: Readonly<
-	Record<string, ErrorCodePresentationDescriptor>
-> = {
+const tokenPresentations: Readonly<Record<string, ErrorCodePresentation>> = {
 	[FrontendOidcModeErrorCode.TokenEndpointRejected]: {
 		title: "Token exchange failed",
 		description:
@@ -72,7 +60,7 @@ const tokenPresentations: Readonly<
 };
 
 export function describeFrontendOidcModeCallbackError(
-	error: FrontendOidcModeCallbackErrorDescriptorInput | unknown,
+	error: unknown,
 	options: ReadErrorPresentationDescriptorOptions = {},
 ): ErrorPresentationDescriptor {
 	const descriptor = readErrorPresentationDescriptor(error, {

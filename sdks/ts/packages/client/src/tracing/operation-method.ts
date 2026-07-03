@@ -1,5 +1,5 @@
-import { type OperationSpanTrait } from "../span/types";
 import { type RunOperationOptionsBase, runOperation } from "./operation-runner";
+import { type OperationSpanTrait } from "./types";
 
 export interface InstrumentMethodThisContext<TArgs extends unknown[]> {
 	args: TArgs;
@@ -60,9 +60,9 @@ export function defineInstrumentMethodDecorator<
 					span: resolvedOptions.span,
 					name: resolvedOptions.name ?? methodName,
 					target: resolvedOptions.target,
-					fields: resolvedOptions.fields,
+					traceAttributes: resolvedOptions.traceAttributes,
 					idFactory: resolvedOptions.idFactory,
-					normalizeError: resolvedOptions.normalizeError,
+					clientErrorFromUnknown: resolvedOptions.clientErrorFromUnknown,
 					execute: (span) =>
 						(
 							target as unknown as (

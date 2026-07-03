@@ -8,15 +8,15 @@ contract。
 ## 当前版本基线
 
 当前发布的 Outposts 基线为 `0.4.0`。它使用已发布的 SecurityDept
-`0.3.0-beta.6`，而不是本地 workspace link：
+`0.3.0-beta.7`，而不是本地 workspace link：
 
 | Surface | Outposts dependency | 版本 |
 | --- | --- | --- |
-| Angular 浏览器 foundation | `@securitydept/client` | `0.3.0-beta.6` |
-| Angular framework bridge | `@securitydept/client-angular` | `0.3.0-beta.6` |
-| 前端 OIDC 与 registry | `@securitydept/token-set-context-client` | `0.3.0-beta.6` |
-| Angular OIDC adapter | `@securitydept/token-set-context-client-angular` | `0.3.0-beta.6` |
-| Rust server entry point | `securitydept-core` | `0.3.0-beta.6` |
+| Angular 浏览器 foundation | `@securitydept/client` | `0.3.0-beta.7` |
+| Angular framework bridge | `@securitydept/client-angular` | `0.3.0-beta.7` |
+| 前端 OIDC 与 registry | `@securitydept/token-set-context-client` | `0.3.0-beta.7` |
+| Angular OIDC adapter | `@securitydept/token-set-context-client-angular` | `0.3.0-beta.7` |
+| Rust server entry point | `securitydept-core` | `0.3.0-beta.7` |
 
 Confluence backend 启用 core 的 `oauth-resource-server`、`creds` 与
 `token-set-context` feature。Web application 使用 Angular `22.1`、Nx `23.1`

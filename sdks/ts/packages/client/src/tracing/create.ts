@@ -1,6 +1,5 @@
 import { type as defineType } from "arktype";
 import { SYMBOL_DISPOSE } from "../compat";
-import { type EventStreamTrait, type EventSubscriptionTrait } from "../events";
 import { RxEventSubject } from "../rx/event";
 import {
 	type TraitInputValidator,
@@ -42,28 +41,18 @@ export function createTracing(
 			}),
 	});
 	const subject = new RxEventSubject<TracingEvent>();
-	const events: EventStreamTrait<TracingEvent> = subject;
-	const subscriptions: EventSubscriptionTrait[] = [];
-
-	for (const subscriber of resolvedCreateOptions.subscribers) {
-		subscriptions.push(
-			events.subscribe({
-				next(event) {
-					subscriber.record(event);
-				},
-			}),
-		);
-	}
+	let subscribers = resolvedCreateOptions.subscribers;
 
 	return {
 		record(event) {
+			for (const subscriber of subscribers) {
+				subscriber.record(event);
+			}
 			subject.next(event);
 		},
-		events,
+		events: subject,
 		dispose() {
-			for (const subscription of subscriptions.splice(0)) {
-				subscription.unsubscribe();
-			}
+			subscribers = [];
 		},
 		[SYMBOL_DISPOSE]() {
 			this.dispose();

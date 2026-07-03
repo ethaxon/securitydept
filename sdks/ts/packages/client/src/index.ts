@@ -90,25 +90,30 @@ export {
 } from "./environment";
 // --- Errors ---
 export {
+	CLIENT_ERROR_SPAN_ATTRIBUTE_PROVIDER_ID,
 	ClientError,
+	type ClientErrorContextFormatter,
 	type ClientErrorFromHttpResponseOptions,
 	type ClientErrorFromUnknownOptions,
 	ClientErrorKind,
 	ClientErrorSource,
+	type ClientErrorSpanContext,
 	describeError,
-	type ErrorCodePresentationDescriptor,
-	type ErrorPresentation,
-	type ErrorPresentationActionDescriptor,
+	type ErrorCodePresentation,
 	type ErrorPresentationDescriptor,
 	ErrorPresentationTone,
+	type ErrorRecoveryActionDescriptor,
 	type ErrorSummary,
+	formatClientErrorContext,
 	type ReadErrorPresentationDescriptorOptions,
 	readErrorPresentationDescriptor,
+	type ServerErrorPresentation,
 	UserRecovery,
 } from "./errors";
 // --- Events ---
 export {
 	abortSignalToEventStream,
+	type ClientErrorEvent,
 	createEmptyEventStream,
 	createEventReplaySubject,
 	createEventStream,
@@ -121,6 +126,8 @@ export {
 	type EventStreamTrait,
 	type EventSubjectTrait,
 	type EventSubscriptionTrait,
+	type ExtractClientErrorEvent,
+	isClientErrorEvent,
 	type RuntimeEventEnvelope,
 	type ToEventStreamInput,
 	toEventStream,
@@ -289,9 +296,15 @@ export {
 // --- Span ---
 export {
 	createRootSpan,
-	type OperationSpanTrait,
+	type MutableSpanTrait,
 	SPAN_TRAIT_TOKEN,
+	type SpanAttributeReadOptions,
+	type SpanAttributes,
+	type SpanAttributeValue,
 	type SpanCreateOptions,
+	type SpanNodeAttributes,
+	type SpanPathOptions,
+	SpanSharedAttributeName,
 	type SpanTrait,
 } from "./span";
 // --- Std ---
@@ -351,6 +364,7 @@ export {
 } from "./struct";
 // --- Tracing ---
 export {
+	ConsoleTracingSubscriber,
 	createConsoleTracingSubscriber,
 	createTraceTimelineStore,
 	createTracing,
@@ -361,14 +375,16 @@ export {
 	type InstrumentMethodThisContext,
 	type InstrumentMethodThisResolver,
 	OperationSpan,
+	type OperationSpanTrait,
 	OperationTraceEventType,
 	type RunOperationEnvironment,
 	type RunOperationOptions,
 	type RunOperationOptionsBase,
 	runOperation,
+	TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
 	TRACING_TRAIT_TOKEN,
 	type TraceTimelineEntry,
-	type TraceTimelineStore,
+	TraceTimelineStore,
 	type TracingCreateOptions,
 	type TracingEvent,
 	TracingLevel,

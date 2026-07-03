@@ -19,6 +19,8 @@ TS SDK 对应采用四层边界：
 - lifecycle events 与 tracing 只投影 secret-safe `ErrorSummary`：`errorName`、可选 `errorKind`、`errorCode` 与 `recovery`，不复制 runtime message。
 - `readErrorPresentationDescriptor()` 只读取显式安全 `presentation`、domain code mapping 或 foundation generic kind copy，绝不把 `Error.message` 当成用户文案。
 
+在 TypeScript API 中，`ServerErrorPresentation` 表示服务端提供的安全载荷，`ErrorCodePresentation` 配置稳定 error code 对应的 host 文案，`ErrorPresentationDescriptor` 是最终 UI 投影。最终投影只包含 `code`、展示文案、recovery、tone 与可选 recovery action；machine policy 所需的 `kind`、`source`、`retryable` 应从原始 `ClientError` 读取。
+
 TS SDK 的 `ClientErrorKind` 固定为 `authorization`、`transport`、`server`、`protocol`、`storage`、`configuration`、`unauthenticated`、`unauthorized`、`cancelled`、`timeout` 与 `internal`。Schema/options 输入错误属于 `configuration`；remote 或 persisted payload 错误属于 `protocol`；未知错误在公开 client operation boundary 被包装为 `internal` 并保留 `cause`。
 
 共享类型位于 `securitydept-utils`：

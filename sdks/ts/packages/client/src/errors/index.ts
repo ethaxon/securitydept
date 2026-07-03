@@ -1,4 +1,5 @@
 export {
+	CLIENT_ERROR_SPAN_ATTRIBUTE_PROVIDER_ID,
 	ClientError,
 	type ClientErrorFromHttpResponseOptions,
 	type ClientErrorFromUnknownOptions,
@@ -7,15 +8,20 @@ export {
 	describeError,
 	type ErrorSummary,
 } from "./error-attributes";
-export { readErrorPresentationDescriptor } from "./presentation-descriptor";
 export {
+	formatClientErrorContext,
+	readErrorPresentationDescriptor,
+} from "./presentation-descriptor";
+export {
+	type ClientErrorContextFormatter,
 	ClientErrorKind,
 	ClientErrorSource,
-	type ErrorCodePresentationDescriptor,
-	type ErrorPresentation,
-	type ErrorPresentationActionDescriptor,
+	type ClientErrorSpanContext,
+	type ErrorCodePresentation,
 	type ErrorPresentationDescriptor,
 	ErrorPresentationTone,
+	type ErrorRecoveryActionDescriptor,
 	type ReadErrorPresentationDescriptorOptions,
+	type ServerErrorPresentation,
 	UserRecovery,
 } from "./types";

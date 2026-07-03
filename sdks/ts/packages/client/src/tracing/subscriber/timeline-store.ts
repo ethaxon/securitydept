@@ -1,74 +1,75 @@
-import { type TracingEvent } from "../types";
+import { Queue } from "mnemonist";
+import { type EventStreamTrait } from "../../events";
+import { RxEventSubject } from "../../rx/event";
+import { type SpanNodeAttributes } from "../../span";
+import {
+	TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
+	type TracingEvent,
+} from "../types";
 import { type TracingSubscriberTrait } from "./types";
 
-export interface TraceTimelineEntry extends TracingEvent {
+export interface TraceTimelineEntry extends Omit<TracingEvent, "span"> {
 	id: number;
 	recordedAtIso: string;
-}
-
-export interface TraceTimelineStore extends TracingSubscriberTrait {
-	get(): readonly TraceTimelineEntry[];
-	subscribe(listener: () => void): () => void;
-	clear(): void;
+	span: {
+		readonly id: string;
+		readonly parentId?: string;
+	};
+	spanAttributes: readonly SpanNodeAttributes[];
 }
 
 /**
- * Create a subscriber-side trace timeline store.
+ * Bounded subscriber-side trace timeline.
  *
  * This store consumes tracing events through `record(event)` and keeps a
  * bounded local timeline for tests and UI surfaces. It is not the tracing
  * runtime itself.
  */
+export class TraceTimelineStore implements TracingSubscriberTrait {
+	protected nextId = 1;
+	protected readonly timeline = new Queue<TraceTimelineEntry>();
+	protected readonly latestEntrySubject =
+		new RxEventSubject<TraceTimelineEntry | null>();
+
+	constructor(protected readonly limit = 200) {}
+
+	get latestEntry(): EventStreamTrait<TraceTimelineEntry | null> {
+		return this.latestEntrySubject;
+	}
+
+	get entries(): readonly TraceTimelineEntry[] {
+		return this.timeline.toArray();
+	}
+
+	record(event: TracingEvent): void {
+		const { span, ...eventWithoutSpan } = event;
+		const entry: TraceTimelineEntry = {
+			...eventWithoutSpan,
+			id: this.nextId++,
+			recordedAtIso: new Date(event.at).toISOString(),
+			span: {
+				id: span.id,
+				...(span.parent ? { parentId: span.parent.id } : {}),
+			},
+			spanAttributes: span.getRootToNodeAttributes({
+				providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
+			}),
+		};
+		this.timeline.enqueue(entry);
+		if (this.timeline.size > this.limit) {
+			this.timeline.dequeue();
+		}
+		this.latestEntrySubject.next(entry);
+	}
+
+	clear(): void {
+		if (this.timeline.size > 0) {
+			this.timeline.clear();
+			this.latestEntrySubject.next(null);
+		}
+	}
+}
+
 export function createTraceTimelineStore(limit = 200): TraceTimelineStore {
-	let nextId = 1;
-	let entries: TraceTimelineEntry[] = [];
-	const listeners = new Set<() => void>();
-
-	function readRecordedAtIso(at: number): string {
-		if (!Number.isFinite(at)) {
-			return "invalid-timestamp";
-		}
-
-		const date = new Date(at);
-		const timestamp = date.getTime();
-		if (!Number.isFinite(timestamp)) {
-			return "invalid-timestamp";
-		}
-
-		return date.toISOString();
-	}
-
-	function notify() {
-		for (const listener of listeners) {
-			listener();
-		}
-	}
-
-	return {
-		record(event) {
-			const entry: TraceTimelineEntry = {
-				...event,
-				id: nextId++,
-				recordedAtIso: readRecordedAtIso(event.at),
-			};
-			entries = [...entries, entry].slice(-limit);
-			notify();
-		},
-		get() {
-			return entries;
-		},
-		subscribe(listener) {
-			listeners.add(listener);
-			return () => {
-				listeners.delete(listener);
-			};
-		},
-		clear() {
-			if (entries.length === 0) {
-				return;
-			}
-			entries = [];
-			notify();
-		},
-	};
+	return new TraceTimelineStore(limit);
 }

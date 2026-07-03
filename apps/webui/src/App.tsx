@@ -7,6 +7,7 @@ import { createTanStackRouterContext } from "@securitydept/client-react/tanstack
 import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode, Suspense, useMemo } from "react";
+import { Toaster } from "@/components/ui/sonner";
 import { createAppRouter } from "@/router";
 import { ThemeProvider } from "@/theme/react";
 import { type ThemeService } from "@/theme/theme.service";
@@ -20,6 +21,7 @@ export interface AppProps {
 export function App({ injector, queryClient, themeService }: AppProps) {
 	return (
 		<ThemeProvider service={themeService}>
+			<Toaster />
 			<QueryClientProvider client={queryClient}>
 				<SecuritydeptProvider injector={injector}>
 					<AppRouterProvider />

@@ -1,27 +1,10 @@
 import {
 	type CancellationTokenOptions,
-	type ErrorSummary,
+	type ClientError,
 	type IdentityPrincipal,
 } from "@securitydept/client";
 
 // --- Session Context Client types ---
-
-export const SessionContextErrorCode = {
-	OperationFailed: "session.operation_failed",
-	ClientDisposed: "session.client_disposed",
-	RouterUnavailable: "session.router_unavailable",
-	InvalidSessionPayload: "session.invalid_user_info_payload",
-} as const;
-
-export type SessionContextErrorCode =
-	(typeof SessionContextErrorCode)[keyof typeof SessionContextErrorCode];
-
-export const SessionContextSource = {
-	SessionContext: "session-context",
-} as const;
-
-export type SessionContextSource =
-	(typeof SessionContextSource)[keyof typeof SessionContextSource];
 
 /** Session principal — shared authenticated principal semantics via @securitydept/client. */
 export type SessionPrincipal = IdentityPrincipal;
@@ -82,12 +65,42 @@ export const SessionContextEventType = {
 export type SessionContextEventType =
 	(typeof SessionContextEventType)[keyof typeof SessionContextEventType];
 
-export interface SessionContextEvent {
-	type: SessionContextEventType;
-	at: number;
-	client: {
-		id: string;
+interface SessionContextEventBase {
+	readonly at: number;
+	readonly client: {
+		readonly id: string;
 	};
-	session?: SessionInfo | null;
-	errorSummary?: ErrorSummary;
 }
+
+type SessionContextEventData =
+	| {
+			readonly type: typeof SessionContextEventType.SessionRefreshStarted;
+			readonly session: SessionInfo | null;
+	  }
+	| {
+			readonly type: typeof SessionContextEventType.SessionRefreshSucceeded;
+			readonly session: SessionInfo | null;
+	  }
+	| {
+			readonly type: typeof SessionContextEventType.SessionRefreshFailed;
+			readonly session: SessionInfo | null;
+			readonly error: ClientError;
+	  }
+	| {
+			readonly type: typeof SessionContextEventType.SessionLogoutStarted;
+			readonly session: SessionInfo | null;
+	  }
+	| {
+			readonly type: typeof SessionContextEventType.SessionLogoutSucceeded;
+			readonly session: null;
+	  }
+	| {
+			readonly type: typeof SessionContextEventType.SessionLogoutFailed;
+			readonly session: SessionInfo | null;
+			readonly error: ClientError;
+	  };
+
+export type SessionContextEvent = SessionContextEventBase &
+	SessionContextEventData;
+
+export type SessionContextEventInput = SessionContextEventData;

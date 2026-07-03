@@ -1,16 +1,17 @@
 import { isPromise } from "es-toolkit/predicate";
 
-import { describeError } from "../errors";
+import { ClientError, describeError } from "../errors";
 import { type TimestampProviderTrait } from "../scheduling/types";
+import { SpanSharedAttributeName } from "../span/attributes";
 import {
-	type MutableSpanCreateOptions,
 	type MutableSpanTrait,
-	type OperationSpanTrait,
-	type SpanCreateOptions,
+	type SpanAttributes,
 	type SpanTrait,
 } from "../span/types";
 import {
+	type OperationSpanTrait,
 	OperationTraceEventType,
+	TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
 	TracingLevel,
 	type TracingTrait,
 } from "./types";
@@ -25,9 +26,12 @@ export interface RunOperationOptionsBase extends RunOperationEnvironment {
 	span: SpanTrait;
 	name: string;
 	target: string;
-	fields?: Record<string, unknown>;
+	traceAttributes?: SpanAttributes;
 	idFactory?: () => string;
-	normalizeError?: (error: unknown) => unknown;
+	clientErrorFromUnknown?: (
+		error: unknown,
+		options: { span: SpanTrait },
+	) => ClientError;
 }
 
 export interface RunOperationOptions<T> extends RunOperationOptionsBase {
@@ -36,59 +40,47 @@ export interface RunOperationOptions<T> extends RunOperationOptionsBase {
 
 export class OperationSpan implements OperationSpanTrait {
 	private constructor(
-		private readonly _span: MutableSpanTrait,
+		readonly span: MutableSpanTrait,
 		private readonly _environment: RunOperationEnvironment["environment"],
-		private readonly _name: string,
 		private readonly _target: string,
 	) {}
 
 	static start(options: RunOperationOptionsBase): OperationSpan {
+		const span = options.span.fork({
+			mutable: true,
+			idFactory: options.idFactory,
+			attributes: {
+				[SpanSharedAttributeName.OperationName]: options.name,
+			},
+		});
+		if (options.traceAttributes) {
+			span.setAttributes(options.traceAttributes, {
+				providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
+			});
+		}
 		const operationSpan = new OperationSpan(
-			options.span.fork({
-				mutable: true,
-				idFactory: options.idFactory,
-				attributes: options.fields,
-			}),
+			span,
 			options.environment,
-			options.name,
 			options.target,
 		);
 		operationSpan.recordStarted();
 		return operationSpan;
 	}
 
-	get id(): string {
-		return this._span.id;
+	setTraceAttributes(attributes: SpanAttributes): void {
+		this.span.setAttributes(attributes, {
+			providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
+		});
 	}
 
-	get parent(): SpanTrait | undefined {
-		return this._span.parent;
-	}
-
-	get attributes(): Readonly<Record<string, unknown>> {
-		return this._span.attributes;
-	}
-
-	fork(options: MutableSpanCreateOptions): MutableSpanTrait;
-	fork(options?: SpanCreateOptions): SpanTrait;
-	fork(
-		options: SpanCreateOptions | MutableSpanCreateOptions = {},
-	): SpanTrait | MutableSpanTrait {
-		return this._span.fork(options);
-	}
-
-	setAttributes(attributes: Record<string, unknown>): void {
-		this._span.setAttributes(attributes);
-	}
-
-	addEvent(name: string, fields?: Record<string, unknown>): void {
+	addEvent(name: string, fields?: SpanAttributes): void {
 		this._record(OperationTraceEventType.Event, TracingLevel.Info, {
 			eventName: name,
 			...(fields ?? {}),
 		});
 	}
 
-	recordError(error: unknown, fields?: Record<string, unknown>): void {
+	recordError(error: unknown, fields?: SpanAttributes): void {
 		this._record(OperationTraceEventType.Error, TracingLevel.Error, {
 			...describeError(error),
 			...(fields ?? {}),
@@ -110,19 +102,15 @@ export class OperationSpan implements OperationSpanTrait {
 	private _record(
 		name: string,
 		level: TracingLevel,
-		fields?: Record<string, unknown>,
+		fields?: SpanAttributes,
 	): void {
 		this._environment.tracing.record({
 			name,
 			at: this._environment.time.now(),
-			span: this,
+			span: this.span,
 			level,
 			target: this._target,
-			fields: {
-				operationName: this._name,
-				...this.attributes,
-				...(fields ?? {}),
-			},
+			fields,
 		});
 	}
 }
@@ -135,25 +123,38 @@ export function runOperation<T>(
 	options: RunOperationOptions<T | Promise<T>>,
 ): T | Promise<T> {
 	const operationSpan = OperationSpan.start(options);
-	const complete = (result: T): T => {
-		operationSpan.recordEnded("succeeded");
-		return result;
-	};
-	const fail = (error: unknown): never => {
-		const normalizedError = options.normalizeError?.(error) ?? error;
-		operationSpan.recordError(normalizedError);
-		operationSpan.recordEnded("failed");
-		throw normalizedError;
-	};
-
-	const invoke = () => options.execute(operationSpan);
 	try {
-		const result = invoke();
+		const result = options.execute(operationSpan);
 		if (isPromise(result)) {
-			return result.then(complete, fail);
+			return result.then(
+				(value) => completeOperation(operationSpan, value),
+				(error) =>
+					failOperation(operationSpan, error, options.clientErrorFromUnknown),
+			);
 		}
-		return complete(result);
+		return completeOperation(operationSpan, result);
 	} catch (error) {
-		return fail(error);
+		return failOperation(operationSpan, error, options.clientErrorFromUnknown);
 	}
+}
+
+function completeOperation<T>(operationSpan: OperationSpan, result: T): T {
+	operationSpan.recordEnded("succeeded");
+	return result;
+}
+
+function failOperation(
+	operationSpan: OperationSpan,
+	error: unknown,
+	clientErrorFromUnknown: RunOperationOptionsBase["clientErrorFromUnknown"],
+): never {
+	const clientError = clientErrorFromUnknown
+		? clientErrorFromUnknown(error, { span: operationSpan.span })
+		: error;
+	if (clientError instanceof ClientError) {
+		clientError.captureSpanContext(operationSpan.span);
+	}
+	operationSpan.recordError(clientError);
+	operationSpan.recordEnded("failed");
+	throw clientError;
 }

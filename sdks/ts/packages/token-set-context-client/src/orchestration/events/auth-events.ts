@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/complexity/noBannedTypes: enable for event payload builders */
 import {
-	type ErrorSummary,
+	type ClientError,
 	EventSourceKind,
 	type RuntimeEventEnvelope,
 } from "@securitydept/client";
@@ -72,7 +72,7 @@ type AuthMaterialRestoreFailedEventPayload = TokenSetAuthEventPayloadBuilder<
 	typeof TokenSetAuthEventType.AuthMaterialRestoreFailed,
 	{
 		persisted: true;
-		errorSummary: ErrorSummary;
+		error: ClientError;
 	}
 >;
 
@@ -91,7 +91,7 @@ type AuthRefreshSucceededEventPayload = TokenSetAuthRefreshEventPayload<
 type AuthRefreshFailedEventPayload = TokenSetAuthRefreshEventPayload<
 	typeof TokenSetAuthEventType.AuthRefreshFailed,
 	{
-		errorSummary: ErrorSummary;
+		error: ClientError;
 	}
 >;
 
@@ -127,7 +127,9 @@ export type TokenSetAuthEventPayloadInput<
 
 export type TokenSetAuthEvent<
 	TPayload extends TokenSetAuthEventPayload = TokenSetAuthEventPayload,
-> = RuntimeEventEnvelope<TPayload["type"], TPayload>;
+> = TPayload extends TokenSetAuthEventPayload
+	? RuntimeEventEnvelope<TPayload["type"], TPayload>
+	: never;
 
 export interface CreateTokenSetAuthEventOptions<
 	TPayload extends TokenSetAuthEventPayload,
@@ -154,5 +156,5 @@ export function createTokenSetAuthEvent<
 		at: options.at,
 		source,
 		payload: options.payload,
-	};
+	} as TokenSetAuthEvent<TPayload>;
 }

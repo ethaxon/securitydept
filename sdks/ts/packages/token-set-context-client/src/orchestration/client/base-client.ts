@@ -28,6 +28,7 @@ import {
 	injectDisposableStackFrom,
 	mapResource,
 	OperationSpan,
+	type OperationSpanTrait,
 	type ReadableSignalTrait,
 	type ResourceSnapshot,
 	ResourceSnapshotUpdateKind,
@@ -36,6 +37,8 @@ import {
 	readonlySignal,
 	reduceResourceSnapshot,
 	resourceFromSnapshots,
+	type SpanAttributes,
+	SpanSharedAttributeName,
 	type SpanTrait,
 	SYMBOL_DISPOSE,
 	type WritableSignalTrait,
@@ -46,7 +49,6 @@ import {
 	type CommandResponse,
 	concatCommand,
 	dispatchCommandLocallyToPromise,
-	RxEventReplaySubject,
 	RxEventSubject,
 	RxStateSignal,
 } from "@securitydept/client/rx";
@@ -66,8 +68,7 @@ import {
 import { tokenSetBearerHeader } from "../token/ops";
 import { type TokenSetAuthSnapshot } from "../token/types";
 import {
-	TokenSetAuthorizationErrorCode,
-	TokenSetAuthorizationErrorSource,
+	clientErrorFromTokenSetAuthorizationError,
 	TokenSetAuthorizationRevocationError,
 } from "./error";
 import {
@@ -188,8 +189,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		);
 	});
 	private _authEventSequence = 0;
-	private readonly _authEventSubject =
-		new RxEventReplaySubject<TokenSetAuthEvent>(100);
+	private readonly _authEventSubject = new RxEventSubject<TokenSetAuthEvent>();
 	private readonly refreshWorkflowSubject = new RxEventSubject<void>();
 	private readonly planRefreshRequest = new RxEventSubject<
 		Command<TokenSetPlanRefreshRequest>
@@ -240,8 +240,8 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		this.id = options.id ?? uuidv7();
 		this._span = options.environment.span.fork({
 			attributes: {
-				clientName: this.constructor.name,
-				id: this.id,
+				[SpanSharedAttributeName.ClientName]: this.constructor.name,
+				[SpanSharedAttributeName.ClientId]: this.id,
 			},
 		});
 		this._freshnessOptions = Object.assign(
@@ -452,9 +452,12 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 
 	protected async _runDeterminationWorkflow<TResult>(options: {
 		name: string;
-		fields?: Record<string, unknown>;
+		traceAttributes?: SpanAttributes;
 		pendingSignal?: WritableSignalTrait<boolean>;
-		normalizeError?: (error: unknown) => unknown;
+		clientErrorFromUnknown?: (
+			error: unknown,
+			options: { span: SpanTrait },
+		) => ClientError;
 		workflow: (
 			operationSpan: OperationSpan,
 		) => Promise<TokenSetAuthDeterminationTerminal<TResult>>;
@@ -464,7 +467,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			span: this._span,
 			name: options.name,
 			target: this._tracingOptions.target,
-			fields: options.fields,
+			traceAttributes: options.traceAttributes,
 		});
 		let commitStarted = false;
 		options.pendingSignal?.set(true);
@@ -474,7 +477,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			// planning must finish before this boundary so determination is published
 			// exactly once.
 			commitStarted = true;
-			await this._commitDetermination(terminal.commit, operationSpan);
+			await this._commitDetermination(terminal.commit, operationSpan.span);
 			if (
 				terminal.outcome.kind === TokenSetAuthDeterminationOutcomeKind.Throw
 			) {
@@ -483,13 +486,12 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			operationSpan.recordEnded("succeeded");
 			return terminal.outcome.value;
 		} catch (sourceError) {
-			const error = options.normalizeError
-				? options.normalizeError(sourceError)
-				: ClientError.fromUnknown(sourceError, {
-						code: TokenSetAuthorizationErrorCode.OperationFailed,
-						message:
-							"The token-set authorization operation failed unexpectedly",
-						source: TokenSetAuthorizationErrorSource,
+			const error = options.clientErrorFromUnknown
+				? options.clientErrorFromUnknown(sourceError, {
+						span: operationSpan.span,
+					})
+				: clientErrorFromTokenSetAuthorizationError(sourceError, {
+						span: operationSpan.span,
 					});
 			if (!commitStarted) {
 				commitStarted = true;
@@ -501,7 +503,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 						},
 						persistPolicy: PersistPolicy.Skip,
 					},
-					operationSpan,
+					operationSpan.span,
 				);
 			}
 			operationSpan.recordError(error);
@@ -514,7 +516,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 
 	private _createRefreshFetcher(
 		cancellationToken: CancellationTokenTrait,
-		operationSpan?: SpanTrait,
+		operationSpan?: OperationSpanTrait,
 	): TokenSetFetchRefreshedSnapshot {
 		return async (snapshot, freshnessTiming) => {
 			const hasRefreshMaterial = snapshot.tokens.refreshMaterial != null;
@@ -529,12 +531,19 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				hasRefreshMaterial,
 			});
 			cancellationToken.throwIfCancellationRequested();
-			const refreshed = await this._refreshAuthSnapshot(
-				snapshot,
-				freshnessTiming,
-				cancellationToken,
-				operationSpan,
-			);
+			let refreshed: TokenSetAuthSnapshot | null;
+			try {
+				refreshed = await this._refreshAuthSnapshot(
+					snapshot,
+					freshnessTiming,
+					cancellationToken,
+					operationSpan,
+				);
+			} catch (error) {
+				throw clientErrorFromTokenSetAuthorizationError(error, {
+					span: operationSpan?.span,
+				});
+			}
 			cancellationToken.throwIfCancellationRequested();
 			return refreshed;
 		};
@@ -549,7 +558,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	): Promise<TokenSetAuthSnapshot | null> {
 		return await this._runDeterminationWorkflow({
 			name: `${this._tracingOptions.prefix}.refresh`,
-			fields: { workflow: "refresh" },
+			traceAttributes: { workflow: "refresh" },
 			pendingSignal: this._authOperationSignals.refreshPending,
 			workflow: async (operationSpan) => {
 				cancellationToken.throwIfCancellationRequested();
@@ -583,11 +592,14 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				);
 				cancellationToken.throwIfCancellationRequested();
 				if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
-					const revoked =
-						refreshPlan.error instanceof TokenSetAuthorizationRevocationError;
+					const error = clientErrorFromTokenSetAuthorizationError(
+						refreshPlan.error,
+						{ span: operationSpan.span },
+					);
+					const revoked = error instanceof TokenSetAuthorizationRevocationError;
 					return {
 						commit: {
-							candidate: refreshPlan,
+							candidate: { ...refreshPlan, error },
 							failureValue: revoked ? null : currentSnapshot,
 							persistPolicy: revoked
 								? PersistPolicy.FollowClient
@@ -596,6 +608,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 								...this._buildRefreshLifecycleEvents(
 									currentSnapshot,
 									refreshPlan,
+									operationSpan.span,
 								),
 								...(revoked
 									? [
@@ -611,11 +624,11 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 									TokenSetOrchestrationTraceEvent.RefreshFailed,
 								),
 							},
-							traceError: refreshPlan.error,
+							traceError: error,
 						},
 						outcome: {
 							kind: TokenSetAuthDeterminationOutcomeKind.Throw,
-							error: refreshPlan.error,
+							error,
 						},
 					};
 				}
@@ -627,6 +640,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 							...this._buildRefreshLifecycleEvents(
 								currentSnapshot,
 								refreshPlan,
+								operationSpan.span,
 							),
 							refreshPlan.kind === TokenSetAuthDeterminationKind.Authenticated
 								? {
@@ -660,7 +674,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	): Promise<null> {
 		return await this._runDeterminationWorkflow({
 			name: `${this._tracingOptions.prefix}.clear`,
-			fields: { workflow: "clear" },
+			traceAttributes: { workflow: "clear" },
 			pendingSignal: this._authOperationSignals.clearPending,
 			workflow: async () => {
 				cancellationToken.throwIfCancellationRequested();
@@ -698,7 +712,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	): Promise<TokenSetAuthSnapshot> {
 		return await this._runDeterminationWorkflow({
 			name: `${this._tracingOptions.prefix}.restore`,
-			fields: { workflow: "restore" },
+			traceAttributes: { workflow: "restore" },
 			pendingSignal: this._authOperationSignals.restorePending,
 			workflow: async () => {
 				cancellationToken.throwIfCancellationRequested();
@@ -739,7 +753,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	): Promise<TokenSetAuthSnapshot | null> {
 		return await this._runDeterminationWorkflow({
 			name: `${this._tracingOptions.prefix}.restore.persisted`,
-			fields: { workflow: "restore.persisted" },
+			traceAttributes: { workflow: "restore.persisted" },
 			pendingSignal: this._authOperationSignals.restorePending,
 			workflow: async (operationSpan) => {
 				cancellationToken.throwIfCancellationRequested();
@@ -752,21 +766,25 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 						TokenSetOrchestrationTraceEvent.PersistedRestoreStarted,
 					),
 					undefined,
-					operationSpan,
+					operationSpan.span,
 				);
 				const restorePlan = await planRestorePersisted(request);
 				cancellationToken.throwIfCancellationRequested();
 				if (restorePlan.kind === TokenSetAuthDeterminationKind.Failed) {
+					const error = clientErrorFromTokenSetAuthorizationError(
+						restorePlan.error,
+						{ span: operationSpan.span },
+					);
 					return {
 						commit: {
-							candidate: restorePlan,
+							candidate: { ...restorePlan, error },
 							persistPolicy: PersistPolicy.FollowClient,
 							events: [
 								{
 									type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
 									payload: {
 										persisted: true,
-										errorSummary: describeError(restorePlan.error),
+										error,
 									},
 								},
 							],
@@ -775,7 +793,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 									TokenSetOrchestrationTraceEvent.PersistedRestoreFailed,
 								),
 							},
-							traceError: restorePlan.error,
+							traceError: error,
 						},
 						outcome: {
 							kind: TokenSetAuthDeterminationOutcomeKind.Return,
@@ -820,11 +838,14 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				);
 				cancellationToken.throwIfCancellationRequested();
 				if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
-					const revoked =
-						refreshPlan.error instanceof TokenSetAuthorizationRevocationError;
+					const error = clientErrorFromTokenSetAuthorizationError(
+						refreshPlan.error,
+						{ span: operationSpan.span },
+					);
+					const revoked = error instanceof TokenSetAuthorizationRevocationError;
 					return {
 						commit: {
-							candidate: refreshPlan,
+							candidate: { ...refreshPlan, error },
 							failureValue: revoked ? null : restorePlan.snapshot,
 							persistPolicy: revoked
 								? PersistPolicy.FollowClient
@@ -833,12 +854,13 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 								...this._buildRefreshLifecycleEvents(
 									restorePlan.snapshot,
 									refreshPlan,
+									operationSpan.span,
 								),
 								{
 									type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
 									payload: {
 										persisted: true,
-										errorSummary: describeError(refreshPlan.error),
+										error,
 									},
 								},
 								...(revoked
@@ -855,7 +877,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 									TokenSetOrchestrationTraceEvent.PersistedRestoreFailed,
 								),
 							},
-							traceError: refreshPlan.error,
+							traceError: error,
 						},
 						outcome: {
 							kind: TokenSetAuthDeterminationOutcomeKind.Throw,
@@ -872,6 +894,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 								...this._buildRefreshLifecycleEvents(
 									restorePlan.snapshot,
 									refreshPlan,
+									operationSpan.span,
 								),
 								{
 									type: TokenSetAuthEventType.AuthMaterialRestored,
@@ -904,6 +927,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 							...this._buildRefreshLifecycleEvents(
 								restorePlan.snapshot,
 								refreshPlan,
+								operationSpan.span,
 							),
 							{
 								type: TokenSetAuthEventType.AuthUnauthenticated,
@@ -931,7 +955,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			"fetchRefreshedSnapshot" | "time"
 		>,
 		cancellationToken: CancellationTokenTrait,
-		operationSpan?: SpanTrait,
+		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetPlanRefreshResponse> {
 		cancellationToken.throwIfCancellationRequested();
 		const refreshedPlan = await dispatchCommandLocallyToPromise({
@@ -953,6 +977,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 
 	dispose(): void {
 		this._destroyed.set(true);
+		this._authEventSubject.complete();
 		this._onDispose();
 		this._rootCancellation.cancel(
 			new ClientError({
@@ -980,7 +1005,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		authSnapshot: TokenSetAuthSnapshot,
 		freshnessTiming: TokenSetTokenFreshnessTiming,
 		cancellationToken: CancellationTokenTrait,
-		operationSpan?: SpanTrait,
+		operationSpan?: OperationSpanTrait,
 	): Promise<TokenSetAuthSnapshot | null>;
 
 	private async _restoreStateFromCallbackInput(
@@ -1000,7 +1025,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			// failures reach this branch before that workflow starts.
 			return await this._runDeterminationWorkflow<never>({
 				name: `${this._tracingOptions.prefix}.callback`,
-				fields: { flow: "callback.restore" },
+				traceAttributes: { flow: "callback.restore" },
 				workflow: async () => {
 					throw error;
 				},
@@ -1126,6 +1151,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	private _buildRefreshLifecycleEvents(
 		snapshotBeforeRefresh: TokenSetAuthSnapshot,
 		refreshPlan: TokenSetPlanRefreshResponse,
+		span: SpanTrait,
 	): TokenSetAuthDeterminationEvent[] {
 		const events: TokenSetAuthDeterminationEvent[] = [];
 		if (
@@ -1143,12 +1169,16 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				});
 			}
 			if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
+				const error = clientErrorFromTokenSetAuthorizationError(
+					refreshPlan.error,
+					{ span },
+				);
 				events.push({
 					type: TokenSetAuthEventType.AuthRefreshFailed,
 					payload: {
 						freshness: refreshPlan.freshness,
 						hasRefreshMaterial: true,
-						errorSummary: describeError(refreshPlan.error),
+						error,
 					},
 				});
 			}
@@ -1162,7 +1192,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 
 	protected _recordTrace(
 		name: string,
-		fields: Record<string, unknown> | undefined,
+		fields: SpanAttributes | undefined,
 		span: SpanTrait,
 		level: "info" | "error" = "info",
 	): void {
@@ -1179,7 +1209,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	protected _recordFailureTrace(
 		name: string,
 		error: unknown,
-		fields: Record<string, unknown> | undefined,
+		fields: SpanAttributes | undefined,
 		span: SpanTrait,
 	): void {
 		this._recordTrace(

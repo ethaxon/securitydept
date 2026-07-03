@@ -1,4 +1,8 @@
-import { type TraceTimelineEntry, UserRecovery } from "@securitydept/client";
+import {
+	SpanSharedAttributeName,
+	type TraceTimelineEntry,
+	UserRecovery,
+} from "@securitydept/client";
 import { TOKEN_SET_BACKEND_MODE_CONFIG } from "@/auth/token-set/config";
 
 export const TraceBadgeTone = {
@@ -19,7 +23,7 @@ export interface TraceBadge {
 
 const SUMMARY_FIELD_KEYS = new Set([
 	"path",
-	"operationName",
+	SpanSharedAttributeName.OperationName,
 	"eventName",
 	"groupName",
 	"entryName",
@@ -98,11 +102,19 @@ export function readTraceDisplayType(entry: TraceTimelineEntry): string {
 }
 
 export function readTraceSummary(entry: TraceTimelineEntry): string | null {
-	const metadata = entry.fields ?? {};
+	const metadata = Object.assign(
+		{},
+		...entry.spanAttributes.map((frame) => frame.attributes),
+		entry.fields,
+	);
 	const parts: string[] = [];
 
 	appendStringField(parts, metadata.path);
-	appendPrefixedField(parts, metadata.operationName, "operation");
+	appendPrefixedField(
+		parts,
+		metadata[SpanSharedAttributeName.OperationName],
+		"operation",
+	);
 	appendPrefixedField(parts, metadata.eventName, "event");
 	appendStringField(parts, metadata.groupName);
 	appendStringField(parts, metadata.entryName);

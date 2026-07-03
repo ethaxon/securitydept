@@ -15,14 +15,17 @@ export {
 	runOperation,
 } from "./operation-runner";
 export {
+	ConsoleTracingSubscriber,
 	createConsoleTracingSubscriber,
 	createTraceTimelineStore,
 	type TraceTimelineEntry,
-	type TraceTimelineStore,
+	TraceTimelineStore,
 	type TracingSubscriberTrait,
 } from "./subscriber";
 export {
+	type OperationSpanTrait,
 	OperationTraceEventType,
+	TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
 	TRACING_TRAIT_TOKEN,
 	type TracingEvent,
 	TracingLevel,

@@ -29,9 +29,19 @@ composition root 应通过对应 host creator 构造 `FoundationEnvironment` 后
 
 如果自定义 Observable wrapper 只转发 subscription，应替换为 direct RxJS interop，例如 `from(client.authSnapshot)`。public trait API 需要 RxJS `NEVER` 或 `EMPTY` 语义时，使用 `createNeverEventStream()` 或 `createEmptyEventStream()`。不得用 raw Observable 替换 public SDK trait。
 
+Basic Auth、Session、Token Set 的 lifecycle event 不再 replay buffered history。依赖 late replay 读取当前状态的代码应改用对应 Resource；需要诊断历史时使用显式 tracing/event-history store。failure event variant 现在携带 `error: ClientError`，不再携带 `errorSummary`；使用 `isClientErrorEvent` 过滤，UI message 使用 `readErrorPresentationDescriptor()`，仅在 logging/trace 序列化边界派生 `ErrorSummary`。
+
 ## Span 和 Trace Context
 
-span 是 foundation capability，不是 telemetry 子能力。在 top-level workflow boundary fork child span，在其下运行/记录 local work。trace/event consumer 可以依赖 span context，但 public API 不能假定 host 一定提供 automatic propagation。
+span 是 foundation capability，不是 telemetry 子能力。context propagation 保持显式。在 client 与 operation boundary fork frame，将跨 provider identity 写入 `SpanSharedAttributeName`，provider-only detail 通过 `setAttributes(attributes, { providerId })` 写入。attribute 使用 `getAttributes()` 或 `getRootToNodeAttributes()` 读取；原 `span.attributes` getter 已不再属于 contract。
+
+operation instrumentation 现在接收 `traceAttributes`，不再接收 `fields`。trace-only detail 属于 `TRACING_SPAN_ATTRIBUTE_PROVIDER_ID`；canonical shared operation key 是 `operation.name`，不是 `operationName`。`TracingEvent` 携带 live span，因此 replay/buffering subscriber 必须在接收时同步读取 `span.getRootToNodeAttributes({ providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID })`。attribute value 使用 immutable `SpanAttributeValue` contract；span core 不执行防御性深复制。
+
+`TraceTimelineStore` 使用 optional `mnemonist` peer；使用 timeline subscriber 时需要安装 `mnemonist`。通过 `latestEntry: EventStreamTrait<TraceTimelineEntry | null>` 订阅边沿通知，其中 `null` 表示 timeline 已清空；当前 readonly array snapshot 通过 `entries` getter 按需读取。store 不再为每个新 entry 发布完整数组 signal value。
+
+`ClientError` 现在首次捕获 shared/error-provider span path。`readErrorPresentationDescriptor()` 默认在标题中加入最深层 client identity 与 operation name。需要本地化 context label 的应用应传入 `contextFormatter`；只有明确不要 context prefix 时才传 `null`。shared/error attribute 中不得写入 token、authorization header、敏感 URL 参数或 provider payload。
+
+Error presentation helper 现在只接受 canonical `ClientError` instance，不再识别结构相似的普通对象。TypeScript import 应将 `ErrorPresentation` 改为 `ServerErrorPresentation`、`ErrorCodePresentationDescriptor` 改为 `ErrorCodePresentation`、`ErrorPresentationActionDescriptor` 改为 `ErrorRecoveryActionDescriptor`。最终 `ErrorPresentationDescriptor` 不再重复 `kind`、`source`、`retryable` 这些 machine-only field；policy logic 如需使用，应读取原始 `ClientError`。
 
 删除只为复制 span nesting 的 token-set global outcome/source carrier field，改为在行为边界记录 local trace attribute。
 
@@ -47,7 +57,7 @@ workflow source 取代 auth-check trigger terminology。page-resume 与 refresh-
 
 auth event 是 direct discriminated union，event `type` 固定 payload shape。不得再使用已废弃的 `TokenSetAuthEventPayloadMap`、`AuthCheck*` event、`TokenSetAuthFlowReason`、`TokenSetAuthFlowOutcome` 或 `authCheckReason` contract。
 
-只有 refresh event 携带 freshness 与 refresh-material fact。auth event payload 绝不暴露 raw token material 或 authorization header。聚合 event 的 consumer 必须保留 source contract，或显式建模 aggregation-only envelope，不能静默回填 source field。
+只有 refresh event 携带 freshness 与 refresh-material fact。auth event payload 不投影 snapshot token material 或 authorization header。failure event 会携带进程内 `ClientError`，不得直接序列化其 cause。聚合 event 的 consumer 必须保留 source contract，或显式建模 aggregation-only envelope，不能静默回填 source field。
 
 ## Persistence
 

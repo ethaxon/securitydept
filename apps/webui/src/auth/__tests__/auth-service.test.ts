@@ -5,6 +5,9 @@ import {
 	provideBasicAuthContext,
 } from "@securitydept/basic-auth-context-client";
 import {
+	ClientError,
+	ClientErrorKind,
+	createEventSubject,
 	createFoundationEnvironment,
 	createSecuritydeptDestroyRef,
 	createSignal,
@@ -28,11 +31,18 @@ import {
 	TOKEN_SET_CLIENT_REGISTRY_ENTRIES,
 } from "@securitydept/token-set-context-client/registry";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	MESSAGE_SERVICE,
+	type MessageService,
+} from "@/message/message.service";
 import { AUTH_SERVICE, AuthService, provideAuthService } from "../auth.service";
 import { basicAuthContextConfig } from "../basic/config";
 import { AuthContextMode } from "../model";
 import { sessionContextConfig } from "../session/config";
-import { TOKEN_SET_FRONTEND_MODE_CONFIG } from "../token-set/config";
+import {
+	TOKEN_SET_BACKEND_MODE_CONFIG,
+	TOKEN_SET_FRONTEND_MODE_CONFIG,
+} from "../token-set/config";
 import { provideWebuiTokenSetContext } from "../token-set/providers";
 import { TokenSetTracingService } from "../token-set/tracing";
 
@@ -69,6 +79,10 @@ function createAuthServiceFixture() {
 	const tokenAuthorization = createResolvedResource<string | undefined>(
 		undefined,
 	);
+	const basicEvents = createEventSubject<unknown>();
+	const sessionEvents = createEventSubject<unknown>();
+	const tokenAuthEvents = createEventSubject<unknown>();
+	const frontendTokenAuthEvents = createEventSubject<unknown>();
 	const tokenClient = {
 		start: vi.fn(async () => {
 			tokenAuthenticated.set(true);
@@ -82,9 +96,15 @@ function createAuthServiceFixture() {
 		authSnapshot: tokenAuthState.snapshot,
 		authResource: tokenAuthState.resource,
 		authorizationHeaderValue: tokenAuthorization.resource,
+		authEvents: tokenAuthEvents,
 		dispose: vi.fn(),
 	};
+	const frontendTokenClient = {
+		...tokenClient,
+		authEvents: frontendTokenAuthEvents,
+	};
 	const tokenClientState = createResolvedResource(tokenClient);
+	const frontendTokenClientState = createResolvedResource(frontendTokenClient);
 	const session = {
 		sessionSnapshot: sessionState.snapshot,
 		sessionResource: sessionState.resource,
@@ -99,6 +119,7 @@ function createAuthServiceFixture() {
 		logout: vi.fn(async () => {
 			sessionState.set(null);
 		}),
+		events: sessionEvents,
 	};
 	const basic = {
 		isAuthenticated: basicAuthenticated.resource,
@@ -115,16 +136,28 @@ function createAuthServiceFixture() {
 			basicBoundaryState.set(null);
 			return { authenticated: false };
 		}),
+		events: basicEvents,
 	};
 	const registry = {
-		clientResourceFor: vi.fn(() => tokenClientState.resource),
-		clientRecordFor: vi.fn(async () => {
-			await tokenClient.start();
-			return { client: tokenClient };
+		clientResourceFor: vi.fn((clientKey: string) =>
+			clientKey === TOKEN_SET_BACKEND_MODE_CONFIG.clientKey
+				? tokenClientState.resource
+				: frontendTokenClientState.resource,
+		),
+		clientRecordFor: vi.fn(async (clientKey: string) => {
+			const client =
+				clientKey === TOKEN_SET_BACKEND_MODE_CONFIG.clientKey
+					? tokenClient
+					: frontendTokenClient;
+			await client.start();
+			return { client };
 		}),
 	};
 	const environment = createFoundationEnvironment({});
 	const destroyRef = createSecuritydeptDestroyRef();
+	const messageService = {
+		showError: vi.fn(),
+	};
 	const injector = {
 		get(token: unknown) {
 			if (token === SESSION_CONTEXT_CLIENT) {
@@ -147,7 +180,7 @@ function createAuthServiceFixture() {
 	} as SecuritydeptInjector;
 
 	return {
-		service: new AuthService(injector),
+		service: new AuthService(injector, messageService as MessageService),
 		sessionState,
 		session,
 		basic,
@@ -157,6 +190,11 @@ function createAuthServiceFixture() {
 		tokenAuthenticated,
 		tokenAuthState,
 		tokenAuthorization,
+		basicEvents,
+		sessionEvents,
+		tokenAuthEvents,
+		frontendTokenAuthEvents,
+		messageService,
 		environment,
 		destroyRef,
 	};
@@ -282,6 +320,37 @@ describe("AuthService", () => {
 		expect(dispose).toHaveBeenCalledOnce();
 	});
 
+	it("forwards auth client error events to the message service", () => {
+		const {
+			service,
+			basicEvents,
+			sessionEvents,
+			tokenAuthEvents,
+			frontendTokenAuthEvents,
+			messageService,
+		} = createAuthServiceFixture();
+		const error = new ClientError({
+			kind: ClientErrorKind.Transport,
+			code: "test.auth_failed",
+			message: "auth failed",
+		});
+
+		basicEvents.next({ error });
+		sessionEvents.next({ error });
+		tokenAuthEvents.next({ payload: { error } });
+		frontendTokenAuthEvents.next({ payload: { error } });
+
+		expect(messageService.showError).toHaveBeenCalledTimes(4);
+		expect(messageService.showError).toHaveBeenNthCalledWith(1, error);
+		expect(messageService.showError).toHaveBeenNthCalledWith(2, error);
+		expect(messageService.showError).toHaveBeenNthCalledWith(3, error);
+		expect(messageService.showError).toHaveBeenNthCalledWith(4, error);
+
+		service.dispose();
+		basicEvents.next({ error });
+		expect(messageService.showError).toHaveBeenCalledTimes(4);
+	});
+
 	it("checks route authentication through selected context clients", async () => {
 		const { service, session, basic, registry, tokenClient } =
 			createAuthServiceFixture();
@@ -343,8 +412,9 @@ describe("AuthService", () => {
 			expect.arrayContaining([
 				expect.objectContaining({
 					provide: AUTH_SERVICE,
-					deps: [INJECTOR_TOKEN],
+					deps: [INJECTOR_TOKEN, MESSAGE_SERVICE],
 				}),
+				expect.objectContaining({ provide: MESSAGE_SERVICE }),
 				expect.objectContaining({
 					provide: REQUIREMENT_PLANNER_HOST,
 					deps: [AUTH_SERVICE, ENVIRONMENT_TOKEN],

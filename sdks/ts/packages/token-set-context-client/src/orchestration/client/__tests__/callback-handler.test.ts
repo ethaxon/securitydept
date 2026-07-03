@@ -26,8 +26,11 @@ function createHandler(options: {
 	handleInput?: (input: string) => Promise<string>;
 }) {
 	const rootCancellation = createCancellationTokenSource();
+	const environment = createEnvironmentForTest();
 	const handler = new OidcModeCallbackHandler<string, string>({
-		environment: createEnvironmentForTest(),
+		environment,
+		span: environment.span,
+		operationName: "test.callback",
 		rootCancellationToken: rootCancellation.token,
 		inputResolver: options.inputResolver,
 		handleInput:
@@ -39,11 +42,12 @@ function createHandler(options: {
 				message: "Callback input not found.",
 				source: "test",
 			}),
-		normalizeError: (error) =>
+		clientErrorFromUnknown: (error, { span }) =>
 			ClientError.fromUnknown(error, {
 				code: "test.callback.failed",
 				message: "Callback failed.",
 				source: "test",
+				span,
 			}),
 	});
 	return { handler, rootCancellation };

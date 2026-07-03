@@ -858,10 +858,10 @@ describe("FrontendOidcModeClient", () => {
 		).toHaveLength(1);
 		expect(
 			trace
-				.ofType(OperationTraceEventType.Ended)
+				.ofOperationName("frontend_oidc.callback")
 				.filter(
 					(event) =>
-						event.fields?.operationName === "frontend_oidc.callback" &&
+						event.name === OperationTraceEventType.Ended &&
 						event.fields?.outcome === "succeeded",
 				),
 		).toHaveLength(1);
@@ -1107,10 +1107,8 @@ describe("FrontendOidcModeClient", () => {
 
 		expect(
 			trace
-				.ofType(OperationTraceEventType.Error)
-				.filter(
-					(event) => event.fields?.operationName === "frontend_oidc.callback",
-				),
+				.ofOperationName("frontend_oidc.callback")
+				.filter((event) => event.name === OperationTraceEventType.Error),
 		).toEqual([
 			expect.objectContaining({
 				fields: expect.objectContaining({
@@ -1147,15 +1145,13 @@ describe("FrontendOidcModeClient", () => {
 		await client.handleCallback("?code=auth-code&state=state-value");
 
 		const callbackStarted = trace
-			.ofType(OperationTraceEventType.Started)
-			.find(
-				(event) => event.fields?.operationName === "frontend_oidc.callback",
-			);
+			.ofOperationName("frontend_oidc.callback")
+			.find((event) => event.name === OperationTraceEventType.Started);
 		const callbackSucceeded = trace
-			.ofType(OperationTraceEventType.Ended)
+			.ofOperationName("frontend_oidc.callback")
 			.find(
 				(event) =>
-					event.fields?.operationName === "frontend_oidc.callback" &&
+					event.name === OperationTraceEventType.Ended &&
 					event.fields?.outcome === "succeeded",
 			);
 		const operationSpanId = callbackStarted?.span?.id;
@@ -1167,15 +1163,7 @@ describe("FrontendOidcModeClient", () => {
 				OperationTraceEventType.Started,
 				OperationTraceEventType.Ended,
 			]),
-		).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					fields: expect.objectContaining({
-						operationName: "frontend_oidc.callback",
-					}),
-				}),
-			]),
-		);
+		).toHaveLength(2);
 	});
 
 	it("correlates refresh lifecycle events with frontend refresh traces", async () => {
@@ -1213,13 +1201,13 @@ describe("FrontendOidcModeClient", () => {
 		await client.refreshState();
 
 		const refreshStarted = trace
-			.ofType(OperationTraceEventType.Started)
-			.find((event) => event.fields?.operationName === "frontend_oidc.refresh");
+			.ofOperationName("frontend_oidc.refresh")
+			.find((event) => event.name === OperationTraceEventType.Started);
 		const refreshSucceeded = trace
-			.ofType(OperationTraceEventType.Ended)
+			.ofOperationName("frontend_oidc.refresh")
 			.find(
 				(event) =>
-					event.fields?.operationName === "frontend_oidc.refresh" &&
+					event.name === OperationTraceEventType.Ended &&
 					event.fields?.outcome === "succeeded",
 			);
 		const operationSpanId = refreshStarted?.span?.id;
@@ -1231,15 +1219,7 @@ describe("FrontendOidcModeClient", () => {
 				OperationTraceEventType.Started,
 				OperationTraceEventType.Ended,
 			]),
-		).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					fields: expect.objectContaining({
-						operationName: "frontend_oidc.refresh",
-					}),
-				}),
-			]),
-		);
+		).toHaveLength(2);
 	});
 
 	it("emits callback auth.authenticated with minimal terminal payload", async () => {

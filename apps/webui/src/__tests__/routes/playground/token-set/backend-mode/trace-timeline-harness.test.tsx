@@ -6,7 +6,8 @@ import {
 	createTracing,
 	TracingLevel,
 } from "@securitydept/client";
-import { act, useSyncExternalStore } from "react";
+import { useInteropObservable } from "@securitydept/client-react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTokenSetBackendHostTraceRecorder } from "@/routes/_playground/playground/token-set/-backend-mode/app-trace";
@@ -15,10 +16,8 @@ import { TraceTimelineSection } from "@/routes/_playground/playground/token-set/
 function TraceTimelineHarness(props: {
 	timeline: ReturnType<typeof createTraceTimelineStore>;
 }) {
-	const events = useSyncExternalStore(
-		(listener) => props.timeline.subscribe(listener),
-		() => props.timeline.get(),
-	);
+	useInteropObservable(props.timeline.latestEntry, { initialValue: null });
+	const events = props.timeline.entries;
 
 	return (
 		<TraceTimelineSection

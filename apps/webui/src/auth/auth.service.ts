@@ -14,6 +14,7 @@ import {
 	type FoundationEnvironment,
 	flattenResourceSnapshot,
 	INJECTOR_TOKEN,
+	isClientErrorEvent,
 	REQUIREMENT_PLANNER_HOST,
 	type RequirementBehaviourWithRouteContext,
 	RequirementPlannerHost,
@@ -40,12 +41,27 @@ import {
 	TOKEN_SET_CLIENT_REGISTRY,
 	type TokenSetClientRegistry,
 } from "@securitydept/token-set-context-client/registry";
-import { filter, from, take, takeUntil } from "rxjs";
+import {
+	distinctUntilChanged,
+	EMPTY,
+	filter,
+	from,
+	map,
+	merge,
+	switchMap,
+	take,
+	takeUntil,
+} from "rxjs";
 import {
 	TOKEN_SET_BACKEND_MODE_CONFIG,
 	TOKEN_SET_FRONTEND_MODE_CONFIG,
 } from "@/auth/token-set/config";
 import { projectDashboardUser } from "@/dashboard/principal";
+import {
+	MESSAGE_SERVICE,
+	type MessageService,
+	provideMessageService,
+} from "@/message/message.service";
 import { type AuthModeStore, createAuthModeStore } from "./mode-store";
 import {
 	AuthContextMode,
@@ -95,6 +111,32 @@ function mapAuthUserSnapshot<T>(
 	}
 }
 
+function tokenSetClientErrors(
+	clientResource: ResourceTrait<BaseOidcModeClient>,
+) {
+	return from(clientResource).pipe(
+		map((snapshot) => {
+			switch (snapshot.status) {
+				case ResourceStatus.Reloading:
+				case ResourceStatus.Resolved:
+				case ResourceStatus.Error:
+					return snapshot.value;
+				default:
+					return null;
+			}
+		}),
+		distinctUntilChanged(),
+		switchMap((client) =>
+			client === null
+				? EMPTY
+				: from(client.authEvents).pipe(
+						filter(isClientErrorEvent),
+						map((event) => event.payload.error),
+					),
+		),
+	);
+}
+
 export const AUTH_SERVICE = new SecuritydeptInjectionToken<AuthService>(
 	"AUTH_SERVICE",
 );
@@ -120,7 +162,7 @@ export class AuthService implements DisposableTrait {
 		return this.environment.transport;
 	}
 
-	constructor(injector: SecuritydeptInjector) {
+	constructor(injector: SecuritydeptInjector, messageService: MessageService) {
 		this.session = injector.get(SESSION_CONTEXT_CLIENT);
 		this.basic = injector.get(BASIC_AUTH_CONTEXT_CLIENT);
 		this.registry = injector.get(TOKEN_SET_CLIENT_REGISTRY);
@@ -138,6 +180,21 @@ export class AuthService implements DisposableTrait {
 			TOKEN_SET_FRONTEND_MODE_CONFIG.clientKey,
 			{ initialize: false },
 		);
+		merge(
+			from(this.modeErrors),
+			from(this.basic.events).pipe(
+				filter(isClientErrorEvent),
+				map((event) => event.error),
+			),
+			from(this.session.events).pipe(
+				filter(isClientErrorEvent),
+				map((event) => event.error),
+			),
+			tokenSetClientErrors(this.tokenSetBackendModeClientResource),
+			tokenSetClientErrors(this.tokenSetFrontendModeClientResource),
+		)
+			.pipe(takeUntil(this.destroyed$))
+			.subscribe((error) => messageService.showError(error));
 		from(this.mode)
 			.pipe(takeUntil(this.destroyed$))
 			.subscribe((snapshot) => {
@@ -379,10 +436,14 @@ export class AuthService implements DisposableTrait {
 
 export function provideAuthService(): readonly SecuritydeptProvider[] {
 	return [
+		...provideMessageService(),
 		{
 			provide: AUTH_SERVICE,
-			useFactory: (injector: SecuritydeptInjector) => new AuthService(injector),
-			deps: [INJECTOR_TOKEN],
+			useFactory: (
+				injector: SecuritydeptInjector,
+				messageService: MessageService,
+			) => new AuthService(injector, messageService),
+			deps: [INJECTOR_TOKEN, MESSAGE_SERVICE],
 		},
 		{
 			provide: REQUIREMENT_PLANNER_HOST,

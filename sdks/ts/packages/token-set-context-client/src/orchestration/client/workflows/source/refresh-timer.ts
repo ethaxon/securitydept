@@ -3,6 +3,7 @@ import {
 	type ReadableSignalTrait,
 	type ResourceSnapshot,
 	ResourceStatus,
+	type SpanAttributes,
 	type TimeTrait,
 } from "@securitydept/client";
 import {
@@ -65,7 +66,7 @@ export interface CreateTokenSetRefreshTimerWorkflowSourceEnv {
 	>;
 	recordTrace?: (
 		type: TokenSetRefreshTimerWorkflowSourceTraceEventType,
-		attributes?: Record<string, unknown>,
+		attributes?: SpanAttributes,
 	) => void;
 }
 

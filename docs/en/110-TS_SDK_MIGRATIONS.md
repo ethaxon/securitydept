@@ -29,9 +29,19 @@ Rename option fields from `externalTransport` to `baseTransport` when constructi
 
 Replace custom Observable wrapper layers with direct RxJS interop, for example `from(client.authSnapshot)`, where they only forward subscriptions. Use `createNeverEventStream()` or `createEmptyEventStream()` when a public trait API needs RxJS `NEVER` or `EMPTY` semantics. Do not replace a public SDK trait with a raw Observable.
 
+Basic Auth, Session, and Token Set lifecycle events no longer replay buffered history. Replace code that depended on late replay with the corresponding Resource for current state, or an explicit tracing/event-history store for diagnostics. Failure event variants now carry `error: ClientError` instead of `errorSummary`; filter them with `isClientErrorEvent`, use `readErrorPresentationDescriptor()` for UI messages, and derive `ErrorSummary` only at logging/trace serialization boundaries.
+
 ## Span And Trace Context
 
-Span is a foundation capability, not a telemetry subfeature. Fork a child span at a top-level workflow boundary and run/record local work under it. Trace/event consumers may depend on span context, but public APIs must not assume host-level automatic propagation.
+Span is a foundation capability, not a telemetry subfeature. Context propagation remains explicit. Fork client and operation frames, place cross-provider identity under `SpanSharedAttributeName`, and write provider-only detail with `setAttributes(attributes, { providerId })`. Read attributes with `getAttributes()` or `getRootToNodeAttributes()`; the former `span.attributes` getter is no longer part of the contract.
+
+Operation instrumentation now accepts `traceAttributes` instead of `fields`. Trace-only detail belongs to `TRACING_SPAN_ATTRIBUTE_PROVIDER_ID`; the canonical shared operation key is `operation.name`, not `operationName`. `TracingEvent` carries a live span, so replaying or buffering subscribers must read `span.getRootToNodeAttributes({ providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID })` synchronously. Attribute values use the immutable `SpanAttributeValue` contract; span core does not perform defensive deep cloning.
+
+`TraceTimelineStore` uses the optional `mnemonist` peer. Install `mnemonist` when using the timeline subscriber. Subscribe to `latestEntry: EventStreamTrait<TraceTimelineEntry | null>` for edge notifications, where `null` means the timeline was cleared, and read the current readonly array snapshot from the `entries` getter. The store no longer publishes a new full-array signal value for every recorded entry.
+
+`ClientError` now captures its first shared/error-provider span path. Default `readErrorPresentationDescriptor()` output prefixes the deepest client identity and operation name. Applications that need localized context labels should pass `contextFormatter`; pass `null` only when the contextual prefix is intentionally disabled. Do not copy tokens, authorization headers, sensitive URL parameters, or provider payloads into shared/error attributes.
+
+Error presentation helpers now accept canonical `ClientError` instances rather than structurally similar objects. Rename TypeScript imports from `ErrorPresentation` to `ServerErrorPresentation`, `ErrorCodePresentationDescriptor` to `ErrorCodePresentation`, and `ErrorPresentationActionDescriptor` to `ErrorRecoveryActionDescriptor`. The final `ErrorPresentationDescriptor` no longer duplicates the machine-only `kind`, `source`, or `retryable` fields; read those from the original `ClientError` when policy logic needs them.
 
 Remove token-set-specific global outcome/source carrier fields that only duplicate span nesting. Record local trace attributes at the behavior boundary instead.
 
@@ -47,7 +57,7 @@ Workflow sources replace auth-check trigger terminology. Page-resume and refresh
 
 Auth events are a direct discriminated union. The event `type` fixes its payload shape. The obsolete `TokenSetAuthEventPayloadMap`, `AuthCheck*` events, `TokenSetAuthFlowReason`, `TokenSetAuthFlowOutcome`, and `authCheckReason` contracts must not be used.
 
-Only refresh events carry freshness and refresh-material facts. Auth event payloads never expose raw token material or authorization headers. Consumers that aggregate events must preserve the source contract or explicitly model an aggregation-only envelope rather than silently backfilling source fields.
+Only refresh events carry freshness and refresh-material facts. Auth event payloads never project snapshot token material or authorization headers. Failure events carry an in-process `ClientError`; do not serialize its cause directly. Consumers that aggregate events must preserve the source contract or explicitly model an aggregation-only envelope rather than silently backfilling source fields.
 
 ## Persistence
 

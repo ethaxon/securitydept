@@ -1,3 +1,4 @@
+import { type SpanAttributes } from "@securitydept/client";
 import {
 	type TokenSetAuthEventPayloadInput,
 	type TokenSetAuthEventType,
@@ -52,7 +53,7 @@ export type TokenSetAuthDeterminationEvent = {
 
 export interface TokenSetAuthDeterminationTrace {
 	type: string;
-	attributes?: Record<string, unknown>;
+	attributes?: SpanAttributes;
 }
 
 export interface TokenSetAuthDeterminationCommit {

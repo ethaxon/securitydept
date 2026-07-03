@@ -2,6 +2,7 @@ import {
 	createRootSpan,
 	createTraceTimelineStore,
 	OperationTraceEventType,
+	SpanSharedAttributeName,
 	TracingLevel,
 } from "@securitydept/client";
 import {
@@ -15,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import { TOKEN_SET_FRONTEND_MODE_CONFIG } from "@/auth/token-set/config";
 import { TraceTimelineSection } from "@/routes/_playground/playground/token-set/-frontend-mode/trace-timeline-section";
 
-function renderTimeline(events = createTraceTimelineStore().get()): string {
+function renderTimeline(events = createTraceTimelineStore().entries): string {
 	return renderToStaticMarkup(
 		createElement(TraceTimelineSection, {
 			events,
@@ -36,7 +37,13 @@ describe("frontend trace timeline section", () => {
 	it("renders sdk and frontend host trace events in one structured timeline", () => {
 		const timeline = createTraceTimelineStore();
 		const rootSpan = createRootSpan({ idFactory: () => "root" });
-		const operationSpan = rootSpan.fork({ idFactory: () => "op_frontend_1" });
+		const operationSpan = rootSpan.fork({
+			idFactory: () => "op_frontend_1",
+			attributes: {
+				[SpanSharedAttributeName.OperationName]:
+					FrontendOidcModeTraceOperationName.Callback,
+			},
+		});
 
 		timeline.record({
 			name: OperationTraceEventType.Started,
@@ -44,9 +51,6 @@ describe("frontend trace timeline section", () => {
 			target: TOKEN_SET_FRONTEND_MODE_CONFIG.tracing.clientTarget,
 			span: operationSpan,
 			level: TracingLevel.Info,
-			fields: {
-				operationName: FrontendOidcModeTraceOperationName.Callback,
-			},
 		});
 
 		timeline.record({
@@ -56,7 +60,6 @@ describe("frontend trace timeline section", () => {
 			span: operationSpan,
 			level: TracingLevel.Info,
 			fields: {
-				operationName: FrontendOidcModeTraceOperationName.LoginPopup,
 				eventName: FrontendOidcModeOperationEventName.PopupOpened,
 				popupCallbackUrl: "https://app.example.com/popup-callback",
 			},
@@ -73,7 +76,7 @@ describe("frontend trace timeline section", () => {
 			},
 		});
 
-		const markup = renderTimeline(timeline.get());
+		const markup = renderTimeline(timeline.entries);
 
 		expect(markup).toContain("Trace timeline");
 		expect(markup).toContain("Operation Lifecycle");

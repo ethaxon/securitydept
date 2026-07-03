@@ -4,11 +4,8 @@ import {
 	formatValidationFailure,
 	validateWithSchemaSync,
 } from "@securitydept/client";
-import {
-	SessionContextErrorCode,
-	SessionContextSource,
-	type SessionInfo,
-} from "../types";
+import { SessionContextErrorCode, SessionContextSource } from "../error";
+import { type SessionInfo } from "../types";
 import { SessionInfoSchema, SessionUserInfoResponseSchema } from "./schemas";
 
 export function parseSessionInfoPayload(body: unknown): SessionInfo {

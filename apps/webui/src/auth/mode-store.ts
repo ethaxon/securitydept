@@ -11,11 +11,7 @@ import {
 	type StorageTrait,
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
-import {
-	RxEventReplaySubject,
-	RxEventSubject,
-	RxStateSignal,
-} from "@securitydept/client/rx";
+import { RxEventSubject, RxStateSignal } from "@securitydept/client/rx";
 import {
 	catchError,
 	concatMap,
@@ -68,7 +64,7 @@ class StorageBackedAuthModeStore implements AuthModeStore {
 	private readonly modeResource = resourceFromSnapshots<AuthContextMode | null>(
 		() => this.modeSnapshot.get(),
 	);
-	private readonly errorSubject = new RxEventReplaySubject<ClientError>(10);
+	private readonly errorSubject = new RxEventSubject<ClientError>();
 	private readonly persistenceCommand =
 		new RxEventSubject<PersistenceCommand>();
 	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
@@ -187,6 +183,7 @@ class StorageBackedAuthModeStore implements AuthModeStore {
 				value: persistedMode,
 			});
 		} catch (error) {
+			await Promise.resolve();
 			this.errorSubject.next(
 				this.storageError({
 					error,

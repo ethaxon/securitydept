@@ -40,7 +40,7 @@ describe("AuthModeStore", () => {
 
 	it("resolves an unavailable mode and reports persistence read failures", async () => {
 		const persistentStorage: StorageTrait = {
-			get: async () => {
+			get: () => {
 				throw new Error("offline");
 			},
 			set: () => undefined,
@@ -60,6 +60,25 @@ describe("AuthModeStore", () => {
 			}),
 		]);
 		subscription.unsubscribe();
+		store.dispose();
+	});
+
+	it("does not replay persistence errors to late subscribers", async () => {
+		const store = createAuthModeStore({
+			persistentStorage: {
+				get: async () => {
+					throw new Error("offline");
+				},
+				set: () => undefined,
+				remove: () => undefined,
+			},
+		});
+		await store.mode.whenValue();
+		const errors: unknown[] = [];
+
+		store.errors.subscribe({ next: (error) => errors.push(error) });
+
+		expect(errors).toEqual([]);
 		store.dispose();
 	});
 

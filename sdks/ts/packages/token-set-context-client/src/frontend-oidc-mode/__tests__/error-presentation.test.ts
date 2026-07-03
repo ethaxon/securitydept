@@ -1,17 +1,29 @@
-import { UserRecovery } from "@securitydept/client";
+import {
+	ClientError,
+	ClientErrorKind,
+	type ServerErrorPresentation,
+	UserRecovery,
+} from "@securitydept/client";
 import { describe, expect, it } from "vitest";
 import { FrontendOidcModeCallbackErrorCode } from "../errors/callback-error-codes";
 import { describeFrontendOidcModeCallbackError } from "../errors/error-presentation";
 
-function createCallbackError(code: string) {
-	return {
+function createCallbackError(
+	code: string,
+	options: {
+		kind?: ClientErrorKind;
+		recovery?: UserRecovery;
+		presentation?: ServerErrorPresentation;
+	} = {},
+) {
+	return new ClientError({
 		code,
-		kind: "protocol",
+		kind: options.kind ?? ClientErrorKind.Protocol,
 		message: code,
-		recovery: UserRecovery.RestartFlow,
-		retryable: false,
+		recovery: options.recovery ?? UserRecovery.RestartFlow,
 		source: "frontend-oidc-mode",
-	} as const;
+		presentation: options.presentation,
+	});
 }
 
 describe("describeFrontendOidcModeCallbackError", () => {
@@ -57,20 +69,17 @@ describe("describeFrontendOidcModeCallbackError", () => {
 
 	it("describes token-endpoint rejection with the oauth presentation message", () => {
 		expect(
-			describeFrontendOidcModeCallbackError({
-				code: "frontend_oidc.token.endpoint_rejected",
-				kind: "authorization",
-				message:
-					"Token endpoint rejected the authorization code grant (invalid_client): Client authentication failed",
-				recovery: UserRecovery.RestartFlow,
-				retryable: false,
-				presentation: {
-					code: "frontend_oidc.token.endpoint_rejected",
-					message:
-						"Token endpoint rejected the authorization code grant (invalid_client): Client authentication failed",
-					recovery: UserRecovery.RestartFlow,
-				},
-			}),
+			describeFrontendOidcModeCallbackError(
+				createCallbackError("frontend_oidc.token.endpoint_rejected", {
+					kind: ClientErrorKind.Authorization,
+					presentation: {
+						code: "frontend_oidc.token.endpoint_rejected",
+						message:
+							"Token endpoint rejected the authorization code grant (invalid_client): Client authentication failed",
+						recovery: UserRecovery.RestartFlow,
+					},
+				}),
+			),
 		).toMatchObject({
 			code: "frontend_oidc.token.endpoint_rejected",
 			title: "Token exchange failed",
@@ -83,13 +92,11 @@ describe("describeFrontendOidcModeCallbackError", () => {
 
 	it("falls back to the shared descriptor for unknown callback failures", () => {
 		expect(
-			describeFrontendOidcModeCallbackError({
-				code: "frontend_oidc.callback.other",
-				kind: "protocol",
-				message: "Other callback failure",
-				recovery: UserRecovery.None,
-				retryable: false,
-			}),
+			describeFrontendOidcModeCallbackError(
+				createCallbackError("frontend_oidc.callback.other", {
+					recovery: UserRecovery.None,
+				}),
+			),
 		).toMatchObject({
 			code: "frontend_oidc.callback.other",
 			title: "Frontend-mode callback failed",

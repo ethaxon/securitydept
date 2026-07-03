@@ -17,7 +17,7 @@
 					"stability": "stable",
 					"owner": "foundation",
 					"changeDiscipline": "stable-deprecation-first",
-					"note": "Owns the framework-neutral runtime contracts: FoundationEnvironment and injection, Signal/EventStream/Resource state, cancellation and disposal, transport/storage/router capabilities, span and operation tracing, identity projection, auth coordination, and the canonical ClientError bridge. ResourceSnapshot models idle, loading, reloading, resolved, loading-error, and stale-error states; resourceFromSnapshots(), mapResource(), flattenResourceSnapshot(), and whenResourceSnapshotValue() provide deterministic value and waiting semantics without replay-signal compatibility APIs.",
+					"note": "Owns the framework-neutral runtime contracts: FoundationEnvironment and injection, Signal/EventStream/Resource state, cancellation and disposal, transport/storage/router capabilities, layered shared/provider span context, operation tracing, identity projection, auth coordination, and the canonical ClientError bridge. ResourceSnapshot models idle, loading, reloading, resolved, loading-error, and stale-error states; resourceFromSnapshots(), mapResource(), flattenResourceSnapshot(), and whenResourceSnapshotValue() provide deterministic value and waiting semantics without replay-signal compatibility APIs. Client lifecycle events are non-replaying edges, isClientErrorEvent() narrows failure variants carrying ClientError for downstream composition, and ClientError first-capture span snapshots provide client/operation context without coupling message consumers to event types. Error presentation separates the server-supplied ServerErrorPresentation payload, host-owned ErrorCodePresentation mapping, and final UI-only ErrorPresentationDescriptor; machine policy remains on ClientError.",
 					"evidence": [
 						"tests/public-contract-values.test.ts",
 						"packages/client/src/cancellation/__tests__/cancellation.test.ts",
@@ -136,7 +136,7 @@
 					"stability": "stable",
 					"owner": "basic-auth-context",
 					"changeDiscipline": "stable-deprecation-first",
-					"note": "Environment-backed BasicAuthContextClient owns zone helpers, boundary observation, login redirect, and local boundary-projection clearing from the root entry. It cannot revoke browser-managed Basic credentials. The core package also owns BASIC_AUTH_CONTEXT_CLIENT, BASIC_AUTH_CONTEXT_CLIENT_CONFIG, provideBasicAuthContext(), and the fromEnvironmentConfig()/fromInjector() construction paths so framework-neutral hosts share one DI contract.",
+					"note": "Environment-backed BasicAuthContextClient owns zone helpers, boundary observation, login redirect, and local boundary-projection clearing from the root entry. It cannot revoke browser-managed Basic credentials. Lifecycle events are non-replaying, and failed variants carry the same context-captured ClientError committed to the Resource and rejected to the caller. The core package also owns BASIC_AUTH_CONTEXT_CLIENT, BASIC_AUTH_CONTEXT_CLIENT_CONFIG, provideBasicAuthContext(), and the fromEnvironmentConfig()/fromInjector() construction paths so framework-neutral hosts share one DI contract.",
 					"evidence": [
 						"examples/basic-auth/guard-scenario.test.ts",
 						"packages/basic-auth-context-client/src/__tests__/client.test.ts",
@@ -191,7 +191,7 @@
 						"examples/session-context/server-minimal-entry.test.ts",
 						"packages/session-context-client/src/__tests__/client.test.ts"
 					],
-					"note": "Owns the environment-bound SessionContextClient runtime: session state is exposed as signals, lifecycle events as EventStreamTrait, and refresh/logout/redirect operations use FoundationEnvironment transport/router/storage plus span/tracing. The core package also owns SESSION_CONTEXT_CLIENT, SESSION_CONTEXT_CLIENT_CONFIG, provideSessionContext(), and the fromEnvironmentConfig()/fromInjector() construction paths. No SessionContextController compatibility layer remains.",
+					"note": "Owns the environment-bound SessionContextClient runtime: session state is exposed as signals, lifecycle events as a non-replaying EventStreamTrait, failed event variants carry context-captured ClientError values, and refresh/logout/redirect operations use FoundationEnvironment transport/router/storage plus span/tracing. The core package also owns SESSION_CONTEXT_CLIENT, SESSION_CONTEXT_CLIENT_CONFIG, provideSessionContext(), and the fromEnvironmentConfig()/fromInjector() construction paths. No SessionContextController compatibility layer remains.",
 					"docsAnchor": {
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Session"
@@ -277,7 +277,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Token-set-specific orchestration layer: base-client, auth-check trigger event sources, persistence, token-ops, types. Base OIDC clients expose authorizedTransport() from their own environment transport and authorization header signal instead of mode-specific auth-transport wrappers. Auth-check sources are pure EventStream producers; client-owned dispatcher/gateway code submits events into the auth-check runner. The requirement planner host and planner variants are hosted by @securitydept/client. TokenSetAuthPrincipal aligns to the shared IdentityPrincipal baseline while keeping resource-token facts and substrate ownership outside this human-principal contract.",
+					"note": "Token-set-specific orchestration layer: BaseOidcModeClient lifecycle/state authority, closed restore/refresh/clear planners, non-replaying typed auth events, workflow sources, persistence, token operations, and types. Failed auth event variants carry context-captured ClientError values and remain filterable through the shared isClientErrorEvent() guard. Base OIDC clients derive authorized transport from their environment transport and authorization-header Resource. Page-resume and refresh-timer workflow sources feed the serialized lifecycle host without owning state. The requirement planner host and planner variants are hosted by @securitydept/client. TokenSetAuthPrincipal aligns to the shared IdentityPrincipal baseline while keeping resource-token facts and substrate ownership outside this human-principal contract.",
 					"evidence": [
 						"packages/token-set-context-client/src/orchestration/client/__tests__/base-oidc-mode-client-auth-signals.test.ts",
 						"packages/token-set-context-client/src/orchestration/__tests__/workflow-sources.test.ts",

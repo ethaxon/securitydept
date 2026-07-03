@@ -19,6 +19,8 @@ The TypeScript SDK uses the corresponding four-layer boundary:
 - Lifecycle events and tracing project only the secret-safe `ErrorSummary`: `errorName` plus optional `errorKind`, `errorCode`, and `recovery`. They never copy runtime messages.
 - `readErrorPresentationDescriptor()` reads only explicit safe `presentation`, domain code mappings, or generic foundation kind copy. It never treats `Error.message` as user-facing copy.
 
+In the TypeScript API, `ServerErrorPresentation` is the safe server-supplied payload, `ErrorCodePresentation` configures host copy for a stable code, and `ErrorPresentationDescriptor` is the final UI projection. The final projection contains only `code`, display copy, recovery, tone, and an optional recovery action; machine policy reads `kind`, `source`, and `retryable` from the original `ClientError`.
+
 The TS SDK `ClientErrorKind` vocabulary is `authorization`, `transport`, `server`, `protocol`, `storage`, `configuration`, `unauthenticated`, `unauthorized`, `cancelled`, `timeout`, and `internal`. Schema/options failures are `configuration`; invalid remote or persisted payloads are `protocol`; unknown failures are wrapped as `internal` at public client operation boundaries while preserving `cause`.
 
 Shared types live in `securitydept-utils`:

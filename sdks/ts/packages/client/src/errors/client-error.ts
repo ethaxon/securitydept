@@ -1,10 +1,15 @@
+import { type SpanTrait } from "../span/types";
 import {
 	ClientErrorKind,
 	ClientErrorSource,
-	type ErrorPresentation,
+	type ClientErrorSpanContext,
+	type ServerErrorPresentation,
 	UserRecovery,
 	type UserRecovery as UserRecoveryType,
 } from "./types";
+
+export const CLIENT_ERROR_SPAN_ATTRIBUTE_PROVIDER_ID =
+	"@securitydept/client/error";
 
 type ServerErrorBody = {
 	kind?: string;
@@ -22,12 +27,14 @@ export interface ClientErrorFromUnknownOptions {
 	message: string;
 	code: string;
 	source: string;
+	span?: SpanTrait;
 }
 
 export interface ClientErrorFromHttpResponseOptions {
 	status: number;
 	body?: unknown;
 	source?: string;
+	span?: SpanTrait;
 }
 
 const userRecoveryValues = new Set<string>(Object.values(UserRecovery));
@@ -115,6 +122,8 @@ function readServerErrorBody(body: unknown): ServerErrorBody | undefined {
  * policy decisions without requiring callers to unwrap `presentation`.
  */
 export class ClientError extends Error {
+	private _spanContext: ClientErrorSpanContext | undefined;
+
 	readonly kind: ClientErrorKind;
 
 	/**
@@ -131,10 +140,14 @@ export class ClientError extends Error {
 	readonly retryable: boolean;
 
 	/** Structured user-facing error presentation from the server. */
-	readonly presentation?: ErrorPresentation;
+	readonly presentation?: ServerErrorPresentation;
 
 	/** Source subsystem or component that produced the error. */
 	readonly source?: string;
+
+	get spanContext(): ClientErrorSpanContext | undefined {
+		return this._spanContext;
+	}
 
 	constructor(options: {
 		kind: ClientErrorKind;
@@ -142,9 +155,10 @@ export class ClientError extends Error {
 		code?: string;
 		recovery?: UserRecoveryType;
 		retryable?: boolean;
-		presentation?: ErrorPresentation;
+		presentation?: ServerErrorPresentation;
 		source?: string;
 		cause?: unknown;
+		span?: SpanTrait;
 	}) {
 		super(options.message, { cause: options.cause });
 		this.name = "ClientError";
@@ -156,6 +170,16 @@ export class ClientError extends Error {
 		this.retryable = options.retryable ?? this.recovery === UserRecovery.Retry;
 		this.presentation = options.presentation;
 		this.source = options.source;
+		if (options.span) {
+			this.captureSpanContext(options.span);
+		}
+	}
+
+	captureSpanContext(span: SpanTrait): this {
+		this._spanContext ??= span.getRootToNodeAttributes({
+			providerId: CLIENT_ERROR_SPAN_ATTRIBUTE_PROVIDER_ID,
+		});
+		return this;
 	}
 
 	/** Create a `ClientError` from a server error response body. */
@@ -171,14 +195,18 @@ export class ClientError extends Error {
 				recovery?: string;
 			};
 		},
-		overrides?: { kind?: ClientErrorKind; source?: string },
+		overrides?: {
+			kind?: ClientErrorKind;
+			source?: string;
+			span?: SpanTrait;
+		},
 	): ClientError {
 		const rawPresentation = body.presentation;
 		const recovery =
 			readUserRecovery(body.recovery) ??
 			readUserRecovery(rawPresentation?.recovery) ??
 			UserRecovery.None;
-		const presentation: ErrorPresentation | undefined =
+		const presentation: ServerErrorPresentation | undefined =
 			rawPresentation?.code && rawPresentation.message
 				? {
 						code: rawPresentation.code,
@@ -195,6 +223,7 @@ export class ClientError extends Error {
 			retryable: recovery === UserRecovery.Retry,
 			presentation,
 			source: overrides?.source,
+			span: overrides?.span,
 		});
 	}
 
@@ -203,7 +232,7 @@ export class ClientError extends Error {
 		options: ClientErrorFromUnknownOptions,
 	): ClientError {
 		if (error instanceof ClientError) {
-			return error;
+			return options.span ? error.captureSpanContext(options.span) : error;
 		}
 
 		return new ClientError({
@@ -212,6 +241,7 @@ export class ClientError extends Error {
 			code: options.code,
 			source: options.source,
 			cause: error,
+			span: options.span,
 		});
 	}
 
@@ -252,7 +282,7 @@ export class ClientError extends Error {
 						? { ...serverBody.presentation, recovery }
 						: undefined,
 				},
-				{ kind, source },
+				{ kind, source, span: options.span },
 			);
 		}
 
@@ -263,6 +293,7 @@ export class ClientError extends Error {
 			recovery: fallbackRecovery,
 			retryable: status === 408 || status >= 500,
 			source,
+			span: options.span,
 		});
 	}
 }

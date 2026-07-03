@@ -1,6 +1,7 @@
 import {
 	type EventStreamTrait,
 	type PageLifecycleTrait,
+	type SpanAttributes,
 	type TimeTrait,
 } from "@securitydept/client";
 import {
@@ -25,7 +26,7 @@ export interface CreateTokenSetPageResumeWorkflowSourceEnv {
 	time: TimeTrait;
 	recordTrace?: (
 		type: TokenSetPageResumeWorkflowSourceTraceEventType,
-		attributes?: Record<string, unknown>,
+		attributes?: SpanAttributes,
 	) => void;
 }
 
@@ -65,7 +66,9 @@ export class TokenSetPageResumeWorkflowSource {
 					TokenSetPageResumeWorkflowSourceTraceEventType.Fired,
 					{
 						trigger: event.trigger,
-						persisted: event.persisted,
+						...(event.persisted === undefined
+							? {}
+							: { persisted: event.persisted }),
 					},
 				);
 			}),

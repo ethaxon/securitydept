@@ -54,7 +54,7 @@
 		"**/*.just": "just",
 		"**/justfile": "just"
 	},
-	"js/ts.experimental.useTsgo": true,
+	"js/ts.experimental.useTsgo": false,
 	"files.readonlyInclude": {
 		"**/routeTree.gen.ts": true
 	},

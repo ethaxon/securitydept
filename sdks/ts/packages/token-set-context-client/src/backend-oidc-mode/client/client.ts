@@ -14,6 +14,7 @@ import {
 	RouterNavigationMode,
 	SecuritydeptDestroyRef,
 	type SecuritydeptInjectorTrait,
+	type SpanAttributes,
 	UriReferenceString,
 	UserRecovery,
 	withDisposableStack,
@@ -78,8 +79,8 @@ const TRACE_TARGET = "backend-oidc-mode";
 const TRACE_PREFIX = "backend_oidc";
 
 type BackendOperationFields =
-	| Record<string, unknown>
-	| ((this: BackendOidcModeClient) => Record<string, unknown> | undefined);
+	| SpanAttributes
+	| ((this: BackendOidcModeClient) => SpanAttributes | undefined);
 
 const instrumentBackendMethod = defineInstrumentMethodDecorator<
 	[name: string, fields?: BackendOperationFields],
@@ -92,12 +93,14 @@ const instrumentBackendMethod = defineInstrumentMethodDecorator<
 				span: this.span,
 				name,
 				target: TRACE_TARGET,
-				fields: typeof fields === "function" ? fields.call(this) : fields,
-				normalizeError: (error: unknown) =>
+				traceAttributes:
+					typeof fields === "function" ? fields.call(this) : fields,
+				clientErrorFromUnknown: (error: unknown, { span }) =>
 					ClientError.fromUnknown(error, {
 						code: BackendOidcModeErrorCode.OperationFailed,
 						message: "The backend OIDC operation failed unexpectedly",
 						source: TRACE_TARGET,
+						span,
 					}),
 			};
 		},
@@ -195,6 +198,8 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		this._callbackRoutingKey = options.callbackRoutingKey;
 		this._callbackHandler = new OidcModeCallbackHandler({
 			environment,
+			span: this.span,
+			operationName: BackendOidcModeTraceOperationName.Callback,
 			rootCancellationToken: this._rootCancellation.token,
 			inputResolver:
 				options.callbackInputResolver === undefined
@@ -213,11 +218,12 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 					source: TRACE_TARGET,
 					recovery: UserRecovery.RestartFlow,
 				}),
-			normalizeError: (error) =>
+			clientErrorFromUnknown: (error, { span }) =>
 				ClientError.fromUnknown(error, {
 					code: BackendOidcModeErrorCode.CallbackFailed,
 					message: "The backend OIDC callback failed.",
 					source: TRACE_TARGET,
+					span,
 				}),
 		});
 		this.callback = this._callbackHandler;
@@ -274,7 +280,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		operationSpan?: OperationSpanTrait,
 	): Promise<void> {
 		cancellationToken.throwIfCancellationRequested();
-		operationSpan?.setAttributes({
+		operationSpan?.setTraceAttributes({
 			hasPostAuthRedirectUri: options.postAuthRedirectUri !== undefined,
 		});
 		const router = this._environment.router;
@@ -294,7 +300,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			mode: RouterNavigationMode.External,
 		});
 		cancellationToken.throwIfCancellationRequested();
-		operationSpan?.setAttributes({ navigationMode: "external" });
+		operationSpan?.setTraceAttributes({ navigationMode: "external" });
 	}
 
 	@withDisposableStack(0, true)
@@ -310,7 +316,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		);
 		disposableStack?.use(cancellationToken);
 		cancellationToken.throwIfCancellationRequested();
-		operationSpan?.setAttributes({
+		operationSpan?.setTraceAttributes({
 			popupCallbackUrl: options.popupCallbackUrl,
 		});
 		const popup = this._environment.popup;
@@ -397,12 +403,13 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 	): Promise<TokenSetAuthSnapshot> {
 		return await this._runDeterminationWorkflow({
 			name: BackendOidcModeTraceOperationName.Callback,
-			fields: { flow: "callback" },
-			normalizeError: (error) =>
+			traceAttributes: { flow: "callback" },
+			clientErrorFromUnknown: (error, { span }) =>
 				ClientError.fromUnknown(error, {
 					code: BackendOidcModeErrorCode.OperationFailed,
 					message: "The backend OIDC operation failed unexpectedly",
 					source: TRACE_TARGET,
+					span,
 				}),
 			workflow: async (operationSpan) => {
 				cancellationToken.throwIfCancellationRequested();
@@ -435,7 +442,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 					tokens: tokenSnapshot,
 					metadata,
 				};
-				operationSpan.setAttributes({
+				operationSpan.setTraceAttributes({
 					hasMetadataRedemption:
 						callbackPayload.metadataRedemptionId !== undefined,
 					hasInlineMetadata: callbackPayload.metadata !== undefined,
@@ -538,7 +545,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 				metadata,
 			};
 
-			operationSpan?.setAttributes({
+			operationSpan?.setTraceAttributes({
 				hasMetadataRedemption: refreshBody.metadataRedemptionId !== undefined,
 				hasInlineMetadata: refreshBody.metadata !== undefined,
 				hasUserInfoFallback:
@@ -665,7 +672,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 					BackendOidcModeTraceEventType.UserInfoFallbackFailed,
 					error,
 					undefined,
-					span ?? this.span,
+					span?.span ?? this.span,
 				);
 			}
 		}
@@ -782,7 +789,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		cancellationToken.throwIfCancellationRequested();
 
 		const current = this._readAuthSnapshotValue();
-		operationSpan?.setAttributes({
+		operationSpan?.setTraceAttributes({
 			hasAccessToken: current?.tokens.accessToken !== undefined,
 			hasIdToken: current?.tokens.idToken !== undefined,
 		});

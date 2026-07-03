@@ -3,8 +3,33 @@ import { SecuritydeptInjectionToken } from "../injection";
 
 export interface SpanCreateOptions {
 	idFactory?: () => string;
-	attributes?: Record<string, unknown>;
+	attributes?: SpanAttributes;
 	mutable?: false;
+}
+
+export type SpanAttributeValue =
+	| string
+	| number
+	| boolean
+	| null
+	| readonly SpanAttributeValue[]
+	| { readonly [name: string]: SpanAttributeValue };
+
+export type SpanAttributes = Readonly<Record<string, SpanAttributeValue>>;
+
+export interface SpanAttributeReadOptions {
+	providerId: string;
+	withShared?: boolean;
+}
+
+export interface SpanPathOptions {
+	skipSelf?: boolean;
+}
+
+export interface SpanNodeAttributes {
+	readonly spanId: string;
+	readonly parentSpanId?: string;
+	readonly attributes: SpanAttributes;
 }
 
 export const SpanCreateOptionsSchema = defineType({
@@ -20,7 +45,11 @@ export interface MutableSpanCreateOptions
 export interface SpanTrait {
 	readonly id: string;
 	readonly parent?: SpanTrait;
-	readonly attributes: Readonly<Record<string, unknown>>;
+	getAttributes(options?: SpanAttributeReadOptions): SpanAttributes;
+	getRootToNodePath(options?: SpanPathOptions): readonly SpanTrait[];
+	getRootToNodeAttributes(
+		options?: SpanPathOptions & { providerId?: string },
+	): readonly SpanNodeAttributes[];
 	fork(options: MutableSpanCreateOptions): MutableSpanTrait;
 	fork(options?: SpanCreateOptions): SpanTrait;
 	fork(
@@ -29,20 +58,20 @@ export interface SpanTrait {
 }
 
 export interface MutableSpanTrait extends SpanTrait {
-	setAttributes(attributes: Record<string, unknown>): void;
+	setAttributes(
+		attributes: SpanAttributes,
+		options?: { providerId?: string },
+	): void;
 }
 
 export const SpanTraitSchema = defineType({
 	id: "string",
 	fork: "Function",
-	attributes: "object",
+	getAttributes: "Function",
+	getRootToNodePath: "Function",
+	getRootToNodeAttributes: "Function",
 });
 
 export const SPAN_TRAIT_TOKEN = new SecuritydeptInjectionToken<SpanTrait>(
 	"SPAN_TRAIT_TOKEN",
 );
-
-export interface OperationSpanTrait extends MutableSpanTrait {
-	addEvent(type: string, attributes?: Record<string, unknown>): void;
-	recordError(error: unknown, attributes?: Record<string, unknown>): void;
-}

@@ -13,6 +13,8 @@ import {
 	readonlySignal,
 	reduceResourceSnapshot,
 	resourceFromSnapshots,
+	SpanSharedAttributeName,
+	type SpanTrait,
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import {
@@ -27,6 +29,8 @@ import {
 
 export interface OidcModeCallbackHandlerOptions<TInput, TResult> {
 	readonly environment: FoundationEnvironment;
+	readonly span: SpanTrait;
+	readonly operationName: string;
 	readonly rootCancellationToken: CancellationTokenTrait;
 	readonly inputResolver: OidcModeCallbackInputResolver<TInput> | null;
 	readonly handleInput: (
@@ -34,7 +38,10 @@ export interface OidcModeCallbackHandlerOptions<TInput, TResult> {
 		cancellationToken: CancellationTokenTrait,
 	) => Promise<TResult>;
 	readonly createInputNotFoundError: () => ClientError;
-	readonly normalizeError: (error: unknown) => ClientError;
+	readonly clientErrorFromUnknown: (
+		error: unknown,
+		options: { span: SpanTrait },
+	) => ClientError;
 }
 
 type OidcModeCallbackHandlerExecuteOptions<TInput> =
@@ -91,7 +98,9 @@ export class OidcModeCallbackHandler<TInput, TResult>
 			cancellationToken: options.cancellationToken,
 		});
 		if (outcome.kind === OidcModeCallbackHandlingKind.NotApplicable) {
-			throw this.options.createInputNotFoundError();
+			throw this.options
+				.createInputNotFoundError()
+				.captureSpanContext(this.options.span);
 		}
 		return outcome.result;
 	}
@@ -117,6 +126,11 @@ export class OidcModeCallbackHandler<TInput, TResult>
 		}
 
 		const cancellationSource = createCancellationTokenSource();
+		const executionSpan = this.options.span.fork({
+			attributes: {
+				[SpanSharedAttributeName.OperationName]: this.options.operationName,
+			},
+		});
 		const cancellationToken = createLinkedCancellationToken(
 			this.options.rootCancellationToken,
 			cancellationSource.token,
@@ -174,7 +188,9 @@ export class OidcModeCallbackHandler<TInput, TResult>
 				);
 				return result;
 			} catch (error) {
-				const clientError = this.options.normalizeError(error);
+				const clientError = this.options.clientErrorFromUnknown(error, {
+					span: executionSpan,
+				});
 				this.stateSignal.set(
 					reduceResourceSnapshot(this.stateSignal.get(), {
 						kind: ResourceSnapshotUpdateKind.Fail,

@@ -2,25 +2,11 @@
 
 import {
 	type CancellationTokenOptions,
-	type ErrorSummary,
+	type ClientError,
 	type ReadableSignalTrait,
 	type ResourceSnapshot,
 	type ResourceTrait,
 } from "@securitydept/client";
-
-/** Configuration for a single Basic Auth zone. */
-export const BasicAuthContextErrorCode = {
-	OperationFailed: "basic_auth.operation_failed",
-	InvalidConfig: "basic_auth.invalid_config",
-	ClientDisposed: "basic_auth.client_disposed",
-	RouterUnavailable: "basic_auth.router_unavailable",
-	ProbePathRequired: "basic_auth.probe_path_required",
-	ZoneNotFound: "basic_auth.zone_not_found",
-	ZoneRequired: "basic_auth.zone_required",
-} as const;
-
-export type BasicAuthContextErrorCode =
-	(typeof BasicAuthContextErrorCode)[keyof typeof BasicAuthContextErrorCode];
 
 export interface BasicAuthZoneConfig {
 	/** URL path prefix for this zone (e.g. "/basic"). */
@@ -79,13 +65,6 @@ export interface BasicAuthBoundarySnapshot {
 	zone?: ResolvedBasicAuthZone;
 }
 
-export const BasicAuthContextSource = {
-	BasicAuthContext: "basic-auth-context",
-} as const;
-
-export type BasicAuthContextSource =
-	(typeof BasicAuthContextSource)[keyof typeof BasicAuthContextSource];
-
 export const BasicAuthContextEventType = {
 	BoundaryRefreshStarted: "basic_auth.boundary.refresh.started",
 	BoundaryRefreshSucceeded: "basic_auth.boundary.refresh.succeeded",
@@ -102,16 +81,57 @@ export const BasicAuthContextEventType = {
 export type BasicAuthContextEventType =
 	(typeof BasicAuthContextEventType)[keyof typeof BasicAuthContextEventType];
 
-export interface BasicAuthContextEvent {
-	type: BasicAuthContextEventType;
-	at: number;
-	client: {
-		id: string;
+interface BasicAuthContextEventBase {
+	readonly at: number;
+	readonly client: {
+		readonly id: string;
 	};
-	snapshot?: BasicAuthBoundarySnapshot | null;
-	zone?: ResolvedBasicAuthZone;
-	errorSummary?: ErrorSummary;
 }
+
+type BasicAuthContextEventData =
+	| {
+			readonly type: typeof BasicAuthContextEventType.BoundaryRefreshStarted;
+			readonly snapshot: BasicAuthBoundarySnapshot | null;
+	  }
+	| {
+			readonly type: typeof BasicAuthContextEventType.BoundaryRefreshSucceeded;
+			readonly snapshot: BasicAuthBoundarySnapshot;
+			readonly zone?: ResolvedBasicAuthZone;
+	  }
+	| {
+			readonly type: typeof BasicAuthContextEventType.BoundaryRefreshFailed;
+			readonly snapshot: BasicAuthBoundarySnapshot | null;
+			readonly error: ClientError;
+	  }
+	| {
+			readonly type: typeof BasicAuthContextEventType.LogoutStarted;
+			readonly snapshot: BasicAuthBoundarySnapshot | null;
+	  }
+	| {
+			readonly type: typeof BasicAuthContextEventType.LogoutSucceeded;
+			readonly snapshot: null;
+	  }
+	| {
+			readonly type: typeof BasicAuthContextEventType.LogoutFailed;
+			readonly snapshot: BasicAuthBoundarySnapshot | null;
+			readonly error: ClientError;
+	  }
+	| {
+			readonly type:
+				| typeof BasicAuthContextEventType.LoginRedirectStarted
+				| typeof BasicAuthContextEventType.LoginRedirectSucceeded;
+			readonly zone: ResolvedBasicAuthZone;
+	  }
+	| {
+			readonly type: typeof BasicAuthContextEventType.LoginRedirectFailed;
+			readonly zone: ResolvedBasicAuthZone;
+			readonly error: ClientError;
+	  };
+
+export type BasicAuthContextEvent = BasicAuthContextEventBase &
+	BasicAuthContextEventData;
+
+export type BasicAuthContextEventInput = BasicAuthContextEventData;
 
 export interface BasicAuthContextOperationSignals {
 	readonly startPending: ReadableSignalTrait<boolean>;

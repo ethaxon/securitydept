@@ -4,7 +4,7 @@
 		"skipLibCheck": true,
 		"emitDeclarationOnly": true,
 		"outDir": "./dist-tsc/e2e",
-		"rootDir": "./e2e",
+		"rootDir": ".",
 		"allowImportingTsExtensions": true,
 		"customConditions": ["monorepo-tsc"],
 		"paths": {
@@ -15,7 +15,7 @@
 		"lib": ["esnext", "dom"],
 		"jsx": "react-jsx"
 	},
-	"include": ["e2e/**/*.ts", "e2e/**/*.tsx"],
+	"include": ["playwright.config.ts", "e2e/**/*.ts", "e2e/**/*.tsx"],
 	"exclude": ["**/node_modules", "**/dist"],
 	"references": [
 		{

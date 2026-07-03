@@ -1,6 +1,10 @@
 // --- Error model ---
 // Dual-layer: machine-facing runtime error + user-facing presentation / recovery hint.
 
+import { type SpanNodeAttributes } from "../span/types";
+
+export type ClientErrorSpanContext = readonly SpanNodeAttributes[];
+
 /** Recovery actions the user might take. Aligned with server-side `UserRecovery`. */
 export const UserRecovery = {
 	None: "none",
@@ -12,8 +16,8 @@ export const UserRecovery = {
 
 export type UserRecovery = (typeof UserRecovery)[keyof typeof UserRecovery];
 
-/** User-facing error presentation. `code` is the cross-platform stable contract. */
-export interface ErrorPresentation {
+/** Safe user-facing presentation supplied by a server error response. */
+export interface ServerErrorPresentation {
 	code: string;
 	message: string;
 	recovery: UserRecovery;
@@ -28,7 +32,7 @@ export const ErrorPresentationTone = {
 export type ErrorPresentationTone =
 	(typeof ErrorPresentationTone)[keyof typeof ErrorPresentationTone];
 
-export interface ErrorPresentationActionDescriptor {
+export interface ErrorRecoveryActionDescriptor {
 	recovery: UserRecovery;
 	label: string;
 	href: string | null;
@@ -36,25 +40,27 @@ export interface ErrorPresentationActionDescriptor {
 
 export interface ErrorPresentationDescriptor {
 	code: string | null;
-	kind: ClientErrorKind | null;
-	source?: string;
 	title: string;
 	description: string;
 	recovery: UserRecovery;
-	retryable: boolean;
 	tone: ErrorPresentationTone;
-	primaryAction: ErrorPresentationActionDescriptor | null;
+	primaryAction: ErrorRecoveryActionDescriptor | null;
 }
 
 export interface ReadErrorPresentationDescriptorOptions {
 	fallbackTitle?: string;
 	fallbackDescription?: string;
-	codePresentations?: Readonly<Record<string, ErrorCodePresentationDescriptor>>;
+	codePresentations?: Readonly<Record<string, ErrorCodePresentation>>;
 	recoveryLinks?: Partial<Record<UserRecovery, string>>;
 	recoveryLabels?: Partial<Record<UserRecovery, string>>;
+	contextFormatter?: ClientErrorContextFormatter | null;
 }
 
-export interface ErrorCodePresentationDescriptor {
+export type ClientErrorContextFormatter = (
+	context: ClientErrorSpanContext,
+) => string | undefined;
+
+export interface ErrorCodePresentation {
 	title: string;
 	description: string;
 	tone?: ErrorPresentationTone;

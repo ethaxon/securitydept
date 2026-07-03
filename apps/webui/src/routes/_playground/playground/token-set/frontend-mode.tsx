@@ -8,6 +8,7 @@ import {
 	UserRecovery,
 } from "@securitydept/client";
 import {
+	useInteropObservable,
 	useResourceSnapshot,
 	useSecuritydeptContext,
 } from "@securitydept/client-react";
@@ -21,7 +22,7 @@ import {
 	RefreshCw,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import { type AuthService } from "@/auth/auth.service";
 import { AuthContextMode } from "@/auth/model";
 import { useAuthService } from "@/auth/react";
@@ -117,10 +118,8 @@ function TokenSetFrontendModePlaygroundContent({
 		stateSnapshot.status === ResourceStatus.Error
 			? stateSnapshot.error
 			: null;
-	const traceEvents = useSyncExternalStore(
-		(listener) => traceTimeline.subscribe(listener),
-		() => traceTimeline.get(),
-	);
+	useInteropObservable(traceTimeline.latestEntry, { initialValue: null });
+	const traceEvents = traceTimeline.entries;
 	const [error, setError] = useState<ErrorPresentationDescriptor | null>(null);
 
 	useEffect(() => {

@@ -9,15 +9,15 @@ contract.
 ## Current Versioned Baseline
 
 The current released Outposts baseline is `0.4.0`. It consumes the published
-SecurityDept `0.3.0-beta.6` line rather than local workspace links:
+SecurityDept `0.3.0-beta.7` line rather than local workspace links:
 
 | Surface | Outposts dependency | Version |
 | --- | --- | --- |
-| Angular browser foundation | `@securitydept/client` | `0.3.0-beta.6` |
-| Angular framework bridge | `@securitydept/client-angular` | `0.3.0-beta.6` |
-| Frontend OIDC and registry | `@securitydept/token-set-context-client` | `0.3.0-beta.6` |
-| Angular OIDC adapters | `@securitydept/token-set-context-client-angular` | `0.3.0-beta.6` |
-| Rust server entry point | `securitydept-core` | `0.3.0-beta.6` |
+| Angular browser foundation | `@securitydept/client` | `0.3.0-beta.7` |
+| Angular framework bridge | `@securitydept/client-angular` | `0.3.0-beta.7` |
+| Frontend OIDC and registry | `@securitydept/token-set-context-client` | `0.3.0-beta.7` |
+| Angular OIDC adapters | `@securitydept/token-set-context-client-angular` | `0.3.0-beta.7` |
+| Rust server entry point | `securitydept-core` | `0.3.0-beta.7` |
 
 The Confluence backend enables the `oauth-resource-server`, `creds`, and
 `token-set-context` core features. The web application uses Angular `22.1`,
