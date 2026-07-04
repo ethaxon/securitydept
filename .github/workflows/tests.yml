@@ -124,9 +124,6 @@ jobs:
       - name: Typecheck repository
         run: mise exec --command "pnpm typecheck"
 
-      - name: Install Rust clippy component
-        run: mise exec --command "rustup component add --toolchain nightly clippy"
-
       - name: Restore Rust build cache
         uses: ./.github/actions/setup-rust-cache
         with:

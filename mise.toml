@@ -1,9 +1,11 @@
+[settings]
+idiomatic_version_file_enable_tools = ["rust"]
+
 [tools]
 # aqua = "latest"
 jq = "latest"
 node = "26"
 pnpm = "11.0.9"
-rust = "nightly"
 watchexec = "latest"
 zellij = "latest"
 # "github:bahdotsh/wrkflw" = { version = "0.8.0", matching = "wrkflw-" }

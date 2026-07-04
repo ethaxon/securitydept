@@ -1,3 +1,5 @@
 [toolchain]
-channel = "nightly"
-components = ["clippy"]
+# Advance only after every declared component is available for supported hosts.
+channel = "nightly-2026-08-15"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

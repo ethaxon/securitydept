@@ -22,6 +22,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Changed tracing subscribers to prototype-based classes and backed trace timeline history with the optional `mnemonist` peer queue. Timeline writes now publish only the latest entry through an event stream, while full readonly array snapshots are created on demand.
 - Bumped release-managed Rust crates, TypeScript packages, apps, lockfiles, and shared metadata to `0.3.0-beta.7`.
 
+### Fixed
+
+- Pinned the Rust nightly toolchain to a component-complete release, made `rust-toolchain.toml` the single Rust version/component authority through mise idiomatic-file support, and removed CI repair of a moving nightly.
+
 ## [0.3.0-beta.6]
 
 ### Changed
