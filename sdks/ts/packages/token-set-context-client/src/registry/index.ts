@@ -69,7 +69,7 @@ export {
 	type TokenSetClientRegistryEntry,
 	type TokenSetClientRegistryEntryStatus,
 	type TokenSetClientRegistryEvent,
-	type TokenSetClientRegistryEventType,
+	TokenSetClientRegistryEventType,
 	type TokenSetClientRegistryFromEnvironmentConfigOptions,
 	type TokenSetClientResourceOptions,
 	TokenSetRequirementKind,

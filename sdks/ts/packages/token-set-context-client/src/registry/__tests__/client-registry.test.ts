@@ -17,11 +17,11 @@ import {
 	type TokenSetClientReadyRecordView,
 	type TokenSetClientRecordView,
 	type TokenSetClientRegistryEntry,
-	TokenSetClientRegistryEventType,
 } from "../contracts/types";
 import { TokenSetClientRecord } from "../core/client-record";
 import { TokenSetClientRegistry } from "../core/client-registry";
 import { TokenSetClientRegistryErrorCode } from "../core/error";
+import { TokenSetClientRegistryEventType } from "../index";
 
 const testEnvironment = createFoundationEnvironment({});
 

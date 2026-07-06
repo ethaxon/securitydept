@@ -1,6 +1,6 @@
 {
 	"name": "@securitydept/client",
-	"version": "0.3.0-beta.7",
+	"version": "0.3.0-beta.8",
 	"description": "Client of the SecurityDept TypeScript SDK, a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps.",
 	"author": "Zhou Yeheng <root@aitiotekt.com>",
 	"license": "MIT",
@@ -77,17 +77,8 @@
 		"rxjs": "catalog:",
 		"uuid": "catalog:"
 	},
-	"peerDependencies": {
-		"mnemonist": "^0.40.4"
-	},
-	"peerDependenciesMeta": {
-		"mnemonist": {
-			"optional": true
-		}
-	},
 	"devDependencies": {
 		"@types/node": "catalog:",
-		"mnemonist": "catalog:",
 		"vitest": "catalog:"
 	}
 }

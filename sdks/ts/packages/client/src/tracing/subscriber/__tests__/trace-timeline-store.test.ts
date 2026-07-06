@@ -11,6 +11,11 @@ import {
 } from "../timeline-store";
 
 describe("trace timeline store", () => {
+	it("requires a positive integer limit", () => {
+		expect(() => createTraceTimelineStore(0)).toThrow(RangeError);
+		expect(() => createTraceTimelineStore(1.5)).toThrow(RangeError);
+	});
+
 	it("records entries, notifies subscribers, and clears", () => {
 		const timeline = createTraceTimelineStore();
 		const notifications: number[] = [];

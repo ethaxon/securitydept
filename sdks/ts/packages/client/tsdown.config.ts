@@ -11,9 +11,6 @@ export default defineConfig({
 		"web/index": "./src/web/index.ts",
 		"webext/index": "./src/webext/index.ts",
 	},
-	deps: {
-		neverBundle: ["mnemonist"],
-	},
 	hooks: {
 		"build:prepare": () =>
 			runTurboPrerequisites({

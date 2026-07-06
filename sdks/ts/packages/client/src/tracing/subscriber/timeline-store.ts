@@ -1,7 +1,7 @@
-import { Queue } from "mnemonist";
 import { type EventStreamTrait } from "../../events";
 import { RxEventSubject } from "../../rx/event";
 import { type SpanNodeAttributes } from "../../span";
+import { FixedCapacityRingBuffer } from "../../struct/ring-buffer";
 import {
 	TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
 	type TracingEvent,
@@ -27,11 +27,13 @@ export interface TraceTimelineEntry extends Omit<TracingEvent, "span"> {
  */
 export class TraceTimelineStore implements TracingSubscriberTrait {
 	protected nextId = 1;
-	protected readonly timeline = new Queue<TraceTimelineEntry>();
+	protected readonly timeline: FixedCapacityRingBuffer<TraceTimelineEntry>;
 	protected readonly latestEntrySubject =
 		new RxEventSubject<TraceTimelineEntry | null>();
 
-	constructor(protected readonly limit = 200) {}
+	constructor(protected readonly limit = 200) {
+		this.timeline = new FixedCapacityRingBuffer(limit);
+	}
 
 	get latestEntry(): EventStreamTrait<TraceTimelineEntry | null> {
 		return this.latestEntrySubject;
@@ -55,10 +57,7 @@ export class TraceTimelineStore implements TracingSubscriberTrait {
 				providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID,
 			}),
 		};
-		this.timeline.enqueue(entry);
-		if (this.timeline.size > this.limit) {
-			this.timeline.dequeue();
-		}
+		this.timeline.append(entry);
 		this.latestEntrySubject.next(entry);
 	}
 

@@ -18,7 +18,6 @@ catalog:
   "@types/node": ^26.1.2
   arktype: ^2.2.3
   es-toolkit: ^1.50.0
-  mnemonist: ^0.40.4
   nunjucks: ^3.2.4
   react: ^19.2.8
   react-dom: ^19.2.8

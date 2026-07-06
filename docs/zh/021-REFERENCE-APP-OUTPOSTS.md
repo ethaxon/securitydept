@@ -38,8 +38,18 @@ Outposts 为下列已发布 contract 提供具体证据：
   `TokenSetFrontendCallbackComponent` 处理 `/auth/callback`。
 - registry authorization interceptor 仅向配置的 Confluence API origin/path
   附加 Bearer token，并排除用于初始化 client 的 public config endpoint。
+- 根作用域 bridge 在不触发初始化的前提下观察已 materialize 的 Confluence
+  client，通过 `isClientErrorEvent()` 筛选其 non-replay lifecycle event，并将
+  原始 `ClientError` 交给应用现有 overlay service。registry 构造失败时 client
+  event stream 尚不存在，因此使用 registry 的 `failed` event。
+- overlay service 使用 `readErrorPresentationDescriptor()` 生成最终 Sonner
+  展示；标题可以包含 span 捕获的 client/operation 上下文，同时不会暴露
+  tracing-only attribute 或 runtime diagnostic。
 - Confluence Rust service 作为 SecurityDept OAuth resource server，通过
   discovery、JWKS、可选 audience validation 与配置的 scopes 校验 access token。
+
+Outposts 也在根 `rust-toolchain.toml` 固定 Rust；mise 与 Linux amd64/arm64
+GitHub build 使用同一个 authority，而不是安装另一套移动 nightly toolchain。
 
 这是 integration reference，不是规定性的 application architecture。尤其是
 Outposts 的 route table、config-projection host、UI component 和 Confluence API

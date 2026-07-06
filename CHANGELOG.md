@@ -7,6 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 <!-- markdownlint-disable MD024 -->
 
+## [0.3.0-beta.8]
+
+### Changed
+
+- Replaced the trace timeline's `mnemonist` peer queue with an SDK-internal fixed-capacity ring buffer, preserving constant-time bounded writes and on-demand oldest-to-newest snapshots without imposing an extra runtime dependency on root-package consumers.
+- Bumped release-managed Rust crates, TypeScript packages, apps, lockfiles, and shared metadata to `0.3.0-beta.8`.
+
+### Fixed
+
+- Fixed the Token Set registry public artifact so `TokenSetClientRegistryEventType` is available as a runtime export and `registry.events` retains its generic `EventStreamTrait<TokenSetClientRegistryEvent<TClient>>` declaration instead of degrading to `any`.
+- Added built-artifact consumer checks for root-package imports and Token Set registry runtime/type contracts, preventing source-only tests from hiding published-package regressions.
+
 ## [0.3.0-beta.7]
 
 ### Added

@@ -42,9 +42,21 @@ Outposts provides concrete evidence for the following published contracts:
 - The registry authorization interceptor attaches Bearer tokens only to the
   configured Confluence API origin and path, excluding the public config
   endpoint that initializes the client.
+- A root-scoped bridge observes the materialized Confluence client without
+  initializing it, filters its non-replay lifecycle events with
+  `isClientErrorEvent()`, and delegates the original `ClientError` to the
+  application's existing overlay service. Registry construction failures use
+  the registry `failed` event because no client event stream exists yet.
+- The overlay service uses `readErrorPresentationDescriptor()` for the final
+  Sonner projection, including span-backed client and operation context without
+  exposing tracing-only attributes or runtime diagnostics.
 - The Confluence Rust service validates access tokens as a SecurityDept OAuth
   resource server through discovery, JWKS, optional audience validation, and
   configured scopes.
+
+Outposts also pins Rust in its root `rust-toolchain.toml`; mise and the Linux
+amd64/arm64 GitHub build consume that same authority instead of installing a
+separate moving nightly toolchain.
 
 This is an integration reference, not a prescribed application architecture.
 In particular, Outposts' route table, config-projection host, UI components,

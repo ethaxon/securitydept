@@ -37,7 +37,7 @@ span 是 foundation capability，不是 telemetry 子能力。context propagatio
 
 operation instrumentation 现在接收 `traceAttributes`，不再接收 `fields`。trace-only detail 属于 `TRACING_SPAN_ATTRIBUTE_PROVIDER_ID`；canonical shared operation key 是 `operation.name`，不是 `operationName`。`TracingEvent` 携带 live span，因此 replay/buffering subscriber 必须在接收时同步读取 `span.getRootToNodeAttributes({ providerId: TRACING_SPAN_ATTRIBUTE_PROVIDER_ID })`。attribute value 使用 immutable `SpanAttributeValue` contract；span core 不执行防御性深复制。
 
-`TraceTimelineStore` 使用 optional `mnemonist` peer；使用 timeline subscriber 时需要安装 `mnemonist`。通过 `latestEntry: EventStreamTrait<TraceTimelineEntry | null>` 订阅边沿通知，其中 `null` 表示 timeline 已清空；当前 readonly array snapshot 通过 `entries` getter 按需读取。store 不再为每个新 entry 发布完整数组 signal value。
+`TraceTimelineStore` 不再要求 `mnemonist` peer；如果直接依赖 `mnemonist` 仅用于 timeline subscriber，可以将其删除。store 现在使用 SDK 内部固定容量 ring buffer，同时保持 public behavior：通过 `latestEntry: EventStreamTrait<TraceTimelineEntry | null>` 订阅边沿通知，其中 `null` 表示 timeline 已清空；当前 readonly array snapshot 通过 `entries` getter 按需读取。store 不会为每个新 entry 发布完整数组 signal value。
 
 `ClientError` 现在首次捕获 shared/error-provider span path。`readErrorPresentationDescriptor()` 默认在标题中加入最深层 client identity 与 operation name。需要本地化 context label 的应用应传入 `contextFormatter`；只有明确不要 context prefix 时才传 `null`。shared/error attribute 中不得写入 token、authorization header、敏感 URL 参数或 provider payload。
 

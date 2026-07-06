@@ -2,6 +2,7 @@ import {
 	createCancellationTokenSource,
 	type DisposableTrait,
 	ENVIRONMENT_TOKEN,
+	type EventStreamTrait,
 	type FoundationEnvironment,
 	type ReadableSignalTrait,
 	type ResourceTrait,
@@ -67,7 +68,8 @@ export class TokenSetClientRegistry<
 		readonly TokenSetClientRecordView<TClient>[]
 	>([]);
 
-	readonly events = RxEventStream.fromObservableInput(this.eventsSubject);
+	readonly events: EventStreamTrait<TokenSetClientRegistryEvent<TClient>> =
+		RxEventStream.fromObservableInput(this.eventsSubject);
 	readonly entries = readonlySignal(this.entriesSignal);
 
 	private readonly initializeTrigger = new Subject<string>();

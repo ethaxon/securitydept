@@ -22,6 +22,7 @@ import {
 	TOKEN_SET_CLIENT_REGISTRY,
 	TOKEN_SET_CLIENT_REGISTRY_ENTRIES,
 	TokenSetClientRegistry,
+	TokenSetClientRegistryEventType,
 } from "@securitydept/token-set-context-client/registry";
 import { describe, expect, it } from "vitest";
 
@@ -49,6 +50,7 @@ describe("public contract values", () => {
 		expect(relayTokenSetPopupCallbackFromEnvironment).toBeDefined();
 		expect(provideTokenSetClientRegistry).toBeDefined();
 		expect(TokenSetClientRegistry).toBeDefined();
+		expect(TokenSetClientRegistryEventType.Failed).toBe("failed");
 		expect(TOKEN_SET_CLIENT_REGISTRY).toBeDefined();
 		expect(TOKEN_SET_CLIENT_REGISTRY_ENTRIES).toBeDefined();
 	});
