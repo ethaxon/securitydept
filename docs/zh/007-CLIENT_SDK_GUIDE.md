@@ -133,7 +133,7 @@ React 与 Angular package 将 canonical client ownership 适配到框架的 cont
 
 - React 中，在 Fiber 之外调用 `createEnvironmentForReact(...)`，通过 `SecuritydeptProvider` 安装其 injector，再以 `useSecuritydeptContext()` 读取 SDK dependency。`@securitydept/client-react/tanstack-router` 负责 TanStack Router adaptation。
 - Angular 中，使用 `provideEnvironment(...)` 组合 Angular router、`HttpClient`、injector 和 destruction lifecycle。`@securitydept/client-angular` 负责相应的 router/transport adapter。
-- token-set host 用 `provideTokenSetClientRegistry(...)` 注册 keyed client。React 通过 `useTokenSetClientRegistry()` 与 callback hook 读取；Angular 提供同一个 core registry，并可使用 callback component、route-root helper 与 guard factory。
+- token-set host 用 `provideTokenSetClientRegistry(...)` 注册 keyed client。registry 的 `authEvents` 与 `errors` 流会聚合 ready-client auth event 及所有 client/factory error，host 无需自行 flatten per-client resource。React 通过 `useTokenSetClientRegistry()` 与 callback hook 读取 registry；Angular 提供同一个 core registry，并可使用 callback component、route-root helper 与 guard factory。
 - route helper 只表达 requirement，并将求值交给 registry/client lifecycle。application 仍拥有 route tree、redirect、UI 和 user-facing copy。
 
 router navigation mode 决定由哪一种 host mechanism 接收目标。Angular adapter 会把两种 mechanism 组合为单一 `RouterTrait`：在 `CreateRouterForAngularOptions`（或 `provideEnvironment({ routerForAngularCreateOptions: ... })`）中，将 native-web 的 `navigation`、`location`、`history`、`window` option 与 Angular `router` 扁平放在同一个 options object。push/replace 仍交给 Angular Router；包括 OIDC authorization URL 在内的 external request 交给内部组合的 native-web router。application 不需要再注册或选择第二个 environment router。

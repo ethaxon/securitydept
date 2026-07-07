@@ -1,7 +1,6 @@
 import {
 	type AuthenticatedCheck,
 	type AuthRequirement,
-	type DisposableTrait,
 	type FoundationEnvironment,
 	isRouteBehaviourContextExtra,
 	promisesToRacedAsyncGenerator,
@@ -17,10 +16,14 @@ import { v7 as uuidv7 } from "uuid";
 import { type BaseOidcModeClient } from "../orchestration/client/base-client";
 import { type TokenSetOidcRedirectLoginOptions } from "../orchestration/client/types";
 import { type TokenSetClientQueryOptions } from "./contracts/query";
-import { type TokenSetClientReadyRecordView } from "./contracts/types";
+import {
+	type TokenSetClientReadyRecordView,
+	type TokenSetClientRegistryClient,
+} from "./contracts/types";
 import { type TokenSetClientRegistry } from "./core/client-registry";
 
-export interface TokenSetClientRegistryOidcModeClient extends DisposableTrait {
+export interface TokenSetClientRegistryOidcModeClient
+	extends TokenSetClientRegistryClient {
 	readonly isAuthenticated: ResourceTrait<boolean>;
 	loginWithRedirect(options?: TokenSetOidcRedirectLoginOptions): Promise<void>;
 }

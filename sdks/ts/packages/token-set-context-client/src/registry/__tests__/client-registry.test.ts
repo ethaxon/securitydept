@@ -1,6 +1,9 @@
 import {
 	type CancellationTokenTrait,
+	ClientError,
+	ClientErrorKind,
 	createCancellationTokenSource,
+	createEventSubject,
 	createFoundationEnvironment,
 	type DisposableTrait,
 	type ReadableSignalTrait,
@@ -9,7 +12,12 @@ import {
 	UriReferenceString,
 } from "@securitydept/client";
 import { describe, expect, it, vi } from "vitest";
-import { type BaseOidcModeClient } from "../../orchestration";
+import {
+	type BaseOidcModeClient,
+	createTokenSetAuthEvent,
+	TokenSetAuthEventType,
+} from "../../orchestration";
+import { type TokenSetAuthEvent } from "../../orchestration/events/auth-events";
 import {
 	type TokenSetClientCallbackUrls,
 	type TokenSetClientFactoryOptions,
@@ -27,12 +35,14 @@ const testEnvironment = createFoundationEnvironment({});
 
 interface TestClient extends DisposableTrait {
 	readonly id: string;
+	readonly authEvents: ReturnType<typeof createEventSubject<TokenSetAuthEvent>>;
 }
 
 function createClient(id: string): TestClient {
 	const dispose = vi.fn();
 	return {
 		id,
+		authEvents: createEventSubject<TokenSetAuthEvent>(),
 		dispose,
 		[SYMBOL_DISPOSE]: dispose,
 	};
@@ -110,6 +120,54 @@ describe("TokenSetClientRegistry", () => {
 			TokenSetClientRegistryEventType.Initializing,
 			TokenSetClientRegistryEventType.Ready,
 		]);
+	});
+
+	it("multiplexes auth events and client errors from every ready client", async () => {
+		const first = createClient("first");
+		const second = createClient("second");
+		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
+			environment: testEnvironment,
+		});
+		const authEvents: TokenSetAuthEvent[] = [];
+		const errors: ClientError[] = [];
+		registry.authEvents.subscribe({ next: (event) => authEvents.push(event) });
+		registry.errors.subscribe({ next: (error) => errors.push(error) });
+
+		registry.register(
+			createRegistryEntry({ key: "first", clientFactory: () => first }),
+		);
+		registry.register(
+			createRegistryEntry({ key: "second", clientFactory: () => second }),
+		);
+		await Promise.all([
+			registry.clientResourceFor("first").whenValue(),
+			registry.clientResourceFor("second").whenValue(),
+		]);
+
+		const error = new ClientError({
+			kind: ClientErrorKind.Server,
+			message: "refresh failed",
+		});
+		const event = createTokenSetAuthEvent({
+			id: "first-error",
+			type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
+			at: 0,
+			payload: {
+				type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
+				client: { id: first.id },
+				persisted: true,
+				error,
+			},
+		});
+		first.authEvents.next(event);
+
+		expect(authEvents).toEqual([event]);
+		expect(errors).toEqual([error]);
+
+		registry.unregister("first");
+		first.authEvents.next(event);
+		expect(authEvents).toEqual([event]);
+		expect(errors).toEqual([error]);
 	});
 
 	it("passes the registry environment and record metadata to the client factory", async () => {
@@ -438,6 +496,10 @@ describe("TokenSetClientRegistry", () => {
 		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
 			environment: testEnvironment,
 		});
+		const errors: ClientError[] = [];
+		registry.errors.subscribe({
+			next: (clientError) => errors.push(clientError),
+		});
 		registry.register(
 			createRegistryEntry({
 				key: "flaky",
@@ -464,6 +526,12 @@ describe("TokenSetClientRegistry", () => {
 		expect(registry.clientRecordFor("flaky").get().status).toBe(
 			ResourceStatus.LoadingError,
 		);
+		expect(errors).toEqual([
+			expect.objectContaining({
+				code: TokenSetClientRegistryErrorCode.ClientFactoryFailed,
+				cause: error,
+			}),
+		]);
 		expect(registry.entries.get()).toMatchObject([
 			{
 				meta: { clientKey: "flaky" },

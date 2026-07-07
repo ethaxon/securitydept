@@ -1,4 +1,5 @@
 import {
+	createEventSubject,
 	createFoundationEnvironment,
 	ResourceStatus,
 	SYMBOL_DISPOSE,
@@ -26,6 +27,7 @@ function createClient<TClient extends BaseOidcModeClient>(Client: {
 }): TClient {
 	const dispose = vi.fn();
 	const client = {
+		authEvents: createEventSubject(),
 		dispose,
 		[SYMBOL_DISPOSE]: dispose,
 	} as unknown as TClient;

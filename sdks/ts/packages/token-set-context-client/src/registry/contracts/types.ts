@@ -1,10 +1,16 @@
 import {
 	type CancellationTokenTrait,
 	type DisposableTrait,
+	type EventStreamTrait,
 	type FoundationEnvironment,
 	type ResourceStatus,
 	type UriReferenceStringInput,
 } from "@securitydept/client";
+import { type TokenSetAuthEvent } from "../../orchestration/events/auth-events";
+
+export interface TokenSetClientRegistryClient extends DisposableTrait {
+	readonly authEvents: EventStreamTrait<TokenSetAuthEvent>;
+}
 
 export const TokenSetClientInitializationMode = {
 	Immediate: "immediate",

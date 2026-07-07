@@ -1,17 +1,24 @@
 import {
+	ClientError,
 	createCancellationTokenSource,
 	type DisposableTrait,
 	ENVIRONMENT_TOKEN,
 	type EventStreamTrait,
 	type FoundationEnvironment,
+	isClientErrorEvent,
 	type ReadableSignalTrait,
+	ResourceStatus,
 	type ResourceTrait,
 	readonlySignal,
 	SecuritydeptDestroyRef,
 	type SecuritydeptInjectorTrait,
 	SYMBOL_DISPOSE,
 } from "@securitydept/client";
-import { RxEventStream, RxStateSignal } from "@securitydept/client/rx";
+import {
+	RxEventStream,
+	RxEventSubject,
+	RxStateSignal,
+} from "@securitydept/client/rx";
 import {
 	catchError,
 	combineLatest,
@@ -28,6 +35,7 @@ import {
 	tap,
 } from "rxjs";
 import { type BaseOidcModeClient } from "../../orchestration/client/base-client";
+import { type TokenSetAuthEvent } from "../../orchestration/events/auth-events";
 import {
 	matchesTokenSetClientQuery,
 	type TokenSetClientQueryOptions,
@@ -37,8 +45,10 @@ import {
 	TokenSetClientInitializationMode,
 	type TokenSetClientReadyRecordView,
 	type TokenSetClientRecordView,
+	type TokenSetClientRegistryClient,
 	type TokenSetClientRegistryEntry,
 	type TokenSetClientRegistryEvent,
+	TokenSetClientRegistryEventType,
 	type TokenSetClientRegistryFromEnvironmentConfigOptions,
 	type TokenSetClientResourceOptions,
 } from "../contracts/types";
@@ -49,7 +59,7 @@ import {
 } from "./error";
 
 export class TokenSetClientRegistry<
-	TClient extends DisposableTrait = BaseOidcModeClient,
+	TClient extends TokenSetClientRegistryClient = BaseOidcModeClient,
 > implements DisposableTrait
 {
 	private readonly _destroyed = RxStateSignal.fromInitialValue(false);
@@ -64,18 +74,23 @@ export class TokenSetClientRegistry<
 	private readonly eventsSubject = new Subject<
 		TokenSetClientRegistryEvent<TClient>
 	>();
+	private readonly authEventsSubject = new RxEventSubject<TokenSetAuthEvent>();
+	private readonly errorsSubject = new RxEventSubject<ClientError>();
 	private readonly entriesSignal = RxStateSignal.fromInitialValue<
 		readonly TokenSetClientRecordView<TClient>[]
 	>([]);
 
 	readonly events: EventStreamTrait<TokenSetClientRegistryEvent<TClient>> =
 		RxEventStream.fromObservableInput(this.eventsSubject);
+	readonly authEvents: EventStreamTrait<TokenSetAuthEvent> =
+		this.authEventsSubject;
+	readonly errors: EventStreamTrait<ClientError> = this.errorsSubject;
 	readonly entries = readonlySignal(this.entriesSignal);
 
 	private readonly initializeTrigger = new Subject<string>();
 
 	static fromEnvironmentConfig<
-		TClient extends DisposableTrait = BaseOidcModeClient,
+		TClient extends TokenSetClientRegistryClient = BaseOidcModeClient,
 	>(
 		options: TokenSetClientRegistryFromEnvironmentConfigOptions<TClient>,
 	): TokenSetClientRegistry<TClient> {
@@ -136,7 +151,27 @@ export class TokenSetClientRegistry<
 		from(record.view)
 			.pipe(takeUntil(record.destroyed$))
 			.subscribe(() => {
-				this.eventsSubject.next(record.toEvent());
+				const event = record.toEvent();
+				this.eventsSubject.next(event);
+				if (
+					event.type === TokenSetClientRegistryEventType.Failed &&
+					event.error instanceof ClientError
+				) {
+					this.errorsSubject.next(event.error);
+				}
+			});
+		from(record.view)
+			.pipe(
+				filter((view) => view.status === ResourceStatus.Resolved),
+				take(1),
+				switchMap((view) => from(view.client.authEvents)),
+				takeUntil(record.destroyed$),
+			)
+			.subscribe((event) => {
+				this.authEventsSubject.next(event);
+				if (isClientErrorEvent(event)) {
+					this.errorsSubject.next(event.payload.error);
+				}
 			});
 
 		this.initializeTrigger

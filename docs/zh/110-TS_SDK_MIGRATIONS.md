@@ -93,7 +93,7 @@ TanStack Router creator 没有新增 call-site option。adapter 现在把 intern
 
 ## Token-Set Registry 和 Route Security
 
-registry 是 keyed lifecycle owner，不是第二个 auth-state model。通过 `provideTokenSetClientRegistry(...)` 注册 entry；通过 `clientResourceFor(key)` 获取 materialized client，需要 asynchronous readiness 时等待 `whenValue()`。`unregister(key)` 会移除 registration，并 dispose 已 materialized 的 client。
+registry 是 keyed lifecycle owner，不是第二个 auth-state model。通过 `provideTokenSetClientRegistry(...)` 注册 entry；通过 `clientResourceFor(key)` 获取 materialized client，需要 asynchronous readiness 时等待 `whenValue()`。`authEvents` 聚合所有 ready client 的事件，`errors` 则合并 client operation error 与 factory/materialization error。`unregister(key)` 会移除 registration、停止转发该 client 的事件，并 dispose 已 materialized 的 client。
 
 将包括已移除 `TokenSetAuthService` 在内的旧 service-wrapper access 迁移为直接使用 mode client。根据 host concern 分别读取其 `authSnapshot`、`isAuthenticated`、`authorizationHeaderValue`、operation signal 与 public event，而不是重建一个 adapter-local combined state machine。
 

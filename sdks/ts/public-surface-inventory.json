@@ -306,7 +306,7 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Framework-neutral multi-client registry core. It owns keyed registration, immediate/idle/lazy factory initialization, record state/resources, disposal, and metadata queries. Each factory receives the registry-owned FoundationEnvironment, the immutable record metadata, and an initialization cancellation token. The registry does not own client auth state, client start, or callback execution. Registry callback helpers perform non-consuming selection and fixed-record initialization; each mode client owns callback input resolution, execution, Resource state, and cancellation.",
+					"note": "Framework-neutral multi-client registry core. It owns keyed registration, immediate/idle/lazy factory initialization, record state/resources, disposal, metadata queries, and lifecycle-aware multiplexing of ready-client auth events. The authEvents stream forwards every ready client's TokenSetAuthEvent; errors combines client operation errors with factory/materialization errors. Each factory receives the registry-owned FoundationEnvironment, immutable record metadata, and an initialization cancellation token. The registry does not own client auth state, client start, or callback execution. Registry callback helpers perform non-consuming selection and fixed-record initialization; each mode client owns callback input resolution, execution, Resource state, and cancellation.",
 					"evidence": [
 						"examples/token-set/react-multi-client-registry-baseline.test.ts",
 						"examples/angular/registry-integration.test.ts",

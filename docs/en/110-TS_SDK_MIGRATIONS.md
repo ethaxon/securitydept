@@ -93,7 +93,7 @@ The TanStack Router creator has no new call-site option. Its adapter now maps in
 
 ## Token-Set Registry And Route Security
 
-The registry is the keyed lifecycle owner, not a second auth-state model. Register entries through `provideTokenSetClientRegistry(...)`; access a materialized client through `clientResourceFor(key)` and await `whenValue()` when asynchronous readiness is needed. `unregister(key)` removes the registration and disposes its materialized client.
+The registry is the keyed lifecycle owner, not a second auth-state model. Register entries through `provideTokenSetClientRegistry(...)`; access a materialized client through `clientResourceFor(key)` and await `whenValue()` when asynchronous readiness is needed. `authEvents` multiplexes events from every ready client, while `errors` combines client operation errors with factory/materialization errors. `unregister(key)` removes the registration, stops forwarding that client's events, and disposes its materialized client.
 
 Migrate obsolete service-wrapper access, including the removed `TokenSetAuthService`, to the mode client itself. Read its `authSnapshot`, `isAuthenticated`, `authorizationHeaderValue`, operation signals, and public events according to the host concern rather than reconstructing a combined adapter-local state machine.
 

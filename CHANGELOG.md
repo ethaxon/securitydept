@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 <!-- markdownlint-disable MD024 -->
 
+## [Unreleased]
+
+### Added
+
+- Added registry-owned `authEvents` and `errors` streams that multiplex every ready Token Set client's auth events and combine client operation errors with factory/materialization failures, removing the need for downstream hosts to flatten per-client resources.
+
 ## [0.3.0-beta.8]
 
 ### Changed

@@ -2,7 +2,7 @@
 //
 // The registry is a framework-neutral lifecycle container for keyed clients.
 // It owns initialization scheduling, disposal, lookup metadata, state signals,
-// and lifecycle events. It does not own token-set auth semantics.
+// lifecycle events, and multiplexing of its clients' auth events and errors.
 
 export {
 	type TokenSetCheckClientAuthenticated,
@@ -66,6 +66,7 @@ export {
 	type TokenSetClientRecordView,
 	type TokenSetClientRecordViewBase,
 	type TokenSetClientRegisteredRecordView,
+	type TokenSetClientRegistryClient,
 	type TokenSetClientRegistryEntry,
 	type TokenSetClientRegistryEntryStatus,
 	type TokenSetClientRegistryEvent,
