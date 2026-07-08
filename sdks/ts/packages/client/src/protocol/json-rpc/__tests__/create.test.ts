@@ -92,23 +92,6 @@ describe("json-rpc", () => {
 		await expect(request).rejects.toBe(rejection);
 		expect(sent).toHaveLength(1);
 	});
-
-	it("rejects request after dispose but ignores notify after dispose", async () => {
-		const time = createTimeForTest();
-		const sent: unknown[] = [];
-		const peer = createJsonRpcClient({
-			send(message) {
-				sent.push(message);
-			},
-			time,
-		});
-
-		peer.dispose();
-		peer.notify("notice", { ok: true });
-
-		await expect(peer.request("after-dispose")).rejects.toThrow(/disposed/);
-		expect(sent).toEqual([]);
-	});
 });
 
 function createPeerPair() {

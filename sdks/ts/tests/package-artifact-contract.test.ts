@@ -9,6 +9,12 @@ import { describe, expect, it } from "vitest";
 const workspaceRoot = path.resolve(import.meta.dirname, "..");
 const repositoryRoot = path.resolve(workspaceRoot, "../..");
 
+async function importTokenSetTestRuntimeArtifact(
+	artifactUrl: string,
+): Promise<typeof import("@securitydept/token-set-context-client/test")> {
+	return import(/* @vite-ignore */ artifactUrl);
+}
+
 describe("package artifact contracts", () => {
 	it("imports the client root artifact when mnemonist is unavailable", () => {
 		const clientEntryUrl = pathToFileURL(
@@ -76,5 +82,27 @@ describe("package artifact contracts", () => {
 				getNewLine: () => "\n",
 			}),
 		).toBe("");
+	});
+
+	it("imports and instantiates the token-set test runtime artifact", async () => {
+		const testEntryUrl = pathToFileURL(
+			path.join(
+				workspaceRoot,
+				"packages/token-set-context-client/dist/test/index.mjs",
+			),
+		).href;
+		const {
+			createTokenSetClientForTest,
+			createTokenSetClientRegistryEntryForTest,
+			createTokenSetClientRegistryForTest,
+		} = await importTokenSetTestRuntimeArtifact(testEntryUrl);
+		const client = createTokenSetClientForTest();
+		const entry = createTokenSetClientRegistryEntryForTest({
+			clientKey: "artifact-client",
+			client,
+		});
+		using registry = createTokenSetClientRegistryForTest({ entries: [entry] });
+
+		await registry.clientRecordFor("artifact-client", { initialize: true });
 	});
 });

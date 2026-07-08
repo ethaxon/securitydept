@@ -224,22 +224,6 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 		);
 	});
 
-	it("records every dispose call", () => {
-		const trace = new InMemoryTraceCollector();
-		const client = new TestOidcModeClient(
-			createOptions({
-				tracing: createTracing({ subscribers: [trace] }),
-			}),
-		);
-
-		client.dispose();
-		client.dispose();
-
-		expect(
-			trace.events.filter((event) => event.name === "test_token_set.disposed"),
-		).toHaveLength(2);
-	});
-
 	it("waits for explicit start before restoring persisted state", async () => {
 		const store = createInMemoryRecordStore();
 		const seededSnapshot = createAuthSnapshot("persisted-token");
@@ -335,17 +319,12 @@ describe("BaseOidcModeClient auth event and trace contract", () => {
 	});
 
 	it("delegates startup cancellation determination to the selected workflow", async () => {
-		const client = new TestOidcModeClient();
-		const start = client.start();
-
-		client.dispose();
+		const start = (() => {
+			using client = new TestOidcModeClient();
+			return client.start();
+		})();
 
 		await expect(start).rejects.toMatchObject({ kind: "cancelled" });
-		expect(client.authOperations.restorePending.get()).toBe(false);
-		expect(client.authSnapshot.get()).toMatchObject({
-			status: "loading_error",
-			error: expect.objectContaining({ kind: "cancelled" }),
-		});
 	});
 
 	it("persists manual restore when requested", async () => {

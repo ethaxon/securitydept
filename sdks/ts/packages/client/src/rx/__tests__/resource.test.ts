@@ -16,19 +16,17 @@ import { RxStateSignal, rxResource } from "../index";
 
 describe("@securitydept/client/rx/resource", () => {
 	it("loads an observable value into the resource snapshot", () => {
-		const resource = rxResource({
+		using resource = rxResource({
 			stream: () => of("ready"),
 		});
 
 		expect(resource.status.get()).toBe(ResourceStatus.Resolved);
 		expect(resource.value.get()).toBe("ready");
 		expect(resource.hasValue()).toBe(true);
-
-		resource.dispose();
 	});
 
 	it("creates a resource from SDK event stream input", () => {
-		const resource = createResource({
+		using resource = createResource({
 			stream: () =>
 				createEventStream<string>((observer) => {
 					observer.next("ready");
@@ -37,13 +35,11 @@ describe("@securitydept/client/rx/resource", () => {
 
 		expect(resource.status.get()).toBe(ResourceStatus.Resolved);
 		expect(resource.value.get()).toBe("ready");
-
-		resource.dispose();
 	});
 
 	it("emits snapshots through interop observable", () => {
 		const response = new Subject<string>();
-		const resource = rxResource({
+		using resource = rxResource({
 			stream: () => response,
 		});
 		const snapshots: unknown[] = [];
@@ -59,12 +55,11 @@ describe("@securitydept/client/rx/resource", () => {
 		]);
 
 		subscription.unsubscribe();
-		resource.dispose();
 	});
 
 	it("waits for the first available resource value", async () => {
 		const response = new Subject<string>();
-		const resource = rxResource({
+		using resource = rxResource({
 			stream: () => response,
 		});
 		const pending = resource.whenValue();
@@ -72,17 +67,15 @@ describe("@securitydept/client/rx/resource", () => {
 		response.next("ready");
 
 		await expect(pending).resolves.toBe("ready");
-		resource.dispose();
 	});
 
 	it("rejects when waiting resource enters error status", async () => {
 		const error = new Error("failed");
-		const resource = rxResource<string>({
+		using resource = rxResource<string>({
 			stream: () => throwError(() => error),
 		});
 
 		await expect(resource.whenValue()).rejects.toBe(error);
-		resource.dispose();
 	});
 
 	it("returns stale error values unless strict error handling is requested", async () => {
@@ -92,19 +85,17 @@ describe("@securitydept/client/rx/resource", () => {
 			value: "stale",
 			error,
 		} as const);
-		const resource = resourceFromSnapshots(() => snapshot.get());
+		using resource = resourceFromSnapshots(() => snapshot.get());
 
 		await expect(resource.whenValue()).resolves.toBe("stale");
 		await expect(
 			resource.whenValue({ staleValueWhenError: false }),
 		).rejects.toBe(error);
-
-		resource.dispose();
 	});
 
 	it("supports cancellation while waiting for a resource value", async () => {
 		const response = new Subject<string>();
-		const resource = rxResource({
+		using resource = rxResource({
 			stream: () => response,
 		});
 		const cancellation = createCancellationTokenSource();
@@ -115,13 +106,12 @@ describe("@securitydept/client/rx/resource", () => {
 		cancellation.cancel(new Error("cancelled"));
 
 		await expect(pending).rejects.toThrow("cancelled");
-		resource.dispose();
 	});
 
 	it("keeps the previous value while reloading", () => {
 		const request = createSignal("first");
 		const response = new Subject<string>();
-		const resource = rxResource({
+		using resource = rxResource({
 			request,
 			stream: () => response,
 		});
@@ -139,13 +129,11 @@ describe("@securitydept/client/rx/resource", () => {
 			status: ResourceStatus.Resolved,
 			value: "fresh",
 		});
-
-		resource.dispose();
 	});
 
 	it("throws when reading value while no value is available", () => {
 		const response = new Subject<string>();
-		const resource = rxResource<string>({
+		using resource = rxResource<string>({
 			stream: () => response,
 		});
 
@@ -160,13 +148,11 @@ describe("@securitydept/client/rx/resource", () => {
 			);
 			expect((error as ResourceError).status).toBe(ResourceStatus.Loading);
 		}
-
-		resource.dispose();
 	});
 
 	it("captures stream errors", () => {
 		const error = new Error("failed");
-		const resource = rxResource<string>({
+		using resource = rxResource<string>({
 			stream: () => throwError(() => error),
 		});
 
@@ -177,14 +163,12 @@ describe("@securitydept/client/rx/resource", () => {
 			error,
 		});
 		expect(() => resource.value.get()).toThrow(error);
-
-		resource.dispose();
 	});
 
 	it("retries from loading error without inventing a fallback value", () => {
 		const request = createSignal("first");
 		const error = new Error("failed");
-		const resource = rxResource({
+		using resource = rxResource({
 			request,
 			stream: ({ request }) =>
 				request === "first" ? throwError(() => error) : of("ready"),
@@ -199,14 +183,12 @@ describe("@securitydept/client/rx/resource", () => {
 			status: ResourceStatus.Resolved,
 			value: "ready",
 		});
-
-		resource.dispose();
 	});
 
 	it("keeps the last resolved value when a reload fails", () => {
 		const request = createSignal("first");
 		const error = new Error("failed");
-		const resource = rxResource({
+		using resource = rxResource({
 			request,
 			stream: ({ request }) =>
 				request === "first" ? of("cached") : throwError(() => error),
@@ -219,13 +201,11 @@ describe("@securitydept/client/rx/resource", () => {
 			error,
 		});
 		expect(() => resource.value.get()).toThrow(error);
-
-		resource.dispose();
 	});
 
 	it("reloads when the request signal changes", () => {
 		const request = createSignal("first");
-		const resource = rxResource({
+		using resource = rxResource({
 			request,
 			stream: ({ request }) => of(`value:${request}`),
 		});
@@ -234,29 +214,12 @@ describe("@securitydept/client/rx/resource", () => {
 		request.set("second");
 
 		expect(resource.value.get()).toBe("value:second");
-
-		resource.dispose();
-	});
-
-	it("stops reacting to request changes after dispose", () => {
-		const request = createSignal("first");
-		const stream = vi.fn(({ request }) => of(`value:${request}`));
-		const resource = rxResource({
-			request,
-			stream,
-		});
-
-		resource.dispose();
-		resource.dispose();
-		request.set("second");
-
-		expect(stream).toHaveBeenCalledTimes(1);
 	});
 
 	it("keeps an undefined request idle", () => {
 		const request = createSignal<string | undefined>(undefined);
 		const stream = vi.fn(() => of("ready"));
-		const resource = rxResource({
+		using resource = rxResource({
 			request,
 			stream,
 		});
@@ -266,60 +229,56 @@ describe("@securitydept/client/rx/resource", () => {
 
 		request.set("load");
 		expect(resource.value.get()).toBe("ready");
-		resource.dispose();
 	});
 
-	it("projects a snapshot signal without copying state", () => {
+	it("projects a snapshot signal without copying or owning source state", () => {
 		const snapshot = RxStateSignal.fromInitialValue<
 			import("../../index").ResourceSnapshot<number>
 		>({ status: ResourceStatus.Idle });
-		const resource = resourceFromSnapshots(() => snapshot.get());
-		const mapped = mapResource(resource, (value) => `value:${value}`);
-		const loadingError = new Error("initial load failed");
+		using resource = resourceFromSnapshots(() => snapshot.get());
+		{
+			using mapped = mapResource(resource, (value) => `value:${value}`);
+			const loadingError = new Error("initial load failed");
 
-		snapshot.set({
-			status: ResourceStatus.LoadingError,
-			error: loadingError,
-		});
-		expect(mapped.snapshot.get()).toEqual({
-			status: ResourceStatus.LoadingError,
-			error: loadingError,
-		});
+			snapshot.set({
+				status: ResourceStatus.LoadingError,
+				error: loadingError,
+			});
+			expect(mapped.snapshot.get()).toEqual({
+				status: ResourceStatus.LoadingError,
+				error: loadingError,
+			});
 
-		snapshot.set({ status: ResourceStatus.Resolved, value: 2 });
-		expect(resource.value.get()).toBe(2);
-		expect(mapped.value.get()).toBe("value:2");
+			snapshot.set({ status: ResourceStatus.Resolved, value: 2 });
+			expect(resource.value.get()).toBe(2);
+			expect(mapped.value.get()).toBe("value:2");
 
-		const error = new Error("failed");
-		snapshot.set({ status: ResourceStatus.Error, value: 2, error });
-		expect(mapped.snapshot.get()).toEqual({
-			status: ResourceStatus.Error,
-			value: "value:2",
-			error,
-		});
-		expect(() => mapped.value.get()).toThrow(error);
+			const error = new Error("failed");
+			snapshot.set({ status: ResourceStatus.Error, value: 2, error });
+			expect(mapped.snapshot.get()).toEqual({
+				status: ResourceStatus.Error,
+				value: "value:2",
+				error,
+			});
+			expect(() => mapped.value.get()).toThrow(error);
+		}
 
-		mapped.dispose();
-		expect(resource.snapshot.get()).toEqual({
-			status: ResourceStatus.Error,
-			value: 2,
-			error,
-		});
-		resource.dispose();
+		snapshot.set({ status: ResourceStatus.Resolved, value: 3 });
+		expect(resource.value.get()).toBe(3);
 	});
 
 	it("cancels a pending load when disposed", async () => {
 		const response = new Subject<string>();
 		let cancellationToken: CancellationTokenTrait | undefined;
-		const resource = rxResource({
-			stream: (context) => {
-				cancellationToken = context.cancellationToken;
-				return response;
-			},
-		});
-		void resource.whenValue();
-
-		resource.dispose();
+		{
+			using resource = rxResource({
+				stream: (context) => {
+					cancellationToken = context.cancellationToken;
+					return response;
+				},
+			});
+			void resource.whenValue();
+		}
 		await Promise.resolve();
 
 		expect(response.observed).toBe(false);

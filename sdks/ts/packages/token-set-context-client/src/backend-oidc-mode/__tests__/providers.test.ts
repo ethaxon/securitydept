@@ -26,7 +26,7 @@ describe("backend OIDC mode providers", () => {
 		expect(environment.injector.get(BACKEND_OIDC_MODE_CLIENT_OPTIONS)).toBe(
 			options,
 		);
-		const client = environment.injector.get(BACKEND_OIDC_MODE_CLIENT);
+		using client = environment.injector.get(BACKEND_OIDC_MODE_CLIENT);
 		expect(client).toBeInstanceOf(BackendOidcModeClient);
 		expect(environment.injector.get(BACKEND_OIDC_MODE_CLIENT)).toBe(client);
 		expect(client.config.baseUrl).toBe("https://auth.example.com");
@@ -46,6 +46,7 @@ describe("backend OIDC mode providers", () => {
 		const client = environment.injector.get(BACKEND_OIDC_MODE_CLIENT);
 		const dispose = vi.spyOn(client, "dispose");
 
+		// Destroy-ref propagation is the lifecycle action under test.
 		destroyRef.dispose();
 
 		expect(dispose).toHaveBeenCalledOnce();

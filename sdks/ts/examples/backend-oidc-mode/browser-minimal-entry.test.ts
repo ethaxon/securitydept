@@ -22,7 +22,7 @@ describe("backend-oidc-mode browser minimal entry", () => {
 			persistentStorage: createInMemoryRecordStore(),
 			sessionStorage: createInMemoryRecordStore(),
 		});
-		const client = BackendOidcModeClient.fromEnvironmentConfig({
+		using client = BackendOidcModeClient.fromEnvironmentConfig({
 			config: { baseUrl: "https://auth.example.com" },
 			environment,
 			callbackInputResolver: null,
@@ -40,7 +40,5 @@ describe("backend-oidc-mode browser minimal entry", () => {
 		expect(authorizationUrl.searchParams.get("post_auth_redirect_uri")).toBe(
 			"https://app.example.com/dashboard",
 		);
-
-		client.dispose();
 	});
 });

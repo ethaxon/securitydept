@@ -4,7 +4,7 @@
 		"outDir": "./dist-tsc",
 		"rootDir": "./src",
 		"stripInternal": true,
-		"lib": ["ES2022", "DOM"],
+		"lib": ["ES2022", "DOM", "ESNext.Disposable"],
 		"jsx": "react-jsx"
 	},
 	"include": ["src"],

@@ -27,7 +27,7 @@ describe("AuthModeStore", () => {
 			set: () => undefined,
 			remove: () => undefined,
 		};
-		const store = createAuthModeStore({ persistentStorage });
+		using store = createAuthModeStore({ persistentStorage });
 
 		expect(store.mode.snapshot.get()).toEqual({
 			status: ResourceStatus.Loading,
@@ -35,7 +35,6 @@ describe("AuthModeStore", () => {
 		resolveRead(AuthContextMode.Basic);
 
 		await expect(store.mode.whenValue()).resolves.toBe(AuthContextMode.Basic);
-		store.dispose();
 	});
 
 	it("resolves an unavailable mode and reports persistence read failures", async () => {
@@ -46,7 +45,7 @@ describe("AuthModeStore", () => {
 			set: () => undefined,
 			remove: () => undefined,
 		};
-		const store = createAuthModeStore({ persistentStorage });
+		using store = createAuthModeStore({ persistentStorage });
 		const errors: unknown[] = [];
 		const subscription = store.errors.subscribe({
 			next: (error) => errors.push(error),
@@ -60,11 +59,10 @@ describe("AuthModeStore", () => {
 			}),
 		]);
 		subscription.unsubscribe();
-		store.dispose();
 	});
 
 	it("does not replay persistence errors to late subscribers", async () => {
-		const store = createAuthModeStore({
+		using store = createAuthModeStore({
 			persistentStorage: {
 				get: async () => {
 					throw new Error("offline");
@@ -79,13 +77,12 @@ describe("AuthModeStore", () => {
 		store.errors.subscribe({ next: (error) => errors.push(error) });
 
 		expect(errors).toEqual([]);
-		store.dispose();
 	});
 
 	it("treats an invalid persisted mode as unavailable", async () => {
 		const persistentStorage = createInMemoryRecordStore();
 		persistentStorage.set(AUTH_MODE_STORAGE_KEY, "unsupported");
-		const store = createAuthModeStore({ persistentStorage });
+		using store = createAuthModeStore({ persistentStorage });
 		const errors: unknown[] = [];
 		const subscription = store.errors.subscribe({
 			next: (error) => errors.push(error),
@@ -102,7 +99,6 @@ describe("AuthModeStore", () => {
 			expect(persistentStorage.get(AUTH_MODE_STORAGE_KEY)).toBeNull();
 		});
 		subscription.unsubscribe();
-		store.dispose();
 	});
 
 	it("keeps the mode when a background persistence write fails", async () => {
@@ -113,7 +109,7 @@ describe("AuthModeStore", () => {
 			},
 			remove: () => undefined,
 		};
-		const store = createAuthModeStore({ persistentStorage });
+		using store = createAuthModeStore({ persistentStorage });
 		const errors: unknown[] = [];
 		const subscription = store.errors.subscribe({
 			next: (error) => errors.push(error),
@@ -131,12 +127,11 @@ describe("AuthModeStore", () => {
 			);
 		});
 		subscription.unsubscribe();
-		store.dispose();
 	});
 
 	it("executes synchronous persistence operations without a microtask delay", async () => {
 		const persistentSet = vi.fn();
-		const store = createAuthModeStore({
+		using store = createAuthModeStore({
 			persistentStorage: {
 				get: () => null,
 				set: persistentSet,
@@ -151,7 +146,6 @@ describe("AuthModeStore", () => {
 			AUTH_MODE_STORAGE_KEY,
 			AuthContextMode.Session,
 		);
-		store.dispose();
 	});
 
 	it("rejects writes while hydration is pending", async () => {
@@ -164,7 +158,7 @@ describe("AuthModeStore", () => {
 			set: () => undefined,
 			remove: () => undefined,
 		};
-		const store = createAuthModeStore({ persistentStorage });
+		using store = createAuthModeStore({ persistentStorage });
 
 		expect(() => store.set(AuthContextMode.TokenSetFrontend)).toThrow(
 			expect.objectContaining({ code: ResourceErrorCode.ValueUnavailable }),
@@ -174,7 +168,6 @@ describe("AuthModeStore", () => {
 		);
 		resolveRead(null);
 		await store.mode.whenValue();
-		store.dispose();
 	});
 
 	it("queues persistence events until hydration resolves", async () => {
@@ -189,7 +182,7 @@ describe("AuthModeStore", () => {
 			set: () => undefined,
 			remove: () => undefined,
 		};
-		const store = createAuthModeStore({ persistentStorage });
+		using store = createAuthModeStore({ persistentStorage });
 
 		storageEvent.next({
 			origin: StorageChangeEventOrigin.External,
@@ -205,8 +198,6 @@ describe("AuthModeStore", () => {
 		await vi.waitFor(() => {
 			expect(store.mode.value.get()).toBe(AuthContextMode.Basic);
 		});
-
-		store.dispose();
 	});
 
 	it("serializes background persistence commands", async () => {
@@ -220,7 +211,7 @@ describe("AuthModeStore", () => {
 			},
 			remove: () => undefined,
 		};
-		const store = createAuthModeStore({ persistentStorage });
+		using store = createAuthModeStore({ persistentStorage });
 		await store.mode.whenValue();
 
 		store.set(AuthContextMode.Session);
@@ -231,7 +222,6 @@ describe("AuthModeStore", () => {
 			expect(writes).toEqual([AuthContextMode.Session, AuthContextMode.Basic]),
 		);
 		resolvers.shift()?.();
-		store.dispose();
 	});
 
 	it("ignores local persistence events and mirrors external changes", async () => {
@@ -242,7 +232,7 @@ describe("AuthModeStore", () => {
 			set: () => undefined,
 			remove: () => undefined,
 		};
-		const store = createAuthModeStore({ persistentStorage });
+		using store = createAuthModeStore({ persistentStorage });
 		await store.mode.whenValue();
 
 		storageEvent.next({
@@ -263,6 +253,5 @@ describe("AuthModeStore", () => {
 		await vi.waitFor(() => {
 			expect(store.mode.value.get()).toBe(AuthContextMode.TokenSetBackend);
 		});
-		store.dispose();
 	});
 });

@@ -10,6 +10,7 @@ import { SecuritydeptProvider } from "@securitydept/client-react";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
 	provideTokenSetClientRegistry,
+	TOKEN_SET_CLIENT_REGISTRY,
 	type TokenSetClientRegistry,
 } from "@securitydept/token-set-context-client/registry";
 import {
@@ -18,7 +19,7 @@ import {
 } from "@securitydept/token-set-context-client/test";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useTokenSetClientRegistry } from "../index";
 
 function render(element: ReactElement) {
@@ -48,12 +49,16 @@ async function flushMicrotasks() {
 	});
 }
 
-function createMockClient(accessToken: string): BaseOidcModeClient {
+function createMockClient(
+	accessToken: string,
+	onDispose?: () => void,
+): BaseOidcModeClient {
 	return createTokenSetClientForTest({
 		authSnapshot: {
 			status: ResourceStatus.Resolved,
 			value: { tokens: { accessToken }, metadata: {} },
 		},
+		onDispose,
 	});
 }
 
@@ -63,7 +68,8 @@ describe("TokenSetClientRegistry React adapter", () => {
 	});
 
 	it("registers entries through an externally created Securitydept injector", async () => {
-		const client = createMockClient("main-at");
+		const onDispose = vi.fn();
+		const client = createMockClient("main-at", onDispose);
 		const entry = createTokenSetClientRegistryEntryForTest({
 			clientKey: "main",
 			client,
@@ -71,33 +77,39 @@ describe("TokenSetClientRegistry React adapter", () => {
 		const environment = createEnvironmentForTest({
 			providers: provideTokenSetClientRegistry({ clients: [entry] }),
 		});
-		let registry: TokenSetClientRegistry<BaseOidcModeClient> | undefined;
+		{
+			using _registryOwner = environment.injector.get(
+				TOKEN_SET_CLIENT_REGISTRY,
+			);
+			let registry: TokenSetClientRegistry<BaseOidcModeClient> | undefined;
 
-		function Probe() {
-			registry = useTokenSetClientRegistry();
-			return createElement("output", null, "ready");
+			function Probe() {
+				registry = useTokenSetClientRegistry();
+				return createElement("output", null, "ready");
+			}
+
+			const view = render(
+				createElement(
+					SecuritydeptProvider,
+					{ injector: environment.injector },
+					createElement(Probe),
+				),
+			);
+			await flushMicrotasks();
+
+			expect(view.container.textContent).toBe("ready");
+			const resolvedClient = (
+				await registry?.clientRecordFor("main", { initialize: true })
+			)?.client;
+			expect(await resolvedClient?.authResource.whenValue()).toEqual({
+				tokens: { accessToken: "main-at" },
+				metadata: {},
+			});
+
+			view.unmount();
+			expect(onDispose).not.toHaveBeenCalled();
 		}
-
-		const view = render(
-			createElement(
-				SecuritydeptProvider,
-				{ injector: environment.injector },
-				createElement(Probe),
-			),
-		);
-		await flushMicrotasks();
-
-		expect(view.container.textContent).toBe("ready");
-		const resolvedClient = (
-			await registry?.clientRecordFor("main", { initialize: true })
-		)?.client;
-		expect(await resolvedClient?.authResource.whenValue()).toEqual({
-			tokens: { accessToken: "main-at" },
-			metadata: {},
-		});
-
-		view.unmount();
-		expect(() => registryClientIsDisposed(client)).not.toThrow();
+		expect(onDispose).toHaveBeenCalledOnce();
 	});
 
 	it("creates registry entries inside the injector scope", async () => {
@@ -204,7 +216,3 @@ describe("TokenSetClientRegistry React adapter", () => {
 		view.unmount();
 	});
 });
-
-function registryClientIsDisposed(client: BaseOidcModeClient): void {
-	client.dispose();
-}

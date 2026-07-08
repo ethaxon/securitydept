@@ -27,7 +27,7 @@ describe("frontend OIDC mode providers", () => {
 		expect(environment.injector.get(FRONTEND_OIDC_MODE_CLIENT_OPTIONS)).toBe(
 			options,
 		);
-		const client = environment.injector.get(FRONTEND_OIDC_MODE_CLIENT);
+		using client = environment.injector.get(FRONTEND_OIDC_MODE_CLIENT);
 		expect(client).toBeInstanceOf(FrontendOidcModeClient);
 		expect(environment.injector.get(FRONTEND_OIDC_MODE_CLIENT)).toBe(client);
 		expect(client.config.clientId).toBe("webui");
@@ -50,6 +50,7 @@ describe("frontend OIDC mode providers", () => {
 		const client = environment.injector.get(FRONTEND_OIDC_MODE_CLIENT);
 		const dispose = vi.spyOn(client, "dispose");
 
+		// Destroy-ref propagation is the lifecycle action under test.
 		destroyRef.dispose();
 
 		expect(dispose).toHaveBeenCalledOnce();

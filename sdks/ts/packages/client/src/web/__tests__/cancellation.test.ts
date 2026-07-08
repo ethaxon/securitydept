@@ -21,12 +21,14 @@ describe("web cancellation bridge", () => {
 
 	it("stops forwarding foundation cancellation after bridge disposal", () => {
 		const source = createCancellationTokenSource();
-		const bridge = cancellationTokenToAbortSignal(source.token);
-
-		bridge.dispose();
+		let signal: AbortSignal | undefined;
+		{
+			using bridge = cancellationTokenToAbortSignal(source.token);
+			signal = bridge.signal;
+		}
 		source.cancel("ignored-after-dispose");
 
-		expect(bridge.signal?.aborted).toBe(false);
+		expect(signal?.aborted).toBe(false);
 	});
 
 	it("bridges AbortSignal back into the foundation cancellation contract", () => {

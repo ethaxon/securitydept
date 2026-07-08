@@ -400,6 +400,9 @@ export class TokenSetClientRegistry<
 
 	dispose(): void {
 		this._destroyed.set(true);
+		this.eventsSubject.complete();
+		this.authEventsSubject.complete();
+		this.errorsSubject.complete();
 	}
 
 	[SYMBOL_DISPOSE]() {

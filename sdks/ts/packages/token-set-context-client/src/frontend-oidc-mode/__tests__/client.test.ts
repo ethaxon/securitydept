@@ -231,7 +231,7 @@ describe("FrontendOidcModeClient", () => {
 			sessionStorage,
 		});
 
-		const client = CustomFrontendOidcModeClient.create({
+		using _client = CustomFrontendOidcModeClient.create({
 			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
@@ -244,7 +244,6 @@ describe("FrontendOidcModeClient", () => {
 			[realmStorage],
 			[sessionStorage],
 		]);
-		client.dispose();
 	});
 
 	it("restores a matching callback before persistence during start", async () => {
@@ -352,47 +351,47 @@ describe("FrontendOidcModeClient", () => {
 				execute: vi.fn(async () => ({ status: 200, headers: {}, body: null })),
 			},
 		});
-		const client = FrontendOidcModeClient.fromEnvironmentConfig({
-			config: {
-				issuer: "https://auth.example.com",
-				clientId: "spa-client",
-				redirectUri: "https://app.example.com/auth/callback",
-				metadataRefreshInterval: "1s",
-			},
-			environment: runtime,
-		});
+		{
+			using client = FrontendOidcModeClient.fromEnvironmentConfig({
+				config: {
+					issuer: "https://auth.example.com",
+					clientId: "spa-client",
+					redirectUri: "https://app.example.com/auth/callback",
+					metadataRefreshInterval: "1s",
+				},
+				environment: runtime,
+			});
 
-		await client.discover();
-		expect(time.pendingCount).toBe(1);
-
-		let resolveRefresh!: (response: { ok: boolean }) => void;
-		oauthMocks.discoveryRequest.mockImplementationOnce(
-			() =>
-				new Promise((resolve) => {
-					resolveRefresh = resolve;
-				}),
-		);
-		time.advanceAndFlush(1_000);
-		expect(oauthMocks.discoveryRequest).toHaveBeenCalledTimes(2);
-
-		time.advanceAndFlush(5_000);
-		expect(oauthMocks.discoveryRequest).toHaveBeenCalledTimes(2);
-
-		resolveRefresh({ ok: true });
-		await vi.waitFor(() => {
+			await client.discover();
 			expect(time.pendingCount).toBe(1);
-		});
 
-		oauthMocks.discoveryRequest.mockRejectedValueOnce(
-			new Error("metadata refresh failed"),
-		);
-		time.advanceAndFlush(1_000);
-		await vi.waitFor(() => {
-			expect(oauthMocks.discoveryRequest).toHaveBeenCalledTimes(3);
-			expect(time.pendingCount).toBe(1);
-		});
+			let resolveRefresh!: (response: { ok: boolean }) => void;
+			oauthMocks.discoveryRequest.mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						resolveRefresh = resolve;
+					}),
+			);
+			time.advanceAndFlush(1_000);
+			expect(oauthMocks.discoveryRequest).toHaveBeenCalledTimes(2);
 
-		client.dispose();
+			time.advanceAndFlush(5_000);
+			expect(oauthMocks.discoveryRequest).toHaveBeenCalledTimes(2);
+
+			resolveRefresh({ ok: true });
+			await vi.waitFor(() => {
+				expect(time.pendingCount).toBe(1);
+			});
+
+			oauthMocks.discoveryRequest.mockRejectedValueOnce(
+				new Error("metadata refresh failed"),
+			);
+			time.advanceAndFlush(1_000);
+			await vi.waitFor(() => {
+				expect(oauthMocks.discoveryRequest).toHaveBeenCalledTimes(3);
+				expect(time.pendingCount).toBe(1);
+			});
+		}
 		expect(time.pendingCount).toBe(0);
 	});
 

@@ -23,6 +23,7 @@ describe("disposable stack", () => {
 		stack.use(disposable(() => calls.push(1)));
 		stack.use(disposable(() => calls.push(2)));
 
+		// Explicit and repeated disposal are the primitive behavior under test.
 		stack.dispose();
 		stack.dispose();
 
@@ -55,6 +56,7 @@ describe("disposable stack", () => {
 
 		const stack = new StdDisposableStack(TestDisposableStack);
 		stack.use(disposable(() => calls.push("disposed")));
+		// Explicit disposal is the primitive behavior under test.
 		stack.dispose();
 
 		expect(calls).toEqual(["disposed"]);

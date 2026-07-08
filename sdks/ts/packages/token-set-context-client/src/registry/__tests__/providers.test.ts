@@ -26,9 +26,8 @@ describe("provideTokenSetClientRegistry", () => {
 			],
 		});
 
-		const registry = environment.injector.get(TOKEN_SET_CLIENT_REGISTRY);
+		using _registry = environment.injector.get(TOKEN_SET_CLIENT_REGISTRY);
 
 		expect(createClients).toHaveBeenCalledOnce();
-		registry.dispose();
 	});
 });

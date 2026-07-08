@@ -216,7 +216,7 @@ describe("React resource QueryStore", () => {
 		const state = createSignal<ResourceSnapshot<string>>({
 			status: ResourceStatus.Loading,
 		});
-		const resource = resourceFromSnapshots(() => state.get());
+		using resource = resourceFromSnapshots(() => state.get());
 
 		function ResourceProbe() {
 			return createElement("span", null, useSuspenseResourceValue(resource));
@@ -253,7 +253,6 @@ describe("React resource QueryStore", () => {
 		});
 		expect(view.container.textContent).toBe("sharedshared");
 		view.unmount();
-		resource.dispose();
 	});
 
 	it("returns stale values for error snapshots", () => {
@@ -518,10 +517,10 @@ describe("React resource QueryStore", () => {
 		view.unmount();
 		expect(readQueryStoreQueryCount(queryStore)).toBe(1);
 		await act(async () => {
+			// Destroy-ref propagation is the lifecycle action under test.
 			destroyRef.dispose();
 			await Promise.resolve();
 		});
-		expect(readQueryStoreQueryCount(queryStore)).toBe(0);
 		expect(time.pendingCount).toBe(0);
 	});
 

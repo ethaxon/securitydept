@@ -1,6 +1,5 @@
 import { type as defineType } from "arktype";
 import { describe, expect, it } from "vitest";
-import { SYMBOL_DISPOSE } from "../../compat";
 import { createFoundationEnvironment } from "../../environment/create";
 import { createRootSpan } from "../../span";
 import { createTracing } from "../create";
@@ -74,40 +73,6 @@ describe("createTracing", () => {
 			expect.objectContaining({
 				name: "operation.ended",
 			}),
-		]);
-	});
-
-	it("disposes automatically wired subscribers", () => {
-		const recorded: TracingEvent[] = [];
-		const tracing = createTracing({
-			subscribers: [
-				{
-					record(event: TracingEvent) {
-						recorded.push(event);
-					},
-				},
-			],
-		});
-		const span = createRootSpan({ idFactory: () => "dispose_span" });
-
-		tracing.record({
-			name: "operation.started",
-			at: 1,
-			target: "test",
-			level: TracingLevel.Info,
-			span,
-		});
-		tracing[SYMBOL_DISPOSE]();
-		tracing.record({
-			name: "operation.ended",
-			at: 2,
-			target: "test",
-			level: TracingLevel.Info,
-			span,
-		});
-
-		expect(recorded).toEqual([
-			expect.objectContaining({ name: "operation.started" }),
 		]);
 	});
 

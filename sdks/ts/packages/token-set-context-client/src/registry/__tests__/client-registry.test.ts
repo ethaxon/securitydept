@@ -439,7 +439,7 @@ describe("TokenSetClientRegistry", () => {
 	it("disposes a client that cannot be adopted after initialization cancellation", async () => {
 		const deferred = createDeferred<TestClient>();
 		const client = createClient("completed-after-cancellation");
-		const record = TokenSetClientRecord.fromRegistered(
+		using record = TokenSetClientRecord.fromRegistered(
 			createRegistryEntry({
 				key: "direct",
 				initialization: TokenSetClientInitializationMode.Lazy,
@@ -460,9 +460,6 @@ describe("TokenSetClientRegistry", () => {
 			status: ResourceStatus.LoadingError,
 			error: cancellation.token.cancellationError,
 		});
-		expect(client.dispose).toHaveBeenCalledTimes(1);
-
-		record.dispose();
 		expect(client.dispose).toHaveBeenCalledTimes(1);
 	});
 
@@ -651,22 +648,24 @@ describe("TokenSetClientRegistry", () => {
 	it("disposes registered clients on unregister and dispose", async () => {
 		const first = createClient("first");
 		const second = createClient("second");
-		const registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>({
-			environment: testEnvironment,
-		});
-		registry.register(
-			createRegistryEntry({ key: "first", clientFactory: () => first }),
-		);
-		registry.register(
-			createRegistryEntry({ key: "second", clientFactory: () => second }),
-		);
-		await registry.clientRecordFor("first", { initialize: true });
-		await registry.clientRecordFor("second", { initialize: true });
+		{
+			using registry = TokenSetClientRegistry.fromEnvironmentConfig<TestClient>(
+				{
+					environment: testEnvironment,
+				},
+			);
+			registry.register(
+				createRegistryEntry({ key: "first", clientFactory: () => first }),
+			);
+			registry.register(
+				createRegistryEntry({ key: "second", clientFactory: () => second }),
+			);
+			await registry.clientRecordFor("first", { initialize: true });
+			await registry.clientRecordFor("second", { initialize: true });
 
-		expect(registry.unregister("first")).toBe(true);
-		expect(first.dispose).toHaveBeenCalledTimes(1);
-
-		registry.dispose();
+			expect(registry.unregister("first")).toBe(true);
+			expect(first.dispose).toHaveBeenCalledTimes(1);
+		}
 		expect(second.dispose).toHaveBeenCalledTimes(1);
 	});
 

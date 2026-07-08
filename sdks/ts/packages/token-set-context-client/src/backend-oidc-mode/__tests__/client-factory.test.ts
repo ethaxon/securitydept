@@ -23,7 +23,7 @@ describe("createBackendOidcModeClientFactory", () => {
 			config: { baseUrl: "https://api.example.com" },
 		});
 
-		const client = await factory({
+		using client = await factory({
 			cancellationToken: cancellation.token,
 			environment,
 			meta,
@@ -32,7 +32,6 @@ describe("createBackendOidcModeClientFactory", () => {
 		expect(
 			new URL(client.authorizeUrl()).searchParams.get("callback_routing_key"),
 		).toBe(meta.clientKey);
-		client.dispose();
 	});
 
 	it("allows callback routing and input resolution overrides", async () => {
@@ -45,7 +44,7 @@ describe("createBackendOidcModeClientFactory", () => {
 			callbackInputResolver,
 		});
 
-		const client = await factory({
+		using client = await factory({
 			cancellationToken: cancellation.token,
 			environment,
 			meta,
@@ -55,7 +54,6 @@ describe("createBackendOidcModeClientFactory", () => {
 		expect(
 			new URL(client.authorizeUrl()).searchParams.has("callback_routing_key"),
 		).toBe(false);
-		client.dispose();
 	});
 
 	it("applies an async predicate before consuming the routed callback", async () => {
@@ -76,7 +74,7 @@ describe("createBackendOidcModeClientFactory", () => {
 			callbackInputPredicate,
 		});
 
-		const client = await factory({
+		using _client = await factory({
 			cancellationToken: cancellation.token,
 			environment,
 			meta,
@@ -85,6 +83,5 @@ describe("createBackendOidcModeClientFactory", () => {
 		expect(callbackInputPredicate).toHaveBeenCalledOnce();
 		expect(navigate).not.toHaveBeenCalled();
 		expect(environment.router?.currentUrl()?.hash).toContain("access_token=at");
-		client.dispose();
 	});
 });

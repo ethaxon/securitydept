@@ -118,7 +118,7 @@ describe("backend-oidc-mode BackendOidcModeClient.loginWithRedirect", () => {
 			"https://app.example.com/page",
 		);
 
-		const client = BackendOidcModeClient.fromEnvironmentConfig({
+		using client = BackendOidcModeClient.fromEnvironmentConfig({
 			config: {
 				baseUrl: "https://auth.example.com",
 				defaultPostAuthRedirectUri: "https://app.example.com/callback",
@@ -139,8 +139,6 @@ describe("backend-oidc-mode BackendOidcModeClient.loginWithRedirect", () => {
 		expect(environment.location.href).toBe(
 			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Freturn",
 		);
-
-		client.dispose();
 	});
 
 	it("uses the client default return URI when postAuthRedirectUri is omitted", async () => {
@@ -150,7 +148,7 @@ describe("backend-oidc-mode BackendOidcModeClient.loginWithRedirect", () => {
 			"https://app.example.com/page#fragment",
 		);
 
-		const client = BackendOidcModeClient.fromEnvironmentConfig({
+		using client = BackendOidcModeClient.fromEnvironmentConfig({
 			config: {
 				baseUrl: "https://auth.example.com",
 				defaultPostAuthRedirectUri: "https://app.example.com/default",
@@ -169,8 +167,6 @@ describe("backend-oidc-mode BackendOidcModeClient.loginWithRedirect", () => {
 		expect(environment.location.href).toBe(
 			"https://auth.example.com/auth/oidc/login?post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdefault",
 		);
-
-		client.dispose();
 	});
 });
 
@@ -211,7 +207,7 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 			"@securitydept/token-set-context-client/frontend-oidc-mode"
 		);
 
-		const client = FrontendOidcModeClient.fromEnvironmentConfig({
+		using client = FrontendOidcModeClient.fromEnvironmentConfig({
 			config: {
 				issuer: "https://auth.example.com",
 				clientId: "spa-client",
@@ -242,7 +238,5 @@ describe("frontend-oidc-mode FrontendOidcModeClient.loginWithRedirect", () => {
 		const pendingKey = `securitydept.frontend_oidc.pending:${state}`;
 		const pendingRaw = await sessionStorage.get(pendingKey);
 		expect(pendingRaw).toBeTruthy();
-
-		client.dispose();
 	});
 });

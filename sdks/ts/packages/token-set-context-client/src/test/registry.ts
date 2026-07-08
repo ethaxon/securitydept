@@ -1,5 +1,6 @@
 import { type FoundationEnvironment } from "@securitydept/client";
 import { createEnvironmentForTest } from "@securitydept/client/test";
+import { type BaseOidcModeClient } from "../orchestration/client/base-client";
 import {
 	type TokenSetClientFactory,
 	TokenSetClientInitializationMode,
@@ -55,14 +56,14 @@ export function createTokenSetClientRegistryEntryForTest<
 }
 
 export interface CreateTokenSetClientRegistryForTestOptions<
-	TClient extends TokenSetClientRegistryClient,
+	TClient extends TokenSetClientRegistryClient = BaseOidcModeClient,
 > {
 	readonly environment?: FoundationEnvironment;
 	readonly entries?: readonly TokenSetClientRegistryEntry<TClient>[];
 }
 
 export function createTokenSetClientRegistryForTest<
-	TClient extends TokenSetClientRegistryClient,
+	TClient extends TokenSetClientRegistryClient = BaseOidcModeClient,
 >(
 	options: CreateTokenSetClientRegistryForTestOptions<TClient> = {},
 ): TokenSetClientRegistry<TClient> {

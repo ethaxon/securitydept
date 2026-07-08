@@ -71,14 +71,13 @@ describe("createFrontendOidcModeClientFactory", () => {
 			callbackInputResolver: null,
 		});
 
-		const client = await factory({
+		using client = await factory({
 			cancellationToken: cancellation.token,
 			environment,
 			meta,
 		});
 
 		expect(client.authResource.value.get()).toBeNull();
-		client.dispose();
 	});
 
 	it("applies an async predicate before consuming metadata callback input", async () => {
@@ -101,7 +100,7 @@ describe("createFrontendOidcModeClientFactory", () => {
 			callbackInputPredicate,
 		});
 
-		const client = await factory({
+		using _client = await factory({
 			cancellationToken: cancellation.token,
 			environment,
 			meta,
@@ -110,6 +109,5 @@ describe("createFrontendOidcModeClientFactory", () => {
 		expect(callbackInputPredicate).toHaveBeenCalledOnce();
 		expect(navigate).not.toHaveBeenCalled();
 		expect(currentUrl.searchParams.get("error")).toBe("access_denied");
-		client.dispose();
 	});
 });

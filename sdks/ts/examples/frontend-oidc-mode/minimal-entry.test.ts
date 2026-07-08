@@ -32,7 +32,7 @@ describe("frontend-oidc-mode minimal entry", () => {
 				callbackInputResolver: null,
 			}),
 		});
-		const client = environment.injector.get(FRONTEND_OIDC_MODE_CLIENT);
+		using client = environment.injector.get(FRONTEND_OIDC_MODE_CLIENT);
 
 		await expect(client.start()).resolves.toBeNull();
 		expect(client.authResource.value.get()).toBeNull();
@@ -48,7 +48,5 @@ describe("frontend-oidc-mode minimal entry", () => {
 		expect(authorizationUrl.searchParams.get("client_id")).toBe("my-app");
 		expect(authorizationUrl.searchParams.get("state")).toBeTruthy();
 		expect(authorizationUrl.searchParams.get("code_challenge")).toBeTruthy();
-
-		client.dispose();
 	});
 });

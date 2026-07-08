@@ -254,6 +254,7 @@ describe("client-react unified Securitydept context", () => {
 		expect(view.container.textContent).toBe("live");
 		view.unmount();
 		expect(cleanup).not.toHaveBeenCalled();
+		// Destroy-ref propagation is the lifecycle action under test.
 		destroyRef.dispose();
 		expect(cleanup).toHaveBeenCalledOnce();
 	});

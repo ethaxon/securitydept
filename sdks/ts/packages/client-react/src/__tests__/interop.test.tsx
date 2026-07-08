@@ -109,7 +109,7 @@ describe("client-react interop", () => {
 
 	it("reads resource snapshots and re-renders on updates", async () => {
 		const response = createEventSubject<string>();
-		const resource = createResource<string>({
+		using resource = createResource<string>({
 			stream: () => response,
 		});
 
@@ -128,7 +128,6 @@ describe("client-react interop", () => {
 
 		expect(view.container.textContent).toBe(ResourceStatus.Resolved);
 		view.unmount();
-		resource.dispose();
 	});
 
 	it("reads resource snapshot signals directly", async () => {

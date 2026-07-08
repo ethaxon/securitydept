@@ -7,6 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 <!-- markdownlint-disable MD024 -->
 
+## [0.3.0-beta.10]
+
+### Changed
+
+- Standardized TypeScript test resource ownership around lexical `using` scopes while preserving the ES2022 production boundary, and removed tests that treated repeated disposal or post-disposal calls as supported SDK behavior.
+- Bumped release-managed Rust crates, TypeScript packages, apps, lockfiles, and shared metadata to `0.3.0-beta.10`.
+
+### Fixed
+
+- Fixed Token Set registry disposal so registry lifecycle, multiplexed auth, and aggregated error stream connections are released together with registered clients without exposing internal completion ordering as a public contract.
+- Fixed the `@securitydept/token-set-context-client/test` registry factory default type to remain `BaseOidcModeClient` across declarations, and added built-artifact type/runtime checks that prevent test helpers or registry events from degrading to `any` or disappearing from the published test subpath.
+
 ## [0.3.0-beta.9]
 
 ### Added

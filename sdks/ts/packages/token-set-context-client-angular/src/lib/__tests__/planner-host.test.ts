@@ -136,7 +136,7 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 		const client = createTokenSetClientForTest({
 			authSnapshot: { status: ResourceStatus.Resolved, value: null },
 		});
-		const registry = createTokenSetClientRegistryForTest<BaseOidcModeClient>({
+		using registry = createTokenSetClientRegistryForTest<BaseOidcModeClient>({
 			entries: [
 				createTokenSetClientRegistryEntryForTest({
 					clientKey: "frontend",
@@ -209,7 +209,6 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 			expect.objectContaining({ next: expect.any(Function) }),
 		);
 		injector.destroy();
-		registry.dispose();
 	});
 
 	it("starts OIDC redirect login for unauthenticated clients by default", async () => {
@@ -218,7 +217,7 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 			authSnapshot: { status: ResourceStatus.Resolved, value: null },
 			loginWithRedirect,
 		});
-		const registry = createTokenSetClientRegistryForTest<BaseOidcModeClient>({
+		using registry = createTokenSetClientRegistryForTest<BaseOidcModeClient>({
 			entries: [
 				createTokenSetClientRegistryEntryForTest({
 					clientKey: "frontend",
@@ -268,7 +267,6 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 			expect(settled).not.toHaveBeenCalled();
 		} finally {
 			injector.destroy();
-			registry.dispose();
 		}
 	});
 

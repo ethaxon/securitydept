@@ -245,6 +245,7 @@ describe("SecuritydeptInjector", () => {
 
 		const trigger = vi.fn();
 		destroyRef.onDestroy(trigger);
+		// Destroy-ref callback dispatch is the lifecycle action under test.
 		destroyRef.dispose();
 
 		expect(destroyRef.destroyed).toBe(true);

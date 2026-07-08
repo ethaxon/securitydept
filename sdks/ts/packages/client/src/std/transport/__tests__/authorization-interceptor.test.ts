@@ -29,7 +29,7 @@ describe("createAuthorizationInterceptedFetch()", () => {
 		const authorizationSnapshot = createSignal<
 			import("../../../signals").ResourceSnapshot<string>
 		>({ status: ResourceStatus.Loading });
-		const authorization = resourceFromSnapshots(() =>
+		using authorization = resourceFromSnapshots(() =>
 			authorizationSnapshot.get(),
 		);
 		const fetchSpy = createFetchSpy();
@@ -50,7 +50,6 @@ describe("createAuthorizationInterceptedFetch()", () => {
 		expect(new Headers(init.headers).get("authorization")).toBe(
 			"Bearer resource-token",
 		);
-		authorization.dispose();
 	});
 
 	it("does not modify fetch arguments when predicate does not match", async () => {

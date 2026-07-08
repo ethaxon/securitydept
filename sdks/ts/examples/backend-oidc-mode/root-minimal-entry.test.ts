@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 describe("backend-oidc-mode host-neutral minimal entry", () => {
 	it("constructs and starts a standalone client from an explicit environment", async () => {
 		const environment = createFoundationEnvironment({});
-		const client = BackendOidcModeClient.fromEnvironmentConfig({
+		using client = BackendOidcModeClient.fromEnvironmentConfig({
 			config: { baseUrl: "https://auth.example.com" },
 			environment,
 			callbackInputResolver: null,
@@ -17,7 +17,5 @@ describe("backend-oidc-mode host-neutral minimal entry", () => {
 		expect(client.authorizeUrl("https://app.example.com/dashboard")).toContain(
 			"post_auth_redirect_uri=https%3A%2F%2Fapp.example.com%2Fdashboard",
 		);
-
-		client.dispose();
 	});
 });

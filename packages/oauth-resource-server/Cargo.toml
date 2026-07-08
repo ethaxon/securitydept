@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-oauth-resource-server"
-version = "0.3.0-beta.9"
+version = "0.3.0-beta.10"
 edition = "2024"
 
 authors = ["Zhou Yeheng <root@aitiotekt.com>"]
@@ -31,12 +31,12 @@ jwe = [
 ]
 
 [dependencies]
-securitydept-oauth-provider = { version = "~0.3.0-beta.9", path = "../oauth-provider" }
-securitydept-creds = { version = "~0.3.0-beta.9", path = "../creds", features = [
+securitydept-oauth-provider = { version = "~0.3.0-beta.10", path = "../oauth-provider" }
+securitydept-creds = { version = "~0.3.0-beta.10", path = "../creds", features = [
     "rfc9068",
     "oidc",
 ] }
-securitydept-utils = { version = "~0.3.0-beta.9", path = "../utils" }
+securitydept-utils = { version = "~0.3.0-beta.10", path = "../utils" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true }

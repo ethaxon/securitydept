@@ -45,6 +45,9 @@ _Single source of truth for Agent identity, code standards, and project rules. S
   - Keep short, single-use internal helper functions inline when extraction only adds navigation overhead; extract helpers when they are reused, materially clarify a complex block, or define a stable boundary.
   - For enum-like string domains, prefer `export const Foo = { ... } as const` + `export type Foo = (typeof Foo)[keyof typeof Foo]`.
   - For public contracts and repeated telemetry vocabulary, extract named constants instead of scattering raw strings.
+  - Keep production SDK output within the ES2022 runtime boundary. Node 26 tests may use `using` / `await using` for lexically owned `DisposableTrait` values, but this test convenience must not raise adopter runtime requirements.
+  - In tests, prefer lexical `using` ownership over manual cleanup. Explicit disposal is reserved for documented lifecycle-under-test cases; behavior after disposal is undefined and must not be tested or documented.
+  - Disposal sequencing may be required internally to prevent `EmptyError`, cancellation cascades, or error amplification. Preserve that implementation invariant, but do not expose the exact EventStream/RxJS emit/complete/unsubscribe order as an exported or documented public contract; tests should assert required outcomes rather than internal sequencing.
   - **TS SDK API shape — options object first**: public functions use an `options` object for optional params; positional second args only when self-evident and uniquely ergonomic. Widening an API converts the whole second arg to options even if it's a breaking change. See [TypeScript SDK Coding Standards](docs/en/007-CLIENT_SDK_GUIDE.md#typescript-sdk-coding-standards) for the full decision rationale.
 - **Web UI Stack**: TS + Vite + React + `@tanstack/react-*` + TailwindCSS + shadcn/ui.
 - **Server Stack**: Rust + axum + openconnectid + serde + snafu + tracing.

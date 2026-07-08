@@ -1056,28 +1056,27 @@ describe("BackendOidcModeClient", () => {
 		const deferred = createDeferred<HttpResponse>();
 		const transport = createTestTransport(async () => await deferred.promise);
 		const { runtime, time } = createTestRuntime(transport);
-		const client = BackendOidcModeClient.fromEnvironmentConfig({
-			config: { baseUrl: BASE_URL },
-			environment: runtime,
-		});
+		let refreshPromise!: Promise<unknown>;
+		{
+			using client = BackendOidcModeClient.fromEnvironmentConfig({
+				config: { baseUrl: BASE_URL },
+				environment: runtime,
+			});
 
-		await client.restoreState({
-			tokens: {
-				accessToken: "at",
-				refreshMaterial: "rt",
-				accessTokenExpiresAt: "2026-01-01T00:00:30Z",
-			},
-			metadata: {},
-		});
+			await client.restoreState({
+				tokens: {
+					accessToken: "at",
+					refreshMaterial: "rt",
+					accessTokenExpiresAt: "2026-01-01T00:00:30Z",
+				},
+				metadata: {},
+			});
 
-		const refreshPromise = client.refreshState();
-		await flushMicrotasks();
-		client.dispose();
+			refreshPromise = client.refreshState();
+			await flushMicrotasks();
+		}
 
 		expect(time.pendingCount).toBe(0);
-		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(
-			"at",
-		);
 
 		deferred.resolve({
 			status: 200,
@@ -1094,9 +1093,6 @@ describe("BackendOidcModeClient", () => {
 			kind: "cancelled",
 			code: "client.cancelled",
 		});
-		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(
-			"at",
-		);
 	});
 
 	it("does not issue fetch transport requests once dispose wins the race", async () => {
@@ -1113,25 +1109,27 @@ describe("BackendOidcModeClient", () => {
 		const { runtime, time } = createTestRuntime(
 			createBaseTransportForStdFetch(),
 		);
-		const client = BackendOidcModeClient.fromEnvironmentConfig({
-			config: {
-				baseUrl: BASE_URL,
-				refresh: { sources: { refreshTimer: false } },
-			},
-			environment: runtime,
-		});
+		let refreshPromise!: Promise<unknown>;
+		{
+			using client = BackendOidcModeClient.fromEnvironmentConfig({
+				config: {
+					baseUrl: BASE_URL,
+					refresh: { sources: { refreshTimer: false } },
+				},
+				environment: runtime,
+			});
 
-		await client.restoreState({
-			tokens: {
-				accessToken: "at",
-				refreshMaterial: "rt",
-				accessTokenExpiresAt: "2026-01-01T00:00:30Z",
-			},
-			metadata: {},
-		});
+			await client.restoreState({
+				tokens: {
+					accessToken: "at",
+					refreshMaterial: "rt",
+					accessTokenExpiresAt: "2026-01-01T00:00:30Z",
+				},
+				metadata: {},
+			});
 
-		const refreshPromise = client.refreshState();
-		client.dispose();
+			refreshPromise = client.refreshState();
+		}
 
 		await expect(refreshPromise).rejects.toMatchObject({
 			name: "ClientError",
@@ -1139,9 +1137,6 @@ describe("BackendOidcModeClient", () => {
 			code: "client.cancelled",
 		});
 		expect(time.pendingCount).toBe(0);
-		expect(expectSnapshotValue(client.authSnapshot)?.tokens.accessToken).toBe(
-			"at",
-		);
 		expect(fetchSpy).toHaveBeenCalledTimes(0);
 	});
 

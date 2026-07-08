@@ -315,38 +315,40 @@ describe("AuthService", () => {
 		const { service, destroyRef } = createAuthServiceFixture();
 		const dispose = vi.spyOn(service, "dispose");
 
+		// Destroy-ref propagation is the lifecycle action under test.
 		destroyRef.dispose();
 
 		expect(dispose).toHaveBeenCalledOnce();
 	});
 
 	it("forwards auth client error events to the message service", () => {
+		const fixture = createAuthServiceFixture();
 		const {
-			service,
 			basicEvents,
 			sessionEvents,
 			tokenAuthEvents,
 			frontendTokenAuthEvents,
 			messageService,
-		} = createAuthServiceFixture();
+		} = fixture;
 		const error = new ClientError({
 			kind: ClientErrorKind.Transport,
 			code: "test.auth_failed",
 			message: "auth failed",
 		});
 
-		basicEvents.next({ error });
-		sessionEvents.next({ error });
-		tokenAuthEvents.next({ payload: { error } });
-		frontendTokenAuthEvents.next({ payload: { error } });
+		{
+			using _service = fixture.service;
+			basicEvents.next({ error });
+			sessionEvents.next({ error });
+			tokenAuthEvents.next({ payload: { error } });
+			frontendTokenAuthEvents.next({ payload: { error } });
 
-		expect(messageService.showError).toHaveBeenCalledTimes(4);
-		expect(messageService.showError).toHaveBeenNthCalledWith(1, error);
-		expect(messageService.showError).toHaveBeenNthCalledWith(2, error);
-		expect(messageService.showError).toHaveBeenNthCalledWith(3, error);
-		expect(messageService.showError).toHaveBeenNthCalledWith(4, error);
-
-		service.dispose();
+			expect(messageService.showError).toHaveBeenCalledTimes(4);
+			expect(messageService.showError).toHaveBeenNthCalledWith(1, error);
+			expect(messageService.showError).toHaveBeenNthCalledWith(2, error);
+			expect(messageService.showError).toHaveBeenNthCalledWith(3, error);
+			expect(messageService.showError).toHaveBeenNthCalledWith(4, error);
+		}
 		basicEvents.next({ error });
 		expect(messageService.showError).toHaveBeenCalledTimes(4);
 	});
@@ -452,6 +454,6 @@ describe("AuthService", () => {
 		expect(environment.injector.get(REQUIREMENT_PLANNER_HOST)).toBeInstanceOf(
 			RequirementPlannerHost,
 		);
-		environment.injector.get(AUTH_SERVICE).dispose();
+		using _service = environment.injector.get(AUTH_SERVICE);
 	});
 });
