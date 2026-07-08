@@ -6,19 +6,19 @@ import {
 } from "@angular/core";
 import { Router } from "@angular/router";
 import {
-	createEventSubject,
 	createFoundationEnvironment,
-	createSignal,
 	ResourceStatus,
-	resourceFromSnapshots,
 } from "@securitydept/client";
 import { provideEnvironment } from "@securitydept/client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
-	TokenSetClientInitializationMode,
 	TokenSetClientRegistry,
 	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
+import {
+	createTokenSetClientForTest,
+	createTokenSetClientRegistryEntryForTest,
+} from "@securitydept/token-set-context-client/test";
 import {
 	createTokenSetClientRegistryAuthorizationInterceptor,
 	provideTokenSetClientRegistry,
@@ -33,45 +33,21 @@ function createOidcClient(
 	authorizationHeader: string,
 	disposeSpy: () => void = vi.fn<() => void>(() => undefined),
 ): BaseOidcModeClient {
-	const authSnapshot = createSignal({
-		status: ResourceStatus.Resolved,
-		value: null,
-	} as const);
-	const authResource = resourceFromSnapshots(() => authSnapshot.get());
-	const isAuthenticatedSnapshot = createSignal({
-		status: ResourceStatus.Resolved,
-		value: true,
-	} as const);
-	const isAuthenticated = resourceFromSnapshots(() =>
-		isAuthenticatedSnapshot.get(),
-	);
-	const authorizationSnapshot = createSignal({
-		status: ResourceStatus.Resolved,
-		value: authorizationHeader as string | undefined,
-	} as const);
-	const authorizationHeaderValue = resourceFromSnapshots(() =>
-		authorizationSnapshot.get(),
-	);
-	return {
+	return createTokenSetClientForTest({
 		id: name,
-		authSnapshot,
-		authResource,
-		isAuthenticated,
-		authorizationHeaderValue,
-		authOperations: {
-			restorePending: createSignal(false),
-			refreshPending: createSignal(false),
-			clearPending: createSignal(false),
-			loginPending: createSignal(false),
+		authSnapshot: {
+			status: ResourceStatus.Resolved,
+			value: {
+				tokens: { accessToken: authorizationHeader.replace(/^Bearer /, "") },
+				metadata: {},
+			},
 		},
-		authEvents: createEventSubject(),
-		start: vi.fn(async () => undefined),
-		dispose: disposeSpy,
+		onDispose: disposeSpy,
 		loginWithRedirect: vi.fn(async () => undefined),
 		loginWithPopup: vi.fn(async () => ({
 			snapshot: { tokens: { accessToken: `${name}-at` }, metadata: {} },
 		})),
-	} as unknown as BaseOidcModeClient;
+	});
 }
 
 function createEntry(
@@ -79,18 +55,11 @@ function createEntry(
 	clientFactory: () => BaseOidcModeClient | Promise<BaseOidcModeClient>,
 	meta: Partial<TokenSetClientRegistryEntry<BaseOidcModeClient>["meta"]> = {},
 ): TokenSetClientRegistryEntry<BaseOidcModeClient> {
-	return {
+	return createTokenSetClientRegistryEntryForTest({
+		clientKey,
 		clientFactory,
-		meta: {
-			clientKey,
-			urlPatterns: [],
-			callbackUrl: undefined,
-			requirementKind: undefined,
-			providerFamily: undefined,
-			initialization: TokenSetClientInitializationMode.Lazy,
-			...meta,
-		},
-	};
+		...meta,
+	});
 }
 
 function createRegistryInjector(

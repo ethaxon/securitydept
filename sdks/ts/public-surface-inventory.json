@@ -320,6 +320,21 @@
 						"file": "007-CLIENT_SDK_GUIDE.md",
 						"heading": "Token Set"
 					}
+				},
+				{
+					"exportKey": "./test",
+					"stability": "provisional",
+					"owner": "token-set-context",
+					"changeDiscipline": "provisional-migration-required",
+					"note": "Dependency-light canonical Token Set test surface. It provides a concrete BaseOidcModeClient subclass plus registry entry and registry factories without depending on a test runner, DOM polyfill, React, or Angular. Callers inject ordinary handlers for spies and I/O behavior instead of fabricating partial client shapes or mode prototypes.",
+					"evidence": [
+						"packages/token-set-context-client/src/test/__tests__/test-factories.test.ts",
+						"tests/package-artifact-contract.test.ts"
+					],
+					"docsAnchor": {
+						"file": "007-CLIENT_SDK_GUIDE.md",
+						"heading": "Token Set"
+					}
 				}
 			]
 		},

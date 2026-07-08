@@ -13,7 +13,6 @@ import {
 	useSecuritydeptContext,
 	useSignal,
 } from "@securitydept/client-react";
-import { type BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	OidcModeCallbackHandlingKind,
 	type OidcModeCallbackHandlingResult,
@@ -22,6 +21,8 @@ import {
 import {
 	selectTokenSetBackendCallbackClientFromRegistry,
 	TOKEN_SET_CLIENT_REGISTRY,
+	type TokenSetBackendCallbackClient,
+	type TokenSetCallbackClientGuard,
 	type TokenSetCallbackClientQuery,
 	TokenSetCallbackClientSelectionKind,
 	type TokenSetCallbackClientSelectionSnapshot,
@@ -36,11 +37,12 @@ export interface UseTokenSetBackendCallbackOptions {
 	readonly registry?: TokenSetClientRegistry;
 	readonly environment?: FoundationEnvironment;
 	readonly clientQuery?: TokenSetCallbackClientQuery;
+	readonly clientGuard?: TokenSetCallbackClientGuard<TokenSetBackendCallbackClient>;
 	readonly autoInitialize?: boolean;
 }
 
 export interface UseTokenSetBackendCallbackResult {
-	readonly selection: TokenSetCallbackClientSelectionSnapshot<BackendOidcModeClient>;
+	readonly selection: TokenSetCallbackClientSelectionSnapshot<TokenSetBackendCallbackClient>;
 	readonly state: ResourceSnapshot<BackendCallbackResult>;
 }
 
@@ -52,7 +54,7 @@ export function useTokenSetBackendCallback(
 	const environment = options.environment ?? injector.get(ENVIRONMENT_TOKEN);
 	const selectionSignal = useInitialRef(() =>
 		createSignal<
-			TokenSetCallbackClientSelectionSnapshot<BackendOidcModeClient>
+			TokenSetCallbackClientSelectionSnapshot<TokenSetBackendCallbackClient>
 		>({
 			status: ResourceStatus.Idle,
 		}),
@@ -89,6 +91,7 @@ export function useTokenSetBackendCallback(
 			registry,
 			callbackUrl: environment.router?.currentUrl()?.toString() ?? "",
 			clientQuery: options.clientQuery,
+			clientGuard: options.clientGuard,
 			initialize: options.autoInitialize !== false,
 		});
 		const subscription = source[SYMBOL_OBSERVABLE]().subscribe({
@@ -101,6 +104,7 @@ export function useTokenSetBackendCallback(
 	}, [
 		environment,
 		options.autoInitialize,
+		options.clientGuard,
 		options.clientQuery,
 		registry,
 		selectionSignal,

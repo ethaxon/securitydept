@@ -1,26 +1,25 @@
 import {
-	createSignal,
 	ENVIRONMENT_TOKEN,
 	REQUIREMENT_PLANNER_HOST,
 	RequirementPlannerHost,
 	ResourceStatus,
 	type RouteBehaviourContextExtra,
 	readSecuritydeptRouteMetadata,
-	resourceFromSnapshots,
 	SecuritydeptInjector,
-	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import { createEnvironmentForTest } from "@securitydept/client/test";
 import { createTanStackRouterContext } from "@securitydept/client-react/tanstack-router";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
 	TOKEN_SET_CLIENT_REGISTRY,
-	TokenSetClientInitializationMode,
 	TokenSetClientRegistry,
 	TokenSetClientRegistryAuthRequirement,
-	type TokenSetClientRegistryEntry,
 	TokenSetClientRegistryRequirementBehaviour,
 } from "@securitydept/token-set-context-client/registry";
+import {
+	createTokenSetClientForTest,
+	createTokenSetClientRegistryEntryForTest,
+} from "@securitydept/token-set-context-client/test";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createTokenSetCanBeforeLoad,
@@ -29,36 +28,15 @@ import {
 } from "../tanstack-router";
 
 function createClient(isAuthenticatedValue: boolean): BaseOidcModeClient {
-	const isAuthenticatedSnapshot = createSignal({
-		status: ResourceStatus.Resolved,
-		value: isAuthenticatedValue,
-	} as const);
-	const isAuthenticated = resourceFromSnapshots(() =>
-		isAuthenticatedSnapshot.get(),
-	);
-	return {
-		isAuthenticated,
-		loginWithRedirect: vi.fn(async () => undefined),
-		dispose: () => undefined,
-		[SYMBOL_DISPOSE]: () => undefined,
-	} as unknown as BaseOidcModeClient;
-}
-
-function createEntry(
-	clientKey: string,
-	client: BaseOidcModeClient,
-): TokenSetClientRegistryEntry<BaseOidcModeClient> {
-	return {
-		clientFactory: () => client,
-		meta: {
-			clientKey,
-			urlPatterns: [],
-			callbackUrl: undefined,
-			requirementKind: undefined,
-			providerFamily: undefined,
-			initialization: TokenSetClientInitializationMode.Lazy,
+	return createTokenSetClientForTest({
+		authSnapshot: {
+			status: ResourceStatus.Resolved,
+			value: isAuthenticatedValue
+				? { tokens: { accessToken: "test-at" }, metadata: {} }
+				: null,
 		},
-	};
+		loginWithRedirect: vi.fn(async () => undefined),
+	});
 }
 
 describe("token-set TanStack auth coordination", () => {
@@ -85,7 +63,12 @@ describe("token-set TanStack auth coordination", () => {
 			TokenSetClientRegistry.fromEnvironmentConfig<BaseOidcModeClient>({
 				environment,
 			});
-		registry.register(createEntry("main", createClient(true)));
+		registry.register(
+			createTokenSetClientRegistryEntryForTest({
+				clientKey: "main",
+				client: createClient(true),
+			}),
+		);
 		const injector = SecuritydeptInjector.fromParentInjector(
 			environment.injector,
 			[
@@ -128,7 +111,12 @@ describe("token-set TanStack auth coordination", () => {
 			TokenSetClientRegistry.fromEnvironmentConfig<BaseOidcModeClient>({
 				environment,
 			});
-		registry.register(createEntry("main", createClient(false)));
+		registry.register(
+			createTokenSetClientRegistryEntryForTest({
+				clientKey: "main",
+				client: createClient(false),
+			}),
+		);
 		const onClientUnauthenticated = vi.fn(() => true);
 		const parentHost = RequirementPlannerHost.fromBehaviour(
 			new TokenSetClientRegistryRequirementBehaviour<

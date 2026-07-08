@@ -1,24 +1,15 @@
 // @vitest-environment jsdom
 
 import {
-	createSignal,
 	type ResourceSnapshot,
 	ResourceStatus,
 	type RouterTrait,
-	resourceFromSnapshots,
-	SYMBOL_DISPOSE,
 	UriReferenceString,
 } from "@securitydept/client";
 import { createEnvironmentForTest } from "@securitydept/client/test";
 import { SecuritydeptProvider } from "@securitydept/client-react";
-import {
-	BackendOidcModeClient,
-	BackendOidcModeCompatFragmentKind,
-} from "@securitydept/token-set-context-client/backend-oidc-mode";
-import {
-	type FrontendOidcModeCallbackResult,
-	FrontendOidcModeClient,
-} from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import { BackendOidcModeCompatFragmentKind } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { type FrontendOidcModeCallbackResult } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
 	type BaseOidcModeClient,
 	OidcModeCallbackHandlingKind,
@@ -27,9 +18,16 @@ import {
 } from "@securitydept/token-set-context-client/orchestration";
 import {
 	provideTokenSetClientRegistry,
-	TokenSetClientInitializationMode,
+	type TokenSetBackendCallbackClient,
+	type TokenSetCallbackClientGuard,
 	type TokenSetClientRegistryEntry,
+	type TokenSetFrontendCallbackClient,
 } from "@securitydept/token-set-context-client/registry";
+import {
+	createTokenSetClientForTest,
+	createTokenSetClientRegistryEntryForTest,
+	TokenSetClientForTest,
+} from "@securitydept/token-set-context-client/test";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
@@ -70,7 +68,7 @@ type FrontendCallbackSnapshot = ResourceSnapshot<
 >;
 
 function createFrontendClient(
-	callbackSnapshot = createSignal<FrontendCallbackSnapshot>({
+	callbackSnapshot: FrontendCallbackSnapshot = {
 		status: ResourceStatus.Resolved,
 		value: {
 			kind: OidcModeCallbackHandlingKind.Handled,
@@ -79,66 +77,43 @@ function createFrontendClient(
 				postAuthRedirectUri: "/after-login",
 			},
 		},
-	}),
-): FrontendOidcModeClient {
-	const callbackResource = resourceFromSnapshots<
-		OidcModeCallbackHandlingResult<FrontendOidcModeCallbackResult>
-	>(() => callbackSnapshot.get());
-	const dispose = vi.fn(() => callbackResource.dispose());
-	const client = {
-		callback: {
-			state: callbackSnapshot,
-			resource: callbackResource,
-			cancel: vi.fn(),
-		},
-		dispose,
-		[SYMBOL_DISPOSE]: dispose,
-	} as unknown as FrontendOidcModeClient;
-	Object.setPrototypeOf(client, FrontendOidcModeClient.prototype);
-	return client;
+	},
+): TokenSetClientForTest<FrontendOidcModeCallbackResult> {
+	return createTokenSetClientForTest({ callbackSnapshot });
 }
 
-function createBackendClient(): BackendOidcModeClient {
-	const callbackSnapshot = createSignal({
-		status: ResourceStatus.Resolved,
-		value: {
-			kind: OidcModeCallbackHandlingKind.Handled,
-			result: createSnapshot("backend-at"),
+function createBackendClient(): TokenSetClientForTest<TokenSetAuthSnapshot> {
+	return createTokenSetClientForTest({
+		callbackSnapshot: {
+			status: ResourceStatus.Resolved,
+			value: {
+				kind: OidcModeCallbackHandlingKind.Handled,
+				result: createSnapshot("backend-at"),
+			},
 		},
-	} as const);
-	const callbackResource = resourceFromSnapshots<
-		OidcModeCallbackHandlingResult<TokenSetAuthSnapshot>
-	>(() => callbackSnapshot.get());
-	const dispose = vi.fn(() => callbackResource.dispose());
-	const client = {
-		callback: {
-			state: callbackSnapshot,
-			resource: callbackResource,
-			cancel: vi.fn(),
-		},
-		dispose,
-		[SYMBOL_DISPOSE]: dispose,
-	} as unknown as BackendOidcModeClient;
-	Object.setPrototypeOf(client, BackendOidcModeClient.prototype);
-	return client;
+	});
 }
+
+const frontendClientGuard: TokenSetCallbackClientGuard<
+	TokenSetFrontendCallbackClient
+> = (client): client is TokenSetFrontendCallbackClient =>
+	client instanceof TokenSetClientForTest;
+
+const backendClientGuard: TokenSetCallbackClientGuard<
+	TokenSetBackendCallbackClient
+> = (client): client is TokenSetBackendCallbackClient =>
+	client instanceof TokenSetClientForTest;
 
 function createEntry(
 	clientKey: string,
 	clientFactory: () => BaseOidcModeClient,
 	callbackUrl?: string,
 ): TokenSetClientRegistryEntry<BaseOidcModeClient> {
-	return {
+	return createTokenSetClientRegistryEntryForTest({
+		clientKey,
 		clientFactory,
-		meta: {
-			clientKey,
-			urlPatterns: [],
-			callbackUrl,
-			requirementKind: undefined,
-			providerFamily: undefined,
-			initialization: TokenSetClientInitializationMode.Lazy,
-		},
-	};
+		callbackUrl,
+	});
 }
 
 function createRouter(url: string): RouterTrait {
@@ -172,8 +147,12 @@ describe("token-set React callback hooks", () => {
 		});
 
 		function Probe() {
-			const frontend = useTokenSetFrontendCallback();
-			const backend = useTokenSetBackendCallback();
+			const frontend = useTokenSetFrontendCallback({
+				clientGuard: frontendClientGuard,
+			});
+			const backend = useTokenSetBackendCallback({
+				clientGuard: backendClientGuard,
+			});
 			return createElement(
 				"output",
 				null,
@@ -209,7 +188,9 @@ describe("token-set React callback hooks", () => {
 		});
 
 		function Probe() {
-			const callback = useTokenSetFrontendCallback();
+			const callback = useTokenSetFrontendCallback({
+				clientGuard: frontendClientGuard,
+			});
 			return createElement("output", null, callback.state.status);
 		}
 
@@ -229,9 +210,9 @@ describe("token-set React callback hooks", () => {
 	});
 
 	it("tracks the selected client's callback snapshot without a Resource wrapper", async () => {
-		const callbackSnapshot = createSignal<FrontendCallbackSnapshot>({
+		const callbackSnapshot: FrontendCallbackSnapshot = {
 			status: ResourceStatus.Loading,
-		});
+		};
 		const client = createFrontendClient(callbackSnapshot);
 		const environment = createEnvironmentForTest({
 			router: createRouter(
@@ -243,7 +224,9 @@ describe("token-set React callback hooks", () => {
 		});
 
 		function Probe() {
-			const callback = useTokenSetFrontendCallback();
+			const callback = useTokenSetFrontendCallback({
+				clientGuard: frontendClientGuard,
+			});
 			return createElement("output", null, callback.state.status);
 		}
 
@@ -258,7 +241,7 @@ describe("token-set React callback hooks", () => {
 		expect(view.container.textContent).toBe(ResourceStatus.Loading);
 
 		act(() => {
-			callbackSnapshot.set({
+			client.setCallbackSnapshot({
 				status: ResourceStatus.Resolved,
 				value: {
 					kind: OidcModeCallbackHandlingKind.Handled,
@@ -285,7 +268,9 @@ describe("token-set React callback hooks", () => {
 		});
 
 		function Probe() {
-			const callback = useTokenSetFrontendCallback();
+			const callback = useTokenSetFrontendCallback({
+				clientGuard: frontendClientGuard,
+			});
 			const kind =
 				callback.state.status === ResourceStatus.Resolved
 					? callback.state.value.kind
@@ -322,7 +307,9 @@ describe("token-set React callback hooks", () => {
 		});
 
 		function Probe() {
-			const callback = useTokenSetBackendCallback();
+			const callback = useTokenSetBackendCallback({
+				clientGuard: backendClientGuard,
+			});
 			return createElement("output", null, callback.state.status);
 		}
 
@@ -355,7 +342,10 @@ describe("token-set React callback hooks", () => {
 		});
 
 		function Probe() {
-			const callback = useTokenSetBackendCallback({ clientQuery });
+			const callback = useTokenSetBackendCallback({
+				clientQuery,
+				clientGuard: backendClientGuard,
+			});
 			return createElement("output", null, callback.state.status);
 		}
 

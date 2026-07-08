@@ -16,22 +16,22 @@ import {
 	type RouterStateSnapshot,
 } from "@angular/router";
 import {
-	createEventSubject,
 	createFoundationEnvironment,
-	createSignal,
 	RequirementsComposition,
 	ResourceStatus,
 	readSecuritydeptRouteMetadata,
-	resourceFromSnapshots,
 } from "@securitydept/client";
 import { provideEnvironment } from "@securitydept/client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
-	TokenSetClientInitializationMode,
-	type TokenSetClientReadyRecordView,
 	type TokenSetClientRegistry,
 	TokenSetClientRegistryAuthRequirement,
 } from "@securitydept/token-set-context-client/registry";
+import {
+	createTokenSetClientForTest,
+	createTokenSetClientRegistryEntryForTest,
+	createTokenSetClientRegistryForTest,
+} from "@securitydept/token-set-context-client/test";
 import {
 	provideTokenSetRequirementPlannerHost,
 	secureTokenSetRoute,
@@ -42,39 +42,15 @@ import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 
 function createMockClient(authenticated: boolean): BaseOidcModeClient {
-	const authSnapshot = createSignal({
-		status: ResourceStatus.Resolved,
-		value: null,
-	} as const);
-	const authResource = resourceFromSnapshots(() => authSnapshot.get());
-	const isAuthenticated = resourceFromSnapshots(() => ({
-		status: ResourceStatus.Resolved,
-		value: authenticated,
-	}));
-	const authorizationHeaderValue = resourceFromSnapshots(() => ({
-		status: ResourceStatus.Resolved,
-		value: authenticated ? "Bearer live" : undefined,
-	}));
-	return {
+	return createTokenSetClientForTest({
 		id: authenticated ? "ready" : "login",
-		authSnapshot,
-		authResource,
-		isAuthenticated,
-		authorizationHeaderValue,
-		authOperations: {
-			restorePending: createSignal(false),
-			refreshPending: createSignal(false),
-			clearPending: createSignal(false),
-			loginPending: createSignal(false),
+		authSnapshot: {
+			status: ResourceStatus.Resolved,
+			value: authenticated
+				? { tokens: { accessToken: "live" }, metadata: {} }
+				: null,
 		},
-		authEvents: createEventSubject(),
-		start: vi.fn(async () => undefined),
-		dispose: vi.fn(),
-		loginWithRedirect: vi.fn(async () => undefined),
-		loginWithPopup: vi.fn(async () => ({
-			snapshot: { tokens: { accessToken: "popup" }, metadata: {} },
-		})),
-	} as unknown as BaseOidcModeClient;
+	});
 }
 
 function createRouterProvider() {
@@ -97,52 +73,18 @@ function createHttpClientProvider() {
 	};
 }
 
-function createReadyRecord(
-	clientKey: string,
-	requirementKind: string,
-	client: BaseOidcModeClient,
-): TokenSetClientReadyRecordView<BaseOidcModeClient> {
-	const meta = {
-		clientKey,
-		urlPatterns: [],
-		callbackUrl: undefined,
-		requirementKind,
-		providerFamily: undefined,
-		initialization: TokenSetClientInitializationMode.Lazy,
-	};
-	return {
-		id: clientKey,
-		entry: { clientFactory: () => client, meta },
-		meta,
-		status: ResourceStatus.Resolved,
-		client,
-	};
-}
-
-function createRegistryMock(
-	records: readonly TokenSetClientReadyRecordView<BaseOidcModeClient>[],
-) {
-	return {
-		clientRecordGenForQuery: vi.fn(function* (query: {
-			requirementKind?: string;
-		}) {
-			for (const record of records) {
-				if (
-					query.requirementKind === undefined ||
-					record.meta.requirementKind === query.requirementKind
-				) {
-					yield createSignal(record);
-				}
-			}
-		}),
-		clientRecordFor: vi.fn(async (clientKey: string) => {
-			const record = records.find((item) => item.meta.clientKey === clientKey);
-			if (!record) {
-				throw new Error(`Missing test record: ${clientKey}`);
-			}
-			return record;
-		}),
-	} as unknown as TokenSetClientRegistry<BaseOidcModeClient>;
+function createRegistry(
+	clients: readonly {
+		clientKey: string;
+		requirementKind: string;
+		client: BaseOidcModeClient;
+	}[],
+): TokenSetClientRegistry<BaseOidcModeClient> {
+	return createTokenSetClientRegistryForTest<BaseOidcModeClient>({
+		entries: clients.map((entry) =>
+			createTokenSetClientRegistryEntryForTest(entry),
+		),
+	});
 }
 
 function buildRouteChain(routes: Route[]): ActivatedRouteSnapshot {
@@ -250,10 +192,22 @@ describe("Angular full-route aggregation", () => {
 		});
 		const route = buildRouteChain([root, child]);
 		const unauthenticated = createMockClient(false);
-		const registry = createRegistryMock([
-			createReadyRecord("root", "root_oidc", createMockClient(true)),
-			createReadyRecord("finance", "finance_oidc", unauthenticated),
+		const registry = createRegistry([
+			{
+				clientKey: "root",
+				requirementKind: "root_oidc",
+				client: createMockClient(true),
+			},
+			{
+				clientKey: "finance",
+				requirementKind: "finance_oidc",
+				client: unauthenticated,
+			},
 		]);
+		const clientRecordGenForQuery = vi.spyOn(
+			registry,
+			"clientRecordGenForQuery",
+		);
 		const guard = root.canActivateChild?.[0] as CanActivateChildFn;
 
 		await expect(
@@ -269,7 +223,7 @@ describe("Angular full-route aggregation", () => {
 				}),
 			]),
 		).resolves.toBe(false);
-		expect(registry.clientRecordGenForQuery).toHaveBeenCalledWith({
+		expect(clientRecordGenForQuery).toHaveBeenCalledWith({
 			requirementKind: "finance_oidc",
 		});
 	});
@@ -291,9 +245,17 @@ describe("Angular full-route aggregation", () => {
 				}),
 			],
 		});
-		const registry = createRegistryMock([
-			createReadyRecord("root", "root_oidc", createMockClient(true)),
-			createReadyRecord("finance", "finance_oidc", createMockClient(true)),
+		const registry = createRegistry([
+			{
+				clientKey: "root",
+				requirementKind: "root_oidc",
+				client: createMockClient(true),
+			},
+			{
+				clientKey: "finance",
+				requirementKind: "finance_oidc",
+				client: createMockClient(true),
+			},
 		]);
 		const guard = root.canActivateChild?.[0] as CanActivateChildFn;
 

@@ -11,11 +11,8 @@ import {
 	type RouterStateSnapshot,
 } from "@angular/router";
 import {
-	createEventSubject,
-	createSignal,
 	ResourceStatus,
 	readSecuritydeptRouteMetadata,
-	resourceFromSnapshots,
 	type SecuritydeptProvider,
 	writeSecuritydeptRouteMetadata,
 } from "@securitydept/client";
@@ -25,12 +22,12 @@ import {
 } from "@securitydept/client/web";
 import { provideEnvironment } from "@securitydept/client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
+import { TokenSetClientRegistryAuthRequirement } from "@securitydept/token-set-context-client/registry";
 import {
-	TokenSetClientInitializationMode,
-	type TokenSetClientReadyRecordView,
-	type TokenSetClientRegistry,
-	TokenSetClientRegistryAuthRequirement,
-} from "@securitydept/token-set-context-client/registry";
+	createTokenSetClientForTest,
+	createTokenSetClientRegistryEntryForTest,
+	createTokenSetClientRegistryForTest,
+} from "@securitydept/token-set-context-client/test";
 import { of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import { provideTokenSetRequirementPlannerHost } from "../auth-coordination/planner-host";
@@ -106,30 +103,6 @@ async function flushMicrotasks() {
 	await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function createReadyRecord(
-	clientKey: string,
-	client: BaseOidcModeClient,
-): TokenSetClientReadyRecordView<BaseOidcModeClient> {
-	const meta = {
-		clientKey,
-		urlPatterns: [],
-		callbackUrl: "/auth/token-set/callback",
-		requirementKind: "frontend_oidc",
-		providerFamily: "authentik",
-		initialization: TokenSetClientInitializationMode.Immediate,
-	};
-	return {
-		id: clientKey,
-		entry: {
-			clientFactory: () => client,
-			meta,
-		},
-		meta,
-		status: ResourceStatus.Resolved,
-		client,
-	};
-}
-
 function createRouterProvider() {
 	return {
 		provide: Router,
@@ -160,53 +133,24 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 			const router = context.environment.injector.get(Injector).get(Router);
 			return router.serializeUrl(router.getCurrentNavigation()?.finalUrl);
 		});
-		const isAuthenticatedSnapshot = createSignal({
-			status: ResourceStatus.Resolved,
-			value: false,
-		} as const);
-		const isAuthenticated = resourceFromSnapshots(() =>
-			isAuthenticatedSnapshot.get(),
+		const client = createTokenSetClientForTest({
+			authSnapshot: { status: ResourceStatus.Resolved, value: null },
+		});
+		const registry = createTokenSetClientRegistryForTest<BaseOidcModeClient>({
+			entries: [
+				createTokenSetClientRegistryEntryForTest({
+					clientKey: "frontend",
+					client,
+					callbackUrl: "/auth/token-set/callback",
+					requirementKind: "frontend_oidc",
+					providerFamily: "authentik",
+				}),
+			],
+		});
+		const clientRecordGenForQuery = vi.spyOn(
+			registry,
+			"clientRecordGenForQuery",
 		);
-		const authSnapshot = createSignal({
-			status: ResourceStatus.Resolved,
-			value: null,
-		} as const);
-		const authResource = resourceFromSnapshots(() => authSnapshot.get());
-		const authorizationSnapshot = createSignal({
-			status: ResourceStatus.Resolved,
-			value: undefined as string | undefined,
-		} as const);
-		const authorizationHeaderValue = resourceFromSnapshots(() =>
-			authorizationSnapshot.get(),
-		);
-		const client = {
-			state: createSignal(null),
-			authSnapshot,
-			authResource,
-			isAuthenticated,
-			authorizationHeaderValue,
-			authOperations: {
-				restorePending: createSignal(false),
-				refreshPending: createSignal(false),
-				clearPending: createSignal(false),
-				loginPending: createSignal(false),
-			},
-			authEvents: createEventSubject(),
-			addWorkflowSource: vi.fn(() => ({ unsubscribe: vi.fn() })),
-			removeWorkflowSource: vi.fn(() => false),
-			start: vi.fn(async () => undefined),
-			dispose: vi.fn(),
-			restorePersistedState: vi.fn(async () => null),
-			handleCallback: vi.fn(),
-			loginWithRedirect: vi.fn(),
-		} as unknown as BaseOidcModeClient;
-		const readyRecord = createReadyRecord("frontend", client);
-		const registry = {
-			clientRecordGenForQuery: vi.fn(function* () {
-				yield createSignal(readyRecord);
-			}),
-			clientRecordFor: vi.fn(async () => readyRecord),
-		} as unknown as TokenSetClientRegistry<BaseOidcModeClient>;
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TOKEN_SET_CLIENT_REGISTRY, useValue: registry },
@@ -248,7 +192,7 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 		);
 
 		expect(result).toEqual({ url: "/workspace/wiki?from=guard" });
-		expect(registry.clientRecordGenForQuery).toHaveBeenCalledWith({
+		expect(clientRecordGenForQuery).toHaveBeenCalledWith({
 			requirementKind: "frontend_oidc",
 		});
 		expect(handler).toHaveBeenCalledWith(
@@ -265,22 +209,23 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 			expect.objectContaining({ next: expect.any(Function) }),
 		);
 		injector.destroy();
+		registry.dispose();
 	});
 
 	it("starts OIDC redirect login for unauthenticated clients by default", async () => {
 		const loginWithRedirect = vi.fn().mockResolvedValue(undefined);
-		const client = {
-			isAuthenticated: { whenValue: vi.fn(async () => false) },
+		const client = createTokenSetClientForTest({
+			authSnapshot: { status: ResourceStatus.Resolved, value: null },
 			loginWithRedirect,
-			dispose: vi.fn(),
-		} as unknown as BaseOidcModeClient;
-		const record = createReadyRecord("frontend", client);
-		const registry = {
-			clientRecordGenForQuery: vi.fn(function* () {
-				yield createSignal(record);
-			}),
-			clientRecordFor: vi.fn(async () => record),
-		} as unknown as TokenSetClientRegistry<BaseOidcModeClient>;
+		});
+		const registry = createTokenSetClientRegistryForTest<BaseOidcModeClient>({
+			entries: [
+				createTokenSetClientRegistryEntryForTest({
+					clientKey: "frontend",
+					client,
+				}),
+			],
+		});
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TOKEN_SET_CLIENT_REGISTRY, useValue: registry },
@@ -323,6 +268,7 @@ describe("provideTokenSetRequirementPlannerHost + createTokenSetCanActivate", ()
 			expect(settled).not.toHaveBeenCalled();
 		} finally {
 			injector.destroy();
+			registry.dispose();
 		}
 	});
 

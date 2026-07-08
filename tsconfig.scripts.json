@@ -3,11 +3,13 @@
 	"compilerOptions": {
 		"outDir": "./dist-tsc/scripts",
 		"types": ["node"],
-		"allowImportingTsExtensions": true
+		"allowImportingTsExtensions": true,
+		"skipLibCheck": true
 	},
 	"include": [
 		"**/vite*.ts",
 		"**/vite*.mts",
+		"**/tsdown.config.ts",
 		"**/scripts/**/*.ts",
 		"*/claims-script-check.mts",
 		"**/skills/**/*.ts"

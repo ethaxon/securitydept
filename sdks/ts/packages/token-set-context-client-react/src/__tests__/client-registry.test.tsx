@@ -1,22 +1,21 @@
 // @vitest-environment jsdom
 
 import {
-	createSignal,
 	ENVIRONMENT_TOKEN,
 	ResourceStatus,
-	resourceFromSnapshots,
 	SecuritydeptInjector,
-	SYMBOL_DISPOSE,
 } from "@securitydept/client";
 import { createEnvironmentForTest } from "@securitydept/client/test";
 import { SecuritydeptProvider } from "@securitydept/client-react";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
 import {
 	provideTokenSetClientRegistry,
-	TokenSetClientInitializationMode,
 	type TokenSetClientRegistry,
-	type TokenSetClientRegistryEntry,
 } from "@securitydept/token-set-context-client/registry";
+import {
+	createTokenSetClientForTest,
+	createTokenSetClientRegistryEntryForTest,
+} from "@securitydept/token-set-context-client/test";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
@@ -50,43 +49,12 @@ async function flushMicrotasks() {
 }
 
 function createMockClient(accessToken: string): BaseOidcModeClient {
-	const disposed = createSignal(false);
-	const isAuthenticatedSnapshot = createSignal({
-		status: ResourceStatus.Resolved,
-		value: true,
-	} as const);
-	const isAuthenticated = resourceFromSnapshots(() =>
-		isAuthenticatedSnapshot.get(),
-	);
-	const authSnapshot = createSignal({
-		status: ResourceStatus.Resolved,
-		value: { tokens: { accessToken } },
-	} as const);
-	const authResource = resourceFromSnapshots(() => authSnapshot.get());
-	return {
-		isAuthenticated,
-		authSnapshot,
-		authResource,
-		dispose: () => disposed.set(true),
-		[SYMBOL_DISPOSE]: () => disposed.set(true),
-	} as unknown as BaseOidcModeClient;
-}
-
-function createEntry(
-	clientKey: string,
-	client: BaseOidcModeClient,
-): TokenSetClientRegistryEntry<BaseOidcModeClient> {
-	return {
-		clientFactory: () => client,
-		meta: {
-			clientKey,
-			urlPatterns: [],
-			callbackUrl: undefined,
-			requirementKind: undefined,
-			providerFamily: undefined,
-			initialization: TokenSetClientInitializationMode.Lazy,
+	return createTokenSetClientForTest({
+		authSnapshot: {
+			status: ResourceStatus.Resolved,
+			value: { tokens: { accessToken }, metadata: {} },
 		},
-	};
+	});
 }
 
 describe("TokenSetClientRegistry React adapter", () => {
@@ -96,7 +64,10 @@ describe("TokenSetClientRegistry React adapter", () => {
 
 	it("registers entries through an externally created Securitydept injector", async () => {
 		const client = createMockClient("main-at");
-		const entry = createEntry("main", client);
+		const entry = createTokenSetClientRegistryEntryForTest({
+			clientKey: "main",
+			client,
+		});
 		const environment = createEnvironmentForTest({
 			providers: provideTokenSetClientRegistry({ clients: [entry] }),
 		});
@@ -122,6 +93,7 @@ describe("TokenSetClientRegistry React adapter", () => {
 		)?.client;
 		expect(await resolvedClient?.authResource.whenValue()).toEqual({
 			tokens: { accessToken: "main-at" },
+			metadata: {},
 		});
 
 		view.unmount();
@@ -137,7 +109,12 @@ describe("TokenSetClientRegistry React adapter", () => {
 				createClients: (injector) => {
 					factoryCalls++;
 					expect(injector.get(ENVIRONMENT_TOKEN)).toBe(environment);
-					return [createEntry("scoped", client)];
+					return [
+						createTokenSetClientRegistryEntryForTest({
+							clientKey: "scoped",
+							client,
+						}),
+					];
 				},
 			}),
 		});
@@ -168,14 +145,24 @@ describe("TokenSetClientRegistry React adapter", () => {
 		let childRegistry: TokenSetClientRegistry<BaseOidcModeClient> | undefined;
 		const environment = createEnvironmentForTest({
 			providers: provideTokenSetClientRegistry({
-				clients: [createEntry("main", createMockClient("parent-at"))],
+				clients: [
+					createTokenSetClientRegistryEntryForTest({
+						clientKey: "main",
+						client: createMockClient("parent-at"),
+					}),
+				],
 			}),
 		});
 		const parentInjector = environment.injector;
 		const childInjector = SecuritydeptInjector.fromParentInjector(
 			parentInjector,
 			provideTokenSetClientRegistry({
-				clients: [createEntry("main", createMockClient("child-at"))],
+				clients: [
+					createTokenSetClientRegistryEntryForTest({
+						clientKey: "main",
+						client: createMockClient("child-at"),
+					}),
+				],
 			}),
 		);
 
@@ -208,12 +195,12 @@ describe("TokenSetClientRegistry React adapter", () => {
 			await (
 				await parentRegistry?.clientRecordFor("main", { initialize: true })
 			)?.client.authResource.whenValue(),
-		).toEqual({ tokens: { accessToken: "parent-at" } });
+		).toEqual({ tokens: { accessToken: "parent-at" }, metadata: {} });
 		expect(
 			await (
 				await childRegistry?.clientRecordFor("main", { initialize: true })
 			)?.client.authResource.whenValue(),
-		).toEqual({ tokens: { accessToken: "child-at" } });
+		).toEqual({ tokens: { accessToken: "child-at" }, metadata: {} });
 		view.unmount();
 	});
 });

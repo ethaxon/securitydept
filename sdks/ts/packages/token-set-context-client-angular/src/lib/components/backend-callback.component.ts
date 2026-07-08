@@ -14,7 +14,6 @@ import {
 	resourceFromSnapshots,
 } from "@securitydept/client";
 import { ENVIRONMENT, toNgSignal } from "@securitydept/client-angular";
-import { type BackendOidcModeClient } from "@securitydept/token-set-context-client/backend-oidc-mode";
 import {
 	OidcModeCallbackHandlingKind,
 	type OidcModeCallbackHandlingResult,
@@ -22,7 +21,9 @@ import {
 } from "@securitydept/token-set-context-client/orchestration";
 import {
 	selectTokenSetBackendCallbackClientFromRegistry,
+	type TokenSetBackendCallbackClient,
 	type TokenSetBackendCallbackClientFromRegistrySelectionSignal,
+	type TokenSetCallbackClientGuard,
 	type TokenSetCallbackClientQuery,
 	TokenSetCallbackClientSelectionKind,
 	type TokenSetCallbackClientSelectionSnapshot,
@@ -40,6 +41,8 @@ type BackendCallbackResult =
 })
 export class TokenSetBackendCallbackComponent {
 	readonly clientQuery = input<TokenSetCallbackClientQuery | undefined>();
+	readonly clientGuard =
+		input<TokenSetCallbackClientGuard<TokenSetBackendCallbackClient>>();
 	readonly autoInitialize = input(true);
 
 	private readonly environment = inject(ENVIRONMENT);
@@ -50,7 +53,7 @@ export class TokenSetBackendCallbackComponent {
 			null,
 		);
 	private readonly selectionSignal = createComputed<
-		TokenSetCallbackClientSelectionSnapshot<BackendOidcModeClient>
+		TokenSetCallbackClientSelectionSnapshot<TokenSetBackendCallbackClient>
 	>(
 		() =>
 			this.selectionSource.get()?.get() ?? {
@@ -59,7 +62,7 @@ export class TokenSetBackendCallbackComponent {
 	);
 
 	readonly selection: Signal<
-		TokenSetCallbackClientSelectionSnapshot<BackendOidcModeClient>
+		TokenSetCallbackClientSelectionSnapshot<TokenSetBackendCallbackClient>
 	> = toNgSignal(this.selectionSignal, { requireSync: true });
 	readonly resource = resourceFromSnapshots<BackendCallbackResult>(() => {
 		const selection = this.selectionSignal.get();
@@ -93,6 +96,7 @@ export class TokenSetBackendCallbackComponent {
 					registry: this.registry,
 					callbackUrl: this.environment.router?.currentUrl()?.toString() ?? "",
 					clientQuery: this.clientQuery(),
+					clientGuard: this.clientGuard(),
 					initialize: this.autoInitialize(),
 				}),
 			);

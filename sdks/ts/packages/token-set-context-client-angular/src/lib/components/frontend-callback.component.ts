@@ -14,19 +14,18 @@ import {
 	resourceFromSnapshots,
 } from "@securitydept/client";
 import { ENVIRONMENT, toNgSignal } from "@securitydept/client-angular";
-import {
-	type FrontendOidcModeCallbackResult,
-	type FrontendOidcModeClient,
-} from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import { type FrontendOidcModeCallbackResult } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
 	OidcModeCallbackHandlingKind,
 	type OidcModeCallbackHandlingResult,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
 	selectTokenSetFrontendCallbackClientFromRegistry,
+	type TokenSetCallbackClientGuard,
 	type TokenSetCallbackClientQuery,
 	TokenSetCallbackClientSelectionKind,
 	type TokenSetCallbackClientSelectionSnapshot,
+	type TokenSetFrontendCallbackClient,
 	type TokenSetFrontendCallbackClientFromRegistrySelectionSignal,
 } from "@securitydept/token-set-context-client/registry";
 import { TOKEN_SET_CLIENT_REGISTRY } from "../client-registry";
@@ -42,6 +41,8 @@ type FrontendCallbackResult =
 })
 export class TokenSetFrontendCallbackComponent {
 	readonly clientQuery = input<TokenSetCallbackClientQuery | undefined>();
+	readonly clientGuard =
+		input<TokenSetCallbackClientGuard<TokenSetFrontendCallbackClient>>();
 	readonly autoInitialize = input(true);
 
 	private readonly environment = inject(ENVIRONMENT);
@@ -52,7 +53,7 @@ export class TokenSetFrontendCallbackComponent {
 			null,
 		);
 	private readonly selectionSignal = createComputed<
-		TokenSetCallbackClientSelectionSnapshot<FrontendOidcModeClient>
+		TokenSetCallbackClientSelectionSnapshot<TokenSetFrontendCallbackClient>
 	>(
 		() =>
 			this.selectionSource.get()?.get() ?? {
@@ -61,7 +62,7 @@ export class TokenSetFrontendCallbackComponent {
 	);
 
 	readonly selection: Signal<
-		TokenSetCallbackClientSelectionSnapshot<FrontendOidcModeClient>
+		TokenSetCallbackClientSelectionSnapshot<TokenSetFrontendCallbackClient>
 	> = toNgSignal(this.selectionSignal, { requireSync: true });
 	readonly resource = resourceFromSnapshots<FrontendCallbackResult>(() => {
 		const selection = this.selectionSignal.get();
@@ -95,6 +96,7 @@ export class TokenSetFrontendCallbackComponent {
 					registry: this.registry,
 					callbackUrl: this.environment.router?.currentUrl()?.toString() ?? "",
 					clientQuery: this.clientQuery(),
+					clientGuard: this.clientGuard(),
 					initialize: this.autoInitialize(),
 				}),
 			);

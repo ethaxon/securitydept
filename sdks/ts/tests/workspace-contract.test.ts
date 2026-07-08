@@ -77,6 +77,7 @@ const CONTRACTS: PackageContract[] = [
 			"./orchestration",
 			"./access-token-substrate",
 			"./registry",
+			"./test",
 		],
 		hasReactPeer: false,
 		experimental: false,

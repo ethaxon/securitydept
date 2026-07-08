@@ -1,14 +1,23 @@
-import {
-	type DisposableTrait,
-	type EventStreamTrait,
-} from "@securitydept/client";
+import { type EventStreamTrait } from "@securitydept/client";
 import {
 	type TokenSetClientRegistry,
 	type TokenSetClientRegistryEvent,
 	TokenSetClientRegistryEventType,
 } from "@securitydept/token-set-context-client/registry";
+import {
+	createTokenSetClientForTest,
+	createTokenSetClientRegistryEntryForTest,
+	createTokenSetClientRegistryForTest,
+} from "@securitydept/token-set-context-client/test";
 
-type TestClient = DisposableTrait;
+const client = createTokenSetClientForTest();
+const entry = createTokenSetClientRegistryEntryForTest({
+	clientKey: "artifact-client",
+	client,
+});
+const testRegistry = createTokenSetClientRegistryForTest({ entries: [entry] });
+
+type TestClient = typeof client;
 
 type IsAny<T> = 0 extends 1 & T ? true : false;
 type AssertFalse<T extends false> = T;
@@ -20,4 +29,10 @@ const events: EventStreamTrait<TokenSetClientRegistryEvent<TestClient>> =
 	registry.events;
 const failedEventType: "failed" = TokenSetClientRegistryEventType.Failed;
 
-export { events, failedEventType, type RegistryEventsMustNotBeAny };
+export {
+	entry,
+	events,
+	failedEventType,
+	type RegistryEventsMustNotBeAny,
+	testRegistry,
+};

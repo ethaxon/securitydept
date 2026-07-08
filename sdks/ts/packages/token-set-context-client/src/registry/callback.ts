@@ -16,7 +16,10 @@ import {
 	BackendOidcModeCompatFragmentKind,
 } from "../backend-oidc-mode";
 import { FrontendOidcModeClient } from "../frontend-oidc-mode/client/client";
+import { type FrontendOidcModeCallbackResult } from "../frontend-oidc-mode/client/types";
 import { type BaseOidcModeClient } from "../orchestration/client/base-client";
+import { type OidcModeCallbackStateTrait } from "../orchestration/client/types";
+import { type TokenSetAuthSnapshot } from "../orchestration/token/types";
 import { type TokenSetClientQueryOptions } from "./contracts/query";
 import { type TokenSetClientRecordView } from "./contracts/types";
 import { type TokenSetClientRegistry } from "./core/client-registry";
@@ -43,6 +46,18 @@ export const TokenSetCallbackClientSelectionKind = {
 
 export type TokenSetCallbackClientSelectionKind =
 	(typeof TokenSetCallbackClientSelectionKind)[keyof typeof TokenSetCallbackClientSelectionKind];
+
+export interface TokenSetFrontendCallbackClient extends BaseOidcModeClient {
+	readonly callback: OidcModeCallbackStateTrait<FrontendOidcModeCallbackResult>;
+}
+
+export interface TokenSetBackendCallbackClient extends BaseOidcModeClient {
+	readonly callback: OidcModeCallbackStateTrait<TokenSetAuthSnapshot>;
+}
+
+export type TokenSetCallbackClientGuard<TClient extends BaseOidcModeClient> = (
+	client: BaseOidcModeClient,
+) => client is TClient;
 
 export interface TokenSetCallbackClientNotApplicableSelection {
 	readonly kind: typeof TokenSetCallbackClientSelectionKind.NotApplicable;
@@ -96,7 +111,8 @@ export interface SelectTokenSetFrontendCallbackClientFromRegistryOptions {
 	readonly registry: TokenSetClientRegistry<BaseOidcModeClient>;
 	readonly callbackUrl: UriReferenceStringInput;
 	readonly clientQuery?: TokenSetCallbackClientQuery;
-	readonly mapClientNotFound?: TokenSetCallbackClientNotFoundMapper<FrontendOidcModeClient>;
+	readonly mapClientNotFound?: TokenSetCallbackClientNotFoundMapper<TokenSetFrontendCallbackClient>;
+	readonly clientGuard?: TokenSetCallbackClientGuard<TokenSetFrontendCallbackClient>;
 	readonly initialize?: boolean;
 }
 
@@ -104,15 +120,16 @@ export interface SelectTokenSetBackendCallbackClientFromRegistryOptions {
 	readonly registry: TokenSetClientRegistry<BaseOidcModeClient>;
 	readonly callbackUrl: UriReferenceStringInput;
 	readonly clientQuery?: TokenSetCallbackClientQuery;
-	readonly mapClientNotFound?: TokenSetCallbackClientNotFoundMapper<BackendOidcModeClient>;
+	readonly mapClientNotFound?: TokenSetCallbackClientNotFoundMapper<TokenSetBackendCallbackClient>;
+	readonly clientGuard?: TokenSetCallbackClientGuard<TokenSetBackendCallbackClient>;
 	readonly initialize?: boolean;
 }
 
 export type TokenSetFrontendCallbackClientFromRegistrySelectionSignal =
-	TokenSetCallbackClientSelectionSignal<FrontendOidcModeClient>;
+	TokenSetCallbackClientSelectionSignal<TokenSetFrontendCallbackClient>;
 
 export type TokenSetBackendCallbackClientFromRegistrySelectionSignal =
-	TokenSetCallbackClientSelectionSignal<BackendOidcModeClient>;
+	TokenSetCallbackClientSelectionSignal<TokenSetBackendCallbackClient>;
 
 export const defaultTokenSetFrontendCallbackClientQuery: TokenSetCallbackClientQuery =
 	({ callbackUrl }) => ({ callbackUrl });
@@ -149,6 +166,8 @@ export function selectTokenSetFrontendCallbackClientFromRegistry({
 		status: ResourceStatus.Resolved,
 		value: { kind: TokenSetCallbackClientSelectionKind.NotApplicable },
 	}),
+	clientGuard = (client): client is FrontendOidcModeClient =>
+		client instanceof FrontendOidcModeClient,
 	initialize = false,
 }: SelectTokenSetFrontendCallbackClientFromRegistryOptions): TokenSetFrontendCallbackClientFromRegistrySelectionSignal {
 	return selectTokenSetCallbackClientFromRegistry({
@@ -159,8 +178,7 @@ export function selectTokenSetFrontendCallbackClientFromRegistry({
 		initialize,
 		mode: "frontend",
 		expectedType: "FrontendOidcModeClient",
-		isExpectedClient: (client): client is FrontendOidcModeClient =>
-			client instanceof FrontendOidcModeClient,
+		clientGuard,
 	});
 }
 
@@ -169,6 +187,8 @@ export function selectTokenSetBackendCallbackClientFromRegistry({
 	callbackUrl,
 	clientQuery,
 	mapClientNotFound = (snapshot) => snapshot,
+	clientGuard = (client): client is BackendOidcModeClient =>
+		client instanceof BackendOidcModeClient,
 	initialize = false,
 }: SelectTokenSetBackendCallbackClientFromRegistryOptions): TokenSetBackendCallbackClientFromRegistrySelectionSignal {
 	return selectTokenSetCallbackClientFromRegistry({
@@ -179,8 +199,7 @@ export function selectTokenSetBackendCallbackClientFromRegistry({
 		initialize,
 		mode: "backend",
 		expectedType: "BackendOidcModeClient",
-		isExpectedClient: (client): client is BackendOidcModeClient =>
-			client instanceof BackendOidcModeClient,
+		clientGuard,
 	});
 }
 
@@ -194,7 +213,7 @@ function selectTokenSetCallbackClientFromRegistry<
 	readonly initialize: boolean;
 	readonly mode: "frontend" | "backend";
 	readonly expectedType: string;
-	readonly isExpectedClient: (client: BaseOidcModeClient) => client is TClient;
+	readonly clientGuard: TokenSetCallbackClientGuard<TClient>;
 }): TokenSetCallbackClientSelectionSignal<TClient> {
 	try {
 		const callbackUrl = UriReferenceString.parse(options.callbackUrl);
@@ -229,7 +248,7 @@ function selectTokenSetCallbackClientFromRegistry<
 			initialize: options.initialize,
 			mode: options.mode,
 			expectedType: options.expectedType,
-			isExpectedClient: options.isExpectedClient,
+			clientGuard: options.clientGuard,
 		});
 	} catch (error) {
 		return createCallbackClientSelectionErrorSignal(error);
@@ -246,7 +265,7 @@ function createSelectedCallbackClientSignal<
 	readonly initialize: boolean;
 	readonly mode: "frontend" | "backend";
 	readonly expectedType: string;
-	readonly isExpectedClient: (client: BaseOidcModeClient) => client is TClient;
+	readonly clientGuard: TokenSetCallbackClientGuard<TClient>;
 }): TokenSetCallbackClientSelectionSignal<TClient> {
 	const selectedRecord = options.clientRecord.get();
 	if (options.initialize) {
@@ -276,7 +295,7 @@ function createSelectedCallbackClientSignal<
 					error: record.error,
 				};
 			case ResourceStatus.Resolved:
-				return options.isExpectedClient(record.client)
+				return options.clientGuard(record.client)
 					? {
 							status: ResourceStatus.Resolved,
 							value: {

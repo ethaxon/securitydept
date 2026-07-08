@@ -12,21 +12,19 @@ import {
 	type RouterStateSnapshot,
 } from "@angular/router";
 import {
-	createEventSubject,
 	createFoundationEnvironment,
-	createSignal,
 	ResourceStatus,
-	resourceFromSnapshots,
 	UriReferenceString,
 	writeSecuritydeptRouteMetadata,
 } from "@securitydept/client";
 import { provideEnvironment } from "@securitydept/client-angular";
 import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
+import { type TokenSetClientRegistry } from "@securitydept/token-set-context-client/registry";
 import {
-	TokenSetClientInitializationMode,
-	type TokenSetClientReadyRecordView,
-	type TokenSetClientRegistry,
-} from "@securitydept/token-set-context-client/registry";
+	createTokenSetClientForTest,
+	createTokenSetClientRegistryEntryForTest,
+	createTokenSetClientRegistryForTest,
+} from "@securitydept/token-set-context-client/test";
 import {
 	createTokenSetCanActivate,
 	provideTokenSetRequirementPlannerHost,
@@ -39,70 +37,30 @@ const TEST_AUTH_ACTION = new InjectionToken<() => void>("TEST_AUTH_ACTION");
 const NULL_ENVIRONMENT_INJECTOR = null as unknown as EnvironmentInjector;
 
 function createMockClient(authenticated: boolean): BaseOidcModeClient {
-	const authSnapshot = createSignal({
-		status: ResourceStatus.Resolved,
-		value: null,
-	} as const);
-	const authResource = resourceFromSnapshots(() => authSnapshot.get());
-	const isAuthenticated = resourceFromSnapshots(() => ({
-		status: ResourceStatus.Resolved,
-		value: authenticated,
-	}));
-	const authorizationHeaderValue = resourceFromSnapshots(() => ({
-		status: ResourceStatus.Resolved,
-		value: authenticated ? "Bearer confluence" : undefined,
-	}));
-	return {
+	return createTokenSetClientForTest({
 		id: "confluence",
-		authSnapshot,
-		authResource,
-		isAuthenticated,
-		authorizationHeaderValue,
-		authOperations: {
-			restorePending: createSignal(false),
-			refreshPending: createSignal(false),
-			clearPending: createSignal(false),
-			loginPending: createSignal(false),
+		authSnapshot: {
+			status: ResourceStatus.Resolved,
+			value: authenticated
+				? { tokens: { accessToken: "confluence" }, metadata: {} }
+				: null,
 		},
-		authEvents: createEventSubject(),
-		start: vi.fn(async () => undefined),
-		dispose: vi.fn(),
-		loginWithRedirect: vi.fn(async () => undefined),
-		loginWithPopup: vi.fn(async () => ({
-			snapshot: { tokens: { accessToken: "popup" }, metadata: {} },
-		})),
-	} as unknown as BaseOidcModeClient;
+	});
 }
 
-function createReadyRecord(
+function createRegistry(
 	client: BaseOidcModeClient,
-): TokenSetClientReadyRecordView<BaseOidcModeClient> {
-	const meta = {
-		clientKey: "confluence",
-		urlPatterns: [],
-		callbackUrl: "/auth/callback",
-		requirementKind: "frontend_oidc",
-		providerFamily: undefined,
-		initialization: TokenSetClientInitializationMode.Lazy,
-	};
-	return {
-		id: "confluence",
-		entry: { clientFactory: () => client, meta },
-		meta,
-		status: ResourceStatus.Resolved,
-		client,
-	};
-}
-
-function createRegistryMock(
-	record: TokenSetClientReadyRecordView<BaseOidcModeClient>,
-) {
-	return {
-		clientRecordGenForQuery: vi.fn(function* () {
-			yield createSignal(record);
-		}),
-		clientRecordFor: vi.fn(async () => record),
-	} as unknown as TokenSetClientRegistry<BaseOidcModeClient>;
+): TokenSetClientRegistry<BaseOidcModeClient> {
+	return createTokenSetClientRegistryForTest<BaseOidcModeClient>({
+		entries: [
+			createTokenSetClientRegistryEntryForTest({
+				clientKey: "confluence",
+				client,
+				callbackUrl: "/auth/callback",
+				requirementKind: "frontend_oidc",
+			}),
+		],
+	});
 }
 
 function createMockRouter(attemptedUrl: string) {
@@ -130,9 +88,7 @@ describe("Angular token-set route guard injection context", () => {
 	it("passes Angular injector access through the planner environment", async () => {
 		let actionCalls = 0;
 		let routeUrl: string | undefined;
-		const registry = createRegistryMock(
-			createReadyRecord(createMockClient(false)),
-		);
+		const registry = createRegistry(createMockClient(false));
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TOKEN_SET_CLIENT_REGISTRY, useValue: registry },
@@ -174,7 +130,7 @@ describe("Angular token-set route guard injection context", () => {
 	it("starts OIDC login redirects from the registry-backed guard", async () => {
 		const client = createMockClient(false);
 		const loginWithRedirect = vi.spyOn(client, "loginWithRedirect");
-		const registry = createRegistryMock(createReadyRecord(client));
+		const registry = createRegistry(client);
 		const injector = createEnvironmentInjector(
 			[
 				{ provide: TOKEN_SET_CLIENT_REGISTRY, useValue: registry },

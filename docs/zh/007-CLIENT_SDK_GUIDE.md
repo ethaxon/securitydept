@@ -23,6 +23,7 @@
 - `./backend-oidc-mode`
 - `./access-token-substrate`
 - `./registry`
+- `./test`
 
 `sdks/ts/public-surface-inventory.json` 与每个 package 的 `exports` 字段是可执行的 source of truth。不得 import source file、reference-app glue 或未记录的 internal path。
 
@@ -47,6 +48,7 @@ public-surface inventory 为每个已发布 package 和 subpath 指定稳定性�
 | `@securitydept/client/server` | request-scoped server 或 SSR integration。 | 构造 request-scoped environment 和 transport，不假定 browser global 存在。 |
 | `@securitydept/client/rx` | 内部 SDK 或 host-side RxJS composition。 | 提供 RxJS-backed SDK implementation 与 command/resource utility；public trait 自身提供 observable interop。 |
 | `@securitydept/client/test` | SDK test 和 example。 | experimental test-only helper，不是 adopter runtime dependency。 |
+| `@securitydept/token-set-context-client/test` | Token Set client、registry entry 和 registry fixture。 | dependency-light test-only helper，不依赖 test runner 或 framework。 |
 
 在 composition root 使用 `createEnvironmentForNativeWeb`、对应的 WebExtension creator 或 `createEnvironmentForServer`。这些 helper 都不会为 client 做隐式 host detection。
 

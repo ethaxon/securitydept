@@ -13,10 +13,7 @@ import {
 	useSecuritydeptContext,
 	useSignal,
 } from "@securitydept/client-react";
-import {
-	type FrontendOidcModeCallbackResult,
-	type FrontendOidcModeClient,
-} from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import { type FrontendOidcModeCallbackResult } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
 	OidcModeCallbackHandlingKind,
 	type OidcModeCallbackHandlingResult,
@@ -24,10 +21,12 @@ import {
 import {
 	selectTokenSetFrontendCallbackClientFromRegistry,
 	TOKEN_SET_CLIENT_REGISTRY,
+	type TokenSetCallbackClientGuard,
 	type TokenSetCallbackClientQuery,
 	TokenSetCallbackClientSelectionKind,
 	type TokenSetCallbackClientSelectionSnapshot,
 	type TokenSetClientRegistry,
+	type TokenSetFrontendCallbackClient,
 } from "@securitydept/token-set-context-client/registry";
 import { useEffect, useMemo } from "react";
 
@@ -38,11 +37,12 @@ export interface UseTokenSetFrontendCallbackOptions {
 	readonly registry?: TokenSetClientRegistry;
 	readonly environment?: FoundationEnvironment;
 	readonly clientQuery?: TokenSetCallbackClientQuery;
+	readonly clientGuard?: TokenSetCallbackClientGuard<TokenSetFrontendCallbackClient>;
 	readonly autoInitialize?: boolean;
 }
 
 export interface UseTokenSetFrontendCallbackResult {
-	readonly selection: TokenSetCallbackClientSelectionSnapshot<FrontendOidcModeClient>;
+	readonly selection: TokenSetCallbackClientSelectionSnapshot<TokenSetFrontendCallbackClient>;
 	readonly state: ResourceSnapshot<FrontendCallbackResult>;
 }
 
@@ -54,7 +54,7 @@ export function useTokenSetFrontendCallback(
 	const environment = options.environment ?? injector.get(ENVIRONMENT_TOKEN);
 	const selectionSignal = useInitialRef(() =>
 		createSignal<
-			TokenSetCallbackClientSelectionSnapshot<FrontendOidcModeClient>
+			TokenSetCallbackClientSelectionSnapshot<TokenSetFrontendCallbackClient>
 		>({
 			status: ResourceStatus.Idle,
 		}),
@@ -91,6 +91,7 @@ export function useTokenSetFrontendCallback(
 			registry,
 			callbackUrl: environment.router?.currentUrl()?.toString() ?? "",
 			clientQuery: options.clientQuery,
+			clientGuard: options.clientGuard,
 			initialize: options.autoInitialize !== false,
 		});
 		const subscription = source[SYMBOL_OBSERVABLE]().subscribe({
@@ -103,6 +104,7 @@ export function useTokenSetFrontendCallback(
 	}, [
 		environment,
 		options.autoInitialize,
+		options.clientGuard,
 		options.clientQuery,
 		registry,
 		selectionSignal,

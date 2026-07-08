@@ -3,34 +3,31 @@
 import { TestBed } from "@angular/core/testing";
 import {
 	createFoundationEnvironment,
-	createSignal,
 	ResourceStatus,
 	type RouterTrait,
-	resourceFromSnapshots,
-	SYMBOL_DISPOSE,
 	UriReferenceString,
 } from "@securitydept/client";
 import { ENVIRONMENT } from "@securitydept/client-angular";
-import {
-	BackendOidcModeClient,
-	BackendOidcModeCompatFragmentKind,
-} from "@securitydept/token-set-context-client/backend-oidc-mode";
-import {
-	type FrontendOidcModeCallbackResult,
-	FrontendOidcModeClient,
-} from "@securitydept/token-set-context-client/frontend-oidc-mode";
+import { BackendOidcModeCompatFragmentKind } from "@securitydept/token-set-context-client/backend-oidc-mode";
+import { type FrontendOidcModeCallbackResult } from "@securitydept/token-set-context-client/frontend-oidc-mode";
 import {
 	type BaseOidcModeClient,
 	OidcModeCallbackHandlingKind,
-	type OidcModeCallbackHandlingResult,
 	type TokenSetAuthSnapshot,
 } from "@securitydept/token-set-context-client/orchestration";
 import {
+	type TokenSetBackendCallbackClient,
+	type TokenSetCallbackClientGuard,
 	TokenSetCallbackClientSelectionKind,
-	TokenSetClientInitializationMode,
 	TokenSetClientRegistry,
 	type TokenSetClientRegistryEntry,
+	type TokenSetFrontendCallbackClient,
 } from "@securitydept/token-set-context-client/registry";
+import {
+	createTokenSetClientForTest,
+	createTokenSetClientRegistryEntryForTest,
+	TokenSetClientForTest,
+} from "@securitydept/token-set-context-client/test";
 import {
 	TOKEN_SET_CLIENT_REGISTRY,
 	TokenSetBackendCallbackComponent,
@@ -42,67 +39,53 @@ function createSnapshot(accessToken: string): TokenSetAuthSnapshot {
 	return { tokens: { accessToken }, metadata: {} };
 }
 
-function createFrontendClient(): FrontendOidcModeClient {
-	const snapshot = createSignal({
-		status: ResourceStatus.Resolved,
-		value: {
-			kind: OidcModeCallbackHandlingKind.Handled,
-			result: {
-				snapshot: createSnapshot("frontend-at"),
-				postAuthRedirectUri: "/home",
+function createFrontendClient(): TokenSetClientForTest<FrontendOidcModeCallbackResult> {
+	return createTokenSetClientForTest({
+		callbackSnapshot: {
+			status: ResourceStatus.Resolved,
+			value: {
+				kind: OidcModeCallbackHandlingKind.Handled,
+				result: {
+					snapshot: createSnapshot("frontend-at"),
+					postAuthRedirectUri: "/home",
+				},
 			},
 		},
-	} as const);
-	const resource = resourceFromSnapshots<
-		OidcModeCallbackHandlingResult<FrontendOidcModeCallbackResult>
-	>(() => snapshot.get());
-	const dispose = vi.fn(() => resource.dispose());
-	const client = {
-		callback: { state: snapshot, resource, cancel: vi.fn() },
-		dispose,
-		[SYMBOL_DISPOSE]: dispose,
-	} as unknown as FrontendOidcModeClient;
-	Object.setPrototypeOf(client, FrontendOidcModeClient.prototype);
-	return client;
+	});
 }
 
-function createBackendClient(): BackendOidcModeClient {
-	const snapshot = createSignal({
-		status: ResourceStatus.Resolved,
-		value: {
-			kind: OidcModeCallbackHandlingKind.Handled,
-			result: createSnapshot("backend-at"),
+function createBackendClient(): TokenSetClientForTest<TokenSetAuthSnapshot> {
+	return createTokenSetClientForTest({
+		callbackSnapshot: {
+			status: ResourceStatus.Resolved,
+			value: {
+				kind: OidcModeCallbackHandlingKind.Handled,
+				result: createSnapshot("backend-at"),
+			},
 		},
-	} as const);
-	const resource = resourceFromSnapshots<
-		OidcModeCallbackHandlingResult<TokenSetAuthSnapshot>
-	>(() => snapshot.get());
-	const dispose = vi.fn(() => resource.dispose());
-	const client = {
-		callback: { state: snapshot, resource, cancel: vi.fn() },
-		dispose,
-		[SYMBOL_DISPOSE]: dispose,
-	} as unknown as BackendOidcModeClient;
-	Object.setPrototypeOf(client, BackendOidcModeClient.prototype);
-	return client;
+	});
 }
+
+const frontendClientGuard: TokenSetCallbackClientGuard<
+	TokenSetFrontendCallbackClient
+> = (client): client is TokenSetFrontendCallbackClient =>
+	client instanceof TokenSetClientForTest;
+
+const backendClientGuard: TokenSetCallbackClientGuard<
+	TokenSetBackendCallbackClient
+> = (client): client is TokenSetBackendCallbackClient =>
+	client instanceof TokenSetClientForTest;
 
 function createEntry(
 	clientKey: string,
 	clientFactory: () => BaseOidcModeClient,
 	callbackUrl?: string,
 ): TokenSetClientRegistryEntry<BaseOidcModeClient> {
-	return {
+	return createTokenSetClientRegistryEntryForTest({
+		clientKey,
 		clientFactory,
-		meta: {
-			clientKey,
-			urlPatterns: [],
-			callbackUrl,
-			requirementKind: undefined,
-			providerFamily: undefined,
-			initialization: TokenSetClientInitializationMode.Lazy,
-		},
-	};
+		callbackUrl,
+	});
 }
 
 function createRouter(url: string): RouterTrait {
@@ -151,6 +134,7 @@ describe("token-set Angular callback components", () => {
 		});
 
 		const fixture = TestBed.createComponent(TokenSetFrontendCallbackComponent);
+		fixture.componentRef.setInput("clientGuard", frontendClientGuard);
 		expect(fixture.componentInstance.selection().status).toBe(
 			ResourceStatus.Idle,
 		);
@@ -180,6 +164,7 @@ describe("token-set Angular callback components", () => {
 		});
 
 		const fixture = TestBed.createComponent(TokenSetFrontendCallbackComponent);
+		fixture.componentRef.setInput("clientGuard", frontendClientGuard);
 		fixture.detectChanges();
 		await fixture.whenStable();
 
@@ -203,6 +188,7 @@ describe("token-set Angular callback components", () => {
 
 		const fixture = TestBed.createComponent(TokenSetFrontendCallbackComponent);
 		fixture.componentRef.setInput("clientQuery", clientQuery);
+		fixture.componentRef.setInput("clientGuard", frontendClientGuard);
 		fixture.detectChanges();
 		await fixture.whenStable();
 
@@ -225,6 +211,7 @@ describe("token-set Angular callback components", () => {
 		});
 
 		const fixture = TestBed.createComponent(TokenSetBackendCallbackComponent);
+		fixture.componentRef.setInput("clientGuard", backendClientGuard);
 		fixture.detectChanges();
 		await fixture.whenStable();
 

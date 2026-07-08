@@ -59,6 +59,13 @@ describe("package artifact contracts", () => {
 			ts.sys,
 		).resolvedModule;
 		expect(resolvedRegistry?.resolvedFileName).toContain("/dist/registry/");
+		const resolvedTest = ts.resolveModuleName(
+			"@securitydept/token-set-context-client/test",
+			fixture,
+			compilerOptions,
+			ts.sys,
+		).resolvedModule;
+		expect(resolvedTest?.resolvedFileName).toContain("/dist/test/");
 
 		const program = ts.createProgram([fixture], compilerOptions);
 		const diagnostics = ts.getPreEmitDiagnostics(program);

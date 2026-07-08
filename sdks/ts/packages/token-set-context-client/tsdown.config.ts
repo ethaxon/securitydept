@@ -15,6 +15,8 @@ export default defineConfig({
 		"access-token-substrate/index": "./src/access-token-substrate/index.ts",
 		// Shared multi-client registry (framework-neutral).
 		"registry/index": "./src/registry/index.ts",
+		// Dependency-light client and registry fixtures.
+		"test/index": "./src/test/index.ts",
 	},
 	hooks: {
 		"build:prepare": () =>

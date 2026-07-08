@@ -23,6 +23,7 @@ Use only declared package exports. The published `@securitydept/client` subpaths
 - `./backend-oidc-mode`
 - `./access-token-substrate`
 - `./registry`
+- `./test`
 
 `sdks/ts/public-surface-inventory.json` and each package's `exports` field are the enforceable source of truth. Do not import source files, reference-app glue, or undocumented internal paths.
 
@@ -47,6 +48,7 @@ The current broad split is: `@securitydept/client` and core context-client roots
 | `@securitydept/client/server` | Request-scoped server or SSR integration. | Builds a request-scoped environment and transport; it never assumes browser globals. |
 | `@securitydept/client/rx` | Internal SDK or host-side RxJS composition. | Provides RxJS-backed SDK implementations and command/resource utilities; the public traits themselves provide observable interop. |
 | `@securitydept/client/test` | SDK tests and examples. | Experimental test-only helpers, not an adopter runtime dependency. |
+| `@securitydept/token-set-context-client/test` | Token Set client, registry entry, and registry fixtures. | Dependency-light test-only helpers; no test-runner or framework dependency. |
 
 Use `createEnvironmentForNativeWeb`, the relevant WebExtension creator, or `createEnvironmentForServer` at a composition root. None of these helpers performs implicit host detection for a client.
 

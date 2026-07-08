@@ -1,6 +1,6 @@
 {
 	"name": "@securitydept/token-set-context-client",
-	"version": "0.3.0-beta.8",
+	"version": "0.3.0-beta.9",
 	"description": "Token Set Context Client of the SecurityDept TypeScript SDK, a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps.",
 	"author": "Zhou Yeheng <root@aitiotekt.com>",
 	"license": "MIT",
@@ -52,6 +52,11 @@
 			"monorepo-tsc": "./src/registry/index.ts",
 			"types": "./dist/registry/index.d.mts",
 			"import": "./dist/registry/index.mjs"
+		},
+		"./test": {
+			"monorepo-tsc": "./src/test/index.ts",
+			"types": "./dist/test/index.d.mts",
+			"import": "./dist/test/index.mjs"
 		}
 	},
 	"files": [

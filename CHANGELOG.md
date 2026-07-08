@@ -7,11 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 <!-- markdownlint-disable MD024 -->
 
-## [Unreleased]
+## [0.3.0-beta.9]
 
 ### Added
 
 - Added registry-owned `authEvents` and `errors` streams that multiplex every ready Token Set client's auth events and combine client operation errors with factory/materialization failures, removing the need for downstream hosts to flatten per-client resources.
+- Added the dependency-light `@securitydept/token-set-context-client/test` subpath with canonical Base OIDC client, registry entry, and registry factories for framework and downstream tests.
+
+### Changed
+
+- Changed Token Set callback selectors to expose minimal frontend/backend callback client capabilities and accept an optional type guard, while preserving concrete mode `instanceof` checks by default.
+- Bumped release-managed Rust crates, TypeScript packages, apps, lockfiles, and shared metadata to `0.3.0-beta.9`.
 
 ## [0.3.0-beta.8]
 
