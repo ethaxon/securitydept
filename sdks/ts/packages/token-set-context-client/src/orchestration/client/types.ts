@@ -1,6 +1,7 @@
 import {
 	type CancellationTokenOptions,
 	type CancellationTokenTrait,
+	type ClientError,
 	type FoundationEnvironment,
 	type ReadableSignalTrait,
 	type ResourceSnapshot,
@@ -111,9 +112,60 @@ export interface BaseOidcModeClientDefaultOptions {
 	tokenFreshness: TokenSetTokenFreshnessOptions;
 }
 
+export const TokenSetRefreshErrorPolicy = {
+	RevokeAsUnauthenticated: "revokeAsUnauthenticated",
+	RevokeAsUnauthenticatedOnInit: "revokeAsUnauthenticatedOnInit",
+	Throw: "throw",
+} as const;
+
+export const TokenSetRefreshErrorAction = {
+	Unauthenticated: "unauthenticated",
+	Throw: "throw",
+} as const;
+
+export type TokenSetRefreshErrorAction =
+	(typeof TokenSetRefreshErrorAction)[keyof typeof TokenSetRefreshErrorAction];
+
+export const TokenSetRefreshOperation = {
+	RestorePersistedState: "restorePersistedState",
+	Refresh: "refresh",
+} as const;
+
+export type TokenSetRefreshOperation =
+	(typeof TokenSetRefreshOperation)[keyof typeof TokenSetRefreshOperation];
+
+export const TokenSetRefreshTrigger = {
+	Initialization: "initialization",
+	Manual: "manual",
+	RefreshTimer: "refreshTimer",
+	PageResume: "pageResume",
+} as const;
+
+export type TokenSetRefreshTrigger =
+	(typeof TokenSetRefreshTrigger)[keyof typeof TokenSetRefreshTrigger];
+
+export interface TokenSetRefreshErrorContext {
+	readonly error: ClientError;
+	readonly operation: TokenSetRefreshOperation;
+	readonly trigger: TokenSetRefreshTrigger;
+	readonly clientId: string;
+	readonly cancellationToken: CancellationTokenTrait;
+}
+
+/** Recovery decisions cannot turn unclassified failures into unauthenticated state. */
+export type TokenSetRefreshErrorHandler = (
+	context: TokenSetRefreshErrorContext,
+) => TokenSetRefreshErrorAction | Promise<TokenSetRefreshErrorAction>;
+
+export type TokenSetRefreshErrorPolicy =
+	| (typeof TokenSetRefreshErrorPolicy)[keyof typeof TokenSetRefreshErrorPolicy]
+	| TokenSetRefreshErrorHandler;
+
 export interface BaseOidcModeClientOptions {
 	environment: FoundationEnvironment;
 	refresh?: Partial<TokenSetAuthWorkflowRuntimeOptions>;
+	/** Defaults to recovering confirmed revocation in every refresh workflow. */
+	refreshErrorPolicy?: TokenSetRefreshErrorPolicy;
 	tracing: BaseOidcModeClientTracingOptions;
 	id?: string;
 	persistence?: {

@@ -52,7 +52,15 @@ import {
 	RxEventSubject,
 	RxStateSignal,
 } from "@securitydept/client/rx";
-import { filter, from, merge, take, takeUntil } from "rxjs";
+import {
+	filter,
+	firstValueFrom,
+	from,
+	map,
+	merge,
+	take,
+	takeUntil,
+} from "rxjs";
 import { v7 as uuidv7 } from "uuid";
 import {
 	createTokenSetAuthEvent,
@@ -69,6 +77,7 @@ import { tokenSetBearerHeader } from "../token/ops";
 import { type TokenSetAuthSnapshot } from "../token/types";
 import {
 	clientErrorFromTokenSetAuthorizationError,
+	TokenSetAuthorizationErrorCode,
 	TokenSetAuthorizationRevocationError,
 } from "./error";
 import {
@@ -88,6 +97,10 @@ import {
 	type TokenSetOidcPopupLoginOptions,
 	type TokenSetOidcPopupLoginResult,
 	type TokenSetOidcRedirectLoginOptions,
+	TokenSetRefreshErrorAction,
+	TokenSetRefreshErrorPolicy,
+	TokenSetRefreshOperation,
+	TokenSetRefreshTrigger,
 } from "./types";
 import {
 	PersistPolicy,
@@ -178,6 +191,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					freshnessOptions: this._freshnessOptions,
 				},
 				cancellationToken,
+				TokenSetRefreshTrigger.Initialization,
 			);
 		}
 		return await this._clearState(
@@ -190,7 +204,9 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	});
 	private _authEventSequence = 0;
 	private readonly _authEventSubject = new RxEventSubject<TokenSetAuthEvent>();
-	private readonly refreshWorkflowSubject = new RxEventSubject<void>();
+	private readonly refreshWorkflowSubject =
+		new RxEventSubject<TokenSetRefreshTrigger>();
+	private readonly refreshErrorPolicy: TokenSetRefreshErrorPolicy;
 	private readonly planRefreshRequest = new RxEventSubject<
 		Command<TokenSetPlanRefreshRequest>
 	>();
@@ -236,6 +252,9 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 
 	protected constructor(options: BaseOidcModeClientOptions) {
 		this._environment = options.environment;
+		this.refreshErrorPolicy =
+			options.refreshErrorPolicy ??
+			TokenSetRefreshErrorPolicy.RevokeAsUnauthenticated;
 		this._tracingOptions = options.tracing;
 		this.id = options.id ?? uuidv7();
 		this._span = options.environment.span.fork({
@@ -303,17 +322,21 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				options.refresh?.sources?.[TokenSetPageResumeWorkflowSource.name],
 			);
 		merge(
-			from(this.pageResumeWorkflowSource.eventStream),
-			from(this.refreshTimerWorkflowSource.eventStream),
+			from(this.pageResumeWorkflowSource.eventStream).pipe(
+				map(() => TokenSetRefreshTrigger.PageResume),
+			),
+			from(this.refreshTimerWorkflowSource.eventStream).pipe(
+				map(() => TokenSetRefreshTrigger.RefreshTimer),
+			),
 		)
 			.pipe(takeUntil(this.destroyed$))
-			.subscribe(() => {
-				this.refreshWorkflowSubject.next();
+			.subscribe((trigger) => {
+				this.refreshWorkflowSubject.next(trigger);
 			});
 
 		from(this.refreshWorkflowSubject)
 			.pipe(takeUntil(this.destroyed$))
-			.subscribe(() => {
+			.subscribe((trigger) => {
 				const cancellationToken = this._rootCancellation.token;
 				const snapshot = this._readAuthSnapshotValue();
 				if (snapshot) {
@@ -321,6 +344,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 						{
 							snapshot,
 							freshnessOptions: this._freshnessOptions,
+							trigger,
 						},
 						cancellationToken,
 					).catch(() => {
@@ -393,6 +417,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				freshnessOptions: this._freshnessOptions,
 			},
 			cancellationToken,
+			TokenSetRefreshTrigger.Manual,
 		);
 	}
 
@@ -445,6 +470,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 			{
 				snapshot: determinatedSnapshot,
 				freshnessOptions: this._freshnessOptions,
+				trigger: TokenSetRefreshTrigger.Manual,
 			},
 			cancellationToken,
 		);
@@ -553,6 +579,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 		request: {
 			snapshot: TokenSetAuthSnapshot | null;
 			freshnessOptions: TokenSetTokenFreshnessOptions;
+			trigger: TokenSetRefreshTrigger;
 		},
 		cancellationToken: CancellationTokenTrait,
 	): Promise<TokenSetAuthSnapshot | null> {
@@ -590,48 +617,17 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					cancellationToken,
 					operationSpan,
 				);
-				cancellationToken.throwIfCancellationRequested();
 				if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
-					const error = clientErrorFromTokenSetAuthorizationError(
-						refreshPlan.error,
-						{ span: operationSpan.span },
-					);
-					const revoked = error instanceof TokenSetAuthorizationRevocationError;
-					return {
-						commit: {
-							candidate: { ...refreshPlan, error },
-							failureValue: revoked ? null : currentSnapshot,
-							persistPolicy: revoked
-								? PersistPolicy.FollowClient
-								: PersistPolicy.Skip,
-							events: [
-								...this._buildRefreshLifecycleEvents(
-									currentSnapshot,
-									refreshPlan,
-									operationSpan.span,
-								),
-								...(revoked
-									? [
-											{
-												type: TokenSetAuthEventType.AuthUnauthenticated,
-												payload: {},
-											} as const,
-										]
-									: []),
-							],
-							trace: {
-								type: this._traceType(
-									TokenSetOrchestrationTraceEvent.RefreshFailed,
-								),
-							},
-							traceError: error,
-						},
-						outcome: {
-							kind: TokenSetAuthDeterminationOutcomeKind.Throw,
-							error,
-						},
-					};
+					return await this._handleRefreshFailure({
+						refreshPlan,
+						snapshot: currentSnapshot,
+						operation: TokenSetRefreshOperation.Refresh,
+						trigger: request.trigger,
+						cancellationToken,
+						operationSpan,
+					});
 				}
+				cancellationToken.throwIfCancellationRequested();
 				return {
 					commit: {
 						candidate: refreshPlan,
@@ -665,6 +661,132 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 				};
 			},
 		});
+	}
+
+	private async _handleRefreshFailure(options: {
+		refreshPlan: Extract<
+			TokenSetPlanRefreshResponse,
+			{ kind: typeof TokenSetAuthDeterminationKind.Failed }
+		>;
+		snapshot: TokenSetAuthSnapshot;
+		operation: TokenSetRefreshOperation;
+		trigger: TokenSetRefreshTrigger;
+		cancellationToken: CancellationTokenTrait;
+		operationSpan: OperationSpan;
+	}): Promise<TokenSetAuthDeterminationTerminal<null>> {
+		const { snapshot, operation, trigger, cancellationToken, operationSpan } =
+			options;
+		const error = clientErrorFromTokenSetAuthorizationError(
+			options.refreshPlan.error,
+			{
+				span: operationSpan.span,
+			},
+		);
+		const revoked = error instanceof TokenSetAuthorizationRevocationError;
+		let failure = error;
+		let recover = false;
+		try {
+			cancellationToken.throwIfCancellationRequested();
+			const policy = this.refreshErrorPolicy;
+			const action =
+				typeof policy === "function"
+					? await firstValueFrom(
+							merge(
+								from(
+									Promise.resolve(
+										policy({
+											error,
+											operation,
+											trigger,
+											clientId: this.id,
+											cancellationToken,
+										}),
+									),
+								),
+								from(cancellationToken).pipe(
+									map(({ cancellationError }) => {
+										throw cancellationError;
+									}),
+								),
+							),
+						)
+					: policy === TokenSetRefreshErrorPolicy.RevokeAsUnauthenticated ||
+							(policy ===
+								TokenSetRefreshErrorPolicy.RevokeAsUnauthenticatedOnInit &&
+								trigger === TokenSetRefreshTrigger.Initialization)
+						? TokenSetRefreshErrorAction.Unauthenticated
+						: TokenSetRefreshErrorAction.Throw;
+			cancellationToken.throwIfCancellationRequested();
+			if (
+				action !== TokenSetRefreshErrorAction.Unauthenticated &&
+				action !== TokenSetRefreshErrorAction.Throw
+			) {
+				throw new ClientError({
+					kind: ClientErrorKind.Configuration,
+					code: TokenSetAuthorizationErrorCode.InvalidRefreshErrorAction,
+					message: "The refresh error handler returned an unsupported action.",
+					cause: error,
+				});
+			}
+			recover =
+				revoked && action === TokenSetRefreshErrorAction.Unauthenticated;
+		} catch (handlerError) {
+			failure = clientErrorFromTokenSetAuthorizationError(handlerError, {
+				span: operationSpan.span,
+			});
+		}
+		// Even a failed or cancelled handler must not retain material proven revoked.
+		// Keep the original protocol failure in lifecycle diagnostics separately.
+		return {
+			commit: {
+				candidate: recover
+					? { kind: TokenSetAuthDeterminationKind.Unauthenticated }
+					: { kind: TokenSetAuthDeterminationKind.Failed, error: failure },
+				failureValue: revoked ? null : snapshot,
+				persistPolicy: revoked
+					? PersistPolicy.FollowClient
+					: PersistPolicy.Skip,
+				events: [
+					...this._buildRefreshLifecycleEvents(
+						snapshot,
+						{
+							...options.refreshPlan,
+							kind: TokenSetAuthDeterminationKind.Failed,
+							error,
+						},
+						operationSpan.span,
+					),
+					...(operation === TokenSetRefreshOperation.RestorePersistedState
+						? [
+								{
+									type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
+									payload: { persisted: true, error },
+								} as const,
+							]
+						: []),
+					...(revoked
+						? [
+								{
+									type: TokenSetAuthEventType.AuthUnauthenticated,
+									payload: {},
+								} as const,
+							]
+						: []),
+				],
+				trace: {
+					type: this._traceType(
+						operation === TokenSetRefreshOperation.RestorePersistedState
+							? TokenSetOrchestrationTraceEvent.PersistedRestoreFailed
+							: TokenSetOrchestrationTraceEvent.RefreshFailed,
+					),
+					attributes: { operation, trigger, recovered: recover },
+				},
+				traceError: error,
+			},
+			outcome: recover
+				? { kind: TokenSetAuthDeterminationOutcomeKind.Return, value: null }
+				: { kind: TokenSetAuthDeterminationOutcomeKind.Throw, error: failure },
+		};
 	}
 
 	protected async _clearState(
@@ -750,6 +872,7 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 	protected async _restorePersistedState(
 		request: TokenSetPlanRestorePersistedRequest,
 		cancellationToken: CancellationTokenTrait,
+		trigger: TokenSetRefreshTrigger,
 	): Promise<TokenSetAuthSnapshot | null> {
 		return await this._runDeterminationWorkflow({
 			name: `${this._tracingOptions.prefix}.restore.persisted`,
@@ -836,55 +959,17 @@ export abstract class BaseOidcModeClient implements DisposableTrait {
 					cancellationToken,
 					operationSpan,
 				);
-				cancellationToken.throwIfCancellationRequested();
 				if (refreshPlan.kind === TokenSetAuthDeterminationKind.Failed) {
-					const error = clientErrorFromTokenSetAuthorizationError(
-						refreshPlan.error,
-						{ span: operationSpan.span },
-					);
-					const revoked = error instanceof TokenSetAuthorizationRevocationError;
-					return {
-						commit: {
-							candidate: { ...refreshPlan, error },
-							failureValue: revoked ? null : restorePlan.snapshot,
-							persistPolicy: revoked
-								? PersistPolicy.FollowClient
-								: PersistPolicy.Skip,
-							events: [
-								...this._buildRefreshLifecycleEvents(
-									restorePlan.snapshot,
-									refreshPlan,
-									operationSpan.span,
-								),
-								{
-									type: TokenSetAuthEventType.AuthMaterialRestoreFailed,
-									payload: {
-										persisted: true,
-										error,
-									},
-								},
-								...(revoked
-									? [
-											{
-												type: TokenSetAuthEventType.AuthUnauthenticated,
-												payload: {},
-											} as const,
-										]
-									: []),
-							],
-							trace: {
-								type: this._traceType(
-									TokenSetOrchestrationTraceEvent.PersistedRestoreFailed,
-								),
-							},
-							traceError: error,
-						},
-						outcome: {
-							kind: TokenSetAuthDeterminationOutcomeKind.Throw,
-							error: refreshPlan.error,
-						},
-					};
+					return await this._handleRefreshFailure({
+						refreshPlan,
+						snapshot: restorePlan.snapshot,
+						operation: TokenSetRefreshOperation.RestorePersistedState,
+						trigger: trigger,
+						cancellationToken,
+						operationSpan,
+					});
 				}
+				cancellationToken.throwIfCancellationRequested();
 				if (refreshPlan.kind === TokenSetAuthDeterminationKind.Authenticated) {
 					return {
 						commit: {

@@ -2,6 +2,10 @@
 
 SecurityDept 尚未到 1.0。只要能移除错误 ownership model、使 capability 显式化或消除 public ambiguity，就会有意引入 breaking change。本文只列出对当前 adopter 仍有迁移价值的事项；已发布历史属于 [CHANGELOG](../../CHANGELOG.md)。
 
+## 被撤销的 Token-Set 会话
+
+刷新操作默认将确认撤销恢复为未认证。依赖刷新 Promise 拒绝的应用应设置 `refreshErrorPolicy: "throw"`；需要保留运行时抛错但允许启动恢复时，设置 `"revokeAsUnauthenticatedOnInit"`。正确处理原有的可空刷新返回值，不应将 `null` 视为已认证。参阅[刷新错误恢复](007-CLIENT_SDK_GUIDE.md#刷新错误恢复)。
+
 ## 迁移规则
 
 每个 SDK breaking change 都必须：

@@ -155,4 +155,14 @@ A public change must update package exports, the inventory, focused documentatio
 
 ---
 
+## Refresh Error Recovery
+
+Both OIDC mode configs accept `refreshErrorPolicy`, implemented by `BaseOidcModeClient`. The default is `"revokeAsUnauthenticated"`: confirmed refresh-token revocation resolves to `null`, clears persisted credentials, and publishes resolved unauthenticated state. Registry factories remain ready, allowing a protected-route guard to start interactive login and preserve the attempted URL. The client itself does not navigate on revocation.
+
+Use `"revokeAsUnauthenticatedOnInit"` to recover only refreshes performed while `start()` restores a persisted session, or `"throw"` to retain rejecting operations. Explicit `restorePersistedState()` is a manual operation. All policies clear credentials already proven revoked.
+
+A synchronous or asynchronous handler receives `{ error, operation, trigger, clientId, cancellationToken }` and returns `"unauthenticated"` or `"throw"`. Operations are `"restorePersistedState"` and `"refresh"`; triggers are `"initialization"`, `"manual"`, `"refreshTimer"`, and `"pageResume"`. These contracts and their named constants are exported from `@securitydept/token-set-context-client/orchestration`.
+
+Only protocol-classified `TokenSetAuthorizationRevocationError` (`invalid_grant` or a qualifying Bearer `invalid_token` challenge) permits unauthenticated recovery, including when a handler requests it. Plain 401, network, configuration, protocol, storage, and cancellation failures are not reclassified; callback/code-exchange failures are outside this policy. Handler failures and cancellation reject while still removing already revoked material. Existing lifecycle failure events and tracing retain the original protocol error; auth events are not replayed to late subscribers.
+
 [English](007-CLIENT_SDK_GUIDE.md) | [中文](../zh/007-CLIENT_SDK_GUIDE.md)

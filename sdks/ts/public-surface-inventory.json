@@ -277,9 +277,11 @@
 					"stability": "provisional",
 					"owner": "token-set-context",
 					"changeDiscipline": "provisional-migration-required",
-					"note": "Token-set-specific orchestration layer: BaseOidcModeClient lifecycle/state authority, closed restore/refresh/clear planners, non-replaying typed auth events, workflow sources, persistence, token operations, and types. Failed auth event variants carry context-captured ClientError values and remain filterable through the shared isClientErrorEvent() guard. Base OIDC clients derive authorized transport from their environment transport and authorization-header Resource. Page-resume and refresh-timer workflow sources feed the serialized lifecycle host without owning state. The requirement planner host and planner variants are hosted by @securitydept/client. TokenSetAuthPrincipal aligns to the shared IdentityPrincipal baseline while keeping resource-token facts and substrate ownership outside this human-principal contract.",
+					"note": "Token-set-specific orchestration layer: configurable refreshErrorPolicy (all-revocation recovery by default, initialization-only recovery, strict throw, or context-aware handlers), BaseOidcModeClient lifecycle/state authority, closed restore/refresh/clear planners, non-replaying typed auth events, workflow sources, persistence, token operations, and types. Failed auth event variants carry context-captured ClientError values and remain filterable through the shared isClientErrorEvent() guard. Base OIDC clients derive authorized transport from their environment transport and authorization-header Resource. Page-resume and refresh-timer workflow sources feed the serialized lifecycle host without owning state. The requirement planner host and planner variants are hosted by @securitydept/client. TokenSetAuthPrincipal aligns to the shared IdentityPrincipal baseline while keeping resource-token facts and substrate ownership outside this human-principal contract.",
 					"evidence": [
 						"packages/token-set-context-client/src/orchestration/client/__tests__/base-oidc-mode-client-auth-signals.test.ts",
+						"packages/token-set-context-client/src/orchestration/client/__tests__/refresh-error-policy.test.ts",
+						"packages/token-set-context-client/src/registry/__tests__/revoked-session.test.ts",
 						"packages/token-set-context-client/src/orchestration/__tests__/workflow-sources.test.ts",
 						"packages/token-set-context-client/src/orchestration/__tests__/token-ops.test.ts"
 					],

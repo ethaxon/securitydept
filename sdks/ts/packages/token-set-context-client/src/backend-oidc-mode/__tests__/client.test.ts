@@ -662,13 +662,10 @@ describe("BackendOidcModeClient", () => {
 			metadata: {},
 		});
 
-		await expect(client.refreshState()).rejects.toMatchObject({
-			name: "TokenSetAuthorizationRevocationError",
-			reason: "invalid_grant",
-		});
+		await expect(client.refreshState()).resolves.toBeNull();
 		expect(expectSnapshotValue(client.authSnapshot)).toBeNull();
 		expect(client.authorizationHeaderValue.snapshot.get()).toMatchObject({
-			status: "error",
+			status: "resolved",
 			value: undefined,
 		});
 	});
@@ -758,13 +755,10 @@ describe("BackendOidcModeClient", () => {
 			environment: runtime,
 		});
 
-		await expect(client.restorePersistedState()).rejects.toMatchObject({
-			name: "TokenSetAuthorizationRevocationError",
-			reason: "invalid_grant",
-		});
+		await expect(client.restorePersistedState()).resolves.toBeNull();
 		expect(revokedRefresh).toHaveBeenCalled();
 		expect(client.authSnapshot.get()).toMatchObject({
-			status: "error",
+			status: "resolved",
 			value: null,
 		});
 		expect(await persistentStorage.get(DEFAULT_PERSISTENCE_KEY)).toBeNull();

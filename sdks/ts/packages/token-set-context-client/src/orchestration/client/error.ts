@@ -15,6 +15,8 @@ export type TokenSetAuthorizationRevocationReason =
 
 export const TokenSetAuthorizationErrorCode = {
 	OperationFailed: "token_set.authorization.operation_failed",
+	InvalidRefreshErrorAction:
+		"token_set.authorization.invalid_refresh_error_action",
 	InvalidGrant: "token_set.authorization.invalid_grant",
 	InvalidToken: "token_set.authorization.invalid_token",
 } as const;

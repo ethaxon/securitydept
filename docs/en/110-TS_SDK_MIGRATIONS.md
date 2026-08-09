@@ -2,6 +2,10 @@
 
 SecurityDept is pre-1.0. Breaking changes are intentional when they remove an incorrect ownership model, make a capability explicit, or reduce a public ambiguity. This document lists migrations that remain relevant to current adopters; released history belongs in [CHANGELOG](../../CHANGELOG.md).
 
+## Revoked Token-Set Sessions
+
+Refresh operations now recover confirmed revocation by default. Applications that rely on rejected refresh promises should set `refreshErrorPolicy: "throw"`. Use `"revokeAsUnauthenticatedOnInit"` to keep runtime rejection while allowing startup recovery. Handle the existing nullable refresh result; do not treat a `null` result as authenticated. See [Refresh Error Recovery](007-CLIENT_SDK_GUIDE.md#refresh-error-recovery).
+
 ## Migration Rules
 
 For each SDK breaking change:

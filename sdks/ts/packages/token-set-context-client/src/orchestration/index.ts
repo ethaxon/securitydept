@@ -44,6 +44,12 @@ export {
 	type TokenSetOidcPopupLoginOptions,
 	type TokenSetOidcPopupLoginResult,
 	type TokenSetOidcRedirectLoginOptions,
+	TokenSetRefreshErrorAction,
+	type TokenSetRefreshErrorContext,
+	type TokenSetRefreshErrorHandler,
+	TokenSetRefreshErrorPolicy,
+	TokenSetRefreshOperation,
+	TokenSetRefreshTrigger,
 	TokenSetStateRestoreSourceKind,
 } from "./client/types";
 export {

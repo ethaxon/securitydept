@@ -171,6 +171,7 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 			id: config.id,
 			autoStart: config.autoStart,
 			refresh: config.refresh,
+			refreshErrorPolicy: config.refreshErrorPolicy,
 			persistence: environment.persistentStorage
 				? {
 						store: environment.persistentStorage,
@@ -575,8 +576,10 @@ export class BackendOidcModeClient extends BaseOidcModeClient {
 		if (
 			response.status === 401 &&
 			challenge !== undefined &&
-			/^Bearer\s+/i.test(challenge) &&
-			/(?:^|,)\s*error\s*=\s*"?invalid_token"?(?:\s*,|\s*$)/i.test(challenge)
+			// Match auth parameters from the scheme boundary, never inside quoted values.
+			/^Bearer\s+(?:[!#$%&'*+\-.^_`|~0-9A-Za-z]+\s*=\s*(?:"(?:[^"\\]|\\.)*"|[!#$%&'*+\-.^_`|~0-9A-Za-z]+)\s*,\s*)*error\s*=\s*(?:"invalid_token"|invalid_token)(?:\s*,|\s*$)/i.test(
+				challenge,
+			)
 		) {
 			throw new TokenSetAuthorizationRevocationError({
 				reason: TokenSetAuthorizationRevocationReason.InvalidToken,

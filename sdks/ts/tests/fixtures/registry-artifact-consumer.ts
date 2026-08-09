@@ -1,5 +1,12 @@
 import { type EventStreamTrait } from "@securitydept/client";
-import { type BaseOidcModeClient } from "@securitydept/token-set-context-client/orchestration";
+import {
+	type BaseOidcModeClient,
+	TokenSetRefreshErrorAction,
+	type TokenSetRefreshErrorHandler,
+	TokenSetRefreshErrorPolicy,
+	TokenSetRefreshOperation,
+	TokenSetRefreshTrigger,
+} from "@securitydept/token-set-context-client/orchestration";
 import {
 	type TokenSetClientRegistry,
 	type TokenSetClientRegistryEvent,
@@ -58,3 +65,26 @@ export {
 	type TestRegistryMustNotBeAny,
 	testRegistry,
 };
+
+export const refreshErrorHandler: TokenSetRefreshErrorHandler = async ({
+	error,
+	operation,
+	trigger,
+	clientId,
+	cancellationToken,
+}) => {
+	cancellationToken.throwIfCancellationRequested();
+	const identity: string = clientId;
+	return identity &&
+		error &&
+		operation === TokenSetRefreshOperation.RestorePersistedState &&
+		trigger === TokenSetRefreshTrigger.Initialization
+		? TokenSetRefreshErrorAction.Unauthenticated
+		: TokenSetRefreshErrorAction.Throw;
+};
+export const refreshErrorPolicies: TokenSetRefreshErrorPolicy[] = [
+	TokenSetRefreshErrorPolicy.RevokeAsUnauthenticated,
+	TokenSetRefreshErrorPolicy.RevokeAsUnauthenticatedOnInit,
+	TokenSetRefreshErrorPolicy.Throw,
+	refreshErrorHandler,
+];

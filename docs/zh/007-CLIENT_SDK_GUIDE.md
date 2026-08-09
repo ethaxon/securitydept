@@ -155,4 +155,14 @@ TanStack React Router adapter 将 push/replace request 映射为 `router.navigat
 
 ---
 
+## 刷新错误恢复
+
+两个 OIDC 模式的配置均支持 `refreshErrorPolicy`，由 `BaseOidcModeClient` 统一实现。默认值为 `"revokeAsUnauthenticated"`：刷新令牌被确认撤销后返回 `null`、清除持久化凭据，并发布 resolved 的未认证状态。Registry 工厂仍可正常就绪，受保护路由守卫可以开始交互登录并保留目标 URL；客户端自身不会因撤销而直接导航。
+
+使用 `"revokeAsUnauthenticatedOnInit"` 可仅恢复 `start()` 还原持久化会话期间的刷新错误；使用 `"throw"` 保留操作抛错语义。显式调用 `restorePersistedState()` 属于手动操作。无论选择哪种策略，已确认撤销的凭据都会清除。
+
+同步或异步处理函数接收 `{ error, operation, trigger, clientId, cancellationToken }`，返回 `"unauthenticated"` 或 `"throw"`。operation 为 `"restorePersistedState"`、`"refresh"`；trigger 为 `"initialization"`、`"manual"`、`"refreshTimer"`、`"pageResume"`。这些契约及命名常量从 `@securitydept/token-set-context-client/orchestration` 导出。
+
+只有协议层识别的 `TokenSetAuthorizationRevocationError`（`invalid_grant` 或符合条件的 Bearer `invalid_token` challenge）允许恢复为未认证，处理函数也受此约束。普通 401、网络、配置、协议、存储及取消错误不会被重分类；回调和授权码交换错误不适用此策略。处理函数失败或被取消时仍抛错，但会清除已确认撤销的材料。现有生命周期失败事件和 tracing 保留原协议错误；鉴权事件不会向晚订阅者重放。
+
 [English](../en/007-CLIENT_SDK_GUIDE.md) | [中文](007-CLIENT_SDK_GUIDE.md)

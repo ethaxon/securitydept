@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 <!-- markdownlint-disable MD024 -->
 
+## [0.3.0-beta.11]
+
+### Added
+
+- Added `refreshErrorPolicy` to both OIDC modes, with initialization-only recovery, strict failure, and synchronous/asynchronous handlers receiving operation, trigger, client identity, and cancellation context.
+
+### Changed
+
+- Confirmed refresh-token revocation now resolves to unauthenticated state by default during startup and runtime refresh; configure `refreshErrorPolicy: "throw"` to retain rejecting operations. Unclassified failures and login callback errors remain failures.
+- Bumped release-managed packages, crates, shared metadata, and lockfiles to `0.3.0-beta.11`.
+
+### Fixed
+
+- Prevented revoked persisted sessions from permanently failing lazy client initialization and blocking protected-route login until a browser reload.
+- Preserved revocation diagnostics and invalidated credentials even when a custom refresh error handler fails or is cancelled.
+- Recognized Bearer `invalid_token` as the first challenge parameter without matching text inside quoted parameter values.
+
 ## [0.3.0-beta.10]
 
 ### Changed

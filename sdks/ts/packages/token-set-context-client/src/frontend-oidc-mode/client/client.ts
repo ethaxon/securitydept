@@ -285,6 +285,7 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 			id: config.id,
 			autoStart: config.autoStart,
 			refresh: config.refresh,
+			refreshErrorPolicy: config.refreshErrorPolicy,
 			persistence: environment.persistentStorage
 				? {
 						store: environment.persistentStorage,
