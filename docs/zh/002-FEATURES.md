@@ -62,15 +62,9 @@ Compact JWE 解密使用模块化 `no-way-jose` crates 与 RustCrypto 实现，�
 
 ## 有意保留的边界
 
-当前基线不 productize：
+基线以外的能力统一见[路线图的延期项](100-ROADMAP.md#延期项)，包括通用 BFF
+ownership、应用 UI、非 TypeScript SDK、完整 telemetry export 与通用 token exchange。
 
-- mixed-custody token ownership 或通用 BFF/server-side token-set model
-- 内置 chooser UI、business route table 或 product copy
-- 非 TypeScript client SDK
-- 完整 OpenTelemetry exporter/product observability stack
-- 除已配置 propagation forwarder 外的通用 token exchange
-
-当前工作与延期范围见 [路线图](100-ROADMAP.md)。
 
 ---
 

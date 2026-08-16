@@ -90,11 +90,17 @@ interface FoundationEnvironment {
 
 consumer 接收 read-only signal 与 event stream。实现可直接使用 RxJS：这些 trait 已提供 observable interop，`@securitydept/client/rx` 提供 RxJS-backed implementation 与 command/resource utility。不要为了内部“纯度”再套一层只转发 subscription 的 wrapper，也不要把 RxJS `Observable` 作为 SDK public contract 暴露。
 
-Client lifecycle event stream 是 hot、non-replay 的边沿流。current/stale state 属于 `SignalTrait` / `ResourceTrait`；诊断历史属于显式命名的 trace timeline 或 event-history adapter。late subscriber 不得因订阅 event stream 而重复触发历史 toast、metric 等副作用。
+Client lifecycle event stream 是 hot、non-replay 的边沿流。current/stale state 属于 `ReadableSignalTrait` / `ResourceTrait`；诊断历史属于显式命名的 trace timeline 或 event-history adapter。late subscriber 不得因订阅 event stream 而重复触发历史 toast、metric 等副作用。
 
-failure variant 必须在 required `error` field 中携带所属 context 生成的 `ClientError`。consumer 可以通过 `from(client.events).pipe(filter(isClientErrorEvent))` 派生默认 message stream，无需建立第二个 error subject。Resource、failure event 与 rejected operation 发布同一个 error instance。完整 error 是进程内 programming contract，不得直接序列化；logging/tracing 使用 `describeError(error)` 派生 secret-safe field，UI adapter 使用 `readErrorPresentationDescriptor(error)`。
+failure variant 必须在 required `error` field 中携带所属 context 生成的 `ClientError`。consumer 可以通过 `from(client.events).pipe(filter(isClientErrorEvent))` 派生默认 message stream，无需建立第二个 error subject。operation 抛错时，Resource failure、failure event 与 rejected operation 保留同一个 error instance。撤销恢复可以发布 failure event，同时解析为未认证状态。完整 error 是进程内 programming contract，不得直接序列化；logging/tracing 使用 `describeError(error)` 派生 secret-safe field，UI adapter 使用 `readErrorPresentationDescriptor(error)`。
 
 当 public trait API 需要 RxJS `NEVER` 或 `EMPTY` 语义时，使用 `createNeverEventStream()` 与 `createEmptyEventStream()`。
+
+### Signal 性能与验证
+
+RxSignal 保留单一 Map 快照内核，使用原始值存储、按需 Rx 值镜像和原生 dirty 回调。Public Signal API、现有 lossless Rx 语义、同步深度优先回调顺序及公开/外部 dirty observable 协议保持支持；watchStream 保留原有调度、重放与取消行为。
+
+运行 `mise exec -- pnpm bench:sdks` 执行 Vitest 耗时基准，运行 `mise exec -- pnpm test:sdks` 执行 SDK 测试（包含基准正确性、保留内存及回收诊断）。基准命令可直接追加 `-t diamond` 等筛选参数；测试命令追加 `-- -t memory` 将筛选交给 Turbo 下的测试。基准专用依赖隔离在 `sdks/ts/benchmarks` 私有 workspace 包中，生成结果只写入忽略的 `temp/`。测量方法和比较边界见[基准指南](../../sdks/ts/benchmarks/signals/README.zh.md)。
 
 ## Span 和 Tracing
 
@@ -129,6 +135,16 @@ token-set client 只有一个 in-memory snapshot authority。其 lifecycle 有�
 
 auth event 是 direct discriminated public union，event `type` 决定 payload shape。consumer 不得再依赖已废弃的 `AuthCheck*`、`TokenSetAuthFlowReason`、`TokenSetAuthFlowOutcome` 或 payload-map contract。只有 refresh event 携带 freshness 和 refresh-material fact。任何 auth event 不得包含 raw access token、refresh material 或 authorization header。
 
+### 刷新错误恢复
+
+两个 OIDC 模式的配置均支持 `refreshErrorPolicy`，由 `BaseOidcModeClient` 统一实现。默认值为 `"revokeAsUnauthenticated"`：刷新令牌被确认撤销后返回 `null`、清除持久化凭据，并发布 resolved 的未认证状态。Registry 工厂仍可正常就绪，受保护路由守卫可以开始交互登录并保留目标 URL；客户端自身不会因撤销而直接导航。
+
+使用 `"revokeAsUnauthenticatedOnInit"` 可仅恢复 `start()` 还原持久化会话期间的刷新错误；使用 `"throw"` 保留操作抛错语义。显式调用 `restorePersistedState()` 属于手动操作。无论选择哪种策略，已确认撤销的凭据都会清除。
+
+同步或异步处理函数接收 `{ error, operation, trigger, clientId, cancellationToken }`，返回 `"unauthenticated"` 或 `"throw"`。operation 为 `"restorePersistedState"`、`"refresh"`；trigger 为 `"initialization"`、`"manual"`、`"refreshTimer"`、`"pageResume"`。这些契约及命名常量从 `@securitydept/token-set-context-client/orchestration` 导出。
+
+只有协议层识别的 `TokenSetAuthorizationRevocationError`（`invalid_grant` 或符合条件的 Bearer `invalid_token` challenge）允许恢复为未认证，处理函数也受此约束。普通 401、网络、配置、协议、存储及取消错误不会被重分类；回调和授权码交换错误不适用此策略。处理函数失败或被取消时仍抛错，但会清除已确认撤销的材料。现有生命周期失败事件和 tracing 保留原协议错误；鉴权事件不会向晚订阅者重放。
+
 ## Framework Adapters
 
 React 与 Angular package 将 canonical client ownership 适配到框架的 context/injection/lifecycle，不得创建竞争的 auth-state authority。router adapter 把 framework router 适配到 `RouterTrait`，不定义 product route 或 UI。
@@ -144,7 +160,7 @@ TanStack React Router adapter 将 push/replace request 映射为 `router.navigat
 
 ## Lifecycle 和 Error 规则
 
-- 在 client 与 required host capability 完成 composition 后调用一次 `start()`。
+- 直接拥有的 client 在 required capability 完成 composition 后调用 `start()`；registry-owned client 使用 registry readiness API。
 - 消费 public read-only state/event surface；在 owning framework/container destroy 时调用 `dispose()`。
 - 向可取消 operation 传递 cancellation token；cancellation 是 cooperative 的，必须在 async boundary 检查。
 - public failure 使用所属 context 生成、带有 safe code/source/recovery metadata 的 `ClientError`。不得在 UI error 或 event 中暴露 secret-bearing transport、token、provider payload。
@@ -154,15 +170,5 @@ TanStack React Router adapter 将 push/replace request 映射为 `router.navigat
 任何 public change 都必须更新 package export、inventory、focused documentation、test 和 [TS SDK 迁移记录](110-TS_SDK_MIGRATIONS.md)，并遵守上述稳定性纪律。只要不会保留误导或不安全的模型，优先选择 additive migration path。不要仅为了掩盖 ownership correction 而添加 alias。
 
 ---
-
-## 刷新错误恢复
-
-两个 OIDC 模式的配置均支持 `refreshErrorPolicy`，由 `BaseOidcModeClient` 统一实现。默认值为 `"revokeAsUnauthenticated"`：刷新令牌被确认撤销后返回 `null`、清除持久化凭据，并发布 resolved 的未认证状态。Registry 工厂仍可正常就绪，受保护路由守卫可以开始交互登录并保留目标 URL；客户端自身不会因撤销而直接导航。
-
-使用 `"revokeAsUnauthenticatedOnInit"` 可仅恢复 `start()` 还原持久化会话期间的刷新错误；使用 `"throw"` 保留操作抛错语义。显式调用 `restorePersistedState()` 属于手动操作。无论选择哪种策略，已确认撤销的凭据都会清除。
-
-同步或异步处理函数接收 `{ error, operation, trigger, clientId, cancellationToken }`，返回 `"unauthenticated"` 或 `"throw"`。operation 为 `"restorePersistedState"`、`"refresh"`；trigger 为 `"initialization"`、`"manual"`、`"refreshTimer"`、`"pageResume"`。这些契约及命名常量从 `@securitydept/token-set-context-client/orchestration` 导出。
-
-只有协议层识别的 `TokenSetAuthorizationRevocationError`（`invalid_grant` 或符合条件的 Bearer `invalid_token` challenge）允许恢复为未认证，处理函数也受此约束。普通 401、网络、配置、协议、存储及取消错误不会被重分类；回调和授权码交换错误不适用此策略。处理函数失败或被取消时仍抛错，但会清除已确认撤销的材料。现有生命周期失败事件和 tracing 保留原协议错误；鉴权事件不会向晚订阅者重放。
 
 [English](../en/007-CLIENT_SDK_GUIDE.md) | [中文](007-CLIENT_SDK_GUIDE.md)

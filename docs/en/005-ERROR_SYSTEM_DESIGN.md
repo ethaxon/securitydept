@@ -15,8 +15,8 @@ The current model has three independent layers:
 The TypeScript SDK uses the corresponding four-layer boundary:
 
 - `ClientError` is the canonical runtime exception for public asynchronous flows. `kind`, namespaced `code`, `recovery`, `source`, and `cause` form the machine contract.
-- `ResourceSnapshot` may retain the original error object for diagnosis and retry control.
-- Lifecycle events and tracing project only the secret-safe `ErrorSummary`: `errorName` plus optional `errorKind`, `errorCode`, and `recovery`. They never copy runtime messages.
+- Client Resource failure snapshots, lifecycle failure events, and registry `errors` retain the original `ClientError` for in-process diagnosis and recovery. Do not serialize the full error or its cause directly.
+- Logging and tracing derive the secret-safe `ErrorSummary` with `describeError()`: `errorName` plus optional `errorKind`, `errorCode`, and `recovery`, without copying runtime messages.
 - `readErrorPresentationDescriptor()` reads only explicit safe `presentation`, domain code mappings, or generic foundation kind copy. It never treats `Error.message` as user-facing copy.
 
 In the TypeScript API, `ServerErrorPresentation` is the safe server-supplied payload, `ErrorCodePresentation` configures host copy for a stable code, and `ErrorPresentationDescriptor` is the final UI projection. The final projection contains only `code`, display copy, recovery, tone, and an optional recovery action; machine policy reads `kind`, `source`, and `retryable` from the original `ClientError`.
@@ -32,7 +32,7 @@ Shared types live in `securitydept-utils`:
 - `ServerErrorEnvelope`
 - `ToErrorPresentation`
 
-Related diagnosis vocabulary lives separately in `securitydept-utils::observability`, including `AuthFlowDiagnosis`, `DiagnosedResult`, shared `AuthFlowOperation` names such as `projection.config_fetch`, `oidc.callback`, `oidc.token_refresh`, `propagation.forward`, and `forward_auth.check`, plus newer server operations such as `dashboard_auth.check` and `creds_manage.group.*` / `creds_manage.entry.*`.
+Related diagnosis vocabulary lives separately in `securitydept-utils::observability`, including `AuthFlowDiagnosis`, `DiagnosedResult`, shared `AuthFlowOperation` names such as `projection.config_fetch`, `oidc.callback`, `oidc.token_refresh`, `propagation.forward`, and `forward_auth.check`, and server operations such as `dashboard_auth.check` and `creds_manage.group.*` / `creds_manage.entry.*`.
 
 Server responses rendered through the shared envelope use this shape:
 

@@ -1,5 +1,5 @@
 [project]
-version = "0.3.0-beta.11"
+version = "0.3.0"
 display_name = "SecurityDept"
 description = "SecurityDept is a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps."
 author = "Zhou Yeheng <root@aitiotekt.com>"
@@ -56,6 +56,12 @@ publish = false
 [[node_package]]
 name = "@securitydept/ts-sdks"
 manifest = "sdks/ts/package.json"
+private = true
+publish = false
+
+[[node_package]]
+name = "@securitydept/sdk-benchmarks"
+manifest = "sdks/ts/benchmarks/package.json"
 private = true
 publish = false
 

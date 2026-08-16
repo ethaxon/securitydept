@@ -38,9 +38,7 @@ release channel 由版本号自动推断，而不是手工传参。
 | `X.Y.Z-beta.N` | release-candidate 阶段 | `rc` | `rc` |
 | `X.Y.Z` | 稳定发布 | `latest` | `latest`、`release` |
 
-说明：
-
-`latest` 仍是 npm 与容器生态最标准的稳定版本约定。`nightly` 能明确表达 alpha 轨道不应作为默认消费版本。`rc` 比直接暴露 `beta` 更贴近对外发布语义。稳定容器镜像额外附带 `release`，方便人类在部署脚本中显式引用稳定别名，同时 `latest` 仍保留默认生态语义。
+`latest` 是 stable 默认 channel；`release` 是 stable container 的额外 alias。
 
 ## Release CLI 命令
 
@@ -118,11 +116,8 @@ release 相关 workflow 必须遵循：
 - `release.yml` 的 `workflow_dispatch` 只有在所选 source 通过同一 release gate 后才可发布；manual toggles 决定 npm、crates 与 Docker publish job 是否运行。
 - 本地 `act` run 会由 `release-cli workflow release-plan` 通过 `ACT=true` 或 `SECURITYDEPT_LOCAL_ACTIONS=true` 识别，并输出 `local_run=true`。Workflow 保持同一 job graph，但 publish jobs 会切到本地安全行为：npm 使用 `--mode=dry-run`，crates 停在 package gate 并把 package report 复制为 publish report，Docker 只在本地 build/load runtime image，不登录也不 push。
 - 本地 `act` release source validation 会保留 version/tag shape 校验，但不执行远程 `origin/release` fetch。真实 GitHub run 仍会在发布前强制校验 source 可从 `origin/release` 到达。
-- npm publish 继续直接调用 `release-cli npm publish`，不暴露手工 dist-tag 选择器。
-- npm publish 必须保留从 package root 发起的调用方式，这样 pnpm 才能同时应用 Angular package 的 `publishConfig.directory` 与仓库根 `.pnpmfile.cjs` 中的 `beforePacking` hook。
 - 真实 npm OIDC publish 发生在 `release.yml` 内的 `npm-release` job，并使用 `npm-release` environment。npm trusted publisher 配置因此必须把 publishable packages 绑定到 `.github/workflows/release.yml` 和 `npm-release`。
 - `npm-release` 是唯一允许请求 npm `id-token: write` 的 job；它从已验证 source 构建 TypeScript SDK packages，并通过 `release-cli npm publish --mode=publish --provenance --report=...` 发布。
-- npm publish 依赖 GitHub Actions trusted publishing，正式 publish 路径显式传 `--provenance`。
 - crates publish 调用 `release-cli crates publish`；package gate 不得带 `--allow-blocked`，publish job 不允许带 `--allow-dirty` 或 `--allow-blocked`，并通过 `rust-lang/crates-io-auth-action@v1` 使用 crates.io trusted publishing。
 - 真实 crates.io OIDC publish 发生在 `release.yml` 内的 `crates-release` job，并使用 `crates-io-release` environment。crates.io trusted publisher 配置必须把 publishable crates 绑定到 `.github/workflows/release.yml` 和 `crates-io-release`。
 - `crates-release` 是唯一允许请求 crates.io `id-token: write` 的 job；它先运行 `crates publish --mode=package`，再通过 `rust-lang/crates-io-auth-action@v1` 交换 GitHub OIDC，最后运行 `crates publish --mode=publish`。Package 与 publish report 会分别上传。
@@ -137,25 +132,17 @@ release 相关 workflow 必须遵循：
 - pnpm cache mode 必须显式写成 `read-write`、`read-only` 或 `none`。稳定 restore key 是 `pnpm-store-${runner.os}-${hashFiles(lockfile)}`；同一个 workflow 拓扑中，同一 key 只能有一个 read-write owner。
 - Turborepo 负责 JS/TS 的 build 与 test 任务图；TypeScript project references 和 `tsc -b` 负责 typecheck 与声明传播。GitHub Actions 分别按 test、npm-release 和 WebUI-release scope 持久化 `.turbo`，不需要远程缓存凭据。
 - Rust cache mode 同样必须显式。使用共享 key 的 read-write job 必须是该拓扑唯一 writer；后续 job 只能 read-only restore 或消费 artifact。
-- Debug CI 拓扑直接放在 `.github/workflows/tests.yml`；`release.yml` 由成功的 `Tests` run 调度，不再重复同一套 debug verification graph，也不使用 crates.io 不支持的 `workflow_run` 发布入口。
 - Rust shared key 应该是稳定的 lane/profile scope，例如 `securitydept-rust-${runner.os}-pr-mainline-debug`、`securitydept-rust-${runner.os}-mainline-debug` 与 `securitydept-rust-${runner.os}-release`。不要在 workflow 里手写 `hashFiles(...)` 塞进 `shared-key`；`Swatinem/rust-cache` 本身已经把 Cargo manifest、lockfile、toolchain 与相关 env var 的 Rust environment hash 纳入最终 key，并且会尝试从旧 lockfile 版本恢复。
 - Rust cache ownership 按 profile 与 workflow source 拆分：
 
 	| Cache key profile | Read-write owner | Consumers | 说明 |
 	| --- | --- | --- | --- |
-	| `securitydept-rust-${runner.os}-${cache_scope}-debug` | Tests workflow 的 `rust-debug-cache-prime` job | clippy、Rust tests、E2E prebuild，以及 `release.yml` 中 `crates-release` 的 read-only restore | 由 debug CI 拓扑拥有；`cache_scope` 会被刻意收敛成 `pr-mainline`、`mainline` 这类共享车道，而不是按 PR/branch 一条一个名字，从而把缓存预算保持在可控范围内，同时让 `main`、`release` 与 tag 驱动流程继续复用同一组 debug artifacts |
-	| `securitydept-rust-${runner.os}-${cache_scope}-release` in `release.yml` | `docker-release`，仅在 `publish_docker=true` 时运行 | 同一个 `docker-release` job 内的 runtime binary build | 当前只有 Docker 消费 release-profile artifacts，因此 writer 放在唯一消费 job 内；只有未来出现多个 release-profile consumers 时才需要重新拆出 prime job |
+	| `securitydept-rust-${runner.os}-${cache_scope}-debug` | Tests workflow 的 `rust-debug-cache-prime` job | clippy、Rust tests、E2E prebuild，以及 `release.yml` 中 `crates-release` 的 read-only restore | `cache_scope` 使用 `pr-mainline`、`mainline` 等有限共享车道，不为每个 PR/branch 单独建 key |
+	| `securitydept-rust-${runner.os}-${cache_scope}-release` in `release.yml` | `docker-release`，仅在 `publish_docker=true` 时运行 | 同一个 `docker-release` job 内的 runtime binary build | 只有新增 consumer 需要共享 release-profile cache 时才拆出 prime job |
 
-	每一行对应的 cache key 都只有一个 read-write owner。行外 job 只能 read-only restore 或不接触该 key。这是当前实践裁决下采用的暂定优化策略，并依赖唯一 writer 拓扑；其耗时收益仍需后续通过可复现的本地 workflow benchmark 证明后再继续调优。
+	表中 owner 以外的 job 只能 read-only restore 或不接触该 key。
+
 - Docker buildx cache 仍只用于 Docker layer。JS/TS 构建产物在组装 runtime image 前通过 release scope 的 Turborepo cache 恢复。
-- already-published skip 语义仍由 `release-cli npm publish` 与 `release-cli crates publish` 拥有，因此部分发布成功后重跑会继续剩余 package / crate，而不是因重复版本失败。
-
-这样可以保证以下规则只有一份实现：
-
-- 允许的 release version 语法
-- prerelease 到 channel 的映射
-- stable Docker alias
-- Docker 镜像的 branch / SHA / tag 命名行为
 
 ## 本地执行顺序
 

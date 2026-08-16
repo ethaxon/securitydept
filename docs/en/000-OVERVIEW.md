@@ -42,6 +42,8 @@ The executable baseline is `apps/server` plus `apps/webui`. Start with the root 
 | Client-IP policy | [Real-IP Strategy](006-REALIP.md) |
 | Releases | [Release Automation](008-RELEASE_AUTOMATION.md) |
 | Compatibility changes | [TS SDK Migrations](110-TS_SDK_MIGRATIONS.md) |
+| Active priorities and deferrals | [Roadmap](100-ROADMAP.md) |
+| External integration evidence | [Outposts](021-REFERENCE-APP-OUTPOSTS.md) |
 
 ## Source And Rendered Docs
 

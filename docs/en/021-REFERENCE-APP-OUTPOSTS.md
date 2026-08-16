@@ -6,23 +6,24 @@ integration. It is useful downstream evidence, but it is not part of this
 repository's source tree, release gate, public API, or reproducible test
 contract.
 
-## Current Versioned Baseline
+## Dependency Baseline
 
-The current released Outposts baseline is `0.4.0`. It consumes the published
-SecurityDept `0.3.0-beta.7` line rather than local workspace links:
+Outposts consumes published SecurityDept packages rather than local workspace
+links. Its manifests and lockfiles own the exact application, SDK, and toolchain
+versions; consult the selected Outposts revision when reproducing an integration.
+The npm and Rust dependencies may advance independently.
 
-| Surface | Outposts dependency | Version |
-| --- | --- | --- |
-| Angular browser foundation | `@securitydept/client` | `0.3.0-beta.7` |
-| Angular framework bridge | `@securitydept/client-angular` | `0.3.0-beta.7` |
-| Frontend OIDC and registry | `@securitydept/token-set-context-client` | `0.3.0-beta.7` |
-| Angular OIDC adapters | `@securitydept/token-set-context-client-angular` | `0.3.0-beta.7` |
-| Rust server entry point | `securitydept-core` | `0.3.0-beta.7` |
+| Surface | Outposts dependency |
+| --- | --- |
+| Angular browser foundation | `@securitydept/client` |
+| Angular framework bridge | `@securitydept/client-angular` |
+| Frontend OIDC and registry | `@securitydept/token-set-context-client` |
+| Angular OIDC adapters | `@securitydept/token-set-context-client-angular` |
+| Rust server entry point | `securitydept-core` |
 
 The Confluence backend enables the `oauth-resource-server`, `creds`, and
-`token-set-context` core features. The web application uses Angular `22.1`,
-Nx `23.1`, and TypeScript `6.0`; these are adopter details, not SecurityDept
-toolchain requirements.
+`token-set-context` core features. Angular, Nx, and TypeScript versions are
+adopter details, not SecurityDept toolchain requirements.
 
 ## Integration Covered by the Reference
 
@@ -38,15 +39,17 @@ Outposts provides concrete evidence for the following published contracts:
   realm projection, persisted browser cache, then the Confluence public config
   endpoint.
 - `secureTokenSetRouteRoot(...)` protects the Angular `/confluence` route and
-  `TokenSetFrontendCallbackComponent` handles `/auth/callback`.
+  `TokenSetFrontendCallbackComponent` handles `/auth/callback`. The host callback
+  wrapper navigates to `postAuthRedirectUri` after successful handling.
+- Frontend OIDC configuration uses `refreshErrorPolicy: "revokeAsUnauthenticated"`,
+  so confirmed refresh-token revocation allows protected-route login to resume.
 - The registry authorization interceptor attaches Bearer tokens only to the
   configured Confluence API origin and path, excluding the public config
   endpoint that initializes the client.
-- A root-scoped bridge observes the materialized Confluence client without
-  initializing it, filters its non-replay lifecycle events with
-  `isClientErrorEvent()`, and delegates the original `ClientError` to the
-  application's existing overlay service. Registry construction failures use
-  the registry `failed` event because no client event stream exists yet.
+- Root-scoped `AuthService` subscribes to the registry's non-replaying `errors`
+  stream and passes the original `ClientError` to the overlay service. The
+  registry aggregates client operation and factory/materialization errors;
+  subscribing does not initialize lazy clients.
 - The overlay service uses `readErrorPresentationDescriptor()` for the final
   Sonner projection, including span-backed client and operation context without
   exposing tracing-only attributes or runtime diagnostics.
@@ -66,8 +69,8 @@ and Confluence API are not SDK public API.
 
 When evaluating a SecurityDept release against Outposts:
 
-1. install the published versions above, or explicitly record a packed
-   candidate version;
+1. record the Outposts revision and installed SDK versions from its manifests
+   and lockfiles, or explicitly record a packed candidate version;
 2. record the exact package/subpath, framework version, and observed behavior;
 3. turn repeated, generalizable findings into an in-repository contract test
    and focused documentation update;

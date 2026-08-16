@@ -15,8 +15,8 @@ Structured diagnosis 是与 public error presentation 分离的另一层契约�
 TS SDK 对应采用四层边界：
 
 - `ClientError` 是公开异步流程的 canonical runtime exception；`kind`、namespaced `code`、`recovery`、`source` 与 `cause` 是 machine contract。
-- `ResourceSnapshot` 可以保留原始 error object，供调用方诊断和重试控制使用。
-- lifecycle events 与 tracing 只投影 secret-safe `ErrorSummary`：`errorName`、可选 `errorKind`、`errorCode` 与 `recovery`，不复制 runtime message。
+- client Resource 的 failure snapshot、lifecycle failure event 与 registry `errors` 保留原始 `ClientError`，供进程内诊断与恢复使用。不得直接序列化完整 error 或其 cause。
+- logging/tracing 通过 `describeError()` 派生 secret-safe `ErrorSummary`：`errorName`、可选 `errorKind`、`errorCode` 与 `recovery`，不复制 runtime message。
 - `readErrorPresentationDescriptor()` 只读取显式安全 `presentation`、domain code mapping 或 foundation generic kind copy，绝不把 `Error.message` 当成用户文案。
 
 在 TypeScript API 中，`ServerErrorPresentation` 表示服务端提供的安全载荷，`ErrorCodePresentation` 配置稳定 error code 对应的 host 文案，`ErrorPresentationDescriptor` 是最终 UI 投影。最终投影只包含 `code`、展示文案、recovery、tone 与可选 recovery action；machine policy 所需的 `kind`、`source`、`retryable` 应从原始 `ClientError` 读取。
@@ -32,7 +32,7 @@ TS SDK 的 `ClientErrorKind` 固定为 `authorization`、`transport`、`server`�
 - `ServerErrorEnvelope`
 - `ToErrorPresentation`
 
-相关 diagnosis vocabulary 独立位于 `securitydept-utils::observability`，包括 `AuthFlowDiagnosis`、`DiagnosedResult`、共享 `AuthFlowOperation` 名称（例如 `projection.config_fetch`、`oidc.callback`、`oidc.token_refresh`、`propagation.forward`、`forward_auth.check`），以及较新的 server operation，如 `dashboard_auth.check` 与 `creds_manage.group.*` / `creds_manage.entry.*`。
+相关 diagnosis vocabulary 独立位于 `securitydept-utils::observability`，包括 `AuthFlowDiagnosis`、`DiagnosedResult`、共享 `AuthFlowOperation` 名称（例如 `projection.config_fetch`、`oidc.callback`、`oidc.token_refresh`、`propagation.forward`、`forward_auth.check`），以及 server operation，如 `dashboard_auth.check` 与 `creds_manage.group.*` / `creds_manage.entry.*`。
 
 通过 shared envelope 渲染的 server response 使用以下形状：
 

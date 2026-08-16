@@ -62,15 +62,10 @@ The reference server mounts these contract families:
 
 ## Deliberate Boundaries
 
-The current baseline does not productize:
+The [Roadmap's deferred scope](100-ROADMAP.md#deferred) defines the capabilities
+outside this baseline, including general BFF ownership, application UI,
+non-TypeScript SDKs, full telemetry export, and generalized token exchange.
 
-- mixed-custody token ownership or a general BFF/server-side token-set model
-- a built-in chooser UI, business route table, or application copy
-- non-TypeScript client SDKs
-- a full OpenTelemetry exporter/product observability stack
-- general-purpose token exchange beyond the configured propagation forwarder
-
-See [Roadmap](100-ROADMAP.md) for active work and explicit deferrals.
 
 ---
 

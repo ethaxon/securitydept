@@ -1,6 +1,6 @@
 # TypeScript SDK Migrations
 
-SecurityDept is pre-1.0. Breaking changes are intentional when they remove an incorrect ownership model, make a capability explicit, or reduce a public ambiguity. This document lists migrations that remain relevant to current adopters; released history belongs in [CHANGELOG](../../CHANGELOG.md).
+Public changes follow the [SDK stability discipline](007-CLIENT_SDK_GUIDE.md#stability-and-change-discipline), including deprecation before removing stable APIs. This document lists migrations that remain relevant to current adopters; released history belongs in [CHANGELOG](../../CHANGELOG.md).
 
 ## Revoked Token-Set Sessions
 
@@ -17,7 +17,7 @@ For each SDK breaking change:
 
 ## Explicit `FoundationEnvironment`
 
-Environment construction is now capability based. The canonical base transport key is `environment.transport`; `externalTransport` is not a compatibility alias. `time`, `realmStorage`, `span`, and `tracing` are required baseline capabilities. Browser-only capabilities remain optional.
+Environment construction is now capability based. The canonical base transport key is `environment.transport`; `externalTransport` is not a compatibility alias. `injector`, `time`, `realmStorage`, `span`, and `tracing` are also required baseline capabilities. Browser-only capabilities remain optional.
 
 Update composition roots to build a `FoundationEnvironment` through the relevant host creator, then pass it to clients. Do not let helper functions fetch browser globals or storage implicitly.
 
@@ -29,7 +29,7 @@ Rename option fields from `externalTransport` to `baseTransport` when constructi
 
 ## Reactive Interoperability
 
-`SignalTrait`, `EventStreamTrait`, and `CancellationTokenTrait` now provide observable interop. Public interfaces remain these SDK traits, while internal implementations may use RxJS operators directly and `@securitydept/client/rx` utilities for composition.
+`ReadableSignalTrait`, `EventStreamTrait`, and `CancellationTokenTrait` now provide observable interop. Public interfaces remain these SDK traits, while internal implementations may use RxJS operators directly and `@securitydept/client/rx` utilities for composition.
 
 Replace custom Observable wrapper layers with direct RxJS interop, for example `from(client.authSnapshot)`, where they only forward subscriptions. Use `createNeverEventStream()` or `createEmptyEventStream()` when a public trait API needs RxJS `NEVER` or `EMPTY` semantics. Do not replace a public SDK trait with a raw Observable.
 

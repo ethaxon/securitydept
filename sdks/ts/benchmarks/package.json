@@ -1,0 +1,14 @@
+{
+	"name": "@securitydept/sdk-benchmarks",
+	"version": "0.3.0",
+	"private": true,
+	"type": "module",
+	"devDependencies": {
+		"@preact/signals-core": "1.14.4",
+		"alien-signals": "3.2.1",
+		"signal-polyfill": "0.2.2",
+		"rxjs": "catalog:",
+		"tsdown": "0.22.14",
+		"vitest": "catalog:"
+	}
+}

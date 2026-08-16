@@ -35,18 +35,18 @@ Backend-mode presets and capability choices are configurations within `backend-o
 
 `frontend-oidc` receives `FrontendOidcModeConfigProjection`, a server-produced browser DTO. It contains the resolved public OIDC connectivity and callback information needed by the browser, not the server's complete OIDC configuration. Client secrets are omitted by default and can be included only through an explicit unsafe server capability; a browser application must not treat that opt-in as a normal deployment default.
 
-Server-held secret values use `SecretString`, whose debug and serialization forms are redacted. The same rule applies at application boundaries: raw access tokens, refresh tokens, authorization headers, passwords, provider secrets, and token-exchange payloads are never safe browser projections or public event data.
+Server-held secret values use `SecretString`, whose debug and serialization forms are redacted. The same rule applies at application boundaries: raw access tokens, refresh tokens, authorization headers, passwords, provider secrets, and token-exchange payloads must not enter safe configuration/principal projections or public events. Token material used by a mode client remains an in-process credential, not a safe DTO.
 
 The reference server exposes the public frontend projection at `GET /api/auth/token-set/frontend-mode/config`. Backend-mode login, callback, refresh, metadata redemption, and user-info live below `/auth/token-set/backend-mode/*`. Hosts may mount different paths, but must keep callback and redirect validation inside server policy rather than accepting caller-controlled URLs.
 
 ## Principal And Token Boundaries
 
-- An authenticated principal represents the signed-in person and is used for session/token-set user-facing state.
-- A resource-token principal represents verified bearer-token authorization facts such as subject, issuer, audiences, scopes, and authorized party.
-
-They are related but not interchangeable. Raw token material, authorization headers, passwords, and provider/client secrets must not be projected into safe principal claims.
-
-`ResourceTokenPrincipal` is authorization evidence derived from a verified bearer token: subject, issuer, audiences, scopes, authorized party, and claims. It is not a substitute for the authenticated human principal used by session or token-set user-facing state.
+An authenticated principal represents the signed-in person in session/token-set
+user-facing state. `ResourceTokenPrincipal` represents verified bearer-token
+authorization facts: subject, issuer, audiences, scopes, authorized party, and
+claims. These projections are related but not interchangeable. Raw token
+material, authorization headers, passwords, and provider/client secrets must not
+enter safe principal claims.
 
 ## Host Configuration
 

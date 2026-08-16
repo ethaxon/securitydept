@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 <!-- markdownlint-disable MD024 -->
 
+## [0.3.0]
+
+### Added
+
+- Added SDK Vitest benchmarks for Signal snapshots, graphs, creation, watch/Rx interop, memory, and collection; benchmark-only dependencies live in a private workspace, results in `temp/`.
+
+### Changed
+
+- Adopted raw state storage, lazy Rx mirrors, and native dirty callbacks, preserving the public Signal API and lossless Rx semantics. Across three rounds versus corrected cold-Rx, Rx/watch diamond time fell 44.4%/37.9%; state writes stayed similar, retained state memory rose 22.2%, and wide graphs remained about 3.2× Alien's time.
+- Kept the single Map kernel after pooling and graph forks failed performance, collection, or compatibility checks.
+- Unified benchmark/test entrypoints as `bench:sdks` / `test:sdks` with argument forwarding and reused tsdown for fixtures.
+- Prepared stable `0.3.0` across release metadata, manifests, Cargo requirements, and lockfiles; aligned integration, error, and stability docs.
+
+### Fixed
+
+- Committed Signal versions before synchronous callbacks, preserving depth-first RxJS reentrant writes, dependency reconnection/cancellation, dirty observable overrides, and readable snapshots after notification attachment failures.
+
 ## [0.3.0-beta.11]
 
 ### Added

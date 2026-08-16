@@ -33,12 +33,13 @@ Token-set context 有意分为 protocol-neutral 与 mode-specific 部分：
 - `access-token-substrate` 负责 resource-token verification 和 bearer propagation integration。
 - `registry` 负责多个 mode client 的 composition 与 callback routing。
 
-client 是自身内存 auth snapshot 的唯一 authority。workflow planner 计算闭合的、可判别的 candidate；host 一次性提交最终 determination。page resume、token-refresh timer 等 workflow source 只提供串行 lifecycle 输入，不拥有第二份 state authority。
+client 是自身内存 auth snapshot 的唯一 authority。workflow planner 计算闭合的、可判别的 candidate；base client 一次性提交最终 determination。page resume、token-refresh timer 等 workflow source 只提供串行 lifecycle 输入，不拥有第二份 state authority。
 
 ## TypeScript Foundation
 
 每个 client 都接收显式的 `FoundationEnvironment`。其必需基线能力为：
 
+- `injector`
 - neutral `transport`
 - `time`
 - `realmStorage`
@@ -47,7 +48,7 @@ client 是自身内存 auth snapshot 的唯一 authority。workflow planner 计�
 
 persistent/session storage、router、page lifecycle、popup、idle callback 等 browser capability 保持可选且显式。`web`、`webext`、`server` subpath 的 environment creator 在 client construction 前适配 raw host facility。
 
-公开 state/event 边界是 SDK 自己的 `SignalTrait`、`EventStreamTrait` 与 cancellation-token traits。它们具有 observable interop，因此内部实现可直接用 RxJS 组合，而不把 RxJS 作为 public SDK contract 泄漏出去。
+公开 state/event 边界是 SDK 自己的 `ReadableSignalTrait`、`EventStreamTrait` 与 cancellation-token traits。它们具有 observable interop，因此内部实现可直接用 RxJS 组合，而不把 RxJS 作为 public SDK contract 泄漏出去。
 
 ## 参考运行时
 

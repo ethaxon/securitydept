@@ -38,9 +38,7 @@ Release channels are inferred from the version, not passed manually.
 | `X.Y.Z-beta.N` | release-candidate track | `rc` | `rc` |
 | `X.Y.Z` | stable | `latest` | `latest`, `release` |
 
-Notes:
-
-`latest` remains the standard stable npm/container convention. `nightly` makes the alpha track visibly non-default. `rc` communicates release-validation intent more clearly than exposing `beta` as the publish channel. Stable container images also publish `release` as an explicit human-facing alias while `latest` remains the default ecosystem convention.
+`latest` is the default stable channel; `release` is an additional stable container alias.
 
 ## Release CLI Commands
 
@@ -62,8 +60,7 @@ Behavioral rules:
 
 - `metadata sync` writes shared publish metadata from [`securitydept-metadata.toml`](../../securitydept-metadata.toml) into publishable Rust crates and publishable npm packages, including descriptions, authors, licenses, Rust crate categories, keywords, repository links, and generated package `README.md` documentation pointers. Update the generator when changing generated README content.
 - `version set` updates every release-managed `package.json` and `Cargo.toml` listed in [`securitydept-metadata.toml`](../../securitydept-metadata.toml), and syncs the root multilingual README badges: npm uses release dist-tags (`latest` for stable, `rc` for beta, `nightly` for alpha), while crates.io prereleases use a version-pinned static badge because crates.io has no dist-tag channel.
-- `version check` also validates publishable Rust `path` dependencies between workspace crates and requires exact internal requirements in the form `=X.Y.Z[-alpha.N|-beta.N]`.
-- `version set` also writes those exact internal Rust dependency requirements for publishable crates, so local package verification and publish preparation stay aligned.
+- `version check` validates exact internal Rust `path` dependency requirements (`=X.Y.Z[-alpha.N|-beta.N]`); `version set` synchronizes them.
 - `npm publish` infers the dist-tag from the version unless an explicit override is passed.
 - `npm publish` disables pnpm Git branch checks automatically in GitHub Actions tag workflows, so detached release-tag checkouts do not fail on `publish-branch` enforcement.
 - `npm publish --mode=publish` queries the npm registry first and skips any package version that is already published, so rerunning after a partial publish only continues with the remaining packages.
@@ -118,11 +115,8 @@ Release-related workflows must follow these rules:
 - `workflow_dispatch` on `release.yml` may publish only when the selected source passes the same release gate; manual toggles choose whether npm, crates, and Docker publish jobs run.
 - Local `act` runs are detected by `release-cli workflow release-plan` through `ACT=true` or `SECURITYDEPT_LOCAL_ACTIONS=true` and emit `local_run=true`. The workflow keeps the same job graph, but publish jobs switch to local-safe behavior: npm uses `--mode=dry-run`, crates stop at the package gate and copy that report as the publish report, and Docker builds/loads the runtime image locally without logging in or pushing.
 - Local `act` release source validation keeps version/tag shape checks but avoids remote `origin/release` fetches. Real GitHub runs still enforce release-branch reachability against `origin/release` before publishing.
-- npm publish uses `release-cli npm publish` directly and does not expose a manual dist-tag selector.
-- npm publish must preserve the package-root invocation model so pnpm can honor root `publishConfig.directory` and the root `.pnpmfile.cjs` `beforePacking` hook for Angular packages.
 - real npm OIDC publish runs in the `npm-release` job inside `release.yml` with the `npm-release` environment. npm trusted publisher configuration must therefore bind publishable packages to `.github/workflows/release.yml` and `npm-release`.
 - `npm-release` is the only job that may request npm `id-token: write`; it builds the TypeScript SDK packages from the validated source and publishes with `release-cli npm publish --mode=publish --provenance --report=...`.
-- npm publish relies on GitHub Actions trusted publishing and passes `--provenance` on real publish paths.
 - crates publish uses `release-cli crates publish`; package gates must not use `--allow-blocked`, publish jobs keep `--allow-dirty` and `--allow-blocked` out, and `rust-lang/crates-io-auth-action@v1` enables crates.io trusted publishing.
 - real crates.io OIDC publish runs in the `crates-release` job inside `release.yml` with the `crates-io-release` environment. crates.io trusted publisher configuration must bind publishable crates to `.github/workflows/release.yml` and `crates-io-release`.
 - `crates-release` is the only job that may request crates.io `id-token: write`; it runs `crates publish --mode=package`, exchanges GitHub OIDC through `rust-lang/crates-io-auth-action@v1`, then runs `crates publish --mode=publish`. Package and publish reports are uploaded separately.
@@ -137,25 +131,17 @@ Release-related workflows must follow these rules:
 - pnpm cache modes are explicit: `read-write`, `read-only`, and `none`. The stable restore key is `pnpm-store-${runner.os}-${hashFiles(lockfile)}`; only one job in a workflow topology may be the read-write owner for that key.
 - Turborepo owns the JS/TS build and test task graph. TypeScript project references and `tsc -b` own typechecking and declaration propagation. GitHub Actions persists `.turbo` separately for test, npm-release, and WebUI-release scopes; no remote cache credentials are required.
 - Rust cache modes are also explicit. A job that uses the shared key as `read-write` must be the only writer in that topology; downstream jobs use `read-only` restore or artifacts.
-- Debug CI topology lives directly in `.github/workflows/tests.yml`; `release.yml` is dispatched by the successful `Tests` run instead of repeating the same debug verification graph, and it avoids the crates.io-unsupported `workflow_run` publish entrypoint.
 - Rust shared keys are stable lane/profile scopes such as `securitydept-rust-${runner.os}-pr-mainline-debug`, `securitydept-rust-${runner.os}-mainline-debug`, and `securitydept-rust-${runner.os}-release`. Do not embed `hashFiles(...)` manually in workflow `shared-key` values; `Swatinem/rust-cache` already adds its own Rust-environment hash for Cargo manifests, lockfiles, toolchains, and relevant env vars, and it can restore from previous lockfile versions.
 - Rust cache ownership is split by profile and workflow source:
 
 	| Cache key profile | Read-write owner | Consumers | Notes |
 	| --- | --- | --- | --- |
-	| `securitydept-rust-${runner.os}-${cache_scope}-debug` | the Tests workflow `rust-debug-cache-prime` job | clippy, Rust tests, E2E prebuild, and `release.yml` `crates-release` read-only restore | owned by the debug CI topology; `cache_scope` is intentionally collapsed into shared lanes such as `pr-mainline` and `mainline` instead of per-PR/per-branch names so the cache budget stays bounded while `main`, `release`, and tag-driven flows still reuse the same debug artifacts |
-	| `securitydept-rust-${runner.os}-${cache_scope}-release` in `release.yml` | `docker-release` when `publish_docker=true` | runtime binary builds inside the same `docker-release` job | only Docker consumes release-profile artifacts today, so the writer lives in the single consuming job; split out a prime job only if future release-profile consumers need the same cache |
+	| `securitydept-rust-${runner.os}-${cache_scope}-debug` | the Tests workflow `rust-debug-cache-prime` job | clippy, Rust tests, E2E prebuild, and `release.yml` `crates-release` read-only restore | `cache_scope` uses bounded shared lanes such as `pr-mainline` and `mainline`, rather than one key per PR/branch |
+	| `securitydept-rust-${runner.os}-${cache_scope}-release` in `release.yml` | `docker-release` when `publish_docker=true` | runtime binary builds inside the same `docker-release` job | split out a prime job only if additional consumers need the same release-profile cache |
 
-	Each row has exactly one read-write owner for its cache key. Jobs outside that owner restore read-only or do not touch the key. This is the current practice-approved provisional optimization and depends on the unique-writer topology; its wall-clock benefit still needs a reproducible local workflow benchmark before further tuning.
+	Jobs outside the listed owner restore read-only or do not touch the key.
+
 - Docker buildx cache remains scoped to Docker layers. JS/TS build artifacts are restored through the release-scoped Turborepo cache before the runtime image is assembled.
-- already-published skip behavior remains owned by `release-cli npm publish` and `release-cli crates publish`, so partial release reruns continue instead of failing on duplicate npm package or crate versions.
-
-This keeps one implementation of:
-
-- allowed release-version grammar
-- prerelease-to-channel mapping
-- stable Docker aliases
-- branch / SHA / tag naming behavior for Docker images
 
 ## Local Workflow
 

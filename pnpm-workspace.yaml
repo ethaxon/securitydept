@@ -1,6 +1,7 @@
 packages:
   - apps/webui
   - sdks/ts
+  - sdks/ts/benchmarks
   - sdks/ts/packages/*
   - .agents/skills/playwright-skill
 

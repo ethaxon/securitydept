@@ -42,6 +42,8 @@ SecurityDept 是可复用的认证与授权栈，交付为三个层次：
 | client-IP policy | [Real-IP 策略](006-REALIP.md) |
 | 发布 | [发布自动化](008-RELEASE_AUTOMATION.md) |
 | 兼容性变更 | [TS SDK 迁移记录](110-TS_SDK_MIGRATIONS.md) |
+| 当前优先级和延期项 | [路线图](100-ROADMAP.md) |
+| 外部集成证据 | [Outposts](021-REFERENCE-APP-OUTPOSTS.md) |
 
 ## 源文档和渲染层
 

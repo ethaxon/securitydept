@@ -1,153 +1,68 @@
-import {
-	animationFrameScheduler,
-	asapScheduler,
-	audit,
-	auditTime,
-	BehaviorSubject,
-	concat,
-	defer,
-	distinctUntilChanged,
-	EMPTY,
-	fromEventPattern,
-	type MonoTypeOperatorFunction,
-	map,
-	merge,
-	type Observable,
-	of,
-	Subject,
-	share,
-	shareReplay,
-	switchMap,
-} from "rxjs";
+import { BehaviorSubject, Observable, UnsubscriptionError } from "rxjs";
 import {
 	type InteropObservableTrait,
 	SYMBOL_OBSERVABLE,
 	type WithInteropObservableTraitCompat,
 } from "../compat";
-import {
-	type ReadableSignalTrait,
-	type SignalOptions,
-	type WritableSignalTrait,
-} from "../signals/types";
+import { type WritableSignalTrait } from "../signals/types";
 import { RxEventStream } from "./event";
+import {
+	RxSignal,
+	type RxSignalDirtyEvent,
+	type RxSignalDirtyObserver,
+	type RxSignalOptions,
+} from "./internal/reactive-system/base";
 
-export interface RxSignalDirtyEvent<T> {
-	epoch: number;
-	signal: ReadableSignalTrait<T>;
-}
-
-export type RxSignalOptions<T> = SignalOptions<T>;
-
-export type RxSignalWatchScheduler<THandle = unknown> = (
-	flush: () => void,
-) => THandle;
-
-export type RxSignalWatchCanceller<THandle = unknown> = (
-	handle: THandle,
-) => void;
-
-export interface RxSignalWatchOptions {
-	schedule: RxSignalWatchScheduler;
-	cancel?: RxSignalWatchCanceller;
-}
-
-function watchOptionsToAuditOperator<T>(
-	options: RxSignalWatchOptions,
-): MonoTypeOperatorFunction<T> {
-	if (options.schedule === globalThis.queueMicrotask) {
-		return auditTime(0, asapScheduler);
-	}
-	if (
-		options.schedule === globalThis.requestAnimationFrame &&
-		options.cancel === globalThis.cancelAnimationFrame
-	) {
-		return auditTime(0, animationFrameScheduler);
-	}
-	return audit(() =>
-		fromEventPattern<void>(
-			(handler) => options.schedule(() => handler()),
-			(_handler, handle) => {
-				if (options.cancel) {
-					options.cancel(handle);
-				} else if (typeof handle === "function") {
-					handle();
-				}
-			},
-		),
-	);
-}
-
-export abstract class RxSignal<T>
-	implements ReadableSignalTrait<T>, InteropObservableTrait<T>
-{
-	protected static globalEpoch = 0;
-	protected static currentContext: RxComputedSignal<any> | null = null;
-
-	protected valueEqVersion = 0;
-
-	readonly equals: (a: unknown, b: unknown) => boolean;
-	abstract get(): T;
-	abstract dirtyObservable(): Observable<RxSignalDirtyEvent<T>>;
-
-	protected constructor(options: RxSignalOptions<T> | undefined) {
-		this.equals = (options?.equals ?? Object.is) as (
-			left: unknown,
-			right: unknown,
-		) => boolean;
-	}
-
-	watchStream(
-		options: RxSignalWatchOptions = { schedule: globalThis.queueMicrotask },
-	): RxEventStream<void> {
-		return RxEventStream.fromObservableInput(
-			this.dirtyObservable().pipe(
-				watchOptionsToAuditOperator(options),
-				map(() => undefined),
-				shareReplay({ bufferSize: 1, refCount: true }),
-			),
-		);
-	}
-
-	[SYMBOL_OBSERVABLE](): RxEventStream<T> {
-		return RxEventStream.fromObservableInput(
-			defer(() =>
-				concat(
-					of(this.get()),
-					this.dirtyObservable().pipe(map(() => this.get())),
-				),
-			),
-		);
-	}
-
-	abstract validateForEpoch(epoch: number): void;
-}
-
+export {
+	RxSignal,
+	type RxSignalDirtyEvent,
+	type RxSignalOptions,
+	type RxSignalWatchCanceller,
+	type RxSignalWatchOptions,
+	type RxSignalWatchScheduler,
+} from "./internal/reactive-system/base";
 export class RxStateSignal<T>
 	extends RxSignal<T>
 	implements InteropObservableTrait<T>, WritableSignalTrait<T>
 {
-	protected dirtySubject: Subject<RxSignalDirtyEvent<T>> = new Subject();
-	protected value: BehaviorSubject<T>;
+	protected dirtyListeners: Set<RxSignalDirtyObserver<T>> | undefined;
+	private dirtySnapshot: RxSignalDirtyObserver<T>[] | undefined;
+	private dirty$: Observable<RxSignalDirtyEvent<T>> | undefined;
+	protected value: T;
+	private valueSubject: BehaviorSubject<T> | undefined;
 
 	protected constructor(
 		initialValue: T,
 		options: RxSignalOptions<T> | undefined,
 	) {
 		super(options);
-		this.value = new BehaviorSubject(initialValue);
+		this.value = initialValue;
 	}
 
 	set(input: T): void {
-		const changed = !this.equals(this.value.getValue(), input);
-		this.value.next(input);
+		const changed = !this.equals(this.value, input);
+		this.value = input;
 		if (changed) {
 			this.valueEqVersion += 1;
 		}
 		RxSignal.globalEpoch += 1;
-		this.dirtySubject.next({
-			epoch: RxSignal.globalEpoch,
-			signal: this,
-		});
+		const epoch = RxSignal.globalEpoch;
+		// Commit versions before synchronous observers can read cached computed values.
+		this.valueSubject?.next(input);
+		const listeners = this.dirtyListeners;
+		if (listeners?.size) {
+			let snapshot = this.dirtySnapshot;
+			if (!snapshot) {
+				snapshot = [...listeners];
+				this.dirtySnapshot = snapshot;
+			}
+			RxSignal.dispatchDirty(epoch, () => {
+				const event = { epoch, signal: this };
+				for (const listener of snapshot) {
+					listener.next(event);
+				}
+			});
+		}
 	}
 
 	static fromInitialValue<T>(
@@ -158,7 +73,7 @@ export class RxStateSignal<T>
 	}
 
 	get(): T {
-		const value = this.value.getValue();
+		const value = this.value;
 		RxSignal.currentContext?.markDependency(this);
 		return value;
 	}
@@ -166,11 +81,39 @@ export class RxStateSignal<T>
 	override validateForEpoch(): void {}
 
 	override dirtyObservable(): Observable<RxSignalDirtyEvent<T>> {
-		return this.dirtySubject.asObservable();
+		this.dirty$ ??= new Observable((observer) =>
+			this.listenDirty({
+				next: (event) => observer.next(event),
+				error: (error) => observer.error(error),
+			}),
+		);
+		return this.dirty$;
+	}
+
+	protected override listenDirty(
+		listener: RxSignalDirtyObserver<T>,
+	): () => void {
+		this.dirtyListeners ??= new Set();
+		this.dirtySnapshot = undefined;
+		this.dirtyListeners.add(listener);
+		return () => {
+			this.dirtySnapshot = undefined;
+			this.dirtyListeners?.delete(listener);
+		};
 	}
 
 	override [SYMBOL_OBSERVABLE](): RxEventStream<T> {
-		return RxEventStream.fromObservableInput(this.value.asObservable());
+		return new RxEventStream((observer) => {
+			this.valueSubject ??= new BehaviorSubject(this.value);
+			const subject = this.valueSubject;
+			const subscription = subject.subscribe(observer);
+			return () => {
+				subscription.unsubscribe();
+				if (!subject.observed && this.valueSubject === subject) {
+					this.valueSubject = undefined;
+				}
+			};
+		});
 	}
 }
 
@@ -210,8 +153,10 @@ function haveSameSourceKeys(
 export class RxComputedSignal<T> extends RxSignal<T> {
 	protected cacheState: ComputedCacheState<T> = { kind: "empty" };
 	protected sources: ReadonlyMap<AnyRxSignal, number> = new Map();
-	protected sourcesSubject: BehaviorSubject<ReadonlyMap<AnyRxSignal, number>> =
-		new BehaviorSubject(this.sources);
+	private dirtyListeners: Set<RxSignalDirtyObserver<T>> | undefined;
+	private dirtySnapshot: RxSignalDirtyObserver<T>[] | undefined;
+	private dirtyStops: Map<AnyRxSignal, () => void> | undefined;
+	private dirtyConnection = 0;
 	private validatedEpoch = -1;
 	private isComputing = false;
 	private collectingSources: Map<AnyRxSignal, number> | null = null;
@@ -269,7 +214,11 @@ export class RxComputedSignal<T> extends RxSignal<T> {
 			RxSignal.currentContext = prevContext;
 			this.isComputing = false;
 		}
-		const sourcesChanged = !haveSameSourceKeys(this.sources, nextSources);
+		const previousSources = this.sources;
+		// Key changes only matter to the optional observable dependency graph.
+		const sourcesChanged = this.dirtyListeners?.size
+			? !haveSameSourceKeys(previousSources, nextSources)
+			: undefined;
 		let cacheStateChanged: boolean;
 		try {
 			cacheStateChanged = !this.cacheStatesEqual(
@@ -288,8 +237,16 @@ export class RxComputedSignal<T> extends RxSignal<T> {
 		}
 		this.cacheState = nextCacheState;
 		this.sources = nextSources;
-		if (sourcesChanged) {
-			this.sourcesSubject.next(nextSources);
+		// A custom equality function can attach an observer during comparison.
+		if (
+			this.dirtyListeners?.size &&
+			(sourcesChanged ?? !haveSameSourceKeys(previousSources, nextSources))
+		) {
+			try {
+				this.syncDirtySources(nextSources);
+			} catch (error) {
+				this.failDirtySources(error);
+			}
 		}
 		if (nextCacheState.kind === "error") {
 			throw nextCacheState.error;
@@ -336,33 +293,148 @@ export class RxComputedSignal<T> extends RxSignal<T> {
 	}
 
 	override dirtyObservable(): Observable<RxSignalDirtyEvent<T>> {
-		if (!this.dirty$) {
-			this.dirty$ = defer(() => {
-				this.validateForEpoch(RxSignal.globalEpoch);
-				return this.sourcesSubject.asObservable().pipe(
-					switchMap((sources) =>
-						sources.size === 0
-							? EMPTY
-							: merge(
-									...[...sources.keys()].map((source) =>
-										source.dirtyObservable(),
-									),
-								).pipe(
-									distinctUntilChanged(
-										(left, right) => left.epoch === right.epoch,
-									),
-									map((dirtyDepEvent) => {
-										return {
-											epoch: dirtyDepEvent.epoch,
-											signal: this,
-										};
-									}),
-								),
-					),
-				);
-			}).pipe(share());
-		}
+		this.dirty$ ??= new Observable((observer) =>
+			this.listenDirty({
+				next: (event) => observer.next(event),
+				error: (error) => observer.error(error),
+			}),
+		);
 		return this.dirty$;
+	}
+
+	protected override listenDirty(
+		listener: RxSignalDirtyObserver<T>,
+	): () => void {
+		this.validateForEpoch(RxSignal.globalEpoch);
+		this.dirtyListeners ??= new Set();
+		const first = this.dirtyListeners.size === 0;
+		this.dirtySnapshot = undefined;
+		this.dirtyListeners.add(listener);
+		if (first) {
+			this.dirtyConnection++;
+			try {
+				this.syncDirtySources(this.sources);
+			} catch (error) {
+				this.dirtySnapshot = undefined;
+				this.dirtyListeners.delete(listener);
+				if (!this.dirtyListeners.size) {
+					this.disconnectDirtySources();
+				}
+				throw error;
+			}
+		}
+		return () => {
+			this.dirtySnapshot = undefined;
+			this.dirtyListeners?.delete(listener);
+			if (!this.dirtyListeners?.size) {
+				this.disconnectDirtySources();
+			}
+		};
+	}
+
+	private disconnectDirtySources(): void {
+		this.dirtyConnection++;
+		const stops = this.dirtyStops;
+		this.dirtyStops = undefined;
+		let errors: unknown[] | undefined;
+		for (const stop of stops?.values() ?? []) {
+			try {
+				stop();
+			} catch (error) {
+				errors ??= [];
+				errors.push(
+					...(error instanceof UnsubscriptionError ? error.errors : [error]),
+				);
+			}
+		}
+		if (errors) {
+			throw new UnsubscriptionError(errors);
+		}
+	}
+
+	private failDirtySources(error: unknown): void {
+		const listeners = [...(this.dirtyListeners ?? [])];
+		this.dirtyListeners?.clear();
+		this.dirtySnapshot = undefined;
+		// Reset before an error callback can reconnect; notification errors do not poison snapshots.
+		let notificationError = error;
+		try {
+			this.disconnectDirtySources();
+		} catch (cleanupError) {
+			notificationError = new AggregateError(
+				[error, cleanupError],
+				"Dirty propagation and cleanup failed",
+			);
+		}
+		for (const listener of listeners) {
+			listener.error(notificationError);
+		}
+	}
+
+	private syncDirtySources(sources: ReadonlyMap<AnyRxSignal, number>): void {
+		this.dirtyStops ??= new Map();
+		const stops = this.dirtyStops;
+		const connection = this.dirtyConnection;
+		for (const [source, stop] of stops) {
+			if (!sources.has(source)) {
+				stop();
+				stops.delete(source);
+			}
+			if (this.dirtyConnection !== connection) {
+				return;
+			}
+		}
+		for (const source of sources.keys()) {
+			if (stops.has(source)) {
+				continue;
+			}
+			let active = true;
+			const detach = RxSignal.listenToDirty(
+				source,
+				{
+					next: (event) => {
+						if (
+							!active ||
+							this.dirtyConnection !== connection ||
+							!this.dirtyListeners?.size ||
+							!this.acceptDirtyEpoch(event.epoch)
+						) {
+							return;
+						}
+						const dirtyEvent = { epoch: event.epoch, signal: this };
+						let snapshot = this.dirtySnapshot;
+						if (!snapshot) {
+							snapshot = [...this.dirtyListeners];
+							this.dirtySnapshot = snapshot;
+						}
+						for (const listener of snapshot) {
+							listener.next(dirtyEvent);
+						}
+					},
+					error: (error) => {
+						if (!active || this.dirtyConnection !== connection) {
+							return;
+						}
+						this.failDirtySources(error);
+					},
+				},
+				source.dirtyObservable === RxStateSignal.prototype.dirtyObservable ||
+					source.dirtyObservable === RxComputedSignal.prototype.dirtyObservable,
+			);
+			const stop = () => {
+				active = false;
+				detach();
+			};
+			if (
+				!active ||
+				this.dirtyConnection !== connection ||
+				!this.dirtyListeners?.size
+			) {
+				stop();
+				return;
+			}
+			stops.set(source, stop);
+		}
 	}
 
 	static computed<T>(

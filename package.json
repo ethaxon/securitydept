@@ -1,6 +1,6 @@
 {
 	"name": "securitydept",
-	"version": "0.3.0-beta.11",
+	"version": "0.3.0",
 	"private": true,
 	"type": "module",
 	"description": "SecurityDept is a layered authentication and authorization toolkit built as reusable Rust crates, a TypeScript client SDK workspace, and reference server/web apps.",
@@ -43,7 +43,8 @@
 		"typecheck:scripts": "tsc -b tsconfig.scripts.json --pretty false",
 		"typecheck:sdks": "tsc -b sdks/ts/tsconfig.json --pretty false",
 		"typecheck:webui": "tsc -b apps/webui/tsconfig.json --pretty false",
-		"verify:ts": "turbo run build test && tsc -b --pretty false"
+		"verify:ts": "turbo run build test && tsc -b --pretty false",
+		"bench:sdks": "pnpm --filter @securitydept/ts-sdks bench"
 	},
 	"devDependencies": {
 		"@angular/common": "catalog:",

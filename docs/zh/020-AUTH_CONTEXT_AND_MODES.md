@@ -35,18 +35,17 @@ backend-mode preset 与 capability choice 是 `backend-oidc` 内部配置，不�
 
 `frontend-oidc` 接收 `FrontendOidcModeConfigProjection`，即由 server 生成的 browser DTO。它包含 browser 所需的 resolved public OIDC connectivity 与 callback information，而不是 server 的完整 OIDC configuration。client secret 默认不会投影；只有显式启用 unsafe server capability 后才可能包含。browser application 不得将这一 opt-in 当作普通 deployment default。
 
-server 持有的 secret value 使用 `SecretString`，其 debug 和 serialization 形式均会被 redacted。application boundary 也遵守同一规则：raw access token、refresh token、authorization header、password、provider secret 和 token-exchange payload 都不是安全的 browser projection 或 public event data。
+server 持有的 secret value 使用 `SecretString`，其 debug 和 serialization 形式均会被 redacted。application boundary 也遵守同一规则：raw access token、refresh token、authorization header、password、provider secret 和 token-exchange payload 不得进入安全 configuration/principal projection 或 public event。mode client 使用的 token material 是进程内凭据，不是安全 DTO。
 
 reference server 在 `GET /api/auth/token-set/frontend-mode/config` 暴露 public frontend projection。backend-mode 的 login、callback、refresh、metadata redemption 与 user-info 位于 `/auth/token-set/backend-mode/*`。host 可以使用不同 path，但 callback/redirect validation 必须留在 server policy 内，不得接受 caller-controlled URL。
 
 ## Principal 和 Token 边界
 
-- authenticated principal 表示已登录的人，用于 session/token-set 的 user-facing state。
-- resource-token principal 表示已验证 bearer-token authorization facts，例如 subject、issuer、audience、scope 和 authorized party。
-
-二者相关但不可互换。raw token material、authorization header、password、provider/client secret 不得进入 safe principal claim。
-
-`ResourceTokenPrincipal` 是从已验证 bearer token 导出的 authorization evidence：subject、issuer、audience、scope、authorized party 和 claim。它不是 session 或 token-set user-facing state 所使用的 authenticated human principal 的替代品。
+authenticated principal 表示 session/token-set user-facing state 中已登录的人。
+`ResourceTokenPrincipal` 表示已验证 bearer token 的 authorization facts：subject、
+issuer、audience、scope、authorized party 与 claim。二者相关但不可互换。
+raw token material、authorization header、password、provider/client secret 不得进入
+safe principal claim。
 
 ## Host Configuration
 

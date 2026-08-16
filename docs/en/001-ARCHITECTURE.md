@@ -33,12 +33,13 @@ Token-set context is intentionally split into protocol-neutral and mode-specific
 - `access-token-substrate` owns resource-token verification and bearer propagation integration.
 - `registry` owns composition of multiple mode clients and callback routing.
 
-The client is the sole authority for its in-memory auth snapshot. Workflow planners compute closed, discriminated candidates; the host commits one final determination. Workflow sources such as page resume and token-refresh timers only provide inputs to the serialized lifecycle, not alternate state authorities.
+The client is the sole authority for its in-memory auth snapshot. Workflow planners compute closed, discriminated candidates; the base client commits one final determination. Workflow sources such as page resume and token-refresh timers only provide inputs to the serialized lifecycle, not alternate state authorities.
 
 ## TypeScript Foundation
 
 Every client is constructed with an explicit `FoundationEnvironment`. Its required baseline is:
 
+- `injector`
 - neutral `transport`
 - `time`
 - `realmStorage`
@@ -47,7 +48,7 @@ Every client is constructed with an explicit `FoundationEnvironment`. Its requir
 
 Optional browser capabilities, such as persistent/session storage, router, page lifecycle, popup, and idle callbacks, remain optional and explicit. Environment creators in the `web`, `webext`, and `server` subpaths adapt raw host facilities before client construction.
 
-The public state and event boundary is SDK-owned `SignalTrait`, `EventStreamTrait`, and cancellation-token traits. These implement observable interop, so implementations may compose directly with RxJS internally without exposing RxJS as the public SDK contract.
+The public state and event boundary is SDK-owned `ReadableSignalTrait`, `EventStreamTrait`, and cancellation-token traits. These implement observable interop, so implementations may compose directly with RxJS internally without exposing RxJS as the public SDK contract.
 
 ## Reference Runtime
 

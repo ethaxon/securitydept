@@ -5,23 +5,23 @@
 证据，但不属于本仓库的 source tree、release gate、public API 或可复现的 test
 contract。
 
-## 当前版本基线
+## 依赖基线
 
-当前发布的 Outposts 基线为 `0.4.0`。它使用已发布的 SecurityDept
-`0.3.0-beta.7`，而不是本地 workspace link：
+Outposts 使用已发布的 SecurityDept package，而不是本地 workspace link。
+应用、SDK 与 toolchain 的准确版本以 Outposts 的 manifest 和 lockfile 为准；
+复现集成时应检查所选 Outposts revision。npm 与 Rust 依赖可以分别升级。
 
-| Surface | Outposts dependency | 版本 |
-| --- | --- | --- |
-| Angular 浏览器 foundation | `@securitydept/client` | `0.3.0-beta.7` |
-| Angular framework bridge | `@securitydept/client-angular` | `0.3.0-beta.7` |
-| 前端 OIDC 与 registry | `@securitydept/token-set-context-client` | `0.3.0-beta.7` |
-| Angular OIDC adapter | `@securitydept/token-set-context-client-angular` | `0.3.0-beta.7` |
-| Rust server entry point | `securitydept-core` | `0.3.0-beta.7` |
+| Surface | Outposts dependency |
+| --- | --- |
+| Angular 浏览器 foundation | `@securitydept/client` |
+| Angular framework bridge | `@securitydept/client-angular` |
+| 前端 OIDC 与 registry | `@securitydept/token-set-context-client` |
+| Angular OIDC adapter | `@securitydept/token-set-context-client-angular` |
+| Rust server entry point | `securitydept-core` |
 
 Confluence backend 启用 core 的 `oauth-resource-server`、`creds` 与
-`token-set-context` feature。Web application 使用 Angular `22.1`、Nx `23.1`
-和 TypeScript `6.0`；这些是 adopter 细节，并非 SecurityDept 的 toolchain
-要求。
+`token-set-context` feature。Angular、Nx 与 TypeScript 的版本是 adopter 细节，
+并非 SecurityDept 的 toolchain 要求。
 
 ## 此参考应用覆盖的集成
 
@@ -35,13 +35,15 @@ Outposts 为下列已发布 contract 提供具体证据：
   它按以下顺序解析公开配置：server-injected Realm projection、持久化的浏览器
   cache、Confluence public config endpoint。
 - `secureTokenSetRouteRoot(...)` 保护 Angular 的 `/confluence` route，
-  `TokenSetFrontendCallbackComponent` 处理 `/auth/callback`。
+  `TokenSetFrontendCallbackComponent` 处理 `/auth/callback`；host callback wrapper
+  在处理成功后导航到 `postAuthRedirectUri`。
+- frontend OIDC 配置采用 `refreshErrorPolicy: "revokeAsUnauthenticated"`，
+  确认 refresh token 被撤销后，受保护路由仍可重新发起登录。
 - registry authorization interceptor 仅向配置的 Confluence API origin/path
   附加 Bearer token，并排除用于初始化 client 的 public config endpoint。
-- 根作用域 bridge 在不触发初始化的前提下观察已 materialize 的 Confluence
-  client，通过 `isClientErrorEvent()` 筛选其 non-replay lifecycle event，并将
-  原始 `ClientError` 交给应用现有 overlay service。registry 构造失败时 client
-  event stream 尚不存在，因此使用 registry 的 `failed` event。
+- 根作用域 `AuthService` 订阅 registry 的 non-replay `errors` 流，将原始
+  `ClientError` 交给 overlay service。registry 统一聚合 client operation 与
+  factory/materialization error；订阅不会触发 lazy client 初始化。
 - overlay service 使用 `readErrorPresentationDescriptor()` 生成最终 Sonner
   展示；标题可以包含 span 捕获的 client/operation 上下文，同时不会暴露
   tracing-only attribute 或 runtime diagnostic。
@@ -59,7 +61,7 @@ Outposts 的 route table、config-projection host、UI component 和 Confluence 
 
 使用 Outposts 评估 SecurityDept release 时：
 
-1. 使用上述 published version，或明确记录待验证的 packed candidate version；
+1. 记录 Outposts revision 及其 manifest/lockfile 中的已安装 SDK 版本，或明确记录待验证的 packed candidate version；
 2. 记录准确的 package/subpath、framework version 与观察到的行为；
 3. 将重复出现且可泛化的问题转化为仓库内 contract test 与 focused documentation
    update；

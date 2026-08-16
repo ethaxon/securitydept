@@ -7,8 +7,8 @@
 SecurityDept 是分层的认证与授权工具包，交付为可复用 Rust crates、TypeScript client SDK workspace，以及共同验证同一 contract 的 Axum/React reference runtime。
 
 <p class="badges" align="center">
-  <a href="https://www.npmjs.com/package/@securitydept/client"><img src="https://img.shields.io/npm/v/%40securitydept%2Fclient/rc?logo=npm&label=npm" alt="npm"></a>
-  <a href="https://crates.io/crates/securitydept-core"><img src="https://img.shields.io/badge/crates.io-0.3.0--beta.11-orange?logo=rust&label=crates.io" alt="crates.io"></a>
+  <a href="https://www.npmjs.com/package/@securitydept/client"><img src="https://img.shields.io/npm/v/%40securitydept%2Fclient?logo=npm&label=npm" alt="npm"></a>
+  <a href="https://crates.io/crates/securitydept-core"><img src="https://img.shields.io/crates/v/securitydept-core?logo=rust&label=crates.io" alt="crates.io"></a>
   <a href="https://github.com/ethaxon/securitydept/pkgs/container/securitydept"><img src="https://img.shields.io/badge/ghcr-ethaxon%2Fsecuritydept-2496ED?logo=docker&logoColor=white" alt="ghcr"></a>
   <a href="https://github.com/ethaxon/securitydept/actions/workflows/tests.yml"><img src="https://github.com/ethaxon/securitydept/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
   <a href="https://github.com/ethaxon/securitydept/actions/workflows/docs.yml"><img src="https://github.com/ethaxon/securitydept/actions/workflows/docs.yml/badge.svg" alt="Docs"></a>
@@ -32,7 +32,7 @@ crate 和 runtime ownership 见 [架构](docs/zh/001-ARCHITECTURE.md)，产品�
 
 ## TypeScript SDK
 
-TypeScript SDK 使用显式 host capability。通过 host-specific creator 构造 `FoundationEnvironment` 后传给 context client。required baseline 是 neutral transport、time、realm storage、span、tracing；router、popup、persistent storage 等 browser capability 保持显式 optional dependency。
+TypeScript SDK 使用显式 host capability。通过 host-specific creator 构造 `FoundationEnvironment` 后传给 context client。required baseline 是 injector、neutral transport、time、realm storage、span、tracing；router、popup、persistent storage 等 browser capability 保持显式 optional dependency。
 
 core package 提供 SDK-owned signal、event stream、cancellation token、span、tracing、transport 和 RxJS interop。public API 暴露 SDK trait 而非 raw RxJS observable；internal implementation 可以直接用 RxJS 组合。
 

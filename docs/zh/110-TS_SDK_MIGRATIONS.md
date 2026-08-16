@@ -1,6 +1,6 @@
 # TypeScript SDK 迁移记录
 
-SecurityDept 尚未到 1.0。只要能移除错误 ownership model、使 capability 显式化或消除 public ambiguity，就会有意引入 breaking change。本文只列出对当前 adopter 仍有迁移价值的事项；已发布历史属于 [CHANGELOG](../../CHANGELOG.md)。
+public change 遵循 [SDK 稳定性纪律](007-CLIENT_SDK_GUIDE.md#稳定性和变更纪律)，包括移除 stable API 前先弃用。本文只列出对当前 adopter 仍有迁移价值的事项；已发布历史属于 [CHANGELOG](../../CHANGELOG.md)。
 
 ## 被撤销的 Token-Set 会话
 
@@ -17,7 +17,7 @@ SecurityDept 尚未到 1.0。只要能移除错误 ownership model、使 capabil
 
 ## 显式 `FoundationEnvironment`
 
-environment construction 改为 capability based。canonical base transport key 是 `environment.transport`，`externalTransport` 不再是 compatibility alias。`time`、`realmStorage`、`span`、`tracing` 是 required baseline capability；browser-only capability 保持 optional。
+environment construction 改为 capability based。canonical base transport key 是 `environment.transport`，`externalTransport` 不再是 compatibility alias。`injector`、`time`、`realmStorage`、`span`、`tracing` 也是 required baseline capability；browser-only capability 保持 optional。
 
 composition root 应通过对应 host creator 构造 `FoundationEnvironment` 后传给 client。helper 不得隐式读取 browser global 或 storage。
 
@@ -29,7 +29,7 @@ composition root 应通过对应 host creator 构造 `FoundationEnvironment` 后
 
 ## Reactive Interoperability
 
-`SignalTrait`、`EventStreamTrait`、`CancellationTokenTrait` 已提供 observable interop。public interface 仍是这些 SDK trait；internal implementation 可以直接使用 RxJS operator 和 `@securitydept/client/rx` utility。
+`ReadableSignalTrait`、`EventStreamTrait`、`CancellationTokenTrait` 已提供 observable interop。public interface 仍是这些 SDK trait；internal implementation 可以直接使用 RxJS operator 和 `@securitydept/client/rx` utility。
 
 如果自定义 Observable wrapper 只转发 subscription，应替换为 direct RxJS interop，例如 `from(client.authSnapshot)`。public trait API 需要 RxJS `NEVER` 或 `EMPTY` 语义时，使用 `createNeverEventStream()` 或 `createEmptyEventStream()`。不得用 raw Observable 替换 public SDK trait。
 

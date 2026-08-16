@@ -90,11 +90,17 @@ The public reactive contracts are SDK traits:
 
 Consumers receive read-only signals and event streams. Implementations may use RxJS directly: the traits implement observable interop, and `@securitydept/client/rx` provides RxJS-backed implementations plus command/resource utilities. Do not wrap RxJS again merely to hide it internally, and do not expose an RxJS `Observable` as the SDK's public contract.
 
-Client lifecycle event streams are hot, non-replaying edge streams. Current or stale state belongs in `SignalTrait` / `ResourceTrait`; diagnostic history belongs in an explicitly named trace timeline or event-history adapter. A late event subscriber must not re-run historical side effects such as toasts or metrics.
+Client lifecycle event streams are hot, non-replaying edge streams. Current or stale state belongs in `ReadableSignalTrait` / `ResourceTrait`; diagnostic history belongs in an explicitly named trace timeline or event-history adapter. A late event subscriber must not re-run historical side effects such as toasts or metrics.
 
-Failure variants carry a context-specific `ClientError` as a required `error` field. Consumers can use `from(client.events).pipe(filter(isClientErrorEvent))` to derive a default message stream without creating a second error subject. The same error instance is published to the Resource, failure event, and rejected operation. The full error is an in-process programming contract and must not be serialized directly; logging and tracing should derive secret-safe fields with `describeError(error)`, while UI adapters should use `readErrorPresentationDescriptor(error)`.
+Failure variants carry a context-specific `ClientError` as a required `error` field. Consumers can use `from(client.events).pipe(filter(isClientErrorEvent))` to derive a default message stream without creating a second error subject. For rejecting operations, the Resource failure, failure event, and rejected operation retain the same error instance. A recovered revocation may emit a failure event while resolving to unauthenticated state. The full error is an in-process programming contract and must not be serialized directly; logging and tracing should derive secret-safe fields with `describeError(error)`, while UI adapters should use `readErrorPresentationDescriptor(error)`.
 
 `createNeverEventStream()` and `createEmptyEventStream()` are the semantic equivalents of RxJS `NEVER` and `EMPTY` for public trait APIs.
+
+### Signal performance and verification
+
+RxSignal keeps a single Map snapshot kernel with raw state storage, lazy Rx value mirrors, and native dirty callbacks. Public Signal API, existing lossless Rx semantics, synchronous depth-first callback ordering, and public/foreign dirty observable protocols remain supported; watchStream retains its scheduler, replay, and cancellation behavior.
+
+Run `mise exec -- pnpm bench:sdks` for Vitest timing benchmarks and `mise exec -- pnpm test:sdks` for SDK tests, including benchmark correctness, retained-memory, and collection diagnostics. Append benchmark filters directly (for example `-t diamond`); append `-- -t memory` to the test command to forward filtering through Turbo. Benchmark-only dependencies are isolated in a private workspace under `sdks/ts/benchmarks`; generated results stay in ignored `temp/`. See the [benchmark guide](../../sdks/ts/benchmarks/signals/README.md) for methodology and comparison limits.
 
 ## Span And Tracing
 
@@ -129,6 +135,16 @@ Token-set clients have one in-memory snapshot authority. Their lifecycle has fou
 
 Auth events are a direct discriminated public union. Event type determines the payload shape; consumers must not rely on obsolete `AuthCheck*`, `TokenSetAuthFlowReason`, `TokenSetAuthFlowOutcome`, or payload-map contracts. Refresh events are the only auth-event family that carries freshness and refresh-material facts. No auth event may contain raw access tokens, refresh material, or authorization headers.
 
+### Refresh Error Recovery
+
+Both OIDC mode configs accept `refreshErrorPolicy`, implemented by `BaseOidcModeClient`. The default is `"revokeAsUnauthenticated"`: confirmed refresh-token revocation resolves to `null`, clears persisted credentials, and publishes resolved unauthenticated state. Registry factories remain ready, allowing a protected-route guard to start interactive login and preserve the attempted URL. The client itself does not navigate on revocation.
+
+Use `"revokeAsUnauthenticatedOnInit"` to recover only refreshes performed while `start()` restores a persisted session, or `"throw"` to retain rejecting operations. Explicit `restorePersistedState()` is a manual operation. All policies clear credentials already proven revoked.
+
+A synchronous or asynchronous handler receives `{ error, operation, trigger, clientId, cancellationToken }` and returns `"unauthenticated"` or `"throw"`. Operations are `"restorePersistedState"` and `"refresh"`; triggers are `"initialization"`, `"manual"`, `"refreshTimer"`, and `"pageResume"`. These contracts and their named constants are exported from `@securitydept/token-set-context-client/orchestration`.
+
+Only protocol-classified `TokenSetAuthorizationRevocationError` (`invalid_grant` or a qualifying Bearer `invalid_token` challenge) permits unauthenticated recovery, including when a handler requests it. Plain 401, network, configuration, protocol, storage, and cancellation failures are not reclassified; callback/code-exchange failures are outside this policy. Handler failures and cancellation reject while still removing already revoked material. Existing lifecycle failure events and tracing retain the original protocol error; auth events are not replayed to late subscribers.
+
 ## Framework Adapters
 
 React and Angular packages adapt canonical client ownership into their framework's context/injection and lifecycle facilities. They must not create a competing auth-state authority. Router adapters adapt the framework router to `RouterTrait`; they do not define product routes or UI.
@@ -144,7 +160,7 @@ The TanStack React Router adapter maps push and replace requests to `router.navi
 
 ## Lifecycle And Error Rules
 
-- Call `start()` once the client and required host capabilities are composed.
+- For directly owned clients, call `start()` after composing required capabilities. Use registry readiness APIs for registry-owned clients.
 - Consume public read-only state/event surfaces; call `dispose()` when the owning framework/container is destroyed.
 - Pass cancellation tokens to cancellable operations; cancellation is cooperative and must be checked at async boundaries.
 - Public failures use context-owned `ClientError` values with safe code/source/recovery metadata. Do not expose secret-bearing transport, token, or provider payloads in UI errors or events.
@@ -154,15 +170,5 @@ The TanStack React Router adapter maps push and replace requests to `router.navi
 A public change must update package exports, the inventory, focused documentation, tests, and [TS SDK Migrations](110-TS_SDK_MIGRATIONS.md), following the applicable stability discipline above. Prefer additive migration paths when they do not preserve a misleading or unsafe model. Do not introduce an alias solely to hide an ownership correction.
 
 ---
-
-## Refresh Error Recovery
-
-Both OIDC mode configs accept `refreshErrorPolicy`, implemented by `BaseOidcModeClient`. The default is `"revokeAsUnauthenticated"`: confirmed refresh-token revocation resolves to `null`, clears persisted credentials, and publishes resolved unauthenticated state. Registry factories remain ready, allowing a protected-route guard to start interactive login and preserve the attempted URL. The client itself does not navigate on revocation.
-
-Use `"revokeAsUnauthenticatedOnInit"` to recover only refreshes performed while `start()` restores a persisted session, or `"throw"` to retain rejecting operations. Explicit `restorePersistedState()` is a manual operation. All policies clear credentials already proven revoked.
-
-A synchronous or asynchronous handler receives `{ error, operation, trigger, clientId, cancellationToken }` and returns `"unauthenticated"` or `"throw"`. Operations are `"restorePersistedState"` and `"refresh"`; triggers are `"initialization"`, `"manual"`, `"refreshTimer"`, and `"pageResume"`. These contracts and their named constants are exported from `@securitydept/token-set-context-client/orchestration`.
-
-Only protocol-classified `TokenSetAuthorizationRevocationError` (`invalid_grant` or a qualifying Bearer `invalid_token` challenge) permits unauthenticated recovery, including when a handler requests it. Plain 401, network, configuration, protocol, storage, and cancellation failures are not reclassified; callback/code-exchange failures are outside this policy. Handler failures and cancellation reject while still removing already revoked material. Existing lifecycle failure events and tracing retain the original protocol error; auth events are not replayed to late subscribers.
 
 [English](007-CLIENT_SDK_GUIDE.md) | [中文](../zh/007-CLIENT_SDK_GUIDE.md)
