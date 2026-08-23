@@ -32,3 +32,4 @@ temp/*
 **/dist-tsc
 **/test-results
 .gitnexus
+.pnpm-store

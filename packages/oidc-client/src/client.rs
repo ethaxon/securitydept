@@ -2,6 +2,7 @@ use std::{borrow::Cow, cmp::min, sync::Arc, time::Duration};
 
 use base64::Engine;
 use chrono::Utc;
+use oauth2_reqwest::ReqwestClient;
 use openidconnect::{
     AccessToken, AuthType, AuthenticationFlow, AuthorizationCode, Client, ClientId, ClientSecret,
     CsrfToken, DeviceAuthorizationUrl, DeviceCodeErrorResponse, DeviceCodeErrorResponseType,
@@ -14,7 +15,6 @@ use openidconnect::{
         CoreJwsSigningAlgorithm, CoreRevocableToken, CoreRevocationErrorResponse,
         CoreTokenIntrospectionResponse, CoreTokenType,
     },
-    reqwest,
 };
 use securitydept_oauth_provider::{OAuthProviderRuntime, ProviderMetadataWithExtra};
 use securitydept_utils::observability::{
@@ -218,7 +218,7 @@ where
         }
 
         let details: CoreDeviceAuthorizationResponse = request
-            .request_async(self.provider.http_client())
+            .request_async(self.provider.oauth_http_client())
             .await
             .map_err(|e| OidcError::DeviceAuthorization {
                 message: format!("Device authorization request failed: {e}"),
@@ -564,7 +564,7 @@ where
         };
 
         let token_response = token_request
-            .request_async(self.provider.http_client())
+            .request_async(self.provider.oauth_http_client())
             .await
             .map_err(|e| OidcError::TokenRefresh {
                 message: format!("Refresh token request failed: {e}"),
@@ -636,7 +636,7 @@ where
                 match self
                     .request_userinfo(
                         &client,
-                        self.provider.http_client(),
+                        self.provider.oauth_http_client(),
                         token_response.access_token().clone(),
                         Some(id_token_claims.subject().clone()),
                     )
@@ -700,7 +700,7 @@ where
             .map_err(|e| OidcError::TokenRevocation {
                 message: format!("Revocation endpoint not set or config error: {e}"),
             })?
-            .request_async(self.provider.http_client())
+            .request_async(self.provider.oauth_http_client())
             .await
             .map_err(|e| OidcError::TokenRevocation {
                 message: format!("Token revocation request failed: {e}"),
@@ -751,7 +751,7 @@ where
             Some(
                 self.request_userinfo(
                     &client,
-                    self.provider.http_client(),
+                    self.provider.oauth_http_client(),
                     access_token_obj,
                     Some(id_token_claims.subject().clone()),
                 )
@@ -779,7 +779,7 @@ where
     async fn request_userinfo(
         &self,
         client: &DiscoveredClientWithExtra,
-        http_client: &reqwest::Client,
+        http_client: &ReqwestClient,
         access_token: openidconnect::AccessToken,
         expected_subject: Option<SubjectIdentifier>,
     ) -> OidcResult<UserInfoClaimsWithExtra> {
@@ -966,7 +966,7 @@ where
         }
 
         let token_response = token_request
-            .request_async(self.provider.http_client())
+            .request_async(self.provider.oauth_http_client())
             .await
             .map_err(|e| OidcError::TokenExchange {
                 message: format!("Token exchange request failed: {e}"),
@@ -1002,7 +1002,7 @@ where
             Some(
                 self.request_userinfo(
                     &client,
-                    self.provider.http_client(),
+                    self.provider.oauth_http_client(),
                     token_response.access_token().clone(),
                     Some(id_token_claims.subject().clone()),
                 )
@@ -1218,7 +1218,7 @@ where
             Some(
                 self.request_userinfo(
                     &client,
-                    self.provider.http_client(),
+                    self.provider.oauth_http_client(),
                     token_response.access_token().clone(),
                     Some(id_token_claims.subject().clone()),
                 )

@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 <!-- markdownlint-disable MD024 -->
 
+## [Unreleased]
+
+## [0.3.1]
+
+### Changed
+
+- Unified Rust OAuth/OIDC and Real-IP HTTP transport on reqwest 0.13 with rustls, using oauth2-reqwest for OAuth/OIDC requests and disabling oauth2/openidconnect's bundled reqwest 0.12 features. `OAuthProviderRuntime::http_client()` now exposes reqwest 0.13; `oauth_http_client()` exposes the OAuth adapter sharing its connection pool.
+- Bumped release-managed Rust crates, TypeScript packages, apps, shared metadata, and Cargo dependency requirements to `0.3.1`.
+
+### Fixed
+
+- Disabled automatic redirects for provider HTTP requests so OAuth credentials and endpoint fetches are not forwarded to redirected targets.
+
 ## [0.3.0]
 
 ### Added

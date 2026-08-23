@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use oauth2_reqwest::ReqwestClient;
 use openidconnect::{
     AccessToken, AuthUrl, ClientId, ClientSecret, DeviceAuthorizationUrl, IntrospectionUrl,
     IssuerUrl, JsonWebKeySet, JsonWebKeySetUrl, ResponseTypes, RevocationUrl, TokenUrl,
@@ -8,7 +9,6 @@ use openidconnect::{
         CoreClient, CoreJsonWebKeySet, CoreResponseType, CoreSubjectIdentifierType,
         CoreTokenIntrospectionResponse,
     },
-    reqwest,
 };
 use tokio::sync::RwLock;
 
@@ -27,6 +27,7 @@ struct ProviderState {
 pub struct OAuthProviderRuntime {
     config: OAuthProviderConfig,
     http_client: reqwest::Client,
+    oauth_http_client: ReqwestClient,
     state: RwLock<ProviderState>,
 }
 
@@ -34,17 +35,20 @@ impl OAuthProviderRuntime {
     pub async fn from_config(config: OAuthProviderConfig) -> OAuthProviderResult<Self> {
         config.validate()?;
 
-        let http_client =
-            reqwest::Client::builder()
-                .build()
-                .map_err(|e| OAuthProviderError::HttpClient {
-                    message: format!("Failed to build HTTP client: {e}"),
-                })?;
+        let http_client = reqwest::Client::builder()
+            // OAuth endpoint redirects must not forward credentials to another target.
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| OAuthProviderError::HttpClient {
+                message: format!("Failed to build HTTP client: {e}"),
+            })?;
 
-        let metadata = fetch_metadata(&config, &http_client).await?;
+        let oauth_http_client = ReqwestClient::from(http_client.clone());
+        let metadata = fetch_metadata(&config, &http_client, &oauth_http_client).await?;
         Ok(Self {
             config,
             http_client,
+            oauth_http_client,
             state: RwLock::new(ProviderState {
                 metadata,
                 metadata_fetched_at: Instant::now(),
@@ -55,6 +59,11 @@ impl OAuthProviderRuntime {
 
     pub fn http_client(&self) -> &reqwest::Client {
         &self.http_client
+    }
+
+    /// OAuth/OIDC adapter sharing the provider's reqwest 0.13 connection pool.
+    pub fn oauth_http_client(&self) -> &ReqwestClient {
+        &self.oauth_http_client
     }
 
     pub async fn metadata(&self) -> OAuthProviderResult<OAuthProviderMetadata> {
@@ -73,7 +82,7 @@ impl OAuthProviderRuntime {
 
     pub async fn refresh_jwks(&self) -> OAuthProviderResult<OAuthProviderMetadata> {
         let jwks_uri = { self.state.read().await.metadata.jwks_uri.clone() };
-        let jwks = fetch_jwks(&jwks_uri, &self.http_client).await?;
+        let jwks = fetch_jwks(&jwks_uri, &self.oauth_http_client).await?;
 
         let mut state = self.state.write().await;
         state.metadata.jwks = jwks;
@@ -86,7 +95,8 @@ impl OAuthProviderRuntime {
             return Ok(self.state.read().await.metadata.clone());
         }
 
-        let metadata = fetch_metadata(&self.config, &self.http_client).await?;
+        let metadata =
+            fetch_metadata(&self.config, &self.http_client, &self.oauth_http_client).await?;
         let mut state = self.state.write().await;
         state.metadata = metadata;
         state.metadata_fetched_at = Instant::now();
@@ -132,11 +142,12 @@ impl OAuthProviderRuntime {
             request = request.set_token_type_hint(token_type_hint);
         }
 
-        request.request_async(&self.http_client).await.map_err(|e| {
-            OAuthProviderError::Introspection {
+        request
+            .request_async(&self.oauth_http_client)
+            .await
+            .map_err(|e| OAuthProviderError::Introspection {
                 message: format!("Opaque token introspection failed: {e}"),
-            }
-        })
+            })
     }
 
     async fn ensure_metadata_and_jwks_fresh(&self) -> OAuthProviderResult<()> {
@@ -184,6 +195,7 @@ impl OAuthProviderRuntime {
 async fn fetch_metadata(
     config: &OAuthProviderConfig,
     http_client: &reqwest::Client,
+    oauth_http_client: &ReqwestClient,
 ) -> OAuthProviderResult<OAuthProviderMetadata> {
     if let Some(well_known_url) = config.remote.well_known_url.as_deref() {
         let response = http_client.get(well_known_url).send().await.map_err(|e| {
@@ -281,7 +293,7 @@ async fn fetch_metadata(
             ));
         }
 
-        let jwks = fetch_jwks(metadata.jwks_uri(), http_client).await?;
+        let jwks = fetch_jwks(metadata.jwks_uri(), oauth_http_client).await?;
         return from_provider_metadata(metadata.set_jwks(jwks));
     }
 
@@ -295,7 +307,7 @@ async fn fetch_metadata(
         .map_err(|e| OAuthProviderError::Metadata {
             message: format!("Invalid jwks_uri: {e}"),
         })?;
-    let jwks = fetch_jwks(&jwks_uri, http_client).await?;
+    let jwks = fetch_jwks(&jwks_uri, oauth_http_client).await?;
 
     Ok(OAuthProviderMetadata {
         issuer,
@@ -462,7 +474,7 @@ fn to_oidc_provider_metadata(
 
 async fn fetch_jwks(
     jwks_uri: &JsonWebKeySetUrl,
-    http_client: &reqwest::Client,
+    http_client: &ReqwestClient,
 ) -> OAuthProviderResult<CoreJsonWebKeySet> {
     JsonWebKeySet::fetch_async(jwks_uri, http_client)
         .await

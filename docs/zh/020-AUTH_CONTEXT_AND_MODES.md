@@ -39,6 +39,19 @@ server 持有的 secret value 使用 `SecretString`，其 debug 和 serializatio
 
 reference server 在 `GET /api/auth/token-set/frontend-mode/config` 暴露 public frontend projection。backend-mode 的 login、callback、refresh、metadata redemption 与 user-info 位于 `/auth/token-set/backend-mode/*`。host 可以使用不同 path，但 callback/redirect validation 必须留在 server policy 内，不得接受 caller-controlled URL。
 
+## Rust Provider HTTP Transport
+
+`OAuthProviderRuntime` 使用 reqwest 0.13 与 rustls。`http_client()` 返回用于
+直接 HTTP 请求的 reqwest client；`oauth_http_client()` 返回用于 OAuth/OIDC
+`request_async(...)` 调用的 `oauth2_reqwest::ReqwestClient` adapter。二者共用
+同一个连接池。Provider 请求不跟随 HTTP redirect；应配置最终的 discovery、
+JWKS、token、userinfo 与 introspection endpoint URL。
+
+SecurityDept 关闭了 `oauth2` 和 `openidconnect` 的默认 HTTP-client feature。
+如果 host 也直接依赖这些 crate，应使用 `default-features = false`，避免 Cargo
+feature unification 重新引入 reqwest 0.12。额外的 OAuth/OIDC 请求可使用
+provider 的 adapter，或参考 [oauth2-reqwest 使用指南](https://docs.rs/oauth2-reqwest/0.1.0-alpha.3/oauth2_reqwest/)。
+
 ## Principal 和 Token 边界
 
 authenticated principal 表示 session/token-set user-facing state 中已登录的人。

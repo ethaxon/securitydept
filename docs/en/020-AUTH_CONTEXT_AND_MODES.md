@@ -39,6 +39,21 @@ Server-held secret values use `SecretString`, whose debug and serialization form
 
 The reference server exposes the public frontend projection at `GET /api/auth/token-set/frontend-mode/config`. Backend-mode login, callback, refresh, metadata redemption, and user-info live below `/auth/token-set/backend-mode/*`. Hosts may mount different paths, but must keep callback and redirect validation inside server policy rather than accepting caller-controlled URLs.
 
+## Rust Provider HTTP Transport
+
+`OAuthProviderRuntime` uses reqwest 0.13 with rustls. Its `http_client()`
+accessor returns the reqwest client for direct HTTP requests;
+`oauth_http_client()` returns an `oauth2_reqwest::ReqwestClient` adapter for
+OAuth/OIDC `request_async(...)` calls. Both share the same connection pool.
+Provider requests do not follow HTTP redirects; configure the final discovery,
+JWKS, token, userinfo, and introspection endpoint URLs.
+
+SecurityDept disables the default HTTP-client features of both `oauth2` and
+`openidconnect`. Hosts that also depend directly on these crates should use
+`default-features = false` to avoid reintroducing reqwest 0.12 through Cargo
+feature unification. For additional OAuth/OIDC requests, use the provider's
+adapter or follow the [oauth2-reqwest usage guide](https://docs.rs/oauth2-reqwest/0.1.0-alpha.3/oauth2_reqwest/).
+
 ## Principal And Token Boundaries
 
 An authenticated principal represents the signed-in person in session/token-set
