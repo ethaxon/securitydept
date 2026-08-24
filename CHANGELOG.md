@@ -19,6 +19,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Fixed
 
 - Disabled automatic redirects for provider HTTP requests so OAuth credentials and endpoint fetches are not forwarded to redirected targets.
+- Declared the Tokio `time` feature required by the credentials-management watcher, fixing isolated crate verification in the Rust release package gate.
 
 ## [0.3.0]
 

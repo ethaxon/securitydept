@@ -21,7 +21,7 @@ securitydept-creds = { version = "~0.3.1", path = "../creds" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
-tokio = { workspace = true, features = ["fs", "sync", "rt"] }
+tokio = { workspace = true, features = ["fs", "sync", "rt", "time"] }
 tracing = { workspace = true }
 openidconnect = { workspace = true }
 http = { workspace = true }
