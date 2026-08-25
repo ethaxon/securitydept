@@ -135,6 +135,27 @@ Token-set clients have one in-memory snapshot authority. Their lifecycle has fou
 
 Auth events are a direct discriminated public union. Event type determines the payload shape; consumers must not rely on obsolete `AuthCheck*`, `TokenSetAuthFlowReason`, `TokenSetAuthFlowOutcome`, or payload-map contracts. Refresh events are the only auth-event family that carries freshness and refresh-material facts. No auth event may contain raw access tokens, refresh material, or authorization headers.
 
+### Frontend OIDC Runtime Capabilities
+
+Use HTTPS or a trustworthy localhost/loopback origin for browser Frontend OIDC. Ordinary HTTP domains and LAN IPs do not expose native `crypto.subtle`; changing `external_base_url` does not change the page's security context. See [secure contexts](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts).
+
+Client construction checks `globalThis.crypto.getRandomValues` and, when `pkceEnabled` is true (the default), `crypto.subtle.digest`. Authorization URL construction checks them again. Missing capabilities throw a configuration `ClientError`: `FrontendOidcModeErrorCode.InsecureContext` (`frontend_oidc.runtime.insecure_context`) when `isSecureContext === false`, otherwise `WebCryptoUnavailable` (`frontend_oidc.runtime.web_crypto_unavailable`). The message names the missing functions and remediation. Context status alone does not reject a host that supplies compatible APIs; checks validate function availability, not implementation correctness or algorithm support.
+
+If an unsupported runtime must be used, install compatible polyfills on **`globalThis.crypto` before creating the SDK environment, spans, registry, or clients**. Passing an unrelated crypto object to application code does not change oauth4webapi's global API usage. Required functions/modules are:
+
+| Consumer | Required capability |
+| --- | --- |
+| SDK client/registry/span UUID v7 generation; oauth4webapi `generateRandomState`, `generateRandomNonce`, `generateRandomCodeVerifier` | Cryptographically secure `crypto.getRandomValues` |
+| Frontend OIDC `buildAuthorizeUrl`, `authorizeUrl`, `loginWithRedirect`, `loginWithPopup` with PKCE | `crypto.subtle.digest` supporting SHA-256 |
+| Direct oauth4webapi JWK thumbprints, DPoP hashes, hybrid code/ID-token hash validation | `digest`; hash algorithm depends on the operation/signing algorithm |
+| Direct oauth4webapi JWT assertions (`PrivateKeyJwt`, `ClientSecretJwt`) | `sign`, and `importKey` for secret-based assertions |
+| Direct oauth4webapi application-level JWT/JARM/access-token/DPoP signature validation | `importKey`, `verify` |
+| Direct oauth4webapi DPoP proofs and `generateKeyPair` | `exportKey`, `sign`, `generateKey` as applicable |
+
+The extension paths need compatible `CryptoKey` objects/global constructor and the selected algorithms. SecurityDept's current wrapper uses authorization-code responses, `None`/`ClientSecretPost`, and PKCE; it does not enable those direct extensions, signature-validation helpers, or JWE decryption. A custom `jweDecrypt` callback owns its additional cryptographic requirements. Refer to the [oauth4webapi implementation](https://github.com/panva/oauth4webapi/blob/main/src/index.ts); the workspace locks 3.8.6, while consumers may install other compatible 3.x versions. Recheck requirements when extending flows or upgrading.
+
+There is no built-in crypto fallback. Do not substitute `Math.random`, disable PKCE as an environment workaround, or spoof `isSecureContext`. Polyfills supply computation, not confidentiality/authenticity of HTTP delivery. HTTPS remains the production requirement; CORS, mixed-content restrictions, Secure cookies, and IdP callback rules remain independent. Loopback `allowInsecureRequests` only relaxes oauth4webapi's endpoint protocol policy.
+
 ### Refresh Error Recovery
 
 Both OIDC mode configs accept `refreshErrorPolicy`, implemented by `BaseOidcModeClient`. The default is `"revokeAsUnauthenticated"`: confirmed refresh-token revocation resolves to `null`, clears persisted credentials, and publishes resolved unauthenticated state. Registry factories remain ready, allowing a protected-route guard to start interactive login and preserve the attempted URL. The client itself does not navigate on revocation.

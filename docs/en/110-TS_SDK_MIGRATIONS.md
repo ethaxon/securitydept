@@ -2,6 +2,10 @@
 
 Public changes follow the [SDK stability discipline](007-CLIENT_SDK_GUIDE.md#stability-and-change-discipline), including deprecation before removing stable APIs. This document lists migrations that remain relevant to current adopters; released history belongs in [CHANGELOG](../../CHANGELOG.md).
 
+## Frontend OIDC Crypto Capability Checks
+
+Frontend OIDC construction now reports unavailable Web Crypto before starting the client, and authorization URL construction rechecks capabilities. Hosts in unsupported runtimes must install compatible global polyfills before SDK environment/client construction; catch `FrontendOidcModeErrorCode.InsecureContext` or `WebCryptoUnavailable` rather than relying on raw browser `TypeError` failures. No method signatures change. See [runtime capabilities](007-CLIENT_SDK_GUIDE.md#frontend-oidc-runtime-capabilities).
+
 ## Revoked Token-Set Sessions
 
 Refresh operations now recover confirmed revocation by default. Applications that rely on rejected refresh promises should set `refreshErrorPolicy: "throw"`. Use `"revokeAsUnauthenticatedOnInit"` to keep runtime rejection while allowing startup recovery. Handle the existing nullable refresh result; do not treat a `null` result as authenticated. See [Refresh Error Recovery](007-CLIENT_SDK_GUIDE.md#refresh-error-recovery).

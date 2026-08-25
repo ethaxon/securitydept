@@ -7,7 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 <!-- markdownlint-disable MD024 -->
 
-## [Unreleased]
+<!-- ## [Unreleased] -->
+
+## [0.3.2]
+
+### Added
+
+- Added Frontend OIDC runtime checks for secure-context/Web Crypto availability with named configuration errors, host-polyfill support, and documented operation-specific oauth4webapi crypto requirements.
+
+### Changed
+
+- Bumped release-managed Rust crates, TypeScript packages, apps, shared metadata, and Cargo dependency requirements to `0.3.2`.
+
+### Fixed
+
+- Handled generated-token clipboard failures in the WebUI with explicit feedback, selectable token text, and manual-copy fallback without losing the generated credential.
 
 ## [0.3.1]
 

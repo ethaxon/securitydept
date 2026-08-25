@@ -135,6 +135,27 @@ token-set client 只有一个 in-memory snapshot authority。其 lifecycle 有�
 
 auth event 是 direct discriminated public union，event `type` 决定 payload shape。consumer 不得再依赖已废弃的 `AuthCheck*`、`TokenSetAuthFlowReason`、`TokenSetAuthFlowOutcome` 或 payload-map contract。只有 refresh event 携带 freshness 和 refresh-material fact。任何 auth event 不得包含 raw access token、refresh material 或 authorization header。
 
+### Frontend OIDC 运行时能力
+
+浏览器 Frontend OIDC 应使用 HTTPS 或可信 localhost/loopback origin。普通 HTTP 域名和局域网 IP 不提供原生 `crypto.subtle`；修改 `external_base_url` 不会改变页面的安全上下文。参阅[安全上下文规则](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts)。
+
+client 创建时检查 `globalThis.crypto.getRandomValues`，以及 `pkceEnabled` 为 true（默认）时的 `crypto.subtle.digest`；构造授权 URL 前再次检查。缺失能力抛出 configuration `ClientError`：`isSecureContext === false` 时为 `FrontendOidcModeErrorCode.InsecureContext`（`frontend_oidc.runtime.insecure_context`），否则为 `WebCryptoUnavailable`（`frontend_oidc.runtime.web_crypto_unavailable`）。错误消息列出缺失函数与处理方式。host 提供兼容 API 后，不会仅因上下文不安全而拒绝；检查只确认函数存在，不验证实现正确性或算法支持。
+
+如果必须使用不支持的 runtime，需要在**创建 SDK environment、span、registry 或 client 之前，为 `globalThis.crypto` 安装兼容 polyfill**。仅向应用代码传入另一个 crypto object，不会改变 oauth4webapi 对全局 API 的使用。函数和模块需求如下：
+
+| 使用方 | 必需能力 |
+| --- | --- |
+| SDK client/registry/span 的 UUID v7；oauth4webapi `generateRandomState`、`generateRandomNonce`、`generateRandomCodeVerifier` | 密码学安全的 `crypto.getRandomValues` |
+| Frontend OIDC 的 `buildAuthorizeUrl`、`authorizeUrl`、`loginWithRedirect`、`loginWithPopup`，开启 PKCE 时 | 支持 SHA-256 的 `crypto.subtle.digest` |
+| 直接使用 oauth4webapi 的 JWK thumbprint、DPoP hash、hybrid code/ID-token hash 校验 | `digest`；算法取决于操作与签名算法 |
+| 直接使用 oauth4webapi JWT assertion（`PrivateKeyJwt`、`ClientSecretJwt`） | `sign`；secret-based assertion 还需要 `importKey` |
+| 直接使用 oauth4webapi 的 application-level JWT/JARM/access-token/DPoP 签名校验 | `importKey`、`verify` |
+| 直接使用 oauth4webapi 的 DPoP proof 与 `generateKeyPair` | 按操作需要 `exportKey`、`sign`、`generateKey` |
+
+扩展路径还需要兼容的 `CryptoKey` object/全局 constructor 及所选算法。SecurityDept 当前封装使用 authorization-code response、`None`/`ClientSecretPost` 和 PKCE，并未启用这些直接扩展、签名校验 helper 或 JWE 解密。自定义 `jweDecrypt` callback 应自行满足额外密码学需求。参阅 [oauth4webapi 实现](https://github.com/panva/oauth4webapi/blob/main/src/index.ts)；workspace 锁定 3.8.6，但使用方可以安装其他兼容的 3.x 版本。扩展流程或升级时应重新核对需求。
+
+SDK 不内置 crypto 降级。不要用 `Math.random` 替代安全随机数、通过关闭 PKCE 规避环境问题，或伪造 `isSecureContext`。polyfill 只提供计算能力，不保证 HTTP 页面传输的机密性与真实性。生产环境仍须使用 HTTPS；CORS、mixed content、Secure cookie 与 IdP callback 规则是独立限制。loopback 的 `allowInsecureRequests` 只放宽 oauth4webapi 的 endpoint 协议策略。
+
 ### 刷新错误恢复
 
 两个 OIDC 模式的配置均支持 `refreshErrorPolicy`，由 `BaseOidcModeClient` 统一实现。默认值为 `"revokeAsUnauthenticated"`：刷新令牌被确认撤销后返回 `null`、清除持久化凭据，并发布 resolved 的未认证状态。Registry 工厂仍可正常就绪，受保护路由守卫可以开始交互登录并保留目标 URL；客户端自身不会因撤销而直接导航。

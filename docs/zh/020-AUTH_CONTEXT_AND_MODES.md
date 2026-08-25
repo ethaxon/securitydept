@@ -39,6 +39,12 @@ server 持有的 secret value 使用 `SecretString`，其 debug 和 serializatio
 
 reference server 在 `GET /api/auth/token-set/frontend-mode/config` 暴露 public frontend projection。backend-mode 的 login、callback、refresh、metadata redemption 与 user-info 位于 `/auth/token-set/backend-mode/*`。host 可以使用不同 path，但 callback/redirect validation 必须留在 server policy 内，不得接受 caller-controlled URL。
 
+### 浏览器运行时和 Token 复制
+
+Frontend OIDC 需要 host 提供 Web Crypto 能力；参阅[运行时检查和 polyfill 需求](007-CLIENT_SDK_GUIDE.md#frontend-oidc-运行时能力)。server-mediated session/backend OIDC 不会将其密码学操作转移到浏览器。
+
+reference WebUI 的新建 token 面板会尝试剪贴板复制并提示成功。clipboard API 缺失、权限拒绝或写入失败时，token 保留在只读字段中并自动选中，同时显示手动复制说明和选择按钮。应先保存再关闭；复制失败不影响 token 创建。复制反馈不包含 token 值或原始浏览器错误。
+
 ## Rust Provider HTTP Transport
 
 `OAuthProviderRuntime` 使用 reqwest 0.13 与 rustls。`http_client()` 返回用于

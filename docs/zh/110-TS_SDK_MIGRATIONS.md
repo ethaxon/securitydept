@@ -2,6 +2,10 @@
 
 public change 遵循 [SDK 稳定性纪律](007-CLIENT_SDK_GUIDE.md#稳定性和变更纪律)，包括移除 stable API 前先弃用。本文只列出对当前 adopter 仍有迁移价值的事项；已发布历史属于 [CHANGELOG](../../CHANGELOG.md)。
 
+## Frontend OIDC Crypto 能力检查
+
+Frontend OIDC 创建时会在启动 client 前明确报告缺失的 Web Crypto，构造授权 URL 时再次检查。不支持的 runtime 必须在 SDK environment/client 创建前安装兼容的全局 polyfill；使用方应捕获 `FrontendOidcModeErrorCode.InsecureContext` 或 `WebCryptoUnavailable`，不再依赖原始浏览器 `TypeError`。方法签名不变。参阅[运行时能力](007-CLIENT_SDK_GUIDE.md#frontend-oidc-运行时能力)。
+
 ## 被撤销的 Token-Set 会话
 
 刷新操作默认将确认撤销恢复为未认证。依赖刷新 Promise 拒绝的应用应设置 `refreshErrorPolicy: "throw"`；需要保留运行时抛错但允许启动恢复时，设置 `"revokeAsUnauthenticatedOnInit"`。正确处理原有的可空刷新返回值，不应将 `null` 视为已认证。参阅[刷新错误恢复](007-CLIENT_SDK_GUIDE.md#刷新错误恢复)。

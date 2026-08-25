@@ -22,7 +22,7 @@ import {
 	createTimeForTest,
 } from "@securitydept/client/test";
 import { InMemoryTraceCollector } from "@securitydept/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type TokenSetAuthEvent,
 	TokenSetAuthEventType,
@@ -155,6 +155,7 @@ import {
 } from "../client/types";
 
 describe("FrontendOidcModeClient", () => {
+	afterEach(() => vi.unstubAllGlobals());
 	beforeEach(() => {
 		oauthMocks.authorizationCodeGrantRequest.mockReset();
 		oauthMocks.calculatePKCECodeChallenge.mockReset();
@@ -206,6 +207,47 @@ describe("FrontendOidcModeClient", () => {
 			issuer: "https://auth.example.com",
 			token_endpoint: "https://auth.example.com/token",
 		});
+	});
+
+	it("reports missing crypto before base-client ID generation", () => {
+		const environment = createFoundationEnvironment();
+		vi.stubGlobal("crypto", undefined);
+		expect(() =>
+			FrontendOidcModeClient.fromEnvironmentConfig({
+				config: {
+					issuer: "https://auth.example.com",
+					clientId: "spa-client",
+					redirectUri: "https://app.example.com/callback",
+				},
+				environment,
+			}),
+		).toThrow(
+			expect.objectContaining({
+				code: FrontendOidcModeErrorCode.WebCryptoUnavailable,
+			}),
+		);
+	});
+
+	it("checks PKCE capability again before constructing an authorization URL", async () => {
+		using client = FrontendOidcModeClient.fromEnvironmentConfig({
+			config: {
+				issuer: "https://auth.example.com",
+				clientId: "spa-client",
+				redirectUri: "https://app.example.com/callback",
+				authorizationEndpoint: "https://auth.example.com/authorize",
+			},
+			environment: createFoundationEnvironment(),
+		});
+		vi.stubGlobal("crypto", {
+			getRandomValues: globalThis.crypto.getRandomValues.bind(
+				globalThis.crypto,
+			),
+		});
+		vi.stubGlobal("isSecureContext", false);
+		await expect(client.buildAuthorizeUrl()).rejects.toMatchObject({
+			code: FrontendOidcModeErrorCode.InsecureContext,
+		});
+		expect(oauthMocks.calculatePKCECodeChallenge).not.toHaveBeenCalled();
 	});
 
 	it("allows subclasses to override flow-store creation", () => {

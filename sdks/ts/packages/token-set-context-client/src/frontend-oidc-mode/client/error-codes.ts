@@ -1,4 +1,6 @@
 export const FrontendOidcModeErrorCode = {
+	InsecureContext: "frontend_oidc.runtime.insecure_context",
+	WebCryptoUnavailable: "frontend_oidc.runtime.web_crypto_unavailable",
 	OperationFailed: "frontend_oidc.operation_failed",
 	RedirectRouterUnavailable: "frontend_oidc.redirect.router_unavailable",
 	PopupCapabilityMissing: "frontend_oidc.popup.capability_missing",

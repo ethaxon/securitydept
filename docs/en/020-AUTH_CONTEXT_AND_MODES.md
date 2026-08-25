@@ -39,6 +39,12 @@ Server-held secret values use `SecretString`, whose debug and serialization form
 
 The reference server exposes the public frontend projection at `GET /api/auth/token-set/frontend-mode/config`. Backend-mode login, callback, refresh, metadata redemption, and user-info live below `/auth/token-set/backend-mode/*`. Hosts may mount different paths, but must keep callback and redirect validation inside server policy rather than accepting caller-controlled URLs.
 
+### Browser Runtime And Token Copying
+
+Frontend OIDC requires host Web Crypto capabilities; see [runtime checks and polyfill requirements](007-CLIENT_SDK_GUIDE.md#frontend-oidc-runtime-capabilities). Server-mediated session/backend OIDC does not move its cryptographic operations into the browser.
+
+The reference WebUI's generated-token panel attempts clipboard copying and reports success. If the clipboard API is missing or permission/write fails, it keeps the token visible in a read-only field, selects it, and shows manual-copy instructions and a selection button. Save it before dismissing; copy failure does not undo token creation. Clipboard feedback does not include token values or raw browser errors.
+
 ## Rust Provider HTTP Transport
 
 `OAuthProviderRuntime` uses reqwest 0.13 with rustls. Its `http_client()`

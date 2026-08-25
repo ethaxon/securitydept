@@ -1,6 +1,6 @@
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
-import { Copy, KeyRound } from "lucide-react";
+import { KeyRound } from "lucide-react";
 import { useState } from "react";
 import {
 	type AuthEntry,
@@ -14,6 +14,7 @@ import {
 	useUpdateEntryMutation,
 } from "@/dashboard/queries";
 import { type EntrySearch } from "./-entry-search";
+import { GeneratedToken } from "./-generated-token";
 
 const EntryFormMode = {
 	Create: "create",
@@ -252,30 +253,10 @@ export function EntryForm({ mode, entry, initial }: EntryFormProps) {
 			</form>
 
 			{!isEdit && generatedToken && (
-				<div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
-					<p className="mb-2 text-sm font-medium text-amber-800 dark:text-amber-300">
-						Token generated (save it now, it won't be shown again):
-					</p>
-					<div className="flex items-center gap-2">
-						<code className="flex-1 rounded bg-white px-3 py-2 text-sm break-all dark:bg-zinc-900">
-							{generatedToken}
-						</code>
-						<button
-							type="button"
-							onClick={() => navigator.clipboard.writeText(generatedToken)}
-							className="rounded-md p-2 hover:bg-amber-100 dark:hover:bg-amber-900"
-						>
-							<Copy className="h-4 w-4" />
-						</button>
-					</div>
-					<button
-						type="button"
-						onClick={() => setGeneratedToken(null)}
-						className="mt-2 text-xs text-amber-700 underline dark:text-amber-400"
-					>
-						Dismiss
-					</button>
-				</div>
+				<GeneratedToken
+					token={generatedToken}
+					onDismiss={() => setGeneratedToken(null)}
+				/>
 			)}
 		</div>
 	);

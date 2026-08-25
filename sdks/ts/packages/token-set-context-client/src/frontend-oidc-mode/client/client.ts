@@ -121,6 +121,7 @@ import { transformScriptForBrowser } from "../contracts/script-compat";
 import { FrontendOidcModeCallbackErrorCode } from "../errors/callback-error-codes";
 import { FRONTEND_OIDC_MODE_CLIENT_OPTIONS } from "../tokens";
 import { createDefaultFrontendOidcModeCallbackInputResolver } from "./callback-input-resolver";
+import { assertFrontendOidcCryptoCapabilities } from "./crypto-capabilities";
 import { resolveDiscoveryIssuerCompatibility } from "./discovery";
 import {
 	FrontendOidcModeErrorCode,
@@ -276,6 +277,11 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 
 	protected constructor(options: FrontendOidcModeClientOptions) {
 		const { config, environment } = options;
+		assertFrontendOidcCryptoCapabilities({
+			crypto: globalThis.crypto,
+			isSecureContext: globalThis.isSecureContext,
+			pkceEnabled: config.pkceEnabled ?? true,
+		});
 		super({
 			environment,
 			tracing: {
@@ -1010,6 +1016,11 @@ export class FrontendOidcModeClient extends BaseOidcModeClient {
 		cancellationToken: CancellationTokenTrait,
 	): Promise<FrontendOidcModeAuthorizeResult> {
 		cancellationToken.throwIfCancellationRequested();
+		assertFrontendOidcCryptoCapabilities({
+			crypto: globalThis.crypto,
+			isSecureContext: globalThis.isSecureContext,
+			pkceEnabled: this._config.pkceEnabled,
+		});
 		const authServer = this._requireAuthServer("buildAuthorizeUrl");
 		if (!authServer.authorization_endpoint) {
 			throw new ClientError({
