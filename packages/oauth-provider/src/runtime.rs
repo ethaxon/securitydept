@@ -33,9 +33,39 @@ pub struct OAuthProviderRuntime {
 
 impl OAuthProviderRuntime {
     pub async fn from_config(config: OAuthProviderConfig) -> OAuthProviderResult<Self> {
+        Self::from_config_with_http_client_builder(config, reqwest::Client::builder()).await
+    }
+
+    /// Build all provider transports from a host-configured builder.
+    ///
+    /// TLS roots, identities, proxies, DNS and timeouts are preserved, but
+    /// redirects are always disabled to prevent forwarding OAuth credentials.
+    /// The builder is consumed once; both transports share its connection pool.
+    /// Certificate loading and private-key protection remain the host's
+    /// responsibility. Default headers and client identity apply to every
+    /// provider endpoint; use separate runtimes for separate trust domains.
+    ///
+    /// ```no_run
+    /// # async fn configured(config: securitydept_oauth_provider::OAuthProviderConfig)
+    /// # -> Result<securitydept_oauth_provider::OAuthProviderRuntime, Box<dyn std::error::Error>> {
+    /// let roots = reqwest::Certificate::from_pem_bundle(&std::fs::read("ca.pem")?)?;
+    /// let builder = reqwest::Client::builder()
+    ///     .tls_certs_merge(roots)
+    ///     .identity(reqwest::Identity::from_pem(&std::fs::read("identity.pem")?)?)
+    ///     .proxy(reqwest::Proxy::https("http://proxy.example.com:8080")?)
+    ///     .timeout(std::time::Duration::from_secs(15));
+    /// // Use tls_certs_only(roots) instead to replace platform trust.
+    /// let provider = securitydept_oauth_provider::OAuthProviderRuntime::from_config_with_http_client_builder(config, builder).await?;
+    /// # Ok(provider)
+    /// # }
+    /// ```
+    pub async fn from_config_with_http_client_builder(
+        config: OAuthProviderConfig,
+        builder: reqwest::ClientBuilder,
+    ) -> OAuthProviderResult<Self> {
         config.validate()?;
 
-        let http_client = reqwest::Client::builder()
+        let http_client = builder
             // OAuth endpoint redirects must not forward credentials to another target.
             .redirect(reqwest::redirect::Policy::none())
             .build()

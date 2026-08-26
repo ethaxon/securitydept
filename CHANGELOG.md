@@ -9,6 +9,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 <!-- ## [Unreleased] -->
 
+## [0.3.3]
+
+### Added
+
+- Added consuming reqwest `ClientBuilder` entrypoints for OAuth providers, OIDC clients, resource-server verifiers, their high-level token-set runtimes, and Real-IP remote-file registries/resolvers, including custom-factory combinations. Hosts can configure CA roots, mTLS, proxies, timeouts and DNS without changing serialized configuration.
+- Added local rustls CA/mTLS integration coverage for all creation layers, shared transport, redirect safety, remote refresh and timeout overrides.
+
+### Changed
+
+- Reused one HTTP client across Real-IP remote-file initial loads and refreshes; explicit node timeouts override the builder timeout. Kubernetes, Docker and propagation forwarding retain their native transports.
+- Bumped all release-managed workspace versions and internal Cargo dependency requirements to `0.3.3`.
+
+### Fixed
+
+- Preserved OAuth's no-redirect policy with user-provided builders and ensured unused builders are not built for disabled authentication or local-only CIDR nodes.
+- Aborted already-started Real-IP refresh tasks when a later file watcher fails during initialization.
+
 ## [0.3.2]
 
 ### Added

@@ -76,6 +76,8 @@ serde-constant = "0.1"
 testcontainers = "0.27"
 anyhow = "1"
 rustls = "0.23"
+tokio-rustls = "0.26"
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "ring"] }
 bollard = { version = "0.20", default-features = false }
 moka = "0.12"
 iri-string = "0.7.12"

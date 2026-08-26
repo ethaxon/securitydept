@@ -60,6 +60,40 @@ SecurityDept disables the default HTTP-client features of both `oauth2` and
 feature unification. For additional OAuth/OIDC requests, use the provider's
 adapter or follow the [oauth2-reqwest usage guide](https://docs.rs/oauth2-reqwest/0.1.0-alpha.3/oauth2_reqwest/).
 
+### Host-Configured Rust HTTP Clients
+
+Rust hosts can consume a `reqwest::ClientBuilder` through these additive entrypoints:
+
+- `OAuthProviderRuntime`, `OidcClient`, `OAuthResourceServerVerifier`: `from_config_with_http_client_builder(config, builder)`.
+- `BackendOidcModeRuntime`, `AccessTokenSubstrateRuntime`: `from_resolved_config_with_http_client_builder(config, builder)`.
+- `RealIpResolver`: `from_config_with_http_client_builder(config, builder)` and `from_config_with_factories_and_http_client_builder(config, &factories, builder)`.
+- `CidrNodeRegistry`: the corresponding `from_configs_with_http_client_builder` and `from_configs_with_factories_and_http_client_builder` methods; see [Real-IP HTTP transport](006-REALIP.md#host-configured-http-transport).
+
+Existing constructors remain available and delegate using a default builder. No certificate fields are added to TOML or environment configuration. Disabled authentication and Real-IP registries without built-in remote-file nodes do not build an unused builder. Kubernetes/Docker retain their native configuration; propagation's axum-reverse-proxy, inbound server TLS, and browser SDK transport are not affected.
+
+```rust
+// The host loads certificates; identity.pem contains the client certificate
+// chain and private key, not a CA bundle.
+let roots = reqwest::Certificate::from_pem_bundle(&std::fs::read("ca.pem")?)?;
+let identity = reqwest::Identity::from_pem(&std::fs::read("identity.pem")?)?;
+let builder = reqwest::Client::builder()
+    .tls_certs_merge(roots)
+    .identity(identity)
+    .proxy(reqwest::Proxy::https("http://proxy.example.com:8080")?)
+    .timeout(std::time::Duration::from_secs(15));
+let provider = std::sync::Arc::new(
+    OAuthProviderRuntime::from_config_with_http_client_builder(provider_config, builder).await?
+);
+let oidc = OidcClient::<MokaPendingOauthStore>::from_provider(provider.clone(), oidc_config).await?;
+let verifier = OAuthResourceServerVerifier::from_provider(provider, verifier_config).await?;
+```
+
+`tls_certs_merge` adds roots to platform trust; use `tls_certs_only(roots)` instead for an isolated trust set. Default TLS stays on rustls; hosts can select a backend on the builder with the corresponding reqwest features. Identity configures TLS client authentication, not new OAuth `tls_client_auth`/`self_signed_tls_client_auth` methods or certificate-bound-token enforcement. Protect private keys and never expose them through frontend projections or logging. Do not disable certificate/hostname validation to accommodate a private CA.
+
+The builder is consumed once. Provider discovery, JWKS, refresh, token, userinfo, introspection, device and revocation requests use the same built client and OAuth adapter connection pool. Sharing the provider through `from_provider` also shares caches; separate convenience constructors build separate providers. TLS identity and default headers apply to every endpoint of that provider: separate trust domains should use separate runtimes.
+
+OAuth provider construction always overrides the builder's redirect policy with `Policy::none()` before building. All other settings remain host-owned. Invalid configuration is rejected before building; build failures retain existing error types. General Real-IP remote-file requests retain their host/default redirect policy rather than inheriting the OAuth restriction.
+
 ## Principal And Token Boundaries
 
 An authenticated principal represents the signed-in person in session/token-set

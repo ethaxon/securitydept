@@ -34,6 +34,22 @@ strategy = "remote-addr"
 
 `remote-addr` 是目前唯一的 fallback strategy，返回状态为 `Fallback` 的 direct socket peer。
 
+## Host 自定义 HTTP Transport
+
+Rust host 可以通过 `RealIpResolver::from_config_with_http_client_builder(config, builder)` 或 `CidrNodeRegistry::from_configs_with_http_client_builder(&nodes, builder)` 注入 reqwest builder。需要组合自定义 factory 时，使用 `from_config_with_factories_and_http_client_builder(config, &factories, builder)`，或 registry 的复数形式 `from_configs_with_factories_and_http_client_builder`。
+
+```rust
+let roots = reqwest::Certificate::from_pem_bundle(&std::fs::read("cidr-ca.pem")?)?;
+let builder = reqwest::Client::builder()
+    .tls_certs_only(roots)
+    .timeout(std::time::Duration::from_secs(10));
+let resolver = RealIpResolver::from_config_with_factories_and_http_client_builder(
+    config, &factories, builder
+).await?;
+```
+
+仅内置 `cidrs-remote-file` 节点使用该 client。只构建一次，在全部 URL、首次加载与周期刷新间共享，因此 default header/identity 应用于全部这些 URL。节点显式 `timeout` 覆盖 builder 的请求 timeout；未设置时保留 builder 设置。原有构造入口、默认 redirect、`keep-last-good`/`clear` 和 stale 行为保持可用。没有远程文件节点时不 build。自定义 factory、Kubernetes kubeconfig 与 Docker connection 分别拥有自己的 transport。证书读取与私钥保护由 host 负责；参阅 [Rust HTTP client 示例](020-AUTH_CONTEXT_AND_MODES.md#host-自定义-rust-http-client)。
+
 ## Rules
 
 Rule 按 `priority` 从高到低执行，相同优先级按定义顺序执行。第一个 `Resolved` 或 `Rejected` 结果会终止计算；`not_applicable` 允许继续执行下一条 rule。

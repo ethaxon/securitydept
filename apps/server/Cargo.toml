@@ -1,6 +1,6 @@
 [package]
 name = "securitydept-server"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2024"
 publish = false
 
@@ -47,3 +47,10 @@ regex = { workspace = true }
 
 [build-dependencies]
 winres = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["io-util"] }
+reqwest = { workspace = true }
+tokio-rustls = { workspace = true }
+rcgen = { workspace = true }
+jsonwebtoken = { workspace = true }

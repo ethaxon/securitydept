@@ -34,6 +34,22 @@ strategy = "remote-addr"
 
 `remote-addr` is currently the only fallback strategy. It returns the direct socket peer with status `Fallback`.
 
+## Host-Configured HTTP Transport
+
+Rust hosts may inject a reqwest builder using `RealIpResolver::from_config_with_http_client_builder(config, builder)` or `CidrNodeRegistry::from_configs_with_http_client_builder(&nodes, builder)`. To combine it with custom factories, use `from_config_with_factories_and_http_client_builder(config, &factories, builder)` or the registry's plural `from_configs_with_factories_and_http_client_builder`.
+
+```rust
+let roots = reqwest::Certificate::from_pem_bundle(&std::fs::read("cidr-ca.pem")?)?;
+let builder = reqwest::Client::builder()
+    .tls_certs_only(roots)
+    .timeout(std::time::Duration::from_secs(10));
+let resolver = RealIpResolver::from_config_with_factories_and_http_client_builder(
+    config, &factories, builder
+).await?;
+```
+
+Only built-in `cidrs-remote-file` nodes use this client. It is built once and shared across all their URLs, initial loads and periodic refreshes; default headers/identity therefore apply to all those URLs. A node's explicit `timeout` overrides the builder's request timeout; an absent timeout preserves the builder setting. Existing constructors, redirect defaults, `keep-last-good`/`clear` and staleness behavior remain available. Without remote-file nodes the builder is not built. Custom factories, Kubernetes kubeconfig and Docker connections own their respective transports. Certificate loading and private-key protection remain host responsibilities; see [Rust HTTP client examples](020-AUTH_CONTEXT_AND_MODES.md#host-configured-rust-http-clients).
+
 ## Rules
 
 Rules run by descending `priority`; definition order breaks ties. The first `Resolved` or `Rejected` outcome terminates evaluation. A `not_applicable` rule allows the next rule to run.

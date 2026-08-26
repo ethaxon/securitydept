@@ -28,10 +28,20 @@ pub struct OAuthResourceServerVerifier {
 
 impl OAuthResourceServerVerifier {
     pub async fn from_config(config: OAuthResourceServerConfig) -> OAuthResourceServerResult<Self> {
+        Self::from_config_with_http_client_builder(config, reqwest::Client::builder()).await
+    }
+
+    /// Configure provider HTTP transport; OAuth redirects are always disabled.
+    /// Use `from_provider` when a host already owns a shared provider.
+    pub async fn from_config_with_http_client_builder(
+        config: OAuthResourceServerConfig,
+        builder: reqwest::ClientBuilder,
+    ) -> OAuthResourceServerResult<Self> {
         config.validate()?;
         let provider = Arc::new(
-            securitydept_oauth_provider::OAuthProviderRuntime::from_config(
+            securitydept_oauth_provider::OAuthProviderRuntime::from_config_with_http_client_builder(
                 config.provider_config(),
+                builder,
             )
             .await?,
         );

@@ -131,8 +131,24 @@ where
     PS: PendingOauthStore,
 {
     pub async fn from_config(config: OidcClientConfig<PS::Config>) -> OidcResult<Self> {
+        Self::from_config_with_http_client_builder(config, reqwest::Client::builder()).await
+    }
+
+    /// Configure provider TLS, proxies, DNS and timeouts. OAuth redirects
+    /// remain disabled. Use `from_provider` to share a provider and its
+    /// connection pool with other clients.
+    pub async fn from_config_with_http_client_builder(
+        config: OidcClientConfig<PS::Config>,
+        builder: reqwest::ClientBuilder,
+    ) -> OidcResult<Self> {
         config.validate()?;
-        let provider = Arc::new(OAuthProviderRuntime::from_config(config.provider_config()).await?);
+        let provider = Arc::new(
+            OAuthProviderRuntime::from_config_with_http_client_builder(
+                config.provider_config(),
+                builder,
+            )
+            .await?,
+        );
         Self::from_provider(provider, config).await
     }
 

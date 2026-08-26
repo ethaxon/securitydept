@@ -62,46 +62,100 @@ struct CidrNodeState {
 
 impl CidrNodeRegistry {
     pub async fn from_configs(configs: &[NodeConfig]) -> RealIpResult<Self> {
+        Self::from_configs_with_http_client_builder(configs, reqwest::Client::builder()).await
+    }
+
+    /// Share one host-configured client across remote-file nodes and refreshes.
+    /// Explicit node timeouts override the builder's request timeout. Without
+    /// remote-file nodes, the builder is unused and is not built.
+    pub async fn from_configs_with_http_client_builder(
+        configs: &[NodeConfig],
+        builder: reqwest::ClientBuilder,
+    ) -> RealIpResult<Self> {
+        for config in configs {
+            config.validate()?;
+        }
         let factories = CidrNodeFactoryRegistry::with_builtin_nodes()?;
-        Self::from_configs_with_factories(configs, &factories).await
+        Self::from_configs_with_factories_and_http_client_builder(configs, &factories, builder)
+            .await
     }
 
     pub async fn from_configs_with_factories(
         configs: &[NodeConfig],
         factories: &CidrNodeFactoryRegistry,
     ) -> RealIpResult<Self> {
+        Self::from_configs_with_factories_and_http_client_builder(
+            configs,
+            factories,
+            reqwest::Client::builder(),
+        )
+        .await
+    }
+
+    /// Configure remote-file transport alongside explicit custom node
+    /// factories.
+    pub async fn from_configs_with_factories_and_http_client_builder(
+        configs: &[NodeConfig],
+        factories: &CidrNodeFactoryRegistry,
+        builder: reqwest::ClientBuilder,
+    ) -> RealIpResult<Self> {
+        for config in configs {
+            config.validate()?;
+        }
+        let remote_urls: Vec<_> = configs
+            .iter()
+            .filter_map(NodeConfig::remote_file_urls)
+            .flatten()
+            .cloned()
+            .collect();
+        let http_client = if remote_urls.is_empty() {
+            None
+        } else {
+            Some(
+                builder
+                    .build()
+                    .map_err(|source| RealIpError::CidrNodeHttp {
+                        url: remote_urls.join(","),
+                        source,
+                    })?,
+            )
+        };
         let mut by_name = HashMap::new();
         let mut runtime_configs = Vec::new();
-        let mut tasks = Vec::new();
-        let mut watchers = Vec::new();
 
         for config in configs.iter().filter(|config| config.is_cidr_backed()) {
             let custom_node = build_custom_cidr_node(config, factories)?;
-            let snapshot = load_cidr_node(config, custom_node.as_deref()).await?;
+            let snapshot =
+                load_cidr_node(config, custom_node.as_deref(), http_client.as_ref()).await?;
             by_name.insert(config.name().to_string(), snapshot);
             runtime_configs.push((config.clone(), custom_node));
         }
 
         let state = Arc::new(ArcSwap::from_pointee(CidrNodeState { by_name }));
+        // Drop aborts already-created tasks if a later watcher fails to initialize.
+        let mut registry = Self {
+            state: state.clone(),
+            tasks: Vec::new(),
+            _watchers: Vec::new(),
+        };
 
         for (config, custom_node) in runtime_configs {
-            if let Some(handle) =
-                spawn_refresh_task(config.clone(), custom_node.clone(), state.clone())
-            {
-                tasks.push(handle);
+            if let Some(handle) = spawn_refresh_task(
+                config.clone(),
+                custom_node.clone(),
+                state.clone(),
+                http_client.clone(),
+            ) {
+                registry.tasks.push(handle);
             }
 
             if let Some((watcher, handle)) = spawn_file_watcher(config, state.clone())? {
-                watchers.push(watcher);
-                tasks.push(handle);
+                registry._watchers.push(watcher);
+                registry.tasks.push(handle);
             }
         }
 
-        Ok(Self {
-            state,
-            tasks,
-            _watchers: watchers,
-        })
+        Ok(registry)
     }
 
     pub fn snapshot(&self, name: &str) -> Option<CidrNodeSnapshot> {
@@ -131,13 +185,21 @@ fn spawn_refresh_task(
     config: NodeConfig,
     custom_node: Option<Arc<dyn DynamicCidrNode>>,
     state: Arc<ArcSwap<CidrNodeState>>,
+    http_client: Option<reqwest::Client>,
 ) -> Option<JoinHandle<()>> {
     let refresh = config.refresh()?;
 
     Some(tokio::spawn(async move {
         loop {
             sleep(refresh).await;
-            if let Err(error) = refresh_cidr_node(&config, custom_node.as_deref(), &state).await {
+            if let Err(error) = refresh_cidr_node(
+                &config,
+                custom_node.as_deref(),
+                &state,
+                http_client.as_ref(),
+            )
+            .await
+            {
                 warn!(node = %config.name(), error = %error, "Failed to refresh real-IP CIDR node");
             }
         }
@@ -173,7 +235,7 @@ fn spawn_file_watcher(
     let handle = tokio::spawn(async move {
         while rx.changed().await.is_ok() {
             sleep(debounce).await;
-            if let Err(error) = refresh_cidr_node(&config, None, &state).await {
+            if let Err(error) = refresh_cidr_node(&config, None, &state, None).await {
                 warn!(node = %config.name(), error = %error, "Failed to refresh watched real-IP CIDR node");
             }
         }
@@ -186,8 +248,9 @@ async fn refresh_cidr_node(
     config: &NodeConfig,
     custom_node: Option<&dyn DynamicCidrNode>,
     state: &Arc<ArcSwap<CidrNodeState>>,
+    http_client: Option<&reqwest::Client>,
 ) -> RealIpResult<()> {
-    match load_cidr_node(config, custom_node).await {
+    match load_cidr_node(config, custom_node, http_client).await {
         Ok(snapshot) => {
             replace_cidr_node_snapshot(state, config.name(), Some(snapshot));
             debug!(node = %config.name(), "Refreshed real-IP CIDR node");
@@ -205,6 +268,7 @@ async fn refresh_cidr_node(
 async fn load_cidr_node(
     config: &NodeConfig,
     custom_node: Option<&dyn DynamicCidrNode>,
+    http_client: Option<&reqwest::Client>,
 ) -> RealIpResult<CidrNodeSnapshot> {
     let cidrs = match config {
         NodeConfig::Core(CoreNodeConfig::CidrsInline(config)) => config.cidrs.clone(),
@@ -213,7 +277,12 @@ async fn load_cidr_node(
         }
         NodeConfig::Core(CoreNodeConfig::CidrsRemoteFile(_)) => {
             let mut cidrs = Vec::new();
-            for content in read_remote_files(config).await? {
+            for content in read_remote_files(
+                config,
+                http_client.expect("remote-file client is built before loading nodes"),
+            )
+            .await?
+            {
                 cidrs.extend(parse_entries(config.name(), &content)?);
             }
             cidrs
@@ -263,23 +332,19 @@ async fn read_local_file(config: &NodeConfig) -> RealIpResult<String> {
         .map_err(|source| RealIpError::ReadCidrNodeFile { path, source })
 }
 
-async fn read_remote_files(config: &NodeConfig) -> RealIpResult<Vec<String>> {
+async fn read_remote_files(
+    config: &NodeConfig,
+    client: &reqwest::Client,
+) -> RealIpResult<Vec<String>> {
     let urls = config.remote_file_urls().expect("validated URLs");
-    let mut builder = reqwest::Client::builder();
-    if let Some(timeout) = config.timeout() {
-        builder = builder.timeout(timeout);
-    }
-    let client = builder
-        .build()
-        .map_err(|source| RealIpError::CidrNodeHttp {
-            url: urls.join(","),
-            source,
-        })?;
 
     let mut contents = Vec::with_capacity(urls.len());
     for url in urls {
-        let response = client
-            .get(url)
+        let mut request = client.get(url);
+        if let Some(timeout) = config.timeout() {
+            request = request.timeout(timeout);
+        }
+        let response = request
             .send()
             .await
             .and_then(reqwest::Response::error_for_status)

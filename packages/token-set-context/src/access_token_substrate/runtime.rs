@@ -71,16 +71,31 @@ impl AccessTokenSubstrateRuntime {
         config: &super::config::ResolvedAccessTokenSubstrateConfig,
     ) -> Result<(Self, Option<Arc<OAuthResourceServerVerifier>>), AccessTokenSubstrateRuntimeError>
     {
+        Self::from_resolved_config_with_http_client_builder(config, reqwest::Client::builder())
+            .await
+    }
+
+    /// Configure resource-server transport. If discovery is disabled, the
+    /// builder is not built. It does not configure propagation forwarding
+    /// transport.
+    pub async fn from_resolved_config_with_http_client_builder(
+        config: &super::config::ResolvedAccessTokenSubstrateConfig,
+        builder: reqwest::ClientBuilder,
+    ) -> Result<(Self, Option<Arc<OAuthResourceServerVerifier>>), AccessTokenSubstrateRuntimeError>
+    {
+        let runtime = Self::new(&config.token_propagation)?;
         let resource_verifier = if config.resource_server.remote.is_discovery_configured() {
-            let verifier = OAuthResourceServerVerifier::from_config(config.resource_server.clone())
-                .await
-                .map_err(AccessTokenSubstrateRuntimeError::ResourceServer)?;
+            let verifier = OAuthResourceServerVerifier::from_config_with_http_client_builder(
+                config.resource_server.clone(),
+                builder,
+            )
+            .await
+            .map_err(AccessTokenSubstrateRuntimeError::ResourceServer)?;
             Some(Arc::new(verifier))
         } else {
             None
         };
 
-        let runtime = Self::new(&config.token_propagation)?;
         Ok((runtime, resource_verifier))
     }
 

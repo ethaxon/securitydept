@@ -361,7 +361,7 @@ impl NodeConfig {
         )
     }
 
-    fn validate(&self) -> RealIpResult<()> {
+    pub(crate) fn validate(&self) -> RealIpResult<()> {
         if self.name().trim().is_empty() {
             return Err(config_error("real-IP node name must not be empty"));
         }

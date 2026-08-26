@@ -342,9 +342,32 @@ where
         PS::Config: Clone,
         MS::Config: Clone,
     {
+        Self::from_resolved_config_with_http_client_builder::<PS>(
+            resolved,
+            reqwest::Client::builder(),
+        )
+        .await
+    }
+
+    /// Configure OIDC provider transport; a disabled OIDC config does not build
+    /// the supplied builder. OAuth redirects remain disabled.
+    pub async fn from_resolved_config_with_http_client_builder<PS>(
+        resolved: Option<&ResolvedBackendOidcModeConfig<PS::Config, MS::Config>>,
+        builder: reqwest::ClientBuilder,
+    ) -> BackendOidcModeRuntimeResult<(Self, Option<Arc<OidcClient<PS>>>)>
+    where
+        PS: PendingOauthStore,
+        PS::Config: Clone,
+        MS::Config: Clone,
+    {
         let (runtime_config, oidc_client) = match resolved {
             Some(r) => {
-                let client = OidcClient::<PS>::from_config(r.oidc_client.clone()).await?;
+                r.runtime.validate()?;
+                let client = OidcClient::<PS>::from_config_with_http_client_builder(
+                    r.oidc_client.clone(),
+                    builder,
+                )
+                .await?;
                 (r.runtime.clone(), Some(Arc::new(client)))
             }
             None => (BackendOidcModeRuntimeConfig::default(), None),

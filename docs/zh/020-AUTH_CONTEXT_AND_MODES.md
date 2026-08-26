@@ -58,6 +58,40 @@ SecurityDept 关闭了 `oauth2` 和 `openidconnect` 的默认 HTTP-client featur
 feature unification 重新引入 reqwest 0.12。额外的 OAuth/OIDC 请求可使用
 provider 的 adapter，或参考 [oauth2-reqwest 使用指南](https://docs.rs/oauth2-reqwest/0.1.0-alpha.3/oauth2_reqwest/)。
 
+### Host 自定义 Rust HTTP Client
+
+Rust host 可通过以下新增入口传入并消费 `reqwest::ClientBuilder`：
+
+- `OAuthProviderRuntime`、`OidcClient`、`OAuthResourceServerVerifier`：`from_config_with_http_client_builder(config, builder)`。
+- `BackendOidcModeRuntime`、`AccessTokenSubstrateRuntime`：`from_resolved_config_with_http_client_builder(config, builder)`。
+- `RealIpResolver`：`from_config_with_http_client_builder(config, builder)` 与 `from_config_with_factories_and_http_client_builder(config, &factories, builder)`。
+- `CidrNodeRegistry`：对应的 `from_configs_with_http_client_builder` 与 `from_configs_with_factories_and_http_client_builder`，参阅 [Real-IP HTTP transport](006-REALIP.md#host-自定义-http-transport)。
+
+原有构造方法保留，使用默认 builder 委托新路径。不新增 TOML 或环境变量证书字段。认证关闭或 Real-IP registry 没有内置远程文件节点时，不构建未使用的 builder。Kubernetes/Docker 保留原生配置；propagation 的 axum-reverse-proxy、server 入站 TLS 和浏览器 SDK transport 不受影响。
+
+```rust
+// The host loads certificates; identity.pem contains the client certificate
+// chain and private key, not a CA bundle.
+let roots = reqwest::Certificate::from_pem_bundle(&std::fs::read("ca.pem")?)?;
+let identity = reqwest::Identity::from_pem(&std::fs::read("identity.pem")?)?;
+let builder = reqwest::Client::builder()
+    .tls_certs_merge(roots)
+    .identity(identity)
+    .proxy(reqwest::Proxy::https("http://proxy.example.com:8080")?)
+    .timeout(std::time::Duration::from_secs(15));
+let provider = std::sync::Arc::new(
+    OAuthProviderRuntime::from_config_with_http_client_builder(provider_config, builder).await?
+);
+let oidc = OidcClient::<MokaPendingOauthStore>::from_provider(provider.clone(), oidc_config).await?;
+let verifier = OAuthResourceServerVerifier::from_provider(provider, verifier_config).await?;
+```
+
+`tls_certs_merge` 将指定根证书加入平台信任；需要隔离信任集合时改用 `tls_certs_only(roots)`。默认 TLS 继续使用 rustls；host 可启用对应 reqwest feature 后在 builder 上选择 backend。identity 只配置 TLS 客户端身份，不代表新增 OAuth `tls_client_auth`/`self_signed_tls_client_auth` 方法或 certificate-bound token 校验。host 应保护私钥，不得通过 frontend projection 或日志暴露；不要为了私有 CA 关闭证书/域名校验。
+
+builder 只消费一次。provider 的 discovery、JWKS、refresh、token、userinfo、introspection、device 和 revocation 请求共用构建后的 client 及 OAuth adapter 连接池。通过 `from_provider` 共享 provider 也会共享缓存；分别调用便捷构造方法会分别创建 provider。TLS identity 与 default header 应用于该 provider 的全部 endpoint；不同信任域应使用独立 runtime。
+
+OAuth provider 构建前始终用 `Policy::none()` 覆盖 builder 的 redirect policy，其他设置保留。非法配置在 build 前拒绝，build 失败沿用现有错误类型。一般 Real-IP 远程文件请求保留 host/default redirect policy，不继承 OAuth 的禁止重定向规则。
+
 ## Principal 和 Token 边界
 
 authenticated principal 表示 session/token-set user-facing state 中已登录的人。

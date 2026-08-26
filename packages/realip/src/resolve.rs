@@ -110,18 +110,47 @@ struct ChainResolutionContext<'a> {
 
 impl RealIpResolver {
     pub async fn from_config(config: RealIpResolveConfig) -> RealIpResult<Self> {
+        Self::from_config_with_http_client_builder(config, reqwest::Client::builder()).await
+    }
+
+    /// Configure HTTP transport for built-in remote-file nodes only.
+    /// Kubernetes, Docker and custom factories retain their own transports.
+    pub async fn from_config_with_http_client_builder(
+        config: RealIpResolveConfig,
+        builder: reqwest::ClientBuilder,
+    ) -> RealIpResult<Self> {
+        config.validate()?;
         let factories = CidrNodeFactoryRegistry::with_builtin_nodes()?;
-        Self::from_config_with_factories(config, &factories).await
+        Self::from_config_with_factories_and_http_client_builder(config, &factories, builder).await
     }
 
     pub async fn from_config_with_factories(
         config: RealIpResolveConfig,
         factories: &CidrNodeFactoryRegistry,
     ) -> RealIpResult<Self> {
+        Self::from_config_with_factories_and_http_client_builder(
+            config,
+            factories,
+            reqwest::Client::builder(),
+        )
+        .await
+    }
+
+    /// Combine explicit node factories with host-configured remote-file HTTP
+    /// transport.
+    pub async fn from_config_with_factories_and_http_client_builder(
+        config: RealIpResolveConfig,
+        factories: &CidrNodeFactoryRegistry,
+        builder: reqwest::ClientBuilder,
+    ) -> RealIpResult<Self> {
         config.validate()?;
         let graph = CompiledNodeGraph::compile(&config.nodes)?;
-        let cidr_nodes =
-            CidrNodeRegistry::from_configs_with_factories(&config.nodes, factories).await?;
+        let cidr_nodes = CidrNodeRegistry::from_configs_with_factories_and_http_client_builder(
+            &config.nodes,
+            factories,
+            builder,
+        )
+        .await?;
         let mut rules: Vec<CompiledRule> = config
             .rules
             .iter()
