@@ -135,6 +135,9 @@ jobs:
             - name: Build TypeScript SDK packages for npm release
               run: mise exec --command "pnpm build:sdks"
 
+            - name: Verify published SDK declaration contracts
+              run: mise exec --command "pnpm --filter @securitydept/ts-sdks test tests/package-artifact-contract.test.ts"
+
             - name: Save Turbo npm release cache
               if: steps.turbo-npm-release-cache.outputs.cache-hit != 'true'
               uses: actions/cache/save@v5

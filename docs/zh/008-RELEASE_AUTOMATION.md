@@ -130,7 +130,7 @@ release 相关 workflow 必须遵循：
 
 - pnpm 与 Rust setup/cache 行为由 `.github/actions/` 下的 repo-local composite actions 拥有。
 - pnpm cache mode 必须显式写成 `read-write`、`read-only` 或 `none`。稳定 restore key 是 `pnpm-store-${runner.os}-${hashFiles(lockfile)}`；同一个 workflow 拓扑中，同一 key 只能有一个 read-write owner。
-- Turborepo 负责 JS/TS 的 build 与 test 任务图；TypeScript project references 和 `tsc -b` 负责 typecheck 与声明传播。GitHub Actions 分别按 test、npm-release 和 WebUI-release scope 持久化 `.turbo`，不需要远程缓存凭据。
+- Turborepo 负责 JS/TS 的 build 与 test 任务图；TypeScript project references 和 `tsc -b` 负责源码 typecheck 及其 `dist-tsc` 输出。tsdown 包声明统一使用 `scripts/tooling/sdk-declarations.ts`，移除仅用于源码的 `monorepo-tsc` condition 与 project references，解析依赖包的 `dist` exports；Turbo 会先构建或恢复这些依赖。打包不得依赖提前运行 typecheck 或本地遗留的 `dist-tsc` 文件。npm-release 在发布前检查构建后的声明契约。GitHub Actions 分别按 test、npm-release 和 WebUI-release scope 持久化 `.turbo`，不需要远程缓存凭据。
 - Rust cache mode 同样必须显式。使用共享 key 的 read-write job 必须是该拓扑唯一 writer；后续 job 只能 read-only restore 或消费 artifact。
 - Rust shared key 应该是稳定的 lane/profile scope，例如 `securitydept-rust-${runner.os}-pr-mainline-debug`、`securitydept-rust-${runner.os}-mainline-debug` 与 `securitydept-rust-${runner.os}-release`。不要在 workflow 里手写 `hashFiles(...)` 塞进 `shared-key`；`Swatinem/rust-cache` 本身已经把 Cargo manifest、lockfile、toolchain 与相关 env var 的 Rust environment hash 纳入最终 key，并且会尝试从旧 lockfile 版本恢复。
 - Rust cache ownership 按 profile 与 workflow source 拆分：

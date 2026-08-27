@@ -9,6 +9,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 <!-- ## [Unreleased] -->
 
+## [0.3.4]
+
+### Added
+
+- Added built-declaration regression checks for registry tokens, injection results, error classifications, and Angular/React consumers, plus a declaration-contract gate before npm publishing.
+
+### Changed
+
+- Bumped all release-managed workspace versions and internal Cargo dependency requirements to `0.3.4`, and synchronized workspace entries in `Cargo.lock` without upgrading third-party dependencies.
+
+### Fixed
+
+- Resolved tsdown SDK package declarations through dependency `dist` exports instead of untracked `dist-tsc` outputs, preventing registry injection tokens and other inferred public types from becoming `any` in clean or cache-restored release builds. Source typechecking retains its TypeScript project references; Angular's ng-packagr configuration is unchanged.
+
 ## [0.3.3]
 
 ### Added

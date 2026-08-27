@@ -3,6 +3,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { type DtsOptions } from "tsdown";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
@@ -45,7 +46,7 @@ describe("package artifact contracts", () => {
 		).not.toThrow();
 	});
 
-	it("preserves registry runtime values and event types through dist declarations", () => {
+	it("preserves registry tokens, adapters, runtime values and event types through dist declarations", () => {
 		const fixture = path.join(
 			import.meta.dirname,
 			"fixtures/registry-artifact-consumer.ts",
@@ -72,6 +73,18 @@ describe("package artifact contracts", () => {
 			ts.sys,
 		).resolvedModule;
 		expect(resolvedTest?.resolvedFileName).toContain("/dist/test/");
+		for (const adapter of [
+			"@securitydept/token-set-context-client-angular",
+			"@securitydept/token-set-context-client-react",
+		]) {
+			const resolvedAdapter = ts.resolveModuleName(
+				adapter,
+				fixture,
+				compilerOptions,
+				ts.sys,
+			).resolvedModule;
+			expect(resolvedAdapter?.resolvedFileName).toContain("/dist/");
+		}
 
 		const program = ts.createProgram([fixture], compilerOptions);
 		const diagnostics = ts.getPreEmitDiagnostics(program);
@@ -82,6 +95,73 @@ describe("package artifact contracts", () => {
 				getNewLine: () => "\n",
 			}),
 		).toBe("");
+	});
+
+	it("emits typed registry tokens without any dist-tsc outputs", async () => {
+		const declarationOptionsUrl = pathToFileURL(
+			path.join(repositoryRoot, "scripts/tooling/sdk-declarations.ts"),
+		).href;
+		const { SDK_DECLARATION_OPTIONS }: { SDK_DECLARATION_OPTIONS: DtsOptions } =
+			await import(/* @vite-ignore */ declarationOptionsUrl);
+		const configPath = path.join(
+			workspaceRoot,
+			"packages/token-set-context-client/tsconfig.json",
+		);
+		const config = ts.readConfigFile(configPath, ts.sys.readFile);
+		expect(config.error).toBeUndefined();
+		const parsedConfig = ts.parseJsonConfigFileContent(
+			{
+				...config.config,
+				...SDK_DECLARATION_OPTIONS.tsconfigRaw,
+				compilerOptions: {
+					...config.config.compilerOptions,
+					...SDK_DECLARATION_OPTIONS.compilerOptions,
+				},
+			},
+			ts.sys,
+			path.dirname(configPath),
+		);
+		expect(parsedConfig.errors).toEqual([]);
+		expect(parsedConfig.projectReferences).toBeUndefined();
+		const host = ts.createCompilerHost(parsedConfig.options);
+		const readFile = host.readFile.bind(host);
+		const fileExists = host.fileExists.bind(host);
+		host.readFile = (file) =>
+			file.includes("/dist-tsc/") ? undefined : readFile(file);
+		host.fileExists = (file) =>
+			!file.includes("/dist-tsc/") && fileExists(file);
+		const program = ts.createProgram({
+			rootNames: parsedConfig.fileNames,
+			options: parsedConfig.options,
+			projectReferences: parsedConfig.projectReferences,
+			host,
+		});
+		const source = program.getSourceFile(
+			path.join(
+				workspaceRoot,
+				"packages/token-set-context-client/src/registry/contracts/tokens.ts",
+			),
+		);
+		expect(source).toBeDefined();
+		expect(ts.getPreEmitDiagnostics(program)).toEqual([]);
+		let declaration = "";
+		const result = program.emit(
+			source,
+			(file, text) => {
+				if (file.endsWith(".d.ts")) {
+					declaration = text;
+				}
+			},
+			undefined,
+			true,
+		);
+		expect(result.emitSkipped).toBe(false);
+		expect(declaration).toContain(
+			"TOKEN_SET_CLIENT_REGISTRY: SecuritydeptInjectionToken<TokenSetClientRegistry<BaseOidcModeClient>>",
+		);
+		expect(declaration).toContain(
+			"TOKEN_SET_CLIENT_REGISTRY_ENTRIES: SecuritydeptInjectionToken<readonly TokenSetClientRegistryEntry<BaseOidcModeClient>[]>",
+		);
 	});
 
 	it("imports and instantiates the token-set test runtime artifact", async () => {

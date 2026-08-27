@@ -1,5 +1,6 @@
 import path from "node:path";
 import { defineConfig } from "tsdown";
+import { SDK_DECLARATION_OPTIONS } from "../../../../scripts/tooling/sdk-declarations.ts";
 import { runTurboPrerequisites } from "../../../../scripts/tooling/turbo-prerequisites.ts";
 
 export default defineConfig({
@@ -19,7 +20,7 @@ export default defineConfig({
 	},
 	target: "es2022",
 	format: "esm",
-	dts: true,
+	dts: SDK_DECLARATION_OPTIONS,
 	sourcemap: true,
 	clean: true,
 	deps: {

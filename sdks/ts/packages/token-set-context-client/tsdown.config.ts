@@ -1,5 +1,6 @@
 import path from "node:path";
 import { defineConfig } from "tsdown";
+import { SDK_DECLARATION_OPTIONS } from "../../../../scripts/tooling/sdk-declarations.ts";
 import { createStage3DecoratorSwcPlugin } from "../../../../scripts/tooling/stage3-decorators-swc.ts";
 import { runTurboPrerequisites } from "../../../../scripts/tooling/turbo-prerequisites.ts";
 
@@ -29,7 +30,7 @@ export default defineConfig({
 	plugins: [createStage3DecoratorSwcPlugin({ roots: [import.meta.dirname] })],
 	target: "es2022",
 	format: "esm",
-	dts: true,
+	dts: SDK_DECLARATION_OPTIONS,
 	sourcemap: true,
 	clean: true,
 	deps: {
